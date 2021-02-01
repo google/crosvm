@@ -2257,6 +2257,17 @@ fn resume_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     vms_request(&VmRequest::Resume, socket_path)
 }
 
+fn make_rt(mut args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() == 0 {
+        print_help("crosvm make_rt", "VM_SOCKET...", &[]);
+        println!("Makes the crosvm instance listening on each `VM_SOCKET` given RT.");
+        return Err(());
+    }
+    let socket_path = &args.next().unwrap();
+    let socket_path = Path::new(&socket_path);
+    vms_request(&VmRequest::MakeRT, socket_path)
+}
+
 fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() < 2 {
         print_help("crosvm balloon", "SIZE VM_SOCKET...", &[]);
@@ -2689,6 +2700,7 @@ fn crosvm_main() -> std::result::Result<(), ()> {
         Some("stop") => stop_vms(args),
         Some("suspend") => suspend_vms(args),
         Some("resume") => resume_vms(args),
+        Some("make_rt") => make_rt(args),
         Some("run") => run_vm(args),
         Some("balloon") => balloon_vms(args),
         Some("balloon_stats") => balloon_stats(args),

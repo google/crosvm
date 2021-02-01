@@ -2006,6 +2006,21 @@ where
                                         }
                                     }
                                 }
+                                VcpuControl::MakeRT => {
+                                    if run_rt && delay_rt {
+                                        info!("Making vcpu {} RT\n", cpu_id);
+                                        const DEFAULT_VCPU_RT_LEVEL: u16 = 6;
+                                        if let Err(e) = set_rt_prio_limit(
+                                            u64::from(DEFAULT_VCPU_RT_LEVEL))
+                                            .and_then(|_|
+                                                set_rt_round_robin(
+                                                i32::from(DEFAULT_VCPU_RT_LEVEL)
+                                            ))
+                                        {
+                                            warn!("Failed to set vcpu to real time: {}", e);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -2737,6 +2752,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         #[cfg(not(feature = "usb"))]
                                         None,
                                         &mut linux.bat_control,
+                                        &vcpu_handles,
                                     );
                                     if let Err(e) = tube.send(&response) {
                                         error!("failed to send VmResponse: {}", e);

@@ -20,15 +20,18 @@ use std::fs::File;
 use std::os::raw::c_int;
 use std::result::Result as StdResult;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
+
+use std::thread::JoinHandle;
 
 use libc::{EINVAL, EIO, ENODEV};
 use serde::{Deserialize, Serialize};
 
 use base::{
     error, with_as_descriptor, AsRawDescriptor, Error as SysError, Event, ExternalMapping, Fd,
-    FromRawDescriptor, IntoRawDescriptor, MappedRegion, MemoryMappingArena, MemoryMappingBuilder,
-    MemoryMappingBuilderUnix, MmapError, Protection, Result, SafeDescriptor, SharedMemory, Tube,
+    FromRawDescriptor, IntoRawDescriptor, Killable, MappedRegion, MemoryMappingArena,
+    MemoryMappingBuilder, MemoryMappingBuilderUnix, MmapError, Protection, Result, SafeDescriptor,
+    SharedMemory, Tube, SIGRTMIN,
 };
 use hypervisor::{IrqRoute, IrqSource, Vm};
 use resources::{Alloc, MmioType, SystemAllocator};
@@ -62,6 +65,7 @@ pub enum VcpuControl {
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     Debug(VcpuDebug),
     RunState(VmRunMode),
+    MakeRT,
 }
 
 /// Mode of execution for the VM.
@@ -895,6 +899,8 @@ pub enum VmRequest {
     Suspend,
     /// Resume the VM's VCPUs that were previously suspended.
     Resume,
+    /// Make the VM's RT VCPU real-time.
+    MakeRT,
     /// Command for balloon driver.
     BalloonCommand(BalloonControlCommand),
     /// Send a command to a disk chosen by `disk_index`.
@@ -973,6 +979,7 @@ impl VmRequest {
         disk_host_tubes: &[Tube],
         usb_control_tube: Option<&Tube>,
         bat_control: &mut Option<BatControl>,
+        vcpu_handles: &[(JoinHandle<()>, mpsc::Sender<VcpuControl>)],
     ) -> VmResponse {
         match *self {
             VmRequest::Exit => {
@@ -985,6 +992,15 @@ impl VmRequest {
             }
             VmRequest::Resume => {
                 *run_mode = Some(VmRunMode::Running);
+                VmResponse::Ok
+            }
+            VmRequest::MakeRT => {
+                for (handle, channel) in vcpu_handles {
+                    if let Err(e) = channel.send(VcpuControl::MakeRT) {
+                        error!("failed to send MakeRT: {}", e);
+                    }
+                    let _ = handle.kill(SIGRTMIN() + 0);
+                }
                 VmResponse::Ok
             }
             VmRequest::BalloonCommand(BalloonControlCommand::Adjust { num_bytes }) => {
