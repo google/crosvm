@@ -50,6 +50,7 @@ const SMBIOS_START: u64 = 0xf0000; // First possible location per the spec.
 const SM3_MAGIC_IDENT: &[u8; 5usize] = b"_SM3_";
 const BIOS_INFORMATION: u8 = 0;
 const SYSTEM_INFORMATION: u8 = 1;
+const END_OF_TABLE: u8 = 127;
 const PCI_SUPPORTED: u64 = 1 << 7;
 const IS_VIRTUAL_MACHINE: u8 = 1 << 4;
 
@@ -193,6 +194,18 @@ pub fn setup_smbios(mem: &GuestMemory) -> Result<()> {
         curptr = write_string(mem, "ChromiumOS", curptr)?;
         curptr = write_string(mem, "crosvm", curptr)?;
         curptr = write_and_incr(mem, 0u8, curptr)?;
+    }
+
+    {
+        handle += 1;
+        let smbios_sysinfo = SmbiosSysInfo {
+            typ: END_OF_TABLE,
+            length: mem::size_of::<SmbiosSysInfo>() as u8,
+            handle,
+            ..Default::default()
+        };
+        curptr = write_and_incr(mem, smbios_sysinfo, curptr)?;
+        curptr = write_and_incr(mem, 0_u8, curptr)?;
     }
 
     {
