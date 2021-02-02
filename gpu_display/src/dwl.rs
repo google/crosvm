@@ -57,6 +57,39 @@ pub struct dwl_dmabuf {
 pub struct dwl_surface {
     pub _bindgen_opaque_blob: [u64; 12usize],
 }
+
+#[allow(dead_code)]
+pub const DWL_KEYBOARD_KEY_STATE_RELEASED: i32 = 0;
+pub const DWL_KEYBOARD_KEY_STATE_PRESSED: i32 = 1;
+
+#[allow(dead_code)]
+pub const DWL_EVENT_TYPE_KEYBOARD_ENTER: u32 = 0x00;
+#[allow(dead_code)]
+pub const DWL_EVENT_TYPE_KEYBOARD_LEAVE: u32 = 0x01;
+pub const DWL_EVENT_TYPE_KEYBOARD_KEY: u32 = 0x02;
+#[allow(dead_code)]
+pub const DWL_EVENT_TYPE_POINTER_ENTER: u32 = 0x10;
+#[allow(dead_code)]
+pub const DWL_EVENT_TYPE_POINTER_LEAVE: u32 = 0x11;
+#[allow(dead_code)]
+pub const DWL_EVENT_TYPE_POINTER_MOVE: u32 = 0x12;
+#[allow(dead_code)]
+pub const DWL_EVENT_TYPE_POINTER_BUTTON: u32 = 0x13;
+pub const DWL_EVENT_TYPE_TOUCH_DOWN: u32 = 0x20;
+pub const DWL_EVENT_TYPE_TOUCH_UP: u32 = 0x21;
+pub const DWL_EVENT_TYPE_TOUCH_MOTION: u32 = 0x22;
+
+pub const DWL_SURFACE_FLAG_RECEIVE_INPUT: u32 = 1 << 0;
+pub const DWL_SURFACE_FLAG_HAS_ALPHA: u32 = 1 << 1;
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct dwl_event {
+    pub surface_descriptor: *const ::std::ffi::c_void,
+    pub event_type: u32,
+    pub params: [i32; 3usize],
+}
+
 extern "C" {
     pub fn dwl_context_new() -> *mut dwl_context;
 }
@@ -102,8 +135,10 @@ extern "C" {
         width: u32,
         height: u32,
         stride: u32,
+        flags: u32,
     ) -> *mut dwl_surface;
 }
+
 extern "C" {
     pub fn dwl_surface_destroy(self_: *mut *mut dwl_surface);
 }
@@ -127,4 +162,10 @@ extern "C" {
 }
 extern "C" {
     pub fn dwl_surface_descriptor(self_: *const dwl_surface) -> *const ::std::ffi::c_void;
+}
+extern "C" {
+    pub fn dwl_context_pending_events(self_: *const dwl_context) -> bool;
+}
+extern "C" {
+    pub fn dwl_context_next_event(self_: *mut dwl_context, event: *mut dwl_event);
 }

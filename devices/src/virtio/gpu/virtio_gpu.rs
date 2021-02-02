@@ -233,8 +233,12 @@ impl VirtioGpu {
         resource.scanout_data = scanout_data;
         self.scanout_resource_id = NonZeroU32::new(resource_id);
         if self.scanout_surface_id.is_none() {
-            let surface_id =
-                display.create_surface(None, self.display_width, self.display_height)?;
+            let surface_id = display.create_surface(
+                None,
+                self.display_width,
+                self.display_height,
+                SurfaceType::Scanout,
+            )?;
             self.scanout_surface_id = Some(surface_id);
         }
         Ok(OkNoData)
@@ -378,6 +382,7 @@ impl VirtioGpu {
                 self.scanout_surface_id,
                 resource_width,
                 resource_height,
+                SurfaceType::Cursor,
             )?);
         }
 

@@ -1,8 +1,10 @@
-use gpu_display::GpuDisplay;
+use gpu_display::{GpuDisplay, SurfaceType};
 
 fn main() {
     let mut disp = GpuDisplay::open_x(None::<&str>).unwrap();
-    let surface_id = disp.create_surface(None, 1280, 1024).unwrap();
+    let surface_id = disp
+        .create_surface(None, 1280, 1024, SurfaceType::Scanout)
+        .unwrap();
 
     let mem = disp.framebuffer(surface_id).unwrap();
     for y in 0..1024 {

@@ -13,18 +13,21 @@ mod dwl;
 use dwl::*;
 
 use crate::{
-    DisplayT, GpuDisplayError, GpuDisplayFramebuffer, GpuDisplayImport, GpuDisplayResult,
-    GpuDisplaySurface,
+    DisplayT, EventDeviceKind, GpuDisplayError, GpuDisplayEvents, GpuDisplayFramebuffer,
+    GpuDisplayImport, GpuDisplayResult, GpuDisplaySurface, SurfaceType,
 };
 
+use linux_input_sys::virtio_input_event;
 use std::cell::Cell;
+use std::cmp::max;
 use std::ffi::{CStr, CString};
+use std::mem::zeroed;
 use std::path::Path;
 use std::ptr::null;
 
 use base::{
-    round_up_to_page_size, AsRawDescriptor, MemoryMapping, MemoryMappingBuilder, RawDescriptor,
-    SharedMemory,
+    error, round_up_to_page_size, AsRawDescriptor, MemoryMapping, MemoryMappingBuilder,
+    RawDescriptor, SharedMemory,
 };
 use data_model::VolatileMemory;
 
@@ -41,6 +44,13 @@ impl Drop for DwlContext {
                 dwl_context_destroy(&mut self.0);
             }
         }
+    }
+}
+
+impl AsRawDescriptor for DwlContext {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        // Safe given that the context pointer is valid.
+        unsafe { dwl_context_fd(self.0) }
     }
 }
 
@@ -155,8 +165,10 @@ impl GpuDisplaySurface for WaylandSurface {
 ///
 /// The user of `GpuDisplay` can use `AsRawDescriptor` to poll on the compositor connection's file
 /// descriptor. When the connection is readable, `dispatch_events` can be called to process it.
+
 pub struct DisplayWl {
     ctx: DwlContext,
+    current_event: Option<dwl_event>,
 }
 
 impl DisplayWl {
@@ -190,15 +202,90 @@ impl DisplayWl {
             return Err(GpuDisplayError::Connect);
         }
 
-        Ok(DisplayWl { ctx })
+        Ok(DisplayWl {
+            ctx,
+            current_event: None,
+        })
     }
 
     fn ctx(&self) -> *mut dwl_context {
         self.ctx.0
     }
+
+    fn pop_event(&self) -> dwl_event {
+        // Safe because dwl_next_events from a context's circular buffer.
+        unsafe {
+            let mut ev = zeroed();
+            dwl_context_next_event(self.ctx(), &mut ev);
+            ev
+        }
+    }
 }
 
 impl DisplayT for DisplayWl {
+    fn pending_events(&self) -> bool {
+        // Safe because the function just queries the values of two variables in a context.
+        unsafe { dwl_context_pending_events(self.ctx()) }
+    }
+
+    fn next_event(&mut self) -> GpuDisplayResult<u64> {
+        let ev = self.pop_event();
+        let descriptor = ev.surface_descriptor as u64;
+        self.current_event = Some(ev);
+        Ok(descriptor)
+    }
+
+    fn handle_next_event(
+        &mut self,
+        _surface: &mut Box<dyn GpuDisplaySurface>,
+    ) -> Option<GpuDisplayEvents> {
+        // Should not panic since the common layer only calls this when an event occurs.
+        let event = self.current_event.take().unwrap();
+
+        match event.event_type {
+            DWL_EVENT_TYPE_KEYBOARD_ENTER => None,
+            DWL_EVENT_TYPE_KEYBOARD_LEAVE => None,
+            DWL_EVENT_TYPE_KEYBOARD_KEY => {
+                let linux_keycode = event.params[0] as u16;
+                let pressed = event.params[1] == DWL_KEYBOARD_KEY_STATE_PRESSED;
+                let events = vec![virtio_input_event::key(linux_keycode, pressed)];
+                Some(GpuDisplayEvents {
+                    events,
+                    device_type: EventDeviceKind::Keyboard,
+                })
+            }
+            // TODO(tutankhamen): both slot and track_id are always 0, because all the input
+            // events come from mouse device, i.e. only one touch is possible at a time.
+            // Full MT protocol has to be implemented and properly wired later.
+            DWL_EVENT_TYPE_TOUCH_DOWN | DWL_EVENT_TYPE_TOUCH_MOTION => {
+                let events = vec![
+                    virtio_input_event::multitouch_slot(0),
+                    virtio_input_event::multitouch_tracking_id(0),
+                    virtio_input_event::multitouch_absolute_x(max(0, event.params[0])),
+                    virtio_input_event::multitouch_absolute_y(max(0, event.params[1])),
+                ];
+                Some(GpuDisplayEvents {
+                    events,
+                    device_type: EventDeviceKind::Touchscreen,
+                })
+            }
+            DWL_EVENT_TYPE_TOUCH_UP => {
+                let events = vec![
+                    virtio_input_event::multitouch_slot(0),
+                    virtio_input_event::multitouch_tracking_id(-1),
+                ];
+                Some(GpuDisplayEvents {
+                    events,
+                    device_type: EventDeviceKind::Touchscreen,
+                })
+            }
+            _ => {
+                error!("unknown event type {}", event.event_type);
+                None
+            }
+        }
+    }
+
     fn flush(&self) {
         // Safe given that the context pointer is valid.
         unsafe {
@@ -212,6 +299,7 @@ impl DisplayT for DisplayWl {
         surface_id: u32,
         width: u32,
         height: u32,
+        surf_type: SurfaceType,
     ) -> GpuDisplayResult<Box<dyn GpuDisplaySurface>> {
         let parent_id = parent_surface_id.unwrap_or(0);
 
@@ -224,6 +312,10 @@ impl DisplayT for DisplayWl {
             .build()
             .unwrap();
 
+        let dwl_surf_flags = match surf_type {
+            SurfaceType::Cursor => DWL_SURFACE_FLAG_HAS_ALPHA,
+            SurfaceType::Scanout => DWL_SURFACE_FLAG_RECEIVE_INPUT,
+        };
         // Safe because only a valid context, parent ID (if not non-zero), and buffer FD are used.
         // The returned surface is checked for validity before being filed away.
         let surface = DwlSurface(unsafe {
@@ -237,6 +329,7 @@ impl DisplayT for DisplayWl {
                 width,
                 height,
                 row_size,
+                dwl_surf_flags,
             )
         });
 

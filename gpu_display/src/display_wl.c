@@ -11,6 +11,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/input-event-codes.h>
 #include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -30,6 +31,30 @@
 
 #define DEFAULT_SCALE 2
 #define MAX_BUFFER_COUNT 64
+#define EVENT_BUF_SIZE 256
+
+const int32_t DWL_KEYBOARD_KEY_STATE_RELEASED = WL_KEYBOARD_KEY_STATE_RELEASED;
+const int32_t DWL_KEYBOARD_KEY_STATE_PRESSED  = WL_KEYBOARD_KEY_STATE_PRESSED;
+
+const uint32_t DWL_EVENT_TYPE_KEYBOARD_ENTER = 0x00;
+const uint32_t DWL_EVENT_TYPE_KEYBOARD_LEAVE = 0x01;
+const uint32_t DWL_EVENT_TYPE_KEYBOARD_KEY   = 0x02;
+const uint32_t DWL_EVENT_TYPE_POINTER_ENTER  = 0x10;
+const uint32_t DWL_EVENT_TYPE_POINTER_LEAVE  = 0x11;
+const uint32_t DWL_EVENT_TYPE_POINTER_MOVE   = 0x12;
+const uint32_t DWL_EVENT_TYPE_POINTER_BUTTON = 0x13;
+const uint32_t DWL_EVENT_TYPE_TOUCH_DOWN     = 0x20;
+const uint32_t DWL_EVENT_TYPE_TOUCH_UP       = 0x21;
+const uint32_t DWL_EVENT_TYPE_TOUCH_MOTION   = 0x22;
+
+const uint32_t DWL_SURFACE_FLAG_RECEIVE_INPUT = 1 << 0;
+const uint32_t DWL_SURFACE_FLAG_HAS_ALPHA     = 1 << 1;
+
+struct dwl_event {
+	const void *surface_descriptor;
+	uint32_t event_type;
+	int32_t params[3];
+};
 
 struct dwl_context;
 
@@ -38,7 +63,6 @@ struct interfaces {
 	struct wl_compositor *compositor;
 	struct wl_subcompositor *subcompositor;
 	struct wl_shm *shm;
-	struct wl_shell *shell;
 	struct wl_seat *seat;
 	struct zaura_shell *aura; // optional
 	struct zwp_linux_dmabuf_v1 *linux_dmabuf;
@@ -56,13 +80,28 @@ struct output {
 	bool internal;
 };
 
+struct input {
+	struct wl_keyboard *wl_keyboard;
+	struct wl_pointer *wl_pointer;
+	struct wl_surface *keyboard_input_surface;
+	struct wl_surface *pointer_input_surface;
+	int32_t pointer_x;
+	int32_t pointer_y;
+	bool pointer_lbutton_state;
+};
+
 struct dwl_context {
 	struct wl_display *display;
 	struct dwl_surface *surfaces[MAX_BUFFER_COUNT];
 	struct dwl_dmabuf *dmabufs[MAX_BUFFER_COUNT];
 	struct interfaces ifaces;
+	struct input input;
 	bool output_added;
 	struct output outputs[8];
+
+	struct dwl_event event_cbuf[EVENT_BUF_SIZE];
+	size_t event_read_pos;
+	size_t event_write_pos;
 };
 
 #define outputs_for_each(context, pos, output)                                 \
@@ -199,6 +238,279 @@ static const struct xdg_wm_base_listener xdg_wm_base_listener = {
 	.ping = xdg_wm_base_ping,
 };
 
+
+static void wl_keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
+			       uint32_t format, int32_t fd, uint32_t size)
+{
+	(void)data;
+	(void)wl_keyboard;
+	(void)fd;
+	(void)size;
+	if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
+		syslog(LOG_ERR, "wl_keyboard: invalid keymap format");
+	}
+}
+
+static void dwl_context_push_event(struct dwl_context *self,
+				   struct dwl_event *event)
+{
+	if (!self)
+		return;
+
+	memcpy(self->event_cbuf + self->event_write_pos, event,
+	       sizeof(struct dwl_event));
+
+	if (++self->event_write_pos == EVENT_BUF_SIZE)
+		self->event_write_pos = 0;
+}
+
+static void wl_keyboard_enter(void *data, struct wl_keyboard *wl_keyboard,
+			      uint32_t serial, struct wl_surface *surface,
+			      struct wl_array *keys)
+{
+	(void)wl_keyboard;
+	(void)serial;
+	(void)surface;
+	struct dwl_context *context = (struct dwl_context*)data;
+	struct input *input = &context->input;
+	uint32_t *key;
+	struct dwl_event event = {0};
+	input->keyboard_input_surface = surface;
+	wl_array_for_each(key, keys) {
+		event.surface_descriptor = input->keyboard_input_surface;
+		event.event_type = DWL_EVENT_TYPE_KEYBOARD_KEY;
+		event.params[0] = (int32_t)*key;
+		event.params[1] = DWL_KEYBOARD_KEY_STATE_PRESSED;
+		dwl_context_push_event(context, &event);
+	}
+}
+
+static void wl_keyboard_key(void *data, struct wl_keyboard *wl_keyboard,
+			    uint32_t serial, uint32_t time, uint32_t key,
+			    uint32_t state)
+{
+	struct dwl_context *context = (struct dwl_context*)data;
+	struct input *input = &context->input;
+	(void)wl_keyboard;
+	(void)serial;
+	(void)time;
+	struct dwl_event event = {0};
+	event.surface_descriptor = input->keyboard_input_surface;
+	event.event_type = DWL_EVENT_TYPE_KEYBOARD_KEY;
+	event.params[0] = (int32_t)key;
+	event.params[1] = state;
+	dwl_context_push_event(context, &event);
+}
+
+static void wl_keyboard_leave(void *data, struct wl_keyboard *wl_keyboard,
+			      uint32_t serial, struct wl_surface *surface)
+{
+	struct dwl_context *context = (struct dwl_context*)data;
+	struct input *input = &context->input;
+	struct dwl_event event = {0};
+	(void)wl_keyboard;
+	(void)serial;
+	(void)surface;
+
+	event.surface_descriptor = input->keyboard_input_surface;
+	event.event_type = DWL_EVENT_TYPE_KEYBOARD_LEAVE;
+	dwl_context_push_event(context, &event);
+
+	input->keyboard_input_surface = NULL;
+}
+
+static void wl_keyboard_modifiers(void *data, struct wl_keyboard *wl_keyboard,
+				  uint32_t serial, uint32_t mods_depressed,
+				  uint32_t mods_latched, uint32_t mods_locked,
+				  uint32_t group)
+{
+	(void)data;
+	(void)wl_keyboard;
+	(void)serial;
+	(void)mods_depressed;
+	(void)mods_latched;
+	(void)mods_locked;
+	(void)group;
+}
+
+static void wl_keyboard_repeat_info(void *data, struct wl_keyboard *wl_keyboard,
+				    int32_t rate, int32_t delay)
+{
+	(void)data;
+	(void)wl_keyboard;
+	(void)rate;
+	(void)delay;
+}
+
+static const struct wl_keyboard_listener wl_keyboard_listener = {
+	.keymap = wl_keyboard_keymap,
+	.enter = wl_keyboard_enter,
+	.leave = wl_keyboard_leave,
+	.key = wl_keyboard_key,
+	.modifiers = wl_keyboard_modifiers,
+	.repeat_info = wl_keyboard_repeat_info,
+};
+
+static void pointer_enter_handler(void *data, struct wl_pointer *wl_pointer,
+				  uint32_t serial, struct wl_surface *surface,
+				  wl_fixed_t x, wl_fixed_t y)
+{
+	struct dwl_context *context = (struct dwl_context*)data;
+	struct input *input = &context->input;
+	(void)wl_pointer;
+	(void)serial;
+
+	input->pointer_input_surface = surface;
+	input->pointer_x = wl_fixed_to_int(x);
+	input->pointer_y = wl_fixed_to_int(y);
+}
+
+static void pointer_leave_handler(void *data, struct wl_pointer *wl_pointer,
+				  uint32_t serial, struct wl_surface *surface)
+{
+	struct dwl_context *context = (struct dwl_context*)data;
+	struct input *input = &context->input;
+	(void)wl_pointer;
+	(void)serial;
+	(void)surface;
+
+	input->pointer_input_surface = NULL;
+}
+
+static void pointer_motion_handler(void *data, struct wl_pointer *wl_pointer,
+				   uint32_t time, wl_fixed_t x, wl_fixed_t y)
+{
+	struct dwl_context *context = (struct dwl_context*)data;
+	struct input *input = &context->input;
+	struct dwl_event event = {0};
+	(void)wl_pointer;
+	(void)time;
+
+	input->pointer_x = wl_fixed_to_int(x);
+	input->pointer_y = wl_fixed_to_int(y);
+	if (input->pointer_lbutton_state) {
+		event.surface_descriptor = input->pointer_input_surface;
+		event.event_type = DWL_EVENT_TYPE_TOUCH_MOTION;
+		event.params[0] = input->pointer_x;
+		event.params[1] = input->pointer_y;
+		dwl_context_push_event(context, &event);
+	}
+}
+
+static void pointer_button_handler(void *data, struct wl_pointer *wl_pointer,
+				   uint32_t serial, uint32_t time, uint32_t button,
+				   uint32_t state)
+{
+	struct dwl_context *context = (struct dwl_context*)data;
+	struct input *input = &context->input;
+	(void)wl_pointer;
+	(void)time;
+	(void)serial;
+
+	// we track only the left mouse button since we emulate a single touch device
+	if (button == BTN_LEFT) {
+		input->pointer_lbutton_state = state != 0;
+		struct dwl_event event = {0};
+		event.surface_descriptor = input->pointer_input_surface;
+		event.event_type = (state != 0)?
+			DWL_EVENT_TYPE_TOUCH_DOWN:DWL_EVENT_TYPE_TOUCH_UP;
+		event.params[0] = input->pointer_x;
+		event.params[1] = input->pointer_y;
+		dwl_context_push_event(context, &event);
+	}
+}
+
+static void wl_pointer_frame(void *data, struct wl_pointer *wl_pointer)
+{
+	(void)data;
+	(void)wl_pointer;
+}
+
+static void pointer_axis_handler(void *data, struct wl_pointer *wl_pointer,
+				 uint32_t time, uint32_t axis, wl_fixed_t value)
+{
+	(void)data;
+	(void)wl_pointer;
+	(void)time;
+	(void)axis;
+	(void)value;
+}
+
+static void wl_pointer_axis_source(void *data, struct wl_pointer *wl_pointer,
+				   uint32_t axis_source)
+{
+	(void)data;
+	(void)wl_pointer;
+	(void)axis_source;
+}
+
+static void wl_pointer_axis_stop(void *data, struct wl_pointer *wl_pointer,
+					uint32_t time, uint32_t axis)
+{
+	(void)data;
+	(void)wl_pointer;
+	(void)time;
+	(void)axis;
+}
+
+static void wl_pointer_axis_discrete(void *data, struct wl_pointer *wl_pointer,
+				     uint32_t axis, int32_t discrete)
+{
+	(void)data;
+	(void)wl_pointer;
+	(void)axis;
+	(void)discrete;
+}
+
+const struct wl_pointer_listener wl_pointer_listener = {
+	.enter = pointer_enter_handler,
+	.leave = pointer_leave_handler,
+	.motion = pointer_motion_handler,
+	.button = pointer_button_handler,
+	.axis = pointer_axis_handler,
+	.frame = wl_pointer_frame,
+	.axis_source = wl_pointer_axis_source,
+	.axis_stop = wl_pointer_axis_stop,
+	.axis_discrete = wl_pointer_axis_discrete,
+};
+
+static void wl_seat_capabilities(void *data, struct wl_seat *wl_seat,
+				 uint32_t capabilities)
+{
+	struct dwl_context *context = (struct dwl_context*)data;
+	struct input *input = &context->input;
+	bool have_keyboard = capabilities & WL_SEAT_CAPABILITY_KEYBOARD;
+	bool have_pointer = capabilities & WL_SEAT_CAPABILITY_POINTER;
+
+	if (have_keyboard && input->wl_keyboard == NULL) {
+		input->wl_keyboard = wl_seat_get_keyboard(wl_seat);
+		wl_keyboard_add_listener(input->wl_keyboard, &wl_keyboard_listener, context);
+	} else if (!have_keyboard && input->wl_keyboard != NULL) {
+		wl_keyboard_release(input->wl_keyboard);
+		input->wl_keyboard = NULL;
+	}
+
+	if (have_pointer && input->wl_pointer == NULL) {
+		input->wl_pointer = wl_seat_get_pointer(wl_seat);
+		wl_pointer_add_listener(input->wl_pointer, &wl_pointer_listener, context);
+	} else if (!have_pointer && input->wl_pointer != NULL) {
+		wl_pointer_release(input->wl_pointer);
+		input->wl_pointer = NULL;
+	}
+}
+
+static void wl_seat_name(void *data, struct wl_seat *wl_seat, const char *name)
+{
+	(void)data;
+	(void)wl_seat;
+	(void)name;
+}
+
+static const struct wl_seat_listener wl_seat_listener = {
+	.capabilities = wl_seat_capabilities,
+	.name = wl_seat_name,
+};
+
 static void dwl_context_output_add(struct dwl_context *context,
 				   struct wl_output *wl_output, uint32_t id)
 {
@@ -278,6 +590,7 @@ static void registry_global(void *data, struct wl_registry *registry,
 	} else if (strcmp(interface, wl_seat_interface.name) == 0) {
 		ifaces->seat = (struct wl_seat *)wl_registry_bind(
 		    registry, id, &wl_seat_interface, 5);
+		wl_seat_add_listener(ifaces->seat, &wl_seat_listener, ifaces->context);
 	} else if (strcmp(interface, wl_output_interface.name) == 0) {
 		struct wl_output *output = (struct wl_output *)wl_registry_bind(
 		    registry, id, &wl_output_interface, 2);
@@ -666,10 +979,12 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 					    uint32_t  surface_id,
 					    int shm_fd, size_t shm_size,
 					    size_t buffer_size, uint32_t width,
-					    uint32_t height, uint32_t stride)
+					    uint32_t height, uint32_t stride,
+					    uint32_t flags)
 {
 	if (buffer_size == 0)
 		return NULL;
+
 	size_t buffer_count = shm_size / buffer_size;
 	if (buffer_count == 0)
 		return NULL;
@@ -681,13 +996,13 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 			  sizeof(struct wl_buffer *) * buffer_count);
 	if (!disp_surface)
 		return NULL;
+
 	disp_surface->context = self;
 	disp_surface->width = width;
 	disp_surface->height = height;
 	disp_surface->scale = DEFAULT_SCALE;
 	disp_surface->buffer_count = buffer_count;
 
-	struct wl_region *region = NULL;
 	struct wl_shm_pool *shm_pool =
 	    wl_shm_create_pool(self->ifaces.shm, shm_fd, shm_size);
 	if (!shm_pool) {
@@ -696,10 +1011,12 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 	}
 
 	size_t i;
+	uint format = (flags & DWL_SURFACE_FLAG_HAS_ALPHA)?
+		WL_SHM_FORMAT_ARGB8888:WL_SHM_FORMAT_XRGB8888;
+
 	for (i = 0; i < buffer_count; i++) {
 		struct wl_buffer *buffer = wl_shm_pool_create_buffer(
-		    shm_pool, buffer_size * i, width, height, stride,
-		    WL_SHM_FORMAT_ARGB8888);
+		    shm_pool, buffer_size * i, width, height, stride, format);
 		if (!buffer) {
 			syslog(LOG_ERR, "failed to create buffer");
 			goto fail;
@@ -721,13 +1038,22 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 	wl_surface_add_listener(disp_surface->wl_surface, &surface_listener,
 				disp_surface);
 
-	region = wl_compositor_create_region(self->ifaces.compositor);
+	struct wl_region *region = wl_compositor_create_region(self->ifaces.compositor);
 	if (!region) {
 		syslog(LOG_ERR, "failed to make region");
 		goto fail;
 	}
-	wl_region_add(region, 0, 0, width, height);
+
+	bool receive_input = (flags & DWL_SURFACE_FLAG_RECEIVE_INPUT);
+	if (receive_input) {
+		wl_region_add(region, 0, 0, width, height);
+	} else {
+		// We have to add an empty region because NULL doesn't work
+		wl_region_add(region, 0, 0, 0, 0);
+	}
+	wl_surface_set_input_region(disp_surface->wl_surface, region);
 	wl_surface_set_opaque_region(disp_surface->wl_surface, region);
+	wl_region_destroy(region);
 
 	if (!parent_id) {
 		disp_surface->xdg_surface = xdg_wm_base_get_xdg_surface(
@@ -799,7 +1125,6 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 	wl_surface_attach(disp_surface->wl_surface, disp_surface->buffers[0], 0,
 			  0);
 	wl_surface_damage(disp_surface->wl_surface, 0, 0, width, height);
-	wl_region_destroy(region);
 	wl_shm_pool_destroy(shm_pool);
 
 	// Needed to get outputs before iterating them.
@@ -839,8 +1164,6 @@ fail:
 		xdg_surface_destroy(disp_surface->xdg_surface);
 	if (disp_surface->aura)
 		zaura_surface_destroy(disp_surface->aura);
-	if (region)
-		wl_region_destroy(region);
 	if (disp_surface->wl_surface)
 		wl_surface_destroy(disp_surface->wl_surface);
 	for (i = 0; i < buffer_count; i++)
@@ -934,7 +1257,24 @@ void dwl_surface_set_position(struct dwl_surface *self, uint32_t x, uint32_t y)
 	}
 }
 
-void *dwl_surface_descriptor(struct dwl_surface *self)
+const void* dwl_surface_descriptor(const struct dwl_surface *self)
 {
 	return self->wl_surface;
+}
+
+bool dwl_context_pending_events(const struct dwl_context *self)
+{
+	if (self->event_write_pos == self->event_read_pos)
+		return false;
+
+	return true;
+}
+
+void dwl_context_next_event(struct dwl_context *self, struct dwl_event *event)
+{
+	memcpy(event, self->event_cbuf + self->event_read_pos,
+	       sizeof(struct dwl_event));
+
+	if (++self->event_read_pos == EVENT_BUF_SIZE)
+		self->event_read_pos = 0;
 }

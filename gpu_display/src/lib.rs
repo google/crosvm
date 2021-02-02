@@ -89,6 +89,15 @@ impl From<IoError> for GpuDisplayError {
     }
 }
 
+/// A surface type
+#[derive(Debug, PartialEq)]
+pub enum SurfaceType {
+    /// Scanout surface
+    Scanout,
+    /// Mouse cursor surface
+    Cursor,
+}
+
 /// Poll token for display instances
 #[derive(PollToken)]
 pub enum DisplayPollToken {
@@ -252,6 +261,7 @@ trait DisplayT: AsRawDescriptor {
         surface_id: u32,
         width: u32,
         height: u32,
+        surf_type: SurfaceType,
     ) -> GpuDisplayResult<Box<dyn GpuDisplaySurface>>;
 
     /// Imports memory into the display backend.  The display backend is given a non-zero
@@ -425,6 +435,7 @@ impl GpuDisplay {
         parent_surface_id: Option<u32>,
         width: u32,
         height: u32,
+        surf_type: SurfaceType,
     ) -> GpuDisplayResult<u32> {
         if let Some(parent_id) = parent_surface_id {
             if !self.surfaces.contains_key(&parent_id) {
@@ -433,9 +444,13 @@ impl GpuDisplay {
         }
 
         let new_surface_id = self.next_id;
-        let new_surface =
-            self.inner
-                .create_surface(parent_surface_id, new_surface_id, width, height)?;
+        let new_surface = self.inner.create_surface(
+            parent_surface_id,
+            new_surface_id,
+            width,
+            height,
+            surf_type,
+        )?;
 
         self.next_id += 1;
         self.surfaces.insert(new_surface_id, new_surface);

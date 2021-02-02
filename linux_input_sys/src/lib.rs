@@ -7,13 +7,10 @@ use std::mem::size_of;
 
 const EV_SYN: u16 = 0x00;
 const EV_KEY: u16 = 0x01;
-#[allow(dead_code)]
 const EV_REL: u16 = 0x02;
 const EV_ABS: u16 = 0x03;
 const SYN_REPORT: u16 = 0;
-#[allow(dead_code)]
 const REL_X: u16 = 0x00;
-#[allow(dead_code)]
 const REL_Y: u16 = 0x01;
 const ABS_MT_TRACKING_ID: u16 = 0x39;
 const ABS_MT_SLOT: u16 = 0x2f;
@@ -111,6 +108,15 @@ impl virtio_input_event {
     }
 
     #[inline]
+    pub fn relative(code: u16, value: i32) -> virtio_input_event {
+        virtio_input_event {
+            type_: Le16::from(EV_REL),
+            code: Le16::from(code),
+            value: SLe32::from(value),
+        }
+    }
+
+    #[inline]
     pub fn multitouch_tracking_id(id: i32) -> virtio_input_event {
         Self::absolute(ABS_MT_TRACKING_ID, id)
     }
@@ -138,6 +144,16 @@ impl virtio_input_event {
     #[inline]
     pub fn absolute_y(y: i32) -> virtio_input_event {
         Self::absolute(ABS_Y, y)
+    }
+
+    #[inline]
+    pub fn relative_x(x: i32) -> virtio_input_event {
+        Self::relative(REL_X, x)
+    }
+
+    #[inline]
+    pub fn relative_y(y: i32) -> virtio_input_event {
+        Self::relative(REL_Y, y)
     }
 
     #[inline]

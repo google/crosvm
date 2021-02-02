@@ -24,7 +24,7 @@ use libc::{shmat, shmctl, shmdt, shmget, IPC_CREAT, IPC_PRIVATE, IPC_RMID};
 use crate::{
     keycode_converter::KeycodeTranslator, keycode_converter::KeycodeTypes, DisplayT,
     EventDeviceKind, GpuDisplayError, GpuDisplayEvents, GpuDisplayFramebuffer, GpuDisplayResult,
-    GpuDisplaySurface,
+    GpuDisplaySurface, SurfaceType,
 };
 
 use base::{AsRawDescriptor, RawDescriptor};
@@ -569,6 +569,7 @@ impl DisplayT for DisplayX {
         _surface_id: u32,
         width: u32,
         height: u32,
+        _surf_type: SurfaceType,
     ) -> GpuDisplayResult<Box<dyn GpuDisplaySurface>> {
         if parent_surface_id.is_some() {
             return Err(GpuDisplayError::Unsupported);

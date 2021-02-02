@@ -4,6 +4,7 @@
 
 use crate::{
     DisplayT, GpuDisplayError, GpuDisplayFramebuffer, GpuDisplayResult, GpuDisplaySurface,
+    SurfaceType,
 };
 
 use base::{AsRawDescriptor, Event, RawDescriptor};
@@ -98,6 +99,7 @@ impl DisplayT for DisplayStub {
         _surface_id: u32,
         width: u32,
         height: u32,
+        _surf_type: SurfaceType,
     ) -> GpuDisplayResult<Box<dyn GpuDisplaySurface>> {
         if parent_surface_id.is_some() {
             return Err(GpuDisplayError::Unsupported);
