@@ -46,6 +46,7 @@ const QUEUE_SIZE: u16 = 128;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE, QUEUE_SIZE];
 
 const VIRTIO_BALLOON_PFN_SHIFT: u32 = 12;
+const VIRTIO_BALLOON_PF_SIZE: u64 = 1 << VIRTIO_BALLOON_PFN_SHIFT;
 
 // The feature bitmap for virtio balloon
 const VIRTIO_BALLOON_F_MUST_TELL_HOST: u32 = 0; // Tell before reclaiming pages
@@ -118,8 +119,14 @@ fn handle_address_chain<F>(
     desc_handler: &mut F,
 ) -> descriptor_utils::Result<()>
 where
-    F: FnMut(GuestAddress),
+    F: FnMut(GuestAddress, u64),
 {
+    // In a long-running system, there is no reason to expect that
+    // a significant number of freed pages are consecutive. However,
+    // batching is relatively simple and can result in significant
+    // gains in a newly booted system, so it's worth attempting.
+    let mut range_start = 0;
+    let mut range_size = 0;
     let mut reader = Reader::new(mem.clone(), avail_desc)?;
     for res in reader.iter::<Le32>() {
         let pfn = match res {
@@ -129,9 +136,24 @@ where
                 break;
             }
         };
-        let guest_address = GuestAddress((u64::from(pfn.to_native())) << VIRTIO_BALLOON_PFN_SHIFT);
-
-        desc_handler(guest_address);
+        let guest_address = (u64::from(pfn.to_native())) << VIRTIO_BALLOON_PFN_SHIFT;
+        if range_start + range_size == guest_address {
+            range_size += VIRTIO_BALLOON_PF_SIZE;
+        } else if range_start == guest_address + VIRTIO_BALLOON_PF_SIZE {
+            range_start = guest_address;
+            range_size += VIRTIO_BALLOON_PF_SIZE;
+        } else {
+            // Discontinuity, so flush the previous range. Note range_size
+            // will be 0 on the first iteration, so skip that.
+            if range_size != 0 {
+                desc_handler(GuestAddress(range_start), range_size);
+            }
+            range_start = guest_address;
+            range_size = VIRTIO_BALLOON_PF_SIZE;
+        }
+    }
+    if range_size != 0 {
+        desc_handler(GuestAddress(range_start), range_size);
     }
     Ok(())
 }
@@ -144,7 +166,7 @@ async fn handle_queue<F>(
     interrupt: Rc<RefCell<Interrupt>>,
     mut desc_handler: F,
 ) where
-    F: FnMut(GuestAddress),
+    F: FnMut(GuestAddress, u64),
 {
     loop {
         let avail_desc = match queue.next_async(mem, &mut queue_event).await {
@@ -303,8 +325,8 @@ fn run_worker(
         queues.remove(0),
         inflate_event,
         interrupt.clone(),
-        |guest_address| {
-            if let Err(e) = mem.remove_range(guest_address, 1 << VIRTIO_BALLOON_PFN_SHIFT) {
+        |guest_address, len| {
+            if let Err(e) = mem.remove_range(guest_address, len) {
                 warn!("Marking pages unused failed: {}, addr={}", e, guest_address);
             }
         },
@@ -319,7 +341,7 @@ fn run_worker(
         queues.remove(0),
         deflate_event,
         interrupt.clone(),
-        std::mem::drop, // Ignore these.
+        |_, _| {}, // Ignore these.
     );
     pin_mut!(deflate);
 
@@ -542,14 +564,17 @@ mod tests {
         .expect("create_descriptor_chain failed");
 
         let mut addrs = Vec::new();
-        let res = handle_address_chain(chain, &memory, &mut |guest_address| {
-            addrs.push(guest_address);
+        let res = handle_address_chain(chain, &memory, &mut |guest_address, len| {
+            addrs.push((guest_address, len));
         });
         assert!(res.is_ok());
         assert_eq!(addrs.len(), 2);
-        assert_eq!(addrs[0], GuestAddress(0x10u64 << VIRTIO_BALLOON_PFN_SHIFT));
         assert_eq!(
-            addrs[1],
+            addrs[0].0,
+            GuestAddress(0x10u64 << VIRTIO_BALLOON_PFN_SHIFT)
+        );
+        assert_eq!(
+            addrs[1].0,
             GuestAddress(0xaa55aa55u64 << VIRTIO_BALLOON_PFN_SHIFT)
         );
     }
