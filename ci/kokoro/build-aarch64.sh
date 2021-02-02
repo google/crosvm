@@ -5,5 +5,6 @@
 
 source "$(dirname $0)/common.sh"
 
-cd "${KOKORO_ARTIFACTS_DIR}/cros/src/platform/crosvm"
-./ci/aarch64_builder --vm ./run_tests --require-all
+./ci/run_container.sh crosvm_aarch64_builder --vm "\
+    ./run_tests -v --require-all \
+        --junit-file=/workspace/logs/cargo_test/sponge_log.xml"

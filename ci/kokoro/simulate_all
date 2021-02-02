@@ -3,18 +3,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 #
-# Simulates all kokoro jobs (In parallel if tmux is installed)
+# Simulates all kokoro jobs.
 
 cd $(dirname "$0")
-
-if command -v tmux; then
-  TMUX= tmux \
-    new-session './simulate build-x86_64.sh;
-            echo "press enter to close"; read' \; \
-    split-window './simulate build-aarch64.sh;
-            echo "press enter to close"; read' \;
-else
-  ./simulate build-x86.sh &&
-    ./simulate build-analysis.sh &&
-    ./simulate build-aarch64.sh
-fi
+time ./simulate build-x86_64.sh &&
+  time ./simulate build-aarch64.sh

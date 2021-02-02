@@ -11,4 +11,5 @@ qemu_args=(
     -bios /usr/share/qemu-efi-aarch64/QEMU_EFI.fd
     -hda rootfs.qcow2
 )
-qemu-system-aarch64 ${qemu_args[@]} $@
+mkdir -p /workspace/scratch/logs
+qemu-system-aarch64 ${qemu_args[@]} $@ | tee /workspace/logs/vm.log

@@ -1,0 +1,30 @@
+#!/bin/bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Uprevs manifest.xml to the latest versions.
+#
+# This is just a wrapper around `repo manifest`. Usually we have unsubmitted
+# CLs in our local repo, so it's safer to pull the latest manifest revisions
+# from a fresh repo checkout to make sure all commit sha's are available.
+
+tmp=$(mktemp -d)
+manifest_path=$(realpath $(dirname $0)/manifest.xml)
+
+cleanup() {
+    rm -rf "${tmp}"
+}
+
+main() {
+    cd "${tmp}"
+    repo init --depth 1 \
+        -u https://chromium.googlesource.com/chromiumos/manifest.git \
+        --repo-url https://chromium.googlesource.com/external/repo.git \
+        -g crosvm
+    repo sync -j8 -c
+    repo manifest --revision-as-HEAD -o "${manifest_path}"
+}
+
+trap cleanup EXIT
+main "$@"

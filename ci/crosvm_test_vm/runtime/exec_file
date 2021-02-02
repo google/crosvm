@@ -17,10 +17,10 @@ fi
 filepath=$1
 filename=$(basename $filepath)
 
-echo "Executing $filename..."
-scp -q $filepath vm:$filename
+echo "Executing $filename ${@:2}"
+scp -q $filepath vm:/tmp/$filename
 # Make sure to preserve the exit code of $filename after cleaning up the file.
-ssh vm -q -t "./$filename"
+ssh vm -q -t "cd /tmp && ./$filename ${@:2}"
 ret=$?
-ssh vm -q -t "rm $filename"
+ssh vm -q -t "rm /tmp/$filename"
 exit $ret

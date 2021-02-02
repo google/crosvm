@@ -5,25 +5,24 @@
 #
 # Simulates a Kokoro run executing one of the build-*.sh scripts.
 # e.g. ./ci/kokoro/simulate build-aarch64.sh
+#
+# For ease of use, just call: ./ci/kokoro/simulate_all
 
+crosvm_src=$(realpath $(dirname $0)/../../)
 kokoro_root=$(mktemp -d)
-kokoro_src="${kokoro_root}/git/crosvm"
-local_src=$(realpath $(dirname $0)/../../)
+kokoro_src="${kokoro_root}/src/git/crosvm"
 
 cleanup() {
-  echo "Unmounting ${kokoro_src}"
-  umount --lazy "${kokoro_src}" || true
   rm -rf "${kokoro_root}"
 }
 
 main() {
-  # Bind mount source read-only to kokoro_src.
-  echo "Bind-mounting ${local_src} to ${kokoro_src}"
+  echo "Copying ${crosvm_src}/ to ${kokoro_src}"
   mkdir -p "${kokoro_src}"
-  bindfs "${local_src}" "${kokoro_src}" -p 0000,u=rxD
+  rsync -arq --exclude "target" --exclude ".git" "${crosvm_src}/" "${kokoro_src}"
 
   # Run user-provided kokoro build script.
-  export KOKORO_ARTIFACTS_DIR="${kokoro_root}"
+  export KOKORO_ARTIFACTS_DIR="${kokoro_root}/src"
   echo "Running $1 in ${kokoro_root}"
   bash $(dirname $0)/$1
   echo "$1 returned $?"

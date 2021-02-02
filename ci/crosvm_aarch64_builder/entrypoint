@@ -3,11 +3,19 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+# Clean scratch directory if requested.
+if [ "$1" = "--clean" ]; then
+    shift
+    echo "Cleaning scratch directory..."
+    rm -rf /workspace/scratch/*
+fi
+
 echo "Building ChromeOS dependencies..."
 if ! make -j $(nproc) -C ci/build_environment TARGET_ARCH=aarch64 \
-    >/root/build_environment.log 2>&1; then
+    >/workspace/logs/build_environment.log 2>&1; then
     echo "Failed to build ChromeOS dependencies"
-    cat /root/build_environment.log
+    cat /workspace/logs/build_environment.log
+    # Drop into an interactive shell for debugging.
     if [[ $# -eq 0 ]]; then
         /bin/bash
     fi
@@ -41,5 +49,5 @@ if [[ $# -eq 0 ]]; then
     /bin/bash
 else
     echo "$ $@"
-    $@
+    /bin/bash -c "$@"
 fi

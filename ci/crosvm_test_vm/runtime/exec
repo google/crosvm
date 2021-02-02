@@ -7,8 +7,6 @@
 
 if ! timeout --foreground 180s ${0%/*}/wait_for_vm; then
     echo ""
-    echo "Timeout while waiting for VM. Check 'screen -r vm'."
+    echo "Timeout while waiting for VM (See 'screen -r vm' or vm.log in sponge)"
     exit 1
 fi
-
-ssh vm $@

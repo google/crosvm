@@ -18,6 +18,11 @@ apt:
       source: "deb $MIRROR bullseye main"
   conf: APT::Default-Release "stable";
 
+# Store working data on tmpfs to reduce unnecessary disk IO
+mounts:
+  - [swap, null]
+  - [tmpfs, /tmp, tmpfs]
+
 # Runtime dependencies of crosvm binaries.
 # Note: Keep in sync with -dev packages of crosvm_(aarch64_)builder
 packages:

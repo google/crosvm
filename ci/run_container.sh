@@ -5,10 +5,13 @@
 #
 # Runs a crosvm builder. Will use podman if available, falls back to docker.
 # Usage:
-# run_container.sh builder_name [--clean] entry point args...
+# run_container.sh builder_name entry point args...
+#
+# The scratch or logs directory can be enabled by setting the env variables
+# CROSVM_BUILDER_SCRATCH_DIR or CROSVM_BUILDER_LOGS_DIR.
+
 crosvm_root=$(realpath "$(dirname $0)/..")
 cros_root=$(realpath "${crosvm_root}/../../..")
-tmpdir="${TMPDIR:-/tmp}"
 
 if [ ! -d "${cros_root}/.repo" ]; then
     echo "The CI builder must be run from a cros checkout. See ci/README.md"
@@ -18,10 +21,6 @@ fi
 # Parse parameters
 builder="$1"
 shift
-if [ "$1" = "--clean" ]; then
-    shift
-    clean=1
-fi
 
 # User podman if available for root-less execution. Fall-back to docker.
 if which podman >/dev/null; then
@@ -32,6 +31,7 @@ if which podman >/dev/null; then
         podman run \
             --runtime /usr/bin/crun \
             --annotation run.oci.keep_original_groups=1 \
+            --security-opt label=disable \
             "$@"
     }
 else
@@ -41,30 +41,37 @@ else
 fi
 
 version=$(cat $(dirname $0)/image_tag)
-src="${cros_root}/src"
-scratch="${tmpdir}/crosvm-ci/${builder}"
-
 echo "Using builder: ${builder}:${version}"
-echo "Using source directory: ${src}"
-echo "Using scratch directory: ${scratch}"
 
-if [[ -n "${clean}" ]]; then
-    rm -rf "${scratch}"
-    echo "Cleaned scratch directory."
-fi
-mkdir -p "${scratch}"
+src="${cros_root}/src"
+echo "Using source directory: ${src} (Available at /workspace/src)"
 
 docker_args=(
     --rm
-    --device /dev/kvm \
-    --volume /dev/log:/dev/log \
-    --volume "${src}":/workspace/src:rw \
-    --volume "${scratch}":/workspace/scratch:rw \
+    --device /dev/kvm
+    --volume /dev/log:/dev/log
+    --volume "${src}":/workspace/src:rw
 )
+
+if [ ! -z "${CROSVM_BUILDER_SCRATCH_DIR}" ]; then
+    echo "Using scratch directory: ${CROSVM_BUILDER_SCRATCH_DIR}\
+ (Available at /workspace/scratch)"
+    mkdir -p "${CROSVM_BUILDER_SCRATCH_DIR}"
+    docker_args+=(
+        --volume "${CROSVM_BUILDER_SCRATCH_DIR}:/workspace/scratch:rw"
+    )
+fi
+
+if [ ! -z "${CROSVM_BUILDER_LOGS_DIR}" ]; then
+    echo "Using logs directory: ${CROSVM_BUILDER_LOGS_DIR}\
+ (Available at /workspace/logs)"
+    mkdir -p "${CROSVM_BUILDER_LOGS_DIR}"
+    docker_args+=(--volume "${CROSVM_BUILDER_LOGS_DIR}":/workspace/logs:rw)
+fi
 
 # Enable interactive mode when running in an interactive terminal.
 if [ -t 1 ]; then
-    docker_args+=( -it )
+    docker_args+=(-it)
 fi
 
 echo ""

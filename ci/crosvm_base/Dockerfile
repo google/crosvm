@@ -14,8 +14,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=US/Pacific
 
 # Add bullseye to sources so we can install some newer versions of packages.
-RUN echo 'deb http://deb.debian.org/debian bullseye main' > /etc/apt/sources.list.d/testing.list
-RUN echo 'APT::Default-Release "stable";' > /etc/apt/apt.conf.d/99_default_stable
+RUN echo 'deb http://deb.debian.org/debian bullseye main' >/etc/apt/sources.list.d/testing.list
+RUN echo 'APT::Default-Release "stable";' >/etc/apt/apt.conf.d/99_default_stable
 
 RUN apt-get update && apt-get install --yes --no-install-recommends \
     ca-certificates \
@@ -39,10 +39,15 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
 
 # This is a scratch volume for build files. It can be used to allow incremental
 # builds between container runs.
+# Note: This volume is optional if incremental builds are not required.
 VOLUME /workspace/scratch
 
 # This is where the chromiumos source tree will be mounted
 VOLUME /workspace/src
+
+# This is a volume to store additional logs for kokoro builds that are uploaded
+# to sponge.
+VOLUME /workspace/logs
 
 # Install the current crosvm rust toolchain via rustup.
 COPY rust-toolchain ./

@@ -3,14 +3,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 #
-# Runs tests for both x86 and aarch64 (In parallel if tmux is installed).
+# Runs tests for both x86 and aarch64.
 
-if command -v tmux; then
-    TMUX= tmux \
-        new-session './ci/builder --vm ./run_tests;
-            echo "press enter to close"; read' \; \
-        split-window './ci/aarch64_builder --vm ./run_tests;
-            echo "press enter to close"; read' \;
-else
-    ./ci/builder --vm ./run_tests && ./ci/aarch64_builder --vm ./run_tests
-fi
+time ./ci/builder --vm ./run_tests &&
+    time ./ci/aarch64_builder --vm ./run_tests
