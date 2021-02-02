@@ -23,7 +23,7 @@
 #include "aura-shell.h"
 #include "linux-dmabuf-unstable-v1.h"
 #include "viewporter.h"
-#include "xdg-shell-unstable-v6.h"
+#include "xdg-shell.h"
 #include <wayland-client-core.h>
 #include <wayland-client-protocol.h>
 #include <wayland-client.h>
@@ -42,7 +42,7 @@ struct interfaces {
 	struct wl_seat *seat;
 	struct zaura_shell *aura; // optional
 	struct zwp_linux_dmabuf_v1 *linux_dmabuf;
-	struct zxdg_shell_v6 *xdg_shell;
+	struct xdg_wm_base *xdg_wm_base;
 	struct wp_viewporter *viewporter; // optional
 };
 
@@ -77,10 +77,10 @@ struct dwl_dmabuf {
 
 struct dwl_surface {
 	struct dwl_context *context;
-	struct wl_surface *surface;
+	struct wl_surface *wl_surface;
 	struct zaura_surface *aura;
-	struct zxdg_surface_v6 *xdg;
-	struct zxdg_toplevel_v6 *toplevel;
+	struct xdg_surface *xdg_surface;
+	struct xdg_toplevel *xdg_toplevel;
 	struct wp_viewport *viewport;
 	struct wl_subsurface *subsurface;
 	uint32_t width;
@@ -183,6 +183,17 @@ static const struct zaura_output_listener aura_output_listener = {
     .connection = aura_output_connection,
     .device_scale_factor = aura_output_device_scale_factor};
 
+static void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base,
+			     uint32_t serial)
+{
+	(void)data;
+	xdg_wm_base_pong(xdg_wm_base, serial);
+}
+
+static const struct xdg_wm_base_listener xdg_wm_base_listener = {
+	.ping = xdg_wm_base_ping,
+};
+
 static void dwl_context_output_add(struct dwl_context *context,
 				   struct wl_output *wl_output, uint32_t id)
 {
@@ -249,20 +260,20 @@ static void registry_global(void *data, struct wl_registry *registry,
 {
 	(void)version;
 	struct interfaces *ifaces = (struct interfaces *)data;
-	if (strcmp(interface, "wl_compositor") == 0) {
+	if (strcmp(interface, wl_compositor_interface.name) == 0) {
 		ifaces->compositor = (struct wl_compositor *)wl_registry_bind(
 		    registry, id, &wl_compositor_interface, 3);
-	} else if (strcmp(interface, "wl_subcompositor") == 0) {
+	} else if (strcmp(interface, wl_subcompositor_interface.name) == 0) {
 		ifaces->subcompositor =
 		    (struct wl_subcompositor *)wl_registry_bind(
 			registry, id, &wl_subcompositor_interface, 1);
-	} else if (strcmp(interface, "wl_shm") == 0) {
+	} else if (strcmp(interface, wl_shm_interface.name) == 0) {
 		ifaces->shm = (struct wl_shm *)wl_registry_bind(
 		    registry, id, &wl_shm_interface, 1);
-	} else if (strcmp(interface, "wl_seat") == 0) {
+	} else if (strcmp(interface, wl_seat_interface.name) == 0) {
 		ifaces->seat = (struct wl_seat *)wl_registry_bind(
 		    registry, id, &wl_seat_interface, 5);
-	} else if (strcmp(interface, "wl_output") == 0) {
+	} else if (strcmp(interface, wl_output_interface.name) == 0) {
 		struct wl_output *output = (struct wl_output *)wl_registry_bind(
 		    registry, id, &wl_output_interface, 2);
 		dwl_context_output_add(ifaces->context, output, id);
@@ -273,9 +284,11 @@ static void registry_global(void *data, struct wl_registry *registry,
 		ifaces->linux_dmabuf =
 		    (struct zwp_linux_dmabuf_v1 *)wl_registry_bind(
 			registry, id, &zwp_linux_dmabuf_v1_interface, 1);
-	} else if (strcmp(interface, "zxdg_shell_v6") == 0) {
-		ifaces->xdg_shell = (struct zxdg_shell_v6 *)wl_registry_bind(
-		    registry, id, &zxdg_shell_v6_interface, 1);
+	} else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
+		ifaces->xdg_wm_base = (struct xdg_wm_base *)wl_registry_bind(
+		    registry, id, &xdg_wm_base_interface, 1);
+		xdg_wm_base_add_listener(ifaces->xdg_wm_base, &xdg_wm_base_listener,
+			NULL);
 	} else if (strcmp(interface, "wp_viewporter") == 0) {
 		ifaces->viewporter = (struct wp_viewporter *)wl_registry_bind(
 		    registry, id, &wp_viewporter_interface, 1);
@@ -305,37 +318,37 @@ static const struct wl_registry_listener registry_listener = {
     .global = registry_global, .global_remove = global_remove};
 
 static void toplevel_configure(void *data,
-			       struct zxdg_toplevel_v6 *zxdg_toplevel_v6,
+			       struct xdg_toplevel *xdg_toplevel,
 			       int32_t width, int32_t height,
 			       struct wl_array *states)
 {
 	(void)data;
-	(void)zxdg_toplevel_v6;
+	(void)xdg_toplevel;
 	(void)width;
 	(void)height;
 	(void)states;
 }
 
 static void toplevel_close(void *data,
-			   struct zxdg_toplevel_v6 *zxdg_toplevel_v6)
+			   struct xdg_toplevel *xdg_toplevel)
 {
-	(void)zxdg_toplevel_v6;
+	(void)xdg_toplevel;
 	struct dwl_surface *surface = (struct dwl_surface *)data;
 	surface->close_requested = true;
 }
 
-static const struct zxdg_toplevel_v6_listener toplevel_listener = {
+static const struct xdg_toplevel_listener toplevel_listener = {
     .configure = toplevel_configure, .close = toplevel_close};
 
 static void xdg_surface_configure_handler(void *data,
-					  struct zxdg_surface_v6 *xdg_surface,
+					  struct xdg_surface *xdg_surface,
 					  uint32_t serial)
 {
 	(void)data;
-	zxdg_surface_v6_ack_configure(xdg_surface, serial);
+	xdg_surface_ack_configure(xdg_surface, serial);
 }
 
-static const struct zxdg_surface_v6_listener xdg_surface_listener = {
+static const struct xdg_surface_listener xdg_surface_listener = {
 	.configure = xdg_surface_configure_handler
 };
 
@@ -428,8 +441,8 @@ bool dwl_context_setup(struct dwl_context *self, const char *socket_path)
 		syslog(LOG_ERR, "missing interface linux_dmabuf");
 		goto fail;
 	}
-	if (!ifaces->xdg_shell) {
-		syslog(LOG_ERR, "missing interface xdg_shell");
+	if (!ifaces->xdg_wm_base) {
+		syslog(LOG_ERR, "missing interface xdg_wm_base");
 		goto fail;
 	}
 
@@ -601,14 +614,14 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		wl_buffer_add_listener(disp_surface->buffers[i],
 				       &surface_buffer_listener, disp_surface);
 
-	disp_surface->surface =
+	disp_surface->wl_surface =
 	    wl_compositor_create_surface(self->ifaces.compositor);
-	if (!disp_surface->surface) {
+	if (!disp_surface->wl_surface) {
 		syslog(LOG_ERR, "failed to make surface");
 		goto fail;
 	}
 
-	wl_surface_add_listener(disp_surface->surface, &surface_listener,
+	wl_surface_add_listener(disp_surface->wl_surface, &surface_listener,
 				disp_surface);
 
 	region = wl_compositor_create_region(self->ifaces.compositor);
@@ -617,33 +630,33 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		goto fail;
 	}
 	wl_region_add(region, 0, 0, width, height);
-	wl_surface_set_opaque_region(disp_surface->surface, region);
+	wl_surface_set_opaque_region(disp_surface->wl_surface, region);
 
 	if (!parent) {
-		disp_surface->xdg = zxdg_shell_v6_get_xdg_surface(
-		    self->ifaces.xdg_shell, disp_surface->surface);
-		if (!disp_surface->xdg) {
+		disp_surface->xdg_surface = xdg_wm_base_get_xdg_surface(
+		    self->ifaces.xdg_wm_base, disp_surface->wl_surface);
+		if (!disp_surface->xdg_surface) {
 			syslog(LOG_ERR, "failed to make xdg shell surface");
 			goto fail;
 		}
 
-		disp_surface->toplevel =
-		    zxdg_surface_v6_get_toplevel(disp_surface->xdg);
-		if (!disp_surface->toplevel) {
+		disp_surface->xdg_toplevel =
+		    xdg_surface_get_toplevel(disp_surface->xdg_surface);
+		if (!disp_surface->xdg_toplevel) {
 			syslog(LOG_ERR,
 			       "failed to make toplevel xdg shell surface");
 			goto fail;
 		}
-		zxdg_toplevel_v6_set_title(disp_surface->toplevel, "crosvm");
-		zxdg_toplevel_v6_add_listener(disp_surface->toplevel,
+		xdg_toplevel_set_title(disp_surface->xdg_toplevel, "crosvm");
+		xdg_toplevel_add_listener(disp_surface->xdg_toplevel,
 					      &toplevel_listener, disp_surface);
 
-		zxdg_surface_v6_add_listener(disp_surface->xdg,
+		xdg_surface_add_listener(disp_surface->xdg_surface,
 					     &xdg_surface_listener,
 					     NULL);
 		if (self->ifaces.aura) {
 			disp_surface->aura = zaura_shell_get_aura_surface(
-			    self->ifaces.aura, disp_surface->surface);
+			    self->ifaces.aura, disp_surface->wl_surface);
 			if (!disp_surface->aura) {
 				syslog(LOG_ERR, "failed to make aura surface");
 				goto fail;
@@ -654,14 +667,14 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		}
 
 		// signal that the surface is ready to be configured
-		wl_surface_commit(disp_surface->surface);
+		wl_surface_commit(disp_surface->wl_surface);
 
 		// wait for the surface to be configured
 		wl_display_roundtrip(self->display);
 	} else {
 		disp_surface->subsurface = wl_subcompositor_get_subsurface(
-		    self->ifaces.subcompositor, disp_surface->surface,
-		    parent->surface);
+		    self->ifaces.subcompositor, disp_surface->wl_surface,
+		    parent->wl_surface);
 		if (!disp_surface->subsurface) {
 			syslog(LOG_ERR, "failed to make subsurface");
 			goto fail;
@@ -671,16 +684,16 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 
 	if (self->ifaces.viewporter) {
 		disp_surface->viewport = wp_viewporter_get_viewport(
-		    self->ifaces.viewporter, disp_surface->surface);
+		    self->ifaces.viewporter, disp_surface->wl_surface);
 		if (!disp_surface->viewport) {
 			syslog(LOG_ERR, "failed to make surface viewport");
 			goto fail;
 		}
 	}
 
-	wl_surface_attach(disp_surface->surface, disp_surface->buffers[0], 0,
+	wl_surface_attach(disp_surface->wl_surface, disp_surface->buffers[0], 0,
 			  0);
-	wl_surface_damage(disp_surface->surface, 0, 0, width, height);
+	wl_surface_damage(disp_surface->wl_surface, 0, 0, width, height);
 	wl_region_destroy(region);
 	wl_shm_pool_destroy(shm_pool);
 
@@ -695,12 +708,12 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 	outputs_for_each(self, i, output)
 	{
 		if (output->internal) {
-			surface_enter(disp_surface, disp_surface->surface,
+			surface_enter(disp_surface, disp_surface->wl_surface,
 				      output->output);
 		}
 	}
 
-	wl_surface_commit(disp_surface->surface);
+	wl_surface_commit(disp_surface->wl_surface);
 	wl_display_flush(self->display);
 
 	return disp_surface;
@@ -709,16 +722,16 @@ fail:
 		wp_viewport_destroy(disp_surface->viewport);
 	if (disp_surface->subsurface)
 		wl_subsurface_destroy(disp_surface->subsurface);
-	if (disp_surface->toplevel)
-		zxdg_toplevel_v6_destroy(disp_surface->toplevel);
-	if (disp_surface->xdg)
-		zxdg_surface_v6_destroy(disp_surface->xdg);
+	if (disp_surface->xdg_toplevel)
+		xdg_toplevel_destroy(disp_surface->xdg_toplevel);
+	if (disp_surface->xdg_surface)
+		xdg_surface_destroy(disp_surface->xdg_surface);
 	if (disp_surface->aura)
 		zaura_surface_destroy(disp_surface->aura);
 	if (region)
 		wl_region_destroy(region);
-	if (disp_surface->surface)
-		wl_surface_destroy(disp_surface->surface);
+	if (disp_surface->wl_surface)
+		wl_surface_destroy(disp_surface->wl_surface);
 	for (i = 0; i < buffer_count; i++)
 		if (disp_surface->buffers[i])
 			wl_buffer_destroy(disp_surface->buffers[i]);
@@ -735,14 +748,14 @@ void dwl_surface_destroy(struct dwl_surface **self)
 		wp_viewport_destroy((*self)->viewport);
 	if ((*self)->subsurface)
 		wl_subsurface_destroy((*self)->subsurface);
-	if ((*self)->toplevel)
-		zxdg_toplevel_v6_destroy((*self)->toplevel);
-	if ((*self)->xdg)
-		zxdg_surface_v6_destroy((*self)->xdg);
+	if ((*self)->xdg_toplevel)
+		xdg_toplevel_destroy((*self)->xdg_toplevel);
+	if ((*self)->xdg_surface)
+		xdg_surface_destroy((*self)->xdg_surface);
 	if ((*self)->aura)
 		zaura_surface_destroy((*self)->aura);
-	if ((*self)->surface)
-		wl_surface_destroy((*self)->surface);
+	if ((*self)->wl_surface)
+		wl_surface_destroy((*self)->wl_surface);
 	for (i = 0; i < (*self)->buffer_count; i++)
 		wl_buffer_destroy((*self)->buffers[i]);
 	wl_display_flush((*self)->context->display);
@@ -758,7 +771,7 @@ void dwl_surface_commit(struct dwl_surface *self)
 	// apply back pressure to the guest gpu driver right now. The intention
 	// of this module is to help bootstrap gpu support, so it does not have
 	// to have artifact free rendering.
-	wl_surface_commit(self->surface);
+	wl_surface_commit(self->wl_surface);
 	wl_display_flush(self->context->display);
 }
 
@@ -771,8 +784,8 @@ void dwl_surface_flip(struct dwl_surface *self, size_t buffer_index)
 {
 	if (buffer_index >= self->buffer_count)
 		return;
-	wl_surface_attach(self->surface, self->buffers[buffer_index], 0, 0);
-	wl_surface_damage(self->surface, 0, 0, self->width, self->height);
+	wl_surface_attach(self->wl_surface, self->buffers[buffer_index], 0, 0);
+	wl_surface_damage(self->wl_surface, 0, 0, self->width, self->height);
 	dwl_surface_commit(self);
 	self->buffer_use_bit_mask |= 1 << buffer_index;
 }
@@ -781,8 +794,8 @@ void dwl_surface_flip_to(struct dwl_surface *self, struct dwl_dmabuf *dmabuf)
 {
 	if (self->width != dmabuf->width || self->height != dmabuf->height)
 		return;
-	wl_surface_attach(self->surface, dmabuf->buffer, 0, 0);
-	wl_surface_damage(self->surface, 0, 0, self->width, self->height);
+	wl_surface_attach(self->wl_surface, dmabuf->buffer, 0, 0);
+	wl_surface_damage(self->wl_surface, 0, 0, self->width, self->height);
 	dwl_surface_commit(self);
 	dmabuf->in_use = true;
 }
@@ -797,7 +810,7 @@ void dwl_surface_set_position(struct dwl_surface *self, uint32_t x, uint32_t y)
 	if (self->subsurface) {
 		wl_subsurface_set_position(self->subsurface, x / self->scale,
 					   y / self->scale);
-		wl_surface_commit(self->surface);
+		wl_surface_commit(self->wl_surface);
 		wl_display_flush(self->context->display);
 	}
 }

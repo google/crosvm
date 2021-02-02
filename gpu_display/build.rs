@@ -32,7 +32,7 @@ fn scan_path<P: AsRef<Path>, O: AsRef<OsStr>>(path: P, name: O) -> Option<PathBu
 
 // Searches for the given protocol in both the system wide and bundles protocols path.
 fn find_protocol(name: &str) -> PathBuf {
-    let protocols_path = env::var("WAYLAND_PROTOCOLS_PATH")
+    let protocols_path = pkg_config::get_variable("wayland-protocols", "pkgdatadir")
         .unwrap_or_else(|_| "/usr/share/wayland-protocols".to_owned());
     let protocol_file_name = PathBuf::from(format!("{}.xml", name));
 
@@ -87,7 +87,7 @@ fn main() {
     for protocol in &[
         "aura-shell",
         "linux-dmabuf-unstable-v1",
-        "xdg-shell-unstable-v6",
+        "xdg-shell",
         "viewporter",
     ] {
         build.file(compile_protocol(protocol, &out_dir));
