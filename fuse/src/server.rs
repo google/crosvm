@@ -310,14 +310,12 @@ impl<F: FileSystem + Sync> Server<F> {
             .next()
             .ok_or(Error::MissingParameter)
             .and_then(bytes_to_cstr)?;
-        let security_ctx = iter.next().map(bytes_to_cstr).transpose()?;
 
         match self.fs.symlink(
             Context::from(in_header),
             linkname,
             in_header.nodeid.into(),
             name,
-            security_ctx,
         ) {
             Ok(entry) => {
                 let out = EntryOut::from(entry);
@@ -346,7 +344,6 @@ impl<F: FileSystem + Sync> Server<F> {
             .next()
             .ok_or(Error::MissingParameter)
             .and_then(bytes_to_cstr)?;
-        let security_ctx = iter.next().map(bytes_to_cstr).transpose()?;
 
         match self.fs.mknod(
             Context::from(in_header),
@@ -355,7 +352,6 @@ impl<F: FileSystem + Sync> Server<F> {
             mode,
             rdev,
             umask,
-            security_ctx,
         ) {
             Ok(entry) => {
                 let out = EntryOut::from(entry);
@@ -382,7 +378,6 @@ impl<F: FileSystem + Sync> Server<F> {
             .next()
             .ok_or(Error::MissingParameter)
             .and_then(bytes_to_cstr)?;
-        let security_ctx = iter.next().map(bytes_to_cstr).transpose()?;
 
         match self.fs.mkdir(
             Context::from(in_header),
@@ -390,7 +385,6 @@ impl<F: FileSystem + Sync> Server<F> {
             name,
             mode,
             umask,
-            security_ctx,
         ) {
             Ok(entry) => {
                 let out = EntryOut::from(entry);
@@ -410,25 +404,11 @@ impl<F: FileSystem + Sync> Server<F> {
         let ChromeOsTmpfileIn { mode, umask } =
             ChromeOsTmpfileIn::from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
-        let buflen = (in_header.len as usize)
-            .checked_sub(size_of::<InHeader>())
-            .and_then(|l| l.checked_sub(size_of::<MkdirIn>()))
-            .ok_or(Error::InvalidHeaderLength)?;
-        let mut buf = vec![0u8; buflen];
-
-        let security_ctx = if buflen > 0 {
-            r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
-            Some(bytes_to_cstr(&buf)?)
-        } else {
-            None
-        };
-
         match self.fs.chromeos_tmpfile(
             Context::from(in_header),
             in_header.nodeid.into(),
             mode,
             umask,
-            security_ctx,
         ) {
             Ok(entry) => {
                 let out = EntryOut::from(entry);
@@ -1276,7 +1256,6 @@ impl<F: FileSystem + Sync> Server<F> {
             .next()
             .ok_or(Error::MissingParameter)
             .and_then(bytes_to_cstr)?;
-        let security_ctx = iter.next().map(bytes_to_cstr).transpose()?;
 
         match self.fs.create(
             Context::from(in_header),
@@ -1285,7 +1264,6 @@ impl<F: FileSystem + Sync> Server<F> {
             mode,
             flags,
             umask,
-            security_ctx,
         ) {
             Ok((entry, handle, opts)) => {
                 let entry_out = EntryOut {

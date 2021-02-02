@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::cmp;
 use std::collections::btree_map;
 use std::collections::BTreeMap;
@@ -19,7 +18,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use base::{
-    error, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr, ioctl_with_mut_ptr, ioctl_with_ptr, warn,
+    error, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr, ioctl_with_mut_ptr, ioctl_with_ptr,
     AsRawDescriptor, FromRawDescriptor, RawDescriptor,
 };
 use data_model::DataInit;
@@ -38,7 +37,6 @@ use crate::virtio::fs::read_dir::ReadDir;
 const EMPTY_CSTR: &[u8] = b"\0";
 const ROOT_CSTR: &[u8] = b"/\0";
 const PROC_CSTR: &[u8] = b"/proc\0";
-const UNLABELED: &[u8] = b"unlabeled";
 
 const USER_VIRTIOFS_XATTR: &[u8] = b"user.virtiofs.";
 const SECURITY_XATTR: &[u8] = b"security.";
@@ -242,83 +240,6 @@ fn set_creds(
     // We have to change the gid before we change the uid because if we change the uid first then we
     // lose the capability to change the gid.  However changing back can happen in any order.
     ScopedGid::new(gid, oldgid).and_then(|gid| Ok((ScopedUid::new(uid, olduid)?, gid)))
-}
-
-thread_local!(static THREAD_FSCREATE: RefCell<Option<File>> = RefCell::new(None));
-
-// Opens and returns a write-only handle to /proc/thread-self/attr/fscreate. Panics if it fails to
-// open the file.
-fn open_fscreate(proc: &File) -> File {
-    // Safe because this is a valid c-string.
-    let fscreate = unsafe { CStr::from_bytes_with_nul_unchecked(b"thread-self/attr/fscreate\0") };
-
-    // Safe because this doesn't modify any memory and we check the return value.
-    let raw_descriptor = unsafe {
-        libc::openat(
-            proc.as_raw_descriptor(),
-            fscreate.as_ptr(),
-            libc::O_CLOEXEC | libc::O_WRONLY,
-        )
-    };
-
-    // We don't expect this to fail and we're not in a position to return an error here so just
-    // panic.
-    if raw_descriptor < 0 {
-        panic!(
-            "Failed to open /proc/thread-self/attr/fscreate: {}",
-            io::Error::last_os_error()
-        );
-    }
-
-    // Safe because we just opened this descriptor.
-    unsafe { File::from_raw_descriptor(raw_descriptor) }
-}
-
-struct ScopedSecurityContext;
-
-impl ScopedSecurityContext {
-    fn new(proc: &File, ctx: &CStr) -> io::Result<ScopedSecurityContext> {
-        THREAD_FSCREATE.with(|thread_fscreate| {
-            let mut fscreate = thread_fscreate.borrow_mut();
-            let file = fscreate.get_or_insert_with(|| open_fscreate(proc));
-            // Safe because this doesn't modify any memory and we check the return value.
-            let ret = unsafe {
-                libc::write(
-                    file.as_raw_descriptor(),
-                    ctx.as_ptr() as *const libc::c_void,
-                    ctx.to_bytes_with_nul().len(),
-                )
-            };
-            if ret < 0 {
-                Err(io::Error::last_os_error())
-            } else {
-                Ok(ScopedSecurityContext)
-            }
-        })
-    }
-}
-
-impl Drop for ScopedSecurityContext {
-    fn drop(&mut self) {
-        THREAD_FSCREATE.with(|thread_fscreate| {
-            // expect is safe here because the thread local would have been initialized by the call
-            // to `new` above.
-            let fscreate = thread_fscreate.borrow();
-            let file = fscreate
-                .as_ref()
-                .expect("Uninitialized thread-local when dropping ScopedSecurityContext");
-
-            // Safe because this doesn't modify any memory and we check the return value.
-            let ret = unsafe { libc::write(file.as_raw_descriptor(), ptr::null(), 0) };
-
-            if ret < 0 {
-                warn!(
-                    "Failed to restore security context: {}",
-                    io::Error::last_os_error()
-                );
-            }
-        })
-    }
 }
 
 fn ebadf() -> io::Error {
@@ -1289,7 +1210,6 @@ impl FileSystem for PassthroughFs {
             | FsOptions::READDIRPLUS_AUTO
             | FsOptions::EXPORT_SUPPORT
             | FsOptions::DONT_MASK
-            | FsOptions::SECURITY_CONTEXT
             | FsOptions::POSIX_ACL;
         if self.cfg.writeback && capable.contains(FsOptions::WRITEBACK_CACHE) {
             opts |= FsOptions::WRITEBACK_CACHE;
@@ -1363,7 +1283,6 @@ impl FileSystem for PassthroughFs {
         name: &CStr,
         mut mode: u32,
         umask: u32,
-        security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
         // This method has the same issues as `create()`: namely that the kernel may have allowed a
         // process to make a directory due to one of its supplementary groups but that information
@@ -1374,11 +1293,6 @@ impl FileSystem for PassthroughFs {
         // visible in the filesystem with the requested name but incorrect metadata. The only thing
         // left would be a empty hidden directory with a random name.
         let data = self.find_inode(parent)?;
-
-        let _ctx = security_ctx
-            .filter(|ctx| ctx.to_bytes() != UNLABELED)
-            .map(|ctx| ScopedSecurityContext::new(&self.proc, ctx))
-            .transpose()?;
 
         // The presence of a default posix acl xattr in the parent directory completely changes the
         // meaning of the mode parameter so only apply the umask if it doesn't have one.
@@ -1477,14 +1391,8 @@ impl FileSystem for PassthroughFs {
         parent: Self::Inode,
         mode: u32,
         umask: u32,
-        security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
         let data = self.find_inode(parent)?;
-
-        let _ctx = security_ctx
-            .filter(|ctx| ctx.to_bytes() != UNLABELED)
-            .map(|ctx| ScopedSecurityContext::new(&self.proc, ctx))
-            .transpose()?;
 
         let tmpfile = self.do_tmpfile(&ctx, &data, 0, mode, umask)?;
 
@@ -1499,7 +1407,6 @@ impl FileSystem for PassthroughFs {
         mode: u32,
         flags: u32,
         umask: u32,
-        security_ctx: Option<&CStr>,
     ) -> io::Result<(Entry, Option<Handle>, OpenOptions)> {
         // The `Context` may not contain all the information we need to create the file here. For
         // example, a process may be part of several groups, one of which gives it permission to
@@ -1512,11 +1419,6 @@ impl FileSystem for PassthroughFs {
         // To ensure that the file is created atomically with the proper uid/gid we use `O_TMPFILE`
         // + `linkat` as described in the `open(2)` manpage.
         let data = self.find_inode(parent)?;
-
-        let _ctx = security_ctx
-            .filter(|ctx| ctx.to_bytes() != UNLABELED)
-            .map(|ctx| ScopedSecurityContext::new(&self.proc, ctx))
-            .transpose()?;
 
         let tmpfile = self.do_tmpfile(&ctx, &data, flags, mode, umask)?;
 
@@ -1779,7 +1681,6 @@ impl FileSystem for PassthroughFs {
         mut mode: u32,
         rdev: u32,
         umask: u32,
-        security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
 
@@ -1790,11 +1691,6 @@ impl FileSystem for PassthroughFs {
         if !self.has_default_posix_acl(&data)? {
             mode &= !umask;
         }
-
-        let _ctx = security_ctx
-            .filter(|ctx| ctx.to_bytes() != UNLABELED)
-            .map(|ctx| ScopedSecurityContext::new(&self.proc, ctx))
-            .transpose()?;
 
         // Safe because this doesn't modify any memory and we check the return value.
         let res = unsafe {
@@ -1849,14 +1745,8 @@ impl FileSystem for PassthroughFs {
         linkname: &CStr,
         parent: Inode,
         name: &CStr,
-        security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
         let data = self.find_inode(parent)?;
-
-        let _ctx = security_ctx
-            .filter(|ctx| ctx.to_bytes() != UNLABELED)
-            .map(|ctx| ScopedSecurityContext::new(&self.proc, ctx))
-            .transpose()?;
 
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
 

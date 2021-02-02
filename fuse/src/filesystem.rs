@@ -498,7 +498,6 @@ pub trait FileSystem {
         linkname: &CStr,
         parent: Self::Inode,
         name: &CStr,
-        security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
         Err(io::Error::from_raw_os_error(libc::ENOSYS))
     }
@@ -522,7 +521,6 @@ pub trait FileSystem {
         mode: u32,
         rdev: u32,
         umask: u32,
-        security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
         Err(io::Error::from_raw_os_error(libc::ENOSYS))
     }
@@ -542,7 +540,6 @@ pub trait FileSystem {
         name: &CStr,
         mode: u32,
         umask: u32,
-        security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
         Err(io::Error::from_raw_os_error(libc::ENOSYS))
     }
@@ -554,7 +551,6 @@ pub trait FileSystem {
         parent: Self::Inode,
         mode: u32,
         umask: u32,
-        security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
         Err(io::Error::from_raw_os_error(libc::ENOSYS))
     }
@@ -689,7 +685,6 @@ pub trait FileSystem {
         mode: u32,
         flags: u32,
         umask: u32,
-        security_ctx: Option<&CStr>,
     ) -> io::Result<(Entry, Option<Self::Handle>, OpenOptions)> {
         Err(io::Error::from_raw_os_error(libc::ENOSYS))
     }
