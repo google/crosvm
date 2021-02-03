@@ -1,0 +1,35 @@
+# Don't delete this file if you want to keep keyword_check enabled even if it's
+# empty.
+#
+# See repohooks/README.md for more details.
+
+# black.?hat
+black.?list
+# build.?cop
+crazy
+# cripple
+dummy
+# first.?class.?citizen
+# grandfathered
+# gr[ae]y.?hat
+# gr[ae]y.?list
+# \bhe\b
+# \bshe\b
+# \bhim\b
+# \bher\b
+# \bhis\b
+# \bhers\b
+# man.?in.?the.?middle
+master
+# \bmitm(\b|\d)
+\bnative
+# \bred.?line
+# rtfm
+# \b(in)?sane(\b|\d)
+sanity
+slave
+# white.?glove
+# white.?hat
+# white.?label
+white.?list
+\bwtf
