@@ -245,9 +245,13 @@ impl RutabagaGralloc {
         // choose the most shiny backend that the user has built.  The rationale is "why would you
         // build it if you don't want to use it".
         let mut _backend = GrallocBackend::System;
+
         #[cfg(feature = "minigbm")]
         {
-            _backend = GrallocBackend::Minigbm;
+            // See note on "wl-dmabuf" and Kokoro in Gralloc::new().
+            if self.grallocs.contains_key(&GrallocBackend::Minigbm) {
+                _backend = GrallocBackend::Minigbm;
+            }
         }
 
         #[cfg(feature = "vulkano")]
