@@ -11,6 +11,7 @@ use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
 use crate::pci::pci_configuration;
 use crate::pci::{PciAddress, PciInterruptPin};
 use crate::{BusAccessInfo, BusDevice};
+#[cfg(feature = "audio")]
 use crate::virtio::snd::vios_backend::Error as VioSError;
 
 #[derive(Debug)]
