@@ -320,20 +320,14 @@ pub fn generate_pci_root(
 
     let mut irqs: Vec<Option<u32>> = vec![None; max_irqs];
 
-    // Assign addresses to all devices before allocating BARs.
-    let device_addrs: Vec<PciAddress> = devices
-        .iter_mut()
-        .enumerate()
-        .map(|(dev_idx, (device, _jail))| {
-            let address = PciAddress {
-                bus: 0,
-                dev: 1 + dev_idx as u8,
-                func: 0,
-            };
-            device.assign_address(address);
-            address
-        })
-        .collect();
+    // Allocate PCI device address before allocating BARs.
+    let mut device_addrs = Vec::<PciAddress>::new();
+    for (device, _jail) in devices.iter_mut() {
+        let address = device
+            .allocate_address(resources)
+            .map_err(DeviceRegistrationError::AllocateDeviceAddrs)?;
+        device_addrs.push(address);
+    }
 
     // Allocate ranges that may need to be in the low MMIO region (MmioType::Low).
     let mut io_ranges = BTreeMap::new();
@@ -369,7 +363,8 @@ pub fn generate_pci_root(
             irqs[dev_idx % max_irqs] = Some(irq);
             irq
         };
-        let pci_irq_pin = match dev_idx % 4 {
+        // Rotate interrupt pins across PCI logical functions.
+        let pci_irq_pin = match address.func % 4 {
             0 => PciInterruptPin::IntA,
             1 => PciInterruptPin::IntB,
             2 => PciInterruptPin::IntC,

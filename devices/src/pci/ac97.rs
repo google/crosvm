@@ -21,7 +21,7 @@ use crate::pci::pci_configuration::{
     PciBarConfiguration, PciClassCode, PciConfiguration, PciHeaderType, PciMultimediaSubclass,
 };
 use crate::pci::pci_device::{self, PciDevice, Result};
-use crate::pci::{PciAddress, PciInterruptPin};
+use crate::pci::{PciAddress, PciDeviceError, PciInterruptPin};
 #[cfg(not(target_os = "linux"))]
 use crate::virtio::snd::vios_backend::Error as VioSError;
 #[cfg(target_os = "linux")]
@@ -257,8 +257,19 @@ impl PciDevice for Ac97Dev {
         "AC97".to_owned()
     }
 
-    fn assign_address(&mut self, address: PciAddress) {
-        self.pci_address = Some(address);
+    fn allocate_address(&mut self, resources: &mut SystemAllocator) -> Result<PciAddress> {
+        if self.pci_address.is_none() {
+            self.pci_address = match resources.allocate_pci(self.debug_label()) {
+                Some(Alloc::PciBar {
+                    bus,
+                    dev,
+                    func,
+                    bar: _,
+                }) => Some(PciAddress { bus, dev, func }),
+                _ => None,
+            }
+        }
+        self.pci_address.ok_or(PciDeviceError::PciAllocationFailed)
     }
 
     fn assign_irq(
@@ -276,7 +287,7 @@ impl PciDevice for Ac97Dev {
     fn allocate_io_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
         let address = self
             .pci_address
-            .expect("assign_address must be called prior to allocate_io_bars");
+            .expect("allocate_address must be called prior to allocate_io_bars");
         let mut ranges = Vec::new();
         let mixer_regs_addr = resources
             .mmio_allocator(MmioType::Low)
@@ -390,11 +401,7 @@ mod tests {
             .add_high_mmio_addresses(0x3000_0000, 0x1000_0000)
             .create_allocator(5)
             .unwrap();
-        ac97_dev.assign_address(PciAddress {
-            bus: 0,
-            dev: 0,
-            func: 0,
-        });
+        assert!(ac97_dev.allocate_address(&mut allocator).is_ok());
         assert!(ac97_dev.allocate_io_bars(&mut allocator).is_ok());
     }
 }

@@ -297,10 +297,8 @@ impl VfioGroup {
         Ok(())
     }
 
-    fn get_device(&self, name: &Path) -> Result<File, VfioError> {
-        let uuid_osstr = name.file_name().ok_or(VfioError::InvalidPath)?;
-        let uuid_str = uuid_osstr.to_str().ok_or(VfioError::InvalidPath)?;
-        let path: CString = CString::new(uuid_str.as_bytes()).expect("CString::new() failed");
+    fn get_device(&self, name: &str) -> Result<File, VfioError> {
+        let path: CString = CString::new(name.as_bytes()).expect("CString::new() failed");
         let path_ptr = path.as_ptr();
 
         // Safe as we are the owner of self and path_ptr which are valid value.
@@ -342,6 +340,7 @@ struct VfioRegion {
 /// Vfio device for exposing regions which could be read/write to kernel vfio device.
 pub struct VfioDevice {
     dev: File,
+    name: String,
     container: Arc<Mutex<VfioContainer>>,
     group_descriptor: RawDescriptor,
     // vec for vfio device's regions
@@ -369,15 +368,24 @@ impl VfioDevice {
             .map_err(|_| VfioError::InvalidPath)?;
 
         let group = container.lock().get_group(group_id, vm, guest_mem)?;
-        let new_dev = group.get_device(sysfspath)?;
-        let dev_regions = Self::get_regions(&new_dev)?;
+        let name_osstr = sysfspath.file_name().ok_or(VfioError::InvalidPath)?;
+        let name_str = name_osstr.to_str().ok_or(VfioError::InvalidPath)?;
+        let name = String::from(name_str);
+        let dev = group.get_device(&name)?;
+        let regions = Self::get_regions(&dev)?;
 
         Ok(VfioDevice {
-            dev: new_dev,
+            dev,
+            name,
             container,
             group_descriptor: group.as_raw_descriptor(),
-            regions: dev_regions,
+            regions,
         })
+    }
+
+    /// Returns PCI device name, formatted as BUS:DEVICE.FUNCTION string.
+    pub fn device_name(&self) -> &String {
+        &self.name
     }
 
     /// Enable vfio device's irq and associate Irqfd Event with device.

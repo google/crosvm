@@ -166,8 +166,22 @@ impl PciDevice for XhciController {
         "xhci controller".to_owned()
     }
 
-    fn assign_address(&mut self, address: PciAddress) {
-        self.pci_address = Some(address);
+    fn allocate_address(
+        &mut self,
+        resources: &mut SystemAllocator,
+    ) -> Result<PciAddress, PciDeviceError> {
+        if self.pci_address.is_none() {
+            self.pci_address = match resources.allocate_pci(self.debug_label()) {
+                Some(Alloc::PciBar {
+                    bus,
+                    dev,
+                    func,
+                    bar: _,
+                }) => Some(PciAddress { bus, dev, func }),
+                _ => None,
+            }
+        }
+        self.pci_address.ok_or(PciDeviceError::PciAllocationFailed)
     }
 
     fn keep_rds(&self) -> Vec<RawDescriptor> {

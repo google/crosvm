@@ -52,7 +52,8 @@ pub struct SystemAllocator {
     // Indexed by MmioType::Low and MmioType::High.
     mmio_address_spaces: [AddressAllocator; 2],
 
-    next_irq: u32,
+    pci_allocator: AddressAllocator,
+    irq_allocator: AddressAllocator,
     next_anon_id: usize,
 }
 
@@ -90,7 +91,14 @@ impl SystemAllocator {
                 // MmioType::High
                 AddressAllocator::new(high_base, high_size, Some(page_size))?,
             ],
-            next_irq: first_irq,
+            // Support up to 256(buses) x 32(devices) x 8(functions) with default
+            // alignment allocating device with mandatory function number zero.
+            pci_allocator: AddressAllocator::new(8, (256 * 32 * 8) - 8, Some(8))?,
+            irq_allocator: AddressAllocator::new(
+                first_irq as u64,
+                1024 - first_irq as u64,
+                Some(1),
+            )?,
             next_anon_id: 0,
         })
     }
@@ -102,11 +110,49 @@ impl SystemAllocator {
 
     /// Reserves the next available system irq number.
     pub fn allocate_irq(&mut self) -> Option<u32> {
-        if let Some(irq_num) = self.next_irq.checked_add(1) {
-            self.next_irq = irq_num;
-            Some(irq_num - 1)
-        } else {
-            None
+        let id = self.get_anon_alloc();
+        self.irq_allocator
+            .allocate(1, id, "irq-auto".to_string())
+            .map(|v| v as u32)
+            .ok()
+    }
+
+    /// Reserves the next available system irq number.
+    pub fn reserve_irq(&mut self, irq: u32) -> bool {
+        let id = self.get_anon_alloc();
+        self.irq_allocator
+            .allocate_at(irq as u64, 1, id, "irq-fixed".to_string())
+            .is_ok()
+    }
+
+    /// Allocate PCI slot location.
+    pub fn allocate_pci(&mut self, tag: String) -> Option<Alloc> {
+        let id = self.get_anon_alloc();
+        self.pci_allocator
+            .allocate(1, id, tag)
+            .map(|v| Alloc::PciBar {
+                bus: ((v >> 8) & 255) as u8,
+                dev: ((v >> 3) & 31) as u8,
+                func: (v & 7) as u8,
+                bar: 0,
+            })
+            .ok()
+    }
+
+    /// Reserve PCI slot location.
+    pub fn reserve_pci(&mut self, alloc: Alloc, tag: String) -> bool {
+        let id = self.get_anon_alloc();
+        match alloc {
+            Alloc::PciBar {
+                bus,
+                dev,
+                func,
+                bar: _,
+            } => {
+                let bdf = ((bus as u64) << 8) | ((dev as u64) << 3) | (func as u64);
+                self.pci_allocator.allocate_at(bdf, 1, id, tag).is_ok()
+            }
+            _ => false,
         }
     }
 

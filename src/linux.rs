@@ -1571,12 +1571,19 @@ fn create_devices(
 
             let vfiodevice = VfioDevice::new(vfio_path.as_path(), vm, mem, vfio_container.clone())
                 .map_err(Error::CreateVfioDevice)?;
-            let vfiopcidevice = Box::new(VfioPciDevice::new(
+            let mut vfiopcidevice = Box::new(VfioPciDevice::new(
                 vfiodevice,
                 vfio_device_socket_msi,
                 vfio_device_socket_msix,
                 vfio_device_socket_mem,
             ));
+            // early reservation for pass-through PCI devices.
+            if vfiopcidevice.allocate_address(resources).is_err() {
+                warn!(
+                    "address reservation failed for vfio {}",
+                    vfiopcidevice.debug_label()
+                );
+            }
             pci_devices.push((vfiopcidevice, simple_jail(&cfg, "vfio_device")?));
         }
     }

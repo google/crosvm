@@ -13,8 +13,9 @@ use sync::Mutex;
 use crate::pci::pci_configuration::{
     PciBridgeSubclass, PciClassCode, PciConfiguration, PciHeaderType,
 };
-use crate::pci::pci_device::PciDevice;
+use crate::pci::pci_device::{Error, PciDevice};
 use crate::{BusAccessInfo, BusDevice};
+use resources::SystemAllocator;
 
 // A PciDevice that holds the root hub's configuration.
 struct PciRootConfiguration {
@@ -24,6 +25,14 @@ struct PciRootConfiguration {
 impl PciDevice for PciRootConfiguration {
     fn debug_label(&self) -> String {
         "pci root device".to_owned()
+    }
+    fn allocate_address(&mut self, _resources: &mut SystemAllocator) -> Result<PciAddress, Error> {
+        // PCI root fixed address.
+        Ok(PciAddress {
+            bus: 0,
+            dev: 0,
+            func: 0,
+        })
     }
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         Vec::new()
@@ -73,6 +82,21 @@ impl PciAddress {
         let register = ((config_address >> Self::REGISTER_OFFSET) & Self::REGISTER_MASK) as usize;
 
         (PciAddress { bus, dev, func }, register)
+    }
+
+    /// Construct PciAddress from string domain:bus:device.function.
+    pub fn from_string(address: &str) -> Self {
+        let mut func_dev_bus_domain = address
+            .split(|c| c == ':' || c == '.')
+            .map(|v| u8::from_str_radix(v, 16).unwrap_or_default())
+            .rev()
+            .collect::<Vec<u8>>();
+        func_dev_bus_domain.resize(4, 0);
+        PciAddress {
+            bus: func_dev_bus_domain[2],
+            dev: func_dev_bus_domain[1],
+            func: func_dev_bus_domain[0],
+        }
     }
 
     /// Encode PciAddress into CONFIG_ADDRESS value.

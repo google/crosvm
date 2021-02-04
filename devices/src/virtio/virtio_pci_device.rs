@@ -392,8 +392,22 @@ impl PciDevice for VirtioPciDevice {
         format!("virtio-pci ({})", self.device.debug_label())
     }
 
-    fn assign_address(&mut self, address: PciAddress) {
-        self.pci_address = Some(address);
+    fn allocate_address(
+        &mut self,
+        resources: &mut SystemAllocator,
+    ) -> std::result::Result<PciAddress, PciDeviceError> {
+        if self.pci_address.is_none() {
+            self.pci_address = match resources.allocate_pci(self.debug_label()) {
+                Some(Alloc::PciBar {
+                    bus,
+                    dev,
+                    func,
+                    bar: _,
+                }) => Some(PciAddress { bus, dev, func }),
+                _ => None,
+            }
+        }
+        self.pci_address.ok_or(PciDeviceError::PciAllocationFailed)
     }
 
     fn keep_rds(&self) -> Vec<RawDescriptor> {
@@ -427,7 +441,7 @@ impl PciDevice for VirtioPciDevice {
     ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
         let address = self
             .pci_address
-            .expect("assign_address must be called prior to allocate_io_bars");
+            .expect("allocaten_address must be called prior to allocate_io_bars");
         // Allocate one bar for the structures pointed to by the capability structures.
         let mut ranges = Vec::new();
         let settings_config_addr = resources
@@ -470,7 +484,7 @@ impl PciDevice for VirtioPciDevice {
     ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
         let address = self
             .pci_address
-            .expect("assign_address must be called prior to allocate_device_bars");
+            .expect("allocaten_address must be called prior to allocate_device_bars");
         let mut ranges = Vec::new();
         for config in self.device.get_device_bars(address) {
             let device_addr = resources
