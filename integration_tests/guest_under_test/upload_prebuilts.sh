@@ -14,31 +14,36 @@ set -e
 cd "${0%/*}"
 
 readonly PREBUILT_VERSION="$(cat ./PREBUILT_VERSION)"
-
-# Cloud storage files
 readonly GS_BUCKET="gs://chromeos-localmirror/distfiles"
 readonly GS_PREFIX="${GS_BUCKET}/crosvm-testing"
-readonly REMOTE_BZIMAGE="${GS_PREFIX}-bzimage-$(arch)-${PREBUILT_VERSION}"
-readonly REMOTE_ROOTFS="${GS_PREFIX}-rootfs-$(arch)-${PREBUILT_VERSION}"
-
-# Local files
-CARGO_TARGET=$(cargo metadata --no-deps --format-version 1 |
-    jq -r ".target_directory")
-LOCAL_BZIMAGE=${CARGO_TARGET}/guest_under_test/bzImage
-LOCAL_ROOTFS=${CARGO_TARGET}/guest_under_test/rootfs
 
 function prebuilts_exist_error() {
     echo "Prebuilts of version ${PREBUILT_VERSION} already exist. See README.md"
     exit 1
 }
 
-echo "Checking if prebuilts already exist."
-gsutil stat "${REMOTE_BZIMAGE}" && prebuilts_exist_error
-gsutil stat "${REMOTE_ROOTFS}" && prebuilts_exist_error
+function upload() {
+    local arch=$1
+    local remote_bzimage="${GS_PREFIX}-bzimage-${arch}-${PREBUILT_VERSION}"
+    local remote_rootfs="${GS_PREFIX}-rootfs-${arch}-${PREBUILT_VERSION}"
 
-echo "Building rootfs and kernel."
-make "${LOCAL_BZIMAGE}" "${LOCAL_ROOTFS}"
+    # Local files
+    local cargo_target=$(cargo metadata --no-deps --format-version 1 |
+        jq -r ".target_directory")
+    local local_bzimage=${cargo_target}/guest_under_test/${arch}/bzImage
+    local local_rootfs=${cargo_target}/guest_under_test/${arch}/rootfs
 
-echo "Uploading files."
-gsutil cp -n -a public-read "${LOCAL_BZIMAGE}" "${REMOTE_BZIMAGE}"
-gsutil cp -n -a public-read "${LOCAL_ROOTFS}" "${REMOTE_ROOTFS}"
+    echo "Checking if prebuilts already exist."
+    gsutil stat "${remote_bzimage}" && prebuilts_exist_error
+    gsutil stat "${remote_rootfs}" && prebuilts_exist_error
+
+    echo "Building rootfs and kernel."
+    make ARCH=${arch} "${local_bzimage}" "${local_rootfs}"
+
+    echo "Uploading files."
+    gsutil cp -n -a public-read "${local_bzimage}" "${remote_bzimage}"
+    gsutil cp -n -a public-read "${local_rootfs}" "${remote_rootfs}"
+}
+
+upload x86_64
+upload aarch64
