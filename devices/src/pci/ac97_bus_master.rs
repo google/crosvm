@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use audio_streams::{
     shm_streams::{ShmStream, ShmStreamSource},
-    BoxError, DummyStreamControl, SampleFormat, StreamControl, StreamDirection, StreamEffect,
+    BoxError, NoopStreamControl, SampleFormat, StreamControl, StreamDirection, StreamEffect,
 };
 use base::{
     self, error, set_rt_prio_limit, set_rt_round_robin, warn, AsRawDescriptor, Event, RawDescriptor,
@@ -200,7 +200,7 @@ impl AudioThreadInfo {
             worker.thread_run.store(false, Ordering::Relaxed);
         }));
 
-        self.stream_control = Some(Box::new(DummyStreamControl::new()));
+        self.stream_control = Some(Box::new(NoopStreamControl::new()));
     }
 
     fn stop(&mut self) {
