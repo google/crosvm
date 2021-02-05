@@ -111,6 +111,7 @@ impl XhciController {
             PciHeaderType::Device,
             0,
             0,
+            0,
         );
         XhciController {
             config_regs,

@@ -193,6 +193,7 @@ const NOTIFY_OFF_MULTIPLIER: u32 = 4; // A dword per notification address.
 
 const VIRTIO_PCI_VENDOR_ID: u16 = 0x1af4;
 const VIRTIO_PCI_DEVICE_ID_BASE: u16 = 0x1040; // Add to device type to get device ID.
+const VIRTIO_PCI_REVISION_ID: u8 = 1;
 
 /// Implements the
 /// [PCI](http://docs.oasis-open.org/virtio/virtio/v1.0/cs04/virtio-v1.0-cs04.html#x1-650001)
@@ -261,6 +262,7 @@ impl VirtioPciDevice {
             PciHeaderType::Device,
             VIRTIO_PCI_VENDOR_ID,
             pci_device_id,
+            VIRTIO_PCI_REVISION_ID,
         );
 
         Ok(VirtioPciDevice {

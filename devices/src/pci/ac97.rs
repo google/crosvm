@@ -126,6 +126,7 @@ impl Ac97Dev {
             PciHeaderType::Device,
             0x8086, // Subsystem Vendor ID
             0x1,    // Subsystem ID.
+            0,      //  Revision ID.
         );
 
         Self {

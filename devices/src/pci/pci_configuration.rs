@@ -292,6 +292,7 @@ impl PciConfiguration {
         header_type: PciHeaderType,
         subsystem_vendor_id: u16,
         subsystem_id: u16,
+        revision_id: u8,
     ) -> Self {
         let mut registers = [0u32; NUM_CONFIGURATION_REGISTERS];
         let mut writable_bits = [0u32; NUM_CONFIGURATION_REGISTERS];
@@ -305,7 +306,8 @@ impl PciConfiguration {
         };
         registers[2] = u32::from(class_code.get_register_value()) << 24
             | u32::from(subclass.get_register_value()) << 16
-            | u32::from(pi) << 8;
+            | u32::from(pi) << 8
+            | u32::from(revision_id);
         writable_bits[3] = 0x0000_00ff; // Cacheline size (r/w)
         match header_type {
             PciHeaderType::Device => {
@@ -673,6 +675,7 @@ mod tests {
             PciHeaderType::Device,
             0xABCD,
             0x2468,
+            0,
         );
 
         // Add two capabilities with different contents.
@@ -734,6 +737,7 @@ mod tests {
             PciHeaderType::Device,
             0xABCD,
             0x2468,
+            0,
         );
 
         let class_reg = cfg.read_reg(2);
@@ -756,6 +760,7 @@ mod tests {
             PciHeaderType::Device,
             0xABCD,
             0x2468,
+            0,
         );
 
         // Attempt to overwrite vendor ID and device ID, which are read-only
@@ -775,6 +780,7 @@ mod tests {
             PciHeaderType::Device,
             0xABCD,
             0x2468,
+            0,
         );
 
         // No BAR 0 has been configured, so these should return None or 0 as appropriate.
@@ -796,6 +802,7 @@ mod tests {
             PciHeaderType::Device,
             0xABCD,
             0x2468,
+            0,
         );
 
         cfg.add_pci_bar(
@@ -842,6 +849,7 @@ mod tests {
             PciHeaderType::Device,
             0xABCD,
             0x2468,
+            0,
         );
 
         cfg.add_pci_bar(
@@ -887,6 +895,7 @@ mod tests {
             PciHeaderType::Device,
             0xABCD,
             0x2468,
+            0,
         );
 
         cfg.add_pci_bar(
@@ -929,6 +938,7 @@ mod tests {
             PciHeaderType::Device,
             0xABCD,
             0x2468,
+            0,
         );
 
         // bar_num 0-1: 64-bit memory
@@ -1050,6 +1060,7 @@ mod tests {
             PciHeaderType::Device,
             0xABCD,
             0x2468,
+            0,
         );
 
         // I/O BAR with size 2 (too small)

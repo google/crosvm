@@ -282,6 +282,7 @@ mod tests {
                 PciHeaderType::Device,
                 0x5678,
                 0xEF01,
+                0,
             ),
         };
 

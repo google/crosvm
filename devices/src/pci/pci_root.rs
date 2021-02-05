@@ -145,6 +145,7 @@ impl PciRoot {
                     PciHeaderType::Device,
                     0,
                     0,
+                    0,
                 ),
             },
             devices: BTreeMap::new(),
