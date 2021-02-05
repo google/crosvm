@@ -473,11 +473,17 @@ impl PciConfiguration {
         }
 
         let (mask, lower_bits) = match config.region_type {
-            PciBarRegionType::Memory32BitRegion | PciBarRegionType::Memory64BitRegion => (
-                BAR_MEM_ADDR_MASK,
-                config.prefetchable as u32 | config.region_type as u32,
-            ),
-            PciBarRegionType::IORegion => (BAR_IO_ADDR_MASK, config.region_type as u32),
+            PciBarRegionType::Memory32BitRegion | PciBarRegionType::Memory64BitRegion => {
+                self.registers[COMMAND_REG] |= COMMAND_REG_MEMORY_SPACE_MASK;
+                (
+                    BAR_MEM_ADDR_MASK,
+                    config.prefetchable as u32 | config.region_type as u32,
+                )
+            }
+            PciBarRegionType::IORegion => {
+                self.registers[COMMAND_REG] |= COMMAND_REG_IO_SPACE_MASK;
+                (BAR_IO_ADDR_MASK, config.region_type as u32)
+            }
         };
 
         self.registers[bar_idx] = ((config.addr as u32) & mask) | lower_bits;
