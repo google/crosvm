@@ -947,6 +947,11 @@ impl<F: FileSystem + Sync> Server<F> {
                     enabled.remove(FsOptions::HANDLE_KILLPRIV);
                 }
 
+                // ATOMIC_O_TRUNC doesn't work with ZERO_MESSAGE_OPEN.
+                if enabled.contains(FsOptions::ZERO_MESSAGE_OPEN) {
+                    enabled.remove(FsOptions::ATOMIC_O_TRUNC);
+                }
+
                 let out = InitOut {
                     major: KERNEL_VERSION,
                     minor: KERNEL_MINOR_VERSION,
