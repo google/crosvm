@@ -83,7 +83,6 @@ CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
     "enumn": [],
     "fuse": [],
     "fuzz": [Requirements.DISABLED],
-    "gpu_buffer": [Requirements.CROS_BUILD],
     "gpu_display": [],
     "hypervisor": [Requirements.PRIVILEGED, Requirements.X86_64],
     "io_uring": [Requirements.DISABLED],

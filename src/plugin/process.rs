@@ -293,16 +293,14 @@ impl Process {
             -1 => Err(SysError::last()),
             0 => Ok(ProcessStatus::Running),
             _ => {
-                // Trivially safe
-                if unsafe { WIFEXITED(status) } {
-                    match unsafe { WEXITSTATUS(status) } {
-                        // Trivially safe
+                if WIFEXITED(status) {
+                    match WEXITSTATUS(status) {
                         0 => Ok(ProcessStatus::Success),
                         code => Ok(ProcessStatus::Fail(code)),
                     }
                 } else {
                     // Plugin terminated but has no exit status, so it must have been signaled.
-                    Ok(ProcessStatus::Signal(unsafe { WTERMSIG(status) })) // Trivially safe
+                    Ok(ProcessStatus::Signal(WTERMSIG(status)))
                 }
             }
         }
