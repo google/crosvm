@@ -43,7 +43,22 @@ impl From<PowerSupplyProperties> for PowerData {
             };
 
             let percent = std::cmp::min(100, props.get_battery_percent().round() as u32);
-            Some(BatteryData { status, percent })
+            // Convert from volts to microvolts.
+            let voltage = (props.get_battery_voltage() * 1_000_000f64).round() as u32;
+            // Convert from amps to microamps.
+            let current = (props.get_battery_current() * 1_000_000f64).round() as u32;
+            // Convert from ampere-hours to micro ampere-hours.
+            let charge_counter = (props.get_battery_charge() * 1_000_000f64).round() as u32;
+            let charge_full = (props.get_battery_charge_full() * 1_000_000f64).round() as u32;
+
+            Some(BatteryData {
+                status,
+                percent,
+                voltage,
+                current,
+                charge_counter,
+                charge_full,
+            })
         } else {
             None
         };

@@ -18,6 +18,14 @@ pub struct PowerData {
 pub struct BatteryData {
     pub status: BatteryStatus,
     pub percent: u32,
+    /// Battery voltage in microvolts.
+    pub voltage: u32,
+    /// Battery current in microamps.
+    pub current: u32,
+    /// Battery charge counter in microampere hours.
+    pub charge_counter: u32,
+    /// Battery full charge counter in microampere hours.
+    pub charge_full: u32,
 }
 
 pub enum BatteryStatus {

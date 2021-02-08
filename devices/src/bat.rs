@@ -47,6 +47,10 @@ struct GoldfishBatteryState {
     health: u32,
     present: u32,
     capacity: u32,
+    voltage: u32,
+    current: u32,
+    charge_counter: u32,
+    charge_full: u32,
 }
 
 macro_rules! create_battery_func {
@@ -82,6 +86,14 @@ impl GoldfishBatteryState {
     create_battery_func!(set_present, present, BATTERY_STATUS_CHANGED);
 
     create_battery_func!(set_capacity, capacity, BATTERY_STATUS_CHANGED);
+
+    create_battery_func!(set_voltage, voltage, BATTERY_STATUS_CHANGED);
+
+    create_battery_func!(set_current, current, BATTERY_STATUS_CHANGED);
+
+    create_battery_func!(set_charge_counter, charge_counter, BATTERY_STATUS_CHANGED);
+
+    create_battery_func!(set_charge_full, charge_full, BATTERY_STATUS_CHANGED);
 }
 
 /// GoldFish Battery state
@@ -254,6 +266,10 @@ fn command_monitor(
                                 BatteryStatus::NotCharging => BATTERY_STATUS_VAL_NOT_CHARGING,
                             };
                             inject_irq |= bat_state.set_status(battery_status);
+                            inject_irq |= bat_state.set_voltage(battery_data.voltage);
+                            inject_irq |= bat_state.set_current(battery_data.current);
+                            inject_irq |= bat_state.set_charge_counter(battery_data.charge_counter);
+                            inject_irq |= bat_state.set_charge_full(battery_data.charge_full);
                         }
                         None => {
                             inject_irq |= bat_state.set_present(0);
@@ -307,6 +323,10 @@ impl GoldfishBattery {
             ac_online: 1,
             int_enable: 0,
             int_status: 0,
+            voltage: 0,
+            current: 0,
+            charge_counter: 0,
+            charge_full: 0,
         }));
 
         Ok(GoldfishBattery {
@@ -429,14 +449,14 @@ impl BusDevice for GoldfishBattery {
             BATTERY_HEALTH => self.state.lock().health,
             BATTERY_PRESENT => self.state.lock().present,
             BATTERY_CAPACITY => self.state.lock().capacity,
-            BATTERY_VOLTAGE => 0,
+            BATTERY_VOLTAGE => self.state.lock().voltage,
             BATTERY_TEMP => 0,
-            BATTERY_CHARGE_COUNTER => 0,
+            BATTERY_CHARGE_COUNTER => self.state.lock().charge_counter,
             BATTERY_VOLTAGE_MAX => 0,
             BATTERY_CURRENT_MAX => 0,
-            BATTERY_CURRENT_NOW => 0,
+            BATTERY_CURRENT_NOW => self.state.lock().current,
             BATTERY_CURRENT_AVG => 0,
-            BATTERY_CHARGE_FULL_UAH => 0,
+            BATTERY_CHARGE_FULL_UAH => self.state.lock().charge_full,
             BATTERY_CYCLE_COUNT => 0,
             _ => {
                 warn!("{}: unsupported read address {}", self.debug_label(), info);
