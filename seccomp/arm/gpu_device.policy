@@ -81,3 +81,9 @@ gettid: 1
 fcntl64: 1
 tgkill: 1
 clock_gettime: 1
+
+# Rules specific to Mesa.
+uname: 1
+sched_setscheduler: 1
+sched_setaffinity: 1
+kcmp: 1
