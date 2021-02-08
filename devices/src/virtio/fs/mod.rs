@@ -23,6 +23,7 @@ use crate::virtio::{
     VirtioPciShmCap, TYPE_FS,
 };
 
+mod caps;
 mod multikey;
 pub mod passthrough;
 mod read_dir;

@@ -6,12 +6,11 @@ use std::borrow::Cow;
 use std::cmp;
 use std::collections::btree_map;
 use std::collections::BTreeMap;
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io;
 use std::mem::{self, size_of, MaybeUninit};
 use std::os::raw::{c_int, c_long};
-use std::ptr;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -27,10 +26,11 @@ use fuse::filesystem::{
     IoctlReply, ListxattrReply, OpenOptions, RemoveMappingOne, SetattrValid, ZeroCopyReader,
     ZeroCopyWriter, ROOT_ID,
 };
+use fuse::sys::WRITE_KILL_PRIV;
 use fuse::Mapper;
-use rand_ish::SimpleRng;
 use sync::Mutex;
 
+use crate::virtio::fs::caps::{Capability, Caps, Set as CapSet, Value as CapValue};
 use crate::virtio::fs::multikey::MultikeyBTreeMap;
 use crate::virtio::fs::read_dir::ReadDir;
 
@@ -254,6 +254,62 @@ fn set_creds(
     ScopedGid::new(gid, oldgid).and_then(|gid| Ok((ScopedUid::new(uid, olduid)?, gid)))
 }
 
+struct ScopedUmask<'a> {
+    old: libc::mode_t,
+    mask: libc::mode_t,
+    _factory: &'a mut Umask,
+}
+
+impl<'a> Drop for ScopedUmask<'a> {
+    fn drop(&mut self) {
+        // Safe because this doesn't modify any memory and always succeeds.
+        let previous = unsafe { libc::umask(self.old) };
+        debug_assert_eq!(
+            previous, self.mask,
+            "umask changed while holding ScopedUmask"
+        );
+    }
+}
+
+struct Umask;
+
+impl Umask {
+    fn set(&mut self, mask: libc::mode_t) -> ScopedUmask {
+        ScopedUmask {
+            // Safe because this doesn't modify any memory and always succeeds.
+            old: unsafe { libc::umask(mask) },
+            mask,
+            _factory: self,
+        }
+    }
+}
+
+struct ScopedFsetid(Caps);
+impl Drop for ScopedFsetid {
+    fn drop(&mut self) {
+        if let Err(e) = raise_cap_fsetid(&mut self.0) {
+            error!(
+                "Failed to restore CAP_FSETID: {}.  Some operations may be broken.",
+                e
+            )
+        }
+    }
+}
+
+fn raise_cap_fsetid(c: &mut Caps) -> io::Result<()> {
+    c.update(&[Capability::Fsetid], CapSet::Effective, CapValue::Set)?;
+    c.apply()
+}
+
+// Drops CAP_FSETID from the effective set for the current thread and returns an RAII guard that
+// adds the capability back when it is dropped.
+fn drop_cap_fsetid() -> io::Result<ScopedFsetid> {
+    let mut caps = Caps::for_current_thread()?;
+    caps.update(&[Capability::Fsetid], CapSet::Effective, CapValue::Clear)?;
+    caps.apply()?;
+    Ok(ScopedFsetid(caps))
+}
+
 fn ebadf() -> io::Error {
     io::Error::from_raw_os_error(libc::EBADF)
 }
@@ -442,6 +498,10 @@ pub struct PassthroughFs {
     // process-wide CWD, we cannot allow more than one thread to do it at the same time.
     chdir_mutex: Mutex<()>,
 
+    // Used when creating files / directories / nodes. Since the umask is process-wide, we can only
+    // allow one thread at a time to change it.
+    umask: Mutex<Umask>,
+
     cfg: Config,
 }
 
@@ -479,6 +539,7 @@ impl PassthroughFs {
             zero_message_opendir: AtomicBool::new(false),
 
             chdir_mutex: Mutex::new(()),
+            umask: Mutex::new(Umask),
             cfg,
         })
     }
@@ -684,68 +745,6 @@ impl PassthroughFs {
         Ok((Some(handle), opts))
     }
 
-    fn do_tmpfile(
-        &self,
-        ctx: &Context,
-        dir: &InodeData,
-        flags: u32,
-        mut mode: u32,
-        umask: u32,
-    ) -> io::Result<(File, libc::c_int)> {
-        // We don't want to use `O_EXCL` with `O_TMPFILE` as it has a different meaning when used in
-        // that combination.
-        let mut tmpflags = (flags as i32 | libc::O_TMPFILE | libc::O_CLOEXEC | libc::O_NOFOLLOW)
-            & !(libc::O_EXCL | libc::O_CREAT);
-
-        // O_TMPFILE requires that we use O_RDWR or O_WRONLY.
-        if flags as i32 & libc::O_ACCMODE == libc::O_RDONLY {
-            tmpflags &= !libc::O_ACCMODE;
-            tmpflags |= libc::O_RDWR;
-        }
-
-        // The presence of a default posix acl xattr in the parent directory completely changes the
-        // meaning of the mode parameter so only apply the umask if it doesn't have one.
-        if !self.has_default_posix_acl(&dir)? {
-            mode &= !umask;
-        }
-
-        // Safe because this is a valid c string.
-        let current_dir = unsafe { CStr::from_bytes_with_nul_unchecked(b".\0") };
-
-        // Safe because this doesn't modify any memory and we check the return value.
-        let fd = unsafe {
-            libc::openat(
-                dir.as_raw_descriptor(),
-                current_dir.as_ptr(),
-                tmpflags,
-                mode,
-            )
-        };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        // Safe because we just opened this fd.
-        let tmpfile = unsafe { File::from_raw_descriptor(fd) };
-
-        // We need to respect the setgid bit in the parent directory if it is set.
-        let st = stat(dir)?;
-        let gid = if st.st_mode & libc::S_ISGID != 0 {
-            st.st_gid
-        } else {
-            ctx.gid
-        };
-
-        // Now set the uid and gid for the file. Safe because this doesn't modify any memory and we
-        // check the return value.
-        let ret = unsafe { libc::fchown(tmpfile.as_raw_descriptor(), ctx.uid, gid) };
-        if ret < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        Ok((tmpfile, tmpflags))
-    }
-
     fn do_release(&self, inode: Inode, handle: Handle) -> io::Result<()> {
         let mut handles = self.handles.lock();
 
@@ -865,21 +864,6 @@ impl PassthroughFs {
             Err(io::Error::last_os_error())
         } else {
             Ok(res as usize)
-        }
-    }
-
-    // Checks whether `inode` has a default posix acl xattr.
-    fn has_default_posix_acl(&self, inode: &InodeData) -> io::Result<bool> {
-        // Safe because this is a valid c string with no interior nul-bytes.
-        let acl = unsafe { CStr::from_bytes_with_nul_unchecked(b"system.posix_acl_default\0") };
-
-        if let Err(e) = self.do_getxattr(inode, acl, &mut []) {
-            match e.raw_os_error() {
-                Some(libc::ENODATA) | Some(libc::EOPNOTSUPP) => Ok(false),
-                _ => Err(e),
-            }
-        } else {
-            Ok(true)
         }
     }
 
@@ -1062,133 +1046,6 @@ fn strip_xattr_prefix(buf: &mut Vec<u8>) {
     }
 }
 
-// Like mkdtemp but also takes a mode parameter rather than always using 0o700. This is needed
-// because if the parent has a default posix acl set then the meaning of the mode parameter in the
-// mkdir call completely changes: the actual mode is inherited from the default acls set in the
-// parent and the mode is treated like a umask (the real umask is ignored in this case).
-// Additionally, this only happens when the inode is first created and not on subsequent fchmod
-// calls so we really need to use the requested mode from the very beginning and not the default
-// 0o700 mode that mkdtemp uses.
-fn create_temp_dir<D: AsRawDescriptor>(parent: &D, mode: libc::mode_t) -> io::Result<CString> {
-    const MAX_ATTEMPTS: usize = 64;
-    let mut seed = 0u64.to_ne_bytes();
-    // Safe because this will only modify `seed` and we check the return value.
-    let ret = unsafe {
-        libc::syscall(
-            libc::SYS_getrandom,
-            seed.as_mut_ptr() as *mut c_void,
-            seed.len(),
-            0,
-        )
-    };
-    if ret < 0 {
-        return Err(io::Error::last_os_error());
-    }
-
-    let mut rng = SimpleRng::new(u64::from_ne_bytes(seed));
-
-    // Set an upper bound so that we don't end up spinning here forever.
-    for _ in 0..MAX_ATTEMPTS {
-        let mut name = String::from(".");
-        name.push_str(&rng.str(6));
-        let name = CString::new(name).expect("SimpleRng produced string with nul-bytes");
-
-        // Safe because this doesn't modify any memory and we check the return value.
-        let ret = unsafe { libc::mkdirat(parent.as_raw_descriptor(), name.as_ptr(), mode) };
-        if ret == 0 {
-            return Ok(name);
-        }
-
-        let e = io::Error::last_os_error();
-        if let Some(libc::EEXIST) = e.raw_os_error() {
-            continue;
-        } else {
-            return Err(e);
-        }
-    }
-
-    Err(io::Error::from_raw_os_error(libc::EAGAIN))
-}
-
-// A temporary directory that is automatically deleted when dropped unless `into_inner()` is called.
-// This isn't a general-purpose temporary directory and is only intended to be used to ensure that
-// there are no leaks when initializing a newly created directory with the correct metadata (see the
-// implementation of `mkdir()` below). The directory is removed via a call to `unlinkat` so callers
-// are not allowed to actually populate this temporary directory with any entries (or else deleting
-// the directory will fail).
-struct TempDir<'a, D: AsRawDescriptor> {
-    parent: &'a D,
-    name: CString,
-    file: File,
-}
-
-impl<'a, D: AsRawDescriptor> TempDir<'a, D> {
-    // Creates a new temporary directory in `parent` with a randomly generated name. `parent` must
-    // be a directory.
-    fn new(parent: &'a D, mode: libc::mode_t) -> io::Result<Self> {
-        let name = create_temp_dir(parent, mode)?;
-
-        // Safe because this doesn't modify any memory and we check the return value.
-        let raw_descriptor = unsafe {
-            libc::openat(
-                parent.as_raw_descriptor(),
-                name.as_ptr(),
-                libc::O_DIRECTORY | libc::O_CLOEXEC,
-            )
-        };
-        if raw_descriptor < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        Ok(TempDir {
-            parent,
-            name,
-            // Safe because we just opened this descriptor.
-            file: unsafe { File::from_raw_descriptor(raw_descriptor) },
-        })
-    }
-
-    fn basename(&self) -> &CStr {
-        &self.name
-    }
-
-    // Consumes the `TempDir`, returning the inner `File` without deleting the temporary
-    // directory.
-    fn into_inner(self) -> (CString, File) {
-        // Safe because this is a valid pointer and we are going to call `mem::forget` on `self` so
-        // we will not be aliasing memory.
-        let _parent = unsafe { ptr::read(&self.parent) };
-        let name = unsafe { ptr::read(&self.name) };
-        let file = unsafe { ptr::read(&self.file) };
-        mem::forget(self);
-
-        (name, file)
-    }
-}
-
-impl<'a, D: AsRawDescriptor> AsRawDescriptor for TempDir<'a, D> {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.file.as_raw_descriptor()
-    }
-}
-
-impl<'a, D: AsRawDescriptor> Drop for TempDir<'a, D> {
-    fn drop(&mut self) {
-        // Safe because this doesn't modify any memory and we check the return value.
-        let ret = unsafe {
-            libc::unlinkat(
-                self.parent.as_raw_descriptor(),
-                self.name.as_ptr(),
-                libc::AT_REMOVEDIR,
-            )
-        };
-        if ret < 0 {
-            println!("Failed to remove tempdir: {}", io::Error::last_os_error());
-            error!("Failed to remove tempdir: {}", io::Error::last_os_error());
-        }
-    }
-}
-
 impl FileSystem for PassthroughFs {
     type Inode = Inode;
     type Handle = Handle;
@@ -1214,6 +1071,25 @@ impl FileSystem for PassthroughFs {
         // value because this system call always succeeds. We need to clear the umask here because
         // we want the client to be able to set all the bits in the mode.
         unsafe { libc::umask(0o000) };
+
+        // We need to set the no setuid fixup secure bit so that we don't drop capabilities when
+        // changing the thread uid/gid. Without this, creating new entries can fail in some corner
+        // cases.
+        const SECBIT_NO_SETUID_FIXUP: i32 = 1 << 2;
+
+        // Safe because this doesn't modify any memory and we check the return value.
+        let mut securebits = unsafe { libc::prctl(libc::PR_GET_SECUREBITS) };
+        if securebits < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        securebits |= SECBIT_NO_SETUID_FIXUP;
+
+        // Safe because this doesn't modify any memory and we check the return value.
+        let ret = unsafe { libc::prctl(libc::PR_SET_SECUREBITS, securebits) };
+        if ret < 0 {
+            return Err(io::Error::last_os_error());
+        }
 
         let mut inodes = self.inodes.lock();
 
@@ -1331,65 +1207,24 @@ impl FileSystem for PassthroughFs {
         ctx: Context,
         parent: Inode,
         name: &CStr,
-        mut mode: u32,
+        mode: u32,
         umask: u32,
     ) -> io::Result<Entry> {
-        // This method has the same issues as `create()`: namely that the kernel may have allowed a
-        // process to make a directory due to one of its supplementary groups but that information
-        // is not forwarded to us. However, there is no `O_TMPDIR` equivalent for directories so
-        // instead we create a "hidden" directory with a randomly generated name in the parent
-        // directory, modify the uid/gid and mode to the proper values, and then rename it to the
-        // requested name. This ensures that even in the case of a power loss the directory is not
-        // visible in the filesystem with the requested name but incorrect metadata. The only thing
-        // left would be a empty hidden directory with a random name.
         let data = self.find_inode(parent)?;
 
-        // The presence of a default posix acl xattr in the parent directory completely changes the
-        // meaning of the mode parameter so only apply the umask if it doesn't have one.
-        if !self.has_default_posix_acl(&data)? {
-            mode &= !umask;
-        }
+        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
+        let res = {
+            let mut um = self.umask.lock();
+            let _scoped_umask = um.set(umask);
 
-        let tmpdir = TempDir::new(&*data, mode)?;
-
-        // We need to respect the setgid bit in the parent directory if it is set.
-        let st = stat(&data.file.lock().0)?;
-        let gid = if st.st_mode & libc::S_ISGID != 0 {
-            st.st_gid
+            // Safe because this doesn't modify any memory and we check the return value.
+            unsafe { libc::mkdirat(data.as_raw_descriptor(), name.as_ptr(), mode) }
+        };
+        if res == 0 {
+            self.do_lookup(&data, name)
         } else {
-            ctx.gid
-        };
-
-        // Set the uid and gid for the directory. Safe because this doesn't modify any memory and we
-        // check the return value.
-        let ret = unsafe { libc::fchown(tmpdir.as_raw_descriptor(), ctx.uid, gid) };
-        if ret < 0 {
-            return Err(io::Error::last_os_error());
+            Err(io::Error::last_os_error())
         }
-
-        // Now rename it into place. Safe because this doesn't modify any memory and we check the
-        // return value. TODO: Switch to libc::renameat2 once
-        // https://github.com/rust-lang/libc/pull/1508 lands and we have glibc 2.28.
-        let ret = unsafe {
-            libc::syscall(
-                libc::SYS_renameat2,
-                data.as_raw_descriptor(),
-                tmpdir.basename().as_ptr(),
-                data.as_raw_descriptor(),
-                name.as_ptr(),
-                libc::RENAME_NOREPLACE,
-            )
-        };
-        if ret < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        // Now that we've moved the directory make sure we don't try to delete the now non-existent
-        // `tmpdir`.
-        let (_, dir) = tmpdir.into_inner();
-
-        let st = stat(&dir)?;
-        self.add_entry(dir, st, libc::O_DIRECTORY | libc::O_CLOEXEC)
     }
 
     fn rmdir(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<()> {
@@ -1458,10 +1293,36 @@ impl FileSystem for PassthroughFs {
     ) -> io::Result<Entry> {
         let data = self.find_inode(parent)?;
 
-        let (tmpfile, flags) = self.do_tmpfile(&ctx, &data, 0, mode, umask)?;
+        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
+
+        let tmpflags = libc::O_RDWR | libc::O_TMPFILE | libc::O_CLOEXEC | libc::O_NOFOLLOW;
+
+        // Safe because this is a valid c string.
+        let current_dir = unsafe { CStr::from_bytes_with_nul_unchecked(b".\0") };
+
+        let fd = {
+            let mut um = self.umask.lock();
+            let _scoped_umask = um.set(umask);
+
+            // Safe because this doesn't modify any memory and we check the return value.
+            unsafe {
+                libc::openat(
+                    data.as_raw_descriptor(),
+                    current_dir.as_ptr(),
+                    tmpflags,
+                    mode,
+                )
+            }
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        // Safe because we just opened this fd.
+        let tmpfile = unsafe { File::from_raw_descriptor(fd) };
 
         let st = stat(&tmpfile)?;
-        self.add_entry(tmpfile, st, flags)
+        self.add_entry(tmpfile, st, tmpflags)
     }
 
     fn create(
@@ -1473,40 +1334,31 @@ impl FileSystem for PassthroughFs {
         flags: u32,
         umask: u32,
     ) -> io::Result<(Entry, Option<Handle>, OpenOptions)> {
-        // The `Context` may not contain all the information we need to create the file here. For
-        // example, a process may be part of several groups, one of which gives it permission to
-        // create a file in `parent`, but is not the gid of the process. This information is not
-        // forwarded to the server so we don't know when this is happening. Instead, we just rely on
-        // the access checks in the kernel driver: if we received this request then the kernel has
-        // determined that the process is allowed to create the file and we shouldn't reject it now
-        // based on acls.
-        //
-        // To ensure that the file is created atomically with the proper uid/gid we use `O_TMPFILE`
-        // + `linkat` as described in the `open(2)` manpage.
         let data = self.find_inode(parent)?;
 
-        let (tmpfile, tmpflags) = self.do_tmpfile(&ctx, &data, flags, mode, umask)?;
+        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
 
-        let proc_path = CString::new(format!("self/fd/{}", tmpfile.as_raw_descriptor()))
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let create_flags =
+            (flags as i32 | libc::O_CREAT | libc::O_CLOEXEC | libc::O_NOFOLLOW) & !libc::O_DIRECT;
 
-        // Finally link it into the file system tree so that it's visible to other processes. Safe
-        // because this doesn't modify any memory and we check the return value.
-        let ret = unsafe {
-            libc::linkat(
-                self.proc.as_raw_descriptor(),
-                proc_path.as_ptr(),
-                data.as_raw_descriptor(),
-                name.as_ptr(),
-                libc::AT_SYMLINK_FOLLOW,
-            )
+        let fd = {
+            let mut um = self.umask.lock();
+            let _scoped_umask = um.set(umask);
+
+            // Safe because this doesn't modify any memory and we check the return value. We don't
+            // really check `flags` because if the kernel can't handle poorly specified flags then
+            // we have much bigger problems.
+            unsafe { libc::openat(data.as_raw_descriptor(), name.as_ptr(), create_flags, mode) }
         };
-        if ret < 0 {
+        if fd < 0 {
             return Err(io::Error::last_os_error());
         }
 
-        let st = stat(&tmpfile)?;
-        let entry = self.add_entry(tmpfile, st, tmpflags)?;
+        // Safe because we just opened this fd.
+        let file = unsafe { File::from_raw_descriptor(fd) };
+
+        let st = stat(&file)?;
+        let entry = self.add_entry(file, st, create_flags)?;
 
         let (handle, opts) = if self.zero_message_open.load(Ordering::Relaxed) {
             (None, OpenOptions::KEEP_CACHE)
@@ -1570,7 +1422,7 @@ impl FileSystem for PassthroughFs {
 
     fn write<R: io::Read + ZeroCopyReader>(
         &self,
-        ctx: Context,
+        _ctx: Context,
         inode: Inode,
         handle: Handle,
         mut r: R,
@@ -1578,11 +1430,15 @@ impl FileSystem for PassthroughFs {
         offset: u64,
         _lock_owner: Option<u64>,
         _delayed_write: bool,
-        _flags: u32,
+        flags: u32,
     ) -> io::Result<usize> {
-        // We need to change credentials during a write so that the kernel will remove setuid or
-        // setgid bits from the file if it was written to by someone other than the owner.
-        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
+        // When the WRITE_KILL_PRIV flag is set, drop CAP_FSETID so that the kernel will
+        // automatically clear the setuid and setgid bits for us.
+        let _fsetid = if flags & WRITE_KILL_PRIV != 0 {
+            Some(drop_cap_fsetid()?)
+        } else {
+            None
+        };
 
         if self.zero_message_open.load(Ordering::Relaxed) {
             let data = self.find_inode(inode)?;
@@ -1788,28 +1644,27 @@ impl FileSystem for PassthroughFs {
         ctx: Context,
         parent: Inode,
         name: &CStr,
-        mut mode: u32,
+        mode: u32,
         rdev: u32,
         umask: u32,
     ) -> io::Result<Entry> {
-        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
-
         let data = self.find_inode(parent)?;
 
-        // The presence of a default posix acl xattr in the parent directory completely changes the
-        // meaning of the mode parameter so only apply the umask if it doesn't have one.
-        if !self.has_default_posix_acl(&data)? {
-            mode &= !umask;
-        }
+        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
 
-        // Safe because this doesn't modify any memory and we check the return value.
-        let res = unsafe {
-            libc::mknodat(
-                data.as_raw_descriptor(),
-                name.as_ptr(),
-                mode as libc::mode_t,
-                rdev as libc::dev_t,
-            )
+        let res = {
+            let mut um = self.umask.lock();
+            let _scoped_umask = um.set(umask);
+
+            // Safe because this doesn't modify any memory and we check the return value.
+            unsafe {
+                libc::mknodat(
+                    data.as_raw_descriptor(),
+                    name.as_ptr(),
+                    mode as libc::mode_t,
+                    rdev as libc::dev_t,
+                )
+            }
         };
 
         if res < 0 {
@@ -2379,72 +2234,6 @@ impl FileSystem for PassthroughFs {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use std::env;
-    use std::os::unix::ffi::OsStringExt;
-
-    #[test]
-    fn create_temp_dir() {
-        let testdir = CString::new(env::temp_dir().into_os_string().into_vec())
-            .expect("env::temp_dir() is not a valid c-string");
-        let fd = unsafe {
-            libc::openat(
-                libc::AT_FDCWD,
-                testdir.as_ptr(),
-                libc::O_PATH | libc::O_CLOEXEC,
-            )
-        };
-        assert!(fd >= 0, "Failed to open env::temp_dir()");
-        let parent = unsafe { File::from_raw_descriptor(fd) };
-        let t = TempDir::new(&parent, 0o755).expect("Failed to create temporary directory");
-
-        let basename = t.basename().to_string_lossy();
-        let path = env::temp_dir().join(&*basename);
-        assert!(path.exists());
-        assert!(path.is_dir());
-    }
-
-    #[test]
-    fn remove_temp_dir() {
-        let testdir = CString::new(env::temp_dir().into_os_string().into_vec())
-            .expect("env::temp_dir() is not a valid c-string");
-        let fd = unsafe {
-            libc::openat(
-                libc::AT_FDCWD,
-                testdir.as_ptr(),
-                libc::O_PATH | libc::O_CLOEXEC,
-            )
-        };
-        assert!(fd >= 0, "Failed to open env::temp_dir()");
-        let parent = unsafe { File::from_raw_descriptor(fd) };
-        let t = TempDir::new(&parent, 0o755).expect("Failed to create temporary directory");
-
-        let basename = t.basename().to_string_lossy();
-        let path = env::temp_dir().join(&*basename);
-        mem::drop(t);
-        assert!(!path.exists());
-    }
-
-    #[test]
-    fn temp_dir_into_inner() {
-        let testdir = CString::new(env::temp_dir().into_os_string().into_vec())
-            .expect("env::temp_dir() is not a valid c-string");
-        let fd = unsafe {
-            libc::openat(
-                libc::AT_FDCWD,
-                testdir.as_ptr(),
-                libc::O_PATH | libc::O_CLOEXEC,
-            )
-        };
-        assert!(fd >= 0, "Failed to open env::temp_dir()");
-        let parent = unsafe { File::from_raw_descriptor(fd) };
-        let t = TempDir::new(&parent, 0o755).expect("Failed to create temporary directory");
-
-        let (basename_cstr, _) = t.into_inner();
-        let basename = basename_cstr.to_string_lossy();
-        let path = env::temp_dir().join(&*basename);
-        assert!(path.exists());
-    }
 
     #[test]
     fn rewrite_xattr_names() {
