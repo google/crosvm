@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap as Map;
 
-use base::round_up_to_page_size;
+use base::{round_up_to_page_size, MappedRegion};
 
 use crate::rutabaga_gralloc::formats::*;
 use crate::rutabaga_gralloc::system_gralloc::SystemGralloc;
@@ -89,6 +89,26 @@ impl RutabagaGrallocFlags {
         }
     }
 
+    /// Sets the SW write flag's presence.
+    #[inline(always)]
+    pub fn use_sw_write(self, e: bool) -> RutabagaGrallocFlags {
+        if e {
+            RutabagaGrallocFlags(self.0 | RUTABAGA_GRALLOC_USE_SW_WRITE_OFTEN)
+        } else {
+            RutabagaGrallocFlags(self.0 & !RUTABAGA_GRALLOC_USE_SW_WRITE_OFTEN)
+        }
+    }
+
+    /// Sets the SW read flag's presence.
+    #[inline(always)]
+    pub fn use_sw_read(self, e: bool) -> RutabagaGrallocFlags {
+        if e {
+            RutabagaGrallocFlags(self.0 | RUTABAGA_GRALLOC_USE_SW_READ_OFTEN)
+        } else {
+            RutabagaGrallocFlags(self.0 & !RUTABAGA_GRALLOC_USE_SW_READ_OFTEN)
+        }
+    }
+
     /// Returns true if the texturing flag is set.
     #[inline(always)]
     pub fn uses_texturing(self) -> bool {
@@ -167,6 +187,17 @@ pub trait Gralloc {
     /// Implementations must allocate memory given the requirements and return a RutabagaHandle
     /// upon success.
     fn allocate_memory(&mut self, reqs: ImageMemoryRequirements) -> RutabagaResult<RutabagaHandle>;
+
+    /// Implementations must import the given `handle` and return a mapping, suitable for use with
+    /// KVM and other hypervisors.  This is optional and only works with the Vulkano backend.
+    fn import_and_map(
+        &mut self,
+        _handle: RutabagaHandle,
+        _vulkan_info: VulkanInfo,
+        _size: u64,
+    ) -> RutabagaResult<Box<dyn MappedRegion>> {
+        Err(RutabagaError::Unsupported)
+    }
 }
 
 /// Enumeration of possible allocation backends.
@@ -293,6 +324,22 @@ impl RutabagaGralloc {
 
         gralloc.allocate_memory(reqs)
     }
+
+    /// Imports the `handle` using the given `vulkan_info`.  Returns a mapping using Vulkano upon
+    /// success.  Should not be used with minigbm or system gralloc backends.
+    pub fn import_and_map(
+        &mut self,
+        handle: RutabagaHandle,
+        vulkan_info: VulkanInfo,
+        size: u64,
+    ) -> RutabagaResult<Box<dyn MappedRegion>> {
+        let gralloc = self
+            .grallocs
+            .get_mut(&GrallocBackend::Vulkano)
+            .ok_or(RutabagaError::Unsupported)?;
+
+        gralloc.import_and_map(handle, vulkan_info, size)
+    }
 }
 
 #[cfg(test)]
@@ -362,5 +409,45 @@ mod tests {
 
         // Reallocate with same requirements
         let _handle2 = gralloc.allocate_memory(reqs).unwrap();
+    }
+
+    #[test]
+    fn export_and_map() {
+        let gralloc_result = RutabagaGralloc::new();
+        if gralloc_result.is_err() {
+            return;
+        }
+
+        let mut gralloc = gralloc_result.unwrap();
+
+        let info = ImageAllocationInfo {
+            width: 512,
+            height: 1024,
+            drm_format: DrmFormat::new(b'X', b'R', b'2', b'4'),
+            flags: RutabagaGrallocFlags::empty()
+                .use_linear(true)
+                .use_sw_write(true)
+                .use_sw_read(true),
+        };
+
+        let mut reqs = gralloc.get_image_memory_requirements(info).unwrap();
+
+        // Anything else can use the mmap(..) system call.
+        if reqs.vulkan_info.is_none() {
+            return;
+        }
+
+        let handle = gralloc.allocate_memory(reqs).unwrap();
+        let vulkan_info = reqs.vulkan_info.take().unwrap();
+
+        let mapping = gralloc
+            .import_and_map(handle, vulkan_info, reqs.size)
+            .unwrap();
+
+        let addr = mapping.as_ptr();
+        let size = mapping.size();
+
+        assert_eq!(size as u64, reqs.size);
+        assert_ne!(addr as *const u8, std::ptr::null());
     }
 }

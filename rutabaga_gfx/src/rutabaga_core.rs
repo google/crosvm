@@ -505,8 +505,18 @@ impl Rutabaga {
             .get(&resource_id)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
-        let map_info = resource.map_info.ok_or(RutabagaError::SpecViolation)?;
-        Ok(map_info)
+        resource.map_info.ok_or(RutabagaError::SpecViolation)
+    }
+
+    /// Returns the `vulkan_info` of the blob resource, which consists of the physical device
+    /// index and memory index associated with the resource.
+    pub fn vulkan_info(&self, resource_id: u32) -> RutabagaResult<VulkanInfo> {
+        let resource = self
+            .resources
+            .get(&resource_id)
+            .ok_or(RutabagaError::InvalidResourceId)?;
+
+        resource.vulkan_info.ok_or(RutabagaError::Unsupported)
     }
 
     /// Returns the 3D info associated with the resource, if any.
@@ -516,8 +526,7 @@ impl Rutabaga {
             .get(&resource_id)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
-        let info_3d = resource.info_3d.ok_or(RutabagaError::Unsupported)?;
-        Ok(info_3d)
+        resource.info_3d.ok_or(RutabagaError::Unsupported)
     }
 
     /// Exports a blob resource.  See virtio-gpu spec for blob flag use flags.

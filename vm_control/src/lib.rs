@@ -32,7 +32,10 @@ use base::{
 };
 use hypervisor::{IrqRoute, IrqSource, Vm};
 use resources::{Alloc, MmioType, SystemAllocator};
-use rutabaga_gfx::{DrmFormat, ImageAllocationInfo, RutabagaGralloc, RutabagaGrallocFlags};
+use rutabaga_gfx::{
+    DrmFormat, ImageAllocationInfo, RutabagaGralloc, RutabagaGrallocFlags, RutabagaHandle,
+    VulkanInfo,
+};
 use sync::Mutex;
 use vm_memory::GuestAddress;
 
@@ -263,6 +266,17 @@ pub enum VmMemoryRequest {
     RegisterFdAtPciBarOffset(Alloc, SafeDescriptor, usize, u64),
     /// Similar to RegisterFdAtPciBarOffset, but is for buffers in the current address space.
     RegisterHostPointerAtPciBarOffset(Alloc, u64),
+    /// Similiar to `RegisterFdAtPciBarOffset`, but uses Vulkano to map the resource instead of
+    /// the mmap system call.
+    RegisterVulkanMemoryAtPciBarOffset {
+        alloc: Alloc,
+        descriptor: SafeDescriptor,
+        handle_type: u32,
+        memory_idx: u32,
+        physical_device_idx: u32,
+        offset: u64,
+        size: u64,
+    },
     /// Unregister the given memory slot that was previously registered with `RegisterMemory*`.
     UnregisterMemory(MemSlot),
     /// Allocate GPU buffer of a given size/format and register the memory into guest address space.
@@ -292,14 +306,14 @@ impl VmMemoryRequest {
     /// `VmMemoryResponse` with the intended purpose of sending the response back over the socket
     /// that received this `VmMemoryResponse`.
     pub fn execute(
-        &self,
+        self,
         vm: &mut impl Vm,
         sys_allocator: &mut SystemAllocator,
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
         gralloc: &mut RutabagaGralloc,
     ) -> VmMemoryResponse {
         use self::VmMemoryRequest::*;
-        match *self {
+        match self {
             RegisterMemory(ref shm) => {
                 match register_memory(vm, sys_allocator, shm, shm.size() as usize, None) {
                     Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
@@ -323,7 +337,39 @@ impl VmMemoryRequest {
                     .ok_or_else(|| VmMemoryResponse::Err(SysError::new(EINVAL)))
                     .unwrap();
 
-                match register_memory_hva(vm, sys_allocator, Box::new(mem), (alloc, offset)) {
+                match register_host_pointer(vm, sys_allocator, Box::new(mem), (alloc, offset)) {
+                    Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
+                    Err(e) => VmMemoryResponse::Err(e),
+                }
+            }
+            RegisterVulkanMemoryAtPciBarOffset {
+                alloc,
+                descriptor,
+                handle_type,
+                memory_idx,
+                physical_device_idx,
+                offset,
+                size,
+            } => {
+                let mapped_region = match gralloc.import_and_map(
+                    RutabagaHandle {
+                        os_handle: descriptor,
+                        handle_type,
+                    },
+                    VulkanInfo {
+                        memory_idx,
+                        physical_device_idx,
+                    },
+                    size,
+                ) {
+                    Ok(mapped_region) => mapped_region,
+                    Err(e) => {
+                        error!("gralloc failed to import and map: {}", e);
+                        return VmMemoryResponse::Err(SysError::new(EINVAL));
+                    }
+                };
+
+                match register_host_pointer(vm, sys_allocator, mapped_region, (alloc, offset)) {
                     Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
                     Err(e) => VmMemoryResponse::Err(e),
                 }
@@ -908,7 +954,7 @@ fn register_memory(
     Ok((addr >> 12, slot))
 }
 
-fn register_memory_hva(
+fn register_host_pointer(
     vm: &mut impl Vm,
     allocator: &mut SystemAllocator,
     mem: Box<dyn MappedRegion>,

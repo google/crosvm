@@ -6,6 +6,7 @@
 
 use std::fmt::{self, Display};
 use std::io::Error as IoError;
+use std::num::TryFromIntError;
 use std::os::raw::c_void;
 use std::path::PathBuf;
 use std::str::Utf8Error;
@@ -154,6 +155,8 @@ pub enum RutabagaError {
     SpecViolation,
     /// System error returned as a result of rutabaga library operation.
     SysError(SysError),
+    /// An attempted integer conversion failed.
+    TryFromIntError(TryFromIntError),
     /// The command is unsupported.
     Unsupported,
     /// Utf8 error.
@@ -209,6 +212,7 @@ impl Display for RutabagaError {
             ComponentError(ret) => write!(f, "rutabaga component failed with error {}", ret),
             SpecViolation => write!(f, "violation of the rutabaga spec"),
             SysError(e) => write!(f, "rutabaga received a system error: {}", e),
+            TryFromIntError(e) => write!(f, "int conversion failed: {}", e),
             Unsupported => write!(f, "feature or function unsupported"),
             Utf8Error(e) => write!(f, "an utf8 error occured: {}", e),
             VolatileMemoryError(e) => write!(f, "noticed a volatile memory error {}", e),
@@ -235,6 +239,12 @@ impl From<IoError> for RutabagaError {
 impl From<SysError> for RutabagaError {
     fn from(e: SysError) -> RutabagaError {
         RutabagaError::SysError(e)
+    }
+}
+
+impl From<TryFromIntError> for RutabagaError {
+    fn from(e: TryFromIntError) -> RutabagaError {
+        RutabagaError::TryFromIntError(e)
     }
 }
 
