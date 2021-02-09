@@ -14,7 +14,7 @@ use crate::pci::pci_configuration::{
     PciBarConfiguration, PciBridgeSubclass, PciClassCode, PciConfiguration, PciHeaderType,
 };
 use crate::pci::pci_device::{Error, PciDevice};
-use crate::{BusAccessInfo, BusDevice};
+use crate::{Bus, BusAccessInfo, BusDevice};
 use resources::SystemAllocator;
 
 // A PciDevice that holds the root hub's configuration.
@@ -125,7 +125,12 @@ impl PciAddress {
 }
 
 /// Emulates the PCI Root bridge.
+#[allow(dead_code)] // TODO(b/174705596): remove once mmio_bus and io_bus are used
 pub struct PciRoot {
+    /// Memory (MMIO) bus.
+    mmio_bus: Bus,
+    /// IO bus (x86 only - for non-x86 platforms, this is just an empty Bus).
+    io_bus: Bus,
     /// Bus configuration for the root device.
     root_configuration: PciRootConfiguration,
     /// Devices attached to this bridge.
@@ -137,8 +142,10 @@ const PCI_DEVICE_ID_INTEL_82441: u16 = 0x1237;
 
 impl PciRoot {
     /// Create an empty PCI root bus.
-    pub fn new() -> Self {
+    pub fn new(mmio_bus: Bus, io_bus: Bus) -> Self {
         PciRoot {
+            mmio_bus,
+            io_bus,
             root_configuration: PciRootConfiguration {
                 config: PciConfiguration::new(
                     PCI_VENDOR_ID_INTEL,

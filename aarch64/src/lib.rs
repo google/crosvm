@@ -304,6 +304,9 @@ impl arch::LinuxArch for AArch64 {
 
         let mut mmio_bus = devices::Bus::new();
 
+        // ARM doesn't really use the io bus like x86, so just create an empty bus.
+        let mut io_bus = devices::Bus::new();
+
         // Event used by PMDevice to notify crosvm that
         // guest OS is trying to suspend.
         let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
@@ -312,15 +315,13 @@ impl arch::LinuxArch for AArch64 {
             pci_devices,
             irq_chip.as_irq_chip_mut(),
             &mut mmio_bus,
+            &mut io_bus,
             system_allocator,
             &mut vm,
             (devices::AARCH64_GIC_NR_IRQS - AARCH64_IRQ_BASE) as usize,
         )
         .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigMmio::new(pci)));
-
-        // ARM doesn't really use the io bus like x86, so just create an empty bus.
-        let io_bus = devices::Bus::new();
 
         Self::add_arch_devs(irq_chip.as_irq_chip_mut(), &mut mmio_bus)?;
 

@@ -396,11 +396,13 @@ impl arch::LinuxArch for X8664arch {
         vm.set_tss_addr(tss_addr).map_err(Error::SetTssAddr)?;
 
         let mut mmio_bus = devices::Bus::new();
+        let mut io_bus = devices::Bus::new();
 
         let (pci, pci_irqs, pid_debug_label_map) = arch::generate_pci_root(
             pci_devices,
             irq_chip.as_irq_chip_mut(),
             &mut mmio_bus,
+            &mut io_bus,
             system_allocator,
             &mut vm,
             4, // Share the four pin interrupts (INTx#)
@@ -411,7 +413,8 @@ impl arch::LinuxArch for X8664arch {
         // Event used to notify crosvm that guest OS is trying to suspend.
         let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
 
-        let mut io_bus = Self::setup_io_bus(
+        Self::setup_io_bus(
+            &mut io_bus,
             irq_chip.pit_uses_speaker_port(),
             exit_evt.try_clone().map_err(Error::CloneEvent)?,
             Some(pci_bus),
@@ -948,23 +951,23 @@ impl X8664arch {
     ///
     /// # Arguments
     ///
+    /// * - `io_bus` - the IO bus object
     /// * - `pit_uses_speaker_port` - does the PIT use port 0x61 for the PC speaker
     /// * - `exit_evt` - the event object which should receive exit events
     /// * - `mem_size` - the size in bytes of physical ram for the guest
     fn setup_io_bus(
+        io_bus: &mut devices::Bus,
         pit_uses_speaker_port: bool,
         exit_evt: Event,
         pci: Option<Arc<Mutex<devices::PciConfigIo>>>,
         mem_size: u64,
-    ) -> Result<devices::Bus> {
+    ) -> Result<()> {
         struct NoDevice;
         impl devices::BusDevice for NoDevice {
             fn debug_label(&self) -> String {
                 "no device".to_owned()
             }
         }
-
-        let mut io_bus = devices::Bus::new();
 
         let mem_regions = arch_memory_regions(mem_size, None);
 
@@ -1009,7 +1012,7 @@ impl X8664arch {
             io_bus.insert(nul_device, 0xcf8, 0x8).unwrap();
         }
 
-        Ok(io_bus)
+        Ok(())
     }
 
     /// Sets up the acpi devices for this platform and

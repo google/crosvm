@@ -107,6 +107,7 @@ where
     let mut irq_chip = create_irq_chip(vm.try_clone().expect("failed to clone vm"), 1, device_tube);
 
     let mut mmio_bus = devices::Bus::new();
+    let mut io_bus = devices::Bus::new();
     let exit_evt = Event::new().unwrap();
 
     let mut control_tubes = vec![TaggedControlTube::VmIrq(irqchip_tube)];
@@ -129,6 +130,7 @@ where
         devices,
         &mut irq_chip,
         &mut mmio_bus,
+        &mut io_bus,
         &mut resources,
         &mut vm,
         4,
@@ -136,7 +138,8 @@ where
     .unwrap();
     let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));
 
-    let mut io_bus = X8664arch::setup_io_bus(
+    X8664arch::setup_io_bus(
+        &mut io_bus,
         irq_chip.pit_uses_speaker_port(),
         exit_evt.try_clone().unwrap(),
         Some(pci_bus),

@@ -310,6 +310,7 @@ pub fn generate_pci_root(
     mut devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
     irq_chip: &mut dyn IrqChip,
     mmio_bus: &mut Bus,
+    io_bus: &mut Bus,
     resources: &mut SystemAllocator,
     vm: &mut impl Vm,
     max_irqs: usize,
@@ -321,7 +322,7 @@ pub fn generate_pci_root(
     ),
     DeviceRegistrationError,
 > {
-    let mut root = PciRoot::new();
+    let mut root = PciRoot::new(mmio_bus.clone(), io_bus.clone());
     let mut pci_irqs = Vec::new();
     let mut pid_labels = BTreeMap::new();
 
