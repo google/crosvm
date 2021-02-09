@@ -43,7 +43,10 @@ const AARCH64_GIC_CPUI_SIZE: u64 = 0x20000;
 const AARCH64_PHYS_MEM_START: u64 = 0x80000000;
 const AARCH64_AXI_BASE: u64 = 0x40000000;
 
-const AARCH64_BIOS_OFFSET: u64 = 0x0;
+// FDT is placed at the front of RAM when booting in BIOS mode.
+const AARCH64_FDT_OFFSET_IN_BIOS_MODE: u64 = 0x0;
+// Therefore, the BIOS is placed after the FDT in memory.
+const AARCH64_BIOS_OFFSET: u64 = AARCH64_FDT_MAX_SIZE;
 const AARCH64_BIOS_MAX_LEN: u64 = 1 << 20;
 
 // These constants indicate the placement of the GIC registers in the physical
@@ -193,11 +196,18 @@ pub fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, u64)> {
     vec![(GuestAddress(AARCH64_PHYS_MEM_START), size)]
 }
 
-fn fdt_offset(mem_size: u64) -> u64 {
-    // Put fdt up near the top of memory
-    // TODO(sonnyrao): will have to handle this differently if there's
-    // > 4GB memory
-    mem_size - AARCH64_FDT_MAX_SIZE - 0x10000
+fn fdt_offset(mem_size: u64, has_bios: bool) -> u64 {
+    // TODO(rammuthiah) make kernel and BIOS startup use FDT from the same location. ARCVM startup
+    // currently expects the kernel at 0x80080000 and the FDT at the end of RAM for unknown reasons.
+    // Root cause and figure out how to fold these code paths together.
+    if has_bios {
+        AARCH64_FDT_OFFSET_IN_BIOS_MODE
+    } else {
+        // Put fdt up near the top of memory
+        // TODO(sonnyrao): will have to handle this differently if there's
+        // > 4GB memory
+        mem_size - AARCH64_FDT_MAX_SIZE - 0x10000
+    }
 }
 
 pub struct AArch64;
@@ -357,7 +367,7 @@ impl arch::LinuxArch for AArch64 {
             &mem,
             pci_irqs,
             vcpu_count as u32,
-            fdt_offset(components.memory_size),
+            fdt_offset(components.memory_size, has_bios),
             pci_device_base,
             pci_device_size,
             &CString::new(cmdline).unwrap(),
@@ -503,7 +513,7 @@ impl AArch64 {
 
             /* X0 -- fdt address */
             let mem_size = guest_mem.memory_size();
-            data = (AARCH64_PHYS_MEM_START + fdt_offset(mem_size)) as u64;
+            data = (AARCH64_PHYS_MEM_START + fdt_offset(mem_size, has_bios)) as u64;
             // hack -- can't get this to do offsetof(regs[0]) but luckily it's at offset 0
             reg_id = arm64_core_reg!(regs);
             vcpu.set_one_reg(reg_id, data).map_err(Error::SetReg)?;
