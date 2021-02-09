@@ -115,7 +115,9 @@ impl<F: FileSystem + Sync> Server<F> {
         mapper: M,
     ) -> Result<usize> {
         let in_header = InHeader::from_reader(&mut r).map_err(Error::DecodeMessage)?;
-        if in_header.len > self.fs.max_buffer_size() {
+        if in_header.len
+            > size_of::<InHeader>() as u32 + size_of::<WriteIn>() as u32 + self.fs.max_buffer_size()
+        {
             return reply_error(
                 io::Error::from_raw_os_error(libc::ENOMEM),
                 in_header.unique,
