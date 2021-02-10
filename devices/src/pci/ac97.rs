@@ -18,7 +18,8 @@ use crate::pci::ac97_bus_master::Ac97BusMaster;
 use crate::pci::ac97_mixer::Ac97Mixer;
 use crate::pci::ac97_regs::*;
 use crate::pci::pci_configuration::{
-    PciBarConfiguration, PciClassCode, PciConfiguration, PciHeaderType, PciMultimediaSubclass,
+    PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciClassCode, PciConfiguration,
+    PciHeaderType, PciMultimediaSubclass,
 };
 use crate::pci::pci_device::{self, PciDevice, Result};
 use crate::pci::{PciAddress, PciDeviceError, PciInterruptPin};
@@ -318,10 +319,13 @@ impl PciDevice for Ac97Dev {
                 MIXER_REGS_SIZE,
             )
             .map_err(|e| pci_device::Error::IoAllocationFailed(MIXER_REGS_SIZE, e))?;
-        let mixer_config = PciBarConfiguration::default()
-            .set_register_index(0)
-            .set_address(mixer_regs_addr)
-            .set_size(MIXER_REGS_SIZE);
+        let mixer_config = PciBarConfiguration::new(
+            0,
+            MIXER_REGS_SIZE,
+            PciBarRegionType::Memory32BitRegion,
+            PciBarPrefetchable::NotPrefetchable,
+        )
+        .set_address(mixer_regs_addr);
         self.config_regs
             .add_pci_bar(mixer_config)
             .map_err(|e| pci_device::Error::IoRegistrationFailed(mixer_regs_addr, e))?;
@@ -341,10 +345,13 @@ impl PciDevice for Ac97Dev {
                 MASTER_REGS_SIZE,
             )
             .map_err(|e| pci_device::Error::IoAllocationFailed(MASTER_REGS_SIZE, e))?;
-        let master_config = PciBarConfiguration::default()
-            .set_register_index(1)
-            .set_address(master_regs_addr)
-            .set_size(MASTER_REGS_SIZE);
+        let master_config = PciBarConfiguration::new(
+            1,
+            MASTER_REGS_SIZE,
+            PciBarRegionType::Memory32BitRegion,
+            PciBarPrefetchable::NotPrefetchable,
+        )
+        .set_address(master_regs_addr);
         self.config_regs
             .add_pci_bar(master_config)
             .map_err(|e| pci_device::Error::IoRegistrationFailed(master_regs_addr, e))?;

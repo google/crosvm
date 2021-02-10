@@ -15,9 +15,9 @@ use vm_memory::GuestMemory;
 
 use super::*;
 use crate::pci::{
-    MsixCap, MsixConfig, PciAddress, PciBarConfiguration, PciCapability, PciCapabilityID,
-    PciClassCode, PciConfiguration, PciDevice, PciDeviceError, PciDisplaySubclass, PciHeaderType,
-    PciInterruptPin, PciSubclass,
+    MsixCap, MsixConfig, PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType,
+    PciCapability, PciCapabilityID, PciClassCode, PciConfiguration, PciDevice, PciDeviceError,
+    PciDisplaySubclass, PciHeaderType, PciInterruptPin, PciSubclass,
 };
 
 use self::virtio_pci_common_config::VirtioPciCommonConfig;
@@ -462,10 +462,13 @@ impl PciDevice for VirtioPciDevice {
                 CAPABILITY_BAR_SIZE,
             )
             .map_err(|e| PciDeviceError::IoAllocationFailed(CAPABILITY_BAR_SIZE, e))?;
-        let config = PciBarConfiguration::default()
-            .set_register_index(0)
-            .set_address(settings_config_addr)
-            .set_size(CAPABILITY_BAR_SIZE);
+        let config = PciBarConfiguration::new(
+            0,
+            CAPABILITY_BAR_SIZE,
+            PciBarRegionType::Memory32BitRegion,
+            PciBarPrefetchable::NotPrefetchable,
+        )
+        .set_address(settings_config_addr);
         let settings_bar = self
             .config_regs
             .add_pci_bar(config)
@@ -491,26 +494,26 @@ impl PciDevice for VirtioPciDevice {
             let device_addr = resources
                 .mmio_allocator(MmioType::High)
                 .allocate_with_align(
-                    config.get_size(),
+                    config.size(),
                     Alloc::PciBar {
                         bus: address.bus,
                         dev: address.dev,
                         func: address.func,
-                        bar: config.get_register_index() as u8,
+                        bar: config.bar_index() as u8,
                     },
                     format!(
                         "virtio-{}-custom_bar",
                         type_to_str(self.device.device_type()).unwrap_or("?")
                     ),
-                    config.get_size(),
+                    config.size(),
                 )
-                .map_err(|e| PciDeviceError::IoAllocationFailed(config.get_size(), e))?;
+                .map_err(|e| PciDeviceError::IoAllocationFailed(config.size(), e))?;
             let config = config.set_address(device_addr);
             let _device_bar = self
                 .config_regs
                 .add_pci_bar(config)
                 .map_err(|e| PciDeviceError::IoRegistrationFailed(device_addr, e))?;
-            ranges.push((device_addr, config.get_size()));
+            ranges.push((device_addr, config.size()));
         }
         Ok(ranges)
     }

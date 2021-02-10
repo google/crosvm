@@ -3,8 +3,9 @@
 // found in the LICENSE file.
 
 use crate::pci::{
-    PciAddress, PciBarConfiguration, PciClassCode, PciConfiguration, PciDevice, PciDeviceError,
-    PciHeaderType, PciInterruptPin, PciProgrammingInterface, PciSerialBusSubClass,
+    PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciClassCode,
+    PciConfiguration, PciDevice, PciDeviceError, PciHeaderType, PciInterruptPin,
+    PciProgrammingInterface, PciSerialBusSubClass,
 };
 use crate::register_space::{Register, RegisterSpace};
 use crate::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
@@ -239,10 +240,13 @@ impl PciDevice for XhciController {
                 XHCI_BAR0_SIZE,
             )
             .map_err(|e| PciDeviceError::IoAllocationFailed(XHCI_BAR0_SIZE, e))?;
-        let bar0_config = PciBarConfiguration::default()
-            .set_register_index(0)
-            .set_address(bar0_addr)
-            .set_size(XHCI_BAR0_SIZE);
+        let bar0_config = PciBarConfiguration::new(
+            0,
+            XHCI_BAR0_SIZE,
+            PciBarRegionType::Memory32BitRegion,
+            PciBarPrefetchable::NotPrefetchable,
+        )
+        .set_address(bar0_addr);
         self.config_regs
             .add_pci_bar(bar0_config)
             .map_err(|e| PciDeviceError::IoRegistrationFailed(bar0_addr, e))?;
