@@ -331,6 +331,13 @@ impl RawExecutor {
         task
     }
 
+    fn runs_tasks_on_current_thread(&self) -> bool {
+        let executor_thread = self.thread_id.lock();
+        executor_thread
+            .map(|id| id == thread::current().id())
+            .unwrap_or(false)
+    }
+
     fn run<F: Future>(&self, cx: &mut Context, done: F) -> Result<F::Output> {
         let current_thread = thread::current().id();
         let mut thread_id = self.thread_id.lock();
@@ -790,8 +797,10 @@ impl Future for PendingOperation {
                 self.waker_token = None;
                 Poll::Ready(result.map_err(Error::Io))
             } else {
-                // If we haven't submitted the operation yet, do it now.
-                if !self.submitted {
+                // If we haven't submitted the operation yet, and the executor runs on a different
+                // thread then submit it now. Otherwise the executor will submit it automatically
+                // the next time it calls UringContext::wait.
+                if !self.submitted && !ex.runs_tasks_on_current_thread() {
                     match ex.ctx.submit() {
                         Ok(()) => self.submitted = true,
                         // If the kernel ring is full then wait until some ops are removed from the
