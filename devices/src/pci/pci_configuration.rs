@@ -21,7 +21,10 @@ const BAR_IO_ADDR_MASK: u32 = 0xffff_fffc;
 const BAR_IO_MIN_SIZE: u64 = 4;
 const BAR_MEM_ADDR_MASK: u32 = 0xffff_fff0;
 const BAR_MEM_MIN_SIZE: u64 = 16;
-const NUM_BAR_REGS: usize = 6;
+const BAR_ROM_MIN_SIZE: u64 = 2048;
+pub const NUM_BAR_REGS: usize = 7; // 6 normal BARs + expansion ROM BAR.
+pub const ROM_BAR_IDX: PciBarIndex = 6;
+const ROM_BAR_REG: usize = 12;
 const CAPABILITY_LIST_HEAD_OFFSET: usize = 0x34;
 const FIRST_CAPABILITY_OFFSET: usize = 0x40;
 const CAPABILITY_MAX_OFFSET: usize = 255;
@@ -252,6 +255,7 @@ pub enum Error {
     BarInUse64(PciBarIndex),
     BarInvalid(PciBarIndex),
     BarInvalid64(PciBarIndex),
+    BarInvalidRomType,
     BarSizeInvalid(u64),
     CapabilityEmpty,
     CapabilityLengthInvalid(usize),
@@ -274,8 +278,9 @@ impl Display for Error {
                 f,
                 "64bitbar {} invalid, requires two regs, max {}",
                 b,
-                NUM_BAR_REGS - 1
+                ROM_BAR_IDX - 1
             ),
+            BarInvalidRomType => write!(f, "expansion rom bar must be a memory region"),
             BarSizeInvalid(s) => write!(f, "bar address {} not a power of two", s),
             CapabilityEmpty => write!(f, "empty capabilities are invalid"),
             CapabilityLengthInvalid(l) => write!(f, "Invalid capability length {}", l),
@@ -430,7 +435,13 @@ impl PciConfiguration {
             return Err(Error::BarSizeInvalid(config.size));
         }
 
-        let min_size = if config.region_type == PciBarRegionType::IORegion {
+        if config.is_expansion_rom() && config.region_type != PciBarRegionType::Memory32BitRegion {
+            return Err(Error::BarInvalidRomType);
+        }
+
+        let min_size = if config.is_expansion_rom() {
+            BAR_ROM_MIN_SIZE
+        } else if config.region_type == PciBarRegionType::IORegion {
             BAR_IO_MIN_SIZE
         } else {
             BAR_MEM_MIN_SIZE
@@ -444,7 +455,7 @@ impl PciConfiguration {
             return Err(Error::BarAlignmentInvalid(config.addr, config.size));
         }
 
-        let reg_idx = BAR0_REG + config.bar_idx;
+        let reg_idx = config.reg_index();
         let end_addr = config
             .addr
             .checked_add(config.size)
@@ -456,7 +467,8 @@ impl PciConfiguration {
                 }
             }
             PciBarRegionType::Memory64BitRegion => {
-                if config.bar_idx + 1 >= NUM_BAR_REGS {
+                // The expansion ROM BAR cannot be used for part of a 64-bit BAR.
+                if config.bar_idx + 1 >= ROM_BAR_IDX {
                     return Err(Error::BarInvalid64(config.bar_idx));
                 }
 
@@ -490,6 +502,9 @@ impl PciConfiguration {
 
         self.registers[reg_idx] = ((config.addr as u32) & mask) | lower_bits;
         self.writable_bits[reg_idx] = !(config.size - 1) as u32;
+        if config.is_expansion_rom() {
+            self.writable_bits[reg_idx] |= 1; // Expansion ROM enable bit.
+        }
         self.bar_used[config.bar_idx] = true;
         self.bar_configs[config.bar_idx] = Some(config);
         Ok(config.bar_idx)
@@ -524,7 +539,11 @@ impl PciConfiguration {
 
     /// Returns the address of the given BAR region.
     pub fn get_bar_addr(&self, bar_num: PciBarIndex) -> u64 {
-        let bar_idx = BAR0_REG + bar_num;
+        let bar_idx = if bar_num == ROM_BAR_IDX {
+            ROM_BAR_REG
+        } else {
+            BAR0_REG + bar_num
+        };
 
         let bar_type = match self.get_bar_type(bar_num) {
             Some(t) => t,
@@ -611,6 +630,14 @@ impl PciBarConfiguration {
         self.bar_idx
     }
 
+    pub fn reg_index(&self) -> usize {
+        if self.bar_idx == ROM_BAR_IDX {
+            ROM_BAR_REG
+        } else {
+            BAR0_REG + self.bar_idx
+        }
+    }
+
     pub fn set_address(mut self, addr: u64) -> Self {
         self.addr = addr;
         self
@@ -618,6 +645,10 @@ impl PciBarConfiguration {
 
     pub fn size(&self) -> u64 {
         self.size
+    }
+
+    pub fn is_expansion_rom(&self) -> bool {
+        self.bar_idx == ROM_BAR_IDX
     }
 }
 
@@ -1090,5 +1121,73 @@ mod tests {
             ),
             Err(Error::BarSizeInvalid(0x8))
         );
+    }
+
+    #[test]
+    fn add_rom_bar() {
+        let mut cfg = PciConfiguration::new(
+            0x1234,
+            0x5678,
+            PciClassCode::MultimediaController,
+            &PciMultimediaSubclass::AudioController,
+            Some(&TestPI::Test),
+            PciHeaderType::Device,
+            0xABCD,
+            0x2468,
+            0,
+        );
+
+        // Attempt to add a 64-bit memory BAR as the expansion ROM (invalid).
+        assert_eq!(
+            cfg.add_pci_bar(PciBarConfiguration::new(
+                ROM_BAR_IDX,
+                0x1000,
+                PciBarRegionType::Memory64BitRegion,
+                PciBarPrefetchable::NotPrefetchable,
+            ),),
+            Err(Error::BarInvalidRomType)
+        );
+
+        // Attempt to add an I/O BAR as the expansion ROM (invalid).
+        assert_eq!(
+            cfg.add_pci_bar(PciBarConfiguration::new(
+                ROM_BAR_IDX,
+                0x1000,
+                PciBarRegionType::IORegion,
+                PciBarPrefetchable::NotPrefetchable,
+            ),),
+            Err(Error::BarInvalidRomType)
+        );
+
+        // Attempt to add a 1KB memory region as the expansion ROM (too small).
+        assert_eq!(
+            cfg.add_pci_bar(PciBarConfiguration::new(
+                ROM_BAR_IDX,
+                1024,
+                PciBarRegionType::Memory32BitRegion,
+                PciBarPrefetchable::NotPrefetchable,
+            ),),
+            Err(Error::BarSizeInvalid(1024))
+        );
+
+        // Add a 32-bit memory BAR as the expansion ROM (valid).
+        cfg.add_pci_bar(
+            PciBarConfiguration::new(
+                ROM_BAR_IDX,
+                0x800,
+                PciBarRegionType::Memory32BitRegion,
+                PciBarPrefetchable::NotPrefetchable,
+            )
+            .set_address(0x12345000),
+        )
+        .expect("add_pci_bar failed");
+
+        assert_eq!(
+            cfg.get_bar_type(ROM_BAR_IDX),
+            Some(PciBarRegionType::Memory32BitRegion)
+        );
+        assert_eq!(cfg.get_bar_addr(ROM_BAR_IDX), 0x12345000);
+        assert_eq!(cfg.read_reg(ROM_BAR_REG), 0x12345000);
+        assert_eq!(cfg.writable_bits[ROM_BAR_REG], 0xFFFFF801);
     }
 }
