@@ -126,7 +126,11 @@ mod tests {
         assert_eq!(evt_fd.read(), Ok(1));
     }
 
+    // This test can deadlock occasionally when running in the builders VM. It
+    // is disabled for now.
+    // TODO(b/179924844): Investigate the issue and re-enable
     #[test]
+    #[ignore]
     fn panic_safe() {
         let pid = getpid();
         assert_ne!(pid, 0);

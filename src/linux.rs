@@ -799,13 +799,6 @@ fn create_gpu_device(
 ) -> DeviceResult {
     let jailed_wayland_path = Path::new("/wayland-0");
 
-    let wayland_socket_dirs = cfg
-        .wayland_socket_paths
-        .iter()
-        .map(|(_name, path)| path.parent())
-        .collect::<Option<Vec<_>>>()
-        .ok_or(Error::InvalidWaylandPath)?;
-
     let mut display_backends = vec![
         virtio::DisplayBackend::X(x_display),
         virtio::DisplayBackend::Stub,
