@@ -638,6 +638,10 @@ impl PciBarConfiguration {
         }
     }
 
+    pub fn address(&self) -> u64 {
+        self.addr
+    }
+
     pub fn set_address(mut self, addr: u64) -> Self {
         self.addr = addr;
         self
@@ -649,6 +653,17 @@ impl PciBarConfiguration {
 
     pub fn is_expansion_rom(&self) -> bool {
         self.bar_idx == ROM_BAR_IDX
+    }
+
+    pub fn is_memory(&self) -> bool {
+        matches!(
+            self.region_type,
+            PciBarRegionType::Memory32BitRegion | PciBarRegionType::Memory64BitRegion
+        )
+    }
+
+    pub fn is_io(&self) -> bool {
+        self.region_type == PciBarRegionType::IORegion
     }
 }
 
