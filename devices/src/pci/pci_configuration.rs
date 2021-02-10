@@ -519,7 +519,8 @@ impl PciConfiguration {
         }
     }
 
-    fn get_bar_configuration(&self, bar_num: PciBarIndex) -> Option<PciBarConfiguration> {
+    /// Returns the configuration of a base address register, if present.
+    pub fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
         let config = self.bar_configs.get(bar_num)?;
 
         if let Some(mut config) = config {

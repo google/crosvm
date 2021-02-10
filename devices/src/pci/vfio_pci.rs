@@ -523,16 +523,6 @@ impl VfioPciDevice {
         None
     }
 
-    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
-        for region in self.mmio_regions.iter().chain(self.io_regions.iter()) {
-            if region.bar_index() == bar_num {
-                return Some(*region);
-            }
-        }
-
-        None
-    }
-
     fn enable_intx(&mut self) {
         if self.interrupt_evt.is_none() || self.interrupt_resample_evt.is_none() {
             return;
@@ -971,6 +961,16 @@ impl PciDevice for VfioPciDevice {
         }
 
         Ok(ranges)
+    }
+
+    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
+        for region in self.mmio_regions.iter().chain(self.io_regions.iter()) {
+            if region.bar_index() == bar_num {
+                return Some(*region);
+            }
+        }
+
+        None
     }
 
     fn register_device_capabilities(&mut self) -> Result<(), PciDeviceError> {

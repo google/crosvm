@@ -518,6 +518,10 @@ impl PciDevice for VirtioPciDevice {
         Ok(ranges)
     }
 
+    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
+        self.config_regs.get_bar_configuration(bar_num)
+    }
+
     fn register_device_capabilities(&mut self) -> std::result::Result<(), PciDeviceError> {
         for cap in self.device.get_device_caps() {
             self.config_regs

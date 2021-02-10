@@ -11,7 +11,7 @@ use base::RawDescriptor;
 use sync::Mutex;
 
 use crate::pci::pci_configuration::{
-    PciBridgeSubclass, PciClassCode, PciConfiguration, PciHeaderType,
+    PciBarConfiguration, PciBridgeSubclass, PciClassCode, PciConfiguration, PciHeaderType,
 };
 use crate::pci::pci_device::{Error, PciDevice};
 use crate::{BusAccessInfo, BusDevice};
@@ -48,6 +48,10 @@ impl PciDevice for PciRootConfiguration {
     fn read_bar(&mut self, _addr: u64, _data: &mut [u8]) {}
 
     fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
+
+    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
+        self.config.get_bar_configuration(bar_num)
+    }
 }
 
 /// PCI Device Address, AKA Bus:Device.Function

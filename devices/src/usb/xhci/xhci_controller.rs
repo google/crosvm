@@ -253,6 +253,10 @@ impl PciDevice for XhciController {
         Ok(vec![(bar0_addr, XHCI_BAR0_SIZE)])
     }
 
+    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
+        self.config_regs.get_bar_configuration(bar_num)
+    }
+
     fn read_config_register(&self, reg_idx: usize) -> u32 {
         self.config_regs.read_reg(reg_idx)
     }
