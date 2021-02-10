@@ -18,6 +18,7 @@ use base::{FileReadWriteAtVolatile, FileReadWriteVolatile};
 use cros_async::MemRegion;
 use data_model::{DataInit, Le16, Le32, Le64, VolatileMemoryError, VolatileSlice};
 use disk::AsyncDisk;
+use smallvec::SmallVec;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::DescriptorChain;
@@ -56,7 +57,7 @@ impl std::error::Error for Error {}
 
 #[derive(Clone)]
 struct DescriptorChainRegions {
-    regions: Vec<MemRegion>,
+    regions: SmallVec<[MemRegion; 16]>,
     current: usize,
     bytes_consumed: usize,
 }
@@ -87,7 +88,7 @@ impl DescriptorChainRegions {
     /// `GuestMemory`. Calling this function does not consume any bytes from the `DescriptorChain`.
     /// Instead callers should use the `consume` method to advance the `DescriptorChain`. Multiple
     /// calls to `get` with no intervening calls to `consume` will return the same data.
-    fn get_remaining<'mem>(&self, mem: &'mem GuestMemory) -> Vec<VolatileSlice<'mem>> {
+    fn get_remaining<'mem>(&self, mem: &'mem GuestMemory) -> SmallVec<[VolatileSlice<'mem>; 16]> {
         self.get_remaining_regions()
             .iter()
             .filter_map(|region| {
@@ -134,7 +135,7 @@ impl DescriptorChainRegions {
         &self,
         mem: &'mem GuestMemory,
         count: usize,
-    ) -> Vec<VolatileSlice<'mem>> {
+    ) -> SmallVec<[VolatileSlice<'mem>; 16]> {
         self.get_remaining_regions_with_count(count)
             .iter()
             .filter_map(|region| {
@@ -259,7 +260,7 @@ impl Reader {
                     len: desc.len.try_into().expect("u32 doesn't fit in usize"),
                 })
             })
-            .collect::<Result<Vec<MemRegion>>>()?;
+            .collect::<Result<SmallVec<[MemRegion; 16]>>>()?;
         Ok(Reader {
             mem,
             regions: DescriptorChainRegions {
@@ -442,7 +443,7 @@ impl Reader {
     /// Returns a `&[VolatileSlice]` that represents all the remaining data in this `Reader`.
     /// Calling this method does not actually consume any data from the `Reader` and callers should
     /// call `consume` to advance the `Reader`.
-    pub fn get_remaining(&self) -> Vec<VolatileSlice> {
+    pub fn get_remaining(&self) -> SmallVec<[VolatileSlice; 16]> {
         self.regions.get_remaining(&self.mem)
     }
 
@@ -527,7 +528,7 @@ impl Writer {
                     len: desc.len.try_into().expect("u32 doesn't fit in usize"),
                 })
             })
-            .collect::<Result<Vec<MemRegion>>>()?;
+            .collect::<Result<SmallVec<[MemRegion; 16]>>>()?;
         Ok(Writer {
             mem,
             regions: DescriptorChainRegions {

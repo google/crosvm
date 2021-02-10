@@ -6,6 +6,7 @@ use std::os::unix::io::AsRawFd;
 use std::time::Duration;
 
 use crate::{wrap_descriptor, AsRawDescriptor, RawDescriptor, Result};
+use smallvec::SmallVec;
 use sys_util::{PollContext, PollToken, WatchingEvents};
 
 // Typedef PollToken as EventToken for better adherance to base naming.
@@ -124,23 +125,22 @@ impl<T: EventToken> WaitContext<T> {
     }
 
     /// Waits for one or more of the registered triggers to become signaled.
-    pub fn wait(&self) -> Result<Vec<TriggeredEvent<T>>> {
+    pub fn wait(&self) -> Result<SmallVec<[TriggeredEvent<T>; 16]>> {
         self.wait_timeout(Duration::new(i64::MAX as u64, 0))
     }
     /// Waits for one or more of the registered triggers to become signaled, failing if no triggers
     /// are signaled before the designated timeout has elapsed.
-    pub fn wait_timeout(&self, timeout: Duration) -> Result<Vec<TriggeredEvent<T>>> {
+    pub fn wait_timeout(&self, timeout: Duration) -> Result<SmallVec<[TriggeredEvent<T>; 16]>> {
         let events = self.0.wait_timeout(timeout)?;
-        let mut return_vec: Vec<TriggeredEvent<T>> = vec![];
-        for event in events.iter() {
-            return_vec.push(TriggeredEvent {
+        Ok(events
+            .iter()
+            .map(|event| TriggeredEvent {
                 token: event.token(),
                 is_readable: event.readable(),
                 is_writable: event.writable(),
                 is_hungup: event.hungup(),
-            });
-        }
-        Ok(return_vec)
+            })
+            .collect())
     }
 }
 

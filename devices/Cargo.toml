@@ -44,6 +44,7 @@ rand_ish = { path = "../rand_ish" }
 remain = "*"
 resources = { path = "../resources" }
 serde = { version = "1", features = [ "derive" ] }
+smallvec = "1.6.1"
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
 syscall_defines = { path = "../syscall_defines" }

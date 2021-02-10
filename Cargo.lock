@@ -111,6 +111,7 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+ "smallvec",
  "sync",
  "sys_util",
  "thiserror",
@@ -317,6 +318,7 @@ dependencies = [
  "resources",
  "rutabaga_gfx",
  "serde",
+ "smallvec",
  "sync",
  "sys_util",
  "syscall_defines",
@@ -1030,6 +1032,12 @@ name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c111b5bd5695e56cffe5129854aa230b39c93a305372fdbb2668ca2394eea9f8"
+
+[[package]]
+name = "smallvec"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
 
 [[package]]
 name = "syn"

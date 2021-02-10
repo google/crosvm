@@ -13,6 +13,7 @@ data_model = { path = "../data_model" }
 libc = "*"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "*"
+smallvec = "1.6.1"
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
 thiserror = "1.0.20"
