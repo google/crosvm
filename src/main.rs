@@ -30,7 +30,7 @@ use base::{
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
     platform, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
-    VhostUserOption, DISK_ID_LEN,
+    VhostUserFsOption, VhostUserOption, DISK_ID_LEN,
 };
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{GpuMode, GpuParameters};
@@ -1591,6 +1591,28 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "vhost-user-net" => cfg.vhost_user_net.push(VhostUserOption {
             socket: PathBuf::from(value.unwrap()),
         }),
+        "vhost-user-fs" => {
+            // (socket:tag)
+            let param = value.unwrap();
+            let mut components = param.split(':');
+            let socket =
+                PathBuf::from(
+                    components
+                        .next()
+                        .ok_or_else(|| argument::Error::InvalidValue {
+                            value: param.to_owned(),
+                            expected: String::from("missing socket path for `vhost-user-fs`"),
+                        })?,
+                );
+            let tag = components
+                .next()
+                .ok_or_else(|| argument::Error::InvalidValue {
+                    value: param.to_owned(),
+                    expected: String::from("missing tag for `vhost-user-fs`"),
+                })?
+                .to_owned();
+            cfg.vhost_user_fs.push(VhostUserFsOption { socket, tag });
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -1802,6 +1824,8 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           Argument::value("balloon_bias_mib", "N", "Amount to bias balance of memory between host and guest as the balloon inflates, in MiB."),
           Argument::value("vhost-user-blk", "SOCKET_PATH", "Path to a socket for vhost-user block"),
           Argument::value("vhost-user-net", "SOCKET_PATH", "Path to a socket for vhost-user net"),
+          Argument::value("vhost-user-fs", "SOCKET_PATH:TAG",
+                          "Path to a socket path for vhost-user fs, and tag for the shared dir"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

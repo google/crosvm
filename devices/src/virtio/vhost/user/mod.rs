@@ -3,11 +3,13 @@
 // found in the LICENSE file.
 
 mod block;
+mod fs;
 mod handler;
 mod net;
 mod worker;
 
 pub use self::block::*;
+pub use self::fs::*;
 pub use self::net::*;
 
 use remain::sorted;
@@ -91,6 +93,9 @@ pub enum Error {
     /// Failed to connect socket.
     #[error("failed to connect socket: {0}")]
     SocketConnect(std::io::Error),
+    /// The tag for the Fs device was too long to fit in the config space.
+    #[error("tag is too long: {len} > {max}")]
+    TagTooLong { len: usize, max: usize },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

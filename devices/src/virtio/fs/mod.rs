@@ -34,7 +34,7 @@ use passthrough::PassthroughFs;
 use worker::Worker;
 
 // The fs device does not have a fixed number of queues.
-const QUEUE_SIZE: u16 = 1024;
+pub const QUEUE_SIZE: u16 = 1024;
 
 const FS_BAR_NUM: u8 = 4;
 const FS_BAR_OFFSET: u64 = 0;
@@ -49,15 +49,15 @@ pub const FS_MAX_TAG_LEN: usize = 36;
 /// kernel/include/uapi/linux/virtio_fs.h
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
-struct Config {
+pub(crate) struct virtio_fs_config {
     /// Filesystem name (UTF-8, not NUL-terminated, padded with NULs)
-    tag: [u8; FS_MAX_TAG_LEN],
+    pub tag: [u8; FS_MAX_TAG_LEN],
     /// Number of request queues
-    num_queues: Le32,
+    pub num_request_queues: Le32,
 }
 
 // Safe because all members are plain old data and any value is valid.
-unsafe impl DataInit for Config {}
+unsafe impl DataInit for virtio_fs_config {}
 
 /// Errors that may occur during the creation or operation of an Fs device.
 #[derive(Debug)]
@@ -127,7 +127,7 @@ impl fmt::Display for Error {
 pub type Result<T> = ::std::result::Result<T, Error>;
 
 pub struct Fs {
-    cfg: Config,
+    cfg: virtio_fs_config,
     fs: Option<PassthroughFs>,
     queue_sizes: Box<[u16]>,
     avail_features: u64,
@@ -152,9 +152,9 @@ impl Fs {
         let mut cfg_tag = [0u8; FS_MAX_TAG_LEN];
         cfg_tag[..tag.len()].copy_from_slice(tag.as_bytes());
 
-        let cfg = Config {
+        let cfg = virtio_fs_config {
             tag: cfg_tag,
-            num_queues: Le32::from(num_workers as u32),
+            num_request_queues: Le32::from(num_workers as u32),
         };
 
         let fs = PassthroughFs::new(fs_cfg).map_err(Error::CreateFs)?;

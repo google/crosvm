@@ -34,7 +34,7 @@ use acpi_tables::sdt::SDT;
 
 use base::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 use devices::virtio::vhost::user::{
-    Block as VhostUserBlock, Error as VhostUserError, Net as VhostUserNet,
+    Block as VhostUserBlock, Error as VhostUserError, Fs as VhostUserFs, Net as VhostUserNet,
 };
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
@@ -80,7 +80,8 @@ use vm_memory::{GuestAddress, GuestMemory};
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use crate::gdb::{gdb_thread, GdbStub};
 use crate::{
-    Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption, VhostUserOption,
+    Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption, VhostUserFsOption,
+    VhostUserOption,
 };
 use arch::{
     self, LinuxArch, RunnableLinuxVm, SerialHardware, SerialParameters, VcpuAffinity,
@@ -195,6 +196,7 @@ pub enum Error {
     ValidateRawDescriptor(base::Error),
     VhostNetDeviceNew(virtio::vhost::Error),
     VhostUserBlockDeviceNew(VhostUserError),
+    VhostUserFsDeviceNew(VhostUserError),
     VhostUserNetDeviceNew(VhostUserError),
     VhostUserNetWithNetArgs,
     VhostVsockDeviceNew(virtio::vhost::Error),
@@ -319,6 +321,9 @@ impl Display for Error {
             VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {}", e),
             VhostUserBlockDeviceNew(e) => {
                 write!(f, "failed to set up vhost-user block device: {}", e)
+            }
+            VhostUserFsDeviceNew(e) => {
+                write!(f, "failed to set up vhost-user fs device: {}", e)
             }
             VhostUserNetDeviceNew(e) => {
                 write!(f, "failed to set up vhost-user net device: {}", e)
@@ -560,6 +565,21 @@ fn create_block_device(
 fn create_vhost_user_block_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
     let dev = VhostUserBlock::new(virtio::base_features(cfg.protected_vm), &opt.socket)
         .map_err(Error::VhostUserBlockDeviceNew)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        // no sandbox here because virtqueue handling is exported to a different process.
+        jail: None,
+    })
+}
+
+fn create_vhost_user_fs_device(cfg: &Config, option: &VhostUserFsOption) -> DeviceResult {
+    let dev = VhostUserFs::new(
+        virtio::base_features(cfg.protected_vm),
+        &option.socket,
+        &option.tag,
+    )
+    .map_err(Error::VhostUserFsDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1572,6 +1592,10 @@ fn create_virtio_devices(
 
     if let Some(cid) = cfg.cid {
         devs.push(create_vhost_vsock_device(cfg, cid, mem)?);
+    }
+
+    for vhost_user_fs in &cfg.vhost_user_fs {
+        devs.push(create_vhost_user_fs_device(cfg, &vhost_user_fs)?);
     }
 
     for shared_dir in &cfg.shared_dirs {
