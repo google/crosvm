@@ -119,9 +119,6 @@ impl Worker {
                 tag,
                 response: cmd_result,
             } = async_response;
-            let destroy_desc = desc_map
-                .remove(&tag)
-                .ok_or(Error::UnexpectedResponse(tag))?;
             let destroy_response = match cmd_result {
                 Ok(r) => r,
                 Err(e) => {
@@ -129,7 +126,12 @@ impl Worker {
                     e.into()
                 }
             };
-            responses.push_back((destroy_desc, destroy_response));
+            match desc_map.remove(&tag) {
+                Some(destroy_desc) => {
+                    responses.push_back((destroy_desc, destroy_response));
+                }
+                None => error!("dropping response for an untracked command: {:?}", tag),
+            }
         }
 
         // Process the command by the device.
@@ -207,7 +209,9 @@ impl Worker {
                                 AsyncCmdTag::Drain { stream_id: _ } => {
                                     info!("ignoring unknown drain response");
                                 }
-                                _ => return Err(Error::UnexpectedResponse(tag)),
+                                _ => {
+                                    error!("dropping response for an untracked command: {:?}", tag);
+                                }
                             },
                         }
                     }
