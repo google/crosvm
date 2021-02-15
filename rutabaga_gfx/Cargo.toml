@@ -17,5 +17,4 @@ vulkano = []
 data_model = { path = "../data_model" }
 libc = "*"
 base = { path = "../base" }
-sync = { path = "../sync" }
 #vulkano = {git = "https:/github.com/vulkano-rs/vulkano.git", optional = true}

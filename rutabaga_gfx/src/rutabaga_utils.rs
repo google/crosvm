@@ -6,7 +6,6 @@
 
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::Error as IoError;
 use std::os::raw::c_void;
 use std::path::PathBuf;
 use std::str::Utf8Error;
@@ -25,7 +24,6 @@ use vulkano::memory::DeviceMemoryAllocError;
 
 /// Represents a buffer.  `base` contains the address of a buffer, while `len` contains the length
 /// of the buffer.
-#[derive(Copy, Clone)]
 pub struct RutabagaIovec {
     pub base: *mut c_void,
     pub len: usize,
@@ -68,7 +66,7 @@ pub struct ResourceCreateBlob {
 
 /// Metadata associated with a swapchain, video or camera image.
 #[derive(Default, Copy, Clone, Debug)]
-pub struct Resource3DInfo {
+pub struct Resource3DMetadata {
     pub width: u32,
     pub height: u32,
     pub drm_fourcc: u32,
@@ -131,8 +129,6 @@ pub enum RutabagaError {
     },
     /// The Rutabaga component failed to export a RutabagaHandle.
     ExportedRutabagaHandle,
-    /// Invalid Capset
-    InvalidCapset,
     /// A command size was submitted that was invalid.
     InvalidCommandSize(usize),
     /// Invalid RutabagaComponent
@@ -145,10 +141,10 @@ pub enum RutabagaError {
     InvalidResourceId,
     /// Indicates an error in the RutabagaBuilder.
     InvalidRutabagaBuild,
-    /// An input/output error occured.
-    IoError(IoError),
     /// The mapping failed.
     MappingFailed(ExternalMappingError),
+    /// Memory copy failure.
+    MemCopy(VolatileMemoryError),
     /// An internal Rutabaga component error was returned.
     ComponentError(i32),
     /// Violation of the Rutabaga spec occured.
@@ -159,8 +155,6 @@ pub enum RutabagaError {
     Unsupported,
     /// Utf8 error.
     Utf8Error(Utf8Error),
-    /// Volatile memory error
-    VolatileMemoryError(VolatileMemoryError),
     /// Image creation error
     #[cfg(feature = "vulkano")]
     VkImageCreationError(ImageCreationError),
@@ -198,21 +192,19 @@ impl Display for RutabagaError {
                 label1, value1, label2, value2
             ),
             ExportedRutabagaHandle => write!(f, "failed to export Rutabaga handle"),
-            InvalidCapset => write!(f, "invalid capset"),
             InvalidCommandSize(s) => write!(f, "command buffer submitted with invalid size: {}", s),
             InvalidComponent => write!(f, "invalid rutabaga component"),
             InvalidContextId => write!(f, "invalid context id"),
             InvalidIovec => write!(f, "an iovec is outside of guest memory's range"),
             InvalidResourceId => write!(f, "invalid resource id"),
             InvalidRutabagaBuild => write!(f, "invalid rutabaga build parameters"),
-            IoError(e) => write!(f, "an input/output error occur: {}", e),
             MappingFailed(s) => write!(f, "The mapping failed for the following reason: {}", s),
+            MemCopy(e) => write!(f, "{}", e),
             ComponentError(ret) => write!(f, "rutabaga component failed with error {}", ret),
             SpecViolation => write!(f, "violation of the rutabaga spec"),
             SysError(e) => write!(f, "rutabaga received a system error: {}", e),
             Unsupported => write!(f, "feature or function unsupported"),
             Utf8Error(e) => write!(f, "an utf8 error occured: {}", e),
-            VolatileMemoryError(e) => write!(f, "noticed a volatile memory error {}", e),
             #[cfg(feature = "vulkano")]
             VkDeviceCreationError(e) => write!(f, "vulkano device creation failure {}", e),
             #[cfg(feature = "vulkano")]
@@ -227,12 +219,6 @@ impl Display for RutabagaError {
     }
 }
 
-impl From<IoError> for RutabagaError {
-    fn from(e: IoError) -> RutabagaError {
-        RutabagaError::IoError(e)
-    }
-}
-
 impl From<SysError> for RutabagaError {
     fn from(e: SysError) -> RutabagaError {
         RutabagaError::SysError(e)
@@ -242,12 +228,6 @@ impl From<SysError> for RutabagaError {
 impl From<Utf8Error> for RutabagaError {
     fn from(e: Utf8Error) -> RutabagaError {
         RutabagaError::Utf8Error(e)
-    }
-}
-
-impl From<VolatileMemoryError> for RutabagaError {
-    fn from(e: VolatileMemoryError) -> RutabagaError {
-        RutabagaError::VolatileMemoryError(e)
     }
 }
 
@@ -438,9 +418,8 @@ pub const RUTABAGA_CHANNEL_TYPE_CAMERA: u32 = 0x0002;
 
 /// Information needed to open an OS-specific RutabagaConnection (TBD).  Only Linux hosts are
 /// considered at the moment.
-#[derive(Clone)]
 pub struct RutabagaChannel {
-    pub base_channel: PathBuf,
+    pub channel: PathBuf,
     pub channel_type: u32,
 }
 

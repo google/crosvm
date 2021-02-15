@@ -5,7 +5,6 @@
 //! A crate for handling 2D and 3D virtio-gpu hypercalls, along with graphics
 //! swapchain allocation and mapping.
 
-mod cross_domain;
 mod generated;
 mod gfxstream;
 #[macro_use]

@@ -118,7 +118,9 @@ impl Gralloc for MinigbmDevice {
         }
 
         let mut fd = gbm_buffer.export()?;
-        let size = fd.seek(SeekFrom::End(0))?;
+        let size = fd
+            .seek(SeekFrom::End(0))
+            .map_err(|_| RutabagaError::Unsupported)?;
 
         // minigbm does have the ability to query image requirements without allocating memory
         // via the TEST_ALLOC flag.  However, support has only been added in i915.  Until this
