@@ -10,10 +10,10 @@ use remain::sorted;
 use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
 use thiserror::Error;
 
-use crate::bus::{BusDeviceObj, ConfigWriteResult};
+use crate::bus::{BusDeviceObj, BusRange, BusType, ConfigWriteResult};
 use crate::pci::pci_configuration::{
     self, PciBarConfiguration, COMMAND_REG, COMMAND_REG_IO_SPACE_MASK,
-    COMMAND_REG_MEMORY_SPACE_MASK,
+    COMMAND_REG_MEMORY_SPACE_MASK, NUM_BAR_REGS,
 };
 use crate::pci::{PciAddress, PciInterruptPin};
 #[cfg(feature = "audio")]
@@ -189,6 +189,27 @@ impl<T: PciDevice> BusDevice for T {
 
     fn on_sandboxed(&mut self) {
         self.on_device_sandboxed();
+    }
+
+    fn get_ranges(&self) -> Vec<(BusRange, BusType)> {
+        let mut ranges = Vec::new();
+        for bar_num in 0..NUM_BAR_REGS {
+            if let Some(bar) = self.get_bar_configuration(bar_num) {
+                let bus_type = if bar.is_memory() {
+                    BusType::Mmio
+                } else {
+                    BusType::Io
+                };
+                ranges.push((
+                    BusRange {
+                        base: bar.address(),
+                        len: bar.size(),
+                    },
+                    bus_type,
+                ));
+            }
+        }
+        ranges
     }
 }
 

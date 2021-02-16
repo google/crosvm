@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::bus::ConfigWriteResult;
-use crate::{BusAccessInfo, BusDevice};
+use crate::{BusAccessInfo, BusDevice, BusRange, BusType};
 
 /// Errors for proxy devices.
 #[sorted]
@@ -50,6 +50,7 @@ enum Command {
         data: [u8; 4],
     },
     Shutdown,
+    GetRanges,
 }
 #[derive(Debug, Serialize, Deserialize)]
 enum CommandResult {
@@ -60,6 +61,7 @@ enum CommandResult {
         mem_bus_new_state: Option<bool>,
         io_bus_new_state: Option<bool>,
     },
+    GetRangesResult(Vec<(BusRange, BusType)>),
 }
 
 fn child_proc<D: BusDevice>(tube: Tube, device: &mut D) {
@@ -107,6 +109,10 @@ fn child_proc<D: BusDevice>(tube: Tube, device: &mut D) {
             Command::Shutdown => {
                 running = false;
                 tube.send(&CommandResult::Ok)
+            }
+            Command::GetRanges => {
+                let ranges = device.get_ranges();
+                tube.send(&CommandResult::GetRangesResult(ranges))
             }
         };
         if let Err(e) = res {
@@ -284,6 +290,14 @@ impl BusDevice for ProxyDevice {
             info,
             data: buffer,
         });
+    }
+
+    fn get_ranges(&self) -> Vec<(BusRange, BusType)> {
+        if let Some(CommandResult::GetRangesResult(ranges)) = self.sync_send(&Command::GetRanges) {
+            ranges
+        } else {
+            Default::default()
+        }
     }
 }
 

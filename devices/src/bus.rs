@@ -54,6 +54,12 @@ pub struct ConfigWriteResult {
     pub io_bus_new_state: Option<bool>,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum BusType {
+    Mmio,
+    Io,
+}
+
 /// Trait for devices that respond to reads or writes in an arbitrary address space.
 ///
 /// The device does not care where it exists in address space as each method is only given an offset
@@ -86,6 +92,11 @@ pub trait BusDevice: Send {
     }
     /// Invoked when the device is sandboxed.
     fn on_sandboxed(&mut self) {}
+
+    /// Gets a list of all ranges registered by this BusDevice.
+    fn get_ranges(&self) -> Vec<(BusRange, BusType)> {
+        Vec::new()
+    }
 }
 
 pub trait BusDeviceSync: BusDevice + Sync {
@@ -163,7 +174,7 @@ pub type Result<T> = result::Result<T, Error>;
 ///
 /// * base - The address at which the range start.
 /// * len - The length of the range in bytes.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct BusRange {
     pub base: u64,
     pub len: u64,
