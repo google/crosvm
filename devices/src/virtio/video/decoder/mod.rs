@@ -61,6 +61,9 @@ struct InputResources {
 
     // InputResourceId -> ResourceHandle
     res_id_to_res_handle: BTreeMap<InputResourceId, ResourceHandle>,
+
+    // InputResourceId -> data offset
+    res_id_to_offset: BTreeMap<InputResourceId, u32>,
 }
 
 #[derive(Default)]
@@ -425,6 +428,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         stream_id: StreamId,
         queue_type: QueueType,
         resource_id: ResourceId,
+        plane_offsets: Vec<u32>,
         uuid: u128,
     ) -> VideoResult<()> {
         let ctx = self.contexts.get_mut(&stream_id)?;
@@ -443,6 +447,9 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         ctx.register_buffer(queue_type, resource_id, &uuid);
 
         if queue_type == QueueType::Input {
+            ctx.in_res
+                .res_id_to_offset
+                .insert(resource_id, plane_offsets.get(0).copied().unwrap_or(0));
             return Ok(());
         };
 
@@ -516,6 +523,14 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             );
         }
 
+        let offset = match ctx.in_res.res_id_to_offset.get(&resource_id) {
+            Some(offset) => *offset,
+            None => {
+                error!("Failed to find offset for {}", resource_id);
+                0
+            }
+        };
+
         // While the virtio-video driver handles timestamps as nanoseconds,
         // Chrome assumes per-second timestamps coming. So, we need a conversion from nsec
         // to sec.
@@ -525,8 +540,8 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         let ts_sec: i32 = (timestamp / 1_000_000_000) as i32;
         session.decode(
             ts_sec,
-            fd,            // fd
-            0,             // offset is always 0 due to the driver implementation.
+            fd,
+            offset,
             data_sizes[0], // bytes_used
         )
     }
@@ -739,11 +754,17 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 stream_id,
                 queue_type,
                 resource_id,
+                plane_offsets,
                 uuid,
-                // ignore `plane_offsets` as we use `resource_info` given by `resource_bridge` instead.
-                ..
             } => {
-                self.create_resource(wait_ctx, stream_id, queue_type, resource_id, uuid)?;
+                self.create_resource(
+                    wait_ctx,
+                    stream_id,
+                    queue_type,
+                    resource_id,
+                    plane_offsets,
+                    uuid,
+                )?;
                 Ok(Sync(CmdResponse::NoData))
             }
             ResourceDestroyAll {
