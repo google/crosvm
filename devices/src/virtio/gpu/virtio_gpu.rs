@@ -121,7 +121,10 @@ impl VirtioGpu {
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
         external_blob: bool,
     ) -> Option<VirtioGpu> {
-        let rutabaga = rutabaga_builder.build().ok()?;
+        let rutabaga = rutabaga_builder
+            .build()
+            .map_err(|e| error!("failed to build rutabaga {}", e))
+            .ok()?;
         let mut virtio_gpu = VirtioGpu {
             display: Rc::new(RefCell::new(display)),
             display_width,

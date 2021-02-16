@@ -6,7 +6,7 @@ mod protocol;
 mod virtio_gpu;
 
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::convert::TryFrom;
 use std::i64;
 use std::io::Read;
@@ -29,8 +29,9 @@ pub use gpu_display::EventDevice;
 use gpu_display::*;
 use rutabaga_gfx::{
     DrmFormat, GfxstreamFlags, ResourceCreate3D, ResourceCreateBlob, RutabagaBuilder,
-    RutabagaComponentType, RutabagaFenceData, Transfer3D, VirglRendererFlags,
-    RUTABAGA_PIPE_BIND_RENDER_TARGET, RUTABAGA_PIPE_TEXTURE_2D,
+    RutabagaChannel, RutabagaComponentType, RutabagaFenceData, Transfer3D, VirglRendererFlags,
+    RUTABAGA_CHANNEL_TYPE_CAMERA, RUTABAGA_CHANNEL_TYPE_WAYLAND, RUTABAGA_PIPE_BIND_RENDER_TARGET,
+    RUTABAGA_PIPE_TEXTURE_2D,
 };
 
 use msg_socket::{MsgReceiver, MsgSender};
@@ -873,7 +874,7 @@ pub struct Gpu {
     display_backends: Vec<DisplayBackend>,
     display_width: u32,
     display_height: u32,
-    rutabaga_builder: RutabagaBuilder,
+    rutabaga_builder: Option<RutabagaBuilder>,
     pci_bar: Option<Alloc>,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     external_blob: bool,
@@ -893,6 +894,7 @@ impl Gpu {
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
         external_blob: bool,
         base_features: u64,
+        channels: BTreeMap<String, PathBuf>,
     ) -> Gpu {
         let virglrenderer_flags = VirglRendererFlags::new()
             .use_egl(gpu_parameters.renderer_use_egl)
@@ -909,6 +911,22 @@ impl Gpu {
             .use_syncfd(gpu_parameters.gfxstream_use_syncfd)
             .support_vulkan(gpu_parameters.gfxstream_support_vulkan);
 
+        let mut rutabaga_channels: Vec<RutabagaChannel> = Vec::new();
+        for (channel_name, path) in &channels {
+            match &channel_name[..] {
+                "" => rutabaga_channels.push(RutabagaChannel {
+                    base_channel: path.clone(),
+                    channel_type: RUTABAGA_CHANNEL_TYPE_WAYLAND,
+                }),
+                "mojo" => rutabaga_channels.push(RutabagaChannel {
+                    base_channel: path.clone(),
+                    channel_type: RUTABAGA_CHANNEL_TYPE_CAMERA,
+                }),
+                _ => error!("unknown rutabaga channel"),
+            }
+        }
+
+        let rutabaga_channels_opt = Some(rutabaga_channels);
         let component = match gpu_parameters.mode {
             GpuMode::Mode2D => RutabagaComponentType::Rutabaga2D,
             GpuMode::Mode3D => RutabagaComponentType::VirglRenderer,
@@ -919,7 +937,8 @@ impl Gpu {
             .set_display_width(gpu_parameters.display_width)
             .set_display_height(gpu_parameters.display_height)
             .set_virglrenderer_flags(virglrenderer_flags)
-            .set_gfxstream_flags(gfxstream_flags);
+            .set_gfxstream_flags(gfxstream_flags)
+            .set_rutabaga_channels(rutabaga_channels_opt);
 
         Gpu {
             exit_evt,
@@ -933,7 +952,7 @@ impl Gpu {
             display_backends,
             display_width: gpu_parameters.display_width,
             display_height: gpu_parameters.display_height,
-            rutabaga_builder,
+            rutabaga_builder: Some(rutabaga_builder),
             pci_bar: None,
             map_request,
             external_blob,
@@ -948,16 +967,33 @@ impl Gpu {
             events_read |= VIRTIO_GPU_EVENT_DISPLAY;
         }
 
-        let capsets = match self.rutabaga_component {
+        let num_capsets = match self.rutabaga_component {
             RutabagaComponentType::Rutabaga2D => 0,
-            _ => 5,
+            _ => {
+                // Cross-domain (like virtio_wl with llvmpipe) is always available.
+                let mut num_capsets = 1;
+
+                // Three capsets for virgl_renderer
+                #[cfg(feature = "virgl_renderer")]
+                {
+                    num_capsets += 3;
+                }
+
+                // One capset for gfxstream
+                #[cfg(feature = "gfxstream")]
+                {
+                    num_capsets += 1;
+                }
+
+                num_capsets
+            }
         };
 
         virtio_gpu_config {
             events_read: Le32::from(events_read),
             events_clear: Le32::from(0),
             num_scanouts: Le32::from(self.num_scanouts.get() as u32),
-            num_capsets: Le32::from(capsets),
+            num_capsets: Le32::from(num_capsets),
         }
     }
 }
@@ -1071,13 +1107,14 @@ impl VirtioDevice for Gpu {
         let display_backends = self.display_backends.clone();
         let display_width = self.display_width;
         let display_height = self.display_height;
-        let rutabaga_builder = self.rutabaga_builder;
         let event_devices = self.event_devices.split_off(0);
         let map_request = Arc::clone(&self.map_request);
         let external_blob = self.external_blob;
-        if let (Some(gpu_device_socket), Some(pci_bar)) =
-            (self.gpu_device_socket.take(), self.pci_bar.take())
-        {
+        if let (Some(gpu_device_socket), Some(pci_bar), Some(rutabaga_builder)) = (
+            self.gpu_device_socket.take(),
+            self.pci_bar.take(),
+            self.rutabaga_builder.take(),
+        ) {
             let worker_result =
                 thread::Builder::new()
                     .name("virtio_gpu".to_string())

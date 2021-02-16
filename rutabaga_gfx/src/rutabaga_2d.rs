@@ -95,9 +95,7 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
                 next_line = true;
             }
 
-            let src_subslice = src
-                .get_slice(offset_within_src as usize, copyable_size as usize)
-                .map_err(RutabagaError::MemCopy)?;
+            let src_subslice = src.get_slice(offset_within_src as usize, copyable_size as usize)?;
 
             let dst_line_vertical_offset = checked_arithmetic!(current_height * dst_stride)?;
             let dst_line_horizontal_offset =
@@ -106,9 +104,7 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
                 checked_arithmetic!(dst_line_vertical_offset + dst_line_horizontal_offset)?;
             let dst_start_offset = checked_arithmetic!(dst_resource_offset + dst_line_offset)?;
 
-            let dst_subslice = dst
-                .get_slice(dst_start_offset as usize, copyable_size as usize)
-                .map_err(RutabagaError::MemCopy)?;
+            let dst_subslice = dst.get_slice(dst_start_offset as usize, copyable_size as usize)?;
 
             src_subslice.copy_to_volatile_slice(dst_subslice);
         } else {
@@ -165,7 +161,7 @@ impl RutabagaComponent for Rutabaga2D {
         let resource_bpp = 4;
         let resource_stride = resource_bpp * resource_create_3d.width;
         let resource_size = (resource_stride as usize) * (resource_create_3d.height as usize);
-        let resource_2d = Rutabaga2DInfo {
+        let info_2d = Rutabaga2DInfo {
             width: resource_create_3d.width,
             height: resource_create_3d.height,
             host_mem: vec![0; resource_size],
@@ -177,8 +173,11 @@ impl RutabagaComponent for Rutabaga2D {
             blob: false,
             blob_mem: 0,
             blob_flags: 0,
-            backing_iovecs: Vec::new(),
-            resource_2d: Some(resource_2d),
+            map_info: None,
+            info_2d: Some(info_2d),
+            info_3d: None,
+            vulkan_info: None,
+            backing_iovecs: None,
         })
     }
 
@@ -192,42 +191,45 @@ impl RutabagaComponent for Rutabaga2D {
             return Ok(());
         }
 
-        let mut resource_2d = resource
-            .resource_2d
+        let mut info_2d = resource.info_2d.take().ok_or(RutabagaError::Unsupported)?;
+
+        let iovecs = resource
+            .backing_iovecs
             .take()
             .ok_or(RutabagaError::Unsupported)?;
 
         // All offical virtio_gpu formats are 4 bytes per pixel.
         let resource_bpp = 4;
-        let mut src_slices = Vec::with_capacity(resource.backing_iovecs.len());
-        for iovec in &resource.backing_iovecs {
+        let mut src_slices = Vec::with_capacity(iovecs.len());
+        for iovec in &iovecs {
             // Safe because Rutabaga users should have already checked the iovecs.
             let slice = unsafe { VolatileSlice::from_raw_parts(iovec.base as *mut u8, iovec.len) };
             src_slices.push(slice);
         }
 
-        let src_stride = resource_bpp * resource_2d.width;
+        let src_stride = resource_bpp * info_2d.width;
         let src_offset = transfer.offset;
 
-        let dst_stride = resource_bpp * resource_2d.width;
+        let dst_stride = resource_bpp * info_2d.width;
         let dst_offset = 0;
 
         transfer_2d(
-            resource_2d.width,
-            resource_2d.height,
+            info_2d.width,
+            info_2d.height,
             transfer.x,
             transfer.y,
             transfer.w,
             transfer.h,
             dst_stride,
             dst_offset,
-            VolatileSlice::new(resource_2d.host_mem.as_mut_slice()),
+            VolatileSlice::new(info_2d.host_mem.as_mut_slice()),
             src_stride,
             src_offset,
             src_slices.iter().cloned(),
         )?;
 
-        resource.resource_2d = Some(resource_2d);
+        resource.info_2d = Some(info_2d);
+        resource.backing_iovecs = Some(iovecs);
         Ok(())
     }
 
@@ -238,22 +240,19 @@ impl RutabagaComponent for Rutabaga2D {
         transfer: Transfer3D,
         buf: Option<VolatileSlice>,
     ) -> RutabagaResult<()> {
-        let mut resource_2d = resource
-            .resource_2d
-            .take()
-            .ok_or(RutabagaError::Unsupported)?;
+        let mut info_2d = resource.info_2d.take().ok_or(RutabagaError::Unsupported)?;
 
         // All offical virtio_gpu formats are 4 bytes per pixel.
         let resource_bpp = 4;
-        let src_stride = resource_bpp * resource_2d.width;
+        let src_stride = resource_bpp * info_2d.width;
         let src_offset = 0;
         let dst_offset = 0;
 
         let dst_slice = buf.ok_or(RutabagaError::Unsupported)?;
 
         transfer_2d(
-            resource_2d.width,
-            resource_2d.height,
+            info_2d.width,
+            info_2d.height,
             transfer.x,
             transfer.y,
             transfer.w,
@@ -263,12 +262,12 @@ impl RutabagaComponent for Rutabaga2D {
             dst_slice,
             src_stride,
             src_offset,
-            [VolatileSlice::new(resource_2d.host_mem.as_mut_slice())]
+            [VolatileSlice::new(info_2d.host_mem.as_mut_slice())]
                 .iter()
                 .cloned(),
         )?;
 
-        resource.resource_2d = Some(resource_2d);
+        resource.info_2d = Some(info_2d);
         Ok(())
     }
 }
