@@ -1,4 +1,0 @@
-Name: libvda
-Description: CrOS VDA Connection Library
-Version: 0.1
-Libs: -lvda

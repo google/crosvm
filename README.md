@@ -26,8 +26,8 @@ Portage.
 
 ### Building with Docker
 
-See the [README](docker/README.md) from the `docker` subdirectory to learn how
-to build crosvm in enviroments outside of the Chrome OS chroot.
+See the [README](ci/README.md) from the `ci` subdirectory to learn how
+to build and test crosvm in enviroments outside of the Chrome OS chroot.
 
 ### Building for Linux
 
@@ -231,14 +231,12 @@ requirements:
 
 ### Code Health
 
-#### `build_test`
+#### `test_all`
 
-There are no automated tests run before code is committed to crosvm. In order to
-maintain sanity, please execute `build_test` before submitting code for review.
-All tests should be passing or ignored and there should be no compiler warnings
-or errors. All supported architectures are built, but only tests for x86_64 are
-run. In order to build everything without failures, sysroots must be supplied
-for each architecture. See `build_test -h` for more information.
+Crosvm provides docker containers to build and run tests for both x86_64 and
+aarch64, which can be run with the `./test_all` script.
+See `ci/README.md` for more details on how to use the containers for local
+development.
 
 #### `rustfmt`
 
