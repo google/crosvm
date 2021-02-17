@@ -130,7 +130,12 @@ impl VfioContainer {
         unsafe { ioctl_with_val(self, VFIO_SET_IOMMU(), val.into()) }
     }
 
-    unsafe fn vfio_dma_map(&self, iova: u64, size: u64, user_addr: u64) -> Result<(), VfioError> {
+    pub unsafe fn vfio_dma_map(
+        &self,
+        iova: u64,
+        size: u64,
+        user_addr: u64,
+    ) -> Result<(), VfioError> {
         let dma_map = vfio_iommu_type1_dma_map {
             argsz: mem::size_of::<vfio_iommu_type1_dma_map>() as u32,
             flags: VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE,
@@ -147,7 +152,7 @@ impl VfioContainer {
         Ok(())
     }
 
-    fn vfio_dma_unmap(&self, iova: u64, size: u64) -> Result<(), VfioError> {
+    pub fn vfio_dma_unmap(&self, iova: u64, size: u64) -> Result<(), VfioError> {
         let mut dma_unmap = vfio_iommu_type1_dma_unmap {
             argsz: mem::size_of::<vfio_iommu_type1_dma_unmap>() as u32,
             flags: 0,
