@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Run inside `cros_sdk` to uprev dependency versions between Cargo.lock and
+# chromiumos-overlay ebuild files.
+
+import re
+import glob
+import os
+import sys
+import subprocess
+from distutils.version import StrictVersion
+from datetime import datetime
+
+# Ideally we would install a toml parser, but this will do for a quick little
+# tool.
+CARGO_LOCK_REGEX = re.compile(
+    r"""name = "([^"]+)"
+version = "([^"]+)"
+source ="""
+)
+
+IGNORED_PACKAGES = ["pin-utils", "pkg-config"]
+
+DEV_RUST_PATH = "../../third_party/chromiumos-overlay/dev-rust"
+EBUILD_FILE_GLOB = f"{DEV_RUST_PATH}/*/*.ebuild"
+EBUILD_FILE_REGEX = re.compile(r"([\w\-_]+)-([0-9\.]+)\.ebuild")
+YEAR = datetime.today().year
+
+
+def ebuild_template(package: str):
+    return f"""\
+# Copyright {YEAR} The Chromium OS Authors. All rights reserved.
+# Distributed under the terms of the GNU General Public License v2
+
+EAPI="7"
+
+CROS_RUST_REMOVE_DEV_DEPS=1
+
+inherit cros-rust
+
+DESCRIPTION="Build file for the {package} crate."
+HOMEPAGE="https://crates.io/crates/{package}"
+SRC_URI="https://crates.io/api/v1/crates/${{PN}}/${{PV}}/download -> ${{P}}.crate"
+
+LICENSE="|| ( MIT Apache-2.0 )"
+SLOT="${{PV}}/${{PR}}"
+KEYWORDS="*"
+
+# TODO: Add crate dependencies
+DEPEND=""
+"""
+
+
+def ebuild_file_path(package: str, version: str):
+    return f"{DEV_RUST_PATH}/{package}/{package}-{version}.ebuild"
+
+
+def parse_cargo_lock():
+    """Parses Cargo.lock file and returns (package, version) pairs."""
+    with open("Cargo.lock", "r") as lock_file:
+        lock_str = lock_file.read()
+    for match in CARGO_LOCK_REGEX.finditer(lock_str):
+        yield (match.group(1), match.group(2))
+
+
+def all_ebuild_versions():
+    """Returns (package, version) pairs of ebuild files in dev-rust."""
+    for ebuild_path in glob.glob(EBUILD_FILE_GLOB):
+        ebuild_name = os.path.basename(ebuild_path)
+        match = EBUILD_FILE_REGEX.match(ebuild_name)
+        if match:
+            yield (match.group(1), match.group(2))
+
+
+def ebuild_versions_dict():
+    """Returns a dict of package versions of all ebuild files in dev-rust."""
+    versions: dict[str, list[str]] = {}
+    for (package, version) in all_ebuild_versions():
+        if package in versions:
+            versions[package].append(version)
+            versions[package].sort(key=StrictVersion)
+        else:
+            versions[package] = [version]
+    return versions
+
+
+def update_manifest(package: str, version: str):
+    """Regenerate ebuild manifest for the provided package/version."""
+    cmd = ["ebuild", ebuild_file_path(package, version), "manifest"]
+    print(" ", " ".join(cmd))
+    subprocess.run(cmd)
+
+
+def uprev_ebuild(package: str, new_version: str, old_version: str):
+    """Updates the ebuild file from `old_version` to `new_version`."""
+    old_path = ebuild_file_path(package, old_version)
+    new_path = ebuild_file_path(package, new_version)
+    print(f"  {old_path} -> {new_path}")
+    os.rename(old_path, new_path)
+    update_manifest(package, new_version)
+
+
+def add_ebuild(package: str, version: str):
+    """Creates a new ebuild file for the provided package."""
+    ebuild_path = ebuild_file_path(package, version)
+    print(f"  Writing {ebuild_path}")
+    open(ebuild_path, "w").write(ebuild_template(package))
+    update_manifest(package, version)
+
+
+def update_cargo(package: str, latest_version: str):
+    """Runs `cargo update` to update the version in Cargo.lock."""
+    cmd = ["cargo", "update", "-p", package, "--precise", latest_version]
+    print(" ", " ".join(cmd))
+    subprocess.run(cmd)
+
+
+def confirm(question: str):
+    print(f"{question} [y/N]")
+    return sys.stdin.readline().strip().lower() == "y"
+
+
+def main():
+    ebuild_packages = ebuild_versions_dict()
+    for (package, cargo_version) in parse_cargo_lock():
+        ebuild_versions = ebuild_packages.get(package, [])
+        if package in IGNORED_PACKAGES:
+            continue
+        if cargo_version in ebuild_versions:
+            continue
+        if not ebuild_versions:
+            print(f"{package}: No ebuild file.")
+            if confirm("Create ebuild?"):
+                add_ebuild(package, cargo_version)
+        elif StrictVersion(ebuild_versions[-1]) > StrictVersion(cargo_version):
+            print(
+                f"{package}: Cargo version {cargo_version} is older than "
+                f"latest ebuild version ({', '.join(ebuild_versions)})."
+            )
+            if confirm("Update Cargo.lock?"):
+                update_cargo(package, ebuild_versions[-1])
+        else:
+            print(
+                f"{package}: Ebuild versions ({', '.join(ebuild_versions)}) "
+                f"are older than cargo version {cargo_version}."
+            )
+            if confirm("Uprev ebuild?"):
+                uprev_ebuild(package, cargo_version, ebuild_versions[-1])
+
+
+if __name__ == "__main__":
+    main()
