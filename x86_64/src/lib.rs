@@ -549,6 +549,7 @@ impl arch::LinuxArch for X8664arch {
             suspend_evt,
             resume_notify_devices,
             rt_cpus: components.rt_cpus,
+            delay_rt: components.delay_rt,
             bat_control,
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             gdb: components.gdb,

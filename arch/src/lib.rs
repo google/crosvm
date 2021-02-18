@@ -89,6 +89,7 @@ pub struct VmComponents {
     pub extra_kernel_params: Vec<String>,
     pub acpi_sdts: Vec<SDT>,
     pub rt_cpus: Vec<usize>,
+    pub delay_rt: bool,
     pub protected_vm: ProtectionType,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<(u32, Tube)>, // port and control tube.
@@ -112,6 +113,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub pid_debug_label_map: BTreeMap<u32, String>,
     pub suspend_evt: Event,
     pub rt_cpus: Vec<usize>,
+    pub delay_rt: bool,
     pub bat_control: Option<BatControl>,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<(u32, Tube)>,

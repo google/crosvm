@@ -208,6 +208,7 @@ pub struct Config {
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub cpu_clusters: Vec<Vec<usize>>,
     pub cpu_capacity: BTreeMap<usize, u32>, // CPU index -> capacity
+    pub delay_rt: bool,
     pub no_smt: bool,
     pub memory: Option<u64>,
     pub hugepages: bool,
@@ -291,6 +292,7 @@ impl Default for Config {
             vcpu_affinity: None,
             cpu_clusters: Vec::new(),
             cpu_capacity: BTreeMap::new(),
+            delay_rt: false,
             no_smt: false,
             memory: None,
             hugepages: false,

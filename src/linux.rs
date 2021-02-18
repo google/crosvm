@@ -1873,6 +1873,7 @@ fn run_vcpu<V>(
     vcpu_count: usize,
     run_rt: bool,
     vcpu_affinity: Vec<usize>,
+    delay_rt: bool,
     no_smt: bool,
     start_barrier: Arc<Barrier>,
     has_bios: bool,
@@ -1904,7 +1905,7 @@ where
                 vm,
                 irq_chip.as_mut(),
                 vcpu_count,
-                run_rt,
+                run_rt && !delay_rt,
                 vcpu_affinity,
                 no_smt,
                 has_bios,
@@ -2188,6 +2189,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             .map(|path| SDT::from_file(path).map_err(|e| Error::OpenAcpiTable(path.clone(), e)))
             .collect::<Result<Vec<SDT>>>()?,
         rt_cpus: cfg.rt_cpus.clone(),
+        delay_rt: cfg.delay_rt,
         protected_vm: cfg.protected_vm,
         #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
         gdb: None,
@@ -2612,6 +2614,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             linux.vcpu_count,
             linux.rt_cpus.contains(&cpu_id),
             vcpu_affinity,
+            linux.delay_rt,
             linux.no_smt,
             vcpu_thread_barrier.clone(),
             linux.has_bios,

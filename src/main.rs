@@ -974,6 +974,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.rt_cpus = parse_cpu_set(value.unwrap())?;
         }
+        "delay-rt" => {
+            cfg.delay_rt = true;
+        }
         "mem" => {
             if cfg.memory.is_some() {
                 return Err(argument::Error::TooManyArguments(
@@ -2016,6 +2019,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("cpu-capacity", "CPU=CAP[,CPU=CAP[,...]]", "Set the relative capacity of the given CPU (default: no capacity)"),
           Argument::flag("no-smt", "Don't use SMT in the guest"),
           Argument::value("rt-cpus", "CPUSET", "Comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: none)"),
+          Argument::flag("delay-rt", "Don't set VCPUs real-time until make-rt command is run"),
           Argument::short_value('m',
                                 "mem",
                                 "N",
