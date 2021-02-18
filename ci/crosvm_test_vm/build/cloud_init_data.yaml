@@ -30,7 +30,6 @@ packages:
   - libdbus-1-3
   - libdrm2
   - libepoxy0
-  - libfdt1
   - libssl1.1
   - libwayland-client0
   - libx11-6

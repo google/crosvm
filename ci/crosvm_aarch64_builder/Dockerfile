@@ -33,7 +33,6 @@ RUN apt-get install --yes --no-install-recommends -o APT::Immediate-Configure=fa
     libdbus-1-dev:arm64 \
     libdrm-dev:arm64 \
     libepoxy-dev:arm64 \
-    libfdt-dev:arm64 \
     libssl-dev:arm64 \
     libwayland-dev:arm64
 

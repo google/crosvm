@@ -385,7 +385,7 @@ impl arch::LinuxArch for AArch64 {
             fdt_offset(components.memory_size, has_bios),
             pci_device_base,
             pci_device_size,
-            &CString::new(cmdline).unwrap(),
+            cmdline.as_str(),
             initrd,
             components.android_fstab,
             irq_chip.get_vgic_version() == DeviceKind::ArmVgicV3,

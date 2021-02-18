@@ -23,3 +23,4 @@ base = { path = "../base" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }
 power_monitor = { path = "../power_monitor" }
+thiserror = "1.0.20"

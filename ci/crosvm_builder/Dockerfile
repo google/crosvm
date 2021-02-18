@@ -21,7 +21,6 @@ RUN apt-get install --yes --no-install-recommends \
     libdbus-1-dev \
     libdrm-dev \
     libepoxy-dev \
-    libfdt-dev \
     libssl-dev \
     libwayland-dev \
     qemu-system-x86

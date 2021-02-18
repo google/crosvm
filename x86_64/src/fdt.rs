@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use arch::android::create_android_fdt;
-use arch::fdt::{begin_node, end_node, finish_fdt, start_fdt, Error};
+use arch::fdt::{Error, FdtWriter};
 use data_model::DataInit;
 use std::fs::File;
 use std::mem;
@@ -42,17 +42,14 @@ pub fn create_fdt(
     // Reserve space for the setup_data
     let fdt_data_size = fdt_max_size - mem::size_of::<setup_data>();
 
-    let mut fdt = vec![0; fdt_data_size];
-    start_fdt(&mut fdt, fdt_data_size)?;
+    let mut fdt = FdtWriter::new(&[]);
 
     // The whole thing is put into one giant node with some top level properties
-    begin_node(&mut fdt, "")?;
+    let root_node = fdt.begin_node("")?;
     create_android_fdt(&mut fdt, android_fstab)?;
-    end_node(&mut fdt)?;
+    fdt.end_node(root_node)?;
 
-    // Allocate another buffer so we can format and then write fdt to guest
-    let mut fdt_final = vec![0; fdt_data_size];
-    finish_fdt(&mut fdt, &mut fdt_final, fdt_data_size)?;
+    let fdt_final = fdt.finish(fdt_data_size)?;
 
     assert_eq!(
         mem::size_of::<setup_data>(),

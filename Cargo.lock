@@ -57,6 +57,7 @@ dependencies = [
  "power_monitor",
  "resources",
  "sync",
+ "thiserror",
  "vm_control",
  "vm_memory",
 ]

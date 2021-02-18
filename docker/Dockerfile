@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y \
     libcap-dev \
     libdbus-1-dev \
     libegl1-mesa-dev \
-    libfdt-dev \
     libgl1-mesa-dev \
     libgles2-mesa-dev \
     libpciaccess-dev \
