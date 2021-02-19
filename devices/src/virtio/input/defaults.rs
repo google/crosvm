@@ -71,7 +71,7 @@ pub fn new_multi_touch_config(width: u32, height: u32) -> VirtioInputConfig {
         b"virtio-touchscreen".to_vec(),
         virtio_input_bitmap::from_bits(&[INPUT_PROP_DIRECT]),
         default_multitouchscreen_events(),
-        default_multitouchscreen_absinfo(width, height, 0, 0),
+        default_multitouchscreen_absinfo(width, height, 10, 10),
     )
 }
 
