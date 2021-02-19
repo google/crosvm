@@ -1081,6 +1081,7 @@ pub trait FileSystem {
     fn ioctl<R: io::Read>(
         &self,
         ctx: Context,
+        inode: Self::Inode,
         handle: Self::Handle,
         flags: IoctlFlags,
         cmd: u32,

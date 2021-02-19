@@ -885,15 +885,15 @@ impl PassthroughFs {
 
     fn get_encryption_policy_ex<R: io::Read>(
         &self,
+        inode: Inode,
         handle: Handle,
         mut r: R,
     ) -> io::Result<IoctlReply> {
-        let data = self
-            .handles
-            .lock()
-            .get(&handle)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+        let data: Arc<dyn AsRawDescriptor> = if self.zero_message_open.load(Ordering::Relaxed) {
+            self.find_inode(inode)?
+        } else {
+            self.find_handle(handle, inode)?
+        };
 
         // Safe because this only has integer fields.
         let mut arg = unsafe { MaybeUninit::<fscrypt_get_policy_ex_arg>::zeroed().assume_init() };
@@ -902,10 +902,9 @@ impl PassthroughFs {
         let policy_size = cmp::min(arg.policy_size, size_of::<fscrypt_policy>() as u64);
         arg.policy_size = policy_size;
 
-        let file = data.file.lock();
         // Safe because the kernel will only write to `arg` and we check the return value.
         let res =
-            unsafe { ioctl_with_mut_ptr(&*file, FS_IOC_GET_ENCRYPTION_POLICY_EX(), &mut arg) };
+            unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_GET_ENCRYPTION_POLICY_EX(), &mut arg) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -914,19 +913,17 @@ impl PassthroughFs {
         }
     }
 
-    fn get_fsxattr(&self, handle: Handle) -> io::Result<IoctlReply> {
-        let data = self
-            .handles
-            .lock()
-            .get(&handle)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+    fn get_fsxattr(&self, inode: Inode, handle: Handle) -> io::Result<IoctlReply> {
+        let data: Arc<dyn AsRawDescriptor> = if self.zero_message_open.load(Ordering::Relaxed) {
+            self.find_inode(inode)?
+        } else {
+            self.find_handle(handle, inode)?
+        };
 
         let mut buf = MaybeUninit::<fsxattr>::zeroed();
-        let file = data.file.lock();
 
         // Safe because the kernel will only write to `buf` and we check the return value.
-        let res = unsafe { ioctl_with_mut_ptr(&*file, FS_IOC_FSGETXATTR(), buf.as_mut_ptr()) };
+        let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_FSGETXATTR(), buf.as_mut_ptr()) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -936,19 +933,22 @@ impl PassthroughFs {
         }
     }
 
-    fn set_fsxattr<R: io::Read>(&self, handle: Handle, r: R) -> io::Result<IoctlReply> {
-        let data = self
-            .handles
-            .lock()
-            .get(&handle)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+    fn set_fsxattr<R: io::Read>(
+        &self,
+        inode: Inode,
+        handle: Handle,
+        r: R,
+    ) -> io::Result<IoctlReply> {
+        let data: Arc<dyn AsRawDescriptor> = if self.zero_message_open.load(Ordering::Relaxed) {
+            self.find_inode(inode)?
+        } else {
+            self.find_handle(handle, inode)?
+        };
 
         let attr = fsxattr::from_reader(r)?;
-        let file = data.file.lock();
 
         //  Safe because this doesn't modify any memory and we check the return value.
-        let res = unsafe { ioctl_with_ptr(&*file, FS_IOC_FSSETXATTR(), &attr) };
+        let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_FSSETXATTR(), &attr) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -956,20 +956,18 @@ impl PassthroughFs {
         }
     }
 
-    fn get_flags(&self, handle: Handle) -> io::Result<IoctlReply> {
-        let data = self
-            .handles
-            .lock()
-            .get(&handle)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+    fn get_flags(&self, inode: Inode, handle: Handle) -> io::Result<IoctlReply> {
+        let data: Arc<dyn AsRawDescriptor> = if self.zero_message_open.load(Ordering::Relaxed) {
+            self.find_inode(inode)?
+        } else {
+            self.find_handle(handle, inode)?
+        };
 
         // The ioctl encoding is a long but the parameter is actually an int.
         let mut flags: c_int = 0;
-        let file = data.file.lock();
 
         // Safe because the kernel will only write to `flags` and we check the return value.
-        let res = unsafe { ioctl_with_mut_ptr(&*file, FS_IOC_GETFLAGS(), &mut flags) };
+        let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_GETFLAGS(), &mut flags) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -977,20 +975,18 @@ impl PassthroughFs {
         }
     }
 
-    fn set_flags<R: io::Read>(&self, handle: Handle, r: R) -> io::Result<IoctlReply> {
-        let data = self
-            .handles
-            .lock()
-            .get(&handle)
-            .map(Arc::clone)
-            .ok_or_else(ebadf)?;
+    fn set_flags<R: io::Read>(&self, inode: Inode, handle: Handle, r: R) -> io::Result<IoctlReply> {
+        let data: Arc<dyn AsRawDescriptor> = if self.zero_message_open.load(Ordering::Relaxed) {
+            self.find_inode(inode)?
+        } else {
+            self.find_handle(handle, inode)?
+        };
 
         // The ioctl encoding is a long but the parameter is actually an int.
         let flags = c_int::from_reader(r)?;
-        let file = data.file.lock();
 
         // Safe because this doesn't modify any memory and we check the return value.
-        let res = unsafe { ioctl_with_ptr(&*file, FS_IOC_SETFLAGS(), &flags) };
+        let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_SETFLAGS(), &flags) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -2203,6 +2199,7 @@ impl FileSystem for PassthroughFs {
     fn ioctl<R: io::Read>(
         &self,
         _ctx: Context,
+        inode: Inode,
         handle: Handle,
         _flags: IoctlFlags,
         cmd: u32,
@@ -2220,33 +2217,33 @@ impl FileSystem for PassthroughFs {
         const SET_FLAGS64: u32 = FS_IOC64_SETFLAGS() as u32;
 
         match cmd {
-            GET_ENCRYPTION_POLICY_EX => self.get_encryption_policy_ex(handle, r),
+            GET_ENCRYPTION_POLICY_EX => self.get_encryption_policy_ex(inode, handle, r),
             GET_FSXATTR => {
                 if out_size < size_of::<fsxattr>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))
                 } else {
-                    self.get_fsxattr(handle)
+                    self.get_fsxattr(inode, handle)
                 }
             }
             SET_FSXATTR => {
                 if in_size < size_of::<fsxattr>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::EINVAL))
                 } else {
-                    self.set_fsxattr(handle, r)
+                    self.set_fsxattr(inode, handle, r)
                 }
             }
             GET_FLAGS32 | GET_FLAGS64 => {
                 if out_size < size_of::<c_int>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))
                 } else {
-                    self.get_flags(handle)
+                    self.get_flags(inode, handle)
                 }
             }
             SET_FLAGS32 | SET_FLAGS64 => {
                 if in_size < size_of::<c_int>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))
                 } else {
-                    self.set_flags(handle, r)
+                    self.set_flags(inode, handle, r)
                 }
             }
             _ => Err(io::Error::from_raw_os_error(libc::ENOTTY)),

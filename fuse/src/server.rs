@@ -1329,6 +1329,7 @@ impl<F: FileSystem + Sync> Server<F> {
 
         let res = self.fs.ioctl(
             in_header.into(),
+            in_header.nodeid.into(),
             fh.into(),
             IoctlFlags::from_bits_truncate(flags),
             cmd,
