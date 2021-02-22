@@ -3,15 +3,16 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 #
-# Uploads and executes a file in the VM.
+# Uploads and executes a file in the VM. This script can be set as a runner
+# for cargo to execute tests inside the VM.
 
-${0%/*}/exec exit || exit 1 # Wait for VM to be available
+${0%/*}/wait_for_vm_with_timeout || exit 1
 
 if [ "$1" = "--no-sync" ]; then
     shift
 else
-    echo "Syncing shared objects..."
-    ${0%/*}/sync_so || exit 1
+    echo "Syncing dependencies..."
+    ${0%/*}/sync_deps || exit 1
 fi
 
 filepath=$1
@@ -19,8 +20,9 @@ filename=$(basename $filepath)
 
 echo "Executing $filename ${@:2}"
 scp -q $filepath vm:/tmp/$filename
+ssh vm -q -t "cd /tmp && sudo ./$filename ${@:2}"
+
 # Make sure to preserve the exit code of $filename after cleaning up the file.
-ssh vm -q -t "cd /tmp && ./$filename ${@:2}"
 ret=$?
 ssh vm -q -t "rm /tmp/$filename"
 exit $ret

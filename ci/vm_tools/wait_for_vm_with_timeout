@@ -2,8 +2,6 @@
 # Copyright 2021 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-#
-# Executes a command in the VM once it is available.
 
 if ! timeout --foreground 180s ${0%/*}/wait_for_vm; then
     echo ""

@@ -14,8 +14,6 @@ from ci.test_runner import Requirements, main
 # See ci/test_runner.py for documentation on the requirements
 CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
     "aarch64": [Requirements.AARCH64],
-    "crosvm": [Requirements.DISABLED],
-    "aarch64": [Requirements.AARCH64],
     "acpi_tables": [],
     "arch": [],
     "assertions": [],
@@ -23,6 +21,7 @@ CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
     "bit_field": [],
     "bit_field_derive": [],
     "cros_async": [Requirements.DISABLED],
+    "crosvm": [Requirements.DO_NOT_RUN],
     "crosvm_plugin": [Requirements.X86_64],
     "data_model": [],
     "devices": [

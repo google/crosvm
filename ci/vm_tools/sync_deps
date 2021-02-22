@@ -1,0 +1,37 @@
+#!/bin/bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Synchronizes dependencies of crosvm into the virtual machine to allow test
+# binaries to execute.
+
+${0%/*}/wait_for_vm_with_timeout || exit 1
+
+crosvm_root="/workspace/src/platform/crosvm"
+rust_toolchain=$(cat ${crosvm_root}/rust-toolchain)
+target_dir=$(
+    cargo metadata --no-deps --format-version 1 |
+        jq -r ".target_directory"
+)
+
+# List of shared objects used by crosvm that need to be synced.
+shared_objects=(
+    /workspace/scratch/lib/*.so*
+    /root/.rustup/toolchains/${rust_toolchain}-*/lib/libstd-*.so
+    /root/.rustup/toolchains/${rust_toolchain}-*/lib/libtest-*.so
+)
+rsync -azPLq --rsync-path="sudo rsync" ${shared_objects[@]} vm:/usr/lib
+
+# Files needed by binaries at runtime in the working directory.
+if [ -z "${CARGO_BUILD_TARGET}" ]; then
+    runtime_files=(
+        "${target_dir}/debug/crosvm"
+    )
+else
+    runtime_files=(
+        "${target_dir}/${CARGO_BUILD_TARGET}/debug/crosvm"
+    )
+fi
+
+rsync -azPLq --rsync-path="sudo rsync" ${runtime_files} vm:/tmp

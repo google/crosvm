@@ -73,11 +73,6 @@ RUN chmod 0600 /root/.ssh/id_rsa
 
 # Copy utility scripts
 COPY runtime/start_vm.${VM_ARCH} ./start_vm
-COPY runtime/exec \
-    runtime/exec_file \
-    runtime/sync_so \
-    runtime/wait_for_vm \
-    ./
 
 # Automatically start the VM.
 ENTRYPOINT [ "/workspace/vm/start_vm" ]

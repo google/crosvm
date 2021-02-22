@@ -27,8 +27,13 @@ if [ "$1" = "--vm" ]; then
     echo "Starting testing vm..."
     (cd /workspace/vm && screen -Sdm vm ./start_vm)
     export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="\
-        /workspace/vm/exec_file"
-    test_target="Virtual Machine (See 'screen -r vm')"
+        /workspace/src/platform/crosvm/ci/vm_tools/exec_binary_in_vm"
+
+    if [[ $# -eq 0 ]]; then
+        test_target="Virtual Machine (See 'screen -r vm' or 'ssh vm')"
+    else
+        test_target="Virtual Machine"
+    fi
     export CROSVM_USE_VM=1
 else
     test_target="User-space emulation"

@@ -2,9 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::env;
 use std::ffi::CString;
-use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -12,11 +10,11 @@ use std::sync::mpsc::sync_channel;
 use std::sync::Once;
 use std::thread;
 use std::time::Duration;
+use std::{env, process::Child};
+use std::{fs::File, process::Stdio};
 
 use anyhow::{anyhow, Result};
-use arch::{set_default_serial_parameters, SerialHardware, SerialParameters, SerialType};
 use base::syslog;
-use crosvm::{platform, Config, DiskOption, Executable};
 use tempfile::TempDir;
 
 const PREBUILT_URL: &str = "https://storage.googleapis.com/chromeos-localmirror/distfiles";
@@ -76,6 +74,22 @@ fn rootfs_path() -> PathBuf {
     }
 }
 
+/// The crosvm binary is expected to be alongside to the integration tests
+/// binary. Alternatively in the parent directory (cargo will put the
+/// test binary in target/debug/deps/ but the crosvm binary in target/debug).
+fn find_crosvm_binary() -> PathBuf {
+    let exe_dir = env::current_exe().unwrap().parent().unwrap().to_path_buf();
+    let first = exe_dir.join("crosvm");
+    if first.exists() {
+        return first;
+    }
+    let second = exe_dir.parent().unwrap().join("crosvm");
+    if second.exists() {
+        return second;
+    }
+    panic!("Cannot find ./crosvm or ../crosvm alongside test binary.");
+}
+
 /// Safe wrapper for libc::mkfifo
 fn mkfifo(path: &Path) -> io::Result<()> {
     let cpath = CString::new(path.to_str().unwrap()).unwrap();
@@ -124,9 +138,18 @@ fn download_file(url: &str, destination: &Path) -> Result<()> {
     }
 }
 
-#[derive(Default)]
-pub struct TestVmOptions {
-    pub debug: bool,
+fn crosvm_command(command: &str, args: &[&str]) -> Result<()> {
+    println!("$ crosvm {} {:?}", command, &args.join(" "));
+    let status = Command::new(find_crosvm_binary())
+        .arg(command)
+        .args(args)
+        .status()?;
+
+    if !status.success() {
+        Err(anyhow!("Command failed with exit code {}", status))
+    } else {
+        Ok(())
+    }
 }
 
 /// Test fixture to spin up a VM running a guest that can be communicated with.
@@ -139,8 +162,9 @@ pub struct TestVm {
     test_dir: TempDir,
     from_guest_reader: BufReader<File>,
     to_guest: File,
-    vm_thread: Option<thread::JoinHandle<()>>,
-    options: TestVmOptions,
+    control_socket_path: PathBuf,
+    process: Child,
+    debug: bool,
 }
 
 impl TestVm {
@@ -188,84 +212,34 @@ impl TestVm {
     //          delegate binary.
     // - ttyS1: Serial device attached to the named pipes.
     fn configure_serial_devices(
-        config: &mut Config,
+        command: &mut Command,
         from_guest_pipe: &Path,
         to_guest_pipe: &Path,
-        debug: bool,
-    ) -> Result<()> {
-        for ((_, index), _) in &config.serial_parameters {
-            if *index == 1 || *index == 2 {
-                return Err(anyhow!("Do not specify serial device 1 or 2."));
-            }
-        }
+    ) {
+        command.args(&["--serial", "type=syslog"]);
 
-        config.serial_parameters.insert(
-            (SerialHardware::Serial, 1),
-            SerialParameters {
-                type_: if debug {
-                    SerialType::Stdout
-                } else {
-                    SerialType::Sink
-                },
-                hardware: SerialHardware::Serial,
-                path: None,
-                input: None,
-                num: 1,
-                console: true,
-                earlycon: false,
-                stdin: false,
-            },
+        // Setup channel for communication with the delegate.
+        let serial_params = format!(
+            "type=file,path={},input={},num=2",
+            from_guest_pipe.display(),
+            to_guest_pipe.display()
         );
-        config.serial_parameters.insert(
-            (SerialHardware::Serial, 2),
-            SerialParameters {
-                type_: SerialType::File,
-                hardware: SerialHardware::Serial,
-                path: Some(PathBuf::from(from_guest_pipe)),
-                input: Some(PathBuf::from(to_guest_pipe.clone())),
-                num: 2,
-                console: false,
-                earlycon: false,
-                stdin: false,
-            },
-        );
-        set_default_serial_parameters(&mut config.serial_parameters);
-        return Ok(());
+        command.args(&["--serial", &serial_params]);
     }
 
     /// Configures the VM kernel and rootfs to load from the guest_under_test assets.
-    fn configure_kernel(config: &mut Config) -> Result<()> {
-        for param in &config.params {
-            if param.starts_with("root") || param.starts_with("init") {
-                return Err(anyhow!("Do not set the root or init parameters."));
-            }
-        }
-        config.executable_path = Some(Executable::Kernel(kernel_path()));
-        config.params.push("root=/dev/vda ro".to_string());
-        config.params.push("init=/bin/delegate".to_string());
-        config.disks.insert(
-            0,
-            DiskOption {
-                id: None,
-                path: rootfs_path(),
-                read_only: true,
-                sparse: true,
-                block_size: 512,
-            },
-        );
-
-        return Ok(());
+    fn configure_kernel(command: &mut Command) {
+        command
+            .args(&["--root", rootfs_path().to_str().unwrap()])
+            .args(&["--params", "init=/bin/delegate"])
+            .arg(kernel_path());
     }
 
     /// Instanciate a new crosvm instance. The first call will trigger the download of prebuilt
     /// files if necessary.
-    pub fn new(mut config: Config, options: TestVmOptions) -> Result<TestVm> {
+    pub fn new(additional_arguments: &[&str], debug: bool) -> Result<TestVm> {
         static PREP_ONCE: Once = Once::new();
         PREP_ONCE.call_once(|| TestVm::initialize_once());
-
-        // TODO(b/173233134): Running sandboxed tests is going to require a lot of configuration
-        // on the host.
-        config.sandbox = false;
 
         // Create two named pipes to communicate with the guest.
         let test_dir = TempDir::new()?;
@@ -274,18 +248,22 @@ impl TestVm {
         mkfifo(&from_guest_pipe)?;
         mkfifo(&to_guest_pipe)?;
 
-        TestVm::configure_serial_devices(
-            &mut config,
-            &from_guest_pipe,
-            &to_guest_pipe,
-            options.debug,
-        )?;
-        TestVm::configure_kernel(&mut config)?;
+        let control_socket_path = test_dir.path().join("control");
 
-        // Run VM in a separate thread.
-        let vm_thread = thread::spawn(move || {
-            platform::run_config(config).expect("Cannot run VM.");
-        });
+        let mut command = Command::new(find_crosvm_binary());
+        command.args(&["run", "--disable-sandbox"]);
+        TestVm::configure_serial_devices(&mut command, &from_guest_pipe, &to_guest_pipe);
+        command.args(&["--socket", &control_socket_path.to_str().unwrap()]);
+        command.args(additional_arguments);
+
+        TestVm::configure_kernel(&mut command);
+
+        println!("$ {:?}", command);
+        if !debug {
+            command.stdout(Stdio::null());
+            command.stderr(Stdio::null());
+        }
+        let process = command.spawn()?;
 
         // Open pipes. Panic if we cannot connect after a timeout.
         let (to_guest, from_guest) = panic_on_timeout(
@@ -303,8 +281,9 @@ impl TestVm {
             test_dir,
             from_guest_reader,
             to_guest: to_guest?,
-            vm_thread: Some(vm_thread),
-            options,
+            control_socket_path,
+            process,
+            debug,
         })
     }
 
@@ -329,25 +308,28 @@ impl TestVm {
             output.push_str(&line);
         }
         let trimmed = output.trim();
-        if self.options.debug {
+        if self.debug {
             println!("<- {:?}", trimmed);
         }
         Ok(trimmed.to_string())
+    }
+
+    pub fn stop(&self) -> Result<()> {
+        crosvm_command("stop", &[self.control_socket_path.to_str().unwrap()])
+    }
+
+    pub fn suspend(&self) -> Result<()> {
+        crosvm_command("suspend", &[self.control_socket_path.to_str().unwrap()])
+    }
+
+    pub fn resume(&self) -> Result<()> {
+        crosvm_command("resume", &[self.control_socket_path.to_str().unwrap()])
     }
 }
 
 impl Drop for TestVm {
     fn drop(&mut self) {
-        if let Some(handle) = self.vm_thread.take() {
-            // Run exit command to shut down the VM.
-            writeln!(&mut self.to_guest, "exit").expect("Cannot send exit command.");
-            // Wait for the VM to exit, but don't wait forever.
-            panic_on_timeout(
-                move || {
-                    handle.join().expect("Cannot join VM thread.");
-                },
-                VM_COMMUNICATION_TIMEOUT,
-            );
-        }
+        self.stop().unwrap();
+        self.process.wait().unwrap();
     }
 }
