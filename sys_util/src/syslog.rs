@@ -511,7 +511,7 @@ mod tests {
         let shm_name = CStr::from_bytes_with_nul(b"/crosvm_shm\0").unwrap();
         let mut file = unsafe {
             shm_unlink(shm_name.as_ptr());
-            let fd = shm_open(shm_name.as_ptr(), O_RDWR | O_CREAT | O_EXCL, 0666);
+            let fd = shm_open(shm_name.as_ptr(), O_RDWR | O_CREAT | O_EXCL, 0o666);
             assert!(fd >= 0, "error creating shared memory;");
             shm_unlink(shm_name.as_ptr());
             File::from_raw_fd(fd)
@@ -552,11 +552,11 @@ mod tests {
 
         let string = "Writing chars to syslog";
         for c in string.chars() {
-            syslogger.write(&[c as u8]).expect("error writing char");
+            syslogger.write_all(&[c as u8]).expect("error writing char");
         }
 
         syslogger
-            .write(&[b'\n'])
+            .write_all(&[b'\n'])
             .expect("error writing newline char");
     }
 
@@ -567,7 +567,7 @@ mod tests {
 
         let s = "Writing string to syslog\n";
         syslogger
-            .write(&s.as_bytes())
+            .write_all(&s.as_bytes())
             .expect("error writing string");
     }
 
@@ -579,7 +579,7 @@ mod tests {
         let s = "Writing partial string";
         // Should not log because there is no newline character
         syslogger
-            .write(&s.as_bytes())
+            .write_all(&s.as_bytes())
             .expect("error writing string");
     }
 }

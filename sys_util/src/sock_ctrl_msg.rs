@@ -376,6 +376,7 @@ mod tests {
     use crate::EventFd;
 
     #[test]
+    #[allow(clippy::erasing_op, clippy::identity_op)]
     fn buffer_len() {
         assert_eq!(CMSG_SPACE!(0 * size_of::<RawFd>()), size_of::<cmsghdr>());
         assert_eq!(
@@ -455,7 +456,7 @@ mod tests {
         assert_ne!(file.as_raw_fd(), s2.as_raw_fd());
         assert_ne!(file.as_raw_fd(), evt.as_raw_fd());
 
-        file.write(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
+        file.write_all(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
             .expect("failed to write to sent fd");
 
         assert_eq!(evt.read().expect("failed to read from eventfd"), 1203);
@@ -489,7 +490,7 @@ mod tests {
 
         let mut file = unsafe { File::from_raw_fd(files[0]) };
 
-        file.write(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
+        file.write_all(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
             .expect("failed to write to sent fd");
 
         assert_eq!(evt.read().expect("failed to read from eventfd"), 1203);

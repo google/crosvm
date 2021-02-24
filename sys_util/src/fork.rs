@@ -136,7 +136,7 @@ mod tests {
         assert_ne!(pid, 0);
 
         let clone_pid = clone_process(CloneNamespace::Inherit, || {
-            assert!(false);
+            panic!();
         })
         .expect("failed to clone");
 

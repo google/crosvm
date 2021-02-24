@@ -37,7 +37,7 @@ impl TimerFd {
     /// Creates a new `TimerFd` instance that shares the same underlying `File` as the existing
     /// `TimerFd` instance.
     pub fn try_clone(&self) -> std::result::Result<TimerFd, std::io::Error> {
-        self.0.try_clone().map(|f| TimerFd(f))
+        self.0.try_clone().map(TimerFd)
     }
 
     /// Sets the timer to expire after `dur`.  If `interval` is not `None` it represents

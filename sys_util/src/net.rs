@@ -536,8 +536,8 @@ mod tests {
 
         // Check `sun_path` in returned `sockaddr_un`
         let mut ref_sun_path = [0 as libc::c_char; 108];
-        for i in 0..path_size {
-            ref_sun_path[i] = 'a' as libc::c_char;
+        for path in ref_sun_path.iter_mut().take(path_size) {
+            *path = 'a' as libc::c_char;
         }
 
         for (addr_char, ref_char) in addr.sun_path.iter().zip(ref_sun_path.iter()) {

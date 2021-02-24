@@ -8,7 +8,7 @@ use std::ffi::CStr;
 use std::mem;
 use std::ptr;
 
-use libc::{self, c_char, getgrnam_r, getpwnam_r, gid_t, uid_t};
+use libc::{self, getgrnam_r, getpwnam_r, gid_t, uid_t};
 
 use crate::{errno_result, Result};
 
@@ -18,7 +18,7 @@ pub fn get_user_id(user_name: &CStr) -> Result<uid_t> {
     // libc::passwd is a C struct and can be safely initialized with zeroed memory.
     let mut passwd: libc::passwd = unsafe { mem::zeroed() };
     let mut passwd_result: *mut libc::passwd = ptr::null_mut();
-    let mut buf = [0 as c_char; 256];
+    let mut buf = [0; 256];
 
     // For thread-safety, use the reentrant version of this function. This allows us to give it a
     // buffer on the stack (instead of a global buffer). Unlike most libc functions, the return
@@ -50,7 +50,7 @@ pub fn get_group_id(group_name: &CStr) -> Result<gid_t> {
     // libc::group is a C struct and can be safely initialized with zeroed memory.
     let mut group: libc::group = unsafe { mem::zeroed() };
     let mut group_result: *mut libc::group = ptr::null_mut();
-    let mut buf = [0 as c_char; 256];
+    let mut buf = [0; 256];
 
     // For thread-safety, use the reentrant version of this function. This allows us to give it a
     // buffer on the stack (instead of a global buffer). Unlike most libc functions, the return

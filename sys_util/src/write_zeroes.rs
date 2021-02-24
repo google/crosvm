@@ -131,12 +131,12 @@ mod tests {
         // Write buffer of non-zero bytes to offset 1234
         let orig_data = [0x55u8; 5678];
         f.seek(SeekFrom::Start(1234)).unwrap();
-        f.write(&orig_data).unwrap();
+        f.write_all(&orig_data).unwrap();
 
         // Read back the data plus some overlap on each side
         let mut readback = [0u8; 16384];
         f.seek(SeekFrom::Start(0)).unwrap();
-        f.read(&mut readback).unwrap();
+        f.read_exact(&mut readback).unwrap();
         // Bytes before the write should still be 0
         for read in &readback[0..1234] {
             assert_eq!(*read, 0);
@@ -158,7 +158,7 @@ mod tests {
 
         // Read back the data and verify that it is now zero
         f.seek(SeekFrom::Start(0)).unwrap();
-        f.read(&mut readback).unwrap();
+        f.read_exact(&mut readback).unwrap();
         // Bytes before the write should still be 0
         for read in &readback[0..1234] {
             assert_eq!(*read, 0);
@@ -189,7 +189,7 @@ mod tests {
         // Write buffer of non-zero bytes
         let orig_data = [0x55u8; 0x20000];
         f.seek(SeekFrom::Start(0)).unwrap();
-        f.write(&orig_data).unwrap();
+        f.write_all(&orig_data).unwrap();
 
         // Overwrite some of the data with zeroes
         f.seek(SeekFrom::Start(0)).unwrap();
@@ -200,7 +200,7 @@ mod tests {
         // Read back the data and verify that it is now zero
         let mut readback = [0u8; 0x20000];
         f.seek(SeekFrom::Start(0)).unwrap();
-        f.read(&mut readback).unwrap();
+        f.read_exact(&mut readback).unwrap();
         // The write_zeroes region should now be zero
         for read in &readback[0..0x10001] {
             assert_eq!(*read, 0);
