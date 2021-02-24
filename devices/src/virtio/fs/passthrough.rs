@@ -2174,7 +2174,27 @@ impl FileSystem for PassthroughFs {
         length: u64,
     ) -> io::Result<()> {
         let data: Arc<dyn AsRawDescriptor> = if self.zero_message_open.load(Ordering::Relaxed) {
-            self.find_inode(inode)?
+            let data = self.find_inode(inode)?;
+
+            {
+                // fallocate needs a writable fd
+                let mut file = data.file.lock();
+                let mut flags = file.1;
+                match flags & libc::O_ACCMODE {
+                    libc::O_RDONLY => {
+                        flags &= !libc::O_RDONLY;
+                        flags |= libc::O_RDWR;
+
+                        // We need to get a writable handle for this file.
+                        let newfile = self.open_fd(file.0.as_raw_descriptor(), libc::O_RDWR)?;
+                        *file = (newfile, flags);
+                    }
+                    libc::O_WRONLY | libc::O_RDWR => {}
+                    _ => panic!("Unexpected flags: {:#x}", flags),
+                }
+            }
+
+            data
         } else {
             self.find_handle(handle, inode)?
         };
