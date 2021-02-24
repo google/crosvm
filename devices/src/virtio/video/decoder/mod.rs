@@ -5,7 +5,7 @@
 //! Implementation of a virtio video decoder backed by a device.
 
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::convert::TryInto;
 
 use backend::*;
@@ -161,6 +161,12 @@ impl OutputResources {
     }
 }
 
+struct PictureReadyEvent {
+    picture_buffer_id: i32,
+    bitstream_id: i32,
+    visible_rect: Rect,
+}
+
 // Context is associated with one `DecoderSession`, which corresponds to one stream from the
 // virtio-video's point of view.
 #[derive(Default)]
@@ -175,6 +181,8 @@ struct Context<S: DecoderSession> {
 
     // Set the flag if we need to clear output resource when the output queue is cleared next time.
     is_clear_out_res_needed: bool,
+
+    pending_ready_pictures: VecDeque<PictureReadyEvent>,
 
     session: Option<S>,
 }
@@ -194,8 +202,57 @@ impl<S: DecoderSession> Context<S> {
             in_res: Default::default(),
             out_res: Default::default(),
             is_clear_out_res_needed: false,
+            pending_ready_pictures: Default::default(),
             session: None,
         }
+    }
+
+    fn output_pending_pictures(&mut self) -> Vec<VideoEvtResponseType> {
+        let mut responses = vec![];
+        while let Some(async_response) = self.output_pending_picture() {
+            responses.push(VideoEvtResponseType::AsyncCmd(async_response));
+        }
+        responses
+    }
+
+    fn output_pending_picture(&mut self) -> Option<AsyncCmdResponse> {
+        let response = {
+            let PictureReadyEvent {
+                picture_buffer_id,
+                bitstream_id,
+                visible_rect,
+            } = self.pending_ready_pictures.front()?;
+
+            let plane_size = ((visible_rect.right - visible_rect.left)
+                * (visible_rect.bottom - visible_rect.top)) as u32;
+            for fmt in self.out_params.plane_formats.iter_mut() {
+                fmt.plane_size = plane_size;
+                // We don't need to set `plane_formats[i].stride` for the decoder.
+            }
+
+            let resource_id = self
+                .out_res
+                .dequeue_frame_buffer(*picture_buffer_id, self.stream_id)?;
+
+            AsyncCmdResponse::from_response(
+                AsyncCmdTag::Queue {
+                    stream_id: self.stream_id,
+                    queue_type: QueueType::Output,
+                    resource_id,
+                },
+                CmdResponse::ResourceQueue {
+                    // Conversion from sec to nsec.
+                    timestamp: (*bitstream_id as u64) * 1_000_000_000,
+                    // TODO(b/149725148): Set buffer flags once libvda exposes them.
+                    flags: 0,
+                    // `size` is only used for the encoder.
+                    size: 0,
+                },
+            )
+        };
+        self.pending_ready_pictures.pop_front().unwrap();
+
+        Some(response)
     }
 
     fn get_resource_info(
@@ -285,23 +342,6 @@ impl<S: DecoderSession> Context<S> {
         if self.out_res.eos_resource_id.is_some() {
             self.is_clear_out_res_needed = true;
         }
-    }
-
-    fn handle_picture_ready(
-        &mut self,
-        buffer_id: FrameBufferId,
-        left: i32,
-        top: i32,
-        right: i32,
-        bottom: i32,
-    ) -> Option<ResourceId> {
-        let plane_size = ((right - left) * (bottom - top)) as u32;
-        for fmt in self.out_params.plane_formats.iter_mut() {
-            fmt.plane_size = plane_size;
-            // We don't need to set `plane_formats[i].stride` for the decoder.
-        }
-
-        self.out_res.dequeue_frame_buffer(buffer_id, self.stream_id)
     }
 
     fn handle_notify_end_of_bitstream_buffer(&mut self, bitstream_id: i32) -> Option<ResourceId> {
@@ -785,6 +825,7 @@ impl<D: DecoderBackend> Device for Decoder<D> {
         use VideoCmd::*;
         use VideoCmdResponseType::Sync;
 
+        let mut event_ret = None;
         let cmd_response = match cmd {
             QueryCapability { queue_type } => Ok(Sync(self.query_capabilities(queue_type))),
             StreamCreate {
@@ -831,7 +872,15 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 queue_type: QueueType::Output,
                 resource_id,
                 ..
-            } => self.queue_output_resource(resource_bridge, stream_id, resource_id),
+            } => {
+                let resp = self.queue_output_resource(resource_bridge, stream_id, resource_id);
+                if resp.is_ok() {
+                    if let Ok(ctx) = self.contexts.get_mut(&stream_id) {
+                        event_ret = Some((stream_id, ctx.output_pending_pictures()));
+                    }
+                }
+                resp
+            }
             GetParams {
                 stream_id,
                 queue_type,
@@ -864,7 +913,7 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 Sync(e.into())
             }
         };
-        (cmd_ret, None)
+        (cmd_ret, event_ret)
     }
 
     fn process_event(
@@ -916,32 +965,15 @@ impl<D: DecoderBackend> Device for Decoder<D> {
             }
             DecoderEvent::PictureReady {
                 picture_buffer_id, // FrameBufferId
-                bitstream_id: ts_sec,
+                bitstream_id,      // timestamp in second
                 visible_rect,
             } => {
-                let resource_id = ctx.handle_picture_ready(
+                ctx.pending_ready_pictures.push_back(PictureReadyEvent {
                     picture_buffer_id,
-                    visible_rect.left,
-                    visible_rect.top,
-                    visible_rect.right,
-                    visible_rect.bottom,
-                )?;
-                let async_response = AsyncCmdResponse::from_response(
-                    AsyncCmdTag::Queue {
-                        stream_id,
-                        queue_type: QueueType::Output,
-                        resource_id,
-                    },
-                    CmdResponse::ResourceQueue {
-                        // Conversion from sec to nsec.
-                        timestamp: (ts_sec as u64) * 1_000_000_000,
-                        // TODO(b/149725148): Set buffer flags once libvda exposes them.
-                        flags: 0,
-                        // `size` is only used for the encoder.
-                        size: 0,
-                    },
-                );
-                vec![AsyncCmd(async_response)]
+                    bitstream_id,
+                    visible_rect,
+                });
+                ctx.output_pending_pictures()
             }
             DecoderEvent::NotifyEndOfBitstreamBuffer(bitstream_id) => {
                 let resource_id = ctx.handle_notify_end_of_bitstream_buffer(bitstream_id)?;
