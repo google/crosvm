@@ -57,7 +57,7 @@ pub use crate::gdb::*;
 pub use hypervisor::MemSlot;
 
 /// Control the state of a particular VM CPU.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum VcpuControl {
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     Debug(VcpuDebug),

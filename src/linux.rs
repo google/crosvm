@@ -2603,18 +2603,18 @@ where
     )
 }
 
-/// Signals all running VCPUs to vmexit, sends VmRunMode message to each VCPU tube, and tells
-/// `irq_chip` to stop blocking halted VCPUs. The tube message is set first because both the
+/// Signals all running VCPUs to vmexit, sends VcpuControl message to each VCPU tube, and tells
+/// `irq_chip` to stop blocking halted VCPUs. The channel message is set first because both the
 /// signal and the irq_chip kick could cause the VCPU thread to continue through the VCPU run
 /// loop.
 fn kick_all_vcpus(
     vcpu_handles: &[(JoinHandle<()>, mpsc::Sender<vm_control::VcpuControl>)],
     irq_chip: &dyn IrqChip,
-    run_mode: &VmRunMode,
+    message: VcpuControl,
 ) {
     for (handle, tube) in vcpu_handles {
-        if let Err(e) = tube.send(VcpuControl::RunState(run_mode.clone())) {
-            error!("failed to send VmRunMode: {}", e);
+        if let Err(e) = tube.send(message.clone()) {
+            error!("failed to send VcpuControl: {}", e);
         }
         let _ = handle.kill(SIGRTMIN() + 0);
     }
@@ -2976,7 +2976,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     kick_all_vcpus(
                         &vcpu_handles,
                         linux.irq_chip.as_irq_chip(),
-                        &VmRunMode::Suspending,
+                        VcpuControl::RunState(VmRunMode::Suspending),
                     );
                 }
                 Token::ChildSignal => {
@@ -3090,7 +3090,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 kick_all_vcpus(
                                                     &vcpu_handles,
                                                     linux.irq_chip.as_irq_chip(),
-                                                    &other,
+                                                    VcpuControl::RunState(other),
                                                 );
                                             }
                                         }
@@ -3267,7 +3267,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     kick_all_vcpus(
         &vcpu_handles,
         linux.irq_chip.as_irq_chip(),
-        &VmRunMode::Exiting,
+        VcpuControl::RunState(VmRunMode::Exiting),
     );
     for (handle, _) in vcpu_handles {
         if let Err(e) = handle.join() {
