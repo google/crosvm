@@ -5,6 +5,19 @@
 
 crosvm_root="${KOKORO_ARTIFACTS_DIR}"/git/crosvm
 
+# Enable SSH access to the kokoro builder.
+# Use the fusion2/ UI to trigger a build and set the DEBUG_SSH_KEY environment
+# variable to your public key, that will allow you to connect to the builder
+# via SSH.
+# Note: Access is restricted to the google corporate network.
+# Details: https://yaqs.corp.google.com/eng/q/6628551334035456
+if [[ ! -z "${DEBUG_SSH_KEY}" ]]; then
+  echo "${DEBUG_SSH_KEY}" >> ~/.ssh/authorized_keys
+  external_ip=$(curl -s -H "Metadata-Flavor: Google"
+    http://metadata/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip)
+  echo "SSH Debug enabled. Connect to: kbuilder@${external_ip}"
+fi
+
 setup_source() {
   if [ -z "${KOKORO_ARTIFACTS_DIR}" ]; then
     echo "This script must be run in kokoro"
@@ -45,6 +58,12 @@ setup_source() {
 }
 
 cleanup() {
+  # Sleep after the build to allow for SSH debugging to continue.
+  if [[ ! -z "${DEBUG_SSH_KEY}" ]]; then
+    echo "Build done. Blocking for SSH debugging."
+    sleep 1h
+  fi
+
   if command -v bindfs >/dev/null; then
     fusermount -uz "${KOKORO_ARTIFACTS_DIR}/cros/src/platform/crosvm"
   else

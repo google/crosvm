@@ -12,12 +12,6 @@ users:
         crosvm@localhost
     groups: kvm, disk, tty
 
-apt:
-  sources:
-    testing:
-      source: "deb $MIRROR bullseye main"
-  conf: APT::Default-Release "stable";
-
 # Store working data on tmpfs to reduce unnecessary disk IO
 mounts:
   - [swap, null]
@@ -37,18 +31,6 @@ packages:
   - rsync
 
 runcmd:
-  # Install testing (debian bullseye) versions of some libraries.
-  - [
-      apt-get,
-      install,
-      --yes,
-      -t,
-      testing,
-      --no-install-recommends,
-      libdrm2,
-      libepoxy0,
-    ]
-
   # Trim some fat
   - [apt-get, remove, --yes, vim-runtime, iso-codes, perl, grub-common]
   - [apt-get, autoremove, --yes]
