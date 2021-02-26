@@ -1173,11 +1173,17 @@ fn create_pmem_device(
     index: usize,
     pmem_device_socket: VmMsyncRequestSocket,
 ) -> DeviceResult {
-    let fd = OpenOptions::new()
-        .read(true)
-        .write(!disk.read_only)
-        .open(&disk.path)
-        .map_err(|e| Error::Disk(disk.path.to_path_buf(), e))?;
+    // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
+    let fd: File = if disk.path.parent() == Some(Path::new("/proc/self/fd")) {
+        // Safe because we will validate |raw_fd|.
+        unsafe { File::from_raw_descriptor(raw_descriptor_from_path(&disk.path)?) }
+    } else {
+        OpenOptions::new()
+            .read(true)
+            .write(!disk.read_only)
+            .open(&disk.path)
+            .map_err(|e| Error::Disk(disk.path.to_path_buf(), e))?
+    };
 
     let arena_size = {
         let metadata =
