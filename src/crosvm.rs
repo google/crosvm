@@ -81,6 +81,13 @@ pub struct GidMap {
     pub count: u32,
 }
 
+/// Direct IO forwarding options
+#[cfg(feature = "direct")]
+pub struct DirectIoOption {
+    pub path: PathBuf,
+    pub ranges: Vec<(u64, u64)>,
+}
+
 pub const DEFAULT_TOUCH_DEVICE_HEIGHT: u32 = 1024;
 pub const DEFAULT_TOUCH_DEVICE_WIDTH: u32 = 1280;
 
@@ -248,6 +255,8 @@ pub struct Config {
     pub vhost_user_blk: Vec<VhostUserOption>,
     pub vhost_user_fs: Vec<VhostUserFsOption>,
     pub vhost_user_net: Vec<VhostUserOption>,
+    #[cfg(feature = "direct")]
+    pub direct_pmio: Option<DirectIoOption>,
 }
 
 impl Default for Config {
@@ -315,6 +324,8 @@ impl Default for Config {
             vhost_user_blk: Vec::new(),
             vhost_user_fs: Vec::new(),
             vhost_user_net: Vec::new(),
+            #[cfg(feature = "direct")]
+            direct_pmio: None,
         }
     }
 }

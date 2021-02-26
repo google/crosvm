@@ -38,6 +38,7 @@ exclude = [
 default = ["audio", "gpu"]
 chromeos = ["base/chromeos"]
 default-no-sandbox = []
+direct = ["devices/direct"]
 audio = ["devices/audio"]
 gpu = ["devices/gpu"]
 plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]

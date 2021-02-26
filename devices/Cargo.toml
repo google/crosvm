@@ -6,6 +6,7 @@ edition = "2018"
 
 [features]
 audio = []
+direct = []
 gpu = ["gpu_display","rutabaga_gfx"]
 tpm = ["protos/trunks", "tpm2"]
 video-decoder = ["libvda"]

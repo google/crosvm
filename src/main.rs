@@ -27,6 +27,8 @@ use base::{
     validate_raw_descriptor, warn, FromRawDescriptor, IntoRawDescriptor, RawDescriptor,
     SafeDescriptor,
 };
+#[cfg(feature = "direct")]
+use crosvm::DirectIoOption;
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
     platform, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
@@ -664,6 +666,64 @@ fn parse_battery_options(s: Option<&str>) -> argument::Result<BatteryType> {
     }
 
     Ok(battery_type)
+}
+
+#[cfg(feature = "direct")]
+fn parse_direct_io_options(s: Option<&str>) -> argument::Result<DirectIoOption> {
+    let s = s.ok_or(argument::Error::ExpectedValue(String::from(
+        "expected path@range[,range] value",
+    )))?;
+    let parts: Vec<&str> = s.splitn(2, '@').collect();
+    if parts.len() != 2 {
+        return Err(argument::Error::InvalidValue {
+            value: s.to_string(),
+            expected: String::from("missing port range, use /path@X-Y,Z,.. syntax"),
+        });
+    }
+    let path = PathBuf::from(parts[0]);
+    if !path.exists() {
+        return Err(argument::Error::InvalidValue {
+            value: parts[0].to_owned(),
+            expected: String::from("the path does not exist"),
+        });
+    };
+    let ranges: argument::Result<Vec<(u64, u64)>> = parts[1]
+        .split(',')
+        .map(|frag| frag.split('-'))
+        .map(|mut range| {
+            let base = range
+                .next()
+                .map(|v| v.parse::<u64>())
+                .map_or(Ok(None), |r| r.map(Some));
+            let last = range
+                .next()
+                .map(|v| v.parse::<u64>())
+                .map_or(Ok(None), |r| r.map(Some));
+            (base, last)
+        })
+        .map(|range| match range {
+            (Ok(Some(base)), Ok(None)) => Ok((base, 1)),
+            (Ok(Some(base)), Ok(Some(last))) => {
+                Ok((base, last.saturating_sub(base).saturating_add(1)))
+            }
+            (Err(e), _) => Err(argument::Error::InvalidValue {
+                value: e.to_string(),
+                expected: String::from("invalid base range value"),
+            }),
+            (_, Err(e)) => Err(argument::Error::InvalidValue {
+                value: e.to_string(),
+                expected: String::from("invalid last range value"),
+            }),
+            _ => Err(argument::Error::InvalidValue {
+                value: s.to_owned(),
+                expected: String::from("invalid range format"),
+            }),
+        })
+        .collect();
+    Ok(DirectIoOption {
+        path,
+        ranges: ranges?,
+    })
 }
 
 fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::Result<()> {
@@ -1613,6 +1673,15 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 .to_owned();
             cfg.vhost_user_fs.push(VhostUserFsOption { socket, tag });
         }
+        #[cfg(feature = "direct")]
+        "direct-pmio" => {
+            if cfg.direct_pmio.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`direct_pmio` already given".to_owned(),
+                ));
+            }
+            cfg.direct_pmio = Some(parse_direct_io_options(value)?);
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -1826,6 +1895,8 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           Argument::value("vhost-user-net", "SOCKET_PATH", "Path to a socket for vhost-user net"),
           Argument::value("vhost-user-fs", "SOCKET_PATH:TAG",
                           "Path to a socket path for vhost-user fs, and tag for the shared dir"),
+          #[cfg(feature = "direct")]
+          Argument::value("direct-pmio", "PATH@RANGE[,RANGE[,...]]", "Path and ranges for direct port I/O access"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

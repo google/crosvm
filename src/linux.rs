@@ -135,6 +135,7 @@ pub enum Error {
     CreateWaitContext(base::Error),
     DeviceJail(minijail::Error),
     DevicePivotRoot(minijail::Error),
+    DirectIo(io::Error),
     Disk(PathBuf, io::Error),
     DiskImageLock(base::Error),
     DropCapabilities(base::Error),
@@ -248,6 +249,7 @@ impl Display for Error {
             CreateWaitContext(e) => write!(f, "failed to create wait context: {}", e),
             DeviceJail(e) => write!(f, "failed to jail device: {}", e),
             DevicePivotRoot(e) => write!(f, "failed to pivot root device: {}", e),
+            DirectIo(e) => write!(f, "failed to open direct io device: {}", e),
             Disk(p, e) => write!(f, "failed to load disk image {}: {}", p.display(), e),
             DiskImageLock(e) => write!(f, "failed to lock disk image: {}", e),
             DropCapabilities(e) => write!(f, "failed to drop process capabilities: {}", e),
@@ -2496,7 +2498,7 @@ where
         fs_device_sockets.push(fs_device_socket);
     }
 
-    let linux: RunnableLinuxVm<_, Vcpu, _> = Arch::build_vm(
+    let mut linux: RunnableLinuxVm<_, Vcpu, _> = Arch::build_vm(
         components,
         &cfg.serial_parameters,
         simple_jail(&cfg, "serial")?,
@@ -2523,6 +2525,18 @@ where
         |vm, vcpu_count| create_irq_chip(vm, vcpu_count, ioapic_device_socket),
     )
     .map_err(Error::BuildVm)?;
+
+    #[cfg(feature = "direct")]
+    if let Some(pmio) = &cfg.direct_pmio {
+        let direct_io =
+            Arc::new(devices::DirectIo::new(&pmio.path, false).map_err(Error::DirectIo)?);
+        for range in pmio.ranges.iter() {
+            linux
+                .io_bus
+                .insert_sync(direct_io.clone(), range.0, range.1)
+                .unwrap();
+        }
+    };
 
     run_control(
         linux,
