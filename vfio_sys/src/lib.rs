@@ -8,7 +8,9 @@
 
 use base::ioctl_io_nr;
 
+pub mod plat;
 pub mod vfio;
+pub use crate::plat::*;
 pub use crate::vfio::*;
 
 ioctl_io_nr!(VFIO_GET_API_VERSION, VFIO_TYPE, VFIO_BASE);
@@ -37,3 +39,9 @@ ioctl_io_nr!(VFIO_IOMMU_MAP_DMA, VFIO_TYPE, VFIO_BASE + 13);
 ioctl_io_nr!(VFIO_IOMMU_UNMAP_DMA, VFIO_TYPE, VFIO_BASE + 14);
 ioctl_io_nr!(VFIO_IOMMU_ENABLE, VFIO_TYPE, VFIO_BASE + 15);
 ioctl_io_nr!(VFIO_IOMMU_DISABLE, VFIO_TYPE, VFIO_BASE + 16);
+
+ioctl_io_nr!(
+    PLAT_IRQ_FORWARD_SET,
+    PLAT_IRQ_FORWARD_TYPE,
+    PLAT_IRQ_FORWARD_BASE
+);

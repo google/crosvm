@@ -6,6 +6,8 @@
 
 mod bus;
 mod cmos;
+#[cfg(all(target_arch = "x86_64", target_os = "linux"))]
+pub mod direct_irq;
 mod i8042;
 pub mod irqchip;
 mod pci;
@@ -29,6 +31,8 @@ pub use self::bat::{BatteryError, GoldfishBattery};
 pub use self::bus::Error as BusError;
 pub use self::bus::{Bus, BusAccessInfo, BusDevice, BusRange, BusResumeDevice};
 pub use self::cmos::Cmos;
+#[cfg(all(target_arch = "x86_64", target_os = "linux"))]
+pub use self::direct_irq::{DirectIrq, DirectIrqError};
 pub use self::i8042::I8042Device;
 pub use self::irqchip::*;
 #[cfg(feature = "audio")]
