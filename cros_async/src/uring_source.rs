@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use crate::mem::{BackingMemory, MemRegion, VecIoWrapper};
 use crate::uring_executor::{Error, RegisteredSource, Result, URingExecutor};
-use crate::uring_mem::{BackingMemory, MemRegion, VecIoWrapper};
 use crate::AsyncError;
 use crate::AsyncResult;
 
@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn read_to_mem() {
-        use crate::uring_mem::VecIoWrapper;
+        use crate::mem::VecIoWrapper;
         use std::io::Write;
         use tempfile::tempfile;
 
@@ -532,7 +532,7 @@ mod tests {
                 .unwrap();
             let source = UringSource::new(f, ex).unwrap();
             let v = vec![0x55u8; 64];
-            let vw = Arc::new(crate::uring_mem::VecIoWrapper::from(v));
+            let vw = Arc::new(crate::mem::VecIoWrapper::from(v));
             let ret = source
                 .write_from_mem(0, vw, &[MemRegion { offset: 0, len: 32 }])
                 .await

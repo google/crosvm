@@ -292,9 +292,7 @@ impl RawExecutor {
                 if let Some(op) = ops.get_mut(token) {
                     let (file, waker) = match mem::replace(op, OpStatus::Completed) {
                         OpStatus::Pending(OpData { file, waker }) => (file, waker),
-                        OpStatus::Completed => {
-                            panic!("poll operation completed more than once")
-                        }
+                        OpStatus::Completed => panic!("poll operation completed more than once"),
                     };
 
                     mem::drop(ops);

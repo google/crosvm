@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::fmt::{self, Display};
-use std::io::IoSliceMut;
-use std::marker::PhantomData;
+
+use data_model::VolatileSlice;
 
 #[derive(Debug)]
 pub enum Error {
@@ -38,53 +38,15 @@ pub struct MemRegion {
     pub len: usize,
 }
 
-/// An iovec that borrows the backing memory it points to.
-/// This ties the lifetime of the iovec to the memory, ensuring it is still valid when it is used.
-#[repr(transparent)]
-pub struct BorrowedIoVec<'a> {
-    iovec: libc::iovec,
-    backing_memory: PhantomData<&'a ()>,
-}
-
-impl<'a> BorrowedIoVec<'a> {
-    /// Creates a BorrowedIoVec from an existing IoSlice.
-    pub fn new(ioslice: IoSliceMut<'a>) -> BorrowedIoVec<'a> {
-        Self {
-            // Safe because IoSliceMut guarantees ABI compatibility with iovec.
-            iovec: unsafe { std::mem::transmute(ioslice) },
-            backing_memory: PhantomData,
-        }
-    }
-
-    /// Creates a BorrowedIoVec from a pointer and length.
-    /// # Safety
-    /// The caller must guarantee that memory from `ptr` to `ptr` + `len` is valid for the duration
-    /// of lifetime `'a`.
-    pub unsafe fn from_raw_parts(ptr: *mut u8, len: usize) -> BorrowedIoVec<'a> {
-        Self {
-            iovec: libc::iovec {
-                iov_base: ptr as *mut _,
-                iov_len: len,
-            },
-            backing_memory: PhantomData,
-        }
-    }
-
-    ///  Access the inner iovec for this borrowed iovec.
-    pub fn iovec(&self) -> libc::iovec {
-        self.iovec
-    }
-}
-
 /// Trait for memory that can yeild both iovecs in to the backing memory.
 /// Must be OK to modify the backing memory without owning a mut able reference. For example,
 /// this is safe for GuestMemory and VolatileSlices in crosvm as those types guarantee they are
 /// dealt with as volatile.
 pub unsafe trait BackingMemory {
-    /// Returns an iovec pointing to the backing memory. This is most commonly unsafe. To implement
-    /// this safely the implementor must guarantee that the backing memory can be modified out of
-    /// band without affecting safety guarantees.
-    fn get_iovec(&self, mem_range: MemRegion) -> Result<BorrowedIoVec>;
+    /// Returns VolatileSlice pointing to the backing memory. This is most commonly unsafe.
+    /// To implement this safely the implementor must guarantee that the backing memory can be
+    /// modified out of band without affecting safety guarantees.
+    fn get_volatile_slice(&self, mem_range: MemRegion) -> Result<VolatileSlice>;
 }
 
 /// Wrapper to be used for passing a Vec in as backing memory for asynchronous operations.  The
@@ -136,11 +98,11 @@ impl VecIoWrapper {
 // iovecs are dropped because they borrow Self.  Nothing can borrow the owned inner vec until self
 // is consumed by `into`, which can't happen if there are outstanding mut borrows.
 unsafe impl BackingMemory for VecIoWrapper {
-    fn get_iovec(&self, mem_range: MemRegion) -> Result<BorrowedIoVec<'_>> {
+    fn get_volatile_slice(&self, mem_range: MemRegion) -> Result<VolatileSlice<'_>> {
         self.check_addrs(&mem_range)?;
         // Safe because the mem_range range is valid in the backing memory as checked above.
         unsafe {
-            Ok(BorrowedIoVec::from_raw_parts(
+            Ok(VolatileSlice::from_raw_parts(
                 self.inner.as_ptr().add(mem_range.offset as usize) as *mut _,
                 mem_range.len,
             ))

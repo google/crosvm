@@ -133,7 +133,7 @@ mod tests {
 
     use super::*;
     use crate::executor::{async_poll_from, async_uring_from};
-    use crate::uring_mem::VecIoWrapper;
+    use crate::mem::VecIoWrapper;
     use crate::{Executor, FdExecutor, MemRegion, PollSource, URingExecutor, UringSource};
 
     struct State {

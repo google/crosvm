@@ -15,9 +15,10 @@ use sys_util::{self, add_fd_flags};
 use thiserror::Error as ThisError;
 
 use crate::fd_executor::{self, FdExecutor};
-use crate::uring_mem::{BackingMemory, BorrowedIoVec, MemRegion};
+use crate::mem::{BackingMemory, MemRegion};
 use crate::{AsyncError, AsyncResult};
 use crate::{IoSourceExt, ReadAsync, WriteAsync};
+use data_model::VolatileSlice;
 
 #[derive(ThisError, Debug)]
 pub enum Error {
@@ -126,8 +127,8 @@ impl<F: AsRawFd> ReadAsync for PollSource<F> {
     ) -> AsyncResult<usize> {
         let mut iovecs = mem_offsets
             .iter()
-            .filter_map(|&mem_vec| mem.get_iovec(mem_vec).ok())
-            .collect::<Vec<BorrowedIoVec>>();
+            .filter_map(|&mem_vec| mem.get_volatile_slice(mem_vec).ok())
+            .collect::<Vec<VolatileSlice>>();
 
         loop {
             // Safe because we trust the kernel not to write path the length given and the length is
@@ -243,9 +244,9 @@ impl<F: AsRawFd> WriteAsync for PollSource<F> {
     ) -> AsyncResult<usize> {
         let iovecs = mem_offsets
             .iter()
-            .map(|&mem_vec| mem.get_iovec(mem_vec))
+            .map(|&mem_vec| mem.get_volatile_slice(mem_vec))
             .filter_map(|r| r.ok())
-            .collect::<Vec<BorrowedIoVec>>();
+            .collect::<Vec<VolatileSlice>>();
 
         loop {
             // Safe because we trust the kernel not to write path the length given and the length is

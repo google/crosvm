@@ -155,6 +155,7 @@ version = "0.1.0"
 dependencies = [
  "async-task",
  "async-trait",
+ "data_model",
  "futures",
  "io_uring",
  "libc",

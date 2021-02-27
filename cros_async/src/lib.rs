@@ -63,12 +63,12 @@ mod event;
 mod executor;
 mod fd_executor;
 mod io_ext;
+pub mod mem;
 mod poll_source;
 mod queue;
 mod select;
 mod timer;
 mod uring_executor;
-pub mod uring_mem;
 mod uring_source;
 mod waker;
 
@@ -78,11 +78,11 @@ pub use fd_executor::FdExecutor;
 pub use io_ext::{
     Error as AsyncError, IntoAsync, IoSourceExt, ReadAsync, Result as AsyncResult, WriteAsync,
 };
+pub use mem::{BackingMemory, MemRegion};
 pub use poll_source::PollSource;
 pub use select::SelectResult;
 pub use timer::TimerAsync;
 pub use uring_executor::URingExecutor;
-pub use uring_mem::{BackingMemory, MemRegion};
 pub use uring_source::UringSource;
 
 use std::future::Future;

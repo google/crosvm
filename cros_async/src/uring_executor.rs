@@ -73,8 +73,8 @@ use sync::Mutex;
 use sys_util::{warn, WatchingEvents};
 use thiserror::Error as ThisError;
 
+use crate::mem::{BackingMemory, MemRegion};
 use crate::queue::RunnableQueue;
-use crate::uring_mem::{BackingMemory, MemRegion};
 use crate::waker::{new_waker, WakerToken, WeakWake};
 
 #[derive(Debug, ThisError)]
@@ -401,9 +401,7 @@ impl RawExecutor {
                             waker.wake();
                         }
                     }
-                    OpStatus::Completed(_) => {
-                        panic!("uring operation completed more than once")
-                    }
+                    OpStatus::Completed(_) => panic!("uring operation completed more than once"),
                 }
             }
         }
@@ -564,7 +562,7 @@ impl RawExecutor {
     ) -> Result<WakerToken> {
         if addrs
             .iter()
-            .any(|&mem_range| mem.get_iovec(mem_range).is_err())
+            .any(|&mem_range| mem.get_volatile_slice(mem_range).is_err())
         {
             return Err(Error::InvalidOffset);
         }
@@ -584,7 +582,7 @@ impl RawExecutor {
         // validate their addresses before submitting.
         let iovecs = addrs
             .iter()
-            .map(|&mem_range| mem.get_iovec(mem_range).unwrap().iovec());
+            .map(|&mem_range| *mem.get_volatile_slice(mem_range).unwrap().as_iobuf());
 
         unsafe {
             // Safe because all the addresses are within the Memory that an Arc is kept for the
@@ -614,7 +612,7 @@ impl RawExecutor {
     ) -> Result<WakerToken> {
         if addrs
             .iter()
-            .any(|&mem_range| mem.get_iovec(mem_range).is_err())
+            .any(|&mem_range| mem.get_volatile_slice(mem_range).is_err())
         {
             return Err(Error::InvalidOffset);
         }
@@ -634,7 +632,7 @@ impl RawExecutor {
         // validate their addresses before submitting.
         let iovecs = addrs
             .iter()
-            .map(|&mem_range| mem.get_iovec(mem_range).unwrap().iovec());
+            .map(|&mem_range| *mem.get_volatile_slice(mem_range).unwrap().as_iobuf());
 
         unsafe {
             // Safe because all the addresses are within the Memory that an Arc is kept for the
@@ -839,7 +837,7 @@ mod tests {
     use futures::executor::block_on;
 
     use super::*;
-    use crate::uring_mem::{BackingMemory, MemRegion, VecIoWrapper};
+    use crate::mem::{BackingMemory, MemRegion, VecIoWrapper};
 
     // A future that returns ready when the uring queue is empty.
     struct UringQueueEmpty<'a> {

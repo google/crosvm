@@ -17,10 +17,7 @@ use base::{
     AsRawDescriptor, MappedRegion, MemfdSeals, MemoryMapping, MemoryMappingBuilder,
     MemoryMappingUnix, MmapError, RawDescriptor, SharedMemory, SharedMemoryUnix,
 };
-use cros_async::{
-    uring_mem::{self, BorrowedIoVec},
-    BackingMemory,
-};
+use cros_async::{mem, BackingMemory};
 use data_model::volatile_memory::*;
 use data_model::DataInit;
 
@@ -669,20 +666,12 @@ impl GuestMemory {
 
 // It is safe to implement BackingMemory because GuestMemory can be mutated any time already.
 unsafe impl BackingMemory for GuestMemory {
-    fn get_iovec(
+    fn get_volatile_slice(
         &self,
         mem_range: cros_async::MemRegion,
-    ) -> uring_mem::Result<uring_mem::BorrowedIoVec<'_>> {
-        let vs = self
-            .get_slice_at_addr(GuestAddress(mem_range.offset as u64), mem_range.len)
-            .map_err(|_| uring_mem::Error::InvalidOffset(mem_range.offset, mem_range.len))?;
-        // Safe because 'vs' is valid in the backing memory as checked above.
-        unsafe {
-            Ok(BorrowedIoVec::from_raw_parts(
-                vs.as_mut_ptr(),
-                vs.size() as usize,
-            ))
-        }
+    ) -> mem::Result<VolatileSlice<'_>> {
+        self.get_slice_at_addr(GuestAddress(mem_range.offset as u64), mem_range.len)
+            .map_err(|_| mem::Error::InvalidOffset(mem_range.offset, mem_range.len))
     }
 }
 
