@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Implementation of an intel 82093AA Input/Output Advanced Programmable Interrupt Controller
-// See https://pdos.csail.mit.edu/6.828/2016/readings/ia32/ioapic.pdf for a specification.
+// Implementation of an Intel ICH10 Input/Output Advanced Programmable Interrupt Controller
+// See https://www.intel.com/content/dam/doc/datasheet/io-controller-hub-10-family-datasheet.pdf
+// for a specification.
 
 use std::fmt::{self, Display};
 
@@ -11,11 +12,15 @@ use super::IrqEvent;
 use crate::bus::BusAccessInfo;
 use crate::BusDevice;
 use base::{error, warn, AsRawDescriptor, Error, Event, Result};
-use hypervisor::{IoapicState, MsiAddressMessage, MsiDataMessage, TriggerMode, NUM_IOAPIC_PINS};
+use hypervisor::{
+    IoapicRedirectionTableEntry, IoapicState, MsiAddressMessage, MsiDataMessage, TriggerMode,
+    NUM_IOAPIC_PINS,
+};
 use msg_socket::{MsgError, MsgReceiver, MsgSender};
 use vm_control::{MaybeOwnedDescriptor, VmIrqRequest, VmIrqRequestSocket, VmIrqResponse};
 
-const IOAPIC_VERSION_ID: u32 = 0x00170011;
+// ICH10 I/O APIC version: 0x20
+const IOAPIC_VERSION_ID: u32 = 0x00000020;
 pub const IOAPIC_BASE_ADDRESS: u64 = 0xfec00000;
 // The Intel manual does not specify this size, but KVM uses it.
 pub const IOAPIC_MEM_LENGTH_BYTES: u64 = 0x100;
@@ -29,6 +34,8 @@ const IOAPIC_REG_ARBITRATION_ID: u8 = 0x02;
 const IOREGSEL_OFF: u8 = 0x0;
 const IOREGSEL_DUMMY_UPPER_32_BITS_OFF: u8 = 0x4;
 const IOWIN_OFF: u8 = 0x10;
+const IOEOIR_OFF: u8 = 0x40;
+
 const IOWIN_SCALE: u8 = 0x2;
 
 /// Given an IRQ and whether or not the selector should refer to the high bits, return a selector
@@ -57,8 +64,12 @@ fn decode_irq_from_selector(selector: u8) -> (usize, bool) {
 const RTC_IRQ: usize = 0x8;
 
 pub struct Ioapic {
-    /// State of the ioapic registers
-    state: IoapicState,
+    /// Number of supported IO-APIC inputs / redirection entries.
+    num_pins: usize,
+    /// ioregsel register. Used for selecting which entry of the redirect table to read/write.
+    ioregsel: u8,
+    /// ioapicid register. Bits 24 - 27 contain the APIC ID for this device.
+    ioapicid: u32,
     /// Remote IRR for Edge Triggered Real Time Clock interrupts, which allows the CMOS to know when
     /// one of its interrupts is being coalesced.
     rtc_remote_irr: bool,
@@ -67,7 +78,11 @@ pub struct Ioapic {
     /// Events that should be triggered on an EOI. The outer Vec is indexed by GSI, and the inner
     /// Vec is an unordered list of registered resample events for the GSI.
     resample_events: Vec<Vec<Event>>,
-    /// Socket used to route MSI irqs
+    /// Redirection settings for each irq line.
+    redirect_table: Vec<IoapicRedirectionTableEntry>,
+    /// Interrupt activation state.
+    interrupt_level: Vec<bool>,
+    /// Socket used to route MSI irqs.
     irq_socket: VmIrqRequestSocket,
 }
 
@@ -85,9 +100,10 @@ impl BusDevice for Ioapic {
             warn!("IOAPIC: Bad read from {}", info);
         }
         let out = match info.offset as u8 {
-            IOREGSEL_OFF => self.state.ioregsel.into(),
+            IOREGSEL_OFF => self.ioregsel.into(),
             IOREGSEL_DUMMY_UPPER_32_BITS_OFF => 0,
             IOWIN_OFF => self.ioapic_read(),
+            IOEOIR_OFF => 0,
             _ => {
                 warn!("IOAPIC: Bad read from {}", info);
                 return;
@@ -110,7 +126,7 @@ impl BusDevice for Ioapic {
             warn!("IOAPIC: Bad write to {}", info);
         }
         match info.offset as u8 {
-            IOREGSEL_OFF => self.state.ioregsel = data[0],
+            IOREGSEL_OFF => self.ioregsel = data[0],
             IOREGSEL_DUMMY_UPPER_32_BITS_OFF => {} // Ignored.
             IOWIN_OFF => {
                 if data.len() != 4 {
@@ -121,6 +137,7 @@ impl BusDevice for Ioapic {
                 let val = u32::from_ne_bytes(data_arr);
                 self.ioapic_write(val);
             }
+            IOEOIR_OFF => self.end_of_interrupt(data[0]),
             _ => {
                 warn!("IOAPIC: Bad write to {}", info);
             }
@@ -129,28 +146,66 @@ impl BusDevice for Ioapic {
 }
 
 impl Ioapic {
-    pub fn new(irq_socket: VmIrqRequestSocket) -> Result<Ioapic> {
-        let mut state = IoapicState::default();
-
-        for i in 0..NUM_IOAPIC_PINS {
-            state.redirect_table[i].set_interrupt_mask(true);
-        }
-
+    pub fn new(irq_socket: VmIrqRequestSocket, num_pins: usize) -> Result<Ioapic> {
+        let num_pins = num_pins.max(NUM_IOAPIC_PINS as usize);
+        let mut entry = IoapicRedirectionTableEntry::new();
+        entry.set_interrupt_mask(true);
         Ok(Ioapic {
-            state,
+            num_pins,
+            ioregsel: 0,
+            ioapicid: 0,
             rtc_remote_irr: false,
-            out_events: (0..NUM_IOAPIC_PINS).map(|_| None).collect(),
+            out_events: (0..num_pins).map(|_| None).collect(),
             resample_events: Vec::new(),
+            redirect_table: (0..num_pins).map(|_| entry.clone()).collect(),
+            interrupt_level: (0..num_pins).map(|_| false).collect(),
             irq_socket,
         })
     }
 
     pub fn get_ioapic_state(&self) -> IoapicState {
-        self.state
+        // Convert vector of first NUM_IOAPIC_PINS active interrupts into an u32 value.
+        let level_bitmap = self
+            .interrupt_level
+            .iter()
+            .take(NUM_IOAPIC_PINS)
+            .rev()
+            .fold(0, |acc, &l| acc * 2 + l as u32);
+        let mut state = IoapicState {
+            base_address: IOAPIC_BASE_ADDRESS,
+            ioregsel: self.ioregsel,
+            ioapicid: self.ioapicid,
+            current_interrupt_level_bitmap: level_bitmap,
+            ..Default::default()
+        };
+        for (dst, src) in state
+            .redirect_table
+            .iter_mut()
+            .zip(self.redirect_table.iter())
+        {
+            *dst = *src;
+        }
+        state
     }
 
     pub fn set_ioapic_state(&mut self, state: &IoapicState) {
-        self.state = *state
+        self.ioregsel = state.ioregsel;
+        self.ioapicid = state.ioapicid & 0x0f00_0000;
+        for (src, dst) in state
+            .redirect_table
+            .iter()
+            .zip(self.redirect_table.iter_mut())
+        {
+            *dst = *src;
+        }
+        for (i, level) in self
+            .interrupt_level
+            .iter_mut()
+            .take(NUM_IOAPIC_PINS)
+            .enumerate()
+        {
+            *level = state.current_interrupt_level_bitmap & (1 << i) != 0;
+        }
     }
 
     pub fn register_resample_events(&mut self, resample_events: Vec<Vec<Event>>) {
@@ -160,14 +215,14 @@ impl Ioapic {
     // The ioapic must be informed about EOIs in order to avoid sending multiple interrupts of the
     // same type at the same time.
     pub fn end_of_interrupt(&mut self, vector: u8) {
-        if self.state.redirect_table[RTC_IRQ].get_vector() == vector && self.rtc_remote_irr {
+        if self.redirect_table[RTC_IRQ].get_vector() == vector && self.rtc_remote_irr {
             // Specifically clear RTC IRQ field
             self.rtc_remote_irr = false;
         }
 
-        for i in 0..NUM_IOAPIC_PINS {
-            if self.state.redirect_table[i].get_vector() == vector
-                && self.state.redirect_table[i].get_trigger_mode() == TriggerMode::Level
+        for i in 0..self.num_pins {
+            if self.redirect_table[i].get_vector() == vector
+                && self.redirect_table[i].get_trigger_mode() == TriggerMode::Level
             {
                 if self
                     .resample_events
@@ -182,34 +237,32 @@ impl Ioapic {
                         resample_evt.write(1).unwrap();
                     }
                 }
-                self.state.redirect_table[i].set_remote_irr(false);
+                self.redirect_table[i].set_remote_irr(false);
             }
             // There is an inherent race condition in hardware if the OS is finished processing an
             // interrupt and a new interrupt is delivered between issuing an EOI and the EOI being
             // completed.  When that happens the ioapic is supposed to re-inject the interrupt.
-            if self.state.current_interrupt_level_bitmap & (1 << i) != 0 {
+            if self.interrupt_level[i] {
                 self.service_irq(i, true);
             }
         }
     }
 
     pub fn service_irq(&mut self, irq: usize, level: bool) -> bool {
-        let entry = &mut self.state.redirect_table[irq];
+        let entry = &mut self.redirect_table[irq];
 
         // De-assert the interrupt.
         if !level {
-            self.state.current_interrupt_level_bitmap &= !(1 << irq);
+            self.interrupt_level[irq] = false;
             return true;
         }
 
         // If it's an edge-triggered interrupt that's already high we ignore it.
-        if entry.get_trigger_mode() == TriggerMode::Edge
-            && self.state.current_interrupt_level_bitmap & (1 << irq) != 0
-        {
+        if entry.get_trigger_mode() == TriggerMode::Edge && self.interrupt_level[irq] {
             return false;
         }
 
-        self.state.current_interrupt_level_bitmap |= 1 << irq;
+        self.interrupt_level[irq] = true;
 
         // Interrupts are masked, so don't inject.
         if entry.get_interrupt_mask() {
@@ -242,22 +295,22 @@ impl Ioapic {
     }
 
     fn ioapic_write(&mut self, val: u32) {
-        match self.state.ioregsel {
+        match self.ioregsel {
             IOAPIC_REG_VERSION => { /* read-only register */ }
-            IOAPIC_REG_ID => self.state.ioapicid = (val >> 24) & 0xf,
+            IOAPIC_REG_ID => self.ioapicid = val & 0x0f00_0000,
             IOAPIC_REG_ARBITRATION_ID => { /* read-only register */ }
             _ => {
-                if self.state.ioregsel < IOWIN_OFF {
+                if self.ioregsel < IOWIN_OFF {
                     // Invalid write; ignore.
                     return;
                 }
-                let (index, is_high_bits) = decode_irq_from_selector(self.state.ioregsel);
-                if index >= hypervisor::NUM_IOAPIC_PINS {
+                let (index, is_high_bits) = decode_irq_from_selector(self.ioregsel);
+                if index >= self.num_pins {
                     // Invalid write; ignore.
                     return;
                 }
 
-                let entry = &mut self.state.redirect_table[index];
+                let entry = &mut self.redirect_table[index];
                 if is_high_bits {
                     entry.set(32, 32, val.into());
                 } else {
@@ -278,16 +331,16 @@ impl Ioapic {
                     // is the fix for this.
                 }
 
-                if self.state.redirect_table[index].get_trigger_mode() == TriggerMode::Level
-                    && self.state.current_interrupt_level_bitmap & (1 << index) != 0
-                    && !self.state.redirect_table[index].get_interrupt_mask()
+                if self.redirect_table[index].get_trigger_mode() == TriggerMode::Level
+                    && self.interrupt_level[index]
+                    && !self.redirect_table[index].get_interrupt_mask()
                 {
                     self.service_irq(index, true);
                 }
 
                 let mut address = MsiAddressMessage::new();
                 let mut data = MsiDataMessage::new();
-                let entry = &self.state.redirect_table[index];
+                let entry = &self.redirect_table[index];
                 address.set_destination_mode(entry.get_dest_mode());
                 address.set_destination_id(entry.get_dest_id());
                 address.set_always_0xfee(0xfee);
@@ -375,18 +428,18 @@ impl Ioapic {
     }
 
     fn ioapic_read(&mut self) -> u32 {
-        match self.state.ioregsel {
-            IOAPIC_REG_VERSION => IOAPIC_VERSION_ID,
-            IOAPIC_REG_ID | IOAPIC_REG_ARBITRATION_ID => (self.state.ioapicid & 0xf) << 24,
+        match self.ioregsel {
+            IOAPIC_REG_VERSION => ((self.num_pins - 1) as u32) << 16 | IOAPIC_VERSION_ID,
+            IOAPIC_REG_ID | IOAPIC_REG_ARBITRATION_ID => self.ioapicid,
             _ => {
-                if self.state.ioregsel < IOWIN_OFF {
+                if self.ioregsel < IOWIN_OFF {
                     // Invalid read; ignore and return 0.
                     0
                 } else {
-                    let (index, is_high_bits) = decode_irq_from_selector(self.state.ioregsel);
-                    if index < NUM_IOAPIC_PINS {
+                    let (index, is_high_bits) = decode_irq_from_selector(self.ioregsel);
+                    if index < self.num_pins {
                         let offset = if is_high_bits { 32 } else { 0 };
-                        self.state.redirect_table[index].get(offset, 32) as u32
+                        self.redirect_table[index].get(offset, 32) as u32
                     } else {
                         !0 // Invalid index - return all 1s
                     }
@@ -428,14 +481,14 @@ impl Display for IoapicError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hypervisor::{DeliveryMode, DeliveryStatus, DestinationMode, IoapicRedirectionTableEntry};
+    use hypervisor::{DeliveryMode, DeliveryStatus, DestinationMode};
 
     const DEFAULT_VECTOR: u8 = 0x3a;
     const DEFAULT_DESTINATION_ID: u8 = 0x5f;
 
     fn new() -> Ioapic {
         let (_, device_socket) = msg_socket::pair::<VmIrqResponse, VmIrqRequest>().unwrap();
-        Ioapic::new(device_socket).unwrap()
+        Ioapic::new(device_socket, NUM_IOAPIC_PINS).unwrap()
     }
 
     fn ioapic_bus_address(offset: u8) -> BusAccessInfo {
@@ -739,7 +792,7 @@ mod tests {
     fn remote_irr_read_only() {
         let (mut ioapic, irq) = set_up(TriggerMode::Level);
 
-        ioapic.state.redirect_table[irq].set_remote_irr(true);
+        ioapic.redirect_table[irq].set_remote_irr(true);
 
         let mut entry = read_entry(&mut ioapic, irq);
         entry.set_remote_irr(false);
@@ -752,7 +805,7 @@ mod tests {
     fn delivery_status_read_only() {
         let (mut ioapic, irq) = set_up(TriggerMode::Level);
 
-        ioapic.state.redirect_table[irq].set_delivery_status(DeliveryStatus::Pending);
+        ioapic.redirect_table[irq].set_delivery_status(DeliveryStatus::Pending);
 
         let mut entry = read_entry(&mut ioapic, irq);
         entry.set_delivery_status(DeliveryStatus::Idle);
@@ -768,7 +821,7 @@ mod tests {
     fn level_to_edge_transition_clears_remote_irr() {
         let (mut ioapic, irq) = set_up(TriggerMode::Level);
 
-        ioapic.state.redirect_table[irq].set_remote_irr(true);
+        ioapic.redirect_table[irq].set_remote_irr(true);
 
         let mut entry = read_entry(&mut ioapic, irq);
         entry.set_trigger_mode(TriggerMode::Edge);
@@ -781,7 +834,7 @@ mod tests {
     fn masking_preserves_remote_irr() {
         let (mut ioapic, irq) = set_up(TriggerMode::Level);
 
-        ioapic.state.redirect_table[irq].set_remote_irr(true);
+        ioapic.redirect_table[irq].set_remote_irr(true);
 
         set_mask(&mut ioapic, irq, true);
         set_mask(&mut ioapic, irq, false);

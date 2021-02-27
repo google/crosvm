@@ -32,7 +32,7 @@ const PIT_CHANNEL0_IRQ: u32 = 0;
 
 /// Default x86 routing table.  Pins 0-7 go to primary pic and ioapic, pins 8-15 go to secondary
 /// pic and ioapic, and pins 16-23 go only to the ioapic.
-fn kvm_default_irq_routing_table() -> Vec<IrqRoute> {
+fn kvm_default_irq_routing_table(ioapic_pins: usize) -> Vec<IrqRoute> {
     let mut routes: Vec<IrqRoute> = Vec::new();
 
     for i in 0..8 {
@@ -43,7 +43,7 @@ fn kvm_default_irq_routing_table() -> Vec<IrqRoute> {
         routes.push(IrqRoute::pic_irq_route(IrqSourceChip::PicSecondary, i));
         routes.push(IrqRoute::ioapic_irq_route(i));
     }
-    for i in 16..NUM_IOAPIC_PINS as u32 {
+    for i in 16..ioapic_pins as u32 {
         routes.push(IrqRoute::ioapic_irq_route(i));
     }
 
@@ -68,7 +68,7 @@ impl KvmKernelIrqChip {
         Ok(KvmKernelIrqChip {
             vm,
             vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
-            routes: Arc::new(Mutex::new(kvm_default_irq_routing_table())),
+            routes: Arc::new(Mutex::new(kvm_default_irq_routing_table(NUM_IOAPIC_PINS))),
         })
     }
     /// Attempt to create a shallow clone of this x86_64 KvmKernelIrqChip instance.
@@ -146,6 +146,7 @@ pub struct KvmSplitIrqChip {
     pit: Arc<Mutex<Pit>>,
     pic: Arc<Mutex<Pic>>,
     ioapic: Arc<Mutex<Ioapic>>,
+    ioapic_pins: usize,
     /// Vec of ioapic irq events that have been delayed because the ioapic was locked when
     /// service_irq was called on the irqchip. This prevents deadlocks when a Vcpu thread has
     /// locked the ioapic and the ioapic sends a AddMsiRoute signal to the main thread (which
@@ -155,9 +156,9 @@ pub struct KvmSplitIrqChip {
     irq_events: Arc<Mutex<Vec<Option<IrqEvent>>>>,
 }
 
-fn kvm_dummy_msi_routes() -> Vec<IrqRoute> {
+fn kvm_dummy_msi_routes(ioapic_pins: usize) -> Vec<IrqRoute> {
     let mut routes: Vec<IrqRoute> = Vec::new();
-    for i in 0..NUM_IOAPIC_PINS {
+    for i in 0..ioapic_pins {
         routes.push(
             // Add dummy MSI routes to replace the default IRQChip routes.
             IrqRoute {
@@ -174,9 +175,14 @@ fn kvm_dummy_msi_routes() -> Vec<IrqRoute> {
 
 impl KvmSplitIrqChip {
     /// Construct a new KvmSplitIrqChip.
-    pub fn new(vm: KvmVm, num_vcpus: usize, irq_socket: VmIrqRequestSocket) -> Result<Self> {
-        vm.enable_split_irqchip()?;
-
+    pub fn new(
+        vm: KvmVm,
+        num_vcpus: usize,
+        irq_socket: VmIrqRequestSocket,
+        ioapic_pins: Option<usize>,
+    ) -> Result<Self> {
+        let ioapic_pins = ioapic_pins.unwrap_or(hypervisor::NUM_IOAPIC_PINS);
+        vm.enable_split_irqchip(ioapic_pins)?;
         let pit_evt = Event::new()?;
         let pit = Arc::new(Mutex::new(
             Pit::new(pit_evt.try_clone()?, Arc::new(Mutex::new(Clock::new()))).map_err(
@@ -197,15 +203,16 @@ impl KvmSplitIrqChip {
             routes: Arc::new(Mutex::new(Vec::new())),
             pit,
             pic: Arc::new(Mutex::new(Pic::new())),
-            ioapic: Arc::new(Mutex::new(Ioapic::new(irq_socket)?)),
+            ioapic: Arc::new(Mutex::new(Ioapic::new(irq_socket, ioapic_pins)?)),
+            ioapic_pins,
             delayed_ioapic_irq_events: Arc::new(Mutex::new(Vec::new())),
             irq_events: Arc::new(Mutex::new(Default::default())),
         };
 
         // Setup standard x86 irq routes
-        let mut routes = kvm_default_irq_routing_table();
-        // Add dummy MSI routes for the first 24 GSIs
-        routes.append(&mut kvm_dummy_msi_routes());
+        let mut routes = kvm_default_irq_routing_table(ioapic_pins);
+        // Add dummy MSI routes for the first ioapic_pins GSIs
+        routes.append(&mut kvm_dummy_msi_routes(ioapic_pins));
 
         // Set the routes so they get sent to KVM
         chip.set_irq_routes(&routes)?;
@@ -313,7 +320,7 @@ impl IrqChip for KvmSplitIrqChip {
         irq_event: &Event,
         resample_event: Option<&Event>,
     ) -> Result<Option<IrqEventIndex>> {
-        if irq < NUM_IOAPIC_PINS as u32 {
+        if irq < self.ioapic_pins as u32 {
             let mut evt = IrqEvent {
                 gsi: irq,
                 event: irq_event.try_clone()?,
@@ -336,7 +343,7 @@ impl IrqChip for KvmSplitIrqChip {
 
     /// Unregister an event for a particular GSI.
     fn unregister_irq_event(&mut self, irq: u32, irq_event: &Event) -> Result<()> {
-        if irq < NUM_IOAPIC_PINS as u32 {
+        if irq < self.ioapic_pins as u32 {
             let mut irq_events = self.irq_events.lock();
             for (index, evt) in irq_events.iter().enumerate() {
                 if let Some(evt) = evt {
@@ -524,6 +531,7 @@ impl IrqChip for KvmSplitIrqChip {
             pit: self.pit.clone(),
             pic: self.pic.clone(),
             ioapic: self.ioapic.clone(),
+            ioapic_pins: self.ioapic_pins,
             delayed_ioapic_irq_events: self.delayed_ioapic_irq_events.clone(),
             irq_events: self.irq_events.clone(),
         })
@@ -558,13 +566,13 @@ impl IrqChip for KvmSplitIrqChip {
         // At this point, all of our devices have been created and they have registered their
         // irq events, so we can clone our resample events
         let mut ioapic_resample_events: Vec<Vec<Event>> =
-            (0..NUM_IOAPIC_PINS).map(|_| Vec::new()).collect();
+            (0..self.ioapic_pins).map(|_| Vec::new()).collect();
         let mut pic_resample_events: Vec<Vec<Event>> =
-            (0..NUM_IOAPIC_PINS).map(|_| Vec::new()).collect();
+            (0..self.ioapic_pins).map(|_| Vec::new()).collect();
 
         for evt in self.irq_events.lock().iter() {
             if let Some(evt) = evt {
-                if (evt.gsi as usize) >= NUM_IOAPIC_PINS {
+                if (evt.gsi as usize) >= self.ioapic_pins {
                     continue;
                 }
                 if let Some(resample_evt) = &evt.resample_event {
@@ -583,9 +591,9 @@ impl IrqChip for KvmSplitIrqChip {
             .lock()
             .register_resample_events(pic_resample_events);
 
-        // Make sure all future irq numbers are >= NUM_IOAPIC_PINS
+        // Make sure all future irq numbers are beyond IO-APIC range.
         let mut irq_num = resources.allocate_irq().unwrap();
-        while irq_num < NUM_IOAPIC_PINS as u32 {
+        while irq_num < self.ioapic_pins as u32 {
             irq_num = resources.allocate_irq().unwrap();
         }
 
@@ -735,6 +743,7 @@ mod tests {
             vm.try_clone().expect("failed to clone vm"),
             1,
             device_socket,
+            None,
         )
         .expect("failed to instantiate KvmKernelIrqChip");
 

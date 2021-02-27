@@ -65,7 +65,7 @@ fn simple_kvm_split_irqchip_test() {
             (kvm, vm)
         },
         |vm, vcpu_count, device_socket| {
-            KvmSplitIrqChip::new(vm, vcpu_count, device_socket)
+            KvmSplitIrqChip::new(vm, vcpu_count, device_socket, None)
                 .expect("failed to create KvmSplitIrqChip")
         },
     );

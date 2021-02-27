@@ -2212,7 +2212,8 @@ fn create_kvm_split_irq_chip(
     vcpu_count: usize,
     ioapic_device_socket: VmIrqRequestSocket,
 ) -> base::Result<impl IrqChipArch> {
-    let irq_chip = KvmSplitIrqChip::new(vm.try_clone()?, vcpu_count, ioapic_device_socket)?;
+    let irq_chip =
+        KvmSplitIrqChip::new(vm.try_clone()?, vcpu_count, ioapic_device_socket, Some(120))?;
     Ok(irq_chip)
 }
 
