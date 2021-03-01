@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fmt::{self, Display};
 use std::io::{self};
+use std::mem::size_of;
 use std::sync::Arc;
 
 use arch::{
@@ -71,12 +72,26 @@ const KVM_REG_SIZE_U64: u64 = 0x0030000000000000;
 const KVM_REG_ARM_COPROC_SHIFT: u64 = 16;
 const KVM_REG_ARM_CORE: u64 = 0x0010 << KVM_REG_ARM_COPROC_SHIFT;
 
+/// Gives the ID for a register to be used with `set_one_reg`.
+///
+/// Pass the name of a field in `user_pt_regs` to get the corresponding register
+/// ID, e.g. `arm64_core_reg!(pstate)`
+///
+/// To get ID for registers `x0`-`x31`, refer to the `regs` field along with the
+/// register number, e.g. `arm64_core_reg!(regs, 5)` for `x5`. This is different
+/// to work around `offset__of!(kvm_sys::user_pt_regs, regs[$x])` not working.
 macro_rules! arm64_core_reg {
     ($reg: tt) => {
         KVM_REG_ARM64
             | KVM_REG_SIZE_U64
             | KVM_REG_ARM_CORE
             | ((offset__of!(kvm_sys::user_pt_regs, $reg) / 4) as u64)
+    };
+    (regs, $x: literal) => {
+        KVM_REG_ARM64
+            | KVM_REG_SIZE_U64
+            | KVM_REG_ARM_CORE
+            | (((offset__of!(kvm_sys::user_pt_regs, regs) + ($x * size_of::<u64>())) / 4) as u64)
     };
 }
 
@@ -271,7 +286,14 @@ impl arch::LinuxArch for AArch64 {
                 .map_err(Error::CreateVcpu)?
                 .downcast::<Vcpu>()
                 .map_err(|_| Error::DowncastVcpu)?;
-            Self::configure_vcpu_early(vm.get_memory(), &vcpu, vcpu_id, use_pmu, has_bios)?;
+            Self::configure_vcpu_early(
+                vm.get_memory(),
+                &vcpu,
+                vcpu_id,
+                use_pmu,
+                has_bios,
+                components.protected_vm,
+            )?;
             vcpus.push(vcpu);
         }
 
@@ -486,6 +508,7 @@ impl AArch64 {
         vcpu_id: usize,
         use_pmu: bool,
         has_bios: bool,
+        protected_vm: ProtectionType,
     ) -> Result<()> {
         let mut features = vec![VcpuFeature::PsciV0_2];
         if use_pmu {
@@ -509,14 +532,18 @@ impl AArch64 {
             } else {
                 AARCH64_PHYS_MEM_START + AARCH64_KERNEL_OFFSET
             };
-            vcpu.set_one_reg(arm64_core_reg!(pc), entry_addr)
+            let entry_addr_reg_id = if protected_vm == ProtectionType::Protected {
+                arm64_core_reg!(regs, 1)
+            } else {
+                arm64_core_reg!(pc)
+            };
+            vcpu.set_one_reg(entry_addr_reg_id, entry_addr)
                 .map_err(Error::SetReg)?;
 
             /* X0 -- fdt address */
             let mem_size = guest_mem.memory_size();
             let fdt_addr = (AARCH64_PHYS_MEM_START + fdt_offset(mem_size, has_bios)) as u64;
-            // hack -- can't get this to do offsetof(regs[0]) but luckily it's at offset 0
-            vcpu.set_one_reg(arm64_core_reg!(regs), fdt_addr)
+            vcpu.set_one_reg(arm64_core_reg!(regs, 0), fdt_addr)
                 .map_err(Error::SetReg)?;
         }
 
