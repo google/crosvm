@@ -386,6 +386,11 @@ impl KvmVm {
     // Currently only used on aarch64, but works on any architecture.
     #[allow(dead_code)]
     /// Enables a KVM-specific capability for this VM, with the given arguments.
+    ///
+    /// # Safety
+    /// This function is marked as unsafe because `args` may be interpreted as pointers for some
+    /// capabilities. The caller must ensure that any pointers passed in the `args` array are
+    /// allocated as the kernel expects, and that mutable pointers are owned.
     unsafe fn enable_raw_capability(
         &self,
         capability: KvmCap,
@@ -398,8 +403,8 @@ impl KvmVm {
             flags,
             ..Default::default()
         };
-        // Safe because we allocated the struct and we know the kernel will read
-        // exactly the size of the struct.
+        // Safe because we allocated the struct and we know the kernel will read exactly the size of
+        // the struct, and because we assume the caller has allocated the args appropriately.
         let ret = ioctl_with_ref(self, KVM_ENABLE_CAP(), &kvm_cap);
         if ret == 0 {
             Ok(())
@@ -842,15 +847,15 @@ impl Vcpu for KvmVcpu {
         }
     }
 
-    fn enable_raw_capability(&self, cap: u32, args: &[u64; 4]) -> Result<()> {
+    unsafe fn enable_raw_capability(&self, cap: u32, args: &[u64; 4]) -> Result<()> {
         let kvm_cap = kvm_enable_cap {
             cap,
             args: *args,
             ..Default::default()
         };
-        // Safe because we allocated the struct and we know the kernel will read
-        // exactly the size of the struct.
-        let ret = unsafe { ioctl_with_ref(self, KVM_ENABLE_CAP(), &kvm_cap) };
+        // Safe because we allocated the struct and we know the kernel will read exactly the size of
+        // the struct, and because we assume the caller has allocated the args appropriately.
+        let ret = ioctl_with_ref(self, KVM_ENABLE_CAP(), &kvm_cap);
         if ret == 0 {
             Ok(())
         } else {

@@ -729,7 +729,8 @@ impl PluginVcpu {
                 } else {
                     let mut cap: kvm_enable_cap = Default::default();
                     cap.cap = capability;
-                    vcpu.kvm_enable_cap(&cap)
+                    // Safe because the allowed capabilities don't take pointer arguments.
+                    unsafe { vcpu.kvm_enable_cap(&cap) }
                 }
             } else if request.has_shutdown() {
                 return Err(SysError::new(EPIPE));

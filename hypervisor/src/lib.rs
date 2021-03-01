@@ -270,7 +270,12 @@ pub trait Vcpu: downcast_rs::DowncastSync {
 
     /// Enables a hypervisor-specific extension on this Vcpu.  `cap` is a constant defined by the
     /// hypervisor API (e.g., kvm.h).  `args` are the arguments for enabling the feature, if any.
-    fn enable_raw_capability(&self, cap: u32, args: &[u64; 4]) -> Result<()>;
+    ///
+    /// # Safety
+    /// This function is marked as unsafe because `args` may be interpreted as pointers for some
+    /// capabilities. The caller must ensure that any pointers passed in the `args` array are
+    /// allocated as the kernel expects, and that mutable pointers are owned.
+    unsafe fn enable_raw_capability(&self, cap: u32, args: &[u64; 4]) -> Result<()>;
 }
 
 downcast_rs::impl_downcast!(sync Vcpu);

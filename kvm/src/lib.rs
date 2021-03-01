@@ -834,10 +834,12 @@ impl Vm {
 
     /// Enable the specified capability.
     /// See documentation for KVM_ENABLE_CAP.
-    pub fn kvm_enable_cap(&self, cap: &kvm_enable_cap) -> Result<()> {
-        // safe becuase we allocated the struct and we know the kernel will read
-        // exactly the size of the struct
-        let ret = unsafe { ioctl_with_ref(self, KVM_ENABLE_CAP(), cap) };
+    /// This function is marked as unsafe because `cap` may contain values which are interpreted as
+    /// pointers by the kernel.
+    pub unsafe fn kvm_enable_cap(&self, cap: &kvm_enable_cap) -> Result<()> {
+        // Safe because we allocated the struct and we know the kernel will read exactly the size of
+        // the struct.
+        let ret = ioctl_with_ref(self, KVM_ENABLE_CAP(), cap);
         if ret < 0 {
             errno_result()
         } else {
@@ -1403,10 +1405,12 @@ impl Vcpu {
 
     /// Enable the specified capability.
     /// See documentation for KVM_ENABLE_CAP.
-    pub fn kvm_enable_cap(&self, cap: &kvm_enable_cap) -> Result<()> {
-        // safe becuase we allocated the struct and we know the kernel will read
-        // exactly the size of the struct
-        let ret = unsafe { ioctl_with_ref(self, KVM_ENABLE_CAP(), cap) };
+    /// This function is marked as unsafe because `cap` may contain values which are interpreted as
+    /// pointers by the kernel.
+    pub unsafe fn kvm_enable_cap(&self, cap: &kvm_enable_cap) -> Result<()> {
+        // Safe because we allocated the struct and we know the kernel will read exactly the size of
+        // the struct.
+        let ret = ioctl_with_ref(self, KVM_ENABLE_CAP(), cap);
         if ret < 0 {
             return errno_result();
         }
@@ -2081,7 +2085,7 @@ mod tests {
         let vcpu = Vcpu::new(0, &kvm, &vm).unwrap();
         let mut cap: kvm_enable_cap = Default::default();
         cap.cap = kvm_sys::KVM_CAP_HYPERV_SYNIC;
-        vcpu.kvm_enable_cap(&cap).unwrap();
+        unsafe { vcpu.kvm_enable_cap(&cap) }.unwrap();
     }
 
     #[test]
