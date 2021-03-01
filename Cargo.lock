@@ -114,6 +114,7 @@ dependencies = [
  "serde_json",
  "sync",
  "sys_util",
+ "thiserror",
 ]
 
 [[package]]

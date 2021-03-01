@@ -10,6 +10,7 @@ mod ioctl;
 mod mmap;
 mod shm;
 mod timer;
+mod tube;
 mod wait_context;
 
 pub use async_types::*;
@@ -28,6 +29,7 @@ pub use sys_util::{
 };
 pub use sys_util::{SeekHole, WriteZeroesAt};
 pub use timer::{FakeTimer, Timer};
+pub use tube::{AsyncTube, Error as TubeError, Result as TubeResult, Tube};
 pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
 
 /// Wraps an AsRawDescriptor in the simple Descriptor struct, which

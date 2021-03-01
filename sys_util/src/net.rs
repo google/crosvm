@@ -160,12 +160,21 @@ impl UnixSeqpacket {
     /// Gets the number of bytes in the next packet. This blocks as if `recv` were called,
     /// respecting the blocking and timeout settings of the underlying socket.
     pub fn next_packet_size(&self) -> io::Result<usize> {
+        #[cfg(not(debug_assertions))]
+        let buf = null_mut();
+        // Work around for qemu's syscall translation which will reject null pointers in recvfrom.
+        // This only matters for running the unit tests for a non-native architecture. See the
+        // upstream thread for the qemu fix:
+        // https://lists.nongnu.org/archive/html/qemu-devel/2021-03/msg09027.html
+        #[cfg(debug_assertions)]
+        let buf = &mut 0 as *mut _ as *mut _;
+
         // This form of recvfrom doesn't modify any data because all null pointers are used. We only
         // use the return value and check for errors on an FD owned by this structure.
         let ret = unsafe {
             recvfrom(
                 self.fd,
-                null_mut(),
+                buf,
                 0,
                 MSG_TRUNC | MSG_PEEK,
                 null_mut(),
