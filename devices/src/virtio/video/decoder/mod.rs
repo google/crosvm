@@ -182,6 +182,9 @@ struct Context<S: DecoderSession> {
     // Set the flag if we need to clear output resource when the output queue is cleared next time.
     is_clear_out_res_needed: bool,
 
+    // Set the flag when we ask the decoder reset, and unset when the reset is done.
+    is_resetting: bool,
+
     pending_ready_pictures: VecDeque<PictureReadyEvent>,
 
     session: Option<S>,
@@ -202,6 +205,7 @@ impl<S: DecoderSession> Context<S> {
             in_res: Default::default(),
             out_res: Default::default(),
             is_clear_out_res_needed: false,
+            is_resetting: false,
             pending_ready_pictures: Default::default(),
             session: None,
         }
@@ -795,6 +799,8 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         match queue_type {
             QueueType::Input => {
                 session.reset()?;
+                ctx.is_resetting = true;
+                ctx.pending_ready_pictures.clear();
                 Ok(VideoCmdResponseType::Async(AsyncCmdTag::Clear {
                     stream_id,
                     queue_type: QueueType::Input,
@@ -968,12 +974,16 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 bitstream_id,      // timestamp in second
                 visible_rect,
             } => {
-                ctx.pending_ready_pictures.push_back(PictureReadyEvent {
-                    picture_buffer_id,
-                    bitstream_id,
-                    visible_rect,
-                });
-                ctx.output_pending_pictures()
+                if ctx.is_resetting {
+                    vec![]
+                } else {
+                    ctx.pending_ready_pictures.push_back(PictureReadyEvent {
+                        picture_buffer_id,
+                        bitstream_id,
+                        visible_rect,
+                    });
+                    ctx.output_pending_pictures()
+                }
             }
             DecoderEvent::NotifyEndOfBitstreamBuffer(bitstream_id) => {
                 let resource_id = ctx.handle_notify_end_of_bitstream_buffer(bitstream_id)?;
@@ -1044,6 +1054,7 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 }
             }
             DecoderEvent::ResetCompleted(reset_result) => {
+                ctx.is_resetting = false;
                 let tag = AsyncCmdTag::Clear {
                     stream_id,
                     queue_type: QueueType::Input,
