@@ -96,3 +96,6 @@ kcmp: 1
 access: 1
 getgid: 1
 getegid: 1
+
+# Rules for virglrenderer
+sched_yield: 1
