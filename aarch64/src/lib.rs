@@ -248,6 +248,10 @@ impl arch::LinuxArch for AArch64 {
         Ok(arch_memory_regions(components.memory_size))
     }
 
+    fn get_phys_max_addr() -> u64 {
+        u64::max_value()
+    }
+
     fn create_system_allocator(guest_mem: &GuestMemory) -> SystemAllocator {
         Self::get_resource_allocator(guest_mem.memory_size())
     }

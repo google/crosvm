@@ -1397,10 +1397,15 @@ fn create_pmem_device(
 
 fn create_iommu_device(
     cfg: &Config,
+    phys_max_addr: u64,
     endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>>,
 ) -> DeviceResult {
-    let dev = virtio::Iommu::new(virtio::base_features(cfg.protected_vm), endpoints)
-        .map_err(Error::CreateVirtioIommu)?;
+    let dev = virtio::Iommu::new(
+        virtio::base_features(cfg.protected_vm),
+        endpoints,
+        phys_max_addr,
+    )
+    .map_err(Error::CreateVirtioIommu)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1799,6 +1804,7 @@ fn create_devices(
     vm: &mut impl Vm,
     resources: &mut SystemAllocator,
     exit_evt: &Event,
+    phys_max_addr: u64,
     control_tubes: &mut Vec<TaggedControlTube>,
     wayland_device_tube: Tube,
     gpu_device_tube: Tube,
@@ -1873,7 +1879,7 @@ fn create_devices(
         }
 
         if !iommu_attached_endpoints.is_empty() {
-            let iommu_dev = create_iommu_device(cfg, iommu_attached_endpoints)?;
+            let iommu_dev = create_iommu_device(cfg, phys_max_addr, iommu_attached_endpoints)?;
 
             let (msi_host_tube, msi_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
             control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
@@ -2645,11 +2651,13 @@ where
 
     let exit_evt = Event::new().map_err(Error::CreateEvent)?;
     let mut sys_allocator = Arch::create_system_allocator(vm.get_memory());
+    let phys_max_addr = Arch::get_phys_max_addr();
     let pci_devices = create_devices(
         &cfg,
         &mut vm,
         &mut sys_allocator,
         &exit_evt,
+        phys_max_addr,
         &mut control_tubes,
         wayland_device_tube,
         gpu_device_tube,

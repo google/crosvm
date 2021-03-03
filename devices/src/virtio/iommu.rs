@@ -26,6 +26,7 @@ const NUM_QUEUES: usize = 2;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
 
 /// Virtio IOMMU features
+const VIRTIO_IOMMU_F_INPUT_RANGE: u32 = 0;
 const VIRTIO_IOMMU_F_MAP_UNMAP: u32 = 2;
 const VIRTIO_IOMMU_F_PROBE: u32 = 4;
 const VIRTIO_IOMMU_F_TOPOLOGY: u32 = 6;
@@ -620,6 +621,7 @@ impl Iommu {
     pub fn new(
         base_features: u64,
         endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>>,
+        phys_max_addr: u64,
     ) -> SysResult<Iommu> {
         let mut topo_pci_ranges = Vec::new();
         for (endpoint, _) in endpoints.iter() {
@@ -651,8 +653,14 @@ impl Iommu {
             return Err(SysError::new(libc::EIO));
         }
 
+        let input_range = VirtioIommuRange64 {
+            start: 0_u64,
+            end: phys_max_addr,
+        };
+
         let config = VirtioIommuConfig {
             page_size_mask,
+            input_range,
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             probe_size: IOMMU_PROBE_SIZE as u32,
             topo_config,
@@ -660,7 +668,9 @@ impl Iommu {
         };
 
         let mut avail_features: u64 = base_features;
-        avail_features |= 1 << VIRTIO_IOMMU_F_MAP_UNMAP | 1 << VIRTIO_IOMMU_F_TOPOLOGY;
+        avail_features |= 1 << VIRTIO_IOMMU_F_MAP_UNMAP
+            | 1 << VIRTIO_IOMMU_F_INPUT_RANGE
+            | 1 << VIRTIO_IOMMU_F_TOPOLOGY;
 
         if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
             avail_features |= 1 << VIRTIO_IOMMU_F_PROBE;

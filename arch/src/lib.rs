@@ -145,6 +145,8 @@ pub trait LinuxArch {
     /// * `guest_mem` - The memory to be used as a template for the `SystemAllocator`.
     fn create_system_allocator(guest_mem: &GuestMemory) -> SystemAllocator;
 
+    fn get_phys_max_addr() -> u64;
+
     /// Takes `VmComponents` and generates a `RunnableLinuxVm`.
     ///
     /// # Arguments

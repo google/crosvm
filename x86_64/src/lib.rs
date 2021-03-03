@@ -359,6 +359,10 @@ impl arch::LinuxArch for X8664arch {
         Ok(arch_memory_regions(components.memory_size, bios_size))
     }
 
+    fn get_phys_max_addr() -> u64 {
+        (1u64 << cpuid::phy_max_address_bits()) - 1
+    }
+
     fn create_system_allocator(guest_mem: &GuestMemory) -> SystemAllocator {
         let high_mmio_start = Self::get_high_mmio_base(guest_mem);
         SystemAllocator::builder()
