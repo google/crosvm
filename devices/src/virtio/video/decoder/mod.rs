@@ -16,7 +16,7 @@ use crate::virtio::resource_bridge::{
 };
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::{QueueType, VideoCmd};
-use crate::virtio::video::control::{CtrlType, CtrlVal, QueryCtrlResponse, QueryCtrlType};
+use crate::virtio::video::control::{CtrlType, CtrlVal, QueryCtrlType};
 use crate::virtio::video::device::*;
 use crate::virtio::video::error::*;
 use crate::virtio::video::event::*;
@@ -379,12 +379,18 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         CmdResponse::QueryCapability(descs)
     }
 
-    fn create_stream(&mut self, stream_id: StreamId, coded_format: Format) -> VideoResult<()> {
+    fn create_stream(
+        &mut self,
+        stream_id: StreamId,
+        coded_format: Format,
+    ) -> VideoResult<VideoCmdResponseType> {
         // Create an instance of `Context`.
         // Note that the `DecoderSession` will be created not here but at the first call of
         // `ResourceCreate`. This is because we need to fix a coded format for it, which
         // will be set by `SetParams`.
-        self.contexts.insert(Context::new(stream_id, coded_format))
+        self.contexts
+            .insert(Context::new(stream_id, coded_format))?;
+        Ok(VideoCmdResponseType::Sync(CmdResponse::NoData))
     }
 
     fn destroy_stream(&mut self, stream_id: StreamId) {
@@ -430,7 +436,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         resource_id: ResourceId,
         plane_offsets: Vec<u32>,
         uuid: u128,
-    ) -> VideoResult<()> {
+    ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
 
         // Create a instance of `DecoderSession` at the first time `ResourceCreate` is
@@ -450,7 +456,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             ctx.in_res
                 .res_id_to_offset
                 .insert(resource_id, plane_offsets.get(0).copied().unwrap_or(0));
-            return Ok(());
+            return Ok(VideoCmdResponseType::Sync(CmdResponse::NoData));
         };
 
         // We assume ResourceCreate is not called to an output resource that is already
@@ -466,14 +472,14 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             return Err(VideoError::InvalidOperation);
         }
 
-        Ok(())
+        Ok(VideoCmdResponseType::Sync(CmdResponse::NoData))
     }
 
     fn destroy_all_resources(
         &mut self,
         stream_id: StreamId,
         queue_type: QueueType,
-    ) -> VideoResult<()> {
+    ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
 
         // Reset the associated context.
@@ -485,7 +491,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                 ctx.out_res = Default::default();
             }
         }
-        Ok(())
+        Ok(VideoCmdResponseType::Sync(CmdResponse::NoData))
     }
 
     fn queue_input_resource(
@@ -495,7 +501,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         resource_id: ResourceId,
         timestamp: u64,
         data_sizes: Vec<u32>,
-    ) -> VideoResult<()> {
+    ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
         let session = ctx.session.as_ref().ok_or(VideoError::InvalidOperation)?;
 
@@ -543,7 +549,13 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             fd,
             offset,
             data_sizes[0], // bytes_used
-        )
+        )?;
+
+        Ok(VideoCmdResponseType::Async(AsyncCmdTag::Queue {
+            stream_id,
+            queue_type: QueueType::Input,
+            resource_id,
+        }))
     }
 
     fn queue_output_resource(
@@ -551,7 +563,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         resource_bridge: &ResourceRequestSocket,
         stream_id: StreamId,
         resource_id: ResourceId,
-    ) -> VideoResult<()> {
+    ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
         let session = ctx.session.as_ref().ok_or(VideoError::InvalidOperation)?;
 
@@ -607,15 +619,28 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                 let fd = resource_info.file.into_raw_descriptor();
                 session.use_output_buffer(buffer_id as i32, Format::NV12, fd, &planes)
             }
-        }
+        }?;
+        Ok(VideoCmdResponseType::Async(AsyncCmdTag::Queue {
+            stream_id,
+            queue_type: QueueType::Output,
+            resource_id,
+        }))
     }
 
-    fn get_params(&self, stream_id: StreamId, queue_type: QueueType) -> VideoResult<Params> {
+    fn get_params(
+        &self,
+        stream_id: StreamId,
+        queue_type: QueueType,
+    ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get(&stream_id)?;
-        Ok(match queue_type {
+        let params = match queue_type {
             QueueType::Input => ctx.in_params.clone(),
             QueueType::Output => ctx.out_params.clone(),
-        })
+        };
+        Ok(VideoCmdResponseType::Sync(CmdResponse::GetParams {
+            queue_type,
+            params,
+        }))
     }
 
     fn set_params(
@@ -623,7 +648,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         stream_id: StreamId,
         queue_type: QueueType,
         params: Params,
-    ) -> VideoResult<()> {
+    ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
         match queue_type {
             QueueType::Input => {
@@ -640,17 +665,24 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                 // The guest cannot update parameters for output queue in the decoder.
             }
         };
-        Ok(())
+        Ok(VideoCmdResponseType::Sync(CmdResponse::NoData))
     }
 
-    fn query_control(&self, ctrl_type: QueryCtrlType) -> VideoResult<QueryCtrlResponse> {
-        self.capability.query_control(&ctrl_type).ok_or_else(|| {
-            error!("querying an unsupported control: {:?}", ctrl_type);
-            VideoError::InvalidArgument
-        })
+    fn query_control(&self, ctrl_type: QueryCtrlType) -> VideoResult<VideoCmdResponseType> {
+        match self.capability.query_control(&ctrl_type) {
+            Some(resp) => Ok(VideoCmdResponseType::Sync(CmdResponse::QueryControl(resp))),
+            None => {
+                error!("querying an unsupported control: {:?}", ctrl_type);
+                Err(VideoError::InvalidArgument)
+            }
+        }
     }
 
-    fn get_control(&self, stream_id: StreamId, ctrl_type: CtrlType) -> VideoResult<CtrlVal> {
+    fn get_control(
+        &self,
+        stream_id: StreamId,
+        ctrl_type: CtrlType,
+    ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get(&stream_id)?;
         match ctrl_type {
             CtrlType::Profile => {
@@ -690,18 +722,26 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                 Err(VideoError::InvalidArgument)
             }
         }
+        .map(|ctrl_val| VideoCmdResponseType::Sync(CmdResponse::GetControl(ctrl_val)))
     }
 
-    fn drain_stream(&mut self, stream_id: StreamId) -> VideoResult<()> {
+    fn drain_stream(&mut self, stream_id: StreamId) -> VideoResult<VideoCmdResponseType> {
         self.contexts
             .get(&stream_id)?
             .session
             .as_ref()
             .ok_or(VideoError::InvalidOperation)?
-            .flush()
+            .flush()?;
+        Ok(VideoCmdResponseType::Async(AsyncCmdTag::Drain {
+            stream_id,
+        }))
     }
 
-    fn clear_queue(&mut self, stream_id: StreamId, queue_type: QueueType) -> VideoResult<()> {
+    fn clear_queue(
+        &mut self,
+        stream_id: StreamId,
+        queue_type: QueueType,
+    ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
         let session = ctx.session.as_ref().ok_or(VideoError::InvalidOperation)?;
 
@@ -713,17 +753,22 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         // REQBUFS(0). To handle this problem correctly, we need to make libvda expose
         // DismissPictureBuffer() method.
         match queue_type {
-            QueueType::Input => session.reset()?,
+            QueueType::Input => {
+                session.reset()?;
+                Ok(VideoCmdResponseType::Async(AsyncCmdTag::Clear {
+                    stream_id,
+                    queue_type: QueueType::Input,
+                }))
+            }
             QueueType::Output => {
                 if std::mem::replace(&mut ctx.is_clear_out_res_needed, false) {
                     ctx.out_res = Default::default();
                 } else {
                     ctx.out_res.queued_res_ids.clear();
                 }
+                Ok(VideoCmdResponseType::Sync(CmdResponse::NoData))
             }
-        };
-
-        Ok(())
+        }
     }
 }
 
@@ -733,19 +778,16 @@ impl<D: DecoderBackend> Device for Decoder<D> {
         cmd: VideoCmd,
         wait_ctx: &WaitContext<Token>,
         resource_bridge: &ResourceRequestSocket,
-    ) -> VideoResult<VideoCmdResponseType> {
+    ) -> VideoCmdResponseType {
         use VideoCmd::*;
-        use VideoCmdResponseType::{Async, Sync};
+        use VideoCmdResponseType::Sync;
 
-        match cmd {
+        let cmd_response = match cmd {
             QueryCapability { queue_type } => Ok(Sync(self.query_capabilities(queue_type))),
             StreamCreate {
                 stream_id,
                 coded_format,
-            } => {
-                self.create_stream(stream_id, coded_format)?;
-                Ok(Sync(CmdResponse::NoData))
-            }
+            } => self.create_stream(stream_id, coded_format),
             StreamDestroy { stream_id } => {
                 self.destroy_stream(stream_id);
                 Ok(Sync(CmdResponse::NoData))
@@ -756,103 +798,67 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 resource_id,
                 plane_offsets,
                 uuid,
-            } => {
-                self.create_resource(
-                    wait_ctx,
-                    stream_id,
-                    queue_type,
-                    resource_id,
-                    plane_offsets,
-                    uuid,
-                )?;
-                Ok(Sync(CmdResponse::NoData))
-            }
+            } => self.create_resource(
+                wait_ctx,
+                stream_id,
+                queue_type,
+                resource_id,
+                plane_offsets,
+                uuid,
+            ),
             ResourceDestroyAll {
                 stream_id,
                 queue_type,
-            } => {
-                self.destroy_all_resources(stream_id, queue_type)?;
-                Ok(Sync(CmdResponse::NoData))
-            }
+            } => self.destroy_all_resources(stream_id, queue_type),
             ResourceQueue {
                 stream_id,
                 queue_type: QueueType::Input,
                 resource_id,
                 timestamp,
                 data_sizes,
-            } => {
-                self.queue_input_resource(
-                    resource_bridge,
-                    stream_id,
-                    resource_id,
-                    timestamp,
-                    data_sizes,
-                )?;
-                Ok(Async(AsyncCmdTag::Queue {
-                    stream_id,
-                    queue_type: QueueType::Input,
-                    resource_id,
-                }))
-            }
+            } => self.queue_input_resource(
+                resource_bridge,
+                stream_id,
+                resource_id,
+                timestamp,
+                data_sizes,
+            ),
             ResourceQueue {
                 stream_id,
                 queue_type: QueueType::Output,
                 resource_id,
                 ..
-            } => {
-                self.queue_output_resource(resource_bridge, stream_id, resource_id)?;
-                Ok(Async(AsyncCmdTag::Queue {
-                    stream_id,
-                    queue_type: QueueType::Output,
-                    resource_id,
-                }))
-            }
+            } => self.queue_output_resource(resource_bridge, stream_id, resource_id),
             GetParams {
                 stream_id,
                 queue_type,
-            } => {
-                let params = self.get_params(stream_id, queue_type)?;
-                Ok(Sync(CmdResponse::GetParams { queue_type, params }))
-            }
+            } => self.get_params(stream_id, queue_type),
             SetParams {
                 stream_id,
                 queue_type,
                 params,
-            } => {
-                self.set_params(stream_id, queue_type, params)?;
-                Ok(Sync(CmdResponse::NoData))
-            }
-            QueryControl { query_ctrl_type } => {
-                let resp = self.query_control(query_ctrl_type)?;
-                Ok(Sync(CmdResponse::QueryControl(resp)))
-            }
+            } => self.set_params(stream_id, queue_type, params),
+            QueryControl { query_ctrl_type } => self.query_control(query_ctrl_type),
             GetControl {
                 stream_id,
                 ctrl_type,
-            } => {
-                let ctrl_val = self.get_control(stream_id, ctrl_type)?;
-                Ok(Sync(CmdResponse::GetControl(ctrl_val)))
-            }
+            } => self.get_control(stream_id, ctrl_type),
             SetControl { .. } => {
                 error!("SET_CONTROL is not allowed for decoder");
                 Err(VideoError::InvalidOperation)
             }
-            StreamDrain { stream_id } => {
-                self.drain_stream(stream_id)?;
-                Ok(Async(AsyncCmdTag::Drain { stream_id }))
-            }
+            StreamDrain { stream_id } => self.drain_stream(stream_id),
             QueueClear {
                 stream_id,
                 queue_type,
-            } => {
-                self.clear_queue(stream_id, queue_type)?;
-                Ok(match queue_type {
-                    QueueType::Input => Async(AsyncCmdTag::Clear {
-                        stream_id,
-                        queue_type: QueueType::Input,
-                    }),
-                    QueueType::Output => Sync(CmdResponse::NoData),
-                })
+            } => self.clear_queue(stream_id, queue_type),
+        };
+
+        match cmd_response {
+            Ok(r) => r,
+            Err(e) => {
+                error!("returning error response: {}", &e);
+                Sync(e.into())
             }
         }
     }

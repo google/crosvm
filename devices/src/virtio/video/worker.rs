@@ -137,18 +137,14 @@ impl Worker {
         // Process the command by the device.
         let process_cmd_response = device.process_cmd(cmd, &wait_ctx, &self.resource_bridge);
         match process_cmd_response {
-            Ok(VideoCmdResponseType::Sync(r)) => {
+            VideoCmdResponseType::Sync(r) => {
                 responses.push_back((desc, r));
             }
-            Ok(VideoCmdResponseType::Async(tag)) => {
+            VideoCmdResponseType::Async(tag) => {
                 // If the command expects an asynchronous response,
                 // store `desc` to use it after the back-end device notifies the
                 // completion.
                 desc_map.insert(tag, desc);
-            }
-            Err(e) => {
-                error!("returning error response: {}", &e);
-                responses.push_back((desc, e.into()));
             }
         }
 
