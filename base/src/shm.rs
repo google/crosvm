@@ -9,10 +9,14 @@ use crate::{
 use std::ffi::CStr;
 use std::fs::File;
 use std::os::unix::io::{AsRawFd, IntoRawFd};
+
+use serde::{Deserialize, Serialize};
 use sys_util::SharedMemory as SysUtilSharedMemory;
 
 /// See [SharedMemory](sys_util::SharedMemory) for struct- and method-level
 /// documentation.
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct SharedMemory(SysUtilSharedMemory);
 impl SharedMemory {
     pub fn named<T: Into<Vec<u8>>>(name: T, size: u64) -> Result<SharedMemory> {

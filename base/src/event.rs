@@ -8,13 +8,16 @@ use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
 use std::ptr;
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, Result};
 use sys_util::EventFd;
 pub use sys_util::EventReadResult;
 
 /// See [EventFd](sys_util::EventFd) for struct- and method-level
 /// documentation.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Event(pub EventFd);
 impl Event {
     pub fn new() -> Result<Event> {

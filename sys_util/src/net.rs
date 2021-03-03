@@ -17,6 +17,7 @@ use std::ptr::null_mut;
 use std::time::Duration;
 
 use libc::{recvfrom, MSG_PEEK, MSG_TRUNC};
+use serde::{Deserialize, Serialize};
 
 use crate::sock_ctrl_msg::{ScmSocket, SCM_SOCKET_MAX_FD_COUNT};
 use crate::{AsRawDescriptor, RawDescriptor};
@@ -72,7 +73,9 @@ fn sockaddr_un<P: AsRef<Path>>(path: P) -> io::Result<(libc::sockaddr_un, libc::
 }
 
 /// A Unix `SOCK_SEQPACKET` socket point to given `path`
+#[derive(Serialize, Deserialize)]
 pub struct UnixSeqpacket {
+    #[serde(with = "crate::with_raw_descriptor")]
     fd: RawFd,
 }
 

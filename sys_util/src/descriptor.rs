@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{Stderr, Stdin, Stdout};
 use std::mem;
@@ -10,8 +11,10 @@ use std::ops::Drop;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::os::unix::net::{UnixDatagram, UnixStream};
 
-use crate::net::UnlinkUnixSeqpacketListener;
+use serde::{Deserialize, Serialize};
+
 use crate::{errno_result, PollToken, Result};
+use crate::{net::UnlinkUnixSeqpacketListener, validate_raw_fd};
 
 pub type RawDescriptor = RawFd;
 
@@ -34,8 +37,10 @@ pub trait FromRawDescriptor {
 }
 
 /// Wraps a RawDescriptor and safely closes it when self falls out of scope.
-#[derive(Debug, Eq)]
+#[derive(Serialize, Deserialize, Debug, Eq)]
+#[serde(transparent)]
 pub struct SafeDescriptor {
+    #[serde(with = "crate::with_raw_descriptor")]
     descriptor: RawDescriptor,
 }
 
@@ -98,6 +103,16 @@ impl AsRawFd for SafeDescriptor {
     }
 }
 
+impl TryFrom<&dyn AsRawFd> for SafeDescriptor {
+    type Error = std::io::Error;
+
+    fn try_from(fd: &dyn AsRawFd) -> std::result::Result<Self, Self::Error> {
+        Ok(SafeDescriptor {
+            descriptor: validate_raw_fd(fd.as_raw_fd())?,
+        })
+    }
+}
+
 impl SafeDescriptor {
     /// Clones this descriptor, internally creating a new descriptor. The new SafeDescriptor will
     /// share the same underlying count within the kernel.
@@ -107,8 +122,8 @@ impl SafeDescriptor {
         if copy_fd < 0 {
             return errno_result();
         }
-        // Safe becuase we just successfully duplicated and this object will uniquely
-        // own the raw descriptor.
+        // Safe because we just successfully duplicated and this object will uniquely own the raw
+        // descriptor.
         Ok(unsafe { SafeDescriptor::from_raw_descriptor(copy_fd) })
     }
 }

@@ -12,12 +12,15 @@ use libc::{
     F_ADD_SEALS, F_GET_SEALS, F_SEAL_GROW, F_SEAL_SEAL, F_SEAL_SHRINK, F_SEAL_WRITE,
     MFD_ALLOW_SEALING,
 };
+use serde::{Deserialize, Serialize};
 use syscall_defines::linux::LinuxSyscall::SYS_memfd_create;
 
 use crate::{errno, errno_result, Result};
 
 /// A shared memory file descriptor and its size.
+#[derive(Serialize, Deserialize)]
 pub struct SharedMemory {
+    #[serde(with = "crate::with_as_descriptor")]
     fd: File,
     size: u64,
 }

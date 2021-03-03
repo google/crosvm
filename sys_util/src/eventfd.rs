@@ -9,6 +9,7 @@ use std::ptr;
 use std::time::Duration;
 
 use libc::{c_void, dup, eventfd, read, write, POLLIN};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     errno_result, AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, Result,
@@ -19,7 +20,8 @@ use crate::{
 ///
 /// An eventfd is useful because it is sendable across processes and can be used for signaling in
 /// and out of the KVM API. They can also be polled like any other file descriptor.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct EventFd {
     event_handle: SafeDescriptor,
 }

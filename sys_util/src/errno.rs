@@ -6,9 +6,12 @@ use std::fmt::{self, Display};
 use std::io;
 use std::result;
 
+use serde::{Deserialize, Serialize};
+
 /// An error number, retrieved from errno (man 3 errno), set by a libc
 /// function that returned an error.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(transparent)]
 pub struct Error(i32);
 pub type Result<T> = result::Result<T, Error>;
 
