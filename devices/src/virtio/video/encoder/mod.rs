@@ -1201,7 +1201,10 @@ impl<T: Encoder> Device for EncoderDevice<T> {
         req: VideoCmd,
         wait_ctx: &WaitContext<Token>,
         resource_bridge: &ResourceRequestSocket,
-    ) -> VideoCmdResponseType {
+    ) -> (
+        VideoCmdResponseType,
+        Option<(u32, Vec<VideoEvtResponseType>)>,
+    ) {
         let cmd_response = match req {
             VideoCmd::QueryCapability { queue_type } => self.query_capabilities(queue_type),
             VideoCmd::StreamCreate {
@@ -1280,13 +1283,14 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                 ctrl_val,
             } => self.set_control(stream_id, ctrl_val),
         };
-        match cmd_response {
+        let cmd_ret = match cmd_response {
             Ok(r) => r,
             Err(e) => {
                 error!("returning error response: {}", &e);
                 VideoCmdResponseType::Sync(e.into())
             }
-        }
+        };
+        (cmd_ret, None)
     }
 
     fn process_event(
