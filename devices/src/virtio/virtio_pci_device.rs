@@ -698,12 +698,16 @@ impl PciDevice for VirtioPciDevice {
 
                         match self.clone_queue_evts() {
                             Ok(queue_evts) => {
-                                self.device.activate(
-                                    mem,
-                                    interrupt,
-                                    self.queues.clone(),
-                                    queue_evts,
-                                );
+                                // Use ready queues and their events.
+                                let (queues, queue_evts) = self
+                                    .queues
+                                    .clone()
+                                    .into_iter()
+                                    .zip(queue_evts.into_iter())
+                                    .filter(|(q, _)| q.ready)
+                                    .unzip();
+
+                                self.device.activate(mem, interrupt, queues, queue_evts);
                                 self.device_activated = true;
                             }
                             Err(e) => {

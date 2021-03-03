@@ -485,7 +485,6 @@ fn run_worker(
     let queue_handlers =
         queues
             .into_iter()
-            .filter(|q| q.ready)
             .map(|q| Rc::new(RefCell::new(q)))
             .zip(queue_evts.into_iter().map(|e| {
                 EventAsync::new(e.0, &ex).expect("Failed to create async event for queue")
