@@ -77,10 +77,76 @@ impl Worker {
         Ok(())
     }
 
+    fn write_event_responses(
+        &self,
+        event_responses: Vec<VideoEvtResponseType>,
+        cmd_queue: &mut Queue,
+        event_queue: &mut Queue,
+        desc_map: &mut AsyncCmdDescMap,
+        stream_id: u32,
+    ) -> Result<()> {
+        let mut responses: VecDeque<WritableResp> = Default::default();
+        for event_response in event_responses {
+            match event_response {
+                VideoEvtResponseType::AsyncCmd(async_response) => {
+                    let AsyncCmdResponse {
+                        tag,
+                        response: cmd_result,
+                    } = async_response;
+                    match desc_map.remove(&tag) {
+                        Some(desc) => {
+                            let cmd_response = match cmd_result {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    error!("returning async error response: {}", &e);
+                                    e.into()
+                                }
+                            };
+                            responses.push_back((desc, cmd_response))
+                        }
+                        None => match tag {
+                            // TODO(b/153406792): Drain is cancelled by clearing either of the
+                            // stream's queues. To work around a limitation in the VDA api, the
+                            // output queue is cleared synchronously without going through VDA.
+                            // Because of this, the cancellation response from VDA for the
+                            // input queue might fail to find the drain's AsyncCmdTag.
+                            AsyncCmdTag::Drain { stream_id: _ } => {
+                                info!("ignoring unknown drain response");
+                            }
+                            _ => {
+                                error!("dropping response for an untracked command: {:?}", tag);
+                            }
+                        },
+                    }
+                }
+                VideoEvtResponseType::Event(evt) => {
+                    self.write_event(event_queue, evt)?;
+                }
+            }
+        }
+
+        if let Err(e) = self.write_responses(cmd_queue, &mut responses) {
+            error!("Failed to write event responses: {:?}", e);
+            // Ignore result of write_event for a fatal error.
+            let _ = self.write_event(
+                event_queue,
+                VideoEvt {
+                    typ: EvtType::Error,
+                    stream_id,
+                },
+            );
+            return Err(e);
+        }
+
+        Ok(())
+    }
+
     /// Handles a `DescriptorChain` value sent via the command queue and returns a `VecDeque`
     /// of `WritableResp` to be sent to the guest.
     fn handle_command_desc<T: Device>(
         &self,
+        cmd_queue: &mut Queue,
+        event_queue: &mut Queue,
         device: &mut T,
         wait_ctx: &WaitContext<Token>,
         desc_map: &mut AsyncCmdDescMap,
@@ -135,8 +201,9 @@ impl Worker {
         }
 
         // Process the command by the device.
-        let process_cmd_response = device.process_cmd(cmd, &wait_ctx, &self.resource_bridge);
-        match process_cmd_response {
+        let (cmd_response, event_responses_with_id) =
+            device.process_cmd(cmd, &wait_ctx, &self.resource_bridge);
+        match cmd_response {
             VideoCmdResponseType::Sync(r) => {
                 responses.push_back((desc, r));
             }
@@ -147,6 +214,15 @@ impl Worker {
                 desc_map.insert(tag, desc);
             }
         }
+        if let Some((stream_id, event_responses)) = event_responses_with_id {
+            self.write_event_responses(
+                event_responses,
+                cmd_queue,
+                event_queue,
+                desc_map,
+                stream_id,
+            )?;
+        }
 
         Ok(responses)
     }
@@ -155,13 +231,15 @@ impl Worker {
     fn handle_command_queue<T: Device>(
         &self,
         cmd_queue: &mut Queue,
+        event_queue: &mut Queue,
         device: &mut T,
         wait_ctx: &WaitContext<Token>,
         desc_map: &mut AsyncCmdDescMap,
     ) -> Result<()> {
         let _ = self.cmd_evt.read();
         while let Some(desc) = cmd_queue.pop(&self.mem) {
-            let mut resps = self.handle_command_desc(device, wait_ctx, desc_map, desc)?;
+            let mut resps =
+                self.handle_command_desc(cmd_queue, event_queue, device, wait_ctx, desc_map, desc)?;
             self.write_responses(cmd_queue, &mut resps)?;
         }
         Ok(())
@@ -176,61 +254,15 @@ impl Worker {
         desc_map: &mut AsyncCmdDescMap,
         stream_id: u32,
     ) -> Result<()> {
-        let mut responses: VecDeque<WritableResp> = Default::default();
         if let Some(event_responses) = device.process_event(desc_map, stream_id) {
-            for event_response in event_responses {
-                match event_response {
-                    VideoEvtResponseType::AsyncCmd(async_response) => {
-                        let AsyncCmdResponse {
-                            tag,
-                            response: cmd_result,
-                        } = async_response;
-                        match desc_map.remove(&tag) {
-                            Some(desc) => {
-                                let cmd_response = match cmd_result {
-                                    Ok(r) => r,
-                                    Err(e) => {
-                                        error!("returning async error response: {}", &e);
-                                        e.into()
-                                    }
-                                };
-                                responses.push_back((desc, cmd_response))
-                            }
-                            None => match tag {
-                                // TODO(b/153406792): Drain is cancelled by clearing either of the
-                                // stream's queues. To work around a limitation in the VDA api, the
-                                // output queue is cleared synchronously without going through VDA.
-                                // Because of this, the cancellation response from VDA for the
-                                // input queue might fail to find the drain's AsyncCmdTag.
-                                AsyncCmdTag::Drain { stream_id: _ } => {
-                                    info!("ignoring unknown drain response");
-                                }
-                                _ => {
-                                    error!("dropping response for an untracked command: {:?}", tag);
-                                }
-                            },
-                        }
-                    }
-                    VideoEvtResponseType::Event(evt) => {
-                        self.write_event(event_queue, evt)?;
-                    }
-                }
-            }
-        }
-
-        if let Err(e) = self.write_responses(cmd_queue, &mut responses) {
-            error!("Failed to write event responses: {:?}", e);
-            // Ignore result of write_event for a fatal error.
-            let _ = self.write_event(
+            self.write_event_responses(
+                event_responses,
+                cmd_queue,
                 event_queue,
-                VideoEvt {
-                    typ: EvtType::Error,
-                    stream_id,
-                },
-            );
-            return Err(e);
+                desc_map,
+                stream_id,
+            )?;
         }
-
         Ok(())
     }
 
@@ -259,6 +291,7 @@ impl Worker {
                     Token::CmdQueue => {
                         self.handle_command_queue(
                             &mut cmd_queue,
+                            &mut event_queue,
                             &mut device,
                             &wait_ctx,
                             &mut desc_map,

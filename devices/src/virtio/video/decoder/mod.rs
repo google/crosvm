@@ -778,7 +778,10 @@ impl<D: DecoderBackend> Device for Decoder<D> {
         cmd: VideoCmd,
         wait_ctx: &WaitContext<Token>,
         resource_bridge: &ResourceRequestSocket,
-    ) -> VideoCmdResponseType {
+    ) -> (
+        VideoCmdResponseType,
+        Option<(u32, Vec<VideoEvtResponseType>)>,
+    ) {
         use VideoCmd::*;
         use VideoCmdResponseType::Sync;
 
@@ -854,13 +857,14 @@ impl<D: DecoderBackend> Device for Decoder<D> {
             } => self.clear_queue(stream_id, queue_type),
         };
 
-        match cmd_response {
+        let cmd_ret = match cmd_response {
             Ok(r) => r,
             Err(e) => {
                 error!("returning error response: {}", &e);
                 Sync(e.into())
             }
-        }
+        };
+        (cmd_ret, None)
     }
 
     fn process_event(

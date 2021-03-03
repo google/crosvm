@@ -103,7 +103,10 @@ pub trait Device {
         cmd: VideoCmd,
         wait_ctx: &WaitContext<Token>,
         resource_bridge: &ResourceRequestSocket,
-    ) -> VideoCmdResponseType;
+    ) -> (
+        VideoCmdResponseType,
+        Option<(u32, Vec<VideoEvtResponseType>)>,
+    );
 
     /// Processes an available `Token::Event` event and returns a list of `VideoEvtResponseType`
     /// responses. It returns None if an invalid event comes.
