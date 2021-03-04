@@ -117,7 +117,10 @@ pub enum Error {
     CreateWaitContext(base::Error),
     DeviceJail(minijail::Error),
     DevicePivotRoot(minijail::Error),
+    #[cfg(feature = "direct")]
     DirectIo(io::Error),
+    #[cfg(feature = "direct")]
+    DirectIrq(devices::DirectIrqError),
     Disk(PathBuf, io::Error),
     DiskImageLock(base::Error),
     DropCapabilities(base::Error),
@@ -233,7 +236,10 @@ impl Display for Error {
             CreateWaitContext(e) => write!(f, "failed to create wait context: {}", e),
             DeviceJail(e) => write!(f, "failed to jail device: {}", e),
             DevicePivotRoot(e) => write!(f, "failed to pivot root device: {}", e),
+            #[cfg(feature = "direct")]
             DirectIo(e) => write!(f, "failed to open direct io device: {}", e),
+            #[cfg(feature = "direct")]
+            DirectIrq(e) => write!(f, "failed to enable interrupt forwarding: {}", e),
             Disk(p, e) => write!(f, "failed to load disk image {}: {}", p.display(), e),
             DiskImageLock(e) => write!(f, "failed to lock disk image: {}", e),
             DropCapabilities(e) => write!(f, "failed to drop process capabilities: {}", e),
@@ -2506,6 +2512,41 @@ where
                 .unwrap();
         }
     };
+
+    #[cfg(feature = "direct")]
+    let mut irqs = Vec::new();
+
+    #[cfg(feature = "direct")]
+    for irq in &cfg.direct_level_irq {
+        if !linux.resources.reserve_irq(*irq) {
+            warn!("irq {} already reserved.", irq);
+        }
+        let trigger = Event::new().map_err(Error::CreateEvent)?;
+        let resample = Event::new().map_err(Error::CreateEvent)?;
+        linux
+            .irq_chip
+            .register_irq_event(*irq, &trigger, Some(&resample))
+            .unwrap();
+        let direct_irq =
+            devices::DirectIrq::new(trigger, Some(resample)).map_err(Error::DirectIrq)?;
+        direct_irq.irq_enable(*irq).map_err(Error::DirectIrq)?;
+        irqs.push(direct_irq);
+    }
+
+    #[cfg(feature = "direct")]
+    for irq in &cfg.direct_edge_irq {
+        if !linux.resources.reserve_irq(*irq) {
+            warn!("irq {} already reserved.", irq);
+        }
+        let trigger = Event::new().map_err(Error::CreateEvent)?;
+        linux
+            .irq_chip
+            .register_irq_event(*irq, &trigger, None)
+            .unwrap();
+        let direct_irq = devices::DirectIrq::new(trigger, None).map_err(Error::DirectIrq)?;
+        direct_irq.irq_enable(*irq).map_err(Error::DirectIrq)?;
+        irqs.push(direct_irq);
+    }
 
     run_control(
         linux,

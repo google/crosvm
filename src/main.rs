@@ -1679,6 +1679,36 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.direct_pmio = Some(parse_direct_io_options(value)?);
         }
+        #[cfg(feature = "direct")]
+        "direct-level-irq" => {
+            cfg.direct_level_irq
+                .push(
+                    value
+                        .unwrap()
+                        .parse()
+                        .map_err(|_| argument::Error::InvalidValue {
+                            value: value.unwrap().to_owned(),
+                            expected: String::from(
+                                "this value for `direct-level-irq` must be an unsigned integer",
+                            ),
+                        })?,
+                );
+        }
+        #[cfg(feature = "direct")]
+        "direct-edge-irq" => {
+            cfg.direct_edge_irq
+                .push(
+                    value
+                        .unwrap()
+                        .parse()
+                        .map_err(|_| argument::Error::InvalidValue {
+                            value: value.unwrap().to_owned(),
+                            expected: String::from(
+                                "this value for `direct-edge-irq` must be an unsigned integer",
+                            ),
+                        })?,
+                );
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -1894,6 +1924,10 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
                           "Path to a socket path for vhost-user fs, and tag for the shared dir"),
           #[cfg(feature = "direct")]
           Argument::value("direct-pmio", "PATH@RANGE[,RANGE[,...]]", "Path and ranges for direct port I/O access"),
+          #[cfg(feature = "direct")]
+          Argument::value("direct-level-irq", "irq", "Enable interrupt passthrough"),
+          #[cfg(feature = "direct")]
+          Argument::value("direct-edge-irq", "irq", "Enable interrupt passthrough"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
