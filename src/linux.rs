@@ -2164,8 +2164,8 @@ fn file_to_i64<P: AsRef<Path>>(path: P, nth: usize) -> io::Result<i64> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "empty file"))
 }
 
-fn create_kvm(mem: GuestMemory) -> base::Result<KvmVm> {
-    let kvm = Kvm::new()?;
+fn create_kvm(device_path: &Path, mem: GuestMemory) -> base::Result<KvmVm> {
+    let kvm = Kvm::new_with_path(device_path)?;
     let vm = KvmVm::new(&kvm, mem)?;
     Ok(vm)
 }
@@ -2190,6 +2190,8 @@ fn create_kvm_split_irq_chip(
 }
 
 pub fn run_config(cfg: Config) -> Result<()> {
+    let kvm_device_path = cfg.kvm_device_path.clone();
+    let create_kvm_with_path = |mem| create_kvm(&kvm_device_path, mem);
     if cfg.split_irqchip {
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
         {
@@ -2198,10 +2200,10 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
-            run_vm::<_, KvmVcpu, _, _, _>(cfg, create_kvm, create_kvm_split_irq_chip)
+            run_vm::<_, KvmVcpu, _, _, _>(cfg, create_kvm_with_path, create_kvm_split_irq_chip)
         }
     } else {
-        run_vm::<_, KvmVcpu, _, _, _>(cfg, create_kvm, create_kvm_kernel_irq_chip)
+        run_vm::<_, KvmVcpu, _, _, _>(cfg, create_kvm_with_path, create_kvm_kernel_irq_chip)
     }
 }
 

@@ -16,9 +16,11 @@ use std::cell::RefCell;
 use std::cmp::{min, Reverse};
 use std::collections::{BTreeMap, BinaryHeap};
 use std::convert::TryFrom;
+use std::ffi::CString;
 use std::mem::{size_of, ManuallyDrop};
-use std::os::raw::{c_char, c_int, c_ulong, c_void};
-use std::os::unix::io::AsRawFd;
+use std::os::raw::{c_int, c_ulong, c_void};
+use std::os::unix::{io::AsRawFd, prelude::OsStrExt};
+use std::path::{Path, PathBuf};
 use std::ptr::copy_nonoverlapping;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -94,11 +96,10 @@ pub struct Kvm {
 type KvmCap = kvm::Cap;
 
 impl Kvm {
-    /// Opens `/dev/kvm/` and returns a Kvm object on success.
-    pub fn new() -> Result<Kvm> {
-        // Open calls are safe because we give a constant nul-terminated string and verify the
-        // result.
-        let ret = unsafe { open("/dev/kvm\0".as_ptr() as *const c_char, O_RDWR | O_CLOEXEC) };
+    pub fn new_with_path(device_path: &Path) -> Result<Kvm> {
+        // Open calls are safe because we give a nul-terminated string and verify the result.
+        let c_path = CString::new(device_path.as_os_str().as_bytes()).unwrap();
+        let ret = unsafe { open(c_path.as_ptr(), O_RDWR | O_CLOEXEC) };
         if ret < 0 {
             return errno_result();
         }
@@ -106,6 +107,11 @@ impl Kvm {
         Ok(Kvm {
             kvm: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
         })
+    }
+
+    /// Opens `/dev/kvm/` and returns a Kvm object on success.
+    pub fn new() -> Result<Kvm> {
+        Kvm::new_with_path(&PathBuf::from("/dev/kvm"))
     }
 
     /// Gets the size of the mmap required to use vcpu's `kvm_run` structure.

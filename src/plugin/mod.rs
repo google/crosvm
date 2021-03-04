@@ -691,7 +691,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     };
     let vcpu_count = cfg.vcpu_count.unwrap_or(1) as u32;
     let mem = GuestMemory::new(&[]).unwrap();
-    let kvm = Kvm::new().map_err(Error::CreateKvm)?;
+    let kvm = Kvm::new_with_path(&cfg.kvm_device_path).map_err(Error::CreateKvm)?;
     let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
     vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
     vm.create_pit().map_err(Error::CreatePIT)?;

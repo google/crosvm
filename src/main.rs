@@ -676,6 +676,17 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.executable_path = Some(Executable::Kernel(kernel_path));
         }
+        "kvm-device" => {
+            let kvm_device_path = PathBuf::from(value.unwrap());
+            if !kvm_device_path.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("this kvm device path does not exist"),
+                });
+            }
+
+            cfg.kvm_device_path = kvm_device_path;
+        }
         "android-fstab" => {
             if cfg.android_fstab.is_some()
                 && !cfg.android_fstab.as_ref().unwrap().as_os_str().is_empty()
@@ -1595,6 +1606,7 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
 fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
     let arguments =
         &[Argument::positional("KERNEL", "bzImage of kernel to run"),
+          Argument::value("kvm-device", "PATH", "Path to the KVM device. (default /dev/kvm)"),
           Argument::value("android-fstab", "PATH", "Path to Android fstab"),
           Argument::short_value('i', "initrd", "PATH", "Initial ramdisk to load."),
           Argument::short_value('p',

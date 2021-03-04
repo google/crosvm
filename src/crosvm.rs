@@ -29,6 +29,7 @@ use devices::ProtectionType;
 use libc::{getegid, geteuid};
 use vm_control::BatteryType;
 
+static KVM_PATH: &str = "/dev/kvm";
 static SECCOMP_POLICY_DIR: &str = "/usr/share/policy/crosvm";
 
 /// Indicates the location and kind of executable kernel for a VM.
@@ -174,6 +175,7 @@ impl Default for SharedDir {
 
 /// Aggregate of all configurable options for a running VM.
 pub struct Config {
+    pub kvm_device_path: PathBuf,
     pub vcpu_count: Option<usize>,
     pub rt_cpus: Vec<usize>,
     pub vcpu_affinity: Option<VcpuAffinity>,
@@ -234,6 +236,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Config {
         Config {
+            kvm_device_path: PathBuf::from(KVM_PATH),
             vcpu_count: None,
             rt_cpus: Vec::new(),
             vcpu_affinity: None,

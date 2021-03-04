@@ -9,10 +9,13 @@ mod cap;
 use std::cell::RefCell;
 use std::cmp::{min, Ordering};
 use std::collections::{BTreeMap, BinaryHeap};
+use std::ffi::CString;
 use std::fs::File;
 use std::mem::size_of;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::*;
+use std::os::unix::prelude::OsStrExt;
+use std::path::{Path, PathBuf};
 use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 use sync::Mutex;
@@ -94,9 +97,14 @@ pub struct Kvm {
 impl Kvm {
     /// Opens `/dev/kvm/` and returns a Kvm object on success.
     pub fn new() -> Result<Kvm> {
-        // Open calls are safe because we give a constant nul-terminated string and verify the
-        // result.
-        let ret = unsafe { open("/dev/kvm\0".as_ptr() as *const c_char, O_RDWR | O_CLOEXEC) };
+        Kvm::new_with_path(&PathBuf::from("/dev/kvm"))
+    }
+
+    /// Opens a KVM device at `device_path` and returns a Kvm object on success.
+    pub fn new_with_path(device_path: &Path) -> Result<Kvm> {
+        // Open calls are safe because we give a nul-terminated string and verify the result.
+        let c_path = CString::new(device_path.as_os_str().as_bytes()).unwrap();
+        let ret = unsafe { open(c_path.as_ptr(), O_RDWR | O_CLOEXEC) };
         if ret < 0 {
             return errno_result();
         }
