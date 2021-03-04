@@ -25,6 +25,7 @@ mprotect: arg2 in ~PROT_EXEC
 mremap: 1
 munmap: 1
 nanosleep: 1
+clock_nanosleep: 1
 pipe2: 1
 ppoll: 1
 prctl: arg0 == PR_SET_NAME

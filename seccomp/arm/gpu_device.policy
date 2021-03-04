@@ -23,6 +23,7 @@ madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE
 mremap: 1
 munmap: 1
 nanosleep: 1
+clock_nanosleep: 1
 pipe2: 1
 poll: 1
 ppoll: 1
