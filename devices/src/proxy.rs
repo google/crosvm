@@ -4,6 +4,7 @@
 
 //! Runs hardware devices in child processes.
 
+use std::ffi::CString;
 use std::fmt::{self, Display};
 use std::time::Duration;
 use std::{self, io};
@@ -156,6 +157,11 @@ impl ProxyDevice {
         let pid = unsafe {
             match jail.fork(Some(&keep_rds)).map_err(Error::ForkingJail)? {
                 0 => {
+                    let max_len = 15; // pthread_setname_np() limit on Linux
+                    let debug_label_trimmed =
+                        &debug_label.as_bytes()[..std::cmp::min(max_len, debug_label.len())];
+                    let thread_name = CString::new(debug_label_trimmed).unwrap();
+                    let _ = libc::pthread_setname_np(libc::pthread_self(), thread_name.as_ptr());
                     device.on_sandboxed();
                     child_proc(child_sock, &mut device);
 

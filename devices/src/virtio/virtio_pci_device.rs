@@ -391,7 +391,7 @@ impl VirtioPciDevice {
 
 impl PciDevice for VirtioPciDevice {
     fn debug_label(&self) -> String {
-        format!("virtio-pci ({})", self.device.debug_label())
+        format!("pci{}", self.device.debug_label())
     }
 
     fn allocate_address(
