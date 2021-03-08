@@ -362,6 +362,10 @@ impl Worker {
             return Ok(0);
         }
 
+        // The device MUST NOT allow writes to a range mapped
+        // without the VIRTIO_IOMMU_MAP_F_WRITE flag.
+        let write_en = req.flags & VIRTIO_IOMMU_MAP_F_WRITE != 0;
+
         if let Some(vfio_container) = self.domain_map.get(&domain) {
             let size = req.virt_end - req.virt_start + 1u64;
             let host_addr = self
@@ -372,10 +376,12 @@ impl Worker {
             // Safe because both guest and host address are guaranteed by
             // get_host_address_range() to be valid
             let vfio_map_result = unsafe {
-                vfio_container
-                    .1
-                    .lock()
-                    .vfio_dma_map(req.virt_start, size, host_addr as u64)
+                vfio_container.1.lock().vfio_dma_map(
+                    req.virt_start,
+                    size,
+                    host_addr as u64,
+                    write_en,
+                )
             };
 
             match vfio_map_result {

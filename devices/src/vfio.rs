@@ -137,14 +137,19 @@ impl VfioContainer {
         iova: u64,
         size: u64,
         user_addr: u64,
+        write_en: bool,
     ) -> Result<(), VfioError> {
-        let dma_map = vfio_iommu_type1_dma_map {
+        let mut dma_map = vfio_iommu_type1_dma_map {
             argsz: mem::size_of::<vfio_iommu_type1_dma_map>() as u32,
-            flags: VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE,
+            flags: VFIO_DMA_MAP_FLAG_READ,
             vaddr: user_addr,
             iova,
             size,
         };
+
+        if write_en {
+            dma_map.flags |= VFIO_DMA_MAP_FLAG_WRITE;
+        }
 
         let ret = ioctl_with_ref(self, VFIO_IOMMU_MAP_DMA(), &dma_map);
         if ret != 0 {
@@ -203,7 +208,7 @@ impl VfioContainer {
         if !iommu_enabled {
             guest_mem.with_regions(|_index, guest_addr, size, host_addr, _mmap, _fd_offset| {
                 // Safe because the guest regions are guaranteed not to overlap
-                unsafe { self.vfio_dma_map(guest_addr.0, size as u64, host_addr as u64) }
+                unsafe { self.vfio_dma_map(guest_addr.0, size as u64, host_addr as u64, true) }
             })?;
         }
 
@@ -905,8 +910,11 @@ impl VfioDevice {
         iova: u64,
         size: u64,
         user_addr: u64,
+        write_en: bool,
     ) -> Result<(), VfioError> {
-        self.container.lock().vfio_dma_map(iova, size, user_addr)
+        self.container
+            .lock()
+            .vfio_dma_map(iova, size, user_addr, write_en)
     }
 
     /// Remove (iova, user_addr) map from vfio container iommu table

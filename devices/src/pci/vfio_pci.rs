@@ -715,7 +715,8 @@ impl VfioPciDevice {
                         // the host pointer is correct and valid guaranteed by MemoryMapping interface.
                         // The size will be extened to page size aligned if it is not which is also
                         // safe because VFIO actually maps the BAR with page size aligned size.
-                        match unsafe { self.device.vfio_dma_map(guest_map_start, size, host) } {
+                        match unsafe { self.device.vfio_dma_map(guest_map_start, size, host, true) }
+                        {
                             Ok(_) => mem_map.push(mmap),
                             Err(e) => {
                                 error!(
