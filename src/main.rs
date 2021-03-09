@@ -397,6 +397,14 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
                     argument::Error::Syntax(format!("invalid capture option: {}", e))
                 })?;
             }
+            "client_type" => {
+                ac97_params
+                    .set_client_type(v)
+                    .map_err(|e| argument::Error::InvalidValue {
+                        value: v.to_string(),
+                        expected: e.to_string(),
+                    })?;
+            }
             #[cfg(target_os = "linux")]
             "server" => {
                 ac97_params.vios_server_path =
@@ -1635,13 +1643,14 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("net-vq-pairs", "N", "virtio net virtual queue paris. (default: 1)"),
           #[cfg(feature = "audio")]
           Argument::value("ac97",
-                          "[backend=BACKEND,capture=true,capture_effect=EFFECT,shm-fd=FD,client-fd=FD,server-fd=FD]",
+                          "[backend=BACKEND,capture=true,capture_effect=EFFECT,client_type=TYPE,shm-fd=FD,client-fd=FD,server-fd=FD]",
                           "Comma separated key=value pairs for setting up Ac97 devices. Can be given more than once .
                           Possible key values:
                           backend=(null, cras, vios) - Where to route the audio device. If not provided, backend will default to null.
                           `null` for /dev/null, cras for CRAS server and vios for VioS server.
                           capture - Enable audio capture
                           capture_effects - | separated effects to be enabled for recording. The only supported effect value now is EchoCancellation or aec.
+                          client_type - Set specific client type for cras backend.
                           server - The to the VIOS server (unix socket)."),
           Argument::value("serial",
                           "type=TYPE,[hardware=HW,num=NUM,path=PATH,input=PATH,console,earlycon,stdin]",
@@ -2430,6 +2439,17 @@ mod tests {
     #[test]
     fn parse_ac97_capture_vaild() {
         parse_ac97_options("backend=cras,capture=true").expect("parse should have succeded");
+    }
+
+    #[cfg(feature = "audio")]
+    #[test]
+    fn parse_ac97_client_type() {
+        parse_ac97_options("backend=cras,capture=true,client_type=crosvm")
+            .expect("parse should have succeded");
+        parse_ac97_options("backend=cras,capture=true,client_type=arcvm")
+            .expect("parse should have succeded");
+        parse_ac97_options("backend=cras,capture=true,client_type=none")
+            .expect_err("parse should have failed");
     }
 
     #[cfg(feature = "audio")]
