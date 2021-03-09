@@ -342,13 +342,14 @@ impl AsRawDescriptors for CompositeDiskFile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base::{AsRawDescriptor, SharedMemory};
+    use base::AsRawDescriptor;
     use data_model::VolatileMemory;
+    use tempfile::tempfile;
 
     #[test]
     fn block_duplicate_offset_disks() {
-        let file1: File = SharedMemory::new(None).unwrap().into();
-        let file2: File = SharedMemory::new(None).unwrap().into();
+        let file1 = tempfile().unwrap();
+        let file2 = tempfile().unwrap();
         let disk_part1 = ComponentDiskPart {
             file: Box::new(file1),
             offset: 0,
@@ -364,8 +365,8 @@ mod tests {
 
     #[test]
     fn get_len() {
-        let file1: File = SharedMemory::new(None).unwrap().into();
-        let file2: File = SharedMemory::new(None).unwrap().into();
+        let file1 = tempfile().unwrap();
+        let file2 = tempfile().unwrap();
         let disk_part1 = ComponentDiskPart {
             file: Box::new(file1),
             offset: 0,
@@ -383,7 +384,7 @@ mod tests {
 
     #[test]
     fn single_file_passthrough() {
-        let file: File = SharedMemory::new(None).unwrap().into();
+        let file = tempfile().unwrap();
         let disk_part = ComponentDiskPart {
             file: Box::new(file),
             offset: 0,
@@ -405,9 +406,9 @@ mod tests {
 
     #[test]
     fn triple_file_fds() {
-        let file1: File = SharedMemory::new(None).unwrap().into();
-        let file2: File = SharedMemory::new(None).unwrap().into();
-        let file3: File = SharedMemory::new(None).unwrap().into();
+        let file1 = tempfile().unwrap();
+        let file2 = tempfile().unwrap();
+        let file3 = tempfile().unwrap();
         let mut in_fds = vec![
             file1.as_raw_descriptor(),
             file2.as_raw_descriptor(),
@@ -437,9 +438,9 @@ mod tests {
 
     #[test]
     fn triple_file_passthrough() {
-        let file1: File = SharedMemory::new(None).unwrap().into();
-        let file2: File = SharedMemory::new(None).unwrap().into();
-        let file3: File = SharedMemory::new(None).unwrap().into();
+        let file1 = tempfile().unwrap();
+        let file2 = tempfile().unwrap();
+        let file3 = tempfile().unwrap();
         let disk_part1 = ComponentDiskPart {
             file: Box::new(file1),
             offset: 0,
@@ -472,9 +473,9 @@ mod tests {
 
     #[test]
     fn triple_file_punch_hole() {
-        let file1: File = SharedMemory::new(None).unwrap().into();
-        let file2: File = SharedMemory::new(None).unwrap().into();
-        let file3: File = SharedMemory::new(None).unwrap().into();
+        let file1 = tempfile().unwrap();
+        let file2 = tempfile().unwrap();
+        let file3 = tempfile().unwrap();
         let disk_part1 = ComponentDiskPart {
             file: Box::new(file1),
             offset: 0,
@@ -512,9 +513,9 @@ mod tests {
 
     #[test]
     fn triple_file_write_zeroes() {
-        let file1: File = SharedMemory::new(None).unwrap().into();
-        let file2: File = SharedMemory::new(None).unwrap().into();
-        let file3: File = SharedMemory::new(None).unwrap().into();
+        let file1 = tempfile().unwrap();
+        let file2 = tempfile().unwrap();
+        let file3 = tempfile().unwrap();
         let disk_part1 = ComponentDiskPart {
             file: Box::new(file1),
             offset: 0,

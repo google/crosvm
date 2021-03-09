@@ -29,7 +29,7 @@ CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
         Requirements.PRIVILEGED,
         Requirements.X86_64,
     ],
-    "disk": [Requirements.DISABLED],
+    "disk": [Requirements.PRIVILEGED],
     "enumn": [],
     "fuse": [],
     "fuzz": [Requirements.DISABLED],
