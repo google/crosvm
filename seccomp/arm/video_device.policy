@@ -12,6 +12,7 @@ fcntl64: arg1 == F_GETFL || arg1 == F_SETFL || arg1 == F_DUPFD_CLOEXEC || arg1 =
 getegid32: 1
 geteuid32: 1
 getgid32: 1
+getrandom: 1
 getresgid32: 1
 getresuid32: 1
 getsockname: 1
