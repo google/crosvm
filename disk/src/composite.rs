@@ -468,7 +468,7 @@ mod tests {
         composite
             .read_exact_at_volatile(output_volatile_memory.get_slice(0, 200).unwrap(), 50)
             .unwrap();
-        assert!(input_memory.into_iter().eq(output_memory.into_iter()));
+        assert!(input_memory.iter().eq(output_memory.iter()));
     }
 
     #[test]
@@ -508,7 +508,7 @@ mod tests {
         for i in 50..250 {
             input_memory[i] = 0;
         }
-        assert!(input_memory.into_iter().eq(output_memory.into_iter()));
+        assert!(input_memory.iter().eq(output_memory.iter()));
     }
 
     #[test]
@@ -559,6 +559,6 @@ mod tests {
                 i, input_memory[i], output_memory[i]
             );
         }
-        assert!(input_memory.into_iter().eq(output_memory.into_iter()));
+        assert!(input_memory.iter().eq(output_memory.iter()));
     }
 }
