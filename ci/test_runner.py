@@ -52,11 +52,17 @@ class Requirements(enum.Enum):
     # Test is disabled explicitly.
     DISABLED = "disabled"
 
-    # Test needs to be executed with expanded privileges for device access.
+    # Test needs to be executed with expanded privileges for device access and
+    # will be run inside a VM.
     PRIVILEGED = "privileged"
 
     # Test needs to run single-threaded
     SINGLE_THREADED = "single_threaded"
+
+    # Separate workspaces that have dev-dependencies cannot be built from the
+    # crosvm workspace and need to be built separately.
+    # Note: Separate workspaces are built with no features enabled.
+    SEPARATE_WORKSPACE = "separate_workspace"
 
 
 BUILD_TIME_REQUIREMENTS = [
@@ -209,7 +215,7 @@ def results_summary(results: Union[RunResults, CrateResults]):
     num_pass = results.count(TestResult.PASS)
     num_skip = results.count(TestResult.SKIP)
     num_fail = results.count(TestResult.FAIL)
-    msg = []
+    msg: List[str] = []
     if num_pass:
         msg.append(f"{num_pass} passed")
     if num_skip:
@@ -220,8 +226,9 @@ def results_summary(results: Union[RunResults, CrateResults]):
 
 
 def cargo_test_process(
-    crates: List[CrateInfo],
-    features: Set[str],
+    cwd: str,
+    crates: List[CrateInfo] = [],
+    features: Set[str] = set(),
     run: bool = True,
     single_threaded: bool = False,
     use_vm: bool = False,
@@ -233,6 +240,11 @@ def cargo_test_process(
         cmd += ["--no-run"]
     if features:
         cmd += ["--no-default-features", "--features", ",".join(features)]
+
+    # Skip doc tests as these cannot be run in the VM.
+    if use_vm:
+        cmd += ["--bins", "--tests"]
+
     for crate in sorted(crate.name for crate in crates):
         cmd += ["-p", crate]
 
@@ -247,6 +259,7 @@ def cargo_test_process(
 
     process = subprocess.run(
         cmd,
+        cwd=cwd,
         env=env,
         timeout=timeout,
         stdout=subprocess.PIPE,
@@ -261,9 +274,33 @@ def cargo_test_process(
 
 def cargo_build_tests(crates: List[CrateInfo], features: Set[str]):
     """Runs cargo test --no-run to build all listed `crates`."""
-    print("Building: ", ", ".join(crate.name for crate in crates))
-    process = cargo_test_process(crates, features, run=False)
-    return process.returncode == 0
+    separate_workspace_crates = [
+        crate
+        for crate in crates
+        if Requirements.SEPARATE_WORKSPACE in crate.requirements
+    ]
+    workspace_crates = [
+        crate
+        for crate in crates
+        if Requirements.SEPARATE_WORKSPACE not in crate.requirements
+    ]
+
+    print(
+        "Building workspace: ",
+        ", ".join(crate.name for crate in workspace_crates),
+    )
+    process = cargo_test_process(
+        cwd=".", crates=workspace_crates, features=features, run=False
+    )
+    if process.returncode != 0:
+        return False
+
+    for crate in separate_workspace_crates:
+        print("Building:", crate.name)
+        process = cargo_test_process(cwd=crate.name, run=False)
+        if process.returncode != 0:
+            return False
+    return True
 
 
 def cargo_test(
@@ -279,16 +316,29 @@ def cargo_test(
             msg.append("in vm")
         if single_threaded:
             msg.append("(single-threaded)")
+        if Requirements.SEPARATE_WORKSPACE in crate.requirements:
+            msg.append("(separate workspace)")
         sys.stdout.write(f"{' '.join(msg)}... ")
         sys.stdout.flush()
-        process = cargo_test_process(
-            [crate],
-            features,
-            run=True,
-            single_threaded=single_threaded,
-            use_vm=use_vm,
-            timeout=TEST_TIMEOUT_SECS,
-        )
+
+        if Requirements.SEPARATE_WORKSPACE in crate.requirements:
+            process = cargo_test_process(
+                cwd=crate.name,
+                run=True,
+                single_threaded=single_threaded,
+                use_vm=use_vm,
+                timeout=TEST_TIMEOUT_SECS,
+            )
+        else:
+            process = cargo_test_process(
+                cwd=".",
+                crates=[crate],
+                features=features,
+                run=True,
+                single_threaded=single_threaded,
+                use_vm=use_vm,
+                timeout=TEST_TIMEOUT_SECS,
+            )
         results = CrateResults(
             crate.name, process.returncode == 0, process.stdout
         )
