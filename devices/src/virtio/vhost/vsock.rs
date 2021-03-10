@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::thread;
+use std::{path::PathBuf, thread};
 
 use data_model::{DataInit, Le64};
 
@@ -31,9 +31,15 @@ pub struct Vsock {
 
 impl Vsock {
     /// Create a new virtio-vsock device with the given VM cid.
-    pub fn new(base_features: u64, cid: u64, mem: &GuestMemory) -> Result<Vsock> {
+    pub fn new(
+        vhost_vsock_device_path: &PathBuf,
+        base_features: u64,
+        cid: u64,
+        mem: &GuestMemory,
+    ) -> Result<Vsock> {
         let kill_evt = Event::new().map_err(Error::CreateKillEvent)?;
-        let handle = VhostVsockHandle::new(mem).map_err(Error::VhostOpen)?;
+        let handle =
+            VhostVsockHandle::new(vhost_vsock_device_path, mem).map_err(Error::VhostOpen)?;
 
         let avail_features = base_features
             | 1 << virtio_sys::vhost::VIRTIO_F_NOTIFY_ON_EMPTY

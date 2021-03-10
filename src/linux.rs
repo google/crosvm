@@ -760,6 +760,7 @@ fn create_net_device(
     let features = virtio::base_features(cfg.protected_vm);
     let dev = if cfg.vhost_net {
         let dev = virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(
+            &cfg.vhost_net_device_path,
             features,
             host_ip,
             netmask,
@@ -1073,7 +1074,8 @@ fn register_video_device(
 
 fn create_vhost_vsock_device(cfg: &Config, cid: u64, mem: &GuestMemory) -> DeviceResult {
     let features = virtio::base_features(cfg.protected_vm);
-    let dev = virtio::vhost::Vsock::new(features, cid, mem).map_err(Error::VhostVsockDeviceNew)?;
+    let dev = virtio::vhost::Vsock::new(&cfg.vhost_vsock_device_path, features, cid, mem)
+        .map_err(Error::VhostVsockDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),

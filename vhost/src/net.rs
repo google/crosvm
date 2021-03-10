@@ -3,16 +3,17 @@
 // found in the LICENSE file.
 
 use net_util::TapT;
-use std::fs::{File, OpenOptions};
 use std::marker::PhantomData;
 use std::os::unix::fs::OpenOptionsExt;
+use std::{
+    fs::{File, OpenOptions},
+    path::PathBuf,
+};
 
 use base::{ioctl_with_ref, AsRawDescriptor, RawDescriptor};
 use vm_memory::GuestMemory;
 
 use super::{ioctl_result, Error, Result, Vhost};
-
-static DEVICE: &str = "/dev/vhost-net";
 
 /// Handle to run VHOST_NET ioctls.
 ///
@@ -28,7 +29,7 @@ pub struct Net<T> {
 
 pub trait NetT<T: TapT>: Vhost + AsRawDescriptor + Send + Sized {
     /// Create a new NetT instance
-    fn new(mem: &GuestMemory) -> Result<Self>;
+    fn new(vhost_net_device_path: &PathBuf, mem: &GuestMemory) -> Result<Self>;
 
     /// Set the tap file descriptor that will serve as the VHOST_NET backend.
     /// This will start the vhost worker for the given queue.
@@ -47,13 +48,13 @@ where
     ///
     /// # Arguments
     /// * `mem` - Guest memory mapping.
-    fn new(mem: &GuestMemory) -> Result<Net<T>> {
+    fn new(vhost_net_device_path: &PathBuf, mem: &GuestMemory) -> Result<Net<T>> {
         Ok(Net::<T> {
             descriptor: OpenOptions::new()
                 .read(true)
                 .write(true)
                 .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
-                .open(DEVICE)
+                .open(vhost_net_device_path)
                 .map_err(Error::VhostOpen)?,
             mem: mem.clone(),
             phantom: PhantomData,
@@ -117,7 +118,7 @@ pub mod fakes {
     where
         T: TapT,
     {
-        fn new(mem: &GuestMemory) -> Result<FakeNet<T>> {
+        fn new(_vhost_net_device_path: &PathBuf, mem: &GuestMemory) -> Result<FakeNet<T>> {
             Ok(FakeNet::<T> {
                 descriptor: OpenOptions::new()
                     .read(true)

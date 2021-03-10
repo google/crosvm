@@ -30,6 +30,8 @@ use libc::{getegid, geteuid};
 use vm_control::BatteryType;
 
 static KVM_PATH: &str = "/dev/kvm";
+static VHOST_VSOCK_PATH: &str = "/dev/vhost-vsock";
+static VHOST_NET_PATH: &str = "/dev/vhost-net";
 static SECCOMP_POLICY_DIR: &str = "/usr/share/policy/crosvm";
 
 /// Indicates the location and kind of executable kernel for a VM.
@@ -176,6 +178,8 @@ impl Default for SharedDir {
 /// Aggregate of all configurable options for a running VM.
 pub struct Config {
     pub kvm_device_path: PathBuf,
+    pub vhost_vsock_device_path: PathBuf,
+    pub vhost_net_device_path: PathBuf,
     pub vcpu_count: Option<usize>,
     pub rt_cpus: Vec<usize>,
     pub vcpu_affinity: Option<VcpuAffinity>,
@@ -237,6 +241,8 @@ impl Default for Config {
     fn default() -> Config {
         Config {
             kvm_device_path: PathBuf::from(KVM_PATH),
+            vhost_vsock_device_path: PathBuf::from(VHOST_VSOCK_PATH),
+            vhost_net_device_path: PathBuf::from(VHOST_NET_PATH),
             vcpu_count: None,
             rt_cpus: Vec::new(),
             vcpu_affinity: None,

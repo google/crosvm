@@ -2,16 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::{File, OpenOptions};
 use std::os::unix::fs::OpenOptionsExt;
+use std::{
+    fs::{File, OpenOptions},
+    path::PathBuf,
+};
 
 use base::{ioctl_with_ref, AsRawDescriptor, RawDescriptor};
 use virtio_sys::{VHOST_VSOCK_SET_GUEST_CID, VHOST_VSOCK_SET_RUNNING};
 use vm_memory::GuestMemory;
 
 use super::{ioctl_result, Error, Result, Vhost};
-
-static DEVICE: &str = "/dev/vhost-vsock";
 
 /// Handle for running VHOST_VSOCK ioctls.
 pub struct Vsock {
@@ -21,13 +22,13 @@ pub struct Vsock {
 
 impl Vsock {
     /// Open a handle to a new VHOST_VSOCK instance.
-    pub fn new(mem: &GuestMemory) -> Result<Vsock> {
+    pub fn new(vhost_vsock_device_path: &PathBuf, mem: &GuestMemory) -> Result<Vsock> {
         Ok(Vsock {
             descriptor: OpenOptions::new()
                 .read(true)
                 .write(true)
                 .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
-                .open(DEVICE)
+                .open(vhost_vsock_device_path)
                 .map_err(Error::VhostOpen)?,
             mem: mem.clone(),
         })

@@ -4,6 +4,7 @@
 
 use std::mem;
 use std::net::Ipv4Addr;
+use std::path::PathBuf;
 use std::thread;
 
 use net_util::{MacAddress, TapT};
@@ -45,6 +46,7 @@ where
     /// Create a new virtio network device with the given IP address and
     /// netmask.
     pub fn new(
+        vhost_net_device_path: &PathBuf,
         base_features: u64,
         ip_addr: Ipv4Addr,
         netmask: Ipv4Addr,
@@ -71,7 +73,7 @@ where
             .map_err(Error::TapSetVnetHdrSize)?;
 
         tap.enable().map_err(Error::TapEnable)?;
-        let vhost_net_handle = U::new(mem).map_err(Error::VhostOpen)?;
+        let vhost_net_handle = U::new(vhost_net_device_path, mem).map_err(Error::VhostOpen)?;
 
         let avail_features = base_features
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
@@ -366,6 +368,7 @@ pub mod tests {
         let guest_memory = create_guest_memory().unwrap();
         let features = base_features(ProtectionType::Unprotected);
         Net::<FakeTap, FakeNet<FakeTap>>::new(
+            &PathBuf::from(""),
             features,
             Ipv4Addr::new(127, 0, 0, 1),
             Ipv4Addr::new(255, 255, 255, 0),

@@ -341,7 +341,7 @@ mod tests {
 
     use crate::net::fakes::FakeNet;
     use net_util::fakes::FakeTap;
-    use std::result;
+    use std::{path::PathBuf, result};
     use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
     fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
@@ -361,7 +361,7 @@ mod tests {
 
     fn create_fake_vhost_net() -> FakeNet<FakeTap> {
         let gm = create_guest_memory().unwrap();
-        FakeNet::<FakeTap>::new(&gm).unwrap()
+        FakeNet::<FakeTap>::new(&PathBuf::from(""), &gm).unwrap()
     }
 
     #[test]

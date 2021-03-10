@@ -695,6 +695,28 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
 
             cfg.kvm_device_path = kvm_device_path;
         }
+        "vhost-vsock-device" => {
+            let vhost_vsock_device_path = PathBuf::from(value.unwrap());
+            if !vhost_vsock_device_path.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("this vhost-vsock device path does not exist"),
+                });
+            }
+
+            cfg.vhost_vsock_device_path = vhost_vsock_device_path;
+        }
+        "vhost-net-device" => {
+            let vhost_net_device_path = PathBuf::from(value.unwrap());
+            if !vhost_net_device_path.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("this vhost-vsock device path does not exist"),
+                });
+            }
+
+            cfg.vhost_net_device_path = vhost_net_device_path;
+        }
         "android-fstab" => {
             if cfg.android_fstab.is_some()
                 && !cfg.android_fstab.as_ref().unwrap().as_os_str().is_empty()
@@ -1615,6 +1637,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
     let arguments =
         &[Argument::positional("KERNEL", "bzImage of kernel to run"),
           Argument::value("kvm-device", "PATH", "Path to the KVM device. (default /dev/kvm)"),
+          Argument::value("vhost-vsock-device", "PATH", "Path to the vhost-vsock device. (default /dev/vhost-vsock)"),
+          Argument::value("vhost-net-device", "PATH", "Path to the vhost-net device. (default /dev/vhost-net)"),
           Argument::value("android-fstab", "PATH", "Path to Android fstab"),
           Argument::short_value('i', "initrd", "PATH", "Initial ramdisk to load."),
           Argument::short_value('p',
