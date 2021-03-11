@@ -1338,15 +1338,7 @@ mod tests {
         }
         mem::drop(c);
 
-        // Now add NOPs to wake up any threads blocked on the syscall.
-        for i in 0..NUM_THREADS {
-            uring.add_nop((num_entries * 3 + i) as UserData).unwrap();
-        }
-        uring.submit().unwrap();
-
-        for t in threads {
-            t.join().unwrap();
-        }
+        // Let the OS clean up the still-waiting threads after the test run.
     }
 
     #[test]
@@ -1512,30 +1504,18 @@ mod tests {
             t.join().unwrap();
         }
 
-        // Now that all submitters are finished, add NOPs to wake up any completers blocked on the
-        // syscall.
-        for i in 0..NUM_COMPLETERS {
-            uring
-                .add_nop((NUM_SUBMITTERS * ITERATIONS + i) as UserData)
-                .unwrap();
-        }
-        uring.submit().unwrap();
-
-        for t in threads {
-            t.join().unwrap();
-        }
-
-        // Make sure we didn't submit more entries than expected. Only the last few NOPs added to
-        // wake up the completer threads may still be in the completion ring.
-        assert!(uring.complete_ring.num_ready() <= NUM_COMPLETERS as u32);
+        // Make sure we didn't submit more entries than expected.
+        assert_eq!(uring.complete_ring.num_ready(), 0);
         assert_eq!(
             in_flight.lock().abs() as u32 + uring.complete_ring.num_ready(),
-            NUM_COMPLETERS as u32
+            0
         );
         assert_eq!(uring.submit_ring.lock().added, 0);
         assert_eq!(
             uring.stats.total_ops.load(Ordering::Relaxed),
-            (NUM_SUBMITTERS * ITERATIONS + NUM_COMPLETERS) as u64
+            (NUM_SUBMITTERS * ITERATIONS) as u64
         );
+
+        // Leave the completer threads hanging to be cleaned up by the OS.
     }
 }
