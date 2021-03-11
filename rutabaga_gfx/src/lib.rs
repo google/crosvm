@@ -10,6 +10,7 @@ mod generated;
 mod gfxstream;
 #[macro_use]
 mod macros;
+#[cfg(any(feature = "gfxstream", feature = "virgl_renderer"))]
 mod renderer_utils;
 mod rutabaga_2d;
 mod rutabaga_core;

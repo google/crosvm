@@ -30,7 +30,7 @@ pub struct VirglBox {
  *       -o vsnprintf.rs
  */
 
-#[allow(dead_code, non_snake_case, non_camel_case_types)]
+#[allow(non_snake_case, non_camel_case_types)]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 extern "C" {
     pub fn vsnprintf(

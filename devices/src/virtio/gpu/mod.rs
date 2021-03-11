@@ -970,8 +970,10 @@ impl Gpu {
         let num_capsets = match self.rutabaga_component {
             RutabagaComponentType::Rutabaga2D => 0,
             _ => {
+                let mut num_capsets = 0;
+
                 // Cross-domain (like virtio_wl with llvmpipe) is always available.
-                let mut num_capsets = 1;
+                num_capsets += 1;
 
                 // Three capsets for virgl_renderer
                 #[cfg(feature = "virgl_renderer")]
