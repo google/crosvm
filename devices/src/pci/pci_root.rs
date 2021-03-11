@@ -111,6 +111,11 @@ impl PciAddress {
             | ((Self::REGISTER_MASK & register as u32) << Self::REGISTER_OFFSET)
     }
 
+    /// Convert B:D:F PCI address to unsigned 32 bit integer
+    pub fn to_u32(&self) -> u32 {
+        self.to_config_address(0) >> Self::FUNCTION_OFFSET
+    }
+
     /// Returns true if the address points to PCI root host-bridge.
     fn is_root(&self) -> bool {
         matches!(

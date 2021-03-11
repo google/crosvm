@@ -1699,7 +1699,12 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.executable_path = Some(Executable::Bios(PathBuf::from(value.unwrap().to_owned())));
         }
         "vfio" => {
-            let vfio_path = PathBuf::from(value.unwrap());
+            let mut param = value.unwrap().split(',');
+            let vfio_path =
+                PathBuf::from(param.next().ok_or_else(|| argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("missing vfio path"),
+                })?);
             if !vfio_path.exists() {
                 return Err(argument::Error::InvalidValue {
                     value: value.unwrap().to_owned(),
@@ -1713,7 +1718,33 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 });
             }
 
-            cfg.vfio.push(vfio_path);
+            let mut enable_iommu = false;
+            if let Some(p) = param.next() {
+                let mut kv = p.splitn(2, '=');
+                if let (Some(kind), Some(value)) = (kv.next(), kv.next()) {
+                    match kind {
+                        "iommu" => (),
+                        _ => {
+                            return Err(argument::Error::InvalidValue {
+                                value: p.to_owned(),
+                                expected: String::from("option must be `iommu=on|off`"),
+                            })
+                        }
+                    }
+                    match value {
+                        "on" => enable_iommu = true,
+                        "off" => (),
+                        _ => {
+                            return Err(argument::Error::InvalidValue {
+                                value: p.to_owned(),
+                                expected: String::from("option must be `iommu=on|off`"),
+                            })
+                        }
+                    }
+                };
+            }
+
+            cfg.vfio.insert(vfio_path, enable_iommu);
         }
         "video-decoder" => {
             cfg.video_dec = true;
@@ -2094,7 +2125,8 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("split-irqchip", "(EXPERIMENTAL) enable split-irqchip support"),
           Argument::value("bios", "PATH", "Path to BIOS/firmware ROM"),
-          Argument::value("vfio", "PATH", "Path to sysfs of pass through or mdev device"),
+          Argument::value("vfio", "PATH[,iommu=on|off]", "Path to sysfs of pass through or mdev device.
+iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           #[cfg(feature = "video-decoder")]
           Argument::flag("video-decoder", "(EXPERIMENTAL) enable virtio-video decoder device"),
           #[cfg(feature = "video-encoder")]

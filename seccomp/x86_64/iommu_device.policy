@@ -1,0 +1,13 @@
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+@include /usr/share/policy/crosvm/common_device.policy
+
+prctl: arg0 == PR_SET_NAME
+open: return ENOENT
+openat: return ENOENT
+
+# 0x3B71: VFIO_IOMMU_MAP_DMA
+# 0x3B72: VFIO_IOMMU_UNMAP_DMA
+ioctl: arg1 == 0x3B71 || arg1 == 0x3B72

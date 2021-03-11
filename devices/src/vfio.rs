@@ -170,7 +170,7 @@ impl VfioContainer {
         Ok(())
     }
 
-    fn init(&mut self, guest_mem: &GuestMemory) -> Result<(), VfioError> {
+    fn init(&mut self, guest_mem: &GuestMemory, iommu_enabled: bool) -> Result<(), VfioError> {
         if !self.check_extension(VFIO_TYPE1v2_IOMMU) {
             return Err(VfioError::VfioType1V2);
         }
@@ -181,10 +181,12 @@ impl VfioContainer {
 
         // Add all guest memory regions into vfio container's iommu table,
         // then vfio kernel driver could access guest memory from gfn
-        guest_mem.with_regions(|_index, guest_addr, size, host_addr, _mmap, _fd_offset| {
-            // Safe because the guest regions are guaranteed not to overlap
-            unsafe { self.vfio_dma_map(guest_addr.0, size as u64, host_addr as u64) }
-        })?;
+        if !iommu_enabled {
+            guest_mem.with_regions(|_index, guest_addr, size, host_addr, _mmap, _fd_offset| {
+                // Safe because the guest regions are guaranteed not to overlap
+                unsafe { self.vfio_dma_map(guest_addr.0, size as u64, host_addr as u64) }
+            })?;
+        }
 
         Ok(())
     }
@@ -194,6 +196,7 @@ impl VfioContainer {
         id: u32,
         guest_mem: &GuestMemory,
         kvm_vfio_file: &SafeDescriptor,
+        iommu_enabled: bool,
     ) -> Result<Arc<VfioGroup>, VfioError> {
         match self.groups.get(&id) {
             Some(group) => Ok(group.clone()),
@@ -203,7 +206,7 @@ impl VfioContainer {
                 if self.groups.is_empty() {
                     // Before the first group is added into container, do once cotainer
                     // initialize for a vm
-                    self.init(guest_mem)?;
+                    self.init(guest_mem, iommu_enabled)?;
                 }
 
                 group.kvm_device_add_group(kvm_vfio_file)?;
@@ -450,11 +453,13 @@ impl VfioDevice {
         guest_mem: &GuestMemory,
         kvm_vfio_file: &SafeDescriptor,
         container: Arc<Mutex<VfioContainer>>,
+        iommu_enabled: bool,
     ) -> Result<Self, VfioError> {
         let group_id = VfioGroup::get_group_id(sysfspath)?;
-        let group = container
-            .lock()
-            .get_group(group_id, guest_mem, kvm_vfio_file)?;
+        let group =
+            container
+                .lock()
+                .get_group(group_id, guest_mem, kvm_vfio_file, iommu_enabled)?;
         let name_osstr = sysfspath.file_name().ok_or(VfioError::InvalidPath)?;
         let name_str = name_osstr.to_str().ok_or(VfioError::InvalidPath)?;
         let name = String::from(name_str);

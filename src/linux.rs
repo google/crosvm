@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::cmp::Reverse;
+use std::collections::BTreeMap;
 use std::convert::TryFrom;
 #[cfg(feature = "gpu")]
 use std::env;
@@ -45,8 +46,8 @@ use devices::virtio::{self, Console, VirtioDevice};
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
 use devices::{
-    self, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciDevice, VcpuRunState, VfioDevice,
-    VfioPciDevice, VirtioPciDevice,
+    self, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciDevice, VcpuRunState, VfioContainer,
+    VfioDevice, VfioPciDevice, VirtioPciDevice,
 };
 #[cfg(feature = "usb")]
 use devices::{HostBackendDeviceProvider, XhciController};
@@ -124,6 +125,7 @@ pub enum Error {
     CreateVcpu(base::Error),
     CreateVfioDevice(devices::vfio::VfioError),
     CreateVfioKvmDevice(base::Error),
+    CreateVirtioIommu(base::Error),
     CreateVm(base::Error),
     CreateWaitContext(base::Error),
     DeviceJail(minijail::Error),
@@ -253,6 +255,7 @@ impl Display for Error {
             CreateVcpu(e) => write!(f, "failed to create vcpu: {}", e),
             CreateVfioDevice(e) => write!(f, "Failed to create vfio device {}", e),
             CreateVfioKvmDevice(e) => write!(f, "failed to create KVM vfio device: {}", e),
+            CreateVirtioIommu(e) => write!(f, "Failed to create IOMMU device {}", e),
             CreateVm(e) => write!(f, "failed to create vm: {}", e),
             CreateWaitContext(e) => write!(f, "failed to create wait context: {}", e),
             DeviceJail(e) => write!(f, "failed to jail device: {}", e),
@@ -1402,6 +1405,19 @@ fn create_pmem_device(
     })
 }
 
+fn create_iommu_device(
+    cfg: &Config,
+    endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>>,
+) -> DeviceResult {
+    let dev = virtio::Iommu::new(virtio::base_features(cfg.protected_vm), endpoints)
+        .map_err(Error::CreateVirtioIommu)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail: simple_jail(&cfg, "iommu_device")?,
+    })
+}
+
 fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult {
     let mut keep_rds = Vec::new();
     let evt = Event::new().map_err(Error::CreateEvent)?;
@@ -1735,9 +1751,11 @@ fn create_vfio_device(
     control_tubes: &mut Vec<TaggedControlTube>,
     vfio_path: &Path,
     kvm_vfio_file: &SafeDescriptor,
+    endpoints: &mut BTreeMap<u32, Arc<Mutex<VfioContainer>>>,
+    iommu_enabled: bool,
 ) -> DeviceResult<(Box<VfioPciDevice>, Option<Minijail>)> {
-    let vfio_container =
-        VfioCommonSetup::vfio_get_container(vfio_path, false).map_err(Error::CreateVfioDevice)?;
+    let vfio_container = VfioCommonSetup::vfio_get_container(vfio_path, iommu_enabled)
+        .map_err(Error::CreateVfioDevice)?;
 
     // create MSI, MSI-X, and Mem request sockets for each vfio device
     let (vfio_host_tube_msi, vfio_device_tube_msi) = Tube::pair().map_err(Error::CreateTube)?;
@@ -1749,8 +1767,14 @@ fn create_vfio_device(
     let (vfio_host_tube_mem, vfio_device_tube_mem) = Tube::pair().map_err(Error::CreateTube)?;
     control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
 
-    let vfio_device = VfioDevice::new(vfio_path, vm.get_memory(), &kvm_vfio_file, vfio_container)
-        .map_err(Error::CreateVfioDevice)?;
+    let vfio_device = VfioDevice::new(
+        vfio_path,
+        vm.get_memory(),
+        &kvm_vfio_file,
+        vfio_container.clone(),
+        iommu_enabled,
+    )
+    .map_err(Error::CreateVfioDevice)?;
     let mut vfio_pci_device = Box::new(VfioPciDevice::new(
         vfio_device,
         vfio_device_tube_msi,
@@ -1758,11 +1782,16 @@ fn create_vfio_device(
         vfio_device_tube_mem,
     ));
     // early reservation for pass-through PCI devices.
-    if vfio_pci_device.allocate_address(resources).is_err() {
+    let endpoint_addr = vfio_pci_device.allocate_address(resources);
+    if endpoint_addr.is_err() {
         warn!(
             "address reservation failed for vfio {}",
             vfio_pci_device.debug_label()
         );
+    }
+
+    if iommu_enabled {
+        endpoints.insert(endpoint_addr.unwrap().to_u32(), vfio_container);
     }
 
     Ok((vfio_pci_device, simple_jail(cfg, "vfio_device")?))
@@ -1828,7 +1857,10 @@ fn create_devices(
             .create_device(DeviceKind::Vfio)
             .map_err(Error::CreateVfioKvmDevice)?;
 
-        for vfio_path in &cfg.vfio {
+        let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>> =
+            BTreeMap::new();
+
+        for (vfio_path, enable_iommu) in cfg.vfio.iter() {
             let (vfio_pci_device, jail) = create_vfio_device(
                 cfg,
                 vm,
@@ -1836,8 +1868,22 @@ fn create_devices(
                 control_tubes,
                 vfio_path.as_path(),
                 &kvm_vfio_file,
+                &mut iommu_attached_endpoints,
+                *enable_iommu,
             )?;
+
             pci_devices.push((vfio_pci_device, jail));
+        }
+
+        if !iommu_attached_endpoints.is_empty() {
+            let iommu_dev = create_iommu_device(cfg, iommu_attached_endpoints)?;
+
+            let (msi_host_tube, msi_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
+            control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+            let dev = VirtioPciDevice::new(vm.get_memory().clone(), iommu_dev.dev, msi_device_tube)
+                .map_err(Error::VirtioPciDev)?;
+            let dev = Box::new(dev) as Box<dyn PciDevice>;
+            pci_devices.push((dev, iommu_dev.jail));
         }
     }
 
