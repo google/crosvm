@@ -36,6 +36,7 @@ CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
     "fuzz": [Requirements.DISABLED],
     "gpu_display": [],
     "hypervisor": [Requirements.PRIVILEGED, Requirements.X86_64],
+    "integration_tests": [Requirements.PRIVILEGED, Requirements.X86_64],
     "io_uring": [
         Requirements.SEPARATE_WORKSPACE,
         Requirements.PRIVILEGED,

@@ -30,7 +30,7 @@ const ARCH: &str = "aarch64";
 
 /// Timeout for communicating with the VM. If we do not hear back, panic so we
 /// do not block the tests.
-const VM_COMMUNICATION_TIMEOUT: Duration = Duration::from_millis(1000);
+const VM_COMMUNICATION_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn prebuilt_version() -> &'static str {
     include_str!("../guest_under_test/PREBUILT_VERSION").trim()
