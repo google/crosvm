@@ -55,7 +55,7 @@ CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
     "qcow_utils": [],
     "rand_ish": [],
     "resources": [],
-    "rutabaga_gfx": [Requirements.CROS_BUILD, Requirements.X86_64],
+    "rutabaga_gfx": [Requirements.CROS_BUILD, Requirements.PRIVILEGED],
     "sync": [],
     "sys_util": [Requirements.SINGLE_THREADED, Requirements.PRIVILEGED],
     "poll_token_derive": [],
@@ -69,7 +69,7 @@ CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
     "vhost": [Requirements.PRIVILEGED],
     "virtio_sys": [],
     "vm_control": [],
-    "vm_memory": [Requirements.DISABLED],
+    "vm_memory": [Requirements.PRIVILEGED],
     "x86_64": [Requirements.X86_64, Requirements.PRIVILEGED],
 }
 
