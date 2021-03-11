@@ -49,6 +49,18 @@ pub fn new_keyboard_config() -> VirtioInputConfig {
     )
 }
 
+/// Instantiates a VirtioInputConfig object with the default configuration for a collection of switches.
+pub fn new_switches_config() -> VirtioInputConfig {
+    VirtioInputConfig::new(
+        virtio_input_device_ids::new(0, 0, 0, 0),
+        b"Crosvm Virtio Switches".to_vec(),
+        b"virtio-switches".to_vec(),
+        virtio_input_bitmap::new([0u8; 128]),
+        default_switch_events(),
+        BTreeMap::new(),
+    )
+}
+
 /// Instantiates a VirtioInputConfig object with the default configuration for a touchscreen (no
 /// multitouch support).
 pub fn new_single_touch_config(width: u32, height: u32) -> VirtioInputConfig {
@@ -275,4 +287,54 @@ fn default_keyboard_events() -> BTreeMap<u16, virtio_input_bitmap> {
         virtio_input_bitmap::from_bits(&[LED_CAPSL, LED_NUML, LED_SCROLLL]),
     );
     supported_events
+}
+
+fn default_switch_events() -> BTreeMap<u16, virtio_input_bitmap> {
+    let mut supported_events: BTreeMap<u16, virtio_input_bitmap> = BTreeMap::new();
+    supported_events.insert(
+        EV_SW,
+        virtio_input_bitmap::from_bits(&[
+            SW_LID,
+            SW_TABLET_MODE,
+            SW_HEADPHONE_INSERT,
+            SW_RFKILL_ALL,
+            SW_MICROPHONE_INSERT,
+            SW_DOCK,
+            SW_LINEOUT_INSERT,
+            SW_JACK_PHYSICAL_INSERT,
+            SW_VIDEOOUT_INSERT,
+            SW_CAMERA_LENS_COVER,
+            SW_KEYPAD_SLIDE,
+            SW_FRONT_PROXIMITY,
+            SW_ROTATE_LOCK,
+            SW_LINEIN_INSERT,
+            SW_MUTE_DEVICE,
+            SW_PEN_INSERTED,
+            SW_MACHINE_COVER,
+        ]),
+    );
+    supported_events
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_switches_config() {
+        let config = new_switches_config();
+        assert_eq!(config.serial_name, b"virtio-switches".to_vec());
+
+        let events = config.supported_events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events.contains_key(&EV_SW), true);
+
+        // The bitmap should contain SW_CNT=0x10+1=17 ones,
+        // where each one is packed into the u8 bitmap.
+        let mut expected_bitmap = [0 as u8; 128];
+        expected_bitmap[0] = 0b11111111u8;
+        expected_bitmap[1] = 0b11111111u8;
+        expected_bitmap[2] = 0b1u8;
+        assert_eq!(events[&EV_SW].bitmap, expected_bitmap);
+    }
 }

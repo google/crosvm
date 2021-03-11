@@ -759,3 +759,17 @@ where
         virtio_features,
     })
 }
+
+/// Creates a new virtio device for switches.
+pub fn new_switches<T>(source: T, virtio_features: u64) -> Result<Input<SocketEventSource<T>>>
+where
+    T: Read + Write + AsRawDescriptor,
+{
+    Ok(Input {
+        kill_evt: None,
+        worker_thread: None,
+        config: defaults::new_switches_config(),
+        source: Some(SocketEventSource::new(source)),
+        virtio_features,
+    })
+}

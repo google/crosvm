@@ -701,6 +701,27 @@ pub const ABS_MT_TOOL_Y: u16 = 0x3d;
 pub const ABS_MAX: u16 = 0x3f;
 pub const ABS_CNT: u16 = ABS_MAX + 1;
 
+pub const SW_LID: u16 = 0x00;
+pub const SW_TABLET_MODE: u16 = 0x01;
+pub const SW_HEADPHONE_INSERT: u16 = 0x02;
+pub const SW_RFKILL_ALL: u16 = 0x03;
+pub const SW_RADIO: u16 = SW_RFKILL_ALL;
+pub const SW_MICROPHONE_INSERT: u16 = 0x04;
+pub const SW_DOCK: u16 = 0x05;
+pub const SW_LINEOUT_INSERT: u16 = 0x06;
+pub const SW_JACK_PHYSICAL_INSERT: u16 = 0x07;
+pub const SW_VIDEOOUT_INSERT: u16 = 0x08;
+pub const SW_CAMERA_LENS_COVER: u16 = 0x09;
+pub const SW_KEYPAD_SLIDE: u16 = 0x0a;
+pub const SW_FRONT_PROXIMITY: u16 = 0x0b;
+pub const SW_ROTATE_LOCK: u16 = 0x0c;
+pub const SW_LINEIN_INSERT: u16 = 0x0d;
+pub const SW_MUTE_DEVICE: u16 = 0x0e;
+pub const SW_PEN_INSERTED: u16 = 0x0f;
+pub const SW_MACHINE_COVER: u16 = 0x10;
+pub const SW_MAX: u16 = 0x10;
+pub const SW_CNT: u16 = SW_MAX + 1;
+
 pub const MSC_SERIAL: u16 = 0x00;
 pub const MSC_PULSELED: u16 = 0x01;
 pub const MSC_GESTURE: u16 = 0x02;

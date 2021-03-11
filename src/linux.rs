@@ -693,6 +693,21 @@ fn create_keyboard_device<T: IntoUnixStream>(cfg: &Config, keyboard_socket: T) -
     })
 }
 
+fn create_switches_device<T: IntoUnixStream>(cfg: &Config, switches_socket: T) -> DeviceResult {
+    let socket = switches_socket.into_unix_stream().map_err(|e| {
+        error!("failed configuring virtio switches: {}", e);
+        e
+    })?;
+
+    let dev = virtio::new_switches(socket, virtio::base_features(cfg.protected_vm))
+        .map_err(Error::InputDeviceNew)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail: simple_jail(&cfg, "input_device")?,
+    })
+}
+
 fn create_vinput_device(cfg: &Config, dev_path: &Path) -> DeviceResult {
     let dev_file = OpenOptions::new()
         .read(true)
@@ -1368,6 +1383,10 @@ fn create_virtio_devices(
 
     if let Some(keyboard_socket) = &cfg.virtio_keyboard {
         devs.push(create_keyboard_device(cfg, keyboard_socket)?);
+    }
+
+    if let Some(switches_socket) = &cfg.virtio_switches {
+        devs.push(create_switches_device(cfg, switches_socket)?);
     }
 
     for dev_path in &cfg.virtio_input_evdevs {
