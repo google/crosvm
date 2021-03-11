@@ -134,7 +134,7 @@ fn virtio_features_to_tap_offload(features: u64) -> c_uint {
 
 #[derive(Debug, Clone, Copy, Default)]
 #[repr(C)]
-struct VirtioNetConfig {
+pub(crate) struct VirtioNetConfig {
     mac: [u8; 6],
     status: Le16,
     max_vq_pairs: Le16,

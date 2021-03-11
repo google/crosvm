@@ -1588,6 +1588,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "vhost-user-blk" => cfg.vhost_user_blk.push(VhostUserOption {
             socket: PathBuf::from(value.unwrap()),
         }),
+        "vhost-user-net" => cfg.vhost_user_net.push(VhostUserOption {
+            socket: PathBuf::from(value.unwrap()),
+        }),
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -1798,6 +1801,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           Argument::value("gdb", "PORT", "(EXPERIMENTAL) gdb on the given port"),
           Argument::value("balloon_bias_mib", "N", "Amount to bias balance of memory between host and guest as the balloon inflates, in MiB."),
           Argument::value("vhost-user-blk", "SOCKET_PATH", "Path to a socket for vhost-user block"),
+          Argument::value("vhost-user-net", "SOCKET_PATH", "Path to a socket for vhost-user net"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

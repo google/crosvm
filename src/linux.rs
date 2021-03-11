@@ -33,7 +33,9 @@ use libc::{self, c_int, gid_t, uid_t};
 use acpi_tables::sdt::SDT;
 
 use base::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
-use devices::virtio::vhost::user::{Block as VhostUserBlock, Error as VhostUserBlockError};
+use devices::virtio::vhost::user::{
+    Block as VhostUserBlock, Error as VhostUserError, Net as VhostUserNet,
+};
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
 use devices::virtio::{self, Console, VirtioDevice};
@@ -192,7 +194,9 @@ pub enum Error {
     Timer(base::Error),
     ValidateRawDescriptor(base::Error),
     VhostNetDeviceNew(virtio::vhost::Error),
-    VhostUserBlockDeviceNew(VhostUserBlockError),
+    VhostUserBlockDeviceNew(VhostUserError),
+    VhostUserNetDeviceNew(VhostUserError),
+    VhostUserNetWithNetArgs,
     VhostVsockDeviceNew(virtio::vhost::Error),
     VirtioPciDev(base::Error),
     WaitContextAdd(base::Error),
@@ -315,6 +319,15 @@ impl Display for Error {
             VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {}", e),
             VhostUserBlockDeviceNew(e) => {
                 write!(f, "failed to set up vhost-user block device: {}", e)
+            }
+            VhostUserNetDeviceNew(e) => {
+                write!(f, "failed to set up vhost-user net device: {}", e)
+            }
+            VhostUserNetWithNetArgs => {
+                write!(
+                    f,
+                    "vhost-user-net cannot be used with any of --host_ip, --netmask or --mac"
+                )
             }
             VhostVsockDeviceNew(e) => write!(f, "failed to set up virtual socket device: {}", e),
             VirtioPciDev(e) => write!(f, "failed to create virtio pci dev: {}", e),
@@ -817,6 +830,17 @@ fn create_net_device(
     Ok(VirtioDeviceStub {
         dev,
         jail: simple_jail(&cfg, policy)?,
+    })
+}
+
+fn create_vhost_user_net_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
+    let dev = VhostUserNet::new(virtio::base_features(cfg.protected_vm), &opt.socket)
+        .map_err(Error::VhostUserNetDeviceNew)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        // no sandbox here because virtqueue handling is exported to a different process.
+        jail: None,
     })
 }
 
@@ -1425,7 +1449,14 @@ fn create_virtio_devices(
     if let (Some(host_ip), Some(netmask), Some(mac_address)) =
         (cfg.host_ip, cfg.netmask, cfg.mac_address)
     {
+        if !cfg.vhost_user_net.is_empty() {
+            return Err(Error::VhostUserNetWithNetArgs);
+        }
         devs.push(create_net_device(cfg, host_ip, netmask, mac_address, mem)?);
+    }
+
+    for net in &cfg.vhost_user_net {
+        devs.push(create_vhost_user_net_device(cfg, net)?);
     }
 
     #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]

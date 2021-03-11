@@ -241,6 +241,7 @@ pub struct Config {
     pub gdb: Option<u32>,
     pub balloon_bias: i64,
     pub vhost_user_blk: Vec<VhostUserOption>,
+    pub vhost_user_net: Vec<VhostUserOption>,
 }
 
 impl Default for Config {
@@ -306,6 +307,7 @@ impl Default for Config {
             gdb: None,
             balloon_bias: 0,
             vhost_user_blk: Vec::new(),
+            vhost_user_net: Vec::new(),
         }
     }
 }

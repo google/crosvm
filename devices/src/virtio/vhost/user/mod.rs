@@ -4,9 +4,11 @@
 
 mod block;
 mod handler;
+mod net;
 mod worker;
 
 pub use self::block::*;
+pub use self::net::*;
 
 use remain::sorted;
 use thiserror::Error as ThisError;
