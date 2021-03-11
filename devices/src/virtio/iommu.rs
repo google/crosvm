@@ -30,9 +30,6 @@ const VIRTIO_IOMMU_F_MAP_UNMAP: u32 = 2;
 const VIRTIO_IOMMU_F_PROBE: u32 = 4;
 const VIRTIO_IOMMU_F_TOPOLOGY: u32 = 6;
 
-// Support 2MiB and 4KiB page sizes.
-const VIRTIO_IOMMU_PAGE_SIZE_MASK: u64 = (2 << 20) | (4 << 10);
-
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C, packed)]
 struct VirtioIommuRange64 {
@@ -641,8 +638,21 @@ impl Iommu {
             offset: size_of::<VirtioIommuConfig>() as u16,
         };
 
+        let mut page_size_mask = !0_u64;
+        for (_, container) in endpoints.iter() {
+            page_size_mask &= container
+                .lock()
+                .vfio_get_iommu_page_size_mask()
+                .map_err(|_e| SysError::new(libc::EIO))?;
+        }
+
+        if page_size_mask == 0 {
+            error!("failed to get IOMMU device valid page size masks");
+            return Err(SysError::new(libc::EIO));
+        }
+
         let config = VirtioIommuConfig {
-            page_size_mask: VIRTIO_IOMMU_PAGE_SIZE_MASK,
+            page_size_mask,
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             probe_size: IOMMU_PROBE_SIZE as u32,
             topo_config,

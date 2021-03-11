@@ -42,6 +42,7 @@ pub enum VfioError {
     InvalidPath,
     IommuDmaMap(Error),
     IommuDmaUnmap(Error),
+    IommuGetInfo(Error),
     VfioIrqEnable(Error),
     VfioIrqDisable(Error),
     VfioIrqUnmask(Error),
@@ -67,6 +68,7 @@ impl fmt::Display for VfioError {
             VfioError::InvalidPath => write!(f,"invalid file path"),
             VfioError::IommuDmaMap(e) => write!(f, "failed to add guest memory map into iommu table: {}", e),
             VfioError::IommuDmaUnmap(e) => write!(f, "failed to remove guest memory map from iommu table: {}", e),
+            VfioError::IommuGetInfo(e) => write!(f, "failed to get IOMMU info from host: {}", e),
             VfioError::VfioIrqEnable(e) => write!(f, "failed to enable vfio deviece's irq: {}", e),
             VfioError::VfioIrqDisable(e) => write!(f, "failed to disable vfio deviece's irq: {}", e),
             VfioError::VfioIrqUnmask(e) => write!(f, "failed to unmask vfio deviece's irq: {}", e),
@@ -168,6 +170,23 @@ impl VfioContainer {
         }
 
         Ok(())
+    }
+
+    pub fn vfio_get_iommu_page_size_mask(&self) -> Result<u64, VfioError> {
+        let mut iommu_info = vfio_iommu_type1_info {
+            argsz: mem::size_of::<vfio_iommu_type1_info>() as u32,
+            flags: 0,
+            iova_pgsizes: 0,
+        };
+
+        // Safe as file is vfio container, iommu_info has valid values,
+        // and we check the return value
+        let ret = unsafe { ioctl_with_mut_ref(self, VFIO_IOMMU_GET_INFO(), &mut iommu_info) };
+        if ret != 0 || (iommu_info.flags & VFIO_IOMMU_INFO_PGSIZES) == 0 {
+            return Err(VfioError::IommuGetInfo(get_error()));
+        }
+
+        Ok(iommu_info.iova_pgsizes)
     }
 
     fn init(&mut self, guest_mem: &GuestMemory, iommu_enabled: bool) -> Result<(), VfioError> {
