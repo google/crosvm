@@ -433,7 +433,7 @@ impl<T: EventSource> Worker<T> {
                 Ok(count) => count,
                 Err(e) => {
                     error!("Input: failed to read events from virtqueue: {}", e);
-                    break;
+                    return Err(e);
                 }
             };
 

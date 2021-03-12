@@ -468,10 +468,8 @@ impl XhciBackendDevice for HostDevice {
         }
     }
 
-    fn submit_transfer(&mut self, transfer: XhciTransfer) -> std::result::Result<(), ()> {
-        self.submit_transfer_helper(transfer).map_err(|e| {
-            error!("failed to submit transfer: {}", e);
-        })
+    fn submit_transfer(&mut self, transfer: XhciTransfer) -> Result<()> {
+        self.submit_transfer_helper(transfer)
     }
 
     fn set_address(&mut self, _address: UsbDeviceAddress) {
@@ -483,11 +481,8 @@ impl XhciBackendDevice for HostDevice {
         );
     }
 
-    fn reset(&mut self) -> std::result::Result<(), ()> {
+    fn reset(&mut self) -> Result<()> {
         usb_debug!("resetting host device");
-        self.device
-            .lock()
-            .reset()
-            .map_err(|e| error!("failed to reset device: {:?}", e))
+        self.device.lock().reset().map_err(Error::Reset)
     }
 }

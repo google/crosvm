@@ -105,11 +105,8 @@ impl XhciBackendDeviceProvider for HostBackendDeviceProvider {
         fail_handle: Arc<dyn FailHandle>,
         event_loop: Arc<EventLoop>,
         hub: Arc<UsbHub>,
-    ) -> std::result::Result<(), ()> {
+    ) -> Result<()> {
         self.start_helper(fail_handle, event_loop, hub)
-            .map_err(|e| {
-                error!("failed to start host backend device provider: {}", e);
-            })
     }
 
     fn keep_rds(&self) -> Vec<RawDescriptor> {

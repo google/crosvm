@@ -194,7 +194,7 @@ impl CompositeDiskFile {
         }
     }
 
-    fn disk_at_offset<'a>(&'a mut self, offset: u64) -> io::Result<&'a mut ComponentDiskPart> {
+    fn disk_at_offset(&mut self, offset: u64) -> io::Result<&mut ComponentDiskPart> {
         self.component_disks
             .iter_mut()
             .find(|disk| disk.range().contains(&offset))

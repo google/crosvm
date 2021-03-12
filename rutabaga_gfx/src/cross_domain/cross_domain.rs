@@ -251,7 +251,7 @@ impl RutabagaContext for CrossDomainContext {
 
 impl RutabagaComponent for CrossDomain {
     fn get_capset_info(&self, _capset_id: u32) -> (u32, u32) {
-        return (0 as u32, size_of::<CrossDomainCapabilities>() as u32);
+        return (0u32, size_of::<CrossDomainCapabilities>() as u32);
     }
 
     fn get_capset(&self, _capset_id: u32, _version: u32) -> Vec<u8> {

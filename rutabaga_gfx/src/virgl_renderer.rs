@@ -181,7 +181,10 @@ impl VirglRenderer {
         // Initialize it only once and use the non-send/non-sync Renderer struct to keep things tied
         // to whichever thread called this function first.
         static INIT_ONCE: AtomicBool = AtomicBool::new(false);
-        if INIT_ONCE.compare_and_swap(false, true, Ordering::Acquire) {
+        if INIT_ONCE
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
+            .is_err()
+        {
             return Err(RutabagaError::AlreadyInUse);
         }
 

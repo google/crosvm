@@ -152,8 +152,12 @@ impl IdAllocator {
     }
 
     fn free(&self, id: u32) {
-        self.0
-            .compare_and_swap(id as usize + 1, id as usize, Ordering::Relaxed);
+        let _ = self.0.compare_exchange(
+            id as usize + 1,
+            id as usize,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        );
     }
 }
 

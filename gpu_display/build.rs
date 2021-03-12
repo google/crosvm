@@ -62,13 +62,13 @@ fn compile_protocol<P: AsRef<Path>>(name: &str, out: P) -> PathBuf {
         .arg(&in_protocol)
         .arg(&out_code)
         .output()
-        .unwrap();
+        .expect("wayland-scanner code failed");
     Command::new("wayland-scanner")
         .arg("client-header")
         .arg(&in_protocol)
         .arg(&out_header)
         .output()
-        .unwrap();
+        .expect("wayland-scanner client-header failed");
     out_code
 }
 

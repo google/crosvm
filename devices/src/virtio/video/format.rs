@@ -227,7 +227,7 @@ impl Response for FormatDesc {
             plane_align: Le32::from(0),
             num_frames: Le32::from(self.frame_formats.len() as u32),
         })?;
-        self.frame_formats.iter().map(|ff| ff.write(w)).collect()
+        self.frame_formats.iter().try_for_each(|ff| ff.write(w))
     }
 }
 

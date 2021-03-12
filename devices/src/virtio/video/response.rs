@@ -104,7 +104,7 @@ impl Response for CmdResponse {
                     num_descs: Le32::from(descs.len() as u32),
                     ..Default::default()
                 })?;
-                descs.iter().map(|d| d.write(w)).collect()
+                descs.iter().try_for_each(|d| d.write(w))
             }
             ResourceQueue {
                 timestamp,

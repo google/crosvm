@@ -54,6 +54,10 @@ SUPPRESS=(
     useless_format
     wrong_self_convention
 
+    # False positives affecting WlVfd @ `devices/src/virtio/wl.rs`.
+    # Bug: https://github.com/rust-lang/rust-clippy/issues/6312
+    field_reassign_with_default
+
     # We don't care about these lints. Okay to remain suppressed globally.
     blacklisted_name
     cast_lossless

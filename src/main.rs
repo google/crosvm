@@ -2254,6 +2254,7 @@ fn print_usage() {
     println!("    version - Show package version.");
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn pkg_version() -> std::result::Result<(), ()> {
     const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
     const PKG_VERSION: Option<&'static str> = option_env!("PKG_VERSION");

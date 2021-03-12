@@ -958,7 +958,7 @@ impl PciDevice for VfioPciDevice {
         let mut config = self.config.read_config_dword(reg);
 
         // Ignore IO bar
-        if reg >= 0x10 && reg <= 0x24 {
+        if (0x10..=0x24).contains(&reg) {
             for io_info in self.io_regions.iter() {
                 if io_info.bar_index * 4 + 0x10 == reg {
                     config = 0;

@@ -243,7 +243,7 @@ impl Surface {
         visual: *mut xlib::Visual,
         width: u32,
         height: u32,
-    ) -> Result<Surface, GpuDisplayError> {
+    ) -> Surface {
         let keycode_translator = KeycodeTranslator::new(KeycodeTypes::XkbScancode);
         unsafe {
             let depth = xlib::XDefaultDepthOfScreen(screen.as_ptr()) as u32;
@@ -305,7 +305,7 @@ impl Surface {
             // Flush everything so that the window is visible immediately.
             display.flush();
 
-            Ok(Surface {
+            Surface {
                 display,
                 visual,
                 depth,
@@ -320,7 +320,7 @@ impl Surface {
                 buffer_completion_type,
                 delete_window_atom,
                 close_requested: false,
-            })
+            }
         }
     }
 
@@ -730,7 +730,7 @@ impl DisplayT for DisplayX {
             self.visual,
             width,
             height,
-        )?;
+        );
         let new_surface_id = self.next_id;
         self.surfaces.insert(new_surface_id, new_surface);
         self.next_id = ObjectId::new(self.next_id.get() + 1).unwrap();

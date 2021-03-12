@@ -93,14 +93,14 @@ impl VioSClient {
         let mut config: VioSConfig = Default::default();
         let mut fds: Vec<RawFd> = Vec::new();
         const NUM_FDS: usize = 5;
-        fds.resize(NUM_FDS, 0 as RawFd);
+        fds.resize(NUM_FDS, 0);
         let (recv_size, fd_count) = client_socket
             .recv_with_fds(config.as_mut_slice(), &mut fds)
             .map_err(|e| Error::ServerError(e))?;
 
         // Resize the vector to the actual number of file descriptors received and wrap them in
         // SafeDescriptors to prevent leaks
-        fds.resize(fd_count, -1 as RawFd);
+        fds.resize(fd_count, -1);
         let mut safe_fds: Vec<SafeDescriptor> = fds
             .into_iter()
             .map(|fd| unsafe {

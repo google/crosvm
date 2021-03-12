@@ -26,7 +26,10 @@ use libc::c_void;
 
 use resources::Alloc;
 
-use super::protocol::{GpuResponse::*, GpuResponsePlaneInfo, VirtioGpuResult};
+use super::protocol::{
+    GpuResponse::{self, *},
+    GpuResponsePlaneInfo, VirtioGpuResult,
+};
 use super::VirtioScanoutBlobData;
 use sync::Mutex;
 
@@ -517,7 +520,7 @@ impl VirtioGpu {
 
         // Rely on rutabaga to check for duplicate resource ids.
         self.resources.insert(resource_id, resource);
-        self.result_from_query(resource_id)
+        Ok(self.result_from_query(resource_id))
     }
 
     /// Attaches backing memory to the given resource, represented by a `Vec` of `(address, size)`
@@ -600,7 +603,7 @@ impl VirtioGpu {
 
         // Rely on rutabaga to check for duplicate resource ids.
         self.resources.insert(resource_id, resource);
-        self.result_from_query(resource_id)
+        Ok(self.result_from_query(resource_id))
     }
 
     /// Uses the hypervisor to map the rutabaga blob resource.
@@ -704,7 +707,7 @@ impl VirtioGpu {
     }
 
     // Non-public function -- no doc comment needed!
-    fn result_from_query(&mut self, resource_id: u32) -> VirtioGpuResult {
+    fn result_from_query(&mut self, resource_id: u32) -> GpuResponse {
         match self.rutabaga.query(resource_id) {
             Ok(query) => {
                 let mut plane_info = Vec::with_capacity(4);
@@ -715,12 +718,12 @@ impl VirtioGpu {
                     });
                 }
                 let format_modifier = query.modifier;
-                Ok(OkResourcePlaneInfo {
+                OkResourcePlaneInfo {
                     format_modifier,
                     plane_info,
-                })
+                }
             }
-            Err(_) => Ok(OkNoData),
+            Err(_) => OkNoData,
         }
     }
 }

@@ -50,7 +50,7 @@ fn filter_cpuid(
     cpuid: &mut hypervisor::CpuId,
     irq_chip: &dyn IrqChipX86_64,
     no_smt: bool,
-) -> Result<()> {
+) {
     let entries = &mut cpuid.cpu_id_entries;
 
     for entry in entries {
@@ -142,8 +142,6 @@ fn filter_cpuid(
             _ => (),
         }
     }
-
-    Ok(())
 }
 
 /// Sets up the cpuid entries for the given vcpu.  Can fail if there are too many CPUs specified or
@@ -167,7 +165,7 @@ pub fn setup_cpuid(
         .get_supported_cpuid()
         .map_err(Error::GetSupportedCpusFailed)?;
 
-    filter_cpuid(vcpu_id, nrcpus, &mut cpuid, irq_chip, no_smt)?;
+    filter_cpuid(vcpu_id, nrcpus, &mut cpuid, irq_chip, no_smt);
 
     vcpu.set_cpuid(&cpuid)
         .map_err(Error::SetSupportedCpusFailed)
@@ -211,7 +209,7 @@ mod tests {
             edx: 0,
             ..Default::default()
         });
-        assert_eq!(Ok(()), filter_cpuid(1, 2, &mut cpuid, &irq_chip, false));
+        filter_cpuid(1, 2, &mut cpuid, &irq_chip, false);
 
         let entries = &mut cpuid.cpu_id_entries;
         assert_eq!(entries[0].function, 0);

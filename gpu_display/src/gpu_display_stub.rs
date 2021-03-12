@@ -45,12 +45,12 @@ struct Surface {
 }
 
 impl Surface {
-    fn create(width: u32, height: u32) -> Result<Surface, GpuDisplayError> {
-        Ok(Surface {
+    fn create(width: u32, height: u32) -> Surface {
+        Surface {
             width,
             height,
             buffer: None,
-        })
+        }
     }
 
     /// Gets the buffer at buffer_index, allocating it if necessary.
@@ -103,14 +103,14 @@ impl SurfacesHelper {
         }
     }
 
-    fn create_surface(&mut self, width: u32, height: u32) -> Result<u32, GpuDisplayError> {
-        let new_surface = Surface::create(width, height)?;
+    fn create_surface(&mut self, width: u32, height: u32) -> u32 {
+        let new_surface = Surface::create(width, height);
         let new_surface_id = self.next_surface_id;
 
         self.surfaces.insert(new_surface_id, new_surface);
         self.next_surface_id = SurfaceId::new(self.next_surface_id.get() + 1).unwrap();
 
-        Ok(new_surface_id.get())
+        new_surface_id.get()
     }
 
     fn get_surface(&mut self, surface_id: u32) -> Option<&mut Surface> {
@@ -157,7 +157,7 @@ impl DisplayT for DisplayStub {
         if parent_surface_id.is_some() {
             return Err(GpuDisplayError::Unsupported);
         }
-        self.surfaces.create_surface(width, height)
+        Ok(self.surfaces.create_surface(width, height))
     }
 
     fn release_surface(&mut self, surface_id: u32) {

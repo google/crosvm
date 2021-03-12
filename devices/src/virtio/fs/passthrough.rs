@@ -631,7 +631,7 @@ impl PassthroughFs {
     }
 
     // Creates a new entry for `f` or increases the refcount of the existing entry for `f`.
-    fn add_entry(&self, f: File, st: libc::stat64, open_flags: libc::c_int) -> io::Result<Entry> {
+    fn add_entry(&self, f: File, st: libc::stat64, open_flags: libc::c_int) -> Entry {
         let altkey = InodeAltKey {
             ino: st.st_ino,
             dev: st.st_dev,
@@ -664,13 +664,13 @@ impl PassthroughFs {
             inode
         };
 
-        Ok(Entry {
+        Entry {
             inode,
             generation: 0,
             attr: st,
             attr_timeout: self.cfg.attr_timeout,
             entry_timeout: self.cfg.entry_timeout,
-        })
+        }
     }
 
     // Performs an ascii case insensitive lookup.
@@ -712,7 +712,7 @@ impl PassthroughFs {
         // Safe because we just opened this fd.
         let f = unsafe { File::from_raw_descriptor(fd) };
 
-        self.add_entry(f, st, flags)
+        Ok(self.add_entry(f, st, flags))
     }
 
     fn do_open(&self, inode: Inode, flags: u32) -> io::Result<(Option<Handle>, OpenOptions)> {
@@ -999,8 +999,8 @@ fn forget_one(
             // Synchronizes with the acquire load in `do_lookup`.
             if data
                 .refcount
-                .compare_and_swap(refcount, new_count, Ordering::Release)
-                == refcount
+                .compare_exchange_weak(refcount, new_count, Ordering::Release, Ordering::Relaxed)
+                .is_ok()
             {
                 if new_count == 0 {
                     // We just removed the last refcount for this inode. There's no need for an
@@ -1322,7 +1322,7 @@ impl FileSystem for PassthroughFs {
         let tmpfile = unsafe { File::from_raw_descriptor(fd) };
 
         let st = stat(&tmpfile)?;
-        self.add_entry(tmpfile, st, tmpflags)
+        Ok(self.add_entry(tmpfile, st, tmpflags))
     }
 
     fn create(
@@ -1358,7 +1358,7 @@ impl FileSystem for PassthroughFs {
         let file = unsafe { File::from_raw_descriptor(fd) };
 
         let st = stat(&file)?;
-        let entry = self.add_entry(file, st, create_flags)?;
+        let entry = self.add_entry(file, st, create_flags);
 
         let (handle, opts) = if self.zero_message_open.load(Ordering::Relaxed) {
             (None, OpenOptions::KEEP_CACHE)

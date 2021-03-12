@@ -221,6 +221,7 @@ impl Gfxstream {
         Ok(Box::new(Gfxstream { fence_state }))
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn map_info(&self, _resource_id: u32) -> RutabagaResult<u32> {
         Ok(RUTABAGA_MAP_CACHE_WC)
     }

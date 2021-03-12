@@ -701,11 +701,15 @@ impl Vcpu for KvmVcpu {
 
         // AcqRel ordering is sufficient to ensure only one thread gets to set its fingerprint to
         // this Vcpu and subsequent `run` calls will see the fingerprint.
-        if self.vcpu_run_handle_fingerprint.compare_and_swap(
-            0,
-            vcpu_run_handle.fingerprint().as_u64(),
-            std::sync::atomic::Ordering::AcqRel,
-        ) != 0
+        if self
+            .vcpu_run_handle_fingerprint
+            .compare_exchange(
+                0,
+                vcpu_run_handle.fingerprint().as_u64(),
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+            )
+            .is_err()
         {
             return Err(Error::new(EBUSY));
         }
@@ -877,7 +881,7 @@ impl Vcpu for KvmVcpu {
     // The pointer is page aligned so casting to a different type is well defined, hence the clippy
     // allow attribute.
     fn run(&self, run_handle: &VcpuRunHandle) -> Result<VcpuExit> {
-        // Acquire is used to ensure this check is ordered after the `compare_and_swap` in `run`.
+        // Acquire is used to ensure this check is ordered after the `compare_exchange` in `run`.
         if self
             .vcpu_run_handle_fingerprint
             .load(std::sync::atomic::Ordering::Acquire)

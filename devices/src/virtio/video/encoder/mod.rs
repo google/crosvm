@@ -481,6 +481,7 @@ impl<T: EncoderSession> Stream<T> {
         }
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn notify_error(&self, error: EncoderError) -> Option<Vec<VideoEvtResponseType>> {
         error!(
             "Received encoder error event for stream {}: {}",
@@ -519,6 +520,7 @@ impl<T: Encoder> EncoderDevice<T> {
         })
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn query_capabilities(&self, queue_type: QueueType) -> VideoResult<VideoCmdResponseType> {
         let descs = match queue_type {
             QueueType::Input => self.cros_capabilities.input_format_descs.clone(),

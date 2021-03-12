@@ -1298,6 +1298,7 @@ impl<F: FileSystem + Sync> Server<F> {
         }
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn interrupt(&self, _in_header: InHeader) -> Result<usize> {
         Ok(0)
     }
@@ -1310,6 +1311,7 @@ impl<F: FileSystem + Sync> Server<F> {
         }
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn destroy(&self) -> Result<usize> {
         // No reply to this function.
         self.fs.destroy();

@@ -149,10 +149,10 @@ impl Ac97Dev {
                     "Ac97Dev: create_cras_audio_device: {}. Fallback to null audio device",
                     e
                 );
-                Self::create_null_audio_device(mem)
+                Ok(Self::create_null_audio_device(mem))
             }),
             Ac97Backend::VIOS => Self::create_vios_audio_device(mem, param),
-            Ac97Backend::NULL => Self::create_null_audio_device(mem),
+            Ac97Backend::NULL => Ok(Self::create_null_audio_device(mem)),
         }
     }
 
@@ -200,10 +200,9 @@ impl Ac97Dev {
         ))
     }
 
-    fn create_null_audio_device(mem: GuestMemory) -> Result<Self> {
+    fn create_null_audio_device(mem: GuestMemory) -> Self {
         let server = Box::new(NullShmStreamSource::new());
-        let null_audio = Self::new(mem, Ac97Backend::NULL, server);
-        Ok(null_audio)
+        Self::new(mem, Ac97Backend::NULL, server)
     }
 
     fn read_mixer(&mut self, offset: u64, data: &mut [u8]) {

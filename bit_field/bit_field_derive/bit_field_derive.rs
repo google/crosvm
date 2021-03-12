@@ -473,7 +473,7 @@ fn get_fields_impl(fields: &[FieldSpec]) -> Vec<TokenStream> {
             let span = expected_bits.span();
             quote_spanned! {span=>
                 #[allow(dead_code)]
-                const EXPECTED_BITS: [(); #expected_bits as usize] =
+                const EXPECTED_BITS: [(); #expected_bits] =
                     [(); <#ty as ::bit_field::BitFieldSpecifier>::FIELD_WIDTH as usize];
             }
         });

@@ -918,8 +918,9 @@ impl Drop for MemoryMappingArena {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Descriptor;
     use data_model::{VolatileMemory, VolatileMemoryError};
-    use std::os::unix::io::FromRawFd;
+    use tempfile::tempfile;
 
     #[test]
     fn basic_map() {
@@ -939,7 +940,7 @@ mod tests {
 
     #[test]
     fn map_invalid_fd() {
-        let fd = unsafe { std::fs::File::from_raw_fd(-1) };
+        let fd = Descriptor(-1);
         let res = MemoryMapping::from_fd(&fd, 1024).unwrap_err();
         if let Error::SystemCallFailed(e) = res {
             assert_eq!(e.errno(), libc::EBADF);
@@ -999,7 +1000,7 @@ mod tests {
 
     #[test]
     fn from_fd_offset_invalid() {
-        let fd = unsafe { std::fs::File::from_raw_fd(-1) };
+        let fd = tempfile().unwrap();
         let res = MemoryMapping::from_fd_offset(&fd, 4096, (libc::off_t::max_value() as u64) + 1)
             .unwrap_err();
         match res {
