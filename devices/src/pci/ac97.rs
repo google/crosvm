@@ -22,9 +22,9 @@ use crate::pci::pci_configuration::{
 };
 use crate::pci::pci_device::{self, PciDevice, Result};
 use crate::pci::{PciAddress, PciDeviceError, PciInterruptPin};
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
 use crate::virtio::snd::vios_backend::Error as VioSError;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 use crate::virtio::snd::vios_backend::VioSShmStreamSource;
 
 // Use 82801AA because it's what qemu does.
@@ -184,7 +184,7 @@ impl Ac97Dev {
     }
 
     fn create_vios_audio_device(mem: GuestMemory, param: Ac97Parameters) -> Result<Self> {
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "android"))]
         {
             let server = Box::new(
                 // The presence of vios_server_path is checked during argument parsing
@@ -194,7 +194,7 @@ impl Ac97Dev {
             let vios_audio = Self::new(mem, Ac97Backend::VIOS, server);
             return Ok(vios_audio);
         }
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
         Err(pci_device::Error::CreateViosClientFailed(
             VioSError::PlatformNotSupported,
         ))

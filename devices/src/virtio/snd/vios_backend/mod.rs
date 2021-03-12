@@ -5,7 +5,7 @@
 mod shm_streams;
 mod shm_vios;
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 pub use self::shm_streams::*;
 
 pub use self::shm_vios::*;

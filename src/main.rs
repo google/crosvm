@@ -406,7 +406,7 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
                         expected: e.to_string(),
                     })?;
             }
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "android"))]
             "server" => {
                 ac97_params.vios_server_path =
                     Some(
@@ -426,7 +426,7 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
     }
 
     // server is required for and exclusive to vios backend
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     match ac97_params.backend {
         Ac97Backend::VIOS => {
             if ac97_params.vios_server_path.is_none() {
