@@ -15,14 +15,15 @@ use std::u32;
 
 use futures::pin_mut;
 use futures::stream::{FuturesUnordered, StreamExt};
-use libchromeos::sync::Mutex as AsyncMutex;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
 use base::Error as SysError;
 use base::Result as SysResult;
 use base::{error, info, iov_max, warn, AsRawDescriptor, Event, RawDescriptor, Timer};
-use cros_async::{select5, AsyncError, EventAsync, Executor, SelectResult, TimerAsync};
+use cros_async::{
+    select5, sync::Mutex as AsyncMutex, AsyncError, EventAsync, Executor, SelectResult, TimerAsync,
+};
 use data_model::{DataInit, Le16, Le32, Le64};
 use disk::{AsyncDisk, ToAsyncDisk};
 use msg_socket::{MsgError, MsgSender};

@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 async-trait = "0.1.36"
 async-task = "4"
+intrusive-collections = "0.9"
 io_uring = { path = "../io_uring" }
 libc = "*"
 paste = "1.0"

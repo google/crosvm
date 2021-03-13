@@ -29,7 +29,6 @@ rutabaga_gfx = { path = "../rutabaga_gfx", optional = true }
 hypervisor = { path = "../hypervisor" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
-libchromeos = "*"
 libcras = "*"
 libvda = { version = "*", optional = true }
 linux_input_sys = { path = "../linux_input_sys" }

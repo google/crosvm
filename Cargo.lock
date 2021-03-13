@@ -158,6 +158,7 @@ dependencies = [
  "async-trait",
  "data_model",
  "futures",
+ "intrusive-collections",
  "io_uring",
  "libc",
  "paste",
@@ -261,7 +262,6 @@ dependencies = [
  "hypervisor",
  "kvm_sys",
  "libc",
- "libchromeos",
  "libcras",
  "libvda",
  "linux_input_sys",
@@ -559,7 +559,6 @@ version = "0.1.0"
 dependencies = [
  "data_model",
  "futures",
- "intrusive-collections",
  "libc",
  "log",
  "protobuf",

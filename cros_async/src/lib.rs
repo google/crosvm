@@ -67,6 +67,7 @@ pub mod mem;
 mod poll_source;
 mod queue;
 mod select;
+pub mod sync;
 mod timer;
 mod uring_executor;
 mod uring_source;
