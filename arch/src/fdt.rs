@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 //! This module writes Flattened Devicetree blobs as defined here:
-//! https://devicetree-specification.readthedocs.io/en/stable/flattened-format.html
+//! <https://devicetree-specification.readthedocs.io/en/stable/flattened-format.html>
 
 use std::collections::BTreeMap;
 use std::convert::TryInto;
@@ -48,7 +48,7 @@ const FDT_END_NODE: u32 = 0x00000002;
 const FDT_PROP: u32 = 0x00000003;
 const FDT_END: u32 = 0x00000009;
 
-/// Interface for writing a Flattened Devicetree (FDT) and emitting a Devicetree Blob (FDT).
+/// Interface for writing a Flattened Devicetree (FDT) and emitting a Devicetree Blob (DTB).
 ///
 /// # Example
 ///
