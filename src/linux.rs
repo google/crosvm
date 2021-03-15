@@ -1017,6 +1017,7 @@ fn create_gpu_device(
                 "/usr/lib64",
                 "/lib",
                 "/lib64",
+                "/usr/share/glvnd",
                 "/usr/share/vulkan",
             ];
             for dir in lib_dirs {
