@@ -364,7 +364,7 @@ where
 /// Prints command line usage information to stdout.
 ///
 /// Usage information is printed according to the help fields in `args` with a leading usage line.
-/// The usage line is of the format "`program_name` [ARGUMENTS] `required_arg`".
+/// The usage line is of the format "`program_name` \[ARGUMENTS\] `required_arg`".
 pub fn print_help(program_name: &str, required_arg: &str, args: &[Argument]) {
     println!(
         "Usage: {} {}{}\n",
