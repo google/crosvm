@@ -3,62 +3,38 @@
 // found in the LICENSE file.
 
 use std::collections::VecDeque;
-use std::mem;
-use std::task::Waker;
 
 use async_task::Runnable;
 use sync::Mutex;
 
-struct Inner {
-    runnables: VecDeque<Runnable>,
-    waker: Option<Waker>,
-}
-
 /// A queue of `Runnables`. Intended to be used by executors to keep track of futures that have been
 /// scheduled to run.
 pub struct RunnableQueue {
-    inner: Mutex<Inner>,
+    runnables: Mutex<VecDeque<Runnable>>,
 }
 
 impl RunnableQueue {
     /// Create a new, empty `RunnableQueue`.
     pub fn new() -> RunnableQueue {
         RunnableQueue {
-            inner: Mutex::new(Inner {
-                runnables: VecDeque::new(),
-                waker: None,
-            }),
+            runnables: Mutex::new(VecDeque::new()),
         }
     }
 
-    /// Schedule `runnable` to run in the future by adding it to this `RunnableQueue`. Also wakes up
-    /// the waker associated with this `RunnableQueue`, if any.
-    pub fn schedule(&self, runnable: Runnable) {
-        let mut inner = self.inner.lock();
-        inner.runnables.push_back(runnable);
-        let waker = inner.waker.take();
-        mem::drop(inner);
-
-        if let Some(w) = waker {
-            w.wake();
-        }
+    /// Schedule `runnable` to run in the future by adding it to this `RunnableQueue`.
+    pub fn push_back(&self, runnable: Runnable) {
+        self.runnables.lock().push_back(runnable);
     }
 
     /// Remove and return the first `Runnable` in this `RunnableQueue` or `None` if it is empty.
     pub fn pop_front(&self) -> Option<Runnable> {
-        self.inner.lock().runnables.pop_front()
+        self.runnables.lock().pop_front()
     }
 
     /// Create an iterator over this `RunnableQueue` that repeatedly calls `pop_front()` until it is
     /// empty.
     pub fn iter(&self) -> RunnableQueueIter {
         self.into_iter()
-    }
-
-    /// Associate `waker` with this `RunnableQueue`. `waker` will be woken up the next time
-    /// `schedule()` is called.
-    pub fn set_waker(&self, waker: Waker) {
-        self.inner.lock().waker = Some(waker);
     }
 }
 

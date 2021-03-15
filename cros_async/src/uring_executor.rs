@@ -307,11 +307,12 @@ impl RawExecutor {
         let raw = Arc::downgrade(self);
         let schedule = move |runnable| {
             if let Some(r) = raw.upgrade() {
-                r.queue.schedule(runnable);
+                r.queue.push_back(runnable);
+                r.wake();
             }
         };
         let (runnable, task) = async_task::spawn(f, schedule);
-        self.queue.schedule(runnable);
+        runnable.schedule();
         task
     }
 
@@ -323,11 +324,12 @@ impl RawExecutor {
         let raw = Arc::downgrade(self);
         let schedule = move |runnable| {
             if let Some(r) = raw.upgrade() {
-                r.queue.schedule(runnable);
+                r.queue.push_back(runnable);
+                r.wake();
             }
         };
         let (runnable, task) = async_task::spawn_local(f, schedule);
-        self.queue.schedule(runnable);
+        runnable.schedule();
         task
     }
 
@@ -351,7 +353,6 @@ impl RawExecutor {
         pin_mut!(done);
         loop {
             self.state.store(PROCESSING, Ordering::Release);
-            self.queue.set_waker(cx.waker().clone());
             for runnable in self.queue.iter() {
                 runnable.run();
             }
