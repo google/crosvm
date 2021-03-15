@@ -90,7 +90,7 @@ impl From<IoError> for GpuDisplayError {
 }
 
 /// A surface type
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SurfaceType {
     /// Scanout surface
     Scanout,

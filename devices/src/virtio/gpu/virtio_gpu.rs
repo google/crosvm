@@ -9,6 +9,7 @@ use std::rc::Rc;
 use std::result::Result;
 use std::sync::Arc;
 
+use crate::virtio::gpu::GpuDisplayParameters;
 use crate::virtio::resource_bridge::{BufferInfo, PlaneInfo, ResourceInfo, ResourceResponse};
 use base::{error, ExternalMapping, Tube};
 
@@ -44,7 +45,7 @@ struct VirtioGpuResource {
     size: u64,
     slot: Option<MemSlot>,
     scanout_data: Option<VirtioScanoutBlobData>,
-    display_import: Option<(Rc<RefCell<GpuDisplay>>, u32)>,
+    display_import: Option<u32>,
 }
 
 impl VirtioGpuResource {
@@ -61,22 +62,195 @@ impl VirtioGpuResource {
             display_import: None,
         }
     }
+}
 
-    /// Returns the dimensions of the VirtioGpuResource.
-    pub fn dimensions(&self) -> (u32, u32) {
-        (self.width, self.height)
+struct VirtioGpuScanout {
+    width: u32,
+    height: u32,
+    surface_id: Option<u32>,
+    resource_id: Option<NonZeroU32>,
+    scanout_type: SurfaceType,
+    // If this scanout is a cursor scanout, the scanout that this is cursor is overlayed onto.
+    parent_surface_id: Option<u32>,
+}
+
+impl VirtioGpuScanout {
+    fn new(width: u32, height: u32) -> VirtioGpuScanout {
+        VirtioGpuScanout {
+            width,
+            height,
+            scanout_type: SurfaceType::Scanout,
+            surface_id: None,
+            resource_id: None,
+            parent_surface_id: None,
+        }
+    }
+
+    fn new_cursor() -> VirtioGpuScanout {
+        // Per virtio spec: "The mouse cursor image is a normal resource, except that it must be
+        // 64x64 in size."
+        VirtioGpuScanout {
+            width: 64,
+            height: 64,
+            scanout_type: SurfaceType::Cursor,
+            surface_id: None,
+            resource_id: None,
+            parent_surface_id: None,
+        }
+    }
+
+    fn create_surface(
+        &mut self,
+        display: &Rc<RefCell<GpuDisplay>>,
+        new_parent_surface_id: Option<u32>,
+    ) -> VirtioGpuResult {
+        let mut need_to_create = false;
+
+        if self.surface_id.is_none() {
+            need_to_create = true;
+        }
+
+        if self.parent_surface_id != new_parent_surface_id {
+            self.parent_surface_id = new_parent_surface_id;
+            need_to_create = true;
+        }
+
+        if !need_to_create {
+            return Ok(OkNoData);
+        }
+
+        self.release_surface(display);
+
+        let mut display = display.borrow_mut();
+
+        let surface_id = display.create_surface(
+            self.parent_surface_id,
+            self.width,
+            self.height,
+            self.scanout_type,
+        )?;
+
+        self.surface_id = Some(surface_id);
+
+        Ok(OkNoData)
+    }
+
+    fn release_surface(&mut self, display: &Rc<RefCell<GpuDisplay>>) {
+        if let Some(surface_id) = self.surface_id {
+            display.borrow_mut().release_surface(surface_id);
+        }
+
+        self.surface_id = None;
+    }
+
+    fn set_position(&self, display: &Rc<RefCell<GpuDisplay>>, x: u32, y: u32) -> VirtioGpuResult {
+        if let Some(surface_id) = self.surface_id {
+            display.borrow_mut().set_position(surface_id, x, y)?;
+        }
+        Ok(OkNoData)
+    }
+
+    fn commit(&self, display: &Rc<RefCell<GpuDisplay>>) -> VirtioGpuResult {
+        if let Some(surface_id) = self.surface_id {
+            display.borrow_mut().commit(surface_id)?;
+        }
+        Ok(OkNoData)
+    }
+
+    fn flush(
+        &mut self,
+        display: &Rc<RefCell<GpuDisplay>>,
+        resource: &mut VirtioGpuResource,
+        rutabaga: &mut Rutabaga,
+    ) -> VirtioGpuResult {
+        let surface_id = match self.surface_id {
+            Some(id) => id,
+            _ => return Ok(OkNoData),
+        };
+
+        if let Some(import_id) =
+            VirtioGpuScanout::import_resource_to_display(display, resource, rutabaga)
+        {
+            display.borrow_mut().flip_to(surface_id, import_id)?;
+            return Ok(OkNoData);
+        }
+
+        // Import failed, fall back to a copy.
+        let mut display = display.borrow_mut();
+
+        // Prevent overwriting a buffer that is currently being used by the compositor.
+        if display.next_buffer_in_use(surface_id) {
+            return Ok(OkNoData);
+        }
+
+        let fb = display
+            .framebuffer_region(surface_id, 0, 0, self.width, self.height)
+            .ok_or(ErrUnspec)?;
+
+        let mut transfer = Transfer3D::new_2d(0, 0, self.width, self.height);
+        transfer.stride = fb.stride();
+        rutabaga.transfer_read(
+            0,
+            resource.resource_id,
+            transfer,
+            Some(fb.as_volatile_slice()),
+        )?;
+
+        display.flip(surface_id);
+        Ok(OkNoData)
+    }
+
+    fn import_resource_to_display(
+        display: &Rc<RefCell<GpuDisplay>>,
+        resource: &mut VirtioGpuResource,
+        rutabaga: &mut Rutabaga,
+    ) -> Option<u32> {
+        if let Some(import_id) = resource.display_import {
+            return Some(import_id);
+        }
+
+        let dmabuf = rutabaga.export_blob(resource.resource_id).ok()?;
+        let query = rutabaga.query(resource.resource_id).ok()?;
+
+        let (width, height, format, stride, offset) = match resource.scanout_data {
+            Some(data) => (
+                data.width,
+                data.height,
+                data.drm_format.into(),
+                data.strides[0],
+                data.offsets[0],
+            ),
+            None => (
+                resource.width,
+                resource.height,
+                query.drm_fourcc,
+                query.strides[0],
+                query.offsets[0],
+            ),
+        };
+
+        let import_id = display
+            .borrow_mut()
+            .import_memory(
+                &dmabuf.os_handle,
+                offset,
+                stride,
+                query.modifier,
+                width,
+                height,
+                format,
+            )
+            .ok()?;
+        resource.display_import = Some(import_id);
+        Some(import_id)
     }
 }
 
 /// Handles functionality related to displays, input events and hypervisor memory management.
 pub struct VirtioGpu {
     display: Rc<RefCell<GpuDisplay>>,
-    display_width: u32,
-    display_height: u32,
-    scanout_resource_id: Option<NonZeroU32>,
-    scanout_surface_id: Option<u32>,
-    cursor_resource_id: Option<NonZeroU32>,
-    cursor_surface_id: Option<u32>,
+    scanouts: Vec<VirtioGpuScanout>,
+    cursor_scanout: VirtioGpuScanout,
     // Maps event devices to scanout number.
     event_devices: Map<u32, u32>,
     gpu_device_tube: Tube,
@@ -114,8 +288,7 @@ impl VirtioGpu {
     /// Creates a new instance of the VirtioGpu state tracker.
     pub fn new(
         display: GpuDisplay,
-        display_width: u32,
-        display_height: u32,
+        display_params: Vec<GpuDisplayParameters>,
         rutabaga_builder: RutabagaBuilder,
         event_devices: Vec<EventDevice>,
         gpu_device_tube: Tube,
@@ -139,15 +312,17 @@ impl VirtioGpu {
             );
         }
 
+        let scanouts = display_params
+            .iter()
+            .map(|&display_param| VirtioGpuScanout::new(display_param.width, display_param.height))
+            .collect::<Vec<_>>();
+        let cursor_scanout = VirtioGpuScanout::new_cursor();
+
         let mut virtio_gpu = VirtioGpu {
             display: Rc::new(RefCell::new(display)),
-            display_width,
-            display_height,
+            scanouts,
+            cursor_scanout,
             event_devices: Default::default(),
-            scanout_resource_id: None,
-            scanout_surface_id: None,
-            cursor_resource_id: None,
-            cursor_surface_id: None,
             gpu_device_tube,
             pci_bar,
             map_request,
@@ -171,18 +346,11 @@ impl VirtioGpu {
     pub fn import_event_device(
         &mut self,
         event_device: EventDevice,
-        scanout: u32,
+        scanout_id: u32,
     ) -> VirtioGpuResult {
-        // TODO(zachr): support more than one scanout.
-        if scanout != 0 {
-            return Err(ErrScanout {
-                num_scanouts: scanout,
-            });
-        }
-
         let mut display = self.display.borrow_mut();
         let event_device_id = display.import_event_device(event_device)?;
-        self.event_devices.insert(event_device_id, scanout);
+        self.event_devices.insert(event_device_id, scanout_id);
         Ok(OkNoData)
     }
 
@@ -192,11 +360,14 @@ impl VirtioGpu {
     }
 
     /// Gets the list of supported display resolutions as a slice of `(width, height)` tuples.
-    pub fn display_info(&self) -> [(u32, u32); 1] {
-        [(self.display_width, self.display_height)]
+    pub fn display_info(&self) -> Vec<(u32, u32)> {
+        self.scanouts
+            .iter()
+            .map(|scanout| (scanout.width, scanout.height))
+            .collect::<Vec<_>>()
     }
 
-    /// Processes the internal `display` events and returns `true` if the main display was closed.
+    /// Processes the internal `display` events and returns `true` if any display was closed.
     pub fn process_display(&mut self) -> bool {
         let mut display = self.display.borrow_mut();
         let result = display.dispatch_events();
@@ -205,44 +376,28 @@ impl VirtioGpu {
             Err(e) => error!("failed to dispatch events: {}", e),
         }
 
-        self.scanout_surface_id
-            .map(|s| display.close_requested(s))
-            .unwrap_or(false)
+        for scanout in &self.scanouts {
+            let close_requested = scanout
+                .surface_id
+                .map(|surface_id| display.close_requested(surface_id))
+                .unwrap_or(false);
+
+            if close_requested {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Sets the given resource id as the source of scanout to the display.
     pub fn set_scanout(
         &mut self,
-        _scanout_id: u32,
+        scanout_id: u32,
         resource_id: u32,
         scanout_data: Option<VirtioScanoutBlobData>,
     ) -> VirtioGpuResult {
-        let mut display = self.display.borrow_mut();
-        if resource_id == 0 {
-            if let Some(surface_id) = self.scanout_surface_id.take() {
-                display.release_surface(surface_id);
-            }
-            self.scanout_resource_id = None;
-            return Ok(OkNoData);
-        }
-
-        let resource = self
-            .resources
-            .get_mut(&resource_id)
-            .ok_or(ErrInvalidResourceId)?;
-
-        resource.scanout_data = scanout_data;
-        self.scanout_resource_id = NonZeroU32::new(resource_id);
-        if self.scanout_surface_id.is_none() {
-            let surface_id = display.create_surface(
-                None,
-                self.display_width,
-                self.display_height,
-                SurfaceType::Scanout,
-            )?;
-            self.scanout_surface_id = Some(surface_id);
-        }
-        Ok(OkNoData)
+        self.update_scanout_resource(SurfaceType::Scanout, scanout_id, scanout_data, resource_id)
     }
 
     /// If the resource is the scanout resource, flush it to the display.
@@ -251,176 +406,50 @@ impl VirtioGpu {
             return Ok(OkNoData);
         }
 
-        if let (Some(scanout_resource_id), Some(scanout_surface_id)) =
-            (self.scanout_resource_id, self.scanout_surface_id)
-        {
-            if scanout_resource_id.get() == resource_id {
-                self.flush_resource_to_surface(resource_id, scanout_surface_id)?;
-            }
-        }
+        let resource = self
+            .resources
+            .get_mut(&resource_id)
+            .ok_or(ErrInvalidResourceId)?;
 
-        if let (Some(cursor_resource_id), Some(cursor_surface_id)) =
-            (self.cursor_resource_id, self.cursor_surface_id)
-        {
-            if cursor_resource_id.get() == resource_id {
-                self.flush_resource_to_surface(resource_id, cursor_surface_id)?;
-            }
-        }
-
-        Ok(OkNoData)
-    }
-
-    /// Attempts to import the given resource into the display.  Only works with Wayland displays.
-    pub fn import_to_display(&mut self, resource_id: u32) -> Option<u32> {
-        let resource = match self.resources.get_mut(&resource_id) {
-            Some(resource) => resource,
-            _ => return None,
+        // `resource_id` has already been verified to be non-zero
+        let resource_id = match NonZeroU32::new(resource_id) {
+            Some(id) => Some(id),
+            None => return Ok(OkNoData),
         };
 
-        if let Some((self_display, import)) = &resource.display_import {
-            if Rc::ptr_eq(self_display, &self.display) {
-                return Some(*import);
+        for scanout in &mut self.scanouts {
+            if scanout.resource_id == resource_id {
+                scanout.flush(&self.display, resource, &mut self.rutabaga)?;
             }
         }
-
-        let dmabuf = self.rutabaga.export_blob(resource.resource_id).ok()?;
-        let query = self.rutabaga.query(resource.resource_id).ok()?;
-
-        let (width, height, format, stride, offset) = match resource.scanout_data {
-            Some(data) => (
-                data.width,
-                data.height,
-                data.drm_format.into(),
-                data.strides[0],
-                data.offsets[0],
-            ),
-            None => (
-                resource.width,
-                resource.height,
-                query.drm_fourcc,
-                query.strides[0],
-                query.offsets[0],
-            ),
-        };
-
-        match self.display.borrow_mut().import_memory(
-            &dmabuf.os_handle,
-            offset,
-            stride,
-            query.modifier,
-            width,
-            height,
-            format,
-        ) {
-            Ok(import_id) => {
-                resource.display_import = Some((self.display.clone(), import_id));
-                Some(import_id)
-            }
-            Err(e) => {
-                error!("failed to import dmabuf for display: {}", e);
-                None
-            }
+        if self.cursor_scanout.resource_id == resource_id {
+            self.cursor_scanout
+                .flush(&self.display, resource, &mut self.rutabaga)?;
         }
-    }
-
-    /// Attempts to import the given resource into the display, otherwise falls back to rutabaga
-    /// copies.
-    pub fn flush_resource_to_surface(
-        &mut self,
-        resource_id: u32,
-        surface_id: u32,
-    ) -> VirtioGpuResult {
-        if let Some(import_id) = self.import_to_display(resource_id) {
-            self.display.borrow_mut().flip_to(surface_id, import_id)?;
-            return Ok(OkNoData);
-        }
-
-        if !self.resources.contains_key(&resource_id) {
-            return Err(ErrInvalidResourceId);
-        }
-
-        // Import failed, fall back to a copy.
-        let mut display = self.display.borrow_mut();
-        // Prevent overwriting a buffer that is currently being used by the compositor.
-        if display.next_buffer_in_use(surface_id) {
-            return Ok(OkNoData);
-        }
-
-        let fb = display
-            .framebuffer_region(surface_id, 0, 0, self.display_width, self.display_height)
-            .ok_or(ErrUnspec)?;
-
-        let mut transfer = Transfer3D::new_2d(0, 0, self.display_width, self.display_height);
-        transfer.stride = fb.stride();
-        self.rutabaga
-            .transfer_read(0, resource_id, transfer, Some(fb.as_volatile_slice()))?;
-        display.flip(surface_id);
 
         Ok(OkNoData)
     }
 
     /// Updates the cursor's memory to the given resource_id, and sets its position to the given
     /// coordinates.
-    pub fn update_cursor(&mut self, resource_id: u32, x: u32, y: u32) -> VirtioGpuResult {
-        if resource_id == 0 {
-            if let Some(surface_id) = self.cursor_surface_id.take() {
-                self.display.borrow_mut().release_surface(surface_id);
-            }
-            self.cursor_resource_id = None;
-            return Ok(OkNoData);
-        }
+    pub fn update_cursor(
+        &mut self,
+        resource_id: u32,
+        scanout_id: u32,
+        x: u32,
+        y: u32,
+    ) -> VirtioGpuResult {
+        self.update_scanout_resource(SurfaceType::Cursor, scanout_id, None, resource_id)?;
 
-        let (resource_width, resource_height) = self
-            .resources
-            .get_mut(&resource_id)
-            .ok_or(ErrInvalidResourceId)?
-            .dimensions();
+        self.cursor_scanout.set_position(&self.display, x, y)?;
 
-        self.cursor_resource_id = NonZeroU32::new(resource_id);
-
-        if self.cursor_surface_id.is_none() {
-            self.cursor_surface_id = Some(self.display.borrow_mut().create_surface(
-                self.scanout_surface_id,
-                resource_width,
-                resource_height,
-                SurfaceType::Cursor,
-            )?);
-        }
-
-        let cursor_surface_id = self.cursor_surface_id.unwrap();
-        self.display
-            .borrow_mut()
-            .set_position(cursor_surface_id, x, y)?;
-
-        // Gets the resource's pixels into the display by importing the buffer.
-        if let Some(import_id) = self.import_to_display(resource_id) {
-            self.display
-                .borrow_mut()
-                .flip_to(cursor_surface_id, import_id)?;
-            return Ok(OkNoData);
-        }
-
-        // Importing failed, so try copying the pixels into the surface's slower shared memory
-        // framebuffer.
-        if let Some(fb) = self.display.borrow_mut().framebuffer(cursor_surface_id) {
-            let mut transfer = Transfer3D::new_2d(0, 0, resource_width, resource_height);
-            transfer.stride = fb.stride();
-            self.rutabaga
-                .transfer_read(0, resource_id, transfer, Some(fb.as_volatile_slice()))?;
-        }
-        self.display.borrow_mut().flip(cursor_surface_id);
-        Ok(OkNoData)
+        self.flush_resource(resource_id)
     }
 
     /// Moves the cursor's position to the given coordinates.
-    pub fn move_cursor(&mut self, x: u32, y: u32) -> VirtioGpuResult {
-        if let Some(cursor_surface_id) = self.cursor_surface_id {
-            if let Some(scanout_surface_id) = self.scanout_surface_id {
-                let mut display = self.display.borrow_mut();
-                display.set_position(cursor_surface_id, x, y)?;
-                display.commit(scanout_surface_id)?;
-            }
-        }
+    pub fn move_cursor(&mut self, _scanout_id: u32, x: u32, y: u32) -> VirtioGpuResult {
+        self.cursor_scanout.set_position(&self.display, x, y)?;
+        self.cursor_scanout.commit(&self.display)?;
         Ok(OkNoData)
     }
 
@@ -768,5 +797,75 @@ impl VirtioGpu {
             }
             Err(_) => OkNoData,
         }
+    }
+
+    fn update_scanout_resource(
+        &mut self,
+        scanout_type: SurfaceType,
+        scanout_id: u32,
+        scanout_data: Option<VirtioScanoutBlobData>,
+        resource_id: u32,
+    ) -> VirtioGpuResult {
+        let mut scanout: &mut VirtioGpuScanout;
+        let mut scanout_parent_surface_id = None;
+
+        match scanout_type {
+            SurfaceType::Cursor => {
+                let parent_scanout_id = scanout_id;
+
+                scanout_parent_surface_id = self
+                    .scanouts
+                    .get(parent_scanout_id as usize)
+                    .ok_or(ErrInvalidScanoutId)
+                    .map(|parent_scanout| parent_scanout.surface_id)?;
+
+                scanout = &mut self.cursor_scanout;
+            }
+            SurfaceType::Scanout => {
+                scanout = self
+                    .scanouts
+                    .get_mut(scanout_id as usize)
+                    .ok_or(ErrInvalidScanoutId)?;
+            }
+        };
+
+        // Virtio spec: "The driver can use resource_id = 0 to disable a scanout."
+        if resource_id == 0 {
+            // Ignore any initial set_scanout(..., resource_id: 0) calls.
+            if scanout.resource_id.is_some() {
+                scanout.release_surface(&self.display);
+            }
+
+            scanout.resource_id = None;
+            return Ok(OkNoData);
+        }
+
+        let resource = self
+            .resources
+            .get_mut(&resource_id)
+            .ok_or(ErrInvalidResourceId)?;
+
+        // Ensure scanout has a display surface.
+        match scanout_type {
+            SurfaceType::Cursor => {
+                if let Some(scanout_parent_surface_id) = scanout_parent_surface_id {
+                    scanout.create_surface(&self.display, Some(scanout_parent_surface_id))?;
+                }
+            }
+            SurfaceType::Scanout => {
+                scanout.create_surface(&self.display, None)?;
+            }
+        }
+
+        resource.scanout_data = scanout_data;
+
+        // `resource_id` has already been verified to be non-zero
+        let resource_id = match NonZeroU32::new(resource_id) {
+            Some(id) => id,
+            None => return Ok(OkNoData),
+        };
+        scanout.resource_id = Some(resource_id);
+
+        Ok(OkNoData)
     }
 }
