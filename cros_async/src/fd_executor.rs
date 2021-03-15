@@ -49,6 +49,9 @@ pub enum Error {
     /// PollContext failure.
     #[error("PollContext failure: {0}")]
     PollContextError(sys_util::Error),
+    /// An error occurred when setting the FD non-blocking.
+    #[error("An error occurred setting the FD non-blocking: {0}.")]
+    SettingNonBlocking(sys_util::Error),
     /// Failed to submit the waker to the polling context.
     #[error("An error adding to the Aio context: {0}")]
     SubmittingWaker(sys_util::Error),
@@ -68,6 +71,62 @@ struct OpData {
 enum OpStatus {
     Pending(OpData),
     Completed,
+}
+
+// An IO source previously registered with an FdExecutor. Used to initiate asynchronous IO with the
+// associated executor.
+pub struct RegisteredSource<F> {
+    source: F,
+    ex: Weak<RawExecutor>,
+}
+
+impl<F: AsRawFd> RegisteredSource<F> {
+    // Start an asynchronous operation to wait for this source to become readable. The returned
+    // future will not be ready until the source is readable.
+    pub fn wait_readable(&self) -> Result<PendingOperation> {
+        let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
+
+        let token =
+            ex.add_operation(self.source.as_raw_fd(), WatchingEvents::empty().set_read())?;
+
+        Ok(PendingOperation {
+            token: Some(token),
+            ex: self.ex.clone(),
+        })
+    }
+
+    // Start an asynchronous operation to wait for this source to become writable. The returned
+    // future will not be ready until the source is writable.
+    pub fn wait_writable(&self) -> Result<PendingOperation> {
+        let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
+
+        let token =
+            ex.add_operation(self.source.as_raw_fd(), WatchingEvents::empty().set_write())?;
+
+        Ok(PendingOperation {
+            token: Some(token),
+            ex: self.ex.clone(),
+        })
+    }
+}
+
+impl<F> RegisteredSource<F> {
+    // Consume this RegisteredSource and return the inner IO source.
+    pub fn into_source(self) -> F {
+        self.source
+    }
+}
+
+impl<F> AsRef<F> for RegisteredSource<F> {
+    fn as_ref(&self) -> &F {
+        &self.source
+    }
+}
+
+impl<F> AsMut<F> for RegisteredSource<F> {
+    fn as_mut(&mut self) -> &mut F {
+        &mut self.source
+    }
 }
 
 /// A token returned from `add_operation` that can be used to cancel the waker before it completes.
@@ -431,24 +490,10 @@ impl FdExecutor {
         self.raw.run(&mut ctx, f)
     }
 
-    pub fn wait_readable<F: AsRawFd>(&self, f: &F) -> Result<PendingOperation> {
-        let token = self
-            .raw
-            .add_operation(f.as_raw_fd(), WatchingEvents::empty().set_read())?;
-
-        Ok(PendingOperation {
-            token: Some(token),
-            ex: Arc::downgrade(&self.raw),
-        })
-    }
-
-    pub fn wait_writable<F: AsRawFd>(&self, f: &F) -> Result<PendingOperation> {
-        let token = self
-            .raw
-            .add_operation(f.as_raw_fd(), WatchingEvents::empty().set_read())?;
-
-        Ok(PendingOperation {
-            token: Some(token),
+    pub(crate) fn register_source<F: AsRawFd>(&self, f: F) -> Result<RegisteredSource<F>> {
+        add_fd_flags(f.as_raw_fd(), libc::O_NONBLOCK).map_err(Error::SettingNonBlocking)?;
+        Ok(RegisteredSource {
+            source: f,
             ex: Arc::downgrade(&self.raw),
         })
     }
@@ -480,7 +525,8 @@ mod test {
         async fn do_test(ex: &FdExecutor) {
             let (r, _w) = sys_util::pipe(true).unwrap();
             let done = Box::pin(async { 5usize });
-            let pending = ex.wait_readable(&r).unwrap();
+            let source = ex.register_source(r).unwrap();
+            let pending = source.wait_readable().unwrap();
             match futures::future::select(pending, done).await {
                 Either::Right((5, pending)) => std::mem::drop(pending),
                 _ => panic!("unexpected select result"),
@@ -521,7 +567,8 @@ mod test {
 
         let ex = FdExecutor::new().unwrap();
 
-        let op = ex.wait_writable(&tx).unwrap();
+        let source = ex.register_source(tx.try_clone().unwrap()).unwrap();
+        let op = source.wait_writable().unwrap();
 
         ex.spawn_local(write_value(tx)).detach();
         ex.spawn_local(check_op(op)).detach();
