@@ -39,4 +39,5 @@ ioctl: arg1 == 0xc0185500 || arg1 == 0x41045508 || arg1 == 0x8004550f || arg1 ==
 fstat: 1
 getrandom: 1
 getdents: 1
+getdents64: 1
 lseek: 1

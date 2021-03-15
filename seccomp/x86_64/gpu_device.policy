@@ -54,6 +54,7 @@ fstat: 1
 # Used to set of size new memfd.
 ftruncate: 1
 getdents: 1
+getdents64: 1
 geteuid: 1
 getrandom: 1
 getuid: 1
