@@ -78,6 +78,8 @@ pub struct VmComponents {
     pub memory_size: u64,
     pub vcpu_count: usize,
     pub vcpu_affinity: Option<VcpuAffinity>,
+    pub cpu_clusters: Vec<Vec<usize>>,
+    pub cpu_capacity: BTreeMap<usize, u32>,
     pub no_smt: bool,
     pub hugepages: bool,
     pub vm_image: VmImage,

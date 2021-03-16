@@ -153,6 +153,37 @@ fn parse_cpu_affinity(s: &str) -> argument::Result<VcpuAffinity> {
     }
 }
 
+fn parse_cpu_capacity(s: &str, cpu_capacity: &mut BTreeMap<usize, u32>) -> argument::Result<()> {
+    for cpu_pair in s.split(',') {
+        let assignment: Vec<&str> = cpu_pair.split('=').collect();
+        if assignment.len() != 2 {
+            return Err(argument::Error::InvalidValue {
+                value: cpu_pair.to_owned(),
+                expected: String::from("invalid CPU capacity syntax"),
+            });
+        }
+        let cpu = assignment[0]
+            .parse()
+            .map_err(|_| argument::Error::InvalidValue {
+                value: assignment[0].to_owned(),
+                expected: String::from("CPU index must be a non-negative integer"),
+            })?;
+        let capacity = assignment[1]
+            .parse()
+            .map_err(|_| argument::Error::InvalidValue {
+                value: assignment[1].to_owned(),
+                expected: String::from("CPU capacity must be a non-negative integer"),
+            })?;
+        if cpu_capacity.insert(cpu, capacity).is_some() {
+            return Err(argument::Error::InvalidValue {
+                value: cpu_pair.to_owned(),
+                expected: String::from("CPU index must be unique"),
+            });
+        }
+    }
+    Ok(())
+}
+
 #[cfg(feature = "gpu")]
 fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
     let mut gpu_params: GpuParameters = Default::default();
@@ -837,6 +868,12 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 ));
             }
             cfg.vcpu_affinity = Some(parse_cpu_affinity(value.unwrap())?);
+        }
+        "cpu-cluster" => {
+            cfg.cpu_clusters.push(parse_cpu_set(value.unwrap())?);
+        }
+        "cpu-capacity" => {
+            parse_cpu_capacity(value.unwrap(), &mut cfg.cpu_capacity)?;
         }
         "no-smt" => {
             cfg.no_smt = true;
@@ -1825,6 +1862,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::short_value('c', "cpus", "N", "Number of VCPUs. (default: 1)"),
           Argument::value("cpu-affinity", "CPUSET", "Comma-separated list of CPUs or CPU ranges to run VCPUs on (e.g. 0,1-3,5)
                               or colon-separated list of assignments of guest to host CPU assignments (e.g. 0=0:1=1:2=2) (default: no mask)"),
+          Argument::value("cpu-cluster", "CPUSET", "Group the given CPUs into a cluster (default: no clusters)"),
+          Argument::value("cpu-capacity", "CPU=CAP[,CPU=CAP[,...]]", "Set the relative capacity of the given CPU (default: no capacity)"),
           Argument::flag("no-smt", "Don't use SMT in the guest"),
           Argument::value("rt-cpus", "CPUSET", "Comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: none)"),
           Argument::short_value('m',

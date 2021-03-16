@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Read;
 
@@ -46,6 +47,9 @@ use crate::AARCH64_PMU_IRQ;
 // these.
 const PHANDLE_GIC: u32 = 1;
 
+// CPUs are assigned phandles starting with this number.
+const PHANDLE_CPU0: u32 = 0x100;
+
 // These are specified by the Linux GIC bindings
 const GIC_FDT_IRQ_NUM_CELLS: u32 = 3;
 const GIC_FDT_IRQ_TYPE_SPI: u32 = 0;
@@ -67,7 +71,12 @@ fn create_memory_node(fdt: &mut FdtWriter, guest_mem: &GuestMemory) -> Result<()
     Ok(())
 }
 
-fn create_cpu_nodes(fdt: &mut FdtWriter, num_cpus: u32) -> Result<()> {
+fn create_cpu_nodes(
+    fdt: &mut FdtWriter,
+    num_cpus: u32,
+    cpu_clusters: Vec<Vec<usize>>,
+    cpu_capacity: BTreeMap<usize, u32>,
+) -> Result<()> {
     let cpus_node = fdt.begin_node("cpus")?;
     fdt.property_u32("#address-cells", 0x1)?;
     fdt.property_u32("#size-cells", 0x0)?;
@@ -81,8 +90,29 @@ fn create_cpu_nodes(fdt: &mut FdtWriter, num_cpus: u32) -> Result<()> {
             fdt.property_string("enable-method", "psci")?;
         }
         fdt.property_u32("reg", cpu_id)?;
+        fdt.property_u32("phandle", PHANDLE_CPU0 + cpu_id)?;
+
+        if let Some(capacity) = cpu_capacity.get(&(cpu_id as usize)) {
+            fdt.property_u32("capacity-dmips-mhz", *capacity)?;
+        }
+
         fdt.end_node(cpu_node)?;
     }
+
+    if !cpu_clusters.is_empty() {
+        let cpu_map_node = fdt.begin_node("cpu-map")?;
+        for (cluster_idx, cpus) in cpu_clusters.iter().enumerate() {
+            let cluster_node = fdt.begin_node(&format!("cluster{}", cluster_idx))?;
+            for (core_idx, cpu_id) in cpus.iter().enumerate() {
+                let core_node = fdt.begin_node(&format!("core{}", core_idx))?;
+                fdt.property_u32("cpu", PHANDLE_CPU0 + *cpu_id as u32)?;
+                fdt.end_node(core_node)?;
+            }
+            fdt.end_node(cluster_node)?;
+        }
+        fdt.end_node(cpu_map_node)?;
+    }
+
     fdt.end_node(cpus_node)?;
     Ok(())
 }
@@ -357,6 +387,8 @@ pub fn create_fdt(
     guest_mem: &GuestMemory,
     pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
     num_cpus: u32,
+    cpu_clusters: Vec<Vec<usize>>,
+    cpu_capacity: BTreeMap<usize, u32>,
     fdt_load_offset: u64,
     pci_device_base: u64,
     pci_device_size: u64,
@@ -380,7 +412,7 @@ pub fn create_fdt(
     }
     create_chosen_node(&mut fdt, cmdline, initrd)?;
     create_memory_node(&mut fdt, guest_mem)?;
-    create_cpu_nodes(&mut fdt, num_cpus)?;
+    create_cpu_nodes(&mut fdt, num_cpus, cpu_clusters, cpu_capacity)?;
     create_gic_node(&mut fdt, is_gicv3, num_cpus as u64)?;
     create_timer_node(&mut fdt, num_cpus)?;
     if use_pmu {

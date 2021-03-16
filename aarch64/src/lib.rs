@@ -395,6 +395,8 @@ impl arch::LinuxArch for AArch64 {
             &mem,
             pci_irqs,
             vcpu_count as u32,
+            components.cpu_clusters,
+            components.cpu_capacity,
             fdt_offset(components.memory_size, has_bios),
             pci_device_base,
             pci_device_size,

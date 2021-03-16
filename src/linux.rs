@@ -2303,6 +2303,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             .ok_or(Error::MemoryTooLarge)?,
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         vcpu_affinity: cfg.vcpu_affinity.clone(),
+        cpu_clusters: cfg.cpu_clusters.clone(),
+        cpu_capacity: cfg.cpu_capacity.clone(),
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
         vm_image,
