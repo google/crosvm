@@ -454,7 +454,11 @@ impl Vm for KvmVm {
         read_only: bool,
         log_dirty_pages: bool,
     ) -> Result<MemSlot> {
-        let size = mem.size() as u64;
+        let pgsz = pagesize() as u64;
+        // KVM require to set the user memory region with page size aligned size. Safe to extend
+        // the mem.size() to be page size aligned because the mmap will round up the size to be
+        // page size aligned if it is not.
+        let size = (mem.size() as u64 + pgsz - 1) / pgsz * pgsz;
         let end_addr = guest_addr
             .checked_add(size)
             .ok_or_else(|| Error::new(EOVERFLOW))?;

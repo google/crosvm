@@ -6,7 +6,8 @@ use std::sync::Arc;
 use std::u32;
 
 use base::{
-    error, AsRawDescriptor, Event, MappedRegion, MemoryMapping, MemoryMappingBuilder, RawDescriptor,
+    error, pagesize, AsRawDescriptor, Event, MappedRegion, MemoryMapping, MemoryMappingBuilder,
+    RawDescriptor,
 };
 use hypervisor::Datamatch;
 use msg_socket::{MsgReceiver, MsgSender};
@@ -712,10 +713,13 @@ impl VfioPciDevice {
                             Err(_e) => break,
                         };
                         let host = (&mmap).as_ptr() as u64;
+                        let pgsz = pagesize() as u64;
+                        let size = (mmap_size + pgsz - 1) / pgsz * pgsz;
                         // Safe because the given guest_map_start is valid guest bar address. and
                         // the host pointer is correct and valid guaranteed by MemoryMapping interface.
-                        match unsafe { self.device.vfio_dma_map(guest_map_start, mmap_size, host) }
-                        {
+                        // The size will be extened to page size aligned if it is not which is also
+                        // safe because VFIO actually maps the BAR with page size aligned size.
+                        match unsafe { self.device.vfio_dma_map(guest_map_start, size, host) } {
                             Ok(_) => mem_map.push(mmap),
                             Err(e) => {
                                 error!(
