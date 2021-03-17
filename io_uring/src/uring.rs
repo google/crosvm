@@ -1510,7 +1510,6 @@ mod tests {
             in_flight.lock().abs() as u32 + uring.complete_ring.num_ready(),
             0
         );
-        assert_eq!(uring.submit_ring.lock().added, 0);
         assert_eq!(
             uring.stats.total_ops.load(Ordering::Relaxed),
             (NUM_SUBMITTERS * ITERATIONS) as u64
