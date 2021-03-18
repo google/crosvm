@@ -20,4 +20,6 @@ pwritev: 1
 statx: 1
 timerfd_create: 1
 timerfd_gettime: 1
+timerfd_gettime64: 1
 timerfd_settime: 1
+timerfd_settime64: 1
