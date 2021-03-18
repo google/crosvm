@@ -1124,12 +1124,10 @@ fn create_video_device(
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 fn register_video_device(
     devs: &mut Vec<VirtioDeviceStub>,
-    resource_bridges: &mut Vec<Tube>,
+    video_tube: Tube,
     cfg: &Config,
     typ: devices::virtio::VideoDeviceType,
 ) -> std::result::Result<(), Error> {
-    let (video_tube, gpu_tube) = Tube::pair().map_err(Error::CreateTube)?;
-    resource_bridges.push(gpu_tube);
     devs.push(create_video_device(cfg, typ, video_tube)?);
     Ok(())
 }
@@ -1488,28 +1486,22 @@ fn create_virtio_devices(
     }
 
     #[cfg(feature = "video-decoder")]
-    {
-        if cfg.video_dec {
-            register_video_device(
-                &mut devs,
-                &mut resource_bridges,
-                cfg,
-                devices::virtio::VideoDeviceType::Decoder,
-            )?;
-        }
-    }
+    let video_dec_tube = if cfg.video_dec {
+        let (video_tube, gpu_tube) = Tube::pair().map_err(Error::CreateTube)?;
+        resource_bridges.push(gpu_tube);
+        Some(video_tube)
+    } else {
+        None
+    };
 
     #[cfg(feature = "video-encoder")]
-    {
-        if cfg.video_enc {
-            register_video_device(
-                &mut devs,
-                &mut resource_bridges,
-                cfg,
-                devices::virtio::VideoDeviceType::Encoder,
-            )?;
-        }
-    }
+    let video_enc_tube = if cfg.video_enc {
+        let (video_tube, gpu_tube) = Tube::pair().map_err(Error::CreateTube)?;
+        resource_bridges.push(gpu_tube);
+        Some(video_tube)
+    } else {
+        None
+    };
 
     #[cfg(feature = "gpu")]
     {
@@ -1562,6 +1554,30 @@ fn create_virtio_devices(
                 map_request,
                 mem,
             )?);
+        }
+    }
+
+    #[cfg(feature = "video-decoder")]
+    {
+        if let Some(video_dec_tube) = video_dec_tube {
+            register_video_device(
+                &mut devs,
+                video_dec_tube,
+                cfg,
+                devices::virtio::VideoDeviceType::Decoder,
+            )?;
+        }
+    }
+
+    #[cfg(feature = "video-encoder")]
+    {
+        if let Some(video_enc_tube) = video_enc_tube {
+            register_video_device(
+                &mut devs,
+                video_enc_tube,
+                cfg,
+                devices::virtio::VideoDeviceType::Encoder,
+            )?;
         }
     }
 
