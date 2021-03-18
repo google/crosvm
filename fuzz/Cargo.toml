@@ -18,10 +18,6 @@ tempfile = { path = "../tempfile" }
 usb_util = { path = "../usb_util" }
 vm_memory = { path = "../vm_memory" }
 
-# Prevent this from interfering with workspaces
-[workspace]
-members = ["."]
-
 [[bin]]
 name = "crosvm_block_fuzzer"
 path = "block_fuzzer.rs"
@@ -46,5 +42,3 @@ path = "virtqueue_fuzzer.rs"
 name = "crosvm_zimage_fuzzer"
 path = "zimage_fuzzer.rs"
 
-[patch.crates-io]
-base = { path = "../base" }

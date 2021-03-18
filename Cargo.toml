@@ -17,6 +17,7 @@ overflow-checks = true
 
 [workspace]
 members = [
+    "fuzz",
     "qcow_utils",
     "integration_tests",
 ]
@@ -102,6 +103,7 @@ base = "*"
 assertions = { path = "assertions" }
 audio_streams = { path = "../../third_party/adhd/audio_streams" } # ignored by ebuild
 base = { path = "base" }
+cros_fuzz = { path = "../../platform2/cros-fuzz" } # ignored by ebuild
 data_model = { path = "data_model" }
 libcras = { path = "../../third_party/adhd/cras/client/libcras" } # ignored by ebuild
 libchromeos = { path = "../../platform2/libchromeos-rs" } # ignored by ebuild
