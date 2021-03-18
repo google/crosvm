@@ -242,7 +242,7 @@ mod tests {
     use std::cmp::min;
     use std::io::{Read, Write};
 
-    use data_model::{DataInit, Le16, Le32};
+    use data_model::{DataInit, Le16, SLe32};
     use linux_input_sys::InputEventDecoder;
 
     use crate::virtio::input::event_source::{input_event, virtio_input_event, EventSourceImpl};
@@ -317,7 +317,11 @@ mod tests {
                 timestamp_fields: [0, 0],
                 type_: 3 * (idx as u16) + 1,
                 code: 3 * (idx as u16) + 2,
-                value: 3 * (idx as u32) + 3,
+                value: if idx % 2 == 0 {
+                    3 * (idx as i32) + 3
+                } else {
+                    -3 * (idx as i32) - 3
+                },
             });
         }
         ret
@@ -326,7 +330,7 @@ mod tests {
     fn assert_events_match(e1: &virtio_input_event, e2: &input_event) {
         assert_eq!(e1.type_, Le16::from(e2.type_), "type should match");
         assert_eq!(e1.code, Le16::from(e2.code), "code should match");
-        assert_eq!(e1.value, Le32::from(e2.value), "value should match");
+        assert_eq!(e1.value, SLe32::from(e2.value), "value should match");
     }
 
     #[test]

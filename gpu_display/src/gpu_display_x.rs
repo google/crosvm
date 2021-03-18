@@ -367,8 +367,8 @@ impl Surface {
                     // The touch event *must* be first per the Linux input subsystem's guidance.
                     let events = &[
                         virtio_input_event::touch(pressed),
-                        virtio_input_event::absolute_x(max(0, button_event.x) as u32),
-                        virtio_input_event::absolute_y(max(0, button_event.y) as u32),
+                        virtio_input_event::absolute_x(max(0, button_event.x)),
+                        virtio_input_event::absolute_y(max(0, button_event.y)),
                     ];
                     self.dispatch_to_event_devices(events, EventDeviceKind::Touchscreen);
                 }
@@ -377,8 +377,8 @@ impl Surface {
                 if motion.state & xlib::Button1Mask != 0 {
                     let events = &[
                         virtio_input_event::touch(true),
-                        virtio_input_event::absolute_x(max(0, motion.x) as u32),
-                        virtio_input_event::absolute_y(max(0, motion.y) as u32),
+                        virtio_input_event::absolute_x(max(0, motion.x)),
+                        virtio_input_event::absolute_y(max(0, motion.y)),
                     ];
                     self.dispatch_to_event_devices(events, EventDeviceKind::Touchscreen);
                 }
