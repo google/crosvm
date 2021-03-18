@@ -1,0 +1,13 @@
+[package]
+name = "libcrosvm_control"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+base = { path = "../base" }
+vm_control = { path = "../vm_control" }
+libc = "0.2.65"

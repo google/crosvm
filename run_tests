@@ -45,6 +45,7 @@ CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
     "kernel_loader": [Requirements.PRIVILEGED],
     "kvm_sys": [Requirements.PRIVILEGED],
     "kvm": [Requirements.PRIVILEGED, Requirements.X86_64],
+    "libcrosvm_control": [],
     "linux_input_sys": [],
     "net_sys": [],
     "net_util": [Requirements.PRIVILEGED],

@@ -8,10 +8,8 @@ pub mod panic_hook;
 
 use std::collections::BTreeMap;
 use std::default::Default;
-use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader};
-use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::string::String;
@@ -22,10 +20,7 @@ use arch::{
     set_default_serial_parameters, Pstore, SerialHardware, SerialParameters, SerialType,
     VcpuAffinity,
 };
-use base::{
-    debug, error, getpid, info, kill_process_group, net::UnixSeqpacket, reap_child, syslog,
-    validate_raw_descriptor, warn, FromRawDescriptor, RawDescriptor, Tube,
-};
+use base::{debug, error, getpid, info, kill_process_group, reap_child, syslog, warn};
 #[cfg(feature = "direct")]
 use crosvm::DirectIoOption;
 use crosvm::{
@@ -40,8 +35,11 @@ use devices::ProtectionType;
 use devices::{Ac97Backend, Ac97Parameters};
 use disk::QcowFile;
 use vm_control::{
-    BalloonControlCommand, BatControlCommand, BatControlResult, BatteryType, DiskControlCommand,
-    UsbControlCommand, UsbControlResult, VmRequest, VmResponse, USB_CONTROL_MAX_PORTS,
+    client::{
+        do_modify_battery, do_usb_attach, do_usb_detach, do_usb_list, handle_request, vms_request,
+        ModifyUsbError, ModifyUsbResult,
+    },
+    BalloonControlCommand, BatteryType, DiskControlCommand, UsbControlResult, VmRequest,
 };
 
 fn executable_is_plugin(executable: &Option<Executable>) -> bool {
@@ -1993,76 +1991,37 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
     }
 }
 
-fn handle_request(
-    request: &VmRequest,
-    args: std::env::Args,
-) -> std::result::Result<VmResponse, ()> {
-    let mut return_result = Err(());
-    for socket_path in args {
-        match UnixSeqpacket::connect(&socket_path) {
-            Ok(s) => {
-                let socket = Tube::new(s);
-                if let Err(e) = socket.send(request) {
-                    error!(
-                        "failed to send request to socket at '{}': {}",
-                        socket_path, e
-                    );
-                    return_result = Err(());
-                    continue;
-                }
-                match socket.recv() {
-                    Ok(response) => return_result = Ok(response),
-                    Err(e) => {
-                        error!(
-                            "failed to send request to socket at2 '{}': {}",
-                            socket_path, e
-                        );
-                        return_result = Err(());
-                        continue;
-                    }
-                }
-            }
-            Err(e) => {
-                error!("failed to connect to socket at '{}': {}", socket_path, e);
-                return_result = Err(());
-            }
-        }
-    }
-
-    return_result
-}
-
-fn vms_request(request: &VmRequest, args: std::env::Args) -> std::result::Result<(), ()> {
-    let response = handle_request(request, args)?;
-    info!("request response was {}", response);
-    Ok(())
-}
-
-fn stop_vms(args: std::env::Args) -> std::result::Result<(), ()> {
+fn stop_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() == 0 {
         print_help("crosvm stop", "VM_SOCKET...", &[]);
         println!("Stops the crosvm instance listening on each `VM_SOCKET` given.");
         return Err(());
     }
-    vms_request(&VmRequest::Exit, args)
+    let socket_path = &args.next().unwrap();
+    let socket_path = Path::new(&socket_path);
+    vms_request(&VmRequest::Exit, socket_path)
 }
 
-fn suspend_vms(args: std::env::Args) -> std::result::Result<(), ()> {
+fn suspend_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() == 0 {
         print_help("crosvm suspend", "VM_SOCKET...", &[]);
         println!("Suspends the crosvm instance listening on each `VM_SOCKET` given.");
         return Err(());
     }
-    vms_request(&VmRequest::Suspend, args)
+    let socket_path = &args.next().unwrap();
+    let socket_path = Path::new(&socket_path);
+    vms_request(&VmRequest::Suspend, socket_path)
 }
 
-fn resume_vms(args: std::env::Args) -> std::result::Result<(), ()> {
+fn resume_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() == 0 {
         print_help("crosvm resume", "VM_SOCKET...", &[]);
         println!("Resumes the crosvm instance listening on each `VM_SOCKET` given.");
         return Err(());
     }
-    vms_request(&VmRequest::Resume, args)
+    let socket_path = &args.next().unwrap();
+    let socket_path = Path::new(&socket_path);
+    vms_request(&VmRequest::Resume, socket_path)
 }
 
 fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
@@ -2080,10 +2039,12 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     };
 
     let command = BalloonControlCommand::Adjust { num_bytes };
-    vms_request(&VmRequest::BalloonCommand(command), args)
+    let socket_path = &args.next().unwrap();
+    let socket_path = Path::new(&socket_path);
+    vms_request(&VmRequest::BalloonCommand(command), socket_path)
 }
 
-fn balloon_stats(args: std::env::Args) -> std::result::Result<(), ()> {
+fn balloon_stats(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() != 1 {
         print_help("crosvm balloon_stats", "VM_SOCKET", &[]);
         println!("Prints virtio balloon statistics for a `VM_SOCKET`.");
@@ -2091,7 +2052,9 @@ fn balloon_stats(args: std::env::Args) -> std::result::Result<(), ()> {
     }
     let command = BalloonControlCommand::Stats {};
     let request = &VmRequest::BalloonCommand(command);
-    let response = handle_request(request, args)?;
+    let socket_path = &args.next().unwrap();
+    let socket_path = Path::new(&socket_path);
+    let response = handle_request(request, socket_path)?;
     println!("{}", response);
     Ok(())
 }
@@ -2214,46 +2177,10 @@ fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
         }
     };
 
-    vms_request(&request, args)
+    let socket_path = &args.next().unwrap();
+    let socket_path = Path::new(&socket_path);
+    vms_request(&request, socket_path)
 }
-
-enum ModifyUsbError {
-    ArgMissing(&'static str),
-    ArgParse(&'static str, String),
-    ArgParseInt(&'static str, String, ParseIntError),
-    FailedDescriptorValidate(base::Error),
-    PathDoesNotExist(PathBuf),
-    SocketFailed,
-    UnexpectedResponse(VmResponse),
-    UnknownCommand(String),
-    UsbControl(UsbControlResult),
-}
-
-impl fmt::Display for ModifyUsbError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::ModifyUsbError::*;
-
-        match self {
-            ArgMissing(a) => write!(f, "argument missing: {}", a),
-            ArgParse(name, value) => {
-                write!(f, "failed to parse argument {} value `{}`", name, value)
-            }
-            ArgParseInt(name, value, e) => write!(
-                f,
-                "failed to parse integer argument {} value `{}`: {}",
-                name, value, e
-            ),
-            FailedDescriptorValidate(e) => write!(f, "failed to validate file descriptor: {}", e),
-            PathDoesNotExist(p) => write!(f, "path `{}` does not exist", p.display()),
-            SocketFailed => write!(f, "socket failed"),
-            UnexpectedResponse(r) => write!(f, "unexpected response: {}", r),
-            UnknownCommand(c) => write!(f, "unknown command: `{}`", c),
-            UsbControl(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-type ModifyUsbResult<T> = std::result::Result<T, ModifyUsbError>;
 
 fn parse_bus_id_addr(v: &str) -> ModifyUsbResult<(u8, u8, u16, u16)> {
     debug!("parse_bus_id_addr: {}", v);
@@ -2279,27 +2206,6 @@ fn parse_bus_id_addr(v: &str) -> ModifyUsbResult<(u8, u8, u16, u16)> {
     }
 }
 
-fn raw_descriptor_from_path(path: &Path) -> ModifyUsbResult<RawDescriptor> {
-    if !path.exists() {
-        return Err(ModifyUsbError::PathDoesNotExist(path.to_owned()));
-    }
-    let raw_descriptor = path
-        .file_name()
-        .and_then(|fd_osstr| fd_osstr.to_str())
-        .map_or(
-            Err(ModifyUsbError::ArgParse(
-                "USB_DEVICE_PATH",
-                path.to_string_lossy().into_owned(),
-            )),
-            |fd_str| {
-                fd_str.parse::<libc::c_int>().map_err(|e| {
-                    ModifyUsbError::ArgParseInt("USB_DEVICE_PATH", fd_str.to_owned(), e)
-                })
-            },
-        )?;
-    validate_raw_descriptor(raw_descriptor).map_err(ModifyUsbError::FailedDescriptorValidate)
-}
-
 fn usb_attach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
     let val = args
         .next()
@@ -2309,30 +2215,13 @@ fn usb_attach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
         args.next()
             .ok_or(ModifyUsbError::ArgMissing("usb device path"))?,
     );
-    let usb_file = if dev_path.parent() == Some(Path::new("/proc/self/fd")) {
-        // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
-        // Safe because we will validate |raw_fd|.
-        unsafe { File::from_raw_descriptor(raw_descriptor_from_path(&dev_path)?) }
-    } else {
-        OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&dev_path)
-            .map_err(|_| ModifyUsbError::UsbControl(UsbControlResult::FailedToOpenDevice))?
-    };
 
-    let request = VmRequest::UsbCommand(UsbControlCommand::AttachDevice {
-        bus,
-        addr,
-        vid,
-        pid,
-        file: usb_file,
-    });
-    let response = handle_request(&request, args).map_err(|_| ModifyUsbError::SocketFailed)?;
-    match response {
-        VmResponse::UsbResponse(usb_resp) => Ok(usb_resp),
-        r => Err(ModifyUsbError::UnexpectedResponse(r)),
-    }
+    let socket_path = args
+        .next()
+        .ok_or(ModifyUsbError::ArgMissing("control socket path"))?;
+    let socket_path = Path::new(&socket_path);
+
+    do_usb_attach(&socket_path, bus, addr, vid, pid, &dev_path)
 }
 
 fn usb_detach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
@@ -2342,25 +2231,19 @@ fn usb_detach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
             p.parse::<u8>()
                 .map_err(|e| ModifyUsbError::ArgParseInt("PORT", p.to_owned(), e))
         })?;
-    let request = VmRequest::UsbCommand(UsbControlCommand::DetachDevice { port });
-    let response = handle_request(&request, args).map_err(|_| ModifyUsbError::SocketFailed)?;
-    match response {
-        VmResponse::UsbResponse(usb_resp) => Ok(usb_resp),
-        r => Err(ModifyUsbError::UnexpectedResponse(r)),
-    }
+    let socket_path = args
+        .next()
+        .ok_or(ModifyUsbError::ArgMissing("control socket path"))?;
+    let socket_path = Path::new(&socket_path);
+    do_usb_detach(&socket_path, port)
 }
 
-fn usb_list(args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
-    let mut ports: [u8; USB_CONTROL_MAX_PORTS] = Default::default();
-    for (index, port) in ports.iter_mut().enumerate() {
-        *port = index as u8
-    }
-    let request = VmRequest::UsbCommand(UsbControlCommand::ListDevice { ports });
-    let response = handle_request(&request, args).map_err(|_| ModifyUsbError::SocketFailed)?;
-    match response {
-        VmResponse::UsbResponse(usb_resp) => Ok(usb_resp),
-        r => Err(ModifyUsbError::UnexpectedResponse(r)),
-    }
+fn usb_list(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
+    let socket_path = args
+        .next()
+        .ok_or(ModifyUsbError::ArgMissing("control socket path"))?;
+    let socket_path = Path::new(&socket_path);
+    do_usb_list(&socket_path)
 }
 
 fn modify_usb(mut args: std::env::Args) -> std::result::Result<(), ()> {
@@ -2371,7 +2254,7 @@ fn modify_usb(mut args: std::env::Args) -> std::result::Result<(), ()> {
     }
 
     // This unwrap will not panic because of the above length check.
-    let command = args.next().unwrap();
+    let command = &args.next().unwrap();
     let result = match command.as_ref() {
         "attach" => usb_attach(args),
         "detach" => usb_detach(args),
@@ -2414,20 +2297,6 @@ fn pkg_version() -> std::result::Result<(), ()> {
     Ok(())
 }
 
-enum ModifyBatError {
-    BatControlErr(BatControlResult),
-}
-
-impl fmt::Display for ModifyBatError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::ModifyBatError::*;
-
-        match self {
-            BatControlErr(e) => write!(f, "{}", e),
-        }
-    }
-}
-
 fn modify_battery(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() < 4 {
         print_help("crosvm battery BATTERY_TYPE ",
@@ -2440,27 +2309,10 @@ fn modify_battery(mut args: std::env::Args) -> std::result::Result<(), ()> {
     let property = args.next().unwrap();
     let target = args.next().unwrap();
 
-    let response = match battery_type.parse::<BatteryType>() {
-        Ok(type_) => match BatControlCommand::new(property, target) {
-            Ok(cmd) => {
-                let request = VmRequest::BatCommand(type_, cmd);
-                Ok(handle_request(&request, args)?)
-            }
-            Err(e) => Err(ModifyBatError::BatControlErr(e)),
-        },
-        Err(e) => Err(ModifyBatError::BatControlErr(e)),
-    };
+    let socket_path = args.next().unwrap();
+    let socket_path = Path::new(&socket_path);
 
-    match response {
-        Ok(response) => {
-            println!("{}", response);
-            Ok(())
-        }
-        Err(e) => {
-            println!("error {}", e);
-            Err(())
-        }
-    }
+    do_modify_battery(&socket_path, &*battery_type, &*property, &*target)
 }
 
 fn crosvm_main() -> std::result::Result<(), ()> {

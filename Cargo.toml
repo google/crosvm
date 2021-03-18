@@ -26,6 +26,7 @@ members = [
     "fuzz",
     "qcow_utils",
     "integration_tests",
+    "libcrosvm_control",
 ]
 exclude = [
     "assertions",

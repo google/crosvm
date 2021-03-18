@@ -13,6 +13,8 @@
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 pub mod gdb;
 
+pub mod client;
+
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::os::raw::c_int;
@@ -215,7 +217,7 @@ pub struct UsbControlAttachedDevice {
 }
 
 impl UsbControlAttachedDevice {
-    fn valid(self) -> bool {
+    pub fn valid(self) -> bool {
         self.port != 0
     }
 }
