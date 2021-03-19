@@ -6,7 +6,7 @@
 
 # Syscalls specific to video devices.
 clock_getres: 1
-clock_gettime: 1
+clock_getres_time64: 1
 connect: 1
 fcntl64: arg1 == F_GETFL || arg1 == F_SETFL || arg1 == F_DUPFD_CLOEXEC || arg1 == F_GETFD || arg1 == F_SETFD
 getegid32: 1

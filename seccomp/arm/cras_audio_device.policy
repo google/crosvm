@@ -11,4 +11,3 @@ prlimit64: 1
 setrlimit: 1
 sched_setscheduler: 1
 socketpair: arg0 == AF_UNIX
-clock_gettime: 1

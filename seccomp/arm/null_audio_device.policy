@@ -9,4 +9,3 @@ open: return ENOENT
 openat: return ENOENT
 prlimit64: 1
 setrlimit: 1
-clock_gettime: 1

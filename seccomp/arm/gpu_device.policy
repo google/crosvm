@@ -16,6 +16,7 @@ eventfd2: 1
 exit: 1
 exit_group: 1
 futex: 1
+futex_time64: 1
 getpid: 1
 gettimeofday: 1
 kill: 1
@@ -24,15 +25,18 @@ mremap: 1
 munmap: 1
 nanosleep: 1
 clock_nanosleep: 1
+clock_nanosleep_time64: 1
 pipe2: 1
 poll: 1
 ppoll: 1
+ppoll_time64: 1
 prctl: arg0 == PR_SET_NAME || arg0 == PR_GET_NAME
 read: 1
 readv: 1
 recv: 1
 recvfrom: 1
 recvmsg: 1
+recvmmsg_time64: 1
 restart_syscall: 1
 rt_sigaction: 1
 rt_sigprocmask: 1
@@ -82,6 +86,7 @@ gettid: 1
 fcntl64: 1
 tgkill: 1
 clock_gettime: 1
+clock_gettime64: 1
 
 # Rules specific to Mesa.
 uname: 1
