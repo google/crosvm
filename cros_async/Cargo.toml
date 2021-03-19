@@ -26,5 +26,7 @@ features = ["alloc"]
 
 [dev-dependencies]
 futures = { version = "*", features = ["executor"] }
+futures-executor = { version = "0.3", features = ["thread-pool"] }
+futures-util = "0.3"
 tempfile = { path = "../tempfile" }
 vm_memory = { path = "../vm_memory" }
