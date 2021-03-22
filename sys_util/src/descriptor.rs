@@ -113,6 +113,20 @@ impl SafeDescriptor {
     }
 }
 
+impl Into<File> for SafeDescriptor {
+    fn into(self) -> File {
+        // Safe because we own the SafeDescriptor at this point.
+        unsafe { File::from_raw_fd(self.into_raw_descriptor()) }
+    }
+}
+
+impl Into<SafeDescriptor> for File {
+    fn into(self) -> SafeDescriptor {
+        // Safe because we own the File at this point.
+        unsafe { SafeDescriptor::from_raw_descriptor(self.into_raw_descriptor()) }
+    }
+}
+
 /// For use cases where a simple wrapper around a RawDescriptor is needed.
 /// This is a simply a wrapper and does not manage the lifetime of the descriptor.
 /// Most usages should prefer SafeDescriptor or using a RawDescriptor directly

@@ -143,7 +143,7 @@ impl Gralloc for MinigbmDevice {
                 return Err(RutabagaError::SpecViolation);
             }
 
-            let dmabuf = gbm_buffer.export()?;
+            let dmabuf = gbm_buffer.export()?.into();
             return Ok(RutabagaHandle {
                 os_handle: dmabuf,
                 handle_type: RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
@@ -165,7 +165,7 @@ impl Gralloc for MinigbmDevice {
         }
 
         let gbm_buffer = MinigbmBuffer(bo, self.clone());
-        let dmabuf = gbm_buffer.export()?;
+        let dmabuf = gbm_buffer.export()?.into();
         Ok(RutabagaHandle {
             os_handle: dmabuf,
             handle_type: RUTABAGA_MEM_HANDLE_TYPE_DMABUF,

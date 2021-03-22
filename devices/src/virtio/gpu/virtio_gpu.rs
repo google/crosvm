@@ -427,7 +427,7 @@ impl VirtioGpu {
     /// If supported, export the resource with the given `resource_id` to a file.
     pub fn export_resource(&mut self, resource_id: u32) -> ResourceResponse {
         let file = match self.rutabaga.export_blob(resource_id) {
-            Ok(handle) => handle.os_handle,
+            Ok(handle) => handle.os_handle.into(),
             Err(_) => return ResourceResponse::Invalid,
         };
 
@@ -463,7 +463,7 @@ impl VirtioGpu {
     pub fn export_fence(&self, fence_id: u32) -> ResourceResponse {
         match self.rutabaga.export_fence(fence_id) {
             Ok(handle) => ResourceResponse::Resource(ResourceInfo::Fence {
-                file: handle.os_handle,
+                file: handle.os_handle.into(),
             }),
             Err(_) => ResourceResponse::Invalid,
         }

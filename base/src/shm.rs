@@ -8,7 +8,7 @@ use crate::{
 };
 use std::ffi::CStr;
 use std::fs::File;
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, IntoRawFd};
 use sys_util::SharedMemory as SysUtilSharedMemory;
 
 /// See [SharedMemory](sys_util::SharedMemory) for struct- and method-level
@@ -77,8 +77,15 @@ impl AsRawDescriptor for SharedMemory {
     }
 }
 
-impl Into<File> for SharedMemory {
-    fn into(self) -> File {
-        self.0.into()
+impl IntoRawDescriptor for SharedMemory {
+    fn into_raw_descriptor(self) -> RawDescriptor {
+        self.0.into_raw_fd()
+    }
+}
+
+impl Into<SafeDescriptor> for SharedMemory {
+    fn into(self) -> SafeDescriptor {
+        // Safe because we own the SharedMemory at this point.
+        unsafe { SafeDescriptor::from_raw_descriptor(self.into_raw_descriptor()) }
     }
 }

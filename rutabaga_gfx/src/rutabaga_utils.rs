@@ -5,13 +5,12 @@
 //! rutabaga_utils: Utility enums, structs, and implementations needed by the rest of the crate.
 
 use std::fmt::{self, Display};
-use std::fs::File;
 use std::io::Error as IoError;
 use std::os::raw::c_void;
 use std::path::PathBuf;
 use std::str::Utf8Error;
 
-use base::{Error as SysError, ExternalMappingError};
+use base::{Error as SysError, ExternalMappingError, SafeDescriptor};
 use data_model::VolatileMemoryError;
 
 #[cfg(feature = "vulkano")]
@@ -463,7 +462,7 @@ pub const RUTABAGE_FENCE_HANDLE_TYPE_OPAQUE_WIN32: u32 = 0x0006;
 
 /// Handle to OS-specific memory or synchronization objects.
 pub struct RutabagaHandle {
-    pub os_handle: File,
+    pub os_handle: SafeDescriptor,
     pub handle_type: u32,
 }
 

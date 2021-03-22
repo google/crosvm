@@ -5,7 +5,7 @@
 use std::ffi::{CStr, CString};
 use std::fs::{read_link, File};
 use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
 use libc::{
     self, c_char, c_int, c_long, c_uint, close, fcntl, ftruncate64, off64_t, syscall, EINVAL,
@@ -264,6 +264,12 @@ impl AsRawFd for SharedMemory {
 impl AsRawFd for &SharedMemory {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.as_raw_fd()
+    }
+}
+
+impl IntoRawFd for SharedMemory {
+    fn into_raw_fd(self) -> RawFd {
+        self.fd.into_raw_fd()
     }
 }
 
