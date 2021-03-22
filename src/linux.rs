@@ -331,6 +331,40 @@ fn create_rng_device(cfg: &Config) -> DeviceResult {
     })
 }
 
+#[cfg(feature = "audio_cras")]
+fn create_cras_snd_device(cfg: &Config) -> DeviceResult {
+    let dev =
+        virtio::snd::cras_backend::VirtioSndCras::new(virtio::base_features(cfg.protected_vm))
+            .map_err(Error::CrasSoundDeviceNew)?;
+
+    let jail = match simple_jail(&cfg, "cras_snd_device")? {
+        Some(mut jail) => {
+            // Create a tmpfs in the device's root directory for cras_snd_device.
+            // The size is 20*1024, or 20 KB.
+            jail.mount_with_data(
+                Path::new("none"),
+                Path::new("/"),
+                "tmpfs",
+                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+                "size=20480",
+            )?;
+
+            let run_cras_path = Path::new("/run/cras");
+            jail.mount_bind(run_cras_path, run_cras_path, true)?;
+
+            add_current_user_to_jail(&mut jail)?;
+
+            Some(jail)
+        }
+        None => None,
+    };
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail,
+    })
+}
+
 #[cfg(feature = "tpm")]
 fn create_tpm_device(cfg: &Config) -> DeviceResult {
     use std::ffi::CString;
@@ -1213,6 +1247,13 @@ fn create_virtio_devices(
     }
 
     devs.push(create_rng_device(cfg)?);
+
+    #[cfg(feature = "audio_cras")]
+    {
+        if cfg.cras_snd {
+            devs.push(create_cras_snd_device(cfg)?);
+        }
+    }
 
     #[cfg(feature = "tpm")]
     {

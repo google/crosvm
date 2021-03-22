@@ -4,8 +4,10 @@
 
 pub mod common;
 pub mod constants;
-
 pub mod layout;
+
+#[cfg(feature = "audio_cras")]
+pub mod cras_backend;
 
 pub mod vios_backend;
 

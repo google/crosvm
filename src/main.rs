@@ -964,6 +964,10 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "cpu-capacity" => {
             parse_cpu_capacity(value.unwrap(), &mut cfg.cpu_capacity)?;
         }
+        #[cfg(feature = "audio_cras")]
+        "cras-snd" => {
+            cfg.cras_snd = true;
+        }
         "no-smt" => {
             cfg.no_smt = true;
         }
@@ -2035,6 +2039,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                               or colon-separated list of assignments of guest to host CPU assignments (e.g. 0=0:1=1:2=2) (default: no mask)"),
           Argument::value("cpu-cluster", "CPUSET", "Group the given CPUs into a cluster (default: no clusters)"),
           Argument::value("cpu-capacity", "CPU=CAP[,CPU=CAP[,...]]", "Set the relative capacity of the given CPU (default: no capacity)"),
+          #[cfg(feature = "audio_cras")]
+          Argument::flag("cras-snd", "Enable virtio-snd device with CRAS backend"),
           Argument::flag("no-smt", "Don't use SMT in the guest"),
           Argument::value("rt-cpus", "CPUSET", "Comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: none)"),
           Argument::flag("delay-rt", "Don't set VCPUs real-time until make-rt command is run"),

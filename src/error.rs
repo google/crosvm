@@ -45,6 +45,8 @@ pub enum Error {
     ConfigureHotPlugDevice(<Arch as LinuxArch>::Error),
     ConfigureVcpu(<Arch as LinuxArch>::Error),
     ConnectTube(io::Error),
+    #[cfg(feature = "audio_cras")]
+    CrasSoundDeviceNew(virtio::snd::cras_backend::Error),
     #[cfg(feature = "audio")]
     CreateAc97(devices::PciDeviceError),
     CreateConsole(devices::SerialError),
@@ -176,6 +178,8 @@ impl Display for Error {
             ConfigureHotPlugDevice(e) => write!(f, "Failed to configure pci hotplug device:{}", e),
             ConfigureVcpu(e) => write!(f, "failed to configure vcpu: {}", e),
             ConnectTube(e) => write!(f, "failed to connect to tube: {}", e),
+            #[cfg(feature = "audio_cras")]
+            CrasSoundDeviceNew(e) => write!(f, "failed to create cras sound device: {}", e),
             #[cfg(feature = "audio")]
             CreateAc97(e) => write!(f, "failed to create ac97 device: {}", e),
             CreateConsole(e) => write!(f, "failed to create console device: {}", e),

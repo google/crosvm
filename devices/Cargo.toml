@@ -19,6 +19,7 @@ virgl_renderer = ["gpu", "rutabaga_gfx/virgl_renderer"]
 gfxstream = ["gpu", "rutabaga_gfx/gfxstream"]
 
 [dependencies]
+async-task = "4"
 acpi_tables = {path = "../acpi_tables" }
 anyhow = "*"
 audio_streams = "*"
