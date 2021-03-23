@@ -342,6 +342,20 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                 }
                 "cache-path" => gpu_params.cache_path = Some(v.to_string()),
                 "cache-size" => gpu_params.cache_size = Some(v.to_string()),
+                "udmabuf" => match v {
+                    "true" | "" => {
+                        gpu_params.udmabuf = true;
+                    }
+                    "false" => {
+                        gpu_params.udmabuf = false;
+                    }
+                    _ => {
+                        return Err(argument::Error::InvalidValue {
+                            value: v.to_string(),
+                            expected: String::from("gpu parameter 'udmabuf' should be a boolean"),
+                        });
+                    }
+                },
                 "" => {}
                 _ => {
                     return Err(argument::Error::UnknownArgument(format!(

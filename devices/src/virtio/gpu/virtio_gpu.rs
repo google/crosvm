@@ -26,8 +26,10 @@ use resources::Alloc;
 
 use super::protocol::{
     GpuResponse::{self, *},
-    GpuResponsePlaneInfo, VirtioGpuResult,
+    GpuResponsePlaneInfo, VirtioGpuResult, VIRTIO_GPU_BLOB_FLAG_CREATE_GUEST_HANDLE,
+    VIRTIO_GPU_BLOB_MEM_HOST3D,
 };
+use super::udmabuf::UdmabufDriver;
 use super::VirtioScanoutBlobData;
 use sync::Mutex;
 
@@ -83,6 +85,7 @@ pub struct VirtioGpu {
     rutabaga: Rutabaga,
     resources: Map<u32, VirtioGpuResource>,
     external_blob: bool,
+    udmabuf_driver: Option<UdmabufDriver>,
 }
 
 fn sglist_to_rutabaga_iovecs(
@@ -119,11 +122,22 @@ impl VirtioGpu {
         pci_bar: Alloc,
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
         external_blob: bool,
+        udmabuf: bool,
     ) -> Option<VirtioGpu> {
         let rutabaga = rutabaga_builder
             .build()
             .map_err(|e| error!("failed to build rutabaga {}", e))
             .ok()?;
+
+        let mut udmabuf_driver = None;
+        if udmabuf {
+            udmabuf_driver = Some(
+                UdmabufDriver::new()
+                    .map_err(|e| error!("failed to initialize udmabuf: {}", e))
+                    .ok()?,
+            );
+        }
+
         let mut virtio_gpu = VirtioGpu {
             display: Rc::new(RefCell::new(display)),
             display_width,
@@ -139,6 +153,7 @@ impl VirtioGpu {
             rutabaga,
             resources: Default::default(),
             external_blob,
+            udmabuf_driver,
         };
 
         for event_device in event_devices {
@@ -587,12 +602,25 @@ impl VirtioGpu {
         vecs: Vec<(GuestAddress, usize)>,
         mem: &GuestMemory,
     ) -> VirtioGpuResult {
-        let rutabaga_iovecs = sglist_to_rutabaga_iovecs(&vecs[..], mem).map_err(|_| ErrUnspec)?;
+        let mut rutabaga_handle = None;
+        let mut rutabaga_iovecs = None;
+
+        if resource_create_blob.blob_flags & VIRTIO_GPU_BLOB_FLAG_CREATE_GUEST_HANDLE != 0 {
+            rutabaga_handle = match self.udmabuf_driver {
+                Some(ref driver) => Some(driver.create_udmabuf(mem, &vecs[..])?),
+                None => return Err(ErrUnspec),
+            }
+        } else if resource_create_blob.blob_mem != VIRTIO_GPU_BLOB_MEM_HOST3D {
+            rutabaga_iovecs =
+                Some(sglist_to_rutabaga_iovecs(&vecs[..], mem).map_err(|_| ErrUnspec)?);
+        }
+
         self.rutabaga.resource_create_blob(
             ctx_id,
             resource_id,
             resource_create_blob,
             rutabaga_iovecs,
+            rutabaga_handle,
         )?;
 
         let resource = VirtioGpuResource::new(resource_id, 0, 0, resource_create_blob.size);

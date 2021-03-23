@@ -138,6 +138,7 @@ impl RutabagaContext for CrossDomainContext {
         &mut self,
         resource_id: u32,
         resource_create_blob: ResourceCreateBlob,
+        handle: Option<RutabagaHandle>,
     ) -> RutabagaResult<RutabagaResource> {
         let reqs = self
             .requirements_blobs
@@ -152,7 +153,11 @@ impl RutabagaContext for CrossDomainContext {
         // create blob function, which says "the actual allocation is done via
         // VIRTIO_GPU_CMD_SUBMIT_3D."  However, atomic resource creation is easiest for the
         // cross-domain use case, so whatever.
-        let handle = self.gralloc.lock().allocate_memory(*reqs)?;
+        let hnd = match handle {
+            Some(handle) => handle,
+            None => self.gralloc.lock().allocate_memory(*reqs)?,
+        };
+
         let info_3d = Resource3DInfo {
             width: reqs.info.width,
             height: reqs.info.height,
@@ -164,7 +169,7 @@ impl RutabagaContext for CrossDomainContext {
 
         Ok(RutabagaResource {
             resource_id,
-            handle: Some(Arc::new(handle)),
+            handle: Some(Arc::new(hnd)),
             blob: true,
             blob_mem: resource_create_blob.blob_mem,
             blob_flags: resource_create_blob.blob_flags,

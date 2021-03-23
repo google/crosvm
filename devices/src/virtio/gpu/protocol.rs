@@ -21,12 +21,16 @@ use data_model::{DataInit, Le32, Le64};
 use gpu_display::GpuDisplayError;
 use rutabaga_gfx::RutabagaError;
 
+use crate::virtio::gpu::udmabuf::UdmabufError;
+
 pub const VIRTIO_GPU_F_VIRGL: u32 = 0;
 pub const VIRTIO_GPU_F_EDID: u32 = 1;
 pub const VIRTIO_GPU_F_RESOURCE_UUID: u32 = 2;
 pub const VIRTIO_GPU_F_RESOURCE_BLOB: u32 = 3;
 /* The following capabilities are not upstreamed. */
 pub const VIRTIO_GPU_F_CONTEXT_INIT: u32 = 4;
+pub const VIRTIO_GPU_F_CREATE_GUEST_HANDLE: u32 = 5;
+pub const VIRTIO_GPU_F_RESOURCE_SYNC: u32 = 6;
 
 pub const VIRTIO_GPU_UNDEFINED: u32 = 0x0;
 
@@ -87,6 +91,8 @@ pub const VIRTIO_GPU_BLOB_MEM_HOST3D_GUEST: u32 = 0x0003;
 pub const VIRTIO_GPU_BLOB_FLAG_USE_MAPPABLE: u32 = 0x0001;
 pub const VIRTIO_GPU_BLOB_FLAG_USE_SHAREABLE: u32 = 0x0002;
 pub const VIRTIO_GPU_BLOB_FLAG_USE_CROSS_DEVICE: u32 = 0x0004;
+/* Create a OS-specific handle from guest memory (not upstreamed). */
+pub const VIRTIO_GPU_BLOB_FLAG_CREATE_GUEST_HANDLE: u32 = 0x0008;
 
 pub const VIRTIO_GPU_SHM_ID_NONE: u8 = 0x0000;
 pub const VIRTIO_GPU_SHM_ID_HOST_VISIBLE: u8 = 0x0001;
@@ -812,6 +818,7 @@ pub enum GpuResponse {
     ErrInvalidResourceId,
     ErrInvalidContextId,
     ErrInvalidParameter,
+    ErrUdmabuf(UdmabufError),
 }
 
 impl From<TubeError> for GpuResponse {
@@ -838,6 +845,12 @@ impl From<ExternalMappingError> for GpuResponse {
     }
 }
 
+impl From<UdmabufError> for GpuResponse {
+    fn from(e: UdmabufError) -> GpuResponse {
+        GpuResponse::ErrUdmabuf(e)
+    }
+}
+
 impl Display for GpuResponse {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::GpuResponse::*;
@@ -847,6 +860,7 @@ impl Display for GpuResponse {
             ErrRutabaga(e) => write!(f, "renderer error: {}", e),
             ErrDisplay(e) => write!(f, "display error: {}", e),
             ErrScanout { num_scanouts } => write!(f, "non-zero scanout: {}", num_scanouts),
+            ErrUdmabuf(e) => write!(f, "udmabuf error: {}", e),
             _ => Ok(()),
         }
     }
@@ -1023,6 +1037,7 @@ impl GpuResponse {
             GpuResponse::ErrRutabaga(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrDisplay(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrMapping(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
+            GpuResponse::ErrUdmabuf(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrScanout { num_scanouts: _ } => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrOutOfMemory => VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY,
             GpuResponse::ErrInvalidScanoutId => VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID,

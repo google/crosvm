@@ -20,11 +20,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-#[cfg(feature = "udmabuf")]
-use base::AsRawDescriptors;
 use base::{
-    debug, error, warn, AsRawDescriptor, Event, ExternalMapping, PollToken, RawDescriptor, Tube,
-    WaitContext,
+    debug, error, warn, AsRawDescriptor, AsRawDescriptors, Event, ExternalMapping, PollToken,
+    RawDescriptor, Tube, WaitContext,
 };
 
 use data_model::*;
@@ -73,6 +71,7 @@ pub struct GpuParameters {
     pub gfxstream_use_guest_angle: bool,
     pub gfxstream_use_syncfd: bool,
     pub gfxstream_support_vulkan: bool,
+    pub udmabuf: bool,
     pub mode: GpuMode,
     pub cache_path: Option<String>,
     pub cache_size: Option<String>,
@@ -102,6 +101,7 @@ impl Default for GpuParameters {
             mode: GpuMode::Mode3D,
             cache_path: None,
             cache_size: None,
+            udmabuf: false,
         }
     }
 }
@@ -126,6 +126,7 @@ fn build(
     pci_bar: Alloc,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     external_blob: bool,
+    udmabuf: bool,
 ) -> Option<VirtioGpu> {
     let mut display_opt = None;
     for display in possible_displays {
@@ -156,6 +157,7 @@ fn build(
         pci_bar,
         map_request,
         external_blob,
+        udmabuf,
     )
 }
 
@@ -875,8 +877,8 @@ pub struct Gpu {
     external_blob: bool,
     rutabaga_component: RutabagaComponentType,
     base_features: u64,
-    #[allow(dead_code)]
     mem: GuestMemory,
+    udmabuf: bool,
 }
 
 impl Gpu {
@@ -957,6 +959,7 @@ impl Gpu {
             rutabaga_component: component,
             base_features,
             mem,
+            udmabuf: gpu_parameters.udmabuf,
         }
     }
 
@@ -1022,8 +1025,9 @@ impl VirtioDevice for Gpu {
             keep_rds.push(libc::STDERR_FILENO);
         }
 
-        #[cfg(feature = "udmabuf")]
-        keep_rds.append(&mut self.mem.as_raw_descriptors());
+        if self.udmabuf {
+            keep_rds.append(&mut self.mem.as_raw_descriptors());
+        }
 
         if let Some(ref gpu_device_tube) = self.gpu_device_tube {
             keep_rds.push(gpu_device_tube.as_raw_descriptor());
@@ -1049,10 +1053,19 @@ impl VirtioDevice for Gpu {
         let rutabaga_features = match self.rutabaga_component {
             RutabagaComponentType::Rutabaga2D => 0,
             _ => {
-                1 << VIRTIO_GPU_F_VIRGL
+                let mut features_3d = 0;
+
+                features_3d |= 1 << VIRTIO_GPU_F_VIRGL
                     | 1 << VIRTIO_GPU_F_RESOURCE_UUID
                     | 1 << VIRTIO_GPU_F_RESOURCE_BLOB
                     | 1 << VIRTIO_GPU_F_CONTEXT_INIT
+                    | 1 << VIRTIO_GPU_F_RESOURCE_SYNC;
+
+                if self.udmabuf {
+                    features_3d |= 1 << VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
+                }
+
+                features_3d
             }
         };
 
@@ -1115,6 +1128,7 @@ impl VirtioDevice for Gpu {
         let event_devices = self.event_devices.split_off(0);
         let map_request = Arc::clone(&self.map_request);
         let external_blob = self.external_blob;
+        let udmabuf = self.udmabuf;
         if let (Some(gpu_device_tube), Some(pci_bar), Some(rutabaga_builder)) = (
             self.gpu_device_tube.take(),
             self.pci_bar.take(),
@@ -1134,6 +1148,7 @@ impl VirtioDevice for Gpu {
                             pci_bar,
                             map_request,
                             external_blob,
+                            udmabuf,
                         ) {
                             Some(backend) => backend,
                             None => return,

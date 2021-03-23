@@ -411,7 +411,7 @@ impl RutabagaComponent for Gfxstream {
         _ctx_id: u32,
         resource_id: u32,
         resource_create_blob: ResourceCreateBlob,
-        _iovecs: Vec<RutabagaIovec>,
+        _iovec_opt: Option<Vec<RutabagaIovec>>,
     ) -> RutabagaResult<RutabagaResource> {
         unsafe {
             stream_renderer_resource_create_v2(resource_id, resource_create_blob.blob_id);

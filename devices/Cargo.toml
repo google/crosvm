@@ -15,7 +15,6 @@ minigbm = ["rutabaga_gfx/minigbm"]
 x = ["gpu_display/x"]
 virgl_renderer = ["gpu", "rutabaga_gfx/virgl_renderer"]
 gfxstream = ["gpu", "rutabaga_gfx/gfxstream"]
-udmabuf = []
 
 [dependencies]
 acpi_tables = {path = "../acpi_tables" }

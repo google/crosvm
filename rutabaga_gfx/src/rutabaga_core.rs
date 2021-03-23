@@ -132,7 +132,7 @@ pub trait RutabagaComponent {
         _ctx_id: u32,
         _resource_id: u32,
         _resource_create_blob: ResourceCreateBlob,
-        _backing_iovecs: Vec<RutabagaIovec>,
+        _iovec_opt: Option<Vec<RutabagaIovec>>,
     ) -> RutabagaResult<RutabagaResource> {
         Err(RutabagaError::Unsupported)
     }
@@ -166,6 +166,7 @@ pub trait RutabagaContext {
         &mut self,
         _resource_id: u32,
         _resource_create_blob: ResourceCreateBlob,
+        _handle: Option<RutabagaHandle>,
     ) -> RutabagaResult<RutabagaResource> {
         Err(RutabagaError::Unsupported)
     }
@@ -442,13 +443,15 @@ impl Rutabaga {
     }
 
     /// Creates a blob resource with the `ctx_id` and `resource_create_blob` metadata.
-    /// Associates `iovecs` with the resource, if there are any.
+    /// Associates `iovecs` with the resource, if there are any.  Associates externally
+    /// created `handle` with the resource, if there is any.
     pub fn resource_create_blob(
         &mut self,
         ctx_id: u32,
         resource_id: u32,
         resource_create_blob: ResourceCreateBlob,
-        iovecs: Vec<RutabagaIovec>,
+        iovecs: Option<Vec<RutabagaIovec>>,
+        handle: Option<RutabagaHandle>,
     ) -> RutabagaResult<()> {
         if self.resources.contains_key(&resource_id) {
             return Err(RutabagaError::InvalidResourceId);
@@ -463,7 +466,8 @@ impl Rutabaga {
                 .get_mut(&ctx_id)
                 .ok_or(RutabagaError::InvalidContextId)?;
 
-            if let Ok(resource) = ctx.context_create_blob(resource_id, resource_create_blob) {
+            if let Ok(resource) = ctx.context_create_blob(resource_id, resource_create_blob, handle)
+            {
                 self.resources.insert(resource_id, resource);
                 return Ok(());
             }

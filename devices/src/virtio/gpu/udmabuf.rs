@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![cfg(feature = "udmabuf")]
 #![allow(dead_code)]
 
 use std::fs::{File, OpenOptions};
@@ -16,11 +15,11 @@ use base::{
     SafeDescriptor,
 };
 
-use crate::virtio::gpu::udmabuf_bindings::*;
-
 use data_model::{FlexibleArray, FlexibleArrayWrapper};
 
 use rutabaga_gfx::{RutabagaHandle, RUTABAGA_MEM_HANDLE_TYPE_DMABUF};
+
+use super::udmabuf_bindings::*;
 
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 

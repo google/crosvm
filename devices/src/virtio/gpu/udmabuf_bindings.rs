@@ -6,7 +6,6 @@
  * lost to history.  Should be easy to duplicate, if needed.
  */
 
-#![cfg(feature = "udmabuf")]
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 

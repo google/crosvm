@@ -480,10 +480,17 @@ impl RutabagaComponent for VirglRenderer {
         ctx_id: u32,
         resource_id: u32,
         resource_create_blob: ResourceCreateBlob,
-        mut iovecs: Vec<RutabagaIovec>,
+        mut iovec_opt: Option<Vec<RutabagaIovec>>,
     ) -> RutabagaResult<RutabagaResource> {
         #[cfg(feature = "virgl_renderer_next")]
         {
+            let mut iovec_ptr = null_mut();
+            let mut num_iovecs = 0;
+            if let Some(ref mut iovecs) = iovec_opt {
+                iovec_ptr = iovecs.as_mut_ptr();
+                num_iovecs = iovecs.len();
+            }
+
             let resource_create_args = virgl_renderer_resource_create_blob_args {
                 res_handle: resource_id,
                 ctx_id,
@@ -491,16 +498,12 @@ impl RutabagaComponent for VirglRenderer {
                 blob_flags: resource_create_blob.blob_flags,
                 blob_id: resource_create_blob.blob_id,
                 size: resource_create_blob.size,
-                iovecs: iovecs.as_mut_ptr() as *const iovec,
-                num_iovs: iovecs.len() as u32,
+                iovecs: iovec_ptr as *const iovec,
+                num_iovs: num_iovecs as u32,
             };
+
             let ret = unsafe { virgl_renderer_resource_create_blob(&resource_create_args) };
             ret_to_res(ret)?;
-
-            let iovec_opt = match resource_create_blob.blob_mem {
-                RUTABAGA_BLOB_MEM_GUEST => Some(iovecs),
-                _ => None,
-            };
 
             Ok(RutabagaResource {
                 resource_id,
