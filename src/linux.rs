@@ -1774,7 +1774,7 @@ impl IntoUnixStream for UnixStream {
 fn setup_vcpu_signal_handler<T: Vcpu>(use_hypervisor_signals: bool) -> Result<()> {
     if use_hypervisor_signals {
         unsafe {
-            extern "C" fn handle_signal() {}
+            extern "C" fn handle_signal(_: c_int) {}
             // Our signal handler does nothing and is trivially async signal safe.
             register_rt_signal_handler(SIGRTMIN() + 0, handle_signal)
                 .map_err(Error::RegisterSignalHandler)?;
@@ -1782,7 +1782,7 @@ fn setup_vcpu_signal_handler<T: Vcpu>(use_hypervisor_signals: bool) -> Result<()
         block_signal(SIGRTMIN() + 0).map_err(Error::BlockSignal)?;
     } else {
         unsafe {
-            extern "C" fn handle_signal<T: Vcpu>() {
+            extern "C" fn handle_signal<T: Vcpu>(_: c_int) {
                 T::set_local_immediate_exit(true);
             }
             register_rt_signal_handler(SIGRTMIN() + 0, handle_signal::<T>)

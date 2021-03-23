@@ -89,9 +89,11 @@ pub use crate::write_zeroes::{PunchHole, WriteZeroes, WriteZeroesAt};
 use std::cell::Cell;
 use std::ffi::CStr;
 use std::fs::{remove_file, File};
+use std::mem;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::ptr;
+use std::time::Duration;
 
 use libc::{
     c_int, c_long, fcntl, gid_t, kill, pid_t, pipe2, syscall, sysconf, uid_t, waitpid, F_GETFL,
@@ -438,6 +440,23 @@ pub fn add_fd_flags(fd: RawFd, set_flags: c_int) -> Result<()> {
 pub fn clear_fd_flags(fd: RawFd, clear_flags: c_int) -> Result<()> {
     let start_flags = get_fd_flags(fd)?;
     set_fd_flags(fd, start_flags & !clear_flags)
+}
+
+/// Return a timespec filed with the specified Duration `duration`.
+pub fn duration_to_timespec(duration: Duration) -> libc::timespec {
+    // Safe because we are zero-initializing a struct with only primitive member fields.
+    let mut ts: libc::timespec = unsafe { mem::zeroed() };
+
+    ts.tv_sec = duration.as_secs() as libc::time_t;
+    // nsec always fits in i32 because subsec_nanos is defined to be less than one billion.
+    let nsec = duration.subsec_nanos() as i32;
+    ts.tv_nsec = libc::c_long::from(nsec);
+    ts
+}
+
+/// Return the maximum Duration that can be used with libc::timespec.
+pub fn max_timeout() -> Duration {
+    Duration::new(libc::time_t::max_value() as u64, 999999999)
 }
 
 #[cfg(test)]

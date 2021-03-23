@@ -4,8 +4,8 @@
 
 use libc::{
     c_int, pthread_kill, pthread_sigmask, pthread_t, sigaction, sigaddset, sigemptyset, siginfo_t,
-    sigismember, sigpending, sigset_t, sigtimedwait, timespec, EAGAIN, EINTR, EINVAL, SA_RESTART,
-    SIG_BLOCK, SIG_UNBLOCK,
+    sigismember, sigpending, sigset_t, sigtimedwait, sigwait, timespec, EAGAIN, EINTR, EINVAL,
+    SA_RESTART, SIG_BLOCK, SIG_DFL, SIG_UNBLOCK,
 };
 
 use std::cmp::Ordering;
@@ -16,8 +16,9 @@ use std::os::unix::thread::JoinHandleExt;
 use std::ptr::{null, null_mut};
 use std::result;
 use std::thread::JoinHandle;
+use std::time::Duration;
 
-use crate::{errno, errno_result};
+use crate::{duration_to_timespec, errno, errno_result};
 
 #[derive(Debug)]
 pub enum Error {
@@ -101,7 +102,10 @@ fn valid_rt_signal_num(num: c_int) -> bool {
 ///
 /// This is considered unsafe because the given handler will be called asynchronously, interrupting
 /// whatever the thread was doing and therefore must only do async-signal-safe operations.
-pub unsafe fn register_signal_handler(num: c_int, handler: extern "C" fn()) -> errno::Result<()> {
+pub unsafe fn register_signal_handler(
+    num: c_int,
+    handler: extern "C" fn(c_int),
+) -> errno::Result<()> {
     let mut sigact: sigaction = mem::zeroed();
     sigact.sa_flags = SA_RESTART;
     sigact.sa_sigaction = handler as *const () as usize;
@@ -114,6 +118,36 @@ pub unsafe fn register_signal_handler(num: c_int, handler: extern "C" fn()) -> e
     Ok(())
 }
 
+/// Resets the signal handler of signum `num` back to the default.
+pub fn clear_signal_handler(num: c_int) -> errno::Result<()> {
+    // Safe because sigaction is owned and expected to be initialized ot zeros.
+    let mut sigact: sigaction = unsafe { mem::zeroed() };
+    sigact.sa_flags = SA_RESTART;
+    sigact.sa_sigaction = SIG_DFL;
+
+    // Safe because sigact is owned, and this is restoring the default signal handler.
+    let ret = unsafe { sigaction(num, &sigact, null_mut()) };
+    if ret < 0 {
+        return errno_result();
+    }
+
+    Ok(())
+}
+
+/// Returns true if the signal handler for signum `num` is the default.
+pub fn has_default_signal_handler(num: c_int) -> errno::Result<bool> {
+    // Safe because sigaction is owned and expected to be initialized ot zeros.
+    let mut sigact: sigaction = unsafe { mem::zeroed() };
+
+    // Safe because sigact is owned, and this is just querying the existing state.
+    let ret = unsafe { sigaction(num, null(), &mut sigact) };
+    if ret < 0 {
+        return errno_result();
+    }
+
+    Ok(sigact.sa_sigaction == SIG_DFL)
+}
+
 /// Registers `handler` as the signal handler for the real-time signal with signum `num`.
 ///
 /// The value of `num` must be within [`SIGRTMIN`, `SIGRTMAX`] range.
@@ -124,7 +158,7 @@ pub unsafe fn register_signal_handler(num: c_int, handler: extern "C" fn()) -> e
 /// whatever the thread was doing and therefore must only do async-signal-safe operations.
 pub unsafe fn register_rt_signal_handler(
     num: c_int,
-    handler: extern "C" fn(),
+    handler: extern "C" fn(c_int),
 ) -> errno::Result<()> {
     if !valid_rt_signal_num(num) {
         return Err(errno::Error::new(EINVAL));
@@ -155,6 +189,34 @@ pub fn create_sigset(signals: &[c_int]) -> errno::Result<sigset_t> {
     }
 
     Ok(sigset)
+}
+
+/// Wait for signal before continuing. The signal number of the consumed signal is returned on
+/// success. EAGAIN means the timeout was reached.
+pub fn wait_for_signal(signals: &[c_int], timeout: Option<Duration>) -> errno::Result<c_int> {
+    let sigset = create_sigset(signals)?;
+
+    match timeout {
+        Some(timeout) => {
+            let ts = duration_to_timespec(timeout);
+            // Safe - return value is checked.
+            let ret = handle_eintr_errno!(unsafe { sigtimedwait(&sigset, null_mut(), &ts) });
+            if ret < 0 {
+                errno_result()
+            } else {
+                Ok(ret)
+            }
+        }
+        None => {
+            let mut ret: c_int = 0;
+            let err = handle_eintr_rc!(unsafe { sigwait(&sigset, &mut ret as *mut c_int) });
+            if err != 0 {
+                Err(errno::Error::new(err))
+            } else {
+                Ok(ret)
+            }
+        }
+    }
 }
 
 /// Retrieves the signal mask of the current thread as a vector of c_ints.

@@ -418,7 +418,7 @@ pub fn run_vcpus(
 
     if use_kvm_signals {
         unsafe {
-            extern "C" fn handle_signal() {}
+            extern "C" fn handle_signal(_: c_int) {}
             // Our signal handler does nothing and is trivially async signal safe.
             // We need to install this signal handler even though we do block
             // the signal below, to ensure that this signal will interrupt
@@ -430,7 +430,7 @@ pub fn run_vcpus(
         block_signal(SIGRTMIN() + 0).expect("failed to block signal");
     } else {
         unsafe {
-            extern "C" fn handle_signal() {
+            extern "C" fn handle_signal(_: c_int) {
                 Vcpu::set_local_immediate_exit(true);
             }
             register_rt_signal_handler(SIGRTMIN() + 0, handle_signal)
