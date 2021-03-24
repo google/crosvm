@@ -1072,25 +1072,6 @@ impl FileSystem for PassthroughFs {
         // we want the client to be able to set all the bits in the mode.
         unsafe { libc::umask(0o000) };
 
-        // We need to set the no setuid fixup secure bit so that we don't drop capabilities when
-        // changing the thread uid/gid. Without this, creating new entries can fail in some corner
-        // cases.
-        const SECBIT_NO_SETUID_FIXUP: i32 = 1 << 2;
-
-        // Safe because this doesn't modify any memory and we check the return value.
-        let mut securebits = unsafe { libc::prctl(libc::PR_GET_SECUREBITS) };
-        if securebits < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        securebits |= SECBIT_NO_SETUID_FIXUP;
-
-        // Safe because this doesn't modify any memory and we check the return value.
-        let ret = unsafe { libc::prctl(libc::PR_SET_SECUREBITS, securebits) };
-        if ret < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
         let mut inodes = self.inodes.lock();
 
         // Not sure why the root inode gets a refcount of 2 but that's what libfuse does.

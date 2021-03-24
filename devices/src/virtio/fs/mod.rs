@@ -82,6 +82,10 @@ pub enum Error {
     InvalidDescriptorChain(DescriptorError),
     /// Error happened in FUSE.
     FuseError(fuse::Error),
+    /// Failed to get the securebits for the worker thread.
+    GetSecurebits(io::Error),
+    /// Failed to set the securebits for the worker thread.
+    SetSecurebits(io::Error),
 }
 
 impl ::std::error::Error for Error {}
@@ -110,6 +114,12 @@ impl fmt::Display for Error {
             SignalUsedQueue(err) => write!(f, "failed to signal used queue: {}", err),
             InvalidDescriptorChain(err) => write!(f, "DescriptorChain is invalid: {}", err),
             FuseError(err) => write!(f, "fuse error: {}", err),
+            GetSecurebits(err) => {
+                write!(f, "failed to get securebits for the worker thread: {}", err)
+            }
+            SetSecurebits(err) => {
+                write!(f, "failed to set securebits for the worker thread: {}", err)
+            }
         }
     }
 }
