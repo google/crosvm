@@ -25,6 +25,7 @@ fsync: 1
 fdatasync: 1
 utimensat: 1
 ftruncate: 1
-fchown: arg1 == 0xffffffff && arg2 == 0xffffffff
+fchmod: 1
+fchown: 1
 fstatfs: 1
 newfstatat: 1

@@ -25,6 +25,7 @@ unlinkat: 1
 socket: arg0 == AF_UNIX
 utimensat: 1
 ftruncate64: 1
-fchown: arg1 == 0xffffffff && arg2 == 0xffffffff
+fchmod: 1
+fchown: 1
 fstatfs64: 1
 fstatat64: 1
