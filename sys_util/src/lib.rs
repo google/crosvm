@@ -96,11 +96,17 @@ use std::ptr;
 use std::time::Duration;
 
 use libc::{
-    c_int, c_long, fcntl, gid_t, kill, pid_t, pipe2, syscall, sysconf, uid_t, waitpid, F_GETFL,
-    F_SETFL, O_CLOEXEC, SIGKILL, WNOHANG, _SC_IOV_MAX, _SC_PAGESIZE,
+    c_int, c_long, fcntl, pipe2, syscall, sysconf, waitpid, F_GETFL, F_SETFL, O_CLOEXEC, SIGKILL,
+    WNOHANG, _SC_IOV_MAX, _SC_PAGESIZE,
 };
 
 use syscall_defines::linux::LinuxSyscall::SYS_getpid;
+use syscall_defines::linux::LinuxSyscall::SYS_gettid;
+
+/// Re-export libc types that are part of the API.
+pub type Pid = libc::pid_t;
+pub type Uid = libc::uid_t;
+pub type Gid = libc::gid_t;
 
 /// Used to mark types as !Sync.
 pub type UnsyncMarker = std::marker::PhantomData<Cell<usize>>;
@@ -128,28 +134,58 @@ pub fn round_up_to_page_size(v: usize) -> usize {
 /// This bypasses `libc`'s caching `getpid(2)` wrapper which can be invalid if a raw clone was used
 /// elsewhere.
 #[inline(always)]
-pub fn getpid() -> pid_t {
+pub fn getpid() -> Pid {
     // Safe because this syscall can never fail and we give it a valid syscall number.
-    unsafe { syscall(SYS_getpid as c_long) as pid_t }
+    unsafe { syscall(SYS_getpid as c_long) as Pid }
+}
+
+/// Safe wrapper for the gettid Linux systemcall.
+pub fn gettid() -> Pid {
+    // Calling the gettid() sycall is always safe.
+    unsafe { syscall(SYS_gettid as c_long) as Pid }
+}
+
+/// Safe wrapper for `getsid(2)`.
+pub fn getsid(pid: Option<Pid>) -> Result<Pid> {
+    // Calling the getsid() sycall is always safe.
+    let ret = unsafe { libc::getsid(pid.unwrap_or(0)) } as Pid;
+
+    if ret < 0 {
+        errno_result()
+    } else {
+        Ok(ret)
+    }
+}
+
+/// Wrapper for `setsid(2)`.
+pub fn setsid() -> Result<Pid> {
+    // Safe because the return code is checked.
+    let ret = unsafe { libc::setsid() as Pid };
+
+    if ret < 0 {
+        errno_result()
+    } else {
+        Ok(ret)
+    }
 }
 
 /// Safe wrapper for `geteuid(2)`.
 #[inline(always)]
-pub fn geteuid() -> uid_t {
+pub fn geteuid() -> Uid {
     // trivially safe
     unsafe { libc::geteuid() }
 }
 
 /// Safe wrapper for `getegid(2)`.
 #[inline(always)]
-pub fn getegid() -> gid_t {
+pub fn getegid() -> Gid {
     // trivially safe
     unsafe { libc::getegid() }
 }
 
 /// Safe wrapper for chown(2).
 #[inline(always)]
-pub fn chown(path: &CStr, uid: uid_t, gid: gid_t) -> Result<()> {
+pub fn chown(path: &CStr, uid: Uid, gid: Gid) -> Result<()> {
     // Safe since we pass in a valid string pointer and check the return value.
     let ret = unsafe { libc::chown(path.as_ptr(), uid, gid) };
 
@@ -263,7 +299,7 @@ pub fn fallocate(
 ///     }
 /// }
 /// ```
-pub fn reap_child() -> Result<pid_t> {
+pub fn reap_child() -> Result<Pid> {
     // Safe because we pass in no memory, prevent blocking with WNOHANG, and check for error.
     let ret = unsafe { waitpid(-1, ptr::null_mut(), WNOHANG) };
     if ret == -1 {
@@ -278,13 +314,9 @@ pub fn reap_child() -> Result<pid_t> {
 /// On success, this kills all processes in the current process group, including the current
 /// process, meaning this will not return. This is equivalent to a call to `kill(0, SIGKILL)`.
 pub fn kill_process_group() -> Result<()> {
-    let ret = unsafe { kill(0, SIGKILL) };
-    if ret == -1 {
-        errno_result()
-    } else {
-        // Kill succeeded, so this process never reaches here.
-        unreachable!();
-    }
+    unsafe { kill(0, SIGKILL) }?;
+    // Kill succeeded, so this process never reaches here.
+    unreachable!();
 }
 
 /// Spawns a pipe pair where the first pipe is the read end and the second pipe is the write end.
