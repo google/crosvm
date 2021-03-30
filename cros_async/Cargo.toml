@@ -8,15 +8,15 @@ edition = "2018"
 async-trait = "0.1.36"
 async-task = "4"
 intrusive-collections = "0.9"
-io_uring = { path = "../io_uring" }
+io_uring = { path = "../io_uring" } # provided by ebuild
 libc = "*"
 paste = "1.0"
 pin-utils = "0.1.0-alpha.4"
 slab = "0.4"
-sync = { path = "../sync" }
-sys_util = { path = "../sys_util" }
-data_model = { path = "../data_model" }
-syscall_defines = { path = "../syscall_defines" }
+sync = { path = "../sync" } # provided by ebuild
+sys_util = { path = "../sys_util" } # provided by ebuild
+data_model = { path = "../data_model" } # provided by ebuild
+syscall_defines = { path = "../syscall_defines" } # provided by ebuild
 thiserror = "1.0.20"
 
 [dependencies.futures]
@@ -28,5 +28,6 @@ features = ["alloc"]
 futures = { version = "*", features = ["executor"] }
 futures-executor = { version = "0.3", features = ["thread-pool"] }
 futures-util = "0.3"
-tempfile = { path = "../tempfile" }
-vm_memory = { path = "../vm_memory" }
+tempfile = { path = "../tempfile" } # provided by ebuild
+
+[workspace]

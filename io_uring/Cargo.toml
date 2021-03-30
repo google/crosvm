@@ -5,13 +5,13 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [dependencies]
-data_model = { path = "../data_model" }
+data_model = { path = "../data_model" } # provided by ebuild
 libc = "*"
-syscall_defines = { path = "../syscall_defines" }
-sync = { path = "../sync" }
-sys_util = { path = "../sys_util" }
+syscall_defines = { path = "../syscall_defines" } # provided by ebuild
+sync = { path = "../sync" } # provided by ebuild
+sys_util = { path = "../sys_util" } # provided by ebuild
 
 [dev-dependencies]
-tempfile = { path = "../tempfile" }
+tempfile = { path = "../tempfile" } # provided by ebuild
 
 [workspace]
