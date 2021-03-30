@@ -93,34 +93,36 @@ impl ShmStreamSource for VioSShmStreamSource {
             StreamDirection::Playback => VIRTIO_SND_D_OUTPUT,
             StreamDirection::Capture => VIRTIO_SND_D_INPUT,
         };
-        match self.vios_client.get_unused_stream_id(virtio_dir) {
-            Some(stream_id) => {
-                self.vios_client.prepare_stream(stream_id)?;
-                let frame_size = num_channels * format.sample_bytes();
-                let period_bytes = (frame_size * buffer_size) as u32;
-                let params = VioSStreamParams {
-                    buffer_bytes: 2 * period_bytes,
-                    period_bytes,
-                    features: 0u32,
-                    tubes: num_channels as u8,
-                    format: from_sample_format(format),
-                    rate: virtio_frame_rate(frame_rate)?,
-                };
-                self.vios_client.set_stream_parameters(stream_id, params)?;
-                self.vios_client.start_stream(stream_id)?;
-                VioSndShmStream::new(
-                    buffer_size,
-                    num_channels,
-                    format,
-                    frame_rate,
-                    stream_id,
-                    direction,
-                    self.vios_client.clone(),
-                    client_shm,
-                )
-            }
-            None => Err(Box::new(Error::NoStreamsAvailable)),
-        }
+        let frame_size = num_channels * format.sample_bytes();
+        let period_bytes = (frame_size * buffer_size) as u32;
+        let stream_id = self
+            .vios_client
+            .get_unused_stream_id(virtio_dir)
+            .ok_or(Box::new(Error::NoStreamsAvailable))?;
+        // Create the stream object before any errors can be returned to guarantee the stream will
+        // be released in all cases
+        let stream_box = VioSndShmStream::new(
+            buffer_size,
+            num_channels,
+            format,
+            frame_rate,
+            stream_id,
+            direction,
+            self.vios_client.clone(),
+            client_shm,
+        );
+        self.vios_client.prepare_stream(stream_id)?;
+        let params = VioSStreamParams {
+            buffer_bytes: 2 * period_bytes,
+            period_bytes,
+            features: 0u32,
+            tubes: num_channels as u8,
+            format: from_sample_format(format),
+            rate: virtio_frame_rate(frame_rate)?,
+        };
+        self.vios_client.set_stream_parameters(stream_id, params)?;
+        self.vios_client.start_stream(stream_id)?;
+        stream_box
     }
 
     /// Get a list of file descriptors used by the implementation.
