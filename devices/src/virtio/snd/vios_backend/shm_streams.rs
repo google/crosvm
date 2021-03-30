@@ -22,7 +22,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use sync::Mutex;
 use sys_util::{Error as SysError, SharedMemory as SysSharedMemory};
 
 use super::shm_vios::{Error, Result};
@@ -33,17 +32,14 @@ type GenericResult<T> = std::result::Result<T, BoxError>;
 
 /// Adapter that provides the ShmStreamSource trait around the VioS backend.
 pub struct VioSShmStreamSource {
-    // Reference counting is needed because the streams also need a reference to the client to push
-    // buffers and release the stream on drop and it has to implement Send because ShmStreamSource
-    // requires it, so the only possibility is Arc.
-    vios_client: Arc<Mutex<VioSClient>>,
+    vios_client: Arc<VioSClient>,
 }
 
 impl VioSShmStreamSource {
     /// Creates a new stream source given the path to the audio server's socket.
     pub fn new<P: AsRef<Path>>(server: P) -> Result<VioSShmStreamSource> {
         Ok(Self {
-            vios_client: Arc::new(Mutex::new(VioSClient::try_new(server)?)),
+            vios_client: Arc::new(VioSClient::try_new(server)?),
         })
     }
 }
@@ -93,38 +89,37 @@ impl ShmStreamSource for VioSShmStreamSource {
         client_shm: &SysSharedMemory,
         _buffer_offsets: [u64; 2],
     ) -> GenericResult<Box<dyn ShmStream>> {
-        let mut vios_client = self.vios_client.lock();
-        match direction {
-            StreamDirection::Playback => {
-                match vios_client.get_unused_stream_id(VIRTIO_SND_D_OUTPUT) {
-                    Some(stream_id) => {
-                        vios_client.prepare_stream(stream_id)?;
-                        let frame_size = num_channels * format.sample_bytes();
-                        let period_bytes = (frame_size * buffer_size) as u32;
-                        let params = VioSStreamParams {
-                            buffer_bytes: 2 * period_bytes,
-                            period_bytes,
-                            features: 0u32,
-                            tubes: num_channels as u8,
-                            format: from_sample_format(format),
-                            rate: virtio_frame_rate(frame_rate)?,
-                        };
-                        vios_client.set_stream_parameters(stream_id, params)?;
-                        vios_client.start_stream(stream_id)?;
-                        VioSndShmStream::new(
-                            buffer_size,
-                            num_channels,
-                            format,
-                            frame_rate,
-                            stream_id,
-                            self.vios_client.clone(),
-                            client_shm,
-                        )
-                    }
-                    None => Err(Box::new(Error::NoStreamsAvailable)),
-                }
+        let virtio_dir = match direction {
+            StreamDirection::Playback => VIRTIO_SND_D_OUTPUT,
+            StreamDirection::Capture => VIRTIO_SND_D_INPUT,
+        };
+        match self.vios_client.get_unused_stream_id(virtio_dir) {
+            Some(stream_id) => {
+                self.vios_client.prepare_stream(stream_id)?;
+                let frame_size = num_channels * format.sample_bytes();
+                let period_bytes = (frame_size * buffer_size) as u32;
+                let params = VioSStreamParams {
+                    buffer_bytes: 2 * period_bytes,
+                    period_bytes,
+                    features: 0u32,
+                    tubes: num_channels as u8,
+                    format: from_sample_format(format),
+                    rate: virtio_frame_rate(frame_rate)?,
+                };
+                self.vios_client.set_stream_parameters(stream_id, params)?;
+                self.vios_client.start_stream(stream_id)?;
+                VioSndShmStream::new(
+                    buffer_size,
+                    num_channels,
+                    format,
+                    frame_rate,
+                    stream_id,
+                    direction,
+                    self.vios_client.clone(),
+                    client_shm,
+                )
             }
-            StreamDirection::Capture => panic!("Capture not yet supported"),
+            None => Err(Box::new(Error::NoStreamsAvailable)),
         }
     }
 
@@ -134,7 +129,7 @@ impl ShmStreamSource for VioSShmStreamSource {
     /// This list helps users of the ShmStreamSource enter Linux jails without
     /// closing needed file descriptors.
     fn keep_fds(&self) -> Vec<RawFd> {
-        self.vios_client.lock().keep_fds()
+        self.vios_client.keep_fds()
     }
 }
 
@@ -148,7 +143,8 @@ pub struct VioSndShmStream {
     next_frame: Duration,
     start_time: Instant,
     stream_id: u32,
-    vios_client: Arc<Mutex<VioSClient>>,
+    direction: StreamDirection,
+    vios_client: Arc<VioSClient>,
     client_shm: SharedMemory,
 }
 
@@ -160,7 +156,8 @@ impl VioSndShmStream {
         format: SampleFormat,
         frame_rate: u32,
         stream_id: u32,
-        vios_client: Arc<Mutex<VioSClient>>,
+        direction: StreamDirection,
+        vios_client: Arc<VioSClient>,
         client_shm: &SysSharedMemory,
     ) -> GenericResult<Box<dyn ShmStream>> {
         let interval = Duration::from_millis(buffer_size as u64 * 1000 / frame_rate as u64);
@@ -189,6 +186,7 @@ impl VioSndShmStream {
             next_frame: interval,
             start_time: Instant::now(),
             stream_id,
+            direction,
             vios_client,
             client_shm: client_shm_clone,
         }))
@@ -231,12 +229,24 @@ impl ShmStream for VioSndShmStream {
 
 impl BufferSet for VioSndShmStream {
     fn callback(&mut self, offset: usize, frames: usize) -> GenericResult<()> {
-        self.vios_client.lock().inject_audio_data(
-            self.stream_id,
-            &mut self.client_shm,
-            offset,
-            frames * self.frame_size,
-        )?;
+        match self.direction {
+            StreamDirection::Playback => {
+                self.vios_client.inject_audio_data(
+                    self.stream_id,
+                    &mut self.client_shm,
+                    offset,
+                    frames * self.frame_size,
+                )?;
+            }
+            StreamDirection::Capture => {
+                self.vios_client.request_audio_data(
+                    self.stream_id,
+                    &mut self.client_shm,
+                    offset,
+                    frames * self.frame_size,
+                )?;
+            }
+        }
         Ok(())
     }
 
@@ -247,11 +257,11 @@ impl BufferSet for VioSndShmStream {
 
 impl Drop for VioSndShmStream {
     fn drop(&mut self) {
-        let mut client = self.vios_client.lock();
         let stream_id = self.stream_id;
-        if let Err(e) = client
+        if let Err(e) = self
+            .vios_client
             .stop_stream(stream_id)
-            .and_then(|_| client.release_stream(stream_id))
+            .and_then(|_| self.vios_client.release_stream(stream_id))
         {
             error!("Failed to stop and release stream {}: {}", stream_id, e);
         }

@@ -79,7 +79,7 @@ pub struct virtio_snd_pcm_xfer {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_pcm_xfer {}
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 #[repr(C)]
 pub struct virtio_snd_pcm_status {
     pub status: Le32,
