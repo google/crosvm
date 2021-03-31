@@ -1709,6 +1709,27 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         })?,
                 );
         }
+        "dmi" => {
+            if cfg.dmi_path.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`dmi` already given".to_owned(),
+                ));
+            }
+            let dmi_path = PathBuf::from(value.unwrap());
+            if !dmi_path.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("the dmi path does not exist"),
+                });
+            }
+            if !dmi_path.is_dir() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("the dmi path should be directory"),
+                });
+            }
+            cfg.dmi_path = Some(dmi_path);
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -1928,6 +1949,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           Argument::value("direct-level-irq", "irq", "Enable interrupt passthrough"),
           #[cfg(feature = "direct")]
           Argument::value("direct-edge-irq", "irq", "Enable interrupt passthrough"),
+          Argument::value("dmi", "DIR", "Directory with smbios_entry_point/DMI files"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

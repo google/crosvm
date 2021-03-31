@@ -261,6 +261,7 @@ pub struct Config {
     pub direct_level_irq: Vec<u32>,
     #[cfg(feature = "direct")]
     pub direct_edge_irq: Vec<u32>,
+    pub dmi_path: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -334,6 +335,7 @@ impl Default for Config {
             direct_level_irq: Vec::new(),
             #[cfg(feature = "direct")]
             direct_edge_irq: Vec::new(),
+            dmi_path: None,
         }
     }
 }

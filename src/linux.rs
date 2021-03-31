@@ -314,18 +314,12 @@ impl Display for Error {
             VhostUserBlockDeviceNew(e) => {
                 write!(f, "failed to set up vhost-user block device: {}", e)
             }
-            VhostUserFsDeviceNew(e) => {
-                write!(f, "failed to set up vhost-user fs device: {}", e)
-            }
-            VhostUserNetDeviceNew(e) => {
-                write!(f, "failed to set up vhost-user net device: {}", e)
-            }
-            VhostUserNetWithNetArgs => {
-                write!(
-                    f,
-                    "vhost-user-net cannot be used with any of --host_ip, --netmask or --mac"
-                )
-            }
+            VhostUserFsDeviceNew(e) => write!(f, "failed to set up vhost-user fs device: {}", e),
+            VhostUserNetDeviceNew(e) => write!(f, "failed to set up vhost-user net device: {}", e),
+            VhostUserNetWithNetArgs => write!(
+                f,
+                "vhost-user-net cannot be used with any of --host_ip, --netmask or --mac"
+            ),
             VhostVsockDeviceNew(e) => write!(f, "failed to set up virtual socket device: {}", e),
             VirtioPciDev(e) => write!(f, "failed to create virtio pci dev: {}", e),
             WaitContextAdd(e) => write!(f, "failed to add descriptor to wait context: {}", e),
@@ -2390,6 +2384,7 @@ where
         protected_vm: cfg.protected_vm,
         #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
         gdb: gdb_socket,
+        dmi_path: cfg.dmi_path.clone(),
     };
 
     let control_server_socket = match &cfg.socket_path {

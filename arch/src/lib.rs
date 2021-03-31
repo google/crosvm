@@ -90,6 +90,7 @@ pub struct VmComponents {
     pub protected_vm: ProtectionType,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<(u32, Tube)>, // port and control tube.
+    pub dmi_path: Option<PathBuf>,
 }
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.

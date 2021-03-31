@@ -200,7 +200,7 @@ where
 
     // Note that this puts the mptable at 0x9FC00 in guest physical memory.
     mptable::setup_mptable(&guest_mem, 1, pci_irqs).expect("failed to setup mptable");
-    smbios::setup_smbios(&guest_mem).expect("failed to setup smbios");
+    smbios::setup_smbios(&guest_mem, None).expect("failed to setup smbios");
 
     acpi::create_acpi_tables(&guest_mem, 1, X86_64_SCI_IRQ, acpi_dev_resource.0);
 
