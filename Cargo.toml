@@ -11,6 +11,11 @@ path = "src/crosvm.rs"
 name = "crosvm"
 path = "src/main.rs"
 
+[[bin]]
+name = "crosvm-direct"
+path = "src/main.rs"
+required-features = [ "direct" ]
+
 [profile.release]
 panic = 'abort'
 overflow-checks = true
