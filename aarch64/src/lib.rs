@@ -4,10 +4,8 @@
 
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
-use std::ffi::{CStr, CString};
 use std::fmt::{self, Display};
-use std::fs::File;
-use std::io::{self, Seek};
+use std::io::{self};
 use std::sync::Arc;
 
 use arch::{
@@ -15,13 +13,8 @@ use arch::{
     VmComponents, VmImage,
 };
 use base::Event;
-use devices::{
-    Bus, BusError, IrqChip, IrqChipAArch64, PciAddress, PciConfigMmio, PciDevice, PciInterruptPin,
-    ProtectionType,
-};
-use hypervisor::{
-    DeviceKind, Hypervisor, HypervisorCap, PsciVersion, VcpuAArch64, VcpuFeature, VmAArch64,
-};
+use devices::{Bus, BusError, IrqChip, IrqChipAArch64, PciConfigMmio, PciDevice, ProtectionType};
+use hypervisor::{DeviceKind, Hypervisor, HypervisorCap, VcpuAArch64, VcpuFeature, VmAArch64};
 use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
@@ -222,13 +215,19 @@ pub struct AArch64;
 impl arch::LinuxArch for AArch64 {
     type Error = Error;
 
-    fn build_vm<V, Vcpu, I, FD, FV, FI, E1, E2, E3>(
+    fn guest_memory_layout(
+        components: &VmComponents,
+    ) -> std::result::Result<Vec<(GuestAddress, u64)>, Self::Error> {
+        Ok(arch_memory_regions(components.memory_size))
+    }
+
+    fn build_vm<V, Vcpu, I, FD, FI, E1, E2>(
         mut components: VmComponents,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         _battery: (&Option<BatteryType>, Option<Minijail>),
+        mut vm: V,
         create_devices: FD,
-        create_vm: FV,
         create_irq_chip: FI,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu, I>, Self::Error>
     where
@@ -241,20 +240,17 @@ impl arch::LinuxArch for AArch64 {
             &mut SystemAllocator,
             &Event,
         ) -> std::result::Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E1>,
-        FV: FnOnce(GuestMemory) -> std::result::Result<V, E2>,
-        FI: FnOnce(&V, /* vcpu_count: */ usize) -> std::result::Result<I, E3>,
+        FI: FnOnce(&V, /* vcpu_count: */ usize) -> std::result::Result<I, E2>,
         E1: StdError + 'static,
         E2: StdError + 'static,
-        E3: StdError + 'static,
     {
         let has_bios = match components.vm_image {
             VmImage::Bios(_) => true,
             _ => false,
         };
 
+        let mem = vm.get_memory().clone();
         let mut resources = Self::get_resource_allocator(components.memory_size);
-        let mem = Self::setup_memory(components.memory_size)?;
-        let mut vm = create_vm(mem.clone()).map_err(|e| Error::CreateVm(Box::new(e)))?;
 
         if components.protected_vm == ProtectionType::Protected {
             vm.enable_protected_vm(
@@ -270,7 +266,7 @@ impl arch::LinuxArch for AArch64 {
         let vcpu_count = components.vcpu_count;
         let mut vcpus = Vec::with_capacity(vcpu_count);
         for vcpu_id in 0..vcpu_count {
-            let vcpu = *vm
+            let vcpu: Vcpu = *vm
                 .create_vcpu(vcpu_id)
                 .map_err(Error::CreateVcpu)?
                 .downcast::<Vcpu>()
@@ -429,12 +425,6 @@ impl arch::LinuxArch for AArch64 {
 }
 
 impl AArch64 {
-    fn setup_memory(mem_size: u64) -> Result<GuestMemory> {
-        let arch_mem_regions = arch_memory_regions(mem_size);
-        let mem = GuestMemory::new(&arch_mem_regions).map_err(Error::SetupGuestMemory)?;
-        Ok(mem)
-    }
-
     fn get_high_mmio_base_size(mem_size: u64) -> (u64, u64) {
         let base = AARCH64_PHYS_MEM_START + mem_size;
         let size = u64::max_value() - base;

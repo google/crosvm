@@ -105,6 +105,7 @@ pub enum Error {
     CreateDiskError(disk::Error),
     CreateEvent(base::Error),
     CreateGrallocError(rutabaga_gfx::RutabagaError),
+    CreateKvm(base::Error),
     CreateSignalFd(base::SignalFdError),
     CreateSocket(io::Error),
     CreateTapDevice(NetError),
@@ -114,6 +115,7 @@ pub enum Error {
     CreateUsbProvider(devices::usb::host_backend::error::Error),
     CreateVcpu(base::Error),
     CreateVfioDevice(devices::vfio::VfioError),
+    CreateVm(base::Error),
     CreateWaitContext(base::Error),
     DeviceJail(minijail::Error),
     DevicePivotRoot(minijail::Error),
@@ -131,6 +133,7 @@ pub enum Error {
     GuestCachedTooLarge(std::num::TryFromIntError),
     GuestFreeMissing(),
     GuestFreeTooLarge(std::num::TryFromIntError),
+    GuestMemoryLayout(<Arch as LinuxArch>::Error),
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     HandleDebugCommand(<Arch as LinuxArch>::Error),
     InputDeviceNew(virtio::InputError),
@@ -222,6 +225,7 @@ impl Display for Error {
             CreateDiskError(e) => write!(f, "failed to create virtual disk: {}", e),
             CreateEvent(e) => write!(f, "failed to create event: {}", e),
             CreateGrallocError(e) => write!(f, "failed to create gralloc: {}", e),
+            CreateKvm(e) => write!(f, "failed to create kvm: {}", e),
             CreateSignalFd(e) => write!(f, "failed to create signalfd: {}", e),
             CreateSocket(e) => write!(f, "failed to create socket: {}", e),
             CreateTapDevice(e) => write!(f, "failed to create tap device: {}", e),
@@ -233,6 +237,7 @@ impl Display for Error {
             CreateUsbProvider(e) => write!(f, "failed to create usb provider: {}", e),
             CreateVcpu(e) => write!(f, "failed to create vcpu: {}", e),
             CreateVfioDevice(e) => write!(f, "Failed to create vfio device {}", e),
+            CreateVm(e) => write!(f, "failed to create vm: {}", e),
             CreateWaitContext(e) => write!(f, "failed to create wait context: {}", e),
             DeviceJail(e) => write!(f, "failed to jail device: {}", e),
             DevicePivotRoot(e) => write!(f, "failed to pivot root device: {}", e),
@@ -250,6 +255,7 @@ impl Display for Error {
             GuestCachedTooLarge(e) => write!(f, "guest cached is too large: {}", e),
             GuestFreeMissing() => write!(f, "guest free is missing from balloon stats"),
             GuestFreeTooLarge(e) => write!(f, "guest free is too large: {}", e),
+            GuestMemoryLayout(e) => write!(f, "failed to create guest memory layout: {}", e),
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             HandleDebugCommand(e) => write!(f, "failed to handle a gdb command: {}", e),
             InputDeviceNew(e) => write!(f, "failed to set up input device: {}", e),
@@ -2259,12 +2265,6 @@ fn file_to_i64<P: AsRef<Path>>(path: P, nth: usize) -> io::Result<i64> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "empty file"))
 }
 
-fn create_kvm(device_path: &Path, mem: GuestMemory) -> base::Result<KvmVm> {
-    let kvm = Kvm::new_with_path(device_path)?;
-    let vm = KvmVm::new(&kvm, mem)?;
-    Ok(vm)
-}
-
 fn create_kvm_kernel_irq_chip(
     vm: &KvmVm,
     vcpu_count: usize,
@@ -2286,8 +2286,14 @@ fn create_kvm_split_irq_chip(
 }
 
 pub fn run_config(cfg: Config) -> Result<()> {
-    let kvm_device_path = cfg.kvm_device_path.clone();
-    let create_kvm_with_path = |mem| create_kvm(&kvm_device_path, mem);
+    let components = setup_vm_components(&cfg)?;
+
+    let guest_mem_layout =
+        Arch::guest_memory_layout(&components).map_err(Error::GuestMemoryLayout)?;
+    let guest_mem = GuestMemory::new(&guest_mem_layout).unwrap();
+    let kvm = Kvm::new_with_path(&cfg.kvm_device_path).map_err(Error::CreateKvm)?;
+    let vm = KvmVm::new(&kvm, guest_mem).map_err(Error::CreateVm)?;
+
     if cfg.split_irqchip {
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
         {
@@ -2296,39 +2302,14 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
-            run_vm::<_, KvmVcpu, _, _, _>(cfg, create_kvm_with_path, create_kvm_split_irq_chip)
+            run_vm::<KvmVcpu, _, _, _>(cfg, components, vm, create_kvm_split_irq_chip)
         }
     } else {
-        run_vm::<_, KvmVcpu, _, _, _>(cfg, create_kvm_with_path, create_kvm_kernel_irq_chip)
+        run_vm::<KvmVcpu, _, _, _>(cfg, components, vm, create_kvm_kernel_irq_chip)
     }
 }
 
-fn run_vm<V, Vcpu, I, FV, FI>(cfg: Config, create_vm: FV, create_irq_chip: FI) -> Result<()>
-where
-    V: VmArch + 'static,
-    Vcpu: VcpuArch + 'static,
-    I: IrqChipArch + 'static,
-    FV: FnOnce(GuestMemory) -> base::Result<V>,
-    FI: FnOnce(
-        &V,
-        usize, // vcpu_count
-        Tube,  // ioapic_device_tube
-    ) -> base::Result<I>,
-{
-    if cfg.sandbox {
-        // Printing something to the syslog before entering minijail so that libc's syslogger has a
-        // chance to open files necessary for its operation, like `/etc/localtime`. After jailing,
-        // access to those files will not be possible.
-        info!("crosvm entering multiprocess mode");
-    }
-
-    let (usb_control_tube, usb_provider) =
-        HostBackendDeviceProvider::new().map_err(Error::CreateUsbProvider)?;
-    // Masking signals is inherently dangerous, since this can persist across clones/execs. Do this
-    // before any jailed devices have been spawned, so that we can catch any of them that fail very
-    // quickly.
-    let sigchld_fd = SignalFd::new(libc::SIGCHLD).map_err(Error::CreateSignalFd)?;
-
+fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     let initrd_image = if let Some(initrd_path) = &cfg.initrd_path {
         Some(File::open(initrd_path).map_err(|e| Error::OpenInitrd(initrd_path.clone(), e))?)
     } else {
@@ -2345,18 +2326,7 @@ where
         _ => panic!("Did not receive a bios or kernel, should be impossible."),
     };
 
-    let mut control_tubes = Vec::new();
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-    let gdb_socket = if let Some(port) = cfg.gdb {
-        // GDB needs a control socket to interrupt vcpus.
-        let (gdb_host_tube, gdb_control_tube) = Tube::pair().map_err(Error::CreateTube)?;
-        control_tubes.push(TaggedControlTube::Vm(gdb_host_tube));
-        Some((port, gdb_control_tube))
-    } else {
-        None
-    };
-
-    let components = VmComponents {
+    Ok(VmComponents {
         memory_size: cfg
             .memory
             .unwrap_or(256)
@@ -2383,9 +2353,40 @@ where
         rt_cpus: cfg.rt_cpus.clone(),
         protected_vm: cfg.protected_vm,
         #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-        gdb: gdb_socket,
+        gdb: None,
         dmi_path: cfg.dmi_path.clone(),
-    };
+    })
+}
+
+fn run_vm<Vcpu, V, I, FI>(
+    cfg: Config,
+    #[allow(unused_mut)] mut components: VmComponents,
+    vm: V,
+    create_irq_chip: FI,
+) -> Result<()>
+where
+    Vcpu: VcpuArch + 'static,
+    V: VmArch + 'static,
+    I: IrqChipArch + 'static,
+    FI: FnOnce(
+        &V,
+        usize, // vcpu_count
+        Tube,  // ioapic_device_tube
+    ) -> base::Result<I>,
+{
+    if cfg.sandbox {
+        // Printing something to the syslog before entering minijail so that libc's syslogger has a
+        // chance to open files necessary for its operation, like `/etc/localtime`. After jailing,
+        // access to those files will not be possible.
+        info!("crosvm entering multiprocess mode");
+    }
+
+    let (usb_control_tube, usb_provider) =
+        HostBackendDeviceProvider::new().map_err(Error::CreateUsbProvider)?;
+    // Masking signals is inherently dangerous, since this can persist across clones/execs. Do this
+    // before any jailed devices have been spawned, so that we can catch any of them that fail very
+    // quickly.
+    let sigchld_fd = SignalFd::new(libc::SIGCHLD).map_err(Error::CreateSignalFd)?;
 
     let control_server_socket = match &cfg.socket_path {
         Some(path) => Some(UnlinkUnixSeqpacketListener(
@@ -2393,6 +2394,16 @@ where
         )),
         None => None,
     };
+
+    let mut control_tubes = Vec::new();
+
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    if let Some(port) = cfg.gdb {
+        // GDB needs a control socket to interrupt vcpus.
+        let (gdb_host_tube, gdb_control_tube) = Tube::pair().map_err(Error::CreateTube)?;
+        control_tubes.push(TaggedControlTube::Vm(gdb_host_tube));
+        components.gdb = Some((port, gdb_control_tube));
+    }
 
     let (wayland_host_tube, wayland_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
     control_tubes.push(TaggedControlTube::VmMemory(wayland_host_tube));
@@ -2473,6 +2484,7 @@ where
         &cfg.serial_parameters,
         simple_jail(&cfg, "serial")?,
         battery,
+        vm,
         |mem, vm, sys_allocator, exit_evt| {
             create_devices(
                 &cfg,
@@ -2491,7 +2503,6 @@ where
                 Arc::clone(&map_request),
             )
         },
-        create_vm,
         |vm, vcpu_count| create_irq_chip(vm, vcpu_count, ioapic_device_tube),
     )
     .map_err(Error::BuildVm)?;

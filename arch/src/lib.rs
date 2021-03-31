@@ -127,6 +127,16 @@ pub struct VirtioDeviceStub {
 pub trait LinuxArch {
     type Error: StdError;
 
+    /// Returns a Vec of the valid memory addresses as pairs of address and length. These should be
+    /// used to configure the `GuestMemory` structure for the platform.
+    ///
+    /// # Arguments
+    ///
+    /// * `components` - Parts used to determine the memory layout.
+    fn guest_memory_layout(
+        components: &VmComponents,
+    ) -> std::result::Result<Vec<(GuestAddress, u64)>, Self::Error>;
+
     /// Takes `VmComponents` and generates a `RunnableLinuxVm`.
     ///
     /// # Arguments
@@ -135,15 +145,14 @@ pub trait LinuxArch {
     /// * `serial_parameters` - definitions for how the serial devices should be configured.
     /// * `battery` - defines what battery device will be created.
     /// * `create_devices` - Function to generate a list of devices.
-    /// * `create_vm` - Function to generate a VM.
     /// * `create_irq_chip` - Function to generate an IRQ chip.
-    fn build_vm<V, Vcpu, I, FD, FV, FI, E1, E2, E3>(
+    fn build_vm<V, Vcpu, I, FD, FI, E1, E2>(
         components: VmComponents,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         battery: (&Option<BatteryType>, Option<Minijail>),
+        vm: V,
         create_devices: FD,
-        create_vm: FV,
         create_irq_chip: FI,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu, I>, Self::Error>
     where
@@ -156,11 +165,9 @@ pub trait LinuxArch {
             &mut SystemAllocator,
             &Event,
         ) -> std::result::Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E1>,
-        FV: FnOnce(GuestMemory) -> std::result::Result<V, E2>,
-        FI: FnOnce(&V, /* vcpu_count: */ usize) -> std::result::Result<I, E3>,
+        FI: FnOnce(&V, /* vcpu_count: */ usize) -> std::result::Result<I, E2>,
         E1: StdError + 'static,
-        E2: StdError + 'static,
-        E3: StdError + 'static;
+        E2: StdError + 'static;
 
     /// Configures the vcpu and should be called once per vcpu from the vcpu's thread.
     ///

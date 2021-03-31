@@ -12,7 +12,7 @@ use super::cpuid::setup_cpuid;
 use super::interrupts::set_lint;
 use super::regs::{setup_fpu, setup_msrs, setup_regs, setup_sregs};
 use super::X8664arch;
-use super::{acpi, bootparam, mptable, smbios};
+use super::{acpi, arch_memory_regions, bootparam, mptable, smbios};
 use super::{
     BOOT_STACK_POINTER, END_ADDR_BEFORE_32BITS, KERNEL_64BIT_ENTRY_OFFSET, KERNEL_START_OFFSET,
     X86_64_SCI_IRQ, ZERO_PAGE_OFFSET,
@@ -95,8 +95,9 @@ where
     let write_addr = GuestAddress(0x4000);
 
     // guest mem is 400 pages
-    let guest_mem = X8664arch::setup_memory(memory_size, None).unwrap();
-    // let guest_mem = GuestMemory::new(&[(GuestAddress(0), memory_size)]).unwrap();
+    let arch_mem_regions = arch_memory_regions(memory_size, None);
+    let guest_mem = GuestMemory::new(&arch_mem_regions).unwrap();
+
     let mut resources = X8664arch::get_resource_allocator(&guest_mem);
 
     let (hyp, mut vm) = create_vm(guest_mem.clone());

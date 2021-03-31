@@ -349,13 +349,23 @@ fn arch_memory_regions(size: u64, bios_size: Option<u64>) -> Vec<(GuestAddress, 
 impl arch::LinuxArch for X8664arch {
     type Error = Error;
 
-    fn build_vm<V, Vcpu, I, FD, FV, FI, E1, E2, E3>(
+    fn guest_memory_layout(
+        components: &VmComponents,
+    ) -> std::result::Result<Vec<(GuestAddress, u64)>, Self::Error> {
+        let bios_size = match &components.vm_image {
+            VmImage::Bios(bios_file) => Some(bios_file.metadata().map_err(Error::LoadBios)?.len()),
+            VmImage::Kernel(_) => None,
+        };
+        Ok(arch_memory_regions(components.memory_size, bios_size))
+    }
+
+    fn build_vm<V, Vcpu, I, FD, FI, E1, E2>(
         mut components: VmComponents,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         battery: (&Option<BatteryType>, Option<Minijail>),
+        mut vm: V,
         create_devices: FD,
-        create_vm: FV,
         create_irq_chip: FI,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu, I>, Self::Error>
     where
@@ -368,28 +378,18 @@ impl arch::LinuxArch for X8664arch {
             &mut SystemAllocator,
             &Event,
         ) -> std::result::Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E1>,
-        FV: FnOnce(GuestMemory) -> std::result::Result<V, E2>,
-        FI: FnOnce(&V, /* vcpu_count: */ usize) -> std::result::Result<I, E3>,
+        FI: FnOnce(&V, /* vcpu_count: */ usize) -> std::result::Result<I, E2>,
         E1: StdError + 'static,
         E2: StdError + 'static,
-        E3: StdError + 'static,
     {
         if components.protected_vm != ProtectionType::Unprotected {
             return Err(Error::UnsupportedProtectionType);
         }
 
-        let bios_size = match components.vm_image {
-            VmImage::Bios(ref mut bios_file) => {
-                Some(bios_file.metadata().map_err(Error::LoadBios)?.len())
-            }
-            VmImage::Kernel(_) => None,
-        };
-        let has_bios = bios_size.is_some();
-        let mem = Self::setup_memory(components.memory_size, bios_size)?;
+        let mem = vm.get_memory().clone();
         let mut resources = Self::get_resource_allocator(&mem);
 
         let vcpu_count = components.vcpu_count;
-        let mut vm = create_vm(mem.clone()).map_err(|e| Error::CreateVm(Box::new(e)))?;
         let mut irq_chip =
             create_irq_chip(&vm, vcpu_count).map_err(|e| Error::CreateIrqChip(Box::new(e)))?;
 
@@ -524,7 +524,7 @@ impl arch::LinuxArch for X8664arch {
             vcpu_affinity: components.vcpu_affinity,
             no_smt: components.no_smt,
             irq_chip,
-            has_bios,
+            has_bios: matches!(components.vm_image, VmImage::Bios(_)),
             io_bus,
             mmio_bus,
             pid_debug_label_map,
@@ -928,15 +928,6 @@ impl X8664arch {
             params,
         )?;
         Ok(())
-    }
-
-    /// This creates a GuestMemory object for this VM
-    ///
-    /// * `mem_size` - Desired physical memory size in bytes for this VM
-    fn setup_memory(mem_size: u64, bios_size: Option<u64>) -> Result<GuestMemory> {
-        let arch_mem_regions = arch_memory_regions(mem_size, bios_size);
-        let mem = GuestMemory::new(&arch_mem_regions).map_err(Error::SetupGuestMemory)?;
-        Ok(mem)
     }
 
     /// This returns the start address of high mmio
