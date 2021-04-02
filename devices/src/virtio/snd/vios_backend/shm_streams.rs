@@ -116,7 +116,7 @@ impl ShmStreamSource for VioSShmStreamSource {
             buffer_bytes: 2 * period_bytes,
             period_bytes,
             features: 0u32,
-            tubes: num_channels as u8,
+            channels: num_channels as u8,
             format: from_sample_format(format),
             rate: virtio_frame_rate(frame_rate)?,
         };
