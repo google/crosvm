@@ -18,6 +18,7 @@ use crate::sync::SpinLock;
 
 // An atomic version of a LinkedListLink. See https://github.com/Amanieu/intrusive-rs/issues/47 for
 // more details.
+#[repr(align(128))]
 pub struct AtomicLink {
     prev: UnsafeCell<Option<NonNull<AtomicLink>>>,
     next: UnsafeCell<Option<NonNull<AtomicLink>>>,

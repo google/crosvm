@@ -52,6 +52,7 @@ const HAS_WAITERS: usize = 1 << 1;
 ///     val = block_on(cv.wait(val));
 /// }
 /// ```
+#[repr(align(128))]
 pub struct Condvar {
     state: AtomicUsize,
     waiters: UnsafeCell<WaiterList>,

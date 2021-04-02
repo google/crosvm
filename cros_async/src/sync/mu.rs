@@ -679,6 +679,7 @@ fn cancel_waiter(raw: usize, waiter: &Waiter, wake_next: bool) {
 ///
 /// rx.recv().unwrap();
 /// ```
+#[repr(align(128))]
 pub struct Mutex<T: ?Sized> {
     raw: RawMutex,
     value: UnsafeCell<T>,

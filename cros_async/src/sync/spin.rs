@@ -23,6 +23,7 @@ const LOCKED: bool = true;
 /// poisoned data if a thread panics while holding the lock. If lock poisoning is needed, it can be
 /// implemented by wrapping the `SpinLock` in a new type that implements poisoning. See the
 /// implementation of `std::sync::Mutex` for an example of how to do this.
+#[repr(align(128))]
 pub struct SpinLock<T: ?Sized> {
     lock: AtomicBool,
     value: UnsafeCell<T>,
