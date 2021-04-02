@@ -36,8 +36,6 @@ const LONG_WAIT: usize = 1 << 5;
 const READ_LOCK: usize = 1 << 8;
 // Mask used for checking if any threads currently hold a shared lock.
 const READ_MASK: usize = !0xff;
-// Mask used to check if the lock is held in either shared or exclusive mode.
-const ANY_LOCK: usize = LOCKED | READ_MASK;
 
 // The number of times the thread should just spin and attempt to re-acquire the lock.
 const SPIN_THRESHOLD: usize = 7;
@@ -507,105 +505,6 @@ impl RawMutex {
         }
     }
 
-    // Transfer waiters from the `Condvar` wait list to the `Mutex` wait list. `all_readers` may
-    // be set to true if all waiters are waiting to acquire a shared lock but should not be true if
-    // there is even one waiter waiting on an exclusive lock.
-    //
-    // This is similar to what the `FUTEX_CMP_REQUEUE` flag does on linux.
-    pub fn transfer_waiters(&self, new_waiters: &mut WaiterList, all_readers: bool) {
-        if new_waiters.is_empty() {
-            return;
-        }
-
-        let mut oldstate = self.state.load(Ordering::Relaxed);
-        let can_acquire_read_lock = (oldstate & Shared::zero_to_acquire()) == 0;
-
-        // The lock needs to be held in some mode or else the waiters we transfer now may never get
-        // woken up. Additionally, if all the new waiters are readers and can acquire the lock now
-        // then we can just wake them up.
-        if (oldstate & ANY_LOCK) == 0 || (all_readers && can_acquire_read_lock) {
-            // Nothing to do here. The Condvar will wake up all the waiters left in `new_waiters`.
-            return;
-        }
-
-        if (oldstate & SPINLOCK) == 0
-            && self
-                .state
-                .compare_exchange_weak(
-                    oldstate,
-                    oldstate | SPINLOCK | HAS_WAITERS,
-                    Ordering::Acquire,
-                    Ordering::Relaxed,
-                )
-                .is_ok()
-        {
-            let mut transferred_writer = false;
-
-            // Safe because the spin lock guarantees exclusive access and the reference does not
-            // escape this function.
-            let waiters = unsafe { &mut *self.waiters.get() };
-
-            let mut current = new_waiters.front_mut();
-            while let Some(w) = current.get() {
-                match w.kind() {
-                    WaiterKind::Shared => {
-                        if can_acquire_read_lock {
-                            current.move_next();
-                        } else {
-                            // We need to update the cancellation function since we're moving this
-                            // waiter into our queue. Also update the waiting to indicate that it is
-                            // now in the Mutex's waiter list.
-                            let w = current.remove().unwrap();
-                            w.set_cancel(cancel_waiter, self as *const RawMutex as usize);
-                            w.set_waiting_for(WaitingFor::Mutex);
-                            waiters.push_back(w);
-                        }
-                    }
-                    WaiterKind::Exclusive => {
-                        transferred_writer = true;
-                        // We need to update the cancellation function since we're moving this
-                        // waiter into our queue. Also update the waiting to indicate that it is
-                        // now in the Mutex's waiter list.
-                        let w = current.remove().unwrap();
-                        w.set_cancel(cancel_waiter, self as *const RawMutex as usize);
-                        w.set_waiting_for(WaitingFor::Mutex);
-                        waiters.push_back(w);
-                    }
-                }
-            }
-
-            let set_on_release = if transferred_writer {
-                WRITER_WAITING
-            } else {
-                0
-            };
-
-            // If we didn't actually transfer any waiters, clear the HAS_WAITERS bit that we set
-            // earlier when we acquired the spin lock.
-            let clear = if waiters.is_empty() {
-                SPINLOCK | HAS_WAITERS
-            } else {
-                SPINLOCK
-            };
-
-            while self
-                .state
-                .compare_exchange_weak(
-                    oldstate,
-                    (oldstate | set_on_release) & !clear,
-                    Ordering::Release,
-                    Ordering::Relaxed,
-                )
-                .is_err()
-            {
-                spin_loop_hint();
-                oldstate = self.state.load(Ordering::Relaxed);
-            }
-        }
-
-        // The Condvar will wake up any waiters still left in the queue.
-    }
-
     fn cancel_waiter(&self, waiter: &Waiter, wake_next: bool) -> bool {
         let mut oldstate = self.state.load(Ordering::Relaxed);
         while oldstate & SPINLOCK != 0
@@ -849,11 +748,7 @@ impl<T: ?Sized> Mutex<T> {
         }
     }
 
-    // Called from `Condvar::wait` when the thread wants to reacquire the lock. Since we may
-    // directly transfer waiters from the `Condvar` wait list to the `Mutex` wait list (see
-    // `transfer_all` below), we cannot call `Mutex::lock` as we also need to clear the
-    // `DESIGNATED_WAKER` bit when acquiring the lock. Not doing so will prevent us from waking up
-    // any other threads in the wait list.
+    // Called from `Condvar::wait` when the thread wants to reacquire the lock.
     #[inline]
     pub(crate) async fn lock_from_cv(&self) -> MutexGuard<'_, T> {
         self.raw.lock_slow::<Exclusive>(DESIGNATED_WAKER, 0).await;
@@ -869,24 +764,7 @@ impl<T: ?Sized> Mutex<T> {
     #[inline]
     pub(crate) async fn read_lock_from_cv(&self) -> MutexReadGuard<'_, T> {
         // Threads that have waited in the Condvar's waiter list don't have to care if there is a
-        // writer waiting. This also prevents a deadlock in the following case:
-        //
-        //  * Thread A holds a write lock.
-        //  * Thread B is in the mutex's waiter list, also waiting on a write lock.
-        //  * Threads C, D, and E are in the condvar's waiter list. C and D want a read lock; E
-        //    wants a write lock.
-        //  * A calls `cv.notify_all()` while still holding the lock, which transfers C, D, and E
-        //    onto the mutex's wait list.
-        //  * A releases the lock, which wakes up B.
-        //  * B acquires the lock, does some work, and releases the lock. This wakes up C and D.
-        //    However, when iterating through the waiter list we find E, which is waiting for a
-        //    write lock so we set the WRITER_WAITING bit.
-        //  * C and D go through this function to acquire the lock. If we didn't clear the
-        //    WRITER_WAITING bit from the zero_to_acquire set then it would prevent C and D from
-        //    acquiring the lock and they would add themselves back into the waiter list.
-        //  * Now C, D, and E will sit in the waiter list indefinitely unless some other thread
-        //    comes along and acquires the lock. On release, it would wake up E and everything would
-        //    go back to normal.
+        // writer waiting since they have already waited once.
         self.raw
             .lock_slow::<Shared>(DESIGNATED_WAKER, WRITER_WAITING)
             .await;
@@ -2093,7 +1971,7 @@ mod test {
     }
 
     #[test]
-    fn transfer_notify_one() {
+    fn notify_one() {
         async fn read(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.read_lock().await;
             while *count == 0 {
@@ -2137,8 +2015,19 @@ mod test {
         let mut count = block_on(mu.lock());
         *count = 1;
 
-        // This should transfer all readers + one writer to the waiter queue.
+        // This should wake all readers + one writer.
         cv.notify_one();
+
+        // Poll the readers and the writer so they add themselves to the mutex's waiter list.
+        for r in &mut readers {
+            if r.as_mut().poll(&mut cx).is_ready() {
+                panic!("reader unexpectedly ready");
+            }
+        }
+
+        if writer.as_mut().poll(&mut cx).is_ready() {
+            panic!("writer unexpectedly ready");
+        }
 
         assert_eq!(
             mu.raw.state.load(Ordering::Relaxed) & HAS_WAITERS,
@@ -2170,7 +2059,7 @@ mod test {
     }
 
     #[test]
-    fn transfer_waiters_when_unlocked() {
+    fn notify_when_unlocked() {
         async fn dec(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.lock().await;
 
@@ -2204,8 +2093,7 @@ mod test {
         *block_on(mu.lock()) = futures.len();
         cv.notify_all();
 
-        // Since the lock is not held, instead of transferring the waiters to the waiter list we
-        // should just wake them all up.
+        // Since we haven't polled `futures` yet, the mutex should not have any waiters.
         assert_eq!(mu.raw.state.load(Ordering::Relaxed) & HAS_WAITERS, 0);
 
         for f in &mut futures {
@@ -2217,7 +2105,7 @@ mod test {
     }
 
     #[test]
-    fn transfer_reader_writer() {
+    fn notify_reader_writer() {
         async fn read(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.read_lock().await;
             while *count == 0 {
@@ -2282,8 +2170,7 @@ mod test {
             HAS_WAITERS | WRITER_WAITING
         );
 
-        // Wake up waiters while holding the lock. This should end with them transferred to the
-        // mutex's waiter list.
+        // Wake up waiters while holding the lock.
         cv.notify_all();
 
         // Drop the lock.  This should wake up the lock function.
@@ -2293,10 +2180,8 @@ mod test {
             panic!("lock() unable to complete");
         }
 
-        assert_eq!(
-            mu.raw.state.load(Ordering::Relaxed) & (HAS_WAITERS | WRITER_WAITING),
-            HAS_WAITERS | WRITER_WAITING
-        );
+        // Since we haven't polled `futures` yet, the mutex state should now be empty.
+        assert_eq!(mu.raw.state.load(Ordering::Relaxed), 0);
 
         // Poll everything again. The readers should be able to make progress (but not complete) but
         // the writer should be blocked.
@@ -2338,7 +2223,7 @@ mod test {
     }
 
     #[test]
-    fn transfer_readers_with_read_lock() {
+    fn notify_readers_with_read_lock() {
         async fn read(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.read_lock().await;
             while *count == 0 {
@@ -2374,22 +2259,23 @@ mod test {
 
         let g = block_on(mu.read_lock());
 
-        // Notify the condvar while holding the read lock. This should wake up all the waiters
-        // rather than just transferring them.
+        // Notify the condvar while holding the read lock. This should wake up all the waiters.
         cv.notify_all();
-        assert_eq!(mu.raw.state.load(Ordering::Relaxed) & HAS_WAITERS, 0);
 
-        mem::drop(g);
-
+        // Since the lock is held in shared mode, all the readers should immediately be able to
+        // acquire the read lock.
         for f in &mut futures {
             if let Poll::Ready(()) = f.as_mut().poll(&mut cx) {
                 panic!("future unexpectedly ready");
             }
         }
+        assert_eq!(mu.raw.state.load(Ordering::Relaxed) & HAS_WAITERS, 0);
         assert_eq!(
-            mu.raw.state.load(Ordering::Relaxed),
-            READ_LOCK * futures.len()
+            mu.raw.state.load(Ordering::Relaxed) & READ_MASK,
+            READ_LOCK * (futures.len() + 1)
         );
+
+        mem::drop(g);
 
         for f in &mut futures {
             if f.as_mut().poll(&mut cx).is_pending() {

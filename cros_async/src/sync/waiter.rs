@@ -189,18 +189,6 @@ impl Waiter {
         self.waiting_for.store(waiting_for as u8, Ordering::Release);
     }
 
-    // Change the cancellation function that this `Waiter` should use. This will panic if called
-    // when the `Waiter` is still linked into a waiter list.
-    pub fn set_cancel(&self, c: fn(usize, &Waiter, bool) -> bool, data: usize) {
-        debug_assert!(
-            !self.is_linked(),
-            "Cannot change cancellation function while linked"
-        );
-        let mut cancel = self.cancel.lock();
-        cancel.c = c;
-        cancel.data = data;
-    }
-
     // Reset the Waiter back to its initial state. Panics if this `Waiter` is still linked into a
     // waiter list.
     pub fn reset(&self, waiting_for: WaitingFor) {

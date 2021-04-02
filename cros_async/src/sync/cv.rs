@@ -229,10 +229,7 @@ impl Condvar {
         // Safe because the spin lock guarantees exclusive access and the reference does not escape
         // this function.
         let waiters = unsafe { &mut *self.waiters.get() };
-        let (mut wake_list, all_readers) = get_wake_list(waiters);
-
-        // Safe because the spin lock guarantees exclusive access.
-        let muptr = unsafe { (*self.mu.get()) as *const RawMutex };
+        let wake_list = get_wake_list(waiters);
 
         let newstate = if waiters.is_empty() {
             // Also clear the mutex associated with this Condvar since there are no longer any
@@ -247,17 +244,10 @@ impl Condvar {
             HAS_WAITERS
         };
 
-        // Try to transfer waiters before releasing the spin lock.
-        if !wake_list.is_empty() {
-            // Safe because there was a waiter in the queue and the thread that owns the waiter also
-            // owns a reference to the Mutex, guaranteeing that the pointer is valid.
-            unsafe { (*muptr).transfer_waiters(&mut wake_list, all_readers) };
-        }
-
         // Release the spin lock.
         self.state.store(newstate, Ordering::Release);
 
-        // Now wake any waiters still left in the wake list.
+        // Now wake any waiters in the wake list.
         for w in wake_list {
             w.wake();
         }
@@ -295,21 +285,11 @@ impl Condvar {
         }
 
         // Safe because the spin lock guarantees exclusive access to `self.waiters`.
-        let mut wake_list = unsafe { (*self.waiters.get()).take() };
-
-        // Safe because the spin lock guarantees exclusive access.
-        let muptr = unsafe { (*self.mu.get()) as *const RawMutex };
+        let wake_list = unsafe { (*self.waiters.get()).take() };
 
         // Clear the mutex associated with this Condvar since there are no longer any waiters. Safe
         // because we the spin lock guarantees exclusive access.
         unsafe { *self.mu.get() = 0 };
-
-        // Try to transfer waiters before releasing the spin lock.
-        if !wake_list.is_empty() {
-            // Safe because there was a waiter in the queue and the thread that owns the waiter also
-            // owns a reference to the Mutex, guaranteeing that the pointer is valid.
-            unsafe { (*muptr).transfer_waiters(&mut wake_list, false) };
-        }
 
         // Mark any waiters left as no longer waiting for the Condvar.
         for w in &wake_list {
@@ -319,7 +299,7 @@ impl Condvar {
         // Release the spin lock.  We can clear all bits in the state since we took all the waiters.
         self.state.store(0, Ordering::Release);
 
-        // Now wake any waiters still left in the wake list.
+        // Now wake any waiters in the wake list.
         for w in wake_list {
             w.wake();
         }
@@ -373,23 +353,13 @@ impl Condvar {
                 None
             };
 
-            let (mut wake_list, all_readers) = if wake_next || waiting_for == WaitingFor::None {
+            let wake_list = if wake_next || waiting_for == WaitingFor::None {
                 // Either the waiter was already woken or it's been removed from the condvar's waiter
                 // list and is going to be woken. Either way, we need to wake up another thread.
                 get_wake_list(waiters)
             } else {
-                (WaiterList::new(WaiterAdapter::new()), false)
+                WaiterList::new(WaiterAdapter::new())
             };
-
-            // Safe because the spin lock guarantees exclusive access.
-            let muptr = unsafe { (*self.mu.get()) as *const RawMutex };
-
-            // Try to transfer waiters before releasing the spin lock.
-            if !wake_list.is_empty() {
-                // Safe because there was a waiter in the queue and the thread that owns the waiter also
-                // owns a reference to the Mutex, guaranteeing that the pointer is valid.
-                unsafe { (*muptr).transfer_waiters(&mut wake_list, all_readers) };
-            }
 
             let set_on_release = if waiters.is_empty() {
                 // Clear the mutex associated with this Condvar since there are no longer any waiters. Safe
@@ -423,15 +393,14 @@ impl Default for Condvar {
     }
 }
 
-// Scan `waiters` and return all waiters that should be woken up. If all waiters in the returned
-// wait list are readers then the returned bool will be true.
+// Scan `waiters` and return all waiters that should be woken up.
 //
 // If the first waiter is trying to acquire a shared lock, then all waiters in the list that are
 // waiting for a shared lock are also woken up. In addition one writer is woken up, if possible.
 //
 // If the first waiter is trying to acquire an exclusive lock, then only that waiter is returned and
 // the rest of the list is not scanned.
-fn get_wake_list(waiters: &mut WaiterList) -> (WaiterList, bool) {
+fn get_wake_list(waiters: &mut WaiterList) -> WaiterList {
     let mut to_wake = WaiterList::new(WaiterAdapter::new());
     let mut cursor = waiters.front_mut();
 
@@ -445,7 +414,6 @@ fn get_wake_list(waiters: &mut WaiterList) -> (WaiterList, bool) {
                 let waiter = cursor.remove().unwrap();
                 waiter.set_waiting_for(WaitingFor::None);
                 to_wake.push_back(waiter);
-                all_readers = false;
                 break;
             }
 
@@ -475,7 +443,7 @@ fn get_wake_list(waiters: &mut WaiterList) -> (WaiterList, bool) {
         }
     }
 
-    (to_wake, all_readers)
+    to_wake
 }
 
 fn cancel_waiter(cv: usize, waiter: &Waiter, wake_next: bool) -> bool {
@@ -1058,7 +1026,7 @@ mod test {
     }
 
     #[test]
-    fn cancel_after_notify() {
+    fn cancel_after_notify_one() {
         async fn dec(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.lock().await;
 
@@ -1102,7 +1070,7 @@ mod test {
     }
 
     #[test]
-    fn cancel_after_transfer() {
+    fn cancel_after_notify_all() {
         async fn dec(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.lock().await;
 
@@ -1134,63 +1102,7 @@ mod test {
         let mut count = block_on(mu.lock());
         *count = 2;
 
-        // Notify the cv while holding the lock. Only transfer one waiter.
-        cv.notify_one();
-        assert_eq!(cv.state.load(Ordering::Relaxed) & HAS_WAITERS, HAS_WAITERS);
-
-        // Drop the lock and then the future. This should not cause fut2 to become runnable as it
-        // should still be in the Condvar's wait queue.
-        mem::drop(count);
-        mem::drop(fut1);
-
-        if let Poll::Ready(()) = fut2.as_mut().poll(&mut cx) {
-            panic!("future unexpectedly ready");
-        }
-
-        // Now wake up fut2.  Since the lock isn't held, it should wake up immediately.
-        cv.notify_one();
-        if fut2.as_mut().poll(&mut cx).is_pending() {
-            panic!("future unable to complete");
-        }
-
-        assert_eq!(*block_on(mu.lock()), 1);
-    }
-
-    #[test]
-    fn cancel_after_transfer_and_wake() {
-        async fn dec(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
-            let mut count = mu.lock().await;
-
-            while *count == 0 {
-                count = cv.wait(count).await;
-            }
-
-            *count -= 1;
-        }
-
-        let mu = Arc::new(Mutex::new(0));
-        let cv = Arc::new(Condvar::new());
-
-        let arc_waker = Arc::new(TestWaker);
-        let waker = waker_ref(&arc_waker);
-        let mut cx = Context::from_waker(&waker);
-
-        let mut fut1 = Box::pin(dec(mu.clone(), cv.clone()));
-        let mut fut2 = Box::pin(dec(mu.clone(), cv.clone()));
-
-        if let Poll::Ready(()) = fut1.as_mut().poll(&mut cx) {
-            panic!("future unexpectedly ready");
-        }
-        if let Poll::Ready(()) = fut2.as_mut().poll(&mut cx) {
-            panic!("future unexpectedly ready");
-        }
-        assert_eq!(cv.state.load(Ordering::Relaxed) & HAS_WAITERS, HAS_WAITERS);
-
-        let mut count = block_on(mu.lock());
-        *count = 2;
-
-        // Notify the cv while holding the lock. This should transfer both waiters to the mutex's
-        // wait queue.
+        // Notify the cv while holding the lock. This should wake up both waiters.
         cv.notify_all();
         assert_eq!(cv.state.load(Ordering::Relaxed), 0);
 
