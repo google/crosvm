@@ -1255,12 +1255,14 @@ mod test {
 
         fn wake_future(waker: Arc<SpinLock<Option<Waker>>>) {
             loop {
-                if let Some(waker) = waker.lock().take() {
-                    waker.wake();
+                if let Some(w) = waker.lock().take() {
+                    w.wake();
                     return;
-                } else {
-                    thread::sleep(Duration::from_millis(10));
                 }
+
+                // This sleep cannot be moved into an else branch because we would end up holding
+                // the lock while sleeping due to rust's drop ordering rules.
+                thread::sleep(Duration::from_millis(10));
             }
         }
 
