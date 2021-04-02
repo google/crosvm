@@ -13,14 +13,17 @@ pub const STREAM_STOP: u32 = 0x0100 + 5;
 
 pub const CHANNEL_MAP_INFO: u32 = 0x0200;
 
-pub const VIRTIO_SND_S_OK: u32 = 0x8000;
-pub const VIRTIO_SND_S_BAD_MSG: u32 = 0x8001;
-pub const VIRTIO_SND_S_NOT_SUPP: u32 = 0x8002;
-pub const VIRTIO_SND_S_IO_ERR: u32 = 0x8003;
-
 pub const VIRTIO_SND_D_OUTPUT: u8 = 0;
 pub const VIRTIO_SND_D_INPUT: u8 = 1;
 
+/* supported PCM stream features */
+pub const VIRTIO_SND_PCM_F_SHMEM_HOST: u8 = 0;
+pub const VIRTIO_SND_PCM_F_SHMEM_GUEST: u8 = 1;
+pub const VIRTIO_SND_PCM_F_MSG_POLLING: u8 = 2;
+pub const VIRTIO_SND_PCM_F_EVT_SHMEM_PERIODS: u8 = 3;
+pub const VIRTIO_SND_PCM_F_EVT_XRUNS: u8 = 4;
+
+/* supported PCM sample formats */
 pub const VIRTIO_SND_PCM_FMT_IMA_ADPCM: u8 = 0;
 pub const VIRTIO_SND_PCM_FMT_MU_LAW: u8 = 1;
 pub const VIRTIO_SND_PCM_FMT_A_LAW: u8 = 2;
@@ -61,3 +64,76 @@ pub const VIRTIO_SND_PCM_RATE_96000: u8 = 10;
 pub const VIRTIO_SND_PCM_RATE_176400: u8 = 11;
 pub const VIRTIO_SND_PCM_RATE_192000: u8 = 12;
 pub const VIRTIO_SND_PCM_RATE_384000: u8 = 13;
+
+// From https://github.com/oasis-tcs/virtio-spec/blob/master/virtio-sound.tex
+/* jack control request types */
+pub const VIRTIO_SND_R_JACK_INFO: u32 = 1;
+pub const VIRTIO_SND_R_JACK_REMAP: u32 = 2;
+
+/* PCM control request types */
+pub const VIRTIO_SND_R_PCM_INFO: u32 = 0x0100;
+pub const VIRTIO_SND_R_PCM_SET_PARAMS: u32 = 0x0101;
+pub const VIRTIO_SND_R_PCM_PREPARE: u32 = 0x0102;
+pub const VIRTIO_SND_R_PCM_RELEASE: u32 = 0x0103;
+pub const VIRTIO_SND_R_PCM_START: u32 = 0x0104;
+pub const VIRTIO_SND_R_PCM_STOP: u32 = 0x0105;
+
+/* channel map control request types */
+pub const VIRTIO_SND_R_CHMAP_INFO: u32 = 0x0200;
+
+/* jack event types */
+pub const VIRTIO_SND_EVT_JACK_CONNECTED: u32 = 0x1000;
+pub const VIRTIO_SND_EVT_JACK_DISCONNECTED: u32 = 0x1001;
+
+/* PCM event types */
+pub const VIRTIO_SND_EVT_PCM_PERIOD_ELAPSED: u32 = 0x1100;
+pub const VIRTIO_SND_EVT_PCM_XRUN: u32 = 0x1101;
+
+/* common status codes */
+pub const VIRTIO_SND_S_OK: u32 = 0x8000;
+pub const VIRTIO_SND_S_BAD_MSG: u32 = 0x8001;
+pub const VIRTIO_SND_S_NOT_SUPP: u32 = 0x8002;
+pub const VIRTIO_SND_S_IO_ERR: u32 = 0x8003;
+
+pub const VIRTIO_SND_JACK_F_REMAP: u32 = 0;
+
+/* standard channel position definition */
+pub const VIRTIO_SND_CHMAP_NONE: u32 = 0; /* undefined */
+pub const VIRTIO_SND_CHMAP_NA: u32 = 1; /* silent */
+pub const VIRTIO_SND_CHMAP_MONO: u32 = 2; /* mono stream */
+pub const VIRTIO_SND_CHMAP_FL: u32 = 3; /* front left */
+pub const VIRTIO_SND_CHMAP_FR: u32 = 4; /* front right */
+pub const VIRTIO_SND_CHMAP_RL: u32 = 5; /* rear left */
+pub const VIRTIO_SND_CHMAP_RR: u32 = 6; /* rear right */
+pub const VIRTIO_SND_CHMAP_FC: u32 = 7; /* front center */
+pub const VIRTIO_SND_CHMAP_LFE: u32 = 8; /* low frequency (LFE) */
+pub const VIRTIO_SND_CHMAP_SL: u32 = 9; /* side left */
+pub const VIRTIO_SND_CHMAP_SR: u32 = 10; /* side right */
+pub const VIRTIO_SND_CHMAP_RC: u32 = 11; /* rear center */
+pub const VIRTIO_SND_CHMAP_FLC: u32 = 12; /* front left center */
+pub const VIRTIO_SND_CHMAP_FRC: u32 = 13; /* front right center */
+pub const VIRTIO_SND_CHMAP_RLC: u32 = 14; /* rear left center */
+pub const VIRTIO_SND_CHMAP_RRC: u32 = 15; /* rear right center */
+pub const VIRTIO_SND_CHMAP_FLW: u32 = 16; /* front left wide */
+pub const VIRTIO_SND_CHMAP_FRW: u32 = 17; /* front right wide */
+pub const VIRTIO_SND_CHMAP_FLH: u32 = 18; /* front left high */
+pub const VIRTIO_SND_CHMAP_FCH: u32 = 19; /* front center high */
+pub const VIRTIO_SND_CHMAP_FRH: u32 = 20; /* front right high */
+pub const VIRTIO_SND_CHMAP_TC: u32 = 21; /* top center */
+pub const VIRTIO_SND_CHMAP_TFL: u32 = 22; /* top front left */
+pub const VIRTIO_SND_CHMAP_TFR: u32 = 23; /* top front right */
+pub const VIRTIO_SND_CHMAP_TFC: u32 = 24; /* top front center */
+pub const VIRTIO_SND_CHMAP_TRL: u32 = 25; /* top rear left */
+pub const VIRTIO_SND_CHMAP_TRR: u32 = 26; /* top rear right */
+pub const VIRTIO_SND_CHMAP_TRC: u32 = 27; /* top rear center */
+pub const VIRTIO_SND_CHMAP_TFLC: u32 = 28; /* top front left center */
+pub const VIRTIO_SND_CHMAP_TFRC: u32 = 29; /* top front right center */
+pub const VIRTIO_SND_CHMAP_TSL: u32 = 34; /* top side left */
+pub const VIRTIO_SND_CHMAP_TSR: u32 = 35; /* top side right */
+pub const VIRTIO_SND_CHMAP_LLFE: u32 = 36; /* left LFE */
+pub const VIRTIO_SND_CHMAP_RLFE: u32 = 37; /* right LFE */
+pub const VIRTIO_SND_CHMAP_BC: u32 = 38; /* bottom center */
+pub const VIRTIO_SND_CHMAP_BLC: u32 = 39; /* bottom left center */
+pub const VIRTIO_SND_CHMAP_BRC: u32 = 40; /* bottom right center */
+
+pub const VIRTIO_SND_CHMAP_MAX_SIZE: usize = 18;
