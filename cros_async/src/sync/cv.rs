@@ -305,7 +305,7 @@ impl Condvar {
         }
     }
 
-    fn cancel_waiter(&self, waiter: &Waiter, wake_next: bool) -> bool {
+    fn cancel_waiter(&self, waiter: &Waiter, wake_next: bool) {
         let mut oldstate = self.state.load(Ordering::Relaxed);
         while oldstate & SPINLOCK != 0
             || self
@@ -327,60 +327,42 @@ impl Condvar {
         let waiters = unsafe { &mut *self.waiters.get() };
 
         let waiting_for = waiter.is_waiting_for();
-        if waiting_for == WaitingFor::Mutex {
-            // The waiter was moved to the mutex's list.  Retry the cancel.
-            let set_on_release = if waiters.is_empty() {
-                // Clear the mutex associated with this Condvar since there are no longer any waiters. Safe
-                // because we the spin lock guarantees exclusive access.
-                unsafe { *self.mu.get() = 0 };
-
-                0
-            } else {
-                HAS_WAITERS
-            };
-
-            self.state.store(set_on_release, Ordering::Release);
-
-            false
+        // Don't drop the old waiter now as we're still holding the spin lock.
+        let old_waiter = if waiter.is_linked() && waiting_for == WaitingFor::Condvar {
+            // Safe because we know that the waiter is still linked and is waiting for the Condvar,
+            // which guarantees that it is still in `self.waiters`.
+            let mut cursor = unsafe { waiters.cursor_mut_from_ptr(waiter as *const Waiter) };
+            cursor.remove()
         } else {
-            // Don't drop the old waiter now as we're still holding the spin lock.
-            let old_waiter = if waiter.is_linked() && waiting_for == WaitingFor::Condvar {
-                // Safe because we know that the waiter is still linked and is waiting for the Condvar,
-                // which guarantees that it is still in `self.waiters`.
-                let mut cursor = unsafe { waiters.cursor_mut_from_ptr(waiter as *const Waiter) };
-                cursor.remove()
-            } else {
-                None
-            };
+            None
+        };
 
-            let wake_list = if wake_next || waiting_for == WaitingFor::None {
-                // Either the waiter was already woken or it's been removed from the condvar's waiter
-                // list and is going to be woken. Either way, we need to wake up another thread.
-                get_wake_list(waiters)
-            } else {
-                WaiterList::new(WaiterAdapter::new())
-            };
+        let wake_list = if wake_next || waiting_for == WaitingFor::None {
+            // Either the waiter was already woken or it's been removed from the condvar's waiter
+            // list and is going to be woken. Either way, we need to wake up another thread.
+            get_wake_list(waiters)
+        } else {
+            WaiterList::new(WaiterAdapter::new())
+        };
 
-            let set_on_release = if waiters.is_empty() {
-                // Clear the mutex associated with this Condvar since there are no longer any waiters. Safe
-                // because we the spin lock guarantees exclusive access.
-                unsafe { *self.mu.get() = 0 };
+        let set_on_release = if waiters.is_empty() {
+            // Clear the mutex associated with this Condvar since there are no longer any waiters. Safe
+            // because we the spin lock guarantees exclusive access.
+            unsafe { *self.mu.get() = 0 };
 
-                0
-            } else {
-                HAS_WAITERS
-            };
+            0
+        } else {
+            HAS_WAITERS
+        };
 
-            self.state.store(set_on_release, Ordering::Release);
+        self.state.store(set_on_release, Ordering::Release);
 
-            // Now wake any waiters still left in the wake list.
-            for w in wake_list {
-                w.wake();
-            }
-
-            mem::drop(old_waiter);
-            true
+        // Now wake any waiters still left in the wake list.
+        for w in wake_list {
+            w.wake();
         }
+
+        mem::drop(old_waiter);
     }
 }
 
@@ -446,7 +428,7 @@ fn get_wake_list(waiters: &mut WaiterList) -> WaiterList {
     to_wake
 }
 
-fn cancel_waiter(cv: usize, waiter: &Waiter, wake_next: bool) -> bool {
+fn cancel_waiter(cv: usize, waiter: &Waiter, wake_next: bool) {
     let condvar = cv as *const Condvar;
 
     // Safe because the thread that owns the waiter being canceled must also own a reference to the

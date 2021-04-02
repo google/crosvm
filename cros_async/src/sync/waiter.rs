@@ -111,17 +111,12 @@ pub enum WaitingFor {
     Condvar = 2,
 }
 
-// Internal struct used to keep track of the cancellation function.
-struct Cancel {
-    c: fn(usize, &Waiter, bool) -> bool,
-    data: usize,
-}
-
 // Represents a thread currently blocked on a Condvar or on acquiring a Mutex.
 pub struct Waiter {
     link: AtomicLink,
     state: SpinLock<State>,
-    cancel: SpinLock<Cancel>,
+    cancel: fn(usize, &Waiter, bool),
+    cancel_data: usize,
     kind: Kind,
     waiting_for: AtomicU8,
 }
@@ -136,28 +131,26 @@ impl Waiter {
     // function) is dropped before it can complete. `cancel_data` is used as the first parameter of
     // the `cancel` function. The second parameter is the `Waiter` that was canceled and the third
     // parameter indicates whether the `WaitFuture` was dropped after it was woken (but before it
-    // was polled to completion). The `cancel` function should return true if it was able to
-    // successfully process the cancellation. One reason why a `cancel` function may return false is
-    // if the `Waiter` was transferred to a different waiter list after the cancel function was
-    // called but before it was able to run. In this case, it is expected that the new waiter list
-    // updated the cancel function (by calling `set_cancel`) and the cancellation will be retried by
-    // fetching and calling the new cancellation function.
+    // was polled to completion). A value of `false` for the third parameter may already be stale
+    // by the time the cancel function runs and so does not guarantee that the waiter was not woken.
+    // In this case, implementations should still check if the Waiter was woken. However, a value of
+    // `true` guarantees that the waiter was already woken up so no additional checks are necessary.
+    // In this case, the cancel implementation should wake up the next waiter in its wait list, if
+    // any.
     //
     // `waiting_for` indicates the waiter list to which this `Waiter` will be added. See the
     // documentation of the `WaitingFor` enum for the meaning of the different values.
     pub fn new(
         kind: Kind,
-        cancel: fn(usize, &Waiter, bool) -> bool,
+        cancel: fn(usize, &Waiter, bool),
         cancel_data: usize,
         waiting_for: WaitingFor,
     ) -> Waiter {
         Waiter {
             link: AtomicLink::new(),
             state: SpinLock::new(State::Init),
-            cancel: SpinLock::new(Cancel {
-                c: cancel,
-                data: cancel_data,
-            }),
+            cancel,
+            cancel_data,
             kind,
             waiting_for: AtomicU8::new(waiting_for as u8),
         }
@@ -270,31 +263,13 @@ impl<'w> Drop for WaitFuture<'w> {
                 mem::drop(state);
 
                 // We were woken but not polled.  Wake up the next waiter.
-                let mut success = false;
-                while !success {
-                    let cancel = self.waiter.cancel.lock();
-                    let c = cancel.c;
-                    let data = cancel.data;
-
-                    mem::drop(cancel);
-
-                    success = c(data, self.waiter, true);
-                }
+                (self.waiter.cancel)(self.waiter.cancel_data, self.waiter, true);
             }
             _ => {
                 mem::drop(state);
 
                 // Not woken.  No need to wake up any waiters.
-                let mut success = false;
-                while !success {
-                    let cancel = self.waiter.cancel.lock();
-                    let c = cancel.c;
-                    let data = cancel.data;
-
-                    mem::drop(cancel);
-
-                    success = c(data, self.waiter, false);
-                }
+                (self.waiter.cancel)(self.waiter.cancel_data, self.waiter, false);
             }
         }
     }

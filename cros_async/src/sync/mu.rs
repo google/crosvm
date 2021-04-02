@@ -505,7 +505,7 @@ impl RawMutex {
         }
     }
 
-    fn cancel_waiter(&self, waiter: &Waiter, wake_next: bool) -> bool {
+    fn cancel_waiter(&self, waiter: &Waiter, wake_next: bool) {
         let mut oldstate = self.state.load(Ordering::Relaxed);
         while oldstate & SPINLOCK != 0
             || self
@@ -545,9 +545,11 @@ impl RawMutex {
             clear |= LONG_WAIT;
         }
 
+        let waiting_for = waiter.is_waiting_for();
+
         // Don't drop the old waiter while holding the spin lock.
-        let old_waiter = if waiter.is_linked() && waiter.is_waiting_for() == WaitingFor::Mutex {
-            // We know that the waitir is still linked and is waiting for the mutex, which
+        let old_waiter = if waiter.is_linked() && waiting_for == WaitingFor::Mutex {
+            // We know that the waiter is still linked and is waiting for the mutex, which
             // guarantees that it is still linked into `self.waiters`.
             let mut cursor = unsafe { waiters.cursor_mut_from_ptr(waiter as *const Waiter) };
             cursor.remove()
@@ -555,14 +557,13 @@ impl RawMutex {
             None
         };
 
-        let (wake_list, set_on_release) =
-            if wake_next || waiter.is_waiting_for() == WaitingFor::None {
-                // Either the waiter was already woken or it's been removed from the mutex's waiter
-                // list and is going to be woken. Either way, we need to wake up another thread.
-                get_wake_list(waiters)
-            } else {
-                (WaiterList::new(WaiterAdapter::new()), 0)
-            };
+        let (wake_list, set_on_release) = if wake_next || waiting_for == WaitingFor::None {
+            // Either the waiter was already woken or it's been removed from the mutex's waiter
+            // list and is going to be woken. Either way, we need to wake up another thread.
+            get_wake_list(waiters)
+        } else {
+            (WaiterList::new(WaiterAdapter::new()), 0)
+        };
 
         if waiters.is_empty() {
             clear |= HAS_WAITERS;
@@ -601,16 +602,13 @@ impl RawMutex {
         }
 
         mem::drop(old_waiter);
-
-        // Canceling a waker is always successful.
-        true
     }
 }
 
 unsafe impl Send for RawMutex {}
 unsafe impl Sync for RawMutex {}
 
-fn cancel_waiter(raw: usize, waiter: &Waiter, wake_next: bool) -> bool {
+fn cancel_waiter(raw: usize, waiter: &Waiter, wake_next: bool) {
     let raw_mutex = raw as *const RawMutex;
 
     // Safe because the thread that owns the waiter that is being canceled must
