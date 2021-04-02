@@ -150,6 +150,7 @@ pub enum Error {
     VhostUserMac80211HwsimNew(VhostUserVmmError),
     VhostUserNetDeviceNew(VhostUserVmmError),
     VhostUserNetWithNetArgs,
+    VhostUserSndDeviceNew(VhostUserVmmError),
     VhostUserVsockDeviceNew(VhostUserVmmError),
     VhostUserWlDeviceNew(VhostUserVmmError),
     VhostVsockDeviceNew(virtio::vhost::Error),
@@ -313,6 +314,7 @@ impl Display for Error {
                 f,
                 "vhost-user-net cannot be used with any of --host_ip, --netmask or --mac"
             ),
+            VhostUserSndDeviceNew(e) => write!(f, "failed to set up vhost-user snd device: {}", e),
             VhostUserVsockDeviceNew(e) => {
                 write!(f, "failed to set up vhost-user vsock device: {}", e)
             }

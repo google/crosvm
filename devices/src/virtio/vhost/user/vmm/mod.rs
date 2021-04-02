@@ -10,6 +10,8 @@ mod gpu;
 mod handler;
 mod mac80211_hwsim;
 mod net;
+#[cfg(feature = "audio")]
+mod snd;
 mod vsock;
 mod wl;
 mod worker;
@@ -22,6 +24,8 @@ pub use self::gpu::*;
 pub use self::handler::VhostUserHandler;
 pub use self::mac80211_hwsim::*;
 pub use self::net::*;
+#[cfg(feature = "audio")]
+pub use self::snd::*;
 pub use self::vsock::*;
 pub use self::wl::*;
 

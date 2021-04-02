@@ -32,6 +32,8 @@ use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
 #[cfg(feature = "audio_cras")]
 use devices::virtio::snd::cras_backend::Parameters as CrasSndParameters;
+#[cfg(feature = "audio")]
+use devices::virtio::vhost::user::vmm::Snd as VhostUserSnd;
 use devices::virtio::vhost::user::vmm::{
     Block as VhostUserBlock, Console as VhostUserConsole, Fs as VhostUserFs,
     Mac80211Hwsim as VhostUserMac80211Hwsim, Net as VhostUserNet, Vsock as VhostUserVsock,
@@ -306,6 +308,18 @@ fn create_vhost_user_fs_device(cfg: &Config, option: &VhostUserFsOption) -> Devi
 fn create_vhost_user_mac80211_hwsim_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
     let dev = VhostUserMac80211Hwsim::new(virtio::base_features(cfg.protected_vm), &opt.socket)
         .map_err(Error::VhostUserMac80211HwsimNew)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        // no sandbox here because virtqueue handling is exported to a different process.
+        jail: None,
+    })
+}
+
+#[cfg(feature = "audio")]
+fn create_vhost_user_snd_device(cfg: &Config, option: &VhostUserOption) -> DeviceResult {
+    let dev = VhostUserSnd::new(virtio::base_features(cfg.protected_vm), &option.socket)
+        .map_err(Error::VhostUserSndDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1521,6 +1535,11 @@ fn create_virtio_devices(
 
     for vhost_user_fs in &cfg.vhost_user_fs {
         devs.push(create_vhost_user_fs_device(cfg, vhost_user_fs)?);
+    }
+
+    #[cfg(feature = "audio")]
+    for vhost_user_snd in &cfg.vhost_user_snd {
+        devs.push(create_vhost_user_snd_device(cfg, vhost_user_snd)?);
     }
 
     for shared_dir in &cfg.shared_dirs {
