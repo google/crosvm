@@ -95,43 +95,48 @@ impl HostDevice {
     fn intercepted_control_transfer(&mut self, xhci_transfer: &XhciTransfer) -> Result<bool> {
         let direction = self.control_request_setup.get_direction();
         let recipient = self.control_request_setup.get_recipient();
-        let standard_request = self.control_request_setup.get_standard_request();
-
-        if direction != ControlRequestDataPhaseTransferDirection::HostToDevice {
-            // Only host to device requests are intercepted currently.
+        let standard_request = if let Some(req) = self.control_request_setup.get_standard_request()
+        {
+            req
+        } else {
+            // Unknown control requests will be passed through to the device.
             return Ok(false);
-        }
+        };
 
-        let status = match standard_request {
-            Some(StandardControlRequest::SetAddress) => {
-                if recipient != ControlRequestRecipient::Device {
-                    return Ok(false);
-                }
+        let (status, bytes_transferred) = match (standard_request, recipient, direction) {
+            (
+                StandardControlRequest::SetAddress,
+                ControlRequestRecipient::Device,
+                ControlRequestDataPhaseTransferDirection::HostToDevice,
+            ) => {
                 usb_debug!("host device handling set address");
                 let addr = self.control_request_setup.value as u32;
                 self.set_address(addr);
-                TransferStatus::Completed
+                (TransferStatus::Completed, 0)
             }
-            Some(StandardControlRequest::SetConfiguration) => {
-                if recipient != ControlRequestRecipient::Device {
-                    return Ok(false);
-                }
+            (
+                StandardControlRequest::SetConfiguration,
+                ControlRequestRecipient::Device,
+                ControlRequestDataPhaseTransferDirection::HostToDevice,
+            ) => {
                 usb_debug!("host device handling set config");
-                self.set_config()?
+                (self.set_config()?, 0)
             }
-            Some(StandardControlRequest::SetInterface) => {
-                if recipient != ControlRequestRecipient::Interface {
-                    return Ok(false);
-                }
+            (
+                StandardControlRequest::SetInterface,
+                ControlRequestRecipient::Interface,
+                ControlRequestDataPhaseTransferDirection::HostToDevice,
+            ) => {
                 usb_debug!("host device handling set interface");
-                self.set_interface()?
+                (self.set_interface()?, 0)
             }
-            Some(StandardControlRequest::ClearFeature) => {
-                if recipient != ControlRequestRecipient::Endpoint {
-                    return Ok(false);
-                }
+            (
+                StandardControlRequest::ClearFeature,
+                ControlRequestRecipient::Endpoint,
+                ControlRequestDataPhaseTransferDirection::HostToDevice,
+            ) => {
                 usb_debug!("host device handling clear feature");
-                self.clear_feature()?
+                (self.clear_feature()?, 0)
             }
             _ => {
                 // Other requests will be passed through to the device.
@@ -140,7 +145,7 @@ impl HostDevice {
         };
 
         xhci_transfer
-            .on_transfer_complete(&status, 0)
+            .on_transfer_complete(&status, bytes_transferred)
             .map_err(Error::TransferComplete)?;
         Ok(true)
     }
