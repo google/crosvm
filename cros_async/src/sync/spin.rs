@@ -54,11 +54,16 @@ impl<T: ?Sized> SpinLock<T> {
     /// `SpinLockGuard` is dropped. Attempting to call `lock` while already holding the `SpinLock`
     /// will cause a deadlock.
     pub fn lock(&self) -> SpinLockGuard<T> {
-        while self
-            .lock
-            .compare_exchange_weak(UNLOCKED, LOCKED, Ordering::Acquire, Ordering::Relaxed)
-            .is_err()
-        {
+        loop {
+            let state = self.lock.load(Ordering::Relaxed);
+            if state == UNLOCKED
+                && self
+                    .lock
+                    .compare_exchange_weak(UNLOCKED, LOCKED, Ordering::Acquire, Ordering::Relaxed)
+                    .is_ok()
+            {
+                break;
+            }
             spin_loop_hint();
         }
 
