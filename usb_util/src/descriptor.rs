@@ -16,6 +16,8 @@ pub struct DeviceDescriptorTree {
     inner: types::DeviceDescriptor,
     // Map of bConfigurationValue to ConfigDescriptor
     config_descriptors: BTreeMap<u8, ConfigDescriptorTree>,
+    // Map of config index to bConfigurationValue.
+    config_values: BTreeMap<u8, u8>,
 }
 
 #[derive(Clone)]
@@ -35,6 +37,16 @@ pub struct InterfaceDescriptorTree {
 impl DeviceDescriptorTree {
     pub fn get_config_descriptor(&self, config_value: u8) -> Option<&ConfigDescriptorTree> {
         self.config_descriptors.get(&config_value)
+    }
+
+    /// Retrieve the Nth configuration descriptor in the device descriptor.
+    /// `config_index`: 0-based index into the list of configuration descriptors.
+    pub fn get_config_descriptor_by_index(
+        &self,
+        config_index: u8,
+    ) -> Option<&ConfigDescriptorTree> {
+        self.config_descriptors
+            .get(self.config_values.get(&config_index)?)
     }
 }
 
@@ -124,6 +136,7 @@ pub fn parse_usbfs_descriptors<R: Read>(mut reader: R) -> Result<DeviceDescripto
     let mut device_descriptor = DeviceDescriptorTree {
         inner: raw_device_descriptor,
         config_descriptors: BTreeMap::new(),
+        config_values: BTreeMap::new(),
     };
 
     for cfg_idx in 0..device_descriptor.bNumConfigurations {
@@ -170,6 +183,9 @@ pub fn parse_usbfs_descriptors<R: Read>(mut reader: R) -> Result<DeviceDescripto
                 }
             }
 
+            device_descriptor
+                .config_values
+                .insert(cfg_idx, config_descriptor.bConfigurationValue);
             device_descriptor
                 .config_descriptors
                 .insert(config_descriptor.bConfigurationValue, config_descriptor);

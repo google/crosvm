@@ -279,6 +279,17 @@ impl Device {
 
     /// Get bConfigurationValue of the currently active configuration.
     pub fn get_active_configuration(&self) -> Result<u8> {
+        // If the device only exposes a single configuration, bypass the control transfer below
+        // by looking up the configuration value from the descriptor.
+        if self.device_descriptor_tree.bNumConfigurations == 1 {
+            if let Some(config_descriptor) = self
+                .device_descriptor_tree
+                .get_config_descriptor_by_index(0)
+            {
+                return Ok(config_descriptor.bConfigurationValue);
+            }
+        }
+
         // Send a synchronous control transfer to get the active configuration.
         let mut active_config: u8 = 0;
         let ctrl_transfer = usb_sys::usbdevfs_ctrltransfer {

@@ -294,27 +294,25 @@ impl HostDevice {
             config
         );
         self.release_interfaces();
-        if self.device.lock().get_num_configurations() > 1 {
-            let cur_config = match self.device.lock().get_active_configuration() {
-                Ok(c) => Some(c),
-                Err(e) => {
-                    // The device may be in the default state, in which case
-                    // GET_CONFIGURATION may fail.  Assume the device needs to be
-                    // reconfigured.
-                    usb_debug!("Failed to get active configuration: {}", e);
-                    error!("Failed to get active configuration: {}", e);
-                    None
-                }
-            };
-            if Some(config) != cur_config {
-                self.device
-                    .lock()
-                    .set_active_configuration(config)
-                    .map_err(Error::SetActiveConfig)?;
+
+        let cur_config = match self.device.lock().get_active_configuration() {
+            Ok(c) => Some(c),
+            Err(e) => {
+                // The device may be in the default state, in which case
+                // GET_CONFIGURATION may fail.  Assume the device needs to be
+                // reconfigured.
+                usb_debug!("Failed to get active configuration: {}", e);
+                error!("Failed to get active configuration: {}", e);
+                None
             }
-        } else {
-            usb_debug!("Only one configuration - not calling set_active_configuration");
+        };
+        if Some(config) != cur_config {
+            self.device
+                .lock()
+                .set_active_configuration(config)
+                .map_err(Error::SetActiveConfig)?;
         }
+
         let config_descriptor = self
             .device
             .lock()
