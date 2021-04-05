@@ -3,6 +3,7 @@ name = "crosvm"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
+default-run = "crosvm"
 
 [lib]
 path = "src/crosvm.rs"
