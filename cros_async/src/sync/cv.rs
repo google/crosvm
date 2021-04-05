@@ -163,11 +163,11 @@ impl Condvar {
         while (oldstate & SPINLOCK) != 0
             || self
                 .state
-                .compare_exchange(
+                .compare_exchange_weak(
                     oldstate,
                     oldstate | SPINLOCK | HAS_WAITERS,
                     Ordering::Acquire,
-                    Ordering::Acquire,
+                    Ordering::Relaxed,
                 )
                 .is_err()
         {
@@ -215,11 +215,11 @@ impl Condvar {
         while (oldstate & SPINLOCK) != 0
             || self
                 .state
-                .compare_exchange(
+                .compare_exchange_weak(
                     oldstate,
                     oldstate | SPINLOCK,
                     Ordering::Acquire,
-                    Ordering::Acquire,
+                    Ordering::Relaxed,
                 )
                 .is_err()
         {
@@ -273,11 +273,11 @@ impl Condvar {
         while (oldstate & SPINLOCK) != 0
             || self
                 .state
-                .compare_exchange(
+                .compare_exchange_weak(
                     oldstate,
                     oldstate | SPINLOCK,
                     Ordering::Acquire,
-                    Ordering::Acquire,
+                    Ordering::Relaxed,
                 )
                 .is_err()
         {
