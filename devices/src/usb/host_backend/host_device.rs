@@ -60,8 +60,8 @@ impl HostDevice {
         fail_handle: Arc<dyn FailHandle>,
         job_queue: Arc<AsyncJobQueue>,
         device: Arc<Mutex<Device>>,
-    ) -> HostDevice {
-        HostDevice {
+    ) -> Result<HostDevice> {
+        let mut host_device = HostDevice {
             fail_handle,
             endpoints: vec![],
             device,
@@ -71,7 +71,21 @@ impl HostDevice {
             control_request_setup: UsbRequestSetup::new(0, 0, 0, 0, 0),
             executed: false,
             job_queue,
-        }
+        };
+
+        let cur_config = host_device
+            .device
+            .lock()
+            .get_active_configuration()
+            .map_err(Error::GetActiveConfig)?;
+        let config_descriptor = host_device
+            .device
+            .lock()
+            .get_config_descriptor(cur_config)
+            .map_err(Error::GetActiveConfig)?;
+        host_device.claim_interfaces(&config_descriptor);
+
+        Ok(host_device)
     }
 
     // Check for requests that should be intercepted and emulated using libusb

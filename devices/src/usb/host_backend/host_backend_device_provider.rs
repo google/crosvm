@@ -189,11 +189,18 @@ impl ProviderInner {
             error!("failed to reset device after attach: {:?}", e);
         }
 
-        let host_device = Box::new(HostDevice::new(
+        let host_device = match HostDevice::new(
             self.fail_handle.clone(),
             self.job_queue.clone(),
             arc_mutex_device,
-        ));
+        ) {
+            Ok(host_device) => Box::new(host_device),
+            Err(e) => {
+                error!("failed to initialize HostDevice: {}", e);
+                return UsbControlResult::FailedToInitHostDevice;
+            }
+        };
+
         let port = self.usb_hub.connect_backend(host_device);
         match port {
             Ok(port) => {

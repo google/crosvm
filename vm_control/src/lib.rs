@@ -233,6 +233,7 @@ pub enum UsbControlResult {
     NoSuchPort,
     FailedToOpenDevice,
     Devices([UsbControlAttachedDevice; USB_CONTROL_MAX_PORTS]),
+    FailedToInitHostDevice,
 }
 
 impl Display for UsbControlResult {
@@ -252,6 +253,7 @@ impl Display for UsbControlResult {
                 }
                 std::result::Result::Ok(())
             }
+            FailedToInitHostDevice => write!(f, "failed_to_init_host_device"),
         }
     }
 }
