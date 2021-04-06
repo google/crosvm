@@ -14,7 +14,7 @@ pub use self::device::{Device, Transfer, TransferStatus};
 pub use self::error::{Error, Result};
 pub use self::types::{
     control_request_type, ConfigDescriptor, ControlRequestDataPhaseTransferDirection,
-    ControlRequestRecipient, ControlRequestType, DeviceDescriptor, EndpointDescriptor,
-    EndpointDirection, EndpointType, InterfaceDescriptor, StandardControlRequest, UsbRequestSetup,
-    ENDPOINT_DIRECTION_OFFSET,
+    ControlRequestRecipient, ControlRequestType, DescriptorHeader, DescriptorType,
+    DeviceDescriptor, EndpointDescriptor, EndpointDirection, EndpointType, InterfaceDescriptor,
+    StandardControlRequest, UsbRequestSetup, ENDPOINT_DIRECTION_OFFSET,
 };

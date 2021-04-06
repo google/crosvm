@@ -7,12 +7,13 @@ use crate::{Error, Result};
 use base::warn;
 use data_model::DataInit;
 use std::collections::BTreeMap;
-use std::io::{self, Read};
 use std::mem::size_of;
 use std::ops::Deref;
 
 #[derive(Clone)]
 pub struct DeviceDescriptorTree {
+    // Full descriptor tree in the original format returned by the device.
+    raw: Vec<u8>,
     inner: types::DeviceDescriptor,
     // Map of bConfigurationValue to ConfigDescriptor
     config_descriptors: BTreeMap<u8, ConfigDescriptorTree>,
@@ -22,6 +23,7 @@ pub struct DeviceDescriptorTree {
 
 #[derive(Clone)]
 pub struct ConfigDescriptorTree {
+    offset: usize,
     inner: types::ConfigDescriptor,
     // Map of (bInterfaceNumber, bAlternateSetting) to InterfaceDescriptor
     interface_descriptors: BTreeMap<(u8, u8), InterfaceDescriptorTree>,
@@ -29,6 +31,7 @@ pub struct ConfigDescriptorTree {
 
 #[derive(Clone)]
 pub struct InterfaceDescriptorTree {
+    offset: usize,
     inner: types::InterfaceDescriptor,
     // Map of bEndpointAddress to EndpointDescriptor
     endpoint_descriptors: BTreeMap<u8, EndpointDescriptor>,
@@ -47,6 +50,11 @@ impl DeviceDescriptorTree {
     ) -> Option<&ConfigDescriptorTree> {
         self.config_descriptors
             .get(self.config_values.get(&config_index)?)
+    }
+
+    /// Access the raw descriptor tree as a slice of bytes.
+    pub fn raw(&self) -> &[u8] {
+        &self.raw
     }
 }
 
@@ -68,6 +76,11 @@ impl ConfigDescriptorTree {
         self.interface_descriptors
             .get(&(interface_num, alt_setting))
     }
+
+    /// Get the offset of this configuration descriptor within the raw descriptor tree.
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
 }
 
 impl Deref for ConfigDescriptorTree {
@@ -82,6 +95,11 @@ impl InterfaceDescriptorTree {
     pub fn get_endpoint_descriptor(&self, ep_idx: u8) -> Option<&EndpointDescriptor> {
         self.endpoint_descriptors.get(&ep_idx)
     }
+
+    /// Get the offset of this interface descriptor within the raw descriptor tree.
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
 }
 
 impl Deref for InterfaceDescriptorTree {
@@ -92,75 +110,87 @@ impl Deref for InterfaceDescriptorTree {
     }
 }
 
-/// Given a `reader` for a full set of descriptors as provided by the Linux kernel
+/// Given `data` containing a full set of descriptors as provided by the Linux kernel
 /// usbdevfs `descriptors` file, parse the descriptors into a tree data structure.
-pub fn parse_usbfs_descriptors<R: Read>(mut reader: R) -> Result<DeviceDescriptorTree> {
-    // Given a structure of length `struct_length`, of which `bytes_consumed` have
-    // already been read, skip the remainder of the struct. If `bytes_consumed` is
-    // more than `struct_length`, no additional bytes are skipped.
-    fn skip<R: Read>(reader: R, bytes_consumed: usize, struct_length: u8) -> io::Result<u64> {
-        let bytes_to_skip = u64::from(struct_length).saturating_sub(bytes_consumed as u64);
-        io::copy(&mut reader.take(bytes_to_skip), &mut io::sink())
-    }
+pub fn parse_usbfs_descriptors(data: &[u8]) -> Result<DeviceDescriptorTree> {
+    let mut offset = 0;
 
-    // Find the next descriptor of type T and return it.
+    // Find the next descriptor of type T and return it and its offset.
     // Any other descriptors encountered while searching for the expected type are skipped.
-    fn next_descriptor<R: Read, T: Descriptor + DataInit>(mut reader: R) -> Result<T> {
+    // The `offset` parameter will be advanced to point to the next byte after the returned
+    // descriptor.
+    fn next_descriptor<T: Descriptor + DataInit>(
+        data: &[u8],
+        offset: &mut usize,
+    ) -> Result<(T, usize)> {
         let desc_type = T::descriptor_type() as u8;
         loop {
-            let hdr = DescriptorHeader::from_reader(&mut reader).map_err(Error::DescriptorRead)?;
+            let hdr = DescriptorHeader::from_slice(
+                &data
+                    .get(*offset..*offset + size_of::<DescriptorHeader>())
+                    .ok_or(Error::DescriptorParse)?,
+            )
+            .ok_or(Error::DescriptorParse)?;
             if hdr.bDescriptorType == desc_type {
                 if usize::from(hdr.bLength) < size_of::<DescriptorHeader>() + size_of::<T>() {
                     return Err(Error::DescriptorParse);
                 }
 
-                let desc = T::from_reader(&mut reader).map_err(Error::DescriptorRead)?;
+                let desc_offset = *offset;
 
-                // Skip any extra data beyond the standard descriptor length.
-                skip(
-                    &mut reader,
-                    size_of::<DescriptorHeader>() + size_of::<T>(),
-                    hdr.bLength,
+                *offset += size_of::<DescriptorHeader>();
+                let desc = T::from_slice(
+                    &data
+                        .get(*offset..*offset + size_of::<T>())
+                        .ok_or(Error::DescriptorParse)?,
                 )
-                .map_err(Error::DescriptorRead)?;
-                return Ok(desc);
+                .ok_or(Error::DescriptorParse)?;
+                *offset += hdr.bLength as usize - size_of::<DescriptorHeader>();
+                return Ok((*desc, desc_offset));
+            } else {
+                // Skip this entire descriptor, since it's not the right type.
+                *offset += hdr.bLength as usize;
             }
-
-            // Skip this entire descriptor, since it's not the right type.
-            skip(&mut reader, size_of::<DescriptorHeader>(), hdr.bLength)
-                .map_err(Error::DescriptorRead)?;
         }
     }
 
-    let raw_device_descriptor: types::DeviceDescriptor = next_descriptor(&mut reader)?;
+    let (raw_device_descriptor, _) =
+        next_descriptor::<types::DeviceDescriptor>(&data, &mut offset)?;
     let mut device_descriptor = DeviceDescriptorTree {
+        raw: data.into(),
         inner: raw_device_descriptor,
         config_descriptors: BTreeMap::new(),
         config_values: BTreeMap::new(),
     };
 
     for cfg_idx in 0..device_descriptor.bNumConfigurations {
-        if let Ok(raw_config_descriptor) =
-            next_descriptor::<_, types::ConfigDescriptor>(&mut reader)
+        if let Ok((raw_config_descriptor, config_offset)) =
+            next_descriptor::<types::ConfigDescriptor>(&device_descriptor.raw, &mut offset)
         {
             let mut config_descriptor = ConfigDescriptorTree {
+                offset: config_offset,
                 inner: raw_config_descriptor,
                 interface_descriptors: BTreeMap::new(),
             };
 
             for intf_idx in 0..config_descriptor.bNumInterfaces {
-                if let Ok(raw_interface_descriptor) =
-                    next_descriptor::<_, types::InterfaceDescriptor>(&mut reader)
+                if let Ok((raw_interface_descriptor, interface_offset)) =
+                    next_descriptor::<types::InterfaceDescriptor>(
+                        &device_descriptor.raw,
+                        &mut offset,
+                    )
                 {
                     let mut interface_descriptor = InterfaceDescriptorTree {
+                        offset: interface_offset,
                         inner: raw_interface_descriptor,
                         endpoint_descriptors: BTreeMap::new(),
                     };
 
                     for ep_idx in 0..interface_descriptor.bNumEndpoints {
-                        if let Ok(endpoint_descriptor) =
-                            next_descriptor::<_, EndpointDescriptor>(&mut reader)
-                        {
+                        if let Ok((endpoint_descriptor, _)) = next_descriptor::<EndpointDescriptor>(
+                            &device_descriptor.raw,
+                            &mut offset,
+                        ) {
                             interface_descriptor
                                 .endpoint_descriptors
                                 .insert(ep_idx, endpoint_descriptor);

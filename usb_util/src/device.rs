@@ -12,7 +12,7 @@ use data_model::vec_with_array_field;
 use libc::{EAGAIN, ENODEV, ENOENT};
 use std::convert::TryInto;
 use std::fs::File;
-use std::io::{Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom};
 use std::mem::size_of_val;
 use std::os::raw::{c_int, c_uint, c_void};
 use std::sync::Arc;
@@ -55,7 +55,10 @@ impl Device {
     /// `fd` should be a file in usbdevfs (e.g. `/dev/bus/usb/001/002`).
     pub fn new(mut fd: File) -> Result<Self> {
         fd.seek(SeekFrom::Start(0)).map_err(Error::DescriptorRead)?;
-        let device_descriptor_tree = descriptor::parse_usbfs_descriptors(&mut fd)?;
+        let mut descriptor_data = Vec::new();
+        fd.read_to_end(&mut descriptor_data)
+            .map_err(Error::DescriptorRead)?;
+        let device_descriptor_tree = descriptor::parse_usbfs_descriptors(&descriptor_data)?;
 
         let device = Device {
             fd: Arc::new(fd),
