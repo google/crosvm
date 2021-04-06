@@ -13,8 +13,8 @@ use std::os::unix::net::{UnixDatagram, UnixStream};
 
 use serde::{Deserialize, Serialize};
 
+use crate::net::UnlinkUnixSeqpacketListener;
 use crate::{errno_result, PollToken, Result};
-use crate::{net::UnlinkUnixSeqpacketListener, validate_raw_fd};
 
 pub type RawDescriptor = RawFd;
 
@@ -34,6 +34,19 @@ pub trait FromRawDescriptor {
     /// Safe only if the caller ensures nothing has access to the descriptor after passing it to
     /// `from_raw_descriptor`
     unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self;
+}
+
+/// Clones `fd`, returning a new file descriptor that refers to the same open file description as
+/// `fd`. The cloned fd will have the `FD_CLOEXEC` flag set but will not share any other file
+/// descriptor flags with `fd`.
+pub fn clone_fd(fd: &dyn AsRawFd) -> Result<RawFd> {
+    // Safe because this doesn't modify any memory and we check the return value.
+    let ret = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
+    if ret < 0 {
+        errno_result()
+    } else {
+        Ok(ret)
+    }
 }
 
 /// Wraps a RawDescriptor and safely closes it when self falls out of scope.
@@ -108,7 +121,7 @@ impl TryFrom<&dyn AsRawFd> for SafeDescriptor {
 
     fn try_from(fd: &dyn AsRawFd) -> std::result::Result<Self, Self::Error> {
         Ok(SafeDescriptor {
-            descriptor: validate_raw_fd(fd.as_raw_fd())?,
+            descriptor: clone_fd(fd)?,
         })
     }
 }
