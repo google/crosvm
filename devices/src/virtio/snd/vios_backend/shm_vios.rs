@@ -490,7 +490,7 @@ fn spawn_recv_thread(
                         if status == u32::MAX {
                             // Anyone waiting for this would continue to wait for as long as status is
                             // u32::MAX
-                            status = status - 1;
+                            status -= 1;
                         }
                         let offset = msg.buffer_offset as usize;
                         let consumed_len = msg.consumed_len as usize;
