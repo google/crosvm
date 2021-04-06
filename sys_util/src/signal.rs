@@ -9,6 +9,7 @@ use libc::{
 };
 
 use std::cmp::Ordering;
+use std::convert::TryFrom;
 use std::fmt::{self, Display};
 use std::io;
 use std::mem;
@@ -55,6 +56,10 @@ pub enum Error {
     WaitPid(errno::Error),
     /// Timeout reached.
     TimedOut,
+    /// Failed to convert signum to Signal.
+    UnrecognizedSignum(i32),
+    /// Converted signum greater than SIGRTMAX.
+    RTSignumGreaterThanMax(Signal),
 }
 
 impl Display for Error {
@@ -88,6 +93,10 @@ impl Display for Error {
             WaitForSignal(e) => write!(f, "failed to wait for signal: {}", e),
             WaitPid(e) => write!(f, "failed to wait for process: {}", e),
             TimedOut => write!(f, "timeout reached."),
+            UnrecognizedSignum(signum) => write!(f, "unrecoginized signal number: {}", signum),
+            RTSignumGreaterThanMax(signal) => {
+                write!(f, "got RT signal greater than max: {:?}", signal)
+            }
         }
     }
 }
@@ -162,13 +171,101 @@ pub enum Signal {
     Rt31,
 }
 
-impl Into<i32> for Signal {
-    fn into(self) -> i32 {
-        let num = self as libc::c_int;
+impl From<Signal> for c_int {
+    fn from(signal: Signal) -> c_int {
+        let num = signal as libc::c_int;
         if num >= Signal::Rt0 as libc::c_int {
             return num - (Signal::Rt0 as libc::c_int) + SIGRTMIN();
         }
         num
+    }
+}
+
+impl TryFrom<c_int> for Signal {
+    type Error = Error;
+
+    fn try_from(value: c_int) -> result::Result<Self, Self::Error> {
+        use Signal::*;
+
+        Ok(match value {
+            libc::SIGABRT => Abort,
+            libc::SIGALRM => Alarm,
+            libc::SIGBUS => Bus,
+            libc::SIGCHLD => Child,
+            libc::SIGCONT => Continue,
+            libc::SIGXFSZ => ExceededFileSize,
+            libc::SIGFPE => FloatingPointException,
+            libc::SIGHUP => HangUp,
+            libc::SIGILL => IllegalInstruction,
+            libc::SIGINT => Interrupt,
+            libc::SIGIO => IO,
+            libc::SIGKILL => Kill,
+            libc::SIGPIPE => Pipe,
+            libc::SIGPWR => Power,
+            libc::SIGPROF => Profile,
+            libc::SIGQUIT => Quit,
+            libc::SIGSEGV => SegmentationViolation,
+            libc::SIGSTKFLT => StackFault,
+            libc::SIGSTOP => Stop,
+            libc::SIGSYS => Sys,
+            libc::SIGTRAP => Trap,
+            libc::SIGTERM => Terminate,
+            libc::SIGTTIN => TTYIn,
+            libc::SIGTTOU => TTYOut,
+            libc::SIGTSTP => TTYStop,
+            libc::SIGURG => Urgent,
+            libc::SIGUSR1 => User1,
+            libc::SIGUSR2 => User2,
+            libc::SIGVTALRM => VTAlarm,
+            libc::SIGWINCH => Winch,
+            libc::SIGXCPU => XCPU,
+            _ => {
+                if value < SIGRTMIN() {
+                    return Err(Error::UnrecognizedSignum(value));
+                }
+                let signal = match value - SIGRTMIN() {
+                    0 => Rt0,
+                    1 => Rt1,
+                    2 => Rt2,
+                    3 => Rt3,
+                    4 => Rt4,
+                    5 => Rt5,
+                    6 => Rt6,
+                    7 => Rt7,
+                    8 => Rt8,
+                    9 => Rt9,
+                    10 => Rt10,
+                    11 => Rt11,
+                    12 => Rt12,
+                    13 => Rt13,
+                    14 => Rt14,
+                    15 => Rt15,
+                    16 => Rt16,
+                    17 => Rt17,
+                    18 => Rt18,
+                    19 => Rt19,
+                    20 => Rt20,
+                    21 => Rt21,
+                    22 => Rt22,
+                    23 => Rt23,
+                    24 => Rt24,
+                    25 => Rt25,
+                    26 => Rt26,
+                    27 => Rt27,
+                    28 => Rt28,
+                    29 => Rt29,
+                    30 => Rt30,
+                    31 => Rt31,
+                    _ => {
+                        return Err(Error::UnrecognizedSignum(value));
+                    }
+                };
+                if value > SIGRTMAX() {
+                    return Err(Error::RTSignumGreaterThanMax(signal));
+                }
+                signal
+            }
+        })
     }
 }
 
