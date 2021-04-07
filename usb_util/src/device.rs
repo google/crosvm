@@ -272,9 +272,25 @@ impl Device {
         Ok(*self.device_descriptor_tree)
     }
 
+    pub fn get_device_descriptor_tree(&self) -> &DeviceDescriptorTree {
+        &self.device_descriptor_tree
+    }
+
     /// Get active config descriptor of this device.
     pub fn get_config_descriptor(&self, config: u8) -> Result<ConfigDescriptorTree> {
         match self.device_descriptor_tree.get_config_descriptor(config) {
+            Some(config_descriptor) => Ok(config_descriptor.clone()),
+            None => Err(Error::NoSuchDescriptor),
+        }
+    }
+
+    /// Get a configuration descriptor by its index within the list of descriptors returned
+    /// by the device.
+    pub fn get_config_descriptor_by_index(&self, config_index: u8) -> Result<ConfigDescriptorTree> {
+        match self
+            .device_descriptor_tree
+            .get_config_descriptor_by_index(config_index)
+        {
             Some(config_descriptor) => Ok(config_descriptor.clone()),
             None => Err(Error::NoSuchDescriptor),
         }

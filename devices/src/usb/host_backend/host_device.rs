@@ -20,7 +20,8 @@ use std::mem;
 use sync::Mutex;
 use usb_util::{
     ConfigDescriptorTree, ControlRequestDataPhaseTransferDirection, ControlRequestRecipient,
-    Device, StandardControlRequest, Transfer, TransferStatus, UsbRequestSetup,
+    DescriptorHeader, DescriptorType, Device, InterfaceDescriptor, StandardControlRequest,
+    Transfer, TransferStatus, UsbRequestSetup,
 };
 
 #[derive(PartialEq)]
@@ -92,7 +93,11 @@ impl HostDevice {
     // functions rather than passed directly to the device.
     // Returns true if the request has been intercepted or false if the request
     // should be passed through to the device.
-    fn intercepted_control_transfer(&mut self, xhci_transfer: &XhciTransfer) -> Result<bool> {
+    fn intercepted_control_transfer(
+        &mut self,
+        xhci_transfer: &XhciTransfer,
+        buffer: &Option<ScatterGatherBuffer>,
+    ) -> Result<bool> {
         let direction = self.control_request_setup.get_direction();
         let recipient = self.control_request_setup.get_recipient();
         let standard_request = if let Some(req) = self.control_request_setup.get_standard_request()
@@ -138,6 +143,25 @@ impl HostDevice {
                 usb_debug!("host device handling clear feature");
                 (self.clear_feature()?, 0)
             }
+            (
+                StandardControlRequest::GetDescriptor,
+                ControlRequestRecipient::Device,
+                ControlRequestDataPhaseTransferDirection::DeviceToHost,
+            ) => {
+                let descriptor_type = (self.control_request_setup.value >> 8) as u8;
+                if descriptor_type == DescriptorType::Configuration as u8 {
+                    usb_debug!("host device handling get config descriptor");
+                    let buffer = if let Some(buffer) = buffer {
+                        buffer
+                    } else {
+                        return Err(Error::MissingRequiredBuffer);
+                    };
+
+                    self.get_config_descriptor_filtered(buffer)?
+                } else {
+                    return Ok(false);
+                }
+            }
             _ => {
                 // Other requests will be passed through to the device.
                 return Ok(false);
@@ -155,7 +179,7 @@ impl HostDevice {
         xhci_transfer: Arc<XhciTransfer>,
         buffer: Option<ScatterGatherBuffer>,
     ) -> Result<()> {
-        if self.intercepted_control_transfer(&xhci_transfer)? {
+        if self.intercepted_control_transfer(&xhci_transfer, &buffer)? {
             return Ok(());
         }
 
@@ -378,6 +402,63 @@ impl HostDevice {
                 .map_err(Error::ClearHalt)?;
         }
         Ok(TransferStatus::Completed)
+    }
+
+    // Execute a Get Descriptor control request with type Configuration.
+    // This function is used to return a filtered version of the host device's configuration
+    // descriptor that only includes the interfaces in `self.claimed_interfaces`.
+    fn get_config_descriptor_filtered(
+        &mut self,
+        buffer: &ScatterGatherBuffer,
+    ) -> Result<(TransferStatus, u32)> {
+        let descriptor_index = self.control_request_setup.value as u8;
+        usb_debug!(
+            "get_config_descriptor_filtered config index: {}",
+            descriptor_index,
+        );
+
+        let config_descriptor = self
+            .device
+            .lock()
+            .get_config_descriptor_by_index(descriptor_index)
+            .map_err(Error::GetConfigDescriptor)?;
+
+        let device = self.device.lock();
+        let device_descriptor = device.get_device_descriptor_tree();
+
+        let config_start = config_descriptor.offset();
+        let config_end = config_start + config_descriptor.wTotalLength as usize;
+        let mut descriptor_data = device_descriptor.raw()[config_start..config_end].to_vec();
+
+        if config_descriptor.bConfigurationValue
+            == device
+                .get_active_configuration()
+                .map_err(Error::GetActiveConfig)?
+        {
+            for i in 0..config_descriptor.bNumInterfaces {
+                if !self.claimed_interfaces.contains(&i) {
+                    // Rewrite descriptors for unclaimed interfaces to vendor-specific class.
+                    // This prevents them from being recognized by the guest drivers.
+                    let alt_setting = self.alt_settings.get(&i).unwrap_or(&0);
+                    let interface = config_descriptor
+                        .get_interface_descriptor(i, *alt_setting)
+                        .ok_or(Error::GetInterfaceDescriptor((i, *alt_setting)))?;
+                    let mut interface_data: InterfaceDescriptor = **interface;
+                    interface_data.bInterfaceClass = 0xFF;
+                    interface_data.bInterfaceSubClass = 0xFF;
+                    interface_data.bInterfaceProtocol = 0xFF;
+
+                    let interface_start =
+                        interface.offset() + mem::size_of::<DescriptorHeader>() - config_start;
+                    let interface_end = interface_start + mem::size_of::<InterfaceDescriptor>();
+                    descriptor_data[interface_start..interface_end]
+                        .copy_from_slice(interface_data.as_slice());
+                }
+            }
+        }
+
+        let bytes_transferred = buffer.write(&descriptor_data).map_err(Error::WriteBuffer)?;
+        Ok((TransferStatus::Completed, bytes_transferred as u32))
     }
 
     fn claim_interfaces(&mut self, config_descriptor: &ConfigDescriptorTree) {

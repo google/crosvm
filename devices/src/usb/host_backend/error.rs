@@ -18,6 +18,8 @@ pub enum Error {
     CreateLibUsbContext(UsbUtilError),
     GetActiveConfig(UsbUtilError),
     SetActiveConfig(UsbUtilError),
+    GetConfigDescriptor(UsbUtilError),
+    GetDeviceDescriptor(UsbUtilError),
     SetInterfaceAltSetting(UsbUtilError),
     ClearHalt(UsbUtilError),
     CreateTransfer(UsbUtilError),
@@ -37,6 +39,7 @@ pub enum Error {
     GetEndpointDescriptor(u8),
     BadXhciTransferState,
     BadBackendProviderState,
+    MissingRequiredBuffer,
 }
 
 impl Display for Error {
@@ -50,6 +53,8 @@ impl Display for Error {
             CreateLibUsbContext(e) => write!(f, "failed to create libusb context: {:?}", e),
             GetActiveConfig(e) => write!(f, "failed to get active config: {:?}", e),
             SetActiveConfig(e) => write!(f, "failed to set active config: {:?}", e),
+            GetConfigDescriptor(e) => write!(f, "failed to get config descriptor: {:?}", e),
+            GetDeviceDescriptor(e) => write!(f, "failed to get device descriptor: {:?}", e),
             SetInterfaceAltSetting(e) => write!(f, "failed to set interface alt setting: {:?}", e),
             ClearHalt(e) => write!(f, "failed to clear halt: {:?}", e),
             CreateTransfer(e) => write!(f, "failed to create transfer: {:?}", e),
@@ -74,6 +79,7 @@ impl Display for Error {
             }
             BadXhciTransferState => write!(f, "xhci transfer is in a bad state"),
             BadBackendProviderState => write!(f, "backend provider is in a bad state"),
+            MissingRequiredBuffer => write!(f, "request missing required data buffer"),
         }
     }
 }
