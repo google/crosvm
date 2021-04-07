@@ -8,7 +8,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::ptr;
 use std::time::Duration;
 
-use libc::{c_void, dup, eventfd, read, write, POLLIN};
+use libc::{c_void, eventfd, read, write, POLLIN};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -134,16 +134,9 @@ impl EventFd {
     /// Clones this EventFd, internally creating a new file descriptor. The new EventFd will share
     /// the same underlying count within the kernel.
     pub fn try_clone(&self) -> Result<EventFd> {
-        // This is safe because we made this fd and properly check that it returns without error.
-        let ret = unsafe { dup(self.as_raw_descriptor()) };
-        if ret < 0 {
-            return errno_result();
-        }
-        // This is safe because we checked ret for success and know the kernel gave us an fd that we
-        // own.
-        Ok(EventFd {
-            event_handle: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
-        })
+        self.event_handle
+            .try_clone()
+            .map(|event_handle| EventFd { event_handle })
     }
 }
 

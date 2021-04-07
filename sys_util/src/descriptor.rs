@@ -130,14 +130,13 @@ impl SafeDescriptor {
     /// Clones this descriptor, internally creating a new descriptor. The new SafeDescriptor will
     /// share the same underlying count within the kernel.
     pub fn try_clone(&self) -> Result<SafeDescriptor> {
-        // Safe because self.as_raw_descriptor() returns a valid value
-        let copy_fd = unsafe { libc::dup(self.as_raw_descriptor()) };
-        if copy_fd < 0 {
-            return errno_result();
+        // Safe because this doesn't modify any memory and we check the return value.
+        let descriptor = unsafe { libc::fcntl(self.descriptor, libc::F_DUPFD_CLOEXEC, 0) };
+        if descriptor < 0 {
+            errno_result()
+        } else {
+            Ok(SafeDescriptor { descriptor })
         }
-        // Safe because we just successfully duplicated and this object will uniquely own the raw
-        // descriptor.
-        Ok(unsafe { SafeDescriptor::from_raw_descriptor(copy_fd) })
     }
 }
 

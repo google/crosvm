@@ -1748,7 +1748,7 @@ impl FileSystem for PassthroughFs {
         // behavior by doing the same thing (dup-ing the fd and then immediately closing it). Safe
         // because this doesn't modify any memory and we check the return values.
         unsafe {
-            let newfd = libc::dup(data.as_raw_descriptor());
+            let newfd = libc::fcntl(data.as_raw_descriptor(), libc::F_DUPFD_CLOEXEC, 0);
 
             if newfd < 0 {
                 return Err(io::Error::last_os_error());

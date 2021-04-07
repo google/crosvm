@@ -16,7 +16,6 @@ getsockname: 1
 openat: 1
 setsockopt: 1
 bind: 1
-fcntl: 1
 socket: arg0 == AF_NETLINK
 uname: 1
 # The following ioctls are:

@@ -5,7 +5,6 @@
 @include /usr/share/policy/crosvm/common_device.policy
 
 stat64: 1
-fcntl64: 1
 lstat64: 1
 readlink: 1
 readlinkat: 1
@@ -17,7 +16,6 @@ getsockname: 1
 pipe: 1
 setsockopt: 1
 bind: 1
-fcntl: 1
 socket: arg0 == AF_NETLINK
 stat: 1
 statx: 1

@@ -14,7 +14,6 @@ getsockname: 1
 pipe: 1
 setsockopt: 1
 bind: 1
-fcntl: 1
 open: return ENOENT
 openat: 1
 socket: arg0 == AF_NETLINK

@@ -17,5 +17,3 @@ memfd_create: arg1 == 3
 ftruncate64: 1
 # Used to determine shm size after recvmsg with fd
 _llseek: 1
-# Allow F_GETFL only
-fcntl64: arg1 == 3

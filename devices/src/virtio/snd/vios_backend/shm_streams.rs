@@ -165,15 +165,15 @@ impl VioSndShmStream {
         let interval = Duration::from_millis(buffer_size as u64 * 1000 / frame_rate as u64);
 
         let dup_fd = unsafe {
-            // Safe because dup doesn't affect memory and client_shm should wrap a known valid file
-            // descriptor
-            libc::dup(client_shm.as_raw_fd())
+            // Safe because fcntl doesn't affect memory and client_shm should wrap a known valid
+            // file descriptor.
+            libc::fcntl(client_shm.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0)
         };
         if dup_fd < 0 {
             return Err(Box::new(Error::DupError(SysError::last())));
         }
         let file = unsafe {
-            // safe because we checked the result of libc::dup()
+            // safe because we checked the result of libc::fcntl()
             File::from_raw_fd(dup_fd)
         };
         let client_shm_clone =

@@ -10,4 +10,3 @@ openat: return ENOENT
 readlink: 1
 pread64: 1
 pwrite64: 1
-fcntl: arg1 == F_DUPFD_CLOEXEC

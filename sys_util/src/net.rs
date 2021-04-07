@@ -137,12 +137,12 @@ impl UnixSeqpacket {
 
     /// Clone the underlying FD.
     pub fn try_clone(&self) -> io::Result<Self> {
-        // Calling `dup` is safe as the kernel doesn't touch any user memory it the process.
-        let new_fd = unsafe { libc::dup(self.fd) };
-        if new_fd < 0 {
+        // Safe because this doesn't modify any memory and we check the return value.
+        let fd = unsafe { libc::fcntl(self.fd, libc::F_DUPFD_CLOEXEC, 0) };
+        if fd < 0 {
             Err(io::Error::last_os_error())
         } else {
-            Ok(UnixSeqpacket { fd: new_fd })
+            Ok(Self { fd })
         }
     }
 
