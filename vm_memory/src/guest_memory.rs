@@ -26,6 +26,7 @@ use data_model::DataInit;
 pub enum Error {
     DescriptorChainOverflow,
     InvalidGuestAddress(GuestAddress),
+    InvalidOffset(u64),
     MemoryAccess(GuestAddress, MmapError),
     MemoryMappingFailed(MmapError),
     MemoryRegionOverlap,
@@ -52,6 +53,7 @@ impl Display for Error {
                 "the combined length of all the buffers in a DescriptorChain is too large"
             ),
             InvalidGuestAddress(addr) => write!(f, "invalid guest address {}", addr),
+            InvalidOffset(addr) => write!(f, "invalid offset {}", addr),
             MemoryAccess(addr, e) => {
                 write!(f, "invalid guest memory access at addr={}: {}", addr, e)
             }
@@ -118,12 +120,6 @@ impl AsRawDescriptors for GuestMemory {
             .iter()
             .map(|r| r.shm.as_raw_descriptor())
             .collect()
-    }
-}
-
-impl AsRef<SharedMemory> for GuestMemory {
-    fn as_ref(&self) -> &SharedMemory {
-        &self.regions[0].shm
     }
 }
 
@@ -629,6 +625,14 @@ impl GuestMemory {
             .find(|region| region.contains(guest_addr))
             .ok_or(Error::InvalidGuestAddress(guest_addr))
             .map(|region| region.shm.as_ref())
+    }
+
+    /// Returns the region that contains the memory at `offset` from the base of guest memory.
+    pub fn offset_region(&self, offset: u64) -> Result<&SharedMemory> {
+        self.shm_region(
+            self.checked_offset(self.regions[0].guest_base, offset)
+                .ok_or(Error::InvalidOffset(offset))?,
+        )
     }
 
     /// Loops over all guest memory regions of `self`, and performs the callback function `F` in

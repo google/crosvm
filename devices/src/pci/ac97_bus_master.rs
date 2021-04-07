@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::collections::VecDeque;
-use std::convert::AsRef;
 use std::convert::TryInto;
 use std::fmt::{self, Display};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -131,6 +130,8 @@ type GuestMemoryResult<T> = std::result::Result<T, GuestMemoryError>;
 enum AudioError {
     // Failed to create a new stream.
     CreateStream(BoxError),
+    // Failure to get regions from guest memory.
+    GuestRegion(GuestMemoryError),
     // Invalid buffer offset received from the audio server.
     InvalidBufferOffset,
     // Guest did not provide a buffer when needed.
@@ -151,6 +152,7 @@ impl Display for AudioError {
 
         match self {
             CreateStream(e) => write!(f, "Failed to create audio stream: {}.", e),
+            GuestRegion(e) => write!(f, "Failed to get guest memory region: {}.", e),
             InvalidBufferOffset => write!(f, "Offset > max usize"),
             NoBufferAvailable => write!(f, "No buffer was available from the Guest"),
             ReadingGuestError(e) => write!(f, "Failed to read guest memory: {}.", e),
@@ -589,7 +591,12 @@ impl Ac97BusMaster {
                 sample_rate,
                 buffer_frames,
                 &Self::stream_effects(func),
-                self.mem.as_ref().inner(),
+                self.mem
+                    .offset_region(starting_offsets[0])
+                    .map_err(|e| {
+                        AudioError::GuestRegion(GuestMemoryError::ReadingGuestBufferAddress(e))
+                    })?
+                    .inner(),
                 starting_offsets,
             )
             .map_err(AudioError::CreateStream)?;
