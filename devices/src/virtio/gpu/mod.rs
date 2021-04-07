@@ -115,6 +115,69 @@ pub struct VirtioScanoutBlobData {
     pub offsets: [u32; 4],
 }
 
+trait QueueReader {
+    fn pop(&self, mem: &GuestMemory) -> Option<DescriptorChain>;
+    fn add_used(&self, mem: &GuestMemory, desc_index: u16, len: u32);
+    fn signal_used(&self);
+}
+
+struct LocalQueueReader {
+    queue: RefCell<Queue>,
+    interrupt: Arc<Interrupt>,
+}
+
+impl LocalQueueReader {
+    fn new(queue: Queue, interrupt: &Arc<Interrupt>) -> Self {
+        Self {
+            queue: RefCell::new(queue),
+            interrupt: interrupt.clone(),
+        }
+    }
+}
+
+impl QueueReader for LocalQueueReader {
+    fn pop(&self, mem: &GuestMemory) -> Option<DescriptorChain> {
+        self.queue.borrow_mut().pop(mem)
+    }
+
+    fn add_used(&self, mem: &GuestMemory, desc_index: u16, len: u32) {
+        self.queue.borrow_mut().add_used(mem, desc_index, len)
+    }
+
+    fn signal_used(&self) {
+        self.interrupt.signal_used_queue(self.queue.borrow().vector);
+    }
+}
+
+#[derive(Clone)]
+struct SharedQueueReader {
+    queue: Arc<Mutex<Queue>>,
+    interrupt: Arc<Interrupt>,
+}
+
+impl SharedQueueReader {
+    fn new(queue: Queue, interrupt: &Arc<Interrupt>) -> Self {
+        Self {
+            queue: Arc::new(Mutex::new(queue)),
+            interrupt: interrupt.clone(),
+        }
+    }
+}
+
+impl QueueReader for SharedQueueReader {
+    fn pop(&self, mem: &GuestMemory) -> Option<DescriptorChain> {
+        self.queue.lock().pop(mem)
+    }
+
+    fn add_used(&self, mem: &GuestMemory, desc_index: u16, len: u32) {
+        self.queue.lock().add_used(mem, desc_index, len)
+    }
+
+    fn signal_used(&self) {
+        self.interrupt.signal_used_queue(self.queue.lock().vector);
+    }
+}
+
 /// Initializes the virtio_gpu state tracker.
 fn build(
     possible_displays: &[DisplayBackend],
@@ -520,7 +583,7 @@ impl Frontend {
         desc.len as usize >= size_of::<virtio_gpu_ctrl_hdr>() && !desc.is_write_only()
     }
 
-    fn process_queue(&mut self, mem: &GuestMemory, queue: &mut Queue) -> bool {
+    fn process_queue(&mut self, mem: &GuestMemory, queue: &dyn QueueReader) -> bool {
         let mut signal_used = false;
         while let Some(desc) = queue.pop(mem) {
             if Frontend::validate_desc(&desc) {
@@ -677,12 +740,12 @@ impl Frontend {
 }
 
 struct Worker {
-    interrupt: Interrupt,
+    interrupt: Arc<Interrupt>,
     exit_evt: Event,
     mem: GuestMemory,
-    ctrl_queue: Queue,
+    ctrl_queue: SharedQueueReader,
     ctrl_evt: Event,
-    cursor_queue: Queue,
+    cursor_queue: LocalQueueReader,
     cursor_evt: Event,
     resource_bridges: Vec<Tube>,
     kill_evt: Event,
@@ -781,7 +844,7 @@ impl Worker {
                     }
                     Token::CursorQueue => {
                         let _ = self.cursor_evt.read();
-                        if self.state.process_queue(&self.mem, &mut self.cursor_queue) {
+                        if self.state.process_queue(&self.mem, &self.cursor_queue) {
                             signal_used_cursor = true;
                         }
                     }
@@ -809,7 +872,7 @@ impl Worker {
                 signal_used_cursor = true;
             }
 
-            if ctrl_available && self.state.process_queue(&self.mem, &mut self.ctrl_queue) {
+            if ctrl_available && self.state.process_queue(&self.mem, &self.ctrl_queue) {
                 signal_used_ctrl = true;
             }
 
@@ -835,11 +898,11 @@ impl Worker {
             }
 
             if signal_used_ctrl {
-                self.interrupt.signal_used_queue(self.ctrl_queue.vector);
+                self.ctrl_queue.signal_used();
             }
 
             if signal_used_cursor {
-                self.interrupt.signal_used_queue(self.cursor_queue.vector);
+                self.cursor_queue.signal_used();
             }
         }
     }
@@ -1129,9 +1192,10 @@ impl VirtioDevice for Gpu {
 
         let resource_bridges = mem::replace(&mut self.resource_bridges, Vec::new());
 
-        let ctrl_queue = queues.remove(0);
+        let irq = Arc::new(interrupt);
+        let ctrl_queue = SharedQueueReader::new(queues.remove(0), &irq);
         let ctrl_evt = queue_evts.remove(0);
-        let cursor_queue = queues.remove(0);
+        let cursor_queue = LocalQueueReader::new(queues.remove(0), &irq);
         let cursor_evt = queue_evts.remove(0);
         let display_backends = self.display_backends.clone();
         let display_width = self.display_width;
@@ -1169,7 +1233,7 @@ impl VirtioDevice for Gpu {
                         };
 
                         Worker {
-                            interrupt,
+                            interrupt: irq,
                             exit_evt,
                             mem,
                             ctrl_queue,
