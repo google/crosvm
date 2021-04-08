@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::cell::RefCell;
 use std::cmp::{max, min, Reverse};
 use std::convert::TryFrom;
 #[cfg(feature = "gpu")]
@@ -96,6 +97,7 @@ pub enum Error {
     BalloonDeviceNew(virtio::BalloonError),
     BlockDeviceNew(base::Error),
     BlockSignal(base::signal::Error),
+    BorrowVfioContainer,
     BuildVm(<Arch as LinuxArch>::Error),
     ChownTpmStorage(base::Error),
     CloneEvent(base::Error),
@@ -221,6 +223,7 @@ impl Display for Error {
             BalloonDeviceNew(e) => write!(f, "failed to create balloon: {}", e),
             BlockDeviceNew(e) => write!(f, "failed to create block device: {}", e),
             BlockSignal(e) => write!(f, "failed to block signal: {}", e),
+            BorrowVfioContainer => write!(f, "failed to borrow global vfio container"),
             BuildVm(e) => write!(f, "The architecture failed to build the vm: {}", e),
             ChownTpmStorage(e) => write!(f, "failed to chown tpm storage: {}", e),
             CloneEvent(e) => write!(f, "failed to clone event: {}", e),
@@ -1700,6 +1703,60 @@ fn create_virtio_devices(
     Ok(devs)
 }
 
+thread_local!(static VFIO_CONTAINER: RefCell<Option<Arc<Mutex<VfioContainer>>>> = RefCell::new(None));
+fn create_vfio_device(
+    cfg: &Config,
+    vm: &impl Vm,
+    resources: &mut SystemAllocator,
+    control_tubes: &mut Vec<TaggedControlTube>,
+    vfio_path: &Path,
+) -> DeviceResult<(Box<VfioPciDevice>, Option<Minijail>)> {
+    let vfio_container =
+        VFIO_CONTAINER.with::<_, DeviceResult<Arc<Mutex<VfioContainer>>>>(|v| {
+            if v.borrow().is_some() {
+                if let Some(container) = &(*v.borrow()) {
+                    Ok(container.clone())
+                } else {
+                    Err(Error::BorrowVfioContainer)
+                }
+            } else {
+                let container = Arc::new(Mutex::new(
+                    VfioContainer::new().map_err(Error::CreateVfioDevice)?,
+                ));
+                *v.borrow_mut() = Some(container.clone());
+                Ok(container)
+            }
+        })?;
+
+    // create MSI, MSI-X, and Mem request sockets for each vfio device
+    let (vfio_host_tube_msi, vfio_device_tube_msi) = Tube::pair().map_err(Error::CreateTube)?;
+    control_tubes.push(TaggedControlTube::VmIrq(vfio_host_tube_msi));
+
+    let (vfio_host_tube_msix, vfio_device_tube_msix) = Tube::pair().map_err(Error::CreateTube)?;
+    control_tubes.push(TaggedControlTube::VmIrq(vfio_host_tube_msix));
+
+    let (vfio_host_tube_mem, vfio_device_tube_mem) = Tube::pair().map_err(Error::CreateTube)?;
+    control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
+
+    let vfio_device = VfioDevice::new(vfio_path, vm, vm.get_memory(), vfio_container)
+        .map_err(Error::CreateVfioDevice)?;
+    let mut vfio_pci_device = Box::new(VfioPciDevice::new(
+        vfio_device,
+        vfio_device_tube_msi,
+        vfio_device_tube_msix,
+        vfio_device_tube_mem,
+    ));
+    // early reservation for pass-through PCI devices.
+    if vfio_pci_device.allocate_address(resources).is_err() {
+        warn!(
+            "address reservation failed for vfio {}",
+            vfio_pci_device.debug_label()
+        );
+    }
+
+    Ok((vfio_pci_device, simple_jail(cfg, "vfio_device")?))
+}
+
 fn create_devices(
     cfg: &Config,
     vm: &mut impl Vm,
@@ -1755,47 +1812,10 @@ fn create_devices(
         pci_devices.push((usb_controller, simple_jail(&cfg, "xhci")?));
     }
 
-    if !cfg.vfio.is_empty() {
-        let vfio_container = Arc::new(Mutex::new(
-            VfioContainer::new().map_err(Error::CreateVfioDevice)?,
-        ));
-
-        for vfio_path in &cfg.vfio {
-            // create MSI, MSI-X, and Mem request sockets for each vfio device
-            let (vfio_host_tube_msi, vfio_device_tube_msi) =
-                Tube::pair().map_err(Error::CreateTube)?;
-            control_tubes.push(TaggedControlTube::VmIrq(vfio_host_tube_msi));
-
-            let (vfio_host_tube_msix, vfio_device_tube_msix) =
-                Tube::pair().map_err(Error::CreateTube)?;
-            control_tubes.push(TaggedControlTube::VmIrq(vfio_host_tube_msix));
-
-            let (vfio_host_tube_mem, vfio_device_tube_mem) =
-                Tube::pair().map_err(Error::CreateTube)?;
-            control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
-
-            let vfiodevice = VfioDevice::new(
-                vfio_path.as_path(),
-                vm,
-                vm.get_memory(),
-                vfio_container.clone(),
-            )
-            .map_err(Error::CreateVfioDevice)?;
-            let mut vfiopcidevice = Box::new(VfioPciDevice::new(
-                vfiodevice,
-                vfio_device_tube_msi,
-                vfio_device_tube_msix,
-                vfio_device_tube_mem,
-            ));
-            // early reservation for pass-through PCI devices.
-            if vfiopcidevice.allocate_address(resources).is_err() {
-                warn!(
-                    "address reservation failed for vfio {}",
-                    vfiopcidevice.debug_label()
-                );
-            }
-            pci_devices.push((vfiopcidevice, simple_jail(&cfg, "vfio_device")?));
-        }
+    for vfio_path in &cfg.vfio {
+        let (vfio_pci_device, jail) =
+            create_vfio_device(cfg, vm, resources, control_tubes, vfio_path.as_path())?;
+        pci_devices.push((vfio_pci_device, jail));
     }
 
     Ok(pci_devices)
