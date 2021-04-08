@@ -2288,12 +2288,17 @@ fn modify_usb(mut args: std::env::Args) -> std::result::Result<(), ()> {
 }
 
 fn print_usage() {
-    print_help("crosvm", "[stop|run]", &[]);
+    print_help("crosvm", "[command]", &[]);
     println!("Commands:");
-    println!("    stop - Stops crosvm instances via their control sockets.");
-    println!("    run  - Start a new crosvm instance.");
+    println!("    balloon - Set balloon size of the crosvm instance.");
+    println!("    balloon_stats - Prints virtio balloon statistics.");
+    println!("    battery - Modify battery.");
     println!("    create_qcow2  - Create a new qcow2 disk image file.");
     println!("    disk - Manage attached virtual disk devices.");
+    println!("    resume - Resumes the crosvm instance.");
+    println!("    run - Start a new crosvm instance.");
+    println!("    stop - Stops crosvm instances via their control sockets.");
+    println!("    suspend - Suspends the crosvm instance.");
     println!("    usb - Manage attached virtual USB devices.");
     println!("    version - Show package version.");
 }
