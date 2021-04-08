@@ -18,6 +18,7 @@ pub mod client;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::os::raw::c_int;
+use std::path::PathBuf;
 use std::result::Result as StdResult;
 use std::str::FromStr;
 use std::sync::{mpsc, Arc};
@@ -930,6 +931,8 @@ pub enum VmRequest {
     UsbCommand(UsbControlCommand),
     /// Command to set battery.
     BatCommand(BatteryType, BatControlCommand),
+    /// Command to add/remove vfio pci device
+    VfioCommand { vfio_path: PathBuf, add: bool },
 }
 
 fn register_memory(
@@ -1137,6 +1140,10 @@ impl VmRequest {
                     None => VmResponse::BatResponse(BatControlResult::NoBatDevice),
                 }
             }
+            VmRequest::VfioCommand {
+                vfio_path: _,
+                add: _,
+            } => VmResponse::Ok,
         }
     }
 }

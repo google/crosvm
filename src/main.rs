@@ -2662,6 +2662,42 @@ fn modify_battery(mut args: std::env::Args) -> std::result::Result<(), ()> {
     do_modify_battery(socket_path, &*battery_type, &*property, &*target)
 }
 
+fn modify_vfio(mut args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() < 3 {
+        print_help(
+            "crosvm vfio",
+            "[add | remove host_vfio_sysfs] VM_SOCKET...",
+            &[],
+        );
+        return Err(());
+    }
+
+    // This unwrap will not panic because of the above length check.
+    let command = args.next().unwrap();
+    let path_str = args.next().unwrap();
+    let vfio_path = PathBuf::from(&path_str);
+    if !vfio_path.exists() || !vfio_path.is_dir() {
+        error!("Invalid host sysfs path: {}", path_str);
+        return Err(());
+    }
+
+    let socket_path = args.next().unwrap();
+    let socket_path = Path::new(&socket_path);
+
+    let add = match command.as_ref() {
+        "add" => true,
+        "remove" => false,
+        other => {
+            error!("Invalid vfio command {}", other);
+            return Err(());
+        }
+    };
+
+    let request = VmRequest::VfioCommand { vfio_path, add };
+    handle_request(&request, socket_path)?;
+    Ok(())
+}
+
 #[cfg(feature = "composite-disk")]
 fn create_composite(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() < 1 {
@@ -3070,6 +3106,7 @@ fn print_usage() {
     println!("    suspend - Suspends the crosvm instance.");
     println!("    usb - Manage attached virtual USB devices.");
     println!("    version - Show package version.");
+    println!("    vfio - add/remove host vfio pci device into guest.");
 }
 
 fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
@@ -3124,6 +3161,7 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
             "suspend" => suspend_vms(args),
             "usb" => modify_usb(args),
             "version" => pkg_version(),
+            "vfio" => modify_vfio(args),
             c => {
                 println!("invalid subcommand: {:?}", c);
                 print_usage();

@@ -3035,6 +3035,7 @@ where
     run_control(
         linux,
         sys_allocator,
+        cfg,
         control_server_socket,
         control_tubes,
         balloon_host_tube,
@@ -3044,11 +3045,8 @@ where
         exit_evt,
         reset_evt,
         sigchld_fd,
-        cfg.sandbox,
         Arc::clone(&map_request),
         gralloc,
-        cfg.per_vm_core_scheduling,
-        cfg.host_cpu_topology,
         kvm_vcpu_ids,
     )
 }
@@ -3065,7 +3063,6 @@ fn get_hp_bus<V: VmArch, Vcpu: VcpuArch>(
     Err(anyhow!("Failed to find a suitable hotplug bus"))
 }
 
-#[allow(dead_code)]
 fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
@@ -3112,7 +3109,6 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     Ok(())
 }
 
-#[allow(dead_code)]
 fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     linux: &RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
@@ -3138,6 +3134,30 @@ fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     Err(anyhow!("HotPlugBus hasn't been implemented"))
 }
 
+fn handle_vfio_command<V: VmArch, Vcpu: VcpuArch>(
+    linux: &mut RunnableLinuxVm<V, Vcpu>,
+    sys_allocator: &mut SystemAllocator,
+    cfg: &Config,
+    add_tubes: &mut Vec<TaggedControlTube>,
+    vfio_path: &Path,
+    add: bool,
+) -> VmResponse {
+    let ret = if add {
+        add_vfio_device(linux, sys_allocator, cfg, add_tubes, vfio_path)
+    } else {
+        remove_vfio_device(linux, sys_allocator, vfio_path)
+    };
+
+    match ret {
+        Ok(()) => VmResponse::Ok,
+        Err(e) => {
+            error!("hanlde_vfio_command failure: {}", e);
+            add_tubes.clear();
+            VmResponse::Err(base::Error::new(libc::EINVAL))
+        }
+    }
+}
+
 /// Signals all running VCPUs to vmexit, sends VcpuControl message to each VCPU tube, and tells
 /// `irq_chip` to stop blocking halted VCPUs. The channel message is set first because both the
 /// signal and the irq_chip kick could cause the VCPU thread to continue through the VCPU run
@@ -3159,6 +3179,7 @@ fn kick_all_vcpus(
 fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     mut linux: RunnableLinuxVm<V, Vcpu>,
     mut sys_allocator: SystemAllocator,
+    cfg: Config,
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
     mut control_tubes: Vec<TaggedControlTube>,
     balloon_host_tube: Tube,
@@ -3167,11 +3188,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     exit_evt: Event,
     reset_evt: Event,
     sigchld_fd: SignalFd,
-    sandbox: bool,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     mut gralloc: RutabagaGralloc,
-    enable_per_vm_core_scheduling: bool,
-    host_cpu_topology: bool,
     kvm_vcpu_ids: Vec<usize>,
 ) -> Result<ExitState> {
     #[derive(PollToken)]
@@ -3219,7 +3237,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             .context("failed to add descriptor to wait context")?;
     }
 
-    if sandbox {
+    if cfg.sandbox {
         // Before starting VCPUs, in case we started with some capabilities, drop them all.
         drop_capabilities().context("failed to drop process capabilities")?;
     }
@@ -3249,7 +3267,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     // shared by all vCPU threads.
     // TODO(b/199312402): Avoid enabling core scheduling for the crosvm process
     // itself for even better performance. Only vCPUs need the feature.
-    if enable_per_vm_core_scheduling {
+    if cfg.per_vm_core_scheduling {
         if let Err(e) = enable_core_scheduling() {
             error!("Failed to enable core scheduling: {}", e);
         }
@@ -3285,8 +3303,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             use_hypervisor_signals,
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             to_gdb_channel.clone(),
-            enable_per_vm_core_scheduling,
-            host_cpu_topology,
+            cfg.per_vm_core_scheduling,
+            cfg.host_cpu_topology,
         )?;
         vcpu_handles.push((handle, to_vcpu_channel));
     }
@@ -3391,23 +3409,37 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     }
                 }
                 Token::VmControl { index } => {
+                    let mut add_tubes = Vec::new();
                     if let Some(socket) = control_tubes.get(index) {
                         match socket {
                             TaggedControlTube::Vm(tube) => match tube.recv::<VmRequest>() {
                                 Ok(request) => {
                                     let mut run_mode_opt = None;
-                                    let response = request.execute(
-                                        &mut run_mode_opt,
-                                        &balloon_host_tube,
-                                        &mut balloon_stats_id,
-                                        disk_host_tubes,
-                                        #[cfg(feature = "usb")]
-                                        Some(&usb_control_tube),
-                                        #[cfg(not(feature = "usb"))]
-                                        None,
-                                        &mut linux.bat_control,
-                                        &vcpu_handles,
-                                    );
+                                    let response = match request {
+                                        VmRequest::VfioCommand { vfio_path, add } => {
+                                            handle_vfio_command(
+                                                &mut linux,
+                                                &mut sys_allocator,
+                                                &cfg,
+                                                &mut add_tubes,
+                                                &vfio_path,
+                                                add,
+                                            )
+                                        }
+                                        _ => request.execute(
+                                            &mut run_mode_opt,
+                                            &balloon_host_tube,
+                                            &mut balloon_stats_id,
+                                            disk_host_tubes,
+                                            #[cfg(feature = "usb")]
+                                            Some(&usb_control_tube),
+                                            #[cfg(not(feature = "usb"))]
+                                            None,
+                                            &mut linux.bat_control,
+                                            &vcpu_handles,
+                                        ),
+                                    };
+
                                     if let Err(e) = tube.send(&response) {
                                         error!("failed to send VmResponse: {}", e);
                                     }
@@ -3542,6 +3574,21 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                 }
                             },
                         }
+                    }
+                    if !add_tubes.is_empty() {
+                        for (idx, socket) in add_tubes.iter().enumerate() {
+                            wait_ctx
+                                .add(
+                                    socket.as_ref(),
+                                    Token::VmControl {
+                                        index: idx + control_tubes.len(),
+                                    },
+                                )
+                                .context(
+                                    "failed to add hotplug vfio-pci descriptor ot wait context",
+                                )?;
+                        }
+                        control_tubes.append(&mut add_tubes);
                     }
                 }
             }
