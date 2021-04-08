@@ -36,8 +36,8 @@ use base::*;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH};
 use devices::virtio::vhost::user::{
-    Block as VhostUserBlock, Error as VhostUserError, Fs as VhostUserFs, Net as VhostUserNet,
-    Wl as VhostUserWl,
+    Block as VhostUserBlock, Console as VhostUserConsole, Error as VhostUserError,
+    Fs as VhostUserFs, Net as VhostUserNet, Wl as VhostUserWl,
 };
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
@@ -194,6 +194,7 @@ pub enum Error {
     ValidateRawDescriptor(base::Error),
     VhostNetDeviceNew(virtio::vhost::Error),
     VhostUserBlockDeviceNew(VhostUserError),
+    VhostUserConsoleDeviceNew(VhostUserError),
     VhostUserFsDeviceNew(VhostUserError),
     VhostUserNetDeviceNew(VhostUserError),
     VhostUserNetWithNetArgs,
@@ -334,6 +335,9 @@ impl Display for Error {
             VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {}", e),
             VhostUserBlockDeviceNew(e) => {
                 write!(f, "failed to set up vhost-user block device: {}", e)
+            }
+            VhostUserConsoleDeviceNew(e) => {
+                write!(f, "failed to set up vhost-user console device: {}", e)
             }
             VhostUserFsDeviceNew(e) => write!(f, "failed to set up vhost-user fs device: {}", e),
             VhostUserNetDeviceNew(e) => write!(f, "failed to set up vhost-user net device: {}", e),
@@ -567,6 +571,17 @@ fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) 
 fn create_vhost_user_block_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
     let dev = VhostUserBlock::new(virtio::base_features(cfg.protected_vm), &opt.socket)
         .map_err(Error::VhostUserBlockDeviceNew)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        // no sandbox here because virtqueue handling is exported to a different process.
+        jail: None,
+    })
+}
+
+fn create_vhost_user_console_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
+    let dev = VhostUserConsole::new(virtio::base_features(cfg.protected_vm), &opt.socket)
+        .map_err(Error::VhostUserConsoleDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1450,6 +1465,10 @@ fn create_virtio_devices(
 
     for blk in &cfg.vhost_user_blk {
         devs.push(create_vhost_user_block_device(cfg, blk)?);
+    }
+
+    for console in &cfg.vhost_user_console {
+        devs.push(create_vhost_user_console_device(cfg, console)?);
     }
 
     for (index, pmem_disk) in cfg.pmem_devices.iter().enumerate() {

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 mod block;
+mod console;
 mod fs;
 mod handler;
 mod net;
@@ -10,6 +11,7 @@ mod wl;
 mod worker;
 
 pub use self::block::*;
+pub use self::console::*;
 pub use self::fs::*;
 pub use self::handler::VhostUserHandler;
 pub use self::net::*;

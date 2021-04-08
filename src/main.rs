@@ -1768,6 +1768,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "vhost-user-blk" => cfg.vhost_user_blk.push(VhostUserOption {
             socket: PathBuf::from(value.unwrap()),
         }),
+        "vhost-user-console" => cfg.vhost_user_console.push(VhostUserOption {
+            socket: PathBuf::from(value.unwrap()),
+        }),
         "vhost-user-net" => cfg.vhost_user_net.push(VhostUserOption {
             socket: PathBuf::from(value.unwrap()),
         }),
@@ -2103,6 +2106,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           Argument::value("gdb", "PORT", "(EXPERIMENTAL) gdb on the given port"),
           Argument::value("balloon_bias_mib", "N", "Amount to bias balance of memory between host and guest as the balloon inflates, in MiB."),
           Argument::value("vhost-user-blk", "SOCKET_PATH", "Path to a socket for vhost-user block"),
+          Argument::value("vhost-user-console", "SOCKET_PATH", "Path to a socket for vhost-user console"),
           Argument::value("vhost-user-net", "SOCKET_PATH", "Path to a socket for vhost-user net"),
           Argument::value("vhost-user-wl", "SOCKET_PATH:TUBE_PATH", "Paths to a vhost-user socket for wayland and a Tube socket for additional wayland-specific messages"),
           Argument::value("vhost-user-fs", "SOCKET_PATH:TAG",

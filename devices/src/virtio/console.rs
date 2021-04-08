@@ -16,7 +16,7 @@ use super::{
 };
 use crate::{ProtectionType, SerialDevice};
 
-const QUEUE_SIZE: u16 = 256;
+pub(crate) const QUEUE_SIZE: u16 = 256;
 
 // For now, just implement port 0 (receiveq and transmitq).
 // If VIRTIO_CONSOLE_F_MULTIPORT is implemented, more queues will be needed.
@@ -24,7 +24,7 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
-struct virtio_console_config {
+pub(crate) struct virtio_console_config {
     cols: Le16,
     rows: Le16,
     max_nr_ports: Le32,
