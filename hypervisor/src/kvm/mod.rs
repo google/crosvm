@@ -32,8 +32,8 @@ use libc::{
 use base::{
     block_signal, errno_result, error, ioctl, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val,
     pagesize, signal, unblock_signal, AsRawDescriptor, Error, Event, FromRawDescriptor,
-    MappedRegion, MemoryMapping, MemoryMappingBuilder, MmapError, Protection, RawDescriptor,
-    Result, SafeDescriptor,
+    MappedRegion, MemoryMapping, MemoryMappingBuilder, MemoryMappingBuilderUnix, MmapError,
+    Protection, RawDescriptor, Result, SafeDescriptor,
 };
 use data_model::vec_with_array_field;
 use kvm_sys::*;

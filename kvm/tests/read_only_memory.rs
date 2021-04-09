@@ -23,7 +23,7 @@ fn test_run() {
     let guest_mem = GuestMemory::new(&[]).unwrap();
     let mem = SharedMemory::anon(mem_size).expect("failed to create shared memory");
     let mmap = MemoryMappingBuilder::new(mem_size as usize)
-        .from_descriptor(&mem)
+        .from_shared_memory(&mem)
         .build()
         .expect("failed to create memory mapping");
 
@@ -50,7 +50,7 @@ fn test_run() {
         GuestAddress(0),
         Box::new(
             MemoryMappingBuilder::new(mem_size as usize)
-                .from_descriptor(&mem)
+                .from_shared_memory(&mem)
                 .build()
                 .expect("failed to create memory mapping"),
         ),
@@ -63,7 +63,7 @@ fn test_run() {
     // from it.
     let mem_ro = SharedMemory::anon(0x1000).expect("failed to create shared memory");
     let mmap_ro = MemoryMappingBuilder::new(0x1000)
-        .from_descriptor(&mem_ro)
+        .from_shared_memory(&mem_ro)
         .build()
         .expect("failed to create memory mapping");
     mmap_ro
@@ -73,7 +73,7 @@ fn test_run() {
         GuestAddress(vcpu_sregs.es.base),
         Box::new(
             MemoryMappingBuilder::new(0x1000)
-                .from_descriptor(&mem_ro)
+                .from_shared_memory(&mem_ro)
                 .build()
                 .expect("failed to create memory mapping"),
         ),

@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{wrap_descriptor, AsRawDescriptor, MappedRegion, MmapError, Protection};
+use crate::{wrap_descriptor, AsRawDescriptor, MappedRegion, MmapError, Protection, SharedMemory};
 use data_model::volatile_memory::*;
 use data_model::DataInit;
+use std::fs::File;
 use sys_util::MemoryMapping as SysUtilMmap;
 
 pub type Result<T> = std::result::Result<T, MmapError>;
@@ -12,26 +13,29 @@ pub type Result<T> = std::result::Result<T, MmapError>;
 /// See [MemoryMapping](sys_util::MemoryMapping) for struct- and method-level
 /// documentation.
 #[derive(Debug)]
-pub struct MemoryMapping(SysUtilMmap);
+pub struct MemoryMapping {
+    mapping: SysUtilMmap,
+}
+
 impl MemoryMapping {
     pub fn write_slice(&self, buf: &[u8], offset: usize) -> Result<usize> {
-        self.0.write_slice(buf, offset)
+        self.mapping.write_slice(buf, offset)
     }
 
     pub fn read_slice(&self, buf: &mut [u8], offset: usize) -> Result<usize> {
-        self.0.read_slice(buf, offset)
+        self.mapping.read_slice(buf, offset)
     }
 
     pub fn write_obj<T: DataInit>(&self, val: T, offset: usize) -> Result<()> {
-        self.0.write_obj(val, offset)
+        self.mapping.write_obj(val, offset)
     }
 
     pub fn read_obj<T: DataInit>(&self, offset: usize) -> Result<T> {
-        self.0.read_obj(offset)
+        self.mapping.read_obj(offset)
     }
 
     pub fn msync(&self) -> Result<()> {
-        self.0.msync()
+        self.mapping.msync()
     }
 
     pub fn read_to_memory(
@@ -40,7 +44,7 @@ impl MemoryMapping {
         src: &dyn AsRawDescriptor,
         count: usize,
     ) -> Result<()> {
-        self.0
+        self.mapping
             .read_to_memory(mem_offset, &wrap_descriptor(src), count)
     }
 
@@ -50,7 +54,7 @@ impl MemoryMapping {
         dst: &dyn AsRawDescriptor,
         count: usize,
     ) -> Result<()> {
-        self.0
+        self.mapping
             .write_from_memory(mem_offset, &wrap_descriptor(dst), count)
     }
 }
@@ -61,8 +65,12 @@ pub trait Unix {
 
 impl Unix for MemoryMapping {
     fn remove_range(&self, mem_offset: usize, count: usize) -> Result<()> {
-        self.0.remove_range(mem_offset, count)
+        self.mapping.remove_range(mem_offset, count)
     }
+}
+
+pub trait MemoryMappingBuilderUnix<'a> {
+    fn from_descriptor(self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder;
 }
 
 pub struct MemoryMappingBuilder<'a> {
@@ -71,6 +79,16 @@ pub struct MemoryMappingBuilder<'a> {
     offset: Option<u64>,
     protection: Option<Protection>,
     populate: bool,
+}
+
+impl<'a> MemoryMappingBuilderUnix<'a> for MemoryMappingBuilder<'a> {
+    /// Build the memory mapping given the specified descriptor to mapped memory
+    ///
+    /// Default: Create a new memory mapping.
+    fn from_descriptor(mut self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder {
+        self.descriptor = Some(descriptor);
+        self
+    }
 }
 
 /// Builds a MemoryMapping object from the specified arguments.
@@ -86,11 +104,23 @@ impl<'a> MemoryMappingBuilder<'a> {
         }
     }
 
-    /// Build the memory mapping given the specified descriptor to mapped memory
+    /// Build the memory mapping given the specified File to mapped memory
     ///
     /// Default: Create a new memory mapping.
-    pub fn from_descriptor(mut self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder {
-        self.descriptor = Some(descriptor);
+    ///
+    /// Note: this is a forward looking interface to accomodate platforms that
+    /// require special handling for file backed mappings.
+    #[allow(unused_mut)]
+    pub fn from_file(mut self, file: &'a File) -> MemoryMappingBuilder {
+        self.descriptor = Some(file as &dyn AsRawDescriptor);
+        self
+    }
+
+    /// Build the memory mapping given the specified SharedMemory to mapped memory
+    ///
+    /// Default: Create a new memory mapping.
+    pub fn from_shared_memory(mut self, shm: &'a SharedMemory) -> MemoryMappingBuilder {
+        self.descriptor = Some(shm as &dyn AsRawDescriptor);
         self
     }
 
@@ -176,23 +206,23 @@ impl<'a> MemoryMappingBuilder<'a> {
     }
 
     fn wrap(result: Result<SysUtilMmap>) -> Result<MemoryMapping> {
-        result.map(MemoryMapping)
+        result.map(|mapping| MemoryMapping { mapping })
     }
 }
 
 impl VolatileMemory for MemoryMapping {
     fn get_slice(&self, offset: usize, count: usize) -> VolatileMemoryResult<VolatileSlice> {
-        self.0.get_slice(offset, count)
+        self.mapping.get_slice(offset, count)
     }
 }
 
 // Safe because it exclusively forwards calls to a safe implementation.
 unsafe impl MappedRegion for MemoryMapping {
     fn as_ptr(&self) -> *mut u8 {
-        self.0.as_ptr()
+        self.mapping.as_ptr()
     }
 
     fn size(&self) -> usize {
-        self.0.size()
+        self.mapping.size()
     }
 }

@@ -173,7 +173,7 @@ impl GuestMemory {
             let size =
                 usize::try_from(range.1).map_err(|_| Error::MemoryRegionTooLarge(range.1))?;
             let mapping = MemoryMappingBuilder::new(size)
-                .from_descriptor(shm.as_ref())
+                .from_shared_memory(shm.as_ref())
                 .offset(offset)
                 .build()
                 .map_err(Error::MemoryMappingFailed)?;
@@ -870,7 +870,7 @@ mod tests {
 
         let _ = gm.with_regions::<_, ()>(|index, _, size, _, shm, shm_offset| {
             let mmap = MemoryMappingBuilder::new(size)
-                .from_descriptor(shm)
+                .from_shared_memory(shm)
                 .offset(shm_offset)
                 .build()
                 .unwrap();

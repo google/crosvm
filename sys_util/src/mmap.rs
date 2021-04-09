@@ -59,7 +59,7 @@ impl Display for Error {
                 "requested memory range spans past the end of the region: offset={} count={} region_size={}",
                 offset, count, region_size,
             ),
-            SystemCallFailed(e) => write!(f, "mmap system call failed: {}", e),
+            SystemCallFailed(e) => write!(f, "mmap related system call failed: {}", e),
             ReadToMemory(e) => write!(f, "failed to read from file to memory: {}", e),
             RemoveMappingIsUnsupported => write!(f, "`remove_mapping` is unsupported"),
             WriteFromMemory(e) => write!(f, "failed to write from memory to file: {}", e),

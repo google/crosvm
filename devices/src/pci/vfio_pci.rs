@@ -714,7 +714,7 @@ impl VfioPciDevice {
                         // device process doesn't has this mapping, but vfio_dma_map() need it
                         // in device process, so here map it again.
                         let mmap = match MemoryMappingBuilder::new(mmap_size as usize)
-                            .from_descriptor(self.device.device_file())
+                            .from_file(self.device.device_file())
                             .offset(offset)
                             .build()
                         {

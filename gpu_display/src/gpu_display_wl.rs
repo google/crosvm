@@ -209,7 +209,7 @@ impl DisplayT for DisplayWl {
         let buffer_shm = SharedMemory::named("GpuDisplaySurface", buffer_size as u64)
             .map_err(GpuDisplayError::CreateShm)?;
         let buffer_mem = MemoryMappingBuilder::new(buffer_size)
-            .from_descriptor(&buffer_shm)
+            .from_shared_memory(&buffer_shm)
             .build()
             .unwrap();
 

@@ -365,7 +365,7 @@ impl Process {
             _ => {}
         }
         let mem = MemoryMappingBuilder::new(length as usize)
-            .from_descriptor(&shm)
+            .from_shared_memory(&shm)
             .offset(offset)
             .build()
             .map_err(mmap_to_sys_err)?;

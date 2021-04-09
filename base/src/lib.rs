@@ -19,7 +19,7 @@ pub use ioctl::{
     ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
 };
 pub use mmap::Unix as MemoryMappingUnix;
-pub use mmap::{MemoryMapping, MemoryMappingBuilder};
+pub use mmap::{MemoryMapping, MemoryMappingBuilder, MemoryMappingBuilderUnix};
 pub use shm::{SharedMemory, Unix as SharedMemoryUnix};
 pub use sys_util::ioctl::*;
 pub use sys_util::sched::*;

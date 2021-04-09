@@ -969,7 +969,7 @@ impl Vcpu {
         let vcpu = unsafe { File::from_raw_descriptor(vcpu_fd) };
 
         let run_mmap = MemoryMappingBuilder::new(run_mmap_size)
-            .from_descriptor(&vcpu)
+            .from_file(&vcpu)
             .build()
             .map_err(|_| Error::new(ENOSPC))?;
 

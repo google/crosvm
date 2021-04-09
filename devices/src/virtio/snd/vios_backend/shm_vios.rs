@@ -548,7 +548,7 @@ impl IoBufferQueue {
             .map_err(|e| Error::FileSizeError(e))? as usize;
 
         let mmap = MemoryMappingBuilder::new(size)
-            .from_descriptor(&file)
+            .from_file(&file)
             .build()
             .map_err(|e| Error::ServerMmapError(e))?;
 
@@ -690,7 +690,7 @@ fn mmap_buffer(
 
     let mmap = MemoryMappingBuilder::new(extended_size)
         .offset(aligned_offset as u64)
-        .from_descriptor(src)
+        .from_shared_memory(src)
         .build()
         .map_err(|e| Error::GuestMmapError(e))?;
 
