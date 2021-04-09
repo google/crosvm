@@ -388,8 +388,8 @@ pub mod with_as_descriptor {
 /// A simple wrapper around `File` that implements `Serialize`/`Deserialize`, which is useful when
 /// the `#[serde(with = "with_as_descriptor")]` trait is infeasible, such as for a field with type
 /// `Option<File>`.
-#[serde(transparent)]
 #[derive(Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct FileSerdeWrapper(#[serde(with = "with_as_descriptor")] pub File);
 
 impl fmt::Debug for FileSerdeWrapper {
