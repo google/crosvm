@@ -317,6 +317,97 @@ impl Display for DeviceRegistrationError {
     }
 }
 
+/// Config a PCI device for used by this vm.
+pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
+    linux: &mut RunnableLinuxVm<V, Vcpu>,
+    mut device: Box<dyn PciDevice>,
+    jail: Option<Minijail>,
+    root: &mut PciRoot,
+    resources: &mut SystemAllocator,
+) -> Result<(), DeviceRegistrationError> {
+    // Allocate PCI device address before allocating BARs.
+    let pci_address = device
+        .allocate_address(resources)
+        .map_err(DeviceRegistrationError::AllocateDeviceAddrs)?;
+
+    // Allocate ranges that may need to be in the low MMIO region (MmioType::Low).
+    let mmio_ranges = device
+        .allocate_io_bars(resources)
+        .map_err(DeviceRegistrationError::AllocateIoAddrs)?;
+
+    // Allocate device ranges that may be in low or high MMIO after low-only ranges.
+    let device_ranges = device
+        .allocate_device_bars(resources)
+        .map_err(DeviceRegistrationError::AllocateDeviceAddrs)?;
+
+    let mut keep_rds = device.keep_rds();
+    syslog::push_descriptors(&mut keep_rds);
+
+    let irqfd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
+    let irq_resample_fd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
+
+    let irq_num = resources
+        .allocate_irq()
+        .ok_or(DeviceRegistrationError::AllocateIrq)?;
+
+    // Rotate interrupt pins across PCI logical functions.
+    let pci_irq_pin = match pci_address.func % 4 {
+        0 => PciInterruptPin::IntA,
+        1 => PciInterruptPin::IntB,
+        2 => PciInterruptPin::IntC,
+        3 => PciInterruptPin::IntD,
+        _ => unreachable!(), // Obviously not possible, but the compiler is not smart enough.
+    };
+
+    linux
+        .irq_chip
+        .as_irq_chip_mut()
+        .register_irq_event(irq_num, &irqfd, Some(&irq_resample_fd))
+        .map_err(DeviceRegistrationError::RegisterIrqfd)?;
+
+    keep_rds.push(irqfd.as_raw_descriptor());
+    keep_rds.push(irq_resample_fd.as_raw_descriptor());
+    device.assign_irq(irqfd, irq_resample_fd, irq_num, pci_irq_pin);
+    device
+        .register_device_capabilities()
+        .map_err(DeviceRegistrationError::RegisterDeviceCapabilities)?;
+    for (event, addr, datamatch) in device.ioevents() {
+        let io_addr = IoEventAddress::Mmio(addr);
+        linux
+            .vm
+            .register_ioevent(&event, io_addr, datamatch)
+            .map_err(DeviceRegistrationError::RegisterIoevent)?;
+        keep_rds.push(event.as_raw_descriptor());
+    }
+    let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
+        let proxy = ProxyDevice::new(device, &jail, keep_rds)
+            .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
+        linux
+            .pid_debug_label_map
+            .insert(proxy.pid() as u32, proxy.debug_label());
+        Arc::new(Mutex::new(proxy))
+    } else {
+        device.on_sandboxed();
+        Arc::new(Mutex::new(device))
+    };
+    root.add_device(pci_address, arced_dev.clone());
+    for range in &mmio_ranges {
+        linux
+            .mmio_bus
+            .insert(arced_dev.clone(), range.0, range.1)
+            .map_err(DeviceRegistrationError::MmioInsert)?;
+    }
+
+    for range in &device_ranges {
+        linux
+            .mmio_bus
+            .insert(arced_dev.clone(), range.0, range.1)
+            .map_err(DeviceRegistrationError::MmioInsert)?;
+    }
+
+    Ok(())
+}
+
 /// Creates a root PCI device for use by this Vm.
 pub fn generate_pci_root(
     mut devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
