@@ -467,6 +467,7 @@ impl VirtioGpu {
                     stride: q.strides[3],
                 },
             ],
+            modifier: q.modifier,
         }))
     }
 

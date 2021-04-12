@@ -1106,7 +1106,7 @@ impl WlState {
     fn get_info(&mut self, request: ResourceRequest) -> Option<File> {
         let sock = self.resource_bridge.as_ref().unwrap();
         match get_resource_info(sock, request) {
-            Ok(ResourceInfo::Buffer(BufferInfo { file, planes: _ })) => Some(file),
+            Ok(ResourceInfo::Buffer(BufferInfo { file, .. })) => Some(file),
             Ok(ResourceInfo::Fence { file }) => Some(file),
             Err(ResourceBridgeError::InvalidResource(req)) => {
                 warn!("attempt to send non-existent gpu resource {}", req);

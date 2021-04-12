@@ -649,7 +649,13 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                 // Take ownership of this file by `into_raw_descriptor()` as this
                 // file will be closed by libvda.
                 let fd = resource_info.file.into_raw_descriptor();
-                session.use_output_buffer(buffer_id as i32, Format::NV12, fd, &planes)
+                session.use_output_buffer(
+                    buffer_id as i32,
+                    Format::NV12,
+                    fd,
+                    &planes,
+                    resource_info.modifier,
+                )
             }
         }?;
         Ok(VideoCmdResponseType::Async(AsyncCmdTag::Queue {

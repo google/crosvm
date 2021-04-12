@@ -29,6 +29,7 @@ pub struct BufferInfo {
     #[serde(with = "with_as_descriptor")]
     pub file: File,
     pub planes: [PlaneInfo; RESOURE_PLANE_NUM],
+    pub modifier: u64,
 }
 
 pub const RESOURE_PLANE_NUM: usize = 4;

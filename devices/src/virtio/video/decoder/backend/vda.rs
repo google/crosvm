@@ -155,6 +155,7 @@ impl<'a> DecoderSession for LibvdaSession<'a> {
         format: Format,
         output_buffer: RawDescriptor,
         planes: &[FramePlane],
+        modifier: u64,
     ) -> VideoResult<()> {
         let vda_planes: Vec<libvda::FramePlane> = planes.into_iter().map(Into::into).collect();
         Ok(self.session.use_output_buffer(
@@ -162,6 +163,7 @@ impl<'a> DecoderSession for LibvdaSession<'a> {
             libvda::PixelFormat::try_from(format)?,
             output_buffer,
             &vda_planes,
+            modifier,
         )?)
     }
 

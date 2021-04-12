@@ -82,6 +82,7 @@ pub trait DecoderSession {
         format: Format,
         output_buffer: RawDescriptor,
         planes: &[FramePlane],
+        modifier: u64,
     ) -> VideoResult<()>;
 
     /// Ask the device to reuse an output buffer previously passed to
