@@ -35,12 +35,12 @@ use gdbstub_arch::x86::reg::X86_64CoreRegs as GdbStubRegs;
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use {
-    devices::IrqChipAArch64 as IrqChipArch,
+    devices::{IrqChipAArch64 as IrqChipArch, PciConfigMmio as RootConfigArch},
     hypervisor::{Hypervisor as HypervisorArch, VcpuAArch64 as VcpuArch, VmAArch64 as VmArch},
 };
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use {
-    devices::IrqChipX86_64 as IrqChipArch,
+    devices::{IrqChipX86_64 as IrqChipArch, PciConfigIo as RootConfigArch},
     hypervisor::{HypervisorX86_64 as HypervisorArch, VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
 };
 
@@ -120,6 +120,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub gdb: Option<(u32, Tube)>,
     /// Devices to be notified before the system resumes from the S3 suspended state.
     pub resume_notify_devices: Vec<Arc<Mutex<dyn BusResumeDevice>>>,
+    pub root_config: Arc<Mutex<RootConfigArch>>,
 }
 
 /// The device and optional jail.
@@ -201,6 +202,14 @@ pub trait LinuxArch {
         num_cpus: usize,
         has_bios: bool,
         no_smt: bool,
+    ) -> Result<(), Self::Error>;
+
+    /// Configures and add a pci device into vm
+    fn register_pci_device<V: VmArch, Vcpu: VcpuArch>(
+        linux: &mut RunnableLinuxVm<V, Vcpu>,
+        device: Box<dyn PciDevice>,
+        minijail: Option<Minijail>,
+        resources: &mut SystemAllocator,
     ) -> Result<(), Self::Error>;
 
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
@@ -322,7 +331,6 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     mut device: Box<dyn PciDevice>,
     jail: Option<Minijail>,
-    root: &mut PciRoot,
     resources: &mut SystemAllocator,
 ) -> Result<(), DeviceRegistrationError> {
     // Allocate PCI device address before allocating BARs.
@@ -390,7 +398,12 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
         device.on_sandboxed();
         Arc::new(Mutex::new(device))
     };
-    root.add_device(pci_address, arced_dev.clone());
+
+    linux
+        .root_config
+        .lock()
+        .add_device(pci_address, arced_dev.clone());
+
     for range in &mmio_ranges {
         linux
             .mmio_bus

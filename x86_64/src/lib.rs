@@ -83,6 +83,7 @@ pub enum Error {
     CloneEvent(base::Error),
     CloneIrqChip(base::Error),
     Cmdline(kernel_cmdline::Error),
+    ConfigurePciDevice(arch::DeviceRegistrationError),
     ConfigureSystem,
     CreateBatDevices(arch::DeviceRegistrationError),
     CreateDevices(Box<dyn StdError>),
@@ -143,6 +144,7 @@ impl Display for Error {
             CloneEvent(e) => write!(f, "unable to clone an Event: {}", e),
             CloneIrqChip(e) => write!(f, "failed to clone IRQ chip: {}", e),
             Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),
+            ConfigurePciDevice(e) => write!(f, "failed to configure hotplugged pci device: {}", e),
             ConfigureSystem => write!(f, "error configuring the system"),
             CreateBatDevices(e) => write!(f, "unable to create battery devices: {}", e),
             CreateDevices(e) => write!(f, "error creating devices: {}", e),
@@ -413,7 +415,7 @@ impl arch::LinuxArch for X8664arch {
         )
         .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));
-        io_bus.insert(pci_bus, 0xcf8, 0x8).unwrap();
+        io_bus.insert(pci_bus.clone(), 0xcf8, 0x8).unwrap();
 
         // Event used to notify crosvm that guest OS is trying to suspend.
         let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
@@ -553,6 +555,7 @@ impl arch::LinuxArch for X8664arch {
             bat_control,
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             gdb: components.gdb,
+            root_config: pci_bus,
         })
     }
 
@@ -590,6 +593,16 @@ impl arch::LinuxArch for X8664arch {
         interrupts::set_lint(vcpu_id, irq_chip).map_err(Error::SetLint)?;
 
         Ok(())
+    }
+
+    fn register_pci_device<V: VmX86_64, Vcpu: VcpuX86_64>(
+        linux: &mut RunnableLinuxVm<V, Vcpu>,
+        device: Box<dyn PciDevice>,
+        minijail: Option<Minijail>,
+        resources: &mut SystemAllocator,
+    ) -> Result<()> {
+        arch::configure_pci_device(linux, device, minijail, resources)
+            .map_err(Error::ConfigurePciDevice)
     }
 
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]

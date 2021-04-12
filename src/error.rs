@@ -43,6 +43,7 @@ pub enum Error {
     CloneEvent(base::Error),
     CloneVcpu(base::Error),
     ConfigureVcpu(<Arch as LinuxArch>::Error),
+    ConfigureVfioDevice(<Arch as LinuxArch>::Error),
     ConnectTube(io::Error),
     #[cfg(feature = "audio")]
     CreateAc97(devices::PciDeviceError),
@@ -169,6 +170,7 @@ impl Display for Error {
             CloneEvent(e) => write!(f, "failed to clone event: {}", e),
             CloneVcpu(e) => write!(f, "failed to clone vcpu: {}", e),
             ConfigureVcpu(e) => write!(f, "failed to configure vcpu: {}", e),
+            ConfigureVfioDevice(e) => write!(f, "Failed to configure vfio device:{}", e),
             ConnectTube(e) => write!(f, "failed to connect to tube: {}", e),
             #[cfg(feature = "audio")]
             CreateAc97(e) => write!(f, "failed to create ac97 device: {}", e),

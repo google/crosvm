@@ -2512,6 +2512,32 @@ where
     )
 }
 
+#[allow(dead_code)]
+fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
+    linux: &mut RunnableLinuxVm<V, Vcpu>,
+    sys_allocator: &mut SystemAllocator,
+    cfg: &Config,
+    control_tubes: &mut Vec<TaggedControlTube>,
+    vfio_path: &Path,
+) -> Result<()> {
+    let vm = &linux.vm;
+    let mut endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>> = BTreeMap::new();
+    let (vfio_pci_device, jail) = create_vfio_device(
+        cfg,
+        vm,
+        sys_allocator,
+        control_tubes,
+        vfio_path,
+        &mut endpoints,
+        false,
+    )?;
+    Arch::register_pci_device(linux, vfio_pci_device, jail, sys_allocator)
+        .map_err(Error::ConfigureVfioDevice)
+}
+
+#[allow(dead_code)]
+fn remove_vfio_device() {}
+
 /// Signals all running VCPUs to vmexit, sends VcpuControl message to each VCPU tube, and tells
 /// `irq_chip` to stop blocking halted VCPUs. The channel message is set first because both the
 /// signal and the irq_chip kick could cause the VCPU thread to continue through the VCPU run

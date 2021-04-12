@@ -167,6 +167,7 @@ pub enum Error {
     SetDeviceAttr(base::Error),
     SetReg(base::Error),
     SetupGuestMemory(GuestMemoryError),
+    Unsupported,
     VcpuInit(base::Error),
 }
 
@@ -206,6 +207,7 @@ impl Display for Error {
             SetDeviceAttr(e) => write!(f, "failed to set device attr: {}", e),
             SetReg(e) => write!(f, "failed to set register: {}", e),
             SetupGuestMemory(e) => write!(f, "failed to set up guest memory: {}", e),
+            Unsupported => write!(f, "this function isn't supported"),
             VcpuInit(e) => write!(f, "failed to initialize VCPU: {}", e),
         }
     }
@@ -457,6 +459,7 @@ impl arch::LinuxArch for AArch64 {
             delay_rt: components.delay_rt,
             bat_control: None,
             resume_notify_devices: Vec::new(),
+            root_config: pci_bus,
         })
     }
 
@@ -472,6 +475,16 @@ impl arch::LinuxArch for AArch64 {
     ) -> std::result::Result<(), Self::Error> {
         // AArch64 doesn't configure vcpus on the vcpu thread, so nothing to do here.
         Ok(())
+    }
+
+    fn register_pci_device<V: VmAArch64, Vcpu: VcpuAArch64>(
+        _linux: &mut RunnableLinuxVm<V, Vcpu>,
+        _device: Box<dyn PciDevice>,
+        _minijail: Option<Minijail>,
+        _resources: &mut SystemAllocator,
+    ) -> std::result::Result<(), Self::Error> {
+        // hotplug function isn't verified on AArch64, so set it unsupported here.
+        Err(Error::Unsupported)
     }
 }
 

@@ -261,6 +261,10 @@ impl PciConfigIo {
         };
         self.config_address = (self.config_address & !mask) | value;
     }
+
+    pub fn add_device(&mut self, address: PciAddress, device: Arc<Mutex<dyn BusDevice>>) {
+        self.pci_root.add_device(address, device)
+    }
 }
 
 impl BusDevice for PciConfigIo {
@@ -320,6 +324,10 @@ impl PciConfigMmio {
         let (address, register) = PciAddress::from_config_address(config_address);
         self.pci_root
             .config_space_write(address, register, offset, data)
+    }
+
+    pub fn add_device(&mut self, address: PciAddress, device: Arc<Mutex<dyn BusDevice>>) {
+        self.pci_root.add_device(address, device)
     }
 }
 
