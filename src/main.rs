@@ -369,6 +369,10 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
 
     #[cfg(feature = "gfxstream")]
     {
+        if !vulkan_specified && gpu_params.mode == GpuMode::ModeGfxstream {
+            gpu_params.use_vulkan = true;
+        }
+
         if vulkan_specified || syncfd_specified || angle_specified {
             match gpu_params.mode {
                 GpuMode::ModeGfxstream => {}
@@ -2793,6 +2797,21 @@ mod tests {
         assert_eq!(
             config.virtio_switches.unwrap(),
             PathBuf::from("/dev/switches-test")
+        );
+    }
+
+    #[cfg(all(feature = "gpu", feature = "gfxstream"))]
+    #[test]
+    fn parse_gpu_options_default_vulkan_support() {
+        assert!(
+            !parse_gpu_options(Some("backend=virglrenderer"))
+                .unwrap()
+                .use_vulkan
+        );
+        assert!(
+            parse_gpu_options(Some("backend=gfxstream"))
+                .unwrap()
+                .use_vulkan
         );
     }
 

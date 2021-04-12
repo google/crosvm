@@ -97,7 +97,7 @@ impl Default for GpuParameters {
             renderer_use_surfaceless: true,
             gfxstream_use_guest_angle: false,
             gfxstream_use_syncfd: true,
-            use_vulkan: true,
+            use_vulkan: false,
             mode: GpuMode::ModeVirglRenderer,
             cache_path: None,
             cache_size: None,
