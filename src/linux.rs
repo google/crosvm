@@ -2325,6 +2325,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
         gdb: None,
         dmi_path: cfg.dmi_path.clone(),
+        no_legacy: cfg.no_legacy,
     })
 }
 

@@ -137,12 +137,12 @@ where
     )
     .unwrap();
     let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));
+    io_bus.insert(pci_bus, 0xcf8, 0x8).unwrap();
 
-    X8664arch::setup_io_bus(
+    X8664arch::setup_legacy_devices(
         &mut io_bus,
         irq_chip.pit_uses_speaker_port(),
         exit_evt.try_clone().unwrap(),
-        Some(pci_bus),
         memory_size,
     )
     .unwrap();

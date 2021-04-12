@@ -409,18 +409,19 @@ impl arch::LinuxArch for X8664arch {
         )
         .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));
+        io_bus.insert(pci_bus, 0xcf8, 0x8).unwrap();
 
         // Event used to notify crosvm that guest OS is trying to suspend.
         let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
 
-        Self::setup_io_bus(
-            &mut io_bus,
-            irq_chip.pit_uses_speaker_port(),
-            exit_evt.try_clone().map_err(Error::CloneEvent)?,
-            Some(pci_bus),
-            components.memory_size,
-        )?;
-
+        if !components.no_legacy {
+            Self::setup_legacy_devices(
+                &mut io_bus,
+                irq_chip.pit_uses_speaker_port(),
+                exit_evt.try_clone().map_err(Error::CloneEvent)?,
+                components.memory_size,
+            )?;
+        }
         Self::setup_serial_devices(
             components.protected_vm,
             irq_chip.as_irq_chip_mut(),
@@ -947,7 +948,7 @@ impl X8664arch {
         cmdline
     }
 
-    /// Sets up the IO bus for this platform
+    /// Sets up the legacy x86 IO platform devices
     ///
     /// # Arguments
     ///
@@ -955,11 +956,10 @@ impl X8664arch {
     /// * - `pit_uses_speaker_port` - does the PIT use port 0x61 for the PC speaker
     /// * - `exit_evt` - the event object which should receive exit events
     /// * - `mem_size` - the size in bytes of physical ram for the guest
-    fn setup_io_bus(
+    fn setup_legacy_devices(
         io_bus: &mut devices::Bus,
         pit_uses_speaker_port: bool,
         exit_evt: Event,
-        pci: Option<Arc<Mutex<devices::PciConfigIo>>>,
         mem_size: u64,
     ) -> Result<()> {
         struct NoDevice;
@@ -1004,13 +1004,6 @@ impl X8664arch {
 
         io_bus.insert(nul_device.clone(), 0x0ed, 0x1).unwrap(); // most likely this one does nothing
         io_bus.insert(nul_device.clone(), 0x0f0, 0x2).unwrap(); // ignore fpu
-
-        if let Some(pci_root) = pci {
-            io_bus.insert(pci_root, 0xcf8, 0x8).unwrap();
-        } else {
-            // ignore pci.
-            io_bus.insert(nul_device, 0xcf8, 0x8).unwrap();
-        }
 
         Ok(())
     }

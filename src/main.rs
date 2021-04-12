@@ -1751,6 +1751,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.dmi_path = Some(dmi_path);
         }
+        "no-legacy" => {
+            cfg.no_legacy = true;
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -1972,6 +1975,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           #[cfg(feature = "direct")]
           Argument::value("direct-edge-irq", "irq", "Enable interrupt passthrough"),
           Argument::value("dmi", "DIR", "Directory with smbios_entry_point/DMI files"),
+          Argument::flag("no-legacy", "Don't use legacy KBD/RTC devices emulation"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
