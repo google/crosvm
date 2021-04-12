@@ -305,10 +305,10 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                     vulkan_specified = true;
                     match v {
                         "true" | "" => {
-                            gpu_params.gfxstream_support_vulkan = true;
+                            gpu_params.use_vulkan = true;
                         }
                         "false" => {
-                            gpu_params.gfxstream_support_vulkan = false;
+                            gpu_params.use_vulkan = false;
                         }
                         _ => {
                             return Err(argument::Error::InvalidValue {
@@ -2802,22 +2802,22 @@ mod tests {
         assert!(
             parse_gpu_options(Some("backend=gfxstream,vulkan=true"))
                 .unwrap()
-                .gfxstream_support_vulkan
+                .use_vulkan
         );
         assert!(
             parse_gpu_options(Some("vulkan=true,backend=gfxstream"))
                 .unwrap()
-                .gfxstream_support_vulkan
+                .use_vulkan
         );
         assert!(
             !parse_gpu_options(Some("backend=gfxstream,vulkan=false"))
                 .unwrap()
-                .gfxstream_support_vulkan
+                .use_vulkan
         );
         assert!(
             !parse_gpu_options(Some("vulkan=false,backend=gfxstream"))
                 .unwrap()
-                .gfxstream_support_vulkan
+                .use_vulkan
         );
         assert!(parse_gpu_options(Some("backend=gfxstream,vulkan=invalid_value")).is_err());
         assert!(parse_gpu_options(Some("vulkan=invalid_value,backend=gfxstream")).is_err());

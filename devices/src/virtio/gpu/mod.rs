@@ -70,7 +70,7 @@ pub struct GpuParameters {
     pub renderer_use_surfaceless: bool,
     pub gfxstream_use_guest_angle: bool,
     pub gfxstream_use_syncfd: bool,
-    pub gfxstream_support_vulkan: bool,
+    pub use_vulkan: bool,
     pub udmabuf: bool,
     pub mode: GpuMode,
     pub cache_path: Option<String>,
@@ -97,7 +97,7 @@ impl Default for GpuParameters {
             renderer_use_surfaceless: true,
             gfxstream_use_guest_angle: false,
             gfxstream_use_syncfd: true,
-            gfxstream_support_vulkan: true,
+            use_vulkan: true,
             mode: GpuMode::Mode3D,
             cache_path: None,
             cache_size: None,
@@ -917,7 +917,7 @@ impl Gpu {
             .use_surfaceless(gpu_parameters.renderer_use_surfaceless)
             .use_guest_angle(gpu_parameters.gfxstream_use_guest_angle)
             .use_syncfd(gpu_parameters.gfxstream_use_syncfd)
-            .support_vulkan(gpu_parameters.gfxstream_support_vulkan);
+            .use_vulkan(gpu_parameters.use_vulkan);
 
         let mut rutabaga_channels: Vec<RutabagaChannel> = Vec::new();
         for (channel_name, path) in &channels {

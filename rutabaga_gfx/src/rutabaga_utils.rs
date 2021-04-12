@@ -400,7 +400,7 @@ impl GfxstreamFlags {
     }
 
     /// Support using Vulkan.
-    pub fn support_vulkan(self, v: bool) -> GfxstreamFlags {
+    pub fn use_vulkan(self, v: bool) -> GfxstreamFlags {
         self.set_flag(GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT, !v)
     }
 
