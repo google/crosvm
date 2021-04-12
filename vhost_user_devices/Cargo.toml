@@ -4,13 +4,28 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
 
+[features]
+net = ["data_model", "getopts", "net_util", "virtio_sys"]
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "vhost-user-net-device"
+path = "src/net.rs"
+required-features = ["net"]
+
 [dependencies]
 base = { path = "../base" }
+data_model = { path = "../data_model", optional = true }
 devices = { path = "../devices" }
+getopts = { version = "0.2", optional = true }
 libc = "*"
+net_util = { path = "../net_util", optional = true }
 remain = "*"
 sync = { path = "../sync" }
 thiserror = "*"
+virtio_sys = { path = "../virtio_sys", optional = true }
 vm_memory = { path = "../vm_memory" }
 vmm_vhost = { version = "*", features = ["vhost-user-slave"] }
 

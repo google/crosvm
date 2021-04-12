@@ -192,7 +192,7 @@ impl Tap {
         })
     }
 
-    fn create_tap_with_ifreq(ifreq: &mut net_sys::ifreq) -> Result<Tap> {
+    pub fn create_tap_with_ifreq(ifreq: &mut net_sys::ifreq) -> Result<Tap> {
         // Open calls are safe because we give a constant nul-terminated
         // string and verify the result.
         let fd = unsafe {

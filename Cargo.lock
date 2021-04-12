@@ -1149,12 +1149,16 @@ name = "vhost_user_devices"
 version = "0.1.0"
 dependencies = [
  "base",
+ "data_model",
  "devices",
+ "getopts",
  "libc",
+ "net_util",
  "remain",
  "sync",
  "tempfile",
  "thiserror",
+ "virtio_sys",
  "vm_memory",
  "vmm_vhost",
 ]

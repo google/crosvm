@@ -44,6 +44,11 @@ pub trait VirtioDevice: Send {
         let _ = value;
     }
 
+    /// Returns the set of enabled features.
+    fn acked_features(&self) -> u64 {
+        0
+    }
+
     /// Reads this device configuration space at `offset`.
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let _ = offset;

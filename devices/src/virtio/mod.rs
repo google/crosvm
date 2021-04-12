@@ -11,7 +11,6 @@ mod console;
 mod descriptor_utils;
 mod input;
 mod interrupt;
-mod net;
 mod p9;
 mod pmem;
 mod queue;
@@ -28,6 +27,7 @@ mod wl;
 pub mod fs;
 #[cfg(feature = "gpu")]
 pub mod gpu;
+pub mod net;
 pub mod resource_bridge;
 #[cfg(feature = "audio")]
 pub mod snd;
