@@ -300,9 +300,11 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                         }
                     }
                 }
-                #[cfg(feature = "gfxstream")]
                 "vulkan" => {
-                    vulkan_specified = true;
+                    #[cfg(feature = "gfxstream")]
+                    {
+                        vulkan_specified = true;
+                    }
                     match v {
                         "true" | "" => {
                             gpu_params.use_vulkan = true;
@@ -373,12 +375,12 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
             gpu_params.use_vulkan = true;
         }
 
-        if vulkan_specified || syncfd_specified || angle_specified {
+        if syncfd_specified || angle_specified {
             match gpu_params.mode {
                 GpuMode::ModeGfxstream => {}
                 _ => {
                     return Err(argument::Error::UnknownArgument(
-                        "gpu parameter vulkan and syncfd are only supported for gfxstream backend"
+                        "gpu parameter syncfd and angle are only supported for gfxstream backend"
                             .to_string(),
                     ));
                 }
@@ -1926,7 +1928,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
                                   surfaceless[=true|=false] - If the backend should use a surfaceless context for rendering.
                                   angle[=true|=false] - If the gfxstream backend should use ANGLE (OpenGL on Vulkan) as its native OpenGL driver.
                                   syncfd[=true|=false] - If the gfxstream backend should support EGL_ANDROID_native_fence_sync
-                                  vulkan[=true|=false] - If the gfxstream backend should support vulkan
+                                  vulkan[=true|=false] - If the backend should support vulkan
                                   "),
           #[cfg(feature = "tpm")]
           Argument::flag("software-tpm", "enable a software emulated trusted platform module device"),
@@ -2800,7 +2802,7 @@ mod tests {
         );
     }
 
-    #[cfg(all(feature = "gpu", feature = "gfxstream"))]
+    #[cfg(feature = "gpu")]
     #[test]
     fn parse_gpu_options_default_vulkan_support() {
         assert!(
@@ -2808,6 +2810,8 @@ mod tests {
                 .unwrap()
                 .use_vulkan
         );
+
+        #[cfg(feature = "gfxstream")]
         assert!(
             parse_gpu_options(Some("backend=gfxstream"))
                 .unwrap()
@@ -2815,38 +2819,33 @@ mod tests {
         );
     }
 
-    #[cfg(all(feature = "gpu", feature = "gfxstream"))]
+    #[cfg(feature = "gpu")]
     #[test]
-    fn parse_gpu_options_gfxstream_with_vulkan_specified() {
+    fn parse_gpu_options_with_vulkan_specified() {
+        assert!(parse_gpu_options(Some("vulkan=true")).unwrap().use_vulkan);
         assert!(
-            parse_gpu_options(Some("backend=gfxstream,vulkan=true"))
+            parse_gpu_options(Some("backend=virglrenderer,vulkan=true"))
                 .unwrap()
                 .use_vulkan
         );
         assert!(
-            parse_gpu_options(Some("vulkan=true,backend=gfxstream"))
+            parse_gpu_options(Some("vulkan=true,backend=virglrenderer"))
+                .unwrap()
+                .use_vulkan
+        );
+        assert!(!parse_gpu_options(Some("vulkan=false")).unwrap().use_vulkan);
+        assert!(
+            !parse_gpu_options(Some("backend=virglrenderer,vulkan=false"))
                 .unwrap()
                 .use_vulkan
         );
         assert!(
-            !parse_gpu_options(Some("backend=gfxstream,vulkan=false"))
+            !parse_gpu_options(Some("vulkan=false,backend=virglrenderer"))
                 .unwrap()
                 .use_vulkan
         );
-        assert!(
-            !parse_gpu_options(Some("vulkan=false,backend=gfxstream"))
-                .unwrap()
-                .use_vulkan
-        );
-        assert!(parse_gpu_options(Some("backend=gfxstream,vulkan=invalid_value")).is_err());
-        assert!(parse_gpu_options(Some("vulkan=invalid_value,backend=gfxstream")).is_err());
-    }
-
-    #[cfg(all(feature = "gpu", feature = "gfxstream"))]
-    #[test]
-    fn parse_gpu_options_not_gfxstream_with_vulkan_specified() {
-        assert!(parse_gpu_options(Some("backend=3d,vulkan=true")).is_err());
-        assert!(parse_gpu_options(Some("vulkan=true,backend=3d")).is_err());
+        assert!(parse_gpu_options(Some("backend=virglrenderer,vulkan=invalid_value")).is_err());
+        assert!(parse_gpu_options(Some("vulkan=invalid_value,backend=virglrenderer")).is_err());
     }
 
     #[cfg(all(feature = "gpu", feature = "gfxstream"))]

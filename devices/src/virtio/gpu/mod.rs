@@ -909,7 +909,8 @@ impl Gpu {
             .use_gles(gpu_parameters.renderer_use_gles)
             .use_glx(gpu_parameters.renderer_use_glx)
             .use_surfaceless(gpu_parameters.renderer_use_surfaceless)
-            .use_external_blob(external_blob);
+            .use_external_blob(external_blob)
+            .use_venus(gpu_parameters.use_vulkan);
         let gfxstream_flags = GfxstreamFlags::new()
             .use_egl(gpu_parameters.renderer_use_egl)
             .use_gles(gpu_parameters.renderer_use_gles)
