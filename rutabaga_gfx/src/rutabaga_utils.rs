@@ -271,6 +271,8 @@ const VIRGLRENDERER_USE_GLX: u32 = 1 << 2;
 const VIRGLRENDERER_USE_SURFACELESS: u32 = 1 << 3;
 const VIRGLRENDERER_USE_GLES: u32 = 1 << 4;
 const VIRGLRENDERER_USE_EXTERNAL_BLOB: u32 = 1 << 5;
+const VIRGLRENDERER_VENUS: u32 = 1 << 6;
+const VIRGLRENDERER_NO_VIRGL: u32 = 1 << 7;
 
 /// virglrenderer flag struct.
 #[derive(Copy, Clone)]
@@ -279,6 +281,8 @@ pub struct VirglRendererFlags(u32);
 impl Default for VirglRendererFlags {
     fn default() -> VirglRendererFlags {
         VirglRendererFlags::new()
+            .use_virgl(true)
+            .use_venus(false)
             .use_egl(true)
             .use_surfaceless(true)
             .use_gles(true)
@@ -303,6 +307,16 @@ impl VirglRendererFlags {
         } else {
             VirglRendererFlags(self.0 & (!bitmask))
         }
+    }
+
+    /// Enable virgl support
+    pub fn use_virgl(self, v: bool) -> VirglRendererFlags {
+        self.set_flag(VIRGLRENDERER_NO_VIRGL, !v)
+    }
+
+    /// Enable venus support
+    pub fn use_venus(self, v: bool) -> VirglRendererFlags {
+        self.set_flag(VIRGLRENDERER_VENUS, v)
     }
 
     /// Use EGL for context creation.
