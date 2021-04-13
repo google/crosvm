@@ -79,6 +79,7 @@ pub struct VmComponents {
     pub vcpu_count: usize,
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub no_smt: bool,
+    pub hugepages: bool,
     pub vm_image: VmImage,
     pub android_fstab: Option<File>,
     pub pstore: Option<Pstore>,

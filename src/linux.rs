@@ -2335,6 +2335,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         vcpu_affinity: cfg.vcpu_affinity.clone(),
         no_smt: cfg.no_smt,
+        hugepages: cfg.hugepages,
         vm_image,
         android_fstab: cfg
             .android_fstab

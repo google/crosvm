@@ -866,6 +866,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         })?,
                 )
         }
+        "hugepages" => {
+            cfg.hugepages = true;
+        }
         #[cfg(feature = "audio")]
         "ac97" => {
             let ac97_params = parse_ac97_options(value.unwrap())?;
@@ -1825,6 +1828,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                                 "mem",
                                 "N",
                                 "Amount of guest memory in MiB. (default: 256)"),
+          Argument::flag("hugepages", "Advise the kernel to use Huge Pages for guest memory mappings."),
           Argument::short_value('r',
                                 "root",
                                 "PATH[,key=value[,key=value[,...]]",
