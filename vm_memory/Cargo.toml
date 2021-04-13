@@ -11,5 +11,6 @@ data_model = { path = "../data_model" } # provided by ebuild
 libc = "*"
 base = { path = "../base" } # provided by ebuild
 syscall_defines = { path = "../syscall_defines" } # provided by ebuild
+bitflags = "1"
 
 [workspace]

@@ -22,6 +22,8 @@ use cros_async::{mem, BackingMemory};
 use data_model::volatile_memory::*;
 use data_model::DataInit;
 
+use bitflags::bitflags;
+
 #[derive(Debug)]
 pub enum Error {
     DescriptorChainOverflow,
@@ -82,6 +84,12 @@ impl Display for Error {
             SplitOutOfBounds(off) => write!(f, "DescriptorChain split is out of bounds: {}", off),
             VolatileMemoryAccess(e) => e.fmt(f),
         }
+    }
+}
+
+bitflags! {
+    pub struct MemoryPolicy: u32 {
+        const USE_HUGEPAGES = 1;
     }
 }
 
@@ -257,6 +265,20 @@ impl GuestMemory {
                 .remove_range(offset, count as usize)
                 .map_err(|e| Error::MemoryAccess(addr, e))
         })
+    }
+
+    /// Handles guest memory policy hints/advices.
+    pub fn set_memory_policy(&self, mem_policy: MemoryPolicy) {
+        if mem_policy.contains(MemoryPolicy::USE_HUGEPAGES) {
+            for (_, region) in self.regions.iter().enumerate() {
+                let ret = region.mapping.use_hugepages();
+
+                match ret {
+                    Err(err) => println!("Failed to enable HUGEPAGE for mapping {}", err),
+                    Ok(_) => (),
+                }
+            }
+        }
     }
 
     /// Perform the specified action on each region's addresses.

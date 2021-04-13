@@ -34,7 +34,7 @@ use base::{
 use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use minijail::{self, Minijail};
 use net_util::{Error as TapError, Tap, TapT};
-use vm_memory::GuestMemory;
+use vm_memory::{GuestMemory, MemoryPolicy};
 
 use self::process::*;
 use self::vcpu::*;
@@ -691,6 +691,11 @@ pub fn run_config(cfg: Config) -> Result<()> {
     };
     let vcpu_count = cfg.vcpu_count.unwrap_or(1) as u32;
     let mem = GuestMemory::new(&[]).unwrap();
+    let mut mem_policy = MemoryPolicy::empty();
+    if cfg.hugepages {
+        mem_policy |= MemoryPolicy::USE_HUGEPAGES;
+    }
+    mem.set_memory_policy(mem_policy);
     let kvm = Kvm::new_with_path(&cfg.kvm_device_path).map_err(Error::CreateKvm)?;
     let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
     vm.create_irq_chip().map_err(Error::CreateIrqChip)?;

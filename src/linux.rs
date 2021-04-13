@@ -55,7 +55,7 @@ use resources::{Alloc, MmioType, SystemAllocator};
 use rutabaga_gfx::RutabagaGralloc;
 use sync::Mutex;
 use vm_control::*;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::{GuestAddress, GuestMemory, MemoryPolicy};
 
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use crate::gdb::{gdb_thread, GdbStub};
@@ -2291,6 +2291,11 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let guest_mem_layout =
         Arch::guest_memory_layout(&components).map_err(Error::GuestMemoryLayout)?;
     let guest_mem = GuestMemory::new(&guest_mem_layout).unwrap();
+    let mut mem_policy = MemoryPolicy::empty();
+    if components.hugepages {
+        mem_policy |= MemoryPolicy::USE_HUGEPAGES;
+    }
+    guest_mem.set_memory_policy(mem_policy);
     let kvm = Kvm::new_with_path(&cfg.kvm_device_path).map_err(Error::CreateKvm)?;
     let vm = KvmVm::new(&kvm, guest_mem).map_err(Error::CreateVm)?;
 
