@@ -530,4 +530,55 @@ mod tests {
         let ex = Executor::new().unwrap();
         ex.run_until(write_zeros_async(&ex)).unwrap();
     }
+
+    #[test]
+    fn detect_image_type_raw() {
+        let mut t = tempfile::tempfile().unwrap();
+        // Fill the first block of the file with "random" data.
+        let buf = "ABCD".as_bytes().repeat(1024);
+        t.write_all(&buf).unwrap();
+        let image_type = detect_image_type(&t).expect("failed to detect image type");
+        assert_eq!(image_type, ImageType::Raw);
+    }
+
+    #[test]
+    fn detect_image_type_qcow2() {
+        let mut t = tempfile::tempfile().unwrap();
+        // The composite disk check will read 15 bytes, so make sure the file is at least that long.
+        t.set_len(15).unwrap();
+        // Write the qcow2 magic signature. The rest of the header is not filled in, so if
+        // detect_image_type is ever updated to validate more of the header, this test would need
+        // to be updated.
+        let buf: &[u8] = &[0x51, 0x46, 0x49, 0xfb];
+        t.write_all(&buf).unwrap();
+        let image_type = detect_image_type(&t).expect("failed to detect image type");
+        assert_eq!(image_type, ImageType::Qcow2);
+    }
+
+    #[test]
+    fn detect_image_type_android_sparse() {
+        let mut t = tempfile::tempfile().unwrap();
+        // The composite disk check will read 15 bytes, so make sure the file is at least that long.
+        t.set_len(15).unwrap();
+        // Write the Android sparse magic signature. The rest of the header is not filled in, so if
+        // detect_image_type is ever updated to validate more of the header, this test would need
+        // to be updated.
+        let buf: &[u8] = &[0x3a, 0xff, 0x26, 0xed];
+        t.write_all(&buf).unwrap();
+        let image_type = detect_image_type(&t).expect("failed to detect image type");
+        assert_eq!(image_type, ImageType::AndroidSparse);
+    }
+
+    #[test]
+    #[cfg(feature = "composite-disk")]
+    fn detect_image_type_composite() {
+        let mut t = tempfile::tempfile().unwrap();
+        // Write the composite disk magic signature. The rest of the header is not filled in, so if
+        // detect_image_type is ever updated to validate more of the header, this test would need
+        // to be updated.
+        let buf = "composite_disk\x1d".as_bytes();
+        t.write_all(&buf).unwrap();
+        let image_type = detect_image_type(&t).expect("failed to detect image type");
+        assert_eq!(image_type, ImageType::CompositeDisk);
+    }
 }
