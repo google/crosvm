@@ -264,36 +264,45 @@ pub fn convert(src_file: File, dst_file: File, dst_type: ImageType) -> Result<()
     }
 }
 
-/// Detect the type of an image file by checking for a valid qcow2 header.
+/// Detect the type of an image file by checking for a valid header of the supported formats.
 pub fn detect_image_type(file: &File) -> Result<ImageType> {
     let mut f = file;
+    let disk_size = f.get_len().map_err(Error::SeekingFile)?;
     let orig_seek = f.seek(SeekFrom::Current(0)).map_err(Error::SeekingFile)?;
     f.seek(SeekFrom::Start(0)).map_err(Error::SeekingFile)?;
-    let mut magic = [0u8; 4];
-    f.read_exact(&mut magic).map_err(Error::ReadingHeader)?;
-    let magic = u32::from_be_bytes(magic);
+
+    // Try to read the disk in a nicely-aligned block size unless the whole file is smaller.
+    const MAGIC_BLOCK_SIZE: usize = 4096;
+    let mut magic = [0u8; MAGIC_BLOCK_SIZE];
+    let magic_read_len = if disk_size > MAGIC_BLOCK_SIZE as u64 {
+        MAGIC_BLOCK_SIZE
+    } else {
+        // This cast is safe since we know disk_size is less than MAGIC_BLOCK_SIZE (4096) and
+        // therefore is representable in usize.
+        disk_size as usize
+    };
+
+    f.read_exact(&mut magic[0..magic_read_len])
+        .map_err(Error::ReadingHeader)?;
+    f.seek(SeekFrom::Start(orig_seek))
+        .map_err(Error::SeekingFile)?;
+
     #[cfg(feature = "composite-disk")]
-    {
-        f.seek(SeekFrom::Start(0)).map_err(Error::SeekingFile)?;
-        let mut cdisk_magic = [0u8; CDISK_MAGIC_LEN];
-        f.read_exact(&mut cdisk_magic[..])
-            .map_err(Error::ReadingHeader)?;
+    if let Some(cdisk_magic) = magic.get(0..CDISK_MAGIC_LEN) {
         if cdisk_magic == CDISK_MAGIC.as_bytes() {
-            f.seek(SeekFrom::Start(orig_seek))
-                .map_err(Error::SeekingFile)?;
             return Ok(ImageType::CompositeDisk);
         }
     }
-    let image_type = if magic == QCOW_MAGIC {
-        ImageType::Qcow2
-    } else if magic == SPARSE_HEADER_MAGIC.to_be() {
-        ImageType::AndroidSparse
-    } else {
-        ImageType::Raw
-    };
-    f.seek(SeekFrom::Start(orig_seek))
-        .map_err(Error::SeekingFile)?;
-    Ok(image_type)
+
+    if let Some(magic4) = magic.get(0..4) {
+        if magic4 == QCOW_MAGIC.to_be_bytes() {
+            return Ok(ImageType::Qcow2);
+        } else if magic4 == SPARSE_HEADER_MAGIC.to_le_bytes() {
+            return Ok(ImageType::AndroidSparse);
+        }
+    }
+
+    Ok(ImageType::Raw)
 }
 
 /// Check if the image file type can be used for async disk access.
@@ -544,8 +553,6 @@ mod tests {
     #[test]
     fn detect_image_type_qcow2() {
         let mut t = tempfile::tempfile().unwrap();
-        // The composite disk check will read 15 bytes, so make sure the file is at least that long.
-        t.set_len(15).unwrap();
         // Write the qcow2 magic signature. The rest of the header is not filled in, so if
         // detect_image_type is ever updated to validate more of the header, this test would need
         // to be updated.
@@ -558,8 +565,6 @@ mod tests {
     #[test]
     fn detect_image_type_android_sparse() {
         let mut t = tempfile::tempfile().unwrap();
-        // The composite disk check will read 15 bytes, so make sure the file is at least that long.
-        t.set_len(15).unwrap();
         // Write the Android sparse magic signature. The rest of the header is not filled in, so if
         // detect_image_type is ever updated to validate more of the header, this test would need
         // to be updated.
@@ -580,5 +585,16 @@ mod tests {
         t.write_all(&buf).unwrap();
         let image_type = detect_image_type(&t).expect("failed to detect image type");
         assert_eq!(image_type, ImageType::CompositeDisk);
+    }
+
+    #[test]
+    fn detect_image_type_small_file() {
+        let mut t = tempfile::tempfile().unwrap();
+        // Write a file smaller than the four-byte qcow2/sparse magic to ensure the small file logic
+        // works correctly and handles it as a raw file.
+        let buf: &[u8] = &[0xAA, 0xBB];
+        t.write_all(&buf).unwrap();
+        let image_type = detect_image_type(&t).expect("failed to detect image type");
+        assert_eq!(image_type, ImageType::Raw);
     }
 }
