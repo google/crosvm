@@ -138,18 +138,19 @@ const AARCH64_PMU_IRQ: u32 = 7;
 pub enum Error {
     BiosLoadFailure(arch::LoadImageError),
     CloneEvent(base::Error),
+    CloneIrqChip(base::Error),
     Cmdline(kernel_cmdline::Error),
     CreateDevices(Box<dyn StdError>),
     CreateEvent(base::Error),
     CreateFdt(arch::fdt::Error),
     CreateGICFailure(base::Error),
-    CreateIrqChip(Box<dyn StdError>),
     CreatePciRoot(arch::DeviceRegistrationError),
     CreateSerialDevices(arch::DeviceRegistrationError),
     CreateSocket(io::Error),
     CreateVcpu(base::Error),
     CreateVm(Box<dyn StdError>),
     DowncastVcpu,
+    FinalizeIrqChip(Box<dyn StdError>),
     GetPsciVersion(base::Error),
     GetSerialCmdline(GetSerialCmdlineError),
     InitrdLoadFailure(arch::LoadImageError),
@@ -173,18 +174,19 @@ impl Display for Error {
         match self {
             BiosLoadFailure(e) => write!(f, "bios could not be loaded: {}", e),
             CloneEvent(e) => write!(f, "unable to clone an Event: {}", e),
+            CloneIrqChip(e) => write!(f, "failed to clone IRQ chip: {}", e),
             Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),
             CreateDevices(e) => write!(f, "error creating devices: {}", e),
             CreateEvent(e) => write!(f, "unable to make an Event: {}", e),
             CreateFdt(e) => write!(f, "FDT could not be created: {}", e),
             CreateGICFailure(e) => write!(f, "failed to create GIC: {}", e),
-            CreateIrqChip(e) => write!(f, "failed to create IRQ chip: {}", e),
             CreatePciRoot(e) => write!(f, "failed to create a PCI root hub: {}", e),
             CreateSerialDevices(e) => write!(f, "unable to create serial devices: {}", e),
             CreateSocket(e) => write!(f, "failed to create socket: {}", e),
             CreateVcpu(e) => write!(f, "failed to create VCPU: {}", e),
             CreateVm(e) => write!(f, "failed to create vm: {}", e),
             DowncastVcpu => write!(f, "vm created wrong kind of vcpu"),
+            FinalizeIrqChip(e) => write!(f, "failed to finalize IRQ chip: {}", e),
             GetPsciVersion(e) => write!(f, "failed to get PSCI version: {}", e),
             GetSerialCmdline(e) => write!(f, "failed to get serial cmdline: {}", e),
             InitrdLoadFailure(e) => write!(f, "initrd could not be loaded: {}", e),
@@ -236,28 +238,24 @@ impl arch::LinuxArch for AArch64 {
         Ok(arch_memory_regions(components.memory_size))
     }
 
-    fn build_vm<V, Vcpu, I, FD, FI, E1, E2>(
+    fn create_system_allocator(guest_mem: &GuestMemory) -> SystemAllocator {
+        Self::get_resource_allocator(guest_mem.memory_size())
+    }
+
+    fn build_vm<V, Vcpu>(
         mut components: VmComponents,
+        _exit_evt: &Event,
+        system_allocator: &mut SystemAllocator,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         _battery: (&Option<BatteryType>, Option<Minijail>),
         mut vm: V,
-        create_devices: FD,
-        create_irq_chip: FI,
-    ) -> std::result::Result<RunnableLinuxVm<V, Vcpu, I>, Self::Error>
+        pci_devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
+        irq_chip: &mut dyn IrqChipAArch64,
+    ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmAArch64,
         Vcpu: VcpuAArch64,
-        I: IrqChipAArch64,
-        FD: FnOnce(
-            &GuestMemory,
-            &mut V,
-            &mut SystemAllocator,
-            &Event,
-        ) -> std::result::Result<Vec<(Box<dyn PciDevice>, Option<Minijail>)>, E1>,
-        FI: FnOnce(&V, /* vcpu_count: */ usize) -> std::result::Result<I, E2>,
-        E1: StdError + 'static,
-        E2: StdError + 'static,
     {
         let has_bios = match components.vm_image {
             VmImage::Bios(_) => true,
@@ -265,7 +263,6 @@ impl arch::LinuxArch for AArch64 {
         };
 
         let mem = vm.get_memory().clone();
-        let mut resources = Self::get_resource_allocator(components.memory_size);
 
         if components.protected_vm == ProtectionType::Protected {
             vm.enable_protected_vm(
@@ -297,8 +294,9 @@ impl arch::LinuxArch for AArch64 {
             vcpus.push(vcpu);
         }
 
-        let mut irq_chip =
-            create_irq_chip(&vm, vcpu_count).map_err(|e| Error::CreateIrqChip(Box::new(e)))?;
+        irq_chip
+            .finalize()
+            .map_err(|e| Error::FinalizeIrqChip(Box::new(e)))?;
 
         for vcpu in &vcpus {
             use_pmu &= vcpu.init_pmu(AARCH64_PMU_IRQ as u64 + 16).is_ok();
@@ -306,19 +304,15 @@ impl arch::LinuxArch for AArch64 {
 
         let mut mmio_bus = devices::Bus::new();
 
-        let exit_evt = Event::new().map_err(Error::CreateEvent)?;
-
         // Event used by PMDevice to notify crosvm that
         // guest OS is trying to suspend.
         let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
 
-        let pci_devices = create_devices(&mem, &mut vm, &mut resources, &exit_evt)
-            .map_err(|e| Error::CreateDevices(Box::new(e)))?;
         let (pci, pci_irqs, pid_debug_label_map) = arch::generate_pci_root(
             pci_devices,
-            &mut irq_chip,
+            irq_chip.as_irq_chip_mut(),
             &mut mmio_bus,
-            &mut resources,
+            system_allocator,
             &mut vm,
             (devices::AARCH64_GIC_NR_IRQS - AARCH64_IRQ_BASE) as usize,
         )
@@ -328,7 +322,7 @@ impl arch::LinuxArch for AArch64 {
         // ARM doesn't really use the io bus like x86, so just create an empty bus.
         let io_bus = devices::Bus::new();
 
-        Self::add_arch_devs(&mut irq_chip, &mut mmio_bus)?;
+        Self::add_arch_devs(irq_chip.as_irq_chip_mut(), &mut mmio_bus)?;
 
         let com_evt_1_3 = Event::new().map_err(Error::CreateEvent)?;
         let com_evt_2_4 = Event::new().map_err(Error::CreateEvent)?;
@@ -414,13 +408,11 @@ impl arch::LinuxArch for AArch64 {
 
         Ok(RunnableLinuxVm {
             vm,
-            resources,
-            exit_evt,
             vcpu_count,
             vcpus: Some(vcpus),
             vcpu_affinity: components.vcpu_affinity,
             no_smt: components.no_smt,
-            irq_chip,
+            irq_chip: irq_chip.try_box_clone().map_err(Error::CloneIrqChip)?,
             has_bios,
             io_bus,
             mmio_bus,

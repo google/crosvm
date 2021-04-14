@@ -42,6 +42,7 @@ pub use ioapic::*;
 
 pub type IrqEventIndex = usize;
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 struct IrqEvent {
     event: Event,
     gsi: u32,

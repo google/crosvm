@@ -10,7 +10,7 @@ use hypervisor::kvm::{KvmVcpu, KvmVm};
 use hypervisor::{DeviceKind, IrqRoute, Vm};
 use kvm_sys::*;
 
-use crate::IrqChipAArch64;
+use crate::{IrqChip, IrqChipAArch64};
 
 /// Default ARM routing table.  AARCH64_GIC_NR_SPIS pins go to VGIC.
 fn kvm_default_irq_routing_table() -> Vec<IrqRoute> {
@@ -125,20 +125,6 @@ impl KvmKernelIrqChip {
             return errno_result();
         }
 
-        // Finalize the GIC
-        let init_gic_attr = kvm_device_attr {
-            group: KVM_DEV_ARM_VGIC_GRP_CTRL,
-            attr: KVM_DEV_ARM_VGIC_CTRL_INIT as u64,
-            addr: 0,
-            flags: 0,
-        };
-
-        // Safe because we allocated the struct that's being passed in
-        let ret = unsafe { ioctl_with_ref(&vgic, KVM_SET_DEVICE_ATTR(), &init_gic_attr) };
-        if ret != 0 {
-            return errno_result();
-        }
-
         Ok(KvmKernelIrqChip {
             vm,
             vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
@@ -161,7 +147,35 @@ impl KvmKernelIrqChip {
 }
 
 impl IrqChipAArch64 for KvmKernelIrqChip {
+    fn try_box_clone(&self) -> Result<Box<dyn IrqChipAArch64>> {
+        Ok(Box::new(self.try_clone()?))
+    }
+
+    fn as_irq_chip(&self) -> &dyn IrqChip {
+        self
+    }
+
+    fn as_irq_chip_mut(&mut self) -> &mut dyn IrqChip {
+        self
+    }
+
     fn get_vgic_version(&self) -> DeviceKind {
         self.device_kind
+    }
+
+    fn finalize(&self) -> Result<()> {
+        let init_gic_attr = kvm_device_attr {
+            group: KVM_DEV_ARM_VGIC_GRP_CTRL,
+            attr: KVM_DEV_ARM_VGIC_CTRL_INIT as u64,
+            addr: 0,
+            flags: 0,
+        };
+
+        // Safe because we allocated the struct that's being passed in
+        let ret = unsafe { ioctl_with_ref(&self.vgic, KVM_SET_DEVICE_ATTR(), &init_gic_attr) };
+        if ret != 0 {
+            return errno_result();
+        }
+        Ok(())
     }
 }

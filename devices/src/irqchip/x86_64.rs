@@ -8,6 +8,15 @@ use hypervisor::{IoapicState, LapicState, PicSelect, PicState, PitState};
 use crate::IrqChip;
 
 pub trait IrqChipX86_64: IrqChip {
+    // Clones this trait as a `Box` version of itself.
+    fn try_box_clone(&self) -> Result<Box<dyn IrqChipX86_64>>;
+
+    // Get this as the super-trait IrqChip.
+    fn as_irq_chip(&self) -> &dyn IrqChip;
+
+    // Get this as the mutable super-trait IrqChip.
+    fn as_irq_chip_mut(&mut self) -> &mut dyn IrqChip;
+
     /// Get the current state of the PIC
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState>;
 

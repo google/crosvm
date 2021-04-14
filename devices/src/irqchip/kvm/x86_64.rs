@@ -81,6 +81,18 @@ impl KvmKernelIrqChip {
 }
 
 impl IrqChipX86_64 for KvmKernelIrqChip {
+    fn try_box_clone(&self) -> Result<Box<dyn IrqChipX86_64>> {
+        Ok(Box::new(self.try_clone()?))
+    }
+
+    fn as_irq_chip(&self) -> &dyn IrqChip {
+        self
+    }
+
+    fn as_irq_chip_mut(&mut self) -> &mut dyn IrqChip {
+        self
+    }
+
     /// Get the current state of the PIC
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState> {
         Ok(PicState::from(&self.vm.get_pic_state(select)?))
@@ -642,6 +654,18 @@ impl IrqChip for KvmSplitIrqChip {
 }
 
 impl IrqChipX86_64 for KvmSplitIrqChip {
+    fn try_box_clone(&self) -> Result<Box<dyn IrqChipX86_64>> {
+        Ok(Box::new(self.try_clone()?))
+    }
+
+    fn as_irq_chip(&self) -> &dyn IrqChip {
+        self
+    }
+
+    fn as_irq_chip_mut(&mut self) -> &mut dyn IrqChip {
+        self
+    }
+
     /// Get the current state of the PIC
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState> {
         Ok(self.pic.lock().get_pic_state(select))

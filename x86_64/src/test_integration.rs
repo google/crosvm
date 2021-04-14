@@ -4,6 +4,7 @@
 
 #![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 
+use arch::LinuxArch;
 use devices::{IrqChipX86_64, ProtectionType};
 use hypervisor::{HypervisorX86_64, VcpuExit, VcpuX86_64, VmX86_64};
 use vm_memory::{GuestAddress, GuestMemory};
@@ -98,7 +99,7 @@ where
     let arch_mem_regions = arch_memory_regions(memory_size, None);
     let guest_mem = GuestMemory::new(&arch_mem_regions).unwrap();
 
-    let mut resources = X8664arch::get_resource_allocator(&guest_mem);
+    let mut resources = X8664arch::create_system_allocator(&guest_mem);
 
     let (hyp, mut vm) = create_vm(guest_mem.clone());
     let (irqchip_tube, device_tube) = Tube::pair().expect("failed to create irq tube");
