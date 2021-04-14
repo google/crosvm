@@ -2479,6 +2479,7 @@ where
         fs_device_tubes.push(fs_device_tube);
     }
 
+    #[cfg_attr(not(feature = "direct"), allow(unused_mut))]
     let mut linux: RunnableLinuxVm<_, Vcpu, _> = Arch::build_vm(
         components,
         &cfg.serial_parameters,
