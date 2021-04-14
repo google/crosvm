@@ -56,7 +56,7 @@ pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum GpuMode {
     Mode2D,
-    Mode3D,
+    ModeVirglRenderer,
     ModeGfxstream,
 }
 
@@ -98,7 +98,7 @@ impl Default for GpuParameters {
             gfxstream_use_guest_angle: false,
             gfxstream_use_syncfd: true,
             use_vulkan: true,
-            mode: GpuMode::Mode3D,
+            mode: GpuMode::ModeVirglRenderer,
             cache_path: None,
             cache_size: None,
             udmabuf: false,
@@ -937,7 +937,7 @@ impl Gpu {
         let rutabaga_channels_opt = Some(rutabaga_channels);
         let component = match gpu_parameters.mode {
             GpuMode::Mode2D => RutabagaComponentType::Rutabaga2D,
-            GpuMode::Mode3D => RutabagaComponentType::VirglRenderer,
+            GpuMode::ModeVirglRenderer => RutabagaComponentType::VirglRenderer,
             GpuMode::ModeGfxstream => RutabagaComponentType::Gfxstream,
         };
 

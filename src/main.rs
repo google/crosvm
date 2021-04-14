@@ -172,12 +172,12 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
         for (k, v) in opts {
             match k {
                 // Deprecated: Specifying --gpu=<mode> Not great as the mode can be set multiple
-                // times if the user specifies several modes (--gpu=2d,3d,gfxstream)
+                // times if the user specifies several modes (--gpu=2d,virglrenderer,gfxstream)
                 "2d" | "2D" => {
                     gpu_params.mode = GpuMode::Mode2D;
                 }
-                "3d" | "3D" => {
-                    gpu_params.mode = GpuMode::Mode3D;
+                "3d" | "3D" | "virglrenderer" => {
+                    gpu_params.mode = GpuMode::ModeVirglRenderer;
                 }
                 #[cfg(feature = "gfxstream")]
                 "gfxstream" => {
@@ -188,8 +188,8 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                     "2d" | "2D" => {
                         gpu_params.mode = GpuMode::Mode2D;
                     }
-                    "3d" | "3D" => {
-                        gpu_params.mode = GpuMode::Mode3D;
+                    "3d" | "3D" | "virglrenderer" => {
+                        gpu_params.mode = GpuMode::ModeVirglRenderer;
                     }
                     #[cfg(feature = "gfxstream")]
                     "gfxstream" => {
@@ -199,7 +199,7 @@ fn parse_gpu_options(s: Option<&str>) -> argument::Result<GpuParameters> {
                         return Err(argument::Error::InvalidValue {
                             value: v.to_string(),
                             expected: String::from(
-                                "gpu parameter 'backend' should be one of (2d|3d|gfxstream)",
+                                "gpu parameter 'backend' should be one of (2d|virglrenderer|gfxstream)",
                             ),
                         });
                     }
@@ -1914,13 +1914,13 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
                                   "[width=INT,height=INT]",
                                   "(EXPERIMENTAL) Comma separated key=value pairs for setting up a virtio-gpu device
                                   Possible key values:
-                                  backend=(2d|3d|gfxstream) - Which backend to use for virtio-gpu (determining rendering protocol)
+                                  backend=(2d|virglrenderer|gfxstream) - Which backend to use for virtio-gpu (determining rendering protocol)
                                   width=INT - The width of the virtual display connected to the virtio-gpu.
                                   height=INT - The height of the virtual display connected to the virtio-gpu.
-                                  egl[=true|=false] - If the virtio-gpu backend should use a EGL context for rendering.
-                                  glx[=true|=false] - If the virtio-gpu backend should use a GLX context for rendering.
-                                  surfaceless[=true|=false] - If the virtio-gpu backend should use a surfaceless context for rendering.
-                                  angle[=true|=false] - If the guest is using ANGLE (OpenGL on Vulkan) as its native OpenGL driver.
+                                  egl[=true|=false] - If the backend should use a EGL context for rendering.
+                                  glx[=true|=false] - If the backend should use a GLX context for rendering.
+                                  surfaceless[=true|=false] - If the backend should use a surfaceless context for rendering.
+                                  angle[=true|=false] - If the gfxstream backend should use ANGLE (OpenGL on Vulkan) as its native OpenGL driver.
                                   syncfd[=true|=false] - If the gfxstream backend should support EGL_ANDROID_native_fence_sync
                                   vulkan[=true|=false] - If the gfxstream backend should support vulkan
                                   "),
@@ -2860,8 +2860,8 @@ mod tests {
     #[cfg(all(feature = "gpu", feature = "gfxstream"))]
     #[test]
     fn parse_gpu_options_not_gfxstream_with_syncfd_specified() {
-        assert!(parse_gpu_options(Some("backend=3d,syncfd=true")).is_err());
-        assert!(parse_gpu_options(Some("syncfd=true,backend=3d")).is_err());
+        assert!(parse_gpu_options(Some("backend=virglrenderer,syncfd=true")).is_err());
+        assert!(parse_gpu_options(Some("syncfd=true,backend=virglrenderer")).is_err());
     }
 
     #[test]
