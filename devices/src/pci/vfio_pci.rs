@@ -549,22 +549,25 @@ impl VfioPciDevice {
         if let Some(ref interrupt_evt) = self.interrupt_evt {
             let mut fds = Vec::new();
             fds.push(interrupt_evt);
-            if let Err(e) = self.device.irq_enable(fds, VfioIrqType::Intx) {
+            if let Err(e) = self.device.irq_enable(fds, VFIO_PCI_INTX_IRQ_INDEX) {
                 error!("Intx enable failed: {}", e);
                 return;
             }
             if let Some(ref irq_resample_evt) = self.interrupt_resample_evt {
-                if let Err(e) = self.device.irq_mask(VfioIrqType::Intx) {
+                if let Err(e) = self.device.irq_mask(VFIO_PCI_INTX_IRQ_INDEX) {
                     error!("Intx mask failed: {}", e);
                     self.disable_intx();
                     return;
                 }
-                if let Err(e) = self.device.resample_virq_enable(irq_resample_evt) {
+                if let Err(e) = self
+                    .device
+                    .resample_virq_enable(irq_resample_evt, VFIO_PCI_INTX_IRQ_INDEX)
+                {
                     error!("resample enable failed: {}", e);
                     self.disable_intx();
                     return;
                 }
-                if let Err(e) = self.device.irq_unmask(VfioIrqType::Intx) {
+                if let Err(e) = self.device.irq_unmask(VFIO_PCI_INTX_IRQ_INDEX) {
                     error!("Intx unmask failed: {}", e);
                     self.disable_intx();
                     return;
@@ -576,7 +579,7 @@ impl VfioPciDevice {
     }
 
     fn disable_intx(&mut self) {
-        if let Err(e) = self.device.irq_disable(VfioIrqType::Intx) {
+        if let Err(e) = self.device.irq_disable(VFIO_PCI_INTX_IRQ_INDEX) {
             error!("Intx disable failed: {}", e);
         }
         self.irq_type = None;
@@ -616,7 +619,7 @@ impl VfioPciDevice {
 
         let mut fds = Vec::new();
         fds.push(irqfd);
-        if let Err(e) = self.device.irq_enable(fds, VfioIrqType::Msi) {
+        if let Err(e) = self.device.irq_enable(fds, VFIO_PCI_MSI_IRQ_INDEX) {
             error!("failed to enable msi: {}", e);
             self.enable_intx();
             return;
@@ -626,7 +629,7 @@ impl VfioPciDevice {
     }
 
     fn disable_msi(&mut self) {
-        if let Err(e) = self.device.irq_disable(VfioIrqType::Msi) {
+        if let Err(e) = self.device.irq_disable(VFIO_PCI_MSI_IRQ_INDEX) {
             error!("failed to disable msi: {}", e);
             return;
         }
@@ -643,7 +646,7 @@ impl VfioPciDevice {
         };
 
         if let Some(descriptors) = irqfds {
-            if let Err(e) = self.device.irq_enable(descriptors, VfioIrqType::Msix) {
+            if let Err(e) = self.device.irq_enable(descriptors, VFIO_PCI_MSIX_IRQ_INDEX) {
                 error!("failed to enable msix: {}", e);
                 self.enable_intx();
                 return;
@@ -657,7 +660,7 @@ impl VfioPciDevice {
     }
 
     fn disable_msix(&mut self) {
-        if let Err(e) = self.device.irq_disable(VfioIrqType::Msix) {
+        if let Err(e) = self.device.irq_disable(VFIO_PCI_MSIX_IRQ_INDEX) {
             error!("failed to disable msix: {}", e);
             return;
         }
