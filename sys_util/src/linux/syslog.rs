@@ -148,7 +148,7 @@ fn send_buf(socket: &UnixDatagram, buf: &[u8]) {
     const SEND_RETRY: usize = 2;
 
     for _ in 0..SEND_RETRY {
-        match socket.send(&buf[..]) {
+        match socket.send(buf) {
             Ok(_) => break,
             Err(e) => match e.kind() {
                 ErrorKind::ConnectionRefused

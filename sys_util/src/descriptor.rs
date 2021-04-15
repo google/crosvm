@@ -140,17 +140,17 @@ impl SafeDescriptor {
     }
 }
 
-impl Into<File> for SafeDescriptor {
-    fn into(self) -> File {
+impl From<SafeDescriptor> for File {
+    fn from(s: SafeDescriptor) -> File {
         // Safe because we own the SafeDescriptor at this point.
-        unsafe { File::from_raw_fd(self.into_raw_descriptor()) }
+        unsafe { File::from_raw_fd(s.into_raw_descriptor()) }
     }
 }
 
-impl Into<SafeDescriptor> for File {
-    fn into(self) -> SafeDescriptor {
+impl From<File> for SafeDescriptor {
+    fn from(f: File) -> SafeDescriptor {
         // Safe because we own the File at this point.
-        unsafe { SafeDescriptor::from_raw_descriptor(self.into_raw_descriptor()) }
+        unsafe { SafeDescriptor::from_raw_descriptor(f.into_raw_descriptor()) }
     }
 }
 

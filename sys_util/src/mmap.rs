@@ -108,9 +108,9 @@ impl From<c_int> for Protection {
     }
 }
 
-impl Into<c_int> for Protection {
-    fn into(self) -> c_int {
-        self.0
+impl From<Protection> for c_int {
+    fn from(p: Protection) -> c_int {
+        p.0
     }
 }
 

@@ -276,9 +276,9 @@ impl IntoRawFd for SharedMemory {
     }
 }
 
-impl Into<File> for SharedMemory {
-    fn into(self) -> File {
-        self.fd
+impl From<SharedMemory> for File {
+    fn from(s: SharedMemory) -> File {
+        s.fd
     }
 }
 

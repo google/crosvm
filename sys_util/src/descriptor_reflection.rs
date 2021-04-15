@@ -404,9 +404,9 @@ impl From<File> for FileSerdeWrapper {
     }
 }
 
-impl Into<File> for FileSerdeWrapper {
-    fn into(self) -> File {
-        self.0
+impl From<FileSerdeWrapper> for File {
+    fn from(f: FileSerdeWrapper) -> File {
+        f.0
     }
 }
 
