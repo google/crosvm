@@ -71,9 +71,9 @@ macro_rules! endian_type {
             }
         }
 
-        impl Into<$old_type> for $new_type {
-            fn into(self) -> $old_type {
-                $old_type::$from_new(self.0)
+        impl From<$new_type> for $old_type {
+            fn from(v: $new_type) -> $old_type {
+                $old_type::$from_new(v.0)
             }
         }
 
