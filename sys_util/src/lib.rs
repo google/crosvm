@@ -36,6 +36,7 @@ mod poll;
 mod priority;
 pub mod rand;
 mod raw_fd;
+pub mod read_dir;
 pub mod sched;
 pub mod scoped_path;
 pub mod scoped_signal_handler;
@@ -113,6 +114,18 @@ pub type Gid = libc::gid_t;
 /// Used to mark types as !Sync.
 pub type UnsyncMarker = std::marker::PhantomData<Cell<usize>>;
 
+#[macro_export]
+macro_rules! syscall {
+    ($e:expr) => {{
+        let res = $e;
+        if res < 0 {
+            $crate::errno_result()
+        } else {
+            Ok(res)
+        }
+    }};
+}
+
 /// Safe wrapper for `sysconf(_SC_PAGESIZE)`.
 #[inline(always)]
 pub fn pagesize() -> usize {
@@ -150,25 +163,13 @@ pub fn gettid() -> Pid {
 /// Safe wrapper for `getsid(2)`.
 pub fn getsid(pid: Option<Pid>) -> Result<Pid> {
     // Calling the getsid() sycall is always safe.
-    let ret = unsafe { libc::getsid(pid.unwrap_or(0)) } as Pid;
-
-    if ret < 0 {
-        errno_result()
-    } else {
-        Ok(ret)
-    }
+    syscall!(unsafe { libc::getsid(pid.unwrap_or(0)) } as Pid)
 }
 
 /// Wrapper for `setsid(2)`.
 pub fn setsid() -> Result<Pid> {
     // Safe because the return code is checked.
-    let ret = unsafe { libc::setsid() as Pid };
-
-    if ret < 0 {
-        errno_result()
-    } else {
-        Ok(ret)
-    }
+    syscall!(unsafe { libc::setsid() as Pid })
 }
 
 /// Safe wrapper for `geteuid(2)`.
@@ -189,13 +190,7 @@ pub fn getegid() -> Gid {
 #[inline(always)]
 pub fn chown(path: &CStr, uid: Uid, gid: Gid) -> Result<()> {
     // Safe since we pass in a valid string pointer and check the return value.
-    let ret = unsafe { libc::chown(path.as_ptr(), uid, gid) };
-
-    if ret < 0 {
-        errno_result()
-    } else {
-        Ok(())
-    }
+    syscall!(unsafe { libc::chown(path.as_ptr(), uid, gid) }).map(|_| ())
 }
 
 /// The operation to perform with `flock`.
@@ -220,13 +215,7 @@ pub fn flock(file: &dyn AsRawFd, op: FlockOperation, nonblocking: bool) -> Resul
     }
 
     // Safe since we pass in a valid fd and flock operation, and check the return value.
-    let ret = unsafe { libc::flock(file.as_raw_fd(), operation) };
-
-    if ret < 0 {
-        errno_result()
-    } else {
-        Ok(())
-    }
+    syscall!(unsafe { libc::flock(file.as_raw_fd(), operation) }).map(|_| ())
 }
 
 /// The operation to perform with `fallocate`.
@@ -268,12 +257,7 @@ pub fn fallocate(
 
     // Safe since we pass in a valid fd and fallocate mode, validate offset and len,
     // and check the return value.
-    let ret = unsafe { libc::fallocate64(file.as_raw_fd(), mode, offset, len) };
-    if ret < 0 {
-        errno_result()
-    } else {
-        Ok(())
-    }
+    syscall!(unsafe { libc::fallocate64(file.as_raw_fd(), mode, offset, len) }).map(|_| ())
 }
 
 /// Reaps a child process that has terminated.
@@ -349,11 +333,7 @@ pub fn pipe(close_on_exec: bool) -> Result<(File, File)> {
 /// Returns the new size of the pipe or an error if the OS fails to set the pipe size.
 pub fn set_pipe_size(fd: RawFd, size: usize) -> Result<usize> {
     // Safe because fcntl with the `F_SETPIPE_SZ` arg doesn't touch memory.
-    let ret = unsafe { fcntl(fd, libc::F_SETPIPE_SZ, size as c_int) };
-    if ret < 0 {
-        return errno_result();
-    }
-    Ok(ret as usize)
+    syscall!(unsafe { fcntl(fd, libc::F_SETPIPE_SZ, size as c_int) }).map(|ret| ret as usize)
 }
 
 /// Test-only function used to create a pipe that is full. The pipe is created, has its size set to
@@ -439,11 +419,7 @@ pub fn poll_in(fd: &dyn AsRawFd) -> bool {
 /// Returns an error if the OS indicates the flags can't be retrieved.
 fn get_fd_flags(fd: RawFd) -> Result<c_int> {
     // Safe because no third parameter is expected and we check the return result.
-    let ret = unsafe { fcntl(fd, F_GETFL) };
-    if ret < 0 {
-        return errno_result();
-    }
-    Ok(ret)
+    syscall!(unsafe { fcntl(fd, F_GETFL) })
 }
 
 /// Sets the file flags set for the given `RawFD`.
@@ -452,11 +428,7 @@ fn get_fd_flags(fd: RawFd) -> Result<c_int> {
 fn set_fd_flags(fd: RawFd, flags: c_int) -> Result<()> {
     // Safe because we supply the third parameter and we check the return result.
     // fcntlt is trusted not to modify the memory of the calling process.
-    let ret = unsafe { fcntl(fd, F_SETFL, flags) };
-    if ret < 0 {
-        return errno_result();
-    }
-    Ok(())
+    syscall!(unsafe { fcntl(fd, F_SETFL, flags) }).map(|_| ())
 }
 
 /// Performs a logical OR of the given flags with the FD's flags, setting the given bits for the
