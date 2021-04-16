@@ -34,8 +34,10 @@ pub mod net;
 mod passwd;
 mod poll;
 mod priority;
+pub mod rand;
 mod raw_fd;
 pub mod sched;
+pub mod scoped_path;
 pub mod scoped_signal_handler;
 mod seek_hole;
 mod shm;
@@ -45,6 +47,7 @@ mod sock_ctrl_msg;
 mod struct_util;
 mod terminal;
 mod timerfd;
+pub mod vsock;
 mod write_zeroes;
 
 pub use crate::alloc::LayoutAllocation;
