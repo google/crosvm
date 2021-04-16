@@ -411,6 +411,32 @@ impl MemoryMapping {
         })
     }
 
+    /// Madvise the kernel to use Huge Pages for this mapping.
+    pub fn use_hugepages(&self) -> Result<()> {
+        const SZ_2M: usize = 2 * 1024 * 1024;
+
+        // THP uses 2M pages, so use THP only on mappings that are at least
+        // 2M in size.
+        if self.size() < SZ_2M {
+            return Ok(());
+        }
+
+        // This is safe because we call madvise with a valid address and size, and we check the
+        // return value.
+        let ret = unsafe {
+            libc::madvise(
+                self.as_ptr() as *mut libc::c_void,
+                self.size(),
+                libc::MADV_HUGEPAGE,
+            )
+        };
+        if ret == -1 {
+            Err(Error::SystemCallFailed(errno::Error::last()))
+        } else {
+            Ok(())
+        }
+    }
+
     /// Calls msync with MS_SYNC on the mapping.
     pub fn msync(&self) -> Result<()> {
         // This is safe since we use the exact address and length of a known

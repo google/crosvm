@@ -38,6 +38,10 @@ impl MemoryMapping {
         self.mapping.msync()
     }
 
+    pub fn use_hugepages(&self) -> Result<()> {
+        self.mapping.use_hugepages()
+    }
+
     pub fn read_to_memory(
         &self,
         mem_offset: usize,
