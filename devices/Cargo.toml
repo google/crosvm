@@ -47,7 +47,6 @@ serde = { version = "1", features = [ "derive" ] }
 smallvec = "1.6.1"
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
-syscall_defines = { path = "../syscall_defines" }
 thiserror = "1.0.20"
 tpm2 = { path = "../tpm2", optional = true }
 usb_util = { path = "../usb_util" }

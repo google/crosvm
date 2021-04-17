@@ -8,8 +8,7 @@ use std::path::Path;
 use std::process;
 use std::result;
 
-use libc::{c_long, pid_t, syscall, CLONE_NEWPID, CLONE_NEWUSER, SIGCHLD};
-use syscall_defines::linux::LinuxSyscall::SYS_clone;
+use libc::{c_long, pid_t, syscall, SYS_clone, CLONE_NEWPID, CLONE_NEWUSER, SIGCHLD};
 
 use crate::errno_result;
 

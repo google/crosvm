@@ -36,7 +36,6 @@ exclude = [
     "rand_ish",
     "sync",
     "sys_util",
-    "syscall_defines",
     "tempfile",
     "vm_memory",
 ]
@@ -79,7 +78,7 @@ kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
 kvm = { path = "kvm", optional = true }
 kvm_sys = { path = "kvm_sys", optional = true }
-libc = "0.2.65"
+libc = "0.2.93"
 libcras = "*"
 minijail = "*" # provided by ebuild
 net_util = { path = "net_util" }
@@ -118,7 +117,6 @@ libvda = { path = "../../platform2/arc/vm/libvda/rust" } # ignored by ebuild
 minijail = { path = "../../aosp/external/minijail/rust/minijail" } # ignored by ebuild
 p9 = { path = "../../platform2/vm_tools/p9" } # ignored by ebuild
 sync = { path = "sync" }
-syscall_defines = { path = "syscall_defines" }
 sys_util = { path = "sys_util" }
 tempfile = { path = "tempfile" }
 vmm_vhost = { path = "../../third_party/rust-vmm/vhost", features = ["vhost-user-master"] } # ignored by ebuild

@@ -101,12 +101,9 @@ use std::ptr;
 use std::time::Duration;
 
 use libc::{
-    c_int, c_long, fcntl, pipe2, syscall, sysconf, waitpid, F_GETFL, F_SETFL, O_CLOEXEC, SIGKILL,
-    WNOHANG, _SC_IOV_MAX, _SC_PAGESIZE,
+    c_int, c_long, fcntl, pipe2, syscall, sysconf, waitpid, SYS_getpid, SYS_gettid, F_GETFL,
+    F_SETFL, O_CLOEXEC, SIGKILL, WNOHANG, _SC_IOV_MAX, _SC_PAGESIZE,
 };
-
-use syscall_defines::linux::LinuxSyscall::SYS_getpid;
-use syscall_defines::linux::LinuxSyscall::SYS_gettid;
 
 /// Re-export libc types that are part of the API.
 pub type Pid = libc::pid_t;

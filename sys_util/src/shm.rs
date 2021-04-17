@@ -8,12 +8,11 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
 use libc::{
-    self, c_char, c_int, c_long, c_uint, close, fcntl, ftruncate64, off64_t, syscall, EINVAL,
-    F_ADD_SEALS, F_GET_SEALS, F_SEAL_GROW, F_SEAL_SEAL, F_SEAL_SHRINK, F_SEAL_WRITE,
-    MFD_ALLOW_SEALING,
+    self, c_char, c_int, c_long, c_uint, close, fcntl, ftruncate64, off64_t, syscall,
+    SYS_memfd_create, EINVAL, F_ADD_SEALS, F_GET_SEALS, F_SEAL_GROW, F_SEAL_SEAL, F_SEAL_SHRINK,
+    F_SEAL_WRITE, MFD_ALLOW_SEALING,
 };
 use serde::{Deserialize, Serialize};
-use syscall_defines::linux::LinuxSyscall::SYS_memfd_create;
 
 use crate::{errno, errno_result, Result};
 

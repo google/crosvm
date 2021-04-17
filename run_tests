@@ -58,7 +58,6 @@ CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
     "sync": [],
     "sys_util": [Requirements.SINGLE_THREADED, Requirements.PRIVILEGED],
     "poll_token_derive": [],
-    "syscall_defines": [],
     "tempfile": [],
     "tpm2-sys": [],
     "tpm2": [],

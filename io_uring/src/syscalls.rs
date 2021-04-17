@@ -6,8 +6,7 @@ use std::io::Error;
 use std::os::unix::io::RawFd;
 use std::ptr::null_mut;
 
-use libc::{c_int, c_long, c_void};
-use syscall_defines::linux::LinuxSyscall::*;
+use libc::{c_int, c_long, c_void, syscall, SYS_io_uring_enter, SYS_io_uring_setup};
 
 use crate::bindings::*;
 
@@ -15,7 +14,7 @@ use crate::bindings::*;
 pub type Result<T> = std::result::Result<T, c_int>;
 
 pub unsafe fn io_uring_setup(num_entries: usize, params: &io_uring_params) -> Result<RawFd> {
-    let ret = libc::syscall(
+    let ret = syscall(
         SYS_io_uring_setup as c_long,
         num_entries as c_int,
         params as *const _,
@@ -27,7 +26,7 @@ pub unsafe fn io_uring_setup(num_entries: usize, params: &io_uring_params) -> Re
 }
 
 pub unsafe fn io_uring_enter(fd: RawFd, to_submit: u64, to_wait: u64, flags: u32) -> Result<()> {
-    let ret = libc::syscall(
+    let ret = syscall(
         SYS_io_uring_enter as c_long,
         fd,
         to_submit as c_int,
