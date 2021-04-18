@@ -400,6 +400,16 @@ pub struct Decoder<D: DecoderBackend> {
 }
 
 impl<'a, D: DecoderBackend> Decoder<D> {
+    /// Build a new decoder using the provided `backend`.
+    fn from_backend(backend: D) -> Self {
+        let capability = backend.get_capabilities();
+
+        Self {
+            decoder: backend,
+            capability,
+            contexts: Default::default(),
+        }
+    }
     /*
      * Functions processing virtio-video commands.
      */
@@ -1087,19 +1097,5 @@ impl<D: DecoderBackend> Device for Decoder<D> {
         };
 
         Some(event_responses)
-    }
-}
-
-/// Create a new decoder instance using a Libvda decoder instance to perform
-/// the decoding.
-impl Decoder<libvda::decode::VdaInstance> {
-    pub fn new() -> VideoResult<Self> {
-        let vda = libvda::decode::VdaInstance::new(libvda::decode::VdaImplType::Gavda)?;
-        let capability = Capability::new(vda.get_capabilities());
-        Ok(Decoder {
-            decoder: vda,
-            capability,
-            contexts: Default::default(),
-        })
     }
 }

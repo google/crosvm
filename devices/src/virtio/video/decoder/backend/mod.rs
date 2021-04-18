@@ -8,6 +8,7 @@
 use std::fs::File;
 
 use crate::virtio::video::{
+    decoder::Capability,
     error::{VideoError, VideoResult},
     format::{Format, Rect},
 };
@@ -100,6 +101,9 @@ pub trait DecoderSession {
 
 pub trait DecoderBackend {
     type Session: DecoderSession;
+
+    /// Return the decoding capabilities for this backend instance.
+    fn get_capabilities(&self) -> Capability;
 
     /// Create a new decoding session for the passed `profile`.
     fn new_session(&self, format: Format) -> VideoResult<Self::Session>;
