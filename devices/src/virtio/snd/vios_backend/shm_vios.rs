@@ -110,7 +110,7 @@ pub struct VioSClient {
     rx_subscribers: Arc<Mutex<HashMap<usize, Sender<(u32, usize)>>>>,
     recv_running: Arc<Mutex<bool>>,
     recv_event: Mutex<Event>,
-    recv_thread: Option<JoinHandle<Result<()>>>,
+    recv_thread: Mutex<Option<JoinHandle<Result<()>>>>,
 }
 
 impl VioSClient {
@@ -186,17 +186,6 @@ impl VioSClient {
         let recv_running = Arc::new(Mutex::new(true));
         let recv_event = Event::new().map_err(|e| Error::EventCreateError(e))?;
 
-        let recv_thread = Some(spawn_recv_thread(
-            rx_subscribers.clone(),
-            recv_event
-                .try_clone()
-                .map_err(|e| Error::EventDupError(e))?,
-            recv_running.clone(),
-            rx_socket
-                .try_clone()
-                .map_err(|e| Error::UnixSeqpacketDupError(e))?,
-        ));
-
         let mut client = VioSClient {
             config,
             streams: Mutex::new(Vec::new()),
@@ -207,10 +196,34 @@ impl VioSClient {
             rx_subscribers,
             recv_running,
             recv_event: Mutex::new(recv_event),
-            recv_thread,
+            recv_thread: Mutex::new(None),
         };
         client.request_and_cache_streams_info()?;
         Ok(client)
+    }
+
+    pub fn ensure_bg_thread_started(&self) -> Result<()> {
+        let event_socket = self
+            .recv_event
+            .lock()
+            .try_clone()
+            .map_err(|e| Error::EventDupError(e))?;
+        let rx_socket = self
+            .rx
+            .lock()
+            .socket
+            .try_clone()
+            .map_err(|e| Error::UnixSeqpacketDupError(e))?;
+        let mut opt = self.recv_thread.lock();
+        if opt.is_none() {
+            opt.get_or_insert(spawn_recv_thread(
+                self.rx_subscribers.clone(),
+                event_socket,
+                self.recv_running.clone(),
+                rx_socket,
+            ));
+        }
+        Ok(())
     }
 
     /// Gets an unused stream id of the specified direction. `direction` must be one of
@@ -437,16 +450,15 @@ impl Drop for VioSClient {
         if let Err(e) = self.recv_event.lock().write(1u64) {
             error!("Failed to notify recv thread: {:?}", e);
         }
-        match self.recv_thread.take() {
-            None => error!("No Recv thread handle!! That's a bug."),
-            Some(handle) => match handle.join() {
+        if let Some(handle) = self.recv_thread.lock().take() {
+            match handle.join() {
                 Ok(r) => {
                     if let Err(e) = r {
                         error!("Error detected on Recv Thread: {}", e);
                     }
                 }
                 Err(e) => error!("Recv thread panicked: {:?}", e),
-            },
+            };
         }
     }
 }

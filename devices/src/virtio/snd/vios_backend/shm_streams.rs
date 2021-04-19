@@ -89,6 +89,7 @@ impl ShmStreamSource for VioSShmStreamSource {
         client_shm: &SysSharedMemory,
         _buffer_offsets: [u64; 2],
     ) -> GenericResult<Box<dyn ShmStream>> {
+        self.vios_client.ensure_bg_thread_started()?;
         let virtio_dir = match direction {
             StreamDirection::Playback => VIRTIO_SND_D_OUTPUT,
             StreamDirection::Capture => VIRTIO_SND_D_INPUT,
