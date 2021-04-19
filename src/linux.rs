@@ -51,7 +51,7 @@ use devices::{
 #[cfg(feature = "usb")]
 use devices::{HostBackendDeviceProvider, XhciController};
 use hypervisor::kvm::{Kvm, KvmVcpu, KvmVm};
-use hypervisor::{HypervisorCap, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap};
+use hypervisor::{DeviceKind, HypervisorCap, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap};
 use minijail::{self, Minijail};
 use net_util::{Error as NetError, MacAddress, Tap};
 use remain::sorted;
@@ -124,6 +124,7 @@ pub enum Error {
     CreateUsbProvider(devices::usb::host_backend::error::Error),
     CreateVcpu(base::Error),
     CreateVfioDevice(devices::vfio::VfioError),
+    CreateVfioKvmDevice(base::Error),
     CreateVm(base::Error),
     CreateWaitContext(base::Error),
     DeviceJail(minijail::Error),
@@ -253,6 +254,7 @@ impl Display for Error {
             CreateUsbProvider(e) => write!(f, "failed to create usb provider: {}", e),
             CreateVcpu(e) => write!(f, "failed to create vcpu: {}", e),
             CreateVfioDevice(e) => write!(f, "Failed to create vfio device {}", e),
+            CreateVfioKvmDevice(e) => write!(f, "failed to create KVM vfio device: {}", e),
             CreateVm(e) => write!(f, "failed to create vm: {}", e),
             CreateWaitContext(e) => write!(f, "failed to create wait context: {}", e),
             DeviceJail(e) => write!(f, "failed to jail device: {}", e),
@@ -1735,6 +1737,7 @@ fn create_vfio_device(
     resources: &mut SystemAllocator,
     control_tubes: &mut Vec<TaggedControlTube>,
     vfio_path: &Path,
+    kvm_vfio_file: &SafeDescriptor,
 ) -> DeviceResult<(Box<VfioPciDevice>, Option<Minijail>)> {
     let vfio_container =
         VFIO_CONTAINER.with::<_, DeviceResult<Arc<Mutex<VfioContainer>>>>(|v| {
@@ -1763,7 +1766,7 @@ fn create_vfio_device(
     let (vfio_host_tube_mem, vfio_device_tube_mem) = Tube::pair().map_err(Error::CreateTube)?;
     control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
 
-    let vfio_device = VfioDevice::new(vfio_path, vm, vm.get_memory(), vfio_container)
+    let vfio_device = VfioDevice::new(vfio_path, vm.get_memory(), &kvm_vfio_file, vfio_container)
         .map_err(Error::CreateVfioDevice)?;
     let mut vfio_pci_device = Box::new(VfioPciDevice::new(
         vfio_device,
@@ -1837,10 +1840,22 @@ fn create_devices(
         pci_devices.push((usb_controller, simple_jail(&cfg, "xhci")?));
     }
 
-    for vfio_path in &cfg.vfio {
-        let (vfio_pci_device, jail) =
-            create_vfio_device(cfg, vm, resources, control_tubes, vfio_path.as_path())?;
-        pci_devices.push((vfio_pci_device, jail));
+    if !cfg.vfio.is_empty() {
+        let kvm_vfio_file = vm
+            .create_device(DeviceKind::Vfio)
+            .map_err(Error::CreateVfioKvmDevice)?;
+
+        for vfio_path in &cfg.vfio {
+            let (vfio_pci_device, jail) = create_vfio_device(
+                cfg,
+                vm,
+                resources,
+                control_tubes,
+                vfio_path.as_path(),
+                &kvm_vfio_file,
+            )?;
+            pci_devices.push((vfio_pci_device, jail));
+        }
     }
 
     Ok(pci_devices)
