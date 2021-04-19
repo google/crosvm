@@ -3,3 +3,4 @@
 # found in the LICENSE file.
 
 @include /usr/share/policy/crosvm/common_device.policy
+prctl: arg0 == PR_SET_NAME

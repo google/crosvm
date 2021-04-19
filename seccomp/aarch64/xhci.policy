@@ -36,3 +36,4 @@ ioctl: arg1 == 0xc0105500 || arg1 == 0x802c550a || arg1 == 0x8004551a || arg1 ==
 fstat: 1
 getrandom: 1
 lseek: 1
+prctl: arg0 == PR_SET_NAME

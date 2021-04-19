@@ -11,3 +11,4 @@ openat: return ENOENT
 prlimit64: 1
 sched_setscheduler: 1
 setrlimit: 1
+prctl: arg0 == PR_SET_NAME

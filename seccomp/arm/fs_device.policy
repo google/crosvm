@@ -52,6 +52,6 @@ umask: 1
 unlinkat: 1
 utimensat: 1
 utimensat_time64: 1
-prctl: arg0 == PR_SET_SECUREBITS || arg0 == PR_GET_SECUREBITS
+prctl: arg0 == PR_SET_NAME || arg0 == PR_SET_SECUREBITS || arg0 == PR_GET_SECUREBITS
 capget: 1
 capset: 1

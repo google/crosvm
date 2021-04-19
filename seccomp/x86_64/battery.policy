@@ -18,3 +18,4 @@ openat: 1
 readlink: 1
 socket: arg0 == AF_UNIX
 tgkill: 1
+prctl: arg0 == PR_SET_NAME

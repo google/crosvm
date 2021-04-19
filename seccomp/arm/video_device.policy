@@ -24,3 +24,4 @@ send: 1
 setpriority: 1
 socket: arg0 == AF_UNIX
 stat64: 1
+prctl: arg0 == PR_SET_NAME

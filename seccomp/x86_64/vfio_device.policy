@@ -10,3 +10,4 @@ openat: return ENOENT
 readlink: 1
 pread64: 1
 pwrite64: 1
+prctl: arg0 == PR_SET_NAME

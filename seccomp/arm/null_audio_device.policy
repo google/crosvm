@@ -9,3 +9,4 @@ open: return ENOENT
 openat: return ENOENT
 prlimit64: 1
 setrlimit: 1
+prctl: arg0 == PR_SET_NAME

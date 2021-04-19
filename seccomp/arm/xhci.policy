@@ -41,3 +41,4 @@ getdents: 1
 _llseek: 1
 open: return ENOENT
 openat: 1
+prctl: arg0 == PR_SET_NAME

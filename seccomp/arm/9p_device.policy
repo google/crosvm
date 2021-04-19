@@ -29,3 +29,4 @@ fchmod: 1
 fchown: 1
 fstatfs64: 1
 fstatat64: 1
+prctl: arg0 == PR_SET_NAME

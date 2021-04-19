@@ -5,3 +5,4 @@
 @include /usr/share/policy/crosvm/common_device.policy
 
 openat: return ENOENT
+prctl: arg0 == PR_SET_NAME

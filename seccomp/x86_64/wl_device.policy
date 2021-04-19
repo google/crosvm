@@ -17,3 +17,4 @@ ftruncate: 1
 lseek: 1
 open: return ENOENT
 openat: return ENOENT
+prctl: arg0 == PR_SET_NAME

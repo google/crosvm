@@ -22,3 +22,4 @@ timerfd_gettime: 1
 timerfd_gettime64: 1
 timerfd_settime: 1
 timerfd_settime64: 1
+prctl: arg0 == PR_SET_NAME

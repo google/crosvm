@@ -17,3 +17,5 @@ memfd_create: arg1 == 3
 ftruncate64: 1
 # Used to determine shm size after recvmsg with fd
 _llseek: 1
+
+prctl: arg0 == PR_SET_NAME

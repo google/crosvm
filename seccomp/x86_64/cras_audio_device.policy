@@ -12,3 +12,4 @@ setrlimit: 1
 sched_setscheduler: 1
 socketpair: arg0 == AF_UNIX
 clock_gettime: 1
+prctl: arg0 == PR_SET_NAME

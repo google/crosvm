@@ -35,7 +35,6 @@ pipe2: 1
 poll: 1
 ppoll: 1
 ppoll_time64: 1
-prctl: arg0 == PR_SET_NAME
 read: 1
 readv: 1
 recv: 1

@@ -11,3 +11,4 @@ prlimit64: 1
 setrlimit: 1
 sched_setscheduler: 1
 socketpair: arg0 == AF_UNIX
+prctl: arg0 == PR_SET_NAME

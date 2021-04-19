@@ -28,7 +28,6 @@ nanosleep: 1
 clock_nanosleep: 1
 pipe2: 1
 ppoll: 1
-prctl: arg0 == PR_SET_NAME
 read: 1
 readv: 1
 recvfrom: 1
