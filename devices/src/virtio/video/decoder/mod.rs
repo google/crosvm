@@ -1090,12 +1090,14 @@ impl<D: DecoderBackend> Device for Decoder<D> {
 
 /// Create a new decoder instance using a Libvda decoder instance to perform
 /// the decoding.
-impl<'a> Decoder<&'a libvda::decode::VdaInstance> {
-    pub fn new(vda: &'a libvda::decode::VdaInstance) -> Self {
-        Decoder {
+impl Decoder<libvda::decode::VdaInstance> {
+    pub fn new() -> VideoResult<Self> {
+        let vda = libvda::decode::VdaInstance::new(libvda::decode::VdaImplType::Gavda)?;
+        let capability = Capability::new(vda.get_capabilities());
+        Ok(Decoder {
             decoder: vda,
-            capability: Capability::new(vda.get_capabilities()),
+            capability,
             contexts: ContextMap::new(),
-        }
+        })
     }
 }

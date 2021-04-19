@@ -179,7 +179,7 @@ impl DecoderSession for LibvdaSession {
     }
 }
 
-impl DecoderBackend for &libvda::decode::VdaInstance {
+impl DecoderBackend for libvda::decode::VdaInstance {
     type Session = LibvdaSession;
 
     fn new_session(&self, format: Format) -> VideoResult<Self::Session> {

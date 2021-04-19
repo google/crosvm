@@ -209,16 +209,13 @@ impl VirtioDevice for VideoDevice {
             VideoDeviceType::Decoder => thread::Builder::new()
                 .name("virtio video decoder".to_owned())
                 .spawn(move || {
-                    let vda = match libvda::decode::VdaInstance::new(
-                        libvda::decode::VdaImplType::Gavda,
-                    ) {
-                        Ok(vda) => vda,
+                    let device = match decoder::Decoder::new() {
+                        Ok(device) => device,
                         Err(e) => {
                             error!("Failed to initialize vda: {}", e);
                             return;
                         }
                     };
-                    let device = decoder::Decoder::new(&vda);
                     if let Err(e) = worker.run(cmd_queue, event_queue, device) {
                         error!("Failed to start decoder worker: {}", e);
                     };
