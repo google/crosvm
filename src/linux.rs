@@ -2383,7 +2383,7 @@ where
     let exit_evt = Event::new().map_err(Error::CreateEvent)?;
     let mut sys_allocator = Arch::create_system_allocator(vm.get_memory());
     let phys_max_addr = Arch::get_phys_max_addr();
-    let pci_devices = create_devices(
+    let mut pci_devices = create_devices(
         &cfg,
         &mut vm,
         &mut sys_allocator,
@@ -2400,6 +2400,18 @@ where
         usb_provider,
         Arc::clone(&map_request),
     )?;
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    for (device, _jail) in pci_devices.iter_mut() {
+        let sdts = device
+            .generate_acpi(components.acpi_sdts)
+            .or_else(|| {
+                error!("ACPI table generation error");
+                None
+            })
+            .ok_or(Error::GenerateAcpi)?;
+        components.acpi_sdts = sdts;
+    }
 
     #[cfg_attr(not(feature = "direct"), allow(unused_mut))]
     let mut linux = Arch::build_vm::<V, Vcpu>(

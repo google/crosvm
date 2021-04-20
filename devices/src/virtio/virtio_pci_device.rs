@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use sync::Mutex;
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use acpi_tables::sdt::SDT;
 use base::{warn, AsRawDescriptor, Event, RawDescriptor, Result, Tube};
 use data_model::{DataInit, Le32};
 use hypervisor::Datamatch;
@@ -743,5 +745,10 @@ impl PciDevice for VirtioPciDevice {
 
     fn on_device_sandboxed(&mut self) {
         self.device.on_device_sandboxed();
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn generate_acpi(&mut self, sdts: Vec<SDT>) -> Option<Vec<SDT>> {
+        self.device.generate_acpi(&self.pci_address, sdts)
     }
 }

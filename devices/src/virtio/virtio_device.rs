@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use acpi_tables::sdt::SDT;
 use base::{Event, RawDescriptor};
 use vm_memory::GuestMemory;
 
@@ -87,4 +89,13 @@ pub trait VirtioDevice: Send {
     fn on_device_sandboxed(&mut self) {}
 
     fn control_notify(&self, _behavior: MsixStatus) {}
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn generate_acpi(
+        &mut self,
+        _pci_address: &Option<PciAddress>,
+        sdts: Vec<SDT>,
+    ) -> Option<Vec<SDT>> {
+        Some(sdts)
+    }
 }
