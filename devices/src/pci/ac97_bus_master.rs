@@ -720,7 +720,7 @@ fn next_guest_buffer(
         // 0       h      l  n
         // +++++++++......++++
         (low > high && (low <= value || value <= high))
-    };
+    }
 
     // Check if
     //  * we're halted

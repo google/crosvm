@@ -59,7 +59,7 @@ pub enum Error {
     /// Failed to convert signum to Signal.
     UnrecognizedSignum(i32),
     /// Converted signum greater than SIGRTMAX.
-    RTSignumGreaterThanMax(Signal),
+    RtSignumGreaterThanMax(Signal),
 }
 
 impl Display for Error {
@@ -94,7 +94,7 @@ impl Display for Error {
             WaitPid(e) => write!(f, "failed to wait for process: {}", e),
             TimedOut => write!(f, "timeout reached."),
             UnrecognizedSignum(signum) => write!(f, "unrecoginized signal number: {}", signum),
-            RTSignumGreaterThanMax(signal) => {
+            RtSignumGreaterThanMax(signal) => {
                 write!(f, "got RT signal greater than max: {:?}", signal)
             }
         }
@@ -114,7 +114,7 @@ pub enum Signal {
     HangUp = libc::SIGHUP,
     IllegalInstruction = libc::SIGILL,
     Interrupt = libc::SIGINT,
-    IO = libc::SIGIO,
+    Io = libc::SIGIO,
     Kill = libc::SIGKILL,
     Pipe = libc::SIGPIPE,
     Power = libc::SIGPWR,
@@ -126,15 +126,15 @@ pub enum Signal {
     Sys = libc::SIGSYS,
     Trap = libc::SIGTRAP,
     Terminate = libc::SIGTERM,
-    TTYIn = libc::SIGTTIN,
-    TTYOut = libc::SIGTTOU,
-    TTYStop = libc::SIGTSTP,
+    TtyIn = libc::SIGTTIN,
+    TtyOut = libc::SIGTTOU,
+    TtyStop = libc::SIGTSTP,
     Urgent = libc::SIGURG,
     User1 = libc::SIGUSR1,
     User2 = libc::SIGUSR2,
-    VTAlarm = libc::SIGVTALRM,
+    VtAlarm = libc::SIGVTALRM,
     Winch = libc::SIGWINCH,
-    XCPU = libc::SIGXCPU,
+    Xcpu = libc::SIGXCPU,
     // Rt signal numbers are be adjusted in the conversion to integer.
     Rt0 = libc::SIGSYS + 1,
     Rt1,
@@ -198,7 +198,7 @@ impl TryFrom<c_int> for Signal {
             libc::SIGHUP => HangUp,
             libc::SIGILL => IllegalInstruction,
             libc::SIGINT => Interrupt,
-            libc::SIGIO => IO,
+            libc::SIGIO => Io,
             libc::SIGKILL => Kill,
             libc::SIGPIPE => Pipe,
             libc::SIGPWR => Power,
@@ -210,15 +210,15 @@ impl TryFrom<c_int> for Signal {
             libc::SIGSYS => Sys,
             libc::SIGTRAP => Trap,
             libc::SIGTERM => Terminate,
-            libc::SIGTTIN => TTYIn,
-            libc::SIGTTOU => TTYOut,
-            libc::SIGTSTP => TTYStop,
+            libc::SIGTTIN => TtyIn,
+            libc::SIGTTOU => TtyOut,
+            libc::SIGTSTP => TtyStop,
             libc::SIGURG => Urgent,
             libc::SIGUSR1 => User1,
             libc::SIGUSR2 => User2,
-            libc::SIGVTALRM => VTAlarm,
+            libc::SIGVTALRM => VtAlarm,
             libc::SIGWINCH => Winch,
-            libc::SIGXCPU => XCPU,
+            libc::SIGXCPU => Xcpu,
             _ => {
                 if value < SIGRTMIN() {
                     return Err(Error::UnrecognizedSignum(value));
@@ -261,7 +261,7 @@ impl TryFrom<c_int> for Signal {
                     }
                 };
                 if value > SIGRTMAX() {
-                    return Err(Error::RTSignumGreaterThanMax(signal));
+                    return Err(Error::RtSignumGreaterThanMax(signal));
                 }
                 signal
             }
