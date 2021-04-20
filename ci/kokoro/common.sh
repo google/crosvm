@@ -12,9 +12,11 @@ crosvm_root="${KOKORO_ARTIFACTS_DIR}"/git/crosvm
 # Note: Access is restricted to the google corporate network.
 # Details: https://yaqs.corp.google.com/eng/q/6628551334035456
 if [[ ! -z "${DEBUG_SSH_KEY}" ]]; then
-  echo "${DEBUG_SSH_KEY}" >> ~/.ssh/authorized_keys
-  external_ip=$(curl -s -H "Metadata-Flavor: Google"
-    http://metadata/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip)
+  echo "${DEBUG_SSH_KEY}" >>~/.ssh/authorized_keys
+  external_ip=$(
+    curl -s -H "Metadata-Flavor: Google"
+    http://metadata/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip
+  )
   echo "SSH Debug enabled. Connect to: kbuilder@${external_ip}"
 fi
 
@@ -43,7 +45,7 @@ setup_source() {
     -u https://chromium.googlesource.com/chromiumos/manifest.git \
     --repo-url https://chromium.googlesource.com/external/repo.git \
     -g crosvm || return 1
-  ./repo sync -j8 -c -m "${crosvm_root}/ci/kokoro/manifest.xml" || return 1
+  ./repo sync -j8 -c || return 1
 
   # Bind mount source into cros checkout.
   echo ""
