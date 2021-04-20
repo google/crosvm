@@ -1,25 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest>
-  <remote fetch="https://android.googlesource.com" name="aosp" review="https://android-review.googlesource.com"/>
-  <remote alias="cros" fetch="https://chromium.googlesource.com/" name="chromium"/>
-  <remote fetch="https://chromium.googlesource.com" name="cros" review="https://chromium-review.googlesource.com"/>
+  <remote name="aosp" fetch="https://android.googlesource.com" review="https://android-review.googlesource.com"/>
+  <remote name="chromium" fetch="https://chromium.googlesource.com/" alias="cros"/>
+  <remote name="cros" fetch="https://chromium.googlesource.com" review="https://chromium-review.googlesource.com"/>
   
   <default remote="cros" revision="refs/heads/main" sync-j="8"/>
   
-  <project dest-branch="refs/heads/main" groups="minilayout,firmware,buildtools,chromeos-admin,labtools,sysmon,devserver,crosvm" name="chromiumos/chromite" path="chromite" revision="0a411423dd8e607fd4b40113d381634245e8163f" upstream="refs/heads/main">
-    <copyfile dest="AUTHORS" src="AUTHORS"/>
-    <copyfile dest="LICENSE" src="LICENSE"/>
+  <project name="chromiumos/chromite" path="chromite" revision="28286c2e309f094fb1a57673b8eac8facf1a8f0e" upstream="refs/heads/main" dest-branch="refs/heads/main" groups="minilayout,firmware,buildtools,chromeos-admin,labtools,sysmon,devserver,crosvm">
+    <copyfile src="AUTHORS" dest="AUTHORS"/>
+    <copyfile src="LICENSE" dest="LICENSE"/>
   </project>
-  <project dest-branch="refs/heads/main" groups="crosvm" name="chromiumos/docs" path="docs" revision="053445060d9961c4f58d08813035594062b93f24" upstream="refs/heads/main"/>
-  <project dest-branch="refs/heads/main" groups="crosvm" name="chromiumos/platform/crosvm" path="src/platform/crosvm" revision="3f63661afca9fae62ee112d6de383a7351cbc9b9" upstream="refs/heads/main"/>
-  <project dest-branch="refs/heads/main" groups="crosvm" name="chromiumos/platform/minigbm" path="src/platform/minigbm" revision="6f83a442e5949103055b0cab32235eaff1d14921" upstream="refs/heads/main"/>
-  <project dest-branch="refs/heads/main" groups="crosvm" name="chromiumos/platform2" path="src/platform2" revision="5c95c5d924b45d4f11ef7a034ce0fe6bde6a0962" upstream="refs/heads/main"/>
-  <project dest-branch="refs/heads/main" groups="minilayout,firmware,buildtools,labtools,crosvm" name="chromiumos/repohooks" path="src/repohooks" revision="b9e15ab8e81e7fbd17c0d0e740e545fa59cf9ee9" upstream="refs/heads/main"/>
-  <project dest-branch="refs/heads/main" groups="crosvm" name="chromiumos/third_party/adhd" path="src/third_party/adhd" revision="2763f392df683537d71ba7f258009e592647f6d8" upstream="refs/heads/main"/>
-  <project dest-branch="refs/heads/main" groups="crosvm" name="chromiumos/third_party/rust-vmm/vhost" path="src/third_party/rust-vmm/vhost" revision="98298cb96972c20e05bffed58861456b48328d43" upstream="refs/heads/main"/>
-  <project dest-branch="refs/heads/main" groups="firmware,crosvm" name="chromiumos/third_party/tpm2" path="src/third_party/tpm2" revision="86e93379322f012d354b9b8a369373ed9b62718c" upstream="refs/heads/main"/>
-  <project dest-branch="refs/heads/master" groups="crosvm" name="chromiumos/third_party/virglrenderer" path="src/third_party/virglrenderer" revision="1c9a7a52e0c3fc551e9bb5f713f4a74b6a444c11" upstream="refs/heads/master"/>
-  <project dest-branch="refs/heads/master" groups="crosvm" name="platform/external/minijail" path="src/aosp/external/minijail" remote="aosp" revision="54277f1f74db3163493b492a45323d18b09b354a" upstream="refs/heads/master"/>
+  <project name="chromiumos/docs" path="docs" revision="e0bd4388ac29069b7999225d4946bc6d92e6803f" upstream="refs/heads/main" dest-branch="refs/heads/main" groups="crosvm"/>
+  <project name="chromiumos/platform/crosvm" path="src/platform/crosvm" revision="d78d05bf7fc0df39da69df04eecad75f75b6af5c" upstream="refs/heads/main" dest-branch="refs/heads/main" groups="crosvm"/>
+  <project name="chromiumos/platform/minigbm" path="src/platform/minigbm" revision="f2dc08e5a43faa536bb9ef774837a64eb489a301" upstream="refs/heads/main" dest-branch="refs/heads/main" groups="crosvm"/>
+  <project name="chromiumos/platform2" path="src/platform2" revision="e7023d4310c9503244a594d16799f28c811e06da" upstream="refs/heads/main" dest-branch="refs/heads/main" groups="crosvm"/>
+  <project name="chromiumos/repohooks" path="src/repohooks" revision="00c74ba0feedd019af7be3dd0287542e051ad614" upstream="refs/heads/main" dest-branch="refs/heads/main" groups="minilayout,firmware,buildtools,labtools,crosvm"/>
+  <project name="chromiumos/third_party/adhd" path="src/third_party/adhd" revision="46a3cdb70137e1ea49235fa1c20d952747e3c8ba" upstream="refs/heads/main" dest-branch="refs/heads/main" groups="crosvm"/>
+  <project name="chromiumos/third_party/rust-vmm/vhost" path="src/third_party/rust-vmm/vhost" revision="98298cb96972c20e05bffed58861456b48328d43" upstream="refs/heads/main" dest-branch="refs/heads/main" groups="crosvm"/>
+  <project name="chromiumos/third_party/tpm2" path="src/third_party/tpm2" revision="6003a4d22289f86814155b867319e3611a8ebcbc" upstream="refs/heads/main" dest-branch="refs/heads/main" groups="firmware,crosvm"/>
+  <project name="chromiumos/third_party/virglrenderer" path="src/third_party/virglrenderer" revision="5e2d10463d6b79080c3376138221b73ea6e95186" upstream="refs/heads/master" dest-branch="refs/heads/master" groups="crosvm"/>
+  <project name="platform/external/minijail" path="src/aosp/external/minijail" remote="aosp" revision="c71826854946d4f24e23304b63aab0f2c1639932" upstream="refs/heads/master" dest-branch="refs/heads/master" groups="crosvm"/>
   
-  <repo-hooks enabled-list="pre-upload" in-project="chromiumos/repohooks"/>
+  <repo-hooks in-project="chromiumos/repohooks" enabled-list="pre-upload"/>
 </manifest>

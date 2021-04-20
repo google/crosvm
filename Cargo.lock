@@ -1205,6 +1205,7 @@ name = "vm_memory"
 version = "0.1.0"
 dependencies = [
  "base",
+ "bitflags",
  "cros_async",
  "data_model",
  "libc",
