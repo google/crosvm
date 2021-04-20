@@ -231,6 +231,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "vhost",
+ "vhost_user_devices",
  "vm_control",
  "vm_memory",
  "x86_64",
@@ -1141,6 +1142,21 @@ dependencies = [
  "net_util",
  "virtio_sys",
  "vm_memory",
+]
+
+[[package]]
+name = "vhost_user_devices"
+version = "0.1.0"
+dependencies = [
+ "base",
+ "devices",
+ "libc",
+ "remain",
+ "sync",
+ "tempfile",
+ "thiserror",
+ "vm_memory",
+ "vmm_vhost",
 ]
 
 [[package]]

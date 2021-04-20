@@ -92,6 +92,7 @@ sync = { path = "sync" }
 tempfile = "*"
 thiserror = { version = "1.0.20", optional = true }
 vhost = { path = "vhost" }
+vhost_user_devices = { path = "vhost_user_devices" }
 vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }
 vm_memory = { path = "vm_memory" }
@@ -118,5 +119,5 @@ p9 = { path = "../../platform2/vm_tools/p9" } # ignored by ebuild
 sync = { path = "sync" }
 sys_util = { path = "sys_util" }
 tempfile = { path = "tempfile" }
-vmm_vhost = { path = "../../third_party/rust-vmm/vhost", features = ["vhost-user-master"] } # ignored by ebuild
+vmm_vhost = { path = "../../third_party/rust-vmm/vhost", features = ["vhost-user-master", "vhost-user-slave"] } # ignored by ebuild
 wire_format_derive = { path = "../../platform2/vm_tools/p9/wire_format_derive" } # ignored by ebuild

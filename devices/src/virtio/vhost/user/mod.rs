@@ -10,6 +10,7 @@ mod worker;
 
 pub use self::block::*;
 pub use self::fs::*;
+pub use self::handler::VhostUserHandler;
 pub use self::net::*;
 
 use remain::sorted;

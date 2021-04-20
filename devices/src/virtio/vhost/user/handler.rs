@@ -108,7 +108,8 @@ impl VhostUserHandler {
         .map_err(Error::CopyConfig)
     }
 
-    fn set_mem_table(&mut self, mem: &GuestMemory) -> Result<()> {
+    /// Sets the memory map regions so it can translate the vring addresses.
+    pub fn set_mem_table(&mut self, mem: &GuestMemory) -> Result<()> {
         let mut regions: Vec<VhostUserMemoryRegionInfo> = Vec::new();
         mem.with_regions::<_, ()>(
             |_idx, guest_phys_addr, memory_size, userspace_addr, mmap, mmap_offset| {
@@ -132,13 +133,14 @@ impl VhostUserHandler {
         Ok(())
     }
 
-    fn activate_vring(
+    /// Activates a vring for the given `queue`.
+    pub fn activate_vring(
         &mut self,
         mem: &GuestMemory,
         queue_index: usize,
         queue: &Queue,
         queue_evt: &Event,
-        interrupt: &Interrupt,
+        irqfd: &Event,
     ) -> Result<()> {
         self.vu
             .set_vring_num(queue_index, queue.actual_size())
@@ -167,18 +169,9 @@ impl VhostUserHandler {
             .set_vring_base(queue_index, 0)
             .map_err(Error::SetVringBase)?;
 
-        let msix_config_opt = interrupt
-            .get_msix_config()
-            .as_ref()
-            .ok_or(Error::MsixConfigUnavailable)?;
-        let msix_config = msix_config_opt.lock();
-        let irqfd = msix_config
-            .get_irqfd(queue.vector as usize)
-            .ok_or(Error::MsixIrqfdUnavailable)?;
         self.vu
             .set_vring_call(queue_index, &irqfd.0)
             .map_err(Error::SetVringCall)?;
-
         self.vu
             .set_vring_kick(queue_index, &queue_evt.0)
             .map_err(Error::SetVringKick)?;
@@ -199,9 +192,19 @@ impl VhostUserHandler {
     ) -> Result<()> {
         self.set_mem_table(&mem)?;
 
+        let msix_config_opt = interrupt
+            .get_msix_config()
+            .as_ref()
+            .ok_or(Error::MsixConfigUnavailable)?;
+        let msix_config = msix_config_opt.lock();
+
         for (queue_index, queue) in queues.iter().enumerate() {
             let queue_evt = &queue_evts[queue_index];
-            self.activate_vring(&mem, queue_index, queue, queue_evt, &interrupt)?;
+            let irqfd = msix_config
+                .get_irqfd(queue.vector as usize)
+                .ok_or(Error::MsixIrqfdUnavailable)?;
+
+            self.activate_vring(&mem, queue_index, queue, queue_evt, &irqfd)?;
         }
 
         Ok(())
