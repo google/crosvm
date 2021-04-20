@@ -54,11 +54,11 @@ use std::mem;
 use std::sync::Arc;
 
 use crate::bootparam::boot_params;
-use acpi_tables::aml::Aml;
 use acpi_tables::sdt::SDT;
+use acpi_tables::{aml, aml::Aml};
 use arch::{
-    get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, SerialHardware, SerialParameters,
-    VmComponents, VmImage,
+    get_serial_cmdline, GetSerialCmdlineError, LinuxArch, RunnableLinuxVm, SerialHardware,
+    SerialParameters, VmComponents, VmImage,
 };
 use base::Event;
 use devices::{IrqChip, IrqChipX86_64, PciConfigIo, PciDevice, ProtectionType};
@@ -435,6 +435,7 @@ impl arch::LinuxArch for X8664arch {
         )?;
 
         let (acpi_dev_resource, bat_control) = Self::setup_acpi_devices(
+            &mem,
             &mut io_bus,
             system_allocator,
             suspend_evt.try_clone().map_err(Error::CloneEvent)?,
@@ -445,8 +446,14 @@ impl arch::LinuxArch for X8664arch {
             &mut mmio_bus,
         )?;
 
-        // Use ACPI description if provided by the user.
-        let noacpi = acpi_dev_resource.sdts.is_empty();
+        // Use IRQ info in ACPI if provided by the user.
+        let mut noirq = true;
+
+        for sdt in acpi_dev_resource.sdts.iter() {
+            if sdt.is_signature(b"DSDT") || sdt.is_signature(b"APIC") {
+                noirq = false;
+            }
+        }
 
         let ramoops_region = match components.pstore {
             Some(pstore) => Some(
@@ -480,8 +487,8 @@ impl arch::LinuxArch for X8664arch {
             VmImage::Kernel(ref mut kernel_image) => {
                 let mut cmdline = Self::get_base_linux_cmdline();
 
-                if noacpi {
-                    cmdline.insert_str("pci=noacpi").unwrap();
+                if noirq {
+                    cmdline.insert_str("acpi=noirq").unwrap();
                 }
 
                 get_serial_cmdline(&mut cmdline, serial_parameters, "io")
@@ -1033,6 +1040,7 @@ impl X8664arch {
     /// * - `battery` indicate whether to create the battery
     /// * - `mmio_bus` the MMIO bus to add the devices to
     fn setup_acpi_devices(
+        mem: &GuestMemory,
         io_bus: &mut devices::Bus,
         resources: &mut SystemAllocator,
         suspend_evt: Event,
@@ -1060,6 +1068,43 @@ impl X8664arch {
 
         let pmresource = devices::ACPIPMResource::new(suspend_evt, exit_evt);
         Aml::to_aml_bytes(&pmresource, &mut amls);
+
+        let mut pci_dsdt_inner_data: Vec<&dyn aml::Aml> = Vec::new();
+        let hid = aml::Name::new("_HID".into(), &aml::EISAName::new("PNP0A08"));
+        pci_dsdt_inner_data.push(&hid);
+        let cid = aml::Name::new("_CID".into(), &aml::EISAName::new("PNP0A03"));
+        pci_dsdt_inner_data.push(&cid);
+        let adr = aml::Name::new("_ADR".into(), &aml::ZERO);
+        pci_dsdt_inner_data.push(&adr);
+        let seg = aml::Name::new("_SEG".into(), &aml::ZERO);
+        pci_dsdt_inner_data.push(&seg);
+        let uid = aml::Name::new("_UID".into(), &aml::ZERO);
+        pci_dsdt_inner_data.push(&uid);
+        let supp = aml::Name::new("SUPP".into(), &aml::ZERO);
+        pci_dsdt_inner_data.push(&supp);
+        let crs = aml::Name::new(
+            "_CRS".into(),
+            &aml::ResourceTemplate::new(vec![
+                &aml::AddressSpace::new_bus_number(0x0u16, 0xffu16),
+                &aml::IO::new(0xcf8, 0xcf8, 1, 0x8),
+                &aml::AddressSpace::new_memory(
+                    aml::AddressSpaceCachable::NotCacheable,
+                    true,
+                    END_ADDR_BEFORE_32BITS as u32,
+                    (END_ADDR_BEFORE_32BITS + MMIO_SIZE - 1) as u32,
+                ),
+                &aml::AddressSpace::new_memory(
+                    aml::AddressSpaceCachable::NotCacheable,
+                    true,
+                    Self::get_high_mmio_base(mem),
+                    X8664arch::get_phys_max_addr(),
+                ),
+            ]),
+        );
+        pci_dsdt_inner_data.push(&crs);
+
+        aml::Device::new("_SB_.PCI0".into(), pci_dsdt_inner_data).to_aml_bytes(&mut amls);
+
         let pm = Arc::new(Mutex::new(pmresource));
         io_bus
             .insert(

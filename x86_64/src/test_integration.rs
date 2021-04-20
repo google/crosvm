@@ -160,7 +160,7 @@ where
     )
     .unwrap();
 
-    let param_args = "nokaslr pci=noacpi";
+    let param_args = "nokaslr acpi=noirq";
 
     let mut cmdline = X8664arch::get_base_linux_cmdline();
 
@@ -179,6 +179,7 @@ where
 
     let suspend_evt = Event::new().unwrap();
     let acpi_dev_resource = X8664arch::setup_acpi_devices(
+        &guest_mem,
         &mut io_bus,
         &mut resources,
         suspend_evt
