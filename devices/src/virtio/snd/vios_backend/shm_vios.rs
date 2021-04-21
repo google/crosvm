@@ -203,6 +203,9 @@ impl VioSClient {
     }
 
     pub fn ensure_bg_thread_started(&self) -> Result<()> {
+        if self.recv_thread.lock().is_some() {
+            return Ok(());
+        }
         let event_socket = self
             .recv_event
             .lock()
@@ -215,8 +218,10 @@ impl VioSClient {
             .try_clone()
             .map_err(|e| Error::UnixSeqpacketDupError(e))?;
         let mut opt = self.recv_thread.lock();
+        // The lock on recv_thread was released above to avoid holding more than one lock at a time
+        // while duplicating the fds. So we have to check again the condition.
         if opt.is_none() {
-            opt.get_or_insert(spawn_recv_thread(
+            *opt = Some(spawn_recv_thread(
                 self.rx_subscribers.clone(),
                 event_socket,
                 self.recv_running.clone(),
