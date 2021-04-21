@@ -497,31 +497,27 @@ impl AArch64 {
         }
         vcpu.init(&features).map_err(Error::VcpuInit)?;
 
-        // set up registers
-        let mut data: u64;
-        let mut reg_id: u64;
-
         // All interrupts masked
-        data = PSR_D_BIT | PSR_A_BIT | PSR_I_BIT | PSR_F_BIT | PSR_MODE_EL1H;
-        reg_id = arm64_core_reg!(pstate);
-        vcpu.set_one_reg(reg_id, data).map_err(Error::SetReg)?;
+        let pstate = PSR_D_BIT | PSR_A_BIT | PSR_I_BIT | PSR_F_BIT | PSR_MODE_EL1H;
+        vcpu.set_one_reg(arm64_core_reg!(pstate), pstate)
+            .map_err(Error::SetReg)?;
 
         // Other cpus are powered off initially
         if vcpu_id == 0 {
-            if has_bios {
-                data = AARCH64_PHYS_MEM_START + AARCH64_BIOS_OFFSET;
+            let entry_addr = if has_bios {
+                AARCH64_PHYS_MEM_START + AARCH64_BIOS_OFFSET
             } else {
-                data = AARCH64_PHYS_MEM_START + AARCH64_KERNEL_OFFSET;
-            }
-            reg_id = arm64_core_reg!(pc);
-            vcpu.set_one_reg(reg_id, data).map_err(Error::SetReg)?;
+                AARCH64_PHYS_MEM_START + AARCH64_KERNEL_OFFSET
+            };
+            vcpu.set_one_reg(arm64_core_reg!(pc), entry_addr)
+                .map_err(Error::SetReg)?;
 
             /* X0 -- fdt address */
             let mem_size = guest_mem.memory_size();
-            data = (AARCH64_PHYS_MEM_START + fdt_offset(mem_size, has_bios)) as u64;
+            let fdt_addr = (AARCH64_PHYS_MEM_START + fdt_offset(mem_size, has_bios)) as u64;
             // hack -- can't get this to do offsetof(regs[0]) but luckily it's at offset 0
-            reg_id = arm64_core_reg!(regs);
-            vcpu.set_one_reg(reg_id, data).map_err(Error::SetReg)?;
+            vcpu.set_one_reg(arm64_core_reg!(regs), fdt_addr)
+                .map_err(Error::SetReg)?;
         }
 
         Ok(())
