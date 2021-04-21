@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 pub mod aml;
+pub mod facs;
 pub mod rsdp;
 pub mod sdt;
 

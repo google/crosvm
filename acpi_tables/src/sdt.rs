@@ -10,6 +10,7 @@ use data_model::DataInit;
 
 /// SDT represents for System Description Table. The structure SDT is a
 /// generic format for creating various ACPI tables like DSDT/FADT/MADT.
+#[derive(Clone)]
 pub struct SDT {
     data: Vec<u8>,
 }
