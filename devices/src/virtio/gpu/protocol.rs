@@ -15,7 +15,7 @@ use std::str::from_utf8;
 
 use super::super::DescriptorError;
 use super::{Reader, Writer};
-use base::Error as SysError;
+use base::Error as BaseError;
 use base::{ExternalMappingError, TubeError};
 use data_model::{DataInit, Le32, Le64};
 use gpu_display::GpuDisplayError;
@@ -805,8 +805,8 @@ pub enum GpuResponse {
         map_info: u32,
     },
     ErrUnspec,
-    ErrMsg(TubeError),
-    ErrSys(SysError),
+    ErrTube(TubeError),
+    ErrBase(BaseError),
     ErrRutabaga(RutabagaError),
     ErrDisplay(GpuDisplayError),
     ErrMapping(ExternalMappingError),
@@ -823,7 +823,7 @@ pub enum GpuResponse {
 
 impl From<TubeError> for GpuResponse {
     fn from(e: TubeError) -> GpuResponse {
-        GpuResponse::ErrMsg(e)
+        GpuResponse::ErrTube(e)
     }
 }
 
@@ -855,8 +855,8 @@ impl Display for GpuResponse {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::GpuResponse::*;
         match self {
-            ErrMsg(e) => write!(f, "msg-on-socket error: {}", e),
-            ErrSys(e) => write!(f, "system error: {}", e),
+            ErrTube(e) => write!(f, "tube error: {}", e),
+            ErrBase(e) => write!(f, "base error: {}", e),
             ErrRutabaga(e) => write!(f, "renderer error: {}", e),
             ErrDisplay(e) => write!(f, "display error: {}", e),
             ErrScanout { num_scanouts } => write!(f, "non-zero scanout: {}", num_scanouts),
@@ -1032,8 +1032,8 @@ impl GpuResponse {
             GpuResponse::OkResourceUuid { .. } => VIRTIO_GPU_RESP_OK_RESOURCE_UUID,
             GpuResponse::OkMapInfo { .. } => VIRTIO_GPU_RESP_OK_MAP_INFO,
             GpuResponse::ErrUnspec => VIRTIO_GPU_RESP_ERR_UNSPEC,
-            GpuResponse::ErrMsg(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
-            GpuResponse::ErrSys(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
+            GpuResponse::ErrTube(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
+            GpuResponse::ErrBase(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrRutabaga(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrDisplay(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrMapping(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,

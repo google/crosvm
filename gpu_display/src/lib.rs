@@ -7,7 +7,7 @@
 use std::fmt::{self, Display};
 use std::path::Path;
 
-use base::{AsRawDescriptor, Error as SysError, RawDescriptor};
+use base::{AsRawDescriptor, Error as BaseError, RawDescriptor};
 use data_model::VolatileSlice;
 
 mod event_device;
@@ -29,8 +29,8 @@ pub enum GpuDisplayError {
     Connect,
     /// Creating event file descriptor failed.
     CreateEvent,
-    /// Creating shared memory failed.
-    CreateShm(SysError),
+    /// A base error occurred.
+    BaseError(BaseError),
     /// Failed to create a surface on the compositor.
     CreateSurface,
     /// Failed to import a buffer to the compositor.
@@ -45,6 +45,8 @@ pub enum GpuDisplayError {
     Unsupported,
 }
 
+pub type GpuDisplayResult<T> = std::result::Result<T, GpuDisplayError>;
+
 impl Display for GpuDisplayError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::GpuDisplayError::*;
@@ -53,7 +55,7 @@ impl Display for GpuDisplayError {
             Allocate => write!(f, "internal allocation failed"),
             Connect => write!(f, "failed to connect to compositor"),
             CreateEvent => write!(f, "failed to create event file descriptor"),
-            CreateShm(e) => write!(f, "failed to create shared memory: {}", e),
+            BaseError(e) => write!(f, "received a base error: {}", e),
             CreateSurface => write!(f, "failed to crate surface on the compositor"),
             FailedImport => write!(f, "failed to import a buffer to the compositor"),
             InvalidPath => write!(f, "invalid path"),
@@ -61,6 +63,12 @@ impl Display for GpuDisplayError {
             RequiredFeature(feature) => write!(f, "required feature was missing: {}", feature),
             Unsupported => write!(f, "unsupported by the implementation"),
         }
+    }
+}
+
+impl From<BaseError> for GpuDisplayError {
+    fn from(e: BaseError) -> GpuDisplayError {
+        GpuDisplayError::BaseError(e)
     }
 }
 
@@ -172,7 +180,7 @@ pub struct GpuDisplay {
 }
 
 impl GpuDisplay {
-    pub fn open_x<S: AsRef<str>>(display_name: Option<S>) -> Result<GpuDisplay, GpuDisplayError> {
+    pub fn open_x<S: AsRef<str>>(display_name: Option<S>) -> GpuDisplayResult<GpuDisplay> {
         let _ = display_name;
         #[cfg(feature = "x")]
         {
@@ -188,9 +196,7 @@ impl GpuDisplay {
     }
 
     /// Opens a fresh connection to the compositor.
-    pub fn open_wayland<P: AsRef<Path>>(
-        wayland_path: Option<P>,
-    ) -> Result<GpuDisplay, GpuDisplayError> {
+    pub fn open_wayland<P: AsRef<Path>>(wayland_path: Option<P>) -> GpuDisplayResult<GpuDisplay> {
         let display = match wayland_path {
             Some(s) => gpu_display_wl::DisplayWl::new(Some(s.as_ref()))?,
             None => gpu_display_wl::DisplayWl::new(None)?,
@@ -199,7 +205,7 @@ impl GpuDisplay {
         Ok(GpuDisplay { inner, is_x: false })
     }
 
-    pub fn open_stub() -> Result<GpuDisplay, GpuDisplayError> {
+    pub fn open_stub() -> GpuDisplayResult<GpuDisplay> {
         let display = gpu_display_stub::DisplayStub::new()?;
         let inner = Box::new(display);
         Ok(GpuDisplay { inner, is_x: false })
@@ -220,7 +226,7 @@ impl GpuDisplay {
         width: u32,
         height: u32,
         fourcc: u32,
-    ) -> Result<u32, GpuDisplayError> {
+    ) -> GpuDisplayResult<u32> {
         self.inner
             .import_dmabuf(fd, offset, stride, modifiers, width, height, fourcc)
     }
@@ -243,7 +249,7 @@ impl GpuDisplay {
         parent_surface_id: Option<u32>,
         width: u32,
         height: u32,
-    ) -> Result<u32, GpuDisplayError> {
+    ) -> GpuDisplayResult<u32> {
         self.inner.create_surface(parent_surface_id, width, height)
     }
 

@@ -26,7 +26,7 @@ use libc::{shmat, shmctl, shmdt, shmget, IPC_CREAT, IPC_PRIVATE, IPC_RMID};
 
 use crate::{
     keycode_converter::KeycodeTranslator, keycode_converter::KeycodeTypes, DisplayT, EventDevice,
-    EventDeviceKind, GpuDisplayError, GpuDisplayFramebuffer,
+    EventDeviceKind, GpuDisplayError, GpuDisplayFramebuffer, GpuDisplayResult,
 };
 
 use base::{error, AsRawDescriptor, EventType, PollToken, RawDescriptor, WaitContext};
@@ -551,8 +551,8 @@ pub struct DisplayX {
 }
 
 impl DisplayX {
-    pub fn open_display(display: Option<&str>) -> Result<DisplayX, GpuDisplayError> {
-        let wait_ctx = WaitContext::new().map_err(|_| GpuDisplayError::Allocate)?;
+    pub fn open_display(display: Option<&str>) -> GpuDisplayResult<DisplayX> {
+        let wait_ctx = WaitContext::new()?;
 
         let display_cstr = match display.map(CString::new) {
             Some(Ok(s)) => Some(s),
@@ -572,9 +572,7 @@ impl DisplayX {
                 None => return Err(GpuDisplayError::Connect),
             };
 
-            wait_ctx
-                .add(&display, DisplayXPollToken::Display)
-                .map_err(|_| GpuDisplayError::Allocate)?;
+            wait_ctx.add(&display, DisplayXPollToken::Display)?;
 
             // Check for required extension.
             if !display.supports_shm() {
@@ -719,7 +717,7 @@ impl DisplayT for DisplayX {
         parent_surface_id: Option<u32>,
         width: u32,
         height: u32,
-    ) -> Result<u32, GpuDisplayError> {
+    ) -> GpuDisplayResult<u32> {
         if parent_surface_id.is_some() {
             return Err(GpuDisplayError::Unsupported);
         }
@@ -798,17 +796,15 @@ impl DisplayT for DisplayX {
         // unsupported
     }
 
-    fn import_event_device(&mut self, event_device: EventDevice) -> Result<u32, GpuDisplayError> {
+    fn import_event_device(&mut self, event_device: EventDevice) -> GpuDisplayResult<u32> {
         let new_event_device_id = self.next_id;
 
-        self.wait_ctx
-            .add(
-                &event_device,
-                DisplayXPollToken::EventDevice {
-                    event_device_id: new_event_device_id.get(),
-                },
-            )
-            .map_err(|_| GpuDisplayError::Allocate)?;
+        self.wait_ctx.add(
+            &event_device,
+            DisplayXPollToken::EventDevice {
+                event_device_id: new_event_device_id.get(),
+            },
+        )?;
 
         self.event_devices.insert(new_event_device_id, event_device);
         self.next_id = ObjectId::new(self.next_id.get() + 1).unwrap();

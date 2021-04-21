@@ -12,7 +12,7 @@ mod dwl;
 
 use dwl::*;
 
-use crate::{DisplayT, EventDevice, GpuDisplayError, GpuDisplayFramebuffer};
+use crate::{DisplayT, EventDevice, GpuDisplayError, GpuDisplayFramebuffer, GpuDisplayResult};
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -96,7 +96,7 @@ pub struct DisplayWl {
 
 impl DisplayWl {
     /// Opens a fresh connection to the compositor.
-    pub fn new(wayland_path: Option<&Path>) -> Result<DisplayWl, GpuDisplayError> {
+    pub fn new(wayland_path: Option<&Path>) -> GpuDisplayResult<DisplayWl> {
         // The dwl_context_new call should always be safe to call, and we check its result.
         let ctx = DwlContext(unsafe { dwl_context_new() });
         if ctx.0.is_null() {
@@ -153,7 +153,7 @@ impl DisplayT for DisplayWl {
         width: u32,
         height: u32,
         fourcc: u32,
-    ) -> Result<u32, GpuDisplayError> {
+    ) -> GpuDisplayResult<u32> {
         // Safe given that the context pointer is valid. Any other invalid parameters would be
         // rejected by dwl_context_dmabuf_new safely. We check that the resulting dmabuf is valid
         // before filing it away.
@@ -195,7 +195,7 @@ impl DisplayT for DisplayWl {
         parent_surface_id: Option<u32>,
         width: u32,
         height: u32,
-    ) -> Result<u32, GpuDisplayError> {
+    ) -> GpuDisplayResult<u32> {
         let parent_ptr = match parent_surface_id {
             Some(id) => match self.get_surface(id).map(|p| p.surface()) {
                 Some(ptr) => ptr,
@@ -206,8 +206,7 @@ impl DisplayT for DisplayWl {
         let row_size = width * BYTES_PER_PIXEL;
         let fb_size = row_size * height;
         let buffer_size = round_up_to_page_size(fb_size as usize * BUFFER_COUNT);
-        let buffer_shm = SharedMemory::named("GpuDisplaySurface", buffer_size as u64)
-            .map_err(GpuDisplayError::CreateShm)?;
+        let buffer_shm = SharedMemory::named("GpuDisplaySurface", buffer_size as u64)?;
         let buffer_mem = MemoryMappingBuilder::new(buffer_size)
             .from_shared_memory(&buffer_shm)
             .build()
@@ -341,7 +340,7 @@ impl DisplayT for DisplayWl {
         }
     }
 
-    fn import_event_device(&mut self, _event_device: EventDevice) -> Result<u32, GpuDisplayError> {
+    fn import_event_device(&mut self, _event_device: EventDevice) -> GpuDisplayResult<u32> {
         Err(GpuDisplayError::Unsupported)
     }
     fn release_event_device(&mut self, _event_device_id: u32) {

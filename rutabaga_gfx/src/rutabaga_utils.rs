@@ -11,7 +11,7 @@ use std::os::raw::c_void;
 use std::path::PathBuf;
 use std::str::Utf8Error;
 
-use base::{Error as SysError, ExternalMappingError, SafeDescriptor};
+use base::{Error as BaseError, ExternalMappingError, SafeDescriptor};
 use data_model::VolatileMemoryError;
 
 #[cfg(feature = "vulkano")]
@@ -153,8 +153,8 @@ pub enum RutabagaError {
     ComponentError(i32),
     /// Violation of the Rutabaga spec occured.
     SpecViolation,
-    /// System error returned as a result of rutabaga library operation.
-    SysError(SysError),
+    /// Base error returned as a result of rutabaga library operation.
+    BaseError(BaseError),
     /// An attempted integer conversion failed.
     TryFromIntError(TryFromIntError),
     /// The command is unsupported.
@@ -211,7 +211,7 @@ impl Display for RutabagaError {
             MappingFailed(s) => write!(f, "The mapping failed for the following reason: {}", s),
             ComponentError(ret) => write!(f, "rutabaga component failed with error {}", ret),
             SpecViolation => write!(f, "violation of the rutabaga spec"),
-            SysError(e) => write!(f, "rutabaga received a system error: {}", e),
+            BaseError(e) => write!(f, "rutabaga received a base error: {}", e),
             TryFromIntError(e) => write!(f, "int conversion failed: {}", e),
             Unsupported => write!(f, "feature or function unsupported"),
             Utf8Error(e) => write!(f, "an utf8 error occured: {}", e),
@@ -236,9 +236,9 @@ impl From<IoError> for RutabagaError {
     }
 }
 
-impl From<SysError> for RutabagaError {
-    fn from(e: SysError) -> RutabagaError {
-        RutabagaError::SysError(e)
+impl From<BaseError> for RutabagaError {
+    fn from(e: BaseError) -> RutabagaError {
+        RutabagaError::BaseError(e)
     }
 }
 
