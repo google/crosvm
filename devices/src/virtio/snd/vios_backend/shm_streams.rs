@@ -75,11 +75,10 @@ fn virtio_frame_rate(frame_rate: u32) -> GenericResult<u8> {
     })
 }
 
-impl ShmStreamSource for VioSShmStreamSource {
-    /// Creates a new stream
-    #[allow(clippy::too_many_arguments)]
-    fn new_stream(
+impl VioSShmStreamSource {
+    fn new_stream_inner(
         &mut self,
+        stream_id: u32,
         direction: StreamDirection,
         num_channels: usize,
         format: SampleFormat,
@@ -89,29 +88,8 @@ impl ShmStreamSource for VioSShmStreamSource {
         client_shm: &SysSharedMemory,
         _buffer_offsets: [u64; 2],
     ) -> GenericResult<Box<dyn ShmStream>> {
-        self.vios_client.ensure_bg_thread_started()?;
-        let virtio_dir = match direction {
-            StreamDirection::Playback => VIRTIO_SND_D_OUTPUT,
-            StreamDirection::Capture => VIRTIO_SND_D_INPUT,
-        };
         let frame_size = num_channels * format.sample_bytes();
         let period_bytes = (frame_size * buffer_size) as u32;
-        let stream_id = self
-            .vios_client
-            .get_unused_stream_id(virtio_dir)
-            .ok_or(Box::new(Error::NoStreamsAvailable))?;
-        // Create the stream object before any errors can be returned to guarantee the stream will
-        // be released in all cases
-        let stream_box = VioSndShmStream::new(
-            buffer_size,
-            num_channels,
-            format,
-            frame_rate,
-            stream_id,
-            direction,
-            self.vios_client.clone(),
-            client_shm,
-        );
         self.vios_client.prepare_stream(stream_id)?;
         let params = VioSStreamParams {
             buffer_bytes: 2 * period_bytes,
@@ -123,7 +101,59 @@ impl ShmStreamSource for VioSShmStreamSource {
         };
         self.vios_client.set_stream_parameters(stream_id, params)?;
         self.vios_client.start_stream(stream_id)?;
-        stream_box
+        VioSndShmStream::new(
+            buffer_size,
+            num_channels,
+            format,
+            frame_rate,
+            stream_id,
+            direction,
+            self.vios_client.clone(),
+            client_shm,
+        )
+    }
+}
+
+impl ShmStreamSource for VioSShmStreamSource {
+    /// Creates a new stream
+    #[allow(clippy::too_many_arguments)]
+    fn new_stream(
+        &mut self,
+        direction: StreamDirection,
+        num_channels: usize,
+        format: SampleFormat,
+        frame_rate: u32,
+        buffer_size: usize,
+        effects: &[StreamEffect],
+        client_shm: &SysSharedMemory,
+        buffer_offsets: [u64; 2],
+    ) -> GenericResult<Box<dyn ShmStream>> {
+        self.vios_client.ensure_bg_thread_started()?;
+        let virtio_dir = match direction {
+            StreamDirection::Playback => VIRTIO_SND_D_OUTPUT,
+            StreamDirection::Capture => VIRTIO_SND_D_INPUT,
+        };
+        let stream_id = self
+            .vios_client
+            .get_unused_stream_id(virtio_dir)
+            .ok_or(Box::new(Error::NoStreamsAvailable))?;
+        self.new_stream_inner(
+            stream_id,
+            direction,
+            num_channels,
+            format,
+            frame_rate,
+            buffer_size,
+            effects,
+            client_shm,
+            buffer_offsets,
+        )
+        .map_err(|e| {
+            // Attempt to release the stream so that it can be used later. This is a best effort
+            // attempt, so we ignore any error it may return.
+            let _ = self.vios_client.release_stream(stream_id);
+            e
+        })
     }
 
     /// Get a list of file descriptors used by the implementation.
