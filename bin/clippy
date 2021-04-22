@@ -59,7 +59,6 @@ SUPPRESS=(
     field_reassign_with_default
 
     # We don't care about these lints. Okay to remain suppressed globally.
-    blacklisted_name
     cast_lossless
     cognitive_complexity
     enum_variant_names

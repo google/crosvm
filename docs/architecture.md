@@ -19,7 +19,7 @@ A typical session of crosvm starts in `main.rs` where command line parsing is do
 
 ## Forking
 
-During the device creation routine, each device will be created and then wrapped in a `ProxyDevice` which will internally `fork` (but not `exec`) and [minijail] the device, while dropping it for the main process. The only interaction that the device is capable of having with the main process is via the proxied trait methods of `BusDevice`, shared memory mappings such as the guest memory, and file descriptors that were specifically whitelisted by that device's security policy. This can lead to some surprising behavior to be aware of such as why some file descriptors which were once valid are now invalid.
+During the device creation routine, each device will be created and then wrapped in a `ProxyDevice` which will internally `fork` (but not `exec`) and [minijail] the device, while dropping it for the main process. The only interaction that the device is capable of having with the main process is via the proxied trait methods of `BusDevice`, shared memory mappings such as the guest memory, and file descriptors that were specifically allowed by that device's security policy. This can lead to some surprising behavior to be aware of such as why some file descriptors which were once valid are now invalid.
 
 ## Sandboxing Policy
 

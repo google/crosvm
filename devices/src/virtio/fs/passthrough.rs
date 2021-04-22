@@ -2267,15 +2267,15 @@ mod tests {
         strip_xattr_prefix(&mut actual);
         assert_eq!(&actual[..], &no_strippable_names[..]);
 
-        let only_strippable_names = b"user.virtiofs.security.sehash\0user.virtiofs.security.wtf\0";
+        let only_strippable_names = b"user.virtiofs.security.sehash\0user.virtiofs.security.wat\0";
         let mut actual = only_strippable_names.to_vec();
         strip_xattr_prefix(&mut actual);
-        assert_eq!(&actual[..], b"security.sehash\0security.wtf\0");
+        assert_eq!(&actual[..], b"security.sehash\0security.wat\0");
 
-        let mixed_names = b"user.virtiofs.security.sehash\0security.selinux\0user.virtiofs.security.wtf\0user.foobar\0";
+        let mixed_names = b"user.virtiofs.security.sehash\0security.selinux\0user.virtiofs.security.wat\0user.foobar\0";
         let mut actual = mixed_names.to_vec();
         strip_xattr_prefix(&mut actual);
-        let expected = b"security.sehash\0security.selinux\0security.wtf\0user.foobar\0";
+        let expected = b"security.sehash\0security.selinux\0security.wat\0user.foobar\0";
         assert_eq!(&actual[..], &expected[..]);
 
         let no_nul_with_prefix = b"user.virtiofs.security.sehash";
