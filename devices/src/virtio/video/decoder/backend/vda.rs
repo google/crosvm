@@ -116,11 +116,11 @@ impl From<libvda::decode::Event> for DecoderEvent {
     }
 }
 
-pub struct LibvdaSession<'a> {
-    session: libvda::decode::Session<'a>,
+pub struct LibvdaSession {
+    session: libvda::decode::Session,
 }
 
-impl<'a> DecoderSession for LibvdaSession<'a> {
+impl DecoderSession for LibvdaSession {
     fn set_output_buffer_count(&self, count: usize) -> VideoResult<()> {
         Ok(self.session.set_output_buffer_count(count)?)
     }
@@ -179,8 +179,8 @@ impl<'a> DecoderSession for LibvdaSession<'a> {
     }
 }
 
-impl<'a> DecoderBackend for &'a libvda::decode::VdaInstance {
-    type Session = LibvdaSession<'a>;
+impl DecoderBackend for &libvda::decode::VdaInstance {
+    type Session = LibvdaSession;
 
     fn new_session(&self, format: Format) -> VideoResult<Self::Session> {
         let profile = libvda::Profile::try_from(format)?;
