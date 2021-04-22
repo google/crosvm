@@ -116,13 +116,9 @@ impl From<libvda::decode::Event> for DecoderEvent {
     }
 }
 
-pub struct LibvdaSession {
-    session: libvda::decode::Session,
-}
-
-impl DecoderSession for LibvdaSession {
+impl DecoderSession for libvda::decode::Session {
     fn set_output_buffer_count(&self, count: usize) -> VideoResult<()> {
-        Ok(self.session.set_output_buffer_count(count)?)
+        Ok(self.set_output_buffer_count(count)?)
     }
 
     fn decode(
@@ -132,21 +128,19 @@ impl DecoderSession for LibvdaSession {
         offset: u32,
         bytes_used: u32,
     ) -> VideoResult<()> {
-        Ok(self
-            .session
-            .decode(bitstream_id, descriptor, offset, bytes_used)?)
+        Ok(self.decode(bitstream_id, descriptor, offset, bytes_used)?)
     }
 
     fn flush(&self) -> VideoResult<()> {
-        Ok(self.session.flush()?)
+        Ok(self.flush()?)
     }
 
     fn reset(&self) -> VideoResult<()> {
-        Ok(self.session.reset()?)
+        Ok(self.reset()?)
     }
 
     fn event_pipe(&self) -> &std::fs::File {
-        self.session.pipe()
+        self.pipe()
     }
 
     fn use_output_buffer(
@@ -158,7 +152,7 @@ impl DecoderSession for LibvdaSession {
         modifier: u64,
     ) -> VideoResult<()> {
         let vda_planes: Vec<libvda::FramePlane> = planes.into_iter().map(Into::into).collect();
-        Ok(self.session.use_output_buffer(
+        Ok(self.use_output_buffer(
             picture_buffer_id,
             libvda::PixelFormat::try_from(format)?,
             output_buffer,
@@ -168,27 +162,23 @@ impl DecoderSession for LibvdaSession {
     }
 
     fn reuse_output_buffer(&self, picture_buffer_id: i32) -> VideoResult<()> {
-        Ok(self.session.reuse_output_buffer(picture_buffer_id)?)
+        Ok(self.reuse_output_buffer(picture_buffer_id)?)
     }
 
     fn read_event(&mut self) -> VideoResult<DecoderEvent> {
-        self.session
-            .read_event()
-            .map(Into::into)
-            .map_err(Into::into)
+        self.read_event().map(Into::into).map_err(Into::into)
     }
 }
 
 impl DecoderBackend for libvda::decode::VdaInstance {
-    type Session = LibvdaSession;
+    type Session = libvda::decode::Session;
 
     fn new_session(&self, format: Format) -> VideoResult<Self::Session> {
         let profile = libvda::Profile::try_from(format)?;
-        let session = self.open_session(profile).map_err(|e| {
+
+        Ok(self.open_session(profile).map_err(|e| {
             error!("failed to open a session for {:?}: {}", format, e);
             VideoError::InvalidOperation
-        })?;
-
-        Ok(LibvdaSession { session })
+        })?)
     }
 }
