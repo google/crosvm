@@ -188,19 +188,15 @@ impl<F: FileSystem + Sync> Worker<F> {
         // cases.
         const SECBIT_NO_SETUID_FIXUP: i32 = 1 << 2;
 
-        // TODO(crbug.com/1199487): Remove this once libc provides the wrapper for all targets.
-        #[cfg(target_os = "linux")]
-        {
-            // Safe because this doesn't modify any memory and we check the return value.
-            let mut securebits = syscall!(unsafe { libc::prctl(libc::PR_GET_SECUREBITS) })
-                .map_err(Error::GetSecurebits)?;
+        // Safe because this doesn't modify any memory and we check the return value.
+        let mut securebits = syscall!(unsafe { libc::prctl(libc::PR_GET_SECUREBITS) })
+            .map_err(Error::GetSecurebits)?;
 
-            securebits |= SECBIT_NO_SETUID_FIXUP;
+        securebits |= SECBIT_NO_SETUID_FIXUP;
 
-            // Safe because this doesn't modify any memory and we check the return value.
-            syscall!(unsafe { libc::prctl(libc::PR_SET_SECUREBITS, securebits) })
-                .map_err(Error::SetSecurebits)?;
-        }
+        // Safe because this doesn't modify any memory and we check the return value.
+        syscall!(unsafe { libc::prctl(libc::PR_SET_SECUREBITS, securebits) })
+            .map_err(Error::SetSecurebits)?;
 
         // To avoid extra locking, unshare filesystem attributes from parent. This includes the
         // current working directory and umask.
