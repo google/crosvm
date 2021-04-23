@@ -47,7 +47,7 @@ pub fn vec_with_array_field<T: Default, F>(count: usize) -> Vec<T> {
 /// #[repr(C)]
 /// struct T {
 ///    some_data: u32,
-///    nent: u32,
+///    nents: u32,
 ///    entries: __IncompleteArrayField<S>,
 /// }
 /// ```
@@ -55,7 +55,7 @@ pub fn vec_with_array_field<T: Default, F>(count: usize) -> Vec<T> {
 ///
 /// - `T` is the flexible array struct type
 /// - `S` is the flexible array type
-/// - `nent` is the flexible array length
+/// - `nents` is the flexible array length
 /// - `entries` is the flexible array member
 ///
 /// These structures are used by the kernel API.
@@ -64,7 +64,7 @@ pub fn vec_with_array_field<T: Default, F>(count: usize) -> Vec<T> {
 ///
 /// When implemented for `T`, this trait allows the caller to set number of `S` entries and
 /// retrieve a slice of `S` entries.  Trait methods must only be called by the FlexibleArrayWrapper
-/// type.
+/// type.  Don't implement this trait directly, use the flexible_array! macro to avoid duplication.
 pub trait FlexibleArray<S> {
     /// Implementations must set flexible array length in the flexible array struct to the value
     /// specified by `len`. Appropriate conversions (i.e, usize to u32) are allowed so long as
@@ -74,9 +74,35 @@ pub trait FlexibleArray<S> {
     /// conversions (i.e, usize to u32) are allowed so long as they don't overflow or underflow.
     fn get_len(&self) -> usize;
     /// Implementations must return a slice of flexible array member of length `len`.
-    fn get_slice(&self, len: usize) -> &[S];
+    unsafe fn get_slice(&self, len: usize) -> &[S];
     /// Implementations must return a mutable slice of flexible array member of length `len`.
-    fn get_mut_slice(&mut self, len: usize) -> &mut [S];
+    unsafe fn get_mut_slice(&mut self, len: usize) -> &mut [S];
+}
+
+/// Always use this macro for implementing the FlexibleArray<`S`> trait for a given `T`.  There
+/// exists an 1:1 mapping of macro identifiers to the definitions in the FlexibleArray<`S`>
+/// documentation, so refer to that for more information.
+#[macro_export]
+macro_rules! flexible_array_impl {
+    ($T:ident, $S:ident, $nents:ident, $entries:ident) => {
+        impl FlexibleArray<$S> for $T {
+            fn set_len(&mut self, len: usize) {
+                self.$nents = ::std::convert::TryInto::try_into(len).unwrap();
+            }
+
+            fn get_len(&self) -> usize {
+                self.$nents as usize
+            }
+
+            unsafe fn get_slice(&self, len: usize) -> &[$S] {
+                self.$entries.as_slice(len)
+            }
+
+            unsafe fn get_mut_slice(&mut self, len: usize) -> &mut [$S] {
+                self.$entries.as_mut_slice(len)
+            }
+        }
+    };
 }
 
 pub struct FlexibleArrayWrapper<T, S> {
@@ -121,14 +147,16 @@ where
     /// mut_entries_slice instead.
     pub fn entries_slice(&self) -> &[S] {
         let valid_length = self.get_valid_len();
-        self.entries[0].get_slice(valid_length)
+        // Safe because the length has been validated.
+        unsafe { self.entries[0].get_slice(valid_length) }
     }
 
     /// Returns a mutable slice of the flexible array member, for modifying.
     pub fn mut_entries_slice(&mut self) -> &mut [S] {
         let valid_length = self.get_valid_len();
         self.entries[0].set_len(valid_length);
-        self.entries[0].get_mut_slice(valid_length)
+        // Safe because the length has been validated.
+        unsafe { self.entries[0].get_mut_slice(valid_length) }
     }
 
     /// Get a pointer so it can be passed to the kernel. Callers must not access the flexible

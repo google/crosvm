@@ -15,7 +15,7 @@ use base::{
     SafeDescriptor,
 };
 
-use data_model::{FlexibleArray, FlexibleArrayWrapper};
+use data_model::{flexible_array_impl, FlexibleArray, FlexibleArrayWrapper};
 
 use rutabaga_gfx::{RutabagaHandle, RUTABAGA_MEM_HANDLE_TYPE_DMABUF};
 
@@ -33,25 +33,7 @@ ioctl_iow_nr!(
     udmabuf_create_list
 );
 
-// It's possible to make the flexible array trait implementation a macro one day...
-impl FlexibleArray<udmabuf_create_item> for udmabuf_create_list {
-    fn set_len(&mut self, len: usize) {
-        self.count = len as u32;
-    }
-
-    fn get_len(&self) -> usize {
-        self.count as usize
-    }
-
-    fn get_slice(&self, len: usize) -> &[udmabuf_create_item] {
-        unsafe { self.list.as_slice(len) }
-    }
-
-    fn get_mut_slice(&mut self, len: usize) -> &mut [udmabuf_create_item] {
-        unsafe { self.list.as_mut_slice(len) }
-    }
-}
-
+flexible_array_impl!(udmabuf_create_list, udmabuf_create_item, count, list);
 type UdmabufCreateList = FlexibleArrayWrapper<udmabuf_create_list, udmabuf_create_item>;
 
 #[derive(Debug)]
