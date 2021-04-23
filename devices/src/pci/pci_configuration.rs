@@ -700,6 +700,10 @@ impl PciBarConfiguration {
         )
     }
 
+    pub fn is_64bit_memory(&self) -> bool {
+        self.region_type == PciBarRegionType::Memory64BitRegion
+    }
+
     pub fn is_io(&self) -> bool {
         self.region_type == PciBarRegionType::IoRegion
     }

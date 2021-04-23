@@ -449,7 +449,7 @@ impl VmMemoryRequest {
                     Err(_e) => return VmMemoryResponse::Err(SysError::new(EINVAL)),
                 };
                 match vm.add_memory_region(GuestAddress(gpa), Box::new(mmap), false, false) {
-                    Ok(_) => VmMemoryResponse::Ok,
+                    Ok(slot) => VmMemoryResponse::RegisterMemory { pfn: 0, slot },
                     Err(e) => VmMemoryResponse::Err(e),
                 }
             }
