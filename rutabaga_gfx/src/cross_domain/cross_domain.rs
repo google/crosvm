@@ -41,6 +41,7 @@ struct CrossDomainContext {
     requirements_blobs: Map<u64, ImageMemoryRequirements>,
     context_resources: Map<u32, CrossDomainResource>,
     last_fence_data: Option<RutabagaFenceData>,
+    fence_handler: RutabagaFenceHandler,
     blob_id: u64,
 }
 
@@ -235,6 +236,7 @@ impl RutabagaContext for CrossDomainContext {
     }
 
     fn context_create_fence(&mut self, fence_data: RutabagaFenceData) -> RutabagaResult<()> {
+        self.fence_handler.call(fence_data);
         self.last_fence_data = Some(fence_data);
         Ok(())
     }
@@ -278,6 +280,7 @@ impl RutabagaComponent for CrossDomain {
         &self,
         _ctx_id: u32,
         _context_init: u32,
+        fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
         Ok(Box::new(CrossDomainContext {
             channels: self.channels.clone(),
@@ -287,6 +290,7 @@ impl RutabagaComponent for CrossDomain {
             requirements_blobs: Default::default(),
             context_resources: Default::default(),
             last_fence_data: None,
+            fence_handler,
             blob_id: 0,
         }))
     }

@@ -127,6 +127,7 @@ fn build(
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     external_blob: bool,
     udmabuf: bool,
+    fence_handler: RutabagaFenceHandler,
 ) -> Option<VirtioGpu> {
     let mut display_opt = None;
     for display in possible_displays {
@@ -158,6 +159,7 @@ fn build(
         map_request,
         external_blob,
         udmabuf,
+        fence_handler,
     )
 }
 
@@ -1147,6 +1149,8 @@ impl VirtioDevice for Gpu {
                 thread::Builder::new()
                     .name("virtio_gpu".to_string())
                     .spawn(move || {
+                        let fence_handler = RutabagaFenceClosure::new(|_completed_fence| {});
+
                         let virtio_gpu = match build(
                             &display_backends,
                             display_width,
@@ -1158,6 +1162,7 @@ impl VirtioDevice for Gpu {
                             map_request,
                             external_blob,
                             udmabuf,
+                            fence_handler,
                         ) {
                             Some(backend) => backend,
                             None => return,

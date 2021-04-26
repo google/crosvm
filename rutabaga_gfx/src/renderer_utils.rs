@@ -9,7 +9,9 @@ use std::os::raw::c_void;
 use std::rc::Rc;
 
 use crate::generated::virgl_renderer_bindings::__va_list_tag;
-use crate::rutabaga_utils::{RutabagaError, RutabagaResult};
+use crate::rutabaga_utils::{
+    RutabagaError, RutabagaFenceData, RutabagaFenceHandler, RutabagaResult, RUTABAGA_FLAG_FENCE,
+};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -50,12 +52,21 @@ pub fn ret_to_res(ret: i32) -> RutabagaResult<()> {
 
 pub struct FenceState {
     pub latest_fence: u32,
+    pub handler: Option<RutabagaFenceHandler>,
 }
 
 impl FenceState {
     pub fn write(&mut self, latest_fence: u32) {
         if latest_fence > self.latest_fence {
             self.latest_fence = latest_fence;
+            if let Some(handler) = &self.handler {
+                handler.call(RutabagaFenceData {
+                    flags: RUTABAGA_FLAG_FENCE,
+                    fence_id: latest_fence as u64,
+                    ctx_id: 0,
+                    fence_ctx_idx: 0,
+                });
+            }
         }
     }
 }

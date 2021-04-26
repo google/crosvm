@@ -92,6 +92,7 @@ pub const RUTABAGA_FLAG_FENCE: u32 = 1 << 0;
 pub const RUTABAGA_FLAG_INFO_FENCE_CTX_IDX: u32 = 1 << 1;
 
 /// Convenience struct for Rutabaga fences
+#[derive(Copy, Clone)]
 pub struct RutabagaFenceData {
     pub flags: u32,
     pub fence_id: u64,
@@ -511,5 +512,48 @@ impl RutabagaHandle {
             os_handle: clone,
             handle_type: self.handle_type,
         })
+    }
+}
+
+/// Trait for fence completion handlers
+pub trait RutabagaFenceCallback: Send {
+    fn call(&self, data: RutabagaFenceData);
+    fn clone_box(&self) -> RutabagaFenceHandler;
+}
+
+/// Wrapper type to allow cloning while respecting object-safety
+pub type RutabagaFenceHandler = Box<dyn RutabagaFenceCallback>;
+
+impl Clone for RutabagaFenceHandler {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
+/// Fence handler implementation that wraps a closure
+#[derive(Clone)]
+pub struct RutabagaFenceClosure<T> {
+    closure: T,
+}
+
+impl<T> RutabagaFenceClosure<T>
+where
+    T: Fn(RutabagaFenceData) + Clone + Send + 'static,
+{
+    pub fn new(closure: T) -> RutabagaFenceHandler {
+        Box::new(RutabagaFenceClosure { closure })
+    }
+}
+
+impl<T> RutabagaFenceCallback for RutabagaFenceClosure<T>
+where
+    T: Fn(RutabagaFenceData) + Clone + Send + 'static,
+{
+    fn call(&self, data: RutabagaFenceData) {
+        (self.closure)(data)
+    }
+
+    fn clone_box(&self) -> RutabagaFenceHandler {
+        Box::new(self.clone())
     }
 }

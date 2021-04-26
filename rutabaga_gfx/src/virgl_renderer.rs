@@ -168,6 +168,7 @@ fn unmap_func(resource_id: u32) {
 impl VirglRenderer {
     pub fn init(
         virglrenderer_flags: VirglRendererFlags,
+        fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaComponent>> {
         if cfg!(debug_assertions) {
             let ret = unsafe { libc::dup2(libc::STDOUT_FILENO, libc::STDERR_FILENO) };
@@ -192,7 +193,10 @@ impl VirglRenderer {
         // to the Renderer instance. Doing so greatly simplifies the ownership for users of this
         // library.
 
-        let fence_state = Rc::new(RefCell::new(FenceState { latest_fence: 0 }));
+        let fence_state = Rc::new(RefCell::new(FenceState {
+            latest_fence: 0,
+            handler: Some(fence_handler),
+        }));
 
         let cookie: *mut VirglCookie = Box::into_raw(Box::new(VirglCookie {
             fence_state: Rc::clone(&fence_state),
@@ -556,6 +560,7 @@ impl RutabagaComponent for VirglRenderer {
         &self,
         ctx_id: u32,
         context_init: u32,
+        _fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
         const CONTEXT_NAME: &[u8] = b"gpu_renderer";
         // Safe because virglrenderer is initialized by now and the context name is statically

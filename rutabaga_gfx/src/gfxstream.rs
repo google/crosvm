@@ -117,6 +117,7 @@ extern "C" {
 /// The virtio-gpu backend state tracker which supports accelerated rendering.
 pub struct Gfxstream {
     fence_state: Rc<RefCell<FenceState>>,
+    fence_handler: RutabagaFenceHandler,
 }
 
 struct GfxstreamContext {
@@ -200,8 +201,12 @@ impl Gfxstream {
         display_width: u32,
         display_height: u32,
         gfxstream_flags: GfxstreamFlags,
+        fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaComponent>> {
-        let fence_state = Rc::new(RefCell::new(FenceState { latest_fence: 0 }));
+        let fence_state = Rc::new(RefCell::new(FenceState {
+            latest_fence: 0,
+            handler: None,
+        }));
 
         let cookie: *mut VirglCookie = Box::into_raw(Box::new(VirglCookie {
             fence_state: Rc::clone(&fence_state),
@@ -218,7 +223,10 @@ impl Gfxstream {
             );
         }
 
-        Ok(Box::new(Gfxstream { fence_state }))
+        Ok(Box::new(Gfxstream {
+            fence_state,
+            fence_handler,
+        }))
     }
 
     #[allow(clippy::unnecessary_wraps)]
@@ -240,6 +248,9 @@ impl RutabagaComponent for Gfxstream {
         let ret = unsafe {
             pipe_virgl_renderer_create_fence(fence_data.fence_id as i32, fence_data.ctx_id)
         };
+        // This can be moved to the cookie once gfxstream directly calls the
+        // write_fence callback in pipe_virgl_renderer_create_fence
+        self.fence_handler.call(fence_data);
         ret_to_res(ret)
     }
 
@@ -442,6 +453,7 @@ impl RutabagaComponent for Gfxstream {
         &self,
         ctx_id: u32,
         _context_init: u32,
+        _fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
         const CONTEXT_NAME: &[u8] = b"gpu_renderer";
         // Safe because virglrenderer is initialized by now and the context name is statically

@@ -17,7 +17,7 @@ use data_model::VolatileSlice;
 use gpu_display::*;
 use rutabaga_gfx::{
     ResourceCreate3D, ResourceCreateBlob, Rutabaga, RutabagaBuilder, RutabagaFenceData,
-    RutabagaIovec, Transfer3D,
+    RutabagaFenceHandler, RutabagaIovec, Transfer3D,
 };
 
 use libc::c_void;
@@ -123,9 +123,10 @@ impl VirtioGpu {
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
         external_blob: bool,
         udmabuf: bool,
+        fence_handler: RutabagaFenceHandler,
     ) -> Option<VirtioGpu> {
         let rutabaga = rutabaga_builder
-            .build()
+            .build(fence_handler)
             .map_err(|e| error!("failed to build rutabaga {}", e))
             .ok()?;
 
