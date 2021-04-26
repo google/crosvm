@@ -150,6 +150,11 @@ impl ProxyDevice {
         let (child_tube, parent_tube) = Tube::pair().map_err(Error::Tube)?;
 
         keep_rds.push(child_tube.as_raw_descriptor());
+
+        // Deduplicate the FDs since minijail expects this.
+        keep_rds.sort_unstable();
+        keep_rds.dedup();
+
         // Forking here is safe as long as the program is still single threaded.
         let pid = unsafe {
             match jail.fork(Some(&keep_rds)).map_err(Error::ForkingJail)? {
