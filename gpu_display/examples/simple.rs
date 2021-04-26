@@ -8,8 +8,8 @@ fn main() {
     let mut disp = GpuDisplay::open_wayland(None::<&str>).unwrap();
     let surface_id = disp.create_surface(None, 1280, 1024).unwrap();
     disp.flip(surface_id);
-    disp.commit(surface_id);
+    disp.commit(surface_id).unwrap();
     while !disp.close_requested(surface_id) {
-        disp.dispatch_events();
+        disp.dispatch_events().unwrap();
     }
 }

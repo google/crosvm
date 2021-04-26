@@ -20,6 +20,6 @@ fn main() {
     disp.flip(surface_id);
 
     while !disp.close_requested(surface_id) {
-        disp.dispatch_events();
+        disp.dispatch_events().unwrap();
     }
 }

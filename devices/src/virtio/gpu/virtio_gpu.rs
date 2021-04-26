@@ -10,7 +10,7 @@ use std::result::Result;
 use std::sync::Arc;
 
 use crate::virtio::resource_bridge::{BufferInfo, PlaneInfo, ResourceInfo, ResourceResponse};
-use base::{error, AsRawDescriptor, ExternalMapping, Tube};
+use base::{error, ExternalMapping, Tube};
 
 use data_model::VolatileSlice;
 
@@ -181,9 +181,6 @@ impl VirtioGpu {
 
         let mut display = self.display.borrow_mut();
         let event_device_id = display.import_event_device(event_device)?;
-        if let Some(s) = self.scanout_surface_id {
-            display.attach_event_device(s, event_device_id)
-        }
         self.event_devices.insert(event_device_id, scanout);
         Ok(OkNoData)
     }
@@ -201,7 +198,12 @@ impl VirtioGpu {
     /// Processes the internal `display` events and returns `true` if the main display was closed.
     pub fn process_display(&mut self) -> bool {
         let mut display = self.display.borrow_mut();
-        display.dispatch_events();
+        let result = display.dispatch_events();
+        match result {
+            Ok(_) => (),
+            Err(e) => error!("failed to dispatch events: {}", e),
+        }
+
         self.scanout_surface_id
             .map(|s| display.close_requested(s))
             .unwrap_or(false)
@@ -234,9 +236,6 @@ impl VirtioGpu {
             let surface_id =
                 display.create_surface(None, self.display_width, self.display_height)?;
             self.scanout_surface_id = Some(surface_id);
-            for event_device_id in self.event_devices.keys() {
-                display.attach_event_device(surface_id, *event_device_id);
-            }
         }
         Ok(OkNoData)
     }
@@ -299,8 +298,8 @@ impl VirtioGpu {
             ),
         };
 
-        match self.display.borrow_mut().import_dmabuf(
-            dmabuf.os_handle.as_raw_descriptor(),
+        match self.display.borrow_mut().import_memory(
+            &dmabuf.os_handle,
             offset,
             stride,
             query.modifier,
@@ -327,7 +326,7 @@ impl VirtioGpu {
         surface_id: u32,
     ) -> VirtioGpuResult {
         if let Some(import_id) = self.import_to_display(resource_id) {
-            self.display.borrow_mut().flip_to(surface_id, import_id);
+            self.display.borrow_mut().flip_to(surface_id, import_id)?;
             return Ok(OkNoData);
         }
 
@@ -385,13 +384,13 @@ impl VirtioGpu {
         let cursor_surface_id = self.cursor_surface_id.unwrap();
         self.display
             .borrow_mut()
-            .set_position(cursor_surface_id, x, y);
+            .set_position(cursor_surface_id, x, y)?;
 
         // Gets the resource's pixels into the display by importing the buffer.
         if let Some(import_id) = self.import_to_display(resource_id) {
             self.display
                 .borrow_mut()
-                .flip_to(cursor_surface_id, import_id);
+                .flip_to(cursor_surface_id, import_id)?;
             return Ok(OkNoData);
         }
 
@@ -412,8 +411,8 @@ impl VirtioGpu {
         if let Some(cursor_surface_id) = self.cursor_surface_id {
             if let Some(scanout_surface_id) = self.scanout_surface_id {
                 let mut display = self.display.borrow_mut();
-                display.set_position(cursor_surface_id, x, y);
-                display.commit(scanout_surface_id);
+                display.set_position(cursor_surface_id, x, y)?;
+                display.commit(scanout_surface_id)?;
             }
         }
         Ok(OkNoData)

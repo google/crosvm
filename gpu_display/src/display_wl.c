@@ -58,6 +58,8 @@ struct output {
 
 struct dwl_context {
 	struct wl_display *display;
+	struct dwl_surface *surfaces[MAX_BUFFER_COUNT];
+	struct dwl_dmabuf *dmabufs[MAX_BUFFER_COUNT];
 	struct interfaces ifaces;
 	bool output_added;
 	struct output outputs[8];
@@ -71,8 +73,10 @@ struct dwl_context {
 struct dwl_dmabuf {
 	uint32_t width;
 	uint32_t height;
+	uint32_t import_id;
 	bool in_use;
 	struct wl_buffer *buffer;
+	struct dwl_context *context;
 };
 
 struct dwl_surface {
@@ -85,6 +89,7 @@ struct dwl_surface {
 	struct wl_subsurface *subsurface;
 	uint32_t width;
 	uint32_t height;
+	uint32_t surface_id;
 	double scale;
 	bool close_requested;
 	size_t buffer_count;
@@ -499,10 +504,52 @@ static void dmabuf_buffer_release(void *data, struct wl_buffer *buffer)
 static const struct wl_buffer_listener dmabuf_buffer_listener = {
     .release = dmabuf_buffer_release};
 
-struct dwl_dmabuf *dwl_context_dmabuf_new(struct dwl_context *self, int fd,
-					  uint32_t offset, uint32_t stride,
-					  uint64_t modifiers, uint32_t width,
-					  uint32_t height, uint32_t fourcc)
+static bool dwl_context_add_dmabuf(struct dwl_context *self,
+				   struct dwl_dmabuf *dmabuf)
+{
+	size_t i;
+	for (i = 0; i < MAX_BUFFER_COUNT; i++) {
+		if (!self->dmabufs[i]) {
+			self->dmabufs[i] = dmabuf;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static void dwl_context_remove_dmabuf(struct dwl_context *self,
+				      uint32_t import_id)
+{
+	size_t i;
+	for (i = 0; i < MAX_BUFFER_COUNT; i++) {
+		if (self->dmabufs[i] &&
+		    self->dmabufs[i]->import_id == import_id) {
+			self->dmabufs[i] = NULL;
+		}
+	}
+}
+
+static struct dwl_dmabuf *dwl_context_get_dmabuf(struct dwl_context *self,
+					         uint32_t import_id)
+{
+	size_t i;
+	for (i = 0; i < MAX_BUFFER_COUNT; i++) {
+		if (self->dmabufs[i] &&
+		    self->dmabufs[i]->import_id == import_id) {
+			return self->dmabufs[i];
+		}
+	}
+
+	return NULL;
+}
+
+struct dwl_dmabuf *dwl_context_dmabuf_new(struct dwl_context *self,
+					  uint32_t import_id,
+					  int fd, uint32_t offset,
+					  uint32_t stride, uint64_t modifier,
+					  uint32_t width, uint32_t height,
+					  uint32_t fourcc)
 {
 	struct dwl_dmabuf *dmabuf = calloc(1, sizeof(struct dwl_dmabuf));
 	if (!dmabuf) {
@@ -524,8 +571,8 @@ struct dwl_dmabuf *dwl_context_dmabuf_new(struct dwl_context *self, int fd,
 	zwp_linux_buffer_params_v1_add_listener(params, &linux_buffer_listener,
 						dmabuf);
 	zwp_linux_buffer_params_v1_add(params, fd, 0 /* plane_idx */, offset,
-				       stride, modifiers >> 32,
-				       (uint32_t)modifiers);
+				       stride, modifier >> 32,
+				       (uint32_t)modifier);
 	zwp_linux_buffer_params_v1_create(params, width, height, fourcc, 0);
 	wl_display_roundtrip(self->display);
 	zwp_linux_buffer_params_v1_destroy(params);
@@ -538,11 +585,20 @@ struct dwl_dmabuf *dwl_context_dmabuf_new(struct dwl_context *self, int fd,
 
 	wl_buffer_add_listener(dmabuf->buffer, &dmabuf_buffer_listener, dmabuf);
 
+	dmabuf->import_id = import_id;
+	dmabuf->context = self;
+	if (!dwl_context_add_dmabuf(self, dmabuf)) {
+		syslog(LOG_ERR, "failed to add dmabuf to context");
+		free(dmabuf);
+		return NULL;
+	}
+
 	return dmabuf;
 }
 
 void dwl_dmabuf_destroy(struct dwl_dmabuf **self)
 {
+	dwl_context_remove_dmabuf((*self)->context, (*self)->import_id);
 	wl_buffer_destroy((*self)->buffer);
 	free(*self);
 	*self = NULL;
@@ -565,8 +621,49 @@ static void surface_buffer_release(void *data, struct wl_buffer *buffer)
 static const struct wl_buffer_listener surface_buffer_listener = {
     .release = surface_buffer_release};
 
+static struct dwl_surface *dwl_context_get_surface(struct dwl_context *self,
+					           uint32_t surface_id)
+{
+	size_t i;
+	for (i = 0; i < MAX_BUFFER_COUNT; i++) {
+		if (self->surfaces[i] &&
+		    self->surfaces[i]->surface_id == surface_id) {
+			return self->surfaces[i];
+		}
+	}
+
+	return NULL;
+}
+
+static bool dwl_context_add_surface(struct dwl_context *self,
+				    struct dwl_surface *surface)
+{
+	size_t i;
+	for (i = 0; i < MAX_BUFFER_COUNT; i++) {
+		if (!self->surfaces[i]) {
+			self->surfaces[i] = surface;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static void dwl_context_remove_surface(struct dwl_context *self,
+				       uint32_t surface_id)
+{
+	size_t i;
+	for (i = 0; i < MAX_BUFFER_COUNT; i++) {
+		if (self->surfaces[i] &&
+		    self->surfaces[i]->surface_id == surface_id) {
+			self->surfaces[i] = NULL;
+		}
+	}
+}
+
 struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
-					    struct dwl_surface *parent,
+					    uint32_t parent_id,
+					    uint32_t  surface_id,
 					    int shm_fd, size_t shm_size,
 					    size_t buffer_size, uint32_t width,
 					    uint32_t height, uint32_t stride)
@@ -632,7 +729,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 	wl_region_add(region, 0, 0, width, height);
 	wl_surface_set_opaque_region(disp_surface->wl_surface, region);
 
-	if (!parent) {
+	if (!parent_id) {
 		disp_surface->xdg_surface = xdg_wm_base_get_xdg_surface(
 		    self->ifaces.xdg_wm_base, disp_surface->wl_surface);
 		if (!disp_surface->xdg_surface) {
@@ -672,9 +769,17 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		// wait for the surface to be configured
 		wl_display_roundtrip(self->display);
 	} else {
+		struct dwl_surface *parent_surface =
+			dwl_context_get_surface(self, parent_id);
+
+		if (!parent_surface) {
+			syslog(LOG_ERR, "failed to find parent_surface");
+			goto fail;
+		}
+
 		disp_surface->subsurface = wl_subcompositor_get_subsurface(
 		    self->ifaces.subcompositor, disp_surface->wl_surface,
-		    parent->wl_surface);
+		    parent_surface->wl_surface);
 		if (!disp_surface->subsurface) {
 			syslog(LOG_ERR, "failed to make subsurface");
 			goto fail;
@@ -716,6 +821,12 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 	wl_surface_commit(disp_surface->wl_surface);
 	wl_display_flush(self->display);
 
+	disp_surface->surface_id = surface_id;
+	if (!dwl_context_add_surface(self, disp_surface)) {
+		syslog(LOG_ERR, "failed to add surface to context");
+		goto fail;
+	}
+
 	return disp_surface;
 fail:
 	if (disp_surface->viewport)
@@ -744,6 +855,8 @@ fail:
 void dwl_surface_destroy(struct dwl_surface **self)
 {
 	size_t i;
+
+	dwl_context_remove_surface((*self)->context, (*self)->surface_id);
 	if ((*self)->viewport)
 		wp_viewport_destroy((*self)->viewport);
 	if ((*self)->subsurface)
@@ -790,8 +903,14 @@ void dwl_surface_flip(struct dwl_surface *self, size_t buffer_index)
 	self->buffer_use_bit_mask |= 1 << buffer_index;
 }
 
-void dwl_surface_flip_to(struct dwl_surface *self, struct dwl_dmabuf *dmabuf)
+void dwl_surface_flip_to(struct dwl_surface *self, uint32_t import_id)
 {
+	// Surface and dmabuf have to exist in same context.
+	struct dwl_dmabuf *dmabuf = dwl_context_get_dmabuf(self->context,
+							   import_id);
+	if (!dmabuf)
+		return;
+
 	if (self->width != dmabuf->width || self->height != dmabuf->height)
 		return;
 	wl_surface_attach(self->wl_surface, dmabuf->buffer, 0, 0);
@@ -813,4 +932,9 @@ void dwl_surface_set_position(struct dwl_surface *self, uint32_t x, uint32_t y)
 		wl_surface_commit(self->wl_surface);
 		wl_display_flush(self->context->display);
 	}
+}
+
+void *dwl_surface_descriptor(struct dwl_surface *self)
+{
+	return self->wl_surface;
 }

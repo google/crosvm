@@ -78,6 +78,7 @@ extern "C" {
 extern "C" {
     pub fn dwl_context_dmabuf_new(
         self_: *mut dwl_context,
+        import_id: u32,
         fd: ::std::os::raw::c_int,
         offset: u32,
         stride: u32,
@@ -93,7 +94,8 @@ extern "C" {
 extern "C" {
     pub fn dwl_context_surface_new(
         self_: *mut dwl_context,
-        parent: *mut dwl_surface,
+        parent_id: u32,
+        surface_id: u32,
         shm_fd: ::std::os::raw::c_int,
         shm_size: usize,
         buffer_size: usize,
@@ -115,11 +117,14 @@ extern "C" {
     pub fn dwl_surface_flip(self_: *mut dwl_surface, buffer_index: usize);
 }
 extern "C" {
-    pub fn dwl_surface_flip_to(self_: *mut dwl_surface, dmabuf: *mut dwl_dmabuf);
+    pub fn dwl_surface_flip_to(self_: *mut dwl_surface, import_id: u32);
 }
 extern "C" {
     pub fn dwl_surface_close_requested(self_: *const dwl_surface) -> bool;
 }
 extern "C" {
     pub fn dwl_surface_set_position(self_: *mut dwl_surface, x: u32, y: u32);
+}
+extern "C" {
+    pub fn dwl_surface_descriptor(self_: *const dwl_surface) -> *const ::std::ffi::c_void;
 }
