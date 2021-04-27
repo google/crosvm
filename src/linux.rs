@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::cmp::{max, min, Reverse};
+use std::cmp::Reverse;
 use std::convert::TryFrom;
 #[cfg(feature = "gpu")]
 use std::env;
@@ -11,7 +11,7 @@ use std::error::Error as StdError;
 use std::ffi::CStr;
 use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
-use std::io::{self, stdin, Read};
+use std::io::{self, stdin};
 use std::iter;
 use std::mem;
 use std::net::Ipv4Addr;
@@ -22,10 +22,10 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use std::str;
 use std::sync::{mpsc, Arc, Barrier};
+use std::time::Duration;
 
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::Duration;
 
 use libc::{self, c_int, gid_t, uid_t};
 
@@ -2344,35 +2344,6 @@ where
         .map_err(Error::SpawnVcpu)
 }
 
-// Reads the contents of a file and converts the space-separated fields into a Vec of i64s.
-// Returns an error if any of the fields fail to parse.
-fn file_fields_to_i64<P: AsRef<Path>>(path: P) -> io::Result<Vec<i64>> {
-    let mut file = File::open(path)?;
-
-    let mut buf = [0u8; 32];
-    let count = file.read(&mut buf)?;
-
-    let content =
-        str::from_utf8(&buf[..count]).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    content
-        .trim()
-        .split_whitespace()
-        .map(|x| {
-            x.parse::<i64>()
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
-        })
-        .collect()
-}
-
-// Reads the contents of a file and converts them into a u64, and if there
-// are multiple fields it only returns the first one.
-fn file_to_i64<P: AsRef<Path>>(path: P, nth: usize) -> io::Result<i64> {
-    file_fields_to_i64(path)?
-        .into_iter()
-        .nth(nth)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "empty file"))
-}
-
 fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     let initrd_image = if let Some(initrd_path) = &cfg.initrd_path {
         Some(File::open(initrd_path).map_err(|e| Error::OpenInitrd(initrd_path.clone(), e))?)
@@ -2708,7 +2679,6 @@ where
         sigchld_fd,
         cfg.sandbox,
         Arc::clone(&map_request),
-        cfg.balloon_bias,
         gralloc,
     )
 }
@@ -2731,170 +2701,6 @@ fn kick_all_vcpus(
     irq_chip.kick_halted_vcpus();
 }
 
-// BalloonPolicy determines the size to set the balloon.
-struct BalloonPolicy {
-    // Estimate for when the guest starts aggressivly freeing memory.
-    critical_guest_available: i64,
-    critical_host_available: i64, // ChromeOS critical margin.
-    guest_available_bias: i64,
-    max_balloon_actual: i64, // The largest the balloon has ever been observed.
-    prev_balloon_full_percent: i64, // How full was the balloon at the previous timestep.
-    prev_guest_available: i64, // Available memory in the guest at the previous timestep.
-}
-
-const ONE_KB: i64 = 1024;
-const ONE_MB: i64 = 1024 * ONE_KB;
-
-const LOWMEM_AVAILABLE: &str = "/sys/kernel/mm/chromeos-low_mem/available";
-const LOWMEM_MARGIN: &str = "/sys/kernel/mm/chromeos-low_mem/margin";
-
-// BalloonPolicy implements the virtio balloon sizing logic.
-// The balloon is sized with the following heuristics:
-//   Balance Available
-//     The balloon is sized to balance the amount of available memory above a
-//     critical margin. The critical margin is the level at which memory is
-//     freed. In the host, this is the ChromeOS available critical margin, which
-//     is the trigger to kill tabs. In the guest, we estimate this level by
-//     tracking the minimum amount of available memory, discounting sharp
-//     'valleys'. If the guest manages to keep available memory above a given
-//     level even with some pressure, then we determine that this is the
-//     'critical' level for the guest. We don't update this critical value if
-//     the balloon is fully inflated because in that case, the guest may be out
-//     of memory to free.
-//   guest_available_bias
-//     Even if available memory is perfectly balanced between host and guest,
-//     The size of the balloon will still drift randomly depending on whether
-//     those host or guest reclaims memory first/faster every time memory is
-//     low. To encourage large balloons to shrink and small balloons to grow,
-//     the following bias is added to the guest critical margin:
-//         (guest_available_bias * balloon_full_percent) / 100
-//     This give the guest more memory when the balloon is full.
-impl BalloonPolicy {
-    fn new(
-        memory_size: i64,
-        critical_host_available: i64,
-        guest_available_bias: i64,
-    ) -> BalloonPolicy {
-        // Estimate some reasonable initial maximum for balloon size.
-        let max_balloon_actual = (memory_size * 3) / 4;
-        // 400MB is above the zone min margin even for Crostini VMs on 16GB
-        // devices (~85MB), and is above when Android Low Memory Killer kills
-        // apps (~250MB).
-        let critical_guest_available = 400 * ONE_MB;
-
-        BalloonPolicy {
-            critical_guest_available,
-            critical_host_available,
-            guest_available_bias,
-            max_balloon_actual,
-            prev_balloon_full_percent: 0,
-            prev_guest_available: 0,
-        }
-    }
-    fn delta(&mut self, stats: BalloonStats, balloon_actual_u: u64) -> Result<i64> {
-        let guest_free = stats
-            .free_memory
-            .map(i64::try_from)
-            .ok_or(Error::GuestFreeMissing())?
-            .map_err(Error::GuestFreeTooLarge)?;
-        let guest_cached = stats
-            .disk_caches
-            .map(i64::try_from)
-            .ok_or(Error::GuestFreeMissing())?
-            .map_err(Error::GuestFreeTooLarge)?;
-        let balloon_actual = match balloon_actual_u {
-            size if size < i64::max_value() as u64 => size as i64,
-            _ => return Err(Error::BalloonActualTooLarge),
-        };
-        let guest_available = guest_free + guest_cached;
-        // Available memory is reported in MB, and we need bytes.
-        let host_available =
-            file_to_i64(LOWMEM_AVAILABLE, 0).map_err(Error::ReadMemAvailable)? * ONE_MB;
-        if self.max_balloon_actual < balloon_actual {
-            self.max_balloon_actual = balloon_actual;
-            info!(
-                "balloon updated max_balloon_actual to {} MiB",
-                self.max_balloon_actual / ONE_MB,
-            );
-        }
-        let balloon_full_percent = balloon_actual * 100 / self.max_balloon_actual;
-        // Update critical_guest_available if we see a lower available with the
-        // balloon not fully inflated. If the balloon is completely inflated
-        // there is a risk that the low available level we see comes at the cost
-        // of stability. The Linux OOM Killer might have been forced to kill
-        // something important, or page reclaim was so aggressive that there are
-        // long UI hangs.
-        if guest_available < self.critical_guest_available && balloon_full_percent < 95 {
-            // To ignore temporary low memory states, we require that two guest
-            // available measurements in a row are low.
-            if self.prev_guest_available < self.critical_guest_available
-                && self.prev_balloon_full_percent < 95
-            {
-                self.critical_guest_available = self.prev_guest_available;
-                info!(
-                    "balloon updated critical_guest_available to {} MiB",
-                    self.critical_guest_available / ONE_MB,
-                );
-            }
-        }
-
-        // Compute the difference in available memory above the host and guest
-        // critical thresholds.
-        let bias = (self.guest_available_bias * balloon_full_percent) / 100;
-        let guest_above_critical = guest_available - self.critical_guest_available - bias;
-        let host_above_critical = host_available - self.critical_host_available;
-        let balloon_delta = guest_above_critical - host_above_critical;
-        // Only let the balloon take up MAX_CRITICAL_DELTA of available memory
-        // below the critical level in host or guest.
-        const MAX_CRITICAL_DELTA: i64 = 10 * ONE_MB;
-        let balloon_delta_capped = if balloon_delta < 0 {
-            // The balloon is deflating, taking memory from the host. Don't let
-            // it take more than the amount of available memory above the
-            // critical margin, plus MAX_CRITICAL_DELTA.
-            max(
-                balloon_delta,
-                -(host_available - self.critical_host_available + MAX_CRITICAL_DELTA),
-            )
-        } else {
-            // The balloon is inflating, taking memory from the guest. Don't let
-            // it take more than the amount of available memory above the
-            // critical margin, plus MAX_CRITICAL_DELTA.
-            min(
-                balloon_delta,
-                guest_available - self.critical_guest_available + MAX_CRITICAL_DELTA,
-            )
-        };
-
-        self.prev_balloon_full_percent = balloon_full_percent;
-        self.prev_guest_available = guest_available;
-
-        // Only return a value if target would change available above critical
-        // by more than 1%, or we are within 1 MB of critical in host or guest.
-        if guest_above_critical < ONE_MB
-            || host_above_critical < ONE_MB
-            || (balloon_delta.abs() * 100) / guest_above_critical > 1
-            || (balloon_delta.abs() * 100) / host_above_critical > 1
-        {
-            // Finally, make sure the balloon delta won't cause a negative size.
-            let result = max(balloon_delta_capped, -balloon_actual);
-            if result != 0 {
-                info!(
-                    "balloon delta={:<6} ha={:<6} hc={:<6} ga={:<6} gc={:<6} bias={:<6} full={:>3}%",
-                    result / ONE_MB,
-                    host_available / ONE_MB,
-                    self.critical_host_available / ONE_MB,
-                    guest_available / ONE_MB,
-                    self.critical_guest_available / ONE_MB,
-                    bias / ONE_MB,
-                    balloon_full_percent,
-                );
-            }
-            return Ok(result);
-        }
-        Ok(0)
-    }
-}
-
 fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     mut linux: RunnableLinuxVm<V, Vcpu>,
     mut sys_allocator: SystemAllocator,
@@ -2907,7 +2713,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     sigchld_fd: SignalFd,
     sandbox: bool,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
-    balloon_bias: i64,
     mut gralloc: RutabagaGralloc,
 ) -> Result<()> {
     #[derive(PollToken)]
@@ -2916,8 +2721,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         Suspend,
         ChildSignal,
         IrqFd { index: IrqEventIndex },
-        BalanceMemory,
-        BalloonResult,
         VmControlServer,
         VmControl { index: usize },
     }
@@ -2954,33 +2757,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             .add(&evt, Token::IrqFd { index })
             .map_err(Error::WaitContextAdd)?;
     }
-
-    // Balance available memory between guest and host every second.
-    let mut balancemem_timer = Timer::new().map_err(Error::CreateTimer)?;
-    let mut balloon_policy = if let Ok(critical_margin) = file_to_i64(LOWMEM_MARGIN, 0) {
-        // Create timer request balloon stats every 1s.
-        wait_ctx
-            .add(&balancemem_timer, Token::BalanceMemory)
-            .map_err(Error::WaitContextAdd)?;
-        let balancemem_dur = Duration::from_secs(1);
-        let balancemem_int = Duration::from_secs(1);
-        balancemem_timer
-            .reset(balancemem_dur, Some(balancemem_int))
-            .map_err(Error::ResetTimer)?;
-
-        // Listen for balloon statistics from the guest so we can balance.
-        wait_ctx
-            .add(&balloon_host_tube, Token::BalloonResult)
-            .map_err(Error::WaitContextAdd)?;
-        Some(BalloonPolicy::new(
-            linux.vm.get_memory().memory_size() as i64,
-            critical_margin * ONE_MB,
-            balloon_bias,
-        ))
-    } else {
-        warn!("Unable to open low mem margin, maybe not a chrome os kernel");
-        None
-    };
 
     if sandbox {
         // Before starting VCPUs, in case we started with some capabilities, drop them all.
@@ -3108,50 +2884,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     if let Err(e) = linux.irq_chip.service_irq_event(index) {
                         error!("failed to signal irq {}: {}", index, e);
                     }
-                }
-                Token::BalanceMemory => {
-                    balancemem_timer.wait().map_err(Error::Timer)?;
-                    let command = BalloonControlCommand::Stats {};
-                    if let Err(e) = balloon_host_tube.send(&command) {
-                        warn!("failed to send stats request to balloon device: {}", e);
-                    }
-                }
-                Token::BalloonResult => {
-                    match balloon_host_tube.recv() {
-                        Ok(BalloonControlResult::Stats {
-                            stats,
-                            balloon_actual: balloon_actual_u,
-                        }) => {
-                            match balloon_policy
-                                .as_mut()
-                                .map(|p| p.delta(stats, balloon_actual_u))
-                            {
-                                None => {
-                                    error!(
-                                        "got result from balloon stats, but no policy is running"
-                                    );
-                                }
-                                Some(Err(e)) => {
-                                    warn!("failed to run balloon policy {}", e);
-                                }
-                                Some(Ok(delta)) if delta != 0 => {
-                                    let target = max((balloon_actual_u as i64) + delta, 0) as u64;
-                                    let command =
-                                        BalloonControlCommand::Adjust { num_bytes: target };
-                                    if let Err(e) = balloon_host_tube.send(&command) {
-                                        warn!(
-                                            "failed to send memory value to balloon device: {}",
-                                            e
-                                        );
-                                    }
-                                }
-                                Some(Ok(_)) => {}
-                            }
-                        }
-                        Err(e) => {
-                            error!("failed to recv BalloonControlResult: {}", e);
-                        }
-                    };
                 }
                 Token::VmControlServer => {
                     if let Some(socket_server) = &control_server_socket {
@@ -3329,8 +3061,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 Token::Suspend => {}
                 Token::ChildSignal => {}
                 Token::IrqFd { index: _ } => {}
-                Token::BalanceMemory => {}
-                Token::BalloonResult => {}
                 Token::VmControlServer => {}
                 Token::VmControl { index } => {
                     // It's possible more data is readable and buffered while the socket is hungup,
