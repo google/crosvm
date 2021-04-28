@@ -14,7 +14,7 @@ use crate::BusDevice;
 use base::{error, warn, Error, Event, Result, Tube, TubeError};
 use hypervisor::{
     IoapicRedirectionTableEntry, IoapicState, MsiAddressMessage, MsiDataMessage, TriggerMode,
-    NUM_IOAPIC_PINS,
+    MAX_IOAPIC_PINS, NUM_IOAPIC_PINS,
 };
 use vm_control::{VmIrqRequest, VmIrqResponse};
 
@@ -146,7 +146,7 @@ impl BusDevice for Ioapic {
 
 impl Ioapic {
     pub fn new(irq_tube: Tube, num_pins: usize) -> Result<Ioapic> {
-        let num_pins = num_pins.max(NUM_IOAPIC_PINS as usize);
+        let num_pins = num_pins.max(NUM_IOAPIC_PINS).min(MAX_IOAPIC_PINS);
         let mut entry = IoapicRedirectionTableEntry::new();
         entry.set_interrupt_mask(true);
         Ok(Ioapic {

@@ -13,7 +13,7 @@ use base::FakeClock as Clock;
 use hypervisor::kvm::{KvmVcpu, KvmVm};
 use hypervisor::{
     HypervisorCap, IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState, MPState, PicSelect,
-    PicState, PitState, Vcpu, VcpuX86_64, Vm, VmX86_64, NUM_IOAPIC_PINS,
+    PicState, PitState, Vcpu, VcpuX86_64, Vm, VmX86_64,
 };
 use kvm_sys::*;
 use resources::SystemAllocator;
@@ -63,11 +63,12 @@ impl KvmKernelIrqChip {
     pub fn new(vm: KvmVm, num_vcpus: usize) -> Result<KvmKernelIrqChip> {
         vm.create_irq_chip()?;
         vm.create_pit()?;
+        let ioapic_pins = vm.get_ioapic_num_pins()?;
 
         Ok(KvmKernelIrqChip {
             vm,
             vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
-            routes: Arc::new(Mutex::new(kvm_default_irq_routing_table(NUM_IOAPIC_PINS))),
+            routes: Arc::new(Mutex::new(kvm_default_irq_routing_table(ioapic_pins))),
         })
     }
     /// Attempt to create a shallow clone of this x86_64 KvmKernelIrqChip instance.
@@ -192,7 +193,7 @@ impl KvmSplitIrqChip {
         irq_tube: Tube,
         ioapic_pins: Option<usize>,
     ) -> Result<Self> {
-        let ioapic_pins = ioapic_pins.unwrap_or(hypervisor::NUM_IOAPIC_PINS);
+        let ioapic_pins = ioapic_pins.unwrap_or(vm.get_ioapic_num_pins()?);
         vm.enable_split_irqchip(ioapic_pins)?;
         let pit_evt = Event::new()?;
         let pit = Arc::new(Mutex::new(

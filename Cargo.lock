@@ -683,6 +683,7 @@ name = "net_util"
 version = "0.1.0"
 dependencies = [
  "base",
+ "cros_async",
  "data_model",
  "libc",
  "net_sys",

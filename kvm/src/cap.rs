@@ -120,5 +120,6 @@ pub enum Cap {
     S390UserSigp = KVM_CAP_S390_USER_SIGP,
     ImmediateExit = KVM_CAP_IMMEDIATE_EXIT,
     ArmPmuV3 = KVM_CAP_ARM_PMU_V3,
+    IoapicNumPins = KVM_CAP_IOAPIC_NUM_PINS,
     ArmProtectedVm = KVM_CAP_ARM_PROTECTED_VM,
 }
