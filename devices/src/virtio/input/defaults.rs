@@ -10,13 +10,19 @@ use super::virtio_input_bitmap;
 use super::virtio_input_device_ids;
 use super::VirtioInputConfig;
 
+fn name_with_index(device_name: &[u8], idx: u32) -> Vec<u8> {
+    let mut ret = device_name.to_vec();
+    ret.extend_from_slice(idx.to_string().as_bytes());
+    ret
+}
+
 /// Instantiates a VirtioInputConfig object with the default configuration for a trackpad. It
 /// supports touch, left button and right button events, as well as X and Y axis.
-pub fn new_trackpad_config(width: u32, height: u32) -> VirtioInputConfig {
+pub fn new_trackpad_config(idx: u32, width: u32, height: u32) -> VirtioInputConfig {
     VirtioInputConfig::new(
         virtio_input_device_ids::new(0, 0, 0, 0),
-        b"Crosvm Virtio Trackpad".to_vec(),
-        b"virtio-trackpad".to_vec(),
+        name_with_index(b"Crosvm Virtio Trackpad ", idx),
+        name_with_index(b"virtio-trackpad-", idx),
         virtio_input_bitmap::new([0u8; 128]),
         default_trackpad_events(),
         default_trackpad_absinfo(width, height),
@@ -25,11 +31,11 @@ pub fn new_trackpad_config(width: u32, height: u32) -> VirtioInputConfig {
 
 /// Instantiates a VirtioInputConfig object with the default configuration for a mouse.
 /// It supports left, right and middle buttons, as wel as X, Y and wheel relative axes.
-pub fn new_mouse_config() -> VirtioInputConfig {
+pub fn new_mouse_config(idx: u32) -> VirtioInputConfig {
     VirtioInputConfig::new(
         virtio_input_device_ids::new(0, 0, 0, 0),
-        b"Crosvm Virtio Mouse".to_vec(),
-        b"virtio-mouse".to_vec(),
+        name_with_index(b"Crosvm Virtio Mouse ", idx),
+        name_with_index(b"virtio-mouse-", idx),
         virtio_input_bitmap::new([0u8; 128]),
         default_mouse_events(),
         BTreeMap::new(),
@@ -38,11 +44,11 @@ pub fn new_mouse_config() -> VirtioInputConfig {
 
 /// Instantiates a VirtioInputConfig object with the default configuration for a keyboard.
 /// It supports the same keys as a en-us keyboard and the CAPSLOCK, NUMLOCK and SCROLLLOCK leds.
-pub fn new_keyboard_config() -> VirtioInputConfig {
+pub fn new_keyboard_config(idx: u32) -> VirtioInputConfig {
     VirtioInputConfig::new(
         virtio_input_device_ids::new(0, 0, 0, 0),
-        b"Crosvm Virtio Keyboard".to_vec(),
-        b"virtio-keyboard".to_vec(),
+        name_with_index(b"Crosvm Virtio Keyboard ", idx),
+        name_with_index(b"virtio-keyboard-", idx),
         virtio_input_bitmap::new([0u8; 128]),
         default_keyboard_events(),
         BTreeMap::new(),
@@ -50,11 +56,11 @@ pub fn new_keyboard_config() -> VirtioInputConfig {
 }
 
 /// Instantiates a VirtioInputConfig object with the default configuration for a collection of switches.
-pub fn new_switches_config() -> VirtioInputConfig {
+pub fn new_switches_config(idx: u32) -> VirtioInputConfig {
     VirtioInputConfig::new(
         virtio_input_device_ids::new(0, 0, 0, 0),
-        b"Crosvm Virtio Switches".to_vec(),
-        b"virtio-switches".to_vec(),
+        name_with_index(b"Crosvm Virtio Switches ", idx),
+        name_with_index(b"virtio-switches-", idx),
         virtio_input_bitmap::new([0u8; 128]),
         default_switch_events(),
         BTreeMap::new(),
@@ -63,11 +69,11 @@ pub fn new_switches_config() -> VirtioInputConfig {
 
 /// Instantiates a VirtioInputConfig object with the default configuration for a touchscreen (no
 /// multitouch support).
-pub fn new_single_touch_config(width: u32, height: u32) -> VirtioInputConfig {
+pub fn new_single_touch_config(idx: u32, width: u32, height: u32) -> VirtioInputConfig {
     VirtioInputConfig::new(
         virtio_input_device_ids::new(0, 0, 0, 0),
-        b"Crosvm Virtio Touchscreen".to_vec(),
-        b"virtio-touchscreen".to_vec(),
+        name_with_index(b"Crosvm Virtio Touchscreen ", idx),
+        name_with_index(b"virtio-touchscreen-", idx),
         virtio_input_bitmap::from_bits(&[INPUT_PROP_DIRECT]),
         default_touchscreen_events(),
         default_touchscreen_absinfo(width, height),
@@ -76,11 +82,11 @@ pub fn new_single_touch_config(width: u32, height: u32) -> VirtioInputConfig {
 
 /// Instantiates a VirtioInputConfig object with the default configuration for a multitouch
 /// touchscreen.
-pub fn new_multi_touch_config(width: u32, height: u32) -> VirtioInputConfig {
+pub fn new_multi_touch_config(idx: u32, width: u32, height: u32) -> VirtioInputConfig {
     VirtioInputConfig::new(
         virtio_input_device_ids::new(0, 0, 0, 0),
-        b"Crosvm Virtio Multitouch Touchscreen".to_vec(),
-        b"virtio-touchscreen".to_vec(),
+        name_with_index(b"Crosvm Virtio Multitouch Touchscreen ", idx),
+        name_with_index(b"virtio-touchscreen-", idx),
         virtio_input_bitmap::from_bits(&[INPUT_PROP_DIRECT]),
         default_multitouchscreen_events(),
         default_multitouchscreen_absinfo(width, height, 10, 10),
@@ -322,8 +328,8 @@ mod tests {
 
     #[test]
     fn test_new_switches_config() {
-        let config = new_switches_config();
-        assert_eq!(config.serial_name, b"virtio-switches".to_vec());
+        let config = new_switches_config(0);
+        assert_eq!(config.serial_name, b"virtio-switches-0".to_vec());
 
         let events = config.supported_events;
         assert_eq!(events.len(), 1);

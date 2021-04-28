@@ -634,7 +634,11 @@ fn create_tpm_device(cfg: &Config) -> DeviceResult {
     })
 }
 
-fn create_single_touch_device(cfg: &Config, single_touch_spec: &TouchDeviceOption) -> DeviceResult {
+fn create_single_touch_device(
+    cfg: &Config,
+    single_touch_spec: &TouchDeviceOption,
+    idx: u32,
+) -> DeviceResult {
     let socket = single_touch_spec
         .get_path()
         .into_unix_stream()
@@ -645,6 +649,7 @@ fn create_single_touch_device(cfg: &Config, single_touch_spec: &TouchDeviceOptio
 
     let (width, height) = single_touch_spec.get_size();
     let dev = virtio::new_single_touch(
+        idx,
         socket,
         width,
         height,
@@ -657,7 +662,11 @@ fn create_single_touch_device(cfg: &Config, single_touch_spec: &TouchDeviceOptio
     })
 }
 
-fn create_multi_touch_device(cfg: &Config, multi_touch_spec: &TouchDeviceOption) -> DeviceResult {
+fn create_multi_touch_device(
+    cfg: &Config,
+    multi_touch_spec: &TouchDeviceOption,
+    idx: u32,
+) -> DeviceResult {
     let socket = multi_touch_spec
         .get_path()
         .into_unix_stream()
@@ -668,6 +677,7 @@ fn create_multi_touch_device(cfg: &Config, multi_touch_spec: &TouchDeviceOption)
 
     let (width, height) = multi_touch_spec.get_size();
     let dev = virtio::new_multi_touch(
+        idx,
         socket,
         width,
         height,
@@ -681,7 +691,11 @@ fn create_multi_touch_device(cfg: &Config, multi_touch_spec: &TouchDeviceOption)
     })
 }
 
-fn create_trackpad_device(cfg: &Config, trackpad_spec: &TouchDeviceOption) -> DeviceResult {
+fn create_trackpad_device(
+    cfg: &Config,
+    trackpad_spec: &TouchDeviceOption,
+    idx: u32,
+) -> DeviceResult {
     let socket = trackpad_spec.get_path().into_unix_stream().map_err(|e| {
         error!("failed configuring virtio trackpad: {}", e);
         e
@@ -689,6 +703,7 @@ fn create_trackpad_device(cfg: &Config, trackpad_spec: &TouchDeviceOption) -> De
 
     let (width, height) = trackpad_spec.get_size();
     let dev = virtio::new_trackpad(
+        idx,
         socket,
         width,
         height,
@@ -702,13 +717,13 @@ fn create_trackpad_device(cfg: &Config, trackpad_spec: &TouchDeviceOption) -> De
     })
 }
 
-fn create_mouse_device<T: IntoUnixStream>(cfg: &Config, mouse_socket: T) -> DeviceResult {
+fn create_mouse_device<T: IntoUnixStream>(cfg: &Config, mouse_socket: T, idx: u32) -> DeviceResult {
     let socket = mouse_socket.into_unix_stream().map_err(|e| {
         error!("failed configuring virtio mouse: {}", e);
         e
     })?;
 
-    let dev = virtio::new_mouse(socket, virtio::base_features(cfg.protected_vm))
+    let dev = virtio::new_mouse(idx, socket, virtio::base_features(cfg.protected_vm))
         .map_err(Error::InputDeviceNew)?;
 
     Ok(VirtioDeviceStub {
@@ -717,13 +732,17 @@ fn create_mouse_device<T: IntoUnixStream>(cfg: &Config, mouse_socket: T) -> Devi
     })
 }
 
-fn create_keyboard_device<T: IntoUnixStream>(cfg: &Config, keyboard_socket: T) -> DeviceResult {
+fn create_keyboard_device<T: IntoUnixStream>(
+    cfg: &Config,
+    keyboard_socket: T,
+    idx: u32,
+) -> DeviceResult {
     let socket = keyboard_socket.into_unix_stream().map_err(|e| {
         error!("failed configuring virtio keyboard: {}", e);
         e
     })?;
 
-    let dev = virtio::new_keyboard(socket, virtio::base_features(cfg.protected_vm))
+    let dev = virtio::new_keyboard(idx, socket, virtio::base_features(cfg.protected_vm))
         .map_err(Error::InputDeviceNew)?;
 
     Ok(VirtioDeviceStub {
@@ -732,13 +751,17 @@ fn create_keyboard_device<T: IntoUnixStream>(cfg: &Config, keyboard_socket: T) -
     })
 }
 
-fn create_switches_device<T: IntoUnixStream>(cfg: &Config, switches_socket: T) -> DeviceResult {
+fn create_switches_device<T: IntoUnixStream>(
+    cfg: &Config,
+    switches_socket: T,
+    idx: u32,
+) -> DeviceResult {
     let socket = switches_socket.into_unix_stream().map_err(|e| {
         error!("failed configuring virtio switches: {}", e);
         e
     })?;
 
-    let dev = virtio::new_switches(socket, virtio::base_features(cfg.protected_vm))
+    let dev = virtio::new_switches(idx, socket, virtio::base_features(cfg.protected_vm))
         .map_err(Error::InputDeviceNew)?;
 
     Ok(VirtioDeviceStub {
@@ -1423,32 +1446,40 @@ fn create_virtio_devices(
         }
     }
 
-    if let Some(single_touch_spec) = &cfg.virtio_single_touch {
-        devs.push(create_single_touch_device(cfg, single_touch_spec)?);
+    for (idx, single_touch_spec) in cfg.virtio_single_touch.iter().enumerate() {
+        devs.push(create_single_touch_device(
+            cfg,
+            single_touch_spec,
+            idx as u32,
+        )?);
     }
 
-    if let Some(multi_touch_spec) = &cfg.virtio_multi_touch {
-        devs.push(create_multi_touch_device(cfg, multi_touch_spec)?);
+    for (idx, multi_touch_spec) in cfg.virtio_multi_touch.iter().enumerate() {
+        devs.push(create_multi_touch_device(
+            cfg,
+            multi_touch_spec,
+            idx as u32,
+        )?);
     }
 
-    if let Some(trackpad_spec) = &cfg.virtio_trackpad {
-        devs.push(create_trackpad_device(cfg, trackpad_spec)?);
+    for (idx, trackpad_spec) in cfg.virtio_trackpad.iter().enumerate() {
+        devs.push(create_trackpad_device(cfg, trackpad_spec, idx as u32)?);
     }
 
-    if let Some(mouse_socket) = &cfg.virtio_mouse {
-        devs.push(create_mouse_device(cfg, mouse_socket)?);
+    for (idx, mouse_socket) in cfg.virtio_mice.iter().enumerate() {
+        devs.push(create_mouse_device(cfg, mouse_socket, idx as u32)?);
     }
 
-    if let Some(keyboard_socket) = &cfg.virtio_keyboard {
-        devs.push(create_keyboard_device(cfg, keyboard_socket)?);
+    for (idx, keyboard_socket) in cfg.virtio_keyboard.iter().enumerate() {
+        devs.push(create_keyboard_device(cfg, keyboard_socket, idx as u32)?);
     }
 
-    if let Some(switches_socket) = &cfg.virtio_switches {
-        devs.push(create_switches_device(cfg, switches_socket)?);
+    for (idx, switches_socket) in cfg.virtio_switches.iter().enumerate() {
+        devs.push(create_switches_device(cfg, switches_socket, idx as u32)?);
     }
 
     for dev_path in &cfg.virtio_input_evdevs {
-        devs.push(create_vinput_device(cfg, dev_path)?);
+        devs.push(create_vinput_device(cfg, &dev_path)?);
     }
 
     devs.push(create_balloon_device(cfg, balloon_device_tube)?);
@@ -1527,10 +1558,14 @@ fn create_virtio_devices(
                     UnixStream::pair().map_err(Error::CreateSocket)?;
                 let (multi_touch_width, multi_touch_height) = cfg
                     .virtio_multi_touch
+                    .first()
                     .as_ref()
                     .map(|multi_touch_spec| multi_touch_spec.get_size())
                     .unwrap_or((gpu_parameters.display_width, gpu_parameters.display_height));
                 let dev = virtio::new_multi_touch(
+                    // u32::MAX is the least likely to collide with the indices generated above for
+                    // the multi_touch options, which begin at 0.
+                    u32::MAX,
                     virtio_dev_socket,
                     multi_touch_width,
                     multi_touch_height,
@@ -1547,6 +1582,9 @@ fn create_virtio_devices(
                 let (event_device_socket, virtio_dev_socket) =
                     UnixStream::pair().map_err(Error::CreateSocket)?;
                 let dev = virtio::new_keyboard(
+                    // u32::MAX is the least likely to collide with the indices generated above for
+                    // the multi_touch options, which begin at 0.
+                    u32::MAX,
                     virtio_dev_socket,
                     virtio::base_features(cfg.protected_vm),
                 )
