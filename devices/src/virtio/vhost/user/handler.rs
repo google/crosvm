@@ -8,7 +8,6 @@ use base::{AsRawDescriptor, Event};
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{
     VhostUserConfigFlags, VhostUserProtocolFeatures, VhostUserVirtioFeatures,
-    VHOST_USER_CONFIG_OFFSET,
 };
 use vmm_vhost::vhost_user::{Master, VhostUserMaster};
 use vmm_vhost::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
@@ -100,12 +99,7 @@ impl VhostUserHandler {
         let buf = vec![0u8; config_len as usize];
         let (_, config) = self
             .vu
-            .get_config(
-                VHOST_USER_CONFIG_OFFSET,
-                config_len as u32,
-                VhostUserConfigFlags::WRITABLE,
-                &buf,
-            )
+            .get_config(0, config_len as u32, VhostUserConfigFlags::WRITABLE, &buf)
             .map_err(Error::GetConfig)?;
 
         data.write_all(
