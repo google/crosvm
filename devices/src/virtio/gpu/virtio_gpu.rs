@@ -564,6 +564,17 @@ impl VirtioGpu {
         self.rutabaga.poll()
     }
 
+    /// Polls the Rutabaga backend.
+    pub fn event_poll(&self) {
+        self.rutabaga.event_poll();
+    }
+
+    /// Gets a pollable eventfd that signals the device to wakeup and poll the
+    /// Rutabaga backend.
+    pub fn poll_descriptor(&self) -> Option<SafeDescriptor> {
+        self.rutabaga.poll_descriptor()
+    }
+
     /// Creates a 3D resource with the given properties and resource_id.
     pub fn resource_create_3d(
         &mut self,

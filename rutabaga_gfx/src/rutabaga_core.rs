@@ -76,6 +76,15 @@ pub trait RutabagaComponent {
         0
     }
 
+    /// Used only by VirglRenderer to poll when its poll_descriptor is signaled.
+    fn event_poll(&self) {}
+
+    /// Used only by VirglRenderer to return a poll_descriptor that is signaled when a poll() is
+    /// necessary.
+    fn poll_descriptor(&self) -> Option<SafeDescriptor> {
+        None
+    }
+
     /// Implementations must create a resource with the given metadata.  For 2D rutabaga components,
     /// this a system memory allocation.  For 3D components, this is typically a GL texture or
     /// buffer.  Vulkan components should use blob resources instead.
@@ -330,6 +339,20 @@ impl Rutabaga {
             }
         }
         completed_fences
+    }
+
+    /// Polls the default rutabaga component.
+    pub fn event_poll(&self) {
+        if let Some(component) = self.components.get(&self.default_component) {
+            component.event_poll();
+        }
+    }
+
+    /// Returns a pollable descriptor for the default rutabaga component. In practice, it is only
+    /// not None if the default component is virglrenderer.
+    pub fn poll_descriptor(&self) -> Option<SafeDescriptor> {
+        let component = self.components.get(&self.default_component).or(None)?;
+        component.poll_descriptor()
     }
 
     /// Creates a resource with the `resource_create_3d` metadata.

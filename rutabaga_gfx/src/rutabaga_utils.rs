@@ -290,14 +290,14 @@ pub type RutabagaResult<T> = std::result::Result<T, RutabagaError>;
 
 /// Flags for virglrenderer.  Copied from virglrenderer bindings.
 const VIRGLRENDERER_USE_EGL: u32 = 1 << 0;
-const VIRGLRENDERER_THREAD_SYNC: u32 = 1 << 1;
+pub const VIRGLRENDERER_THREAD_SYNC: u32 = 1 << 1;
 const VIRGLRENDERER_USE_GLX: u32 = 1 << 2;
 const VIRGLRENDERER_USE_SURFACELESS: u32 = 1 << 3;
 const VIRGLRENDERER_USE_GLES: u32 = 1 << 4;
 const VIRGLRENDERER_USE_EXTERNAL_BLOB: u32 = 1 << 5;
 const VIRGLRENDERER_VENUS: u32 = 1 << 6;
 const VIRGLRENDERER_NO_VIRGL: u32 = 1 << 7;
-const VIRGLRENDERER_USE_ASYNC_FENCE_CB: u32 = 1 << 8;
+pub const VIRGLRENDERER_USE_ASYNC_FENCE_CB: u32 = 1 << 8;
 const VIRGLRENDERER_RENDER_SERVER: u32 = 1 << 9;
 
 /// virglrenderer flag struct.
@@ -313,6 +313,12 @@ impl Default for VirglRendererFlags {
             .use_surfaceless(true)
             .use_gles(true)
             .use_render_server(false)
+    }
+}
+
+impl From<VirglRendererFlags> for u32 {
+    fn from(flags: VirglRendererFlags) -> u32 {
+        flags.0
     }
 }
 
@@ -396,6 +402,7 @@ const GFXSTREAM_RENDERER_FLAGS_USE_GLES: u32 = 1 << 4;
 const GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT: u32 = 1 << 5;
 const GFXSTREAM_RENDERER_FLAGS_NO_SYNCFD_BIT: u32 = 1 << 20;
 const GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE: u32 = 1 << 21;
+pub const GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB: u32 = 1 << 23;
 
 /// gfxstream flag struct.
 #[derive(Copy, Clone, Default)]
@@ -448,6 +455,17 @@ impl GfxstreamFlags {
     /// Use ANGLE as the guest GLES driver.
     pub fn use_guest_angle(self, v: bool) -> GfxstreamFlags {
         self.set_flag(GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE, v)
+    }
+
+    /// Use async fence completion callback.
+    pub fn use_async_fence_cb(self, v: bool) -> GfxstreamFlags {
+        self.set_flag(GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB, v)
+    }
+}
+
+impl From<GfxstreamFlags> for u32 {
+    fn from(flags: GfxstreamFlags) -> u32 {
+        flags.0
     }
 }
 

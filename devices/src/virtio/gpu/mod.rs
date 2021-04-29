@@ -8,7 +8,7 @@ mod udmabuf_bindings;
 mod virtio_gpu;
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::convert::TryFrom;
 use std::i64;
 use std::io::Read;
@@ -140,7 +140,7 @@ pub struct VirtioScanoutBlobData {
     pub offsets: [u32; 4],
 }
 
-#[derive(Hash, Eq, PartialEq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
 enum VirtioGpuRing {
     Global,
     ContextSpecific { ctx_id: u32, ring_idx: u8 },
@@ -156,7 +156,7 @@ struct FenceDescriptor {
 #[derive(Default)]
 pub struct FenceState {
     descs: Vec<FenceDescriptor>,
-    completed_fences: HashMap<VirtioGpuRing, u64>,
+    completed_fences: BTreeMap<VirtioGpuRing, u64>,
 }
 
 pub trait QueueReader {
@@ -787,6 +787,10 @@ impl Frontend {
     pub fn has_pending_fences(&self) -> bool {
         !self.fence_state.lock().descs.is_empty()
     }
+
+    pub fn event_poll(&self) {
+        self.virtio_gpu.event_poll();
+    }
 }
 
 struct Worker {
@@ -812,6 +816,7 @@ impl Worker {
             InterruptResample,
             Kill,
             ResourceBridge { index: usize },
+            VirtioGpuPoll,
         }
 
         let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
@@ -832,6 +837,13 @@ impl Worker {
                 .is_err()
             {
                 error!("failed creating WaitContext");
+                return;
+            }
+        }
+
+        if let Some(poll_desc) = self.state.virtio_gpu.poll_descriptor() {
+            if let Err(e) = wait_ctx.add(&poll_desc, Token::VirtioGpuPoll) {
+                error!("failed adding poll eventfd to WaitContext: {}", e);
                 return;
             }
         }
@@ -909,6 +921,9 @@ impl Worker {
                     }
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
+                    }
+                    Token::VirtioGpuPoll => {
+                        self.state.event_poll();
                     }
                     Token::Kill => {
                         break 'wait;
