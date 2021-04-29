@@ -441,6 +441,9 @@ impl arch::LinuxArch for X8664arch {
             &mut mmio_bus,
         )?;
 
+        // Use ACPI description if provided by the user.
+        let noacpi = acpi_dev_resource.sdts.is_empty();
+
         let ramoops_region = match components.pstore {
             Some(pstore) => Some(
                 arch::pstore::create_memory_region(&mut vm, system_allocator, &pstore)
@@ -472,6 +475,10 @@ impl arch::LinuxArch for X8664arch {
             VmImage::Bios(ref mut bios) => Self::load_bios(&mem, bios)?,
             VmImage::Kernel(ref mut kernel_image) => {
                 let mut cmdline = Self::get_base_linux_cmdline();
+
+                if noacpi {
+                    cmdline.insert_str("pci=noacpi").unwrap();
+                }
 
                 get_serial_cmdline(&mut cmdline, serial_parameters, "io")
                     .map_err(Error::GetSerialCmdline)?;
@@ -943,7 +950,7 @@ impl X8664arch {
     /// This returns a minimal kernel command for this architecture
     fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
         let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
-        cmdline.insert_str("pci=noacpi reboot=k panic=-1").unwrap();
+        cmdline.insert_str("reboot=k panic=-1").unwrap();
 
         cmdline
     }

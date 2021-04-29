@@ -160,7 +160,7 @@ where
     )
     .unwrap();
 
-    let param_args = "nokaslr";
+    let param_args = "nokaslr pci=noacpi";
 
     let mut cmdline = X8664arch::get_base_linux_cmdline();
 
