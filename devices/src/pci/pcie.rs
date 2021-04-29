@@ -109,17 +109,19 @@ impl PciDevice for PciBridge {
 
     fn assign_irq(
         &mut self,
-        irq_evt: Event,
-        irq_resample_evt: Event,
-        irq_num: u32,
-        irq_pin: PciInterruptPin,
-    ) {
-        self.config.set_irq(irq_num as u8, irq_pin);
-        self.interrupt_evt = Some(irq_evt);
-        self.interrupt_resample_evt = Some(irq_resample_evt);
-
+        irq_evt: &Event,
+        irq_resample_evt: &Event,
+        irq_num: Option<u32>,
+    ) -> Option<(u32, PciInterruptPin)> {
+        self.interrupt_evt = Some(irq_evt.try_clone().ok()?);
+        self.interrupt_resample_evt = Some(irq_resample_evt.try_clone().ok()?);
         let msix_config_clone = self.msix_config.clone();
         self.device.clone_interrupt(msix_config_clone);
+
+        let gsi = irq_num?;
+        self.config.set_irq(gsi as u8, PciInterruptPin::IntA);
+
+        Some((gsi, PciInterruptPin::IntA))
     }
 
     fn allocate_io_bars(

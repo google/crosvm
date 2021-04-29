@@ -89,13 +89,15 @@ pub trait PciDevice: Send {
     /// Assign a legacy PCI IRQ to this device.
     /// The device may write to `irq_evt` to trigger an interrupt.
     /// When `irq_resample_evt` is signaled, the device should re-assert `irq_evt` if necessary.
+    /// Optional irq_num can be used for default INTx allocation, device can overwrite it.
+    /// If legacy INTx is used, function shall return requested IRQ number and PCI INTx pin.
     fn assign_irq(
         &mut self,
-        _irq_evt: Event,
-        _irq_resample_evt: Event,
-        _irq_num: u32,
-        _irq_pin: PciInterruptPin,
-    ) {
+        _irq_evt: &Event,
+        _irq_resample_evt: &Event,
+        _irq_num: Option<u32>,
+    ) -> Option<(u32, PciInterruptPin)> {
+        None
     }
     /// Allocates the needed IO BAR space using the `allocate` function which takes a size and
     /// returns an address. Returns a Vec of (address, length) tuples.
@@ -222,12 +224,11 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     }
     fn assign_irq(
         &mut self,
-        irq_evt: Event,
-        irq_resample_evt: Event,
-        irq_num: u32,
-        irq_pin: PciInterruptPin,
-    ) {
-        (**self).assign_irq(irq_evt, irq_resample_evt, irq_num, irq_pin)
+        irq_evt: &Event,
+        irq_resample_evt: &Event,
+        irq_num: Option<u32>,
+    ) -> Option<(u32, PciInterruptPin)> {
+        (**self).assign_irq(irq_evt, irq_resample_evt, irq_num)
     }
     fn allocate_io_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
         (**self).allocate_io_bars(resources)

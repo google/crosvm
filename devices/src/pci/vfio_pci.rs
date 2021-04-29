@@ -4,6 +4,8 @@
 
 use std::cmp::{max, min};
 use std::collections::BTreeSet;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::u32;
 
@@ -35,7 +37,7 @@ const INTEL_VENDOR_ID: u16 = 0x8086;
 const PCI_COMMAND: u32 = 0x4;
 const PCI_COMMAND_MEMORY: u8 = 0x2;
 const PCI_BASE_CLASS_CODE: u32 = 0x0B;
-
+const PCI_INTERRUPT_NUM: u32 = 0x3C;
 const PCI_INTERRUPT_PIN: u32 = 0x3D;
 
 struct VfioPciConfig {
@@ -932,19 +934,38 @@ impl PciDevice for VfioPciDevice {
 
     fn assign_irq(
         &mut self,
-        irq_evt: Event,
-        irq_resample_evt: Event,
-        irq_num: u32,
-        _irq_pin: PciInterruptPin,
-    ) {
-        self.config.write_config_byte(irq_num as u8, 0x3C);
-        self.interrupt_evt = Some(irq_evt);
-        self.interrupt_resample_evt = Some(irq_resample_evt);
+        irq_evt: &Event,
+        irq_resample_evt: &Event,
+        _irq_num: Option<u32>,
+    ) -> Option<(u32, PciInterruptPin)> {
+        // Keep event/resample event references.
+        self.interrupt_evt = Some(irq_evt.try_clone().ok()?);
+        self.interrupt_resample_evt = Some(irq_resample_evt.try_clone().ok()?);
+
+        // Is INTx configured?
+        let pin = match self.config.read_config_byte(PCI_INTERRUPT_PIN) {
+            1 => Some(PciInterruptPin::IntA),
+            2 => Some(PciInterruptPin::IntB),
+            3 => Some(PciInterruptPin::IntC),
+            4 => Some(PciInterruptPin::IntD),
+            _ => None,
+        }?;
 
         // enable INTX
-        if self.config.read_config_byte(PCI_INTERRUPT_PIN) > 0 {
-            self.enable_intx();
-        }
+        self.enable_intx();
+
+        // TODO: replace sysfs/irq value parsing with vfio interface
+        //       reporting host allocated interrupt number and type.
+        let mut path = PathBuf::from("/sys/bus/pci/devices");
+        path.push(self.device.device_name());
+        path.push("irq");
+        let gsi = fs::read_to_string(path)
+            .map(|v| v.trim().parse::<u32>().unwrap_or(0))
+            .unwrap_or(0);
+
+        self.config.write_config_byte(gsi as u8, PCI_INTERRUPT_NUM);
+
+        Some((gsi, pin))
     }
 
     fn allocate_io_bars(

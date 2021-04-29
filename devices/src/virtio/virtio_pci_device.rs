@@ -440,14 +440,15 @@ impl PciDevice for VirtioPciDevice {
 
     fn assign_irq(
         &mut self,
-        irq_evt: Event,
-        irq_resample_evt: Event,
-        irq_num: u32,
-        irq_pin: PciInterruptPin,
-    ) {
-        self.config_regs.set_irq(irq_num as u8, irq_pin);
-        self.interrupt_evt = Some(irq_evt);
-        self.interrupt_resample_evt = Some(irq_resample_evt);
+        irq_evt: &Event,
+        irq_resample_evt: &Event,
+        irq_num: Option<u32>,
+    ) -> Option<(u32, PciInterruptPin)> {
+        self.interrupt_evt = Some(irq_evt.try_clone().ok()?);
+        self.interrupt_resample_evt = Some(irq_resample_evt.try_clone().ok()?);
+        let gsi = irq_num?;
+        self.config_regs.set_irq(gsi as u8, PciInterruptPin::IntA);
+        Some((gsi, PciInterruptPin::IntA))
     }
 
     fn allocate_io_bars(

@@ -343,34 +343,23 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
         .allocate_device_bars(resources)
         .map_err(DeviceRegistrationError::AllocateDeviceAddrs)?;
 
+    // Do not suggest INTx for hot-plug devices.
+    let intx_event = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
+    let intx_resample = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
+
+    if let Some((gsi, _pin)) = device.assign_irq(&intx_event, &intx_resample, None) {
+        resources.reserve_irq(gsi);
+
+        linux
+            .irq_chip
+            .as_irq_chip_mut()
+            .register_irq_event(gsi, &intx_event, Some(&intx_resample))
+            .map_err(DeviceRegistrationError::RegisterIrqfd)?;
+    }
+
     let mut keep_rds = device.keep_rds();
     syslog::push_descriptors(&mut keep_rds);
 
-    let irqfd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
-    let irq_resample_fd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
-
-    let irq_num = resources
-        .allocate_irq()
-        .ok_or(DeviceRegistrationError::AllocateIrq)?;
-
-    // Rotate interrupt pins across PCI logical functions.
-    let pci_irq_pin = match pci_address.func % 4 {
-        0 => PciInterruptPin::IntA,
-        1 => PciInterruptPin::IntB,
-        2 => PciInterruptPin::IntC,
-        3 => PciInterruptPin::IntD,
-        _ => unreachable!(), // Obviously not possible, but the compiler is not smart enough.
-    };
-
-    linux
-        .irq_chip
-        .as_irq_chip_mut()
-        .register_irq_event(irq_num, &irqfd, Some(&irq_resample_fd))
-        .map_err(DeviceRegistrationError::RegisterIrqfd)?;
-
-    keep_rds.push(irqfd.as_raw_descriptor());
-    keep_rds.push(irq_resample_fd.as_raw_descriptor());
-    device.assign_irq(irqfd, irq_resample_fd, irq_num, pci_irq_pin);
     device
         .register_device_capabilities()
         .map_err(DeviceRegistrationError::RegisterDeviceCapabilities)?;
@@ -434,10 +423,7 @@ pub fn generate_pci_root(
     DeviceRegistrationError,
 > {
     let mut root = PciRoot::new(mmio_bus.clone(), io_bus.clone());
-    let mut pci_irqs = Vec::new();
     let mut pid_labels = BTreeMap::new();
-
-    let mut irqs: Vec<Option<u32>> = vec![None; max_irqs];
 
     // Allocate PCI device address before allocating BARs.
     let mut device_addrs = Vec::<PciAddress>::new();
@@ -466,14 +452,12 @@ pub fn generate_pci_root(
         device_ranges.insert(dev_idx, ranges);
     }
 
-    for (dev_idx, (mut device, jail)) in devices.into_iter().enumerate() {
-        let address = device_addrs[dev_idx];
-        let mut keep_rds = device.keep_rds();
-        syslog::push_descriptors(&mut keep_rds);
-        keep_rds.append(&mut vm.get_memory().as_raw_descriptors());
+    // Allocate legacy INTx
+    let mut pci_irqs = Vec::new();
+    let mut irqs: Vec<Option<u32>> = vec![None; max_irqs];
 
-        let irqfd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
-        let irq_resample_fd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
+    for (dev_idx, (device, _jail)) in devices.iter_mut().enumerate() {
+        // For default interrupt routing use next preallocated interrupt from the pool.
         let irq_num = if let Some(irq) = irqs[dev_idx % max_irqs] {
             irq
         } else {
@@ -483,23 +467,30 @@ pub fn generate_pci_root(
             irqs[dev_idx % max_irqs] = Some(irq);
             irq
         };
-        // Rotate interrupt pins across PCI logical functions.
-        let pci_irq_pin = match address.func % 4 {
-            0 => PciInterruptPin::IntA,
-            1 => PciInterruptPin::IntB,
-            2 => PciInterruptPin::IntC,
-            3 => PciInterruptPin::IntD,
-            _ => unreachable!(), // Obviously not possible, but the compiler is not smart enough.
-        };
 
-        irq_chip
-            .register_irq_event(irq_num, &irqfd, Some(&irq_resample_fd))
-            .map_err(DeviceRegistrationError::RegisterIrqfd)?;
+        let intx_event = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
+        let intx_resample = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
 
-        keep_rds.push(irqfd.as_raw_descriptor());
-        keep_rds.push(irq_resample_fd.as_raw_descriptor());
-        device.assign_irq(irqfd, irq_resample_fd, irq_num, pci_irq_pin);
-        pci_irqs.push((address, irq_num, pci_irq_pin));
+        if let Some((gsi, pin)) = device.assign_irq(&intx_event, &intx_resample, Some(irq_num)) {
+            // reserve INTx if needed and non-default.
+            if gsi != irq_num {
+                resources.reserve_irq(gsi);
+            };
+            irq_chip
+                .register_irq_event(gsi, &intx_event, Some(&intx_resample))
+                .map_err(DeviceRegistrationError::RegisterIrqfd)?;
+
+            pci_irqs.push((device_addrs[dev_idx], gsi, pin));
+        }
+    }
+
+    for (dev_idx, (mut device, jail)) in devices.into_iter().enumerate() {
+        let address = device_addrs[dev_idx];
+
+        let mut keep_rds = device.keep_rds();
+        syslog::push_descriptors(&mut keep_rds);
+        keep_rds.append(&mut vm.get_memory().as_raw_descriptors());
+
         let ranges = io_ranges.remove(&dev_idx).unwrap_or_default();
         let device_ranges = device_ranges.remove(&dev_idx).unwrap_or_default();
         device
@@ -511,6 +502,7 @@ pub fn generate_pci_root(
                 .map_err(DeviceRegistrationError::RegisterIoevent)?;
             keep_rds.push(event.as_raw_descriptor());
         }
+
         let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
             let proxy = ProxyDevice::new(device, &jail, keep_rds)
                 .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;

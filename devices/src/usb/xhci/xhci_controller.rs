@@ -13,7 +13,7 @@ use crate::usb::xhci::xhci::Xhci;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::usb::xhci::xhci_regs::{init_xhci_mmio_space_and_regs, XhciRegs};
 use crate::utils::FailHandle;
-use base::{error, Event, RawDescriptor};
+use base::{error, AsRawDescriptor, Event, RawDescriptor};
 use resources::{Alloc, MmioType, SystemAllocator};
 use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -189,6 +189,16 @@ impl PciDevice for XhciController {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         match &self.state {
             XhciControllerState::Created { device_provider } => device_provider.keep_rds(),
+            XhciControllerState::IrqAssigned {
+                device_provider,
+                irq_evt,
+                irq_resample_evt,
+            } => {
+                let mut keep_rds = device_provider.keep_rds();
+                keep_rds.push(irq_evt.as_raw_descriptor());
+                keep_rds.push(irq_resample_evt.as_raw_descriptor());
+                keep_rds
+            }
             _ => {
                 error!("xhci controller is in a wrong state");
                 vec![]
@@ -198,24 +208,25 @@ impl PciDevice for XhciController {
 
     fn assign_irq(
         &mut self,
-        irq_evt: Event,
-        irq_resample_evt: Event,
-        irq_num: u32,
-        irq_pin: PciInterruptPin,
-    ) {
+        irq_evt: &Event,
+        irq_resample_evt: &Event,
+        irq_num: Option<u32>,
+    ) -> Option<(u32, PciInterruptPin)> {
+        let gsi = irq_num?;
         match mem::replace(&mut self.state, XhciControllerState::Unknown) {
             XhciControllerState::Created { device_provider } => {
-                self.config_regs.set_irq(irq_num as u8, irq_pin);
+                self.config_regs.set_irq(gsi as u8, PciInterruptPin::IntA);
                 self.state = XhciControllerState::IrqAssigned {
                     device_provider,
-                    irq_evt,
-                    irq_resample_evt,
+                    irq_evt: irq_evt.try_clone().ok()?,
+                    irq_resample_evt: irq_resample_evt.try_clone().ok()?,
                 }
             }
             _ => {
                 error!("xhci controller is in a wrong state");
             }
         }
+        Some((gsi, PciInterruptPin::IntA))
     }
 
     fn allocate_io_bars(
