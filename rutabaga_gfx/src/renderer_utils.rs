@@ -4,9 +4,7 @@
 
 //! renderer_utils: Utility functions and structs used by virgl_renderer and gfxstream.
 
-use std::cell::RefCell;
 use std::os::raw::{c_int, c_void};
-use std::rc::Rc;
 
 use base::{IntoRawDescriptor, SafeDescriptor};
 
@@ -32,39 +30,24 @@ pub fn ret_to_res(ret: i32) -> RutabagaResult<()> {
     }
 }
 
-pub struct FenceState {
-    pub latest_fence: u32,
-    pub handler: Option<RutabagaFenceHandler>,
-}
-
-impl FenceState {
-    pub fn write(&mut self, latest_fence: u32) {
-        if latest_fence > self.latest_fence {
-            self.latest_fence = latest_fence;
-            if let Some(handler) = &self.handler {
-                handler.call(RutabagaFence {
-                    flags: RUTABAGA_FLAG_FENCE,
-                    fence_id: latest_fence as u64,
-                    ctx_id: 0,
-                    ring_idx: 0,
-                });
-            }
-        }
-    }
-}
-
 pub struct VirglCookie {
-    pub fence_state: Rc<RefCell<FenceState>>,
     pub render_server_fd: Option<SafeDescriptor>,
+    pub fence_handler: Option<RutabagaFenceHandler>,
 }
 
 pub unsafe extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
     assert!(!cookie.is_null());
     let cookie = &*(cookie as *mut VirglCookie);
 
-    // Track the most recent fence.
-    let mut fence_state = cookie.fence_state.borrow_mut();
-    fence_state.write(fence);
+    // Call fence completion callback
+    if let Some(handler) = &cookie.fence_handler {
+        handler.call(RutabagaFence {
+            flags: RUTABAGA_FLAG_FENCE,
+            fence_id: fence as u64,
+            ctx_id: 0,
+            ring_idx: 0,
+        });
+    }
 }
 
 #[allow(dead_code)]
