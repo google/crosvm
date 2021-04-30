@@ -149,18 +149,11 @@ impl VfioMsiCap {
     }
 
     fn is_msi_reg(&self, index: u64, len: usize) -> bool {
-        let msi_len: u32 = if self.is_64bit {
-            if self.mask_cap {
-                MSI_LENGTH_64BIT_WITH_MASK
-            } else {
-                MSI_LENGTH_64BIT_WITHOUT_MASK
-            }
-        } else {
-            if self.mask_cap {
-                MSI_LENGTH_32BIT_WITH_MASK
-            } else {
-                MSI_LENGTH_32BIT_WITHOUT_MASK
-            }
+        let msi_len = match (self.is_64bit, self.mask_cap) {
+            (true, true) => MSI_LENGTH_64BIT_WITH_MASK,
+            (true, false) => MSI_LENGTH_64BIT_WITHOUT_MASK,
+            (false, true) => MSI_LENGTH_32BIT_WITH_MASK,
+            (false, false) => MSI_LENGTH_32BIT_WITHOUT_MASK,
         };
 
         index >= self.offset as u64
