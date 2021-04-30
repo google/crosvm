@@ -139,9 +139,9 @@ impl Cmdline {
     }
 }
 
-impl Into<Vec<u8>> for Cmdline {
-    fn into(self) -> Vec<u8> {
-        self.line.into_bytes()
+impl From<Cmdline> for Vec<u8> {
+    fn from(c: Cmdline) -> Vec<u8> {
+        c.line.into_bytes()
     }
 }
 

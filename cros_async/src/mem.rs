@@ -68,9 +68,9 @@ impl From<Vec<u8>> for VecIoWrapper {
     }
 }
 
-impl Into<Vec<u8>> for VecIoWrapper {
-    fn into(self) -> Vec<u8> {
-        self.inner.into()
+impl From<VecIoWrapper> for Vec<u8> {
+    fn from(v: VecIoWrapper) -> Vec<u8> {
+        v.inner.into()
     }
 }
 
