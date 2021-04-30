@@ -3,8 +3,9 @@
 // found in the LICENSE file.
 
 use std::cell::UnsafeCell;
+use std::hint;
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{spin_loop_hint, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const UNLOCKED: bool = false;
 const LOCKED: bool = true;
@@ -64,7 +65,7 @@ impl<T: ?Sized> SpinLock<T> {
             {
                 break;
             }
-            spin_loop_hint();
+            hint::spin_loop();
         }
 
         SpinLockGuard {

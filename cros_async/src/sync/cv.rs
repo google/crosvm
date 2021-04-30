@@ -3,8 +3,9 @@
 // found in the LICENSE file.
 
 use std::cell::UnsafeCell;
+use std::hint;
 use std::mem;
-use std::sync::atomic::{spin_loop_hint, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use crate::sync::mu::{MutexGuard, MutexReadGuard, RawMutex};
@@ -171,7 +172,7 @@ impl Condvar {
                 )
                 .is_err()
         {
-            spin_loop_hint();
+            hint::spin_loop();
             oldstate = self.state.load(Ordering::Relaxed);
         }
 
@@ -223,7 +224,7 @@ impl Condvar {
                 )
                 .is_err()
         {
-            spin_loop_hint();
+            hint::spin_loop();
             oldstate = self.state.load(Ordering::Relaxed);
         }
 
@@ -281,7 +282,7 @@ impl Condvar {
                 )
                 .is_err()
         {
-            spin_loop_hint();
+            hint::spin_loop();
             oldstate = self.state.load(Ordering::Relaxed);
         }
 
@@ -319,7 +320,7 @@ impl Condvar {
                 )
                 .is_err()
         {
-            spin_loop_hint();
+            hint::spin_loop();
             oldstate = self.state.load(Ordering::Relaxed);
         }
 

@@ -3,9 +3,10 @@
 // found in the LICENSE file.
 
 use std::cell::UnsafeCell;
+use std::hint;
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{spin_loop_hint, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::yield_now;
 
@@ -182,7 +183,7 @@ fn get_wake_list(waiters: &mut WaiterList) -> (WaiterList, usize) {
 #[inline]
 fn cpu_relax(iterations: usize) {
     for _ in 0..iterations {
-        spin_loop_hint();
+        hint::spin_loop();
     }
 }
 
@@ -518,7 +519,7 @@ impl RawMutex {
                 )
                 .is_err()
         {
-            spin_loop_hint();
+            hint::spin_loop();
             oldstate = self.state.load(Ordering::Relaxed);
         }
 
@@ -593,7 +594,7 @@ impl RawMutex {
             )
             .is_err()
         {
-            spin_loop_hint();
+            hint::spin_loop();
             oldstate = self.state.load(Ordering::Relaxed);
         }
 
