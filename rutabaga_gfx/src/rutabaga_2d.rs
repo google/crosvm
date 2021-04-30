@@ -107,14 +107,12 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
             let dst_subslice = dst.get_slice(dst_start_offset as usize, copyable_size as usize)?;
 
             src_subslice.copy_to_volatile_slice(dst_subslice);
+        } else if src_line_start_offset >= src_start_offset {
+            next_src = true;
+            next_line = false;
         } else {
-            if src_line_start_offset >= src_start_offset {
-                next_src = true;
-                next_line = false;
-            } else {
-                next_src = false;
-                next_line = true;
-            }
+            next_src = false;
+            next_line = true;
         };
 
         if next_src {
