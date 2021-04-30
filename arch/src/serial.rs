@@ -136,7 +136,7 @@ impl WriteSocket {
         const SEND_RETRY: usize = 2;
         let mut sent = 0;
         for _ in 0..SEND_RETRY {
-            match self.sock.send(&buf[..]) {
+            match self.sock.send(buf) {
                 Ok(bytes_sent) => {
                     sent = bytes_sent;
                     break;
