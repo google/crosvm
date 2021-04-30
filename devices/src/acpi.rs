@@ -103,10 +103,8 @@ impl BusDevice for ACPIPMResource {
                         if let Err(e) = self.exit_evt.write(1) {
                             error!("ACPIPM: failed to trigger exit event: {}", e);
                         }
-                    } else {
-                        if let Err(e) = self.suspend_evt.write(1) {
-                            error!("ACPIPM: failed to trigger suspend event: {}", e);
-                        }
+                    } else if let Err(e) = self.suspend_evt.write(1) {
+                        error!("ACPIPM: failed to trigger suspend event: {}", e);
                     }
                 }
                 self.pm1_control = val & !BITMASK_PM1CNT_SLEEP_ENABLE;
