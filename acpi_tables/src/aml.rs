@@ -210,8 +210,7 @@ impl Name {
     /// * `path` - The namestring.
     /// * `inner` - AML objects contained in this namespace.
     pub fn new(path: Path, inner: &dyn Aml) -> Self {
-        let mut bytes = Vec::new();
-        bytes.push(NAMEOP);
+        let mut bytes = vec![NAMEOP];
         path.to_aml_bytes(&mut bytes);
         inner.to_aml_bytes(&mut bytes);
         Name { bytes }
@@ -225,8 +224,7 @@ pub struct Package<'a> {
 
 impl<'a> Aml for Package<'a> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
-        let mut bytes = Vec::new();
-        bytes.push(self.children.len() as u8);
+        let mut bytes = vec![self.children.len() as u8];
         for child in &self.children {
             child.to_aml_bytes(&mut bytes);
         }
@@ -359,8 +357,7 @@ impl Aml for Usize {
 }
 
 fn create_aml_string(v: &str) -> Vec<u8> {
-    let mut data = Vec::new();
-    data.push(STRINGOP);
+    let mut data = vec![STRINGOP];
     data.extend_from_slice(v.as_bytes());
     data.push(0x0); /* NullChar */
     data
