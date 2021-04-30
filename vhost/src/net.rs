@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use std::os::unix::fs::OpenOptionsExt;
 use std::{
     fs::{File, OpenOptions},
-    path::PathBuf,
+    path::Path,
 };
 
 use base::{ioctl_with_ref, AsRawDescriptor, RawDescriptor};
@@ -29,7 +29,7 @@ pub struct Net<T> {
 
 pub trait NetT<T: TapT>: Vhost + AsRawDescriptor + Send + Sized {
     /// Create a new NetT instance
-    fn new(vhost_net_device_path: &PathBuf, mem: &GuestMemory) -> Result<Self>;
+    fn new(vhost_net_device_path: &Path, mem: &GuestMemory) -> Result<Self>;
 
     /// Set the tap file descriptor that will serve as the VHOST_NET backend.
     /// This will start the vhost worker for the given queue.
@@ -48,7 +48,7 @@ where
     ///
     /// # Arguments
     /// * `mem` - Guest memory mapping.
-    fn new(vhost_net_device_path: &PathBuf, mem: &GuestMemory) -> Result<Net<T>> {
+    fn new(vhost_net_device_path: &Path, mem: &GuestMemory) -> Result<Net<T>> {
         Ok(Net::<T> {
             descriptor: OpenOptions::new()
                 .read(true)
@@ -118,7 +118,7 @@ pub mod fakes {
     where
         T: TapT,
     {
-        fn new(_vhost_net_device_path: &PathBuf, mem: &GuestMemory) -> Result<FakeNet<T>> {
+        fn new(_vhost_net_device_path: &Path, mem: &GuestMemory) -> Result<FakeNet<T>> {
             Ok(FakeNet::<T> {
                 descriptor: OpenOptions::new()
                     .read(true)

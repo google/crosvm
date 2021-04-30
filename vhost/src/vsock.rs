@@ -5,7 +5,7 @@
 use std::os::unix::fs::OpenOptionsExt;
 use std::{
     fs::{File, OpenOptions},
-    path::PathBuf,
+    path::Path,
 };
 
 use base::{ioctl_with_ref, AsRawDescriptor, RawDescriptor};
@@ -22,7 +22,7 @@ pub struct Vsock {
 
 impl Vsock {
     /// Open a handle to a new VHOST_VSOCK instance.
-    pub fn new(vhost_vsock_device_path: &PathBuf, mem: &GuestMemory) -> Result<Vsock> {
+    pub fn new(vhost_vsock_device_path: &Path, mem: &GuestMemory) -> Result<Vsock> {
         Ok(Vsock {
             descriptor: OpenOptions::new()
                 .read(true)

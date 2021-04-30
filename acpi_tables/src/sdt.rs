@@ -4,7 +4,7 @@
 
 use std::fs::File;
 use std::io::{ErrorKind, Read, Result};
-use std::path::PathBuf;
+use std::path::Path;
 
 use data_model::DataInit;
 
@@ -60,7 +60,7 @@ impl SDT {
     }
 
     /// Set up the ACPI table from file content. Verify file checksum.
-    pub fn from_file(path: &PathBuf) -> Result<Self> {
+    pub fn from_file(path: &Path) -> Result<Self> {
         let mut file = File::open(path)?;
         let mut data = Vec::new();
         file.read_to_end(&mut data)?;

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{path::PathBuf, thread};
+use std::{path::Path, thread};
 
 use data_model::{DataInit, Le64};
 
@@ -32,7 +32,7 @@ pub struct Vsock {
 impl Vsock {
     /// Create a new virtio-vsock device with the given VM cid.
     pub fn new(
-        vhost_vsock_device_path: &PathBuf,
+        vhost_vsock_device_path: &Path,
         base_features: u64,
         cid: u64,
         mem: &GuestMemory,

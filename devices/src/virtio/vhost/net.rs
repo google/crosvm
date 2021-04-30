@@ -4,7 +4,7 @@
 
 use std::mem;
 use std::net::Ipv4Addr;
-use std::path::PathBuf;
+use std::path::Path;
 use std::thread;
 
 use net_util::{MacAddress, TapT};
@@ -45,7 +45,7 @@ where
     /// Create a new virtio network device with the given IP address and
     /// netmask.
     pub fn new(
-        vhost_net_device_path: &PathBuf,
+        vhost_net_device_path: &Path,
         base_features: u64,
         ip_addr: Ipv4Addr,
         netmask: Ipv4Addr,
@@ -355,6 +355,7 @@ pub mod tests {
     use crate::virtio::VIRTIO_MSI_NO_VECTOR;
     use crate::ProtectionType;
     use net_util::fakes::FakeTap;
+    use std::path::PathBuf;
     use std::result;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Arc;
