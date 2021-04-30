@@ -781,11 +781,11 @@ impl VfioDevice {
 
     /// get vfio device's descriptors which are passed into minijail process
     pub fn keep_rds(&self) -> Vec<RawDescriptor> {
-        let mut rds = Vec::new();
-        rds.push(self.dev.as_raw_descriptor());
-        rds.push(self.group_descriptor);
-        rds.push(self.container.lock().as_raw_descriptor());
-        rds
+        vec![
+            self.dev.as_raw_descriptor(),
+            self.group_descriptor,
+            self.container.lock().as_raw_descriptor(),
+        ]
     }
 
     /// Add (iova, user_addr) map into vfio container iommu table
