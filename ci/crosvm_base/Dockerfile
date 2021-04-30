@@ -20,10 +20,13 @@ RUN echo 'APT::Default-Release "stable";' >/etc/apt/apt.conf.d/99_default_stable
 RUN apt-get update && apt-get install --yes --no-install-recommends \
     ca-certificates \
     curl \
+    clang \
+    libclang-dev \
     g++ \
     gcc \
     git \
     jq \
+    libasound2-dev \
     make \
     meson/testing \
     nasm \
@@ -58,14 +61,12 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- \
     --default-toolchain $(cat rust-toolchain)
 ENV PATH="/root/.cargo/bin:${PATH}"
 
+# The bindgen tool is required to build a crosvm dependency.
+RUN cargo install bindgen
+
 # Point cargo to store data on the scratch volume.
 ENV CARGO_TARGET_DIR=/workspace/scratch/cargo_target
 ENV CARGO_HOME=/workspace/scratch/cargo_home
-
-# Warms up the cargo registry cache for future cargo runs. Cargo will still
-# update the cache using a git pull, but it only needs to download files that
-# were changed since this image was built.
-RUN cargo install thisiznotarealpackage -q || true
 
 # We are building out of source with a readonly source filesystem. This flag
 # tells some build.rs files to not write into the src filesystem.

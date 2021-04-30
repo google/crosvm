@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install --yes --no-install-recommends  \
     qemu-user-static
 
 RUN apt-get install --yes --no-install-recommends -o APT::Immediate-Configure=false \
+    libc-dev:arm64 \
     libcap-dev:arm64 \
     libdbus-1-dev:arm64 \
     libdrm-dev:arm64 \
