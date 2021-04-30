@@ -176,9 +176,9 @@ impl DecoderBackend for libvda::decode::VdaInstance {
     fn new_session(&self, format: Format) -> VideoResult<Self::Session> {
         let profile = libvda::Profile::try_from(format)?;
 
-        Ok(self.open_session(profile).map_err(|e| {
+        self.open_session(profile).map_err(|e| {
             error!("failed to open a session for {:?}: {}", format, e);
             VideoError::InvalidOperation
-        })?)
+        })
     }
 }

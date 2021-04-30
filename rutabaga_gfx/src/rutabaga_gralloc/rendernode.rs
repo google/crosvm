@@ -80,10 +80,10 @@ fn get_drm_device_name(fd: &File) -> Result<String, ()> {
         return Err(());
     }
 
-    Ok(CString::new(&name_bytes[..(version.name_len as usize)])
+    CString::new(&name_bytes[..(version.name_len as usize)])
         .map_err(|_| ())?
         .into_string()
-        .map_err(|_| ())?)
+        .map_err(|_| ())
 }
 
 /// Returns a `fd` for an opened rendernode device, while filtering out specified
