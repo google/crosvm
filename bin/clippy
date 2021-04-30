@@ -53,6 +53,9 @@ SUPPRESS=(
     unneeded_field_pattern
     useless_format
     wrong_self_convention
+    # To be fixed in external libraries
+    upper_case_acronyms
+    from_over_into
 
     # False positives affecting WlVfd @ `devices/src/virtio/wl.rs`.
     # Bug: https://github.com/rust-lang/rust-clippy/issues/6312
