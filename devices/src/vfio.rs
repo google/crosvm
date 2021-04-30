@@ -391,7 +391,7 @@ impl VfioDevice {
     /// Enable vfio device's irq and associate Irqfd Event with device.
     /// When MSIx is enabled, multi vectors will be supported, so descriptors is vector and the vector
     /// length is the num of MSIx vectors
-    pub fn irq_enable(&self, descriptors: Vec<&Event>, index: u32) -> Result<(), VfioError> {
+    pub fn irq_enable(&self, descriptors: &[&Event], index: u32) -> Result<(), VfioError> {
         let count = descriptors.len();
         let u32_size = mem::size_of::<u32>();
         let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(count);
