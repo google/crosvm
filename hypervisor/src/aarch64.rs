@@ -38,6 +38,13 @@ pub trait VcpuAArch64: Vcpu {
     /// `irq`.
     fn init_pmu(&self, irq: u64) -> Result<()>;
 
+    /// Checks if ARM ParaVirtualized Time is supported on this VCPU
+    fn has_pvtime_support(&self) -> bool;
+
+    /// Initializes the ARM ParaVirtualized Time on this VCPU, with base address of the stolen time
+    /// structure as `pvtime_ipa`.
+    fn init_pvtime(&self, pvtime_ipa: u64) -> Result<()>;
+
     /// Sets the value of a register on this VCPU.  `reg_id` is the register ID, as specified in the
     /// KVM API documentation for KVM_SET_ONE_REG.
     fn set_one_reg(&self, reg_id: u64, data: u64) -> Result<()>;

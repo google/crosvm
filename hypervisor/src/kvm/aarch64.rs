@@ -194,6 +194,47 @@ impl VcpuAArch64 for KvmVcpu {
         Ok(())
     }
 
+    fn has_pvtime_support(&self) -> bool {
+        // The in-kernel PV time structure is initialized by setting the base
+        // address with KVM_ARM_VCPU_PVTIME_IPA
+        let pvtime_attr = kvm_device_attr {
+            group: KVM_ARM_VCPU_PVTIME_CTRL,
+            attr: KVM_ARM_VCPU_PVTIME_IPA as u64,
+            addr: 0,
+            flags: 0,
+        };
+        // Safe because we allocated the struct and we know the kernel will read exactly the size of
+        // the struct.
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_HAS_DEVICE_ATTR(), &pvtime_attr) };
+        if ret < 0 {
+            return false;
+        }
+
+        return true;
+    }
+
+    fn init_pvtime(&self, pvtime_ipa: u64) -> Result<()> {
+        let pvtime_ipa_addr = &pvtime_ipa as *const u64;
+
+        // The in-kernel PV time structure is initialized by setting the base
+        // address with KVM_ARM_VCPU_PVTIME_IPA
+        let pvtime_attr = kvm_device_attr {
+            group: KVM_ARM_VCPU_PVTIME_CTRL,
+            attr: KVM_ARM_VCPU_PVTIME_IPA as u64,
+            addr: pvtime_ipa_addr as u64,
+            flags: 0,
+        };
+
+        // Safe because we allocated the struct and we know the kernel will read exactly the size of
+        // the struct.
+        let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_SET_DEVICE_ATTR(), &pvtime_attr) };
+        if ret < 0 {
+            return errno_result();
+        }
+
+        Ok(())
+    }
+
     fn set_one_reg(&self, reg_id: u64, data: u64) -> Result<()> {
         let data_ref = &data as *const u64;
         let onereg = kvm_one_reg {

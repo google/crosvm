@@ -13,7 +13,7 @@ use arch::{
     get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, SerialHardware, SerialParameters,
     VmComponents, VmImage,
 };
-use base::Event;
+use base::{Event, MemoryMappingBuilder};
 use devices::{Bus, BusError, IrqChip, IrqChipAArch64, PciConfigMmio, PciDevice, ProtectionType};
 use hypervisor::{DeviceKind, Hypervisor, HypervisorCap, VcpuAArch64, VcpuFeature, VmAArch64};
 use minijail::Minijail;
@@ -47,6 +47,10 @@ const AARCH64_BIOS_MAX_LEN: u64 = 1 << 20;
 const AARCH64_PROTECTED_VM_FW_MAX_SIZE: u64 = 0x200000;
 const AARCH64_PROTECTED_VM_FW_START: u64 =
     AARCH64_PHYS_MEM_START - AARCH64_PROTECTED_VM_FW_MAX_SIZE;
+
+const AARCH64_PVTIME_IPA_MAX_SIZE: u64 = 0x10000;
+const AARCH64_PVTIME_IPA_START: u64 = AARCH64_PROTECTED_VM_FW_START - AARCH64_PVTIME_IPA_MAX_SIZE;
+const AARCH64_PVTIME_SIZE: u64 = 64;
 
 // These constants indicate the placement of the GIC registers in the physical
 // address space.
@@ -137,6 +141,7 @@ const AARCH64_PMU_IRQ: u32 = 7;
 #[derive(Debug)]
 pub enum Error {
     BiosLoadFailure(arch::LoadImageError),
+    BuildPvtimeError(base::MmapError),
     CloneEvent(base::Error),
     CloneIrqChip(base::Error),
     Cmdline(kernel_cmdline::Error),
@@ -153,8 +158,10 @@ pub enum Error {
     FinalizeIrqChip(Box<dyn StdError>),
     GetPsciVersion(base::Error),
     GetSerialCmdline(GetSerialCmdlineError),
+    InitPvtimeError(base::Error),
     InitrdLoadFailure(arch::LoadImageError),
     KernelLoadFailure(arch::LoadImageError),
+    MapPvtimeError(base::Error),
     ProtectVm(base::Error),
     RegisterIrqfd(base::Error),
     RegisterPci(BusError),
@@ -173,6 +180,7 @@ impl Display for Error {
         #[sorted]
         match self {
             BiosLoadFailure(e) => write!(f, "bios could not be loaded: {}", e),
+            BuildPvtimeError(e) => write!(f, "failed to build arm pvtime memory: {}", e),
             CloneEvent(e) => write!(f, "unable to clone an Event: {}", e),
             CloneIrqChip(e) => write!(f, "failed to clone IRQ chip: {}", e),
             Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),
@@ -189,8 +197,10 @@ impl Display for Error {
             FinalizeIrqChip(e) => write!(f, "failed to finalize IRQ chip: {}", e),
             GetPsciVersion(e) => write!(f, "failed to get PSCI version: {}", e),
             GetSerialCmdline(e) => write!(f, "failed to get serial cmdline: {}", e),
+            InitPvtimeError(e) => write!(f, "failed to initialize arm pvtime: {}", e),
             InitrdLoadFailure(e) => write!(f, "initrd could not be loaded: {}", e),
             KernelLoadFailure(e) => write!(f, "kernel could not be loaded: {}", e),
+            MapPvtimeError(e) => write!(f, "failed to map arm pvtime memory: {}", e),
             ProtectVm(e) => write!(f, "failed to protect vm: {}", e),
             RegisterIrqfd(e) => write!(f, "failed to register irq fd: {}", e),
             RegisterPci(e) => write!(f, "error registering PCI bus: {}", e),
@@ -276,6 +286,7 @@ impl arch::LinuxArch for AArch64 {
             .get_hypervisor()
             .check_capability(&HypervisorCap::ArmPmuV3);
         let vcpu_count = components.vcpu_count;
+        let mut has_pvtime = true;
         let mut vcpus = Vec::with_capacity(vcpu_count);
         for vcpu_id in 0..vcpu_count {
             let vcpu: Vcpu = *vm
@@ -291,6 +302,7 @@ impl arch::LinuxArch for AArch64 {
                 has_bios,
                 components.protected_vm,
             )?;
+            has_pvtime &= vcpu.has_pvtime_support();
             vcpus.push(vcpu);
         }
 
@@ -298,8 +310,25 @@ impl arch::LinuxArch for AArch64 {
             .finalize()
             .map_err(|e| Error::FinalizeIrqChip(Box::new(e)))?;
 
-        for vcpu in &vcpus {
+        if has_pvtime {
+            let pvtime_mem = MemoryMappingBuilder::new(AARCH64_PVTIME_IPA_MAX_SIZE as usize)
+                .build()
+                .map_err(Error::BuildPvtimeError)?;
+            vm.add_memory_region(
+                GuestAddress(AARCH64_PVTIME_IPA_START),
+                Box::new(pvtime_mem),
+                false,
+                false,
+            )
+            .map_err(Error::MapPvtimeError)?;
+        }
+
+        for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
             use_pmu &= vcpu.init_pmu(AARCH64_PMU_IRQ as u64 + 16).is_ok();
+            if has_pvtime {
+                vcpu.init_pvtime(AARCH64_PVTIME_IPA_START + (vcpu_id as u64 * AARCH64_PVTIME_SIZE))
+                    .map_err(Error::InitPvtimeError)?;
+            }
         }
 
         let mut mmio_bus = devices::Bus::new();
