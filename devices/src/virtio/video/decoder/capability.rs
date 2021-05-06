@@ -36,8 +36,8 @@ fn from_pixel_format(
 }
 
 pub struct Capability {
-    pub in_fmts: Vec<FormatDesc>,
-    pub out_fmts: Vec<FormatDesc>,
+    in_fmts: Vec<FormatDesc>,
+    out_fmts: Vec<FormatDesc>,
 
     // Stores supporterd profiles and levels for each format.
     profiles: BTreeMap<Format, Vec<Profile>>,
@@ -120,6 +120,14 @@ impl Capability {
             profiles,
             levels,
         }
+    }
+
+    pub fn input_formats(&self) -> &Vec<FormatDesc> {
+        &self.in_fmts
+    }
+
+    pub fn output_formats(&self) -> &Vec<FormatDesc> {
+        &self.out_fmts
     }
 
     pub fn query_control(&self, t: &QueryCtrlType) -> Option<QueryCtrlResponse> {

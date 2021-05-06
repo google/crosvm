@@ -404,8 +404,8 @@ impl<'a, D: DecoderBackend> Decoder<D> {
 
     fn query_capabilities(&self, queue_type: QueueType) -> CmdResponse {
         let descs = match queue_type {
-            QueueType::Input => self.capability.in_fmts.clone(),
-            QueueType::Output => self.capability.out_fmts.clone(),
+            QueueType::Input => self.capability.input_formats().clone(),
+            QueueType::Output => self.capability.output_formats().clone(),
         };
 
         CmdResponse::QueryCapability(descs)
