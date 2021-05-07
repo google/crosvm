@@ -191,17 +191,14 @@ impl Pic {
     /// Determines the external interrupt number that the PIC is prepared to inject, if any.
     pub fn get_external_interrupt(&mut self) -> Option<u8> {
         self.interrupt_request = false;
-        let irq_primary = if let Some(irq) = self.get_irq(PicSelect::Primary) {
-            irq
-        } else {
-            // The architecturally correct behavior in this case is to inject a spurious interrupt.
-            // Although this case only occurs as a result of a race condition where the interrupt
-            // might also be avoided entirely.  Here we return `None` to avoid the interrupt
-            // entirely.  The KVM unit test OS, which several unit tests rely upon, doesn't
-            // properly handle spurious interrupts.  Also spurious interrupts are much more common
-            // in this code than real hardware because the hardware race is much much much smaller.
-            return None;
-        };
+        // If there is no interrupt request, return `None` to avoid the interrupt entirely.
+        // The architecturally correct behavior in this case is to inject a spurious interrupt.
+        // Although this case only occurs as a result of a race condition where the interrupt
+        // might also be avoided entirely.  The KVM unit test OS, which several unit tests rely
+        // upon, doesn't properly handle spurious interrupts.  Also spurious interrupts are much
+        // more common in this code than real hardware because the hardware race is much much much
+        // smaller.
+        let irq_primary = self.get_irq(PicSelect::Primary)?;
 
         self.interrupt_ack(PicSelect::Primary, irq_primary);
         let int_num = if irq_primary == PRIMARY_PIC_CASCADE_PIN {

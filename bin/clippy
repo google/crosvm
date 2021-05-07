@@ -38,7 +38,6 @@ SUPPRESS=(
     missing_safety_doc
     needless_range_loop
     option_map_unit_fn
-    question_mark
     range_plus_one
     redundant_closure
     single_match
