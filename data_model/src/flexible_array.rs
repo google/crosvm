@@ -74,8 +74,12 @@ pub trait FlexibleArray<S> {
     /// conversions (i.e, usize to u32) are allowed so long as they don't overflow or underflow.
     fn get_len(&self) -> usize;
     /// Implementations must return a slice of flexible array member of length `len`.
+    /// # Safety
+    /// Do not use this function directly, as the FlexibleArrayWrapper will guarantee safety.
     unsafe fn get_slice(&self, len: usize) -> &[S];
     /// Implementations must return a mutable slice of flexible array member of length `len`.
+    /// # Safety
+    /// Do not use this function directly, as the FlexibleArrayWrapper will guarantee safety.
     unsafe fn get_mut_slice(&mut self, len: usize) -> &mut [S];
 }
 
