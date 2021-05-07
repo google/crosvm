@@ -34,12 +34,13 @@ RUN apt-get install --yes --no-install-recommends -o APT::Immediate-Configure=fa
     libdbus-1-dev:arm64 \
     libdrm-dev:arm64 \
     libepoxy-dev:arm64 \
-    libssl-dev:arm64 \
-    libwayland-dev:arm64
+    libssl-dev:arm64
 
 RUN apt-get install --yes -t testing --no-install-recommends  \
     libdrm-dev:arm64 \
-    libepoxy-dev:arm64
+    libepoxy-dev:arm64 \
+    libwayland-dev:arm64 \
+    wayland-protocols
 
 # Setup rust for cross-compilation
 RUN rustup target add aarch64-unknown-linux-gnu
