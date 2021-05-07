@@ -88,7 +88,7 @@ impl Drop for VirglRendererContext {
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 extern "C" fn debug_callback(fmt: *const ::std::os::raw::c_char, ap: *mut __va_list_tag) {
     let len: u32 = 256;
-    let mut c_str = CString::new(vec![' ' as u8; len as usize]).unwrap();
+    let mut c_str = CString::new(vec![b' '; len as usize]).unwrap();
     unsafe {
         let mut varargs = __va_list_tag {
             gp_offset: (*ap).gp_offset,

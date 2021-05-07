@@ -29,7 +29,6 @@ cd ..
 SUPPRESS=(
     # TODO(crbug/908640): To be resolved.
     borrowed_box
-    char_lit_as_u8
     clone_on_copy
     collapsible_if
     comparison_chain
