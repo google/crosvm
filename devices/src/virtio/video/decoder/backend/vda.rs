@@ -183,7 +183,7 @@ impl DecoderSession for libvda::decode::Session {
         planes: &[FramePlane],
         modifier: u64,
     ) -> VideoResult<()> {
-        let vda_planes: Vec<libvda::FramePlane> = planes.into_iter().map(Into::into).collect();
+        let vda_planes: Vec<libvda::FramePlane> = planes.iter().map(Into::into).collect();
         Ok(self.use_output_buffer(
             picture_buffer_id,
             libvda::PixelFormat::try_from(format)?,

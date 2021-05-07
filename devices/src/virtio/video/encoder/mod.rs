@@ -628,7 +628,7 @@ impl<T: Encoder> EncoderDevice<T> {
                 let resource_info = get_resource_info(resource_bridge, uuid)?;
 
                 let planes: Vec<VideoFramePlane> = resource_info.planes[0..num_planes]
-                    .into_iter()
+                    .iter()
                     .map(|plane_info| VideoFramePlane {
                         offset: plane_info.offset as usize,
                         stride: plane_info.stride as usize,

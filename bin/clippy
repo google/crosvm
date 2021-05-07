@@ -34,7 +34,6 @@ SUPPRESS=(
     extra_unused_lifetimes
     for_kv_map
     inefficient_to_string
-    into_iter_on_ref
     let_unit_value
     missing_safety_doc
     needless_range_loop
