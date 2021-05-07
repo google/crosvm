@@ -207,8 +207,7 @@ impl VioSndShmStream {
             // safe because we checked the result of libc::fcntl()
             File::from_raw_fd(dup_fd)
         };
-        let client_shm_clone =
-            SharedMemory::from_file(file).map_err(|e| Error::BaseMmapError(e))?;
+        let client_shm_clone = SharedMemory::from_file(file).map_err(Error::BaseMmapError)?;
 
         Ok(Box::new(Self {
             num_channels,

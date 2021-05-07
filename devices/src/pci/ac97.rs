@@ -190,7 +190,7 @@ impl Ac97Dev {
             let server = Box::new(
                 // The presence of vios_server_path is checked during argument parsing
                 VioSShmStreamSource::new(param.vios_server_path.expect("Missing server path"))
-                    .map_err(|e| pci_device::Error::CreateViosClientFailed(e))?,
+                    .map_err(pci_device::Error::CreateViosClientFailed)?,
             );
             let vios_audio = Self::new(mem, Ac97Backend::VIOS, server);
             Ok(vios_audio)
