@@ -1010,7 +1010,7 @@ impl X8664arch {
         }
 
         io_bus.insert(nul_device.clone(), 0x0ed, 0x1).unwrap(); // most likely this one does nothing
-        io_bus.insert(nul_device.clone(), 0x0f0, 0x2).unwrap(); // ignore fpu
+        io_bus.insert(nul_device, 0x0f0, 0x2).unwrap(); // ignore fpu
 
         Ok(())
     }

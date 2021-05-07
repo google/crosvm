@@ -29,7 +29,6 @@ cd ..
 SUPPRESS=(
     # TODO(crbug/908640): To be resolved.
     borrowed_box
-    clone_on_copy
     collapsible_if
     comparison_chain
     extra_unused_lifetimes
@@ -43,7 +42,6 @@ SUPPRESS=(
     option_map_unit_fn
     question_mark
     range_plus_one
-    redundant_clone
     redundant_closure
     single_match
     slow_vector_initialization

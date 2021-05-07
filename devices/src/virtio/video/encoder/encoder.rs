@@ -108,7 +108,7 @@ impl EncoderCapabilities {
 
         src_params.frame_width = allowed_width;
         src_params.frame_height = allowed_height;
-        src_params.format = Some(format_desc.format.clone());
+        src_params.format = Some(format_desc.format);
         src_params.plane_formats = plane_formats;
         Ok(())
     }
@@ -129,7 +129,7 @@ impl EncoderCapabilities {
                     .get(0)
                     .ok_or(VideoError::InvalidFormat)?,
             );
-        dst_params.format = Some(format_desc.format.clone());
+        dst_params.format = Some(format_desc.format);
 
         // The requested output buffer size might be adjusted by the encoder to match hardware
         // requirements in RequireInputBuffers.

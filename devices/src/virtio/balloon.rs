@@ -367,7 +367,7 @@ fn run_worker(
         pin_mut!(command);
 
         // Process any requests to resample the irq value.
-        let resample = handle_irq_resample(&ex, interrupt.clone());
+        let resample = handle_irq_resample(&ex, interrupt);
         pin_mut!(resample);
 
         // Exit if the kill event is triggered.

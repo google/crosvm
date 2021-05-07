@@ -156,7 +156,7 @@ impl Ioapic {
             rtc_remote_irr: false,
             out_events: (0..num_pins).map(|_| None).collect(),
             resample_events: Vec::new(),
-            redirect_table: (0..num_pins).map(|_| entry.clone()).collect(),
+            redirect_table: (0..num_pins).map(|_| entry).collect(),
             interrupt_level: (0..num_pins).map(|_| false).collect(),
             irq_tube,
         })

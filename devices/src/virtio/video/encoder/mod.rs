@@ -185,7 +185,7 @@ impl<T: EncoderSession> Stream<T> {
                 dst_params: self.dst_params.clone(),
                 dst_profile: self.dst_profile,
                 dst_bitrate: self.dst_bitrate,
-                dst_h264_level: self.dst_h264_level.clone(),
+                dst_h264_level: self.dst_h264_level,
                 frame_rate: self.frame_rate,
             })
             .map_err(|_| VideoError::InvalidOperation)?;
