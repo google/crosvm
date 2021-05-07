@@ -193,7 +193,7 @@ impl Ac97Dev {
                     .map_err(|e| pci_device::Error::CreateViosClientFailed(e))?,
             );
             let vios_audio = Self::new(mem, Ac97Backend::VIOS, server);
-            return Ok(vios_audio);
+            Ok(vios_audio)
         }
         #[cfg(not(any(target_os = "linux", target_os = "android")))]
         Err(pci_device::Error::CreateViosClientFailed(

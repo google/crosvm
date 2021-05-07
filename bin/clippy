@@ -37,7 +37,6 @@ SUPPRESS=(
     let_unit_value
     missing_safety_doc
     needless_range_loop
-    needless_return
     option_map_unit_fn
     question_mark
     range_plus_one

@@ -409,11 +409,9 @@ mod tests {
     fn request_help() {
         let arguments = [Argument::short_flag('h', "help", "Print help message.")];
 
-        let match_res = set_arguments(["-h"].iter(), &arguments[..], |name, _| {
-            match name {
-                "help" => return Err(Error::PrintHelp),
-                _ => unreachable!(),
-            };
+        let match_res = set_arguments(["-h"].iter(), &arguments[..], |name, _| match name {
+            "help" => Err(Error::PrintHelp),
+            _ => unreachable!(),
         });
         match match_res {
             Err(Error::PrintHelp) => {}

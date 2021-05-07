@@ -161,7 +161,6 @@ impl VirtioDevice for Block {
         match worker_result {
             Err(e) => {
                 error!("failed to spawn vhost-user virtio_blk worker: {}", e);
-                return;
             }
             Ok(join_handle) => {
                 self.worker_thread = Some(join_handle);

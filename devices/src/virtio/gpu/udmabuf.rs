@@ -80,7 +80,7 @@ fn memory_offset(mem: &GuestMemory, guest_addr: GuestAddress, len: u64) -> Udmab
             return Err(GuestMemoryError::InvalidGuestAddress(guest_addr));
         }
 
-        return Ok(memfd_offset + map_offset);
+        Ok(memfd_offset + map_offset)
     })
     .map_err(UdmabufError::InvalidOffset)
 }
