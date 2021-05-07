@@ -85,6 +85,11 @@ fn get_error() -> Error {
 
 static KVM_VFIO_FILE: OnceCell<SafeDescriptor> = OnceCell::new();
 
+enum KvmVfioGroupOps {
+    Add,
+    Delete,
+}
+
 /// VfioContainer contain multi VfioGroup, and delegate an IOMMU domain table
 pub struct VfioContainer {
     container: File,
@@ -239,7 +244,9 @@ impl VfioContainer {
                 let kvm_vfio_file = KVM_VFIO_FILE
                     .get_or_try_init(|| vm.create_device(DeviceKind::Vfio))
                     .map_err(VfioError::CreateVfioKvmDevice)?;
-                group.lock().kvm_device_add_group(kvm_vfio_file)?;
+                group
+                    .lock()
+                    .kvm_device_set_group(kvm_vfio_file, KvmVfioGroupOps::Add)?;
 
                 self.groups.insert(id, group.clone());
 
@@ -249,19 +256,24 @@ impl VfioContainer {
     }
 
     fn remove_group(&mut self, id: u32, reduce: bool) {
-        let remove = match self.groups.get(&id) {
-            Some(group) => {
-                if reduce {
-                    group.lock().reduce_device_num();
-                }
-                if group.lock().device_num() == 0 {
-                    true
-                } else {
-                    false
-                }
+        let mut remove = false;
+
+        if let Some(group) = self.groups.get(&id) {
+            if reduce {
+                group.lock().reduce_device_num();
             }
-            None => false,
-        };
+            if group.lock().device_num() == 0 {
+                let kvm_vfio_file = KVM_VFIO_FILE.get().expect("kvm vfio file isn't created");
+                if group
+                    .lock()
+                    .kvm_device_set_group(kvm_vfio_file, KvmVfioGroupOps::Delete)
+                    .is_err()
+                {
+                    warn!("failing in remove vfio group from kvm device");
+                }
+                remove = true;
+            }
+        }
 
         if remove {
             self.groups.remove(&id);
@@ -341,14 +353,26 @@ impl VfioGroup {
         Ok(group_id)
     }
 
-    fn kvm_device_add_group(&self, kvm_vfio_file: &SafeDescriptor) -> Result<()> {
+    fn kvm_device_set_group(
+        &self,
+        kvm_vfio_file: &SafeDescriptor,
+        ops: KvmVfioGroupOps,
+    ) -> Result<()> {
         let group_descriptor = self.as_raw_descriptor();
         let group_descriptor_ptr = &group_descriptor as *const i32;
-        let vfio_dev_attr = kvm_sys::kvm_device_attr {
-            flags: 0,
-            group: kvm_sys::KVM_DEV_VFIO_GROUP,
-            attr: kvm_sys::KVM_DEV_VFIO_GROUP_ADD as u64,
-            addr: group_descriptor_ptr as u64,
+        let vfio_dev_attr = match ops {
+            KvmVfioGroupOps::Add => kvm_sys::kvm_device_attr {
+                flags: 0,
+                group: kvm_sys::KVM_DEV_VFIO_GROUP,
+                attr: kvm_sys::KVM_DEV_VFIO_GROUP_ADD as u64,
+                addr: group_descriptor_ptr as u64,
+            },
+            KvmVfioGroupOps::Delete => kvm_sys::kvm_device_attr {
+                flags: 0,
+                group: kvm_sys::KVM_DEV_VFIO_GROUP,
+                attr: kvm_sys::KVM_DEV_VFIO_GROUP_DEL as u64,
+                addr: group_descriptor_ptr as u64,
+            },
         };
 
         // Safe as we are the owner of vfio_dev_fd and vfio_dev_attr which are valid value,
