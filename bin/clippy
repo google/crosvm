@@ -41,7 +41,6 @@ SUPPRESS=(
     range_plus_one
     slow_vector_initialization
     unnecessary_filter_map
-    unnecessary_mut_passed
     unneeded_field_pattern
     useless_format
     wrong_self_convention

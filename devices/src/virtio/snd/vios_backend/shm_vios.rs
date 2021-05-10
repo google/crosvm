@@ -364,7 +364,7 @@ impl VioSClient {
 
     fn send_cmd<T: DataInit>(&self, data: T) -> Result<()> {
         let mut control_socket_lock = self.control_socket.lock();
-        seq_socket_send(&mut *control_socket_lock, data)?;
+        seq_socket_send(&*control_socket_lock, data)?;
         recv_cmd_status(&mut *control_socket_lock)
     }
 
