@@ -5,10 +5,8 @@
 //! Implementation of the the `Encoder` struct, which is responsible for translation between the
 //! virtio protocols and LibVDA APIs.
 
+pub mod backend;
 mod encoder;
-mod libvda_encoder;
-
-pub use libvda_encoder::LibvdaEncoder;
 
 use base::{error, warn, Tube, WaitContext};
 use std::collections::{BTreeMap, BTreeSet};
@@ -22,8 +20,7 @@ use crate::virtio::video::device::{
     AsyncCmdResponse, AsyncCmdTag, Device, Token, VideoEvtResponseType,
 };
 use crate::virtio::video::encoder::encoder::{
-    Encoder, EncoderEvent, EncoderSession, InputBufferId, OutputBufferId, SessionConfig,
-    VideoFramePlane,
+    EncoderEvent, InputBufferId, OutputBufferId, SessionConfig, VideoFramePlane,
 };
 use crate::virtio::video::error::*;
 use crate::virtio::video::event::{EvtType, VideoEvt};
@@ -31,6 +28,7 @@ use crate::virtio::video::format::{Format, Level, PlaneFormat, Profile};
 use crate::virtio::video::params::Params;
 use crate::virtio::video::protocol;
 use crate::virtio::video::response::CmdResponse;
+use backend::*;
 
 #[derive(Debug)]
 struct QueuedInputResourceParams {

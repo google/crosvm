@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium OS Authors. All rights reserved.
+// Copyright 2021 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,7 @@ use libvda::encode::{EncodeCapabilities, VeaImplType, VeaInstance};
 
 use base::{error, warn, IntoRawDescriptor};
 
+use super::*;
 use crate::virtio::video::format::{Format, FormatDesc, FormatRange, FrameFormat, Level, Profile};
 use crate::virtio::video::{
     encoder::encoder::*,
