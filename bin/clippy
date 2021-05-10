@@ -28,21 +28,9 @@ cd ..
 
 SUPPRESS=(
     # TODO(crbug/908640): To be resolved.
-    borrowed_box
     collapsible_if
     comparison_chain
-    extra_unused_lifetimes
-    for_kv_map
-    inefficient_to_string
-    let_unit_value
     missing_safety_doc
-    needless_range_loop
-    option_map_unit_fn
-    range_plus_one
-    slow_vector_initialization
-    unnecessary_filter_map
-    unneeded_field_pattern
-    useless_format
     wrong_self_convention
     # To be fixed in external libraries
     upper_case_acronyms
