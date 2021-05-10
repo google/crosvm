@@ -8,7 +8,6 @@
 mod encoder;
 mod libvda_encoder;
 
-pub use encoder::EncoderError;
 pub use libvda_encoder::LibvdaEncoder;
 
 use base::{error, warn, Tube, WaitContext};
@@ -480,7 +479,7 @@ impl<T: EncoderSession> Stream<T> {
     }
 
     #[allow(clippy::unnecessary_wraps)]
-    fn notify_error(&self, error: EncoderError) -> Option<Vec<VideoEvtResponseType>> {
+    fn notify_error(&self, error: VideoError) -> Option<Vec<VideoEvtResponseType>> {
         error!(
             "Received encoder error event for stream {}: {}",
             self.id, error
@@ -510,7 +509,7 @@ fn get_resource_info(res_bridge: &Tube, uuid: u128) -> VideoResult<BufferInfo> {
 }
 
 impl<T: Encoder> EncoderDevice<T> {
-    pub fn new(encoder: T) -> encoder::Result<Self> {
+    pub fn new(encoder: T) -> VideoResult<Self> {
         Ok(Self {
             cros_capabilities: encoder.query_capabilities()?,
             encoder,
@@ -965,15 +964,13 @@ impl<T: Encoder> EncoderDevice<T> {
                 }
 
                 let desired_format = format.or(stream.src_params.format).unwrap_or(Format::NV12);
-                self.cros_capabilities
-                    .populate_src_params(
-                        &mut stream.src_params,
-                        desired_format,
-                        frame_width,
-                        frame_height,
-                        plane_formats[0].stride,
-                    )
-                    .map_err(VideoError::EncoderImpl)?;
+                self.cros_capabilities.populate_src_params(
+                    &mut stream.src_params,
+                    desired_format,
+                    frame_width,
+                    frame_height,
+                    plane_formats[0].stride,
+                )?;
 
                 // Following the V4L2 standard the framerate requested on the
                 // input queue should also be applied to the output queue.
@@ -989,13 +986,11 @@ impl<T: Encoder> EncoderDevice<T> {
                     return Err(VideoError::InvalidArgument);
                 }
 
-                self.cros_capabilities
-                    .populate_dst_params(
-                        &mut stream.dst_params,
-                        desired_format,
-                        plane_formats[0].plane_size,
-                    )
-                    .map_err(VideoError::EncoderImpl)?;
+                self.cros_capabilities.populate_dst_params(
+                    &mut stream.dst_params,
+                    desired_format,
+                    plane_formats[0].plane_size,
+                )?;
 
                 if frame_rate > 0 {
                     stream.frame_rate = frame_rate;
