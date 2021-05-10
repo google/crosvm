@@ -42,10 +42,4 @@ pub enum VideoError {
     BackendFailure(Box<dyn std::error::Error + Send>),
 }
 
-impl From<libvda::Error> for VideoError {
-    fn from(error: libvda::Error) -> Self {
-        VideoError::BackendFailure(Box::new(error))
-    }
-}
-
 pub type VideoResult<T> = Result<T, VideoError>;

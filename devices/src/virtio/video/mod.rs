@@ -33,6 +33,8 @@ mod protocol;
 mod response;
 mod worker;
 
+mod vda;
+
 use command::ReadCmdError;
 use worker::Worker;
 
