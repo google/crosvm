@@ -325,9 +325,8 @@ impl GuestMemory {
             for (_, region) in self.regions.iter().enumerate() {
                 let ret = region.mapping.use_hugepages();
 
-                match ret {
-                    Err(err) => println!("Failed to enable HUGEPAGE for mapping {}", err),
-                    Ok(_) => (),
+                if let Err(err) = ret {
+                    println!("Failed to enable HUGEPAGE for mapping {}", err);
                 }
             }
         }

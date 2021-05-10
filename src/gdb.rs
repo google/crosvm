@@ -175,11 +175,12 @@ impl SingleThreadOps for GdbStub {
 
         // Polling
         loop {
-            match self
+            // TODO(keiichiw): handle error?
+            if let Ok(msg) = self
                 .from_vcpu
                 .recv_timeout(std::time::Duration::from_millis(100))
             {
-                Ok(msg) => match msg.msg {
+                match msg.msg {
                     VcpuDebugStatus::HitBreakPoint => {
                         if single_step {
                             return Ok(StopReason::DoneStep);
@@ -190,9 +191,8 @@ impl SingleThreadOps for GdbStub {
                     status => {
                         error!("Unexpected VcpuDebugStatus: {:?}", status);
                     }
-                },
-                Err(_) => {} // TODO(keiichiw): handle error?
-            };
+                }
+            }
 
             if check_gdb_interrupt() {
                 self.vm_request(VmRequest::Suspend).map_err(|e| {

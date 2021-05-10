@@ -39,7 +39,6 @@ SUPPRESS=(
     needless_range_loop
     option_map_unit_fn
     range_plus_one
-    single_match
     slow_vector_initialization
     unnecessary_filter_map
     unnecessary_mut_passed
