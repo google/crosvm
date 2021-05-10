@@ -4,60 +4,42 @@
 
 //! Errors that can happen while encoding or decoding.
 
-use std::fmt;
+use thiserror::Error as ThisError;
 
 use crate::virtio::resource_bridge::ResourceBridgeError;
 use crate::virtio::video::control::CtrlType;
 
 /// An error indicating something went wrong while encoding or decoding.
 /// Unlike `virtio::video::Error`, `VideoError` is not fatal for `Worker`.
-#[derive(Debug)]
+#[derive(Debug, ThisError)]
 pub enum VideoError {
     /// Invalid argument.
+    #[error("invalid argument")]
     InvalidArgument,
-    /// Invalid operation
+    /// Invalid operation.
+    #[error("invalid operation")]
     InvalidOperation,
     /// Invalid stream ID is specified.
+    #[error("invalid stream ID {0}")]
     InvalidStreamId(u32),
     /// Invalid resource ID is specified.
-    InvalidResourceId {
-        stream_id: u32,
-        resource_id: u32,
-    },
+    #[error("invalid resource ID {resource_id} for stream {stream_id}")]
+    InvalidResourceId { stream_id: u32, resource_id: u32 },
     /// Invalid parameters are specified.
+    #[error("invalid parameter")]
     InvalidParameter,
     /// No suitable format is supported.
+    #[error("invalid format")]
     InvalidFormat,
     /// Failed to get a resource FD via resource_bridge.
+    #[error("failed to get resource FD for id {0}")]
     ResourceBridgeFailure(ResourceBridgeError),
     /// Unsupported control type is specified.
+    #[error("unsupported control: {0:?}")]
     UnsupportedControl(CtrlType),
-    // Backend-specific error.
+    /// Backend-specific error.
+    #[error("backend failure: {0}")]
     BackendFailure(Box<dyn std::error::Error + Send>),
-}
-
-impl fmt::Display for VideoError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::VideoError::*;
-        match self {
-            InvalidArgument => write!(f, "invalid argument"),
-            InvalidOperation => write!(f, "invalid operation"),
-            InvalidStreamId(id) => write!(f, "invalid stream ID {}", id),
-            InvalidResourceId {
-                stream_id,
-                resource_id,
-            } => write!(
-                f,
-                "invalid resource ID {} for stream {}",
-                resource_id, stream_id
-            ),
-            InvalidParameter => write!(f, "invalid parameter"),
-            InvalidFormat => write!(f, "invalid format"),
-            ResourceBridgeFailure(id) => write!(f, "failed to get resource FD for id {}", id),
-            UnsupportedControl(ctrl_type) => write!(f, "unsupported control: {:?}", ctrl_type),
-            BackendFailure(e) => write!(f, "backend failure: {}", e),
-        }
-    }
 }
 
 impl From<libvda::Error> for VideoError {
@@ -65,7 +47,5 @@ impl From<libvda::Error> for VideoError {
         VideoError::BackendFailure(Box::new(error))
     }
 }
-
-impl std::error::Error for VideoError {}
 
 pub type VideoResult<T> = Result<T, VideoError>;
