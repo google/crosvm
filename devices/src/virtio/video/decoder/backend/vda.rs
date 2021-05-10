@@ -4,6 +4,7 @@
 
 use base::{error, RawDescriptor};
 use std::convert::TryFrom;
+use thiserror::Error as ThisError;
 
 use libvda::decode::Event as LibvdaEvent;
 
@@ -12,6 +13,10 @@ use crate::virtio::video::{
     error::{VideoError, VideoResult},
     format::{Format, Rect},
 };
+
+#[derive(Debug, ThisError)]
+#[error("VDA Failure: {0}")]
+struct VdaFailure(libvda::decode::Response);
 
 impl TryFrom<Format> for libvda::Profile {
     type Error = VideoError;
@@ -59,7 +64,7 @@ impl From<libvda::decode::Event> for DecoderEvent {
         fn vda_response_to_result(resp: libvda::decode::Response) -> VideoResult<()> {
             match resp {
                 libvda::decode::Response::Success => Ok(()),
-                resp => Err(VideoError::VdaFailure(resp)),
+                resp => Err(VideoError::BackendFailure(Box::new(VdaFailure(resp)))),
             }
         }
 
@@ -104,7 +109,7 @@ impl From<libvda::decode::Event> for DecoderEvent {
                 DecoderEvent::NotifyEndOfBitstreamBuffer(bitstream_id)
             }
             LibvdaEvent::NotifyError(resp) => {
-                DecoderEvent::NotifyError(VideoError::VdaFailure(resp))
+                DecoderEvent::NotifyError(VideoError::BackendFailure(Box::new(VdaFailure(resp))))
             }
             LibvdaEvent::ResetResponse(resp) => {
                 DecoderEvent::ResetCompleted(vda_response_to_result(resp))

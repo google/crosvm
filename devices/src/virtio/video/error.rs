@@ -23,17 +23,18 @@ pub enum VideoError {
     /// Invalid stream ID is specified.
     InvalidStreamId(u32),
     /// Invalid resource ID is specified.
-    InvalidResourceId { stream_id: u32, resource_id: u32 },
+    InvalidResourceId {
+        stream_id: u32,
+        resource_id: u32,
+    },
     /// Invalid parameters are specified.
     InvalidParameter,
     /// Failed to get a resource FD via resource_bridge.
     ResourceBridgeFailure(ResourceBridgeError),
     /// Unsupported control type is specified.
     UnsupportedControl(CtrlType),
-    /// `libvda` returned an error.
-    VdaError(libvda::Error),
-    /// `libvda` returned a failure response.
-    VdaFailure(libvda::decode::Response),
+    // Backend-specific error.
+    BackendFailure(Box<dyn std::error::Error + Send>),
 }
 
 impl fmt::Display for VideoError {
@@ -54,8 +55,7 @@ impl fmt::Display for VideoError {
             InvalidParameter => write!(f, "invalid parameter"),
             ResourceBridgeFailure(id) => write!(f, "failed to get resource FD for id {}", id),
             UnsupportedControl(ctrl_type) => write!(f, "unsupported control: {:?}", ctrl_type),
-            VdaError(e) => write!(f, "error occurred in libvda: {}", e),
-            VdaFailure(r) => write!(f, "failed while processing a requst in VDA: {}", r),
+            BackendFailure(e) => write!(f, "backend failure: {}", e),
             EncoderImpl(e) => write!(f, "error occurred in the encoder implementation: {}", e),
         }
     }
@@ -63,7 +63,7 @@ impl fmt::Display for VideoError {
 
 impl From<libvda::Error> for VideoError {
     fn from(error: libvda::Error) -> Self {
-        VideoError::VdaError(error)
+        VideoError::BackendFailure(Box::new(error))
     }
 }
 
