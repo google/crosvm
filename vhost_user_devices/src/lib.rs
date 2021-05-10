@@ -46,12 +46,16 @@
 // implementation (this is what our devices implement).
 
 use std::convert::TryFrom;
+use std::fs::File;
 use std::num::Wrapping;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::sync::Arc;
 
-use base::{error, Event, FromRawDescriptor, SafeDescriptor, SharedMemory, SharedMemoryUnix};
+use base::{
+    error, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor, SharedMemory,
+    SharedMemoryUnix,
+};
 use cros_async::{AsyncError, AsyncWrapper, Executor};
 use devices::virtio::{Queue, SignalableInterrupt};
 use remain::sorted;
@@ -60,7 +64,7 @@ use sys_util::clear_fd_flags;
 use thiserror::Error as ThisError;
 use vm_memory::{GuestAddress, GuestMemory, MemoryRegion};
 use vmm_vhost::vhost_user::message::{
-    VhostUserConfigFlags, VhostUserMemoryRegion, VhostUserProtocolFeatures,
+    VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion, VhostUserProtocolFeatures,
     VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
     VhostUserVringState,
 };
@@ -343,26 +347,19 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
     fn set_mem_table(
         &mut self,
         contexts: &[VhostUserMemoryRegion],
-        fds: &[RawFd],
+        files: Vec<File>,
     ) -> VhostResult<()> {
-        if fds.len() != contexts.len() {
+        if files.len() != contexts.len() {
             return Err(VhostError::InvalidParam);
         }
 
-        let mut regions = Vec::with_capacity(fds.len());
-        for (region, &fd) in contexts.iter().zip(fds.iter()) {
-            let rd = base::validate_raw_descriptor(fd).map_err(|e| {
-                error!("invalid fd is given: {}", e);
-                VhostError::InvalidParam
-            })?;
-            // Safe because we verified that we are the unique owner of `rd`.
-            let sd = unsafe { SafeDescriptor::from_raw_descriptor(rd) };
-
+        let mut regions = Vec::with_capacity(files.len());
+        for (region, file) in contexts.iter().zip(files.into_iter()) {
             let region = MemoryRegion::new(
                 region.memory_size,
                 GuestAddress(region.guest_phys_addr),
                 region.mmap_offset,
-                Arc::new(SharedMemory::from_safe_descriptor(sd).unwrap()),
+                Arc::new(SharedMemory::from_safe_descriptor(SafeDescriptor::from(file)).unwrap()),
             )
             .map_err(|e| {
                 error!("failed to create a memory region: {}", e);
@@ -457,7 +454,7 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
         ))
     }
 
-    fn set_vring_kick(&mut self, index: u8, fd: Option<RawFd>) -> VhostResult<()> {
+    fn set_vring_kick(&mut self, index: u8, file: Option<File>) -> VhostResult<()> {
         if index as usize >= self.vrings.len() {
             return Err(VhostError::InvalidParam);
         }
@@ -468,24 +465,16 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
             return Err(VhostError::InvalidOperation);
         }
 
-        if let Some(fd) = fd {
-            // TODO(b/186625058): The current code returns an error when `FD_CLOEXEC` is already
-            // set, which is not harmful. Once we update the vhost crate's API to pass around `File`
-            // instead of `RawFd`, we won't need this validation.
-            let rd = base::validate_raw_descriptor(fd).map_err(|e| {
-                error!("invalid fd is given: {}", e);
-                VhostError::InvalidParam
-            })?;
-
+        if let Some(file) = file {
             // Remove O_NONBLOCK from kick_fd. Otherwise, uring_executor will fails when we read
             // values via `next_val()` later.
-            if let Err(e) = clear_fd_flags(rd, libc::O_NONBLOCK) {
+            if let Err(e) = clear_fd_flags(file.as_raw_fd(), libc::O_NONBLOCK) {
                 error!("failed to remove O_NONBLOCK for kick fd: {}", e);
                 return Err(VhostError::InvalidParam);
             }
 
-            // Safe because the FD is now owned.
-            let kick_evt = unsafe { Event::from_raw_descriptor(rd) };
+            // Safe because we own the file.
+            let kick_evt = unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) };
 
             let vring = &mut self.vrings[index as usize];
             vring.queue.ready = true;
@@ -515,18 +504,15 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
         Ok(())
     }
 
-    fn set_vring_call(&mut self, index: u8, fd: Option<RawFd>) -> VhostResult<()> {
+    fn set_vring_call(&mut self, index: u8, file: Option<File>) -> VhostResult<()> {
         if index as usize >= self.vrings.len() {
             return Err(VhostError::InvalidParam);
         }
 
-        if let Some(fd) = fd {
-            let rd = base::validate_raw_descriptor(fd).map_err(|e| {
-                error!("invalid fd is given: {}", e);
-                VhostError::InvalidParam
-            })?;
-            // Safe because the FD is now owned.
-            let call_evt = CallEvent(unsafe { Event::from_raw_descriptor(rd) });
+        if let Some(file) = file {
+            // Safe because we own the file.
+            let call_evt =
+                CallEvent(unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) });
             match &self.vrings[index as usize].call_evt {
                 None => {
                     self.vrings[index as usize].call_evt = Some(Arc::new(Mutex::new(call_evt)));
@@ -541,7 +527,7 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
         Ok(())
     }
 
-    fn set_vring_err(&mut self, _index: u8, _fd: Option<RawFd>) -> VhostResult<()> {
+    fn set_vring_err(&mut self, _index: u8, _fd: Option<File>) -> VhostResult<()> {
         // TODO
         Ok(())
     }
@@ -595,6 +581,17 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
         // TODO
     }
 
+    fn get_inflight_fd(
+        &mut self,
+        _inflight: &VhostUserInflight,
+    ) -> VhostResult<(VhostUserInflight, File)> {
+        unimplemented!("get_inflight_fd");
+    }
+
+    fn set_inflight_fd(&mut self, _inflight: &VhostUserInflight, _file: File) -> VhostResult<()> {
+        unimplemented!("set_inflight_fd");
+    }
+
     fn get_max_mem_slots(&mut self) -> VhostResult<u64> {
         //TODO
         Ok(0)
@@ -603,7 +600,7 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
     fn add_mem_region(
         &mut self,
         _region: &VhostUserSingleMemoryRegion,
-        _fd: RawFd,
+        _fd: File,
     ) -> VhostResult<()> {
         //TODO
         Ok(())
