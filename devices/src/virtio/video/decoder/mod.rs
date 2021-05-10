@@ -356,12 +356,6 @@ struct ContextMap<S: DecoderSession> {
 }
 
 impl<S: DecoderSession> ContextMap<S> {
-    fn new() -> Self {
-        ContextMap {
-            map: Default::default(),
-        }
-    }
-
     fn insert(&mut self, ctx: Context<S>) -> VideoResult<()> {
         match self.map.entry(ctx.stream_id) {
             Entry::Vacant(e) => {
@@ -387,6 +381,14 @@ impl<S: DecoderSession> ContextMap<S> {
             error!("failed to get context of stream {}", *stream_id);
             VideoError::InvalidStreamId(*stream_id)
         })
+    }
+}
+
+impl<S: DecoderSession> Default for ContextMap<S> {
+    fn default() -> Self {
+        Self {
+            map: Default::default(),
+        }
     }
 }
 
@@ -1097,7 +1099,7 @@ impl Decoder<libvda::decode::VdaInstance> {
         Ok(Decoder {
             decoder: vda,
             capability,
-            contexts: ContextMap::new(),
+            contexts: Default::default(),
         })
     }
 }
