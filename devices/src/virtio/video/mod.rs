@@ -231,7 +231,7 @@ impl VirtioDevice for VideoDevice {
                             return;
                         }
                     };
-                    let device = match encoder::EncoderDevice::new(&encoder) {
+                    let device = match encoder::EncoderDevice::new(encoder) {
                         Ok(d) => d,
                         Err(e) => {
                             error!("Failed to create encoder device: {}", e);

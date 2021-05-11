@@ -169,7 +169,7 @@ impl LibvdaEncoder {
     }
 }
 
-impl Encoder for &LibvdaEncoder {
+impl Encoder for LibvdaEncoder {
     type Session = LibvdaEncoderSession;
 
     fn query_capabilities(&self) -> Result<EncoderCapabilities> {
