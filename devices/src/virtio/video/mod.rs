@@ -212,7 +212,7 @@ impl VirtioDevice for VideoDevice {
                 .name("virtio video decoder".to_owned())
                 .spawn(move || {
                     let device = match decoder::Decoder::new() {
-                        Ok(device) => device,
+                        Ok(device) => Box::new(device),
                         Err(e) => {
                             error!("Failed to initialize vda: {}", e);
                             return;
@@ -234,7 +234,7 @@ impl VirtioDevice for VideoDevice {
                         }
                     };
                     let device = match encoder::EncoderDevice::new(encoder) {
-                        Ok(d) => d,
+                        Ok(d) => Box::new(d),
                         Err(e) => {
                             error!("Failed to create encoder device: {}", e);
                             return;

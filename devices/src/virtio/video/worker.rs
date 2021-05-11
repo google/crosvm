@@ -142,11 +142,11 @@ impl Worker {
 
     /// Handles a `DescriptorChain` value sent via the command queue and returns a `VecDeque`
     /// of `WritableResp` to be sent to the guest.
-    fn handle_command_desc<T: Device>(
+    fn handle_command_desc(
         &self,
         cmd_queue: &mut Queue,
         event_queue: &mut Queue,
-        device: &mut T,
+        device: &mut dyn Device,
         wait_ctx: &WaitContext<Token>,
         desc_map: &mut AsyncCmdDescMap,
         desc: DescriptorChain,
@@ -227,11 +227,11 @@ impl Worker {
     }
 
     /// Handles each command in the command queue.
-    fn handle_command_queue<T: Device>(
+    fn handle_command_queue(
         &self,
         cmd_queue: &mut Queue,
         event_queue: &mut Queue,
-        device: &mut T,
+        device: &mut dyn Device,
         wait_ctx: &WaitContext<Token>,
         desc_map: &mut AsyncCmdDescMap,
     ) -> Result<()> {
@@ -245,11 +245,11 @@ impl Worker {
     }
 
     /// Handles an event notified via an event.
-    fn handle_event<T: Device>(
+    fn handle_event(
         &self,
         cmd_queue: &mut Queue,
         event_queue: &mut Queue,
-        device: &mut T,
+        device: &mut dyn Device,
         desc_map: &mut AsyncCmdDescMap,
         stream_id: u32,
     ) -> Result<()> {
@@ -265,11 +265,11 @@ impl Worker {
         Ok(())
     }
 
-    pub fn run<T: Device>(
+    pub fn run(
         &mut self,
         mut cmd_queue: Queue,
         mut event_queue: Queue,
-        mut device: T,
+        mut device: Box<dyn Device>,
     ) -> Result<()> {
         let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (&self.cmd_evt, Token::CmdQueue),
@@ -296,7 +296,7 @@ impl Worker {
                         self.handle_command_queue(
                             &mut cmd_queue,
                             &mut event_queue,
-                            &mut device,
+                            device.as_mut(),
                             &wait_ctx,
                             &mut desc_map,
                         )?;
@@ -308,7 +308,7 @@ impl Worker {
                         self.handle_event(
                             &mut cmd_queue,
                             &mut event_queue,
-                            &mut device,
+                            device.as_mut(),
                             &mut desc_map,
                             id,
                         )?;
