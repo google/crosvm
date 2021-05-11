@@ -246,6 +246,8 @@ pub enum DeviceRegistrationError {
     AllocateDeviceAddrs(PciDeviceError),
     /// Could not allocate an IRQ number.
     AllocateIrq,
+    /// Unable to clone a jail for the device.
+    CloneJail(minijail::Error),
     // Unable to create a pipe.
     CreatePipe(base::Error),
     // Unable to create serial device from serial parameters
@@ -287,6 +289,7 @@ impl Display for DeviceRegistrationError {
             AllocateIoResource(e) => write!(f, "Allocating IO resource: {}", e),
             AllocateDeviceAddrs(e) => write!(f, "Allocating device addresses: {}", e),
             AllocateIrq => write!(f, "Allocating IRQ number"),
+            CloneJail(e) => write!(f, "failed to clone jail: {}", e),
             CreatePipe(e) => write!(f, "failed to create pipe: {}", e),
             CreateSerialDevice(e) => write!(f, "failed to create serial device: {}", e),
             CreateTube(e) => write!(f, "failed to create tube: {}", e),
