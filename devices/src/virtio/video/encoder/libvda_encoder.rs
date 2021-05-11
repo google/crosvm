@@ -169,14 +169,14 @@ impl LibvdaEncoder {
     }
 }
 
-impl<'a> Encoder for &'a LibvdaEncoder {
-    type Session = LibvdaEncoderSession<'a>;
+impl Encoder for &LibvdaEncoder {
+    type Session = LibvdaEncoderSession;
 
     fn query_capabilities(&self) -> Result<EncoderCapabilities> {
         Ok(self.capabilities.clone())
     }
 
-    fn start_session(&mut self, config: SessionConfig) -> Result<LibvdaEncoderSession<'a>> {
+    fn start_session(&mut self, config: SessionConfig) -> Result<LibvdaEncoderSession> {
         if config.dst_params.format.is_none() {
             return Err(EncoderError::InvalidArgument);
         }
@@ -253,13 +253,13 @@ impl<'a> Encoder for &'a LibvdaEncoder {
     }
 }
 
-pub struct LibvdaEncoderSession<'a> {
-    session: libvda::encode::Session<'a>,
+pub struct LibvdaEncoderSession {
+    session: libvda::encode::Session,
     next_input_buffer_id: InputBufferId,
     next_output_buffer_id: OutputBufferId,
 }
 
-impl<'a> EncoderSession for LibvdaEncoderSession<'a> {
+impl EncoderSession for LibvdaEncoderSession {
     fn encode(
         &mut self,
         resource: File,
