@@ -2,60 +2,104 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::RefCell;
 use std::net::Ipv4Addr;
-use std::rc::Rc;
 use std::str::FromStr;
 
-use base::{error, AsRawDescriptor, EventType, WaitContext};
+use base::{error, warn, Event};
+use cros_async::{AsyncError, EventAsync, Executor, IoSourceExt};
 use data_model::DataInit;
 use devices::virtio;
 use devices::virtio::net::{
     build_config, process_rx, process_tx, validate_and_configure_tap,
-    virtio_features_to_tap_offload, NetError, Token,
+    virtio_features_to_tap_offload, NetError,
 };
 use devices::ProtectionType;
+use futures::future::{AbortHandle, Abortable};
 use getopts::Options;
-use net_util::{MacAddress, Tap, TapT};
+use net_util::{Error as NetUtilError, MacAddress, Tap, TapT};
+use once_cell::sync::OnceCell;
 use remain::sorted;
 use thiserror::Error as ThisError;
-use vhost_user_devices::{DeviceRequestHandler, HandlerPollToken, VhostUserBackend, Vring};
+use vhost_user_devices::{CallEvent, DeviceRequestHandler, VhostUserBackend};
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
+static NET_EXECUTOR: OnceCell<Executor> = OnceCell::new();
+
 #[sorted]
 #[derive(ThisError, Debug)]
 enum Error {
+    #[error("failed to clone tap device: {0}")]
+    CloneTap(NetUtilError),
+    #[error("failed to create async tap device: {0}")]
+    CreateAsyncTap(AsyncError),
+    #[error("failed to create EventAsync: {0}")]
+    CreateEventAsync(AsyncError),
     #[error("invalid features are given: 0x{features:x}")]
     InvalidFeatures { features: u64 },
     #[error("invalid protocol features are given: 0x{features:x}")]
     InvalidProtocolFeatures { features: u64 },
-    #[error("call event is not set for vring {index}")]
-    NoCallEvent { index: usize },
-    #[error("guest memory is not set for vring {index}")]
-    NoGuestMemory { index: usize },
-    #[error("kill event is not set for vring {index}")]
-    NoKillEvent { index: usize },
-    #[error("failed to process rx queue: {0}")]
-    ProcessRx(NetError),
-    #[error("failed to read kick event for vring {index}: {err}")]
-    ReadKickEvent { index: usize, err: base::Error },
+    #[error("guest memory is not set for queue {idx}")]
+    NoGuestMemory { idx: usize },
     #[error("failed to set tap offload to match acked features: {0}")]
     TapOffload(net_util::Error),
-    #[error("unexpected token is given: {0:?}")]
-    UnexpectedToken(Token),
-    #[error("failed to modify wait context: {0}")]
-    WaitCtxModify(base::Error),
+    #[error("attempted to start unknown queue: {0}")]
+    UnknownQueue(usize),
+}
+
+async fn run_tx_queue(
+    mut queue: virtio::Queue,
+    mem: GuestMemory,
+    mut tap: Tap,
+    call_evt: CallEvent,
+    kick_evt: EventAsync,
+) {
+    loop {
+        if let Err(e) = kick_evt.next_val().await {
+            error!("Failed to read kick event for tx queue: {}", e);
+            break;
+        }
+
+        process_tx(&call_evt, &mut queue, &mem, &mut tap);
+    }
+}
+
+async fn run_rx_queue(
+    mut queue: virtio::Queue,
+    mem: GuestMemory,
+    mut tap: Box<dyn IoSourceExt<Tap>>,
+    call_evt: CallEvent,
+    kick_evt: EventAsync,
+) {
+    loop {
+        if let Err(e) = tap.wait_readable().await {
+            error!("Failed to wait for tap device to become readable: {}", e);
+            break;
+        }
+
+        match process_rx(&call_evt, &mut queue, &mem, tap.as_source_mut()) {
+            Ok(()) => {}
+            Err(NetError::RxDescriptorsExhausted) => {
+                if let Err(e) = kick_evt.next_val().await {
+                    error!("Failed to read kick event for rx queue: {}", e);
+                    break;
+                }
+            }
+            Err(e) => {
+                error!("Failed to process rx queue: {}", e);
+                break;
+            }
+        }
+    }
 }
 
 struct NetBackend {
     tap: Tap,
-    mem: Option<GuestMemory>,
-    tap_polling_enabled: bool,
     avail_features: u64,
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
+    workers: [Option<AbortHandle>; Self::MAX_QUEUE_NUM],
 }
 
 impl NetBackend {
@@ -84,11 +128,10 @@ impl NetBackend {
 
         Self {
             tap,
-            mem: None,
             avail_features,
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
-            tap_polling_enabled: false,
+            workers: Default::default(),
         }
     }
 
@@ -100,18 +143,9 @@ impl NetBackend {
 impl VhostUserBackend for NetBackend {
     // TODO(keiichiw): Support multiple queue pairs.
     const MAX_QUEUE_NUM: usize = 2; /* 1 rx and 1 tx */
-    const MAX_VRING_NUM: usize = 256;
+    const MAX_VRING_LEN: u16 = 256;
 
-    type EventToken = Token;
     type Error = Error;
-
-    fn index_to_event_type(queue_index: usize) -> Option<Self::EventToken> {
-        match queue_index {
-            0 => Some(Token::RxQueue),
-            1 => Some(Token::TxQueue),
-            _ => None,
-        }
-    }
 
     fn features(&self) -> u64 {
         self.avail_features
@@ -138,10 +172,6 @@ impl VhostUserBackend for NetBackend {
         self.acked_features
     }
 
-    fn set_guest_mem(&mut self, mem: GuestMemory) {
-        self.mem = Some(mem);
-    }
-
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         // TODO(keiichiw): Support MQ.
         VhostUserProtocolFeatures::CONFIG
@@ -159,126 +189,61 @@ impl VhostUserBackend for NetBackend {
         self.acked_protocol_features.bits()
     }
 
-    fn backend_event(&self) -> Option<(&dyn AsRawDescriptor, EventType, Self::EventToken)> {
-        Some((
-            &self.tap as &dyn AsRawDescriptor,
-            EventType::None,
-            Token::RxTap,
-        ))
-    }
-
-    fn handle_event(
-        &mut self,
-        wait_ctx: &Rc<WaitContext<HandlerPollToken<Self>>>,
-        token: &Self::EventToken,
-        vrings: &[Rc<RefCell<Vring>>],
-    ) -> std::result::Result<(), Error> {
-        match token {
-            Token::RxTap => {
-                let index = 0;
-                let mut vring = vrings[index].borrow_mut();
-
-                if !vring.enabled {
-                    return Ok(());
-                }
-
-                let Vring {
-                    ref mut queue,
-                    ref call_evt,
-                    ..
-                } = *vring;
-
-                let call_evt = call_evt
-                    .as_ref()
-                    .ok_or(Error::NoCallEvent { index })?
-                    .as_ref();
-
-                let guest_mem = self.mem.as_ref().ok_or(Error::NoGuestMemory { index })?;
-
-                match process_rx(call_evt, queue, &guest_mem, &mut self.tap) {
-                    Ok(()) => Ok(()),
-                    Err(NetError::RxDescriptorsExhausted) => {
-                        wait_ctx
-                            .modify(
-                                &self.tap,
-                                EventType::None,
-                                HandlerPollToken::BackendToken(Token::RxTap),
-                            )
-                            .map_err(Error::WaitCtxModify)?;
-                        self.tap_polling_enabled = false;
-
-                        Ok(())
-                    }
-                    Err(e) => Err(Error::ProcessRx(e)),
-                }
-            }
-            Token::RxQueue => {
-                let index = 0;
-                let vring = vrings[index].borrow();
-                if !vring.enabled {
-                    return Ok(());
-                }
-
-                let kick_evt = vring
-                    .kick_evt
-                    .as_ref()
-                    .ok_or(Error::NoKillEvent { index })?;
-                kick_evt
-                    .read()
-                    .map_err(|err| Error::ReadKickEvent { index, err })?;
-
-                if !self.tap_polling_enabled {
-                    wait_ctx
-                        .modify(
-                            &self.tap,
-                            EventType::Read,
-                            HandlerPollToken::BackendToken(Token::RxTap),
-                        )
-                        .map_err(Error::WaitCtxModify)?;
-                    self.tap_polling_enabled = true;
-                }
-                Ok(())
-            }
-            Token::TxQueue => {
-                let index = 1;
-                let mut vring = vrings[index].borrow_mut();
-
-                if !vring.enabled {
-                    return Ok(());
-                }
-
-                let Vring {
-                    ref mut queue,
-                    ref call_evt,
-                    ref kick_evt,
-                    ..
-                } = *vring;
-
-                let call_evt = call_evt
-                    .as_ref()
-                    .ok_or(Error::NoCallEvent { index })?
-                    .as_ref();
-
-                let kick_evt = kick_evt.as_ref().ok_or(Error::NoKillEvent { index })?;
-                if let Err(e) = kick_evt.read() {
-                    error!("error reading tx queue Event: {}", e);
-                }
-
-                let guest_mem = self.mem.as_ref().ok_or(Error::NoGuestMemory { index })?;
-
-                process_tx(call_evt, queue, &guest_mem, &mut self.tap);
-                Ok(())
-            }
-            token => Err(Error::UnexpectedToken(token.clone())),
-        }
-    }
-
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let config_space = build_config(Self::max_vq_pairs() as u16);
         virtio::copy_config(data, 0, config_space.as_slice(), offset);
     }
 
     fn reset(&mut self) {}
+
+    fn start_queue(
+        &mut self,
+        idx: usize,
+        queue: virtio::Queue,
+        mem: GuestMemory,
+        call_evt: CallEvent,
+        kick_evt: Event,
+    ) -> std::result::Result<(), Self::Error> {
+        if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
+            warn!("Starting new queue handler without stopping old handler");
+            handle.abort();
+        }
+
+        // Safe because the executor is initialized in main() below.
+        let ex = NET_EXECUTOR.get().expect("Executor not initialized");
+
+        let kick_evt = EventAsync::new(kick_evt.0, ex).map_err(Error::CreateEventAsync)?;
+        let tap = self.tap.try_clone().map_err(Error::CloneTap)?;
+        let (handle, registration) = AbortHandle::new_pair();
+        match idx {
+            0 => {
+                let tap = ex.async_from(tap).map_err(Error::CreateAsyncTap)?;
+
+                ex.spawn_local(Abortable::new(
+                    run_rx_queue(queue, mem, tap, call_evt, kick_evt),
+                    registration,
+                ))
+                .detach();
+            }
+            1 => {
+                ex.spawn_local(Abortable::new(
+                    run_tx_queue(queue, mem, tap, call_evt, kick_evt),
+                    registration,
+                ))
+                .detach();
+            }
+            _ => return Err(Error::UnknownQueue(idx)),
+        }
+
+        self.workers[idx] = Some(handle);
+        Ok(())
+    }
+
+    fn stop_queue(&mut self, idx: usize) {
+        if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
+            handle.abort();
+        }
+    }
 }
 
 struct TapConfig {
@@ -359,9 +324,13 @@ fn main() {
         }
     };
 
+    let ex = Executor::new().expect("Failed to create executor");
+    let _ = NET_EXECUTOR.set(ex.clone());
+
     let net = NetBackend::new(tap_cfg.host_ip, tap_cfg.netmask, tap_cfg.mac);
-    let handler = DeviceRequestHandler::new(net).expect("new handler");
-    if let Err(e) = handler.start(socket) {
+    let handler = DeviceRequestHandler::new(net);
+
+    if let Err(e) = ex.run_until(handler.run(socket, &ex)) {
         error!("error occurred: {}", e);
     }
 }

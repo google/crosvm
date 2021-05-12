@@ -9,9 +9,10 @@
 //! * `DeviceRequestHandler` struct, which makes a connection to a VMM and starts an event loop.
 //!
 //! They are expected to be used as follows:
-//! 1. Define a struct which `VhostUserBackend` is implemented for.
-//! 2. Create an instance of `DeviceRequestHandler` with the backend and call its `start()` method
-//! to start an event loop.
+//!
+//! 1. Define a struct and implement `VhostUserBackend` for it.
+//! 2. Create a `DeviceRequestHandler` with the backend struct.
+//! 3. Drive the `DeviceRequestHandler::run` async fn with an executor.
 //!
 //! ```ignore
 //! struct MyBackend {
@@ -22,30 +23,36 @@
 //!   /* implement methods */
 //! }
 //!
-//! fn main() {
+//! fn main() -> Result<(), Box<dyn Error>> {
 //!   let backend = MyBackend { /* initialize fields */ };
-//!   let handler = DeviceRequestHandler::new(backend).unwrap();
+//!   let handler = DeviceRequestHandler::new(backend);
 //!   let socket = std::path::Path("/path/to/socket");
+//!   let ex = cros_async::Executor::new()?;
 //!
-//!   if let Err(e) = handler.start(socket) {
+//!   if let Err(e) = ex.run_until(handler.run(socket, &ex)) {
 //!     eprintln!("error happened: {}", e);
 //!   }
+//!   Ok(())
 //! }
 //! ```
 //!
+// Implementation note:
+// This code lets us take advantage of the vmm_vhost low level implementation of the vhost user
+// protocol. DeviceRequestHandler implements the VhostUserSlaveReqHandlerMut trait from vmm_vhost,
+// and includes some common code for setting up guest memory and managing partially configured
+// vrings. DeviceRequestHandler::run watches the vhost-user socket and then calls handle_request()
+// when it becomes readable. handle_request() reads and parses the message and then calls one of the
+// VhostUserSlaveReqHandlerMut trait methods. These dispatch back to the supplied VhostUserBackend
+// implementation (this is what our devices implement).
 
-use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::num::Wrapping;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
-use std::rc::Rc;
 use std::sync::Arc;
 
-use base::{
-    error, AsRawDescriptor, Event, EventType, FromRawDescriptor, PollToken, SafeDescriptor,
-    SharedMemory, SharedMemoryUnix, WaitContext,
-};
+use base::{error, Event, FromRawDescriptor, SafeDescriptor, SharedMemory, SharedMemoryUnix};
+use cros_async::{AsyncError, AsyncWrapper, Executor};
 use devices::virtio::{Queue, SignalableInterrupt};
 use remain::sorted;
 use thiserror::Error as ThisError;
@@ -82,7 +89,7 @@ impl SignalableInterrupt for CallEvent {
     fn do_interrupt_resample(&self) {}
 }
 
-/// Keeps a mpaaing from the vmm's virtual addresses to guest addresses.
+/// Keeps a mapping from the vmm's virtual addresses to guest addresses.
 /// used to translate messages from the vmm to guest offsets.
 #[derive(Default)]
 struct MappingInfo {
@@ -104,20 +111,13 @@ fn vmm_va_to_gpa(maps: &[MappingInfo], vmm_va: u64) -> VhostResult<GuestAddress>
 pub trait VhostUserBackend
 where
     Self: Sized,
-    Self::EventToken: PollToken + std::fmt::Debug,
     Self::Error: std::error::Error + std::fmt::Debug,
 {
     const MAX_QUEUE_NUM: usize;
-    const MAX_VRING_NUM: usize;
-
-    /// Types of tokens that can be associated with polling events.
-    type EventToken;
+    const MAX_VRING_LEN: u16;
 
     /// Error type specific to this backend.
     type Error;
-
-    /// Translates a queue's index into `EventToken`.
-    fn index_to_event_type(queue_index: usize) -> Option<Self::EventToken>;
 
     /// The set of feature bits that this backend supports.
     fn features(&self) -> u64;
@@ -140,30 +140,30 @@ where
     /// Reads this device configuration space at `offset`.
     fn read_config(&self, offset: u64, dst: &mut [u8]);
 
-    /// Sets guest memory regions.
-    fn set_guest_mem(&mut self, mem: GuestMemory);
-
-    /// Returns a backend event to be waited for.
-    fn backend_event(&self) -> Option<(&dyn AsRawDescriptor, EventType, Self::EventToken)>;
-
-    /// Processes a given event.
-    fn handle_event(
+    /// Indicates that the backend should start processing requests for virtio queue number `idx`.
+    /// This method must not block the current thread so device backends should either spawn an
+    /// async task or another thread to handle messages from the Queue.
+    fn start_queue(
         &mut self,
-        wait_ctx: &Rc<WaitContext<HandlerPollToken<Self>>>,
-        event: &Self::EventToken,
-        vrings: &[Rc<RefCell<Vring>>],
+        idx: usize,
+        queue: Queue,
+        mem: GuestMemory,
+        call_evt: CallEvent,
+        kick_evt: Event,
     ) -> std::result::Result<(), Self::Error>;
+
+    /// Indicates that the backend should stop processing requests for virtio queue number `idx`.
+    fn stop_queue(&mut self, idx: usize);
 
     /// Resets the vhost-user backend.
     fn reset(&mut self);
 }
 
 /// A virtio ring entry.
-pub struct Vring {
-    pub queue: Queue,
-    pub call_evt: Option<Arc<CallEvent>>,
-    pub kick_evt: Option<Event>,
-    pub enabled: bool,
+struct Vring {
+    queue: Queue,
+    call_evt: Option<CallEvent>,
+    enabled: bool,
 }
 
 impl Vring {
@@ -171,7 +171,6 @@ impl Vring {
         Self {
             queue: Queue::new(max_size),
             call_evt: None,
-            kick_evt: None,
             enabled: false,
         }
     }
@@ -179,80 +178,51 @@ impl Vring {
     fn reset(&mut self) {
         self.queue.reset();
         self.call_evt = None;
-        self.kick_evt = None;
         self.enabled = false;
     }
 }
 
 #[sorted]
 #[derive(ThisError, Debug)]
-pub enum HandlerError<BackendError: std::error::Error> {
+pub enum HandlerError {
     /// Failed to accept an incoming connection.
     #[error("failed to accept an incoming connection: {0}")]
     AcceptConnection(VhostError),
+    /// Failed to create an async source.
+    #[error("failed to create an async source: {0}")]
+    CreateAsyncSource(AsyncError),
     /// Failed to create a connection listener.
     #[error("failed to create a connection listener: {0}")]
     CreateConnectionListener(VhostError),
     /// Failed to create a UNIX domain socket listener.
     #[error("failed to create a UNIX domain socket listener: {0}")]
     CreateSocketListener(VhostError),
-    /// Failed to handle a backend event.
-    #[error("failed to handle a backend event: {0}")]
-    HandleBackendEvent(BackendError),
     /// Failed to handle a vhost-user request.
     #[error("failed to handle a vhost-user request: {0}")]
     HandleVhostUserRequest(VhostError),
     /// Invalid queue index is given.
     #[error("invalid queue index is given: {index}")]
     InvalidQueueIndex { index: usize },
-    /// Failed to add new FD(s) to wait context.
-    #[error("failed to add new FD(s) to wait context: {0}")]
-    WaitContextAdd(base::Error),
-    /// Failed to create a wait context.
-    #[error("failed to create a wait context: {0}")]
-    WaitContextCreate(base::Error),
-    /// Failed to delete a FD from wait context.
-    #[error("failed to delete a FD from wait context: {0}")]
-    WaitContextDel(base::Error),
-    /// Failed to wait for event.
-    #[error("failed to wait for an event triggered: {0}")]
-    WaitContextWait(base::Error),
+    /// Failed to wait for the handler socket to become readable.
+    #[error("failed to wait for the handler socket to become readable: {0}")]
+    WaitForHandler(AsyncError),
+    /// Failed to wait for the listener socket to become readable.
+    #[error("failed to wait for the listener socket to become readable: {0}")]
+    WaitForListener(AsyncError),
 }
 
-type HandlerResult<B, T> = std::result::Result<T, HandlerError<<B as VhostUserBackend>::Error>>;
-
-#[derive(Debug)]
-pub enum HandlerPollToken<B: VhostUserBackend> {
-    BackendToken(B::EventToken),
-    VhostUserRequest,
-}
-
-impl<B: VhostUserBackend> PollToken for HandlerPollToken<B> {
-    fn as_raw_token(&self) -> u64 {
-        match self {
-            Self::BackendToken(t) => t.as_raw_token(),
-            Self::VhostUserRequest => u64::MAX,
-        }
-    }
-
-    fn from_raw_token(data: u64) -> Self {
-        match data {
-            u64::MAX => Self::VhostUserRequest,
-            _ => Self::BackendToken(B::EventToken::from_raw_token(data)),
-        }
-    }
-}
+type HandlerResult<T> = std::result::Result<T, HandlerError>;
 
 /// Structure to have an event loop for interaction between a VMM and `VhostUserBackend`.
 pub struct DeviceRequestHandler<B>
 where
     B: 'static + VhostUserBackend,
 {
+    vrings: Vec<Vring>,
     owned: bool,
-    vrings: Vec<Rc<RefCell<Vring>>>,
     vmm_maps: Option<Vec<MappingInfo>>,
-    backend: Rc<RefCell<B>>,
-    wait_ctx: Rc<WaitContext<HandlerPollToken<B>>>,
+    mem: Option<GuestMemory>,
+    backend: B,
 }
 
 impl<B> DeviceRequestHandler<B>
@@ -260,87 +230,49 @@ where
     B: 'static + VhostUserBackend,
 {
     /// Creates the handler instance for `backend`.
-    pub fn new(backend: B) -> HandlerResult<B, Self> {
-        let mut vrings = Vec::with_capacity(B::MAX_QUEUE_NUM as usize);
+    pub fn new(backend: B) -> Self {
+        let mut vrings = Vec::with_capacity(B::MAX_QUEUE_NUM);
         for _ in 0..B::MAX_QUEUE_NUM {
-            vrings.push(Rc::new(RefCell::new(Vring::new(B::MAX_VRING_NUM as u16))));
+            vrings.push(Vring::new(B::MAX_VRING_LEN as u16));
         }
 
-        let wait_ctx: WaitContext<HandlerPollToken<B>> =
-            WaitContext::new().map_err(HandlerError::WaitContextCreate)?;
-
-        if let Some((evt, typ, token)) = backend.backend_event() {
-            wait_ctx
-                .add_for_event(evt, typ, HandlerPollToken::BackendToken(token))
-                .map_err(HandlerError::WaitContextAdd)?;
-        }
-
-        Ok(DeviceRequestHandler {
+        DeviceRequestHandler {
+            vrings,
             owned: false,
             vmm_maps: None,
-            vrings,
-            backend: Rc::new(RefCell::new(backend)),
-            wait_ctx: Rc::new(wait_ctx),
-        })
+            mem: None,
+            backend,
+        }
     }
 
-    /// Connects to `socket` and starts an event loop which handles incoming vhost-user requests from
-    /// the VMM and events from the backend.
-    // TODO(keiichiw): Remove the clippy annotation once we uprev clippy to 1.52.0 or later.
-    // cf. https://github.com/rust-lang/rust-clippy/issues/6546
-    #[allow(clippy::clippy::result_unit_err)]
-    pub fn start<P: AsRef<Path>>(self, socket: P) -> HandlerResult<B, ()> {
-        let vrings = self.vrings.clone();
-        let backend = self.backend.clone();
-        let wait_ctx = self.wait_ctx.clone();
-
-        let listener = Listener::new(socket, true).map_err(HandlerError::CreateSocketListener)?;
-        let mut s_listener = SlaveListener::new(listener, Arc::new(std::sync::Mutex::new(self)))
-            .map_err(HandlerError::CreateConnectionListener)?;
-
-        let mut req_handler = s_listener
+    /// Creates a listening socket at `socket` and handles incoming messages from the VMM, which are
+    /// dispatched to the device backend via the `VhostUserBackend` trait methods.
+    pub async fn run<P: AsRef<Path>>(self, socket: P, ex: &Executor) -> HandlerResult<()> {
+        let mut listener = Listener::new(socket, true)
+            .map_err(HandlerError::CreateSocketListener)
+            .and_then(|l| {
+                SlaveListener::new(l, Arc::new(std::sync::Mutex::new(self)))
+                    .map_err(HandlerError::CreateConnectionListener)
+            })?;
+        let mut req_handler = listener
             .accept()
             .map_err(HandlerError::AcceptConnection)?
             .expect("no incoming connection was detected");
 
-        let sd = SafeDescriptor::try_from(&req_handler as &dyn AsRawFd)
+        let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawFd)
+            .map(AsyncWrapper::new)
             .expect("failed to get safe descriptor for handler");
-        wait_ctx
-            .add(&sd, HandlerPollToken::VhostUserRequest)
-            .map_err(HandlerError::WaitContextAdd)?;
+        let handler_source = ex.async_from(h).map_err(HandlerError::CreateAsyncSource)?;
 
         loop {
-            let events = wait_ctx.wait().map_err(HandlerError::WaitContextWait)?;
-            for event in events.iter() {
-                match &event.token {
-                    HandlerPollToken::BackendToken(token) => {
-                        backend
-                            .borrow_mut()
-                            .handle_event(&wait_ctx, &token, &vrings)
-                            .map_err(HandlerError::HandleBackendEvent)?;
-                    }
-                    HandlerPollToken::VhostUserRequest => {
-                        req_handler
-                            .handle_request()
-                            .map_err(HandlerError::HandleVhostUserRequest)?;
-                    }
-                }
-            }
+            handler_source
+                .wait_readable()
+                .await
+                .map_err(HandlerError::WaitForHandler)?;
+            req_handler
+                .handle_request()
+                .map_err(HandlerError::HandleVhostUserRequest)?;
         }
-    }
-
-    fn register_kickfd(&self, index: usize, event: &Event) -> HandlerResult<B, ()> {
-        let token =
-            B::index_to_event_type(index).ok_or(HandlerError::InvalidQueueIndex { index })?;
-        self.wait_ctx
-            .add(&event.0, HandlerPollToken::BackendToken(token))
-            .map_err(HandlerError::WaitContextAdd)
-    }
-
-    fn unregister_kickfd(&self, event: &Event) -> HandlerResult<B, ()> {
-        self.wait_ctx
-            .delete(&event.0)
-            .map_err(HandlerError::WaitContextDel)
     }
 }
 
@@ -355,12 +287,12 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
 
     fn reset_owner(&mut self) -> VhostResult<()> {
         self.owned = false;
-        self.backend.borrow_mut().reset();
+        self.backend.reset();
         Ok(())
     }
 
     fn get_features(&mut self) -> VhostResult<u64> {
-        let features = self.backend.borrow().features();
+        let features = self.backend.features();
         Ok(features)
     }
 
@@ -369,11 +301,11 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
             return Err(VhostError::InvalidOperation);
         }
 
-        if (features & !(self.backend.borrow().features())) != 0 {
+        if (features & !(self.backend.features())) != 0 {
             return Err(VhostError::InvalidParam);
         }
 
-        if let Err(e) = self.backend.borrow_mut().ack_features(features) {
+        if let Err(e) = self.backend.ack_features(features) {
             error!("failed to acknowledge features 0x{:x}: {}", features, e);
             return Err(VhostError::InvalidOperation);
         }
@@ -385,22 +317,21 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
         // Client must not pass data to/from the backend until ring is enabled by
         // VHOST_USER_SET_VRING_ENABLE with parameter 1, or after it has been disabled by
         // VHOST_USER_SET_VRING_ENABLE with parameter 0.
-        let acked_features = self.backend.borrow().acked_features();
+        let acked_features = self.backend.acked_features();
         let vring_enabled = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() & acked_features != 0;
         for v in &mut self.vrings {
-            let mut vring = v.borrow_mut();
-            vring.enabled = vring_enabled;
+            v.enabled = vring_enabled;
         }
 
         Ok(())
     }
 
     fn get_protocol_features(&mut self) -> VhostResult<VhostUserProtocolFeatures> {
-        Ok(self.backend.borrow().protocol_features())
+        Ok(self.backend.protocol_features())
     }
 
     fn set_protocol_features(&mut self, features: u64) -> VhostResult<()> {
-        if let Err(e) = self.backend.borrow_mut().ack_protocol_features(features) {
+        if let Err(e) = self.backend.ack_protocol_features(features) {
             error!("failed to set protocol features 0x{:x}: {}", features, e);
             return Err(VhostError::InvalidOperation);
         }
@@ -451,8 +382,7 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
             })
             .collect();
 
-        self.backend.borrow_mut().set_guest_mem(guest_mem);
-
+        self.mem = Some(guest_mem);
         self.vmm_maps = Some(vmm_maps);
         Ok(())
     }
@@ -462,11 +392,10 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
     }
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> VhostResult<()> {
-        if index as usize >= self.vrings.len() || num == 0 || num as usize > B::MAX_VRING_NUM {
+        if index as usize >= self.vrings.len() || num == 0 || num > B::MAX_VRING_LEN.into() {
             return Err(VhostError::InvalidParam);
         }
-        let mut vring = self.vrings[index as usize].borrow_mut();
-        vring.queue.size = num as u16;
+        self.vrings[index as usize].queue.size = num as u16;
 
         Ok(())
     }
@@ -485,7 +414,7 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
         }
 
         let vmm_maps = self.vmm_maps.as_ref().ok_or(VhostError::InvalidParam)?;
-        let mut vring = self.vrings[index as usize].borrow_mut();
+        let vring = &mut self.vrings[index as usize];
         vring.queue.desc_table = vmm_va_to_gpa(&vmm_maps, descriptor)?;
         vring.queue.avail_ring = vmm_va_to_gpa(&vmm_maps, available)?;
         vring.queue.used_ring = vmm_va_to_gpa(&vmm_maps, used)?;
@@ -494,11 +423,11 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
     }
 
     fn set_vring_base(&mut self, index: u32, base: u32) -> VhostResult<()> {
-        if index as usize >= self.vrings.len() || base as usize >= B::MAX_VRING_NUM {
+        if index as usize >= self.vrings.len() || base >= B::MAX_VRING_LEN.into() {
             return Err(VhostError::InvalidParam);
         }
 
-        let mut vring = self.vrings[index as usize].borrow_mut();
+        let vring = &mut self.vrings[index as usize];
         vring.queue.next_avail = Wrapping(base as u16);
         vring.queue.next_used = Wrapping(base as u16);
 
@@ -515,11 +444,10 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
         // that file descriptor is readable) on the descriptor specified by
         // VHOST_USER_SET_VRING_KICK, and stop ring upon receiving
         // VHOST_USER_GET_VRING_BASE.
-        let mut vring = self.vrings[index as usize].borrow_mut();
+        self.backend.stop_queue(index as usize);
+
+        let vring = &mut self.vrings[index as usize];
         vring.reset();
-        if let Some(kick) = &vring.kick_evt {
-            self.unregister_kickfd(kick).expect("unregister_kickfd");
-        }
 
         Ok(VhostUserVringState::new(
             index,
@@ -541,14 +469,26 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
                 VhostError::InvalidParam
             })?;
             // Safe because the FD is now owned.
-            let kick = unsafe { Event::from_raw_descriptor(rd) };
+            let kick_evt = unsafe { Event::from_raw_descriptor(rd) };
 
-            self.register_kickfd(index as usize, &kick)
-                .expect("register_kickfd");
-
-            let mut vring = self.vrings[index as usize].borrow_mut();
-            vring.kick_evt = Some(kick);
+            let vring = &mut self.vrings[index as usize];
             vring.queue.ready = true;
+
+            let queue = vring.queue.clone();
+            let call_evt = vring.call_evt.take().ok_or(VhostError::InvalidOperation)?;
+            let mem = self
+                .mem
+                .as_ref()
+                .cloned()
+                .ok_or(VhostError::InvalidOperation)?;
+
+            if let Err(e) = self
+                .backend
+                .start_queue(index as usize, queue, mem, call_evt, kick_evt)
+            {
+                error!("Failed to start queue {}: {}", index, e);
+                return Err(VhostError::SlaveInternalError);
+            }
         }
         Ok(())
     }
@@ -565,7 +505,7 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
             })?;
             // Safe because the FD is now owned.
             let call = unsafe { Event::from_raw_descriptor(rd) };
-            self.vrings[index as usize].borrow_mut().call_evt = Some(Arc::new(CallEvent(call)));
+            self.vrings[index as usize].call_evt = Some(CallEvent(call));
         }
 
         Ok(())
@@ -583,10 +523,7 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
 
         // This request should be handled only when VHOST_USER_F_PROTOCOL_FEATURES
         // has been negotiated.
-        if self.backend.borrow().acked_features()
-            & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits()
-            == 0
-        {
+        if self.backend.acked_features() & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0 {
             return Err(VhostError::InvalidOperation);
         }
 
@@ -594,8 +531,7 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
         // enabled by VHOST_USER_SET_VRING_ENABLE with parameter 1,
         // or after it has been disabled by VHOST_USER_SET_VRING_ENABLE
         // with parameter 0.
-        let mut vring = self.vrings[index as usize].borrow_mut();
-        vring.enabled = enable;
+        self.vrings[index as usize].enabled = enable;
 
         Ok(())
     }
@@ -611,9 +547,7 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
         }
 
         let mut data = vec![0; size as usize];
-        self.backend
-            .borrow()
-            .read_config(u64::from(offset), &mut data);
+        self.backend.read_config(u64::from(offset), &mut data);
         Ok(data)
     }
 
@@ -663,11 +597,6 @@ mod tests {
     use tempfile::{Builder, TempDir};
     use vmm_vhost::vhost_user::Master;
 
-    #[derive(PollToken, Debug)]
-    enum FakeToken {
-        Queue0,
-    }
-
     #[derive(ThisError, Debug)]
     enum FakeError {
         #[error("invalid features are given: 0x{features:x}")]
@@ -688,7 +617,6 @@ mod tests {
     const FAKE_CONFIG_DATA: FakeConfig = FakeConfig { x: 1, y: 2 };
 
     struct FakeBackend {
-        mem: Option<GuestMemory>,
         avail_features: u64,
         acked_features: u64,
         acked_protocol_features: VhostUserProtocolFeatures,
@@ -697,7 +625,6 @@ mod tests {
     impl FakeBackend {
         fn new() -> Self {
             Self {
-                mem: None,
                 avail_features: VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits(),
                 acked_features: 0,
                 acked_protocol_features: VhostUserProtocolFeatures::empty(),
@@ -707,17 +634,9 @@ mod tests {
 
     impl VhostUserBackend for FakeBackend {
         const MAX_QUEUE_NUM: usize = 16;
-        const MAX_VRING_NUM: usize = 256;
+        const MAX_VRING_LEN: u16 = 256;
 
-        type EventToken = FakeToken;
         type Error = FakeError;
-
-        fn index_to_event_type(queue_index: usize) -> Option<Self::EventToken> {
-            match queue_index {
-                0 => Some(FakeToken::Queue0),
-                _ => None,
-            }
-        }
 
         fn features(&self) -> u64 {
             self.avail_features
@@ -738,10 +657,6 @@ mod tests {
             self.acked_features
         }
 
-        fn set_guest_mem(&mut self, mem: GuestMemory) {
-            self.mem = Some(mem);
-        }
-
         fn protocol_features(&self) -> VhostUserProtocolFeatures {
             VhostUserProtocolFeatures::CONFIG
         }
@@ -758,24 +673,24 @@ mod tests {
             self.acked_protocol_features.bits()
         }
 
-        fn backend_event(&self) -> Option<(&dyn AsRawDescriptor, EventType, Self::EventToken)> {
-            None
-        }
-
-        fn handle_event(
-            &mut self,
-            _wait_ctx: &Rc<WaitContext<HandlerPollToken<Self>>>,
-            _event: &Self::EventToken,
-            _vrings: &[Rc<RefCell<Vring>>],
-        ) -> std::result::Result<(), Self::Error> {
-            Ok(())
-        }
-
         fn read_config(&self, offset: u64, dst: &mut [u8]) {
             dst.copy_from_slice(&FAKE_CONFIG_DATA.as_slice()[offset as usize..]);
         }
 
         fn reset(&mut self) {}
+
+        fn start_queue(
+            &mut self,
+            _idx: usize,
+            _queue: Queue,
+            _mem: GuestMemory,
+            _call_evt: CallEvent,
+            _kick_evt: Event,
+        ) -> std::result::Result<(), Self::Error> {
+            Ok(())
+        }
+
+        fn stop_queue(&mut self, _idx: usize) {}
     }
 
     fn temp_dir() -> TempDir {
@@ -836,9 +751,9 @@ mod tests {
         });
 
         // Device side
-        let handler = Arc::new(std::sync::Mutex::new(
-            DeviceRequestHandler::new(FakeBackend::new()).unwrap(),
-        ));
+        let handler = Arc::new(std::sync::Mutex::new(DeviceRequestHandler::new(
+            FakeBackend::new(),
+        )));
         let mut listener = SlaveListener::new(listener, handler).unwrap();
 
         // Notify listener is ready.
