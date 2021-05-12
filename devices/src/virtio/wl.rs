@@ -64,6 +64,7 @@ use vm_memory::{GuestMemory, GuestMemoryError};
 #[cfg(feature = "minigbm")]
 use vm_control::GpuMemoryDesc;
 
+#[cfg(feature = "gpu")]
 use super::resource_bridge::{
     get_resource_info, BufferInfo, ResourceBridgeError, ResourceInfo, ResourceRequest,
 };
@@ -489,6 +490,7 @@ impl CtrlVfdSendVfdV2 {
         );
         unsafe { self.payload.id }
     }
+    #[cfg(feature = "gpu")]
     fn seqno(&self) -> Le64 {
         assert!(self.kind == VIRTIO_WL_CTRL_VFD_SEND_KIND_VIRTGPU_FENCE);
         unsafe { self.payload.seqno }
