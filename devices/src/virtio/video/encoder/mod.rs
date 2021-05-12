@@ -507,10 +507,11 @@ fn get_resource_info(res_bridge: &Tube, uuid: u128) -> VideoResult<BufferInfo> {
 }
 
 impl<T: Encoder> EncoderDevice<T> {
-    pub fn new(encoder: T) -> VideoResult<Self> {
+    /// Build a new encoder using the provided `backend`.
+    fn from_backend(backend: T) -> VideoResult<Self> {
         Ok(Self {
-            cros_capabilities: encoder.query_capabilities()?,
-            encoder,
+            cros_capabilities: backend.query_capabilities()?,
+            encoder: backend,
             streams: Default::default(),
         })
     }

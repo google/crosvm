@@ -13,7 +13,7 @@ use base::{error, warn, IntoRawDescriptor};
 use super::*;
 use crate::virtio::video::format::{Format, FormatDesc, FormatRange, FrameFormat, Level, Profile};
 use crate::virtio::video::{
-    encoder::encoder::*,
+    encoder::{encoder::*, EncoderDevice},
     error::{VideoError, VideoResult},
 };
 
@@ -23,7 +23,7 @@ pub struct LibvdaEncoder {
 }
 
 impl LibvdaEncoder {
-    pub fn new() -> VideoResult<Self> {
+    fn new() -> VideoResult<Self> {
         let instance = VeaInstance::new(VeaImplType::Gavea)?;
 
         let EncodeCapabilities {
@@ -359,5 +359,14 @@ impl EncoderSession for LibvdaEncoderSession {
         };
 
         Ok(encoder_event)
+    }
+}
+
+/// Create a new encoder instance using a Libvda encoder instance to perform
+/// the encoding.
+impl EncoderDevice<LibvdaEncoder> {
+    pub fn new() -> VideoResult<Self> {
+        let vea = LibvdaEncoder::new()?;
+        EncoderDevice::from_backend(vea)
     }
 }
