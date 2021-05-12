@@ -20,6 +20,7 @@ use base::{
     ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, volatile_impl, AsRawDescriptor,
     FromRawDescriptor, IoctlNr, RawDescriptor,
 };
+use cros_async::IntoAsync;
 
 #[derive(Debug)]
 pub enum Error {
@@ -29,6 +30,8 @@ pub enum Error {
     OpenTun(SysError),
     /// Unable to create tap interface.
     CreateTap(SysError),
+    /// Unable to clone tap interface.
+    CloneTap(SysError),
     /// ioctl failed.
     IoctlError(SysError),
 }
@@ -42,6 +45,7 @@ impl Display for Error {
             CreateSocket(e) => write!(f, "failed to create a socket: {}", e),
             OpenTun(e) => write!(f, "failed to open /dev/net/tun: {}", e),
             CreateTap(e) => write!(f, "failed to create tap interface: {}", e),
+            CloneTap(e) => write!(f, "failed to clone tap interface: {}", e),
             IoctlError(e) => write!(f, "ioctl failed: {}", e),
         }
     }
@@ -53,6 +57,7 @@ impl Error {
             Error::CreateSocket(e) => e,
             Error::OpenTun(e) => e,
             Error::CreateTap(e) => e,
+            Error::CloneTap(e) => e,
             Error::IoctlError(e) => e,
         }
     }
@@ -226,6 +231,18 @@ impl Tap {
             if_name: unsafe { ifreq.ifr_ifrn.ifrn_name },
             if_flags: unsafe { ifreq.ifr_ifru.ifru_flags },
         })
+    }
+
+    pub fn try_clone(&self) -> Result<Tap> {
+        self.tap_file
+            .try_clone()
+            .map(|tap_file| Tap {
+                tap_file,
+                if_name: self.if_name,
+                if_flags: self.if_flags,
+            })
+            .map_err(SysError::from)
+            .map_err(Error::CloneTap)
     }
 }
 
@@ -526,6 +543,8 @@ impl AsRawDescriptor for Tap {
         self.tap_file.as_raw_descriptor()
     }
 }
+
+impl IntoAsync for Tap {}
 
 volatile_impl!(Tap);
 
