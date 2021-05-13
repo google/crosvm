@@ -2865,6 +2865,7 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
 #[allow(dead_code)]
 fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     linux: &RunnableLinuxVm<V, Vcpu>,
+    sys_allocator: &mut SystemAllocator,
     vfio_path: &Path,
 ) -> Result<()> {
     let host_os_str = vfio_path
@@ -2879,6 +2880,7 @@ fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
         let mut hp_bus_lock = hp_bus.lock();
         if let Some(pci_addr) = hp_bus_lock.get_hotplug_device(host_key) {
             hp_bus_lock.hot_unplug(pci_addr);
+            sys_allocator.release_pci(pci_addr.bus, pci_addr.dev, pci_addr.func);
             return Ok(());
         }
     }

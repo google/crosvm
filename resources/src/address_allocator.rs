@@ -206,6 +206,23 @@ impl AddressAllocator {
             .map_or_else(|| Err(Error::BadAlloc(alloc)), |v| self.insert_at(v.0, v.1))
     }
 
+    /// Release a allocation contains the value.
+    pub fn release_containing(&mut self, value: u64) -> Result<()> {
+        let mut alloc = None;
+        for (key, val) in self.allocs.iter() {
+            if value >= val.0 && value < val.0 + val.1 {
+                alloc = Some(*key);
+                break;
+            }
+        }
+
+        if let Some(key) = alloc {
+            return self.release(key);
+        }
+
+        Err(Error::OutOfSpace)
+    }
+
     /// Returns allocation associated with `alloc`, or None if no such allocation exists.
     pub fn get(&self, alloc: &Alloc) -> Option<&(u64, u64, String)> {
         self.allocs.get(alloc)
