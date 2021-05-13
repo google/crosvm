@@ -33,6 +33,7 @@ use std::path::PathBuf;
 use std::sync::{MutexGuard, Once};
 
 use sync::Mutex;
+use thiserror::Error as ThisError;
 
 /// The priority (i.e. severity) of a syslog message.
 ///
@@ -93,35 +94,26 @@ pub enum Facility {
 }
 
 /// Errors returned by `syslog::init()`.
-#[derive(Debug)]
+#[derive(ThisError, Debug)]
 pub enum Error {
     /// Initialization was never attempted.
+    #[error("initialization was never attempted")]
     NeverInitialized,
     /// Initialization has previously failed and can not be retried.
+    #[error("initialization previously failed and cannot be retried")]
     Poisoned,
     /// Error while creating socket.
+    #[error("failed to create socket: {0}")]
     Socket(io::Error),
     /// Error while attempting to connect socket.
+    #[error("failed to connect socket: {0}")]
     Connect(io::Error),
-    // There was an error using `open` to get the lowest file descriptor.
+    /// There was an error using `open` to get the lowest file descriptor.
+    #[error("failed to get lowest file descriptor: {0}")]
     GetLowestFd(io::Error),
-    // The guess of libc's file descriptor for the syslog connection was invalid.
+    /// The guess of libc's file descriptor for the syslog connection was invalid.
+    #[error("guess of fd for syslog connection was invalid")]
     InvalidFd,
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            NeverInitialized => write!(f, "initialization was never attempted"),
-            Poisoned => write!(f, "initialization previously failed and cannot be retried"),
-            Socket(e) => write!(f, "failed to create socket: {}", e),
-            Connect(e) => write!(f, "failed to connect socket: {}", e),
-            GetLowestFd(e) => write!(f, "failed to get lowest file descriptor: {}", e),
-            InvalidFd => write!(f, "guess of fd for syslog connection was invalid"),
-        }
-    }
 }
 
 fn get_proc_name() -> Option<String> {

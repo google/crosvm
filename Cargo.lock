@@ -1051,6 +1051,7 @@ dependencies = [
  "serde_json",
  "sync",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
