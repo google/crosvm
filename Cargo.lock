@@ -686,6 +686,7 @@ dependencies = [
  "data_model",
  "libc",
  "net_sys",
+ "thiserror",
 ]
 
 [[package]]

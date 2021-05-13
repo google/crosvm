@@ -21,35 +21,27 @@ use base::{
     FromRawDescriptor, IoctlNr, RawDescriptor,
 };
 use cros_async::IntoAsync;
+use thiserror::Error as ThisError;
 
-#[derive(Debug)]
+#[derive(ThisError, Debug)]
 pub enum Error {
     /// Failed to create a socket.
+    #[error("failed to create a socket: {0}")]
     CreateSocket(SysError),
     /// Couldn't open /dev/net/tun.
+    #[error("failed to open /dev/net/tun: {0}")]
     OpenTun(SysError),
     /// Unable to create tap interface.
+    #[error("failed to create tap interface: {0}")]
     CreateTap(SysError),
     /// Unable to clone tap interface.
+    #[error("failed to clone tap interface: {0}")]
     CloneTap(SysError),
     /// ioctl failed.
+    #[error("ioctl failed: {0}")]
     IoctlError(SysError),
 }
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            CreateSocket(e) => write!(f, "failed to create a socket: {}", e),
-            OpenTun(e) => write!(f, "failed to open /dev/net/tun: {}", e),
-            CreateTap(e) => write!(f, "failed to create tap interface: {}", e),
-            CloneTap(e) => write!(f, "failed to clone tap interface: {}", e),
-            IoctlError(e) => write!(f, "ioctl failed: {}", e),
-        }
-    }
-}
 
 impl Error {
     pub fn sys_error(&self) -> SysError {

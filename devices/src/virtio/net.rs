@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{self, Display};
 use std::io::{self, Write};
 use std::mem;
 use std::net::Ipv4Addr;
@@ -15,6 +14,7 @@ use base::Error as SysError;
 use base::{error, warn, AsRawDescriptor, Event, EventType, PollToken, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le16, Le64};
 use net_util::{Error as TapError, MacAddress, TapT};
+use thiserror::Error as ThisError;
 use virtio_sys::virtio_net;
 use virtio_sys::virtio_net::{
     virtio_net_hdr_v1, VIRTIO_NET_CTRL_GUEST_OFFLOADS, VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET,
@@ -29,77 +29,68 @@ use super::{
 
 const QUEUE_SIZE: u16 = 256;
 
-#[derive(Debug)]
+#[derive(ThisError, Debug)]
 pub enum NetError {
     /// Creating kill event failed.
+    #[error("failed to create kill event: {0}")]
     CreateKillEvent(SysError),
     /// Creating WaitContext failed.
+    #[error("failed to create wait context: {0}")]
     CreateWaitContext(SysError),
     /// Cloning kill event failed.
+    #[error("failed to clone kill event: {0}")]
     CloneKillEvent(SysError),
     /// Descriptor chain was invalid.
+    #[error("failed to valildate descriptor chain: {0}")]
     DescriptorChain(DescriptorError),
     /// Removing read event from the tap fd events failed.
+    #[error("failed to disable EPOLLIN on tap fd: {0}")]
     WaitContextDisableTap(SysError),
     /// Adding read event to the tap fd events failed.
+    #[error("failed to enable EPOLLIN on tap fd: {0}")]
     WaitContextEnableTap(SysError),
     /// Error while waiting for events.
+    #[error("error while waiting for events: {0}")]
     WaitError(SysError),
     /// Error reading data from control queue.
+    #[error("failed to read control message data: {0}")]
     ReadCtrlData(io::Error),
     /// Error reading header from control queue.
+    #[error("failed to read control message header: {0}")]
     ReadCtrlHeader(io::Error),
     /// There are no more available descriptors to receive into.
+    #[error("no rx descriptors available")]
     RxDescriptorsExhausted,
     /// Open tap device failed.
+    #[error("failed to open tap device: {0}")]
     TapOpen(TapError),
     /// Setting tap IP failed.
+    #[error("failed to set tap IP: {0}")]
     TapSetIp(TapError),
     /// Setting tap netmask failed.
+    #[error("failed to set tap netmask: {0}")]
     TapSetNetmask(TapError),
     /// Setting tap mac address failed.
+    #[error("failed to set tap mac address: {0}")]
     TapSetMacAddress(TapError),
     /// Setting tap interface offload flags failed.
+    #[error("failed to set tap interface offload flags: {0}")]
     TapSetOffload(TapError),
     /// Setting vnet header size failed.
+    #[error("failed to set vnet header size: {0}")]
     TapSetVnetHdrSize(TapError),
     /// Enabling tap interface failed.
+    #[error("failed to enable tap interface: {0}")]
     TapEnable(TapError),
     /// Validating tap interface failed.
+    #[error("failed to validate tap interface: {0}")]
     TapValidate(String),
     /// Failed writing an ack in response to a control message.
+    #[error("failed to write control message ack: {0}")]
     WriteAck(io::Error),
     /// Writing to a buffer in the guest failed.
+    #[error("failed to write to guest buffer: {0}")]
     WriteBuffer(io::Error),
-}
-
-impl Display for NetError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::NetError::*;
-
-        match self {
-            CreateKillEvent(e) => write!(f, "failed to create kill event: {}", e),
-            CreateWaitContext(e) => write!(f, "failed to create wait context: {}", e),
-            CloneKillEvent(e) => write!(f, "failed to clone kill event: {}", e),
-            DescriptorChain(e) => write!(f, "failed to valildate descriptor chain: {}", e),
-            WaitContextDisableTap(e) => write!(f, "failed to disable EPOLLIN on tap fd: {}", e),
-            WaitContextEnableTap(e) => write!(f, "failed to enable EPOLLIN on tap fd: {}", e),
-            WaitError(e) => write!(f, "error while waiting for events: {}", e),
-            ReadCtrlData(e) => write!(f, "failed to read control message data: {}", e),
-            ReadCtrlHeader(e) => write!(f, "failed to read control message header: {}", e),
-            RxDescriptorsExhausted => write!(f, "no rx descriptors available"),
-            TapOpen(e) => write!(f, "failed to open tap device: {}", e),
-            TapSetIp(e) => write!(f, "failed to set tap IP: {}", e),
-            TapSetNetmask(e) => write!(f, "failed to set tap netmask: {}", e),
-            TapSetMacAddress(e) => write!(f, "failed to set tap mac address: {}", e),
-            TapSetOffload(e) => write!(f, "failed to set tap interface offload flags: {}", e),
-            TapSetVnetHdrSize(e) => write!(f, "failed to set vnet header size: {}", e),
-            TapEnable(e) => write!(f, "failed to enable tap interface: {}", e),
-            TapValidate(s) => write!(f, "failed to validate tap interface: {}", s),
-            WriteAck(e) => write!(f, "failed to write control message ack: {}", e),
-            WriteBuffer(e) => write!(f, "failed to write to guest buffer: {}", e),
-        }
-    }
 }
 
 #[repr(C, packed)]
