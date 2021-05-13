@@ -111,7 +111,7 @@ fn vmm_va_to_gpa(maps: &[MappingInfo], vmm_va: u64) -> VhostResult<GuestAddress>
 pub trait VhostUserBackend
 where
     Self: Sized,
-    Self::Error: std::error::Error + std::fmt::Debug,
+    Self::Error: std::fmt::Display,
 {
     const MAX_QUEUE_NUM: usize;
     const MAX_VRING_LEN: u16;

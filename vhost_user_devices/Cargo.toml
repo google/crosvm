@@ -16,6 +16,7 @@ path = "src/net.rs"
 required-features = ["net"]
 
 [dependencies]
+anyhow = "*"
 base = { path = "../base" }
 cros_async = { path = "../cros_async" }
 data_model = { path = "../data_model", optional = true }

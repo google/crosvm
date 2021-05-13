@@ -5,8 +5,9 @@
 use std::net::Ipv4Addr;
 use std::str::FromStr;
 
+use anyhow::{anyhow, bail, Context};
 use base::{error, warn, Event};
-use cros_async::{AsyncError, EventAsync, Executor, IoSourceExt};
+use cros_async::{EventAsync, Executor, IoSourceExt};
 use data_model::DataInit;
 use devices::virtio;
 use devices::virtio::net::{
@@ -16,37 +17,14 @@ use devices::virtio::net::{
 use devices::ProtectionType;
 use futures::future::{AbortHandle, Abortable};
 use getopts::Options;
-use net_util::{Error as NetUtilError, MacAddress, Tap, TapT};
+use net_util::{MacAddress, Tap, TapT};
 use once_cell::sync::OnceCell;
-use remain::sorted;
-use thiserror::Error as ThisError;
 use vhost_user_devices::{CallEvent, DeviceRequestHandler, VhostUserBackend};
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 static NET_EXECUTOR: OnceCell<Executor> = OnceCell::new();
-
-#[sorted]
-#[derive(ThisError, Debug)]
-enum Error {
-    #[error("failed to clone tap device: {0}")]
-    CloneTap(NetUtilError),
-    #[error("failed to create async tap device: {0}")]
-    CreateAsyncTap(AsyncError),
-    #[error("failed to create EventAsync: {0}")]
-    CreateEventAsync(AsyncError),
-    #[error("invalid features are given: 0x{features:x}")]
-    InvalidFeatures { features: u64 },
-    #[error("invalid protocol features are given: 0x{features:x}")]
-    InvalidProtocolFeatures { features: u64 },
-    #[error("guest memory is not set for queue {idx}")]
-    NoGuestMemory { idx: usize },
-    #[error("failed to set tap offload to match acked features: {0}")]
-    TapOffload(net_util::Error),
-    #[error("attempted to start unknown queue: {0}")]
-    UnknownQueue(usize),
-}
 
 async fn run_tx_queue(
     mut queue: virtio::Queue,
@@ -103,7 +81,11 @@ struct NetBackend {
 }
 
 impl NetBackend {
-    pub fn new(host_ip: Ipv4Addr, netmask: Ipv4Addr, mac_address: MacAddress) -> Self {
+    pub fn new(
+        host_ip: Ipv4Addr,
+        netmask: Ipv4Addr,
+        mac_address: MacAddress,
+    ) -> anyhow::Result<Self> {
         // TODO(keiichiw): Support CTRL_VQ and MQ.
         // Note that MQ cannot be enabled without CTRL_VQ.
         let avail_features = virtio::base_features(ProtectionType::Unprotected)
@@ -119,20 +101,24 @@ impl NetBackend {
         let vq_pairs = Self::max_vq_pairs();
 
         // Create a tap device.
-        let tap = Tap::new(true /* vnet_hdr */, true /* multi_queue */).expect("tap");
-        tap.set_ip_addr(host_ip).expect("set IP address");
-        tap.set_netmask(netmask).expect("set netmask");
-        tap.set_mac_address(mac_address).expect("set MAC address");
-        tap.enable().expect("enable tap");
-        validate_and_configure_tap(&tap, vq_pairs as u16).expect("validate_and_configure_tap");
+        let tap = Tap::new(true /* vnet_hdr */, true /* multi_queue */)
+            .context("failed to create tap device")?;
+        tap.set_ip_addr(host_ip)
+            .context("failed to set IP address")?;
+        tap.set_netmask(netmask).context("failed to set netmask")?;
+        tap.set_mac_address(mac_address)
+            .context("failed to set MAC address")?;
+        tap.enable().context("failed to enable tap")?;
+        validate_and_configure_tap(&tap, vq_pairs as u16)
+            .context("failed to validate and configure tap")?;
 
-        Self {
+        Ok(Self {
             tap,
             avail_features,
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
             workers: Default::default(),
-        }
+        })
     }
 
     fn max_vq_pairs() -> usize {
@@ -145,25 +131,23 @@ impl VhostUserBackend for NetBackend {
     const MAX_QUEUE_NUM: usize = 2; /* 1 rx and 1 tx */
     const MAX_VRING_LEN: u16 = 256;
 
-    type Error = Error;
+    type Error = anyhow::Error;
 
     fn features(&self) -> u64 {
         self.avail_features
     }
 
-    fn ack_features(&mut self, value: u64) -> std::result::Result<(), Error> {
+    fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
         let unrequested_features = value & !self.avail_features;
         if unrequested_features != 0 {
-            return Err(Error::InvalidFeatures {
-                features: unrequested_features,
-            });
+            bail!("invalid features are given: {:#x}", unrequested_features);
         }
 
         self.acked_features |= value;
 
         self.tap
             .set_offload(virtio_features_to_tap_offload(self.acked_features))
-            .map_err(Error::TapOffload)?;
+            .context("failed to set tap offload to match features")?;
 
         Ok(())
     }
@@ -177,9 +161,9 @@ impl VhostUserBackend for NetBackend {
         VhostUserProtocolFeatures::CONFIG
     }
 
-    fn ack_protocol_features(&mut self, features: u64) -> std::result::Result<(), Error> {
+    fn ack_protocol_features(&mut self, features: u64) -> anyhow::Result<()> {
         let features = VhostUserProtocolFeatures::from_bits(features)
-            .ok_or(Error::InvalidProtocolFeatures { features })?;
+            .ok_or_else(|| anyhow!("invalid protocol features are given: {:#x}", features))?;
         let supported = self.protocol_features();
         self.acked_protocol_features = features & supported;
         Ok(())
@@ -203,7 +187,7 @@ impl VhostUserBackend for NetBackend {
         mem: GuestMemory,
         call_evt: CallEvent,
         kick_evt: Event,
-    ) -> std::result::Result<(), Self::Error> {
+    ) -> anyhow::Result<()> {
         if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
             warn!("Starting new queue handler without stopping old handler");
             handle.abort();
@@ -212,12 +196,15 @@ impl VhostUserBackend for NetBackend {
         // Safe because the executor is initialized in main() below.
         let ex = NET_EXECUTOR.get().expect("Executor not initialized");
 
-        let kick_evt = EventAsync::new(kick_evt.0, ex).map_err(Error::CreateEventAsync)?;
-        let tap = self.tap.try_clone().map_err(Error::CloneTap)?;
+        let kick_evt =
+            EventAsync::new(kick_evt.0, ex).context("failed to create EventAsync for kick_evt")?;
+        let tap = self.tap.try_clone().context("failed to clone tap device")?;
         let (handle, registration) = AbortHandle::new_pair();
         match idx {
             0 => {
-                let tap = ex.async_from(tap).map_err(Error::CreateAsyncTap)?;
+                let tap = ex
+                    .async_from(tap)
+                    .context("failed to create async tap device")?;
 
                 ex.spawn_local(Abortable::new(
                     run_rx_queue(queue, mem, tap, call_evt, kick_evt),
@@ -232,7 +219,7 @@ impl VhostUserBackend for NetBackend {
                 ))
                 .detach();
             }
-            _ => return Err(Error::UnknownQueue(idx)),
+            _ => bail!("attempted to start unknown queue: {}", idx),
         }
 
         self.workers[idx] = Some(handle);
@@ -281,13 +268,7 @@ impl FromStr for TapConfig {
     }
 }
 
-fn main() {
-    if let Err(e) = base::syslog::init() {
-        eprintln!("failed to initialize syslog: {}", e);
-        return;
-    }
-
-    let args: Vec<String> = std::env::args().collect();
+fn main() -> anyhow::Result<()> {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
     opts.reqopt("", "socket", "path to a socket", "PATH");
@@ -300,37 +281,44 @@ fn main() {
         "IP_ADDR,NET_MASK,MAC_ADDR",
     );
 
-    let matches = match opts.parse(&args[1..]) {
+    let mut args = std::env::args();
+    let program_name = args.next().expect("args is empty");
+    let matches = match opts.parse(args) {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("{}", e);
-            eprintln!("{}", opts.short_usage(&args[0]));
-            return;
+            println!("{}", e);
+            println!("{}", opts.short_usage(&program_name));
+            return Ok(());
         }
     };
 
     if matches.opt_present("h") {
-        eprintln!("{}", opts.usage(&args[0]));
-        return;
+        println!("{}", opts.usage(&program_name));
+        return Ok(());
     }
+
+    base::syslog::init().context("failed to initialize syslog")?;
 
     // We can unwrap after `opt_str()` safely because they are required options.
     let socket = matches.opt_str("socket").unwrap();
     let tap_cfg: TapConfig = match matches.opt_str("tap").unwrap().parse() {
         Ok(cfg) => cfg,
         Err(e) => {
-            eprintln!("invalid TAP config: {}", e);
-            return;
+            println!("invalid TAP config: {}", e);
+            return Ok(());
         }
     };
 
-    let ex = Executor::new().expect("Failed to create executor");
+    let ex = Executor::new().context("failed to create executor")?;
     let _ = NET_EXECUTOR.set(ex.clone());
 
-    let net = NetBackend::new(tap_cfg.host_ip, tap_cfg.netmask, tap_cfg.mac);
+    let net = NetBackend::new(tap_cfg.host_ip, tap_cfg.netmask, tap_cfg.mac)
+        .context("failed to create NetBackend")?;
     let handler = DeviceRequestHandler::new(net);
 
     if let Err(e) = ex.run_until(handler.run(socket, &ex)) {
         error!("error occurred: {}", e);
     }
+
+    Ok(())
 }

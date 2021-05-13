@@ -1157,6 +1157,7 @@ dependencies = [
 name = "vhost_user_devices"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "base",
  "cros_async",
  "data_model",
