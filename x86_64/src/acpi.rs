@@ -53,6 +53,7 @@ const FADT_SLEEP_BUTTON: u32 = 1 << 5;
 const FADT_FIELD_FACS_ADDR32: usize = 36;
 const FADT_FIELD_DSDT_ADDR32: usize = 40;
 const FADT_FIELD_SCI_INTERRUPT: usize = 46;
+const FADT_FIELD_SMI_COMMAND: usize = 48;
 const FADT_FIELD_PM1A_EVENT_BLK_ADDR: usize = 56;
 const FADT_FIELD_PM1A_CONTROL_BLK_ADDR: usize = 64;
 const FADT_FIELD_PM1A_EVENT_BLK_LEN: usize = 88;
@@ -207,6 +208,7 @@ pub fn create_acpi_tables(
     let mut facp = facp.unwrap_or_else(|| create_facp_table(sci_irq as u16, pm_iobase));
 
     // Crosvm FACP overrides.
+    facp.write(FADT_FIELD_SMI_COMMAND, 0u32);
     facp.write(FADT_FIELD_FACS_ADDR32, 0u32);
     facp.write(FADT_FIELD_DSDT_ADDR32, 0u32);
     facp.write(FADT_FIELD_FACS_ADDR, facs_offset.0 as u64);
