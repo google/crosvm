@@ -54,6 +54,15 @@ sudo apt install build-essential libcap-dev libgbm-dev libvirglrenderer-dev libw
 ```
 
 Known issues:
+*   Even with the following points, jailed devices seem to crash for unclear
+    reasons. If you run into this, you can add `--disable-sandbox` to run
+    everything in a single process.
+*   If your Linux header files are too old, you may find minijail rejecting
+    seccomp filters for containing unknown syscalls. You can try removing the
+    offending lines from the filter file, or add `--seccomp-log-failures` to the
+    crosvm command line to turn these into warnings. Note that this option will
+    also stop minijail from killing processes that violate the seccomp rule,
+    making the sandboxing much less aggressive.
 *   Seccomp policy files have hardcoded absolute paths. You can either fix up
     the paths locally, or set up an awesome hacky symlink: `sudo mkdir
     /usr/share/policy && sudo ln -s /path/to/crosvm/seccomp/x86_64
