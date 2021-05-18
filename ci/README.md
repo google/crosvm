@@ -96,11 +96,9 @@ crosvm-aarch64$ cargo test -p kvm_sys
 ### Reproducing Kokoro locally
 
 Kokoro uses the same builders and the same `run_tests` script to run tests.
-However, to keep the build stable, it syncs the chromiumos checkout to the fixed
-manifest found at `./ci/kokoro/manifest.xml`.
 
-To run tests using the same manifest, as well as the same build process that
-Kokoro uses, you can run: `./ci/kokoro/simulate_all`.
+To sync to ToT, as well as the same build process that Kokoro uses, you can run:
+`./ci/kokoro/simulate_all`.
 
 ## Implementation Overview
 
