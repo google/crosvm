@@ -187,6 +187,7 @@ pub enum PciCapabilityID {
 pub trait PciCapability {
     fn bytes(&self) -> &[u8];
     fn id(&self) -> PciCapabilityID;
+    fn writable_bits(&self) -> Vec<u32>;
 }
 
 /// Contains the configuration space of a PCI node.
@@ -327,6 +328,7 @@ impl PciConfiguration {
                 writable_bits[15] = 0xffff_00ff; // Bridge control (r/w), interrupt line (r/w)
             }
         };
+
         registers[11] = u32::from(subsystem_id) << 16 | u32::from(subsystem_vendor_id);
 
         PciConfiguration {
@@ -600,6 +602,10 @@ impl PciConfiguration {
         for (i, byte) in cap_data.bytes().iter().enumerate().skip(2) {
             self.write_byte_internal(cap_offset + i, *byte, false);
         }
+        let reg_idx = cap_offset / 4;
+        for (i, dword) in cap_data.writable_bits().iter().enumerate() {
+            self.writable_bits[reg_idx + i] = *dword;
+        }
         self.last_capability = Some((cap_offset, total_len));
         Ok(cap_offset)
     }
@@ -694,6 +700,10 @@ mod tests {
 
         fn id(&self) -> PciCapabilityID {
             PciCapabilityID::VendorSpecific
+        }
+
+        fn writable_bits(&self) -> Vec<u32> {
+            vec![0u32; 1]
         }
     }
 

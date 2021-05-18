@@ -556,6 +556,11 @@ impl PciCapability for MsixCap {
     fn id(&self) -> PciCapabilityID {
         PciCapabilityID::MSIX
     }
+
+    fn writable_bits(&self) -> Vec<u32> {
+        // Only msg_ctl[15:14] is writable
+        vec![0x3000_0000, 0, 0]
+    }
 }
 
 impl MsixCap {

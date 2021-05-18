@@ -59,6 +59,10 @@ impl PciCapability for VirtioPciCap {
     fn id(&self) -> PciCapabilityID {
         PciCapabilityID::VendorSpecific
     }
+
+    fn writable_bits(&self) -> Vec<u32> {
+        vec![0u32; 4]
+    }
 }
 
 impl VirtioPciCap {
@@ -94,6 +98,10 @@ impl PciCapability for VirtioPciNotifyCap {
 
     fn id(&self) -> PciCapabilityID {
         PciCapabilityID::VendorSpecific
+    }
+
+    fn writable_bits(&self) -> Vec<u32> {
+        vec![0u32; 5]
     }
 }
 
@@ -139,6 +147,10 @@ impl PciCapability for VirtioPciShmCap {
 
     fn id(&self) -> PciCapabilityID {
         PciCapabilityID::VendorSpecific
+    }
+
+    fn writable_bits(&self) -> Vec<u32> {
+        vec![0u32; 6]
     }
 }
 
