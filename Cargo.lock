@@ -657,7 +657,7 @@ dependencies = [
 
 [[package]]
 name = "minijail"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "libc",
  "minijail-sys",
@@ -665,7 +665,7 @@ dependencies = [
 
 [[package]]
 name = "minijail-sys"
-version = "0.0.11"
+version = "0.0.12"
 dependencies = [
  "libc",
  "pkg-config",
