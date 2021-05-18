@@ -428,6 +428,8 @@ where
                         }
                     }
                     Token::InterruptResample => {
+                        // We can unwrap safely because interrupt must have the event.
+                        let _ = self.interrupt.get_resample_evt().unwrap().read();
                         self.interrupt.do_interrupt_resample();
                     }
                     Token::Kill => {
