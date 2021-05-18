@@ -45,8 +45,9 @@ use devices::virtio::{self, Console, VirtioDevice};
 use devices::Ac97Dev;
 use devices::ProtectionType;
 use devices::{
-    self, HostHotPlugKey, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciAddress, PciDevice,
-    VcpuRunState, VfioContainer, VfioDevice, VfioPciDevice, VirtioPciDevice,
+    self, HostHotPlugKey, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciAddress, PciBridge,
+    PciDevice, PcieRootPort, VcpuRunState, VfioContainer, VfioDevice, VfioPciDevice,
+    VirtioPciDevice,
 };
 #[cfg(feature = "usb")]
 use devices::{HostBackendDeviceProvider, XhciController};
@@ -1568,6 +1569,14 @@ fn create_devices(
         let usb_controller = Box::new(XhciController::new(vm.get_memory().clone(), usb_provider));
         pci_devices.push((usb_controller, simple_jail(&cfg, "xhci")?));
     }
+
+    // Create Pcie Root Port
+    let pcie_root_port = Box::new(PcieRootPort::new());
+    let (msi_host_tube, msi_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
+    control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+    let pci_bridge = Box::new(PciBridge::new(pcie_root_port, msi_device_tube));
+    // pcie root port is used in hotplug process only, so disable sandbox for it
+    pci_devices.push((pci_bridge, None));
 
     if !cfg.vfio.is_empty() {
         let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>> =

@@ -16,6 +16,7 @@ mod msix;
 mod pci_configuration;
 mod pci_device;
 mod pci_root;
+mod pcie;
 mod vfio_pci;
 
 #[cfg(feature = "audio")]
@@ -29,6 +30,7 @@ pub use self::pci_configuration::{
 pub use self::pci_device::Error as PciDeviceError;
 pub use self::pci_device::PciDevice;
 pub use self::pci_root::{PciAddress, PciConfigIo, PciConfigMmio, PciRoot};
+pub use self::pcie::{PciBridge, PcieRootPort};
 pub use self::vfio_pci::VfioPciDevice;
 
 /// PCI has four interrupt pins A->D.

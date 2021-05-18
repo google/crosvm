@@ -143,7 +143,7 @@ pub struct PciRoot {
     devices: BTreeMap<PciAddress, Arc<Mutex<dyn BusDevice>>>,
 }
 
-const PCI_VENDOR_ID_INTEL: u16 = 0x8086;
+pub const PCI_VENDOR_ID_INTEL: u16 = 0x8086;
 const PCI_DEVICE_ID_INTEL_82441: u16 = 0x1237;
 
 impl PciRoot {
