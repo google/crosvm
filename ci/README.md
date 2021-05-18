@@ -47,23 +47,23 @@ To run all tests, just run:
 This will run all tests using the x86 and aarch64 builder containers. What does
 this do?
 
-1. It will start `./ci/[aarch64_]builder --vm`.
+1.  It will start `./ci/[aarch64_]builder --vm`.
 
-   The builder will build ChromeOS dependencies from your local repo checkout.
-   If you make modifications to these dependencies (e.g. minijail, tpm2, cras)
-   these will be included in tests.
+    The builder will build ChromeOS dependencies from your local repo checkout.
+    If you make modifications to these dependencies (e.g. minijail, tpm2, cras)
+    these will be included in tests.
 
-   Then it will start a VM for running tests in the background. The VM is
-   booting while the next step is running.
+    Then it will start a VM for running tests in the background. The VM is
+    booting while the next step is running.
 
-2. Then it will call `./run_tests` inside the builder
+2.  Then it will call `./run_tests` inside the builder
 
-   The script will pick which tests to execute and where. Simple tests can be
-   executed directly, other tests require privileged access to devices and will
-   be loaded into the VM to execute.
+    The script will pick which tests to execute and where. Simple tests can be
+    executed directly, other tests require privileged access to devices and will
+    be loaded into the VM to execute.
 
-   Each test will in the end be executed by a call to
-   `cargo test -p crate_name`.
+    Each test will in the end be executed by a call to `cargo test -p
+    crate_name`.
 
 Intermediate build data is stored in a scratch directory at `./target/ci/` to
 allow for faster subsequent calls (Note: If running with docker, these files
@@ -78,8 +78,8 @@ To only run x86 tests: `./ci/[aarch64_]builder --vm ./run_tests`.
 To run a simple test (e.g. the tempfile crate) that does not need the vm:
 `./ci/[aarch64_]builder cargo test -p tempfile`.
 
-Or run a single test (e.g. kvm_sys) inside the vm:
-`./ci/[aarch64*]builder --vm cargo test -p kvm_sys`.
+Or run a single test (e.g. kvm_sys) inside the vm: `./ci/[aarch64*]builder --vm
+cargo test -p kvm_sys`.
 
 Since the VM (especially the fully emulated aarch64 VM) can be slow to boot, you
 can start an interactive shell and run commands from there as usual. All cargo
@@ -106,24 +106,24 @@ Kokoro uses, you can run: `./ci/kokoro/simulate_all`.
 
 Directories:
 
-- ci/build_environment: Contains tooling for building the dependencies of
-  crosvm.
-- ci/crosvm_aarch64_builder: An x86 docker image to cross-compile for aarch64
-  and test with user-space emulation.
-- ci/crosvm_base: Docker image shared by crosvm_builder and
-  crosvm_aarch64_builder
-- ci/crosvm_builder: A native docker image for building and testing crosvm
-- ci/crosvm_test_vm: Dockerfile to build the VM included in the builder
-  containers.
-- ci/kokoro: Configuration files and build scripts used by Kokoro to run crosvm
-  tests.
+-   ci/build_environment: Contains tooling for building the dependencies of
+    crosvm.
+-   ci/crosvm_aarch64_builder: An x86 docker image to cross-compile for aarch64
+    and test with user-space emulation.
+-   ci/crosvm_base: Docker image shared by crosvm_builder and
+    crosvm_aarch64_builder
+-   ci/crosvm_builder: A native docker image for building and testing crosvm
+-   ci/crosvm_test_vm: Dockerfile to build the VM included in the builder
+    containers.
+-   ci/kokoro: Configuration files and build scripts used by Kokoro to run
+    crosvm tests.
 
 Scripts:
 
-- ci/aarch64_builder: Script to start the crosvm_aarch64_builder container
-- ci/builder: Script to start the crosvm_builder container
-- ci/run_container.sh: Implementation behind the above scripts.
-- test_runner.py: Implementation behind the `./test_all` script.
+-   ci/aarch64_builder: Script to start the crosvm_aarch64_builder container
+-   ci/builder: Script to start the crosvm_builder container
+-   ci/run_container.sh: Implementation behind the above scripts.
+-   test_runner.py: Implementation behind the `./test_all` script.
 
 ### Building and uploading a new version of builders
 
