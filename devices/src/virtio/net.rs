@@ -654,10 +654,6 @@ where
         }
     }
 
-    fn acked_features(&self) -> u64 {
-        self.acked_features
-    }
-
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let vq_pairs = self.queue_sizes.len() / 2;
         let config_space = build_config(vq_pairs as u16);
