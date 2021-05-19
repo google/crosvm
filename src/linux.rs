@@ -864,21 +864,22 @@ fn create_gpu_device(
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     mem: &GuestMemory,
 ) -> DeviceResult {
-    let jailed_wayland_path = Path::new("/wayland-0");
-
     let mut display_backends = vec![
         virtio::DisplayBackend::X(x_display),
         virtio::DisplayBackend::Stub,
     ];
 
+    let wayland_socket_dirs = cfg
+        .wayland_socket_paths
+        .iter()
+        .map(|(_name, path)| path.parent())
+        .collect::<Option<Vec<_>>>()
+        .ok_or(Error::InvalidWaylandPath)?;
+
     if let Some(socket_path) = wayland_socket_path {
         display_backends.insert(
             0,
-            virtio::DisplayBackend::Wayland(if cfg.sandbox {
-                Some(jailed_wayland_path.to_owned())
-            } else {
-                Some(socket_path.to_owned())
-            }),
+            virtio::DisplayBackend::Wayland(Some(socket_path.to_owned())),
         );
     }
 
@@ -976,13 +977,12 @@ fn create_gpu_device(
                 }
             }
 
-            // Bind mount the wayland socket into jail's root. This is necessary since each
-            // new wayland context must open() the socket.  Don't bind mount the camera socket
-            // since it seems to cause problems on ARCVM (b/180126126) + Mali.  It's unclear if
-            // camera team will opt for virtio-camera or continue using virtio-wl, so this should
-            // be fine for now.
-            if let Some(path) = wayland_socket_path {
-                jail.mount_bind(path, jailed_wayland_path, true)?;
+            // Bind mount the wayland socket's directory into jail's root. This is necessary since
+            // each new wayland context must open() the socket. If the wayland socket is ever
+            // destroyed and remade in the same host directory, new connections will be possible
+            // without restarting the wayland device.
+            for dir in &wayland_socket_dirs {
+                jail.mount_bind(dir, dir, true)?;
             }
 
             add_crosvm_user_to_jail(&mut jail, "gpu")?;
