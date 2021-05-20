@@ -1,6 +1,7 @@
 // Copyright 2018 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+use std::collections::BTreeMap;
 
 use base::pagesize;
 
@@ -52,7 +53,8 @@ pub struct SystemAllocator {
     // Indexed by MmioType::Low and MmioType::High.
     mmio_address_spaces: [AddressAllocator; 2],
 
-    pci_allocator: AddressAllocator,
+    // Each bus number has a AddressAllocator
+    pci_allocator: BTreeMap<u8, AddressAllocator>,
     irq_allocator: AddressAllocator,
     next_anon_id: usize,
 }
@@ -91,9 +93,8 @@ impl SystemAllocator {
                 // MmioType::High
                 AddressAllocator::new(high_base, high_size, Some(page_size))?,
             ],
-            // Support up to 256(buses) x 32(devices) x 8(functions) with default
-            // alignment allocating device with mandatory function number zero.
-            pci_allocator: AddressAllocator::new(8, (256 * 32 * 8) - 8, Some(8))?,
+
+            pci_allocator: BTreeMap::new(),
             irq_allocator: AddressAllocator::new(
                 first_irq as u64,
                 1024 - first_irq as u64,
@@ -125,14 +126,34 @@ impl SystemAllocator {
             .is_ok()
     }
 
+    fn get_pci_allocator_mut(&mut self, bus: u8) -> Option<&mut AddressAllocator> {
+        // pci root is 00:00.0, Bus 0 next device is 00:01.0 with mandatory function
+        // number zero.
+        if self.pci_allocator.get(&bus).is_none() {
+            let base = if bus == 0 { 8 } else { 0 };
+
+            // Each bus supports up to  32(devices) x 8(functions) with default
+            // alignment allocating device with mandatory function number zero.
+            match AddressAllocator::new(base, (32 * 8) - base, Some(8)) {
+                Ok(v) => self.pci_allocator.insert(bus, v),
+                Err(_) => return None,
+            };
+        }
+        self.pci_allocator.get_mut(&bus)
+    }
+
     /// Allocate PCI slot location.
-    pub fn allocate_pci(&mut self, tag: String) -> Option<Alloc> {
+    pub fn allocate_pci(&mut self, bus: u8, tag: String) -> Option<Alloc> {
         let id = self.get_anon_alloc();
-        self.pci_allocator
+        let allocator = match self.get_pci_allocator_mut(bus) {
+            Some(v) => v,
+            None => return None,
+        };
+        allocator
             .allocate(1, id, tag)
             .map(|v| Alloc::PciBar {
-                bus: ((v >> 8) & 255) as u8,
-                dev: ((v >> 3) & 31) as u8,
+                bus,
+                dev: (v >> 3) as u8,
                 func: (v & 7) as u8,
                 bar: 0,
             })
@@ -149,8 +170,12 @@ impl SystemAllocator {
                 func,
                 bar: _,
             } => {
-                let bdf = ((bus as u64) << 8) | ((dev as u64) << 3) | (func as u64);
-                self.pci_allocator.allocate_at(bdf, 1, id, tag).is_ok()
+                let allocator = match self.get_pci_allocator_mut(bus) {
+                    Some(v) => v,
+                    None => return false,
+                };
+                let df = ((dev as u64) << 3) | (func as u64);
+                allocator.allocate_at(df, 1, id, tag).is_ok()
             }
             _ => false,
         }

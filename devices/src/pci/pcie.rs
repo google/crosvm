@@ -81,7 +81,7 @@ impl PciDevice for PciBridge {
         resources: &mut SystemAllocator,
     ) -> std::result::Result<PciAddress, PciDeviceError> {
         if self.pci_address.is_none() {
-            self.pci_address = match resources.allocate_pci(self.debug_label()) {
+            self.pci_address = match resources.allocate_pci(0, self.debug_label()) {
                 Some(Alloc::PciBar {
                     bus,
                     dev,

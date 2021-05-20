@@ -283,7 +283,7 @@ impl PciDevice for Ac97Dev {
 
     fn allocate_address(&mut self, resources: &mut SystemAllocator) -> Result<PciAddress> {
         if self.pci_address.is_none() {
-            self.pci_address = match resources.allocate_pci(self.debug_label()) {
+            self.pci_address = match resources.allocate_pci(0, self.debug_label()) {
                 Some(Alloc::PciBar {
                     bus,
                     dev,
