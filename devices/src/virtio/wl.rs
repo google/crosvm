@@ -32,7 +32,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap as Map, BTreeSet as Set, VecDeque};
 use std::convert::From;
 use std::error::Error as StdError;
-use std::fmt::{self, Display};
+use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
@@ -59,6 +59,7 @@ use base::{
 use base::{ioctl_iow_nr, ioctl_with_ref};
 #[cfg(feature = "gpu")]
 use base::{IntoRawDescriptor, SafeDescriptor};
+use thiserror::Error as ThisError;
 use vm_memory::{GuestMemory, GuestMemoryError};
 
 #[cfg(feature = "minigbm")]
@@ -260,76 +261,51 @@ fn encode_resp(writer: &mut Writer, resp: WlResp) -> WlResult<()> {
 }
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(ThisError, Debug)]
 enum WlError {
+    #[error("failed to create shared memory allocation: {0}")]
     NewAlloc(Error),
+    #[error("failed to create pipe: {0}")]
     NewPipe(Error),
+    #[error("failed to connect socket: {0}")]
     SocketConnect(io::Error),
+    #[error("failed to set socket as non-blocking: {0}")]
     SocketNonBlock(io::Error),
+    #[error("failed to control parent VM: {0}")]
     VmControl(TubeError),
+    #[error("invalid response from parent VM")]
     VmBadResponse,
+    #[error("overflow in calculation")]
     CheckedOffset,
+    #[error("error parsing descriptor: {0}")]
     ParseDesc(io::Error),
-    GuestMemory(GuestMemoryError),
-    VolatileMemory(VolatileMemoryError),
+    #[error("access violation in guest memory: {0}")]
+    GuestMemory(#[from] GuestMemoryError),
+    #[error("access violating in guest volatile memory: {0}")]
+    VolatileMemory(#[from] VolatileMemoryError),
+    #[error("failed to send on a socket: {0}")]
     SendVfd(Error),
+    #[error("failed to write to a pipe: {0}")]
     WritePipe(io::Error),
+    #[error("failed to recv on a socket: {0}")]
     RecvVfd(Error),
+    #[error("failed to read a pipe: {0}")]
     ReadPipe(io::Error),
+    #[error("failed to listen to descriptor on wait context: {0}")]
     WaitContextAdd(Error),
+    #[error("failed to synchronize DMABuf access: {0}")]
     DmabufSync(io::Error),
+    #[error("failed to create shared memory from descriptor: {0}")]
     FromSharedMemory(Error),
+    #[error("failed to write response: {0}")]
     WriteResponse(io::Error),
+    #[error("invalid string: {0}")]
     InvalidString(std::str::Utf8Error),
+    #[error("unknown socket name: {0}")]
     UnknownSocketName(String),
 }
 
-impl Display for WlError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::WlError::*;
-
-        match self {
-            NewAlloc(e) => write!(f, "failed to create shared memory allocation: {}", e),
-            NewPipe(e) => write!(f, "failed to create pipe: {}", e),
-            SocketConnect(e) => write!(f, "failed to connect socket: {}", e),
-            SocketNonBlock(e) => write!(f, "failed to set socket as non-blocking: {}", e),
-            VmControl(e) => write!(f, "failed to control parent VM: {}", e),
-            VmBadResponse => write!(f, "invalid response from parent VM"),
-            CheckedOffset => write!(f, "overflow in calculation"),
-            ParseDesc(e) => write!(f, "error parsing descriptor: {}", e),
-            GuestMemory(e) => write!(f, "access violation in guest memory: {}", e),
-            VolatileMemory(e) => write!(f, "access violating in guest volatile memory: {}", e),
-            SendVfd(e) => write!(f, "failed to send on a socket: {}", e),
-            WritePipe(e) => write!(f, "failed to write to a pipe: {}", e),
-            RecvVfd(e) => write!(f, "failed to recv on a socket: {}", e),
-            ReadPipe(e) => write!(f, "failed to read a pipe: {}", e),
-            WaitContextAdd(e) => write!(f, "failed to listen to descriptor on wait context: {}", e),
-            DmabufSync(e) => write!(f, "failed to synchronize DMABuf access: {}", e),
-            FromSharedMemory(e) => {
-                write!(f, "failed to create shared memory from descriptor: {}", e)
-            }
-            WriteResponse(e) => write!(f, "failed to write response: {}", e),
-            InvalidString(e) => write!(f, "invalid string: {}", e),
-            UnknownSocketName(name) => write!(f, "unknown socket name: {}", name),
-        }
-    }
-}
-
-impl std::error::Error for WlError {}
-
 type WlResult<T> = result::Result<T, WlError>;
-
-impl From<GuestMemoryError> for WlError {
-    fn from(e: GuestMemoryError) -> WlError {
-        WlError::GuestMemory(e)
-    }
-}
-
-impl From<VolatileMemoryError> for WlError {
-    fn from(e: VolatileMemoryError) -> WlError {
-        WlError::VolatileMemory(e)
-    }
-}
 
 #[derive(Clone)]
 struct VmRequester {

@@ -55,6 +55,8 @@ impl Display for VolatileMemoryError {
     }
 }
 
+impl ::std::error::Error for VolatileMemoryError {}
+
 pub type VolatileMemoryResult<T> = result::Result<T, VolatileMemoryError>;
 
 use crate::VolatileMemoryError as Error;
