@@ -8,7 +8,7 @@
 pub mod backend;
 mod encoder;
 
-use base::{error, warn, Tube, WaitContext};
+use base::{error, info, warn, Tube, WaitContext};
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::virtio::resource_bridge::{self, BufferInfo, ResourceInfo, ResourceRequest};
@@ -28,6 +28,7 @@ use crate::virtio::video::format::{Format, Level, PlaneFormat, Profile};
 use crate::virtio::video::params::Params;
 use crate::virtio::video::protocol;
 use crate::virtio::video::response::CmdResponse;
+use crate::virtio::video::EosBufferManager;
 use backend::*;
 
 #[derive(Debug)]
@@ -85,7 +86,7 @@ struct Stream<T: EncoderSession> {
     encoder_output_buffer_ids: BTreeMap<OutputBufferId, u32>,
 
     pending_commands: BTreeSet<PendingCommand>,
-    eos_notification_buffer: Option<OutputBufferId>,
+    eos_manager: EosBufferManager,
 }
 
 impl<T: EncoderSession> Stream<T> {
@@ -158,7 +159,7 @@ impl<T: EncoderSession> Stream<T> {
             dst_resources: Default::default(),
             encoder_output_buffer_ids: Default::default(),
             pending_commands: Default::default(),
-            eos_notification_buffer: None,
+            eos_manager: EosBufferManager::new(id),
         })
     }
 
@@ -395,29 +396,6 @@ impl<T: EncoderSession> Stream<T> {
         )])
     }
 
-    /// Attempt to build the event response for successfully dequeueing the EOS buffer.
-    ///
-    /// If no EOS buffer was assigned, returns None.
-    fn dequeue_eos_buffer(&mut self) -> Option<VideoEvtResponseType> {
-        let eos_resource_id = self.eos_notification_buffer.take()?;
-
-        let eos_tag = AsyncCmdTag::Queue {
-            stream_id: self.id,
-            queue_type: QueueType::Output,
-            resource_id: eos_resource_id,
-        };
-
-        let eos_response = CmdResponse::ResourceQueue {
-            timestamp: 0,
-            flags: protocol::VIRTIO_VIDEO_BUFFER_FLAG_EOS,
-            size: 0,
-        };
-
-        Some(VideoEvtResponseType::AsyncCmd(
-            AsyncCmdResponse::from_response(eos_tag, eos_response),
-        ))
-    }
-
     fn flush_response(&mut self, flush_done: bool) -> Option<Vec<VideoEvtResponseType>> {
         let command_response = if flush_done {
             CmdResponse::NoData
@@ -428,22 +406,7 @@ impl<T: EncoderSession> Stream<T> {
 
         let mut async_responses = vec![];
 
-        let eos_response = match self.dequeue_eos_buffer() {
-            Some(response) => response,
-            None => {
-                error!(
-                    "No EOS resource available on successful flush response (stream id {})",
-                    self.id
-                );
-                return Some(vec![VideoEvtResponseType::Event(VideoEvt {
-                    typ: EvtType::Error,
-                    stream_id: self.id,
-                })]);
-            }
-        };
-
-        async_responses.push(eos_response);
-
+        // First gather the responses for all completed commands.
         if self.pending_commands.remove(&PendingCommand::Drain) {
             async_responses.push(VideoEvtResponseType::AsyncCmd(
                 AsyncCmdResponse::from_response(
@@ -477,12 +440,8 @@ impl<T: EncoderSession> Stream<T> {
             ));
         }
 
-        if async_responses.is_empty() {
-            error!("Received flush response but there are no pending commands.");
-            None
-        } else {
-            Some(async_responses)
-        }
+        // Then add the EOS buffer to the responses if it is available.
+        self.eos_manager.try_complete_eos(async_responses)
     }
 
     #[allow(clippy::unnecessary_wraps)]
@@ -794,8 +753,7 @@ impl<T: Encoder> EncoderDevice<T> {
                 // This is necessary because libvda is unable to indicate EOS along with returned buffers.
                 // For now, when a `Flush()` completes, this saved resource will be returned as a zero-sized
                 // buffer with the EOS flag.
-                if stream.eos_notification_buffer.is_none() {
-                    stream.eos_notification_buffer = Some(resource_id);
+                if stream.eos_manager.try_reserve_eos_buffer(resource_id) {
                     return Ok(VideoCmdResponseType::Async(AsyncCmdTag::Queue {
                         stream_id,
                         queue_type: QueueType::Output,
@@ -857,7 +815,7 @@ impl<T: Encoder> EncoderDevice<T> {
         stream.encoder_input_buffer_ids.clear();
         stream.dst_resources.clear();
         stream.encoder_output_buffer_ids.clear();
-        stream.eos_notification_buffer.take();
+        stream.eos_manager.reset();
         Ok(VideoCmdResponseType::Sync(CmdResponse::NoData))
     }
 
@@ -896,7 +854,7 @@ impl<T: Encoder> EncoderDevice<T> {
                         queue_params.in_queue = false;
                     }
                 }
-                stream.eos_notification_buffer = None;
+                stream.eos_manager.reset();
             }
         }
         Ok(VideoCmdResponseType::Sync(CmdResponse::NoData))
@@ -1208,6 +1166,7 @@ impl<T: Encoder> Device for EncoderDevice<T> {
         VideoCmdResponseType,
         Option<(u32, Vec<VideoEvtResponseType>)>,
     ) {
+        let mut event_ret = None;
         let cmd_response = match req {
             VideoCmd::QueryCapability { queue_type } => self.query_capabilities(queue_type),
             VideoCmd::StreamCreate {
@@ -1237,14 +1196,56 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                 resource_id,
                 timestamp,
                 data_sizes,
-            } => self.resource_queue(
-                resource_bridge,
-                stream_id,
-                queue_type,
-                resource_id,
-                timestamp,
-                data_sizes,
-            ),
+            } => {
+                let resp = self.resource_queue(
+                    resource_bridge,
+                    stream_id,
+                    queue_type,
+                    resource_id,
+                    timestamp,
+                    data_sizes,
+                );
+
+                if resp.is_ok() && queue_type == QueueType::Output {
+                    if let Some(stream) = self.streams.get_mut(&stream_id) {
+                        // If we have a flush pending, add the response for dequeueing the EOS
+                        // buffer.
+                        if stream.eos_manager.client_awaits_eos {
+                            info!(
+                                "stream {}: using queued buffer as EOS for pending flush",
+                                stream_id
+                            );
+                            event_ret = match stream.eos_manager.try_complete_eos(vec![]) {
+                                Some(eos_resps) => Some((stream_id, eos_resps)),
+                                None => {
+                                    error!("stream {}: try_get_eos_buffer() should have returned a valid response. This is a bug.", stream_id);
+                                    Some((
+                                        stream_id,
+                                        vec![VideoEvtResponseType::Event(VideoEvt {
+                                            typ: EvtType::Error,
+                                            stream_id,
+                                        })],
+                                    ))
+                                }
+                            };
+                        }
+                    } else {
+                        error!(
+                            "stream {}: the stream ID should be valid here. This is a bug.",
+                            stream_id
+                        );
+                        event_ret = Some((
+                            stream_id,
+                            vec![VideoEvtResponseType::Event(VideoEvt {
+                                typ: EvtType::Error,
+                                stream_id,
+                            })],
+                        ));
+                    }
+                }
+
+                resp
+            }
             VideoCmd::ResourceDestroyAll { stream_id, .. } => self.resource_destroy_all(stream_id),
             VideoCmd::QueueClear {
                 stream_id,
@@ -1293,7 +1294,7 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                 VideoCmdResponseType::Sync(e.into())
             }
         };
-        (cmd_ret, None)
+        (cmd_ret, event_ret)
     }
 
     fn process_event(
