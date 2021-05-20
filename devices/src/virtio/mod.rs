@@ -7,6 +7,7 @@
 mod balloon;
 mod block;
 mod block_async;
+mod block_common;
 mod console;
 mod descriptor_utils;
 mod input;

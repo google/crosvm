@@ -18,7 +18,7 @@ use vmm_vhost::vhost_user::Master;
 use crate::virtio::vhost::user::handler::VhostUserHandler;
 use crate::virtio::vhost::user::worker::Worker;
 use crate::virtio::vhost::user::{Error, Result};
-use crate::virtio::{virtio_blk_config, Interrupt, Queue, VirtioDevice, TYPE_BLOCK};
+use crate::virtio::{block_common::virtio_blk_config, Interrupt, Queue, VirtioDevice, TYPE_BLOCK};
 
 const VIRTIO_BLK_F_SEG_MAX: u32 = 2;
 const VIRTIO_BLK_F_RO: u32 = 5;
