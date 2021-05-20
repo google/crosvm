@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 use acpi_tables::{facs::FACS, rsdp::RSDP, sdt::SDT};
+use base::error;
 use data_model::DataInit;
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -68,9 +69,13 @@ const MADT_LEN: u32 = 44;
 const MADT_REVISION: u8 = 5;
 // MADT fields offset
 const MADT_FIELD_LAPIC_ADDR: usize = 36;
+// MADT structure offsets
+const MADT_STRUCTURE_TYPE: usize = 0;
+const MADT_STRUCTURE_LEN: usize = 1;
 // MADT types
 const MADT_TYPE_LOCAL_APIC: u8 = 0;
 const MADT_TYPE_IO_APIC: u8 = 1;
+const MADT_TYPE_INTERRUPT_SOURCE_OVERRIDE: u8 = 2;
 // MADT flags
 const MADT_ENABLED: u32 = 1;
 // XSDT
@@ -167,7 +172,7 @@ pub fn create_acpi_tables(
     let mut dsdt_offset: Option<GuestAddress> = None;
     let mut tables: Vec<u64> = Vec::new();
     let mut facp: Option<SDT> = None;
-    let mut has_madt = false;
+    let mut host_madt: Option<SDT> = None;
 
     // User supplied System Description Tables, e.g. SSDT.
     for sdt in acpi_dev_resource.sdts.iter() {
@@ -175,14 +180,15 @@ pub fn create_acpi_tables(
             facp = Some(sdt.clone());
             continue;
         }
+        if sdt.is_signature(b"APIC") {
+            host_madt = Some(sdt.clone());
+            continue;
+        }
         guest_mem.write_at_addr(sdt.as_slice(), offset).ok()?;
         if sdt.is_signature(b"DSDT") {
             dsdt_offset = Some(offset);
         } else {
             tables.push(offset.0);
-        }
-        if sdt.is_signature(b"APIC") {
-            has_madt = true;
         }
         offset = next_offset(offset, sdt.len() as u64)?;
     }
@@ -218,44 +224,57 @@ pub fn create_acpi_tables(
     tables.push(offset.0);
     offset = next_offset(offset, facp.len() as u64)?;
 
-    // MADT if not provided.
-    if !has_madt {
-        // MADT
-        let mut madt = SDT::new(
-            *b"APIC",
-            MADT_LEN,
-            MADT_REVISION,
-            *b"CROSVM",
-            *b"CROSVMDT",
-            OEM_REVISION,
-        );
-        madt.write(
-            MADT_FIELD_LAPIC_ADDR,
-            super::mptable::APIC_DEFAULT_PHYS_BASE as u32,
-        );
+    // MADT
+    let mut madt = SDT::new(
+        *b"APIC",
+        MADT_LEN,
+        MADT_REVISION,
+        *b"CROSVM",
+        *b"CROSVMDT",
+        OEM_REVISION,
+    );
+    madt.write(
+        MADT_FIELD_LAPIC_ADDR,
+        super::mptable::APIC_DEFAULT_PHYS_BASE as u32,
+    );
 
-        for cpu in 0..num_cpus {
-            let lapic = LocalAPIC {
-                _type: MADT_TYPE_LOCAL_APIC,
-                _length: std::mem::size_of::<LocalAPIC>() as u8,
-                _processor_id: cpu,
-                _apic_id: cpu,
-                _flags: MADT_ENABLED,
-            };
-            madt.append(lapic);
-        }
-
-        madt.append(IOAPIC {
-            _type: MADT_TYPE_IO_APIC,
-            _length: std::mem::size_of::<IOAPIC>() as u8,
-            _apic_address: super::mptable::IO_APIC_DEFAULT_PHYS_BASE,
-            ..Default::default()
-        });
-
-        guest_mem.write_at_addr(madt.as_slice(), offset).ok()?;
-        tables.push(offset.0);
-        offset = next_offset(offset, madt.len() as u64)?;
+    for cpu in 0..num_cpus {
+        let lapic = LocalAPIC {
+            _type: MADT_TYPE_LOCAL_APIC,
+            _length: std::mem::size_of::<LocalAPIC>() as u8,
+            _processor_id: cpu,
+            _apic_id: cpu,
+            _flags: MADT_ENABLED,
+        };
+        madt.append(lapic);
     }
+
+    madt.append(IOAPIC {
+        _type: MADT_TYPE_IO_APIC,
+        _length: std::mem::size_of::<IOAPIC>() as u8,
+        _apic_address: super::mptable::IO_APIC_DEFAULT_PHYS_BASE,
+        ..Default::default()
+    });
+
+    if let Some(host_madt) = host_madt {
+        let mut idx = MADT_LEN as usize;
+        while idx + MADT_STRUCTURE_LEN < host_madt.len() {
+            let struct_type = host_madt.as_slice()[idx + MADT_STRUCTURE_TYPE];
+            let struct_len = host_madt.as_slice()[idx + MADT_STRUCTURE_LEN] as usize;
+            if struct_type == MADT_TYPE_INTERRUPT_SOURCE_OVERRIDE {
+                if idx + struct_len <= host_madt.len() {
+                    madt.append_slice(&host_madt.as_slice()[idx..(idx + struct_len)]);
+                } else {
+                    error!("Malformed host MADT");
+                }
+            }
+            idx += struct_len;
+        }
+    }
+
+    guest_mem.write_at_addr(madt.as_slice(), offset).ok()?;
+    tables.push(offset.0);
+    offset = next_offset(offset, madt.len() as u64)?;
 
     // XSDT
     let mut xsdt = SDT::new(
