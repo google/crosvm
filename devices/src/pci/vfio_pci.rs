@@ -498,6 +498,7 @@ enum DeviceData {
 pub struct VfioPciDevice {
     device: Arc<VfioDevice>,
     config: VfioPciConfig,
+    bus_number: Option<u8>,
     pci_address: Option<PciAddress>,
     interrupt_evt: Option<Event>,
     interrupt_resample_evt: Option<Event>,
@@ -517,6 +518,7 @@ impl VfioPciDevice {
     /// Constructs a new Vfio Pci device for the give Vfio device
     pub fn new(
         device: VfioDevice,
+        bus_number: Option<u8>,
         vfio_device_socket_msi: Tube,
         vfio_device_socket_msix: Tube,
         vfio_device_socket_mem: Tube,
@@ -560,6 +562,7 @@ impl VfioPciDevice {
         VfioPciDevice {
             device: dev,
             config,
+            bus_number,
             pci_address: None,
             interrupt_evt: None,
             interrupt_resample_evt: None,
@@ -885,7 +888,15 @@ impl PciDevice for VfioPciDevice {
         resources: &mut SystemAllocator,
     ) -> Result<PciAddress, PciDeviceError> {
         if self.pci_address.is_none() {
-            let address = PciAddress::from_string(self.device.device_name());
+            let mut address = PciAddress::from_string(self.device.device_name());
+            if let Some(bus_num) = self.bus_number {
+                // Caller specify pcie bus number for hotplug device
+                address.bus = bus_num;
+                // devfn should be 0, otherwise pcie root port couldn't detect it
+                address.dev = 0;
+                address.func = 0;
+            }
+
             if resources.reserve_pci(
                 Alloc::PciBar {
                     bus: address.bus,

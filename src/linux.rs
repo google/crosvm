@@ -1474,6 +1474,7 @@ fn create_vfio_device(
     resources: &mut SystemAllocator,
     control_tubes: &mut Vec<TaggedControlTube>,
     vfio_path: &Path,
+    hotplug: bool,
     endpoints: &mut BTreeMap<u32, Arc<Mutex<VfioContainer>>>,
     iommu_enabled: bool,
 ) -> DeviceResult<(Box<VfioPciDevice>, Option<Minijail>)> {
@@ -1490,10 +1491,13 @@ fn create_vfio_device(
     let (vfio_host_tube_mem, vfio_device_tube_mem) = Tube::pair().map_err(Error::CreateTube)?;
     control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
 
+    // put hotplug vfio device on Bus#1 temporary
+    let bus_num = if hotplug { Some(1) } else { None };
     let vfio_device = VfioDevice::new(vfio_path, vm, vfio_container.clone(), iommu_enabled)
         .map_err(Error::CreateVfioDevice)?;
     let mut vfio_pci_device = Box::new(VfioPciDevice::new(
         vfio_device,
+        bus_num,
         vfio_device_tube_msi,
         vfio_device_tube_msix,
         vfio_device_tube_mem,
@@ -1589,6 +1593,7 @@ fn create_devices(
                 resources,
                 control_tubes,
                 vfio_path.as_path(),
+                false,
                 &mut iommu_attached_endpoints,
                 *enable_iommu,
             )?;
@@ -2536,6 +2541,7 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
         sys_allocator,
         control_tubes,
         vfio_path,
+        true,
         &mut endpoints,
         false,
     )?;
