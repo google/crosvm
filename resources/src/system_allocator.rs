@@ -153,6 +153,15 @@ impl SystemAllocator {
         self.pci_allocator.get_mut(&bus)
     }
 
+    // Check whether devices exist or not on the specified bus
+    pub fn pci_bus_empty(&self, bus: u8) -> bool {
+        if self.pci_allocator.get(&bus).is_none() {
+            true
+        } else {
+            false
+        }
+    }
+
     /// Allocate PCI slot location.
     pub fn allocate_pci(&mut self, bus: u8, tag: String) -> Option<Alloc> {
         let id = self.get_anon_alloc();

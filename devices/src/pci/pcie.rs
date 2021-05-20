@@ -32,10 +32,14 @@ pub trait PcieDevice: Send {
 const BR_MSIX_TABLE_OFFSET: u64 = 0x0;
 const BR_MSIX_PBA_OFFSET: u64 = 0x100;
 const PCI_BRIDGE_BAR_SIZE: u64 = 0x1000;
+const BR_BUS_NUMBER_REG: usize = 0x6;
 pub struct PciBridge {
     device: Box<dyn PcieDevice>,
     config: PciConfiguration,
     pci_address: Option<PciAddress>,
+    primary_number: u8,
+    secondary_number: u8,
+    subordinate_number: u8,
     setting_bar: u8,
     msix_config: Arc<Mutex<MsixConfig>>,
     msix_cap_reg_idx: Option<usize>,
@@ -44,10 +48,15 @@ pub struct PciBridge {
 }
 
 impl PciBridge {
-    pub fn new(device: Box<dyn PcieDevice>, msi_device_tube: Tube) -> Self {
+    pub fn new(
+        device: Box<dyn PcieDevice>,
+        msi_device_tube: Tube,
+        primary_number: u8,
+        secondary_number: u8,
+    ) -> Self {
         let msix_config = Arc::new(Mutex::new(MsixConfig::new(1, msi_device_tube)));
         let device_id = device.get_device_id();
-        let config = PciConfiguration::new(
+        let mut config = PciConfiguration::new(
             PCI_VENDOR_ID_INTEL,
             device_id,
             PciClassCode::BridgeDevice,
@@ -60,10 +69,16 @@ impl PciBridge {
             0,
         );
 
+        let data = [primary_number, secondary_number, secondary_number, 0];
+        config.write_reg(BR_BUS_NUMBER_REG, 0, &data[..]);
+
         PciBridge {
             device,
             config,
             pci_address: None,
+            primary_number,
+            secondary_number,
+            subordinate_number: secondary_number,
             setting_bar: 0,
             msix_config,
             msix_cap_reg_idx: None,
@@ -83,7 +98,8 @@ impl PciDevice for PciBridge {
         resources: &mut SystemAllocator,
     ) -> std::result::Result<PciAddress, PciDeviceError> {
         if self.pci_address.is_none() {
-            self.pci_address = match resources.allocate_pci(0, self.debug_label()) {
+            self.pci_address = match resources.allocate_pci(self.primary_number, self.debug_label())
+            {
                 Some(Alloc::PciBar {
                     bus,
                     dev,
@@ -224,6 +240,41 @@ impl PciDevice for PciBridge {
         if let Some(msix_cap_reg_idx) = self.msix_cap_reg_idx {
             if msix_cap_reg_idx == reg_idx {
                 self.msix_config.lock().write_msix_capability(offset, data);
+            }
+        }
+
+        // Suppose kernel won't modify primary/secondary/subordinate bus number,
+        // if it indeed modify, print a warning
+        if reg_idx == BR_BUS_NUMBER_REG {
+            let len = data.len();
+            if offset == 0 && len == 1 && data[0] != self.primary_number {
+                warn!(
+                    "kernel modify primary bus number: {} -> {}",
+                    self.primary_number, data[0]
+                );
+            } else if offset == 0 && len == 2 {
+                if data[0] != self.primary_number {
+                    warn!(
+                        "kernel modify primary bus number: {} -> {}",
+                        self.primary_number, data[0]
+                    );
+                }
+                if data[1] != self.secondary_number {
+                    warn!(
+                        "kernel modify secondary bus number: {} -> {}",
+                        self.secondary_number, data[1]
+                    );
+                }
+            } else if offset == 1 && len == 1 && data[0] != self.secondary_number {
+                warn!(
+                    "kernel modify secondary bus number: {} -> {}",
+                    self.secondary_number, data[0]
+                );
+            } else if offset == 2 && len == 1 && data[0] != self.subordinate_number {
+                warn!(
+                    "kernel modify subordinate bus number: {} -> {}",
+                    self.subordinate_number, data[0]
+                );
             }
         }
 

@@ -51,8 +51,8 @@ use devices::Ac97Dev;
 use devices::ProtectionType;
 use devices::{
     self, BusDeviceObj, HostHotPlugKey, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciAddress,
-    PciDevice, StubPciDevice, VcpuRunState, VfioContainer, VfioDevice, VfioPciDevice,
-    VfioPlatformDevice, VirtioPciDevice,
+    PciBridge, PciDevice, PcieRootPort, StubPciDevice, VcpuRunState, VfioContainer, VfioDevice,
+    VfioPciDevice, VfioPlatformDevice, VirtioPciDevice,
 };
 #[cfg(feature = "usb")]
 use devices::{HostBackendDeviceProvider, XhciController};
@@ -1800,6 +1800,17 @@ fn create_devices(
             devices.push((dev, iommu_dev.jail));
         }
     }
+
+    // Create Pcie Root Port
+    let pcie_root_port = Box::new(PcieRootPort::new());
+    let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
+    control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+    let sec_bus = (1..255)
+        .find(|&bus_num| resources.pci_bus_empty(bus_num))
+        .context("failed to find empty bus for Pci hotplug")?;
+    let pci_bridge = Box::new(PciBridge::new(pcie_root_port, msi_device_tube, 0, sec_bus));
+    // pcie root port is used in hotplug process only, so disable sandbox for it
+    devices.push((pci_bridge, None));
 
     for params in &cfg.stub_pci_devices {
         // Stub devices don't need jailing since they don't do anything.
