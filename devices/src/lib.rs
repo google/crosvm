@@ -17,13 +17,16 @@ mod pci;
 mod pit;
 pub mod pl030;
 mod proxy;
+#[cfg(feature = "usb")]
 #[macro_use]
 mod register_space;
 pub mod acpi;
 pub mod bat;
 mod serial;
 mod serial_device;
+#[cfg(feature = "usb")]
 pub mod usb;
+#[cfg(feature = "usb")]
 mod utils;
 pub mod vfio;
 pub mod virtio;
@@ -52,7 +55,9 @@ pub use self::proxy::Error as ProxyError;
 pub use self::proxy::ProxyDevice;
 pub use self::serial::Serial;
 pub use self::serial_device::SerialDevice;
+#[cfg(feature = "usb")]
 pub use self::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
+#[cfg(feature = "usb")]
 pub use self::usb::xhci::xhci_controller::XhciController;
 pub use self::vfio::{VfioContainer, VfioDevice};
 pub use self::virtio::VirtioPciDevice;

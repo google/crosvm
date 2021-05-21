@@ -43,9 +43,11 @@ use devices::virtio::{self, Console, VirtioDevice};
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
 use devices::{
-    self, HostBackendDeviceProvider, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciDevice,
-    VcpuRunState, VfioContainer, VfioDevice, VfioPciDevice, VirtioPciDevice, XhciController,
+    self, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciDevice, VcpuRunState, VfioContainer,
+    VfioDevice, VfioPciDevice, VirtioPciDevice,
 };
+#[cfg(feature = "usb")]
+use devices::{HostBackendDeviceProvider, XhciController};
 use hypervisor::kvm::{Kvm, KvmVcpu, KvmVm};
 use hypervisor::{HypervisorCap, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap};
 use minijail::{self, Minijail};
@@ -114,6 +116,7 @@ pub enum Error {
     CreateTimer(base::Error),
     CreateTpmStorage(PathBuf, io::Error),
     CreateTube(TubeError),
+    #[cfg(feature = "usb")]
     CreateUsbProvider(devices::usb::host_backend::error::Error),
     CreateVcpu(base::Error),
     CreateVfioDevice(devices::vfio::VfioError),
@@ -238,6 +241,7 @@ impl Display for Error {
                 write!(f, "failed to create tpm storage dir {}: {}", p.display(), e)
             }
             CreateTube(e) => write!(f, "failed to create tube: {}", e),
+            #[cfg(feature = "usb")]
             CreateUsbProvider(e) => write!(f, "failed to create usb provider: {}", e),
             CreateVcpu(e) => write!(f, "failed to create vcpu: {}", e),
             CreateVfioDevice(e) => write!(f, "Failed to create vfio device {}", e),
@@ -1678,7 +1682,7 @@ fn create_devices(
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
     fs_device_tubes: &mut Vec<Tube>,
-    usb_provider: HostBackendDeviceProvider,
+    #[cfg(feature = "usb")] usb_provider: HostBackendDeviceProvider,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
 ) -> DeviceResult<Vec<(Box<dyn PciDevice>, Option<Minijail>)>> {
     let stubs = create_virtio_devices(
@@ -1714,9 +1718,12 @@ fn create_devices(
         pci_devices.push((Box::new(dev), jail));
     }
 
-    // Create xhci controller.
-    let usb_controller = Box::new(XhciController::new(vm.get_memory().clone(), usb_provider));
-    pci_devices.push((usb_controller, simple_jail(&cfg, "xhci")?));
+    #[cfg(feature = "usb")]
+    {
+        // Create xhci controller.
+        let usb_controller = Box::new(XhciController::new(vm.get_memory().clone(), usb_provider));
+        pci_devices.push((usb_controller, simple_jail(&cfg, "xhci")?));
+    }
 
     if !cfg.vfio.is_empty() {
         let vfio_container = Arc::new(Mutex::new(
@@ -2446,8 +2453,10 @@ where
         info!("crosvm entering multiprocess mode");
     }
 
+    #[cfg(feature = "usb")]
     let (usb_control_tube, usb_provider) =
         HostBackendDeviceProvider::new().map_err(Error::CreateUsbProvider)?;
+
     // Masking signals is inherently dangerous, since this can persist across clones/execs. Do this
     // before any jailed devices have been spawned, so that we can catch any of them that fail very
     // quickly.
@@ -2559,6 +2568,7 @@ where
         &mut disk_device_tubes,
         &mut pmem_device_tubes,
         &mut fs_device_tubes,
+        #[cfg(feature = "usb")]
         usb_provider,
         Arc::clone(&map_request),
     )?;
@@ -2631,6 +2641,7 @@ where
         control_tubes,
         balloon_host_tube,
         &disk_host_tubes,
+        #[cfg(feature = "usb")]
         usb_control_tube,
         exit_evt,
         sigchld_fd,
@@ -2830,7 +2841,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     mut control_tubes: Vec<TaggedControlTube>,
     balloon_host_tube: Tube,
     disk_host_tubes: &[Tube],
-    usb_control_tube: Tube,
+    #[cfg(feature = "usb")] usb_control_tube: Tube,
     exit_evt: Event,
     sigchld_fd: SignalFd,
     sandbox: bool,
@@ -3109,7 +3120,10 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         &mut run_mode_opt,
                                         &balloon_host_tube,
                                         disk_host_tubes,
-                                        &usb_control_tube,
+                                        #[cfg(feature = "usb")]
+                                        Some(&usb_control_tube),
+                                        #[cfg(not(feature = "usb"))]
+                                        None,
                                         &mut linux.bat_control,
                                     );
                                     if let Err(e) = tube.send(&response) {

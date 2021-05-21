@@ -982,7 +982,7 @@ impl VmRequest {
         run_mode: &mut Option<VmRunMode>,
         balloon_host_tube: &Tube,
         disk_host_tubes: &[Tube],
-        usb_control_tube: &Tube,
+        usb_control_tube: Option<&Tube>,
         bat_control: &mut Option<BatControl>,
     ) -> VmResponse {
         match *self {
@@ -1046,6 +1046,13 @@ impl VmRequest {
                 }
             }
             VmRequest::UsbCommand(ref cmd) => {
+                let usb_control_tube = match usb_control_tube {
+                    Some(t) => t,
+                    None => {
+                        error!("attempted to execute USB request without control tube");
+                        return VmResponse::Err(SysError::new(ENODEV));
+                    }
+                };
                 let res = usb_control_tube.send(cmd);
                 if let Err(e) = res {
                     error!("fail to send command to usb control socket: {}", e);
