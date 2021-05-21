@@ -395,29 +395,11 @@ impl<T: EncoderSession> Stream<T> {
         )])
     }
 
-    fn flush_response(&mut self, flush_done: bool) -> Option<Vec<VideoEvtResponseType>> {
-        let command_response = if flush_done {
-            CmdResponse::NoData
-        } else {
-            error!("Flush could not be completed for stream {}", self.id);
-            VideoError::InvalidOperation.into()
-        };
-
-        let mut async_responses = vec![];
-
-        let eos_resource_id = match self.eos_notification_buffer {
-            Some(r) => r,
-            None => {
-                error!(
-                    "No EOS resource available on successful flush response (stream id {})",
-                    self.id
-                );
-                return Some(vec![VideoEvtResponseType::Event(VideoEvt {
-                    typ: EvtType::Error,
-                    stream_id: self.id,
-                })]);
-            }
-        };
+    /// Attempt to build the event response for successfully dequeueing the EOS buffer.
+    ///
+    /// If no EOS buffer was assigned, returns None.
+    fn dequeue_eos_buffer(&mut self) -> Option<VideoEvtResponseType> {
+        let eos_resource_id = self.eos_notification_buffer.take()?;
 
         let eos_tag = AsyncCmdTag::Queue {
             stream_id: self.id,
@@ -431,9 +413,36 @@ impl<T: EncoderSession> Stream<T> {
             size: 0,
         };
 
-        async_responses.push(VideoEvtResponseType::AsyncCmd(
+        Some(VideoEvtResponseType::AsyncCmd(
             AsyncCmdResponse::from_response(eos_tag, eos_response),
-        ));
+        ))
+    }
+
+    fn flush_response(&mut self, flush_done: bool) -> Option<Vec<VideoEvtResponseType>> {
+        let command_response = if flush_done {
+            CmdResponse::NoData
+        } else {
+            error!("Flush could not be completed for stream {}", self.id);
+            VideoError::InvalidOperation.into()
+        };
+
+        let mut async_responses = vec![];
+
+        let eos_response = match self.dequeue_eos_buffer() {
+            Some(response) => response,
+            None => {
+                error!(
+                    "No EOS resource available on successful flush response (stream id {})",
+                    self.id
+                );
+                return Some(vec![VideoEvtResponseType::Event(VideoEvt {
+                    typ: EvtType::Error,
+                    stream_id: self.id,
+                })]);
+            }
+        };
+
+        async_responses.push(eos_response);
 
         if self.pending_commands.remove(&PendingCommand::Drain) {
             async_responses.push(VideoEvtResponseType::AsyncCmd(
