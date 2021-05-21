@@ -4,6 +4,7 @@
 use std::sync::Arc;
 use sync::Mutex;
 
+use crate::bus::{HostHotPlugKey, HotPlugBus};
 use crate::pci::msix::{MsixCap, MsixConfig};
 use crate::pci::pci_configuration::{
     PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciBridgeSubclass, PciCapability,
@@ -291,12 +292,17 @@ const PCIE_SLTCAP_HPC: u32 = 0x40; // Hot-Plug Capable
 const PCIE_SLTCTL_OFFSET: usize = 0x18;
 const PCIE_SLTCTL_PIC_OFF: u16 = 0x300;
 const PCIE_SLTCTL_AIC_OFF: u16 = 0xC0;
+const PCIE_SLTCTL_ABPE: u16 = 0x01;
+const PCIE_SLTCTL_PDCE: u16 = 0x08;
+const PCIE_SLTCTL_CCIE: u16 = 0x10;
+const PCIE_SLTCTL_HPIE: u16 = 0x20;
 
 const PCIE_SLTSTA_OFFSET: usize = 0x1A;
 const PCIE_SLTSTA_ABP: u16 = 0x0001;
 const PCIE_SLTSTA_PFD: u16 = 0x0002;
 const PCIE_SLTSTA_PDC: u16 = 0x0008;
 const PCIE_SLTSTA_CC: u16 = 0x0010;
+const PCIE_SLTSTA_PDS: u16 = 0x0040;
 const PCIE_SLTSTA_DLLSC: u16 = 0x0100;
 
 #[repr(C)]
@@ -428,6 +434,7 @@ pub struct PcieRootPort {
     msix_config: Option<Arc<Mutex<MsixConfig>>>,
     slot_control: u16,
     slot_status: u16,
+    downstream_device: Option<(PciAddress, Option<HostHotPlugKey>)>,
 }
 
 impl PcieRootPort {
@@ -438,6 +445,7 @@ impl PcieRootPort {
             msix_config: None,
             slot_control: PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF,
             slot_status: 0,
+            downstream_device: None,
         }
     }
 
@@ -450,7 +458,15 @@ impl PcieRootPort {
     fn write_pcie_cap(&mut self, offset: usize, data: &[u8]) {
         match offset {
             PCIE_SLTCTL_OFFSET => match get_word(data) {
-                Some(v) => self.slot_control = v,
+                Some(v) => {
+                    let old_control = self.slot_control;
+                    self.slot_control = v;
+                    if old_control != v {
+                        // send Command completed events
+                        self.slot_status |= PCIE_SLTSTA_CC;
+                        self.trigger_cc_interrupt();
+                    }
+                }
                 None => warn!("write SLTCTL isn't word, len: {}", data.len()),
             },
             PCIE_SLTSTA_OFFSET => {
@@ -478,6 +494,29 @@ impl PcieRootPort {
                 }
             }
             _ => (),
+        }
+    }
+
+    fn trigger_interrupt(&self) {
+        if let Some(msix_config) = &self.msix_config {
+            let mut msix_config = msix_config.lock();
+            if msix_config.enabled() {
+                msix_config.trigger(0)
+            }
+        }
+    }
+
+    fn trigger_cc_interrupt(&self) {
+        if (self.slot_control & PCIE_SLTCTL_CCIE) != 0 && (self.slot_status & PCIE_SLTSTA_CC) != 0 {
+            self.trigger_interrupt()
+        }
+    }
+
+    fn trigger_hp_interrupt(&self) {
+        if (self.slot_control & PCIE_SLTCTL_HPIE) != 0
+            && (self.slot_status & self.slot_control & (PCIE_SLTCTL_ABPE | PCIE_SLTCTL_PDCE)) != 0
+        {
+            self.trigger_interrupt()
         }
     }
 }
@@ -524,5 +563,59 @@ impl PcieDevice for PcieRootPort {
                 self.write_pcie_cap(delta, data);
             }
         }
+    }
+}
+
+impl HotPlugBus for PcieRootPort {
+    fn hot_plug(&mut self, addr: PciAddress) {
+        match self.downstream_device {
+            Some((guest_addr, _)) => {
+                if guest_addr != addr {
+                    return;
+                }
+            }
+            None => return,
+        }
+
+        self.slot_status = self.slot_status | PCIE_SLTSTA_PDS | PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP;
+        self.trigger_hp_interrupt();
+    }
+
+    fn hot_unplug(&mut self, addr: PciAddress) {
+        match self.downstream_device {
+            Some((guest_addr, _)) => {
+                if guest_addr != addr {
+                    return;
+                }
+            }
+            None => return,
+        }
+
+        self.slot_status &= !PCIE_SLTSTA_PDS;
+        self.slot_status = self.slot_status | PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP;
+        self.trigger_hp_interrupt();
+    }
+
+    fn add_hotplug_device(&mut self, host_key: HostHotPlugKey, guest_addr: PciAddress) {
+        self.downstream_device = Some((guest_addr, Some(host_key)))
+    }
+
+    fn get_hotplug_device(&self, host_key: HostHotPlugKey) -> Option<PciAddress> {
+        if let Some((guest_address, Some(host_info))) = &self.downstream_device {
+            match host_info {
+                HostHotPlugKey::Vfio { host_addr } => {
+                    let saved_addr = *host_addr;
+                    match host_key {
+                        HostHotPlugKey::Vfio { host_addr } => {
+                            if host_addr == saved_addr {
+                                return Some(*guest_address);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        None
     }
 }
