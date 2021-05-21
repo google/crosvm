@@ -2513,6 +2513,10 @@ where
     control_tubes.push(TaggedControlTube::VmMemory(wayland_host_tube));
     // Balloon gets a special socket so balloon requests can be forwarded from the main process.
     let (balloon_host_tube, balloon_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
+    // Set recv timeout to avoid deadlock on sending BalloonControlCommand before guest is ready.
+    balloon_host_tube
+        .set_recv_timeout(Some(Duration::from_millis(100)))
+        .map_err(Error::CreateTube)?;
 
     // Create one control socket per disk.
     let mut disk_device_tubes = Vec::new();
