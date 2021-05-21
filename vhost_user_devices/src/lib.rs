@@ -717,13 +717,17 @@ mod tests {
             // VMM side
             rx.recv().unwrap(); // Ensure the device is ready.
 
-            let vu = Master::connect(&path, 1).unwrap();
             let allow_features = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
             let init_features = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
             let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
-            let mut vmm_handler =
-                VhostUserHandler::new(vu, allow_features, init_features, allow_protocol_features)
-                    .unwrap();
+            let mut vmm_handler = VhostUserHandler::new_from_path(
+                &path,
+                1,
+                allow_features,
+                init_features,
+                allow_protocol_features,
+            )
+            .unwrap();
 
             println!("read_config");
             let mut buf = vec![0; std::mem::size_of::<FakeConfig>()];

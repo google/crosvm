@@ -94,6 +94,9 @@ pub enum Error {
     /// Failed to connect socket.
     #[error("failed to connect socket: {0}")]
     SocketConnect(std::io::Error),
+    /// Failed to create Master from a UDS path.
+    #[error("failed to connect to device socket while creating instance: {0}")]
+    SocketConnectOnMasterCreate(VhostError),
     /// The tag for the Fs device was too long to fit in the config space.
     #[error("tag is too long: {len} > {max}")]
     TagTooLong { len: usize, max: usize },

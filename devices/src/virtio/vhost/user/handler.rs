@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 use std::io::Write;
+use std::os::unix::net::UnixStream;
+use std::path::Path;
 
 use base::{AsRawDescriptor, Event};
 use vm_memory::GuestMemory;
@@ -29,8 +31,42 @@ pub struct VhostUserHandler {
 }
 
 impl VhostUserHandler {
+    /// Creates a `VhostUserHandler` instance attached to the provided UDS path
+    /// with features and protocol features initialized.
+    pub fn new_from_path<P: AsRef<Path>>(
+        path: P,
+        max_queue_num: u64,
+        allow_features: u64,
+        init_features: u64,
+        allow_protocol_features: VhostUserProtocolFeatures,
+    ) -> Result<Self> {
+        Self::new(
+            Master::connect(path, max_queue_num).map_err(Error::SocketConnectOnMasterCreate)?,
+            allow_features,
+            init_features,
+            allow_protocol_features,
+        )
+    }
+
+    /// Creates a `VhostUserHandler` instance attached to the provided
+    /// UnixStream with features and protocol features initialized.
+    pub fn new_from_stream(
+        sock: UnixStream,
+        max_queue_num: u64,
+        allow_features: u64,
+        init_features: u64,
+        allow_protocol_features: VhostUserProtocolFeatures,
+    ) -> Result<Self> {
+        Self::new(
+            Master::from_stream(sock, max_queue_num),
+            allow_features,
+            init_features,
+            allow_protocol_features,
+        )
+    }
+
     /// Creates a `VhostUserHandler` instance with features and protocol features initialized.
-    pub fn new(
+    fn new(
         mut vu: Master,
         allow_features: u64,
         init_features: u64,

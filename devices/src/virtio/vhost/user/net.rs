@@ -14,7 +14,6 @@ use virtio_sys::virtio_net;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
-use vmm_vhost::vhost_user::Master;
 
 use crate::virtio::vhost::user::handler::VhostUserHandler;
 use crate::virtio::vhost::user::worker::Worker;
@@ -35,7 +34,6 @@ pub struct Net {
 impl Net {
     pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Net> {
         let socket = UnixStream::connect(&socket_path).map_err(Error::SocketConnect)?;
-        let vhost_user_net = Master::from_stream(socket, 16 /* # of queues */);
 
         // TODO(b/182430355): Support VIRTIO_NET_F_CTRL_VQ and VIRTIO_NET_F_CTRL_GUEST_OFFLOADS.
         let allow_features = 1 << crate::virtio::VIRTIO_F_VERSION_1
@@ -52,8 +50,9 @@ impl Net {
         let allow_protocol_features =
             VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
 
-        let mut handler = VhostUserHandler::new(
-            vhost_user_net,
+        let mut handler = VhostUserHandler::new_from_stream(
+            socket,
+            16, /* # of queues */
             allow_features,
             init_features,
             allow_protocol_features,

@@ -13,7 +13,6 @@ use cros_async::Executor;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
-use vmm_vhost::vhost_user::Master;
 
 use crate::virtio::vhost::user::handler::VhostUserHandler;
 use crate::virtio::vhost::user::worker::Worker;
@@ -39,8 +38,6 @@ pub struct Block {
 impl Block {
     pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Block> {
         let socket = UnixStream::connect(&socket_path).map_err(Error::SocketConnect)?;
-        // TODO(b/181753022): Support multiple queues.
-        let vhost_user_blk = Master::from_stream(socket, 1 /* queues_num */);
 
         let allow_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
             | 1 << VIRTIO_BLK_F_SEG_MAX
@@ -54,8 +51,10 @@ impl Block {
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
 
-        let mut handler = VhostUserHandler::new(
-            vhost_user_blk,
+        let mut handler = VhostUserHandler::new_from_stream(
+            socket,
+            // TODO(b/181753022): Support multiple queues.
+            1, /* queues_num */
             allow_features,
             init_features,
             allow_protocol_features,
