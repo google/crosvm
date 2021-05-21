@@ -40,6 +40,7 @@ use vm_control::{
         ModifyUsbError, ModifyUsbResult,
     },
     BalloonControlCommand, BatteryType, DiskControlCommand, UsbControlResult, VmRequest,
+    VmResponse,
 };
 
 fn executable_is_plugin(executable: &Option<Executable>) -> bool {
@@ -2114,7 +2115,10 @@ fn balloon_stats(mut args: std::env::Args) -> std::result::Result<(), ()> {
     let socket_path = Path::new(&socket_path);
     let response = handle_request(request, socket_path)?;
     println!("{}", response);
-    Ok(())
+    match response {
+        VmResponse::BalloonStats { .. } => Ok(()),
+        _ => Err(()),
+    }
 }
 
 fn create_qcow2(args: std::env::Args) -> std::result::Result<(), ()> {
