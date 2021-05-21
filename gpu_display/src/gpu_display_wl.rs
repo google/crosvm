@@ -159,6 +159,13 @@ impl GpuDisplaySurface for WaylandSurface {
             dwl_surface_set_position(self.surface(), x, y);
         }
     }
+
+    fn set_scanout_id(&mut self, scanout_id: u32) {
+        // Safe because only a valid surface is used.
+        unsafe {
+            dwl_surface_set_scanout_id(self.surface(), scanout_id);
+        }
+    }
 }
 
 /// A connection to the compositor and associated collection of state.

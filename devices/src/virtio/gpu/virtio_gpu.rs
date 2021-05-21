@@ -70,16 +70,19 @@ struct VirtioGpuScanout {
     surface_id: Option<u32>,
     resource_id: Option<NonZeroU32>,
     scanout_type: SurfaceType,
+    // If this scanout is a primary scanout, the scanout id.
+    scanout_id: Option<u32>,
     // If this scanout is a cursor scanout, the scanout that this is cursor is overlayed onto.
     parent_surface_id: Option<u32>,
 }
 
 impl VirtioGpuScanout {
-    fn new(width: u32, height: u32) -> VirtioGpuScanout {
+    fn new(width: u32, height: u32, scanout_id: u32) -> VirtioGpuScanout {
         VirtioGpuScanout {
             width,
             height,
             scanout_type: SurfaceType::Scanout,
+            scanout_id: Some(scanout_id),
             surface_id: None,
             resource_id: None,
             parent_surface_id: None,
@@ -93,6 +96,7 @@ impl VirtioGpuScanout {
             width: 64,
             height: 64,
             scanout_type: SurfaceType::Cursor,
+            scanout_id: None,
             surface_id: None,
             resource_id: None,
             parent_surface_id: None,
@@ -129,6 +133,10 @@ impl VirtioGpuScanout {
             self.height,
             self.scanout_type,
         )?;
+
+        if let Some(scanout_id) = self.scanout_id {
+            display.set_scanout_id(surface_id, scanout_id)?;
+        }
 
         self.surface_id = Some(surface_id);
 
@@ -314,7 +322,14 @@ impl VirtioGpu {
 
         let scanouts = display_params
             .iter()
-            .map(|&display_param| VirtioGpuScanout::new(display_param.width, display_param.height))
+            .enumerate()
+            .map(|(display_index, &display_param)| {
+                VirtioGpuScanout::new(
+                    display_param.width,
+                    display_param.height,
+                    display_index as u32,
+                )
+            })
             .collect::<Vec<_>>();
         let cursor_scanout = VirtioGpuScanout::new_cursor();
 

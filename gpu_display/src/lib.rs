@@ -222,6 +222,11 @@ trait GpuDisplaySurface {
     fn on_shm_completion(&mut self, _shm_complete: u64) {
         // no-op
     }
+
+    /// Sets the scanout ID for the surface.
+    fn set_scanout_id(&mut self, _scanout_id: u32) {
+        // no-op
+    }
 }
 
 struct GpuDisplayEvents {
@@ -596,6 +601,17 @@ impl GpuDisplay {
             .ok_or(GpuDisplayError::InvalidSurfaceId)?;
 
         surface.set_position(x, y);
+        Ok(())
+    }
+
+    /// Associates the scanout id with the given surface.
+    pub fn set_scanout_id(&mut self, surface_id: u32, scanout_id: u32) -> GpuDisplayResult<()> {
+        let surface = self
+            .surfaces
+            .get_mut(&surface_id)
+            .ok_or(GpuDisplayError::InvalidSurfaceId)?;
+
+        surface.set_scanout_id(scanout_id);
         Ok(())
     }
 }

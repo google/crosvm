@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="wp_virtio_gpu_metadata_v1">
+  <copyright>
+    Copyright 2021 The Chromium Authors.
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+    The above copyright notice and this permission notice (including the next
+    paragraph) shall be included in all copies or substantial portions of the
+    Software.
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+  </copyright>
+
+  <interface name="wp_virtio_gpu_metadata_v1" version="1">
+    <description summary="attach virtio gpu metadata">
+      The global interface which allows attaching virtio-gpu metadata
+      to wl_surface objects.
+    </description>
+
+    <enum name="error">
+      <entry name="surface_metadata_exists" value="0"
+             summary="the surface already has a metadata object associated"/>
+    </enum>
+
+    <request name="get_surface_metadata">
+      <description summary="extend surface interface for attaching metadata">
+        Instantiate an virtio_gpu_surface_metadata_v1 extension for the given
+        wl_surface to attach virtio gpu metadata. If the given wl_surface
+        already has a surface metadata object associated, the
+        surface_metadata_exists protocol error is raised.
+      </description>
+      <arg name="id" type="new_id" interface="wp_virtio_gpu_surface_metadata_v1"
+           summary="the new metadata interface id"/>
+      <arg name="surface" type="object" interface="wl_surface"
+           summary="the surface"/>
+    </request>
+  </interface>
+
+  <interface name="wp_virtio_gpu_surface_metadata_v1" version="1">
+    <description summary="interface to attach virtio gpu metadata to a wl_surface">
+      An additional interface to a wl_surface object, which allows the
+      client to attach additional metadata to the surface.
+
+      If the wl_surface associated with the virtio_gpu_surface_metadata_v1 is
+      destroyed, all virtio_gpu_surface_metadata_v1 requests except 'destroy'
+      raise the protocol error no_surface.
+
+      If the virtio_gpu_surface_metadata_v1 object is destroyed, the metadata
+      state is removed from the wl_surface. The change will be applied
+      on the next wl_surface.commit.
+    </description>
+
+    <enum name="error">
+      <entry name="no_surface" value="0"
+       summary="the wl_surface was destroyed"/>
+    </enum>
+
+    <request name="set_scanout_id">
+      <description summary="set the virtio gpu scanout id of the surface">
+        Set the virtio gpu scanout id of the associated wl_surface.
+      </description>
+      <arg name="scanout_id" type="uint" summary="virtio gpu scanout id"/>
+    </request>
+  </interface>
+
+</protocol>

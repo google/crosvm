@@ -89,6 +89,7 @@ fn main() {
         "linux-dmabuf-unstable-v1",
         "xdg-shell",
         "viewporter",
+        "virtio-gpu-metadata-v1",
     ] {
         build.file(compile_protocol(protocol, &out_dir));
     }

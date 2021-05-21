@@ -25,6 +25,7 @@
 #include "linux-dmabuf-unstable-v1.h"
 #include "viewporter.h"
 #include "xdg-shell.h"
+#include "virtio-gpu-metadata-v1.h"
 #include <wayland-client-core.h>
 #include <wayland-client-protocol.h>
 #include <wayland-client.h>
@@ -68,6 +69,7 @@ struct interfaces {
 	struct zwp_linux_dmabuf_v1 *linux_dmabuf;
 	struct xdg_wm_base *xdg_wm_base;
 	struct wp_viewporter *viewporter; // optional
+	struct wp_virtio_gpu_metadata_v1 *virtio_gpu_metadata; // optional
 };
 
 struct output {
@@ -125,6 +127,7 @@ struct dwl_surface {
 	struct xdg_surface *xdg_surface;
 	struct xdg_toplevel *xdg_toplevel;
 	struct wp_viewport *viewport;
+	struct wp_virtio_gpu_surface_metadata_v1 *virtio_gpu_surface_metadata;
 	struct wl_subsurface *subsurface;
 	uint32_t width;
 	uint32_t height;
@@ -610,6 +613,10 @@ static void registry_global(void *data, struct wl_registry *registry,
 	} else if (strcmp(interface, "wp_viewporter") == 0) {
 		ifaces->viewporter = (struct wp_viewporter *)wl_registry_bind(
 		    registry, id, &wp_viewporter_interface, 1);
+	} else if (strcmp(interface, "wp_virtio_gpu_metadata_v1") == 0) {
+		ifaces->virtio_gpu_metadata =
+			(struct wp_virtio_gpu_metadata_v1 *)wl_registry_bind(
+			registry, id, &wp_virtio_gpu_metadata_v1_interface, 1);
 	}
 }
 
@@ -1122,6 +1129,16 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		}
 	}
 
+	if (self->ifaces.virtio_gpu_metadata) {
+		disp_surface->virtio_gpu_surface_metadata =
+			wp_virtio_gpu_metadata_v1_get_surface_metadata(
+				self->ifaces.virtio_gpu_metadata, disp_surface->wl_surface);
+		if (!disp_surface->virtio_gpu_surface_metadata) {
+			syslog(LOG_ERR, "failed to make surface virtio surface metadata");
+			goto fail;
+		}
+	}
+
 	wl_surface_attach(disp_surface->wl_surface, disp_surface->buffers[0], 0,
 			  0);
 	wl_surface_damage(disp_surface->wl_surface, 0, 0, width, height);
@@ -1277,4 +1294,12 @@ void dwl_context_next_event(struct dwl_context *self, struct dwl_event *event)
 
 	if (++self->event_read_pos == EVENT_BUF_SIZE)
 		self->event_read_pos = 0;
+}
+
+void dwl_surface_set_scanout_id(struct dwl_surface *self, uint32_t scanout_id)
+{
+	if (self->virtio_gpu_surface_metadata) {
+		wp_virtio_gpu_surface_metadata_v1_set_scanout_id(
+			self->virtio_gpu_surface_metadata, scanout_id);
+	}
 }

@@ -169,3 +169,6 @@ extern "C" {
 extern "C" {
     pub fn dwl_context_next_event(self_: *mut dwl_context, event: *mut dwl_event);
 }
+extern "C" {
+    pub fn dwl_surface_set_scanout_id(self_: *mut dwl_surface, scanout_id: u32);
+}
