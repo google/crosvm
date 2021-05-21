@@ -111,6 +111,7 @@ pub trait BusResumeDevice: Send {
 /// The key to identify hotplug device from host view.
 /// like host sysfs path for vfio pci device, host disk file
 /// path for virtio block device
+#[derive(Copy, Clone)]
 pub enum HostHotPlugKey {
     Vfio { host_addr: PciAddress },
 }
@@ -123,6 +124,11 @@ pub trait HotPlugBus {
     /// Notify hotplug out event into guest
     /// * 'addr' - the guest pci address for hotplug out device
     fn hot_unplug(&mut self, addr: PciAddress);
+    /// Check whether the hotplug bus is available to add the new device
+    ///
+    /// - 'None': hotplug bus isn't match with host pci device
+    /// - 'Some(bus_num)': hotplug bus is match and put the device at bus_num
+    fn is_match(&self, host_addr: PciAddress) -> Option<u8>;
     /// Add hotplug device into this bus
     /// * 'host_key' - the key to identify hotplug device from host view
     /// * 'guest_addr' - the guest pci address for hotplug device

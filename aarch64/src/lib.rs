@@ -500,7 +500,7 @@ impl arch::LinuxArch for AArch64 {
             bat_control: None,
             resume_notify_devices: Vec::new(),
             root_config: pci_bus,
-            hotplug_bus: None,
+            hotplug_bus: Vec::new(),
         })
     }
 

@@ -124,7 +124,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     /// Devices to be notified before the system resumes from the S3 suspended state.
     pub resume_notify_devices: Vec<Arc<Mutex<dyn BusResumeDevice>>>,
     pub root_config: Arc<Mutex<RootConfigArch>>,
-    pub hotplug_bus: Option<Arc<Mutex<dyn HotPlugBus>>>,
+    pub hotplug_bus: Vec<Arc<Mutex<dyn HotPlugBus>>>,
 }
 
 /// The device and optional jail.

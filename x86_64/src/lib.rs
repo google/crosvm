@@ -559,7 +559,7 @@ impl arch::LinuxArch for X8664arch {
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             gdb: components.gdb,
             root_config: pci_bus,
-            hotplug_bus: None,
+            hotplug_bus: Vec::new(),
         })
     }
 
@@ -1007,7 +1007,13 @@ impl X8664arch {
     /// This returns a minimal kernel command for this architecture
     fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
         let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
-        cmdline.insert_str("reboot=k panic=-1").unwrap();
+        // _OSC give OS the pcie hotplug capability, but _OSC is missed in dsdt, so
+        // pcie_ports=native is used to force enable pcie hotplug temporary.
+        // Once pcie enhanced configuration access feature is enabled, _OSC
+        // will be added, then this parameter will be removed.
+        cmdline
+            .insert_str("reboot=k panic=-1 pcie_ports=native")
+            .unwrap();
 
         cmdline
     }

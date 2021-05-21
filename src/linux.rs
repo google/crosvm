@@ -50,9 +50,9 @@ use devices::virtio::{
 use devices::Ac97Dev;
 use devices::ProtectionType;
 use devices::{
-    self, BusDeviceObj, HostHotPlugKey, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciAddress,
-    PciBridge, PciDevice, PcieRootPort, StubPciDevice, VcpuRunState, VfioContainer, VfioDevice,
-    VfioPciDevice, VfioPlatformDevice, VirtioPciDevice,
+    self, BusDeviceObj, HostHotPlugKey, HotPlugBus, IrqChip, IrqEventIndex, KvmKernelIrqChip,
+    PciAddress, PciBridge, PciDevice, PcieRootPort, StubPciDevice, VcpuRunState, VfioContainer,
+    VfioDevice, VfioPciDevice, VfioPlatformDevice, VirtioPciDevice,
 };
 #[cfg(feature = "usb")]
 use devices::{HostBackendDeviceProvider, XhciController};
@@ -1614,7 +1614,7 @@ fn create_vfio_device(
     resources: &mut SystemAllocator,
     control_tubes: &mut Vec<TaggedControlTube>,
     vfio_path: &Path,
-    hotplug: bool,
+    bus_num: Option<u8>,
     endpoints: &mut BTreeMap<u32, Arc<Mutex<VfioContainer>>>,
     iommu_enabled: bool,
 ) -> DeviceResult<(Box<VfioPciDevice>, Option<Minijail>)> {
@@ -1634,8 +1634,6 @@ fn create_vfio_device(
         Tube::pair().context("failed to create tube")?;
     control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
 
-    // put hotplug vfio device on Bus#1 temporary
-    let bus_num = if hotplug { Some(1) } else { None };
     let vfio_device = VfioDevice::new(vfio_path, vm, vfio_container.clone(), iommu_enabled)
         .context("failed to create vfio device")?;
     let mut vfio_pci_device = Box::new(VfioPciDevice::new(
@@ -1758,7 +1756,7 @@ fn create_devices(
                 resources,
                 control_tubes,
                 vfio_path.as_path(),
-                false,
+                None,
                 &mut iommu_attached_endpoints,
                 vfio_dev.iommu_enabled(),
             )?;
@@ -1800,17 +1798,6 @@ fn create_devices(
             devices.push((dev, iommu_dev.jail));
         }
     }
-
-    // Create Pcie Root Port
-    let pcie_root_port = Box::new(PcieRootPort::new());
-    let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-    control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
-    let sec_bus = (1..255)
-        .find(|&bus_num| resources.pci_bus_empty(bus_num))
-        .context("failed to find empty bus for Pci hotplug")?;
-    let pci_bridge = Box::new(PciBridge::new(pcie_root_port, msi_device_tube, 0, sec_bus));
-    // pcie root port is used in hotplug process only, so disable sandbox for it
-    devices.push((pci_bridge, None));
 
     for params in &cfg.stub_pci_devices {
         // Stub devices don't need jailing since they don't do anything.
@@ -2712,6 +2699,23 @@ where
     )
     .context("the architecture failed to build the vm")?;
 
+    // Create Pcie Root Port
+    let pcie_root_port = Arc::new(Mutex::new(PcieRootPort::new()));
+    let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
+    control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+    let sec_bus = (1..255)
+        .find(|&bus_num| sys_allocator.pci_bus_empty(bus_num))
+        .context("failed to find empty bus for Pci hotplug")?;
+    let pci_bridge = Box::new(PciBridge::new(
+        pcie_root_port.clone(),
+        msi_device_tube,
+        0,
+        sec_bus,
+    ));
+    Arch::register_pci_device(&mut linux, pci_bridge, None, &mut sys_allocator)
+        .context("Failed to configure pci bridge device")?;
+    linux.hotplug_bus.push(pcie_root_port);
+
     #[cfg(feature = "direct")]
     if let Some(pmio) = &cfg.direct_pmio {
         let direct_io = Arc::new(
@@ -2799,6 +2803,18 @@ where
     )
 }
 
+fn get_hp_bus<V: VmArch, Vcpu: VcpuArch>(
+    linux: &RunnableLinuxVm<V, Vcpu>,
+    host_addr: PciAddress,
+) -> Result<(Arc<Mutex<dyn HotPlugBus>>, u8)> {
+    for hp_bus in linux.hotplug_bus.iter() {
+        if let Some(number) = hp_bus.lock().is_match(host_addr) {
+            return Ok((hp_bus.clone(), number));
+        }
+    }
+    Err(anyhow!("Failed to find a suitable hotplug bus"))
+}
+
 #[allow(dead_code)]
 fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
@@ -2807,6 +2823,16 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     control_tubes: &mut Vec<TaggedControlTube>,
     vfio_path: &Path,
 ) -> Result<()> {
+    let host_os_str = vfio_path
+        .file_name()
+        .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
+    let host_str = host_os_str
+        .to_str()
+        .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
+    let host_addr = PciAddress::from_string(host_str);
+
+    let (hp_bus, bus_num) = get_hp_bus(linux, host_addr)?;
+
     let mut endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>> = BTreeMap::new();
     let (vfio_pci_device, jail) = create_vfio_device(
         cfg,
@@ -2814,7 +2840,7 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
         sys_allocator,
         control_tubes,
         vfio_path,
-        true,
+        Some(bus_num),
         &mut endpoints,
         false,
     )?;
@@ -2830,14 +2856,10 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
         .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
     let host_addr = PciAddress::from_string(host_str);
     let host_key = HostHotPlugKey::Vfio { host_addr };
-    if let Some(hp_bus) = &linux.hotplug_bus {
-        let mut hp_bus = hp_bus.lock();
-        hp_bus.add_hotplug_device(host_key, pci_address);
-        hp_bus.hot_plug(pci_address);
-        return Ok(());
-    }
-
-    Err(anyhow!("HotPlugBus hasn't been implemented"))
+    let mut hp_bus = hp_bus.lock();
+    hp_bus.add_hotplug_device(host_key, pci_address);
+    hp_bus.hot_plug(pci_address);
+    Ok(())
 }
 
 #[allow(dead_code)]
@@ -2853,13 +2875,12 @@ fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
         .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
     let host_addr = PciAddress::from_string(host_str);
     let host_key = HostHotPlugKey::Vfio { host_addr };
-    if let Some(hp_bus) = &linux.hotplug_bus {
-        let mut hp_bus = hp_bus.lock();
-        let pci_addr = hp_bus
-            .get_hotplug_device(host_key)
-            .ok_or_else(|| anyhow!("failed to find hotplug key in hotplug bus"))?;
-        hp_bus.hot_unplug(pci_addr);
-        return Ok(());
+    for hp_bus in linux.hotplug_bus.iter() {
+        let mut hp_bus_lock = hp_bus.lock();
+        if let Some(pci_addr) = hp_bus_lock.get_hotplug_device(host_key) {
+            hp_bus_lock.hot_unplug(pci_addr);
+            return Ok(());
+        }
     }
 
     Err(anyhow!("HotPlugBus hasn't been implemented"))

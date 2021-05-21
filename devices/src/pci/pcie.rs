@@ -27,6 +27,7 @@ pub trait PcieDevice: Send {
     fn clone_interrupt(&mut self, msix_config: Arc<Mutex<MsixConfig>>);
     fn get_caps(&self) -> Vec<Box<dyn PciCapability>>;
     fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize);
+    fn set_secondary_bus_num(&mut self, secondary_number: u8);
 }
 
 const BR_MSIX_TABLE_OFFSET: u64 = 0x0;
@@ -34,7 +35,7 @@ const BR_MSIX_PBA_OFFSET: u64 = 0x100;
 const PCI_BRIDGE_BAR_SIZE: u64 = 0x1000;
 const BR_BUS_NUMBER_REG: usize = 0x6;
 pub struct PciBridge {
-    device: Box<dyn PcieDevice>,
+    device: Arc<Mutex<dyn PcieDevice>>,
     config: PciConfiguration,
     pci_address: Option<PciAddress>,
     primary_number: u8,
@@ -49,13 +50,13 @@ pub struct PciBridge {
 
 impl PciBridge {
     pub fn new(
-        device: Box<dyn PcieDevice>,
+        device: Arc<Mutex<dyn PcieDevice>>,
         msi_device_tube: Tube,
         primary_number: u8,
         secondary_number: u8,
     ) -> Self {
         let msix_config = Arc::new(Mutex::new(MsixConfig::new(1, msi_device_tube)));
-        let device_id = device.get_device_id();
+        let device_id = device.lock().get_device_id();
         let mut config = PciConfiguration::new(
             PCI_VENDOR_ID_INTEL,
             device_id,
@@ -71,6 +72,8 @@ impl PciBridge {
 
         let data = [primary_number, secondary_number, secondary_number, 0];
         config.write_reg(BR_BUS_NUMBER_REG, 0, &data[..]);
+
+        device.lock().set_secondary_bus_num(secondary_number);
 
         PciBridge {
             device,
@@ -90,7 +93,7 @@ impl PciBridge {
 
 impl PciDevice for PciBridge {
     fn debug_label(&self) -> String {
-        self.device.debug_label()
+        self.device.lock().debug_label()
     }
 
     fn allocate_address(
@@ -134,7 +137,7 @@ impl PciDevice for PciBridge {
         self.interrupt_evt = Some(irq_evt.try_clone().ok()?);
         self.interrupt_resample_evt = Some(irq_resample_evt.try_clone().ok()?);
         let msix_config_clone = self.msix_config.clone();
-        self.device.clone_interrupt(msix_config_clone);
+        self.device.lock().clone_interrupt(msix_config_clone);
 
         let gsi = irq_num?;
         self.config.set_irq(gsi as u8, PciInterruptPin::IntA);
@@ -206,14 +209,16 @@ impl PciDevice for PciBridge {
     }
 
     fn register_device_capabilities(&mut self) -> std::result::Result<(), PciDeviceError> {
-        let caps = self.device.get_caps();
+        let caps = self.device.lock().get_caps();
         for cap in caps {
             let cap_reg = self
                 .config
                 .add_capability(&*cap)
                 .map_err(PciDeviceError::CapabilitiesSetup)?;
 
-            self.device.set_capability_reg_idx(cap.id(), cap_reg / 4);
+            self.device
+                .lock()
+                .set_capability_reg_idx(cap.id(), cap_reg / 4);
         }
 
         Ok(())
@@ -232,7 +237,7 @@ impl PciDevice for PciBridge {
             }
         }
 
-        self.device.read_config(reg_idx, &mut data);
+        self.device.lock().read_config(reg_idx, &mut data);
         data
     }
 
@@ -278,7 +283,7 @@ impl PciDevice for PciBridge {
             }
         }
 
-        self.device.write_config(reg_idx, offset, data);
+        self.device.lock().write_config(reg_idx, offset, data);
 
         (&mut self.config).write_reg(reg_idx, offset, data)
     }
@@ -497,6 +502,7 @@ pub struct PcieRootPort {
     msix_config: Option<Arc<Mutex<MsixConfig>>>,
     slot_control: u16,
     slot_status: u16,
+    secondary_number: u8,
     downstream_device: Option<(PciAddress, Option<HostHotPlugKey>)>,
 }
 
@@ -508,6 +514,7 @@ impl PcieRootPort {
             msix_config: None,
             slot_control: PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF,
             slot_status: 0,
+            secondary_number: 255,
             downstream_device: None,
         }
     }
@@ -627,6 +634,10 @@ impl PcieDevice for PcieRootPort {
             }
         }
     }
+
+    fn set_secondary_bus_num(&mut self, secondary_number: u8) {
+        self.secondary_number = secondary_number;
+    }
 }
 
 impl HotPlugBus for PcieRootPort {
@@ -657,6 +668,14 @@ impl HotPlugBus for PcieRootPort {
         self.slot_status &= !PCIE_SLTSTA_PDS;
         self.slot_status = self.slot_status | PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP;
         self.trigger_hp_interrupt();
+    }
+
+    fn is_match(&self, _host_addr: PciAddress) -> Option<u8> {
+        if self.downstream_device.is_none() {
+            Some(self.secondary_number)
+        } else {
+            None
+        }
     }
 
     fn add_hotplug_device(&mut self, host_key: HostHotPlugKey, guest_addr: PciAddress) {
