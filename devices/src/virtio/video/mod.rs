@@ -202,7 +202,9 @@ impl VirtioDevice for VideoDevice {
         let mut worker = Worker::new(
             interrupt,
             mem,
+            cmd_queue,
             cmd_evt,
+            event_queue,
             event_evt,
             kill_evt,
             resource_bridge,
@@ -218,7 +220,7 @@ impl VirtioDevice for VideoDevice {
                             return;
                         }
                     };
-                    if let Err(e) = worker.run(cmd_queue, event_queue, device) {
+                    if let Err(e) = worker.run(device) {
                         error!("Failed to start decoder worker: {}", e);
                     };
                     // Don't return any information since the return value is never checked.
@@ -233,7 +235,7 @@ impl VirtioDevice for VideoDevice {
                             return;
                         }
                     };
-                    if let Err(e) = worker.run(cmd_queue, event_queue, device) {
+                    if let Err(e) = worker.run(device) {
                         error!("Failed to start encoder worker: {}", e);
                     }
                 }),
