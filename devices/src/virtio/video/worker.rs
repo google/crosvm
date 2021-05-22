@@ -61,9 +61,8 @@ impl Worker {
     /// Writes a `VideoEvt` into the event queue.
     fn write_event(&self, event_queue: &mut Queue, event: event::VideoEvt) -> Result<()> {
         let desc = event_queue
-            .peek(&self.mem)
+            .pop(&self.mem)
             .ok_or(Error::DescriptorNotAvailable)?;
-        event_queue.pop_peeked(&self.mem);
 
         let desc_index = desc.index;
         let mut writer =
