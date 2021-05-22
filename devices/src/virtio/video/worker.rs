@@ -29,6 +29,8 @@ pub struct Worker {
     event_evt: Event,
     kill_evt: Event,
     resource_bridge: Tube,
+    // Stores descriptors in which responses for asynchronous commands will be written.
+    desc_map: AsyncCmdDescMap,
 }
 
 /// Pair of a descriptor chain and a response to be written.
@@ -54,6 +56,7 @@ impl Worker {
             event_evt,
             kill_evt,
             resource_bridge,
+            desc_map: Default::default(),
         }
     }
 
@@ -101,7 +104,6 @@ impl Worker {
     fn write_event_responses(
         &mut self,
         event_responses: Vec<VideoEvtResponseType>,
-        desc_map: &mut AsyncCmdDescMap,
         stream_id: u32,
     ) -> Result<()> {
         let mut responses: VecDeque<WritableResp> = Default::default();
@@ -112,7 +114,7 @@ impl Worker {
                         tag,
                         response: cmd_result,
                     } = async_response;
-                    match desc_map.remove(&tag) {
+                    match self.desc_map.remove(&tag) {
                         Some(desc) => {
                             let cmd_response = match cmd_result {
                                 Ok(r) => r,
@@ -163,7 +165,6 @@ impl Worker {
         &mut self,
         device: &mut dyn Device,
         wait_ctx: &WaitContext<Token>,
-        desc_map: &mut AsyncCmdDescMap,
         desc: DescriptorChain,
     ) -> Result<VecDeque<WritableResp>> {
         let mut responses: VecDeque<WritableResp> = Default::default();
@@ -179,10 +180,12 @@ impl Worker {
             VideoCmd::ResourceDestroyAll {
                 stream_id,
                 queue_type,
-            } => desc_map.create_cancellation_responses(&stream_id, Some(queue_type), None),
-            VideoCmd::StreamDestroy { stream_id } => {
-                desc_map.create_cancellation_responses(&stream_id, None, None)
-            }
+            } => self
+                .desc_map
+                .create_cancellation_responses(&stream_id, Some(queue_type), None),
+            VideoCmd::StreamDestroy { stream_id } => self
+                .desc_map
+                .create_cancellation_responses(&stream_id, None, None),
             VideoCmd::QueueClear {
                 stream_id,
                 queue_type: QueueType::Output,
@@ -190,7 +193,11 @@ impl Worker {
                 // TODO(b/153406792): Due to a workaround for a limitation in the VDA api,
                 // clearing the output queue doesn't go through the same Async path as clearing
                 // the input queue. However, we still need to cancel the pending resources.
-                desc_map.create_cancellation_responses(&stream_id, Some(QueueType::Output), None)
+                self.desc_map.create_cancellation_responses(
+                    &stream_id,
+                    Some(QueueType::Output),
+                    None,
+                )
             }
             _ => Default::default(),
         };
@@ -206,7 +213,7 @@ impl Worker {
                     e.into()
                 }
             };
-            match desc_map.remove(&tag) {
+            match self.desc_map.remove(&tag) {
                 Some(destroy_desc) => {
                     responses.push_back((destroy_desc, destroy_response));
                 }
@@ -225,11 +232,11 @@ impl Worker {
                 // If the command expects an asynchronous response,
                 // store `desc` to use it after the back-end device notifies the
                 // completion.
-                desc_map.insert(tag, desc);
+                self.desc_map.insert(tag, desc);
             }
         }
         if let Some((stream_id, event_responses)) = event_responses_with_id {
-            self.write_event_responses(event_responses, desc_map, stream_id)?;
+            self.write_event_responses(event_responses, stream_id)?;
         }
 
         Ok(responses)
@@ -240,25 +247,19 @@ impl Worker {
         &mut self,
         device: &mut dyn Device,
         wait_ctx: &WaitContext<Token>,
-        desc_map: &mut AsyncCmdDescMap,
     ) -> Result<()> {
         let _ = self.cmd_evt.read();
         while let Some(desc) = self.cmd_queue.pop(&self.mem) {
-            let mut resps = self.handle_command_desc(device, wait_ctx, desc_map, desc)?;
+            let mut resps = self.handle_command_desc(device, wait_ctx, desc)?;
             self.write_responses(&mut resps)?;
         }
         Ok(())
     }
 
     /// Handles an event notified via an event.
-    fn handle_event(
-        &mut self,
-        device: &mut dyn Device,
-        desc_map: &mut AsyncCmdDescMap,
-        stream_id: u32,
-    ) -> Result<()> {
-        if let Some(event_responses) = device.process_event(desc_map, stream_id) {
-            self.write_event_responses(event_responses, desc_map, stream_id)?;
+    fn handle_event(&mut self, device: &mut dyn Device, stream_id: u32) -> Result<()> {
+        if let Some(event_responses) = device.process_event(&mut self.desc_map, stream_id) {
+            self.write_event_responses(event_responses, stream_id)?;
         }
         Ok(())
     }
@@ -277,22 +278,19 @@ impl Worker {
         })
         .map_err(Error::WaitContextCreationFailed)?;
 
-        // Stores descriptors in which responses for asynchronous commands will be written.
-        let mut desc_map: AsyncCmdDescMap = Default::default();
-
         loop {
             let wait_events = wait_ctx.wait().map_err(Error::WaitError)?;
 
             for wait_event in wait_events.iter().filter(|e| e.is_readable) {
                 match wait_event.token {
                     Token::CmdQueue => {
-                        self.handle_command_queue(device.as_mut(), &wait_ctx, &mut desc_map)?;
+                        self.handle_command_queue(device.as_mut(), &wait_ctx)?;
                     }
                     Token::EventQueue => {
                         let _ = self.event_evt.read();
                     }
                     Token::Event { id } => {
-                        self.handle_event(device.as_mut(), &mut desc_map, id)?;
+                        self.handle_event(device.as_mut(), id)?;
                     }
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
