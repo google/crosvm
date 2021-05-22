@@ -15,6 +15,7 @@ use crate::virtio::video::format::{Format, FormatDesc, FormatRange, FrameFormat,
 use crate::virtio::video::{
     encoder::{encoder::*, EncoderDevice},
     error::{VideoError, VideoResult},
+    Tube,
 };
 
 pub struct LibvdaEncoder {
@@ -365,8 +366,8 @@ impl EncoderSession for LibvdaEncoderSession {
 /// Create a new encoder instance using a Libvda encoder instance to perform
 /// the encoding.
 impl EncoderDevice<LibvdaEncoder> {
-    pub fn new() -> VideoResult<Self> {
+    pub fn new(resource_bridge: Tube) -> VideoResult<Self> {
         let vea = LibvdaEncoder::new()?;
-        EncoderDevice::from_backend(vea)
+        EncoderDevice::from_backend(vea, resource_bridge)
     }
 }

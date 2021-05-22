@@ -6,7 +6,7 @@
 
 use std::collections::VecDeque;
 
-use base::{error, info, Event, Tube, WaitContext};
+use base::{error, info, Event, WaitContext};
 use vm_memory::GuestMemory;
 
 use crate::virtio::queue::{DescriptorChain, Queue};
@@ -28,7 +28,6 @@ pub struct Worker {
     event_queue: Queue,
     event_evt: Event,
     kill_evt: Event,
-    resource_bridge: Tube,
     // Stores descriptors in which responses for asynchronous commands will be written.
     desc_map: AsyncCmdDescMap,
 }
@@ -45,7 +44,6 @@ impl Worker {
         event_queue: Queue,
         event_evt: Event,
         kill_evt: Event,
-        resource_bridge: Tube,
     ) -> Self {
         Self {
             interrupt,
@@ -55,7 +53,6 @@ impl Worker {
             event_queue,
             event_evt,
             kill_evt,
-            resource_bridge,
             desc_map: Default::default(),
         }
     }
@@ -222,8 +219,7 @@ impl Worker {
         }
 
         // Process the command by the device.
-        let (cmd_response, event_responses_with_id) =
-            device.process_cmd(cmd, &wait_ctx, &self.resource_bridge);
+        let (cmd_response, event_responses_with_id) = device.process_cmd(cmd, &wait_ctx);
         match cmd_response {
             VideoCmdResponseType::Sync(r) => {
                 responses.push_back((desc, r));

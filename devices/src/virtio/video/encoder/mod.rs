@@ -461,6 +461,7 @@ pub struct EncoderDevice<T: Encoder> {
     cros_capabilities: encoder::EncoderCapabilities,
     encoder: T,
     streams: BTreeMap<u32, Stream<T::Session>>,
+    resource_bridge: Tube,
 }
 
 fn get_resource_info(res_bridge: &Tube, uuid: u128) -> VideoResult<BufferInfo> {
@@ -476,11 +477,12 @@ fn get_resource_info(res_bridge: &Tube, uuid: u128) -> VideoResult<BufferInfo> {
 
 impl<T: Encoder> EncoderDevice<T> {
     /// Build a new encoder using the provided `backend`.
-    fn from_backend(backend: T) -> VideoResult<Self> {
+    fn from_backend(backend: T, resource_bridge: Tube) -> VideoResult<Self> {
         Ok(Self {
             cros_capabilities: backend.query_capabilities()?,
             encoder: backend,
             streams: Default::default(),
+            resource_bridge,
         })
     }
 
@@ -563,7 +565,6 @@ impl<T: Encoder> EncoderDevice<T> {
     fn resource_create(
         &mut self,
         wait_ctx: &WaitContext<Token>,
-        resource_bridge: &Tube,
         stream_id: u32,
         queue_type: QueueType,
         resource_id: u32,
@@ -593,7 +594,7 @@ impl<T: Encoder> EncoderDevice<T> {
                     warn!("Replacing source resource with id {}", resource_id);
                 }
 
-                let resource_info = get_resource_info(resource_bridge, uuid)?;
+                let resource_info = get_resource_info(&self.resource_bridge, uuid)?;
 
                 let planes: Vec<VideoFramePlane> = resource_info.planes[0..num_planes]
                     .iter()
@@ -638,7 +639,6 @@ impl<T: Encoder> EncoderDevice<T> {
 
     fn resource_queue(
         &mut self,
-        resource_bridge: &Tube,
         stream_id: u32,
         queue_type: QueueType,
         resource_id: u32,
@@ -674,7 +674,7 @@ impl<T: Encoder> EncoderDevice<T> {
                 )?;
 
                 let resource_info =
-                    get_resource_info(resource_bridge, src_resource.resource_handle)?;
+                    get_resource_info(&self.resource_bridge, src_resource.resource_handle)?;
 
                 let force_keyframe = std::mem::replace(&mut stream.force_keyframe, false);
 
@@ -737,7 +737,7 @@ impl<T: Encoder> EncoderDevice<T> {
                 )?;
 
                 let resource_info =
-                    get_resource_info(resource_bridge, dst_resource.resource_handle)?;
+                    get_resource_info(&self.resource_bridge, dst_resource.resource_handle)?;
 
                 let mut buffer_size = data_sizes[0];
 
@@ -1161,7 +1161,6 @@ impl<T: Encoder> Device for EncoderDevice<T> {
         &mut self,
         req: VideoCmd,
         wait_ctx: &WaitContext<Token>,
-        resource_bridge: &Tube,
     ) -> (
         VideoCmdResponseType,
         Option<(u32, Vec<VideoEvtResponseType>)>,
@@ -1183,7 +1182,6 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                 uuid,
             } => self.resource_create(
                 wait_ctx,
-                resource_bridge,
                 stream_id,
                 queue_type,
                 resource_id,
@@ -1197,14 +1195,8 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                 timestamp,
                 data_sizes,
             } => {
-                let resp = self.resource_queue(
-                    resource_bridge,
-                    stream_id,
-                    queue_type,
-                    resource_id,
-                    timestamp,
-                    data_sizes,
-                );
+                let resp =
+                    self.resource_queue(stream_id, queue_type, resource_id, timestamp, data_sizes);
 
                 if resp.is_ok() && queue_type == QueueType::Output {
                     if let Some(stream) = self.streams.get_mut(&stream_id) {

@@ -396,17 +396,19 @@ pub struct Decoder<D: DecoderBackend> {
     decoder: D,
     capability: Capability,
     contexts: ContextMap<D::Session>,
+    resource_bridge: Tube,
 }
 
 impl<'a, D: DecoderBackend> Decoder<D> {
     /// Build a new decoder using the provided `backend`.
-    fn from_backend(backend: D) -> Self {
+    fn from_backend(backend: D, resource_bridge: Tube) -> Self {
         let capability = backend.get_capabilities();
 
         Self {
             decoder: backend,
             capability,
             contexts: Default::default(),
+            resource_bridge,
         }
     }
     /*
@@ -539,7 +541,6 @@ impl<'a, D: DecoderBackend> Decoder<D> {
 
     fn queue_input_resource(
         &mut self,
-        resource_bridge: &Tube,
         stream_id: StreamId,
         resource_id: ResourceId,
         timestamp: u64,
@@ -556,7 +557,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         // Take an ownership of this file by `into_raw_descriptor()` as this file will be closed
         // by the `DecoderBackend`.
         let fd = ctx
-            .get_resource_info(QueueType::Input, resource_bridge, resource_id)?
+            .get_resource_info(QueueType::Input, &self.resource_bridge, resource_id)?
             .file
             .into_raw_descriptor();
 
@@ -603,7 +604,6 @@ impl<'a, D: DecoderBackend> Decoder<D> {
 
     fn queue_output_resource(
         &mut self,
-        resource_bridge: &Tube,
         stream_id: StreamId,
         resource_id: ResourceId,
     ) -> VideoResult<VideoCmdResponseType> {
@@ -634,7 +634,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             QueueOutputResourceResult::Reused(buffer_id) => session.reuse_output_buffer(buffer_id),
             QueueOutputResourceResult::Registered(buffer_id) => {
                 let resource_info =
-                    ctx.get_resource_info(QueueType::Output, resource_bridge, resource_id)?;
+                    ctx.get_resource_info(QueueType::Output, &self.resource_bridge, resource_id)?;
                 let planes = vec![
                     FramePlane {
                         offset: resource_info.planes[0].offset as i32,
@@ -824,7 +824,6 @@ impl<D: DecoderBackend> Device for Decoder<D> {
         &mut self,
         cmd: VideoCmd,
         wait_ctx: &WaitContext<Token>,
-        resource_bridge: &Tube,
     ) -> (
         VideoCmdResponseType,
         Option<(u32, Vec<VideoEvtResponseType>)>,
@@ -867,20 +866,14 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 resource_id,
                 timestamp,
                 data_sizes,
-            } => self.queue_input_resource(
-                resource_bridge,
-                stream_id,
-                resource_id,
-                timestamp,
-                data_sizes,
-            ),
+            } => self.queue_input_resource(stream_id, resource_id, timestamp, data_sizes),
             ResourceQueue {
                 stream_id,
                 queue_type: QueueType::Output,
                 resource_id,
                 ..
             } => {
-                let resp = self.queue_output_resource(resource_bridge, stream_id, resource_id);
+                let resp = self.queue_output_resource(stream_id, resource_id);
                 if resp.is_ok() {
                     if let Ok(ctx) = self.contexts.get_mut(&stream_id) {
                         event_ret = Some((stream_id, ctx.output_pending_pictures()));

@@ -207,13 +207,12 @@ impl VirtioDevice for VideoDevice {
             event_queue,
             event_evt,
             kill_evt,
-            resource_bridge,
         );
         let worker_result = match &self.device_type {
             VideoDeviceType::Decoder => thread::Builder::new()
                 .name("virtio video decoder".to_owned())
                 .spawn(move || {
-                    let device = match decoder::Decoder::new() {
+                    let device = match decoder::Decoder::new(resource_bridge) {
                         Ok(device) => Box::new(device),
                         Err(e) => {
                             error!("Failed to initialize vda: {}", e);
@@ -228,7 +227,7 @@ impl VirtioDevice for VideoDevice {
             VideoDeviceType::Encoder => thread::Builder::new()
                 .name("virtio video encoder".to_owned())
                 .spawn(move || {
-                    let device = match encoder::EncoderDevice::new() {
+                    let device = match encoder::EncoderDevice::new(resource_bridge) {
                         Ok(d) => Box::new(d),
                         Err(e) => {
                             error!("Failed to create encoder device: {}", e);

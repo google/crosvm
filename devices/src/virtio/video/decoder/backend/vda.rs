@@ -14,6 +14,7 @@ use crate::virtio::video::{
     decoder::{backend::*, Capability, Decoder},
     error::{VideoError, VideoResult},
     format::*,
+    Tube,
 };
 
 #[derive(Debug, ThisError)]
@@ -292,8 +293,8 @@ impl DecoderBackend for libvda::decode::VdaInstance {
 /// Create a new decoder instance using a Libvda decoder instance to perform
 /// the decoding.
 impl Decoder<libvda::decode::VdaInstance> {
-    pub fn new() -> VideoResult<Self> {
+    pub fn new(resource_bridge: Tube) -> VideoResult<Self> {
         let vda = libvda::decode::VdaInstance::new(libvda::decode::VdaImplType::Gavda)?;
-        Ok(Decoder::from_backend(vda))
+        Ok(Decoder::from_backend(vda, resource_bridge))
     }
 }
