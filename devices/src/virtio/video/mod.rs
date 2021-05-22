@@ -199,14 +199,14 @@ impl VirtioDevice for VideoDevice {
                 return;
             }
         };
-        let mut worker = Worker {
+        let mut worker = Worker::new(
             interrupt,
             mem,
             cmd_evt,
             event_evt,
             kill_evt,
             resource_bridge,
-        };
+        );
         let worker_result = match &self.device_type {
             VideoDeviceType::Decoder => thread::Builder::new()
                 .name("virtio video decoder".to_owned())

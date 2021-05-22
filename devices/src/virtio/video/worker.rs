@@ -21,18 +21,36 @@ use crate::virtio::video::{Error, Result};
 use crate::virtio::{Interrupt, Reader, SignalableInterrupt, Writer};
 
 pub struct Worker {
-    pub interrupt: Interrupt,
-    pub mem: GuestMemory,
-    pub cmd_evt: Event,
-    pub event_evt: Event,
-    pub kill_evt: Event,
-    pub resource_bridge: Tube,
+    interrupt: Interrupt,
+    mem: GuestMemory,
+    cmd_evt: Event,
+    event_evt: Event,
+    kill_evt: Event,
+    resource_bridge: Tube,
 }
 
 /// Pair of a descriptor chain and a response to be written.
 type WritableResp = (DescriptorChain, response::CmdResponse);
 
 impl Worker {
+    pub fn new(
+        interrupt: Interrupt,
+        mem: GuestMemory,
+        cmd_evt: Event,
+        event_evt: Event,
+        kill_evt: Event,
+        resource_bridge: Tube,
+    ) -> Self {
+        Self {
+            interrupt,
+            mem,
+            cmd_evt,
+            event_evt,
+            kill_evt,
+            resource_bridge,
+        }
+    }
+
     /// Writes responses into the command queue.
     fn write_responses(
         &self,
