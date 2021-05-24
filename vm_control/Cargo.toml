@@ -16,5 +16,6 @@ libc = "*"
 resources = { path = "../resources" }
 rutabaga_gfx = { path = "../rutabaga_gfx"}
 serde = { version = "1", features = [ "derive" ] }
+serde_json = "*"
 sync = { path = "../sync" }
 vm_memory = { path = "../vm_memory" }

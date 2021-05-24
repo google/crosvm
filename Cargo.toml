@@ -89,6 +89,7 @@ protos = { path = "protos", optional = true }
 rand_ish = { path = "rand_ish" }
 remain = "*"
 resources = { path = "resources" }
+serde_json = "*"
 sync = { path = "sync" }
 tempfile = "*"
 thiserror = { version = "1.0.20", optional = true }

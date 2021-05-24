@@ -227,6 +227,7 @@ dependencies = [
  "remain",
  "resources",
  "rutabaga_gfx",
+ "serde_json",
  "sync",
  "tempfile",
  "thiserror",
@@ -1198,6 +1199,7 @@ dependencies = [
  "resources",
  "rutabaga_gfx",
  "serde",
+ "serde_json",
  "sync",
  "vm_memory",
 ]

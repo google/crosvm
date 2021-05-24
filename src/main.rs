@@ -2114,7 +2114,13 @@ fn balloon_stats(mut args: std::env::Args) -> std::result::Result<(), ()> {
     let socket_path = &args.next().unwrap();
     let socket_path = Path::new(&socket_path);
     let response = handle_request(request, socket_path)?;
-    println!("{}", response);
+    match serde_json::to_string_pretty(&response) {
+        Ok(response_json) => println!("{}", response_json),
+        Err(e) => {
+            error!("Failed to serialize into JSON: {}", e);
+            return Err(());
+        }
+    }
     match response {
         VmResponse::BalloonStats { .. } => Ok(()),
         _ => Err(()),

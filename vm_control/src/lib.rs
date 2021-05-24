@@ -127,43 +127,6 @@ pub struct BalloonStats {
     pub hugetlb_failures: Option<u64>,
 }
 
-impl Display for BalloonStats {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{{")?;
-        if let Some(swap_in) = self.swap_in {
-            write!(f, "\n    swap_in: {}", swap_in)?;
-        }
-        if let Some(swap_out) = self.swap_out {
-            write!(f, "\n    swap_out: {}", swap_out)?;
-        }
-        if let Some(major_faults) = self.major_faults {
-            write!(f, "\n    major_faults: {}", major_faults)?;
-        }
-        if let Some(minor_faults) = self.minor_faults {
-            write!(f, "\n    minor_faults: {}", minor_faults)?;
-        }
-        if let Some(free_memory) = self.free_memory {
-            write!(f, "\n    free_memory: {}", free_memory)?;
-        }
-        if let Some(total_memory) = self.total_memory {
-            write!(f, "\n    total_memory: {}", total_memory)?;
-        }
-        if let Some(available_memory) = self.available_memory {
-            write!(f, "\n    available_memory: {}", available_memory)?;
-        }
-        if let Some(disk_caches) = self.disk_caches {
-            write!(f, "\n    disk_caches: {}", disk_caches)?;
-        }
-        if let Some(hugetlb_allocations) = self.hugetlb_allocations {
-            write!(f, "\n    hugetlb_allocations: {}", hugetlb_allocations)?;
-        }
-        if let Some(hugetlb_failures) = self.hugetlb_failures {
-            write!(f, "\n    hugetlb_failures: {}", hugetlb_failures)?;
-        }
-        write!(f, "\n}}")
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 pub enum BalloonControlResult {
     Stats {
@@ -1146,11 +1109,15 @@ impl Display for VmResponse {
             VmResponse::BalloonStats {
                 stats,
                 balloon_actual,
-            } => write!(
-                f,
-                "balloon size: {}\nballoon stats: {}",
-                balloon_actual, stats
-            ),
+            } => {
+                write!(
+                    f,
+                    "stats: {}\nballoon_actual: {}",
+                    serde_json::to_string_pretty(&stats)
+                        .unwrap_or_else(|_| "invalid_response".to_string()),
+                    balloon_actual
+                )
+            }
             UsbResponse(result) => write!(f, "usb control request get result {:?}", result),
             BatResponse(result) => write!(f, "{}", result),
         }
