@@ -988,7 +988,7 @@ impl PciDevice for VfioPciDevice {
 
         // Ignore IO bar
         if (0x10..=0x24).contains(&reg) {
-            let bar_idx = reg as usize - 0x10;
+            let bar_idx = (reg as usize - 0x10) / 4;
             if let Some(bar) = self.get_bar_configuration(bar_idx) {
                 if bar.is_io() {
                     config = 0;
