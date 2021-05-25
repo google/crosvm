@@ -176,34 +176,16 @@ impl DrmFormat {
             | DRM_FORMAT_ARGB2101010
             | DRM_FORMAT_ARGB8888
             | DRM_FORMAT_XRGB2101010
-            | DRM_FORMAT_XRGB8888 => Ok(VulkanImageAspect {
-                color: true,
-                ..VulkanImageAspect::none()
-            }),
+            | DRM_FORMAT_XRGB8888 => Ok(VulkanImageAspect::Color),
             DRM_FORMAT_NV12 => match plane {
-                0 => Ok(VulkanImageAspect {
-                    plane0: true,
-                    ..VulkanImageAspect::none()
-                }),
-                1 => Ok(VulkanImageAspect {
-                    plane1: true,
-                    ..VulkanImageAspect::none()
-                }),
+                0 => Ok(VulkanImageAspect::Plane0),
+                1 => Ok(VulkanImageAspect::Plane1),
                 _ => Err(RutabagaError::Unsupported),
             },
             DRM_FORMAT_YVU420 => match plane {
-                0 => Ok(VulkanImageAspect {
-                    plane0: true,
-                    ..VulkanImageAspect::none()
-                }),
-                1 => Ok(VulkanImageAspect {
-                    plane1: true,
-                    ..VulkanImageAspect::none()
-                }),
-                2 => Ok(VulkanImageAspect {
-                    plane2: true,
-                    ..VulkanImageAspect::none()
-                }),
+                0 => Ok(VulkanImageAspect::Plane0),
+                1 => Ok(VulkanImageAspect::Plane1),
+                2 => Ok(VulkanImageAspect::Plane2),
                 _ => Err(RutabagaError::Unsupported),
             },
             _ => Err(RutabagaError::Unsupported),
