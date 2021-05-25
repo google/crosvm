@@ -32,8 +32,8 @@ use disk::{AsyncDisk, ToAsyncDisk};
 use vm_control::{DiskControlCommand, DiskControlResult};
 use vm_memory::GuestMemory;
 
-use super::block_common::*;
-use super::{
+use super::common::*;
+use crate::virtio::{
     copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, SignalableInterrupt,
     VirtioDevice, Writer, TYPE_BLOCK,
 };
@@ -859,7 +859,7 @@ mod tests {
     use vm_memory::GuestAddress;
 
     use crate::virtio::base_features;
-    use crate::virtio::block_common::*;
+    use crate::virtio::block::common::*;
     use crate::virtio::descriptor_utils::{create_descriptor_chain, DescriptorType};
     use crate::ProtectionType;
 
