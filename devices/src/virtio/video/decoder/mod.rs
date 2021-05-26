@@ -167,7 +167,6 @@ struct PictureReadyEvent {
 
 // Context is associated with one `DecoderSession`, which corresponds to one stream from the
 // virtio-video's point of view.
-#[derive(Default)]
 struct Context<S: DecoderSession> {
     stream_id: StreamId,
 
