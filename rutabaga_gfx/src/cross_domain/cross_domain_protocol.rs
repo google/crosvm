@@ -12,10 +12,36 @@ use data_model::DataInit;
 /// Cross-domain commands (only a maximum of 255 supported)
 pub const CROSS_DOMAIN_CMD_INIT: u8 = 1;
 pub const CROSS_DOMAIN_CMD_GET_IMAGE_REQUIREMENTS: u8 = 2;
+pub const CROSS_DOMAIN_CMD_POLL: u8 = 3;
+pub const CROSS_DOMAIN_CMD_SEND: u8 = 4;
+pub const CROSS_DOMAIN_CMD_RECEIVE: u8 = 5;
+pub const CROSS_DOMAIN_CMD_READ: u8 = 6;
+pub const CROSS_DOMAIN_CMD_WRITE: u8 = 7;
 
 /// Channel types (must match rutabaga channel types)
 pub const CROSS_DOMAIN_CHANNEL_TYPE_WAYLAND: u32 = 0x0001;
 pub const CROSS_DOMAIN_CHANNEL_TYPE_CAMERA: u32 = 0x0002;
+
+/// The maximum number of identifiers (value inspired by wp_linux_dmabuf)
+pub const CROSS_DOMAIN_MAX_IDENTIFIERS: usize = 4;
+
+/// virtgpu memory resource ID.  Also works with non-blob memory resources, despite the name.
+pub const CROSS_DOMAIN_ID_TYPE_VIRTGPU_BLOB: u32 = 1;
+/// virtgpu synchronization resource id.
+pub const CROSS_DOMAIN_ID_TYPE_VIRTGPU_SYNC: u32 = 2;
+/// ID for Wayland pipe used for reading.  The reading is done by the guest proxy and the host
+/// proxy.  The host sends the write end of the proxied pipe over the host Wayland socket.
+pub const CROSS_DOMAIN_ID_TYPE_READ_PIPE: u32 = 3;
+/// ID for Wayland pipe used for writing.  The writing is done by the guest and the host proxy.
+/// The host receives the write end of the pipe over the host Wayland socket.
+pub const CROSS_DOMAIN_ID_TYPE_WRITE_PIPE: u32 = 4;
+
+/// No ring
+pub const CROSS_DOMAIN_RING_NONE: u32 = 0xffffffff;
+/// A ring for metadata queries.
+pub const CROSS_DOMAIN_QUERY_RING: u32 = 0;
+/// A ring based on this particular context's channel.
+pub const CROSS_DOMAIN_CHANNEL_RING: u32 = 1;
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
@@ -35,9 +61,8 @@ pub struct CrossDomainImageRequirements {
     pub offsets: [u32; 4],
     pub modifier: u64,
     pub size: u64,
-    pub blob_id: u64,
+    pub blob_id: u32,
     pub map_info: u32,
-    pub pad: u32,
     pub memory_idx: i32,
     pub physical_device_idx: i32,
 }
@@ -76,3 +101,30 @@ pub struct CrossDomainGetImageRequirements {
 }
 
 unsafe impl DataInit for CrossDomainGetImageRequirements {}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct CrossDomainSendReceive {
+    pub hdr: CrossDomainHeader,
+    pub num_identifiers: u32,
+    pub opaque_data_size: u32,
+    pub identifiers: [u32; CROSS_DOMAIN_MAX_IDENTIFIERS],
+    pub identifier_types: [u32; CROSS_DOMAIN_MAX_IDENTIFIERS],
+    pub identifier_sizes: [u32; CROSS_DOMAIN_MAX_IDENTIFIERS],
+    // Data of size "opaque data size follows"
+}
+
+unsafe impl DataInit for CrossDomainSendReceive {}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct CrossDomainReadWrite {
+    pub hdr: CrossDomainHeader,
+    pub identifier: u32,
+    pub hang_up: u32,
+    pub opaque_data_size: u32,
+    pub pad: u32,
+    // Data of size "opaque data size follows"
+}
+
+unsafe impl DataInit for CrossDomainReadWrite {}
