@@ -21,7 +21,7 @@ mod video;
 mod virtio_device;
 mod virtio_pci_common_config;
 mod virtio_pci_device;
-mod wl;
+pub mod wl;
 
 pub mod fs;
 #[cfg(feature = "gpu")]

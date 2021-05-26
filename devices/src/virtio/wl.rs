@@ -101,11 +101,11 @@ const VIRTIO_WL_VFD_WRITE: u32 = 0x1;
 const VIRTIO_WL_VFD_READ: u32 = 0x2;
 const VIRTIO_WL_VFD_MAP: u32 = 0x2;
 const VIRTIO_WL_VFD_CONTROL: u32 = 0x4;
-const VIRTIO_WL_F_TRANS_FLAGS: u32 = 0x01;
-const VIRTIO_WL_F_SEND_FENCES: u32 = 0x02;
+pub const VIRTIO_WL_F_TRANS_FLAGS: u32 = 0x01;
+pub const VIRTIO_WL_F_SEND_FENCES: u32 = 0x02;
 
-const QUEUE_SIZE: u16 = 16;
-const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
+pub const QUEUE_SIZE: u16 = 16;
+pub const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 
 const NEXT_VFD_ID_BASE: u32 = 0x40000000;
 const VFD_ID_HOST_MASK: u32 = NEXT_VFD_ID_BASE;
@@ -841,7 +841,7 @@ enum WlRecv {
     Hup,
 }
 
-struct WlState {
+pub struct WlState {
     wayland_paths: Map<String, PathBuf>,
     vm: VmRequester,
     resource_bridge: Option<Tube>,
@@ -859,7 +859,8 @@ struct WlState {
 }
 
 impl WlState {
-    fn new(
+    /// Create a new `WlState` instance for running a virtio-wl device.
+    pub fn new(
         wayland_paths: Map<String, PathBuf>,
         vm_tube: Tube,
         use_transition_flags: bool,
@@ -882,6 +883,13 @@ impl WlState {
             signaled_fence: None,
             use_send_vfd_v2,
         }
+    }
+
+    /// This is a hack so that we can drive the inner WaitContext from an async fn. The proper
+    /// long-term solution is to replace the WaitContext completely by spawning async workers
+    /// instead.
+    pub fn wait_ctx(&self) -> &WaitContext<u32> {
+        &self.wait_ctx
     }
 
     fn new_pipe(&mut self, id: u32, flags: u32) -> WlResult<WlResp> {
@@ -1440,9 +1448,10 @@ impl WlState {
 
 #[derive(ThisError, Debug)]
 #[error("no descriptors available in queue")]
-struct DescriptorsExhausted;
+pub struct DescriptorsExhausted;
 
-fn process_in_queue<I: SignalableInterrupt>(
+/// Handle incoming events and forward them to the VM over the input queue.
+pub fn process_in_queue<I: SignalableInterrupt>(
     interrupt: &I,
     in_queue: &mut Queue,
     mem: &GuestMemory,
@@ -1512,7 +1521,8 @@ fn process_in_queue<I: SignalableInterrupt>(
     }
 }
 
-fn process_out_queue<I: SignalableInterrupt>(
+/// Handle messages from the output queue and forward them to the display sever, if necessary.
+pub fn process_out_queue<I: SignalableInterrupt>(
     interrupt: &I,
     out_queue: &mut Queue,
     mem: &GuestMemory,
