@@ -47,9 +47,9 @@ impl VioSShmStreamSource {
 fn from_sample_format(format: SampleFormat) -> u8 {
     match format {
         SampleFormat::U8 => VIRTIO_SND_PCM_FMT_U8,
-        SampleFormat::S16LE => VIRTIO_SND_PCM_FMT_U16,
-        SampleFormat::S24LE => VIRTIO_SND_PCM_FMT_U24,
-        SampleFormat::S32LE => VIRTIO_SND_PCM_FMT_U32,
+        SampleFormat::S16LE => VIRTIO_SND_PCM_FMT_S16,
+        SampleFormat::S24LE => VIRTIO_SND_PCM_FMT_S24,
+        SampleFormat::S32LE => VIRTIO_SND_PCM_FMT_S32,
     }
 }
 
