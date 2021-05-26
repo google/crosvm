@@ -7,7 +7,7 @@ use std::str::FromStr;
 use std::thread;
 
 use anyhow::{anyhow, bail, Context};
-use base::{error, warn, Event};
+use base::{error, validate_raw_descriptor, warn, Event, RawDescriptor};
 use cros_async::{EventAsync, Executor, IoSourceExt};
 use data_model::DataInit;
 use devices::virtio;
@@ -117,7 +117,7 @@ struct NetBackend {
 }
 
 impl NetBackend {
-    pub fn new(config: &TapConfig) -> anyhow::Result<Self> {
+    pub fn new_from_config(config: &TapConfig) -> anyhow::Result<Self> {
         // Create a tap device.
         let tap = Tap::new(true /* vnet_hdr */, false /* multi_queue */)
             .context("failed to create tap device")?;
@@ -128,6 +128,19 @@ impl NetBackend {
         tap.set_mac_address(config.mac)
             .context("failed to set MAC address")?;
 
+        Self::new(tap)
+    }
+
+    pub fn new_from_tap_fd(tap_fd: RawDescriptor) -> anyhow::Result<Self> {
+        let tap_fd = validate_raw_descriptor(tap_fd).context("failed to validate tap fd")?;
+        // Safe because we ensure that we get a unique handle to the fd.
+        let tap =
+            unsafe { Tap::from_raw_descriptor(tap_fd).context("failed to create tap device")? };
+
+        Self::new(tap)
+    }
+
+    fn new(tap: Tap) -> anyhow::Result<Self> {
         let vq_pairs = Self::max_vq_pairs();
         tap.enable().context("failed to enable tap")?;
         validate_and_configure_tap(&tap, vq_pairs as u16)
@@ -278,6 +291,12 @@ fn main() -> anyhow::Result<()> {
         "TAP device config. (e.g. \"/path/to/sock,10.0.2.2,255.255.255.0,12:34:56:78:9a:bc\")",
         "SOCKET_PATH,IP_ADDR,NET_MASK,MAC_ADDR",
     );
+    opts.optmulti(
+        "",
+        "tap-fd",
+        "TAP FD with a socket path",
+        "SOCKET_PATH,TAP_FD",
+    );
 
     let mut args = std::env::args();
     let program_name = args.next().expect("args is empty");
@@ -298,7 +317,8 @@ fn main() -> anyhow::Result<()> {
     base::syslog::init().context("failed to initialize syslog")?;
 
     let device_args = matches.opt_strs("device");
-    let num_devices = device_args.len();
+    let tap_fd_args = matches.opt_strs("tap-fd");
+    let num_devices = device_args.len() + tap_fd_args.len();
     if num_devices == 0 {
         bail!("no device option was passed");
     }
@@ -316,7 +336,23 @@ fn main() -> anyhow::Result<()> {
         let cfg = &arg[pos + 1..]
             .parse::<TapConfig>()
             .context("failed to parse tap config")?;
-        let backend = NetBackend::new(&cfg).context("failed to create NetBackend")?;
+        let backend = NetBackend::new_from_config(&cfg).context("failed to create NetBackend")?;
+        devices.push((socket.to_string(), backend));
+    }
+
+    for arg in tap_fd_args {
+        let pos = match arg.find(',') {
+            Some(p) => p,
+            None => {
+                bail!("'tap-fd' flag must take comma-separated argument");
+            }
+        };
+        let socket = &arg[0..pos];
+        let tap_fd = &arg[pos + 1..]
+            .parse::<i32>()
+            .context("failed to parse tap-fd")?;
+        let backend =
+            NetBackend::new_from_tap_fd(*tap_fd).context("failed to create NetBackend")?;
         devices.push((socket.to_string(), backend));
     }
 
