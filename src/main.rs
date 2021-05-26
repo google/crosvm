@@ -26,7 +26,7 @@ use crosvm::DirectIoOption;
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
     platform, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
-    VhostUserFsOption, VhostUserOption, DISK_ID_LEN,
+    VhostUserFsOption, VhostUserOption, VhostUserWlOption, DISK_ID_LEN,
 };
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{GpuMode, GpuParameters};
@@ -1679,6 +1679,23 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "vhost-user-net" => cfg.vhost_user_net.push(VhostUserOption {
             socket: PathBuf::from(value.unwrap()),
         }),
+        "vhost-user-wl" => {
+            let mut components = value.unwrap().splitn(2, ":");
+            let socket = components.next().map(PathBuf::from).ok_or_else(|| {
+                argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("missing socket path"),
+                }
+            })?;
+            let vm_tube = components.next().map(PathBuf::from).ok_or_else(|| {
+                argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("missing vm tube path"),
+                }
+            })?;
+            cfg.vhost_user_wl
+                .push(VhostUserWlOption { socket, vm_tube });
+        }
         "vhost-user-fs" => {
             // (socket:tag)
             let param = value.unwrap();
@@ -1978,6 +1995,7 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           Argument::value("balloon_bias_mib", "N", "Amount to bias balance of memory between host and guest as the balloon inflates, in MiB."),
           Argument::value("vhost-user-blk", "SOCKET_PATH", "Path to a socket for vhost-user block"),
           Argument::value("vhost-user-net", "SOCKET_PATH", "Path to a socket for vhost-user net"),
+          Argument::value("vhost-user-wl", "SOCKET_PATH:TUBE_PATH", "Paths to a vhost-user socket for wayland and a Tube socket for additional wayland-specific messages"),
           Argument::value("vhost-user-fs", "SOCKET_PATH:TAG",
                           "Path to a socket path for vhost-user fs, and tag for the shared dir"),
           #[cfg(feature = "direct")]

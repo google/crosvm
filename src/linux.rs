@@ -32,10 +32,11 @@ use libc::{self, c_int, gid_t, uid_t};
 
 use acpi_tables::sdt::SDT;
 
-use base::net::{UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
+use base::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 use base::*;
 use devices::virtio::vhost::user::{
     Block as VhostUserBlock, Error as VhostUserError, Fs as VhostUserFs, Net as VhostUserNet,
+    Wl as VhostUserWl,
 };
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
@@ -63,7 +64,7 @@ use vm_memory::{GuestAddress, GuestMemory, MemoryPolicy};
 use crate::gdb::{gdb_thread, GdbStub};
 use crate::{
     Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption, VhostUserFsOption,
-    VhostUserOption,
+    VhostUserOption, VhostUserWlOption,
 };
 use arch::{
     self, LinuxArch, RunnableLinuxVm, SerialHardware, SerialParameters, VcpuAffinity,
@@ -100,6 +101,7 @@ pub enum Error {
     CloneEvent(base::Error),
     CloneVcpu(base::Error),
     ConfigureVcpu(<Arch as LinuxArch>::Error),
+    ConnectTube(io::Error),
     #[cfg(feature = "audio")]
     CreateAc97(devices::PciDeviceError),
     CreateConsole(arch::serial::Error),
@@ -193,6 +195,7 @@ pub enum Error {
     VhostUserFsDeviceNew(VhostUserError),
     VhostUserNetDeviceNew(VhostUserError),
     VhostUserNetWithNetArgs,
+    VhostUserWlDeviceNew(VhostUserError),
     VhostVsockDeviceNew(virtio::vhost::Error),
     VirtioPciDev(base::Error),
     WaitContextAdd(base::Error),
@@ -223,6 +226,7 @@ impl Display for Error {
             CloneEvent(e) => write!(f, "failed to clone event: {}", e),
             CloneVcpu(e) => write!(f, "failed to clone vcpu: {}", e),
             ConfigureVcpu(e) => write!(f, "failed to configure vcpu: {}", e),
+            ConnectTube(e) => write!(f, "failed to connect to tube: {}", e),
             #[cfg(feature = "audio")]
             CreateAc97(e) => write!(f, "failed to create ac97 device: {}", e),
             CreateConsole(e) => write!(f, "failed to create console device: {}", e),
@@ -334,6 +338,9 @@ impl Display for Error {
                 f,
                 "vhost-user-net cannot be used with any of --host_ip, --netmask or --mac"
             ),
+            VhostUserWlDeviceNew(e) => {
+                write!(f, "failed to set up vhost-user wl device: {}", e)
+            }
             VhostVsockDeviceNew(e) => write!(f, "failed to set up virtual socket device: {}", e),
             VirtioPciDev(e) => write!(f, "failed to create virtio pci dev: {}", e),
             WaitContextAdd(e) => write!(f, "failed to add descriptor to wait context: {}", e),
@@ -871,6 +878,19 @@ fn create_net_device(
 fn create_vhost_user_net_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
     let dev = VhostUserNet::new(virtio::base_features(cfg.protected_vm), &opt.socket)
         .map_err(Error::VhostUserNetDeviceNew)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        // no sandbox here because virtqueue handling is exported to a different process.
+        jail: None,
+    })
+}
+
+fn create_vhost_user_wl_device(cfg: &Config, opt: &VhostUserWlOption) -> DeviceResult {
+    // The crosvm wl device expects us to connect the tube before it will accept a vhost-user
+    // connection.
+    let dev = VhostUserWl::new(virtio::base_features(cfg.protected_vm), &opt.socket)
+        .map_err(Error::VhostUserWlDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1510,6 +1530,10 @@ fn create_virtio_devices(
 
     for net in &cfg.vhost_user_net {
         devs.push(create_vhost_user_net_device(cfg, net)?);
+    }
+
+    for opt in &cfg.vhost_user_wl {
+        devs.push(create_vhost_user_wl_device(cfg, opt)?);
     }
 
     #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
@@ -2476,6 +2500,13 @@ where
         let (gdb_host_tube, gdb_control_tube) = Tube::pair().map_err(Error::CreateTube)?;
         control_tubes.push(TaggedControlTube::Vm(gdb_host_tube));
         components.gdb = Some((port, gdb_control_tube));
+    }
+
+    for wl_cfg in &cfg.vhost_user_wl {
+        let wayland_host_tube = UnixSeqpacket::connect(&wl_cfg.vm_tube)
+            .map(Tube::new)
+            .map_err(Error::ConnectTube)?;
+        control_tubes.push(TaggedControlTube::VmMemory(wayland_host_tube));
     }
 
     let (wayland_host_tube, wayland_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
