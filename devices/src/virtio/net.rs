@@ -64,6 +64,9 @@ pub enum NetError {
     /// Open tap device failed.
     #[error("failed to open tap device: {0}")]
     TapOpen(TapError),
+    /// Couldn't get the MTU from the tap device.
+    #[error("failed to get tap interface MTU: {0}")]
+    TapGetMtu(TapError),
     /// Setting tap IP failed.
     #[error("failed to set tap IP: {0}")]
     TapSetIp(TapError),
@@ -443,9 +446,10 @@ where
     }
 }
 
-pub fn build_config(vq_pairs: u16) -> VirtioNetConfig {
+pub fn build_config(vq_pairs: u16, mtu: u16) -> VirtioNetConfig {
     VirtioNetConfig {
         max_vq_pairs: Le16::from(vq_pairs),
+        mtu: Le16::from(mtu),
         // Other field has meaningful value when the corresponding feature
         // is enabled, but all these features aren't supported now.
         // So set them to default.
@@ -461,6 +465,7 @@ pub struct Net<T: TapT> {
     taps: Vec<T>,
     avail_features: u64,
     acked_features: u64,
+    mtu: u16,
 }
 
 impl<T> Net<T>
@@ -493,11 +498,13 @@ where
     pub fn from(base_features: u64, tap: T, vq_pairs: u16) -> Result<Net<T>, NetError> {
         let taps = tap.into_mq_taps(vq_pairs).map_err(NetError::TapOpen)?;
 
+        let mut mtu = u16::MAX;
         // This would also validate a tap created by Self::new(), but that's a good thing as it
         // would ensure that any changes in the creation procedure are matched in the validation.
         // Plus we still need to set the offload and vnet_hdr_size values.
         for tap in &taps {
             validate_and_configure_tap(tap, vq_pairs)?;
+            mtu = std::cmp::min(mtu, tap.mtu().map_err(NetError::TapGetMtu)?);
         }
 
         let mut avail_features = base_features
@@ -508,7 +515,8 @@ where
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_UFO
             | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
-            | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO;
+            | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
+            | 1 << virtio_net::VIRTIO_NET_F_MTU;
 
         if vq_pairs > 1 {
             avail_features |= 1 << virtio_net::VIRTIO_NET_F_MQ;
@@ -531,6 +539,7 @@ where
             taps,
             avail_features,
             acked_features: 0u64,
+            mtu,
         })
     }
 }
@@ -656,7 +665,7 @@ where
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let vq_pairs = self.queue_sizes.len() / 2;
-        let config_space = build_config(vq_pairs as u16);
+        let config_space = build_config(vq_pairs as u16, self.mtu);
         copy_config(data, 0, config_space.as_slice(), offset);
     }
 

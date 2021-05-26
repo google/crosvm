@@ -261,6 +261,12 @@ pub trait TapT: FileReadWriteVolatile + Read + Write + AsRawDescriptor + Send + 
     /// Set the netmask for the subnet that the tap interface will exist on.
     fn set_netmask(&self, netmask: net::Ipv4Addr) -> Result<()>;
 
+    /// Get the MTU for the tap interface.
+    fn mtu(&self) -> Result<u16>;
+
+    /// Set the MTU for the tap interface.
+    fn set_mtu(&self, mtu: u16) -> Result<()>;
+
     /// Get the mac address for the tap interface.
     fn mac_address(&self) -> Result<MacAddress>;
 
@@ -397,6 +403,38 @@ impl TapT for Tap {
         // ioctl is safe. Called with a valid sock fd, and we check the return.
         let ret =
             unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFNETMASK as IoctlNr, &ifreq) };
+        if ret < 0 {
+            return Err(Error::IoctlError(SysError::last()));
+        }
+
+        Ok(())
+    }
+
+    fn mtu(&self) -> Result<u16> {
+        let sock = create_socket()?;
+        let mut ifreq = self.get_ifreq();
+
+        // ioctl is safe. Called with a valid sock fd, and we check the return.
+        let ret = unsafe {
+            ioctl_with_mut_ref(&sock, net_sys::sockios::SIOCGIFMTU as IoctlNr, &mut ifreq)
+        };
+        if ret < 0 {
+            return Err(Error::IoctlError(SysError::last()));
+        }
+
+        // We only access one field of the ifru union, hence this is safe.
+        let mtu = unsafe { ifreq.ifr_ifru.ifru_mtu } as u16;
+        Ok(mtu)
+    }
+
+    fn set_mtu(&self, mtu: u16) -> Result<()> {
+        let sock = create_socket()?;
+
+        let mut ifreq = self.get_ifreq();
+        ifreq.ifr_ifru.ifru_mtu = i32::from(mtu);
+
+        // ioctl is safe. Called with a valid sock fd, and we check the return.
+        let ret = unsafe { ioctl_with_ref(&sock, net_sys::sockios::SIOCSIFMTU as IoctlNr, &ifreq) };
         if ret < 0 {
             return Err(Error::IoctlError(SysError::last()));
         }
@@ -580,6 +618,14 @@ pub mod fakes {
         }
 
         fn set_netmask(&self, _: net::Ipv4Addr) -> Result<()> {
+            Ok(())
+        }
+
+        fn mtu(&self) -> Result<u16> {
+            Ok(1500)
+        }
+
+        fn set_mtu(&self, _: u16) -> Result<()> {
             Ok(())
         }
 

@@ -114,6 +114,7 @@ struct NetBackend {
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
     workers: [Option<AbortHandle>; Self::MAX_QUEUE_NUM],
+    mtu: u16,
 }
 
 impl NetBackend {
@@ -158,12 +159,15 @@ impl NetBackend {
             | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
 
+        let mtu = tap.mtu()?;
+
         Ok(Self {
             tap,
             avail_features,
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
             workers: Default::default(),
+            mtu,
         })
     }
 
@@ -220,7 +224,7 @@ impl VhostUserBackend for NetBackend {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        let config_space = build_config(Self::max_vq_pairs() as u16);
+        let config_space = build_config(Self::max_vq_pairs() as u16, self.mtu);
         virtio::copy_config(data, 0, config_space.as_slice(), offset);
     }
 
