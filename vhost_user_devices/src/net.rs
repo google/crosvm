@@ -72,6 +72,39 @@ async fn run_rx_queue(
     }
 }
 
+struct TapConfig {
+    host_ip: Ipv4Addr,
+    netmask: Ipv4Addr,
+    mac: MacAddress,
+}
+
+impl FromStr for TapConfig {
+    type Err = anyhow::Error;
+
+    fn from_str(arg: &str) -> Result<Self, Self::Err> {
+        let args: Vec<&str> = arg.split(',').collect();
+        if args.len() != 3 {
+            bail!("TAP config must consist of 3 parts but {}", args.len());
+        }
+
+        let host_ip: Ipv4Addr = args[0]
+            .parse()
+            .map_err(|e| anyhow!("invalid IP address: {}", e))?;
+        let netmask: Ipv4Addr = args[1]
+            .parse()
+            .map_err(|e| anyhow!("invalid net mask: {}", e))?;
+        let mac: MacAddress = args[2]
+            .parse()
+            .map_err(|e| anyhow!("invalid MAC address: {}", e))?;
+
+        Ok(Self {
+            host_ip,
+            netmask,
+            mac,
+        })
+    }
+}
+
 struct NetBackend {
     tap: Tap,
     avail_features: u64,
@@ -81,11 +114,22 @@ struct NetBackend {
 }
 
 impl NetBackend {
-    pub fn new(
-        host_ip: Ipv4Addr,
-        netmask: Ipv4Addr,
-        mac_address: MacAddress,
-    ) -> anyhow::Result<Self> {
+    pub fn new(config: &TapConfig) -> anyhow::Result<Self> {
+        // Create a tap device.
+        let tap = Tap::new(true /* vnet_hdr */, false /* multi_queue */)
+            .context("failed to create tap device")?;
+        tap.set_ip_addr(config.host_ip)
+            .context("failed to set IP address")?;
+        tap.set_netmask(config.netmask)
+            .context("failed to set netmask")?;
+        tap.set_mac_address(config.mac)
+            .context("failed to set MAC address")?;
+
+        let vq_pairs = Self::max_vq_pairs();
+        tap.enable().context("failed to enable tap")?;
+        validate_and_configure_tap(&tap, vq_pairs as u16)
+            .context("failed to validate and configure tap")?;
+
         // TODO(keiichiw): Support CTRL_VQ and MQ.
         // Note that MQ cannot be enabled without CTRL_VQ.
         let avail_features = virtio::base_features(ProtectionType::Unprotected)
@@ -97,20 +141,6 @@ impl NetBackend {
             | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
             | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-
-        let vq_pairs = Self::max_vq_pairs();
-
-        // Create a tap device.
-        let tap = Tap::new(true /* vnet_hdr */, true /* multi_queue */)
-            .context("failed to create tap device")?;
-        tap.set_ip_addr(host_ip)
-            .context("failed to set IP address")?;
-        tap.set_netmask(netmask).context("failed to set netmask")?;
-        tap.set_mac_address(mac_address)
-            .context("failed to set MAC address")?;
-        tap.enable().context("failed to enable tap")?;
-        validate_and_configure_tap(&tap, vq_pairs as u16)
-            .context("failed to validate and configure tap")?;
 
         Ok(Self {
             tap,
@@ -233,52 +263,16 @@ impl VhostUserBackend for NetBackend {
     }
 }
 
-struct TapConfig {
-    host_ip: Ipv4Addr,
-    netmask: Ipv4Addr,
-    mac: MacAddress,
-}
-
-impl FromStr for TapConfig {
-    type Err = String;
-
-    fn from_str(arg: &str) -> Result<Self, Self::Err> {
-        let args: Vec<&str> = arg.split(',').collect();
-        if args.len() != 3 {
-            return Err(format!(
-                "TAP config must consist of 3 parts but {}",
-                args.len()
-            ));
-        }
-        let host_ip: Ipv4Addr = args[0]
-            .parse()
-            .map_err(|e| format!("invalid IP address: {}", e))?;
-        let netmask: Ipv4Addr = args[1]
-            .parse()
-            .map_err(|e| format!("invalid net mask: {}", e))?;
-        let mac: MacAddress = args[2]
-            .parse()
-            .map_err(|e| format!("invalid MAC address: {}", e))?;
-
-        Ok(Self {
-            host_ip,
-            netmask,
-            mac,
-        })
-    }
-}
-
 fn main() -> anyhow::Result<()> {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
-    opts.reqopt("", "socket", "path to a socket", "PATH");
     // TODO(keiichiw): Support tap-fd option.
     // TODO(keiichiw): Support multiple TAP devices.
     opts.reqopt(
         "",
-        "tap",
-        "TAP device config. (e.g. \"10.0.2.2,255.255.255.0,12:34:56:78:9a:bc\")",
-        "IP_ADDR,NET_MASK,MAC_ADDR",
+        "device",
+        "TAP device config. (e.g. \"/path/to/sock,10.0.2.2,255.255.255.0,12:34:56:78:9a:bc\")",
+        "SOCKET_PATH,IP_ADDR,NET_MASK,MAC_ADDR",
     );
 
     let mut args = std::env::args();
@@ -299,23 +293,23 @@ fn main() -> anyhow::Result<()> {
 
     base::syslog::init().context("failed to initialize syslog")?;
 
-    // We can unwrap after `opt_str()` safely because they are required options.
-    let socket = matches.opt_str("socket").unwrap();
-    let tap_cfg: TapConfig = match matches.opt_str("tap").unwrap().parse() {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            println!("invalid TAP config: {}", e);
-            return Ok(());
+    // We can unwrap after `opt_str()` safely because it's a required option.
+    let arg = matches.opt_str("device").unwrap();
+    let pos = match arg.find(',') {
+        Some(p) => p,
+        None => {
+            bail!("device must take comma-separated argument");
         }
     };
+    let socket = &arg[0..pos];
+    let cfg = &arg[pos + 1..]
+        .parse::<TapConfig>()
+        .context("failed to parse tap config")?;
+    let backend = NetBackend::new(&cfg).context("failed to create NetBackend")?;
+    let handler = DeviceRequestHandler::new(backend);
 
     let ex = Executor::new().context("failed to create executor")?;
     let _ = NET_EXECUTOR.set(ex.clone());
-
-    let net = NetBackend::new(tap_cfg.host_ip, tap_cfg.netmask, tap_cfg.mac)
-        .context("failed to create NetBackend")?;
-    let handler = DeviceRequestHandler::new(net);
-
     if let Err(e) = ex.run_until(handler.run(socket, &ex)) {
         error!("error occurred: {}", e);
     }
