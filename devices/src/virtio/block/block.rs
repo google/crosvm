@@ -431,18 +431,7 @@ impl Block {
             );
         }
 
-        let mut avail_features: u64 = base_features;
-        avail_features |= 1 << VIRTIO_BLK_F_FLUSH;
-        if read_only {
-            avail_features |= 1 << VIRTIO_BLK_F_RO;
-        } else {
-            if sparse {
-                avail_features |= 1 << VIRTIO_BLK_F_DISCARD;
-            }
-            avail_features |= 1 << VIRTIO_BLK_F_WRITE_ZEROES;
-        }
-        avail_features |= 1 << VIRTIO_BLK_F_SEG_MAX;
-        avail_features |= 1 << VIRTIO_BLK_F_BLK_SIZE;
+        let avail_features = build_avail_features(base_features, read_only, sparse, false);
 
         let seg_max = min(max(iov_max(), 1), u32::max_value() as usize) as u32;
 

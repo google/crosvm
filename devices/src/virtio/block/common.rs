@@ -134,3 +134,28 @@ pub(crate) fn build_config_space(
         ..Default::default()
     }
 }
+
+/// Returns the feature flags given the specified attributes.
+pub fn build_avail_features(
+    base_features: u64,
+    read_only: bool,
+    sparse: bool,
+    multi_queue: bool,
+) -> u64 {
+    let mut avail_features = base_features;
+    avail_features |= 1 << VIRTIO_BLK_F_FLUSH;
+    if read_only {
+        avail_features |= 1 << VIRTIO_BLK_F_RO;
+    } else {
+        if sparse {
+            avail_features |= 1 << VIRTIO_BLK_F_DISCARD;
+        }
+        avail_features |= 1 << VIRTIO_BLK_F_WRITE_ZEROES;
+    }
+    avail_features |= 1 << VIRTIO_BLK_F_SEG_MAX;
+    avail_features |= 1 << VIRTIO_BLK_F_BLK_SIZE;
+    if multi_queue {
+        avail_features |= 1 << VIRTIO_BLK_F_MQ;
+    }
+    avail_features
+}
