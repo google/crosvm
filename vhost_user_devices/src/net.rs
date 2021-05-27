@@ -4,6 +4,7 @@
 
 use std::net::Ipv4Addr;
 use std::str::FromStr;
+use std::thread;
 
 use anyhow::{anyhow, bail, Context};
 use base::{error, warn, Event};
@@ -24,7 +25,9 @@ use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
-static NET_EXECUTOR: OnceCell<Executor> = OnceCell::new();
+thread_local! {
+    static NET_EXECUTOR: OnceCell<Executor> = OnceCell::new();
+}
 
 async fn run_tx_queue(
     mut queue: virtio::Queue,
@@ -223,37 +226,39 @@ impl VhostUserBackend for NetBackend {
             handle.abort();
         }
 
-        // Safe because the executor is initialized in main() below.
-        let ex = NET_EXECUTOR.get().expect("Executor not initialized");
+        NET_EXECUTOR.with(|ex| {
+            // Safe because the executor is initialized in main() below.
+            let ex = ex.get().expect("Executor not initialized");
 
-        let kick_evt =
-            EventAsync::new(kick_evt.0, ex).context("failed to create EventAsync for kick_evt")?;
-        let tap = self.tap.try_clone().context("failed to clone tap device")?;
-        let (handle, registration) = AbortHandle::new_pair();
-        match idx {
-            0 => {
-                let tap = ex
-                    .async_from(tap)
-                    .context("failed to create async tap device")?;
+            let kick_evt = EventAsync::new(kick_evt.0, ex)
+                .context("failed to create EventAsync for kick_evt")?;
+            let tap = self.tap.try_clone().context("failed to clone tap device")?;
+            let (handle, registration) = AbortHandle::new_pair();
+            match idx {
+                0 => {
+                    let tap = ex
+                        .async_from(tap)
+                        .context("failed to create async tap device")?;
 
-                ex.spawn_local(Abortable::new(
-                    run_rx_queue(queue, mem, tap, call_evt, kick_evt),
-                    registration,
-                ))
-                .detach();
+                    ex.spawn_local(Abortable::new(
+                        run_rx_queue(queue, mem, tap, call_evt, kick_evt),
+                        registration,
+                    ))
+                    .detach();
+                }
+                1 => {
+                    ex.spawn_local(Abortable::new(
+                        run_tx_queue(queue, mem, tap, call_evt, kick_evt),
+                        registration,
+                    ))
+                    .detach();
+                }
+                _ => bail!("attempted to start unknown queue: {}", idx),
             }
-            1 => {
-                ex.spawn_local(Abortable::new(
-                    run_tx_queue(queue, mem, tap, call_evt, kick_evt),
-                    registration,
-                ))
-                .detach();
-            }
-            _ => bail!("attempted to start unknown queue: {}", idx),
-        }
 
-        self.workers[idx] = Some(handle);
-        Ok(())
+            self.workers[idx] = Some(handle);
+            Ok(())
+        })
     }
 
     fn stop_queue(&mut self, idx: usize) {
@@ -267,8 +272,7 @@ fn main() -> anyhow::Result<()> {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
     // TODO(keiichiw): Support tap-fd option.
-    // TODO(keiichiw): Support multiple TAP devices.
-    opts.reqopt(
+    opts.optmulti(
         "",
         "device",
         "TAP device config. (e.g. \"/path/to/sock,10.0.2.2,255.255.255.0,12:34:56:78:9a:bc\")",
@@ -293,26 +297,46 @@ fn main() -> anyhow::Result<()> {
 
     base::syslog::init().context("failed to initialize syslog")?;
 
-    // We can unwrap after `opt_str()` safely because it's a required option.
-    let arg = matches.opt_str("device").unwrap();
-    let pos = match arg.find(',') {
-        Some(p) => p,
-        None => {
-            bail!("device must take comma-separated argument");
-        }
-    };
-    let socket = &arg[0..pos];
-    let cfg = &arg[pos + 1..]
-        .parse::<TapConfig>()
-        .context("failed to parse tap config")?;
-    let backend = NetBackend::new(&cfg).context("failed to create NetBackend")?;
-    let handler = DeviceRequestHandler::new(backend);
-
-    let ex = Executor::new().context("failed to create executor")?;
-    let _ = NET_EXECUTOR.set(ex.clone());
-    if let Err(e) = ex.run_until(handler.run(socket, &ex)) {
-        error!("error occurred: {}", e);
+    let device_args = matches.opt_strs("device");
+    let num_devices = device_args.len();
+    if num_devices == 0 {
+        bail!("no device option was passed");
     }
 
-    Ok(())
+    let mut devices: Vec<(String, NetBackend)> = Vec::with_capacity(num_devices);
+
+    for arg in device_args {
+        let pos = match arg.find(',') {
+            Some(p) => p,
+            None => {
+                bail!("device must take comma-separated argument");
+            }
+        };
+        let socket = &arg[0..pos];
+        let cfg = &arg[pos + 1..]
+            .parse::<TapConfig>()
+            .context("failed to parse tap config")?;
+        let backend = NetBackend::new(&cfg).context("failed to create NetBackend")?;
+        devices.push((socket.to_string(), backend));
+    }
+
+    let mut threads = Vec::with_capacity(num_devices);
+    for (socket, backend) in devices {
+        let handler = DeviceRequestHandler::new(backend);
+        let ex = Executor::new().context("failed to create executor")?;
+
+        threads.push(thread::spawn(move || {
+            NET_EXECUTOR.with(|thread_ex| {
+                let _ = thread_ex.set(ex.clone());
+            });
+            if let Err(e) = ex.run_until(handler.run(&socket, &ex)) {
+                error!("error occurred: {}", e);
+            }
+        }));
+    }
+
+    threads
+        .into_iter()
+        .try_for_each(thread::JoinHandle::join)
+        .map_err(|e| anyhow!("failed to join threads: {:?}", e))
 }
