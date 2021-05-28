@@ -1917,6 +1917,15 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.direct_pmio = Some(parse_direct_io_options(value)?);
         }
         #[cfg(feature = "direct")]
+        "direct-mmio" => {
+            if cfg.direct_mmio.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`direct_mmio` already given".to_owned(),
+                ));
+            }
+            cfg.direct_mmio = Some(parse_direct_io_options(value)?);
+        }
+        #[cfg(feature = "direct")]
         "direct-level-irq" => {
             cfg.direct_level_irq
                 .push(
@@ -2230,7 +2239,9 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("vhost-user-fs", "SOCKET_PATH:TAG",
                           "Path to a socket path for vhost-user fs, and tag for the shared dir"),
           #[cfg(feature = "direct")]
-          Argument::value("direct-pmio", "PATH@RANGE[,RANGE[,...]]", "Path and ranges for direct port I/O access"),
+          Argument::value("direct-pmio", "PATH@RANGE[,RANGE[,...]]", "Path and ranges for direct port mapped I/O access"),
+          #[cfg(feature = "direct")]
+          Argument::value("direct-mmio", "PATH@RANGE[,RANGE[,...]]", "Path and ranges for direct memory mapped I/O access"),
           #[cfg(feature = "direct")]
           Argument::value("direct-level-irq", "irq", "Enable interrupt passthrough"),
           #[cfg(feature = "direct")]

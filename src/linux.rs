@@ -2646,6 +2646,18 @@ where
     };
 
     #[cfg(feature = "direct")]
+    if let Some(mmio) = &cfg.direct_mmio {
+        let direct_io =
+            Arc::new(devices::DirectIo::new(&mmio.path, false).map_err(Error::DirectIo)?);
+        for range in mmio.ranges.iter() {
+            linux
+                .mmio_bus
+                .insert_sync(direct_io.clone(), range.0, range.1)
+                .unwrap();
+        }
+    };
+
+    #[cfg(feature = "direct")]
     let mut irqs = Vec::new();
 
     #[cfg(feature = "direct")]

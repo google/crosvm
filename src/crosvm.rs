@@ -376,6 +376,8 @@ pub struct Config {
     #[cfg(feature = "direct")]
     pub direct_pmio: Option<DirectIoOption>,
     #[cfg(feature = "direct")]
+    pub direct_mmio: Option<DirectIoOption>,
+    #[cfg(feature = "direct")]
     pub direct_level_irq: Vec<u32>,
     #[cfg(feature = "direct")]
     pub direct_edge_irq: Vec<u32>,
@@ -467,6 +469,8 @@ impl Default for Config {
             vhost_user_wl: Vec::new(),
             #[cfg(feature = "direct")]
             direct_pmio: None,
+            #[cfg(feature = "direct")]
+            direct_mmio: None,
             #[cfg(feature = "direct")]
             direct_level_irq: Vec::new(),
             #[cfg(feature = "direct")]
