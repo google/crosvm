@@ -11,7 +11,7 @@ use std::os::unix::io::RawFd;
 /// Mount options to pass to mount(2) for a FUSE filesystem. See the [official document](
 /// https://www.kernel.org/doc/html/latest/filesystems/fuse.html#mount-options) for the
 /// descriptions.
-pub enum MountOption {
+pub enum MountOption<'a> {
     FD(RawFd),
     RootMode(u32),
     UserId(libc::uid_t),
@@ -20,10 +20,13 @@ pub enum MountOption {
     AllowOther,
     MaxRead(u32),
     BlockSize(u32),
+    // General mount options that are not specific to FUSE. Note that the value is not checked
+    // or interpreted by this library, but by kernel.
+    Extra(&'a str),
 }
 
 // Implement Display for ToString to convert to actual mount options.
-impl fmt::Display for MountOption {
+impl<'a> fmt::Display for MountOption<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             MountOption::FD(fd) => write!(f, "fd={}", fd),
@@ -34,6 +37,7 @@ impl fmt::Display for MountOption {
             MountOption::AllowOther => write!(f, "allow_other"),
             MountOption::MaxRead(size) => write!(f, "max_read={}", size),
             MountOption::BlockSize(size) => write!(f, "blksize={}", size),
+            MountOption::Extra(text) => write!(f, "{}", text),
         }
     }
 }
@@ -121,6 +125,11 @@ mod tests {
                 MountOption::GroupId(34),
                 MountOption::MaxRead(4096),
             ])
+        );
+
+        assert_eq!(
+            "option1=a,option2=b".to_string(),
+            join_mount_options(&[MountOption::Extra("option1=a,option2=b"),])
         );
     }
 }
