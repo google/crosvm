@@ -230,6 +230,17 @@ impl VfioMsiCap {
     fn get_msi_irqfd(&self) -> Option<&Event> {
         self.irqfd.as_ref()
     }
+
+    fn destroy(&mut self) {
+        if let Some(gsi) = self.gsi {
+            if let Some(irqfd) = self.irqfd.take() {
+                let request = VmIrqRequest::ReleaseOneIrq { gsi, irqfd };
+                if self.vm_socket_irq.send(&request).is_ok() {
+                    let _ = self.vm_socket_irq.recv::<VmIrqResponse>();
+                }
+            }
+        }
+    }
 }
 
 // MSI-X registers in MSI-X capability
@@ -381,6 +392,10 @@ impl VfioMsixCap {
         }
 
         Some(irqfds)
+    }
+
+    fn destroy(&mut self) {
+        self.config.destroy()
     }
 }
 
@@ -825,6 +840,12 @@ impl VfioPciDevice {
     }
 
     fn close(&mut self) {
+        if let Some(msi) = self.msi_cap.as_mut() {
+            msi.destroy();
+        }
+        if let Some(msix) = self.msix_cap.as_mut() {
+            msix.destroy();
+        }
         self.disable_bars_mmap();
         self.device.close();
     }

@@ -129,6 +129,11 @@ impl SystemAllocator {
             .ok()
     }
 
+    /// release irq to system irq number pool
+    pub fn release_irq(&mut self, irq: u32) {
+        let _ = self.irq_allocator.release_containing(irq.into());
+    }
+
     /// Reserves the next available system irq number.
     pub fn reserve_irq(&mut self, irq: u32) -> bool {
         let id = self.get_anon_alloc();

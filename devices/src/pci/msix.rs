@@ -506,6 +506,19 @@ impl MsixConfig {
             None => None,
         }
     }
+
+    pub fn destroy(&mut self) {
+        while let Some(irq) = self.irq_vec.pop() {
+            let request = VmIrqRequest::ReleaseOneIrq {
+                gsi: irq.gsi,
+                irqfd: irq.irqfd,
+            };
+            if self.msi_device_socket.send(&request).is_err() {
+                continue;
+            }
+            let _ = self.msi_device_socket.recv::<VmIrqResponse>();
+        }
+    }
 }
 
 impl AsRawDescriptor for MsixConfig {

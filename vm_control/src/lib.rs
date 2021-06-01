@@ -480,12 +480,19 @@ pub enum VmMemoryResponse {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum VmIrqRequest {
     /// Allocate one gsi, and associate gsi to irqfd with register_irqfd()
-    AllocateOneMsi { irqfd: Event },
+    AllocateOneMsi {
+        irqfd: Event,
+    },
     /// Add one msi route entry into the IRQ chip.
     AddMsiRoute {
         gsi: u32,
         msi_address: u64,
         msi_data: u32,
+    },
+    // unregister_irqfs() and release gsi
+    ReleaseOneIrq {
+        gsi: u32,
+        irqfd: Event,
     },
 }
 
@@ -495,6 +502,7 @@ pub enum VmIrqRequest {
 pub enum IrqSetup<'a> {
     Event(u32, &'a Event),
     Route(IrqRoute),
+    UnRegister(u32, &'a Event),
 }
 
 impl VmIrqRequest {
@@ -538,6 +546,11 @@ impl VmIrqRequest {
                     Ok(_) => VmIrqResponse::Ok,
                     Err(e) => VmIrqResponse::Err(e),
                 }
+            }
+            ReleaseOneIrq { gsi, ref irqfd } => {
+                let _ = set_up_irq(IrqSetup::UnRegister(gsi, irqfd));
+                sys_allocator.release_irq(gsi);
+                VmIrqResponse::Ok
             }
         }
     }
