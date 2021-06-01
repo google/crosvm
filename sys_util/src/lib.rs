@@ -37,7 +37,7 @@ mod priority;
 pub mod rand;
 mod raw_fd;
 pub mod read_dir;
-pub mod sched;
+mod sched;
 pub mod scoped_path;
 pub mod scoped_signal_handler;
 mod seek_hole;

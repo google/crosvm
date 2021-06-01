@@ -1925,8 +1925,7 @@ where
     )
     .map_err(Error::ConfigureVcpu)?;
 
-    #[cfg(feature = "chromeos")]
-    if let Err(e) = base::sched::enable_core_scheduling() {
+    if let Err(e) = enable_core_scheduling() {
         error!("Failed to enable core scheduling: {}", e);
     }
 

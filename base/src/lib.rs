@@ -22,7 +22,6 @@ pub use mmap::Unix as MemoryMappingUnix;
 pub use mmap::{MemoryMapping, MemoryMappingBuilder, MemoryMappingBuilderUnix};
 pub use shm::{SharedMemory, Unix as SharedMemoryUnix};
 pub use sys_util::ioctl::*;
-pub use sys_util::sched::*;
 pub use sys_util::{
     volatile_at_impl, volatile_impl, FileAllocate, FileGetLen, FileReadWriteAtVolatile,
     FileReadWriteVolatile, FileSetLen, FileSync,

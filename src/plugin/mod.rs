@@ -26,10 +26,10 @@ use protobuf::ProtobufError;
 use remain::sorted;
 
 use base::{
-    block_signal, clear_signal, drop_capabilities, error, getegid, geteuid, info, pipe,
-    register_rt_signal_handler, validate_raw_descriptor, warn, AsRawDescriptor, Error as SysError,
-    Event, FromRawDescriptor, Killable, MmapError, PollToken, Result as SysResult, SignalFd,
-    SignalFdError, WaitContext, SIGRTMIN,
+    block_signal, clear_signal, drop_capabilities, enable_core_scheduling, error, getegid, geteuid,
+    info, pipe, register_rt_signal_handler, validate_raw_descriptor, warn, AsRawDescriptor,
+    Error as SysError, Event, FromRawDescriptor, Killable, MmapError, PollToken,
+    Result as SysResult, SignalFd, SignalFdError, WaitContext, SIGRTMIN,
 };
 use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use minijail::{self, Minijail};
@@ -456,8 +456,7 @@ pub fn run_vcpus(
                             .expect("failed to set up KVM VCPU signal mask");
                     }
 
-                    #[cfg(feature = "chromeos")]
-                    if let Err(e) = base::sched::enable_core_scheduling() {
+                    if let Err(e) = enable_core_scheduling() {
                         error!("Failed to enable core scheduling: {}", e);
                     }
 

@@ -7,7 +7,7 @@
 use std::iter::FromIterator;
 use std::mem;
 
-use libc::{cpu_set_t, sched_setaffinity, CPU_SET, CPU_SETSIZE, CPU_ZERO, EINVAL};
+use libc::{cpu_set_t, prctl, sched_setaffinity, CPU_SET, CPU_SETSIZE, CPU_ZERO, EINVAL};
 
 use crate::{errno_result, Error, Result};
 
@@ -65,16 +65,47 @@ pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(cpus: I) -> Result<()> {
 
 /// Enable experimental core scheduling for the current thread.
 ///
-/// If succesful, the kernel should not schedule this thread with any other thread within the same
-/// SMT core.
-#[cfg(feature = "chromeos")]
+/// If successful, the kernel should not schedule this thread with any other thread within the same
+/// SMT core. Because this is experimental, this will return success on kernels which do not support
+/// this function.
 pub fn enable_core_scheduling() -> Result<()> {
-    use libc::prctl;
-    const PR_SET_CORE_SCHED: i32 = 0x200;
-    let ret = unsafe { prctl(PR_SET_CORE_SCHED, 1) };
-    if ret == -1 {
-        errno_result()
-    } else {
-        Ok(())
+    const PR_SCHED_CORE: i32 = 62;
+    const PR_SCHED_CORE_CREATE: i32 = 1;
+
+    #[allow(non_camel_case_types, dead_code)]
+    /// Specifies the scope of the pid parameter of `PR_SCHED_CORE`.
+    enum pid_type {
+        /// `PID` refers to threads.
+        PIDTYPE_PID,
+        /// `TGPID` refers to a process.
+        PIDTYPE_TGID,
+        /// `TGPID` refers to a process group.
+        PIDTYPE_PGID,
     }
+
+    let ret = match unsafe {
+        prctl(
+            PR_SCHED_CORE,
+            PR_SCHED_CORE_CREATE,
+            0,                            // id of target task, 0 indicates current task
+            pid_type::PIDTYPE_PID as i32, // PID scopes to this thread only
+            0,                            // ignored by PR_SCHED_CORE_CREATE command
+        )
+    } {
+        #[cfg(feature = "chromeos")]
+        -1 => {
+            // Chrome OS has an pre-upstream version of this functionality which might work.
+            const PR_SET_CORE_SCHED: i32 = 0x200;
+            unsafe { prctl(PR_SET_CORE_SCHED, 1) }
+        }
+        ret => ret,
+    };
+    if ret == -1 {
+        let error = Error::last();
+        // prctl returns EINVAL for unknown functions, which we will ignore for now.
+        if error.errno() != libc::EINVAL {
+            return Err(error);
+        }
+    }
+    Ok(())
 }
