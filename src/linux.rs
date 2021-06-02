@@ -1754,6 +1754,8 @@ fn create_vfio_device(
         Tube::pair().context("failed to create tube")?;
     control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
 
+    let hotplug = bus_num.is_some();
+
     let vfio_device =
         VfioDevice::new_passthrough(&vfio_path, vm, vfio_container.clone(), iommu_enabled)
             .context("failed to create vfio device")?;
@@ -1777,7 +1779,11 @@ fn create_vfio_device(
         endpoints.insert(endpoint_addr.unwrap().to_u32(), vfio_container);
     }
 
-    Ok((vfio_pci_device, simple_jail(cfg, "vfio_device")?))
+    if hotplug {
+        Ok((vfio_pci_device, None))
+    } else {
+        Ok((vfio_pci_device, simple_jail(cfg, "vfio_device")?))
+    }
 }
 
 fn create_vfio_platform_device(
