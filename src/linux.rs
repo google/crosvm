@@ -2366,7 +2366,9 @@ where
                             }
                         }
                         Ok(VcpuExit::IrqWindowOpen) => {}
-                        Ok(VcpuExit::Hlt) => irq_chip.halted(cpu_id),
+                        Ok(VcpuExit::Hlt) => if irq_chip.need_halted() {
+                            irq_chip.halted(cpu_id)
+                        },
                         Ok(VcpuExit::Shutdown) => break,
                         Ok(VcpuExit::FailEntry {
                             hardware_entry_failure_reason,

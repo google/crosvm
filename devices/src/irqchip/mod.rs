@@ -98,6 +98,9 @@ pub trait IrqChip: Send {
     /// Injects any pending interrupts for `vcpu`.
     fn inject_interrupts(&self, vcpu: &dyn Vcpu) -> Result<()>;
 
+    /// Queries whether the irq chip needs to be notified of VCPU halt instructions.
+    fn need_halted(&self) -> bool;
+
     /// Notifies the irq chip that the specified VCPU has executed a halt instruction.
     fn halted(&self, vcpu_id: usize);
 
