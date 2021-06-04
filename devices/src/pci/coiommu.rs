@@ -404,6 +404,54 @@ impl PinWorker {
     }
 }
 
+#[allow(dead_code)]
+struct UnpinWorker {
+    mem: GuestMemory,
+    dtt_level: u64,
+    dtt_root: u64,
+    vfio_container: Arc<Mutex<VfioContainer>>,
+}
+
+impl UnpinWorker {
+    fn debug_label(&self) -> &'static str {
+        "CoIommuUnpinWorker"
+    }
+    // Currently the event is just the kill event but in future will extend with other
+    // events. So allow never_loop temporarily
+    #[allow(clippy::never_loop)]
+    fn run(&mut self, kill_evt: Event) {
+        #[derive(PollToken)]
+        enum Token {
+            Kill,
+        }
+
+        let wait_ctx: WaitContext<Token> =
+            match WaitContext::build_with(&[(&kill_evt, Token::Kill)]) {
+                Ok(pc) => pc,
+                Err(e) => {
+                    error!("{}: failed creating WaitContext: {}", self.debug_label(), e);
+                    return;
+                }
+            };
+
+        'wait: loop {
+            let events = match wait_ctx.wait() {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("{}: failed polling for events: {}", self.debug_label(), e);
+                    break;
+                }
+            };
+
+            for event in events.iter().filter(|e| e.is_readable) {
+                match event.token {
+                    Token::Kill => break 'wait,
+                }
+            }
+        }
+    }
+}
+
 pub struct CoIommuDev {
     config_regs: PciConfiguration,
     pci_address: Option<PciAddress>,
@@ -419,6 +467,8 @@ pub struct CoIommuDev {
     device_tube: Tube,
     pin_thread: Option<thread::JoinHandle<PinWorker>>,
     pin_kill_evt: Option<Event>,
+    unpin_thread: Option<thread::JoinHandle<UnpinWorker>>,
+    unpin_kill_evt: Option<Event>,
     ioevents: Vec<Event>,
     vfio_container: Arc<Mutex<VfioContainer>>,
 }
@@ -493,6 +543,8 @@ impl CoIommuDev {
             device_tube,
             pin_thread: None,
             pin_kill_evt: None,
+            unpin_thread: None,
+            unpin_kill_evt: None,
             ioevents,
             vfio_container,
         })
@@ -568,6 +620,10 @@ impl CoIommuDev {
         if self.pin_thread.is_none() {
             self.start_pin_thread();
         }
+
+        if self.unpin_thread.is_none() {
+            self.start_unpin_thread();
+        }
     }
 
     fn start_pin_thread(&mut self) {
@@ -620,6 +676,51 @@ impl CoIommuDev {
             Ok(join_handle) => {
                 self.pin_thread = Some(join_handle);
                 self.pin_kill_evt = Some(self_kill_evt);
+            }
+        }
+    }
+
+    fn start_unpin_thread(&mut self) {
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
+            Ok(v) => v,
+            Err(e) => {
+                error!(
+                    "{}: failed creating kill Event pair: {}",
+                    self.debug_label(),
+                    e
+                );
+                return;
+            }
+        };
+
+        let mem = self.mem.clone();
+        let dtt_root = self.coiommu_reg.dtt_root;
+        let dtt_level = self.coiommu_reg.dtt_level;
+        let vfio_container = self.vfio_container.clone();
+        let worker_result = thread::Builder::new()
+            .name("coiommu_unpin".to_string())
+            .spawn(move || {
+                let mut worker = UnpinWorker {
+                    mem,
+                    dtt_level,
+                    dtt_root,
+                    vfio_container,
+                };
+                worker.run(kill_evt);
+                worker
+            });
+
+        match worker_result {
+            Err(e) => {
+                error!(
+                    "{}: failed to spawn coiommu unpin worker: {}",
+                    self.debug_label(),
+                    e
+                );
+            }
+            Ok(join_handle) => {
+                self.unpin_thread = Some(join_handle);
+                self.unpin_kill_evt = Some(self_kill_evt);
             }
         }
     }
@@ -925,6 +1026,17 @@ impl Drop for CoIommuDev {
                 }
             } else {
                 error!("CoIOMMU: failed to write to kill_evt to stop pin_thread");
+            }
+        }
+
+        if let Some(kill_evt) = self.unpin_kill_evt.take() {
+            // Ignore the result because there is nothing we can do about it.
+            if kill_evt.write(1).is_ok() {
+                if let Some(worker_thread) = self.unpin_thread.take() {
+                    let _ = worker_thread.join();
+                }
+            } else {
+                error!("CoIOMMU: failed to write to kill_evt to stop unpin_thread");
             }
         }
     }
