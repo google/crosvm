@@ -6,13 +6,15 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::fs::File;
 
-use libvda::encode::{EncodeCapabilities, VeaImplType, VeaInstance};
+use libvda::encode::{
+    BitrateMode as LibVdaBitrateMode, EncodeCapabilities, VeaImplType, VeaInstance,
+};
 
 use base::{error, warn, AsRawDescriptor, IntoRawDescriptor};
 
 use super::*;
 use crate::virtio::video::format::{
-    Format, FormatDesc, FormatRange, FrameFormat, FramePlane, Level, Profile,
+    Bitrate, Format, FormatDesc, FormatRange, FrameFormat, FramePlane, Level, Profile,
 };
 use crate::virtio::video::{
     encoder::{encoder::*, EncoderDevice},
@@ -208,12 +210,22 @@ impl Encoder for LibvdaEncoder {
             }
         };
 
+        let bitrate = libvda::encode::Bitrate {
+            mode: match config.dst_bitrate {
+                Bitrate::VBR { .. } => LibVdaBitrateMode::VBR,
+                Bitrate::CBR { .. } => LibVdaBitrateMode::CBR,
+            },
+            target: config.dst_bitrate.target(),
+            // TODO(b/190336806): Currently unused, will be added in follow-up CL.
+            peak: 0,
+        };
+
         let config = libvda::encode::Config {
             input_format,
             input_visible_width: config.src_params.frame_width,
             input_visible_height: config.src_params.frame_height,
             output_profile,
-            initial_bitrate: config.dst_bitrate,
+            bitrate,
             initial_framerate: if config.frame_rate == 0 {
                 None
             } else {

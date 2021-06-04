@@ -24,7 +24,9 @@ use crate::virtio::video::encoder::encoder::{
 };
 use crate::virtio::video::error::*;
 use crate::virtio::video::event::{EvtType, VideoEvt};
-use crate::virtio::video::format::{Format, FramePlane, Level, PlaneFormat, Profile};
+use crate::virtio::video::format::{
+    Bitrate, BitrateMode, Format, FramePlane, Level, PlaneFormat, Profile,
+};
 use crate::virtio::video::params::Params;
 use crate::virtio::video::protocol;
 use crate::virtio::video::response::CmdResponse;
@@ -70,7 +72,7 @@ struct Stream<T: EncoderSession> {
     id: u32,
     src_params: Params,
     dst_params: Params,
-    dst_bitrate: u32,
+    dst_bitrate: Bitrate,
     dst_profile: Profile,
     dst_h264_level: Option<Level>,
     frame_rate: u32,
@@ -99,7 +101,12 @@ impl<T: EncoderSession> Stream<T> {
         const MAX_BUFFERS: u32 = 342;
         const DEFAULT_WIDTH: u32 = 640;
         const DEFAULT_HEIGHT: u32 = 480;
-        const DEFAULT_BITRATE: u32 = 6000;
+        const DEFAULT_BITRATE_TARGET: u32 = 6000;
+        const DEFAULT_BITRATE: Bitrate = Bitrate::VBR {
+            target: DEFAULT_BITRATE_TARGET,
+            // TODO(b/190336806): Currently unused, will be added in follow-up CL.
+            peak: 0,
+        };
         const DEFAULT_BUFFER_SIZE: u32 = 2097152; // 2MB; chosen empirically for 1080p video
         const DEFAULT_FPS: u32 = 30;
 
@@ -933,7 +940,7 @@ impl<T: Encoder> EncoderDevice<T> {
                 if !resources_queued {
                     create_session = true;
                 } else if let Err(e) = encoder_session
-                    .request_encoding_params_change(stream.dst_bitrate, stream.frame_rate)
+                    .request_encoding_params_change(stream.dst_bitrate.target(), stream.frame_rate)
                 {
                     error!("failed to dynamically request framerate change: {}", e);
                     return Err(VideoError::InvalidOperation);
@@ -1096,7 +1103,8 @@ impl<T: Encoder> EncoderDevice<T> {
             .get(&stream_id)
             .ok_or(VideoError::InvalidStreamId(stream_id))?;
         let ctrl_val = match ctrl_type {
-            CtrlType::Bitrate => CtrlVal::Bitrate(stream.dst_bitrate),
+            CtrlType::BitrateMode => CtrlVal::BitrateMode(stream.dst_bitrate.mode()),
+            CtrlType::Bitrate => CtrlVal::Bitrate(stream.dst_bitrate.target()),
             CtrlType::Profile => CtrlVal::Profile(stream.dst_profile),
             CtrlType::Level => {
                 let format = stream
@@ -1131,6 +1139,28 @@ impl<T: Encoder> EncoderDevice<T> {
             .get_mut(&stream_id)
             .ok_or(VideoError::InvalidStreamId(stream_id))?;
         match ctrl_val {
+            CtrlVal::BitrateMode(bitrate_mode) => {
+                if stream.encoder_session.is_some() {
+                    error!(
+                        "set control called for bitrate mode but encoder session already exists."
+                    );
+                    return Err(VideoError::InvalidOperation);
+                }
+
+                // We only need to care if there is a change.
+                if stream.dst_bitrate.mode() != bitrate_mode {
+                    stream.dst_bitrate = match bitrate_mode {
+                        BitrateMode::CBR => Bitrate::CBR {
+                            target: stream.dst_bitrate.target(),
+                        },
+                        BitrateMode::VBR => Bitrate::VBR {
+                            target: stream.dst_bitrate.target(),
+                            // TODO(b/190336806): Currently unused, will be added in follow-up CL.
+                            peak: 0,
+                        },
+                    };
+                }
+            }
             CtrlVal::Bitrate(bitrate) => {
                 if let Some(ref mut encoder_session) = stream.encoder_session {
                     if let Err(e) =
@@ -1143,7 +1173,10 @@ impl<T: Encoder> EncoderDevice<T> {
                         return Err(VideoError::InvalidOperation);
                     }
                 }
-                stream.dst_bitrate = bitrate;
+                match &mut stream.dst_bitrate {
+                    Bitrate::CBR { target } => *target = bitrate,
+                    Bitrate::VBR { target, .. } => *target = bitrate,
+                }
             }
             CtrlVal::Profile(profile) => {
                 if stream.encoder_session.is_some() {

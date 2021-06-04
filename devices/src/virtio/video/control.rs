@@ -9,7 +9,7 @@ use std::io;
 
 use data_model::Le32;
 
-use crate::virtio::video::format::{Format, Level, Profile};
+use crate::virtio::video::format::{BitrateMode, Format, Level, Profile};
 use crate::virtio::video::protocol::*;
 use crate::virtio::video::response::Response;
 use crate::virtio::Writer;
@@ -54,6 +54,7 @@ pub enum CtrlType {
     Profile,
     Level,
     ForceKeyframe,
+    BitrateMode,
 }
 
 #[derive(Debug, Clone)]
@@ -62,6 +63,7 @@ pub enum CtrlVal {
     Profile(Profile),
     Level(Level),
     ForceKeyframe(),
+    BitrateMode(BitrateMode),
 }
 
 impl Response for CtrlVal {
@@ -69,6 +71,10 @@ impl Response for CtrlVal {
         match self {
             CtrlVal::Bitrate(r) => w.write_obj(virtio_video_control_val_bitrate {
                 bitrate: Le32::from(*r),
+                ..Default::default()
+            }),
+            CtrlVal::BitrateMode(m) => w.write_obj(virtio_video_control_val_bitrate_mode {
+                bitrate_mode: Le32::from(*m as u32),
                 ..Default::default()
             }),
             CtrlVal::Profile(p) => w.write_obj(virtio_video_control_val_profile {

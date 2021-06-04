@@ -178,13 +178,67 @@ fn bindgen_test_layout_vea_capabilities() {
     );
 }
 pub type vea_capabilities_t = vea_capabilities;
+pub const vea_bitrate_mode_VBR: vea_bitrate_mode = 0;
+pub const vea_bitrate_mode_CBR: vea_bitrate_mode = 1;
+pub type vea_bitrate_mode = u32;
+pub use self::vea_bitrate_mode as vea_bitrate_mode_t;
+#[repr(C)]
+pub struct vea_bitrate {
+    pub mode: vea_bitrate_mode_t,
+    pub target: u32,
+    pub peak: u32,
+}
+#[test]
+fn bindgen_test_layout_vea_bitrate() {
+    assert_eq!(
+        ::std::mem::size_of::<vea_bitrate>(),
+        12usize,
+        concat!("Size of: ", stringify!(vea_bitrate))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<vea_bitrate>(),
+        4usize,
+        concat!("Alignment of ", stringify!(vea_bitrate))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<vea_bitrate>())).mode as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(vea_bitrate),
+            "::",
+            stringify!(mode)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<vea_bitrate>())).target as *const _ as usize },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(vea_bitrate),
+            "::",
+            stringify!(target)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<vea_bitrate>())).peak as *const _ as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(vea_bitrate),
+            "::",
+            stringify!(peak)
+        )
+    );
+}
+pub type vea_bitrate_t = vea_bitrate;
 #[repr(C)]
 pub struct vea_config {
     pub input_format: video_pixel_format_t,
     pub input_visible_width: u32,
     pub input_visible_height: u32,
     pub output_profile: video_codec_profile_t,
-    pub initial_bitrate: u32,
+    pub bitrate: vea_bitrate_t,
     pub initial_framerate: u32,
     pub has_initial_framerate: u8,
     pub h264_output_level: u8,
@@ -194,7 +248,7 @@ pub struct vea_config {
 fn bindgen_test_layout_vea_config() {
     assert_eq!(
         ::std::mem::size_of::<vea_config>(),
-        28usize,
+        36usize,
         concat!("Size of: ", stringify!(vea_config))
     );
     assert_eq!(
@@ -243,18 +297,18 @@ fn bindgen_test_layout_vea_config() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<vea_config>())).initial_bitrate as *const _ as usize },
+        unsafe { &(*(::std::ptr::null::<vea_config>())).bitrate as *const _ as usize },
         16usize,
         concat!(
             "Offset of field: ",
             stringify!(vea_config),
             "::",
-            stringify!(initial_bitrate)
+            stringify!(bitrate)
         )
     );
     assert_eq!(
         unsafe { &(*(::std::ptr::null::<vea_config>())).initial_framerate as *const _ as usize },
-        20usize,
+        28usize,
         concat!(
             "Offset of field: ",
             stringify!(vea_config),
@@ -266,7 +320,7 @@ fn bindgen_test_layout_vea_config() {
         unsafe {
             &(*(::std::ptr::null::<vea_config>())).has_initial_framerate as *const _ as usize
         },
-        24usize,
+        32usize,
         concat!(
             "Offset of field: ",
             stringify!(vea_config),
@@ -276,7 +330,7 @@ fn bindgen_test_layout_vea_config() {
     );
     assert_eq!(
         unsafe { &(*(::std::ptr::null::<vea_config>())).h264_output_level as *const _ as usize },
-        25usize,
+        33usize,
         concat!(
             "Offset of field: ",
             stringify!(vea_config),
@@ -288,7 +342,7 @@ fn bindgen_test_layout_vea_config() {
         unsafe {
             &(*(::std::ptr::null::<vea_config>())).has_h264_output_level as *const _ as usize
         },
-        26usize,
+        34usize,
         concat!(
             "Offset of field: ",
             stringify!(vea_config),

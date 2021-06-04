@@ -117,6 +117,38 @@ impl Display for Format {
     }
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, N, Clone, Copy, Debug)]
+#[repr(u32)]
+pub enum BitrateMode {
+    VBR = VIRTIO_VIDEO_BITRATE_MODE_VBR,
+    CBR = VIRTIO_VIDEO_BITRATE_MODE_CBR,
+}
+impl_try_from_le32_for_enumn!(BitrateMode, "bitrate_mode");
+
+#[derive(Debug, Copy, Clone)]
+pub enum Bitrate {
+    /// Constant bitrate.
+    CBR { target: u32 },
+    /// Variable bitrate.
+    VBR { target: u32, peak: u32 },
+}
+
+impl Bitrate {
+    pub fn mode(&self) -> BitrateMode {
+        match self {
+            Bitrate::CBR { .. } => BitrateMode::CBR,
+            Bitrate::VBR { .. } => BitrateMode::VBR,
+        }
+    }
+
+    pub fn target(&self) -> u32 {
+        match self {
+            Bitrate::CBR { target } => *target,
+            Bitrate::VBR { target, .. } => *target,
+        }
+    }
+}
+
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Crop {
     pub left: u32,

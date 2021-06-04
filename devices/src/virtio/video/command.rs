@@ -272,6 +272,7 @@ impl<'a> VideoCmd {
                 let virtio_video_get_control { control, .. } = r.read_obj()?;
                 let ctrl_type = match control.into() {
                     VIRTIO_VIDEO_CONTROL_BITRATE => CtrlType::Bitrate,
+                    VIRTIO_VIDEO_CONTROL_BITRATE_MODE => CtrlType::BitrateMode,
                     VIRTIO_VIDEO_CONTROL_PROFILE => CtrlType::Profile,
                     VIRTIO_VIDEO_CONTROL_LEVEL => CtrlType::Level,
                     VIRTIO_VIDEO_CONTROL_FORCE_KEYFRAME => CtrlType::ForceKeyframe,
@@ -291,6 +292,11 @@ impl<'a> VideoCmd {
                         r.read_obj::<virtio_video_control_val_bitrate>()?
                             .bitrate
                             .into(),
+                    ),
+                    VIRTIO_VIDEO_CONTROL_BITRATE_MODE => CtrlVal::BitrateMode(
+                        r.read_obj::<virtio_video_control_val_bitrate_mode>()?
+                            .bitrate_mode
+                            .try_into()?,
                     ),
                     VIRTIO_VIDEO_CONTROL_PROFILE => CtrlVal::Profile(
                         r.read_obj::<virtio_video_control_val_profile>()?

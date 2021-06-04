@@ -5,6 +5,7 @@
 use super::bindings;
 use crate::error::Result;
 use crate::format::*;
+use enumn::N;
 
 /// Represents an output profile for VEA.
 #[derive(Debug, Clone, Copy)]
@@ -32,5 +33,34 @@ impl OutputProfile {
         len: usize,
     ) -> Result<Vec<Self>> {
         validate_formats(data, len, Self::new)
+    }
+}
+
+/// Represents a bitrate mode for the VEA.
+#[derive(Debug, Clone, Copy, N)]
+#[repr(u32)]
+pub enum BitrateMode {
+    VBR = bindings::vea_bitrate_mode_VBR,
+    CBR = bindings::vea_bitrate_mode_CBR,
+}
+
+/// Represents a bitrate for the VEA.
+#[derive(Debug, Clone, Copy)]
+pub struct Bitrate {
+    pub mode: BitrateMode,
+    pub target: u32,
+    pub peak: u32,
+}
+
+impl Bitrate {
+    pub fn to_raw_bitrate(&self) -> bindings::vea_bitrate_t {
+        bindings::vea_bitrate_t {
+            mode: match self.mode {
+                BitrateMode::VBR => bindings::vea_bitrate_mode_VBR,
+                BitrateMode::CBR => bindings::vea_bitrate_mode_CBR,
+            },
+            target: self.target,
+            peak: self.peak,
+        }
     }
 }

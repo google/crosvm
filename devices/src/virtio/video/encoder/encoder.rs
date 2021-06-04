@@ -9,7 +9,7 @@ use base::error;
 use crate::virtio::video::params::Params;
 use crate::virtio::video::{
     error::{VideoError, VideoResult},
-    format::{find_closest_resolution, Format, FormatDesc, Level, PlaneFormat, Profile},
+    format::{find_closest_resolution, Bitrate, Format, FormatDesc, Level, PlaneFormat, Profile},
 };
 
 pub type InputBufferId = u32;
@@ -45,7 +45,7 @@ pub struct SessionConfig {
     pub src_params: Params,
     pub dst_params: Params,
     pub dst_profile: Profile,
-    pub dst_bitrate: u32,
+    pub dst_bitrate: Bitrate,
     pub dst_h264_level: Option<Level>,
     pub frame_rate: u32,
 }

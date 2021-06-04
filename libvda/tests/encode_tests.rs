@@ -17,7 +17,11 @@ fn create_config() -> Config {
         input_visible_height: 320,
         input_visible_width: 192,
         output_profile: Profile::H264ProfileBaseline,
-        initial_bitrate: 100,
+        bitrate: Bitrate {
+            mode: BitrateMode::CBR,
+            target: 100,
+            peak: 0,
+        },
         initial_framerate: None,
         h264_output_level: None,
     }

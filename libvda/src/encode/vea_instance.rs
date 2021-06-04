@@ -5,7 +5,7 @@
 use std::{os::raw::c_void, rc::Rc};
 
 use super::bindings;
-use super::format::OutputProfile;
+use super::format::{Bitrate, OutputProfile};
 use super::session::*;
 use crate::error::*;
 use crate::format::*;
@@ -68,7 +68,7 @@ pub struct Config {
     pub input_visible_width: u32,
     pub input_visible_height: u32,
     pub output_profile: Profile,
-    pub initial_bitrate: u32,
+    pub bitrate: Bitrate,
     pub initial_framerate: Option<u32>,
     pub h264_output_level: Option<u8>,
 }
@@ -80,7 +80,7 @@ impl Config {
             input_visible_width: self.input_visible_width,
             input_visible_height: self.input_visible_height,
             output_profile: self.output_profile.to_raw_profile(),
-            initial_bitrate: self.initial_bitrate,
+            bitrate: self.bitrate.to_raw_bitrate(),
             initial_framerate: self.initial_framerate.unwrap_or(0),
             has_initial_framerate: if self.initial_framerate.is_some() {
                 1
