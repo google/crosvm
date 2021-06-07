@@ -45,8 +45,8 @@ use devices::virtio::{self, Console, VirtioDevice};
 use devices::Ac97Dev;
 use devices::ProtectionType;
 use devices::{
-    self, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciDevice, VcpuRunState, VfioContainer,
-    VfioDevice, VfioPciDevice, VirtioPciDevice,
+    self, HostHotPlugKey, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciAddress, PciDevice,
+    VcpuRunState, VfioContainer, VfioDevice, VfioPciDevice, VirtioPciDevice,
 };
 #[cfg(feature = "usb")]
 use devices::{HostBackendDeviceProvider, XhciController};
@@ -2520,23 +2520,54 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     control_tubes: &mut Vec<TaggedControlTube>,
     vfio_path: &Path,
 ) -> Result<()> {
-    let vm = &linux.vm;
     let mut endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>> = BTreeMap::new();
     let (vfio_pci_device, jail) = create_vfio_device(
         cfg,
-        vm,
+        &linux.vm,
         sys_allocator,
         control_tubes,
         vfio_path,
         &mut endpoints,
         false,
     )?;
-    Arch::register_pci_device(linux, vfio_pci_device, jail, sys_allocator)
-        .map_err(Error::ConfigureVfioDevice)
+
+    let pci_address = Arch::register_pci_device(linux, vfio_pci_device, jail, sys_allocator)
+        .map_err(Error::ConfigureHotPlugDevice)?;
+
+    let host_os_str = vfio_path.file_name().ok_or(Error::InvalidVfioPath)?;
+    let host_str = host_os_str.to_str().ok_or(Error::InvalidVfioPath)?;
+    let host_addr = PciAddress::from_string(host_str);
+    let host_key = HostHotPlugKey::Vfio { host_addr };
+    if let Some(hp_bus) = &linux.hotplug_bus {
+        let mut hp_bus = hp_bus.lock();
+        hp_bus.add_hotplug_device(host_key, pci_address);
+        hp_bus.hot_plug(pci_address);
+        return Ok(());
+    }
+
+    Err(Error::NoHotPlugBus)
 }
 
 #[allow(dead_code)]
-fn remove_vfio_device() {}
+fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
+    linux: &RunnableLinuxVm<V, Vcpu>,
+    vfio_path: &Path,
+) -> Result<()> {
+    let host_os_str = vfio_path.file_name().ok_or(Error::InvalidVfioPath)?;
+    let host_str = host_os_str.to_str().ok_or(Error::InvalidVfioPath)?;
+    let host_addr = PciAddress::from_string(host_str);
+    let host_key = HostHotPlugKey::Vfio { host_addr };
+    if let Some(hp_bus) = &linux.hotplug_bus {
+        let mut hp_bus = hp_bus.lock();
+        let pci_addr = hp_bus
+            .get_hotplug_device(host_key)
+            .ok_or(Error::InvalidHotPlugKey)?;
+        hp_bus.hot_unplug(pci_addr);
+        return Ok(());
+    }
+
+    Err(Error::NoHotPlugBus)
+}
 
 /// Signals all running VCPUs to vmexit, sends VcpuControl message to each VCPU tube, and tells
 /// `irq_chip` to stop blocking halted VCPUs. The channel message is set first because both the

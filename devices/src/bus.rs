@@ -13,6 +13,8 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use sync::Mutex;
 
+use crate::PciAddress;
+
 /// Information about how a device was accessed.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
 pub struct BusAccessInfo {
@@ -93,6 +95,29 @@ pub trait BusResumeDevice: Send {
     /// notify the devices which are invoked
     /// before the VM resumes form suspend.
     fn resume_imminent(&mut self) {}
+}
+
+/// The key to identify hotplug device from host view.
+/// like host sysfs path for vfio pci device, host disk file
+/// path for virtio block device
+pub enum HostHotPlugKey {
+    Vfio { host_addr: PciAddress },
+}
+
+/// Trait for devices that notify hotplug event into guest
+pub trait HotPlugBus {
+    /// Notify hotplug in event into guest
+    /// * 'addr' - the guest pci address for hotplug in device
+    fn hot_plug(&mut self, addr: PciAddress);
+    /// Notify hotplug out event into guest
+    /// * 'addr' - the guest pci address for hotplug out device
+    fn hot_unplug(&mut self, addr: PciAddress);
+    /// Add hotplug device into this bus
+    /// * 'host_key' - the key to identify hotplug device from host view
+    /// * 'guest_addr' - the guest pci address for hotplug device
+    fn add_hotplug_device(&mut self, host_key: HostHotPlugKey, guest_addr: PciAddress);
+    /// get guest pci address from the specified host_key
+    fn get_hotplug_device(&self, host_key: HostHotPlugKey) -> Option<PciAddress>;
 }
 
 #[derive(Debug)]

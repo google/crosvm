@@ -12,7 +12,9 @@ use std::sync::Arc;
 use arch::{get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, VmComponents, VmImage};
 use base::{Event, MemoryMappingBuilder};
 use devices::serial_device::{SerialHardware, SerialParameters};
-use devices::{Bus, BusError, IrqChip, IrqChipAArch64, PciConfigMmio, PciDevice, ProtectionType};
+use devices::{
+    Bus, BusError, IrqChip, IrqChipAArch64, PciAddress, PciConfigMmio, PciDevice, ProtectionType,
+};
 use hypervisor::{DeviceKind, Hypervisor, HypervisorCap, VcpuAArch64, VcpuFeature, VmAArch64};
 use minijail::Minijail;
 use remain::sorted;
@@ -460,6 +462,7 @@ impl arch::LinuxArch for AArch64 {
             bat_control: None,
             resume_notify_devices: Vec::new(),
             root_config: pci_bus,
+            hotplug_bus: None,
         })
     }
 
@@ -482,7 +485,7 @@ impl arch::LinuxArch for AArch64 {
         _device: Box<dyn PciDevice>,
         _minijail: Option<Minijail>,
         _resources: &mut SystemAllocator,
-    ) -> std::result::Result<(), Self::Error> {
+    ) -> std::result::Result<PciAddress, Self::Error> {
         // hotplug function isn't verified on AArch64, so set it unsupported here.
         Err(Error::Unsupported)
     }

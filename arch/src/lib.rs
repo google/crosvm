@@ -20,8 +20,9 @@ use acpi_tables::sdt::SDT;
 use base::{syslog, AsRawDescriptor, AsRawDescriptors, Event, Tube};
 use devices::virtio::VirtioDevice;
 use devices::{
-    Bus, BusDevice, BusError, BusResumeDevice, IrqChip, PciAddress, PciDevice, PciDeviceError,
-    PciInterruptPin, PciRoot, ProtectionType, ProxyDevice, SerialHardware, SerialParameters,
+    Bus, BusDevice, BusError, BusResumeDevice, HotPlugBus, IrqChip, PciAddress, PciDevice,
+    PciDeviceError, PciInterruptPin, PciRoot, ProtectionType, ProxyDevice, SerialHardware,
+    SerialParameters,
 };
 use hypervisor::{IoEventAddress, Vm};
 use minijail::Minijail;
@@ -121,6 +122,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     /// Devices to be notified before the system resumes from the S3 suspended state.
     pub resume_notify_devices: Vec<Arc<Mutex<dyn BusResumeDevice>>>,
     pub root_config: Arc<Mutex<RootConfigArch>>,
+    pub hotplug_bus: Option<Arc<Mutex<dyn HotPlugBus>>>,
 }
 
 /// The device and optional jail.
@@ -210,7 +212,7 @@ pub trait LinuxArch {
         device: Box<dyn PciDevice>,
         minijail: Option<Minijail>,
         resources: &mut SystemAllocator,
-    ) -> Result<(), Self::Error>;
+    ) -> Result<PciAddress, Self::Error>;
 
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     /// Reads vCPU's registers.
@@ -332,7 +334,7 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
     mut device: Box<dyn PciDevice>,
     jail: Option<Minijail>,
     resources: &mut SystemAllocator,
-) -> Result<(), DeviceRegistrationError> {
+) -> Result<PciAddress, DeviceRegistrationError> {
     // Allocate PCI device address before allocating BARs.
     let pci_address = device
         .allocate_address(resources)
@@ -418,7 +420,7 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
             .map_err(DeviceRegistrationError::MmioInsert)?;
     }
 
-    Ok(())
+    Ok(pci_address)
 }
 
 /// Creates a root PCI device for use by this Vm.

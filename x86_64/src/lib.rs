@@ -61,7 +61,9 @@ use arch::{
 };
 use base::Event;
 use devices::serial_device::{SerialHardware, SerialParameters};
-use devices::{BusResumeDevice, IrqChip, IrqChipX86_64, PciConfigIo, PciDevice, ProtectionType};
+use devices::{
+    BusResumeDevice, IrqChip, IrqChipX86_64, PciAddress, PciConfigIo, PciDevice, ProtectionType,
+};
 use hypervisor::{HypervisorX86_64, VcpuX86_64, VmX86_64};
 use minijail::Minijail;
 use remain::sorted;
@@ -556,6 +558,7 @@ impl arch::LinuxArch for X8664arch {
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             gdb: components.gdb,
             root_config: pci_bus,
+            hotplug_bus: None,
         })
     }
 
@@ -600,9 +603,11 @@ impl arch::LinuxArch for X8664arch {
         device: Box<dyn PciDevice>,
         minijail: Option<Minijail>,
         resources: &mut SystemAllocator,
-    ) -> Result<()> {
-        arch::configure_pci_device(linux, device, minijail, resources)
-            .map_err(Error::ConfigurePciDevice)
+    ) -> Result<PciAddress> {
+        let pci_address = arch::configure_pci_device(linux, device, minijail, resources)
+            .map_err(Error::ConfigurePciDevice)?;
+
+        Ok(pci_address)
     }
 
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
