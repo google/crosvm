@@ -321,15 +321,20 @@ impl PciConfiguration {
             PciHeaderType::Device => {
                 registers[3] = 0x0000_0000; // Header type 0 (device)
                 writable_bits[15] = 0x0000_00ff; // Interrupt line (r/w)
+                registers[11] = u32::from(subsystem_id) << 16 | u32::from(subsystem_vendor_id);
             }
             PciHeaderType::Bridge => {
                 registers[3] = 0x0001_0000; // Header type 1 (bridge)
-                writable_bits[9] = 0xfff0_fff0; // Memory base and limit
+                writable_bits[6] = 0x00ff_ffff; // Primary/secondary/subordinate bus number,
+                                                // secondary latency timer
+                writable_bits[7] = 0xf900_0000; // IO base and limit, secondary status,
+                writable_bits[8] = 0xfff0_fff0; // Memory base and limit
+                writable_bits[9] = 0xfff0_fff0; // Prefetchable base and limit
+                writable_bits[10] = 0xffff_ffff; // Prefetchable base upper 32 bits
+                writable_bits[11] = 0xffff_ffff; // Prefetchable limit upper 32 bits
                 writable_bits[15] = 0xffff_00ff; // Bridge control (r/w), interrupt line (r/w)
             }
         };
-
-        registers[11] = u32::from(subsystem_id) << 16 | u32::from(subsystem_vendor_id);
 
         PciConfiguration {
             registers,
