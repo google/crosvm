@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use base::IoctlNr;
-use std::convert::TryInto;
 
 use libc::E2BIG;
 
@@ -824,14 +823,13 @@ impl From<&LapicState> for kvm_lapic_state {
         for (reg, value) in item.regs.iter().enumerate() {
             // Each lapic register is 16 bytes, but only the first 4 are used
             let reg_offset = 16 * reg;
-            let sliceu8 = unsafe {
-                // This array is only accessed as parts of a u32 word, so interpret it as a u8 array.
-                // to_le_bytes() produces an array of u8, not i8(c_char).
-                std::mem::transmute::<&mut [i8], &mut [u8]>(
-                    &mut state.regs[reg_offset..reg_offset + 4],
-                )
-            };
-            sliceu8.copy_from_slice(&value.to_le_bytes());
+            let regs_slice = &mut state.regs[reg_offset..reg_offset + 4];
+
+            // to_le_bytes() produces an array of u8, not i8(c_char), so we can't directly use
+            // copy_from_slice().
+            for (i, v) in value.to_le_bytes().iter().enumerate() {
+                regs_slice[i] = *v as i8;
+            }
         }
         state
     }
@@ -844,12 +842,14 @@ impl From<&kvm_lapic_state> for LapicState {
         for reg in 0..64 {
             // Each lapic register is 16 bytes, but only the first 4 are used
             let reg_offset = 16 * reg;
-            let bytes = unsafe {
-                // This array is only accessed as parts of a u32 word, so interpret it as a u8 array.
-                // from_le_bytes() only works on arrays of u8, not i8(c_char).
-                std::mem::transmute::<&[i8], &[u8]>(&item.regs[reg_offset..reg_offset + 4])
-            };
-            state.regs[reg] = u32::from_le_bytes(bytes.try_into().unwrap());
+
+            // from_le_bytes() only works on arrays of u8, not i8(c_char).
+            let reg_slice = &item.regs[reg_offset..reg_offset + 4];
+            let mut bytes = [0u8; 4];
+            for i in 0..4 {
+                bytes[i] = reg_slice[i] as u8;
+            }
+            state.regs[reg] = u32::from_le_bytes(bytes);
         }
         state
     }
@@ -1356,10 +1356,7 @@ mod tests {
 
         // check little endian bytes in kvm_state
         for i in 0..4 {
-            assert_eq!(
-                unsafe { std::mem::transmute::<i8, u8>(kvm_state.regs[32 + i]) } as u8,
-                2u8.pow(i as u32)
-            );
+            assert_eq!(kvm_state.regs[32 + i] as u8, 2u8.pow(i as u32));
         }
 
         // Test converting back to a LapicState

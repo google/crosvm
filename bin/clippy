@@ -56,7 +56,6 @@ SUPPRESS=(
     should_implement_trait
     single_char_pattern
     too_many_arguments
-    transmute_ptr_to_ptr
     trivially_copy_pass_by_ref
     type_complexity
     unreadable_literal
