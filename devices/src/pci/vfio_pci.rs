@@ -868,11 +868,15 @@ impl VfioPciDevice {
         }
     }
 
-    fn enable_bars_mmap(&mut self) {
+    fn disable_bars_mmap(&mut self) {
         for mmap_info in self.mmap_info.iter() {
             self.remove_bar_mmap(mmap_info);
         }
         self.mmap_info.clear();
+    }
+
+    fn enable_bars_mmap(&mut self) {
+        self.disable_bars_mmap();
 
         for mmio_info in self.mmio_regions.iter() {
             let mut mmap_info =
@@ -881,6 +885,12 @@ impl VfioPciDevice {
         }
 
         self.remap = false;
+    }
+
+    #[allow(dead_code)]
+    fn close(&mut self) {
+        self.disable_bars_mmap();
+        self.device.close();
     }
 }
 
