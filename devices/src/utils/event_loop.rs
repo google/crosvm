@@ -239,7 +239,12 @@ mod tests {
         )
         .unwrap();
         self_evt.write(1).unwrap();
-        let _ = h.cvar.wait(h.val.lock().unwrap()).unwrap();
+        {
+            let mut val = h.val.lock().unwrap();
+            while *val < 1 {
+                val = h.cvar.wait(val).unwrap();
+            }
+        }
         l.stop();
         j.join().unwrap();
         assert_eq!(*(h.val.lock().unwrap()), 1);
