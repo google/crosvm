@@ -28,6 +28,7 @@ pub trait PcieDevice: Send {
     fn get_caps(&self) -> Vec<Box<dyn PciCapability>>;
     fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize);
     fn set_secondary_bus_num(&mut self, secondary_number: u8);
+    fn get_removed_devices(&self) -> Vec<PciAddress>;
 }
 
 const BR_MSIX_TABLE_OFFSET: u64 = 0x0;
@@ -324,6 +325,10 @@ impl PciDevice for PciBridge {
             Ordering::Greater => (),
         }
     }
+
+    fn get_removed_children_devices(&self) -> Vec<PciAddress> {
+        self.device.lock().get_removed_devices()
+    }
 }
 
 #[allow(dead_code)]
@@ -504,6 +509,7 @@ pub struct PcieRootPort {
     slot_status: u16,
     secondary_number: u8,
     downstream_device: Option<(PciAddress, Option<HostHotPlugKey>)>,
+    removed_downstream: Option<PciAddress>,
 }
 
 impl PcieRootPort {
@@ -516,6 +522,7 @@ impl PcieRootPort {
             slot_status: 0,
             secondary_number: 255,
             downstream_device: None,
+            removed_downstream: None,
         }
     }
 
@@ -526,11 +533,28 @@ impl PcieRootPort {
     }
 
     fn write_pcie_cap(&mut self, offset: usize, data: &[u8]) {
+        self.removed_downstream = None;
         match offset {
             PCIE_SLTCTL_OFFSET => match get_word(data) {
                 Some(v) => {
                     let old_control = self.slot_control;
                     self.slot_control = v;
+
+                    // if slot is populated, power indicator is off,
+                    // it will detach devices
+                    if (self.slot_status & PCIE_SLTSTA_PDS != 0)
+                        && (v & PCIE_SLTCTL_PIC_OFF == PCIE_SLTCTL_PIC_OFF)
+                        && (old_control & PCIE_SLTCTL_PIC_OFF != PCIE_SLTCTL_PIC_OFF)
+                    {
+                        if let Some((guest_pci_addr, _)) = self.downstream_device {
+                            self.removed_downstream = Some(guest_pci_addr);
+                            self.downstream_device = None;
+                        }
+                        self.slot_status &= !PCIE_SLTSTA_PDS;
+                        self.slot_status |= PCIE_SLTSTA_PDC;
+                        self.trigger_hp_interrupt();
+                    }
+
                     if old_control != v {
                         // send Command completed events
                         self.slot_status |= PCIE_SLTSTA_CC;
@@ -638,6 +662,15 @@ impl PcieDevice for PcieRootPort {
     fn set_secondary_bus_num(&mut self, secondary_number: u8) {
         self.secondary_number = secondary_number;
     }
+
+    fn get_removed_devices(&self) -> Vec<PciAddress> {
+        let mut removed_devices = Vec::new();
+        if let Some(removed_downstream) = self.removed_downstream {
+            removed_devices.push(removed_downstream);
+        }
+
+        removed_devices
+    }
 }
 
 impl HotPlugBus for PcieRootPort {
@@ -665,7 +698,6 @@ impl HotPlugBus for PcieRootPort {
             None => return,
         }
 
-        self.slot_status &= !PCIE_SLTSTA_PDS;
         self.slot_status = self.slot_status | PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP;
         self.trigger_hp_interrupt();
     }
