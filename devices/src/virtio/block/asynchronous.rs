@@ -112,9 +112,10 @@ impl ExecuteError {
     }
 }
 
-// Errors that happen in block outside of executing a request.
+/// Errors that happen in block outside of executing a request.
+/// This includes errors during resize and flush operations.
 #[derive(ThisError, Debug)]
-enum OtherError {
+pub enum ControlError {
     #[error("couldn't create an async resample event: {0}")]
     AsyncResampleCreate(AsyncError),
     #[error("couldn't clone the resample event: {0}")]
@@ -271,13 +272,13 @@ async fn handle_queue(
 async fn handle_irq_resample(
     ex: &Executor,
     interrupt: Rc<RefCell<Interrupt>>,
-) -> result::Result<(), OtherError> {
+) -> result::Result<(), ControlError> {
     let resample_evt = if let Some(resample_evt) = interrupt.borrow().get_resample_evt() {
         let resample_evt = resample_evt
             .try_clone()
-            .map_err(OtherError::CloneResampleEvent)?;
+            .map_err(ControlError::CloneResampleEvent)?;
         let resample_evt =
-            EventAsync::new(resample_evt.0, ex).map_err(OtherError::AsyncResampleCreate)?;
+            EventAsync::new(resample_evt.0, ex).map_err(ControlError::AsyncResampleCreate)?;
         Some(resample_evt)
     } else {
         None
@@ -287,7 +288,7 @@ async fn handle_irq_resample(
             let _ = resample_evt
                 .next_val()
                 .await
-                .map_err(OtherError::ReadResampleEvent)?;
+                .map_err(ControlError::ReadResampleEvent)?;
             interrupt.borrow().do_interrupt_resample();
         }
     } else {
@@ -367,13 +368,14 @@ async fn resize(disk_state: Rc<AsyncMutex<DiskState>>, new_size: u64) -> DiskCon
     DiskControlResult::Ok
 }
 
-async fn flush_disk(
+/// Periodically flushes the disk when the given timer fires.
+pub async fn flush_disk(
     disk_state: Rc<AsyncMutex<DiskState>>,
     timer: TimerAsync,
     armed: Rc<RefCell<bool>>,
-) -> Result<(), OtherError> {
+) -> Result<(), ControlError> {
     loop {
-        timer.next_val().await.map_err(OtherError::FlushTimer)?;
+        timer.next_val().await.map_err(ControlError::FlushTimer)?;
         if !*armed.borrow() {
             continue;
         }
@@ -388,7 +390,7 @@ async fn flush_disk(
             .disk_image
             .fsync()
             .await
-            .map_err(OtherError::FsyncDisk)?;
+            .map_err(ControlError::FsyncDisk)?;
     }
 }
 

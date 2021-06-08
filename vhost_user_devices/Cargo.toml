@@ -7,6 +7,7 @@ edition = "2018"
 [features]
 net = ["data_model", "net_util", "virtio_sys"]
 wl = ["devices/minigbm"]
+block = ["data_model", "disk"]
 
 [lib]
 path = "src/lib.rs"
@@ -20,12 +21,18 @@ required-features = ["net"]
 name = "vhost-user-wl-device"
 path = "src/wl.rs"
 
+[[bin]]
+name = "vhost-user-block-device"
+path = "src/block.rs"
+required-features = ["block"]
+
 [dependencies]
 anyhow = "*"
 base = { path = "../base" }
 cros_async = { path = "../cros_async" }
 data_model = { path = "../data_model", optional = true }
 devices = { path = "../devices" }
+disk = { path = "../disk", optional = true}
 getopts = { version = "0.2" }
 libc = "*"
 net_util = { path = "../net_util", optional = true }
