@@ -138,6 +138,11 @@ pub trait PciDevice: Send {
 
     /// Invoked when the device is destroyed
     fn destroy_device(&mut self) {}
+
+    /// Get the removed children devices under pci bridge
+    fn get_removed_children_devices(&self) -> Vec<PciAddress> {
+        Vec::new()
+    }
 }
 
 impl<T: PciDevice> BusDevice for T {
@@ -236,6 +241,10 @@ impl<T: PciDevice> BusDevice for T {
             }
         } else {
             self.write_config_register(reg_idx, offset, data);
+            let children_pci_addr = self.get_removed_children_devices();
+            if !children_pci_addr.is_empty() {
+                result.removed_pci_devices = children_pci_addr;
+            }
         }
 
         result
@@ -334,6 +343,9 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
 
     fn destroy_device(&mut self) {
         (**self).destroy_device();
+    }
+    fn get_removed_children_devices(&self) -> Vec<PciAddress> {
+        (**self).get_removed_children_devices()
     }
 }
 
@@ -451,6 +463,7 @@ mod tests {
                 mmio_add: Vec::new(),
                 io_remove: Vec::new(),
                 io_add: vec![bar2_range],
+                removed_pci_devices: Vec::new(),
             }
         );
 
@@ -462,6 +475,7 @@ mod tests {
                 mmio_add: vec![bar0_range],
                 io_remove: Vec::new(),
                 io_add: Vec::new(),
+                removed_pci_devices: Vec::new(),
             }
         );
 
@@ -473,6 +487,7 @@ mod tests {
                 mmio_add: Vec::new(),
                 io_remove: Vec::new(),
                 io_add: Vec::new(),
+                removed_pci_devices: Vec::new(),
             }
         );
 
@@ -484,6 +499,7 @@ mod tests {
                 mmio_add: Vec::new(),
                 io_remove: vec![bar2_range],
                 io_add: Vec::new(),
+                removed_pci_devices: Vec::new(),
             }
         );
 
@@ -495,6 +511,7 @@ mod tests {
                 mmio_add: Vec::new(),
                 io_remove: Vec::new(),
                 io_add: Vec::new(),
+                removed_pci_devices: Vec::new(),
             }
         );
 
@@ -508,6 +525,7 @@ mod tests {
                 mmio_add: vec![bar0_range],
                 io_remove: Vec::new(),
                 io_add: vec![bar2_range],
+                removed_pci_devices: Vec::new(),
             }
         );
 
@@ -522,6 +540,7 @@ mod tests {
                 }],
                 io_remove: Vec::new(),
                 io_add: Vec::new(),
+                removed_pci_devices: Vec::new(),
             }
         );
     }

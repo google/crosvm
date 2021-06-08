@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::bus::ConfigWriteResult;
+use crate::pci::PciAddress;
 use crate::{BusAccessInfo, BusDevice, BusRange, BusType};
 
 /// Errors for proxy devices.
@@ -62,6 +63,7 @@ enum CommandResult {
         mmio_add: Vec<BusRange>,
         io_remove: Vec<BusRange>,
         io_add: Vec<BusRange>,
+        removed_pci_devices: Vec<PciAddress>,
     },
     GetRangesResult(Vec<(BusRange, BusType)>),
 }
@@ -108,6 +110,7 @@ fn child_proc<D: BusDevice>(tube: Tube, device: &mut D) {
                     mmio_add: res.mmio_add,
                     io_remove: res.io_remove,
                     io_add: res.io_add,
+                    removed_pci_devices: res.removed_pci_devices,
                 })
             }
             Command::Shutdown => {
@@ -253,6 +256,7 @@ impl BusDevice for ProxyDevice {
             mmio_add,
             io_remove,
             io_add,
+            removed_pci_devices,
         }) = self.sync_send(&Command::WriteConfig {
             reg_idx,
             offset,
@@ -264,6 +268,7 @@ impl BusDevice for ProxyDevice {
                 mmio_add,
                 io_remove,
                 io_add,
+                removed_pci_devices,
             }
         } else {
             Default::default()

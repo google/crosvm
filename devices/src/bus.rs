@@ -50,6 +50,10 @@ pub struct ConfigWriteResult {
 
     /// The BusRange in the vector will be added into io_bus
     pub io_add: Vec<BusRange>,
+
+    /// Device specified at PciAddress will be removed after this config write
+    /// - 'Vec<PciAddress>>': specified device will be removed after this config write
+    pub removed_pci_devices: Vec<PciAddress>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -15,7 +15,7 @@ use crate::pci::pci_configuration::{
     PciBarConfiguration, PciBridgeSubclass, PciClassCode, PciConfiguration, PciHeaderType,
 };
 use crate::pci::pci_device::{Error, PciDevice};
-use crate::{Bus, BusAccessInfo, BusDevice};
+use crate::{Bus, BusAccessInfo, BusDevice, BusType};
 use resources::SystemAllocator;
 
 // A PciDevice that holds the root hub's configuration.
@@ -56,7 +56,7 @@ impl PciDevice for PciRootConfiguration {
 }
 
 /// PCI Device Address, AKA Bus:Device.Function
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct PciAddress {
     pub bus: u8,
     pub dev: u8,  /* u5 */
@@ -178,6 +178,26 @@ impl PciRoot {
         }
     }
 
+    fn remove_device(&mut self, address: PciAddress) {
+        if let Some(d) = self.devices.remove(&address) {
+            for (range, bus_type) in d.lock().get_ranges() {
+                let bus_ptr = if bus_type == BusType::Mmio {
+                    match self.mmio_bus.upgrade() {
+                        Some(m) => m,
+                        None => continue,
+                    }
+                } else {
+                    match self.io_bus.upgrade() {
+                        Some(i) => i,
+                        None => continue,
+                    }
+                };
+                let _ = bus_ptr.remove(range.base, range.len);
+            }
+            d.lock().destroy_device();
+        }
+    }
+
     pub fn config_space_read(&self, address: PciAddress, register: usize) -> u32 {
         if address.is_root() {
             self.root_configuration.config_register_read(register)
@@ -228,6 +248,10 @@ impl PciRoot {
                 for range in &res.io_add {
                     let _ = io_bus.insert(d.clone(), range.base, range.len);
                 }
+            }
+
+            for remove_pci_device in res.removed_pci_devices.iter() {
+                self.remove_device(*remove_pci_device);
             }
         }
     }
