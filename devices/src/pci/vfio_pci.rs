@@ -887,7 +887,6 @@ impl VfioPciDevice {
         self.remap = false;
     }
 
-    #[allow(dead_code)]
     fn close(&mut self) {
         self.disable_bars_mmap();
         self.device.close();
@@ -1324,5 +1323,9 @@ impl PciDevice for VfioPciDevice {
 
             self.device.region_write(bar_index, data, offset);
         }
+    }
+
+    fn destroy_device(&mut self) {
+        self.close();
     }
 }

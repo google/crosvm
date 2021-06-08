@@ -95,6 +95,9 @@ pub trait BusDevice: Send {
     fn get_ranges(&self) -> Vec<(BusRange, BusType)> {
         Vec::new()
     }
+
+    /// Invoked when the device is destroyed
+    fn destroy_device(&mut self) {}
 }
 
 pub trait BusDeviceSync: BusDevice + Sync {

@@ -135,6 +135,9 @@ pub trait PciDevice: Send {
     fn generate_acpi(&mut self, sdts: Vec<SDT>) -> Option<Vec<SDT>> {
         Some(sdts)
     }
+
+    /// Invoked when the device is destroyed
+    fn destroy_device(&mut self) {}
 }
 
 impl<T: PciDevice> BusDevice for T {
@@ -266,6 +269,11 @@ impl<T: PciDevice> BusDevice for T {
         }
         ranges
     }
+
+    // Invoked when the device is destroyed
+    fn destroy_device(&mut self) {
+        self.destroy_device()
+    }
 }
 
 impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
@@ -322,6 +330,10 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn generate_acpi(&mut self, sdts: Vec<SDT>) -> Option<Vec<SDT>> {
         (**self).generate_acpi(sdts)
+    }
+
+    fn destroy_device(&mut self) {
+        (**self).destroy_device();
     }
 }
 
