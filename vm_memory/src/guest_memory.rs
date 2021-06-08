@@ -26,7 +26,6 @@ use crate::guest_address::GuestAddress;
 
 #[derive(Debug)]
 pub enum Error {
-    DescriptorChainOverflow,
     InvalidGuestAddress(GuestAddress),
     InvalidOffset(u64),
     MemoryAccess(GuestAddress, MmapError),
@@ -50,10 +49,6 @@ impl Display for Error {
         use self::Error::*;
 
         match self {
-            DescriptorChainOverflow => write!(
-                f,
-                "the combined length of all the buffers in a DescriptorChain is too large"
-            ),
             InvalidGuestAddress(addr) => write!(f, "invalid guest address {}", addr),
             InvalidOffset(addr) => write!(f, "invalid offset {}", addr),
             MemoryAccess(addr, e) => {
