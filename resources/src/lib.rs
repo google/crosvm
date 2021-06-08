@@ -48,6 +48,8 @@ pub enum Error {
     MissingHighMMIOAddresses,
     #[error("Low MMIO address range not specified")]
     MissingLowMMIOAddresses,
+    #[error("Platform MMIO address range not specified")]
+    MissingPlatformMMIOAddresses,
     #[error("No IO address range specified")]
     NoIoAllocator,
     #[error("Out of bounds")]

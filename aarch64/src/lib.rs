@@ -38,6 +38,7 @@ const AARCH64_GIC_CPUI_SIZE: u64 = 0x20000;
 // This indicates the start of DRAM inside the physical address space.
 const AARCH64_PHYS_MEM_START: u64 = 0x80000000;
 const AARCH64_AXI_BASE: u64 = 0x40000000;
+const AARCH64_PLATFORM_MMIO_SIZE: u64 = 0x800000;
 
 // FDT is placed at the front of RAM when booting in BIOS mode.
 const AARCH64_FDT_OFFSET_IN_BIOS_MODE: u64 = 0x0;
@@ -508,8 +509,14 @@ impl arch::LinuxArch for AArch64 {
 
 impl AArch64 {
     fn get_high_mmio_base_size(mem_size: u64) -> (u64, u64) {
-        let base = AARCH64_PHYS_MEM_START + mem_size;
+        let base = AARCH64_PHYS_MEM_START + mem_size + AARCH64_PLATFORM_MMIO_SIZE;
         let size = u64::max_value() - base;
+        (base, size)
+    }
+
+    fn get_platform_mmio_base_size(mem_size: u64) -> (u64, u64) {
+        let base = AARCH64_PHYS_MEM_START + mem_size;
+        let size = AARCH64_PLATFORM_MMIO_SIZE;
         (base, size)
     }
 
@@ -523,9 +530,11 @@ impl AArch64 {
     /// Returns a system resource allocator.
     fn get_resource_allocator(mem_size: u64) -> SystemAllocator {
         let (high_mmio_base, high_mmio_size) = Self::get_high_mmio_base_size(mem_size);
+        let (plat_mmio_base, plat_mmio_size) = Self::get_platform_mmio_base_size(mem_size);
         SystemAllocator::builder()
             .add_high_mmio_addresses(high_mmio_base, high_mmio_size)
             .add_low_mmio_addresses(AARCH64_MMIO_BASE, AARCH64_MMIO_SIZE)
+            .add_platform_mmio_addresses(plat_mmio_base, plat_mmio_size)
             .create_allocator(AARCH64_IRQ_BASE)
             .unwrap()
     }

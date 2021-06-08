@@ -52,6 +52,7 @@ pub struct SystemAllocator {
 
     // Indexed by MmioType::Low and MmioType::High.
     mmio_address_spaces: [AddressAllocator; 2],
+    mmio_platform_address_spaces: Option<AddressAllocator>,
 
     // Each bus number has a AddressAllocator
     pci_allocator: BTreeMap<u8, AddressAllocator>,
@@ -78,6 +79,8 @@ impl SystemAllocator {
         high_size: u64,
         low_base: u64,
         low_size: u64,
+        platform_base: Option<u64>,
+        platform_size: Option<u64>,
         first_irq: u32,
     ) -> Result<Self> {
         let page_size = pagesize() as u64;
@@ -95,6 +98,14 @@ impl SystemAllocator {
             ],
 
             pci_allocator: BTreeMap::new(),
+
+            mmio_platform_address_spaces: if let (Some(b), Some(s)) = (platform_base, platform_size)
+            {
+                Some(AddressAllocator::new(b, s, Some(page_size))?)
+            } else {
+                None
+            },
+
             irq_allocator: AddressAllocator::new(
                 first_irq as u64,
                 1024 - first_irq as u64,
@@ -181,6 +192,11 @@ impl SystemAllocator {
         }
     }
 
+    /// Gets an allocator to be used for platform device MMIO allocation.
+    pub fn mmio_platform_allocator(&mut self) -> Option<&mut AddressAllocator> {
+        self.mmio_platform_address_spaces.as_mut()
+    }
+
     /// Gets an allocator to be used for IO memory.
     pub fn io_allocator(&mut self) -> Option<&mut AddressAllocator> {
         self.io_address_space.as_mut()
@@ -214,6 +230,8 @@ pub struct SystemAllocatorBuilder {
     low_mmio_size: Option<u64>,
     high_mmio_base: Option<u64>,
     high_mmio_size: Option<u64>,
+    platform_mmio_base: Option<u64>,
+    platform_mmio_size: Option<u64>,
 }
 
 impl SystemAllocatorBuilder {
@@ -225,6 +243,8 @@ impl SystemAllocatorBuilder {
             low_mmio_size: None,
             high_mmio_base: None,
             high_mmio_size: None,
+            platform_mmio_base: None,
+            platform_mmio_size: None,
         }
     }
 
@@ -246,6 +266,12 @@ impl SystemAllocatorBuilder {
         self
     }
 
+    pub fn add_platform_mmio_addresses(mut self, base: u64, size: u64) -> Self {
+        self.platform_mmio_base = Some(base);
+        self.platform_mmio_size = Some(size);
+        self
+    }
+
     pub fn create_allocator(&self, first_irq: u32) -> Result<SystemAllocator> {
         SystemAllocator::new(
             self.io_base,
@@ -254,6 +280,8 @@ impl SystemAllocatorBuilder {
             self.high_mmio_size.ok_or(Error::MissingHighMMIOAddresses)?,
             self.low_mmio_base.ok_or(Error::MissingLowMMIOAddresses)?,
             self.low_mmio_size.ok_or(Error::MissingLowMMIOAddresses)?,
+            self.platform_mmio_base,
+            self.platform_mmio_size,
             first_irq,
         )
     }
