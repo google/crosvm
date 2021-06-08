@@ -347,6 +347,7 @@ dependencies = [
  "protos",
  "remain",
  "tempfile",
+ "thiserror",
  "vm_memory",
 ]
 
