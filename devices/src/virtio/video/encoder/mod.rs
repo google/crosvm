@@ -102,10 +102,10 @@ impl<T: EncoderSession> Stream<T> {
         const DEFAULT_WIDTH: u32 = 640;
         const DEFAULT_HEIGHT: u32 = 480;
         const DEFAULT_BITRATE_TARGET: u32 = 6000;
+        const DEFAULT_BITRATE_PEAK: u32 = DEFAULT_BITRATE_TARGET * 2;
         const DEFAULT_BITRATE: Bitrate = Bitrate::VBR {
             target: DEFAULT_BITRATE_TARGET,
-            // TODO(b/190336806): Currently unused, will be added in follow-up CL.
-            peak: 0,
+            peak: DEFAULT_BITRATE_PEAK,
         };
         const DEFAULT_BUFFER_SIZE: u32 = 2097152; // 2MB; chosen empirically for 1080p video
         const DEFAULT_FPS: u32 = 30;
@@ -1105,6 +1105,11 @@ impl<T: Encoder> EncoderDevice<T> {
         let ctrl_val = match ctrl_type {
             CtrlType::BitrateMode => CtrlVal::BitrateMode(stream.dst_bitrate.mode()),
             CtrlType::Bitrate => CtrlVal::Bitrate(stream.dst_bitrate.target()),
+            CtrlType::BitratePeak => CtrlVal::BitratePeak(match stream.dst_bitrate {
+                Bitrate::VBR { peak, .. } => peak,
+                // For CBR there is no peak, so return the target (which is technically correct).
+                Bitrate::CBR { target } => target,
+            }),
             CtrlType::Profile => CtrlVal::Profile(stream.dst_profile),
             CtrlType::Level => {
                 let format = stream
@@ -1155,8 +1160,7 @@ impl<T: Encoder> EncoderDevice<T> {
                         },
                         BitrateMode::VBR => Bitrate::VBR {
                             target: stream.dst_bitrate.target(),
-                            // TODO(b/190336806): Currently unused, will be added in follow-up CL.
-                            peak: 0,
+                            peak: stream.dst_bitrate.target(),
                         },
                     };
                 }
@@ -1176,6 +1180,21 @@ impl<T: Encoder> EncoderDevice<T> {
                 match &mut stream.dst_bitrate {
                     Bitrate::CBR { target } => *target = bitrate,
                     Bitrate::VBR { target, .. } => *target = bitrate,
+                }
+            }
+            CtrlVal::BitratePeak(bitrate) => {
+                // TODO(b/190336806): Dynamic peak bitrate changes not supported yet.
+                if stream.encoder_session.is_some() {
+                    warn!(
+                        "set control called for peak bitrate but encoder session already exists."
+                    );
+                    return Err(VideoError::InvalidOperation);
+                }
+                match &mut stream.dst_bitrate {
+                    // Trying to set the peak bitrate while in constant mode. This is not an error,
+                    // just ignored.
+                    Bitrate::CBR { .. } => (),
+                    Bitrate::VBR { peak, .. } => *peak = bitrate,
                 }
             }
             CtrlVal::Profile(profile) => {

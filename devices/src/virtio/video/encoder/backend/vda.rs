@@ -216,8 +216,11 @@ impl Encoder for LibvdaEncoder {
                 Bitrate::CBR { .. } => LibVdaBitrateMode::CBR,
             },
             target: config.dst_bitrate.target(),
-            // TODO(b/190336806): Currently unused, will be added in follow-up CL.
-            peak: 0,
+            peak: match &config.dst_bitrate {
+                // No need to specify peak if mode is CBR.
+                Bitrate::CBR { .. } => 0,
+                Bitrate::VBR { peak, .. } => *peak,
+            },
         };
 
         let config = libvda::encode::Config {

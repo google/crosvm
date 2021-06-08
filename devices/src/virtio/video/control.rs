@@ -55,6 +55,7 @@ pub enum CtrlType {
     Level,
     ForceKeyframe,
     BitrateMode,
+    BitratePeak,
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +65,7 @@ pub enum CtrlVal {
     Level(Level),
     ForceKeyframe(),
     BitrateMode(BitrateMode),
+    BitratePeak(u32),
 }
 
 impl Response for CtrlVal {
@@ -71,6 +73,10 @@ impl Response for CtrlVal {
         match self {
             CtrlVal::Bitrate(r) => w.write_obj(virtio_video_control_val_bitrate {
                 bitrate: Le32::from(*r),
+                ..Default::default()
+            }),
+            CtrlVal::BitratePeak(r) => w.write_obj(virtio_video_control_val_bitrate_peak {
+                bitrate_peak: Le32::from(*r),
                 ..Default::default()
             }),
             CtrlVal::BitrateMode(m) => w.write_obj(virtio_video_control_val_bitrate_mode {

@@ -368,6 +368,7 @@ pub const VIRTIO_VIDEO_CONTROL_PROFILE: virtio_video_control_type = 2;
 pub const VIRTIO_VIDEO_CONTROL_LEVEL: virtio_video_control_type = 3;
 pub const VIRTIO_VIDEO_CONTROL_FORCE_KEYFRAME: virtio_video_control_type = 4;
 pub const VIRTIO_VIDEO_CONTROL_BITRATE_MODE: virtio_video_control_type = 5;
+pub const VIRTIO_VIDEO_CONTROL_BITRATE_PEAK: virtio_video_control_type = 6;
 pub type virtio_video_control_type = u32;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -439,6 +440,15 @@ pub struct virtio_video_control_val_bitrate {
 }
 // Safe because auto-generated structs have no implicit padding.
 unsafe impl DataInit for virtio_video_control_val_bitrate {}
+
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_video_control_val_bitrate_peak {
+    pub bitrate_peak: Le32,
+    pub padding: [u8; 4usize],
+}
+// Safe because auto-generated structs have no implicit padding.
+unsafe impl DataInit for virtio_video_control_val_bitrate_peak {}
 
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
