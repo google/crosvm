@@ -2154,7 +2154,7 @@ mod tests {
             struct Transfer {
                 pub write: bool,
                 pub addr: u64,
-            };
+            }
 
             // Write transactions from mkfs.ext4.
             let xfers: Vec<Transfer> = vec![
