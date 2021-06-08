@@ -127,12 +127,32 @@ enum OtherError {
     ReadResampleEvent(AsyncError),
 }
 
-struct DiskState {
-    disk_image: Box<dyn AsyncDisk>,
-    disk_size: Arc<AtomicU64>,
-    read_only: bool,
-    sparse: bool,
-    id: Option<BlockId>,
+/// Tracks the state of an anynchronous disk.
+pub struct DiskState {
+    pub disk_image: Box<dyn AsyncDisk>,
+    pub disk_size: Arc<AtomicU64>,
+    pub read_only: bool,
+    pub sparse: bool,
+    pub id: Option<BlockId>,
+}
+
+impl DiskState {
+    /// Creates a `DiskState` with the given params.
+    pub fn new(
+        disk_image: Box<dyn AsyncDisk>,
+        disk_size: Arc<AtomicU64>,
+        read_only: bool,
+        sparse: bool,
+        id: Option<BlockId>,
+    ) -> DiskState {
+        DiskState {
+            disk_image,
+            disk_size,
+            read_only,
+            sparse,
+            id,
+        }
+    }
 }
 
 async fn process_one_request(
@@ -177,12 +197,13 @@ async fn process_one_request(
     Ok(available_bytes)
 }
 
-async fn process_one_request_task(
+/// Process one descriptor chain asynchronously.
+pub async fn process_one_chain<I: SignalableInterrupt>(
     queue: Rc<RefCell<Queue>>,
     avail_desc: DescriptorChain,
     disk_state: Rc<AsyncMutex<DiskState>>,
     mem: GuestMemory,
-    interrupt: Rc<RefCell<Interrupt>>,
+    interrupt: &I,
     flush_timer: Rc<RefCell<TimerAsync>>,
     flush_timer_armed: Rc<RefCell<bool>>,
 ) {
@@ -200,7 +221,7 @@ async fn process_one_request_task(
 
     let mut queue = queue.borrow_mut();
     queue.add_used(&mem, descriptor_index, len as u32);
-    queue.trigger_interrupt(&mem, &*interrupt.borrow());
+    queue.trigger_interrupt(&mem, interrupt);
     queue.update_int_required(&mem);
 }
 
@@ -223,15 +244,25 @@ async fn handle_queue(
             continue;
         }
         while let Some(descriptor_chain) = queue.borrow_mut().pop(&mem) {
-            ex.spawn_local(process_one_request_task(
-                Rc::clone(&queue),
-                descriptor_chain,
-                Rc::clone(&disk_state),
-                mem.clone(),
-                Rc::clone(&interrupt),
-                Rc::clone(&flush_timer),
-                Rc::clone(&flush_timer_armed),
-            ))
+            let queue = Rc::clone(&queue);
+            let disk_state = Rc::clone(&disk_state);
+            let mem = mem.clone();
+            let interrupt = Rc::clone(&interrupt);
+            let flush_timer = Rc::clone(&flush_timer);
+            let flush_timer_armed = Rc::clone(&flush_timer_armed);
+
+            ex.spawn_local(async move {
+                process_one_chain(
+                    queue,
+                    descriptor_chain,
+                    disk_state,
+                    mem,
+                    &*interrupt.borrow(),
+                    flush_timer,
+                    flush_timer_armed,
+                )
+                .await
+            })
             .detach();
         }
     }
@@ -377,12 +408,23 @@ fn run_worker(
     queue_evts: Vec<Event>,
     kill_evt: Event,
 ) -> Result<(), String> {
-    // Wrap the interupt in a `RefCell` so it can be shared between async functions.
+    if queues.len() != queue_evts.len() {
+        return Err("Number of queues and events must match.".to_string());
+    }
+
     let interrupt = Rc::new(RefCell::new(interrupt));
 
     // One flush timer per disk.
     let timer = Timer::new().expect("Failed to create a timer");
     let flush_timer_armed = Rc::new(RefCell::new(false));
+
+    // Process any requests to resample the irq value.
+    let resample = handle_irq_resample(&ex, Rc::clone(&interrupt));
+    pin_mut!(resample);
+
+    // Handles control requests.
+    let control = handle_command_tube(control_tube, Rc::clone(&interrupt), disk_state.clone());
+    pin_mut!(control);
 
     // Handle all the queues in one sub-select call.
     let flush_timer = Rc::new(RefCell::new(
@@ -393,6 +435,7 @@ fn run_worker(
         )
         .expect("Failed to create an async timer"),
     ));
+
     let queue_handlers =
         queues
             .into_iter()
@@ -411,7 +454,7 @@ fn run_worker(
                     Rc::clone(&disk_state),
                     Rc::clone(&queue),
                     event,
-                    interrupt.clone(),
+                    Rc::clone(&interrupt),
                     Rc::clone(&flush_timer),
                     Rc::clone(&flush_timer_armed),
                 )
@@ -423,14 +466,6 @@ fn run_worker(
     let flush_timer = TimerAsync::new(timer.0, &ex).expect("Failed to create an async timer");
     let disk_flush = flush_disk(disk_state.clone(), flush_timer, flush_timer_armed.clone());
     pin_mut!(disk_flush);
-
-    // Handles control requests.
-    let control = handle_command_tube(control_tube, interrupt.clone(), disk_state.clone());
-    pin_mut!(control);
-
-    // Process any requests to resample the irq value.
-    let resample = handle_irq_resample(&ex, interrupt.clone());
-    pin_mut!(resample);
 
     // Exit if the kill event is triggered.
     let kill_evt = EventAsync::new(kill_evt.0, &ex).expect("Failed to create async kill event fd");
@@ -762,6 +797,7 @@ impl VirtioDevice for BlockAsync {
                     .name("virtio_blk".to_string())
                     .spawn(move || {
                         let ex = Executor::new().expect("Failed to create an executor");
+
                         let async_control = control_tube
                             .map(|c| c.into_async_tube(&ex).expect("failed to create async tube"));
                         let async_image = match disk_image.to_async_disk(&ex) {
