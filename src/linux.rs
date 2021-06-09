@@ -65,8 +65,8 @@ use vm_memory::{GuestAddress, GuestMemory, MemoryPolicy};
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use crate::gdb::{gdb_thread, GdbStub};
 use crate::{
-    Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption, VhostUserFsOption,
-    VhostUserOption, VhostUserWlOption,
+    Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption, VfioType,
+    VhostUserFsOption, VhostUserOption, VhostUserWlOption,
 };
 use arch::{
     self, LinuxArch, RunnableLinuxVm, VcpuAffinity, VirtioDeviceStub, VmComponents, VmImage,
@@ -1654,7 +1654,12 @@ fn create_devices(
         let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>> =
             BTreeMap::new();
 
-        for (vfio_path, enable_iommu) in cfg.vfio.iter() {
+        for vfio_dev in cfg
+            .vfio
+            .iter()
+            .filter(|dev| dev.get_type() == VfioType::Pci)
+        {
+            let vfio_path = &vfio_dev.vfio_path;
             let (vfio_pci_device, jail) = create_vfio_device(
                 cfg,
                 vm,
@@ -1663,7 +1668,7 @@ fn create_devices(
                 vfio_path.as_path(),
                 false,
                 &mut iommu_attached_endpoints,
-                *enable_iommu,
+                vfio_dev.iommu_enabled(),
             )?;
 
             devices.push((vfio_pci_device, jail));

@@ -201,6 +201,95 @@ impl Default for SharedDir {
     }
 }
 
+/// Vfio device type, recognized based on command line option.
+#[derive(Eq, PartialEq, Clone, Copy)]
+pub enum VfioType {
+    Pci,
+}
+
+impl FromStr for VfioType {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use VfioType::*;
+        match s {
+            "vfio" => Ok(Pci),
+            _ => Err("invalid vfio device type, must be 'vfio'"),
+        }
+    }
+}
+
+/// VFIO device structure for creating a new instance based on command line options.
+pub struct VfioCommand {
+    vfio_path: PathBuf,
+    dev_type: VfioType,
+    params: BTreeMap<String, String>,
+}
+
+impl VfioCommand {
+    pub fn new(dev_type: VfioType, path: &str) -> argument::Result<VfioCommand> {
+        let mut param = path.split(',');
+        let vfio_path =
+            PathBuf::from(param.next().ok_or_else(|| argument::Error::InvalidValue {
+                value: path.to_owned(),
+                expected: String::from("missing vfio path"),
+            })?);
+
+        if !vfio_path.exists() {
+            return Err(argument::Error::InvalidValue {
+                value: path.to_owned(),
+                expected: String::from("the vfio path does not exist"),
+            });
+        }
+        if !vfio_path.is_dir() {
+            return Err(argument::Error::InvalidValue {
+                value: path.to_owned(),
+                expected: String::from("the vfio path should be directory"),
+            });
+        }
+
+        let mut params = BTreeMap::new();
+        for p in param {
+            let mut kv = p.splitn(2, '=');
+            if let (Some(kind), Some(value)) = (kv.next(), kv.next()) {
+                Self::validate_params(kind, value)?;
+                params.insert(kind.to_owned(), value.to_owned());
+            };
+        }
+        Ok(VfioCommand {
+            vfio_path,
+            params,
+            dev_type,
+        })
+    }
+
+    fn validate_params(kind: &str, value: &str) -> Result<(), argument::Error> {
+        match kind {
+            "iommu" => match value {
+                "on" | "off" => Ok(()),
+                _ => {
+                    return Err(argument::Error::InvalidValue {
+                        value: format!("{}={}", kind.to_owned(), value.to_owned()),
+                        expected: String::from("option must be `iommu=on|off`"),
+                    })
+                }
+            },
+            _ => Err(argument::Error::InvalidValue {
+                value: format!("{}={}", kind.to_owned(), value.to_owned()),
+                expected: String::from("option must be `iommu=<val>`"),
+            }),
+        }
+    }
+
+    pub fn get_type(&self) -> VfioType {
+        self.dev_type
+    }
+
+    pub fn iommu_enabled(&self) -> bool {
+        matches!(self.params.get("iommu"), Some(value) if value.as_str() == "on")
+    }
+}
+
 /// Aggregate of all configurable options for a running VM.
 pub struct Config {
     pub kvm_device_path: PathBuf,
@@ -262,7 +351,7 @@ pub struct Config {
     pub virtio_switches: Vec<PathBuf>,
     pub virtio_input_evdevs: Vec<PathBuf>,
     pub split_irqchip: bool,
-    pub vfio: BTreeMap<PathBuf, bool>,
+    pub vfio: Vec<VfioCommand>,
     pub video_dec: bool,
     pub video_enc: bool,
     pub acpi_tables: Vec<PathBuf>,
@@ -350,7 +439,7 @@ impl Default for Config {
             virtio_switches: Vec::new(),
             virtio_input_evdevs: Vec::new(),
             split_irqchip: false,
-            vfio: BTreeMap::new(),
+            vfio: Vec::new(),
             video_dec: false,
             video_enc: false,
             acpi_tables: Vec::new(),

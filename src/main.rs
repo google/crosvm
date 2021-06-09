@@ -23,7 +23,7 @@ use crosvm::DirectIoOption;
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
     platform, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
-    VhostUserFsOption, VhostUserOption, VhostUserWlOption, DISK_ID_LEN,
+    VfioCommand, VhostUserFsOption, VhostUserOption, VhostUserWlOption, DISK_ID_LEN,
 };
 use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
 #[cfg(feature = "audio_cras")]
@@ -1775,52 +1775,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.executable_path = Some(Executable::Bios(PathBuf::from(value.unwrap().to_owned())));
         }
         "vfio" => {
-            let mut param = value.unwrap().split(',');
-            let vfio_path =
-                PathBuf::from(param.next().ok_or_else(|| argument::Error::InvalidValue {
-                    value: value.unwrap().to_owned(),
-                    expected: String::from("missing vfio path"),
-                })?);
-            if !vfio_path.exists() {
-                return Err(argument::Error::InvalidValue {
-                    value: value.unwrap().to_owned(),
-                    expected: String::from("the vfio path does not exist"),
-                });
-            }
-            if !vfio_path.is_dir() {
-                return Err(argument::Error::InvalidValue {
-                    value: value.unwrap().to_owned(),
-                    expected: String::from("the vfio path should be directory"),
-                });
-            }
-
-            let mut enable_iommu = false;
-            if let Some(p) = param.next() {
-                let mut kv = p.splitn(2, '=');
-                if let (Some(kind), Some(value)) = (kv.next(), kv.next()) {
-                    match kind {
-                        "iommu" => (),
-                        _ => {
-                            return Err(argument::Error::InvalidValue {
-                                value: p.to_owned(),
-                                expected: String::from("option must be `iommu=on|off`"),
-                            })
-                        }
-                    }
-                    match value {
-                        "on" => enable_iommu = true,
-                        "off" => (),
-                        _ => {
-                            return Err(argument::Error::InvalidValue {
-                                value: p.to_owned(),
-                                expected: String::from("option must be `iommu=on|off`"),
-                            })
-                        }
-                    }
-                };
-            }
-
-            cfg.vfio.insert(vfio_path, enable_iommu);
+            let vfio_type = name.parse().unwrap();
+            let vfio_dev = VfioCommand::new(vfio_type, value.unwrap())?;
+            cfg.vfio.push(vfio_dev);
         }
         "video-decoder" => {
             cfg.video_dec = true;
