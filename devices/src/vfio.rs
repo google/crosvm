@@ -813,6 +813,24 @@ impl VfioDevice {
         }
     }
 
+    /// get a region's size
+    /// return: Region size from the start of vfio device descriptor
+    pub fn get_region_size(&self, index: u32) -> u64 {
+        match self.regions.get(index as usize) {
+            Some(v) => v.size,
+            None => {
+                warn!("get_region_size with invalid index: {}", index);
+                0
+            }
+        }
+    }
+
+    /// get a number of regions
+    /// return: Number of regions of vfio device descriptor
+    pub fn get_region_count(&self) -> u32 {
+        self.regions.len() as u32
+    }
+
     /// get a region's mmap info vector
     pub fn get_region_mmap(&self, index: u32) -> Vec<vfio_region_sparse_mmap_area> {
         match self.regions.get(index as usize) {
