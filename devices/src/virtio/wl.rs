@@ -104,7 +104,7 @@ const VIRTIO_WL_VFD_CONTROL: u32 = 0x4;
 pub const VIRTIO_WL_F_TRANS_FLAGS: u32 = 0x01;
 pub const VIRTIO_WL_F_SEND_FENCES: u32 = 0x02;
 
-pub const QUEUE_SIZE: u16 = 16;
+pub const QUEUE_SIZE: u16 = 256;
 pub const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 
 const NEXT_VFD_ID_BASE: u32 = 0x40000000;
