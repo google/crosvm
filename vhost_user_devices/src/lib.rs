@@ -56,6 +56,7 @@ use cros_async::{AsyncError, AsyncWrapper, Executor};
 use devices::virtio::{Queue, SignalableInterrupt};
 use remain::sorted;
 use sync::Mutex;
+use sys_util::clear_fd_flags;
 use thiserror::Error as ThisError;
 use vm_memory::{GuestAddress, GuestMemory, MemoryRegion};
 use vmm_vhost::vhost_user::message::{
@@ -475,6 +476,14 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
                 error!("invalid fd is given: {}", e);
                 VhostError::InvalidParam
             })?;
+
+            // Remove O_NONBLOCK from kick_fd. Otherwise, uring_executor will fails when we read
+            // values via `next_val()` later.
+            if let Err(e) = clear_fd_flags(rd, libc::O_NONBLOCK) {
+                error!("failed to remove O_NONBLOCK for kick fd: {}", e);
+                return Err(VhostError::InvalidParam);
+            }
+
             // Safe because the FD is now owned.
             let kick_evt = unsafe { Event::from_raw_descriptor(rd) };
 

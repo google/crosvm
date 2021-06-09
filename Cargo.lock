@@ -1171,6 +1171,7 @@ dependencies = [
  "once_cell",
  "remain",
  "sync",
+ "sys_util",
  "tempfile",
  "thiserror",
  "virtio_sys",
