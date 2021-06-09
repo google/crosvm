@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context};
 use base::{
@@ -19,6 +20,7 @@ use devices::ProtectionType;
 use futures::future::{AbortHandle, Abortable};
 use getopts::Options;
 use once_cell::sync::OnceCell;
+use sync::Mutex;
 use vhost_user_devices::{CallEvent, DeviceRequestHandler, VhostUserBackend};
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
@@ -28,7 +30,7 @@ static WL_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 async fn run_out_queue(
     mut queue: Queue,
     mem: GuestMemory,
-    call_evt: CallEvent,
+    call_evt: Arc<Mutex<CallEvent>>,
     kick_evt: EventAsync,
     wlstate: Rc<RefCell<wl::WlState>>,
 ) {
@@ -45,7 +47,7 @@ async fn run_out_queue(
 async fn run_in_queue(
     mut queue: Queue,
     mem: GuestMemory,
-    call_evt: CallEvent,
+    call_evt: Arc<Mutex<CallEvent>>,
     kick_evt: EventAsync,
     wlstate: Rc<RefCell<wl::WlState>>,
     wlstate_ctx: Box<dyn IoSourceExt<AsyncWrapper<SafeDescriptor>>>,
@@ -151,7 +153,7 @@ impl VhostUserBackend for WlBackend {
         idx: usize,
         queue: Queue,
         mem: GuestMemory,
-        call_evt: CallEvent,
+        call_evt: Arc<Mutex<CallEvent>>,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {

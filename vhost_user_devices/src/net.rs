@@ -4,6 +4,7 @@
 
 use std::net::Ipv4Addr;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::thread;
 
 use anyhow::{anyhow, bail, Context};
@@ -20,6 +21,7 @@ use futures::future::{AbortHandle, Abortable};
 use getopts::Options;
 use net_util::{MacAddress, Tap, TapT};
 use once_cell::sync::OnceCell;
+use sync::Mutex;
 use vhost_user_devices::{CallEvent, DeviceRequestHandler, VhostUserBackend};
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
@@ -33,7 +35,7 @@ async fn run_tx_queue(
     mut queue: virtio::Queue,
     mem: GuestMemory,
     mut tap: Tap,
-    call_evt: CallEvent,
+    call_evt: Arc<Mutex<CallEvent>>,
     kick_evt: EventAsync,
 ) {
     loop {
@@ -50,7 +52,7 @@ async fn run_rx_queue(
     mut queue: virtio::Queue,
     mem: GuestMemory,
     mut tap: Box<dyn IoSourceExt<Tap>>,
-    call_evt: CallEvent,
+    call_evt: Arc<Mutex<CallEvent>>,
     kick_evt: EventAsync,
 ) {
     loop {
@@ -235,7 +237,7 @@ impl VhostUserBackend for NetBackend {
         idx: usize,
         queue: virtio::Queue,
         mem: GuestMemory,
-        call_evt: CallEvent,
+        call_evt: Arc<Mutex<CallEvent>>,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
