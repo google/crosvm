@@ -150,6 +150,8 @@ pub trait BusDeviceObj {
 #[sorted]
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("Bus Range not found")]
+    Empty,
     /// The insertion failed because the new device overlapped with an old device.
     #[error("new device overlaps with an old device")]
     Overlap,
@@ -293,6 +295,28 @@ impl Bus {
         }
 
         Ok(())
+    }
+
+    /// Remove the given device at the given address space.
+    pub fn remove(&self, base: u64, len: u64) -> Result<()> {
+        if len == 0 {
+            return Err(Error::Overlap);
+        }
+
+        let mut devices = self.devices.lock();
+        if devices
+            .iter()
+            .any(|(range, _dev)| range.base == base && range.len == len)
+        {
+            let ret = devices.remove(&BusRange { base, len });
+            if ret.is_some() {
+                Ok(())
+            } else {
+                Err(Error::Empty)
+            }
+        } else {
+            Err(Error::Empty)
+        }
     }
 
     /// Reads data from the device that owns the range containing `addr` and puts it into `data`.
