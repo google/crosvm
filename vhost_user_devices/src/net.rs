@@ -159,6 +159,7 @@ impl NetBackend {
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_UFO
             | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
             | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
+            | 1 << virtio_net::VIRTIO_NET_F_MTU
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
 
         let mtu = tap.mtu()?;
