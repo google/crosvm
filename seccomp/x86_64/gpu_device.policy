@@ -95,10 +95,11 @@ sched_setscheduler: 1
 sched_setaffinity: 1
 kcmp: 1
 
-# Rules for Vulkan loader
+# Rules for Vulkan loader / layers
 access: 1
 getgid: 1
 getegid: 1
+getcwd: 1
 
 # Rules for virglrenderer
 sched_yield: 1
