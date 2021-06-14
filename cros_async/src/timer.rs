@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use sys_util::{Result as SysResult, TimerFd};
 
-use crate::{AsyncResult, Executor, IntoAsync, IoSourceExt};
+use crate::{AsyncResult, Error, Executor, IntoAsync, IoSourceExt};
 #[cfg(test)]
 use crate::{FdExecutor, URingExecutor};
 
@@ -34,6 +34,15 @@ impl TimerAsync {
     /// Gets the next value from the timer.
     pub async fn next_val(&self) -> AsyncResult<u64> {
         self.io_source.read_u64().await
+    }
+
+    /// Async sleep for the given duration
+    pub async fn sleep(ex: &Executor, dur: Duration) -> std::result::Result<(), Error> {
+        let tfd = TimerFd::new().map_err(Error::TimerFd)?;
+        tfd.reset(dur, None).map_err(Error::TimerFd)?;
+        let t = TimerAsync::new(tfd, ex).map_err(Error::TimerAsync)?;
+        t.next_val().await.map_err(Error::TimerAsync)?;
+        Ok(())
     }
 
     /// Sets the timer to expire after `dur`.  If `interval` is not `None` it represents
@@ -94,6 +103,19 @@ mod tests {
         }
 
         let ex = FdExecutor::new().unwrap();
+        ex.run_until(this_test(&ex)).unwrap();
+    }
+
+    #[test]
+    fn timer() {
+        async fn this_test(ex: &Executor) -> () {
+            let dur = Duration::from_millis(200);
+            let now = Instant::now();
+            TimerAsync::sleep(ex, dur).await.expect("unable to sleep");
+            assert!(now.elapsed() >= dur);
+        }
+
+        let ex = Executor::new().expect("creating an executor failed");
         ex.run_until(this_test(&ex)).unwrap();
     }
 }

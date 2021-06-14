@@ -83,6 +83,7 @@ pub use io_ext::{
 pub use mem::{BackingMemory, MemRegion};
 pub use poll_source::PollSource;
 pub use select::SelectResult;
+pub use sys_util;
 pub use timer::TimerAsync;
 pub use uring_executor::URingExecutor;
 pub use uring_source::UringSource;
@@ -102,6 +103,12 @@ pub enum Error {
     /// Error from the uring executor.
     #[error("Failure in the uring executor: {0}")]
     URingExecutor(uring_executor::Error),
+    /// Error from TimerFd.
+    #[error("Failure in TimerFd: {0}")]
+    TimerFd(sys_util::Error),
+    /// Error from TimerFd.
+    #[error("Failure in TimerAsync: {0}")]
+    TimerAsync(AsyncError),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
