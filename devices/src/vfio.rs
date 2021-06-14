@@ -449,6 +449,12 @@ pub enum VfioIrqType {
     Msix,
 }
 
+/// Vfio Irq information used to assign and enable/disable/mask/unmask vfio irq
+pub struct VfioIrq {
+    pub flags: u32,
+    pub index: u32,
+}
+
 struct VfioRegion {
     // flags for this region: read/write/mmap
     flags: u32,
@@ -636,6 +642,57 @@ impl VfioDevice {
         }
 
         Err(VfioError::VfioDeviceGetInfo(get_error()))
+    }
+
+    /// Query interrupt information
+    /// return: Vector of interrupts information, each of which contains flags and index
+    pub fn get_irqs(&self) -> Result<Vec<VfioIrq>, VfioError> {
+        let mut dev_info = vfio_device_info {
+            argsz: mem::size_of::<vfio_device_info>() as u32,
+            flags: 0,
+            num_regions: 0,
+            num_irqs: 0,
+        };
+        // Safe as we are the owner of dev and dev_info which are valid value,
+        // and we verify the return value.
+        let ret = unsafe {
+            ioctl_with_mut_ref(self.device_file(), VFIO_DEVICE_GET_INFO(), &mut dev_info)
+        };
+        if ret < 0 {
+            return Err(VfioError::VfioDeviceGetInfo(get_error()));
+        }
+
+        Self::validate_dev_info(&mut dev_info)?;
+        let mut irqs: Vec<VfioIrq> = Vec::new();
+
+        for i in 0..dev_info.num_irqs {
+            let argsz = mem::size_of::<vfio_irq_info>() as u32;
+            let mut irq_info = vfio_irq_info {
+                argsz,
+                flags: 0,
+                index: i,
+                count: 0,
+            };
+            // Safe as we are the owner of dev and dev_info which are valid value,
+            // and we verify the return value.
+            let ret = unsafe {
+                ioctl_with_mut_ref(
+                    self.device_file(),
+                    VFIO_DEVICE_GET_IRQ_INFO(),
+                    &mut irq_info,
+                )
+            };
+            if ret < 0 || irq_info.count != 1 {
+                return Err(VfioError::VfioDeviceGetInfo(get_error()));
+            }
+
+            let irq = VfioIrq {
+                flags: irq_info.flags,
+                index: irq_info.index,
+            };
+            irqs.push(irq);
+        }
+        Ok(irqs)
     }
 
     #[allow(clippy::cast_ptr_alignment)]
