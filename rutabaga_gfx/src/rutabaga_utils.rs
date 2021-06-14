@@ -89,7 +89,7 @@ pub const RUTABAGA_CONTEXT_INIT_CAPSET_ID_MASK: u32 = 0x00ff;
 
 /// Rutabaga flags for creating fences (fence ctx idx info not upstreamed).
 pub const RUTABAGA_FLAG_FENCE: u32 = 1 << 0;
-pub const RUTABAGA_FLAG_INFO_FENCE_CTX_IDX: u32 = 1 << 1;
+pub const RUTABAGA_FLAG_INFO_RING_IDX: u32 = 1 << 1;
 
 /// Convenience struct for Rutabaga fences
 #[derive(Copy, Clone)]
@@ -97,7 +97,7 @@ pub struct RutabagaFenceData {
     pub flags: u32,
     pub fence_id: u64,
     pub ctx_id: u32,
-    pub fence_ctx_idx: u32,
+    pub ring_idx: u32,
 }
 
 /// Mapped memory caching flags (see virtio_gpu spec)

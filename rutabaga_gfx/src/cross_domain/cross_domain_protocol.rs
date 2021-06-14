@@ -48,7 +48,7 @@ unsafe impl DataInit for CrossDomainImageRequirements {}
 #[derive(Copy, Clone, Default)]
 pub struct CrossDomainHeader {
     pub cmd: u8,
-    pub fence_ctx_idx: u8,
+    pub ring_idx: u8,
     pub cmd_size: u16,
     pub pad: u32,
 }

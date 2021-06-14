@@ -8,7 +8,7 @@ mod udmabuf_bindings;
 mod virtio_gpu;
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::i64;
 use std::io::Read;
@@ -116,6 +116,33 @@ pub struct VirtioScanoutBlobData {
     pub drm_format: DrmFormat,
     pub strides: [u32; 4],
     pub offsets: [u32; 4],
+}
+
+#[derive(Hash, Eq, PartialEq)]
+enum VirtioGpuRing {
+    Global,
+    ContextSpecific { ctx_id: u32, ring_idx: u32 },
+}
+
+struct FenceDescriptor {
+    ring: VirtioGpuRing,
+    fence_id: u64,
+    index: u16,
+    len: u32,
+}
+
+struct FenceState {
+    descs: Vec<FenceDescriptor>,
+    completed_fences: HashMap<VirtioGpuRing, u64>,
+}
+
+impl Default for FenceState {
+    fn default() -> Self {
+        FenceState {
+            descs: Vec::new(),
+            completed_fences: HashMap::new(),
+        }
+    }
 }
 
 trait QueueReader {
@@ -227,58 +254,61 @@ fn build(
     )
 }
 
+/// Create a handler that writes into the completed fence queue
+fn create_fence_handler(
+    mem: GuestMemory,
+    ctrl_queue: SharedQueueReader,
+    fence_state: Arc<Mutex<FenceState>>,
+) -> RutabagaFenceHandler {
+    RutabagaFenceClosure::new(move |completed_fence| {
+        let mut signal = false;
+
+        {
+            let ring = match completed_fence.flags & VIRTIO_GPU_FLAG_INFO_RING_IDX {
+                0 => VirtioGpuRing::Global,
+                _ => VirtioGpuRing::ContextSpecific {
+                    ctx_id: completed_fence.ctx_id,
+                    ring_idx: completed_fence.ring_idx,
+                },
+            };
+
+            let mut fence_state = fence_state.lock();
+            fence_state.descs.retain(|f_desc| {
+                if f_desc.ring == ring && f_desc.fence_id <= completed_fence.fence_id {
+                    ctrl_queue.add_used(&mem, f_desc.index, f_desc.len);
+                    signal = true;
+                    return false;
+                }
+                true
+            });
+            // Update the last completed fence for this context
+            fence_state
+                .completed_fences
+                .insert(ring, completed_fence.fence_id);
+        }
+
+        if signal {
+            ctrl_queue.signal_used();
+        }
+    })
+}
+
 struct ReturnDescriptor {
     index: u16,
     len: u32,
 }
 
-struct FenceDescriptor {
-    desc_fence: RutabagaFenceData,
-    index: u16,
-    len: u32,
-}
-
-fn fence_ctx_equal(desc_fence: &RutabagaFenceData, completed: &RutabagaFenceData) -> bool {
-    let desc_fence_ctx = desc_fence.flags & VIRTIO_GPU_FLAG_INFO_FENCE_CTX_IDX != 0;
-    let completed_fence_ctx = completed.flags & VIRTIO_GPU_FLAG_INFO_FENCE_CTX_IDX != 0;
-
-    // Both fences on global timeline -- only case with upstream kernel.  The rest of the logic
-    // is for per fence context prototype.
-    if !completed_fence_ctx && !desc_fence_ctx {
-        return true;
-    }
-
-    // One fence is on global timeline
-    if desc_fence_ctx != completed_fence_ctx {
-        return false;
-    }
-
-    // Different 3D contexts
-    if desc_fence.ctx_id != completed.ctx_id {
-        return false;
-    }
-
-    // Different fence contexts with same 3D context
-    if desc_fence.fence_ctx_idx != completed.fence_ctx_idx {
-        return false;
-    }
-
-    true
-}
-
 struct Frontend {
-    return_ctrl_descriptors: VecDeque<ReturnDescriptor>,
+    fence_state: Arc<Mutex<FenceState>>,
     return_cursor_descriptors: VecDeque<ReturnDescriptor>,
-    fence_descriptors: Vec<FenceDescriptor>,
     virtio_gpu: VirtioGpu,
 }
 
 impl Frontend {
-    fn new(virtio_gpu: VirtioGpu) -> Frontend {
+    fn new(virtio_gpu: VirtioGpu, fence_state: Arc<Mutex<FenceState>>) -> Frontend {
         Frontend {
-            return_ctrl_descriptors: Default::default(),
+            fence_state,
             return_cursor_descriptors: Default::default(),
-            fence_descriptors: Default::default(),
             virtio_gpu,
         }
     }
@@ -672,7 +702,7 @@ impl Frontend {
                         flags,
                         fence_id,
                         ctx_id,
-                        fence_ctx_idx: info,
+                        ring_idx: info,
                     };
                     gpu_response = match self.virtio_gpu.create_fence(fence_data) {
                         Ok(_) => gpu_response,
@@ -692,21 +722,30 @@ impl Frontend {
             }
 
             if flags & VIRTIO_GPU_FLAG_FENCE != 0 {
-                self.fence_descriptors.push(FenceDescriptor {
-                    desc_fence: RutabagaFenceData {
-                        flags,
-                        fence_id,
+                let ring = match flags & VIRTIO_GPU_FLAG_INFO_RING_IDX {
+                    0 => VirtioGpuRing::Global,
+                    _ => VirtioGpuRing::ContextSpecific {
                         ctx_id,
-                        fence_ctx_idx: info,
+                        ring_idx: info,
                     },
-                    index: desc_index,
-                    len,
-                });
+                };
 
-                return None;
+                // In case the fence is signaled immediately after creation, don't add a return
+                // FenceDescriptor.
+                let mut fence_state = self.fence_state.lock();
+                if fence_id > *fence_state.completed_fences.get(&ring).unwrap_or(&0) {
+                    fence_state.descs.push(FenceDescriptor {
+                        ring,
+                        fence_id,
+                        index: desc_index,
+                        len,
+                    });
+
+                    return None;
+                }
             }
 
-            // No fence, respond now.
+            // No fence (or already completed fence), respond now.
         }
         Some(ReturnDescriptor {
             index: desc_index,
@@ -717,29 +756,12 @@ impl Frontend {
     fn return_cursor(&mut self) -> Option<ReturnDescriptor> {
         self.return_cursor_descriptors.pop_front()
     }
-
-    fn return_ctrl(&mut self) -> Option<ReturnDescriptor> {
-        self.return_ctrl_descriptors.pop_front()
+    fn fence_poll(&mut self) {
+        self.virtio_gpu.fence_poll();
     }
 
-    fn fence_poll(&mut self) {
-        let completed_fences = self.virtio_gpu.fence_poll();
-        let return_descs = &mut self.return_ctrl_descriptors;
-
-        self.fence_descriptors.retain(|f_desc| {
-            for completed in &completed_fences {
-                if fence_ctx_equal(&f_desc.desc_fence, completed)
-                    && f_desc.desc_fence.fence_id <= completed.fence_id
-                {
-                    return_descs.push_back(ReturnDescriptor {
-                        index: f_desc.index,
-                        len: f_desc.len,
-                    });
-                    return false;
-                }
-            }
-            true
-        })
+    fn has_pending_fences(&self) -> bool {
+        !self.fence_state.lock().descs.is_empty()
     }
 }
 
@@ -808,7 +830,7 @@ impl Worker {
         let mut process_resource_bridge = Vec::with_capacity(self.resource_bridges.len());
         'wait: loop {
             // If there are outstanding fences, wake up early to poll them.
-            let duration = if !self.state.fence_descriptors.is_empty() {
+            let duration = if self.state.has_pending_fences() {
                 Duration::from_millis(FENCE_POLL_MS)
             } else {
                 Duration::new(i64::MAX as u64, 0)
@@ -881,11 +903,6 @@ impl Worker {
             }
 
             self.state.fence_poll();
-
-            while let Some(desc) = self.state.return_ctrl() {
-                self.ctrl_queue.add_used(&self.mem, desc.index, desc.len);
-                signal_used_ctrl = true;
-            }
 
             // Process the entire control queue before the resource bridge in case a resource is
             // created or destroyed by the control queue. Processing the resource bridge first may
@@ -1209,6 +1226,7 @@ impl VirtioDevice for Gpu {
         let map_request = Arc::clone(&self.map_request);
         let external_blob = self.external_blob;
         let udmabuf = self.udmabuf;
+        let fence_state = Arc::new(Mutex::new(Default::default()));
         if let (Some(gpu_device_tube), Some(pci_bar), Some(rutabaga_builder)) = (
             self.gpu_device_tube.take(),
             self.pci_bar.take(),
@@ -1218,7 +1236,11 @@ impl VirtioDevice for Gpu {
                 thread::Builder::new()
                     .name("virtio_gpu".to_string())
                     .spawn(move || {
-                        let fence_handler = RutabagaFenceClosure::new(|_completed_fence| {});
+                        let fence_handler = create_fence_handler(
+                            mem.clone(),
+                            ctrl_queue.clone(),
+                            fence_state.clone(),
+                        );
 
                         let virtio_gpu = match build(
                             &display_backends,
@@ -1240,13 +1262,13 @@ impl VirtioDevice for Gpu {
                             interrupt: irq,
                             exit_evt,
                             mem,
-                            ctrl_queue,
+                            ctrl_queue: ctrl_queue.clone(),
                             ctrl_evt,
                             cursor_queue,
                             cursor_evt,
                             resource_bridges,
                             kill_evt,
-                            state: Frontend::new(virtio_gpu),
+                            state: Frontend::new(virtio_gpu, fence_state),
                         }
                         .run()
                     });

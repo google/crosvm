@@ -147,7 +147,7 @@ pub fn virtio_gpu_cmd_str(cmd: u32) -> &'static str {
 
 pub const VIRTIO_GPU_FLAG_FENCE: u32 = 1 << 0;
 /* Fence context index info flag not upstreamed. */
-pub const VIRTIO_GPU_FLAG_INFO_FENCE_CTX_IDX: u32 = 1 << 1;
+pub const VIRTIO_GPU_FLAG_INFO_RING_IDX: u32 = 1 << 1;
 
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]

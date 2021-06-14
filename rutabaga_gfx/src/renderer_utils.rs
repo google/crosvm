@@ -64,7 +64,7 @@ impl FenceState {
                     flags: RUTABAGA_FLAG_FENCE,
                     fence_id: latest_fence as u64,
                     ctx_id: 0,
-                    fence_ctx_idx: 0,
+                    ring_idx: 0,
                 });
             }
         }
