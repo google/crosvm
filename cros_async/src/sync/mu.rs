@@ -651,7 +651,7 @@ fn cancel_waiter(raw: usize, waiter: &Waiter, wake_next: bool) {
 /// use std::thread;
 /// use std::sync::mpsc::channel;
 ///
-/// use cros_async::sync::{block_on, Mutex};
+/// use cros_async::{block_on, sync::Mutex};
 ///
 /// const N: usize = 10;
 ///
@@ -899,7 +899,10 @@ mod test {
     use futures_executor::{LocalPool, ThreadPool};
     use futures_util::task::LocalSpawnExt;
 
-    use crate::sync::{block_on, Condvar, SpinLock};
+    use crate::{
+        block_on,
+        sync::{Condvar, SpinLock},
+    };
 
     #[derive(Debug, Eq, PartialEq)]
     struct NonCopy(u32);

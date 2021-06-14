@@ -28,7 +28,10 @@ const HAS_WAITERS: usize = 1 << 1;
 /// use std::thread;
 /// use std::sync::mpsc::channel;
 ///
-/// use cros_async::sync::{block_on, Condvar, Mutex};
+/// use cros_async::{
+///     block_on,
+///     sync::{Condvar, Mutex},
+/// };
 ///
 /// const N: usize = 13;
 ///
@@ -93,7 +96,10 @@ impl Condvar {
     /// # use std::sync::Arc;
     /// # use std::thread;
     ///
-    /// # use cros_async::sync::{block_on, Condvar, Mutex};
+    /// # use cros_async::{
+    /// #     block_on,
+    /// #     sync::{Condvar, Mutex},
+    /// # };
     ///
     /// # let mu = Arc::new(Mutex::new(false));
     /// # let cv = Arc::new(Condvar::new());
@@ -458,7 +464,7 @@ mod test {
     use futures_executor::{LocalPool, LocalSpawner, ThreadPool};
     use futures_util::task::LocalSpawnExt;
 
-    use crate::sync::{block_on, Mutex};
+    use crate::{block_on, sync::Mutex};
 
     // Dummy waker used when we want to manually drive futures.
     struct TestWaker;

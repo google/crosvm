@@ -58,6 +58,7 @@
 //! See the docs for `IoSourceExt` if support for kernels <5.4 is required. Focus on `UringSource` if
 //! all systems have support for io_uring.
 
+mod blocking;
 mod complete;
 mod event;
 mod executor;
@@ -73,6 +74,7 @@ mod uring_executor;
 mod uring_source;
 mod waker;
 
+pub use blocking::block_on;
 pub use event::EventAsync;
 pub use executor::Executor;
 pub use fd_executor::FdExecutor;
