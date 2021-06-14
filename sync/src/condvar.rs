@@ -6,6 +6,8 @@ use std::fmt::{self, Debug};
 use std::sync::{Condvar as StdCondvar, MutexGuard, WaitTimeoutResult};
 use std::time::Duration;
 
+static CONDVAR_POISONED: &str = "condvar is poisoned";
+
 /// A Condition Variable.
 #[derive(Default)]
 pub struct Condvar {
@@ -22,10 +24,18 @@ impl Condvar {
 
     /// Waits on a condvar, blocking the current thread until it is notified.
     pub fn wait<'a, T>(&self, guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
-        match self.std.wait(guard) {
-            Ok(guard) => guard,
-            Err(_) => panic!("condvar is poisoned"),
-        }
+        self.std.wait(guard).expect(CONDVAR_POISONED)
+    }
+
+    /// Blocks the current thread until this condition variable receives a notification and the
+    /// provided condition is false.
+    pub fn wait_while<'a, T, F>(&self, guard: MutexGuard<'a, T>, condition: F) -> MutexGuard<'a, T>
+    where
+        F: FnMut(&mut T) -> bool,
+    {
+        self.std
+            .wait_while(guard, condition)
+            .expect(CONDVAR_POISONED)
     }
 
     /// Waits on a condvar, blocking the current thread until it is notified
@@ -35,10 +45,22 @@ impl Condvar {
         guard: MutexGuard<'a, T>,
         dur: Duration,
     ) -> (MutexGuard<'a, T>, WaitTimeoutResult) {
-        match self.std.wait_timeout(guard, dur) {
-            Ok(result) => result,
-            Err(_) => panic!("condvar is poisoned"),
-        }
+        self.std.wait_timeout(guard, dur).expect(CONDVAR_POISONED)
+    }
+
+    /// Waits on this condition variable for a notification, timing out after a specified duration.
+    pub fn wait_timeout_while<'a, T, F>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        dur: Duration,
+        condition: F,
+    ) -> (MutexGuard<'a, T>, WaitTimeoutResult)
+    where
+        F: FnMut(&mut T) -> bool,
+    {
+        self.std
+            .wait_timeout_while(guard, dur, condition)
+            .expect(CONDVAR_POISONED)
     }
 
     /// Notifies one thread blocked by this condvar.
