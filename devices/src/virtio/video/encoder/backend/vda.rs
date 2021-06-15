@@ -8,7 +8,7 @@ use std::fs::File;
 
 use libvda::encode::{EncodeCapabilities, VeaImplType, VeaInstance};
 
-use base::{error, warn, IntoRawDescriptor};
+use base::{error, warn, AsRawDescriptor, IntoRawDescriptor};
 
 use super::*;
 use crate::virtio::video::format::{Format, FormatDesc, FormatRange, FrameFormat, Level, Profile};
@@ -321,7 +321,7 @@ impl EncoderSession for LibvdaEncoderSession {
             .map_err(VideoError::from)
     }
 
-    fn event_pipe(&self) -> &File {
+    fn event_pipe(&self) -> &dyn AsRawDescriptor {
         self.session.pipe()
     }
 

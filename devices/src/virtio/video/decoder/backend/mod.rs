@@ -5,14 +5,12 @@
 //! This module implements the interface that actual decoder devices need to
 //! implement in order to provide video decoding capability to the guest.
 
-use std::fs::File;
-
 use crate::virtio::video::{
     decoder::Capability,
     error::{VideoError, VideoResult},
     format::{Format, Rect},
 };
-use base::RawDescriptor;
+use base::{AsRawDescriptor, RawDescriptor};
 
 pub mod vda;
 
@@ -60,9 +58,9 @@ pub trait DecoderSession {
     /// The device will emit a `ResetCompleted` event once the reset is done.
     fn reset(&self) -> VideoResult<()>;
 
-    /// Returns the event pipe on which the availability of an event will be
-    /// signaled.
-    fn event_pipe(&self) -> &File;
+    /// Returns the event pipe on which the availability of events will be signaled. Note that the
+    /// returned value is borrowed and only valid as long as the session is alive.
+    fn event_pipe(&self) -> &dyn AsRawDescriptor;
 
     /// Ask the device to use the memory buffer in `output_buffer` to store
     /// decoded frames in pixel format `format`. `planes` describes how the

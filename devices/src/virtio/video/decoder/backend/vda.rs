@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, warn, RawDescriptor};
+use base::{error, warn, AsRawDescriptor, RawDescriptor};
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
@@ -172,7 +172,7 @@ impl DecoderSession for libvda::decode::Session {
         Ok(self.reset()?)
     }
 
-    fn event_pipe(&self) -> &std::fs::File {
+    fn event_pipe(&self) -> &dyn AsRawDescriptor {
         self.pipe()
     }
 
