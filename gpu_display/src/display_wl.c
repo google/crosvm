@@ -1011,7 +1011,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 	}
 
 	size_t i;
-	uint format = (flags & DWL_SURFACE_FLAG_HAS_ALPHA)?
+	uint32_t format = (flags & DWL_SURFACE_FLAG_HAS_ALPHA)?
 		WL_SHM_FORMAT_ARGB8888:WL_SHM_FORMAT_XRGB8888;
 
 	for (i = 0; i < buffer_count; i++) {
