@@ -3,5 +3,7 @@
 // found in the LICENSE file.
 
 mod block_on;
+mod pool;
 
 pub use block_on::*;
+pub use pool::*;

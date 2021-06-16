@@ -74,7 +74,7 @@ mod uring_executor;
 mod uring_source;
 mod waker;
 
-pub use blocking::block_on;
+pub use blocking::{block_on, BlockingPool};
 pub use event::EventAsync;
 pub use executor::Executor;
 pub use fd_executor::FdExecutor;
