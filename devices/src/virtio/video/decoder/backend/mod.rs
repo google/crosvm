@@ -19,7 +19,7 @@ pub trait DecoderSession {
     /// Tell how many output buffers will be used for this session. This method
     /// Must be called after a `ProvidePictureBuffers` event is emitted, and
     /// before the first call to `use_output_buffers()`.
-    fn set_output_buffer_count(&self, count: usize) -> VideoResult<()>;
+    fn set_output_buffer_count(&mut self, count: usize) -> VideoResult<()>;
 
     /// Decode the compressed stream contained in [`offset`..`offset`+`bytes_used`]
     /// of the shared memory in `descriptor`. `bitstream_id` is the identifier for that
@@ -35,7 +35,7 @@ pub trait DecoderSession {
     /// set to the same value as the argument of the same name for each picture
     /// produced from that input buffer.
     fn decode(
-        &self,
+        &mut self,
         bitstream_id: i32,
         descriptor: RawDescriptor,
         offset: u32,
@@ -46,12 +46,12 @@ pub trait DecoderSession {
     /// requests.
     ///
     /// The device will emit a `FlushCompleted` event once the flush is done.
-    fn flush(&self) -> VideoResult<()>;
+    fn flush(&mut self) -> VideoResult<()>;
 
     /// Reset the decoder device, i.e. cancel all pending decoding requests.
     ///
     /// The device will emit a `ResetCompleted` event once the reset is done.
-    fn reset(&self) -> VideoResult<()>;
+    fn reset(&mut self) -> VideoResult<()>;
 
     /// Returns the event pipe on which the availability of events will be signaled. Note that the
     /// returned value is borrowed and only valid as long as the session is alive.
@@ -71,7 +71,7 @@ pub trait DecoderSession {
     /// field set to the same value as the argument of the same name when a
     /// frame has been decoded into that buffer.
     fn use_output_buffer(
-        &self,
+        &mut self,
         picture_buffer_id: i32,
         format: Format,
         output_buffer: RawDescriptor,
@@ -86,7 +86,7 @@ pub trait DecoderSession {
     /// The device will emit a `PictureReady` event with the `picture_buffer_id`
     /// field set to the same value as the argument of the same name when a
     /// frame has been decoded into that buffer.
-    fn reuse_output_buffer(&self, picture_buffer_id: i32) -> VideoResult<()>;
+    fn reuse_output_buffer(&mut self, picture_buffer_id: i32) -> VideoResult<()>;
 
     /// Blocking call to read a single event from the event pipe.
     fn read_event(&mut self) -> VideoResult<DecoderEvent>;
@@ -99,7 +99,7 @@ pub trait DecoderBackend {
     fn get_capabilities(&self) -> Capability;
 
     /// Create a new decoding session for the passed `profile`.
-    fn new_session(&self, format: Format) -> VideoResult<Self::Session>;
+    fn new_session(&mut self, format: Format) -> VideoResult<Self::Session>;
 }
 
 #[derive(Debug)]

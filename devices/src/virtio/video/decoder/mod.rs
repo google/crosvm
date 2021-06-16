@@ -445,7 +445,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
     }
 
     fn create_session(
-        decoder: &D,
+        decoder: &mut D,
         wait_ctx: &WaitContext<Token>,
         ctx: &Context<D::Session>,
         stream_id: StreamId,
@@ -488,7 +488,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         // called here.
         if ctx.session.is_none() {
             ctx.session = Some(Self::create_session(
-                &self.decoder,
+                &mut self.decoder,
                 wait_ctx,
                 ctx,
                 stream_id,
@@ -547,7 +547,6 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         data_sizes: Vec<u32>,
     ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
-        let session = ctx.session.as_ref().ok_or(VideoError::InvalidOperation)?;
 
         if data_sizes.len() != 1 {
             error!("num_data_sizes must be 1 but {}", data_sizes.len());
@@ -560,6 +559,8 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             .get_resource_info(QueueType::Input, &self.resource_bridge, resource_id)?
             .file
             .into_raw_descriptor();
+
+        let session = ctx.session.as_mut().ok_or(VideoError::InvalidOperation)?;
 
         // Register a mapping of timestamp to resource_id
         if let Some(old_resource_id) = ctx
@@ -608,7 +609,6 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         resource_id: ResourceId,
     ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
-        let session = ctx.session.as_ref().ok_or(VideoError::InvalidOperation)?;
 
         // Check if the current pixel format is set to NV12.
         match ctx.out_params.format {
@@ -631,7 +631,11 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                 // Don't enqueue this resource to the host.
                 Ok(())
             }
-            QueueOutputResourceResult::Reused(buffer_id) => session.reuse_output_buffer(buffer_id),
+            QueueOutputResourceResult::Reused(buffer_id) => ctx
+                .session
+                .as_mut()
+                .ok_or(VideoError::InvalidOperation)?
+                .reuse_output_buffer(buffer_id),
             QueueOutputResourceResult::Registered(buffer_id) => {
                 let resource_info =
                     ctx.get_resource_info(QueueType::Output, &self.resource_bridge, resource_id)?;
@@ -645,6 +649,8 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                         stride: resource_info.planes[1].stride as usize,
                     },
                 ];
+
+                let session = ctx.session.as_mut().ok_or(VideoError::InvalidOperation)?;
 
                 // Set output_buffer_count before passing the first output buffer.
                 if ctx.out_res.set_output_buffer_count() {
@@ -776,9 +782,9 @@ impl<'a, D: DecoderBackend> Decoder<D> {
 
     fn drain_stream(&mut self, stream_id: StreamId) -> VideoResult<VideoCmdResponseType> {
         self.contexts
-            .get(&stream_id)?
+            .get_mut(&stream_id)?
             .session
-            .as_ref()
+            .as_mut()
             .ok_or(VideoError::InvalidOperation)?
             .flush()?;
         Ok(VideoCmdResponseType::Async(AsyncCmdTag::Drain {
@@ -792,7 +798,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         queue_type: QueueType,
     ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
-        let session = ctx.session.as_ref().ok_or(VideoError::InvalidOperation)?;
+        let session = ctx.session.as_mut().ok_or(VideoError::InvalidOperation)?;
 
         // TODO(b/153406792): Though QUEUE_CLEAR is defined as a per-queue command in the
         // specification, the VDA's `Reset()` clears the input buffers and may (or may not) drop
