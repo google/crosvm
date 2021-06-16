@@ -75,9 +75,12 @@ use sync::Mutex;
 use sys_util::{warn, WatchingEvents};
 use thiserror::Error as ThisError;
 
-use crate::mem::{BackingMemory, MemRegion};
 use crate::queue::RunnableQueue;
 use crate::waker::{new_waker, WakerToken, WeakWake};
+use crate::{
+    mem::{BackingMemory, MemRegion},
+    BlockingPool,
+};
 
 #[derive(Debug, ThisError)]
 pub enum Error {
@@ -291,6 +294,7 @@ struct RawExecutor {
     ctx: URingContext,
     queue: RunnableQueue,
     ring: Mutex<Ring>,
+    blocking_pool: BlockingPool,
     thread_id: Mutex<Option<ThreadId>>,
     state: AtomicI32,
 }
@@ -304,6 +308,7 @@ impl RawExecutor {
                 ops: Slab::with_capacity(NUM_ENTRIES),
                 registered_sources: Slab::with_capacity(NUM_ENTRIES),
             }),
+            blocking_pool: Default::default(),
             thread_id: Mutex::new(None),
             state: AtomicI32::new(PROCESSING),
         })
@@ -363,6 +368,14 @@ impl RawExecutor {
         let (runnable, task) = async_task::spawn_local(f, schedule);
         runnable.schedule();
         task
+    }
+
+    fn spawn_blocking<F, R>(self: &Arc<Self>, f: F) -> Task<R>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        self.blocking_pool.spawn(f)
     }
 
     fn runs_tasks_on_current_thread(&self) -> bool {
@@ -765,6 +778,14 @@ impl URingExecutor {
         F::Output: 'static,
     {
         self.raw.spawn_local(f)
+    }
+
+    pub fn spawn_blocking<F, R>(&self, f: F) -> Task<R>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        self.raw.spawn_blocking(f)
     }
 
     pub fn run(&self) -> Result<()> {

@@ -227,6 +227,46 @@ impl Executor {
         }
     }
 
+    /// Run the provided closure on a dedicated thread where blocking is allowed.
+    ///
+    /// Callers may `await` on the returned `Task` to wait for the result of `f`. Dropping or
+    /// canceling the returned `Task` may not cancel the operation if it was already started on a
+    /// worker thread.
+    ///
+    /// # Panics
+    ///
+    /// `await`ing the `Task` after the `Executor` is dropped will panic if the work was not already
+    /// completed.
+    ///
+    /// # Examples
+    ///
+    /// ```edition2018
+    /// # use cros_async::Executor;
+    ///
+    /// # async fn do_it(ex: &Executor) {
+    ///     let res = ex.spawn_blocking(move || {
+    ///         // Do some CPU-intensive or blocking work here.
+    ///
+    ///         42
+    ///     }).await;
+    ///
+    ///     assert_eq!(res, 42);
+    /// # }
+    ///
+    /// # let ex = Executor::new().unwrap();
+    /// # ex.run_until(do_it(&ex)).unwrap();
+    /// ```
+    pub fn spawn_blocking<F, R>(&self, f: F) -> Task<R>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        match self {
+            Executor::Uring(ex) => ex.spawn_blocking(f),
+            Executor::Fd(ex) => ex.spawn_blocking(f),
+        }
+    }
+
     /// Run the executor indefinitely, driving all spawned futures to completion. This method will
     /// block the current thread and only return in the case of an error.
     ///
