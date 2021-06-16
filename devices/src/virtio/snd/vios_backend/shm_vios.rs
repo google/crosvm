@@ -6,9 +6,9 @@ use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
 
 use base::{
-    error, net::UnixSeqpacket, Error as BaseError, Event, FromRawDescriptor, IntoRawDescriptor,
-    MemoryMapping, MemoryMappingBuilder, MmapError, PollToken, SafeDescriptor, ScmSocket,
-    SharedMemory, WaitContext,
+    error, net::UnixSeqpacket, AsRawDescriptor, Error as BaseError, Event, FromRawDescriptor,
+    IntoRawDescriptor, MemoryMapping, MemoryMappingBuilder, MmapError, PollToken, SafeDescriptor,
+    ScmSocket, SharedMemory, WaitContext,
 };
 use data_model::{DataInit, VolatileMemory, VolatileMemoryError};
 
@@ -53,7 +53,7 @@ pub enum Error {
     NoStreamsAvailable,
     #[error("No stream with id {0}")]
     InvalidStreamId(u32),
-    #[error("Stream is unexpected state: {0:?}")]
+    #[error("Stream is in unexpected state: {0:?}")]
     UnexpectedState(StreamState),
     #[error("Invalid operation for stream direction: {0}")]
     WrongDirection(u8),
@@ -352,6 +352,7 @@ impl VioSClient {
             let lock = self.rx.lock();
             (lock.socket.as_raw_fd(), lock.file.as_raw_fd())
         };
+        let recv_event = self.recv_event.lock().as_raw_descriptor();
         vec![
             control_fd,
             event_fd,
@@ -359,6 +360,7 @@ impl VioSClient {
             tx_shm_fd,
             rx_socket_fd,
             rx_shm_fd,
+            recv_event,
         ]
     }
 
