@@ -15,7 +15,8 @@ use crate::virtio::snd::constants::*;
 use audio_streams::shm_streams::{BufferSet, ServerRequest, ShmStream, ShmStreamSource};
 use audio_streams::{BoxError, SampleFormat, StreamDirection, StreamEffect};
 
-use base::{error, SharedMemory, SharedMemoryUnix};
+use base::{error, MemoryMapping, MemoryMappingBuilder, SharedMemory, SharedMemoryUnix};
+use data_model::VolatileMemory;
 
 use std::fs::File;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
@@ -98,7 +99,7 @@ impl ShmStreamSource for VioSShmStreamSource {
         client_shm: &SysSharedMemory,
         buffer_offsets: [u64; 2],
     ) -> GenericResult<Box<dyn ShmStream>> {
-        self.vios_client.ensure_bg_thread_started()?;
+        self.vios_client.start_bg_thread()?;
         let virtio_dir = match direction {
             StreamDirection::Playback => VIRTIO_SND_D_OUTPUT,
             StreamDirection::Capture => VIRTIO_SND_D_INPUT,
@@ -233,20 +234,54 @@ impl BufferSet for VioSndShmStream {
     fn callback(&mut self, offset: usize, frames: usize) -> GenericResult<()> {
         match self.direction {
             StreamDirection::Playback => {
-                self.vios_client.inject_audio_data(
+                let requested_size = frames * self.frame_size;
+                let shm_ref = &mut self.client_shm;
+                let (_, res) = self.vios_client.inject_audio_data::<Result<()>, _>(
                     self.stream_id,
-                    &mut self.client_shm,
-                    offset,
-                    frames * self.frame_size,
+                    requested_size,
+                    |slice| {
+                        if requested_size != slice.size() {
+                            error!(
+                                "Buffer size is different than the requested size: {} vs {}",
+                                requested_size,
+                                slice.size()
+                            );
+                        }
+                        let size = std::cmp::min(requested_size, slice.size());
+                        let (src_mmap, mmap_offset) = mmap_buffer(shm_ref, offset, size)?;
+                        let src_slice = src_mmap
+                            .get_slice(mmap_offset, size)
+                            .map_err(Error::VolatileMemoryError)?;
+                        src_slice.copy_to_volatile_slice(slice);
+                        Ok(())
+                    },
                 )?;
+                res?;
             }
             StreamDirection::Capture => {
-                self.vios_client.request_audio_data(
+                let requested_size = frames * self.frame_size;
+                let shm_ref = &mut self.client_shm;
+                let (_, res) = self.vios_client.request_audio_data::<Result<()>, _>(
                     self.stream_id,
-                    &mut self.client_shm,
-                    offset,
-                    frames * self.frame_size,
+                    requested_size,
+                    |slice| {
+                        if requested_size != slice.size() {
+                            error!(
+                                "Buffer size is different than the requested size: {} vs {}",
+                                requested_size,
+                                slice.size()
+                            );
+                        }
+                        let size = std::cmp::min(requested_size, slice.size());
+                        let (dst_mmap, mmap_offset) = mmap_buffer(shm_ref, offset, size)?;
+                        let dst_slice = dst_mmap
+                            .get_slice(mmap_offset, size)
+                            .map_err(Error::VolatileMemoryError)?;
+                        slice.copy_to_volatile_slice(dst_slice);
+                        Ok(())
+                    },
                 )?;
+                res?;
             }
         }
         Ok(())
@@ -268,4 +303,26 @@ impl Drop for VioSndShmStream {
             error!("Failed to stop and release stream {}: {}", stream_id, e);
         }
     }
+}
+
+/// Memory map a shared memory object to access an audio buffer. The buffer may not be located at an
+/// offset aligned to page size, so the offset within the mapped region is returned along with the
+/// MemoryMapping struct.
+fn mmap_buffer(
+    src: &mut SharedMemory,
+    offset: usize,
+    size: usize,
+) -> Result<(MemoryMapping, usize)> {
+    // If the buffer is not aligned to page size a bigger region needs to be mapped.
+    let aligned_offset = offset & !(base::pagesize() - 1);
+    let offset_from_mapping_start = offset - aligned_offset;
+    let extended_size = size + offset_from_mapping_start;
+
+    let mmap = MemoryMappingBuilder::new(extended_size)
+        .offset(aligned_offset as u64)
+        .from_shared_memory(src)
+        .build()
+        .map_err(Error::GuestMmapError)?;
+
+    Ok((mmap, offset_from_mapping_start))
 }

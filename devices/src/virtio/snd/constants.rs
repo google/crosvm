@@ -1,20 +1,40 @@
 // Copyright 2020 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-pub const JACK_INFO: u32 = 1;
-pub const JACK_REMAP: u32 = 2;
+pub const VIRTIO_SND_R_JACK_INFO: u32 = 1;
+pub const VIRTIO_SND_R_JACK_REMAP: u32 = 2;
 
-pub const STREAM_INFO: u32 = 0x0100;
-pub const STREAM_SET_PARAMS: u32 = 0x0100 + 1;
-pub const STREAM_PREPARE: u32 = 0x0100 + 2;
-pub const STREAM_RELEASE: u32 = 0x0100 + 3;
-pub const STREAM_START: u32 = 0x0100 + 4;
-pub const STREAM_STOP: u32 = 0x0100 + 5;
+/* PCM control request types */
+pub const VIRTIO_SND_R_PCM_INFO: u32 = 0x0100;
+pub const VIRTIO_SND_R_PCM_SET_PARAMS: u32 = 0x0101;
+pub const VIRTIO_SND_R_PCM_PREPARE: u32 = 0x0102;
+pub const VIRTIO_SND_R_PCM_RELEASE: u32 = 0x0103;
+pub const VIRTIO_SND_R_PCM_START: u32 = 0x0104;
+pub const VIRTIO_SND_R_PCM_STOP: u32 = 0x0105;
 
-pub const CHANNEL_MAP_INFO: u32 = 0x0200;
+/* channel map control request types */
+pub const VIRTIO_SND_R_CHMAP_INFO: u32 = 0x0200;
 
+/* jack event types */
+pub const VIRTIO_SND_EVT_JACK_CONNECTED: u32 = 0x1000;
+pub const VIRTIO_SND_EVT_JACK_DISCONNECTED: u32 = 0x1001;
+
+/* PCM event types */
+pub const VIRTIO_SND_EVT_PCM_PERIOD_ELAPSED: u32 = 0x1100;
+pub const VIRTIO_SND_EVT_PCM_XRUN: u32 = 0x1101;
+
+/* common status codes */
+pub const VIRTIO_SND_S_OK: u32 = 0x8000;
+pub const VIRTIO_SND_S_BAD_MSG: u32 = 0x8001;
+pub const VIRTIO_SND_S_NOT_SUPP: u32 = 0x8002;
+pub const VIRTIO_SND_S_IO_ERR: u32 = 0x8003;
+
+/* stream direction */
 pub const VIRTIO_SND_D_OUTPUT: u8 = 0;
 pub const VIRTIO_SND_D_INPUT: u8 = 1;
+
+/* supported jack features */
+pub const VIRTIO_SND_JACK_F_REMAP: u32 = 0;
 
 /* supported PCM stream features */
 pub const VIRTIO_SND_PCM_F_SHMEM_HOST: u8 = 0;
@@ -45,11 +65,13 @@ pub const VIRTIO_SND_PCM_FMT_S32: u8 = 17;
 pub const VIRTIO_SND_PCM_FMT_U32: u8 = 18;
 pub const VIRTIO_SND_PCM_FMT_FLOAT: u8 = 19;
 pub const VIRTIO_SND_PCM_FMT_FLOAT64: u8 = 20;
+/* digital formats (width / physical width) */
 pub const VIRTIO_SND_PCM_FMT_DSD_U8: u8 = 21;
 pub const VIRTIO_SND_PCM_FMT_DSD_U16: u8 = 22;
 pub const VIRTIO_SND_PCM_FMT_DSD_U32: u8 = 23;
 pub const VIRTIO_SND_PCM_FMT_IEC958_SUBFRAME: u8 = 24;
 
+/* supported PCM frame rates */
 pub const VIRTIO_SND_PCM_RATE_5512: u8 = 0;
 pub const VIRTIO_SND_PCM_RATE_8000: u8 = 1;
 pub const VIRTIO_SND_PCM_RATE_11025: u8 = 2;
@@ -64,38 +86,6 @@ pub const VIRTIO_SND_PCM_RATE_96000: u8 = 10;
 pub const VIRTIO_SND_PCM_RATE_176400: u8 = 11;
 pub const VIRTIO_SND_PCM_RATE_192000: u8 = 12;
 pub const VIRTIO_SND_PCM_RATE_384000: u8 = 13;
-
-// From https://github.com/oasis-tcs/virtio-spec/blob/master/virtio-sound.tex
-/* jack control request types */
-pub const VIRTIO_SND_R_JACK_INFO: u32 = 1;
-pub const VIRTIO_SND_R_JACK_REMAP: u32 = 2;
-
-/* PCM control request types */
-pub const VIRTIO_SND_R_PCM_INFO: u32 = 0x0100;
-pub const VIRTIO_SND_R_PCM_SET_PARAMS: u32 = 0x0101;
-pub const VIRTIO_SND_R_PCM_PREPARE: u32 = 0x0102;
-pub const VIRTIO_SND_R_PCM_RELEASE: u32 = 0x0103;
-pub const VIRTIO_SND_R_PCM_START: u32 = 0x0104;
-pub const VIRTIO_SND_R_PCM_STOP: u32 = 0x0105;
-
-/* channel map control request types */
-pub const VIRTIO_SND_R_CHMAP_INFO: u32 = 0x0200;
-
-/* jack event types */
-pub const VIRTIO_SND_EVT_JACK_CONNECTED: u32 = 0x1000;
-pub const VIRTIO_SND_EVT_JACK_DISCONNECTED: u32 = 0x1001;
-
-/* PCM event types */
-pub const VIRTIO_SND_EVT_PCM_PERIOD_ELAPSED: u32 = 0x1100;
-pub const VIRTIO_SND_EVT_PCM_XRUN: u32 = 0x1101;
-
-/* common status codes */
-pub const VIRTIO_SND_S_OK: u32 = 0x8000;
-pub const VIRTIO_SND_S_BAD_MSG: u32 = 0x8001;
-pub const VIRTIO_SND_S_NOT_SUPP: u32 = 0x8002;
-pub const VIRTIO_SND_S_IO_ERR: u32 = 0x8003;
-
-pub const VIRTIO_SND_JACK_F_REMAP: u32 = 0;
 
 /* standard channel position definition */
 pub const VIRTIO_SND_CHMAP_NONE: u32 = 0; /* undefined */
