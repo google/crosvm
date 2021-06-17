@@ -3,31 +3,64 @@
 // found in the LICENSE file.
 
 use std::cmp::{max, min};
+use std::collections::HashSet;
+use std::convert::TryInto;
 use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
-use std::io::{self, ErrorKind, Read, Seek, SeekFrom};
+use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
+use std::path::{Path, PathBuf};
 
-use crate::{create_disk_file, DiskFile, DiskGetLen, ImageType};
 use base::{
     AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole,
     RawDescriptor, WriteZeroesAt,
 };
+use crc32fast::Hasher;
 use data_model::VolatileSlice;
-use protos::cdisk_spec;
+use protobuf::Message;
+use protos::cdisk_spec::{self, ComponentDisk, CompositeDisk, ReadWriteCapability};
 use remain::sorted;
+use uuid::Uuid;
+
+use crate::gpt::{
+    self, write_gpt_header, write_protective_mbr, GptPartitionEntry, GPT_BEGINNING_SIZE,
+    GPT_END_SIZE, GPT_HEADER_SIZE, GPT_NUM_PARTITIONS, GPT_PARTITION_ENTRY_SIZE, SECTOR_SIZE,
+};
+use crate::{create_disk_file, DiskFile, DiskGetLen, ImageType};
+
+/// The amount of padding needed between the last partition entry and the first partition, to align
+/// the partition appropriately. The two sectors are for the MBR and the GPT header.
+const PARTITION_ALIGNMENT_SIZE: usize = GPT_BEGINNING_SIZE as usize
+    - 2 * SECTOR_SIZE as usize
+    - GPT_NUM_PARTITIONS as usize * GPT_PARTITION_ENTRY_SIZE as usize;
+const HEADER_PADDING_LENGTH: usize = SECTOR_SIZE as usize - GPT_HEADER_SIZE as usize;
+// Keep all partitions 4k aligned for performance.
+const PARTITION_SIZE_SHIFT: u8 = 12;
+// Keep the disk size a multiple of 64k for crosvm's virtio_blk driver.
+const DISK_SIZE_SHIFT: u8 = 16;
+
+// From https://en.wikipedia.org/wiki/GUID_Partition_Table#Partition_type_GUIDs.
+const LINUX_FILESYSTEM_GUID: Uuid = Uuid::from_u128(0x0FC63DAF_8483_4772_8E79_3D69D8477DE4);
+const EFI_SYSTEM_PARTITION_GUID: Uuid = Uuid::from_u128(0xC12A7328_F81F_11D2_BA4B_00A0C93EC93B);
 
 #[sorted]
 #[derive(Debug)]
 pub enum Error {
     DiskError(Box<crate::Error>),
+    DuplicatePartitionLabel(String),
+    GptError(gpt::Error),
     InvalidMagicHeader,
+    InvalidPath(PathBuf),
     InvalidProto(protobuf::ProtobufError),
     InvalidSpecification(String),
+    NoImageFiles(PartitionInfo),
     OpenFile(io::Error, String),
     ReadSpecificationError(io::Error),
+    UnalignedReadWrite(PartitionInfo),
     UnknownVersion(u64),
     UnsupportedComponent(ImageType),
+    WriteHeader(io::Error),
+    WriteProto(protobuf::ProtobufError),
 }
 
 impl Display for Error {
@@ -38,14 +71,36 @@ impl Display for Error {
         #[sorted]
         match self {
             DiskError(e) => write!(f, "failed to use underlying disk: \"{}\"", e),
+            DuplicatePartitionLabel(label) => {
+                write!(f, "duplicate GPT partition label \"{}\"", label)
+            }
+            GptError(e) => write!(f, "failed to write GPT header: \"{}\"", e),
             InvalidMagicHeader => write!(f, "invalid magic header for composite disk format"),
+            InvalidPath(path) => write!(f, "invalid partition path {:?}", path),
             InvalidProto(e) => write!(f, "failed to parse specification proto: \"{}\"", e),
             InvalidSpecification(s) => write!(f, "invalid specification: \"{}\"", s),
+            NoImageFiles(partition) => write!(f, "no image files for partition {:?}", partition),
             OpenFile(e, p) => write!(f, "failed to open component file \"{}\": \"{}\"", p, e),
             ReadSpecificationError(e) => write!(f, "failed to read specification: \"{}\"", e),
+            UnalignedReadWrite(partition) => write!(
+                f,
+                "Read-write partition {:?} size is not a multiple of {}.",
+                partition,
+                1 << PARTITION_SIZE_SHIFT
+            ),
             UnknownVersion(v) => write!(f, "unknown version {} in specification", v),
             UnsupportedComponent(c) => write!(f, "unsupported component disk type \"{:?}\"", c),
+            WriteHeader(e) => write!(f, "failed to write composite disk header: \"{}\"", e),
+            WriteProto(e) => write!(f, "failed to write specification proto: \"{}\"", e),
         }
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<gpt::Error> for Error {
+    fn from(e: gpt::Error) -> Self {
+        Self::GptError(e)
     }
 }
 
@@ -86,11 +141,14 @@ fn range_intersection(a: &Range<u64>, b: &Range<u64>) -> Range<u64> {
     }
 }
 
+/// The version of the composite disk format supported by this implementation.
+const COMPOSITE_DISK_VERSION: u64 = 1;
+
 /// A magic string placed at the beginning of a composite disk file to identify it.
-pub static CDISK_MAGIC: &str = "composite_disk\x1d";
+pub const CDISK_MAGIC: &str = "composite_disk\x1d";
 /// The length of the CDISK_MAGIC string. Created explicitly as a static constant so that it is
 /// possible to create a character array of the same length.
-pub const CDISK_MAGIC_LEN: usize = 15;
+pub const CDISK_MAGIC_LEN: usize = CDISK_MAGIC.len();
 
 impl CompositeDiskFile {
     fn new(mut disks: Vec<ComponentDiskPart>) -> Result<CompositeDiskFile> {
@@ -128,7 +186,7 @@ impl CompositeDiskFile {
         }
         let proto: cdisk_spec::CompositeDisk =
             protobuf::parse_from_reader(&mut file).map_err(Error::InvalidProto)?;
-        if proto.get_version() != 1 {
+        if proto.get_version() != COMPOSITE_DISK_VERSION {
             return Err(Error::UnknownVersion(proto.get_version()));
         }
         let mut open_options = OpenOptions::new();
@@ -339,9 +397,280 @@ impl AsRawDescriptors for CompositeDiskFile {
     }
 }
 
+/// Information about a single image file to be included in a partition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PartitionFileInfo {
+    pub path: PathBuf,
+    pub size: u64,
+}
+
+/// Information about a partition to create, including the set of image files which make it up.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PartitionInfo {
+    pub label: String,
+    pub files: Vec<PartitionFileInfo>,
+    pub partition_type: ImagePartitionType,
+    pub writable: bool,
+}
+
+/// Round `val` up to the next multiple of 2**`align_log`.
+fn align_to_power_of_2(val: u64, align_log: u8) -> u64 {
+    let align = 1 << align_log;
+    ((val + (align - 1)) / align) * align
+}
+
+impl PartitionInfo {
+    fn aligned_size(&self) -> u64 {
+        align_to_power_of_2(
+            self.files.iter().map(|file| file.size).sum(),
+            PARTITION_SIZE_SHIFT,
+        )
+    }
+}
+
+/// The type of partition.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum ImagePartitionType {
+    LinuxFilesystem,
+    EfiSystemPartition,
+}
+
+impl ImagePartitionType {
+    fn guid(self) -> Uuid {
+        match self {
+            Self::LinuxFilesystem => LINUX_FILESYSTEM_GUID,
+            Self::EfiSystemPartition => EFI_SYSTEM_PARTITION_GUID,
+        }
+    }
+}
+
+/// Write protective MBR and primary GPT table.
+fn write_beginning(
+    file: &mut impl Write,
+    disk_guid: Uuid,
+    partitions: &[u8],
+    partition_entries_crc32: u32,
+    secondary_table_offset: u64,
+    disk_size: u64,
+) -> Result<()> {
+    // Write the protective MBR to the first sector.
+    write_protective_mbr(file, disk_size)?;
+
+    // Write the GPT header, and pad out to the end of the sector.
+    write_gpt_header(
+        file,
+        disk_guid,
+        partition_entries_crc32,
+        secondary_table_offset,
+        false,
+    )?;
+    file.write_all(&[0; HEADER_PADDING_LENGTH])
+        .map_err(Error::WriteHeader)?;
+
+    // Write partition entries, including unused ones.
+    file.write_all(partitions).map_err(Error::WriteHeader)?;
+
+    // Write zeroes to align the first partition appropriately.
+    file.write_all(&[0; PARTITION_ALIGNMENT_SIZE])
+        .map_err(Error::WriteHeader)?;
+
+    Ok(())
+}
+
+/// Write secondary GPT table.
+fn write_end(
+    file: &mut impl Write,
+    disk_guid: Uuid,
+    partitions: &[u8],
+    partition_entries_crc32: u32,
+    secondary_table_offset: u64,
+    disk_size: u64,
+) -> Result<()> {
+    // Write partition entries, including unused ones.
+    file.write_all(partitions).map_err(Error::WriteHeader)?;
+
+    // Write the GPT header, and pad out to the end of the sector.
+    write_gpt_header(
+        file,
+        disk_guid,
+        partition_entries_crc32,
+        secondary_table_offset,
+        true,
+    )?;
+    file.write_all(&[0; HEADER_PADDING_LENGTH])
+        .map_err(Error::WriteHeader)?;
+
+    // Pad out to the aligned disk size.
+    let used_disk_size = secondary_table_offset + GPT_END_SIZE;
+    let padding = disk_size - used_disk_size;
+    file.write_all(&vec![0; padding as usize])
+        .map_err(Error::WriteHeader)?;
+
+    Ok(())
+}
+
+/// Create the `GptPartitionEntry` for the given partition.
+fn create_gpt_entry(partition: &PartitionInfo, offset: u64) -> GptPartitionEntry {
+    let mut partition_name: Vec<u16> = partition.label.encode_utf16().collect();
+    partition_name.resize(36, 0);
+
+    GptPartitionEntry {
+        partition_type_guid: partition.partition_type.guid(),
+        unique_partition_guid: Uuid::new_v4(),
+        first_lba: offset / SECTOR_SIZE,
+        last_lba: (offset + partition.aligned_size()) / SECTOR_SIZE - 1,
+        attributes: 0,
+        partition_name: partition_name.try_into().unwrap(),
+    }
+}
+
+/// Create one or more `ComponentDisk` proto messages for the given partition.
+fn create_component_disks(
+    partition: &PartitionInfo,
+    offset: u64,
+    header_path: &str,
+) -> Result<Vec<ComponentDisk>> {
+    let aligned_size = partition.aligned_size();
+
+    if partition.files.is_empty() {
+        return Err(Error::NoImageFiles(partition.to_owned()));
+    }
+    let mut file_size_sum = 0;
+    let mut component_disks = vec![];
+    for file in &partition.files {
+        component_disks.push(ComponentDisk {
+            offset: offset + file_size_sum,
+            file_path: file
+                .path
+                .to_str()
+                .ok_or_else(|| Error::InvalidPath(file.path.to_owned()))?
+                .to_string(),
+            read_write_capability: if partition.writable {
+                ReadWriteCapability::READ_WRITE
+            } else {
+                ReadWriteCapability::READ_ONLY
+            },
+            ..ComponentDisk::new()
+        });
+        file_size_sum += file.size;
+    }
+
+    if file_size_sum != aligned_size {
+        if partition.writable {
+            return Err(Error::UnalignedReadWrite(partition.to_owned()));
+        } else {
+            // Fill in the gap by reusing the header file, because we know it is always bigger
+            // than the alignment size (i.e. GPT_BEGINNING_SIZE > 1 << PARTITION_SIZE_SHIFT).
+            component_disks.push(ComponentDisk {
+                offset: offset + file_size_sum,
+                file_path: header_path.to_owned(),
+                read_write_capability: ReadWriteCapability::READ_ONLY,
+                ..ComponentDisk::new()
+            });
+        }
+    }
+
+    Ok(component_disks)
+}
+
+/// Create a new composite disk image containing the given partitions, and write it out to the given
+/// files.
+pub fn create_composite_disk(
+    partitions: &[PartitionInfo],
+    header_path: &Path,
+    header_file: &mut File,
+    footer_path: &Path,
+    footer_file: &mut File,
+    output_composite: &mut File,
+) -> Result<()> {
+    let header_path = header_path
+        .to_str()
+        .ok_or_else(|| Error::InvalidPath(header_path.to_owned()))?
+        .to_string();
+    let footer_path = footer_path
+        .to_str()
+        .ok_or_else(|| Error::InvalidPath(footer_path.to_owned()))?
+        .to_string();
+
+    let mut composite_proto = CompositeDisk::new();
+    composite_proto.version = COMPOSITE_DISK_VERSION;
+    composite_proto.component_disks.push(ComponentDisk {
+        file_path: header_path.clone(),
+        offset: 0,
+        read_write_capability: ReadWriteCapability::READ_ONLY,
+        ..ComponentDisk::new()
+    });
+
+    // Write partitions to a temporary buffer so that we can calculate the CRC, and construct the
+    // ComponentDisk proto messages at the same time.
+    let mut partitions_buffer =
+        [0u8; GPT_NUM_PARTITIONS as usize * GPT_PARTITION_ENTRY_SIZE as usize];
+    let mut writer: &mut [u8] = &mut partitions_buffer;
+    let mut next_disk_offset = GPT_BEGINNING_SIZE;
+    let mut labels = HashSet::with_capacity(partitions.len());
+    for partition in partitions {
+        let gpt_entry = create_gpt_entry(partition, next_disk_offset);
+        if !labels.insert(gpt_entry.partition_name) {
+            return Err(Error::DuplicatePartitionLabel(partition.label.clone()));
+        }
+        gpt_entry.write_bytes(&mut writer)?;
+
+        for component_disk in create_component_disks(partition, next_disk_offset, &header_path)? {
+            composite_proto.component_disks.push(component_disk);
+        }
+
+        next_disk_offset += partition.aligned_size();
+    }
+    let secondary_table_offset = next_disk_offset;
+    let disk_size = align_to_power_of_2(secondary_table_offset + GPT_END_SIZE, DISK_SIZE_SHIFT);
+
+    composite_proto.component_disks.push(ComponentDisk {
+        file_path: footer_path,
+        offset: secondary_table_offset,
+        read_write_capability: ReadWriteCapability::READ_ONLY,
+        ..ComponentDisk::new()
+    });
+
+    // Calculate CRC32 of partition entries.
+    let mut hasher = Hasher::new();
+    hasher.update(&partitions_buffer);
+    let partition_entries_crc32 = hasher.finalize();
+
+    let disk_guid = Uuid::new_v4();
+    write_beginning(
+        header_file,
+        disk_guid,
+        &partitions_buffer,
+        partition_entries_crc32,
+        secondary_table_offset,
+        disk_size,
+    )?;
+    write_end(
+        footer_file,
+        disk_guid,
+        &partitions_buffer,
+        partition_entries_crc32,
+        secondary_table_offset,
+        disk_size,
+    )?;
+
+    composite_proto.length = disk_size;
+    output_composite
+        .write_all(CDISK_MAGIC.as_bytes())
+        .map_err(Error::WriteHeader)?;
+    composite_proto
+        .write_to_writer(output_composite)
+        .map_err(Error::WriteProto)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::matches;
+
     use base::AsRawDescriptor;
     use data_model::VolatileMemory;
     use tempfile::tempfile;
@@ -560,5 +889,152 @@ mod tests {
             );
         }
         assert!(input_memory.iter().eq(output_memory.iter()));
+    }
+
+    #[test]
+    fn beginning_size() {
+        let mut buffer = vec![];
+        let partitions = [0u8; GPT_NUM_PARTITIONS as usize * GPT_PARTITION_ENTRY_SIZE as usize];
+        let disk_size = 1000 * SECTOR_SIZE;
+        write_beginning(
+            &mut buffer,
+            Uuid::from_u128(0x12345678_1234_5678_abcd_12345678abcd),
+            &partitions,
+            42,
+            disk_size - GPT_END_SIZE,
+            disk_size,
+        )
+        .unwrap();
+
+        assert_eq!(buffer.len(), GPT_BEGINNING_SIZE as usize);
+    }
+
+    #[test]
+    fn end_size() {
+        let mut buffer = vec![];
+        let partitions = [0u8; GPT_NUM_PARTITIONS as usize * GPT_PARTITION_ENTRY_SIZE as usize];
+        let disk_size = 1000 * SECTOR_SIZE;
+        write_end(
+            &mut buffer,
+            Uuid::from_u128(0x12345678_1234_5678_abcd_12345678abcd),
+            &partitions,
+            42,
+            disk_size - GPT_END_SIZE,
+            disk_size,
+        )
+        .unwrap();
+
+        assert_eq!(buffer.len(), GPT_END_SIZE as usize);
+    }
+
+    #[test]
+    fn end_size_with_padding() {
+        let mut buffer = vec![];
+        let partitions = [0u8; GPT_NUM_PARTITIONS as usize * GPT_PARTITION_ENTRY_SIZE as usize];
+        let disk_size = 1000 * SECTOR_SIZE;
+        let padding = 3 * SECTOR_SIZE;
+        write_end(
+            &mut buffer,
+            Uuid::from_u128(0x12345678_1234_5678_abcd_12345678abcd),
+            &partitions,
+            42,
+            disk_size - GPT_END_SIZE - padding,
+            disk_size,
+        )
+        .unwrap();
+
+        assert_eq!(buffer.len(), GPT_END_SIZE as usize + padding as usize);
+    }
+
+    /// Creates a composite disk image with no partitions.
+    #[test]
+    fn create_composite_disk_empty() {
+        let mut header_image = tempfile().unwrap();
+        let mut footer_image = tempfile().unwrap();
+        let mut composite_image = tempfile().unwrap();
+
+        create_composite_disk(
+            &[],
+            Path::new("/header_path.img"),
+            &mut header_image,
+            Path::new("/footer_path.img"),
+            &mut footer_image,
+            &mut composite_image,
+        )
+        .unwrap();
+    }
+
+    /// Creates a composite disk image with two partitions.
+    #[test]
+    fn create_composite_disk_success() {
+        let mut header_image = tempfile().unwrap();
+        let mut footer_image = tempfile().unwrap();
+        let mut composite_image = tempfile().unwrap();
+
+        create_composite_disk(
+            &[
+                PartitionInfo {
+                    label: "partition1".to_string(),
+                    files: vec![PartitionFileInfo {
+                        path: "/partition1.img".to_string().into(),
+                        size: 0,
+                    }],
+                    partition_type: ImagePartitionType::LinuxFilesystem,
+                    writable: false,
+                },
+                PartitionInfo {
+                    label: "partition2".to_string(),
+                    files: vec![PartitionFileInfo {
+                        path: "/partition2.img".to_string().into(),
+                        size: 0,
+                    }],
+                    partition_type: ImagePartitionType::LinuxFilesystem,
+                    writable: true,
+                },
+            ],
+            Path::new("/header_path.img"),
+            &mut header_image,
+            Path::new("/footer_path.img"),
+            &mut footer_image,
+            &mut composite_image,
+        )
+        .unwrap();
+    }
+
+    /// Attempts to create a composite disk image with two partitions with the same label.
+    #[test]
+    fn create_composite_disk_duplicate_label() {
+        let mut header_image = tempfile().unwrap();
+        let mut footer_image = tempfile().unwrap();
+        let mut composite_image = tempfile().unwrap();
+
+        let result = create_composite_disk(
+            &[
+                PartitionInfo {
+                    label: "label".to_string(),
+                    files: vec![PartitionFileInfo {
+                        path: "/partition1.img".to_string().into(),
+                        size: 0,
+                    }],
+                    partition_type: ImagePartitionType::LinuxFilesystem,
+                    writable: false,
+                },
+                PartitionInfo {
+                    label: "label".to_string(),
+                    files: vec![PartitionFileInfo {
+                        path: "/partition2.img".to_string().into(),
+                        size: 0,
+                    }],
+                    partition_type: ImagePartitionType::LinuxFilesystem,
+                    writable: true,
+                },
+            ],
+            Path::new("/header_path.img"),
+            &mut header_image,
+            Path::new("/footer_path.img"),
+            &mut footer_image,
+            &mut composite_image,
+        );
+        assert!(matches!(result, Err(Error::DuplicatePartitionLabel(label)) if label == "label"));
     }
 }

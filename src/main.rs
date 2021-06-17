@@ -36,6 +36,10 @@ use devices::ProtectionType;
 #[cfg(feature = "audio")]
 use devices::{Ac97Backend, Ac97Parameters};
 use disk::QcowFile;
+#[cfg(feature = "composite-disk")]
+use disk::{
+    create_composite_disk, create_disk_file, ImagePartitionType, PartitionFileInfo, PartitionInfo,
+};
 use vm_control::{
     client::{
         do_modify_battery, do_usb_attach, do_usb_detach, do_usb_list, handle_request, vms_request,
@@ -2239,6 +2243,102 @@ fn balloon_stats(mut args: std::env::Args) -> std::result::Result<(), ()> {
     }
 }
 
+#[cfg(feature = "composite-disk")]
+fn create_composite(mut args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() < 1 {
+        print_help("crosvm create_composite", "PATH [LABEL:PARTITION]..", &[]);
+        println!("Creates a new composite disk image containing the given partition images");
+        return Err(());
+    }
+
+    let composite_image_path = args.next().unwrap();
+    let header_path = format!("{}.header", composite_image_path);
+    let footer_path = format!("{}.footer", composite_image_path);
+
+    let mut composite_image_file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(true)
+        .open(&composite_image_path)
+        .map_err(|e| {
+            error!(
+                "Failed opening composite disk image file at '{}': {}",
+                composite_image_path, e
+            );
+        })?;
+    let mut header_file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(true)
+        .open(&header_path)
+        .map_err(|e| {
+            error!(
+                "Failed opening header image file at '{}': {}",
+                header_path, e
+            );
+        })?;
+    let mut footer_file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(true)
+        .open(&footer_path)
+        .map_err(|e| {
+            error!(
+                "Failed opening footer image file at '{}': {}",
+                footer_path, e
+            );
+        })?;
+
+    let partitions = args
+        .into_iter()
+        .map(|partition_arg| {
+            if let [label, path] = partition_arg.split(":").collect::<Vec<_>>()[..] {
+                let partition_file = File::open(path)
+                    .map_err(|e| error!("Failed to open partition image: {}", e))?;
+                let size = create_disk_file(partition_file)
+                    .map_err(|e| error!("Failed to create DiskFile instance: {}", e))?
+                    .get_len()
+                    .map_err(|e| error!("Failed to get length of partition image: {}", e))?;
+                Ok(PartitionInfo {
+                    label: label.to_owned(),
+                    files: vec![PartitionFileInfo {
+                        path: Path::new(path).to_owned(),
+                        size,
+                    }],
+                    partition_type: ImagePartitionType::LinuxFilesystem,
+                    writable: false,
+                })
+            } else {
+                error!(
+                    "Must specify label and path for partition '{}', like LABEL:PATH",
+                    partition_arg
+                );
+                Err(())
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    create_composite_disk(
+        &partitions,
+        &PathBuf::from(header_path),
+        &mut header_file,
+        &PathBuf::from(footer_path),
+        &mut footer_file,
+        &mut composite_image_file,
+    )
+    .map_err(|e| {
+        error!(
+            "Failed to create composite disk image at '{}': {}",
+            composite_image_path, e
+        );
+    })?;
+
+    Ok(())
+}
+
 fn create_qcow2(args: std::env::Args) -> std::result::Result<(), ()> {
     let arguments = [
         Argument::positional("PATH", "where to create the qcow2 image"),
@@ -2459,6 +2559,8 @@ fn print_usage() {
     println!("    balloon - Set balloon size of the crosvm instance.");
     println!("    balloon_stats - Prints virtio balloon statistics.");
     println!("    battery - Modify battery.");
+    #[cfg(feature = "composite-disk")]
+    println!("    create_composite  - Create a new composite disk image file.");
     println!("    create_qcow2  - Create a new qcow2 disk image file.");
     println!("    disk - Manage attached virtual disk devices.");
     println!("    resume - Resumes the crosvm instance.");
@@ -2526,6 +2628,8 @@ fn crosvm_main() -> std::result::Result<(), ()> {
         Some("run") => run_vm(args),
         Some("balloon") => balloon_vms(args),
         Some("balloon_stats") => balloon_stats(args),
+        #[cfg(feature = "composite-disk")]
+        Some("create_composite") => create_composite(args),
         Some("create_qcow2") => create_qcow2(args),
         Some("disk") => disk_cmd(args),
         Some("usb") => modify_usb(args),

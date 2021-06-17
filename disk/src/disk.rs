@@ -26,6 +26,15 @@ pub use qcow::{QcowFile, QCOW_MAGIC};
 mod composite;
 #[cfg(feature = "composite-disk")]
 use composite::{CompositeDiskFile, CDISK_MAGIC, CDISK_MAGIC_LEN};
+#[cfg(feature = "composite-disk")]
+mod gpt;
+#[cfg(feature = "composite-disk")]
+pub use composite::{
+    create_composite_disk, Error as CompositeError, ImagePartitionType, PartitionFileInfo,
+    PartitionInfo,
+};
+#[cfg(feature = "composite-disk")]
+pub use gpt::Error as GptError;
 
 mod android_sparse;
 use android_sparse::{AndroidSparse, SPARSE_HEADER_MAGIC};
