@@ -96,9 +96,10 @@ use std::cell::Cell;
 use std::ffi::CStr;
 use std::fs::{remove_file, File, OpenOptions};
 use std::mem;
+use std::ops::Deref;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::os::unix::net::UnixDatagram;
+use std::os::unix::net::{UnixDatagram, UnixListener};
 use std::path::Path;
 use std::ptr;
 use std::time::Duration;
@@ -378,6 +379,35 @@ impl AsRef<UnixDatagram> for UnlinkUnixDatagram {
     }
 }
 impl Drop for UnlinkUnixDatagram {
+    fn drop(&mut self) {
+        if let Ok(addr) = self.0.local_addr() {
+            if let Some(path) = addr.as_pathname() {
+                if let Err(e) = remove_file(path) {
+                    warn!("failed to remove control socket file: {}", e);
+                }
+            }
+        }
+    }
+}
+
+/// Used to attempt to clean up a named pipe after it is no longer used.
+pub struct UnlinkUnixListener(pub UnixListener);
+
+impl AsRef<UnixListener> for UnlinkUnixListener {
+    fn as_ref(&self) -> &UnixListener {
+        &self.0
+    }
+}
+
+impl Deref for UnlinkUnixListener {
+    type Target = UnixListener;
+
+    fn deref(&self) -> &UnixListener {
+        &self.0
+    }
+}
+
+impl Drop for UnlinkUnixListener {
     fn drop(&mut self) {
         if let Ok(addr) = self.0.local_addr() {
             if let Some(path) = addr.as_pathname() {
