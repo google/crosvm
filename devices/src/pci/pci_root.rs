@@ -8,6 +8,7 @@ use std::fmt::{self, Display};
 use std::sync::Arc;
 
 use base::RawDescriptor;
+use serde::{Deserialize, Serialize};
 use sync::Mutex;
 
 use crate::pci::pci_configuration::{
@@ -55,7 +56,7 @@ impl PciDevice for PciRootConfiguration {
 }
 
 /// PCI Device Address, AKA Bus:Device.Function
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct PciAddress {
     pub bus: u8,
     pub dev: u8,  /* u5 */

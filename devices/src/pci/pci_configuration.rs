@@ -5,8 +5,10 @@
 use std::convert::TryInto;
 use std::fmt::{self, Display};
 
-use crate::pci::PciInterruptPin;
 use base::warn;
+use serde::{Deserialize, Serialize};
+
+use crate::pci::PciInterruptPin;
 
 // The number of 32bit registers in the config space, 256 bytes.
 const NUM_CONFIGURATION_REGISTERS: usize = 64;
@@ -203,14 +205,14 @@ pub struct PciConfiguration {
 }
 
 /// See pci_regs.h in kernel
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PciBarRegionType {
     Memory32BitRegion = 0,
     IORegion = 0x01,
     Memory64BitRegion = 0x04,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PciBarPrefetchable {
     NotPrefetchable = 0,
     Prefetchable = 0x08,
@@ -218,7 +220,7 @@ pub enum PciBarPrefetchable {
 
 pub type PciBarIndex = usize;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PciBarConfiguration {
     addr: u64,
     size: u64,
