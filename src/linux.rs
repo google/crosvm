@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::convert::TryFrom;
 #[cfg(feature = "gpu")]
@@ -33,6 +32,7 @@ use acpi_tables::sdt::SDT;
 
 use base::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 use base::*;
+use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH};
 use devices::virtio::vhost::user::{
@@ -45,8 +45,8 @@ use devices::virtio::{self, Console, VirtioDevice};
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
 use devices::{
-    self, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciDevice, VcpuRunState, VfioContainer,
-    VfioDevice, VfioPciDevice, VirtioPciDevice,
+    self, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciDevice, VcpuRunState, VfioDevice,
+    VfioPciDevice, VirtioPciDevice,
 };
 #[cfg(feature = "usb")]
 use devices::{HostBackendDeviceProvider, XhciController};
@@ -97,7 +97,6 @@ pub enum Error {
     BalloonDeviceNew(virtio::BalloonError),
     BlockDeviceNew(base::Error),
     BlockSignal(base::signal::Error),
-    BorrowVfioContainer,
     BuildVm(<Arch as LinuxArch>::Error),
     ChownTpmStorage(base::Error),
     CloneEvent(base::Error),
@@ -225,7 +224,6 @@ impl Display for Error {
             BalloonDeviceNew(e) => write!(f, "failed to create balloon: {}", e),
             BlockDeviceNew(e) => write!(f, "failed to create block device: {}", e),
             BlockSignal(e) => write!(f, "failed to block signal: {}", e),
-            BorrowVfioContainer => write!(f, "failed to borrow global vfio container"),
             BuildVm(e) => write!(f, "The architecture failed to build the vm: {}", e),
             ChownTpmStorage(e) => write!(f, "failed to chown tpm storage: {}", e),
             CloneEvent(e) => write!(f, "failed to clone event: {}", e),
@@ -1730,7 +1728,6 @@ fn create_virtio_devices(
     Ok(devs)
 }
 
-thread_local!(static VFIO_CONTAINER: RefCell<Option<Arc<Mutex<VfioContainer>>>> = RefCell::new(None));
 fn create_vfio_device(
     cfg: &Config,
     vm: &impl Vm,
@@ -1740,21 +1737,7 @@ fn create_vfio_device(
     kvm_vfio_file: &SafeDescriptor,
 ) -> DeviceResult<(Box<VfioPciDevice>, Option<Minijail>)> {
     let vfio_container =
-        VFIO_CONTAINER.with::<_, DeviceResult<Arc<Mutex<VfioContainer>>>>(|v| {
-            if v.borrow().is_some() {
-                if let Some(container) = &(*v.borrow()) {
-                    Ok(container.clone())
-                } else {
-                    Err(Error::BorrowVfioContainer)
-                }
-            } else {
-                let container = Arc::new(Mutex::new(
-                    VfioContainer::new().map_err(Error::CreateVfioDevice)?,
-                ));
-                *v.borrow_mut() = Some(container.clone());
-                Ok(container)
-            }
-        })?;
+        VfioCommonSetup::vfio_get_container(vfio_path, false).map_err(Error::CreateVfioDevice)?;
 
     // create MSI, MSI-X, and Mem request sockets for each vfio device
     let (vfio_host_tube_msi, vfio_device_tube_msi) = Tube::pair().map_err(Error::CreateTube)?;
