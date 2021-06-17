@@ -706,7 +706,7 @@ impl VfioDevice {
                 let info_ptr = region_with_cap.as_ptr() as *mut u8;
                 let mut offset = region_with_cap[0].region_info.cap_offset;
                 while offset != 0 {
-                    if offset + cap_header_sz >= region_info_sz {
+                    if offset + cap_header_sz > region_info_sz {
                         break;
                     }
                     // Safe, as cap_header struct is in this function allocated region_with_cap
@@ -715,7 +715,7 @@ impl VfioDevice {
                     let cap_header =
                         unsafe { &*(cap_ptr as *mut u8 as *const vfio_info_cap_header) };
                     if cap_header.id as u32 == VFIO_REGION_INFO_CAP_SPARSE_MMAP {
-                        if offset + mmap_cap_sz >= region_info_sz {
+                        if offset + mmap_cap_sz > region_info_sz {
                             break;
                         }
                         // cap_ptr is vfio_region_info_cap_sparse_mmap here
@@ -747,6 +747,11 @@ impl VfioDevice {
                             unsafe { &*(cap_ptr as *mut u8 as *const vfio_region_info_cap_type) };
 
                         cap_info = Some((cap_type_info.type_, cap_type_info.subtype));
+                    } else if cap_header.id as u32 == VFIO_REGION_INFO_CAP_MSIX_MAPPABLE {
+                        mmaps.push(vfio_region_sparse_mmap_area {
+                            offset: region_with_cap[0].region_info.offset,
+                            size: region_with_cap[0].region_info.size,
+                        });
                     }
 
                     offset = cap_header.next;
