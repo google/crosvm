@@ -13,7 +13,7 @@ use cros_async::{EventAsync, Executor, IoSourceExt};
 use data_model::DataInit;
 use devices::virtio;
 use devices::virtio::net::{
-    build_config, process_rx, process_tx, validate_and_configure_tap,
+    build_config, process_ctrl, process_rx, process_tx, validate_and_configure_tap,
     virtio_features_to_tap_offload, NetError,
 };
 use devices::ProtectionType;
@@ -73,6 +73,35 @@ async fn run_rx_queue(
                 error!("Failed to process rx queue: {}", e);
                 break;
             }
+        }
+    }
+}
+
+async fn run_ctrl_queue(
+    mut queue: virtio::Queue,
+    mem: GuestMemory,
+    mut tap: Tap,
+    call_evt: Arc<Mutex<CallEvent>>,
+    kick_evt: EventAsync,
+    acked_features: u64,
+    vq_pairs: u16,
+) {
+    loop {
+        if let Err(e) = kick_evt.next_val().await {
+            error!("Failed to read kick event for tx queue: {}", e);
+            break;
+        }
+
+        if let Err(e) = process_ctrl(
+            &call_evt,
+            &mut queue,
+            &mem,
+            &mut tap,
+            acked_features,
+            vq_pairs,
+        ) {
+            error!("Failed to process ctrl queue: {}", e);
+            break;
         }
     }
 }
@@ -149,11 +178,10 @@ impl NetBackend {
         validate_and_configure_tap(&tap, vq_pairs as u16)
             .context("failed to validate and configure tap")?;
 
-        // TODO(keiichiw): Support CTRL_VQ and MQ.
-        // Note that MQ cannot be enabled without CTRL_VQ.
         let avail_features = virtio::base_features(ProtectionType::Unprotected)
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_CSUM
+            | 1 << virtio_net::VIRTIO_NET_F_CTRL_VQ
             | 1 << virtio_net::VIRTIO_NET_F_CTRL_GUEST_OFFLOADS
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_UFO
@@ -181,7 +209,7 @@ impl NetBackend {
 
 impl VhostUserBackend for NetBackend {
     // TODO(keiichiw): Support multiple queue pairs.
-    const MAX_QUEUE_NUM: usize = 2; /* 1 rx and 1 tx */
+    const MAX_QUEUE_NUM: usize = 3; /* rx, tx, ctrl */
     const MAX_VRING_LEN: u16 = 256;
 
     type Error = anyhow::Error;
@@ -269,6 +297,21 @@ impl VhostUserBackend for NetBackend {
                 1 => {
                     ex.spawn_local(Abortable::new(
                         run_tx_queue(queue, mem, tap, call_evt, kick_evt),
+                        registration,
+                    ))
+                    .detach();
+                }
+                2 => {
+                    ex.spawn_local(Abortable::new(
+                        run_ctrl_queue(
+                            queue,
+                            mem,
+                            tap,
+                            call_evt,
+                            kick_evt,
+                            self.acked_features,
+                            1, /* vq_pairs */
+                        ),
                         registration,
                     ))
                     .detach();

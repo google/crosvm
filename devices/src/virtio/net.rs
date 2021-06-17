@@ -76,9 +76,6 @@ pub enum NetError {
     /// Setting tap mac address failed.
     #[error("failed to set tap mac address: {0}")]
     TapSetMacAddress(TapError),
-    /// Setting tap interface offload flags failed.
-    #[error("failed to set tap interface offload flags: {0}")]
-    TapSetOffload(TapError),
     /// Setting vnet header size failed.
     #[error("failed to set vnet header size: {0}")]
     TapSetVnetHdrSize(TapError),
@@ -239,6 +236,80 @@ pub fn process_tx<I: SignalableInterrupt, T: TapT>(
     interrupt.signal_used_queue(tx_queue.vector);
 }
 
+pub fn process_ctrl<I: SignalableInterrupt, T: TapT>(
+    interrupt: &I,
+    ctrl_queue: &mut Queue,
+    mem: &GuestMemory,
+    tap: &mut T,
+    acked_features: u64,
+    vq_pairs: u16,
+) -> Result<(), NetError> {
+    while let Some(desc_chain) = ctrl_queue.pop(mem) {
+        let index = desc_chain.index;
+
+        let mut reader =
+            Reader::new(mem.clone(), desc_chain.clone()).map_err(NetError::DescriptorChain)?;
+        let mut writer = Writer::new(mem.clone(), desc_chain).map_err(NetError::DescriptorChain)?;
+        let ctrl_hdr: virtio_net_ctrl_hdr = reader.read_obj().map_err(NetError::ReadCtrlHeader)?;
+
+        let mut write_error = || {
+            writer
+                .write_all(&[VIRTIO_NET_ERR as u8])
+                .map_err(NetError::WriteAck)?;
+            ctrl_queue.add_used(&mem, index, writer.bytes_written() as u32);
+            Ok(())
+        };
+
+        match ctrl_hdr.class as c_uint {
+            VIRTIO_NET_CTRL_GUEST_OFFLOADS => {
+                if ctrl_hdr.cmd != VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET as u8 {
+                    error!(
+                        "invalid cmd for VIRTIO_NET_CTRL_GUEST_OFFLOADS: {}",
+                        ctrl_hdr.cmd
+                    );
+                    write_error()?;
+                    continue;
+                }
+                let offloads: Le64 = reader.read_obj().map_err(NetError::ReadCtrlData)?;
+                let tap_offloads = virtio_features_to_tap_offload(offloads.into());
+                if let Err(e) = tap.set_offload(tap_offloads) {
+                    error!("Failed to set tap itnerface offload flags: {}", e);
+                    write_error()?;
+                    continue;
+                }
+
+                let ack = VIRTIO_NET_OK as u8;
+                writer.write_all(&[ack]).map_err(NetError::WriteAck)?;
+            }
+            VIRTIO_NET_CTRL_MQ => {
+                if ctrl_hdr.cmd == VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET as u8 {
+                    let pairs: Le16 = reader.read_obj().map_err(NetError::ReadCtrlData)?;
+                    // Simple handle it now
+                    if acked_features & 1 << virtio_net::VIRTIO_NET_F_MQ == 0
+                        || pairs.to_native() != vq_pairs
+                    {
+                        error!("Invalid VQ_PAIRS_SET cmd, driver request pairs: {}, device vq pairs: {}",
+                                   pairs.to_native(), vq_pairs);
+                        write_error()?;
+                        continue;
+                    }
+                    let ack = VIRTIO_NET_OK as u8;
+                    writer.write_all(&[ack]).map_err(NetError::WriteAck)?;
+                }
+            }
+            _ => warn!(
+                "unimplemented class for VIRTIO_NET_CTRL_GUEST_OFFLOADS: {}",
+                ctrl_hdr.class
+            ),
+        }
+
+        ctrl_queue.add_used(&mem, index, writer.bytes_written() as u32);
+    }
+
+    interrupt.signal_used_queue(ctrl_queue.vector);
+    Ok(())
+}
+
 #[derive(PollToken, Debug, Clone)]
 pub enum Token {
     // A frame is available for reading from the tap device to receive in the guest.
@@ -290,70 +361,19 @@ where
     }
 
     fn process_ctrl(&mut self) -> Result<(), NetError> {
-        let ctrl_queue = match self.ctrl_queue.as_mut() {
+        let mut ctrl_queue = match self.ctrl_queue.as_mut() {
             Some(queue) => queue,
             None => return Ok(()),
         };
 
-        while let Some(desc_chain) = ctrl_queue.pop(&self.mem) {
-            let index = desc_chain.index;
-
-            let mut reader = Reader::new(self.mem.clone(), desc_chain.clone())
-                .map_err(NetError::DescriptorChain)?;
-            let mut writer =
-                Writer::new(self.mem.clone(), desc_chain).map_err(NetError::DescriptorChain)?;
-            let ctrl_hdr: virtio_net_ctrl_hdr =
-                reader.read_obj().map_err(NetError::ReadCtrlHeader)?;
-
-            match ctrl_hdr.class as c_uint {
-                VIRTIO_NET_CTRL_GUEST_OFFLOADS => {
-                    if ctrl_hdr.cmd != VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET as u8 {
-                        error!(
-                            "invalid cmd for VIRTIO_NET_CTRL_GUEST_OFFLOADS: {}",
-                            ctrl_hdr.cmd
-                        );
-                        let ack = VIRTIO_NET_ERR as u8;
-                        writer.write_all(&[ack]).map_err(NetError::WriteAck)?;
-                        ctrl_queue.add_used(&self.mem, index, 0);
-                        continue;
-                    }
-                    let offloads: Le64 = reader.read_obj().map_err(NetError::ReadCtrlData)?;
-                    let tap_offloads = virtio_features_to_tap_offload(offloads.into());
-                    self.tap
-                        .set_offload(tap_offloads)
-                        .map_err(NetError::TapSetOffload)?;
-                    let ack = VIRTIO_NET_OK as u8;
-                    writer.write_all(&[ack]).map_err(NetError::WriteAck)?;
-                }
-                VIRTIO_NET_CTRL_MQ => {
-                    if ctrl_hdr.cmd == VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET as u8 {
-                        let pairs: Le16 = reader.read_obj().map_err(NetError::ReadCtrlData)?;
-                        // Simple handle it now
-                        if self.acked_features & 1 << virtio_net::VIRTIO_NET_F_MQ == 0
-                            || pairs.to_native() != self.vq_pairs
-                        {
-                            error!("Invalid VQ_PAIRS_SET cmd, driver request pairs: {}, device vq pairs: {}",
-                                   pairs.to_native(), self.vq_pairs);
-                            let ack = VIRTIO_NET_ERR as u8;
-                            writer.write_all(&[ack]).map_err(NetError::WriteAck)?;
-                            ctrl_queue.add_used(&self.mem, index, 0);
-                            continue;
-                        }
-                        let ack = VIRTIO_NET_OK as u8;
-                        writer.write_all(&[ack]).map_err(NetError::WriteAck)?;
-                    }
-                }
-                _ => warn!(
-                    "unimplemented class for VIRTIO_NET_CTRL_GUEST_OFFLOADS: {}",
-                    ctrl_hdr.class
-                ),
-            }
-
-            ctrl_queue.add_used(&self.mem, index, 0);
-        }
-
-        self.interrupt.signal_used_queue(ctrl_queue.vector);
-        Ok(())
+        process_ctrl(
+            self.interrupt.as_ref(),
+            &mut ctrl_queue,
+            &self.mem,
+            &mut self.tap,
+            self.acked_features,
+            self.vq_pairs,
+        )
     }
 
     fn run(
