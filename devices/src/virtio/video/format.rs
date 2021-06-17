@@ -230,7 +230,7 @@ pub fn find_closest_resolution(
 }
 
 /// A rectangle used to describe portions of a frame.
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct Rect {
     pub left: i32,
     pub top: i32,
