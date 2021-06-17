@@ -47,14 +47,16 @@
 
 use std::convert::TryFrom;
 use std::fs::File;
+use std::io;
 use std::num::Wrapping;
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::sync::Arc;
 
 use base::{
     error, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor, SharedMemory,
-    SharedMemoryUnix,
+    SharedMemoryUnix, UnlinkUnixListener,
 };
 use cros_async::{AsyncError, AsyncWrapper, Executor};
 use devices::virtio::{Queue, SignalableInterrupt};
@@ -63,14 +65,16 @@ use sync::Mutex;
 use sys_util::clear_fd_flags;
 use thiserror::Error as ThisError;
 use vm_memory::{GuestAddress, GuestMemory, MemoryRegion};
-use vmm_vhost::vhost_user::message::{
-    VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion, VhostUserProtocolFeatures,
-    VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
-    VhostUserVringState,
+use vmm_vhost::vhost_user::{
+    message::{
+        VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion, VhostUserProtocolFeatures,
+        VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
+        VhostUserVringState,
+    },
+    SlaveReqHandler,
 };
 use vmm_vhost::vhost_user::{
-    Error as VhostError, Listener, Result as VhostResult, SlaveFsCacheReq, SlaveListener,
-    VhostUserSlaveReqHandlerMut,
+    Error as VhostError, Result as VhostResult, SlaveFsCacheReq, VhostUserSlaveReqHandlerMut,
 };
 
 /// An event to deliver an interrupt to the guest.
@@ -193,7 +197,7 @@ impl Vring {
 pub enum HandlerError {
     /// Failed to accept an incoming connection.
     #[error("failed to accept an incoming connection: {0}")]
-    AcceptConnection(VhostError),
+    AcceptConnection(io::Error),
     /// Failed to create an async source.
     #[error("failed to create an async source: {0}")]
     CreateAsyncSource(AsyncError),
@@ -202,7 +206,7 @@ pub enum HandlerError {
     CreateConnectionListener(VhostError),
     /// Failed to create a UNIX domain socket listener.
     #[error("failed to create a UNIX domain socket listener: {0}")]
-    CreateSocketListener(VhostError),
+    CreateSocketListener(io::Error),
     /// Failed to handle a vhost-user request.
     #[error("failed to handle a vhost-user request: {0}")]
     HandleVhostUserRequest(VhostError),
@@ -248,17 +252,14 @@ where
     /// Creates a listening socket at `socket` and handles incoming messages from the VMM, which are
     /// dispatched to the device backend via the `VhostUserBackend` trait methods.
     pub async fn run<P: AsRef<Path>>(self, socket: P, ex: &Executor) -> HandlerResult<()> {
-        let mut listener = Listener::new(socket, true)
-            .map_err(HandlerError::CreateSocketListener)
-            .and_then(|l| {
-                SlaveListener::new(l, Arc::new(std::sync::Mutex::new(self)))
-                    .map_err(HandlerError::CreateConnectionListener)
-            })?;
-        let mut req_handler = listener
-            .accept()
-            .map_err(HandlerError::AcceptConnection)?
-            .expect("no incoming connection was detected");
-
+        let listener = UnixListener::bind(socket)
+            .map(UnlinkUnixListener)
+            .map_err(HandlerError::CreateSocketListener)?;
+        let (socket, _) = ex
+            .spawn_blocking(move || listener.accept().map_err(HandlerError::AcceptConnection))
+            .await?;
+        let mut req_handler =
+            SlaveReqHandler::from_stream(socket, Arc::new(std::sync::Mutex::new(self)));
         let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawFd)
             .map(AsyncWrapper::new)
             .expect("failed to get safe descriptor for handler");
