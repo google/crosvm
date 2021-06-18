@@ -38,6 +38,12 @@ pub enum Error {
     PciAllocationFailed,
     /// PCI Address is not allocated.
     PciAddressMissing,
+    /// MSIX Allocator encounters size of zero
+    MsixAllocatorSizeZero,
+    /// MSIX Allocator encounters overflow
+    MsixAllocatorOverflow { base: u64, size: u64 },
+    /// MSIX Allocator encounters out-of-space
+    MsixAllocatorOutOfSpace,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -61,6 +67,13 @@ impl Display for Error {
             }
             PciAllocationFailed => write!(f, "failed to allocate PCI address"),
             PciAddressMissing => write!(f, "PCI address is not allocated"),
+            MsixAllocatorSizeZero => write!(f, "Size of zero detected in MSIX Allocator"),
+            MsixAllocatorOverflow { base, size } => write!(
+                f,
+                "base={} + size={} overflows in MSIX Allocator",
+                base, size
+            ),
+            MsixAllocatorOutOfSpace => write!(f, "Out-of-space detected in MSIX Allocator"),
         }
     }
 }

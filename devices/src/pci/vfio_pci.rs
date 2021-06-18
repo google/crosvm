@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::cmp::{max, min};
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::u32;
 
@@ -307,29 +309,37 @@ struct VfioMsixCap {
     table_size: u16,
     table_pci_bar: u32,
     table_offset: u64,
+    table_size_bytes: u64,
     pba_pci_bar: u32,
     pba_offset: u64,
+    pba_size_bytes: u64,
 }
 
 impl VfioMsixCap {
     fn new(config: &VfioPciConfig, msix_cap_start: u32, vm_socket_irq: Tube) -> Self {
         let msix_ctl = config.read_config_word(msix_cap_start + PCI_MSIX_FLAGS);
-        let table_size = (msix_ctl & PCI_MSIX_FLAGS_QSIZE) + 1;
+        let table_size = (msix_ctl & PCI_MSIX_FLAGS_QSIZE) as u64 + 1;
         let table = config.read_config_dword(msix_cap_start + PCI_MSIX_TABLE);
         let table_pci_bar = table & PCI_MSIX_TABLE_BIR;
         let table_offset = (table & PCI_MSIX_TABLE_OFFSET) as u64;
+        let table_size_bytes = table_size * MSIX_TABLE_ENTRIES_MODULO;
         let pba = config.read_config_dword(msix_cap_start + PCI_MSIX_PBA);
         let pba_pci_bar = pba & PCI_MSIX_PBA_BIR;
         let pba_offset = (pba & PCI_MSIX_PBA_OFFSET) as u64;
+        let pba_size_bytes = ((table_size + BITS_PER_PBA_ENTRY as u64 - 1)
+            / BITS_PER_PBA_ENTRY as u64)
+            * MSIX_PBA_ENTRIES_MODULO;
 
         VfioMsixCap {
-            config: MsixConfig::new(table_size, vm_socket_irq),
+            config: MsixConfig::new(table_size as u16, vm_socket_irq),
             offset: msix_cap_start,
-            table_size,
+            table_size: table_size as u16,
             table_pci_bar,
             table_offset,
+            table_size_bytes,
             pba_pci_bar,
             pba_offset,
+            pba_size_bytes,
         }
     }
 
@@ -362,10 +372,17 @@ impl VfioMsixCap {
     }
 
     fn is_msix_table(&self, bar_index: u32, offset: u64) -> bool {
-        let table_size: u64 = (self.table_size * (MSIX_TABLE_ENTRIES_MODULO as u16)).into();
         bar_index == self.table_pci_bar
             && offset >= self.table_offset
-            && offset < self.table_offset + table_size
+            && offset < self.table_offset + self.table_size_bytes
+    }
+
+    fn get_msix_table(&self, bar_index: u32) -> Option<(u64, u64)> {
+        if bar_index == self.table_pci_bar {
+            Some((self.table_offset, self.table_size_bytes))
+        } else {
+            None
+        }
     }
 
     fn read_table(&self, offset: u64, data: &mut [u8]) {
@@ -379,12 +396,17 @@ impl VfioMsixCap {
     }
 
     fn is_msix_pba(&self, bar_index: u32, offset: u64) -> bool {
-        let pba_size: u64 = (((self.table_size + BITS_PER_PBA_ENTRY as u16 - 1)
-            / BITS_PER_PBA_ENTRY as u16)
-            * MSIX_PBA_ENTRIES_MODULO as u16) as u64;
         bar_index == self.pba_pci_bar
             && offset >= self.pba_offset
-            && offset < self.pba_offset + pba_size
+            && offset < self.pba_offset + self.pba_size_bytes
+    }
+
+    fn get_msix_pba(&self, bar_index: u32) -> Option<(u64, u64)> {
+        if bar_index == self.pba_pci_bar {
+            Some((self.pba_offset, self.pba_size_bytes))
+        } else {
+            None
+        }
     }
 
     fn read_pba(&self, offset: u64, data: &mut [u8]) {
@@ -395,10 +417,6 @@ impl VfioMsixCap {
     fn write_pba(&mut self, offset: u64, data: &[u8]) {
         let offset = offset - self.pba_offset;
         self.config.write_pba_entries(offset, data);
-    }
-
-    fn is_msix_bar(&self, bar_index: u32) -> bool {
-        bar_index == self.table_pci_bar || bar_index == self.pba_pci_bar
     }
 
     fn get_msix_irqfds(&self) -> Option<Vec<&Event>> {
@@ -414,6 +432,61 @@ impl VfioMsixCap {
         }
 
         Some(irqfds)
+    }
+}
+
+struct VfioMsixAllocator {
+    // memory regions unoccupied by MSIX registers
+    // stores sets of (start, end) tuples, where `end` is the address of the
+    // last byte in the region
+    regions: BTreeSet<(u64, u64)>,
+}
+
+impl VfioMsixAllocator {
+    // Creates a new `VfioMsixAllocator` for managing a range of MSIX addresses.
+    // Can return `Err` if `base` + `size` overflows a u64.
+    //
+    // * `base` - The starting address of the range to manage.
+    // * `size` - The size of the address range in bytes.
+    fn new(base: u64, size: u64) -> Result<Self, PciDeviceError> {
+        if size == 0 {
+            return Err(PciDeviceError::MsixAllocatorSizeZero);
+        }
+        let end = base
+            .checked_add(size - 1)
+            .ok_or(PciDeviceError::MsixAllocatorOverflow { base, size })?;
+        let mut regions = BTreeSet::new();
+        regions.insert((base, end));
+        Ok(VfioMsixAllocator { regions })
+    }
+
+    // Allocates a range of addresses from the managed region with a required location.
+    // Returns OutOfSpace if requested range is not available (e.g. already allocated).
+    fn allocate_at(&mut self, start: u64, size: u64) -> Result<(), PciDeviceError> {
+        if size == 0 {
+            return Err(PciDeviceError::MsixAllocatorSizeZero);
+        }
+        let end = start
+            .checked_add(size - 1)
+            .ok_or(PciDeviceError::MsixAllocatorOutOfSpace)?;
+        match self
+            .regions
+            .iter()
+            .find(|range| range.0 <= start && range.1 >= end)
+            .cloned()
+        {
+            Some(slot) => {
+                self.regions.remove(&slot);
+                if slot.0 < start {
+                    self.regions.insert((slot.0, start - 1));
+                }
+                if slot.1 > end {
+                    self.regions.insert((end + 1, slot.1));
+                }
+                Ok(())
+            }
+            None => Err(PciDeviceError::MsixAllocatorOutOfSpace),
+        }
     }
 }
 
@@ -652,18 +725,77 @@ impl VfioPciDevice {
         self.enable_intx();
     }
 
+    fn add_bar_mmap_msix(
+        &self,
+        bar_index: u32,
+        bar_mmaps: Vec<vfio_region_sparse_mmap_area>,
+    ) -> Vec<vfio_region_sparse_mmap_area> {
+        let msix_cap = &self.msix_cap.as_ref().unwrap();
+        let mut msix_mmaps: Vec<(u64, u64)> = Vec::new();
+
+        if let Some(t) = msix_cap.get_msix_table(bar_index) {
+            msix_mmaps.push(t);
+        }
+        if let Some(p) = msix_cap.get_msix_pba(bar_index) {
+            msix_mmaps.push(p);
+        }
+
+        if msix_mmaps.is_empty() {
+            return bar_mmaps;
+        }
+
+        let mut mmaps: Vec<vfio_region_sparse_mmap_area> = Vec::with_capacity(bar_mmaps.len());
+        let pgmask = (pagesize() as u64) - 1;
+
+        for mmap in bar_mmaps.iter() {
+            let mmap_offset = mmap.offset as u64;
+            let mmap_size = mmap.size as u64;
+            let mut to_mmap = match VfioMsixAllocator::new(mmap_offset, mmap_size) {
+                Ok(a) => a,
+                Err(e) => {
+                    error!("add_bar_mmap_msix failed: {}", e);
+                    mmaps.clear();
+                    return mmaps;
+                }
+            };
+
+            // table/pba offsets are qword-aligned - align to page size
+            for &(msix_offset, msix_size) in msix_mmaps.iter() {
+                if msix_offset >= mmap_offset && msix_offset < mmap_offset + mmap_size {
+                    let begin = max(msix_offset, mmap_offset) & !pgmask;
+                    let end =
+                        (min(msix_offset + msix_size, mmap_offset + mmap_size) + pgmask) & !pgmask;
+                    if end > begin {
+                        if let Err(e) = to_mmap.allocate_at(begin, end - begin) {
+                            error!("add_bar_mmap_msix failed: {}", e);
+                            mmaps.clear();
+                            return mmaps;
+                        }
+                    }
+                }
+            }
+
+            for mmap in to_mmap.regions {
+                mmaps.push(vfio_region_sparse_mmap_area {
+                    offset: mmap.0,
+                    size: mmap.1 - mmap.0 + 1,
+                });
+            }
+        }
+
+        mmaps
+    }
+
     fn add_bar_mmap(&self, index: u32, bar_addr: u64) -> Vec<MemoryMapping> {
         let mut mem_map: Vec<MemoryMapping> = Vec::new();
         if self.device.get_region_flags(index) & VFIO_REGION_INFO_FLAG_MMAP != 0 {
             // the bar storing msix table and pba couldn't mmap.
             // these bars should be trapped, so that msix could be emulated.
-            if let Some(msix_cap) = &self.msix_cap {
-                if msix_cap.is_msix_bar(index) {
-                    return mem_map;
-                }
-            }
+            let mut mmaps = self.device.get_region_mmap(index);
 
-            let mmaps = self.device.get_region_mmap(index);
+            if self.msix_cap.is_some() {
+                mmaps = self.add_bar_mmap_msix(index, mmaps);
+            }
             if mmaps.is_empty() {
                 return mem_map;
             }
