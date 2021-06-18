@@ -16,10 +16,10 @@ pub mod vda;
 
 /// Contains the device's state for one playback session, i.e. one stream.
 pub trait DecoderSession {
-    /// Tell how many output buffers will be used for this session. This method
-    /// Must be called after a `ProvidePictureBuffers` event is emitted, and
-    /// before the first call to `use_output_buffers()`.
-    fn set_output_buffer_count(&mut self, count: usize) -> VideoResult<()>;
+    /// Tell how many output buffers will be used for this session and which format they will carry.
+    /// This method must be called after a `ProvidePictureBuffers` event is emitted, and before the
+    /// first call to `use_output_buffers()`.
+    fn set_output_parameters(&mut self, buffer_count: usize, format: Format) -> VideoResult<()>;
 
     /// Decode the compressed stream contained in [`offset`..`offset`+`bytes_used`]
     /// of the shared memory in `descriptor`. `bitstream_id` is the identifier for that
@@ -57,23 +57,20 @@ pub trait DecoderSession {
     /// returned value is borrowed and only valid as long as the session is alive.
     fn event_pipe(&self) -> &dyn AsRawDescriptor;
 
-    /// Ask the device to use the memory buffer in `output_buffer` to store
-    /// decoded frames in pixel format `format`. `planes` describes how the
-    /// frame's planes should be laid out in the buffer, and `picture_buffer_id`
-    /// is the ID of the picture, that will be reproduced in `PictureReady` events
-    /// using this buffer.
+    /// Ask the device to use the memory buffer in `output_buffer` to store decoded frames. `planes`
+    /// describes how the frame's planes should be laid out in the buffer, and `picture_buffer_id`
+    /// is the ID of the picture, that will be reproduced in `PictureReady` events using this
+    /// buffer.
     ///
-    /// The device takes ownership of `output_buffer` and is responsible for
-    /// closing it once the buffer is not used anymore (either when the session
-    /// is closed, or a new set of buffers is provided for the session).
+    /// The device takes ownership of `output_buffer` and is responsible for closing it once the
+    /// buffer is not used anymore (either when the session is closed, or a new set of buffers is
+    /// provided for the session).
     ///
-    /// The device will emit a `PictureReady` event with the `picture_buffer_id`
-    /// field set to the same value as the argument of the same name when a
-    /// frame has been decoded into that buffer.
+    /// The device will emit a `PictureReady` event with the `picture_buffer_id` field set to the
+    /// same value as the argument of the same name when a frame has been decoded into that buffer.
     fn use_output_buffer(
         &mut self,
         picture_buffer_id: i32,
-        format: Format,
         output_buffer: RawDescriptor,
         planes: &[FramePlane],
         modifier: u64,

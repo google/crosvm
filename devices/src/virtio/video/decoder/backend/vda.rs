@@ -18,8 +18,18 @@ use crate::virtio::video::{
 };
 
 #[derive(Debug, ThisError)]
-#[error("VDA Failure: {0}")]
-struct VdaFailure(libvda::decode::Response);
+enum VdaBackendError {
+    #[error("VDA failure: {0}")]
+    VdaFailure(libvda::decode::Response),
+    #[error("set_output_parameters() must be called before use_output_buffer()")]
+    OutputParamsNotSet,
+}
+
+impl From<VdaBackendError> for VideoError {
+    fn from(e: VdaBackendError) -> Self {
+        VideoError::BackendFailure(Box::new(e))
+    }
+}
 
 impl TryFrom<Format> for libvda::Profile {
     type Error = VideoError;
@@ -67,7 +77,7 @@ impl From<libvda::decode::Event> for DecoderEvent {
         fn vda_response_to_result(resp: libvda::decode::Response) -> VideoResult<()> {
             match resp {
                 libvda::decode::Response::Success => Ok(()),
-                resp => Err(VideoError::BackendFailure(Box::new(VdaFailure(resp)))),
+                resp => Err(VdaBackendError::VdaFailure(resp).into()),
             }
         }
 
@@ -112,7 +122,7 @@ impl From<libvda::decode::Event> for DecoderEvent {
                 DecoderEvent::NotifyEndOfBitstreamBuffer(bitstream_id)
             }
             LibvdaEvent::NotifyError(resp) => {
-                DecoderEvent::NotifyError(VideoError::BackendFailure(Box::new(VdaFailure(resp))))
+                DecoderEvent::NotifyError(VdaBackendError::VdaFailure(resp).into())
             }
             LibvdaEvent::ResetResponse(resp) => {
                 DecoderEvent::ResetCompleted(vda_response_to_result(resp))
@@ -149,9 +159,15 @@ fn from_pixel_format(
     }
 }
 
-impl DecoderSession for libvda::decode::Session {
-    fn set_output_buffer_count(&mut self, count: usize) -> VideoResult<()> {
-        Ok((self as &libvda::decode::Session).set_output_buffer_count(count)?)
+pub struct VdaDecoderSession {
+    vda_session: libvda::decode::Session,
+    format: Option<libvda::PixelFormat>,
+}
+
+impl DecoderSession for VdaDecoderSession {
+    fn set_output_parameters(&mut self, buffer_count: usize, format: Format) -> VideoResult<()> {
+        self.format = Some(libvda::PixelFormat::try_from(format)?);
+        Ok(self.vda_session.set_output_buffer_count(buffer_count)?)
     }
 
     fn decode(
@@ -161,38 +177,34 @@ impl DecoderSession for libvda::decode::Session {
         offset: u32,
         bytes_used: u32,
     ) -> VideoResult<()> {
-        Ok((self as &libvda::decode::Session).decode(
-            bitstream_id,
-            descriptor,
-            offset,
-            bytes_used,
-        )?)
+        Ok(self
+            .vda_session
+            .decode(bitstream_id, descriptor, offset, bytes_used)?)
     }
 
     fn flush(&mut self) -> VideoResult<()> {
-        Ok((self as &libvda::decode::Session).flush()?)
+        Ok(self.vda_session.flush()?)
     }
 
     fn reset(&mut self) -> VideoResult<()> {
-        Ok((self as &libvda::decode::Session).reset()?)
+        Ok(self.vda_session.reset()?)
     }
 
     fn event_pipe(&self) -> &dyn AsRawDescriptor {
-        self.pipe()
+        self.vda_session.pipe()
     }
 
     fn use_output_buffer(
         &mut self,
         picture_buffer_id: i32,
-        format: Format,
         output_buffer: RawDescriptor,
         planes: &[FramePlane],
         modifier: u64,
     ) -> VideoResult<()> {
         let vda_planes: Vec<libvda::FramePlane> = planes.iter().map(Into::into).collect();
-        Ok((self as &libvda::decode::Session).use_output_buffer(
+        Ok(self.vda_session.use_output_buffer(
             picture_buffer_id,
-            libvda::PixelFormat::try_from(format)?,
+            self.format.ok_or(VdaBackendError::OutputParamsNotSet)?,
             output_buffer,
             &vda_planes,
             modifier,
@@ -200,23 +212,29 @@ impl DecoderSession for libvda::decode::Session {
     }
 
     fn reuse_output_buffer(&mut self, picture_buffer_id: i32) -> VideoResult<()> {
-        Ok((self as &libvda::decode::Session).reuse_output_buffer(picture_buffer_id)?)
+        Ok(self.vda_session.reuse_output_buffer(picture_buffer_id)?)
     }
 
     fn read_event(&mut self) -> VideoResult<DecoderEvent> {
-        self.read_event().map(Into::into).map_err(Into::into)
+        self.vda_session
+            .read_event()
+            .map(Into::into)
+            .map_err(Into::into)
     }
 }
 
 impl DecoderBackend for libvda::decode::VdaInstance {
-    type Session = libvda::decode::Session;
+    type Session = VdaDecoderSession;
 
     fn new_session(&mut self, format: Format) -> VideoResult<Self::Session> {
         let profile = libvda::Profile::try_from(format)?;
 
-        self.open_session(profile).map_err(|e| {
-            error!("failed to open a session for {:?}: {}", format, e);
-            VideoError::InvalidOperation
+        Ok(VdaDecoderSession {
+            vda_session: self.open_session(profile).map_err(|e| {
+                error!("failed to open a session for {:?}: {}", format, e);
+                VideoError::InvalidOperation
+            })?,
+            format: None,
         })
     }
 
