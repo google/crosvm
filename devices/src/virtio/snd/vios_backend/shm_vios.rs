@@ -105,6 +105,7 @@ pub struct VioSClient {
     // These mutexes should almost never be held simultaneously. If at some point they have to the
     // locking order should match the order in which they are declared here.
     streams: Mutex<Vec<VioSStreamInfo>>,
+    chmaps: Mutex<Vec<virtio_snd_chmap_info>>,
     control_socket: Mutex<UnixSeqpacket>,
     event_socket: Mutex<UnixSeqpacket>,
     tx: Mutex<IoBufferQueue>,
@@ -193,6 +194,7 @@ impl VioSClient {
         let mut client = VioSClient {
             config,
             streams: Mutex::new(Vec::new()),
+            chmaps: Mutex::new(Vec::new()),
             control_socket: Mutex::new(client_socket),
             event_socket: Mutex::new(event_socket),
             tx: Mutex::new(IoBufferQueue::new(tx_socket, tx_shm_file)?),
@@ -203,7 +205,7 @@ impl VioSClient {
             recv_event: Mutex::new(recv_event),
             recv_thread: Mutex::new(None),
         };
-        client.request_and_cache_streams_info()?;
+        client.request_and_cache_info()?;
         Ok(client)
     }
 
@@ -228,6 +230,11 @@ impl VioSClient {
             .lock()
             .get(idx as usize)
             .map(virtio_snd_pcm_info::from)
+    }
+
+    /// Get the configuration information on a channel map
+    pub fn chmap_info(&self, idx: u32) -> Option<virtio_snd_chmap_info> {
+        self.chmaps.lock().get(idx as usize).copied()
     }
 
     /// Starts the background thread that receives release messages from the server. If the thread
@@ -501,8 +508,17 @@ impl VioSClient {
         Ok(())
     }
 
+    fn request_and_cache_info(&mut self) -> Result<()> {
+        self.request_and_cache_streams_info()?;
+        self.request_and_cache_chmaps_info()?;
+        Ok(())
+    }
+
     fn request_and_cache_streams_info(&mut self) -> Result<()> {
         let num_streams = self.config.streams as usize;
+        if num_streams == 0 {
+            return Ok(());
+        }
         let info_size = std::mem::size_of::<virtio_snd_pcm_info>();
         let req = virtio_snd_query_info {
             hdr: virtio_snd_hdr {
@@ -513,6 +529,9 @@ impl VioSClient {
             size: (std::mem::size_of::<virtio_snd_query_info>() as u32).into(),
         };
         self.send_cmd(req)?;
+        // send_cmd acquires and releases the control_socket lock and then it's acquired again
+        // here, however this is not a race because this function is called once during creation of
+        // the object before there is a chance for multiple threads to have access to it.
         let control_socket_lock = self.control_socket.lock();
         let info_vec = control_socket_lock
             .recv_as_vec()
@@ -532,6 +551,46 @@ impl VioSClient {
                         .as_mut_slice()
                         .copy_from_slice(info_buffer);
                     VioSStreamInfo::new(id as u32, &virtio_stream_info)
+                })
+                .collect(),
+        );
+        Ok(())
+    }
+
+    fn request_and_cache_chmaps_info(&mut self) -> Result<()> {
+        let num_chmaps = self.config.chmaps as usize;
+        if num_chmaps == 0 {
+            return Ok(());
+        }
+        let info_size = std::mem::size_of::<virtio_snd_chmap_info>();
+        let req = virtio_snd_query_info {
+            hdr: virtio_snd_hdr {
+                code: VIRTIO_SND_R_CHMAP_INFO.into(),
+            },
+            start_id: 0u32.into(),
+            count: (num_chmaps as u32).into(),
+            size: (std::mem::size_of::<virtio_snd_query_info>() as u32).into(),
+        };
+        self.send_cmd(req)?;
+        // send_cmd acquires and releases the control_socket lock and then it's acquired again
+        // here, however this is not a race because this function is called once during creation of
+        // the object before there is a chance for multiple threads to have access to it.
+        let control_socket_lock = self.control_socket.lock();
+        let info_vec = control_socket_lock
+            .recv_as_vec()
+            .map_err(Error::ServerIOError)?;
+        if info_vec.len() != num_chmaps * info_size {
+            return Err(Error::ProtocolError(
+                ProtocolErrorKind::UnexpectedMessageSize(num_chmaps * info_size, info_vec.len()),
+            ));
+        }
+        self.chmaps = Mutex::new(
+            info_vec
+                .chunks(info_size)
+                .map(|info_buffer| {
+                    let mut info: virtio_snd_chmap_info = Default::default();
+                    info.as_mut_slice().copy_from_slice(info_buffer);
+                    info
                 })
                 .collect(),
         );

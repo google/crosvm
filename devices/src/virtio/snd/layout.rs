@@ -140,7 +140,7 @@ pub struct virtio_snd_jack_remap {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_jack_remap {}
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 #[repr(C)]
 pub struct virtio_snd_chmap_info {
     pub hdr: virtio_snd_info,
