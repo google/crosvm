@@ -49,7 +49,7 @@ exclude = [
 [features]
 audio = ["devices/audio"]
 audio_cras = ["devices/audio_cras"]
-chromeos = ["base/chromeos", "audio_cras"]
+chromeos = ["base/chromeos", "audio_cras", "devices/chromeos"]
 composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
 default = ["audio", "gpu", "usb"]
 default-no-sandbox = []
@@ -125,6 +125,7 @@ libcras = { path = "libcras_stub" } # ignored by ebuild
 p9 = { path = "common/p9" } # ignored by ebuild
 sync = { path = "sync" }
 sys_util = { path = "sys_util" }
+system_api = { path = "system_api_stub" } # ignored by ebuild
 tempfile = { path = "tempfile" }
 wire_format_derive = { path = "common/p9/wire_format_derive" } # ignored by ebuild
 minijail = { path = "third_party/minijail/rust/minijail" } # ignored by ebuild

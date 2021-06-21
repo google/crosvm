@@ -7,6 +7,7 @@ edition = "2018"
 [features]
 audio = []
 audio_cras = ["libcras"]
+chromeos = ["dbus", "protobuf", "system_api"]
 direct = []
 gpu = ["gpu_display","rutabaga_gfx"]
 tpm = ["tpm2"]
@@ -27,6 +28,7 @@ base = { path = "../base" }
 bit_field = { path = "../bit_field" }
 cros_async = { path = "../cros_async" }
 data_model = { path = "../data_model" }
+dbus = { version = "0.9", optional = true }
 disk = { path = "../disk" }
 enumn = { path = "../enumn" }
 fuse = {path = "../fuse" }
@@ -45,6 +47,7 @@ net_util = { path = "../net_util" }
 once_cell = "1.7.2"
 p9 = "*"
 power_monitor = { path = "../power_monitor" }
+protobuf = { version = "2.3", optional = true }
 protos = { path = "../protos", optional = true }
 remain = "*"
 resources = { path = "../resources" }
@@ -52,6 +55,7 @@ serde = { version = "1", features = [ "derive" ] }
 smallvec = "1.6.1"
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
+system_api = { version = "*", optional = true }
 thiserror = "1.0.20"
 tpm2 = { path = "../tpm2", optional = true }
 usb_util = { path = "../usb_util" }

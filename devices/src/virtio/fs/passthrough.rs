@@ -34,6 +34,15 @@ use fuse::sys::WRITE_KILL_PRIV;
 use fuse::Mapper;
 use sync::Mutex;
 
+#[cfg(feature = "chromeos")]
+use {
+    protobuf::Message,
+    system_api::client::OrgChromiumArcQuota,
+    system_api::UserDataAuth::{
+        SetMediaRWDataFileProjectIdReply, SetMediaRWDataFileProjectIdRequest,
+    },
+};
+
 use crate::virtio::fs::caps::{Capability, Caps, Set as CapSet, Value as CapValue};
 use crate::virtio::fs::multikey::MultikeyBTreeMap;
 use crate::virtio::fs::read_dir::ReadDir;
@@ -48,6 +57,10 @@ const SELINUX_XATTR: &[u8] = b"security.selinux";
 
 const FSCRYPT_KEY_DESCRIPTOR_SIZE: usize = 8;
 const FSCRYPT_KEY_IDENTIFIER_SIZE: usize = 16;
+
+// 25 seconds is the default timeout for dbus-send.
+#[cfg(feature = "chromeos")]
+const DEFAULT_DBUS_TIMEOUT: Duration = Duration::from_secs(25);
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -94,12 +107,12 @@ ioctl_iowr_nr!(FS_IOC_GET_ENCRYPTION_POLICY_EX, 'f' as u32, 22, [u8; 9]);
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct fsxattr {
-    _fsx_xflags: u32,     /* xflags field value (get/set) */
-    _fsx_extsize: u32,    /* extsize field value (get/set)*/
-    _fsx_nextents: u32,   /* nextents field value (get)	*/
-    _fsx_projid: u32,     /* project identifier (get/set) */
-    _fsx_cowextsize: u32, /* CoW extsize field value (get/set)*/
-    _fsx_pad: [u8; 8],
+    fsx_xflags: u32,     /* xflags field value (get/set) */
+    fsx_extsize: u32,    /* extsize field value (get/set)*/
+    fsx_nextents: u32,   /* nextents field value (get)	*/
+    fsx_projid: u32,     /* project identifier (get/set) */
+    fsx_cowextsize: u32, /* CoW extsize field value (get/set)*/
+    fsx_pad: [u8; 8],
 }
 unsafe impl DataInit for fsxattr {}
 
@@ -345,7 +358,7 @@ fn ebadf() -> io::Error {
     io::Error::from_raw_os_error(libc::EBADF)
 }
 
-fn stat<F: AsRawDescriptor>(f: &F) -> io::Result<libc::stat64> {
+fn stat<F: AsRawDescriptor + ?Sized>(f: &F) -> io::Result<libc::stat64> {
     let mut st = MaybeUninit::<libc::stat64>::zeroed();
 
     // Safe because this is a constant value and a valid C string.
@@ -479,6 +492,13 @@ pub struct Config {
     ///
     /// The default value for this option is `false`.
     pub ascii_casefold: bool,
+
+    // UIDs which are privileged to perform quota-related operations. We cannot perform a CAP_FOWNER
+    // check so we consult this list when the VM tries to set the project quota and the process uid
+    // doesn't match the owner uid. In that case, all uids in this list are treated as if they have
+    // CAP_FOWNER.
+    #[cfg(feature = "chromeos")]
+    pub privileged_quota_uids: Vec<libc::uid_t>,
 }
 
 impl Default for Config {
@@ -490,6 +510,8 @@ impl Default for Config {
             writeback: false,
             rewrite_security_xattrs: false,
             ascii_casefold: false,
+            #[cfg(feature = "chromeos")]
+            privileged_quota_uids: Default::default(),
         }
     }
 }
@@ -533,6 +555,12 @@ pub struct PassthroughFs {
     // allow one thread at a time to change it.
     umask: Mutex<Umask>,
 
+    // Used to communicate with other processes using D-Bus.
+    #[cfg(feature = "chromeos")]
+    dbus_connection: Option<Mutex<dbus::blocking::Connection>>,
+    #[cfg(feature = "chromeos")]
+    dbus_fd: Option<std::os::unix::io::RawFd>,
+
     cfg: Config,
 }
 
@@ -553,6 +581,22 @@ impl PassthroughFs {
             return Err(io::Error::last_os_error());
         }
 
+        // Privileged UIDs can use D-Bus to perform some operations.
+        #[cfg(feature = "chromeos")]
+        let (dbus_connection, dbus_fd) = if cfg.privileged_quota_uids.is_empty() {
+            (None, None)
+        } else {
+            let mut channel = dbus::channel::Channel::get_private(dbus::channel::BusType::System)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            channel.set_watch_enabled(true);
+            let dbus_fd = channel.watch().fd;
+            channel.set_watch_enabled(false);
+            (
+                Some(Mutex::new(dbus::blocking::Connection::from(channel))),
+                Some(dbus_fd),
+            )
+        };
+
         // Safe because we just opened this descriptor.
         let proc = unsafe { File::from_raw_descriptor(raw_descriptor) };
 
@@ -571,12 +615,24 @@ impl PassthroughFs {
 
             chdir_mutex: Mutex::new(()),
             umask: Mutex::new(Umask),
+
+            #[cfg(feature = "chromeos")]
+            dbus_connection,
+            #[cfg(feature = "chromeos")]
+            dbus_fd,
+
             cfg,
         })
     }
 
     pub fn keep_rds(&self) -> Vec<RawDescriptor> {
-        vec![self.proc.as_raw_descriptor()]
+        #[cfg_attr(not(feature = "chromeos"), allow(unused_mut))]
+        let mut keep_rds = vec![self.proc.as_raw_descriptor()];
+        #[cfg(feature = "chromeos")]
+        if let Some(fd) = self.dbus_fd {
+            keep_rds.push(fd);
+        }
+        keep_rds
     }
 
     fn rewrite_xattr_name<'xattr>(&self, name: &'xattr CStr) -> Cow<'xattr, CStr> {
@@ -950,6 +1006,7 @@ impl PassthroughFs {
 
     fn set_fsxattr<R: io::Read>(
         &self,
+        #[cfg_attr(not(feature = "chromeos"), allow(unused_variables))] ctx: Context,
         inode: Inode,
         handle: Handle,
         r: R,
@@ -960,10 +1017,57 @@ impl PassthroughFs {
             self.find_handle(handle, inode)?
         };
 
-        let attr = fsxattr::from_reader(r)?;
+        let in_attr = fsxattr::from_reader(r)?;
+
+        #[cfg(feature = "chromeos")]
+        let st = stat(&*data)?;
+
+        // Changing quota project ID requires CAP_FOWNER or being file owner.
+        // Here we use privileged_quota_uids because we cannot perform a CAP_FOWNER check.
+        #[cfg(feature = "chromeos")]
+        if ctx.uid == st.st_uid || self.cfg.privileged_quota_uids.contains(&ctx.uid) {
+            // Get the current fsxattr.
+            let mut buf = MaybeUninit::<fsxattr>::zeroed();
+            // Safe because the kernel will only write to `buf` and we check the return value.
+            let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_FSGETXATTR(), buf.as_mut_ptr()) };
+            if res < 0 {
+                return Ok(IoctlReply::Done(Err(io::Error::last_os_error())));
+            }
+            // Safe because the kernel guarantees that the policy is now initialized.
+            let current_attr = unsafe { buf.assume_init() };
+
+            // Project ID cannot be changed inside a user namespace.
+            // Use UserDataAuth to avoid this restriction.
+            if current_attr.fsx_projid != in_attr.fsx_projid {
+                let connection = self.dbus_connection.as_ref().unwrap().lock();
+                let proxy = connection.with_proxy(
+                    "org.chromium.UserDataAuth",
+                    "/org/chromium/UserDataAuth",
+                    DEFAULT_DBUS_TIMEOUT,
+                );
+                let mut proto: SetMediaRWDataFileProjectIdRequest = Message::new();
+                proto.project_id = in_attr.fsx_projid;
+                // Safe because data is a valid file descriptor.
+                let fd = unsafe { dbus::arg::OwnedFd::new(sys_util::clone_descriptor(&*data)?) };
+                match proxy.set_media_rwdata_file_project_id(fd, proto.write_to_bytes().unwrap()) {
+                    Ok(r) => {
+                        let r = protobuf::parse_from_bytes::<SetMediaRWDataFileProjectIdReply>(&r)
+                            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                        if !r.success {
+                            return Ok(IoctlReply::Done(Err(io::Error::from_raw_os_error(
+                                r.error,
+                            ))));
+                        }
+                    }
+                    Err(e) => {
+                        return Err(io::Error::new(io::ErrorKind::Other, e));
+                    }
+                };
+            }
+        }
 
         //  Safe because this doesn't modify any memory and we check the return value.
-        let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_FSSETXATTR(), &attr) };
+        let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_FSSETXATTR(), &in_attr) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -2221,7 +2325,7 @@ impl FileSystem for PassthroughFs {
 
     fn ioctl<R: io::Read>(
         &self,
-        _ctx: Context,
+        ctx: Context,
         inode: Inode,
         handle: Handle,
         _flags: IoctlFlags,
@@ -2254,7 +2358,7 @@ impl FileSystem for PassthroughFs {
                 if in_size < size_of::<fsxattr>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::EINVAL))
                 } else {
-                    self.set_fsxattr(inode, handle, r)
+                    self.set_fsxattr(ctx, inode, handle, r)
                 }
             }
             GET_FLAGS32 | GET_FLAGS64 => {

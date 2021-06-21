@@ -1440,6 +1440,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             //   (default: "0 <current euid> 1")
             // * gidmap=GIDMAP - a gid map in the same format as uidmap
             //   (default: "0 <current egid> 1")
+            // * privileged_quota_uids=UIDS - Space-separated list of privileged uid values. When
+            //   performing quota-related operations, these UIDs are treated as if they have
+            //   CAP_FOWNER.
             // * timeout=TIMEOUT - a timeout value in seconds, which indicates how long attributes
             //   and directory contents should be considered valid (default: 5)
             // * cache=CACHE - one of "never", "always", or "auto" (default: auto)
@@ -1496,6 +1499,11 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     }
                     "uidmap" => shared_dir.uid_map = value.into(),
                     "gidmap" => shared_dir.gid_map = value.into(),
+                    #[cfg(feature = "chromeos")]
+                    "privileged_quota_uids" => {
+                        shared_dir.fs_cfg.privileged_quota_uids =
+                            value.split(' ').map(|s| s.parse().unwrap()).collect();
+                    }
                     "timeout" => {
                         let seconds = value.parse().map_err(|_| argument::Error::InvalidValue {
                             value: value.to_owned(),
