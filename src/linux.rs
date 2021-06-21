@@ -23,7 +23,7 @@ use std::time::Duration;
 use std::thread;
 use std::thread::JoinHandle;
 
-use libc::{self, c_int, gid_t, uid_t};
+use libc::{self, c_int, gid_t, uid_t, EINVAL};
 
 use acpi_tables::sdt::SDT;
 
@@ -1606,9 +1606,13 @@ fn create_devices(
 
             let (msi_host_tube, msi_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
             control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
-            let dev = VirtioPciDevice::new(vm.get_memory().clone(), iommu_dev.dev, msi_device_tube)
-                .map_err(Error::VirtioPciDev)?;
-            let dev = Box::new(dev) as Box<dyn PciDevice>;
+            let mut dev =
+                VirtioPciDevice::new(vm.get_memory().clone(), iommu_dev.dev, msi_device_tube)
+                    .map_err(Error::VirtioPciDev)?;
+            // early reservation for viommu.
+            dev.allocate_address(resources)
+                .map_err(|_| Error::VirtioPciDev(base::Error::new(EINVAL)))?;
+            let dev = Box::new(dev);
             pci_devices.push((dev, iommu_dev.jail));
         }
     }

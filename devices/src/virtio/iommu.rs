@@ -6,9 +6,11 @@ use super::{
     copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, SignalableInterrupt,
     VirtioDevice, Writer, TYPE_IOMMU,
 };
+use crate::pci::PciAddress;
 use crate::vfio::{VfioContainer, VfioError};
+use acpi_tables::sdt::SDT;
 use base::{
-    error, AsRawDescriptor, Error as SysError, Event, PollToken, RawDescriptor,
+    error, warn, AsRawDescriptor, Error as SysError, Event, PollToken, RawDescriptor,
     Result as SysResult, WaitContext,
 };
 use data_model::DataInit;
@@ -81,6 +83,53 @@ struct VirtioIommuTopoPciRange {
 
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for VirtioIommuTopoPciRange {}
+
+const VIRTIO_IOMMU_VIOT_NODE_PCI_RANGE: u8 = 1;
+const VIRTIO_IOMMU_VIOT_NODE_VIRTIO_IOMMU_PCI: u8 = 3;
+
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C, packed)]
+struct VirtioIommuViotHeader {
+    node_count: u16,
+    node_offset: u16,
+    reserved: [u8; 8],
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for VirtioIommuViotHeader {}
+
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C, packed)]
+struct VirtioIommuViotVirtioPciNode {
+    type_: u8,
+    reserved: [u8; 1],
+    length: u16,
+    segment: u16,
+    bdf: u16,
+    reserved2: [u8; 8],
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for VirtioIommuViotVirtioPciNode {}
+
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(C, packed)]
+struct VirtioIommuViotPciRangeNode {
+    type_: u8,
+    reserved: [u8; 1],
+    length: u16,
+    endpoint_start: u32,
+    segment_start: u16,
+    segment_end: u16,
+    bdf_start: u16,
+    bdf_end: u16,
+    output_node: u16,
+    reserved2: [u8; 2],
+    reserved3: [u8; 4],
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for VirtioIommuViotPciRangeNode {}
 
 /// Virtio IOMMU request type
 const VIRTIO_IOMMU_T_ATTACH: u8 = 1;
@@ -784,5 +833,67 @@ impl VirtioDevice for Iommu {
             Err(e) => error!("failed to spawn virtio_iommu worker thread: {}", e),
             Ok(join_handle) => self.worker_thread = Some(join_handle),
         }
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn generate_acpi(
+        &mut self,
+        pci_address: &Option<PciAddress>,
+        mut sdts: Vec<SDT>,
+    ) -> Option<Vec<SDT>> {
+        const OEM_REVISION: u32 = 1;
+        const VIOT_REVISION: u8 = 0;
+
+        for sdt in sdts.iter() {
+            // there should only be one VIOT table
+            if sdt.is_signature(b"VIOT") {
+                warn!("vIOMMU: duplicate VIOT table detected");
+                return None;
+            }
+        }
+
+        let mut viot = SDT::new(
+            *b"VIOT",
+            acpi_tables::HEADER_LEN,
+            VIOT_REVISION,
+            *b"CROSVM",
+            *b"CROSVMDT",
+            OEM_REVISION,
+        );
+        viot.append(VirtioIommuViotHeader {
+            // # of PCI range nodes + 1 virtio-pci node
+            node_count: (self.endpoints.len() + 1) as u16,
+            node_offset: (viot.len() + std::mem::size_of::<VirtioIommuViotHeader>()) as u16,
+            ..Default::default()
+        });
+
+        let bdf = pci_address
+            .or_else(|| {
+                error!("vIOMMU device has no PCI address");
+                None
+            })?
+            .to_u32() as u16;
+        let iommu_offset = viot.len();
+
+        viot.append(VirtioIommuViotVirtioPciNode {
+            type_: VIRTIO_IOMMU_VIOT_NODE_VIRTIO_IOMMU_PCI,
+            length: size_of::<VirtioIommuViotVirtioPciNode>() as u16,
+            bdf,
+            ..Default::default()
+        });
+
+        for (endpoint, _) in self.endpoints.iter() {
+            viot.append(VirtioIommuViotPciRangeNode {
+                type_: VIRTIO_IOMMU_VIOT_NODE_PCI_RANGE,
+                length: size_of::<VirtioIommuViotPciRangeNode>() as u16,
+                endpoint_start: *endpoint,
+                bdf_start: *endpoint as u16,
+                bdf_end: *endpoint as u16,
+                output_node: iommu_offset as u16,
+                ..Default::default()
+            });
+        }
+        sdts.push(viot);
+        Some(sdts)
     }
 }
