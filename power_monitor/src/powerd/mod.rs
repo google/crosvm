@@ -9,7 +9,7 @@ use proto::system_api::power_supply_properties::{
     PowerSupplyProperties, PowerSupplyProperties_BatteryState, PowerSupplyProperties_ExternalPower,
 };
 
-use dbus::{BusType, Connection, ConnectionItem, WatchEvent};
+use dbus::ffidisp::{BusType, Connection, ConnectionItem, WatchEvent};
 
 use protobuf::error::ProtobufError;
 use protobuf::Message;

@@ -9,7 +9,7 @@ powerd = ["dbus", "protobuf", "protoc-rust"]
 
 [dependencies]
 base = { path = "../base" }
-dbus = { version = "0.6.1", optional = true }
+dbus = { version = "0.8", optional = true }
 protobuf = { version = "2.8.1", optional = true }
 
 [build-dependencies]
