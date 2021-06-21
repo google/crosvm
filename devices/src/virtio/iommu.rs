@@ -31,7 +31,6 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
 const VIRTIO_IOMMU_F_INPUT_RANGE: u32 = 0;
 const VIRTIO_IOMMU_F_MAP_UNMAP: u32 = 2;
 const VIRTIO_IOMMU_F_PROBE: u32 = 4;
-const VIRTIO_IOMMU_F_TOPOLOGY: u32 = 6;
 
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C, packed)]
@@ -45,44 +44,15 @@ unsafe impl DataInit for VirtioIommuRange64 {}
 
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C, packed)]
-struct VirtioIommuTopoConfig {
-    count: u16,
-    offset: u16,
-}
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for VirtioIommuTopoConfig {}
-
-#[derive(Copy, Clone, Debug, Default)]
-#[repr(C, packed)]
 struct VirtioIommuConfig {
     page_size_mask: u64,
     input_range: VirtioIommuRange64,
     domain_range: [u32; 2],
     probe_size: u32,
-    topo_config: VirtioIommuTopoConfig,
 }
 
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for VirtioIommuConfig {}
-
-const VIRTIO_IOMMU_TOPO_PCI_RANGE: u8 = 1;
-
-#[derive(Copy, Clone, Debug, Default)]
-#[repr(C, packed)]
-struct VirtioIommuTopoPciRange {
-    type_: u8,
-    reserved: u8,
-    length: u16,
-    endpoint_start: u32,
-    segment_start: u16,
-    segment_end: u16,
-    bdf_start: u16,
-    bdf_end: u16,
-}
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for VirtioIommuTopoPciRange {}
 
 const VIRTIO_IOMMU_VIOT_NODE_PCI_RANGE: u8 = 1;
 const VIRTIO_IOMMU_VIOT_NODE_VIRTIO_IOMMU_PCI: u8 = 3;
@@ -666,7 +636,6 @@ pub struct Iommu {
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker>>,
     config: VirtioIommuConfig,
-    config_topo_pci_ranges: Vec<VirtioIommuTopoPciRange>,
     avail_features: u64,
     endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>>,
 }
@@ -678,23 +647,6 @@ impl Iommu {
         endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>>,
         phys_max_addr: u64,
     ) -> SysResult<Iommu> {
-        let mut topo_pci_ranges = Vec::new();
-        for (endpoint, _) in endpoints.iter() {
-            topo_pci_ranges.push(VirtioIommuTopoPciRange {
-                type_: VIRTIO_IOMMU_TOPO_PCI_RANGE,
-                length: size_of::<VirtioIommuTopoPciRange>() as u16,
-                endpoint_start: *endpoint,
-                bdf_start: *endpoint as u16,
-                bdf_end: *endpoint as u16,
-                ..Default::default()
-            });
-        }
-
-        let topo_config = VirtioIommuTopoConfig {
-            count: topo_pci_ranges.len() as u16,
-            offset: size_of::<VirtioIommuConfig>() as u16,
-        };
-
         let mut page_size_mask = !0_u64;
         for (_, container) in endpoints.iter() {
             page_size_mask &= container
@@ -718,14 +670,11 @@ impl Iommu {
             input_range,
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             probe_size: IOMMU_PROBE_SIZE as u32,
-            topo_config,
             ..Default::default()
         };
 
         let mut avail_features: u64 = base_features;
-        avail_features |= 1 << VIRTIO_IOMMU_F_MAP_UNMAP
-            | 1 << VIRTIO_IOMMU_F_INPUT_RANGE
-            | 1 << VIRTIO_IOMMU_F_TOPOLOGY;
+        avail_features |= 1 << VIRTIO_IOMMU_F_MAP_UNMAP | 1 << VIRTIO_IOMMU_F_INPUT_RANGE;
 
         if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
             avail_features |= 1 << VIRTIO_IOMMU_F_PROBE;
@@ -735,7 +684,6 @@ impl Iommu {
             kill_evt: None,
             worker_thread: None,
             config,
-            config_topo_pci_ranges: topo_pci_ranges,
             avail_features,
             endpoints,
         })
@@ -779,11 +727,6 @@ impl VirtioDevice for Iommu {
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let mut config: Vec<u8> = Vec::new();
         config.extend_from_slice(self.config.as_slice());
-
-        for config_topo_pci_range in self.config_topo_pci_ranges.iter() {
-            config.extend_from_slice(config_topo_pci_range.as_slice());
-        }
-
         copy_config(data, 0, config.as_slice(), offset);
     }
 
