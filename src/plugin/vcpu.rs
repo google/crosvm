@@ -23,7 +23,7 @@ use kvm_sys::{
     kvm_debugregs, kvm_enable_cap, kvm_fpu, kvm_lapic_state, kvm_mp_state, kvm_msr_entry, kvm_msrs,
     kvm_regs, kvm_sregs, kvm_vcpu_events, kvm_xcrs, KVM_CPUID_FLAG_SIGNIFCANT_INDEX,
 };
-use protobuf::stream::CodedOutputStream;
+use protobuf::CodedOutputStream;
 use protos::plugin::*;
 use sync::Mutex;
 
