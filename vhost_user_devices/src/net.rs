@@ -208,7 +208,6 @@ impl NetBackend {
 }
 
 impl VhostUserBackend for NetBackend {
-    // TODO(keiichiw): Support multiple queue pairs.
     const MAX_QUEUE_NUM: usize = 3; /* rx, tx, ctrl */
     const MAX_VRING_LEN: u16 = 256;
 
@@ -238,7 +237,6 @@ impl VhostUserBackend for NetBackend {
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
-        // TODO(keiichiw): Support MQ.
         VhostUserProtocolFeatures::CONFIG
     }
 
@@ -334,7 +332,6 @@ impl VhostUserBackend for NetBackend {
 fn main() -> anyhow::Result<()> {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
-    // TODO(keiichiw): Support tap-fd option.
     opts.optmulti(
         "",
         "device",
