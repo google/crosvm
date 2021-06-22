@@ -119,6 +119,11 @@ impl Interrupt {
         }
     }
 
+    /// Get a reference to the interrupt event.
+    pub fn get_interrupt_evt(&self) -> &Event {
+        &self.interrupt_evt
+    }
+
     /// Handle interrupt resampling event, reading the value from the event and doing the resample.
     pub fn interrupt_resample(&self) {
         let _ = self.interrupt_resample_evt.read();

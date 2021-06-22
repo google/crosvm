@@ -238,8 +238,7 @@ impl VhostUserHandler {
             let queue_evt = &queue_evts[queue_index];
             let irqfd = msix_config
                 .get_irqfd(queue.vector as usize)
-                .ok_or(Error::MsixIrqfdUnavailable)?;
-
+                .unwrap_or_else(|| interrupt.get_interrupt_evt());
             self.activate_vring(&mem, queue_index, queue, queue_evt, &irqfd)?;
         }
 
