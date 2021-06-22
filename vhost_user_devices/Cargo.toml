@@ -5,12 +5,18 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [features]
+console = ["data_model"]
 net = ["data_model", "net_util", "virtio_sys"]
 wl = ["devices/minigbm"]
 block = ["data_model", "disk"]
 
 [lib]
 path = "src/lib.rs"
+
+[[bin]]
+name = "vhost-user-console-device"
+path = "src/console.rs"
+required-features = ["console"]
 
 [[bin]]
 name = "vhost-user-net-device"
