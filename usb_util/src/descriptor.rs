@@ -148,6 +148,13 @@ pub fn parse_usbfs_descriptors(data: &[u8]) -> Result<DeviceDescriptorTree> {
                 *offset += hdr.bLength as usize - size_of::<DescriptorHeader>();
                 return Ok((*desc, desc_offset));
             } else {
+                // Finding a ConfigDescriptor while looking for InterfaceDescriptor means
+                // that we should advance to the next device configuration.
+                if desc_type == types::InterfaceDescriptor::descriptor_type() as u8
+                    && hdr.bDescriptorType == types::ConfigDescriptor::descriptor_type() as u8
+                {
+                    return Err(Error::DescriptorParse);
+                }
                 // Skip this entire descriptor, since it's not the right type.
                 *offset += hdr.bLength as usize;
             }
@@ -173,43 +180,44 @@ pub fn parse_usbfs_descriptors(data: &[u8]) -> Result<DeviceDescriptorTree> {
                 interface_descriptors: BTreeMap::new(),
             };
 
-            for intf_idx in 0..config_descriptor.bNumInterfaces {
-                if let Ok((raw_interface_descriptor, interface_offset)) =
-                    next_descriptor::<types::InterfaceDescriptor>(
-                        &device_descriptor.raw,
-                        &mut offset,
-                    )
-                {
-                    let mut interface_descriptor = InterfaceDescriptorTree {
-                        offset: interface_offset,
-                        inner: raw_interface_descriptor,
-                        endpoint_descriptors: BTreeMap::new(),
-                    };
+            while let Ok((raw_interface_descriptor, interface_offset)) =
+                next_descriptor::<types::InterfaceDescriptor>(&device_descriptor.raw, &mut offset)
+            {
+                let mut interface_descriptor = InterfaceDescriptorTree {
+                    offset: interface_offset,
+                    inner: raw_interface_descriptor,
+                    endpoint_descriptors: BTreeMap::new(),
+                };
 
-                    for ep_idx in 0..interface_descriptor.bNumEndpoints {
-                        if let Ok((endpoint_descriptor, _)) = next_descriptor::<EndpointDescriptor>(
-                            &device_descriptor.raw,
-                            &mut offset,
-                        ) {
-                            interface_descriptor
-                                .endpoint_descriptors
-                                .insert(ep_idx, endpoint_descriptor);
-                        } else {
-                            warn!("Could not read endpoint descriptor {}", ep_idx);
-                            break;
-                        }
+                for ep_idx in 0..interface_descriptor.bNumEndpoints {
+                    if let Ok((endpoint_descriptor, _)) =
+                        next_descriptor::<EndpointDescriptor>(&device_descriptor.raw, &mut offset)
+                    {
+                        interface_descriptor
+                            .endpoint_descriptors
+                            .insert(ep_idx, endpoint_descriptor);
+                    } else {
+                        warn!("Could not read endpoint descriptor {}", ep_idx);
+                        break;
                     }
+                }
 
-                    config_descriptor.interface_descriptors.insert(
-                        (
-                            interface_descriptor.bInterfaceNumber,
-                            interface_descriptor.bAlternateSetting,
-                        ),
-                        interface_descriptor,
-                    );
-                } else {
-                    warn!("Could not read interface descriptor {}", intf_idx);
-                    break;
+                config_descriptor.interface_descriptors.insert(
+                    (
+                        interface_descriptor.bInterfaceNumber,
+                        interface_descriptor.bAlternateSetting,
+                    ),
+                    interface_descriptor,
+                );
+            }
+
+            for intf_idx in 0..config_descriptor.bNumInterfaces {
+                if config_descriptor
+                    .interface_descriptors
+                    .get(&(intf_idx, 0))
+                    .is_none()
+                {
+                    warn!("device interface {} has no interface descriptors", intf_idx);
                 }
             }
 
@@ -541,5 +549,110 @@ mod tests {
         assert_eq!(e.bmAttributes, 0x02);
         assert_eq!(u16::from(e.wMaxPacketSize), 0x0200);
         assert_eq!(e.bInterval, 0);
+    }
+
+    #[test]
+    fn parse_descriptors_multiple_altsettings() {
+        let data: &[u8] = &[
+            // DeviceDescriptor
+            0x12, 0x01, 0x00, 0x02, 0xef, 0x02, 0x01, 0x40, 0x6d, 0x04, 0x43, 0x08, 0x13, 0x00,
+            0x00, 0x02, 0x01, 0x01, // ConfigDescriptor
+            0x09, 0x02, 0x0d, 0x0a, 0x03, 0x01, 0x00, 0x80, 0xfa,
+            // InterfaceDescriptor 0, 0
+            0x09, 0x04, 0x00, 0x00, 0x01, 0x0e, 0x01, 0x00, 0x00, // EndpointDescriptor
+            0x07, 0x05, 0x86, 0x03, 0x40, 0x00, 0x08, // InterfaceDescriptor 1, 0
+            0x09, 0x04, 0x01, 0x00, 0x00, 0x0e, 0x02, 0x00, 0x00,
+            // InterfaceDescriptor 1, 1
+            0x09, 0x04, 0x01, 0x01, 0x01, 0x0e, 0x02, 0x00, 0x00, // EndpointDescriptor
+            0x07, 0x05, 0x81, 0x05, 0xc0, 0x00, 0x01, // InterfaceDescriptor 2, 0
+            0x09, 0x04, 0x02, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00,
+        ];
+
+        let d = parse_usbfs_descriptors(data).expect("parse_usbfs_descriptors failed");
+
+        // The seemingly-redundant u16::from() calls avoid borrows of packed fields.
+
+        assert_eq!(u16::from(d.bcdUSB), 0x02_00);
+        assert_eq!(d.bDeviceClass, 0xef);
+        assert_eq!(d.bDeviceSubClass, 0x02);
+        assert_eq!(d.bDeviceProtocol, 0x01);
+        assert_eq!(d.bMaxPacketSize0, 64);
+        assert_eq!(u16::from(d.idVendor), 0x046d);
+        assert_eq!(u16::from(d.idProduct), 0x0843);
+        assert_eq!(u16::from(d.bcdDevice), 0x00_13);
+        assert_eq!(d.iManufacturer, 0);
+        assert_eq!(d.iProduct, 2);
+        assert_eq!(d.iSerialNumber, 1);
+        assert_eq!(d.bNumConfigurations, 1);
+
+        let c = d
+            .get_config_descriptor(1)
+            .expect("could not get config descriptor 1");
+        assert_eq!(u16::from(c.wTotalLength), 2573);
+        assert_eq!(c.bNumInterfaces, 3);
+        assert_eq!(c.bConfigurationValue, 1);
+        assert_eq!(c.iConfiguration, 0);
+        assert_eq!(c.bmAttributes, 0x80);
+        assert_eq!(c.bMaxPower, 250);
+
+        let i = c
+            .get_interface_descriptor(0, 0)
+            .expect("could not get interface descriptor 0 alt setting 0");
+        assert_eq!(i.bInterfaceNumber, 0);
+        assert_eq!(i.bAlternateSetting, 0);
+        assert_eq!(i.bNumEndpoints, 1);
+        assert_eq!(i.bInterfaceClass, 0x0e);
+        assert_eq!(i.bInterfaceSubClass, 0x01);
+        assert_eq!(i.bInterfaceProtocol, 0x00);
+        assert_eq!(i.iInterface, 0x00);
+
+        let e = i
+            .get_endpoint_descriptor(0)
+            .expect("could not get endpoint 0 descriptor");
+        assert_eq!(e.bEndpointAddress, 0x86);
+        assert_eq!(e.bmAttributes, 0x03);
+        assert_eq!(u16::from(e.wMaxPacketSize), 0x40);
+        assert_eq!(e.bInterval, 0x08);
+
+        let i = c
+            .get_interface_descriptor(1, 0)
+            .expect("could not get interface descriptor 1 alt setting 0");
+        assert_eq!(i.bInterfaceNumber, 1);
+        assert_eq!(i.bAlternateSetting, 0);
+        assert_eq!(i.bNumEndpoints, 0);
+        assert_eq!(i.bInterfaceClass, 0x0e);
+        assert_eq!(i.bInterfaceSubClass, 0x02);
+        assert_eq!(i.bInterfaceProtocol, 0x00);
+        assert_eq!(i.iInterface, 0x00);
+
+        let i = c
+            .get_interface_descriptor(1, 1)
+            .expect("could not get interface descriptor 1 alt setting 1");
+        assert_eq!(i.bInterfaceNumber, 1);
+        assert_eq!(i.bAlternateSetting, 1);
+        assert_eq!(i.bNumEndpoints, 1);
+        assert_eq!(i.bInterfaceClass, 0x0e);
+        assert_eq!(i.bInterfaceSubClass, 0x02);
+        assert_eq!(i.bInterfaceProtocol, 0x00);
+        assert_eq!(i.iInterface, 0x00);
+
+        let e = i
+            .get_endpoint_descriptor(0)
+            .expect("could not get endpoint 0 descriptor");
+        assert_eq!(e.bEndpointAddress, 0x81);
+        assert_eq!(e.bmAttributes, 0x05);
+        assert_eq!(u16::from(e.wMaxPacketSize), 0xc0);
+        assert_eq!(e.bInterval, 0x01);
+
+        let i = c
+            .get_interface_descriptor(2, 0)
+            .expect("could not get interface descriptor 2 alt setting 0");
+        assert_eq!(i.bInterfaceNumber, 2);
+        assert_eq!(i.bAlternateSetting, 0);
+        assert_eq!(i.bNumEndpoints, 0);
+        assert_eq!(i.bInterfaceClass, 0x01);
+        assert_eq!(i.bInterfaceSubClass, 0x01);
+        assert_eq!(i.bInterfaceProtocol, 0x00);
+        assert_eq!(i.iInterface, 0x00);
     }
 }
