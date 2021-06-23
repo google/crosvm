@@ -1,0 +1,6 @@
+[book]
+authors = ["The Chromium OS Authors"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Book of crosvm"
