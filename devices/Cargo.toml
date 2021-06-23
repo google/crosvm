@@ -33,7 +33,7 @@ hypervisor = { path = "../hypervisor" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
 libcras = "*"
-libvda = { version = "*", optional = true }
+libvda = { path = "../libvda", optional = true }
 linux_input_sys = { path = "../linux_input_sys" }
 minijail = "*"
 net_sys = { path = "../net_sys" }

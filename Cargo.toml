@@ -21,6 +21,11 @@ required-features = [ "direct" ]
 panic = 'abort'
 overflow-checks = true
 
+# We currently need to exclude some crates from the workspace to allow
+# these crates to be independently built by portage. These crates will
+# eventually be moved into separate repositories.
+# The only workspace members that need to be explicitly specified here are those
+# that are not dependencies of the crosvm root crate.
 [workspace]
 members = [
     "fuzz",
@@ -116,7 +121,6 @@ cras-sys = { path = "../../third_party/adhd/cras/client/cras-sys" } # ignored by
 cros_fuzz = { path = "../../platform2/cros-fuzz" } # ignored by ebuild
 data_model = { path = "data_model" }
 libcras = { path = "../../third_party/adhd/cras/client/libcras" } # ignored by ebuild
-libvda = { path = "../../platform2/arc/vm/libvda/rust" } # ignored by ebuild
 minijail = { path = "../../aosp/external/minijail/rust/minijail" } # ignored by ebuild
 p9 = { path = "../../platform2/vm_tools/p9" } # ignored by ebuild
 sync = { path = "sync" }
