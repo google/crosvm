@@ -43,11 +43,13 @@ exclude = [
     "sys_util",
     "tempfile",
     "vm_memory",
+    "audio_streams",
 ]
 
 [features]
 audio = ["devices/audio"]
-chromeos = ["base/chromeos"]
+audio_cras = ["devices/audio_cras"]
+chromeos = ["base/chromeos", "audio_cras"]
 composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
 default = ["audio", "gpu", "usb"]
 default-no-sandbox = []
@@ -113,12 +115,11 @@ base = "*"
 
 [patch.crates-io]
 assertions = { path = "assertions" }
-audio_streams = { path = "../../third_party/adhd/audio_streams" } # ignored by ebuild
+audio_streams = { path = "audio_streams" }
 base = { path = "base" }
-cras-sys = { path = "../../third_party/adhd/cras/client/cras-sys" } # ignored by ebuild
 cros_fuzz = { path = "../../platform2/cros-fuzz" } # ignored by ebuild
 data_model = { path = "data_model" }
-libcras = { path = "../../third_party/adhd/cras/client/libcras" } # ignored by ebuild
+libcras = { path = "libcras_stub" } # ignored by ebuild
 minijail = { path = "../../aosp/external/minijail/rust/minijail" } # ignored by ebuild
 p9 = { path = "../../platform2/vm_tools/p9" } # ignored by ebuild
 sync = { path = "sync" }

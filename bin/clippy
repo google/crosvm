@@ -65,6 +65,27 @@ SUPPRESS=(
     new-ret-no-self
 )
 
+FEATURES=(
+    default
+    direct
+    audio
+    gpu
+    plugin
+    power-monitor-powerd
+    tpm
+    usb
+    video-decoder
+    video-encoder
+    wl-dmabuf
+    x
+    virgl_renderer_next
+    composite-disk
+    virgl_renderer
+    gfxstream
+    gdb
+)
+printf -v FEATURES_LIST '%s,' "${FEATURES[@]}"
+
 # Needed or else clippy won't re-run on code that has already compiled.
 if [[ "${USE_CACHE}" == false ]]; then
     cargo clean
@@ -76,5 +97,5 @@ RUST_SYSROOT=$(rustc --print sysroot)
 RUSTFLAGS="${RUSTFLAGS:-}"
 export RUSTFLAGS="$RUSTFLAGS --sysroot=$RUST_SYSROOT"
 
-cargo clippy --all-features --all-targets -- ${SUPPRESS[@]/#/-Aclippy::} \
-    "${CLIPPY_ARGS[@]}" -D warnings
+cargo clippy --features ${FEATURES_LIST} --all-targets -- \
+    ${SUPPRESS[@]/#/-Aclippy::} "${CLIPPY_ARGS[@]}" -D warnings

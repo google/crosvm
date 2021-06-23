@@ -6,6 +6,7 @@ edition = "2018"
 
 [features]
 audio = []
+audio_cras = ["libcras"]
 direct = []
 gpu = ["gpu_display","rutabaga_gfx"]
 tpm = ["protos/trunks", "tpm2"]
@@ -32,7 +33,7 @@ rutabaga_gfx = { path = "../rutabaga_gfx", optional = true }
 hypervisor = { path = "../hypervisor" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
-libcras = "*"
+libcras = { version = "*", optional = true }
 libvda = { path = "../libvda", optional = true }
 linux_input_sys = { path = "../linux_input_sys" }
 minijail = "*"

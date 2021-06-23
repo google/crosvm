@@ -72,7 +72,7 @@ CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
 
 # Just like for crates, lists requirements for each cargo feature flag.
 FEATURE_REQUIREMENTS: Dict[str, List[Requirements]] = {
-    "chromeos": [],
+    "chromeos": [Requirements.DISABLED],
     "audio": [],
     "gpu": [Requirements.CROS_BUILD],
     "plugin": [Requirements.PRIVILEGED, Requirements.X86_64],

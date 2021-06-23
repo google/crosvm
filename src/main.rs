@@ -533,6 +533,7 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
                     argument::Error::Syntax(format!("invalid capture option: {}", e))
                 })?;
             }
+            #[cfg(feature = "audio_cras")]
             "client_type" => {
                 ac97_params
                     .set_client_type(v)
@@ -2800,7 +2801,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "audio")]
+    #[cfg(feature = "audio_cras")]
     #[test]
     fn parse_ac97_vaild() {
         parse_ac97_options("backend=cras").expect("parse should have succeded");
@@ -2812,13 +2813,13 @@ mod tests {
         parse_ac97_options("backend=null").expect("parse should have succeded");
     }
 
-    #[cfg(feature = "audio")]
+    #[cfg(feature = "audio_cras")]
     #[test]
     fn parse_ac97_capture_vaild() {
         parse_ac97_options("backend=cras,capture=true").expect("parse should have succeded");
     }
 
-    #[cfg(feature = "audio")]
+    #[cfg(feature = "audio_cras")]
     #[test]
     fn parse_ac97_client_type() {
         parse_ac97_options("backend=cras,capture=true,client_type=crosvm")

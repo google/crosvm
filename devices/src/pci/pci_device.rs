@@ -27,7 +27,7 @@ pub enum Error {
     /// Registering an IO BAR failed.
     IoRegistrationFailed(u64, pci_configuration::Error),
     /// Create cras client failed.
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", feature = "audio_cras"))]
     CreateCrasClientFailed(libcras::Error),
     /// Create VioS client failed.
     #[cfg(feature = "audio")]
@@ -45,7 +45,7 @@ impl Display for Error {
 
         match self {
             CapabilitiesSetup(e) => write!(f, "failed to add capability {}", e),
-            #[cfg(feature = "audio")]
+            #[cfg(all(feature = "audio", feature = "audio_cras"))]
             CreateCrasClientFailed(e) => write!(f, "failed to create CRAS Client: {}", e),
             #[cfg(feature = "audio")]
             CreateViosClientFailed(e) => write!(f, "failed to create VioS Client: {}", e),
