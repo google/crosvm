@@ -8,16 +8,11 @@
 use crate::virtio::video::{
     decoder::Capability,
     error::{VideoError, VideoResult},
-    format::{Format, Rect},
+    format::{Format, FramePlane, Rect},
 };
 use base::{AsRawDescriptor, RawDescriptor};
 
 pub mod vda;
-
-pub struct FramePlane {
-    pub offset: i32,
-    pub stride: i32,
-}
 
 /// Contains the device's state for one playback session, i.e. one stream.
 pub trait DecoderSession {

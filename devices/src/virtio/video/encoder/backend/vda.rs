@@ -11,7 +11,9 @@ use libvda::encode::{EncodeCapabilities, VeaImplType, VeaInstance};
 use base::{error, warn, AsRawDescriptor, IntoRawDescriptor};
 
 use super::*;
-use crate::virtio::video::format::{Format, FormatDesc, FormatRange, FrameFormat, Level, Profile};
+use crate::virtio::video::format::{
+    Format, FormatDesc, FormatRange, FrameFormat, FramePlane, Level, Profile,
+};
 use crate::virtio::video::{
     encoder::{encoder::*, EncoderDevice},
     error::{VideoError, VideoResult},
@@ -264,7 +266,7 @@ impl EncoderSession for LibvdaEncoderSession {
     fn encode(
         &mut self,
         resource: File,
-        planes: &[VideoFramePlane],
+        planes: &[FramePlane],
         timestamp: u64,
         force_keyframe: bool,
     ) -> VideoResult<InputBufferId> {

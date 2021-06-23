@@ -20,11 +20,11 @@ use crate::virtio::video::device::{
     AsyncCmdResponse, AsyncCmdTag, Device, Token, VideoEvtResponseType,
 };
 use crate::virtio::video::encoder::encoder::{
-    EncoderEvent, InputBufferId, OutputBufferId, SessionConfig, VideoFramePlane,
+    EncoderEvent, InputBufferId, OutputBufferId, SessionConfig,
 };
 use crate::virtio::video::error::*;
 use crate::virtio::video::event::{EvtType, VideoEvt};
-use crate::virtio::video::format::{Format, Level, PlaneFormat, Profile};
+use crate::virtio::video::format::{Format, FramePlane, Level, PlaneFormat, Profile};
 use crate::virtio::video::params::Params;
 use crate::virtio::video::protocol;
 use crate::virtio::video::response::CmdResponse;
@@ -40,7 +40,7 @@ struct QueuedInputResourceParams {
 
 struct InputResource {
     resource_handle: u128,
-    planes: Vec<VideoFramePlane>,
+    planes: Vec<FramePlane>,
     queue_params: Option<QueuedInputResourceParams>,
 }
 
@@ -596,9 +596,9 @@ impl<T: Encoder> EncoderDevice<T> {
 
                 let resource_info = get_resource_info(&self.resource_bridge, uuid)?;
 
-                let planes: Vec<VideoFramePlane> = resource_info.planes[0..num_planes]
+                let planes: Vec<FramePlane> = resource_info.planes[0..num_planes]
                     .iter()
-                    .map(|plane_info| VideoFramePlane {
+                    .map(|plane_info| FramePlane {
                         offset: plane_info.offset as usize,
                         stride: plane_info.stride as usize,
                     })

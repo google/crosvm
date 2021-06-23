@@ -9,10 +9,10 @@ use std::fs::File;
 use base::AsRawDescriptor;
 
 use crate::virtio::video::error::VideoResult;
+use crate::virtio::video::format::FramePlane;
 
 use super::encoder::{
     EncoderCapabilities, EncoderEvent, InputBufferId, OutputBufferId, SessionConfig,
-    VideoFramePlane,
 };
 
 pub trait EncoderSession {
@@ -26,7 +26,7 @@ pub trait EncoderSession {
     fn encode(
         &mut self,
         resource: File,
-        planes: &[VideoFramePlane],
+        planes: &[FramePlane],
         timestamp: u64,
         force_keyframe: bool,
     ) -> VideoResult<InputBufferId>;

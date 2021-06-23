@@ -237,3 +237,10 @@ pub struct Rect {
     pub right: i32,
     pub bottom: i32,
 }
+
+/// Description of the layout for a single plane.
+#[derive(Debug, Clone)]
+pub struct FramePlane {
+    pub offset: usize,
+    pub stride: usize,
+}

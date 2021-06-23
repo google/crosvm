@@ -54,8 +54,8 @@ impl TryFrom<Format> for libvda::PixelFormat {
 impl From<&FramePlane> for libvda::FramePlane {
     fn from(plane: &FramePlane) -> Self {
         libvda::FramePlane {
-            offset: plane.offset,
-            stride: plane.stride,
+            offset: plane.offset as i32,
+            stride: plane.stride as i32,
         }
     }
 }

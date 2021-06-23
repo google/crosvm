@@ -50,12 +50,6 @@ pub struct SessionConfig {
     pub frame_rate: u32,
 }
 
-#[derive(Debug)]
-pub struct VideoFramePlane {
-    pub offset: usize,
-    pub stride: usize,
-}
-
 #[derive(Clone)]
 pub struct EncoderCapabilities {
     pub input_format_descs: Vec<FormatDesc>,

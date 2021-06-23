@@ -637,12 +637,12 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                     ctx.get_resource_info(QueueType::Output, &self.resource_bridge, resource_id)?;
                 let planes = vec![
                     FramePlane {
-                        offset: resource_info.planes[0].offset as i32,
-                        stride: resource_info.planes[0].stride as i32,
+                        offset: resource_info.planes[0].offset as usize,
+                        stride: resource_info.planes[0].stride as usize,
                     },
                     FramePlane {
-                        offset: resource_info.planes[1].offset as i32,
-                        stride: resource_info.planes[1].stride as i32,
+                        offset: resource_info.planes[1].offset as usize,
+                        stride: resource_info.planes[1].stride as usize,
                     },
                 ];
 
