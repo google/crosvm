@@ -142,16 +142,18 @@ impl<'a> VideoCmd {
 
                 let input_resource_type = match in_mem_type.into() {
                     VIRTIO_VIDEO_MEM_TYPE_VIRTIO_OBJECT => ResourceType::VirtioObject,
-                    _ => {
-                        error!("mem_type must be VIRTIO_OBJECT");
+                    VIRTIO_VIDEO_MEM_TYPE_GUEST_PAGES => ResourceType::GuestPages,
+                    m => {
+                        error!("Unsupported input resource memory type 0x{:x}!", m);
                         return Err(InvalidArgument);
                     }
                 };
 
                 let output_resource_type = match out_mem_type.into() {
                     VIRTIO_VIDEO_MEM_TYPE_VIRTIO_OBJECT => ResourceType::VirtioObject,
-                    _ => {
-                        error!("mem_type must be VIRTIO_OBJECT");
+                    VIRTIO_VIDEO_MEM_TYPE_GUEST_PAGES => ResourceType::GuestPages,
+                    m => {
+                        error!("Unsupported output resource memory type 0x{:x}!", m);
                         return Err(InvalidArgument);
                     }
                 };

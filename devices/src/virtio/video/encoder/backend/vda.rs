@@ -6,6 +6,7 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 
 use libvda::encode::{EncodeCapabilities, VeaImplType, VeaInstance};
+use thiserror::Error as ThisError;
 
 use base::{error, warn, AsRawDescriptor, IntoRawDescriptor};
 
@@ -16,7 +17,7 @@ use crate::virtio::video::format::{
 use crate::virtio::video::{
     encoder::encoder::*,
     error::{VideoError, VideoResult},
-    resource::{GuestResource, GuestResourceHandle, VirtioObjectHandle},
+    resource::{GuestResource, GuestResourceHandle},
 };
 
 impl From<Bitrate> for libvda::encode::Bitrate {
@@ -35,6 +36,10 @@ impl From<Bitrate> for libvda::encode::Bitrate {
         }
     }
 }
+
+#[derive(Debug, ThisError)]
+#[error("VDA backend only supports virtio object resources!")]
+struct UnsupportedMemoryType;
 
 /// A VDA encoder backend that can be passed to `EncoderDevice::new` in order to create a working
 /// encoder.
@@ -287,7 +292,10 @@ impl EncoderSession for LibvdaEncoderSession {
         force_keyframe: bool,
     ) -> VideoResult<InputBufferId> {
         let input_buffer_id = self.next_input_buffer_id;
-        let GuestResourceHandle::VirtioObject(VirtioObjectHandle { desc, .. }) = resource.handle;
+        let desc = match resource.handle {
+            GuestResourceHandle::VirtioObject(handle) => handle.desc,
+            _ => return Err(VideoError::BackendFailure(Box::new(UnsupportedMemoryType))),
+        };
 
         let libvda_planes = resource
             .planes
@@ -319,7 +327,10 @@ impl EncoderSession for LibvdaEncoderSession {
         size: u32,
     ) -> VideoResult<OutputBufferId> {
         let output_buffer_id = self.next_output_buffer_id;
-        let GuestResourceHandle::VirtioObject(VirtioObjectHandle { desc, .. }) = resource;
+        let desc = match resource {
+            GuestResourceHandle::VirtioObject(handle) => handle.desc,
+            _ => return Err(VideoError::BackendFailure(Box::new(UnsupportedMemoryType))),
+        };
 
         self.session.use_output_buffer(
             output_buffer_id as i32,

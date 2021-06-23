@@ -217,7 +217,7 @@ impl VirtioDevice for VideoDevice {
         };
         let mut worker = Worker::new(
             interrupt,
-            mem,
+            mem.clone(),
             cmd_queue,
             cmd_evt,
             event_queue,
@@ -241,7 +241,7 @@ impl VirtioDevice for VideoDevice {
                                     return;
                                 }
                             };
-                            Box::new(decoder::Decoder::new(vda, resource_bridge))
+                            Box::new(decoder::Decoder::new(vda, resource_bridge, mem))
                         }
                         #[cfg(feature = "libvda")]
                         VideoBackendType::LibvdaVd => {
@@ -254,7 +254,7 @@ impl VirtioDevice for VideoDevice {
                                     return;
                                 }
                             };
-                            Box::new(decoder::Decoder::new(vda, resource_bridge))
+                            Box::new(decoder::Decoder::new(vda, resource_bridge, mem))
                         }
                     };
 
@@ -278,7 +278,7 @@ impl VirtioDevice for VideoDevice {
                                 }
                             };
 
-                            match encoder::EncoderDevice::new(vda, resource_bridge) {
+                            match encoder::EncoderDevice::new(vda, resource_bridge, mem) {
                                 Ok(encoder) => Box::new(encoder),
                                 Err(e) => {
                                     error!("Failed to create encoder device: {}", e);

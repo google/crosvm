@@ -89,6 +89,7 @@ impl TryFrom<virtio_video_params_ext> for Params {
     ) -> Result<Self, Self::Error> {
         let mut params = Params::try_from(base)?;
         params.resource_type = match resource_type.into() {
+            VIRTIO_VIDEO_MEM_TYPE_GUEST_PAGES => ResourceType::GuestPages,
             VIRTIO_VIDEO_MEM_TYPE_VIRTIO_OBJECT => ResourceType::VirtioObject,
             _ => return Err(ReadCmdError::InvalidArgument),
         };
@@ -137,6 +138,7 @@ impl Params {
         let Params { resource_type, .. } = self;
 
         let resource_type = match *resource_type {
+            ResourceType::GuestPages => VIRTIO_VIDEO_MEM_TYPE_GUEST_PAGES,
             ResourceType::VirtioObject => VIRTIO_VIDEO_MEM_TYPE_VIRTIO_OBJECT,
         };
 

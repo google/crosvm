@@ -10,6 +10,7 @@ mod encoder;
 
 use base::{error, info, warn, Tube, WaitContext};
 use std::collections::{BTreeMap, BTreeSet};
+use vm_memory::GuestMemory;
 
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::{QueueType, VideoCmd};
@@ -474,16 +475,18 @@ pub struct EncoderDevice<T: Encoder> {
     encoder: T,
     streams: BTreeMap<u32, Stream<T::Session>>,
     resource_bridge: Tube,
+    mem: GuestMemory,
 }
 
 impl<T: Encoder> EncoderDevice<T> {
     /// Build a new encoder using the provided `backend`.
-    pub fn new(backend: T, resource_bridge: Tube) -> VideoResult<Self> {
+    pub fn new(backend: T, resource_bridge: Tube, mem: GuestMemory) -> VideoResult<Self> {
         Ok(Self {
             cros_capabilities: backend.query_capabilities()?,
             encoder: backend,
             streams: Default::default(),
             resource_bridge,
+            mem,
         })
     }
 
@@ -629,6 +632,18 @@ impl<T: Encoder> EncoderDevice<T> {
                         )
                         .map_err(|_| VideoError::InvalidArgument)?
                     }
+                    ResourceType::GuestPages => GuestResource::from_virtio_guest_mem_entry(
+                        // Safe because we confirmed the correct type for the resource.
+                        unsafe {
+                            std::slice::from_raw_parts(
+                                entries.as_ptr() as *const protocol::virtio_video_mem_entry,
+                                entries.len(),
+                            )
+                        },
+                        &self.mem,
+                        &stream.src_params.plane_formats,
+                    )
+                    .map_err(|_| VideoError::InvalidArgument)?,
                 };
 
                 stream.src_resources.insert(
@@ -664,6 +679,18 @@ impl<T: Encoder> EncoderDevice<T> {
                         )
                         .map_err(|_| VideoError::InvalidArgument)?
                     }
+                    ResourceType::GuestPages => GuestResource::from_virtio_guest_mem_entry(
+                        // Safe because we confirmed the correct type for the resource.
+                        unsafe {
+                            std::slice::from_raw_parts(
+                                entries.as_ptr() as *const protocol::virtio_video_mem_entry,
+                                entries.len(),
+                            )
+                        },
+                        &self.mem,
+                        &stream.dst_params.plane_formats,
+                    )
+                    .map_err(|_| VideoError::InvalidArgument)?,
                 };
 
                 let offset = plane_offsets[0];

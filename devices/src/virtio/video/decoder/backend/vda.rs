@@ -15,7 +15,6 @@ use crate::virtio::video::{
     decoder::{backend::*, Capability},
     error::{VideoError, VideoResult},
     format::*,
-    resource::{GuestResource, GuestResourceHandle},
 };
 
 #[sorted]
@@ -23,6 +22,8 @@ use crate::virtio::video::{
 enum VdaBackendError {
     #[error("set_output_parameters() must be called before use_output_buffer()")]
     OutputParamsNotSet,
+    #[error("VDA backend only supports virtio object resources")]
+    UnsupportedMemoryType,
     #[error("VDA failure: {0}")]
     VdaFailure(libvda::decode::Response),
 }
@@ -179,7 +180,10 @@ impl DecoderSession for VdaDecoderSession {
         offset: u32,
         bytes_used: u32,
     ) -> VideoResult<()> {
-        let GuestResourceHandle::VirtioObject(handle) = resource;
+        let handle = match resource {
+            GuestResourceHandle::VirtioObject(handle) => handle,
+            _ => return Err(VdaBackendError::UnsupportedMemoryType.into()),
+        };
 
         Ok(self.vda_session.decode(
             bitstream_id,
@@ -207,7 +211,10 @@ impl DecoderSession for VdaDecoderSession {
         picture_buffer_id: i32,
         resource: GuestResource,
     ) -> VideoResult<()> {
-        let GuestResourceHandle::VirtioObject(handle) = resource.handle;
+        let handle = match resource.handle {
+            GuestResourceHandle::VirtioObject(handle) => handle,
+            _ => return Err(VdaBackendError::UnsupportedMemoryType.into()),
+        };
         let vda_planes: Vec<libvda::FramePlane> = resource.planes.iter().map(Into::into).collect();
 
         Ok(self.vda_session.use_output_buffer(

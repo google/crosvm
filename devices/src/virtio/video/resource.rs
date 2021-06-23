@@ -7,16 +7,20 @@
 use std::convert::TryInto;
 use std::fmt;
 
-use base::{FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
+use base::{self, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
+use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
+
 use thiserror::Error as ThisError;
 
 use crate::virtio::resource_bridge::{self, ResourceBridgeError, ResourceInfo, ResourceRequest};
-use crate::virtio::video::format::FramePlane;
-use crate::virtio::video::protocol::virtio_video_object_entry;
+use crate::virtio::video::format::{FramePlane, PlaneFormat};
+use crate::virtio::video::protocol::{virtio_video_mem_entry, virtio_video_object_entry};
 
 /// Defines how resources for a given queue are represented.
 #[derive(Clone, Copy, Debug)]
 pub enum ResourceType {
+    /// Resources are backed by guest memory pages.
+    GuestPages,
     /// Resources are backed by virtio objects.
     VirtioObject,
 }
@@ -32,13 +36,52 @@ impl Default for ResourceType {
 /// A guest resource entry which type is not decided yet.
 pub union UnresolvedResourceEntry {
     pub object: virtio_video_object_entry,
+    pub guest_mem: virtio_video_mem_entry,
 }
 unsafe impl data_model::DataInit for UnresolvedResourceEntry {}
 
 impl fmt::Debug for UnresolvedResourceEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Safe because `self.object` is a [u8] and thus is valid no matter its raw data.
-        write!(f, "unresolved {:?}", unsafe { self.object })
+        // Safe because `self.object` and `self.guest_mem` are the same size and both made of
+        // integers, making it safe to display them no matter their value.
+        write!(
+            f,
+            "unresolved {:?} or {:?}",
+            unsafe { self.object },
+            unsafe { self.guest_mem }
+        )
+    }
+}
+
+/// Trait for types that can serve as video buffer backing memory.
+pub trait BufferHandle: Sized {
+    /// Try to clone this handle. This must only create a new reference to the same backing memory
+    /// and not duplicate the buffer itself.
+    fn try_clone(&self) -> Result<Self, base::Error>;
+}
+
+/// Linear memory area of a `GuestMemHandle`
+#[derive(Clone)]
+pub struct GuestMemArea {
+    /// Offset within the guest region to the start of the area.
+    pub offset: u64,
+    /// Length of the area within the memory region.
+    pub length: usize,
+}
+
+pub struct GuestMemHandle {
+    /// Descriptor to the guest memory region containing the buffer.
+    pub desc: SafeDescriptor,
+    /// Memory areas (i.e. sg list) that make the memory buffer.
+    pub mem_areas: Vec<GuestMemArea>,
+}
+
+impl BufferHandle for GuestMemHandle {
+    fn try_clone(&self) -> Result<Self, base::Error> {
+        Ok(Self {
+            desc: self.desc.try_clone()?,
+            mem_areas: self.mem_areas.clone(),
+        })
     }
 }
 
@@ -49,8 +92,8 @@ pub struct VirtioObjectHandle {
     pub modifier: u64,
 }
 
-impl VirtioObjectHandle {
-    pub fn try_clone(&self) -> Result<Self, base::Error> {
+impl BufferHandle for VirtioObjectHandle {
+    fn try_clone(&self) -> Result<Self, base::Error> {
         Ok(Self {
             desc: self.desc.try_clone()?,
             modifier: self.modifier,
@@ -59,12 +102,14 @@ impl VirtioObjectHandle {
 }
 
 pub enum GuestResourceHandle {
+    GuestPages(GuestMemHandle),
     VirtioObject(VirtioObjectHandle),
 }
 
-impl GuestResourceHandle {
-    pub fn try_clone(&self) -> Result<Self, base::Error> {
+impl BufferHandle for GuestResourceHandle {
+    fn try_clone(&self) -> Result<Self, base::Error> {
         Ok(match self {
+            Self::GuestPages(handle) => Self::GuestPages(handle.try_clone()?),
             Self::VirtioObject(handle) => Self::VirtioObject(handle.try_clone()?),
         })
     }
@@ -78,6 +123,18 @@ pub struct GuestResource {
 }
 
 #[derive(Debug, ThisError)]
+pub enum GuestMemResourceCreationError {
+    #[error("Provided slice of entries is empty")]
+    NoEntriesProvided,
+    #[error("cannot get shm region: {0}")]
+    CantGetShmRegion(GuestMemoryError),
+    #[error("cannot get shm offset: {0}")]
+    CantGetShmOffset(GuestMemoryError),
+    #[error("error while cloning shm region descriptor: {0}")]
+    DescriptorCloneError(base::Error),
+}
+
+#[derive(Debug, ThisError)]
 pub enum ObjectResourceCreationError {
     #[error("uuid {0:08} is larger than 32 bits")]
     UuidNot32Bits(u128),
@@ -88,6 +145,72 @@ pub enum ObjectResourceCreationError {
 }
 
 impl GuestResource {
+    /// Try to convert an unresolved virtio guest memory entry into a resolved guest memory
+    /// resource.
+    ///
+    /// Convert `mem_entry` into the guest memory resource it represents and resolve it through
+    /// `mem`. `planes_format` describes the format of the individual planes for the buffer.
+    pub fn from_virtio_guest_mem_entry(
+        mem_entries: &[virtio_video_mem_entry],
+        mem: &GuestMemory,
+        planes_format: &[PlaneFormat],
+    ) -> Result<GuestResource, GuestMemResourceCreationError> {
+        let region_desc = match mem_entries.first() {
+            None => return Err(GuestMemResourceCreationError::NoEntriesProvided),
+            Some(entry) => {
+                let addr: u64 = entry.addr.into();
+
+                let guest_region = mem
+                    .shm_region(GuestAddress(addr))
+                    .map_err(GuestMemResourceCreationError::CantGetShmRegion)?;
+                let desc = base::clone_descriptor(guest_region)
+                    .map_err(GuestMemResourceCreationError::DescriptorCloneError)?;
+                // Safe because we are the sole owner of the duplicated descriptor.
+                unsafe { SafeDescriptor::from_raw_descriptor(desc) }
+            }
+        };
+
+        let mem_areas = mem_entries
+            .into_iter()
+            .map(|entry| {
+                let addr: u64 = entry.addr.into();
+                let length: u32 = entry.length.into();
+                let region_offset = mem
+                    .offset_from_base(GuestAddress(addr))
+                    .map_err(GuestMemResourceCreationError::CantGetShmOffset)
+                    .unwrap();
+
+                GuestMemArea {
+                    offset: region_offset,
+                    length: length as usize,
+                }
+            })
+            .collect();
+
+        // The plane information can be computed from the currently set format.
+        let mut buffer_offset = 0;
+        let planes = planes_format
+            .iter()
+            .map(|p| {
+                let plane_offset = buffer_offset;
+                buffer_offset += p.plane_size;
+
+                FramePlane {
+                    offset: plane_offset as usize,
+                    stride: p.stride as usize,
+                }
+            })
+            .collect();
+
+        Ok(GuestResource {
+            handle: GuestResourceHandle::GuestPages(GuestMemHandle {
+                desc: region_desc,
+                mem_areas,
+            }),
+            planes,
+        })
+    }
+
     /// Try to convert an unresolved virtio object entry into a resolved object resource.
     ///
     /// Convert `object` into the object resource it represents and resolve it through `res_bridge`.
