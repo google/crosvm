@@ -391,7 +391,8 @@ pub fn try_set_real_time_priority() {
     }
 }
 
-fn vios_error_to_status_code(e: VioSError) -> u32 {
+/// Gets the appropriate virtio-snd error to return to the driver from a VioSError.
+pub fn vios_error_to_status_code(e: VioSError) -> u32 {
     match e {
         VioSError::ServerIOError(_) => VIRTIO_SND_S_IO_ERR,
         _ => VIRTIO_SND_S_NOT_SUPP,

@@ -219,6 +219,72 @@ impl Worker {
                 .copy_from_slice(&read_buf[..std::mem::size_of::<Le32>()]);
             let request_type = code.to_native();
             match request_type {
+                VIRTIO_SND_R_JACK_INFO => {
+                    let (code, info_vec) = {
+                        match self.parse_info_query(&read_buf) {
+                            None => (VIRTIO_SND_S_BAD_MSG, Vec::new()),
+                            Some((start_id, count)) => {
+                                let end_id = start_id.saturating_add(count);
+                                if end_id > self.vios_client.num_jacks() {
+                                    error!(
+                                        "virtio-snd: Requested info on invalid jacks ids: {}..{}",
+                                        start_id,
+                                        end_id - 1
+                                    );
+                                    (VIRTIO_SND_S_NOT_SUPP, Vec::new())
+                                } else {
+                                    (
+                                        VIRTIO_SND_S_OK,
+                                        // Safe to unwrap because we just ensured all the ids are valid
+                                        (start_id..end_id)
+                                            .map(|id| self.vios_client.jack_info(id).unwrap())
+                                            .collect(),
+                                    )
+                                }
+                            }
+                        }
+                    };
+                    self.send_info_reply(avail_desc, code, info_vec)?;
+                }
+                VIRTIO_SND_R_JACK_REMAP => {
+                    let code = if read_buf.len() != std::mem::size_of::<virtio_snd_jack_remap>() {
+                        error!(
+                        "virtio-snd: The driver sent the wrong number bytes for a jack_remap struct: {}",
+                        read_buf.len()
+                        );
+                        VIRTIO_SND_S_BAD_MSG
+                    } else {
+                        let mut request: virtio_snd_jack_remap = Default::default();
+                        request.as_mut_slice().copy_from_slice(&read_buf);
+                        let jack_id = request.hdr.jack_id.to_native();
+                        let association = request.association.to_native();
+                        let sequence = request.sequence.to_native();
+                        if let Err(e) = self.vios_client.remap_jack(jack_id, association, sequence)
+                        {
+                            error!("virtio-snd: Failed to remap jack: {}", e);
+                            vios_error_to_status_code(e)
+                        } else {
+                            VIRTIO_SND_S_OK
+                        }
+                    };
+                    let desc_index = avail_desc.index;
+                    let mut writer = Writer::new(self.guest_memory.clone(), avail_desc)
+                        .map_err(SoundError::Descriptor)?;
+                    writer
+                        .write_obj(virtio_snd_hdr {
+                            code: Le32::from(code),
+                        })
+                        .map_err(SoundError::QueueIO)?;
+                    {
+                        let mut queue_lock = self.control_queue.lock();
+                        queue_lock.add_used(
+                            &self.guest_memory,
+                            desc_index,
+                            writer.bytes_written() as u32,
+                        );
+                        queue_lock.trigger_interrupt(&self.guest_memory, self.interrupt.deref());
+                    }
+                }
                 VIRTIO_SND_R_CHMAP_INFO => {
                     let (code, info_vec) = {
                         match self.parse_info_query(&read_buf) {
