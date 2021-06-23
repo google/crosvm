@@ -31,6 +31,7 @@ mod event;
 mod format;
 mod params;
 mod protocol;
+mod resource;
 mod response;
 mod worker;
 

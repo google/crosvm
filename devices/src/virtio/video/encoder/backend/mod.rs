@@ -4,9 +4,7 @@
 
 pub mod vda;
 
-use std::fs::File;
-
-use base::AsRawDescriptor;
+use base::{AsRawDescriptor, SafeDescriptor};
 
 use crate::virtio::video::error::VideoResult;
 use crate::virtio::video::format::{Bitrate, FramePlane};
@@ -25,7 +23,7 @@ pub trait EncoderSession {
     /// readable from the event pipe, with the same timestamp as provided `timestamp`.
     fn encode(
         &mut self,
-        resource: File,
+        resource: SafeDescriptor,
         planes: &[FramePlane],
         timestamp: u64,
         force_keyframe: bool,
@@ -38,7 +36,7 @@ pub trait EncoderSession {
     /// function.
     fn use_output_buffer(
         &mut self,
-        file: File,
+        file: SafeDescriptor,
         offset: u32,
         size: u32,
     ) -> VideoResult<OutputBufferId>;

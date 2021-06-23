@@ -4,11 +4,10 @@
 
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
-use std::fs::File;
 
 use libvda::encode::{EncodeCapabilities, VeaImplType, VeaInstance};
 
-use base::{error, warn, AsRawDescriptor, IntoRawDescriptor};
+use base::{error, warn, AsRawDescriptor, IntoRawDescriptor, SafeDescriptor};
 
 use super::*;
 use crate::virtio::video::format::{
@@ -281,7 +280,7 @@ pub struct LibvdaEncoderSession {
 impl EncoderSession for LibvdaEncoderSession {
     fn encode(
         &mut self,
-        resource: File,
+        resource: SafeDescriptor,
         planes: &[FramePlane],
         timestamp: u64,
         force_keyframe: bool,
@@ -311,7 +310,7 @@ impl EncoderSession for LibvdaEncoderSession {
 
     fn use_output_buffer(
         &mut self,
-        file: File,
+        resource: SafeDescriptor,
         offset: u32,
         size: u32,
     ) -> VideoResult<OutputBufferId> {
@@ -319,7 +318,7 @@ impl EncoderSession for LibvdaEncoderSession {
 
         self.session.use_output_buffer(
             output_buffer_id as i32,
-            file.into_raw_descriptor(),
+            resource.into_raw_descriptor(),
             offset,
             size,
         )?;

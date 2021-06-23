@@ -7,7 +7,6 @@
 use remain::sorted;
 use thiserror::Error as ThisError;
 
-use crate::virtio::resource_bridge::ResourceBridgeError;
 use crate::virtio::video::control::CtrlType;
 
 /// An error indicating something went wrong while encoding or decoding.
@@ -36,9 +35,6 @@ pub enum VideoError {
     /// Invalid stream ID is specified.
     #[error("invalid stream ID {0}")]
     InvalidStreamId(u32),
-    /// Failed to get a resource FD via resource_bridge.
-    #[error("failed to get resource FD for id {0}")]
-    ResourceBridgeFailure(ResourceBridgeError),
     /// Unsupported control type is specified.
     #[error("unsupported control: {0:?}")]
     UnsupportedControl(CtrlType),

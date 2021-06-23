@@ -245,8 +245,6 @@ pub struct virtio_video_mem_entry {
 pub struct virtio_video_object_entry {
     pub uuid: [u8; 16usize],
 }
-// Safe because auto-generated structs have no implicit padding.
-unsafe impl DataInit for virtio_video_object_entry {}
 
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]

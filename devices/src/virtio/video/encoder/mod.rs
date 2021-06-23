@@ -11,7 +11,6 @@ mod encoder;
 use base::{error, info, warn, Tube, WaitContext};
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::virtio::resource_bridge::{self, BufferInfo, ResourceInfo, ResourceRequest};
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::{QueueType, VideoCmd};
 use crate::virtio::video::control::*;
@@ -24,11 +23,10 @@ use crate::virtio::video::encoder::encoder::{
 };
 use crate::virtio::video::error::*;
 use crate::virtio::video::event::{EvtType, VideoEvt};
-use crate::virtio::video::format::{
-    Bitrate, BitrateMode, Format, FramePlane, Level, PlaneFormat, Profile,
-};
+use crate::virtio::video::format::{Bitrate, BitrateMode, Format, Level, PlaneFormat, Profile};
 use crate::virtio::video::params::Params;
 use crate::virtio::video::protocol;
+use crate::virtio::video::resource::*;
 use crate::virtio::video::response::CmdResponse;
 use crate::virtio::video::EosBufferManager;
 use backend::*;
@@ -41,8 +39,7 @@ struct QueuedInputResourceParams {
 }
 
 struct InputResource {
-    resource_handle: u128,
-    planes: Vec<FramePlane>,
+    resource: GuestResource,
     queue_params: Option<QueuedInputResourceParams>,
 }
 
@@ -54,7 +51,7 @@ struct QueuedOutputResourceParams {
 }
 
 struct OutputResource {
-    resource_handle: u128,
+    resource: GuestResource,
     offset: u32,
     queue_params: Option<QueuedOutputResourceParams>,
 }
@@ -70,6 +67,8 @@ enum PendingCommand {
 
 struct Stream<T: EncoderSession> {
     id: u32,
+    src_resource_type: ResourceType,
+    dst_resource_type: ResourceType,
     src_params: Params,
     dst_params: Params,
     dst_bitrate: Bitrate,
@@ -94,6 +93,8 @@ struct Stream<T: EncoderSession> {
 impl<T: EncoderSession> Stream<T> {
     fn new<E: Encoder<Session = T>>(
         id: u32,
+        src_resource_type: ResourceType,
+        dst_resource_type: ResourceType,
         desired_format: Format,
         encoder: &EncoderDevice<E>,
     ) -> VideoResult<Self> {
@@ -152,6 +153,8 @@ impl<T: EncoderSession> Stream<T> {
 
         Ok(Self {
             id,
+            src_resource_type,
+            dst_resource_type,
             src_params,
             dst_params,
             dst_bitrate: DEFAULT_BITRATE,
@@ -471,17 +474,6 @@ pub struct EncoderDevice<T: Encoder> {
     resource_bridge: Tube,
 }
 
-fn get_resource_info(res_bridge: &Tube, uuid: u128) -> VideoResult<BufferInfo> {
-    match resource_bridge::get_resource_info(
-        res_bridge,
-        ResourceRequest::GetBuffer { id: uuid as u32 },
-    ) {
-        Ok(ResourceInfo::Buffer(buffer_info)) => Ok(buffer_info),
-        Ok(_) => Err(VideoError::InvalidArgument),
-        Err(e) => Err(VideoError::ResourceBridgeFailure(e)),
-    }
-}
-
 impl<T: Encoder> EncoderDevice<T> {
     /// Build a new encoder using the provided `backend`.
     fn from_backend(backend: T, resource_bridge: Tube) -> VideoResult<Self> {
@@ -508,11 +500,19 @@ impl<T: Encoder> EncoderDevice<T> {
         &mut self,
         stream_id: u32,
         desired_format: Format,
+        src_resource_type: ResourceType,
+        dst_resource_type: ResourceType,
     ) -> VideoResult<VideoCmdResponseType> {
         if self.streams.contains_key(&stream_id) {
             return Err(VideoError::InvalidStreamId(stream_id));
         }
-        let new_stream = Stream::new(stream_id, desired_format, self)?;
+        let new_stream = Stream::new(
+            stream_id,
+            src_resource_type,
+            dst_resource_type,
+            desired_format,
+            self,
+        )?;
 
         self.streams.insert(stream_id, new_stream);
         Ok(VideoCmdResponseType::Sync(CmdResponse::NoData))
@@ -576,7 +576,7 @@ impl<T: Encoder> EncoderDevice<T> {
         queue_type: QueueType,
         resource_id: u32,
         plane_offsets: Vec<u32>,
-        uuid: u128,
+        resource: UnresolvedGuestResource,
     ) -> VideoResult<VideoCmdResponseType> {
         let stream = self
             .streams
@@ -601,21 +601,19 @@ impl<T: Encoder> EncoderDevice<T> {
                     warn!("Replacing source resource with id {}", resource_id);
                 }
 
-                let resource_info = get_resource_info(&self.resource_bridge, uuid)?;
-
-                let planes: Vec<FramePlane> = resource_info.planes[0..num_planes]
-                    .iter()
-                    .map(|plane_info| FramePlane {
-                        offset: plane_info.offset as usize,
-                        stride: plane_info.stride as usize,
-                    })
-                    .collect();
+                let resource = match stream.src_resource_type {
+                    ResourceType::Object => GuestResource::from_virtio_object_entry(
+                        // Safe because we confirmed the correct type for the resource.
+                        unsafe { resource.object },
+                        &self.resource_bridge,
+                    )
+                    .map_err(|_| VideoError::InvalidArgument)?,
+                };
 
                 stream.src_resources.insert(
                     resource_id,
                     InputResource {
-                        resource_handle: uuid,
-                        planes,
+                        resource,
                         queue_params: None,
                     },
                 );
@@ -629,11 +627,20 @@ impl<T: Encoder> EncoderDevice<T> {
                     warn!("Replacing dest resource with id {}", resource_id);
                 }
 
+                let resource = match stream.dst_resource_type {
+                    ResourceType::Object => GuestResource::from_virtio_object_entry(
+                        // Safe because we confirmed the correct type for the resource.
+                        unsafe { resource.object },
+                        &self.resource_bridge,
+                    )
+                    .map_err(|_| VideoError::InvalidArgument)?,
+                };
+
                 let offset = plane_offsets[0];
                 stream.dst_resources.insert(
                     resource_id,
                     OutputResource {
-                        resource_handle: uuid,
+                        resource,
                         offset,
                         queue_params: None,
                     },
@@ -680,14 +687,19 @@ impl<T: Encoder> EncoderDevice<T> {
                     },
                 )?;
 
-                let resource_info =
-                    get_resource_info(&self.resource_bridge, src_resource.resource_handle)?;
+                // Clone the resource descriptor as the backend will take ownership of it.
+                let desc = match &src_resource.resource.handle {
+                    GuestResourceHandle::Object(handle) => handle
+                        .desc
+                        .try_clone()
+                        .map_err(|_| VideoError::InvalidArgument)?,
+                };
 
                 let force_keyframe = std::mem::replace(&mut stream.force_keyframe, false);
 
                 match encoder_session.encode(
-                    resource_info.file,
-                    &src_resource.planes,
+                    desc,
+                    &src_resource.resource.planes,
                     timestamp,
                     force_keyframe,
                 ) {
@@ -743,9 +755,6 @@ impl<T: Encoder> EncoderDevice<T> {
                     },
                 )?;
 
-                let resource_info =
-                    get_resource_info(&self.resource_bridge, dst_resource.resource_handle)?;
-
                 let mut buffer_size = data_sizes[0];
 
                 // It seems that data_sizes[0] is 0 here. For now, take the stride
@@ -753,8 +762,18 @@ impl<T: Encoder> EncoderDevice<T> {
                 // blobs..
                 // TODO(alexlau): Figure out how to fix this.
                 if buffer_size == 0 {
-                    buffer_size = resource_info.planes[0].offset + resource_info.planes[0].stride;
+                    buffer_size = (dst_resource.resource.planes[0].offset
+                        + dst_resource.resource.planes[0].stride)
+                        as u32;
                 }
+
+                // Clone the resource descriptor as the backend will take ownership of it.
+                let desc = match &dst_resource.resource.handle {
+                    GuestResourceHandle::Object(handle) => handle
+                        .desc
+                        .try_clone()
+                        .map_err(|_| VideoError::InvalidArgument)?,
+                };
 
                 // Stores an output buffer to notify EOS.
                 // This is necessary because libvda is unable to indicate EOS along with returned buffers.
@@ -768,11 +787,7 @@ impl<T: Encoder> EncoderDevice<T> {
                     }));
                 }
 
-                match encoder_session.use_output_buffer(
-                    resource_info.file,
-                    dst_resource.offset,
-                    buffer_size,
-                ) {
+                match encoder_session.use_output_buffer(desc, dst_resource.offset, buffer_size) {
                     Ok(output_buffer_id) => {
                         if let Some(last_resource_id) = stream
                             .encoder_output_buffer_ids
@@ -1276,7 +1291,14 @@ impl<T: Encoder> Device for EncoderDevice<T> {
             VideoCmd::StreamCreate {
                 stream_id,
                 coded_format: desired_format,
-            } => self.stream_create(stream_id, desired_format),
+                input_resource_type,
+                output_resource_type,
+            } => self.stream_create(
+                stream_id,
+                desired_format,
+                input_resource_type,
+                output_resource_type,
+            ),
             VideoCmd::StreamDestroy { stream_id } => self.stream_destroy(stream_id),
             VideoCmd::StreamDrain { stream_id } => self.stream_drain(stream_id),
             VideoCmd::ResourceCreate {
@@ -1284,14 +1306,14 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                 queue_type,
                 resource_id,
                 plane_offsets,
-                uuid,
+                resource,
             } => self.resource_create(
                 wait_ctx,
                 stream_id,
                 queue_type,
                 resource_id,
                 plane_offsets,
-                uuid,
+                resource,
             ),
             VideoCmd::ResourceQueue {
                 stream_id,
