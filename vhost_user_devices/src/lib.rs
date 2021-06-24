@@ -751,7 +751,7 @@ mod tests {
             let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
             let mut vmm_handler = VhostUserHandler::new_from_path(
                 &path,
-                1,
+                QUEUES_NUM as u64,
                 allow_features,
                 init_features,
                 allow_protocol_features,
@@ -776,7 +776,7 @@ mod tests {
                 let irqfd = Event::new().unwrap();
 
                 vmm_handler
-                    .activate_vring(&mem, 0, &queue, &queue_evt, &irqfd)
+                    .activate_vring(&mem, idx, &queue, &queue_evt, &irqfd)
                     .unwrap();
             }
 
