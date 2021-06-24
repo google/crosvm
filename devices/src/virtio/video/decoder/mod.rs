@@ -8,7 +8,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use backend::*;
-use base::{error, IntoRawDescriptor, Tube, WaitContext};
+use base::{error, Tube, WaitContext};
 
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::{QueueType, VideoCmd};
@@ -594,16 +594,6 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             },
         )?;
 
-        // Clone the descriptor for this resource as the backend will take ownership of it and close
-        // it at the end of `decode`.
-        let fd = match &resource.handle {
-            GuestResourceHandle::Object(handle) => handle
-                .desc
-                .try_clone()
-                .map_err(|_| VideoError::InvalidParameter)?,
-        }
-        .into_raw_descriptor();
-
         // Register a mapping of timestamp to resource_id
         if let Some(old_resource_id) = ctx
             .in_res
@@ -633,7 +623,10 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         let ts_sec: i32 = (timestamp / 1_000_000_000) as i32;
         session.decode(
             ts_sec,
-            fd,
+            resource
+                .handle
+                .try_clone()
+                .map_err(|_| VideoError::InvalidParameter)?,
             offset,
             data_sizes[0], // bytes_used
         )?;
@@ -690,8 +683,6 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                         resource_id,
                     })?;
 
-                let GuestResourceHandle::Object(handle) = resource.handle;
-
                 let session = ctx.session.as_mut().ok_or(VideoError::InvalidOperation)?;
 
                 // Set output_buffer_count before passing the first output buffer.
@@ -705,12 +696,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                     session.set_output_parameters(OUTPUT_BUFFER_COUNT, Format::NV12)?;
                 }
 
-                session.use_output_buffer(
-                    buffer_id as i32,
-                    handle.desc.into_raw_descriptor(),
-                    &resource.planes,
-                    handle.modifier,
-                )
+                session.use_output_buffer(buffer_id as i32, resource)
             }
         }?;
         Ok(VideoCmdResponseType::Async(AsyncCmdTag::Queue {

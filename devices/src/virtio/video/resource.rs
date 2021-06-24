@@ -43,8 +43,25 @@ pub struct GuestObjectHandle {
     pub modifier: u64,
 }
 
+impl GuestObjectHandle {
+    pub fn try_clone(&self) -> Result<Self, base::Error> {
+        Ok(Self {
+            desc: self.desc.try_clone()?,
+            modifier: self.modifier,
+        })
+    }
+}
+
 pub enum GuestResourceHandle {
     Object(GuestObjectHandle),
+}
+
+impl GuestResourceHandle {
+    pub fn try_clone(&self) -> Result<Self, base::Error> {
+        Ok(match self {
+            Self::Object(handle) => Self::Object(handle.try_clone()?),
+        })
+    }
 }
 
 pub struct GuestResource {
@@ -110,6 +127,13 @@ impl GuestResource {
                     stride: p.stride as usize,
                 })
                 .collect(),
+        })
+    }
+
+    pub fn try_clone(&self) -> Result<Self, base::Error> {
+        Ok(Self {
+            handle: self.handle.try_clone()?,
+            planes: self.planes.clone(),
         })
     }
 }

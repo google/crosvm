@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, warn, AsRawDescriptor, RawDescriptor};
+use base::{error, warn, AsRawDescriptor, IntoRawDescriptor};
 use remain::sorted;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
@@ -15,6 +15,7 @@ use crate::virtio::video::{
     decoder::{backend::*, Capability, Decoder},
     error::{VideoError, VideoResult},
     format::*,
+    resource::{GuestResource, GuestResourceHandle},
     Tube,
 };
 
@@ -175,13 +176,19 @@ impl DecoderSession for VdaDecoderSession {
     fn decode(
         &mut self,
         bitstream_id: i32,
-        descriptor: RawDescriptor,
+        resource: GuestResourceHandle,
         offset: u32,
         bytes_used: u32,
     ) -> VideoResult<()> {
-        Ok(self
-            .vda_session
-            .decode(bitstream_id, descriptor, offset, bytes_used)?)
+        let GuestResourceHandle::Object(handle) = resource;
+
+        Ok(self.vda_session.decode(
+            bitstream_id,
+            // Steal the descriptor of the resource, as libvda will close it.
+            handle.desc.into_raw_descriptor(),
+            offset,
+            bytes_used,
+        )?)
     }
 
     fn flush(&mut self) -> VideoResult<()> {
@@ -199,17 +206,18 @@ impl DecoderSession for VdaDecoderSession {
     fn use_output_buffer(
         &mut self,
         picture_buffer_id: i32,
-        output_buffer: RawDescriptor,
-        planes: &[FramePlane],
-        modifier: u64,
+        resource: GuestResource,
     ) -> VideoResult<()> {
-        let vda_planes: Vec<libvda::FramePlane> = planes.iter().map(Into::into).collect();
+        let GuestResourceHandle::Object(handle) = resource.handle;
+        let vda_planes: Vec<libvda::FramePlane> = resource.planes.iter().map(Into::into).collect();
+
         Ok(self.vda_session.use_output_buffer(
             picture_buffer_id,
             self.format.ok_or(VdaBackendError::OutputParamsNotSet)?,
-            output_buffer,
+            // Steal the descriptor of the resource, as libvda will close it.
+            handle.desc.into_raw_descriptor(),
             &vda_planes,
-            modifier,
+            handle.modifier,
         )?)
     }
 

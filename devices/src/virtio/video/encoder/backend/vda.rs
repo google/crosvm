@@ -7,15 +7,16 @@ use std::collections::BTreeMap;
 
 use libvda::encode::{EncodeCapabilities, VeaImplType, VeaInstance};
 
-use base::{error, warn, AsRawDescriptor, IntoRawDescriptor, SafeDescriptor};
+use base::{error, warn, AsRawDescriptor, IntoRawDescriptor};
 
 use super::*;
 use crate::virtio::video::format::{
-    Bitrate, Format, FormatDesc, FormatRange, FrameFormat, FramePlane, Level, Profile,
+    Bitrate, Format, FormatDesc, FormatRange, FrameFormat, Level, Profile,
 };
 use crate::virtio::video::{
     encoder::{encoder::*, EncoderDevice},
     error::{VideoError, VideoResult},
+    resource::{GuestObjectHandle, GuestResource, GuestResourceHandle},
     Tube,
 };
 
@@ -280,14 +281,15 @@ pub struct LibvdaEncoderSession {
 impl EncoderSession for LibvdaEncoderSession {
     fn encode(
         &mut self,
-        resource: SafeDescriptor,
-        planes: &[FramePlane],
+        resource: GuestResource,
         timestamp: u64,
         force_keyframe: bool,
     ) -> VideoResult<InputBufferId> {
         let input_buffer_id = self.next_input_buffer_id;
+        let GuestResourceHandle::Object(GuestObjectHandle { desc, .. }) = resource.handle;
 
-        let libvda_planes = planes
+        let libvda_planes = resource
+            .planes
             .iter()
             .map(|plane| libvda::FramePlane {
                 offset: plane.offset as i32,
@@ -297,7 +299,8 @@ impl EncoderSession for LibvdaEncoderSession {
 
         self.session.encode(
             input_buffer_id as i32,
-            resource.into_raw_descriptor(),
+            // Steal the descriptor of the resource, as libvda will close it.
+            desc.into_raw_descriptor(),
             &libvda_planes,
             timestamp as i64,
             force_keyframe,
@@ -310,15 +313,17 @@ impl EncoderSession for LibvdaEncoderSession {
 
     fn use_output_buffer(
         &mut self,
-        resource: SafeDescriptor,
+        resource: GuestResourceHandle,
         offset: u32,
         size: u32,
     ) -> VideoResult<OutputBufferId> {
         let output_buffer_id = self.next_output_buffer_id;
+        let GuestResourceHandle::Object(GuestObjectHandle { desc, .. }) = resource;
 
         self.session.use_output_buffer(
             output_buffer_id as i32,
-            resource.into_raw_descriptor(),
+            // Steal the descriptor of the resource, as libvda will close it.
+            desc.into_raw_descriptor(),
             offset,
             size,
         )?;

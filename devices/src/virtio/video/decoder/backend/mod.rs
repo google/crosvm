@@ -8,9 +8,10 @@
 use crate::virtio::video::{
     decoder::Capability,
     error::{VideoError, VideoResult},
-    format::{Format, FramePlane, Rect},
+    format::{Format, Rect},
+    resource::{GuestResource, GuestResourceHandle},
 };
-use base::{AsRawDescriptor, RawDescriptor};
+use base::AsRawDescriptor;
 
 pub mod vda;
 
@@ -37,7 +38,7 @@ pub trait DecoderSession {
     fn decode(
         &mut self,
         bitstream_id: i32,
-        descriptor: RawDescriptor,
+        resource: GuestResourceHandle,
         offset: u32,
         bytes_used: u32,
     ) -> VideoResult<()>;
@@ -57,23 +58,20 @@ pub trait DecoderSession {
     /// returned value is borrowed and only valid as long as the session is alive.
     fn event_pipe(&self) -> &dyn AsRawDescriptor;
 
-    /// Ask the device to use the memory buffer in `output_buffer` to store decoded frames. `planes`
-    /// describes how the frame's planes should be laid out in the buffer, and `picture_buffer_id`
-    /// is the ID of the picture, that will be reproduced in `PictureReady` events using this
-    /// buffer.
+    /// Ask the device to use `resource` to store decoded frames according to its layout.
+    /// `picture_buffer_id` is the ID of the picture that will be reproduced in `PictureReady`
+    /// events using this buffer.
     ///
-    /// The device takes ownership of `output_buffer` and is responsible for closing it once the
-    /// buffer is not used anymore (either when the session is closed, or a new set of buffers is
-    /// provided for the session).
+    /// The device takes ownership of `resource` and is responsible for closing it once the buffer
+    /// is not used anymore (either when the session is closed, or a new set of buffers is provided
+    /// for the session).
     ///
     /// The device will emit a `PictureReady` event with the `picture_buffer_id` field set to the
     /// same value as the argument of the same name when a frame has been decoded into that buffer.
     fn use_output_buffer(
         &mut self,
         picture_buffer_id: i32,
-        output_buffer: RawDescriptor,
-        planes: &[FramePlane],
-        modifier: u64,
+        resource: GuestResource,
     ) -> VideoResult<()>;
 
     /// Ask the device to reuse an output buffer previously passed to

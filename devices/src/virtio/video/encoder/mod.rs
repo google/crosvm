@@ -687,19 +687,13 @@ impl<T: Encoder> EncoderDevice<T> {
                     },
                 )?;
 
-                // Clone the resource descriptor as the backend will take ownership of it.
-                let desc = match &src_resource.resource.handle {
-                    GuestResourceHandle::Object(handle) => handle
-                        .desc
-                        .try_clone()
-                        .map_err(|_| VideoError::InvalidArgument)?,
-                };
-
                 let force_keyframe = std::mem::replace(&mut stream.force_keyframe, false);
 
                 match encoder_session.encode(
-                    desc,
-                    &src_resource.resource.planes,
+                    src_resource
+                        .resource
+                        .try_clone()
+                        .map_err(|_| VideoError::InvalidArgument)?,
                     timestamp,
                     force_keyframe,
                 ) {
@@ -767,14 +761,6 @@ impl<T: Encoder> EncoderDevice<T> {
                         as u32;
                 }
 
-                // Clone the resource descriptor as the backend will take ownership of it.
-                let desc = match &dst_resource.resource.handle {
-                    GuestResourceHandle::Object(handle) => handle
-                        .desc
-                        .try_clone()
-                        .map_err(|_| VideoError::InvalidArgument)?,
-                };
-
                 // Stores an output buffer to notify EOS.
                 // This is necessary because libvda is unable to indicate EOS along with returned buffers.
                 // For now, when a `Flush()` completes, this saved resource will be returned as a zero-sized
@@ -787,7 +773,15 @@ impl<T: Encoder> EncoderDevice<T> {
                     }));
                 }
 
-                match encoder_session.use_output_buffer(desc, dst_resource.offset, buffer_size) {
+                match encoder_session.use_output_buffer(
+                    dst_resource
+                        .resource
+                        .handle
+                        .try_clone()
+                        .map_err(|_| VideoError::InvalidParameter)?,
+                    dst_resource.offset,
+                    buffer_size,
+                ) {
                     Ok(output_buffer_id) => {
                         if let Some(last_resource_id) = stream
                             .encoder_output_buffer_ids
