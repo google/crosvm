@@ -298,7 +298,6 @@ impl EncoderSession for LibvdaEncoderSession {
         size: u32,
     ) -> VideoResult<OutputBufferId> {
         let output_buffer_id = self.next_output_buffer_id;
-        self.next_output_buffer_id = self.next_output_buffer_id.wrapping_add(1);
 
         self.session.use_output_buffer(
             output_buffer_id as i32,
@@ -306,6 +305,8 @@ impl EncoderSession for LibvdaEncoderSession {
             offset,
             size,
         )?;
+
+        self.next_output_buffer_id = self.next_output_buffer_id.wrapping_add(1);
 
         Ok(output_buffer_id)
     }
