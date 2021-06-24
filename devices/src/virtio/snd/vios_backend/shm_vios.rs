@@ -101,22 +101,28 @@ pub enum ProtocolErrorKind {
 /// notifications. It's thread safe, it can be encapsulated in an Arc smart pointer and shared
 /// between threads.
 pub struct VioSClient {
-    config: VioSConfig,
     // These mutexes should almost never be held simultaneously. If at some point they have to the
     // locking order should match the order in which they are declared here.
-    jacks: Mutex<Vec<virtio_snd_jack_info>>,
-    streams: Mutex<Vec<VioSStreamInfo>>,
-    chmaps: Mutex<Vec<virtio_snd_chmap_info>>,
+    config: VioSConfig,
+    jacks: Vec<virtio_snd_jack_info>,
+    streams: Vec<VioSStreamInfo>,
+    chmaps: Vec<virtio_snd_chmap_info>,
+    // The control socket is used from multiple threads to send and wait for a reply, which needs
+    // to happen atomically, hence the need for a mutex instead of just sharing clones of the
+    // socket.
     control_socket: Mutex<UnixSeqpacket>,
-    event_socket: Mutex<UnixSeqpacket>,
+    event_socket: UnixSeqpacket,
+    // These are accessed by the stream threads and require locking
     tx: Mutex<IoBufferQueue>,
     rx: Mutex<IoBufferQueue>,
+    // This is accessed by the recv_thread and whatever thread processes the events
+    events: Arc<Mutex<VecDeque<virtio_snd_event>>>,
+    event_notifier: Event,
+    // These are accessed by the recv_thread and the stream threads
     tx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
     rx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
-    events: Arc<Mutex<VecDeque<virtio_snd_event>>>,
-    event_notifier: Arc<Mutex<Option<Event>>>,
-    recv_running: Arc<Mutex<bool>>,
-    recv_event: Mutex<Event>,
+    recv_thread_state: Arc<Mutex<ThreadFlags>>,
+    recv_event: Event,
     recv_thread: Mutex<Option<JoinHandle<Result<()>>>>,
 }
 
@@ -191,24 +197,27 @@ impl VioSClient {
             Arc::new(Mutex::new(HashMap::new()));
         let rx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>> =
             Arc::new(Mutex::new(HashMap::new()));
-        let recv_running = Arc::new(Mutex::new(true));
+        let recv_thread_state = Arc::new(Mutex::new(ThreadFlags {
+            running: true,
+            reporting_events: false,
+        }));
         let recv_event = Event::new().map_err(Error::EventCreateError)?;
 
         let mut client = VioSClient {
             config,
-            jacks: Mutex::new(Vec::new()),
-            streams: Mutex::new(Vec::new()),
-            chmaps: Mutex::new(Vec::new()),
+            jacks: Vec::new(),
+            streams: Vec::new(),
+            chmaps: Vec::new(),
             control_socket: Mutex::new(client_socket),
-            event_socket: Mutex::new(event_socket),
+            event_socket,
             tx: Mutex::new(IoBufferQueue::new(tx_socket, tx_shm_file)?),
             rx: Mutex::new(IoBufferQueue::new(rx_socket, rx_shm_file)?),
             events: Arc::new(Mutex::new(VecDeque::new())),
-            event_notifier: Arc::new(Mutex::new(None)),
+            event_notifier: Event::new().map_err(Error::EventCreateError)?,
             tx_subscribers,
             rx_subscribers,
-            recv_running,
-            recv_event: Mutex::new(recv_event),
+            recv_thread_state,
+            recv_event,
             recv_thread: Mutex::new(None),
         };
         client.request_and_cache_info()?;
@@ -232,20 +241,19 @@ impl VioSClient {
 
     /// Get the configuration information on a jack
     pub fn jack_info(&self, idx: u32) -> Option<virtio_snd_jack_info> {
-        self.jacks.lock().get(idx as usize).copied()
+        self.jacks.get(idx as usize).copied()
     }
 
     /// Get the configuration information on a pcm stream
     pub fn stream_info(&self, idx: u32) -> Option<virtio_snd_pcm_info> {
         self.streams
-            .lock()
             .get(idx as usize)
             .map(virtio_snd_pcm_info::from)
     }
 
     /// Get the configuration information on a channel map
     pub fn chmap_info(&self, idx: u32) -> Option<virtio_snd_chmap_info> {
-        self.chmaps.lock().get(idx as usize).copied()
+        self.chmaps.get(idx as usize).copied()
     }
 
     /// Starts the background thread that receives release messages from the server. If the thread
@@ -256,11 +264,7 @@ impl VioSClient {
         if self.recv_thread.lock().is_some() {
             return Ok(());
         }
-        let recv_event = self
-            .recv_event
-            .lock()
-            .try_clone()
-            .map_err(Error::EventDupError)?;
+        let recv_event = self.recv_event.try_clone().map_err(Error::EventDupError)?;
         let tx_socket = self
             .tx
             .lock()
@@ -275,20 +279,21 @@ impl VioSClient {
             .map_err(Error::UnixSeqpacketDupError)?;
         let event_socket = self
             .event_socket
-            .lock()
             .try_clone()
             .map_err(Error::UnixSeqpacketDupError)?;
         let mut opt = self.recv_thread.lock();
         // The lock on recv_thread was released above to avoid holding more than one lock at a time
-        // while duplicating the fds. So we have to check again the condition.
+        // while duplicating the fds. So we have to check the condition again.
         if opt.is_none() {
             *opt = Some(spawn_recv_thread(
                 self.tx_subscribers.clone(),
                 self.rx_subscribers.clone(),
-                self.event_notifier.clone(),
+                self.event_notifier
+                    .try_clone()
+                    .map_err(Error::EventDupError)?,
                 self.events.clone(),
                 recv_event,
-                self.recv_running.clone(),
+                self.recv_thread_state.clone(),
                 tx_socket,
                 rx_socket,
                 event_socket,
@@ -302,9 +307,8 @@ impl VioSClient {
         if self.recv_thread.lock().is_none() {
             return Ok(());
         }
-        *self.recv_running.lock() = false;
+        self.recv_thread_state.lock().running = false;
         self.recv_event
-            .lock()
             .write(1u64)
             .map_err(Error::EventWriteError)?;
         if let Some(handle) = self.recv_thread.lock().take() {
@@ -321,15 +325,11 @@ impl VioSClient {
 
     /// Gets an Event object that will trigger every time an event is received from the server
     pub fn get_event_notifier(&self) -> Result<Event> {
-        let mut event_notifier = self.event_notifier.lock();
-        Ok(match &*event_notifier {
-            Some(evt) => evt.try_clone().map_err(Error::EventDupError)?,
-            None => {
-                let evt = Event::new().map_err(Error::EventCreateError)?;
-                *event_notifier = Some(evt.try_clone().map_err(Error::EventDupError)?);
-                evt
-            }
-        })
+        // Let the background thread know that there is at least one consumer of events
+        self.recv_thread_state.lock().reporting_events = true;
+        self.event_notifier
+            .try_clone()
+            .map_err(Error::EventDupError)
     }
 
     /// Retrieves one event. Callers should have received a notification through the event notifier
@@ -360,7 +360,6 @@ impl VioSClient {
     /// Configures a stream with the given parameters.
     pub fn set_stream_parameters(&self, stream_id: u32, params: VioSStreamParams) -> Result<()> {
         self.streams
-            .lock()
             .get(stream_id as usize)
             .ok_or(Error::InvalidStreamId(stream_id))?;
         let raw_params: virtio_snd_pcm_set_params = (stream_id, params).into();
@@ -371,7 +370,6 @@ impl VioSClient {
     pub fn set_stream_parameters_raw(&self, raw_params: virtio_snd_pcm_set_params) -> Result<()> {
         let stream_id = raw_params.hdr.stream_id.to_native();
         self.streams
-            .lock()
             .get(stream_id as usize)
             .ok_or(Error::InvalidStreamId(stream_id))?;
         self.send_cmd(raw_params)
@@ -407,7 +405,6 @@ impl VioSClient {
     ) -> Result<(u32, R)> {
         if self
             .streams
-            .lock()
             .get(stream_id as usize)
             .ok_or(Error::InvalidStreamId(stream_id))?
             .direction
@@ -416,7 +413,6 @@ impl VioSClient {
             return Err(Error::WrongDirection(VIRTIO_SND_D_OUTPUT));
         }
         self.streams
-            .lock()
             .get(stream_id as usize)
             .ok_or(Error::InvalidStreamId(stream_id))?;
         let (status_promise, ret) = {
@@ -447,7 +443,6 @@ impl VioSClient {
     ) -> Result<(u32, R)> {
         if self
             .streams
-            .lock()
             .get(stream_id as usize)
             .ok_or(Error::InvalidStreamId(stream_id))?
             .direction
@@ -480,7 +475,7 @@ impl VioSClient {
     /// Get a list of file descriptors used by the implementation.
     pub fn keep_fds(&self) -> Vec<RawFd> {
         let control_fd = self.control_socket.lock().as_raw_fd();
-        let event_fd = self.event_socket.lock().as_raw_fd();
+        let event_fd = self.event_socket.as_raw_fd();
         let (tx_socket_fd, tx_shm_fd) = {
             let lock = self.tx.lock();
             (lock.socket.as_raw_fd(), lock.file.as_raw_fd())
@@ -489,7 +484,7 @@ impl VioSClient {
             let lock = self.rx.lock();
             (lock.socket.as_raw_fd(), lock.file.as_raw_fd())
         };
-        let recv_event = self.recv_event.lock().as_raw_descriptor();
+        let recv_event = self.recv_event.as_raw_descriptor();
         vec![
             control_fd,
             event_fd,
@@ -509,7 +504,6 @@ impl VioSClient {
 
     fn common_stream_op(&self, stream_id: u32, op: u32) -> Result<()> {
         self.streams
-            .lock()
             .get(stream_id as usize)
             .ok_or(Error::InvalidStreamId(stream_id))?;
         let msg = virtio_snd_pcm_hdr {
@@ -553,16 +547,14 @@ impl VioSClient {
                 ProtocolErrorKind::UnexpectedMessageSize(num_jacks * info_size, info_vec.len()),
             ));
         }
-        self.jacks = Mutex::new(
-            info_vec
-                .chunks(info_size)
-                .map(|info_buffer| {
-                    let mut info: virtio_snd_jack_info = Default::default();
-                    info.as_mut_slice().copy_from_slice(info_buffer);
-                    info
-                })
-                .collect(),
-        );
+        self.jacks = info_vec
+            .chunks(info_size)
+            .map(|info_buffer| {
+                let mut info: virtio_snd_jack_info = Default::default();
+                info.as_mut_slice().copy_from_slice(info_buffer);
+                info
+            })
+            .collect();
         Ok(())
     }
 
@@ -593,19 +585,17 @@ impl VioSClient {
                 ProtocolErrorKind::UnexpectedMessageSize(num_streams * info_size, info_vec.len()),
             ));
         }
-        self.streams = Mutex::new(
-            info_vec
-                .chunks(info_size)
-                .enumerate()
-                .map(|(id, info_buffer)| {
-                    let mut virtio_stream_info: virtio_snd_pcm_info = Default::default();
-                    virtio_stream_info
-                        .as_mut_slice()
-                        .copy_from_slice(info_buffer);
-                    VioSStreamInfo::new(id as u32, &virtio_stream_info)
-                })
-                .collect(),
-        );
+        self.streams = info_vec
+            .chunks(info_size)
+            .enumerate()
+            .map(|(id, info_buffer)| {
+                let mut virtio_stream_info: virtio_snd_pcm_info = Default::default();
+                virtio_stream_info
+                    .as_mut_slice()
+                    .copy_from_slice(info_buffer);
+                VioSStreamInfo::new(id as u32, &virtio_stream_info)
+            })
+            .collect();
         Ok(())
     }
 
@@ -636,16 +626,14 @@ impl VioSClient {
                 ProtocolErrorKind::UnexpectedMessageSize(num_chmaps * info_size, info_vec.len()),
             ));
         }
-        self.chmaps = Mutex::new(
-            info_vec
-                .chunks(info_size)
-                .map(|info_buffer| {
-                    let mut info: virtio_snd_chmap_info = Default::default();
-                    info.as_mut_slice().copy_from_slice(info_buffer);
-                    info
-                })
-                .collect(),
-        );
+        self.chmaps = info_vec
+            .chunks(info_size)
+            .map(|info_buffer| {
+                let mut info: virtio_snd_chmap_info = Default::default();
+                info.as_mut_slice().copy_from_slice(info_buffer);
+                info
+            })
+            .collect();
         Ok(())
     }
 }
@@ -656,6 +644,12 @@ impl Drop for VioSClient {
             error!("Error stopping Recv thread: {}", e);
         }
     }
+}
+
+#[derive(Clone, Copy)]
+struct ThreadFlags {
+    running: bool,
+    reporting_events: bool,
 }
 
 #[derive(PollToken)]
@@ -723,10 +717,10 @@ fn recv_event(socket: &UnixSeqpacket) -> Result<virtio_snd_event> {
 fn spawn_recv_thread(
     tx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
     rx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
-    event_notifier: Arc<Mutex<Option<Event>>>,
+    event_notifier: Event,
     event_queue: Arc<Mutex<VecDeque<virtio_snd_event>>>,
     event: Event,
-    running: Arc<Mutex<bool>>,
+    state: Arc<Mutex<ThreadFlags>>,
     tx_socket: UnixSeqpacket,
     rx_socket: UnixSeqpacket,
     event_socket: UnixSeqpacket,
@@ -740,7 +734,8 @@ fn spawn_recv_thread(
         ])
         .map_err(Error::WaitContextCreateError)?;
         loop {
-            if !*running.lock() {
+            let state_cpy = *state.lock();
+            if !state_cpy.running {
                 break;
             }
             let events = wait_ctx.wait().map_err(Error::WaitError)?;
@@ -750,10 +745,11 @@ fn spawn_recv_thread(
                     Token::RxBufferMsg => recv_buffer_status_msg(&rx_socket, &rx_subscribers)?,
                     Token::EventMsg => {
                         let evt = recv_event(&event_socket)?;
-                        event_queue.lock().push_back(evt);
-                        if let Some(evt) = &*event_notifier.lock() {
-                            evt.write(1).map_err(Error::EventWriteError)?;
-                        }
+                        let state_cpy = *state.lock();
+                        if state_cpy.reporting_events {
+                            event_queue.lock().push_back(evt);
+                            event_notifier.write(1).map_err(Error::EventWriteError)?;
+                        } // else just drop the events
                     }
                     Token::Notification => {
                         // Just consume the notification and check for termination on the next
