@@ -55,8 +55,6 @@ pub enum Error {
     InvalidJackId(u32),
     #[error("No stream with id {0}")]
     InvalidStreamId(u32),
-    #[error("Stream is in unexpected state: {0:?}")]
-    UnexpectedState(StreamState),
     #[error("Invalid operation for stream direction: {0}")]
     WrongDirection(u8),
     #[error("Insuficient space for the new buffer in the queue's buffer area")]
@@ -356,85 +354,47 @@ impl VioSClient {
             association: association.into(),
             sequence: sequence.into(),
         };
-        self.send_cmd(msg)?;
-        Ok(())
-    }
-
-    /// Gets an unused stream id of the specified direction. `direction` must be one of
-    /// VIRTIO_SND_D_INPUT OR VIRTIO_SND_D_OUTPUT.
-    pub fn get_unused_stream_id(&self, direction: u8) -> Option<u32> {
-        self.streams
-            .lock()
-            .iter()
-            .filter(|s| s.state == StreamState::Available && s.direction == direction as u8)
-            .map(|s| s.id)
-            .next()
+        self.send_cmd(msg)
     }
 
     /// Configures a stream with the given parameters.
     pub fn set_stream_parameters(&self, stream_id: u32, params: VioSStreamParams) -> Result<()> {
-        self.validate_stream_id(
-            stream_id,
-            &[StreamState::Available, StreamState::Acquired],
-            None,
-        )?;
+        self.streams
+            .lock()
+            .get(stream_id as usize)
+            .ok_or(Error::InvalidStreamId(stream_id))?;
         let raw_params: virtio_snd_pcm_set_params = (stream_id, params).into();
-        self.send_cmd(raw_params)?;
-        self.streams.lock()[stream_id as usize].state = StreamState::Acquired;
-        Ok(())
+        self.send_cmd(raw_params)
     }
 
     /// Configures a stream with the given parameters.
     pub fn set_stream_parameters_raw(&self, raw_params: virtio_snd_pcm_set_params) -> Result<()> {
         let stream_id = raw_params.hdr.stream_id.to_native();
-        self.validate_stream_id(
-            stream_id,
-            &[StreamState::Available, StreamState::Acquired],
-            None,
-        )?;
-        self.send_cmd(raw_params)?;
-        self.streams.lock()[stream_id as usize].state = StreamState::Acquired;
-        Ok(())
+        self.streams
+            .lock()
+            .get(stream_id as usize)
+            .ok_or(Error::InvalidStreamId(stream_id))?;
+        self.send_cmd(raw_params)
     }
 
     /// Send the PREPARE_STREAM command to the server.
     pub fn prepare_stream(&self, stream_id: u32) -> Result<()> {
-        self.common_stream_op(
-            stream_id,
-            &[StreamState::Available, StreamState::Acquired],
-            StreamState::Acquired,
-            VIRTIO_SND_R_PCM_PREPARE,
-        )
+        self.common_stream_op(stream_id, VIRTIO_SND_R_PCM_PREPARE)
     }
 
     /// Send the RELEASE_STREAM command to the server.
     pub fn release_stream(&self, stream_id: u32) -> Result<()> {
-        self.common_stream_op(
-            stream_id,
-            &[StreamState::Acquired],
-            StreamState::Available,
-            VIRTIO_SND_R_PCM_RELEASE,
-        )
+        self.common_stream_op(stream_id, VIRTIO_SND_R_PCM_RELEASE)
     }
 
     /// Send the START_STREAM command to the server.
     pub fn start_stream(&self, stream_id: u32) -> Result<()> {
-        self.common_stream_op(
-            stream_id,
-            &[StreamState::Acquired],
-            StreamState::Active,
-            VIRTIO_SND_R_PCM_START,
-        )
+        self.common_stream_op(stream_id, VIRTIO_SND_R_PCM_START)
     }
 
     /// Send the STOP_STREAM command to the server.
     pub fn stop_stream(&self, stream_id: u32) -> Result<()> {
-        self.common_stream_op(
-            stream_id,
-            &[StreamState::Active],
-            StreamState::Acquired,
-            VIRTIO_SND_R_PCM_STOP,
-        )
+        self.common_stream_op(stream_id, VIRTIO_SND_R_PCM_STOP)
     }
 
     /// Send audio frames to the server. Blocks the calling thread until the server acknowledges
@@ -445,7 +405,20 @@ impl VioSClient {
         size: usize,
         callback: Cb,
     ) -> Result<(u32, R)> {
-        self.validate_stream_id(stream_id, &[StreamState::Active], Some(VIRTIO_SND_D_OUTPUT))?;
+        if self
+            .streams
+            .lock()
+            .get(stream_id as usize)
+            .ok_or(Error::InvalidStreamId(stream_id))?
+            .direction
+            != VIRTIO_SND_D_OUTPUT
+        {
+            return Err(Error::WrongDirection(VIRTIO_SND_D_OUTPUT));
+        }
+        self.streams
+            .lock()
+            .get(stream_id as usize)
+            .ok_or(Error::InvalidStreamId(stream_id))?;
         let (status_promise, ret) = {
             let mut tx_lock = self.tx.lock();
             let tx = &mut *tx_lock;
@@ -472,7 +445,16 @@ impl VioSClient {
         size: usize,
         callback: Cb,
     ) -> Result<(u32, R)> {
-        self.validate_stream_id(stream_id, &[StreamState::Active], Some(VIRTIO_SND_D_INPUT))?;
+        if self
+            .streams
+            .lock()
+            .get(stream_id as usize)
+            .ok_or(Error::InvalidStreamId(stream_id))?
+            .direction
+            != VIRTIO_SND_D_INPUT
+        {
+            return Err(Error::WrongDirection(VIRTIO_SND_D_INPUT));
+        }
         let (src_offset, status_promise) = {
             let mut rx_lock = self.rx.lock();
             let rx = &mut *rx_lock;
@@ -525,47 +507,16 @@ impl VioSClient {
         recv_cmd_status(&mut *control_socket_lock)
     }
 
-    fn validate_stream_id(
-        &self,
-        stream_id: u32,
-        permitted_states: &[StreamState],
-        direction: Option<u8>,
-    ) -> Result<()> {
-        let streams_lock = self.streams.lock();
-        let stream_idx = stream_id as usize;
-        if stream_idx >= streams_lock.len() {
-            return Err(Error::InvalidStreamId(stream_id));
-        }
-        if !permitted_states.contains(&streams_lock[stream_idx].state) {
-            return Err(Error::UnexpectedState(streams_lock[stream_idx].state));
-        }
-        match direction {
-            None => Ok(()),
-            Some(d) => {
-                if d == streams_lock[stream_idx].direction {
-                    Ok(())
-                } else {
-                    Err(Error::WrongDirection(streams_lock[stream_idx].direction))
-                }
-            }
-        }
-    }
-
-    fn common_stream_op(
-        &self,
-        stream_id: u32,
-        expected_states: &[StreamState],
-        new_state: StreamState,
-        op: u32,
-    ) -> Result<()> {
-        self.validate_stream_id(stream_id, expected_states, None)?;
+    fn common_stream_op(&self, stream_id: u32, op: u32) -> Result<()> {
+        self.streams
+            .lock()
+            .get(stream_id as usize)
+            .ok_or(Error::InvalidStreamId(stream_id))?;
         let msg = virtio_snd_pcm_hdr {
             hdr: virtio_snd_hdr { code: op.into() },
             stream_id: stream_id.into(),
         };
-        self.send_cmd(msg)?;
-        self.streams.lock()[stream_id as usize].state = new_state;
-        Ok(())
+        self.send_cmd(msg)
     }
 
     fn request_and_cache_info(&mut self) -> Result<()> {
@@ -888,7 +839,6 @@ pub struct VioSStreamInfo {
     pub direction: u8,
     pub channels_min: u8,
     pub channels_max: u8,
-    state: StreamState,
 }
 
 impl VioSStreamInfo {
@@ -902,7 +852,6 @@ impl VioSStreamInfo {
             direction: info.direction,
             channels_min: info.channels_min,
             channels_max: info.channels_max,
-            state: StreamState::Available,
         }
     }
 }
@@ -922,13 +871,6 @@ impl std::convert::From<&VioSStreamInfo> for virtio_snd_pcm_info {
             padding: [0u8; 5],
         }
     }
-}
-
-#[derive(PartialEq, Debug, Copy, Clone)]
-pub enum StreamState {
-    Available,
-    Acquired,
-    Active,
 }
 
 /// Groups the parameters used to configure a stream prior to using it.
