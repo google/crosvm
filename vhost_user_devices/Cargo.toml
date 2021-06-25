@@ -4,24 +4,16 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
 
-[features]
-console = ["data_model"]
-net = ["data_model", "net_util", "virtio_sys"]
-wl = ["devices/minigbm"]
-block = ["data_model", "disk"]
-
 [lib]
 path = "src/lib.rs"
 
 [[bin]]
 name = "vhost-user-console-device"
 path = "src/console.rs"
-required-features = ["console"]
 
 [[bin]]
 name = "vhost-user-net-device"
 path = "src/net.rs"
-required-features = ["net"]
 
 [[bin]]
 name = "vhost-user-wl-device"
@@ -30,25 +22,24 @@ path = "src/wl.rs"
 [[bin]]
 name = "vhost-user-block-device"
 path = "src/block.rs"
-required-features = ["block"]
 
 [dependencies]
 anyhow = "*"
 arch = { path = "../arch" }
 base = { path = "../base" }
 cros_async = { path = "../cros_async" }
-data_model = { path = "../data_model", optional = true }
-devices = { path = "../devices" }
-disk = { path = "../disk", optional = true}
+data_model = { path = "../data_model" }
+devices = { path = "../devices", features = ["minigbm"] }
+disk = { path = "../disk" }
 getopts = { version = "0.2" }
 libc = "*"
-net_util = { path = "../net_util", optional = true }
+net_util = { path = "../net_util" }
 once_cell = "1.7.2"
 remain = "*"
 sync = { path = "../sync" }
 sys_util = { path = "../sys_util" }
 thiserror = "*"
-virtio_sys = { path = "../virtio_sys", optional = true }
+virtio_sys = { path = "../virtio_sys" }
 vm_memory = { path = "../vm_memory" }
 vmm_vhost = { version = "*", features = ["vhost-user-slave"] }
 
