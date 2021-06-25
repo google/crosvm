@@ -27,6 +27,7 @@ members = [
     "qcow_utils",
     "integration_tests",
     "libcrosvm_control",
+    "vhost_user_devices",
 ]
 exclude = [
     "assertions",
@@ -94,7 +95,6 @@ sync = { path = "sync" }
 tempfile = "*"
 thiserror = { version = "1.0.20", optional = true }
 vhost = { path = "vhost" }
-vhost_user_devices = { path = "vhost_user_devices" }
 vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }
 vm_memory = { path = "vm_memory" }

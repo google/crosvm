@@ -247,7 +247,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "vhost",
- "vhost_user_devices",
  "vm_control",
  "vm_memory",
  "x86_64",
