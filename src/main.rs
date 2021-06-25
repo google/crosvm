@@ -26,12 +26,15 @@ use crosvm::{
     VhostUserFsOption, VhostUserOption, VhostUserWlOption, DISK_ID_LEN,
 };
 use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
-#[cfg(feature = "gpu")]
-use devices::virtio::gpu::{
-    GpuDisplayParameters, GpuMode, GpuParameters, DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH,
-};
 use devices::virtio::vhost::user::device::{
     run_block_device, run_console_device, run_net_device, run_wl_device,
+};
+#[cfg(feature = "gpu")]
+use devices::virtio::{
+    gpu::{
+        GpuDisplayParameters, GpuMode, GpuParameters, DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH,
+    },
+    vhost::user::device::run_gpu_device,
 };
 use devices::ProtectionType;
 #[cfg(feature = "audio")]
@@ -2546,7 +2549,7 @@ fn start_device(mut args: std::env::Args) -> std::result::Result<(), ()> {
     let print_usage = || {
         print_help(
             "crosvm device",
-            " (block|console|net|wl) <device-specific arguments>",
+            " (block|console|gpu|net|wl) <device-specific arguments>",
             &[],
         );
     };
@@ -2566,6 +2569,8 @@ fn start_device(mut args: std::env::Args) -> std::result::Result<(), ()> {
     let program_name = format!("crosvm device {}", device);
     let result = match device.as_str() {
         "block" => run_block_device(&program_name, args),
+        #[cfg(feature = "gpu")]
+        "gpu" => run_gpu_device(&program_name, args),
         "console" => run_console_device(&program_name, args),
         "net" => run_net_device(&program_name, args),
         "wl" => run_wl_device(&program_name, args),

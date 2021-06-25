@@ -73,7 +73,7 @@ use vmm_vhost::vhost_user::{
     SlaveReqHandler,
 };
 use vmm_vhost::vhost_user::{
-    Error as VhostError, Result as VhostResult, SlaveFsCacheReq, VhostUserSlaveReqHandlerMut,
+    Error as VhostError, Result as VhostResult, VhostUserSlaveReqHandlerMut,
 };
 
 use crate::virtio::{Queue, SignalableInterrupt};
@@ -150,6 +150,17 @@ where
 
     /// Reads this device configuration space at `offset`.
     fn read_config(&self, offset: u64, dst: &mut [u8]);
+
+    /// writes `data` to this device's configuration space at `offset`.
+    fn write_config(&self, _offset: u64, _data: &[u8]) {}
+
+    /// Sets the channel for device-specific communication.
+    fn set_device_request_channel(
+        &mut self,
+        _channel: File,
+    ) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
 
     /// Indicates that the backend should start processing requests for virtio queue number `idx`.
     /// This method must not block the current thread so device backends should either spawn an
@@ -559,16 +570,18 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
 
     fn set_config(
         &mut self,
-        _offset: u32,
-        _buf: &[u8],
+        offset: u32,
+        buf: &[u8],
         _flags: VhostUserConfigFlags,
     ) -> VhostResult<()> {
-        // TODO
+        self.backend.write_config(u64::from(offset), buf);
         Ok(())
     }
 
-    fn set_slave_req_fd(&mut self, _vu_req: SlaveFsCacheReq) {
-        // TODO
+    fn set_slave_req_fd(&mut self, fd: File) {
+        if let Err(e) = self.backend.set_device_request_channel(fd) {
+            error!("failed to set device request channel: {}", e);
+        }
     }
 
     fn get_inflight_fd(

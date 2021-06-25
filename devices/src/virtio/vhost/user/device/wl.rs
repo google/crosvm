@@ -7,6 +7,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context};
 use base::{
@@ -329,7 +331,21 @@ pub fn run_wl_device(program_name: &str, args: std::env::Args) -> anyhow::Result
 
     let resource_bridge = matches
         .opt_str("resource-bridge")
-        .map(|p| UnixSeqpacket::connect(p).map(Tube::new))
+        .map(|p| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                match UnixSeqpacket::connect(&p) {
+                    Ok(s) => return Ok(Tube::new(s)),
+                    Err(e) => {
+                        if Instant::now() < deadline {
+                            thread::sleep(Duration::from_millis(50));
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                }
+            }
+        })
         .transpose()
         .context("failed to connect to resource bridge socket")?;
 

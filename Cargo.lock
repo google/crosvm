@@ -348,6 +348,7 @@ dependencies = [
  "resources",
  "rutabaga_gfx",
  "serde",
+ "serde_json",
  "smallvec",
  "sync",
  "sys_util",

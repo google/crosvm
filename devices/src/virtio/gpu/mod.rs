@@ -32,6 +32,7 @@ use rutabaga_gfx::*;
 
 use resources::Alloc;
 
+use serde::{Deserialize, Serialize};
 use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -43,6 +44,11 @@ use super::{
 use super::{PciCapabilityType, VirtioPciShmCap};
 
 use self::protocol::*;
+pub use self::protocol::{
+    virtio_gpu_config, VIRTIO_GPU_F_CONTEXT_INIT, VIRTIO_GPU_F_CREATE_GUEST_HANDLE,
+    VIRTIO_GPU_F_EDID, VIRTIO_GPU_F_RESOURCE_BLOB, VIRTIO_GPU_F_RESOURCE_SYNC,
+    VIRTIO_GPU_F_RESOURCE_UUID, VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_SHM_ID_HOST_VISIBLE,
+};
 use self::virtio_gpu::VirtioGpu;
 
 use crate::pci::{
@@ -52,20 +58,30 @@ use crate::pci::{
 pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
 pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum GpuMode {
     Mode2D,
     ModeVirglRenderer,
     ModeGfxstream,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct GpuDisplayParameters {
     pub width: u32,
     pub height: u32,
 }
 
-#[derive(Debug)]
+impl Default for GpuDisplayParameters {
+    fn default() -> Self {
+        GpuDisplayParameters {
+            width: DEFAULT_DISPLAY_WIDTH,
+            height: DEFAULT_DISPLAY_HEIGHT,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GpuParameters {
     pub displays: Vec<GpuDisplayParameters>,
     pub renderer_use_egl: bool,
@@ -83,12 +99,12 @@ pub struct GpuParameters {
 
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
 // there to be fewer of.
-const QUEUE_SIZES: &[u16] = &[256, 16];
-const FENCE_POLL_MS: u64 = 1;
+pub const QUEUE_SIZES: &[u16] = &[256, 16];
+pub const FENCE_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
-const GPU_BAR_NUM: u8 = 4;
-const GPU_BAR_OFFSET: u64 = 0;
-const GPU_BAR_SIZE: u64 = 1 << 33;
+pub const GPU_BAR_NUM: u8 = 4;
+pub const GPU_BAR_OFFSET: u64 = 0;
+pub const GPU_BAR_SIZE: u64 = 1 << 33;
 
 impl Default for GpuParameters {
     fn default() -> Self {
@@ -131,7 +147,7 @@ struct FenceDescriptor {
     len: u32,
 }
 
-struct FenceState {
+pub struct FenceState {
     descs: Vec<FenceDescriptor>,
     completed_fences: HashMap<VirtioGpuRing, u64>,
 }
@@ -145,7 +161,7 @@ impl Default for FenceState {
     }
 }
 
-trait QueueReader {
+pub trait QueueReader {
     fn pop(&self, mem: &GuestMemory) -> Option<DescriptorChain>;
     fn add_used(&self, mem: &GuestMemory, desc_index: u16, len: u32);
     fn signal_used(&self, mem: &GuestMemory);
@@ -257,11 +273,14 @@ fn build(
 }
 
 /// Create a handler that writes into the completed fence queue
-fn create_fence_handler(
+pub fn create_fence_handler<Q>(
     mem: GuestMemory,
-    ctrl_queue: SharedQueueReader,
+    ctrl_queue: Q,
     fence_state: Arc<Mutex<FenceState>>,
-) -> RutabagaFenceHandler {
+) -> RutabagaFenceHandler
+where
+    Q: QueueReader + Send + Clone + 'static,
+{
     RutabagaFenceClosure::new(move |completed_fence| {
         let mut signal = false;
 
@@ -295,12 +314,12 @@ fn create_fence_handler(
     })
 }
 
-struct ReturnDescriptor {
-    index: u16,
-    len: u32,
+pub struct ReturnDescriptor {
+    pub index: u16,
+    pub len: u32,
 }
 
-struct Frontend {
+pub struct Frontend {
     fence_state: Arc<Mutex<FenceState>>,
     return_cursor_descriptors: VecDeque<ReturnDescriptor>,
     virtio_gpu: VirtioGpu,
@@ -315,15 +334,18 @@ impl Frontend {
         }
     }
 
-    fn display(&mut self) -> &Rc<RefCell<GpuDisplay>> {
+    /// Returns the internal connection to the compositor and its associated state.
+    pub fn display(&mut self) -> &Rc<RefCell<GpuDisplay>> {
         self.virtio_gpu.display()
     }
 
-    fn process_display(&mut self) -> bool {
+    /// Processes the internal `display` events and returns `true` if any display was closed.
+    pub fn process_display(&mut self) -> bool {
         self.virtio_gpu.process_display()
     }
 
-    fn process_resource_bridge(&mut self, resource_bridge: &Tube) {
+    /// Processes incoming requests on `resource_bridge`.
+    pub fn process_resource_bridge(&mut self, resource_bridge: &Tube) {
         let response = match resource_bridge.recv() {
             Ok(ResourceRequest::GetBuffer { id }) => self.virtio_gpu.export_resource(id),
             Ok(ResourceRequest::GetFence { seqno }) => {
@@ -617,7 +639,8 @@ impl Frontend {
         desc.len as usize >= size_of::<virtio_gpu_ctrl_hdr>() && !desc.is_write_only()
     }
 
-    fn process_queue(&mut self, mem: &GuestMemory, queue: &dyn QueueReader) -> bool {
+    /// Processes virtio messages on `queue`.
+    pub fn process_queue(&mut self, mem: &GuestMemory, queue: &dyn QueueReader) -> bool {
         let mut signal_used = false;
         while let Some(desc) = queue.pop(mem) {
             if Frontend::validate_desc(&desc) {
@@ -753,14 +776,15 @@ impl Frontend {
         })
     }
 
-    fn return_cursor(&mut self) -> Option<ReturnDescriptor> {
+    pub fn return_cursor(&mut self) -> Option<ReturnDescriptor> {
         self.return_cursor_descriptors.pop_front()
     }
-    fn fence_poll(&mut self) {
+
+    pub fn fence_poll(&mut self) {
         self.virtio_gpu.fence_poll();
     }
 
-    fn has_pending_fences(&self) -> bool {
+    pub fn has_pending_fences(&self) -> bool {
         !self.fence_state.lock().descs.is_empty()
     }
 }
@@ -831,7 +855,7 @@ impl Worker {
         'wait: loop {
             // If there are outstanding fences, wake up early to poll them.
             let duration = if self.state.has_pending_fences() {
-                Duration::from_millis(FENCE_POLL_MS)
+                FENCE_POLL_INTERVAL
             } else {
                 Duration::new(i64::MAX as u64, 0)
             };
@@ -1055,6 +1079,42 @@ impl Gpu {
             base_features,
             udmabuf: gpu_parameters.udmabuf,
         }
+    }
+
+    /// Initializes the internal device state so that it can begin processing virtqueues.
+    pub fn initialize_frontend(
+        &mut self,
+        fence_state: Arc<Mutex<FenceState>>,
+        fence_handler: RutabagaFenceHandler,
+    ) -> Option<Frontend> {
+        let tube = self.gpu_device_tube.take()?;
+        let pci_bar = self.pci_bar.take()?;
+        let rutabaga_builder = self.rutabaga_builder.take()?;
+        let event_devices = self.event_devices.split_off(0);
+
+        build(
+            &self.display_backends,
+            self.display_params.clone(),
+            rutabaga_builder,
+            event_devices,
+            tube,
+            pci_bar,
+            self.map_request.clone(),
+            self.external_blob,
+            self.udmabuf,
+            fence_handler,
+        )
+        .map(|vgpu| Frontend::new(vgpu, fence_state))
+    }
+
+    /// Returns the device tube to the main process.
+    pub fn device_tube(&self) -> Option<&Tube> {
+        self.gpu_device_tube.as_ref()
+    }
+
+    /// Sets the device tube to the main process.
+    pub fn set_device_tube(&mut self, tube: Tube) {
+        self.gpu_device_tube = Some(tube);
     }
 
     fn get_config(&self) -> virtio_gpu_config {
