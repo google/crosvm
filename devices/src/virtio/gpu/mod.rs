@@ -20,8 +20,8 @@ use std::thread;
 use std::time::Duration;
 
 use base::{
-    debug, error, warn, AsRawDescriptor, AsRawDescriptors, Event, ExternalMapping, PollToken,
-    RawDescriptor, Tube, WaitContext,
+    debug, error, warn, AsRawDescriptor, Event, ExternalMapping, PollToken, RawDescriptor, Tube,
+    WaitContext,
 };
 
 use data_model::*;
@@ -969,7 +969,6 @@ pub struct Gpu {
     external_blob: bool,
     rutabaga_component: RutabagaComponentType,
     base_features: u64,
-    mem: GuestMemory,
     udmabuf: bool,
 }
 
@@ -985,7 +984,6 @@ impl Gpu {
         external_blob: bool,
         base_features: u64,
         channels: BTreeMap<String, PathBuf>,
-        mem: GuestMemory,
     ) -> Gpu {
         let virglrenderer_flags = VirglRendererFlags::new()
             .use_egl(gpu_parameters.renderer_use_egl)
@@ -1055,7 +1053,6 @@ impl Gpu {
             external_blob,
             rutabaga_component: component,
             base_features,
-            mem,
             udmabuf: gpu_parameters.udmabuf,
         }
     }
@@ -1120,10 +1117,6 @@ impl VirtioDevice for Gpu {
         if cfg!(debug_assertions) {
             keep_rds.push(libc::STDOUT_FILENO);
             keep_rds.push(libc::STDERR_FILENO);
-        }
-
-        if self.udmabuf {
-            keep_rds.append(&mut self.mem.as_raw_descriptors());
         }
 
         if let Some(ref gpu_device_tube) = self.gpu_device_tube {
