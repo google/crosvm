@@ -5,8 +5,6 @@
 # Base image for crosvm_builder and crosvm_aarch64_builder containing basic
 # devleopment environment for building rust.
 
-# TODO(b/177078591): Use debian buster and backports (or manual dpkg downloads)
-# of outdated libraries. Sid could blow up on us any day.
 FROM debian:buster
 
 # Set timezone so apt-get won't try to prompt
@@ -63,6 +61,10 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 # The bindgen tool is required to build a crosvm dependency.
 RUN cargo install bindgen
+
+# The mdbook and mdbook-mermaid tools are used to build the crosvm book.
+RUN cargo install mdbook --no-default-features --version "^0.4.10"
+RUN cargo install mdbook-mermaid --version "^0.8.3"
 
 # Point cargo to store data on the scratch volume.
 ENV CARGO_TARGET_DIR=/workspace/scratch/cargo_target

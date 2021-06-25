@@ -4,3 +4,11 @@ language = "en"
 multilingual = false
 src = "src"
 title = "Book of crosvm"
+
+[preprocessor]
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output]
+[output.html]
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
