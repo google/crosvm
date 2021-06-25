@@ -1854,6 +1854,13 @@ fn create_vfio_device(
     control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
 
     let hotplug = bus_num.is_some();
+    let vfio_device_tube_vm = if hotplug {
+        let (vfio_host_tube_vm, device_tube_vm) = Tube::pair().context("failed to create tube")?;
+        control_tubes.push(TaggedControlTube::Vm(vfio_host_tube_vm));
+        Some(device_tube_vm)
+    } else {
+        None
+    };
 
     let vfio_device =
         VfioDevice::new_passthrough(&vfio_path, vm, vfio_container.clone(), iommu_enabled)
@@ -1864,6 +1871,7 @@ fn create_vfio_device(
         vfio_device_tube_msi,
         vfio_device_tube_msix,
         vfio_device_tube_mem,
+        vfio_device_tube_vm,
     ));
     // early reservation for pass-through PCI devices.
     let endpoint_addr = vfio_pci_device.allocate_address(resources);

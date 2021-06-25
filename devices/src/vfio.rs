@@ -663,7 +663,9 @@ impl VfioDevice {
 
     /// Enable vfio device's irq and associate Irqfd Event with device.
     /// When MSIx is enabled, multi vectors will be supported, so descriptors is vector and the vector
-    /// length is the num of MSIx vectors
+    /// length is the num of MSIx vectors.
+    /// when index = VFIO_PCI_REQ_IRQ_INDEX, kernel vfio will trigger this event when physical device
+    /// is removed.
     pub fn irq_enable(&self, descriptors: &[&Event], index: u32) -> Result<()> {
         let count = descriptors.len();
         let u32_size = mem::size_of::<u32>();

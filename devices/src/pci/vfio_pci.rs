@@ -7,15 +7,18 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::thread;
 use std::u32;
 
-use base::{error, pagesize, AsRawDescriptor, Event, RawDescriptor, Tube};
+use base::{error, pagesize, AsRawDescriptor, Event, PollToken, RawDescriptor, Tube, WaitContext};
 use hypervisor::{Datamatch, MemSlot};
 
 use resources::{Alloc, MmioType, SystemAllocator};
 
 use vfio_sys::*;
-use vm_control::{VmIrqRequest, VmIrqResponse, VmMemoryRequest, VmMemoryResponse};
+use vm_control::{
+    VmIrqRequest, VmIrqResponse, VmMemoryRequest, VmMemoryResponse, VmRequest, VmResponse,
+};
 
 use crate::pci::msix::{
     MsixConfig, BITS_PER_PBA_ENTRY, MSIX_PBA_ENTRIES_MODULO, MSIX_TABLE_ENTRIES_MODULO,
@@ -451,6 +454,68 @@ impl VfioMsixAllocator {
     }
 }
 
+struct VfioPciWorker {
+    vm_socket: Tube,
+    name: String,
+}
+
+impl VfioPciWorker {
+    fn run(&mut self, req_irq_evt: Event, kill_evt: Event) {
+        #[derive(PollToken)]
+        enum Token {
+            ReqIrq,
+            Kill,
+        }
+
+        let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
+            (&req_irq_evt, Token::ReqIrq),
+            (&kill_evt, Token::Kill),
+        ]) {
+            Ok(pc) => pc,
+            Err(e) => {
+                error!(
+                    "{} failed creating vfio WaitContext: {}",
+                    self.name.clone(),
+                    e
+                );
+                return;
+            }
+        };
+
+        'wait: loop {
+            let events = match wait_ctx.wait() {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("{} failed polling vfio events: {}", self.name.clone(), e);
+                    break;
+                }
+            };
+
+            for event in events.iter().filter(|e| e.is_readable) {
+                match event.token {
+                    Token::ReqIrq => {
+                        let mut sysfs_path = PathBuf::new();
+                        sysfs_path.push("/sys/bus/pci/devices/");
+                        sysfs_path.push(self.name.clone());
+                        let request = VmRequest::VfioCommand {
+                            vfio_path: sysfs_path,
+                            add: false,
+                        };
+                        if self.vm_socket.send(&request).is_ok() {
+                            if let Err(e) = self.vm_socket.recv::<VmResponse>() {
+                                error!("{} failed to remove vfio_device: {}", self.name.clone(), e);
+                            } else {
+                                break 'wait;
+                            }
+                        }
+                    }
+                    Token::Kill => break 'wait,
+                }
+            }
+        }
+    }
+}
+
 enum DeviceData {
     IntelGfxData { opregion_index: u32 },
 }
@@ -470,6 +535,9 @@ pub struct VfioPciDevice {
     irq_type: Option<VfioIrqType>,
     vm_socket_mem: Tube,
     device_data: Option<DeviceData>,
+    kill_evt: Option<Event>,
+    worker_thread: Option<thread::JoinHandle<VfioPciWorker>>,
+    vm_socket_vm: Option<Tube>,
 
     mmap_slots: Vec<MemSlot>,
     remap: bool,
@@ -483,6 +551,7 @@ impl VfioPciDevice {
         vfio_device_socket_msi: Tube,
         vfio_device_socket_msix: Tube,
         vfio_device_socket_mem: Tube,
+        vfio_device_socket_vm: Option<Tube>,
     ) -> Self {
         let dev = Arc::new(device);
         let config = VfioPciConfig::new(Arc::clone(&dev));
@@ -534,6 +603,9 @@ impl VfioPciDevice {
             irq_type: None,
             vm_socket_mem: vfio_device_socket_mem,
             device_data,
+            kill_evt: None,
+            worker_thread: None,
+            vm_socket_vm: vfio_device_socket_vm,
             mmap_slots: Vec::new(),
             remap: true,
         }
@@ -850,6 +922,59 @@ impl VfioPciDevice {
         self.disable_bars_mmap();
         self.device.close();
     }
+
+    fn start_work_thread(&mut self) {
+        let vm_socket = match self.vm_socket_vm.take() {
+            Some(socket) => socket,
+            None => return,
+        };
+
+        let req_evt = match Event::new() {
+            Ok(evt) => {
+                if let Err(e) = self.device.irq_enable(&[&evt], VFIO_PCI_REQ_IRQ_INDEX) {
+                    error!("{} enable req_irq failed: {}", self.debug_label(), e);
+                    return;
+                }
+                evt
+            }
+            Err(_) => return,
+        };
+
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
+            Ok(v) => v,
+            Err(e) => {
+                error!(
+                    "{} failed creating kill Event pair: {}",
+                    self.debug_label(),
+                    e
+                );
+                return;
+            }
+        };
+        self.kill_evt = Some(self_kill_evt);
+
+        let name = self.device.device_name().to_string();
+        let worker_result = thread::Builder::new()
+            .name("vfio_pci".to_string())
+            .spawn(move || {
+                let mut worker = VfioPciWorker { vm_socket, name };
+                worker.run(req_evt, kill_evt);
+                worker
+            });
+
+        match worker_result {
+            Err(e) => {
+                error!(
+                    "{} failed to spawn vfio_pci worker: {}",
+                    self.debug_label(),
+                    e
+                );
+            }
+            Ok(join_handle) => {
+                self.worker_thread = Some(join_handle);
+            }
+        }
+    }
 }
 
 impl PciDevice for VfioPciDevice {
@@ -1158,6 +1283,11 @@ impl PciDevice for VfioPciDevice {
     fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
         let start = (reg_idx * 4) as u64 + offset;
 
+        // When guest write config register at the first time, start worker thread
+        if self.worker_thread.is_none() && self.vm_socket_vm.is_some() {
+            self.start_work_thread();
+        };
+
         let mut msi_change: Option<VfioMsiChange> = None;
         if let Some(msi_cap) = self.msi_cap.as_mut() {
             if msi_cap.is_msi_reg(start, data.len()) {
@@ -1297,6 +1427,18 @@ impl PciDevice for VfioPciDevice {
 
     fn destroy_device(&mut self) {
         self.close();
+    }
+}
+
+impl Drop for VfioPciDevice {
+    fn drop(&mut self) {
+        if let Some(kill_evt) = self.kill_evt.take() {
+            let _ = kill_evt.write(1);
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
+        }
     }
 }
 
