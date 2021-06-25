@@ -5,6 +5,8 @@
 mod block;
 mod console;
 mod fs;
+#[cfg(feature = "gpu")]
+mod gpu;
 mod handler;
 mod mac80211_hwsim;
 mod net;
@@ -14,6 +16,8 @@ mod worker;
 pub use self::block::*;
 pub use self::console::*;
 pub use self::fs::*;
+#[cfg(feature = "gpu")]
+pub use self::gpu::*;
 pub use self::handler::VhostUserHandler;
 pub use self::mac80211_hwsim::*;
 pub use self::net::*;
@@ -67,6 +71,12 @@ pub enum Error {
     /// Failed to reset owner.
     #[error("failed to reset owner: {0}")]
     ResetOwner(VhostError),
+    /// Failed to set config.
+    #[error("failed to set config: {0}")]
+    SetConfig(VhostError),
+    /// Failed to set device request channel.
+    #[error("failed to set device request channel: {0}")]
+    SetDeviceRequestChannel(VhostError),
     /// Failed to set features.
     #[error("failed to set features: {0}")]
     SetFeatures(VhostError),

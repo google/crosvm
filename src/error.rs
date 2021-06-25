@@ -41,6 +41,7 @@ pub enum Error {
     BuildVm(<Arch as LinuxArch>::Error),
     ChownTpmStorage(base::Error),
     CloneEvent(base::Error),
+    CloneTube(base::TubeError),
     CloneVcpu(base::Error),
     ConfigureHotPlugDevice(<Arch as LinuxArch>::Error),
     ConfigureVcpu(<Arch as LinuxArch>::Error),
@@ -143,6 +144,7 @@ pub enum Error {
     VhostUserBlockDeviceNew(VhostUserVmmError),
     VhostUserConsoleDeviceNew(VhostUserVmmError),
     VhostUserFsDeviceNew(VhostUserVmmError),
+    VhostUserGpuDeviceNew(VhostUserVmmError),
     VhostUserMac80211HwsimNew(VhostUserVmmError),
     VhostUserNetDeviceNew(VhostUserVmmError),
     VhostUserNetWithNetArgs,
@@ -175,6 +177,7 @@ impl Display for Error {
             BuildVm(e) => write!(f, "The architecture failed to build the vm: {}", e),
             ChownTpmStorage(e) => write!(f, "failed to chown tpm storage: {}", e),
             CloneEvent(e) => write!(f, "failed to clone event: {}", e),
+            CloneTube(e) => write!(f, "failed to clone tube: {}", e),
             CloneVcpu(e) => write!(f, "failed to clone vcpu: {}", e),
             ConfigureHotPlugDevice(e) => write!(f, "Failed to configure pci hotplug device:{}", e),
             ConfigureVcpu(e) => write!(f, "failed to configure vcpu: {}", e),
@@ -294,6 +297,7 @@ impl Display for Error {
                 write!(f, "failed to set up vhost-user console device: {}", e)
             }
             VhostUserFsDeviceNew(e) => write!(f, "failed to set up vhost-user fs device: {}", e),
+            VhostUserGpuDeviceNew(e) => write!(f, "failed to set up vhost-user gpu device: {}", e),
             VhostUserMac80211HwsimNew(e) => {
                 write!(f, "failed to set up vhost-user mac80211_hwsim device {}", e)
             }

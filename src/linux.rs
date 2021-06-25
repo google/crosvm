@@ -30,17 +30,19 @@ use base::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListene
 use base::*;
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
-#[cfg(feature = "gpu")]
-use devices::virtio::gpu::{DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH};
 #[cfg(feature = "audio_cras")]
 use devices::virtio::snd::cras_backend::Parameters as CrasSndParameters;
 use devices::virtio::vhost::user::vmm::{
     Block as VhostUserBlock, Console as VhostUserConsole, Fs as VhostUserFs,
     Mac80211Hwsim as VhostUserMac80211Hwsim, Net as VhostUserNet, Wl as VhostUserWl,
 };
-#[cfg(feature = "gpu")]
-use devices::virtio::EventDevice;
 use devices::virtio::{self, Console, VirtioDevice};
+#[cfg(feature = "gpu")]
+use devices::virtio::{
+    gpu::{DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH},
+    vhost::user::vmm::Gpu as VhostUserGpu,
+    EventDevice,
+};
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
 use devices::ProtectionType;
@@ -656,6 +658,30 @@ fn create_vhost_user_wl_device(cfg: &Config, opt: &VhostUserWlOption) -> DeviceR
 }
 
 #[cfg(feature = "gpu")]
+fn create_vhost_user_gpu_device(
+    cfg: &Config,
+    opt: &VhostUserOption,
+    host_tube: Tube,
+    device_tube: Tube,
+) -> DeviceResult {
+    // The crosvm gpu device expects us to connect the tube before it will accept a vhost-user
+    // connection.
+    let dev = VhostUserGpu::new(
+        virtio::base_features(cfg.protected_vm),
+        &opt.socket,
+        host_tube,
+        device_tube,
+    )
+    .map_err(Error::VhostUserGpuDeviceNew)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        // no sandbox here because virtqueue handling is exported to a different process.
+        jail: None,
+    })
+}
+
+#[cfg(feature = "gpu")]
 fn create_gpu_device(
     cfg: &Config,
     exit_evt: &Event,
@@ -1210,6 +1236,7 @@ fn create_virtio_devices(
     _exit_evt: &Event,
     wayland_device_tube: Tube,
     gpu_device_tube: Tube,
+    vhost_user_gpu_tubes: Vec<(Tube, Tube)>,
     balloon_device_tube: Tube,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
@@ -1326,6 +1353,16 @@ fn create_virtio_devices(
 
     for opt in &cfg.vhost_user_wl {
         devs.push(create_vhost_user_wl_device(cfg, opt)?);
+    }
+
+    #[cfg(feature = "gpu")]
+    for (opt, (host_tube, device_tube)) in cfg.vhost_user_gpu.iter().zip(vhost_user_gpu_tubes) {
+        devs.push(create_vhost_user_gpu_device(
+            cfg,
+            opt,
+            host_tube,
+            device_tube,
+        )?);
     }
 
     #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
@@ -1563,6 +1600,7 @@ fn create_devices(
     control_tubes: &mut Vec<TaggedControlTube>,
     wayland_device_tube: Tube,
     gpu_device_tube: Tube,
+    vhost_user_gpu_tubes: Vec<(Tube, Tube)>,
     balloon_device_tube: Tube,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
@@ -1577,6 +1615,7 @@ fn create_devices(
         exit_evt,
         wayland_device_tube,
         gpu_device_tube,
+        vhost_user_gpu_tubes,
         balloon_device_tube,
         disk_device_tubes,
         pmem_device_tubes,
@@ -2362,6 +2401,16 @@ where
         control_tubes.push(TaggedControlTube::VmMemory(wayland_host_tube));
     }
 
+    let mut vhost_user_gpu_tubes = Vec::with_capacity(cfg.vhost_user_gpu.len());
+    for _ in 0..cfg.vhost_user_gpu.len() {
+        let (host_tube, device_tube) = Tube::pair().map_err(Error::CreateTube)?;
+        vhost_user_gpu_tubes.push((
+            host_tube.try_clone().map_err(Error::CloneTube)?,
+            device_tube,
+        ));
+        control_tubes.push(TaggedControlTube::VmMemory(host_tube));
+    }
+
     let (wayland_host_tube, wayland_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
     control_tubes.push(TaggedControlTube::VmMemory(wayland_host_tube));
     // Balloon gets a special socket so balloon requests can be forwarded from the main process.
@@ -2463,6 +2512,7 @@ where
         &mut control_tubes,
         wayland_device_tube,
         gpu_device_tube,
+        vhost_user_gpu_tubes,
         balloon_device_tube,
         &mut disk_device_tubes,
         &mut pmem_device_tubes,
