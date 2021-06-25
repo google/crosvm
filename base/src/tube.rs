@@ -35,6 +35,8 @@ pub enum Error {
     SetRecvTimeout(io::Error),
     #[error("failed to create async tube: {0}")]
     CreateAsync(cros_async::AsyncError),
+    #[error("failed to clone UnixSeqpacket: {0}")]
+    Clone(io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -66,6 +68,10 @@ impl Tube {
     pub fn into_async_tube(self, ex: &Executor) -> Result<AsyncTube> {
         let inner = ex.async_from(self).map_err(Error::CreateAsync)?;
         Ok(AsyncTube { inner })
+    }
+
+    pub fn try_clone(&self) -> Result<Self> {
+        self.socket.try_clone().map(Tube::new).map_err(Error::Clone)
     }
 
     pub fn send<T: Serialize>(&self, msg: &T) -> Result<()> {
@@ -114,6 +120,15 @@ impl Tube {
         self.socket
             .set_read_timeout(timeout)
             .map_err(Error::SetRecvTimeout)
+    }
+}
+
+impl FromRawDescriptor for Tube {
+    unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
+        Tube {
+            socket: UnixSeqpacket::from_raw_descriptor(descriptor),
+            _unsync_marker: PhantomData,
+        }
     }
 }
 

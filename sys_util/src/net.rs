@@ -23,7 +23,10 @@ use libc::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::sock_ctrl_msg::{ScmSocket, SCM_SOCKET_MAX_FD_COUNT};
+use crate::{
+    sock_ctrl_msg::{ScmSocket, SCM_SOCKET_MAX_FD_COUNT},
+    FromRawDescriptor,
+};
 use crate::{AsRawDescriptor, RawDescriptor};
 
 /// Assist in handling both IP version 4 and IP version 6.
@@ -601,6 +604,12 @@ impl FromRawFd for UnixSeqpacket {
     // Unsafe in drop function
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         Self { fd }
+    }
+}
+
+impl FromRawDescriptor for UnixSeqpacket {
+    unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
+        Self { fd: descriptor }
     }
 }
 
