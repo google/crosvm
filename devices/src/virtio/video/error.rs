@@ -36,6 +36,8 @@ pub enum VideoError {
     #[error("invalid stream ID {0}")]
     InvalidStreamId(u32),
     /// Unsupported control type is specified.
+    /// This is only used by the encoder for now, ignore warning if it is compiled out.
+    #[allow(dead_code)]
     #[error("unsupported control: {0:?}")]
     UnsupportedControl(CtrlType),
 }

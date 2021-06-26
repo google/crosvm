@@ -130,6 +130,7 @@ impl GuestResource {
         })
     }
 
+    #[cfg(feature = "video-encoder")]
     pub fn try_clone(&self) -> Result<Self, base::Error> {
         Ok(Self {
             handle: self.handle.try_clone()?,

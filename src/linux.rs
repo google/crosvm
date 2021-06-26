@@ -931,7 +931,9 @@ fn create_video_device(
     let jail = match simple_jail(cfg, "video_device")? {
         Some(mut jail) => {
             match typ {
+                #[cfg(feature = "video-decoder")]
                 devices::virtio::VideoDeviceType::Decoder => add_current_user_to_jail(&mut jail)?,
+                #[cfg(feature = "video-encoder")]
                 devices::virtio::VideoDeviceType::Encoder => add_current_user_to_jail(&mut jail)?,
             };
 

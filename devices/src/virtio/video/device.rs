@@ -38,6 +38,7 @@ pub enum AsyncCmdTag {
         queue_type: QueueType,
     },
     // Used exclusively by the encoder.
+    #[cfg(feature = "video-encoder")]
     GetParams {
         stream_id: u32,
         queue_type: QueueType,

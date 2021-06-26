@@ -16,6 +16,7 @@ use crate::virtio::Writer;
 #[derive(Debug, Copy, Clone, N)]
 pub enum EvtType {
     Error = VIRTIO_VIDEO_EVENT_ERROR as isize,
+    #[cfg(feature = "video-decoder")]
     DecResChanged = VIRTIO_VIDEO_EVENT_DECODER_RESOLUTION_CHANGED as isize,
 }
 

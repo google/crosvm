@@ -9,7 +9,9 @@
 
 use std::thread;
 
-use base::{error, info, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube};
+#[cfg(feature = "video-encoder")]
+use base::info;
+use base::{error, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube};
 use data_model::{DataInit, Le32};
 use remain::sorted;
 use thiserror::Error;
@@ -23,8 +25,10 @@ mod macros;
 mod async_cmd_desc_map;
 mod command;
 mod control;
+#[cfg(feature = "video-decoder")]
 mod decoder;
 mod device;
+#[cfg(feature = "video-encoder")]
 mod encoder;
 mod error;
 mod event;
@@ -74,7 +78,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum VideoDeviceType {
+    #[cfg(feature = "video-decoder")]
     Decoder,
+    #[cfg(feature = "video-encoder")]
     Encoder,
 }
 
@@ -120,7 +126,9 @@ impl VirtioDevice for VideoDevice {
 
     fn device_type(&self) -> u32 {
         match &self.device_type {
+            #[cfg(feature = "video-decoder")]
             VideoDeviceType::Decoder => virtio::TYPE_VIDEO_DEC,
+            #[cfg(feature = "video-encoder")]
             VideoDeviceType::Encoder => virtio::TYPE_VIDEO_ENC,
         }
     }
@@ -197,6 +205,7 @@ impl VirtioDevice for VideoDevice {
             kill_evt,
         );
         let worker_result = match &self.device_type {
+            #[cfg(feature = "video-decoder")]
             VideoDeviceType::Decoder => thread::Builder::new()
                 .name("virtio video decoder".to_owned())
                 .spawn(move || {
@@ -212,6 +221,7 @@ impl VirtioDevice for VideoDevice {
                     };
                     // Don't return any information since the return value is never checked.
                 }),
+            #[cfg(feature = "video-encoder")]
             VideoDeviceType::Encoder => thread::Builder::new()
                 .name("virtio video encoder".to_owned())
                 .spawn(move || {
@@ -244,6 +254,7 @@ impl VirtioDevice for VideoDevice {
 /// for that purpose.
 ///
 /// TODO(b/149725148): Remove this when libvda supports buffer flags.
+#[cfg(feature = "video-encoder")]
 struct EosBufferManager {
     stream_id: u32,
     eos_buffer: Option<u32>,
@@ -251,6 +262,7 @@ struct EosBufferManager {
     responses: Vec<device::VideoEvtResponseType>,
 }
 
+#[cfg(feature = "video-encoder")]
 impl EosBufferManager {
     /// Create a new EOS manager for stream `stream_id`.
     fn new(stream_id: u32) -> Self {

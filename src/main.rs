@@ -1838,9 +1838,11 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             let vfio_dev = VfioCommand::new(vfio_type, value.unwrap())?;
             cfg.vfio.push(vfio_dev);
         }
+        #[cfg(feature = "video-decoder")]
         "video-decoder" => {
             cfg.video_dec = true;
         }
+        #[cfg(feature = "video-encoder")]
         "video-encoder" => {
             cfg.video_enc = true;
         }

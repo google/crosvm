@@ -356,7 +356,9 @@ pub struct Config {
     pub virtio_input_evdevs: Vec<PathBuf>,
     pub split_irqchip: bool,
     pub vfio: Vec<VfioCommand>,
+    #[cfg(feature = "video-decoder")]
     pub video_dec: bool,
+    #[cfg(feature = "video-encoder")]
     pub video_enc: bool,
     pub acpi_tables: Vec<PathBuf>,
     pub protected_vm: ProtectionType,
@@ -452,7 +454,9 @@ impl Default for Config {
             virtio_input_evdevs: Vec::new(),
             split_irqchip: false,
             vfio: Vec::new(),
+            #[cfg(feature = "video-decoder")]
             video_dec: false,
+            #[cfg(feature = "video-encoder")]
             video_enc: false,
             acpi_tables: Vec::new(),
             protected_vm: ProtectionType::Unprotected,
