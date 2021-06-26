@@ -6,7 +6,7 @@
 # Using crosvm
 
 - [Building]()
-  - [Features]()
+  - [Features](./features.md)
 - [Command Line Usage]()
 - [Users FAQ]()
 - [Disk Formats]()
@@ -42,3 +42,4 @@
   - [Virtio]()
   - [USB]()
   - [VFIO]()
+  - [Wayland]()
