@@ -476,7 +476,7 @@ pub struct EncoderDevice<T: Encoder> {
 
 impl<T: Encoder> EncoderDevice<T> {
     /// Build a new encoder using the provided `backend`.
-    fn from_backend(backend: T, resource_bridge: Tube) -> VideoResult<Self> {
+    pub fn new(backend: T, resource_bridge: Tube) -> VideoResult<Self> {
         Ok(Self {
             cros_capabilities: backend.query_capabilities()?,
             encoder: backend,

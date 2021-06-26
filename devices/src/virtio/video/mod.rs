@@ -209,13 +209,16 @@ impl VirtioDevice for VideoDevice {
             VideoDeviceType::Decoder => thread::Builder::new()
                 .name("virtio video decoder".to_owned())
                 .spawn(move || {
-                    let device = match decoder::Decoder::new(resource_bridge) {
-                        Ok(device) => Box::new(device),
+                    let vda = match decoder::backend::vda::LibvdaDecoder::new() {
+                        Ok(vda) => vda,
                         Err(e) => {
-                            error!("Failed to initialize vda: {}", e);
+                            error!("Failed to initialize VDA for decoder: {}", e);
                             return;
                         }
                     };
+
+                    let device = Box::new(decoder::Decoder::new(vda, resource_bridge));
+
                     if let Err(e) = worker.run(device) {
                         error!("Failed to start decoder worker: {}", e);
                     };
@@ -225,13 +228,22 @@ impl VirtioDevice for VideoDevice {
             VideoDeviceType::Encoder => thread::Builder::new()
                 .name("virtio video encoder".to_owned())
                 .spawn(move || {
-                    let device = match encoder::EncoderDevice::new(resource_bridge) {
-                        Ok(d) => Box::new(d),
+                    let vda = match encoder::backend::vda::LibvdaEncoder::new() {
+                        Ok(vda) => vda,
+                        Err(e) => {
+                            error!("Failed to initialize VDA for encoder: {}", e);
+                            return;
+                        }
+                    };
+
+                    let device = match encoder::EncoderDevice::new(vda, resource_bridge) {
+                        Ok(device) => Box::new(device),
                         Err(e) => {
                             error!("Failed to create encoder device: {}", e);
                             return;
                         }
                     };
+
                     if let Err(e) = worker.run(device) {
                         error!("Failed to start encoder worker: {}", e);
                     }

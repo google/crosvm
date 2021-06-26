@@ -22,7 +22,7 @@ use crate::virtio::video::protocol;
 use crate::virtio::video::resource::*;
 use crate::virtio::video::response::CmdResponse;
 
-mod backend;
+pub mod backend;
 mod capability;
 
 use capability::*;
@@ -412,7 +412,7 @@ pub struct Decoder<D: DecoderBackend> {
 
 impl<'a, D: DecoderBackend> Decoder<D> {
     /// Build a new decoder using the provided `backend`.
-    fn from_backend(backend: D, resource_bridge: Tube) -> Self {
+    pub fn new(backend: D, resource_bridge: Tube) -> Self {
         let capability = backend.get_capabilities();
 
         Self {
@@ -422,6 +422,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             resource_bridge,
         }
     }
+
     /*
      * Functions processing virtio-video commands.
      */

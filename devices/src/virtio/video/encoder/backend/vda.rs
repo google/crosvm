@@ -14,10 +14,9 @@ use crate::virtio::video::format::{
     Bitrate, Format, FormatDesc, FormatRange, FrameFormat, Level, Profile,
 };
 use crate::virtio::video::{
-    encoder::{encoder::*, EncoderDevice},
+    encoder::encoder::*,
     error::{VideoError, VideoResult},
     resource::{GuestObjectHandle, GuestResource, GuestResourceHandle},
-    Tube,
 };
 
 impl From<Bitrate> for libvda::encode::Bitrate {
@@ -37,13 +36,15 @@ impl From<Bitrate> for libvda::encode::Bitrate {
     }
 }
 
+/// A VDA encoder backend that can be passed to `EncoderDevice::new` in order to create a working
+/// encoder.
 pub struct LibvdaEncoder {
     instance: VeaInstance,
     capabilities: EncoderCapabilities,
 }
 
 impl LibvdaEncoder {
-    fn new() -> VideoResult<Self> {
+    pub fn new() -> VideoResult<Self> {
         let instance = VeaInstance::new(VeaImplType::Gavea)?;
 
         let EncodeCapabilities {
@@ -387,14 +388,5 @@ impl EncoderSession for LibvdaEncoderSession {
         };
 
         Ok(encoder_event)
-    }
-}
-
-/// Create a new encoder instance using a Libvda encoder instance to perform
-/// the encoding.
-impl EncoderDevice<LibvdaEncoder> {
-    pub fn new(resource_bridge: Tube) -> VideoResult<Self> {
-        let vea = LibvdaEncoder::new()?;
-        EncoderDevice::from_backend(vea, resource_bridge)
     }
 }

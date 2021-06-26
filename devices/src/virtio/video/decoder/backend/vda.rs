@@ -12,11 +12,10 @@ use thiserror::Error as ThisError;
 use libvda::decode::Event as LibvdaEvent;
 
 use crate::virtio::video::{
-    decoder::{backend::*, Capability, Decoder},
+    decoder::{backend::*, Capability},
     error::{VideoError, VideoResult},
     format::*,
     resource::{GuestResource, GuestResourceHandle},
-    Tube,
 };
 
 #[sorted]
@@ -233,14 +232,26 @@ impl DecoderSession for VdaDecoderSession {
     }
 }
 
-impl DecoderBackend for libvda::decode::VdaInstance {
+/// A VDA decoder backend that can be passed to `Decoder::new` in order to create a working decoder.
+pub struct LibvdaDecoder(libvda::decode::VdaInstance);
+
+impl LibvdaDecoder {
+    /// Create a decoder backend instance that can be used to instantiate an decoder.
+    pub fn new() -> VideoResult<Self> {
+        Ok(Self(libvda::decode::VdaInstance::new(
+            libvda::decode::VdaImplType::Gavda,
+        )?))
+    }
+}
+
+impl DecoderBackend for LibvdaDecoder {
     type Session = VdaDecoderSession;
 
     fn new_session(&mut self, format: Format) -> VideoResult<Self::Session> {
         let profile = libvda::Profile::try_from(format)?;
 
         Ok(VdaDecoderSession {
-            vda_session: self.open_session(profile).map_err(|e| {
+            vda_session: self.0.open_session(profile).map_err(|e| {
                 error!("failed to open a session for {:?}: {}", format, e);
                 VideoError::InvalidOperation
             })?,
@@ -249,7 +260,7 @@ impl DecoderBackend for libvda::decode::VdaInstance {
     }
 
     fn get_capabilities(&self) -> Capability {
-        let caps = libvda::decode::VdaInstance::get_capabilities(self);
+        let caps = libvda::decode::VdaInstance::get_capabilities(&self.0);
 
         // Raise the first |# of supported raw formats|-th bits because we can assume that any
         // combination of (a coded format, a raw format) is valid in Chrome.
@@ -320,14 +331,5 @@ impl DecoderBackend for libvda::decode::VdaInstance {
             .collect();
 
         Capability::new(in_fmts, out_fmts, profiles, levels)
-    }
-}
-
-/// Create a new decoder instance using a Libvda decoder instance to perform
-/// the decoding.
-impl Decoder<libvda::decode::VdaInstance> {
-    pub fn new(resource_bridge: Tube) -> VideoResult<Self> {
-        let vda = libvda::decode::VdaInstance::new(libvda::decode::VdaImplType::Gavda)?;
-        Ok(Decoder::from_backend(vda, resource_bridge))
     }
 }
