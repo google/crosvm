@@ -10,7 +10,7 @@ use base::{
     IntoRawDescriptor, MemoryMapping, MemoryMappingBuilder, MmapError, PollToken, SafeDescriptor,
     ScmSocket, WaitContext,
 };
-use data_model::{DataInit, Le32, Le64, VolatileMemory, VolatileMemoryError, VolatileSlice};
+use data_model::{DataInit, VolatileMemory, VolatileMemoryError, VolatileSlice};
 
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
@@ -105,7 +105,7 @@ pub struct VioSClient {
     // locking order should match the order in which they are declared here.
     config: VioSConfig,
     jacks: Vec<virtio_snd_jack_info>,
-    streams: Vec<VioSStreamInfo>,
+    streams: Vec<virtio_snd_pcm_info>,
     chmaps: Vec<virtio_snd_chmap_info>,
     // The control socket is used from multiple threads to send and wait for a reply, which needs
     // to happen atomically, hence the need for a mutex instead of just sharing clones of the
@@ -246,9 +246,7 @@ impl VioSClient {
 
     /// Get the configuration information on a pcm stream
     pub fn stream_info(&self, idx: u32) -> Option<virtio_snd_pcm_info> {
-        self.streams
-            .get(idx as usize)
-            .map(virtio_snd_pcm_info::from)
+        self.streams.get(idx as usize).cloned()
     }
 
     /// Get the configuration information on a channel map
@@ -354,7 +352,8 @@ impl VioSClient {
             association: association.into(),
             sequence: sequence.into(),
         };
-        self.send_cmd(msg)
+        let control_socket_lock = self.control_socket.lock();
+        send_cmd(&*control_socket_lock, msg)
     }
 
     /// Configures a stream with the given parameters.
@@ -363,7 +362,8 @@ impl VioSClient {
             .get(stream_id as usize)
             .ok_or(Error::InvalidStreamId(stream_id))?;
         let raw_params: virtio_snd_pcm_set_params = (stream_id, params).into();
-        self.send_cmd(raw_params)
+        let control_socket_lock = self.control_socket.lock();
+        send_cmd(&*control_socket_lock, raw_params)
     }
 
     /// Configures a stream with the given parameters.
@@ -372,7 +372,8 @@ impl VioSClient {
         self.streams
             .get(stream_id as usize)
             .ok_or(Error::InvalidStreamId(stream_id))?;
-        self.send_cmd(raw_params)
+        let control_socket_lock = self.control_socket.lock();
+        send_cmd(&*control_socket_lock, raw_params)
     }
 
     /// Send the PREPARE_STREAM command to the server.
@@ -496,12 +497,6 @@ impl VioSClient {
         ]
     }
 
-    fn send_cmd<T: DataInit>(&self, data: T) -> Result<()> {
-        let mut control_socket_lock = self.control_socket.lock();
-        seq_socket_send(&*control_socket_lock, data)?;
-        recv_cmd_status(&mut *control_socket_lock)
-    }
-
     fn common_stream_op(&self, stream_id: u32, op: u32) -> Result<()> {
         self.streams
             .get(stream_id as usize)
@@ -510,7 +505,8 @@ impl VioSClient {
             hdr: virtio_snd_hdr { code: op.into() },
             stream_id: stream_id.into(),
         };
-        self.send_cmd(msg)
+        let control_socket_lock = self.control_socket.lock();
+        send_cmd(&*control_socket_lock, msg)
     }
 
     fn request_and_cache_info(&mut self) -> Result<()> {
@@ -520,41 +516,56 @@ impl VioSClient {
         Ok(())
     }
 
+    fn request_info<T: DataInit + Default + Copy + Clone>(
+        &self,
+        req_code: u32,
+        count: usize,
+    ) -> Result<Vec<T>> {
+        let info_size = std::mem::size_of::<T>();
+        let status_size = std::mem::size_of::<virtio_snd_hdr>();
+        let req = virtio_snd_query_info {
+            hdr: virtio_snd_hdr {
+                code: req_code.into(),
+            },
+            start_id: 0u32.into(),
+            count: (count as u32).into(),
+            size: (std::mem::size_of::<virtio_snd_query_info>() as u32).into(),
+        };
+        let control_socket_lock = self.control_socket.lock();
+        seq_socket_send(&*control_socket_lock, req)?;
+        let reply = control_socket_lock
+            .recv_as_vec()
+            .map_err(Error::ServerIOError)?;
+        let mut status: virtio_snd_hdr = Default::default();
+        status
+            .as_mut_slice()
+            .copy_from_slice(&reply[0..status_size]);
+        if status.code.to_native() != VIRTIO_SND_S_OK {
+            return Err(Error::CommandFailed(status.code.to_native()));
+        }
+        if reply.len() != status_size + count * info_size {
+            return Err(Error::ProtocolError(
+                ProtocolErrorKind::UnexpectedMessageSize(count * info_size, reply.len()),
+            ));
+        }
+        Ok(reply[status_size..]
+            .chunks(info_size)
+            .map(|info_buffer| {
+                let mut info: T = Default::default();
+                // Need to use copy_from_slice instead of T::from_slice because the info_buffer may
+                // not be aligned correctly
+                info.as_mut_slice().copy_from_slice(info_buffer);
+                info
+            })
+            .collect())
+    }
+
     fn request_and_cache_jacks_info(&mut self) -> Result<()> {
         let num_jacks = self.config.jacks as usize;
         if num_jacks == 0 {
             return Ok(());
         }
-        let info_size = std::mem::size_of::<virtio_snd_jack_info>();
-        let req = virtio_snd_query_info {
-            hdr: virtio_snd_hdr {
-                code: VIRTIO_SND_R_JACK_INFO.into(),
-            },
-            start_id: 0u32.into(),
-            count: (num_jacks as u32).into(),
-            size: (std::mem::size_of::<virtio_snd_query_info>() as u32).into(),
-        };
-        self.send_cmd(req)?;
-        // send_cmd acquires and releases the control_socket lock and then it's acquired again
-        // here, however this is not a race because this function is called once during creation of
-        // the object before there is a chance for multiple threads to have access to it.
-        let control_socket_lock = self.control_socket.lock();
-        let info_vec = control_socket_lock
-            .recv_as_vec()
-            .map_err(Error::ServerIOError)?;
-        if info_vec.len() != num_jacks * info_size {
-            return Err(Error::ProtocolError(
-                ProtocolErrorKind::UnexpectedMessageSize(num_jacks * info_size, info_vec.len()),
-            ));
-        }
-        self.jacks = info_vec
-            .chunks(info_size)
-            .map(|info_buffer| {
-                let mut info: virtio_snd_jack_info = Default::default();
-                info.as_mut_slice().copy_from_slice(info_buffer);
-                info
-            })
-            .collect();
+        self.jacks = self.request_info(VIRTIO_SND_R_JACK_INFO, num_jacks)?;
         Ok(())
     }
 
@@ -563,39 +574,7 @@ impl VioSClient {
         if num_streams == 0 {
             return Ok(());
         }
-        let info_size = std::mem::size_of::<virtio_snd_pcm_info>();
-        let req = virtio_snd_query_info {
-            hdr: virtio_snd_hdr {
-                code: VIRTIO_SND_R_PCM_INFO.into(),
-            },
-            start_id: 0u32.into(),
-            count: (num_streams as u32).into(),
-            size: (std::mem::size_of::<virtio_snd_query_info>() as u32).into(),
-        };
-        self.send_cmd(req)?;
-        // send_cmd acquires and releases the control_socket lock and then it's acquired again
-        // here, however this is not a race because this function is called once during creation of
-        // the object before there is a chance for multiple threads to have access to it.
-        let control_socket_lock = self.control_socket.lock();
-        let info_vec = control_socket_lock
-            .recv_as_vec()
-            .map_err(Error::ServerIOError)?;
-        if info_vec.len() != num_streams * info_size {
-            return Err(Error::ProtocolError(
-                ProtocolErrorKind::UnexpectedMessageSize(num_streams * info_size, info_vec.len()),
-            ));
-        }
-        self.streams = info_vec
-            .chunks(info_size)
-            .enumerate()
-            .map(|(id, info_buffer)| {
-                let mut virtio_stream_info: virtio_snd_pcm_info = Default::default();
-                virtio_stream_info
-                    .as_mut_slice()
-                    .copy_from_slice(info_buffer);
-                VioSStreamInfo::new(id as u32, &virtio_stream_info)
-            })
-            .collect();
+        self.streams = self.request_info(VIRTIO_SND_R_PCM_INFO, num_streams)?;
         Ok(())
     }
 
@@ -604,36 +583,7 @@ impl VioSClient {
         if num_chmaps == 0 {
             return Ok(());
         }
-        let info_size = std::mem::size_of::<virtio_snd_chmap_info>();
-        let req = virtio_snd_query_info {
-            hdr: virtio_snd_hdr {
-                code: VIRTIO_SND_R_CHMAP_INFO.into(),
-            },
-            start_id: 0u32.into(),
-            count: (num_chmaps as u32).into(),
-            size: (std::mem::size_of::<virtio_snd_query_info>() as u32).into(),
-        };
-        self.send_cmd(req)?;
-        // send_cmd acquires and releases the control_socket lock and then it's acquired again
-        // here, however this is not a race because this function is called once during creation of
-        // the object before there is a chance for multiple threads to have access to it.
-        let control_socket_lock = self.control_socket.lock();
-        let info_vec = control_socket_lock
-            .recv_as_vec()
-            .map_err(Error::ServerIOError)?;
-        if info_vec.len() != num_chmaps * info_size {
-            return Err(Error::ProtocolError(
-                ProtocolErrorKind::UnexpectedMessageSize(num_chmaps * info_size, info_vec.len()),
-            ));
-        }
-        self.chmaps = info_vec
-            .chunks(info_size)
-            .map(|info_buffer| {
-                let mut info: virtio_snd_chmap_info = Default::default();
-                info.as_mut_slice().copy_from_slice(info_buffer);
-                info
-            })
-            .collect();
+        self.chmaps = self.request_info(VIRTIO_SND_R_CHMAP_INFO, num_chmaps)?;
         Ok(())
     }
 }
@@ -825,50 +775,6 @@ impl IoBufferQueue {
     }
 }
 
-/// Description of a stream made available by the server.
-pub struct VioSStreamInfo {
-    pub id: u32,
-    pub hda_fn_nid: u32,
-    pub features: u32,
-    pub formats: u64,
-    pub rates: u64,
-    pub direction: u8,
-    pub channels_min: u8,
-    pub channels_max: u8,
-}
-
-impl VioSStreamInfo {
-    fn new(id: u32, info: &virtio_snd_pcm_info) -> VioSStreamInfo {
-        VioSStreamInfo {
-            id,
-            hda_fn_nid: info.hdr.hda_fn_nid.to_native(),
-            features: info.features.to_native(),
-            formats: info.formats.to_native(),
-            rates: info.rates.to_native(),
-            direction: info.direction,
-            channels_min: info.channels_min,
-            channels_max: info.channels_max,
-        }
-    }
-}
-
-impl std::convert::From<&VioSStreamInfo> for virtio_snd_pcm_info {
-    fn from(info: &VioSStreamInfo) -> virtio_snd_pcm_info {
-        virtio_snd_pcm_info {
-            hdr: virtio_snd_info {
-                hda_fn_nid: Le32::from(info.hda_fn_nid),
-            },
-            features: Le32::from(info.features),
-            formats: Le64::from(info.formats),
-            rates: Le64::from(info.rates),
-            direction: info.direction,
-            channels_min: info.channels_min,
-            channels_max: info.channels_max,
-            padding: [0u8; 5],
-        }
-    }
-}
-
 /// Groups the parameters used to configure a stream prior to using it.
 pub struct VioSStreamParams {
     pub buffer_bytes: u32,
@@ -899,7 +805,12 @@ impl Into<virtio_snd_pcm_set_params> for (u32, VioSStreamParams) {
     }
 }
 
-fn recv_cmd_status(control_socket: &mut UnixSeqpacket) -> Result<()> {
+fn send_cmd<T: DataInit>(control_socket: &UnixSeqpacket, data: T) -> Result<()> {
+    seq_socket_send(control_socket, data)?;
+    recv_cmd_status(control_socket)
+}
+
+fn recv_cmd_status(control_socket: &UnixSeqpacket) -> Result<()> {
     let mut status: virtio_snd_hdr = Default::default();
     control_socket
         .recv(status.as_mut_slice())
@@ -927,7 +838,7 @@ fn seq_socket_send<T: DataInit>(socket: &UnixSeqpacket, data: T) -> Result<()> {
     Ok(())
 }
 
-const VIOS_VERSION: u32 = 1;
+const VIOS_VERSION: u32 = 2;
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
