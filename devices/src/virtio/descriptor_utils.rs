@@ -305,6 +305,24 @@ impl Reader {
         }
     }
 
+    /// Reads data into a volatile slice up to the minimum of the slice's length or the number of
+    /// bytes remaining. Returns the number of bytes read.
+    pub fn read_to_volatile_slice(&mut self, slice: VolatileSlice) -> usize {
+        let mut read = 0usize;
+        let mut dst = slice;
+        for src in self.get_remaining() {
+            src.copy_to_volatile_slice(dst);
+            let copied = std::cmp::min(src.size(), dst.size());
+            read += copied;
+            dst = match dst.offset(copied) {
+                Ok(v) => v,
+                Err(_) => break, // The slice is fully consumed
+            };
+        }
+        self.regions.consume(read);
+        read
+    }
+
     /// Reads data from the descriptor chain buffer into a file descriptor.
     /// Returns the number of bytes read from the descriptor chain buffer.
     /// The number of bytes read can be less than `count` if there isn't
@@ -566,6 +584,24 @@ impl Writer {
         self.regions.available_bytes()
     }
 
+    /// Reads data into a volatile slice up to the minimum of the slice's length or the number of
+    /// bytes remaining. Returns the number of bytes read.
+    pub fn write_from_volatile_slice(&mut self, slice: VolatileSlice) -> usize {
+        let mut written = 0usize;
+        let mut src = slice;
+        for dst in self.get_remaining() {
+            src.copy_to_volatile_slice(dst);
+            let copied = std::cmp::min(src.size(), dst.size());
+            written += copied;
+            src = match src.offset(copied) {
+                Ok(v) => v,
+                Err(_) => break, // The slice is fully consumed
+            };
+        }
+        self.regions.consume(written);
+        written
+    }
+
     /// Writes data to the descriptor chain buffer from a file descriptor.
     /// Returns the number of bytes written to the descriptor chain buffer.
     /// The number of bytes written can be less than `count` if
@@ -684,6 +720,21 @@ impl Writer {
     /// Returns number of bytes already written to the descriptor chain buffer.
     pub fn bytes_written(&self) -> usize {
         self.regions.bytes_consumed()
+    }
+
+    /// Returns a `&[VolatileSlice]` that represents all the remaining data in this `Writer`.
+    /// Calling this method does not actually advance the current position of the `Writer` in the
+    /// buffer and callers should call `consume_bytes` to advance the `Writer`. Not calling
+    /// `consume_bytes` with the amount of data copied into the returned `VolatileSlice`s will
+    /// result in that that data being overwritten the next time data is written into the `Writer`.
+    pub fn get_remaining(&self) -> SmallVec<[VolatileSlice; 16]> {
+        self.regions.get_remaining(&self.mem)
+    }
+
+    /// Consumes `amt` bytes from the underlying descriptor chain. If `amt` is larger than the
+    /// remaining data left in this `Reader`, then all remaining data will be consumed.
+    pub fn consume_bytes(&mut self, amt: usize) {
+        self.regions.consume(amt)
     }
 
     /// Splits this `Writer` into two at the given offset in the `DescriptorChain` buffer. After the
