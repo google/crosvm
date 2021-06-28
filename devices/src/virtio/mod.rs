@@ -48,6 +48,8 @@ pub use self::p9::*;
 pub use self::pmem::*;
 pub use self::queue::*;
 pub use self::rng::*;
+#[cfg(feature = "audio")]
+pub use self::snd::*;
 #[cfg(feature = "tpm")]
 pub use self::tpm::*;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
@@ -83,6 +85,7 @@ const TYPE_INPUT: u32 = 18;
 const TYPE_VSOCK: u32 = 19;
 const TYPE_CRYPTO: u32 = 20;
 const TYPE_IOMMU: u32 = 23;
+const TYPE_SOUND: u32 = 25;
 const TYPE_FS: u32 = 26;
 const TYPE_PMEM: u32 = 27;
 const TYPE_MAC80211_HWSIM: u32 = 29;
@@ -123,6 +126,7 @@ pub fn type_to_str(type_: u32) -> Option<&'static str> {
         TYPE_VSOCK => "vsock",
         TYPE_CRYPTO => "crypto",
         TYPE_IOMMU => "iommu",
+        TYPE_SOUND => "snd",
         TYPE_FS => "fs",
         TYPE_PMEM => "pmem",
         TYPE_WL => "wl",

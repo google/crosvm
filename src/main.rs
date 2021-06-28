@@ -1005,6 +1005,11 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.ac97_parameters.push(ac97_params);
         }
+        #[cfg(feature = "audio")]
+        "sound" => {
+            let client_path = PathBuf::from(value.unwrap());
+            cfg.sound = Some(client_path);
+        }
         "serial" => {
             let serial_params = parse_serial_options(value.unwrap())?;
             let num = serial_params.num;
@@ -2040,6 +2045,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                           capture_effects - | separated effects to be enabled for recording. The only supported effect value now is EchoCancellation or aec.
                           client_type - Set specific client type for cras backend.
                           server - The to the VIOS server (unix socket)."),
+          #[cfg(feature = "audio")]
+          Argument::value("sound", "[PATH]", "Path to the VioS server socket for setting up virtio-snd devices."),
           Argument::value("serial",
                           "type=TYPE,[hardware=HW,num=NUM,path=PATH,input=PATH,console,earlycon,stdin]",
                           "Comma separated key=value pairs for setting up serial devices. Can be given more than once.

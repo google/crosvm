@@ -8,3 +8,6 @@ pub mod constants;
 pub mod layout;
 
 pub mod vios_backend;
+
+pub use vios_backend::new_sound;
+pub use vios_backend::SoundError;

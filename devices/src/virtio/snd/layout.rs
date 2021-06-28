@@ -41,7 +41,7 @@ pub struct virtio_snd_event {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_event {}
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 #[repr(C)]
 pub struct virtio_snd_query_info {
     pub hdr: virtio_snd_hdr,
@@ -76,7 +76,7 @@ pub struct virtio_snd_pcm_info {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_pcm_info {}
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 #[repr(C)]
 pub struct virtio_snd_pcm_hdr {
     pub hdr: virtio_snd_hdr,
@@ -85,7 +85,7 @@ pub struct virtio_snd_pcm_hdr {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_pcm_hdr {}
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 #[repr(C)]
 pub struct virtio_snd_pcm_set_params {
     pub hdr: virtio_snd_pcm_hdr,

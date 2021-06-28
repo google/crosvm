@@ -527,8 +527,10 @@ impl VioSClient {
                 .chunks(info_size)
                 .enumerate()
                 .map(|(id, info_buffer)| {
-                    // unwrap is safe because we checked the size of the vector
-                    let virtio_stream_info = virtio_snd_pcm_info::from_slice(&info_buffer).unwrap();
+                    let mut virtio_stream_info: virtio_snd_pcm_info = Default::default();
+                    virtio_stream_info
+                        .as_mut_slice()
+                        .copy_from_slice(info_buffer);
                     VioSStreamInfo::new(id as u32, &virtio_stream_info)
                 })
                 .collect(),

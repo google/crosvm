@@ -241,6 +241,8 @@ pub struct Config {
     pub display_window_mouse: bool,
     #[cfg(feature = "audio")]
     pub ac97_parameters: Vec<Ac97Parameters>,
+    #[cfg(feature = "audio")]
+    pub sound: Option<PathBuf>,
     pub serial_parameters: BTreeMap<(SerialHardware, u8), SerialParameters>,
     pub syslog_tag: Option<String>,
     pub virtio_single_touch: Vec<TouchDeviceOption>,
@@ -322,6 +324,8 @@ impl Default for Config {
             seccomp_log_failures: false,
             #[cfg(feature = "audio")]
             ac97_parameters: Vec::new(),
+            #[cfg(feature = "audio")]
+            sound: None,
             serial_parameters: BTreeMap::new(),
             syslog_tag: None,
             virtio_single_touch: Vec::new(),
