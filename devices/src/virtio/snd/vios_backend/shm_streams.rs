@@ -9,6 +9,7 @@
 
 use super::shm_vios::{VioSClient, VioSStreamParams};
 
+use crate::virtio::snd::common::*;
 use crate::virtio::snd::constants::*;
 
 use audio_streams::shm_streams::{BufferSet, ServerRequest, ShmStream, ShmStreamSource};
@@ -42,37 +43,6 @@ impl VioSShmStreamSource {
             vios_client: Arc::new(VioSClient::try_new(server)?),
         })
     }
-}
-
-fn from_sample_format(format: SampleFormat) -> u8 {
-    match format {
-        SampleFormat::U8 => VIRTIO_SND_PCM_FMT_U8,
-        SampleFormat::S16LE => VIRTIO_SND_PCM_FMT_S16,
-        SampleFormat::S24LE => VIRTIO_SND_PCM_FMT_S24,
-        SampleFormat::S32LE => VIRTIO_SND_PCM_FMT_S32,
-    }
-}
-
-fn virtio_frame_rate(frame_rate: u32) -> GenericResult<u8> {
-    Ok(match frame_rate {
-        5512u32 => VIRTIO_SND_PCM_RATE_5512,
-        8000u32 => VIRTIO_SND_PCM_RATE_8000,
-        11025u32 => VIRTIO_SND_PCM_RATE_11025,
-        16000u32 => VIRTIO_SND_PCM_RATE_16000,
-        22050u32 => VIRTIO_SND_PCM_RATE_22050,
-        32000u32 => VIRTIO_SND_PCM_RATE_32000,
-        44100u32 => VIRTIO_SND_PCM_RATE_44100,
-        48000u32 => VIRTIO_SND_PCM_RATE_48000,
-        64000u32 => VIRTIO_SND_PCM_RATE_64000,
-        88200u32 => VIRTIO_SND_PCM_RATE_88200,
-        96000u32 => VIRTIO_SND_PCM_RATE_96000,
-        176400u32 => VIRTIO_SND_PCM_RATE_176400,
-        192000u32 => VIRTIO_SND_PCM_RATE_192000,
-        384000u32 => VIRTIO_SND_PCM_RATE_384000,
-        _ => {
-            return Err(Box::new(Error::UnsupportedFrameRate(frame_rate)));
-        }
-    })
 }
 
 impl VioSShmStreamSource {
