@@ -112,9 +112,9 @@ pub struct VioSClient {
     // socket.
     control_socket: Mutex<UnixSeqpacket>,
     event_socket: UnixSeqpacket,
-    // These are accessed by the stream threads and require locking
-    tx: Mutex<IoBufferQueue>,
-    rx: Mutex<IoBufferQueue>,
+    // These are thread safe and don't require locking
+    tx: IoBufferQueue,
+    rx: IoBufferQueue,
     // This is accessed by the recv_thread and whatever thread processes the events
     events: Arc<Mutex<VecDeque<virtio_snd_event>>>,
     event_notifier: Event,
@@ -210,8 +210,8 @@ impl VioSClient {
             chmaps: Vec::new(),
             control_socket: Mutex::new(client_socket),
             event_socket,
-            tx: Mutex::new(IoBufferQueue::new(tx_socket, tx_shm_file)?),
-            rx: Mutex::new(IoBufferQueue::new(rx_socket, rx_shm_file)?),
+            tx: IoBufferQueue::new(tx_socket, tx_shm_file)?,
+            rx: IoBufferQueue::new(rx_socket, rx_shm_file)?,
             events: Arc::new(Mutex::new(VecDeque::new())),
             event_notifier: Event::new().map_err(Error::EventCreateError)?,
             tx_subscribers,
@@ -263,18 +263,8 @@ impl VioSClient {
             return Ok(());
         }
         let recv_event = self.recv_event.try_clone().map_err(Error::EventDupError)?;
-        let tx_socket = self
-            .tx
-            .lock()
-            .socket
-            .try_clone()
-            .map_err(Error::UnixSeqpacketDupError)?;
-        let rx_socket = self
-            .rx
-            .lock()
-            .socket
-            .try_clone()
-            .map_err(Error::UnixSeqpacketDupError)?;
+        let tx_socket = self.tx.try_clone_socket()?;
+        let rx_socket = self.rx.try_clone_socket()?;
         let event_socket = self
             .event_socket
             .try_clone()
@@ -416,22 +406,14 @@ impl VioSClient {
         self.streams
             .get(stream_id as usize)
             .ok_or(Error::InvalidStreamId(stream_id))?;
-        let (status_promise, ret) = {
-            let mut tx_lock = self.tx.lock();
-            let tx = &mut *tx_lock;
-            let dst_offset = tx.allocate_buffer(size)?;
-            let buffer_slice = tx.buffer_at(dst_offset, size)?;
-            let ret = callback(buffer_slice);
-            // Register to receive the status before sending the buffer to the server
-            let (sender, receiver): (Sender<BufferReleaseMsg>, Receiver<BufferReleaseMsg>) =
-                channel();
-            // It's OK to acquire tx_subscriber's lock after tx_lock
-            self.tx_subscribers.lock().insert(dst_offset, sender);
-            let msg = IoTransferMsg::new(stream_id, dst_offset, size);
-            seq_socket_send(&tx.socket, msg)?;
-            (receiver, ret)
-        };
-        let (_, latency) = await_status(status_promise)?;
+        let dst_offset = self.tx.allocate_buffer(size)?;
+        let buffer_slice = self.tx.buffer_at(dst_offset, size)?;
+        let ret = callback(buffer_slice);
+        // Register to receive the status before sending the buffer to the server
+        let (sender, receiver): (Sender<BufferReleaseMsg>, Receiver<BufferReleaseMsg>) = channel();
+        self.tx_subscribers.lock().insert(dst_offset, sender);
+        self.tx.send_buffer(stream_id, dst_offset, size)?;
+        let (_, latency) = await_status(receiver)?;
         Ok((latency, ret))
     }
 
@@ -451,50 +433,26 @@ impl VioSClient {
         {
             return Err(Error::WrongDirection(VIRTIO_SND_D_INPUT));
         }
-        let (src_offset, status_promise) = {
-            let mut rx_lock = self.rx.lock();
-            let rx = &mut *rx_lock;
-            let src_offset = rx.allocate_buffer(size)?;
-            // Register to receive the status before sending the buffer to the server
-            let (sender, receiver): (Sender<BufferReleaseMsg>, Receiver<BufferReleaseMsg>) =
-                channel();
-            // It's OK to acquire rx_subscriber's lock after rx_lock
-            self.rx_subscribers.lock().insert(src_offset, sender);
-            let msg = IoTransferMsg::new(stream_id, src_offset, size);
-            seq_socket_send(&rx.socket, msg)?;
-            (src_offset, receiver)
-        };
+        let src_offset = self.rx.allocate_buffer(size)?;
+        // Register to receive the status before sending the buffer to the server
+        let (sender, receiver): (Sender<BufferReleaseMsg>, Receiver<BufferReleaseMsg>) = channel();
+        self.rx_subscribers.lock().insert(src_offset, sender);
+        self.rx.send_buffer(stream_id, src_offset, size)?;
         // Make sure no mutexes are held while awaiting for the buffer to be written to
-        let (recv_size, latency) = await_status(status_promise)?;
-        {
-            let mut rx_lock = self.rx.lock();
-            let buffer_slice = rx_lock.buffer_at(src_offset, recv_size)?;
-            Ok((latency, callback(&buffer_slice)))
-        }
+        let (recv_size, latency) = await_status(receiver)?;
+        let buffer_slice = self.rx.buffer_at(src_offset, recv_size)?;
+        Ok((latency, callback(&buffer_slice)))
     }
 
     /// Get a list of file descriptors used by the implementation.
     pub fn keep_fds(&self) -> Vec<RawFd> {
         let control_fd = self.control_socket.lock().as_raw_fd();
         let event_fd = self.event_socket.as_raw_fd();
-        let (tx_socket_fd, tx_shm_fd) = {
-            let lock = self.tx.lock();
-            (lock.socket.as_raw_fd(), lock.file.as_raw_fd())
-        };
-        let (rx_socket_fd, rx_shm_fd) = {
-            let lock = self.rx.lock();
-            (lock.socket.as_raw_fd(), lock.file.as_raw_fd())
-        };
         let recv_event = self.recv_event.as_raw_descriptor();
-        vec![
-            control_fd,
-            event_fd,
-            tx_socket_fd,
-            tx_shm_fd,
-            rx_socket_fd,
-            rx_shm_fd,
-            recv_event,
-        ]
+        let mut ret = vec![control_fd, event_fd, recv_event];
+        ret.append(&mut self.tx.keep_fds());
+        ret.append(&mut self.rx.keep_fds());
+        ret
     }
 
     fn common_stream_op(&self, stream_id: u32, op: u32) -> Result<()> {
@@ -733,7 +691,7 @@ struct IoBufferQueue {
     file: File,
     mmap: MemoryMapping,
     size: usize,
-    next: usize,
+    next: Mutex<usize>,
 }
 
 impl IoBufferQueue {
@@ -750,28 +708,44 @@ impl IoBufferQueue {
             file,
             mmap,
             size,
-            next: 0,
+            next: Mutex::new(0),
         })
     }
 
-    fn allocate_buffer(&mut self, size: usize) -> Result<usize> {
+    fn allocate_buffer(&self, size: usize) -> Result<usize> {
         if size > self.size {
             return Err(Error::OutOfSpace);
         }
-        let offset = if size > self.size - self.next {
+        let mut next_lock = self.next.lock();
+        let offset = if size > self.size - *next_lock {
             // Can't fit the new buffer at the end of the area, so put it at the beginning
             0
         } else {
-            self.next
+            *next_lock
         };
-        self.next = offset + size;
+        *next_lock = offset + size;
         Ok(offset)
     }
 
-    fn buffer_at(&mut self, offset: usize, len: usize) -> Result<VolatileSlice> {
+    fn buffer_at(&self, offset: usize, len: usize) -> Result<VolatileSlice> {
         self.mmap
             .get_slice(offset, len)
             .map_err(Error::VolatileMemoryError)
+    }
+
+    fn try_clone_socket(&self) -> Result<UnixSeqpacket> {
+        self.socket
+            .try_clone()
+            .map_err(Error::UnixSeqpacketDupError)
+    }
+
+    fn send_buffer(&self, stream_id: u32, offset: usize, size: usize) -> Result<()> {
+        let msg = IoTransferMsg::new(stream_id, offset, size);
+        seq_socket_send(&self.socket, msg)
+    }
+
+    fn keep_fds(&self) -> Vec<RawFd> {
+        vec![self.file.as_raw_fd(), self.socket.as_raw_fd()]
     }
 }
 
