@@ -63,6 +63,35 @@ impl Condvar {
             .expect(CONDVAR_POISONED)
     }
 
+    /// Waits on a condvar, blocking the current thread until it is notified and
+    /// the provided condition is false.
+    pub fn wait_while<'a, T, F>(&self, guard: MutexGuard<'a, T>, condition: F) -> MutexGuard<'a, T>
+    where
+        F: FnMut(&mut T) -> bool,
+    {
+        match self.std.wait_while(guard, condition) {
+            Ok(result) => result,
+            Err(_) => panic!("condvar is poisoned"),
+        }
+    }
+
+    /// Waits on a condvar, blocking the current thread until it is notified and
+    /// the provided condition is false, or until the specified duration has elapsed.
+    pub fn wait_timeout_while<'a, T, F>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        dur: Duration,
+        condition: F,
+    ) -> (MutexGuard<'a, T>, WaitTimeoutResult)
+    where
+        F: FnMut(&mut T) -> bool,
+    {
+        match self.std.wait_timeout_while(guard, dur, condition) {
+            Ok(result) => result,
+            Err(_) => panic!("condvar is poisoned"),
+        }
+    }
+
     /// Notifies one thread blocked by this condvar.
     pub fn notify_one(&self) {
         self.std.notify_one();
