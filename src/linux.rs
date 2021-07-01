@@ -3083,25 +3083,17 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             }
         }
 
-        for event in events.iter().filter(|e| e.is_hungup) {
-            match event.token {
-                Token::Exit => {}
-                Token::Suspend => {}
-                Token::ChildSignal => {}
-                Token::IrqFd { index: _ } => {}
-                Token::VmControlServer => {}
-                Token::VmControl { index } => {
-                    // It's possible more data is readable and buffered while the socket is hungup,
-                    // so don't delete the tube from the poll context until we're sure all the
-                    // data is read.
-                    if control_tubes
-                        .get(index)
-                        .map(|s| !s.as_ref().is_packet_ready())
-                        .unwrap_or(false)
-                    {
-                        vm_control_indices_to_remove.push(index);
-                    }
-                }
+        // It's possible more data is readable and buffered while the socket is hungup,
+        // so don't delete the tube from the poll context until we're sure all the
+        // data is read.
+        // Below case covers a condition where we have received a hungup event and the tube is not
+        // readable.
+        // In case of readable tube, once all data is read, any attempt to read more data on hungup
+        // tube should fail. On such failure, we get Disconnected error and index gets added to
+        // vm_control_indices_to_remove by the time we reach here.
+        for event in events.iter().filter(|e| e.is_hungup && !e.is_readable) {
+            if let Token::VmControl { index } = event.token {
+                vm_control_indices_to_remove.push(index);
             }
         }
 
