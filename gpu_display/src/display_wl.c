@@ -1171,6 +1171,9 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 
 	return disp_surface;
 fail:
+	if (disp_surface->virtio_gpu_surface_metadata)
+		wp_virtio_gpu_surface_metadata_v1_destroy(
+			disp_surface->virtio_gpu_surface_metadata);
 	if (disp_surface->viewport)
 		wp_viewport_destroy(disp_surface->viewport);
 	if (disp_surface->subsurface)
@@ -1197,6 +1200,9 @@ void dwl_surface_destroy(struct dwl_surface **self)
 	size_t i;
 
 	dwl_context_remove_surface((*self)->context, (*self)->surface_id);
+	if ((*self)->virtio_gpu_surface_metadata)
+		wp_virtio_gpu_surface_metadata_v1_destroy(
+			(*self)->virtio_gpu_surface_metadata);
 	if ((*self)->viewport)
 		wp_viewport_destroy((*self)->viewport);
 	if ((*self)->subsurface)

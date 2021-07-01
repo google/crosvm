@@ -291,11 +291,14 @@ trait DisplayT: AsRawDescriptor {
 /// The user of `GpuDisplay` can use `AsRawDescriptor` to poll on the compositor connection's file
 /// descriptor. When the connection is readable, `dispatch_events` can be called to process it.
 pub struct GpuDisplay {
-    inner: Box<dyn DisplayT>,
     next_id: u32,
     event_devices: BTreeMap<u32, EventDevice>,
     surfaces: BTreeMap<u32, Box<dyn GpuDisplaySurface>>,
     imports: BTreeMap<u32, Box<dyn GpuDisplayImport>>,
+    // `inner` must be after `imports` and `surfaces` to ensure those objects are dropped before
+    // the display context. The drop order for fields inside a struct is the order in which they
+    // are declared [Rust RFC 1857].
+    inner: Box<dyn DisplayT>,
     wait_ctx: WaitContext<DisplayPollToken>,
     is_x: bool,
 }
