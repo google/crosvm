@@ -38,7 +38,8 @@ use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
 use devices::virtio::gpu::{DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH};
 use devices::virtio::vhost::user::{
     Block as VhostUserBlock, Console as VhostUserConsole, Error as VhostUserError,
-    Fs as VhostUserFs, Net as VhostUserNet, Wl as VhostUserWl,
+    Fs as VhostUserFs, Mac80211Hwsim as VhostUserMac80211Hwsim, Net as VhostUserNet,
+    Wl as VhostUserWl,
 };
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
@@ -198,6 +199,7 @@ pub enum Error {
     VhostUserBlockDeviceNew(VhostUserError),
     VhostUserConsoleDeviceNew(VhostUserError),
     VhostUserFsDeviceNew(VhostUserError),
+    VhostUserMac80211HwsimNew(VhostUserError),
     VhostUserNetDeviceNew(VhostUserError),
     VhostUserNetWithNetArgs,
     VhostUserWlDeviceNew(VhostUserError),
@@ -343,6 +345,9 @@ impl Display for Error {
                 write!(f, "failed to set up vhost-user console device: {}", e)
             }
             VhostUserFsDeviceNew(e) => write!(f, "failed to set up vhost-user fs device: {}", e),
+            VhostUserMac80211HwsimNew(e) => {
+                write!(f, "failed to set up vhost-user mac80211_hwsim device {}", e)
+            }
             VhostUserNetDeviceNew(e) => write!(f, "failed to set up vhost-user net device: {}", e),
             VhostUserNetWithNetArgs => write!(
                 f,
@@ -615,6 +620,17 @@ fn create_vhost_user_fs_device(cfg: &Config, option: &VhostUserFsOption) -> Devi
         &option.tag,
     )
     .map_err(Error::VhostUserFsDeviceNew)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        // no sandbox here because virtqueue handling is exported to a different process.
+        jail: None,
+    })
+}
+
+fn create_vhost_user_mac80211_hwsim_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
+    let dev = VhostUserMac80211Hwsim::new(virtio::base_features(cfg.protected_vm), &opt.socket)
+        .map_err(Error::VhostUserMac80211HwsimNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1739,6 +1755,13 @@ fn create_virtio_devices(
             SharedDirKind::P9 => create_9p_device(cfg, uid_map, gid_map, src, tag, p9_cfg.clone())?,
         };
         devs.push(dev);
+    }
+
+    if let Some(vhost_user_mac80211_hwsim) = &cfg.vhost_user_mac80211_hwsim {
+        devs.push(create_vhost_user_mac80211_hwsim_device(
+            cfg,
+            &vhost_user_mac80211_hwsim,
+        )?);
     }
 
     Ok(devs)

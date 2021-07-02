@@ -85,6 +85,7 @@ const TYPE_CRYPTO: u32 = 20;
 const TYPE_IOMMU: u32 = 23;
 const TYPE_FS: u32 = 26;
 const TYPE_PMEM: u32 = 27;
+const TYPE_MAC80211_HWSIM: u32 = 29;
 const TYPE_VIDEO_ENC: u32 = 30;
 const TYPE_VIDEO_DEC: u32 = 31;
 // Additional types invented by crosvm

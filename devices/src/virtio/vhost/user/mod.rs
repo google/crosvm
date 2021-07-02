@@ -6,6 +6,7 @@ mod block;
 mod console;
 mod fs;
 mod handler;
+mod mac80211_hwsim;
 mod net;
 mod wl;
 mod worker;
@@ -14,6 +15,7 @@ pub use self::block::*;
 pub use self::console::*;
 pub use self::fs::*;
 pub use self::handler::VhostUserHandler;
+pub use self::mac80211_hwsim::*;
 pub use self::net::*;
 pub use self::wl::*;
 
