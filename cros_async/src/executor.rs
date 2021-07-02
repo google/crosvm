@@ -12,19 +12,19 @@ use crate::{
     AsyncResult, FdExecutor, IntoAsync, IoSourceExt, PollSource, URingExecutor, UringSource,
 };
 
-pub(crate) fn async_uring_from<'a, F: IntoAsync + 'a>(
+pub(crate) fn async_uring_from<'a, F: IntoAsync + Send + 'a>(
     f: F,
     ex: &URingExecutor,
-) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a>> {
-    Ok(UringSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F>>)?)
+) -> AsyncResult<Box<dyn IoSourceExt<F> + Send + 'a>> {
+    Ok(UringSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F> + Send>)?)
 }
 
 /// Creates a concrete `IoSourceExt` using the fd_executor.
-pub(crate) fn async_poll_from<'a, F: IntoAsync + 'a>(
+pub(crate) fn async_poll_from<'a, F: IntoAsync + Send + 'a>(
     f: F,
     ex: &FdExecutor,
-) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a>> {
-    Ok(PollSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F>>)?)
+) -> AsyncResult<Box<dyn IoSourceExt<F> + Send + 'a>> {
+    Ok(PollSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F> + Send>)?)
 }
 
 /// An executor for scheduling tasks that poll futures to completion.
@@ -137,10 +137,10 @@ impl Executor {
     /// Create a new `Box<dyn IoSourceExt<F>>` associated with `self`. Callers may then use the
     /// returned `IoSourceExt` to directly start async operations without needing a separate
     /// reference to the executor.
-    pub fn async_from<'a, F: IntoAsync + 'a>(
+    pub fn async_from<'a, F: IntoAsync + Send + 'a>(
         &self,
         f: F,
-    ) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a>> {
+    ) -> AsyncResult<Box<dyn IoSourceExt<F> + Send + 'a>> {
         match self {
             Executor::Uring(ex) => async_uring_from(f, ex),
             Executor::Fd(ex) => async_poll_from(f, ex),
