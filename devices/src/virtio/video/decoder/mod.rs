@@ -159,10 +159,13 @@ impl OutputResources {
     }
 }
 
-struct PictureReadyEvent {
-    picture_buffer_id: i32,
-    bitstream_id: i32,
-    visible_rect: Rect,
+enum PendingResponse {
+    PictureReady {
+        picture_buffer_id: i32,
+        bitstream_id: i32,
+        visible_rect: Rect,
+    },
+    FlushCompleted,
 }
 
 // Context is associated with one `DecoderSession`, which corresponds to one stream from the
@@ -179,7 +182,7 @@ struct Context<S: DecoderSession> {
     // Set the flag when we ask the decoder reset, and unset when the reset is done.
     is_resetting: bool,
 
-    pending_ready_pictures: VecDeque<PictureReadyEvent>,
+    pending_responses: VecDeque<PendingResponse>,
 
     session: Option<S>,
 }
@@ -199,57 +202,85 @@ impl<S: DecoderSession> Context<S> {
             in_res: Default::default(),
             out_res: Default::default(),
             is_resetting: false,
-            pending_ready_pictures: Default::default(),
+            pending_responses: Default::default(),
             session: None,
         }
     }
 
-    fn output_pending_pictures(&mut self) -> Vec<VideoEvtResponseType> {
-        let mut responses = vec![];
-        while let Some(async_response) = self.output_pending_picture() {
-            responses.push(VideoEvtResponseType::AsyncCmd(async_response));
+    fn output_pending_responses(&mut self) -> Vec<VideoEvtResponseType> {
+        let mut event_responses = vec![];
+        while let Some(mut responses) = self.output_pending_response() {
+            event_responses.append(&mut responses);
         }
-        responses
+        event_responses
     }
 
-    fn output_pending_picture(&mut self) -> Option<AsyncCmdResponse> {
-        let response = {
-            let PictureReadyEvent {
+    fn output_pending_response(&mut self) -> Option<Vec<VideoEvtResponseType>> {
+        let responses = match self.pending_responses.front()? {
+            PendingResponse::PictureReady {
                 picture_buffer_id,
                 bitstream_id,
                 visible_rect,
-            } = self.pending_ready_pictures.front()?;
+            } => {
+                let plane_size = ((visible_rect.right - visible_rect.left)
+                    * (visible_rect.bottom - visible_rect.top))
+                    as u32;
+                for fmt in self.out_params.plane_formats.iter_mut() {
+                    fmt.plane_size = plane_size;
+                    // We don't need to set `plane_formats[i].stride` for the decoder.
+                }
 
-            let plane_size = ((visible_rect.right - visible_rect.left)
-                * (visible_rect.bottom - visible_rect.top)) as u32;
-            for fmt in self.out_params.plane_formats.iter_mut() {
-                fmt.plane_size = plane_size;
-                // We don't need to set `plane_formats[i].stride` for the decoder.
+                let resource_id = self
+                    .out_res
+                    .dequeue_frame_buffer(*picture_buffer_id, self.stream_id)?;
+
+                vec![VideoEvtResponseType::AsyncCmd(
+                    AsyncCmdResponse::from_response(
+                        AsyncCmdTag::Queue {
+                            stream_id: self.stream_id,
+                            queue_type: QueueType::Output,
+                            resource_id,
+                        },
+                        CmdResponse::ResourceQueue {
+                            // Conversion from sec to nsec.
+                            timestamp: (*bitstream_id as u64) * 1_000_000_000,
+                            // TODO(b/149725148): Set buffer flags once libvda exposes them.
+                            flags: 0,
+                            // `size` is only used for the encoder.
+                            size: 0,
+                        },
+                    ),
+                )]
             }
-
-            let resource_id = self
-                .out_res
-                .dequeue_frame_buffer(*picture_buffer_id, self.stream_id)?;
-
-            AsyncCmdResponse::from_response(
-                AsyncCmdTag::Queue {
+            PendingResponse::FlushCompleted => {
+                let eos_resource_id = self.out_res.dequeue_eos_resource_id()?;
+                let eos_tag = AsyncCmdTag::Queue {
                     stream_id: self.stream_id,
                     queue_type: QueueType::Output,
-                    resource_id,
-                },
-                CmdResponse::ResourceQueue {
-                    // Conversion from sec to nsec.
-                    timestamp: (*bitstream_id as u64) * 1_000_000_000,
-                    // TODO(b/149725148): Set buffer flags once libvda exposes them.
-                    flags: 0,
-                    // `size` is only used for the encoder.
+                    resource_id: eos_resource_id,
+                };
+                let eos_response = CmdResponse::ResourceQueue {
+                    timestamp: 0,
+                    flags: protocol::VIRTIO_VIDEO_BUFFER_FLAG_EOS,
                     size: 0,
-                },
-            )
+                };
+                vec![
+                    VideoEvtResponseType::AsyncCmd(AsyncCmdResponse::from_response(
+                        eos_tag,
+                        eos_response,
+                    )),
+                    VideoEvtResponseType::AsyncCmd(AsyncCmdResponse::from_response(
+                        AsyncCmdTag::Drain {
+                            stream_id: self.stream_id,
+                        },
+                        CmdResponse::NoData,
+                    )),
+                ]
+            }
         };
-        self.pending_ready_pictures.pop_front().unwrap();
+        self.pending_responses.pop_front().unwrap();
 
-        Some(response)
+        Some(responses)
     }
 
     fn get_resource_info(
@@ -805,7 +836,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             QueueType::Input => {
                 session.reset()?;
                 ctx.is_resetting = true;
-                ctx.pending_ready_pictures.clear();
+                ctx.pending_responses.clear();
                 Ok(VideoCmdResponseType::Async(AsyncCmdTag::Clear {
                     stream_id,
                     queue_type: QueueType::Input,
@@ -876,7 +907,7 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 let resp = self.queue_output_resource(stream_id, resource_id);
                 if resp.is_ok() {
                     if let Ok(ctx) = self.contexts.get_mut(&stream_id) {
-                        event_ret = Some((stream_id, ctx.output_pending_pictures()));
+                        event_ret = Some((stream_id, ctx.output_pending_responses()));
                     }
                 }
                 resp
@@ -971,12 +1002,13 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 if ctx.is_resetting {
                     vec![]
                 } else {
-                    ctx.pending_ready_pictures.push_back(PictureReadyEvent {
-                        picture_buffer_id,
-                        bitstream_id,
-                        visible_rect,
-                    });
-                    ctx.output_pending_pictures()
+                    ctx.pending_responses
+                        .push_back(PendingResponse::PictureReady {
+                            picture_buffer_id,
+                            bitstream_id,
+                            visible_rect,
+                        });
+                    ctx.output_pending_responses()
                 }
             }
             DecoderEvent::NotifyEndOfBitstreamBuffer(bitstream_id) => {
@@ -998,40 +1030,9 @@ impl<D: DecoderBackend> Device for Decoder<D> {
             DecoderEvent::FlushCompleted(flush_result) => {
                 match flush_result {
                     Ok(()) => {
-                        let eos_resource_id = match ctx.out_res.dequeue_eos_resource_id() {
-                            Some(r) => r,
-                            None => {
-                                // TODO(b/168750131): Instead of trigger error, we should wait for
-                                // the next output buffer enqueued, then dequeue the buffer with
-                                // EOS flag.
-                                error!(
-                                    "No EOS resource available on successful flush response (stream id {})",
-                                    stream_id);
-                                return Some(vec![Event(VideoEvt {
-                                    typ: EvtType::Error,
-                                    stream_id,
-                                })]);
-                            }
-                        };
-
-                        let eos_tag = AsyncCmdTag::Queue {
-                            stream_id,
-                            queue_type: QueueType::Output,
-                            resource_id: eos_resource_id,
-                        };
-
-                        let eos_response = CmdResponse::ResourceQueue {
-                            timestamp: 0,
-                            flags: protocol::VIRTIO_VIDEO_BUFFER_FLAG_EOS,
-                            size: 0,
-                        };
-                        vec![
-                            AsyncCmd(AsyncCmdResponse::from_response(eos_tag, eos_response)),
-                            AsyncCmd(AsyncCmdResponse::from_response(
-                                AsyncCmdTag::Drain { stream_id },
-                                CmdResponse::NoData,
-                            )),
-                        ]
+                        ctx.pending_responses
+                            .push_back(PendingResponse::FlushCompleted);
+                        ctx.output_pending_responses()
                     }
                     Err(error) => {
                         // TODO(b/151810591): If `resp` is `libvda::decode::Response::Canceled`,
