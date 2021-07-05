@@ -2600,7 +2600,6 @@ where
         (&cfg.battery_type, None)
     };
 
-    let gralloc = RutabagaGralloc::new().map_err(Error::CreateGrallocError)?;
     let map_request: Arc<Mutex<Option<ExternalMapping>>> = Arc::new(Mutex::new(None));
 
     let fs_count = cfg
@@ -2695,6 +2694,7 @@ where
         irqs.push(direct_irq);
     }
 
+    let gralloc = RutabagaGralloc::new().map_err(Error::CreateGrallocError)?;
     run_control(
         linux,
         sys_allocator,
