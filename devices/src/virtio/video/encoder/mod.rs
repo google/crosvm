@@ -917,13 +917,37 @@ impl<T: Encoder> EncoderDevice<T> {
             .get_mut(&stream_id)
             .ok_or(VideoError::InvalidStreamId(stream_id))?;
 
-        if stream.src_resources.len() > 0 || stream.dst_resources.len() > 0 {
-            // Buffers have already been queued and encoding has already started.
-            return Err(VideoError::InvalidOperation);
+        // Dynamic framerate changes are allowed. The V4L2 standard allows
+        // setting the framerate on either input or output queue.
+        if stream.frame_rate != frame_rate {
+            stream.frame_rate = frame_rate;
+            if let Some(ref mut encoder_session) = stream.encoder_session {
+                if let Err(e) = encoder_session
+                    .request_encoding_params_change(stream.dst_bitrate, stream.frame_rate)
+                {
+                    error!("failed to dynamically request framerate change: {}", e);
+                    return Err(VideoError::InvalidOperation);
+                }
+            }
         }
+
+        let resources_queued = stream.src_resources.len() > 0 || stream.dst_resources.len() > 0;
 
         match queue_type {
             QueueType::Input => {
+                if stream.src_params.frame_width == frame_width
+                    && stream.src_params.frame_height == frame_height
+                    && stream.src_params.format == format
+                    && stream.src_params.plane_formats == plane_formats
+                {
+                    return Ok(VideoCmdResponseType::Sync(CmdResponse::NoData));
+                }
+
+                if resources_queued {
+                    // Buffers have already been queued and encoding has already started.
+                    return Err(VideoError::InvalidOperation);
+                }
+
                 // There should be at least a single plane.
                 if plane_formats.is_empty() {
                     return Err(VideoError::InvalidArgument);
@@ -937,14 +961,19 @@ impl<T: Encoder> EncoderDevice<T> {
                     frame_height,
                     plane_formats[0].stride,
                 )?;
-
-                // Following the V4L2 standard the framerate requested on the
-                // input queue should also be applied to the output queue.
-                if frame_rate > 0 {
-                    stream.frame_rate = frame_rate;
-                }
             }
             QueueType::Output => {
+                if stream.dst_params.format == format
+                    && stream.dst_params.plane_formats == plane_formats
+                {
+                    return Ok(VideoCmdResponseType::Sync(CmdResponse::NoData));
+                }
+
+                if resources_queued {
+                    // Buffers have already been queued and encoding has already started.
+                    return Err(VideoError::InvalidOperation);
+                }
+
                 let desired_format = format.or(stream.dst_params.format).unwrap_or(Format::H264);
 
                 // There should be exactly one output buffer.
@@ -957,10 +986,6 @@ impl<T: Encoder> EncoderDevice<T> {
                     desired_format,
                     plane_formats[0].plane_size,
                 )?;
-
-                if frame_rate > 0 {
-                    stream.frame_rate = frame_rate;
-                }
 
                 // Format is always populated for encoder.
                 let new_format = stream

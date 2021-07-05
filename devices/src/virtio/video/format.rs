@@ -126,7 +126,7 @@ pub struct Crop {
 }
 impl_from_for_interconvertible_structs!(virtio_video_crop, Crop, left, top, width, height);
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug, Default, Clone, Copy)]
 pub struct PlaneFormat {
     pub plane_size: u32,
     pub stride: u32,
