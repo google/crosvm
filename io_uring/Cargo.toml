@@ -6,9 +6,10 @@ edition = "2018"
 
 [dependencies]
 data_model = { path = "../data_model" } # provided by ebuild
-libc = "*"
+libc = "0.2.93"
 sync = { path = "../sync" } # provided by ebuild
 sys_util = { path = "../sys_util" } # provided by ebuild
+thiserror = "1"
 
 [dev-dependencies]
 tempfile = { path = "../tempfile" } # provided by ebuild

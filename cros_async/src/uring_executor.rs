@@ -112,6 +112,24 @@ pub enum Error {
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
+impl From<Error> for io::Error {
+    fn from(e: Error) -> Self {
+        use Error::*;
+        match e {
+            DuplicatingFd(e) => e.into(),
+            ExecutorGone => io::Error::new(io::ErrorKind::Other, ExecutorGone),
+            InvalidOffset => io::Error::new(io::ErrorKind::InvalidInput, InvalidOffset),
+            InvalidSource => io::Error::new(io::ErrorKind::InvalidData, InvalidSource),
+            Io(e) => e,
+            CreatingContext(e) => e.into(),
+            RemovingWaker(e) => e.into(),
+            SubmittingOp(e) => e.into(),
+            URingContextError(e) => e.into(),
+            URingEnter(e) => e.into(),
+        }
+    }
+}
+
 // Checks if the uring executor is available.
 // Caches the result so that the check is only run once.
 // Useful for falling back to the FD executor on pre-uring kernels.

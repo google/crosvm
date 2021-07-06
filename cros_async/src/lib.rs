@@ -91,6 +91,7 @@ pub use uring_executor::URingExecutor;
 pub use uring_source::UringSource;
 
 use std::future::Future;
+use std::io;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -113,6 +114,18 @@ pub enum Error {
     TimerAsync(AsyncError),
 }
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl From<Error> for io::Error {
+    fn from(e: Error) -> Self {
+        use Error::*;
+        match e {
+            FdExecutor(e) => e.into(),
+            URingExecutor(e) => e.into(),
+            TimerFd(e) => e.into(),
+            TimerAsync(e) => e.into(),
+        }
+    }
+}
 
 // A Future that never completes.
 pub struct Empty<T> {

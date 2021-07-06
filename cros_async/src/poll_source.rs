@@ -5,18 +5,19 @@
 //! A wrapped IO source that uses FdExecutor to drive asynchronous completion. Used from
 //! `IoSourceExt::new` when uring isn't available in the kernel.
 
-use async_trait::async_trait;
+use std::io;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use data_model::VolatileSlice;
 use thiserror::Error as ThisError;
 
 use crate::fd_executor::{self, FdExecutor, RegisteredSource};
 use crate::mem::{BackingMemory, MemRegion};
 use crate::{AsyncError, AsyncResult};
 use crate::{IoSourceExt, ReadAsync, WriteAsync};
-use data_model::VolatileSlice;
 
 #[derive(ThisError, Debug)]
 pub enum Error {
@@ -43,6 +44,21 @@ pub enum Error {
     Write(sys_util::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl From<Error> for io::Error {
+    fn from(e: Error) -> Self {
+        use Error::*;
+        match e {
+            AddingWaker(e) => e.into(),
+            Executor(e) => e.into(),
+            Fallocate(e) => e.into(),
+            Fsync(e) => e.into(),
+            Read(e) => e.into(),
+            Seeking(e) => e.into(),
+            Write(e) => e.into(),
+        }
+    }
+}
 
 /// Async wrapper for an IO source that uses the FD executor to drive async operations.
 /// Used by `IoSourceExt::new` when uring isn't available.

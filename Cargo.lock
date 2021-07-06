@@ -529,6 +529,7 @@ dependencies = [
  "libc",
  "sync",
  "sys_util",
+ "thiserror",
 ]
 
 [[package]]

@@ -11,6 +11,7 @@
 
 use std::fs::File;
 use std::future::Future;
+use std::io;
 use std::mem;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::pin::Pin;
@@ -60,6 +61,23 @@ pub enum Error {
     UnknownWaker,
 }
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl From<Error> for io::Error {
+    fn from(e: Error) -> Self {
+        use Error::*;
+        match e {
+            CloneEventFd(e) => e.into(),
+            CreateEventFd(e) => e.into(),
+            DuplicatingFd(e) => e.into(),
+            ExecutorGone => io::Error::new(io::ErrorKind::Other, e),
+            CreatingContext(e) => e.into(),
+            PollContextError(e) => e.into(),
+            SettingNonBlocking(e) => e.into(),
+            SubmittingWaker(e) => e.into(),
+            UnknownWaker => io::Error::new(io::ErrorKind::Other, e),
+        }
+    }
+}
 
 // A poll operation that has been submitted and is potentially being waited on.
 struct OpData {

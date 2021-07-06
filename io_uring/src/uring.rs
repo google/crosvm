@@ -7,8 +7,8 @@
 #![allow(clippy::cast_ptr_alignment)]
 
 use std::collections::BTreeMap;
-use std::fmt;
 use std::fs::File;
+use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use data_model::IoBufMut;
 use sync::Mutex;
 use sys_util::{MappedRegion, MemoryMapping, Protection, WatchingEvents};
+use thiserror::Error as ThisError;
 
 use crate::bindings::*;
 use crate::syscalls::*;
@@ -24,37 +25,36 @@ use crate::syscalls::*;
 /// for callers to identify each request.
 pub type UserData = u64;
 
-#[derive(Debug)]
+#[derive(Debug, ThisError)]
 pub enum Error {
     /// The call to `io_uring_enter` failed with the given errno.
+    #[error("Failed to enter io uring: {0}")]
     RingEnter(libc::c_int),
     /// The call to `io_uring_setup` failed with the given errno.
+    #[error("Failed to setup io uring {0}")]
     Setup(libc::c_int),
     /// Failed to map the completion ring.
+    #[error("Failed to mmap completion ring {0}")]
     MappingCompleteRing(sys_util::MmapError),
     /// Failed to map the submit ring.
+    #[error("Failed to mmap submit ring {0}")]
     MappingSubmitRing(sys_util::MmapError),
     /// Failed to map submit entries.
+    #[error("Failed to mmap submit entries {0}")]
     MappingSubmitEntries(sys_util::MmapError),
     /// Too many ops are already queued.
+    #[error("No space for more ring entries, try increasing the size passed to `new`")]
     NoSpace,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            RingEnter(e) => write!(f, "Failed to enter io uring {}", e),
-            Setup(e) => write!(f, "Failed to setup io uring {}", e),
-            MappingCompleteRing(e) => write!(f, "Failed to mmap completion ring {}", e),
-            MappingSubmitRing(e) => write!(f, "Failed to mmap submit ring {}", e),
-            MappingSubmitEntries(e) => write!(f, "Failed to mmap submit entries {}", e),
-            NoSpace => write!(
-                f,
-                "No space for more ring entries, try increasing the size passed to `new`",
-            ),
+impl From<Error> for io::Error {
+    fn from(e: Error) -> Self {
+        use Error::*;
+        match e {
+            RingEnter(errno) => io::Error::from_raw_os_error(errno),
+            Setup(errno) => io::Error::from_raw_os_error(errno),
+            e => io::Error::new(io::ErrorKind::Other, e),
         }
     }
 }

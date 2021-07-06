@@ -16,6 +16,7 @@
 //! `URingExecutor` documentation for an explaination of why.
 
 use std::fs::File;
+use std::io;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::Arc;
@@ -30,22 +31,20 @@ use crate::{BackingMemory, MemRegion};
 pub enum Error {
     /// An error with a polled(FD) source.
     #[error("An error with a poll source: {0}")]
-    Poll(crate::poll_source::Error),
+    Poll(#[from] crate::poll_source::Error),
     /// An error with a uring source.
     #[error("An error with a uring source: {0}")]
-    Uring(crate::uring_executor::Error),
+    Uring(#[from] crate::uring_executor::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl From<crate::uring_executor::Error> for Error {
-    fn from(err: crate::uring_executor::Error) -> Self {
-        Error::Uring(err)
-    }
-}
-
-impl From<crate::poll_source::Error> for Error {
-    fn from(err: crate::poll_source::Error) -> Self {
-        Error::Poll(err)
+impl From<Error> for io::Error {
+    fn from(e: Error) -> Self {
+        use Error::*;
+        match e {
+            Poll(e) => e.into(),
+            Uring(e) => e.into(),
+        }
     }
 }
 
