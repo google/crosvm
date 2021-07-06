@@ -2411,7 +2411,6 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         pstore: cfg.pstore.clone(),
         initrd_image,
         extra_kernel_params: cfg.params.clone(),
-        wayland_dmabuf: cfg.wayland_dmabuf,
         acpi_sdts: cfg
             .acpi_tables
             .iter()

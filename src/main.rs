@@ -1337,7 +1337,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.wayland_socket_paths.insert(name.to_string(), path);
         }
         #[cfg(feature = "wl-dmabuf")]
-        "wayland-dmabuf" => cfg.wayland_dmabuf = true,
+        "wayland-dmabuf" => {}
         "x-display" => {
             if cfg.x_display.is_some() {
                 return Err(argument::Error::TooManyArguments(
@@ -2023,7 +2023,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::flag("display-window-mouse", "Capture keyboard input from the display window."),
           Argument::value("wayland-sock", "PATH[,name=NAME]", "Path to the Wayland socket to use. The unnamed one is used for displaying virtual screens. Named ones are only for IPC."),
           #[cfg(feature = "wl-dmabuf")]
-          Argument::flag("wayland-dmabuf", "Enable support for DMABufs in Wayland device."),
+          Argument::flag("wayland-dmabuf", "DEPRECATED: Enable support for DMABufs in Wayland device."),
           Argument::short_value('s',
                                 "socket",
                                 "PATH",

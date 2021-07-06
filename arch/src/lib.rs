@@ -87,7 +87,6 @@ pub struct VmComponents {
     pub pstore: Option<Pstore>,
     pub initrd_image: Option<File>,
     pub extra_kernel_params: Vec<String>,
-    pub wayland_dmabuf: bool,
     pub acpi_sdts: Vec<SDT>,
     pub rt_cpus: Vec<usize>,
     pub protected_vm: ProtectionType,
