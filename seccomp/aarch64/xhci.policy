@@ -17,7 +17,6 @@ openat: 1
 setsockopt: 1
 bind: 1
 socket: arg0 == AF_NETLINK
-uname: 1
 # The following ioctls are:
 # 0x4004550d == USBDEVFS_REAPURBNDELAY32
 # 0x550b     == USBDEVFS_DISCARDURB

@@ -45,6 +45,7 @@ set_robust_list: 1
 sigaltstack: 1
 write: 1
 writev: 1
+uname: 1
 
 # Rules specific to gpu
 connect: 1
@@ -90,7 +91,6 @@ setpriority: 1
 unlink: 1
 
 # Rules specific to AMD gpus.
-uname: 1
 sched_setscheduler: 1
 sched_setaffinity: 1
 kcmp: 1

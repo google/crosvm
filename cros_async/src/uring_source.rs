@@ -18,26 +18,6 @@ use crate::AsyncResult;
 /// `UringSource` wraps FD backed IO sources for use with io_uring. It is a thin wrapper around
 /// registering an IO source with the uring that provides an `IoSource` implementation.
 /// Most useful functions are provided by 'IoSourceExt'.
-///
-/// # Example
-/// ```rust
-/// use std::fs::File;
-/// use cros_async::{UringSource, ReadAsync, URingExecutor};
-///
-/// async fn read_four_bytes(source: &UringSource<File>) -> (usize, Vec<u8>) {
-///    let mem = vec![0u8; 4];
-///    source.read_to_vec(0, mem).await.unwrap()
-/// }
-///
-/// fn read_file(f: File) -> Result<(), Box<dyn std::error::Error>> {
-///     let ex = URingExecutor::new()?;
-///     let async_source = UringSource::new(f, &ex)?;
-///     let (nread, vec) = ex.run_until(read_four_bytes(&async_source))?;
-///     assert_eq!(nread, 4);
-///     assert_eq!(vec.len(), 4);
-///     Ok(())
-/// }
-/// ```
 pub struct UringSource<F: AsRawFd> {
     registered_source: RegisteredSource,
     source: F,
@@ -236,12 +216,17 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::io_ext::{ReadAsync, WriteAsync};
+    use crate::uring_executor::use_uring;
     use crate::UringSource;
 
     use super::*;
 
     #[test]
     fn read_to_mem() {
+        if !use_uring() {
+            return;
+        }
+
         use crate::mem::VecIoWrapper;
         use std::io::Write;
         use tempfile::tempfile;
@@ -275,6 +260,10 @@ mod tests {
 
     #[test]
     fn readvec() {
+        if !use_uring() {
+            return;
+        }
+
         async fn go(ex: &URingExecutor) {
             let f = File::open("/dev/zero").unwrap();
             let source = UringSource::new(f, ex).unwrap();
@@ -293,6 +282,10 @@ mod tests {
 
     #[test]
     fn readmulti() {
+        if !use_uring() {
+            return;
+        }
+
         async fn go(ex: &URingExecutor) {
             let f = File::open("/dev/zero").unwrap();
             let source = UringSource::new(f, ex).unwrap();
@@ -321,6 +314,10 @@ mod tests {
 
     #[test]
     fn u64_from_file() {
+        if !use_uring() {
+            return;
+        }
+
         let f = File::open("/dev/zero").unwrap();
         let ex = URingExecutor::new().unwrap();
         let source = UringSource::new(f, &ex).unwrap();
@@ -330,6 +327,10 @@ mod tests {
 
     #[test]
     fn event() {
+        if !use_uring() {
+            return;
+        }
+
         use sys_util::EventFd;
 
         async fn write_event(ev: EventFd, wait: EventFd, ex: &URingExecutor) {
@@ -367,6 +368,10 @@ mod tests {
 
     #[test]
     fn pend_on_pipe() {
+        if !use_uring() {
+            return;
+        }
+
         use std::io::Write;
 
         use futures::future::Either;
@@ -393,6 +398,10 @@ mod tests {
 
     #[test]
     fn readmem() {
+        if !use_uring() {
+            return;
+        }
+
         async fn go(ex: &URingExecutor) {
             let f = File::open("/dev/zero").unwrap();
             let source = UringSource::new(f, ex).unwrap();
@@ -443,6 +452,10 @@ mod tests {
 
     #[test]
     fn range_error() {
+        if !use_uring() {
+            return;
+        }
+
         async fn go(ex: &URingExecutor) {
             let f = File::open("/dev/zero").unwrap();
             let source = UringSource::new(f, ex).unwrap();
@@ -467,6 +480,10 @@ mod tests {
 
     #[test]
     fn fallocate() {
+        if !use_uring() {
+            return;
+        }
+
         async fn go(ex: &URingExecutor) {
             let dir = tempfile::TempDir::new().unwrap();
             let mut file_path = PathBuf::from(dir.path());
@@ -500,6 +517,10 @@ mod tests {
 
     #[test]
     fn fsync() {
+        if !use_uring() {
+            return;
+        }
+
         async fn go(ex: &URingExecutor) {
             let f = tempfile::tempfile().unwrap();
             let source = UringSource::new(f, ex).unwrap();
@@ -512,6 +533,10 @@ mod tests {
 
     #[test]
     fn wait_read() {
+        if !use_uring() {
+            return;
+        }
+
         async fn go(ex: &URingExecutor) {
             let f = File::open("/dev/zero").unwrap();
             let source = UringSource::new(f, ex).unwrap();
@@ -524,6 +549,10 @@ mod tests {
 
     #[test]
     fn writemem() {
+        if !use_uring() {
+            return;
+        }
+
         async fn go(ex: &URingExecutor) {
             let f = OpenOptions::new()
                 .create(true)
@@ -546,6 +575,10 @@ mod tests {
 
     #[test]
     fn writevec() {
+        if !use_uring() {
+            return;
+        }
+
         async fn go(ex: &URingExecutor) {
             let f = OpenOptions::new()
                 .create(true)
@@ -567,6 +600,10 @@ mod tests {
 
     #[test]
     fn writemulti() {
+        if !use_uring() {
+            return;
+        }
+
         async fn go(ex: &URingExecutor) {
             let f = OpenOptions::new()
                 .create(true)

@@ -194,6 +194,7 @@ dependencies = [
  "intrusive-collections",
  "io_uring",
  "libc",
+ "once_cell",
  "paste",
  "pin-utils",
  "slab",

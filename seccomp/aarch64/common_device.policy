@@ -44,3 +44,4 @@ sigaltstack: 1
 write: 1
 writev: 1
 fcntl: 1
+uname: 1

@@ -53,3 +53,4 @@ sigaltstack: 1
 write: 1
 writev: 1
 fcntl64: 1
+uname: 1

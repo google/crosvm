@@ -19,7 +19,6 @@ bind: 1
 socket: arg0 == AF_NETLINK
 stat: 1
 statx: 1
-uname: 1
 # The following ioctls are:
 # 0x4004550d == USBDEVFS_REAPURBNDELAY32
 # 0x550b     == USBDEVFS_DISCARDURB
