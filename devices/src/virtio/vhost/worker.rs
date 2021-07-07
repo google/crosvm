@@ -45,17 +45,15 @@ impl<T: Vhost> Worker<T> {
         }
     }
 
-    pub fn run<F1, F2>(
+    pub fn init<F1>(
         &mut self,
         mem: GuestMemory,
         queue_evts: Vec<Event>,
         queue_sizes: &[u16],
         activate_vqs: F1,
-        cleanup_vqs: F2,
     ) -> Result<()>
     where
         F1: FnOnce(&T) -> Result<()>,
-        F2: FnOnce(&T) -> Result<()>,
     {
         let avail_features = self
             .vhost_handle
@@ -99,7 +97,13 @@ impl<T: Vhost> Worker<T> {
         }
 
         activate_vqs(&self.vhost_handle)?;
+        Ok(())
+    }
 
+    pub fn run<F1>(&mut self, cleanup_vqs: F1) -> Result<()>
+    where
+        F1: FnOnce(&T) -> Result<()>,
+    {
         #[derive(PollToken)]
         enum Token {
             VhostIrqi { index: usize },

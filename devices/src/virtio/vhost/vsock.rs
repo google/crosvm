@@ -156,29 +156,32 @@ impl VirtioDevice for Vsock {
                 if let Some(kill_evt) = self.worker_kill_evt.take() {
                     let acked_features = self.acked_features;
                     let cid = self.cid;
+                    // The third vq is an event-only vq that is not handled by the vhost
+                    // subsystem (but still needs to exist).  Split it off here.
+                    let vhost_queues = queues[..2].to_vec();
+                    let mut worker = Worker::new(
+                        vhost_queues,
+                        vhost_handle,
+                        interrupts,
+                        interrupt,
+                        acked_features,
+                        kill_evt,
+                        None,
+                    );
+                    let activate_vqs = |handle: &VhostVsockHandle| -> Result<()> {
+                        handle.set_cid(cid).map_err(Error::VhostVsockSetCid)?;
+                        handle.start().map_err(Error::VhostVsockStart)?;
+                        Ok(())
+                    };
+                    let result = worker.init(mem, queue_evts, QUEUE_SIZES, activate_vqs);
+                    if let Err(e) = result {
+                        error!("vpipe worker thread exited with error: {:?}", e);
+                    }
                     let worker_result = thread::Builder::new()
                         .name("vhost_vsock".to_string())
                         .spawn(move || {
-                            // The third vq is an event-only vq that is not handled by the vhost
-                            // subsystem (but still needs to exist).  Split it off here.
-                            let vhost_queues = queues[..2].to_vec();
-                            let mut worker = Worker::new(
-                                vhost_queues,
-                                vhost_handle,
-                                interrupts,
-                                interrupt,
-                                acked_features,
-                                kill_evt,
-                                None,
-                            );
-                            let activate_vqs = |handle: &VhostVsockHandle| -> Result<()> {
-                                handle.set_cid(cid).map_err(Error::VhostVsockSetCid)?;
-                                handle.start().map_err(Error::VhostVsockStart)?;
-                                Ok(())
-                            };
                             let cleanup_vqs = |_handle: &VhostVsockHandle| -> Result<()> { Ok(()) };
-                            let result =
-                                worker.run(mem, queue_evts, QUEUE_SIZES, activate_vqs, cleanup_vqs);
+                            let result = worker.run(cleanup_vqs);
                             if let Err(e) = result {
                                 error!("vsock worker thread exited with error: {:?}", e);
                             }

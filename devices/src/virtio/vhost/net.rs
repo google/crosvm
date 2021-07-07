@@ -209,26 +209,30 @@ where
                         } else {
                             None
                         };
+                        let mut worker = Worker::new(
+                            queues,
+                            vhost_net_handle,
+                            vhost_interrupt,
+                            interrupt,
+                            acked_features,
+                            kill_evt,
+                            socket,
+                        );
+                        let activate_vqs = |handle: &U| -> Result<()> {
+                            for idx in 0..NUM_QUEUES {
+                                handle
+                                    .set_backend(idx, Some(&tap))
+                                    .map_err(Error::VhostNetSetBackend)?;
+                            }
+                            Ok(())
+                        };
+                        let result = worker.init(mem, queue_evts, QUEUE_SIZES, activate_vqs);
+                        if let Err(e) = result {
+                            error!("net worker thread exited with error: {}", e);
+                        }
                         let worker_result = thread::Builder::new()
                             .name("vhost_net".to_string())
                             .spawn(move || {
-                                let mut worker = Worker::new(
-                                    queues,
-                                    vhost_net_handle,
-                                    vhost_interrupt,
-                                    interrupt,
-                                    acked_features,
-                                    kill_evt,
-                                    socket,
-                                );
-                                let activate_vqs = |handle: &U| -> Result<()> {
-                                    for idx in 0..NUM_QUEUES {
-                                        handle
-                                            .set_backend(idx, Some(&tap))
-                                            .map_err(Error::VhostNetSetBackend)?;
-                                    }
-                                    Ok(())
-                                };
                                 let cleanup_vqs = |handle: &U| -> Result<()> {
                                     for idx in 0..NUM_QUEUES {
                                         handle
@@ -237,13 +241,7 @@ where
                                     }
                                     Ok(())
                                 };
-                                let result = worker.run(
-                                    mem,
-                                    queue_evts,
-                                    QUEUE_SIZES,
-                                    activate_vqs,
-                                    cleanup_vqs,
-                                );
+                                let result = worker.run(cleanup_vqs);
                                 if let Err(e) = result {
                                     error!("net worker thread exited with error: {}", e);
                                 }
