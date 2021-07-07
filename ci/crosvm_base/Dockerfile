@@ -52,8 +52,10 @@ VOLUME /workspace/logs
 
 # Install the current crosvm rust toolchain via rustup.
 COPY rust-toolchain ./
-RUN curl https://sh.rustup.rs -sSf | sh -s -- \
-    -y \
+RUN curl https://static.rust-lang.org/rustup/archive/1.24.3/x86_64-unknown-linux-gnu/rustup-init -sSf -o rustup-init \
+    && echo "3dc5ef50861ee18657f9db2eeb7392f9c2a6c95c90ab41e45ab4ca71476b4338 rustup-init" | sha256sum --check \
+    && chmod +x rustup-init \
+    && ./rustup-init -y \
     --profile minimal \
     -c rustfmt,clippy \
     --default-toolchain $(cat rust-toolchain)

@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install --yes \
 WORKDIR /workspace/vm
 
 RUN curl -sSfL -o rootfs.qcow2 \
-    "http://cloud.debian.org/images/cloud/bullseye/daily/20210208-542/debian-11-generic-${VM_ARCH}-daily-20210208-542.qcow2"
+    "http://cloud.debian.org/images/cloud/bullseye/daily/20210702-691/debian-11-generic-${VM_ARCH}-daily-20210702-691.qcow2"
 
 # Package `cloud_init_data.yaml` to be loaded during `first_boot.expect`
 COPY build/cloud_init_data.yaml ./
