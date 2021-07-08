@@ -47,6 +47,7 @@ impl Block {
             | 1 << VIRTIO_BLK_F_DISCARD
             | 1 << VIRTIO_BLK_F_WRITE_ZEROES
             | 1 << VIRTIO_RING_F_EVENT_IDX
+            | base_features
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;

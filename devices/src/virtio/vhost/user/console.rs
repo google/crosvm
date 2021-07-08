@@ -34,6 +34,7 @@ impl Console {
         let queues_num = 2;
 
         let allow_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
+            | base_features
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;

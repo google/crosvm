@@ -939,8 +939,8 @@ mod tests {
             let b = BlockAsync::new(features, Box::new(f), false, true, 512, None, None).unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
-            // + VIRTIO_BLK_F_SEG_MAX + VIRTIO_BLK_F_MQ
-            assert_eq!(0x100007244, b.features());
+            // + VIRTIO_BLK_F_SEG_MAX + VIRTIO_BLK_F_MQ + VIRTIO_RING_F_EVENT_IDX
+            assert_eq!(0x120007244, b.features());
         }
 
         // read-write block device, non-sparse
@@ -950,8 +950,8 @@ mod tests {
             let b = BlockAsync::new(features, Box::new(f), false, false, 512, None, None).unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
             // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
-            // + VIRTIO_BLK_F_MQ
-            assert_eq!(0x100005244, b.features());
+            // + VIRTIO_BLK_F_MQ + VIRTIO_RING_F_EVENT_IDX
+            assert_eq!(0x120005244, b.features());
         }
 
         // read-only block device
@@ -961,8 +961,8 @@ mod tests {
             let b = BlockAsync::new(features, Box::new(f), true, true, 512, None, None).unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
             // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
-            // + VIRTIO_BLK_F_MQ
-            assert_eq!(0x100001264, b.features());
+            // + VIRTIO_BLK_F_MQ + VIRTIO_RING_F_EVENT_IDX
+            assert_eq!(0x120001264, b.features());
         }
     }
 

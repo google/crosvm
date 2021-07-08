@@ -62,6 +62,8 @@ use crate::ProtectionType;
 use std::cmp;
 use std::convert::TryFrom;
 
+use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
+
 const DEVICE_RESET: u32 = 0x0;
 const DEVICE_ACKNOWLEDGE: u32 = 0x01;
 const DEVICE_DRIVER: u32 = 0x02;
@@ -163,7 +165,7 @@ pub fn copy_config(dst: &mut [u8], dst_offset: u64, src: &[u8], src_offset: u64)
 
 /// Returns the set of reserved base features common to all virtio devices.
 pub fn base_features(protected_vm: ProtectionType) -> u64 {
-    let mut features: u64 = 1 << VIRTIO_F_VERSION_1;
+    let mut features: u64 = 1 << VIRTIO_F_VERSION_1 | 1 << VIRTIO_RING_F_EVENT_IDX;
 
     if protected_vm == ProtectionType::Protected {
         features |= 1 << VIRTIO_F_ACCESS_PLATFORM;

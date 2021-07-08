@@ -86,13 +86,14 @@ struct ConsoleBackend {
 
 impl SerialDevice for ConsoleBackend {
     fn new(
-        _protected_vm: ProtectionType,
+        protected_vm: ProtectionType,
         _evt: Event,
         input: Option<Box<dyn io::Read + Send>>,
         output: Option<Box<dyn io::Write + Send>>,
         _keep_rds: Vec<RawDescriptor>,
     ) -> ConsoleBackend {
         let avail_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
+            | virtio::base_features(protected_vm)
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         ConsoleBackend {
             input,
