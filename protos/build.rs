@@ -34,7 +34,7 @@ static EXTERNAL_PROTOS: &[ExternalProto] = &[
     ExternalProto {
         dir_relative_to_sysroot: "usr/include/chromeos/dbus/trunks",
         dir_relative_to_us: "../../../platform2/trunks",
-        proto_file_name: "interface.proto",
+        proto_file_name: "trunks_interface.proto",
         module: "trunks",
     },
 ];
