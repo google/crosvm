@@ -76,6 +76,7 @@ socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
 stat: 1
 statx: 1
 sysinfo: 1
+fstatfs: 1
 
 # Required for perfetto tracing
 # fcntl: arg1 == F_SETFD || arg1 == F_GETFL || arg1 == F_SETFL (merged above)
