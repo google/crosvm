@@ -148,7 +148,7 @@ impl Default for FenceState {
 trait QueueReader {
     fn pop(&self, mem: &GuestMemory) -> Option<DescriptorChain>;
     fn add_used(&self, mem: &GuestMemory, desc_index: u16, len: u32);
-    fn signal_used(&self);
+    fn signal_used(&self, mem: &GuestMemory);
 }
 
 struct LocalQueueReader {
@@ -174,8 +174,10 @@ impl QueueReader for LocalQueueReader {
         self.queue.borrow_mut().add_used(mem, desc_index, len)
     }
 
-    fn signal_used(&self) {
-        self.interrupt.signal_used_queue(self.queue.borrow().vector);
+    fn signal_used(&self, mem: &GuestMemory) {
+        self.queue
+            .borrow_mut()
+            .trigger_interrupt(mem, &*self.interrupt);
     }
 }
 
@@ -203,8 +205,8 @@ impl QueueReader for SharedQueueReader {
         self.queue.lock().add_used(mem, desc_index, len)
     }
 
-    fn signal_used(&self) {
-        self.interrupt.signal_used_queue(self.queue.lock().vector);
+    fn signal_used(&self, mem: &GuestMemory) {
+        self.queue.lock().trigger_interrupt(mem, &*self.interrupt);
     }
 }
 
@@ -288,7 +290,7 @@ fn create_fence_handler(
         }
 
         if signal {
-            ctrl_queue.signal_used();
+            ctrl_queue.signal_used(&mem);
         }
     })
 }
@@ -919,11 +921,11 @@ impl Worker {
             }
 
             if signal_used_ctrl {
-                self.ctrl_queue.signal_used();
+                self.ctrl_queue.signal_used(&self.mem);
             }
 
             if signal_used_cursor {
-                self.cursor_queue.signal_used();
+                self.cursor_queue.signal_used(&self.mem);
             }
         }
     }

@@ -75,7 +75,7 @@ impl Worker {
             self.cmd_queue
                 .add_used(&self.mem, desc_index, writer.bytes_written() as u32);
         }
-        self.interrupt.signal_used_queue(self.cmd_queue.vector);
+        self.cmd_queue.trigger_interrupt(&self.mem, &self.interrupt);
         Ok(())
     }
 
@@ -94,7 +94,8 @@ impl Worker {
             .map_err(|error| Error::WriteEventFailure { event, error })?;
         self.event_queue
             .add_used(&self.mem, desc_index, writer.bytes_written() as u32);
-        self.interrupt.signal_used_queue(self.event_queue.vector);
+        self.event_queue
+            .trigger_interrupt(&self.mem, &self.interrupt);
         Ok(())
     }
 

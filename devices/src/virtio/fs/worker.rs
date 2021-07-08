@@ -171,7 +171,7 @@ impl<F: FileSystem + Sync> Worker<F> {
         }
 
         if needs_interrupt {
-            self.irq.signal_used_queue(self.queue.vector);
+            self.queue.trigger_interrupt(&self.mem, &*self.irq);
         }
 
         Ok(())

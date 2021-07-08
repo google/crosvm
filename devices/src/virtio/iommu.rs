@@ -605,7 +605,7 @@ impl Worker {
                 }
             }
             if needs_interrupt {
-                self.interrupt.signal_used_queue(req_queue.vector);
+                req_queue.trigger_interrupt(&self.mem, &self.interrupt);
             }
         }
         Ok(())

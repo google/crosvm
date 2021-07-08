@@ -524,7 +524,8 @@ impl<T: EventSource> Worker<T> {
                 }
             }
             if needs_interrupt {
-                self.interrupt.signal_used_queue(self.event_queue.vector);
+                self.event_queue
+                    .trigger_interrupt(&self.guest_memory, &self.interrupt);
             }
         }
 

@@ -99,8 +99,7 @@ impl Worker {
             self.queue
                 .add_used(&self.mem, avail_desc.index, writer.bytes_written() as u32);
         }
-
-        self.interrupt.signal_used_queue(self.queue.vector);
+        self.queue.trigger_interrupt(&self.mem, &self.interrupt);
 
         Ok(())
     }

@@ -98,7 +98,7 @@ pub fn handle_input<I: SignalableInterrupt>(
         if bytes_written > 0 {
             receive_queue.pop_peeked(&mem);
             receive_queue.add_used(&mem, desc_index, bytes_written);
-            interrupt.signal_used_queue(receive_queue.vector);
+            receive_queue.trigger_interrupt(&mem, interrupt);
         }
 
         if disconnected {
@@ -158,7 +158,7 @@ pub fn process_transmit_queue<I: SignalableInterrupt>(
     }
 
     if needs_interrupt {
-        interrupt.signal_used_queue(transmit_queue.vector);
+        transmit_queue.trigger_interrupt(mem, interrupt);
     }
 }
 

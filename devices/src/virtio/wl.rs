@@ -1511,7 +1511,7 @@ pub fn process_in_queue<I: SignalableInterrupt>(
     }
 
     if needs_interrupt {
-        interrupt.signal_used_queue(in_queue.vector);
+        in_queue.trigger_interrupt(mem, interrupt);
     }
 
     if exhausted_queue {
@@ -1560,7 +1560,7 @@ pub fn process_out_queue<I: SignalableInterrupt>(
     }
 
     if needs_interrupt {
-        interrupt.signal_used_queue(out_queue.vector);
+        out_queue.trigger_interrupt(mem, interrupt);
     }
 }
 

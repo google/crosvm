@@ -154,7 +154,7 @@ impl Worker {
                 }
             }
             if needs_interrupt == NeedsInterrupt::Yes {
-                self.interrupt.signal_used_queue(self.queue.vector);
+                self.queue.trigger_interrupt(&self.mem, &self.interrupt);
             }
         }
     }

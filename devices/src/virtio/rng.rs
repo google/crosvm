@@ -119,7 +119,7 @@ impl Worker {
                 }
             }
             if needs_interrupt {
-                self.interrupt.signal_used_queue(self.queue.vector);
+                self.queue.trigger_interrupt(&self.mem, &self.interrupt);
             }
         }
     }

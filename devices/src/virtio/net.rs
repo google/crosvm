@@ -191,7 +191,7 @@ pub fn process_rx<I: SignalableInterrupt, T: TapT>(
     }
 
     if needs_interrupt {
-        interrupt.signal_used_queue(rx_queue.vector);
+        rx_queue.trigger_interrupt(mem, interrupt);
     }
 
     if exhausted_queue {
@@ -233,7 +233,7 @@ pub fn process_tx<I: SignalableInterrupt, T: TapT>(
         tx_queue.add_used(mem, index, 0);
     }
 
-    interrupt.signal_used_queue(tx_queue.vector);
+    tx_queue.trigger_interrupt(mem, interrupt);
 }
 
 pub fn process_ctrl<I: SignalableInterrupt, T: TapT>(
@@ -306,7 +306,7 @@ pub fn process_ctrl<I: SignalableInterrupt, T: TapT>(
         ctrl_queue.add_used(&mem, index, writer.bytes_written() as u32);
     }
 
-    interrupt.signal_used_queue(ctrl_queue.vector);
+    ctrl_queue.trigger_interrupt(mem, interrupt);
     Ok(())
 }
 
