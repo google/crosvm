@@ -345,6 +345,9 @@ impl Queue {
     //
     // This value is only used if the `VIRTIO_F_EVENT_IDX` feature has been negotiated.
     fn set_avail_event(&mut self, mem: &GuestMemory, avail_index: Wrapping<u16>) {
+        // Ensure that all previous writes are available before this one.
+        fence(Ordering::Release);
+
         let avail_event_addr = self
             .used_ring
             .unchecked_add(4 + 8 * u64::from(self.actual_size()));
@@ -358,6 +361,10 @@ impl Queue {
     #[allow(dead_code)]
     fn get_avail_flag(&self, mem: &GuestMemory, flag: u16) -> bool {
         let avail_flags: u16 = mem.read_obj_from_addr(self.avail_ring).unwrap();
+
+        // Don't allow subsequent reads to be ordered before the avail_flags read.
+        fence(Ordering::Acquire);
+
         avail_flags & flag == flag
     }
 
@@ -373,6 +380,10 @@ impl Queue {
             .avail_ring
             .unchecked_add(4 + 2 * u64::from(self.actual_size()));
         let used_event: u16 = mem.read_obj_from_addr(used_event_addr).unwrap();
+
+        // Prevent any reads after this from being ordered before the used_event read.
+        fence(Ordering::Acquire);
+
         Wrapping(used_event)
     }
 
@@ -393,6 +404,9 @@ impl Queue {
     //
     // Changes the bit specified by the mask in `flag` to `value`.
     fn set_used_flag(&mut self, mem: &GuestMemory, flag: u16, value: bool) {
+        // This fence ensures all descriptor writes are visible before the flag update.
+        fence(Ordering::Release);
+
         let mut used_flags: u16 = mem.read_obj_from_addr(self.used_ring).unwrap();
         if value {
             used_flags |= flag;
