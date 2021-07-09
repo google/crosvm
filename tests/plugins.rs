@@ -10,11 +10,11 @@ use std::fs::remove_file;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::sleep;
 use std::time::Duration;
 
 use base::{ioctl, AsRawDescriptor};
-use rand_ish::urandom_str;
 use tempfile::tempfile;
 
 struct RemovePath(PathBuf);
@@ -50,10 +50,13 @@ fn get_crosvm_path() -> PathBuf {
 }
 
 fn build_plugin(src: &str) -> RemovePath {
+    static PLUGIN_NUM: AtomicUsize = AtomicUsize::new(0);
     let libcrosvm_plugin_dir = get_target_path();
     let mut out_bin = libcrosvm_plugin_dir.clone();
-    let randbin = urandom_str(10).expect("failed to generate random bin name");
-    out_bin.push(randbin);
+    out_bin.push(format!(
+        "plugin-test{}",
+        PLUGIN_NUM.fetch_add(1, Ordering::Relaxed)
+    ));
     let mut child = Command::new(var_os("CC").unwrap_or(OsString::from("cc")))
         .args(&["-Icrosvm_plugin", "-pthread", "-o"]) // crosvm.h location and set output path.
         .arg(&out_bin)
