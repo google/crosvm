@@ -39,7 +39,6 @@ exclude = [
     "base",
     "cros_async",
     "data_model",
-    "rand_ish",
     "sync",
     "sys_util",
     "tempfile",
@@ -92,7 +91,6 @@ net_util = { path = "net_util" }
 p9 = "*"
 protobuf = { version = "2.3", optional = true }
 protos = { path = "protos", optional = true }
-rand_ish = { path = "rand_ish" }
 remain = "*"
 resources = { path = "resources" }
 serde_json = "*"

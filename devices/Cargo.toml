@@ -41,7 +41,6 @@ net_util = { path = "../net_util" }
 p9 = "*"
 power_monitor = { path = "../power_monitor" }
 protos = { path = "../protos", optional = true }
-rand_ish = { path = "../rand_ish" }
 remain = "*"
 resources = { path = "../resources" }
 serde = { version = "1", features = [ "derive" ] }

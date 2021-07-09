@@ -52,7 +52,6 @@ CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
     "power_monitor": [],
     "protos": [],
     "qcow_utils": [],
-    "rand_ish": [],
     "resources": [],
     "rutabaga_gfx": [Requirements.CROS_BUILD, Requirements.PRIVILEGED],
     "sync": [],

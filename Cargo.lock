@@ -239,7 +239,6 @@ dependencies = [
  "p9",
  "protobuf",
  "protos",
- "rand_ish",
  "remain",
  "resources",
  "rutabaga_gfx",
@@ -329,7 +328,6 @@ dependencies = [
  "p9",
  "power_monitor",
  "protos",
- "rand_ish",
  "remain",
  "resources",
  "rutabaga_gfx",
@@ -944,10 +942,6 @@ checksum = "ded997c9d5f13925be2a6fd7e66bf1872597f759fd9dd93513dd7e92e5a5ee08"
 dependencies = [
  "rand_core 0.3.1",
 ]
-
-[[package]]
-name = "rand_ish"
-version = "0.1.0"
 
 [[package]]
 name = "rand_jitter"

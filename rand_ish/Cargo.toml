@@ -1,5 +1,0 @@
-[package]
-name = "rand_ish"
-version = "0.1.0"
-authors = ["The Chromium OS Authors"]
-edition = "2018"
