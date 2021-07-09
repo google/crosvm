@@ -274,14 +274,6 @@ impl arch::LinuxArch for AArch64 {
 
         let mem = vm.get_memory().clone();
 
-        if components.protected_vm == ProtectionType::Protected {
-            vm.enable_protected_vm(
-                GuestAddress(AARCH64_PROTECTED_VM_FW_START),
-                AARCH64_PROTECTED_VM_FW_MAX_SIZE,
-            )
-            .map_err(Error::ProtectVm)?;
-        }
-
         let mut use_pmu = vm
             .get_hypervisor()
             .check_capability(&HypervisorCap::ArmPmuV3);
@@ -321,6 +313,14 @@ impl arch::LinuxArch for AArch64 {
                 false,
             )
             .map_err(Error::MapPvtimeError)?;
+        }
+
+        if components.protected_vm == ProtectionType::Protected {
+            vm.enable_protected_vm(
+                GuestAddress(AARCH64_PROTECTED_VM_FW_START),
+                AARCH64_PROTECTED_VM_FW_MAX_SIZE,
+            )
+            .map_err(Error::ProtectVm)?;
         }
 
         for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
