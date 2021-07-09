@@ -34,6 +34,8 @@ use devices::virtio::vhost::user::device::{
     run_block_device, run_console_device, run_fs_device, run_net_device, run_vsock_device,
     run_wl_device,
 };
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+use devices::virtio::VideoBackendType;
 #[cfg(feature = "gpu")]
 use devices::virtio::{
     gpu::{
@@ -454,6 +456,20 @@ fn parse_gpu_options(s: Option<&str>, gpu_params: &mut GpuParameters) -> argumen
     }
 
     Ok(())
+}
+
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+fn parse_video_options(s: Option<&str>) -> argument::Result<VideoBackendType> {
+    const VALID_VIDEO_BACKENDS: &[&str] = &["libvda"];
+
+    match s {
+        None => Ok(VideoBackendType::Libvda),
+        Some("libvda") => Ok(VideoBackendType::Libvda),
+        Some(s) => Err(argument::Error::InvalidValue {
+            value: s.to_owned(),
+            expected: format!("should be one of ({})", VALID_VIDEO_BACKENDS.join("|")),
+        }),
+    }
 }
 
 #[cfg(feature = "gpu")]
@@ -1866,11 +1882,11 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         #[cfg(feature = "video-decoder")]
         "video-decoder" => {
-            cfg.video_dec = true;
+            cfg.video_dec = Some(parse_video_options(value)?);
         }
         #[cfg(feature = "video-encoder")]
         "video-encoder" => {
-            cfg.video_enc = true;
+            cfg.video_enc = Some(parse_video_options(value)?);
         }
         "acpi-table" => {
             let acpi_table = PathBuf::from(value.unwrap());
@@ -2326,9 +2342,11 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
 iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("vfio-platform", "PATH", "Path to sysfs of platform pass through"),
           #[cfg(feature = "video-decoder")]
-          Argument::flag("video-decoder", "(EXPERIMENTAL) enable virtio-video decoder device"),
+          Argument::flag_or_value("video-decoder", "[backend]", "(EXPERIMENTAL) enable virtio-video decoder device
+                              Possible backend values: libvda"),
           #[cfg(feature = "video-encoder")]
-          Argument::flag("video-encoder", "(EXPERIMENTAL) enable virtio-video encoder device"),
+          Argument::flag_or_value("video-encoder", "[backend]", "(EXPERIMENTAL) enable virtio-video encoder device
+                              Possible backend values: libvda"),
           Argument::value("acpi-table", "PATH", "Path to user provided ACPI table"),
           Argument::flag("protected-vm", "(EXPERIMENTAL) prevent host access to guest memory"),
           #[cfg(target_arch = "aarch64")]

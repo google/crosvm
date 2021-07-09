@@ -27,6 +27,8 @@ use devices::virtio::cras_backend::Parameters as CrasSndParameters;
 use devices::virtio::fs::passthrough;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+use devices::virtio::VideoBackendType;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
 use devices::ProtectionType;
@@ -368,9 +370,9 @@ pub struct Config {
     pub split_irqchip: bool,
     pub vfio: Vec<VfioCommand>,
     #[cfg(feature = "video-decoder")]
-    pub video_dec: bool,
+    pub video_dec: Option<VideoBackendType>,
     #[cfg(feature = "video-encoder")]
-    pub video_enc: bool,
+    pub video_enc: Option<VideoBackendType>,
     pub acpi_tables: Vec<PathBuf>,
     pub protected_vm: ProtectionType,
     pub battery_type: Option<BatteryType>,
@@ -466,9 +468,9 @@ impl Default for Config {
             split_irqchip: false,
             vfio: Vec::new(),
             #[cfg(feature = "video-decoder")]
-            video_dec: false,
+            video_dec: None,
             #[cfg(feature = "video-encoder")]
-            video_enc: false,
+            video_enc: None,
             acpi_tables: Vec::new(),
             protected_vm: ProtectionType::Unprotected,
             battery_type: None,

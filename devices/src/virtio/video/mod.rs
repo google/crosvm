@@ -42,6 +42,7 @@ mod worker;
 mod vda;
 
 use command::ReadCmdError;
+use device::Device;
 use worker::Worker;
 
 const QUEUE_SIZE: u16 = 256;
@@ -86,6 +87,7 @@ pub enum VideoDeviceType {
 
 pub struct VideoDevice {
     device_type: VideoDeviceType,
+    backend: VideoBackendType,
     kill_evt: Option<Event>,
     resource_bridge: Option<Tube>,
     base_features: u64,
@@ -95,10 +97,12 @@ impl VideoDevice {
     pub fn new(
         base_features: u64,
         device_type: VideoDeviceType,
+        backend: VideoBackendType,
         resource_bridge: Option<Tube>,
     ) -> VideoDevice {
         VideoDevice {
             device_type,
+            backend,
             kill_evt: None,
             resource_bridge,
             base_features,
@@ -113,6 +117,11 @@ impl Drop for VideoDevice {
             let _ = kill_evt.write(1);
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum VideoBackendType {
+    Libvda,
 }
 
 impl VirtioDevice for VideoDevice {
@@ -188,6 +197,7 @@ impl VirtioDevice for VideoDevice {
         let cmd_evt = queue_evts.remove(0);
         let event_queue = queues.remove(0);
         let event_evt = queue_evts.remove(0);
+        let backend = self.backend;
         let resource_bridge = match self.resource_bridge.take() {
             Some(r) => r,
             None => {
@@ -209,15 +219,18 @@ impl VirtioDevice for VideoDevice {
             VideoDeviceType::Decoder => thread::Builder::new()
                 .name("virtio video decoder".to_owned())
                 .spawn(move || {
-                    let vda = match decoder::backend::vda::LibvdaDecoder::new() {
-                        Ok(vda) => vda,
-                        Err(e) => {
-                            error!("Failed to initialize VDA for decoder: {}", e);
-                            return;
+                    let device: Box<dyn Device> = match backend {
+                        VideoBackendType::Libvda => {
+                            let vda = match decoder::backend::vda::LibvdaDecoder::new() {
+                                Ok(vda) => vda,
+                                Err(e) => {
+                                    error!("Failed to initialize VDA for decoder: {}", e);
+                                    return;
+                                }
+                            };
+                            Box::new(decoder::Decoder::new(vda, resource_bridge))
                         }
                     };
-
-                    let device = Box::new(decoder::Decoder::new(vda, resource_bridge));
 
                     if let Err(e) = worker.run(device) {
                         error!("Failed to start decoder worker: {}", e);
@@ -228,19 +241,23 @@ impl VirtioDevice for VideoDevice {
             VideoDeviceType::Encoder => thread::Builder::new()
                 .name("virtio video encoder".to_owned())
                 .spawn(move || {
-                    let vda = match encoder::backend::vda::LibvdaEncoder::new() {
-                        Ok(vda) => vda,
-                        Err(e) => {
-                            error!("Failed to initialize VDA for encoder: {}", e);
-                            return;
-                        }
-                    };
+                    let device: Box<dyn Device> = match backend {
+                        VideoBackendType::Libvda => {
+                            let vda = match encoder::backend::vda::LibvdaEncoder::new() {
+                                Ok(vda) => vda,
+                                Err(e) => {
+                                    error!("Failed to initialize VDA for encoder: {}", e);
+                                    return;
+                                }
+                            };
 
-                    let device = match encoder::EncoderDevice::new(vda, resource_bridge) {
-                        Ok(device) => Box::new(device),
-                        Err(e) => {
-                            error!("Failed to create encoder device: {}", e);
-                            return;
+                            match encoder::EncoderDevice::new(vda, resource_bridge) {
+                                Ok(encoder) => Box::new(encoder),
+                                Err(e) => {
+                                    error!("Failed to create encoder device: {}", e);
+                                    return;
+                                }
+                            }
                         }
                     };
 

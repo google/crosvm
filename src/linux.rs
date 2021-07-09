@@ -39,6 +39,8 @@ use devices::virtio::vhost::user::vmm::{
     Mac80211Hwsim as VhostUserMac80211Hwsim, Net as VhostUserNet, Vsock as VhostUserVsock,
     Wl as VhostUserWl,
 };
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+use devices::virtio::VideoBackendType;
 use devices::virtio::{self, Console, VirtioDevice};
 #[cfg(feature = "gpu")]
 use devices::virtio::{
@@ -929,6 +931,7 @@ fn create_wayland_device(
 
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 fn create_video_device(
+    backend: VideoBackendType,
     cfg: &Config,
     typ: devices::virtio::VideoDeviceType,
     resource_bridge: Tube,
@@ -952,8 +955,10 @@ fn create_video_device(
             )?;
 
             // Render node for libvda.
-            let dev_dri_path = Path::new("/dev/dri/renderD128");
-            jail.mount_bind(dev_dri_path, dev_dri_path, false)?;
+            if backend == VideoBackendType::Libvda {
+                let dev_dri_path = Path::new("/dev/dri/renderD128");
+                jail.mount_bind(dev_dri_path, dev_dri_path, false)?;
+            }
 
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             {
@@ -983,6 +988,7 @@ fn create_video_device(
         dev: Box::new(devices::virtio::VideoDevice::new(
             virtio::base_features(cfg.protected_vm),
             typ,
+            backend,
             Some(resource_bridge),
         )),
         jail,
@@ -991,12 +997,13 @@ fn create_video_device(
 
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 fn register_video_device(
+    backend: VideoBackendType,
     devs: &mut Vec<VirtioDeviceStub>,
     video_tube: Tube,
     cfg: &Config,
     typ: devices::virtio::VideoDeviceType,
 ) -> Result<()> {
-    devs.push(create_video_device(cfg, typ, video_tube)?);
+    devs.push(create_video_device(backend, cfg, typ, video_tube)?);
     Ok(())
 }
 
@@ -1453,19 +1460,19 @@ fn create_virtio_devices(
     }
 
     #[cfg(feature = "video-decoder")]
-    let video_dec_tube = if cfg.video_dec {
+    let video_dec_cfg = if let Some(backend) = cfg.video_dec {
         let (video_tube, gpu_tube) = Tube::pair().context("failed to create tube")?;
         resource_bridges.push(gpu_tube);
-        Some(video_tube)
+        Some((video_tube, backend))
     } else {
         None
     };
 
     #[cfg(feature = "video-encoder")]
-    let video_enc_tube = if cfg.video_enc {
+    let video_enc_cfg = if let Some(backend) = cfg.video_enc {
         let (video_tube, gpu_tube) = Tube::pair().context("failed to create tube")?;
         resource_bridges.push(gpu_tube);
-        Some(video_tube)
+        Some((video_tube, backend))
     } else {
         None
     };
@@ -1539,8 +1546,9 @@ fn create_virtio_devices(
 
     #[cfg(feature = "video-decoder")]
     {
-        if let Some(video_dec_tube) = video_dec_tube {
+        if let Some((video_dec_tube, video_dec_backend)) = video_dec_cfg {
             register_video_device(
+                video_dec_backend,
                 &mut devs,
                 video_dec_tube,
                 cfg,
@@ -1551,8 +1559,9 @@ fn create_virtio_devices(
 
     #[cfg(feature = "video-encoder")]
     {
-        if let Some(video_enc_tube) = video_enc_tube {
+        if let Some((video_enc_tube, video_enc_backend)) = video_enc_cfg {
             register_video_device(
+                video_enc_backend,
                 &mut devs,
                 video_enc_tube,
                 cfg,
