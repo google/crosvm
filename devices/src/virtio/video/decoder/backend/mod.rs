@@ -13,6 +13,7 @@ use crate::virtio::video::{
 };
 use base::AsRawDescriptor;
 
+#[cfg(feature = "libvda")]
 pub mod vda;
 
 /// Contains the device's state for one playback session, i.e. one stream.

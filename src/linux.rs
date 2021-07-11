@@ -954,6 +954,7 @@ fn create_video_device(
                 "size=67108864",
             )?;
 
+            #[cfg(feature = "libvda")]
             // Render node for libvda.
             if backend == VideoBackendType::Libvda {
                 let dev_dri_path = Path::new("/dev/dri/renderD128");

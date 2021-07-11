@@ -460,10 +460,15 @@ fn parse_gpu_options(s: Option<&str>, gpu_params: &mut GpuParameters) -> argumen
 
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 fn parse_video_options(s: Option<&str>) -> argument::Result<VideoBackendType> {
-    const VALID_VIDEO_BACKENDS: &[&str] = &["libvda"];
+    const VALID_VIDEO_BACKENDS: &[&str] = &[
+        #[cfg(feature = "libvda")]
+        "libvda",
+    ];
 
     match s {
+        #[cfg(feature = "libvda")]
         None => Ok(VideoBackendType::Libvda),
+        #[cfg(feature = "libvda")]
         Some("libvda") => Ok(VideoBackendType::Libvda),
         Some(s) => Err(argument::Error::InvalidValue {
             value: s.to_owned(),
