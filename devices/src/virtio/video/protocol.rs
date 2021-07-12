@@ -105,6 +105,7 @@ pub struct virtio_video_config {
     pub version: Le32,
     pub max_caps_length: Le32,
     pub max_resp_length: Le32,
+    pub device_name: [u8; 32],
 }
 // Safe because auto-generated structs have no implicit padding.
 unsafe impl DataInit for virtio_video_config {}
