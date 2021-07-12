@@ -339,11 +339,19 @@ impl<S: DecoderSession> Context<S> {
         let rect_width: u32 = (visible_rect.right - visible_rect.left) as u32;
         let rect_height: u32 = (visible_rect.bottom - visible_rect.top) as u32;
 
-        let plane_size = rect_width * rect_height;
-        let stride = rect_width;
         let plane_formats = vec![
-            PlaneFormat { plane_size, stride },
-            PlaneFormat { plane_size, stride },
+            // Y plane, 1 sample per pixel.
+            PlaneFormat {
+                plane_size: rect_width * rect_height,
+                stride: rect_width,
+            },
+            // UV plane, 1 sample per group of 4 pixels for U and V.
+            PlaneFormat {
+                // Add one vertical line so odd resolutions result in an extra UV line to cover all the
+                // Y samples.
+                plane_size: rect_width * ((rect_height + 1) / 2),
+                stride: rect_width,
+            },
         ];
 
         self.out_params = Params {
