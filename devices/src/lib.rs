@@ -23,7 +23,7 @@ mod register_space;
 pub mod acpi;
 pub mod bat;
 mod serial;
-mod serial_device;
+pub mod serial_device;
 #[cfg(feature = "usb")]
 pub mod usb;
 #[cfg(feature = "usb")]

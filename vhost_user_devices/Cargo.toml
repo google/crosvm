@@ -34,6 +34,7 @@ required-features = ["block"]
 
 [dependencies]
 anyhow = "*"
+arch = { path = "../arch" }
 base = { path = "../base" }
 cros_async = { path = "../cros_async" }
 data_model = { path = "../data_model", optional = true }

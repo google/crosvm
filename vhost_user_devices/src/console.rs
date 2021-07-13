@@ -2,20 +2,23 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::{self, stdin, stdout};
+use std::io::{self, stdin};
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
 use devices::virtio::copy_config;
 
 use anyhow::{anyhow, bail, Context};
-use base::{error, read_raw_stdin, warn, Event, Terminal};
+use arch::serial::{SerialHardware, SerialParameters, SerialType};
+use base::{error, warn, Event, RawDescriptor, Terminal};
 use cros_async::{EventAsync, Executor};
 use data_model::DataInit;
+use devices::serial_device::SerialDevice;
 use devices::virtio;
 use devices::virtio::console::{
     handle_input, process_transmit_queue, spawn_input_thread, virtio_console_config, ConsoleError,
 };
+use devices::ProtectionType;
 use futures::future::{AbortHandle, Abortable};
 use getopts::Options;
 use once_cell::sync::OnceCell;
@@ -80,32 +83,24 @@ struct ConsoleBackend {
     workers: [Option<AbortHandle>; Self::MAX_QUEUE_NUM],
 }
 
-impl ConsoleBackend {
-    pub fn new() -> anyhow::Result<Self> {
+impl SerialDevice for ConsoleBackend {
+    fn new(
+        _protected_vm: ProtectionType,
+        _evt: Event,
+        input: Option<Box<dyn io::Read + Send>>,
+        output: Option<Box<dyn io::Write + Send>>,
+        _keep_rds: Vec<RawDescriptor>,
+    ) -> ConsoleBackend {
         let avail_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-
-        // TODO(b/192517623): implement alternative input/output queues
-        // Default to stdin/stdout as in/out queues for now
-        // Follow same logic as arch/src/Serial.rs queue init
-        struct StdinWrapper;
-        impl io::Read for StdinWrapper {
-            fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
-                read_raw_stdin(out).map_err(|e| e.into())
-            }
-        }
-
-        let input: Option<Box<dyn io::Read + Send>> = Some(Box::new(StdinWrapper));
-        let output: Option<Box<dyn io::Write + Send>> = Some(Box::new(stdout()));
-
-        Ok(Self {
+        ConsoleBackend {
             input,
             output,
             avail_features,
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
             workers: Default::default(),
-        })
+        }
     }
 }
 
@@ -250,7 +245,33 @@ impl VhostUserBackend for ConsoleBackend {
 }
 
 fn run_console(socket: &String) -> anyhow::Result<()> {
-    let console = ConsoleBackend::new().context("Failed to create ConsoleBackend")?;
+    // TODO(b/192517623): implement alternative input/output queues
+    // Default to stdin/stdout as in/out queues for now
+    let params = SerialParameters {
+        type_: SerialType::Stdout,
+        hardware: SerialHardware::VirtioConsole,
+        // Required only if type_ is SerialType::File or SerialType::UnixSocket
+        path: None,
+        // Required only if stdin is false
+        input: None,
+        num: 1,
+        console: true,
+        earlycon: false,
+        stdin: true,
+    };
+
+    // We need to pass an event as per Serial Device API but we don't really use it anyway.
+    let evt = Event::new()?;
+    // Same for keep_rds, we don't really use this.
+    let mut keep_rds = Vec::new();
+    let console = match params.create_serial_device::<ConsoleBackend>(
+        ProtectionType::Unprotected,
+        &evt,
+        &mut keep_rds,
+    ) {
+        Ok(c) => c,
+        Err(e) => bail!(e),
+    };
 
     let handler = DeviceRequestHandler::new(console);
     let ex = Executor::new().context("Failed to create executor")?;
