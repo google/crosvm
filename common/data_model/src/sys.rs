@@ -43,6 +43,27 @@ impl<'a> IoBufMut<'a> {
         }
     }
 
+    /// Advance the internal position of the buffer.
+    ///
+    /// Panics if `count > self.len()`.
+    pub fn advance(&mut self, count: usize) {
+        assert!(count <= self.len());
+
+        self.iov.iov_len -= count;
+        // Safe because we've checked that `count <= self.len()` so both the starting and resulting
+        // pointer are within the bounds of the allocation.
+        self.iov.iov_base = unsafe { self.iov.iov_base.add(count) };
+    }
+
+    /// Shorten the length of the buffer.
+    ///
+    /// Has no effect if `len > self.len()`.
+    pub fn truncate(&mut self, len: usize) {
+        if len < self.len() {
+            self.iov.iov_len = len;
+        }
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.iov.iov_len as usize

@@ -166,6 +166,12 @@ impl IntoRawFd for EventFd {
     }
 }
 
+impl From<EventFd> for SafeDescriptor {
+    fn from(evt: EventFd) -> Self {
+        evt.event_handle
+    }
+}
+
 /// An `EventFd` wrapper which triggers when it goes out of scope.
 ///
 /// If the underlying `EventFd` fails to trigger during drop, a panic is triggered instead.
