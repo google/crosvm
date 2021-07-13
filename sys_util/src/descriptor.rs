@@ -161,6 +161,13 @@ impl From<File> for SafeDescriptor {
     }
 }
 
+impl From<SafeDescriptor> for UnixStream {
+    fn from(s: SafeDescriptor) -> Self {
+        // Safe because we own the SafeDescriptor at this point.
+        unsafe { Self::from_raw_fd(s.into_raw_descriptor()) }
+    }
+}
+
 /// For use cases where a simple wrapper around a RawDescriptor is needed.
 /// This is a simply a wrapper and does not manage the lifetime of the descriptor.
 /// Most usages should prefer SafeDescriptor or using a RawDescriptor directly

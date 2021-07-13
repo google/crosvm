@@ -6,14 +6,14 @@ use std::cmp::{max, min};
 use std::collections::HashSet;
 use std::convert::TryInto;
 use std::fmt::{self, Display};
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use base::{
-    AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole,
-    RawDescriptor, WriteZeroesAt,
+    open_file, AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync,
+    PunchHole, RawDescriptor, WriteZeroesAt,
 };
 use crc32fast::Hasher;
 use data_model::VolatileSlice;
@@ -189,18 +189,15 @@ impl CompositeDiskFile {
         if proto.get_version() != COMPOSITE_DISK_VERSION {
             return Err(Error::UnknownVersion(proto.get_version()));
         }
-        let mut open_options = OpenOptions::new();
-        open_options.read(true);
         let mut disks: Vec<ComponentDiskPart> = proto
             .get_component_disks()
             .iter()
             .map(|disk| {
-                open_options.write(
-                    disk.get_read_write_capability() == cdisk_spec::ReadWriteCapability::READ_WRITE,
-                );
-                let file = open_options
-                    .open(disk.get_file_path())
-                    .map_err(|e| Error::OpenFile(e, disk.get_file_path().to_string()))?;
+                let file = open_file(
+                    Path::new(disk.get_file_path()),
+                    disk.get_read_write_capability() != cdisk_spec::ReadWriteCapability::READ_WRITE,
+                )
+                .map_err(|e| Error::OpenFile(e.into(), disk.get_file_path().to_string()))?;
                 Ok(ComponentDiskPart {
                     file: create_disk_file(file).map_err(|e| Error::DiskError(Box::new(e)))?,
                     offset: disk.get_offset(),

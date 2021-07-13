@@ -94,16 +94,17 @@ pub use crate::write_zeroes::{PunchHole, WriteZeroes, WriteZeroesAt};
 
 use std::cell::Cell;
 use std::ffi::CStr;
-use std::fs::{remove_file, File};
+use std::fs::{remove_file, File, OpenOptions};
 use std::mem;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
+use std::path::Path;
 use std::ptr;
 use std::time::Duration;
 
 use libc::{
-    c_int, c_long, fcntl, pipe2, syscall, sysconf, waitpid, SYS_getpid, SYS_gettid, F_GETFL,
-    F_SETFL, O_CLOEXEC, SIGKILL, WNOHANG, _SC_IOV_MAX, _SC_PAGESIZE,
+    c_int, c_long, fcntl, pipe2, syscall, sysconf, waitpid, SYS_getpid, SYS_gettid, EINVAL,
+    F_GETFL, F_SETFL, O_CLOEXEC, SIGKILL, WNOHANG, _SC_IOV_MAX, _SC_PAGESIZE,
 };
 
 /// Re-export libc types that are part of the API.
@@ -465,8 +466,45 @@ pub fn max_timeout() -> Duration {
     Duration::new(libc::time_t::max_value() as u64, 999999999)
 }
 
+/// If the given path is of the form /proc/self/fd/N for some N, returns `Ok(Some(N))`. Otherwise
+/// returns `Ok(None`).
+pub fn safe_descriptor_from_path<P: AsRef<Path>>(path: P) -> Result<Option<SafeDescriptor>> {
+    let path = path.as_ref();
+    if path.parent() == Some(Path::new("/proc/self/fd")) {
+        let raw_descriptor = path
+            .file_name()
+            .and_then(|fd_osstr| fd_osstr.to_str())
+            .and_then(|fd_str| fd_str.parse::<RawFd>().ok())
+            .ok_or_else(|| Error::new(EINVAL))?;
+        let validated_fd = validate_raw_fd(raw_descriptor)?;
+        Ok(Some(
+            // Safe because nothing else has access to validated_fd after this call.
+            unsafe { SafeDescriptor::from_raw_descriptor(validated_fd) },
+        ))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Open the file with the given path, or if it is of the form `/proc/self/fd/N` then just use the
+/// file descriptor.
+///
+/// Note that this will not work properly if the same `/proc/self/fd/N` path is used twice in
+/// different places, as the metadata (including the offset) will be shared between both file
+/// descriptors.
+pub fn open_file<P: AsRef<Path>>(path: P, read_only: bool) -> Result<File> {
+    let path = path.as_ref();
+    // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
+    Ok(if let Some(fd) = safe_descriptor_from_path(path)? {
+        fd.into()
+    } else {
+        OpenOptions::new().read(true).write(!read_only).open(path)?
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    use libc::EBADF;
     use std::io::Write;
 
     use super::*;
@@ -480,5 +518,36 @@ mod tests {
         add_fd_flags(tx.as_raw_fd(), libc::O_NONBLOCK).expect("Failed to set tx non blocking");
         tx.write(&[0u8; 8])
             .expect_err("Write after fill didn't fail");
+    }
+
+    #[test]
+    fn safe_descriptor_from_path_valid() {
+        assert!(safe_descriptor_from_path(Path::new("/proc/self/fd/2"))
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
+    fn safe_descriptor_from_path_invalid_integer() {
+        assert_eq!(
+            safe_descriptor_from_path(Path::new("/proc/self/fd/blah")),
+            Err(Error::new(EINVAL))
+        );
+    }
+
+    #[test]
+    fn safe_descriptor_from_path_invalid_fd() {
+        assert_eq!(
+            safe_descriptor_from_path(Path::new("/proc/self/fd/42")),
+            Err(Error::new(EBADF))
+        );
+    }
+
+    #[test]
+    fn safe_descriptor_from_path_none() {
+        assert_eq!(
+            safe_descriptor_from_path(Path::new("/something/else")).unwrap(),
+            None
+        );
     }
 }

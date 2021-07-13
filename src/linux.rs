@@ -16,7 +16,6 @@ use std::iter;
 use std::mem;
 use std::net::Ipv4Addr;
 use std::num::ParseIntError;
-use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::ptr;
@@ -149,8 +148,7 @@ pub enum Error {
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     HandleDebugCommand(<Arch as LinuxArch>::Error),
     InputDeviceNew(virtio::InputError),
-    InputEventsOpen(std::io::Error),
-    InvalidFdPath,
+    InputEventsOpen(io::Error),
     InvalidWaylandPath,
     IoJail(minijail::Error),
     LoadKernel(Box<dyn StdError>),
@@ -281,7 +279,6 @@ impl Display for Error {
             HandleDebugCommand(e) => write!(f, "failed to handle a gdb command: {}", e),
             InputDeviceNew(e) => write!(f, "failed to set up input device: {}", e),
             InputEventsOpen(e) => write!(f, "failed to open event device: {}", e),
-            InvalidFdPath => write!(f, "failed parsing a /proc/self/fd/*"),
             InvalidWaylandPath => write!(f, "wayland socket path has no parent or file name"),
             IoJail(e) => write!(f, "{}", e),
             LoadKernel(e) => write!(f, "failed to load kernel: {}", e),
@@ -520,33 +517,9 @@ fn simple_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
 
 type DeviceResult<T = VirtioDeviceStub> = std::result::Result<T, Error>;
 
-/// Open the file with the given path, or if it is of the form `/proc/self/fd/N` then just use the
-/// file descriptor.
-///
-/// Note that this will not work properly if the same `/proc/self/fd/N` path is used twice in
-/// different places, as the metadata (including the offset) will be shared between both file
-/// descriptors.
-fn open_file<F>(path: &Path, read_only: bool, error_constructor: F) -> Result<File>
-where
-    F: FnOnce(PathBuf, io::Error) -> Error,
-{
-    // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
-    Ok(
-        if let Some(raw_descriptor) = raw_descriptor_from_path(path)? {
-            // Safe because we will validate |raw_fd|.
-            unsafe { File::from_raw_descriptor(raw_descriptor) }
-        } else {
-            OpenOptions::new()
-                .read(true)
-                .write(!read_only)
-                .open(path)
-                .map_err(|e| error_constructor(path.to_path_buf(), e))?
-        },
-    )
-}
-
 fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) -> DeviceResult {
-    let raw_image: File = open_file(&disk.path, disk.read_only, Error::Disk)?;
+    let raw_image: File = open_file(&disk.path, disk.read_only)
+        .map_err(|e| Error::Disk(disk.path.clone(), e.into()))?;
     // Lock the disk image to prevent other crosvm instances from using it.
     let lock_op = if disk.read_only {
         FlockOperation::LockShared
@@ -1344,7 +1317,8 @@ fn create_pmem_device(
     index: usize,
     pmem_device_tube: Tube,
 ) -> DeviceResult {
-    let fd = open_file(&disk.path, disk.read_only, Error::Disk)?;
+    let fd = open_file(&disk.path, disk.read_only)
+        .map_err(|e| Error::Disk(disk.path.clone(), e.into()))?;
 
     let arena_size = {
         let metadata =
@@ -1954,32 +1928,16 @@ fn add_crosvm_user_to_jail(jail: &mut Minijail, feature: &str) -> Result<Ids> {
     })
 }
 
-/// If the given path is of the form /proc/self/fd/N for some N, returns `Ok(Some(N))`. Otherwise
-/// returns `Ok(None`).
-fn raw_descriptor_from_path(path: &Path) -> Result<Option<RawDescriptor>> {
-    if path.parent() == Some(Path::new("/proc/self/fd")) {
-        let raw_descriptor = path
-            .file_name()
-            .and_then(|fd_osstr| fd_osstr.to_str())
-            .and_then(|fd_str| fd_str.parse::<c_int>().ok())
-            .ok_or(Error::InvalidFdPath)?;
-        validate_raw_descriptor(raw_descriptor)
-            .map_err(Error::ValidateRawDescriptor)
-            .map(Some)
-    } else {
-        Ok(None)
-    }
-}
-
 trait IntoUnixStream {
     fn into_unix_stream(self) -> Result<UnixStream>;
 }
 
 impl<'a> IntoUnixStream for &'a Path {
     fn into_unix_stream(self) -> Result<UnixStream> {
-        if let Some(raw_descriptor) = raw_descriptor_from_path(self)? {
-            // Safe because we will validate |raw_fd|.
-            unsafe { Ok(UnixStream::from_raw_fd(raw_descriptor)) }
+        if let Some(fd) =
+            safe_descriptor_from_path(self).map_err(|e| Error::InputEventsOpen(e.into()))?
+        {
+            Ok(fd.into())
         } else {
             UnixStream::connect(self).map_err(Error::InputEventsOpen)
         }
@@ -2442,18 +2400,23 @@ where
 
 fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     let initrd_image = if let Some(initrd_path) = &cfg.initrd_path {
-        Some(open_file(initrd_path, true, Error::OpenInitrd)?)
+        Some(
+            open_file(initrd_path, true)
+                .map_err(|e| Error::OpenInitrd(initrd_path.to_owned(), e.into()))?,
+        )
     } else {
         None
     };
 
     let vm_image = match cfg.executable_path {
-        Some(Executable::Kernel(ref kernel_path)) => {
-            VmImage::Kernel(open_file(kernel_path, true, Error::OpenKernel)?)
-        }
-        Some(Executable::Bios(ref bios_path)) => {
-            VmImage::Bios(open_file(bios_path, true, Error::OpenBios)?)
-        }
+        Some(Executable::Kernel(ref kernel_path)) => VmImage::Kernel(
+            open_file(kernel_path, true)
+                .map_err(|e| Error::OpenKernel(kernel_path.to_owned(), e.into()))?,
+        ),
+        Some(Executable::Bios(ref bios_path)) => VmImage::Bios(
+            open_file(bios_path, true)
+                .map_err(|e| Error::OpenBios(bios_path.to_owned(), e.into()))?,
+        ),
         _ => panic!("Did not receive a bios or kernel, should be impossible."),
     };
 
