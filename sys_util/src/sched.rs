@@ -72,7 +72,7 @@ pub fn enable_core_scheduling() -> Result<()> {
     const PR_SCHED_CORE: i32 = 62;
     const PR_SCHED_CORE_CREATE: i32 = 1;
 
-    #[allow(non_camel_case_types, dead_code)]
+    #[allow(clippy::upper_case_acronyms, non_camel_case_types, dead_code)]
     /// Specifies the scope of the pid parameter of `PR_SCHED_CORE`.
     enum pid_type {
         /// `PID` refers to threads.

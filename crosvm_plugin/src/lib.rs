@@ -31,7 +31,7 @@ use std::sync::Arc;
 
 use libc::{E2BIG, EINVAL, ENOENT, ENOTCONN, EPROTO};
 
-use protobuf::{parse_from_bytes, Message, ProtobufEnum, RepeatedField};
+use protobuf::{Message, ProtobufEnum, RepeatedField};
 
 use base::ScmSocket;
 
@@ -308,8 +308,8 @@ impl crosvm {
             .map(|&fd| unsafe { File::from_raw_fd(fd) })
             .collect();
 
-        let response: MainResponse =
-            parse_from_bytes(&self.response_buffer[..msg_size]).map_err(proto_error_to_int)?;
+        let response: MainResponse = Message::parse_from_bytes(&self.response_buffer[..msg_size])
+            .map_err(proto_error_to_int)?;
         if response.errno != 0 {
             return Err(response.errno);
         }
@@ -1070,7 +1070,7 @@ impl crosvm_vcpu {
         if bytes == 0 || total_size > self.response_length {
             return Err(EINVAL);
         }
-        let response: VcpuResponse = parse_from_bytes(
+        let response: VcpuResponse = Message::parse_from_bytes(
             &self.response_buffer[self.response_base + bytes..self.response_base + total_size],
         )
         .map_err(proto_error_to_int)?;

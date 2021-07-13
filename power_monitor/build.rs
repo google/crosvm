@@ -31,13 +31,12 @@ fn main() {
         let input_files = [power_manager_dir.join("power_supply_properties.proto")];
         let include_dirs = [power_manager_dir];
 
-        protoc_rust::run(protoc_rust::Args {
-            out_dir: out_dir.as_os_str().to_str().unwrap(),
-            input: &paths_to_strs(&input_files),
-            includes: &paths_to_strs(&include_dirs),
-            customize: Default::default(),
-        })
-        .expect("protoc");
+        protoc_rust::Codegen::new()
+            .inputs(&paths_to_strs(&input_files))
+            .includes(&paths_to_strs(&include_dirs))
+            .out_dir(out_dir.as_os_str().to_str().unwrap())
+            .run()
+            .expect("protoc");
 
         let mut path_include_mods = String::new();
         for input_file in input_files.iter() {

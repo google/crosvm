@@ -521,7 +521,7 @@ impl Process {
             return Err(Error::PluginSocketHup);
         }
 
-        let request = protobuf::parse_from_bytes::<MainRequest>(&self.request_buffer[..msg_size])
+        let request: MainRequest = Message::parse_from_bytes(&self.request_buffer[..msg_size])
             .map_err(Error::DecodeRequest)?;
 
         /// Use this to make it easier to stuff various kinds of File-like objects into the

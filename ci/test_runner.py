@@ -620,6 +620,8 @@ def main(
         print("--require-all needs to be run with --use-vm or --run-privileged")
         exit(1)
 
+    os.environ["RUST_BACKTRACE"] = "1"
+
     execute_tests(
         crate_requirements,
         feature_requirements,

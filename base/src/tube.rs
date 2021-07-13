@@ -150,9 +150,9 @@ impl Deref for AsyncTube {
     }
 }
 
-impl Into<Tube> for AsyncTube {
-    fn into(self) -> Tube {
-        self.inner.into_source()
+impl From<AsyncTube> for Tube {
+    fn from(at: AsyncTube) -> Tube {
+        at.inner.into_source()
     }
 }
 

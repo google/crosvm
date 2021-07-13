@@ -87,9 +87,9 @@ impl IntoRawDescriptor for SharedMemory {
     }
 }
 
-impl Into<SafeDescriptor> for SharedMemory {
-    fn into(self) -> SafeDescriptor {
+impl From<SharedMemory> for SafeDescriptor {
+    fn from(sm: SharedMemory) -> SafeDescriptor {
         // Safe because we own the SharedMemory at this point.
-        unsafe { SafeDescriptor::from_raw_descriptor(self.into_raw_descriptor()) }
+        unsafe { SafeDescriptor::from_raw_descriptor(sm.into_raw_descriptor()) }
     }
 }

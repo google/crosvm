@@ -310,6 +310,7 @@ impl URingContext {
             .add_rw_op(ptr, len, fd, offset, user_data, IORING_OP_READV as u8)
     }
 
+    /// # Safety
     /// See 'writev' but accepts an iterator instead of a vector if there isn't already a vector in
     /// existence.
     pub unsafe fn add_writev_iter<I>(
@@ -368,6 +369,7 @@ impl URingContext {
         Ok(())
     }
 
+    /// # Safety
     /// See 'readv' but accepts an iterator instead of a vector if there isn't already a vector in
     /// existence.
     pub unsafe fn add_readv_iter<I>(

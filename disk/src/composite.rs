@@ -185,7 +185,7 @@ impl CompositeDiskFile {
             return Err(Error::InvalidMagicHeader);
         }
         let proto: cdisk_spec::CompositeDisk =
-            protobuf::parse_from_reader(&mut file).map_err(Error::InvalidProto)?;
+            Message::parse_from_reader(&mut file).map_err(Error::InvalidProto)?;
         if proto.get_version() != COMPOSITE_DISK_VERSION {
             return Err(Error::UnknownVersion(proto.get_version()));
         }

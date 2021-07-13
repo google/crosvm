@@ -74,6 +74,7 @@ impl Unix for MemoryMapping {
 }
 
 pub trait MemoryMappingBuilderUnix<'a> {
+    #[allow(clippy::wrong_self_convention)]
     fn from_descriptor(self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder;
 }
 
@@ -89,6 +90,7 @@ impl<'a> MemoryMappingBuilderUnix<'a> for MemoryMappingBuilder<'a> {
     /// Build the memory mapping given the specified descriptor to mapped memory
     ///
     /// Default: Create a new memory mapping.
+    #[allow(clippy::wrong_self_convention)]
     fn from_descriptor(mut self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder {
         self.descriptor = Some(descriptor);
         self
@@ -114,7 +116,7 @@ impl<'a> MemoryMappingBuilder<'a> {
     ///
     /// Note: this is a forward looking interface to accomodate platforms that
     /// require special handling for file backed mappings.
-    #[allow(unused_mut)]
+    #[allow(clippy::wrong_self_convention, unused_mut)]
     pub fn from_file(mut self, file: &'a File) -> MemoryMappingBuilder {
         self.descriptor = Some(file as &dyn AsRawDescriptor);
         self

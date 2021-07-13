@@ -13,7 +13,7 @@ use std::sync::{Arc, RwLock};
 
 use libc::{EINVAL, ENOENT, ENOTTY, EPERM, EPIPE, EPROTO};
 
-use protobuf::Message;
+use protobuf::{CodedOutputStream, Message};
 
 use assertions::const_assert;
 use base::{error, LayoutAllocation};
@@ -23,7 +23,6 @@ use kvm_sys::{
     kvm_debugregs, kvm_enable_cap, kvm_fpu, kvm_lapic_state, kvm_mp_state, kvm_msr_entry, kvm_msrs,
     kvm_regs, kvm_sregs, kvm_vcpu_events, kvm_xcrs, KVM_CPUID_FLAG_SIGNIFCANT_INDEX,
 };
-use protobuf::CodedOutputStream;
 use protos::plugin::*;
 use sync::Mutex;
 
@@ -592,9 +591,8 @@ impl PluginVcpu {
             let mut read_pipe = &self.read_pipe;
             let msg_size = read_pipe.read(&mut request_buffer).map_err(io_to_sys_err)?;
 
-            let mut request =
-                protobuf::parse_from_bytes::<VcpuRequest>(&request_buffer[..msg_size])
-                    .map_err(proto_to_sys_err)?;
+            let mut request: VcpuRequest =
+                Message::parse_from_bytes(&request_buffer[..msg_size]).map_err(proto_to_sys_err)?;
 
             let res = if request.has_wait() {
                 match wait_reason {
