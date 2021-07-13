@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use acpi_tables::aml::Aml;
 use acpi_tables::sdt::SDT;
-use base::{syslog, AsRawDescriptor, Event, Tube};
+use base::{syslog, AsRawDescriptor, AsRawDescriptors, Event, Tube};
 use devices::virtio::VirtioDevice;
 use devices::{
     Bus, BusDevice, BusError, IrqChip, PciAddress, PciDevice, PciDeviceError, PciInterruptPin,
@@ -364,6 +364,7 @@ pub fn generate_pci_root(
         let address = device_addrs[dev_idx];
         let mut keep_rds = device.keep_rds();
         syslog::push_descriptors(&mut keep_rds);
+        keep_rds.append(&mut vm.get_memory().as_raw_descriptors());
 
         let irqfd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
         let irq_resample_fd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
