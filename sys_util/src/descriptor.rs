@@ -235,41 +235,16 @@ macro_rules! IntoRawDescriptor {
 // relevant container type.
 AsRawDescriptor!(File);
 AsRawDescriptor!(UnlinkUnixSeqpacketListener);
+AsRawDescriptor!(UdpSocket);
+AsRawDescriptor!(UnixDatagram);
+AsRawDescriptor!(UnixStream);
 FromRawDescriptor!(File);
+FromRawDescriptor!(UnixDatagram);
 IntoRawDescriptor!(File);
+IntoRawDescriptor!(UnixDatagram);
 AsRawDescriptor!(Stdin);
 AsRawDescriptor!(Stdout);
 AsRawDescriptor!(Stderr);
-
-impl AsRawDescriptor for UdpSocket {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.as_raw_fd()
-    }
-}
-
-impl AsRawDescriptor for UnixStream {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.as_raw_fd()
-    }
-}
-
-impl AsRawDescriptor for UnixDatagram {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.as_raw_fd()
-    }
-}
-
-impl FromRawDescriptor for UnixDatagram {
-    unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
-        Self::from_raw_fd(descriptor)
-    }
-}
-
-impl IntoRawDescriptor for UnixDatagram {
-    fn into_raw_descriptor(self) -> RawDescriptor {
-        self.into_raw_fd()
-    }
-}
 
 #[test]
 fn clone_equality() {
