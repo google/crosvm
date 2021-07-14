@@ -396,6 +396,7 @@ const GFXSTREAM_RENDERER_FLAGS_USE_GLES: u32 = 1 << 4;
 const GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT: u32 = 1 << 5;
 const GFXSTREAM_RENDERER_FLAGS_NO_SYNCFD_BIT: u32 = 1 << 20;
 const GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE: u32 = 1 << 21;
+const GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB: u32 = 1 << 23;
 
 /// gfxstream flag struct.
 #[derive(Copy, Clone, Default)]
@@ -448,6 +449,11 @@ impl GfxstreamFlags {
     /// Use ANGLE as the guest GLES driver.
     pub fn use_guest_angle(self, v: bool) -> GfxstreamFlags {
         self.set_flag(GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE, v)
+    }
+
+    /// Use async fence completion callback.
+    pub fn use_async_fence_cb(self, v: bool) -> GfxstreamFlags {
+        self.set_flag(GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB, v)
     }
 }
 

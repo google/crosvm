@@ -1024,7 +1024,8 @@ impl Gpu {
             .use_surfaceless(gpu_parameters.renderer_use_surfaceless)
             .use_guest_angle(gpu_parameters.gfxstream_use_guest_angle)
             .use_syncfd(gpu_parameters.gfxstream_use_syncfd)
-            .use_vulkan(gpu_parameters.use_vulkan);
+            .use_vulkan(gpu_parameters.use_vulkan)
+            .use_async_fence_cb(true);
 
         let mut rutabaga_channels: Vec<RutabagaChannel> = Vec::new();
         for (channel_name, path) in &channels {
