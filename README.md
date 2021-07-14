@@ -17,6 +17,10 @@ workflow as any `cros_workon` package. The full package name is
 See the [Chromium OS developer guide] for more on how to build and deploy with
 Portage.
 
+NOTE: `cros_workon_make` modifies crosvm's Cargo.toml and Cargo.lock. Please be
+careful not to commit the changes. Moreover, with the changes cargo will fail to
+build and clippy preupload check will fail.
+
 [Chromium OS developer guide]: https://chromium.googlesource.com/chromiumos/docs/+/HEAD/developer_guide.md
 
 ### Building with Docker
