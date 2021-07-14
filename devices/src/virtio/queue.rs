@@ -532,13 +532,7 @@ impl Queue {
             // so no need to inject new interrupt.
             self.next_used - used_event - Wrapping(1) < self.next_used - self.last_used
         } else {
-            // TODO(b/172975852): This branch should check the flag that requests interrupt
-            // supression:
-            // ```
-            // !self.get_avail_flag(mem, VIRTQ_AVAIL_F_NO_INTERRUPT)
-            // ```
-            // Re-enable the flag check once the missing interrupt issue is debugged.
-            true
+            !self.get_avail_flag(mem, VIRTQ_AVAIL_F_NO_INTERRUPT)
         }
     }
 
