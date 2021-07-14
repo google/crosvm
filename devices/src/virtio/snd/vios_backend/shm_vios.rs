@@ -12,7 +12,7 @@ use base::{
 };
 use data_model::{DataInit, Le32, Le64, VolatileMemory, VolatileMemoryError, VolatileSlice};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::{Error as IOError, ErrorKind as IOErrorKind, Seek, SeekFrom};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
@@ -112,6 +112,8 @@ pub struct VioSClient {
     rx: Mutex<IoBufferQueue>,
     tx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
     rx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
+    events: Arc<Mutex<VecDeque<virtio_snd_event>>>,
+    event_notifier: Arc<Mutex<Option<Event>>>,
     recv_running: Arc<Mutex<bool>>,
     recv_event: Mutex<Event>,
     recv_thread: Mutex<Option<JoinHandle<Result<()>>>>,
@@ -199,6 +201,8 @@ impl VioSClient {
             event_socket: Mutex::new(event_socket),
             tx: Mutex::new(IoBufferQueue::new(tx_socket, tx_shm_file)?),
             rx: Mutex::new(IoBufferQueue::new(rx_socket, rx_shm_file)?),
+            events: Arc::new(Mutex::new(VecDeque::new())),
+            event_notifier: Arc::new(Mutex::new(None)),
             tx_subscribers,
             rx_subscribers,
             recv_running,
@@ -245,7 +249,7 @@ impl VioSClient {
         if self.recv_thread.lock().is_some() {
             return Ok(());
         }
-        let event_socket = self
+        let recv_event = self
             .recv_event
             .lock()
             .try_clone()
@@ -262,6 +266,11 @@ impl VioSClient {
             .socket
             .try_clone()
             .map_err(Error::UnixSeqpacketDupError)?;
+        let event_socket = self
+            .event_socket
+            .lock()
+            .try_clone()
+            .map_err(Error::UnixSeqpacketDupError)?;
         let mut opt = self.recv_thread.lock();
         // The lock on recv_thread was released above to avoid holding more than one lock at a time
         // while duplicating the fds. So we have to check again the condition.
@@ -269,10 +278,13 @@ impl VioSClient {
             *opt = Some(spawn_recv_thread(
                 self.tx_subscribers.clone(),
                 self.rx_subscribers.clone(),
-                event_socket,
+                self.event_notifier.clone(),
+                self.events.clone(),
+                recv_event,
                 self.recv_running.clone(),
                 tx_socket,
                 rx_socket,
+                event_socket,
             ));
         }
         Ok(())
@@ -298,6 +310,25 @@ impl VioSClient {
             };
         }
         Ok(())
+    }
+
+    /// Gets an Event object that will trigger every time an event is received from the server
+    pub fn get_event_notifier(&self) -> Result<Event> {
+        let mut event_notifier = self.event_notifier.lock();
+        Ok(match &*event_notifier {
+            Some(evt) => evt.try_clone().map_err(Error::EventDupError)?,
+            None => {
+                let evt = Event::new().map_err(Error::EventCreateError)?;
+                *event_notifier = Some(evt.try_clone().map_err(Error::EventDupError)?);
+                evt
+            }
+        })
+    }
+
+    /// Retrieves one event. Callers should have received a notification through the event notifier
+    /// before calling this function.
+    pub fn pop_event(&self) -> Option<virtio_snd_event> {
+        self.events.lock().pop_front()
     }
 
     /// Gets an unused stream id of the specified direction. `direction` must be one of
@@ -611,6 +642,7 @@ enum Token {
     Notification,
     TxBufferMsg,
     RxBufferMsg,
+    EventMsg,
 }
 
 fn recv_buffer_status_msg(
@@ -654,18 +686,35 @@ fn recv_buffer_status_msg(
     Ok(())
 }
 
+fn recv_event(socket: &UnixSeqpacket) -> Result<virtio_snd_event> {
+    let mut msg: virtio_snd_event = Default::default();
+    let size = socket
+        .recv(msg.as_mut_slice())
+        .map_err(Error::ServerIOError)?;
+    if size != std::mem::size_of::<virtio_snd_event>() {
+        return Err(Error::ProtocolError(
+            ProtocolErrorKind::UnexpectedMessageSize(std::mem::size_of::<virtio_snd_event>(), size),
+        ));
+    }
+    Ok(msg)
+}
+
 fn spawn_recv_thread(
     tx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
     rx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
+    event_notifier: Arc<Mutex<Option<Event>>>,
+    event_queue: Arc<Mutex<VecDeque<virtio_snd_event>>>,
     event: Event,
     running: Arc<Mutex<bool>>,
     tx_socket: UnixSeqpacket,
     rx_socket: UnixSeqpacket,
+    event_socket: UnixSeqpacket,
 ) -> JoinHandle<Result<()>> {
     std::thread::spawn(move || {
         let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (&tx_socket, Token::TxBufferMsg),
             (&rx_socket, Token::RxBufferMsg),
+            (&event_socket, Token::EventMsg),
             (&event, Token::Notification),
         ])
         .map_err(Error::WaitContextCreateError)?;
@@ -678,6 +727,13 @@ fn spawn_recv_thread(
                 match evt.token {
                     Token::TxBufferMsg => recv_buffer_status_msg(&tx_socket, &tx_subscribers)?,
                     Token::RxBufferMsg => recv_buffer_status_msg(&rx_socket, &rx_subscribers)?,
+                    Token::EventMsg => {
+                        let evt = recv_event(&event_socket)?;
+                        event_queue.lock().push_back(evt);
+                        if let Some(evt) = &*event_notifier.lock() {
+                            evt.write(1).map_err(Error::EventWriteError)?;
+                        }
+                    }
                     Token::Notification => {
                         // Just consume the notification and check for termination on the next
                         // iteration

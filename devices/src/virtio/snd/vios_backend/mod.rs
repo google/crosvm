@@ -39,6 +39,8 @@ const QUEUE_SIZES: &[u16] = &[64, 64, 64, 64];
 pub enum SoundError {
     #[error("Failed to create VioS client: {0}")]
     ClientNew(Error),
+    #[error("Failed to get event notifier from VioS client: {0}")]
+    ClientEventNotifier(Error),
     #[error("Error creating WaitContext: {0}")]
     WaitCtx(BaseError),
     #[error("Error consuming queue event: {0}")]
@@ -129,7 +131,7 @@ impl VirtioDevice for Sound {
         self.kill_evt = Some(self_kill_evt);
         let control_queue = queues.remove(0);
         let control_queue_evt = queue_evts.remove(0);
-        let _event_queue = queues.remove(0);
+        let event_queue = queues.remove(0);
         let event_queue_evt = queue_evts.remove(0);
         let tx_queue = queues.remove(0);
         let tx_queue_evt = queue_evts.remove(0);
@@ -150,6 +152,7 @@ impl VirtioDevice for Sound {
                     mem,
                     Arc::new(Mutex::new(control_queue)),
                     control_queue_evt,
+                    event_queue,
                     event_queue_evt,
                     Arc::new(Mutex::new(tx_queue)),
                     tx_queue_evt,
