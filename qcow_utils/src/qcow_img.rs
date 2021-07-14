@@ -49,7 +49,7 @@ fn main() -> std::result::Result<(), ()> {
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
-        Err(f) => panic!(f.to_string()),
+        Err(f) => panic!("{}", f.to_string()),
     };
 
     if matches.free.len() < 2 {
