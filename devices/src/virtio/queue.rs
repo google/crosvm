@@ -502,11 +502,6 @@ impl Queue {
         self.set_used_index(mem, self.next_used);
     }
 
-    /// Updates the index at which the driver should signal the device next.
-    pub fn update_int_required(&mut self, mem: &GuestMemory) {
-        self.set_avail_event(mem, self.get_avail_index(mem));
-    }
-
     /// Enable / Disable guest notify device that requests are available on
     /// the descriptor chain.
     pub fn set_notify(&mut self, mem: &GuestMemory, enable: bool) {
@@ -516,9 +511,9 @@ impl Queue {
             self.notification_disable_count += 1;
         }
 
-        if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
-            self.update_int_required(mem);
-        } else {
+        // We should only set VIRTQ_USED_F_NO_NOTIFY when the VIRTIO_RING_F_EVENT_IDX feature has
+        // not been negotiated.
+        if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) == 0 {
             self.set_used_flag(
                 mem,
                 VIRTQ_USED_F_NO_NOTIFY,

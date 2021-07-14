@@ -223,7 +223,6 @@ pub async fn process_one_chain<I: SignalableInterrupt>(
     let mut queue = queue.borrow_mut();
     queue.add_used(&mem, descriptor_index, len as u32);
     queue.trigger_interrupt(&mem, interrupt);
-    queue.update_int_required(&mem);
 }
 
 // There is one async task running `handle_queue` per virtio queue in use.
