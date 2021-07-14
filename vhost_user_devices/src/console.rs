@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::io::{self, stdin};
+use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
@@ -244,22 +245,7 @@ impl VhostUserBackend for ConsoleBackend {
     }
 }
 
-fn run_console(socket: &String) -> anyhow::Result<()> {
-    // TODO(b/192517623): implement alternative input/output queues
-    // Default to stdin/stdout as in/out queues for now
-    let params = SerialParameters {
-        type_: SerialType::Stdout,
-        hardware: SerialHardware::VirtioConsole,
-        // Required only if type_ is SerialType::File or SerialType::UnixSocket
-        path: None,
-        // Required only if stdin is false
-        input: None,
-        num: 1,
-        console: true,
-        earlycon: false,
-        stdin: true,
-    };
-
+fn run_console(params: &SerialParameters, socket: &String) -> anyhow::Result<()> {
     // We need to pass an event as per Serial Device API but we don't really use it anyway.
     let evt = Event::new()?;
     // Same for keep_rds, we don't really use this.
@@ -289,6 +275,8 @@ fn main() -> anyhow::Result<()> {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
     opts.optopt("", "socket", "path to a socket", "PATH");
+    opts.optopt("", "output-file", "path to a file", "OUTFILE");
+    opts.optopt("", "input-file", "path to a file", "INFILE");
 
     let program_name = args.next().expect("empty args");
 
@@ -315,6 +303,9 @@ fn main() -> anyhow::Result<()> {
     // We can unwrap after `opt_str()` safely because we just checked for it being present.
     let socket = matches.opt_str("socket").unwrap();
 
+    let output_file = matches.opt_str("output-file").map(PathBuf::from);
+    let input_file = matches.opt_str("input-file").map(PathBuf::from);
+
     base::syslog::init().context("Failed to initialize syslog")?;
 
     // Set stdin() in raw mode so we can send over individual keystrokes unbuffered
@@ -322,7 +313,25 @@ fn main() -> anyhow::Result<()> {
         .set_raw_mode()
         .context("Failed to set terminal raw mode")?;
 
-    if let Err(e) = run_console(&socket) {
+    let type_ = match output_file {
+        Some(_) => SerialType::File,
+        None => SerialType::Stdout,
+    };
+
+    let params = SerialParameters {
+        type_,
+        hardware: SerialHardware::VirtioConsole,
+        // Required only if type_ is SerialType::File or SerialType::UnixSocket
+        path: output_file,
+        input: input_file,
+        num: 1,
+        console: true,
+        earlycon: false,
+        // We do not support stdin-less mode
+        stdin: true,
+    };
+
+    if let Err(e) = run_console(&params, &socket) {
         error!("Failed to run console device: {}", e);
     }
 
