@@ -8,6 +8,7 @@ use std::os::unix::io::FromRawFd;
 use std::{fs::File, rc::Rc};
 
 use super::event::*;
+use super::format::Bitrate;
 use super::vea_instance::Config;
 use super::{bindings, VeaConnection};
 use crate::error::*;
@@ -150,12 +151,12 @@ impl Session {
     ///
     /// The request is not guaranteed to be honored by libvda and could be ignored
     /// by the backing encoder implementation.
-    pub fn request_encoding_params_change(&self, bitrate: u32, framerate: u32) -> Result<()> {
+    pub fn request_encoding_params_change(&self, bitrate: Bitrate, framerate: u32) -> Result<()> {
         // Safe because `session_ptr` is valid and libvda's encode API is called properly.
         let r = unsafe {
             bindings::vea_request_encoding_params_change(
                 (*self.session_ptr).ctx,
-                bitrate,
+                bitrate.to_raw_bitrate(),
                 framerate,
             )
         };

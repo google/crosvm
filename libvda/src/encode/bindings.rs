@@ -183,6 +183,7 @@ pub const vea_bitrate_mode_CBR: vea_bitrate_mode = 1;
 pub type vea_bitrate_mode = u32;
 pub use self::vea_bitrate_mode as vea_bitrate_mode_t;
 #[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct vea_bitrate {
     pub mode: vea_bitrate_mode_t,
     pub target: u32,
@@ -731,7 +732,7 @@ extern "C" {
 extern "C" {
     pub fn vea_request_encoding_params_change(
         ctx: *mut ::std::os::raw::c_void,
-        bitrate: u32,
+        bitrate: vea_bitrate_t,
         framerate: u32,
     ) -> ::std::os::raw::c_int;
 }

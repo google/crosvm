@@ -9,7 +9,7 @@ use std::fs::File;
 use base::AsRawDescriptor;
 
 use crate::virtio::video::error::VideoResult;
-use crate::virtio::video::format::FramePlane;
+use crate::virtio::video::format::{Bitrate, FramePlane};
 
 use super::encoder::{
     EncoderCapabilities, EncoderEvent, InputBufferId, OutputBufferId, SessionConfig,
@@ -48,7 +48,11 @@ pub trait EncoderSession {
     fn flush(&mut self) -> VideoResult<()>;
 
     /// Requests the encoder to use new encoding parameters provided by `bitrate` and `framerate`.
-    fn request_encoding_params_change(&mut self, bitrate: u32, framerate: u32) -> VideoResult<()>;
+    fn request_encoding_params_change(
+        &mut self,
+        bitrate: Bitrate,
+        framerate: u32,
+    ) -> VideoResult<()>;
 
     /// Returns the event pipe on which the availability of events will be signaled. Note that the
     /// returned value is borrowed and only valid as long as the session is alive.
