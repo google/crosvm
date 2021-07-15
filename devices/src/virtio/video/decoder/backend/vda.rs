@@ -237,10 +237,8 @@ pub struct LibvdaDecoder(libvda::decode::VdaInstance);
 
 impl LibvdaDecoder {
     /// Create a decoder backend instance that can be used to instantiate an decoder.
-    pub fn new() -> VideoResult<Self> {
-        Ok(Self(libvda::decode::VdaInstance::new(
-            libvda::decode::VdaImplType::Gavda,
-        )?))
+    pub fn new(backend_type: libvda::decode::VdaImplType) -> VideoResult<Self> {
+        Ok(Self(libvda::decode::VdaInstance::new(backend_type)?))
     }
 }
 

@@ -1040,7 +1040,7 @@ fn create_video_device(
 
             #[cfg(feature = "libvda")]
             // Render node for libvda.
-            if backend == VideoBackendType::Libvda {
+            if backend == VideoBackendType::Libvda || backend == VideoBackendType::LibvdaVD {
                 // follow the implementation at:
                 // https://source.corp.google.com/chromeos_public/src/platform/minigbm/cros_gralloc/cros_gralloc_driver.cc;l=90;bpv=0;cl=c06cc9cccb3cf3c7f9d2aec706c27c34cd6162a0
                 const DRM_NUM_NODES: u32 = 63;

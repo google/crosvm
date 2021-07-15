@@ -17,6 +17,7 @@ use crate::format::*;
 pub enum VdaImplType {
     Fake,
     Gavda, // GpuArcVideoDecodeAccelerator
+    Gavd,  // GpuArcVideoDecoder
 }
 
 /// Represents decoding capabilities of libvda instances.
@@ -36,6 +37,7 @@ impl VdaConnection {
         let impl_type = match typ {
             VdaImplType::Fake => bindings::vda_impl_type_FAKE,
             VdaImplType::Gavda => bindings::vda_impl_type_GAVDA,
+            VdaImplType::Gavd => bindings::vda_impl_type_GAVD,
         };
 
         // Safe because libvda's API is called properly.

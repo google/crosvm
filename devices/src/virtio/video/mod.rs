@@ -130,6 +130,8 @@ impl Drop for VideoDevice {
 pub enum VideoBackendType {
     #[cfg(feature = "libvda")]
     Libvda,
+    #[cfg(feature = "libvda")]
+    LibvdaVd,
 }
 
 impl VirtioDevice for VideoDevice {
@@ -230,10 +232,25 @@ impl VirtioDevice for VideoDevice {
                     let device: Box<dyn Device> = match backend {
                         #[cfg(feature = "libvda")]
                         VideoBackendType::Libvda => {
-                            let vda = match decoder::backend::vda::LibvdaDecoder::new() {
+                            let vda = match decoder::backend::vda::LibvdaDecoder::new(
+                                libvda::decode::VdaImplType::Gavda,
+                            ) {
                                 Ok(vda) => vda,
                                 Err(e) => {
                                     error!("Failed to initialize VDA for decoder: {}", e);
+                                    return;
+                                }
+                            };
+                            Box::new(decoder::Decoder::new(vda, resource_bridge))
+                        }
+                        #[cfg(feature = "libvda")]
+                        VideoBackendType::LibvdaVd => {
+                            let vda = match decoder::backend::vda::LibvdaDecoder::new(
+                                libvda::decode::VdaImplType::Gavd,
+                            ) {
+                                Ok(vda) => vda,
+                                Err(e) => {
+                                    error!("Failed to initialize VD for decoder: {}", e);
                                     return;
                                 }
                             };
@@ -268,6 +285,11 @@ impl VirtioDevice for VideoDevice {
                                     return;
                                 }
                             }
+                        }
+                        #[cfg(feature = "libvda")]
+                        VideoBackendType::LibvdaVd => {
+                            error!("Invalid backend for encoder");
+                            return;
                         }
                     };
 
