@@ -261,6 +261,7 @@ impl<T: EncoderSession> Stream<T> {
                     CmdResponse::GetParams {
                         queue_type: QueueType::Input,
                         params: self.src_params.clone(),
+                        is_ext: false,
                     },
                 ),
             ));
@@ -275,6 +276,7 @@ impl<T: EncoderSession> Stream<T> {
                     CmdResponse::GetParams {
                         queue_type: QueueType::Output,
                         params: self.dst_params.clone(),
+                        is_ext: false,
                     },
                 ),
             ));
@@ -880,6 +882,7 @@ impl<T: Encoder> EncoderDevice<T> {
         &mut self,
         stream_id: u32,
         queue_type: QueueType,
+        is_ext: bool,
     ) -> VideoResult<VideoCmdResponseType> {
         let stream = self
             .streams
@@ -913,6 +916,7 @@ impl<T: Encoder> EncoderDevice<T> {
             Ok(VideoCmdResponseType::Sync(CmdResponse::GetParams {
                 queue_type,
                 params,
+                is_ext,
             }))
         }
     }
@@ -927,6 +931,7 @@ impl<T: Encoder> EncoderDevice<T> {
         frame_height: u32,
         frame_rate: u32,
         plane_formats: Vec<PlaneFormat>,
+        _is_ext: bool,
     ) -> VideoResult<VideoCmdResponseType> {
         let stream = self
             .streams
@@ -1384,7 +1389,8 @@ impl<T: Encoder> Device for EncoderDevice<T> {
             VideoCmd::GetParams {
                 stream_id,
                 queue_type,
-            } => self.get_params(stream_id, queue_type),
+                is_ext,
+            } => self.get_params(stream_id, queue_type, is_ext),
             VideoCmd::SetParams {
                 stream_id,
                 queue_type,
@@ -1397,6 +1403,7 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                         plane_formats,
                         ..
                     },
+                is_ext,
             } => self.set_params(
                 wait_ctx,
                 stream_id,
@@ -1406,6 +1413,7 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                 frame_height,
                 frame_rate,
                 plane_formats,
+                is_ext,
             ),
             VideoCmd::QueryControl { query_ctrl_type } => self.query_control(query_ctrl_type),
             VideoCmd::GetControl {

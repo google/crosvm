@@ -88,11 +88,15 @@ pub enum VideoCmd {
     GetParams {
         stream_id: u32,
         queue_type: QueueType,
+        /// `true` if this command has been created from the GET_PARAMS_EXT guest command.
+        is_ext: bool,
     },
     SetParams {
         stream_id: u32,
         queue_type: QueueType,
         params: Params,
+        /// `true` if this command has been created from the SET_PARAMS_EXT guest command.
+        is_ext: bool,
     },
     QueryControl {
         query_ctrl_type: QueryCtrlType,
@@ -256,6 +260,7 @@ impl<'a> VideoCmd {
                 GetParams {
                     stream_id: hdr.stream_id.into(),
                     queue_type: queue_type.try_into()?,
+                    is_ext: false,
                 }
             }
             VIRTIO_VIDEO_CMD_SET_PARAMS => {
@@ -264,6 +269,7 @@ impl<'a> VideoCmd {
                     stream_id: hdr.stream_id.into(),
                     queue_type: params.queue_type.try_into()?,
                     params: params.try_into()?,
+                    is_ext: false,
                 }
             }
             VIRTIO_VIDEO_CMD_QUERY_CONTROL => {
@@ -345,6 +351,23 @@ impl<'a> VideoCmd {
                 SetControl {
                     stream_id: hdr.stream_id.into(),
                     ctrl_val,
+                }
+            }
+            VIRTIO_VIDEO_CMD_GET_PARAMS_EXT => {
+                let virtio_video_get_params_ext { queue_type, .. } = r.read_obj()?;
+                GetParams {
+                    stream_id: hdr.stream_id.into(),
+                    queue_type: queue_type.try_into()?,
+                    is_ext: true,
+                }
+            }
+            VIRTIO_VIDEO_CMD_SET_PARAMS_EXT => {
+                let virtio_video_set_params_ext { params } = r.read_obj()?;
+                SetParams {
+                    stream_id: hdr.stream_id.into(),
+                    queue_type: params.base.queue_type.try_into()?,
+                    params: params.try_into()?,
+                    is_ext: true,
                 }
             }
             _ => return Err(ReadCmdError::InvalidCmdType(hdr.type_.into())),

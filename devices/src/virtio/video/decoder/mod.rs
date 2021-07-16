@@ -712,6 +712,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         &self,
         stream_id: StreamId,
         queue_type: QueueType,
+        is_ext: bool,
     ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get(&stream_id)?;
         let params = match queue_type {
@@ -721,6 +722,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         Ok(VideoCmdResponseType::Sync(CmdResponse::GetParams {
             queue_type,
             params,
+            is_ext,
         }))
     }
 
@@ -729,6 +731,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         stream_id: StreamId,
         queue_type: QueueType,
         params: Params,
+        _is_ext: bool,
     ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
         match queue_type {
@@ -923,12 +926,14 @@ impl<D: DecoderBackend> Device for Decoder<D> {
             GetParams {
                 stream_id,
                 queue_type,
-            } => self.get_params(stream_id, queue_type),
+                is_ext,
+            } => self.get_params(stream_id, queue_type, is_ext),
             SetParams {
                 stream_id,
                 queue_type,
                 params,
-            } => self.set_params(stream_id, queue_type, params),
+                is_ext,
+            } => self.set_params(stream_id, queue_type, params, is_ext),
             QueryControl { query_ctrl_type } => self.query_control(query_ctrl_type),
             GetControl {
                 stream_id,

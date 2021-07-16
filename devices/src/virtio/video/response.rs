@@ -43,6 +43,7 @@ pub enum CmdResponse {
     GetParams {
         queue_type: QueueType,
         params: Params,
+        is_ext: bool,
     },
     QueryControl(QueryCtrlResponse),
     GetControl(CtrlVal),
@@ -116,9 +117,18 @@ impl Response for CmdResponse {
                 flags: Le32::from(*flags),
                 size: Le32::from(*size),
             }),
-            GetParams { queue_type, params } => {
-                let params = params.to_virtio_video_params(*queue_type);
-                w.write_obj(virtio_video_get_params_resp { hdr, params })
+            GetParams {
+                queue_type,
+                params,
+                is_ext,
+            } => {
+                if *is_ext {
+                    let params = params.to_virtio_video_params_ext(*queue_type);
+                    w.write_obj(virtio_video_get_params_ext_resp { hdr, params })
+                } else {
+                    let params = params.to_virtio_video_params(*queue_type);
+                    w.write_obj(virtio_video_get_params_resp { hdr, params })
+                }
             }
             QueryControl(r) => {
                 w.write_obj(virtio_video_query_control_resp { hdr })?;
