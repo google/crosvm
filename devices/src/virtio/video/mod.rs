@@ -157,9 +157,16 @@ impl VirtioDevice for VideoDevice {
     }
 
     fn features(&self) -> u64 {
-        self.base_features
-            | 1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG
-            | 1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT
+        // We specify the type to avoid an extra compilation error in case no backend is enabled
+        // and this match statement becomes empty.
+        let backend_features: u64 = match self.backend {
+            #[cfg(feature = "libvda")]
+            VideoBackendType::Libvda | VideoBackendType::LibvdaVd => {
+                vda::supported_virtio_features()
+            }
+        };
+
+        self.base_features | backend_features
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
