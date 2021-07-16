@@ -44,12 +44,12 @@ impl<F: AsRawFd> crate::ReadAsync for UringSource<F> {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
     async fn read_to_vec<'a>(
         &'a self,
-        file_offset: u64,
+        file_offset: Option<u64>,
         vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         let buf = Arc::new(VecIoWrapper::from(vec));
         let op = self.registered_source.start_read_to_mem(
-            file_offset,
+            file_offset.unwrap_or(0),
             buf.clone(),
             &[MemRegion {
                 offset: 0,
@@ -107,13 +107,13 @@ impl<F: AsRawFd> crate::ReadAsync for UringSource<F> {
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
     async fn read_to_mem<'a>(
         &'a self,
-        file_offset: u64,
+        file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [MemRegion],
     ) -> AsyncResult<usize> {
-        let op = self
-            .registered_source
-            .start_read_to_mem(file_offset, mem, mem_offsets)?;
+        let op =
+            self.registered_source
+                .start_read_to_mem(file_offset.unwrap_or(0), mem, mem_offsets)?;
         let len = op.await?;
         Ok(len as usize)
     }
@@ -124,12 +124,12 @@ impl<F: AsRawFd> crate::WriteAsync for UringSource<F> {
     /// Writes from the given `vec` to the file starting at `file_offset`.
     async fn write_from_vec<'a>(
         &'a self,
-        file_offset: u64,
+        file_offset: Option<u64>,
         vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         let buf = Arc::new(VecIoWrapper::from(vec));
         let op = self.registered_source.start_write_from_mem(
-            file_offset,
+            file_offset.unwrap_or(0),
             buf.clone(),
             &[MemRegion {
                 offset: 0,
@@ -149,13 +149,15 @@ impl<F: AsRawFd> crate::WriteAsync for UringSource<F> {
     /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
     async fn write_from_mem<'a>(
         &'a self,
-        file_offset: u64,
+        file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [MemRegion],
     ) -> AsyncResult<usize> {
-        let op = self
-            .registered_source
-            .start_write_from_mem(file_offset, mem, mem_offsets)?;
+        let op = self.registered_source.start_write_from_mem(
+            file_offset.unwrap_or(0),
+            mem,
+            mem_offsets,
+        )?;
         let len = op.await?;
         Ok(len as usize)
     }
@@ -243,7 +245,7 @@ mod tests {
         let buf: Arc<VecIoWrapper> = Arc::new(VecIoWrapper::from(vec![0x44; 8192]));
 
         let fut = io_obj.read_to_mem(
-            0,
+            None,
             Arc::<VecIoWrapper>::clone(&buf),
             &[MemRegion {
                 offset: 0,
@@ -269,7 +271,7 @@ mod tests {
             let source = UringSource::new(f, ex).unwrap();
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
-            let ret = source.read_to_vec(0, v).await.unwrap();
+            let ret = source.read_to_vec(None, v).await.unwrap();
             assert_eq!(ret.0, 32);
             let ret_v = ret.1;
             assert_eq!(v_ptr, ret_v.as_ptr());
@@ -291,8 +293,11 @@ mod tests {
             let source = UringSource::new(f, ex).unwrap();
             let v = vec![0x55u8; 32];
             let v2 = vec![0x55u8; 32];
-            let (ret, ret2) =
-                futures::future::join(source.read_to_vec(0, v), source.read_to_vec(32, v2)).await;
+            let (ret, ret2) = futures::future::join(
+                source.read_to_vec(None, v),
+                source.read_to_vec(Some(32), v2),
+            )
+            .await;
 
             assert!(ret.unwrap().1.iter().all(|&b| b == 0));
             assert!(ret2.unwrap().1.iter().all(|&b| b == 0));
@@ -305,7 +310,7 @@ mod tests {
     async fn read_u64<T: AsRawFd>(source: &UringSource<T>) -> u64 {
         // Init a vec that translates to u64::max;
         let u64_mem = vec![0xffu8; std::mem::size_of::<u64>()];
-        let (ret, u64_mem) = source.read_to_vec(0, u64_mem).await.unwrap();
+        let (ret, u64_mem) = source.read_to_vec(None, u64_mem).await.unwrap();
         assert_eq!(ret as usize, std::mem::size_of::<u64>());
         let mut val = 0u64.to_ne_bytes();
         val.copy_from_slice(&u64_mem);
@@ -409,7 +414,7 @@ mod tests {
             let vw = Arc::new(VecIoWrapper::from(v));
             let ret = source
                 .read_to_mem(
-                    0,
+                    None,
                     Arc::<VecIoWrapper>::clone(&vw),
                     &[MemRegion { offset: 0, len: 32 }],
                 )
@@ -428,7 +433,7 @@ mod tests {
             let vw = Arc::new(VecIoWrapper::from(v));
             let ret = source
                 .read_to_mem(
-                    0,
+                    None,
                     Arc::<VecIoWrapper>::clone(&vw),
                     &[MemRegion {
                         offset: 32,
@@ -463,7 +468,7 @@ mod tests {
             let vw = Arc::new(VecIoWrapper::from(v));
             let ret = source
                 .read_to_mem(
-                    0,
+                    None,
                     Arc::<VecIoWrapper>::clone(&vw),
                     &[MemRegion {
                         offset: 32,
@@ -563,7 +568,7 @@ mod tests {
             let v = vec![0x55u8; 64];
             let vw = Arc::new(crate::mem::VecIoWrapper::from(v));
             let ret = source
-                .write_from_mem(0, vw, &[MemRegion { offset: 0, len: 32 }])
+                .write_from_mem(None, vw, &[MemRegion { offset: 0, len: 32 }])
                 .await
                 .unwrap();
             assert_eq!(32, ret);
@@ -589,7 +594,7 @@ mod tests {
             let source = UringSource::new(f, ex).unwrap();
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
-            let (ret, ret_v) = source.write_from_vec(0, v).await.unwrap();
+            let (ret, ret_v) = source.write_from_vec(None, v).await.unwrap();
             assert_eq!(32, ret);
             assert_eq!(v_ptr, ret_v.as_ptr());
         }
@@ -614,9 +619,11 @@ mod tests {
             let source = UringSource::new(f, ex).unwrap();
             let v = vec![0x55u8; 32];
             let v2 = vec![0x55u8; 32];
-            let (r, r2) =
-                futures::future::join(source.write_from_vec(0, v), source.write_from_vec(32, v2))
-                    .await;
+            let (r, r2) = futures::future::join(
+                source.write_from_vec(None, v),
+                source.write_from_vec(Some(32), v2),
+            )
+            .await;
             assert_eq!(32, r.unwrap().0);
             assert_eq!(32, r2.unwrap().0);
         }

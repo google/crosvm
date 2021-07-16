@@ -52,12 +52,16 @@ impl From<Error> for io::Error {
 #[async_trait(?Send)]
 pub trait ReadAsync {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
-    async fn read_to_vec<'a>(&'a self, file_offset: u64, vec: Vec<u8>) -> Result<(usize, Vec<u8>)>;
+    async fn read_to_vec<'a>(
+        &'a self,
+        file_offset: Option<u64>,
+        vec: Vec<u8>,
+    ) -> Result<(usize, Vec<u8>)>;
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
     async fn read_to_mem<'a>(
         &'a self,
-        file_offset: u64,
+        file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [MemRegion],
     ) -> Result<usize>;
@@ -75,14 +79,14 @@ pub trait WriteAsync {
     /// Writes from the given `vec` to the file starting at `file_offset`.
     async fn write_from_vec<'a>(
         &'a self,
-        file_offset: u64,
+        file_offset: Option<u64>,
         vec: Vec<u8>,
     ) -> Result<(usize, Vec<u8>)>;
 
     /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
     async fn write_from_mem<'a>(
         &'a self,
-        file_offset: u64,
+        file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [MemRegion],
     ) -> Result<usize>;
@@ -212,7 +216,7 @@ mod tests {
         // Start a uring operation and then await the result from an FdExecutor.
         async fn go(source: UringSource<File>) {
             let v = vec![0xa4u8; 16];
-            let (len, vec) = source.read_to_vec(0, v).await.unwrap();
+            let (len, vec) = source.read_to_vec(None, v).await.unwrap();
             assert_eq!(len, 16);
             assert!(vec.iter().all(|&b| b == 0));
         }
@@ -243,7 +247,7 @@ mod tests {
         // Start a poll operation and then await the result from a URingExecutor.
         async fn go(source: PollSource<File>) {
             let v = vec![0x2cu8; 16];
-            let (len, vec) = source.read_to_vec(0, v).await.unwrap();
+            let (len, vec) = source.read_to_vec(None, v).await.unwrap();
             assert_eq!(len, 16);
             assert!(vec.iter().all(|&b| b == 0));
         }
@@ -274,7 +278,7 @@ mod tests {
         async fn go<F: AsRawFd>(async_source: Box<dyn IoSourceExt<F>>) {
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
-            let ret = async_source.read_to_vec(0, v).await.unwrap();
+            let ret = async_source.read_to_vec(None, v).await.unwrap();
             assert_eq!(ret.0, 32);
             let ret_v = ret.1;
             assert_eq!(v_ptr, ret_v.as_ptr());
@@ -297,7 +301,7 @@ mod tests {
         async fn go<F: AsRawFd>(async_source: Box<dyn IoSourceExt<F>>) {
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
-            let ret = async_source.write_from_vec(0, v).await.unwrap();
+            let ret = async_source.write_from_vec(None, v).await.unwrap();
             assert_eq!(ret.0, 32);
             let ret_v = ret.1;
             assert_eq!(v_ptr, ret_v.as_ptr());
@@ -320,7 +324,7 @@ mod tests {
             let mem = Arc::new(VecIoWrapper::from(vec![0x55u8; 8192]));
             let ret = async_source
                 .read_to_mem(
-                    0,
+                    None,
                     Arc::<VecIoWrapper>::clone(&mem),
                     &[
                         MemRegion { offset: 0, len: 32 },
@@ -360,7 +364,7 @@ mod tests {
             let mem = Arc::new(VecIoWrapper::from(vec![0x55u8; 8192]));
             let ret = async_source
                 .write_from_mem(
-                    0,
+                    None,
                     Arc::<VecIoWrapper>::clone(&mem),
                     &[MemRegion { offset: 0, len: 32 }],
                 )
@@ -421,7 +425,7 @@ mod tests {
         async fn go<F: AsRawFd>(source: Box<dyn IoSourceExt<F>>) {
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
-            let ret = source.write_from_vec(0, v).await.unwrap();
+            let ret = source.write_from_vec(None, v).await.unwrap();
             assert_eq!(ret.0, 32);
             let ret_v = ret.1;
             assert_eq!(v_ptr, ret_v.as_ptr());

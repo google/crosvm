@@ -97,18 +97,28 @@ impl<F: AsRawFd> ReadAsync for PollSource<F> {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
     async fn read_to_vec<'a>(
         &'a self,
-        file_offset: u64,
+        file_offset: Option<u64>,
         mut vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         loop {
             // Safe because this will only modify `vec` and we check the return value.
-            let res = unsafe {
-                libc::pread64(
-                    self.as_raw_fd(),
-                    vec.as_mut_ptr() as *mut libc::c_void,
-                    vec.len(),
-                    file_offset as libc::off64_t,
-                )
+            let res = if let Some(offset) = file_offset {
+                unsafe {
+                    libc::pread64(
+                        self.as_raw_fd(),
+                        vec.as_mut_ptr() as *mut libc::c_void,
+                        vec.len(),
+                        offset as libc::off64_t,
+                    )
+                }
+            } else {
+                unsafe {
+                    libc::read(
+                        self.as_raw_fd(),
+                        vec.as_mut_ptr() as *mut libc::c_void,
+                        vec.len(),
+                    )
+                }
             };
 
             if res >= 0 {
@@ -128,7 +138,7 @@ impl<F: AsRawFd> ReadAsync for PollSource<F> {
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
     async fn read_to_mem<'a>(
         &'a self,
-        file_offset: u64,
+        file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [MemRegion],
     ) -> AsyncResult<usize> {
@@ -140,13 +150,23 @@ impl<F: AsRawFd> ReadAsync for PollSource<F> {
         loop {
             // Safe because we trust the kernel not to write path the length given and the length is
             // guaranteed to be valid from the pointer by io_slice_mut.
-            let res = unsafe {
-                libc::preadv64(
-                    self.as_raw_fd(),
-                    iovecs.as_mut_ptr() as *mut _,
-                    iovecs.len() as i32,
-                    file_offset as libc::off64_t,
-                )
+            let res = if let Some(offset) = file_offset {
+                unsafe {
+                    libc::preadv64(
+                        self.as_raw_fd(),
+                        iovecs.as_mut_ptr() as *mut _,
+                        iovecs.len() as i32,
+                        offset as libc::off64_t,
+                    )
+                }
+            } else {
+                unsafe {
+                    libc::readv(
+                        self.as_raw_fd(),
+                        iovecs.as_mut_ptr() as *mut _,
+                        iovecs.len() as i32,
+                    )
+                }
             };
 
             if res >= 0 {
@@ -202,18 +222,28 @@ impl<F: AsRawFd> WriteAsync for PollSource<F> {
     /// Writes from the given `vec` to the file starting at `file_offset`.
     async fn write_from_vec<'a>(
         &'a self,
-        file_offset: u64,
+        file_offset: Option<u64>,
         vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         loop {
             // Safe because this will not modify any memory and we check the return value.
-            let res = unsafe {
-                libc::pwrite64(
-                    self.as_raw_fd(),
-                    vec.as_ptr() as *const libc::c_void,
-                    vec.len(),
-                    file_offset as libc::off64_t,
-                )
+            let res = if let Some(offset) = file_offset {
+                unsafe {
+                    libc::pwrite64(
+                        self.as_raw_fd(),
+                        vec.as_ptr() as *const libc::c_void,
+                        vec.len(),
+                        offset as libc::off64_t,
+                    )
+                }
+            } else {
+                unsafe {
+                    libc::write(
+                        self.as_raw_fd(),
+                        vec.as_ptr() as *const libc::c_void,
+                        vec.len(),
+                    )
+                }
             };
 
             if res >= 0 {
@@ -233,7 +263,7 @@ impl<F: AsRawFd> WriteAsync for PollSource<F> {
     /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
     async fn write_from_mem<'a>(
         &'a self,
-        file_offset: u64,
+        file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [MemRegion],
     ) -> AsyncResult<usize> {
@@ -246,13 +276,23 @@ impl<F: AsRawFd> WriteAsync for PollSource<F> {
         loop {
             // Safe because we trust the kernel not to write path the length given and the length is
             // guaranteed to be valid from the pointer by io_slice_mut.
-            let res = unsafe {
-                libc::pwritev64(
-                    self.as_raw_fd(),
-                    iovecs.as_ptr() as *mut _,
-                    iovecs.len() as i32,
-                    file_offset as libc::off64_t,
-                )
+            let res = if let Some(offset) = file_offset {
+                unsafe {
+                    libc::pwritev64(
+                        self.as_raw_fd(),
+                        iovecs.as_ptr() as *mut _,
+                        iovecs.len() as i32,
+                        offset as libc::off64_t,
+                    )
+                }
+            } else {
+                unsafe {
+                    libc::writev(
+                        self.as_raw_fd(),
+                        iovecs.as_ptr() as *mut _,
+                        iovecs.len() as i32,
+                    )
+                }
             };
 
             if res >= 0 {
@@ -329,7 +369,7 @@ mod tests {
             let async_source = PollSource::new(f, ex).unwrap();
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
-            let ret = async_source.read_to_vec(0, v).await.unwrap();
+            let ret = async_source.read_to_vec(None, v).await.unwrap();
             assert_eq!(ret.0, 32);
             let ret_v = ret.1;
             assert_eq!(v_ptr, ret_v.as_ptr());
@@ -347,7 +387,7 @@ mod tests {
             let async_source = PollSource::new(f, ex).unwrap();
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
-            let ret = async_source.write_from_vec(0, v).await.unwrap();
+            let ret = async_source.write_from_vec(None, v).await.unwrap();
             assert_eq!(ret.0, 32);
             let ret_v = ret.1;
             assert_eq!(v_ptr, ret_v.as_ptr());

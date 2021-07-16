@@ -429,7 +429,7 @@ impl AsyncDisk for SingleFileDisk {
         mem_offsets: &'a [cros_async::MemRegion],
     ) -> Result<usize> {
         self.inner
-            .read_to_mem(file_offset, mem, mem_offsets)
+            .read_to_mem(Some(file_offset), mem, mem_offsets)
             .await
             .map_err(Error::ReadToMem)
     }
@@ -441,7 +441,7 @@ impl AsyncDisk for SingleFileDisk {
         mem_offsets: &'a [cros_async::MemRegion],
     ) -> Result<usize> {
         self.inner
-            .write_from_mem(file_offset, mem, mem_offsets)
+            .write_from_mem(Some(file_offset), mem, mem_offsets)
             .await
             .map_err(Error::WriteFromMem)
     }
@@ -480,7 +480,7 @@ impl AsyncDisk for SingleFileDisk {
             let buf = vec![0u8; write_size];
             nwritten += self
                 .inner
-                .write_from_vec(file_offset + nwritten as u64, buf)
+                .write_from_vec(Some(file_offset + nwritten as u64), buf)
                 .await
                 .map(|(n, _)| n as u64)
                 .map_err(Error::WriteFromVec)?;
