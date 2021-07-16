@@ -446,8 +446,13 @@ impl QcowFile {
 
         let backing_file = if let Some(backing_file_path) = header.backing_file_path.as_ref() {
             let path = backing_file_path.clone();
-            let backing_raw_file =
-                open_file(Path::new(&path), true).map_err(|e| Error::BackingFileIo(e.into()))?;
+            let backing_raw_file = open_file(
+                Path::new(&path),
+                true, /*read_only*/
+                // TODO(b/190435784): Add support for O_DIRECT.
+                false, /*O_DIRECT*/
+            )
+            .map_err(|e| Error::BackingFileIo(e.into()))?;
             let backing_file = create_disk_file(backing_raw_file)
                 .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
             Some(backing_file)
@@ -581,8 +586,13 @@ impl QcowFile {
 
     /// Creates a new QcowFile at the given path.
     pub fn new_from_backing(file: File, backing_file_name: &str) -> Result<QcowFile> {
-        let backing_raw_file = open_file(Path::new(backing_file_name), true)
-            .map_err(|e| Error::BackingFileIo(e.into()))?;
+        let backing_raw_file = open_file(
+            Path::new(backing_file_name),
+            true, /*read_only*/
+            // TODO(b/190435784): add support for O_DIRECT.
+            false, /*O_DIRECT*/
+        )
+        .map_err(|e| Error::BackingFileIo(e.into()))?;
         let backing_file =
             create_disk_file(backing_raw_file).map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
         let size = backing_file.get_len().map_err(Error::BackingFileIo)?;

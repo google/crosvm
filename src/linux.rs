@@ -226,7 +226,7 @@ fn simple_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
 type DeviceResult<T = VirtioDeviceStub> = std::result::Result<T, Error>;
 
 fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) -> DeviceResult {
-    let raw_image: File = open_file(&disk.path, disk.read_only)
+    let raw_image: File = open_file(&disk.path, disk.read_only, disk.o_direct)
         .map_err(|e| Error::Disk(disk.path.clone(), e.into()))?;
     // Lock the disk image to prevent other crosvm instances from using it.
     let lock_op = if disk.read_only {
@@ -1025,9 +1025,8 @@ fn create_pmem_device(
     index: usize,
     pmem_device_tube: Tube,
 ) -> DeviceResult {
-    let fd = open_file(&disk.path, disk.read_only)
+    let fd = open_file(&disk.path, disk.read_only, false /*O_DIRECT*/)
         .map_err(|e| Error::Disk(disk.path.clone(), e.into()))?;
-
     let arena_size = {
         let metadata =
             std::fs::metadata(&disk.path).map_err(|e| Error::Disk(disk.path.to_path_buf(), e))?;
@@ -2131,8 +2130,12 @@ where
 fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     let initrd_image = if let Some(initrd_path) = &cfg.initrd_path {
         Some(
-            open_file(initrd_path, true)
-                .map_err(|e| Error::OpenInitrd(initrd_path.to_owned(), e.into()))?,
+            open_file(
+                initrd_path,
+                true,  /*read_only*/
+                false, /*O_DIRECT*/
+            )
+            .map_err(|e| Error::OpenInitrd(initrd_path.to_owned(), e.into()))?,
         )
     } else {
         None
@@ -2140,11 +2143,15 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
 
     let vm_image = match cfg.executable_path {
         Some(Executable::Kernel(ref kernel_path)) => VmImage::Kernel(
-            open_file(kernel_path, true)
-                .map_err(|e| Error::OpenKernel(kernel_path.to_owned(), e.into()))?,
+            open_file(
+                kernel_path,
+                true,  /*read_only*/
+                false, /*O_DIRECT*/
+            )
+            .map_err(|e| Error::OpenKernel(kernel_path.to_owned(), e.into()))?,
         ),
         Some(Executable::Bios(ref bios_path)) => VmImage::Bios(
-            open_file(bios_path, true)
+            open_file(bios_path, true /*read_only*/, false /*O_DIRECT*/)
                 .map_err(|e| Error::OpenBios(bios_path.to_owned(), e.into()))?,
         ),
         _ => panic!("Did not receive a bios or kernel, should be impossible."),

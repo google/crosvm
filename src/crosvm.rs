@@ -55,6 +55,7 @@ pub struct DiskOption {
     pub path: PathBuf,
     pub read_only: bool,
     pub sparse: bool,
+    pub o_direct: bool,
     pub block_size: u32,
     pub id: Option<[u8; DISK_ID_LEN]>,
 }

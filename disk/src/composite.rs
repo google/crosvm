@@ -196,6 +196,8 @@ impl CompositeDiskFile {
                 let file = open_file(
                     Path::new(disk.get_file_path()),
                     disk.get_read_write_capability() != cdisk_spec::ReadWriteCapability::READ_WRITE,
+                    // TODO(b/190435784): add support for O_DIRECT.
+                    false, /*O_DIRECT*/
                 )
                 .map_err(|e| Error::OpenFile(e.into(), disk.get_file_path().to_string()))?;
                 Ok(ComponentDiskPart {

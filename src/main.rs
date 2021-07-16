@@ -1109,6 +1109,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             let mut disk = DiskOption {
                 path: disk_path,
                 read_only,
+                o_direct: false,
                 sparse: true,
                 block_size: 512,
                 id: None,
@@ -1132,6 +1133,14 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                             expected: String::from("`sparse` must be a boolean"),
                         })?;
                         disk.sparse = sparse;
+                    }
+                    "o_direct" => {
+                        let o_direct =
+                            value.parse().map_err(|_| argument::Error::InvalidValue {
+                                value: value.to_owned(),
+                                expected: String::from("`o_direct` must be a boolean"),
+                            })?;
+                        disk.o_direct = o_direct;
                     }
                     "block_size" => {
                         let block_size =
@@ -1181,6 +1190,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 path: disk_path,
                 read_only: !name.starts_with("rw"),
                 sparse: false,
+                o_direct: false,
                 block_size: base::pagesize() as u32,
                 id: None,
             });
@@ -2023,7 +2033,8 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                               Valid keys:
                               sparse=BOOL - Indicates whether the disk should support the discard operation (default: true)
                               block_size=BYTES - Set the reported block size of the disk (default: 512)
-                              id=STRING - Set the block device identifier to an ASCII string, up to 20 characters (default: no ID)"),
+                              id=STRING - Set the block device identifier to an ASCII string, up to 20 characters (default: no ID)
+                              o_direct=BOOL - Use O_DIRECT mode to bypass page cache"),
           Argument::value("rwdisk", "PATH[,key=value[,key=value[,...]]", "Path to a writable disk image followed by optional comma-separated options.
                               See --disk for valid options."),
           Argument::value("rw-pmem-device", "PATH", "Path to a writable disk image."),
