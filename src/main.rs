@@ -2038,28 +2038,28 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("ac97",
                           "[backend=BACKEND,capture=true,capture_effect=EFFECT,client_type=TYPE,shm-fd=FD,client-fd=FD,server-fd=FD]",
                           "Comma separated key=value pairs for setting up Ac97 devices. Can be given more than once .
-                          Possible key values:
-                          backend=(null, cras, vios) - Where to route the audio device. If not provided, backend will default to null.
-                          `null` for /dev/null, cras for CRAS server and vios for VioS server.
-                          capture - Enable audio capture
-                          capture_effects - | separated effects to be enabled for recording. The only supported effect value now is EchoCancellation or aec.
-                          client_type - Set specific client type for cras backend.
-                          server - The to the VIOS server (unix socket)."),
+                              Possible key values:
+                              backend=(null, cras, vios) - Where to route the audio device. If not provided, backend will default to null.
+                              `null` for /dev/null, cras for CRAS server and vios for VioS server.
+                              capture - Enable audio capture
+                              capture_effects - | separated effects to be enabled for recording. The only supported effect value now is EchoCancellation or aec.
+                              client_type - Set specific client type for cras backend.
+                              server - The to the VIOS server (unix socket)."),
           #[cfg(feature = "audio")]
           Argument::value("sound", "[PATH]", "Path to the VioS server socket for setting up virtio-snd devices."),
           Argument::value("serial",
                           "type=TYPE,[hardware=HW,num=NUM,path=PATH,input=PATH,console,earlycon,stdin]",
                           "Comma separated key=value pairs for setting up serial devices. Can be given more than once.
-                          Possible key values:
-                          type=(stdout,syslog,sink,file) - Where to route the serial device
-                          hardware=(serial,virtio-console) - Which type of serial hardware to emulate. Defaults to 8250 UART (serial).
-                          num=(1,2,3,4) - Serial Device Number. If not provided, num will default to 1.
-                          path=PATH - The path to the file to write to when type=file
-                          input=PATH - The path to the file to read from when not stdin
-                          console - Use this serial device as the guest console. Can only be given once. Will default to first serial port if not provided.
-                          earlycon - Use this serial device as the early console. Can only be given once.
-                          stdin - Direct standard input to this serial device. Can only be given once. Will default to first serial port if not provided.
-                          "),
+                              Possible key values:
+                              type=(stdout,syslog,sink,file) - Where to route the serial device
+                              hardware=(serial,virtio-console) - Which type of serial hardware to emulate. Defaults to 8250 UART (serial).
+                              num=(1,2,3,4) - Serial Device Number. If not provided, num will default to 1.
+                              path=PATH - The path to the file to write to when type=file
+                              input=PATH - The path to the file to read from when not stdin
+                              console - Use this serial device as the guest console. Can only be given once. Will default to first serial port if not provided.
+                              earlycon - Use this serial device as the early console. Can only be given once.
+                              stdin - Direct standard input to this serial device. Can only be given once. Will default to first serial port if not provided.
+                              "),
           Argument::value("syslog-tag", "TAG", "When logging to syslog, use the provided tag."),
           Argument::value("x-display", "DISPLAY", "X11 display name to use."),
           Argument::flag("display-window-keyboard", "Capture keyboard input from the display window."),
@@ -2075,14 +2075,14 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("cid", "CID", "Context ID for virtual sockets."),
           Argument::value("shared-dir", "PATH:TAG[:type=TYPE:writeback=BOOL:timeout=SECONDS:uidmap=UIDMAP:gidmap=GIDMAP:cache=CACHE]",
                           "Colon-separated options for configuring a directory to be shared with the VM.
-The first field is the directory to be shared and the second field is the tag that the VM can use to identify the device.
-The remaining fields are key=value pairs that may appear in any order.  Valid keys are:
-type=(p9, fs) - Indicates whether the directory should be shared via virtio-9p or virtio-fs (default: p9).
-uidmap=UIDMAP - The uid map to use for the device's jail in the format \"inner outer count[,inner outer count]\" (default: 0 <current euid> 1).
-gidmap=GIDMAP - The gid map to use for the device's jail in the format \"inner outer count[,inner outer count]\" (default: 0 <current egid> 1).
-cache=(never, auto, always) - Indicates whether the VM can cache the contents of the shared directory (default: auto).  When set to \"auto\" and the type is \"fs\", the VM will use close-to-open consistency for file contents.
-timeout=SECONDS - How long the VM should consider file attributes and directory entries to be valid (default: 5).  If the VM has exclusive access to the directory, then this should be a large value.  If the directory can be modified by other processes, then this should be 0.
-writeback=BOOL - Indicates whether the VM can use writeback caching (default: false).  This is only safe to do when the VM has exclusive access to the files in a directory.  Additionally, the server should have read permission for all files as the VM may issue read requests even for files that are opened write-only.
+                              The first field is the directory to be shared and the second field is the tag that the VM can use to identify the device.
+                              The remaining fields are key=value pairs that may appear in any order.  Valid keys are:
+                              type=(p9, fs) - Indicates whether the directory should be shared via virtio-9p or virtio-fs (default: p9).
+                              uidmap=UIDMAP - The uid map to use for the device's jail in the format \"inner outer count[,inner outer count]\" (default: 0 <current euid> 1).
+                              gidmap=GIDMAP - The gid map to use for the device's jail in the format \"inner outer count[,inner outer count]\" (default: 0 <current egid> 1).
+                              cache=(never, auto, always) - Indicates whether the VM can cache the contents of the shared directory (default: auto).  When set to \"auto\" and the type is \"fs\", the VM will use close-to-open consistency for file contents.
+                              timeout=SECONDS - How long the VM should consider file attributes and directory entries to be valid (default: 5).  If the VM has exclusive access to the directory, then this should be a large value.  If the directory can be modified by other processes, then this should be 0.
+                              writeback=BOOL - Indicates whether the VM can use writeback caching (default: false).  This is only safe to do when the VM has exclusive access to the files in a directory.  Additionally, the server should have read permission for all files as the VM may issue read requests even for files that are opened write-only.
 "),
           Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
           Argument::flag("seccomp-log-failures", "Instead of seccomp filter failures being fatal, they will be logged instead."),
@@ -2106,25 +2106,23 @@ writeback=BOOL - Indicates whether the VM can use writeback caching (default: fa
           Argument::flag_or_value("gpu",
                                   "[width=INT,height=INT]",
                                   "(EXPERIMENTAL) Comma separated key=value pairs for setting up a virtio-gpu device
-                                  Possible key values:
-                                  backend=(2d|virglrenderer|gfxstream) - Which backend to use for virtio-gpu (determining rendering protocol)
-                                  width=INT - The width of the virtual display connected to the virtio-gpu.
-                                  height=INT - The height of the virtual display connected to the virtio-gpu.
-                                  egl[=true|=false] - If the backend should use a EGL context for rendering.
-                                  glx[=true|=false] - If the backend should use a GLX context for rendering.
-                                  surfaceless[=true|=false] - If the backend should use a surfaceless context for rendering.
-                                  angle[=true|=false] - If the gfxstream backend should use ANGLE (OpenGL on Vulkan) as its native OpenGL driver.
-                                  syncfd[=true|=false] - If the gfxstream backend should support EGL_ANDROID_native_fence_sync
-                                  vulkan[=true|=false] - If the backend should support vulkan
-                                  "),
+                              Possible key values:
+                              backend=(2d|virglrenderer|gfxstream) - Which backend to use for virtio-gpu (determining rendering protocol)
+                              width=INT - The width of the virtual display connected to the virtio-gpu.
+                              height=INT - The height of the virtual display connected to the virtio-gpu.
+                              egl[=true|=false] - If the backend should use a EGL context for rendering.
+                              glx[=true|=false] - If the backend should use a GLX context for rendering.
+                              surfaceless[=true|=false] - If the backend should use a surfaceless context for rendering.
+                              angle[=true|=false] - If the gfxstream backend should use ANGLE (OpenGL on Vulkan) as its native OpenGL driver.
+                              syncfd[=true|=false] - If the gfxstream backend should support EGL_ANDROID_native_fence_sync
+                              vulkan[=true|=false] - If the backend should support vulkan"),
           #[cfg(feature = "gpu")]
           Argument::flag_or_value("gpu-display",
                                   "[width=INT,height=INT]",
                                   "(EXPERIMENTAL) Comma separated key=value pairs for setting up a display on the virtio-gpu device
-                                  Possible key values:
-                                  width=INT - The width of the virtual display connected to the virtio-gpu.
-                                  height=INT - The height of the virtual display connected to the virtio-gpu.
-                                  "),
+                              Possible key values:
+                              width=INT - The width of the virtual display connected to the virtio-gpu.
+                              height=INT - The height of the virtual display connected to the virtio-gpu."),
           #[cfg(feature = "tpm")]
           Argument::flag("software-tpm", "enable a software emulated trusted platform module device"),
           Argument::value("evdev", "PATH", "Path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host"),
@@ -2148,9 +2146,8 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::flag_or_value("battery",
                                   "[type=TYPE]",
                                   "Comma separated key=value pairs for setting up battery device
-                                  Possible key values:
-                                  type=goldfish - type of battery emulation, defaults to goldfish
-                                  "),
+                              Possible key values:
+                              type=goldfish - type of battery emulation, defaults to goldfish"),
           Argument::value("gdb", "PORT", "(EXPERIMENTAL) gdb on the given port"),
           Argument::value("balloon_bias_mib", "N", "Amount to bias balance of memory between host and guest as the balloon inflates, in MiB."),
           Argument::value("vhost-user-blk", "SOCKET_PATH", "Path to a socket for vhost-user block"),
