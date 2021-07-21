@@ -29,15 +29,7 @@ struct ExternalProto {
 
 // Rustfmt bug: https://github.com/rust-lang/rustfmt/issues/3498
 #[rustfmt::skip]
-static EXTERNAL_PROTOS: &[ExternalProto] = &[
-    #[cfg(feature = "trunks")]
-    ExternalProto {
-        dir_relative_to_sysroot: "usr/include/chromeos/dbus/trunks",
-        dir_relative_to_us: "../../../platform2/trunks",
-        proto_file_name: "trunks_interface.proto",
-        module: "trunks",
-    },
-];
+static EXTERNAL_PROTOS: &[ExternalProto] = &[];
 
 struct LocalProto {
     // Corresponding to the input file src/$module.proto.

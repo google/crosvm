@@ -9,8 +9,5 @@ mod generated {
 #[cfg(feature = "plugin")]
 pub mod plugin;
 
-#[cfg(feature = "trunks")]
-pub use generated::trunks;
-
 #[cfg(feature = "composite-disk")]
 pub use generated::cdisk_spec;
