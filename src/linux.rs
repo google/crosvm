@@ -3018,7 +3018,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             }
                                             other => {
                                                 if other == VmRunMode::Running {
-                                                    linux.io_bus.notify_resume();
+                                                    for dev in &linux.resume_notify_devices {
+                                                        dev.lock().resume_imminent();
+                                                    }
                                                 }
                                                 kick_all_vcpus(
                                                     &vcpu_handles,

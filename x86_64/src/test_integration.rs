@@ -178,6 +178,7 @@ where
     // let (params, kernel_end) = X8664arch::load_kernel(&guest_mem, &mut kernel_image).expect("failed to load kernel");
 
     let suspend_evt = Event::new().unwrap();
+    let mut resume_notify_devices = Vec::new();
     let acpi_dev_resource = X8664arch::setup_acpi_devices(
         &guest_mem,
         &mut io_bus,
@@ -190,6 +191,7 @@ where
         &mut irq_chip,
         (&None, None),
         &mut mmio_bus,
+        &mut resume_notify_devices,
     )
     .unwrap();
 

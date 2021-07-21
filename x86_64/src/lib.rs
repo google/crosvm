@@ -61,7 +61,7 @@ use arch::{
     SerialParameters, VmComponents, VmImage,
 };
 use base::Event;
-use devices::{IrqChip, IrqChipX86_64, PciConfigIo, PciDevice, ProtectionType};
+use devices::{BusResumeDevice, IrqChip, IrqChipX86_64, PciConfigIo, PciDevice, ProtectionType};
 use hypervisor::{HypervisorX86_64, VcpuX86_64, VmX86_64};
 use minijail::Minijail;
 use remain::sorted;
@@ -434,6 +434,8 @@ impl arch::LinuxArch for X8664arch {
             serial_jail,
         )?;
 
+        let mut resume_notify_devices = Vec::new();
+
         let (acpi_dev_resource, bat_control) = Self::setup_acpi_devices(
             &mem,
             &mut io_bus,
@@ -444,6 +446,7 @@ impl arch::LinuxArch for X8664arch {
             irq_chip.as_irq_chip_mut(),
             battery,
             &mut mmio_bus,
+            &mut resume_notify_devices,
         )?;
 
         // Use IRQ info in ACPI if provided by the user.
@@ -544,6 +547,7 @@ impl arch::LinuxArch for X8664arch {
             mmio_bus,
             pid_debug_label_map,
             suspend_evt,
+            resume_notify_devices,
             rt_cpus: components.rt_cpus,
             bat_control,
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
@@ -1049,6 +1053,7 @@ impl X8664arch {
         irq_chip: &mut dyn IrqChip,
         battery: (&Option<BatteryType>, Option<Minijail>),
         mmio_bus: &mut devices::Bus,
+        resume_notify_devices: &mut Vec<Arc<Mutex<dyn BusResumeDevice>>>,
     ) -> Result<(acpi::ACPIDevResource, Option<BatControl>)> {
         // The AML data for the acpi devices
         let mut amls = Vec::new();
@@ -1113,7 +1118,7 @@ impl X8664arch {
                 devices::acpi::ACPIPM_RESOURCE_LEN as u64,
             )
             .unwrap();
-        io_bus.notify_on_resume(pm);
+        resume_notify_devices.push(pm);
 
         let bat_control = if let Some(battery_type) = battery.0 {
             match battery_type {

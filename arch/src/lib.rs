@@ -20,8 +20,8 @@ use acpi_tables::sdt::SDT;
 use base::{syslog, AsRawDescriptor, AsRawDescriptors, Event, Tube};
 use devices::virtio::VirtioDevice;
 use devices::{
-    Bus, BusDevice, BusError, IrqChip, PciAddress, PciDevice, PciDeviceError, PciInterruptPin,
-    PciRoot, ProtectionType, ProxyDevice,
+    Bus, BusDevice, BusError, BusResumeDevice, IrqChip, PciAddress, PciDevice, PciDeviceError,
+    PciInterruptPin, PciRoot, ProtectionType, ProxyDevice,
 };
 use hypervisor::{IoEventAddress, Vm};
 use minijail::Minijail;
@@ -115,6 +115,8 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub bat_control: Option<BatControl>,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<(u32, Tube)>,
+    /// Devices to be notified before the system resumes from the S3 suspended state.
+    pub resume_notify_devices: Vec<Arc<Mutex<dyn BusResumeDevice>>>,
 }
 
 /// The device and optional jail.

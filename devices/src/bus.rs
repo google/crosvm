@@ -165,13 +165,9 @@ enum BusDeviceEntry {
 ///
 /// This doesn't have any restrictions on what kind of device or address space this applies to. The
 /// only restriction is that no two devices can overlap in this address space.
-///
-/// the 'resume_notify_devices' contains the devices which requires to be notified before the system
-/// resume back from S3 suspended state.
 #[derive(Clone)]
 pub struct Bus {
     devices: BTreeMap<BusRange, BusDeviceEntry>,
-    resume_notify_devices: Vec<Arc<Mutex<dyn BusResumeDevice>>>,
     access_id: usize,
 }
 
@@ -180,7 +176,6 @@ impl Bus {
     pub fn new() -> Bus {
         Bus {
             devices: BTreeMap::new(),
-            resume_notify_devices: Vec::new(),
             access_id: 0,
         }
     }
@@ -305,19 +300,6 @@ impl Bus {
             true
         } else {
             false
-        }
-    }
-
-    /// Register `device` for notifications of VM resume from suspend.
-    pub fn notify_on_resume(&mut self, device: Arc<Mutex<dyn BusResumeDevice>>) {
-        self.resume_notify_devices.push(device);
-    }
-
-    /// Call `notify_resume` to notify the device that suspend resume is imminent.
-    pub fn notify_resume(&mut self) {
-        let devices = self.resume_notify_devices.clone();
-        for dev in devices {
-            dev.lock().resume_imminent();
         }
     }
 }

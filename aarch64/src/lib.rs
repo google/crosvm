@@ -456,6 +456,7 @@ impl arch::LinuxArch for AArch64 {
             suspend_evt,
             rt_cpus: components.rt_cpus,
             bat_control: None,
+            resume_notify_devices: Vec::new(),
         })
     }
 
