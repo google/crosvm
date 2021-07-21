@@ -188,6 +188,10 @@ impl DecoderSession for VdaDecoderSession {
         Ok(self.vda_session.reset()?)
     }
 
+    fn clear_output_buffers(&mut self) -> VideoResult<()> {
+        Ok(())
+    }
+
     fn event_pipe(&self) -> &dyn AsRawDescriptor {
         self.vda_session.pipe()
     }
