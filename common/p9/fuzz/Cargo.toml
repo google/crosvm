@@ -1,0 +1,19 @@
+[package]
+name = "p9-fuzz"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2018"
+
+[dependencies]
+p9 = { path = "../" }
+cros_fuzz = "*"
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "p9_tframe_decode_fuzzer"
+path = "tframe_decode.rs"
+
+[patch.crates-io]
+wire_format_derive = { path = "../wire_format_derive" }

@@ -1,0 +1,13 @@
+[package]
+name = "wire_format_derive"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+
+[dependencies]
+syn = "^1"
+quote = "^1"
+proc-macro2 = "^1"
+
+[lib]
+proc-macro = true
+path = "wire_format_derive.rs"
