@@ -120,10 +120,10 @@ base = { path = "base" }
 cros_fuzz = { path = "common/cros-fuzz" } # ignored by ebuild
 data_model = { path = "data_model" }
 libcras = { path = "libcras_stub" } # ignored by ebuild
-minijail = { path = "../../aosp/external/minijail/rust/minijail" } # ignored by ebuild
 p9 = { path = "common/p9" } # ignored by ebuild
 sync = { path = "sync" }
 sys_util = { path = "sys_util" }
 tempfile = { path = "tempfile" }
-vmm_vhost = { path = "../../third_party/rust-vmm/vhost", features = ["vhost-user-master", "vhost-user-slave"] } # ignored by ebuild
 wire_format_derive = { path = "common/p9/wire_format_derive" } # ignored by ebuild
+minijail = { path = "third_party/minijail/rust/minijail" } # ignored by ebuild
+vmm_vhost = { path = "third_party/vmm_vhost", features = ["vhost-user-master", "vhost-user-slave"] } # ignored by ebuild

@@ -78,7 +78,7 @@ FEATURE_REQUIREMENTS: Dict[str, List[Requirements]] = {
     "audio": [],
     "gpu": [Requirements.CROS_BUILD],
     "plugin": [Requirements.PRIVILEGED, Requirements.X86_64],
-    "power-monitor-powerd": [],
+    "power-monitor-powerd": [Requirements.DISABLED],
     "tpm": [Requirements.CROS_BUILD],
     "video-decoder": [Requirements.DISABLED],
     "video-encoder": [Requirements.DISABLED],

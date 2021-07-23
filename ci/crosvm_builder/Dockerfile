@@ -43,7 +43,7 @@ COPY --from=vm \
     /root/.ssh /root/.ssh
 
 # Setup entrypoint and interactive shell
-WORKDIR /workspace/src/platform/crosvm
+WORKDIR /workspace/src/crosvm
 COPY bashrc /root/.bashrc
 COPY entrypoint /workspace
 ENTRYPOINT ["/workspace/entrypoint"]

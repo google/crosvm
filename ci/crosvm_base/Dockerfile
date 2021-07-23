@@ -80,4 +80,4 @@ ENV RUSTFLAGS='--cfg hermetic'
 ENV CROSVM_CROS_BUILD=1
 
 # All commands will be executed in the crosvm src directory.
-WORKDIR /workspace/src/platform/crosvm
+WORKDIR /workspace/src/crosvm

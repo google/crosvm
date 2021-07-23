@@ -8,7 +8,7 @@
 
 ${0%/*}/wait_for_vm_with_timeout || exit 1
 
-crosvm_root="/workspace/src/platform/crosvm"
+crosvm_root="/workspace/src/crosvm"
 rust_toolchain=$(cat ${crosvm_root}/rust-toolchain)
 target_dir=$(
     cargo metadata --no-deps --format-version 1 |

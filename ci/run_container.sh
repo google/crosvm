@@ -11,14 +11,7 @@
 # CROSVM_BUILDER_SCRATCH_DIR or CROSVM_BUILDER_LOGS_DIR.
 
 crosvm_root=$(realpath "$(dirname $0)/..")
-cros_root=$(realpath "${crosvm_root}/../../..")
 
-if [ ! -d "${cros_root}/.repo" ]; then
-    echo "The CI builder must be run from a cros checkout. See ci/README.md"
-    exit 1
-fi
-
-# Parse parameters
 builder="$1"
 shift
 
@@ -43,14 +36,14 @@ fi
 version=$(cat $(dirname $0)/image_tag)
 echo "Using builder: ${builder}:${version}"
 
-src="${cros_root}/src"
-echo "Using source directory: ${src} (Available at /workspace/src)"
+echo "Using source directory: ${crosvm_root} \
+(Available at /workspace/src/crosvm)"
 
 docker_args=(
     --rm
     --device /dev/kvm
     --volume /dev/log:/dev/log
-    --volume "${src}":/workspace/src:rw
+    --volume "${crosvm_root}":/workspace/src/crosvm:rw
 )
 
 if [ ! -z "${CROSVM_BUILDER_SCRATCH_DIR}" ]; then

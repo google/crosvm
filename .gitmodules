@@ -1,3 +1,15 @@
 [submodule "tpm2-sys/libtpm2"]
 	path = tpm2-sys/libtpm2
 	url = https://chromium.googlesource.com/chromiumos/third_party/tpm2
+[submodule "third_party/minigbm"]
+	path = third_party/minigbm
+	url = https://chromium.googlesource.com/chromiumos/platform/minigbm
+[submodule "third_party/virglrenderer"]
+	path = third_party/virglrenderer
+	url = https://chromium.googlesource.com/chromiumos/third_party/virglrenderer
+[submodule "third_party/minijail"]
+	path = third_party/minijail
+	url = https://android.googlesource.com/platform/external/minijail
+[submodule "third_party/vmm_vhost"]
+	path = third_party/vmm_vhost
+	url = https://chromium.googlesource.com/chromiumos/third_party/rust-vmm/vhost/

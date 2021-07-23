@@ -10,19 +10,10 @@ testing.
 
 ### Setting up the source
 
-Since crosvm is part of chromiumos, and uses a couple of it's projects as
-dependencies, you need a standard chromiumos checkout as described by the
-[ChromiumOS Developer Guide](https://chromium.googlesource.com/chromiumos/docs/+/master/developer_guide.md#Get-the-Source).
-
-To reduce the number of repositories to download, you can use the `-g crosvm`
-argument on `repo init`. This will be significantly faster:
-
-In summary:
+Crosvm requires a bunch of dependencies that are checked out via submodules:
 
 ```
-$ repo init -u https://chromium.googlesource.com/chromiumos/manifest.git --repo-url https://chromium.googlesource.com/external/repo.git -g crosvm
-$ repo sync -j4
-$ cd src/platform/crosvm
+$ git submodule update --init
 ```
 
 ### Installing Podman (or Docker)

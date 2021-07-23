@@ -2,12 +2,12 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 #
-# This makefile is run by the ./ci/crosvm_* containers to build ChromiumOS
-# dependencies required by crosvm.
+# This makefile is run by the ./ci/crosvm_* containers to build native third
+# party dependencies required by crosvm.
 #
 # Setting TARGET_ARCH=aarch64 enables cross-compilation for aarch64.
 
-SRC ?= /workspace/src
+SRC ?= /workspace/src/crosvm
 BUILD ?= /workspace/scratch/build
 LIB ?= /workspace/scratch/lib
 TARGET_ARCH ?=
@@ -36,7 +36,7 @@ clean:
 
 tpm2:
 	mkdir -p $(BUILD)/tpm2
-	$(MAKE) -C $(SRC)/third_party/tpm2 \
+	$(MAKE) -C $(SRC)/tpm2-sys/libtpm2 \
 		obj=$(BUILD)/tpm2 \
 		AR=$(CROSS_COMPILE)ar \
 		CC=$(CROSS_COMPILE)gcc \
@@ -44,13 +44,13 @@ tpm2:
 
 minijail:
 	mkdir -p $(BUILD)/minijail
-	$(MAKE) -C $(SRC)/aosp/external/minijail \
+	$(MAKE) -C $(SRC)/third_party/minijail \
 		OUT=$(BUILD)/minijail \
 		CROSS_COMPILE=$(CROSS_COMPILE)
 
 minigbm:
 	mkdir -p $(BUILD)/minigbm
-	$(MAKE) -C $(SRC)/platform/minigbm \
+	$(MAKE) -C $(SRC)/third_party/minigbm \
 		OUT=$(BUILD)/minigbm  \
 		CROSS_COMPILE=$(CROSS_COMPILE)
 
@@ -60,7 +60,7 @@ virglrenderer: minigbm $(BUILD)/meson-cross
 		$(SRC)/third_party/virglrenderer \
 		$(MESON_ARGS)
 
-	CPATH=$(SRC)/platform/minigbm \
+	CPATH=$(SRC)/third_party/minigbm \
 		meson compile -C $(BUILD)/virglrenderer
 
 
@@ -90,7 +90,7 @@ $(LIB):
 	# minigbm
 	ln -sf $(BUILD)/minigbm/libminigbm.so.1.0.0 $(LIB)/libgbm.so
 	ln -sf $(LIB)/libgbm.so $(LIB)/libgbm.so.1
-	ln -sf $(SRC)/platform/minigbm/gbm.pc $(LIB)/pkgconfig/
+	ln -sf $(SRC)/third_party/minigbm/gbm.pc $(LIB)/pkgconfig/
 
 	# virglrenderer
 	ln -sf $(BUILD)/virglrenderer/src/libvirglrenderer.so $(LIB)

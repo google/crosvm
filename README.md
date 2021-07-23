@@ -32,15 +32,17 @@ to build and test crosvm in enviroments outside of the Chrome OS chroot.
 
 >**NOTE:** Building for Linux natively is new and not fully supported.
 
-First, [set up depot_tools] and use `repo` to sync down the crosvm source
-tree. This is a subset of the entire Chromium OS manifest with just enough repos
-to build crosvm.
+Crosvm uses submodules to manage external dependencies. Initialize them via:
 
 ```sh
-mkdir crosvm
-cd crosvm
-repo init -g crosvm -u https://chromium.googlesource.com/chromiumos/manifest.git --repo-url=https://chromium.googlesource.com/external/repo.git
-repo sync
+git submodule update --init
+```
+
+It is recommended to enable automatic recursive operations to keep the
+submodules in sync with the main repository:
+
+```sh
+git config --global submodule.recurse true
 ```
 
 A basic crosvm build links against `libcap`. On a Debian-based system,
@@ -76,8 +78,6 @@ Known issues:
     need to be run as root.
 
 And that's it! You should be able to `cargo build/run/test`.
-
-[set up depot_tools]: https://commondatastorage.googleapis.com/chrome-infra-docs/flat/depot_tools/docs/html/depot_tools_tutorial.html#_setting_up
 
 ## Usage
 

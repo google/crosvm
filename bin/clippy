@@ -71,7 +71,6 @@ FEATURES=(
     audio
     gpu
     plugin
-    power-monitor-powerd
     tpm
     usb
     video-decoder
