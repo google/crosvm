@@ -500,12 +500,6 @@ impl IrqChip for KvmSplitIrqChip {
         Ok(())
     }
 
-    /// Queries whether the irq chip needs to be notified of VCPU halt instructions.
-    /// For KvmSplitIrqChip this returns false because KVM handles VCPU blocking.
-    fn need_halted(&self) -> bool {
-        false
-    }
-
     /// Notifies the irq chip that the specified VCPU has executed a halt instruction.
     /// For KvmSplitIrqChip this is a no-op because KVM handles VCPU blocking.
     fn halted(&self, _vcpu_id: usize) {}
