@@ -112,6 +112,7 @@ use libc::{
 pub type Pid = libc::pid_t;
 pub type Uid = libc::uid_t;
 pub type Gid = libc::gid_t;
+pub type Mode = libc::mode_t;
 
 /// Used to mark types as !Sync.
 pub type UnsyncMarker = std::marker::PhantomData<Cell<usize>>;
@@ -193,6 +194,20 @@ pub fn getegid() -> Gid {
 pub fn chown(path: &CStr, uid: Uid, gid: Gid) -> Result<()> {
     // Safe since we pass in a valid string pointer and check the return value.
     syscall!(unsafe { libc::chown(path.as_ptr(), uid, gid) }).map(|_| ())
+}
+
+/// Safe wrapper for fchmod(2).
+#[inline(always)]
+pub fn fchmod<A: AsRawFd>(fd: &A, mode: Mode) -> Result<()> {
+    // Safe since the function does not operate on pointers and check the return value.
+    syscall!(unsafe { libc::fchmod(fd.as_raw_fd(), mode) }).map(|_| ())
+}
+
+/// Safe wrapper for fchown(2).
+#[inline(always)]
+pub fn fchown<A: AsRawFd>(fd: &A, uid: Uid, gid: Gid) -> Result<()> {
+    // Safe since the function does not operate on pointers and check the return value.
+    syscall!(unsafe { libc::fchown(fd.as_raw_fd(), uid, gid) }).map(|_| ())
 }
 
 /// The operation to perform with `flock`.
