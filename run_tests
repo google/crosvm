@@ -20,6 +20,8 @@ CRATE_REQUIREMENTS: Dict[str, List[Requirements]] = {
     "base": [],
     "bit_field": [],
     "bit_field_derive": [],
+    "common/cros-fuzz": [Requirements.SEPARATE_WORKSPACE],
+    "common/p9": [Requirements.SEPARATE_WORKSPACE, Requirements.X86_64],
     "cros_async": [Requirements.DISABLED],
     "crosvm": [Requirements.DO_NOT_RUN],
     "crosvm_plugin": [Requirements.X86_64],

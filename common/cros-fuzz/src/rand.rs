@@ -21,7 +21,7 @@ impl<'a> FuzzRng<'a> {
     /// Creates a new `FuzzRng` from `buf`, which should be part or all of an
     /// input buffer provided by a fuzzing library.
     pub fn new(buf: &'a [u8]) -> FuzzRng<'a> {
-        FuzzRng { buf: buf }
+        FuzzRng { buf }
     }
 
     /// Consumes `self` and returns the inner slice.

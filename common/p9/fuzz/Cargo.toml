@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 p9 = { path = "../" }
-cros_fuzz = "*"
+cros_fuzz = { path = "../../cros-fuzz" }  # provided by ebuild
 
 [workspace]
 members = ["."]

@@ -682,30 +682,6 @@ fn set_file_mode() {
 }
 
 #[test]
-fn set_file_uid() {
-    let uid = 294;
-    let err = set_attr_test(SetAttrKind::File, |tsetattr| {
-        tsetattr.valid = P9_SETATTR_UID;
-        tsetattr.uid = uid;
-    })
-    .expect_err("successfully set uid");
-
-    assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
-}
-
-#[test]
-fn set_file_gid() {
-    let gid = 9024;
-    let err = set_attr_test(SetAttrKind::File, |tsetattr| {
-        tsetattr.valid = P9_SETATTR_GID;
-        tsetattr.gid = gid;
-    })
-    .expect_err("successfully set gid");
-
-    assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
-}
-
-#[test]
 fn set_file_mtime() {
     let (secs, nanos) = (1245247825, 524617);
     let md = set_attr_test(SetAttrKind::File, |tsetattr| {
@@ -743,30 +719,6 @@ fn set_dir_mode() {
     .expect("failed to set mode");
 
     assert_eq!(md.mode() & 0o777, mode);
-}
-
-#[test]
-fn set_dir_uid() {
-    let uid = 294;
-    let err = set_attr_test(SetAttrKind::Directory, |tsetattr| {
-        tsetattr.valid = P9_SETATTR_UID;
-        tsetattr.uid = uid;
-    })
-    .expect_err("successfully set uid");
-
-    assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
-}
-
-#[test]
-fn set_dir_gid() {
-    let gid = 9024;
-    let err = set_attr_test(SetAttrKind::Directory, |tsetattr| {
-        tsetattr.valid = P9_SETATTR_GID;
-        tsetattr.gid = gid;
-    })
-    .expect_err("successfully set gid");
-
-    assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
 }
 
 #[test]
