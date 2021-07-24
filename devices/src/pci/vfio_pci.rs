@@ -260,14 +260,21 @@ struct VfioMsixCap {
 impl VfioMsixCap {
     fn new(config: &VfioPciConfig, msix_cap_start: u32, vm_socket_irq: Tube) -> Self {
         let msix_ctl = config.read_config_word(msix_cap_start + PCI_MSIX_FLAGS);
-        let table_size = (msix_ctl & PCI_MSIX_FLAGS_QSIZE) as u64 + 1;
         let table = config.read_config_dword(msix_cap_start + PCI_MSIX_TABLE);
         let table_pci_bar = table & PCI_MSIX_TABLE_BIR;
         let table_offset = (table & PCI_MSIX_TABLE_OFFSET) as u64;
-        let table_size_bytes = table_size * MSIX_TABLE_ENTRIES_MODULO;
         let pba = config.read_config_dword(msix_cap_start + PCI_MSIX_PBA);
         let pba_pci_bar = pba & PCI_MSIX_PBA_BIR;
         let pba_offset = (pba & PCI_MSIX_PBA_OFFSET) as u64;
+
+        let mut table_size = (msix_ctl & PCI_MSIX_FLAGS_QSIZE) as u64 + 1;
+        if table_pci_bar == pba_pci_bar
+            && (table_offset + table_size * MSIX_TABLE_ENTRIES_MODULO) > pba_offset
+        {
+            table_size = (pba_offset - table_offset) / MSIX_TABLE_ENTRIES_MODULO;
+        }
+
+        let table_size_bytes = table_size * MSIX_TABLE_ENTRIES_MODULO;
         let pba_size_bytes = ((table_size + BITS_PER_PBA_ENTRY as u64 - 1)
             / BITS_PER_PBA_ENTRY as u64)
             * MSIX_PBA_ENTRIES_MODULO;
