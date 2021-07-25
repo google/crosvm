@@ -226,10 +226,7 @@ pub struct Queue {
 
     // Device feature bits accepted by the driver
     features: u64,
-
-    // Used to suppress unnecessary notification.
-    signalled_used: Wrapping<u16>,
-    signalled_used_valid: bool,
+    last_used: Wrapping<u16>,
 
     // Count of notification disables. Users of the queue can disable guest notification while
     // processing requests. This is the count of how many are in flight(could be several contexts
@@ -251,8 +248,7 @@ impl Queue {
             next_avail: Wrapping(0),
             next_used: Wrapping(0),
             features: 0,
-            signalled_used: Wrapping(0),
-            signalled_used_valid: false,
+            last_used: Wrapping(0),
             notification_disable_count: 0,
         }
     }
@@ -274,8 +270,7 @@ impl Queue {
         self.next_avail = Wrapping(0);
         self.next_used = Wrapping(0);
         self.features = 0;
-        self.signalled_used = Wrapping(0);
-        self.signalled_used_valid = false;
+        self.last_used = Wrapping(0);
     }
 
     pub fn is_valid(&self, mem: &GuestMemory) -> bool {
@@ -503,17 +498,7 @@ impl Queue {
         mem.write_obj_at_addr(len as u32, used_elem.unchecked_add(4))
             .unwrap();
 
-        let old = self.next_used;
         self.next_used += Wrapping(1);
-        let new = self.next_used;
-
-        // Check if we have wrapped around, which can happen if the driver doesn't call
-        // `trigger_interrupt` for a long time. This ensures that we notify the kernel driver at
-        // least once every `u16::MAX` descriptors.
-        if new - self.signalled_used < new - old {
-            self.signalled_used_valid = false;
-        }
-
         self.set_used_index(mem, self.next_used);
     }
 
@@ -537,27 +522,15 @@ impl Queue {
         }
     }
 
-    // Check whether guest enable interrupt injection or not.
-    fn available_interrupt_enabled(&mut self, mem: &GuestMemory) -> bool {
+    // Check Whether guest enable interrupt injection or not.
+    fn available_interrupt_enabled(&self, mem: &GuestMemory) -> bool {
         if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
-            let old = self.signalled_used;
-            let valid = self.signalled_used_valid;
-            let new = self.next_used;
-
-            self.signalled_used = self.next_used;
-            self.signalled_used_valid = true;
-
-            if !valid {
-                return true;
-            }
-
             let used_event = self.get_used_event(mem);
-
-            // if used_event >= self.signalled_used, driver handle interrupt quickly enough, new
+            // if used_event >= self.last_used, driver handle interrupt quickly enough, new
             // interrupt could be injected.
-            // if used_event < self.signalled_used, driver hasn't finished the last interrupt,
+            // if used_event < self.last_used, driver hasn't finished the last interrupt,
             // so no need to inject new interrupt.
-            new - used_event - Wrapping(1) < new - old
+            self.next_used - used_event - Wrapping(1) < self.next_used - self.last_used
         } else {
             !self.get_avail_flag(mem, VIRTQ_AVAIL_F_NO_INTERRUPT)
         }
@@ -572,6 +545,7 @@ impl Queue {
         interrupt: &dyn SignalableInterrupt,
     ) -> bool {
         if self.available_interrupt_enabled(mem) {
+            self.last_used = self.next_used;
             interrupt.signal_used_queue(self.vector);
             true
         } else {
@@ -838,9 +812,9 @@ mod tests {
         queue.add_used(&mem, 0x0, BUFFER_LEN);
         device_generate += Wrapping(1);
 
-        // The driver still hasn't caught up to the requests completed by the device so no interrupt
-        // is needed here.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), false);
+        // At this moment driver has already finished the last interrupt(0x100),
+        // and device service other request, so new interrupt is needed.
+        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), true);
 
         // Assume driver submit another 1 request,
         // device has handled it, so increment self.next_used to 1
