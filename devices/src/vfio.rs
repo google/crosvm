@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use data_model::vec_with_array_field;
+use once_cell::sync::OnceCell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -20,12 +21,14 @@ use base::{
     ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn,
     AsRawDescriptor, Error, Event, FromRawDescriptor, RawDescriptor, SafeDescriptor,
 };
+use hypervisor::{DeviceKind, Vm};
 use vm_memory::GuestMemory;
 
 use vfio_sys::*;
 
 #[derive(Debug)]
 pub enum VfioError {
+    CreateVfioKvmDevice(Error),
     OpenContainer(io::Error),
     OpenGroup(io::Error),
     GetGroupStatus(Error),
@@ -52,6 +55,7 @@ pub enum VfioError {
 impl fmt::Display for VfioError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+	    VfioError::CreateVfioKvmDevice(e) => write!(f, "failed to create KVM vfio device: {}", e),
             VfioError::OpenContainer(e) => write!(f, "failed to open /dev/vfio/vfio container: {}", e),
             VfioError::OpenGroup(e) => write!(f, "failed to open /dev/vfio/$group_num group: {}", e),
             VfioError::GetGroupStatus(e) => write!(f, "failed to get Group Status: {}", e),
@@ -80,6 +84,8 @@ impl fmt::Display for VfioError {
 fn get_error() -> Error {
     Error::last()
 }
+
+static KVM_VFIO_FILE: OnceCell<SafeDescriptor> = OnceCell::new();
 
 /// VfioContainer contain multi VfioGroup, and delegate an IOMMU domain table
 pub struct VfioContainer {
@@ -218,8 +224,7 @@ impl VfioContainer {
     fn get_group(
         &mut self,
         id: u32,
-        guest_mem: &GuestMemory,
-        kvm_vfio_file: &SafeDescriptor,
+        vm: &impl Vm,
         iommu_enabled: bool,
     ) -> Result<Arc<VfioGroup>, VfioError> {
         match self.groups.get(&id) {
@@ -230,9 +235,12 @@ impl VfioContainer {
                 if self.groups.is_empty() {
                     // Before the first group is added into container, do once cotainer
                     // initialize for a vm
-                    self.init(guest_mem, iommu_enabled)?;
+                    self.init(vm.get_memory(), iommu_enabled)?;
                 }
 
+                let kvm_vfio_file = KVM_VFIO_FILE
+                    .get_or_try_init(|| vm.create_device(DeviceKind::Vfio))
+                    .map_err(VfioError::CreateVfioKvmDevice)?;
                 group.kvm_device_add_group(kvm_vfio_file)?;
 
                 self.groups.insert(id, group.clone());
@@ -470,20 +478,14 @@ impl VfioDevice {
     /// Create a new vfio device, then guest read/write on this device could be
     /// transfered into kernel vfio.
     /// sysfspath specify the vfio device path in sys file system.
-    /// kvm_vfio_file specify a valid file descriptor returned from KVM_CREATE_DEVICE
-    /// with type KVM_DEV_TYPE_VFIO
     pub fn new(
         sysfspath: &Path,
-        guest_mem: &GuestMemory,
-        kvm_vfio_file: &SafeDescriptor,
+        vm: &impl Vm,
         container: Arc<Mutex<VfioContainer>>,
         iommu_enabled: bool,
     ) -> Result<Self, VfioError> {
         let group_id = VfioGroup::get_group_id(sysfspath)?;
-        let group =
-            container
-                .lock()
-                .get_group(group_id, guest_mem, kvm_vfio_file, iommu_enabled)?;
+        let group = container.lock().get_group(group_id, vm, iommu_enabled)?;
         let name_osstr = sysfspath.file_name().ok_or(VfioError::InvalidPath)?;
         let name_str = name_osstr.to_str().ok_or(VfioError::InvalidPath)?;
         let name = String::from(name_str);

@@ -320,6 +320,7 @@ dependencies = [
  "minijail",
  "net_sys",
  "net_util",
+ "once_cell",
  "p9",
  "power_monitor",
  "protos",

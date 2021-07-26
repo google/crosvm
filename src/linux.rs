@@ -50,7 +50,7 @@ use devices::{
 #[cfg(feature = "usb")]
 use devices::{HostBackendDeviceProvider, XhciController};
 use hypervisor::kvm::{Kvm, KvmVcpu, KvmVm};
-use hypervisor::{DeviceKind, HypervisorCap, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap};
+use hypervisor::{HypervisorCap, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap};
 use minijail::{self, Minijail};
 use net_util::{MacAddress, Tap};
 use resources::{Alloc, MmioType, SystemAllocator};
@@ -1473,7 +1473,6 @@ fn create_vfio_device(
     resources: &mut SystemAllocator,
     control_tubes: &mut Vec<TaggedControlTube>,
     vfio_path: &Path,
-    kvm_vfio_file: &SafeDescriptor,
     endpoints: &mut BTreeMap<u32, Arc<Mutex<VfioContainer>>>,
     iommu_enabled: bool,
 ) -> DeviceResult<(Box<VfioPciDevice>, Option<Minijail>)> {
@@ -1490,14 +1489,8 @@ fn create_vfio_device(
     let (vfio_host_tube_mem, vfio_device_tube_mem) = Tube::pair().map_err(Error::CreateTube)?;
     control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
 
-    let vfio_device = VfioDevice::new(
-        vfio_path,
-        vm.get_memory(),
-        &kvm_vfio_file,
-        vfio_container.clone(),
-        iommu_enabled,
-    )
-    .map_err(Error::CreateVfioDevice)?;
+    let vfio_device = VfioDevice::new(vfio_path, vm, vfio_container.clone(), iommu_enabled)
+        .map_err(Error::CreateVfioDevice)?;
     let mut vfio_pci_device = Box::new(VfioPciDevice::new(
         vfio_device,
         vfio_device_tube_msi,
@@ -1577,10 +1570,6 @@ fn create_devices(
     }
 
     if !cfg.vfio.is_empty() {
-        let kvm_vfio_file = vm
-            .create_device(DeviceKind::Vfio)
-            .map_err(Error::CreateVfioKvmDevice)?;
-
         let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>> =
             BTreeMap::new();
 
@@ -1591,7 +1580,6 @@ fn create_devices(
                 resources,
                 control_tubes,
                 vfio_path.as_path(),
-                &kvm_vfio_file,
                 &mut iommu_attached_endpoints,
                 *enable_iommu,
             )?;
