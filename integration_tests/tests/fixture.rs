@@ -230,16 +230,21 @@ impl TestVm {
     }
 
     /// Configures the VM kernel and rootfs to load from the guest_under_test assets.
-    fn configure_kernel(command: &mut Command) {
+    fn configure_kernel(command: &mut Command, o_direct: bool) {
+        let rootfs_and_option = format!(
+            "{}{}",
+            rootfs_path().to_str().unwrap(),
+            if o_direct { ",o_direct=true" } else { "" }
+        );
         command
-            .args(&["--root", rootfs_path().to_str().unwrap()])
+            .args(&["--root", &rootfs_and_option])
             .args(&["--params", "init=/bin/delegate"])
             .arg(kernel_path());
     }
 
     /// Instanciate a new crosvm instance. The first call will trigger the download of prebuilt
     /// files if necessary.
-    pub fn new(additional_arguments: &[&str], debug: bool) -> Result<TestVm> {
+    pub fn new(additional_arguments: &[&str], debug: bool, o_direct: bool) -> Result<TestVm> {
         static PREP_ONCE: Once = Once::new();
         PREP_ONCE.call_once(|| TestVm::initialize_once());
 
@@ -258,7 +263,7 @@ impl TestVm {
         command.args(&["--socket", &control_socket_path.to_str().unwrap()]);
         command.args(additional_arguments);
 
-        TestVm::configure_kernel(&mut command);
+        TestVm::configure_kernel(&mut command, o_direct);
 
         println!("$ {:?}", command);
         if !debug {
