@@ -6,6 +6,7 @@
 //! configs.
 
 pub mod argument;
+pub mod error;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 pub mod gdb;
 #[path = "linux.rs"]
