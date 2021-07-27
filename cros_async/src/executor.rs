@@ -50,7 +50,7 @@ pub(crate) fn async_poll_from<'a, F: IntoAsync + Send + 'a>(
 /// // Write all bytes from `data` to `f`.
 /// async fn write_file(f: &dyn IoSourceExt<File>, mut data: Vec<u8>) -> AsyncResult<()> {
 ///     while data.len() > 0 {
-///         let (count, mut buf) = f.write_from_vec(0, data).await?;
+///         let (count, mut buf) = f.write_from_vec(None, data).await?;
 ///
 ///         data = buf.split_off(count);
 ///     }
@@ -68,7 +68,7 @@ pub(crate) fn async_poll_from<'a, F: IntoAsync + Send + 'a>(
 ///
 ///     while rem > 0 {
 ///         let buf = vec![0u8; min(rem, CHUNK_SIZE)];
-///         let (count, mut data) = from.read_to_vec(0, buf).await?;
+///         let (count, mut data) = from.read_to_vec(None, buf).await?;
 ///
 ///         if count == 0 {
 ///             // End of file. Return the number of bytes transferred.

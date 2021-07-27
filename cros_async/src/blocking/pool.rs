@@ -96,7 +96,12 @@ impl Inner {
                 let entry = state.worker_threads.vacant_entry();
                 let idx = entry.key();
                 let inner = self.clone();
-                entry.insert(thread::spawn(move || run_blocking_thread(idx, inner)));
+                entry.insert(
+                    thread::Builder::new()
+                        .name(format!("blockingPool{}", idx))
+                        .spawn(move || run_blocking_thread(idx, inner))
+                        .unwrap(),
+                );
             }
         } else {
             // We have idle threads, wake one up.
