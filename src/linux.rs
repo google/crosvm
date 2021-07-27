@@ -2647,6 +2647,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     vcpu_thread_barrier.wait();
 
+    let mut balloon_stats_id: u64 = 0;
+
     'wait: loop {
         let events = {
             match wait_ctx.wait() {
@@ -2725,6 +2727,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     let response = request.execute(
                                         &mut run_mode_opt,
                                         &balloon_host_tube,
+                                        &mut balloon_stats_id,
                                         disk_host_tubes,
                                         #[cfg(feature = "usb")]
                                         Some(&usb_control_tube),

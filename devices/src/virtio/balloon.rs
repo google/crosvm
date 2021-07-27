@@ -12,10 +12,10 @@ use futures::{channel::mpsc, pin_mut, StreamExt};
 use remain::sorted;
 use thiserror::Error as ThisError;
 
-use base::{self, error, info, warn, AsRawDescriptor, AsyncTube, Event, RawDescriptor, Tube};
+use base::{self, error, warn, AsRawDescriptor, AsyncTube, Event, RawDescriptor, Tube};
 use cros_async::{select6, EventAsync, Executor};
 use data_model::{DataInit, Le16, Le32, Le64};
-use vm_control::{BalloonControlCommand, BalloonControlResult, BalloonStats};
+use vm_control::{BalloonStats, BalloonTubeCommand, BalloonTubeResult};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{
@@ -190,12 +190,34 @@ async fn handle_stats_queue(
     mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
-    mut stats_rx: mpsc::Receiver<()>,
+    mut stats_rx: mpsc::Receiver<u64>,
     command_tube: &Tube,
     config: Arc<BalloonConfig>,
     interrupt: Rc<RefCell<Interrupt>>,
 ) {
+    // Consume the first stats buffer sent from the guest at startup. It was not
+    // requested by anyone, and the stats are stale.
+    let mut index = match queue.next_async(mem, &mut queue_event).await {
+        Err(e) => {
+            error!("Failed to read descriptor {}", e);
+            return;
+        }
+        Ok(d) => d.index,
+    };
     loop {
+        // Wait for a request to read the stats.
+        let id = match stats_rx.next().await {
+            Some(id) => id,
+            None => {
+                error!("stats signal tube was closed");
+                break;
+            }
+        };
+
+        // Request a new stats_desc to the guest.
+        queue.add_used(&mem, index, 0);
+        queue.trigger_interrupt(&mem, &*interrupt.borrow());
+
         let stats_desc = match queue.next_async(mem, &mut queue_event).await {
             Err(e) => {
                 error!("Failed to read descriptor {}", e);
@@ -203,7 +225,7 @@ async fn handle_stats_queue(
             }
             Ok(d) => d,
         };
-        let index = stats_desc.index;
+        index = stats_desc.index;
         let mut reader = match Reader::new(mem.clone(), stats_desc) {
             Ok(r) => r,
             Err(e) => {
@@ -222,23 +244,14 @@ async fn handle_stats_queue(
             };
         }
         let actual_pages = config.actual_pages.load(Ordering::Relaxed) as u64;
-        let result = BalloonControlResult::Stats {
+        let result = BalloonTubeResult::Stats {
             balloon_actual: actual_pages << VIRTIO_BALLOON_PFN_SHIFT,
             stats,
+            id,
         };
         if let Err(e) = command_tube.send(&result) {
             error!("failed to send stats result: {}", e);
         }
-
-        // Wait for a request to read the stats again.
-        if stats_rx.next().await.is_none() {
-            error!("stats signal tube was closed");
-            break;
-        }
-
-        // Request a new stats_desc to the guest.
-        queue.add_used(&mem, index, 0);
-        queue.trigger_interrupt(&mem, &*interrupt.borrow());
     }
 }
 
@@ -248,20 +261,19 @@ async fn handle_command_tube(
     command_tube: &AsyncTube,
     interrupt: Rc<RefCell<Interrupt>>,
     config: Arc<BalloonConfig>,
-    mut stats_tx: mpsc::Sender<()>,
+    mut stats_tx: mpsc::Sender<u64>,
 ) -> Result<()> {
     loop {
         match command_tube.next().await {
             Ok(command) => match command {
-                BalloonControlCommand::Adjust { num_bytes } => {
+                BalloonTubeCommand::Adjust { num_bytes } => {
                     let num_pages = (num_bytes >> VIRTIO_BALLOON_PFN_SHIFT) as usize;
-                    info!("balloon config changed to consume {} pages", num_pages);
 
                     config.num_pages.store(num_pages, Ordering::Relaxed);
                     interrupt.borrow_mut().signal_config_changed();
                 }
-                BalloonControlCommand::Stats => {
-                    if let Err(e) = stats_tx.try_send(()) {
+                BalloonTubeCommand::Stats { id } => {
+                    if let Err(e) = stats_tx.try_send(id) {
                         error!("failed to signal the stat handler: {}", e);
                     }
                 }
@@ -347,8 +359,10 @@ fn run_worker(
         );
         pin_mut!(deflate);
 
-        // The third queue is used for stats messages
-        let (stats_tx, stats_rx) = mpsc::channel::<()>(1);
+        // The third queue is used for stats messages. The message type is the
+        // id of the stats request, so we can detect if there are any stale
+        // stats results that were queued during an error condition.
+        let (stats_tx, stats_rx) = mpsc::channel::<u64>(1);
         let stats_event =
             EventAsync::new(queue_evts.remove(0).0, &ex).expect("failed to set up the stats event");
         let stats = handle_stats_queue(

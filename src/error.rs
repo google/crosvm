@@ -35,7 +35,6 @@ pub enum Error {
     AddPmemDeviceMemory(base::Error),
     AllocateGpuDeviceAddress,
     AllocatePmemDeviceAddress(resources::Error),
-    BalloonActualTooLarge,
     BalloonDeviceNew(virtio::BalloonError),
     BlockDeviceNew(base::Error),
     BlockSignal(base::signal::Error),
@@ -82,10 +81,6 @@ pub enum Error {
     GenerateAcpi,
     GetMaxOpenFiles(io::Error),
     GetSignalMask(base::signal::Error),
-    GuestCachedMissing(),
-    GuestCachedTooLarge(std::num::TryFromIntError),
-    GuestFreeMissing(),
-    GuestFreeTooLarge(std::num::TryFromIntError),
     GuestMemoryLayout(<Arch as LinuxArch>::Error),
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     HandleDebugCommand(<Arch as LinuxArch>::Error),
@@ -166,7 +161,6 @@ impl Display for Error {
             AllocatePmemDeviceAddress(e) => {
                 write!(f, "failed to allocate memory for pmem device: {}", e)
             }
-            BalloonActualTooLarge => write!(f, "balloon actual size is too large"),
             BalloonDeviceNew(e) => write!(f, "failed to create balloon: {}", e),
             BlockDeviceNew(e) => write!(f, "failed to create block device: {}", e),
             BlockSignal(e) => write!(f, "failed to block signal: {}", e),
@@ -215,10 +209,6 @@ impl Display for Error {
             GenerateAcpi => write!(f, "failed to generate ACPI table"),
             GetMaxOpenFiles(e) => write!(f, "failed to get max number of open files: {}", e),
             GetSignalMask(e) => write!(f, "failed to retrieve signal mask for vcpu: {}", e),
-            GuestCachedMissing() => write!(f, "guest cached is missing from balloon stats"),
-            GuestCachedTooLarge(e) => write!(f, "guest cached is too large: {}", e),
-            GuestFreeMissing() => write!(f, "guest free is missing from balloon stats"),
-            GuestFreeTooLarge(e) => write!(f, "guest free is too large: {}", e),
             GuestMemoryLayout(e) => write!(f, "failed to create guest memory layout: {}", e),
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             HandleDebugCommand(e) => write!(f, "failed to handle a gdb command: {}", e),
