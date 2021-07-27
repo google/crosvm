@@ -173,7 +173,9 @@ impl TestVm {
 
     /// Downloads prebuilts if needed.
     fn initialize_once() {
-        syslog::init().unwrap();
+        if let Err(e) = syslog::init() {
+            panic!("failed to initiailize syslog: {}", e);
+        }
 
         // It's possible the prebuilts downloaded by crosvm-9999.ebuild differ
         // from the version that crosvm was compiled for.
