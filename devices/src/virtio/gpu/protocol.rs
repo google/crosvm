@@ -97,9 +97,6 @@ pub const VIRTIO_GPU_BLOB_FLAG_CREATE_GUEST_HANDLE: u32 = 0x0008;
 pub const VIRTIO_GPU_SHM_ID_NONE: u8 = 0x0000;
 pub const VIRTIO_GPU_SHM_ID_HOST_VISIBLE: u8 = 0x0001;
 
-/* This matches the limit in udmabuf.c */
-pub const VIRTIO_GPU_MAX_IOVEC_ENTRIES: u32 = 1024;
-
 pub fn virtio_gpu_cmd_str(cmd: u32) -> &'static str {
     match cmd {
         VIRTIO_GPU_CMD_GET_DISPLAY_INFO => "VIRTIO_GPU_CMD_GET_DISPLAY_INFO",

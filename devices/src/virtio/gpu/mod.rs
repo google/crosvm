@@ -541,9 +541,7 @@ impl Frontend {
                 };
 
                 let entry_count = info.nr_entries.to_native();
-                if entry_count > VIRTIO_GPU_MAX_IOVEC_ENTRIES
-                    || (reader.available_bytes() == 0 && entry_count > 0)
-                {
+                if reader.available_bytes() == 0 && entry_count > 0 {
                     return Err(GpuResponse::ErrUnspec);
                 }
 
