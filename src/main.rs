@@ -37,7 +37,9 @@ use devices::ProtectionType;
 use devices::{Ac97Backend, Ac97Parameters};
 use disk::QcowFile;
 #[cfg(feature = "composite-disk")]
-use disk::{create_composite_disk, create_disk_file, ImagePartitionType, PartitionInfo};
+use disk::{
+    create_composite_disk, create_disk_file, create_zero_filler, ImagePartitionType, PartitionInfo,
+};
 use vm_control::{
     client::{
         do_modify_battery, do_usb_attach, do_usb_detach, do_usb_list, handle_request, vms_request,
@@ -2304,6 +2306,7 @@ fn create_composite(mut args: std::env::Args) -> std::result::Result<(), ()> {
     }
 
     let composite_image_path = args.next().unwrap();
+    let zero_filler_path = format!("{}.filler", composite_image_path);
     let header_path = format!("{}.header", composite_image_path);
     let footer_path = format!("{}.footer", composite_image_path);
 
@@ -2319,6 +2322,12 @@ fn create_composite(mut args: std::env::Args) -> std::result::Result<(), ()> {
                 composite_image_path, e
             );
         })?;
+    create_zero_filler(&zero_filler_path).map_err(|e| {
+        error!(
+            "Failed to create zero filler file at '{}': {}",
+            &zero_filler_path, e
+        );
+    })?;
     let mut header_file = OpenOptions::new()
         .create(true)
         .read(true)
@@ -2373,6 +2382,7 @@ fn create_composite(mut args: std::env::Args) -> std::result::Result<(), ()> {
 
     create_composite_disk(
         &partitions,
+        &PathBuf::from(zero_filler_path),
         &PathBuf::from(header_path),
         &mut header_file,
         &PathBuf::from(footer_path),

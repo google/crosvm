@@ -6,7 +6,7 @@ use std::cmp::{max, min};
 use std::collections::HashSet;
 use std::convert::TryInto;
 use std::fmt::{self, Display};
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -61,6 +61,7 @@ pub enum Error {
     UnsupportedComponent(ImageType),
     WriteHeader(io::Error),
     WriteProto(protobuf::ProtobufError),
+    WriteZeroFiller(io::Error),
 }
 
 impl Display for Error {
@@ -92,6 +93,7 @@ impl Display for Error {
             UnsupportedComponent(c) => write!(f, "unsupported component disk type \"{:?}\"", c),
             WriteHeader(e) => write!(f, "failed to write composite disk header: \"{}\"", e),
             WriteProto(e) => write!(f, "failed to write specification proto: \"{}\"", e),
+            WriteZeroFiller(e) => write!(f, "failed to write zero filler: \"{}\"", e),
         }
     }
 }
@@ -518,7 +520,7 @@ fn create_gpt_entry(partition: &PartitionInfo, offset: u64) -> GptPartitionEntry
 fn create_component_disks(
     partition: &PartitionInfo,
     offset: u64,
-    header_path: &str,
+    zero_filler_path: &str,
 ) -> Result<Vec<ComponentDisk>> {
     let aligned_size = partition.aligned_size();
 
@@ -541,11 +543,11 @@ fn create_component_disks(
         if partition.writable {
             return Err(Error::UnalignedReadWrite(partition.to_owned()));
         } else {
-            // Fill in the gap by reusing the header file, because we know it is always bigger
-            // than the alignment size (i.e. GPT_BEGINNING_SIZE > 1 << PARTITION_SIZE_SHIFT).
+            // Fill in the gap by reusing the zero filler file, because we know it is always bigger
+            // than the alignment size. Its size is 1 << PARTITION_SIZE_SHIFT (4k).
             component_disks.push(ComponentDisk {
                 offset: offset + partition.size,
-                file_path: header_path.to_owned(),
+                file_path: zero_filler_path.to_owned(),
                 read_write_capability: ReadWriteCapability::READ_ONLY,
                 ..ComponentDisk::new()
             });
@@ -559,12 +561,17 @@ fn create_component_disks(
 /// files.
 pub fn create_composite_disk(
     partitions: &[PartitionInfo],
+    zero_filler_path: &Path,
     header_path: &Path,
     header_file: &mut File,
     footer_path: &Path,
     footer_file: &mut File,
     output_composite: &mut File,
 ) -> Result<()> {
+    let zero_filler_path = zero_filler_path
+        .to_str()
+        .ok_or_else(|| Error::InvalidPath(zero_filler_path.to_owned()))?
+        .to_string();
     let header_path = header_path
         .to_str()
         .ok_or_else(|| Error::InvalidPath(header_path.to_owned()))?
@@ -577,7 +584,7 @@ pub fn create_composite_disk(
     let mut composite_proto = CompositeDisk::new();
     composite_proto.version = COMPOSITE_DISK_VERSION;
     composite_proto.component_disks.push(ComponentDisk {
-        file_path: header_path.clone(),
+        file_path: header_path,
         offset: 0,
         read_write_capability: ReadWriteCapability::READ_ONLY,
         ..ComponentDisk::new()
@@ -597,7 +604,9 @@ pub fn create_composite_disk(
         }
         gpt_entry.write_bytes(&mut writer)?;
 
-        for component_disk in create_component_disks(partition, next_disk_offset, &header_path)? {
+        for component_disk in
+            create_component_disks(partition, next_disk_offset, &zero_filler_path)?
+        {
             composite_proto.component_disks.push(component_disk);
         }
 
@@ -645,6 +654,20 @@ pub fn create_composite_disk(
         .map_err(Error::WriteProto)?;
 
     Ok(())
+}
+
+/// Create a zero filler file which can be used to fill the gaps between partition files.
+/// The filler is sized to be big enough to fill the gaps. (1 << PARTITION_SIZE_SHIFT)
+pub fn create_zero_filler<P: AsRef<Path>>(zero_filler_path: P) -> Result<()> {
+    let f = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(true)
+        .open(zero_filler_path.as_ref())
+        .map_err(Error::WriteZeroFiller)?;
+    f.set_len(1 << PARTITION_SIZE_SHIFT)
+        .map_err(Error::WriteZeroFiller)
 }
 
 #[cfg(test)]
@@ -937,6 +960,7 @@ mod tests {
 
         create_composite_disk(
             &[],
+            Path::new("/zero_filler.img"),
             Path::new("/header_path.img"),
             &mut header_image,
             Path::new("/footer_path.img"),
@@ -970,6 +994,7 @@ mod tests {
                     size: 0,
                 },
             ],
+            Path::new("/zero_filler.img"),
             Path::new("/header_path.img"),
             &mut header_image,
             Path::new("/footer_path.img"),
@@ -1003,6 +1028,7 @@ mod tests {
                     size: 0,
                 },
             ],
+            Path::new("/zero_filler.img"),
             Path::new("/header_path.img"),
             &mut header_image,
             Path::new("/footer_path.img"),

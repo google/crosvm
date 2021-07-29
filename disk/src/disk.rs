@@ -30,7 +30,8 @@ use composite::{CompositeDiskFile, CDISK_MAGIC, CDISK_MAGIC_LEN};
 mod gpt;
 #[cfg(feature = "composite-disk")]
 pub use composite::{
-    create_composite_disk, Error as CompositeError, ImagePartitionType, PartitionInfo,
+    create_composite_disk, create_zero_filler, Error as CompositeError, ImagePartitionType,
+    PartitionInfo,
 };
 #[cfg(feature = "composite-disk")]
 pub use gpt::Error as GptError;
