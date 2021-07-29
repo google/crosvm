@@ -396,20 +396,14 @@ impl AsRawDescriptors for CompositeDiskFile {
     }
 }
 
-/// Information about a single image file to be included in a partition.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PartitionFileInfo {
-    pub path: PathBuf,
-    pub size: u64,
-}
-
-/// Information about a partition to create, including the set of image files which make it up.
+/// Information about a partition to create.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PartitionInfo {
     pub label: String,
-    pub files: Vec<PartitionFileInfo>,
+    pub path: PathBuf,
     pub partition_type: ImagePartitionType,
     pub writable: bool,
+    pub size: u64,
 }
 
 /// Round `val` up to the next multiple of 2**`align_log`.
@@ -420,10 +414,7 @@ fn align_to_power_of_2(val: u64, align_log: u8) -> u64 {
 
 impl PartitionInfo {
     fn aligned_size(&self) -> u64 {
-        align_to_power_of_2(
-            self.files.iter().map(|file| file.size).sum(),
-            PARTITION_SIZE_SHIFT,
-        )
+        align_to_power_of_2(self.size, PARTITION_SIZE_SHIFT)
     }
 }
 
@@ -531,37 +522,29 @@ fn create_component_disks(
 ) -> Result<Vec<ComponentDisk>> {
     let aligned_size = partition.aligned_size();
 
-    if partition.files.is_empty() {
-        return Err(Error::NoImageFiles(partition.to_owned()));
-    }
-    let mut file_size_sum = 0;
-    let mut component_disks = vec![];
-    for file in &partition.files {
-        component_disks.push(ComponentDisk {
-            offset: offset + file_size_sum,
-            file_path: file
-                .path
-                .to_str()
-                .ok_or_else(|| Error::InvalidPath(file.path.to_owned()))?
-                .to_string(),
-            read_write_capability: if partition.writable {
-                ReadWriteCapability::READ_WRITE
-            } else {
-                ReadWriteCapability::READ_ONLY
-            },
-            ..ComponentDisk::new()
-        });
-        file_size_sum += file.size;
-    }
+    let mut component_disks = vec![ComponentDisk {
+        offset,
+        file_path: partition
+            .path
+            .to_str()
+            .ok_or_else(|| Error::InvalidPath(partition.path.to_owned()))?
+            .to_string(),
+        read_write_capability: if partition.writable {
+            ReadWriteCapability::READ_WRITE
+        } else {
+            ReadWriteCapability::READ_ONLY
+        },
+        ..ComponentDisk::new()
+    }];
 
-    if file_size_sum != aligned_size {
+    if partition.size != aligned_size {
         if partition.writable {
             return Err(Error::UnalignedReadWrite(partition.to_owned()));
         } else {
             // Fill in the gap by reusing the header file, because we know it is always bigger
             // than the alignment size (i.e. GPT_BEGINNING_SIZE > 1 << PARTITION_SIZE_SHIFT).
             component_disks.push(ComponentDisk {
-                offset: offset + file_size_sum,
+                offset: offset + partition.size,
                 file_path: header_path.to_owned(),
                 read_write_capability: ReadWriteCapability::READ_ONLY,
                 ..ComponentDisk::new()
@@ -974,21 +957,17 @@ mod tests {
             &[
                 PartitionInfo {
                     label: "partition1".to_string(),
-                    files: vec![PartitionFileInfo {
-                        path: "/partition1.img".to_string().into(),
-                        size: 0,
-                    }],
+                    path: "/partition1.img".to_string().into(),
                     partition_type: ImagePartitionType::LinuxFilesystem,
                     writable: false,
+                    size: 0,
                 },
                 PartitionInfo {
                     label: "partition2".to_string(),
-                    files: vec![PartitionFileInfo {
-                        path: "/partition2.img".to_string().into(),
-                        size: 0,
-                    }],
+                    path: "/partition2.img".to_string().into(),
                     partition_type: ImagePartitionType::LinuxFilesystem,
                     writable: true,
+                    size: 0,
                 },
             ],
             Path::new("/header_path.img"),
@@ -1011,21 +990,17 @@ mod tests {
             &[
                 PartitionInfo {
                     label: "label".to_string(),
-                    files: vec![PartitionFileInfo {
-                        path: "/partition1.img".to_string().into(),
-                        size: 0,
-                    }],
+                    path: "/partition1.img".to_string().into(),
                     partition_type: ImagePartitionType::LinuxFilesystem,
                     writable: false,
+                    size: 0,
                 },
                 PartitionInfo {
                     label: "label".to_string(),
-                    files: vec![PartitionFileInfo {
-                        path: "/partition2.img".to_string().into(),
-                        size: 0,
-                    }],
+                    path: "/partition2.img".to_string().into(),
                     partition_type: ImagePartitionType::LinuxFilesystem,
                     writable: true,
+                    size: 0,
                 },
             ],
             Path::new("/header_path.img"),

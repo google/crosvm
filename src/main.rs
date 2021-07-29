@@ -37,9 +37,7 @@ use devices::ProtectionType;
 use devices::{Ac97Backend, Ac97Parameters};
 use disk::QcowFile;
 #[cfg(feature = "composite-disk")]
-use disk::{
-    create_composite_disk, create_disk_file, ImagePartitionType, PartitionFileInfo, PartitionInfo,
-};
+use disk::{create_composite_disk, create_disk_file, ImagePartitionType, PartitionInfo};
 use vm_control::{
     client::{
         do_modify_battery, do_usb_attach, do_usb_detach, do_usb_list, handle_request, vms_request,
@@ -2358,12 +2356,10 @@ fn create_composite(mut args: std::env::Args) -> std::result::Result<(), ()> {
                     .map_err(|e| error!("Failed to get length of partition image: {}", e))?;
                 Ok(PartitionInfo {
                     label: label.to_owned(),
-                    files: vec![PartitionFileInfo {
-                        path: Path::new(path).to_owned(),
-                        size,
-                    }],
+                    path: Path::new(path).to_owned(),
                     partition_type: ImagePartitionType::LinuxFilesystem,
                     writable: false,
+                    size,
                 })
             } else {
                 error!(
