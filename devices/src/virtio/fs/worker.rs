@@ -6,10 +6,11 @@ use std::convert::{TryFrom, TryInto};
 use std::fs::File;
 use std::io;
 use std::os::unix::io::AsRawFd;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use base::{error, Event, PollToken, SafeDescriptor, Tube, WaitContext};
 use fuse::filesystem::{FileSystem, ZeroCopyReader, ZeroCopyWriter};
+use sync::Mutex;
 use vm_control::{FsMappingRequest, VmResponse};
 use vm_memory::GuestMemory;
 
@@ -55,10 +56,7 @@ impl Mapper {
     }
 
     fn process_request(&self, request: &FsMappingRequest) -> io::Result<()> {
-        let tube = self.tube.lock().map_err(|e| {
-            error!("failed to lock tube: {}", e);
-            io::Error::from_raw_os_error(libc::EINVAL)
-        })?;
+        let tube = self.tube.lock();
 
         tube.send(request).map_err(|e| {
             error!("failed to send request {:?}: {}", request, e);

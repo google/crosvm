@@ -5,12 +5,13 @@
 use std::fmt;
 use std::io;
 use std::mem;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 
 use base::{error, warn, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube};
 use data_model::{DataInit, Le32};
 use resources::Alloc;
+use sync::Mutex;
 use vm_control::{FsMappingRequest, VmResponse};
 use vm_memory::GuestMemory;
 
