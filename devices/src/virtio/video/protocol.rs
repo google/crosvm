@@ -369,6 +369,7 @@ pub const VIRTIO_VIDEO_CONTROL_LEVEL: virtio_video_control_type = 3;
 pub const VIRTIO_VIDEO_CONTROL_FORCE_KEYFRAME: virtio_video_control_type = 4;
 pub const VIRTIO_VIDEO_CONTROL_BITRATE_MODE: virtio_video_control_type = 5;
 pub const VIRTIO_VIDEO_CONTROL_BITRATE_PEAK: virtio_video_control_type = 6;
+pub const VIRTIO_VIDEO_CONTROL_PREPEND_SPSPPS_TO_IDR: virtio_video_control_type = 7;
 pub type virtio_video_control_type = u32;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -476,6 +477,15 @@ pub struct virtio_video_control_val_level {
 }
 // Safe because auto-generated structs have no implicit padding.
 unsafe impl DataInit for virtio_video_control_val_level {}
+
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_video_control_val_prepend_spspps_to_idr {
+    pub prepend_spspps_to_idr: Le32,
+    pub padding: [u8; 4usize],
+}
+// Safe because auto-generated structs have no implicit padding.
+unsafe impl DataInit for virtio_video_control_val_prepend_spspps_to_idr {}
 
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]

@@ -1128,6 +1128,9 @@ impl<T: Encoder> EncoderDevice<T> {
             }
             // Button controls should not be queried.
             CtrlType::ForceKeyframe => return Err(VideoError::UnsupportedControl(ctrl_type)),
+            // Prepending SPS and PPS to IDR is always enabled in the libvda backend.
+            // TODO (b/161495502): account for other backends
+            CtrlType::PrependSpsPpsToIdr => CtrlVal::PrependSpsPpsToIdr(true),
         };
         Ok(VideoCmdResponseType::Sync(CmdResponse::GetControl(
             ctrl_val,
@@ -1244,6 +1247,14 @@ impl<T: Encoder> EncoderDevice<T> {
             }
             CtrlVal::ForceKeyframe() => {
                 stream.force_keyframe = true;
+            }
+            CtrlVal::PrependSpsPpsToIdr(prepend_sps_pps_to_idr) => {
+                // Prepending SPS and PPS to IDR is always enabled in the libvda backend,
+                // disabling it will always fail.
+                // TODO (b/161495502): account for other backends
+                if !prepend_sps_pps_to_idr {
+                    return Err(VideoError::InvalidOperation);
+                }
             }
         }
         Ok(VideoCmdResponseType::Sync(CmdResponse::SetControl))

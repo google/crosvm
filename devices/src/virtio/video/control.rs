@@ -56,6 +56,7 @@ pub enum CtrlType {
     ForceKeyframe,
     BitrateMode,
     BitratePeak,
+    PrependSpsPpsToIdr,
 }
 
 #[derive(Debug, Clone)]
@@ -66,6 +67,7 @@ pub enum CtrlVal {
     ForceKeyframe(),
     BitrateMode(BitrateMode),
     BitratePeak(u32),
+    PrependSpsPpsToIdr(bool),
 }
 
 impl Response for CtrlVal {
@@ -95,6 +97,12 @@ impl Response for CtrlVal {
                 io::ErrorKind::InvalidInput,
                 "Button controls should not be queried.",
             )),
+            CtrlVal::PrependSpsPpsToIdr(p) => {
+                w.write_obj(virtio_video_control_val_prepend_spspps_to_idr {
+                    prepend_spspps_to_idr: Le32::from(*p as u32),
+                    ..Default::default()
+                })
+            }
         }
     }
 }
