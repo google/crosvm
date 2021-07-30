@@ -7,13 +7,13 @@
 //! When implementing an audio playback system, the `StreamSource` trait is implemented.
 //! Implementors of this trait allow creation of `PlaybackBufferStream` objects. The
 //! `PlaybackBufferStream` provides the actual audio buffers to be filled with audio samples. These
-//! buffers are obtained by calling `next_playback_buffer`.
+//! buffers can be filled with `write_playback_buffer`.
 //!
 //! Users playing audio fill the provided buffers with audio. When a `PlaybackBuffer` is dropped,
 //! the samples written to it are committed to the `PlaybackBufferStream` it came from.
 //!
 //! ```
-//! use audio_streams::{BoxError, SampleFormat, StreamSource, NoopStreamSource};
+//! use audio_streams::{BoxError, PlaybackBuffer, SampleFormat, StreamSource, NoopStreamSource};
 //! use std::io::Write;
 //!
 //! const buffer_size: usize = 120;
@@ -30,8 +30,11 @@
 //! let mut buf = Vec::new();
 //! buf.resize(buffer_size * frame_size, 0xa5u8);
 //! for _ in 0..10 {
-//!     let mut stream_buffer = stream.next_playback_buffer()?;
-//!     assert_eq!(stream_buffer.write(&buf)?, buffer_size * frame_size);
+//!     let mut copy_cb = |stream_buffer: &mut PlaybackBuffer| {
+//!         assert_eq!(stream_buffer.write(&buf)?, buffer_size * frame_size);
+//!         Ok(())
+//!     };
+//!     stream.write_playback_buffer(&mut copy_cb)?;
 //! }
 //! # Ok (())
 //! # }
@@ -41,7 +44,7 @@ use async_trait::async_trait;
 use std::cmp::min;
 use std::error;
 use std::fmt::{self, Display};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::os::unix::io::RawFd;
 use std::result::Result;
 use std::str::FromStr;
@@ -241,7 +244,25 @@ pub trait StreamSource: Send {
 
 /// `PlaybackBufferStream` provides `PlaybackBuffer`s to fill with audio samples for playback.
 pub trait PlaybackBufferStream: Send {
-    fn next_playback_buffer(&mut self) -> Result<PlaybackBuffer, BoxError>;
+    fn next_playback_buffer<'b, 's: 'b>(&'s mut self) -> Result<PlaybackBuffer<'b>, BoxError>;
+
+    /// Call `f` with a `PlaybackBuffer`, and trigger the buffer done call back after. `f` should
+    /// write playback data to the given `PlaybackBuffer`.
+    fn write_playback_buffer<'b, 's: 'b>(
+        &'s mut self,
+        f: &mut dyn FnMut(&mut PlaybackBuffer<'b>) -> Result<(), BoxError>,
+    ) -> Result<(), BoxError> {
+        let mut buf = self.next_playback_buffer()?;
+        f(&mut buf)?;
+        buf.commit();
+        Ok(())
+    }
+}
+
+impl<S: PlaybackBufferStream + ?Sized> PlaybackBufferStream for &mut S {
+    fn next_playback_buffer<'b, 's: 'b>(&'s mut self) -> Result<PlaybackBuffer<'b>, BoxError> {
+        (**self).next_playback_buffer()
+    }
 }
 
 /// `PlaybackBufferStream` provides `PlaybackBuffer`s asynchronously to fill with audio samples for
@@ -250,8 +271,36 @@ pub trait PlaybackBufferStream: Send {
 pub trait AsyncPlaybackBufferStream: Send {
     async fn next_playback_buffer<'a>(
         &'a mut self,
+        _ex: &Executor,
+    ) -> Result<AsyncPlaybackBuffer<'a>, BoxError>;
+}
+
+#[async_trait(?Send)]
+impl<S: AsyncPlaybackBufferStream + ?Sized> AsyncPlaybackBufferStream for &mut S {
+    async fn next_playback_buffer<'a>(
+        &'a mut self,
         ex: &Executor,
-    ) -> Result<PlaybackBuffer<'a>, BoxError>;
+    ) -> Result<AsyncPlaybackBuffer<'a>, BoxError> {
+        (**self).next_playback_buffer(ex).await
+    }
+}
+
+/// Call `f` with a `AsyncPlaybackBuffer`, and trigger the buffer done call back after. `f` should
+/// write playback data to the given `AsyncPlaybackBuffer`.
+///
+/// This cannot be a trait method because trait methods with generic parameters are not object safe.
+pub async fn async_write_playback_buffer<F>(
+    stream: &mut dyn AsyncPlaybackBufferStream,
+    f: F,
+    ex: &Executor,
+) -> Result<(), BoxError>
+where
+    F: for<'a> FnOnce(&'a mut AsyncPlaybackBuffer) -> Result<(), BoxError>,
+{
+    let mut buf = stream.next_playback_buffer(ex).await?;
+    f(&mut buf)?;
+    buf.commit().await;
+    Ok(())
 }
 
 /// `StreamControl` provides a way to set the volume and mute states of a stream. `StreamControl`
@@ -261,13 +310,22 @@ pub trait StreamControl: Send + Sync {
     fn set_mute(&mut self, _mute: bool) {}
 }
 
-/// `BufferDrop` is used as a callback mechanism for `PlaybackBuffer` objects. It is meant to be
-/// implemented by the audio stream, allowing arbitrary code to be run after a buffer is filled or
-/// read by the user.
-pub trait BufferDrop {
-    /// Called when an audio buffer is dropped. `nframes` indicates the number of audio frames that
-    /// were read or written to the device.
-    fn trigger(&mut self, nframes: usize);
+/// `BufferCommit` is a cleanup funcion that must be called before dropping the buffer,
+/// allowing arbitrary code to be run after the buffer is filled or read by the user.
+pub trait BufferCommit {
+    /// `write_playback_buffer` or `read_capture_buffer` would trigger this automatically. `nframes`
+    /// indicates the number of audio frames that were read or written to the device.
+    fn commit(&mut self, nframes: usize);
+}
+
+/// `AsyncBufferCommit` is a cleanup funcion that must be called before dropping the buffer,
+/// allowing arbitrary code to be run after the buffer is filled or read by the user.
+#[async_trait(?Send)]
+pub trait AsyncBufferCommit {
+    /// `async_write_playback_buffer` or `async_read_capture_buffer` would trigger this
+    /// automatically. `nframes` indicates the number of audio frames that were read or written to
+    /// the device.
+    async fn commit(&mut self, nframes: usize);
 }
 
 /// Errors that are possible from a `PlaybackBuffer`.
@@ -286,19 +344,82 @@ impl Display for PlaybackBufferError {
     }
 }
 
-/// `AudioBuffer` is one buffer that holds buffer_size audio frames and its drop function.
+/// `AudioBuffer` is one buffer that holds buffer_size audio frames.
 /// It is the inner data of `PlaybackBuffer` and `CaptureBuffer`.
 struct AudioBuffer<'a> {
     buffer: &'a mut [u8],
     offset: usize,     // Read or Write offset in frames.
     frame_size: usize, // Size of a frame in bytes.
-    drop: &'a mut dyn BufferDrop,
+}
+
+impl<'a> AudioBuffer<'a> {
+    /// Returns the number of audio frames that fit in the buffer.
+    pub fn frame_capacity(&self) -> usize {
+        self.buffer.len() / self.frame_size
+    }
+
+    fn calc_len(&self, size: usize) -> usize {
+        min(
+            size / self.frame_size * self.frame_size,
+            self.buffer.len() - self.offset,
+        )
+    }
+
+    /// Writes up to `size` bytes directly to this buffer inside of the given callback function.
+    pub fn write_copy_cb<F: FnOnce(&mut [u8])>(&mut self, size: usize, cb: F) -> io::Result<usize> {
+        // only write complete frames.
+        let len = self.calc_len(size);
+        cb(&mut self.buffer[self.offset..(self.offset + len)]);
+        self.offset += len;
+        Ok(len)
+    }
+
+    /// Writes complete frames to `buf`, and return the number of bytes written.
+    pub fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        // only write complete frames.
+        let len = buf.len() / self.frame_size * self.frame_size;
+        let written = (&mut self.buffer[self.offset..]).write(&buf[..len])?;
+        self.offset += written;
+        Ok(written)
+    }
+
+    /// Reads up to `size` bytes directly from this buffer inside of the given callback function.
+    pub fn read_copy_cb<F: FnOnce(&[u8])>(&mut self, size: usize, cb: F) -> io::Result<usize> {
+        let len = self.calc_len(size);
+        cb(&self.buffer[self.offset..(self.offset + len)]);
+        self.offset += len;
+        Ok(len)
+    }
+}
+
+impl<'a> Write for AudioBuffer<'a> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        // only write complete frames.
+        let len = buf.len() / self.frame_size * self.frame_size;
+        let written = (&mut self.buffer[self.offset..]).write(&buf[..len])?;
+        self.offset += written;
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> Read for AudioBuffer<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let len = buf.len() / self.frame_size * self.frame_size;
+        let written = (&mut buf[..len]).write(&self.buffer[self.offset..])?;
+        self.offset += written;
+        Ok(written)
+    }
 }
 
 /// `PlaybackBuffer` is one buffer that holds buffer_size audio frames. It is used to temporarily
 /// allow access to an audio buffer and notifes the owning stream of write completion when dropped.
 pub struct PlaybackBuffer<'a> {
     buffer: AudioBuffer<'a>,
+    drop: &'a mut dyn BufferCommit,
 }
 
 impl<'a> PlaybackBuffer<'a> {
@@ -310,7 +431,7 @@ impl<'a> PlaybackBuffer<'a> {
         drop: &'a mut F,
     ) -> Result<Self, PlaybackBufferError>
     where
-        F: BufferDrop,
+        F: BufferCommit,
     {
         if buffer.len() % frame_size != 0 {
             return Err(PlaybackBufferError::InvalidLength);
@@ -321,50 +442,98 @@ impl<'a> PlaybackBuffer<'a> {
                 buffer,
                 offset: 0,
                 frame_size,
-                drop,
             },
+            drop,
         })
     }
 
     /// Returns the number of audio frames that fit in the buffer.
     pub fn frame_capacity(&self) -> usize {
-        self.buffer.buffer.len() / self.buffer.frame_size
+        self.buffer.frame_capacity()
+    }
+
+    /// This triggers the commit of `BufferCommit`. This should be called after the data is copied
+    /// to the buffer.
+    pub fn commit(&mut self) {
+        self.drop
+            .commit(self.buffer.offset / self.buffer.frame_size);
     }
 
     /// Writes up to `size` bytes directly to this buffer inside of the given callback function.
-    pub fn copy_cb<F: FnOnce(&mut [u8])>(&mut self, size: usize, cb: F) {
-        // only write complete frames.
-        let len = min(
-            size / self.buffer.frame_size * self.buffer.frame_size,
-            self.buffer.buffer.len() - self.buffer.offset,
-        );
-        cb(&mut self.buffer.buffer[self.buffer.offset..(self.buffer.offset + len)]);
-        self.buffer.offset += len;
+    pub fn copy_cb<F: FnOnce(&mut [u8])>(&mut self, size: usize, cb: F) -> io::Result<usize> {
+        self.buffer.write_copy_cb(size, cb)
     }
 }
 
 impl<'a> Write for PlaybackBuffer<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // only write complete frames.
-        let len = buf.len() / self.buffer.frame_size * self.buffer.frame_size;
-        let written = (&mut self.buffer.buffer[self.buffer.offset..]).write(&buf[..len])?;
-        self.buffer.offset += written;
-        Ok(written)
+        self.buffer.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        Ok(())
+        self.buffer.flush()
     }
 }
 
-impl<'a> Drop for PlaybackBuffer<'a> {
-    fn drop(&mut self) {
-        self.buffer
-            .drop
-            .trigger(self.buffer.offset / self.buffer.frame_size);
+/// `AsyncPlaybackBuffer` is the async version of `PlaybackBuffer`.
+pub struct AsyncPlaybackBuffer<'a> {
+    buffer: AudioBuffer<'a>,
+    trigger: &'a mut dyn AsyncBufferCommit,
+}
+
+impl<'a> AsyncPlaybackBuffer<'a> {
+    /// Creates a new `AsyncPlaybackBuffer` that holds a reference to the backing memory specified
+    /// in `buffer`.
+    pub fn new<F>(
+        frame_size: usize,
+        buffer: &'a mut [u8],
+        trigger: &'a mut F,
+    ) -> Result<Self, PlaybackBufferError>
+    where
+        F: AsyncBufferCommit,
+    {
+        if buffer.len() % frame_size != 0 {
+            return Err(PlaybackBufferError::InvalidLength);
+        }
+
+        Ok(AsyncPlaybackBuffer {
+            buffer: AudioBuffer {
+                buffer,
+                offset: 0,
+                frame_size,
+            },
+            trigger,
+        })
+    }
+
+    /// Returns the number of audio frames that fit in the buffer.
+    pub fn frame_capacity(&self) -> usize {
+        self.buffer.frame_capacity()
+    }
+
+    /// This triggers the callback of `AsyncBufferCommit`. This should be called after the data is
+    /// copied to the buffer.
+    pub async fn commit(&mut self) {
+        self.trigger
+            .commit(self.buffer.offset / self.buffer.frame_size)
+            .await;
+    }
+
+    /// Writes up to `size` bytes directly to this buffer inside of the given callback function.
+    pub fn copy_cb<F: FnOnce(&mut [u8])>(&mut self, size: usize, cb: F) -> io::Result<usize> {
+        self.buffer.write_copy_cb(size, cb)
     }
 }
 
+impl<'a> Write for AsyncPlaybackBuffer<'a> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.buffer.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.buffer.flush()
+    }
+}
 /// Stream that accepts playback samples but drops them.
 pub struct NoopStream {
     buffer: Vec<u8>,
@@ -372,16 +541,24 @@ pub struct NoopStream {
     interval: Duration,
     next_frame: Duration,
     start_time: Option<Instant>,
-    buffer_drop: NoopBufferDrop,
+    buffer_drop: NoopBufferCommit,
 }
 
 /// NoopStream data that is needed from the buffer complete callback.
-struct NoopBufferDrop {
+struct NoopBufferCommit {
     which_buffer: bool,
 }
 
-impl BufferDrop for NoopBufferDrop {
-    fn trigger(&mut self, _nwritten: usize) {
+impl BufferCommit for NoopBufferCommit {
+    fn commit(&mut self, _nwritten: usize) {
+        // When a buffer completes, switch to the other one.
+        self.which_buffer ^= true;
+    }
+}
+
+#[async_trait(?Send)]
+impl AsyncBufferCommit for NoopBufferCommit {
+    async fn commit(&mut self, _nwritten: usize) {
         // When a buffer completes, switch to the other one.
         self.which_buffer ^= true;
     }
@@ -402,7 +579,7 @@ impl NoopStream {
             interval,
             next_frame: interval,
             start_time: None,
-            buffer_drop: NoopBufferDrop {
+            buffer_drop: NoopBufferCommit {
                 which_buffer: false,
             },
         }
@@ -410,7 +587,7 @@ impl NoopStream {
 }
 
 impl PlaybackBufferStream for NoopStream {
-    fn next_playback_buffer(&mut self) -> Result<PlaybackBuffer, BoxError> {
+    fn next_playback_buffer<'b, 's: 'b>(&'s mut self) -> Result<PlaybackBuffer<'b>, BoxError> {
         if let Some(start_time) = self.start_time {
             let elapsed = start_time.elapsed();
             if elapsed < self.next_frame {
@@ -434,7 +611,7 @@ impl AsyncPlaybackBufferStream for NoopStream {
     async fn next_playback_buffer<'a>(
         &'a mut self,
         ex: &Executor,
-    ) -> Result<PlaybackBuffer<'a>, BoxError> {
+    ) -> Result<AsyncPlaybackBuffer<'a>, BoxError> {
         if let Some(start_time) = self.start_time {
             let elapsed = start_time.elapsed();
             if elapsed < self.next_frame {
@@ -445,7 +622,7 @@ impl AsyncPlaybackBufferStream for NoopStream {
             self.start_time = Some(Instant::now());
             self.next_frame = self.interval;
         }
-        Ok(PlaybackBuffer::new(
+        Ok(AsyncPlaybackBuffer::new(
             self.frame_size,
             &mut self.buffer,
             &mut self.buffer_drop,
@@ -524,30 +701,31 @@ mod tests {
     fn invalid_buffer_length() {
         // Playback buffers can't be created with a size that isn't divisible by the frame size.
         let mut pb_buf = [0xa5u8; 480 * 2 * 2 + 1];
-        let mut buffer_drop = NoopBufferDrop {
+        let mut buffer_drop = NoopBufferCommit {
             which_buffer: false,
         };
         assert!(PlaybackBuffer::new(2, &mut pb_buf, &mut buffer_drop).is_err());
     }
 
     #[test]
-    fn trigger() {
-        struct TestDrop {
+    fn commit() {
+        struct TestCommit {
             frame_count: usize,
         }
-        impl BufferDrop for TestDrop {
-            fn trigger(&mut self, nwritten: usize) {
+        impl BufferCommit for TestCommit {
+            fn commit(&mut self, nwritten: usize) {
                 self.frame_count += nwritten;
             }
         }
-        let mut test_drop = TestDrop { frame_count: 0 };
+        let mut test_commit = TestCommit { frame_count: 0 };
         {
             const FRAME_SIZE: usize = 4;
             let mut buf = [0u8; 480 * FRAME_SIZE];
-            let mut pb_buf = PlaybackBuffer::new(FRAME_SIZE, &mut buf, &mut test_drop).unwrap();
+            let mut pb_buf = PlaybackBuffer::new(FRAME_SIZE, &mut buf, &mut test_commit).unwrap();
             pb_buf.write_all(&[0xa5u8; 480 * FRAME_SIZE]).unwrap();
+            pb_buf.commit();
         }
-        assert_eq!(test_drop.frame_count, 480);
+        assert_eq!(test_commit.frame_count, 480);
     }
 
     #[test]
@@ -556,10 +734,13 @@ mod tests {
         let (_, mut stream) = server
             .new_playback_stream(2, SampleFormat::S16LE, 48000, 480)
             .unwrap();
-        let mut stream_buffer = stream.next_playback_buffer().unwrap();
-        assert_eq!(stream_buffer.frame_capacity(), 480);
-        let pb_buf = [0xa5u8; 480 * 2 * 2];
-        assert_eq!(stream_buffer.write(&pb_buf).unwrap(), 480 * 2 * 2);
+        let mut copy_cb = |buf: &mut PlaybackBuffer| {
+            assert_eq!(buf.buffer.frame_capacity(), 480);
+            let pb_buf = [0xa5u8; 480 * 2 * 2];
+            assert_eq!(buf.write(&pb_buf).unwrap(), 480 * 2 * 2);
+            Ok(())
+        };
+        stream.write_playback_buffer(&mut copy_cb).unwrap();
     }
 
     #[test]
@@ -570,18 +751,52 @@ mod tests {
             .unwrap();
         let start = Instant::now();
         {
-            let mut stream_buffer = stream.next_playback_buffer().unwrap();
-            let pb_buf = [0xa5u8; 480 * 2 * 2];
-            assert_eq!(stream_buffer.write(&pb_buf).unwrap(), 480 * 2 * 2);
+            let mut copy_cb = |buf: &mut PlaybackBuffer| {
+                let pb_buf = [0xa5u8; 480 * 2 * 2];
+                assert_eq!(buf.write(&pb_buf).unwrap(), 480 * 2 * 2);
+                Ok(())
+            };
+            stream.write_playback_buffer(&mut copy_cb).unwrap();
         }
         // The second call should block until the first buffer is consumed.
-        let _stream_buffer = stream.next_playback_buffer().unwrap();
-        let elapsed = start.elapsed();
-        assert!(
-            elapsed > Duration::from_millis(10),
-            "next_playback_buffer didn't block long enough {}",
-            elapsed.subsec_millis()
-        );
+        let mut assert_cb = |_: &mut PlaybackBuffer| {
+            let elapsed = start.elapsed();
+            assert!(
+                elapsed > Duration::from_millis(10),
+                "next_playback_buffer didn't block long enough {}",
+                elapsed.subsec_millis()
+            );
+            Ok(())
+        };
+        stream.write_playback_buffer(&mut assert_cb).unwrap();
+    }
+
+    #[test]
+    fn async_commit() {
+        struct TestCommit {
+            frame_count: usize,
+        }
+        #[async_trait(?Send)]
+        impl AsyncBufferCommit for TestCommit {
+            async fn commit(&mut self, nwritten: usize) {
+                self.frame_count += nwritten;
+            }
+        }
+        async fn this_test() {
+            let mut test_commit = TestCommit { frame_count: 0 };
+            {
+                const FRAME_SIZE: usize = 4;
+                let mut buf = [0u8; 480 * FRAME_SIZE];
+                let mut pb_buf =
+                    AsyncPlaybackBuffer::new(FRAME_SIZE, &mut buf, &mut test_commit).unwrap();
+                pb_buf.write_all(&[0xa5u8; 480 * FRAME_SIZE]).unwrap();
+                pb_buf.commit().await;
+            }
+            assert_eq!(test_commit.frame_count, 480);
+        }
+
+        let ex = Executor::new().expect("failed to create executor");
+        ex.run_until(this_test()).unwrap();
     }
 
     #[test]
@@ -593,18 +808,28 @@ mod tests {
                 .unwrap();
             let start = Instant::now();
             {
-                let mut stream_buffer = stream.next_playback_buffer(ex).await.unwrap();
-                let pb_buf = [0xa5u8; 480 * 2 * 2];
-                assert_eq!(stream_buffer.write(&pb_buf).unwrap(), 480 * 2 * 2);
+                let copy_func = |buf: &mut AsyncPlaybackBuffer| {
+                    let pb_buf = [0xa5u8; 480 * 2 * 2];
+                    assert_eq!(buf.write(&pb_buf).unwrap(), 480 * 2 * 2);
+                    Ok(())
+                };
+                async_write_playback_buffer(&mut *stream, copy_func, ex)
+                    .await
+                    .unwrap();
             }
             // The second call should block until the first buffer is consumed.
-            let _stream_buffer = stream.next_playback_buffer(ex).await.unwrap();
-            let elapsed = start.elapsed();
-            assert!(
-                elapsed > Duration::from_millis(10),
-                "next_playback_buffer didn't block long enough {}",
-                elapsed.subsec_millis()
-            );
+            let assert_func = |_: &mut AsyncPlaybackBuffer| {
+                let elapsed = start.elapsed();
+                assert!(
+                    elapsed > Duration::from_millis(10),
+                    "write_playback_buffer didn't block long enough {}",
+                    elapsed.subsec_millis()
+                );
+                Ok(())
+            };
+            async_write_playback_buffer(&mut *stream, assert_func, ex)
+                .await
+                .unwrap();
         }
 
         let ex = Executor::new().expect("failed to create executor");
