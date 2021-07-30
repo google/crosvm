@@ -27,7 +27,7 @@ use thiserror::Error as ThisError;
 pub mod message;
 
 mod connection;
-pub use self::connection::Listener;
+pub use self::connection::SocketListener;
 
 #[cfg(feature = "vhost-user-master")]
 mod master;
@@ -207,7 +207,7 @@ mod tests {
         P: AsRef<Path>,
         S: VhostUserSlaveReqHandler,
     {
-        let listener = Listener::new(&path, true).unwrap();
+        let listener = SocketListener::new(&path, true).unwrap();
         let mut slave_listener = SlaveListener::new(listener, backend).unwrap();
         let master = Master::connect(&path, 1).unwrap();
         (master, slave_listener.accept().unwrap().unwrap())

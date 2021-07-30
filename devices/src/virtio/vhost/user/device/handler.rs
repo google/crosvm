@@ -763,14 +763,14 @@ mod tests {
 
     #[test]
     fn test_vhost_user_activate() {
-        use vmm_vhost::vhost_user::{Listener, SlaveListener};
+        use vmm_vhost::vhost_user::{SlaveListener, SocketListener};
 
         const QUEUES_NUM: usize = 2;
 
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = Listener::new(&path, true).unwrap();
+        let listener = SocketListener::new(&path, true).unwrap();
 
         let vmm_bar = Arc::new(Barrier::new(2));
         let dev_bar = vmm_bar.clone();

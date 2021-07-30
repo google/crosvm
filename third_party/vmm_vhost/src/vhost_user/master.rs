@@ -763,7 +763,7 @@ impl MasterInternal {
 
 #[cfg(test)]
 mod tests {
-    use super::super::connection::Listener;
+    use super::super::connection::{Listener, SocketListener};
     use super::*;
     use tempfile::{Builder, TempDir};
 
@@ -772,7 +772,7 @@ mod tests {
     }
 
     fn create_pair<P: AsRef<Path>>(path: P) -> (Master, Endpoint<MasterReq>) {
-        let listener = Listener::new(&path, true).unwrap();
+        let listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let master = Master::connect(path, 2).unwrap();
         let slave = listener.accept().unwrap().unwrap();
@@ -784,7 +784,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = Listener::new(&path, true).unwrap();
+        let listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
 
         let master = Master::connect(&path, 1).unwrap();
@@ -813,12 +813,12 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let _ = Listener::new(&path, true).unwrap();
-        let _ = Listener::new(&path, false).is_err();
+        let _ = SocketListener::new(&path, true).unwrap();
+        let _ = SocketListener::new(&path, false).is_err();
         assert!(Master::connect(&path, 1).is_err());
 
-        let listener = Listener::new(&path, true).unwrap();
-        assert!(Listener::new(&path, false).is_err());
+        let listener = SocketListener::new(&path, true).unwrap();
+        assert!(SocketListener::new(&path, false).is_err());
         listener.set_nonblocking(true).unwrap();
 
         let _master = Master::connect(&path, 1).unwrap();

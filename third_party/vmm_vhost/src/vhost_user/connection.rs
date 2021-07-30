@@ -18,13 +18,22 @@ use sys_util::ScmSocket;
 use super::message::*;
 use super::{Error, Result};
 
+/// Listener for accepting connections.
+pub trait Listener: Sized {
+    /// Accept an incoming connection.
+    fn accept(&self) -> Result<Option<UnixStream>>;
+
+    /// Change blocking status on the listener.
+    fn set_nonblocking(&self, block: bool) -> Result<()>;
+}
+
 /// Unix domain socket listener for accepting incoming connections.
-pub struct Listener {
+pub struct SocketListener {
     fd: UnixListener,
     path: PathBuf,
 }
 
-impl Listener {
+impl SocketListener {
     /// Create a unix domain socket listener.
     ///
     /// # Return:
@@ -35,19 +44,21 @@ impl Listener {
             let _ = std::fs::remove_file(&path);
         }
         let fd = UnixListener::bind(&path).map_err(Error::SocketError)?;
-        Ok(Listener {
+        Ok(SocketListener {
             fd,
             path: path.as_ref().to_owned(),
         })
     }
+}
 
+impl Listener for SocketListener {
     /// Accept an incoming connection.
     ///
     /// # Return:
     /// * - Some(UnixStream): new UnixStream object if new incoming connection is available.
     /// * - None: no incoming connection available.
     /// * - SocketError: errors from accept().
-    pub fn accept(&self) -> Result<Option<UnixStream>> {
+    fn accept(&self) -> Result<Option<UnixStream>> {
         loop {
             match self.fd.accept() {
                 Ok((socket, _addr)) => return Ok(Some(socket)),
@@ -71,18 +82,18 @@ impl Listener {
     /// # Return:
     /// * - () on success.
     /// * - SocketError: failure from set_nonblocking().
-    pub fn set_nonblocking(&self, block: bool) -> Result<()> {
+    fn set_nonblocking(&self, block: bool) -> Result<()> {
         self.fd.set_nonblocking(block).map_err(Error::SocketError)
     }
 }
 
-impl AsRawFd for Listener {
+impl AsRawFd for SocketListener {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.as_raw_fd()
     }
 }
 
-impl Drop for Listener {
+impl Drop for SocketListener {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.path);
     }
@@ -624,7 +635,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = Listener::new(&path, true).unwrap();
+        let listener = SocketListener::new(&path, true).unwrap();
 
         assert!(listener.as_raw_fd() > 0);
     }
@@ -634,7 +645,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = Listener::new(&path, true).unwrap();
+        let listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
 
         // accept on a fd without incoming connection
@@ -647,7 +658,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = Listener::new(&path, true).unwrap();
+        let listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
@@ -675,7 +686,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = Listener::new(&path, true).unwrap();
+        let listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
@@ -828,7 +839,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = Listener::new(&path, true).unwrap();
+        let listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
