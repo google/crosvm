@@ -439,6 +439,7 @@ impl arch::LinuxArch for AArch64 {
             irq_chip.get_vgic_version() == DeviceKind::ArmVgicV3,
             use_pmu,
             psci_version,
+            components.swiotlb,
         )
         .map_err(Error::CreateFdt)?;
 

@@ -76,6 +76,7 @@ pub enum VcpuAffinity {
 /// create a `RunnableLinuxVm`.
 pub struct VmComponents {
     pub memory_size: u64,
+    pub swiotlb: Option<u64>,
     pub vcpu_count: usize,
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub cpu_clusters: Vec<Vec<usize>>,

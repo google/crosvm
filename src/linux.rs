@@ -42,6 +42,7 @@ use devices::virtio::EventDevice;
 use devices::virtio::{self, Console, VirtioDevice};
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
+use devices::ProtectionType;
 use devices::{
     self, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciDevice, VcpuRunState, VfioContainer,
     VfioDevice, VfioPciDevice, VirtioPciDevice,
@@ -2174,12 +2175,25 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         _ => panic!("Did not receive a bios or kernel, should be impossible."),
     };
 
+    let swiotlb = if let Some(size) = cfg.swiotlb {
+        Some(
+            size.checked_mul(1024 * 1024)
+                .ok_or(Error::SwiotlbTooLarge)?,
+        )
+    } else {
+        match cfg.protected_vm {
+            ProtectionType::Protected => Some(64 * 1024 * 1024),
+            ProtectionType::Unprotected => None,
+        }
+    };
+
     Ok(VmComponents {
         memory_size: cfg
             .memory
             .unwrap_or(256)
             .checked_mul(1024 * 1024)
             .ok_or(Error::MemoryTooLarge)?,
+        swiotlb,
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         vcpu_affinity: cfg.vcpu_affinity.clone(),
         cpu_clusters: cfg.cpu_clusters.clone(),

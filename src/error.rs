@@ -130,6 +130,7 @@ pub enum Error {
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     SpawnGdbServer(io::Error),
     SpawnVcpu(io::Error),
+    SwiotlbTooLarge,
     Timer(base::Error),
     ValidateRawDescriptor(base::Error),
     VhostNetDeviceNew(virtio::vhost::Error),
@@ -269,6 +270,7 @@ impl Display for Error {
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             SpawnGdbServer(e) => write!(f, "failed to spawn GDB thread: {}", e),
             SpawnVcpu(e) => write!(f, "failed to spawn VCPU thread: {}", e),
+            SwiotlbTooLarge => write!(f, "requested swiotlb size too large"),
             Timer(e) => write!(f, "failed to read timer fd: {}", e),
             ValidateRawDescriptor(e) => write!(f, "failed to validate raw descriptor: {}", e),
             VhostNetDeviceNew(e) => write!(f, "failed to set up vhost networking: {}", e),
