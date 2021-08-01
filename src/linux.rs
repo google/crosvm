@@ -2028,12 +2028,12 @@ where
                         Ok(VcpuExit::IoIn { port, mut size }) => {
                             let mut data = [0; 8];
                             if size > data.len() {
-                                error!("unsupported IoIn size of {} bytes", size);
+                                error!("unsupported IoIn size of {} bytes at port {:#x}", size, port);
                                 size = data.len();
                             }
                             io_bus.read(port as u64, &mut data[..size]);
                             if let Err(e) = vcpu.set_data(&data[..size]) {
-                                error!("failed to set return data for IoIn: {}", e);
+                                error!("failed to set return data for IoIn at port {:#x}: {}", port, e);
                             }
                         }
                         Ok(VcpuExit::IoOut {
@@ -2042,7 +2042,7 @@ where
                             data,
                         }) => {
                             if size > data.len() {
-                                error!("unsupported IoOut size of {} bytes", size);
+                                error!("unsupported IoOut size of {} bytes at port {:#x}", size, port);
                                 size = data.len();
                             }
                             io_bus.write(port as u64, &data[..size]);

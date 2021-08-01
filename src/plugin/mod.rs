@@ -477,12 +477,18 @@ pub fn run_vcpus(
                                     VcpuExit::IoIn { port, mut size } => {
                                         let mut data = [0; 256];
                                         if size > data.len() {
-                                            error!("unsupported IoIn size of {} bytes", size);
+                                            error!(
+                                                "unsupported IoIn size of {} bytes at port {:#x}",
+                                                size, port
+                                            );
                                             size = data.len();
                                         }
                                         vcpu_plugin.io_read(port as u64, &mut data[..size], &vcpu);
                                         if let Err(e) = vcpu.set_data(&data[..size]) {
-                                            error!("failed to set return data for IoIn: {}", e);
+                                            error!(
+                                                "failed to set return data for IoIn at port {:#x}: {}",
+                                                port, e
+                                            );
                                         }
                                     }
                                     VcpuExit::IoOut {
@@ -491,7 +497,7 @@ pub fn run_vcpus(
                                         data,
                                     } => {
                                         if size > data.len() {
-                                            error!("unsupported IoOut size of {} bytes", size);
+                                            error!("unsupported IoOut size of {} bytes at port {:#x}", size, port);
                                             size = data.len();
                                         }
                                         vcpu_plugin.io_write(port as u64, &data[..size], &vcpu);
