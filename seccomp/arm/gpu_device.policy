@@ -65,6 +65,7 @@ fstat64: 1
 getdents: 1
 getdents64: 1
 sysinfo: 1
+fstatfs: 1
 fstatfs64: 1
 
 # 0x6400 == DRM_IOCTL_BASE, 0x8000 = KBASE_IOCTL_TYPE (mali), 0x40086200 = DMA_BUF_IOCTL_SYNC, 0x40087543 == UDMABUF_CREATE_LIST

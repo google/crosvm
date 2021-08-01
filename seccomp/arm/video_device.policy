@@ -9,6 +9,7 @@ clock_getres: 1
 clock_getres_time64: 1
 connect: 1
 fstatfs64: 1
+fstatfs: 1
 getegid32: 1
 geteuid32: 1
 getgid32: 1
