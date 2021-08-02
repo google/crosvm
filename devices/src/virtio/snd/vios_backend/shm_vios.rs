@@ -449,7 +449,8 @@ impl VioSClient {
         let control_fd = self.control_socket.lock().as_raw_fd();
         let event_fd = self.event_socket.as_raw_fd();
         let recv_event = self.recv_event.as_raw_descriptor();
-        let mut ret = vec![control_fd, event_fd, recv_event];
+        let event_notifier = self.event_notifier.as_raw_descriptor();
+        let mut ret = vec![control_fd, event_fd, recv_event, event_notifier];
         ret.append(&mut self.tx.keep_fds());
         ret.append(&mut self.rx.keep_fds());
         ret
