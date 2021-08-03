@@ -315,7 +315,7 @@ impl<'a> VideoCmd {
                             .level
                             .try_into()?,
                     ),
-                    VIRTIO_VIDEO_CONTROL_FORCE_KEYFRAME => CtrlVal::ForceKeyframe(),
+                    VIRTIO_VIDEO_CONTROL_FORCE_KEYFRAME => CtrlVal::ForceKeyframe,
                     VIRTIO_VIDEO_CONTROL_PREPEND_SPSPPS_TO_IDR => CtrlVal::PrependSpsPpsToIdr(
                         r.read_obj::<virtio_video_control_val_prepend_spspps_to_idr>()?
                             .prepend_spspps_to_idr

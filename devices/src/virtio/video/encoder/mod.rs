@@ -1245,7 +1245,7 @@ impl<T: Encoder> EncoderDevice<T> {
                 }
                 stream.dst_h264_level = Some(level);
             }
-            CtrlVal::ForceKeyframe() => {
+            CtrlVal::ForceKeyframe => {
                 stream.force_keyframe = true;
             }
             CtrlVal::PrependSpsPpsToIdr(prepend_sps_pps_to_idr) => {

@@ -64,7 +64,7 @@ pub enum CtrlVal {
     Bitrate(u32),
     Profile(Profile),
     Level(Level),
-    ForceKeyframe(),
+    ForceKeyframe,
     BitrateMode(BitrateMode),
     BitratePeak(u32),
     PrependSpsPpsToIdr(bool),
@@ -93,7 +93,7 @@ impl Response for CtrlVal {
                 level: Le32::from(*l as u32),
                 ..Default::default()
             }),
-            CtrlVal::ForceKeyframe() => Err(io::Error::new(
+            CtrlVal::ForceKeyframe => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Button controls should not be queried.",
             )),
