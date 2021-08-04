@@ -79,6 +79,7 @@ struct WlBackend {
     use_transition_flags: bool,
     use_send_vfd_v2: bool,
     features: u64,
+    acked_features: u64,
     wlstate: Option<Rc<RefCell<wl::WlState>>>,
     workers: [Option<AbortHandle>; Self::MAX_QUEUE_NUM],
 }
@@ -100,6 +101,7 @@ impl WlBackend {
             use_transition_flags: false,
             use_send_vfd_v2: false,
             features,
+            acked_features: 0,
             wlstate: None,
             workers: Default::default(),
         }
@@ -117,17 +119,25 @@ impl VhostUserBackend for WlBackend {
     }
 
     fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
+        let unrequested_features = value & !self.features();
+        if unrequested_features != 0 {
+            bail!("invalid features are given: {:#x}", unrequested_features);
+        }
+
+        self.acked_features |= value;
+
         if value & (1 << wl::VIRTIO_WL_F_TRANS_FLAGS) != 0 {
             self.use_transition_flags = true;
         }
         if value & (1 << wl::VIRTIO_WL_F_SEND_FENCES) != 0 {
             self.use_send_vfd_v2 = true;
         }
+
         Ok(())
     }
 
     fn acked_features(&self) -> u64 {
-        self.features
+        self.acked_features
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
@@ -151,7 +161,7 @@ impl VhostUserBackend for WlBackend {
     fn start_queue(
         &mut self,
         idx: usize,
-        queue: Queue,
+        mut queue: Queue,
         mem: GuestMemory,
         call_evt: Arc<Mutex<CallEvent>>,
         kick_evt: Event,
@@ -160,6 +170,9 @@ impl VhostUserBackend for WlBackend {
             warn!("Starting new queue handler without stopping old handler");
             handle.abort();
         }
+
+        // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
+        queue.ack_features(self.acked_features);
 
         // Safe because the executor is initialized in main() below.
         let ex = WL_EXECUTOR.get().expect("Executor not initialized");

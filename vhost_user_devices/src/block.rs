@@ -192,7 +192,7 @@ impl VhostUserBackend for BlockBackend {
     fn start_queue(
         &mut self,
         idx: usize,
-        queue: virtio::Queue,
+        mut queue: virtio::Queue,
         mem: GuestMemory,
         call_evt: Arc<Mutex<CallEvent>>,
         kick_evt: Event,
@@ -201,6 +201,9 @@ impl VhostUserBackend for BlockBackend {
             warn!("Starting new queue handler without stopping old handler");
             handle.abort();
         }
+
+        // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
+        queue.ack_features(self.acked_features);
 
         // Safe because the executor is initialized in main() below.
         let ex = BLOCK_EXECUTOR.get().expect("Executor not initialized");
