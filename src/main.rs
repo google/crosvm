@@ -2276,17 +2276,6 @@ fn resume_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     vms_request(&VmRequest::Resume, socket_path)
 }
 
-fn make_rt(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() == 0 {
-        print_help("crosvm make_rt", "VM_SOCKET...", &[]);
-        println!("Makes the crosvm instance listening on each `VM_SOCKET` given RT.");
-        return Err(());
-    }
-    let socket_path = &args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
-    vms_request(&VmRequest::MakeRT, socket_path)
-}
-
 fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() < 2 {
         print_help("crosvm balloon", "SIZE VM_SOCKET...", &[]);
@@ -2329,6 +2318,32 @@ fn balloon_stats(mut args: std::env::Args) -> std::result::Result<(), ()> {
         VmResponse::BalloonStats { .. } => Ok(()),
         _ => Err(()),
     }
+}
+
+fn modify_battery(mut args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() < 4 {
+        print_help(
+            "crosvm battery BATTERY_TYPE ",
+            "[status STATUS | \
+             present PRESENT | \
+             health HEALTH | \
+             capacity CAPACITY | \
+             aconline ACONLINE ] \
+             VM_SOCKET...",
+            &[],
+        );
+        return Err(());
+    }
+
+    // This unwrap will not panic because of the above length check.
+    let battery_type = args.next().unwrap();
+    let property = args.next().unwrap();
+    let target = args.next().unwrap();
+
+    let socket_path = args.next().unwrap();
+    let socket_path = Path::new(&socket_path);
+
+    do_modify_battery(&socket_path, &*battery_type, &*property, &*target)
 }
 
 #[cfg(feature = "composite-disk")]
@@ -2556,6 +2571,17 @@ fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
     vms_request(&request, socket_path)
 }
 
+fn make_rt(mut args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() == 0 {
+        print_help("crosvm make_rt", "VM_SOCKET...", &[]);
+        println!("Makes the crosvm instance listening on each `VM_SOCKET` given RT.");
+        return Err(());
+    }
+    let socket_path = &args.next().unwrap();
+    let socket_path = Path::new(&socket_path);
+    vms_request(&VmRequest::MakeRT, socket_path)
+}
+
 fn parse_bus_id_addr(v: &str) -> ModifyUsbResult<(u8, u8, u16, u16)> {
     debug!("parse_bus_id_addr: {}", v);
     let mut ids = v.split(':');
@@ -2647,6 +2673,19 @@ fn modify_usb(mut args: std::env::Args) -> std::result::Result<(), ()> {
     }
 }
 
+#[allow(clippy::unnecessary_wraps)]
+fn pkg_version() -> std::result::Result<(), ()> {
+    const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
+    const PKG_VERSION: Option<&'static str> = option_env!("PKG_VERSION");
+
+    print!("crosvm {}", VERSION.unwrap_or("UNKNOWN"));
+    match PKG_VERSION {
+        Some(v) => println!("-{}", v),
+        None => println!(),
+    }
+    Ok(())
+}
+
 fn print_usage() {
     print_help("crosvm", "[command]", &[]);
     println!("Commands:");
@@ -2663,37 +2702,6 @@ fn print_usage() {
     println!("    suspend - Suspends the crosvm instance.");
     println!("    usb - Manage attached virtual USB devices.");
     println!("    version - Show package version.");
-}
-
-#[allow(clippy::unnecessary_wraps)]
-fn pkg_version() -> std::result::Result<(), ()> {
-    const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
-    const PKG_VERSION: Option<&'static str> = option_env!("PKG_VERSION");
-
-    print!("crosvm {}", VERSION.unwrap_or("UNKNOWN"));
-    match PKG_VERSION {
-        Some(v) => println!("-{}", v),
-        None => println!(),
-    }
-    Ok(())
-}
-
-fn modify_battery(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() < 4 {
-        print_help("crosvm battery BATTERY_TYPE ",
-                   "[status STATUS | present PRESENT | health HEALTH | capacity CAPACITY | aconline ACONLINE ] VM_SOCKET...", &[]);
-        return Err(());
-    }
-
-    // This unwrap will not panic because of the above length check.
-    let battery_type = args.next().unwrap();
-    let property = args.next().unwrap();
-    let target = args.next().unwrap();
-
-    let socket_path = args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
-
-    do_modify_battery(&socket_path, &*battery_type, &*property, &*target)
 }
 
 fn crosvm_main() -> std::result::Result<(), ()> {
@@ -2716,20 +2724,20 @@ fn crosvm_main() -> std::result::Result<(), ()> {
             print_usage();
             Ok(())
         }
-        Some("stop") => stop_vms(args),
-        Some("suspend") => suspend_vms(args),
-        Some("resume") => resume_vms(args),
-        Some("make_rt") => make_rt(args),
-        Some("run") => run_vm(args),
         Some("balloon") => balloon_vms(args),
         Some("balloon_stats") => balloon_stats(args),
+        Some("battery") => modify_battery(args),
         #[cfg(feature = "composite-disk")]
         Some("create_composite") => create_composite(args),
         Some("create_qcow2") => create_qcow2(args),
         Some("disk") => disk_cmd(args),
+        Some("make_rt") => make_rt(args),
+        Some("resume") => resume_vms(args),
+        Some("run") => run_vm(args),
+        Some("stop") => stop_vms(args),
+        Some("suspend") => suspend_vms(args),
         Some("usb") => modify_usb(args),
         Some("version") => pkg_version(),
-        Some("battery") => modify_battery(args),
         Some(c) => {
             println!("invalid subcommand: {:?}", c);
             print_usage();
