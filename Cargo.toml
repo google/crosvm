@@ -54,7 +54,7 @@ composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
 default = ["audio", "gpu", "usb"]
 default-no-sandbox = []
 direct = ["devices/direct"]
-gdb = ["gdbstub", "thiserror",  "arch/gdb", "vm_control/gdb", "x86_64/gdb"]
+gdb = ["gdbstub", "gdbstub_arch", "thiserror",  "arch/gdb", "vm_control/gdb", "x86_64/gdb"]
 gfxstream = ["devices/gfxstream"]
 gpu = ["devices/gpu"]
 plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]
@@ -79,7 +79,8 @@ data_model = "*"
 devices = { path = "devices" }
 disk = { path = "disk" }
 enumn = { path = "enumn" }
-gdbstub = { version = "0.4.0", optional = true }
+gdbstub = { version = "0.5.0", optional = true }
+gdbstub_arch = { version = "0.1.0", optional = true }
 rutabaga_gfx = { path = "rutabaga_gfx"}
 hypervisor = { path = "hypervisor" }
 kernel_cmdline = { path = "kernel_cmdline" }

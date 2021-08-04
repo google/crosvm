@@ -31,7 +31,7 @@ use vm_control::{BatControl, BatteryType};
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-use gdbstub::arch::x86::reg::X86_64CoreRegs as GdbStubRegs;
+use gdbstub_arch::x86::reg::X86_64CoreRegs as GdbStubRegs;
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use {

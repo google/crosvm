@@ -5,12 +5,12 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [features]
-gdb = ["gdbstub"]
+gdb = ["gdbstub_arch"]
 
 [dependencies]
 base = { path = "../base" }
 data_model = { path = "../data_model" }
-gdbstub = { version = "0.4.0", optional = true }
+gdbstub_arch = { version = "0.1.0", optional = true }
 hypervisor = { path = "../hypervisor" }
 libc = "*"
 resources = { path = "../resources" }

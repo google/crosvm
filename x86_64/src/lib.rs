@@ -71,7 +71,7 @@ use vm_control::{BatControl, BatteryType};
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use {
-    gdbstub::arch::x86::reg::X86_64CoreRegs,
+    gdbstub_arch::x86::reg::{X86SegmentRegs, X86_64CoreRegs},
     hypervisor::x86_64::{Regs, Sregs},
 };
 
@@ -608,12 +608,14 @@ impl arch::LinuxArch for X8664arch {
 
         // Segment registers: CS, SS, DS, ES, FS, GS
         let sregs = vcpu.get_sregs().map_err(Error::ReadRegs)?;
-        let sgs = [sregs.cs, sregs.ss, sregs.ds, sregs.es, sregs.fs, sregs.gs];
-        let mut segments = [0u32; 6];
-        // GDB uses only the selectors.
-        for i in 0..sgs.len() {
-            segments[i] = sgs[i].selector as u32;
-        }
+        let segments = X86SegmentRegs {
+            cs: sregs.cs.selector as u32,
+            ss: sregs.ss.selector as u32,
+            ds: sregs.ds.selector as u32,
+            es: sregs.es.selector as u32,
+            fs: sregs.fs.selector as u32,
+            gs: sregs.gs.selector as u32,
+        };
 
         // TODO(keiichiw): Other registers such as FPU, xmm and mxcsr.
 
@@ -656,12 +658,12 @@ impl arch::LinuxArch for X8664arch {
         // Segment registers: CS, SS, DS, ES, FS, GS
         // Since GDB care only selectors, we call get_sregs() first.
         let mut sregs = vcpu.get_sregs().map_err(Error::ReadRegs)?;
-        sregs.cs.selector = regs.segments[0] as u16;
-        sregs.ss.selector = regs.segments[1] as u16;
-        sregs.ds.selector = regs.segments[2] as u16;
-        sregs.es.selector = regs.segments[3] as u16;
-        sregs.fs.selector = regs.segments[4] as u16;
-        sregs.gs.selector = regs.segments[5] as u16;
+        sregs.cs.selector = regs.segments.cs as u16;
+        sregs.ss.selector = regs.segments.ss as u16;
+        sregs.ds.selector = regs.segments.ds as u16;
+        sregs.es.selector = regs.segments.es as u16;
+        sregs.fs.selector = regs.segments.fs as u16;
+        sregs.gs.selector = regs.segments.gs as u16;
 
         vcpu.set_sregs(&sregs).map_err(Error::WriteRegs)?;
 

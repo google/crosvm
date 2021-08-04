@@ -6,12 +6,12 @@ edition = "2018"
 
 [features]
 power-monitor-powerd = ["power_monitor/powerd"]
-gdb = ["gdbstub"]
+gdb = ["gdbstub_arch"]
 
 [dependencies]
 acpi_tables = { path = "../acpi_tables" }
 devices = { path = "../devices" }
-gdbstub = { version = "0.4.0", optional = true }
+gdbstub_arch = { version = "0.1.0", optional = true }
 hypervisor = { path = "../hypervisor" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 libc = "*"
