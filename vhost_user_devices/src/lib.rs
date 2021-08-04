@@ -206,15 +206,9 @@ pub enum HandlerError {
     /// Failed to handle a vhost-user request.
     #[error("failed to handle a vhost-user request: {0}")]
     HandleVhostUserRequest(VhostError),
-    /// Invalid queue index is given.
-    #[error("invalid queue index is given: {index}")]
-    InvalidQueueIndex { index: usize },
     /// Failed to wait for the handler socket to become readable.
     #[error("failed to wait for the handler socket to become readable: {0}")]
     WaitForHandler(AsyncError),
-    /// Failed to wait for the listener socket to become readable.
-    #[error("failed to wait for the listener socket to become readable: {0}")]
-    WaitForListener(AsyncError),
 }
 
 type HandlerResult<T> = std::result::Result<T, HandlerError>;
