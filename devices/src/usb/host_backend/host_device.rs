@@ -273,10 +273,10 @@ impl HostDevice {
 
     fn handle_control_transfer(&mut self, transfer: XhciTransfer) -> Result<()> {
         let xhci_transfer = Arc::new(transfer);
-        match xhci_transfer
+        let transfer_type = xhci_transfer
             .get_transfer_type()
-            .map_err(Error::GetXhciTransferType)?
-        {
+            .map_err(Error::GetXhciTransferType)?;
+        match transfer_type {
             XhciTransferType::SetupStage(setup) => {
                 if self.ctl_ep_state != ControlEndpointState::SetupStage {
                     error!("Control endpoint is in an inconsistant state");
@@ -320,7 +320,10 @@ impl HostDevice {
             }
             _ => {
                 // Non control transfer should not be handled in this function.
-                error!("Non control (could be noop) transfer sent to control endpoint.");
+                error!(
+                    "Non control {} transfer sent to control endpoint.",
+                    transfer_type,
+                );
                 xhci_transfer
                     .on_transfer_complete(&TransferStatus::Completed, 0)
                     .map_err(Error::TransferComplete)?;

@@ -108,6 +108,21 @@ pub enum XhciTransferType {
     Noop,
 }
 
+impl Display for XhciTransferType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::XhciTransferType::*;
+
+        match self {
+            Normal(_) => write!(f, "Normal"),
+            SetupStage(_) => write!(f, "SetupStage"),
+            DataStage(_) => write!(f, "DataStage"),
+            StatusStage => write!(f, "StatusStage"),
+            Isochronous(_) => write!(f, "Isochronous"),
+            Noop => write!(f, "Noop"),
+        }
+    }
+}
+
 impl XhciTransferType {
     /// Analyze transfer descriptor and return transfer type.
     pub fn new(mem: GuestMemory, td: TransferDescriptor) -> Result<XhciTransferType> {
