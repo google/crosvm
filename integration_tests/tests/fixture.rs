@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::ffi::CString;
+use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -11,7 +12,6 @@ use std::sync::Once;
 use std::thread;
 use std::time::Duration;
 use std::{env, process::Child};
-use std::{fs::File, process::Stdio};
 
 use anyhow::{anyhow, Result};
 use base::syslog;
@@ -266,10 +266,7 @@ impl TestVm {
         TestVm::configure_kernel(&mut command, o_direct);
 
         println!("$ {:?}", command);
-        if !debug {
-            command.stdout(Stdio::null());
-            command.stderr(Stdio::null());
-        }
+
         let process = command.spawn()?;
 
         // Open pipes. Panic if we cannot connect after a timeout.
