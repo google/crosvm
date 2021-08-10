@@ -8,6 +8,8 @@
 
 ${0%/*}/wait_for_vm_with_timeout || exit 1
 
+vm_tmp_dir=/var/tmp
+
 if [ "$1" = "--no-sync" ]; then
     shift
 else
@@ -19,10 +21,10 @@ filepath=$1
 filename=$(basename $filepath)
 
 echo "Executing $filename ${@:2}"
-scp -q $filepath vm:/tmp/$filename
-ssh vm -q -t "cd /tmp && sudo ./$filename ${@:2}"
+scp -q $filepath vm:$vm_tmp_dir/$filename
+ssh vm -q -t "cd $vm_tmp_dir && sudo ./$filename ${@:2}"
 
 # Make sure to preserve the exit code of $filename after cleaning up the file.
 ret=$?
-ssh vm -q -t "rm /tmp/$filename"
+ssh vm -q -t "rm $vm_tmp_dir/$filename"
 exit $ret

@@ -14,6 +14,7 @@ target_dir=$(
     cargo metadata --no-deps --format-version 1 |
         jq -r ".target_directory"
 )
+vm_tmp_dir=/var/tmp
 
 # List of shared objects used by crosvm that need to be synced.
 shared_objects=(
@@ -34,4 +35,4 @@ else
     )
 fi
 
-rsync -azPLq --rsync-path="sudo rsync" ${runtime_files} vm:/tmp
+rsync -azPLq --rsync-path="sudo rsync" ${runtime_files} vm:$vm_tmp_dir
