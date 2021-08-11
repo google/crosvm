@@ -147,10 +147,13 @@ pub struct PciRoot {
     root_configuration: PciRootConfiguration,
     /// Devices attached to this bridge.
     devices: BTreeMap<PciAddress, Arc<Mutex<dyn BusDevice>>>,
+    /// pcie enhanced configuration access mmio base
+    pcie_cfg_mmio: Option<u64>,
 }
 
 pub const PCI_VENDOR_ID_INTEL: u16 = 0x8086;
 const PCI_DEVICE_ID_INTEL_82441: u16 = 0x1237;
+const PCIE_XBAR_BASE_ADDR: usize = 24;
 
 impl PciRoot {
     /// Create an empty PCI root bus.
@@ -173,7 +176,13 @@ impl PciRoot {
                 ),
             },
             devices: BTreeMap::new(),
+            pcie_cfg_mmio: None,
         }
+    }
+
+    /// enable pcie enhanced configuration access and set base mmio
+    pub fn enable_pcie_cfg_mmio(&mut self, pcie_cfg_mmio: u64) {
+        self.pcie_cfg_mmio = Some(pcie_cfg_mmio);
     }
 
     /// Add a `device` to this root PCI bus.
@@ -206,7 +215,14 @@ impl PciRoot {
 
     pub fn config_space_read(&self, address: PciAddress, register: usize) -> u32 {
         if address.is_root() {
-            self.root_configuration.config_register_read(register)
+            if register == PCIE_XBAR_BASE_ADDR && self.pcie_cfg_mmio.is_some() {
+                let pcie_mmio = self.pcie_cfg_mmio.unwrap() as u32;
+                pcie_mmio | 0x1
+            } else if register == (PCIE_XBAR_BASE_ADDR + 1) && self.pcie_cfg_mmio.is_some() {
+                (self.pcie_cfg_mmio.unwrap() >> 32) as u32
+            } else {
+                self.root_configuration.config_register_read(register)
+            }
         } else {
             self.devices
                 .get(&address)

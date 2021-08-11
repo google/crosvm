@@ -432,6 +432,7 @@ impl arch::LinuxArch for X8664arch {
         .map_err(Error::CreatePciRoot)?;
 
         let pci = Arc::new(Mutex::new(pci));
+        pci.lock().enable_pcie_cfg_mmio(PCIE_CFG_MMIO_START);
         let pci_cfg = PciConfigIo::new(
             pci.clone(),
             reset_evt.try_clone().map_err(Error::CloneEvent)?,
