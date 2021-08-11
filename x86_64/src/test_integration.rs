@@ -136,6 +136,7 @@ where
         4,
     )
     .unwrap();
+    let pci = Arc::new(Mutex::new(pci));
     let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));
     io_bus.insert(pci_bus, 0xcf8, 0x8).unwrap();
 

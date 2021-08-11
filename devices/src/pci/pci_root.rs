@@ -266,7 +266,7 @@ impl PciRoot {
 /// Emulates PCI configuration access mechanism #1 (I/O ports 0xcf8 and 0xcfc).
 pub struct PciConfigIo {
     /// PCI root bridge.
-    pci_root: PciRoot,
+    pci_root: Arc<Mutex<PciRoot>>,
     /// Current address to read/write from (0xcf8 register, litte endian).
     config_address: u32,
 }
@@ -274,7 +274,7 @@ pub struct PciConfigIo {
 impl PciConfigIo {
     const REGISTER_BITS_NUM: usize = 8;
 
-    pub fn new(pci_root: PciRoot) -> Self {
+    pub fn new(pci_root: Arc<Mutex<PciRoot>>) -> Self {
         PciConfigIo {
             pci_root,
             config_address: 0,
@@ -289,7 +289,7 @@ impl PciConfigIo {
 
         let (address, register) =
             PciAddress::from_config_address(self.config_address, Self::REGISTER_BITS_NUM);
-        self.pci_root.config_space_read(address, register)
+        self.pci_root.lock().config_space_read(address, register)
     }
 
     fn config_space_write(&mut self, offset: u64, data: &[u8]) {
@@ -301,6 +301,7 @@ impl PciConfigIo {
         let (address, register) =
             PciAddress::from_config_address(self.config_address, Self::REGISTER_BITS_NUM);
         self.pci_root
+            .lock()
             .config_space_write(address, register, offset, data)
     }
 
@@ -324,7 +325,7 @@ impl PciConfigIo {
     }
 
     pub fn add_device(&mut self, address: PciAddress, device: Arc<Mutex<dyn BusDevice>>) {
-        self.pci_root.add_device(address, device)
+        self.pci_root.lock().add_device(address, device)
     }
 }
 
@@ -368,13 +369,13 @@ impl BusDevice for PciConfigIo {
 /// Emulates PCI memory-mapped configuration access mechanism.
 pub struct PciConfigMmio {
     /// PCI root bridge.
-    pci_root: PciRoot,
+    pci_root: Arc<Mutex<PciRoot>>,
     /// Register bit number in config address.
     register_bit_num: usize,
 }
 
 impl PciConfigMmio {
-    pub fn new(pci_root: PciRoot, register_bit_num: usize) -> Self {
+    pub fn new(pci_root: Arc<Mutex<PciRoot>>, register_bit_num: usize) -> Self {
         PciConfigMmio {
             pci_root,
             register_bit_num,
@@ -384,18 +385,19 @@ impl PciConfigMmio {
     fn config_space_read(&self, config_address: u32) -> u32 {
         let (address, register) =
             PciAddress::from_config_address(config_address, self.register_bit_num);
-        self.pci_root.config_space_read(address, register)
+        self.pci_root.lock().config_space_read(address, register)
     }
 
     fn config_space_write(&mut self, config_address: u32, offset: u64, data: &[u8]) {
         let (address, register) =
             PciAddress::from_config_address(config_address, self.register_bit_num);
         self.pci_root
+            .lock()
             .config_space_write(address, register, offset, data)
     }
 
     pub fn add_device(&mut self, address: PciAddress, device: Arc<Mutex<dyn BusDevice>>) {
-        self.pci_root.add_device(address, device)
+        self.pci_root.lock().add_device(address, device)
     }
 }
 

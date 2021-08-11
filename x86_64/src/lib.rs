@@ -5,6 +5,8 @@
 mod fdt;
 
 const E820_RAM: u32 = 1;
+const E820_RESERVED: u32 = 2;
+
 const SETUP_DTB: u32 = 2;
 const X86_64_FDT_MAX_SIZE: u64 = 0x200000;
 
@@ -60,8 +62,8 @@ use arch::{
 use base::Event;
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::{
-    BusDeviceObj, BusResumeDevice, IrqChip, IrqChipX86_64, PciAddress, PciConfigIo, PciDevice,
-    ProtectionType,
+    BusDeviceObj, BusResumeDevice, IrqChip, IrqChipX86_64, PciAddress, PciConfigIo, PciConfigMmio,
+    PciDevice, ProtectionType,
 };
 use hypervisor::{HypervisorX86_64, VcpuX86_64, VmX86_64};
 use minijail::Minijail;
@@ -192,8 +194,13 @@ const BOOT_STACK_POINTER: u64 = 0x8000;
 // Make sure it align to 256MB for MTRR convenient
 const MEM_32BIT_GAP_SIZE: u64 = 768 << 20;
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
+// Reserved memory for nand_bios/LAPIC/IOAPIC/HPET/.....
+const RESERVED_MEM_SIZE: u64 = 0x800_0000;
+// Reserve 64MB for pcie enhanced configuration
+const PCIE_CFG_MMIO_SIZE: u64 = 0x400_0000;
+const PCIE_CFG_MMIO_START: u64 = FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - PCIE_CFG_MMIO_SIZE;
 const END_ADDR_BEFORE_32BITS: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
-const MMIO_SIZE: u64 = MEM_32BIT_GAP_SIZE - 0x800_0000;
+const PCI_MMIO_SIZE: u64 = MEM_32BIT_GAP_SIZE - RESERVED_MEM_SIZE - PCIE_CFG_MMIO_SIZE;
 // Linux (with 4-level paging) has a physical memory limit of 46 bits (64 TiB).
 const HIGH_MMIO_MAX_END: u64 = 1u64 << 46;
 const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
@@ -282,6 +289,13 @@ fn configure_system(
         }
     }
 
+    add_e820_entry(
+        &mut params,
+        PCIE_CFG_MMIO_START,
+        PCIE_CFG_MMIO_SIZE,
+        E820_RESERVED,
+    )?;
+
     let zero_page_addr = GuestAddress(ZERO_PAGE_OFFSET);
     guest_mem
         .checked_offset(zero_page_addr, mem::size_of::<boot_params>() as u64)
@@ -359,7 +373,7 @@ impl arch::LinuxArch for X8664arch {
         let high_mmio_size = Self::get_high_mmio_size(guest_mem);
         SystemAllocator::builder()
             .add_io_addresses(0xc000, 0x10000)
-            .add_low_mmio_addresses(END_ADDR_BEFORE_32BITS, MMIO_SIZE)
+            .add_low_mmio_addresses(END_ADDR_BEFORE_32BITS, PCI_MMIO_SIZE)
             .add_high_mmio_addresses(high_mmio_start, high_mmio_size)
             .create_allocator(X86_64_IRQ_BASE)
             .unwrap()
@@ -415,8 +429,14 @@ impl arch::LinuxArch for X8664arch {
             4, // Share the four pin interrupts (INTx#)
         )
         .map_err(Error::CreatePciRoot)?;
-        let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));
+        let pci = Arc::new(Mutex::new(pci));
+        let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci.clone())));
         io_bus.insert(pci_bus.clone(), 0xcf8, 0x8).unwrap();
+
+        let pcie_cfg_mmio = Arc::new(Mutex::new(PciConfigMmio::new(pci, 12)));
+        mmio_bus
+            .insert(pcie_cfg_mmio, PCIE_CFG_MMIO_START, PCIE_CFG_MMIO_SIZE)
+            .unwrap();
 
         // Event used to notify crosvm that guest OS is trying to suspend.
         let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
@@ -1142,7 +1162,7 @@ impl X8664arch {
                     aml::AddressSpaceCachable::NotCacheable,
                     true,
                     END_ADDR_BEFORE_32BITS as u32,
-                    (END_ADDR_BEFORE_32BITS + MMIO_SIZE - 1) as u32,
+                    (END_ADDR_BEFORE_32BITS + PCI_MMIO_SIZE - 1) as u32,
                 ),
                 &aml::AddressSpace::new_memory(
                     aml::AddressSpaceCachable::NotCacheable,
