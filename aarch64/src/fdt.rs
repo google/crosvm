@@ -317,7 +317,7 @@ fn create_pci_nodes(
 
     for (address, irq_num, irq_pin) in pci_irqs.iter() {
         // PCI_DEVICE(3)
-        interrupts.push(address.to_config_address(0));
+        interrupts.push(address.to_config_address(0, 8));
         interrupts.push(0);
         interrupts.push(0);
 

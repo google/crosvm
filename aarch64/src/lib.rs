@@ -392,7 +392,7 @@ impl arch::LinuxArch for AArch64 {
             (devices::AARCH64_GIC_NR_IRQS - AARCH64_IRQ_BASE) as usize,
         )
         .map_err(Error::CreatePciRoot)?;
-        let pci_bus = Arc::new(Mutex::new(PciConfigMmio::new(pci)));
+        let pci_bus = Arc::new(Mutex::new(PciConfigMmio::new(pci, 8)));
 
         let (platform_devices, _others): (Vec<_>, Vec<_>) = others
             .into_iter()
