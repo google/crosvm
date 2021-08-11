@@ -144,6 +144,13 @@ const XSDT_REVISION: u8 = 1;
 
 const CPUID_LEAF0_EBX_CPUID_SHIFT: u32 = 24; // Offset of initial apic id.
 
+// MCFG
+const MCFG_LEN: u32 = 60;
+const MCFG_REVISION: u8 = 1;
+const MCFG_FIELD_BASE_ADDRESS: usize = 44;
+const MCFG_FIELD_START_BUS_NUMBER: usize = 54;
+const MCFG_FIELD_END_BUS_NUMBER: usize = 55;
+
 fn create_dsdt_table(amls: Vec<u8>) -> SDT {
     let mut dsdt = SDT::new(
         *b"DSDT",
@@ -334,6 +341,10 @@ fn sync_acpi_id_from_cpuid(
 /// * `pci_rqs` - PCI device to IRQ number assignments as returned by
 ///               `arch::generate_pci_root()` (device address, IRQ number, and PCI
 ///               interrupt pin assignment).
+/// * `pcie_cfg_mmio` - Base address for the pcie enhanced configuration access mechanism
+/// *  `max_bus` - Max bus number in MCFG table
+///
+
 pub fn create_acpi_tables(
     guest_mem: &GuestMemory,
     num_cpus: u8,
@@ -344,6 +355,8 @@ pub fn create_acpi_tables(
     host_cpus: Option<VcpuAffinity>,
     apic_ids: &mut Vec<usize>,
     pci_irqs: &[(PciAddress, u32, PciInterruptPin)],
+    pcie_cfg_mmio: u64,
+    max_bus: u8,
 ) -> Option<GuestAddress> {
     // RSDP is at the HI RSDP WINDOW
     let rsdp_offset = GuestAddress(super::ACPI_HI_RSDP_WINDOW_BASE);
@@ -482,6 +495,23 @@ pub fn create_acpi_tables(
     }
 
     guest_mem.write_at_addr(madt.as_slice(), offset).ok()?;
+    tables.push(offset.0);
+    offset = next_offset(offset, madt.len() as u64)?;
+
+    // MCFG
+    let mut mcfg = SDT::new(
+        *b"MCFG",
+        MCFG_LEN,
+        MCFG_REVISION,
+        *b"CROSVM",
+        *b"CROSVMDT",
+        OEM_REVISION,
+    );
+    mcfg.write(MCFG_FIELD_BASE_ADDRESS, pcie_cfg_mmio);
+    mcfg.write(MCFG_FIELD_START_BUS_NUMBER, 0_u8);
+    mcfg.write(MCFG_FIELD_END_BUS_NUMBER, max_bus);
+
+    guest_mem.write_at_addr(mcfg.as_slice(), offset).ok()?;
     tables.push(offset.0);
     offset = next_offset(offset, madt.len() as u64)?;
 

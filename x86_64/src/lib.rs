@@ -465,6 +465,9 @@ impl arch::LinuxArch for X8664arch {
 
         let mut resume_notify_devices = Vec::new();
 
+        // each bus occupy 1MB mmio for pcie enhanced configuration
+        let max_bus = ((PCIE_CFG_MMIO_SIZE / 0x100000) - 1) as u8;
+
         let (acpi_dev_resource, bat_control) = Self::setup_acpi_devices(
             &mem,
             &io_bus,
@@ -475,6 +478,7 @@ impl arch::LinuxArch for X8664arch {
             irq_chip.as_irq_chip_mut(),
             battery,
             &mmio_bus,
+            max_bus,
             &mut resume_notify_devices,
         )?;
 
@@ -517,6 +521,8 @@ impl arch::LinuxArch for X8664arch {
             host_cpus,
             kvm_vcpu_ids,
             &pci_irqs,
+            PCIE_CFG_MMIO_START,
+            max_bus,
         )
         .ok_or(Error::CreateAcpi)?;
 
@@ -1125,6 +1131,7 @@ impl X8664arch {
         irq_chip: &mut dyn IrqChip,
         battery: (&Option<BatteryType>, Option<Minijail>),
         mmio_bus: &devices::Bus,
+        max_bus: u8,
         resume_notify_devices: &mut Vec<Arc<Mutex<dyn BusResumeDevice>>>,
     ) -> Result<(acpi::AcpiDevResource, Option<BatControl>)> {
         // The AML data for the acpi devices
@@ -1162,7 +1169,7 @@ impl X8664arch {
         let crs = aml::Name::new(
             "_CRS".into(),
             &aml::ResourceTemplate::new(vec![
-                &aml::AddressSpace::new_bus_number(0x0u16, 0xffu16),
+                &aml::AddressSpace::new_bus_number(0x0u16, max_bus as u16),
                 &aml::IO::new(0xcf8, 0xcf8, 1, 0x8),
                 &aml::AddressSpace::new_memory(
                     aml::AddressSpaceCachable::NotCacheable,

@@ -16,7 +16,7 @@ use super::X8664arch;
 use super::{acpi, arch_memory_regions, bootparam, mptable, smbios};
 use super::{
     BOOT_STACK_POINTER, END_ADDR_BEFORE_32BITS, KERNEL_64BIT_ENTRY_OFFSET, KERNEL_START_OFFSET,
-    X86_64_SCI_IRQ, ZERO_PAGE_OFFSET,
+    PCIE_CFG_MMIO_SIZE, PCIE_CFG_MMIO_START, X86_64_SCI_IRQ, ZERO_PAGE_OFFSET,
 };
 
 use base::{Event, Tube};
@@ -178,6 +178,7 @@ where
     // let mut kernel_image = File::open("/mnt/host/source/src/avd/vmlinux.uncompressed").expect("failed to open kernel");
     // let (params, kernel_end) = X8664arch::load_kernel(&guest_mem, &mut kernel_image).expect("failed to load kernel");
 
+    let max_bus = (PCIE_CFG_MMIO_SIZE / 0x100000 - 1) as u8;
     let suspend_evt = Event::new().unwrap();
     let mut resume_notify_devices = Vec::new();
     let acpi_dev_resource = X8664arch::setup_acpi_devices(
@@ -192,6 +193,7 @@ where
         &mut irq_chip,
         (&None, None),
         &mmio_bus,
+        max_bus,
         &mut resume_notify_devices,
     )
     .unwrap();
@@ -222,6 +224,8 @@ where
         None,
         &mut apic_ids,
         &pci_irqs,
+        PCIE_CFG_MMIO_START,
+        max_bus,
     );
 
     let guest_mem2 = guest_mem.clone();
