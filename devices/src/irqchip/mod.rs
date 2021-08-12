@@ -128,8 +128,8 @@ pub trait IrqChip: Send {
     fn finalize_devices(
         &mut self,
         resources: &mut SystemAllocator,
-        io_bus: &mut Bus,
-        mmio_bus: &mut Bus,
+        io_bus: &Bus,
+        mmio_bus: &Bus,
     ) -> Result<()>;
 
     /// Process any irqs events that were delayed because of any locking issues.

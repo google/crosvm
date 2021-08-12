@@ -392,8 +392,8 @@ impl arch::LinuxArch for X8664arch {
         let tss_addr = GuestAddress(TSS_ADDR);
         vm.set_tss_addr(tss_addr).map_err(Error::SetTssAddr)?;
 
-        let mut mmio_bus = devices::Bus::new();
-        let mut io_bus = devices::Bus::new();
+        let mmio_bus = Arc::new(devices::Bus::new());
+        let io_bus = Arc::new(devices::Bus::new());
 
         let (pci_devices, _others): (Vec<_>, Vec<_>) = devs
             .into_iter()
@@ -407,8 +407,8 @@ impl arch::LinuxArch for X8664arch {
         let (pci, pci_irqs, pid_debug_label_map) = arch::generate_pci_root(
             pci_devices,
             irq_chip.as_irq_chip_mut(),
-            &mut mmio_bus,
-            &mut io_bus,
+            mmio_bus.clone(),
+            io_bus.clone(),
             system_allocator,
             &mut vm,
             4, // Share the four pin interrupts (INTx#)
@@ -422,7 +422,7 @@ impl arch::LinuxArch for X8664arch {
 
         if !components.no_legacy {
             Self::setup_legacy_devices(
-                &mut io_bus,
+                &io_bus,
                 irq_chip.pit_uses_speaker_port(),
                 exit_evt.try_clone().map_err(Error::CloneEvent)?,
                 components.memory_size,
@@ -431,7 +431,7 @@ impl arch::LinuxArch for X8664arch {
         Self::setup_serial_devices(
             components.protected_vm,
             irq_chip.as_irq_chip_mut(),
-            &mut io_bus,
+            &io_bus,
             serial_parameters,
             serial_jail,
         )?;
@@ -440,14 +440,14 @@ impl arch::LinuxArch for X8664arch {
 
         let (acpi_dev_resource, bat_control) = Self::setup_acpi_devices(
             &mem,
-            &mut io_bus,
+            &io_bus,
             system_allocator,
             suspend_evt.try_clone().map_err(Error::CloneEvent)?,
             exit_evt.try_clone().map_err(Error::CloneEvent)?,
             components.acpi_sdts,
             irq_chip.as_irq_chip_mut(),
             battery,
-            &mut mmio_bus,
+            &mmio_bus,
             &mut resume_notify_devices,
         )?;
 
@@ -461,7 +461,7 @@ impl arch::LinuxArch for X8664arch {
         }
 
         irq_chip
-            .finalize_devices(system_allocator, &mut io_bus, &mut mmio_bus)
+            .finalize_devices(system_allocator, &io_bus, &mmio_bus)
             .map_err(Error::RegisterIrqfd)?;
 
         // All of these bios generated tables are set manually for the benefit of the kernel boot
@@ -986,7 +986,7 @@ impl X8664arch {
     /// * - `exit_evt` - the event object which should receive exit events
     /// * - `mem_size` - the size in bytes of physical ram for the guest
     fn setup_legacy_devices(
-        io_bus: &mut devices::Bus,
+        io_bus: &devices::Bus,
         pit_uses_speaker_port: bool,
         exit_evt: Event,
         mem_size: u64,
@@ -1052,14 +1052,14 @@ impl X8664arch {
     /// * - `mmio_bus` the MMIO bus to add the devices to
     fn setup_acpi_devices(
         mem: &GuestMemory,
-        io_bus: &mut devices::Bus,
+        io_bus: &devices::Bus,
         resources: &mut SystemAllocator,
         suspend_evt: Event,
         exit_evt: Event,
         sdts: Vec<SDT>,
         irq_chip: &mut dyn IrqChip,
         battery: (&Option<BatteryType>, Option<Minijail>),
-        mmio_bus: &mut devices::Bus,
+        mmio_bus: &devices::Bus,
         resume_notify_devices: &mut Vec<Arc<Mutex<dyn BusResumeDevice>>>,
     ) -> Result<(acpi::ACPIDevResource, Option<BatControl>)> {
         // The AML data for the acpi devices
@@ -1170,7 +1170,7 @@ impl X8664arch {
     fn setup_serial_devices(
         protected_vm: ProtectionType,
         irq_chip: &mut dyn IrqChip,
-        io_bus: &mut devices::Bus,
+        io_bus: &devices::Bus,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
     ) -> Result<()> {

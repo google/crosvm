@@ -211,7 +211,7 @@ enum BusDeviceEntry {
 /// only restriction is that no two devices can overlap in this address space.
 #[derive(Clone)]
 pub struct Bus {
-    devices: BTreeMap<BusRange, BusDeviceEntry>,
+    devices: Arc<Mutex<BTreeMap<BusRange, BusDeviceEntry>>>,
     access_id: usize,
 }
 
@@ -219,26 +219,21 @@ impl Bus {
     /// Constructs an a bus with an empty address space.
     pub fn new() -> Bus {
         Bus {
-            devices: BTreeMap::new(),
+            devices: Arc::new(Mutex::new(BTreeMap::new())),
             access_id: 0,
         }
     }
 
-    /// Sets the id that will be used for BusAccessInfo.
-    pub fn set_access_id(&mut self, id: usize) {
-        self.access_id = id;
-    }
-
-    fn first_before(&self, addr: u64) -> Option<(BusRange, &BusDeviceEntry)> {
-        let (range, dev) = self
-            .devices
+    fn first_before(&self, addr: u64) -> Option<(BusRange, BusDeviceEntry)> {
+        let devices = self.devices.lock();
+        let (range, dev) = devices
             .range(..=BusRange { base: addr, len: 1 })
             .rev()
             .next()?;
-        Some((*range, dev))
+        Some((*range, dev.clone()))
     }
 
-    fn get_device(&self, addr: u64) -> Option<(u64, u64, &BusDeviceEntry)> {
+    fn get_device(&self, addr: u64) -> Option<(u64, u64, BusDeviceEntry)> {
         if let Some((range, dev)) = self.first_before(addr) {
             let offset = addr - range.base;
             if offset < range.len {
@@ -249,22 +244,21 @@ impl Bus {
     }
 
     /// Puts the given device at the given address space.
-    pub fn insert(&mut self, device: Arc<Mutex<dyn BusDevice>>, base: u64, len: u64) -> Result<()> {
+    pub fn insert(&self, device: Arc<Mutex<dyn BusDevice>>, base: u64, len: u64) -> Result<()> {
         if len == 0 {
             return Err(Error::Overlap);
         }
 
         // Reject all cases where the new device's range overlaps with an existing device.
-        if self
-            .devices
+        let mut devices = self.devices.lock();
+        if devices
             .iter()
             .any(|(range, _dev)| range.overlaps(base, len))
         {
             return Err(Error::Overlap);
         }
 
-        if self
-            .devices
+        if devices
             .insert(BusRange { base, len }, BusDeviceEntry::OuterSync(device))
             .is_some()
         {
@@ -277,27 +271,21 @@ impl Bus {
     /// Puts the given device that implements BusDeviceSync at the given address space. Devices
     /// that implement BusDeviceSync manage thread safety internally, and thus can be written to
     /// by multiple threads simultaneously.
-    pub fn insert_sync(
-        &mut self,
-        device: Arc<dyn BusDeviceSync>,
-        base: u64,
-        len: u64,
-    ) -> Result<()> {
+    pub fn insert_sync(&self, device: Arc<dyn BusDeviceSync>, base: u64, len: u64) -> Result<()> {
         if len == 0 {
             return Err(Error::Overlap);
         }
 
         // Reject all cases where the new device's range overlaps with an existing device.
-        if self
-            .devices
+        let mut devices = self.devices.lock();
+        if devices
             .iter()
             .any(|(range, _dev)| range.overlaps(base, len))
         {
             return Err(Error::Overlap);
         }
 
-        if self
-            .devices
+        if devices
             .insert(BusRange { base, len }, BusDeviceEntry::InnerSync(device))
             .is_some()
         {
@@ -393,7 +381,7 @@ mod tests {
 
     #[test]
     fn bus_insert() {
-        let mut bus = Bus::new();
+        let bus = Bus::new();
         let dummy = Arc::new(Mutex::new(DummyDevice));
         assert!(bus.insert(dummy.clone(), 0x10, 0).is_err());
         assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
@@ -410,7 +398,7 @@ mod tests {
 
     #[test]
     fn bus_insert_full_addr() {
-        let mut bus = Bus::new();
+        let bus = Bus::new();
         let dummy = Arc::new(Mutex::new(DummyDevice));
         assert!(bus.insert(dummy.clone(), 0x10, 0).is_err());
         assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
@@ -427,7 +415,7 @@ mod tests {
 
     #[test]
     fn bus_read_write() {
-        let mut bus = Bus::new();
+        let bus = Bus::new();
         let dummy = Arc::new(Mutex::new(DummyDevice));
         assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
         assert!(bus.read(0x10, &mut [0, 0, 0, 0]));
@@ -444,7 +432,7 @@ mod tests {
 
     #[test]
     fn bus_read_write_values() {
-        let mut bus = Bus::new();
+        let bus = Bus::new();
         let dummy = Arc::new(Mutex::new(ConstantDevice {
             uses_full_addr: false,
         }));
@@ -461,7 +449,7 @@ mod tests {
 
     #[test]
     fn bus_read_write_full_addr_values() {
-        let mut bus = Bus::new();
+        let bus = Bus::new();
         let dummy = Arc::new(Mutex::new(ConstantDevice {
             uses_full_addr: true,
         }));

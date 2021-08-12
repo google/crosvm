@@ -549,8 +549,8 @@ impl IrqChip for KvmSplitIrqChip {
     fn finalize_devices(
         &mut self,
         resources: &mut SystemAllocator,
-        io_bus: &mut Bus,
-        mmio_bus: &mut Bus,
+        io_bus: &Bus,
+        mmio_bus: &Bus,
     ) -> Result<()> {
         // Insert pit into io_bus
         io_bus.insert(self.pit.clone(), 0x040, 0x8).unwrap();
@@ -899,8 +899,8 @@ mod tests {
     fn finalize_devices() {
         let mut chip = get_split_chip();
 
-        let mut mmio_bus = Bus::new();
-        let mut io_bus = Bus::new();
+        let mmio_bus = Bus::new();
+        let io_bus = Bus::new();
         let mut resources = SystemAllocator::builder()
             .add_io_addresses(0xc000, 0x10000)
             .add_low_mmio_addresses(0, 2048)
@@ -918,7 +918,7 @@ mod tests {
             .expect("register_irq_event should not return None");
 
         // Once we finalize devices, the pic/pit/ioapic should be attached to io and mmio busses
-        chip.finalize_devices(&mut resources, &mut io_bus, &mut mmio_bus)
+        chip.finalize_devices(&mut resources, &io_bus, &mmio_bus)
             .expect("failed to finalize devices");
 
         // Should not be able to allocate an irq < 24 now
@@ -1017,8 +1017,8 @@ mod tests {
     fn broadcast_eoi() {
         let mut chip = get_split_chip();
 
-        let mut mmio_bus = Bus::new();
-        let mut io_bus = Bus::new();
+        let mmio_bus = Bus::new();
+        let io_bus = Bus::new();
         let mut resources = SystemAllocator::builder()
             .add_io_addresses(0xc000, 0x10000)
             .add_low_mmio_addresses(0, 2048)
@@ -1034,7 +1034,7 @@ mod tests {
             .expect("failed to register_irq_event");
 
         // Once we finalize devices, the pic/pit/ioapic should be attached to io and mmio busses
-        chip.finalize_devices(&mut resources, &mut io_bus, &mut mmio_bus)
+        chip.finalize_devices(&mut resources, &io_bus, &mmio_bus)
             .expect("failed to finalize devices");
 
         // setup a ioapic redirection table entry 1 with a vector of 123

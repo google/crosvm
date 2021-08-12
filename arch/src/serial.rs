@@ -79,7 +79,7 @@ pub const SERIAL_ADDR: [u64; 4] = [0x3f8, 0x2f8, 0x3e8, 0x2e8];
 ///   All four of the traditional PC-style serial ports (COM1-COM4) must be specified.
 pub fn add_serial_devices(
     protected_vm: ProtectionType,
-    io_bus: &mut Bus,
+    io_bus: &Bus,
     com_evt_1_3: &Event,
     com_evt_2_4: &Event,
     serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,

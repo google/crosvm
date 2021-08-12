@@ -111,8 +111,8 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub no_smt: bool,
     pub irq_chip: Box<dyn IrqChipArch>,
     pub has_bios: bool,
-    pub io_bus: Bus,
-    pub mmio_bus: Bus,
+    pub io_bus: Arc<Bus>,
+    pub mmio_bus: Arc<Bus>,
     pub pid_debug_label_map: BTreeMap<u32, String>,
     pub suspend_evt: Event,
     pub rt_cpus: Vec<usize>,
@@ -412,7 +412,7 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
 pub fn generate_platform_bus(
     devices: Vec<(VfioPlatformDevice, Option<Minijail>)>,
     irq_chip: &mut dyn IrqChip,
-    mmio_bus: &mut Bus,
+    mmio_bus: &Bus,
     resources: &mut SystemAllocator,
 ) -> Result<BTreeMap<u32, String>, DeviceRegistrationError> {
     let mut pid_labels = BTreeMap::new();
@@ -471,8 +471,8 @@ pub fn generate_platform_bus(
 pub fn generate_pci_root(
     mut devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
     irq_chip: &mut dyn IrqChip,
-    mmio_bus: &mut Bus,
-    io_bus: &mut Bus,
+    mmio_bus: Arc<Bus>,
+    io_bus: Arc<Bus>,
     resources: &mut SystemAllocator,
     vm: &mut impl Vm,
     max_irqs: usize,
@@ -484,7 +484,7 @@ pub fn generate_pci_root(
     ),
     DeviceRegistrationError,
 > {
-    let mut root = PciRoot::new(mmio_bus.clone(), io_bus.clone());
+    let mut root = PciRoot::new(Arc::downgrade(&mmio_bus), Arc::downgrade(&io_bus));
     let mut pid_labels = BTreeMap::new();
 
     // Allocate PCI device address before allocating BARs.
@@ -604,7 +604,7 @@ pub fn generate_pci_root(
 pub fn add_goldfish_battery(
     amls: &mut Vec<u8>,
     battery_jail: Option<Minijail>,
-    mmio_bus: &mut Bus,
+    mmio_bus: &Bus,
     irq_chip: &mut dyn IrqChip,
     irq_num: u32,
     resources: &mut SystemAllocator,

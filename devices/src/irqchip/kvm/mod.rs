@@ -156,8 +156,8 @@ impl IrqChip for KvmKernelIrqChip {
     fn finalize_devices(
         &mut self,
         _resources: &mut SystemAllocator,
-        _io_bus: &mut Bus,
-        _mmio_bus: &mut Bus,
+        _io_bus: &Bus,
+        _mmio_bus: &Bus,
     ) -> Result<()> {
         Ok(())
     }

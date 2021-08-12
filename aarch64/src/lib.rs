@@ -331,10 +331,10 @@ impl arch::LinuxArch for AArch64 {
             }
         }
 
-        let mut mmio_bus = devices::Bus::new();
+        let mmio_bus = Arc::new(devices::Bus::new());
 
         // ARM doesn't really use the io bus like x86, so just create an empty bus.
-        let mut io_bus = devices::Bus::new();
+        let io_bus = Arc::new(devices::Bus::new());
 
         // Event used by PMDevice to notify crosvm that
         // guest OS is trying to suspend.
@@ -351,8 +351,8 @@ impl arch::LinuxArch for AArch64 {
         let (pci, pci_irqs, mut pid_debug_label_map) = arch::generate_pci_root(
             pci_devices,
             irq_chip.as_irq_chip_mut(),
-            &mut mmio_bus,
-            &mut io_bus,
+            mmio_bus.clone(),
+            io_bus.clone(),
             system_allocator,
             &mut vm,
             (devices::AARCH64_GIC_NR_IRQS - AARCH64_IRQ_BASE) as usize,
@@ -371,19 +371,19 @@ impl arch::LinuxArch for AArch64 {
         let mut platform_pid_debug_label_map = arch::generate_platform_bus(
             platform_devices,
             irq_chip.as_irq_chip_mut(),
-            &mut mmio_bus,
+            &mmio_bus,
             system_allocator,
         )
         .map_err(Error::CreatePlatformBus)?;
         pid_debug_label_map.append(&mut platform_pid_debug_label_map);
 
-        Self::add_arch_devs(irq_chip.as_irq_chip_mut(), &mut mmio_bus)?;
+        Self::add_arch_devs(irq_chip.as_irq_chip_mut(), &mmio_bus)?;
 
         let com_evt_1_3 = Event::new().map_err(Error::CreateEvent)?;
         let com_evt_2_4 = Event::new().map_err(Error::CreateEvent)?;
         arch::add_serial_devices(
             components.protected_vm,
-            &mut mmio_bus,
+            &mmio_bus,
             &com_evt_1_3,
             &com_evt_2_4,
             serial_parameters,
@@ -564,7 +564,7 @@ impl AArch64 {
     ///
     /// * `irq_chip` - The IRQ chip to add irqs to.
     /// * `bus` - The bus to add devices to.
-    fn add_arch_devs(irq_chip: &mut dyn IrqChip, bus: &mut Bus) -> Result<()> {
+    fn add_arch_devs(irq_chip: &mut dyn IrqChip, bus: &Bus) -> Result<()> {
         let rtc_evt = Event::new().map_err(Error::CreateEvent)?;
         irq_chip
             .register_irq_event(AARCH64_RTC_IRQ, &rtc_evt, None)
