@@ -17,6 +17,7 @@ use crate::pci::pci_configuration::{
     HEADER_TYPE_MULTIFUNCTION_MASK, HEADER_TYPE_REG,
 };
 use crate::pci::pci_device::{Error, PciDevice};
+use crate::pci::PCI_VENDOR_ID_INTEL;
 use crate::{Bus, BusAccessInfo, BusDevice, BusType};
 use resources::SystemAllocator;
 
@@ -153,7 +154,6 @@ pub struct PciRoot {
     pcie_cfg_mmio: Option<u64>,
 }
 
-pub const PCI_VENDOR_ID_INTEL: u16 = 0x8086;
 const PCI_DEVICE_ID_INTEL_82441: u16 = 0x1237;
 const PCIE_XBAR_BASE_ADDR: usize = 24;
 
