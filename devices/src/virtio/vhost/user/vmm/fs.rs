@@ -16,9 +16,7 @@ use vmm_vhost::vhost_user::Error as VhostUserError;
 use vmm_vhost::Error as VhostError;
 
 use crate::virtio::fs::{virtio_fs_config, FS_MAX_TAG_LEN, QUEUE_SIZE};
-use crate::virtio::vhost::user::handler::VhostUserHandler;
-use crate::virtio::vhost::user::worker::Worker;
-use crate::virtio::vhost::user::{Error, Result};
+use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, worker::Worker, Error, Result};
 use crate::virtio::{copy_config, TYPE_FS};
 use crate::virtio::{Interrupt, Queue, VirtioDevice};
 

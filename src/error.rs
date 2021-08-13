@@ -5,7 +5,7 @@
 use arch::{self, LinuxArch};
 use base::TubeError;
 use devices::virtio;
-use devices::virtio::vhost::user::Error as VhostUserError;
+use devices::virtio::vhost::user::vmm::Error as VhostUserVmmError;
 use std::error::Error as StdError;
 use std::fmt::{self, Display};
 use std::io;
@@ -133,13 +133,13 @@ pub enum Error {
     Timer(base::Error),
     ValidateRawDescriptor(base::Error),
     VhostNetDeviceNew(virtio::vhost::Error),
-    VhostUserBlockDeviceNew(VhostUserError),
-    VhostUserConsoleDeviceNew(VhostUserError),
-    VhostUserFsDeviceNew(VhostUserError),
-    VhostUserMac80211HwsimNew(VhostUserError),
-    VhostUserNetDeviceNew(VhostUserError),
+    VhostUserBlockDeviceNew(VhostUserVmmError),
+    VhostUserConsoleDeviceNew(VhostUserVmmError),
+    VhostUserFsDeviceNew(VhostUserVmmError),
+    VhostUserMac80211HwsimNew(VhostUserVmmError),
+    VhostUserNetDeviceNew(VhostUserVmmError),
     VhostUserNetWithNetArgs,
-    VhostUserWlDeviceNew(VhostUserError),
+    VhostUserWlDeviceNew(VhostUserVmmError),
     VhostVsockDeviceNew(virtio::vhost::Error),
     VirtioPciDev(base::Error),
     WaitContextAdd(base::Error),

@@ -3,66 +3,50 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::thread;
-use std::u32;
 
 use base::{error, Event, RawDescriptor};
 use cros_async::Executor;
-use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
-use crate::virtio::vhost::user::handler::VhostUserHandler;
-use crate::virtio::vhost::user::worker::Worker;
-use crate::virtio::vhost::user::{Error, Result};
-use crate::virtio::{block::common::virtio_blk_config, Interrupt, Queue, VirtioDevice, TYPE_BLOCK};
+use crate::virtio::vhost::user::vmm::{worker::Worker, Result, VhostUserHandler};
+use crate::virtio::wl::{
+    QUEUE_SIZE, QUEUE_SIZES, VIRTIO_WL_F_SEND_FENCES, VIRTIO_WL_F_TRANS_FLAGS,
+};
+use crate::virtio::{Interrupt, Queue, VirtioDevice, TYPE_WL};
 
-const VIRTIO_BLK_F_SEG_MAX: u32 = 2;
-const VIRTIO_BLK_F_RO: u32 = 5;
-const VIRTIO_BLK_F_BLK_SIZE: u32 = 6;
-const VIRTIO_BLK_F_FLUSH: u32 = 9;
-const VIRTIO_BLK_F_DISCARD: u32 = 13;
-const VIRTIO_BLK_F_WRITE_ZEROES: u32 = 14;
-
-const QUEUE_SIZE: u16 = 256;
-
-pub struct Block {
+pub struct Wl {
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker>>,
     handler: RefCell<VhostUserHandler>,
     queue_sizes: Vec<u16>,
 }
 
-impl Block {
-    pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Block> {
-        let socket = UnixStream::connect(&socket_path).map_err(Error::SocketConnect)?;
+impl Wl {
+    pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Wl> {
+        let default_queue_size = QUEUE_SIZES.len();
 
         let allow_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
-            | 1 << VIRTIO_BLK_F_SEG_MAX
-            | 1 << VIRTIO_BLK_F_RO
-            | 1 << VIRTIO_BLK_F_BLK_SIZE
-            | 1 << VIRTIO_BLK_F_FLUSH
-            | 1 << VIRTIO_BLK_F_DISCARD
-            | 1 << VIRTIO_BLK_F_WRITE_ZEROES
-            | 1 << VIRTIO_RING_F_EVENT_IDX
+            | 1 << VIRTIO_WL_F_TRANS_FLAGS
+            | 1 << VIRTIO_WL_F_SEND_FENCES
             | base_features
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
+        let allow_protocol_features =
+            VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
 
-        let mut handler = VhostUserHandler::new_from_stream(
-            socket,
-            // TODO(b/181753022): Support multiple queues.
-            1, /* queues_num */
+        let mut handler = VhostUserHandler::new_from_path(
+            socket_path,
+            default_queue_size as u64,
             allow_features,
             init_features,
             allow_protocol_features,
         )?;
-        let queue_sizes = handler.queue_sizes(QUEUE_SIZE, 1)?;
+        let queue_sizes = handler.queue_sizes(QUEUE_SIZE, default_queue_size)?;
 
-        Ok(Block {
+        Ok(Wl {
             kill_evt: None,
             worker_thread: None,
             handler: RefCell::new(handler),
@@ -71,22 +55,17 @@ impl Block {
     }
 }
 
-impl Drop for Block {
-    fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.write(1);
-        }
-
-        if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
-        }
-    }
-}
-
-impl VirtioDevice for Block {
+impl VirtioDevice for Wl {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         Vec::new()
+    }
+
+    fn device_type(&self) -> u32 {
+        TYPE_WL
+    }
+
+    fn queue_max_sizes(&self) -> &[u16] {
+        &self.queue_sizes
     }
 
     fn features(&self) -> u64 {
@@ -99,23 +78,7 @@ impl VirtioDevice for Block {
         }
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_BLOCK
-    }
-
-    fn queue_max_sizes(&self) -> &[u16] {
-        self.queue_sizes.as_slice()
-    }
-
-    fn read_config(&self, offset: u64, data: &mut [u8]) {
-        if let Err(e) = self
-            .handler
-            .borrow_mut()
-            .read_config::<virtio_blk_config>(offset, data)
-        {
-            error!("failed to read config: {}", e);
-        }
-    }
+    fn read_config(&self, _offset: u64, _data: &mut [u8]) {}
 
     fn activate(
         &mut self,
@@ -143,7 +106,7 @@ impl VirtioDevice for Block {
         self.kill_evt = Some(self_kill_evt);
 
         let worker_result = thread::Builder::new()
-            .name("vhost_user_virtio_blk".to_string())
+            .name("vhost_user_wl".to_string())
             .spawn(move || {
                 let ex = Executor::new().expect("failed to create an executor");
                 let mut worker = Worker {
@@ -160,7 +123,7 @@ impl VirtioDevice for Block {
 
         match worker_result {
             Err(e) => {
-                error!("failed to spawn vhost-user virtio_blk worker: {}", e);
+                error!("failed to spawn vhost_user_wl worker: {}", e);
             }
             Ok(join_handle) => {
                 self.worker_thread = Some(join_handle);
@@ -170,10 +133,24 @@ impl VirtioDevice for Block {
 
     fn reset(&mut self) -> bool {
         if let Err(e) = self.handler.borrow_mut().reset(self.queue_sizes.len()) {
-            error!("Failed to reset block device: {}", e);
+            error!("Failed to reset wl device: {}", e);
             false
         } else {
             true
+        }
+    }
+}
+
+impl Drop for Wl {
+    fn drop(&mut self) {
+        if let Some(kill_evt) = self.kill_evt.take() {
+            if let Some(worker_thread) = self.worker_thread.take() {
+                if let Err(e) = kill_evt.write(1) {
+                    error!("failed to write to kill_evt: {}", e);
+                    return;
+                }
+                let _ = worker_thread.join();
+            }
         }
     }
 }

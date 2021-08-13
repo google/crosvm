@@ -615,7 +615,7 @@ mod tests {
     use std::sync::Barrier;
 
     use data_model::DataInit;
-    use devices::virtio::vhost::user::VhostUserHandler;
+    use devices::virtio::vhost::user::vmm::VhostUserHandler;
     use tempfile::{Builder, TempDir};
 
     #[derive(ThisError, Debug)]

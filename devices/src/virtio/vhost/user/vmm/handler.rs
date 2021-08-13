@@ -14,7 +14,7 @@ use vmm_vhost::vhost_user::message::{
 use vmm_vhost::vhost_user::{Master, VhostUserMaster};
 use vmm_vhost::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
 
-use crate::virtio::vhost::user::{Error, Result};
+use crate::virtio::vhost::user::vmm::{Error, Result};
 use crate::virtio::{Interrupt, Queue};
 
 fn set_features(vu: &mut Master, avail_features: u64, ack_features: u64) -> Result<u64> {

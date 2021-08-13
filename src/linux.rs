@@ -34,7 +34,7 @@ use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH};
-use devices::virtio::vhost::user::{
+use devices::virtio::vhost::user::vmm::{
     Block as VhostUserBlock, Console as VhostUserConsole, Fs as VhostUserFs,
     Mac80211Hwsim as VhostUserMac80211Hwsim, Net as VhostUserNet, Wl as VhostUserWl,
 };

@@ -6,62 +6,47 @@ use std::cell::RefCell;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::thread;
-use std::u32;
 
 use base::{error, Event, RawDescriptor};
 use cros_async::Executor;
-use virtio_sys::virtio_net;
-use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
-use crate::virtio::vhost::user::handler::VhostUserHandler;
-use crate::virtio::vhost::user::worker::Worker;
-use crate::virtio::vhost::user::Error;
-use crate::virtio::{Interrupt, Queue, VirtioDevice, VirtioNetConfig, TYPE_NET};
+use crate::virtio::console::{virtio_console_config, QUEUE_SIZE};
+use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, worker::Worker, Error, Result};
+use crate::virtio::{Interrupt, Queue, VirtioDevice, TYPE_CONSOLE};
 
-type Result<T> = std::result::Result<T, Error>;
-
-const QUEUE_SIZE: u16 = 256;
-
-pub struct Net {
+pub struct Console {
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker>>,
     handler: RefCell<VhostUserHandler>,
     queue_sizes: Vec<u16>,
 }
 
-impl Net {
-    pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Net> {
+impl Console {
+    pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Console> {
         let socket = UnixStream::connect(&socket_path).map_err(Error::SocketConnect)?;
 
-        let allow_features = 1 << crate::virtio::VIRTIO_F_VERSION_1
-            | 1 << virtio_net::VIRTIO_NET_F_CSUM
-            | 1 << virtio_net::VIRTIO_NET_F_CTRL_VQ
-            | 1 << virtio_net::VIRTIO_NET_F_CTRL_GUEST_OFFLOADS
-            | 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
-            | 1 << virtio_net::VIRTIO_NET_F_GUEST_TSO4
-            | 1 << virtio_net::VIRTIO_NET_F_GUEST_UFO
-            | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
-            | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
-            | 1 << virtio_net::VIRTIO_NET_F_MQ
-            | 1 << VIRTIO_RING_F_EVENT_IDX
+        // VIRTIO_CONSOLE_F_MULTIPORT is not supported, so we just implement port 0 (receiveq,
+        // transmitq)
+        let queues_num = 2;
+
+        let allow_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
             | base_features
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        let allow_protocol_features =
-            VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
+        let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
 
         let mut handler = VhostUserHandler::new_from_stream(
             socket,
-            3, /* # of queues */
+            queues_num,
             allow_features,
             init_features,
             allow_protocol_features,
         )?;
-        let queue_sizes = handler.queue_sizes(QUEUE_SIZE, 3 /* rx, tx, ctrl */)?;
+        let queue_sizes = handler.queue_sizes(QUEUE_SIZE, queues_num as usize)?;
 
-        Ok(Net {
+        Ok(Console {
             kill_evt: None,
             worker_thread: None,
             handler: RefCell::new(handler),
@@ -70,20 +55,7 @@ impl Net {
     }
 }
 
-impl Drop for Net {
-    fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.write(1);
-        }
-
-        if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
-        }
-    }
-}
-
-impl VirtioDevice for Net {
+impl VirtioDevice for Console {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         Vec::new()
     }
@@ -92,14 +64,8 @@ impl VirtioDevice for Net {
         self.handler.borrow().avail_features
     }
 
-    fn ack_features(&mut self, features: u64) {
-        if let Err(e) = self.handler.borrow_mut().ack_features(features) {
-            error!("failed to enable features 0x{:x}: {}", features, e);
-        }
-    }
-
     fn device_type(&self) -> u32 {
-        TYPE_NET
+        TYPE_CONSOLE
     }
 
     fn queue_max_sizes(&self) -> &[u16] {
@@ -110,7 +76,7 @@ impl VirtioDevice for Net {
         if let Err(e) = self
             .handler
             .borrow_mut()
-            .read_config::<VirtioNetConfig>(offset, data)
+            .read_config::<virtio_console_config>(offset, data)
         {
             error!("failed to read config: {}", e);
         }
@@ -131,7 +97,6 @@ impl VirtioDevice for Net {
             error!("failed to activate queues: {}", e);
             return;
         }
-
         let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
@@ -142,7 +107,7 @@ impl VirtioDevice for Net {
         self.kill_evt = Some(self_kill_evt);
 
         let worker_result = thread::Builder::new()
-            .name("vhost_user_virtio_net".to_string())
+            .name("vhost_user_virtio_console".to_string())
             .spawn(move || {
                 let ex = Executor::new().expect("failed to create an executor");
                 let mut worker = Worker {
@@ -150,6 +115,7 @@ impl VirtioDevice for Net {
                     mem,
                     kill_evt,
                 };
+
                 if let Err(e) = worker.run(&ex, interrupt) {
                     error!("failed to start a worker: {}", e);
                 }
@@ -158,7 +124,7 @@ impl VirtioDevice for Net {
 
         match worker_result {
             Err(e) => {
-                error!("failed to spawn virtio_net worker: {}", e);
+                error!("failed to spawn vhost-user virtio_console worker: {}", e);
             }
             Ok(join_handle) => {
                 self.worker_thread = Some(join_handle);
@@ -168,10 +134,23 @@ impl VirtioDevice for Net {
 
     fn reset(&mut self) -> bool {
         if let Err(e) = self.handler.borrow_mut().reset(self.queue_sizes.len()) {
-            error!("Failed to reset net device: {}", e);
+            error!("Failed to reset console device: {}", e);
             false
         } else {
             true
+        }
+    }
+}
+
+impl Drop for Console {
+    fn drop(&mut self) {
+        if let Some(kill_evt) = self.kill_evt.take() {
+            // Ignore the result because there is nothing we can do about it.
+            let _ = kill_evt.write(1);
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
         }
     }
 }

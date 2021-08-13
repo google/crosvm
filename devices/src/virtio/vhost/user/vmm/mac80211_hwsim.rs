@@ -14,9 +14,7 @@ use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
-use crate::virtio::vhost::user::handler::VhostUserHandler;
-use crate::virtio::vhost::user::worker::Worker;
-use crate::virtio::vhost::user::Error;
+use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, worker::Worker, Error};
 use crate::virtio::{Interrupt, Queue, VirtioDevice, TYPE_MAC80211_HWSIM, VIRTIO_F_VERSION_1};
 
 use std::result::Result;
