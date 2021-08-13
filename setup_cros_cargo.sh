@@ -8,7 +8,16 @@
 #
 # TODO(b/194323235): Add documentation for ChromeOS developer workflows.
 
-sed -i 's|path = "libcras_stub"|path = "../../third_party/adhd/cras/client/libcras"|g' \
-    Cargo.toml
+declare -A replacements=(
+    ["libcras_stub"]="../../third_party/adhd/cras/client/libcras"
+    ["third_party/minijail"]="../../aosp/external/minijail"
+    ["third_party/vmm_vhost"]="../../third_party/rust-vmm/vhost"
+)
+
+for crate in "${!replacements[@]}"; do
+    echo "Replacing '${crate}' with '${replacements[$crate]}'"
+    sed -i "s|path = \"${crate}|path = \"${replacements[$crate]}|g" \
+        Cargo.toml
+done
 
 echo "Modified Cargo.toml with new paths. Please do not commit those."
