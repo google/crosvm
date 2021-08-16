@@ -2,9 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use libc::O_DIRECT;
 use std::ffi::CString;
 use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::{self, BufRead, BufReader, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc::sync_channel;
@@ -207,6 +210,19 @@ impl TestVm {
             }
         }
         assert!(rootfs_path.exists(), "{:?} does not exist", rootfs_path);
+
+        // Check if the test file system is a known compatible one. Needs to support features like O_DIRECT.
+        if let Err(e) = OpenOptions::new()
+            .custom_flags(O_DIRECT)
+            .write(false)
+            .read(true)
+            .open(rootfs_path)
+        {
+            panic!(
+                "File open with O_DIRECT expected to work but did not: {}",
+                e
+            );
+        }
     }
 
     // Adds 2 serial devices:
