@@ -152,8 +152,6 @@ pub enum Error {
     CloneIrqChip(base::Error),
     #[error("the given kernel command line was invalid: {0}")]
     Cmdline(kernel_cmdline::Error),
-    #[error("error creating devices: {0}")]
-    CreateDevices(Box<dyn StdError>),
     #[error("unable to make an Event: {0}")]
     CreateEvent(base::Error),
     #[error("FDT could not be created: {0}")]
@@ -170,12 +168,10 @@ pub enum Error {
     CreateSocket(io::Error),
     #[error("failed to create VCPU: {0}")]
     CreateVcpu(base::Error),
-    #[error("failed to create vm: {0}")]
-    CreateVm(Box<dyn StdError>),
     #[error("vm created wrong kind of vcpu")]
     DowncastVcpu,
     #[error("failed to finalize IRQ chip: {0}")]
-    FinalizeIrqChip(Box<dyn StdError>),
+    FinalizeIrqChip(base::Error),
     #[error("failed to get PSCI version: {0}")]
     GetPsciVersion(base::Error),
     #[error("failed to get serial cmdline: {0}")]
@@ -300,9 +296,7 @@ impl arch::LinuxArch for AArch64 {
             kvm_vcpu_ids.push(vcpu_id);
         }
 
-        irq_chip
-            .finalize()
-            .map_err(|e| Error::FinalizeIrqChip(Box::new(e)))?;
+        irq_chip.finalize().map_err(Error::FinalizeIrqChip)?;
 
         if has_pvtime {
             let pvtime_mem = MemoryMappingBuilder::new(AARCH64_PVTIME_IPA_MAX_SIZE as usize)

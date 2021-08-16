@@ -115,6 +115,7 @@ wl-dmabuf = ["devices/minigbm"]
 x = ["devices/x"]
 
 [dependencies]
+anyhow = "1.0.32"
 arch = { path = "arch" }
 assertions = { path = "common/assertions" }
 audio_streams = "*"

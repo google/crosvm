@@ -45,7 +45,6 @@ mod regs;
 mod smbios;
 
 use std::collections::BTreeMap;
-use std::error::Error as StdError;
 use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::{self, Seek};
@@ -99,8 +98,6 @@ pub enum Error {
     CreateAcpi,
     #[error("unable to create battery devices: {0}")]
     CreateBatDevices(arch::DeviceRegistrationError),
-    #[error("error creating devices: {0}")]
-    CreateDevices(Box<dyn StdError>),
     #[error("unable to make an Event: {0}")]
     CreateEvent(base::Error),
     #[error("failed to create fdt: {0}")]
@@ -119,8 +116,6 @@ pub enum Error {
     CreateSocket(io::Error),
     #[error("failed to create VCPU: {0}")]
     CreateVcpu(base::Error),
-    #[error("failed to create VM: {0}")]
-    CreateVm(Box<dyn StdError>),
     #[error("invalid e820 setup params")]
     E820Configuration,
     #[error("failed to enable singlestep execution: {0}")]
