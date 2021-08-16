@@ -6,31 +6,7 @@ makes crosvm unique is a focus on safety within the programming language and a
 sandbox around the virtual devices to protect the kernel from attack in case of
 an exploit in the devices.
 
-## Getting started
-
-### Building for CrOS
-
-crosvm on Chromium OS is built with Portage, so it follows the same general
-workflow as any `cros_workon` package. The full package name is
-`chromeos-base/crosvm`.
-
-See the [Chromium OS developer guide] for more on how to build and deploy with
-Portage.
-
-NOTE: `cros_workon_make` modifies crosvm's Cargo.toml and Cargo.lock. Please be
-careful not to commit the changes. Moreover, with the changes cargo will fail to
-build and clippy preupload check will fail.
-
-[Chromium OS developer guide]: https://chromium.googlesource.com/chromiumos/docs/+/HEAD/developer_guide.md
-
-### Building with Docker
-
-See the [README](ci/README.md) from the `ci` subdirectory to learn how
-to build and test crosvm in enviroments outside of the Chrome OS chroot.
-
-### Building for Linux
-
->**NOTE:** Building for Linux natively is new and not fully supported.
+## Building for Linux
 
 Crosvm uses submodules to manage external dependencies. Initialize them via:
 
@@ -39,50 +15,189 @@ git submodule update --init
 ```
 
 It is recommended to enable automatic recursive operations to keep the
-submodules in sync with the main repository:
+submodules in sync with the main repository (But do not push them, as that can
+conflict with `repo`):
 
 ```sh
 git config --global submodule.recurse true
+git config push.recurseSubmodules no
 ```
 
-A basic crosvm build links against `libcap`. On a Debian-based system,
-you can install `libcap-dev`.
+Crosvm requires a couple of dependencies. For Debian derivatives these can be
+installed by (Depending on which feature flags are used, not all of these will
+actually be required):
 
-Handy Debian one-liner for all build and runtime deps, particularly if you're
-running Crostini:
 ```sh
-sudo apt install build-essential clang libasound2-dev libcap-dev libgbm-dev libvirglrenderer-dev libwayland-bin libwayland-dev pkg-config protobuf-compiler python wayland-protocols bindgen
+sudo apt install \
+    bindgen \
+    build-essential \
+    clang \
+    libasound2-dev \
+    libcap-dev \
+    libgbm-dev \
+    libvirglrenderer-dev \
+    libwayland-bin \
+    libwayland-dev \
+    pkg-config \
+    protobuf-compiler \
+    python \
+    wayland-protocols
 ```
 
-Known issues:
-*   Even with the following points, jailed devices seem to crash for unclear
-    reasons. If you run into this, you can add `--disable-sandbox` to run
-    everything in a single process.
-*   If your Linux header files are too old, you may find minijail rejecting
+And that's it! You should be able to `cargo build/run/test`.
+
+### Known issues
+
+-   By default, crosvm is running devices in sandboxed mode, which requires
+    seccomp policy files to be set up. For local testing it is often easier to
+    `--disable-sandbox` to run everything in a single process.
+-   If your Linux header files are too old, you may find minijail rejecting
     seccomp filters for containing unknown syscalls. You can try removing the
     offending lines from the filter file, or add `--seccomp-log-failures` to the
     crosvm command line to turn these into warnings. Note that this option will
     also stop minijail from killing processes that violate the seccomp rule,
     making the sandboxing much less aggressive.
-*   Seccomp policy files have hardcoded absolute paths. You can either fix up
-    the paths locally, or set up an awesome hacky symlink: `sudo mkdir
-    /usr/share/policy && sudo ln -s /path/to/crosvm/seccomp/x86_64
-    /usr/share/policy/crosvm`. We'll eventually build the precompiled
-    policies [into the crosvm binary](http://crbug.com/1052126).
-*   Devices can't be jailed if `/var/empty` doesn't exist. `sudo mkdir -p
-    /var/empty` to work around this for now.
-*   You need read/write permissions for `/dev/kvm` to run tests or other crosvm
-    instances. Usually it's owned by the `kvm` group, so `sudo usermod -a -G kvm
-    $USER` and then log out and back in again to fix this.
-*   Some other features (networking) require `CAP_NET_ADMIN` so those usually
+-   Seccomp policy files have hardcoded absolute paths. You can either fix up
+    the paths locally, or set up an awesome hacky symlink:
+    `sudo mkdir /usr/share/policy && sudo ln -s /path/to/crosvm/seccomp/x86_64 /usr/share/policy/crosvm`.
+    We'll eventually build the precompiled policies
+    [into the crosvm binary](http://crbug.com/1052126).
+-   Devices can't be jailed if `/var/empty` doesn't exist.
+    `sudo mkdir -p /var/empty` to work around this for now.
+-   You need read/write permissions for `/dev/kvm` to run tests or other crosvm
+    instances. Usually it's owned by the `kvm` group, so
+    `sudo usermod -a -G kvm $USER` and then log out and back in again to fix
+    this.
+-   Some other features (networking) require `CAP_NET_ADMIN` so those usually
     need to be run as root.
 
-And that's it! You should be able to `cargo build/run/test`.
+## Running crosvm tests on Linux
+
+### Installing Podman (or Docker)
+
+See [Podman Installation](https://podman.io/getting-started/installation) for
+instructions on how to install podman.
+
+For Googlers, see [go/dont-install-docker](http://go/dont-install-docker) for
+special instructions on how to set up podman.
+
+If you already have docker installed, that will do as well. However podman is
+recommended as it will not run containers with root privileges.
+
+### Running all tests
+
+To run all tests, just run:
+
+```
+./test_all
+```
+
+This will run all tests using the x86 and aarch64 builder containers. What does
+this do?
+
+1.  It will start `./ci/[aarch64_]builder --vm`.
+
+    The builder will build required third_party dependencies. If you make
+    modifications to these dependencies (e.g. minijail, tpm2) these will be
+    included in tests.
+
+    Then it will start a VM for running tests in the background. The VM is
+    booting while the next step is running.
+
+2.  It will call `./run_tests` inside the builder
+
+    The script will pick which tests to execute and where. Simple tests can be
+    executed directly, other tests require privileged access to devices and will
+    be loaded into the VM to execute.
+
+    Each test will in the end be executed by a call to
+    `cargo test -p crate_name`.
+
+Intermediate build data is stored in a scratch directory at `./target/ci/` to
+allow for faster subsequent calls (Note: If running with docker, these files
+will be owned by root).
+
+### Fast, iterative test runs
+
+For faster iteration time, you can directly invoke some of these steps directly:
+
+To only run x86 tests: `./ci/[aarch64_]builder --vm ./run_tests`.
+
+To run a simple test (e.g. the tempfile crate) that does not need the vm:
+`./ci/[aarch64_]builder cargo test -p tempfile`.
+
+Or run a single test (e.g. kvm_sys) inside the vm:
+`./ci/[aarch64*]builder --vm cargo test -p kvm_sys`.
+
+Since the VM (especially the fully emulated aarch64 VM) can be slow to boot, you
+can start an interactive shell and run commands from there as usual. All cargo
+tests will be executed inside the VM, without the need to restart the VM between
+test calls.
+
+```sh
+host$ ./ci/aarch64_builder --vm
+crosvm-aarch64$ ./run_tests
+crosvm-aarch64$ cargo test -p kvm_sys
+...
+```
+
+### Running tests without Docker
+
+Specific crates can be tested as usual with `cargo test` without the need for
+Docker. However, because of special requirements many of them will not work,
+which means that `cargo test --workspace` will also not work to run all tests.
+
+For this reason, we have a separate test runner `./run_tests` which documents
+the requirements of each crate and picks the tests to run. It is used by the
+Docker container to run tests, but can also be run outside of the container to
+run a subset of tests.
+
+See `./run_tests --help` for more information.
+
+### Reproducing Kokoro locally
+
+Kokoro runs presubmit tests on all crosvm changes. It uses the same builders and
+the same `run_tests` script to run tests. This should match the results of the
+`./test_all` script, but if it does not, the kokoro build scripts can be
+simulated locally using: `./ci/kokoro/simulate_all`.
+
+## Building for ChromeOS
+
+crosvm is included in the ChromeOS source tree at `src/platform/crosvm`. Crosvm
+can be built with ChromeOS features using Portage or cargo.
+
+If ChromeOS-specific features are not needed, or you want to run the full test
+suite of crosvm, the [Building for Linux](#building-for-linux) and
+[Running crosvm tests](#running-crosvm-tests) workflows can be used from the
+crosvm repository of ChromeOS as well.
+
+### Using Portage
+
+crosvm on ChromeOS is usually built with Portage, so it follows the same general
+workflow as any `cros_workon` package. The full package name is
+`chromeos-base/crosvm`.
+
+See the [Chromium OS developer guide] for more on how to build and deploy with
+Portage.
+
+[chromium os developer guide]:
+    https://chromium.googlesource.com/chromiumos/docs/+/HEAD/developer_guide.md
+
+NOTE: `cros_workon_make` modifies crosvm's Cargo.toml and Cargo.lock. Please be
+careful not to commit the changes. Moreover, with the changes cargo will fail to
+build and clippy preupload check will fail.
+
+### Using Cargo
+
+Since development using portage can be slow, it's possible to build crosvm for
+ChromeOS using cargo for faster iteration times. To do so, the `Cargo.toml` file
+needs to be updated to point to dependencies provided by ChromeOS using
+`./setup_cros_cargo.sh`.
 
 ## Usage
 
-To see the usage information for your version of crosvm, run `crosvm` or `crosvm
-run --help`.
+To see the usage information for your version of crosvm, run `crosvm` or
+`crosvm run --help`.
 
 ### Boot a Kernel
 
@@ -92,8 +207,8 @@ To run a very basic VM with just a kernel and default devices:
 $ crosvm run "${KERNEL_PATH}"
 ```
 
-The uncompressed kernel image, also known as vmlinux, can be found in your kernel
-build directory in the case of x86 at `arch/x86/boot/compressed/vmlinux`.
+The uncompressed kernel image, also known as vmlinux, can be found in your
+kernel build directory in the case of x86 at `arch/x86/boot/compressed/vmlinux`.
 
 ### Rootfs
 
@@ -115,18 +230,20 @@ is desired.
 
 To run crosvm with a writable rootfs:
 
->**WARNING:** Writable disks are at risk of corruption by a malicious or
-malfunctioning guest OS.
+> **WARNING:** Writable disks are at risk of corruption by a malicious or
+> malfunctioning guest OS.
+
 ```bash
 crosvm run --rwdisk "${ROOT_IMAGE}" -p "root=/dev/vda" vmlinux
 ```
->**NOTE:** If more disks arguments are added prior to the desired rootfs image,
-the `root=/dev/vda` must be adjusted to the appropriate letter.
+
+> **NOTE:** If more disks arguments are added prior to the desired rootfs image,
+> the `root=/dev/vda` must be adjusted to the appropriate letter.
 
 #### With virtiofs
 
-Linux kernel 5.4+ is required for using virtiofs. This is convenient for testing.
-The file system must be named "mtd*" or "ubi*".
+Linux kernel 5.4+ is required for using virtiofs. This is convenient for
+testing. The file system must be named "mtd*" or "ubi*".
 
 ```bash
 crosvm run --shared-dir "/:mtdfake:type=fs:cache=always" \
@@ -138,14 +255,16 @@ crosvm run --shared-dir "/:mtdfake:type=fs:cache=always" \
 If the control socket was enabled with `-s`, the main process can be controlled
 while crosvm is running. To tell crosvm to stop and exit, for example:
 
->**NOTE:** If the socket path given is for a directory, a socket name underneath
-that path will be generated based on crosvm's PID.
+> **NOTE:** If the socket path given is for a directory, a socket name
+> underneath that path will be generated based on crosvm's PID.
+
 ```bash
 $ crosvm run -s /run/crosvm.sock ${USUAL_CROSVM_ARGS}
     <in another shell>
 $ crosvm stop /run/crosvm.sock
 ```
->**WARNING:** The guest OS will not be notified or gracefully shutdown.
+
+> **WARNING:** The guest OS will not be notified or gracefully shutdown.
 
 This will cause the original crosvm process to exit in an orderly fashion,
 allowing it to clean up any OS resources that might have stuck around if crosvm
@@ -192,24 +311,29 @@ $ gdb vmlinux
 <start booting in the other shell>
 ```
 
-For general techniques for debugging the Linux kernel via GDB, see this
-[kernel documentation].
+For general techniques for debugging the Linux kernel via GDB, see this [kernel
+documentation].
 
-[GDB Remote Serial Protocol]: https://sourceware.org/gdb/onlinedocs/gdb/Remote-Protocol.html
-[kernel documentation]: https://www.kernel.org/doc/html/latest/dev-tools/gdb-kernel-debugging.html
+[gdb remote serial protocol]:
+    https://sourceware.org/gdb/onlinedocs/gdb/Remote-Protocol.html
+[kernel documentation]:
+    https://www.kernel.org/doc/html/latest/dev-tools/gdb-kernel-debugging.html
 
 ## Defaults
 
 The following are crosvm's default arguments and how to override them.
 
-* 256MB of memory (set with `-m`)
-* 1 virtual CPU (set with `-c`)
-* no block devices (set with `-r`, `-d`, or `--rwdisk`)
-* no network (set with `--host_ip`, `--netmask`, and `--mac`)
-* virtio wayland support if `XDG_RUNTIME_DIR` enviroment variable is set (disable with `--no-wl`)
-* only the kernel arguments necessary to run with the supported devices (add more with `-p`)
-* run in multiprocess mode (run in single process mode with `--disable-sandbox`)
-* no control socket (set with `-s`)
+-   256MB of memory (set with `-m`)
+-   1 virtual CPU (set with `-c`)
+-   no block devices (set with `-r`, `-d`, or `--rwdisk`)
+-   no network (set with `--host_ip`, `--netmask`, and `--mac`)
+-   virtio wayland support if `XDG_RUNTIME_DIR` enviroment variable is set
+    (disable with `--no-wl`)
+-   only the kernel arguments necessary to run with the supported devices (add
+    more with `-p`)
+-   run in multiprocess mode (run in single process mode with
+    `--disable-sandbox`)
+-   no control socket (set with `-s`)
 
 ## System Requirements
 
@@ -217,15 +341,19 @@ A Linux kernel with KVM support (check for `/dev/kvm`) is required to run
 crosvm. In order to run certain devices, there are additional system
 requirements:
 
-* `virtio-wayland` - The `memfd_create` syscall, introduced in Linux 3.17, and a Wayland compositor.
-* `vsock` - Host Linux kernel with vhost-vsock support, introduced in Linux 4.8.
-* `multiprocess` - Host Linux kernel with seccomp-bpf and Linux namespacing support.
-* `virtio-net` - Host Linux kernel with TUN/TAP support (check for `/dev/net/tun`) and running with `CAP_NET_ADMIN` privileges.
+-   `virtio-wayland` - The `memfd_create` syscall, introduced in Linux 3.17, and
+    a Wayland compositor.
+-   `vsock` - Host Linux kernel with vhost-vsock support, introduced in Linux
+    4.8.
+-   `multiprocess` - Host Linux kernel with seccomp-bpf and Linux namespacing
+    support.
+-   `virtio-net` - Host Linux kernel with TUN/TAP support (check for
+    `/dev/net/tun`) and running with `CAP_NET_ADMIN` privileges.
 
 ## Emulated Devices
 
 | Device           | Description                                                                        |
-|------------------|------------------------------------------------------------------------------------|
+| ---------------- | ---------------------------------------------------------------------------------- |
 | `CMOS/RTC`       | Used to get the current calendar time.                                             |
 | `i8042`          | Used by the guest kernel to exit crosvm.                                           |
 | `serial`         | x86 I/O port driven serial devices that print to stdout and take input from stdin. |
@@ -239,13 +367,6 @@ requirements:
 
 ### Code Health
 
-#### `test_all`
-
-Crosvm provides docker containers to build and run tests for both x86_64 and
-aarch64, which can be run with the `./test_all` script.
-See `ci/README.md` for more details on how to use the containers for local
-development.
-
 #### `rustfmt`
 
 All code should be formatted with `rustfmt`. We have a script that applies
@@ -256,20 +377,16 @@ workspaces.
 
 #### `clippy`
 
-The `clippy` linter is used to check for common Rust problems.  The crosvm
+The `clippy` linter is used to check for common Rust problems. The crosvm
 project uses a specific set of `clippy` checks; please run `bin/clippy` before
 checking in a change.
 
 #### Dependencies
 
-With a few exceptions, external dependencies inside of the `Cargo.toml` files
-are not allowed. The reason being that community made crates tend to explode the
-binary size by including dozens of transitive dependencies. All these
-dependencies also must be reviewed to ensure their suitability to the crosvm
-project. Currently allowed crates are:
-
-* `cc` - Build time dependency needed to build C source code used in crosvm.
-* `libc` - Required to use the standard library, this crate is a simple wrapper around `libc`'s symbols.
+ChromeOS and Android both have a review process for third party dependencies to
+ensure that code included in the product is safe. Since crosvm needs to build on
+both, this means we are restricted in our usage of third party crates. When in
+doubt, do not add new dependencies.
 
 ### Code Overview
 
@@ -279,19 +396,24 @@ requires the most recent stable version of rustc.
 Source code is organized into crates, each with their own unit tests. These
 crates are:
 
-* `crosvm` - The top-level binary front-end for using crosvm.
-* `devices` - Virtual devices exposed to the guest OS.
-* `kernel_loader` - Loads elf64 kernel files to a slice of memory.
-* `kvm_sys` - Low-level (mostly) auto-generated structures and constants for using KVM.
-* `kvm` - Unsafe, low-level wrapper code for using `kvm_sys`.
-* `net_sys` - Low-level (mostly) auto-generated structures and constants for creating TUN/TAP devices.
-* `net_util` - Wrapper for creating TUN/TAP devices.
-* `sys_util` - Mostly safe wrappers for small system facilities such as `eventfd` or `syslog`.
-* `syscall_defines` - Lists of syscall numbers in each architecture used to make syscalls not supported in `libc`.
-* `vhost` - Wrappers for creating vhost based devices.
-* `virtio_sys` - Low-level (mostly) auto-generated structures and constants for interfacing with kernel vhost support.
-* `vm_control` - IPC for the VM.
-* `x86_64` - Support code specific to 64 bit intel machines.
+-   `crosvm` - The top-level binary front-end for using crosvm.
+-   `devices` - Virtual devices exposed to the guest OS.
+-   `kernel_loader` - Loads elf64 kernel files to a slice of memory.
+-   `kvm_sys` - Low-level (mostly) auto-generated structures and constants for
+    using KVM.
+-   `kvm` - Unsafe, low-level wrapper code for using `kvm_sys`.
+-   `net_sys` - Low-level (mostly) auto-generated structures and constants for
+    creating TUN/TAP devices.
+-   `net_util` - Wrapper for creating TUN/TAP devices.
+-   `sys_util` - Mostly safe wrappers for small system facilities such as
+    `eventfd` or `syslog`.
+-   `syscall_defines` - Lists of syscall numbers in each architecture used to
+    make syscalls not supported in `libc`.
+-   `vhost` - Wrappers for creating vhost based devices.
+-   `virtio_sys` - Low-level (mostly) auto-generated structures and constants
+    for interfacing with kernel vhost support.
+-   `vm_control` - IPC for the VM.
+-   `x86_64` - Support code specific to 64 bit intel machines.
 
 The `seccomp` folder contains minijail seccomp policy files for each sandboxed
 device. Because some syscalls vary by architecture, the seccomp policies are
