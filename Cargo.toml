@@ -32,7 +32,6 @@ members = [
     "qcow_utils",
     "integration_tests",
     "libcrosvm_control",
-    "vhost_user_devices",
 ]
 exclude = [
     "assertions",

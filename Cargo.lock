@@ -1244,14 +1244,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "vhost_user_devices"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "devices",
-]
-
-[[package]]
 name = "virtio_sys"
 version = "0.1.0"
 dependencies = [
