@@ -46,7 +46,7 @@ pub enum Error {
     ConnectTube(io::Error),
     #[cfg(feature = "audio")]
     CreateAc97(devices::PciDeviceError),
-    CreateConsole(arch::serial::Error),
+    CreateConsole(devices::SerialError),
     CreateControlServer(io::Error),
     CreateDiskError(disk::Error),
     CreateEvent(base::Error),

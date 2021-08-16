@@ -9,11 +9,9 @@ use std::io::{self};
 use std::mem::size_of;
 use std::sync::Arc;
 
-use arch::{
-    get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, SerialHardware, SerialParameters,
-    VmComponents, VmImage,
-};
+use arch::{get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, VmComponents, VmImage};
 use base::{Event, MemoryMappingBuilder};
+use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::{Bus, BusError, IrqChip, IrqChipAArch64, PciConfigMmio, PciDevice, ProtectionType};
 use hypervisor::{DeviceKind, Hypervisor, HypervisorCap, VcpuAArch64, VcpuFeature, VmAArch64};
 use minijail::Minijail;

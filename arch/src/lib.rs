@@ -21,7 +21,7 @@ use base::{syslog, AsRawDescriptor, AsRawDescriptors, Event, Tube};
 use devices::virtio::VirtioDevice;
 use devices::{
     Bus, BusDevice, BusError, BusResumeDevice, IrqChip, PciAddress, PciDevice, PciDeviceError,
-    PciInterruptPin, PciRoot, ProtectionType, ProxyDevice,
+    PciInterruptPin, PciRoot, ProtectionType, ProxyDevice, SerialHardware, SerialParameters,
 };
 use hypervisor::{IoEventAddress, Vm};
 use minijail::Minijail;
@@ -46,7 +46,7 @@ use {
 
 pub use serial::{
     add_serial_devices, get_serial_cmdline, set_default_serial_parameters, GetSerialCmdlineError,
-    SerialHardware, SerialParameters, SerialType, SERIAL_ADDR,
+    SERIAL_ADDR,
 };
 
 pub enum VmImage {
@@ -257,7 +257,7 @@ pub enum DeviceRegistrationError {
     // Unable to create a pipe.
     CreatePipe(base::Error),
     // Unable to create serial device from serial parameters
-    CreateSerialDevice(serial::Error),
+    CreateSerialDevice(devices::SerialError),
     // Unable to create tube
     CreateTube(base::TubeError),
     /// Could not clone an event.

@@ -16,10 +16,7 @@ use std::string::String;
 use std::thread::sleep;
 use std::time::Duration;
 
-use arch::{
-    set_default_serial_parameters, Pstore, SerialHardware, SerialParameters, SerialType,
-    VcpuAffinity,
-};
+use arch::{set_default_serial_parameters, Pstore, VcpuAffinity};
 use base::{debug, error, getpid, info, kill_process_group, reap_child, syslog, warn};
 #[cfg(feature = "direct")]
 use crosvm::DirectIoOption;
@@ -28,6 +25,7 @@ use crosvm::{
     platform, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
     VhostUserFsOption, VhostUserOption, VhostUserWlOption, DISK_ID_LEN,
 };
+use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{
     GpuDisplayParameters, GpuMode, GpuParameters, DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH,

@@ -30,6 +30,7 @@ use acpi_tables::sdt::SDT;
 use crate::error::{Error, Result};
 use base::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 use base::*;
+use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH};
@@ -66,8 +67,7 @@ use crate::{
     VhostUserOption, VhostUserWlOption,
 };
 use arch::{
-    self, LinuxArch, RunnableLinuxVm, SerialHardware, SerialParameters, VcpuAffinity,
-    VirtioDeviceStub, VmComponents, VmImage,
+    self, LinuxArch, RunnableLinuxVm, VcpuAffinity, VirtioDeviceStub, VmComponents, VmImage,
 };
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]

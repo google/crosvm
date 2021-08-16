@@ -54,7 +54,9 @@ pub use self::pl030::Pl030;
 pub use self::proxy::Error as ProxyError;
 pub use self::proxy::ProxyDevice;
 pub use self::serial::Serial;
-pub use self::serial_device::SerialDevice;
+pub use self::serial_device::{
+    Error as SerialError, SerialDevice, SerialHardware, SerialParameters, SerialType,
+};
 #[cfg(feature = "usb")]
 pub use self::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
 #[cfg(feature = "usb")]

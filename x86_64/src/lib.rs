@@ -57,10 +57,10 @@ use crate::bootparam::boot_params;
 use acpi_tables::sdt::SDT;
 use acpi_tables::{aml, aml::Aml};
 use arch::{
-    get_serial_cmdline, GetSerialCmdlineError, LinuxArch, RunnableLinuxVm, SerialHardware,
-    SerialParameters, VmComponents, VmImage,
+    get_serial_cmdline, GetSerialCmdlineError, LinuxArch, RunnableLinuxVm, VmComponents, VmImage,
 };
 use base::Event;
+use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::{BusResumeDevice, IrqChip, IrqChipX86_64, PciConfigIo, PciDevice, ProtectionType};
 use hypervisor::{HypervisorX86_64, VcpuX86_64, VmX86_64};
 use minijail::Minijail;

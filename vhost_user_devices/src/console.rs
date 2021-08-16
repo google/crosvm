@@ -10,11 +10,10 @@ use std::sync::Arc;
 use devices::virtio::copy_config;
 
 use anyhow::{anyhow, bail, Context};
-use arch::serial::{SerialHardware, SerialParameters, SerialType};
 use base::{error, warn, Event, RawDescriptor, Terminal};
 use cros_async::{EventAsync, Executor};
 use data_model::DataInit;
-use devices::serial_device::SerialDevice;
+use devices::serial_device::{SerialDevice, SerialHardware, SerialParameters, SerialType};
 use devices::virtio;
 use devices::virtio::console::{
     handle_input, process_transmit_queue, spawn_input_thread, virtio_console_config, ConsoleError,

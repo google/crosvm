@@ -20,7 +20,8 @@ use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use arch::{Pstore, SerialHardware, SerialParameters, VcpuAffinity};
+use arch::{Pstore, VcpuAffinity};
+use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::virtio::fs::passthrough;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
