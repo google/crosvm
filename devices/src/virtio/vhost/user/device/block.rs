@@ -18,14 +18,16 @@ use vmm_vhost::vhost_user::message::*;
 use base::{error, iov_max, warn, Event, Timer};
 use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor, TimerAsync};
 use data_model::DataInit;
-use devices::virtio;
-use devices::virtio::block::asynchronous::{flush_disk, process_one_chain};
-use devices::virtio::block::*;
-use devices::virtio::{base_features, copy_config, Queue};
-use devices::ProtectionType;
 use disk::{create_async_disk_file, ToAsyncDisk};
-use vhost_user_devices::{CallEvent, DeviceRequestHandler, VhostUserBackend};
 use vm_memory::GuestMemory;
+
+use crate::virtio::block::asynchronous::{flush_disk, process_one_chain};
+use crate::virtio::block::*;
+use crate::virtio::vhost::user::device::handler::{
+    CallEvent, DeviceRequestHandler, VhostUserBackend,
+};
+use crate::virtio::{self, base_features, copy_config, Queue};
+use crate::ProtectionType;
 
 static BLOCK_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 
@@ -283,7 +285,8 @@ async fn handle_queue(
     }
 }
 
-fn main() -> anyhow::Result<()> {
+/// Starts a vhost-user block device.
+pub fn run_block_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
     let mut opts = Options::new();
     opts.optopt(
         "",
@@ -294,8 +297,6 @@ fn main() -> anyhow::Result<()> {
     opts.optflag("h", "help", "print this help menu");
     opts.optopt("", "socket", "path to a socket", "PATH");
 
-    let mut args = std::env::args();
-    let program_name = args.next().expect("empty args");
     let matches = match opts.parse(args) {
         Ok(m) => m,
         Err(e) => {

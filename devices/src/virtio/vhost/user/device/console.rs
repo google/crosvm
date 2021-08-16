@@ -7,25 +7,27 @@ use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
-use devices::virtio::copy_config;
-
 use anyhow::{anyhow, bail, Context};
 use base::{error, warn, Event, RawDescriptor, Terminal};
 use cros_async::{EventAsync, Executor};
 use data_model::DataInit;
-use devices::serial_device::{SerialDevice, SerialHardware, SerialParameters, SerialType};
-use devices::virtio;
-use devices::virtio::console::{
-    handle_input, process_transmit_queue, spawn_input_thread, virtio_console_config, ConsoleError,
-};
-use devices::ProtectionType;
+
 use futures::future::{AbortHandle, Abortable};
 use getopts::Options;
 use once_cell::sync::OnceCell;
 use sync::Mutex;
-use vhost_user_devices::{CallEvent, DeviceRequestHandler, VhostUserBackend};
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+
+use crate::serial_device::{SerialDevice, SerialHardware, SerialParameters, SerialType};
+use crate::virtio::console::{
+    handle_input, process_transmit_queue, spawn_input_thread, virtio_console_config, ConsoleError,
+};
+use crate::virtio::vhost::user::device::handler::{
+    CallEvent, DeviceRequestHandler, VhostUserBackend,
+};
+use crate::virtio::{self, copy_config};
+use crate::ProtectionType;
 
 static CONSOLE_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 
@@ -248,7 +250,7 @@ impl VhostUserBackend for ConsoleBackend {
     }
 }
 
-fn run_console(params: &SerialParameters, socket: &String) -> anyhow::Result<()> {
+fn run_console(params: &SerialParameters, socket: &str) -> anyhow::Result<()> {
     // We need to pass an event as per Serial Device API but we don't really use it anyway.
     let evt = Event::new()?;
     // Same for keep_rds, we don't really use this.
@@ -273,15 +275,13 @@ fn run_console(params: &SerialParameters, socket: &String) -> anyhow::Result<()>
     Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
-    let mut args = std::env::args();
+/// Starts a vhost-user console device.
+pub fn run_console_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
     opts.optopt("", "socket", "path to a socket", "PATH");
     opts.optopt("", "output-file", "path to a file", "OUTFILE");
     opts.optopt("", "input-file", "path to a file", "INFILE");
-
-    let program_name = args.next().expect("empty args");
 
     let matches = match opts.parse(args) {
         Ok(m) => m,

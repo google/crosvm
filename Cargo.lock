@@ -302,6 +302,7 @@ name = "devices"
 version = "0.1.0"
 dependencies = [
  "acpi_tables",
+ "anyhow",
  "audio_streams",
  "base",
  "bit_field",
@@ -311,6 +312,7 @@ dependencies = [
  "enumn",
  "fuse",
  "futures",
+ "getopts",
  "gpu_display",
  "hypervisor",
  "kvm_sys",
@@ -1211,24 +1213,7 @@ name = "vhost_user_devices"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base",
- "cros_async",
- "data_model",
  "devices",
- "disk",
- "futures",
- "getopts",
- "libc",
- "net_util",
- "once_cell",
- "remain",
- "sync",
- "sys_util",
- "tempfile",
- "thiserror",
- "virtio_sys",
- "vm_memory",
- "vmm_vhost",
 ]
 
 [[package]]

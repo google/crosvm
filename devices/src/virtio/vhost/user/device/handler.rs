@@ -49,7 +49,7 @@ use std::convert::TryFrom;
 use std::fs::File;
 use std::io;
 use std::num::Wrapping;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::sync::Arc;
@@ -59,7 +59,6 @@ use base::{
     SharedMemoryUnix, UnlinkUnixListener,
 };
 use cros_async::{AsyncError, AsyncWrapper, Executor};
-use devices::virtio::{Queue, SignalableInterrupt};
 use remain::sorted;
 use sync::Mutex;
 use sys_util::clear_fd_flags;
@@ -76,6 +75,8 @@ use vmm_vhost::vhost_user::{
 use vmm_vhost::vhost_user::{
     Error as VhostError, Result as VhostResult, SlaveFsCacheReq, VhostUserSlaveReqHandlerMut,
 };
+
+use crate::virtio::{Queue, SignalableInterrupt};
 
 /// An event to deliver an interrupt to the guest.
 ///
@@ -201,9 +202,6 @@ pub enum HandlerError {
     /// Failed to create an async source.
     #[error("failed to create an async source: {0}")]
     CreateAsyncSource(AsyncError),
-    /// Failed to create a connection listener.
-    #[error("failed to create a connection listener: {0}")]
-    CreateConnectionListener(VhostError),
     /// Failed to create a UNIX domain socket listener.
     #[error("failed to create a UNIX domain socket listener: {0}")]
     CreateSocketListener(io::Error),
@@ -615,8 +613,9 @@ mod tests {
     use std::sync::Barrier;
 
     use data_model::DataInit;
-    use devices::virtio::vhost::user::vmm::VhostUserHandler;
     use tempfile::{Builder, TempDir};
+
+    use crate::virtio::vhost::user::vmm::VhostUserHandler;
 
     #[derive(ThisError, Debug)]
     enum FakeError {

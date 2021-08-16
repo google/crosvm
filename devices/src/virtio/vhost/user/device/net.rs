@@ -11,21 +11,23 @@ use anyhow::{anyhow, bail, Context};
 use base::{error, validate_raw_descriptor, warn, Event, RawDescriptor};
 use cros_async::{EventAsync, Executor, IoSourceExt};
 use data_model::DataInit;
-use devices::virtio;
-use devices::virtio::net::{
-    build_config, process_ctrl, process_rx, process_tx, validate_and_configure_tap,
-    virtio_features_to_tap_offload, NetError,
-};
-use devices::ProtectionType;
 use futures::future::{AbortHandle, Abortable};
 use getopts::Options;
 use net_util::{MacAddress, Tap, TapT};
 use once_cell::sync::OnceCell;
 use sync::Mutex;
-use vhost_user_devices::{CallEvent, DeviceRequestHandler, VhostUserBackend};
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+
+use crate::virtio::net::{
+    build_config, process_ctrl, process_rx, process_tx, validate_and_configure_tap,
+    virtio_features_to_tap_offload, NetError,
+};
+use crate::virtio::vhost::user::device::handler::{
+    CallEvent, DeviceRequestHandler, VhostUserBackend,
+};
+use crate::{virtio, ProtectionType};
 
 thread_local! {
     static NET_EXECUTOR: OnceCell<Executor> = OnceCell::new();
@@ -332,7 +334,8 @@ impl VhostUserBackend for NetBackend {
     }
 }
 
-fn main() -> anyhow::Result<()> {
+/// Starts a vhost-user net device.
+pub fn run_net_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
     opts.optmulti(
@@ -348,8 +351,6 @@ fn main() -> anyhow::Result<()> {
         "SOCKET_PATH,TAP_FD",
     );
 
-    let mut args = std::env::args();
-    let program_name = args.next().expect("args is empty");
     let matches = match opts.parse(args) {
         Ok(m) => m,
         Err(e) => {

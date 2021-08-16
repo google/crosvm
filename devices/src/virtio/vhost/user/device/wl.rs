@@ -15,15 +15,18 @@ use base::{
     warn, Event, FromRawDescriptor, SafeDescriptor, Tube,
 };
 use cros_async::{AsyncWrapper, EventAsync, Executor, IoSourceExt};
-use devices::virtio::{base_features, wl, Queue};
-use devices::ProtectionType;
 use futures::future::{AbortHandle, Abortable};
 use getopts::Options;
 use once_cell::sync::OnceCell;
 use sync::Mutex;
-use vhost_user_devices::{CallEvent, DeviceRequestHandler, VhostUserBackend};
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+
+use crate::virtio::vhost::user::device::handler::{
+    CallEvent, DeviceRequestHandler, VhostUserBackend,
+};
+use crate::virtio::{base_features, wl, Queue};
+use crate::ProtectionType;
 
 static WL_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 
@@ -270,7 +273,8 @@ fn parse_wayland_sock(value: String) -> anyhow::Result<(String, PathBuf)> {
     Ok((name.to_string(), path))
 }
 
-fn main() -> anyhow::Result<()> {
+/// Starts a vhost-user wayland device.
+pub fn run_wl_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
     opts.reqopt(
@@ -299,8 +303,6 @@ fn main() -> anyhow::Result<()> {
         "PATH",
     );
 
-    let mut args = std::env::args();
-    let program_name = args.next().expect("args is empty");
     let matches = match opts.parse(args) {
         Ok(m) => m,
         Err(e) => {

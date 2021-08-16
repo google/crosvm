@@ -4,48 +4,22 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
 
-[lib]
-path = "src/lib.rs"
-
 [[bin]]
 name = "vhost-user-console-device"
-path = "src/console.rs"
+path = "src/console_device.rs"
 
 [[bin]]
 name = "vhost-user-net-device"
-path = "src/net.rs"
+path = "src/net_device.rs"
 
 [[bin]]
 name = "vhost-user-wl-device"
-path = "src/wl.rs"
+path = "src/wl_device.rs"
 
 [[bin]]
 name = "vhost-user-block-device"
-path = "src/block.rs"
+path = "src/block_device.rs"
 
 [dependencies]
 anyhow = "*"
-base = { path = "../base" }
-cros_async = { path = "../cros_async" }
-data_model = { path = "../data_model" }
 devices = { path = "../devices", features = ["minigbm"] }
-disk = { path = "../disk" }
-getopts = { version = "0.2" }
-libc = "*"
-net_util = { path = "../net_util" }
-once_cell = "1.7.2"
-remain = "*"
-sync = { path = "../sync" }
-sys_util = { path = "../sys_util" }
-thiserror = "*"
-virtio_sys = { path = "../virtio_sys" }
-vm_memory = { path = "../vm_memory" }
-vmm_vhost = { version = "*", features = ["vhost-user-slave"] }
-
-[dependencies.futures]
-version = "*"
-default-features = false
-
-[dev-dependencies]
-data_model = { path = "../data_model" }
-tempfile = { path = "../tempfile" }
