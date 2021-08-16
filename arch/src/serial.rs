@@ -17,37 +17,31 @@ use std::time::Duration;
 use base::{error, info, read_raw_stdin, syslog, AsRawDescriptor, Event, RawDescriptor};
 use devices::{Bus, ProtectionType, ProxyDevice, Serial, SerialDevice};
 use minijail::Minijail;
+use remain::sorted;
 use sync::Mutex;
+use thiserror::Error as ThisError;
 
 use crate::DeviceRegistrationError;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(ThisError, Debug)]
 pub enum Error {
+    #[error("Unable to clone an Event: {0}")]
     CloneEvent(base::Error),
+    #[error("Unable to open/create file: {0}")]
     FileError(std::io::Error),
-    InvalidSerialHardware(String),
-    InvalidSerialType(String),
+    #[error("Serial device path is invalid")]
     InvalidPath,
+    #[error("Invalid serial hardware: {0}")]
+    InvalidSerialHardware(String),
+    #[error("Invalid serial type: {0}")]
+    InvalidSerialType(String),
+    #[error("Serial device type file requires a path")]
     PathRequired,
+    #[error("Failed to create unbound socket")]
     SocketCreateFailed,
+    #[error("Serial device type {0} not implemented")]
     Unimplemented(SerialType),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            CloneEvent(e) => write!(f, "unable to clone an Event: {}", e),
-            FileError(e) => write!(f, "unable to open/create file: {}", e),
-            InvalidSerialHardware(e) => write!(f, "invalid serial hardware: {}", e),
-            InvalidSerialType(e) => write!(f, "invalid serial type: {}", e),
-            InvalidPath => write!(f, "serial device path is invalid"),
-            PathRequired => write!(f, "serial device type file requires a path"),
-            SocketCreateFailed => write!(f, "failed to create unbound socket"),
-            Unimplemented(e) => write!(f, "serial device type {} not implemented", e.to_string()),
-        }
-    }
 }
 
 /// Enum for possible type of serial devices
@@ -462,23 +456,13 @@ pub fn add_serial_devices(
     Ok(())
 }
 
-#[derive(Debug)]
+#[sorted]
+#[derive(ThisError, Debug)]
 pub enum GetSerialCmdlineError {
+    #[error("Error appending to cmdline: {0}")]
     KernelCmdline(kernel_cmdline::Error),
+    #[error("Hardware {0} not supported as earlycon")]
     UnsupportedEarlyconHardware(SerialHardware),
-}
-
-impl Display for GetSerialCmdlineError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::GetSerialCmdlineError::*;
-
-        match self {
-            KernelCmdline(e) => write!(f, "error appending to cmdline: {}", e),
-            UnsupportedEarlyconHardware(hw) => {
-                write!(f, "hardware {} not supported as earlycon", hw)
-            }
-        }
-    }
 }
 
 pub type GetSerialCmdlineResult<T> = std::result::Result<T, GetSerialCmdlineError>;

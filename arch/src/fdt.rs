@@ -11,28 +11,30 @@ use std::ffi::CString;
 use std::io;
 use std::mem::size_of;
 
+use remain::sorted;
 use thiserror::Error as ThisError;
 
+#[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
+    #[error("Parse error reading FDT parameters")]
+    FdtFileParseError,
+    #[error("Error writing FDT to guest memory")]
+    FdtGuestMemoryWriteError,
+    #[error("I/O error reading FDT parameters code={0}")]
+    FdtIoError(io::Error),
+    #[error("Strings cannot contain NUL")]
+    InvalidString,
+    #[error("Attempted to end a node that was not the most recent")]
+    OutOfOrderEndNode,
     #[error("Properties may not be added after a node has been ended")]
     PropertyAfterEndNode,
     #[error("Property value size must fit in 32 bits")]
     PropertyValueTooLarge,
     #[error("Total size must fit in 32 bits")]
     TotalSizeTooLarge,
-    #[error("Strings cannot contain NUL")]
-    InvalidString,
-    #[error("Attempted to end a node that was not the most recent")]
-    OutOfOrderEndNode,
     #[error("Attempted to call finish without ending all nodes")]
     UnclosedNode,
-    #[error("Error writing FDT to guest memory")]
-    FdtGuestMemoryWriteError,
-    #[error("Parse error reading FDT parameters")]
-    FdtFileParseError,
-    #[error("I/O error reading FDT parameters code={0}")]
-    FdtIoError(io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

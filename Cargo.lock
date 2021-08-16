@@ -54,6 +54,7 @@ dependencies = [
  "libc",
  "minijail",
  "power_monitor",
+ "remain",
  "resources",
  "sync",
  "thiserror",
