@@ -2696,6 +2696,10 @@ fn print_usage() {
     println!("    create_composite  - Create a new composite disk image file.");
     println!("    create_qcow2  - Create a new qcow2 disk image file.");
     println!("    disk - Manage attached virtual disk devices.");
+    println!(
+        "    make_rt - Enables real-time vcpu priority for crosvm instances started with \
+         `--delay-rt`."
+    );
     println!("    resume - Resumes the crosvm instance.");
     println!("    run - Start a new crosvm instance.");
     println!("    stop - Stops crosvm instances via their control sockets.");
