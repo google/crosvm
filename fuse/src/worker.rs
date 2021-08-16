@@ -13,27 +13,31 @@ use crate::server::{Mapper, Reader, Server, Writer};
 use crate::sys;
 use crate::{Error, Result};
 
-struct DevFuseReader<'a> {
+struct DevFuseReader {
     // File representing /dev/fuse for reading, with sufficient buffer to accommodate a FUSE read
     // transaction.
-    reader: &'a mut BufReader<File>,
+    reader: BufReader<File>,
 }
 
-impl<'a> DevFuseReader<'a> {
-    pub fn new(reader: &'a mut BufReader<File>) -> Self {
+impl DevFuseReader {
+    pub fn new(reader: BufReader<File>) -> Self {
         DevFuseReader { reader }
+    }
+
+    fn drain(&mut self) {
+        self.reader.consume(self.reader.buffer().len());
     }
 }
 
-impl Read for DevFuseReader<'_> {
+impl Read for DevFuseReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.reader.read(buf)
     }
 }
 
-impl Reader for DevFuseReader<'_> {}
+impl Reader for DevFuseReader {}
 
-impl ZeroCopyReader for DevFuseReader<'_> {
+impl ZeroCopyReader for DevFuseReader {
     fn read_to(&mut self, f: &mut File, count: usize, off: u64) -> io::Result<usize> {
         let buf = self.reader.fill_buf()?;
         let end = std::cmp::min(count, buf.len());
@@ -43,17 +47,17 @@ impl ZeroCopyReader for DevFuseReader<'_> {
     }
 }
 
-struct DevFuseWriter<'a> {
+struct DevFuseWriter {
     // File representing /dev/fuse for writing.
-    dev_fuse: &'a mut File,
+    dev_fuse: File,
 
     // An internal buffer to allow generating data and header out of order, such that they can be
     // flushed at once. This is wrapped by a cursor for tracking the current written position.
-    write_buf: &'a mut Cursor<Vec<u8>>,
+    write_buf: Cursor<Vec<u8>>,
 }
 
-impl<'a> DevFuseWriter<'a> {
-    pub fn new(dev_fuse: &'a mut File, write_buf: &'a mut Cursor<Vec<u8>>) -> Self {
+impl DevFuseWriter {
+    pub fn new(dev_fuse: File, write_buf: Cursor<Vec<u8>>) -> Self {
         debug_assert_eq!(write_buf.position(), 0);
 
         DevFuseWriter {
@@ -63,7 +67,7 @@ impl<'a> DevFuseWriter<'a> {
     }
 }
 
-impl Write for DevFuseWriter<'_> {
+impl Write for DevFuseWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.write_buf.write(buf)
     }
@@ -76,7 +80,7 @@ impl Write for DevFuseWriter<'_> {
     }
 }
 
-impl Writer for DevFuseWriter<'_> {
+impl Writer for DevFuseWriter {
     type ClosureWriter = Self;
 
     fn write_at<F>(&mut self, offset: usize, f: F) -> io::Result<usize>
@@ -96,7 +100,7 @@ impl Writer for DevFuseWriter<'_> {
     }
 }
 
-impl ZeroCopyWriter for DevFuseWriter<'_> {
+impl ZeroCopyWriter for DevFuseWriter {
     fn write_from(&mut self, f: &mut File, count: usize, off: u64) -> io::Result<usize> {
         let pos = self.write_buf.position() as usize;
         let end = pos + count;
@@ -147,20 +151,25 @@ pub fn start_message_loop<F: FileSystem + Sync>(
     fs: F,
 ) -> Result<()> {
     let server = Server::new(fs);
-    let mut buf_reader = BufReader::with_capacity(
-        max_write as usize + size_of::<sys::InHeader>() + size_of::<sys::WriteIn>(),
-        dev_fuse.try_clone().map_err(Error::EndpointSetup)?,
-    );
-
-    let mut write_buf = Cursor::new(Vec::with_capacity(max_read as usize));
-    let mut wfile = dev_fuse.try_clone().map_err(Error::EndpointSetup)?;
+    let mut dev_fuse_reader = {
+        let rfile = dev_fuse.try_clone().map_err(Error::EndpointSetup)?;
+        let buf_reader = BufReader::with_capacity(
+            max_write as usize + size_of::<sys::InHeader>() + size_of::<sys::WriteIn>(),
+            rfile,
+        );
+        DevFuseReader::new(buf_reader)
+    };
+    let mut dev_fuse_writer = {
+        let wfile = dev_fuse.try_clone().map_err(Error::EndpointSetup)?;
+        let write_buf = Cursor::new(Vec::with_capacity(max_read as usize));
+        DevFuseWriter::new(wfile, write_buf)
+    };
+    let dev_fuse_mapper = DevFuseMapper::new();
     loop {
-        let dev_fuse_reader = DevFuseReader::new(&mut buf_reader);
-        let dev_fuse_writer = DevFuseWriter::new(&mut wfile, &mut write_buf);
-        let dev_fuse_mapper = DevFuseMapper::new();
+        server.handle_message(&mut dev_fuse_reader, &mut dev_fuse_writer, &dev_fuse_mapper)?;
 
-        if let Err(e) = server.handle_message(dev_fuse_reader, dev_fuse_writer, &dev_fuse_mapper) {
-            return Err(e);
-        }
+        // Since we're reusing the buffer to avoid repeated allocation, drain the possible
+        // residual from the buffer.
+        dev_fuse_reader.drain();
     }
 }
