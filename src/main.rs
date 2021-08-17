@@ -30,6 +30,9 @@ use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
 use devices::virtio::gpu::{
     GpuDisplayParameters, GpuMode, GpuParameters, DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH,
 };
+use devices::virtio::vhost::user::device::{
+    run_block_device, run_console_device, run_net_device, run_wl_device,
+};
 use devices::ProtectionType;
 #[cfg(feature = "audio")]
 use devices::{Ac97Backend, Ac97Parameters};
@@ -2525,6 +2528,45 @@ with a '--backing_file'."
     Ok(())
 }
 
+fn start_device(mut args: std::env::Args) -> std::result::Result<(), ()> {
+    let print_usage = || {
+        print_help(
+            "crosvm device",
+            " (block|console|net|wl) <device-specific arguments>",
+            &[],
+        );
+    };
+
+    if let Err(e) = syslog::init() {
+        println!("failed to initialize syslog: {}", e);
+        return Err(());
+    }
+
+    if args.len() == 0 {
+        print_usage();
+        return Err(());
+    }
+
+    let device = args.next().unwrap();
+
+    let program_name = format!("crosvm device {}", device);
+    let result = match device.as_str() {
+        "block" => run_block_device(&program_name, args),
+        "console" => run_console_device(&program_name, args),
+        "net" => run_net_device(&program_name, args),
+        "wl" => run_wl_device(&program_name, args),
+        _ => {
+            println!("Unknown device name: {}", device);
+            print_usage();
+            return Err(());
+        }
+    };
+
+    result.map_err(|e| {
+        error!("Failed to run {} device: {}", device, e);
+    })
+}
+
 fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() < 2 {
         print_help("crosvm disk", "SUBCOMMAND VM_SOCKET...", &[]);
@@ -2693,6 +2735,7 @@ fn print_usage() {
     #[cfg(feature = "composite-disk")]
     println!("    create_composite  - Create a new composite disk image file.");
     println!("    create_qcow2  - Create a new qcow2 disk image file.");
+    println!("    device - Start a device process.");
     println!("    disk - Manage attached virtual disk devices.");
     println!(
         "    make_rt - Enables real-time vcpu priority for crosvm instances started with \
@@ -2732,6 +2775,7 @@ fn crosvm_main() -> std::result::Result<(), ()> {
         #[cfg(feature = "composite-disk")]
         Some("create_composite") => create_composite(args),
         Some("create_qcow2") => create_qcow2(args),
+        Some("device") => start_device(args),
         Some("disk") => disk_cmd(args),
         Some("make_rt") => make_rt(args),
         Some("resume") => resume_vms(args),
