@@ -21,6 +21,7 @@ listxattr: 1
 fremovexattr: 1
 removexattr: 1
 fstatat64: 1
+fstatfs: 1
 fstatfs64: 1
 fsync: 1
 ftruncate64: 1

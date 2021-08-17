@@ -27,6 +27,7 @@ utimensat_time64: 1
 ftruncate64: 1
 fchmod: 1
 fchown: 1
+fstatfs: 1
 fstatfs64: 1
 fstatat64: 1
 prctl: arg0 == PR_SET_NAME
