@@ -335,6 +335,7 @@ impl VhostUserBackend for NetBackend {
 }
 
 /// Starts a vhost-user net device.
+/// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn run_net_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
@@ -354,9 +355,7 @@ pub fn run_net_device(program_name: &str, args: std::env::Args) -> anyhow::Resul
     let matches = match opts.parse(args) {
         Ok(m) => m,
         Err(e) => {
-            println!("{}", e);
-            println!("{}", opts.short_usage(&program_name));
-            return Ok(());
+            bail!("failed to parse arguments: {}", e);
         }
     };
 
@@ -364,8 +363,6 @@ pub fn run_net_device(program_name: &str, args: std::env::Args) -> anyhow::Resul
         println!("{}", opts.usage(&program_name));
         return Ok(());
     }
-
-    base::syslog::init().context("failed to initialize syslog")?;
 
     let device_args = matches.opt_strs("device");
     let tap_fd_args = matches.opt_strs("tap-fd");
@@ -417,13 +414,16 @@ pub fn run_net_device(program_name: &str, args: std::env::Args) -> anyhow::Resul
                 let _ = thread_ex.set(ex.clone());
             });
             if let Err(e) = ex.run_until(handler.run(&socket, &ex)) {
-                error!("error occurred: {}", e);
+                bail!("error occurred: {}", e);
             }
+            Ok(())
         }));
     }
 
-    threads
-        .into_iter()
-        .try_for_each(thread::JoinHandle::join)
-        .map_err(|e| anyhow!("failed to join threads: {:?}", e))
+    for t in threads {
+        if let Err(e) = t.join() {
+            bail!("failed to join threads: {:?}", e);
+        }
+    }
+    Ok(())
 }

@@ -276,6 +276,7 @@ fn run_console(params: &SerialParameters, socket: &str) -> anyhow::Result<()> {
 }
 
 /// Starts a vhost-user console device.
+/// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn run_console_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
@@ -286,9 +287,7 @@ pub fn run_console_device(program_name: &str, args: std::env::Args) -> anyhow::R
     let matches = match opts.parse(args) {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("{}", e);
-            eprintln!("{}", opts.short_usage(&program_name));
-            return Ok(());
+            bail!("failed to parse arguments: {}", e);
         }
     };
 
@@ -298,9 +297,7 @@ pub fn run_console_device(program_name: &str, args: std::env::Args) -> anyhow::R
     }
 
     if !matches.opt_present("socket") {
-        println!("Must specify the socket for the vhost user device.");
-        println!("{}", opts.usage(&program_name));
-        return Ok(());
+        bail!("Must specify the socket for the vhost user device.");
     }
 
     // We can unwrap after `opt_str()` safely because we just checked for it being present.
@@ -308,8 +305,6 @@ pub fn run_console_device(program_name: &str, args: std::env::Args) -> anyhow::R
 
     let output_file = matches.opt_str("output-file").map(PathBuf::from);
     let input_file = matches.opt_str("input-file").map(PathBuf::from);
-
-    base::syslog::init().context("Failed to initialize syslog")?;
 
     // Set stdin() in raw mode so we can send over individual keystrokes unbuffered
     stdin()
@@ -335,7 +330,7 @@ pub fn run_console_device(program_name: &str, args: std::env::Args) -> anyhow::R
     };
 
     if let Err(e) = run_console(&params, &socket) {
-        error!("Failed to run console device: {}", e);
+        bail!("error occurred: {}", e);
     }
 
     // Restore terminal capabilities back to what they were before

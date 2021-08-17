@@ -274,6 +274,7 @@ fn parse_wayland_sock(value: String) -> anyhow::Result<(String, PathBuf)> {
 }
 
 /// Starts a vhost-user wayland device.
+/// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn run_wl_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
@@ -306,9 +307,7 @@ pub fn run_wl_device(program_name: &str, args: std::env::Args) -> anyhow::Result
     let matches = match opts.parse(args) {
         Ok(m) => m,
         Err(e) => {
-            println!("{}", e);
-            println!("{}", opts.short_usage(&program_name));
-            return Ok(());
+            bail!("failed to parse arguments: {}", e);
         }
     };
 
@@ -316,8 +315,6 @@ pub fn run_wl_device(program_name: &str, args: std::env::Args) -> anyhow::Result
         println!("{}", opts.usage(&program_name));
         return Ok(());
     }
-
-    base::syslog::init().context("failed to initialize syslog")?;
 
     // We can safely `unwrap()` this because it is a required option.
     let socket = matches.opt_str("socket").unwrap();
@@ -351,7 +348,7 @@ pub fn run_wl_device(program_name: &str, args: std::env::Args) -> anyhow::Result
         DeviceRequestHandler::new(WlBackend::new(wayland_paths, vm_socket, resource_bridge));
 
     if let Err(e) = ex.run_until(handler.run(socket, &ex)) {
-        error!("error occurred: {}", e);
+        bail!("error occurred: {}", e);
     }
 
     Ok(())

@@ -286,6 +286,7 @@ async fn handle_queue(
 }
 
 /// Starts a vhost-user block device.
+/// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn run_block_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
     let mut opts = Options::new();
     opts.optopt(
@@ -300,9 +301,7 @@ pub fn run_block_device(program_name: &str, args: std::env::Args) -> anyhow::Res
     let matches = match opts.parse(args) {
         Ok(m) => m,
         Err(e) => {
-            println!("{}", e);
-            println!("{}", opts.short_usage(&program_name));
-            return Ok(());
+            bail!("failed to parse arguments: {}", e);
         }
     };
 
@@ -312,18 +311,12 @@ pub fn run_block_device(program_name: &str, args: std::env::Args) -> anyhow::Res
     }
 
     if !matches.opt_present("file") {
-        println!("Must specify the file for the block device.");
-        println!("{}", opts.usage(&program_name));
-        return Ok(());
+        bail!("Must specify the file for the block device.");
     }
 
     if !matches.opt_present("socket") {
-        println!("Must specify the socket for the vhost user device.");
-        println!("{}", opts.usage(&program_name));
-        return Ok(());
+        bail!("Must specify the socket for the vhost user device.");
     }
-
-    base::syslog::init().context("failed to initialize syslog")?;
 
     let ex = Executor::new().context("failed to create executor")?;
 
@@ -357,7 +350,7 @@ pub fn run_block_device(program_name: &str, args: std::env::Args) -> anyhow::Res
     let handler = DeviceRequestHandler::new(block);
 
     if let Err(e) = ex.run_until(handler.run(socket, &ex)) {
-        error!("error occurred: {}", e);
+        bail!("error occurred: {}", e);
     }
 
     Ok(())
