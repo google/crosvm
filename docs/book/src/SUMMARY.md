@@ -4,6 +4,11 @@
 - [Building Crosvm](./building_crosvm/index.md)
   - [For Linux](./building_crosvm/linux.md)
   - [For Chromium OS](./building_crosvm/chromium_os.md)
+- [Running Crosvm](./running_crosvm/index.md)
+  - [Usage](./running_crosvm/usage.md)
+  - [System Requirements](./running_crosvm/requirements.md)
+  - [Features](./running_crosvm/features.md)
+  - [Devices](./running_crosvm/devices.md)
 - [Contributing](./contributing.md)
 
 ---
