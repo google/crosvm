@@ -10,49 +10,43 @@ pub use crate::net::NetT;
 pub use crate::vsock::Vsock;
 
 use std::alloc::Layout;
-use std::fmt::{self, Display};
 use std::io::Error as IoError;
 use std::ptr::null;
 
 use assertions::const_assert;
 use base::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
 use base::{AsRawDescriptor, Event, LayoutAllocation};
+use remain::sorted;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    /// Error opening vhost device.
-    VhostOpen(IoError),
-    /// Error while running ioctl.
-    IoctlError(IoError),
-    /// Invalid queue.
-    InvalidQueue,
-    /// Invalid descriptor table address.
-    DescriptorTableAddress(GuestMemoryError),
-    /// Invalid used address.
-    UsedAddress(GuestMemoryError),
     /// Invalid available address.
+    #[error("invalid available address: {0}")]
     AvailAddress(GuestMemoryError),
+    /// Invalid descriptor table address.
+    #[error("invalid descriptor table address: {0}")]
+    DescriptorTableAddress(GuestMemoryError),
+    /// Invalid queue.
+    #[error("invalid queue")]
+    InvalidQueue,
+    /// Error while running ioctl.
+    #[error("failed to run ioctl: {0}")]
+    IoctlError(IoError),
     /// Invalid log address.
+    #[error("invalid log address: {0}")]
     LogAddress(GuestMemoryError),
+    /// Invalid used address.
+    #[error("invalid used address: {0}")]
+    UsedAddress(GuestMemoryError),
+    /// Error opening vhost device.
+    #[error("failed to open vhost device: {0}")]
+    VhostOpen(IoError),
 }
+
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            VhostOpen(e) => write!(f, "failed to open vhost device: {}", e),
-            IoctlError(e) => write!(f, "failed to run ioctl: {}", e),
-            InvalidQueue => write!(f, "invalid queue"),
-            DescriptorTableAddress(e) => write!(f, "invalid descriptor table address: {}", e),
-            UsedAddress(e) => write!(f, "invalid used address: {}", e),
-            AvailAddress(e) => write!(f, "invalid available address: {}", e),
-            LogAddress(e) => write!(f, "invalid log address: {}", e),
-        }
-    }
-}
 
 fn ioctl_result<T>() -> Result<T> {
     Err(Error::IoctlError(IoError::last_os_error()))

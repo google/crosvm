@@ -9,5 +9,7 @@ assertions = { path = "../assertions" }
 libc = "*"
 net_util = { path = "../net_util" }
 base = { path = "../base" }
+remain = "*"
+thiserror = "*"
 virtio_sys = { path = "../virtio_sys" }
 vm_memory = { path = "../vm_memory" }
