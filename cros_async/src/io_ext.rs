@@ -22,11 +22,13 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use remain::sorted;
 use sys_util::net::UnixSeqpacket;
 use thiserror::Error as ThisError;
 
 use crate::{BackingMemory, MemRegion};
 
+#[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
     /// An error with a polled(FD) source.

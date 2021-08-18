@@ -196,6 +196,7 @@ dependencies = [
  "once_cell",
  "paste",
  "pin-utils",
+ "remain",
  "slab",
  "sync",
  "sys_util",

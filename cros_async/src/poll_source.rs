@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use data_model::VolatileSlice;
+use remain::sorted;
 use thiserror::Error as ThisError;
 
 use crate::fd_executor::{self, FdExecutor, RegisteredSource};
@@ -19,6 +20,7 @@ use crate::mem::{BackingMemory, MemRegion};
 use crate::{AsyncError, AsyncResult};
 use crate::{IoSourceExt, ReadAsync, WriteAsync};
 
+#[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
     /// An error occurred attempting to register a waker with the executor.

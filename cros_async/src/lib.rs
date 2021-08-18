@@ -96,22 +96,24 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use remain::sorted;
 use thiserror::Error as ThisError;
 
+#[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
     /// Error from the FD executor.
     #[error("Failure in the FD executor: {0}")]
     FdExecutor(fd_executor::Error),
-    /// Error from the uring executor.
-    #[error("Failure in the uring executor: {0}")]
-    URingExecutor(uring_executor::Error),
-    /// Error from TimerFd.
-    #[error("Failure in TimerFd: {0}")]
-    TimerFd(sys_util::Error),
     /// Error from TimerFd.
     #[error("Failure in TimerAsync: {0}")]
     TimerAsync(AsyncError),
+    /// Error from TimerFd.
+    #[error("Failure in TimerFd: {0}")]
+    TimerFd(sys_util::Error),
+    /// Error from the uring executor.
+    #[error("Failure in the uring executor: {0}")]
+    URingExecutor(uring_executor::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 

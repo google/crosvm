@@ -70,6 +70,7 @@ use futures::task::noop_waker;
 use io_uring::URingContext;
 use once_cell::sync::Lazy;
 use pin_utils::pin_mut;
+use remain::sorted;
 use slab::Slab;
 use sync::Mutex;
 use sys_util::{warn, WatchingEvents};
@@ -82,8 +83,12 @@ use crate::{
     BlockingPool,
 };
 
+#[sorted]
 #[derive(Debug, ThisError)]
 pub enum Error {
+    /// Creating a context to wait on FDs failed.
+    #[error("Error creating the fd waiting context: {0}")]
+    CreatingContext(io_uring::Error),
     /// Failed to copy the FD for the polling context.
     #[error("Failed to copy the FD for the polling context: {0}")]
     DuplicatingFd(sys_util::Error),
@@ -99,9 +104,6 @@ pub enum Error {
     /// Error doing the IO.
     #[error("Error during IO: {0}")]
     Io(io::Error),
-    /// Creating a context to wait on FDs failed.
-    #[error("Error creating the fd waiting context: {0}")]
-    CreatingContext(io_uring::Error),
     /// Failed to remove the waker remove the polling context.
     #[error("Error removing from the URing context: {0}")]
     RemovingWaker(io_uring::Error),

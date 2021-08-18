@@ -22,6 +22,7 @@ use std::task::{Context, Poll, Waker};
 use async_task::Task;
 use futures::task::noop_waker;
 use pin_utils::pin_mut;
+use remain::sorted;
 use slab::Slab;
 use sync::Mutex;
 use sys_util::{add_fd_flags, warn, EpollContext, EpollEvents, EventFd, WatchingEvents};
@@ -30,6 +31,7 @@ use thiserror::Error as ThisError;
 use crate::waker::{new_waker, WakerToken, WeakWake};
 use crate::{queue::RunnableQueue, BlockingPool};
 
+#[sorted]
 #[derive(Debug, ThisError)]
 pub enum Error {
     /// Failed to clone the EventFd for waking the executor.
@@ -38,15 +40,15 @@ pub enum Error {
     /// Failed to create the EventFd for waking the executor.
     #[error("Failed to create the EventFd for waking the executor: {0}")]
     CreateEventFd(sys_util::Error),
+    /// Creating a context to wait on FDs failed.
+    #[error("An error creating the fd waiting context: {0}")]
+    CreatingContext(sys_util::Error),
     /// Failed to copy the FD for the polling context.
     #[error("Failed to copy the FD for the polling context: {0}")]
     DuplicatingFd(sys_util::Error),
     /// The Executor is gone.
     #[error("The FDExecutor is gone")]
     ExecutorGone,
-    /// Creating a context to wait on FDs failed.
-    #[error("An error creating the fd waiting context: {0}")]
-    CreatingContext(sys_util::Error),
     /// PollContext failure.
     #[error("PollContext failure: {0}")]
     PollContextError(sys_util::Error),
