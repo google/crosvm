@@ -20,7 +20,6 @@
 //! not reordered or elided the access.
 
 use std::cmp::min;
-use std::fmt::{self, Debug, Display};
 use std::marker::PhantomData;
 use std::mem::size_of;
 use std::ptr::{copy, read_volatile, write_bytes, write_volatile};
@@ -29,33 +28,21 @@ use std::slice;
 use std::usize;
 
 use libc::iovec;
+use remain::sorted;
+use thiserror::Error;
 
 use crate::{sys::IoBufMut, DataInit};
 
-#[derive(Eq, PartialEq, Debug)]
+#[sorted]
+#[derive(Error, Eq, PartialEq, Debug)]
 pub enum VolatileMemoryError {
     /// `addr` is out of bounds of the volatile memory slice.
+    #[error("address 0x{addr:x} is out of bounds")]
     OutOfBounds { addr: usize },
     /// Taking a slice at `base` with `offset` would overflow `usize`.
+    #[error("address 0x{base:x} offset by 0x{offset:x} would overflow")]
     Overflow { base: usize, offset: usize },
 }
-
-impl Display for VolatileMemoryError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::VolatileMemoryError::*;
-
-        match self {
-            OutOfBounds { addr } => write!(f, "address 0x{:x} is out of bounds", addr),
-            Overflow { base, offset } => write!(
-                f,
-                "address 0x{:x} offset by 0x{:x} would overflow",
-                base, offset
-            ),
-        }
-    }
-}
-
-impl ::std::error::Error for VolatileMemoryError {}
 
 pub type VolatileMemoryResult<T> = result::Result<T, VolatileMemoryError>;
 
