@@ -535,6 +535,8 @@ dependencies = [
  "libc",
  "linux_input_sys",
  "pkg-config",
+ "remain",
+ "thiserror",
 ]
 
 [[package]]

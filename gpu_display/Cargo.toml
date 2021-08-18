@@ -12,6 +12,8 @@ data_model = { path = "../data_model" }
 libc = "*"
 base = { path = "../base" }
 linux_input_sys = { path = "../linux_input_sys" }
+remain = "*"
+thiserror = "*"
 
 [build-dependencies]
 cc = "=1.0.25"
