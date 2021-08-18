@@ -4,48 +4,35 @@
 
 use base::IoctlNr;
 use remain::sorted;
-use std::fmt::{self, Display};
 use std::io;
 use std::num;
+use thiserror::Error;
 
 #[sorted]
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("parsing descriptors failed")]
     DescriptorParse,
+    #[error("reading descriptors from device failed: {0}")]
     DescriptorRead(io::Error),
+    #[error("File::try_clone() failed: {0}")]
     FdCloneFailed(io::Error),
+    #[error("invalid actual_length in URB: {0}")]
     InvalidActualLength(num::TryFromIntError),
+    #[error("invalid transfer buffer length: {0}")]
     InvalidBufferLength(num::TryFromIntError),
+    #[error("USB ioctl 0x{0:x} failed: {1}")]
     IoctlFailed(IoctlNr, base::Error),
+    #[error("Device has been removed")]
     NoDevice,
+    #[error("Requested descriptor not found")]
     NoSuchDescriptor,
+    #[error("Rc::get_mut failed")]
     RcGetMutFailed,
+    #[error("Rc::try_unwrap failed")]
     RcUnwrapFailed,
+    #[error("attempted to cancel already-completed transfer")]
     TransferAlreadyCompleted,
 }
 
-impl Display for Error {
-    #[remain::check]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        #[sorted]
-        match self {
-            DescriptorParse => write!(f, "parsing descriptors failed"),
-            DescriptorRead(e) => write!(f, "reading descriptors from device failed: {}", e),
-            FdCloneFailed(e) => write!(f, "File::try_clone() failed: {}", e),
-            InvalidActualLength(e) => write!(f, "invalid actual_length in URB: {}", e),
-            InvalidBufferLength(e) => write!(f, "invalid transfer buffer length: {}", e),
-            IoctlFailed(nr, e) => write!(f, "USB ioctl 0x{:x} failed: {}", nr, e),
-            NoDevice => write!(f, "Device has been removed"),
-            NoSuchDescriptor => write!(f, "Requested descriptor not found"),
-            RcGetMutFailed => write!(f, "Rc::get_mut failed"),
-            RcUnwrapFailed => write!(f, "Rc::try_unwrap failed"),
-            TransferAlreadyCompleted => write!(f, "attempted to cancel already-completed transfer"),
-        }
-    }
-}
-
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl std::error::Error for Error {}
