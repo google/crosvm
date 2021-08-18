@@ -3,59 +3,41 @@
 // found in the LICENSE file.
 use crate::*;
 use base::{info, net::UnixSeqpacket, validate_raw_descriptor, RawDescriptor, Tube};
+use remain::sorted;
+use thiserror::Error;
 
 use std::fs::OpenOptions;
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 
+#[sorted]
+#[derive(Error, Debug)]
 enum ModifyBatError {
+    #[error("{0}")]
     BatControlErr(BatControlResult),
 }
 
-impl fmt::Display for ModifyBatError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::ModifyBatError::*;
-
-        match self {
-            BatControlErr(e) => write!(f, "{}", e),
-        }
-    }
-}
-
+#[sorted]
+#[derive(Error, Debug)]
 pub enum ModifyUsbError {
+    #[error("argument missing: {0}")]
     ArgMissing(&'static str),
+    #[error("failed to parse argument {0} value `{1}`")]
     ArgParse(&'static str, String),
+    #[error("failed to parse integer argument {0} value `{1}`: {2}")]
     ArgParseInt(&'static str, String, ParseIntError),
+    #[error("failed to validate file descriptor: {0}")]
     FailedDescriptorValidate(base::Error),
+    #[error("path `{0}` does not exist")]
     PathDoesNotExist(PathBuf),
+    #[error("socket failed")]
     SocketFailed,
+    #[error("unexpected response: {0}")]
     UnexpectedResponse(VmResponse),
+    #[error("unknown command: `{0}`")]
     UnknownCommand(String),
+    #[error("{0}")]
     UsbControl(UsbControlResult),
-}
-
-impl std::fmt::Display for ModifyUsbError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        use self::ModifyUsbError::*;
-
-        match self {
-            ArgMissing(a) => write!(f, "argument missing: {}", a),
-            ArgParse(name, value) => {
-                write!(f, "failed to parse argument {} value `{}`", name, value)
-            }
-            ArgParseInt(name, value, e) => write!(
-                f,
-                "failed to parse integer argument {} value `{}`: {}",
-                name, value, e
-            ),
-            FailedDescriptorValidate(e) => write!(f, "failed to validate file descriptor: {}", e),
-            PathDoesNotExist(p) => write!(f, "path `{}` does not exist", p.display()),
-            SocketFailed => write!(f, "socket failed"),
-            UnexpectedResponse(r) => write!(f, "unexpected response: {}", r),
-            UnknownCommand(c) => write!(f, "unknown command: `{}`", c),
-            UsbControl(e) => write!(f, "{}", e),
-        }
-    }
 }
 
 pub type ModifyUsbResult<T> = std::result::Result<T, ModifyUsbError>;

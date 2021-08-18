@@ -1265,11 +1265,13 @@ dependencies = [
  "gdbstub_arch",
  "hypervisor",
  "libc",
+ "remain",
  "resources",
  "rutabaga_gfx",
  "serde",
  "serde_json",
  "sync",
+ "thiserror",
  "vm_memory",
 ]
 
