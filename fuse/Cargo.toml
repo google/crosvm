@@ -13,4 +13,5 @@ bitflags = "1"
 data_model = "*"
 enumn = { path = "../enumn" }
 libc = "*"
+remain = "0.2"
 thiserror = "1.0.20"
