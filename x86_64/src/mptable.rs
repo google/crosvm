@@ -3,63 +3,52 @@
 // found in the LICENSE file.
 
 use std::convert::TryFrom;
-use std::fmt::{self, Display};
 use std::mem;
 use std::result;
 use std::slice;
 
 use libc::c_char;
+use remain::sorted;
+use thiserror::Error;
 
 use devices::{PciAddress, PciInterruptPin};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::mpspec::*;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    /// There was too little guest memory to store the entire MP table.
-    NotEnoughMemory,
     /// The MP table has too little address space to be stored.
+    #[error("The MP table has too little address space to be stored")]
     AddressOverflow,
     /// Failure while zeroing out the memory for the MP table.
+    #[error("Failure while zeroing out the memory for the MP table")]
     Clear,
-    /// Failure to write the MP floating pointer.
-    WriteMpfIntel,
-    /// Failure to write MP CPU entry.
-    WriteMpcCpu,
-    /// Failure to write MP ioapic entry.
-    WriteMpcIoapic,
+    /// There was too little guest memory to store the entire MP table.
+    #[error("There was too little guest memory to store the MP table")]
+    NotEnoughMemory,
     /// Failure to write MP bus entry.
+    #[error("Failure to write MP bus entry")]
     WriteMpcBus,
+    /// Failure to write MP CPU entry.
+    #[error("Failure to write MP CPU entry")]
+    WriteMpcCpu,
     /// Failure to write MP interrupt source entry.
+    #[error("Failure to write MP interrupt source entry")]
     WriteMpcIntsrc,
+    /// Failure to write MP ioapic entry.
+    #[error("Failure to write MP ioapic entry")]
+    WriteMpcIoapic,
     /// Failure to write MP local interrupt source entry.
+    #[error("Failure to write MP local interrupt source entry")]
     WriteMpcLintsrc,
     /// Failure to write MP table header.
+    #[error("Failure to write MP table header")]
     WriteMpcTable,
-}
-
-impl std::error::Error for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        let description = match self {
-            NotEnoughMemory => "There was too little guest memory to store the MP table",
-            AddressOverflow => "The MP table has too little address space to be stored",
-            Clear => "Failure while zeroing out the memory for the MP table",
-            WriteMpfIntel => "Failure to write the MP floating pointer",
-            WriteMpcCpu => "Failure to write MP CPU entry",
-            WriteMpcIoapic => "Failure to write MP ioapic entry",
-            WriteMpcBus => "Failure to write MP bus entry",
-            WriteMpcIntsrc => "Failure to write MP interrupt source entry",
-            WriteMpcLintsrc => "Failure to write MP local interrupt source entry",
-            WriteMpcTable => "Failure to write MP table header",
-        };
-
-        write!(f, "MPTable error: {}", description)
-    }
+    /// Failure to write the MP floating pointer.
+    #[error("Failure to write the MP floating pointer")]
+    WriteMpfIntel,
 }
 
 pub type Result<T> = result::Result<T, Error>;

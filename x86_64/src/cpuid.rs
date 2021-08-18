@@ -3,31 +3,23 @@
 // found in the LICENSE file.
 
 use std::arch::x86_64::{__cpuid, __cpuid_count};
-use std::fmt::{self, Display};
 use std::result;
 
 use devices::{IrqChipCap, IrqChipX86_64};
 use hypervisor::{HypervisorX86_64, VcpuX86_64};
+use remain::sorted;
+use thiserror::Error;
 
-#[derive(Debug, PartialEq)]
+#[sorted]
+#[derive(Error, Debug, PartialEq)]
 pub enum Error {
+    #[error("GetSupportedCpus ioctl failed: {0}")]
     GetSupportedCpusFailed(base::Error),
+    #[error("SetSupportedCpus ioctl failed: {0}")]
     SetSupportedCpusFailed(base::Error),
 }
+
 pub type Result<T> = result::Result<T, Error>;
-
-impl std::error::Error for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            GetSupportedCpusFailed(e) => write!(f, "GetSupportedCpus ioctl failed: {}", e),
-            SetSupportedCpusFailed(e) => write!(f, "SetSupportedCpus ioctl failed: {}", e),
-        }
-    }
-}
 
 // CPUID bits in ebx, ecx, and edx.
 const EBX_CLFLUSH_CACHELINE: u32 = 8; // Flush a cache line size.

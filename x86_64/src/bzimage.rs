@@ -5,46 +5,36 @@
 // Loader for bzImage-format Linux kernels as described in
 // https://www.kernel.org/doc/Documentation/x86/boot.txt
 
-use std::fmt::{self, Display};
 use std::io::{Read, Seek, SeekFrom};
 
 use base::AsRawDescriptor;
 use data_model::DataInit;
+use remain::sorted;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::bootparam::boot_params;
 
-#[derive(Debug, PartialEq)]
+#[sorted]
+#[derive(Error, Debug, PartialEq)]
 pub enum Error {
+    #[error("bad kernel header signature")]
     BadSignature,
+    #[error("invalid setup_sects value")]
     InvalidSetupSects,
+    #[error("invalid syssize value")]
     InvalidSysSize,
+    #[error("unable to read boot_params")]
     ReadBootParams,
+    #[error("unable to read kernel image")]
     ReadKernelImage,
+    #[error("unable to seek to boot_params")]
     SeekBootParams,
+    #[error("unable to seek to kernel start")]
     SeekKernelStart,
 }
+
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl std::error::Error for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        let description = match self {
-            BadSignature => "bad kernel header signature",
-            InvalidSetupSects => "invalid setup_sects value",
-            InvalidSysSize => "invalid syssize value",
-            ReadBootParams => "unable to read boot_params",
-            ReadKernelImage => "unable to read kernel image",
-            SeekBootParams => "unable to seek to boot_params",
-            SeekKernelStart => "unable to seek to kernel start",
-        };
-
-        write!(f, "bzImage loader: {}", description)
-    }
-}
 
 /// Loads a kernel from a bzImage to a slice
 ///

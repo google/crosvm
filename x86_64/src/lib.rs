@@ -47,7 +47,6 @@ mod smbios;
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::ffi::{CStr, CString};
-use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, Seek};
 use std::mem;
@@ -70,6 +69,7 @@ use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;
+use thiserror::Error;
 use vm_control::{BatControl, BatteryType};
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
@@ -79,128 +79,115 @@ use {
 };
 
 #[sorted]
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("error allocating IO resource: {0}")]
     AllocateIOResouce(resources::Error),
+    #[error("error allocating a single irq")]
     AllocateIrq,
+    #[error("unable to clone an Event: {0}")]
     CloneEvent(base::Error),
+    #[error("failed to clone IRQ chip: {0}")]
     CloneIrqChip(base::Error),
+    #[error("the given kernel command line was invalid: {0}")]
     Cmdline(kernel_cmdline::Error),
+    #[error("failed to configure hotplugged pci device: {0}")]
     ConfigurePciDevice(arch::DeviceRegistrationError),
+    #[error("error configuring the system")]
     ConfigureSystem,
+    #[error("unable to create battery devices: {0}")]
     CreateBatDevices(arch::DeviceRegistrationError),
+    #[error("error creating devices: {0}")]
     CreateDevices(Box<dyn StdError>),
+    #[error("unable to make an Event: {0}")]
     CreateEvent(base::Error),
+    #[error("failed to create fdt: {0}")]
     CreateFdt(arch::fdt::Error),
+    #[error("failed to create IOAPIC device: {0}")]
     CreateIoapicDevice(base::Error),
+    #[error("failed to create a PCI root hub: {0}")]
     CreatePciRoot(arch::DeviceRegistrationError),
+    #[error("unable to create PIT: {0}")]
     CreatePit(base::Error),
+    #[error("unable to make PIT device: {0}")]
     CreatePitDevice(devices::PitError),
+    #[error("unable to create serial devices: {0}")]
     CreateSerialDevices(arch::DeviceRegistrationError),
+    #[error("failed to create socket: {0}")]
     CreateSocket(io::Error),
+    #[error("failed to create VCPU: {0}")]
     CreateVcpu(base::Error),
+    #[error("failed to create VM: {0}")]
     CreateVm(Box<dyn StdError>),
+    #[error("invalid e820 setup params")]
     E820Configuration,
+    #[error("failed to enable singlestep execution: {0}")]
     EnableSinglestep(base::Error),
+    #[error("failed to enable split irqchip: {0}")]
     EnableSplitIrqchip(base::Error),
+    #[error("failed to get serial cmdline: {0}")]
     GetSerialCmdline(GetSerialCmdlineError),
+    #[error("the kernel extends past the end of RAM")]
     KernelOffsetPastEnd,
+    #[error("error loading bios: {0}")]
     LoadBios(io::Error),
+    #[error("error loading kernel bzImage: {0}")]
     LoadBzImage(bzimage::Error),
+    #[error("error loading command line: {0}")]
     LoadCmdline(kernel_loader::Error),
+    #[error("error loading initrd: {0}")]
     LoadInitrd(arch::LoadImageError),
+    #[error("error loading Kernel: {0}")]
     LoadKernel(kernel_loader::Error),
+    #[error("error translating address: Page not present")]
     PageNotPresent,
+    #[error("failed to allocate pstore region: {0}")]
     Pstore(arch::pstore::Error),
+    #[error("error reading guest memory {0}")]
     ReadingGuestMemory(vm_memory::GuestMemoryError),
+    #[error("error reading CPU registers {0}")]
     ReadRegs(base::Error),
+    #[error("error registering an IrqFd: {0}")]
     RegisterIrqfd(base::Error),
+    #[error("error registering virtual socket device: {0}")]
     RegisterVsock(arch::DeviceRegistrationError),
+    #[error("failed to set a hardware breakpoint: {0}")]
     SetHwBreakpoint(base::Error),
+    #[error("failed to set interrupts: {0}")]
     SetLint(interrupts::Error),
+    #[error("failed to set tss addr: {0}")]
     SetTssAddr(base::Error),
+    #[error("failed to set up cpuid: {0}")]
     SetupCpuid(cpuid::Error),
+    #[error("failed to set up FPU: {0}")]
     SetupFpu(regs::Error),
+    #[error("failed to set up guest memory: {0}")]
     SetupGuestMemory(GuestMemoryError),
+    #[error("failed to set up mptable: {0}")]
     SetupMptable(mptable::Error),
+    #[error("failed to set up MSRs: {0}")]
     SetupMsrs(regs::Error),
+    #[error("failed to set up registers: {0}")]
     SetupRegs(regs::Error),
+    #[error("failed to set up SMBIOS: {0}")]
     SetupSmbios(smbios::Error),
+    #[error("failed to set up sregs: {0}")]
     SetupSregs(regs::Error),
+    #[error("failed to translate virtual address")]
     TranslatingVirtAddr,
+    #[error("protected VMs not supported on x86_64")]
     UnsupportedProtectionType,
+    #[error("error writing CPU registers {0}")]
     WriteRegs(base::Error),
+    #[error("error writing guest memory {0}")]
     WritingGuestMemory(GuestMemoryError),
+    #[error("the zero page extends past the end of guest_mem")]
     ZeroPagePastRamEnd,
+    #[error("error writing the zero page of guest memory")]
     ZeroPageSetup,
 }
 
-impl Display for Error {
-    #[remain::check]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        #[sorted]
-        match self {
-            AllocateIOResouce(e) => write!(f, "error allocating IO resource: {}", e),
-            AllocateIrq => write!(f, "error allocating a single irq"),
-            CloneEvent(e) => write!(f, "unable to clone an Event: {}", e),
-            CloneIrqChip(e) => write!(f, "failed to clone IRQ chip: {}", e),
-            Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),
-            ConfigurePciDevice(e) => write!(f, "failed to configure hotplugged pci device: {}", e),
-            ConfigureSystem => write!(f, "error configuring the system"),
-            CreateBatDevices(e) => write!(f, "unable to create battery devices: {}", e),
-            CreateDevices(e) => write!(f, "error creating devices: {}", e),
-            CreateEvent(e) => write!(f, "unable to make an Event: {}", e),
-            CreateFdt(e) => write!(f, "failed to create fdt: {}", e),
-            CreateIoapicDevice(e) => write!(f, "failed to create IOAPIC device: {}", e),
-            CreatePciRoot(e) => write!(f, "failed to create a PCI root hub: {}", e),
-            CreatePit(e) => write!(f, "unable to create PIT: {}", e),
-            CreatePitDevice(e) => write!(f, "unable to make PIT device: {}", e),
-            CreateSerialDevices(e) => write!(f, "unable to create serial devices: {}", e),
-            CreateSocket(e) => write!(f, "failed to create socket: {}", e),
-            CreateVcpu(e) => write!(f, "failed to create VCPU: {}", e),
-            CreateVm(e) => write!(f, "failed to create VM: {}", e),
-            E820Configuration => write!(f, "invalid e820 setup params"),
-            EnableSinglestep(e) => write!(f, "failed to enable singlestep execution: {}", e),
-            EnableSplitIrqchip(e) => write!(f, "failed to enable split irqchip: {}", e),
-            GetSerialCmdline(e) => write!(f, "failed to get serial cmdline: {}", e),
-            KernelOffsetPastEnd => write!(f, "the kernel extends past the end of RAM"),
-            LoadBios(e) => write!(f, "error loading bios: {}", e),
-            LoadBzImage(e) => write!(f, "error loading kernel bzImage: {}", e),
-            LoadCmdline(e) => write!(f, "error loading command line: {}", e),
-            LoadInitrd(e) => write!(f, "error loading initrd: {}", e),
-            LoadKernel(e) => write!(f, "error loading Kernel: {}", e),
-            PageNotPresent => write!(f, "error translating address: Page not present"),
-            Pstore(e) => write!(f, "failed to allocate pstore region: {}", e),
-            ReadingGuestMemory(e) => write!(f, "error reading guest memory {}", e),
-            ReadRegs(e) => write!(f, "error reading CPU registers {}", e),
-            RegisterIrqfd(e) => write!(f, "error registering an IrqFd: {}", e),
-            RegisterVsock(e) => write!(f, "error registering virtual socket device: {}", e),
-            SetHwBreakpoint(e) => write!(f, "failed to set a hardware breakpoint: {}", e),
-            SetLint(e) => write!(f, "failed to set interrupts: {}", e),
-            SetTssAddr(e) => write!(f, "failed to set tss addr: {}", e),
-            SetupCpuid(e) => write!(f, "failed to set up cpuid: {}", e),
-            SetupFpu(e) => write!(f, "failed to set up FPU: {}", e),
-            SetupGuestMemory(e) => write!(f, "failed to set up guest memory: {}", e),
-            SetupMptable(e) => write!(f, "failed to set up mptable: {}", e),
-            SetupMsrs(e) => write!(f, "failed to set up MSRs: {}", e),
-            SetupRegs(e) => write!(f, "failed to set up registers: {}", e),
-            SetupSmbios(e) => write!(f, "failed to set up SMBIOS: {}", e),
-            SetupSregs(e) => write!(f, "failed to set up sregs: {}", e),
-            TranslatingVirtAddr => write!(f, "failed to translate virtual address"),
-            UnsupportedProtectionType => write!(f, "protected VMs not supported on x86_64"),
-            WriteRegs(e) => write!(f, "error writing CPU registers {}", e),
-            WritingGuestMemory(e) => write!(f, "error writing guest memory {}", e),
-            ZeroPagePastRamEnd => write!(f, "the zero page extends past the end of guest_mem"),
-            ZeroPageSetup => write!(f, "error writing the zero page of guest memory"),
-        }
-    }
-}
-
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl std::error::Error for Error {}
 
 pub struct X8664arch;
 

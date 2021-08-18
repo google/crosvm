@@ -2,30 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{self, Display};
 use std::result;
 
 use devices::IrqChipX86_64;
+use remain::sorted;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("GetLapic ioctl failed: {0}")]
     GetLapic(base::Error),
+    #[error("SetLapic ioctl failed: {0}")]
     SetLapic(base::Error),
 }
+
 pub type Result<T> = result::Result<T, Error>;
-
-impl std::error::Error for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            GetLapic(e) => write!(f, "GetLapic ioctl failed: {}", e),
-            SetLapic(e) => write!(f, "SetLapic ioctl failed: {}", e),
-        }
-    }
-}
 
 // Defines poached from apicdef.h kernel header.
 

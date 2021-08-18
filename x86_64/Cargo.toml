@@ -21,6 +21,7 @@ minijail = "*"
 remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../sync" }
+thiserror = "*"
 base = { path = "../base" }
 acpi_tables = {path = "../acpi_tables" }
 vm_control = { path = "../vm_control" }

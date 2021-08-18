@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{self, Display};
 use std::mem;
 use std::result;
 use std::slice;
@@ -12,47 +11,37 @@ use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 
 use data_model::DataInit;
+use remain::sorted;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory};
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    /// There was too little guest memory to store the entire SMBIOS table.
-    NotEnoughMemory,
     /// The SMBIOS table has too little address space to be stored.
+    #[error("The SMBIOS table has too little address space to be stored")]
     AddressOverflow,
     /// Failure while zeroing out the memory for the SMBIOS table.
+    #[error("Failure while zeroing out the memory for the SMBIOS table")]
     Clear,
-    /// Failure to write SMBIOS entrypoint structure
-    WriteSmbiosEp,
-    /// Failure to write additional data to memory
-    WriteData,
-    /// Failure while reading SMBIOS data file
-    IoFailed,
-    /// Incorrect or not readable host SMBIOS data
-    InvalidInput,
     /// Invalid table entry point checksum
+    #[error("Failure to verify host SMBIOS entry checksum")]
     InvalidChecksum,
-}
-
-impl std::error::Error for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        let description = match self {
-            NotEnoughMemory => "There was too little guest memory to store the SMBIOS table",
-            AddressOverflow => "The SMBIOS table has too little address space to be stored",
-            Clear => "Failure while zeroing out the memory for the SMBIOS table",
-            WriteSmbiosEp => "Failure to write SMBIOS entrypoint structure",
-            WriteData => "Failure to write additional data to memory",
-            IoFailed => "Failure while reading SMBIOS data file",
-            InvalidInput => "Failure to read host SMBIOS data",
-            InvalidChecksum => "Failure to verify host SMBIOS entry checksum",
-        };
-
-        write!(f, "SMBIOS error: {}", description)
-    }
+    /// Incorrect or not readable host SMBIOS data
+    #[error("Failure to read host SMBIOS data")]
+    InvalidInput,
+    /// Failure while reading SMBIOS data file
+    #[error("Failure while reading SMBIOS data file")]
+    IoFailed,
+    /// There was too little guest memory to store the entire SMBIOS table.
+    #[error("There was too little guest memory to store the SMBIOS table")]
+    NotEnoughMemory,
+    /// Failure to write additional data to memory
+    #[error("Failure to write additional data to memory")]
+    WriteData,
+    /// Failure to write SMBIOS entrypoint structure
+    #[error("Failure to write SMBIOS entrypoint structure")]
+    WriteSmbiosEp,
 }
 
 pub type Result<T> = result::Result<T, Error>;

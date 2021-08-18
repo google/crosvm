@@ -2,62 +2,52 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{self, Display};
 use std::{mem, result};
 
 use base::{self, warn};
 use hypervisor::{Fpu, Register, Regs, Sregs, VcpuX86_64};
+use remain::sorted;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::gdt;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    /// Setting up msrs failed.
-    MsrIoctlFailed(base::Error),
     /// Failed to configure the FPU.
+    #[error("failed to configure the FPU: {0}")]
     FpuIoctlFailed(base::Error),
     /// Failed to get sregs for this cpu.
+    #[error("failed to get sregs for this cpu: {0}")]
     GetSRegsIoctlFailed(base::Error),
-    /// Failed to set base registers for this cpu.
-    SettingRegistersIoctl(base::Error),
+    /// Setting up msrs failed.
+    #[error("setting up msrs failed: {0}")]
+    MsrIoctlFailed(base::Error),
     /// Failed to set sregs for this cpu.
+    #[error("failed to set sregs for this cpu: {0}")]
     SetSRegsIoctlFailed(base::Error),
+    /// Failed to set base registers for this cpu.
+    #[error("failed to set base registers for this cpu: {0}")]
+    SettingRegistersIoctl(base::Error),
     /// Writing the GDT to RAM failed.
+    #[error("writing the GDT to RAM failed")]
     WriteGDTFailure,
     /// Writing the IDT to RAM failed.
+    #[error("writing the IDT to RAM failed")]
     WriteIDTFailure,
-    /// Writing PML4 to RAM failed.
-    WritePML4Address,
-    /// Writing PDPTE to RAM failed.
-    WritePDPTEAddress,
     /// Writing PDE to RAM failed.
+    #[error("writing PDE to RAM failed")]
     WritePDEAddress,
+    /// Writing PDPTE to RAM failed.
+    #[error("writing PDPTE to RAM failed")]
+    WritePDPTEAddress,
+    /// Writing PML4 to RAM failed.
+    #[error("writing PML4 to RAM failed")]
+    WritePML4Address,
 }
+
 pub type Result<T> = result::Result<T, Error>;
-
-impl std::error::Error for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            MsrIoctlFailed(e) => write!(f, "setting up msrs failed: {}", e),
-            FpuIoctlFailed(e) => write!(f, "failed to configure the FPU: {}", e),
-            GetSRegsIoctlFailed(e) => write!(f, "failed to get sregs for this cpu: {}", e),
-            SettingRegistersIoctl(e) => {
-                write!(f, "failed to set base registers for this cpu: {}", e)
-            }
-            SetSRegsIoctlFailed(e) => write!(f, "failed to set sregs for this cpu: {}", e),
-            WriteGDTFailure => write!(f, "writing the GDT to RAM failed"),
-            WriteIDTFailure => write!(f, "writing the IDT to RAM failed"),
-            WritePML4Address => write!(f, "writing PML4 to RAM failed"),
-            WritePDPTEAddress => write!(f, "writing PDPTE to RAM failed"),
-            WritePDEAddress => write!(f, "writing PDE to RAM failed"),
-        }
-    }
-}
 
 const MTRR_MEMTYPE_UC: u8 = 0x0;
 const MTRR_MEMTYPE_WB: u8 = 0x6;

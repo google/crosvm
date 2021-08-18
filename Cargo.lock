@@ -1364,6 +1364,7 @@ dependencies = [
  "remain",
  "resources",
  "sync",
+ "thiserror",
  "vm_control",
  "vm_memory",
 ]
