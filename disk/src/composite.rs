@@ -5,7 +5,6 @@
 use std::cmp::{max, min};
 use std::collections::HashSet;
 use std::convert::TryInto;
-use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
@@ -20,6 +19,7 @@ use data_model::VolatileSlice;
 use protobuf::Message;
 use protos::cdisk_spec::{self, ComponentDisk, CompositeDisk, ReadWriteCapability};
 use remain::sorted;
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::gpt::{
@@ -44,61 +44,41 @@ const LINUX_FILESYSTEM_GUID: Uuid = Uuid::from_u128(0x0FC63DAF_8483_4772_8E79_3D
 const EFI_SYSTEM_PARTITION_GUID: Uuid = Uuid::from_u128(0xC12A7328_F81F_11D2_BA4B_00A0C93EC93B);
 
 #[sorted]
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("failed to use underlying disk: \"{0}\"")]
     DiskError(Box<crate::Error>),
+    #[error("duplicate GPT partition label \"{0}\"")]
     DuplicatePartitionLabel(String),
+    #[error("failed to write GPT header: \"{0}\"")]
     GptError(gpt::Error),
+    #[error("invalid magic header for composite disk format")]
     InvalidMagicHeader,
+    #[error("invalid partition path {0:?}")]
     InvalidPath(PathBuf),
+    #[error("failed to parse specification proto: \"{0}\"")]
     InvalidProto(protobuf::ProtobufError),
+    #[error("invalid specification: \"{0}\"")]
     InvalidSpecification(String),
+    #[error("no image files for partition {0:?}")]
     NoImageFiles(PartitionInfo),
+    #[error("failed to open component file \"{1}\": \"{0}\"")]
     OpenFile(io::Error, String),
+    #[error("failed to read specification: \"{0}\"")]
     ReadSpecificationError(io::Error),
+    #[error("Read-write partition {0:?} size is not a multiple of {}.", 1 << PARTITION_SIZE_SHIFT)]
     UnalignedReadWrite(PartitionInfo),
+    #[error("unknown version {0} in specification")]
     UnknownVersion(u64),
+    #[error("unsupported component disk type \"{0:?}\"")]
     UnsupportedComponent(ImageType),
+    #[error("failed to write composite disk header: \"{0}\"")]
     WriteHeader(io::Error),
+    #[error("failed to write specification proto: \"{0}\"")]
     WriteProto(protobuf::ProtobufError),
+    #[error("failed to write zero filler: \"{0}\"")]
     WriteZeroFiller(io::Error),
 }
-
-impl Display for Error {
-    #[remain::check]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        #[sorted]
-        match self {
-            DiskError(e) => write!(f, "failed to use underlying disk: \"{}\"", e),
-            DuplicatePartitionLabel(label) => {
-                write!(f, "duplicate GPT partition label \"{}\"", label)
-            }
-            GptError(e) => write!(f, "failed to write GPT header: \"{}\"", e),
-            InvalidMagicHeader => write!(f, "invalid magic header for composite disk format"),
-            InvalidPath(path) => write!(f, "invalid partition path {:?}", path),
-            InvalidProto(e) => write!(f, "failed to parse specification proto: \"{}\"", e),
-            InvalidSpecification(s) => write!(f, "invalid specification: \"{}\"", s),
-            NoImageFiles(partition) => write!(f, "no image files for partition {:?}", partition),
-            OpenFile(e, p) => write!(f, "failed to open component file \"{}\": \"{}\"", p, e),
-            ReadSpecificationError(e) => write!(f, "failed to read specification: \"{}\"", e),
-            UnalignedReadWrite(partition) => write!(
-                f,
-                "Read-write partition {:?} size is not a multiple of {}.",
-                partition,
-                1 << PARTITION_SIZE_SHIFT
-            ),
-            UnknownVersion(v) => write!(f, "unknown version {} in specification", v),
-            UnsupportedComponent(c) => write!(f, "unsupported component disk type \"{:?}\"", c),
-            WriteHeader(e) => write!(f, "failed to write composite disk header: \"{}\"", e),
-            WriteProto(e) => write!(f, "failed to write specification proto: \"{}\"", e),
-            WriteZeroFiller(e) => write!(f, "failed to write zero filler: \"{}\"", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 
 impl From<gpt::Error> for Error {
     fn from(e: gpt::Error) -> Self {

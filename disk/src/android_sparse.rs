@@ -5,7 +5,6 @@
 // https://android.googlesource.com/platform/system/core/+/7b444f0/libsparse/sparse_format.h
 
 use std::collections::BTreeMap;
-use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom};
 use std::mem;
@@ -17,27 +16,17 @@ use base::{
 };
 use data_model::{DataInit, Le16, Le32, VolatileSlice};
 use remain::sorted;
+use thiserror::Error;
 
 #[sorted]
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("invalid magic header for android sparse format")]
     InvalidMagicHeader,
+    #[error("invalid specification: \"{0}\"")]
     InvalidSpecification(String),
+    #[error("failed to read specification: \"{0}\"")]
     ReadSpecificationError(io::Error),
-}
-
-impl Display for Error {
-    #[remain::check]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        #[sorted]
-        match self {
-            InvalidMagicHeader => write!(f, "invalid magic header for android sparse format"),
-            InvalidSpecification(s) => write!(f, "invalid specification: \"{}\"", s),
-            ReadSpecificationError(e) => write!(f, "failed to read specification: \"{}\"", e),
-        }
-    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
