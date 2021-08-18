@@ -16,6 +16,7 @@ use libc::{
     self, c_void, sa_family_t, size_t, sockaddr, socklen_t, F_GETFL, F_SETFL, O_NONBLOCK,
     VMADDR_CID_ANY, VMADDR_CID_HOST, VMADDR_CID_HYPERVISOR,
 };
+use thiserror::Error;
 
 // The domain for vsock sockets.
 const AF_VSOCK: sa_family_t = 40;
@@ -43,14 +44,9 @@ struct sockaddr_vm {
     svm_zero: [c_uchar; PADDING],
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
+#[error("failed to parse vsock address")]
 pub struct AddrParseError;
-
-impl fmt::Display for AddrParseError {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "failed to parse vsock address")
-    }
-}
 
 /// The vsock equivalent of an IP address.
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]

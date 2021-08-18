@@ -7,10 +7,11 @@ use libc::{
     sigismember, sigpending, sigset_t, sigtimedwait, sigwait, timespec, waitpid, EAGAIN, EINTR,
     EINVAL, SA_RESTART, SIG_BLOCK, SIG_DFL, SIG_UNBLOCK, WNOHANG,
 };
+use remain::sorted;
+use thiserror::Error;
 
 use std::cmp::Ordering;
 use std::convert::TryFrom;
-use std::fmt::{self, Display};
 use std::io;
 use std::mem;
 use std::os::unix::thread::JoinHandleExt;
@@ -26,79 +27,57 @@ use std::ops::{Deref, DerefMut};
 const POLL_RATE: Duration = Duration::from_millis(50);
 const DEFAULT_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    /// Couldn't create a sigset.
-    CreateSigset(errno::Error),
-    /// The wrapped signal has already been blocked.
-    SignalAlreadyBlocked(c_int),
-    /// Failed to check if the requested signal is in the blocked set already.
-    CompareBlockedSignals(errno::Error),
     /// The signal could not be blocked.
+    #[error("signal could not be blocked: {0}")]
     BlockSignal(errno::Error),
-    /// The signal mask could not be retrieved.
-    RetrieveSignalMask(i32),
-    /// The signal could not be unblocked.
-    UnblockSignal(errno::Error),
-    /// Failed to wait for given signal.
-    ClearWaitPending(errno::Error),
-    /// Failed to get pending signals.
-    ClearGetPending(errno::Error),
     /// Failed to check if given signal is in the set of pending signals.
+    #[error("failed to check whether given signal is in the pending set: {0}")]
     ClearCheckPending(errno::Error),
-    /// Failed to send signal to pid.
-    Kill(errno::Error),
+    /// Failed to get pending signals.
+    #[error("failed to get pending signals: {0}")]
+    ClearGetPending(errno::Error),
+    /// Failed to wait for given signal.
+    #[error("failed to wait for given signal: {0}")]
+    ClearWaitPending(errno::Error),
+    /// Failed to check if the requested signal is in the blocked set already.
+    #[error("failed to check whether requested signal is in the blocked set: {0}")]
+    CompareBlockedSignals(errno::Error),
+    /// Couldn't create a sigset.
+    #[error("couldn't create a sigset: {0}")]
+    CreateSigset(errno::Error),
     /// Failed to get session id.
+    #[error("failed to get session id: {0}")]
     GetSid(errno::Error),
+    /// Failed to send signal to pid.
+    #[error("failed to send signal: {0}")]
+    Kill(errno::Error),
+    /// The signal mask could not be retrieved.
+    #[error("failed to retrieve signal mask: {}", io::Error::from_raw_os_error(*.0))]
+    RetrieveSignalMask(i32),
+    /// Converted signum greater than SIGRTMAX.
+    #[error("got RT signal greater than max: {0:?}")]
+    RtSignumGreaterThanMax(Signal),
+    /// The wrapped signal has already been blocked.
+    #[error("signal {0} already blocked")]
+    SignalAlreadyBlocked(c_int),
+    /// Timeout reached.
+    #[error("timeout reached.")]
+    TimedOut,
+    /// The signal could not be unblocked.
+    #[error("signal could not be unblocked: {0}")]
+    UnblockSignal(errno::Error),
+    /// Failed to convert signum to Signal.
+    #[error("unrecoginized signal number: {0}")]
+    UnrecognizedSignum(i32),
     /// Failed to wait for signal.
+    #[error("failed to wait for signal: {0}")]
     WaitForSignal(errno::Error),
     /// Failed to wait for pid.
+    #[error("failed to wait for process: {0}")]
     WaitPid(errno::Error),
-    /// Timeout reached.
-    TimedOut,
-    /// Failed to convert signum to Signal.
-    UnrecognizedSignum(i32),
-    /// Converted signum greater than SIGRTMAX.
-    RtSignumGreaterThanMax(Signal),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            CreateSigset(e) => write!(f, "couldn't create a sigset: {}", e),
-            SignalAlreadyBlocked(num) => write!(f, "signal {} already blocked", num),
-            CompareBlockedSignals(e) => write!(
-                f,
-                "failed to check whether requested signal is in the blocked set: {}",
-                e,
-            ),
-            BlockSignal(e) => write!(f, "signal could not be blocked: {}", e),
-            RetrieveSignalMask(errno) => write!(
-                f,
-                "failed to retrieve signal mask: {}",
-                io::Error::from_raw_os_error(*errno),
-            ),
-            UnblockSignal(e) => write!(f, "signal could not be unblocked: {}", e),
-            ClearWaitPending(e) => write!(f, "failed to wait for given signal: {}", e),
-            ClearGetPending(e) => write!(f, "failed to get pending signals: {}", e),
-            ClearCheckPending(e) => write!(
-                f,
-                "failed to check whether given signal is in the pending set: {}",
-                e,
-            ),
-            Kill(e) => write!(f, "failed to send signal: {}", e),
-            GetSid(e) => write!(f, "failed to get session id: {}", e),
-            WaitForSignal(e) => write!(f, "failed to wait for signal: {}", e),
-            WaitPid(e) => write!(f, "failed to wait for process: {}", e),
-            TimedOut => write!(f, "timeout reached."),
-            UnrecognizedSignum(signum) => write!(f, "unrecoginized signal number: {}", signum),
-            RtSignumGreaterThanMax(signal) => {
-                write!(f, "got RT signal greater than max: {:?}", signal)
-            }
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

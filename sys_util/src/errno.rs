@@ -7,10 +7,11 @@ use std::io;
 use std::result;
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// An error number, retrieved from errno (man 3 errno), set by a libc
 /// function that returned an error.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(Error, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 #[serde(transparent)]
 pub struct Error(i32);
 pub type Result<T> = result::Result<T, Error>;
@@ -46,8 +47,6 @@ impl From<Error> for io::Error {
         io::Error::from_raw_os_error(e.0)
     }
 }
-
-impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

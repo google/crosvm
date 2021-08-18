@@ -3,31 +3,25 @@
 // found in the LICENSE file.
 
 use crate::MappedRegion;
-use std::fmt::{self, Display};
 
-#[derive(Debug, Eq, PartialEq)]
+use remain::sorted;
+use thiserror::Error;
+
+#[sorted]
+#[derive(Error, Debug, Eq, PartialEq)]
 pub enum Error {
-    // A null address is typically bad.  mmap allows it, but not external libraries
-    NullAddress,
     // For external mappings that have weird sizes
+    #[error("invalid size returned")]
     InvalidSize,
     // External library failed to map
+    #[error("library failed to map with {0}")]
     LibraryError(i32),
+    // A null address is typically bad.  mmap allows it, but not external libraries
+    #[error("null address returned")]
+    NullAddress,
     // If external mapping is unsupported.
+    #[error("external mapping unsupported")]
     Unsupported,
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            NullAddress => write!(f, "null address returned"),
-            InvalidSize => write!(f, "invalid size returned"),
-            LibraryError(ret) => write!(f, "library failed to map with {}", ret),
-            Unsupported => write!(f, "external mapping unsupported"),
-        }
-    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -9,6 +9,8 @@ use std::process;
 use std::result;
 
 use libc::{c_long, pid_t, syscall, SYS_clone, CLONE_NEWPID, CLONE_NEWUSER, SIGCHLD};
+use remain::sorted;
+use thiserror::Error;
 
 use crate::errno_result;
 
@@ -21,13 +23,17 @@ pub enum CloneNamespace {
     NewUserPid = CLONE_NEWUSER as u32 | CLONE_NEWPID as u32,
 }
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum CloneError {
     /// There was an error trying to iterate this process's threads.
+    #[error("error iterating this process's threads")]
     IterateTasks(io::Error),
     /// There are multiple threads running. The `usize` indicates how many threads.
+    #[error("multiple threads are already running")]
     Multithreaded(usize),
     /// There was an error while cloning.
+    #[error("error while cloning")]
     Sys(crate::Error),
 }
 

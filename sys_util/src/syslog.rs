@@ -32,6 +32,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::PathBuf;
 use std::sync::{MutexGuard, Once};
 
+use remain::sorted;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 
@@ -94,17 +95,9 @@ pub enum Facility {
 }
 
 /// Errors returned by `syslog::init()`.
+#[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
-    /// Initialization was never attempted.
-    #[error("initialization was never attempted")]
-    NeverInitialized,
-    /// Initialization has previously failed and can not be retried.
-    #[error("initialization previously failed and cannot be retried")]
-    Poisoned,
-    /// Error while creating socket.
-    #[error("failed to create socket: {0}")]
-    Socket(io::Error),
     /// Error while attempting to connect socket.
     #[error("failed to connect socket: {0}")]
     Connect(io::Error),
@@ -114,6 +107,15 @@ pub enum Error {
     /// The guess of libc's file descriptor for the syslog connection was invalid.
     #[error("guess of fd for syslog connection was invalid")]
     InvalidFd,
+    /// Initialization was never attempted.
+    #[error("initialization was never attempted")]
+    NeverInitialized,
+    /// Initialization has previously failed and can not be retried.
+    #[error("initialization previously failed and cannot be retried")]
+    Poisoned,
+    /// Error while creating socket.
+    #[error("failed to create socket: {0}")]
+    Socket(io::Error),
 }
 
 fn get_proc_name() -> Option<String> {

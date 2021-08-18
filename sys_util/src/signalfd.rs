@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{self, Display};
 use std::fs::File;
 use std::mem;
 use std::os::raw::c_int;
@@ -11,48 +10,30 @@ use std::result;
 
 use libc::{c_void, read, signalfd, signalfd_siginfo};
 use libc::{EAGAIN, SFD_CLOEXEC, SFD_NONBLOCK};
+use remain::sorted;
+use thiserror::Error;
 
 use crate::{errno, signal, AsRawDescriptor, RawDescriptor};
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    /// Failed to construct sigset when creating signalfd.
-    CreateSigset(errno::Error),
-    /// Failed to create a new signalfd.
-    CreateSignalFd(errno::Error),
     /// Failed to block the signal when creating signalfd.
+    #[error("failed to block the signal when creating signalfd: {0}")]
     CreateBlockSignal(signal::Error),
-    /// Unable to read from signalfd.
-    SignalFdRead(errno::Error),
+    /// Failed to create a new signalfd.
+    #[error("failed to create a new signalfd: {0}")]
+    CreateSignalFd(errno::Error),
+    /// Failed to construct sigset when creating signalfd.
+    #[error("failed to construct sigset when creating signalfd: {0}")]
+    CreateSigset(errno::Error),
     /// Signalfd could be read, but didn't return a full siginfo struct.
     /// This wraps the number of bytes that were actually read.
+    #[error("signalfd failed to return a full siginfo struct, read only {0} bytes")]
     SignalFdPartialRead(usize),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            CreateSigset(e) => write!(
-                f,
-                "failed to construct sigset when creating signalfd: {}",
-                e,
-            ),
-            CreateSignalFd(e) => write!(f, "failed to create a new signalfd: {}", e),
-            CreateBlockSignal(e) => write!(
-                f,
-                "failed to block the signal when creating signalfd: {}",
-                e,
-            ),
-            SignalFdRead(e) => write!(f, "unable to read from signalfd: {}", e),
-            SignalFdPartialRead(read) => write!(
-                f,
-                "signalfd failed to return a full siginfo struct, read only {} bytes",
-                read,
-            ),
-        }
-    }
+    /// Unable to read from signalfd.
+    #[error("unable to read from signalfd: {0}")]
+    SignalFdRead(errno::Error),
 }
 
 pub type Result<T> = result::Result<T, Error>;

@@ -5,12 +5,14 @@
 //! Provides a struct for registering signal handlers that get cleared on drop.
 
 use std::convert::TryFrom;
-use std::fmt::{self, Display};
+use std::fmt;
 use std::io::{Cursor, Write};
 use std::panic::catch_unwind;
 use std::result;
 
 use libc::{c_int, c_void, STDERR_FILENO};
+use remain::sorted;
+use thiserror::Error;
 
 use crate::errno;
 use crate::signal::{
@@ -18,41 +20,27 @@ use crate::signal::{
     Signal,
 };
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    /// Sigaction failed.
-    Sigaction(Signal, errno::Error),
+    /// Already waiting for interrupt.
+    #[error("already waiting for interrupt.")]
+    AlreadyWaiting,
+    /// Signal already has a handler.
+    #[error("signal handler already set for {0:?}")]
+    HandlerAlreadySet(Signal),
     /// Failed to check if signal has the default signal handler.
+    #[error("failed to check the signal handler for {0:?}: {1}")]
     HasDefaultSignalHandler(Signal, errno::Error),
     /// Failed to register a signal handler.
+    #[error("failed to register a signal handler for {0:?}: {1}")]
     RegisterSignalHandler(Signal, errno::Error),
-    /// Signal already has a handler.
-    HandlerAlreadySet(Signal),
-    /// Already waiting for interrupt.
-    AlreadyWaiting,
+    /// Sigaction failed.
+    #[error("sigaction failed for {0:?}: {1}")]
+    Sigaction(Signal, errno::Error),
     /// Failed to wait for signal.
+    #[error("wait_for_signal failed: {0}")]
     WaitForSignal(errno::Error),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            Sigaction(s, e) => write!(f, "sigaction failed for {0:?}: {1}", s, e),
-            HasDefaultSignalHandler(s, e) => {
-                write!(f, "failed to check the signal handler for {0:?}: {1}", s, e)
-            }
-            RegisterSignalHandler(s, e) => write!(
-                f,
-                "failed to register a signal handler for {0:?}: {1}",
-                s, e
-            ),
-            HandlerAlreadySet(s) => write!(f, "signal handler already set for {0:?}", s),
-            AlreadyWaiting => write!(f, "already waiting for interrupt."),
-            WaitForSignal(e) => write!(f, "wait_for_signal failed: {0}", e),
-        }
-    }
 }
 
 pub type Result<T> = result::Result<T, Error>;
