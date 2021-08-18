@@ -21,25 +21,27 @@ use base::{
     FromRawDescriptor, IoctlNr, RawDescriptor,
 };
 use cros_async::IntoAsync;
+use remain::sorted;
 use thiserror::Error as ThisError;
 
+#[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
-    /// Failed to create a socket.
-    #[error("failed to create a socket: {0}")]
-    CreateSocket(SysError),
-    /// Couldn't open /dev/net/tun.
-    #[error("failed to open /dev/net/tun: {0}")]
-    OpenTun(SysError),
-    /// Unable to create tap interface.
-    #[error("failed to create tap interface: {0}")]
-    CreateTap(SysError),
     /// Unable to clone tap interface.
     #[error("failed to clone tap interface: {0}")]
     CloneTap(SysError),
+    /// Failed to create a socket.
+    #[error("failed to create a socket: {0}")]
+    CreateSocket(SysError),
+    /// Unable to create tap interface.
+    #[error("failed to create tap interface: {0}")]
+    CreateTap(SysError),
     /// ioctl failed.
     #[error("ioctl failed: {0}")]
     IoctlError(SysError),
+    /// Couldn't open /dev/net/tun.
+    #[error("failed to open /dev/net/tun: {0}")]
+    OpenTun(SysError),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -90,23 +92,15 @@ fn create_socket() -> Result<net::UdpSocket> {
     Ok(unsafe { net::UdpSocket::from_raw_fd(sock) })
 }
 
-#[derive(Debug)]
+#[sorted]
+#[derive(ThisError, Debug)]
 pub enum MacAddressError {
     /// Invalid number of octets.
+    #[error("invalid number of octets: {0}")]
     InvalidNumOctets(usize),
     /// Failed to parse octet.
+    #[error("failed to parse octet: {0}")]
     ParseOctet(ParseIntError),
-}
-
-impl Display for MacAddressError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::MacAddressError::*;
-
-        match self {
-            InvalidNumOctets(n) => write!(f, "invalid number of octets: {}", n),
-            ParseOctet(e) => write!(f, "failed to parse octet: {}", e),
-        }
-    }
 }
 
 /// An Ethernet mac address. This struct is compatible with the C `struct sockaddr`.

@@ -10,4 +10,5 @@ data_model = { path = "../data_model" }
 net_sys = { path = "../net_sys" }
 base = { path = "../base" }
 cros_async = { path = "../cros_async" }
+remain = "*"
 thiserror = "*"
