@@ -831,6 +831,8 @@ dependencies = [
  "dbus",
  "protobuf",
  "protoc-rust",
+ "remain",
+ "thiserror",
 ]
 
 [[package]]
