@@ -4,7 +4,6 @@
 
 //! rutabaga_utils: Utility enums, structs, and implementations needed by the rest of the crate.
 
-use std::fmt::{self, Display};
 use std::io::Error as IoError;
 use std::num::TryFromIntError;
 use std::os::raw::c_void;
@@ -13,6 +12,8 @@ use std::str::Utf8Error;
 
 use base::{Error as BaseError, ExternalMappingError, SafeDescriptor};
 use data_model::VolatileMemoryError;
+use remain::sorted;
+use thiserror::Error;
 
 #[cfg(feature = "vulkano")]
 use vulkano::device::DeviceCreationError;
@@ -118,121 +119,93 @@ pub const RUTABAGA_CAPSET_VENUS: u32 = 4;
 pub const RUTABAGA_CAPSET_CROSS_DOMAIN: u32 = 5;
 
 /// An error generated while using this crate.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum RutabagaError {
     /// Indicates `Rutabaga` was already initialized since only one Rutabaga instance per process
     /// is allowed.
+    #[error("attempted to use a rutabaga asset already in use")]
     AlreadyInUse,
+    /// Base error returned as a result of rutabaga library operation.
+    #[error("rutabaga received a base error: {0}")]
+    BaseError(BaseError),
     /// Checked Arithmetic error
+    #[error("arithmetic failed: {}({}) {op} {}({})", .field1.0, .field1.1, .field2.0, .field2.1)]
     CheckedArithmetic {
         field1: (&'static str, usize),
         field2: (&'static str, usize),
         op: &'static str,
     },
     /// Checked Range error
+    #[error("range check failed: {}({}) vs {}({})", .field1.0, .field1.1, .field2.0, .field2.1)]
     CheckedRange {
         field1: (&'static str, usize),
         field2: (&'static str, usize),
     },
+    /// An internal Rutabaga component error was returned.
+    #[error("rutabaga component failed with error {0}")]
+    ComponentError(i32),
     /// The Rutabaga component failed to export a RutabagaHandle.
+    #[error("failed to export Rutabaga handle")]
     ExportedRutabagaHandle,
     /// Invalid Capset
+    #[error("invalid capset")]
     InvalidCapset,
     /// A command size was submitted that was invalid.
+    #[error("command buffer submitted with invalid size: {0}")]
     InvalidCommandSize(usize),
     /// Invalid RutabagaComponent
+    #[error("invalid rutabaga component")]
     InvalidComponent,
     /// Invalid Context ID
+    #[error("invalid context id")]
     InvalidContextId,
     /// The indicated region of guest memory is invalid.
+    #[error("an iovec is outside of guest memory's range")]
     InvalidIovec,
     /// Invalid Resource ID.
+    #[error("invalid resource id")]
     InvalidResourceId,
     /// Indicates an error in the RutabagaBuilder.
+    #[error("invalid rutabaga build parameters")]
     InvalidRutabagaBuild,
     /// An input/output error occured.
+    #[error("an input/output error occur: {0}")]
     IoError(IoError),
     /// The mapping failed.
+    #[error("The mapping failed for the following reason: {0}")]
     MappingFailed(ExternalMappingError),
-    /// An internal Rutabaga component error was returned.
-    ComponentError(i32),
     /// Violation of the Rutabaga spec occured.
+    #[error("violation of the rutabaga spec")]
     SpecViolation,
-    /// Base error returned as a result of rutabaga library operation.
-    BaseError(BaseError),
     /// An attempted integer conversion failed.
+    #[error("int conversion failed: {0}")]
     TryFromIntError(TryFromIntError),
     /// The command is unsupported.
+    #[error("feature or function unsupported")]
     Unsupported,
     /// Utf8 error.
+    #[error("an utf8 error occured: {0}")]
     Utf8Error(Utf8Error),
-    /// Volatile memory error
-    VolatileMemoryError(VolatileMemoryError),
-    /// Image creation error
-    #[cfg(feature = "vulkano")]
-    VkImageCreationError(ImageCreationError),
-    /// Instance creation error
-    #[cfg(feature = "vulkano")]
-    VkInstanceCreationError(InstanceCreationError),
     /// Device creation error
     #[cfg(feature = "vulkano")]
+    #[error("vulkano device creation failure {0}")]
     VkDeviceCreationError(DeviceCreationError),
     /// Device memory allocation error
     #[cfg(feature = "vulkano")]
+    #[error("vulkano device memory allocation failure {0}")]
     VkDeviceMemoryAllocError(DeviceMemoryAllocError),
-}
-
-impl Display for RutabagaError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::RutabagaError::*;
-        match self {
-            AlreadyInUse => write!(f, "attempted to use a rutabaga asset already in use"),
-            CheckedArithmetic {
-                field1: (label1, value1),
-                field2: (label2, value2),
-                op,
-            } => write!(
-                f,
-                "arithmetic failed: {}({}) {} {}({})",
-                label1, value1, op, label2, value2
-            ),
-            CheckedRange {
-                field1: (label1, value1),
-                field2: (label2, value2),
-            } => write!(
-                f,
-                "range check failed: {}({}) vs {}({})",
-                label1, value1, label2, value2
-            ),
-            ExportedRutabagaHandle => write!(f, "failed to export Rutabaga handle"),
-            InvalidCapset => write!(f, "invalid capset"),
-            InvalidCommandSize(s) => write!(f, "command buffer submitted with invalid size: {}", s),
-            InvalidComponent => write!(f, "invalid rutabaga component"),
-            InvalidContextId => write!(f, "invalid context id"),
-            InvalidIovec => write!(f, "an iovec is outside of guest memory's range"),
-            InvalidResourceId => write!(f, "invalid resource id"),
-            InvalidRutabagaBuild => write!(f, "invalid rutabaga build parameters"),
-            IoError(e) => write!(f, "an input/output error occur: {}", e),
-            MappingFailed(s) => write!(f, "The mapping failed for the following reason: {}", s),
-            ComponentError(ret) => write!(f, "rutabaga component failed with error {}", ret),
-            SpecViolation => write!(f, "violation of the rutabaga spec"),
-            BaseError(e) => write!(f, "rutabaga received a base error: {}", e),
-            TryFromIntError(e) => write!(f, "int conversion failed: {}", e),
-            Unsupported => write!(f, "feature or function unsupported"),
-            Utf8Error(e) => write!(f, "an utf8 error occured: {}", e),
-            VolatileMemoryError(e) => write!(f, "noticed a volatile memory error {}", e),
-            #[cfg(feature = "vulkano")]
-            VkDeviceCreationError(e) => write!(f, "vulkano device creation failure {}", e),
-            #[cfg(feature = "vulkano")]
-            VkDeviceMemoryAllocError(e) => {
-                write!(f, "vulkano device memory allocation failure {}", e)
-            }
-            #[cfg(feature = "vulkano")]
-            VkImageCreationError(e) => write!(f, "vulkano image creation failure {}", e),
-            #[cfg(feature = "vulkano")]
-            VkInstanceCreationError(e) => write!(f, "vulkano instance creation failure {}", e),
-        }
-    }
+    /// Image creation error
+    #[cfg(feature = "vulkano")]
+    #[error("vulkano image creation failure {0}")]
+    VkImageCreationError(ImageCreationError),
+    /// Instance creation error
+    #[cfg(feature = "vulkano")]
+    #[error("vulkano instance creation failure {0}")]
+    VkInstanceCreationError(InstanceCreationError),
+    /// Volatile memory error
+    #[error("noticed a volatile memory error {0}")]
+    VolatileMemoryError(VolatileMemoryError),
 }
 
 impl From<IoError> for RutabagaError {

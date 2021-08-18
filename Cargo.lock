@@ -1055,7 +1055,9 @@ dependencies = [
  "data_model",
  "libc",
  "pkg-config",
+ "remain",
  "sync",
+ "thiserror",
 ]
 
 [[package]]
