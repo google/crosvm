@@ -23,64 +23,66 @@ use std::thread::JoinHandle;
 
 use sync::Mutex;
 
+use remain::sorted;
 use thiserror::Error as ThisError;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
-    #[error("Failed to connect to VioS server: {0:?}")]
-    ServerConnectionError(IOError),
-    #[error("Failed to communicate with VioS server: {0:?}")]
-    ServerError(BaseError),
-    #[error("Failed to communicate with VioS server: {0:?}")]
-    ServerIOError(IOError),
-    #[error("Failed to get size of tx shared memory: {0}")]
-    FileSizeError(IOError),
-    #[error("Error duplicating file descriptor: {0}")]
-    DupError(BaseError),
-    #[error("Error accessing VioS server's shared memory: {0}")]
-    ServerMmapError(MmapError),
-    #[error("Error accessing guest's shared memory: {0}")]
-    GuestMmapError(MmapError),
     #[error("Error memory mapping client_shm: {0}")]
     BaseMmapError(BaseError),
-    #[error("Error accessing volatile memory: {0}")]
-    VolatileMemoryError(VolatileMemoryError),
-    #[error("{0}")]
-    ProtocolError(ProtocolErrorKind),
-    #[error("No PCM streams available")]
-    NoStreamsAvailable,
-    #[error("No jack with id {0}")]
-    InvalidJackId(u32),
-    #[error("No stream with id {0}")]
-    InvalidStreamId(u32),
-    #[error("Invalid operation for stream direction: {0}")]
-    WrongDirection(u8),
-    #[error("Insuficient space for the new buffer in the queue's buffer area")]
-    OutOfSpace,
-    #[error("Unsupported frame rate: {0}")]
-    UnsupportedFrameRate(u32),
-    #[error("Platform not supported")]
-    PlatformNotSupported,
-    #[error("Command failed with status {0}")]
-    CommandFailed(u32),
-    #[error("IO buffer operation failed: status = {0}")]
-    IOBufferError(u32),
-    #[error("Failed to duplicate UnixSeqpacket: {0}")]
-    UnixSeqpacketDupError(IOError),
     #[error("Sender was dropped without sending buffer status, the recv thread may have exited")]
     BufferStatusSenderLost(RecvError),
+    #[error("Command failed with status {0}")]
+    CommandFailed(u32),
+    #[error("Error duplicating file descriptor: {0}")]
+    DupError(BaseError),
     #[error("Failed to create Recv event: {0}")]
     EventCreateError(BaseError),
     #[error("Failed to dup Recv event: {0}")]
     EventDupError(BaseError),
     #[error("Failed to signal event: {0}")]
     EventWriteError(BaseError),
+    #[error("Failed to get size of tx shared memory: {0}")]
+    FileSizeError(IOError),
+    #[error("Error accessing guest's shared memory: {0}")]
+    GuestMmapError(MmapError),
+    #[error("No jack with id {0}")]
+    InvalidJackId(u32),
+    #[error("No stream with id {0}")]
+    InvalidStreamId(u32),
+    #[error("IO buffer operation failed: status = {0}")]
+    IOBufferError(u32),
+    #[error("No PCM streams available")]
+    NoStreamsAvailable,
+    #[error("Insuficient space for the new buffer in the queue's buffer area")]
+    OutOfSpace,
+    #[error("Platform not supported")]
+    PlatformNotSupported,
+    #[error("{0}")]
+    ProtocolError(ProtocolErrorKind),
+    #[error("Failed to connect to VioS server: {0:?}")]
+    ServerConnectionError(IOError),
+    #[error("Failed to communicate with VioS server: {0:?}")]
+    ServerError(BaseError),
+    #[error("Failed to communicate with VioS server: {0:?}")]
+    ServerIOError(IOError),
+    #[error("Error accessing VioS server's shared memory: {0}")]
+    ServerMmapError(MmapError),
+    #[error("Failed to duplicate UnixSeqpacket: {0}")]
+    UnixSeqpacketDupError(IOError),
+    #[error("Unsupported frame rate: {0}")]
+    UnsupportedFrameRate(u32),
+    #[error("Error accessing volatile memory: {0}")]
+    VolatileMemoryError(VolatileMemoryError),
     #[error("Failed to create Recv thread's WaitContext: {0}")]
     WaitContextCreateError(BaseError),
     #[error("Error waiting for events")]
     WaitError(BaseError),
+    #[error("Invalid operation for stream direction: {0}")]
+    WrongDirection(u8),
 }
 
 #[derive(ThisError, Debug)]

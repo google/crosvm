@@ -7,7 +7,6 @@ use once_cell::sync::OnceCell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::CString;
-use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::mem;
@@ -22,63 +21,61 @@ use base::{
     AsRawDescriptor, Error, Event, FromRawDescriptor, RawDescriptor, SafeDescriptor,
 };
 use hypervisor::{DeviceKind, Vm};
+use remain::sorted;
+use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use vfio_sys::*;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum VfioError {
-    CreateVfioKvmDevice(Error),
-    OpenContainer(io::Error),
-    OpenGroup(io::Error),
-    GetGroupStatus(Error),
+    #[error("failed to borrow global vfio container")]
     BorrowVfioContainer,
-    GroupViable,
-    VfioApiVersion,
-    VfioType1V2,
-    GroupSetContainer(Error),
+    #[error("failed to set container's IOMMU driver type as VfioType1V2: {0}")]
     ContainerSetIOMMU(Error),
+    #[error("failed to create KVM vfio device: {0}")]
+    CreateVfioKvmDevice(Error),
+    #[error("failed to get Group Status: {0}")]
+    GetGroupStatus(Error),
+    #[error("failed to get vfio device fd: {0}")]
     GroupGetDeviceFD(Error),
-    KvmSetDeviceAttr(Error),
-    VfioDeviceGetInfo(Error),
-    VfioDeviceGetRegionInfo(Error),
+    #[error("failed to add vfio group into vfio container: {0}")]
+    GroupSetContainer(Error),
+    #[error("group is inviable")]
+    GroupViable,
+    #[error("invalid file path")]
     InvalidPath,
+    #[error("failed to add guest memory map into iommu table: {0}")]
     IommuDmaMap(Error),
+    #[error("failed to remove guest memory map from iommu table: {0}")]
     IommuDmaUnmap(Error),
+    #[error("failed to get IOMMU info from host: {0}")]
     IommuGetInfo(Error),
-    VfioIrqEnable(Error),
+    #[error("failed to set KVM vfio device's attribute: {0}")]
+    KvmSetDeviceAttr(Error),
+    #[error("failed to open /dev/vfio/vfio container: {0}")]
+    OpenContainer(io::Error),
+    #[error("failed to open /dev/vfio/$group_num group: {0}")]
+    OpenGroup(io::Error),
+    #[error(
+        "vfio API version doesn't match with VFIO_API_VERSION defined in vfio_sys/src/vfio.rs"
+    )]
+    VfioApiVersion,
+    #[error("failed to get vfio device's info or info doesn't match: {0}")]
+    VfioDeviceGetInfo(Error),
+    #[error("failed to get vfio device's region info: {0}")]
+    VfioDeviceGetRegionInfo(Error),
+    #[error("failed to disable vfio deviece's irq: {0}")]
     VfioIrqDisable(Error),
-    VfioIrqUnmask(Error),
+    #[error("failed to enable vfio deviece's irq: {0}")]
+    VfioIrqEnable(Error),
+    #[error("failed to mask vfio deviece's irq: {0}")]
     VfioIrqMask(Error),
-}
-
-impl fmt::Display for VfioError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-	    VfioError::CreateVfioKvmDevice(e) => write!(f, "failed to create KVM vfio device: {}", e),
-            VfioError::OpenContainer(e) => write!(f, "failed to open /dev/vfio/vfio container: {}", e),
-            VfioError::OpenGroup(e) => write!(f, "failed to open /dev/vfio/$group_num group: {}", e),
-            VfioError::GetGroupStatus(e) => write!(f, "failed to get Group Status: {}", e),
-            VfioError::BorrowVfioContainer => write!(f, "failed to borrow global vfio container"),
-            VfioError::GroupViable => write!(f, "group is inviable"),
-            VfioError::VfioApiVersion => write!(f, "vfio API version doesn't match with VFIO_API_VERSION defined in vfio_sys/srv/vfio.rs"),
-            VfioError::VfioType1V2 => write!(f, "container dones't support VfioType1V2 IOMMU driver type"),
-            VfioError::GroupSetContainer(e) => write!(f, "failed to add vfio group into vfio container: {}", e),
-            VfioError::ContainerSetIOMMU(e) => write!(f, "failed to set container's IOMMU driver type as VfioType1V2: {}", e),
-            VfioError::GroupGetDeviceFD(e) => write!(f, "failed to get vfio device fd: {}", e),
-            VfioError::KvmSetDeviceAttr(e) => write!(f, "failed to set KVM vfio device's attribute: {}", e),
-            VfioError::VfioDeviceGetInfo(e) => write!(f, "failed to get vfio device's info or info doesn't match: {}", e),
-            VfioError::VfioDeviceGetRegionInfo(e) => write!(f, "failed to get vfio device's region info: {}", e),
-            VfioError::InvalidPath => write!(f,"invalid file path"),
-            VfioError::IommuDmaMap(e) => write!(f, "failed to add guest memory map into iommu table: {}", e),
-            VfioError::IommuDmaUnmap(e) => write!(f, "failed to remove guest memory map from iommu table: {}", e),
-            VfioError::IommuGetInfo(e) => write!(f, "failed to get IOMMU info from host: {}", e),
-            VfioError::VfioIrqEnable(e) => write!(f, "failed to enable vfio deviece's irq: {}", e),
-            VfioError::VfioIrqDisable(e) => write!(f, "failed to disable vfio deviece's irq: {}", e),
-            VfioError::VfioIrqUnmask(e) => write!(f, "failed to unmask vfio deviece's irq: {}", e),
-            VfioError::VfioIrqMask(e) => write!(f, "failed to mask vfio deviece's irq: {}", e),
-        }
-    }
+    #[error("failed to unmask vfio deviece's irq: {0}")]
+    VfioIrqUnmask(Error),
+    #[error("container dones't support VfioType1V2 IOMMU driver type")]
+    VfioType1V2,
 }
 
 fn get_error() -> Error {

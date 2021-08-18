@@ -5,7 +5,6 @@
 use std::borrow::Cow;
 use std::cmp;
 use std::convert::TryInto;
-use std::fmt::{self, Display};
 use std::io::{self, Write};
 use std::iter::FromIterator;
 use std::marker::PhantomData;
@@ -17,42 +16,31 @@ use base::{FileReadWriteAtVolatile, FileReadWriteVolatile};
 use cros_async::MemRegion;
 use data_model::{DataInit, Le16, Le32, Le64, VolatileMemoryError, VolatileSlice};
 use disk::AsyncDisk;
+use remain::sorted;
 use smallvec::SmallVec;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::DescriptorChain;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("the combined length of all the buffers in a `DescriptorChain` would overflow")]
     DescriptorChainOverflow,
+    #[error("descriptor guest memory error: {0}")]
     GuestMemoryError(vm_memory::GuestMemoryError),
+    #[error("invalid descriptor chain")]
     InvalidChain,
+    #[error("descriptor I/O error: {0}")]
     IoError(io::Error),
+    #[error("`DescriptorChain` split is out of bounds: {0}")]
     SplitOutOfBounds(usize),
+    #[error("volatile memory error: {0}")]
     VolatileMemoryError(VolatileMemoryError),
 }
 
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            DescriptorChainOverflow => write!(
-                f,
-                "the combined length of all the buffers in a `DescriptorChain` would overflow"
-            ),
-            GuestMemoryError(e) => write!(f, "descriptor guest memory error: {}", e),
-            InvalidChain => write!(f, "invalid descriptor chain"),
-            IoError(e) => write!(f, "descriptor I/O error: {}", e),
-            SplitOutOfBounds(off) => write!(f, "`DescriptorChain` split is out of bounds: {}", off),
-            VolatileMemoryError(e) => write!(f, "volatile memory error: {}", e),
-        }
-    }
-}
-
 pub type Result<T> = result::Result<T, Error>;
-
-impl std::error::Error for Error {}
 
 #[derive(Clone)]
 struct DescriptorChainRegions {

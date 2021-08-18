@@ -3,18 +3,20 @@
 // found in the LICENSE file.
 
 use audio_streams::SampleFormat;
+use remain::sorted;
 use thiserror::Error as ThisError;
 
 use crate::virtio::snd::constants::*;
 
+#[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
+    #[error("Unsupported frame rate: {0}")]
+    UnsupportedFrameRate(u32),
     #[error("Unsupported virtio frame rate: {0}")]
     UnsupportedVirtioFrameRate(u8),
     #[error("Unsupported virtio pcm format: {0}")]
     UnsupportedVirtioPcmFormat(u8),
-    #[error("Unsupported frame rate: {0}")]
-    UnsupportedFrameRate(u32),
 }
 
 type Result<T> = std::result::Result<T, Error>;

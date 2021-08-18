@@ -9,6 +9,7 @@ use std::thread;
 
 use base::{error, Event, PollToken, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le16, Le32};
+use remain::sorted;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
@@ -24,6 +25,7 @@ pub(crate) const QUEUE_SIZE: u16 = 256;
 // If VIRTIO_CONSOLE_F_MULTIPORT is implemented, more queues will be needed.
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 
+#[sorted]
 #[derive(ThisError, Debug)]
 pub enum ConsoleError {
     /// There are no more available descriptors to receive into

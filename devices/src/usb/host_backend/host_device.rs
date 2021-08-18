@@ -445,7 +445,7 @@ impl HostDevice {
                     let alt_setting = self.alt_settings.get(&i).unwrap_or(&0);
                     let interface = config_descriptor
                         .get_interface_descriptor(i, *alt_setting)
-                        .ok_or(Error::GetInterfaceDescriptor((i, *alt_setting)))?;
+                        .ok_or(Error::GetInterfaceDescriptor(i, *alt_setting))?;
                     let mut interface_data: InterfaceDescriptor = **interface;
                     interface_data.bInterfaceClass = 0xFF;
                     interface_data.bInterfaceSubClass = 0xFF;
@@ -484,7 +484,7 @@ impl HostDevice {
             let alt_setting = self.alt_settings.get(i).unwrap_or(&0);
             let interface = config_descriptor
                 .get_interface_descriptor(*i, *alt_setting)
-                .ok_or(Error::GetInterfaceDescriptor((*i, *alt_setting)))?;
+                .ok_or(Error::GetInterfaceDescriptor(*i, *alt_setting))?;
             for ep_idx in 0..interface.bNumEndpoints {
                 let ep_dp = interface
                     .get_endpoint_descriptor(ep_idx)

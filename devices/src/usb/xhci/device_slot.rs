@@ -17,53 +17,46 @@ use crate::usb::xhci::ring_buffer_stop_cb::{fallible_closure, RingBufferStopCall
 use crate::utils::{EventLoop, FailHandle};
 use base::error;
 use bit_field::Error as BitFieldError;
-use std::fmt::{self, Display};
+use remain::sorted;
 use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use sync::Mutex;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    BadPortId(u8),
-    ReadGuestMemory(GuestMemoryError),
-    WriteGuestMemory(GuestMemoryError),
-    WeakReferenceUpgrade,
-    CallbackFailed,
-    GetSlotContextState(BitFieldError),
-    GetEndpointState(BitFieldError),
-    GetPort(u8),
-    GetTrc(u8),
-    BadInputContextAddr(GuestAddress),
+    #[error("bad device context: {0}")]
     BadDeviceContextAddr(GuestAddress),
+    #[error("bad input context address: {0}")]
+    BadInputContextAddr(GuestAddress),
+    #[error("device slot get a bad port id: {0}")]
+    BadPortId(u8),
+    #[error("callback failed")]
+    CallbackFailed,
+    #[error("failed to create transfer controller: {0}")]
     CreateTransferController(TransferRingControllerError),
+    #[error("failed to get endpoint state: {0}")]
+    GetEndpointState(BitFieldError),
+    #[error("failed to get port: {0}")]
+    GetPort(u8),
+    #[error("failed to get slot context state: {0}")]
+    GetSlotContextState(BitFieldError),
+    #[error("failed to get trc: {0}")]
+    GetTrc(u8),
+    #[error("failed to read guest memory: {0}")]
+    ReadGuestMemory(GuestMemoryError),
+    #[error("failed to reset port: {0}")]
     ResetPort(HostBackendProviderError),
+    #[error("failed to upgrade weak reference")]
+    WeakReferenceUpgrade,
+    #[error("failed to write guest memory: {0}")]
+    WriteGuestMemory(GuestMemoryError),
 }
 
 type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            BadPortId(id) => write!(f, "device slot get a bad port id: {}", id),
-            ReadGuestMemory(e) => write!(f, "failed to read guest memory: {}", e),
-            WriteGuestMemory(e) => write!(f, "failed to write guest memory: {}", e),
-            WeakReferenceUpgrade => write!(f, "failed to upgrade weak reference"),
-            CallbackFailed => write!(f, "callback failed"),
-            GetSlotContextState(e) => write!(f, "failed to get slot context state: {}", e),
-            GetEndpointState(e) => write!(f, "failed to get endpoint state: {}", e),
-            GetPort(v) => write!(f, "failed to get port: {}", v),
-            GetTrc(v) => write!(f, "failed to get trc: {}", v),
-            BadInputContextAddr(addr) => write!(f, "bad input context address: {}", addr),
-            BadDeviceContextAddr(addr) => write!(f, "bad device context: {}", addr),
-            CreateTransferController(e) => write!(f, "failed to create transfer controller: {}", e),
-            ResetPort(e) => write!(f, "failed to reset port: {}", e),
-        }
-    }
-}
 
 /// See spec 4.5.1 for dci.
 /// index 0: Control endpoint. Device Context Index: 1.

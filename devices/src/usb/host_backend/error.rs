@@ -7,81 +7,68 @@ use crate::usb::xhci::xhci_transfer::Error as XhciTransferError;
 use crate::utils::Error as UtilsError;
 
 use base::TubeError;
-use std::fmt::{self, Display};
+use remain::sorted;
+use thiserror::Error;
 use usb_util::Error as UsbUtilError;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("failed to add to event loop: {0}")]
     AddToEventLoop(UtilsError),
-    StartAsyncJobQueue(UtilsError),
-    QueueAsyncJob(UtilsError),
-    CreateLibUsbContext(UsbUtilError),
-    GetActiveConfig(UsbUtilError),
-    SetActiveConfig(UsbUtilError),
-    GetConfigDescriptor(UsbUtilError),
-    GetDeviceDescriptor(UsbUtilError),
-    SetInterfaceAltSetting(UsbUtilError),
-    ClearHalt(UsbUtilError),
-    CreateTransfer(UsbUtilError),
-    Reset(UsbUtilError),
-    GetEndpointType,
-    CreateControlTube(TubeError),
-    SetupControlTube(TubeError),
-    ReadControlTube(TubeError),
-    WriteControlTube(TubeError),
-    GetXhciTransferType(XhciTransferError),
-    TransferComplete(XhciTransferError),
-    ReadBuffer(BufferError),
-    WriteBuffer(BufferError),
-    BufferLen(BufferError),
-    /// Cannot get interface descriptor for (interface, altsetting).
-    GetInterfaceDescriptor((u8, u8)),
-    GetEndpointDescriptor(u8),
-    BadXhciTransferState,
+    #[error("backend provider is in a bad state")]
     BadBackendProviderState,
+    #[error("xhci transfer is in a bad state")]
+    BadXhciTransferState,
+    #[error("failed to get buffer length: {0}")]
+    BufferLen(BufferError),
+    #[error("failed to clear halt: {0}")]
+    ClearHalt(UsbUtilError),
+    #[error("failed to create contro tube: {0}")]
+    CreateControlTube(TubeError),
+    #[error("failed to create libusb context: {0}")]
+    CreateLibUsbContext(UsbUtilError),
+    #[error("failed to create transfer: {0}")]
+    CreateTransfer(UsbUtilError),
+    #[error("failed to get active config: {0}")]
+    GetActiveConfig(UsbUtilError),
+    #[error("failed to get config descriptor: {0}")]
+    GetConfigDescriptor(UsbUtilError),
+    #[error("failed to get device descriptor: {0}")]
+    GetDeviceDescriptor(UsbUtilError),
+    #[error("failed to get endpoint descriptor for ep: {0}")]
+    GetEndpointDescriptor(u8),
+    #[error("failed to get endpoint type")]
+    GetEndpointType,
+    /// Cannot get interface descriptor for (interface, altsetting).
+    #[error("failed to get interface descriptor for interface {0}, alt setting {1}")]
+    GetInterfaceDescriptor(u8, u8),
+    #[error("failed to get xhci transfer type: {0}")]
+    GetXhciTransferType(XhciTransferError),
+    #[error("request missing required data buffer")]
     MissingRequiredBuffer,
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            AddToEventLoop(e) => write!(f, "failed to add to event loop: {}", e),
-            StartAsyncJobQueue(e) => write!(f, "failed to start async job queue: {}", e),
-            QueueAsyncJob(e) => write!(f, "failed to queue async job: {}", e),
-            CreateLibUsbContext(e) => write!(f, "failed to create libusb context: {:?}", e),
-            GetActiveConfig(e) => write!(f, "failed to get active config: {:?}", e),
-            SetActiveConfig(e) => write!(f, "failed to set active config: {:?}", e),
-            GetConfigDescriptor(e) => write!(f, "failed to get config descriptor: {:?}", e),
-            GetDeviceDescriptor(e) => write!(f, "failed to get device descriptor: {:?}", e),
-            SetInterfaceAltSetting(e) => write!(f, "failed to set interface alt setting: {:?}", e),
-            ClearHalt(e) => write!(f, "failed to clear halt: {:?}", e),
-            CreateTransfer(e) => write!(f, "failed to create transfer: {:?}", e),
-            Reset(e) => write!(f, "failed to reset: {:?}", e),
-            GetEndpointType => write!(f, "failed to get endpoint type"),
-            CreateControlTube(e) => write!(f, "failed to create contro tube: {}", e),
-            SetupControlTube(e) => write!(f, "failed to setup control tube: {}", e),
-            ReadControlTube(e) => write!(f, "failed to read control tube: {}", e),
-            WriteControlTube(e) => write!(f, "failed to write control tube: {}", e),
-            GetXhciTransferType(e) => write!(f, "failed to get xhci transfer type: {}", e),
-            TransferComplete(e) => write!(f, "xhci transfer completed: {}", e),
-            ReadBuffer(e) => write!(f, "failed to read buffer: {}", e),
-            WriteBuffer(e) => write!(f, "failed to write buffer: {}", e),
-            BufferLen(e) => write!(f, "failed to get buffer length: {}", e),
-            GetInterfaceDescriptor((i, alt_setting)) => write!(
-                f,
-                "failed to get interface descriptor for interface {}, alt setting {}",
-                i, alt_setting
-            ),
-            GetEndpointDescriptor(ep_idx) => {
-                write!(f, "failed to get endpoint descriptor for ep: {}", ep_idx)
-            }
-            BadXhciTransferState => write!(f, "xhci transfer is in a bad state"),
-            BadBackendProviderState => write!(f, "backend provider is in a bad state"),
-            MissingRequiredBuffer => write!(f, "request missing required data buffer"),
-        }
-    }
+    #[error("failed to queue async job: {0}")]
+    QueueAsyncJob(UtilsError),
+    #[error("failed to read buffer: {0}")]
+    ReadBuffer(BufferError),
+    #[error("failed to read control tube: {0}")]
+    ReadControlTube(TubeError),
+    #[error("failed to reset: {0}")]
+    Reset(UsbUtilError),
+    #[error("failed to set active config: {0}")]
+    SetActiveConfig(UsbUtilError),
+    #[error("failed to set interface alt setting: {0}")]
+    SetInterfaceAltSetting(UsbUtilError),
+    #[error("failed to setup control tube: {0}")]
+    SetupControlTube(TubeError),
+    #[error("failed to start async job queue: {0}")]
+    StartAsyncJobQueue(UtilsError),
+    #[error("xhci transfer completed: {0}")]
+    TransferComplete(XhciTransferError),
+    #[error("failed to write buffer: {0}")]
+    WriteBuffer(BufferError),
+    #[error("failed to write control tube: {0}")]
+    WriteControlTube(TubeError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

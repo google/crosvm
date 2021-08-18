@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use base::{error, warn, AsRawDescriptor, RawDescriptor};
+use remain::sorted;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
@@ -17,12 +18,13 @@ use crate::virtio::video::{
     Tube,
 };
 
+#[sorted]
 #[derive(Debug, ThisError)]
 enum VdaBackendError {
-    #[error("VDA failure: {0}")]
-    VdaFailure(libvda::decode::Response),
     #[error("set_output_parameters() must be called before use_output_buffer()")]
     OutputParamsNotSet,
+    #[error("VDA failure: {0}")]
+    VdaFailure(libvda::decode::Response),
 }
 
 impl From<VdaBackendError> for VideoError {

@@ -16,52 +16,43 @@ use crate::usb::host_backend::{
 };
 use crate::utils::{Error as UtilsError, EventLoop, FailHandle};
 use base::{error, Event};
-use std::fmt::{self, Display};
+use remain::sorted;
 use std::sync::Arc;
 use std::thread;
 use sync::Mutex;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory};
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    StartEventLoop(UtilsError),
-    GetDeviceSlot(u8),
-    StartResampleHandler,
-    SendInterrupt(InterrupterError),
-    EnableInterrupter(InterrupterError),
-    SetModeration(InterrupterError),
-    SetupEventRing(InterrupterError),
-    SetEventHandlerBusy(InterrupterError),
-    StartProvider(HostBackendProviderError),
-    RingDoorbell(DeviceSlotError),
+    #[error("failed to create command ring controller: {0}")]
     CreateCommandRingController(CommandRingControllerError),
+    #[error("failed to enable interrupter: {0}")]
+    EnableInterrupter(InterrupterError),
+    #[error("failed to get device slot: {0}")]
+    GetDeviceSlot(u8),
+    #[error("failed to reset port")]
     ResetPort,
+    #[error("failed to ring doorbell: {0}")]
+    RingDoorbell(DeviceSlotError),
+    #[error("failed to send interrupt: {0}")]
+    SendInterrupt(InterrupterError),
+    #[error("failed to set event handler busy: {0}")]
+    SetEventHandlerBusy(InterrupterError),
+    #[error("failed to set interrupter moderation: {0}")]
+    SetModeration(InterrupterError),
+    #[error("failed to setup event ring: {0}")]
+    SetupEventRing(InterrupterError),
+    #[error("failed to start event loop: {0}")]
+    StartEventLoop(UtilsError),
+    #[error("failed to start backend provider: {0}")]
+    StartProvider(HostBackendProviderError),
+    #[error("failed to start resample handler")]
+    StartResampleHandler,
 }
 
 type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            StartEventLoop(e) => write!(f, "failed to start event loop: {}", e),
-            GetDeviceSlot(i) => write!(f, "failed to get device slot: {}", i),
-            StartResampleHandler => write!(f, "failed to start resample handler"),
-            SendInterrupt(e) => write!(f, "failed to send interrupter: {}", e),
-            EnableInterrupter(e) => write!(f, "failed to enable interrupter: {}", e),
-            SetModeration(e) => write!(f, "failed to set interrupter moderation: {}", e),
-            SetupEventRing(e) => write!(f, "failed to setup event ring: {}", e),
-            SetEventHandlerBusy(e) => write!(f, "failed to set event handler busy: {}", e),
-            StartProvider(e) => write!(f, "failed to start backend provider: {}", e),
-            RingDoorbell(e) => write!(f, "failed to ring doorbell: {}", e),
-            CreateCommandRingController(e) => {
-                write!(f, "failed to create command ring controller: {}", e)
-            }
-            ResetPort => write!(f, "failed to reset port"),
-        }
-    }
-}
 
 /// xHCI controller implementation.
 pub struct Xhci {

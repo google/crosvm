@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::cmp::{max, min};
-use std::fmt::{self, Display};
 use std::io::{self, Write};
 use std::mem::size_of;
 use std::result;
@@ -21,7 +20,9 @@ use base::{
 use data_model::DataInit;
 use disk::DiskFile;
 
+use remain::sorted;
 use sync::Mutex;
+use thiserror::Error;
 use vm_control::{DiskControlCommand, DiskControlResult};
 use vm_memory::GuestMemory;
 
@@ -35,94 +36,49 @@ const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
 const NUM_QUEUES: u16 = 1;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 enum ExecuteError {
+    #[error("failed to copy ID string: {0}")]
     CopyId(io::Error),
+    #[error("virtio descriptor error: {0}")]
     Descriptor(DescriptorError),
-    Read(io::Error),
-    WriteStatus(io::Error),
-    /// Error arming the flush timer.
-    Flush(io::Error),
-    ReadIo {
-        length: usize,
-        sector: u64,
-        desc_error: io::Error,
-    },
-    Timer(SysError),
-    WriteIo {
-        length: usize,
-        sector: u64,
-        desc_error: io::Error,
-    },
+    #[error("failed to perform discard or write zeroes; sector={sector} num_sectors={num_sectors} flags={flags}; {ioerr:?}")]
     DiscardWriteZeroes {
         ioerr: Option<io::Error>,
         sector: u64,
         num_sectors: u32,
         flags: u32,
     },
-    ReadOnly {
-        request_type: u32,
-    },
-    OutOfRange,
+    /// Error arming the flush timer.
+    #[error("failed to flush: {0}")]
+    Flush(io::Error),
+    #[error("not enough space in descriptor chain to write status")]
     MissingStatus,
+    #[error("out of range")]
+    OutOfRange,
+    #[error("failed to read message: {0}")]
+    Read(io::Error),
+    #[error("io error reading {length} bytes from sector {sector}: {desc_error}")]
+    ReadIo {
+        length: usize,
+        sector: u64,
+        desc_error: io::Error,
+    },
+    #[error("read only; request_type={request_type}")]
+    ReadOnly { request_type: u32 },
+    #[error("timer error: {0}")]
+    Timer(SysError),
+    #[error("unsupported ({0})")]
     Unsupported(u32),
-}
-
-impl Display for ExecuteError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::ExecuteError::*;
-
-        match self {
-            CopyId(e) => write!(f, "failed to copy ID string: {}", e),
-            Descriptor(e) => write!(f, "virtio descriptor error: {}", e),
-            Read(e) => write!(f, "failed to read message: {}", e),
-            WriteStatus(e) => write!(f, "failed to write request status: {}", e),
-            Flush(e) => write!(f, "failed to flush: {}", e),
-            ReadIo {
-                length,
-                sector,
-                desc_error,
-            } => write!(
-                f,
-                "io error reading {} bytes from sector {}: {}",
-                length, sector, desc_error,
-            ),
-            Timer(e) => write!(f, "{}", e),
-            WriteIo {
-                length,
-                sector,
-                desc_error,
-            } => write!(
-                f,
-                "io error writing {} bytes to sector {}: {}",
-                length, sector, desc_error,
-            ),
-            DiscardWriteZeroes {
-                ioerr: Some(ioerr),
-                sector,
-                num_sectors,
-                flags,
-            } => write!(
-                f,
-                "failed to perform discard or write zeroes; sector={} num_sectors={} flags={}; {}",
-                sector, num_sectors, flags, ioerr,
-            ),
-            DiscardWriteZeroes {
-                ioerr: None,
-                sector,
-                num_sectors,
-                flags,
-            } => write!(
-                f,
-                "failed to perform discard or write zeroes; sector={} num_sectors={} flags={}",
-                sector, num_sectors, flags,
-            ),
-            ReadOnly { request_type } => write!(f, "read only; request_type={}", request_type),
-            OutOfRange => write!(f, "out of range"),
-            MissingStatus => write!(f, "not enough space in descriptor chain to write status"),
-            Unsupported(n) => write!(f, "unsupported ({})", n),
-        }
-    }
+    #[error("io error writing {length} bytes to sector {sector}: {desc_error}")]
+    WriteIo {
+        length: usize,
+        sector: u64,
+        desc_error: io::Error,
+    },
+    #[error("failed to write request status: {0}")]
+    WriteStatus(io::Error),
 }
 
 impl ExecuteError {

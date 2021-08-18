@@ -8,7 +8,9 @@
 use std::fmt;
 use std::fs::File;
 
+use remain::sorted;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use base::{with_as_descriptor, Tube, TubeError};
 
@@ -48,11 +50,15 @@ pub enum ResourceResponse {
     Invalid,
 }
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum ResourceBridgeError {
+    #[error("attempt to send non-existent gpu resource for {0}")]
     InvalidResource(ResourceRequest),
-    SendFailure(ResourceRequest, TubeError),
+    #[error("error receiving resource bridge response for {0}: {1}")]
     RecieveFailure(ResourceRequest, TubeError),
+    #[error("failed to send a resource bridge request for {0}: {1}")]
+    SendFailure(ResourceRequest, TubeError),
 }
 
 impl fmt::Display for ResourceRequest {
@@ -63,28 +69,6 @@ impl fmt::Display for ResourceRequest {
         }
     }
 }
-
-impl fmt::Display for ResourceBridgeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ResourceBridgeError::InvalidResource(req) => {
-                write!(f, "attempt to send non-existent gpu resource for {}", req)
-            }
-            ResourceBridgeError::SendFailure(req, e) => write!(
-                f,
-                "failed to send a resource bridge request for {}: {}",
-                req, e
-            ),
-            ResourceBridgeError::RecieveFailure(req, e) => write!(
-                f,
-                "error receiving resource bridge response for {}: {}",
-                req, e
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ResourceBridgeError {}
 
 pub fn get_resource_info(
     tube: &Tube,

@@ -3,10 +3,11 @@
 // found in the LICENSE file.
 
 use std::convert::TryInto;
-use std::fmt::{self, Display};
 
 use base::warn;
+use remain::sorted;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::pci::PciInterruptPin;
 
@@ -250,47 +251,34 @@ impl<'a> Iterator for PciBarIter<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[sorted]
+#[derive(Error, Debug, PartialEq)]
 pub enum Error {
+    #[error("address {0} size {1} too big")]
     BarAddressInvalid(u64, u64),
+    #[error("address {0} is not aligned to size {1}")]
     BarAlignmentInvalid(u64, u64),
+    #[error("bar {0} already used")]
     BarInUse(PciBarIndex),
+    #[error("64bit bar {0} already used (requires two regs)")]
     BarInUse64(PciBarIndex),
+    #[error("bar {0} invalid, max {}", NUM_BAR_REGS - 1)]
     BarInvalid(PciBarIndex),
+    #[error("64bitbar {0} invalid, requires two regs, max {}", ROM_BAR_IDX - 1)]
     BarInvalid64(PciBarIndex),
+    #[error("expansion rom bar must be a memory region")]
     BarInvalidRomType,
+    #[error("bar address {0} not a power of two")]
     BarSizeInvalid(u64),
+    #[error("empty capabilities are invalid")]
     CapabilityEmpty,
+    #[error("Invalid capability length {0}")]
     CapabilityLengthInvalid(usize),
+    #[error("capability of size {0} doesn't fit")]
     CapabilitySpaceFull(usize),
 }
+
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl std::error::Error for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-        match self {
-            BarAddressInvalid(a, s) => write!(f, "address {} size {} too big", a, s),
-            BarAlignmentInvalid(a, s) => write!(f, "address {} is not aligned to size {}", a, s),
-            BarInUse(b) => write!(f, "bar {} already used", b),
-            BarInUse64(b) => write!(f, "64bit bar {} already used(requires two regs)", b),
-            BarInvalid(b) => write!(f, "bar {} invalid, max {}", b, NUM_BAR_REGS - 1),
-            BarInvalid64(b) => write!(
-                f,
-                "64bitbar {} invalid, requires two regs, max {}",
-                b,
-                ROM_BAR_IDX - 1
-            ),
-            BarInvalidRomType => write!(f, "expansion rom bar must be a memory region"),
-            BarSizeInvalid(s) => write!(f, "bar address {} not a power of two", s),
-            CapabilityEmpty => write!(f, "empty capabilities are invalid"),
-            CapabilityLengthInvalid(l) => write!(f, "Invalid capability length {}", l),
-            CapabilitySpaceFull(s) => write!(f, "capability of size {} doesn't fit", s),
-        }
-    }
-}
 
 impl PciConfiguration {
     pub fn new(

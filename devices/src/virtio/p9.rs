@@ -2,13 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{self, Display};
 use std::io::{self, Write};
 use std::mem;
 use std::result;
 use std::thread;
 
 use base::{error, warn, Error as SysError, Event, PollToken, RawDescriptor, WaitContext};
+use remain::sorted;
+use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use super::{
@@ -23,56 +24,39 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
 const VIRTIO_9P_MOUNT_TAG: u8 = 0;
 
 /// Errors that occur during operation of a virtio 9P device.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum P9Error {
-    /// The tag for the 9P device was too large to fit in the config space.
-    TagTooLong(usize),
-    /// Creating WaitContext failed.
-    CreateWaitContext(SysError),
     /// Failed to create a 9p server.
+    #[error("failed to create 9p server: {0}")]
     CreateServer(io::Error),
-    /// Error while polling for events.
-    WaitError(SysError),
-    /// Error while reading from the virtio queue's Event.
-    ReadQueueEvent(SysError),
+    /// Creating WaitContext failed.
+    #[error("failed to create WaitContext: {0}")]
+    CreateWaitContext(SysError),
+    /// An internal I/O error occurred.
+    #[error("P9 internal server error: {0}")]
+    Internal(io::Error),
+    /// A DescriptorChain contains invalid data.
+    #[error("DescriptorChain contains invalid data: {0}")]
+    InvalidDescriptorChain(DescriptorError),
     /// A request is missing readable descriptors.
+    #[error("request does not have any readable descriptors")]
     NoReadableDescriptors,
     /// A request is missing writable descriptors.
+    #[error("request does not have any writable descriptors")]
     NoWritableDescriptors,
+    /// Error while reading from the virtio queue's Event.
+    #[error("failed to read from virtio queue Event: {0}")]
+    ReadQueueEvent(SysError),
     /// Failed to signal the virio used queue.
+    #[error("failed to signal used queue: {0}")]
     SignalUsedQueue(SysError),
-    /// A DescriptorChain contains invalid data.
-    InvalidDescriptorChain(DescriptorError),
-    /// An internal I/O error occurred.
-    Internal(io::Error),
-}
-
-impl std::error::Error for P9Error {}
-
-impl Display for P9Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::P9Error::*;
-
-        match self {
-            TagTooLong(len) => write!(
-                f,
-                "P9 device tag is too long: len = {}, max = {}",
-                len,
-                ::std::u16::MAX
-            ),
-            CreateWaitContext(err) => write!(f, "failed to create WaitContext: {}", err),
-            WaitError(err) => write!(f, "failed to wait for events: {}", err),
-            CreateServer(err) => write!(f, "failed to create 9p server: {}", err),
-            ReadQueueEvent(err) => write!(f, "failed to read from virtio queue Event: {}", err),
-            NoReadableDescriptors => write!(f, "request does not have any readable descriptors"),
-            NoWritableDescriptors => write!(f, "request does not have any writable descriptors"),
-            SignalUsedQueue(err) => write!(f, "failed to signal used queue: {}", err),
-            InvalidDescriptorChain(err) => {
-                write!(f, "DescriptorChain contains invalid data: {}", err)
-            }
-            Internal(err) => write!(f, "P9 internal server error: {}", err),
-        }
-    }
+    /// The tag for the 9P device was too large to fit in the config space.
+    #[error("P9 device tag is too long: len = {0}, max = {}", ::std::u16::MAX)]
+    TagTooLong(usize),
+    /// Error while polling for events.
+    #[error("failed to wait for events: {0}")]
+    WaitError(SysError),
 }
 
 pub type P9Result<T> = result::Result<T, P9Error>;

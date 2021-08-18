@@ -3,41 +3,34 @@
 // found in the LICENSE file.
 
 use data_model::DataInit;
-use std::fmt::{self, Display};
+use remain::sorted;
 use std::mem::size_of;
 use std::sync::atomic::{fence, Ordering};
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 use super::xhci_abi::*;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    Uninitialized,
-    EventRingFull,
+    #[error("event ring has a bad enqueue pointer: {0}")]
     BadEnqueuePointer(GuestAddress),
-    BadSegTableIndex(u16),
+    #[error("event ring has a bad seg table addr: {0}")]
     BadSegTableAddress(GuestAddress),
+    #[error("event ring has a bad seg table index: {0}")]
+    BadSegTableIndex(u16),
+    #[error("event ring is full")]
+    EventRingFull,
+    #[error("event ring cannot read from guest memory: {0}")]
     MemoryRead(GuestMemoryError),
+    #[error("event ring cannot write to guest memory: {0}")]
     MemoryWrite(GuestMemoryError),
+    #[error("event ring is uninitialized")]
+    Uninitialized,
 }
 
 type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            Uninitialized => write!(f, "event ring is uninitialized"),
-            EventRingFull => write!(f, "event ring is full"),
-            BadEnqueuePointer(addr) => write!(f, "event ring has a bad enqueue pointer: {}", addr),
-            BadSegTableIndex(i) => write!(f, "event ring has a bad seg table index: {}", i),
-            BadSegTableAddress(addr) => write!(f, "event ring has a bad seg table addr: {}", addr),
-            MemoryRead(e) => write!(f, "event ring cannot read from guest memory: {}", e),
-            MemoryWrite(e) => write!(f, "event ring cannot write to guest memory: {}", e),
-        }
-    }
-}
 
 /// Event rings are segmented circular buffers used to pass event TRBs from the xHCI device back to
 /// the guest.  Each event ring is associated with a single interrupter.  See section 4.9.4 of the

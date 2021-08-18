@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt;
 use std::io;
 use std::mem;
 use std::sync::Arc;
@@ -10,8 +9,10 @@ use std::thread;
 
 use base::{error, warn, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube};
 use data_model::{DataInit, Le32};
+use remain::sorted;
 use resources::Alloc;
 use sync::Mutex;
+use thiserror::Error;
 use vm_control::{FsMappingRequest, VmResponse};
 use vm_memory::GuestMemory;
 
@@ -60,67 +61,50 @@ pub(crate) struct virtio_fs_config {
 unsafe impl DataInit for virtio_fs_config {}
 
 /// Errors that may occur during the creation or operation of an Fs device.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    /// The tag for the Fs device was too long to fit in the config space.
-    TagTooLong(usize),
     /// Failed to create the file system.
+    #[error("failed to create file system: {0}")]
     CreateFs(io::Error),
     /// Creating WaitContext failed.
+    #[error("failed to create WaitContext: {0}")]
     CreateWaitContext(SysError),
-    /// Error while polling for events.
-    WaitError(SysError),
-    /// Error while reading from the virtio queue's Event.
-    ReadQueueEvent(SysError),
-    /// A request is missing readable descriptors.
-    NoReadableDescriptors,
-    /// A request is missing writable descriptors.
-    NoWritableDescriptors,
-    /// Failed to signal the virio used queue.
-    SignalUsedQueue(SysError),
-    /// The `len` field of the header is too small.
-    InvalidDescriptorChain(DescriptorError),
     /// Error happened in FUSE.
+    #[error("fuse error: {0}")]
     FuseError(fuse::Error),
     /// Failed to get the securebits for the worker thread.
+    #[error("failed to get securebits for the worker thread: {0}")]
     GetSecurebits(io::Error),
+    /// The `len` field of the header is too small.
+    #[error("DescriptorChain is invalid: {0}")]
+    InvalidDescriptorChain(DescriptorError),
+    /// A request is missing readable descriptors.
+    #[error("request does not have any readable descriptors")]
+    NoReadableDescriptors,
+    /// A request is missing writable descriptors.
+    #[error("request does not have any writable descriptors")]
+    NoWritableDescriptors,
+    /// Error while reading from the virtio queue's Event.
+    #[error("failed to read from virtio queue Event: {0}")]
+    ReadQueueEvent(SysError),
     /// Failed to set the securebits for the worker thread.
+    #[error("failed to set securebits for the worker thread: {0}")]
     SetSecurebits(io::Error),
+    /// Failed to signal the virio used queue.
+    #[error("failed to signal used queue: {0}")]
+    SignalUsedQueue(SysError),
+    /// The tag for the Fs device was too long to fit in the config space.
+    #[error("Fs device tag is too long: len = {0}, max = {}", FS_MAX_TAG_LEN)]
+    TagTooLong(usize),
+    /// Error while polling for events.
+    #[error("failed to wait for events: {0}")]
+    WaitError(SysError),
 }
-
-impl ::std::error::Error for Error {}
 
 impl From<fuse::Error> for Error {
     fn from(err: fuse::Error) -> Error {
         Error::FuseError(err)
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Error::*;
-        match self {
-            TagTooLong(len) => write!(
-                f,
-                "Fs device tag is too long: len = {}, max = {}",
-                len, FS_MAX_TAG_LEN
-            ),
-            CreateFs(err) => write!(f, "failed to create file system: {}", err),
-            CreateWaitContext(err) => write!(f, "failed to create WaitContext: {}", err),
-            WaitError(err) => write!(f, "failed to wait for events: {}", err),
-            ReadQueueEvent(err) => write!(f, "failed to read from virtio queue Event: {}", err),
-            NoReadableDescriptors => write!(f, "request does not have any readable descriptors"),
-            NoWritableDescriptors => write!(f, "request does not have any writable descriptors"),
-            SignalUsedQueue(err) => write!(f, "failed to signal used queue: {}", err),
-            InvalidDescriptorChain(err) => write!(f, "DescriptorChain is invalid: {}", err),
-            FuseError(err) => write!(f, "fuse error: {}", err),
-            GetSecurebits(err) => {
-                write!(f, "failed to get securebits for the worker thread: {}", err)
-            }
-            SetSecurebits(err) => {
-                write!(f, "failed to set securebits for the worker thread: {}", err)
-            }
-        }
     }
 }
 

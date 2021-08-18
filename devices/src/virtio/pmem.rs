@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
 use std::thread;
@@ -10,6 +9,8 @@ use std::thread;
 use base::{error, AsRawDescriptor, Event, PollToken, RawDescriptor, Tube, WaitContext};
 use base::{Error as SysError, Result as SysResult};
 use data_model::{DataInit, Le32, Le64};
+use remain::sorted;
+use thiserror::Error;
 use vm_control::{MemSlot, VmMsyncRequest, VmMsyncResponse};
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -53,29 +54,19 @@ struct virtio_pmem_req {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_pmem_req {}
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 enum Error {
     /// Invalid virtio descriptor chain.
+    #[error("virtio descriptor error: {0}")]
     Descriptor(DescriptorError),
     /// Failed to read from virtqueue.
+    #[error("failed to read from virtqueue: {0}")]
     ReadQueue(io::Error),
     /// Failed to write to virtqueue.
+    #[error("failed to write to virtqueue: {0}")]
     WriteQueue(io::Error),
 }
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            Descriptor(e) => write!(f, "virtio descriptor error: {}", e),
-            ReadQueue(e) => write!(f, "failed to read from virtqueue: {}", e),
-            WriteQueue(e) => write!(f, "failed to write to virtqueue: {}", e),
-        }
-    }
-}
-
-impl ::std::error::Error for Error {}
 
 type Result<T> = ::std::result::Result<T, Error>;
 

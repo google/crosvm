@@ -12,46 +12,40 @@ use super::xhci_abi::{
 use super::xhci_regs::MAX_INTERRUPTER;
 use base::{error, Error as SysError, Event};
 use bit_field::Error as BitFieldError;
+use remain::sorted;
 use std::cmp::min;
 use std::fmt::{self, Display};
 use std::mem;
 use std::sync::{Arc, Weak};
 use sync::Mutex;
+use thiserror::Error;
 use usb_util::{TransferStatus, UsbRequestSetup};
 use vm_memory::GuestMemory;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    TrbType(BitFieldError),
-    CastTrb(TrbError),
-    TransferLength(TrbError),
+    #[error("unexpected trb type: {0:?}")]
     BadTrbType(TrbType),
-    WriteCompletionEvent(SysError),
+    #[error("cannot cast trb: {0}")]
+    CastTrb(TrbError),
+    #[error("cannot create transfer buffer: {0}")]
     CreateBuffer(BufferError),
+    #[error("cannot detach from port: {0}")]
     DetachPort(HubError),
+    #[error("cannot send interrupt: {0}")]
     SendInterrupt(InterrupterError),
+    #[error("failed to submit transfer to backend")]
     SubmitTransfer,
+    #[error("cannot get transfer length: {0}")]
+    TransferLength(TrbError),
+    #[error("cannot get trb type: {0}")]
+    TrbType(BitFieldError),
+    #[error("cannot write completion event: {0}")]
+    WriteCompletionEvent(SysError),
 }
 
 type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            TrbType(e) => write!(f, "cannot get trb type: {}", e),
-            CastTrb(e) => write!(f, "cannot cast trb: {}", e),
-            TransferLength(e) => write!(f, "cannot get transfer length: {}", e),
-            BadTrbType(t) => write!(f, "unexpected trb type: {:?}", t),
-            WriteCompletionEvent(e) => write!(f, "cannot write completion event: {}", e),
-            CreateBuffer(e) => write!(f, "cannot create transfer buffer: {}", e),
-            DetachPort(e) => write!(f, "cannot detach from port: {}", e),
-            SendInterrupt(e) => write!(f, "cannot send interrupter: {}", e),
-            SubmitTransfer => write!(f, "failed to submit transfer to backend"),
-        }
-    }
-}
 
 /// Type of usb endpoints.
 #[derive(PartialEq, Clone, Copy, Debug)]

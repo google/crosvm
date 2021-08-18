@@ -7,11 +7,12 @@
 //!
 //! [v3 RFC]: https://markmail.org/thread/wxdne5re7aaugbjg
 
-use std::fmt::{self, Display};
 use std::thread;
 
 use base::{error, info, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube};
 use data_model::{DataInit, Le32};
+use remain::sorted;
+use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use crate::virtio::virtio_device::VirtioDevice;
@@ -42,46 +43,32 @@ const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 
 /// An error indicating something went wrong in virtio-video's worker.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    /// Creating WaitContext failed.
-    WaitContextCreationFailed(SysError),
-    /// A DescriptorChain contains invalid data.
-    InvalidDescriptorChain(DescriptorError),
     /// No available descriptor in which an event is written to.
+    #[error("no available descriptor in which an event is written to")]
     DescriptorNotAvailable,
-    /// Error while polling for events.
-    WaitError(SysError),
+    /// A DescriptorChain contains invalid data.
+    #[error("DescriptorChain contains invalid data: {0}")]
+    InvalidDescriptorChain(DescriptorError),
     /// Failed to read a virtio-video command.
+    #[error("failed to read a command from the guest: {0}")]
     ReadFailure(ReadCmdError),
+    /// Creating WaitContext failed.
+    #[error("failed to create WaitContext: {0}")]
+    WaitContextCreationFailed(SysError),
+    /// Error while polling for events.
+    #[error("failed to wait for events: {0}")]
+    WaitError(SysError),
     /// Failed to write an event into the event queue.
+    #[error("failed to write an event {event:?} into event queue: {error}")]
     WriteEventFailure {
         event: event::VideoEvt,
         error: std::io::Error,
     },
 }
 
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Error::*;
-        match self {
-            WaitContextCreationFailed(e) => write!(f, "failed to create WaitContext: {}", e),
-            InvalidDescriptorChain(e) => write!(f, "DescriptorChain contains invalid data: {}", e),
-            DescriptorNotAvailable => {
-                write!(f, "no available descriptor in which an event is written to")
-            }
-            WaitError(err) => write!(f, "failed to wait for events: {}", err),
-            ReadFailure(e) => write!(f, "failed to read a command from the guest: {}", e),
-            WriteEventFailure { event, error } => write!(
-                f,
-                "failed to write an event {:?} into event queue: {}",
-                event, error
-            ),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]

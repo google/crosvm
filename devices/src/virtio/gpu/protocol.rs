@@ -19,7 +19,9 @@ use base::Error as BaseError;
 use base::{ExternalMappingError, TubeError};
 use data_model::{DataInit, Le32, Le64};
 use gpu_display::GpuDisplayError;
+use remain::sorted;
 use rutabaga_gfx::RutabagaError;
+use thiserror::Error;
 
 use crate::virtio::gpu::udmabuf::UdmabufError;
 
@@ -635,30 +637,18 @@ pub enum GpuCommand {
 
 /// An error indicating something went wrong decoding a `GpuCommand`. These correspond to
 /// `VIRTIO_GPU_CMD_*`.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum GpuCommandDecodeError {
-    /// The command referenced an inaccessible area of memory.
-    Memory(DescriptorError),
     /// The type of the command was invalid.
+    #[error("invalid command type ({0})")]
     InvalidType(u32),
     /// An I/O error occurred.
+    #[error("an I/O error occurred: {0}")]
     IO(io::Error),
-}
-
-impl Display for GpuCommandDecodeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::GpuCommandDecodeError::*;
-
-        match self {
-            Memory(e) => write!(
-                f,
-                "command referenced an inaccessible area of memory: {}",
-                e,
-            ),
-            InvalidType(n) => write!(f, "invalid command type ({})", n),
-            IO(e) => write!(f, "an I/O error occurred: {}", e),
-        }
-    }
+    /// The command referenced an inaccessible area of memory.
+    #[error("command referenced an inaccessible area of memory: {0}")]
+    Memory(DescriptorError),
 }
 
 impl From<DescriptorError> for GpuCommandDecodeError {
@@ -864,33 +854,21 @@ impl Display for GpuResponse {
 }
 
 /// An error indicating something went wrong decoding a `GpuCommand`.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum GpuResponseEncodeError {
+    /// An I/O error occurred.
+    #[error("an I/O error occurred: {0}")]
+    IO(io::Error),
     /// The response was encoded to an inaccessible area of memory.
+    #[error("response was encoded to an inaccessible area of memory: {0}")]
     Memory(DescriptorError),
     /// More displays than are valid were in a `OkDisplayInfo`.
+    #[error("{0} is more displays than are valid")]
     TooManyDisplays(usize),
     /// More planes than are valid were in a `OkResourcePlaneInfo`.
+    #[error("{0} is more planes than are valid")]
     TooManyPlanes(usize),
-    /// An I/O error occurred.
-    IO(io::Error),
-}
-
-impl Display for GpuResponseEncodeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::GpuResponseEncodeError::*;
-
-        match self {
-            Memory(e) => write!(
-                f,
-                "response was encoded to an inaccessible area of memory: {}",
-                e,
-            ),
-            TooManyDisplays(n) => write!(f, "{} is more displays than are valid", n),
-            TooManyPlanes(n) => write!(f, "{} is more planes than are valid", n),
-            IO(e) => write!(f, "an I/O error occurred: {}", e),
-        }
-    }
 }
 
 impl From<DescriptorError> for GpuResponseEncodeError {

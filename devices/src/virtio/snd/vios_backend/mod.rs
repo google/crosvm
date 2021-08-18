@@ -19,6 +19,7 @@ use std::thread;
 use crate::virtio::{copy_config, DescriptorError, Interrupt, Queue, VirtioDevice, TYPE_SOUND};
 use base::{error, Error as BaseError, Event, RawDescriptor};
 use data_model::{DataInit, Le32};
+use remain::sorted;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 
@@ -35,36 +36,37 @@ use thiserror::Error as ThisError;
 
 const QUEUE_SIZES: &[u16] = &[64, 64, 64, 64];
 
+#[sorted]
 #[derive(ThisError, Debug)]
 pub enum SoundError {
-    #[error("Failed to create VioS client: {0}")]
-    ClientNew(Error),
-    #[error("Failed to get event notifier from VioS client: {0}")]
-    ClientEventNotifier(Error),
-    #[error("Error creating WaitContext: {0}")]
-    WaitCtx(BaseError),
-    #[error("Error consuming queue event: {0}")]
-    QueueEvt(BaseError),
-    #[error("Error with queue descriptor: {0}")]
-    Descriptor(DescriptorError),
     #[error("The driver sent an invalid message")]
     BadDriverMsg,
-    #[error("Failed to read/write from/to queue: {0}")]
-    QueueIO(IoError),
-    #[error("Failed to create thread: {0}")]
-    CreateThread(IoError),
-    #[error("Attempted a {0} operation while on the wrong state: {1}, this is a bug")]
-    ImpossibleState(&'static str, &'static str),
+    #[error("Failed to get event notifier from VioS client: {0}")]
+    ClientEventNotifier(Error),
+    #[error("Failed to create VioS client: {0}")]
+    ClientNew(Error),
     #[error("Failed to create event pair: {0}")]
     CreateEvent(BaseError),
-    #[error("Failed to send message: {0}")]
-    StreamThreadSend(SendError<StreamMsg>),
-    #[error("Failed to receive message: {0}")]
-    StreamThreadRecv(RecvError),
     #[error("Failed to create Reader from descriptor chain: {0}")]
     CreateReader(DescriptorError),
+    #[error("Failed to create thread: {0}")]
+    CreateThread(IoError),
     #[error("Failed to create Writer from descriptor chain: {0}")]
     CreateWriter(DescriptorError),
+    #[error("Error with queue descriptor: {0}")]
+    Descriptor(DescriptorError),
+    #[error("Attempted a {0} operation while on the wrong state: {1}, this is a bug")]
+    ImpossibleState(&'static str, &'static str),
+    #[error("Error consuming queue event: {0}")]
+    QueueEvt(BaseError),
+    #[error("Failed to read/write from/to queue: {0}")]
+    QueueIO(IoError),
+    #[error("Failed to receive message: {0}")]
+    StreamThreadRecv(RecvError),
+    #[error("Failed to send message: {0}")]
+    StreamThreadSend(SendError<StreamMsg>),
+    #[error("Error creating WaitContext: {0}")]
+    WaitCtx(BaseError),
 }
 
 pub type Result<T> = std::result::Result<T, SoundError>;

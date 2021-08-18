@@ -10,32 +10,26 @@ use super::xhci_abi::{
 use super::xhci_regs::*;
 use crate::register_space::Register;
 use base::{Error as SysError, Event};
-use std::fmt::{self, Display};
+use remain::sorted;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory};
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    CastTrb(TrbError),
+    #[error("cannot add event: {0}")]
     AddEvent(EventRingError),
-    SetSegTableSize(EventRingError),
-    SetSegTableBaseAddr(EventRingError),
+    #[error("cannot cast trb: {0}")]
+    CastTrb(TrbError),
+    #[error("cannot send interrupt: {0}")]
     SendInterrupt(SysError),
+    #[error("cannot set seg table base addr: {0}")]
+    SetSegTableBaseAddr(EventRingError),
+    #[error("cannot set seg table size: {0}")]
+    SetSegTableSize(EventRingError),
 }
 
 type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-        match self {
-            CastTrb(e) => write!(f, "cannot cast trb: {}", e),
-            AddEvent(e) => write!(f, "cannot add event: {}", e),
-            SetSegTableSize(e) => write!(f, "cannot set seg table size: {}", e),
-            SetSegTableBaseAddr(e) => write!(f, "cannot set seg table base addr: {}", e),
-            SendInterrupt(e) => write!(f, "cannot send interrupt: {}", e),
-        }
-    }
-}
 
 /// See spec 4.17 for interrupters. Controller can send an event back to guest kernel driver
 /// through interrupter.

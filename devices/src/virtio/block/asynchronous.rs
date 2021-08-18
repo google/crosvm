@@ -114,6 +114,7 @@ impl ExecuteError {
 
 /// Errors that happen in block outside of executing a request.
 /// This includes errors during resize and flush operations.
+#[sorted]
 #[derive(ThisError, Debug)]
 pub enum ControlError {
     #[error("couldn't create an async resample event: {0}")]

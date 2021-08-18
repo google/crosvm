@@ -12,6 +12,8 @@ use self::constants::*;
 
 use base::{error, warn, AsRawDescriptor, Event, PollToken, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le16, Le32};
+use remain::sorted;
+use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use self::event_source::{EvdevEventSource, EventSource, SocketEventSource};
@@ -21,7 +23,6 @@ use super::{
 };
 use linux_input_sys::{virtio_input_event, InputEventDecoder};
 use std::collections::BTreeMap;
-use std::fmt::{self, Display};
 use std::io::Read;
 use std::io::Write;
 use std::thread;
@@ -30,63 +31,51 @@ const EVENT_QUEUE_SIZE: u16 = 64;
 const STATUS_QUEUE_SIZE: u16 = 64;
 const QUEUE_SIZES: &[u16] = &[EVENT_QUEUE_SIZE, STATUS_QUEUE_SIZE];
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum InputError {
-    /// Failed to write events to the source
-    EventsWriteError(std::io::Error),
-    /// Failed to read events from the source
-    EventsReadError(std::io::Error),
+    // Virtio descriptor error
+    #[error("virtio descriptor error: {0}")]
+    Descriptor(DescriptorError),
+    // Failed to get axis information of event device
+    #[error("failed to get axis information of event device: {0}")]
+    EvdevAbsInfoError(base::Error),
+    // Failed to get event types supported by device
+    #[error("failed to get event types supported by device: {0}")]
+    EvdevEventTypesError(base::Error),
+    // Failed to grab event device
+    #[error("failed to grab event device: {0}")]
+    EvdevGrabError(base::Error),
     // Failed to get name of event device
+    #[error("failed to get id of event device: {0}")]
     EvdevIdError(base::Error),
     // Failed to get name of event device
+    #[error("failed to get name of event device: {0}")]
     EvdevNameError(base::Error),
-    // Failed to get serial name of event device
-    EvdevSerialError(base::Error),
     // Failed to get properties of event device
+    #[error("failed to get properties of event device: {0}")]
     EvdevPropertiesError(base::Error),
-    // Failed to get event types supported by device
-    EvdevEventTypesError(base::Error),
-    // Failed to get axis information of event device
-    EvdevAbsInfoError(base::Error),
-    // Failed to grab event device
-    EvdevGrabError(base::Error),
+    // Failed to get serial name of event device
+    #[error("failed to get serial name of event device: {0}")]
+    EvdevSerialError(base::Error),
+    /// Failed to read events from the source
+    #[error("failed to read events from the source: {0}")]
+    EventsReadError(std::io::Error),
+    /// Failed to write events to the source
+    #[error("failed to write events to the source: {0}")]
+    EventsWriteError(std::io::Error),
     // Detected error on guest side
+    #[error("detected error on guest side: {0}")]
     GuestError(String),
-    // Virtio descriptor error
-    Descriptor(DescriptorError),
     // Error while reading from virtqueue
+    #[error("failed to read from virtqueue: {0}")]
     ReadQueue(std::io::Error),
     // Error while writing to virtqueue
+    #[error("failed to write to virtqueue: {0}")]
     WriteQueue(std::io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, InputError>;
-
-impl Display for InputError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::InputError::*;
-
-        match self {
-            EventsWriteError(e) => write!(f, "failed to write events to the source: {}", e),
-            EventsReadError(e) => write!(f, "failed to read events from the source: {}", e),
-            EvdevIdError(e) => write!(f, "failed to get id of event device: {}", e),
-            EvdevNameError(e) => write!(f, "failed to get name of event device: {}", e),
-            EvdevSerialError(e) => write!(f, "failed to get serial name of event device: {}", e),
-            EvdevPropertiesError(e) => write!(f, "failed to get properties of event device: {}", e),
-            EvdevEventTypesError(e) => {
-                write!(f, "failed to get event types supported by device: {}", e)
-            }
-            EvdevAbsInfoError(e) => {
-                write!(f, "failed to get axis information of event device: {}", e)
-            }
-            EvdevGrabError(e) => write!(f, "failed to grab event device: {}", e),
-            GuestError(s) => write!(f, "detected error on guest side: {}", s),
-            Descriptor(e) => write!(f, "virtio descriptor error: {}", e),
-            ReadQueue(e) => write!(f, "failed to read from virtqueue: {}", e),
-            WriteQueue(e) => write!(f, "failed to write to virtqueue: {}", e),
-        }
-    }
-}
 
 #[derive(Copy, Clone, Default, Debug)]
 #[repr(C)]

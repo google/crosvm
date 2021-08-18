@@ -5,12 +5,14 @@
 use base::{error, Event};
 use cros_async::{select2, AsyncError, EventAsync, Executor, SelectResult};
 use futures::pin_mut;
+use remain::sorted;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
 use crate::virtio::interrupt::SignalableInterrupt;
 use crate::virtio::{Interrupt, Queue};
 
+#[sorted]
 #[derive(ThisError, Debug)]
 enum Error {
     /// Failed to read the resample event.

@@ -5,8 +5,9 @@
 use crate::pci::{PciCapability, PciCapabilityID};
 use base::{error, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube, TubeError};
 
+use remain::sorted;
 use std::convert::TryInto;
-use std::fmt::{self, Display};
+use thiserror::Error;
 use vm_control::{VmIrqRequest, VmIrqResponse};
 
 use data_model::DataInit;
@@ -59,30 +60,21 @@ pub struct MsixConfig {
     msix_num: u16,
 }
 
+#[sorted]
+#[derive(Error, Debug)]
 enum MsixError {
+    #[error("AddMsiRoute failed: {0}")]
     AddMsiRoute(SysError),
+    #[error("failed to receive AddMsiRoute response: {0}")]
     AddMsiRouteRecv(TubeError),
+    #[error("failed to send AddMsiRoute request: {0}")]
     AddMsiRouteSend(TubeError),
+    #[error("AllocateOneMsi failed: {0}")]
     AllocateOneMsi(SysError),
+    #[error("failed to receive AllocateOneMsi response: {0}")]
     AllocateOneMsiRecv(TubeError),
+    #[error("failed to send AllocateOneMsi request: {0}")]
     AllocateOneMsiSend(TubeError),
-}
-
-impl Display for MsixError {
-    #[remain::check]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::MsixError::*;
-
-        #[sorted]
-        match self {
-            AddMsiRoute(e) => write!(f, "AddMsiRoute failed: {}", e),
-            AddMsiRouteRecv(e) => write!(f, "failed to receive AddMsiRoute response: {}", e),
-            AddMsiRouteSend(e) => write!(f, "failed to send AddMsiRoute request: {}", e),
-            AllocateOneMsi(e) => write!(f, "AllocateOneMsi failed: {}", e),
-            AllocateOneMsiRecv(e) => write!(f, "failed to receive AllocateOneMsi response: {}", e),
-            AllocateOneMsiSend(e) => write!(f, "failed to send AllocateOneMsi request: {}", e),
-        }
-    }
 }
 
 type MsixResult<T> = std::result::Result<T, MsixError>;

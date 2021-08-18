@@ -10,62 +10,40 @@ use super::xhci_regs::{
     USB3_PORTS_END, USB3_PORTS_START, USB_STS_PORT_CHANGE_DETECT,
 };
 use crate::register_space::Register;
-use std::fmt::{self, Display};
+use remain::sorted;
 use std::sync::{Arc, MutexGuard};
 use sync::Mutex;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("all suitable ports already attached")]
     AllPortsAttached,
+    #[error("device already detached from port {0}")]
     AlreadyDetached(u8),
+    #[error("failed to attach device to port {port_id}: {reason}")]
     Attach {
         port_id: u8,
         reason: InterrupterError,
     },
+    #[error("failed to detach device from port {port_id}: {reason}")]
     Detach {
         port_id: u8,
         reason: InterrupterError,
     },
+    #[error("device {bus}:{addr}:{vid:04x}:{pid:04x} is not attached")]
     NoSuchDevice {
         bus: u8,
         addr: u8,
         vid: u16,
         pid: u16,
     },
+    #[error("port {0} does not exist")]
     NoSuchPort(u8),
 }
 
 type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            AllPortsAttached => write!(f, "all suitable ports already attached"),
-            AlreadyDetached(port_id) => write!(f, "device already detached from port {}", port_id),
-            Attach { port_id, reason } => {
-                write!(f, "failed to attach device to port {}: {}", port_id, reason)
-            }
-            Detach { port_id, reason } => write!(
-                f,
-                "failed to detach device from port {}: {}",
-                port_id, reason
-            ),
-            NoSuchDevice {
-                bus,
-                addr,
-                vid,
-                pid,
-            } => write!(
-                f,
-                "device {}:{}:{:04x}:{:04x} is not attached",
-                bus, addr, vid, pid
-            ),
-            NoSuchPort(port_id) => write!(f, "port {} does not exist", port_id),
-        }
-    }
-}
 
 /// A port on usb hub. It could have a device connected to it.
 pub struct UsbPort {

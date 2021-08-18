@@ -4,26 +4,21 @@
 
 use base::{ioctl_with_ref, AsRawDescriptor, Event, RawDescriptor};
 use data_model::vec_with_array_field;
-use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::mem::size_of;
 
+use remain::sorted;
+use thiserror::Error;
 use vfio_sys::*;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum DirectIrqError {
-    Open(io::Error),
+    #[error("failed to enable direct irq")]
     Enable,
-}
-
-impl fmt::Display for DirectIrqError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            DirectIrqError::Open(e) => write!(f, "failed to open /dev/plat-irq-forward: {}", e),
-            DirectIrqError::Enable => write!(f, "failed to enable direct irq"),
-        }
-    }
+    #[error("failed to open /dev/plat-irq-forward: {0}")]
+    Open(io::Error),
 }
 
 pub struct DirectIrq {

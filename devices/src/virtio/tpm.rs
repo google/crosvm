@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::env;
-use std::fmt::{self, Display};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::ops::BitOrAssign;
@@ -11,6 +10,8 @@ use std::path::PathBuf;
 use std::thread;
 
 use base::{error, Event, PollToken, RawDescriptor, WaitContext};
+use remain::sorted;
+use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use super::{
@@ -274,38 +275,22 @@ impl BitOrAssign for NeedsInterrupt {
 
 type Result<T> = std::result::Result<T, Error>;
 
+#[sorted]
+#[derive(Error, Debug)]
 enum Error {
-    CommandTooLong { size: usize },
-    Descriptor(DescriptorError),
-    Read(io::Error),
-    ResponseTooLong { size: usize },
+    #[error("vtpm response buffer is too small: {size} < {required} bytes")]
     BufferTooSmall { size: usize, required: usize },
+    #[error("vtpm command is too long: {size} > {} bytes", TPM_BUFSIZE)]
+    CommandTooLong { size: usize },
+    #[error("virtio descriptor error: {0}")]
+    Descriptor(DescriptorError),
+    #[error("vtpm failed to read from guest memory: {0}")]
+    Read(io::Error),
+    #[error(
+        "vtpm simulator generated a response that is unexpectedly long: {size} > {} bytes",
+        TPM_BUFSIZE
+    )]
+    ResponseTooLong { size: usize },
+    #[error("vtpm failed to write to guest memory: {0}")]
     Write(io::Error),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            CommandTooLong { size } => write!(
-                f,
-                "vtpm command is too long: {} > {} bytes",
-                size, TPM_BUFSIZE
-            ),
-            Descriptor(e) => write!(f, "virtio descriptor error: {}", e),
-            Read(e) => write!(f, "vtpm failed to read from guest memory: {}", e),
-            ResponseTooLong { size } => write!(
-                f,
-                "vtpm simulator generated a response that is unexpectedly long: {} > {} bytes",
-                size, TPM_BUFSIZE
-            ),
-            BufferTooSmall { size, required } => write!(
-                f,
-                "vtpm response buffer is too small: {} < {} bytes",
-                size, required
-            ),
-            Write(e) => write!(f, "vtpm failed to write to guest memory: {}", e),
-        }
-    }
 }

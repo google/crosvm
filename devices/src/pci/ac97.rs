@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 use std::default::Default;
-use std::error;
-use std::fmt::{self, Display};
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -12,7 +10,9 @@ use audio_streams::shm_streams::{NullShmStreamSource, ShmStreamSource};
 use base::{error, Event, RawDescriptor};
 #[cfg(feature = "audio_cras")]
 use libcras::{CrasClient, CrasClientType, CrasSocketType, CrasSysError};
+use remain::sorted;
 use resources::{Alloc, MmioType, SystemAllocator};
+use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use crate::pci::ac97_bus_master::Ac97BusMaster;
@@ -52,21 +52,13 @@ impl Default for Ac97Backend {
 }
 
 /// Errors that are possible from a `Ac97`.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Ac97Error {
+    #[error("Must be cras, vios or null")]
     InvalidBackend,
+    #[error("server must be provided for vios backend")]
     MissingServerPath,
-}
-
-impl error::Error for Ac97Error {}
-
-impl Display for Ac97Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Ac97Error::InvalidBackend => write!(f, "Must be cras, vios or null"),
-            Ac97Error::MissingServerPath => write!(f, "server must be provided for vios backend"),
-        }
-    }
 }
 
 impl FromStr for Ac97Backend {

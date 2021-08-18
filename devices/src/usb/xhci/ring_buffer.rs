@@ -5,32 +5,26 @@
 use super::xhci_abi::{
     AddressedTrb, Error as TrbError, LinkTrb, TransferDescriptor, Trb, TrbCast, TrbType,
 };
+use remain::sorted;
 use std::fmt::{self, Display};
 use std::mem::size_of;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    ReadGuestMemory(GuestMemoryError),
+    #[error("bad dequeue pointer: {0}")]
     BadDequeuePointer(GuestAddress),
+    #[error("cannot cast trb: {0}")]
     CastTrb(TrbError),
+    #[error("cannot read guest memory: {0}")]
+    ReadGuestMemory(GuestMemoryError),
+    #[error("cannot get trb chain bit: {0}")]
     TrbChain(TrbError),
 }
 
 type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            ReadGuestMemory(e) => write!(f, "cannot read guest memory: {}", e),
-            BadDequeuePointer(addr) => write!(f, "bad dequeue pointer: {}", addr),
-            CastTrb(e) => write!(f, "cannot cast trb: {}", e),
-            TrbChain(e) => write!(f, "cannot get trb chain bit: {}", e),
-        }
-    }
-}
 
 /// Ring Buffer is segmented circular buffer in guest memory containing work items
 /// called transfer descriptors, each of which consists of one or more TRBs.

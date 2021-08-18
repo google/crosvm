@@ -614,6 +614,7 @@ mod tests {
 
     use crate::virtio::vhost::user::vmm::VhostUserHandler;
 
+    #[sorted]
     #[derive(ThisError, Debug)]
     enum FakeError {
         #[error("invalid features are given: 0x{features:x}")]

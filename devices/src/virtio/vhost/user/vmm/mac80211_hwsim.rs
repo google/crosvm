@@ -10,6 +10,7 @@ use std::u32;
 
 use base::{error, Event, RawDescriptor};
 use cros_async::Executor;
+use remain::sorted;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
@@ -19,6 +20,7 @@ use crate::virtio::{Interrupt, Queue, VirtioDevice, TYPE_MAC80211_HWSIM, VIRTIO_
 
 use std::result::Result;
 
+#[sorted]
 #[derive(ThisError, Debug)]
 enum Mac80211HwsimError {
     #[error("failed to activate queues: {0}")]

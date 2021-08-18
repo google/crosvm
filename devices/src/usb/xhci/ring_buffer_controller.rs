@@ -10,28 +10,22 @@ use std::sync::{Arc, MutexGuard};
 use sync::Mutex;
 
 use base::{error, Error as SysError, Event, WatchingEvents};
+use remain::sorted;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::ring_buffer::RingBuffer;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("failed to add event to event loop: {0}")]
     AddEvent(utils::Error),
+    #[error("failed to create event: {0}")]
     CreateEvent(SysError),
 }
 
 type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            AddEvent(e) => write!(f, "failed to add event to event loop: {}", e),
-            CreateEvent(e) => write!(f, "failed to create event: {}", e),
-        }
-    }
-}
 
 #[derive(PartialEq, Copy, Clone)]
 enum RingBufferState {

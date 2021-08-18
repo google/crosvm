@@ -3,37 +3,28 @@
 // found in the LICENSE file.
 
 use base::Error as SysError;
-use std::fmt::{self, Display};
+use remain::sorted;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    EventLoopAlreadyFailed,
+    #[error("failed to create event: {0}")]
     CreateEvent(SysError),
-    ReadEvent(SysError),
-    WriteEvent(SysError),
+    #[error("failed to create poll context: {0}")]
     CreateWaitContext(SysError),
-    WaitContextAddDescriptor(SysError),
-    WaitContextDeleteDescriptor(SysError),
+    #[error("event loop already failed due to previous errors")]
+    EventLoopAlreadyFailed,
+    #[error("failed to read event: {0}")]
+    ReadEvent(SysError),
+    #[error("failed to start thread: {0}")]
     StartThread(std::io::Error),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            EventLoopAlreadyFailed => write!(f, "event loop already failed due to previous errors"),
-            CreateEvent(e) => write!(f, "failed to create event: {}", e),
-            ReadEvent(e) => write!(f, "failed to read event: {}", e),
-            WriteEvent(e) => write!(f, "failed to write event: {}", e),
-            CreateWaitContext(e) => write!(f, "failed to create poll context: {}", e),
-            WaitContextAddDescriptor(e) => write!(f, "failed to add fd to poll context: {}", e),
-            WaitContextDeleteDescriptor(e) => {
-                write!(f, "failed to delete fd from poll context: {}", e)
-            }
-            StartThread(e) => write!(f, "failed to start thread: {}", e),
-        }
-    }
+    #[error("failed to add fd to poll context: {0}")]
+    WaitContextAddDescriptor(SysError),
+    #[error("failed to delete fd from poll context: {0}")]
+    WaitContextDeleteDescriptor(SysError),
+    #[error("failed to write event: {0}")]
+    WriteEvent(SysError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

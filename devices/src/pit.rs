@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 // Based heavily on GCE VMM's pit.cc.
 
-use std::fmt::{self, Display};
 use std::io::Error as IoError;
 use std::sync::Arc;
 use std::thread;
@@ -15,7 +14,9 @@ use base::{
 use bit_field::BitField1;
 use bit_field::*;
 use hypervisor::{PitChannelState, PitRWMode, PitRWState, PitState};
+use remain::sorted;
 use sync::Mutex;
+use thiserror::Error;
 
 #[cfg(not(test))]
 use base::Clock;
@@ -147,37 +148,28 @@ const NANOS_PER_SEC: u64 = 1_000_000_000;
 
 const MAX_TIMER_FREQ: u32 = 65536;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum PitError {
-    TimerCreateError(SysError),
-    /// Creating WaitContext failed.
-    CreateWaitContext(SysError),
-    /// Error while waiting for events.
-    WaitError(SysError),
-    /// Error while trying to create worker thread.
-    SpawnThread(IoError),
-    /// Error while creating event.
-    CreateEvent(SysError),
     /// Error while cloning event for worker thread.
+    #[error("failed to clone event: {0}")]
     CloneEvent(SysError),
+    /// Error while creating event.
+    #[error("failed to create event: {0}")]
+    CreateEvent(SysError),
+    /// Creating WaitContext failed.
+    #[error("failed to create poll context: {0}")]
+    CreateWaitContext(SysError),
+    /// Error while trying to create worker thread.
+    #[error("failed to spawn thread: {0}")]
+    SpawnThread(IoError),
+    /// Error while trying to create timer.
+    #[error("failed to create pit counter due to timer fd: {0}")]
+    TimerCreateError(SysError),
+    /// Error while waiting for events.
+    #[error("failed to wait for events: {0}")]
+    WaitError(SysError),
 }
-
-impl Display for PitError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::PitError::*;
-
-        match self {
-            TimerCreateError(e) => write!(f, "failed to create pit counter due to timer fd: {}", e),
-            CreateWaitContext(e) => write!(f, "failed to create poll context: {}", e),
-            WaitError(err) => write!(f, "failed to wait for events: {}", err),
-            SpawnThread(err) => write!(f, "failed to spawn thread: {}", err),
-            CreateEvent(err) => write!(f, "failed to create event: {}", err),
-            CloneEvent(err) => write!(f, "failed to clone event: {}", err),
-        }
-    }
-}
-
-impl std::error::Error for PitError {}
 
 type PitResult<T> = std::result::Result<T, PitError>;
 

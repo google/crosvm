@@ -14,13 +14,14 @@ use base::{
     Result as SysResult, WaitContext,
 };
 use data_model::DataInit;
+use remain::sorted;
 use std::collections::BTreeMap;
-use std::fmt::{self, Display};
 use std::io::{self, Write};
 use std::mem::size_of;
 use std::sync::Arc;
 use std::{result, thread};
 use sync::Mutex;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 const QUEUE_SIZE: u16 = 256;
@@ -214,39 +215,31 @@ struct VirtioIommuProbeResvMem {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for VirtioIommuProbeResvMem {}
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum IommuError {
-    CreateWaitContext(SysError),
-    WaitError(SysError),
-    GuestMemoryRead(io::Error),
-    GuestMemoryWrite(io::Error),
+    #[error("failed to create reader: {0}")]
     CreateReader(DescriptorError),
+    #[error("failed to create wait context: {0}")]
+    CreateWaitContext(SysError),
+    #[error("failed to create writer: {0}")]
     CreateWriter(DescriptorError),
-    ReadQueueEvent(SysError),
-    UnexpectedDescriptor,
-    WriteBufferTooSmall,
-    VfioContainerError(VfioError),
+    #[error("failed getting host address: {0}")]
     GetHostAddress(GuestMemoryError),
-}
-
-impl Display for IommuError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::IommuError::*;
-
-        match self {
-            CreateWaitContext(e) => write!(f, "failed to create wait context: {}", e),
-            WaitError(err) => write!(f, "failed to wait for events: {}", err),
-            GuestMemoryWrite(e) => write!(f, "failed to write to guest address: {}", e),
-            GuestMemoryRead(e) => write!(f, "failed to read from guest address: {}", e),
-            CreateReader(e) => write!(f, "failed to create reader: {}", e),
-            CreateWriter(e) => write!(f, "failed to create writer: {}", e),
-            ReadQueueEvent(err) => write!(f, "failed to read from virtio queue Event: {}", err),
-            UnexpectedDescriptor => write!(f, "unexpected descriptor error"),
-            WriteBufferTooSmall => write!(f, "write buffer length too small"),
-            VfioContainerError(e) => write!(f, "failed on VFIO ioctl call: {}", e),
-            GetHostAddress(e) => write!(f, "failed getting host address: {}", e),
-        }
-    }
+    #[error("failed to read from guest address: {0}")]
+    GuestMemoryRead(io::Error),
+    #[error("failed to write to guest address: {0}")]
+    GuestMemoryWrite(io::Error),
+    #[error("failed to read from virtio queue Event: {0}")]
+    ReadQueueEvent(SysError),
+    #[error("unexpected descriptor error")]
+    UnexpectedDescriptor,
+    #[error("failed on VFIO ioctl call: {0}")]
+    VfioContainerError(VfioError),
+    #[error("failed to wait for events: {0}")]
+    WaitError(SysError),
+    #[error("write buffer length too small")]
+    WriteBufferTooSmall,
 }
 
 struct Worker {

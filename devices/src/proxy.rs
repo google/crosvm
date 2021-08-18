@@ -5,35 +5,29 @@
 //! Runs hardware devices in child processes.
 
 use std::ffi::CString;
-use std::fmt::{self, Display};
 use std::time::Duration;
 
 use base::{error, AsRawDescriptor, RawDescriptor, Tube, TubeError};
 use libc::{self, pid_t};
 use minijail::{self, Minijail};
+use remain::sorted;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::bus::ConfigWriteResult;
 use crate::{BusAccessInfo, BusDevice};
 
 /// Errors for proxy devices.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("Failed to fork jail process: {0}")]
     ForkingJail(minijail::Error),
+    #[error("Failed to configure tube: {0}")]
     Tube(TubeError),
 }
+
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            ForkingJail(e) => write!(f, "Failed to fork jail process: {}", e),
-            Tube(e) => write!(f, "Failed to configure tube: {}.", e),
-        }
-    }
-}
 
 const SOCKET_TIMEOUT_MS: u64 = 2000;
 

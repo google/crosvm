@@ -16,47 +16,40 @@ use super::xhci_abi::{
 use super::xhci_regs::{valid_slot_id, MAX_SLOTS};
 use crate::utils::EventLoop;
 use base::{error, warn, Error as SysError, Event};
-use std::fmt::{self, Display};
+use remain::sorted;
 use std::sync::Arc;
 use sync::Mutex;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory};
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    WriteEvent(SysError),
-    SendInterrupt(InterrupterError),
-    CastTrb(TrbError),
+    #[error("bad slot id: {0}")]
     BadSlotId(u8),
-    StopEndpoint(DeviceSlotError),
+    #[error("failed to cast trb: {0}")]
+    CastTrb(TrbError),
+    #[error("failed to config endpoint: {0}")]
     ConfigEndpoint(DeviceSlotError),
-    SetAddress(DeviceSlotError),
-    SetDequeuePointer(DeviceSlotError),
-    EvaluateContext(DeviceSlotError),
+    #[error("failed to disable slot: {0}")]
     DisableSlot(DeviceSlotError),
+    #[error("failed to evaluate context: {0}")]
+    EvaluateContext(DeviceSlotError),
+    #[error("failed to reset slot: {0}")]
     ResetSlot(DeviceSlotError),
+    #[error("failed to send interrupt: {0}")]
+    SendInterrupt(InterrupterError),
+    #[error("failed to set address: {0}")]
+    SetAddress(DeviceSlotError),
+    #[error("failed to set dequeue pointer: {0}")]
+    SetDequeuePointer(DeviceSlotError),
+    #[error("failed to stop endpoint: {0}")]
+    StopEndpoint(DeviceSlotError),
+    #[error("failed to write event: {0}")]
+    WriteEvent(SysError),
 }
 
 type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            WriteEvent(e) => write!(f, "failed to write event: {}", e),
-            SendInterrupt(e) => write!(f, "failed to send interrupt: {}", e),
-            CastTrb(e) => write!(f, "failed to cast trb: {}", e),
-            BadSlotId(id) => write!(f, "bad slot id: {}", id),
-            StopEndpoint(e) => write!(f, "failed to stop endpoint: {}", e),
-            ConfigEndpoint(e) => write!(f, "failed to config endpoint: {}", e),
-            SetAddress(e) => write!(f, "failed to set address: {}", e),
-            SetDequeuePointer(e) => write!(f, "failed to set dequeue pointer: {}", e),
-            EvaluateContext(e) => write!(f, "failed to evaluate context: {}", e),
-            DisableSlot(e) => write!(f, "failed to disable slot: {}", e),
-            ResetSlot(e) => write!(f, "failed to reset slot: {}", e),
-        }
-    }
-}
 
 pub type CommandRingController = RingBufferController<CommandRingTrbHandler>;
 pub type CommandRingControllerError = RingBufferControllerError;

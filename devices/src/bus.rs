@@ -6,12 +6,14 @@
 
 use std::cmp::{Ord, Ordering, PartialEq, PartialOrd};
 use std::collections::btree_map::BTreeMap;
-use std::fmt::{self, Display};
+use std::fmt;
 use std::result;
 use std::sync::Arc;
 
+use remain::sorted;
 use serde::{Deserialize, Serialize};
 use sync::Mutex;
+use thiserror::Error;
 
 use crate::PciAddress;
 
@@ -120,20 +122,12 @@ pub trait HotPlugBus {
     fn get_hotplug_device(&self, host_key: HostHotPlugKey) -> Option<PciAddress>;
 }
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
     /// The insertion failed because the new device overlapped with an old device.
+    #[error("new device overlaps with an old device")]
     Overlap,
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            Overlap => write!(f, "new device overlaps with an old device"),
-        }
-    }
 }
 
 pub type Result<T> = result::Result<T, Error>;

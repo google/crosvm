@@ -7,8 +7,8 @@
 use std::fs::{File, OpenOptions};
 use std::os::raw::c_uint;
 
+use std::io;
 use std::path::Path;
-use std::{fmt, io};
 
 use base::{
     ioctl_iow_nr, ioctl_with_ptr, pagesize, AsRawDescriptor, FromRawDescriptor, MappedRegion,
@@ -21,6 +21,8 @@ use rutabaga_gfx::{RutabagaHandle, RUTABAGA_MEM_HANDLE_TYPE_DMABUF};
 
 use super::udmabuf_bindings::*;
 
+use remain::sorted;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 const UDMABUF_IOCTL_BASE: c_uint = 0x75;
@@ -36,24 +38,17 @@ ioctl_iow_nr!(
 flexible_array_impl!(udmabuf_create_list, udmabuf_create_item, count, list);
 type UdmabufCreateList = FlexibleArrayWrapper<udmabuf_create_list, udmabuf_create_item>;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum UdmabufError {
-    DriverOpenFailed(io::Error),
-    NotPageAligned,
-    InvalidOffset(GuestMemoryError),
+    #[error("failed to create buffer: {0:?}")]
     DmabufCreationFail(io::Error),
-}
-
-impl fmt::Display for UdmabufError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::UdmabufError::*;
-        match self {
-            DriverOpenFailed(e) => write!(f, "failed to open udmabuf driver: {:?}", e),
-            NotPageAligned => write!(f, "All guest addresses must aligned to 4KiB"),
-            InvalidOffset(e) => write!(f, "failed to get region offset: {:?}", e),
-            DmabufCreationFail(e) => write!(f, "failed to create buffer: {:?}", e),
-        }
-    }
+    #[error("failed to open udmabuf driver: {0:?}")]
+    DriverOpenFailed(io::Error),
+    #[error("failed to get region offset: {0:?}")]
+    InvalidOffset(GuestMemoryError),
+    #[error("All guest addresses must aligned to 4KiB")]
+    NotPageAligned,
 }
 
 /// The result of an operation in this file.

@@ -4,6 +4,7 @@
 
 //! Data structures for commands of virtio video devices.
 
+use remain::sorted;
 use std::convert::{TryFrom, TryInto};
 use std::io;
 use thiserror::Error as ThisError;
@@ -19,17 +20,18 @@ use crate::virtio::video::protocol::*;
 use crate::virtio::Reader;
 
 /// An error indicating a failure while reading a request from the guest.
+#[sorted]
 #[derive(Debug, ThisError)]
 pub enum ReadCmdError {
-    /// Failed to read an object.
-    #[error("failed to read object: {0}")]
-    IoError(#[from] io::Error),
     /// Invalid argument is passed.
     #[error("invalid argument passed to command")]
     InvalidArgument,
     /// The type of the command was invalid.
     #[error("invalid command type: {0}")]
     InvalidCmdType(u32),
+    /// Failed to read an object.
+    #[error("failed to read object: {0}")]
+    IoError(#[from] io::Error),
     /// The type of the requested control was unsupported.
     #[error("unsupported control type: {0}")]
     UnsupportedCtrlType(u32),
