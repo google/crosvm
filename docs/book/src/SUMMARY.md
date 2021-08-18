@@ -1,6 +1,9 @@
 # Summary
 
 - [Introduction](./introduction.md)
+- [Building Crosvm](./building_crosvm/index.md)
+  - [For Linux](./building_crosvm/linux.md)
+  - [For Chromium OS](./building_crosvm/chromium_os.md)
 - [Contributing](./contributing.md)
 
 ---
