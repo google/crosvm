@@ -11,5 +11,7 @@ data_model = { path = "../data_model" } # provided by ebuild
 libc = "*"
 base = { path = "../base" } # provided by ebuild
 bitflags = "1"
+remain = "*"
+thiserror = "*"
 
 [workspace]

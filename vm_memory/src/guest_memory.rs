@@ -6,7 +6,6 @@
 
 use std::convert::AsRef;
 use std::convert::TryFrom;
-use std::fmt::{self, Display};
 use std::mem::size_of;
 use std::result;
 use std::sync::Arc;
@@ -21,68 +20,45 @@ use bitflags::bitflags;
 use cros_async::{mem, BackingMemory};
 use data_model::volatile_memory::*;
 use data_model::DataInit;
+use remain::sorted;
+use thiserror::Error;
 
 use crate::guest_address::GuestAddress;
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("invalid guest address {0}")]
     InvalidGuestAddress(GuestAddress),
+    #[error("invalid offset {0}")]
     InvalidOffset(u64),
+    #[error("size {0} must not be zero")]
     InvalidSize(usize),
+    #[error("invalid guest memory access at addr={0}: {1}")]
     MemoryAccess(GuestAddress, MmapError),
-    MemoryMappingFailed(MmapError),
-    MemoryRegionOverlap,
-    MemoryRegionTooLarge(u128),
-    MemoryNotAligned,
-    MemoryCreationFailed(SysError),
+    #[error("failed to set seals on shm region: {0}")]
     MemoryAddSealsFailed(SysError),
-    ShortWrite { expected: usize, completed: usize },
+    #[error("failed to create shm region")]
+    MemoryCreationFailed(SysError),
+    #[error("failed to map guest memory: {0}")]
+    MemoryMappingFailed(MmapError),
+    #[error("shm regions must be page aligned")]
+    MemoryNotAligned,
+    #[error("memory regions overlap")]
+    MemoryRegionOverlap,
+    #[error("memory region size {0} is too large")]
+    MemoryRegionTooLarge(u128),
+    #[error("incomplete read of {completed} instead of {expected} bytes")]
     ShortRead { expected: usize, completed: usize },
+    #[error("incomplete write of {completed} instead of {expected} bytes")]
+    ShortWrite { expected: usize, completed: usize },
+    #[error("DescriptorChain split is out of bounds: {0}")]
     SplitOutOfBounds(usize),
+    #[error("{0}")]
     VolatileMemoryAccess(VolatileMemoryError),
 }
+
 pub type Result<T> = result::Result<T, Error>;
-
-impl std::error::Error for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            InvalidGuestAddress(addr) => write!(f, "invalid guest address {}", addr),
-            InvalidOffset(addr) => write!(f, "invalid offset {}", addr),
-            InvalidSize(size) => write!(f, "size {} must not be zero", size),
-            MemoryAccess(addr, e) => {
-                write!(f, "invalid guest memory access at addr={}: {}", addr, e)
-            }
-            MemoryMappingFailed(e) => write!(f, "failed to map guest memory: {}", e),
-            MemoryRegionOverlap => write!(f, "memory regions overlap"),
-            MemoryRegionTooLarge(size) => write!(f, "memory region size {} is too large", size),
-            MemoryNotAligned => write!(f, "shm regions must be page aligned"),
-            MemoryCreationFailed(_) => write!(f, "failed to create shm region"),
-            MemoryAddSealsFailed(e) => write!(f, "failed to set seals on shm region: {}", e),
-            ShortWrite {
-                expected,
-                completed,
-            } => write!(
-                f,
-                "incomplete write of {} instead of {} bytes",
-                completed, expected,
-            ),
-            ShortRead {
-                expected,
-                completed,
-            } => write!(
-                f,
-                "incomplete read of {} instead of {} bytes",
-                completed, expected,
-            ),
-            SplitOutOfBounds(off) => write!(f, "DescriptorChain split is out of bounds: {}", off),
-            VolatileMemoryAccess(e) => e.fmt(f),
-        }
-    }
-}
 
 bitflags! {
     pub struct MemoryPolicy: u32 {

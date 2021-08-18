@@ -1284,6 +1284,8 @@ dependencies = [
  "cros_async",
  "data_model",
  "libc",
+ "remain",
+ "thiserror",
 ]
 
 [[package]]
