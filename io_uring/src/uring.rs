@@ -14,6 +14,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
 use data_model::IoBufMut;
+use remain::sorted;
 use sync::Mutex;
 use sys_util::{MappedRegion, MemoryMapping, Protection, WatchingEvents};
 use thiserror::Error as ThisError;
@@ -25,26 +26,27 @@ use crate::syscalls::*;
 /// for callers to identify each request.
 pub type UserData = u64;
 
+#[sorted]
 #[derive(Debug, ThisError)]
 pub enum Error {
+    /// Failed to map the completion ring.
+    #[error("Failed to mmap completion ring {0}")]
+    MappingCompleteRing(sys_util::MmapError),
+    /// Failed to map submit entries.
+    #[error("Failed to mmap submit entries {0}")]
+    MappingSubmitEntries(sys_util::MmapError),
+    /// Failed to map the submit ring.
+    #[error("Failed to mmap submit ring {0}")]
+    MappingSubmitRing(sys_util::MmapError),
+    /// Too many ops are already queued.
+    #[error("No space for more ring entries, try increasing the size passed to `new`")]
+    NoSpace,
     /// The call to `io_uring_enter` failed with the given errno.
     #[error("Failed to enter io uring: {0}")]
     RingEnter(libc::c_int),
     /// The call to `io_uring_setup` failed with the given errno.
     #[error("Failed to setup io uring {0}")]
     Setup(libc::c_int),
-    /// Failed to map the completion ring.
-    #[error("Failed to mmap completion ring {0}")]
-    MappingCompleteRing(sys_util::MmapError),
-    /// Failed to map the submit ring.
-    #[error("Failed to mmap submit ring {0}")]
-    MappingSubmitRing(sys_util::MmapError),
-    /// Failed to map submit entries.
-    #[error("Failed to mmap submit entries {0}")]
-    MappingSubmitEntries(sys_util::MmapError),
-    /// Too many ops are already queued.
-    #[error("No space for more ring entries, try increasing the size passed to `new`")]
-    NoSpace,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
