@@ -2,40 +2,32 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{self, Display};
 use std::fs::OpenOptions;
 use std::io;
 
 use crate::Pstore;
 use base::MemoryMappingBuilder;
 use hypervisor::Vm;
+use remain::sorted;
 use resources::SystemAllocator;
 use resources::{Alloc, MmioType};
+use thiserror::Error;
 use vm_memory::GuestAddress;
 
 /// Error for pstore.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("failed to create pstore backend file: {0}")]
     IoError(io::Error),
+    #[error("failed to get file mapped address: {0}")]
     MmapError(base::MmapError),
+    #[error("failed to allocate pstore region: {0}")]
     ResourcesError(resources::Error),
+    #[error("file to add pstore region to mmio: {0}")]
     SysUtilError(base::Error),
 }
 
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            IoError(e) => write!(f, "failed to create pstore backend file: {}", e),
-            MmapError(e) => write!(f, "failed to get file mapped address: {}", e),
-            ResourcesError(e) => write!(f, "failed to allocate pstore region: {}", e),
-            SysUtilError(e) => write!(f, "file to add pstore region to mmio: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 type Result<T> = std::result::Result<T, Error>;
 
 pub struct RamoopsRegion {

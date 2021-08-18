@@ -9,7 +9,6 @@ pub mod serial;
 
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
-use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::PathBuf;
@@ -26,8 +25,10 @@ use devices::{
 };
 use hypervisor::{IoEventAddress, Vm};
 use minijail::Minijail;
+use remain::sorted;
 use resources::{MmioType, SystemAllocator};
 use sync::Mutex;
+use thiserror::Error;
 use vm_control::{BatControl, BatteryType};
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
@@ -255,79 +256,69 @@ pub trait LinuxArch {
 }
 
 /// Errors for device manager.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum DeviceRegistrationError {
+    /// No more MMIO space available.
+    #[error("no more addresses are available")]
+    AddrsExhausted,
+    /// Could not allocate device address space for the device.
+    #[error("Allocating device addresses: {0}")]
+    AllocateDeviceAddrs(PciDeviceError),
     /// Could not allocate IO space for the device.
+    #[error("Allocating IO addresses: {0}")]
     AllocateIoAddrs(PciDeviceError),
     /// Could not allocate MMIO or IO resource for the device.
+    #[error("Allocating IO resource: {0}")]
     AllocateIoResource(resources::Error),
-    /// Could not allocate device address space for the device.
-    AllocateDeviceAddrs(PciDeviceError),
     /// Could not allocate an IRQ number.
+    #[error("Allocating IRQ number")]
     AllocateIrq,
     /// Unable to clone a jail for the device.
+    #[error("failed to clone jail: {0}")]
     CloneJail(minijail::Error),
+    /// Appending to kernel command line failed.
+    #[error("unable to add device to kernel command line: {0}")]
+    Cmdline(kernel_cmdline::Error),
     // Unable to create a pipe.
+    #[error("failed to create pipe: {0}")]
     CreatePipe(base::Error),
     // Unable to create serial device from serial parameters
+    #[error("failed to create serial device: {0}")]
     CreateSerialDevice(devices::SerialError),
     // Unable to create tube
+    #[error("failed to create tube: {0}")]
     CreateTube(base::TubeError),
     /// Could not clone an event.
+    #[error("failed to clone event: {0}")]
     EventClone(base::Error),
     /// Could not create an event.
+    #[error("failed to create event: {0}")]
     EventCreate(base::Error),
+    /// No more IRQs are available.
+    #[error("no more IRQs are available")]
+    IrqsExhausted,
     /// Missing a required serial device.
+    #[error("missing required serial device {0}")]
     MissingRequiredSerialDevice(u8),
     /// Could not add a device to the mmio bus.
+    #[error("failed to add to mmio bus: {0}")]
     MmioInsert(BusError),
+    /// Failed to initialize proxy device for jailed device.
+    #[error("failed to create proxy device: {0}")]
+    ProxyDeviceCreation(devices::ProxyError),
+    /// Failed to register battery device.
+    #[error("failed to register battery device to VM: {0}")]
+    RegisterBattery(devices::BatteryError),
+    /// Could not register PCI device capabilities.
+    #[error("could not register PCI device capabilities: {0}")]
+    RegisterDeviceCapabilities(PciDeviceError),
     /// Failed to register ioevent with VM.
+    #[error("failed to register ioevent to VM: {0}")]
     RegisterIoevent(base::Error),
     /// Failed to register irq event with VM.
+    #[error("failed to register irq event to VM: {0}")]
     RegisterIrqfd(base::Error),
-    /// Failed to initialize proxy device for jailed device.
-    ProxyDeviceCreation(devices::ProxyError),
-    /// Appending to kernel command line failed.
-    Cmdline(kernel_cmdline::Error),
-    /// No more IRQs are available.
-    IrqsExhausted,
-    /// No more MMIO space available.
-    AddrsExhausted,
-    /// Could not register PCI device capabilities.
-    RegisterDeviceCapabilities(PciDeviceError),
-    // Failed to register battery device.
-    RegisterBattery(devices::BatteryError),
-}
-
-impl Display for DeviceRegistrationError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::DeviceRegistrationError::*;
-
-        match self {
-            AllocateIoAddrs(e) => write!(f, "Allocating IO addresses: {}", e),
-            AllocateIoResource(e) => write!(f, "Allocating IO resource: {}", e),
-            AllocateDeviceAddrs(e) => write!(f, "Allocating device addresses: {}", e),
-            AllocateIrq => write!(f, "Allocating IRQ number"),
-            CloneJail(e) => write!(f, "failed to clone jail: {}", e),
-            CreatePipe(e) => write!(f, "failed to create pipe: {}", e),
-            CreateSerialDevice(e) => write!(f, "failed to create serial device: {}", e),
-            CreateTube(e) => write!(f, "failed to create tube: {}", e),
-            Cmdline(e) => write!(f, "unable to add device to kernel command line: {}", e),
-            EventClone(e) => write!(f, "failed to clone event: {}", e),
-            EventCreate(e) => write!(f, "failed to create event: {}", e),
-            MissingRequiredSerialDevice(n) => write!(f, "missing required serial device {}", n),
-            MmioInsert(e) => write!(f, "failed to add to mmio bus: {}", e),
-            RegisterIoevent(e) => write!(f, "failed to register ioevent to VM: {}", e),
-            RegisterIrqfd(e) => write!(f, "failed to register irq event to VM: {}", e),
-            ProxyDeviceCreation(e) => write!(f, "failed to create proxy device: {}", e),
-            IrqsExhausted => write!(f, "no more IRQs are available"),
-            AddrsExhausted => write!(f, "no more addresses are available"),
-            RegisterDeviceCapabilities(e) => {
-                write!(f, "could not register PCI device capabilities: {}", e)
-            }
-            RegisterBattery(e) => write!(f, "failed to register battery device to VM: {}", e),
-        }
-    }
 }
 
 /// Config a PCI device for used by this vm.
@@ -633,25 +624,17 @@ pub fn add_goldfish_battery(
 }
 
 /// Errors for image loading.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum LoadImageError {
+    #[error("Alignment not a power of two: {0}")]
     BadAlignment(u64),
-    Seek(io::Error),
+    #[error("Image size too large: {0}")]
     ImageSizeTooLarge(u64),
+    #[error("Reading image into memory failed: {0}")]
     ReadToMemory(GuestMemoryError),
-}
-
-impl Display for LoadImageError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::LoadImageError::*;
-
-        match self {
-            BadAlignment(a) => write!(f, "Alignment not a power of two: {}", a),
-            Seek(e) => write!(f, "Seek failed: {}", e),
-            ImageSizeTooLarge(size) => write!(f, "Image size too large: {}", size),
-            ReadToMemory(e) => write!(f, "Reading image into memory failed: {}", e),
-        }
-    }
+    #[error("Seek failed: {0}")]
+    Seek(io::Error),
 }
 
 /// Load an image from a file into guest memory.
