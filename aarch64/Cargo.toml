@@ -18,5 +18,6 @@ remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../sync" }
 base = { path = "../base" }
+thiserror = "*"
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }

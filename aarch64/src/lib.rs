@@ -4,7 +4,6 @@
 
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
-use std::fmt::{self, Display};
 use std::io::{self};
 use std::mem::size_of;
 use std::sync::Arc;
@@ -20,6 +19,7 @@ use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
 use sync::Mutex;
+use thiserror::Error;
 use vm_control::BatteryType;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
@@ -138,92 +138,75 @@ const AARCH64_IRQ_BASE: u32 = 3;
 const AARCH64_PMU_IRQ: u32 = 7;
 
 #[sorted]
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("bios could not be loaded: {0}")]
     BiosLoadFailure(arch::LoadImageError),
+    #[error("failed to build arm pvtime memory: {0}")]
     BuildPvtimeError(base::MmapError),
+    #[error("unable to clone an Event: {0}")]
     CloneEvent(base::Error),
+    #[error("failed to clone IRQ chip: {0}")]
     CloneIrqChip(base::Error),
+    #[error("the given kernel command line was invalid: {0}")]
     Cmdline(kernel_cmdline::Error),
+    #[error("error creating devices: {0}")]
     CreateDevices(Box<dyn StdError>),
+    #[error("unable to make an Event: {0}")]
     CreateEvent(base::Error),
+    #[error("FDT could not be created: {0}")]
     CreateFdt(arch::fdt::Error),
+    #[error("failed to create GIC: {0}")]
     CreateGICFailure(base::Error),
+    #[error("failed to create a PCI root hub: {0}")]
     CreatePciRoot(arch::DeviceRegistrationError),
+    #[error("unable to create serial devices: {0}")]
     CreateSerialDevices(arch::DeviceRegistrationError),
+    #[error("failed to create socket: {0}")]
     CreateSocket(io::Error),
+    #[error("failed to create VCPU: {0}")]
     CreateVcpu(base::Error),
+    #[error("failed to create vm: {0}")]
     CreateVm(Box<dyn StdError>),
+    #[error("vm created wrong kind of vcpu")]
     DowncastVcpu,
+    #[error("failed to finalize IRQ chip: {0}")]
     FinalizeIrqChip(Box<dyn StdError>),
+    #[error("failed to get PSCI version: {0}")]
     GetPsciVersion(base::Error),
+    #[error("failed to get serial cmdline: {0}")]
     GetSerialCmdline(GetSerialCmdlineError),
+    #[error("failed to initialize arm pvtime: {0}")]
     InitPvtimeError(base::Error),
+    #[error("initrd could not be loaded: {0}")]
     InitrdLoadFailure(arch::LoadImageError),
+    #[error("kernel could not be loaded: {0}")]
     KernelLoadFailure(arch::LoadImageError),
+    #[error("failed to map arm pvtime memory: {0}")]
     MapPvtimeError(base::Error),
+    #[error("failed to protect vm: {0}")]
     ProtectVm(base::Error),
+    #[error("ramoops address is different from high_mmio_base: {0} vs {1}")]
     RamoopsAddress(u64, u64),
+    #[error("failed to register irq fd: {0}")]
     RegisterIrqfd(base::Error),
+    #[error("error registering PCI bus: {0}")]
     RegisterPci(BusError),
+    #[error("error registering virtual socket device: {0}")]
     RegisterVsock(arch::DeviceRegistrationError),
+    #[error("failed to set device attr: {0}")]
     SetDeviceAttr(base::Error),
+    #[error("failed to set register: {0}")]
     SetReg(base::Error),
+    #[error("failed to set up guest memory: {0}")]
     SetupGuestMemory(GuestMemoryError),
+    #[error("this function isn't supported")]
     Unsupported,
+    #[error("failed to initialize VCPU: {0}")]
     VcpuInit(base::Error),
 }
 
-impl Display for Error {
-    #[remain::check]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        #[sorted]
-        match self {
-            BiosLoadFailure(e) => write!(f, "bios could not be loaded: {}", e),
-            BuildPvtimeError(e) => write!(f, "failed to build arm pvtime memory: {}", e),
-            CloneEvent(e) => write!(f, "unable to clone an Event: {}", e),
-            CloneIrqChip(e) => write!(f, "failed to clone IRQ chip: {}", e),
-            Cmdline(e) => write!(f, "the given kernel command line was invalid: {}", e),
-            CreateDevices(e) => write!(f, "error creating devices: {}", e),
-            CreateEvent(e) => write!(f, "unable to make an Event: {}", e),
-            CreateFdt(e) => write!(f, "FDT could not be created: {}", e),
-            CreateGICFailure(e) => write!(f, "failed to create GIC: {}", e),
-            CreatePciRoot(e) => write!(f, "failed to create a PCI root hub: {}", e),
-            CreateSerialDevices(e) => write!(f, "unable to create serial devices: {}", e),
-            CreateSocket(e) => write!(f, "failed to create socket: {}", e),
-            CreateVcpu(e) => write!(f, "failed to create VCPU: {}", e),
-            CreateVm(e) => write!(f, "failed to create vm: {}", e),
-            DowncastVcpu => write!(f, "vm created wrong kind of vcpu"),
-            FinalizeIrqChip(e) => write!(f, "failed to finalize IRQ chip: {}", e),
-            GetPsciVersion(e) => write!(f, "failed to get PSCI version: {}", e),
-            GetSerialCmdline(e) => write!(f, "failed to get serial cmdline: {}", e),
-            InitPvtimeError(e) => write!(f, "failed to initialize arm pvtime: {}", e),
-            InitrdLoadFailure(e) => write!(f, "initrd could not be loaded: {}", e),
-            KernelLoadFailure(e) => write!(f, "kernel could not be loaded: {}", e),
-            MapPvtimeError(e) => write!(f, "failed to map arm pvtime memory: {}", e),
-            ProtectVm(e) => write!(f, "failed to protect vm: {}", e),
-            RamoopsAddress(ramoops_address, high_mmio_base) => write!(
-                f,
-                "ramoops address is different from high_mmio_base: {} vs {}",
-                ramoops_address, high_mmio_base
-            ),
-            RegisterIrqfd(e) => write!(f, "failed to register irq fd: {}", e),
-            RegisterPci(e) => write!(f, "error registering PCI bus: {}", e),
-            RegisterVsock(e) => write!(f, "error registering virtual socket device: {}", e),
-            SetDeviceAttr(e) => write!(f, "failed to set device attr: {}", e),
-            SetReg(e) => write!(f, "failed to set register: {}", e),
-            SetupGuestMemory(e) => write!(f, "failed to set up guest memory: {}", e),
-            Unsupported => write!(f, "this function isn't supported"),
-            VcpuInit(e) => write!(f, "failed to initialize VCPU: {}", e),
-        }
-    }
-}
-
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl std::error::Error for Error {}
 
 /// Returns a Vec of the valid memory addresses.
 /// These should be used to configure the GuestMemory structure for the platfrom.
