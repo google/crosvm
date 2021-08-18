@@ -51,6 +51,8 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 use cros_async::{Executor, TimerAsync};
+use remain::sorted;
+use thiserror::Error;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum SampleFormat {
@@ -111,19 +113,11 @@ impl Default for StreamEffect {
 pub type BoxError = Box<dyn error::Error + Send + Sync>;
 
 /// Errors that are possible from a `StreamEffect`.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum StreamEffectError {
+    #[error("Must be in [EchoCancellation, aec]")]
     InvalidEffect,
-}
-
-impl error::Error for StreamEffectError {}
-
-impl Display for StreamEffectError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            StreamEffectError::InvalidEffect => write!(f, "Must be in [EchoCancellation, aec]"),
-        }
-    }
 }
 
 impl FromStr for StreamEffect {
@@ -136,19 +130,11 @@ impl FromStr for StreamEffect {
     }
 }
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("Unimplemented")]
     Unimplemented,
-}
-
-impl error::Error for Error {}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Error::Unimplemented => write!(f, "Unimplemented"),
-        }
-    }
 }
 
 /// `StreamSource` creates streams for playback or capture of audio.
@@ -329,19 +315,11 @@ pub trait AsyncBufferCommit {
 }
 
 /// Errors that are possible from a `PlaybackBuffer`.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum PlaybackBufferError {
+    #[error("Invalid buffer length")]
     InvalidLength,
-}
-
-impl error::Error for PlaybackBufferError {}
-
-impl Display for PlaybackBufferError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            PlaybackBufferError::InvalidLength => write!(f, "Invalid buffer length"),
-        }
-    }
 }
 
 /// `AudioBuffer` is one buffer that holds buffer_size audio frames.

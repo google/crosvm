@@ -90,8 +90,10 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cros_async",
+ "remain",
  "sync",
  "sys_util",
+ "thiserror",
 ]
 
 [[package]]

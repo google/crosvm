@@ -32,8 +32,6 @@
 
 use async_trait::async_trait;
 use std::{
-    error,
-    fmt::{self, Display},
     io::{self, Read},
     time::{Duration, Instant},
 };
@@ -42,6 +40,8 @@ use super::{
     AsyncBufferCommit, AudioBuffer, BoxError, BufferCommit, NoopBufferCommit, SampleFormat,
 };
 use cros_async::{Executor, TimerAsync};
+use remain::sorted;
+use thiserror::Error;
 
 /// `CaptureBufferStream` provides `CaptureBuffer`s to read with audio samples from capture.
 pub trait CaptureBufferStream: Send {
@@ -100,19 +100,11 @@ pub struct AsyncCaptureBuffer<'a> {
 }
 
 /// Errors that are possible from a `CaptureBuffer`.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum CaptureBufferError {
+    #[error("Invalid buffer length")]
     InvalidLength,
-}
-
-impl error::Error for CaptureBufferError {}
-
-impl Display for CaptureBufferError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            CaptureBufferError::InvalidLength => write!(f, "Invalid buffer length"),
-        }
-    }
 }
 
 impl<'a> CaptureBuffer<'a> {

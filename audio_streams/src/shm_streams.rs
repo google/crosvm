@@ -1,14 +1,15 @@
 // Copyright 2019 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-use std::error;
-use std::fmt;
+
 use std::os::unix::io::RawFd;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use remain::sorted;
 use sync::{Condvar, Mutex};
 use sys_util::SharedMemory;
+use thiserror::Error;
 
 use crate::{BoxError, SampleFormat, StreamDirection, StreamEffect};
 
@@ -29,23 +30,11 @@ pub trait BufferSet {
     fn ignore(&mut self) -> GenericResult<()>;
 }
 
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("Provided number of frames {0} exceeds requested number of frames {1}")]
     TooManyFrames(usize, usize),
-}
-
-impl error::Error for Error {}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Error::TooManyFrames(provided, requested) => write!(
-                f,
-                "Provided number of frames {} exceeds requested number of frames {}",
-                provided, requested
-            ),
-        }
-    }
 }
 
 /// `ServerRequest` represents an active request from the server for the client
