@@ -54,7 +54,7 @@ composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
 default = ["audio", "gpu", "usb"]
 default-no-sandbox = []
 direct = ["devices/direct"]
-gdb = ["gdbstub", "gdbstub_arch", "thiserror",  "arch/gdb", "vm_control/gdb", "x86_64/gdb"]
+gdb = ["gdbstub", "gdbstub_arch", "arch/gdb", "vm_control/gdb", "x86_64/gdb"]
 gfxstream = ["devices/gfxstream"]
 gpu = ["devices/gpu"]
 plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]
@@ -99,7 +99,7 @@ resources = { path = "resources" }
 serde_json = "*"
 sync = { path = "sync" }
 tempfile = "*"
-thiserror = { version = "1.0.20", optional = true }
+thiserror = { version = "1.0.20" }
 vhost = { path = "vhost" }
 vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }
