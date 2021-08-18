@@ -978,6 +978,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "cpu-capacity" => {
             parse_cpu_capacity(value.unwrap(), &mut cfg.cpu_capacity)?;
         }
+        "per-vm-core-scheduling" => {
+            cfg.per_vm_core_scheduling = true;
+        }
         #[cfg(feature = "audio_cras")]
         "cras-snd" => {
             cfg.cras_snd = Some(
@@ -2041,6 +2044,9 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                               or colon-separated list of assignments of guest to host CPU assignments (e.g. 0=0:1=1:2=2) (default: no mask)"),
           Argument::value("cpu-cluster", "CPUSET", "Group the given CPUs into a cluster (default: no clusters)"),
           Argument::value("cpu-capacity", "CPU=CAP[,CPU=CAP[,...]]", "Set the relative capacity of the given CPU (default: no capacity)"),
+          Argument::flag("per-vm-core-scheduling", "Enable per-VM core scheduling intead of the default one (per-vCPU core scheduing) by
+              making all vCPU threads share same cookie for core scheduling.
+              This option is no-op on devices that have neither MDS nor L1TF vulnerability."),
           #[cfg(feature = "audio_cras")]
           Argument::value("cras-snd",
           "[capture=true,client=crosvm,socket=unified]",

@@ -1826,6 +1826,7 @@ fn runnable_vcpu<V>(
     no_smt: bool,
     has_bios: bool,
     use_hypervisor_signals: bool,
+    enable_per_vm_core_scheduling: bool,
 ) -> Result<(V, VcpuRunHandle)>
 where
     V: VcpuArch,
@@ -1868,8 +1869,11 @@ where
     )
     .map_err(Error::ConfigureVcpu)?;
 
-    if let Err(e) = enable_core_scheduling() {
-        error!("Failed to enable core scheduling: {}", e);
+    if !enable_per_vm_core_scheduling {
+        // Do per-vCPU core scheduling by setting a unique cookie to each vCPU.
+        if let Err(e) = enable_core_scheduling() {
+            error!("Failed to enable core scheduling: {}", e);
+        }
     }
 
     if run_rt {
@@ -1991,6 +1995,7 @@ fn run_vcpu<V>(
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))] to_gdb_tube: Option<
         mpsc::Sender<VcpuDebugStatusMessage>,
     >,
+    enable_per_vm_core_scheduling: bool,
 ) -> Result<JoinHandle<()>>
 where
     V: VcpuArch + 'static,
@@ -2015,6 +2020,7 @@ where
                 no_smt,
                 has_bios,
                 use_hypervisor_signals,
+                enable_per_vm_core_scheduling,
             );
 
             start_barrier.wait();
@@ -2654,6 +2660,7 @@ where
         cfg.sandbox,
         Arc::clone(&map_request),
         gralloc,
+        cfg.per_vm_core_scheduling,
     )
 }
 
@@ -2746,6 +2753,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     sandbox: bool,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     mut gralloc: RutabagaGralloc,
+    enable_per_vm_core_scheduling: bool,
 ) -> Result<()> {
     #[derive(PollToken)]
     enum Token {
@@ -2816,6 +2824,15 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         Some(vec) => vec.into_iter().map(Some).collect(),
         None => iter::repeat_with(|| None).take(linux.vcpu_count).collect(),
     };
+    // Enable core scheduling before creating vCPUs so that the cookie will be
+    // shared by all vCPU threads.
+    // TODO(b/199312402): Avoid enabling core scheduling for the crosvm process
+    // itself for even better performance. Only vCPUs need the feature.
+    if enable_per_vm_core_scheduling {
+        if let Err(e) = enable_core_scheduling() {
+            error!("Failed to enable core scheduling: {}", e);
+        }
+    }
     for (cpu_id, vcpu) in vcpus.into_iter().enumerate() {
         let (to_vcpu_channel, from_main_channel) = mpsc::channel();
         let vcpu_affinity = match linux.vcpu_affinity.clone() {
@@ -2843,6 +2860,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             use_hypervisor_signals,
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             to_gdb_channel.clone(),
+            enable_per_vm_core_scheduling,
         )?;
         vcpu_handles.push((handle, to_vcpu_channel));
     }

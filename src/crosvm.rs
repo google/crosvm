@@ -302,6 +302,7 @@ pub struct Config {
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub cpu_clusters: Vec<Vec<usize>>,
     pub cpu_capacity: BTreeMap<usize, u32>, // CPU index -> capacity
+    pub per_vm_core_scheduling: bool,
     #[cfg(feature = "audio_cras")]
     pub cras_snd: Option<CrasSndParameters>,
     pub delay_rt: bool,
@@ -390,6 +391,7 @@ impl Default for Config {
             vcpu_affinity: None,
             cpu_clusters: Vec::new(),
             cpu_capacity: BTreeMap::new(),
+            per_vm_core_scheduling: false,
             #[cfg(feature = "audio_cras")]
             cras_snd: None,
             delay_rt: false,
