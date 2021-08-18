@@ -4,35 +4,27 @@
 
 //! Helper for creating valid kernel command line strings.
 
-use std::fmt::{self, Display};
 use std::result;
 
+use remain::sorted;
+use thiserror::Error;
+
 /// The error type for command line building operations.
-#[derive(PartialEq, Debug)]
+#[sorted]
+#[derive(Error, PartialEq, Debug)]
 pub enum Error {
-    /// Operation would have resulted in a non-printable ASCII character.
-    InvalidAscii,
-    /// Key/Value Operation would have had a space in it.
-    HasSpace,
     /// Key/Value Operation would have had an equals sign in it.
+    #[error("string contains an equals sign")]
     HasEquals,
+    /// Key/Value Operation would have had a space in it.
+    #[error("string contains a space")]
+    HasSpace,
+    /// Operation would have resulted in a non-printable ASCII character.
+    #[error("string contains non-printable ASCII character")]
+    InvalidAscii,
     /// Operation would have made the command line too large.
+    #[error("inserting string would make command line too long")]
     TooLarge,
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        let description = match self {
-            InvalidAscii => "string contains non-printable ASCII character",
-            HasSpace => "string contains a space",
-            HasEquals => "string contains an equals sign",
-            TooLarge => "inserting string would make command line too long",
-        };
-
-        write!(f, "{}", description)
-    }
 }
 
 /// Specialized Result type for command line operations.
