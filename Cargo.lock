@@ -115,6 +115,7 @@ dependencies = [
  "cros_async",
  "data_model",
  "libc",
+ "remain",
  "serde",
  "serde_json",
  "smallvec",

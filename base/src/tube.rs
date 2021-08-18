@@ -11,32 +11,34 @@ use std::time::Duration;
 use crate::{net::UnixSeqpacket, FromRawDescriptor, SafeDescriptor, ScmSocket, UnsyncMarker};
 
 use cros_async::{Executor, IntoAsync, IoSourceExt};
+use remain::sorted;
 use serde::{de::DeserializeOwned, Serialize};
 use sys_util::{
     deserialize_with_descriptors, AsRawDescriptor, RawDescriptor, SerializeDescriptors,
 };
 use thiserror::Error as ThisError;
 
+#[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
-    #[error("failed to serialize/deserialize json from packet: {0}")]
-    Json(serde_json::Error),
-    #[error("failed to send packet: {0}")]
-    Send(sys_util::Error),
-    #[error("failed to receive packet: {0}")]
-    Recv(io::Error),
-    #[error("tube was disconnected")]
-    Disconnected,
-    #[error("failed to crate tube pair: {0}")]
-    Pair(io::Error),
-    #[error("failed to set send timeout: {0}")]
-    SetSendTimeout(io::Error),
-    #[error("failed to set recv timeout: {0}")]
-    SetRecvTimeout(io::Error),
-    #[error("failed to create async tube: {0}")]
-    CreateAsync(cros_async::AsyncError),
     #[error("failed to clone UnixSeqpacket: {0}")]
     Clone(io::Error),
+    #[error("failed to create async tube: {0}")]
+    CreateAsync(cros_async::AsyncError),
+    #[error("tube was disconnected")]
+    Disconnected,
+    #[error("failed to serialize/deserialize json from packet: {0}")]
+    Json(serde_json::Error),
+    #[error("failed to crate tube pair: {0}")]
+    Pair(io::Error),
+    #[error("failed to receive packet: {0}")]
+    Recv(io::Error),
+    #[error("failed to send packet: {0}")]
+    Send(sys_util::Error),
+    #[error("failed to set recv timeout: {0}")]
+    SetRecvTimeout(io::Error),
+    #[error("failed to set send timeout: {0}")]
+    SetSendTimeout(io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
