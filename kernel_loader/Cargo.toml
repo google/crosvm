@@ -7,6 +7,8 @@ edition = "2018"
 data_model = { path = "../data_model" }
 libc = "*"
 base = { path = "../base" }
+remain = "*"
+thiserror = "*"
 vm_memory = { path = "../vm_memory" }
 
 [dev-dependencies]

@@ -616,7 +616,9 @@ dependencies = [
  "base",
  "data_model",
  "libc",
+ "remain",
  "tempfile",
+ "thiserror",
  "vm_memory",
 ]
 

@@ -3,12 +3,13 @@
 // found in the LICENSE file.
 
 use std::ffi::CStr;
-use std::fmt::{self, Display};
 use std::io::{Read, Seek, SeekFrom};
 use std::mem;
 
 use base::AsRawDescriptor;
 use data_model::DataInit;
+use remain::sorted;
+use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory};
 
 #[allow(dead_code)]
@@ -24,51 +25,39 @@ unsafe impl data_model::DataInit for elf::Elf64_Ehdr {}
 // Elf64_Phdr is plain old data with no implicit padding.
 unsafe impl data_model::DataInit for elf::Elf64_Phdr {}
 
-#[derive(Debug, PartialEq)]
+#[sorted]
+#[derive(Error, Debug, PartialEq)]
 pub enum Error {
+    #[error("trying to load big-endian binary on little-endian machine")]
     BigEndianElfOnLittle,
+    #[error("failed writing command line to guest memory")]
     CommandLineCopy,
+    #[error("command line overflowed guest memory")]
     CommandLineOverflow,
+    #[error("invalid Elf magic number")]
     InvalidElfMagicNumber,
-    InvalidProgramHeaderSize,
-    InvalidProgramHeaderOffset,
+    #[error("invalid Program Header Address")]
     InvalidProgramHeaderAddress,
+    #[error("invalid Program Header memory size")]
     InvalidProgramHeaderMemSize,
+    #[error("invalid program header offset")]
+    InvalidProgramHeaderOffset,
+    #[error("invalid program header size")]
+    InvalidProgramHeaderSize,
+    #[error("unable to read elf header")]
     ReadElfHeader,
+    #[error("unable to read kernel image")]
     ReadKernelImage,
+    #[error("unable to read program header")]
     ReadProgramHeader,
-    SeekKernelStart,
+    #[error("unable to seek to elf start")]
     SeekElfStart,
+    #[error("unable to seek to kernel start")]
+    SeekKernelStart,
+    #[error("unable to seek to program header")]
     SeekProgramHeader,
 }
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl std::error::Error for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        let description = match self {
-            BigEndianElfOnLittle => "trying to load big-endian binary on little-endian machine",
-            CommandLineCopy => "failed writing command line to guest memory",
-            CommandLineOverflow => "command line overflowed guest memory",
-            InvalidElfMagicNumber => "invalid Elf magic number",
-            InvalidProgramHeaderSize => "invalid program header size",
-            InvalidProgramHeaderOffset => "invalid program header offset",
-            InvalidProgramHeaderAddress => "invalid Program Header Address",
-            InvalidProgramHeaderMemSize => "invalid Program Header memory size",
-            ReadElfHeader => "unable to read elf header",
-            ReadKernelImage => "unable to read kernel image",
-            ReadProgramHeader => "unable to read program header",
-            SeekKernelStart => "unable to seek to kernel start",
-            SeekElfStart => "unable to seek to elf start",
-            SeekProgramHeader => "unable to seek to program header",
-        };
-
-        write!(f, "kernel loader: {}", description)
-    }
-}
 
 /// Loads a kernel from a vmlinux elf image to a slice
 ///
