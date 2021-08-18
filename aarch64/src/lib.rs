@@ -163,6 +163,7 @@ pub enum Error {
     KernelLoadFailure(arch::LoadImageError),
     MapPvtimeError(base::Error),
     ProtectVm(base::Error),
+    RamoopsAddress(u64, u64),
     RegisterIrqfd(base::Error),
     RegisterPci(BusError),
     RegisterVsock(arch::DeviceRegistrationError),
@@ -203,6 +204,11 @@ impl Display for Error {
             KernelLoadFailure(e) => write!(f, "kernel could not be loaded: {}", e),
             MapPvtimeError(e) => write!(f, "failed to map arm pvtime memory: {}", e),
             ProtectVm(e) => write!(f, "failed to protect vm: {}", e),
+            RamoopsAddress(ramoops_address, high_mmio_base) => write!(
+                f,
+                "ramoops address is different from high_mmio_base: {} vs {}",
+                ramoops_address, high_mmio_base
+            ),
             RegisterIrqfd(e) => write!(f, "failed to register irq fd: {}", e),
             RegisterPci(e) => write!(f, "error registering PCI bus: {}", e),
             RegisterVsock(e) => write!(f, "error registering virtual socket device: {}", e),
@@ -266,6 +272,7 @@ impl arch::LinuxArch for AArch64 {
         serial_jail: Option<Minijail>,
         _battery: (&Option<BatteryType>, Option<Minijail>),
         mut vm: V,
+        ramoops_region: Option<arch::pstore::RamoopsRegion>,
         pci_devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipAArch64,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
@@ -391,8 +398,24 @@ impl arch::LinuxArch for AArch64 {
         }
 
         let psci_version = vcpus[0].get_psci_version().map_err(Error::GetPsciVersion)?;
-        let (pci_device_base, pci_device_size) =
+
+        // Use the entire high MMIO except the ramoops region for PCI.
+        // Note: This assumes that the ramoops region is the first thing allocated from the high
+        //       MMIO region.
+        let (high_mmio_base, high_mmio_size) =
             Self::get_high_mmio_base_size(components.memory_size);
+        let (pci_device_base, pci_device_size) = match &ramoops_region {
+            Some(r) => {
+                if r.address != high_mmio_base {
+                    return Err(Error::RamoopsAddress(r.address, high_mmio_base));
+                }
+                arch::pstore::add_ramoops_kernel_cmdline(&mut cmdline, r)
+                    .map_err(Error::Cmdline)?;
+                let base = r.address + r.size as u64;
+                (base, high_mmio_size - (base - high_mmio_base))
+            }
+            None => (high_mmio_base, high_mmio_size),
+        };
         let mut initrd = None;
 
         // separate out image loading from other setup to get a specific error for

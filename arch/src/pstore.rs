@@ -80,3 +80,24 @@ pub fn create_memory_region(
         size: pstore.size,
     })
 }
+
+pub fn add_ramoops_kernel_cmdline(
+    cmdline: &mut kernel_cmdline::Cmdline,
+    ramoops_region: &RamoopsRegion,
+) -> std::result::Result<(), kernel_cmdline::Error> {
+    // It seems that default record_size is only 4096 byte even if crosvm allocates
+    // more memory. It means that one crash can only 4096 byte.
+    // Set record_size and console_size to 1/4 of allocated memory size.
+    // This configulation is same as the host.
+    let ramoops_opts = [
+        ("mem_address", ramoops_region.address),
+        ("mem_size", ramoops_region.size as u64),
+        ("console_size", (ramoops_region.size / 4) as u64),
+        ("record_size", (ramoops_region.size / 4) as u64),
+        ("dump_oops", 1_u64),
+    ];
+    for (name, val) in &ramoops_opts {
+        cmdline.insert_str(format!("ramoops.{}={:#x}", name, val))?;
+    }
+    Ok(())
+}

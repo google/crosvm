@@ -105,6 +105,7 @@ pub enum Error {
     PivotRootDoesntExist(&'static str),
     PmemDeviceImageTooBig,
     PmemDeviceNew(base::Error),
+    Pstore(arch::pstore::Error),
     ReadMemAvailable(io::Error),
     ReadStatm(io::Error),
     RegisterBalloon(arch::DeviceRegistrationError),
@@ -244,6 +245,7 @@ impl Display for Error {
                 write!(f, "failed to create pmem device: pmem device image too big")
             }
             PmemDeviceNew(e) => write!(f, "failed to create pmem device: {}", e),
+            Pstore(e) => write!(f, "failed to allocate pstore region: {}", e),
             ReadMemAvailable(e) => write!(
                 f,
                 "failed to read /sys/kernel/mm/chromeos-low_mem/available: {}",

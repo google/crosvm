@@ -385,6 +385,7 @@ impl arch::LinuxArch for X8664arch {
         serial_jail: Option<Minijail>,
         battery: (&Option<BatteryType>, Option<Minijail>),
         mut vm: V,
+        ramoops_region: Option<arch::pstore::RamoopsRegion>,
         pci_devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipX86_64,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
@@ -462,14 +463,6 @@ impl arch::LinuxArch for X8664arch {
             }
         }
 
-        let ramoops_region = match components.pstore {
-            Some(pstore) => Some(
-                arch::pstore::create_memory_region(&mut vm, system_allocator, &pstore)
-                    .map_err(Error::Pstore)?,
-            ),
-            None => None,
-        };
-
         irq_chip
             .finalize_devices(system_allocator, &mut io_bus, &mut mmio_bus)
             .map_err(Error::RegisterIrqfd)?;
@@ -504,23 +497,10 @@ impl arch::LinuxArch for X8664arch {
                 for param in components.extra_kernel_params {
                     cmdline.insert_str(&param).map_err(Error::Cmdline)?;
                 }
-                // It seems that default record_size is only 4096 byte even if crosvm allocates
-                // more memory. It means that one crash can only 4096 byte.
-                // Set record_size and console_size to 1/4 of allocated memory size.
-                // This configulation is same as the host.
+
                 if let Some(ramoops_region) = ramoops_region {
-                    let ramoops_opts = [
-                        ("mem_address", ramoops_region.address),
-                        ("mem_size", ramoops_region.size as u64),
-                        ("console_size", (ramoops_region.size / 4) as u64),
-                        ("record_size", (ramoops_region.size / 4) as u64),
-                        ("dump_oops", 1_u64),
-                    ];
-                    for (name, val) in &ramoops_opts {
-                        cmdline
-                            .insert_str(format!("ramoops.{}={:#x}", name, val))
-                            .map_err(Error::Cmdline)?;
-                    }
+                    arch::pstore::add_ramoops_kernel_cmdline(&mut cmdline, &ramoops_region)
+                        .map_err(Error::Cmdline)?;
                 }
 
                 // separate out load_kernel from other setup to get a specific error for

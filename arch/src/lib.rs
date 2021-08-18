@@ -167,6 +167,7 @@ pub trait LinuxArch {
     /// * `serial_jail` - Jail used for serial devices created here.
     /// * `battery` - Defines what battery device will be created.
     /// * `vm` - A VM implementation to build upon.
+    /// * `ramoops_region` - Region allocated for ramoops.
     /// * `pci_devices` - The PCI devices to be built into the VM.
     /// * `irq_chip` - The IRQ chip implemention for the VM.
     fn build_vm<V, Vcpu>(
@@ -177,6 +178,7 @@ pub trait LinuxArch {
         serial_jail: Option<Minijail>,
         battery: (&Option<BatteryType>, Option<Minijail>),
         vm: V,
+        ramoops_region: Option<pstore::RamoopsRegion>,
         pci_devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipArch,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>

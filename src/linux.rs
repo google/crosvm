@@ -2416,6 +2416,16 @@ where
 
     let exit_evt = Event::new().map_err(Error::CreateEvent)?;
     let mut sys_allocator = Arch::create_system_allocator(vm.get_memory());
+
+    // Allocate the ramoops region first. AArch64::build_vm() assumes this.
+    let ramoops_region = match &components.pstore {
+        Some(pstore) => Some(
+            arch::pstore::create_memory_region(&mut vm, &mut sys_allocator, &pstore)
+                .map_err(Error::Pstore)?,
+        ),
+        None => None,
+    };
+
     let phys_max_addr = Arch::get_phys_max_addr();
     let mut pci_devices = create_devices(
         &cfg,
@@ -2456,6 +2466,7 @@ where
         simple_jail(&cfg, "serial")?,
         battery,
         vm,
+        ramoops_region,
         pci_devices,
         irq_chip,
     )
