@@ -43,47 +43,39 @@
 //! }
 //! ```
 
-use std::fmt::{self, Display};
 use std::result;
 
+use remain::sorted;
+use thiserror::Error;
+
 /// An error with argument parsing.
-#[derive(Debug)]
+#[sorted]
+#[derive(Error, Debug)]
 pub enum Error {
-    /// There was a syntax error with the argument.
-    Syntax(String),
-    /// The argument's name is unused.
-    UnknownArgument(String),
     /// The argument was required.
+    #[error("expected argument: {0}")]
     ExpectedArgument(String),
-    /// The argument's given value is invalid.
-    InvalidValue { value: String, expected: String },
-    /// The argument was already given and none more are expected.
-    TooManyArguments(String),
     /// The argument expects a value.
+    #[error("expected parameter value: {0}")]
     ExpectedValue(String),
-    /// The argument does not expect a value.
-    UnexpectedValue(String),
+    /// The argument's given value is invalid.
+    #[error("invalid value {value:?}: {expected}")]
+    InvalidValue { value: String, expected: String },
     /// The help information was requested
+    #[error("help was requested")]
     PrintHelp,
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            Syntax(s) => write!(f, "syntax error: {}", s),
-            UnknownArgument(s) => write!(f, "unknown argument: {}", s),
-            ExpectedArgument(s) => write!(f, "expected argument: {}", s),
-            InvalidValue { value, expected } => {
-                write!(f, "invalid value {:?}: {}", value, expected)
-            }
-            TooManyArguments(s) => write!(f, "too many arguments: {}", s),
-            ExpectedValue(s) => write!(f, "expected parameter value: {}", s),
-            UnexpectedValue(s) => write!(f, "unexpected parameter value: {}", s),
-            PrintHelp => write!(f, "help was requested"),
-        }
-    }
+    /// There was a syntax error with the argument.
+    #[error("syntax error: {0}")]
+    Syntax(String),
+    /// The argument was already given and none more are expected.
+    #[error("too many arguments: {0}")]
+    TooManyArguments(String),
+    /// The argument does not expect a value.
+    #[error("unexpected parameter value: {0}")]
+    UnexpectedValue(String),
+    /// The argument's name is unused.
+    #[error("unknown argument: {0}")]
+    UnknownArgument(String),
 }
 
 /// Result of a argument parsing.
