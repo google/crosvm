@@ -7,7 +7,6 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 #[cfg(feature = "gpu")]
 use std::env;
-use std::ffi::CStr;
 use std::fs::{File, OpenOptions};
 use std::io::{self, stdin};
 use std::iter;
@@ -353,7 +352,7 @@ fn create_tpm_device(cfg: &Config) -> DeviceResult {
                 "size=20480",
             )?;
 
-            let crosvm_ids = add_crosvm_user_to_jail(jail, "tpm")?;
+            let crosvm_ids = add_current_user_to_jail(jail)?;
 
             let pid = process::id();
             let tpm_pid_dir = format!("/run/vm/tpm.{}", pid);
@@ -765,7 +764,7 @@ fn create_gpu_device(
                 jail.mount_bind(dir, dir, true)?;
             }
 
-            add_crosvm_user_to_jail(&mut jail, "gpu")?;
+            add_current_user_to_jail(&mut jail)?;
 
             // pvr driver requires read access to /proc/self/task/*/comm.
             let proc_path = Path::new("/proc");
@@ -834,7 +833,7 @@ fn create_wayland_device(
             for dir in &wayland_socket_dirs {
                 jail.mount_bind(dir, dir, true)?;
             }
-            add_crosvm_user_to_jail(&mut jail, "Wayland")?;
+            add_current_user_to_jail(&mut jail)?;
 
             Some(jail)
         }
@@ -856,12 +855,8 @@ fn create_video_device(
     let jail = match simple_jail(cfg, "video_device")? {
         Some(mut jail) => {
             match typ {
-                devices::virtio::VideoDeviceType::Decoder => {
-                    add_crosvm_user_to_jail(&mut jail, "video-decoder")?
-                }
-                devices::virtio::VideoDeviceType::Encoder => {
-                    add_crosvm_user_to_jail(&mut jail, "video-encoder")?
-                }
+                devices::virtio::VideoDeviceType::Decoder => add_current_user_to_jail(&mut jail)?,
+                devices::virtio::VideoDeviceType::Encoder => add_current_user_to_jail(&mut jail)?,
             };
 
             // Create a tmpfs in the device's root directory so that we can bind mount files.
@@ -1139,7 +1134,7 @@ fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult
                 (libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_NOSUID) as usize,
                 "size=67108864",
             )?;
-            add_crosvm_user_to_jail(&mut jail, "serial")?;
+            add_current_user_to_jail(&mut jail)?;
             let res = param.add_bind_mounts(&mut jail);
             if res.is_err() {
                 error!("failed to add bind mounts for console device");
@@ -1629,31 +1624,17 @@ struct Ids {
 
 // Set the uid/gid for the jailed process and give a basic id map. This is
 // required for bind mounts to work.
-fn add_crosvm_user_to_jail(jail: &mut Minijail, feature: &str) -> Result<Ids> {
-    let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
+fn add_current_user_to_jail(jail: &mut Minijail) -> Result<Ids> {
+    let crosvm_uid = geteuid();
+    let crosvm_gid = getegid();
 
-    let crosvm_uid = match get_user_id(crosvm_user_group) {
-        Ok(u) => u,
-        Err(e) => {
-            warn!("falling back to current user id for {}: {}", feature, e);
-            geteuid()
-        }
-    };
-
-    let crosvm_gid = match get_group_id(crosvm_user_group) {
-        Ok(u) => u,
-        Err(e) => {
-            warn!("falling back to current group id for {}: {}", feature, e);
-            getegid()
-        }
-    };
-
-    jail.change_uid(crosvm_uid);
-    jail.change_gid(crosvm_gid);
     jail.uidmap(&format!("{0} {0} 1", crosvm_uid))
         .map_err(Error::SettingUidMap)?;
     jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
         .map_err(Error::SettingGidMap)?;
+
+    jail.change_uid(crosvm_uid);
+    jail.change_gid(crosvm_gid);
 
     Ok(Ids {
         uid: crosvm_uid,
@@ -2378,7 +2359,7 @@ where
                 // Setup a bind mount to the system D-Bus socket if the powerd monitor is used.
                 #[cfg(feature = "power-monitor-powerd")]
                 {
-                    add_crosvm_user_to_jail(&mut jail, "battery")?;
+                    add_current_user_to_jail(&mut jail)?;
 
                     // Create a tmpfs in the device's root directory so that we can bind mount files.
                     jail.mount_with_data(
