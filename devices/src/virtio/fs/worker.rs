@@ -20,6 +20,8 @@ use crate::virtio::{Interrupt, Queue, Reader, SignalableInterrupt, Writer};
 impl fuse::Reader for Reader {}
 
 impl fuse::Writer for Writer {
+    type ClosureWriter = Self;
+
     fn write_at<F>(&mut self, offset: usize, f: F) -> io::Result<usize>
     where
         F: Fn(&mut Self) -> io::Result<usize>,

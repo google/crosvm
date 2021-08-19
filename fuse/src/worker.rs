@@ -77,6 +77,8 @@ impl Write for DevFuseWriter<'_> {
 }
 
 impl Writer for DevFuseWriter<'_> {
+    type ClosureWriter = Self;
+
     fn write_at<F>(&mut self, offset: usize, f: F) -> io::Result<usize>
     where
         F: Fn(&mut Self) -> io::Result<usize>,
