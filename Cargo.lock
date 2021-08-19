@@ -600,6 +600,7 @@ name = "kernel_loader"
 version = "0.1.0"
 dependencies = [
  "base",
+ "data_model",
  "libc",
  "tempfile",
  "vm_memory",

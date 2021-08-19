@@ -44,7 +44,6 @@ mod shm;
 pub mod signal;
 mod signalfd;
 mod sock_ctrl_msg;
-mod struct_util;
 mod terminal;
 mod timerfd;
 pub mod vsock;
@@ -70,7 +69,6 @@ pub use crate::shm::*;
 pub use crate::signal::*;
 pub use crate::signalfd::*;
 pub use crate::sock_ctrl_msg::*;
-pub use crate::struct_util::*;
 pub use crate::terminal::*;
 pub use crate::timerfd::*;
 pub use descriptor_reflection::{

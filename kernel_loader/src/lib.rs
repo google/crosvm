@@ -8,6 +8,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::mem;
 
 use base::AsRawDescriptor;
+use data_model::DataInit;
 use vm_memory::{GuestAddress, GuestMemory};
 
 #[allow(dead_code)]
@@ -16,6 +17,12 @@ use vm_memory::{GuestAddress, GuestMemory};
 #[allow(non_upper_case_globals)]
 #[allow(clippy::all)]
 mod elf;
+
+// Elf64_Ehdr is plain old data with no implicit padding.
+unsafe impl data_model::DataInit for elf::Elf64_Ehdr {}
+
+// Elf64_Phdr is plain old data with no implicit padding.
+unsafe impl data_model::DataInit for elf::Elf64_Phdr {}
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -73,19 +80,15 @@ impl Display for Error {
 pub fn load_kernel<F>(
     guest_mem: &GuestMemory,
     kernel_start: GuestAddress,
-    kernel_image: &mut F,
+    mut kernel_image: &mut F,
 ) -> Result<u64>
 where
     F: Read + Seek + AsRawDescriptor,
 {
-    let mut ehdr: elf::Elf64_Ehdr = Default::default();
     kernel_image
         .seek(SeekFrom::Start(0))
         .map_err(|_| Error::SeekElfStart)?;
-    unsafe {
-        // read_struct is safe when reading a POD struct.  It can be used and dropped without issue.
-        base::read_struct(kernel_image, &mut ehdr).map_err(|_| Error::ReadElfHeader)?;
-    }
+    let ehdr = elf::Elf64_Ehdr::from_reader(&mut kernel_image).map_err(|_| Error::ReadElfHeader)?;
 
     // Sanity checks
     if ehdr.e_ident[elf::EI_MAG0 as usize] != elf::ELFMAG0 as u8
@@ -109,11 +112,12 @@ where
     kernel_image
         .seek(SeekFrom::Start(ehdr.e_phoff))
         .map_err(|_| Error::SeekProgramHeader)?;
-    let phdrs: Vec<elf::Elf64_Phdr> = unsafe {
-        // Reading the structs is safe for a slice of POD structs.
-        base::read_struct_slice(kernel_image, ehdr.e_phnum as usize)
-            .map_err(|_| Error::ReadProgramHeader)?
-    };
+    let phdrs = (0..ehdr.e_phnum)
+        .enumerate()
+        .map(|_| {
+            elf::Elf64_Phdr::from_reader(&mut kernel_image).map_err(|_| Error::ReadProgramHeader)
+        })
+        .collect::<Result<Vec<elf::Elf64_Phdr>>>()?;
 
     let mut kernel_end = 0;
 
