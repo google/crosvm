@@ -1206,7 +1206,7 @@ impl VirtioDevice for Gpu {
         };
         self.kill_evt = Some(self_kill_evt);
 
-        let resource_bridges = mem::replace(&mut self.resource_bridges, Vec::new());
+        let resource_bridges = mem::take(&mut self.resource_bridges);
 
         let irq = Arc::new(interrupt);
         let ctrl_queue = SharedQueueReader::new(queues.remove(0), &irq);

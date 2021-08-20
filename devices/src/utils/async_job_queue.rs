@@ -50,7 +50,7 @@ impl EventHandler for AsyncJobQueue {
             }
         }
 
-        let jobs = mem::replace(&mut *self.jobs.lock(), Vec::new());
+        let jobs = mem::take(&mut *self.jobs.lock());
         for mut cb in jobs {
             cb();
         }

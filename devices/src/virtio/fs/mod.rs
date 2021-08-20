@@ -175,7 +175,7 @@ impl Fs {
     }
 
     fn stop_workers(&mut self) {
-        for (kill_evt, handle) in mem::replace(&mut self.workers, Vec::new()) {
+        for (kill_evt, handle) in mem::take(&mut self.workers) {
             if let Err(e) = kill_evt.write(1) {
                 error!("failed to kill virtio-fs worker thread: {}", e);
                 continue;
