@@ -2371,8 +2371,9 @@ where
     }
 
     let battery = if cfg.battery_type.is_some() {
+        #[cfg_attr(not(feature = "power-monitor-powerd"), allow(clippy::manual_map))]
         let jail = match simple_jail(&cfg, "battery")? {
-            #[cfg_attr(not(feature = "powerd-monitor-powerd"), allow(unused_mut))]
+            #[cfg_attr(not(feature = "power-monitor-powerd"), allow(unused_mut))]
             Some(mut jail) => {
                 // Setup a bind mount to the system D-Bus socket if the powerd monitor is used.
                 #[cfg(feature = "power-monitor-powerd")]
