@@ -1201,7 +1201,7 @@ fn strip_xattr_prefix(buf: &mut Vec<u8>) {
     }
 
     let mut pos = 0;
-    while let Some(name) = next_cstr(&buf, pos) {
+    while let Some(name) = next_cstr(buf, pos) {
         if !name.starts_with(USER_VIRTIOFS_XATTR) {
             pos += name.len();
             continue;

@@ -523,7 +523,7 @@ impl PciConfiguration {
     #[allow(dead_code)] // TODO(dverkamp): remove this once used
     pub fn get_bars(&self) -> PciBarIter {
         PciBarIter {
-            config: &self,
+            config: self,
             bar_num: 0,
         }
     }

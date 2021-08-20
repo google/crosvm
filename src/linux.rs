@@ -270,7 +270,7 @@ fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) 
 
     Ok(VirtioDeviceStub {
         dev,
-        jail: simple_jail(&cfg, "block_device")?,
+        jail: simple_jail(cfg, "block_device")?,
     })
 }
 
@@ -328,7 +328,7 @@ fn create_rng_device(cfg: &Config) -> DeviceResult {
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "rng_device")?,
+        jail: simple_jail(cfg, "rng_device")?,
     })
 }
 
@@ -339,7 +339,7 @@ fn create_tpm_device(cfg: &Config) -> DeviceResult {
     use std::process;
 
     let tpm_storage: PathBuf;
-    let mut tpm_jail = simple_jail(&cfg, "tpm_device")?;
+    let mut tpm_jail = simple_jail(cfg, "tpm_device")?;
 
     match &mut tpm_jail {
         Some(jail) => {
@@ -404,7 +404,7 @@ fn create_single_touch_device(
     .map_err(Error::InputDeviceNew)?;
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "input_device")?,
+        jail: simple_jail(cfg, "input_device")?,
     })
 }
 
@@ -433,7 +433,7 @@ fn create_multi_touch_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "input_device")?,
+        jail: simple_jail(cfg, "input_device")?,
     })
 }
 
@@ -459,7 +459,7 @@ fn create_trackpad_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "input_device")?,
+        jail: simple_jail(cfg, "input_device")?,
     })
 }
 
@@ -474,7 +474,7 @@ fn create_mouse_device<T: IntoUnixStream>(cfg: &Config, mouse_socket: T, idx: u3
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "input_device")?,
+        jail: simple_jail(cfg, "input_device")?,
     })
 }
 
@@ -493,7 +493,7 @@ fn create_keyboard_device<T: IntoUnixStream>(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "input_device")?,
+        jail: simple_jail(cfg, "input_device")?,
     })
 }
 
@@ -512,7 +512,7 @@ fn create_switches_device<T: IntoUnixStream>(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "input_device")?,
+        jail: simple_jail(cfg, "input_device")?,
     })
 }
 
@@ -528,7 +528,7 @@ fn create_vinput_device(cfg: &Config, dev_path: &Path) -> DeviceResult {
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "input_device")?,
+        jail: simple_jail(cfg, "input_device")?,
     })
 }
 
@@ -538,7 +538,7 @@ fn create_balloon_device(cfg: &Config, tube: Tube) -> DeviceResult {
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "balloon_device")?,
+        jail: simple_jail(cfg, "balloon_device")?,
     })
 }
 
@@ -562,7 +562,7 @@ fn create_tap_net_device(cfg: &Config, tap_fd: RawDescriptor) -> DeviceResult {
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "net_device")?,
+        jail: simple_jail(cfg, "net_device")?,
     })
 }
 
@@ -606,7 +606,7 @@ fn create_net_device(
 
     Ok(VirtioDeviceStub {
         dev,
-        jail: simple_jail(&cfg, policy)?,
+        jail: simple_jail(cfg, policy)?,
     })
 }
 
@@ -677,7 +677,7 @@ fn create_gpu_device(
         cfg.wayland_socket_paths.clone(),
     );
 
-    let jail = match simple_jail(&cfg, "gpu_device")? {
+    let jail = match simple_jail(cfg, "gpu_device")? {
         Some(mut jail) => {
             // Create a tmpfs in the device's root directory so that we can bind mount the
             // dri directory into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
@@ -815,7 +815,7 @@ fn create_wayland_device(
     )
     .map_err(Error::WaylandDeviceNew)?;
 
-    let jail = match simple_jail(&cfg, "wl_device")? {
+    let jail = match simple_jail(cfg, "wl_device")? {
         Some(mut jail) => {
             // Create a tmpfs in the device's root directory so that we can bind mount the wayland
             // socket directory into it. The size=67108864 is size=64*1024*1024 or size=64MB.
@@ -853,7 +853,7 @@ fn create_video_device(
     typ: devices::virtio::VideoDeviceType,
     resource_bridge: Tube,
 ) -> DeviceResult {
-    let jail = match simple_jail(&cfg, "video_device")? {
+    let jail = match simple_jail(cfg, "video_device")? {
         Some(mut jail) => {
             match typ {
                 devices::virtio::VideoDeviceType::Decoder => {
@@ -929,7 +929,7 @@ fn create_vhost_vsock_device(cfg: &Config, cid: u64, mem: &GuestMemory) -> Devic
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "vhost_vsock_device")?,
+        jail: simple_jail(cfg, "vhost_vsock_device")?,
     })
 }
 
@@ -1098,7 +1098,7 @@ fn create_pmem_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev) as Box<dyn VirtioDevice>,
-        jail: simple_jail(&cfg, "pmem_device")?,
+        jail: simple_jail(cfg, "pmem_device")?,
     })
 }
 
@@ -1116,7 +1116,7 @@ fn create_iommu_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "iommu_device")?,
+        jail: simple_jail(cfg, "iommu_device")?,
     })
 }
 
@@ -1127,7 +1127,7 @@ fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult
         .create_serial_device::<Console>(cfg.protected_vm, &evt, &mut keep_rds)
         .map_err(Error::CreateConsole)?;
 
-    let jail = match simple_jail(&cfg, "serial")? {
+    let jail = match simple_jail(cfg, "serial")? {
         Some(mut jail) => {
             // Create a tmpfs in the device's root directory so that we can bind mount the
             // log socket directory into it.
@@ -1162,7 +1162,7 @@ fn create_sound_device(path: &Path, cfg: &Config) -> DeviceResult {
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(&cfg, "vios_audio_device")?,
+        jail: simple_jail(cfg, "vios_audio_device")?,
     })
 }
 
@@ -1259,7 +1259,7 @@ fn create_virtio_devices(
     }
 
     for dev_path in &cfg.virtio_input_evdevs {
-        devs.push(create_vinput_device(cfg, &dev_path)?);
+        devs.push(create_vinput_device(cfg, dev_path)?);
     }
 
     devs.push(create_balloon_device(cfg, balloon_device_tube)?);
@@ -1365,7 +1365,7 @@ fn create_virtio_devices(
                 .map_err(Error::InputDeviceNew)?;
                 devs.push(VirtioDeviceStub {
                     dev: Box::new(dev),
-                    jail: simple_jail(&cfg, "input_device")?,
+                    jail: simple_jail(cfg, "input_device")?,
                 });
                 event_devices.push(EventDevice::touchscreen(event_device_socket));
             }
@@ -1382,7 +1382,7 @@ fn create_virtio_devices(
                 .map_err(Error::InputDeviceNew)?;
                 devs.push(VirtioDeviceStub {
                     dev: Box::new(dev),
-                    jail: simple_jail(&cfg, "input_device")?,
+                    jail: simple_jail(cfg, "input_device")?,
                 });
                 event_devices.push(EventDevice::keyboard(event_device_socket));
             }
@@ -1429,7 +1429,7 @@ fn create_virtio_devices(
     }
 
     for vhost_user_fs in &cfg.vhost_user_fs {
-        devs.push(create_vhost_user_fs_device(cfg, &vhost_user_fs)?);
+        devs.push(create_vhost_user_fs_device(cfg, vhost_user_fs)?);
     }
 
     for shared_dir in &cfg.shared_dirs {
@@ -1456,13 +1456,13 @@ fn create_virtio_devices(
     if let Some(vhost_user_mac80211_hwsim) = &cfg.vhost_user_mac80211_hwsim {
         devs.push(create_vhost_user_mac80211_hwsim_device(
             cfg,
-            &vhost_user_mac80211_hwsim,
+            vhost_user_mac80211_hwsim,
         )?);
     }
 
     #[cfg(feature = "audio")]
     if let Some(path) = &cfg.sound {
-        devs.push(create_sound_device(&path, &cfg)?);
+        devs.push(create_sound_device(path, cfg)?);
     }
 
     Ok(devs)
@@ -1535,7 +1535,7 @@ fn create_devices(
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
 ) -> DeviceResult<Vec<(Box<dyn PciDevice>, Option<Minijail>)>> {
     let stubs = create_virtio_devices(
-        &cfg,
+        cfg,
         vm,
         resources,
         exit_evt,
@@ -1563,7 +1563,7 @@ fn create_devices(
     for ac97_param in &cfg.ac97_parameters {
         let dev = Ac97Dev::try_new(vm.get_memory().clone(), ac97_param.clone())
             .map_err(Error::CreateAc97)?;
-        let jail = simple_jail(&cfg, dev.minijail_policy())?;
+        let jail = simple_jail(cfg, dev.minijail_policy())?;
         pci_devices.push((Box::new(dev), jail));
     }
 
@@ -1571,7 +1571,7 @@ fn create_devices(
     {
         // Create xhci controller.
         let usb_controller = Box::new(XhciController::new(vm.get_memory().clone(), usb_provider));
-        pci_devices.push((usb_controller, simple_jail(&cfg, "xhci")?));
+        pci_devices.push((usb_controller, simple_jail(cfg, "xhci")?));
     }
 
     // Create Pcie Root Port
@@ -1632,7 +1632,7 @@ struct Ids {
 fn add_crosvm_user_to_jail(jail: &mut Minijail, feature: &str) -> Result<Ids> {
     let crosvm_user_group = CStr::from_bytes_with_nul(b"crosvm\0").unwrap();
 
-    let crosvm_uid = match get_user_id(&crosvm_user_group) {
+    let crosvm_uid = match get_user_id(crosvm_user_group) {
         Ok(u) => u,
         Err(e) => {
             warn!("falling back to current user id for {}: {}", feature, e);
@@ -1640,7 +1640,7 @@ fn add_crosvm_user_to_jail(jail: &mut Minijail, feature: &str) -> Result<Ids> {
         }
     };
 
-    let crosvm_gid = match get_group_id(&crosvm_user_group) {
+    let crosvm_gid = match get_group_id(crosvm_user_group) {
         Ok(u) => u,
         Err(e) => {
             warn!("falling back to current group id for {}: {}", feature, e);
@@ -1996,7 +1996,7 @@ where
                                     match &to_gdb_tube {
                                         Some(ref ch) => {
                                             if let Err(e) = handle_debug_msg(
-                                                cpu_id, &vcpu, &guest_mem, d, &ch,
+                                                cpu_id, &vcpu, &guest_mem, d, ch,
                                             ) {
                                                 error!("Failed to handle gdb message: {}", e);
                                             }

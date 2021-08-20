@@ -325,10 +325,10 @@ fn bitfield_struct_impl(ast: &DeriveInput, fields: &FieldsNamed) -> Result<Token
     let vis = &ast.vis;
     let attrs = &ast.attrs;
     let fields = get_struct_fields(fields)?;
-    let struct_def = get_struct_def(vis, &name, &fields);
-    let bits_impl = get_bits_impl(&name);
+    let struct_def = get_struct_def(vis, name, &fields);
+    let bits_impl = get_bits_impl(name);
     let fields_impl = get_fields_impl(&fields);
-    let debug_fmt_impl = get_debug_fmt_impl(&name, &fields);
+    let debug_fmt_impl = get_debug_fmt_impl(name, &fields);
 
     let expanded = quote! {
         #(#attrs)*

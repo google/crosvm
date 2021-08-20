@@ -607,7 +607,7 @@ impl Ac97BusMaster {
             pending_buffers,
             message_interval: Duration::from_secs_f64(buffer_frames as f64 / sample_rate as f64),
         };
-        Ok(AudioWorker::new(&self, params))
+        Ok(AudioWorker::new(self, params))
     }
 
     fn thread_info(&self, func: Ac97Function) -> &AudioThreadInfo {
@@ -776,7 +776,7 @@ fn buffer_completed(
 
     update_sr(regs, func, new_sr);
 
-    regs.func_regs_mut(func).picb = current_buffer_size(regs.func_regs(func), &mem)? as u16;
+    regs.func_regs_mut(func).picb = current_buffer_size(regs.func_regs(func), mem)? as u16;
     if func == Ac97Function::Output {
         regs.po_pointer_update_time = Instant::now();
     }

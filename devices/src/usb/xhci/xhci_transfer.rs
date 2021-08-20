@@ -431,7 +431,7 @@ impl XhciTransfer {
     fn validate_transfer(&self) -> Result<bool> {
         let mut valid = true;
         for atrb in &self.transfer_trbs {
-            if !trb_is_valid(&atrb) {
+            if !trb_is_valid(atrb) {
                 self.interrupter
                     .lock()
                     .send_transfer_event_trb(

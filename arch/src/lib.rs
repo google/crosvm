@@ -387,7 +387,7 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
         let io_addr = IoEventAddress::Mmio(addr);
         linux
             .vm
-            .register_ioevent(&event, io_addr, datamatch)
+            .register_ioevent(event, io_addr, datamatch)
             .map_err(DeviceRegistrationError::RegisterIoevent)?;
         keep_rds.push(event.as_raw_descriptor());
     }
@@ -516,7 +516,7 @@ pub fn generate_pci_root(
             .map_err(DeviceRegistrationError::RegisterDeviceCapabilities)?;
         for (event, addr, datamatch) in device.ioevents() {
             let io_addr = IoEventAddress::Mmio(addr);
-            vm.register_ioevent(&event, io_addr, datamatch)
+            vm.register_ioevent(event, io_addr, datamatch)
                 .map_err(DeviceRegistrationError::RegisterIoevent)?;
             keep_rds.push(event.as_raw_descriptor());
         }
@@ -610,7 +610,7 @@ pub fn add_goldfish_battery(
             mmio_bus
                 .insert(
                     Arc::new(Mutex::new(
-                        ProxyDevice::new(goldfish_bat, &jail, keep_rds)
+                        ProxyDevice::new(goldfish_bat, jail, keep_rds)
                             .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
                     )),
                     mmio_base,

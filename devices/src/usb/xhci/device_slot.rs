@@ -584,7 +584,7 @@ impl DeviceSlot {
         slot: &Arc<DeviceSlot>,
         mut callback: C,
     ) -> Result<()> {
-        let weak_s = Arc::downgrade(&slot);
+        let weak_s = Arc::downgrade(slot);
         let auto_callback =
             RingBufferStopCallback::new(fallible_closure(fail_handle, move || -> Result<()> {
                 let s = weak_s.upgrade().ok_or(Error::WeakReferenceUpgrade)?;

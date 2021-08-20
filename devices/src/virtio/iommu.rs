@@ -273,10 +273,10 @@ impl Worker {
         // The endpoint has attached to an IOMMU domain
         if let Some(attached_domain) = self.endpoint_map.get(&endpoint) {
             // Remove the entry or update the domain reference count
-            if let Some(dm_val) = self.domain_map.get(&attached_domain) {
+            if let Some(dm_val) = self.domain_map.get(attached_domain) {
                 match dm_val.0 {
                     0 => unreachable!(),
-                    1 => self.domain_map.remove(&attached_domain),
+                    1 => self.domain_map.remove(attached_domain),
                     _ => {
                         let new_refs = dm_val.0 - 1;
                         let vfio = dm_val.1.clone();

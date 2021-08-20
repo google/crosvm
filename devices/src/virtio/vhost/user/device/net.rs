@@ -360,7 +360,7 @@ pub fn run_net_device(program_name: &str, args: std::env::Args) -> anyhow::Resul
     };
 
     if matches.opt_present("h") {
-        println!("{}", opts.usage(&program_name));
+        println!("{}", opts.usage(program_name));
         return Ok(());
     }
 
@@ -384,7 +384,7 @@ pub fn run_net_device(program_name: &str, args: std::env::Args) -> anyhow::Resul
         let cfg = &arg[pos + 1..]
             .parse::<TapConfig>()
             .context("failed to parse tap config")?;
-        let backend = NetBackend::new_from_config(&cfg).context("failed to create NetBackend")?;
+        let backend = NetBackend::new_from_config(cfg).context("failed to create NetBackend")?;
         devices.push((socket.to_string(), backend));
     }
 

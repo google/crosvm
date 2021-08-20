@@ -830,7 +830,7 @@ impl Vcpu for KvmVcpu {
     }
 
     fn set_signal_mask(&self, signals: &[c_int]) -> Result<()> {
-        let sigset = signal::create_sigset(&signals)?;
+        let sigset = signal::create_sigset(signals)?;
 
         let mut kvm_sigmask = vec_with_array_field::<kvm_signal_mask, sigset_t>(1);
         // Rust definition of sigset_t takes 128 bytes, but the kernel only

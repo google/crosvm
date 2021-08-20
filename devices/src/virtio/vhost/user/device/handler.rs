@@ -407,9 +407,9 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
 
         let vmm_maps = self.vmm_maps.as_ref().ok_or(VhostError::InvalidParam)?;
         let vring = &mut self.vrings[index as usize];
-        vring.queue.desc_table = vmm_va_to_gpa(&vmm_maps, descriptor)?;
-        vring.queue.avail_ring = vmm_va_to_gpa(&vmm_maps, available)?;
-        vring.queue.used_ring = vmm_va_to_gpa(&vmm_maps, used)?;
+        vring.queue.desc_table = vmm_va_to_gpa(vmm_maps, descriptor)?;
+        vring.queue.avail_ring = vmm_va_to_gpa(vmm_maps, available)?;
+        vring.queue.used_ring = vmm_va_to_gpa(vmm_maps, used)?;
 
         Ok(())
     }
@@ -483,13 +483,10 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
                 .cloned()
                 .ok_or(VhostError::InvalidOperation)?;
 
-            if let Err(e) = self.backend.start_queue(
-                index as usize,
-                queue,
-                mem,
-                Arc::clone(&call_evt),
-                kick_evt,
-            ) {
+            if let Err(e) =
+                self.backend
+                    .start_queue(index as usize, queue, mem, Arc::clone(call_evt), kick_evt)
+            {
                 error!("Failed to start queue {}: {}", index, e);
                 return Err(VhostError::SlaveInternalError);
             }

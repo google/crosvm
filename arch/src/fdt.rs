@@ -263,7 +263,7 @@ impl FdtWriter {
         let mut bytes = Vec::new();
         for s in values {
             let cstr = CString::new(s).map_err(|_| Error::InvalidString)?;
-            bytes.extend_from_slice(&cstr.to_bytes_with_nul());
+            bytes.extend_from_slice(cstr.to_bytes_with_nul());
         }
         self.property(name, &bytes)
     }

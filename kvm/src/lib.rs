@@ -1235,7 +1235,7 @@ impl Vcpu {
             // Mapping the unsized array to a slice is unsafe because the length isn't known.
             // Providing the length used to create the struct guarantees the entire slice is valid.
             let entries: &mut [kvm_msr_entry] = msrs[0].entries.as_mut_slice(msr_entries.len());
-            entries.copy_from_slice(&msr_entries);
+            entries.copy_from_slice(msr_entries);
         }
         msrs[0].nmsrs = msr_entries.len() as u32;
         let ret = unsafe {
@@ -1251,7 +1251,7 @@ impl Vcpu {
             assert!(count <= msr_entries.len());
             let entries: &mut [kvm_msr_entry] = msrs[0].entries.as_mut_slice(count);
             msr_entries.truncate(count);
-            msr_entries.copy_from_slice(&entries);
+            msr_entries.copy_from_slice(entries);
         }
         Ok(())
     }

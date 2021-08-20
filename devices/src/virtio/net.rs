@@ -256,7 +256,7 @@ pub fn process_ctrl<I: SignalableInterrupt, T: TapT>(
             writer
                 .write_all(&[VIRTIO_NET_ERR as u8])
                 .map_err(NetError::WriteAck)?;
-            ctrl_queue.add_used(&mem, index, writer.bytes_written() as u32);
+            ctrl_queue.add_used(mem, index, writer.bytes_written() as u32);
             Ok(())
         };
 
@@ -303,7 +303,7 @@ pub fn process_ctrl<I: SignalableInterrupt, T: TapT>(
             ),
         }
 
-        ctrl_queue.add_used(&mem, index, writer.bytes_written() as u32);
+        ctrl_queue.add_used(mem, index, writer.bytes_written() as u32);
     }
 
     ctrl_queue.trigger_interrupt(mem, interrupt);

@@ -100,12 +100,12 @@ pub fn do_usb_attach(
     let usb_file: File = if dev_path.parent() == Some(Path::new("/proc/self/fd")) {
         // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
         // Safe because we will validate |raw_fd|.
-        unsafe { File::from_raw_descriptor(raw_descriptor_from_path(&dev_path)?) }
+        unsafe { File::from_raw_descriptor(raw_descriptor_from_path(dev_path)?) }
     } else {
         OpenOptions::new()
             .read(true)
             .write(true)
-            .open(&dev_path)
+            .open(dev_path)
             .map_err(|_| ModifyUsbError::UsbControl(UsbControlResult::FailedToOpenDevice))?
     };
 

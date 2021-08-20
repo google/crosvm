@@ -512,7 +512,7 @@ impl VmIrqRequest {
         match *self {
             AllocateOneMsi { ref irqfd } => {
                 if let Some(irq_num) = sys_allocator.allocate_irq() {
-                    match set_up_irq(IrqSetup::Event(irq_num, &irqfd)) {
+                    match set_up_irq(IrqSetup::Event(irq_num, irqfd)) {
                         Ok(_) => VmIrqResponse::AllocateOneMsi { gsi: irq_num },
                         Err(e) => VmIrqResponse::Err(e),
                     }

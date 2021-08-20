@@ -292,7 +292,7 @@ pub fn run_console_device(program_name: &str, args: std::env::Args) -> anyhow::R
     };
 
     if matches.opt_present("h") {
-        println!("{}", opts.usage(&program_name));
+        println!("{}", opts.usage(program_name));
         return Ok(());
     }
 

@@ -62,7 +62,7 @@ pub fn handle_input<I: SignalableInterrupt>(
     let mut exhausted_queue = false;
 
     loop {
-        let desc = match receive_queue.peek(&mem) {
+        let desc = match receive_queue.peek(mem) {
             Some(d) => d,
             None => {
                 exhausted_queue = true;
@@ -96,9 +96,9 @@ pub fn handle_input<I: SignalableInterrupt>(
         let bytes_written = writer.bytes_written() as u32;
 
         if bytes_written > 0 {
-            receive_queue.pop_peeked(&mem);
-            receive_queue.add_used(&mem, desc_index, bytes_written);
-            receive_queue.trigger_interrupt(&mem, interrupt);
+            receive_queue.pop_peeked(mem);
+            receive_queue.add_used(mem, desc_index, bytes_written);
+            receive_queue.trigger_interrupt(mem, interrupt);
         }
 
         if disconnected {
@@ -132,14 +132,14 @@ pub fn process_transmit_queue<I: SignalableInterrupt>(
     output: &mut dyn io::Write,
 ) {
     let mut needs_interrupt = false;
-    while let Some(avail_desc) = transmit_queue.pop(&mem) {
+    while let Some(avail_desc) = transmit_queue.pop(mem) {
         let desc_index = avail_desc.index;
 
         let reader = match Reader::new(mem.clone(), avail_desc) {
             Ok(r) => r,
             Err(e) => {
                 error!("console: failed to create reader: {}", e);
-                transmit_queue.add_used(&mem, desc_index, 0);
+                transmit_queue.add_used(mem, desc_index, 0);
                 needs_interrupt = true;
                 continue;
             }
@@ -153,7 +153,7 @@ pub fn process_transmit_queue<I: SignalableInterrupt>(
             }
         };
 
-        transmit_queue.add_used(&mem, desc_index, len);
+        transmit_queue.add_used(mem, desc_index, len);
         needs_interrupt = true;
     }
 
@@ -170,7 +170,7 @@ struct Worker {
 }
 
 fn write_output(output: &mut dyn io::Write, data: &[u8]) -> io::Result<()> {
-    output.write_all(&data)?;
+    output.write_all(data)?;
     output.flush()
 }
 

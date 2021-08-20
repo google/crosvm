@@ -2344,7 +2344,7 @@ fn modify_battery(mut args: std::env::Args) -> std::result::Result<(), ()> {
     let socket_path = args.next().unwrap();
     let socket_path = Path::new(&socket_path);
 
-    do_modify_battery(&socket_path, &*battery_type, &*property, &*target)
+    do_modify_battery(socket_path, &*battery_type, &*property, &*target)
 }
 
 #[cfg(feature = "composite-disk")]
@@ -2633,9 +2633,9 @@ fn parse_bus_id_addr(v: &str) -> ModifyUsbResult<(u8, u8, u16, u16)> {
             let addr = addr
                 .parse::<u8>()
                 .map_err(|e| ModifyUsbError::ArgParseInt("addr", addr.to_owned(), e))?;
-            let vid = u16::from_str_radix(&vid, 16)
+            let vid = u16::from_str_radix(vid, 16)
                 .map_err(|e| ModifyUsbError::ArgParseInt("vid", vid.to_owned(), e))?;
-            let pid = u16::from_str_radix(&pid, 16)
+            let pid = u16::from_str_radix(pid, 16)
                 .map_err(|e| ModifyUsbError::ArgParseInt("pid", pid.to_owned(), e))?;
             Ok((bus_id, addr, vid, pid))
         }
@@ -2661,7 +2661,7 @@ fn usb_attach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
         .ok_or(ModifyUsbError::ArgMissing("control socket path"))?;
     let socket_path = Path::new(&socket_path);
 
-    do_usb_attach(&socket_path, bus, addr, vid, pid, &dev_path)
+    do_usb_attach(socket_path, bus, addr, vid, pid, &dev_path)
 }
 
 fn usb_detach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
@@ -2675,7 +2675,7 @@ fn usb_detach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
         .next()
         .ok_or(ModifyUsbError::ArgMissing("control socket path"))?;
     let socket_path = Path::new(&socket_path);
-    do_usb_detach(&socket_path, port)
+    do_usb_detach(socket_path, port)
 }
 
 fn usb_list(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
@@ -2683,7 +2683,7 @@ fn usb_list(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
         .next()
         .ok_or(ModifyUsbError::ArgMissing("control socket path"))?;
     let socket_path = Path::new(&socket_path);
-    do_usb_list(&socket_path)
+    do_usb_list(socket_path)
 }
 
 fn modify_usb(mut args: std::env::Args) -> std::result::Result<(), ()> {

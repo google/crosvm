@@ -243,7 +243,7 @@ async fn handle_queue(
             error!("Failed to read the next queue event: {}", e);
             continue;
         }
-        while let Some(descriptor_chain) = queue.borrow_mut().pop(&mem) {
+        while let Some(descriptor_chain) = queue.borrow_mut().pop(mem) {
             let queue = Rc::clone(&queue);
             let disk_state = Rc::clone(&disk_state);
             let mem = mem.clone();
@@ -452,10 +452,10 @@ fn run_worker(
                 handle_queue(
                     &ex,
                     mem,
-                    Rc::clone(&disk_state),
+                    Rc::clone(disk_state),
                     Rc::clone(&queue),
                     event,
-                    Rc::clone(&interrupt),
+                    Rc::clone(interrupt),
                     Rc::clone(&flush_timer),
                     Rc::clone(&flush_timer_armed),
                 )

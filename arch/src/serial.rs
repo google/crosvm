@@ -100,7 +100,7 @@ pub fn add_serial_devices(
 
         let mut preserved_fds = Vec::new();
         let com = param
-            .create_serial_device::<Serial>(protected_vm, &com_evt, &mut preserved_fds)
+            .create_serial_device::<Serial>(protected_vm, com_evt, &mut preserved_fds)
             .map_err(DeviceRegistrationError::CreateSerialDevice)?;
 
         match serial_jail.as_ref() {

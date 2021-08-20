@@ -73,7 +73,7 @@ impl Device {
             });
         }
 
-        writer.write_all(&response).map_err(Error::Write)?;
+        writer.write_all(response).map_err(Error::Write)?;
 
         Ok(writer.bytes_written() as u32)
     }

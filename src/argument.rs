@@ -283,19 +283,19 @@ where
                             State::Top
                         }
                     } else {
-                        f("", Some(&arg))?;
+                        f("", Some(arg))?;
                         State::Positional
                     }
                 }
                 State::Positional => {
-                    f("", Some(&arg))?;
+                    f("", Some(arg))?;
                     State::Positional
                 }
                 State::Value { name } => {
                     if arg.starts_with('-') {
                         arg_consumed = false;
                         f(&name, None)?;
-                    } else if let Err(e) = f(&name, Some(&arg)) {
+                    } else if let Err(e) = f(&name, Some(arg)) {
                         arg_consumed = false;
                         f(&name, None).map_err(|_| e)?;
                     }

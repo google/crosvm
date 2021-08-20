@@ -215,8 +215,8 @@ async fn handle_stats_queue(
         };
 
         // Request a new stats_desc to the guest.
-        queue.add_used(&mem, index, 0);
-        queue.trigger_interrupt(&mem, &*interrupt.borrow());
+        queue.add_used(mem, index, 0);
+        queue.trigger_interrupt(mem, &*interrupt.borrow());
 
         let stats_desc = match queue.next_async(mem, &mut queue_event).await {
             Err(e) => {

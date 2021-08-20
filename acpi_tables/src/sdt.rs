@@ -83,7 +83,7 @@ impl SDT {
     }
 
     pub fn as_slice(&self) -> &[u8] {
-        &self.data.as_slice()
+        self.data.as_slice()
     }
 
     pub fn append<T: DataInit>(&mut self, value: T) {
@@ -103,7 +103,7 @@ impl SDT {
             return;
         }
 
-        self.data[offset..offset + value_len].copy_from_slice(&value.as_slice());
+        self.data[offset..offset + value_len].copy_from_slice(value.as_slice());
         self.update_checksum();
     }
 

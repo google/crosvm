@@ -733,7 +733,7 @@ impl arch::LinuxArch for X8664arch {
         vcpu: &T,
         breakpoints: &[GuestAddress],
     ) -> Result<()> {
-        vcpu.set_guest_debug(&breakpoints, false /* enable_singlestep */)
+        vcpu.set_guest_debug(breakpoints, false /* enable_singlestep */)
             .map_err(Error::SetHwBreakpoint)
     }
 }
@@ -1176,7 +1176,7 @@ impl X8664arch {
             io_bus,
             &com_evt_1_3,
             &com_evt_2_4,
-            &serial_parameters,
+            serial_parameters,
             serial_jail,
         )
         .map_err(Error::CreateSerialDevices)?;

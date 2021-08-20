@@ -629,7 +629,7 @@ impl Rutabaga {
             .get_mut(&resource_id)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
-        ctx.detach(&resource);
+        ctx.detach(resource);
         Ok(())
     }
 

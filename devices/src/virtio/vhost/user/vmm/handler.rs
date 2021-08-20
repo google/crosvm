@@ -226,7 +226,7 @@ impl VhostUserHandler {
         queues: &[Queue],
         queue_evts: &[Event],
     ) -> Result<()> {
-        self.set_mem_table(&mem)?;
+        self.set_mem_table(mem)?;
 
         let msix_config_opt = interrupt
             .get_msix_config()
@@ -239,7 +239,7 @@ impl VhostUserHandler {
             let irqfd = msix_config
                 .get_irqfd(queue.vector as usize)
                 .unwrap_or_else(|| interrupt.get_interrupt_evt());
-            self.activate_vring(&mem, queue_index, queue, queue_evt, &irqfd)?;
+            self.activate_vring(mem, queue_index, queue, queue_evt, irqfd)?;
         }
 
         Ok(())

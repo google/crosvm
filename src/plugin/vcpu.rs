@@ -699,7 +699,7 @@ impl PluginVcpu {
                     }
                 }
                 kvm_msrs.nmsrs = request_entries.len() as u32;
-                vcpu.set_msrs(&kvm_msrs)
+                vcpu.set_msrs(kvm_msrs)
             } else if request.has_set_cpuid() {
                 response.mut_set_cpuid();
                 let request_entries = &request.get_set_cpuid().entries;

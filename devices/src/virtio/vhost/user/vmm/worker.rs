@@ -63,7 +63,7 @@ impl Worker {
                 .try_clone()
                 .expect("failed to clone kill_evt")
                 .0,
-            &ex,
+            ex,
         )
         .expect("failed to create async kill event fd");
         let kill = Self::wait_kill(kill_evt);

@@ -85,7 +85,7 @@ impl BlockBackend {
         // Safe because the executor is initialized in main() below.
         let ex = BLOCK_EXECUTOR.get().expect("Executor not initialized");
 
-        let async_image = disk_image.to_async_disk(&ex)?;
+        let async_image = disk_image.to_async_disk(ex)?;
 
         let disk_size = Arc::new(AtomicU64::new(disk_size));
 
@@ -102,7 +102,7 @@ impl BlockBackend {
             TimerAsync::new(
                 // Call try_clone() to share the same underlying FD with the `flush_disk` task.
                 timer.0.try_clone().context("Failed to clone flush_timer")?,
-                &ex,
+                ex,
             )
             .context("Failed to create an async timer")?,
         ));
@@ -114,7 +114,7 @@ impl BlockBackend {
             .0
             .try_clone()
             .context("Failed to clone flush_timer")
-            .and_then(|t| TimerAsync::new(t, &ex).context("Failed to create an async timer"))?;
+            .and_then(|t| TimerAsync::new(t, ex).context("Failed to create an async timer"))?;
         let flush_timer_armed = Rc::new(RefCell::new(false));
         ex.spawn_local(flush_disk(
             Rc::clone(&disk_state),
@@ -306,7 +306,7 @@ pub fn run_block_device(program_name: &str, args: std::env::Args) -> anyhow::Res
     };
 
     if matches.opt_present("h") {
-        println!("{}", opts.usage(&program_name));
+        println!("{}", opts.usage(program_name));
         return Ok(());
     }
 

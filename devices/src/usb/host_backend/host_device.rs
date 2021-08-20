@@ -232,7 +232,7 @@ impl HostDevice {
                         {
                             if let Some(buffer) = &buffer {
                                 buffer
-                                    .write(&control_request_data)
+                                    .write(control_request_data)
                                     .map_err(Error::WriteBuffer)?;
                             }
                         }

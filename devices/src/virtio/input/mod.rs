@@ -297,7 +297,7 @@ impl VirtioInputConfig {
                     );
                     cfg.set_payload_bitmap(&events_bm);
                 } else if let Some(supported_codes) = self.supported_events.get(&ev_type) {
-                    cfg.set_payload_bitmap(&supported_codes);
+                    cfg.set_payload_bitmap(supported_codes);
                 }
             }
             VIRTIO_INPUT_CFG_ABS_INFO => {

@@ -45,7 +45,7 @@ impl AsyncCmdDescMap {
                     queue_type,
                     ..
                 } if stream_id == target_stream_id
-                    && target_queue_type.as_ref().unwrap_or(&queue_type) == queue_type =>
+                    && target_queue_type.as_ref().unwrap_or(queue_type) == queue_type =>
                 {
                     responses.push(AsyncCmdResponse::from_response(
                         *tag,
@@ -68,7 +68,7 @@ impl AsyncCmdDescMap {
                     stream_id,
                     queue_type,
                 } if stream_id == target_stream_id
-                    && target_queue_type.as_ref().unwrap_or(&queue_type) == queue_type =>
+                    && target_queue_type.as_ref().unwrap_or(queue_type) == queue_type =>
                 {
                     // TODO(b/1518105): Use more appropriate error code if a new protocol supports
                     // one.

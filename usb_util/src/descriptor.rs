@@ -126,8 +126,7 @@ pub fn parse_usbfs_descriptors(data: &[u8]) -> Result<DeviceDescriptorTree> {
         let desc_type = T::descriptor_type() as u8;
         loop {
             let hdr = DescriptorHeader::from_slice(
-                &data
-                    .get(*offset..*offset + size_of::<DescriptorHeader>())
+                data.get(*offset..*offset + size_of::<DescriptorHeader>())
                     .ok_or(Error::DescriptorParse)?,
             )
             .ok_or(Error::DescriptorParse)?;
@@ -140,8 +139,7 @@ pub fn parse_usbfs_descriptors(data: &[u8]) -> Result<DeviceDescriptorTree> {
 
                 *offset += size_of::<DescriptorHeader>();
                 let desc = T::from_slice(
-                    &data
-                        .get(*offset..*offset + size_of::<T>())
+                    data.get(*offset..*offset + size_of::<T>())
                         .ok_or(Error::DescriptorParse)?,
                 )
                 .ok_or(Error::DescriptorParse)?;
@@ -161,8 +159,7 @@ pub fn parse_usbfs_descriptors(data: &[u8]) -> Result<DeviceDescriptorTree> {
         }
     }
 
-    let (raw_device_descriptor, _) =
-        next_descriptor::<types::DeviceDescriptor>(&data, &mut offset)?;
+    let (raw_device_descriptor, _) = next_descriptor::<types::DeviceDescriptor>(data, &mut offset)?;
     let mut device_descriptor = DeviceDescriptorTree {
         raw: data.into(),
         inner: raw_device_descriptor,

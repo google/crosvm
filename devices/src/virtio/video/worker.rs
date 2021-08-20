@@ -220,7 +220,7 @@ impl Worker {
         }
 
         // Process the command by the device.
-        let (cmd_response, event_responses_with_id) = device.process_cmd(cmd, &wait_ctx);
+        let (cmd_response, event_responses_with_id) = device.process_cmd(cmd, wait_ctx);
         match cmd_response {
             VideoCmdResponseType::Sync(r) => {
                 responses.push_back((desc, r));

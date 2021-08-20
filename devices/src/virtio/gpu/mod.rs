@@ -629,13 +629,13 @@ impl Frontend {
                         if let Some(ret_desc) =
                             self.process_descriptor(mem, desc.index, &mut reader, &mut writer)
                         {
-                            queue.add_used(&mem, ret_desc.index, ret_desc.len);
+                            queue.add_used(mem, ret_desc.index, ret_desc.len);
                             signal_used = true;
                         }
                     }
                     (_, Err(e)) | (Err(e), _) => {
                         debug!("invalid descriptor: {}", e);
-                        queue.add_used(&mem, desc.index, 0);
+                        queue.add_used(mem, desc.index, 0);
                         signal_used = true;
                     }
                 }
@@ -650,7 +650,7 @@ impl Frontend {
                     desc.is_write_only(),
                     virtio_gpu_cmd_str(likely_type.to_native())
                 );
-                queue.add_used(&mem, desc.index, 0);
+                queue.add_used(mem, desc.index, 0);
                 signal_used = true;
             }
         }

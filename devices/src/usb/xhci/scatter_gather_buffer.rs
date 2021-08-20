@@ -94,7 +94,7 @@ impl ScatterGatherBuffer {
         let mut total_size = 0usize;
         let mut offset = 0;
         for atrb in &self.td {
-            let (guest_address, len) = self.get_trb_data(&atrb)?;
+            let (guest_address, len) = self.get_trb_data(atrb)?;
             let buffer_len = {
                 if offset == buffer.len() {
                     return Ok(total_size);
@@ -121,7 +121,7 @@ impl ScatterGatherBuffer {
         let mut total_size = 0usize;
         let mut offset = 0;
         for atrb in &self.td {
-            let (guest_address, len) = self.get_trb_data(&atrb)?;
+            let (guest_address, len) = self.get_trb_data(atrb)?;
             let buffer_len = {
                 if offset == buffer.len() {
                     return Ok(total_size);
