@@ -37,12 +37,12 @@ use gdbstub_arch::x86::reg::X86_64CoreRegs as GdbStubRegs;
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use {
-    devices::{IrqChipAArch64 as IrqChipArch, PciConfigMmio as RootConfigArch},
+    devices::IrqChipAArch64 as IrqChipArch,
     hypervisor::{Hypervisor as HypervisorArch, VcpuAArch64 as VcpuArch, VmAArch64 as VmArch},
 };
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use {
-    devices::{IrqChipX86_64 as IrqChipArch, PciConfigIo as RootConfigArch},
+    devices::IrqChipX86_64 as IrqChipArch,
     hypervisor::{HypervisorX86_64 as HypervisorArch, VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
 };
 
@@ -123,7 +123,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub gdb: Option<(u32, Tube)>,
     /// Devices to be notified before the system resumes from the S3 suspended state.
     pub resume_notify_devices: Vec<Arc<Mutex<dyn BusResumeDevice>>>,
-    pub root_config: Arc<Mutex<RootConfigArch>>,
+    pub root_config: Arc<Mutex<PciRoot>>,
     pub hotplug_bus: Vec<Arc<Mutex<dyn HotPlugBus>>>,
 }
 

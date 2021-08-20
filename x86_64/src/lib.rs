@@ -437,9 +437,9 @@ impl arch::LinuxArch for X8664arch {
             reset_evt.try_clone().map_err(Error::CloneEvent)?,
         );
         let pci_bus = Arc::new(Mutex::new(pci_cfg));
-        io_bus.insert(pci_bus.clone(), 0xcf8, 0x8).unwrap();
+        io_bus.insert(pci_bus, 0xcf8, 0x8).unwrap();
 
-        let pcie_cfg_mmio = Arc::new(Mutex::new(PciConfigMmio::new(pci, 12)));
+        let pcie_cfg_mmio = Arc::new(Mutex::new(PciConfigMmio::new(pci.clone(), 12)));
         mmio_bus
             .insert(pcie_cfg_mmio, PCIE_CFG_MMIO_START, PCIE_CFG_MMIO_SIZE)
             .unwrap();
@@ -584,7 +584,7 @@ impl arch::LinuxArch for X8664arch {
             bat_control,
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             gdb: components.gdb,
-            root_config: pci_bus,
+            root_config: pci,
             hotplug_bus: Vec::new(),
         })
     }

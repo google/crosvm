@@ -326,10 +326,6 @@ impl PciConfigIo {
         };
         self.config_address = (self.config_address & !mask) | value;
     }
-
-    pub fn add_device(&mut self, address: PciAddress, device: Arc<Mutex<dyn BusDevice>>) {
-        self.pci_root.lock().add_device(address, device)
-    }
 }
 
 const PCI_RESET_CPU_BIT: u8 = 1 << 2;
@@ -404,10 +400,6 @@ impl PciConfigMmio {
         self.pci_root
             .lock()
             .config_space_write(address, register, offset, data)
-    }
-
-    pub fn add_device(&mut self, address: PciAddress, device: Arc<Mutex<dyn BusDevice>>) {
-        self.pci_root.lock().add_device(address, device)
     }
 }
 

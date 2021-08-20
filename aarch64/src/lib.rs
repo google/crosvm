@@ -393,8 +393,9 @@ impl arch::LinuxArch for AArch64 {
             (devices::AARCH64_GIC_NR_IRQS - AARCH64_IRQ_BASE) as usize,
         )
         .map_err(Error::CreatePciRoot)?;
-        let pci_bus = Arc::new(Mutex::new(PciConfigMmio::new(Arc::new(Mutex::new(pci)), 8)));
 
+        let pci_root = Arc::new(Mutex::new(pci));
+        let pci_bus = Arc::new(Mutex::new(PciConfigMmio::new(pci_root.clone(), 8)));
         let (platform_devices, _others): (Vec<_>, Vec<_>) = others
             .into_iter()
             .partition(|(dev, _)| dev.as_platform_device().is_some());
@@ -500,7 +501,7 @@ impl arch::LinuxArch for AArch64 {
             delay_rt: components.delay_rt,
             bat_control: None,
             resume_notify_devices: Vec::new(),
-            root_config: pci_bus,
+            root_config: pci_root,
             hotplug_bus: Vec::new(),
         })
     }
