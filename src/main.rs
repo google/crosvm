@@ -3018,7 +3018,7 @@ mod tests {
         .expect("parse should succeed");
         assert_eq!(config.plugin_mounts[0].src, PathBuf::from("/dev/null"));
         assert_eq!(config.plugin_mounts[0].dst, PathBuf::from("/dev/zero"));
-        assert_eq!(config.plugin_mounts[0].writable, true);
+        assert!(config.plugin_mounts[0].writable);
     }
 
     #[test]
@@ -3026,15 +3026,15 @@ mod tests {
         let mut config = Config::default();
         set_argument(&mut config, "plugin-mount", Some("/dev/null")).expect("parse should succeed");
         assert_eq!(config.plugin_mounts[0].dst, PathBuf::from("/dev/null"));
-        assert_eq!(config.plugin_mounts[0].writable, false);
+        assert!(!config.plugin_mounts[0].writable);
         set_argument(&mut config, "plugin-mount", Some("/dev/null:/dev/zero"))
             .expect("parse should succeed");
         assert_eq!(config.plugin_mounts[1].dst, PathBuf::from("/dev/zero"));
-        assert_eq!(config.plugin_mounts[1].writable, false);
+        assert!(!config.plugin_mounts[1].writable);
         set_argument(&mut config, "plugin-mount", Some("/dev/null::true"))
             .expect("parse should succeed");
         assert_eq!(config.plugin_mounts[2].dst, PathBuf::from("/dev/null"));
-        assert_eq!(config.plugin_mounts[2].writable, true);
+        assert!(config.plugin_mounts[2].writable);
     }
 
     #[test]
