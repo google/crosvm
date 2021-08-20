@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::io;
-use std::mem::{align_of, size_of};
+use std::mem::{size_of, MaybeUninit};
 use std::slice::{from_raw_parts, from_raw_parts_mut};
 
 /// Types for which it is safe to initialize from raw data.
@@ -74,21 +74,16 @@ pub unsafe trait DataInit: Copy + Send + Sync {
 
     /// Creates an instance of `Self` by copying raw data from an io::Read stream.
     fn from_reader<R: io::Read>(mut read: R) -> io::Result<Self> {
-        // Allocate a Vec<u8> with enough extra space for the worst-case alignment offset.
-        let mut data = vec![0u8; size_of::<Self>() + align_of::<Self>()];
+        // Allocate on the stack via `MaybeUninit` to ensure proper alignment.
+        let mut out = MaybeUninit::zeroed();
 
-        // Get a u8 slice within data with sufficient alignment for Self.
-        let align_offset = data.as_ptr().align_offset(align_of::<Self>());
-        let mut aligned_data = &mut data[align_offset..align_offset + size_of::<Self>()];
+        // Safe because the pointer is valid and points to `size_of::<Self>()` bytes of zeroes,
+        // which is a properly initialized value for `u8`.
+        let buf = unsafe { from_raw_parts_mut(out.as_mut_ptr() as *mut u8, size_of::<Self>()) };
+        read.read_exact(buf)?;
 
-        read.read_exact(&mut aligned_data)?;
-        match Self::from_slice(&aligned_data) {
-            Some(obj) => Ok(*obj),
-            None => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "from_slice failed",
-            )),
-        }
+        // Safe because any bit pattern is considered a valid value for `Self`.
+        Ok(unsafe { out.assume_init() })
     }
 
     /// Converts a reference to `self` into a slice of bytes.

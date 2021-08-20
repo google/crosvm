@@ -6,10 +6,9 @@ use std::borrow::Cow;
 use std::cmp;
 use std::convert::TryInto;
 use std::fmt::{self, Display};
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::iter::FromIterator;
 use std::marker::PhantomData;
-use std::mem::{size_of, MaybeUninit};
 use std::ptr::copy_nonoverlapping;
 use std::result;
 use std::sync::Arc;
@@ -273,19 +272,7 @@ impl Reader {
 
     /// Reads an object from the descriptor chain buffer.
     pub fn read_obj<T: DataInit>(&mut self) -> io::Result<T> {
-        let mut obj = MaybeUninit::<T>::uninit();
-
-        // Safe because `MaybeUninit` guarantees that the pointer is valid for
-        // `size_of::<T>()` bytes.
-        let buf = unsafe {
-            ::std::slice::from_raw_parts_mut(obj.as_mut_ptr() as *mut u8, size_of::<T>())
-        };
-
-        self.read_exact(buf)?;
-
-        // Safe because any type that implements `DataInit` can be considered initialized
-        // even if it is filled with random data.
-        Ok(unsafe { obj.assume_init() })
+        T::from_reader(self)
     }
 
     /// Reads objects by consuming all the remaining data in the descriptor chain buffer and returns
@@ -845,6 +832,7 @@ pub fn create_descriptor_chain(
 mod tests {
     use super::*;
     use std::fs::File;
+    use std::io::Read;
     use tempfile::tempfile;
 
     use cros_async::Executor;
