@@ -67,7 +67,7 @@ pub trait RegisterValue:
 {
     // Get byte of the offset.
     fn get_byte(&self, offset: usize) -> u8 {
-        let val: u64 = self.clone().into();
+        let val: u64 = (*self).into();
         (val >> (offset * 8)) as u8
     }
     // Set masked bits.
