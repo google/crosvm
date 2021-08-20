@@ -443,19 +443,15 @@ impl IrqChip for KvmSplitIrqChip {
                 match chip {
                     IrqSourceChip::PicPrimary | IrqSourceChip::PicSecondary => {
                         let mut pic = self.pic.lock();
-                        if evt.resample_event.is_some() {
-                            pic.service_irq(pin as u8, true);
-                        } else {
-                            pic.service_irq(pin as u8, true);
+                        pic.service_irq(pin as u8, true);
+                        if evt.resample_event.is_none() {
                             pic.service_irq(pin as u8, false);
                         }
                     }
                     IrqSourceChip::Ioapic => {
                         if let Ok(mut ioapic) = self.ioapic.try_lock() {
-                            if evt.resample_event.is_some() {
-                                ioapic.service_irq(pin as usize, true);
-                            } else {
-                                ioapic.service_irq(pin as usize, true);
+                            ioapic.service_irq(pin as usize, true);
+                            if evt.resample_event.is_none() {
                                 ioapic.service_irq(pin as usize, false);
                             }
                         } else {
@@ -622,10 +618,8 @@ impl IrqChip for KvmSplitIrqChip {
             .retain(|&event_index| {
                 if let Some(evt) = &self.irq_events.lock()[event_index] {
                     if let Ok(mut ioapic) = self.ioapic.try_lock() {
-                        if evt.resample_event.is_some() {
-                            ioapic.service_irq(evt.gsi as usize, true);
-                        } else {
-                            ioapic.service_irq(evt.gsi as usize, true);
+                        ioapic.service_irq(evt.gsi as usize, true);
+                        if evt.resample_event.is_none() {
                             ioapic.service_irq(evt.gsi as usize, false);
                         }
 
