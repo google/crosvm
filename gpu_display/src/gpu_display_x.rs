@@ -377,11 +377,9 @@ impl GpuDisplaySurface for XSurface {
     }
 
     fn on_shm_completion(&mut self, shm_complete: u64) {
-        for buffer_opt in self.buffers.iter_mut() {
-            if let Some(buffer) = buffer_opt {
-                if buffer.segment_info.shmseg == shm_complete {
-                    buffer.in_use = false;
-                }
+        for buffer in self.buffers.iter_mut().flatten() {
+            if buffer.segment_info.shmseg == shm_complete {
+                buffer.in_use = false;
             }
         }
     }

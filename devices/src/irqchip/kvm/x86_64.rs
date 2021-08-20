@@ -581,15 +581,13 @@ impl IrqChip for KvmSplitIrqChip {
         let mut pic_resample_events: Vec<Vec<Event>> =
             (0..self.ioapic_pins).map(|_| Vec::new()).collect();
 
-        for evt in self.irq_events.lock().iter() {
-            if let Some(evt) = evt {
-                if (evt.gsi as usize) >= self.ioapic_pins {
-                    continue;
-                }
-                if let Some(resample_evt) = &evt.resample_event {
-                    ioapic_resample_events[evt.gsi as usize].push(resample_evt.try_clone()?);
-                    pic_resample_events[evt.gsi as usize].push(resample_evt.try_clone()?);
-                }
+        for evt in self.irq_events.lock().iter().flatten() {
+            if (evt.gsi as usize) >= self.ioapic_pins {
+                continue;
+            }
+            if let Some(resample_evt) = &evt.resample_event {
+                ioapic_resample_events[evt.gsi as usize].push(resample_evt.try_clone()?);
+                pic_resample_events[evt.gsi as usize].push(resample_evt.try_clone()?);
             }
         }
 

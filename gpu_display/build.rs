@@ -11,19 +11,17 @@ use std::process::Command;
 // Performs a recursive search for a file with name under path and returns the full path if such a
 // file is found.
 fn scan_path<P: AsRef<Path>, O: AsRef<OsStr>>(path: P, name: O) -> Option<PathBuf> {
-    for entry in fs::read_dir(path).ok()? {
-        if let Ok(entry) = entry {
-            let file_type = match entry.file_type() {
-                Ok(t) => t,
-                Err(_) => continue,
-            };
+    for entry in (fs::read_dir(path).ok()?).flatten() {
+        let file_type = match entry.file_type() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
 
-            if file_type.is_file() && entry.file_name() == name.as_ref() {
-                return Some(entry.path());
-            } else if file_type.is_dir() {
-                if let Some(found) = scan_path(entry.path(), name.as_ref()) {
-                    return Some(found);
-                }
+        if file_type.is_file() && entry.file_name() == name.as_ref() {
+            return Some(entry.path());
+        } else if file_type.is_dir() {
+            if let Some(found) = scan_path(entry.path(), name.as_ref()) {
+                return Some(found);
             }
         }
     }
