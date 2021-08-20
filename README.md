@@ -6,6 +6,8 @@ makes crosvm unique is a focus on safety within the programming language and a
 sandbox around the virtual devices to protect the kernel from attack in case of
 an exploit in the devices.
 
+[TOC]
+
 ## Building for Linux
 
 Crosvm uses submodules to manage external dependencies. Initialize them via:
