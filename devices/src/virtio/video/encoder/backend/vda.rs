@@ -92,10 +92,9 @@ impl LibvdaEncoder {
             })
             .collect();
 
-        if input_format_descs
+        if !input_format_descs
             .iter()
-            .find(|fd| fd.format == Format::NV12)
-            .is_none()
+            .any(|fd| fd.format == Format::NV12)
         {
             // NV12 is currently the only supported pixel format for libvda.
             error!("libvda encoder does not support NV12.");
