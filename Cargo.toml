@@ -118,6 +118,7 @@ base = "*"
 assertions = { path = "assertions" }
 audio_streams = { path = "audio_streams" }
 base = { path = "base" }
+cros_async =  { path = "cros_async" }
 cros_fuzz = { path = "common/cros-fuzz" } # ignored by ebuild
 data_model = { path = "data_model" }
 libcras = { path = "libcras_stub" } # ignored by ebuild
