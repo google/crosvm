@@ -11,6 +11,8 @@ readlinkat: 1
 getdents64: 1
 name_to_handle_at: 1
 access: 1
+faccessat: 1
+faccessat2: 1
 timerfd_create: 1
 getsockname: 1
 pipe: 1
