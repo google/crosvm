@@ -579,16 +579,16 @@ impl AArch64 {
         // Other cpus are powered off initially
         if vcpu_id == 0 {
             let entry_addr = if has_bios {
-                AARCH64_PHYS_MEM_START + AARCH64_BIOS_OFFSET
+                get_bios_addr()
             } else {
-                AARCH64_PHYS_MEM_START + AARCH64_KERNEL_OFFSET
+                get_kernel_addr()
             };
             let entry_addr_reg_id = if protected_vm == ProtectionType::Protected {
                 arm64_core_reg!(regs, 1)
             } else {
                 arm64_core_reg!(pc)
             };
-            vcpu.set_one_reg(entry_addr_reg_id, entry_addr)
+            vcpu.set_one_reg(entry_addr_reg_id, entry_addr.offset())
                 .map_err(Error::SetReg)?;
 
             /* X0 -- fdt address */
