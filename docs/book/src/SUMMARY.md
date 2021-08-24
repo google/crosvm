@@ -20,3 +20,7 @@
     -   [Sandboxing](./appendix/sandboxing.md)
     -   [Seccomp](./appendix/seccomp.md)
     -   [Minijail](./appendix/minijail.md)
+
+--------------------------------------------------------------------------------
+
+[API Documentation](./api.md)

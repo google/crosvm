@@ -18,11 +18,43 @@ jobs:
         uses: peaceiris/actions-mdbook@v1
         with:
           mdbook-version: 'latest'
-      - run: cargo install mdbook-mermaid
-      - run: mdbook build docs/book/
-
+      - name: Install Dependencies
+        run: |
+          cargo install mdbook-mermaid
+          sudo apt update
+          sudo apt install -y \
+          build-essential \
+          clang \
+          libasound2-dev \
+          libcap-dev \
+          libdbus-1-dev \
+          libdrm-dev \
+          libepoxy-dev \
+          libssl-dev \
+          libwayland-bin \
+          libwayland-dev \
+          ninja-build \
+          pkg-config \
+          protobuf-compiler \
+          python3 \
+          python3-pip \
+          python3-setuptools \
+          python3-wheel \
+          wayland-protocols
+          # Install meson for rutabaga_gfx
+          pip3 install meson
+      - name: Run mdbook
+        run: |
+          mkdir -p docs/target/
+          mdbook build docs/book/ --dest-dir ../target/
+      - name: Run cargo doc
+        run: |
+          git submodule update --init
+          # TODO audio_cras, chromeos, power-monitor-powerd
+          cargo doc --target-dir ./docs/target/ \
+          --features "audio composite-disk default default-no-sandbox direct gdb gfxstream gpu plugin tpm usb video-decoder video-encoder virgl_renderer virgl_renderer_next wl-dmabuf x"
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/book/book
+          publish_dir: ./docs/target/
