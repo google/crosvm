@@ -7,6 +7,7 @@
 fallocate: 1
 fdatasync: 1
 fstat64: 1
+fstatat64: 1
 fsync: 1
 ftruncate64: 1
 _llseek: 1
