@@ -22,6 +22,7 @@ CROSS_COMPILE =
 MESON_ARGS =
 endif
 
+PYTHONDONTWRITEBYTECODE = y
 
 all: $(LIB) tpm2 minijail minigbm virglrenderer
 	ldconfig $(LIB)
