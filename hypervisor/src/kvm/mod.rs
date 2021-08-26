@@ -166,7 +166,7 @@ impl KvmVm {
     pub fn new(kvm: &Kvm, guest_mem: GuestMemory) -> Result<KvmVm> {
         // Safe because we know kvm is a real kvm fd as this module is the only one that can make
         // Kvm objects.
-        let ret = unsafe { ioctl(kvm, KVM_CREATE_VM()) };
+        let ret = unsafe { ioctl_with_val(kvm, KVM_CREATE_VM(), 0) };
         if ret < 0 {
             return errno_result();
         }
