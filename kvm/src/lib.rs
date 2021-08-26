@@ -198,6 +198,28 @@ impl Kvm {
 
         Ok(indices.to_vec())
     }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    // The x86 machine type is always 0
+    pub fn get_vm_type(&self) -> c_ulong {
+        0
+    }
+
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    // Compute the machine type, which should be the IPA range for the VM
+    // Ideally, this would take a description of the memory map and return
+    // the closest machine type for this VM. Here, we just return the maximum
+    // the kernel support.
+    pub fn get_vm_type(&self) -> c_ulong {
+        // Safe because we know self is a real kvm fd
+        match unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), KVM_CAP_ARM_VM_IPA_SIZE.into()) }
+        {
+            // Not supported? Use 0 as the machine type, which implies 40bit IPA
+            ret if ret < 0 => 0,
+            // Use the lower 8 bits representing the IPA space as the machine type
+            ipa => (ipa & 0xff) as c_ulong,
+        }
+    }
 }
 
 impl AsRawDescriptor for Kvm {
@@ -274,7 +296,7 @@ impl Vm {
     pub fn new(kvm: &Kvm, guest_mem: GuestMemory) -> Result<Vm> {
         // Safe because we know kvm is a real kvm fd as this module is the only one that can make
         // Kvm objects.
-        let ret = unsafe { ioctl_with_val(kvm, KVM_CREATE_VM(), 0) };
+        let ret = unsafe { ioctl_with_val(kvm, KVM_CREATE_VM(), kvm.get_vm_type()) };
         if ret >= 0 {
             // Safe because we verify the value of ret and we are the owners of the fd.
             let vm_file = unsafe { File::from_raw_descriptor(ret) };

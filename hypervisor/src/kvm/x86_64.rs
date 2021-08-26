@@ -12,6 +12,7 @@ use base::{
 };
 use data_model::vec_with_array_field;
 use kvm_sys::*;
+use std::os::raw::c_ulong;
 use vm_memory::GuestAddress;
 
 use super::{Kvm, KvmVcpu, KvmVm};
@@ -63,6 +64,11 @@ impl Kvm {
     pub fn get_cpuid(&self, kind: IoctlNr) -> Result<CpuId> {
         const KVM_MAX_ENTRIES: usize = 256;
         get_cpuid_with_initial_capacity(self, kind, KVM_MAX_ENTRIES)
+    }
+
+    // The x86 machine type is always 0
+    pub fn get_vm_type(&self) -> c_ulong {
+        0
     }
 }
 

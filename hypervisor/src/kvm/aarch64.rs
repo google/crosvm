@@ -5,16 +5,35 @@
 use libc::{EINVAL, ENOMEM, ENOSYS, ENXIO};
 
 use base::{
-    errno_result, error, ioctl_with_mut_ref, ioctl_with_ref, Error, MemoryMappingBuilder, Result,
+    errno_result, error, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, Error,
+    MemoryMappingBuilder, Result,
 };
 use kvm_sys::*;
+use std::os::raw::c_ulong;
 use vm_memory::GuestAddress;
 
-use super::{KvmCap, KvmVcpu, KvmVm};
+use super::{Kvm, KvmCap, KvmVcpu, KvmVm};
 use crate::{
     ClockState, DeviceKind, Hypervisor, IrqSourceChip, PsciVersion, VcpuAArch64, VcpuFeature, Vm,
     VmAArch64, VmCap,
 };
+
+impl Kvm {
+    // Compute the machine type, which should be the IPA range for the VM
+    // Ideally, this would take a description of the memory map and return
+    // the closest machine type for this VM. Here, we just return the maximum
+    // the kernel support.
+    pub fn get_vm_type(&self) -> c_ulong {
+        // Safe because we know self is a real kvm fd
+        match unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), KVM_CAP_ARM_VM_IPA_SIZE.into()) }
+        {
+            // Not supported? Use 0 as the machine type, which implies 40bit IPA
+            ret if ret < 0 => 0,
+            // Use the lower 8 bits representing the IPA space as the machine type
+            ipa => (ipa & 0xff) as c_ulong,
+        }
+    }
+}
 
 impl KvmVm {
     /// Checks if a particular `VmCap` is available, or returns None if arch-independent
