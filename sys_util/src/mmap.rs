@@ -786,15 +786,30 @@ impl MemoryMappingArena {
         MemoryMapping::new_protection(size, Protection::none().set_read()).map(From::from)
     }
 
+    /// Anonymously maps `size` bytes at `offset` bytes from the start of the arena
+    /// with `prot` protections. `offset` must be page aligned.
+    ///
+    /// # Arguments
+    /// * `offset` - Page aligned offset into the arena in bytes.
+    /// * `size` - Size of memory region in bytes.
+    /// * `prot` - Protection (e.g. readable/writable) of the memory region.
+    pub fn add_anon_protection(
+        &mut self,
+        offset: usize,
+        size: usize,
+        prot: Protection,
+    ) -> Result<()> {
+        self.try_add(offset, size, prot, None)
+    }
+
     /// Anonymously maps `size` bytes at `offset` bytes from the start of the arena.
     /// `offset` must be page aligned.
     ///
     /// # Arguments
     /// * `offset` - Page aligned offset into the arena in bytes.
     /// * `size` - Size of memory region in bytes.
-    /// * `fd` - File descriptor to mmap from.
     pub fn add_anon(&mut self, offset: usize, size: usize) -> Result<()> {
-        self.try_add(offset, size, Protection::read_write(), None)
+        self.add_anon_protection(offset, size, Protection::read_write())
     }
 
     /// Maps `size` bytes from the start of the given `fd` at `offset` bytes from

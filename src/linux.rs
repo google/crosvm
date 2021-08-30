@@ -1056,7 +1056,8 @@ fn create_pmem_device(
 ) -> DeviceResult {
     let fd = open_file(&disk.path, disk.read_only, false /*O_DIRECT*/)
         .map_err(|e| Error::Disk(disk.path.clone(), e.into()))?;
-    let arena_size = {
+
+    let (disk_size, arena_size) = {
         let metadata =
             std::fs::metadata(&disk.path).map_err(|e| Error::Disk(disk.path.to_path_buf(), e))?;
         let disk_len = metadata.len();
@@ -1071,9 +1072,12 @@ fn create_pmem_device(
         } else {
             0
         };
-        disk_len
-            .checked_add(align_adjust)
-            .ok_or(Error::PmemDeviceImageTooBig)?
+        (
+            disk_len,
+            disk_len
+                .checked_add(align_adjust)
+                .ok_or(Error::PmemDeviceImageTooBig)?,
+        )
     };
 
     let protection = {
@@ -1087,11 +1091,25 @@ fn create_pmem_device(
     let arena = {
         // Conversion from u64 to usize may fail on 32bit system.
         let arena_size = usize::try_from(arena_size).map_err(|_| Error::PmemDeviceImageTooBig)?;
+        let disk_size = usize::try_from(disk_size).map_err(|_| Error::PmemDeviceImageTooBig)?;
 
         let mut arena = MemoryMappingArena::new(arena_size).map_err(Error::ReservePmemMemory)?;
         arena
-            .add_fd_offset_protection(0, arena_size, &fd, 0, protection)
+            .add_fd_offset_protection(0, disk_size, &fd, 0, protection)
             .map_err(Error::ReservePmemMemory)?;
+
+        // If the disk is not a multiple of the page size, the OS will fill the remaining part
+        // of the page with zeroes. However, the anonymous mapping added below must start on a
+        // page boundary, so round up the size before calculating the offset of the anon region.
+        let disk_size = round_up_to_page_size(disk_size);
+
+        if arena_size > disk_size {
+            // Add an anonymous region with the same protection as the disk mapping if the arena
+            // size was aligned.
+            arena
+                .add_anon_protection(disk_size, arena_size - disk_size, protection)
+                .map_err(Error::ReservePmemMemory)?;
+        }
         arena
     };
 
