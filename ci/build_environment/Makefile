@@ -24,7 +24,7 @@ endif
 
 PYTHONDONTWRITEBYTECODE = y
 
-all: $(LIB) tpm2 minijail minigbm virglrenderer
+all: $(LIB) minijail minigbm virglrenderer
 	ldconfig $(LIB)
 
 clean:
@@ -34,14 +34,6 @@ clean:
 #
 # These are phony targets so that we can delegate the dirty-check to the
 # underlying build system for each library.
-
-tpm2:
-	mkdir -p $(BUILD)/tpm2
-	$(MAKE) -C $(SRC)/tpm2-sys/libtpm2 \
-		obj=$(BUILD)/tpm2 \
-		AR=$(CROSS_COMPILE)ar \
-		CC=$(CROSS_COMPILE)gcc \
-		OBJCOPY=$(CROSS_COMPILE)objcopy V=1
 
 minijail:
 	mkdir -p $(BUILD)/minijail
@@ -79,10 +71,6 @@ endif
 $(LIB):
 	mkdir -p $(LIB) $(LIB)/pkgconfig
 
-	# tpm2
-	ln -sf $(BUILD)/tpm2/libtpm2.a $(LIB)/libtpm2.a
-	ln -sf $(MAKEFILE_DIR)/pkgconfig/libtpm2.pc $(LIB)/pkgconfig/
-
 	# minijail
 	ln -sf $(BUILD)/minijail/libminijail.so $(LIB)
 	ln -sf $(LIB)/libminijail.so $(LIB)/libminijail.so.1
@@ -98,4 +86,4 @@ $(LIB):
 	ln -sf $(LIB)/libvirglrenderer.so $(LIB)/libvirglrenderer.so.1
 	ln -sf $(BUILD)/virglrenderer/virglrenderer.pc $(LIB)/pkgconfig/
 
-.PHONY: all clean tpm2 minijail sysroot minigbm virglrenderer
+.PHONY: all clean minijail sysroot minigbm virglrenderer

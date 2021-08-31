@@ -1151,6 +1151,7 @@ dependencies = [
 name = "tpm2-sys"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "num_cpus",
  "pkg-config",
 ]
