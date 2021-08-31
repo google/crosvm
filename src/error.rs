@@ -149,6 +149,7 @@ pub enum Error {
     VhostUserWlDeviceNew(VhostUserVmmError),
     VhostVsockDeviceNew(virtio::vhost::Error),
     VirtioPciDev(base::Error),
+    VirtioVhostUserDeviceNew(VhostUserVmmError),
     WaitContextAdd(base::Error),
     WaitContextDelete(base::Error),
     WaylandDeviceNew(base::Error),
@@ -306,6 +307,9 @@ impl Display for Error {
             }
             VhostVsockDeviceNew(e) => write!(f, "failed to set up virtual socket device: {}", e),
             VirtioPciDev(e) => write!(f, "failed to create virtio pci dev: {}", e),
+            VirtioVhostUserDeviceNew(e) => {
+                write!(f, "failed to set up virtio-vhost-user net device: {}", e)
+            }
             WaitContextAdd(e) => write!(f, "failed to add descriptor to wait context: {}", e),
             WaitContextDelete(e) => {
                 write!(f, "failed to remove descriptor from wait context: {}", e)

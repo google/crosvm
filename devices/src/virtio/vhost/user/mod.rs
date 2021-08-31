@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 pub mod device;
+pub mod proxy;
 pub mod vmm;
 
 pub use self::device::*;
+pub use self::proxy::*;

@@ -5,6 +5,7 @@
 use std::fs::File;
 use std::io::{Error, ErrorKind, Result};
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::net::UnixStream;
 
 use data_model::VolatileSlice;
 
@@ -479,6 +480,7 @@ macro_rules! volatile_at_impl {
 
 volatile_impl!(File);
 volatile_at_impl!(File);
+volatile_impl!(UnixStream);
 
 /// A trait similar to `AsRawFd` but supports an arbitrary number of file descriptors.
 pub trait AsRawFds {
