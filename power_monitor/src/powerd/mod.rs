@@ -152,14 +152,7 @@ impl PowerMonitor for DBusMonitor {
                         }
                     };
 
-                    let interface_name = match interface.as_cstr().to_str() {
-                        Ok(s) => s,
-                        Err(_) => {
-                            return last;
-                        }
-                    };
-
-                    if interface_name != POWER_INTERFACE_NAME {
+                    if &*interface != POWER_INTERFACE_NAME {
                         return last;
                     }
 
@@ -170,14 +163,7 @@ impl PowerMonitor for DBusMonitor {
                         }
                     };
 
-                    let member_name = match member.as_cstr().to_str() {
-                        Ok(s) => s,
-                        Err(_) => {
-                            return last;
-                        }
-                    };
-
-                    if member_name != POLL_SIGNAL_NAME {
+                    if &*member != POLL_SIGNAL_NAME {
                         return last;
                     }
 
