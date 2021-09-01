@@ -24,7 +24,7 @@ endif
 
 PYTHONDONTWRITEBYTECODE = y
 
-all: $(LIB) minijail minigbm virglrenderer
+all: $(LIB) minigbm virglrenderer
 	ldconfig $(LIB)
 
 clean:
@@ -34,12 +34,6 @@ clean:
 #
 # These are phony targets so that we can delegate the dirty-check to the
 # underlying build system for each library.
-
-minijail:
-	mkdir -p $(BUILD)/minijail
-	$(MAKE) -C $(SRC)/third_party/minijail \
-		OUT=$(BUILD)/minijail \
-		CROSS_COMPILE=$(CROSS_COMPILE)
 
 minigbm:
 	mkdir -p $(BUILD)/minigbm
@@ -71,11 +65,6 @@ endif
 $(LIB):
 	mkdir -p $(LIB) $(LIB)/pkgconfig
 
-	# minijail
-	ln -sf $(BUILD)/minijail/libminijail.so $(LIB)
-	ln -sf $(LIB)/libminijail.so $(LIB)/libminijail.so.1
-	ln -sf $(MAKEFILE_DIR)/pkgconfig/libminijail.pc $(LIB)/pkgconfig/
-
 	# minigbm
 	ln -sf $(BUILD)/minigbm/libminigbm.so.1.0.0 $(LIB)/libgbm.so
 	ln -sf $(LIB)/libgbm.so $(LIB)/libgbm.so.1
@@ -86,4 +75,4 @@ $(LIB):
 	ln -sf $(LIB)/libvirglrenderer.so $(LIB)/libvirglrenderer.so.1
 	ln -sf $(BUILD)/virglrenderer/virglrenderer.pc $(LIB)/pkgconfig/
 
-.PHONY: all clean minijail sysroot minigbm virglrenderer
+.PHONY: all clean sysroot minigbm virglrenderer
