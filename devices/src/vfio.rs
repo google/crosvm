@@ -94,12 +94,12 @@ enum KvmVfioGroupOps {
 pub struct VfioContainer {
     container: File,
     groups: HashMap<u32, Arc<Mutex<VfioGroup>>>,
+    host_iommu: bool,
 }
 
 const VFIO_API_VERSION: u8 = 0;
 impl VfioContainer {
-    /// Open VfioContainer
-    pub fn new() -> Result<Self> {
+    fn new_inner(host_iommu: bool) -> Result<Self> {
         let container = OpenOptions::new()
             .read(true)
             .write(true)
@@ -115,7 +115,18 @@ impl VfioContainer {
         Ok(VfioContainer {
             container,
             groups: HashMap::new(),
+            host_iommu,
         })
+    }
+
+    /// Open VfioContainer with IOMMU enabled.
+    pub fn new() -> Result<Self> {
+        Self::new_inner(true /* host_iommu */)
+    }
+
+    /// Open VfioContainer with IOMMU enabled.
+    pub fn new_noiommu() -> Result<Self> {
+        Self::new_inner(false /* host_iommu */)
     }
 
     fn is_group_set(&self, group_id: u32) -> bool {
@@ -133,7 +144,8 @@ impl VfioContainer {
     }
 
     fn set_iommu(&self, val: u32) -> i32 {
-        if val != VFIO_TYPE1_IOMMU && val != VFIO_TYPE1v2_IOMMU {
+        let supported_types = [VFIO_TYPE1_IOMMU, VFIO_TYPE1v2_IOMMU, VFIO_NOIOMMU_IOMMU];
+        if !supported_types.contains(&val) {
             panic!("IOMMU type error");
         }
 
@@ -224,7 +236,7 @@ impl VfioContainer {
         Ok(())
     }
 
-    fn get_group(
+    fn get_group_with_vm(
         &mut self,
         id: u32,
         vm: &impl Vm,
@@ -233,8 +245,7 @@ impl VfioContainer {
         match self.groups.get(&id) {
             Some(group) => Ok(group.clone()),
             None => {
-                let group = Arc::new(Mutex::new(VfioGroup::new(self, id)?));
-
+                let group = Arc::new(Mutex::new(VfioGroup::new(self, self.host_iommu, id)?));
                 if self.groups.is_empty() {
                     // Before the first group is added into container, do once cotainer
                     // initialize for a vm
@@ -250,6 +261,24 @@ impl VfioContainer {
 
                 self.groups.insert(id, group.clone());
 
+                Ok(group)
+            }
+        }
+    }
+
+    fn get_group(&mut self, id: u32) -> Result<Arc<Mutex<VfioGroup>>> {
+        match self.groups.get(&id) {
+            Some(group) => Ok(group.clone()),
+            None => {
+                let group = Arc::new(Mutex::new(VfioGroup::new(self, self.host_iommu, id)?));
+
+                if self.groups.is_empty() && !self.host_iommu {
+                    if self.set_iommu(VFIO_NOIOMMU_IOMMU) < 0 {
+                        return Err(VfioError::ContainerSetIOMMU(get_error()));
+                    }
+                }
+
+                self.groups.insert(id, group.clone());
                 Ok(group)
             }
         }
@@ -293,11 +322,12 @@ struct VfioGroup {
 }
 
 impl VfioGroup {
-    fn new(container: &VfioContainer, id: u32) -> Result<Self> {
-        let mut group_path = String::from("/dev/vfio/");
-        let s_id = &id;
-        group_path.push_str(s_id.to_string().as_str());
-
+    fn new(container: &VfioContainer, host_iommu: bool, id: u32) -> Result<Self> {
+        let group_path = if host_iommu {
+            format!("/dev/vfio/{}", id)
+        } else {
+            format!("/dev/vfio/noiommu-{}", id)
+        };
         let group_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -339,7 +369,7 @@ impl VfioGroup {
         })
     }
 
-    fn get_group_id(sysfspath: &Path) -> Result<u32> {
+    fn get_group_id<P: AsRef<Path>>(sysfspath: P) -> Result<u32> {
         let mut uuid_path = PathBuf::new();
         uuid_path.push(sysfspath);
         uuid_path.push("iommu_group");
@@ -435,8 +465,8 @@ pub trait VfioCommonTrait: Send + Sync {
     ///
     ///  * `sysfspath` - the path to the PCI device, e.g. /sys/bus/pci/devices/0000:02:00.0
     ///  * `iommu_enabled` - whether virtio IOMMU is enabled on this device
-    fn vfio_get_container(
-        sysfspath: &Path,
+    fn vfio_get_container<P: AsRef<Path>>(
+        sysfspath: P,
         iommu_enabled: bool,
     ) -> Result<Arc<Mutex<VfioContainer>>>;
 }
@@ -455,8 +485,8 @@ thread_local! {
 pub struct VfioCommonSetup;
 
 impl VfioCommonTrait for VfioCommonSetup {
-    fn vfio_get_container(
-        sysfspath: &Path,
+    fn vfio_get_container<P: AsRef<Path>>(
+        sysfspath: P,
         iommu_enabled: bool,
     ) -> Result<Arc<Mutex<VfioContainer>>> {
         match iommu_enabled {
@@ -477,7 +507,7 @@ impl VfioCommonTrait for VfioCommonSetup {
                 })
             }
             true => {
-                let group_id = VfioGroup::get_group_id(sysfspath)?;
+                let group_id = VfioGroup::get_group_id(&sysfspath)?;
 
                 // One VFIO container is used for all devices belong to one VFIO group
                 IOMMU_CONTAINERS.with(|v| {
@@ -543,15 +573,47 @@ impl VfioDevice {
     /// Create a new vfio device, then guest read/write on this device could be
     /// transfered into kernel vfio.
     /// sysfspath specify the vfio device path in sys file system.
-    pub fn new(
-        sysfspath: &Path,
+    pub fn new_passthrough<P: AsRef<Path>>(
+        sysfspath: &P,
         vm: &impl Vm,
         container: Arc<Mutex<VfioContainer>>,
         iommu_enabled: bool,
     ) -> Result<Self> {
-        let group_id = VfioGroup::get_group_id(sysfspath)?;
-        let group = container.lock().get_group(group_id, vm, iommu_enabled)?;
-        let name_osstr = sysfspath.file_name().ok_or(VfioError::InvalidPath)?;
+        let group_id = VfioGroup::get_group_id(&sysfspath)?;
+
+        let group = container
+            .lock()
+            .get_group_with_vm(group_id, vm, iommu_enabled)?;
+        let name_osstr = sysfspath
+            .as_ref()
+            .file_name()
+            .ok_or(VfioError::InvalidPath)?;
+        let name_str = name_osstr.to_str().ok_or(VfioError::InvalidPath)?;
+        let name = String::from(name_str);
+        let dev = group.lock().get_device(&name)?;
+        let regions = Self::get_regions(&dev)?;
+        let group_descriptor = group.lock().as_raw_descriptor();
+
+        Ok(VfioDevice {
+            dev,
+            name,
+            container,
+            group_descriptor,
+            group_id,
+            regions,
+        })
+    }
+
+    pub fn new<P: AsRef<Path>>(
+        sysfspath: &P,
+        container: Arc<Mutex<VfioContainer>>,
+    ) -> Result<Self> {
+        let group_id = VfioGroup::get_group_id(&sysfspath)?;
+        let group = container.lock().get_group(group_id)?;
+        let name_osstr = sysfspath
+            .as_ref()
+            .file_name()
+            .ok_or(VfioError::InvalidPath)?;
         let name_str = name_osstr.to_str().ok_or(VfioError::InvalidPath)?;
         let name = String::from(name_str);
 
@@ -1120,5 +1182,11 @@ impl VfioPciConfig {
             config.as_slice(),
             offset.into(),
         );
+    }
+}
+
+impl AsRawDescriptor for VfioDevice {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.dev.as_raw_descriptor()
     }
 }

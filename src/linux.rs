@@ -1656,8 +1656,9 @@ fn create_vfio_device(
         Tube::pair().context("failed to create tube")?;
     control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
 
-    let vfio_device = VfioDevice::new(vfio_path, vm, vfio_container.clone(), iommu_enabled)
-        .context("failed to create vfio device")?;
+    let vfio_device =
+        VfioDevice::new_passthrough(&vfio_path, vm, vfio_container.clone(), iommu_enabled)
+            .context("failed to create vfio device")?;
     let mut vfio_pci_device = Box::new(VfioPciDevice::new(
         vfio_device,
         bus_num,
@@ -1697,7 +1698,7 @@ fn create_vfio_platform_device(
         Tube::pair().context("failed to create tube")?;
     control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
 
-    let vfio_device = VfioDevice::new(vfio_path, vm, vfio_container, iommu_enabled)
+    let vfio_device = VfioDevice::new_passthrough(&vfio_path, vm, vfio_container, iommu_enabled)
         .context("Failed to create vfio device")?;
     let vfio_plat_dev = VfioPlatformDevice::new(vfio_device, vfio_device_tube_mem);
 
