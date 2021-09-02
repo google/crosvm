@@ -78,6 +78,8 @@ pub enum VfioError {
     VfioType1V2,
 }
 
+type Result<T> = std::result::Result<T, VfioError>;
+
 fn get_error() -> Error {
     Error::last()
 }
@@ -93,7 +95,7 @@ pub struct VfioContainer {
 const VFIO_API_VERSION: u8 = 0;
 impl VfioContainer {
     /// Open VfioContainer
-    pub fn new() -> Result<Self, VfioError> {
+    pub fn new() -> Result<Self> {
         let container = OpenOptions::new()
             .read(true)
             .write(true)
@@ -141,7 +143,7 @@ impl VfioContainer {
         size: u64,
         user_addr: u64,
         write_en: bool,
-    ) -> Result<(), VfioError> {
+    ) -> Result<()> {
         let mut dma_map = vfio_iommu_type1_dma_map {
             argsz: mem::size_of::<vfio_iommu_type1_dma_map>() as u32,
             flags: VFIO_DMA_MAP_FLAG_READ,
@@ -162,7 +164,7 @@ impl VfioContainer {
         Ok(())
     }
 
-    pub fn vfio_dma_unmap(&self, iova: u64, size: u64) -> Result<(), VfioError> {
+    pub fn vfio_dma_unmap(&self, iova: u64, size: u64) -> Result<()> {
         let mut dma_unmap = vfio_iommu_type1_dma_unmap {
             argsz: mem::size_of::<vfio_iommu_type1_dma_unmap>() as u32,
             flags: 0,
@@ -180,7 +182,7 @@ impl VfioContainer {
         Ok(())
     }
 
-    pub fn vfio_get_iommu_page_size_mask(&self) -> Result<u64, VfioError> {
+    pub fn vfio_get_iommu_page_size_mask(&self) -> Result<u64> {
         let mut iommu_info = vfio_iommu_type1_info {
             argsz: mem::size_of::<vfio_iommu_type1_info>() as u32,
             flags: 0,
@@ -197,7 +199,7 @@ impl VfioContainer {
         Ok(iommu_info.iova_pgsizes)
     }
 
-    fn init(&mut self, guest_mem: &GuestMemory, iommu_enabled: bool) -> Result<(), VfioError> {
+    fn init(&mut self, guest_mem: &GuestMemory, iommu_enabled: bool) -> Result<()> {
         if !self.check_extension(VFIO_TYPE1v2_IOMMU) {
             return Err(VfioError::VfioType1V2);
         }
@@ -218,12 +220,7 @@ impl VfioContainer {
         Ok(())
     }
 
-    fn get_group(
-        &mut self,
-        id: u32,
-        vm: &impl Vm,
-        iommu_enabled: bool,
-    ) -> Result<Arc<VfioGroup>, VfioError> {
+    fn get_group(&mut self, id: u32, vm: &impl Vm, iommu_enabled: bool) -> Result<Arc<VfioGroup>> {
         match self.groups.get(&id) {
             Some(group) => Ok(group.clone()),
             None => {
@@ -259,7 +256,7 @@ struct VfioGroup {
 }
 
 impl VfioGroup {
-    fn new(container: &VfioContainer, id: u32) -> Result<Self, VfioError> {
+    fn new(container: &VfioContainer, id: u32) -> Result<Self> {
         let mut group_path = String::from("/dev/vfio/");
         let s_id = &id;
         group_path.push_str(s_id.to_string().as_str());
@@ -302,7 +299,7 @@ impl VfioGroup {
         Ok(VfioGroup { group: group_file })
     }
 
-    fn get_group_id(sysfspath: &Path) -> Result<u32, VfioError> {
+    fn get_group_id(sysfspath: &Path) -> Result<u32> {
         let mut uuid_path = PathBuf::new();
         uuid_path.push(sysfspath);
         uuid_path.push("iommu_group");
@@ -316,7 +313,7 @@ impl VfioGroup {
         Ok(group_id)
     }
 
-    fn kvm_device_add_group(&self, kvm_vfio_file: &SafeDescriptor) -> Result<(), VfioError> {
+    fn kvm_device_add_group(&self, kvm_vfio_file: &SafeDescriptor) -> Result<()> {
         let group_descriptor = self.as_raw_descriptor();
         let group_descriptor_ptr = &group_descriptor as *const i32;
         let vfio_dev_attr = kvm_sys::kvm_device_attr {
@@ -341,7 +338,7 @@ impl VfioGroup {
         Ok(())
     }
 
-    fn get_device(&self, name: &str) -> Result<File, VfioError> {
+    fn get_device(&self, name: &str) -> Result<File> {
         let path: CString = CString::new(name.as_bytes()).expect("CString::new() failed");
         let path_ptr = path.as_ptr();
 
@@ -377,7 +374,7 @@ pub trait VfioCommonTrait: Send + Sync {
     fn vfio_get_container(
         sysfspath: &Path,
         iommu_enabled: bool,
-    ) -> Result<Arc<Mutex<VfioContainer>>, VfioError>;
+    ) -> Result<Arc<Mutex<VfioContainer>>>;
 }
 
 thread_local! {
@@ -397,7 +394,7 @@ impl VfioCommonTrait for VfioCommonSetup {
     fn vfio_get_container(
         sysfspath: &Path,
         iommu_enabled: bool,
-    ) -> Result<Arc<Mutex<VfioContainer>>, VfioError> {
+    ) -> Result<Arc<Mutex<VfioContainer>>> {
         match iommu_enabled {
             false => {
                 // One VFIO container is used for all IOMMU disabled groups
@@ -486,7 +483,7 @@ impl VfioDevice {
         vm: &impl Vm,
         container: Arc<Mutex<VfioContainer>>,
         iommu_enabled: bool,
-    ) -> Result<Self, VfioError> {
+    ) -> Result<Self> {
         let group_id = VfioGroup::get_group_id(sysfspath)?;
         let group = container.lock().get_group(group_id, vm, iommu_enabled)?;
         let name_osstr = sysfspath.file_name().ok_or(VfioError::InvalidPath)?;
@@ -512,7 +509,7 @@ impl VfioDevice {
     /// Enable vfio device's irq and associate Irqfd Event with device.
     /// When MSIx is enabled, multi vectors will be supported, so descriptors is vector and the vector
     /// length is the num of MSIx vectors
-    pub fn irq_enable(&self, descriptors: &[&Event], index: u32) -> Result<(), VfioError> {
+    pub fn irq_enable(&self, descriptors: &[&Event], index: u32) -> Result<()> {
         let count = descriptors.len();
         let u32_size = mem::size_of::<u32>();
         let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(count);
@@ -551,7 +548,7 @@ impl VfioDevice {
     /// This function enable resample irqfd and let vfio kernel could get EOI notification.
     ///
     /// descriptor: should be resample IrqFd.
-    pub fn resample_virq_enable(&self, descriptor: &Event, index: u32) -> Result<(), VfioError> {
+    pub fn resample_virq_enable(&self, descriptor: &Event, index: u32) -> Result<()> {
         let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(1);
         irq_set[0].argsz = (mem::size_of::<vfio_irq_set>() + mem::size_of::<u32>()) as u32;
         irq_set[0].flags = VFIO_IRQ_SET_DATA_EVENTFD | VFIO_IRQ_SET_ACTION_UNMASK;
@@ -578,7 +575,7 @@ impl VfioDevice {
     }
 
     /// disable vfio device's irq and disconnect Irqfd Event with device
-    pub fn irq_disable(&self, index: u32) -> Result<(), VfioError> {
+    pub fn irq_disable(&self, index: u32) -> Result<()> {
         let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(0);
         irq_set[0].argsz = mem::size_of::<vfio_irq_set>() as u32;
         irq_set[0].flags = VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_ACTION_TRIGGER;
@@ -596,7 +593,7 @@ impl VfioDevice {
     }
 
     /// Unmask vfio device irq
-    pub fn irq_unmask(&self, index: u32) -> Result<(), VfioError> {
+    pub fn irq_unmask(&self, index: u32) -> Result<()> {
         let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(0);
         irq_set[0].argsz = mem::size_of::<vfio_irq_set>() as u32;
         irq_set[0].flags = VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_ACTION_UNMASK;
@@ -614,7 +611,7 @@ impl VfioDevice {
     }
 
     /// Mask vfio device irq
-    pub fn irq_mask(&self, index: u32) -> Result<(), VfioError> {
+    pub fn irq_mask(&self, index: u32) -> Result<()> {
         let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(0);
         irq_set[0].argsz = mem::size_of::<vfio_irq_set>() as u32;
         irq_set[0].flags = VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_ACTION_MASK;
@@ -631,7 +628,7 @@ impl VfioDevice {
         }
     }
 
-    fn validate_dev_info(dev_info: &mut vfio_device_info) -> Result<(), VfioError> {
+    fn validate_dev_info(dev_info: &mut vfio_device_info) -> Result<()> {
         if (dev_info.flags & VFIO_DEVICE_FLAGS_PCI) != 0 {
             if dev_info.num_regions < VFIO_PCI_CONFIG_REGION_INDEX + 1
                 || dev_info.num_irqs < VFIO_PCI_MSIX_IRQ_INDEX + 1
@@ -648,7 +645,7 @@ impl VfioDevice {
 
     /// Query interrupt information
     /// return: Vector of interrupts information, each of which contains flags and index
-    pub fn get_irqs(&self) -> Result<Vec<VfioIrq>, VfioError> {
+    pub fn get_irqs(&self) -> Result<Vec<VfioIrq>> {
         let mut dev_info = vfio_device_info {
             argsz: mem::size_of::<vfio_device_info>() as u32,
             flags: 0,
@@ -698,7 +695,7 @@ impl VfioDevice {
     }
 
     #[allow(clippy::cast_ptr_alignment)]
-    fn get_regions(dev: &File) -> Result<Vec<VfioRegion>, VfioError> {
+    fn get_regions(dev: &File) -> Result<Vec<VfioRegion>> {
         let mut regions: Vec<VfioRegion> = Vec::new();
         let mut dev_info = vfio_device_info {
             argsz: mem::size_of::<vfio_device_info>() as u32,
@@ -1002,14 +999,14 @@ impl VfioDevice {
         size: u64,
         user_addr: u64,
         write_en: bool,
-    ) -> Result<(), VfioError> {
+    ) -> Result<()> {
         self.container
             .lock()
             .vfio_dma_map(iova, size, user_addr, write_en)
     }
 
     /// Remove (iova, user_addr) map from vfio container iommu table
-    pub fn vfio_dma_unmap(&self, iova: u64, size: u64) -> Result<(), VfioError> {
+    pub fn vfio_dma_unmap(&self, iova: u64, size: u64) -> Result<()> {
         self.container.lock().vfio_dma_unmap(iova, size)
     }
 
