@@ -482,22 +482,31 @@ impl arch::LinuxArch for X8664arch {
         // TODO (tjeznach) Write RSDP to bootconfig before writing to memory
         acpi::create_acpi_tables(&mem, vcpu_count as u8, X86_64_SCI_IRQ, acpi_dev_resource);
 
+        let mut cmdline = Self::get_base_linux_cmdline();
+
+        if noirq {
+            cmdline.insert_str("acpi=noirq").unwrap();
+        }
+
+        get_serial_cmdline(&mut cmdline, serial_parameters, "io")
+            .map_err(Error::GetSerialCmdline)?;
+
+        for param in components.extra_kernel_params {
+            cmdline.insert_str(&param).map_err(Error::Cmdline)?;
+        }
+
         match components.vm_image {
-            VmImage::Bios(ref mut bios) => Self::load_bios(&mem, bios)?,
+            VmImage::Bios(ref mut bios) => {
+                // Allow a bios to hardcode CMDLINE_OFFSET and read the kernel command line from it.
+                kernel_loader::load_cmdline(
+                    &mem,
+                    GuestAddress(CMDLINE_OFFSET),
+                    &CString::new(cmdline).unwrap(),
+                )
+                .map_err(Error::LoadCmdline)?;
+                Self::load_bios(&mem, bios)?
+            }
             VmImage::Kernel(ref mut kernel_image) => {
-                let mut cmdline = Self::get_base_linux_cmdline();
-
-                if noirq {
-                    cmdline.insert_str("acpi=noirq").unwrap();
-                }
-
-                get_serial_cmdline(&mut cmdline, serial_parameters, "io")
-                    .map_err(Error::GetSerialCmdline)?;
-
-                for param in components.extra_kernel_params {
-                    cmdline.insert_str(&param).map_err(Error::Cmdline)?;
-                }
-
                 if let Some(ramoops_region) = ramoops_region {
                     arch::pstore::add_ramoops_kernel_cmdline(&mut cmdline, &ramoops_region)
                         .map_err(Error::Cmdline)?;
