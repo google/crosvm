@@ -36,13 +36,15 @@ sudo apt install \
     clang \
     libasound2-dev \
     libcap-dev \
-    libgbm-dev \
-    libvirglrenderer-dev \
+    libdbus-1-dev \
+    libdrm-dev \
+    libepoxy-dev \
+    libssl-dev \
     libwayland-bin \
     libwayland-dev \
     pkg-config \
     protobuf-compiler \
-    python \
+    python3 \
     wayland-protocols
 ```
 
@@ -88,7 +90,7 @@ recommended as it will not run containers with root privileges.
 
 ### Running all tests
 
-To run all tests, just run:
+To run all tests for all platforms, just run:
 
 ```
 ./test_all
@@ -99,12 +101,8 @@ this do?
 
 1.  It will start `./ci/[aarch64_]builder --vm`.
 
-    The builder will build required third_party dependencies. If you make
-    modifications to these dependencies (e.g. minijail, tpm2) these will be
-    included in tests.
-
-    Then it will start a VM for running tests in the background. The VM is
-    booting while the next step is running.
+    This will start the builder container and launch a VM for running tests in
+    the background. The VM is booting while the next step is running.
 
 2.  It will call `./run_tests` inside the builder
 
@@ -146,7 +144,7 @@ crosvm-aarch64$ cargo test -p kvm_sys
 ### Running tests without Docker
 
 Specific crates can be tested as usual with `cargo test` without the need for
-Docker. However, because of special requirements many of them will not work,
+Docker. However, because of special requirements some of them will not work,
 which means that `cargo test --workspace` will also not work to run all tests.
 
 For this reason, we have a separate test runner `./run_tests` which documents

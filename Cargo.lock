@@ -174,14 +174,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cras-sys"
-version = "0.1.0"
-dependencies = [
- "audio_streams",
- "data_model",
-]
-
-[[package]]
 name = "crc32fast"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -304,12 +296,13 @@ dependencies = [
 
 [[package]]
 name = "dbus"
-version = "0.8.4"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cd9e78c210146a1860f897db03412fd5091fd73100778e43ee255cca252cf32"
+checksum = "c8862bb50aa3b2a2db5bfd2c875c73b3038aa931c411087e335ca8ca0ed430b9"
 dependencies = [
  "libc",
  "libdbus-sys",
+ "winapi",
 ]
 
 [[package]]
@@ -322,9 +315,9 @@ dependencies = [
  "audio_streams",
  "base",
  "bit_field",
- "cras-sys",
  "cros_async",
  "data_model",
+ "dbus",
  "disk",
  "enumn",
  "fuse",
@@ -343,6 +336,7 @@ dependencies = [
  "once_cell",
  "p9",
  "power_monitor",
+ "protobuf",
  "protos",
  "remain",
  "resources",
@@ -352,6 +346,7 @@ dependencies = [
  "smallvec",
  "sync",
  "sys_util",
+ "system_api",
  "tempfile",
  "thiserror",
  "tpm2",
@@ -655,16 +650,6 @@ checksum = "18794a8ad5b29321f790b55d93dfba91e125cb1a9edbd4f8e3150acc771c1a5e"
 [[package]]
 name = "libcras"
 version = "0.1.0"
-dependencies = [
- "async-trait",
- "audio_streams",
- "cras-sys",
- "cros_async",
- "data_model",
- "futures",
- "libc",
- "sys_util",
-]
 
 [[package]]
 name = "libcrosvm_control"
@@ -1057,9 +1042,11 @@ dependencies = [
 name = "rutabaga_gfx"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "base",
  "data_model",
  "libc",
+ "pkg-config",
  "sync",
 ]
 
@@ -1141,6 +1128,10 @@ dependencies = [
  "tempfile",
  "thiserror",
 ]
+
+[[package]]
+name = "system_api"
+version = "0.1.0"
 
 [[package]]
 name = "tempfile"

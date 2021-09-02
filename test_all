@@ -5,5 +5,5 @@
 #
 # Runs tests for both x86 and aarch64.
 
-time ./ci/builder --vm ./run_tests &&
-    time ./ci/aarch64_builder --vm ./run_tests
+time ./ci/builder "$@" --vm ./run_tests &&
+    time ./ci/aarch64_builder "$@" --vm ./run_tests
