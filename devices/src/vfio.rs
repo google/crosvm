@@ -1018,3 +1018,63 @@ impl VfioDevice {
         &self.dev
     }
 }
+
+pub struct VfioPciConfig {
+    device: Arc<VfioDevice>,
+}
+
+impl VfioPciConfig {
+    pub fn new(device: Arc<VfioDevice>) -> Self {
+        VfioPciConfig { device }
+    }
+
+    #[allow(dead_code)]
+    pub fn read_config_byte(&self, offset: u32) -> u8 {
+        let mut data: [u8; 1] = [0];
+        self.device
+            .region_read(VFIO_PCI_CONFIG_REGION_INDEX, data.as_mut(), offset.into());
+
+        data[0]
+    }
+
+    #[allow(dead_code)]
+    pub fn read_config_word(&self, offset: u32) -> u16 {
+        let mut data: [u8; 2] = [0, 0];
+        self.device
+            .region_read(VFIO_PCI_CONFIG_REGION_INDEX, data.as_mut(), offset.into());
+
+        u16::from_le_bytes(data)
+    }
+
+    #[allow(dead_code)]
+    pub fn read_config_dword(&self, offset: u32) -> u32 {
+        let mut data: [u8; 4] = [0, 0, 0, 0];
+        self.device
+            .region_read(VFIO_PCI_CONFIG_REGION_INDEX, data.as_mut(), offset.into());
+
+        u32::from_le_bytes(data)
+    }
+
+    #[allow(dead_code)]
+    pub fn write_config_byte(&self, buf: u8, offset: u32) {
+        self.device.region_write(
+            VFIO_PCI_CONFIG_REGION_INDEX,
+            ::std::slice::from_ref(&buf),
+            offset.into(),
+        )
+    }
+
+    #[allow(dead_code)]
+    pub fn write_config_word(&self, buf: u16, offset: u32) {
+        let data: [u8; 2] = buf.to_le_bytes();
+        self.device
+            .region_write(VFIO_PCI_CONFIG_REGION_INDEX, &data, offset.into())
+    }
+
+    #[allow(dead_code)]
+    pub fn write_config_dword(&self, buf: u32, offset: u32) {
+        let data: [u8; 4] = buf.to_le_bytes();
+        self.device
+            .region_write(VFIO_PCI_CONFIG_REGION_INDEX, &data, offset.into())
+    }
+}
