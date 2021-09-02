@@ -18,7 +18,6 @@ vm_tmp_dir=/var/tmp
 
 # List of shared objects used by crosvm that need to be synced.
 shared_objects=(
-    /workspace/scratch/lib/*.so*
     /root/.rustup/toolchains/${rust_toolchain}-*/lib/libstd-*.so
     /root/.rustup/toolchains/${rust_toolchain}-*/lib/libtest-*.so
 )

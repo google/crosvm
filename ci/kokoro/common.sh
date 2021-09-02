@@ -12,7 +12,7 @@
 if [[ ! -z "${DEBUG_SSH_KEY}" ]]; then
   echo "${DEBUG_SSH_KEY}" >>~/.ssh/authorized_keys
   external_ip=$(
-    curl -s -H "Metadata-Flavor: Google"
+    curl -s -H "Metadata-Flavor: Google" \
     http://metadata/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip
   )
   echo "SSH Debug enabled. Connect to: kbuilder@${external_ip}"

@@ -10,7 +10,7 @@
 ARG VM_ARCH
 
 # Build stage which will build the rootfs for our VM
-FROM debian:buster as vm_builder
+FROM debian:bullseye as vm_builder
 ARG VM_ARCH
 
 RUN apt-get update && apt-get install --yes \
@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install --yes \
 WORKDIR /workspace/vm
 
 RUN curl -sSfL -o rootfs.qcow2 \
-    "http://cloud.debian.org/images/cloud/bullseye/daily/20210702-691/debian-11-generic-${VM_ARCH}-daily-20210702-691.qcow2"
+    "http://cloud.debian.org/images/cloud/bullseye/daily/20210902-753/debian-11-generic-${VM_ARCH}-daily-20210902-753.qcow2"
 
 # Package `cloud_init_data.yaml` to be loaded during `first_boot.expect`
 COPY build/cloud_init_data.yaml ./

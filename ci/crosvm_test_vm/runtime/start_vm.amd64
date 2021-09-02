@@ -13,7 +13,10 @@ qemu_args=(
 
 # The build environment for first_boot.expect does not support KVM.
 if [ -e /dev/kvm ]; then
-    qemu_args+=(-enable-kvm -cpu host)
+    # We cannot use host CPU detection due to b/181359683. Kokoro runs at least
+    # on Broadwell generation CPUs, so let's use that and turn on nested
+    # virtualization.
+    qemu_args+=(-enable-kvm -cpu Broadwell,vmx=on)
 fi
 mkdir -p /workspace/scratch/logs
 qemu-system-x86_64 ${qemu_args[@]} $@ | tee /workspace/logs/vm.log

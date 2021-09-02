@@ -10,18 +10,6 @@ if [ "$1" = "--clean" ]; then
     rm -rf /workspace/scratch/*
 fi
 
-echo "Building ChromeOS dependencies..."
-if ! make -j $(nproc) -C ci/build_environment TARGET_ARCH=aarch64 \
-    >/workspace/logs/build_environment.log 2>&1; then
-    echo "Failed to build ChromeOS dependencies"
-    cat /workspace/logs/build_environment.log
-    # Drop into an interactive shell for debugging.
-    if [[ $# -eq 0 ]]; then
-        /bin/bash
-    fi
-    exit 1
-fi
-
 if [ "$1" = "--vm" ]; then
     shift
     echo "Starting testing vm..."

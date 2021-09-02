@@ -5,15 +5,11 @@
 # Base image for crosvm_builder and crosvm_aarch64_builder containing basic
 # devleopment environment for building rust.
 
-FROM debian:buster
+FROM debian:bullseye
 
 # Set timezone so apt-get won't try to prompt
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=US/Pacific
-
-# Add bullseye to sources so we can install some newer versions of packages.
-RUN echo 'deb http://deb.debian.org/debian bullseye main' >/etc/apt/sources.list.d/testing.list
-RUN echo 'APT::Default-Release "stable";' >/etc/apt/apt.conf.d/99_default_stable
 
 RUN apt-get update && apt-get install --yes --no-install-recommends \
     ca-certificates \
@@ -26,7 +22,7 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
     jq \
     libasound2-dev \
     make \
-    meson/testing \
+    meson \
     nasm \
     ninja-build \
     openssh-client \
@@ -71,13 +67,6 @@ RUN cargo install mdbook-mermaid --version "^0.8.3"
 # Point cargo to store data on the scratch volume.
 ENV CARGO_TARGET_DIR=/workspace/scratch/cargo_target
 ENV CARGO_HOME=/workspace/scratch/cargo_home
-
-# We are building out of source with a readonly source filesystem. This flag
-# tells some build.rs files to not write into the src filesystem.
-ENV RUSTFLAGS='--cfg hermetic'
-
-# Environment variables for the run_tests script to enable all tests.
-ENV CROSVM_CROS_BUILD=1
 
 # All commands will be executed in the crosvm src directory.
 WORKDIR /workspace/src/crosvm

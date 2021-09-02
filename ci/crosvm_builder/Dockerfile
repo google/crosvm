@@ -22,18 +22,10 @@ RUN apt-get install --yes --no-install-recommends \
     libdrm-dev \
     libepoxy-dev \
     libssl-dev \
-    qemu-system-x86
-
-RUN apt-get install --yes -t testing --no-install-recommends \
-    libdrm-dev \
-    libepoxy-dev \
     libwayland-dev \
+    libxext-dev \
+    qemu-system-x86 \
     wayland-protocols
-
-# Allow GCC/Rust to find packages and libraries stored on the scratch volume.
-ENV LIBRARY_PATH=/workspace/scratch/lib
-ENV LD_LIBRARY_PATH=/workspace/scratch/lib
-ENV PKG_CONFIG_PATH=/workspace/scratch/lib/pkgconfig
 
 # Include test VM inside this container
 COPY --from=vm \

@@ -24,22 +24,17 @@ RUN apt-get update && apt-get install --yes --no-install-recommends  \
     g++-aarch64-linux-gnu \
     gcc-aarch64-linux-gnu \
     ipxe-qemu \
-    qemu-efi-aarch64 \
-    qemu-system-aarch64 \
-    qemu-user-static
-
-RUN apt-get install --yes --no-install-recommends -o APT::Immediate-Configure=false \
     libc-dev:arm64 \
     libcap-dev:arm64 \
     libdbus-1-dev:arm64 \
     libdrm-dev:arm64 \
     libepoxy-dev:arm64 \
-    libssl-dev:arm64
-
-RUN apt-get install --yes -t testing --no-install-recommends  \
-    libdrm-dev:arm64 \
-    libepoxy-dev:arm64 \
+    libssl-dev:arm64 \
     libwayland-dev:arm64 \
+    libxext-dev:arm64 \
+    qemu-efi-aarch64 \
+    qemu-system-aarch64 \
+    qemu-user-static \
     wayland-protocols
 
 # Setup rust for cross-compilation
@@ -48,13 +43,11 @@ ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
     CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
     CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++ \
     CARGO_BUILD_TARGET=aarch64-unknown-linux-gnu \
-    PKG_CONFIG=aarch64-linux-gnu-pkg-config \
-    PKG_CONFIG_PATH=/workspace/scratch/lib/pkgconfig
+    PKG_CONFIG=aarch64-linux-gnu-pkg-config
 
-# Allow GCC/Rust to find packages and libraries stored on the scratch volume. We
-# have to link to a known search path since LIBRARY_PATH is not used by
-# cross-compile GCC.
-RUN ln -s /workspace/scratch/lib/ /usr/local/lib/aarch64-linux-gnu
+RUN mkdir -p /usr/local/share/meson/cross \
+    && /usr/share/meson/debcrossgen --arch arm64 \
+        -o /usr/local/share/meson/cross/aarch64
 
 # Hack: For some reason the libgcc-10-dev-arm64-cross package does not install
 # this link correctly.
