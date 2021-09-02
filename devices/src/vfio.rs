@@ -922,30 +922,27 @@ impl VfioDevice {
     /// buf: data destination and buf length is read size
     /// addr: offset in the region
     pub fn region_read(&self, index: u32, buf: &mut [u8], addr: u64) {
-        let stub: &VfioRegion;
-        match self.regions.get(index as usize) {
-            Some(v) => stub = v,
-            None => {
-                warn!("region read with invalid index: {}", index);
-                return;
-            }
-        }
+        let stub: &VfioRegion = self
+            .regions
+            .get(index as usize)
+            .unwrap_or_else(|| panic!("tried to read VFIO with an invalid index: {}", index));
 
         let size = buf.len() as u64;
         if size > stub.size || addr + size > stub.size {
-            warn!(
-                "region read with invalid parameter, index: {}, add: {:x}, size: {:x}",
+            panic!(
+                "tried to read VFIO region with invalid arguments: index={}, addr=0x{:x}, size=0x{:x}",
                 index, addr, size
             );
-            return;
         }
 
-        if let Err(e) = self.dev.read_exact_at(buf, stub.offset + addr) {
-            warn!(
-                "Failed to read region in index: {}, addr: {:x}, error: {}",
-                index, addr, e
-            );
-        }
+        self.dev
+            .read_exact_at(buf, stub.offset + addr)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "failed to read region: index={}, addr=0x{:x}, error={}",
+                    index, addr, e
+                )
+            });
     }
 
     /// write the data from buf into a vfio device region
@@ -953,33 +950,30 @@ impl VfioDevice {
     /// buf: data src and buf length is write size
     /// addr: offset in the region
     pub fn region_write(&self, index: u32, buf: &[u8], addr: u64) {
-        let stub: &VfioRegion;
-        match self.regions.get(index as usize) {
-            Some(v) => stub = v,
-            None => {
-                warn!("region write with invalid index: {}", index);
-                return;
-            }
-        }
+        let stub: &VfioRegion = self
+            .regions
+            .get(index as usize)
+            .unwrap_or_else(|| panic!("tried to write VFIO with an invalid index: {}", index));
 
         let size = buf.len() as u64;
         if size > stub.size
             || addr + size > stub.size
             || (stub.flags & VFIO_REGION_INFO_FLAG_WRITE) == 0
         {
-            warn!(
-                "region write with invalid parameter,indxe: {}, add: {:x}, size: {:x}",
+            panic!(
+                "tried to write VFIO region with invalid arguments: index={}, addr=0x{:x}, size=0x{:x}",
                 index, addr, size
             );
-            return;
         }
 
-        if let Err(e) = self.dev.write_all_at(buf, stub.offset + addr) {
-            warn!(
-                "Failed to write region in index: {}, addr: {:x}, error: {}",
-                index, addr, e
-            );
-        }
+        self.dev
+            .write_all_at(buf, stub.offset + addr)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "failed to write region: index={}, addr=0x{:x}, error={}",
+                    index, addr, e
+                )
+            });
     }
 
     /// get vfio device's descriptors which are passed into minijail process
@@ -1024,53 +1018,44 @@ impl VfioPciConfig {
         VfioPciConfig { device }
     }
 
-    #[allow(dead_code)]
     pub fn read_config_byte(&self, offset: u32) -> u8 {
         let mut data: [u8; 1] = [0];
         self.device
             .region_read(VFIO_PCI_CONFIG_REGION_INDEX, data.as_mut(), offset.into());
-
         data[0]
     }
 
-    #[allow(dead_code)]
     pub fn read_config_word(&self, offset: u32) -> u16 {
         let mut data: [u8; 2] = [0, 0];
         self.device
             .region_read(VFIO_PCI_CONFIG_REGION_INDEX, data.as_mut(), offset.into());
-
         u16::from_le_bytes(data)
     }
 
-    #[allow(dead_code)]
     pub fn read_config_dword(&self, offset: u32) -> u32 {
         let mut data: [u8; 4] = [0, 0, 0, 0];
         self.device
             .region_read(VFIO_PCI_CONFIG_REGION_INDEX, data.as_mut(), offset.into());
-
         u32::from_le_bytes(data)
     }
 
-    #[allow(dead_code)]
     pub fn write_config_byte(&self, buf: u8, offset: u32) {
         self.device.region_write(
             VFIO_PCI_CONFIG_REGION_INDEX,
             ::std::slice::from_ref(&buf),
             offset.into(),
-        )
+        );
     }
 
-    #[allow(dead_code)]
     pub fn write_config_word(&self, buf: u16, offset: u32) {
         let data: [u8; 2] = buf.to_le_bytes();
         self.device
-            .region_write(VFIO_PCI_CONFIG_REGION_INDEX, &data, offset.into())
+            .region_write(VFIO_PCI_CONFIG_REGION_INDEX, &data, offset.into());
     }
 
-    #[allow(dead_code)]
     pub fn write_config_dword(&self, buf: u32, offset: u32) {
         let data: [u8; 4] = buf.to_le_bytes();
         self.device
-            .region_write(VFIO_PCI_CONFIG_REGION_INDEX, &data, offset.into())
+            .region_write(VFIO_PCI_CONFIG_REGION_INDEX, &data, offset.into());
     }
 }
