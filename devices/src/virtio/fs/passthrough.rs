@@ -134,11 +134,11 @@ struct fsverity_enable_arg {
     _version: u32,
     _hash_algorithm: u32,
     _block_size: u32,
-    _salt_size: u32,
-    _salt_ptr: u64,
-    _sig_size: u32,
+    salt_size: u32,
+    salt_ptr: u64,
+    sig_size: u32,
     __reserved1: u32,
-    _sig_ptr: u64,
+    sig_ptr: u64,
     __reserved2: [u64; 11],
 }
 unsafe impl DataInit for fsverity_enable_arg {}
@@ -1117,7 +1117,7 @@ impl PassthroughFs {
         &self,
         inode: Inode,
         handle: Handle,
-        r: R,
+        mut r: R,
     ) -> io::Result<IoctlReply> {
         let inode_data = self.find_inode(inode)?;
 
@@ -1169,7 +1169,35 @@ impl PassthroughFs {
             data
         };
 
-        let arg = fsverity_enable_arg::from_reader(r)?;
+        let mut arg = fsverity_enable_arg::from_reader(&mut r)?;
+
+        let mut salt;
+        if arg.salt_size > 0 {
+            if arg.salt_size > self.max_buffer_size() {
+                return Ok(IoctlReply::Done(Err(io::Error::from_raw_os_error(
+                    libc::ENOMEM,
+                ))));
+            }
+            salt = vec![0; arg.salt_size as usize];
+            r.read_exact(&mut salt)?;
+            arg.salt_ptr = salt.as_ptr() as usize as u64;
+        } else {
+            arg.salt_ptr = 0;
+        }
+
+        let mut sig;
+        if arg.sig_size > 0 {
+            if arg.sig_size > self.max_buffer_size() {
+                return Ok(IoctlReply::Done(Err(io::Error::from_raw_os_error(
+                    libc::ENOMEM,
+                ))));
+            }
+            sig = vec![0; arg.sig_size as usize];
+            r.read_exact(&mut sig)?;
+            arg.sig_ptr = sig.as_ptr() as usize as u64;
+        } else {
+            arg.sig_ptr = 0;
+        }
 
         // Safe because this doesn't modify any memory and we check the return value.
         let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_ENABLE_VERITY(), &arg) };
