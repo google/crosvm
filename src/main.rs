@@ -26,6 +26,8 @@ use crosvm::{
     VhostUserFsOption, VhostUserOption, VhostUserWlOption, DISK_ID_LEN,
 };
 use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
+#[cfg(feature = "audio_cras")]
+use devices::virtio::snd::cras_backend::Error as CrasSndError;
 use devices::virtio::vhost::user::device::{
     run_block_device, run_console_device, run_net_device, run_wl_device,
 };
@@ -978,7 +980,12 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         #[cfg(feature = "audio_cras")]
         "cras-snd" => {
-            cfg.cras_snd = true;
+            cfg.cras_snd = Some(
+                value
+                    .unwrap()
+                    .parse()
+                    .map_err(|e: CrasSndError| argument::Error::Syntax(e.to_string()))?,
+            );
         }
         "no-smt" => {
             cfg.no_smt = true;
@@ -2060,7 +2067,13 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           Argument::value("cpu-cluster", "CPUSET", "Group the given CPUs into a cluster (default: no clusters)"),
           Argument::value("cpu-capacity", "CPU=CAP[,CPU=CAP[,...]]", "Set the relative capacity of the given CPU (default: no capacity)"),
           #[cfg(feature = "audio_cras")]
-          Argument::flag("cras-snd", "Enable virtio-snd device with CRAS backend"),
+          Argument::value("cras-snd",
+          "[capture=true,client=crosvm,socket=unified]",
+          "Comma separated key=value pairs for setting up cras snd devices.
+              Possible key values:
+              capture - Enable audio capture.
+              client_type - Set specific client type for cras backend.
+              socket_type - Set specific socket type for cras backend (legacy/unified)"),
           Argument::flag("no-smt", "Don't use SMT in the guest"),
           Argument::value("rt-cpus", "CPUSET", "Comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: none)"),
           Argument::flag("delay-rt", "Don't set VCPUs real-time until make-rt command is run"),

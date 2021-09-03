@@ -33,6 +33,8 @@ use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::{DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH};
+#[cfg(feature = "audio_cras")]
+use devices::virtio::snd::cras_backend::Parameters as CrasSndParameters;
 use devices::virtio::vhost::user::vmm::{
     Block as VhostUserBlock, Console as VhostUserConsole, Fs as VhostUserFs,
     Mac80211Hwsim as VhostUserMac80211Hwsim, Net as VhostUserNet, Wl as VhostUserWl,
@@ -332,10 +334,12 @@ fn create_rng_device(cfg: &Config) -> DeviceResult {
 }
 
 #[cfg(feature = "audio_cras")]
-fn create_cras_snd_device(cfg: &Config) -> DeviceResult {
-    let dev =
-        virtio::snd::cras_backend::VirtioSndCras::new(virtio::base_features(cfg.protected_vm))
-            .map_err(Error::CrasSoundDeviceNew)?;
+fn create_cras_snd_device(cfg: &Config, cras_snd: CrasSndParameters) -> DeviceResult {
+    let dev = virtio::snd::cras_backend::VirtioSndCras::new(
+        virtio::base_features(cfg.protected_vm),
+        cras_snd,
+    )
+    .map_err(Error::CrasSoundDeviceNew)?;
 
     let jail = match simple_jail(&cfg, "cras_snd_device")? {
         Some(mut jail) => {
@@ -1268,8 +1272,8 @@ fn create_virtio_devices(
 
     #[cfg(feature = "audio_cras")]
     {
-        if cfg.cras_snd {
-            devs.push(create_cras_snd_device(cfg)?);
+        if let Some(cras_snd) = &cfg.cras_snd {
+            devs.push(create_cras_snd_device(cfg, cras_snd.clone())?);
         }
     }
 

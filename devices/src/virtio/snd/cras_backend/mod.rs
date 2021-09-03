@@ -6,6 +6,7 @@
 
 use std::io;
 use std::rc::Rc;
+use std::str::{FromStr, ParseBoolError};
 use std::thread;
 
 use audio_streams::{SampleFormat, StreamSource};
@@ -15,7 +16,7 @@ use cros_async::{select4, AsyncError, EventAsync, Executor, SelectResult};
 use data_model::DataInit;
 use futures::channel::mpsc;
 use futures::{pin_mut, Future, TryFutureExt};
-use libcras::{BoxError, CrasClient, CrasClientType};
+use libcras::{BoxError, CrasClient, CrasClientType, CrasSocketType};
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
@@ -83,6 +84,67 @@ pub enum Error {
     /// Writing to a buffer in the guest failed.
     #[error("failed to write to buffer: {0}")]
     WriteBuffer(io::Error),
+    /// Failed to parse parameters.
+    #[error("Invalid cras snd parameter: {0}")]
+    UnknownParameter(String),
+    /// Unknown cras snd parameter value.
+    #[error("Invalid cras snd parameter value ({0}): {1}")]
+    InvalidParameterValue(String, String),
+    /// Failed to parse bool value.
+    #[error("Invalid bool value: {0}")]
+    InvalidBoolValue(ParseBoolError),
+}
+
+/// Holds the parameters for a cras sound device
+#[derive(Debug, Clone)]
+pub struct Parameters {
+    pub capture: bool,
+    pub client_type: CrasClientType,
+    pub socket_type: CrasSocketType,
+}
+
+impl Default for Parameters {
+    fn default() -> Self {
+        Parameters {
+            capture: true,
+            client_type: CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
+            socket_type: CrasSocketType::Unified,
+        }
+    }
+}
+
+impl FromStr for Parameters {
+    type Err = Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let mut params: Parameters = Default::default();
+        let opts = s
+            .split(',')
+            .map(|frag| frag.split('='))
+            .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
+
+        for (k, v) in opts {
+            match k {
+                "capture" => {
+                    params.capture = v.parse::<bool>().map_err(Error::InvalidBoolValue)?;
+                }
+                "client_type" => {
+                    params.client_type = v.parse().map_err(|e: libcras::CrasSysError| {
+                        Error::InvalidParameterValue(v.to_string(), e.to_string())
+                    })?;
+                }
+                "socket_type" => {
+                    params.socket_type = v.parse().map_err(|e: libcras::Error| {
+                        Error::InvalidParameterValue(v.to_string(), e.to_string())
+                    })?;
+                }
+                _ => {
+                    return Err(Error::UnknownParameter(k.to_string()));
+                }
+            }
+        }
+
+        Ok(params)
+    }
 }
 
 pub enum DirectionalStream {
@@ -158,6 +220,7 @@ impl<'a> StreamInfo<'a> {
         tx_queue: &Rc<AsyncMutex<Queue>>,
         rx_queue: &Rc<AsyncMutex<Queue>>,
         interrupt: &Rc<Interrupt>,
+        params: &Parameters,
     ) -> Result<(), Error> {
         if self.state != VIRTIO_SND_R_PCM_SET_PARAMS
             && self.state != VIRTIO_SND_R_PCM_PREPARE
@@ -176,13 +239,11 @@ impl<'a> StreamInfo<'a> {
             return Err(Error::OperationNotSupported);
         }
         if self.client.is_none() {
-            // TODO(woodychow): once we're running in vm_concierge, we need an --enable-capture
-            // option for
-            //  false: CrasClient::new()
-            //  true: CrasClient::with_type(CrasSocketType::Unified)
-            // to use different socket.
-            let mut client = CrasClient::new().map_err(Error::Libcras).unwrap();
-            client.set_client_type(CrasClientType::CRAS_CLIENT_TYPE_CROSVM);
+            let mut client = CrasClient::with_type(params.socket_type).map_err(Error::Libcras)?;
+            if params.capture {
+                client.enable_cras_capture();
+            }
+            client.set_client_type(params.client_type);
             self.client = Some(client);
         }
         // (*)
@@ -211,7 +272,6 @@ impl<'a> StreamInfo<'a> {
                 tx_queue.clone(),
             ),
             VIRTIO_SND_D_INPUT => {
-                self.client.as_mut().unwrap().enable_cras_capture();
                 (
                     DirectionalStream::Input(
                         self.client
@@ -322,10 +382,11 @@ pub struct VirtioSndCras {
     queue_sizes: Box<[u16]>,
     worker_threads: Vec<thread::JoinHandle<()>>,
     kill_evt: Option<Event>,
+    params: Parameters,
 }
 
 impl VirtioSndCras {
-    pub fn new(base_features: u64) -> Result<VirtioSndCras, Error> {
+    pub fn new(base_features: u64, params: Parameters) -> Result<VirtioSndCras, Error> {
         let cfg = virtio_snd_config {
             jacks: 0.into(),
             streams: 2.into(),
@@ -341,6 +402,7 @@ impl VirtioSndCras {
             queue_sizes: vec![QUEUE_SIZE; NUM_QUEUES].into_boxed_slice(),
             worker_threads: Vec::new(),
             kill_evt: None,
+            params,
         })
     }
 }
@@ -477,6 +539,8 @@ impl VirtioDevice for VirtioSndCras {
         });
         // }
 
+        let params = self.params.clone();
+
         let worker_result = thread::Builder::new()
             .name("virtio_snd w".to_string())
             .spawn(move || {
@@ -492,7 +556,7 @@ impl VirtioDevice for VirtioSndCras {
                 };
 
                 if let Err(err_string) = run_worker(
-                    interrupt, queues, guest_mem, streams, snd_data, queue_evts, kill_evt,
+                    interrupt, queues, guest_mem, streams, snd_data, queue_evts, kill_evt, params,
                 ) {
                     error!("{}", err_string);
                 }
@@ -531,6 +595,7 @@ fn run_worker(
     snd_data: SndData,
     queue_evts: Vec<Event>,
     kill_evt: Event,
+    params: Parameters,
 ) -> Result<(), String> {
     let ex = Executor::new().expect("Failed to create an executor");
 
@@ -561,6 +626,7 @@ fn run_worker(
         &interrupt,
         &tx_queue,
         &rx_queue,
+        &params,
     );
     pin_mut!(f_ctrl);
 
@@ -603,4 +669,58 @@ fn run_worker(
     }
 
     Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn parameters_fromstr() {
+        fn check_success(
+            s: &str,
+            capture: bool,
+            client_type: CrasClientType,
+            socket_type: CrasSocketType,
+        ) {
+            let params = s.parse::<Parameters>().expect("parse should have succeded");
+            assert_eq!(params.capture, capture);
+            assert_eq!(params.client_type, client_type);
+            assert_eq!(params.socket_type, socket_type);
+        }
+        fn check_failure(s: &str) {
+            s.parse::<Parameters>()
+                .expect_err("parse should have failed");
+        }
+
+        check_success(
+            "capture=false",
+            false,
+            CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
+            CrasSocketType::Unified,
+        );
+        check_success(
+            "capture=true,client_type=crosvm",
+            true,
+            CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
+            CrasSocketType::Unified,
+        );
+        check_success(
+            "capture=true,client_type=arcvm",
+            true,
+            CrasClientType::CRAS_CLIENT_TYPE_ARCVM,
+            CrasSocketType::Unified,
+        );
+        check_failure("capture=true,client_type=none");
+        check_success(
+            "socket_type=legacy",
+            true,
+            CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
+            CrasSocketType::Legacy,
+        );
+        check_success(
+            "socket_type=unified",
+            true,
+            CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
+            CrasSocketType::Unified,
+        );
+    }
 }

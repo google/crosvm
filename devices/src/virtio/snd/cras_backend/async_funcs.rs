@@ -11,6 +11,7 @@ use cros_async::{sync::Condvar, sync::Mutex as AsyncMutex, EventAsync, Executor}
 use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
 
+use crate::virtio::cras_backend::Parameters;
 use crate::virtio::snd::common::*;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
@@ -27,6 +28,7 @@ async fn process_pcm_ctrl(
     rx_queue: &Rc<AsyncMutex<Queue>>,
     interrupt: &Rc<Interrupt>,
     streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo<'_>>>>>,
+    params: &Parameters,
     cmd_code: u32,
     writer: &mut Writer,
     stream_id: usize,
@@ -49,7 +51,7 @@ async fn process_pcm_ctrl(
     let result = match cmd_code {
         VIRTIO_SND_R_PCM_PREPARE => {
             stream
-                .prepare(ex, mem.clone(), tx_queue, rx_queue, interrupt)
+                .prepare(ex, mem.clone(), tx_queue, rx_queue, interrupt, params)
                 .await
         }
         VIRTIO_SND_R_PCM_START => stream.start().await,
@@ -329,6 +331,7 @@ pub async fn handle_ctrl_queue(
     interrupt: &Rc<Interrupt>,
     tx_queue: &Rc<AsyncMutex<Queue>>,
     rx_queue: &Rc<AsyncMutex<Queue>>,
+    params: &Parameters,
 ) -> Result<(), Error> {
     loop {
         let desc_chain = queue
@@ -562,6 +565,7 @@ pub async fn handle_ctrl_queue(
                         rx_queue,
                         interrupt,
                         streams,
+                        params,
                         code,
                         &mut writer,
                         stream_id,

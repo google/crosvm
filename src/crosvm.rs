@@ -22,6 +22,8 @@ use std::str::FromStr;
 
 use arch::{Pstore, VcpuAffinity};
 use devices::serial_device::{SerialHardware, SerialParameters};
+#[cfg(feature = "audio_cras")]
+use devices::virtio::cras_backend::Parameters as CrasSndParameters;
 use devices::virtio::fs::passthrough;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
@@ -210,7 +212,7 @@ pub struct Config {
     pub cpu_clusters: Vec<Vec<usize>>,
     pub cpu_capacity: BTreeMap<usize, u32>, // CPU index -> capacity
     #[cfg(feature = "audio_cras")]
-    pub cras_snd: bool,
+    pub cras_snd: Option<CrasSndParameters>,
     pub delay_rt: bool,
     pub no_smt: bool,
     pub memory: Option<u64>,
@@ -297,7 +299,7 @@ impl Default for Config {
             cpu_clusters: Vec::new(),
             cpu_capacity: BTreeMap::new(),
             #[cfg(feature = "audio_cras")]
-            cras_snd: false,
+            cras_snd: None,
             delay_rt: false,
             no_smt: false,
             memory: None,
