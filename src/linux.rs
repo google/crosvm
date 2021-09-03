@@ -1692,8 +1692,12 @@ fn add_current_user_to_jail(jail: &mut Minijail) -> Result<Ids> {
     jail.gidmap(&format!("{0} {0} 1", crosvm_gid))
         .map_err(Error::SettingGidMap)?;
 
-    jail.change_uid(crosvm_uid);
-    jail.change_gid(crosvm_gid);
+    if crosvm_uid != 0 {
+        jail.change_uid(crosvm_uid);
+    }
+    if crosvm_gid != 0 {
+        jail.change_gid(crosvm_gid);
+    }
 
     Ok(Ids {
         uid: crosvm_uid,
