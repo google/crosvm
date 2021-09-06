@@ -18,7 +18,7 @@ use vmm_vhost::vhost_user::message::*;
 use base::{error, iov_max, warn, Event, Timer};
 use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor, TimerAsync};
 use data_model::DataInit;
-use disk::{create_async_disk_file, ToAsyncDisk};
+use disk::create_async_disk_file;
 use vm_memory::GuestMemory;
 
 use crate::virtio::block::asynchronous::{flush_disk, process_one_chain};
@@ -34,7 +34,8 @@ static BLOCK_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: u16 = 16;
 
-struct BlockBackend {
+pub(crate) struct BlockBackend {
+    ex_cell: OnceCell<Executor>,
     disk_state: Rc<AsyncMutex<DiskState>>,
     disk_size: Arc<AtomicU64>,
     block_size: u32,
@@ -48,14 +49,30 @@ struct BlockBackend {
 }
 
 impl BlockBackend {
-    pub fn new(
-        disk_image: Box<dyn ToAsyncDisk>,
-        base_features: u64,
-        read_only: bool,
-        sparse: bool,
-        block_size: u32,
-        id: Option<BlockId>,
-    ) -> anyhow::Result<BlockBackend> {
+    /// Creates a new block backend.
+    ///
+    /// * `ex_cell`: `OnceCell` that must be initialized with an executor which is used in this device thread.
+    /// * `filename`: Name of the disk image file.
+    /// * `options`: Vector of flie options.
+    ///   - `read-only`
+    pub(crate) fn new(
+        ex_cell: OnceCell<Executor>,
+        filename: &str,
+        options: Vec<&str>,
+    ) -> anyhow::Result<Self> {
+        let read_only = options.contains(&"read-only");
+        let sparse = false;
+        let block_size = 512;
+        let f = OpenOptions::new()
+            .read(true)
+            .write(!read_only)
+            .create(false)
+            .open(filename)
+            .context("Failed to open disk file")?;
+        let disk_image = create_async_disk_file(f).context("Failed to create async file")?;
+
+        let base_features = base_features(ProtectionType::Unprotected);
+
         if block_size % SECTOR_SIZE as u32 != 0 {
             bail!(
                 "Block size {} is not a multiple of {}.",
@@ -82,8 +99,7 @@ impl BlockBackend {
         // In addition, the request header and status each consume a descriptor.
         let seg_max = min(seg_max, u32::from(QUEUE_SIZE) - 2);
 
-        // Safe because the executor is initialized in main() below.
-        let ex = BLOCK_EXECUTOR.get().expect("Executor not initialized");
+        let ex = ex_cell.get().context("Executor not initialized")?;
 
         let async_image = disk_image.to_async_disk(ex)?;
 
@@ -94,7 +110,7 @@ impl BlockBackend {
             Arc::clone(&disk_size),
             read_only,
             sparse,
-            id,
+            None, // id: Option<BlockId>,
         )));
 
         let timer = Timer::new().context("Failed to create a timer")?;
@@ -124,6 +140,7 @@ impl BlockBackend {
         .detach();
 
         Ok(BlockBackend {
+            ex_cell,
             disk_state,
             disk_size,
             block_size,
@@ -208,7 +225,7 @@ impl VhostUserBackend for BlockBackend {
         queue.ack_features(self.acked_features);
 
         // Safe because the executor is initialized in main() below.
-        let ex = BLOCK_EXECUTOR.get().expect("Executor not initialized");
+        let ex = self.ex_cell.get().expect("Executor not initialized");
 
         let kick_evt =
             EventAsync::new(kick_evt.0, ex).context("failed to create EventAsync for kick_evt")?;
@@ -319,34 +336,16 @@ pub fn run_block_device(program_name: &str, args: std::env::Args) -> anyhow::Res
     }
 
     let ex = Executor::new().context("failed to create executor")?;
+    BLOCK_EXECUTOR
+        .set(ex.clone())
+        .map_err(|_| anyhow!("failed to set executor"))?;
 
     // We can unwrap after `opt_str()` safely because they are required options.
     let socket = matches.opt_str("socket").unwrap();
     let filearg = matches.opt_str("file").unwrap();
     let fileopts = filearg.split(':').collect::<Vec<&str>>();
     let filename = fileopts.get(0).context("Must specify the filename")?;
-    let read_only = fileopts.contains(&"read-only");
-    let sparse = false;
-    let block_size = 512;
-    let f = OpenOptions::new()
-        .read(true)
-        .write(!read_only)
-        .create(false)
-        .open(filename)
-        .context("Failed to open disk file")?;
-    let async_file = create_async_disk_file(f).context("Failed to create async file")?;
-
-    let _ = BLOCK_EXECUTOR.set(ex.clone());
-
-    let base_features = base_features(ProtectionType::Unprotected);
-    let block = BlockBackend::new(
-        async_file,
-        base_features,
-        read_only,
-        sparse,
-        block_size,
-        None, // id: Option<BlockId>,
-    )?;
+    let block = BlockBackend::new(BLOCK_EXECUTOR.clone(), filename, fileopts[1..].to_vec())?;
     let handler = DeviceRequestHandler::new(block);
 
     if let Err(e) = ex.run_until(handler.run(socket, &ex)) {
