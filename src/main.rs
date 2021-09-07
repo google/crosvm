@@ -41,7 +41,7 @@ use devices::virtio::{
 use devices::ProtectionType;
 #[cfg(feature = "audio")]
 use devices::{Ac97Backend, Ac97Parameters};
-use disk::QcowFile;
+use disk::{self, QcowFile};
 #[cfg(feature = "composite-disk")]
 use disk::{
     create_composite_disk, create_disk_file, create_zero_filler, ImagePartitionType, PartitionInfo,
@@ -2449,7 +2449,7 @@ fn create_composite(mut args: std::env::Args) -> std::result::Result<(), ()> {
             if let [label, path] = partition_arg.split(":").collect::<Vec<_>>()[..] {
                 let partition_file = File::open(path)
                     .map_err(|e| error!("Failed to open partition image: {}", e))?;
-                let size = create_disk_file(partition_file)
+                let size = create_disk_file(partition_file, disk::MAX_NESTING_DEPTH)
                     .map_err(|e| error!("Failed to create DiskFile instance: {}", e))?
                     .get_len()
                     .map_err(|e| error!("Failed to get length of partition image: {}", e))?;
@@ -2559,9 +2559,11 @@ with a '--backing_file'."
             error!("Failed to create qcow file at '{}': {}", file_path, e);
         })?,
         (None, Some(backing_file)) => {
-            QcowFile::new_from_backing(file, &backing_file).map_err(|e| {
-                error!("Failed to create qcow file at '{}': {}", file_path, e);
-            })?
+            QcowFile::new_from_backing(file, &backing_file, disk::MAX_NESTING_DEPTH).map_err(
+                |e| {
+                    error!("Failed to create qcow file at '{}': {}", file_path, e);
+                },
+            )?
         }
         _ => unreachable!(),
     };

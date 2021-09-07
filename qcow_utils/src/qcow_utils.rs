@@ -10,7 +10,7 @@ use std::fs::OpenOptions;
 use std::os::raw::{c_char, c_int};
 
 use base::{flock, FlockOperation};
-use disk::{DiskFile, ImageType, QcowFile};
+use disk::{self, DiskFile, ImageType, QcowFile};
 
 #[no_mangle]
 pub unsafe extern "C" fn create_qcow_with_size(path: *const c_char, virtual_size: u64) -> c_int {
@@ -71,7 +71,7 @@ pub unsafe extern "C" fn expand_disk_image(path: *const c_char, virtual_size: u6
 
     let disk_image: Box<dyn DiskFile> = match image_type {
         ImageType::Raw => Box::new(raw_image),
-        ImageType::Qcow2 => match QcowFile::from(raw_image) {
+        ImageType::Qcow2 => match QcowFile::from(raw_image, disk::MAX_NESTING_DEPTH) {
             Ok(f) => Box::new(f),
             Err(_) => return -EINVAL,
         },

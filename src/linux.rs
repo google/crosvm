@@ -239,7 +239,8 @@ fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) 
             .map_err(Error::BlockDeviceNew)?,
         ) as Box<dyn VirtioDevice>
     } else {
-        let disk_file = disk::create_disk_file(raw_image).map_err(Error::CreateDiskError)?;
+        let disk_file = disk::create_disk_file(raw_image, disk::MAX_NESTING_DEPTH)
+            .map_err(Error::CreateDiskError)?;
         Box::new(
             virtio::Block::new(
                 virtio::base_features(cfg.protected_vm),

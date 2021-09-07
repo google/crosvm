@@ -8,7 +8,7 @@ use std::io::{Read, Write};
 use getopts::Options;
 
 use base::WriteZeroes;
-use disk::QcowFile;
+use disk::{self, QcowFile};
 
 fn show_usage(program_name: &str) {
     println!("Usage: {} [subcommand] <subcommand args>", program_name);
@@ -119,7 +119,7 @@ fn show_header(file_path: &str) -> std::result::Result<(), ()> {
         }
     };
 
-    let qcow_file = QcowFile::from(file).map_err(|_| ())?;
+    let qcow_file = QcowFile::from(file, disk::MAX_NESTING_DEPTH).map_err(|_| ())?;
     let header = qcow_file.header();
 
     println!("magic {:x}", header.magic);
@@ -155,7 +155,7 @@ fn show_l1_table(file_path: &str) -> std::result::Result<(), ()> {
         }
     };
 
-    let qcow_file = QcowFile::from(file).map_err(|_| ())?;
+    let qcow_file = QcowFile::from(file, disk::MAX_NESTING_DEPTH).map_err(|_| ())?;
     let l1_table = qcow_file.l1_table();
 
     for (i, l2_offset) in l1_table.iter().enumerate() {
@@ -174,7 +174,7 @@ fn show_l2_table(file_path: &str, index: usize) -> std::result::Result<(), ()> {
         }
     };
 
-    let mut qcow_file = QcowFile::from(file).map_err(|_| ())?;
+    let mut qcow_file = QcowFile::from(file, disk::MAX_NESTING_DEPTH).map_err(|_| ())?;
     let l2_table = qcow_file.l2_table(index).unwrap();
 
     if let Some(cluster_addrs) = l2_table {
@@ -198,7 +198,7 @@ fn show_ref_table(file_path: &str) -> std::result::Result<(), ()> {
         }
     };
 
-    let qcow_file = QcowFile::from(file).map_err(|_| ())?;
+    let qcow_file = QcowFile::from(file, disk::MAX_NESTING_DEPTH).map_err(|_| ())?;
     let ref_table = qcow_file.ref_table();
 
     for (i, block_offset) in ref_table.iter().enumerate() {
@@ -217,7 +217,7 @@ fn show_ref_block(file_path: &str, index: usize) -> std::result::Result<(), ()> 
         }
     };
 
-    let mut qcow_file = QcowFile::from(file).map_err(|_| ())?;
+    let mut qcow_file = QcowFile::from(file, disk::MAX_NESTING_DEPTH).map_err(|_| ())?;
     let ref_table = qcow_file.refcount_block(index).unwrap();
 
     if let Some(counts) = ref_table {
@@ -242,7 +242,7 @@ fn dd(file_path: &str, source_path: &str, count: Option<usize>) -> std::result::
         }
     };
 
-    let mut qcow_file = QcowFile::from(file).map_err(|_| ())?;
+    let mut qcow_file = QcowFile::from(file, disk::MAX_NESTING_DEPTH).map_err(|_| ())?;
 
     let mut src_file = match OpenOptions::new().read(true).open(source_path) {
         Ok(f) => f,
@@ -309,7 +309,7 @@ fn convert(src_path: &str, dst_path: &str) -> std::result::Result<(), ()> {
         disk::ImageType::Raw
     };
 
-    match disk::convert(src_file, dst_file, dst_type) {
+    match disk::convert(src_file, dst_file, dst_type, disk::MAX_NESTING_DEPTH) {
         Ok(_) => {
             println!("Converted {} to {}", src_path, dst_path);
             Ok(())

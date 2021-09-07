@@ -21,10 +21,11 @@ fuzz_target!(|bytes| {
     let mut disk_image = Cursor::new(bytes);
     let addr = read_u64(&mut disk_image);
     let value = read_u64(&mut disk_image);
+    let max_nesting_depth = 10;
     let mut disk_file = tempfile::tempfile().unwrap();
     disk_file.write_all(&bytes[16..]).unwrap();
     disk_file.seek(SeekFrom::Start(0)).unwrap();
-    if let Ok(mut qcow) = QcowFile::from(disk_file) {
+    if let Ok(mut qcow) = QcowFile::from(disk_file, max_nesting_depth) {
         if qcow.seek(SeekFrom::Start(addr)).is_ok() {
             let _ = qcow.write_all(&value.to_le_bytes());
         }

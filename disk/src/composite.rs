@@ -157,7 +157,7 @@ impl CompositeDiskFile {
     /// Set up a composite disk by reading the specification from a file. The file must consist of
     /// the CDISK_MAGIC string followed by one binary instance of the CompositeDisk protocol
     /// buffer. Returns an error if it could not read the file or if the specification was invalid.
-    pub fn from_file(mut file: File) -> Result<CompositeDiskFile> {
+    pub fn from_file(mut file: File, max_nesting_depth: u32) -> Result<CompositeDiskFile> {
         file.seek(SeekFrom::Start(0))
             .map_err(Error::ReadSpecificationError)?;
         let mut magic_space = [0u8; CDISK_MAGIC_LEN];
@@ -183,7 +183,8 @@ impl CompositeDiskFile {
                 )
                 .map_err(|e| Error::OpenFile(e.into(), disk.get_file_path().to_string()))?;
                 Ok(ComponentDiskPart {
-                    file: create_disk_file(file).map_err(|e| Error::DiskError(Box::new(e)))?,
+                    file: create_disk_file(file, max_nesting_depth)
+                        .map_err(|e| Error::DiskError(Box::new(e)))?,
                     offset: disk.get_offset(),
                     length: 0, // Assigned later
                 })
