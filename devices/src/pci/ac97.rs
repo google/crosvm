@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use audio_streams::shm_streams::{NullShmStreamSource, ShmStreamSource};
-use base::{error, Event, RawDescriptor};
+use base::{error, AsRawDescriptor, Event, RawDescriptor};
 #[cfg(feature = "audio_cras")]
 use libcras::{CrasClient, CrasClientType, CrasSocketType, CrasSysError};
 use remain::sorted;
@@ -373,11 +373,17 @@ impl PciDevice for Ac97Dev {
     }
 
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        if let Some(server_fds) = self.bus_master.keep_rds() {
-            server_fds
-        } else {
-            Vec::new()
+        let mut rds = Vec::new();
+        if let Some(mut server_fds) = self.bus_master.keep_rds() {
+            rds.append(&mut server_fds);
         }
+        if let Some(irq_evt) = &self.irq_evt {
+            rds.push(irq_evt.as_raw_descriptor());
+        }
+        if let Some(irq_resample_evt) = &self.irq_resample_evt {
+            rds.push(irq_resample_evt.as_raw_descriptor());
+        }
+        rds
     }
 
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
