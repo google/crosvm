@@ -546,6 +546,15 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
                         expected: e.to_string(),
                     })?;
             }
+            #[cfg(feature = "audio_cras")]
+            "socket_type" => {
+                ac97_params
+                    .set_socket_type(v)
+                    .map_err(|e| argument::Error::InvalidValue {
+                        value: v.to_string(),
+                        expected: e.to_string(),
+                    })?;
+            }
             #[cfg(any(target_os = "linux", target_os = "android"))]
             "server" => {
                 ac97_params.vios_server_path =
@@ -2095,6 +2104,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                               capture - Enable audio capture
                               capture_effects - | separated effects to be enabled for recording. The only supported effect value now is EchoCancellation or aec.
                               client_type - Set specific client type for cras backend.
+                              socket_type - Set specific socket type for cras backend.
                               server - The to the VIOS server (unix socket)."),
           #[cfg(feature = "audio")]
           Argument::value("sound", "[PATH]", "Path to the VioS server socket for setting up virtio-snd devices."),
@@ -2953,6 +2963,13 @@ mod tests {
             .expect("parse should have succeded");
         parse_ac97_options("backend=cras,capture=true,client_type=none")
             .expect_err("parse should have failed");
+    }
+
+    #[cfg(feature = "audio_cras")]
+    #[test]
+    fn parse_ac97_socket_type() {
+        parse_ac97_options("socket_type=unified").expect("parse should have succeded");
+        parse_ac97_options("socket_type=legacy").expect("parse should have succeded");
     }
 
     #[cfg(feature = "audio")]

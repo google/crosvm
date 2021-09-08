@@ -82,6 +82,8 @@ pub struct Ac97Parameters {
     pub vios_server_path: Option<PathBuf>,
     #[cfg(feature = "audio_cras")]
     client_type: Option<CrasClientType>,
+    #[cfg(feature = "audio_cras")]
+    socket_type: Option<CrasSocketType>,
 }
 
 impl Ac97Parameters {
@@ -91,6 +93,18 @@ impl Ac97Parameters {
     #[cfg(feature = "audio_cras")]
     pub fn set_client_type(&mut self, client_type: &str) -> std::result::Result<(), CrasSysError> {
         self.client_type = Some(client_type.parse()?);
+        Ok(())
+    }
+
+    /// Set CRAS socket type by given socket type string.
+    ///
+    /// `socket_type` - The socket type string.
+    #[cfg(feature = "audio_cras")]
+    pub fn set_socket_type(
+        &mut self,
+        socket_type: &str,
+    ) -> std::result::Result<(), libcras::Error> {
+        self.socket_type = Some(socket_type.parse()?);
         Ok(())
     }
 }
@@ -168,7 +182,7 @@ impl Ac97Dev {
     #[cfg(feature = "audio_cras")]
     fn create_cras_audio_device(params: Ac97Parameters, mem: GuestMemory) -> Result<Self> {
         let mut server = Box::new(
-            CrasClient::with_type(CrasSocketType::Unified)
+            CrasClient::with_type(params.socket_type.unwrap_or(CrasSocketType::Unified))
                 .map_err(pci_device::Error::CreateCrasClientFailed)?,
         );
         server.set_client_type(
