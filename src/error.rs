@@ -81,7 +81,7 @@ pub enum Error {
     DropCapabilities(base::Error),
     FsDeviceNew(virtio::fs::Error),
     GenerateAcpi,
-    GetMaxOpenFiles(io::Error),
+    GetMaxOpenFiles(base::Error),
     GetSignalMask(base::signal::Error),
     GuestMemoryLayout(<Arch as LinuxArch>::Error),
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]

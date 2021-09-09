@@ -548,6 +548,21 @@ pub fn open_file<P: AsRef<Path>>(path: P, read_only: bool, o_direct: bool) -> Re
     })
 }
 
+/// Get the max number of open files allowed by the environment.
+pub fn get_max_open_files() -> Result<u64> {
+    let mut buf = mem::MaybeUninit::<libc::rlimit64>::zeroed();
+
+    // Safe because this will only modify `buf` and we check the return value.
+    let res = unsafe { libc::prlimit64(0, libc::RLIMIT_NOFILE, ptr::null(), buf.as_mut_ptr()) };
+    if res == 0 {
+        // Safe because the kernel guarantees that the struct is fully initialized.
+        let limit = unsafe { buf.assume_init() };
+        Ok(limit.rlim_max)
+    } else {
+        errno_result()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use libc::EBADF;

@@ -8,13 +8,12 @@ use std::convert::TryFrom;
 #[cfg(feature = "gpu")]
 use std::env;
 use std::fs::{File, OpenOptions};
-use std::io::{self, stdin};
+use std::io::stdin;
 use std::iter;
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::ptr;
 use std::str;
 use std::sync::{mpsc, Arc, Barrier};
 use std::time::Duration;
@@ -105,20 +104,6 @@ impl AsRef<Tube> for TaggedControlTube {
 impl AsRawDescriptor for TaggedControlTube {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.as_ref().as_raw_descriptor()
-    }
-}
-
-fn get_max_open_files() -> Result<u64> {
-    let mut buf = mem::MaybeUninit::<libc::rlimit64>::zeroed();
-
-    // Safe because this will only modify `buf` and we check the return value.
-    let res = unsafe { libc::prlimit64(0, libc::RLIMIT_NOFILE, ptr::null(), buf.as_mut_ptr()) };
-    if res == 0 {
-        // Safe because the kernel guarantees that the struct is fully initialized.
-        let limit = unsafe { buf.assume_init() };
-        Ok(limit.rlim_max)
-    } else {
-        Err(Error::GetMaxOpenFiles(io::Error::last_os_error()))
     }
 }
 
@@ -975,7 +960,7 @@ fn create_fs_device(
     fs_cfg: virtio::fs::passthrough::Config,
     device_tube: Tube,
 ) -> DeviceResult {
-    let max_open_files = get_max_open_files()?;
+    let max_open_files = base::get_max_open_files().map_err(Error::GetMaxOpenFiles)?;
     let j = if cfg.sandbox {
         let seccomp_policy = cfg.seccomp_policy_dir.join("fs_device");
         let config = SandboxConfig {
@@ -1015,7 +1000,7 @@ fn create_9p_device(
     tag: &str,
     mut p9_cfg: p9::Config,
 ) -> DeviceResult {
-    let max_open_files = get_max_open_files()?;
+    let max_open_files = base::get_max_open_files().map_err(Error::GetMaxOpenFiles)?;
     let (jail, root) = if cfg.sandbox {
         let seccomp_policy = cfg.seccomp_policy_dir.join("9p_device");
         let config = SandboxConfig {

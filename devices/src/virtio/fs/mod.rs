@@ -34,6 +34,8 @@ use fuse::Server;
 use passthrough::PassthroughFs;
 use worker::Worker;
 
+pub use worker::process_fs_queue;
+
 // The fs device does not have a fixed number of queues.
 pub const QUEUE_SIZE: u16 = 1024;
 
@@ -50,7 +52,7 @@ pub const FS_MAX_TAG_LEN: usize = 36;
 /// kernel/include/uapi/linux/virtio_fs.h
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
-pub(crate) struct virtio_fs_config {
+pub struct virtio_fs_config {
     /// Filesystem name (UTF-8, not NUL-terminated, padded with NULs)
     pub tag: [u8; FS_MAX_TAG_LEN],
     /// Number of request queues

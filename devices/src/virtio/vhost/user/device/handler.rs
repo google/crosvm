@@ -264,6 +264,16 @@ where
         let listener = UnixListener::bind(socket)
             .map(UnlinkUnixListener)
             .map_err(HandlerError::CreateSocketListener)?;
+        return self.run_with_listener(listener, &ex).await;
+    }
+
+    /// Attaches to an already bound socket via `listener` and handles incoming messages from the
+    /// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
+    pub async fn run_with_listener(
+        self,
+        listener: UnlinkUnixListener,
+        ex: &Executor,
+    ) -> HandlerResult<()> {
         let (socket, _) = ex
             .spawn_blocking(move || listener.accept().map_err(HandlerError::AcceptConnection))
             .await?;
