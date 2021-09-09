@@ -86,11 +86,9 @@ async fn run_ctrl_queue(
                     }
                 }
             }
-        } else {
-            if let Err(e) = kick_evt.next_val().await {
-                error!("Failed to read kick event for ctrl queue: {}", e);
-                break;
-            }
+        } else if let Err(e) = kick_evt.next_val().await {
+            error!("Failed to read kick event for ctrl queue: {}", e);
+            break;
         }
 
         let mut state = state.borrow_mut();
@@ -260,9 +258,8 @@ impl VhostUserBackend for GpuBackend {
         let kick_evt =
             EventAsync::new(kick_evt.0, ex).context("failed to create EventAsync for kick_evt")?;
 
-        let queue = Arc::new(Mutex::new(queue));
         let reader = SharedReader {
-            queue: queue.clone(),
+            queue: Arc::new(Mutex::new(queue)),
             call_evt,
         };
 
@@ -464,7 +461,6 @@ pub fn run_gpu_device(program_name: &str, args: std::env::Args) -> anyhow::Resul
                     path.display(),
                     e
                 );
-                return;
             }
         })
         .detach();
