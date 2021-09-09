@@ -19,12 +19,12 @@ cleanup() {
 main() {
   echo "Copying ${crosvm_src}/ to ${kokoro_src}"
   mkdir -p "${kokoro_src}"
-  rsync -arq --exclude "target" --exclude "__pycache__" \
-    "${crosvm_src}/" "${kokoro_src}"
+  git clone -q "${crosvm_src}" "${kokoro_src}"
 
   # Run user-provided kokoro build script.
   export KOKORO_ARTIFACTS_DIR="${kokoro_root}/src"
-  echo "Running $1 in ${kokoro_root}"
+  echo "Running $1 on:"
+  git log --max-count=1
   bash $(dirname $0)/$1
   echo "$1 returned $?"
 }
