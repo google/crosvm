@@ -10,6 +10,7 @@ mod gpu;
 mod handler;
 mod mac80211_hwsim;
 mod net;
+mod vsock;
 mod wl;
 mod worker;
 
@@ -21,6 +22,7 @@ pub use self::gpu::*;
 pub use self::handler::VhostUserHandler;
 pub use self::mac80211_hwsim::*;
 pub use self::net::*;
+pub use self::vsock::*;
 pub use self::wl::*;
 
 use remain::sorted;

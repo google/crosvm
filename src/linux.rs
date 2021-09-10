@@ -34,7 +34,8 @@ use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
 use devices::virtio::snd::cras_backend::Parameters as CrasSndParameters;
 use devices::virtio::vhost::user::vmm::{
     Block as VhostUserBlock, Console as VhostUserConsole, Fs as VhostUserFs,
-    Mac80211Hwsim as VhostUserMac80211Hwsim, Net as VhostUserNet, Wl as VhostUserWl,
+    Mac80211Hwsim as VhostUserMac80211Hwsim, Net as VhostUserNet, Vsock as VhostUserVsock,
+    Wl as VhostUserWl,
 };
 use devices::virtio::{self, Console, VirtioDevice};
 #[cfg(feature = "gpu")]
@@ -638,6 +639,17 @@ fn create_net_device(
 fn create_vhost_user_net_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
     let dev = VhostUserNet::new(virtio::base_features(cfg.protected_vm), &opt.socket)
         .map_err(Error::VhostUserNetDeviceNew)?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        // no sandbox here because virtqueue handling is exported to a different process.
+        jail: None,
+    })
+}
+
+fn create_vhost_user_vsock_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
+    let dev = VhostUserVsock::new(virtio::base_features(cfg.protected_vm), &opt.socket)
+        .map_err(Error::VhostUserVsockDeviceNew)?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1351,6 +1363,10 @@ fn create_virtio_devices(
 
     for net in &cfg.vhost_user_net {
         devs.push(create_vhost_user_net_device(cfg, net)?);
+    }
+
+    for vsock in &cfg.vhost_user_vsock {
+        devs.push(create_vhost_user_vsock_device(cfg, vsock)?);
     }
 
     for opt in &cfg.vhost_user_wl {

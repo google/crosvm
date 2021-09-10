@@ -1861,6 +1861,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "vhost-user-net" => cfg.vhost_user_net.push(VhostUserOption {
             socket: PathBuf::from(value.unwrap()),
         }),
+        "vhost-user-vsock" => cfg.vhost_user_vsock.push(VhostUserOption {
+            socket: PathBuf::from(value.unwrap()),
+        }),
         "vhost-user-wl" => {
             let mut components = value.unwrap().splitn(2, ":");
             let socket = components.next().map(PathBuf::from).ok_or_else(|| {
@@ -2216,6 +2219,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("vhost-user-gpu", "SOCKET_PATH", "Paths to a vhost-user socket for gpu"),
           Argument::value("vhost-user-mac80211-hwsim", "SOCKET_PATH", "Path to a socket for vhost-user mac80211_hwsim"),
           Argument::value("vhost-user-net", "SOCKET_PATH", "Path to a socket for vhost-user net"),
+          Argument::value("vhost-user-vsock", "SOCKET_PATH", "Path to a socket for vhost-user vsock"),
           Argument::value("vhost-user-wl", "SOCKET_PATH:TUBE_PATH", "Paths to a vhost-user socket for wayland and a Tube socket for additional wayland-specific messages"),
           Argument::value("vhost-user-fs", "SOCKET_PATH:TAG",
                           "Path to a socket path for vhost-user fs, and tag for the shared dir"),
