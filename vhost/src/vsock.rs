@@ -10,19 +10,17 @@ use std::{
 
 use base::{ioctl_with_ref, AsRawDescriptor, RawDescriptor};
 use virtio_sys::{VHOST_VSOCK_SET_GUEST_CID, VHOST_VSOCK_SET_RUNNING};
-use vm_memory::GuestMemory;
 
 use super::{ioctl_result, Error, Result, Vhost};
 
 /// Handle for running VHOST_VSOCK ioctls.
 pub struct Vsock {
     descriptor: File,
-    mem: GuestMemory,
 }
 
 impl Vsock {
     /// Open a handle to a new VHOST_VSOCK instance.
-    pub fn new(vhost_vsock_device_path: &Path, mem: &GuestMemory) -> Result<Vsock> {
+    pub fn new<P: AsRef<Path>>(vhost_vsock_device_path: P) -> Result<Vsock> {
         Ok(Vsock {
             descriptor: OpenOptions::new()
                 .read(true)
@@ -30,7 +28,6 @@ impl Vsock {
                 .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
                 .open(vhost_vsock_device_path)
                 .map_err(Error::VhostOpen)?,
-            mem: mem.clone(),
         })
     }
 
@@ -69,11 +66,7 @@ impl Vsock {
     }
 }
 
-impl Vhost for Vsock {
-    fn mem(&self) -> &GuestMemory {
-        &self.mem
-    }
-}
+impl Vhost for Vsock {}
 
 impl AsRawDescriptor for Vsock {
     fn as_raw_descriptor(&self) -> RawDescriptor {

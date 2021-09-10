@@ -31,15 +31,9 @@ pub struct Vsock {
 
 impl Vsock {
     /// Create a new virtio-vsock device with the given VM cid.
-    pub fn new(
-        vhost_vsock_device_path: &Path,
-        base_features: u64,
-        cid: u64,
-        mem: &GuestMemory,
-    ) -> Result<Vsock> {
+    pub fn new(vhost_vsock_device_path: &Path, base_features: u64, cid: u64) -> Result<Vsock> {
         let kill_evt = Event::new().map_err(Error::CreateKillEvent)?;
-        let handle =
-            VhostVsockHandle::new(vhost_vsock_device_path, mem).map_err(Error::VhostOpen)?;
+        let handle = VhostVsockHandle::new(vhost_vsock_device_path).map_err(Error::VhostOpen)?;
 
         let avail_features = base_features
             | 1 << virtio_sys::vhost::VIRTIO_F_NOTIFY_ON_EMPTY
@@ -147,7 +141,7 @@ impl VirtioDevice for Vsock {
 
     fn activate(
         &mut self,
-        _: GuestMemory,
+        mem: GuestMemory,
         interrupt: Interrupt,
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
@@ -184,7 +178,7 @@ impl VirtioDevice for Vsock {
                             };
                             let cleanup_vqs = |_handle: &VhostVsockHandle| -> Result<()> { Ok(()) };
                             let result =
-                                worker.run(queue_evts, QUEUE_SIZES, activate_vqs, cleanup_vqs);
+                                worker.run(mem, queue_evts, QUEUE_SIZES, activate_vqs, cleanup_vqs);
                             if let Err(e) = result {
                                 error!("vsock worker thread exited with error: {:?}", e);
                             }

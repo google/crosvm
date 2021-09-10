@@ -50,7 +50,6 @@ where
         ip_addr: Ipv4Addr,
         netmask: Ipv4Addr,
         mac_addr: MacAddress,
-        mem: &GuestMemory,
     ) -> Result<Net<T, U>> {
         let kill_evt = Event::new().map_err(Error::CreateKillEvent)?;
 
@@ -72,7 +71,7 @@ where
             .map_err(Error::TapSetVnetHdrSize)?;
 
         tap.enable().map_err(Error::TapEnable)?;
-        let vhost_net_handle = U::new(vhost_net_device_path, mem).map_err(Error::VhostOpen)?;
+        let vhost_net_handle = U::new(vhost_net_device_path).map_err(Error::VhostOpen)?;
 
         let avail_features = base_features
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
@@ -190,7 +189,7 @@ where
 
     fn activate(
         &mut self,
-        _: GuestMemory,
+        mem: GuestMemory,
         interrupt: Interrupt,
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
@@ -238,8 +237,13 @@ where
                                     }
                                     Ok(())
                                 };
-                                let result =
-                                    worker.run(queue_evts, QUEUE_SIZES, activate_vqs, cleanup_vqs);
+                                let result = worker.run(
+                                    mem,
+                                    queue_evts,
+                                    QUEUE_SIZES,
+                                    activate_vqs,
+                                    cleanup_vqs,
+                                );
                                 if let Err(e) = result {
                                     error!("net worker thread exited with error: {}", e);
                                 }
@@ -369,7 +373,6 @@ pub mod tests {
     }
 
     fn create_net_common() -> Net<FakeTap, FakeNet<FakeTap>> {
-        let guest_memory = create_guest_memory().unwrap();
         let features = base_features(ProtectionType::Unprotected);
         Net::<FakeTap, FakeNet<FakeTap>>::new(
             &PathBuf::from(""),
@@ -377,7 +380,6 @@ pub mod tests {
             Ipv4Addr::new(127, 0, 0, 1),
             Ipv4Addr::new(255, 255, 255, 0),
             "de:21:e8:47:6b:6a".parse().unwrap(),
-            &guest_memory,
         )
         .unwrap()
     }

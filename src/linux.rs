@@ -594,7 +594,6 @@ fn create_net_device(
     host_ip: Ipv4Addr,
     netmask: Ipv4Addr,
     mac_address: MacAddress,
-    mem: &GuestMemory,
 ) -> DeviceResult {
     let mut vq_pairs = cfg.net_vq_pairs.unwrap_or(1);
     let vcpu_count = cfg.vcpu_count.unwrap_or(1);
@@ -611,7 +610,6 @@ fn create_net_device(
             host_ip,
             netmask,
             mac_address,
-            mem,
         )
         .map_err(Error::VhostNetDeviceNew)?;
         Box::new(dev) as Box<dyn VirtioDevice>
@@ -941,9 +939,9 @@ fn register_video_device(
     Ok(())
 }
 
-fn create_vhost_vsock_device(cfg: &Config, cid: u64, mem: &GuestMemory) -> DeviceResult {
+fn create_vhost_vsock_device(cfg: &Config, cid: u64) -> DeviceResult {
     let features = virtio::base_features(cfg.protected_vm);
-    let dev = virtio::vhost::Vsock::new(&cfg.vhost_vsock_device_path, features, cid, mem)
+    let dev = virtio::vhost::Vsock::new(&cfg.vhost_vsock_device_path, features, cid)
         .map_err(Error::VhostVsockDeviceNew)?;
 
     Ok(VirtioDeviceStub {
@@ -1319,13 +1317,7 @@ fn create_virtio_devices(
         if !cfg.vhost_user_net.is_empty() {
             return Err(Error::VhostUserNetWithNetArgs);
         }
-        devs.push(create_net_device(
-            cfg,
-            host_ip,
-            netmask,
-            mac_address,
-            vm.get_memory(),
-        )?);
+        devs.push(create_net_device(cfg, host_ip, netmask, mac_address)?);
     }
 
     for net in &cfg.vhost_user_net {
@@ -1469,7 +1461,7 @@ fn create_virtio_devices(
     }
 
     if let Some(cid) = cfg.cid {
-        devs.push(create_vhost_vsock_device(cfg, cid, vm.get_memory())?);
+        devs.push(create_vhost_vsock_device(cfg, cid)?);
     }
 
     for vhost_user_fs in &cfg.vhost_user_fs {
