@@ -29,7 +29,8 @@ use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
 #[cfg(feature = "audio_cras")]
 use devices::virtio::snd::cras_backend::Error as CrasSndError;
 use devices::virtio::vhost::user::device::{
-    run_block_device, run_console_device, run_fs_device, run_net_device, run_wl_device,
+    run_block_device, run_console_device, run_fs_device, run_net_device, run_vsock_device,
+    run_wl_device,
 };
 #[cfg(feature = "gpu")]
 use devices::virtio::{
@@ -2579,6 +2580,7 @@ fn start_device(mut args: std::env::Args) -> std::result::Result<(), ()> {
         #[cfg(feature = "gpu")]
         "gpu" => run_gpu_device(&program_name, args),
         "net" => run_net_device(&program_name, args),
+        "vsock" => run_vsock_device(&program_name, args),
         "wl" => run_wl_device(&program_name, args),
         _ => {
             println!("Unknown device name: {}", device);

@@ -69,6 +69,18 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         Ok(())
     }
 
+    /// Give up ownership and reset the device to default values. Allows a subsequent call to
+    /// `set_owner` to succeed.
+    fn reset_owner(&self) -> Result<()> {
+        // This ioctl is called on a valid vhost fd and has its
+        // return value checked.
+        let ret = unsafe { ioctl(self, virtio_sys::VHOST_RESET_OWNER()) };
+        if ret < 0 {
+            return ioctl_result();
+        }
+        Ok(())
+    }
+
     /// Get a bitmask of supported virtio/vhost features.
     fn get_features(&self) -> Result<u64> {
         let mut avail_features: u64 = 0;
@@ -287,6 +299,27 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         Ok(())
     }
 
+    /// Gets the index of the next available descriptor in the queue.
+    ///
+    /// # Arguments
+    /// * `queue_index` - Index of the queue to query.
+    fn get_vring_base(&self, queue_index: usize) -> Result<u16> {
+        let mut vring_state = virtio_sys::vhost_vring_state {
+            index: queue_index as u32,
+            num: 0,
+        };
+
+        // Safe because this will only modify `vring_state` and we check the return value.
+        let ret = unsafe {
+            ioctl_with_mut_ref(self, virtio_sys::VHOST_GET_VRING_BASE(), &mut vring_state)
+        };
+        if ret < 0 {
+            return ioctl_result();
+        }
+
+        Ok(vring_state.num as u16)
+    }
+
     /// Set the event to trigger when buffers have been used by the host.
     ///
     /// # Arguments
@@ -301,6 +334,26 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         // This ioctl is called on a valid vhost_net fd and has its
         // return value checked.
         let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_CALL(), &vring_file) };
+        if ret < 0 {
+            return ioctl_result();
+        }
+        Ok(())
+    }
+
+    /// Set the event to trigger to signal an error.
+    ///
+    /// # Arguments
+    /// * `queue_index` - Index of the queue to modify.
+    /// * `event` - Event to trigger.
+    fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()> {
+        let vring_file = virtio_sys::vhost_vring_file {
+            index: queue_index as u32,
+            event: event.as_raw_descriptor(),
+        };
+
+        // This ioctl is called on a valid vhost_net fd and has its
+        // return value checked.
+        let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_ERR(), &vring_file) };
         if ret < 0 {
             return ioctl_result();
         }

@@ -15,9 +15,9 @@ use super::worker::Worker;
 use super::{Error, Result};
 use crate::virtio::{copy_config, Interrupt, Queue, VirtioDevice, TYPE_VSOCK};
 
-const QUEUE_SIZE: u16 = 256;
+pub const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 3;
-const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
+pub const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
 
 pub struct Vsock {
     worker_kill_evt: Option<Event>,

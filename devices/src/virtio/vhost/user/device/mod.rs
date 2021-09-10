@@ -9,6 +9,7 @@ mod fs;
 mod gpu;
 mod handler;
 mod net;
+mod vsock;
 mod wl;
 
 pub use block::run_block_device;
@@ -17,4 +18,5 @@ pub use fs::run_fs_device;
 #[cfg(feature = "gpu")]
 pub use gpu::run_gpu_device;
 pub use net::run_net_device;
+pub use vsock::run_vsock_device;
 pub use wl::run_wl_device;

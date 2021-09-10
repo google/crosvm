@@ -103,19 +103,53 @@ impl SignalableInterrupt for CallEvent {
 /// Keeps a mapping from the vmm's virtual addresses to guest addresses.
 /// used to translate messages from the vmm to guest offsets.
 #[derive(Default)]
-struct MappingInfo {
+pub struct MappingInfo {
     vmm_addr: u64,
     guest_phys: u64,
     size: u64,
 }
 
-fn vmm_va_to_gpa(maps: &[MappingInfo], vmm_va: u64) -> VhostResult<GuestAddress> {
+pub fn vmm_va_to_gpa(maps: &[MappingInfo], vmm_va: u64) -> VhostResult<GuestAddress> {
     for map in maps {
         if vmm_va >= map.vmm_addr && vmm_va < map.vmm_addr + map.size {
             return Ok(GuestAddress(vmm_va - map.vmm_addr + map.guest_phys));
         }
     }
     Err(VhostError::InvalidMessage)
+}
+
+pub fn create_guest_memory(
+    contexts: &[VhostUserMemoryRegion],
+    files: Vec<File>,
+) -> VhostResult<(GuestMemory, Vec<MappingInfo>)> {
+    let mut regions = Vec::with_capacity(files.len());
+    for (region, file) in contexts.iter().zip(files.into_iter()) {
+        let region = MemoryRegion::new(
+            region.memory_size,
+            GuestAddress(region.guest_phys_addr),
+            region.mmap_offset,
+            Arc::new(SharedMemory::from_safe_descriptor(SafeDescriptor::from(file)).unwrap()),
+        )
+        .map_err(|e| {
+            error!("failed to create a memory region: {}", e);
+            VhostError::InvalidOperation
+        })?;
+        regions.push(region);
+    }
+    let guest_mem = GuestMemory::from_regions(regions).map_err(|e| {
+        error!("failed to create guest memory: {}", e);
+        VhostError::InvalidOperation
+    })?;
+
+    let vmm_maps = contexts
+        .iter()
+        .map(|region| MappingInfo {
+            vmm_addr: region.user_addr,
+            guest_phys: region.guest_phys_addr,
+            size: region.memory_size,
+        })
+        .collect();
+    Ok((guest_mem, vmm_maps))
 }
 
 /// Trait for vhost-user backend.
@@ -367,33 +401,7 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
             return Err(VhostError::InvalidParam);
         }
 
-        let mut regions = Vec::with_capacity(files.len());
-        for (region, file) in contexts.iter().zip(files.into_iter()) {
-            let region = MemoryRegion::new(
-                region.memory_size,
-                GuestAddress(region.guest_phys_addr),
-                region.mmap_offset,
-                Arc::new(SharedMemory::from_safe_descriptor(SafeDescriptor::from(file)).unwrap()),
-            )
-            .map_err(|e| {
-                error!("failed to create a memory region: {}", e);
-                VhostError::InvalidOperation
-            })?;
-            regions.push(region);
-        }
-        let guest_mem = GuestMemory::from_regions(regions).map_err(|e| {
-            error!("failed to create guest memory: {}", e);
-            VhostError::InvalidOperation
-        })?;
-
-        let vmm_maps = contexts
-            .iter()
-            .map(|region| MappingInfo {
-                vmm_addr: region.user_addr,
-                guest_phys: region.guest_phys_addr,
-                size: region.memory_size,
-            })
-            .collect();
+        let (guest_mem, vmm_maps) = create_guest_memory(contexts, files)?;
 
         self.mem = Some(guest_mem);
         self.vmm_maps = Some(vmm_maps);
