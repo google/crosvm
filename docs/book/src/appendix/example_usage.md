@@ -1,4 +1,7 @@
-# Example Usage
+# Example Usage (Outdated)
+
+> Note: Information in this page is outdated. Some commands might be no longer available.
+> We are planning to refresh the contents in this page soon.
 
 ![Screenshot](example_usage_screenshot.png)
 
@@ -78,17 +81,17 @@ sudo umount "${CHROOT_PATH}"
 
 Networking `todo(smbarber)`
 
-## new ip commands     
-    
+## new ip commands
+
 ```
 sudo sysctl net.ipv4.ip_forward=1
-sudo iptables -t nat  -A POSTROUTING -o eth0 -j MASQUERADE        
+sudo iptables -t nat  -A POSTROUTING -o eth0 -j MASQUERADE
 sudo /sbin/iptables -A FORWARD -i eth0 -o vmtap0 -m state --state RELATED,ESTABLISHED -j ACCEPT
 sudo /sbin/iptables -A FORWARD -o eth0 -i vmtap0 -j ACCEPT
 ```
-       
-## run crosvm                    
-              
+
+## run crosvm
+
 ```
 sudo ./target/debug/crosvm  run -c 4 -m40000 \
         --host_ip=10.1.1.3 --netmask 255.255.255.0 --mac 70:5a:0f:2f:16:4e \

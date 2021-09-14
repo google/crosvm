@@ -1,45 +1,14 @@
 # Summary
 
-[Introduction](./introduction.md)
-[Example Usage](./example_usage.md)
-
-# Using crosvm
-
-- [Building]()
-  - [Features](./features.md)
-- [Command Line Usage]()
-- [Users FAQ]()
-- [Disk Formats]()
-
-# Developing crosvm
-
+- [Introduction](./introduction.md)
 - [Contributing](./contributing.md)
-- [Architectural Overview](./developer_overview.md)
-- [Developers FAQ]()
-- [Error Handling]()
-- [System Utility]()
-- [Tube]()
-- [Hypervisor]()
-- [Guest Memory]()
-- [Architecture Specific]()
-- [VM Control]()
-- [Disk]()
-- [GPU]()
-- [Testing]()
-  - [Continuous Integration]()
-  - [Integration Testing]()
-  - [Unit Testing]()
-  - [Fuzzing]()
-- [Sandboxing](./sandboxing.md)
-  - [Seccomp](./seccomp.md)
-  - [Minijail](./minijail.md)
-- [Devices]()
-  - [Bus]()
-  - [ProxyDevice]()
-  - [IRQ Chip]()
-  - [Serial]()
-  - [PCI]()
-  - [Virtio]()
-  - [USB]()
-  - [VFIO]()
-  - [Wayland]()
+
+---
+
+- [Appendix](./appendix/index.md)
+  - [Architectural Overview](./appendix/architectural_overview.md)
+  - [Example Usage (Outdated)](./appendix/example_usage.md)
+  - [Features](./appendix/features.md)
+  - [Sandboxing](./appendix/sandboxing.md)
+    - [Seccomp](./appendix/seccomp.md)
+    - [Minijail](./appendix/minijail.md)
