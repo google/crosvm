@@ -14,8 +14,8 @@ use std::sync::Arc;
 use base::{pagesize, Error as SysError};
 use base::{
     AsRawDescriptor, AsRawDescriptors, MappedRegion, MemfdSeals, MemoryMapping,
-    MemoryMappingBuilder, MemoryMappingBuilderUnix, MemoryMappingUnix, MmapError, RawDescriptor,
-    SharedMemory, SharedMemoryUnix,
+    MemoryMappingBuilder, MemoryMappingUnix, MmapError, RawDescriptor, SharedMemory,
+    SharedMemoryUnix,
 };
 use bitflags::bitflags;
 use cros_async::{mem, BackingMemory};
@@ -202,7 +202,7 @@ impl GuestMemory {
             let size = usize::try_from(range.1)
                 .map_err(|_| Error::MemoryRegionTooLarge(range.1 as u128))?;
             let mapping = MemoryMappingBuilder::new(size)
-                .from_shared_memory(shm.as_ref())
+                .from_descriptor(shm.as_ref())
                 .offset(offset)
                 .build()
                 .map_err(Error::MemoryMappingFailed)?;
@@ -1011,7 +1011,7 @@ mod tests {
 
         let _ = gm.with_regions::<_, ()>(|index, _, size, _, shm, shm_offset| {
             let mmap = MemoryMappingBuilder::new(size)
-                .from_shared_memory(shm)
+                .from_descriptor(shm)
                 .offset(shm_offset)
                 .build()
                 .unwrap();

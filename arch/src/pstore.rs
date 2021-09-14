@@ -55,7 +55,7 @@ pub fn create_memory_region(
         .map_err(Error::ResourcesError)?;
 
     let memory_mapping = MemoryMappingBuilder::new(pstore.size as usize)
-        .from_file(&file)
+        .from_descriptor(&file)
         .build()
         .map_err(Error::MmapError)?;
 

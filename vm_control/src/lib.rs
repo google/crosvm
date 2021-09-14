@@ -30,8 +30,8 @@ use serde::{Deserialize, Serialize};
 use base::{
     error, with_as_descriptor, AsRawDescriptor, Error as SysError, Event, ExternalMapping, Fd,
     FromRawDescriptor, IntoRawDescriptor, Killable, MappedRegion, MemoryMappingArena,
-    MemoryMappingBuilder, MemoryMappingBuilderUnix, MmapError, Protection, Result, SafeDescriptor,
-    SharedMemory, Tube, SIGRTMIN,
+    MemoryMappingBuilder, MmapError, Protection, Result, SafeDescriptor, SharedMemory, Tube,
+    SIGRTMIN,
 };
 use hypervisor::{IrqRoute, IrqSource, Vm};
 use resources::{Alloc, MmioType, SystemAllocator};
