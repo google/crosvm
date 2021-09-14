@@ -11,8 +11,7 @@ use std::io;
 use std::path::Path;
 
 use base::{
-    ioctl_iow_nr, ioctl_with_ptr, pagesize, AsRawDescriptor, FromRawDescriptor, MappedRegion,
-    SafeDescriptor,
+    ioctl_iow_nr, ioctl_with_ptr, pagesize, FromRawDescriptor, MappedRegion, SafeDescriptor,
 };
 
 use data_model::{flexible_array_impl, FlexibleArray, FlexibleArrayWrapper};

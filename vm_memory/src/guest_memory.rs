@@ -4,8 +4,9 @@
 
 //! Track memory regions that are mapped to the guest VM.
 
-use std::convert::AsRef;
-use std::convert::TryFrom;
+use std::convert::{AsRef, TryFrom};
+use std::fs::File;
+use std::marker::{Send, Sync};
 use std::mem::size_of;
 use std::result;
 use std::sync::Arc;
@@ -13,8 +14,8 @@ use std::sync::Arc;
 use base::{pagesize, Error as SysError};
 use base::{
     AsRawDescriptor, AsRawDescriptors, MappedRegion, MemfdSeals, MemoryMapping,
-    MemoryMappingBuilder, MemoryMappingBuilderUnix, MemoryMappingUnix, MmapError, RawDescriptor,
-    SharedMemory, SharedMemoryUnix,
+    MemoryMappingBuilder, MemoryMappingUnix, MmapError, RawDescriptor, SharedMemory,
+    SharedMemoryUnix,
 };
 use bitflags::bitflags;
 use cros_async::{mem, BackingMemory};
@@ -69,35 +70,82 @@ bitflags! {
     }
 }
 
+/// A file-like object backing `MemoryRegion`.
+#[derive(Clone)]
+pub enum BackingObject {
+    Shm(Arc<SharedMemory>),
+    File(Arc<File>),
+}
+
+impl AsRawDescriptor for BackingObject {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        match self {
+            Self::Shm(shm) => shm.as_raw_descriptor(),
+            Self::File(f) => f.as_raw_descriptor(),
+        }
+    }
+}
+
+impl AsRef<dyn AsRawDescriptor + Sync + Send> for BackingObject {
+    fn as_ref(&self) -> &(dyn AsRawDescriptor + Sync + Send + 'static) {
+        match self {
+            BackingObject::Shm(shm) => shm.as_ref(),
+            BackingObject::File(f) => f.as_ref(),
+        }
+    }
+}
+
 /// A regions of memory mapped memory.
 /// Holds the memory mapping with its offset in guest memory.
-/// Also holds the backing fd for the mapping and the offset in that fd of the mapping.
+/// Also holds the backing object for the mapping and the offset in that object of the mapping.
 pub struct MemoryRegion {
     mapping: MemoryMapping,
     guest_base: GuestAddress,
-    shm_offset: u64,
-    shm: Arc<SharedMemory>,
+
+    shared_obj: BackingObject,
+    obj_offset: u64,
 }
 
 impl MemoryRegion {
     /// Creates a new MemoryRegion using the given SharedMemory object to later be attached to a VM
     /// at `guest_base` address in the guest.
-    pub fn new(
+    pub fn new_from_shm(
         size: u64,
         guest_base: GuestAddress,
-        shm_offset: u64,
+        offset: u64,
         shm: Arc<SharedMemory>,
     ) -> Result<Self> {
         let mapping = MemoryMappingBuilder::new(size as usize)
-            .from_descriptor(shm.as_ref())
-            .offset(shm_offset)
+            .from_shared_memory(shm.as_ref())
+            .offset(offset)
             .build()
             .map_err(Error::MemoryMappingFailed)?;
         Ok(MemoryRegion {
             mapping,
             guest_base,
-            shm_offset,
-            shm,
+            shared_obj: BackingObject::Shm(shm),
+            obj_offset: offset,
+        })
+    }
+
+    /// Creates a new MemoryRegion using the given file to get available later at `guest_base`
+    /// address in the guest.
+    pub fn new_from_file(
+        size: u64,
+        guest_base: GuestAddress,
+        offset: u64,
+        file: Arc<File>,
+    ) -> Result<Self> {
+        let mapping = MemoryMappingBuilder::new(size as usize)
+            .from_file(&file)
+            .offset(offset)
+            .build()
+            .map_err(Error::MemoryMappingFailed)?;
+        Ok(MemoryRegion {
+            mapping,
+            guest_base,
+            shared_obj: BackingObject::File(file),
+            obj_offset: offset,
         })
     }
 
@@ -126,7 +174,7 @@ impl AsRawDescriptors for GuestMemory {
     fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
         self.regions
             .iter()
-            .map(|r| r.shm.as_raw_descriptor())
+            .map(|r| r.shared_obj.as_raw_descriptor())
             .collect()
     }
 }
@@ -188,8 +236,8 @@ impl GuestMemory {
             regions.push(MemoryRegion {
                 mapping,
                 guest_base: range.0,
-                shm_offset: offset,
-                shm: Arc::clone(&shm),
+                shared_obj: BackingObject::Shm(shm.clone()),
+                obj_offset: offset,
             });
 
             offset += size as u64;
@@ -324,11 +372,11 @@ impl GuestMemory {
     ///  * guest_addr : GuestAddress
     ///  * size: usize
     ///  * host_addr: usize
-    ///  * shm: SharedMemory backing for the given region
+    ///  * shm: Descriptor of the backing memory region
     ///  * shm_offset: usize
     pub fn with_regions<F, E>(&self, mut cb: F) -> result::Result<(), E>
     where
-        F: FnMut(usize, GuestAddress, usize, usize, &SharedMemory, u64) -> result::Result<(), E>,
+        F: FnMut(usize, GuestAddress, usize, usize, &BackingObject, u64) -> result::Result<(), E>,
     {
         for (index, region) in self.regions.iter().enumerate() {
             cb(
@@ -336,8 +384,8 @@ impl GuestMemory {
                 region.start(),
                 region.mapping.size(),
                 region.mapping.as_ptr() as usize,
-                region.shm.as_ref(),
-                region.shm_offset,
+                &region.shared_obj,
+                region.obj_offset,
             )?;
         }
         Ok(())
@@ -722,17 +770,20 @@ impl GuestMemory {
         })
     }
 
-    /// Returns a reference to the SharedMemory region that backs the given address.
-    pub fn shm_region(&self, guest_addr: GuestAddress) -> Result<&SharedMemory> {
+    /// Returns a reference to the region that backs the given address.
+    pub fn shm_region(
+        &self,
+        guest_addr: GuestAddress,
+    ) -> Result<&(dyn AsRawDescriptor + Send + Sync)> {
         self.regions
             .iter()
             .find(|region| region.contains(guest_addr))
             .ok_or(Error::InvalidGuestAddress(guest_addr))
-            .map(|region| region.shm.as_ref())
+            .map(|region| region.shared_obj.as_ref())
     }
 
     /// Returns the region that contains the memory at `offset` from the base of guest memory.
-    pub fn offset_region(&self, offset: u64) -> Result<&SharedMemory> {
+    pub fn offset_region(&self, offset: u64) -> Result<&(dyn AsRawDescriptor + Send + Sync)> {
         self.shm_region(
             self.checked_offset(self.regions[0].guest_base, offset)
                 .ok_or(Error::InvalidOffset(offset))?,
@@ -760,7 +811,7 @@ impl GuestMemory {
                 cb(
                     &region.mapping,
                     guest_addr.offset_from(region.start()) as usize,
-                    region.shm_offset,
+                    region.obj_offset,
                 )
             })
     }
@@ -793,7 +844,7 @@ impl GuestMemory {
             .iter()
             .find(|region| region.contains(guest_addr))
             .ok_or(Error::InvalidGuestAddress(guest_addr))
-            .map(|region| region.shm_offset + guest_addr.offset_from(region.start()))
+            .map(|region| region.obj_offset + guest_addr.offset_from(region.start()))
     }
 }
 
@@ -988,10 +1039,16 @@ mod tests {
         gm.write_obj_at_addr(0x0420u16, GuestAddress(0x10000))
             .unwrap();
 
-        let _ = gm.with_regions::<_, ()>(|index, _, size, _, shm, shm_offset| {
+        let _ = gm.with_regions::<_, ()>(|index, _, size, _, obj, offset| {
+            let shm = match obj {
+                BackingObject::Shm(s) => s,
+                _ => {
+                    panic!("backing object isn't SharedMemory");
+                }
+            };
             let mmap = MemoryMappingBuilder::new(size)
                 .from_shared_memory(shm)
-                .offset(shm_offset)
+                .offset(offset)
                 .build()
                 .unwrap();
 

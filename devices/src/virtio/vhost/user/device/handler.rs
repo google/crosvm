@@ -131,7 +131,7 @@ pub fn create_guest_memory(
 ) -> VhostResult<(GuestMemory, Vec<MappingInfo>)> {
     let mut regions = Vec::with_capacity(files.len());
     for (region, file) in contexts.iter().zip(files.into_iter()) {
-        let region = MemoryRegion::new(
+        let region = MemoryRegion::new_from_shm(
             region.memory_size,
             GuestAddress(region.guest_phys_addr),
             region.mmap_offset,
