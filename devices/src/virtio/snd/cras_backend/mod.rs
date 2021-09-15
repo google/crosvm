@@ -17,6 +17,7 @@ use data_model::DataInit;
 use futures::channel::mpsc;
 use futures::{pin_mut, Future, TryFutureExt};
 use libcras::{BoxError, CrasClient, CrasClientType, CrasSocketType};
+use sys_util::{set_rt_prio_limit, set_rt_round_robin};
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
@@ -33,6 +34,7 @@ use crate::virtio::snd::cras_backend::async_funcs::*;
 // control + event + tx + rx queue
 const NUM_QUEUES: usize = 4;
 const QUEUE_SIZE: u16 = 1024;
+const AUDIO_THREAD_RTPRIO: u16 = 10; // Matches other cros audio clients.
 
 #[derive(ThisError, Debug)]
 pub enum Error {
@@ -544,6 +546,12 @@ impl VirtioDevice for VirtioSndCras {
         let worker_result = thread::Builder::new()
             .name("virtio_snd w".to_string())
             .spawn(move || {
+                if let Err(e) = set_rt_prio_limit(u64::from(AUDIO_THREAD_RTPRIO))
+                    .and_then(|_| set_rt_round_robin(i32::from(AUDIO_THREAD_RTPRIO)))
+                {
+                    warn!("Failed to set audio thread to real time: {}", e);
+                }
+
                 let mut streams: Vec<AsyncMutex<StreamInfo>> = Vec::new();
                 streams.resize_with(pcm_info.len(), Default::default);
 
