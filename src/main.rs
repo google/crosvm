@@ -2558,11 +2558,6 @@ fn start_device(mut args: std::env::Args) -> std::result::Result<(), ()> {
         );
     };
 
-    if let Err(e) = syslog::init() {
-        println!("failed to initialize syslog: {}", e);
-        return Err(());
-    }
-
     if args.len() == 0 {
         print_usage();
         return Err(());
