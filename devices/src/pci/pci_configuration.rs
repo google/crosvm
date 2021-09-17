@@ -317,8 +317,11 @@ impl PciConfiguration {
                 registers[3] = 0x0001_0000; // Header type 1 (bridge)
                 writable_bits[6] = 0x00ff_ffff; // Primary/secondary/subordinate bus number,
                                                 // secondary latency timer
+                registers[7] = 0x0000_00f0; // IO base > IO Limit, no IO address on secondary side at initialize
                 writable_bits[7] = 0xf900_0000; // IO base and limit, secondary status,
+                registers[8] = 0x0000_fff0; // mem base > mem Limit, no MMIO address on secondary side at initialize
                 writable_bits[8] = 0xfff0_fff0; // Memory base and limit
+                registers[9] = 0x0001_fff1; // pmem base > pmem Limit, no prefetch MMIO address on secondary side at initialize
                 writable_bits[9] = 0xfff0_fff0; // Prefetchable base and limit
                 writable_bits[10] = 0xffff_ffff; // Prefetchable base upper 32 bits
                 writable_bits[11] = 0xffff_ffff; // Prefetchable limit upper 32 bits
