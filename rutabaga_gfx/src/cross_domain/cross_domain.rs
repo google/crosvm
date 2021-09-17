@@ -944,6 +944,33 @@ impl RutabagaComponent for CrossDomain {
         caps.as_slice().to_vec()
     }
 
+    fn create_blob(
+        &mut self,
+        _ctx_id: u32,
+        resource_id: u32,
+        resource_create_blob: ResourceCreateBlob,
+        iovec_opt: Option<Vec<RutabagaIovec>>,
+    ) -> RutabagaResult<RutabagaResource> {
+        if resource_create_blob.blob_mem != RUTABAGA_BLOB_MEM_GUEST
+            && resource_create_blob.blob_flags != RUTABAGA_BLOB_FLAG_USE_MAPPABLE
+        {
+            return Err(RutabagaError::SpecViolation);
+        }
+
+        Ok(RutabagaResource {
+            resource_id,
+            handle: None,
+            blob: true,
+            blob_mem: resource_create_blob.blob_mem,
+            blob_flags: resource_create_blob.blob_flags,
+            map_info: None,
+            info_2d: None,
+            info_3d: None,
+            vulkan_info: None,
+            backing_iovecs: iovec_opt,
+        })
+    }
+
     fn create_context(
         &self,
         _ctx_id: u32,
