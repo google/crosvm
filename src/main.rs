@@ -33,6 +33,8 @@ use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
 use devices::virtio::gpu::GpuRenderServerParameters;
 #[cfg(feature = "audio_cras")]
 use devices::virtio::snd::cras_backend::Error as CrasSndError;
+#[cfg(feature = "audio_cras")]
+use devices::virtio::vhost::user::device::run_cras_snd_device;
 use devices::virtio::vhost::user::device::{
     run_block_device, run_console_device, run_fs_device, run_net_device, run_vsock_device,
     run_wl_device,
@@ -2838,7 +2840,7 @@ fn start_device(mut args: std::env::Args) -> std::result::Result<(), ()> {
     let print_usage = || {
         print_help(
             "crosvm device",
-            " (block|console|fs|gpu|net|wl) <device-specific arguments>",
+            " (block|console|cras-snd|fs|gpu|net|wl) <device-specific arguments>",
             &[],
         );
     };
@@ -2859,6 +2861,8 @@ fn start_device(mut args: std::env::Args) -> std::result::Result<(), ()> {
     let result = match device.as_str() {
         "block" => run_block_device(&program_name, args),
         "console" => run_console_device(&program_name, args),
+        #[cfg(feature = "audio_cras")]
+        "cras-snd" => run_cras_snd_device(&program_name, args),
         "fs" => run_fs_device(&program_name, args),
         #[cfg(feature = "gpu")]
         "gpu" => run_gpu_device(&program_name, args),

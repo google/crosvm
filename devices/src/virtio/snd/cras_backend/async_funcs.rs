@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use audio_streams::{capture::AsyncCaptureBuffer, AsyncPlaybackBuffer};
 use base::{debug, error};
-use cros_async::{sync::Condvar, sync::Mutex as AsyncMutex, EventAsync, Executor};
+use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor};
 use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
 
@@ -255,7 +255,7 @@ pub async fn start_pcm_worker(
                                 .map_err(Error::DescriptorChain)?;
                             // stream_id was already read in handle_pcm_queue
                             reader.consume(std::mem::size_of::<virtio_snd_pcm_xfer>());
-                            let mut writer = Writer::new(mem.clone(), desc_chain)
+                            let writer = Writer::new(mem.clone(), desc_chain)
                                 .map_err(Error::DescriptorChain)?;
 
                             sender

@@ -246,6 +246,12 @@ pub struct SndData {
     chmap_info: Vec<virtio_snd_chmap_info>,
 }
 
+impl SndData {
+    pub fn pcm_info_len(&self) -> usize {
+        self.pcm_info.len()
+    }
+}
+
 const SUPPORTED_FORMATS: u64 = 1 << VIRTIO_SND_PCM_FMT_U8
     | 1 << VIRTIO_SND_PCM_FMT_S16
     | 1 << VIRTIO_SND_PCM_FMT_S24
@@ -464,7 +470,7 @@ pub fn hardcoded_virtio_snd_config(params: &Parameters) -> virtio_snd_config {
 }
 
 // To be used with hardcoded_virtio_snd_config
-fn hardcoded_snd_data(params: &Parameters) -> SndData {
+pub fn hardcoded_snd_data(params: &Parameters) -> SndData {
     let jack_info: Vec<virtio_snd_jack_info> = Vec::new();
     let mut pcm_info: Vec<virtio_snd_pcm_info> = Vec::new();
     let mut chmap_info: Vec<virtio_snd_chmap_info> = Vec::new();
