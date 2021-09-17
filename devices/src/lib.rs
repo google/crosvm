@@ -16,6 +16,7 @@ mod pci;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod pit;
 pub mod pl030;
+mod platform;
 mod proxy;
 #[cfg(feature = "usb")]
 #[macro_use]
@@ -54,6 +55,7 @@ pub use self::pci::{
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use self::pit::{Pit, PitError};
 pub use self::pl030::Pl030;
+pub use self::platform::VfioPlatformDevice;
 pub use self::proxy::Error as ProxyError;
 pub use self::proxy::ProxyDevice;
 pub use self::serial::Serial;

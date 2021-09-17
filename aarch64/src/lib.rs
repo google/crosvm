@@ -162,6 +162,8 @@ pub enum Error {
     CreateGICFailure(base::Error),
     #[error("failed to create a PCI root hub: {0}")]
     CreatePciRoot(arch::DeviceRegistrationError),
+    #[error("failed to create platform bus: {0}")]
+    CreatePlatformBus(arch::DeviceRegistrationError),
     #[error("unable to create serial devices: {0}")]
     CreateSerialDevices(arch::DeviceRegistrationError),
     #[error("failed to create socket: {0}")]
@@ -338,7 +340,7 @@ impl arch::LinuxArch for AArch64 {
         // guest OS is trying to suspend.
         let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
 
-        let (pci_devices, _others): (Vec<_>, Vec<_>) = devs
+        let (pci_devices, others): (Vec<_>, Vec<_>) = devs
             .into_iter()
             .partition(|(dev, _)| dev.as_pci_device().is_some());
 
@@ -346,7 +348,7 @@ impl arch::LinuxArch for AArch64 {
             .into_iter()
             .map(|(dev, jail_orig)| (dev.into_pci_device().unwrap(), jail_orig))
             .collect();
-        let (pci, pci_irqs, pid_debug_label_map) = arch::generate_pci_root(
+        let (pci, pci_irqs, mut pid_debug_label_map) = arch::generate_pci_root(
             pci_devices,
             irq_chip.as_irq_chip_mut(),
             &mut mmio_bus,
@@ -357,6 +359,23 @@ impl arch::LinuxArch for AArch64 {
         )
         .map_err(Error::CreatePciRoot)?;
         let pci_bus = Arc::new(Mutex::new(PciConfigMmio::new(pci)));
+
+        let (platform_devices, _others): (Vec<_>, Vec<_>) = others
+            .into_iter()
+            .partition(|(dev, _)| dev.as_platform_device().is_some());
+
+        let platform_devices = platform_devices
+            .into_iter()
+            .map(|(dev, jail_orig)| (*(dev.into_platform_device().unwrap()), jail_orig))
+            .collect();
+        let mut platform_pid_debug_label_map = arch::generate_platform_bus(
+            platform_devices,
+            irq_chip.as_irq_chip_mut(),
+            &mut mmio_bus,
+            system_allocator,
+        )
+        .map_err(Error::CreatePlatformBus)?;
+        pid_debug_label_map.append(&mut platform_pid_debug_label_map);
 
         Self::add_arch_devs(irq_chip.as_irq_chip_mut(), &mut mmio_bus)?;
 

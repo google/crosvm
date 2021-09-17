@@ -21,7 +21,7 @@ use devices::virtio::VirtioDevice;
 use devices::{
     Bus, BusDevice, BusDeviceObj, BusError, BusResumeDevice, HotPlugBus, IrqChip, PciAddress,
     PciDevice, PciDeviceError, PciInterruptPin, PciRoot, ProtectionType, ProxyDevice,
-    SerialHardware, SerialParameters,
+    SerialHardware, SerialParameters, VfioPlatformDevice,
 };
 use hypervisor::{IoEventAddress, Vm};
 use minijail::Minijail;
@@ -274,6 +274,9 @@ pub enum DeviceRegistrationError {
     /// Could not allocate an IRQ number.
     #[error("Allocating IRQ number")]
     AllocateIrq,
+    /// Could not allocate IRQ resource for the device.
+    #[error("Allocating IRQ resource: {0}")]
+    AllocateIrqResource(devices::vfio::VfioError),
     /// Unable to clone a jail for the device.
     #[error("failed to clone jail: {0}")]
     CloneJail(minijail::Error),
@@ -403,6 +406,65 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
     }
 
     Ok(pci_address)
+}
+
+/// Creates a platform device for use by this Vm.
+pub fn generate_platform_bus(
+    devices: Vec<(VfioPlatformDevice, Option<Minijail>)>,
+    irq_chip: &mut dyn IrqChip,
+    mmio_bus: &mut Bus,
+    resources: &mut SystemAllocator,
+) -> Result<BTreeMap<u32, String>, DeviceRegistrationError> {
+    let mut pid_labels = BTreeMap::new();
+
+    // Allocate ranges that may need to be in the Platform MMIO region (MmioType::Platform).
+    for (mut device, jail) in devices.into_iter() {
+        let ranges = device
+            .allocate_regions(resources)
+            .map_err(DeviceRegistrationError::AllocateIoResource)?;
+
+        let mut keep_rds = device.keep_rds();
+        syslog::push_descriptors(&mut keep_rds);
+
+        let irqs = device
+            .get_platform_irqs()
+            .map_err(DeviceRegistrationError::AllocateIrqResource)?;
+        for irq in irqs.into_iter() {
+            let irqfd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
+            keep_rds.push(irqfd.as_raw_descriptor());
+            let irq_resample_fd = if device.irq_is_automask(&irq) {
+                let evt = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
+                keep_rds.push(evt.as_raw_descriptor());
+                Some(evt)
+            } else {
+                None
+            };
+
+            let irq_num = resources
+                .allocate_irq()
+                .ok_or(DeviceRegistrationError::AllocateIrq)?;
+            irq_chip
+                .register_irq_event(irq_num, &irqfd, irq_resample_fd.as_ref())
+                .map_err(DeviceRegistrationError::RegisterIrqfd)?;
+            device.assign_platform_irq(irqfd, irq_resample_fd, irq.index);
+        }
+
+        let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
+            let proxy = ProxyDevice::new(device, &jail, keep_rds)
+                .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
+            pid_labels.insert(proxy.pid() as u32, proxy.debug_label());
+            Arc::new(Mutex::new(proxy))
+        } else {
+            device.on_sandboxed();
+            Arc::new(Mutex::new(device))
+        };
+        for range in &ranges {
+            mmio_bus
+                .insert(arced_dev.clone(), range.0, range.1)
+                .map_err(DeviceRegistrationError::MmioInsert)?;
+        }
+    }
+    Ok(pid_labels)
 }
 
 /// Creates a root PCI device for use by this Vm.

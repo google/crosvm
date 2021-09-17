@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use sync::Mutex;
 use thiserror::Error;
 
-use crate::{PciAddress, PciDevice};
+use crate::{PciAddress, PciDevice, VfioPlatformDevice};
 
 /// Information about how a device was accessed.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
@@ -133,6 +133,16 @@ pub trait BusDeviceObj {
         None
     }
     fn into_pci_device(self: Box<Self>) -> Option<Box<dyn PciDevice>> {
+        None
+    }
+
+    fn as_platform_device(&self) -> Option<&VfioPlatformDevice> {
+        None
+    }
+    fn as_platform_device_mut(&mut self) -> Option<&mut VfioPlatformDevice> {
+        None
+    }
+    fn into_platform_device(self: Box<Self>) -> Option<Box<VfioPlatformDevice>> {
         None
     }
 }

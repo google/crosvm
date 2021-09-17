@@ -639,6 +639,8 @@ impl VfioDevice {
                 return Err(VfioError::VfioDeviceGetInfo(get_error()));
             }
             return Ok(());
+        } else if (dev_info.flags & VFIO_DEVICE_FLAGS_PLATFORM) != 0 {
+            return Ok(());
         }
 
         Err(VfioError::VfioDeviceGetInfo(get_error()))
