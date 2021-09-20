@@ -904,7 +904,7 @@ impl RutabagaContext for CrossDomainContext {
     }
 
     fn context_create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
-        match fence.ring_idx {
+        match fence.ring_idx as u32 {
             CROSS_DOMAIN_QUERY_RING => self.fence_handler.call(fence),
             CROSS_DOMAIN_CHANNEL_RING => {
                 if let Some(state) = &self.state {

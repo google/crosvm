@@ -137,7 +137,7 @@ pub struct VirtioScanoutBlobData {
 #[derive(Hash, Eq, PartialEq)]
 enum VirtioGpuRing {
     Global,
-    ContextSpecific { ctx_id: u32, ring_idx: u32 },
+    ContextSpecific { ctx_id: u32, ring_idx: u8 },
 }
 
 struct FenceDescriptor {
@@ -711,21 +711,20 @@ impl Frontend {
             let mut fence_id = 0;
             let mut ctx_id = 0;
             let mut flags = 0;
-            let mut info = 0;
+            let mut ring_idx = 0;
             if let Some(cmd) = gpu_cmd {
                 let ctrl_hdr = cmd.ctrl_hdr();
                 if ctrl_hdr.flags.to_native() & VIRTIO_GPU_FLAG_FENCE != 0 {
                     flags = ctrl_hdr.flags.to_native();
                     fence_id = ctrl_hdr.fence_id.to_native();
                     ctx_id = ctrl_hdr.ctx_id.to_native();
-                    // The only possible current value for hdr info.
-                    info = ctrl_hdr.info.to_native();
+                    ring_idx = ctrl_hdr.ring_idx;
 
                     let fence = RutabagaFence {
                         flags,
                         fence_id,
                         ctx_id,
-                        ring_idx: info,
+                        ring_idx,
                     };
                     gpu_response = match self.virtio_gpu.create_fence(fence) {
                         Ok(_) => gpu_response,
@@ -739,7 +738,7 @@ impl Frontend {
 
             // Prepare the response now, even if it is going to wait until
             // fence is complete.
-            match gpu_response.encode(flags, fence_id, ctx_id, info, writer) {
+            match gpu_response.encode(flags, fence_id, ctx_id, ring_idx, writer) {
                 Ok(l) => len = l,
                 Err(e) => debug!("ctrl queue response encode error: {}", e),
             }
@@ -747,10 +746,7 @@ impl Frontend {
             if flags & VIRTIO_GPU_FLAG_FENCE != 0 {
                 let ring = match flags & VIRTIO_GPU_FLAG_INFO_RING_IDX {
                     0 => VirtioGpuRing::Global,
-                    _ => VirtioGpuRing::ContextSpecific {
-                        ctx_id,
-                        ring_idx: info,
-                    },
+                    _ => VirtioGpuRing::ContextSpecific { ctx_id, ring_idx },
                 };
 
                 // In case the fence is signaled immediately after creation, don't add a return

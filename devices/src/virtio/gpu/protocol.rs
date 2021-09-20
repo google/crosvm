@@ -155,7 +155,8 @@ pub struct virtio_gpu_ctrl_hdr {
     pub flags: Le32,
     pub fence_id: Le64,
     pub ctx_id: Le32,
-    pub info: Le32,
+    pub ring_idx: u8,
+    pub padding: [u8; 3],
 }
 
 unsafe impl DataInit for virtio_gpu_ctrl_hdr {}
@@ -892,7 +893,7 @@ impl GpuResponse {
         flags: u32,
         fence_id: u64,
         ctx_id: u32,
-        info: u32,
+        ring_idx: u8,
         resp: &mut Writer,
     ) -> Result<u32, GpuResponseEncodeError> {
         let hdr = virtio_gpu_ctrl_hdr {
@@ -900,7 +901,8 @@ impl GpuResponse {
             flags: Le32::from(flags),
             fence_id: Le64::from(fence_id),
             ctx_id: Le32::from(ctx_id),
-            info: Le32::from(info),
+            ring_idx,
+            padding: Default::default(),
         };
         let len = match *self {
             GpuResponse::OkDisplayInfo(ref info) => {
