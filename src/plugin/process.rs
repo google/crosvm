@@ -15,7 +15,10 @@ use std::thread::JoinHandle;
 
 use net_util::Error as NetError;
 
-use libc::{pid_t, waitpid, EINVAL, ENODATA, ENOTTY, WEXITSTATUS, WIFEXITED, WNOHANG, WTERMSIG};
+use libc::{
+    pid_t, waitpid, EINVAL, ENODATA, ENOTTY, STDERR_FILENO, WEXITSTATUS, WIFEXITED, WNOHANG,
+    WTERMSIG,
+};
 
 use protobuf::Message;
 
@@ -142,6 +145,7 @@ impl Process {
         cmd: &Path,
         args: &[&str],
         jail: Option<Minijail>,
+        stderr: File,
     ) -> Result<Process> {
         let (request_socket, child_socket) =
             new_seqpacket_pair().map_err(Error::CreateMainSocket)?;
@@ -166,8 +170,18 @@ impl Process {
                     "CROSVM_SOCKET",
                     child_socket.as_raw_descriptor().to_string(),
                 );
-                jail.run(cmd, &[0, 1, 2, child_socket.as_raw_descriptor()], args)
-                    .map_err(Error::PluginRunJail)?
+                jail.run_remap(
+                    cmd,
+                    &[
+                        (stderr.as_raw_descriptor(), STDERR_FILENO),
+                        (
+                            child_socket.as_raw_descriptor(),
+                            child_socket.as_raw_descriptor(),
+                        ),
+                    ],
+                    args,
+                )
+                .map_err(Error::PluginRunJail)?
             }
             None => Command::new(cmd)
                 .args(args)
@@ -175,6 +189,7 @@ impl Process {
                     "CROSVM_SOCKET",
                     child_socket.as_raw_descriptor().to_string(),
                 )
+                .stderr(stderr)
                 .spawn()
                 .map_err(Error::PluginSpawn)?
                 .id() as pid_t,

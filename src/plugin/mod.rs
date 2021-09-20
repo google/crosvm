@@ -8,6 +8,7 @@ mod vcpu;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
+use std::io::Read;
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
 use std::result;
@@ -19,16 +20,16 @@ use std::time::{Duration, Instant};
 use libc::{
     c_int, c_ulong, fcntl, ioctl, socketpair, AF_UNIX, EAGAIN, EBADF, EDEADLK, EEXIST, EINTR,
     EINVAL, ENOENT, EOVERFLOW, EPERM, FIOCLEX, F_SETPIPE_SZ, MS_NODEV, MS_NOEXEC, MS_NOSUID,
-    MS_RDONLY, SIGCHLD, SOCK_SEQPACKET,
+    MS_RDONLY, O_NONBLOCK, SIGCHLD, SOCK_SEQPACKET,
 };
 
 use protobuf::ProtobufError;
 use remain::sorted;
 
 use base::{
-    block_signal, clear_signal, drop_capabilities, enable_core_scheduling, error, getegid, geteuid,
-    info, pipe, register_rt_signal_handler, validate_raw_descriptor, warn, AsRawDescriptor,
-    Error as SysError, Event, FromRawDescriptor, Killable, MmapError, PollToken,
+    add_fd_flags, block_signal, clear_signal, drop_capabilities, enable_core_scheduling, error,
+    getegid, geteuid, info, pipe, register_rt_signal_handler, validate_raw_descriptor, warn,
+    AsRawDescriptor, Error as SysError, Event, FromRawDescriptor, Killable, MmapError, PollToken,
     Result as SysResult, SignalFd, SignalFdError, WaitContext, SIGRTMIN,
 };
 use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
@@ -56,6 +57,7 @@ pub enum Error {
     CreatePIT(SysError),
     CreateSignalFd(SignalFdError),
     CreateSocketPair(io::Error),
+    CreateStderrPipe(SysError),
     CreateTapFd(TapError),
     CreateVcpu(SysError),
     CreateVcpuSocket(SysError),
@@ -99,6 +101,7 @@ pub enum Error {
     },
     SignalFd(SignalFdError),
     SpawnVcpu(io::Error),
+    StderrNonblock(SysError),
     TapEnable(TapError),
     TapOpen(TapError),
     TapSetIp(TapError),
@@ -125,6 +128,7 @@ impl Display for Error {
             CreatePIT(e) => write!(f, "failed to create kvm PIT: {}", e),
             CreateSignalFd(e) => write!(f, "failed to create signalfd: {}", e),
             CreateSocketPair(e) => write!(f, "failed to create socket pair: {}", e),
+            CreateStderrPipe(e) => write!(f, "failed to create stderr pipe: {}", e),
             CreateTapFd(e) => write!(f, "failed to create tap device from raw fd: {}", e),
             CreateVcpu(e) => write!(f, "error creating vcpu: {}", e),
             CreateVcpuSocket(e) => write!(f, "error creating vcpu request socket: {}", e),
@@ -168,6 +172,7 @@ impl Display for Error {
             ),
             SignalFd(e) => write!(f, "failed to read signal fd: {}", e),
             SpawnVcpu(e) => write!(f, "error spawning vcpu thread: {}", e),
+            StderrNonblock(e) => write!(f, "error marking stderr nonblocking: {}", e),
             TapEnable(e) => write!(f, "error enabling tap device: {}", e),
             TapOpen(e) => write!(f, "error opening tap device: {}", e),
             TapSetIp(e) => write!(f, "error setting tap ip: {}", e),
@@ -597,6 +602,7 @@ pub fn run_vcpus(
 enum Token {
     Exit,
     ChildSignal,
+    Stderr,
     Plugin { index: usize },
 }
 
@@ -611,6 +617,10 @@ pub fn run_config(cfg: Config) -> Result<()> {
     // before any jailed devices have been spawned, so that we can catch any of them that fail very
     // quickly.
     let sigchld_fd = SignalFd::new(SIGCHLD).map_err(Error::CreateSignalFd)?;
+
+    // Create a pipe to capture error messages from plugin and minijail.
+    let (mut stderr_rd, stderr_wr) = pipe(true).map_err(Error::CreateStderrPipe)?;
+    add_fd_flags(stderr_rd.as_raw_descriptor(), O_NONBLOCK).map_err(Error::StderrNonblock)?;
 
     let jail = if cfg.sandbox {
         // An empty directory for jailed plugin pivot root.
@@ -706,7 +716,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
     vm.create_pit().map_err(Error::CreatePIT)?;
 
-    let mut plugin = Process::new(vcpu_count, plugin_path, &plugin_args, jail)?;
+    let mut plugin = Process::new(vcpu_count, plugin_path, &plugin_args, jail, stderr_wr)?;
     // Now that the jail for the plugin has been created and we had a chance to adjust gids there,
     // we can drop all our capabilities in case we had any.
     drop_capabilities().map_err(Error::DropCapabilities)?;
@@ -720,9 +730,12 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let kill_signaled = Arc::new(AtomicBool::new(false));
     let mut vcpu_handles = Vec::with_capacity(vcpu_count as usize);
 
-    let wait_ctx =
-        WaitContext::build_with(&[(&exit_evt, Token::Exit), (&sigchld_fd, Token::ChildSignal)])
-            .map_err(Error::WaitContextAdd)?;
+    let wait_ctx = WaitContext::build_with(&[
+        (&exit_evt, Token::Exit),
+        (&sigchld_fd, Token::ChildSignal),
+        (&stderr_rd, Token::Stderr),
+    ])
+    .map_err(Error::WaitContextAdd)?;
 
     let mut sockets_to_drop = Vec::new();
     let mut redo_wait_ctx_sockets = true;
@@ -764,6 +777,13 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 }
             }
         };
+
+        for event in events.iter().filter(|e| e.is_hungup) {
+            if let Token::Stderr = event.token {
+                let _ = wait_ctx.delete(&stderr_rd);
+            }
+        }
+
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
                 Token::Exit => {
@@ -815,6 +835,23 @@ pub fn run_config(cfg: Config) -> Result<()> {
                         res = sig_res.map_err(Error::PluginKill);
                     }
                 }
+                Token::Stderr => loop {
+                    let mut buf = [0u8; 4096];
+                    match stderr_rd.read(&mut buf) {
+                        Ok(len) => {
+                            for l in String::from_utf8_lossy(&buf[0..len]).lines() {
+                                error!("minijail/plugin: {}", l);
+                            }
+                        }
+                        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                            break;
+                        }
+                        Err(e) => {
+                            error!("failed reading from stderr: {}", e);
+                            break;
+                        }
+                    }
+                },
                 Token::Plugin { index } => {
                     match plugin.handle_socket(index, &kvm, &mut vm, &vcpu_handles, &tap_interfaces)
                     {
