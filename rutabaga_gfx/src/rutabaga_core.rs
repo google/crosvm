@@ -67,7 +67,7 @@ pub trait RutabagaComponent {
 
     /// Implementations must create a fence that represents the completion of prior work.  This is
     /// required for synchronization with the guest kernel.
-    fn create_fence(&mut self, _fence_data: RutabagaFenceData) -> RutabagaResult<()> {
+    fn create_fence(&mut self, _fence: RutabagaFence) -> RutabagaResult<()> {
         Err(RutabagaError::Unsupported)
     }
 
@@ -181,15 +181,15 @@ pub trait RutabagaContext {
     /// Implementations must stop using `resource` in this context's command stream.
     fn detach(&mut self, _resource: &RutabagaResource);
 
-    /// Implementations must create a fence on specified `ring_idx` in `fence_data`.  This
+    /// Implementations must create a fence on specified `ring_idx` in `fence`.  This
     /// allows for multiple syncrhonizations timelines per RutabagaContext.
-    fn context_create_fence(&mut self, _fence_data: RutabagaFenceData) -> RutabagaResult<()> {
+    fn context_create_fence(&mut self, _fence: RutabagaFence) -> RutabagaResult<()> {
         Err(RutabagaError::Unsupported)
     }
 
     /// Implementations must return an array of fences that have completed.  This will be used by
     /// the cross-domain context for asynchronous Tx/Rx.
-    fn context_poll(&mut self) -> Option<Vec<RutabagaFenceData>> {
+    fn context_poll(&mut self) -> Option<Vec<RutabagaFence>> {
         None
     }
 }
@@ -275,33 +275,33 @@ impl Rutabaga {
         }
     }
 
-    /// Creates a fence with the given `fence_data`.
+    /// Creates a fence with the given `fence`.
     /// If the flags include RUTABAGA_FLAG_INFO_RING_IDX, then the fence is created on a
     /// specific timeline on the specific context.
-    pub fn create_fence(&mut self, fence_data: RutabagaFenceData) -> RutabagaResult<()> {
-        if fence_data.flags & RUTABAGA_FLAG_INFO_RING_IDX != 0 {
+    pub fn create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
+        if fence.flags & RUTABAGA_FLAG_INFO_RING_IDX != 0 {
             let ctx = self
                 .contexts
-                .get_mut(&fence_data.ctx_id)
+                .get_mut(&fence.ctx_id)
                 .ok_or(RutabagaError::InvalidContextId)?;
 
-            ctx.context_create_fence(fence_data)?;
+            ctx.context_create_fence(fence)?;
         } else {
             let component = self
                 .components
                 .get_mut(&self.default_component)
                 .ok_or(RutabagaError::InvalidComponent)?;
 
-            component.create_fence(fence_data)?;
+            component.create_fence(fence)?;
         }
 
         Ok(())
     }
 
-    /// Polls all rutabaga components and contexts, and returns a vector of RutabagaFenceData
+    /// Polls all rutabaga components and contexts, and returns a vector of RutabagaFence
     /// describing which fences have completed.
-    pub fn poll(&mut self) -> Vec<RutabagaFenceData> {
-        let mut completed_fences: Vec<RutabagaFenceData> = Vec::new();
+    pub fn poll(&mut self) -> Vec<RutabagaFence> {
+        let mut completed_fences: Vec<RutabagaFence> = Vec::new();
         // Poll the default component -- this the global timeline which does not take into account
         // `ctx_id` or `ring_idx`.  This path exists for OpenGL legacy reasons and 2D mode.
         let component = self
@@ -311,7 +311,7 @@ impl Rutabaga {
             .unwrap();
 
         let global_fence_id = component.poll();
-        completed_fences.push(RutabagaFenceData {
+        completed_fences.push(RutabagaFence {
             flags: RUTABAGA_FLAG_FENCE,
             fence_id: global_fence_id as u64,
             ctx_id: 0,

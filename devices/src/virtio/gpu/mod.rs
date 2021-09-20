@@ -721,13 +721,13 @@ impl Frontend {
                     // The only possible current value for hdr info.
                     info = ctrl_hdr.info.to_native();
 
-                    let fence_data = RutabagaFenceData {
+                    let fence = RutabagaFence {
                         flags,
                         fence_id,
                         ctx_id,
                         ring_idx: info,
                     };
-                    gpu_response = match self.virtio_gpu.create_fence(fence_data) {
+                    gpu_response = match self.virtio_gpu.create_fence(fence) {
                         Ok(_) => gpu_response,
                         Err(fence_resp) => {
                             warn!("create_fence {} -> {:?}", fence_id, fence_resp);

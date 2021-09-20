@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use crate::generated::virgl_renderer_bindings::__va_list_tag;
 use crate::rutabaga_utils::{
-    RutabagaError, RutabagaFenceData, RutabagaFenceHandler, RutabagaResult, RUTABAGA_FLAG_FENCE,
+    RutabagaError, RutabagaFence, RutabagaFenceHandler, RutabagaResult, RUTABAGA_FLAG_FENCE,
 };
 
 #[repr(C)]
@@ -60,7 +60,7 @@ impl FenceState {
         if latest_fence > self.latest_fence {
             self.latest_fence = latest_fence;
             if let Some(handler) = &self.handler {
-                handler.call(RutabagaFenceData {
+                handler.call(RutabagaFence {
                     flags: RUTABAGA_FLAG_FENCE,
                     fence_id: latest_fence as u64,
                     ctx_id: 0,

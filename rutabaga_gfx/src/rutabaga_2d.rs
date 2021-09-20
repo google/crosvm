@@ -143,9 +143,9 @@ impl Rutabaga2D {
 }
 
 impl RutabagaComponent for Rutabaga2D {
-    fn create_fence(&mut self, fence_data: RutabagaFenceData) -> RutabagaResult<()> {
-        self.latest_created_fence_id = fence_data.fence_id as u32;
-        self.fence_handler.call(fence_data);
+    fn create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
+        self.latest_created_fence_id = fence.fence_id as u32;
+        self.fence_handler.call(fence);
         Ok(())
     }
 

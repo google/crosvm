@@ -52,7 +52,7 @@ enum CrossDomainItem {
 }
 
 enum CrossDomainJob {
-    HandleFence(RutabagaFenceData),
+    HandleFence(RutabagaFence),
     AddReadPipe(u32),
 }
 
@@ -318,7 +318,7 @@ impl CrossDomainWorker {
     // boolean value indicating whether the worker thread should be stopped is returned.
     fn handle_fence(
         &mut self,
-        fence: RutabagaFenceData,
+        fence: RutabagaFence,
         resample_evt: &Event,
         receive_buf: &mut Vec<u8>,
     ) -> RutabagaResult<bool> {
@@ -903,12 +903,12 @@ impl RutabagaContext for CrossDomainContext {
         self.context_resources.lock().remove(&resource.resource_id);
     }
 
-    fn context_create_fence(&mut self, fence_data: RutabagaFenceData) -> RutabagaResult<()> {
-        match fence_data.ring_idx {
-            CROSS_DOMAIN_QUERY_RING => self.fence_handler.call(fence_data),
+    fn context_create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
+        match fence.ring_idx {
+            CROSS_DOMAIN_QUERY_RING => self.fence_handler.call(fence),
             CROSS_DOMAIN_CHANNEL_RING => {
                 if let Some(state) = &self.state {
-                    state.add_job(CrossDomainJob::HandleFence(fence_data));
+                    state.add_job(CrossDomainJob::HandleFence(fence));
                 }
             }
             _ => return Err(RutabagaError::SpecViolation),

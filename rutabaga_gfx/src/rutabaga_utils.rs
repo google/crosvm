@@ -97,7 +97,7 @@ pub const RUTABAGA_FLAG_INFO_RING_IDX: u32 = 1 << 1;
 
 /// Convenience struct for Rutabaga fences
 #[derive(Copy, Clone)]
-pub struct RutabagaFenceData {
+pub struct RutabagaFence {
     pub flags: u32,
     pub fence_id: u64,
     pub ctx_id: u32,
@@ -521,7 +521,7 @@ impl RutabagaHandle {
 
 /// Trait for fence completion handlers
 pub trait RutabagaFenceCallback: Send {
-    fn call(&self, data: RutabagaFenceData);
+    fn call(&self, data: RutabagaFence);
     fn clone_box(&self) -> RutabagaFenceHandler;
 }
 
@@ -542,7 +542,7 @@ pub struct RutabagaFenceClosure<T> {
 
 impl<T> RutabagaFenceClosure<T>
 where
-    T: Fn(RutabagaFenceData) + Clone + Send + 'static,
+    T: Fn(RutabagaFence) + Clone + Send + 'static,
 {
     pub fn new(closure: T) -> RutabagaFenceHandler {
         Box::new(RutabagaFenceClosure { closure })
@@ -551,9 +551,9 @@ where
 
 impl<T> RutabagaFenceCallback for RutabagaFenceClosure<T>
 where
-    T: Fn(RutabagaFenceData) + Clone + Send + 'static,
+    T: Fn(RutabagaFence) + Clone + Send + 'static,
 {
-    fn call(&self, data: RutabagaFenceData) {
+    fn call(&self, data: RutabagaFence) {
         (self.closure)(data)
     }
 

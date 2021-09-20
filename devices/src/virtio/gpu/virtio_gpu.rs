@@ -17,7 +17,7 @@ use data_model::VolatileSlice;
 
 use gpu_display::*;
 use rutabaga_gfx::{
-    ResourceCreate3D, ResourceCreateBlob, Rutabaga, RutabagaBuilder, RutabagaFenceData,
+    ResourceCreate3D, ResourceCreateBlob, Rutabaga, RutabagaBuilder, RutabagaFence,
     RutabagaFenceHandler, RutabagaIovec, Transfer3D,
 };
 
@@ -551,15 +551,15 @@ impl VirtioGpu {
         self.rutabaga.force_ctx_0()
     }
 
-    /// Creates a fence with the RutabagaFenceData that can be used to determine when the previous
+    /// Creates a fence with the RutabagaFence that can be used to determine when the previous
     /// command completed.
-    pub fn create_fence(&mut self, rutabaga_fence_data: RutabagaFenceData) -> VirtioGpuResult {
-        self.rutabaga.create_fence(rutabaga_fence_data)?;
+    pub fn create_fence(&mut self, rutabaga_fence: RutabagaFence) -> VirtioGpuResult {
+        self.rutabaga.create_fence(rutabaga_fence)?;
         Ok(OkNoData)
     }
 
-    /// Returns an array of RutabagaFenceData, describing completed fences.
-    pub fn fence_poll(&mut self) -> Vec<RutabagaFenceData> {
+    /// Returns an array of RutabagaFence, describing completed fences.
+    pub fn fence_poll(&mut self) -> Vec<RutabagaFence> {
         self.rutabaga.poll()
     }
 

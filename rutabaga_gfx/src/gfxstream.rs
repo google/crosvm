@@ -244,13 +244,11 @@ impl RutabagaComponent for Gfxstream {
         Vec::new()
     }
 
-    fn create_fence(&mut self, fence_data: RutabagaFenceData) -> RutabagaResult<()> {
-        let ret = unsafe {
-            pipe_virgl_renderer_create_fence(fence_data.fence_id as i32, fence_data.ctx_id)
-        };
+    fn create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
+        let ret = unsafe { pipe_virgl_renderer_create_fence(fence.fence_id as i32, fence.ctx_id) };
         // This can be moved to the cookie once gfxstream directly calls the
         // write_fence callback in pipe_virgl_renderer_create_fence
-        self.fence_handler.call(fence_data);
+        self.fence_handler.call(fence);
         ret_to_res(ret)
     }
 

@@ -310,9 +310,8 @@ impl RutabagaComponent for VirglRenderer {
         unsafe { virgl_renderer_force_ctx_0() };
     }
 
-    fn create_fence(&mut self, fence_data: RutabagaFenceData) -> RutabagaResult<()> {
-        let ret =
-            unsafe { virgl_renderer_create_fence(fence_data.fence_id as i32, fence_data.ctx_id) };
+    fn create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
+        let ret = unsafe { virgl_renderer_create_fence(fence.fence_id as i32, fence.ctx_id) };
         ret_to_res(ret)
     }
 
