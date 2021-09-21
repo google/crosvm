@@ -1576,6 +1576,14 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         })?;
                         shared_dir.fs_cfg.use_dax = use_dax;
                     }
+                    "posix_acl" => {
+                        let posix_acl =
+                            value.parse().map_err(|_| argument::Error::InvalidValue {
+                                value: value.to_owned(),
+                                expected: String::from("`posix_acl` must be a boolean"),
+                            })?;
+                        shared_dir.fs_cfg.posix_acl = posix_acl;
+                    }
                     _ => {
                         return Err(argument::Error::InvalidValue {
                             value: kind.to_owned(),
@@ -2114,7 +2122,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                                 "Path to put the control socket. If PATH is a directory, a name will be generated."),
           Argument::flag("disable-sandbox", "Run all devices in one, non-sandboxed process."),
           Argument::value("cid", "CID", "Context ID for virtual sockets."),
-          Argument::value("shared-dir", "PATH:TAG[:type=TYPE:writeback=BOOL:timeout=SECONDS:uidmap=UIDMAP:gidmap=GIDMAP:cache=CACHE:dax=BOOL]",
+          Argument::value("shared-dir", "PATH:TAG[:type=TYPE:writeback=BOOL:timeout=SECONDS:uidmap=UIDMAP:gidmap=GIDMAP:cache=CACHE:dax=BOOL,posix_acl=BOOL]",
                           "Colon-separated options for configuring a directory to be shared with the VM.
                               The first field is the directory to be shared and the second field is the tag that the VM can use to identify the device.
                               The remaining fields are key=value pairs that may appear in any order.  Valid keys are:
@@ -2125,6 +2133,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
                               timeout=SECONDS - How long the VM should consider file attributes and directory entries to be valid (default: 5).  If the VM has exclusive access to the directory, then this should be a large value.  If the directory can be modified by other processes, then this should be 0.
                               writeback=BOOL - Indicates whether the VM can use writeback caching (default: false).  This is only safe to do when the VM has exclusive access to the files in a directory.  Additionally, the server should have read permission for all files as the VM may issue read requests even for files that are opened write-only.
                               dax=BOOL - Indicates whether DAX support should be enabled.  Enabling DAX can improve performance for frequently accessed files by mapping regions of the file directory into the VM's memory, allowing direct access at the cost of slightly increased latency the first time the file is accessed.  Since the mapping is shared directly from the host kernel's file cache, enabling DAX can improve performance even when the cache policy is \"Never\".  The default value for this option is \"false\".
+                              posix_acl=BOOL - Indicates whether the shared directory supports POSIX ACLs.  This should only be enabled when the underlying file system supports POSIX ACLs.  The default value for this option is \"true\".
 "),
           Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
           Argument::flag("seccomp-log-failures", "Instead of seccomp filter failures being fatal, they will be logged instead."),

@@ -510,6 +510,14 @@ pub struct Config {
     ///
     /// The default value for this option is `false`.
     pub use_dax: bool,
+
+    /// Enable support for POSIX acls.
+    ///
+    /// Enable POSIX acl support for the shared directory. This requires that the underlying file
+    /// system also supports POSIX acls.
+    ///
+    /// The default value for this option is `true`.
+    pub posix_acl: bool,
 }
 
 impl Default for Config {
@@ -524,6 +532,7 @@ impl Default for Config {
             #[cfg(feature = "chromeos")]
             privileged_quota_uids: Default::default(),
             use_dax: false,
+            posix_acl: true,
         }
     }
 }
@@ -1407,8 +1416,10 @@ impl FileSystem for PassthroughFs {
         let mut opts = FsOptions::DO_READDIRPLUS
             | FsOptions::READDIRPLUS_AUTO
             | FsOptions::EXPORT_SUPPORT
-            | FsOptions::DONT_MASK
-            | FsOptions::POSIX_ACL;
+            | FsOptions::DONT_MASK;
+        if self.cfg.posix_acl {
+            opts |= FsOptions::POSIX_ACL;
+        }
         if self.cfg.writeback && capable.contains(FsOptions::WRITEBACK_CACHE) {
             opts |= FsOptions::WRITEBACK_CACHE;
             self.writeback.store(true, Ordering::Relaxed);
