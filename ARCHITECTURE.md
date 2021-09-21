@@ -221,3 +221,31 @@ HANDLEs on Windows), a module is provided for sending and receiving descriptors
 alongside the plain old bytes that serde consumes.
 
 [minijail]: https://android.googlesource.com/platform/external/minijail
+
+
+## Code Map
+
+Source code is organized into crates, each with their own unit tests.
+
+-   `crosvm` - The top-level binary front-end for using crosvm.
+-   `devices` - Virtual devices exposed to the guest OS.
+-   `kernel_loader` - Loads elf64 kernel files to a slice of memory.
+-   `kvm_sys` - Low-level (mostly) auto-generated structures and constants for
+    using KVM.
+-   `kvm` - Unsafe, low-level wrapper code for using `kvm_sys`.
+-   `net_sys` - Low-level (mostly) auto-generated structures and constants for
+    creating TUN/TAP devices.
+-   `net_util` - Wrapper for creating TUN/TAP devices.
+-   `sys_util` - Mostly safe wrappers for small system facilities such as
+    `eventfd` or `syslog`.
+-   `syscall_defines` - Lists of syscall numbers in each architecture used to
+    make syscalls not supported in `libc`.
+-   `vhost` - Wrappers for creating vhost based devices.
+-   `virtio_sys` - Low-level (mostly) auto-generated structures and constants
+    for interfacing with kernel vhost support.
+-   `vm_control` - IPC for the VM.
+-   `x86_64` - Support code specific to 64 bit intel machines.
+
+The `seccomp` folder contains minijail seccomp policy files for each sandboxed
+device. Because some syscalls vary by architecture, the seccomp policies are
+split by architecture.
