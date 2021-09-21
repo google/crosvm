@@ -9,13 +9,13 @@
     -   [System Requirements](./running_crosvm/requirements.md)
     -   [Features](./running_crosvm/features.md)
     -   [Devices](./running_crosvm/devices.md)
+-   [Architecture](./architecture.md)
 -   [Contributing](./contributing.md)
 
 --------------------------------------------------------------------------------
 
 
 -   [Appendix](./appendix/index.md)
-    -   [Architectural Overview](./appendix/architectural_overview.md)
     -   [Example Usage (Outdated)](./appendix/example_usage.md)
     -   [Sandboxing](./appendix/sandboxing.md)
     -   [Seccomp](./appendix/seccomp.md)

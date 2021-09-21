@@ -1,4 +1,4 @@
-# Architectural Overview (last edit: January 21, 2020)
+# Architecture
 
 The principle characteristics of crosvm are:
 
