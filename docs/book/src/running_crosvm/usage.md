@@ -1,9 +1,9 @@
-## Usage
+# Usage
 
 To see the usage information for your version of crosvm, run `crosvm` or `crosvm
 run --help`.
 
-### Boot a Kernel
+## Boot a Kernel
 
 To run a very basic VM with just a kernel and default devices:
 
@@ -14,9 +14,9 @@ $ crosvm run "${KERNEL_PATH}"
 The uncompressed kernel image, also known as vmlinux, can be found in your
 kernel build directory in the case of x86 at `arch/x86/boot/compressed/vmlinux`.
 
-### Rootfs
+## Rootfs
 
-#### With a disk image
+### With a disk image
 
 In most cases, you will want to give the VM a virtual block device to use as a
 root file system:
@@ -44,7 +44,7 @@ crosvm run --rwdisk "${ROOT_IMAGE}" -p "root=/dev/vda" vmlinux
 > **NOTE:** If more disks arguments are added prior to the desired rootfs image,
 > the `root=/dev/vda` must be adjusted to the appropriate letter.
 
-#### With virtiofs
+### With virtiofs
 
 Linux kernel 5.4+ is required for using virtiofs. This is convenient for
 testing. The file system must be named "mtd*" or "ubi*".
@@ -54,7 +54,7 @@ crosvm run --shared-dir "/:mtdfake:type=fs:cache=always" \
     -p "rootfstype=virtiofs root=mtdfake" vmlinux
 ```
 
-### Control Socket
+## Control Socket
 
 If the control socket was enabled with `-s`, the main process can be controlled
 while crosvm is running. To tell crosvm to stop and exit, for example:
@@ -74,7 +74,7 @@ This will cause the original crosvm process to exit in an orderly fashion,
 allowing it to clean up any OS resources that might have stuck around if crosvm
 were terminated early.
 
-### Multiprocess Mode
+## Multiprocess Mode
 
 By default crosvm runs in multiprocess mode. Each device that supports running
 inside of a sandbox will run in a jailed child process of crosvm. The
@@ -83,7 +83,7 @@ appropriate minijail seccomp policy files must be present either in
 `--seccomp-policy-dir` argument. The sandbox can be disabled for testing with
 the `--disable-sandbox` option.
 
-### Virtio Wayland
+## Virtio Wayland
 
 Virtio Wayland support requires special support on the part of the guest and as
 such is unlikely to work out of the box unless you are using a Chrome OS kernel
@@ -93,7 +93,7 @@ To use it, ensure that the `XDG_RUNTIME_DIR` enviroment variable is set and that
 the path `$XDG_RUNTIME_DIR/wayland-0` points to the socket of the Wayland
 compositor you would like the guest to use.
 
-### GDB Support
+## GDB Support
 
 crosvm supports [GDB Remote Serial Protocol] to allow developers to debug guest
 kernel via GDB.
