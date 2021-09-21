@@ -79,6 +79,8 @@ const VIRTIO_BALLOON_S_AVAIL: u16 = 6;
 const VIRTIO_BALLOON_S_CACHES: u16 = 7;
 const VIRTIO_BALLOON_S_HTLB_PGALLOC: u16 = 8;
 const VIRTIO_BALLOON_S_HTLB_PGFAIL: u16 = 9;
+const VIRTIO_BALLOON_S_NONSTANDARD_SHMEM: u16 = 65534;
+const VIRTIO_BALLOON_S_NONSTANDARD_UNEVICTABLE: u16 = 65535;
 
 // BalloonStat is used to deserialize stats from the stats_queue.
 #[derive(Copy, Clone)]
@@ -104,6 +106,8 @@ impl BalloonStat {
             VIRTIO_BALLOON_S_CACHES => stats.disk_caches = val,
             VIRTIO_BALLOON_S_HTLB_PGALLOC => stats.hugetlb_allocations = val,
             VIRTIO_BALLOON_S_HTLB_PGFAIL => stats.hugetlb_failures = val,
+            VIRTIO_BALLOON_S_NONSTANDARD_SHMEM => stats.shared_memory = val,
+            VIRTIO_BALLOON_S_NONSTANDARD_UNEVICTABLE => stats.unevictable_memory = val,
             _ => (),
         }
     }

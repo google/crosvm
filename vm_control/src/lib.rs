@@ -141,6 +141,8 @@ pub struct BalloonStats {
     pub disk_caches: Option<u64>,
     pub hugetlb_allocations: Option<u64>,
     pub hugetlb_failures: Option<u64>,
+    pub shared_memory: Option<u64>,
+    pub unevictable_memory: Option<u64>,
 }
 
 // BalloonControlResult holds results for BalloonControlCommand defined above.
