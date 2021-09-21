@@ -2,7 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use futures::{channel::mpsc, SinkExt, StreamExt};
+use futures::{
+    channel::{mpsc, oneshot},
+    SinkExt, StreamExt,
+};
 use std::io::{self, Write};
 use std::rc::Rc;
 
@@ -11,11 +14,11 @@ use cros_async::{sync::Condvar, sync::Mutex as AsyncMutex, EventAsync, Executor}
 use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
 
-use crate::virtio::cras_backend::Parameters;
+use crate::virtio::cras_backend::{Parameters, PcmResponse};
 use crate::virtio::snd::common::*;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
-use crate::virtio::{DescriptorChain, Interrupt, Queue, Reader, Writer};
+use crate::virtio::{DescriptorChain, Queue, Reader, SignalableInterrupt, Writer};
 
 use super::{DirectionalStream, Error, SndData, StreamInfo, WorkerStatus};
 
@@ -24,9 +27,8 @@ use super::{DirectionalStream, Error, SndData, StreamInfo, WorkerStatus};
 async fn process_pcm_ctrl(
     ex: &Executor,
     mem: &GuestMemory,
-    tx_queue: &Rc<AsyncMutex<Queue>>,
-    rx_queue: &Rc<AsyncMutex<Queue>>,
-    interrupt: &Rc<Interrupt>,
+    tx_send: &mpsc::UnboundedSender<PcmResponse>,
+    rx_send: &mpsc::UnboundedSender<PcmResponse>,
     streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo<'_>>>>>,
     params: &Parameters,
     cmd_code: u32,
@@ -57,7 +59,7 @@ async fn process_pcm_ctrl(
     let result = match cmd_code {
         VIRTIO_SND_R_PCM_PREPARE => {
             stream
-                .prepare(ex, mem.clone(), tx_queue, rx_queue, interrupt, params)
+                .prepare(ex, mem.clone(), tx_send, rx_send, params)
                 .await
         }
         VIRTIO_SND_R_PCM_START => stream.start().await,
@@ -99,7 +101,10 @@ async fn process_pcm_ctrl(
 }
 
 /// Start a pcm worker that receives descriptors containing PCM frames (audio data) from the tx/rx
-/// queue, and forward them to CRAS. One pcm worker is needed per stream.
+/// queue, and forward them to CRAS. One pcm worker per stream.
+///
+/// This worker is started when VIRTIO_SND_R_PCM_RELEASE is called, and returned before
+/// VIRTIO_SND_R_PCM_RELEASE is completed for the stream.
 pub async fn start_pcm_worker(
     ex: Executor,
     mut dstream: DirectionalStream,
@@ -107,8 +112,7 @@ pub async fn start_pcm_worker(
     status_mutex: Rc<AsyncMutex<WorkerStatus>>,
     cv: Rc<Condvar>,
     mem: GuestMemory,
-    queue: Rc<AsyncMutex<Queue>>,
-    interrupt: Rc<Interrupt>,
+    mut sender: mpsc::UnboundedSender<PcmResponse>,
     period_bytes: usize,
 ) -> Result<(), Error> {
     loop {
@@ -123,17 +127,27 @@ pub async fn start_pcm_worker(
                 while let Some(desc_chain) = o_desc_chain {
                     // From the virtio-snd spec:
                     // The device MUST complete all pending I/O messages for the specified stream ID.
-                    send_pcm_response(
-                        &mem,
-                        desc_chain,
-                        &queue,
-                        &interrupt,
-                        virtio_snd_pcm_status {
-                            status: Le32::from(VIRTIO_SND_S_OK),
-                            latency_bytes: Le32::from(0),
-                        },
-                    )
-                    .await?;
+                    let desc_index = desc_chain.index;
+                    let writer =
+                        Writer::new(mem.clone(), desc_chain).map_err(Error::DescriptorChain)?;
+                    let status = virtio_snd_pcm_status {
+                        status: Le32::from(VIRTIO_SND_S_OK),
+                        latency_bytes: Le32::from(0),
+                    };
+                    let (done, future) = oneshot::channel();
+                    sender
+                        .send(PcmResponse {
+                            desc_index,
+                            status,
+                            writer,
+                            done: Some(done),
+                        })
+                        .await
+                        .map_err(Error::MpscSend)?;
+                    // From the virtio-snd spec:
+                    // The device MUST NOT complete the control request (VIRTIO_SND_R_PCM_RELEASE)
+                    // while there are pending I/O messages for the specified stream ID.
+                    future.await.map_err(Error::DoneNotTriggered)?;
 
                     o_desc_chain = desc_receiver.next().await
                 }
@@ -143,14 +157,14 @@ pub async fn start_pcm_worker(
         let desc_chain =
             o_desc_chain.expect("Unreachable. status should be Quit when the channel is closed");
 
-        let index = desc_chain.index;
+        let desc_index = desc_chain.index;
 
         let mut reader =
             Reader::new(mem.clone(), desc_chain.clone()).map_err(Error::DescriptorChain)?;
         let mut writer = Writer::new(mem.clone(), desc_chain).map_err(Error::DescriptorChain)?;
 
         let copy_data = async {
-            // stream_id was already read in handle_pcm_worker
+            // stream_id was already read in handle_pcm_queue
             reader.consume(std::mem::size_of::<virtio_snd_pcm_xfer>());
 
             // TODO: How to check wrong direction?
@@ -201,32 +215,52 @@ pub async fn start_pcm_worker(
                 VIRTIO_SND_S_IO_ERR
             }
         };
-
-        send_pcm_response_with_writer(
-            writer,
-            index,
-            &mem,
-            &queue,
-            &interrupt,
-            // TODO(woodychow): Extend audio_streams API, and fetch latency_bytes from
-            // `next_playback_buffer` or `next_capture_buffer`"
-            virtio_snd_pcm_status {
-                status: Le32::from(status),
-                latency_bytes: Le32::from(0),
-            },
-        )
-        .await?
+        // TODO(woodychow): Extend audio_streams API, and fetch latency_bytes from
+        // `next_playback_buffer` or `next_capture_buffer`"
+        let status = virtio_snd_pcm_status {
+            status: Le32::from(status),
+            latency_bytes: Le32::from(0),
+        };
+        sender
+            .send(PcmResponse {
+                desc_index,
+                status,
+                writer,
+                done: None,
+            })
+            .await
+            .map_err(Error::MpscSend)?;
     }
 
     Ok(())
 }
 
-async fn send_pcm_response_with_writer(
+// Defer pcm message response to the pcm response worker
+async fn defer_pcm_response_to_worker(
+    desc_chain: DescriptorChain,
+    mem: &GuestMemory,
+    status: virtio_snd_pcm_status,
+    response_sender: &mut mpsc::UnboundedSender<PcmResponse>,
+) -> Result<(), Error> {
+    let desc_index = desc_chain.index;
+    let writer = Writer::new(mem.clone(), desc_chain).map_err(Error::DescriptorChain)?;
+    response_sender
+        .send(PcmResponse {
+            desc_index,
+            status,
+            writer,
+            done: None,
+        })
+        .await
+        .map_err(Error::MpscSend)
+}
+
+fn send_pcm_response_with_writer<I: SignalableInterrupt>(
     mut writer: Writer,
     desc_index: u16,
     mem: &GuestMemory,
-    rc_queue: &Rc<AsyncMutex<Queue>>,
-    interrupt: &Rc<Interrupt>,
+    queue: &mut Queue,
+    interrupt: &I,
     status: virtio_snd_pcm_status,
 ) -> Result<(), Error> {
     // For rx queue only. Fast forward the unused audio data buffer.
@@ -235,22 +269,38 @@ async fn send_pcm_response_with_writer(
             .consume_bytes(writer.available_bytes() - std::mem::size_of::<virtio_snd_pcm_status>());
     }
     writer.write_obj(status).map_err(Error::WriteResponse)?;
-    let mut queue = rc_queue.lock().await;
     queue.add_used(mem, desc_index, writer.bytes_written() as u32);
-    queue.trigger_interrupt(mem, &**interrupt);
+    queue.trigger_interrupt(mem, interrupt);
     Ok(())
 }
 
-async fn send_pcm_response(
+pub async fn send_pcm_response_worker<I: SignalableInterrupt>(
     mem: &GuestMemory,
-    desc_chain: DescriptorChain,
-    rc_queue: &Rc<AsyncMutex<Queue>>,
-    interrupt: &Rc<Interrupt>,
-    status: virtio_snd_pcm_status,
+    queue: &Rc<AsyncMutex<Queue>>,
+    interrupt: &I,
+    recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
 ) -> Result<(), Error> {
-    let index = desc_chain.index;
-    let writer = Writer::new(mem.clone(), desc_chain).map_err(Error::DescriptorChain)?;
-    send_pcm_response_with_writer(writer, index, mem, rc_queue, interrupt, status).await
+    loop {
+        if let Some(r) = recv.next().await {
+            send_pcm_response_with_writer(
+                r.writer,
+                r.desc_index,
+                &mem,
+                &mut *queue.lock().await,
+                interrupt,
+                r.status,
+            )?;
+
+            // Resume pcm_worker
+            if let Some(done) = r.done {
+                done.send(()).map_err(Error::OneshotSend)?;
+            }
+        } else {
+            debug!("PcmResponse channel is closed.");
+            break;
+        }
+    }
+    Ok(())
 }
 
 /// Handle messages from the tx or the rx queue. One invocation is needed for
@@ -258,13 +308,13 @@ async fn send_pcm_response(
 pub async fn handle_pcm_queue<'a>(
     mem: &GuestMemory,
     streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo<'a>>>>>,
+    mut response_sender: mpsc::UnboundedSender<PcmResponse>,
     queue: &Rc<AsyncMutex<Queue>>,
     queue_event: EventAsync,
-    interrupt: &Rc<Interrupt>,
 ) -> Result<(), Error> {
     loop {
         // Manual queue.next_async() to avoid holding the mutex
-        let foo = async {
+        let next_async = async {
             loop {
                 // Check if there are more descriptors available.
                 if let Some(chain) = queue.lock().await.pop(mem) {
@@ -273,8 +323,8 @@ pub async fn handle_pcm_queue<'a>(
                 queue_event.next_val().await?;
             }
         };
-        let desc_chain = foo.await.map_err(Error::Async)?;
 
+        let desc_chain = next_async.await.map_err(Error::Async)?;
         let mut reader =
             Reader::new(mem.clone(), desc_chain.clone()).map_err(Error::DescriptorChain)?;
 
@@ -286,19 +336,18 @@ pub async fn handle_pcm_queue<'a>(
             Some(stream_info) => stream_info.read_lock().await,
             None => {
                 error!(
-                    "stream_id ({}) < num_streams ({})",
+                    "stream_id ({}) >= num_streams ({})",
                     stream_id,
                     streams.len()
                 );
-                send_pcm_response(
-                    mem,
+                defer_pcm_response_to_worker(
                     desc_chain,
-                    queue,
-                    interrupt,
+                    mem,
                     virtio_snd_pcm_status {
                         status: Le32::from(VIRTIO_SND_S_IO_ERR),
                         latency_bytes: Le32::from(0),
                     },
+                    &mut response_sender,
                 )
                 .await?;
                 continue;
@@ -307,36 +356,40 @@ pub async fn handle_pcm_queue<'a>(
 
         match stream_info.sender.as_ref() {
             Some(mut s) => {
-                s.send(desc_chain).await.map_err(Error::MpscRead)?;
+                s.send(desc_chain).await.map_err(Error::MpscSend)?;
             }
             None => {
-                send_pcm_response(
-                    mem,
+                error!(
+                    "stream {} is not ready. state: {}",
+                    stream_id,
+                    get_virtio_snd_r_pcm_cmd_name(stream_info.state)
+                );
+                defer_pcm_response_to_worker(
                     desc_chain,
-                    queue,
-                    interrupt,
+                    mem,
                     virtio_snd_pcm_status {
                         status: Le32::from(VIRTIO_SND_S_IO_ERR),
                         latency_bytes: Le32::from(0),
                     },
+                    &mut response_sender,
                 )
-                .await?
+                .await?;
             }
         };
     }
 }
 
 /// Handle all the control messages from the ctrl queue.
-pub async fn handle_ctrl_queue(
+pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
     ex: &Executor,
     mem: &GuestMemory,
     streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo<'_>>>>>,
     snd_data: &SndData,
     mut queue: Queue,
     mut queue_event: EventAsync,
-    interrupt: &Rc<Interrupt>,
-    tx_queue: &Rc<AsyncMutex<Queue>>,
-    rx_queue: &Rc<AsyncMutex<Queue>>,
+    interrupt: &I,
+    tx_send: mpsc::UnboundedSender<PcmResponse>,
+    rx_send: mpsc::UnboundedSender<PcmResponse>,
     params: &Parameters,
 ) -> Result<(), Error> {
     loop {
@@ -572,9 +625,8 @@ pub async fn handle_ctrl_queue(
                     process_pcm_ctrl(
                         ex,
                         &mem.clone(),
-                        tx_queue,
-                        rx_queue,
-                        interrupt,
+                        &tx_send,
+                        &rx_send,
                         streams,
                         params,
                         code,
@@ -596,16 +648,16 @@ pub async fn handle_ctrl_queue(
 
         handle_ctrl_msg.await?;
         queue.add_used(mem, index, writer.bytes_written() as u32);
-        queue.trigger_interrupt(&mem, &**interrupt);
+        queue.trigger_interrupt(&mem, interrupt);
     }
 }
 
 /// Send events to the audio driver.
-pub async fn handle_event_queue(
+pub async fn handle_event_queue<I: SignalableInterrupt>(
     mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
-    interrupt: &Rc<Interrupt>,
+    interrupt: &I,
 ) -> Result<(), Error> {
     loop {
         let desc_chain = queue
@@ -616,7 +668,7 @@ pub async fn handle_event_queue(
         // TODO(woodychow): Poll and forward events from cras asynchronously (API to be added)
         let index = desc_chain.index;
         queue.add_used(mem, index, 0);
-        queue.trigger_interrupt(&mem, &**interrupt);
+        queue.trigger_interrupt(&mem, interrupt);
     }
 }
 
