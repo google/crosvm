@@ -234,6 +234,7 @@ impl VirtioDevice for Fs {
         }
 
         let fs = self.fs.take().expect("missing file system implementation");
+        let use_dax = fs.cfg().use_dax;
 
         let server = Arc::new(Server::new(fs));
         let irq = Arc::new(interrupt);
@@ -242,7 +243,7 @@ impl VirtioDevice for Fs {
 
         // Set up shared memory for DAX.
         // TODO(b/176129399): Remove cfg! once DAX is supported on ARM.
-        if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
+        if cfg!(any(target_arch = "x86", target_arch = "x86_64")) && use_dax {
             // Create the shared memory region now before we start processing requests.
             let request = FsMappingRequest::AllocateSharedMemoryRegion(
                 self.pci_bar.as_ref().cloned().expect("No pci_bar"),
@@ -301,6 +302,10 @@ impl VirtioDevice for Fs {
     }
 
     fn get_device_bars(&mut self, address: PciAddress) -> Vec<PciBarConfiguration> {
+        if self.fs.as_ref().map_or(false, |fs| !fs.cfg().use_dax) {
+            return vec![];
+        }
+
         self.pci_bar = Some(Alloc::PciBar {
             bus: address.bus,
             dev: address.dev,
@@ -317,6 +322,10 @@ impl VirtioDevice for Fs {
     }
 
     fn get_device_caps(&self) -> Vec<Box<dyn PciCapability>> {
+        if self.fs.as_ref().map_or(false, |fs| !fs.cfg().use_dax) {
+            return vec![];
+        }
+
         vec![Box::new(VirtioPciShmCap::new(
             PciCapabilityType::SharedMemoryConfig,
             FS_BAR_NUM,

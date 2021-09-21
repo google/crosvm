@@ -499,6 +499,17 @@ pub struct Config {
     // CAP_FOWNER.
     #[cfg(feature = "chromeos")]
     pub privileged_quota_uids: Vec<libc::uid_t>,
+
+    /// Use DAX for shared files.
+    ///
+    /// Enabling DAX can improve performance for frequently accessed files by mapping regions of the
+    /// file directly into the VM's memory region, allowing direct access with the cost of slightly
+    /// increased latency the first time the file is accessed. Additionally, since the mapping is
+    /// shared directly from the host kernel's file cache, enabling DAX can improve performance even
+    /// when the cache policy is `Never`.
+    ///
+    /// The default value for this option is `false`.
+    pub use_dax: bool,
 }
 
 impl Default for Config {
@@ -512,6 +523,7 @@ impl Default for Config {
             ascii_casefold: false,
             #[cfg(feature = "chromeos")]
             privileged_quota_uids: Default::default(),
+            use_dax: false,
         }
     }
 }
@@ -623,6 +635,10 @@ impl PassthroughFs {
 
             cfg,
         })
+    }
+
+    pub fn cfg(&self) -> &Config {
+        &self.cfg
     }
 
     pub fn keep_rds(&self) -> Vec<RawDescriptor> {
@@ -2481,6 +2497,10 @@ impl FileSystem for PassthroughFs {
         prot: u32,
         mapper: M,
     ) -> io::Result<()> {
+        if !self.cfg.use_dax {
+            return Err(io::Error::from_raw_os_error(libc::ENOSYS));
+        }
+
         let read = prot & libc::PROT_READ as u32 != 0;
         let write = prot & libc::PROT_WRITE as u32 != 0;
         let mmap_flags = match (read, write) {
@@ -2522,6 +2542,10 @@ impl FileSystem for PassthroughFs {
     }
 
     fn remove_mapping<M: Mapper>(&self, msgs: &[RemoveMappingOne], mapper: M) -> io::Result<()> {
+        if !self.cfg.use_dax {
+            return Err(io::Error::from_raw_os_error(libc::ENOSYS));
+        }
+
         for RemoveMappingOne { moffset, len } in msgs {
             mapper.unmap(*moffset, *len)?;
         }
