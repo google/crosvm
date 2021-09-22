@@ -592,97 +592,105 @@ impl PciDevice for VirtioPciDevice {
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
         // The driver is only allowed to do aligned, properly sized access.
         let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
-        let offset = addr - bar0;
-        match offset {
-            o if COMMON_CONFIG_BAR_OFFSET <= o
-                && o < COMMON_CONFIG_BAR_OFFSET + COMMON_CONFIG_SIZE =>
-            {
-                self.common_config.read(
-                    o - COMMON_CONFIG_BAR_OFFSET,
-                    data,
-                    &mut self.queues,
-                    self.device.as_mut(),
-                )
-            }
-            o if ISR_CONFIG_BAR_OFFSET <= o && o < ISR_CONFIG_BAR_OFFSET + ISR_CONFIG_SIZE => {
-                if let Some(v) = data.get_mut(0) {
-                    // Reading this register resets it to 0.
-                    *v = self.interrupt_status.swap(0, Ordering::SeqCst) as u8;
+        if addr < bar0 || addr >= bar0 + CAPABILITY_BAR_SIZE {
+            self.device.read_bar(addr, data);
+        } else {
+            let offset = addr - bar0;
+            match offset {
+                o if COMMON_CONFIG_BAR_OFFSET <= o
+                    && o < COMMON_CONFIG_BAR_OFFSET + COMMON_CONFIG_SIZE =>
+                {
+                    self.common_config.read(
+                        o - COMMON_CONFIG_BAR_OFFSET,
+                        data,
+                        &mut self.queues,
+                        self.device.as_mut(),
+                    )
                 }
-            }
-            o if DEVICE_CONFIG_BAR_OFFSET <= o
-                && o < DEVICE_CONFIG_BAR_OFFSET + DEVICE_CONFIG_SIZE =>
-            {
-                self.device.read_config(o - DEVICE_CONFIG_BAR_OFFSET, data);
-            }
-            o if NOTIFICATION_BAR_OFFSET <= o
-                && o < NOTIFICATION_BAR_OFFSET + NOTIFICATION_SIZE =>
-            {
-                // Handled with ioevents.
-            }
+                o if ISR_CONFIG_BAR_OFFSET <= o && o < ISR_CONFIG_BAR_OFFSET + ISR_CONFIG_SIZE => {
+                    if let Some(v) = data.get_mut(0) {
+                        // Reading this register resets it to 0.
+                        *v = self.interrupt_status.swap(0, Ordering::SeqCst) as u8;
+                    }
+                }
+                o if DEVICE_CONFIG_BAR_OFFSET <= o
+                    && o < DEVICE_CONFIG_BAR_OFFSET + DEVICE_CONFIG_SIZE =>
+                {
+                    self.device.read_config(o - DEVICE_CONFIG_BAR_OFFSET, data);
+                }
+                o if NOTIFICATION_BAR_OFFSET <= o
+                    && o < NOTIFICATION_BAR_OFFSET + NOTIFICATION_SIZE =>
+                {
+                    // Handled with ioevents.
+                }
 
-            o if MSIX_TABLE_BAR_OFFSET <= o && o < MSIX_TABLE_BAR_OFFSET + MSIX_TABLE_SIZE => {
-                self.msix_config
-                    .lock()
-                    .read_msix_table(o - MSIX_TABLE_BAR_OFFSET, data);
-            }
+                o if MSIX_TABLE_BAR_OFFSET <= o && o < MSIX_TABLE_BAR_OFFSET + MSIX_TABLE_SIZE => {
+                    self.msix_config
+                        .lock()
+                        .read_msix_table(o - MSIX_TABLE_BAR_OFFSET, data);
+                }
 
-            o if MSIX_PBA_BAR_OFFSET <= o && o < MSIX_PBA_BAR_OFFSET + MSIX_PBA_SIZE => {
-                self.msix_config
-                    .lock()
-                    .read_pba_entries(o - MSIX_PBA_BAR_OFFSET, data);
-            }
+                o if MSIX_PBA_BAR_OFFSET <= o && o < MSIX_PBA_BAR_OFFSET + MSIX_PBA_SIZE => {
+                    self.msix_config
+                        .lock()
+                        .read_pba_entries(o - MSIX_PBA_BAR_OFFSET, data);
+                }
 
-            _ => (),
+                _ => (),
+            }
         }
     }
 
     #[allow(clippy::absurd_extreme_comparisons)]
     fn write_bar(&mut self, addr: u64, data: &[u8]) {
         let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
-        let offset = addr - bar0;
-        match offset {
-            o if COMMON_CONFIG_BAR_OFFSET <= o
-                && o < COMMON_CONFIG_BAR_OFFSET + COMMON_CONFIG_SIZE =>
-            {
-                self.common_config.write(
-                    o - COMMON_CONFIG_BAR_OFFSET,
-                    data,
-                    &mut self.queues,
-                    self.device.as_mut(),
-                )
-            }
-            o if ISR_CONFIG_BAR_OFFSET <= o && o < ISR_CONFIG_BAR_OFFSET + ISR_CONFIG_SIZE => {
-                if let Some(v) = data.get(0) {
-                    self.interrupt_status
-                        .fetch_and(!(*v as usize), Ordering::SeqCst);
+        if addr < bar0 || addr >= bar0 + CAPABILITY_BAR_SIZE {
+            self.device.write_bar(addr, data);
+        } else {
+            let offset = addr - bar0;
+            match offset {
+                o if COMMON_CONFIG_BAR_OFFSET <= o
+                    && o < COMMON_CONFIG_BAR_OFFSET + COMMON_CONFIG_SIZE =>
+                {
+                    self.common_config.write(
+                        o - COMMON_CONFIG_BAR_OFFSET,
+                        data,
+                        &mut self.queues,
+                        self.device.as_mut(),
+                    )
                 }
-            }
-            o if DEVICE_CONFIG_BAR_OFFSET <= o
-                && o < DEVICE_CONFIG_BAR_OFFSET + DEVICE_CONFIG_SIZE =>
-            {
-                self.device.write_config(o - DEVICE_CONFIG_BAR_OFFSET, data);
-            }
-            o if NOTIFICATION_BAR_OFFSET <= o
-                && o < NOTIFICATION_BAR_OFFSET + NOTIFICATION_SIZE =>
-            {
-                // Handled with ioevents.
-            }
-            o if MSIX_TABLE_BAR_OFFSET <= o && o < MSIX_TABLE_BAR_OFFSET + MSIX_TABLE_SIZE => {
-                let behavior = self
-                    .msix_config
-                    .lock()
-                    .write_msix_table(o - MSIX_TABLE_BAR_OFFSET, data);
-                self.device.control_notify(behavior);
-            }
-            o if MSIX_PBA_BAR_OFFSET <= o && o < MSIX_PBA_BAR_OFFSET + MSIX_PBA_SIZE => {
-                self.msix_config
-                    .lock()
-                    .write_pba_entries(o - MSIX_PBA_BAR_OFFSET, data);
-            }
+                o if ISR_CONFIG_BAR_OFFSET <= o && o < ISR_CONFIG_BAR_OFFSET + ISR_CONFIG_SIZE => {
+                    if let Some(v) = data.get(0) {
+                        self.interrupt_status
+                            .fetch_and(!(*v as usize), Ordering::SeqCst);
+                    }
+                }
+                o if DEVICE_CONFIG_BAR_OFFSET <= o
+                    && o < DEVICE_CONFIG_BAR_OFFSET + DEVICE_CONFIG_SIZE =>
+                {
+                    self.device.write_config(o - DEVICE_CONFIG_BAR_OFFSET, data);
+                }
+                o if NOTIFICATION_BAR_OFFSET <= o
+                    && o < NOTIFICATION_BAR_OFFSET + NOTIFICATION_SIZE =>
+                {
+                    // Handled with ioevents.
+                }
+                o if MSIX_TABLE_BAR_OFFSET <= o && o < MSIX_TABLE_BAR_OFFSET + MSIX_TABLE_SIZE => {
+                    let behavior = self
+                        .msix_config
+                        .lock()
+                        .write_msix_table(o - MSIX_TABLE_BAR_OFFSET, data);
+                    self.device.control_notify(behavior);
+                }
+                o if MSIX_PBA_BAR_OFFSET <= o && o < MSIX_PBA_BAR_OFFSET + MSIX_PBA_SIZE => {
+                    self.msix_config
+                        .lock()
+                        .write_pba_entries(o - MSIX_PBA_BAR_OFFSET, data);
+                }
 
-            _ => (),
-        };
+                _ => (),
+            }
+        }
 
         if !self.device_activated && self.is_driver_ready() && self.are_queues_valid() {
             if let Some(interrupt_evt) = self.interrupt_evt.take() {
