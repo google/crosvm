@@ -97,7 +97,7 @@ remain = "*"
 resources = { path = "resources" }
 serde_json = "*"
 sync = { path = "sync" }
-tempfile = "*"
+tempfile = "3"
 thiserror = { version = "1.0.20" }
 vhost = { path = "vhost" }
 vm_control = { path = "vm_control" }
@@ -125,7 +125,6 @@ p9 = { path = "common/p9" } # ignored by ebuild
 sync = { path = "sync" }
 sys_util = { path = "sys_util" }
 system_api = { path = "system_api_stub" } # ignored by ebuild
-tempfile = { path = "tempfile" }
 wire_format_derive = { path = "common/p9/wire_format_derive" } # ignored by ebuild
 minijail = { path = "third_party/minijail/rust/minijail" } # ignored by ebuild
 vmm_vhost = { path = "third_party/vmm_vhost", features = ["vhost-user-master", "vhost-user-slave"] } # ignored by ebuild

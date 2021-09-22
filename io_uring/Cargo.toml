@@ -13,6 +13,6 @@ sys_util = { path = "../sys_util" } # provided by ebuild
 thiserror = "1"
 
 [dev-dependencies]
-tempfile = { path = "../tempfile" } # provided by ebuild
+tempfile = "3"
 
 [workspace]

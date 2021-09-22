@@ -12,4 +12,4 @@ thiserror = "*"
 vm_memory = { path = "../vm_memory" }
 
 [dev-dependencies]
-tempfile = "*"
+tempfile = "3"

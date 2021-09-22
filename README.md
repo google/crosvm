@@ -123,8 +123,8 @@ For faster iteration time, you can directly invoke some of these steps directly:
 
 To only run x86 tests: `./ci/[aarch64_]builder --vm ./run_tests`.
 
-To run a simple test (e.g. the tempfile crate) that does not need the vm:
-`./ci/[aarch64_]builder cargo test -p tempfile`.
+To run a simple test (e.g. the enumn crate) that does not need the vm:
+`./ci/[aarch64_]builder cargo test -p enumn`.
 
 Or run a single test (e.g. kvm_sys) inside the vm:
 `./ci/[aarch64*]builder --vm cargo test -p kvm_sys`.

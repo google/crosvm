@@ -29,6 +29,6 @@ features = ["alloc"]
 futures = { version = "*", features = ["executor"] }
 futures-executor = { version = "0.3", features = ["thread-pool"] }
 futures-util = "0.3"
-tempfile = { path = "../tempfile" } # provided by ebuild
+tempfile = "3"
 
 [workspace]
