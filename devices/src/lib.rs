@@ -35,8 +35,8 @@ pub use self::acpi::ACPIPMResource;
 pub use self::bat::{BatteryError, GoldfishBattery};
 pub use self::bus::Error as BusError;
 pub use self::bus::{
-    Bus, BusAccessInfo, BusDevice, BusDeviceSync, BusRange, BusResumeDevice, HostHotPlugKey,
-    HotPlugBus,
+    Bus, BusAccessInfo, BusDevice, BusDeviceObj, BusDeviceSync, BusRange, BusResumeDevice,
+    HostHotPlugKey, HotPlugBus,
 };
 pub use self::cmos::Cmos;
 #[cfg(feature = "direct")]

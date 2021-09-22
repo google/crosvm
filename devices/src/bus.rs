@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use sync::Mutex;
 use thiserror::Error;
 
-use crate::PciAddress;
+use crate::{PciAddress, PciDevice};
 
 /// Information about how a device was accessed.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
@@ -120,6 +120,21 @@ pub trait HotPlugBus {
     fn add_hotplug_device(&mut self, host_key: HostHotPlugKey, guest_addr: PciAddress);
     /// get guest pci address from the specified host_key
     fn get_hotplug_device(&self, host_key: HostHotPlugKey) -> Option<PciAddress>;
+}
+
+/// Trait for generic device abstraction, that is, all devices that reside on BusDevice and want
+/// to be converted back to its original type. Each new foo device must provide
+/// as_foo_device() + as_foo_device_mut() + into_foo_device(), default impl methods return None.
+pub trait BusDeviceObj {
+    fn as_pci_device(&self) -> Option<&dyn PciDevice> {
+        None
+    }
+    fn as_pci_device_mut(&mut self) -> Option<&mut dyn PciDevice> {
+        None
+    }
+    fn into_pci_device(self: Box<Self>) -> Option<Box<dyn PciDevice>> {
+        None
+    }
 }
 
 #[sorted]

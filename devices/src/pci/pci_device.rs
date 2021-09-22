@@ -10,7 +10,7 @@ use remain::sorted;
 use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
 use thiserror::Error;
 
-use crate::bus::ConfigWriteResult;
+use crate::bus::{BusDeviceObj, ConfigWriteResult};
 use crate::pci::pci_configuration::{
     self, PciBarConfiguration, COMMAND_REG, COMMAND_REG_IO_SPACE_MASK,
     COMMAND_REG_MEMORY_SPACE_MASK,
@@ -246,6 +246,18 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn generate_acpi(&mut self, sdts: Vec<SDT>) -> Option<Vec<SDT>> {
         (**self).generate_acpi(sdts)
+    }
+}
+
+impl<T: 'static + PciDevice> BusDeviceObj for T {
+    fn as_pci_device(&self) -> Option<&dyn PciDevice> {
+        Some(self)
+    }
+    fn as_pci_device_mut(&mut self) -> Option<&mut dyn PciDevice> {
+        Some(self)
+    }
+    fn into_pci_device(self: Box<Self>) -> Option<Box<dyn PciDevice>> {
+        Some(self)
     }
 }
 

@@ -62,7 +62,8 @@ use arch::{
 use base::Event;
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::{
-    BusResumeDevice, IrqChip, IrqChipX86_64, PciAddress, PciConfigIo, PciDevice, ProtectionType,
+    BusDeviceObj, BusResumeDevice, IrqChip, IrqChipX86_64, PciAddress, PciConfigIo, PciDevice,
+    ProtectionType,
 };
 use hypervisor::{HypervisorX86_64, VcpuX86_64, VmX86_64};
 use minijail::Minijail;
@@ -386,7 +387,7 @@ impl arch::LinuxArch for X8664arch {
         battery: (&Option<BatteryType>, Option<Minijail>),
         mut vm: V,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
-        pci_devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
+        devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipX86_64,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
@@ -406,6 +407,15 @@ impl arch::LinuxArch for X8664arch {
 
         let mut mmio_bus = devices::Bus::new();
         let mut io_bus = devices::Bus::new();
+
+        let (pci_devices, _others): (Vec<_>, Vec<_>) = devs
+            .into_iter()
+            .partition(|(dev, _)| dev.as_pci_device().is_some());
+
+        let pci_devices = pci_devices
+            .into_iter()
+            .map(|(dev, jail_orig)| (dev.into_pci_device().unwrap(), jail_orig))
+            .collect();
 
         let (pci, pci_irqs, pid_debug_label_map) = arch::generate_pci_root(
             pci_devices,

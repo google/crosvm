@@ -19,9 +19,9 @@ use acpi_tables::sdt::SDT;
 use base::{syslog, AsRawDescriptor, AsRawDescriptors, Event, Tube};
 use devices::virtio::VirtioDevice;
 use devices::{
-    Bus, BusDevice, BusError, BusResumeDevice, HotPlugBus, IrqChip, PciAddress, PciDevice,
-    PciDeviceError, PciInterruptPin, PciRoot, ProtectionType, ProxyDevice, SerialHardware,
-    SerialParameters,
+    Bus, BusDevice, BusDeviceObj, BusError, BusResumeDevice, HotPlugBus, IrqChip, PciAddress,
+    PciDevice, PciDeviceError, PciInterruptPin, PciRoot, ProtectionType, ProxyDevice,
+    SerialHardware, SerialParameters,
 };
 use hypervisor::{IoEventAddress, Vm};
 use minijail::Minijail;
@@ -169,7 +169,7 @@ pub trait LinuxArch {
     /// * `battery` - Defines what battery device will be created.
     /// * `vm` - A VM implementation to build upon.
     /// * `ramoops_region` - Region allocated for ramoops.
-    /// * `pci_devices` - The PCI devices to be built into the VM.
+    /// * `devices` - The devices to be built into the VM.
     /// * `irq_chip` - The IRQ chip implemention for the VM.
     fn build_vm<V, Vcpu>(
         components: VmComponents,
@@ -180,7 +180,7 @@ pub trait LinuxArch {
         battery: (&Option<BatteryType>, Option<Minijail>),
         vm: V,
         ramoops_region: Option<pstore::RamoopsRegion>,
-        pci_devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
+        devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipArch,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where

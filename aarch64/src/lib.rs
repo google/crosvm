@@ -12,7 +12,8 @@ use arch::{get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, VmCompone
 use base::{Event, MemoryMappingBuilder};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::{
-    Bus, BusError, IrqChip, IrqChipAArch64, PciAddress, PciConfigMmio, PciDevice, ProtectionType,
+    Bus, BusDeviceObj, BusError, IrqChip, IrqChipAArch64, PciAddress, PciConfigMmio, PciDevice,
+    ProtectionType,
 };
 use hypervisor::{DeviceKind, Hypervisor, HypervisorCap, VcpuAArch64, VcpuFeature, VmAArch64};
 use minijail::Minijail;
@@ -256,7 +257,7 @@ impl arch::LinuxArch for AArch64 {
         _battery: (&Option<BatteryType>, Option<Minijail>),
         mut vm: V,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
-        pci_devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
+        devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipAArch64,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
@@ -336,6 +337,14 @@ impl arch::LinuxArch for AArch64 {
         // guest OS is trying to suspend.
         let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
 
+        let (pci_devices, _others): (Vec<_>, Vec<_>) = devs
+            .into_iter()
+            .partition(|(dev, _)| dev.as_pci_device().is_some());
+
+        let pci_devices = pci_devices
+            .into_iter()
+            .map(|(dev, jail_orig)| (dev.into_pci_device().unwrap(), jail_orig))
+            .collect();
         let (pci, pci_irqs, pid_debug_label_map) = arch::generate_pci_root(
             pci_devices,
             irq_chip.as_irq_chip_mut(),

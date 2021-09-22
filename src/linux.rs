@@ -47,8 +47,8 @@ use devices::virtio::{
 use devices::Ac97Dev;
 use devices::ProtectionType;
 use devices::{
-    self, HostHotPlugKey, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciAddress, PciDevice,
-    VcpuRunState, VfioContainer, VfioDevice, VfioPciDevice, VirtioPciDevice,
+    self, BusDeviceObj, HostHotPlugKey, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciAddress,
+    PciDevice, VcpuRunState, VfioContainer, VfioDevice, VfioPciDevice, VirtioPciDevice,
 };
 #[cfg(feature = "usb")]
 use devices::{HostBackendDeviceProvider, XhciController};
@@ -1608,7 +1608,7 @@ fn create_devices(
     fs_device_tubes: &mut Vec<Tube>,
     #[cfg(feature = "usb")] usb_provider: HostBackendDeviceProvider,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
-) -> DeviceResult<Vec<(Box<dyn PciDevice>, Option<Minijail>)>> {
+) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let stubs = create_virtio_devices(
         cfg,
         vm,
@@ -1624,15 +1624,15 @@ fn create_devices(
         fs_device_tubes,
     )?;
 
-    let mut pci_devices = Vec::new();
+    let mut devices = Vec::new();
 
     for stub in stubs {
         let (msi_host_tube, msi_device_tube) = Tube::pair().map_err(Error::CreateTube)?;
         control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
         let dev = VirtioPciDevice::new(vm.get_memory().clone(), stub.dev, msi_device_tube)
             .map_err(Error::VirtioPciDev)?;
-        let dev = Box::new(dev) as Box<dyn PciDevice>;
-        pci_devices.push((dev, stub.jail));
+        let dev = Box::new(dev) as Box<dyn BusDeviceObj>;
+        devices.push((dev, stub.jail));
     }
 
     #[cfg(feature = "audio")]
@@ -1640,14 +1640,14 @@ fn create_devices(
         let dev = Ac97Dev::try_new(vm.get_memory().clone(), ac97_param.clone())
             .map_err(Error::CreateAc97)?;
         let jail = simple_jail(cfg, dev.minijail_policy())?;
-        pci_devices.push((Box::new(dev), jail));
+        devices.push((Box::new(dev), jail));
     }
 
     #[cfg(feature = "usb")]
     {
         // Create xhci controller.
         let usb_controller = Box::new(XhciController::new(vm.get_memory().clone(), usb_provider));
-        pci_devices.push((usb_controller, simple_jail(cfg, "xhci")?));
+        devices.push((usb_controller, simple_jail(cfg, "xhci")?));
     }
 
     if !cfg.vfio.is_empty() {
@@ -1666,7 +1666,7 @@ fn create_devices(
                 *enable_iommu,
             )?;
 
-            pci_devices.push((vfio_pci_device, jail));
+            devices.push((vfio_pci_device, jail));
         }
 
         if !iommu_attached_endpoints.is_empty() {
@@ -1681,11 +1681,11 @@ fn create_devices(
             dev.allocate_address(resources)
                 .map_err(|_| Error::VirtioPciDev(base::Error::new(EINVAL)))?;
             let dev = Box::new(dev);
-            pci_devices.push((dev, iommu_dev.jail));
+            devices.push((dev, iommu_dev.jail));
         }
     }
 
-    Ok(pci_devices)
+    Ok(devices)
 }
 
 #[derive(Copy, Clone)]
@@ -2496,7 +2496,7 @@ where
     };
 
     let phys_max_addr = Arch::get_phys_max_addr();
-    let mut pci_devices = create_devices(
+    let mut devices = create_devices(
         &cfg,
         &mut vm,
         &mut sys_allocator,
@@ -2516,7 +2516,10 @@ where
     )?;
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    for (device, _jail) in pci_devices.iter_mut() {
+    for device in devices
+        .iter_mut()
+        .filter_map(|(dev, _)| dev.as_pci_device_mut())
+    {
         let sdts = device
             .generate_acpi(components.acpi_sdts)
             .or_else(|| {
@@ -2537,7 +2540,7 @@ where
         battery,
         vm,
         ramoops_region,
-        pci_devices,
+        devices,
         irq_chip,
     )
     .map_err(Error::BuildVm)?;
