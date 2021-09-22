@@ -1782,7 +1782,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.executable_path = Some(Executable::Bios(PathBuf::from(value.unwrap().to_owned())));
         }
-        "vfio" => {
+        "vfio" | "vfio-platform" => {
             let vfio_type = name.parse().unwrap();
             let vfio_dev = VfioCommand::new(vfio_type, value.unwrap())?;
             cfg.vfio.push(vfio_dev);
@@ -2186,8 +2186,9 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
           #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("split-irqchip", "(EXPERIMENTAL) enable split-irqchip support"),
           Argument::value("bios", "PATH", "Path to BIOS/firmware ROM"),
-          Argument::value("vfio", "PATH[,iommu=on|off]", "Path to sysfs of pass through or mdev device.
+          Argument::value("vfio", "PATH[,iommu=on|off]", "Path to sysfs of PCI pass through or mdev device.
 iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
+          Argument::value("vfio-platform", "PATH", "Path to sysfs of platform pass through"),
           #[cfg(feature = "video-decoder")]
           Argument::flag("video-decoder", "(EXPERIMENTAL) enable virtio-video decoder device"),
           #[cfg(feature = "video-encoder")]

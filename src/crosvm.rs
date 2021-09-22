@@ -205,6 +205,7 @@ impl Default for SharedDir {
 #[derive(Eq, PartialEq, Clone, Copy)]
 pub enum VfioType {
     Pci,
+    Platform,
 }
 
 impl FromStr for VfioType {
@@ -214,7 +215,8 @@ impl FromStr for VfioType {
         use VfioType::*;
         match s {
             "vfio" => Ok(Pci),
-            _ => Err("invalid vfio device type, must be 'vfio'"),
+            "vfio-platform" => Ok(Platform),
+            _ => Err("invalid vfio device type, must be 'vfio|vfio-platform'"),
         }
     }
 }

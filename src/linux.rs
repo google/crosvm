@@ -48,7 +48,8 @@ use devices::Ac97Dev;
 use devices::ProtectionType;
 use devices::{
     self, BusDeviceObj, HostHotPlugKey, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciAddress,
-    PciDevice, VcpuRunState, VfioContainer, VfioDevice, VfioPciDevice, VirtioPciDevice,
+    PciDevice, VcpuRunState, VfioContainer, VfioDevice, VfioPciDevice, VfioPlatformDevice,
+    VirtioPciDevice,
 };
 #[cfg(feature = "usb")]
 use devices::{HostBackendDeviceProvider, XhciController};
@@ -1592,6 +1593,28 @@ fn create_vfio_device(
     Ok((vfio_pci_device, simple_jail(cfg, "vfio_device")?))
 }
 
+fn create_vfio_platform_device(
+    cfg: &Config,
+    vm: &impl Vm,
+    _resources: &mut SystemAllocator,
+    control_tubes: &mut Vec<TaggedControlTube>,
+    vfio_path: &Path,
+    _endpoints: &mut BTreeMap<u32, Arc<Mutex<VfioContainer>>>,
+    iommu_enabled: bool,
+) -> DeviceResult<(VfioPlatformDevice, Option<Minijail>)> {
+    let vfio_container = VfioCommonSetup::vfio_get_container(vfio_path, iommu_enabled)
+        .map_err(Error::CreateVfioDevice)?;
+
+    let (vfio_host_tube_mem, vfio_device_tube_mem) = Tube::pair().map_err(Error::CreateTube)?;
+    control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
+
+    let vfio_device = VfioDevice::new(vfio_path, vm, vfio_container, iommu_enabled)
+        .map_err(Error::CreateVfioDevice)?;
+    let vfio_plat_dev = VfioPlatformDevice::new(vfio_device, vfio_device_tube_mem);
+
+    Ok((vfio_plat_dev, simple_jail(cfg, "vfio_platform_device")?))
+}
+
 fn create_devices(
     cfg: &Config,
     vm: &mut impl Vm,
@@ -1672,6 +1695,25 @@ fn create_devices(
             )?;
 
             devices.push((vfio_pci_device, jail));
+        }
+
+        for vfio_dev in cfg
+            .vfio
+            .iter()
+            .filter(|dev| dev.get_type() == VfioType::Platform)
+        {
+            let vfio_path = &vfio_dev.vfio_path;
+            let (vfio_plat_dev, jail) = create_vfio_platform_device(
+                cfg,
+                vm,
+                resources,
+                control_tubes,
+                vfio_path.as_path(),
+                &mut iommu_attached_endpoints,
+                false, // Virtio IOMMU is not supported yet
+            )?;
+
+            devices.push((Box::new(vfio_plat_dev), jail));
         }
 
         if !iommu_attached_endpoints.is_empty() {
