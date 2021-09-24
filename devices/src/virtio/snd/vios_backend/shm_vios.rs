@@ -702,7 +702,7 @@ impl IoBufferQueue {
         let size = file.seek(SeekFrom::End(0)).map_err(Error::FileSizeError)? as usize;
 
         let mmap = MemoryMappingBuilder::new(size)
-            .from_descriptor(&file)
+            .from_file(&file)
             .build()
             .map_err(Error::ServerMmapError)?;
 

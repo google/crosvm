@@ -361,7 +361,7 @@ fn mmap_buffer(
 
     let mmap = MemoryMappingBuilder::new(extended_size)
         .offset(aligned_offset as u64)
-        .from_descriptor(src)
+        .from_shared_memory(src)
         .build()
         .map_err(Error::GuestMmapError)?;
 

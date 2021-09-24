@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{wrap_descriptor, AsRawDescriptor, MappedRegion, MmapError, Protection};
+use crate::{wrap_descriptor, AsRawDescriptor, MappedRegion, MmapError, Protection, SharedMemory};
 use data_model::volatile_memory::*;
 use data_model::DataInit;
+use std::fs::File;
 use sys_util::MemoryMapping as SysUtilMmap;
 
 pub type Result<T> = std::result::Result<T, MmapError>;
@@ -109,11 +110,23 @@ impl<'a> MemoryMappingBuilder<'a> {
         }
     }
 
-    /// Build the memory mapping given the specified descriptor to mapped memory
+    /// Build the memory mapping given the specified File to mapped memory
     ///
     /// Default: Create a new memory mapping.
-    pub fn from_descriptor(mut self, d: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder {
-        self.descriptor = Some(d);
+    ///
+    /// Note: this is a forward looking interface to accomodate platforms that
+    /// require special handling for file backed mappings.
+    #[allow(clippy::wrong_self_convention, unused_mut)]
+    pub fn from_file(mut self, file: &'a File) -> MemoryMappingBuilder {
+        self.descriptor = Some(file as &dyn AsRawDescriptor);
+        self
+    }
+
+    /// Build the memory mapping given the specified SharedMemory to mapped memory
+    ///
+    /// Default: Create a new memory mapping.
+    pub fn from_shared_memory(mut self, shm: &'a SharedMemory) -> MemoryMappingBuilder {
+        self.descriptor = Some(shm as &dyn AsRawDescriptor);
         self
     }
 
