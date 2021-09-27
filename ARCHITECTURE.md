@@ -222,30 +222,52 @@ alongside the plain old bytes that serde consumes.
 
 [minijail]: https://android.googlesource.com/platform/external/minijail
 
-
 ## Code Map
 
 Source code is organized into crates, each with their own unit tests.
 
--   `crosvm` - The top-level binary front-end for using crosvm.
+-   `./src/` - The top-level binary front-end for using crosvm.
+-   `aarch64` - Support code specific to 64 bit ARM architectures.
+-   `base` - Safe wrappers for small system facilities which provides
+    cross-platform-compatible interfaces. For Linux, this is basically a thin
+    wrapper of `sys_util`.
+-   `bin` - Scripts for code health such as wrappers of `rustfmt` and `clippy`.
+-   `ci` - Scripts for continuous integration.
+-   `cros_async` - Runtime for async/await programming. This crate provides a
+    `Future` executor based on `io_uring` and one based on `epoll`.
 -   `devices` - Virtual devices exposed to the guest OS.
+-   `disk` - Library to create and manipulate several types of disks such as raw
+    disk, [qcow], etc.
+-   `hypervisor` - Abstract layer to interact with hypervisors. For Linux, this
+    crate is a wrapper of `kvm`.
+-   `integration_tests` - End-to-end tests that run a crosvm VM.
 -   `kernel_loader` - Loads elf64 kernel files to a slice of memory.
 -   `kvm_sys` - Low-level (mostly) auto-generated structures and constants for
     using KVM.
 -   `kvm` - Unsafe, low-level wrapper code for using `kvm_sys`.
+-   `libvda` - Safe wrapper of [libvda], a Chrome OS HW-accelerated video
+    decoding/encoding library.
 -   `net_sys` - Low-level (mostly) auto-generated structures and constants for
     creating TUN/TAP devices.
 -   `net_util` - Wrapper for creating TUN/TAP devices.
+-   `qcow_util` - A library and a binary to manipulate [qcow] disks.
+-   `seccomp` - Contains minijail seccomp policy files for each sandboxed
+    device. Because some syscalls vary by architecture, the seccomp policies are
+    split by architecture.
+-   `sync` - Our version of `std::sync::Mutex` and `std::sync::Condvar`.
 -   `sys_util` - Mostly safe wrappers for small system facilities such as
     `eventfd` or `syslog`.
--   `syscall_defines` - Lists of syscall numbers in each architecture used to
-    make syscalls not supported in `libc`.
+-   `third_party` - Third-party libraries which we are maintaining on the Chrome
+    OS tree or the AOSP tree.
+-   `vfio_sys` - Low-level (mostly) auto-generated structures, constants and
+    ioctls for [VFIO].
 -   `vhost` - Wrappers for creating vhost based devices.
 -   `virtio_sys` - Low-level (mostly) auto-generated structures and constants
     for interfacing with kernel vhost support.
 -   `vm_control` - IPC for the VM.
+-   `vm_memory` - Vm-specific memory objects.
 -   `x86_64` - Support code specific to 64 bit intel machines.
 
-The `seccomp` folder contains minijail seccomp policy files for each sandboxed
-device. Because some syscalls vary by architecture, the seccomp policies are
-split by architecture.
+[qcow]: https://en.wikipedia.org/wiki/Qcow
+[libvda]: https://chromium.googlesource.com/chromiumos/platform2/+/refs/heads/main/arc/vm/libvda/
+[VFIO]: https://www.kernel.org/doc/html/latest/driver-api/vfio.html
