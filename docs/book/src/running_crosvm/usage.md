@@ -1,7 +1,7 @@
 ## Usage
 
-To see the usage information for your version of crosvm, run `crosvm` or
-`crosvm run --help`.
+To see the usage information for your version of crosvm, run `crosvm` or `crosvm
+run --help`.
 
 ### Boot a Kernel
 
@@ -115,8 +115,8 @@ $ gdb vmlinux
 <start booting in the other shell>
 ```
 
-For general techniques for debugging the Linux kernel via GDB, see this [kernel
-documentation].
+For general techniques for debugging the Linux kernel via GDB, see this
+[kernel documentation].
 
 [gdb remote serial protocol]:
     https://sourceware.org/gdb/onlinedocs/gdb/Remote-Protocol.html

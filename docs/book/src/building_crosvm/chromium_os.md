@@ -20,9 +20,9 @@ Portage.
 [chromium os developer guide]:
     https://chromium.googlesource.com/chromiumos/docs/+/HEAD/developer_guide.md
 
-> NOTE: `cros_workon_make` modifies crosvm's Cargo.toml and Cargo.lock. Please be
-> careful not to commit the changes. Moreover, with the changes cargo will fail to
-> build and clippy preupload check will fail.
+> NOTE: `cros_workon_make` modifies crosvm's Cargo.toml and Cargo.lock. Please
+> be careful not to commit the changes. Moreover, with the changes cargo will
+> fail to build and clippy preupload check will fail.
 
 ## Using Cargo
 

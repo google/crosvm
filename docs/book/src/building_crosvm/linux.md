@@ -52,16 +52,15 @@ And that's it! You should be able to `cargo build/run/test`.
     also stop minijail from killing processes that violate the seccomp rule,
     making the sandboxing much less aggressive.
 -   Seccomp policy files have hardcoded absolute paths. You can either fix up
-    the paths locally, or set up an awesome hacky symlink:
-    `sudo mkdir /usr/share/policy && sudo ln -s /path/to/crosvm/seccomp/x86_64 /usr/share/policy/crosvm`.
-    We'll eventually build the precompiled policies
+    the paths locally, or set up an awesome hacky symlink: `sudo mkdir
+    /usr/share/policy && sudo ln -s /path/to/crosvm/seccomp/x86_64
+    /usr/share/policy/crosvm`. We'll eventually build the precompiled policies
     [into the crosvm binary](http://crbug.com/1052126).
--   Devices can't be jailed if `/var/empty` doesn't exist.
-    `sudo mkdir -p /var/empty` to work around this for now.
+-   Devices can't be jailed if `/var/empty` doesn't exist. `sudo mkdir -p
+    /var/empty` to work around this for now.
 -   You need read/write permissions for `/dev/kvm` to run tests or other crosvm
-    instances. Usually it's owned by the `kvm` group, so
-    `sudo usermod -a -G kvm $USER` and then log out and back in again to fix
-    this.
+    instances. Usually it's owned by the `kvm` group, so `sudo usermod -a -G kvm
+    $USER` and then log out and back in again to fix this.
 -   Some other features (networking) require `CAP_NET_ADMIN` so those usually
     need to be run as root.
 
@@ -100,8 +99,8 @@ this do?
     executed directly, other tests require privileged access to devices and will
     be loaded into the VM to execute.
 
-    Each test will in the end be executed by a call to
-    `cargo test -p crate_name`.
+    Each test will in the end be executed by a call to `cargo test -p
+    crate_name`.
 
 Intermediate build data is stored in a scratch directory at `./target/ci/` to
 allow for faster subsequent calls (Note: If running with docker, these files
@@ -116,8 +115,8 @@ To only run x86 tests: `./ci/[aarch64_]builder --vm ./run_tests`.
 To run a simple test (e.g. the tempfile crate) that does not need the vm:
 `./ci/[aarch64_]builder cargo test -p tempfile`.
 
-Or run a single test (e.g. kvm_sys) inside the vm:
-`./ci/[aarch64*]builder --vm cargo test -p kvm_sys`.
+Or run a single test (e.g. kvm_sys) inside the vm: `./ci/[aarch64*]builder --vm
+cargo test -p kvm_sys`.
 
 Since the VM (especially the fully emulated aarch64 VM) can be slow to boot, you
 can start an interactive shell and run commands from there as usual. All cargo
