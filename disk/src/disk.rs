@@ -283,7 +283,7 @@ pub fn detect_image_type(file: &File) -> Result<ImageType> {
     info!("disk size {}, ", disk_size);
     // Try to read the disk in a nicely-aligned block size unless the whole file is smaller.
     const MAGIC_BLOCK_SIZE: usize = 4096;
-    #[repr(align(512))]
+    #[repr(align(4096))]
     struct BlockAlignedBuffer {
         data: [u8; MAGIC_BLOCK_SIZE],
     }
