@@ -8,7 +8,7 @@ use base::{Event, RawDescriptor};
 use vm_memory::GuestMemory;
 
 use super::*;
-use crate::pci::{MsixStatus, PciAddress, PciBarConfiguration, PciCapability};
+use crate::pci::{MsixStatus, PciAddress, PciBarConfiguration, PciBarIndex, PciCapability};
 
 /// Trait for virtio devices to be driven by a virtio transport.
 ///
@@ -102,10 +102,10 @@ pub trait VirtioDevice: Send {
     /// Reads from a BAR region mapped in to the device.
     /// * `addr` - The guest address inside the BAR.
     /// * `data` - Filled with the data from `addr`.
-    fn read_bar(&mut self, _addr: u64, _data: &mut [u8]) {}
+    fn read_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &mut [u8]) {}
 
     /// Writes to a BAR region mapped in to the device.
     /// * `addr` - The guest address inside the BAR.
     /// * `data` - The data to write.
-    fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
+    fn write_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &[u8]) {}
 }

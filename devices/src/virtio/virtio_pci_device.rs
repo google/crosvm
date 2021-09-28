@@ -593,7 +593,13 @@ impl PciDevice for VirtioPciDevice {
         // The driver is only allowed to do aligned, properly sized access.
         let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
         if addr < bar0 || addr >= bar0 + CAPABILITY_BAR_SIZE {
-            self.device.read_bar(addr, data);
+            let bar_config = self.config_regs.get_bars().find(|config| {
+                addr >= config.address() && addr < (config.address() + config.size())
+            });
+            if let Some(c) = bar_config {
+                self.device
+                    .read_bar(c.bar_index(), addr - c.address(), data);
+            }
         } else {
             let offset = addr - bar0;
             match offset {
@@ -645,7 +651,13 @@ impl PciDevice for VirtioPciDevice {
     fn write_bar(&mut self, addr: u64, data: &[u8]) {
         let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
         if addr < bar0 || addr >= bar0 + CAPABILITY_BAR_SIZE {
-            self.device.write_bar(addr, data);
+            let bar_config = self.config_regs.get_bars().find(|config| {
+                addr >= config.address() && addr < (config.address() + config.size())
+            });
+            if let Some(c) = bar_config {
+                self.device
+                    .write_bar(c.bar_index(), addr - c.address(), data);
+            }
         } else {
             let offset = addr - bar0;
             match offset {
