@@ -174,6 +174,7 @@ pub trait StreamSource: Send {
         format: SampleFormat,
         frame_rate: u32,
         buffer_size: usize,
+        _effects: &[StreamEffect],
     ) -> Result<
         (
             Box<dyn StreamControl>,
@@ -202,6 +203,7 @@ pub trait StreamSource: Send {
         format: SampleFormat,
         frame_rate: u32,
         buffer_size: usize,
+        _effects: &[StreamEffect],
         _ex: &Executor,
     ) -> Result<
         (
