@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use base::{
-    AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole,
+    info, AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole,
     SeekHole, WriteZeroesAt,
 };
 use cros_async::Executor;
@@ -280,6 +280,7 @@ pub fn detect_image_type(file: &File) -> Result<ImageType> {
     let orig_seek = f.seek(SeekFrom::Current(0)).map_err(Error::SeekingFile)?;
     f.seek(SeekFrom::Start(0)).map_err(Error::SeekingFile)?;
 
+    info!("disk size {}, ", disk_size);
     // Try to read the disk in a nicely-aligned block size unless the whole file is smaller.
     const MAGIC_BLOCK_SIZE: usize = 4096;
     #[repr(align(512))]

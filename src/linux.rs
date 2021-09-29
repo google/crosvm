@@ -225,8 +225,10 @@ fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) 
     };
     flock(&raw_image, lock_op, true).map_err(Error::DiskImageLock)?;
 
-    let dev = if disk::async_ok(&raw_image).map_err(Error::CreateDiskError)? {
-        let async_file = disk::create_async_disk_file(raw_image).map_err(Error::CreateDiskError)?;
+    info!("Trying to attach block device: {}", disk.path.display());
+    let dev = if disk::async_ok(&raw_image).map_err(Error::CreateDiskCheckAsyncOkError)? {
+        let async_file =
+            disk::create_async_disk_file(raw_image).map_err(Error::CreateAsyncDiskError)?;
         Box::new(
             virtio::BlockAsync::new(
                 virtio::base_features(cfg.protected_vm),

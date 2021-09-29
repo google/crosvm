@@ -50,8 +50,10 @@ pub enum Error {
     CrasSoundDeviceNew(virtio::snd::cras_backend::Error),
     #[cfg(feature = "audio")]
     CreateAc97(devices::PciDeviceError),
+    CreateAsyncDiskError(disk::Error),
     CreateConsole(devices::SerialError),
     CreateControlServer(io::Error),
+    CreateDiskCheckAsyncOkError(disk::Error),
     CreateDiskError(disk::Error),
     CreateEvent(base::Error),
     CreateGrallocError(rutabaga_gfx::RutabagaError),
@@ -186,8 +188,12 @@ impl Display for Error {
             CrasSoundDeviceNew(e) => write!(f, "failed to create cras sound device: {}", e),
             #[cfg(feature = "audio")]
             CreateAc97(e) => write!(f, "failed to create ac97 device: {}", e),
+            CreateAsyncDiskError(e) => write!(f, "failed to create virtual disk (async): {}", e),
             CreateConsole(e) => write!(f, "failed to create console device: {}", e),
             CreateControlServer(e) => write!(f, "failed to create control server: {}", e),
+            CreateDiskCheckAsyncOkError(e) => {
+                write!(f, "failed to create virtual disk checking async: {}", e)
+            }
             CreateDiskError(e) => write!(f, "failed to create virtual disk: {}", e),
             CreateEvent(e) => write!(f, "failed to create event: {}", e),
             CreateGrallocError(e) => write!(f, "failed to create gralloc: {}", e),
