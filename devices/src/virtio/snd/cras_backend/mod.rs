@@ -285,6 +285,7 @@ impl<'a> StreamInfo<'a> {
                                 self.frame_rate,
                                 // See (*)
                                 self.period_bytes / frame_size,
+                                &[],
                                 &ex,
                             )
                             .map_err(Error::CreateStream)?
