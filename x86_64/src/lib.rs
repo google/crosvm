@@ -492,6 +492,11 @@ impl arch::LinuxArch for X8664arch {
             cmdline.insert_str(&param).map_err(Error::Cmdline)?;
         }
 
+        if let Some(ramoops_region) = ramoops_region {
+            arch::pstore::add_ramoops_kernel_cmdline(&mut cmdline, &ramoops_region)
+                .map_err(Error::Cmdline)?;
+        }
+
         match components.vm_image {
             VmImage::Bios(ref mut bios) => {
                 // Allow a bios to hardcode CMDLINE_OFFSET and read the kernel command line from it.
@@ -504,11 +509,6 @@ impl arch::LinuxArch for X8664arch {
                 Self::load_bios(&mem, bios)?
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                if let Some(ramoops_region) = ramoops_region {
-                    arch::pstore::add_ramoops_kernel_cmdline(&mut cmdline, &ramoops_region)
-                        .map_err(Error::Cmdline)?;
-                }
-
                 // separate out load_kernel from other setup to get a specific error for
                 // kernel loading
                 let (params, kernel_end) = Self::load_kernel(&mem, kernel_image)?;
