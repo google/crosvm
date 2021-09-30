@@ -12,6 +12,7 @@ ftruncate: 1
 lseek: 1
 open: return ENOENT
 openat: return ENOENT
+newfstatat: 1
 pread64: 1
 preadv: 1
 pwrite64: 1
