@@ -156,6 +156,7 @@ impl VhostUserBackend for GpuBackend {
     const MAX_QUEUE_NUM: usize = gpu::QUEUE_SIZES.len();
     const MAX_VRING_LEN: u16 = gpu::QUEUE_SIZES[0];
 
+    type Doorbell = CallEvent;
     type Error = anyhow::Error;
 
     fn features(&self) -> u64 {

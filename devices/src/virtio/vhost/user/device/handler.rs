@@ -45,7 +45,7 @@
 // VhostUserSlaveReqHandlerMut trait methods. These dispatch back to the supplied VhostUserBackend
 // implementation (this is what our devices implement).
 
-use std::convert::TryFrom;
+use std::convert::{From, TryFrom};
 use std::fs::File;
 use std::io;
 use std::num::Wrapping;
@@ -98,6 +98,13 @@ impl SignalableInterrupt for CallEvent {
     }
 
     fn do_interrupt_resample(&self) {}
+}
+
+impl From<File> for CallEvent {
+    fn from(file: File) -> Self {
+        // Safe because we own the file.
+        CallEvent(unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) })
+    }
 }
 
 /// Keeps a mapping from the vmm's virtual addresses to guest addresses.
@@ -161,6 +168,11 @@ where
     const MAX_QUEUE_NUM: usize;
     const MAX_VRING_LEN: u16;
 
+    /// A signal that is sent to the VMM when buffers are used.
+    /// For vhost-user, this should be converted from a FD sent via SET_VRING_CALL.
+    /// For virtio-vhost-user, this corresponds to the doorbell structure.
+    type Doorbell: SignalableInterrupt + TryFrom<File>;
+
     /// Error type specific to this backend.
     type Error;
 
@@ -204,7 +216,7 @@ where
         idx: usize,
         queue: Queue,
         mem: GuestMemory,
-        call_evt: Arc<Mutex<CallEvent>>,
+        doorbell: Arc<Mutex<Self::Doorbell>>,
         kick_evt: Event,
     ) -> std::result::Result<(), Self::Error>;
 
@@ -216,13 +228,13 @@ where
 }
 
 /// A virtio ring entry.
-struct Vring {
+struct Vring<I: SignalableInterrupt> {
     queue: Queue,
-    call_evt: Option<Arc<Mutex<CallEvent>>>,
+    call_evt: Option<Arc<Mutex<I>>>,
     enabled: bool,
 }
 
-impl Vring {
+impl<I: SignalableInterrupt> Vring<I> {
     fn new(max_size: u16) -> Self {
         Self {
             queue: Queue::new(max_size),
@@ -265,7 +277,7 @@ pub struct DeviceRequestHandler<B>
 where
     B: 'static + VhostUserBackend,
 {
-    vrings: Vec<Vring>,
+    vrings: Vec<Vring<B::Doorbell>>,
     owned: bool,
     vmm_maps: Option<Vec<MappingInfo>>,
     mem: Option<GuestMemory>,
@@ -529,9 +541,11 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
         }
 
         if let Some(file) = file {
-            // Safe because we own the file.
-            let call_evt =
-                CallEvent(unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) });
+            let call_evt = B::Doorbell::try_from(file).map_err(|_| {
+                error!("failed to convert callfd to CallSignal");
+                VhostError::InvalidParam
+            })?;
+
             match &self.vrings[index as usize].call_evt {
                 None => {
                     self.vrings[index as usize].call_evt = Some(Arc::new(Mutex::new(call_evt)));
@@ -685,6 +699,7 @@ mod tests {
         const MAX_QUEUE_NUM: usize = 16;
         const MAX_VRING_LEN: u16 = 256;
 
+        type Doorbell = CallEvent;
         type Error = FakeError;
 
         fn features(&self) -> u64 {
@@ -733,7 +748,7 @@ mod tests {
             _idx: usize,
             _queue: Queue,
             _mem: GuestMemory,
-            _call_evt: Arc<Mutex<CallEvent>>,
+            _doorbell: Arc<Mutex<Self::Doorbell>>,
             _kick_evt: Event,
         ) -> std::result::Result<(), Self::Error> {
             Ok(())

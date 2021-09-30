@@ -213,6 +213,7 @@ impl VhostUserBackend for NetBackend {
     const MAX_QUEUE_NUM: usize = 3; /* rx, tx, ctrl */
     const MAX_VRING_LEN: u16 = 256;
 
+    type Doorbell = CallEvent;
     type Error = anyhow::Error;
 
     fn features(&self) -> u64 {
