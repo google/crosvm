@@ -50,13 +50,13 @@ use libc::{EBADF, EINVAL};
 
 use data_model::*;
 
-use base::{
-    error, pipe, round_up_to_page_size, warn, AsRawDescriptor, Error, Event, EventType, FileFlags,
-    FromRawDescriptor, PollToken, RawDescriptor, Result, ScmSocket, SharedMemory, SharedMemoryUnix,
-    Tube, TubeError, WaitContext,
-};
 #[cfg(feature = "minigbm")]
-use base::{ioctl_iow_nr, ioctl_with_ref};
+use base::ioctl_iow_nr;
+use base::{
+    error, ioctl_iowr_nr, ioctl_with_ref, pipe, round_up_to_page_size, warn, AsRawDescriptor,
+    Error, Event, EventType, FileFlags, FromRawDescriptor, PollToken, RawDescriptor, Result,
+    ScmSocket, SharedMemory, SharedMemoryUnix, Tube, TubeError, WaitContext,
+};
 #[cfg(feature = "gpu")]
 use base::{IntoRawDescriptor, SafeDescriptor};
 use remain::sorted;
@@ -102,6 +102,7 @@ const VIRTIO_WL_VFD_WRITE: u32 = 0x1;
 const VIRTIO_WL_VFD_READ: u32 = 0x2;
 const VIRTIO_WL_VFD_MAP: u32 = 0x2;
 const VIRTIO_WL_VFD_CONTROL: u32 = 0x4;
+const VIRTIO_WL_VFD_FENCE: u32 = 0x8;
 pub const VIRTIO_WL_F_TRANS_FLAGS: u32 = 0x01;
 pub const VIRTIO_WL_F_SEND_FENCES: u32 = 0x02;
 
@@ -130,6 +131,25 @@ struct dma_buf_sync {
 
 #[cfg(feature = "minigbm")]
 ioctl_iow_nr!(DMA_BUF_IOCTL_SYNC, DMA_BUF_IOCTL_BASE, 0, dma_buf_sync);
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+struct sync_file_info {
+    name: [u8; 32],
+    status: i32,
+    flags: u32,
+    num_fences: u32,
+    pad: u32,
+    sync_fence_info: u64,
+}
+
+ioctl_iowr_nr!(SYNC_IOC_FILE_INFO, 0x3e, 4, sync_file_info);
+
+fn is_fence(f: &File) -> bool {
+    let info = sync_file_info::default();
+    // Safe as f is a valid file
+    unsafe { ioctl_with_ref(f, SYNC_IOC_FILE_INFO(), &info) == 0 }
+}
 
 const VIRTIO_WL_CTRL_VFD_SEND_KIND_LOCAL: u32 = 0;
 const VIRTIO_WL_CTRL_VFD_SEND_KIND_VIRTGPU: u32 = 1;
@@ -544,6 +564,8 @@ struct WlVfd {
     slot: Option<(MemSlot, u64 /* pfn */, VmRequester)>,
     #[cfg(feature = "minigbm")]
     is_dmabuf: bool,
+    fence: Option<File>,
+    is_fence: bool,
 }
 
 impl fmt::Debug for WlVfd {
@@ -671,32 +693,34 @@ impl WlVfd {
         // pipe/socket because those have no end. We can even use that seek location as an indicator
         // for how big the shared memory chunk to map into guest memory is. If seeking to the end
         // fails, we assume it's a socket or pipe with read/write semantics.
-        match descriptor.seek(SeekFrom::End(0)) {
-            Ok(_) => {
-                let shm = SharedMemory::from_file(descriptor).map_err(WlError::FromSharedMemory)?;
-                let (shm, register_response) = vm.register_memory(shm)?;
+        if descriptor.seek(SeekFrom::End(0)).is_ok() {
+            let shm = SharedMemory::from_file(descriptor).map_err(WlError::FromSharedMemory)?;
+            let (shm, register_response) = vm.register_memory(shm)?;
 
-                match register_response {
-                    VmMemoryResponse::RegisterMemory { pfn, slot } => {
-                        let mut vfd = WlVfd::default();
-                        vfd.guest_shared_memory = Some(shm);
-                        vfd.slot = Some((slot, pfn, vm));
-                        Ok(vfd)
-                    }
-                    _ => Err(WlError::VmBadResponse),
+            match register_response {
+                VmMemoryResponse::RegisterMemory { pfn, slot } => {
+                    let mut vfd = WlVfd::default();
+                    vfd.guest_shared_memory = Some(shm);
+                    vfd.slot = Some((slot, pfn, vm));
+                    Ok(vfd)
                 }
+                _ => Err(WlError::VmBadResponse),
             }
-            _ => {
-                let flags = match FileFlags::from_file(&descriptor) {
-                    Ok(FileFlags::Read) => VIRTIO_WL_VFD_READ,
-                    Ok(FileFlags::Write) => VIRTIO_WL_VFD_WRITE,
-                    Ok(FileFlags::ReadWrite) => VIRTIO_WL_VFD_READ | VIRTIO_WL_VFD_WRITE,
-                    _ => 0,
-                };
-                let mut vfd = WlVfd::default();
-                vfd.local_pipe = Some((flags, descriptor));
-                Ok(vfd)
-            }
+        } else if is_fence(&descriptor) {
+            let mut vfd = WlVfd::default();
+            vfd.is_fence = true;
+            vfd.fence = Some(descriptor);
+            Ok(vfd)
+        } else {
+            let flags = match FileFlags::from_file(&descriptor) {
+                Ok(FileFlags::Read) => VIRTIO_WL_VFD_READ,
+                Ok(FileFlags::Write) => VIRTIO_WL_VFD_WRITE,
+                Ok(FileFlags::ReadWrite) => VIRTIO_WL_VFD_READ | VIRTIO_WL_VFD_WRITE,
+                _ => 0,
+            };
+            let mut vfd = WlVfd::default();
+            vfd.local_pipe = Some((flags, descriptor));
+            Ok(vfd)
         }
     }
 
@@ -708,6 +732,9 @@ impl WlVfd {
             }
             if let Some((f, _)) = self.local_pipe {
                 flags |= f;
+            }
+            if self.is_fence {
+                flags |= VIRTIO_WL_VFD_FENCE;
             }
         } else {
             if self.socket.is_some() {
@@ -737,6 +764,7 @@ impl WlVfd {
             .map(|shm| shm.as_raw_descriptor())
             .or(self.socket.as_ref().map(|s| s.as_raw_descriptor()))
             .or(self.remote_pipe.as_ref().map(|p| p.as_raw_descriptor()))
+            .or(self.fence.as_ref().map(|f| f.as_raw_descriptor()))
     }
 
     // The FD that is used for polling for events on this VFD.
@@ -749,6 +777,7 @@ impl WlVfd {
                     .as_ref()
                     .map(|(_, p)| p as &dyn AsRawDescriptor)
             })
+            .or_else(|| self.fence.as_ref().map(|f| f as &dyn AsRawDescriptor))
     }
 
     // Sends data/files from the guest to the host over this VFD.
@@ -1249,9 +1278,20 @@ impl WlState {
 
     fn recv(&mut self, vfd_id: u32) -> WlResult<()> {
         let buf = match self.vfds.get_mut(&vfd_id) {
-            Some(vfd) => vfd.recv(&mut self.in_file_queue)?,
+            Some(vfd) => {
+                if vfd.is_fence {
+                    if let Err(e) = self.wait_ctx.delete(vfd.wait_descriptor().unwrap()) {
+                        warn!("failed to remove hungup vfd from poll context: {}", e);
+                    }
+                    self.in_queue.push_back((vfd_id, WlRecv::Hup));
+                    return Ok(());
+                } else {
+                    vfd.recv(&mut self.in_file_queue)?
+                }
+            }
             None => return Ok(()),
         };
+
         if self.in_file_queue.is_empty() && buf.is_empty() {
             self.in_queue.push_back((vfd_id, WlRecv::Hup));
             return Ok(());
