@@ -43,11 +43,11 @@ pub const VHOST_USER_CONFIG_SIZE: u32 = 0x1000;
 /// Maximum number of vrings supported.
 pub const VHOST_USER_MAX_VRINGS: u64 = 0x8000u64;
 
-// TODO(keiichiw): Can't we avoid exposing `Req`?
-#[allow(missing_docs)]
+/// Used for the payload in Vhost Master messages.
 pub trait Req:
     Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Into<u32> + Send + Sync
 {
+    /// Is the entity valid.
     fn is_valid(&self) -> bool;
 }
 
@@ -230,7 +230,7 @@ bitflags! {
 /// machine native byte order.
 #[repr(packed)]
 #[derive(Copy)]
-pub(super) struct VhostUserMsgHeader<R: Req> {
+pub struct VhostUserMsgHeader<R: Req> {
     request: u32,
     flags: u32,
     size: u32,

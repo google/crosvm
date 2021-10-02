@@ -10,7 +10,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 
-use sys_util::ScmSocket;
+use sys_util::{AsRawDescriptor, RawDescriptor, ScmSocket};
 
 use super::{Error, Result};
 use crate::connection::{Endpoint, Listener, Req};
@@ -196,6 +196,12 @@ impl<R: Req> Endpoint<R> for SocketEndpoint<R> {
 impl<T: Req> AsRawFd for SocketEndpoint<T> {
     fn as_raw_fd(&self) -> RawFd {
         self.sock.as_raw_fd()
+    }
+}
+
+impl<T: Req> AsRawDescriptor for SocketEndpoint<T> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.as_raw_fd()
     }
 }
 

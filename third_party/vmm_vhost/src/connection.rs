@@ -30,6 +30,7 @@ pub trait Listener: Sized {
     fn set_nonblocking(&self, block: bool) -> Result<()>;
 }
 
+/// Abstracts a vhost-user connection and related operations.
 pub trait Endpoint<R: Req>: Sized {
     /// Type of an object that Endpoint is created from.
     type Listener: Listener;
@@ -101,7 +102,8 @@ fn advance_slices_mut(bufs: &mut &mut [&mut [u8]], mut count: usize) {
     }
 }
 
-pub(super) trait EndpointExt<R: Req>: Endpoint<R> {
+/// Abstracts VVU message parsing, sending and receiving.
+pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// Sends all bytes from scatter-gather vectors with optional attached file descriptors. Will
     /// loop until all data has been transfered.
     ///

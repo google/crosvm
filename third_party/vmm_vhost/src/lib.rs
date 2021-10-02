@@ -44,7 +44,7 @@ pub use backend::*;
 pub mod message;
 
 mod connection;
-pub use self::connection::{SocketEndpoint, SocketListener};
+pub use self::connection::{Endpoint, EndpointExt, SocketEndpoint, SocketListener};
 
 #[cfg(feature = "vmm")]
 mod master;
