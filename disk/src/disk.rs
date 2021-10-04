@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use base::{
-    info, AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole,
-    SeekHole, WriteZeroesAt,
+    get_filesystem_type, info, AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileSetLen,
+    FileSync, PunchHole, SeekHole, WriteZeroesAt,
 };
 use cros_async::Executor;
 use libc::EINVAL;
@@ -60,6 +60,8 @@ pub enum Error {
     Fallocate(cros_async::AsyncError),
     #[error("failure with fsync: {0}")]
     Fsync(cros_async::AsyncError),
+    #[error("checking host fs type: {0}")]
+    HostFsType(base::Error),
     #[error("maximum disk nesting depth exceeded")]
     MaxNestingDepthExceeded,
     #[error("failure in qcow: {0}")]
@@ -273,6 +275,12 @@ pub fn convert(
     }
 }
 
+fn log_host_fs_type(file: &File) -> Result<()> {
+    let fstype = get_filesystem_type(file).map_err(Error::HostFsType)?;
+    info!("Disk image file is hosted on file system type {:x}", fstype);
+    Ok(())
+}
+
 /// Detect the type of an image file by checking for a valid header of the supported formats.
 pub fn detect_image_type(file: &File) -> Result<ImageType> {
     let mut f = file;
@@ -281,6 +289,7 @@ pub fn detect_image_type(file: &File) -> Result<ImageType> {
     f.seek(SeekFrom::Start(0)).map_err(Error::SeekingFile)?;
 
     info!("disk size {}, ", disk_size);
+    log_host_fs_type(f)?;
     // Try to read the disk in a nicely-aligned block size unless the whole file is smaller.
     const MAGIC_BLOCK_SIZE: usize = 4096;
     #[repr(align(4096))]
