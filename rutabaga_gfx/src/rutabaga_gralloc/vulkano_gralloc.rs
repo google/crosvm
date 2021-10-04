@@ -86,7 +86,7 @@ impl VulkanoGralloc {
                     "need graphics queue family to proceed",
                 ))?;
 
-            let supported_extensions = DeviceExtensions::supported_by_device(physical);
+            let supported_extensions = physical.supported_extensions();
 
             let desired_extensions = DeviceExtensions {
                 khr_dedicated_allocation: true,
