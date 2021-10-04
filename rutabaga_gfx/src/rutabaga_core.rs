@@ -507,7 +507,9 @@ impl Rutabaga {
             .get(&resource_id)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
-        resource.map_info.ok_or(RutabagaError::SpecViolation)
+        resource
+            .map_info
+            .ok_or(RutabagaError::SpecViolation("no map info available"))
     }
 
     /// Returns the `vulkan_info` of the blob resource, which consists of the physical device
@@ -518,7 +520,7 @@ impl Rutabaga {
             .get(&resource_id)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
-        resource.vulkan_info.ok_or(RutabagaError::Unsupported)
+        resource.vulkan_info.ok_or(RutabagaError::InvalidVulkanInfo)
     }
 
     /// Returns the 3D info associated with the resource, if any.
@@ -528,7 +530,9 @@ impl Rutabaga {
             .get(&resource_id)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
-        resource.info_3d.ok_or(RutabagaError::Unsupported)
+        resource
+            .info_3d
+            .ok_or(RutabagaError::SpecViolation("no 3d info available"))
     }
 
     /// Exports a blob resource.  See virtio-gpu spec for blob flag use flags.
@@ -552,10 +556,11 @@ impl Rutabaga {
             }
             (Some(handle), false) => {
                 // Exactly one strong reference in this case.
-                let hnd = Arc::try_unwrap(handle).map_err(|_| RutabagaError::SpecViolation)?;
+                let hnd =
+                    Arc::try_unwrap(handle).map_err(|_| RutabagaError::InvalidRutabagaHandle)?;
                 Ok(hnd)
             }
-            _ => Err(RutabagaError::Unsupported),
+            _ => Err(RutabagaError::InvalidRutabagaHandle),
         }
     }
 

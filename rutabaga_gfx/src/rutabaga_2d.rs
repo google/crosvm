@@ -192,12 +192,15 @@ impl RutabagaComponent for Rutabaga2D {
             return Ok(());
         }
 
-        let mut info_2d = resource.info_2d.take().ok_or(RutabagaError::Unsupported)?;
+        let mut info_2d = resource
+            .info_2d
+            .take()
+            .ok_or(RutabagaError::Invalid2DInfo)?;
 
         let iovecs = resource
             .backing_iovecs
             .take()
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidIovec)?;
 
         // All offical virtio_gpu formats are 4 bytes per pixel.
         let resource_bpp = 4;
@@ -241,7 +244,10 @@ impl RutabagaComponent for Rutabaga2D {
         transfer: Transfer3D,
         buf: Option<VolatileSlice>,
     ) -> RutabagaResult<()> {
-        let mut info_2d = resource.info_2d.take().ok_or(RutabagaError::Unsupported)?;
+        let mut info_2d = resource
+            .info_2d
+            .take()
+            .ok_or(RutabagaError::Invalid2DInfo)?;
 
         // All offical virtio_gpu formats are 4 bytes per pixel.
         let resource_bpp = 4;
@@ -249,7 +255,9 @@ impl RutabagaComponent for Rutabaga2D {
         let src_offset = 0;
         let dst_offset = 0;
 
-        let dst_slice = buf.ok_or(RutabagaError::Unsupported)?;
+        let dst_slice = buf.ok_or(RutabagaError::SpecViolation(
+            "need a destination slice for transfer read",
+        ))?;
 
         transfer_2d(
             info_2d.width,

@@ -145,9 +145,9 @@ pub enum RutabagaError {
     /// An internal Rutabaga component error was returned.
     #[error("rutabaga component failed with error {0}")]
     ComponentError(i32),
-    /// The Rutabaga component failed to export a RutabagaHandle.
-    #[error("failed to export Rutabaga handle")]
-    ExportedRutabagaHandle,
+    /// Invalid 2D info
+    #[error("invalid 2D info")]
+    Invalid2DInfo,
     /// Invalid Capset
     #[error("invalid capset")]
     InvalidCapset,
@@ -160,6 +160,33 @@ pub enum RutabagaError {
     /// Invalid Context ID
     #[error("invalid context id")]
     InvalidContextId,
+    /// Invalid cross domain channel
+    #[error("invalid cross domain channel")]
+    InvalidCrossDomainChannel,
+    /// Invalid cross domain item ID
+    #[error("invalid cross domain item id")]
+    InvalidCrossDomainItemId,
+    /// Invalid cross domain item type
+    #[error("invalid cross domain item type")]
+    InvalidCrossDomainItemType,
+    /// Invalid cross domain state
+    #[error("invalid cross domain state")]
+    InvalidCrossDomainState,
+    /// Invalid gralloc backend.
+    #[error("invalid gralloc backend")]
+    InvalidGrallocBackend,
+    /// Invalid gralloc dimensions.
+    #[error("invalid gralloc dimensions")]
+    InvalidGrallocDimensions,
+    /// Invalid gralloc DRM format.
+    #[error("invalid gralloc DRM format")]
+    InvalidGrallocDrmFormat,
+    /// Invalid GPU type.
+    #[error("invalid GPU type for gralloc")]
+    InvalidGrallocGpuType,
+    /// Invalid number of YUV planes.
+    #[error("invalid number of YUV planes")]
+    InvalidGrallocNumberOfPlanes,
     /// The indicated region of guest memory is invalid.
     #[error("an iovec is outside of guest memory's range")]
     InvalidIovec,
@@ -169,6 +196,12 @@ pub enum RutabagaError {
     /// Indicates an error in the RutabagaBuilder.
     #[error("invalid rutabaga build parameters")]
     InvalidRutabagaBuild,
+    /// An error with the RutabagaHandle
+    #[error("invalid rutabaga handle")]
+    InvalidRutabagaHandle,
+    /// Invalid Vulkan info
+    #[error("invalid vulkan info")]
+    InvalidVulkanInfo,
     /// An input/output error occured.
     #[error("an input/output error occur: {0}")]
     IoError(IoError),
@@ -176,13 +209,13 @@ pub enum RutabagaError {
     #[error("The mapping failed for the following reason: {0}")]
     MappingFailed(ExternalMappingError),
     /// Violation of the Rutabaga spec occured.
-    #[error("violation of the rutabaga spec")]
-    SpecViolation,
+    #[error("violation of the rutabaga spec: {0}")]
+    SpecViolation(&'static str),
     /// An attempted integer conversion failed.
     #[error("int conversion failed: {0}")]
     TryFromIntError(TryFromIntError),
     /// The command is unsupported.
-    #[error("feature or function unsupported")]
+    #[error("the requested function is not implemented")]
     Unsupported,
     /// Utf8 error.
     #[error("an utf8 error occured: {0}")]
@@ -484,7 +517,7 @@ impl RutabagaHandle {
         let clone = self
             .os_handle
             .try_clone()
-            .map_err(|_| RutabagaError::Unsupported)?;
+            .map_err(|_| RutabagaError::InvalidRutabagaHandle)?;
         Ok(RutabagaHandle {
             os_handle: clone,
             handle_type: self.handle_type,

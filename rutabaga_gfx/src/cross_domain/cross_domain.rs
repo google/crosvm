@@ -146,10 +146,9 @@ fn descriptor_analysis(
             Ok(())
         }
         _ => {
-            // Expect to receive the write end of a Wayland pipe only.
             *descriptor_type = match FileFlags::from_file(descriptor) {
                 Ok(FileFlags::Write) => CROSS_DOMAIN_ID_TYPE_WRITE_PIPE,
-                _ => return Err(RutabagaError::SpecViolation),
+                _ => return Err(RutabagaError::InvalidCrossDomainItemType),
             };
             Ok(())
         }
@@ -272,7 +271,7 @@ impl CrossDomainState {
     ) -> RutabagaResult<usize> {
         self.connection
             .as_ref()
-            .ok_or(RutabagaError::SpecViolation)
+            .ok_or(RutabagaError::InvalidCrossDomainChannel)
             .and_then(|conn| Ok(conn.send_with_fds(opaque_data, descriptors)?))
     }
 
@@ -294,7 +293,7 @@ impl CrossDomainState {
 
             Ok((len, files))
         } else {
-            Err(RutabagaError::SpecViolation)
+            Err(RutabagaError::InvalidCrossDomainChannel)
         }
     }
 }
@@ -366,7 +365,7 @@ impl CrossDomainWorker {
                                     &self.item_state,
                                     CrossDomainItem::WaylandWritePipe(file),
                                 ),
-                                _ => return Err(RutabagaError::SpecViolation),
+                                _ => return Err(RutabagaError::InvalidCrossDomainItemType),
                             };
                         }
 
@@ -402,7 +401,7 @@ impl CrossDomainWorker {
                     let item = items
                         .table
                         .get_mut(&pipe_id)
-                        .ok_or(RutabagaError::SpecViolation)?;
+                        .ok_or(RutabagaError::InvalidCrossDomainItemId)?;
 
                     match item {
                         CrossDomainItem::WaylandReadPipe(ref mut file) => {
@@ -417,7 +416,7 @@ impl CrossDomainWorker {
                                 self.wait_ctx.delete(file)?;
                             }
                         }
-                        _ => return Err(RutabagaError::SpecViolation),
+                        _ => return Err(RutabagaError::InvalidCrossDomainItemType),
                     }
 
                     if event.is_hungup && bytes_read == 0 {
@@ -459,13 +458,13 @@ impl CrossDomainWorker {
                     let item = items
                         .table
                         .get(&read_pipe_id)
-                        .ok_or(RutabagaError::SpecViolation)?;
+                        .ok_or(RutabagaError::InvalidCrossDomainItemId)?;
 
                     match item {
                         CrossDomainItem::WaylandReadPipe(file) => self
                             .wait_ctx
                             .add(file, CrossDomainToken::WaylandReadPipe(read_pipe_id))?,
-                        _ => return Err(RutabagaError::SpecViolation),
+                        _ => return Err(RutabagaError::InvalidCrossDomainItemType),
                     }
                 }
             }
@@ -504,11 +503,14 @@ impl CrossDomainContext {
 
         // Zero means no requested channel.
         if cmd_init.channel_type != 0 {
-            let channels = self.channels.take().ok_or(RutabagaError::SpecViolation)?;
+            let channels = self
+                .channels
+                .take()
+                .ok_or(RutabagaError::InvalidCrossDomainChannel)?;
             let base_channel = &channels
                 .iter()
                 .find(|channel| channel.channel_type == cmd_init.channel_type)
-                .ok_or(RutabagaError::SpecViolation)?
+                .ok_or(RutabagaError::InvalidCrossDomainChannel)?
                 .base_channel;
 
             let connection = UnixStream::connect(base_channel)?;
@@ -591,7 +593,7 @@ impl CrossDomainContext {
             state.write_to_ring(RingWrite::Write(response, None))?;
             Ok(())
         } else {
-            Err(RutabagaError::SpecViolation)
+            Err(RutabagaError::InvalidCrossDomainState)
         }
     }
 
@@ -608,7 +610,9 @@ impl CrossDomainContext {
         let num_identifiers = cmd_send.num_identifiers.try_into()?;
 
         if num_identifiers > CROSS_DOMAIN_MAX_IDENTIFIERS {
-            return Err(RutabagaError::SpecViolation);
+            return Err(RutabagaError::SpecViolation(
+                "max cross domain identifiers exceeded",
+            ));
         }
 
         let iter = cmd_send
@@ -629,13 +633,13 @@ impl CrossDomainContext {
                 if let Some(ref handle) = context_resource.handle {
                     *descriptor = handle.os_handle.as_raw_descriptor();
                 } else {
-                    return Err(RutabagaError::SpecViolation);
+                    return Err(RutabagaError::InvalidRutabagaHandle);
                 }
             } else if *identifier_type == CROSS_DOMAIN_ID_TYPE_READ_PIPE {
-                // In practice, just 1 write or read pipe per send is observed.  If we encounter
+                // In practice, just 1 pipe pair per send is observed.  If we encounter
                 // more, this can be changed later.
                 if write_pipe_opt.is_some() {
-                    return Err(RutabagaError::SpecViolation);
+                    return Err(RutabagaError::SpecViolation("expected just one pipe pair"));
                 }
 
                 let (read_pipe, write_pipe) = pipe(true)?;
@@ -651,7 +655,7 @@ impl CrossDomainContext {
                 // because of the way Sommelier copy + paste works.  If the Sommelier sequence of events
                 // changes, it's always possible to wait for the host response.
                 if read_pipe_id != *identifier {
-                    return Err(RutabagaError::SpecViolation);
+                    return Err(RutabagaError::InvalidCrossDomainItemId);
                 }
 
                 // The write pipe needs to be dropped after the send_msg(..) call is complete, so the read pipe
@@ -660,7 +664,7 @@ impl CrossDomainContext {
                 read_pipe_id_opt = Some(read_pipe_id);
             } else {
                 // Don't know how to handle anything else yet.
-                return Err(RutabagaError::SpecViolation);
+                return Err(RutabagaError::InvalidCrossDomainItemType);
             }
         }
 
@@ -672,7 +676,7 @@ impl CrossDomainContext {
                 resample_evt.write(1)?;
             }
         } else {
-            return Err(RutabagaError::SpecViolation);
+            return Err(RutabagaError::InvalidCrossDomainState);
         }
 
         Ok(())
@@ -691,7 +695,7 @@ impl CrossDomainContext {
         let item = items
             .table
             .remove(&cmd_write.identifier)
-            .ok_or(RutabagaError::SpecViolation)?;
+            .ok_or(RutabagaError::InvalidCrossDomainItemId)?;
 
         let len: usize = cmd_write.opaque_data_size.try_into()?;
         match item {
@@ -709,7 +713,7 @@ impl CrossDomainContext {
 
                 Ok(())
             }
-            _ => Err(RutabagaError::SpecViolation),
+            _ => Err(RutabagaError::InvalidCrossDomainItemType),
         }
     }
 }
@@ -755,12 +759,12 @@ impl RutabagaContext for CrossDomainContext {
             let item = items
                 .table
                 .get(&item_id)
-                .ok_or(RutabagaError::SpecViolation)?;
+                .ok_or(RutabagaError::InvalidCrossDomainItemId)?;
 
             match item {
                 CrossDomainItem::ImageRequirements(reqs) => {
                     if reqs.size != resource_create_blob.size {
-                        return Err(RutabagaError::SpecViolation);
+                        return Err(RutabagaError::SpecViolation("blob size mismatch"));
                     }
 
                     // Strictly speaking, it's against the virtio-gpu spec to allocate memory in the context
@@ -794,7 +798,7 @@ impl RutabagaContext for CrossDomainContext {
                         backing_iovecs: None,
                     })
                 }
-                _ => Err(RutabagaError::SpecViolation),
+                _ => Err(RutabagaError::InvalidCrossDomainItemType),
             }
         } else {
             let item = self
@@ -802,7 +806,7 @@ impl RutabagaContext for CrossDomainContext {
                 .lock()
                 .table
                 .remove(&item_id)
-                .ok_or(RutabagaError::SpecViolation)?;
+                .ok_or(RutabagaError::InvalidCrossDomainItemId)?;
 
             match item {
                 CrossDomainItem::WaylandKeymap(descriptor) => {
@@ -824,7 +828,7 @@ impl RutabagaContext for CrossDomainContext {
                         backing_iovecs: None,
                     })
                 }
-                _ => Err(RutabagaError::SpecViolation),
+                _ => Err(RutabagaError::InvalidCrossDomainItemType),
             }
         }
     }
@@ -870,7 +874,7 @@ impl RutabagaContext for CrossDomainContext {
 
                     self.write(&cmd_write, opaque_data)?;
                 }
-                _ => return Err(RutabagaError::Unsupported),
+                _ => return Err(RutabagaError::SpecViolation("invalid cross domain command")),
             }
 
             offset += hdr.cmd_size as usize;
@@ -911,7 +915,7 @@ impl RutabagaContext for CrossDomainContext {
                     state.add_job(CrossDomainJob::HandleFence(fence));
                 }
             }
-            _ => return Err(RutabagaError::SpecViolation),
+            _ => return Err(RutabagaError::SpecViolation("unexpected ring type")),
         }
 
         Ok(())
@@ -954,7 +958,9 @@ impl RutabagaComponent for CrossDomain {
         if resource_create_blob.blob_mem != RUTABAGA_BLOB_MEM_GUEST
             && resource_create_blob.blob_flags != RUTABAGA_BLOB_FLAG_USE_MAPPABLE
         {
-            return Err(RutabagaError::SpecViolation);
+            return Err(RutabagaError::SpecViolation(
+                "expected only guest memory blobs",
+            ));
         }
 
         Ok(RutabagaResource {

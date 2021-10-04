@@ -136,7 +136,7 @@ impl DrmFormat {
             DRM_FORMAT_ABGR16161616F => Ok(PACKED_8BPP),
             DRM_FORMAT_NV12 => Ok(BIPLANAR_YUV420),
             DRM_FORMAT_YVU420 => Ok(TRIPLANAR_YUV420),
-            _ => Err(RutabagaError::Unsupported),
+            _ => Err(RutabagaError::InvalidGrallocDrmFormat),
         }
     }
 
@@ -158,7 +158,7 @@ impl DrmFormat {
             DRM_FORMAT_ABGR16161616F => Ok(VulkanFormat::R16G16B16A16Sfloat),
             DRM_FORMAT_NV12 => Ok(VulkanFormat::G8B8R8_2PLANE420Unorm),
             DRM_FORMAT_YVU420 => Ok(VulkanFormat::G8B8R8_3PLANE420Unorm),
-            _ => Err(RutabagaError::Unsupported),
+            _ => Err(RutabagaError::InvalidGrallocDrmFormat),
         }
     }
 
@@ -180,15 +180,15 @@ impl DrmFormat {
             DRM_FORMAT_NV12 => match plane {
                 0 => Ok(VulkanImageAspect::Plane0),
                 1 => Ok(VulkanImageAspect::Plane1),
-                _ => Err(RutabagaError::Unsupported),
+                _ => Err(RutabagaError::InvalidGrallocNumberOfPlanes),
             },
             DRM_FORMAT_YVU420 => match plane {
                 0 => Ok(VulkanImageAspect::Plane0),
                 1 => Ok(VulkanImageAspect::Plane1),
                 2 => Ok(VulkanImageAspect::Plane2),
-                _ => Err(RutabagaError::Unsupported),
+                _ => Err(RutabagaError::InvalidGrallocNumberOfPlanes),
             },
-            _ => Err(RutabagaError::Unsupported),
+            _ => Err(RutabagaError::InvalidGrallocDrmFormat),
         }
     }
 }

@@ -105,5 +105,5 @@ pub fn open_device(undesired: &[&str]) -> RutabagaResult<File> {
         }
     }
 
-    Err(RutabagaError::Unsupported)
+    Err(RutabagaError::SpecViolation("no DRM rendernode opened"))
 }

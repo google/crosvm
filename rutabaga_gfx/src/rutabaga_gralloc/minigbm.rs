@@ -140,7 +140,7 @@ impl Gralloc for MinigbmDevice {
                 || gbm_buffer.height() != reqs.info.height
                 || gbm_buffer.format() != reqs.info.drm_format
             {
-                return Err(RutabagaError::SpecViolation);
+                return Err(RutabagaError::InvalidGrallocDimensions);
             }
 
             let dmabuf = gbm_buffer.export()?.into();

@@ -303,7 +303,7 @@ impl RutabagaGralloc {
         let gralloc = self
             .grallocs
             .get_mut(&backend)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidGrallocBackend)?;
 
         let mut reqs = gralloc.get_image_memory_requirements(info)?;
         reqs.size = round_up_to_page_size(reqs.size as usize) as u64;
@@ -320,7 +320,7 @@ impl RutabagaGralloc {
         let gralloc = self
             .grallocs
             .get_mut(&backend)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidGrallocBackend)?;
 
         gralloc.allocate_memory(reqs)
     }
@@ -336,7 +336,7 @@ impl RutabagaGralloc {
         let gralloc = self
             .grallocs
             .get_mut(&GrallocBackend::Vulkano)
-            .ok_or(RutabagaError::Unsupported)?;
+            .ok_or(RutabagaError::InvalidGrallocBackend)?;
 
         gralloc.import_and_map(handle, vulkan_info, size)
     }
