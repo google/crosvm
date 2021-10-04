@@ -104,22 +104,28 @@ impl VulkanoGralloc {
 
             let intersection = supported_extensions.intersection(&desired_extensions);
 
-            let (device, mut _queues) = Device::new(
+            if let Ok(device, mut _queues) = Device::new(
                 physical,
                 physical.supported_features(),
                 &intersection,
                 [(queue_family, 0.5)].iter().cloned(),
-            )?;
+            ) {
+                let device_type = device.physical_device().properties().device_type;
+                if device_type == PhysicalDeviceType::IntegratedGpu {
+                    has_integrated_gpu = true
+                }
 
-            let device_type = device.physical_device().properties().device_type;
-            if device_type == PhysicalDeviceType::IntegratedGpu {
-                has_integrated_gpu = true
-            }
+                // If we have two devices of the same type (two integrated GPUs), the old value is
+                // dropped.  Vulkano is verbose enough such that a keener selection algorithm may
+                // be used, but the need for such complexity does not seem to exist now.
+                devices.insert(device_type, device);
+            };
+        }
 
-            // If we have two devices of the same type (two integrated GPUs), the old value is
-            // dropped.  Vulkano is verbose enough such that a keener selection algorithm may
-            // be used, but the need for such complexity does not seem to exist now.
-            devices.insert(device_type, device);
+        if devices.is_empty() {
+            return Err(RutabagaError::SpecViolation(
+                "no matching VK devices available",
+            ));
         }
 
         Ok(Box::new(VulkanoGralloc {
