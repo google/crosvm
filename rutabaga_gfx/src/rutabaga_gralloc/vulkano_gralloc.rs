@@ -70,7 +70,12 @@ impl VulkanoGralloc {
     pub fn init() -> RutabagaResult<Box<dyn Gralloc>> {
         // Initialization copied from triangle.rs in Vulkano.  Look there for a more detailed
         // explanation of VK initialization.
-        let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None)?;
+        let instance_extensions = InstanceExtensions {
+            khr_external_memory_capabilities: true,
+            khr_get_physical_device_properties2: true,
+            ..InstanceExtensions::none()
+        };
+        let instance = Instance::new(None, Version::V1_1, &instance_extensions, None)?;
 
         let mut devices: Map<PhysicalDeviceType, Arc<Device>> = Default::default();
         let mut has_integrated_gpu = false;
