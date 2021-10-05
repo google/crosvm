@@ -5,3 +5,4 @@
 //! Implement a userspace driver for the virtio vhost-user device.
 
 mod bus;
+mod queue;
