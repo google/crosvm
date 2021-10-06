@@ -14,8 +14,8 @@ use audio_streams::{
     BoxError, NoopStreamControl, SampleFormat, StreamControl, StreamDirection, StreamEffect,
 };
 use base::{
-    self, error, set_rt_prio_limit, set_rt_round_robin, warn, AsRawDescriptors, Event,
-    RawDescriptor,
+    self, error, set_rt_prio_limit, set_rt_round_robin, warn, AsRawDescriptor, AsRawDescriptors,
+    Event, FromRawDescriptor, RawDescriptor, SharedMemoryUnix,
 };
 use remain::sorted;
 use sync::{Condvar, Mutex};
@@ -118,6 +118,12 @@ type GuestMemoryResult<T> = std::result::Result<T, GuestMemoryError>;
 #[sorted]
 #[derive(Error, Debug)]
 enum AudioError {
+    // Failed to clone a descriptor.
+    #[error("Failed to clone a descriptor: {0}")]
+    CloneDescriptor(base::Error),
+    // Failed to create a shared memory.
+    #[error("Failed to create a shared memory: {0}.")]
+    CreateSharedMemory(base::Error),
     // Failed to create a new stream.
     #[error("Failed to create audio stream: {0}.")]
     CreateStream(BoxError),
@@ -561,6 +567,21 @@ impl Ac97BusMaster {
             }
             StreamDirection::Playback => [0, 0],
         };
+
+        // Create a `sys_util::SharedMemory` object from a descriptor backing `self.mem`.
+        // This creation is expected to succeed because we can assume that `self.mem` was created
+        // from a `SharedMemory` object and its type was generalized to `dyn AsRawDescriptor`.
+        let desc: &dyn AsRawDescriptor = self
+            .mem
+            .offset_region(starting_offsets[0])
+            .map_err(|e| AudioError::GuestRegion(GuestMemoryError::ReadingGuestBufferAddress(e)))?;
+        let shm = {
+            let rd = base::clone_descriptor(desc).map_err(AudioError::CloneDescriptor)?;
+            // Safe because the fd is owned.
+            let sd = unsafe { base::SafeDescriptor::from_raw_descriptor(rd) };
+            base::SharedMemory::from_safe_descriptor(sd).map_err(AudioError::CreateSharedMemory)?
+        };
+
         let stream = self
             .audio_server
             .new_stream(
@@ -570,9 +591,7 @@ impl Ac97BusMaster {
                 sample_rate,
                 buffer_frames,
                 &Self::stream_effects(func),
-                self.mem.offset_region(starting_offsets[0]).map_err(|e| {
-                    AudioError::GuestRegion(GuestMemoryError::ReadingGuestBufferAddress(e))
-                })?,
+                &shm,
                 starting_offsets,
             )
             .map_err(AudioError::CreateStream)?;
