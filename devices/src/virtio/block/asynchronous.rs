@@ -188,7 +188,9 @@ async fn process_one_request(
     {
         Ok(()) => VIRTIO_BLK_S_OK,
         Err(e) => {
-            error!("failed executing disk request: {}", e);
+            if !matches!(e, ExecuteError::Unsupported(VIRTIO_BLK_T_GET_ID)) {
+                error!("failed executing disk request: {}", e);
+            }
             e.status()
         }
     };
