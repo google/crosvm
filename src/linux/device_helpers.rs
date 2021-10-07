@@ -40,6 +40,8 @@ use devices::virtio::vhost::vsock::VhostVsockConfig;
 use devices::virtio::VideoBackendType;
 use devices::virtio::{self, BalloonMode, Console, VirtioDevice};
 use devices::IommuDevType;
+#[cfg(feature = "tpm")]
+use devices::SoftwareTpm;
 use devices::{
     self, BusDeviceObj, PciAddress, PciDevice, VfioDevice, VfioPciDevice, VfioPlatformDevice,
 };
@@ -296,7 +298,7 @@ pub fn create_cras_snd_device(cfg: &Config, cras_snd: CrasSndParameters) -> Devi
 }
 
 #[cfg(feature = "tpm")]
-pub fn create_tpm_device(cfg: &Config) -> DeviceResult {
+pub fn create_software_tpm_device(cfg: &Config) -> DeviceResult {
     use std::ffi::CString;
     use std::fs;
     use std::process;
@@ -336,7 +338,8 @@ pub fn create_tpm_device(cfg: &Config) -> DeviceResult {
         }
     }
 
-    let dev = virtio::Tpm::new(tpm_storage);
+    let backend = SoftwareTpm::new(tpm_storage).context("failed to create SoftwareTpm")?;
+    let dev = virtio::Tpm::new(Arc::new(Mutex::new(backend)));
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),

@@ -2,15 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::env;
-use std::fs;
 use std::io::{self, Read, Write};
 use std::ops::BitOrAssign;
-use std::path::PathBuf;
+use std::sync::Arc;
 use std::thread;
 
 use base::{error, Event, PollToken, RawDescriptor, WaitContext};
 use remain::sorted;
+use sync::Mutex;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
@@ -36,17 +35,17 @@ struct Worker {
     mem: GuestMemory,
     queue_evt: Event,
     kill_evt: Event,
-    device: Device,
+    backend: Arc<Mutex<dyn TpmBackend>>,
 }
 
-struct Device {
-    simulator: tpm2::Simulator,
+pub trait TpmBackend: Send {
+    fn execute_command<'a>(&'a mut self, command: &[u8]) -> &'a [u8];
 }
 
-impl Device {
-    fn perform_work(&mut self, mem: &GuestMemory, desc: DescriptorChain) -> Result<u32> {
-        let mut reader = Reader::new(mem.clone(), desc.clone()).map_err(Error::Descriptor)?;
-        let mut writer = Writer::new(mem.clone(), desc).map_err(Error::Descriptor)?;
+impl Worker {
+    fn perform_work(&mut self, desc: DescriptorChain) -> Result<u32> {
+        let mut reader = Reader::new(self.mem.clone(), desc.clone()).map_err(Error::Descriptor)?;
+        let mut writer = Writer::new(self.mem.clone(), desc).map_err(Error::Descriptor)?;
 
         let available_bytes = reader.available_bytes();
         if available_bytes > TPM_BUFSIZE {
@@ -58,7 +57,9 @@ impl Device {
         let mut command = vec![0u8; available_bytes];
         reader.read_exact(&mut command).map_err(Error::Read)?;
 
-        let response = self.simulator.execute_command(&command);
+        let mut backend = self.backend.lock();
+
+        let response = backend.execute_command(&command);
 
         if response.len() > TPM_BUFSIZE {
             return Err(Error::ResponseTooLong {
@@ -78,15 +79,13 @@ impl Device {
 
         Ok(writer.bytes_written() as u32)
     }
-}
 
-impl Worker {
     fn process_queue(&mut self) -> NeedsInterrupt {
         let mut needs_interrupt = NeedsInterrupt::No;
         while let Some(avail_desc) = self.queue.pop(&self.mem) {
             let index = avail_desc.index;
 
-            let len = match self.device.perform_work(&self.mem, avail_desc) {
+            let len = match self.perform_work(avail_desc) {
                 Ok(len) => len,
                 Err(err) => {
                     error!("{}", err);
@@ -163,15 +162,15 @@ impl Worker {
 
 /// Virtio vTPM device.
 pub struct Tpm {
-    storage: PathBuf,
+    backend: Arc<Mutex<dyn TpmBackend>>,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Tpm {
-    pub fn new(storage: PathBuf) -> Tpm {
+    pub fn new(backend: Arc<Mutex<dyn TpmBackend>>) -> Tpm {
         Tpm {
-            storage,
+            backend,
             kill_evt: None,
             worker_thread: None,
         }
@@ -216,15 +215,7 @@ impl VirtioDevice for Tpm {
         let queue = queues.remove(0);
         let queue_evt = queue_evts.remove(0);
 
-        if let Err(err) = fs::create_dir_all(&self.storage) {
-            error!("vtpm failed to create directory for simulator: {}", err);
-            return;
-        }
-        if let Err(err) = env::set_current_dir(&self.storage) {
-            error!("vtpm failed to change into simulator directory: {}", err);
-            return;
-        }
-        let simulator = tpm2::Simulator::singleton_in_current_directory();
+        let backend = self.backend.clone();
 
         let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
@@ -241,7 +232,7 @@ impl VirtioDevice for Tpm {
             mem,
             queue_evt,
             kill_evt,
-            device: Device { simulator },
+            backend,
         };
 
         let worker_result = thread::Builder::new()

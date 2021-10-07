@@ -282,7 +282,7 @@ fn create_virtio_devices(
     #[cfg(feature = "tpm")]
     {
         if cfg.software_tpm {
-            devs.push(create_tpm_device(cfg)?);
+            devs.push(create_software_tpm_device(cfg)?);
         }
     }
 

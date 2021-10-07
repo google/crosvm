@@ -25,6 +25,8 @@ pub mod acpi;
 pub mod bat;
 mod serial;
 pub mod serial_device;
+#[cfg(feature = "tpm")]
+mod software_tpm;
 mod sys;
 #[cfg(feature = "usb")]
 pub mod usb;
@@ -65,6 +67,8 @@ pub use self::serial::Serial;
 pub use self::serial_device::{
     Error as SerialError, SerialDevice, SerialHardware, SerialParameters, SerialType,
 };
+#[cfg(feature = "tpm")]
+pub use self::software_tpm::SoftwareTpm;
 #[cfg(feature = "usb")]
 pub use self::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
 #[cfg(feature = "usb")]
