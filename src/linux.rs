@@ -1852,6 +1852,7 @@ fn setup_vcpu_signal_handler<T: Vcpu>(use_hypervisor_signals: bool) -> Result<()
 // Sets up a vcpu and converts it into a runnable vcpu.
 fn runnable_vcpu<V>(
     cpu_id: usize,
+    kvm_vcpu_id: usize,
     vcpu: Option<V>,
     vm: impl VmArch,
     irq_chip: &mut dyn IrqChipArch,
@@ -1862,6 +1863,7 @@ fn runnable_vcpu<V>(
     has_bios: bool,
     use_hypervisor_signals: bool,
     enable_per_vm_core_scheduling: bool,
+    host_cpu_topology: bool,
 ) -> Result<(V, VcpuRunHandle)>
 where
     V: VcpuArch,
@@ -1872,7 +1874,7 @@ where
             // If vcpu is None, it means this arch/hypervisor requires create_vcpu to be called from
             // the vcpu thread.
             match vm
-                .create_vcpu(cpu_id)
+                .create_vcpu(kvm_vcpu_id)
                 .map_err(Error::CreateVcpu)?
                 .downcast::<V>()
             {
@@ -1901,6 +1903,7 @@ where
         vcpu_count,
         has_bios,
         no_smt,
+        host_cpu_topology,
     )
     .map_err(Error::ConfigureVcpu)?;
 
@@ -2011,6 +2014,7 @@ where
 
 fn run_vcpu<V>(
     cpu_id: usize,
+    kvm_vcpu_id: usize,
     vcpu: Option<V>,
     vm: impl VmArch + 'static,
     mut irq_chip: Box<dyn IrqChipArch + 'static>,
@@ -2031,6 +2035,7 @@ fn run_vcpu<V>(
         mpsc::Sender<VcpuDebugStatusMessage>,
     >,
     enable_per_vm_core_scheduling: bool,
+    host_cpu_topology: bool,
 ) -> Result<JoinHandle<()>>
 where
     V: VcpuArch + 'static,
@@ -2046,6 +2051,7 @@ where
             let guest_mem = vm.get_memory().clone();
             let runnable_vcpu = runnable_vcpu(
                 cpu_id,
+                kvm_vcpu_id,
                 vcpu,
                 vm,
                 irq_chip.as_mut(),
@@ -2056,6 +2062,7 @@ where
                 has_bios,
                 use_hypervisor_signals,
                 enable_per_vm_core_scheduling,
+                host_cpu_topology,
             );
 
             start_barrier.wait();
@@ -2369,6 +2376,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         gdb: None,
         dmi_path: cfg.dmi_path.clone(),
         no_legacy: cfg.no_legacy,
+        host_cpu_topology: cfg.host_cpu_topology,
     })
 }
 
@@ -2618,6 +2626,9 @@ where
         components.acpi_sdts = sdts;
     }
 
+    // KVM_CREATE_VCPU uses apic id for x86 and uses cpu id for others.
+    let mut kvm_vcpu_ids = Vec::new();
+
     #[cfg_attr(not(feature = "direct"), allow(unused_mut))]
     let mut linux = Arch::build_vm::<V, Vcpu>(
         components,
@@ -2630,6 +2641,7 @@ where
         ramoops_region,
         devices,
         irq_chip,
+        &mut kvm_vcpu_ids,
     )
     .map_err(Error::BuildVm)?;
 
@@ -2708,6 +2720,8 @@ where
         Arc::clone(&map_request),
         gralloc,
         cfg.per_vm_core_scheduling,
+        cfg.host_cpu_topology,
+        kvm_vcpu_ids,
     )
 }
 
@@ -2801,6 +2815,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     mut gralloc: RutabagaGralloc,
     enable_per_vm_core_scheduling: bool,
+    host_cpu_topology: bool,
+    kvm_vcpu_ids: Vec<usize>,
 ) -> Result<()> {
     #[derive(PollToken)]
     enum Token {
@@ -2889,6 +2905,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         };
         let handle = run_vcpu(
             cpu_id,
+            kvm_vcpu_ids[cpu_id],
             vcpu,
             linux.vm.try_clone().map_err(Error::CloneEvent)?,
             linux.irq_chip.try_box_clone().map_err(Error::CloneEvent)?,
@@ -2908,6 +2925,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             to_gdb_channel.clone(),
             enable_per_vm_core_scheduling,
+            host_cpu_topology,
         )?;
         vcpu_handles.push((handle, to_vcpu_channel));
     }

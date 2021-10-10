@@ -378,6 +378,7 @@ impl arch::LinuxArch for X8664arch {
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipX86_64,
+        kvm_vcpu_ids: &mut Vec<usize>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmX86_64,
@@ -478,11 +479,11 @@ impl arch::LinuxArch for X8664arch {
         mptable::setup_mptable(&mem, vcpu_count as u8, pci_irqs).map_err(Error::SetupMptable)?;
         smbios::setup_smbios(&mem, components.dmi_path).map_err(Error::SetupSmbios)?;
 
-        // Temporarily set to None to ensure the compilation independence of commit.
-        // It is the CPU affinity per CPU.
-        let host_cpus = None;
-        // Get the APIC ID in MADT.
-        let mut kvm_vcpu_ids = Vec::new();
+        let host_cpus = if components.host_cpu_topology {
+            components.vcpu_affinity.clone()
+        } else {
+            None
+        };
 
         // TODO (tjeznach) Write RSDP to bootconfig before writing to memory
         acpi::create_acpi_tables(
@@ -491,7 +492,7 @@ impl arch::LinuxArch for X8664arch {
             X86_64_SCI_IRQ,
             acpi_dev_resource,
             host_cpus,
-            &mut kvm_vcpu_ids,
+            kvm_vcpu_ids,
         )
         .ok_or(Error::CreateAcpi)?;
 
@@ -573,9 +574,18 @@ impl arch::LinuxArch for X8664arch {
         num_cpus: usize,
         has_bios: bool,
         no_smt: bool,
+        host_cpu_topology: bool,
     ) -> Result<()> {
-        cpuid::setup_cpuid(hypervisor, irq_chip, vcpu, vcpu_id, num_cpus, no_smt, false)
-            .map_err(Error::SetupCpuid)?;
+        cpuid::setup_cpuid(
+            hypervisor,
+            irq_chip,
+            vcpu,
+            vcpu_id,
+            num_cpus,
+            no_smt,
+            host_cpu_topology,
+        )
+        .map_err(Error::SetupCpuid)?;
 
         if has_bios {
             return Ok(());

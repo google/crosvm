@@ -276,8 +276,7 @@ fn sync_acpi_id_from_cpuid(
 /// * `acpi_dev_resource` - resouces needed by the ACPI devices for creating tables.
 /// * `host_cpus` - The CPU affinity per CPU used to get corresponding CPUs' apic
 ///                 id and set these apic id in MADT if `--host-cpu-topology`
-///                 option is set. Now `--host-cpu-topology` hasn't been supported,
-///                 and just set it as None.
+///                 option is set.
 /// * `apic_ids` - The apic id for vCPU will be sent to KVM by KVM_CREATE_VCPU ioctl.
 pub fn create_acpi_tables(
     guest_mem: &GuestMemory,

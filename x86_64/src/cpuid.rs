@@ -161,8 +161,7 @@ fn filter_cpuid(
 /// * `vcpu_id` - The vcpu index of `vcpu`.
 /// * `nrcpus` - The number of vcpus being used by this VM.
 /// * `no_smt` - The flag indicates whether vCPUs supports SMT.
-/// * `host_cpu_topology` - The flag indicates whether vCPUs use mirror CPU topology. Now
-///                         `--host-cpu-topology` hasn't been supported, and just set it as false.
+/// * `host_cpu_topology` - The flag indicates whether vCPUs use mirror CPU topology.
 pub fn setup_cpuid(
     hypervisor: &dyn HypervisorX86_64,
     irq_chip: &dyn IrqChipX86_64,

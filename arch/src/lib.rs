@@ -98,6 +98,7 @@ pub struct VmComponents {
     pub gdb: Option<(u32, Tube)>, // port and control tube.
     pub dmi_path: Option<PathBuf>,
     pub no_legacy: bool,
+    pub host_cpu_topology: bool,
 }
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.
@@ -182,6 +183,7 @@ pub trait LinuxArch {
         ramoops_region: Option<pstore::RamoopsRegion>,
         devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipArch,
+        kvm_vcpu_ids: &mut Vec<usize>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmArch,
@@ -207,6 +209,7 @@ pub trait LinuxArch {
         num_cpus: usize,
         has_bios: bool,
         no_smt: bool,
+        host_cpu_topology: bool,
     ) -> Result<(), Self::Error>;
 
     /// Configures and add a pci device into vm

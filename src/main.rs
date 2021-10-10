@@ -1979,6 +1979,10 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "no-legacy" => {
             cfg.no_legacy = true;
         }
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        "host-cpu-topology" => {
+            cfg.host_cpu_topology = true;
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -2038,6 +2042,38 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
             return Err(argument::Error::ExpectedArgument(
                 "`gdb` requires the number of vCPU to be 1".to_owned(),
             ));
+        }
+    }
+    if cfg.host_cpu_topology {
+        // Safe because we pass a flag for this call and the host supports this system call
+        let pcpu_count = unsafe { libc::sysconf(libc::_SC_NPROCESSORS_CONF) } as usize;
+        if cfg.vcpu_count.is_some() {
+            if pcpu_count != cfg.vcpu_count.unwrap() {
+                return Err(argument::Error::ExpectedArgument(format!(
+                    "`host-cpu-topology` requires the count of vCPUs({}) to equal the \
+                            count of CPUs({}) on host.",
+                    cfg.vcpu_count.unwrap(),
+                    pcpu_count
+                )));
+            }
+        } else {
+            cfg.vcpu_count = Some(pcpu_count);
+        }
+
+        match &cfg.vcpu_affinity {
+            None => {
+                let mut affinity_map = BTreeMap::new();
+                for cpu_id in 0..cfg.vcpu_count.unwrap() {
+                    affinity_map.insert(cpu_id, vec![cpu_id]);
+                }
+                cfg.vcpu_affinity = Some(VcpuAffinity::PerVcpu(affinity_map));
+            }
+            _ => {
+                return Err(argument::Error::ExpectedArgument(
+                    "`host-cpu-topology` requires not to set `cpu-affinity` at the same time"
+                        .to_owned(),
+                ));
+            }
         }
     }
     set_default_serial_parameters(&mut cfg.serial_parameters);
@@ -2248,6 +2284,8 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("direct-edge-irq", "irq", "Enable interrupt passthrough"),
           Argument::value("dmi", "DIR", "Directory with smbios_entry_point/DMI files"),
           Argument::flag("no-legacy", "Don't use legacy KBD/RTC devices emulation"),
+          #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+          Argument::flag("host-cpu-topology", "Use mirror cpu topology of Host for Guest VM"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
