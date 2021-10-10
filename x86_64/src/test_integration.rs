@@ -236,7 +236,7 @@ where
                 .add_vcpu(0, &vcpu)
                 .expect("failed to add vcpu to irqchip");
 
-            setup_cpuid(&hyp, &irq_chip, &vcpu, 0, 1, false).unwrap();
+            setup_cpuid(&hyp, &irq_chip, &vcpu, 0, 1, false, false).unwrap();
             setup_msrs(&vcpu, END_ADDR_BEFORE_32BITS).unwrap();
 
             setup_regs(

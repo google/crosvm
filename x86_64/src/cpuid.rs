@@ -42,6 +42,7 @@ fn filter_cpuid(
     cpuid: &mut hypervisor::CpuId,
     irq_chip: &dyn IrqChipX86_64,
     no_smt: bool,
+    host_cpu_topology: bool,
 ) {
     let entries = &mut cpuid.cpu_id_entries;
 
@@ -60,6 +61,12 @@ fn filter_cpuid(
                 if irq_chip.check_capability(IrqChipCap::TscDeadlineTimer) {
                     entry.ecx |= 1 << ECX_TSC_DEADLINE_TIMER_SHIFT;
                 }
+
+                if host_cpu_topology {
+                    entry.ebx |= EBX_CLFLUSH_CACHELINE << EBX_CLFLUSH_SIZE_SHIFT;
+                    continue;
+                }
+
                 entry.ebx = (vcpu_id << EBX_CPUID_SHIFT) as u32
                     | (EBX_CLFLUSH_CACHELINE << EBX_CLFLUSH_SIZE_SHIFT);
                 if cpu_count > 1 {
@@ -82,6 +89,11 @@ fn filter_cpuid(
                     entry.ecx = result.ecx;
                     entry.edx = result.edx;
                 }
+
+                if host_cpu_topology {
+                    continue;
+                }
+
                 entry.eax &= !0xFC000000;
                 if cpu_count > 1 {
                     let cpu_cores = if no_smt {
@@ -99,6 +111,9 @@ fn filter_cpuid(
                 entry.ecx &= !(1 << ECX_EPB_SHIFT);
             }
             0xB | 0x1F => {
+                if host_cpu_topology {
+                    continue;
+                }
                 // Extended topology enumeration / V2 Extended topology enumeration
                 // NOTE: these will need to be split if any of the fields that differ between
                 // the two versions are to be set.
@@ -145,6 +160,9 @@ fn filter_cpuid(
 /// * `vcpu` - `VcpuX86_64` for setting CPU ID.
 /// * `vcpu_id` - The vcpu index of `vcpu`.
 /// * `nrcpus` - The number of vcpus being used by this VM.
+/// * `no_smt` - The flag indicates whether vCPUs supports SMT.
+/// * `host_cpu_topology` - The flag indicates whether vCPUs use mirror CPU topology. Now
+///                         `--host-cpu-topology` hasn't been supported, and just set it as false.
 pub fn setup_cpuid(
     hypervisor: &dyn HypervisorX86_64,
     irq_chip: &dyn IrqChipX86_64,
@@ -152,12 +170,20 @@ pub fn setup_cpuid(
     vcpu_id: usize,
     nrcpus: usize,
     no_smt: bool,
+    host_cpu_topology: bool,
 ) -> Result<()> {
     let mut cpuid = hypervisor
         .get_supported_cpuid()
         .map_err(Error::GetSupportedCpusFailed)?;
 
-    filter_cpuid(vcpu_id, nrcpus, &mut cpuid, irq_chip, no_smt);
+    filter_cpuid(
+        vcpu_id,
+        nrcpus,
+        &mut cpuid,
+        irq_chip,
+        no_smt,
+        host_cpu_topology,
+    );
 
     vcpu.set_cpuid(&cpuid)
         .map_err(Error::SetSupportedCpusFailed)
@@ -201,7 +227,7 @@ mod tests {
             edx: 0,
             ..Default::default()
         });
-        filter_cpuid(1, 2, &mut cpuid, &irq_chip, false);
+        filter_cpuid(1, 2, &mut cpuid, &irq_chip, false, false);
 
         let entries = &mut cpuid.cpu_id_entries;
         assert_eq!(entries[0].function, 0);

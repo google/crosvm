@@ -574,7 +574,7 @@ impl arch::LinuxArch for X8664arch {
         has_bios: bool,
         no_smt: bool,
     ) -> Result<()> {
-        cpuid::setup_cpuid(hypervisor, irq_chip, vcpu, vcpu_id, num_cpus, no_smt)
+        cpuid::setup_cpuid(hypervisor, irq_chip, vcpu, vcpu_id, num_cpus, no_smt, false)
             .map_err(Error::SetupCpuid)?;
 
         if has_bios {
