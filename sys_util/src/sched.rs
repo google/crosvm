@@ -7,13 +7,36 @@
 use std::iter::FromIterator;
 use std::mem;
 
-use libc::{cpu_set_t, prctl, sched_setaffinity, CPU_SET, CPU_SETSIZE, CPU_ZERO, EINVAL};
+use libc::{
+    cpu_set_t, prctl, sched_getaffinity, sched_setaffinity, CPU_ISSET, CPU_SET, CPU_SETSIZE,
+    CPU_ZERO, EINVAL,
+};
 
 use crate::{errno_result, Error, Result};
 
 // This is needed because otherwise the compiler will complain that the
 // impl doesn't reference any types from inside this crate.
 struct CpuSet(cpu_set_t);
+
+impl CpuSet {
+    pub fn new() -> CpuSet {
+        // cpu_set_t is a C struct and can be safely initialized with zeroed memory.
+        let mut cpuset: cpu_set_t = unsafe { mem::MaybeUninit::zeroed().assume_init() };
+        // Safe because we pass a valid cpuset pointer.
+        unsafe { CPU_ZERO(&mut cpuset) };
+        CpuSet(cpuset)
+    }
+
+    pub fn to_cpus(&self) -> Vec<usize> {
+        let mut cpus = Vec::new();
+        for i in 0..(CPU_SETSIZE as usize) {
+            if unsafe { CPU_ISSET(i, &self.0) } {
+                cpus.push(i);
+            }
+        }
+        cpus
+    }
+}
 
 impl FromIterator<usize> for CpuSet {
     fn from_iter<I: IntoIterator<Item = usize>>(cpus: I) -> Self {
@@ -61,6 +84,16 @@ pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(cpus: I) -> Result<()> {
     } else {
         Ok(())
     }
+}
+
+pub fn get_cpu_affinity() -> Result<Vec<usize>> {
+    let mut cpu_set = CpuSet::new();
+
+    // Safe because we pass 0 for the current thread, and cpu_set.0 is a valid pointer and only
+    // used for the duration of this call.
+    crate::syscall!(unsafe { sched_getaffinity(0, mem::size_of_val(&cpu_set.0), &mut cpu_set.0) })?;
+
+    Ok(cpu_set.to_cpus())
 }
 
 /// Enable experimental core scheduling for the current thread.
