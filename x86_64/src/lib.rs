@@ -95,6 +95,8 @@ pub enum Error {
     ConfigurePciDevice(arch::DeviceRegistrationError),
     #[error("error configuring the system")]
     ConfigureSystem,
+    #[error("unable to create ACPI tables")]
+    CreateAcpi,
     #[error("unable to create battery devices: {0}")]
     CreateBatDevices(arch::DeviceRegistrationError),
     #[error("error creating devices: {0}")]
@@ -476,8 +478,22 @@ impl arch::LinuxArch for X8664arch {
         mptable::setup_mptable(&mem, vcpu_count as u8, pci_irqs).map_err(Error::SetupMptable)?;
         smbios::setup_smbios(&mem, components.dmi_path).map_err(Error::SetupSmbios)?;
 
+        // Temporarily set to None to ensure the compilation independence of commit.
+        // It is the CPU affinity per CPU.
+        let host_cpus = None;
+        // Get the APIC ID in MADT.
+        let mut kvm_vcpu_ids = Vec::new();
+
         // TODO (tjeznach) Write RSDP to bootconfig before writing to memory
-        acpi::create_acpi_tables(&mem, vcpu_count as u8, X86_64_SCI_IRQ, acpi_dev_resource);
+        acpi::create_acpi_tables(
+            &mem,
+            vcpu_count as u8,
+            X86_64_SCI_IRQ,
+            acpi_dev_resource,
+            host_cpus,
+            &mut kvm_vcpu_ids,
+        )
+        .ok_or(Error::CreateAcpi)?;
 
         let mut cmdline = Self::get_base_linux_cmdline();
 

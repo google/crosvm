@@ -210,7 +210,15 @@ where
     mptable::setup_mptable(&guest_mem, 1, pci_irqs).expect("failed to setup mptable");
     smbios::setup_smbios(&guest_mem, None).expect("failed to setup smbios");
 
-    acpi::create_acpi_tables(&guest_mem, 1, X86_64_SCI_IRQ, acpi_dev_resource.0);
+    let mut apic_ids = Vec::new();
+    acpi::create_acpi_tables(
+        &guest_mem,
+        1,
+        X86_64_SCI_IRQ,
+        acpi_dev_resource.0,
+        None,
+        &mut apic_ids,
+    );
 
     let guest_mem2 = guest_mem.clone();
 

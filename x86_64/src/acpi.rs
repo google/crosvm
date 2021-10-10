@@ -1,7 +1,12 @@
 // Copyright 2020 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+use std::arch::x86_64::{CpuidResult, __cpuid, __cpuid_count};
+use std::collections::BTreeMap;
+
 use acpi_tables::{facs::FACS, rsdp::RSDP, sdt::SDT};
+use arch::VcpuAffinity;
 use base::error;
 use data_model::DataInit;
 use vm_memory::{GuestAddress, GuestMemory};
@@ -40,6 +45,20 @@ struct IOAPIC {
 // Safe as IOAPIC structure only contains raw data
 unsafe impl DataInit for IOAPIC {}
 
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct Localx2APIC {
+    _type: u8,
+    _length: u8,
+    _reserved: u16,
+    _x2apic_id: u32,
+    _flags: u32,
+    _processor_id: u32,
+}
+
+// Safe as LocalAPIC structure only contains raw data
+unsafe impl DataInit for Localx2APIC {}
+
 const OEM_REVISION: u32 = 1;
 //DSDT
 const DSDT_REVISION: u8 = 6;
@@ -76,10 +95,15 @@ const MADT_STRUCTURE_LEN: usize = 1;
 const MADT_TYPE_LOCAL_APIC: u8 = 0;
 const MADT_TYPE_IO_APIC: u8 = 1;
 const MADT_TYPE_INTERRUPT_SOURCE_OVERRIDE: u8 = 2;
+const MADT_TYPE_LOCAL_X2APIC: u8 = 9;
 // MADT flags
 const MADT_ENABLED: u32 = 1;
+// MADT compatibility
+const MADT_MIN_LOCAL_APIC_ID: u32 = 255;
 // XSDT
 const XSDT_REVISION: u8 = 1;
+
+const CPUID_LEAF0_EBX_CPUID_SHIFT: u32 = 24; // Offset of initial apic id.
 
 fn create_dsdt_table(amls: Vec<u8>) -> SDT {
     let mut dsdt = SDT::new(
@@ -149,6 +173,97 @@ fn next_offset(offset: GuestAddress, len: u64) -> Option<GuestAddress> {
     }
 }
 
+fn sync_acpi_id_from_cpuid(
+    madt: &mut SDT,
+    cpus: BTreeMap<usize, Vec<usize>>,
+    apic_ids: &mut Vec<usize>,
+) -> base::Result<()> {
+    let cpu_set = match base::get_cpu_affinity() {
+        Err(e) => {
+            error!("Failed to get CPU affinity: {} when create MADT", e);
+            return Err(e);
+        }
+        Ok(c) => c,
+    };
+
+    for (vcpu, pcpu) in cpus {
+        let mut has_leafb = false;
+        let mut get_apic_id = false;
+        let mut apic_id: u8 = 0;
+
+        if let Err(e) = base::set_cpu_affinity(pcpu) {
+            error!("Failed to set CPU affinity: {} when create MADT", e);
+            return Err(e);
+        }
+
+        // Safe because we pass 0 and 0 for this call and the host supports the
+        // `cpuid` instruction
+        let mut cpuid_entry: CpuidResult = unsafe { __cpuid_count(0, 0) };
+
+        if cpuid_entry.eax >= 0xB {
+            // Safe because we pass 0xB and 0 for this call and the host supports the
+            // `cpuid` instruction
+            cpuid_entry = unsafe { __cpuid_count(0xB, 0) };
+
+            if cpuid_entry.ebx != 0 {
+                // MADT compatibility: (ACPI Spec v6.4) On some legacy OSes,
+                // Logical processors with APIC ID values less than 255 (whether in
+                // XAPIC or X2APIC mode) must use the Processor Local APIC structure.
+                if cpuid_entry.edx < MADT_MIN_LOCAL_APIC_ID {
+                    apic_id = cpuid_entry.edx as u8;
+                    get_apic_id = true;
+                } else {
+                    // (ACPI Spec v6.4) When using the X2APIC, logical processors are
+                    // required to have a processor device object in the DSDT and must
+                    // convey the processor’s APIC information to OSPM using the Processor
+                    // Local X2APIC structure.
+                    // Now vCPUs use the DSDT passthrougt from host and the same APIC ID as
+                    // the physical CPUs. Both of them should meet ACPI specifications on
+                    // the host.
+                    has_leafb = true;
+
+                    let x2apic = Localx2APIC {
+                        _type: MADT_TYPE_LOCAL_X2APIC,
+                        _length: std::mem::size_of::<Localx2APIC>() as u8,
+                        _x2apic_id: cpuid_entry.edx,
+                        _flags: MADT_ENABLED,
+                        _processor_id: (vcpu + 1) as u32,
+                        ..Default::default()
+                    };
+                    madt.append(x2apic);
+                    apic_ids.push(cpuid_entry.edx as usize);
+                }
+            }
+        }
+
+        if !has_leafb {
+            if !get_apic_id {
+                // Safe because we pass 1 for this call and the host supports the
+                // `cpuid` instruction
+                cpuid_entry = unsafe { __cpuid(1) };
+                apic_id = (cpuid_entry.ebx >> CPUID_LEAF0_EBX_CPUID_SHIFT & 0xff) as u8;
+            }
+
+            let apic = LocalAPIC {
+                _type: MADT_TYPE_LOCAL_APIC,
+                _length: std::mem::size_of::<LocalAPIC>() as u8,
+                _processor_id: vcpu as u8,
+                _apic_id: apic_id,
+                _flags: MADT_ENABLED,
+            };
+            madt.append(apic);
+            apic_ids.push(apic_id as usize);
+        }
+    }
+
+    if let Err(e) = base::set_cpu_affinity(cpu_set) {
+        error!("Failed to reset CPU affinity: {} when create MADT", e);
+        return Err(e);
+    }
+
+    Ok(())
+}
+
 /// Create ACPI tables and return the RSDP.
 /// The basic tables DSDT/FACP/MADT/XSDT are constructed in this function.
 /// # Arguments
@@ -158,12 +273,19 @@ fn next_offset(offset: GuestAddress, len: u64) -> Option<GuestAddress> {
 /// * `sci_irq` - Used to fill the FACP SCI_INTERRUPT field, which
 ///               is going to be used by the ACPI drivers to register
 ///               sci handler.
-/// * `acpi_dev_resource` - resouces needed by the ACPI devices for creating tables
+/// * `acpi_dev_resource` - resouces needed by the ACPI devices for creating tables.
+/// * `host_cpus` - The CPU affinity per CPU used to get corresponding CPUs' apic
+///                 id and set these apic id in MADT if `--host-cpu-topology`
+///                 option is set. Now `--host-cpu-topology` hasn't been supported,
+///                 and just set it as None.
+/// * `apic_ids` - The apic id for vCPU will be sent to KVM by KVM_CREATE_VCPU ioctl.
 pub fn create_acpi_tables(
     guest_mem: &GuestMemory,
     num_cpus: u8,
     sci_irq: u32,
     acpi_dev_resource: ACPIDevResource,
+    host_cpus: Option<VcpuAffinity>,
+    apic_ids: &mut Vec<usize>,
 ) -> Option<GuestAddress> {
     // RSDP is at the HI RSDP WINDOW
     let rsdp_offset = GuestAddress(super::ACPI_HI_RSDP_WINDOW_BASE);
@@ -238,15 +360,23 @@ pub fn create_acpi_tables(
         super::mptable::APIC_DEFAULT_PHYS_BASE as u32,
     );
 
-    for cpu in 0..num_cpus {
-        let lapic = LocalAPIC {
-            _type: MADT_TYPE_LOCAL_APIC,
-            _length: std::mem::size_of::<LocalAPIC>() as u8,
-            _processor_id: cpu,
-            _apic_id: cpu,
-            _flags: MADT_ENABLED,
-        };
-        madt.append(lapic);
+    match host_cpus {
+        Some(VcpuAffinity::PerVcpu(cpus)) => {
+            sync_acpi_id_from_cpuid(&mut madt, cpus, apic_ids).ok()?;
+        }
+        _ => {
+            for cpu in 0..num_cpus {
+                let apic = LocalAPIC {
+                    _type: MADT_TYPE_LOCAL_APIC,
+                    _length: std::mem::size_of::<LocalAPIC>() as u8,
+                    _processor_id: cpu,
+                    _apic_id: cpu,
+                    _flags: MADT_ENABLED,
+                };
+                madt.append(apic);
+                apic_ids.push(cpu as usize);
+            }
+        }
     }
 
     madt.append(IOAPIC {
