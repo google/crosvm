@@ -6,7 +6,7 @@ use futures::{channel::mpsc, SinkExt, StreamExt};
 use std::io::{self, Write};
 use std::rc::Rc;
 
-use base::error;
+use base::{debug, error};
 use cros_async::{sync::Condvar, sync::Mutex as AsyncMutex, EventAsync, Executor};
 use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
@@ -47,6 +47,12 @@ async fn process_pcm_ctrl(
                 .map_err(Error::WriteResponse);
         }
     };
+
+    debug!(
+        "{} for stream id={}",
+        get_virtio_snd_r_pcm_cmd_name(cmd_code),
+        stream_id
+    );
 
     let result = match cmd_code {
         VIRTIO_SND_R_PCM_PREPARE => {
@@ -547,6 +553,11 @@ pub async fn handle_ctrl_queue(
                     stream_info.period_bytes = period_bytes as usize;
                     stream_info.direction = dir;
                     stream_info.state = VIRTIO_SND_R_PCM_SET_PARAMS;
+
+                    debug!(
+                        "VIRTIO_SND_R_PCM_SET_PARAMS for stream id={}. Stream info: {:#?}",
+                        stream_id, *stream_info
+                    );
 
                     writer
                         .write_obj(VIRTIO_SND_S_OK)

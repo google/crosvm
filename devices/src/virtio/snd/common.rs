@@ -102,3 +102,11 @@ pub fn get_virtio_snd_r_pcm_cmd_name(cmd_code: u32) -> &'static str {
         _ => unreachable!(),
     }
 }
+
+pub fn get_virtio_direction_name(dir: u8) -> &'static str {
+    match dir {
+        VIRTIO_SND_D_OUTPUT => "VIRTIO_SND_D_OUTPUT",
+        VIRTIO_SND_D_INPUT => "VIRTIO_SND_D_INPUT",
+        _ => unreachable!(),
+    }
+}

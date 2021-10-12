@@ -4,6 +4,7 @@
 
 // virtio-sound spec: https://github.com/oasis-tcs/virtio-spec/blob/master/virtio-sound.tex
 
+use std::fmt;
 use std::io;
 use std::rc::Rc;
 use std::str::{FromStr, ParseBoolError};
@@ -160,6 +161,7 @@ pub enum WorkerStatus {
     Running = 1,
     Quit = 2,
 }
+
 pub struct StreamInfo<'a> {
     client: Option<CrasClient<'a>>,
     channels: u8,
@@ -167,14 +169,28 @@ pub struct StreamInfo<'a> {
     frame_rate: u32,
     buffer_bytes: usize,
     period_bytes: usize,
-    direction: u8,
-    state: u32, // VIRTIO_SND_R_PCM_SET_PARAMS -> VIRTIO_SND_R_PCM_STOP, or 0 (uninitialized)
+    direction: u8, // VIRTIO_SND_D_*
+    state: u32,    // VIRTIO_SND_R_PCM_SET_PARAMS -> VIRTIO_SND_R_PCM_STOP, or 0 (uninitialized)
 
     // Worker related
     status_mutex: Rc<AsyncMutex<WorkerStatus>>,
     cv: Rc<Condvar>,
     sender: Option<mpsc::UnboundedSender<DescriptorChain>>,
     worker_future: Option<Box<dyn Future<Output = Result<(), Error>> + Unpin>>,
+}
+
+impl fmt::Debug for StreamInfo<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StreamInfo")
+            .field("channels", &self.channels)
+            .field("format", &self.format)
+            .field("frame_rate", &self.frame_rate)
+            .field("buffer_bytes", &self.buffer_bytes)
+            .field("period_bytes", &self.period_bytes)
+            .field("direction", &get_virtio_direction_name(self.direction))
+            .field("state", &get_virtio_snd_r_pcm_cmd_name(self.state))
+            .finish()
+    }
 }
 
 impl Default for StreamInfo<'_> {
