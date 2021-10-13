@@ -7,3 +7,4 @@ target/
 lcov.info
 .idea
 .vscode
+.envrc
