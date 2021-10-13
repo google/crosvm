@@ -112,7 +112,7 @@ fn build_virglrenderer(out_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn main() -> Result<()> {
+fn virglrenderer() -> Result<()> {
     // System provided runtime dependencies.
     pkg_config::Config::new().probe("epoxy")?;
     pkg_config::Config::new().probe("libdrm")?;
@@ -136,5 +136,12 @@ fn main() -> Result<()> {
     println!("cargo:rustc-link-search={}", minigbm_out.display());
     println!("cargo:rustc-link-lib=static=virglrenderer");
     println!("cargo:rustc-link-lib=static=gbm");
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    #[cfg(feature = "virgl_renderer")]
+    virglrenderer()?;
+
     Ok(())
 }
