@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+set -e
+cd "$(dirname $0)/.."
+
+docker_args=(
+    --rm
+    --volume $(pwd):/workspace:rw
+    --device /dev/net/tun
+    --device /dev/kvm
+    --volume /dev/log:/dev/log
+    --privileged
+)
+
+# Enable interactive mode when running in an interactive terminal.
+if [ -t 1 ]; then
+    docker_args+=(-it)
+fi
+
+docker run \
+    ${docker_args[@]} \
+    gcr.io/crosvm-packages/crosvm_dev:$(cat tools/impl/dev_container/version) \
+    "$@"
+

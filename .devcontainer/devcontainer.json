@@ -1,0 +1,5 @@
+{
+    "image": "gcr.io/crosvm-packages/crosvm_dev:latest",
+    "extensions": [
+    ]
+}

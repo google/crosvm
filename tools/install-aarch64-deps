@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+set -ex
+
+sudo apt-get install --yes --no-install-recommends  \
+    g++-aarch64-linux-gnu \
+    gcc-aarch64-linux-gnu \
+    ipxe-qemu \
+    libc-dev:arm64 \
+    libcap-dev:arm64 \
+    libdbus-1-dev:arm64 \
+    libdrm-dev:arm64 \
+    libepoxy-dev:arm64 \
+    libssl-dev:arm64 \
+    libwayland-dev:arm64 \
+    libxext-dev:arm64 \
+    qemu-efi-aarch64 \
+    qemu-system-aarch64 \
+    qemu-user-static
+
+rustup target add aarch64-unknown-linux-gnu
+
+# Generate a cross file for meson to compile for aarch64
+sudo mkdir -p -m 0755 /usr/local/share/meson/cross
+sudo /usr/share/meson/debcrossgen --arch arm64 \
+    -o /usr/local/share/meson/cross/aarch64

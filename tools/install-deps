@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+set -ex
+
+sudo apt-get install --yes --no-install-recommends \
+    ca-certificates \
+    clang \
+    cloud-image-utils \
+    curl \
+    dpkg-dev \
+    expect \
+    g++ \
+    gcc \
+    git \
+    jq \
+    libasound2-dev \
+    libcap-dev \
+    libclang-dev \
+    libdbus-1-dev \
+    libdrm-dev \
+    libepoxy-dev \
+    libssl-dev \
+    libwayland-dev \
+    libxext-dev \
+    make \
+    meson \
+    nasm \
+    ninja-build \
+    openssh-client \
+    pkg-config \
+    protobuf-compiler \
+    python3 \
+    python3-setuptools \
+    qemu-system-x86 \
+    rsync \
+    screen \
+    wayland-protocols
+
+
+# The bindgen tool is required to build a crosvm dependency.
+cargo install bindgen
+
+# The mdbook and mdbook-mermaid tools are used to build the crosvm book.
+cargo install mdbook --no-default-features --version "^0.4.10"
+cargo install mdbook-mermaid --version "^0.8.3"
+
