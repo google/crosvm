@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-python3 $(dirname $0)/testvm/testvm.py --arch=x86_64 "$@"
+python3 $(dirname $0)/impl/testvm.py --arch=x86_64 "$@"
