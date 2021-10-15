@@ -24,7 +24,11 @@ setup_source() {
     exit 1
   fi
 
+  mkdir -p "${KOKORO_ARTIFACTS_DIR}/logs"
+
   cd "${KOKORO_ARTIFACTS_DIR}/git/crosvm"
+
+  echo "Fetching Submodules..."
   git submodule update --init
 }
 
@@ -50,3 +54,7 @@ setup_source || {
 # Set logs directory so we can copy them to sponge
 export CROSVM_BUILDER_LOGS_DIR="${KOKORO_ARTIFACTS_DIR}/logs"
 cd "${KOKORO_ARTIFACTS_DIR}/git/crosvm"
+
+# Log how long it takes to pull the docker container
+echo "Downloading dev container image"
+time ./tools/dev_container echo "done"

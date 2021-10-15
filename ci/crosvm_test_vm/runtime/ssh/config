@@ -1,5 +1,0 @@
-Host vm
-    HostName localhost
-    User crosvm
-    Port 8022
-    StrictHostKeyChecking no

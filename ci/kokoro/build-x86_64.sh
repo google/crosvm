@@ -4,8 +4,7 @@
 # found in the LICENSE file.
 source "$(dirname $0)/common.sh"
 
-./ci/run_container.sh crosvm_builder --vm "\
-    ./run_tests -v --require-all \
-            --junit-file=/workspace/logs/cargo_test/sponge_log.xml \
-    && bin/clippy \
-    && bin/fmt --check"
+./tools/dev_container bash -c "\
+    ./tools/run_tests --target=host \
+    && ./tools/clippy \
+    && ./tools/fmt --check"

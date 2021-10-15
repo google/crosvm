@@ -5,6 +5,4 @@
 
 source "$(dirname $0)/common.sh"
 
-./ci/run_container.sh crosvm_aarch64_builder --vm "\
-    ./run_tests -v --require-all \
-        --junit-file=/workspace/logs/cargo_test/sponge_log.xml"
+./tools/dev_container ./tools/run_tests --target=vm:aarch64
