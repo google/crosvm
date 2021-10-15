@@ -10,6 +10,8 @@ an exploit in the devices.
 
 ## Building for Linux
 
+### Setting up the development environment
+
 Crosvm uses submodules to manage external dependencies. Initialize them via:
 
 ```sh
@@ -25,30 +27,135 @@ git config --global submodule.recurse true
 git config push.recurseSubmodules no
 ```
 
-Crosvm requires a couple of dependencies. For Debian derivatives these can be
-installed by (Depending on which feature flags are used, not all of these will
-actually be required):
+Crosvm development best works on debian derivaties. We provide a script to
+install the necessary packages on debian:
 
-```sh
-sudo apt install \
-    bindgen \
-    build-essential \
-    clang \
-    libasound2-dev \
-    libcap-dev \
-    libdbus-1-dev \
-    libdrm-dev \
-    libepoxy-dev \
-    libssl-dev \
-    libwayland-bin \
-    libwayland-dev \
-    pkg-config \
-    protobuf-compiler \
-    python3 \
-    wayland-protocols
+```
+$ ./tools/install_deps
 ```
 
-And that's it! You should be able to `cargo build/run/test`.
+For other systems, please see below for instructions on
+[Using the development container](#using-the-development-container).
+
+#### Setting up for cross-compilation
+
+Crosvm is built and tested on x86, aarch64 and armhf. Your host needs to be set
+up to allow installation of foreign architecture packages.
+
+On debian this is as easy as:
+
+```sh
+$ sudo dpkg --add-architecture arm64
+$ sudo dpkg --add-architecture armhf
+$ sudo apt update
+```
+
+On ubuntu this is a little harder and needs some
+[manual modifications](https://askubuntu.com/questions/430705/how-to-use-apt-get-to-download-multi-arch-library)
+of APT sources.
+
+For other systems (**including gLinux**), please see below for instructions on
+[Using the development container](#using-the-development-container).
+
+With that enabled, the following scripts will install the needed packages:
+
+```sh
+$ ./tools/install_aarch64_deps
+$ ./tools/install_armhf_deps
+```
+
+#### Using the development container
+
+We provide a debian container with the required packages installed. With
+[Docker installed](https://docs.docker.com/get-docker/), it can be started with:
+
+```sh
+$ ./tools/dev_container
+```
+
+The container image is big and may take a while to download when first used.
+Once started, you can follow all instructions in this document within the
+container shell.
+
+### Development
+
+#### Iterative development
+
+You can use cargo as usual for crosvm development to `cargo build` and
+`cargo test` single crates that you are working on.
+
+If you are working on aarch64 specific code, you can use the `set_test_target`
+tool to instruct cargo to build for aarch64 and run tests on a VM:
+
+```sh
+$ ./tools/set_test_target vm:aarch64 && source .envrc
+$ cd mycrate && cargo test
+```
+
+The script will start a VM for testing and write environment variables for cargo
+to `.envrc`. With those `cargo build` will build for aarch64 and `cargo test`
+will run tests inside the VM.
+
+The aarch64 VM can be managed with the `./tools/aarch64vm` script.
+
+#### Running all tests
+
+Crosvm cannot use `cargo test --workspace` because of various restrictions of
+cargo. So we have our own test runner:
+
+```sh
+$ ./tools/run_tests
+```
+
+Which will run all tests locally. Since we have some architecture-dependent
+code, we also have the option of running tests within an aarch64 VM:
+
+```sh
+$ ./tools/run_tests --target=vm:aarch64
+```
+
+When working on a machine that does not support cross-compilation (e.g. gLinux),
+you can use the dev container to build and run the tests.
+
+```sh
+$ ./tools/dev_container ./tools/run_tests --target=vm:aarch64
+```
+
+Note however, that using an interactive shell in the container is preferred, as
+the build artifacts are not preserved between calls:
+
+```sh
+$ ./tools/dev_container
+crosvm_dev$ ./tools/run_tests --target=vm:aarch64
+```
+
+It is also possible to run tests on a remote machine via ssh. The target
+architecture is automatically detected:
+
+```sh
+$ ./tools/run_tests --target=ssh:hostname
+```
+
+However, it is your responsibility to make sure the required libraries for
+crosvm are installed and password-less authentication is set up. See
+`./tools/impl/testvm/cloud_init.yaml` for hints on what the VM has installed.
+
+#### Presubmit checks
+
+To verify changes before submitting, use the `presubmit` script:
+
+```
+$ ./tools/presubmit
+```
+
+or
+
+```
+$ ./tools/presubmit --quick
+```
+
+This will run clippy, formatters and runs all tests. The `--quick` variant will
+skip some slower checks, like building for other platforms.
 
 ### Known issues
 
@@ -74,92 +181,6 @@ And that's it! You should be able to `cargo build/run/test`.
     this.
 -   Some other features (networking) require `CAP_NET_ADMIN` so those usually
     need to be run as root.
-
-## Running crosvm tests on Linux
-
-### Installing Podman (or Docker)
-
-See [Podman Installation](https://podman.io/getting-started/installation) for
-instructions on how to install podman.
-
-For Googlers, see [go/dont-install-docker](http://go/dont-install-docker) for
-special instructions on how to set up podman.
-
-If you already have docker installed, that will do as well. However podman is
-recommended as it will not run containers with root privileges.
-
-### Running all tests
-
-To run all tests for all platforms, just run:
-
-```
-./test_all
-```
-
-This will run all tests using the x86 and aarch64 builder containers. What does
-this do?
-
-1.  It will start `./ci/[aarch64_]builder --vm`.
-
-    This will start the builder container and launch a VM for running tests in
-    the background. The VM is booting while the next step is running.
-
-2.  It will call `./run_tests` inside the builder
-
-    The script will pick which tests to execute and where. Simple tests can be
-    executed directly, other tests require privileged access to devices and will
-    be loaded into the VM to execute.
-
-    Each test will in the end be executed by a call to
-    `cargo test -p crate_name`.
-
-Intermediate build data is stored in a scratch directory at `./target/ci/` to
-allow for faster subsequent calls (Note: If running with docker, these files
-will be owned by root).
-
-### Fast, iterative test runs
-
-For faster iteration time, you can directly invoke some of these steps directly:
-
-To only run x86 tests: `./ci/[aarch64_]builder --vm ./run_tests`.
-
-To run a simple test (e.g. the enumn crate) that does not need the vm:
-`./ci/[aarch64_]builder cargo test -p enumn`.
-
-Or run a single test (e.g. kvm_sys) inside the vm:
-`./ci/[aarch64*]builder --vm cargo test -p kvm_sys`.
-
-Since the VM (especially the fully emulated aarch64 VM) can be slow to boot, you
-can start an interactive shell and run commands from there as usual. All cargo
-tests will be executed inside the VM, without the need to restart the VM between
-test calls.
-
-```sh
-host$ ./ci/aarch64_builder --vm
-crosvm-aarch64$ ./run_tests
-crosvm-aarch64$ cargo test -p kvm_sys
-...
-```
-
-### Running tests without Docker
-
-Specific crates can be tested as usual with `cargo test` without the need for
-Docker. However, because of special requirements some of them will not work,
-which means that `cargo test --workspace` will also not work to run all tests.
-
-For this reason, we have a separate test runner `./run_tests` which documents
-the requirements of each crate and picks the tests to run. It is used by the
-Docker container to run tests, but can also be run outside of the container to
-run a subset of tests.
-
-See `./run_tests --help` for more information.
-
-### Reproducing Kokoro locally
-
-Kokoro runs presubmit tests on all crosvm changes. It uses the same builders and
-the same `run_tests` script to run tests. This should match the results of the
-`./test_all` script, but if it does not, the kokoro build scripts can be
-simulated locally using: `./ci/kokoro/simulate_all`.
 
 ## Building for ChromeOS
 
