@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::VecDeque;
 use std::io::{self, stdin};
+use std::ops::DerefMut;
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context};
@@ -52,7 +53,7 @@ async fn run_rx_queue(
     mem: GuestMemory,
     call_evt: Arc<Mutex<CallEvent>>,
     kick_evt: EventAsync,
-    in_channel: Receiver<Vec<u8>>,
+    in_buffer: Arc<Mutex<VecDeque<u8>>>,
     in_avail_evt: EventAsync,
 ) {
     loop {
@@ -60,17 +61,13 @@ async fn run_rx_queue(
             error!("Failed reading in_avail_evt: {}", e);
             break;
         }
-        match handle_input(&mem, &call_evt, &in_channel, &mut queue) {
+        match handle_input(&mem, &call_evt, in_buffer.lock().deref_mut(), &mut queue) {
             Ok(()) => {}
             Err(ConsoleError::RxDescriptorsExhausted) => {
                 if let Err(e) = kick_evt.next_val().await {
                     error!("Failed to read kick event for rx queue: {}", e);
                     break;
                 }
-            }
-            Err(e) => {
-                error!("Failed to process rx queue: {}", e);
-                break;
             }
         }
     }
@@ -202,7 +199,7 @@ impl VhostUserBackend for ConsoleBackend {
                     .input
                     .take()
                     .ok_or_else(|| anyhow!("input source unavailable"))?;
-                let in_channel = spawn_input_thread(input_unpacked, &in_avail_evt)
+                let in_buffer = spawn_input_thread(input_unpacked, &in_avail_evt)
                     .take()
                     .ok_or_else(|| anyhow!("input channel unavailable"))?;
 
@@ -216,7 +213,7 @@ impl VhostUserBackend for ConsoleBackend {
                         mem,
                         call_evt,
                         kick_evt,
-                        in_channel,
+                        in_buffer,
                         in_avail_async_evt,
                     ),
                     registration,
