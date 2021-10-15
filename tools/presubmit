@@ -1,0 +1,29 @@
+#!/bin/bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+set -e
+
+cd "$(dirname $0)/.."
+
+if [[ "$1" == "-q" ]] || [[ "$1" == "--quick" ]]; then
+    QUICK=true
+fi
+
+printf "\n\nRunning clippy...\n"
+./tools/clippy
+
+printf "\n\nRunning formatter...\n"
+./tools/fmt --check
+
+printf "\n\nRunning x86 tests...\n"
+./tools/run_tests --target=host
+
+if [ "$QUICK" = true ] ; then
+    exit
+fi
+
+printf "\n\nRunning aarch64 tests...\n"
+./tools/run_tests --target=vm:aarch64
+
+# TODO(b/203152778): Add armhf builds to presubmit
