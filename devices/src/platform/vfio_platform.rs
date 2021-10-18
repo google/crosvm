@@ -273,6 +273,6 @@ impl VfioPlatformDevice {
 
     /// Gets the vfio device backing `File`.
     pub fn device_file(&self) -> &File {
-        &self.device.device_file()
+        self.device.device_file()
     }
 }

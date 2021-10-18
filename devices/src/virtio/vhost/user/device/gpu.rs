@@ -306,7 +306,7 @@ impl VhostUserBackend for GpuBackend {
 
         let timer = TimerFd::new()
             .context("failed to create TimerFd")
-            .and_then(|t| TimerAsync::new(t, &ex).context("failed to create TimerAsync"))?;
+            .and_then(|t| TimerAsync::new(t, ex).context("failed to create TimerAsync"))?;
         let task = ex.spawn_local(run_ctrl_queue(reader, mem, kick_evt, timer, state));
 
         self.workers[idx] = Some(task);
@@ -388,13 +388,13 @@ pub fn run_gpu_device(program_name: &str, args: std::env::Args) -> anyhow::Resul
         Ok(m) => m,
         Err(e) => {
             println!("{}", e);
-            println!("{}", opts.short_usage(&program_name));
+            println!("{}", opts.short_usage(program_name));
             return Ok(());
         }
     };
 
     if matches.opt_present("h") {
-        println!("{}", opts.usage(&program_name));
+        println!("{}", opts.usage(program_name));
         return Ok(());
     }
 
@@ -405,7 +405,7 @@ pub fn run_gpu_device(program_name: &str, args: std::env::Args) -> anyhow::Resul
         s
     } else {
         println!("--socket is required");
-        println!("{}", opts.short_usage(&program_name));
+        println!("{}", opts.short_usage(program_name));
         return Ok(());
     };
 

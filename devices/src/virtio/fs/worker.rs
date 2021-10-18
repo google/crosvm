@@ -141,8 +141,8 @@ pub fn process_fs_queue<I: SignalableInterrupt, F: FileSystem + Sync>(
     tube: &Arc<Mutex<Tube>>,
     slot: u32,
 ) -> Result<()> {
-    let mapper = Mapper::new(Arc::clone(&tube), slot);
-    while let Some(avail_desc) = queue.pop(&mem) {
+    let mapper = Mapper::new(Arc::clone(tube), slot);
+    while let Some(avail_desc) = queue.pop(mem) {
         let reader =
             Reader::new(mem.clone(), avail_desc.clone()).map_err(Error::InvalidDescriptorChain)?;
         let writer =
@@ -150,7 +150,7 @@ pub fn process_fs_queue<I: SignalableInterrupt, F: FileSystem + Sync>(
 
         let total = server.handle_message(reader, writer, &mapper)?;
 
-        queue.add_used(&mem, avail_desc.index, total as u32);
+        queue.add_used(mem, avail_desc.index, total as u32);
         queue.trigger_interrupt(mem, &*interrupt);
     }
 

@@ -27,5 +27,6 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 cd ..
 
 find . -name '*.rs' -print0 \
+    | grep -vz '^./third_party/' \
     | grep -vz '^./target/' \
     | xargs -0 rustfmt --edition=2018 "$@" --

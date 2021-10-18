@@ -2577,7 +2577,7 @@ where
     // Allocate the ramoops region first. AArch64::build_vm() assumes this.
     let ramoops_region = match &components.pstore {
         Some(pstore) => Some(
-            arch::pstore::create_memory_region(&mut vm, &mut sys_allocator, &pstore)
+            arch::pstore::create_memory_region(&mut vm, &mut sys_allocator, pstore)
                 .map_err(Error::Pstore)?,
         ),
         None => None,

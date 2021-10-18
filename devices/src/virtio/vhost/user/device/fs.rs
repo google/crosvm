@@ -276,31 +276,31 @@ pub fn run_fs_device(program_name: &str, args: std::env::Args) -> anyhow::Result
         Ok(m) => m,
         Err(e) => {
             eprintln!("{}", e);
-            eprintln!("{}", opts.short_usage(&program_name));
+            eprintln!("{}", opts.short_usage(program_name));
             return Ok(());
         }
     };
 
     if matches.opt_present("h") {
-        println!("{}", opts.usage(&program_name));
+        println!("{}", opts.usage(program_name));
         return Ok(());
     }
 
     if !matches.opt_present("socket") {
         println!("Must specify the socket for the vhost user device.");
-        println!("{}", opts.usage(&program_name));
+        println!("{}", opts.usage(program_name));
         return Ok(());
     }
 
     if !matches.opt_present("tag") {
         println!("Must specify the filesystem tag.");
-        println!("{}", opts.usage(&program_name));
+        println!("{}", opts.usage(program_name));
         return Ok(());
     }
 
     if !matches.opt_present("shared-dir") {
         println!("Must specify the directory to share.");
-        println!("{}", opts.usage(&program_name));
+        println!("{}", opts.usage(program_name));
         return Ok(());
     }
 
