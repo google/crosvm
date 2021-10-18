@@ -30,6 +30,18 @@ setup_source() {
 
   echo "Fetching Submodules..."
   git submodule update --init
+
+  echo "Rebasing changes to ToT"
+  # We cannot use the original origin that kokoro used, as we no longer have
+  # access the GoB host via rpc://.
+  git remote remove origin
+  git remote add origin https://chromium.googlesource.com/chromiumos/platform/crosvm
+  git fetch -q origin
+
+  # For some mysterious reason symlinks show up as modified, which prevents
+  # us from rebasing the changes.
+  git checkout -f
+  git rebase origin/main
 }
 
 cleanup() {
