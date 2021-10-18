@@ -41,6 +41,7 @@ unsafe impl Sync for RutabagaIovec {}
 /// can't work with gfxstream/virglrenderer without this.
 pub const RUTABAGA_PIPE_TEXTURE_2D: u32 = 2;
 pub const RUTABAGA_PIPE_BIND_RENDER_TARGET: u32 = 2;
+#[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct ResourceCreate3D {
     pub target: u32,
@@ -63,6 +64,7 @@ pub const RUTABAGA_BLOB_MEM_HOST3D_GUEST: u32 = 0x0003;
 pub const RUTABAGA_BLOB_FLAG_USE_MAPPABLE: u32 = 0x0001;
 pub const RUTABAGA_BLOB_FLAG_USE_SHAREABLE: u32 = 0x0002;
 pub const RUTABAGA_BLOB_FLAG_USE_CROSS_DEVICE: u32 = 0x0004;
+#[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct ResourceCreateBlob {
     pub blob_mem: u32,
@@ -97,6 +99,7 @@ pub const RUTABAGA_FLAG_FENCE: u32 = 1 << 0;
 pub const RUTABAGA_FLAG_INFO_RING_IDX: u32 = 1 << 1;
 
 /// Convenience struct for Rutabaga fences
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub struct RutabagaFence {
     pub flags: u32,
@@ -438,7 +441,8 @@ impl From<GfxstreamFlags> for i32 {
 }
 
 /// Transfers {to, from} 1D buffers, 2D textures, 3D textures, and cubemaps.
-#[derive(Debug)]
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
 pub struct Transfer3D {
     pub x: u32,
     pub y: u32,
