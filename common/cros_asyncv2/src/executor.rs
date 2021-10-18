@@ -3,19 +3,21 @@
 // found in the LICENSE file.
 
 use std::{
-    collections::VecDeque,
+    cmp::Reverse,
+    collections::{BTreeMap, VecDeque},
     future::{pending, Future},
     num::Wrapping,
     sync::Arc,
     task::{self, Poll, Waker},
     thread::{self, ThreadId},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::Result;
 use async_task::{Runnable, Task};
 use futures::{pin_mut, task::WakerRef};
 use once_cell::unsync::Lazy;
+use smallvec::SmallVec;
 use sync::Mutex;
 
 use crate::{enter::enter, sys, BlockingPool};
@@ -25,6 +27,7 @@ thread_local! (static LOCAL_CONTEXT: Lazy<Arc<Mutex<Context>>> = Lazy::new(Defau
 #[derive(Default)]
 struct Context {
     queue: VecDeque<Runnable>,
+    timers: BTreeMap<Reverse<Instant>, SmallVec<[Waker; 2]>>,
     waker: Option<Waker>,
 }
 
@@ -33,6 +36,16 @@ struct Shared {
     queue: VecDeque<Runnable>,
     idle_workers: VecDeque<(ThreadId, Waker)>,
     blocking_pool: BlockingPool,
+}
+
+pub(crate) fn add_timer(deadline: Instant, waker: &Waker) {
+    LOCAL_CONTEXT.with(|local_ctx| {
+        let mut ctx = local_ctx.lock();
+        let wakers = ctx.timers.entry(Reverse(deadline)).or_default();
+        if wakers.iter().all(|w| !w.will_wake(waker)) {
+            wakers.push(waker.clone());
+        }
+    });
 }
 
 /// An executor for scheduling tasks that poll futures to completion.
@@ -351,7 +364,7 @@ impl Executor {
                 // happening.
                 if tick.0 % 31 == 0 {
                     // A zero timeout will fetch new events without blocking.
-                    state.wait(Some(Duration::from_millis(0)))?;
+                    self.get_events(&state, Some(Duration::from_millis(0)))?;
                 }
 
                 let was_woken = state.start_processing();
@@ -378,7 +391,7 @@ impl Executor {
 
                 // We're about to block so first check that new tasks have not snuck in and set the
                 // waker so that we can be woken up when tasks are re-scheduled.
-                {
+                let deadline = {
                     let mut ctx = local_ctx.lock();
                     if !ctx.queue.is_empty() {
                         // Some more tasks managed to sneak in.  Go back to the start of the loop.
@@ -389,7 +402,10 @@ impl Executor {
                     if ctx.waker.is_none() {
                         ctx.waker = Some(cx.waker().clone());
                     }
-                }
+
+                    // TODO: Replace with `last_entry` once it is stabilized.
+                    ctx.timers.keys().next_back().cloned()
+                };
                 {
                     let mut shared = self.shared.lock();
                     if !shared.queue.is_empty() {
@@ -397,13 +413,15 @@ impl Executor {
                         continue;
                     }
 
+                    // We're going to block so add ourselves to the idle worker list.
                     shared
                         .idle_workers
                         .push_back((current_thread, cx.waker().clone()));
                 };
 
                 // Now wait to be woken up.
-                state.wait(None)?;
+                let timeout = deadline.map(|d| d.0.saturating_duration_since(Instant::now()));
+                self.get_events(&state, timeout)?;
 
                 // Remove from idle workers.
                 {
@@ -421,6 +439,32 @@ impl Executor {
                 tick = Wrapping(0);
             }
         })
+    }
+
+    fn get_events<S: PlatformState>(
+        &self,
+        state: &S,
+        timeout: Option<Duration>,
+    ) -> anyhow::Result<()> {
+        state.wait(timeout)?;
+
+        // Timer maintenance.
+        let expired = LOCAL_CONTEXT.with(|local_ctx| {
+            let mut ctx = local_ctx.lock();
+            let now = Instant::now();
+            ctx.timers.split_off(&Reverse(now))
+        });
+
+        // We cannot wake the timers while holding the lock because the schedule function for the
+        // task that's waiting on the timer may try to acquire the lock.
+        for (deadline, wakers) in expired {
+            debug_assert!(deadline.0 <= Instant::now());
+            for w in wakers {
+                w.wake();
+            }
+        }
+
+        Ok(())
     }
 }
 

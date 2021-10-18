@@ -93,6 +93,7 @@ mod executor;
 mod file;
 mod iobuf;
 pub mod sync;
+mod timer;
 
 #[cfg_attr(unix, path = "unix/mod.rs")]
 mod sys;
@@ -102,3 +103,4 @@ pub use event::Event;
 pub use executor::Executor;
 pub use file::File;
 pub use iobuf::{AsIoBufs, OwnedIoBuf};
+pub use timer::{with_deadline, TimedOut, Timer};
