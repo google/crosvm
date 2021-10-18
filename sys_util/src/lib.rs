@@ -575,7 +575,7 @@ pub fn max_timeout() -> Duration {
 }
 
 /// If the given path is of the form /proc/self/fd/N for some N, returns `Ok(Some(N))`. Otherwise
-/// returns `Ok(None`).
+/// returns `Ok(None)`.
 pub fn safe_descriptor_from_path<P: AsRef<Path>>(path: P) -> Result<Option<SafeDescriptor>> {
     let path = path.as_ref();
     if path.parent() == Some(Path::new("/proc/self/fd")) {
