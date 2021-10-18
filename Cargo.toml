@@ -55,6 +55,7 @@ members = [
     "qcow_utils",
     "resources",
     "rutabaga_gfx",
+    "rutabaga_gfx/ffi",
     "system_api_stub",
     "tpm2",
     "tpm2-sys",

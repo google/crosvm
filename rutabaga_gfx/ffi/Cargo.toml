@@ -1,0 +1,26 @@
+[package]
+name = "rutabaga_gfx_ffi"
+version = "0.1.0"
+authors = ["The Chromium OS Authors + Android Open Source Project"]
+edition = "2018"
+
+[lib]
+name = "rutabaga_gfx_ffi"
+crate-type = ["cdylib"]
+
+[dependencies]
+rutabaga_gfx = { path = "../" }
+base = {path = "../../common/base" }
+data_model = {path = "../../common/data_model" }
+libc = "0.2.93"
+
+[features]
+minigbm = ["rutabaga_gfx/minigbm"]
+gfxstream = ["rutabaga_gfx/gfxstream"]
+virgl_renderer = ["rutabaga_gfx/virgl_renderer"]
+virgl_renderer_next = ["rutabaga_gfx/virgl_renderer_next"]
+vulkano = ["rutabaga_gfx/vulkano"]
+
+[profile.dev]
+lto = true
+incremental = false
