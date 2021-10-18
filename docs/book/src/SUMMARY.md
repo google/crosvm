@@ -14,7 +14,7 @@
 
 --------------------------------------------------------------------------------
 
-
+-   [Onboarding Resources](./onboarding.md)
 -   [Appendix](./appendix/index.md)
     -   [Example Usage (Outdated)](./appendix/example_usage.md)
     -   [Sandboxing](./appendix/sandboxing.md)
