@@ -268,18 +268,15 @@ impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
     pub fn send_ack_message(
         &mut self,
         req: &VhostUserMsgHeader<MasterReq>,
-        res: Result<()>,
+        success: bool,
     ) -> Result<()> {
         if self.reply_ack_enabled && req.is_need_reply() {
             let hdr = self.new_reply_header::<VhostUserU64>(req, 0)?;
-            let val = match res {
-                Ok(_) => 0,
-                Err(_) => 1,
-            };
+            let val = if success { 0 } else { 1 };
             let msg = VhostUserU64::new(val);
             self.endpoint.send_message(&hdr, &msg, None)?;
         }
-        res
+        Ok(())
     }
 
     fn send_reply_message<T: Sized + DataInit>(
@@ -434,12 +431,14 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
             MasterReq::SET_OWNER => {
                 self.check_request_size(&hdr, size, 0)?;
                 let res = self.backend.set_owner();
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::RESET_OWNER => {
                 self.check_request_size(&hdr, size, 0)?;
                 let res = self.backend.reset_owner();
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::GET_FEATURES => {
                 self.check_request_size(&hdr, size, 0)?;
@@ -454,16 +453,19 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                 let res = self.backend.set_features(msg.value);
                 self.acked_virtio_features = msg.value;
                 self.update_reply_ack_flag();
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::SET_MEM_TABLE => {
                 let res = self.set_mem_table(&hdr, size, &buf, files);
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::SET_VRING_NUM => {
                 let msg = self.extract_request_body::<VhostUserVringState>(&hdr, size, &buf)?;
                 let res = self.backend.set_vring_num(msg.index, msg.num);
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::SET_VRING_ADDR => {
                 let msg = self.extract_request_body::<VhostUserVringAddr>(&hdr, size, &buf)?;
@@ -479,12 +481,14 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                     msg.available,
                     msg.log,
                 );
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::SET_VRING_BASE => {
                 let msg = self.extract_request_body::<VhostUserVringState>(&hdr, size, &buf)?;
                 let res = self.backend.set_vring_base(msg.index, msg.num);
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::GET_VRING_BASE => {
                 let msg = self.extract_request_body::<VhostUserVringState>(&hdr, size, &buf)?;
@@ -495,19 +499,22 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                 self.check_request_size(&hdr, size, mem::size_of::<VhostUserU64>())?;
                 let (index, file) = self.handle_vring_fd_request(&buf, files)?;
                 let res = self.backend.set_vring_call(index, file);
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::SET_VRING_KICK => {
                 self.check_request_size(&hdr, size, mem::size_of::<VhostUserU64>())?;
                 let (index, file) = self.handle_vring_fd_request(&buf, files)?;
                 let res = self.backend.set_vring_kick(index, file);
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::SET_VRING_ERR => {
                 self.check_request_size(&hdr, size, mem::size_of::<VhostUserU64>())?;
                 let (index, file) = self.handle_vring_fd_request(&buf, files)?;
                 let res = self.backend.set_vring_err(index, file);
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::GET_PROTOCOL_FEATURES => {
                 self.check_request_size(&hdr, size, 0)?;
@@ -522,7 +529,8 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                 let res = self.backend.set_protocol_features(msg.value);
                 self.acked_protocol_features = msg.value;
                 self.update_reply_ack_flag();
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::GET_QUEUE_NUM => {
                 if self.acked_protocol_features & VhostUserProtocolFeatures::MQ.bits() == 0 {
@@ -547,7 +555,8 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                 };
 
                 let res = self.backend.set_vring_enable(msg.index, enable);
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::GET_CONFIG => {
                 if self.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
@@ -562,7 +571,8 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                 }
                 self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
                 let res = self.set_config(size, &buf);
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::SET_SLAVE_REQ_FD => {
                 if self.acked_protocol_features & VhostUserProtocolFeatures::SLAVE_REQ.bits() == 0 {
@@ -570,7 +580,8 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                 }
                 self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
                 let res = self.set_slave_req_fd(files);
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::GET_INFLIGHT_FD => {
                 if self.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits()
@@ -599,7 +610,8 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                 let file = take_single_file(files).ok_or(Error::IncorrectFds)?;
                 let msg = self.extract_request_body::<VhostUserInflight>(&hdr, size, &buf)?;
                 let res = self.backend.set_inflight_fd(&msg, file);
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::GET_MAX_MEM_SLOTS => {
                 if self.acked_protocol_features
@@ -627,7 +639,8 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                 let msg =
                     self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
                 let res = self.backend.add_mem_region(&msg, files.swap_remove(0));
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             MasterReq::REM_MEM_REG => {
                 if self.acked_protocol_features
@@ -640,7 +653,8 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                 let msg =
                     self.extract_request_body::<VhostUserSingleMemoryRegion>(&hdr, size, &buf)?;
                 let res = self.backend.remove_mem_region(&msg);
-                self.slave_req_helper.send_ack_message(&hdr, res)?;
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+                res?;
             }
             _ => {
                 return Err(Error::InvalidMessage);
