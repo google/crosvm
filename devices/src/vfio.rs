@@ -11,6 +11,7 @@ use std::mem;
 use std::os::raw::c_ulong;
 use std::os::unix::prelude::FileExt;
 use std::path::{Path, PathBuf};
+use std::slice;
 use std::sync::Arc;
 use std::u32;
 
@@ -44,6 +45,8 @@ pub enum VfioError {
     GroupSetContainer(Error),
     #[error("group is inviable")]
     GroupViable,
+    #[error("invalid region index: {0}")]
+    InvalidIndex(u32),
     #[error("invalid file path")]
     InvalidPath,
     #[error("failed to add guest memory map into iommu table: {0}")]
@@ -544,7 +547,17 @@ pub struct VfioIrq {
     pub index: u32,
 }
 
-struct VfioRegion {
+/// Address on VFIO memory region.
+#[derive(Debug, Default, Clone)]
+pub struct VfioRegionAddr {
+    /// region number.
+    pub index: u32,
+    /// offset in the region.
+    pub addr: u64,
+}
+
+#[derive(Debug)]
+pub struct VfioRegion {
     // flags for this region: read/write/mmap
     flags: u32,
     size: u64,
@@ -1059,6 +1072,16 @@ impl VfioDevice {
         None
     }
 
+    /// Returns file offset corresponding to the given `VfioRegionAddr`.
+    /// The offset can be used when reading/writing the VFIO device's FD directly.
+    pub fn get_offset_for_addr(&self, addr: &VfioRegionAddr) -> Result<u64> {
+        let region = self
+            .regions
+            .get(addr.index as usize)
+            .ok_or(VfioError::InvalidIndex(addr.index))?;
+        Ok(region.offset + addr.addr)
+    }
+
     /// Read region's data from VFIO device into buf
     /// index: region num
     /// buf: data destination and buf length is read size
@@ -1085,6 +1108,18 @@ impl VfioDevice {
                     index, addr, e
                 )
             });
+    }
+
+    /// Reads a value from the specified `VfioRegionAddr.addr` + `offset`.
+    pub fn region_read_from_addr<T: DataInit>(&self, addr: &VfioRegionAddr, offset: u64) -> T {
+        let mut val = mem::MaybeUninit::zeroed();
+        // Safe because we have zero-initialized `size_of::<T>()` bytes.
+        let buf =
+            unsafe { slice::from_raw_parts_mut(val.as_mut_ptr() as *mut u8, mem::size_of::<T>()) };
+        self.region_read(addr.index, buf, addr.addr + offset);
+        // Safe because any bit pattern is valid for a type that implements
+        // DataInit.
+        unsafe { val.assume_init() }
     }
 
     /// write the data from buf into a vfio device region
@@ -1116,6 +1151,11 @@ impl VfioDevice {
                     index, addr, e
                 )
             });
+    }
+
+    /// Writes data into the specified `VfioRegionAddr.addr` + `offset`.
+    pub fn region_write_to_addr<T: DataInit>(&self, val: &T, addr: &VfioRegionAddr, offset: u64) {
+        self.region_write(addr.index, val.as_slice(), addr.addr + offset);
     }
 
     /// get vfio device's descriptors which are passed into minijail process
