@@ -17,7 +17,7 @@ use base::{
     ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn,
     AsRawDescriptor, Error, Event, FromRawDescriptor, RawDescriptor, SafeDescriptor,
 };
-use data_model::vec_with_array_field;
+use data_model::{vec_with_array_field, DataInit};
 use hypervisor::{DeviceKind, Vm};
 use once_cell::sync::OnceCell;
 use remain::sorted;
@@ -1018,44 +1018,20 @@ impl VfioPciConfig {
         VfioPciConfig { device }
     }
 
-    pub fn read_config_byte(&self, offset: u32) -> u8 {
-        let mut data: [u8; 1] = [0];
+    pub fn read_config<T: DataInit>(&self, offset: u32) -> T {
+        let mut buf = vec![0u8; std::mem::size_of::<T>()];
         self.device
-            .region_read(VFIO_PCI_CONFIG_REGION_INDEX, data.as_mut(), offset.into());
-        data[0]
+            .region_read(VFIO_PCI_CONFIG_REGION_INDEX, &mut buf, offset.into());
+        T::from_slice(&buf)
+            .copied()
+            .expect("failed to convert config data from slice")
     }
 
-    pub fn read_config_word(&self, offset: u32) -> u16 {
-        let mut data: [u8; 2] = [0, 0];
-        self.device
-            .region_read(VFIO_PCI_CONFIG_REGION_INDEX, data.as_mut(), offset.into());
-        u16::from_le_bytes(data)
-    }
-
-    pub fn read_config_dword(&self, offset: u32) -> u32 {
-        let mut data: [u8; 4] = [0, 0, 0, 0];
-        self.device
-            .region_read(VFIO_PCI_CONFIG_REGION_INDEX, data.as_mut(), offset.into());
-        u32::from_le_bytes(data)
-    }
-
-    pub fn write_config_byte(&self, buf: u8, offset: u32) {
+    pub fn write_config<T: DataInit>(&self, config: T, offset: u32) {
         self.device.region_write(
             VFIO_PCI_CONFIG_REGION_INDEX,
-            ::std::slice::from_ref(&buf),
+            config.as_slice(),
             offset.into(),
         );
-    }
-
-    pub fn write_config_word(&self, buf: u16, offset: u32) {
-        let data: [u8; 2] = buf.to_le_bytes();
-        self.device
-            .region_write(VFIO_PCI_CONFIG_REGION_INDEX, &data, offset.into());
-    }
-
-    pub fn write_config_dword(&self, buf: u32, offset: u32) {
-        let data: [u8; 4] = buf.to_le_bytes();
-        self.device
-            .region_write(VFIO_PCI_CONFIG_REGION_INDEX, &data, offset.into());
     }
 }
