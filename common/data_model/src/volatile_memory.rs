@@ -27,7 +27,6 @@ use std::result;
 use std::slice;
 use std::usize;
 
-use libc::iovec;
 use remain::sorted;
 use thiserror::Error;
 
@@ -126,18 +125,18 @@ impl<'a> VolatileSlice<'a> {
         self.0.len()
     }
 
-    /// Returns this `VolatileSlice` as an `iovec`.
-    pub fn as_iobuf(&self) -> &iovec {
-        self.0.as_ref()
+    /// Returns this `VolatileSlice` as an `IoBufMut`.
+    pub fn as_iobuf(&self) -> &IoBufMut {
+        &self.0
     }
 
-    /// Converts a slice of `VolatileSlice`s into a slice of `iovec`s
+    /// Converts a slice of `VolatileSlice`s into a slice of `IoBufMut`s
     #[allow(clippy::wrong_self_convention)]
-    pub fn as_iobufs<'slice>(iovs: &'slice [VolatileSlice<'_>]) -> &'slice [iovec] {
+    pub fn as_iobufs<'mem, 'slice>(
+        iovs: &'slice [VolatileSlice<'mem>],
+    ) -> &'slice [IoBufMut<'mem>] {
         // Safe because `VolatileSlice` is ABI-compatible with `IoBufMut`.
-        IoBufMut::as_iobufs(unsafe {
-            slice::from_raw_parts(iovs.as_ptr() as *const IoBufMut, iovs.len())
-        })
+        unsafe { slice::from_raw_parts(iovs.as_ptr() as *const IoBufMut, iovs.len()) }
     }
 
     /// Creates a copy of this slice with the address increased by `count` bytes, and the size

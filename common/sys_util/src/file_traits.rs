@@ -267,7 +267,7 @@ pub mod lib {
         write, writev,
     };
 
-    pub use data_model::VolatileSlice;
+    pub use data_model::{IoBufMut, VolatileSlice};
 }
 
 #[macro_export]
@@ -298,7 +298,8 @@ macro_rules! volatile_impl {
                 &mut self,
                 bufs: &[$crate::file_traits::lib::VolatileSlice],
             ) -> std::io::Result<usize> {
-                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iobufs(bufs);
+                let iobufs = $crate::file_traits::lib::VolatileSlice::as_iobufs(bufs);
+                let iovecs = $crate::file_traits::lib::IoBufMut::as_iobufs(iobufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);
@@ -344,7 +345,8 @@ macro_rules! volatile_impl {
                 &mut self,
                 bufs: &[$crate::file_traits::lib::VolatileSlice],
             ) -> std::io::Result<usize> {
-                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iobufs(bufs);
+                let iobufs = $crate::file_traits::lib::VolatileSlice::as_iobufs(bufs);
+                let iovecs = $crate::file_traits::lib::IoBufMut::as_iobufs(iobufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);
@@ -401,7 +403,8 @@ macro_rules! volatile_at_impl {
                 bufs: &[$crate::file_traits::lib::VolatileSlice],
                 offset: u64,
             ) -> std::io::Result<usize> {
-                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iobufs(bufs);
+                let iobufs = $crate::file_traits::lib::VolatileSlice::as_iobufs(bufs);
+                let iovecs = $crate::file_traits::lib::IoBufMut::as_iobufs(iobufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);
@@ -452,7 +455,8 @@ macro_rules! volatile_at_impl {
                 bufs: &[$crate::file_traits::lib::VolatileSlice],
                 offset: u64,
             ) -> std::io::Result<usize> {
-                let iovecs = $crate::file_traits::lib::VolatileSlice::as_iobufs(bufs);
+                let iobufs = $crate::file_traits::lib::VolatileSlice::as_iobufs(bufs);
+                let iovecs = $crate::file_traits::lib::IoBufMut::as_iobufs(iobufs);
 
                 if iovecs.is_empty() {
                     return Ok(0);

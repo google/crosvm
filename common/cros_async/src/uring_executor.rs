@@ -631,9 +631,12 @@ impl RawExecutor {
 
         // The addresses have already been validated, so unwrapping them will succeed.
         // validate their addresses before submitting.
-        let iovecs = addrs
-            .iter()
-            .map(|&mem_range| *mem.get_volatile_slice(mem_range).unwrap().as_iobuf());
+        let iovecs = addrs.iter().map(|&mem_range| {
+            *mem.get_volatile_slice(mem_range)
+                .unwrap()
+                .as_iobuf()
+                .as_ref()
+        });
 
         unsafe {
             // Safe because all the addresses are within the Memory that an Arc is kept for the
@@ -681,9 +684,12 @@ impl RawExecutor {
 
         // The addresses have already been validated, so unwrapping them will succeed.
         // validate their addresses before submitting.
-        let iovecs = addrs
-            .iter()
-            .map(|&mem_range| *mem.get_volatile_slice(mem_range).unwrap().as_iobuf());
+        let iovecs = addrs.iter().map(|&mem_range| {
+            *mem.get_volatile_slice(mem_range)
+                .unwrap()
+                .as_iobuf()
+                .as_ref()
+        });
 
         unsafe {
             // Safe because all the addresses are within the Memory that an Arc is kept for the

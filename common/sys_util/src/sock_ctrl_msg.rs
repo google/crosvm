@@ -17,7 +17,7 @@ use libc::{
     c_long, c_void, cmsghdr, iovec, msghdr, recvmsg, sendmsg, MSG_NOSIGNAL, SCM_RIGHTS, SOL_SOCKET,
 };
 
-use data_model::VolatileSlice;
+use data_model::{IoBufMut, VolatileSlice};
 
 use crate::net::UnixSeqpacket;
 use crate::{Error, Result};
@@ -397,11 +397,11 @@ unsafe impl<'a> AsIobuf for IoSliceMut<'a> {
 // pointer and size are guaranteed to be accurate.
 unsafe impl<'a> AsIobuf for VolatileSlice<'a> {
     fn as_iobuf(&self) -> iovec {
-        *self.as_iobuf()
+        *self.as_iobuf().as_ref()
     }
 
     fn as_iobuf_slice(bufs: &[Self]) -> &[iovec] {
-        VolatileSlice::as_iobufs(bufs)
+        IoBufMut::as_iobufs(VolatileSlice::as_iobufs(bufs))
     }
 }
 
