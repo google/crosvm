@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use data_model::vec_with_array_field;
-use once_cell::sync::OnceCell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -14,18 +12,19 @@ use std::os::unix::prelude::FileExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::u32;
-use sync::Mutex;
 
 use base::{
     ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn,
     AsRawDescriptor, Error, Event, FromRawDescriptor, RawDescriptor, SafeDescriptor,
 };
+use data_model::vec_with_array_field;
 use hypervisor::{DeviceKind, Vm};
+use once_cell::sync::OnceCell;
 use remain::sorted;
+use sync::Mutex;
 use thiserror::Error;
-use vm_memory::GuestMemory;
-
 use vfio_sys::*;
+use vm_memory::GuestMemory;
 
 #[sorted]
 #[derive(Error, Debug)]
