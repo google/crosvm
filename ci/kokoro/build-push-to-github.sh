@@ -7,4 +7,4 @@ GITHUB_TOKEN_FILE=$KOKORO_KEYSTORE_DIR/76320_github_token
 TOKEN=$(cat $GITHUB_TOKEN_FILE)
 
 cd "${KOKORO_ARTIFACTS_DIR}/git/crosvm"
-git push --force --mirror "https://crosvm-bot:${TOKEN}@github.com/google/crosvm.git"
+git push --force --all "https://crosvm-bot:${TOKEN}@github.com/google/crosvm.git"
