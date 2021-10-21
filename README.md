@@ -27,11 +27,11 @@ git config --global submodule.recurse true
 git config push.recurseSubmodules no
 ```
 
-Crosvm development best works on debian derivaties. We provide a script to
-install the necessary packages on debian:
+Crosvm development best works on Debian derivatives. We provide a script to
+install the necessary packages on Debian:
 
 ```
-$ ./tools/install_deps
+$ ./tools/install-deps
 ```
 
 For other systems, please see below for instructions on
@@ -42,7 +42,7 @@ For other systems, please see below for instructions on
 Crosvm is built and tested on x86, aarch64 and armhf. Your host needs to be set
 up to allow installation of foreign architecture packages.
 
-On debian this is as easy as:
+On Debian this is as easy as:
 
 ```sh
 $ sudo dpkg --add-architecture arm64
@@ -60,13 +60,13 @@ For other systems (**including gLinux**), please see below for instructions on
 With that enabled, the following scripts will install the needed packages:
 
 ```sh
-$ ./tools/install_aarch64_deps
-$ ./tools/install_armhf_deps
+$ ./tools/install-aarch64-deps
+$ ./tools/install-armhf-deps
 ```
 
 #### Using the development container
 
-We provide a debian container with the required packages installed. With
+We provide a Debian container with the required packages installed. With
 [Docker installed](https://docs.docker.com/get-docker/), it can be started with:
 
 ```sh
@@ -382,7 +382,7 @@ requirements:
 | `virtio-net`     | Device to interface the host and guest networks.                                   |
 | `virtio-rng`     | Entropy source used to seed guest OS's entropy pool.                               |
 | `virtio-vsock`   | Enabled VSOCKs for the guests.                                                     |
-| `virtio-wayland` | Allowed guest to use host Wayland socket.                                          |
+| `virtio-wayland` | Allow guest to use host Wayland socket.                                            |
 
 ## Contributing
 
