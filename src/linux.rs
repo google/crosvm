@@ -51,8 +51,8 @@ use devices::Ac97Dev;
 use devices::ProtectionType;
 use devices::{
     self, BusDeviceObj, HostHotPlugKey, IrqChip, IrqEventIndex, KvmKernelIrqChip, PciAddress,
-    PciDevice, VcpuRunState, VfioContainer, VfioDevice, VfioPciDevice, VfioPlatformDevice,
-    VirtioPciDevice,
+    PciDevice, StubPciDevice, VcpuRunState, VfioContainer, VfioDevice, VfioPciDevice,
+    VfioPlatformDevice, VirtioPciDevice,
 };
 #[cfg(feature = "usb")]
 use devices::{HostBackendDeviceProvider, XhciController};
@@ -1765,6 +1765,11 @@ fn create_devices(
             let dev = Box::new(dev);
             devices.push((dev, iommu_dev.jail));
         }
+    }
+
+    for params in &cfg.stub_pci_devices {
+        // Stub devices don't need jailing since they don't do anything.
+        devices.push((Box::new(StubPciDevice::new(params)), None));
     }
 
     Ok(devices)

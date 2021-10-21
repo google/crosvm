@@ -30,6 +30,7 @@ use devices::virtio::gpu::GpuParameters;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
 use devices::ProtectionType;
+use devices::StubPciParameters;
 use libc::{getegid, geteuid};
 use vm_control::BatteryType;
 
@@ -384,6 +385,7 @@ pub struct Config {
     pub dmi_path: Option<PathBuf>,
     pub no_legacy: bool,
     pub host_cpu_topology: bool,
+    pub stub_pci_devices: Vec<StubPciParameters>,
 }
 
 impl Default for Config {
@@ -479,6 +481,7 @@ impl Default for Config {
             dmi_path: None,
             no_legacy: false,
             host_cpu_topology: false,
+            stub_pci_devices: Vec::new(),
         }
     }
 }
