@@ -273,6 +273,7 @@ impl VirtioPciDevice {
             pci_device_subclass,
             None,
             PciHeaderType::Device,
+            false,
             VIRTIO_PCI_VENDOR_ID,
             pci_device_id,
             VIRTIO_PCI_REVISION_ID,

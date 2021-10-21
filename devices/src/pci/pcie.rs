@@ -53,6 +53,7 @@ impl PciBridge {
             &PciBridgeSubclass::PciToPciBridge,
             None,
             PciHeaderType::Bridge,
+            false,
             0,
             0,
             0,

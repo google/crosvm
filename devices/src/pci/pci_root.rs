@@ -160,6 +160,7 @@ impl PciRoot {
                     &PciBridgeSubclass::HostBridge,
                     None,
                     PciHeaderType::Device,
+                    false,
                     0,
                     0,
                     0,
