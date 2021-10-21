@@ -14,3 +14,5 @@ Other programs similar to crosvm are QEMU and VirtualBox. An operating system,
 made of a root file system image and a kernel binary, are given as input to
 crosvm and then crosvm will run the operating system using the platform's
 hypervisor.
+
+![logo](./logo.svg)
