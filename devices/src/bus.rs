@@ -37,21 +37,19 @@ impl std::fmt::Display for BusAccessInfo {
 
 /// Result of a write to a device's PCI configuration space.
 /// This value represents the state change(s) that occurred due to the write.
-/// Each member of this structure may be `None` if no change occurred, or `Some(new_value)` to
-/// indicate a state change.
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ConfigWriteResult {
-    /// New state of the memory bus for this PCI device:
-    /// - `None`: no change in state.
-    /// - `Some(true)`: memory decode enabled; device should respond to memory accesses.
-    /// - `Some(false)`: memory decode disabled; device should not respond to memory accesses.
-    pub mem_bus_new_state: Option<bool>,
+    /// The BusRange in the vector will be removed from mmio_bus
+    pub mmio_remove: Vec<BusRange>,
 
-    /// New state of the I/O bus for this PCI device:
-    /// - `None`: no change in state.
-    /// - `Some(true)`: I/O decode enabled; device should respond to I/O accesses.
-    /// - `Some(false)`: I/O decode disabled; device should not respond to I/O accesses.
-    pub io_bus_new_state: Option<bool>,
+    /// The BusRange in the vector will be added into mmio_bus
+    pub mmio_add: Vec<BusRange>,
+
+    /// The BusRange in the vector will be removed from io_bus
+    pub io_remove: Vec<BusRange>,
+
+    /// The BusRange in the vector will be added into io_bus
+    pub io_add: Vec<BusRange>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]

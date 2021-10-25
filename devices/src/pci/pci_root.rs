@@ -202,7 +202,33 @@ impl PciRoot {
             self.root_configuration
                 .config_register_write(register, offset, data);
         } else if let Some(d) = self.devices.get(&address) {
-            d.lock().config_register_write(register, offset, data);
+            let res = d.lock().config_register_write(register, offset, data);
+
+            if !res.mmio_add.is_empty() || !res.mmio_remove.is_empty() {
+                let mmio_bus = match self.mmio_bus.upgrade() {
+                    Some(m) => m,
+                    None => return,
+                };
+                for range in &res.mmio_remove {
+                    let _ = mmio_bus.remove(range.base, range.len);
+                }
+                for range in &res.mmio_add {
+                    let _ = mmio_bus.insert(d.clone(), range.base, range.len);
+                }
+            }
+
+            if !res.io_add.is_empty() || !res.io_remove.is_empty() {
+                let io_bus = match self.io_bus.upgrade() {
+                    Some(i) => i,
+                    None => return,
+                };
+                for range in &res.io_remove {
+                    let _ = io_bus.remove(range.base, range.len);
+                }
+                for range in &res.io_add {
+                    let _ = io_bus.insert(d.clone(), range.base, range.len);
+                }
+            }
         }
     }
 }

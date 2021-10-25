@@ -58,8 +58,10 @@ enum CommandResult {
     ReadResult([u8; 8]),
     ReadConfigResult(u32),
     WriteConfigResult {
-        mem_bus_new_state: Option<bool>,
-        io_bus_new_state: Option<bool>,
+        mmio_remove: Vec<BusRange>,
+        mmio_add: Vec<BusRange>,
+        io_remove: Vec<BusRange>,
+        io_add: Vec<BusRange>,
     },
     GetRangesResult(Vec<(BusRange, BusType)>),
 }
@@ -102,8 +104,10 @@ fn child_proc<D: BusDevice>(tube: Tube, device: &mut D) {
                 let res =
                     device.config_register_write(reg_idx as usize, offset as u64, &data[0..len]);
                 tube.send(&CommandResult::WriteConfigResult {
-                    mem_bus_new_state: res.mem_bus_new_state,
-                    io_bus_new_state: res.io_bus_new_state,
+                    mmio_remove: res.mmio_remove,
+                    mmio_add: res.mmio_add,
+                    io_remove: res.io_remove,
+                    io_add: res.io_add,
                 })
             }
             Command::Shutdown => {
@@ -245,8 +249,10 @@ impl BusDevice for ProxyDevice {
         let reg_idx = reg_idx as u32;
         let offset = offset as u32;
         if let Some(CommandResult::WriteConfigResult {
-            mem_bus_new_state,
-            io_bus_new_state,
+            mmio_remove,
+            mmio_add,
+            io_remove,
+            io_add,
         }) = self.sync_send(&Command::WriteConfig {
             reg_idx,
             offset,
@@ -254,8 +260,10 @@ impl BusDevice for ProxyDevice {
             data: buffer,
         }) {
             ConfigWriteResult {
-                mem_bus_new_state,
-                io_bus_new_state,
+                mmio_remove,
+                mmio_add,
+                io_remove,
+                io_add,
             }
         } else {
             Default::default()
