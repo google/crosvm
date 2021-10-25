@@ -2,22 +2,34 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use anyhow::{bail, Result};
+use anyhow::Result;
+
+#[cfg(feature = "virgl_renderer")]
+use anyhow::bail;
+#[cfg(feature = "virgl_renderer")]
 use std::env;
+#[cfg(feature = "virgl_renderer")]
 use std::fs;
+#[cfg(feature = "virgl_renderer")]
 use std::path::Path;
+#[cfg(feature = "virgl_renderer")]
 use std::path::PathBuf;
+#[cfg(feature = "virgl_renderer")]
 use std::process::Command;
 
+#[cfg(feature = "virgl_renderer")]
 const MINIGBM_SRC: &str = "../third_party/minigbm";
+#[cfg(feature = "virgl_renderer")]
 const VIRGLRENDERER_SRC: &str = "../third_party/virglrenderer";
 
+#[cfg(feature = "virgl_renderer")]
 fn is_native_build() -> bool {
     env::var("HOST").unwrap() == env::var("TARGET").unwrap()
 }
 
 /// Returns the target triplet prefix for gcc commands. No prefix is required
 /// for native builds.
+#[cfg(feature = "virgl_renderer")]
 fn get_cross_compile_prefix() -> String {
     if is_native_build() {
         return String::from("");
@@ -31,6 +43,7 @@ fn get_cross_compile_prefix() -> String {
 
 /// For cross-compilation with meson, we need to pick a cross-file, which
 /// live in /usr/local/share/meson/cross.
+#[cfg(feature = "virgl_renderer")]
 fn get_meson_cross_args() -> Vec<String> {
     if is_native_build() {
         Vec::new()
@@ -42,6 +55,7 @@ fn get_meson_cross_args() -> Vec<String> {
     }
 }
 
+#[cfg(feature = "virgl_renderer")]
 fn build_minigbm(out_dir: &Path) -> Result<()> {
     let lib_path = out_dir.join("libgbm.a");
     if lib_path.exists() {
@@ -73,6 +87,7 @@ fn build_minigbm(out_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "virgl_renderer")]
 fn build_virglrenderer(out_dir: &Path) -> Result<()> {
     let lib_path = out_dir.join("src/libvirglrenderer.a");
     if lib_path.exists() {
@@ -114,6 +129,7 @@ fn build_virglrenderer(out_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "virgl_renderer")]
 fn virglrenderer() -> Result<()> {
     // System provided runtime dependencies.
     pkg_config::Config::new().probe("epoxy")?;
