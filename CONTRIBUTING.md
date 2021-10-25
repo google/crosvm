@@ -19,17 +19,23 @@ You generally only need to submit a CLA once, so if you've already submitted one
 (even if it was for a different project), you probably don't need to do it
 again.
 
-## Guidelines
+## Bug Reports
+
+We use the Chromium issue tracker. Please use
+[`OS>Systems>Containers`](https://bugs.chromium.org/p/chromium/issues/list?q=component:OS%3ESystems%3EContainers)
+component.
+
+## Philosophy
 
 The following is high level guidance for producing contributions to crosvm.
 
-- Prefer mechanism to policy.
-- Use existing protocols when they are adequate, such as virtio.
-- Prefer security over code re-use and speed of development.
-- Only the version of Rust in use by the Chrome OS toolchain is supported. This
-  is ordinarily the stable version of Rust, but can be behind a version for a
-  few weeks.
-- Avoid distribution specific code.
+-   Prefer mechanism to policy.
+-   Use existing protocols when they are adequate, such as virtio.
+-   Prefer security over code re-use and speed of development.
+-   Only the version of Rust in use by the Chrome OS toolchain is supported.
+    This is ordinarily the stable version of Rust, but can be behind a version
+    for a few weeks.
+-   Avoid distribution specific code.
 
 ## Code Health
 
