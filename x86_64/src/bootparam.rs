@@ -7,7 +7,7 @@
  * From chromeos-linux v4.19
  * $ bindgen \
  *       --no-layout-tests --with-derive-default --no-doc-comments \
- *       --whitelist-type boot_params --whitelist-type setup_data \
+ *       --allowlist-type boot_params --allowlist-type setup_data \
  *       arch/x86/include/uapi/asm/bootparam.h
  */
 

@@ -6,8 +6,8 @@
 //!
 //! ```shell
 //! $ bindgen virtio_video.h              \
-//!     --whitelist-type "virtio_video.*" \
-//!     --whitelist-var "VIRTIO_VIDEO_.*" \
+//!     --allowlist-type "virtio_video.*" \
+//!     --allowlist-var "VIRTIO_VIDEO_.*" \
 //!     --with-derive-default            \
 //!     --no-layout-tests                \
 //!     --no-prepend-enum-name > protocol.rs

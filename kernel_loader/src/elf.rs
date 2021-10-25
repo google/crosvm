@@ -7,7 +7,7 @@
  * From chromeos-linux v4.19 include/uapi/linux/elf.h
  * $ bindgen \
  *       --no-layout-tests --with-derive-default \
- *       --whitelist-type Elf64_Ehdr --whitelist-type Elf64_Phdr --whitelist-var .+ \
+ *       --allowlist-type Elf64_Ehdr --allowlist-type Elf64_Phdr --allowlist-var .+ \
  *       include/uapi/linux/elf.h
  */
 

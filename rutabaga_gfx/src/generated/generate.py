@@ -26,14 +26,14 @@ END_COLOR = '\033[0m'
 
 verbose = False
 
-def generate_module(module_name, whitelist, header, clang_args, lib_name,
+def generate_module(module_name, allowlist, header, clang_args, lib_name,
                     derive_default):
   args = [
     'bindgen',
     '--no-layout-tests',
-    '--whitelist-function', whitelist,
-    '--whitelist-var', whitelist,
-    '--whitelist-type', whitelist,
+    '--allowlist-function', allowlist,
+    '--allowlist-var', allowlist,
+    '--allowlist-type', allowlist,
     '--no-prepend-enum-name',
     '--no-rustfmt-bindings',
     '-o', module_name + '_bindings.rs',

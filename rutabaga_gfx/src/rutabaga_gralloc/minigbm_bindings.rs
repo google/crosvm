@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Generated with bindgen --whitelist-function='gbm_.*' --whitelist-type='gbm_.*' minigbm/gbm.h
+// Generated with bindgen --allowlist-function='gbm_.*' --allowlist-type='gbm_.*' minigbm/gbm.h
 // Then modified manually
 
 #![cfg(feature = "minigbm")]

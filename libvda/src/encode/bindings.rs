@@ -10,14 +10,14 @@ cd ${CHROMEOS_DIR}/src/platform2/ && \
 bindgen arc/vm/libvda/libvda_encode.h \
   -o ../platform/crosvm/libvda/src/encode/bindings.rs \
   --raw-line 'pub use crate::bindings::*;' \
-  --whitelist-function "initialize_encode" \
-  --whitelist-function "deinitialize_encode" \
-  --whitelist-function "get_vea_capabilities" \
-  --whitelist-function "init_encode_session" \
-  --whitelist-function "close_encode_session" \
-  --whitelist-function "vea_.*" \
-  --whitelist-type "vea_.*" \
-  --blacklist-type "video_.*" \
+  --allowlist-function "initialize_encode" \
+  --allowlist-function "deinitialize_encode" \
+  --allowlist-function "get_vea_capabilities" \
+  --allowlist-function "init_encode_session" \
+  --allowlist-function "close_encode_session" \
+  --allowlist-function "vea_.*" \
+  --allowlist-type "vea_.*" \
+  --blocklist-type "video_.*" \
   -- \
   -I .
  */

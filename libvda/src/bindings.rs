@@ -16,7 +16,7 @@ generated with the command:
 cd ${CHROMEOS_DIR}/src/platform2 && \
 bindgen arc/vm/libvda/libvda_common.h \
   -o ../platform/crosvm/libvda/src/common/bindings.rs \
-  --whitelist-type "video_.*"
+  --allowlist-type "video_.*"
 */
 
 pub type __int32_t = ::std::os::raw::c_int;

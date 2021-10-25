@@ -17,14 +17,14 @@ cd ${CHROMEOS_DIR}/src/platform2/ && \
 bindgen arc/vm/libvda/libvda_decode.h \
   -o ../platform/crosvm/libvda/src/decode/bindings.rs \
   --raw-line 'pub use crate::bindings::*;' \
-  --whitelist-function "initialize" \
-  --whitelist-function "deinitialize" \
-  --whitelist-function "get_vda_capabilities" \
-  --whitelist-function "init_decode_session" \
-  --whitelist-function "close_decode_session" \
-  --whitelist-function "vda_.*" \
-  --whitelist-type "vda_.*" \
-  --blacklist-type "video_.*" \
+  --allowlist-function "initialize" \
+  --allowlist-function "deinitialize" \
+  --allowlist-function "get_vda_capabilities" \
+  --allowlist-function "init_decode_session" \
+  --allowlist-function "close_decode_session" \
+  --allowlist-function "vda_.*" \
+  --allowlist-type "vda_.*" \
+  --blocklist-type "video_.*" \
   -- \
   -I .
 */
