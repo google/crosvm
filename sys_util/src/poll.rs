@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use libc::{
     c_int, epoll_create1, epoll_ctl, epoll_event, epoll_wait, EPOLLHUP, EPOLLIN, EPOLLOUT,
-    EPOLL_CLOEXEC, EPOLL_CTL_ADD, EPOLL_CTL_DEL, EPOLL_CTL_MOD,
+    EPOLLRDHUP, EPOLL_CLOEXEC, EPOLL_CTL_ADD, EPOLL_CTL_DEL, EPOLL_CTL_MOD,
 };
 
 use crate::{errno_result, Result};
@@ -139,7 +139,7 @@ impl<'a, T: PollToken> PollEvent<'a, T> {
 
     /// True if the `fd` associated with this token in `PollContext::add` has been hungup on.
     pub fn hungup(&self) -> bool {
-        self.event.events & (EPOLLHUP as u32) != 0
+        self.event.events & ((EPOLLHUP | EPOLLRDHUP) as u32) != 0
     }
 }
 
@@ -218,7 +218,7 @@ impl<'a, T: PollToken> PollEvents<'a, T> {
     /// Iterates over each hungup event.
     pub fn iter_hungup(&self) -> PollEventIter<slice::Iter<epoll_event>, T> {
         PollEventIter {
-            mask: EPOLLHUP as u32,
+            mask: (EPOLLHUP | EPOLLRDHUP) as u32,
             iter: self.events[..self.count].iter(),
             tokens: PhantomData,
         }
