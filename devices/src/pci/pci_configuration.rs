@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::convert::TryFrom;
 use std::convert::TryInto;
 
 use base::warn;
@@ -44,7 +45,7 @@ pub enum PciHeaderType {
 
 /// Classes of PCI nodes.
 #[allow(dead_code)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, enumn::N)]
 pub enum PciClassCode {
     TooOld,
     MassStorage,
@@ -61,14 +62,34 @@ pub enum PciClassCode {
     SerialBusController,
     WirelessController,
     IntelligentIoController,
+    SatelliteCommunicationController,
     EncryptionController,
     DataAcquisitionSignalProcessing,
+    ProcessingAccelerator,
+    NonEssentialInstrumentation,
     Other = 0xff,
 }
 
 impl PciClassCode {
     pub fn get_register_value(&self) -> u8 {
         *self as u8
+    }
+}
+
+#[sorted]
+#[derive(Error, Debug)]
+pub enum PciClassCodeParseError {
+    #[error("Unknown class code")]
+    Unknown,
+}
+
+impl TryFrom<u8> for PciClassCode {
+    type Error = PciClassCodeParseError;
+    fn try_from(v: u8) -> std::result::Result<PciClassCode, PciClassCodeParseError> {
+        match PciClassCode::n(v) {
+            Some(class) => Ok(class),
+            None => Err(PciClassCodeParseError::Unknown),
+        }
     }
 }
 
