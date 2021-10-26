@@ -43,7 +43,9 @@
 //! }
 //! ```
 
+use std::convert::TryFrom;
 use std::result;
+use std::str::FromStr;
 
 use remain::sorted;
 use thiserror::Error;
@@ -393,6 +395,140 @@ pub fn print_help(program_name: &str, required_arg: &str, args: &[Argument]) {
     }
 }
 
+pub struct KeyValuePair<'a> {
+    context: &'a str,
+    key: &'a str,
+    value: Option<&'a str>,
+}
+
+impl<'a> KeyValuePair<'a> {
+    fn handle_parse_err<T, E: std::error::Error>(
+        &self,
+        result: std::result::Result<T, E>,
+    ) -> Result<T> {
+        result.map_err(|e| {
+            self.invalid_value_err(format!(
+                "Failed to parse parameter `{}` as {}: {}",
+                self.key,
+                std::any::type_name::<T>(),
+                e.to_string()
+            ))
+        })
+    }
+
+    pub fn key(&self) -> &'a str {
+        self.key
+    }
+
+    pub fn value(&self) -> Result<&'a str> {
+        self.value.ok_or(Error::ExpectedValue(format!(
+            "{}: parameter `{}` requires a value",
+            self.context, self.key
+        )))
+    }
+
+    pub fn parse_numeric<T>(&self) -> Result<T>
+    where
+        T: TryFrom<u64>,
+        <T as TryFrom<u64>>::Error: std::error::Error,
+    {
+        let val = self.value()?;
+        let numres = if val.starts_with("0x") || val.starts_with("0X") {
+            u64::from_str_radix(&val[2..], 16)
+        } else {
+            u64::from_str(val)
+        };
+        let num = self.handle_parse_err(numres)?;
+        self.handle_parse_err(T::try_from(num))
+    }
+
+    pub fn parse<T>(&self) -> Result<T>
+    where
+        T: FromStr,
+        <T as FromStr>::Err: std::error::Error,
+    {
+        self.handle_parse_err(T::from_str(self.value()?))
+    }
+
+    pub fn parse_or<T>(&self, default: T) -> Result<T>
+    where
+        T: FromStr,
+        <T as FromStr>::Err: std::error::Error,
+    {
+        match self.value {
+            Some(v) => self.handle_parse_err(T::from_str(v)),
+            None => Ok(default),
+        }
+    }
+
+    pub fn invalid_key_err(&self) -> Error {
+        Error::UnknownArgument(format!(
+            "{}: Unknown parameter `{}`",
+            self.context, self.key
+        ))
+    }
+
+    pub fn invalid_value_err(&self, description: String) -> Error {
+        Error::InvalidValue {
+            value: self
+                .value
+                .expect("invalid value error without value")
+                .to_string(),
+            expected: format!("{}: {}", self.context, description),
+        }
+    }
+}
+
+/// Parse a string of delimiter-separated key-value options. This is intended to simplify parsing
+/// of command-line options that take a bunch of parameters encoded into the argument, e.g. for
+/// setting up an emulated hardware device. Returns an Iterator of KeyValuePair, which provides
+/// convenience functions to parse numeric values and performs appropriate error handling.
+///
+/// `flagname` - name of the command line parameter, used as context in error messages
+/// `s` - the string to parse
+/// `delimiter` - the character that separates individual pairs
+///
+/// Usage example:
+/// ```
+/// # use crosvm::argument::{Result, parse_key_value_options};
+///
+/// fn parse_turbo_button_parameters(s: &str) -> Result<(String, u32, bool)> {
+///     let mut color = String::new();
+///     let mut speed = 0u32;
+///     let mut turbo = false;
+///
+///     for opt in parse_key_value_options("turbo-button", s, ',') {
+///         match opt.key() {
+///             "color" => color = opt.value()?.to_string(),
+///             "speed" => speed = opt.parse_numeric::<u32>()?,
+///             "turbo" => turbo = opt.parse_or::<bool>(true)?,
+///             _ => return Err(opt.invalid_key_err()),
+///         }
+///     }
+///
+///     Ok((color, speed, turbo))
+/// }
+///
+/// assert_eq!(parse_turbo_button_parameters("color=red,speed=0xff,turbo").unwrap(),
+///            ("red".to_string(), 0xff, true))
+/// ```
+///
+/// TODO: upgrade `delimiter` to generic Pattern support once that has been stabilized
+/// (https://github.com/rust-lang/rust/issues/27721)
+pub fn parse_key_value_options<'a>(
+    flagname: &'a str,
+    s: &'a str,
+    delimiter: char,
+) -> impl Iterator<Item = KeyValuePair<'a>> {
+    s.split(delimiter)
+        .map(|frag| frag.splitn(2, '='))
+        .map(move |mut kv| KeyValuePair {
+            context: flagname,
+            key: kv.next().unwrap_or(""),
+            value: kv.next(),
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -535,5 +671,37 @@ mod tests {
             run_case(["--gpu=2D", "--bar=stuff", "file1"].iter()).unwrap(),
             "2D"
         );
+    }
+
+    #[test]
+    fn parse_key_value_options_simple() {
+        let mut opts = parse_key_value_options("test", "fruit=apple,number=13,flag,hex=0x123", ',');
+
+        let kv1 = opts.next().unwrap();
+        assert_eq!(kv1.key(), "fruit");
+        assert_eq!(kv1.value().unwrap(), "apple");
+
+        let kv2 = opts.next().unwrap();
+        assert_eq!(kv2.key(), "number");
+        assert_eq!(kv2.parse::<u32>().unwrap(), 13);
+
+        let kv3 = opts.next().unwrap();
+        assert_eq!(kv3.key(), "flag");
+        assert!(kv3.value().is_err());
+        assert!(kv3.parse_or::<bool>(true).unwrap());
+
+        let kv4 = opts.next().unwrap();
+        assert_eq!(kv4.key(), "hex");
+        assert_eq!(kv4.parse_numeric::<u32>().unwrap(), 0x123);
+
+        assert!(opts.next().is_none());
+    }
+
+    #[test]
+    fn parse_key_value_options_overflow() {
+        let mut opts = parse_key_value_options("test", "key=1000000000000000", ',');
+        let kv = opts.next().unwrap();
+        assert!(kv.parse::<u32>().is_err());
+        assert!(kv.parse_numeric::<u32>().is_err());
     }
 }
