@@ -17,7 +17,9 @@ use vm_memory::GuestAddress;
 use gdbstub::arch::Arch;
 use gdbstub::target::ext::base::singlethread::{ResumeAction, SingleThreadOps, StopReason};
 use gdbstub::target::ext::base::{BaseOps, GdbInterrupt};
-use gdbstub::target::ext::breakpoints::{Breakpoints, BreakpointsOps, HwBreakpoint};
+use gdbstub::target::ext::breakpoints::{
+    Breakpoints, BreakpointsOps, HwBreakpoint, HwBreakpointOps,
+};
 use gdbstub::target::TargetError::NonFatal;
 use gdbstub::target::{Target, TargetResult};
 use gdbstub::Connection;
@@ -292,6 +294,12 @@ impl SingleThreadOps for GdbStub {
     }
 }
 
+impl Breakpoints for GdbStub {
+    fn hw_breakpoint(&mut self) -> Option<HwBreakpointOps<Self>> {
+        Some(self)
+    }
+}
+
 impl HwBreakpoint for GdbStub {
     /// Add a new hardware breakpoint.
     /// Return `Ok(false)` if the operation could not be completed.
@@ -346,5 +354,3 @@ impl HwBreakpoint for GdbStub {
         }
     }
 }
-
-impl Breakpoints for GdbStub {}
