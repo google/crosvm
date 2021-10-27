@@ -203,6 +203,17 @@ def cargo_build_executables(
     yield from cargo("test", cwd, ["--no-run", *flags], env)
 
 
+def build_common_crate(build_env: dict[str, str], crate_name: str):
+    print(f"Building tests for: common/{crate_name}")
+    return list(
+        cargo_build_executables(
+            [],
+            env=build_env,
+            cwd=COMMON_ROOT / crate_name,
+        )
+    )
+
+
 def build_all_binaries(target: TestTarget, target_arch: Arch):
     """Discover all crates and build them."""
     build_env = os.environ.copy()
@@ -219,15 +230,17 @@ def build_all_binaries(target: TestTarget, target_arch: Arch):
         main_crates, env=build_env, features=set(["all-linux"])
     )
 
-    for crate in list_common_crates():
-        if not should_build_crate(crate, target_arch):
-            continue
-        print(f"Building tests for: common/{crate}")
-        yield from cargo_build_executables(
-            [],
-            env=build_env,
-            cwd=COMMON_ROOT / crate,
-        )
+    common_crates = [
+        crate
+        for crate in list_common_crates()
+        if should_build_crate(crate, target_arch)
+    ]
+
+    with Pool(PARALLELISM) as pool:
+        for executables in pool.imap(
+            functools.partial(build_common_crate, build_env), common_crates
+        ):
+            yield from executables
 
 
 def execute_test(target: TestTarget, executable: Executable):
