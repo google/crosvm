@@ -28,21 +28,57 @@ overflow-checks = true
 # that are not dependencies of the crosvm root crate.
 [workspace]
 members = [
-    "fuzz",
-    "qcow_utils",
+    "aarch64",
+    "acpi_tables",
+    "arch",
+    "bit_field",
+    "crosvm-fuzz",
+    "crosvm_plugin",
+    "devices",
+    "disk",
+    "fuse",
+    "gpu_display",
+    "hypervisor",
     "integration_tests",
+    "kernel_cmdline",
+    "kernel_loader",
+    "kvm",
+    "kvm_sys",
+    "libcras_stub",
     "libcrosvm_control",
+    "libvda",
+    "linux_input_sys",
+    "net_sys",
+    "net_util",
+    "power_monitor",
+    "protos",
+    "qcow_utils",
+    "resources",
+    "rutabaga_gfx",
+    "system_api_stub",
+    "tpm2",
+    "tpm2-sys",
+    "usb_sys",
+    "usb_util",
+    "vfio_sys",
+    "vhost",
+    "virtio_sys",
+    "vm_control",
+    "vm_memory",
+    "x86_64",
 ]
 exclude = [
-    "assertions",
-    "base",
-    "cros_async",
-    "data_model",
-    "sync",
-    "sys_util",
-    "tempfile",
-    "vm_memory",
-    "audio_streams",
+    "common/assertions",
+    "common/audio_streams",
+    "common/base",
+    "common/cros-fuzz",
+    "common/cros_async",
+    "common/data_model",
+    "common/enumn",
+    "common/io_uring",
+    "common/p9",
+    "common/sync",
+    "common/sys_util",
 ]
 
 [features]
@@ -79,7 +115,7 @@ x = ["devices/x"]
 
 [dependencies]
 arch = { path = "arch" }
-assertions = { path = "assertions" }
+assertions = { path = "common/assertions" }
 audio_streams = "*"
 base = "*"
 bit_field = { path = "bit_field" }
@@ -87,7 +123,7 @@ crosvm_plugin = { path = "crosvm_plugin", optional = true }
 data_model = "*"
 devices = { path = "devices" }
 disk = { path = "disk" }
-enumn = { path = "enumn" }
+enumn = { path = "common/enumn" }
 gdbstub = { version = "0.5.0", optional = true }
 gdbstub_arch = { version = "0.1.0", optional = true }
 rutabaga_gfx = { path = "rutabaga_gfx"}
@@ -106,7 +142,7 @@ protos = { path = "protos", optional = true }
 remain = "*"
 resources = { path = "resources" }
 serde_json = "*"
-sync = { path = "sync" }
+sync = { path = "common/sync" }
 tempfile = "3"
 thiserror = { version = "1.0.20" }
 vhost = { path = "vhost" }
@@ -124,16 +160,16 @@ aarch64 = { path = "aarch64" }
 base = "*"
 
 [patch.crates-io]
-assertions = { path = "assertions" }
-audio_streams = { path = "audio_streams" }
-base = { path = "base" }
-cros_async =  { path = "cros_async" }
+assertions = { path = "common/assertions" }
+audio_streams = { path = "common/audio_streams" }
+base = { path = "common/base" }
+cros_async =  { path = "common/cros_async" }
 cros_fuzz = { path = "common/cros-fuzz" } # ignored by ebuild
-data_model = { path = "data_model" }
+data_model = { path = "common/data_model" }
 libcras = { path = "libcras_stub" } # ignored by ebuild
 p9 = { path = "common/p9" } # ignored by ebuild
-sync = { path = "sync" }
-sys_util = { path = "sys_util" }
+sync = { path = "common/sync" }
+sys_util = { path = "common/sys_util" }
 system_api = { path = "system_api_stub" } # ignored by ebuild
 wire_format_derive = { path = "common/p9/wire_format_derive" } # ignored by ebuild
 minijail = { path = "third_party/minijail/rust/minijail" } # ignored by ebuild

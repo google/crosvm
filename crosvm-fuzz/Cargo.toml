@@ -6,14 +6,14 @@ edition = "2018"
 
 [dependencies]
 cros_fuzz = "*"
-data_model = { path = "../data_model" }
+data_model = { path = "../common/data_model" }
 devices = { path = "../devices" }
 disk = { path = "../disk" }
 fuse = { path = "../fuse" }
 kernel_loader = { path = "../kernel_loader" }
 libc = "*"
 rand = "0.6"
-base = { path = "../base" }
+base = { path = "../common/base" }
 tempfile = "3"
 usb_util = { path = "../usb_util" }
 vm_memory = { path = "../vm_memory" }

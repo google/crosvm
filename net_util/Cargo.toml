@@ -6,9 +6,9 @@ edition = "2018"
 
 [dependencies]
 libc = "*"
-data_model = { path = "../data_model" }
+data_model = { path = "../common/data_model" }
 net_sys = { path = "../net_sys" }
-base = { path = "../base" }
-cros_async = { path = "../cros_async" }
+base = { path = "../common/base" }
+cros_async = { path = "../common/cros_async" }
 remain = "*"
 thiserror = "*"

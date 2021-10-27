@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 libc = "*"
-sys_util = { path = "../../sys_util" } # provided by ebuild
+sys_util = { path = "../sys_util" } # provided by ebuild
 wire_format_derive = { path = "wire_format_derive", version = "*" }
 
 [features]

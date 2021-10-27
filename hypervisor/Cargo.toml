@@ -6,13 +6,13 @@ edition = "2018"
 
 [dependencies]
 bit_field = { path = "../bit_field" }
-data_model = { path = "../data_model" }
+data_model = { path = "../common/data_model" }
 downcast-rs = "1.2.0"
-enumn = { path = "../enumn" }
+enumn = { path = "../common/enumn" }
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
 serde = { version = "1", features = [ "derive" ] }
-sync = { path = "../sync" }
-base = { path = "../base" }
+sync = { path = "../common/sync" }
+base = { path = "../common/base" }
 vm_memory = { path = "../vm_memory" }

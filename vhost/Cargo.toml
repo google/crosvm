@@ -5,10 +5,10 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [dependencies]
-assertions = { path = "../assertions" }
+assertions = { path = "../common/assertions" }
 libc = "*"
 net_util = { path = "../net_util" }
-base = { path = "../base" }
+base = { path = "../common/base" }
 remain = "*"
 thiserror = "*"
 virtio_sys = { path = "../virtio_sys" }

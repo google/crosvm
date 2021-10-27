@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 libc = "*"
-base = { path = "../base" }
+base = { path = "../common/base" }
 serde = { version = "1", features = ["derive"] }
 remain = "*"
 thiserror = "*"

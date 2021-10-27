@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-data_model = { path = "../data_model" }
+data_model = { path = "../common/data_model" }
 libc = "*"
-base = { path = "../base" }
+base = { path = "../common/base" }
 remain = "*"
 thiserror = "*"
 vm_memory = { path = "../vm_memory" }

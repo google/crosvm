@@ -11,7 +11,7 @@ path = "src/lib.rs"
 base = "*"
 bitflags = "1"
 data_model = "*"
-enumn = { path = "../enumn" }
+enumn = { path = "../common/enumn" }
 libc = "*"
 remain = "0.2"
 thiserror = "1.0.20"

@@ -14,11 +14,11 @@ minigbm = []
 vulkano = []
 
 [dependencies]
-data_model = { path = "../data_model" }
+data_model = { path = "../common/data_model" }
 libc = "*"
-base = { path = "../base" }
+base = { path = "../common/base" }
 remain = "*"
-sync = { path = "../sync" }
+sync = { path = "../common/sync" }
 thiserror = "*"
 #vulkano = {git = "https:/github.com/vulkano-rs/vulkano.git", optional = true}
 

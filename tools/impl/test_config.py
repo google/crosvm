@@ -29,7 +29,7 @@ CRATE_OPTIONS: dict[str, list[TestOption]] = {
     "crosvm_plugin": [TestOption.BUILD_X86_ONLY],
     "devices": [TestOption.SINGLE_THREADED],
     "disk": [TestOption.RUN_X86_ONLY],  # b/202294155
-    "fuzz": [TestOption.DO_NOT_BUILD],  # b/194499769
+    "crosvm-fuzz": [TestOption.DO_NOT_BUILD],  # b/194499769
     "hypervisor": [TestOption.RUN_X86_ONLY],  # b/181672912
     "integration_tests": [
         TestOption.SINGLE_THREADED,

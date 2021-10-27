@@ -5,9 +5,9 @@ authors = ["The Chromium OS Authors"]
 edition = "2018"
 
 [dependencies]
-data_model = { path = "../data_model" }
+data_model = { path = "../common/data_model" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
-base = { path = "../base" }
-sync = { path = "../sync" }
+base = { path = "../common/base" }
+sync = { path = "../common/sync" }
 vm_memory = { path = "../vm_memory" }

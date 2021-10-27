@@ -6,7 +6,7 @@ edition = "2018"
 links = "vda"
 
 [dependencies]
-enumn = { path = "../enumn" }
+enumn = { path = "../common/enumn" }
 libc = "*"
 
 [build-dependencies]

@@ -12,7 +12,7 @@ composite-disk = ["crc32fast", "protos", "protobuf", "uuid"]
 
 [dependencies]
 async-trait = "0.1.36"
-base = { path = "../base" }
+base = { path = "../common/base" }
 crc32fast = { version = "1.2.1", optional = true }
 libc = "*"
 protobuf = { version = "2.3", optional = true }
@@ -20,8 +20,8 @@ remain = "*"
 tempfile = "3"
 thiserror = "*"
 uuid = { version = "0.8.2", features = ["v4"], optional = true }
-cros_async = { path = "../cros_async" }
-data_model = { path = "../data_model" }
+cros_async = { path = "../common/cros_async" }
+data_model = { path = "../common/data_model" }
 protos = { path = "../protos", features = ["composite-disk"], optional = true }
 vm_memory = { path = "../vm_memory" }
 
