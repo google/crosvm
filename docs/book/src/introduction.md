@@ -15,4 +15,9 @@ made of a root file system image and a kernel binary, are given as input to
 crosvm and then crosvm will run the operating system using the platform's
 hypervisor.
 
+*   [Source code](https://chromium.googlesource.com/chromiumos/platform/crosvm/)
+    *   [GitHub mirror](https://github.com/google/crosvm)
+    *   Files for this book are under [/docs/](https://chromium.googlesource.com/chromiumos/platform/crosvm/+/HEAD/docs/).
+*   [Issue tracker](https://bugs.chromium.org/p/chromium/issues/list?q=component:OS%3ESystems%3EContainers)
+
 ![logo](./logo.svg)
