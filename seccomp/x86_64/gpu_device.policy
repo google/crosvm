@@ -39,6 +39,7 @@ rt_sigaction: 1
 rt_sigprocmask: 1
 rt_sigreturn: 1
 sched_getaffinity: 1
+sched_yield: 1
 sendmsg: 1
 sendto: 1
 set_robust_list: 1
@@ -101,6 +102,3 @@ access: 1
 getgid: 1
 getegid: 1
 getcwd: 1
-
-# Rules for virglrenderer
-sched_yield: 1
