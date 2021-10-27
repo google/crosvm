@@ -62,13 +62,15 @@ impl AddressAllocator {
         })
     }
 
-    fn internal_allocate_with_align(
+    /// Allocates a range of addresses from the managed region with an optional tag
+    /// and minimal alignment. Returns allocated_address. (allocated_address, size, tag)
+    /// can be retrieved through the `get` method.
+    pub fn allocate_with_align(
         &mut self,
         size: u64,
         alloc: Alloc,
         tag: String,
         alignment: u64,
-        reverse: bool,
     ) -> Result<u64> {
         let alignment = cmp::max(self.alignment, alignment);
 
@@ -82,42 +84,24 @@ impl AddressAllocator {
             return Err(Error::BadAlignment);
         }
 
-        let region = if !reverse {
-            // finds first region matching alignment and size.
-            self.regions
-                .iter()
-                .find(|range| {
-                    match range.0 % alignment {
-                        0 => range.0.checked_add(size - 1),
-                        r => range.0.checked_add(size - 1 + alignment - r),
-                    }
-                    .map_or(false, |end| end <= range.1)
-                })
-                .cloned()
-        } else {
-            // finds last region matching alignment and size.
-            self.regions
-                .iter()
-                .rev()
-                .find(|range| {
-                    range
-                        .1
-                        .checked_sub(size - 1)
-                        .map_or(false, |start| start & !(alignment - 1) >= range.0)
-                })
-                .cloned()
-        };
-
-        match region {
+        // finds first region matching alignment and size.
+        match self
+            .regions
+            .iter()
+            .find(|range| {
+                match range.0 % alignment {
+                    0 => range.0.checked_add(size - 1),
+                    r => range.0.checked_add(size - 1 + alignment - r),
+                }
+                .map_or(false, |end| end <= range.1)
+            })
+            .cloned()
+        {
             Some(slot) => {
                 self.regions.remove(&slot);
-                let start = if !reverse {
-                    match slot.0 % alignment {
-                        0 => slot.0,
-                        r => slot.0 + alignment - r,
-                    }
-                } else {
-                    (slot.1 - (size - 1)) & !(alignment - 1)
+                let start = match slot.0 % alignment {
+                    0 => slot.0,
+                    r => slot.0 + alignment - r,
                 };
                 let end = start + size - 1;
                 if slot.0 < start {
@@ -132,32 +116,6 @@ impl AddressAllocator {
             }
             None => Err(Error::OutOfSpace),
         }
-    }
-
-    /// Allocates a range of addresses from the reverse managed region with an optional tag
-    /// and minimal alignment. Returns allocated_address. (allocated_address, size, tag)
-    /// can be retrieved through the `get` method.
-    pub fn reverse_allocate_with_align(
-        &mut self,
-        size: u64,
-        alloc: Alloc,
-        tag: String,
-        alignment: u64,
-    ) -> Result<u64> {
-        self.internal_allocate_with_align(size, alloc, tag, alignment, true)
-    }
-
-    /// Allocates a range of addresses from the managed region with an optional tag
-    /// and minimal alignment. Returns allocated_address. (allocated_address, size, tag)
-    /// can be retrieved through the `get` method.
-    pub fn allocate_with_align(
-        &mut self,
-        size: u64,
-        alloc: Alloc,
-        tag: String,
-        alignment: u64,
-    ) -> Result<u64> {
-        self.internal_allocate_with_align(size, alloc, tag, alignment, false)
     }
 
     pub fn allocate(&mut self, size: u64, alloc: Alloc, tag: String) -> Result<u64> {

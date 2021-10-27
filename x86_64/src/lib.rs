@@ -362,7 +362,7 @@ impl arch::LinuxArch for X8664arch {
         SystemAllocator::builder()
             .add_io_addresses(0xc000, 0x10000)
             .add_low_mmio_addresses(END_ADDR_BEFORE_32BITS, MMIO_SIZE)
-            .add_high_mmio_addresses(high_mmio_start, Self::get_phys_max_addr() - high_mmio_start)
+            .add_high_mmio_addresses(high_mmio_start, u64::max_value() - high_mmio_start)
             .create_allocator(X86_64_IRQ_BASE)
             .unwrap()
     }

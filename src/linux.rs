@@ -1157,7 +1157,7 @@ fn create_pmem_device(
 
     let mapping_address = resources
         .mmio_allocator(MmioType::High)
-        .reverse_allocate_with_align(
+        .allocate_with_align(
             arena_size,
             Alloc::PmemDevice(index),
             format!("pmem_disk_image_{}", index),
