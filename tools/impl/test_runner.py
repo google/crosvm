@@ -56,6 +56,7 @@ TEST_TIMEOUT_SECS = 60
 PARALLELISM = 4
 
 CROSVM_ROOT = Path(__file__).parent.parent.parent.resolve()
+COMMON_ROOT = CROSVM_ROOT / "common"
 
 
 class ExecutableResults(object):
@@ -106,12 +107,12 @@ def should_run_executable(executable: Executable, target_arch: Arch):
 def list_main_crates():
     yield "crosvm"
     for path in CROSVM_ROOT.glob("*/Cargo.toml"):
-        yield str(path.parent.relative_to(CROSVM_ROOT))
+        yield path.parent.name
 
 
-def list_extra_crates():
-    for path in CROSVM_ROOT.glob("common/*/Cargo.toml"):
-        yield str(path.parent.relative_to(CROSVM_ROOT))
+def list_common_crates():
+    for path in COMMON_ROOT.glob("*/Cargo.toml"):
+        yield path.parent.name
 
 
 def cargo(
@@ -218,14 +219,14 @@ def build_all_binaries(target: TestTarget, target_arch: Arch):
         main_crates, env=build_env, features=set(["all-linux"])
     )
 
-    for crate_path in list_extra_crates():
-        if not should_build_crate(crate_path, target_arch):
+    for crate in list_common_crates():
+        if not should_build_crate(crate, target_arch):
             continue
-        print("Building tests for:", crate_path)
+        print(f"Building tests for: common/{crate}")
         yield from cargo_build_executables(
             [],
             env=build_env,
-            cwd=CROSVM_ROOT.joinpath(crate_path),
+            cwd=COMMON_ROOT / crate,
         )
 
 
@@ -389,7 +390,7 @@ def main():
 
 def verify_crate_options():
     """Verify that CRATE_OPTIONS are for existing crates."""
-    all_crates = list(list_main_crates()) + list(list_extra_crates())
+    all_crates = list(list_main_crates()) + list(list_common_crates())
     for crate, _ in CRATE_OPTIONS.items():
         if crate not in all_crates:
             raise Exception("No such crate: %s" % crate)
