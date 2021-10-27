@@ -1,0 +1,43 @@
+#!/bin/sh
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Uprev ebuild files of crosvm (and related packages) to the currently checked
+# out commit.
+# This uses the same process that PUpr is using when generating uprev CLs.
+
+cd $(dirname $0)
+
+CHROMITE_DIR=../../../../../chromite
+if ! [ -e "${CHROMITE_DIR}" ]; then
+    echo "Run from ChromeOS checkout."
+    exit 1
+fi
+
+IN=$(mktemp)
+OUT=$(mktemp)
+
+echo '{
+    "package_info": {
+        "category": "chromeos-base",
+        "package_name": "crosvm"
+    },
+    "versions": [
+        {
+            "repository": "dummy",
+            "ref": "dummy",
+            "revision": "dummy"
+        }
+    ]
+}' >> "${IN}"
+
+${CHROMITE_DIR}/bin/build_api \
+    --input-json "${IN}" \
+    --output-json "${OUT}" \
+    chromite.api.PackageService/UprevVersionedPackage
+
+cat "${OUT}"
+
+rm "${IN}"
+rm "${OUT}"
