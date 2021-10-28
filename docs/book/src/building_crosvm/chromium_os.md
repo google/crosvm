@@ -4,9 +4,8 @@ crosvm is included in the ChromeOS source tree at `src/platform/crosvm`. Crosvm
 can be built with ChromeOS features using Portage or cargo.
 
 If ChromeOS-specific features are not needed, or you want to run the full test
-suite of crosvm, the [Building for Linux](#building-for-linux) and
-[Running crosvm tests](#running-crosvm-tests) workflows can be used from the
-crosvm repository of ChromeOS as well.
+suite of crosvm, the [Building for Linux](#building-for-linux) workflows can be
+used from the crosvm repository of ChromeOS as well.
 
 ## Using Portage
 
@@ -29,4 +28,4 @@ Portage.
 Since development using portage can be slow, it's possible to build crosvm for
 ChromeOS using cargo for faster iteration times. To do so, the `Cargo.toml` file
 needs to be updated to point to dependencies provided by ChromeOS using
-`./setup_cros_cargo.sh`.
+`./tools/chromeos/setup_cargo`.
