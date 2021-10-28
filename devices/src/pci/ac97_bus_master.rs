@@ -210,7 +210,7 @@ pub struct Ac97BusMaster {
     pmic_info: AudioThreadInfo,
 
     // Audio server used to create playback or capture streams.
-    audio_server: Box<dyn ShmStreamSource>,
+    audio_server: Box<dyn ShmStreamSource<base::Error>>,
 
     // Thread for hadlind IRQ resample events from the guest.
     irq_resample_thread: Option<thread::JoinHandle<()>>,
@@ -219,7 +219,7 @@ pub struct Ac97BusMaster {
 impl Ac97BusMaster {
     /// Creates an Ac97BusMaster` object that plays audio from `mem` to streams provided by
     /// `audio_server`.
-    pub fn new(mem: GuestMemory, audio_server: Box<dyn ShmStreamSource>) -> Self {
+    pub fn new(mem: GuestMemory, audio_server: Box<dyn ShmStreamSource<base::Error>>) -> Self {
         Ac97BusMaster {
             mem,
             regs: Arc::new(Mutex::new(Ac97BusMasterRegs::new())),
@@ -570,12 +570,9 @@ impl Ac97BusMaster {
                 sample_rate,
                 buffer_frames,
                 &Self::stream_effects(func),
-                self.mem
-                    .offset_region(starting_offsets[0])
-                    .map_err(|e| {
-                        AudioError::GuestRegion(GuestMemoryError::ReadingGuestBufferAddress(e))
-                    })?
-                    .inner(),
+                self.mem.offset_region(starting_offsets[0]).map_err(|e| {
+                    AudioError::GuestRegion(GuestMemoryError::ReadingGuestBufferAddress(e))
+                })?,
                 starting_offsets,
             )
             .map_err(AudioError::CreateStream)?;

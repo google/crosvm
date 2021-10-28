@@ -12,7 +12,9 @@ use super::shm_vios::{VioSClient, VioSStreamParams};
 use crate::virtio::snd::common::*;
 use crate::virtio::snd::constants::*;
 
-use audio_streams::shm_streams::{BufferSet, ServerRequest, ShmStream, ShmStreamSource};
+use audio_streams::shm_streams::{
+    BufferSet, ServerRequest, SharedMemory as AudioSharedMemory, ShmStream, ShmStreamSource,
+};
 use audio_streams::{BoxError, SampleFormat, StreamDirection, StreamEffect};
 
 use base::{error, MemoryMapping, MemoryMappingBuilder, SharedMemory, SharedMemoryUnix};
@@ -20,12 +22,12 @@ use data_model::VolatileMemory;
 use sync::Mutex;
 
 use std::fs::File;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{FromRawFd, RawFd};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use sys_util::{Error as SysError, SharedMemory as SysSharedMemory};
+use sys_util::Error as SysError;
 
 use super::shm_vios::{Error, Result};
 
@@ -84,7 +86,7 @@ impl VioSShmStreamSource {
         frame_rate: u32,
         buffer_size: usize,
         _effects: &[StreamEffect],
-        client_shm: &SysSharedMemory,
+        client_shm: &dyn AudioSharedMemory<Error = base::Error>,
         _buffer_offsets: [u64; 2],
     ) -> GenericResult<Box<dyn ShmStream>> {
         let frame_size = num_channels * format.sample_bytes();
@@ -124,7 +126,7 @@ impl VioSShmStreamSource {
     }
 }
 
-impl ShmStreamSource for VioSShmStreamSource {
+impl ShmStreamSource<base::Error> for VioSShmStreamSource {
     /// Creates a new stream
     #[allow(clippy::too_many_arguments)]
     fn new_stream(
@@ -135,7 +137,7 @@ impl ShmStreamSource for VioSShmStreamSource {
         frame_rate: u32,
         buffer_size: usize,
         effects: &[StreamEffect],
-        client_shm: &SysSharedMemory,
+        client_shm: &dyn AudioSharedMemory<Error = base::Error>,
         buffer_offsets: [u64; 2],
     ) -> GenericResult<Box<dyn ShmStream>> {
         self.vios_client.start_bg_thread()?;
@@ -200,7 +202,7 @@ impl VioSndShmStream {
         stream_id: u32,
         direction: StreamDirection,
         vios_client: Arc<VioSClient>,
-        client_shm: &SysSharedMemory,
+        client_shm: &dyn AudioSharedMemory<Error = base::Error>,
         state: Arc<Mutex<StreamState>>,
     ) -> GenericResult<Box<dyn ShmStream>> {
         let interval = Duration::from_millis(buffer_size as u64 * 1000 / frame_rate as u64);

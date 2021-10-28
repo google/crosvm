@@ -127,7 +127,7 @@ impl Ac97Dev {
     pub fn new(
         mem: GuestMemory,
         backend: Ac97Backend,
-        audio_server: Box<dyn ShmStreamSource>,
+        audio_server: Box<dyn ShmStreamSource<base::Error>>,
     ) -> Self {
         let config_regs = PciConfiguration::new(
             0x8086,

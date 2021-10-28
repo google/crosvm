@@ -8,7 +8,6 @@ use std::time::{Duration, Instant};
 
 use remain::sorted;
 use sync::{Condvar, Mutex};
-use sys_util::SharedMemory;
 use thiserror::Error;
 
 use crate::{BoxError, SampleFormat, StreamDirection, StreamEffect};
@@ -153,8 +152,28 @@ pub trait ShmStream: Send {
     ) -> GenericResult<Option<ServerRequest>>;
 }
 
+/// `SharedMemory` specifies features of shared memory areas passed on to `ShmStreamSource`.
+pub trait SharedMemory {
+    type Error: std::error::Error;
+
+    /// Creates a new shared memory file descriptor without specifying a name.
+    fn anon(size: u64) -> Result<Self, Self::Error>
+    where
+        Self: Sized;
+
+    /// Gets the size in bytes of the shared memory.
+    ///
+    /// The size returned here does not reflect changes by other interfaces or users of the shared
+    /// memory file descriptor..
+    fn size(&self) -> u64;
+
+    /// Returns the underlying raw fd.
+    #[cfg(unix)]
+    fn as_raw_fd(&self) -> RawFd;
+}
+
 /// `ShmStreamSource` creates streams for playback or capture of audio.
-pub trait ShmStreamSource: Send {
+pub trait ShmStreamSource<E: std::error::Error>: Send {
     /// Creates a new [`ShmStream`](ShmStream)
     ///
     /// Creates a new `ShmStream` object, which allows:
@@ -190,7 +209,7 @@ pub trait ShmStreamSource: Send {
         frame_rate: u32,
         buffer_size: usize,
         effects: &[StreamEffect],
-        client_shm: &SharedMemory,
+        client_shm: &dyn SharedMemory<Error = E>,
         buffer_offsets: [u64; 2],
     ) -> GenericResult<Box<dyn ShmStream>>;
 
@@ -288,7 +307,7 @@ impl NullShmStreamSource {
     }
 }
 
-impl ShmStreamSource for NullShmStreamSource {
+impl<E: std::error::Error> ShmStreamSource<E> for NullShmStreamSource {
     fn new_stream(
         &mut self,
         _direction: StreamDirection,
@@ -297,7 +316,7 @@ impl ShmStreamSource for NullShmStreamSource {
         frame_rate: u32,
         buffer_size: usize,
         _effects: &[StreamEffect],
-        _client_shm: &SharedMemory,
+        _client_shm: &dyn SharedMemory<Error = E>,
         _buffer_offsets: [u64; 2],
     ) -> GenericResult<Box<dyn ShmStream>> {
         let new_stream = NullShmStream::new(buffer_size, num_channels, format, frame_rate);
@@ -433,7 +452,7 @@ impl MockShmStreamSource {
     }
 }
 
-impl ShmStreamSource for MockShmStreamSource {
+impl<E: std::error::Error> ShmStreamSource<E> for MockShmStreamSource {
     fn new_stream(
         &mut self,
         _direction: StreamDirection,
@@ -442,7 +461,7 @@ impl ShmStreamSource for MockShmStreamSource {
         frame_rate: u32,
         buffer_size: usize,
         _effects: &[StreamEffect],
-        _client_shm: &SharedMemory,
+        _client_shm: &dyn SharedMemory<Error = E>,
         _buffer_offsets: [u64; 2],
     ) -> GenericResult<Box<dyn ShmStream>> {
         let &(ref last_stream, ref cvar) = &*self.last_stream;
@@ -455,9 +474,30 @@ impl ShmStreamSource for MockShmStreamSource {
     }
 }
 
-#[cfg(test)]
+// Tests that run only for Unix, where `sys_util::SharedMemory` is used.
+#[cfg(all(test, unix))]
 pub mod tests {
     use super::*;
+
+    use std::os::unix::io::AsRawFd;
+    use sys_util::SharedMemory as SysSharedMemory;
+
+    impl SharedMemory for SysSharedMemory {
+        type Error = sys_util::Error;
+
+        fn anon(_: u64) -> Result<Self, Self::Error> {
+            SysSharedMemory::anon()
+        }
+
+        fn size(&self) -> u64 {
+            self.size()
+        }
+
+        #[cfg(unix)]
+        fn as_raw_fd(&self) -> RawFd {
+            AsRawFd::as_raw_fd(self)
+        }
+    }
 
     #[test]
     fn mock_trigger_callback() {
@@ -467,7 +507,7 @@ pub mod tests {
         let buffer_size = 480;
         let num_channels = 2;
         let format = SampleFormat::S24LE;
-        let shm = SharedMemory::anon().expect("Failed to create shm");
+        let shm = SysSharedMemory::anon().expect("Failed to create shm");
 
         let handle = std::thread::spawn(move || {
             let mut stream = thread_stream_source
@@ -510,7 +550,7 @@ pub mod tests {
         let buffer_size = 480;
         let interval = Duration::from_millis(buffer_size as u64 * 1000 / frame_rate as u64);
 
-        let shm = SharedMemory::anon().expect("Failed to create shm");
+        let shm = SysSharedMemory::anon().expect("Failed to create shm");
 
         let start = Instant::now();
 
