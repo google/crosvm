@@ -199,6 +199,8 @@ const MEM_32BIT_GAP_SIZE: u64 = 768 << 20;
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 const END_ADDR_BEFORE_32BITS: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
 const MMIO_SIZE: u64 = MEM_32BIT_GAP_SIZE - 0x8000000;
+// Linux (with 4-level paging) has a physical memory limit of 46 bits (64 TiB).
+const HIGH_MMIO_MAX_END: u64 = 1u64 << 46;
 const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
 const ZERO_PAGE_OFFSET: u64 = 0x7000;
 const TSS_ADDR: u64 = 0xfffbd000;
@@ -359,10 +361,11 @@ impl arch::LinuxArch for X8664arch {
 
     fn create_system_allocator(guest_mem: &GuestMemory) -> SystemAllocator {
         let high_mmio_start = Self::get_high_mmio_base(guest_mem);
+        let high_mmio_size = Self::get_high_mmio_size(guest_mem);
         SystemAllocator::builder()
             .add_io_addresses(0xc000, 0x10000)
             .add_low_mmio_addresses(END_ADDR_BEFORE_32BITS, MMIO_SIZE)
-            .add_high_mmio_addresses(high_mmio_start, u64::max_value() - high_mmio_start)
+            .add_high_mmio_addresses(high_mmio_start, high_mmio_size)
             .create_allocator(X86_64_IRQ_BASE)
             .unwrap()
     }
@@ -995,6 +998,17 @@ impl X8664arch {
         std::cmp::max(ram_end_round_2mb, 4 * GB)
     }
 
+    /// This returns the size of high mmio
+    ///
+    /// # Arguments
+    ///
+    /// * mem: The memory to be used by the guest
+    fn get_high_mmio_size(mem: &GuestMemory) -> u64 {
+        let phys_mem_end = Self::get_phys_max_addr() + 1;
+        let high_mmio_end = std::cmp::min(phys_mem_end, HIGH_MMIO_MAX_END);
+        high_mmio_end - Self::get_high_mmio_base(mem)
+    }
+
     /// This returns a minimal kernel command for this architecture
     fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
         let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
@@ -1135,7 +1149,7 @@ impl X8664arch {
                     aml::AddressSpaceCachable::NotCacheable,
                     true,
                     Self::get_high_mmio_base(mem),
-                    X8664arch::get_phys_max_addr(),
+                    Self::get_high_mmio_size(mem),
                 ),
             ]),
         );
