@@ -1,8 +1,6 @@
 # crosvm
 
-* [Home][home]
-* [CONTRIBUTING](/CONTRIBUTING.md)
-* [Architectural Overview](/docs/architecture.md)
-* [rust-vmm integration](/docs/rust-vmm.md)
-
-[home]: /README.md
+* [Home](/README.md)
+* [Contribution guide](/CONTRIBUTING.md)
+* [Architecture](/ARCHITECTURE.md)
+* [Book of crosvm](https://google.github.io/crosvm/)
