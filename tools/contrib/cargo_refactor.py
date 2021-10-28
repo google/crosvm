@@ -91,6 +91,7 @@ def main():
     crates_to_move = [
         "assertions",
         "audio_streams",
+        "base",
         "cros_async",
         "data_model",
         "enumn",
