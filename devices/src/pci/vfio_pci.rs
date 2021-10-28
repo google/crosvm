@@ -1071,7 +1071,12 @@ impl PciDevice for VfioPciDevice {
     fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
         for region in self.mmio_regions.iter().chain(self.io_regions.iter()) {
             if region.bar_index() == bar_num {
-                return Some(*region);
+                let command = self.config.read_config_byte(PCI_COMMAND);
+                if (region.is_memory() && (command & PCI_COMMAND_MEMORY == 0)) || region.is_io() {
+                    return None;
+                } else {
+                    return Some(*region);
+                }
             }
         }
 

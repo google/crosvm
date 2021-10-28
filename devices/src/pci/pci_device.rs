@@ -460,6 +460,8 @@ mod tests {
             }
         );
 
+        assert_eq!(test_dev.get_ranges(), Vec::new());
+
         // Re-enable mem and IO space.
         assert_eq!(
             test_dev.config_register_write(COMMAND_REG, 0, &3u32.to_le_bytes()),

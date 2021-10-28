@@ -550,6 +550,13 @@ impl PciConfiguration {
         let config = self.bar_configs.get(bar_num)?;
 
         if let Some(mut config) = config {
+            let command = self.read_reg(COMMAND_REG);
+            if (config.is_memory() && (command & COMMAND_REG_MEMORY_SPACE_MASK == 0))
+                || (config.is_io() && (command & COMMAND_REG_IO_SPACE_MASK == 0))
+            {
+                return None;
+            }
+
             // The address may have been modified by the guest, so the value in bar_configs
             // may be outdated. Replace it with the current value.
             config.addr = self.get_bar_addr(bar_num);
