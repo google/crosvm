@@ -146,3 +146,21 @@ Failures here will cause the commit queue to reject the change until it is
 re-added (CQ+2). Unfortunately, it is extremely common for false negatives to
 cause a change to get rejected, so be ready to re-apply the CQ+2 label if you're
 the owner of a ready to submit change.
+
+## Contributing to the documentation
+
+[The book of crosvm] is build with [mdBook]. Each markdown files must follow
+[Google Markdown style guide].
+
+To render the book locally, you need to install mdbook and [mdbook-mermaid],
+which should be installed when you run `./tools/install-deps`script.
+
+```bash
+cd crosvm/docs/book/
+mdbook serve # then the book will be served at http://localhost:3000
+```
+
+[The book of crosvm]: https://google.github.io/crosvm/
+[mdBook]: https://rust-lang.github.io/mdBook/
+[Google Markdown style guide]: https://github.com/google/styleguide/blob/gh-pages/docguide/style.md
+[mdbook-mermaid]: https://github.com/badboy/mdbook-mermaid
