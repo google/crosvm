@@ -157,8 +157,14 @@ which should be installed when you run `./tools/install-deps`script.
 
 ```bash
 cd crosvm/docs/book/
-mdbook serve # then the book will be served at http://localhost:3000
+mdbook build
 ```
+
+> Note: If you make a certain size of changes, it's recommended to reinstall
+> mdbook manually with `cargo install mdbook`, as `./tools/install-deps` only
+> installs a binary with some convenient features disabled. For example, the
+> full version of mdbook allows you to edit files while checking rendered
+> results.
 
 [The book of crosvm]: https://google.github.io/crosvm/
 [mdBook]: https://rust-lang.github.io/mdBook/
