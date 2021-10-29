@@ -8,11 +8,12 @@
 use std::fs::File;
 use std::io::ErrorKind;
 use std::marker::PhantomData;
+use std::mem;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::{mem, slice};
 
+use data_model::DataInit;
 use libc::{c_void, iovec};
 use sys_util::ScmSocket;
 
@@ -189,13 +190,7 @@ impl<R: Req> Endpoint<R> {
         hdr: &VhostUserMsgHeader<R>,
         fds: Option<&[RawFd]>,
     ) -> Result<()> {
-        // Safe because there can't be other mutable referance to hdr.
-        let mut iovs = unsafe {
-            [slice::from_raw_parts(
-                hdr as *const VhostUserMsgHeader<R> as *const u8,
-                mem::size_of::<VhostUserMsgHeader<R>>(),
-            )]
-        };
+        let mut iovs = [hdr.as_slice()];
         let bytes = self.send_iovec_all(&mut iovs[..], fds)?;
         if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
             return Err(Error::PartialMessage);
@@ -212,7 +207,7 @@ impl<R: Req> Endpoint<R> {
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
     /// * - PartialMessage: received a partial message.
-    pub fn send_message<T: Sized>(
+    pub fn send_message<T: Sized + DataInit>(
         &mut self,
         hdr: &VhostUserMsgHeader<R>,
         body: &T,
@@ -221,16 +216,7 @@ impl<R: Req> Endpoint<R> {
         if mem::size_of::<T>() > MAX_MSG_SIZE {
             return Err(Error::OversizedMsg);
         }
-        // Safe because there can't be other mutable referance to hdr and body.
-        let mut iovs = unsafe {
-            [
-                slice::from_raw_parts(
-                    hdr as *const VhostUserMsgHeader<R> as *const u8,
-                    mem::size_of::<VhostUserMsgHeader<R>>(),
-                ),
-                slice::from_raw_parts(body as *const T as *const u8, mem::size_of::<T>()),
-            ]
-        };
+        let mut iovs = [hdr.as_slice(), body.as_slice()];
         let bytes = self.send_iovec_all(&mut iovs[..], fds)?;
         if bytes != mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() {
             return Err(Error::PartialMessage);
@@ -249,7 +235,7 @@ impl<R: Req> Endpoint<R> {
     /// * - OversizedMsg: message size is too big.
     /// * - PartialMessage: received a partial message.
     /// * - IncorrectFds: wrong number of attached fds.
-    pub fn send_message_with_payload<T: Sized>(
+    pub fn send_message_with_payload<T: Sized + DataInit>(
         &mut self,
         hdr: &VhostUserMsgHeader<R>,
         body: &T,
@@ -269,17 +255,7 @@ impl<R: Req> Endpoint<R> {
             }
         }
 
-        // Safe because there can't be other mutable reference to hdr, body and payload.
-        let mut iovs = unsafe {
-            [
-                slice::from_raw_parts(
-                    hdr as *const VhostUserMsgHeader<R> as *const u8,
-                    mem::size_of::<VhostUserMsgHeader<R>>(),
-                ),
-                slice::from_raw_parts(body as *const T as *const u8, mem::size_of::<T>()),
-                payload,
-            ]
-        };
+        let mut iovs = [hdr.as_slice(), body.as_slice(), payload];
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() + len;
         let len = self.send_iovec_all(&mut iovs, fds)?;
         if len != total {
@@ -463,7 +439,7 @@ impl<R: Req> Endpoint<R> {
     /// * - SocketError: other socket related errors.
     /// * - PartialMessage: received a partial message.
     /// * - InvalidMessage: received a invalid message.
-    pub fn recv_body<T: Sized + Default + VhostUserMsgValidator>(
+    pub fn recv_body<T: Sized + DataInit + Default + VhostUserMsgValidator>(
         &mut self,
     ) -> Result<(VhostUserMsgHeader<R>, T, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
@@ -542,7 +518,7 @@ impl<R: Req> Endpoint<R> {
     /// * - PartialMessage: received a partial message.
     /// * - InvalidMessage: received a invalid message.
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::type_complexity))]
-    pub fn recv_payload_into_buf<T: Sized + Default + VhostUserMsgValidator>(
+    pub fn recv_payload_into_buf<T: Sized + DataInit + Default + VhostUserMsgValidator>(
         &mut self,
         buf: &mut [u8],
     ) -> Result<(VhostUserMsgHeader<R>, T, usize, Option<Vec<File>>)> {
@@ -865,7 +841,7 @@ mod tests {
 
         let mut features2 = 0u64;
         let slice = unsafe {
-            slice::from_raw_parts_mut(
+            std::slice::from_raw_parts_mut(
                 (&mut features2 as *mut u64) as *mut u8,
                 mem::size_of::<u64>(),
             )

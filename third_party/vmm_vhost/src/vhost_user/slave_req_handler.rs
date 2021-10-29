@@ -8,6 +8,8 @@ use std::os::unix::net::UnixStream;
 use std::slice;
 use std::sync::{Arc, Mutex};
 
+use data_model::DataInit;
+
 use super::connection::Endpoint;
 use super::message::*;
 use super::{take_single_file, Error, Result};
@@ -714,7 +716,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         }
     }
 
-    fn extract_request_body<T: Sized + VhostUserMsgValidator>(
+    fn extract_request_body<T: Sized + DataInit + VhostUserMsgValidator>(
         &self,
         hdr: &VhostUserMsgHeader<MasterReq>,
         size: usize,
@@ -741,7 +743,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         }
     }
 
-    fn new_reply_header<T: Sized>(
+    fn new_reply_header<T: Sized + DataInit>(
         &self,
         req: &VhostUserMsgHeader<MasterReq>,
         payload_size: usize,
@@ -777,7 +779,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         res
     }
 
-    fn send_reply_message<T>(
+    fn send_reply_message<T: DataInit>(
         &mut self,
         req: &VhostUserMsgHeader<MasterReq>,
         msg: &T,
@@ -787,7 +789,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         Ok(())
     }
 
-    fn send_reply_with_payload<T: Sized>(
+    fn send_reply_with_payload<T: Sized + DataInit>(
         &mut self,
         req: &VhostUserMsgHeader<MasterReq>,
         msg: &T,
