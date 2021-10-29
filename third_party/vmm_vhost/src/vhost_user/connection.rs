@@ -277,7 +277,7 @@ impl<R: Req> Endpoint<R> {
                     mem::size_of::<VhostUserMsgHeader<R>>(),
                 ),
                 slice::from_raw_parts(body as *const T as *const u8, mem::size_of::<T>()),
-                slice::from_raw_parts(payload.as_ptr() as *const u8, len),
+                payload,
             ]
         };
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() + len;
