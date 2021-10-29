@@ -7,7 +7,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
 
-use super::connection::Endpoint;
+use super::connection::{Endpoint, EndpointExt, SocketEndpoint};
 use super::message::*;
 use super::{Error, HandlerResult, Result};
 
@@ -122,7 +122,7 @@ impl<S: VhostUserMasterReqHandlerMut> VhostUserMasterReqHandler for Mutex<S> {
 /// [VhostUserMasterReqHandler]: trait.VhostUserMasterReqHandler.html
 pub struct MasterReqHandler<S: VhostUserMasterReqHandler> {
     // underlying Unix domain socket for communication
-    sub_sock: Endpoint<SlaveReq>,
+    sub_sock: SocketEndpoint<SlaveReq>,
     tx_sock: UnixStream,
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
@@ -145,7 +145,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         let (tx, rx) = UnixStream::pair().map_err(Error::SocketError)?;
 
         Ok(MasterReqHandler {
-            sub_sock: Endpoint::<SlaveReq>::from_stream(rx),
+            sub_sock: SocketEndpoint::<SlaveReq>::from_stream(rx),
             tx_sock: tx,
             reply_ack_negotiated: false,
             backend,

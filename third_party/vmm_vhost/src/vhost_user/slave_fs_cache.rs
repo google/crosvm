@@ -7,12 +7,12 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use super::connection::Endpoint;
+use super::connection::{EndpointExt, SocketEndpoint};
 use super::message::*;
 use super::{Error, HandlerResult, Result, VhostUserMasterReqHandler};
 
 struct SlaveFsCacheReqInternal {
-    sock: Endpoint<SlaveReq>,
+    sock: SocketEndpoint<SlaveReq>,
 
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
@@ -81,7 +81,7 @@ pub struct SlaveFsCacheReq {
 }
 
 impl SlaveFsCacheReq {
-    fn new(ep: Endpoint<SlaveReq>) -> Self {
+    fn new(ep: SocketEndpoint<SlaveReq>) -> Self {
         SlaveFsCacheReq {
             node: Arc::new(Mutex::new(SlaveFsCacheReqInternal {
                 sock: ep,
@@ -108,7 +108,7 @@ impl SlaveFsCacheReq {
 
     /// Create a new instance from a `UnixStream` object.
     pub fn from_stream(sock: UnixStream) -> Self {
-        Self::new(Endpoint::<SlaveReq>::from_stream(sock))
+        Self::new(SocketEndpoint::<SlaveReq>::from_stream(sock))
     }
 
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature.
@@ -173,7 +173,7 @@ mod tests {
     fn test_slave_fs_cache_recv_negative() {
         let (p1, p2) = UnixStream::pair().unwrap();
         let fs_cache = SlaveFsCacheReq::from_stream(p1);
-        let mut master = Endpoint::<SlaveReq>::from_stream(p2);
+        let mut master = SocketEndpoint::<SlaveReq>::from_stream(p2);
 
         let len = mem::size_of::<VhostUserFSSlaveMsg>();
         let mut hdr = VhostUserMsgHeader::new(

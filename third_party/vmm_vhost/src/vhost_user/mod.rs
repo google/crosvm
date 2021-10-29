@@ -27,7 +27,7 @@ use thiserror::Error as ThisError;
 pub mod message;
 
 mod connection;
-pub use self::connection::SocketListener;
+pub use self::connection::{SocketEndpoint, SocketListener};
 
 #[cfg(feature = "vhost-user-master")]
 mod master;
@@ -192,6 +192,7 @@ mod tests {
     use std::sync::{Arc, Barrier, Mutex};
     use std::thread;
 
+    use super::connection::SocketEndpoint;
     use super::dummy_slave::{DummySlaveReqHandler, VIRTIO_FEATURES};
     use super::message::*;
     use super::*;
@@ -203,7 +204,10 @@ mod tests {
         Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
     }
 
-    fn create_slave<P, S>(path: P, backend: Arc<S>) -> (Master, SlaveReqHandler<S>)
+    fn create_slave<P, S>(
+        path: P,
+        backend: Arc<S>,
+    ) -> (Master, SlaveReqHandler<S, SocketEndpoint<MasterReq>>)
     where
         P: AsRef<Path>,
         S: VhostUserSlaveReqHandler,

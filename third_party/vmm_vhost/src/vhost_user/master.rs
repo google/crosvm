@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use data_model::DataInit;
 use sys_util::EventFd;
 
-use super::connection::Endpoint;
+use super::connection::{Endpoint, EndpointExt, SocketEndpoint};
 use super::message::*;
 use super::{take_single_file, Error as VhostUserError, Result as VhostUserResult};
 use crate::backend::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
@@ -84,7 +84,7 @@ pub struct Master {
 
 impl Master {
     /// Create a new instance.
-    fn new(ep: Endpoint<MasterReq>, max_queue_num: u64) -> Self {
+    fn new(ep: SocketEndpoint<MasterReq>, max_queue_num: u64) -> Self {
         Master {
             node: Arc::new(Mutex::new(MasterInternal {
                 main_sock: ep,
@@ -106,7 +106,10 @@ impl Master {
 
     /// Create a new instance from a Unix stream socket.
     pub fn from_stream(sock: UnixStream, max_queue_num: u64) -> Self {
-        Self::new(Endpoint::<MasterReq>::from_stream(sock), max_queue_num)
+        Self::new(
+            SocketEndpoint::<MasterReq>::from_stream(sock),
+            max_queue_num,
+        )
     }
 
     /// Create a new vhost-user master endpoint.
@@ -118,7 +121,7 @@ impl Master {
     pub fn connect<P: AsRef<Path>>(path: P, max_queue_num: u64) -> Result<Self> {
         let mut retry_count = 5;
         let endpoint = loop {
-            match Endpoint::<MasterReq>::connect(&path) {
+            match SocketEndpoint::<MasterReq>::connect(&path) {
                 Ok(endpoint) => break Ok(endpoint),
                 Err(e) => match &e {
                     VhostUserError::SocketConnect(why) => {
@@ -574,7 +577,7 @@ impl VhostUserMemoryContext {
 
 struct MasterInternal {
     // Used to send requests to the slave.
-    main_sock: Endpoint<MasterReq>,
+    main_sock: SocketEndpoint<MasterReq>,
     // Cached virtio features from the slave.
     virtio_features: u64,
     // Cached acked virtio features from the driver.
@@ -763,7 +766,7 @@ impl MasterInternal {
 
 #[cfg(test)]
 mod tests {
-    use super::super::connection::{Listener, SocketListener};
+    use super::super::connection::{EndpointExt, Listener, SocketListener};
     use super::*;
     use tempfile::{Builder, TempDir};
 
@@ -771,12 +774,12 @@ mod tests {
         Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
     }
 
-    fn create_pair<P: AsRef<Path>>(path: P) -> (Master, Endpoint<MasterReq>) {
+    fn create_pair<P: AsRef<Path>>(path: P) -> (Master, SocketEndpoint<MasterReq>) {
         let listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let master = Master::connect(path, 2).unwrap();
         let slave = listener.accept().unwrap().unwrap();
-        (master, Endpoint::from_stream(slave))
+        (master, SocketEndpoint::from_stream(slave))
     }
 
     #[test]
@@ -788,7 +791,8 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
 
         let master = Master::connect(&path, 1).unwrap();
-        let mut slave = Endpoint::<MasterReq>::from_stream(listener.accept().unwrap().unwrap());
+        let mut slave =
+            SocketEndpoint::<MasterReq>::from_stream(listener.accept().unwrap().unwrap());
 
         assert!(master.as_raw_fd() > 0);
         // Send two messages continuously
@@ -963,7 +967,7 @@ mod tests {
             .unwrap_err();
     }
 
-    fn create_pair2() -> (Master, Endpoint<MasterReq>) {
+    fn create_pair2() -> (Master, SocketEndpoint<MasterReq>) {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");

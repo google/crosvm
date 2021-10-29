@@ -763,7 +763,7 @@ mod tests {
 
     #[test]
     fn test_vhost_user_activate() {
-        use vmm_vhost::vhost_user::{SlaveListener, SocketListener};
+        use vmm_vhost::vhost_user::{SlaveListener, SocketEndpoint, SocketListener};
 
         const QUEUES_NUM: usize = 2;
 
@@ -822,7 +822,7 @@ mod tests {
         let handler = Arc::new(std::sync::Mutex::new(DeviceRequestHandler::new(
             FakeBackend::new(),
         )));
-        let mut listener = SlaveListener::new(listener, handler).unwrap();
+        let mut listener = SlaveListener::<SocketEndpoint<_>, _>::new(listener, handler).unwrap();
 
         // Notify listener is ready.
         tx.send(()).unwrap();

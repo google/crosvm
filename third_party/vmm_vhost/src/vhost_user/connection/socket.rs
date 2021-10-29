@@ -1,15 +1,20 @@
 // Copyright 2021 The Chromium OS Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Structs for Unix Domain Socket listener.
+//! Structs for Unix Domain Socket listener and endpoint.
 
-use std::io::ErrorKind;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::fs::File;
+use std::io::{ErrorKind, IoSliceMut};
+use std::marker::PhantomData;
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 
+use sys_util::ScmSocket;
+
 use super::{Error, Result};
-use crate::vhost_user::connection::Listener;
+use crate::vhost_user::connection::{Endpoint, Listener, Req};
+use crate::vhost_user::message::*;
 
 /// Unix domain socket listener for accepting incoming connections.
 pub struct SocketListener {
@@ -36,13 +41,15 @@ impl SocketListener {
 }
 
 impl Listener for SocketListener {
+    type Connection = UnixStream;
+
     /// Accept an incoming connection.
     ///
     /// # Return:
     /// * - Some(UnixStream): new UnixStream object if new incoming connection is available.
     /// * - None: no incoming connection available.
     /// * - SocketError: errors from accept().
-    fn accept(&self) -> Result<Option<UnixStream>> {
+    fn accept(&self) -> Result<Option<Self::Connection>> {
         loop {
             match self.fd.accept() {
                 Ok((socket, _addr)) => return Ok(Some(socket)),
@@ -83,17 +90,130 @@ impl Drop for SocketListener {
     }
 }
 
+/// Unix domain socket endpoint for vhost-user connection.
+pub struct SocketEndpoint<R: Req> {
+    sock: UnixStream,
+    _r: PhantomData<R>,
+}
+
+impl<R: Req> SocketEndpoint<R> {
+    /// Create an endpoint from a stream object.
+    pub fn from_stream(sock: UnixStream) -> Self {
+        Self {
+            sock,
+            _r: PhantomData,
+        }
+    }
+}
+
+impl<R: Req> Endpoint<R> for SocketEndpoint<R> {
+    type Listener = SocketListener;
+
+    /// Create an endpoint from a stream object.
+    fn from_connection(sock: <<Self as Endpoint<R>>::Listener as Listener>::Connection) -> Self {
+        Self {
+            sock,
+            _r: PhantomData,
+        }
+    }
+
+    /// Create a new stream by connecting to server at `str`.
+    ///
+    /// # Return:
+    /// * - the new Endpoint object on success.
+    /// * - SocketConnect: failed to connect to peer.
+    fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let sock = UnixStream::connect(path).map_err(Error::SocketConnect)?;
+        Ok(Self::from_stream(sock))
+    }
+
+    /// Sends bytes from scatter-gather vectors over the socket with optional attached file
+    /// descriptors.
+    ///
+    /// # Return:
+    /// * - number of bytes sent on success
+    /// * - SocketRetry: temporary error caused by signals or short of resources.
+    /// * - SocketBroken: the underline socket is broken.
+    /// * - SocketError: other socket related errors.
+    fn send_iovec(&mut self, iovs: &[&[u8]], fds: Option<&[RawFd]>) -> Result<usize> {
+        let rfds = match fds {
+            Some(rfds) => rfds,
+            _ => &[],
+        };
+        self.sock.send_bufs_with_fds(iovs, rfds).map_err(Into::into)
+    }
+
+    /// Reads bytes from the socket into the given scatter/gather vectors.
+    ///
+    /// # Return:
+    /// * - (number of bytes received, buf) on success
+    /// * - SocketRetry: temporary error caused by signals or short of resources.
+    /// * - SocketBroken: the underline socket is broken.
+    /// * - SocketError: other socket related errors.
+    fn recv_data(&mut self, len: usize) -> Result<(usize, Vec<u8>)> {
+        let mut rbuf = vec![0u8; len];
+        let (bytes, _) = self
+            .sock
+            .recv_with_fds(IoSliceMut::new(&mut rbuf[..]), &mut [])?;
+        Ok((bytes, rbuf))
+    }
+
+    /// Reads bytes from the socket into the given scatter/gather vectors with optional attached
+    /// file.
+    ///
+    /// The underlying communication channel is a Unix domain socket in STREAM mode. It's a little
+    /// tricky to pass file descriptors through such a communication channel. Let's assume that a
+    /// sender sending a message with some file descriptors attached. To successfully receive those
+    /// attached file descriptors, the receiver must obey following rules:
+    ///   1) file descriptors are attached to a message.
+    ///   2) message(packet) boundaries must be respected on the receive side.
+    /// In other words, recvmsg() operations must not cross the packet boundary, otherwise the
+    /// attached file descriptors will get lost.
+    /// Note that this function wraps received file descriptors as `File`.
+    ///
+    /// # Return:
+    /// * - (number of bytes received, [received files]) on success
+    /// * - SocketRetry: temporary error caused by signals or short of resources.
+    /// * - SocketBroken: the underline socket is broken.
+    /// * - SocketError: other socket related errors.
+    fn recv_into_bufs(&mut self, bufs: &mut [&mut [u8]]) -> Result<(usize, Option<Vec<File>>)> {
+        let mut fd_array = vec![0; MAX_ATTACHED_FD_ENTRIES];
+        let mut iovs: Vec<_> = bufs.iter_mut().map(|s| IoSliceMut::new(s)).collect();
+        let (bytes, fds) = self.sock.recv_iovecs_with_fds(&mut iovs, &mut fd_array)?;
+
+        let files = match fds {
+            0 => None,
+            n => {
+                let files = fd_array
+                    .iter()
+                    .take(n)
+                    .map(|fd| {
+                        // Safe because we have the ownership of `fd`.
+                        unsafe { File::from_raw_fd(*fd) }
+                    })
+                    .collect();
+                Some(files)
+            }
+        };
+
+        Ok((bytes, files))
+    }
+}
+
+impl<T: Req> AsRawFd for SocketEndpoint<T> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.sock.as_raw_fd()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use std::io::{Read, Seek, SeekFrom, Write};
     use std::{mem, slice};
-
     use tempfile::{tempfile, Builder, TempDir};
 
-    use crate::vhost_user::connection::{Endpoint, Listener};
-    use crate::vhost_user::message::*;
+    use crate::vhost_user::connection::EndpointExt;
 
     fn temp_dir() -> TempDir {
         Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
@@ -129,9 +249,9 @@ mod tests {
         path.push("sock");
         let listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
+        let mut slave = SocketEndpoint::<MasterReq>::from_stream(sock);
 
         let buf1 = vec![0x1, 0x2, 0x3, 0x4];
         let mut len = master.send_slice(&buf1[..], None).unwrap();
@@ -157,9 +277,9 @@ mod tests {
         path.push("sock");
         let listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
+        let mut slave = SocketEndpoint::<MasterReq>::from_stream(sock);
 
         let mut fd = tempfile().unwrap();
         write!(fd, "test").unwrap();
@@ -310,9 +430,9 @@ mod tests {
         path.push("sock");
         let listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
+        let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
+        let mut slave = SocketEndpoint::<MasterReq>::from_stream(sock);
 
         let mut hdr1 =
             VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, mem::size_of::<u64>() as u32);

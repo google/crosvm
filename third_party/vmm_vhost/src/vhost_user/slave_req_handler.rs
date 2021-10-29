@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use data_model::DataInit;
 
-use super::connection::Endpoint;
+use super::connection::{Endpoint, EndpointExt, SocketEndpoint};
 use super::message::*;
 use super::{take_single_file, Error, Result};
 
@@ -238,9 +238,9 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
 ///
 /// [VhostUserSlaveReqHandler]: trait.VhostUserSlaveReqHandler.html
 /// [SlaveReqHandler]: struct.SlaveReqHandler.html
-pub struct SlaveReqHandler<S: VhostUserSlaveReqHandler> {
+pub struct SlaveReqHandler<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> {
     // underlying Unix domain socket for communication
-    main_sock: Endpoint<MasterReq>,
+    main_sock: E,
     // the vhost-user backend device object
     backend: Arc<S>,
 
@@ -255,9 +255,16 @@ pub struct SlaveReqHandler<S: VhostUserSlaveReqHandler> {
     error: Option<i32>,
 }
 
-impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
+impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S, SocketEndpoint<MasterReq>> {
+    /// Create a vhost-user slave endpoint from a connected socket.
+    pub fn from_stream(socket: UnixStream, backend: Arc<S>) -> Self {
+        Self::new(SocketEndpoint::from_stream(socket), backend)
+    }
+}
+
+impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> {
     /// Create a vhost-user slave endpoint.
-    pub(super) fn new(main_sock: Endpoint<MasterReq>, backend: Arc<S>) -> Self {
+    pub(super) fn new(main_sock: E, backend: Arc<S>) -> Self {
         SlaveReqHandler {
             main_sock,
             backend,
@@ -268,11 +275,6 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
             reply_ack_enabled: false,
             error: None,
         }
-    }
-
-    /// Create a vhost-user slave endpoint from a connected socket.
-    pub fn from_stream(socket: UnixStream, backend: Arc<S>) -> Self {
-        Self::new(Endpoint::from_stream(socket), backend)
     }
 
     /// Create a new vhost-user slave endpoint.
@@ -802,7 +804,9 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
     }
 }
 
-impl<S: VhostUserSlaveReqHandler> AsRawFd for SlaveReqHandler<S> {
+impl<S: VhostUserSlaveReqHandler, E: AsRawFd + Endpoint<MasterReq>> AsRawFd
+    for SlaveReqHandler<S, E>
+{
     fn as_raw_fd(&self) -> RawFd {
         self.main_sock.as_raw_fd()
     }
@@ -818,7 +822,7 @@ mod tests {
     #[test]
     fn test_slave_req_handler_new() {
         let (p1, _p2) = UnixStream::pair().unwrap();
-        let endpoint = Endpoint::<MasterReq>::from_stream(p1);
+        let endpoint = SocketEndpoint::<MasterReq>::from_stream(p1);
         let backend = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
         let mut handler = SlaveReqHandler::new(endpoint, backend);
 

@@ -42,7 +42,9 @@ pub const VHOST_USER_CONFIG_SIZE: u32 = 0x1000;
 /// Maximum number of vrings supported.
 pub const VHOST_USER_MAX_VRINGS: u64 = 0x8000u64;
 
-pub(super) trait Req:
+// TODO(keiichiw): Can't we avoid exposing `Req`?
+#[allow(missing_docs)]
+pub trait Req:
     Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Into<u32> + Send + Sync
 {
     fn is_valid(&self) -> bool;

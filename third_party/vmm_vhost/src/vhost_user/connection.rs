@@ -4,439 +4,58 @@
 //! Common data structures for listener and endpoint.
 
 mod socket;
-
-pub use self::socket::SocketListener;
+pub use self::socket::{SocketEndpoint, SocketListener};
 
 use std::fs::File;
-use std::io::IoSliceMut;
-use std::marker::PhantomData;
 use std::mem;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::os::unix::net::UnixStream;
+use std::os::unix::io::RawFd;
 use std::path::Path;
 
 use data_model::DataInit;
-use sys_util::ScmSocket;
 
 use super::message::*;
 use super::{Error, Result};
+use crate::vhost_user::connection::Req;
 
 /// Listener for accepting connections.
 pub trait Listener: Sized {
+    /// Type of an object created when a connection is accepted.
+    type Connection;
+
     /// Accept an incoming connection.
-    fn accept(&self) -> Result<Option<UnixStream>>;
+    fn accept(&self) -> Result<Option<Self::Connection>>;
 
     /// Change blocking status on the listener.
     fn set_nonblocking(&self, block: bool) -> Result<()>;
 }
 
-/// Unix domain socket endpoint for vhost-user connection.
-pub(super) struct Endpoint<R: Req> {
-    sock: UnixStream,
-    _r: PhantomData<R>,
-}
-
-impl<R: Req> Endpoint<R> {
-    /// Create a new stream by connecting to server at `str`.
-    ///
-    /// # Return:
-    /// * - the new Endpoint object on success.
-    /// * - SocketConnect: failed to connect to peer.
-    pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let sock = UnixStream::connect(path).map_err(Error::SocketConnect)?;
-        Ok(Self::from_stream(sock))
-    }
+pub trait Endpoint<R: Req>: Sized {
+    /// Type of an object that Endpoint is created from.
+    type Listener: Listener;
 
     /// Create an endpoint from a stream object.
-    pub fn from_stream(sock: UnixStream) -> Self {
-        Endpoint {
-            sock,
-            _r: PhantomData,
-        }
-    }
+    fn from_connection(sock: <Self::Listener as Listener>::Connection) -> Self;
 
-    /// Sends bytes from scatter-gather vectors over the socket with optional attached file
-    /// descriptors.
+    /// Create a new stream by connecting to server at `str`.
+    fn connect<P: AsRef<Path>>(path: P) -> Result<Self>;
+
+    /// Sends bytes from scatter-gather vectors with optional attached file descriptors.
     ///
     /// # Return:
     /// * - number of bytes sent on success
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    pub fn send_iovec(&mut self, iovs: &[&[u8]], fds: Option<&[RawFd]>) -> Result<usize> {
-        let rfds = match fds {
-            Some(rfds) => rfds,
-            _ => &[],
-        };
-        self.sock.send_bufs_with_fds(iovs, rfds).map_err(Into::into)
-    }
+    fn send_iovec(&mut self, iovs: &[&[u8]], fds: Option<&[RawFd]>) -> Result<usize>;
 
-    /// Sends all bytes from scatter-gather vectors over the socket with optional attached file
-    /// descriptors. Will loop until all data has been transfered.
-    ///
-    /// # Return:
-    /// * - number of bytes sent on success
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    pub fn send_iovec_all(
-        &mut self,
-        mut iovs: &mut [&[u8]],
-        mut fds: Option<&[RawFd]>,
-    ) -> Result<usize> {
-        // Guarantee that `iovs` becomes empty if it doesn't contain any data.
-        advance_slices(&mut iovs, 0);
-
-        let mut data_sent = 0;
-        while !iovs.is_empty() {
-            match self.send_iovec(iovs, fds) {
-                Ok(0) => {
-                    break;
-                }
-                Ok(n) => {
-                    data_sent += n;
-                    fds = None;
-                    advance_slices(&mut iovs, n);
-                }
-                Err(e) => match e {
-                    Error::SocketRetry(_) => {}
-                    _ => return Err(e),
-                },
-            }
-        }
-        Ok(data_sent)
-    }
-
-    /// Sends bytes from a slice over the socket with optional attached file descriptors.
-    ///
-    /// # Return:
-    /// * - number of bytes sent on success
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    #[cfg(test)]
-    pub fn send_slice(&mut self, data: &[u8], fds: Option<&[RawFd]>) -> Result<usize> {
-        self.send_iovec(&[data], fds)
-    }
-
-    /// Sends a header-only message with optional attached file descriptors.
-    ///
-    /// # Return:
-    /// * - number of bytes sent on success
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    /// * - PartialMessage: received a partial message.
-    pub fn send_header(
-        &mut self,
-        hdr: &VhostUserMsgHeader<R>,
-        fds: Option<&[RawFd]>,
-    ) -> Result<()> {
-        let mut iovs = [hdr.as_slice()];
-        let bytes = self.send_iovec_all(&mut iovs[..], fds)?;
-        if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
-            return Err(Error::PartialMessage);
-        }
-        Ok(())
-    }
-
-    /// Send a message with header and body. Optional file descriptors may be attached to
-    /// the message.
-    ///
-    /// # Return:
-    /// * - number of bytes sent on success
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    /// * - PartialMessage: received a partial message.
-    pub fn send_message<T: Sized + DataInit>(
-        &mut self,
-        hdr: &VhostUserMsgHeader<R>,
-        body: &T,
-        fds: Option<&[RawFd]>,
-    ) -> Result<()> {
-        if mem::size_of::<T>() > MAX_MSG_SIZE {
-            return Err(Error::OversizedMsg);
-        }
-        let mut iovs = [hdr.as_slice(), body.as_slice()];
-        let bytes = self.send_iovec_all(&mut iovs[..], fds)?;
-        if bytes != mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() {
-            return Err(Error::PartialMessage);
-        }
-        Ok(())
-    }
-
-    /// Send a message with header, body and payload. Optional file descriptors
-    /// may also be attached to the message.
-    ///
-    /// # Return:
-    /// * - number of bytes sent on success
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    /// * - OversizedMsg: message size is too big.
-    /// * - PartialMessage: received a partial message.
-    /// * - IncorrectFds: wrong number of attached fds.
-    pub fn send_message_with_payload<T: Sized + DataInit>(
-        &mut self,
-        hdr: &VhostUserMsgHeader<R>,
-        body: &T,
-        payload: &[u8],
-        fds: Option<&[RawFd]>,
-    ) -> Result<()> {
-        let len = payload.len();
-        if mem::size_of::<T>() > MAX_MSG_SIZE {
-            return Err(Error::OversizedMsg);
-        }
-        if len > MAX_MSG_SIZE - mem::size_of::<T>() {
-            return Err(Error::OversizedMsg);
-        }
-        if let Some(fd_arr) = fds {
-            if fd_arr.len() > MAX_ATTACHED_FD_ENTRIES {
-                return Err(Error::IncorrectFds);
-            }
-        }
-
-        let mut iovs = [hdr.as_slice(), body.as_slice(), payload];
-        let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() + len;
-        let len = self.send_iovec_all(&mut iovs, fds)?;
-        if len != total {
-            return Err(Error::PartialMessage);
-        }
-        Ok(())
-    }
-
-    /// Reads bytes from the socket into the given scatter/gather vectors.
+    /// Reads `len` bytes at most.
     ///
     /// # Return:
     /// * - (number of bytes received, buf) on success
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    pub fn recv_data(&mut self, len: usize) -> Result<(usize, Vec<u8>)> {
-        let mut rbuf = vec![0u8; len];
-        let (bytes, _) = self
-            .sock
-            .recv_with_fds(IoSliceMut::new(&mut rbuf), &mut [])?;
-        Ok((bytes, rbuf))
-    }
+    fn recv_data(&mut self, len: usize) -> Result<(usize, Vec<u8>)>;
 
-    /// Reads bytes from the socket into the given scatter/gather vectors with optional attached
-    /// file.
-    ///
-    /// The underlying communication channel is a Unix domain socket in STREAM mode. It's a little
-    /// tricky to pass file descriptors through such a communication channel. Let's assume that a
-    /// sender sending a message with some file descriptors attached. To successfully receive those
-    /// attached file descriptors, the receiver must obey following rules:
-    ///   1) file descriptors are attached to a message.
-    ///   2) message(packet) boundaries must be respected on the receive side.
-    /// In other words, recvmsg() operations must not cross the packet boundary, otherwise the
-    /// attached file descriptors will get lost.
-    /// Note that this function wraps received file descriptors as `File`.
+    /// Reads bytes into the given scatter/gather vectors with optional attached file.
     ///
     /// # Return:
     /// * - (number of bytes received, [received files]) on success
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    pub fn recv_into_bufs(&mut self, bufs: &mut [&mut [u8]]) -> Result<(usize, Option<Vec<File>>)> {
-        let mut fd_array = vec![0; MAX_ATTACHED_FD_ENTRIES];
-        let mut iovs: Vec<_> = bufs.iter_mut().map(|s| IoSliceMut::new(s)).collect();
-        let (bytes, fds) = self.sock.recv_iovecs_with_fds(&mut iovs, &mut fd_array)?;
-
-        let files = match fds {
-            0 => None,
-            n => {
-                let files = fd_array
-                    .iter()
-                    .take(n)
-                    .map(|fd| {
-                        // Safe because we have the ownership of `fd`.
-                        unsafe { File::from_raw_fd(*fd) }
-                    })
-                    .collect();
-                Some(files)
-            }
-        };
-
-        Ok((bytes, files))
-    }
-
-    /// Reads all bytes from the socket into the given scatter/gather vectors with optional
-    /// attached files. Will loop until all data has been transferred.
-    ///
-    /// # Return:
-    /// * - (number of bytes received, [received fds]) on success
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    pub fn recv_into_bufs_all(
-        &mut self,
-        mut bufs: &mut [&mut [u8]],
-    ) -> Result<(usize, Option<Vec<File>>)> {
-        let buf_lens: Vec<usize> = bufs.iter().map(|b| b.len()).collect();
-        let data_total: usize = buf_lens.iter().sum();
-        let mut data_read = 0;
-        let mut rfds = None;
-
-        while (data_total - data_read) > 0 {
-            let res = self.recv_into_bufs(bufs);
-            match res {
-                Ok((0, _)) => return Ok((data_read, rfds)),
-                Ok((n, fds)) => {
-                    if data_read == 0 {
-                        rfds = fds;
-                    }
-                    data_read += n;
-                    advance_slices_mut(&mut bufs, n);
-                }
-                Err(e) => match e {
-                    Error::SocketRetry(_) => {}
-                    _ => return Err(e),
-                },
-            }
-        }
-        Ok((data_read, rfds))
-    }
-
-    /// Reads bytes from the socket into a new buffer with optional attached
-    /// files. Received file descriptors are set close-on-exec and converted to `File`.
-    ///
-    /// # Return:
-    /// * - (number of bytes received, buf, [received files]) on success.
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    #[cfg(test)]
-    pub fn recv_into_buf(
-        &mut self,
-        buf_size: usize,
-    ) -> Result<(usize, Vec<u8>, Option<Vec<File>>)> {
-        let mut buf = vec![0u8; buf_size];
-        let mut slices = vec![buf.as_mut_slice()];
-        let (bytes, files) = self.recv_into_bufs(&mut slices)?;
-        Ok((bytes, buf, files))
-    }
-
-    /// Receive a header-only message with optional attached files.
-    /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be
-    /// accepted and all other file descriptor will be discard silently.
-    ///
-    /// # Return:
-    /// * - (message header, [received files]) on success.
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    /// * - PartialMessage: received a partial message.
-    /// * - InvalidMessage: received a invalid message.
-    pub fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<R>, Option<Vec<File>>)> {
-        let mut hdr = VhostUserMsgHeader::default();
-        let (bytes, files) = self.recv_into_bufs(&mut [hdr.as_mut_slice()])?;
-
-        if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
-            return Err(Error::PartialMessage);
-        } else if !hdr.is_valid() {
-            return Err(Error::InvalidMessage);
-        }
-
-        Ok((hdr, files))
-    }
-
-    /// Receive a message with optional attached file descriptors.
-    /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be
-    /// accepted and all other file descriptor will be discard silently.
-    ///
-    /// # Return:
-    /// * - (message header, message body, [received files]) on success.
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    /// * - PartialMessage: received a partial message.
-    /// * - InvalidMessage: received a invalid message.
-    pub fn recv_body<T: Sized + DataInit + Default + VhostUserMsgValidator>(
-        &mut self,
-    ) -> Result<(VhostUserMsgHeader<R>, T, Option<Vec<File>>)> {
-        let mut hdr = VhostUserMsgHeader::default();
-        let mut body: T = Default::default();
-        let mut slices = vec![hdr.as_mut_slice(), body.as_mut_slice()];
-        let (bytes, files) = self.recv_into_bufs_all(&mut slices)?;
-
-        let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>();
-        if bytes != total {
-            return Err(Error::PartialMessage);
-        } else if !hdr.is_valid() || !body.is_valid() {
-            return Err(Error::InvalidMessage);
-        }
-
-        Ok((hdr, body, files))
-    }
-
-    /// Receive a message with header and optional content. Callers need to
-    /// pre-allocate a big enough buffer to receive the message body and
-    /// optional payload. If there are attached file descriptor associated
-    /// with the message, the first MAX_ATTACHED_FD_ENTRIES file descriptors
-    /// will be accepted and all other file descriptor will be discard
-    /// silently.
-    ///
-    /// # Return:
-    /// * - (message header, message size, [received files]) on success.
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    /// * - PartialMessage: received a partial message.
-    /// * - InvalidMessage: received a invalid message.
-    #[cfg(test)]
-    pub fn recv_body_into_buf(
-        &mut self,
-        buf: &mut [u8],
-    ) -> Result<(VhostUserMsgHeader<R>, usize, Option<Vec<File>>)> {
-        let mut hdr = VhostUserMsgHeader::default();
-        let mut slices = vec![hdr.as_mut_slice(), buf];
-        let (bytes, files) = self.recv_into_bufs_all(&mut slices)?;
-
-        if bytes < mem::size_of::<VhostUserMsgHeader<R>>() {
-            return Err(Error::PartialMessage);
-        } else if !hdr.is_valid() {
-            return Err(Error::InvalidMessage);
-        }
-
-        Ok((hdr, bytes - mem::size_of::<VhostUserMsgHeader<R>>(), files))
-    }
-
-    /// Receive a message with optional payload and attached file descriptors.
-    /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be
-    /// accepted and all other file descriptor will be discard silently.
-    ///
-    /// # Return:
-    /// * - (message header, message body, size of payload, [received files]) on success.
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    /// * - PartialMessage: received a partial message.
-    /// * - InvalidMessage: received a invalid message.
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::type_complexity))]
-    pub fn recv_payload_into_buf<T: Sized + DataInit + Default + VhostUserMsgValidator>(
-        &mut self,
-        buf: &mut [u8],
-    ) -> Result<(VhostUserMsgHeader<R>, T, usize, Option<Vec<File>>)> {
-        let mut hdr = VhostUserMsgHeader::default();
-        let mut body: T = Default::default();
-        let mut slices = vec![hdr.as_mut_slice(), body.as_mut_slice(), buf];
-        let (bytes, files) = self.recv_into_bufs_all(&mut slices)?;
-
-        let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>();
-        if bytes < total {
-            return Err(Error::PartialMessage);
-        } else if !hdr.is_valid() || !body.is_valid() {
-            return Err(Error::InvalidMessage);
-        }
-
-        Ok((hdr, body, bytes - total, files))
-    }
-}
-
-impl<T: Req> AsRawFd for Endpoint<T> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.sock.as_raw_fd()
-    }
+    fn recv_into_bufs(&mut self, bufs: &mut [&mut [u8]]) -> Result<(usize, Option<Vec<File>>)>;
 }
 
 // Advance the internal cursor of the slices.
@@ -478,6 +97,288 @@ fn advance_slices_mut(bufs: &mut &mut [&mut [u8]], mut count: usize) {
         bufs[0] = remaining;
     }
 }
+
+pub(super) trait EndpointExt<R: Req>: Endpoint<R> {
+    /// Sends all bytes from scatter-gather vectors with optional attached file descriptors. Will
+    /// loop until all data has been transfered.
+    ///
+    /// # Return:
+    /// * - number of bytes sent on success
+    fn send_iovec_all(
+        &mut self,
+        mut iovs: &mut [&[u8]],
+        mut fds: Option<&[RawFd]>,
+    ) -> Result<usize> {
+        // Guarantee that `iovs` becomes empty if it doesn't contain any data.
+        advance_slices(&mut iovs, 0);
+
+        let mut data_sent = 0;
+        while !iovs.is_empty() {
+            match self.send_iovec(iovs, fds) {
+                Ok(0) => {
+                    break;
+                }
+                Ok(n) => {
+                    data_sent += n;
+                    fds = None;
+                    advance_slices(&mut iovs, n);
+                }
+                Err(e) => match e {
+                    Error::SocketRetry(_) => {}
+                    _ => return Err(e),
+                },
+            }
+        }
+        Ok(data_sent)
+    }
+
+    /// Sends bytes from a slice with optional attached file descriptors.
+    ///
+    /// # Return:
+    /// * - number of bytes sent on success
+    #[cfg(test)]
+    fn send_slice(&mut self, data: &[u8], fds: Option<&[RawFd]>) -> Result<usize> {
+        self.send_iovec(&[data], fds)
+    }
+
+    /// Sends a header-only message with optional attached file descriptors.
+    ///
+    /// # Return:
+    /// * - number of bytes sent on success
+    /// * - PartialMessage: received a partial message.
+    /// * - backend specific errors
+    fn send_header(&mut self, hdr: &VhostUserMsgHeader<R>, fds: Option<&[RawFd]>) -> Result<()> {
+        let mut iovs = [hdr.as_slice()];
+        let bytes = self.send_iovec_all(&mut iovs[..], fds)?;
+        if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
+            return Err(Error::PartialMessage);
+        }
+        Ok(())
+    }
+
+    /// Send a message with header and body. Optional file descriptors may be attached to
+    /// the message.
+    ///
+    /// # Return:
+    /// * - number of bytes sent on success
+    /// * - OversizedMsg: message size is too big.
+    /// * - PartialMessage: received a partial message.
+    /// * - backend specific errors
+    fn send_message<T: Sized + DataInit>(
+        &mut self,
+        hdr: &VhostUserMsgHeader<R>,
+        body: &T,
+        fds: Option<&[RawFd]>,
+    ) -> Result<()> {
+        if mem::size_of::<T>() > MAX_MSG_SIZE {
+            return Err(Error::OversizedMsg);
+        }
+        let mut iovs = [hdr.as_slice(), body.as_slice()];
+        let bytes = self.send_iovec_all(&mut iovs[..], fds)?;
+        if bytes != mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() {
+            return Err(Error::PartialMessage);
+        }
+        Ok(())
+    }
+
+    /// Send a message with header, body and payload. Optional file descriptors
+    /// may also be attached to the message.
+    ///
+    /// # Return:
+    /// * - number of bytes sent on success
+    /// * - OversizedMsg: message size is too big.
+    /// * - PartialMessage: received a partial message.
+    /// * - IncorrectFds: wrong number of attached fds.
+    /// * - backend specific errors
+    fn send_message_with_payload<T: Sized + DataInit>(
+        &mut self,
+        hdr: &VhostUserMsgHeader<R>,
+        body: &T,
+        payload: &[u8],
+        fds: Option<&[RawFd]>,
+    ) -> Result<()> {
+        let len = payload.len();
+        if mem::size_of::<T>() > MAX_MSG_SIZE {
+            return Err(Error::OversizedMsg);
+        }
+        if len > MAX_MSG_SIZE - mem::size_of::<T>() {
+            return Err(Error::OversizedMsg);
+        }
+        if let Some(fd_arr) = fds {
+            if fd_arr.len() > MAX_ATTACHED_FD_ENTRIES {
+                return Err(Error::IncorrectFds);
+            }
+        }
+
+        let mut iovs = [hdr.as_slice(), body.as_slice(), payload];
+        let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() + len;
+        let len = self.send_iovec_all(&mut iovs, fds)?;
+        if len != total {
+            return Err(Error::PartialMessage);
+        }
+        Ok(())
+    }
+
+    /// Reads all bytes from the socket into the given scatter/gather vectors with optional
+    /// attached files. Will loop until all data has been transferred.
+    ///
+    /// # Return:
+    /// * - (number of bytes received, [received fds]) on success
+    /// * - SocketBroken: the underline socket is broken.
+    /// * - SocketError: other socket related errors.
+    fn recv_into_bufs_all(
+        &mut self,
+        mut bufs: &mut [&mut [u8]],
+    ) -> Result<(usize, Option<Vec<File>>)> {
+        let buf_lens: Vec<usize> = bufs.iter().map(|b| b.len()).collect();
+        let data_total: usize = buf_lens.iter().sum();
+        let mut data_read = 0;
+        let mut rfds = None;
+
+        while (data_total - data_read) > 0 {
+            let res = self.recv_into_bufs(bufs);
+            match res {
+                Ok((0, _)) => return Ok((data_read, rfds)),
+                Ok((n, fds)) => {
+                    if data_read == 0 {
+                        rfds = fds;
+                    }
+                    data_read += n;
+                    advance_slices_mut(&mut bufs, n);
+                }
+                Err(e) => match e {
+                    Error::SocketRetry(_) => {}
+                    _ => return Err(e),
+                },
+            }
+        }
+        Ok((data_read, rfds))
+    }
+
+    /// Reads bytes into a new buffer with optional attached files. Received file descriptors are
+    /// set close-on-exec and converted to `File`.
+    ///
+    /// # Return:
+    /// * - (number of bytes received, buf, [received files]) on success.
+    /// * - backend specific errors
+    #[cfg(test)]
+    fn recv_into_buf(&mut self, buf_size: usize) -> Result<(usize, Vec<u8>, Option<Vec<File>>)> {
+        let mut buf = vec![0u8; buf_size];
+        let mut slices = vec![buf.as_mut_slice()];
+        let (bytes, files) = self.recv_into_bufs(&mut slices)?;
+        Ok((bytes, buf, files))
+    }
+
+    /// Receive a header-only message with optional attached files.
+    /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be
+    /// accepted and all other file descriptor will be discard silently.
+    ///
+    /// # Return:
+    /// * - (message header, [received files]) on success.
+    /// * - PartialMessage: received a partial message.
+    /// * - InvalidMessage: received a invalid message.
+    /// * - backend specific errors
+    fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<R>, Option<Vec<File>>)> {
+        let mut hdr = VhostUserMsgHeader::default();
+        let (bytes, files) = self.recv_into_bufs(&mut [hdr.as_mut_slice()])?;
+
+        if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
+            return Err(Error::PartialMessage);
+        } else if !hdr.is_valid() {
+            return Err(Error::InvalidMessage);
+        }
+
+        Ok((hdr, files))
+    }
+
+    /// Receive a message with optional attached file descriptors.
+    /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be
+    /// accepted and all other file descriptor will be discard silently.
+    ///
+    /// # Return:
+    /// * - (message header, message body, [received files]) on success.
+    /// * - PartialMessage: received a partial message.
+    /// * - InvalidMessage: received a invalid message.
+    /// * - backend specific errors
+    fn recv_body<T: Sized + DataInit + Default + VhostUserMsgValidator>(
+        &mut self,
+    ) -> Result<(VhostUserMsgHeader<R>, T, Option<Vec<File>>)> {
+        let mut hdr = VhostUserMsgHeader::default();
+        let mut body: T = Default::default();
+        let mut slices = vec![hdr.as_mut_slice(), body.as_mut_slice()];
+        let (bytes, files) = self.recv_into_bufs_all(&mut slices)?;
+
+        let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>();
+        if bytes != total {
+            return Err(Error::PartialMessage);
+        } else if !hdr.is_valid() || !body.is_valid() {
+            return Err(Error::InvalidMessage);
+        }
+
+        Ok((hdr, body, files))
+    }
+
+    /// Receive a message with header and optional content. Callers need to
+    /// pre-allocate a big enough buffer to receive the message body and
+    /// optional payload. If there are attached file descriptor associated
+    /// with the message, the first MAX_ATTACHED_FD_ENTRIES file descriptors
+    /// will be accepted and all other file descriptor will be discard
+    /// silently.
+    ///
+    /// # Return:
+    /// * - (message header, message size, [received files]) on success.
+    /// * - PartialMessage: received a partial message.
+    /// * - InvalidMessage: received a invalid message.
+    /// * - backend specific errors
+    #[cfg(test)]
+    fn recv_body_into_buf(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<(VhostUserMsgHeader<R>, usize, Option<Vec<File>>)> {
+        let mut hdr = VhostUserMsgHeader::default();
+        let mut slices = vec![hdr.as_mut_slice(), buf];
+        let (bytes, files) = self.recv_into_bufs_all(&mut slices)?;
+
+        if bytes < mem::size_of::<VhostUserMsgHeader<R>>() {
+            return Err(Error::PartialMessage);
+        } else if !hdr.is_valid() {
+            return Err(Error::InvalidMessage);
+        }
+
+        Ok((hdr, bytes - mem::size_of::<VhostUserMsgHeader<R>>(), files))
+    }
+
+    /// Receive a message with optional payload and attached file descriptors.
+    /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be
+    /// accepted and all other file descriptor will be discard silently.
+    ///
+    /// # Return:
+    /// * - (message header, message body, size of payload, [received files]) on success.
+    /// * - PartialMessage: received a partial message.
+    /// * - InvalidMessage: received a invalid message.
+    /// * - backend specific errors
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::type_complexity))]
+    fn recv_payload_into_buf<T: Sized + DataInit + Default + VhostUserMsgValidator>(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<(VhostUserMsgHeader<R>, T, usize, Option<Vec<File>>)> {
+        let mut hdr = VhostUserMsgHeader::default();
+        let mut body: T = Default::default();
+        let mut slices = vec![hdr.as_mut_slice(), body.as_mut_slice(), buf];
+        let (bytes, files) = self.recv_into_bufs_all(&mut slices)?;
+
+        let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>();
+        if bytes < total {
+            return Err(Error::PartialMessage);
+        } else if !hdr.is_valid() || !body.is_valid() {
+            return Err(Error::InvalidMessage);
+        }
+
+        Ok((hdr, body, bytes - total, files))
+    }
+}
+
+impl<R: Req, E: Endpoint<R>> EndpointExt<R> for E {}
 
 #[cfg(test)]
 mod tests {

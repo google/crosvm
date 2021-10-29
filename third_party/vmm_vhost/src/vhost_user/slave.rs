@@ -10,16 +10,16 @@ use super::message::*;
 use super::{Result, SlaveReqHandler, VhostUserSlaveReqHandler};
 
 /// Vhost-user slave side connection listener.
-pub struct SlaveListener<L: Listener, S: VhostUserSlaveReqHandler> {
-    listener: L,
+pub struct SlaveListener<E: Endpoint<MasterReq>, S: VhostUserSlaveReqHandler> {
+    listener: E::Listener,
     backend: Option<Arc<S>>,
 }
 
 /// Sets up a listener for incoming master connections, and handles construction
 /// of a Slave on success.
-impl<L: Listener, S: VhostUserSlaveReqHandler> SlaveListener<L, S> {
+impl<E: Endpoint<MasterReq>, S: VhostUserSlaveReqHandler> SlaveListener<E, S> {
     /// Create a unix domain socket for incoming master connections.
-    pub fn new(listener: L, backend: Arc<S>) -> Result<Self> {
+    pub fn new(listener: E::Listener, backend: Arc<S>) -> Result<Self> {
         Ok(SlaveListener {
             listener,
             backend: Some(backend),
@@ -29,10 +29,10 @@ impl<L: Listener, S: VhostUserSlaveReqHandler> SlaveListener<L, S> {
     /// Accept an incoming connection from the master, returning Some(Slave) on
     /// success, or None if the socket is nonblocking and no incoming connection
     /// was detected
-    pub fn accept(&mut self) -> Result<Option<SlaveReqHandler<S>>> {
+    pub fn accept(&mut self) -> Result<Option<SlaveReqHandler<S, E>>> {
         if let Some(fd) = self.listener.accept()? {
             return Ok(Some(SlaveReqHandler::new(
-                Endpoint::<MasterReq>::from_stream(fd),
+                E::from_connection(fd),
                 self.backend.take().unwrap(),
             )));
         }
@@ -50,7 +50,7 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use crate::vhost_user::connection::SocketListener;
+    use crate::vhost_user::connection::{SocketEndpoint, SocketListener};
     use crate::vhost_user::dummy_slave::DummySlaveReqHandler;
 
     #[test]
@@ -58,7 +58,7 @@ mod tests {
         let backend = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
         let listener =
             SocketListener::new("/tmp/vhost_user_lib_unit_test_slave_nonblocking", true).unwrap();
-        let slave_listener = SlaveListener::new(listener, backend).unwrap();
+        let slave_listener = SlaveListener::<SocketEndpoint<_>, _>::new(listener, backend).unwrap();
 
         slave_listener.set_nonblocking(true).unwrap();
         slave_listener.set_nonblocking(false).unwrap();
@@ -75,7 +75,8 @@ mod tests {
         let path = "/tmp/vhost_user_lib_unit_test_slave_accept";
         let backend = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
         let listener = SocketListener::new(path, true).unwrap();
-        let mut slave_listener = SlaveListener::new(listener, backend).unwrap();
+        let mut slave_listener =
+            SlaveListener::<SocketEndpoint<_>, _>::new(listener, backend).unwrap();
 
         slave_listener.set_nonblocking(true).unwrap();
         assert!(slave_listener.accept().unwrap().is_none());
