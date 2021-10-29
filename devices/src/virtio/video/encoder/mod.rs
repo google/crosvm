@@ -1148,6 +1148,7 @@ impl<T: Encoder> EncoderDevice<T> {
 
     fn set_control(
         &mut self,
+        wait_ctx: &WaitContext<Token>,
         stream_id: u32,
         ctrl_val: CtrlVal,
     ) -> VideoResult<VideoCmdResponseType> {
@@ -1155,17 +1156,16 @@ impl<T: Encoder> EncoderDevice<T> {
             .streams
             .get_mut(&stream_id)
             .ok_or(VideoError::InvalidStreamId(stream_id))?;
+        let mut recreate_session = false;
+        let resources_queued = stream.src_resources.len() > 0 || stream.dst_resources.len() > 0;
+
         match ctrl_val {
             CtrlVal::BitrateMode(bitrate_mode) => {
-                if stream.encoder_session.is_some() {
-                    error!(
-                        "set control called for bitrate mode but encoder session already exists."
-                    );
-                    return Err(VideoError::InvalidOperation);
-                }
-
-                // We only need to care if there is a change.
                 if stream.dst_bitrate.mode() != bitrate_mode {
+                    if resources_queued {
+                        error!("set control called for bitrate mode but already encoding.");
+                        return Err(VideoError::InvalidOperation);
+                    }
                     stream.dst_bitrate = match bitrate_mode {
                         BitrateMode::CBR => Bitrate::CBR {
                             target: stream.dst_bitrate.target(),
@@ -1175,84 +1175,94 @@ impl<T: Encoder> EncoderDevice<T> {
                             peak: stream.dst_bitrate.target(),
                         },
                     };
+                    recreate_session = true;
                 }
             }
             CtrlVal::Bitrate(bitrate) => {
-                let mut new_bitrate = stream.dst_bitrate;
-                match &mut new_bitrate {
-                    Bitrate::CBR { target } | Bitrate::VBR { target, .. } => *target = bitrate,
-                }
-                if let Some(ref mut encoder_session) = stream.encoder_session {
-                    if let Err(e) = encoder_session
-                        .request_encoding_params_change(new_bitrate, stream.frame_rate)
-                    {
-                        error!("failed to dynamically request target bitrate change: {}", e);
-                        return Err(VideoError::InvalidOperation);
+                if stream.dst_bitrate.target() != bitrate {
+                    let mut new_bitrate = stream.dst_bitrate;
+                    match &mut new_bitrate {
+                        Bitrate::CBR { target } | Bitrate::VBR { target, .. } => *target = bitrate,
                     }
+                    if let Some(ref mut encoder_session) = stream.encoder_session {
+                        if let Err(e) = encoder_session
+                            .request_encoding_params_change(new_bitrate, stream.frame_rate)
+                        {
+                            error!("failed to dynamically request target bitrate change: {}", e);
+                            return Err(VideoError::InvalidOperation);
+                        }
+                    }
+                    stream.dst_bitrate = new_bitrate;
                 }
-                stream.dst_bitrate = new_bitrate;
             }
             CtrlVal::BitratePeak(bitrate) => {
-                let mut new_bitrate = stream.dst_bitrate;
-                match &mut new_bitrate {
-                    Bitrate::CBR { .. } => {
-                        // Trying to set the peak bitrate while in constant mode. This is not an
-                        // error, just ignored.
-                        return Ok(VideoCmdResponseType::Sync(CmdResponse::SetControl));
+                match stream.dst_bitrate {
+                    Bitrate::VBR { peak, .. } => {
+                        if peak != bitrate {
+                            let new_bitrate = Bitrate::VBR {
+                                target: stream.dst_bitrate.target(),
+                                peak: bitrate,
+                            };
+                            if let Some(ref mut encoder_session) = stream.encoder_session {
+                                if let Err(e) = encoder_session
+                                    .request_encoding_params_change(new_bitrate, stream.frame_rate)
+                                {
+                                    error!(
+                                        "failed to dynamically request peak bitrate change: {}",
+                                        e
+                                    );
+                                    return Err(VideoError::InvalidOperation);
+                                }
+                            }
+                            stream.dst_bitrate = new_bitrate;
+                        }
                     }
-                    Bitrate::VBR { peak, .. } => *peak = bitrate,
+                    // Trying to set the peak bitrate while in constant mode. This is not
+                    // an error, just ignored.
+                    Bitrate::CBR { .. } => {}
                 }
-                if let Some(ref mut encoder_session) = stream.encoder_session {
-                    if let Err(e) = encoder_session
-                        .request_encoding_params_change(new_bitrate, stream.frame_rate)
-                    {
-                        error!("failed to dynamically request peak bitrate change: {}", e);
-                        return Err(VideoError::InvalidOperation);
-                    }
-                }
-                stream.dst_bitrate = new_bitrate;
             }
             CtrlVal::Profile(profile) => {
-                if stream.encoder_session.is_some() {
-                    // TODO(alexlau): If no resources have yet been queued,
-                    // should the encoder session be recreated with the new
-                    // desired level?
-                    error!("set control called for profile but encoder session already exists.");
-                    return Err(VideoError::InvalidOperation);
+                if stream.dst_profile != profile {
+                    if resources_queued {
+                        error!("set control called for profile but already encoding.");
+                        return Err(VideoError::InvalidOperation);
+                    }
+                    let format = stream
+                        .dst_params
+                        .format
+                        .ok_or(VideoError::InvalidArgument)?;
+                    if format != profile.to_format() {
+                        error!(
+                            "specified profile does not correspond to the selected format ({})",
+                            format
+                        );
+                        return Err(VideoError::InvalidOperation);
+                    }
+                    stream.dst_profile = profile;
+                    recreate_session = true;
                 }
-                let format = stream
-                    .dst_params
-                    .format
-                    .ok_or(VideoError::InvalidArgument)?;
-                if format != profile.to_format() {
-                    error!(
-                        "specified profile does not correspond to the selected format ({})",
-                        format
-                    );
-                    return Err(VideoError::InvalidOperation);
-                }
-                stream.dst_profile = profile;
             }
             CtrlVal::Level(level) => {
-                if stream.encoder_session.is_some() {
-                    // TODO(alexlau): If no resources have yet been queued,
-                    // should the encoder session be recreated with the new
-                    // desired level?
-                    error!("set control called for level but encoder session already exists.");
-                    return Err(VideoError::InvalidOperation);
+                if stream.dst_h264_level != Some(level) {
+                    if resources_queued {
+                        error!("set control called for level but already encoding.");
+                        return Err(VideoError::InvalidOperation);
+                    }
+                    let format = stream
+                        .dst_params
+                        .format
+                        .ok_or(VideoError::InvalidArgument)?;
+                    if format != Format::H264 {
+                        error!(
+                            "set control called for level but format is not H264 ({})",
+                            format
+                        );
+                        return Err(VideoError::InvalidOperation);
+                    }
+                    stream.dst_h264_level = Some(level);
+                    recreate_session = true;
                 }
-                let format = stream
-                    .dst_params
-                    .format
-                    .ok_or(VideoError::InvalidArgument)?;
-                if format != Format::H264 {
-                    error!(
-                        "set control called for level but format is not H264 ({})",
-                        format
-                    );
-                    return Err(VideoError::InvalidOperation);
-                }
-                stream.dst_h264_level = Some(level);
             }
             CtrlVal::ForceKeyframe => {
                 stream.force_keyframe = true;
@@ -1266,6 +1276,13 @@ impl<T: Encoder> EncoderDevice<T> {
                 }
             }
         }
+
+        // We can safely recreate the encoder session if no resources were queued yet.
+        if recreate_session && stream.encoder_session.is_some() {
+            stream.clear_encode_session(wait_ctx)?;
+            stream.set_encode_session(&mut self.encoder, wait_ctx)?;
+        }
+
         Ok(VideoCmdResponseType::Sync(CmdResponse::SetControl))
     }
 }
@@ -1398,7 +1415,7 @@ impl<T: Encoder> Device for EncoderDevice<T> {
             VideoCmd::SetControl {
                 stream_id,
                 ctrl_val,
-            } => self.set_control(stream_id, ctrl_val),
+            } => self.set_control(wait_ctx, stream_id, ctrl_val),
         };
         let cmd_ret = match cmd_response {
             Ok(r) => r,
