@@ -20,29 +20,7 @@ jobs:
           mdbook-version: 'latest'
       - name: Install Dependencies
         run: |
-          cargo install mdbook-mermaid
-          sudo apt update
-          sudo apt install -y \
-          build-essential \
-          clang \
-          libasound2-dev \
-          libcap-dev \
-          libdbus-1-dev \
-          libdrm-dev \
-          libepoxy-dev \
-          libssl-dev \
-          libwayland-bin \
-          libwayland-dev \
-          ninja-build \
-          pkg-config \
-          protobuf-compiler \
-          python3 \
-          python3-pip \
-          python3-setuptools \
-          python3-wheel \
-          wayland-protocols
-          # Install meson for rutabaga_gfx
-          pip3 install meson
+          ./tools/install-deps
       - name: Run mdbook
         run: |
           mkdir -p docs/target/
