@@ -48,10 +48,11 @@ fn build_minigbm(out_dir: &Path) -> Result<()> {
         return Ok(());
     }
 
-    if !Path::new("../third_party/minigbm/.git").exists() {
+    if !Path::new(MINIGBM_SRC).join(".git").exists() {
         bail!(
-            "third_party/minigbm source does not exist, did you forget to \
-            `git submodule update --init`?"
+            "{} source does not exist, did you forget to \
+            `git submodule update --init`?",
+            MINIGBM_SRC
         );
     }
 
@@ -61,7 +62,7 @@ fn build_minigbm(out_dir: &Path) -> Result<()> {
         .env("CROSS_COMPILE", get_cross_compile_prefix())
         .arg(format!("OUT={}", out_dir.display()))
         .arg("CC_STATIC_LIBRARY(libminigbm.pie.a)")
-        .current_dir("../third_party/minigbm")
+        .current_dir(MINIGBM_SRC)
         .status()?;
     if !status.success() {
         bail!("make failed with status: {}", status);
@@ -78,10 +79,11 @@ fn build_virglrenderer(out_dir: &Path) -> Result<()> {
         return Ok(());
     }
 
-    if !Path::new("../third_party/virglrenderer/.git").exists() {
+    if !Path::new(VIRGLRENDERER_SRC).join(".git").exists() {
         bail!(
-            "third_party/virglrenderer source does not exist, did you forget to \
-            `git submodule update --init`?"
+            "{} source does not exist, did you forget to \
+            `git submodule update --init`?",
+            VIRGLRENDERER_SRC
         );
     }
 
