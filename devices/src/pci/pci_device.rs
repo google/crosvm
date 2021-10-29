@@ -4,7 +4,7 @@
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
-use base::{Event, RawDescriptor};
+use base::{error, Event, RawDescriptor};
 use hypervisor::Datamatch;
 use remain::sorted;
 use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
@@ -12,8 +12,8 @@ use thiserror::Error;
 
 use crate::bus::{BusDeviceObj, BusRange, BusType, ConfigWriteResult};
 use crate::pci::pci_configuration::{
-    self, PciBarConfiguration, COMMAND_REG, COMMAND_REG_IO_SPACE_MASK,
-    COMMAND_REG_MEMORY_SPACE_MASK, NUM_BAR_REGS,
+    self, PciBarConfiguration, BAR0_REG, COMMAND_REG, COMMAND_REG_IO_SPACE_MASK,
+    COMMAND_REG_MEMORY_SPACE_MASK, NUM_BAR_REGS, ROM_BAR_REG,
 };
 use crate::pci::{PciAddress, PciInterruptPin};
 #[cfg(feature = "audio")]
@@ -202,6 +202,32 @@ impl<T: PciDevice> BusDevice for T {
                         if *bus_type == BusType::Io {
                             result.io_remove.push(*range);
                         }
+                    }
+                }
+            }
+        } else if (BAR0_REG..=BAR0_REG + 5).contains(&reg_idx) || reg_idx == ROM_BAR_REG {
+            let old_ranges = self.get_ranges();
+            self.write_config_register(reg_idx, offset, data);
+            let new_ranges = self.get_ranges();
+
+            for ((old_range, old_type), (new_range, new_type)) in
+                old_ranges.iter().zip(new_ranges.iter())
+            {
+                if *old_type != *new_type {
+                    error!(
+                        "{}: bar {:x} type changed after a bar write",
+                        self.debug_label(),
+                        reg_idx
+                    );
+                    continue;
+                }
+                if old_range.base != new_range.base {
+                    if *new_type == BusType::Mmio {
+                        result.mmio_remove.push(*old_range);
+                        result.mmio_add.push(*new_range);
+                    } else {
+                        result.io_remove.push(*old_range);
+                        result.io_add.push(*new_range);
                     }
                 }
             }
@@ -470,6 +496,20 @@ mod tests {
                 mmio_add: vec![bar0_range],
                 io_remove: Vec::new(),
                 io_add: vec![bar2_range],
+            }
+        );
+
+        // Change Bar0's address
+        assert_eq!(
+            test_dev.config_register_write(BAR0_REG, 0, &0xD0000000u32.to_le_bytes()),
+            ConfigWriteResult {
+                mmio_remove: vec!(bar0_range),
+                mmio_add: vec![BusRange {
+                    base: 0xD0000000,
+                    len: BAR0_SIZE
+                }],
+                io_remove: Vec::new(),
+                io_add: Vec::new(),
             }
         );
     }
