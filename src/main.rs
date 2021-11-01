@@ -2158,6 +2158,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "stub-pci-device" => {
             cfg.stub_pci_devices.push(parse_stub_pci_parameters(value)?);
         }
+        "vvu-proxy" => cfg.vvu_proxy.push(VhostUserOption {
+            socket: PathBuf::from(value.unwrap()),
+        }),
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -2476,6 +2479,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("vhost-user-wl", "SOCKET_PATH:TUBE_PATH", "Paths to a vhost-user socket for wayland and a Tube socket for additional wayland-specific messages"),
           Argument::value("vhost-user-fs", "SOCKET_PATH:TAG",
                           "Path to a socket path for vhost-user fs, and tag for the shared dir"),
+          Argument::value("vvu-proxy", "SOCKET_PATH", "Socket path for the Virtio Vhost User proxy device"),
           #[cfg(feature = "direct")]
           Argument::value("direct-pmio", "PATH@RANGE[,RANGE[,...]]", "Path and ranges for direct port mapped I/O access. RANGE may be decimal or hex (starting with 0x)."),
           #[cfg(feature = "direct")]

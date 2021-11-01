@@ -14,7 +14,6 @@ use std::fs::File;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixListener;
-use std::path::{Path, PathBuf};
 use std::thread;
 
 use base::{error, info, AsRawDescriptor, Event, EventType, PollToken, RawDescriptor, WaitContext};
@@ -548,8 +547,11 @@ struct ActivateParams {
 }
 
 pub struct VirtioVhostUser {
-    // Path to open and accept a socket connection from the Vhost-user sibling.
-    sibling_socket_path: PathBuf,
+    base_features: u64,
+
+    // Bound socket waiting to accept a socket connection from the Vhost-user
+    // sibling.
+    listener: UnixListener,
 
     // Device configuration.
     config: VirtioVhostUserConfig,
@@ -571,9 +573,10 @@ pub struct VirtioVhostUser {
 }
 
 impl VirtioVhostUser {
-    pub fn new(sibling_socket_path: &Path) -> Result<VirtioVhostUser> {
+    pub fn new(base_features: u64, listener: UnixListener) -> Result<VirtioVhostUser> {
         Ok(VirtioVhostUser {
-            sibling_socket_path: sibling_socket_path.to_owned(),
+            base_features,
+            listener,
             config: VirtioVhostUserConfig {
                 status: Le32::from(0),
                 max_vhost_queues: Le32::from(MAX_VHOST_DEVICE_QUEUES as u32),
@@ -669,15 +672,7 @@ impl VirtioVhostUser {
         };
         self.kill_evt = Some(self_kill_evt);
 
-        let listener = match UnixListener::bind(&self.sibling_socket_path) {
-            Ok(listener) => listener,
-            Err(e) => {
-                error!("failed to bind listener: {}", e);
-                return;
-            }
-        };
-
-        let socket = match listener.accept() {
+        let socket = match self.listener.accept() {
             Ok((socket, _)) => socket,
             Err(e) => {
                 error!("failed to accept connection: {}", e);
@@ -740,13 +735,15 @@ impl Drop for VirtioVhostUser {
 }
 
 impl VirtioDevice for VirtioVhostUser {
-    fn keep_rds(&self) -> Vec<RawDescriptor> {
-        let mut rds = Vec::new();
+    fn features(&self) -> u64 {
+        self.base_features
+    }
 
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let mut rds = vec![self.listener.as_raw_fd()];
         if let Some(kill_evt) = &self.kill_evt {
             rds.push(kill_evt.as_raw_descriptor());
         }
-
         rds
     }
 

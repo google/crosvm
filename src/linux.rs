@@ -12,6 +12,7 @@ use std::io::stdin;
 use std::iter;
 use std::mem;
 use std::net::Ipv4Addr;
+use std::os::unix::net::UnixListener;
 use std::os::unix::{io::FromRawFd, net::UnixStream, prelude::OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::str;
@@ -32,6 +33,7 @@ use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
 #[cfg(feature = "audio_cras")]
 use devices::virtio::snd::cras_backend::Parameters as CrasSndParameters;
+use devices::virtio::vhost::user::proxy::VirtioVhostUser;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::vmm::Snd as VhostUserSnd;
 use devices::virtio::vhost::user::vmm::{
@@ -327,6 +329,21 @@ fn create_vhost_user_snd_device(cfg: &Config, option: &VhostUserOption) -> Devic
         dev: Box::new(dev),
         // no sandbox here because virtqueue handling is exported to a different process.
         jail: None,
+    })
+}
+
+fn create_vvu_proxy_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
+    let listener = UnixListener::bind(&opt.socket).map_err(|e| {
+        error!("failed to bind listener for vvu proxy device: {}", e);
+        e
+    })?;
+
+    let dev = VirtioVhostUser::new(virtio::base_features(cfg.protected_vm), listener)
+        .context("failed to create VVU proxy device")?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail: simple_jail(cfg, "vvu_proxy_device")?,
     })
 }
 
@@ -1529,6 +1546,10 @@ fn create_virtio_devices(
             host_tube,
             device_tube,
         )?);
+    }
+
+    for opt in &cfg.vvu_proxy {
+        devs.push(create_vvu_proxy_device(cfg, opt)?);
     }
 
     #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]

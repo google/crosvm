@@ -405,6 +405,7 @@ pub struct Config {
     pub no_legacy: bool,
     pub host_cpu_topology: bool,
     pub stub_pci_devices: Vec<StubPciParameters>,
+    pub vvu_proxy: Vec<VhostUserOption>,
 }
 
 impl Default for Config {
@@ -492,6 +493,7 @@ impl Default for Config {
             vhost_user_snd: Vec::new(),
             vhost_user_vsock: Vec::new(),
             vhost_user_wl: Vec::new(),
+            vvu_proxy: Vec::new(),
             #[cfg(feature = "direct")]
             direct_pmio: None,
             #[cfg(feature = "direct")]
