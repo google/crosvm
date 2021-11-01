@@ -7,4 +7,5 @@ source "$(dirname $0)/common.sh"
 ./tools/dev_container bash -c "\
     ./tools/run_tests --target=host \
     && ./tools/clippy \
-    && ./tools/fmt --check"
+    && ./tools/fmt --check \
+    && mdbook build ./docs/book"
