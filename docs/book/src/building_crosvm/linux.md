@@ -1,5 +1,13 @@
 # Building for Linux
 
+## Checking out
+
+Obtain the source code via git clone.
+
+```
+git clone https://chromium.googlesource.com/chromiumos/platform/crosvm
+```
+
 ## Setting up the development environment
 
 Crosvm uses submodules to manage external dependencies. Initialize them via:
@@ -17,8 +25,9 @@ git config --global submodule.recurse true
 git config push.recurseSubmodules no
 ```
 
-Crosvm development best works on Debian derivatives. We provide a script to
-install the necessary packages on Debian:
+Crosvm development best works on Debian derivatives. First install rust via
+https://rustup.rs/. Then for the rest, we provide a script to install the
+necessary packages on Debian:
 
 ```
 $ ./tools/install-deps

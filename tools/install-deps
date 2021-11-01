@@ -32,6 +32,7 @@ sudo apt-get install --yes --no-install-recommends \
     pkg-config \
     protobuf-compiler \
     python3 \
+    python3-pip \
     python3-setuptools \
     qemu-system-x86 \
     rsync \
