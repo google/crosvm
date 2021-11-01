@@ -66,7 +66,11 @@ with the `#[sorted]` attribute to keep their corresponding match statements in t
 Since crosvm is one of Chromium OS projects, please read through [Chrome OS Contributing Guide]
 first. This section describes the crosvm-specific workflow.
 
-### Creating a CL
+### Trying crosvm
+
+Please see [the book of crosvm].
+
+### Sending for code review
 
 We use [Chromium Gerrit](https://chromium-review.googlesource.com/) for code reviewing. All crosvm
 CLs are listed at the [crosvm component].
@@ -89,12 +93,11 @@ gerrit can rebase the commit cleanly. If not, please rebase to `cros/main` manua
 
 #### For non-Chromium OS Developers
 
-If you are not interested in other Chromium OS components, you can simply clone and contribute
-crosvm only. Before you make a commit locally, please set up [Gerrit's Change-Id hook] on your
-system.
+If you are not interested in other Chromium OS components, you can simply
+[clone and contribute crosvm only](https://google.github.io/crosvm/building_crosvm/linux.html).
+Before you make a commit locally, please set up [Gerrit's Change-Id hook] on your system.
 
 ```sh
-git clone https://chromium.googlesource.com/chromiumos/platform/crosvm
 # Modify code and make a git commit with a commit message following this rule:
 # https://chromium.googlesource.com/chromiumos/docs/+/HEAD/contributing.md#Commit-messages
 git commit
