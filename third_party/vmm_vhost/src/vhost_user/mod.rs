@@ -21,6 +21,9 @@
 use std::fs::File;
 use std::io::Error as IOError;
 
+use remain::sorted;
+use thiserror::Error as ThisError;
+
 pub mod message;
 
 mod connection;
@@ -53,60 +56,52 @@ mod slave_fs_cache;
 pub use self::slave_fs_cache::SlaveFsCacheReq;
 
 /// Errors for vhost-user operations
-#[derive(Debug)]
+#[sorted]
+#[derive(Debug, ThisError)]
 pub enum Error {
-    /// Invalid parameters.
-    InvalidParam,
-    /// Unsupported operations due to that the protocol feature hasn't been negotiated.
-    InvalidOperation,
-    /// Invalid message format, flag or content.
-    InvalidMessage,
-    /// Only part of a message have been sent or received successfully
-    PartialMessage,
-    /// Message is too large
-    OversizedMsg,
+    /// Virtio/protocol features mismatch.
+    #[error("virtio features mismatch")]
+    FeatureMismatch,
     /// Fd array in question is too big or too small
+    #[error("wrong number of attached fds")]
     IncorrectFds,
+    /// Invalid message format, flag or content.
+    #[error("invalid message")]
+    InvalidMessage,
+    /// Unsupported operations due to that the protocol feature hasn't been negotiated.
+    #[error("invalid operation")]
+    InvalidOperation,
+    /// Invalid parameters.
+    #[error("invalid parameters")]
+    InvalidParam,
+    /// Failure from the master side.
+    #[error("master Internal error")]
+    MasterInternalError,
+    /// Message is too large
+    #[error("oversized message")]
+    OversizedMsg,
+    /// Only part of a message have been sent or received successfully
+    #[error("partial message")]
+    PartialMessage,
+    /// Error from request handler
+    #[error("handler failed to handle request: {0}")]
+    ReqHandlerError(IOError),
+    /// Failure from the slave side.
+    #[error("slave internal error")]
+    SlaveInternalError,
+    /// The socket is broken or has been closed.
+    #[error("socket is broken: {0}")]
+    SocketBroken(std::io::Error),
     /// Can't connect to peer.
+    #[error("can't connect to peer: {0}")]
     SocketConnect(std::io::Error),
     /// Generic socket errors.
+    #[error("socket error: {0}")]
     SocketError(std::io::Error),
-    /// The socket is broken or has been closed.
-    SocketBroken(std::io::Error),
     /// Should retry the socket operation again.
+    #[error("temporary socket error: {0}")]
     SocketRetry(std::io::Error),
-    /// Failure from the slave side.
-    SlaveInternalError,
-    /// Failure from the master side.
-    MasterInternalError,
-    /// Virtio/protocol features mismatch.
-    FeatureMismatch,
-    /// Error from request handler
-    ReqHandlerError(IOError),
 }
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Error::InvalidParam => write!(f, "invalid parameters"),
-            Error::InvalidOperation => write!(f, "invalid operation"),
-            Error::InvalidMessage => write!(f, "invalid message"),
-            Error::PartialMessage => write!(f, "partial message"),
-            Error::OversizedMsg => write!(f, "oversized message"),
-            Error::IncorrectFds => write!(f, "wrong number of attached fds"),
-            Error::SocketError(e) => write!(f, "socket error: {}", e),
-            Error::SocketConnect(e) => write!(f, "can't connect to peer: {}", e),
-            Error::SocketBroken(e) => write!(f, "socket is broken: {}", e),
-            Error::SocketRetry(e) => write!(f, "temporary socket error: {}", e),
-            Error::SlaveInternalError => write!(f, "slave internal error"),
-            Error::MasterInternalError => write!(f, "Master internal error"),
-            Error::FeatureMismatch => write!(f, "virtio/protocol features mismatch"),
-            Error::ReqHandlerError(e) => write!(f, "handler failed to handle request: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 
 impl Error {
     /// Determine whether to rebuild the underline communication channel.

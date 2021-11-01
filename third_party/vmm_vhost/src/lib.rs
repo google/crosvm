@@ -32,6 +32,9 @@
 
 #![deny(missing_docs)]
 
+use remain::sorted;
+use thiserror::Error as ThisError;
+
 #[cfg_attr(feature = "vhost-user", macro_use)]
 extern crate bitflags;
 #[cfg_attr(feature = "vhost-kern", macro_use)]
@@ -48,62 +51,30 @@ pub mod vhost_user;
 pub mod vsock;
 
 /// Error codes for vhost operations
-#[derive(Debug)]
+#[sorted]
+#[derive(Debug, ThisError)]
 pub enum Error {
-    /// Invalid operations.
-    InvalidOperation,
     /// Invalid guest memory.
+    #[error("invalid guest memory object")]
     InvalidGuestMemory,
-    /// Invalid guest memory region.
-    InvalidGuestMemoryRegion,
     /// Invalid queue.
+    #[error("invalid virtqueue")]
     InvalidQueue,
-    /// Invalid descriptor table address.
-    DescriptorTableAddress,
-    /// Invalid used address.
-    UsedAddress,
-    /// Invalid available address.
-    AvailAddress,
+    /// Error while running ioctl.
+    #[error("failure in vhost ioctl: {0}")]
+    IoctlError(std::io::Error),
     /// Invalid log address.
+    #[error("invalid log address")]
     LogAddress,
     #[cfg(feature = "vhost-kern")]
     /// Error opening the vhost backend driver.
+    #[error("failure in opening vhost file: {0}")]
     VhostOpen(std::io::Error),
-    #[cfg(feature = "vhost-kern")]
-    /// Error while running ioctl.
-    IoctlError(std::io::Error),
-    /// Error from IO subsystem.
-    IOError(std::io::Error),
     #[cfg(feature = "vhost-user")]
     /// Error from the vhost-user subsystem.
+    #[error("failure while processing a vhost-user message: {0}")]
     VhostUserProtocol(vhost_user::Error),
 }
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Error::InvalidOperation => write!(f, "invalid vhost operations"),
-            Error::InvalidGuestMemory => write!(f, "invalid guest memory object"),
-            Error::InvalidGuestMemoryRegion => write!(f, "invalid guest memory region"),
-            Error::InvalidQueue => write!(f, "invalid virtqueue"),
-            Error::DescriptorTableAddress => {
-                write!(f, "invalid virtqueue descriptor table address")
-            }
-            Error::UsedAddress => write!(f, "invalid virtqueue used table address"),
-            Error::AvailAddress => write!(f, "invalid virtqueue available table address"),
-            Error::LogAddress => write!(f, "invalid virtqueue log address"),
-            Error::IOError(e) => write!(f, "IO error: {}", e),
-            #[cfg(feature = "vhost-kern")]
-            Error::VhostOpen(e) => write!(f, "failure in opening vhost file: {}", e),
-            #[cfg(feature = "vhost-kern")]
-            Error::IoctlError(e) => write!(f, "failure in vhost ioctl: {}", e),
-            #[cfg(feature = "vhost-user")]
-            Error::VhostUserProtocol(e) => write!(f, "vhost-user: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 
 #[cfg(feature = "vhost-user")]
 impl std::convert::From<vhost_user::Error> for Error {
@@ -114,51 +85,3 @@ impl std::convert::From<vhost_user::Error> for Error {
 
 /// Result of vhost operations
 pub type Result<T> = std::result::Result<T, Error>;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_error() {
-        assert_eq!(
-            format!("{}", Error::AvailAddress),
-            "invalid virtqueue available table address"
-        );
-        assert_eq!(
-            format!("{}", Error::InvalidOperation),
-            "invalid vhost operations"
-        );
-        assert_eq!(
-            format!("{}", Error::InvalidGuestMemory),
-            "invalid guest memory object"
-        );
-        assert_eq!(
-            format!("{}", Error::InvalidGuestMemoryRegion),
-            "invalid guest memory region"
-        );
-        assert_eq!(format!("{}", Error::InvalidQueue), "invalid virtqueue");
-        assert_eq!(
-            format!("{}", Error::DescriptorTableAddress),
-            "invalid virtqueue descriptor table address"
-        );
-        assert_eq!(
-            format!("{}", Error::UsedAddress),
-            "invalid virtqueue used table address"
-        );
-        assert_eq!(
-            format!("{}", Error::LogAddress),
-            "invalid virtqueue log address"
-        );
-
-        assert_eq!(format!("{:?}", Error::AvailAddress), "AvailAddress");
-    }
-
-    #[cfg(feature = "vhost-user")]
-    #[test]
-    fn test_convert_from_vhost_user_error() {
-        let e: Error = vhost_user::Error::OversizedMsg.into();
-
-        assert_eq!(format!("{}", e), "vhost-user: oversized message");
-    }
-}
