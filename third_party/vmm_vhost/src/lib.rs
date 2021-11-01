@@ -32,6 +32,7 @@
 
 #![deny(missing_docs)]
 
+#[cfg(any(feature = "vmm", feature = "device"))]
 use std::fs::File;
 use std::io::Error as IOError;
 
@@ -45,6 +46,9 @@ pub mod message;
 
 mod connection;
 pub use self::connection::{Endpoint, EndpointExt, SocketEndpoint, SocketListener};
+
+#[cfg(feature = "vfio-device")]
+pub use self::connection::{VfioDevice, VfioEndpoint, VfioListener};
 
 #[cfg(feature = "vmm")]
 mod master;
@@ -118,6 +122,9 @@ pub enum Error {
     /// Should retry the socket operation again.
     #[error("temporary socket error: {0}")]
     SocketRetry(std::io::Error),
+    /// Error from VFIO device.
+    #[error("error occurred in VFIO device: {0}")]
+    VfioDeviceError(anyhow::Error),
 }
 
 impl Error {
@@ -139,6 +146,7 @@ impl Error {
             Error::SocketError(_) | Error::SocketConnect(_) => false,
             Error::FeatureMismatch => false,
             Error::ReqHandlerError(_) => false,
+            Error::VfioDeviceError(_) => false,
         }
     }
 }

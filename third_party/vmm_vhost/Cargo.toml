@@ -14,8 +14,10 @@ edition = "2018"
 default = []
 vmm = []
 device = []
+vfio-device = []
 
 [dependencies]
+anyhow = "*"
 bitflags = ">=1.0.1"
 data_model= "*"
 libc = ">=0.2.39"

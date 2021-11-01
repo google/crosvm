@@ -49,7 +49,7 @@ impl Listener for SocketListener {
     /// * - Some(UnixStream): new UnixStream object if new incoming connection is available.
     /// * - None: no incoming connection available.
     /// * - SocketError: errors from accept().
-    fn accept(&self) -> Result<Option<Self::Connection>> {
+    fn accept(&mut self) -> Result<Option<Self::Connection>> {
         loop {
             match self.fd.accept() {
                 Ok((socket, _addr)) => return Ok(Some(socket)),
@@ -233,7 +233,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = SocketListener::new(&path, true).unwrap();
+        let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
 
         // accept on a fd without incoming connection
@@ -246,7 +246,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = SocketListener::new(&path, true).unwrap();
+        let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
@@ -274,7 +274,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = SocketListener::new(&path, true).unwrap();
+        let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
@@ -427,7 +427,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = SocketListener::new(&path, true).unwrap();
+        let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();

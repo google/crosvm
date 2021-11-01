@@ -6,6 +6,11 @@
 mod socket;
 pub use self::socket::{SocketEndpoint, SocketListener};
 
+#[cfg(feature = "vfio-device")]
+mod vfio;
+#[cfg(feature = "vfio-device")]
+pub use self::vfio::{VfioDevice, VfioEndpoint, VfioListener};
+
 use std::fs::File;
 use std::io::{IoSlice, IoSliceMut};
 use std::mem;
@@ -24,7 +29,7 @@ pub trait Listener: Sized {
     type Connection;
 
     /// Accept an incoming connection.
-    fn accept(&self) -> Result<Option<Self::Connection>>;
+    fn accept(&mut self) -> Result<Option<Self::Connection>>;
 
     /// Change blocking status on the listener.
     fn set_nonblocking(&self, block: bool) -> Result<()>;

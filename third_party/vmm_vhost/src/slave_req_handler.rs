@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::fs::File;
+use std::marker::PhantomData;
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
@@ -36,6 +37,8 @@ use super::{take_single_file, Error, Result};
 /// [SlaveReqHandler]: struct.SlaveReqHandler.html
 #[allow(missing_docs)]
 pub trait VhostUserSlaveReqHandler {
+    fn use_virtio_vhost_user() -> bool;
+
     fn set_owner(&self) -> Result<()>;
     fn reset_owner(&self) -> Result<()>;
     fn get_features(&self) -> Result<u64>;
@@ -76,6 +79,10 @@ pub trait VhostUserSlaveReqHandler {
 /// This is a helper trait mirroring the [VhostUserSlaveReqHandler] trait.
 #[allow(missing_docs)]
 pub trait VhostUserSlaveReqHandlerMut {
+    fn use_virtio_vhost_user() -> bool {
+        false
+    }
+
     fn set_owner(&mut self) -> Result<()>;
     fn reset_owner(&mut self) -> Result<()>;
     fn get_features(&mut self) -> Result<u64>;
@@ -120,6 +127,10 @@ pub trait VhostUserSlaveReqHandlerMut {
 }
 
 impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
+    fn use_virtio_vhost_user() -> bool {
+        T::use_virtio_vhost_user()
+    }
+
     fn set_owner(&self) -> Result<()> {
         self.lock().unwrap().set_owner()
     }
@@ -228,20 +239,24 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
 }
 
 /// Abstracts |Endpoint| related operations for vhost-user slave implementations.
-pub struct SlaveReqHelper<E: Endpoint<MasterReq>> {
+pub struct SlaveReqHelper<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> {
     /// Underlying endpoint for communication.
     endpoint: E,
 
-    // Sending ack for messages without payload.
+    /// Sending ack for messages without payload.
     reply_ack_enabled: bool,
+
+    /// Phantom data to store the type information.
+    phantom: PhantomData<S>,
 }
 
-impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
+impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHelper<S, E> {
     /// Creates a new |SlaveReqHelper| instance with an |Endpoint| underneath it.
     pub fn new(endpoint: E) -> Self {
         SlaveReqHelper {
             endpoint,
             reply_ack_enabled: false,
+            phantom: PhantomData,
         }
     }
 
@@ -316,8 +331,13 @@ impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
             return Err(Error::InvalidMessage);
         }
 
+        if S::use_virtio_vhost_user() {
+            return Ok((msg.value as u8, None));
+        }
+
         // Bits (0-7) of the payload contain the vring index. Bit 8 is the
-        // invalid FD flag. This bit is set when there is no file descriptor
+        // invalid FD flag (VHOST_USER_VRING_NOFD_MASK).
+        // This bit is set when there is no file descriptor
         // in the ancillary data. This signals that polling will be used
         // instead of waiting for the call.
         // If Bit 8 is unset, the data must contain a file descriptor.
@@ -345,7 +365,7 @@ impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
 /// [VhostUserSlaveReqHandler]: trait.VhostUserSlaveReqHandler.html
 /// [SlaveReqHandler]: struct.SlaveReqHandler.html
 pub struct SlaveReqHandler<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> {
-    slave_req_helper: SlaveReqHelper<E>,
+    slave_req_helper: SlaveReqHelper<S, E>,
     // the vhost-user backend device object
     backend: Arc<S>,
 
@@ -685,11 +705,16 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
             return Err(Error::InvalidMessage);
         }
 
-        // validate number of fds matching number of memory regions
-        let files = files.ok_or(Error::InvalidMessage)?;
-        if files.len() != msg.num_regions as usize {
-            return Err(Error::InvalidMessage);
-        }
+        let files = if S::use_virtio_vhost_user() {
+            vec![]
+        } else {
+            // validate number of fds matching number of memory regions
+            let files = files.ok_or(Error::InvalidMessage)?;
+            if files.len() != msg.num_regions as usize {
+                return Err(Error::InvalidMessage);
+            }
+            files
+        };
 
         // Validate memory regions
         let regions = unsafe {

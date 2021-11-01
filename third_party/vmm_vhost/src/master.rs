@@ -771,7 +771,7 @@ mod tests {
     }
 
     fn create_pair<P: AsRef<Path>>(path: P) -> (Master, SocketEndpoint<MasterReq>) {
-        let listener = SocketListener::new(&path, true).unwrap();
+        let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let master = Master::connect(path, 2).unwrap();
         let slave = listener.accept().unwrap().unwrap();
@@ -783,7 +783,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = SocketListener::new(&path, true).unwrap();
+        let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
 
         let master = Master::connect(&path, 1).unwrap();
@@ -817,7 +817,7 @@ mod tests {
         let _ = SocketListener::new(&path, false).is_err();
         assert!(Master::connect(&path, 1).is_err());
 
-        let listener = SocketListener::new(&path, true).unwrap();
+        let mut listener = SocketListener::new(&path, true).unwrap();
         assert!(SocketListener::new(&path, false).is_err());
         listener.set_nonblocking(true).unwrap();
 
