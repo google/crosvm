@@ -632,6 +632,7 @@ dependencies = [
  "rand",
  "remain",
  "resources",
+ "riscv64",
  "rutabaga_gfx",
  "sandbox",
  "scudo",
@@ -2024,6 +2025,30 @@ dependencies = [
  "remain",
  "serde",
  "thiserror",
+]
+
+[[package]]
+name = "riscv64"
+version = "0.1.0"
+dependencies = [
+ "arch",
+ "base",
+ "cros_fdt",
+ "data_model 0.1.1-alpha.1",
+ "devices",
+ "hypervisor",
+ "kernel_cmdline",
+ "kvm",
+ "kvm_sys",
+ "libc",
+ "minijail",
+ "rand",
+ "remain",
+ "resources",
+ "sync",
+ "thiserror",
+ "vm_control",
+ "vm_memory",
 ]
 
 [[package]]

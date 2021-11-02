@@ -5,6 +5,9 @@ runner = "qemu-arm-static"
 [target.aarch64-unknown-linux-gnu]
 linker = "aarch64-linux-gnu-gcc"
 runner = "qemu-aarch64-static"
+[target.riscv64gc-unknown-linux-gnu]
+linker = "riscv64-linux-gnu-gcc"
+runner = "qemu-riscv64-static"
 [target.x86_64-pc-windows-gnu]
 runner = "wine64"
 
@@ -13,6 +16,7 @@ runner = "wine64"
 PKG_CONFIG_x86_64-unknown-linux-gnu = "x86_64-linux-gnu-pkg-config"
 PKG_CONFIG_aarch64-unknown-linux-gnu = "aarch64-linux-gnu-pkg-config"
 PKG_CONFIG_armv7_unknown_linux_gnueabihf = "arm-linux-gnueabihf-pkg-config"
+PKG_CONFIG_riscv64-unknown-linux-gnu = "riscv64-linux-gnu-pkg-config"
 
 # libslirp is currently not properly configured via pkg-config and cannot use the wrapper like
 # other architextures do.

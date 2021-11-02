@@ -434,6 +434,9 @@ vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }
 vm_memory = { path = "vm_memory" }
 
+[target.'cfg(target_arch = "riscv64")'.dependencies]
+riscv64 = { path = "riscv64" }
+
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = { path = "x86_64" }
 
