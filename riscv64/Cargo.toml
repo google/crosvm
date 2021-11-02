@@ -1,0 +1,25 @@
+[package]
+name = "riscv64"
+version = "0.1.0"
+authors = ["Rivos Inc."]
+edition = "2021"
+
+[dependencies]
+arch = { path = "../arch" }
+cros_fdt = { path = "../cros_fdt" }
+data_model = { path = "../common/data_model" }
+devices = { path = "../devices" }
+hypervisor = { path = "../hypervisor" }
+kernel_cmdline = { path = "../kernel_cmdline" }
+kvm = { path = "../kvm" }
+kvm_sys = { path = "../kvm_sys" }
+libc = "*"
+minijail = "*"
+rand = "0.8"
+remain = "*"
+resources = { path = "../resources" }
+sync = { path = "../common/sync" }
+thiserror = "*"
+base = { path = "../base" }
+vm_control = { path = "../vm_control" }
+vm_memory = { path = "../vm_memory" }
