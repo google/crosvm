@@ -292,6 +292,9 @@ impl KvmSplitIrqChip {
                     IrqSourceChip::Gic => {
                         error!("gic irq should not be possible on a KvmSplitIrqChip")
                     }
+                    IrqSourceChip::Aia => {
+                        error!("Aia irq should not be possible on x86_64")
+                    }
                 },
                 // Ignore MSIs and other routes
                 _ => {}

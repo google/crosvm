@@ -17,6 +17,8 @@ pub mod gunyah;
 pub mod haxm;
 #[cfg(unix)]
 pub mod kvm;
+#[cfg(target_arch = "riscv64")]
+pub mod riscv64;
 #[cfg(all(windows, feature = "whpx"))]
 pub mod whpx;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -42,6 +44,8 @@ use vm_memory::GuestMemory;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use crate::aarch64::*;
 pub use crate::caps::*;
+#[cfg(target_arch = "riscv64")]
+pub use crate::riscv64::*;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use crate::x86_64::*;
 
@@ -475,6 +479,19 @@ pub enum VcpuExit {
     ApicInitSipiTrap,
     /// vcpu stoppted due to bus lock
     BusLock,
+    /// Riscv supervisor call.
+    Sbi {
+        extension_id: u64,
+        function_id: u64,
+        args: [u64; 6],
+    },
+    /// Emulate CSR access from guest.
+    RiscvCsr {
+        csr_num: u64,
+        new_value: u64,
+        write_mask: u64,
+        ret_value: u64,
+    },
 }
 
 /// A hypercall with parameters being made from the guest.
@@ -503,6 +520,9 @@ pub enum DeviceKind {
     /// ARM virtual general interrupt controller v3
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     ArmVgicV3,
+    /// RiscV AIA in-kernel emulation
+    #[cfg(any(target_arch = "riscv64"))]
+    RiscvAia,
 }
 
 /// The source chip of an `IrqSource`
@@ -513,6 +533,7 @@ pub enum IrqSourceChip {
     PicSecondary,
     Ioapic,
     Gic,
+    Aia,
 }
 
 /// A source of IRQs in an `IrqRoute`.
