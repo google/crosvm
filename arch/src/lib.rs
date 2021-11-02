@@ -42,6 +42,8 @@ use devices::HotPlugBus;
 use devices::IrqChip;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use devices::IrqChipAArch64 as IrqChipArch;
+#[cfg(target_arch = "riscv64")]
+use devices::IrqChipRiscv64 as IrqChipArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::IrqChipX86_64 as IrqChipArch;
 use devices::IrqEventSource;
@@ -66,9 +68,13 @@ use gdbstub_arch::aarch64::AArch64 as GdbArch;
 use gdbstub_arch::x86::X86_64_SSE as GdbArch;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use hypervisor::CpuConfigAArch64 as CpuConfigArch;
+#[cfg(target_arch = "riscv64")]
+use hypervisor::CpuConfigRiscv64 as CpuConfigArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use hypervisor::CpuConfigX86_64 as CpuConfigArch;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::Hypervisor as HypervisorArch;
+#[cfg(target_arch = "riscv64")]
 use hypervisor::Hypervisor as HypervisorArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use hypervisor::HypervisorX86_64 as HypervisorArch;
@@ -77,13 +83,19 @@ use hypervisor::IoEventAddress;
 use hypervisor::VcpuAArch64 as VcpuArch;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use hypervisor::VcpuInitAArch64 as VcpuInitArch;
+#[cfg(target_arch = "riscv64")]
+use hypervisor::VcpuInitRiscv64 as VcpuInitArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use hypervisor::VcpuInitX86_64 as VcpuInitArch;
+#[cfg(target_arch = "riscv64")]
+use hypervisor::VcpuRiscv64 as VcpuArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use hypervisor::VcpuX86_64 as VcpuArch;
 use hypervisor::Vm;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use hypervisor::VmAArch64 as VmArch;
+#[cfg(target_arch = "riscv64")]
+use hypervisor::VmRiscv64 as VmArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use hypervisor::VmX86_64 as VmArch;
 #[cfg(windows)]
