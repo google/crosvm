@@ -247,8 +247,8 @@ impl Kvm {
         Ok(indices.to_vec())
     }
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    // The x86 machine type is always 0
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "riscv64"))]
+    // The x86 and riscv machine type is always 0
     pub fn get_vm_type(&self) -> c_ulong {
         0
     }

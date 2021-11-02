@@ -27,6 +27,12 @@ pub enum Cap {
     Iommu = KVM_CAP_IOMMU,
     DestroyMemoryRegionWorks = KVM_CAP_DESTROY_MEMORY_REGION_WORKS,
     UserNmi = KVM_CAP_USER_NMI,
+    #[cfg(any(
+        target_arch = "x86",
+        target_arch = "x86_64",
+        target_arch = "arm",
+        target_arch = "aarch64"
+    ))]
     SetGuestDebug = KVM_CAP_SET_GUEST_DEBUG,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     ReinjectControl = KVM_CAP_REINJECT_CONTROL,
@@ -120,6 +126,7 @@ pub enum Cap {
     S390UserSigp = KVM_CAP_S390_USER_SIGP,
     ImmediateExit = KVM_CAP_IMMEDIATE_EXIT,
     ArmPmuV3 = KVM_CAP_ARM_PMU_V3,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64",))]
     IoapicNumPins = KVM_CAP_IOAPIC_NUM_PINS,
     ArmProtectedVm = KVM_CAP_ARM_PROTECTED_VM,
     ArmMte = KVM_CAP_ARM_MTE,
