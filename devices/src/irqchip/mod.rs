@@ -57,7 +57,18 @@ cfg_if::cfg_if! {
     } else if #[cfg(any(target_arch = "arm", target_arch = "aarch64"))] {
         mod aarch64;
         pub use aarch64::*;
+    } else if #[cfg(target_arch = "riscv64")] {
+        mod riscv64;
+        pub use riscv64::*;
+        pub use self::kvm::aia_addr_imsic;
+        pub use self::kvm::aia_aplic_addr;
+        pub use self::kvm::aia_imsic_addr;
+        pub use self::kvm::aia_imsic_size;
+        pub use self::kvm::AIA_APLIC_SIZE;
+        pub use self::kvm::AIA_IMSIC_BASE;
+        pub use self::kvm::IMSIC_MAX_INT_IDS;
     }
+
 }
 
 #[cfg(any(target_arch = "aarch64"))]
