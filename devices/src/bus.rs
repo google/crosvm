@@ -235,6 +235,11 @@ impl Bus {
         }
     }
 
+    /// Sets the id that will be used for BusAccessInfo.
+    pub fn set_access_id(&mut self, id: usize) {
+        self.access_id = id;
+    }
+
     fn first_before(&self, addr: u64) -> Option<(BusRange, BusDeviceEntry)> {
         let devices = self.devices.lock();
         let (range, dev) = devices

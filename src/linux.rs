@@ -2032,8 +2032,8 @@ fn run_vcpu<V>(
     no_smt: bool,
     start_barrier: Arc<Barrier>,
     has_bios: bool,
-    io_bus: Arc<devices::Bus>,
-    mmio_bus: Arc<devices::Bus>,
+    mut io_bus: devices::Bus,
+    mut mmio_bus: devices::Bus,
     exit_evt: Event,
     requires_pvclock_ctrl: bool,
     from_main_tube: mpsc::Receiver<VcpuControl>,
@@ -2090,6 +2090,9 @@ where
             }
 
             let mut interrupted_by_signal = false;
+
+            mmio_bus.set_access_id(cpu_id);
+            io_bus.set_access_id(cpu_id);
 
             'vcpu_loop: loop {
                 // Start by checking for messages to process and the run state of the CPU.
@@ -2923,8 +2926,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             linux.no_smt,
             vcpu_thread_barrier.clone(),
             linux.has_bios,
-            linux.io_bus.clone(),
-            linux.mmio_bus.clone(),
+            (*linux.io_bus).clone(),
+            (*linux.mmio_bus).clone(),
             exit_evt.try_clone().map_err(Error::CloneEvent)?,
             linux.vm.check_capability(VmCap::PvClockSuspend),
             from_main_channel,
