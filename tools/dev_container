@@ -6,7 +6,7 @@
 set -e
 cd "$(dirname $0)/.."
 
-docker_args=(
+cli_args=(
     --rm
     --volume $(pwd):/workspace:rw
     --device /dev/net/tun
@@ -17,11 +17,15 @@ docker_args=(
 
 # Enable interactive mode when running in an interactive terminal.
 if [ -t 1 ]; then
-    docker_args+=(-it)
+    cli_args+=(-it)
 fi
 
-docker run \
-    ${docker_args[@]} \
+# Allow to override the container CLI tool, similar to the Makefile. Try
+# "docker" first and fall back to "podman".
+DOCKER=${DOCKER:-$(which docker || which podman)}
+
+"${DOCKER}" run \
+    ${cli_args[@]} \
     gcr.io/crosvm-packages/crosvm_dev:$(cat tools/impl/dev_container/version) \
     "$@"
 
