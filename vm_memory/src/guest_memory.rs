@@ -40,6 +40,8 @@ pub enum Error {
     MemoryAddSealsFailed(SysError),
     #[error("failed to create shm region")]
     MemoryCreationFailed(SysError),
+    #[error("failed to lock {0} bytes of guest memory: {1}")]
+    MemoryLockingFailed(usize, MmapError),
     #[error("failed to map guest memory: {0}")]
     MemoryMappingFailed(MmapError),
     #[error("shm regions must be page aligned")]
@@ -63,6 +65,7 @@ pub type Result<T> = result::Result<T, Error>;
 bitflags! {
     pub struct MemoryPolicy: u32 {
         const USE_HUGEPAGES = 1;
+        const MLOCK_ON_FAULT = 2;
     }
 }
 
@@ -293,16 +296,25 @@ impl GuestMemory {
     }
 
     /// Handles guest memory policy hints/advices.
-    pub fn set_memory_policy(&self, mem_policy: MemoryPolicy) {
-        if mem_policy.contains(MemoryPolicy::USE_HUGEPAGES) {
-            for (_, region) in self.regions.iter().enumerate() {
+    pub fn set_memory_policy(&self, mem_policy: MemoryPolicy) -> Result<()> {
+        for (_, region) in self.regions.iter().enumerate() {
+            if mem_policy.contains(MemoryPolicy::USE_HUGEPAGES) {
                 let ret = region.mapping.use_hugepages();
 
                 if let Err(err) = ret {
                     println!("Failed to enable HUGEPAGE for mapping {}", err);
                 }
             }
+
+            if mem_policy.contains(MemoryPolicy::MLOCK_ON_FAULT) {
+                region
+                    .mapping
+                    .mlock_on_fault()
+                    .map_err(|e| Error::MemoryLockingFailed(region.mapping.size(), e))?;
+            }
         }
+
+        Ok(())
     }
 
     /// Perform the specified action on each region's addresses.

@@ -2419,7 +2419,12 @@ pub fn run_config(cfg: Config) -> Result<()> {
     if components.hugepages {
         mem_policy |= MemoryPolicy::USE_HUGEPAGES;
     }
-    guest_mem.set_memory_policy(mem_policy);
+    if components.protected_vm == ProtectionType::Protected {
+        mem_policy |= MemoryPolicy::MLOCK_ON_FAULT;
+    }
+    guest_mem
+        .set_memory_policy(mem_policy)
+        .context("failed to set guest memory policy")?;
     let kvm = Kvm::new_with_path(&cfg.kvm_device_path).context("failed to create kvm")?;
     let vm = KvmVm::new(&kvm, guest_mem).context("failed to create vm")?;
     let vm_clone = vm.try_clone().context("failed to clone vm")?;
