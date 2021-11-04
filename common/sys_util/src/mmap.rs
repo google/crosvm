@@ -377,14 +377,9 @@ impl MemoryMapping {
         if addr == libc::MAP_FAILED {
             return Err(Error::SystemCallFailed(errno::Error::last()));
         }
-        // This is safe because we call madvise with a valid address and size, and we check the
-        // return value. We only warn about an error because failure here is not fatal to the mmap.
-        if libc::madvise(addr, size, libc::MADV_DONTDUMP) == -1 {
-            warn!(
-                "failed madvise(MADV_DONTDUMP) on mmap: {}",
-                errno::Error::last()
-            );
-        }
+        // This is safe because we call madvise with a valid address and size.
+        let _ = libc::madvise(addr, size, libc::MADV_DONTDUMP);
+
         Ok(MemoryMapping {
             addr: addr as *mut u8,
             size,
