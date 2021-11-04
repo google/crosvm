@@ -276,6 +276,37 @@ impl arch::LinuxArch for AArch64 {
 
         let mem = vm.get_memory().clone();
 
+        // separate out image loading from other setup to get a specific error for
+        // image loading
+        let mut initrd = None;
+        match components.vm_image {
+            VmImage::Bios(ref mut bios) => {
+                arch::load_image(&mem, bios, get_bios_addr(), AARCH64_BIOS_MAX_LEN)
+                    .map_err(Error::BiosLoadFailure)?;
+            }
+            VmImage::Kernel(ref mut kernel_image) => {
+                let kernel_size =
+                    arch::load_image(&mem, kernel_image, get_kernel_addr(), u64::max_value())
+                        .map_err(Error::KernelLoadFailure)?;
+                let kernel_end = get_kernel_addr().offset() + kernel_size as u64;
+                initrd = match components.initrd_image {
+                    Some(initrd_file) => {
+                        let mut initrd_file = initrd_file;
+                        let initrd_addr =
+                            (kernel_end + (AARCH64_INITRD_ALIGN - 1)) & !(AARCH64_INITRD_ALIGN - 1);
+                        let initrd_max_size =
+                            components.memory_size - (initrd_addr - AARCH64_PHYS_MEM_START);
+                        let initrd_addr = GuestAddress(initrd_addr);
+                        let initrd_size =
+                            arch::load_image(&mem, &mut initrd_file, initrd_addr, initrd_max_size)
+                                .map_err(Error::InitrdLoadFailure)?;
+                        Some((initrd_addr, initrd_size))
+                    }
+                    None => None,
+                };
+            }
+        }
+
         let mut use_pmu = vm
             .get_hypervisor()
             .check_capability(&HypervisorCap::ArmPmuV3);
@@ -429,37 +460,6 @@ impl arch::LinuxArch for AArch64 {
             }
             None => (high_mmio_base, high_mmio_size),
         };
-        let mut initrd = None;
-
-        // separate out image loading from other setup to get a specific error for
-        // image loading
-        match components.vm_image {
-            VmImage::Bios(ref mut bios) => {
-                arch::load_image(&mem, bios, get_bios_addr(), AARCH64_BIOS_MAX_LEN)
-                    .map_err(Error::BiosLoadFailure)?;
-            }
-            VmImage::Kernel(ref mut kernel_image) => {
-                let kernel_size =
-                    arch::load_image(&mem, kernel_image, get_kernel_addr(), u64::max_value())
-                        .map_err(Error::KernelLoadFailure)?;
-                let kernel_end = get_kernel_addr().offset() + kernel_size as u64;
-                initrd = match components.initrd_image {
-                    Some(initrd_file) => {
-                        let mut initrd_file = initrd_file;
-                        let initrd_addr =
-                            (kernel_end + (AARCH64_INITRD_ALIGN - 1)) & !(AARCH64_INITRD_ALIGN - 1);
-                        let initrd_max_size =
-                            components.memory_size - (initrd_addr - AARCH64_PHYS_MEM_START);
-                        let initrd_addr = GuestAddress(initrd_addr);
-                        let initrd_size =
-                            arch::load_image(&mem, &mut initrd_file, initrd_addr, initrd_max_size)
-                                .map_err(Error::InitrdLoadFailure)?;
-                        Some((initrd_addr, initrd_size))
-                    }
-                    None => None,
-                };
-            }
-        }
 
         fdt::create_fdt(
             AARCH64_FDT_MAX_SIZE as usize,
