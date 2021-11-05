@@ -94,7 +94,6 @@ def main():
         "base",
         "cros_async",
         "data_model",
-        "enumn",
         "io_uring",
         "sync",
         "sys_util",

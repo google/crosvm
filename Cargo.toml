@@ -74,7 +74,6 @@ exclude = [
     "common/cros-fuzz",
     "common/cros_async",
     "common/data_model",
-    "common/enumn",
     "common/io_uring",
     "common/p9",
     "common/sync",
@@ -124,7 +123,7 @@ crosvm_plugin = { path = "crosvm_plugin", optional = true }
 data_model = "*"
 devices = { path = "devices" }
 disk = { path = "disk" }
-enumn = { path = "common/enumn" }
+enumn = "0.1.0"
 gdbstub = { version = "0.5.0", optional = true }
 gdbstub_arch = { version = "0.1.0", optional = true }
 rutabaga_gfx = { path = "rutabaga_gfx"}

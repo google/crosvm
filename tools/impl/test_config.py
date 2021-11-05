@@ -24,7 +24,6 @@ class TestOption(enum.Enum):
 # Please add a bug number when restricting a tests.
 CRATE_OPTIONS: dict[str, list[TestOption]] = {
     "aarch64": [TestOption.BUILD_ARM_ONLY],
-    "enumn": [TestOption.RUN_X86_ONLY],  # b/203100960
     "cros_async": [TestOption.DO_NOT_BUILD],  # b/202293468
     "crosvm_plugin": [TestOption.BUILD_X86_ONLY],
     "devices": [TestOption.SINGLE_THREADED],

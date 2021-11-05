@@ -30,7 +30,7 @@ cros_async = { path = "../common/cros_async" }
 data_model = { path = "../common/data_model" }
 dbus = { version = "0.9", optional = true }
 disk = { path = "../disk" }
-enumn = { path = "../common/enumn" }
+enumn = "0.1.0"
 fuse = {path = "../fuse" }
 getopts = { version = "0.2" }
 gpu_display = { path = "../gpu_display", optional = true }

@@ -8,7 +8,7 @@ edition = "2018"
 bit_field = { path = "../bit_field" }
 data_model = { path = "../common/data_model" }
 downcast-rs = "1.2.0"
-enumn = { path = "../common/enumn" }
+enumn = "0.1.0"
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
