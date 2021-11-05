@@ -11,6 +11,7 @@ use std::sync::Arc;
 use base::{error, Event, PollToken, SafeDescriptor, Tube, WaitContext};
 use fuse::filesystem::{FileSystem, ZeroCopyReader, ZeroCopyWriter};
 use sync::Mutex;
+use sys_util::syscall;
 use vm_control::{FsMappingRequest, VmResponse};
 use vm_memory::GuestMemory;
 
@@ -191,19 +192,20 @@ impl<F: FileSystem + Sync> Worker<F> {
         #[cfg(target_os = "linux")]
         {
             // Safe because this doesn't modify any memory and we check the return value.
-            let mut securebits = unsafe { libc::prctl(libc::PR_GET_SECUREBITS) };
-            if securebits < 0 {
-                return Err(Error::GetSecurebits(io::Error::last_os_error()));
-            }
+            let mut securebits = syscall!(unsafe { libc::prctl(libc::PR_GET_SECUREBITS) })
+                .map_err(Error::GetSecurebits)?;
 
             securebits |= SECBIT_NO_SETUID_FIXUP;
 
             // Safe because this doesn't modify any memory and we check the return value.
-            let ret = unsafe { libc::prctl(libc::PR_SET_SECUREBITS, securebits) };
-            if ret < 0 {
-                return Err(Error::SetSecurebits(io::Error::last_os_error()));
-            }
+            syscall!(unsafe { libc::prctl(libc::PR_SET_SECUREBITS, securebits) })
+                .map_err(Error::SetSecurebits)?;
         }
+
+        // To avoid extra locking, unshare filesystem attributes from parent. This includes the
+        // current working directory and umask.
+        // Safe because this doesn't modify any memory and we check the return value.
+        syscall!(unsafe { libc::unshare(libc::CLONE_FS) }).map_err(Error::UnshareFromParent)?;
 
         #[derive(PollToken)]
         enum Token {

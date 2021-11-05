@@ -299,13 +299,22 @@ fn set_creds(
     ScopedGid::new(gid, oldgid).and_then(|gid| Ok((ScopedUid::new(uid, olduid)?, gid)))
 }
 
-struct ScopedUmask<'a> {
+struct ScopedUmask {
     old: libc::mode_t,
     mask: libc::mode_t,
-    _factory: &'a mut Umask,
 }
 
-impl<'a> Drop for ScopedUmask<'a> {
+impl ScopedUmask {
+    fn new(mask: libc::mode_t) -> ScopedUmask {
+        ScopedUmask {
+            // Safe because this doesn't modify any memory and always succeeds.
+            old: unsafe { libc::umask(mask) },
+            mask,
+        }
+    }
+}
+
+impl Drop for ScopedUmask {
     fn drop(&mut self) {
         // Safe because this doesn't modify any memory and always succeeds.
         let previous = unsafe { libc::umask(self.old) };
@@ -313,19 +322,6 @@ impl<'a> Drop for ScopedUmask<'a> {
             previous, self.mask,
             "umask changed while holding ScopedUmask"
         );
-    }
-}
-
-struct Umask;
-
-impl Umask {
-    fn set(&mut self, mask: libc::mode_t) -> ScopedUmask {
-        ScopedUmask {
-            // Safe because this doesn't modify any memory and always succeeds.
-            old: unsafe { libc::umask(mask) },
-            mask,
-            _factory: self,
-        }
     }
 }
 
@@ -563,14 +559,6 @@ pub struct PassthroughFs {
     // Whether zero message opendir is supported by the kernel driver.
     zero_message_opendir: AtomicBool,
 
-    // Used to ensure that only one thread at a time uses chdir(). Since chdir() affects the
-    // process-wide CWD, we cannot allow more than one thread to do it at the same time.
-    chdir_mutex: Mutex<()>,
-
-    // Used when creating files / directories / nodes. Since the umask is process-wide, we can only
-    // allow one thread at a time to change it.
-    umask: Mutex<Umask>,
-
     // Used to communicate with other processes using D-Bus.
     #[cfg(feature = "chromeos")]
     dbus_connection: Option<Mutex<dbus::blocking::Connection>>,
@@ -625,9 +613,6 @@ impl PassthroughFs {
             writeback: AtomicBool::new(false),
             zero_message_open: AtomicBool::new(false),
             zero_message_opendir: AtomicBool::new(false),
-
-            chdir_mutex: Mutex::new(()),
-            umask: Mutex::new(Umask),
 
             #[cfg(feature = "chromeos")]
             dbus_connection,
@@ -895,7 +880,6 @@ impl PassthroughFs {
         F: FnOnce() -> T,
     {
         let root = self.find_inode(ROOT_ID).expect("failed to find root inode");
-        let chdir_lock = self.chdir_mutex.lock();
 
         // Safe because this doesn't modify any memory and we check the return value. Since the
         // fchdir should never fail we just use debug_asserts.
@@ -919,7 +903,6 @@ impl PassthroughFs {
             io::Error::last_os_error()
         );
 
-        mem::drop(chdir_lock);
         res
     }
 
@@ -1499,12 +1482,12 @@ impl FileSystem for PassthroughFs {
 
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
         {
-            let mut um = self.umask.lock();
-            let _scoped_umask = um.set(umask);
+            let _scoped_umask = ScopedUmask::new(umask);
 
             // Safe because this doesn't modify any memory and we check the return value.
             syscall!(unsafe { libc::mkdirat(data.as_raw_descriptor(), name.as_ptr(), mode) })?;
         }
+
         self.do_lookup(&data, name)
     }
 
@@ -1582,8 +1565,7 @@ impl FileSystem for PassthroughFs {
         let current_dir = unsafe { CStr::from_bytes_with_nul_unchecked(b".\0") };
 
         let fd = {
-            let mut um = self.umask.lock();
-            let _scoped_umask = um.set(umask);
+            let _scoped_umask = ScopedUmask::new(umask);
 
             // Safe because this doesn't modify any memory and we check the return value.
             syscall!(unsafe {
@@ -1620,8 +1602,7 @@ impl FileSystem for PassthroughFs {
             (flags as i32 | libc::O_CREAT | libc::O_CLOEXEC | libc::O_NOFOLLOW) & !libc::O_DIRECT;
 
         let fd = {
-            let mut um = self.umask.lock();
-            let _scoped_umask = um.set(umask);
+            let _scoped_umask = ScopedUmask::new(umask);
 
             // Safe because this doesn't modify any memory and we check the return value. We don't
             // really check `flags` because if the kernel can't handle poorly specified flags then
@@ -1916,8 +1897,7 @@ impl FileSystem for PassthroughFs {
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
 
         {
-            let mut um = self.umask.lock();
-            let _scoped_umask = um.set(umask);
+            let _scoped_umask = ScopedUmask::new(umask);
 
             // Safe because this doesn't modify any memory and we check the return value.
             syscall!(unsafe {
@@ -1929,6 +1909,7 @@ impl FileSystem for PassthroughFs {
                 )
             })?;
         }
+
         self.do_lookup(&data, name)
     }
 

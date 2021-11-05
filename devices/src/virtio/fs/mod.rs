@@ -77,7 +77,7 @@ pub enum Error {
     FuseError(fuse::Error),
     /// Failed to get the securebits for the worker thread.
     #[error("failed to get securebits for the worker thread: {0}")]
-    GetSecurebits(io::Error),
+    GetSecurebits(SysError),
     /// The `len` field of the header is too small.
     #[error("DescriptorChain is invalid: {0}")]
     InvalidDescriptorChain(DescriptorError),
@@ -92,13 +92,16 @@ pub enum Error {
     ReadQueueEvent(SysError),
     /// Failed to set the securebits for the worker thread.
     #[error("failed to set securebits for the worker thread: {0}")]
-    SetSecurebits(io::Error),
+    SetSecurebits(SysError),
     /// Failed to signal the virio used queue.
     #[error("failed to signal used queue: {0}")]
     SignalUsedQueue(SysError),
     /// The tag for the Fs device was too long to fit in the config space.
     #[error("Fs device tag is too long: len = {0}, max = {}", FS_MAX_TAG_LEN)]
     TagTooLong(usize),
+    /// Calling unshare to disassociate FS attributes from parent failed.
+    #[error("failed to unshare fs from parent: {0}")]
+    UnshareFromParent(SysError),
     /// Error while polling for events.
     #[error("failed to wait for events: {0}")]
     WaitError(SysError),
