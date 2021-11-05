@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::os::unix::fs::OpenOptionsExt;
 use std::{
     convert::{self, TryFrom, TryInto},
-    fs::File,
+    fs::{File, OpenOptions},
     mem::size_of,
     num::Wrapping,
     os::unix::{io::AsRawFd, net::UnixListener},
@@ -63,7 +64,14 @@ struct VsockBackend {
 
 impl VsockBackend {
     fn new<P: AsRef<Path>>(cid: u64, vhost_socket: P) -> anyhow::Result<VsockBackend> {
-        let handle = Vsock::new(vhost_socket).context("failed to create `Vsock`")?;
+        let handle = Vsock::new(
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
+                .open(vhost_socket)
+                .context("failed to open `Vsock` socket")?,
+        );
 
         let features = handle.get_features().context("failed to get features")?;
         let protocol_features = VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;

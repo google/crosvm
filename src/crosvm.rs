@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use arch::{Pstore, VcpuAffinity};
+use base::RawDescriptor;
 use devices::serial_device::{SerialHardware, SerialParameters};
 #[cfg(feature = "audio_cras")]
 use devices::virtio::cras_backend::Parameters as CrasSndParameters;
@@ -292,10 +293,21 @@ impl VfioCommand {
     }
 }
 
+pub enum VhostVsockDeviceParameter {
+    Path(PathBuf),
+    Fd(RawDescriptor),
+}
+
+impl Default for VhostVsockDeviceParameter {
+    fn default() -> Self {
+        VhostVsockDeviceParameter::Path(PathBuf::from(VHOST_VSOCK_PATH))
+    }
+}
+
 /// Aggregate of all configurable options for a running VM.
 pub struct Config {
     pub kvm_device_path: PathBuf,
-    pub vhost_vsock_device_path: PathBuf,
+    pub vhost_vsock_device: Option<VhostVsockDeviceParameter>,
     pub vhost_net_device_path: PathBuf,
     pub vcpu_count: Option<usize>,
     pub rt_cpus: Vec<usize>,
@@ -393,7 +405,7 @@ impl Default for Config {
     fn default() -> Config {
         Config {
             kvm_device_path: PathBuf::from(KVM_PATH),
-            vhost_vsock_device_path: PathBuf::from(VHOST_VSOCK_PATH),
+            vhost_vsock_device: None,
             vhost_net_device_path: PathBuf::from(VHOST_NET_PATH),
             vcpu_count: None,
             rt_cpus: Vec::new(),

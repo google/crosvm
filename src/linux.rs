@@ -12,7 +12,7 @@ use std::io::stdin;
 use std::iter;
 use std::mem;
 use std::net::Ipv4Addr;
-use std::os::unix::net::UnixStream;
+use std::os::unix::{io::FromRawFd, net::UnixStream, prelude::OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::str;
 use std::sync::{mpsc, Arc, Barrier};
@@ -70,7 +70,7 @@ use vm_memory::{GuestAddress, GuestMemory, MemoryPolicy};
 use crate::gdb::{gdb_thread, GdbStub};
 use crate::{
     Config, DiskOption, Executable, SharedDir, SharedDirKind, TouchDeviceOption, VfioType,
-    VhostUserFsOption, VhostUserOption, VhostUserWlOption,
+    VhostUserFsOption, VhostUserOption, VhostUserWlOption, VhostVsockDeviceParameter,
 };
 use arch::{
     self, LinuxArch, RunnableLinuxVm, VcpuAffinity, VirtioDeviceStub, VmComponents, VmImage,
@@ -1000,7 +1000,28 @@ fn register_video_device(
 
 fn create_vhost_vsock_device(cfg: &Config, cid: u64) -> DeviceResult {
     let features = virtio::base_features(cfg.protected_vm);
-    let dev = virtio::vhost::Vsock::new(&cfg.vhost_vsock_device_path, features, cid)
+
+    let device_file = match cfg
+        .vhost_vsock_device
+        .as_ref()
+        .unwrap_or(&VhostVsockDeviceParameter::default())
+    {
+        VhostVsockDeviceParameter::Fd(fd) => {
+            let fd = validate_raw_descriptor(*fd)
+                .context("failed to validate fd for virtual socker device")?;
+            // Safe because the `fd` is actually owned by this process and
+            // we have a unique handle to it.
+            unsafe { File::from_raw_fd(fd) }
+        }
+        VhostVsockDeviceParameter::Path(path) => OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
+            .open(path)
+            .context("failed to open virtual socket device")?,
+    };
+
+    let dev = virtio::vhost::Vsock::new(device_file, features, cid)
         .context("failed to set up virtual socket device")?;
 
     Ok(VirtioDeviceStub {

@@ -24,7 +24,8 @@ use crosvm::DirectIoOption;
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
     platform, BindMount, Config, DiskOption, Executable, GidMap, SharedDir, TouchDeviceOption,
-    VfioCommand, VhostUserFsOption, VhostUserOption, VhostUserWlOption, DISK_ID_LEN,
+    VfioCommand, VhostUserFsOption, VhostUserOption, VhostUserWlOption, VhostVsockDeviceParameter,
+    DISK_ID_LEN,
 };
 use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
 #[cfg(feature = "audio_cras")]
@@ -952,7 +953,32 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
 
             cfg.kvm_device_path = kvm_device_path;
         }
+        "vhost-vsock-fd" => {
+            if cfg.vhost_vsock_device.is_some() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("A vhost-vsock device was already specified"),
+                });
+            }
+            cfg.vhost_vsock_device = Some(VhostVsockDeviceParameter::Fd(
+                value
+                    .unwrap()
+                    .parse()
+                    .map_err(|_| argument::Error::InvalidValue {
+                        value: value.unwrap().to_owned(),
+                        expected: String::from(
+                            "this value for `vhost-vsock-fd` needs to be integer",
+                        ),
+                    })?,
+            ));
+        }
         "vhost-vsock-device" => {
+            if cfg.vhost_vsock_device.is_some() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("A vhost-vsock device was already specified"),
+                });
+            }
             let vhost_vsock_device_path = PathBuf::from(value.unwrap());
             if !vhost_vsock_device_path.exists() {
                 return Err(argument::Error::InvalidValue {
@@ -961,7 +987,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 });
             }
 
-            cfg.vhost_vsock_device_path = vhost_vsock_device_path;
+            cfg.vhost_vsock_device = Some(VhostVsockDeviceParameter::Path(vhost_vsock_device_path));
         }
         "vhost-net-device" => {
             let vhost_net_device_path = PathBuf::from(value.unwrap());
@@ -2134,6 +2160,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
     let arguments =
         &[Argument::positional("KERNEL", "bzImage of kernel to run"),
           Argument::value("kvm-device", "PATH", "Path to the KVM device. (default /dev/kvm)"),
+          Argument::value("vhost-vsock-fd", "FD", "Open FD to the vhost-vsock device, mutually exclusive with vhost-vsock-device."),
           Argument::value("vhost-vsock-device", "PATH", "Path to the vhost-vsock device. (default /dev/vhost-vsock)"),
           Argument::value("vhost-net-device", "PATH", "Path to the vhost-net device. (default /dev/vhost-net)"),
           Argument::value("android-fstab", "PATH", "Path to Android fstab"),
