@@ -30,7 +30,7 @@ enum VdaBackendError {
 
 impl From<VdaBackendError> for VideoError {
     fn from(e: VdaBackendError) -> Self {
-        VideoError::BackendFailure(Box::new(e))
+        VideoError::backend_failure(e)
     }
 }
 

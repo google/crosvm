@@ -8,7 +8,7 @@ use super::{error::VideoError, format::Profile};
 /// Transparent convertion from libvda error to VideoError backend failure.
 impl From<libvda::Error> for VideoError {
     fn from(error: libvda::Error) -> Self {
-        VideoError::BackendFailure(Box::new(error))
+        VideoError::backend_failure(error)
     }
 }
 

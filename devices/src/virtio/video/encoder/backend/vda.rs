@@ -294,7 +294,7 @@ impl EncoderSession for LibvdaEncoderSession {
         let input_buffer_id = self.next_input_buffer_id;
         let desc = match resource.handle {
             GuestResourceHandle::VirtioObject(handle) => handle.desc,
-            _ => return Err(VideoError::BackendFailure(Box::new(UnsupportedMemoryType))),
+            _ => return Err(VideoError::backend_failure(UnsupportedMemoryType)),
         };
 
         let libvda_planes = resource
@@ -329,7 +329,7 @@ impl EncoderSession for LibvdaEncoderSession {
         let output_buffer_id = self.next_output_buffer_id;
         let desc = match resource {
             GuestResourceHandle::VirtioObject(handle) => handle.desc,
-            _ => return Err(VideoError::BackendFailure(Box::new(UnsupportedMemoryType))),
+            _ => return Err(VideoError::backend_failure(UnsupportedMemoryType)),
         };
 
         self.session.use_output_buffer(
@@ -394,7 +394,7 @@ impl EncoderSession for LibvdaEncoderSession {
             },
             FlushResponse { flush_done } => EncoderEvent::FlushResponse { flush_done },
             NotifyError(err) => EncoderEvent::NotifyError {
-                error: VideoError::BackendFailure(Box::new(err)),
+                error: VideoError::backend_failure(err),
             },
         };
 

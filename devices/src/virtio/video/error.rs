@@ -42,4 +42,10 @@ pub enum VideoError {
     UnsupportedControl(CtrlType),
 }
 
+impl VideoError {
+    pub fn backend_failure<E: std::error::Error + Send + 'static>(error: E) -> Self {
+        VideoError::BackendFailure(Box::new(error))
+    }
+}
+
 pub type VideoResult<T> = Result<T, VideoError>;
