@@ -64,6 +64,7 @@ members = [
     "virtio_sys",
     "vm_control",
     "vm_memory",
+    "third_party/vmm_vhost",
     "x86_64",
 ]
 exclude = [

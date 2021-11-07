@@ -10,7 +10,6 @@ declare -A replacements=(
     ["libcras_stub"]="../../third_party/adhd/cras/client/libcras"
     ["system_api_stub"]="../../platform2/system_api"
     ["third_party/minijail"]="../../aosp/external/minijail"
-    ["third_party/vmm_vhost"]="../../third_party/rust-vmm/vhost"
 )
 
 for crate in "${!replacements[@]}"; do
