@@ -3,8 +3,6 @@
 
 //! Structs for Unix Domain Socket listener and endpoint.
 
-#![allow(dead_code)]
-
 use std::fs::File;
 use std::io::ErrorKind;
 use std::marker::PhantomData;
@@ -173,6 +171,7 @@ impl<R: Req> Endpoint<R> {
     /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
+    #[cfg(test)]
     pub fn send_slice(&mut self, data: &[u8], fds: Option<&[RawFd]>) -> Result<usize> {
         self.send_iovec(&[data], fds)
     }
@@ -385,6 +384,7 @@ impl<R: Req> Endpoint<R> {
     /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
+    #[cfg(test)]
     pub fn recv_into_buf(
         &mut self,
         buf_size: usize,
@@ -480,6 +480,7 @@ impl<R: Req> Endpoint<R> {
     /// * - SocketError: other socket related errors.
     /// * - PartialMessage: received a partial message.
     /// * - InvalidMessage: received a invalid message.
+    #[cfg(test)]
     pub fn recv_body_into_buf(
         &mut self,
         buf: &mut [u8],
