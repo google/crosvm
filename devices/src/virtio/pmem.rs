@@ -2,20 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::cell::RefCell;
 use std::fs::File;
 use std::io;
+use std::rc::Rc;
 use std::thread;
 
-use base::{error, AsRawDescriptor, Event, PollToken, RawDescriptor, Tube, WaitContext};
+use base::{error, AsRawDescriptor, Event, RawDescriptor, Tube};
 use base::{Error as SysError, Result as SysResult};
+use cros_async::{select3, EventAsync, Executor};
 use data_model::{DataInit, Le32, Le64};
+use futures::pin_mut;
 use remain::sorted;
 use thiserror::Error;
 use vm_control::{MemSlot, VmMsyncRequest, VmMsyncResponse};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{
-    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, SignalableInterrupt,
+    async_utils, copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader,
     VirtioDevice, Writer, TYPE_PMEM,
 };
 
@@ -70,147 +74,145 @@ enum Error {
 
 type Result<T> = ::std::result::Result<T, Error>;
 
-struct Worker {
-    interrupt: Interrupt,
-    queue: Queue,
-    memory: GuestMemory,
-    pmem_device_tube: Tube,
-    mapping_arena_slot: MemSlot,
+fn execute_request(
+    request: virtio_pmem_req,
+    pmem_device_tube: &Tube,
+    mapping_arena_slot: u32,
     mapping_size: usize,
-}
+) -> u32 {
+    match request.type_.to_native() {
+        VIRTIO_PMEM_REQ_TYPE_FLUSH => {
+            let request = VmMsyncRequest::MsyncArena {
+                slot: mapping_arena_slot,
+                offset: 0, // The pmem backing file is always at offset 0 in the arena.
+                size: mapping_size,
+            };
 
-impl Worker {
-    fn execute_request(&self, request: virtio_pmem_req) -> u32 {
-        match request.type_.to_native() {
-            VIRTIO_PMEM_REQ_TYPE_FLUSH => {
-                let request = VmMsyncRequest::MsyncArena {
-                    slot: self.mapping_arena_slot,
-                    offset: 0, // The pmem backing file is always at offset 0 in the arena.
-                    size: self.mapping_size,
-                };
+            if let Err(e) = pmem_device_tube.send(&request) {
+                error!("failed to send request: {}", e);
+                return VIRTIO_PMEM_RESP_TYPE_EIO;
+            }
 
-                if let Err(e) = self.pmem_device_tube.send(&request) {
-                    error!("failed to send request: {}", e);
-                    return VIRTIO_PMEM_RESP_TYPE_EIO;
-                }
-
-                match self.pmem_device_tube.recv() {
-                    Ok(response) => match response {
-                        VmMsyncResponse::Ok => VIRTIO_PMEM_RESP_TYPE_OK,
-                        VmMsyncResponse::Err(e) => {
-                            error!("failed flushing disk image: {}", e);
-                            VIRTIO_PMEM_RESP_TYPE_EIO
-                        }
-                    },
-                    Err(e) => {
-                        error!("failed to receive data: {}", e);
+            match pmem_device_tube.recv() {
+                Ok(response) => match response {
+                    VmMsyncResponse::Ok => VIRTIO_PMEM_RESP_TYPE_OK,
+                    VmMsyncResponse::Err(e) => {
+                        error!("failed flushing disk image: {}", e);
                         VIRTIO_PMEM_RESP_TYPE_EIO
                     }
-                }
-            }
-            _ => {
-                error!("unknown request type: {}", request.type_.to_native());
-                VIRTIO_PMEM_RESP_TYPE_EIO
-            }
-        }
-    }
-
-    fn handle_request(&self, avail_desc: DescriptorChain) -> Result<usize> {
-        let mut reader =
-            Reader::new(self.memory.clone(), avail_desc.clone()).map_err(Error::Descriptor)?;
-        let mut writer = Writer::new(self.memory.clone(), avail_desc).map_err(Error::Descriptor)?;
-
-        let status_code = reader
-            .read_obj()
-            .map(|request| self.execute_request(request))
-            .map_err(Error::ReadQueue)?;
-
-        let response = virtio_pmem_resp {
-            status_code: status_code.into(),
-        };
-
-        writer.write_obj(response).map_err(Error::WriteQueue)?;
-
-        Ok(writer.bytes_written())
-    }
-
-    fn process_queue(&mut self) -> bool {
-        let mut needs_interrupt = false;
-        while let Some(avail_desc) = self.queue.pop(&self.memory) {
-            let avail_desc_index = avail_desc.index;
-
-            let bytes_written = match self.handle_request(avail_desc) {
-                Ok(count) => count,
+                },
                 Err(e) => {
-                    error!("pmem: unable to handle request: {}", e);
-                    0
+                    error!("failed to receive data: {}", e);
+                    VIRTIO_PMEM_RESP_TYPE_EIO
                 }
-            };
-            self.queue
-                .add_used(&self.memory, avail_desc_index, bytes_written as u32);
-            needs_interrupt = true;
+            }
         }
-
-        needs_interrupt
+        _ => {
+            error!("unknown request type: {}", request.type_.to_native());
+            VIRTIO_PMEM_RESP_TYPE_EIO
+        }
     }
+}
 
-    fn run(&mut self, queue_evt: Event, kill_evt: Event) {
-        #[derive(PollToken)]
-        enum Token {
-            QueueAvailable,
-            InterruptResample,
-            Kill,
-        }
+fn handle_request(
+    mem: &GuestMemory,
+    avail_desc: DescriptorChain,
+    pmem_device_tube: &Tube,
+    mapping_arena_slot: u32,
+    mapping_size: usize,
+) -> Result<usize> {
+    let mut reader = Reader::new(mem.clone(), avail_desc.clone()).map_err(Error::Descriptor)?;
+    let mut writer = Writer::new(mem.clone(), avail_desc).map_err(Error::Descriptor)?;
 
-        let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
-            (&queue_evt, Token::QueueAvailable),
-            (&kill_evt, Token::Kill),
-        ]) {
-            Ok(pc) => pc,
+    let status_code = reader
+        .read_obj()
+        .map(|request| execute_request(request, pmem_device_tube, mapping_arena_slot, mapping_size))
+        .map_err(Error::ReadQueue)?;
+
+    let response = virtio_pmem_resp {
+        status_code: status_code.into(),
+    };
+
+    writer.write_obj(response).map_err(Error::WriteQueue)?;
+
+    Ok(writer.bytes_written())
+}
+
+async fn handle_queue(
+    mem: &GuestMemory,
+    mut queue: Queue,
+    mut queue_event: EventAsync,
+    interrupt: Rc<RefCell<Interrupt>>,
+    pmem_device_tube: Tube,
+    mapping_arena_slot: u32,
+    mapping_size: usize,
+) {
+    loop {
+        let avail_desc = match queue.next_async(mem, &mut queue_event).await {
             Err(e) => {
-                error!("failed creating WaitContext: {}", e);
+                error!("Failed to read descriptor {}", e);
                 return;
+            }
+            Ok(d) => d,
+        };
+        let index = avail_desc.index;
+        let written = match handle_request(
+            mem,
+            avail_desc,
+            &pmem_device_tube,
+            mapping_arena_slot,
+            mapping_size,
+        ) {
+            Ok(n) => n,
+            Err(e) => {
+                error!("pmem: failed to handle request: {}", e);
+                0
             }
         };
-        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-            if wait_ctx
-                .add(resample_evt, Token::InterruptResample)
-                .is_err()
-            {
-                error!("failed adding resample event to WaitContext.");
-                return;
-            }
-        }
+        queue.add_used(mem, index, written as u32);
+        queue.trigger_interrupt(mem, &*interrupt.borrow());
+    }
+}
 
-        'wait: loop {
-            let events = match wait_ctx.wait() {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("failed polling for events: {}", e);
-                    break;
-                }
-            };
+fn run_worker(
+    queue_evt: Event,
+    queue: Queue,
+    pmem_device_tube: Tube,
+    interrupt: Interrupt,
+    kill_evt: Event,
+    mem: GuestMemory,
+    mapping_arena_slot: u32,
+    mapping_size: usize,
+) {
+    // Wrap the interrupt in a `RefCell` so it can be shared between async functions.
+    let interrupt = Rc::new(RefCell::new(interrupt));
 
-            let mut needs_interrupt = false;
-            for event in events.iter().filter(|e| e.is_readable) {
-                match event.token {
-                    Token::QueueAvailable => {
-                        if let Err(e) = queue_evt.read() {
-                            error!("failed reading queue Event: {}", e);
-                            break 'wait;
-                        }
-                        needs_interrupt |= self.process_queue();
-                    }
-                    Token::InterruptResample => {
-                        self.interrupt.interrupt_resample();
-                    }
-                    Token::Kill => break 'wait,
-                }
-            }
-            if needs_interrupt {
-                self.queue.trigger_interrupt(&self.memory, &self.interrupt);
-            }
-        }
+    let ex = Executor::new().unwrap();
+
+    let queue_evt = EventAsync::new(queue_evt.0, &ex).expect("failed to set up the queue event");
+
+    // Process requests from the virtio queue.
+    let queue_fut = handle_queue(
+        &mem,
+        queue,
+        queue_evt,
+        interrupt.clone(),
+        pmem_device_tube,
+        mapping_arena_slot,
+        mapping_size,
+    );
+    pin_mut!(queue_fut);
+
+    // Process any requests to resample the irq value.
+    let resample = async_utils::handle_irq_resample(&ex, interrupt);
+    pin_mut!(resample);
+
+    // Exit if the kill event is triggered.
+    let kill = async_utils::await_and_exit(&ex, kill_evt);
+    pin_mut!(kill);
+
+    if let Err(e) = ex.run_until(select3(queue_fut, resample, kill)) {
+        error!("error happened in executor: {}", e);
     }
 }
 
@@ -329,15 +331,16 @@ impl VirtioDevice for Pmem {
             let worker_result = thread::Builder::new()
                 .name("virtio_pmem".to_string())
                 .spawn(move || {
-                    let mut worker = Worker {
-                        interrupt,
-                        memory,
+                    run_worker(
+                        queue_event,
                         queue,
                         pmem_device_tube,
+                        interrupt,
+                        kill_event,
+                        memory,
                         mapping_arena_slot,
                         mapping_size,
-                    };
-                    worker.run(queue_event, kill_event);
+                    )
                 });
 
             match worker_result {
