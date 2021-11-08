@@ -172,7 +172,8 @@ impl dyn MappedRegion {
     }
 }
 
-/// Wraps an anonymous shared memory mapping in the current process.
+/// Wraps an anonymous shared memory mapping in the current process. Provides
+/// RAII semantics including munmap when no longer needed.
 #[derive(Debug)]
 pub struct MemoryMapping {
     addr: *mut u8,

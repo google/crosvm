@@ -95,10 +95,11 @@ guidelines
     functions that operate on contiguous shared memory, such as a single entry
     from a scatter gather table, or for safe wrappers around functions which
     operate on pointers, such as a `read` or `write` syscall.
--   `MemoryMapping` is a safe wrapper around anonymous and file mappings. Access
-    via Rust references is forbidden, but indirect reading and writing is
-    available via `VolatileSlice` and several convenience functions. This type
-    is most useful for mapping memory unrelated to `GuestMemory`.
+-   `MemoryMapping` is a safe wrapper around anonymous and file
+    mappings. Provides RAII and does munmap after use. Access via Rust
+    references is forbidden, but indirect reading and writing is available via
+    `VolatileSlice` and several convenience functions. This type is most useful
+    for mapping memory unrelated to `GuestMemory`.
 
 ### Device Model
 
