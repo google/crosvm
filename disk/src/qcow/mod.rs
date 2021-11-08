@@ -564,7 +564,7 @@ impl QcowFile {
     /// Creates a new QcowFile at the given path.
     pub fn new(file: File, virtual_size: u64) -> Result<QcowFile> {
         let header = QcowHeader::create_for_size_and_path(virtual_size, None)?;
-        QcowFile::new_from_header(file, header)
+        QcowFile::new_from_header(file, header, 1)
     }
 
     /// Creates a new QcowFile at the given path.
@@ -584,16 +584,20 @@ impl QcowFile {
             .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
         let size = backing_file.get_len().map_err(Error::BackingFileIo)?;
         let header = QcowHeader::create_for_size_and_path(size, Some(backing_file_name))?;
-        let mut result = QcowFile::new_from_header(file, header)?;
+        let mut result = QcowFile::new_from_header(file, header, backing_file_max_nesting_depth)?;
         result.backing_file = Some(backing_file);
         Ok(result)
     }
 
-    fn new_from_header(mut file: File, header: QcowHeader) -> Result<QcowFile> {
+    fn new_from_header(
+        mut file: File,
+        header: QcowHeader,
+        max_nesting_depth: u32,
+    ) -> Result<QcowFile> {
         file.seek(SeekFrom::Start(0)).map_err(Error::SeekingFile)?;
         header.write_to(&mut file)?;
 
-        let mut qcow = Self::from(file, 1)?;
+        let mut qcow = Self::from(file, max_nesting_depth)?;
 
         // Set the refcount for each refcount table cluster.
         let cluster_size = 0x01u64 << qcow.header.cluster_bits;
@@ -1765,8 +1769,9 @@ mod tests {
     use super::*;
     use crate::MAX_NESTING_DEPTH;
     use base::WriteZeroes;
+    use std::fs::OpenOptions;
     use std::io::{Read, Seek, SeekFrom, Write};
-    use tempfile::tempfile;
+    use tempfile::{tempfile, TempDir};
 
     fn valid_header() -> Vec<u8> {
         vec![
@@ -2690,5 +2695,42 @@ mod tests {
             QcowFile::rebuild_refcounts(&mut raw_file, header)
                 .expect("Failed to rebuild recounts.");
         });
+    }
+
+    #[test]
+    fn nested_qcow() {
+        let tmp_dir = TempDir::new().unwrap();
+
+        // A file `backing` is backing a qcow file `qcow.l1`, which in turn is backing another
+        // qcow file.
+        let backing_file_path = tmp_dir.path().join("backing");
+        let _backing_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&backing_file_path)
+            .unwrap();
+
+        let level1_qcow_file_path = tmp_dir.path().join("qcow.l1");
+        let level1_qcow_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&level1_qcow_file_path)
+            .unwrap();
+        let _level1_qcow_file = QcowFile::new_from_backing(
+            level1_qcow_file,
+            &backing_file_path.to_str().unwrap(),
+            1000, /* allow deep nesting */
+        )
+        .unwrap();
+
+        let level2_qcow_file = tempfile().unwrap();
+        let _level2_qcow_file = QcowFile::new_from_backing(
+            level2_qcow_file,
+            &level1_qcow_file_path.to_str().unwrap(),
+            1000, /* allow deep nesting */
+        )
+        .expect("failed to create level2 qcow file");
     }
 }
