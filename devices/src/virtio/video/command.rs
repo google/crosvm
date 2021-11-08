@@ -175,7 +175,6 @@ impl<'a> VideoCmd {
                     planes_layout,
                     num_planes,
                     plane_offsets,
-                    num_entries,
                     ..
                 } = r.read_obj()?;
 
@@ -197,12 +196,6 @@ impl<'a> VideoCmd {
                     );
                     return Err(InvalidArgument);
                 }
-                // We only support single-entry objects for now.
-                if num_planes != 1 || num_entries[0] != 1 {
-                    error!("the number of entries must be equal to 1");
-                    return Err(InvalidArgument);
-                }
-
                 let plane_offsets = plane_offsets[0..num_planes as usize]
                     .iter()
                     .map(|x| Into::<u32>::into(*x))
