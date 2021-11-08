@@ -975,22 +975,22 @@ mod tests {
 
         assert_eq!(hdr.get_version(), 0x1);
 
-        assert_eq!(hdr.is_reply(), false);
+        assert!(!hdr.is_reply());
         hdr.set_reply(true);
-        assert_eq!(hdr.is_reply(), true);
+        assert!(hdr.is_reply());
         hdr.set_reply(false);
 
-        assert_eq!(hdr.is_need_reply(), false);
+        assert!(!hdr.is_need_reply());
         hdr.set_need_reply(true);
-        assert_eq!(hdr.is_need_reply(), true);
+        assert!(hdr.is_need_reply());
         hdr.set_need_reply(false);
 
         assert_eq!(hdr.get_size(), 0x100);
         hdr.set_size(0x200);
         assert_eq!(hdr.get_size(), 0x200);
 
-        assert_eq!(hdr.is_need_reply(), false);
-        assert_eq!(hdr.is_reply(), false);
+        assert!(!hdr.is_need_reply());
+        assert!(!hdr.is_reply());
         assert_eq!(hdr.get_version(), 0x1);
 
         // Check message length
@@ -1086,14 +1086,14 @@ mod tests {
         assert_eq!(a, 5);
         let a = state.num;
         assert_eq!(a, 8);
-        assert_eq!(state.is_valid(), true);
+        assert!(state.is_valid());
 
         let state = VhostUserVringState::default();
         let a = state.index;
         assert_eq!(a, 0);
         let a = state.num;
         assert_eq!(a, 0);
-        assert_eq!(state.is_valid(), true);
+        assert!(state.is_valid());
     }
 
     #[test]
@@ -1119,20 +1119,20 @@ mod tests {
         assert_eq!(a, 0x3000);
         let a = addr.log;
         assert_eq!(a, 0x4000);
-        assert_eq!(addr.is_valid(), true);
+        assert!(addr.is_valid());
 
         addr.descriptor = 0x1001;
-        assert_eq!(addr.is_valid(), false);
+        assert!(!addr.is_valid());
         addr.descriptor = 0x1000;
 
         addr.available = 0x3001;
-        assert_eq!(addr.is_valid(), false);
+        assert!(!addr.is_valid());
         addr.available = 0x3000;
 
         addr.used = 0x2001;
-        assert_eq!(addr.is_valid(), false);
+        assert!(!addr.is_valid());
         addr.used = 0x2000;
-        assert_eq!(addr.is_valid(), true);
+        assert!(addr.is_valid());
     }
 
     #[test]
@@ -1160,7 +1160,7 @@ mod tests {
         assert_eq!(a, 0x3000);
         let a = addr.log;
         assert_eq!(a, 0x4000);
-        assert_eq!(addr.is_valid(), true);
+        assert!(addr.is_valid());
     }
 
     #[test]
@@ -1215,11 +1215,11 @@ mod tests {
     fn test_vhost_user_fs_slave() {
         let mut fs_slave = VhostUserFSSlaveMsg::default();
 
-        assert_eq!(fs_slave.is_valid(), true);
+        assert!(fs_slave.is_valid());
 
         fs_slave.fd_offset[0] = 0xffff_ffff_ffff_ffff;
         fs_slave.len[0] = 0x1;
-        assert_eq!(fs_slave.is_valid(), false);
+        assert!(!fs_slave.is_valid());
 
         assert_ne!(
             VhostUserFSSlaveMsgFlags::MAP_R,

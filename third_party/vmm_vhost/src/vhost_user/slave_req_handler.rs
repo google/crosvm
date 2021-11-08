@@ -1,8 +1,6 @@
 // Copyright (C) 2019 Alibaba Cloud Computing. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#![allow(clippy::needless_borrow)]
-
 use std::fs::File;
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -543,7 +541,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         buf: &[u8],
         files: Option<Vec<File>>,
     ) -> Result<()> {
-        self.check_request_size(&hdr, size, hdr.get_size() as usize)?;
+        self.check_request_size(hdr, size, hdr.get_size() as usize)?;
 
         // check message size is consistent
         let hdrsize = mem::size_of::<VhostUserMemory>();
@@ -577,7 +575,7 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
             }
         }
 
-        self.backend.set_mem_table(&regions, files)
+        self.backend.set_mem_table(regions, files)
     }
 
     fn get_config(&mut self, hdr: &VhostUserMsgHeader<MasterReq>, buf: &[u8]) -> Result<()> {
@@ -604,15 +602,15 @@ impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S> {
         match res {
             Ok(ref buf) if buf.len() == msg.size as usize => {
                 let reply = VhostUserConfig::new(msg.offset, buf.len() as u32, flags);
-                self.send_reply_with_payload(&hdr, &reply, buf.as_slice())?;
+                self.send_reply_with_payload(hdr, &reply, buf.as_slice())?;
             }
             Ok(_) => {
                 let reply = VhostUserConfig::new(msg.offset, 0, flags);
-                self.send_reply_message(&hdr, &reply)?;
+                self.send_reply_message(hdr, &reply)?;
             }
             Err(_) => {
                 let reply = VhostUserConfig::new(msg.offset, 0, flags);
-                self.send_reply_message(&hdr, &reply)?;
+                self.send_reply_message(hdr, &reply)?;
             }
         }
         Ok(())

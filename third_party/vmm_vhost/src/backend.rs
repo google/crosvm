@@ -7,8 +7,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE-BSD-Google file.
 
-#![allow(clippy::bool_assert_comparison)]
-
 //! Common traits and structs for vhost-kern and vhost-user backend drivers.
 
 use std::cell::RefCell;
@@ -490,19 +488,19 @@ mod tests {
             log_addr: None,
         };
 
-        assert_eq!(config.is_log_addr_valid(), true);
+        assert!(config.is_log_addr_valid());
         assert_eq!(config.get_log_addr(), 0);
 
         config.flags = 0x1;
-        assert_eq!(config.is_log_addr_valid(), false);
+        assert!(!config.is_log_addr_valid());
         assert_eq!(config.get_log_addr(), 0);
 
         config.log_addr = Some(0x7000);
-        assert_eq!(config.is_log_addr_valid(), true);
+        assert!(config.is_log_addr_valid());
         assert_eq!(config.get_log_addr(), 0x7000);
 
         config.flags = 0x0;
-        assert_eq!(config.is_log_addr_valid(), true);
+        assert!(config.is_log_addr_valid());
         assert_eq!(config.get_log_addr(), 0);
     }
 }
