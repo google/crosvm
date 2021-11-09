@@ -575,7 +575,7 @@ impl PassthroughFs {
 
         // Safe because this doesn't modify any memory and we check the return value.
         let raw_descriptor = syscall!(unsafe {
-            libc::openat(
+            libc::openat64(
                 libc::AT_FDCWD,
                 proc_cstr.as_ptr(),
                 libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
@@ -682,7 +682,7 @@ impl PassthroughFs {
         // have much bigger problems. Also, clear the `O_NOFOLLOW` flag if it is set since we need
         // to follow the `/proc/self/fd` symlink to get the file.
         let raw_descriptor = syscall!(unsafe {
-            libc::openat(
+            libc::openat64(
                 self.proc.as_raw_descriptor(),
                 pathname.as_ptr(),
                 (flags | libc::O_CLOEXEC) & !(libc::O_NOFOLLOW | libc::O_DIRECT),
@@ -791,7 +791,7 @@ impl PassthroughFs {
 
         // Safe because this doesn't modify any memory and we check the return value.
         let f = unsafe {
-            File::from_raw_descriptor(syscall!(libc::openat(
+            File::from_raw_descriptor(syscall!(libc::openat64(
                 parent.as_raw_descriptor(),
                 name.as_ptr(),
                 flags
@@ -1345,7 +1345,7 @@ impl FileSystem for PassthroughFs {
 
         let flags = libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
         // Safe because this doesn't modify any memory and we check the return value.
-        let raw_descriptor = unsafe { libc::openat(libc::AT_FDCWD, root.as_ptr(), flags) };
+        let raw_descriptor = unsafe { libc::openat64(libc::AT_FDCWD, root.as_ptr(), flags) };
         if raw_descriptor < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -1569,7 +1569,7 @@ impl FileSystem for PassthroughFs {
 
             // Safe because this doesn't modify any memory and we check the return value.
             syscall!(unsafe {
-                libc::openat(
+                libc::openat64(
                     data.as_raw_descriptor(),
                     current_dir.as_ptr(),
                     tmpflags,
@@ -1608,7 +1608,7 @@ impl FileSystem for PassthroughFs {
             // really check `flags` because if the kernel can't handle poorly specified flags then
             // we have much bigger problems.
             syscall!(unsafe {
-                libc::openat(data.as_raw_descriptor(), name.as_ptr(), create_flags, mode)
+                libc::openat64(data.as_raw_descriptor(), name.as_ptr(), create_flags, mode)
             })?
         };
 
