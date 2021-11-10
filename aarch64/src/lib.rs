@@ -67,9 +67,19 @@ const PSR_A_BIT: u64 = 0x00000100;
 const PSR_D_BIT: u64 = 0x00000200;
 
 macro_rules! offset__of {
-    ($str:ty, $($field:ident).+ $([$idx:expr])*) => {
-        unsafe { &(*(0 as *const $str))$(.$field)*  $([$idx])* as *const _ as usize }
-    }
+    ($type:path, $field:tt) => {{
+        // Check that the field actually exists. This will generate a compiler error if the field is
+        // accessed through a Deref impl.
+        #[allow(clippy::unneeded_field_pattern)]
+        let $type { $field: _, .. };
+
+        // Get a pointer to the uninitialized field.  This is taken from the docs for `addr_of_mut`.
+        let mut uninit = ::std::mem::MaybeUninit::<$type>::uninit();
+        let field_ptr = unsafe { ::std::ptr::addr_of_mut!((*uninit.as_mut_ptr()).$field) };
+
+        // Now get the offset.
+        (field_ptr as usize) - (uninit.as_mut_ptr() as usize)
+    }};
 }
 
 const KVM_REG_ARM64: u64 = 0x6000000000000000;
@@ -86,18 +96,14 @@ const KVM_REG_ARM_CORE: u64 = 0x0010 << KVM_REG_ARM_COPROC_SHIFT;
 /// register number, e.g. `arm64_core_reg!(regs, 5)` for `x5`. This is different
 /// to work around `offset__of!(kvm_sys::user_pt_regs, regs[$x])` not working.
 macro_rules! arm64_core_reg {
-    ($reg: tt) => {
-        KVM_REG_ARM64
-            | KVM_REG_SIZE_U64
-            | KVM_REG_ARM_CORE
-            | ((offset__of!(kvm_sys::user_pt_regs, $reg) / 4) as u64)
-    };
-    (regs, $x: literal) => {
-        KVM_REG_ARM64
-            | KVM_REG_SIZE_U64
-            | KVM_REG_ARM_CORE
-            | (((offset__of!(kvm_sys::user_pt_regs, regs) + ($x * size_of::<u64>())) / 4) as u64)
-    };
+    ($reg: tt) => {{
+        let off = (offset__of!(kvm_sys::user_pt_regs, $reg) / 4) as u64;
+        KVM_REG_ARM64 | KVM_REG_SIZE_U64 | KVM_REG_ARM_CORE | off
+    }};
+    (regs, $x: literal) => {{
+        let off = ((offset__of!(kvm_sys::user_pt_regs, regs) + ($x * size_of::<u64>())) / 4) as u64;
+        KVM_REG_ARM64 | KVM_REG_SIZE_U64 | KVM_REG_ARM_CORE | off
+    }};
 }
 
 fn get_kernel_addr() -> GuestAddress {
