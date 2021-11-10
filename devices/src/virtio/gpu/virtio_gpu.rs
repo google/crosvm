@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::virtio::gpu::GpuDisplayParameters;
 use crate::virtio::resource_bridge::{BufferInfo, PlaneInfo, ResourceInfo, ResourceResponse};
-use base::{error, ExternalMapping, Tube};
+use base::{error, ExternalMapping, SafeDescriptor, Tube};
 
 use data_model::VolatileSlice;
 
@@ -305,9 +305,10 @@ impl VirtioGpu {
         external_blob: bool,
         udmabuf: bool,
         fence_handler: RutabagaFenceHandler,
+        render_server_fd: Option<SafeDescriptor>,
     ) -> Option<VirtioGpu> {
         let rutabaga = rutabaga_builder
-            .build(fence_handler, None)
+            .build(fence_handler, render_server_fd)
             .map_err(|e| error!("failed to build rutabaga {}", e))
             .ok()?;
 

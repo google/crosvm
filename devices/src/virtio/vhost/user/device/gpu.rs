@@ -501,6 +501,7 @@ pub fn run_gpu_device(program_name: &str, args: std::env::Args) -> anyhow::Resul
         Vec::new(), // resource_bridges, handled separately by us
         display_backends,
         &gpu_parameters,
+        None,
         event_devices,
         map_request,
         external_blob,

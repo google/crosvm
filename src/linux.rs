@@ -44,7 +44,7 @@ use devices::virtio::VideoBackendType;
 use devices::virtio::{self, Console, VirtioDevice};
 #[cfg(feature = "gpu")]
 use devices::virtio::{
-    gpu::{DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH},
+    gpu::{GpuRenderServerParameters, DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH},
     vhost::user::vmm::Gpu as VhostUserGpu,
     EventDevice,
 };
@@ -802,6 +802,7 @@ fn create_gpu_device(
     resource_bridges: Vec<Tube>,
     wayland_socket_path: Option<&PathBuf>,
     x_display: Option<String>,
+    render_server_fd: Option<SafeDescriptor>,
     event_devices: Vec<EventDevice>,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
 ) -> DeviceResult {
@@ -830,6 +831,7 @@ fn create_gpu_device(
         resource_bridges,
         display_backends,
         cfg.gpu_parameters.as_ref().unwrap(),
+        render_server_fd,
         event_devices,
         map_request,
         cfg.sandbox,
@@ -882,6 +884,46 @@ fn create_gpu_device(
         dev: Box::new(dev),
         jail,
     })
+}
+
+#[cfg(feature = "gpu")]
+fn start_gpu_render_server(
+    cfg: &Config,
+    render_server_parameters: &GpuRenderServerParameters,
+) -> Result<SafeDescriptor> {
+    let (server_socket, client_socket) =
+        UnixSeqpacket::pair().context("failed to create render server socket")?;
+
+    let jail = match gpu_jail(cfg, "gpu_render_server")? {
+        Some(mut jail) => {
+            // TODO(olv) bind mount and enable shader cache
+
+            // Run as root in the jail to keep capabilities after execve, which is needed for
+            // mounting to work.  All capabilities will be dropped afterwards.
+            add_current_user_as_root_to_jail(&mut jail)?;
+
+            jail
+        }
+        None => Minijail::new().context("failed to create jail")?,
+    };
+
+    let inheritable_fds = [
+        server_socket.as_raw_descriptor(),
+        libc::STDOUT_FILENO,
+        libc::STDERR_FILENO,
+    ];
+
+    let cmd = &render_server_parameters.path;
+    let cmd_str = cmd
+        .to_str()
+        .ok_or_else(|| anyhow!("invalid render server path"))?;
+    let fd_str = server_socket.as_raw_descriptor().to_string();
+    let args = [cmd_str, "--socket-fd", &fd_str];
+
+    jail.run(cmd, &inheritable_fds, &args)
+        .context("failed to start gpu render server")?;
+
+    Ok(SafeDescriptor::from(client_socket))
 }
 
 fn create_wayland_device(
@@ -1549,6 +1591,12 @@ fn create_virtio_devices(
                 });
                 event_devices.push(EventDevice::keyboard(event_device_socket));
             }
+
+            let mut render_server_fd = None;
+            if let Some(ref render_server_parameters) = gpu_parameters.render_server {
+                render_server_fd = Some(start_gpu_render_server(cfg, render_server_parameters)?);
+            }
+
             devs.push(create_gpu_device(
                 cfg,
                 _exit_evt,
@@ -1557,6 +1605,7 @@ fn create_virtio_devices(
                 // Use the unnamed socket for GPU display screens.
                 cfg.wayland_socket_paths.get(""),
                 cfg.x_display.clone(),
+                render_server_fd,
                 event_devices,
                 map_request,
             )?);
@@ -1862,6 +1911,20 @@ fn add_current_user_to_jail(jail: &mut Minijail) -> Result<Ids> {
     if crosvm_gid != 0 {
         jail.change_gid(crosvm_gid);
     }
+
+    Ok(Ids {
+        uid: crosvm_uid,
+        gid: crosvm_gid,
+    })
+}
+
+fn add_current_user_as_root_to_jail(jail: &mut Minijail) -> Result<Ids> {
+    let crosvm_uid = geteuid();
+    let crosvm_gid = getegid();
+    jail.uidmap(&format!("0 {0} 1", crosvm_uid))
+        .context("error setting UID map")?;
+    jail.gidmap(&format!("0 {0} 1", crosvm_gid))
+        .context("error setting GID map")?;
 
     Ok(Ids {
         uid: crosvm_uid,

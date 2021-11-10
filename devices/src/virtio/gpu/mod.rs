@@ -22,8 +22,8 @@ use std::time::Duration;
 use anyhow::Context;
 
 use base::{
-    debug, error, warn, AsRawDescriptor, Event, ExternalMapping, PollToken, RawDescriptor, Tube,
-    WaitContext,
+    debug, error, warn, AsRawDescriptor, Event, ExternalMapping, PollToken, RawDescriptor,
+    SafeDescriptor, Tube, WaitContext,
 };
 
 use data_model::*;
@@ -83,9 +83,15 @@ impl Default for GpuDisplayParameters {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct GpuRenderServerParameters {
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GpuParameters {
     pub displays: Vec<GpuDisplayParameters>,
+    pub render_server: Option<GpuRenderServerParameters>,
     pub renderer_use_egl: bool,
     pub renderer_use_gles: bool,
     pub renderer_use_glx: bool,
@@ -112,6 +118,7 @@ impl Default for GpuParameters {
     fn default() -> Self {
         GpuParameters {
             displays: vec![],
+            render_server: None,
             renderer_use_egl: true,
             renderer_use_gles: true,
             renderer_use_glx: false,
@@ -240,6 +247,7 @@ fn build(
     external_blob: bool,
     udmabuf: bool,
     fence_handler: RutabagaFenceHandler,
+    render_server_fd: Option<SafeDescriptor>,
 ) -> Option<VirtioGpu> {
     let mut display_opt = None;
     for display_backend in display_backends {
@@ -271,6 +279,7 @@ fn build(
         external_blob,
         udmabuf,
         fence_handler,
+        render_server_fd,
     )
 }
 
@@ -997,6 +1006,7 @@ pub struct Gpu {
     rutabaga_component: RutabagaComponentType,
     base_features: u64,
     udmabuf: bool,
+    render_server_fd: Option<SafeDescriptor>,
 }
 
 impl Gpu {
@@ -1006,6 +1016,7 @@ impl Gpu {
         resource_bridges: Vec<Tube>,
         display_backends: Vec<DisplayBackend>,
         gpu_parameters: &GpuParameters,
+        render_server_fd: Option<SafeDescriptor>,
         event_devices: Vec<EventDevice>,
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
         external_blob: bool,
@@ -1018,7 +1029,8 @@ impl Gpu {
             .use_glx(gpu_parameters.renderer_use_glx)
             .use_surfaceless(gpu_parameters.renderer_use_surfaceless)
             .use_external_blob(external_blob)
-            .use_venus(gpu_parameters.use_vulkan);
+            .use_venus(gpu_parameters.use_vulkan)
+            .use_multi_process(gpu_parameters.render_server.is_some());
         let gfxstream_flags = GfxstreamFlags::new()
             .use_egl(gpu_parameters.renderer_use_egl)
             .use_gles(gpu_parameters.renderer_use_gles)
@@ -1081,6 +1093,7 @@ impl Gpu {
             rutabaga_component: component,
             base_features,
             udmabuf: gpu_parameters.udmabuf,
+            render_server_fd,
         }
     }
 
@@ -1093,6 +1106,7 @@ impl Gpu {
         let tube = self.gpu_device_tube.take()?;
         let pci_bar = self.pci_bar.take()?;
         let rutabaga_builder = self.rutabaga_builder.take()?;
+        let render_server_fd = self.render_server_fd.take();
         let event_devices = self.event_devices.split_off(0);
 
         build(
@@ -1106,6 +1120,7 @@ impl Gpu {
             self.external_blob,
             self.udmabuf,
             fence_handler,
+            render_server_fd,
         )
         .map(|vgpu| Frontend::new(vgpu, fence_state))
     }
@@ -1184,6 +1199,10 @@ impl VirtioDevice for Gpu {
 
         if let Some(ref gpu_device_tube) = self.gpu_device_tube {
             keep_rds.push(gpu_device_tube.as_raw_descriptor());
+        }
+
+        if let Some(ref render_server_fd) = self.render_server_fd {
+            keep_rds.push(render_server_fd.as_raw_descriptor());
         }
 
         keep_rds.push(self.exit_evt.as_raw_descriptor());
@@ -1283,6 +1302,7 @@ impl VirtioDevice for Gpu {
         let external_blob = self.external_blob;
         let udmabuf = self.udmabuf;
         let fence_state = Arc::new(Mutex::new(Default::default()));
+        let render_server_fd = self.render_server_fd.take();
         if let (Some(gpu_device_tube), Some(pci_bar), Some(rutabaga_builder)) = (
             self.gpu_device_tube.take(),
             self.pci_bar.take(),
@@ -1309,6 +1329,7 @@ impl VirtioDevice for Gpu {
                             external_blob,
                             udmabuf,
                             fence_handler,
+                            render_server_fd,
                         ) {
                             Some(backend) => backend,
                             None => return,

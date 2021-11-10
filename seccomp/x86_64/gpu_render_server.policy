@@ -1,0 +1,12 @@
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+@include /usr/share/policy/crosvm/gpu_common.policy
+
+# allow fork() and waitpid()
+clone: 1
+wait4: 1
+
+# allow socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC)
+socketpair: arg0 == AF_UNIX && arg1 == SOCK_SEQPACKET|SOCK_CLOEXEC && arg2 == 0

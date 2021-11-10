@@ -39,7 +39,8 @@ use devices::virtio::VideoBackendType;
 #[cfg(feature = "gpu")]
 use devices::virtio::{
     gpu::{
-        GpuDisplayParameters, GpuMode, GpuParameters, DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH,
+        GpuDisplayParameters, GpuMode, GpuParameters, GpuRenderServerParameters,
+        DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH,
     },
     vhost::user::device::run_gpu_device,
 };
@@ -539,6 +540,52 @@ fn parse_gpu_display_options(
     });
 
     Ok(())
+}
+
+#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+fn parse_gpu_render_server_options(
+    s: Option<&str>,
+    gpu_params: &mut GpuParameters,
+) -> argument::Result<()> {
+    let mut path: Option<PathBuf> = None;
+
+    if let Some(s) = s {
+        let opts = s
+            .split(',')
+            .map(|frag| frag.split('='))
+            .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
+
+        for (k, v) in opts {
+            match k {
+                "path" => {
+                    path =
+                        Some(
+                            PathBuf::from_str(v).map_err(|e| argument::Error::InvalidValue {
+                                value: v.to_string(),
+                                expected: e.to_string(),
+                            })?,
+                        )
+                }
+                "" => {}
+                _ => {
+                    return Err(argument::Error::UnknownArgument(format!(
+                        "gpu-render-server parameter {}",
+                        k
+                    )));
+                }
+            }
+        }
+    }
+
+    if let Some(p) = path {
+        gpu_params.render_server = Some(GpuRenderServerParameters { path: p });
+        Ok(())
+    } else {
+        Err(argument::Error::InvalidValue {
+            value: s.unwrap_or("").to_string(),
+            expected: String::from("gpu-render-server must include 'path'"),
+        })
+    }
 }
 
 #[cfg(feature = "audio")]
@@ -1802,17 +1849,18 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         #[cfg(feature = "gpu")]
         "gpu" => {
-            if cfg.gpu_parameters.is_none() {
-                cfg.gpu_parameters = Some(Default::default());
-            }
-            parse_gpu_options(value, cfg.gpu_parameters.as_mut().unwrap())?;
+            let gpu_parameters = cfg.gpu_parameters.get_or_insert_with(Default::default);
+            parse_gpu_options(value, gpu_parameters)?;
         }
         #[cfg(feature = "gpu")]
         "gpu-display" => {
-            if cfg.gpu_parameters.is_none() {
-                cfg.gpu_parameters = Some(Default::default());
-            }
-            parse_gpu_display_options(value, cfg.gpu_parameters.as_mut().unwrap())?;
+            let gpu_parameters = cfg.gpu_parameters.get_or_insert_with(Default::default);
+            parse_gpu_display_options(value, gpu_parameters)?;
+        }
+        #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+        "gpu-render-server" => {
+            let gpu_parameters = cfg.gpu_parameters.get_or_insert_with(Default::default);
+            parse_gpu_render_server_options(value, gpu_parameters)?;
         }
         "software-tpm" => {
             cfg.software_tpm = true;
@@ -2351,6 +2399,12 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
                               Possible key values:
                               width=INT - The width of the virtual display connected to the virtio-gpu.
                               height=INT - The height of the virtual display connected to the virtio-gpu."),
+          #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+          Argument::flag_or_value("gpu-render-server",
+                                  "[path=PATH]",
+                                  "(EXPERIMENTAL) Comma separated key=value pairs for setting up a render server for the virtio-gpu device
+                              Possible key values:
+                              path=PATH - The path to the render server executable."),
           #[cfg(feature = "tpm")]
           Argument::flag("software-tpm", "enable a software emulated trusted platform module device"),
           Argument::value("evdev", "PATH", "Path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host"),
