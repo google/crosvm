@@ -307,7 +307,7 @@ impl VirtioGpu {
         fence_handler: RutabagaFenceHandler,
     ) -> Option<VirtioGpu> {
         let rutabaga = rutabaga_builder
-            .build(fence_handler)
+            .build(fence_handler, None)
             .map_err(|e| error!("failed to build rutabaga {}", e))
             .ok()?;
 

@@ -210,6 +210,7 @@ impl Gfxstream {
 
         let cookie: *mut VirglCookie = Box::into_raw(Box::new(VirglCookie {
             fence_state: Rc::clone(&fence_state),
+            None,
         }));
 
         unsafe {

@@ -5,8 +5,10 @@
 //! renderer_utils: Utility functions and structs used by virgl_renderer and gfxstream.
 
 use std::cell::RefCell;
-use std::os::raw::c_void;
+use std::os::raw::{c_int, c_void};
 use std::rc::Rc;
+
+use base::{IntoRawDescriptor, SafeDescriptor};
 
 use crate::generated::virgl_renderer_bindings::__va_list_tag;
 use crate::rutabaga_utils::{
@@ -73,13 +75,30 @@ impl FenceState {
 
 pub struct VirglCookie {
     pub fence_state: Rc<RefCell<FenceState>>,
+    pub render_server_fd: Option<SafeDescriptor>,
 }
 
-pub extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
+pub unsafe extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
     assert!(!cookie.is_null());
-    let cookie = unsafe { &*(cookie as *mut VirglCookie) };
+    let cookie = &*(cookie as *mut VirglCookie);
 
     // Track the most recent fence.
     let mut fence_state = cookie.fence_state.borrow_mut();
     fence_state.write(fence);
+}
+
+pub unsafe extern "C" fn get_server_fd(cookie: *mut c_void, version: u32) -> c_int {
+    assert!(!cookie.is_null());
+    let cookie = &mut *(cookie as *mut VirglCookie);
+
+    if version != 0 {
+        return -1;
+    }
+
+    // Transfer the fd ownership to virglrenderer.
+    cookie
+        .render_server_fd
+        .take()
+        .map(SafeDescriptor::into_raw_descriptor)
+        .unwrap_or(-1)
 }

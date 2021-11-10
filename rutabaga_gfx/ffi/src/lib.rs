@@ -160,7 +160,7 @@ pub unsafe extern "C" fn rutabaga_init(builder: &rutabaga_builder, ptr: &mut *mu
             .set_virglrenderer_flags(virglrenderer_flags)
             .set_gfxstream_flags(gfxstream_flags)
             .set_rutabaga_channels(rutabaga_channels_opt)
-            .build(fence_handler);
+            .build(fence_handler, None);
 
         let rtbg = return_on_error!(result);
         *ptr = Box::into_raw(Box::new(rtbg)) as _;

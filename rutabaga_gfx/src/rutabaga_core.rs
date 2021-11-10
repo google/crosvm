@@ -7,7 +7,7 @@
 use std::collections::BTreeMap as Map;
 use std::sync::Arc;
 
-use base::ExternalMapping;
+use base::{ExternalMapping, SafeDescriptor};
 use data_model::VolatileSlice;
 
 use crate::cross_domain::CrossDomain;
@@ -714,7 +714,11 @@ impl RutabagaBuilder {
     /// This should be only called once per every virtual machine instance.  Rutabaga tries to
     /// intialize all 3D components which have been built. In 2D mode, only the 2D component is
     /// initialized.
-    pub fn build(self, fence_handler: RutabagaFenceHandler) -> RutabagaResult<Rutabaga> {
+    pub fn build(
+        self,
+        fence_handler: RutabagaFenceHandler,
+        render_server_fd: Option<SafeDescriptor>,
+    ) -> RutabagaResult<Rutabaga> {
         let mut rutabaga_components: Map<RutabagaComponentType, Box<dyn RutabagaComponent>> =
             Default::default();
 
@@ -730,7 +734,11 @@ impl RutabagaBuilder {
                     .virglrenderer_flags
                     .ok_or(RutabagaError::InvalidRutabagaBuild)?;
 
-                let virgl = VirglRenderer::init(virglrenderer_flags, fence_handler.clone())?;
+                let virgl = VirglRenderer::init(
+                    virglrenderer_flags,
+                    fence_handler.clone(),
+                    render_server_fd,
+                )?;
                 rutabaga_components.insert(RutabagaComponentType::VirglRenderer, virgl);
 
                 rutabaga_capsets.push(RutabagaCapsetInfo {

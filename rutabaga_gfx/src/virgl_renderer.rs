@@ -105,14 +105,20 @@ extern "C" fn debug_callback(fmt: *const ::std::os::raw::c_char, ap: *mut __va_l
 }
 
 const VIRGL_RENDERER_CALLBACKS: &virgl_renderer_callbacks = &virgl_renderer_callbacks {
+    #[cfg(not(feature = "virgl_renderer_next"))]
     version: 1,
+    #[cfg(feature = "virgl_renderer_next")]
+    version: 3,
     write_fence: Some(write_fence),
     create_gl_context: None,
     destroy_gl_context: None,
     make_current: None,
     get_drm_fd: None,
     write_context_fence: None,
+    #[cfg(not(feature = "virgl_renderer_next"))]
     get_server_fd: None,
+    #[cfg(feature = "virgl_renderer_next")]
+    get_server_fd: Some(get_server_fd),
 };
 
 /// Retrieves metadata suitable for export about this resource. If "export_fd" is true,
@@ -171,6 +177,7 @@ impl VirglRenderer {
     pub fn init(
         virglrenderer_flags: VirglRendererFlags,
         fence_handler: RutabagaFenceHandler,
+        render_server_fd: Option<SafeDescriptor>,
     ) -> RutabagaResult<Box<dyn RutabagaComponent>> {
         if cfg!(debug_assertions) {
             let ret = unsafe { libc::dup2(libc::STDOUT_FILENO, libc::STDERR_FILENO) };
@@ -197,6 +204,7 @@ impl VirglRenderer {
 
         let mut cookie = Box::new(VirglCookie {
             fence_state: Rc::clone(&fence_state),
+            render_server_fd,
         });
 
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
