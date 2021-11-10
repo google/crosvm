@@ -3,8 +3,7 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
-use std::error::Error as StdError;
-use std::io::{self};
+use std::io;
 use std::mem::size_of;
 use std::sync::Arc;
 
