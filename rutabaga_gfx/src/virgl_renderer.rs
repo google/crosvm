@@ -113,6 +113,8 @@ const VIRGL_RENDERER_CALLBACKS: &virgl_renderer_callbacks = &virgl_renderer_call
     destroy_gl_context: None,
     make_current: None,
     get_drm_fd: None,
+    write_context_fence: None,
+    get_server_fd: None,
 };
 
 /// Retrieves metadata suitable for export about this resource. If "export_fd" is true,
