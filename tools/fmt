@@ -1,12 +1,10 @@
 #!/bin/bash
-
 # Copyright 2019 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-# Run `rustfmt` on all Rust code contained in crosvm. This is different from
-# `cargo fmt --all` which formats multiple crates but a single workspace only.
-# Crosvm consists of multiple workspaces.
+# Run `rustfmt` on all Rust code contained in the crosvm workspace, including
+# all commmon/* crates as well.
 #
 # Usage:
 #
@@ -18,15 +16,15 @@
 #    $ bin/fmt --check
 #
 
-set -euo pipefail
+set -e
+cd "$(dirname $0)/.."
 
-# Change into directory of script, which is crosvm/bin.
-cd "$(dirname "${BASH_SOURCE[0]}")"
+echo "Fmt crosvm workspace"
+cargo fmt --all -- "$@"
 
-# Jump up to root directory of crosvm repo.
-cd ..
-
-find . -name '*.rs' -print0 \
-    | grep -vz '^./third_party/' \
-    | grep -vz '^./target/' \
-    | xargs -0 rustfmt --edition=2018 "$@" --
+for crate in common/*; do
+    if [ -d "${crate}" ]; then
+        echo "Fmt ${crate}"
+        (cd "${crate}" && cargo fmt)
+    fi
+done

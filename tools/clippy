@@ -1,31 +1,20 @@
 #!/bin/bash
-
 # Copyright 2019 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-# Run `cargo clippy` on all Rust code in crosvm with a mindful set of lints
-# suppressed.
-
-set -eo pipefail
-
-CLIPPY_ARGS=("$@")
-
-# Change into directory of script, which is crosvm/bin.
-cd "$(dirname "${BASH_SOURCE[0]}")"
-
-# Jump up to root directory of crosvm repo.
-cd ..
+set -e
+cd "$(dirname $0)/.."
 
 SUPPRESS=(
     # TODO(crbug/908640): To be resolved.
-    collapsible_if
-    comparison_chain
-    missing_safety_doc
-    wrong_self_convention
-    # To be fixed in external libraries
-    upper_case_acronyms
-    from_over_into
+    collapsible_if        # 4 errors
+    comparison_chain      # 1 error
+    missing_safety_doc    # 30 errors
+    wrong_self_convention # 8 errors
+    upper_case_acronyms   # 1 errors
+    from_over_into        # 1 error
+    let-and-return        # 1 error
 
     # False positives affecting WlVfd @ `devices/src/virtio/wl.rs`.
     # Bug: https://github.com/rust-lang/rust-clippy/issues/6312
@@ -56,33 +45,55 @@ SUPPRESS=(
     result-unit-err
 )
 
-FEATURES=(
-    default
-    direct
-    audio
-    gpu
-    plugin
-    tpm
-    usb
-    video-decoder
-    video-encoder
-    wl-dmabuf
-    x
-    virgl_renderer_next
-    composite-disk
-    virgl_renderer
-    gfxstream
-    gdb
+# TODO(b/192373803): Clean up clippy error is the following crates
+EXCLUDE=(
+    aarch64           # 16 errors
+    acpi_tables       # 4 errors
+    crosvm-fuzz       # 7 errors
+    devices           # 92 errors
+    disk              # 36 errors
+    hypervisor        # 2 errors
+    integration_tests # 4 errors
+    kernel_loader     # 8 errors
+    kvm               # 641 errors
+    kvm_sys           # 613 errors
+    libcrosvm_control # 5 errors
+    libvda            # 79 errors
+    net_sys           # 3 errors
+    qcow_utils        # 4 errors
+    rutabaga_gfx      # 10 errors
+    rutabaga_gfx_ffi  # 3 errors
+    usb_util          # 5 errors
+    vhost             # 2 errors
+    virtio_sys        # 9 errors
+    vm_memory         # 9 errors
+    x86_64            # 56 errors
+
 )
-printf -v FEATURES_LIST '%s,' "${FEATURES[@]}"
 
-# Need to set pass --sysroot for cargo-clippy manually.
-# cf. https://github.com/rust-lang/rust-clippy/issues/3523
-RUST_SYSROOT=$(rustc --print sysroot)
-RUSTFLAGS="${RUSTFLAGS:-}"
-export RUSTFLAGS="$RUSTFLAGS --sysroot=$RUST_SYSROOT"
+EXCLUDE_COMMON=(
+    common/cros-fuzz  # 2 errors
+    common/cros_async # 8 errors
+    common/io_uring   # 8 errors
+    common/p9         # 3 errors
+    common/sys_util   # 2 errors
+)
 
-# TODO(b/192373803): We are skipping a lot of crates by not running on
-# --workspace
-cargo clippy --features ${FEATURES_LIST} --all-targets -- \
-    ${SUPPRESS[@]/#/-Aclippy::} "${CLIPPY_ARGS[@]}" -D warnings
+CLIPPY_ARGS="-- ${SUPPRESS[@]/#/-Aclippy::}  -D warnings $@"
+
+echo "Clippy crosvm workspace"
+cargo clippy \
+    --workspace \
+    --features all-linux \
+    --all-targets \
+    ${EXCLUDE[@]/#/--exclude } \
+    ${CLIPPY_ARGS}
+
+for crate in common/*; do
+    if [ -d "${crate}" ] &&
+        [[ ! " ${EXCLUDE_COMMON[*]} " =~ " ${crate} " ]]; then
+        echo ""
+        echo "Clippy ${crate}"
+        (cd "${crate}" && cargo clippy --all-targets ${CLIPPY_ARGS})
+    fi
+done
