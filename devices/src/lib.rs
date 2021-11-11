@@ -41,7 +41,7 @@ pub use self::bus::{
 };
 pub use self::cmos::Cmos;
 #[cfg(feature = "direct")]
-pub use self::direct_io::DirectIo;
+pub use self::direct_io::{DirectIo, DirectMmio};
 #[cfg(feature = "direct")]
 pub use self::direct_irq::{DirectIrq, DirectIrqError};
 pub use self::i8042::I8042Device;
