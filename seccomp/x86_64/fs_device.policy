@@ -59,3 +59,4 @@ utimensat: 1
 prctl: arg0 == PR_SET_NAME || arg0 == PR_SET_SECUREBITS || arg0 == PR_GET_SECUREBITS
 capget: 1
 capset: 1
+unshare: 1
