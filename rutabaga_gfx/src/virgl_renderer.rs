@@ -28,8 +28,6 @@ use crate::rutabaga_utils::*;
 
 use data_model::VolatileSlice;
 
-use libc::close;
-
 type Query = virgl_renderer_export_query;
 
 /// The virtio-gpu backend state tracker which supports accelerated rendering.
@@ -266,18 +264,21 @@ impl VirglRenderer {
             };
             ret_to_res(ret)?;
 
-            /* Only support dma-bufs until someone wants opaque fds too. */
-            if fd_type != VIRGL_RENDERER_BLOB_FD_TYPE_DMABUF {
-                // Safe because the FD was just returned by a successful virglrenderer
-                // call so it must be valid and owned by us.
-                unsafe { close(fd) };
-                return Err(RutabagaError::Unsupported);
-            }
+            // Safe because the FD was just returned by a successful virglrenderer
+            // call so it must be valid and owned by us.
+            let handle = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
 
-            let dmabuf = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
+            let handle_type = match fd_type {
+                VIRGL_RENDERER_BLOB_FD_TYPE_DMABUF => RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
+                VIRGL_RENDERER_BLOB_FD_TYPE_SHM => RUTABAGA_MEM_HANDLE_TYPE_SHM,
+                _ => {
+                    return Err(RutabagaError::Unsupported);
+                }
+            };
+
             Ok(Arc::new(RutabagaHandle {
-                os_handle: dmabuf,
-                handle_type: RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
+                os_handle: handle,
+                handle_type,
             }))
         }
         #[cfg(not(feature = "virgl_renderer_next"))]
