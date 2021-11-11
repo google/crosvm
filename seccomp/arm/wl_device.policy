@@ -6,8 +6,8 @@
 
 # Used to connect to wayland. arg0 == AF_UNIX && arg1 == SOCK_STREAM|SOCK_CLOEXEC
 socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
-# arg1 == FIONBIO || arg1 == DMA_BUF_IOCTL_SYNC
-ioctl: arg1 == 0x5421 || arg1 == 0x40086200
+# arg1 == FIONBIO || arg1 == DMA_BUF_IOCTL_SYNC || arg1 == SYNC_IOC_FILE_INFO
+ioctl: arg1 == 0x5421 || arg1 == 0x40086200 || arg1 == 0xc0383e04
 connect: 1
 open: return ENOENT
 openat: return ENOENT
