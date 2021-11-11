@@ -28,6 +28,9 @@ use std::thread::JoinHandle;
 use libc::{EINVAL, EIO, ENODEV, ENOTSUP};
 use serde::{Deserialize, Serialize};
 
+pub use balloon_control::BalloonStats;
+use balloon_control::{BalloonTubeCommand, BalloonTubeResult};
+
 use base::{
     error, with_as_descriptor, AsRawDescriptor, Error as SysError, Event, ExternalMapping, Fd,
     FromRawDescriptor, IntoRawDescriptor, Killable, MappedRegion, MemoryMappingArena,
@@ -118,52 +121,12 @@ pub enum BalloonControlCommand {
     Stats,
 }
 
-// Balloon commands that are send on the balloon command tube.
-//
-// This is the same as BalloonControlCommand above, but includes an ID for the
-// Stats request so that we can discard stale stats if any previous stats
-// request failed or timed out.
-#[derive(Serialize, Deserialize, Debug)]
-pub enum BalloonTubeCommand {
-    Adjust { num_bytes: u64 },
-    Stats { id: u64 },
-}
-
-// BalloonStats holds stats returned from the stats_queue.
-#[derive(Default, Serialize, Deserialize, Debug)]
-pub struct BalloonStats {
-    pub swap_in: Option<u64>,
-    pub swap_out: Option<u64>,
-    pub major_faults: Option<u64>,
-    pub minor_faults: Option<u64>,
-    pub free_memory: Option<u64>,
-    pub total_memory: Option<u64>,
-    pub available_memory: Option<u64>,
-    pub disk_caches: Option<u64>,
-    pub hugetlb_allocations: Option<u64>,
-    pub hugetlb_failures: Option<u64>,
-    pub shared_memory: Option<u64>,
-    pub unevictable_memory: Option<u64>,
-}
-
 // BalloonControlResult holds results for BalloonControlCommand defined above.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum BalloonControlResult {
     Stats {
         stats: BalloonStats,
         balloon_actual: u64,
-    },
-}
-
-// BalloonTubeResult are results to BalloonTubeCommand defined above. This is
-// the same as BalloonControlResult, but with an added ID so that we can detect
-// stale balloon stats values queued to the balloon command tube.
-#[derive(Serialize, Deserialize, Debug)]
-pub enum BalloonTubeResult {
-    Stats {
-        stats: BalloonStats,
-        balloon_actual: u64,
-        id: u64,
     },
 }
 

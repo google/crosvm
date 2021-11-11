@@ -12,10 +12,10 @@ use futures::{channel::mpsc, pin_mut, StreamExt};
 use remain::sorted;
 use thiserror::Error as ThisError;
 
+use balloon_control::{BalloonStats, BalloonTubeCommand, BalloonTubeResult};
 use base::{self, error, warn, AsRawDescriptor, AsyncTube, Event, RawDescriptor, Tube};
 use cros_async::{select6, EventAsync, Executor};
 use data_model::{DataInit, Le16, Le32, Le64};
-use vm_control::{BalloonStats, BalloonTubeCommand, BalloonTubeResult};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{

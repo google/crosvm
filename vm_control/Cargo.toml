@@ -8,6 +8,7 @@ edition = "2018"
 gdb = ["gdbstub_arch"]
 
 [dependencies]
+balloon_control = { path = "../common/balloon_control" }
 base = { path = "../common/base" }
 data_model = { path = "../common/data_model" }
 gdbstub_arch = { version = "0.1.0", optional = true }
