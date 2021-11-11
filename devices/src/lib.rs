@@ -49,8 +49,9 @@ pub use self::irqchip::*;
 #[cfg(feature = "audio")]
 pub use self::pci::{Ac97Backend, Ac97Dev, Ac97Parameters};
 pub use self::pci::{
-    PciAddress, PciBridge, PciClassCode, PciConfigIo, PciConfigMmio, PciDevice, PciDeviceError,
-    PciInterruptPin, PciRoot, PcieRootPort, StubPciDevice, StubPciParameters, VfioPciDevice,
+    CoIommuDev, PciAddress, PciBridge, PciClassCode, PciConfigIo, PciConfigMmio, PciDevice,
+    PciDeviceError, PciInterruptPin, PciRoot, PcieRootPort, StubPciDevice, StubPciParameters,
+    VfioPciDevice,
 };
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use self::pit::{Pit, PitError};

@@ -175,6 +175,20 @@ impl PciSubclass for PciSerialBusSubClass {
     }
 }
 
+/// Subclasses for PciClassCode Other.
+#[allow(dead_code)]
+#[derive(Copy, Clone)]
+#[repr(u8)]
+pub enum PciOtherSubclass {
+    Other = 0xff,
+}
+
+impl PciSubclass for PciOtherSubclass {
+    fn get_register_value(&self) -> u8 {
+        *self as u8
+    }
+}
+
 /// A PCI class programming interface. Each combination of `PciClassCode` and
 /// `PciSubclass` can specify a set of register-level programming interfaces.
 /// This trait is implemented by each programming interface.

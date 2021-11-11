@@ -12,6 +12,7 @@ mod ac97_bus_master;
 mod ac97_mixer;
 #[cfg(feature = "audio")]
 mod ac97_regs;
+mod coiommu;
 mod msix;
 mod pci_configuration;
 mod pci_device;
@@ -22,6 +23,7 @@ mod vfio_pci;
 
 #[cfg(feature = "audio")]
 pub use self::ac97::{Ac97Backend, Ac97Dev, Ac97Parameters};
+pub use self::coiommu::CoIommuDev;
 pub use self::msix::{MsixCap, MsixConfig, MsixStatus};
 pub use self::pci_configuration::{
     PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType, PciCapability,
