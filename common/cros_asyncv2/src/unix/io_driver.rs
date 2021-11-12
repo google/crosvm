@@ -219,6 +219,24 @@ pub async fn fallocate(
     mio::fallocate(desc, file_offset, len, mode).await
 }
 
+pub async fn ftruncate(desc: &Arc<SafeDescriptor>, len: u64) -> anyhow::Result<()> {
+    #[cfg(feature = "uring")]
+    if use_uring() {
+        return uring::ftruncate(desc, len).await;
+    }
+
+    mio::ftruncate(desc, len).await
+}
+
+pub async fn stat(desc: &Arc<SafeDescriptor>) -> anyhow::Result<libc::stat64> {
+    #[cfg(feature = "uring")]
+    if use_uring() {
+        return uring::stat(desc).await;
+    }
+
+    mio::stat(desc).await
+}
+
 pub async fn fsync(desc: &Arc<SafeDescriptor>, datasync: bool) -> anyhow::Result<()> {
     #[cfg(feature = "uring")]
     if use_uring() {

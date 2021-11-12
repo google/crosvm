@@ -75,6 +75,14 @@ pub async fn fallocate(
     todo!();
 }
 
+pub async fn ftruncate(desc: &Arc<SafeDescriptor>, len: u64) -> anyhow::Result<()> {
+    todo!();
+}
+
+pub async fn stat(desc: &Arc<SafeDescriptor>) -> anyhow::Result<libc::stat64> {
+    todo!();
+}
+
 pub async fn fsync(desc: &Arc<SafeDescriptor>, datasync: bool) -> anyhow::Result<()> {
     todo!();
 }

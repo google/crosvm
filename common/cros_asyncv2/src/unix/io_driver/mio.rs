@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::{
-    cell::RefCell, future::Future, io, mem, os::raw::c_int, pin::Pin, rc::Rc, sync::Arc, task,
-    time::Duration,
+    cell::RefCell, future::Future, io, mem, mem::MaybeUninit, os::raw::c_int, pin::Pin, rc::Rc,
+    sync::Arc, task, time::Duration,
 };
 
 use anyhow::Context;
@@ -357,6 +357,30 @@ pub async fn fallocate(
 
     if ret == 0 {
         Ok(())
+    } else {
+        Err(io::Error::last_os_error().into())
+    }
+}
+
+pub async fn ftruncate(desc: &Arc<SafeDescriptor>, len: u64) -> anyhow::Result<()> {
+    let ret = unsafe { libc::ftruncate64(desc.as_raw_descriptor(), len as libc::off64_t) };
+
+    if ret == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error().into())
+    }
+}
+
+pub async fn stat(desc: &Arc<SafeDescriptor>) -> anyhow::Result<libc::stat64> {
+    let mut st = MaybeUninit::zeroed();
+
+    // Safe because this will only modify `st` and we check the return value.
+    let ret = unsafe { libc::fstat64(desc.as_raw_descriptor(), st.as_mut_ptr()) };
+
+    if ret == 0 {
+        // Safe because the kernel guarantees that `st` is now initialized.
+        Ok(unsafe { st.assume_init() })
     } else {
         Err(io::Error::last_os_error().into())
     }

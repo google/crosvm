@@ -9,6 +9,8 @@ use std::{
     path::Path,
 };
 
+use sys_util::AsRawDescriptor;
+
 use crate::{sys, AsIoBufs};
 
 static DOWNCAST_ERROR: &str = "inner error not downcastable to `io::Error`";
@@ -287,11 +289,29 @@ impl File {
         self.inner.write_iobuf(buf, offset).await
     }
 
-    /// Allows the caller to directly manipulate the allocated disk space for the underlying file.
-    ///
-    /// See `man 2 fallocate` for more details.
-    pub async fn fallocate(&self, file_offset: u64, len: u64, mode: u32) -> anyhow::Result<()> {
-        self.inner.fallocate(file_offset, len, mode).await
+    /// Creates a hole in the underlying file of `len` bytes starting at `offset`.
+    pub async fn punch_hole(&self, offset: u64, len: u64) -> anyhow::Result<()> {
+        self.inner.punch_hole(offset, len).await
+    }
+
+    /// Writes `len` bytes of zeroes to the underlying file at `offset`.
+    pub async fn write_zeroes(&self, offset: u64, len: u64) -> anyhow::Result<()> {
+        self.inner.write_zeroes(offset, len).await
+    }
+
+    /// Allocates `len` bytes of disk storage for the underlying file starting at `offset`.
+    pub async fn allocate(&self, offset: u64, len: u64) -> anyhow::Result<()> {
+        self.inner.allocate(offset, len).await
+    }
+
+    /// Returns the current length of the file in bytes.
+    pub async fn get_len(&self) -> anyhow::Result<u64> {
+        self.inner.get_len().await
+    }
+
+    /// Sets the current length of the file in bytes.
+    pub async fn set_len(&self, len: u64) -> anyhow::Result<()> {
+        self.inner.set_len(len).await
     }
 
     /// Sync all buffered data and metadata for the underlying file to the disk.
@@ -325,6 +345,12 @@ impl TryFrom<File> for StdFile {
     type Error = File;
     fn try_from(f: File) -> Result<StdFile, File> {
         StdFile::try_from(f.inner).map_err(|inner| File { inner })
+    }
+}
+
+impl AsRawDescriptor for File {
+    fn as_raw_descriptor(&self) -> sys_util::RawDescriptor {
+        self.inner.as_raw_descriptor()
     }
 }
 
@@ -426,7 +452,7 @@ mod test {
                 .open(&file_path)
                 .unwrap();
             let source = File::try_from(f).unwrap();
-            source.fallocate(0, 4096, 0).await.unwrap();
+            source.allocate(0, 4096).await.unwrap();
 
             let meta_data = std::fs::metadata(&file_path).unwrap();
             assert_eq!(meta_data.len(), 4096);

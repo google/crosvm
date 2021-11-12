@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{convert::TryFrom, fs::File as StdFile, io, path::Path, sync::Arc};
+use std::{cmp::min, convert::TryFrom, fs::File as StdFile, io, path::Path, sync::Arc};
 
-use sys_util::SafeDescriptor;
+use sys_util::{AsRawDescriptor, SafeDescriptor};
 
 use super::io_driver;
-use crate::AsIoBufs;
+use crate::{AsIoBufs, OwnedIoBuf};
 
 #[derive(Debug)]
 pub struct File {
@@ -49,8 +49,56 @@ impl File {
         io_driver::write_iobuf(&self.fd, buf, offset).await
     }
 
-    pub async fn fallocate(&self, file_offset: u64, len: u64, mode: u32) -> anyhow::Result<()> {
-        io_driver::fallocate(&self.fd, file_offset, len, mode).await
+    pub async fn punch_hole(&self, offset: u64, len: u64) -> anyhow::Result<()> {
+        io_driver::fallocate(
+            &self.fd,
+            offset,
+            len,
+            (libc::FALLOC_FL_PUNCH_HOLE | libc::FALLOC_FL_KEEP_SIZE) as u32,
+        )
+        .await
+    }
+
+    pub async fn write_zeroes(&self, offset: u64, len: u64) -> anyhow::Result<()> {
+        let res = io_driver::fallocate(
+            &self.fd,
+            offset,
+            len,
+            (libc::FALLOC_FL_ZERO_RANGE | libc::FALLOC_FL_KEEP_SIZE) as u32,
+        )
+        .await;
+        match res {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                // Fall back to writing zeros if fallocate doesn't work.
+                let buf_size = min(len, 0x10000);
+                let mut buf = OwnedIoBuf::new(vec![0u8; buf_size as usize]);
+                let mut nwritten = 0;
+                while nwritten < len {
+                    buf.reset();
+                    let remaining = len - nwritten;
+                    let write_size = min(remaining, buf_size) as usize;
+                    buf.truncate(write_size);
+
+                    let (res, b) = self.write_iobuf(buf, Some(offset + nwritten as u64)).await;
+                    nwritten += res? as u64;
+                    buf = b;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn allocate(&self, offset: u64, len: u64) -> anyhow::Result<()> {
+        io_driver::fallocate(&self.fd, offset, len, 0).await
+    }
+
+    pub async fn get_len(&self) -> anyhow::Result<u64> {
+        io_driver::stat(&self.fd).await.map(|st| st.st_size as u64)
+    }
+
+    pub async fn set_len(&self, len: u64) -> anyhow::Result<()> {
+        io_driver::ftruncate(&self.fd, len).await
     }
 
     pub async fn sync_all(&self) -> anyhow::Result<()> {
@@ -87,5 +135,11 @@ impl TryFrom<File> for StdFile {
         Arc::try_unwrap(f.fd)
             .map(From::from)
             .map_err(|fd| File { fd })
+    }
+}
+
+impl AsRawDescriptor for File {
+    fn as_raw_descriptor(&self) -> sys_util::RawDescriptor {
+        self.fd.as_raw_descriptor()
     }
 }
