@@ -3,47 +3,14 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+# To check for violations:
+# $ ./tools/clippy
+#
+# To fix violations where possible:
+# $ ./tools/clippy --fix
+
 set -e
 cd "$(dirname $0)/.."
-
-SUPPRESS=(
-    # TODO(crbug/908640): To be resolved.
-    collapsible_if        # 4 errors
-    comparison_chain      # 1 error
-    missing_safety_doc    # 30 errors
-    wrong_self_convention # 8 errors
-    upper_case_acronyms   # 1 errors
-    from_over_into        # 1 error
-    let-and-return        # 1 error
-
-    # False positives affecting WlVfd @ `devices/src/virtio/wl.rs`.
-    # Bug: https://github.com/rust-lang/rust-clippy/issues/6312
-    field_reassign_with_default
-
-    # We don't care about these lints. Okay to remain suppressed globally.
-    cast_lossless
-    cognitive_complexity
-    enum_variant_names
-    identity_op
-    len_without_is_empty
-    len_zero
-    match_bool
-    match_wild_err_arm
-    module_inception
-    needless_bool
-    new_without_default
-    or_fun_call
-    should_implement_trait
-    single_char_pattern
-    too_many_arguments
-    trivially_copy_pass_by_ref
-    type_complexity
-    unreadable_literal
-    useless_let_if_seq
-    useless_transmute
-    new-ret-no-self
-    result-unit-err
-)
 
 # TODO(b/192373803): Clean up clippy error is the following crates
 EXCLUDE=(
@@ -68,7 +35,6 @@ EXCLUDE=(
     virtio_sys        # 9 errors
     vm_memory         # 9 errors
     x86_64            # 56 errors
-
 )
 
 EXCLUDE_COMMON=(
@@ -79,21 +45,20 @@ EXCLUDE_COMMON=(
     common/sys_util   # 2 errors
 )
 
-CLIPPY_ARGS="-- ${SUPPRESS[@]/#/-Aclippy::}  -D warnings $@"
-
+# Note: Clippy checks are configured in .cargo/config.toml
 echo "Clippy crosvm workspace"
 cargo clippy \
     --workspace \
     --features all-linux \
     --all-targets \
     ${EXCLUDE[@]/#/--exclude } \
-    ${CLIPPY_ARGS}
+    "$@" -- -Dwarnings
 
 for crate in common/*; do
     if [ -d "${crate}" ] &&
         [[ ! " ${EXCLUDE_COMMON[*]} " =~ " ${crate} " ]]; then
         echo ""
         echo "Clippy ${crate}"
-        (cd "${crate}" && cargo clippy --all-targets ${CLIPPY_ARGS})
+        (cd "${crate}" && cargo clippy --all-targets "$@" -- -Dwarnings)
     fi
 done
