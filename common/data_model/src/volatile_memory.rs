@@ -125,6 +125,20 @@ impl<'a> VolatileSlice<'a> {
         self.0.len()
     }
 
+    /// Advance the starting position of this slice.
+    ///
+    /// Panics if `count > self.size()`.
+    pub fn advance(&mut self, count: usize) {
+        self.0.advance(count)
+    }
+
+    /// Shorten the length of the slice.
+    ///
+    /// Has no effect if `len > self.size()`.
+    pub fn truncate(&mut self, len: usize) {
+        self.0.truncate(len)
+    }
+
     /// Returns this `VolatileSlice` as an `IoBufMut`.
     pub fn as_iobuf(&self) -> &IoBufMut {
         &self.0
