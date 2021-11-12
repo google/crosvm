@@ -414,7 +414,7 @@ mod tests {
             PciBarConfiguration::new(
                 2,
                 BAR2_SIZE,
-                PciBarRegionType::IORegion,
+                PciBarRegionType::IoRegion,
                 PciBarPrefetchable::NotPrefetchable,
             )
             .set_address(BAR2_ADDR),

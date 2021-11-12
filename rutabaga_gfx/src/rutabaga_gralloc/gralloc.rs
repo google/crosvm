@@ -275,6 +275,7 @@ impl RutabagaGralloc {
         // towards the Vulkan api.  This function allows for a variety of quirks, but for now just
         // choose the most shiny backend that the user has built.  The rationale is "why would you
         // build it if you don't want to use it".
+        #[allow(clippy::let_and_return)]
         let mut _backend = GrallocBackend::System;
 
         #[cfg(feature = "minigbm")]

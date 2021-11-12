@@ -1,6 +1,7 @@
 // Copyright 2021 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+use std::cmp::Ordering;
 use std::sync::Arc;
 use sync::Mutex;
 
@@ -235,28 +236,36 @@ impl PciDevice for PciBridge {
         // The driver is only allowed to do aligned, properly sized access.
         let bar0 = self.config.get_bar_addr(self.setting_bar as usize);
         let offset = addr - bar0;
-        if offset < BR_MSIX_PBA_OFFSET {
-            self.msix_config
-                .lock()
-                .read_msix_table(offset - BR_MSIX_TABLE_OFFSET, data);
-        } else if BR_MSIX_PBA_OFFSET == offset {
-            self.msix_config
-                .lock()
-                .read_pba_entries(offset - BR_MSIX_PBA_OFFSET, data);
+        match offset.cmp(&BR_MSIX_PBA_OFFSET) {
+            Ordering::Less => {
+                self.msix_config
+                    .lock()
+                    .read_msix_table(offset - BR_MSIX_TABLE_OFFSET, data);
+            }
+            Ordering::Equal => {
+                self.msix_config
+                    .lock()
+                    .read_pba_entries(offset - BR_MSIX_PBA_OFFSET, data);
+            }
+            Ordering::Greater => (),
         }
     }
 
     fn write_bar(&mut self, addr: u64, data: &[u8]) {
         let bar0 = self.config.get_bar_addr(self.setting_bar as usize);
         let offset = addr - bar0;
-        if offset < BR_MSIX_PBA_OFFSET {
-            self.msix_config
-                .lock()
-                .write_msix_table(offset - BR_MSIX_TABLE_OFFSET, data);
-        } else if BR_MSIX_PBA_OFFSET == offset {
-            self.msix_config
-                .lock()
-                .write_pba_entries(offset - BR_MSIX_PBA_OFFSET, data);
+        match offset.cmp(&BR_MSIX_PBA_OFFSET) {
+            Ordering::Less => {
+                self.msix_config
+                    .lock()
+                    .write_msix_table(offset - BR_MSIX_TABLE_OFFSET, data);
+            }
+            Ordering::Equal => {
+                self.msix_config
+                    .lock()
+                    .write_pba_entries(offset - BR_MSIX_PBA_OFFSET, data);
+            }
+            Ordering::Greater => (),
         }
     }
 }
@@ -345,7 +354,7 @@ impl PciCapability for PcieCap {
     }
 
     fn id(&self) -> PciCapabilityID {
-        PciCapabilityID::PCIExpress
+        PciCapabilityID::PciExpress
     }
 
     fn writable_bits(&self) -> Vec<u32> {
@@ -545,7 +554,7 @@ impl PcieDevice for PcieRootPort {
     }
 
     fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize) {
-        if let PciCapabilityID::PCIExpress = id {
+        if let PciCapabilityID::PciExpress = id {
             self.pcie_cap_reg_idx = Some(reg_idx)
         }
     }

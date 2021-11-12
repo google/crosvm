@@ -743,20 +743,20 @@ pub struct SetattrIn {
 }
 unsafe impl DataInit for SetattrIn {}
 
-impl Into<libc::stat64> for SetattrIn {
-    fn into(self) -> libc::stat64 {
+impl From<SetattrIn> for libc::stat64 {
+    fn from(s: SetattrIn) -> libc::stat64 {
         // Safe because we are zero-initializing a struct with only POD fields.
         let mut out: libc::stat64 = unsafe { mem::zeroed() };
-        out.st_mode = self.mode;
-        out.st_uid = self.uid;
-        out.st_gid = self.gid;
-        out.st_size = self.size as i64;
-        out.st_atime = self.atime as libc::time_t;
-        out.st_mtime = self.mtime as libc::time_t;
-        out.st_ctime = self.ctime as libc::time_t;
-        out.st_atime_nsec = self.atimensec as libc::c_long;
-        out.st_mtime_nsec = self.mtimensec as libc::c_long;
-        out.st_ctime_nsec = self.ctimensec as libc::c_long;
+        out.st_mode = s.mode;
+        out.st_uid = s.uid;
+        out.st_gid = s.gid;
+        out.st_size = s.size as i64;
+        out.st_atime = s.atime as libc::time_t;
+        out.st_mtime = s.mtime as libc::time_t;
+        out.st_ctime = s.ctime as libc::time_t;
+        out.st_atime_nsec = s.atimensec as libc::c_long;
+        out.st_mtime_nsec = s.mtimensec as libc::c_long;
+        out.st_ctime_nsec = s.ctimensec as libc::c_long;
 
         out
     }

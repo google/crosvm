@@ -762,21 +762,21 @@ pub struct VioSStreamParams {
     pub rate: u8,
 }
 
-impl Into<virtio_snd_pcm_set_params> for (u32, VioSStreamParams) {
-    fn into(self) -> virtio_snd_pcm_set_params {
+impl From<(u32, VioSStreamParams)> for virtio_snd_pcm_set_params {
+    fn from(val: (u32, VioSStreamParams)) -> Self {
         virtio_snd_pcm_set_params {
             hdr: virtio_snd_pcm_hdr {
                 hdr: virtio_snd_hdr {
                     code: VIRTIO_SND_R_PCM_SET_PARAMS.into(),
                 },
-                stream_id: self.0.into(),
+                stream_id: val.0.into(),
             },
-            buffer_bytes: self.1.buffer_bytes.into(),
-            period_bytes: self.1.period_bytes.into(),
-            features: self.1.features.into(),
-            channels: self.1.channels,
-            format: self.1.format,
-            rate: self.1.rate,
+            buffer_bytes: val.1.buffer_bytes.into(),
+            period_bytes: val.1.period_bytes.into(),
+            features: val.1.features.into(),
+            channels: val.1.channels,
+            format: val.1.format,
+            rate: val.1.rate,
             padding: 0u8,
         }
     }

@@ -1000,7 +1000,7 @@ impl PciDevice for VfioPciDevice {
                 self.io_regions.push(PciBarConfiguration::new(
                     i as usize,
                     u64::from(size),
-                    PciBarRegionType::IORegion,
+                    PciBarRegionType::IoRegion,
                     PciBarPrefetchable::NotPrefetchable,
                 ));
             }

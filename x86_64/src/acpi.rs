@@ -11,7 +11,7 @@ use base::error;
 use data_model::DataInit;
 use vm_memory::{GuestAddress, GuestMemory};
 
-pub struct ACPIDevResource {
+pub struct AcpiDevResource {
     pub amls: Vec<u8>,
     pub pm_iobase: u64,
     /// Additional system descriptor tables.
@@ -20,7 +20,7 @@ pub struct ACPIDevResource {
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
-struct LocalAPIC {
+struct LocalApic {
     _type: u8,
     _length: u8,
     _processor_id: u8,
@@ -29,11 +29,11 @@ struct LocalAPIC {
 }
 
 // Safe as LocalAPIC structure only contains raw data
-unsafe impl DataInit for LocalAPIC {}
+unsafe impl DataInit for LocalApic {}
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
-struct IOAPIC {
+struct Ioapic {
     _type: u8,
     _length: u8,
     _ioapic_id: u8,
@@ -43,11 +43,11 @@ struct IOAPIC {
 }
 
 // Safe as IOAPIC structure only contains raw data
-unsafe impl DataInit for IOAPIC {}
+unsafe impl DataInit for Ioapic {}
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
-struct Localx2APIC {
+struct Localx2Apic {
     _type: u8,
     _length: u8,
     _reserved: u16,
@@ -57,7 +57,7 @@ struct Localx2APIC {
 }
 
 // Safe as LocalAPIC structure only contains raw data
-unsafe impl DataInit for Localx2APIC {}
+unsafe impl DataInit for Localx2Apic {}
 
 const OEM_REVISION: u32 = 1;
 //DSDT
@@ -222,9 +222,9 @@ fn sync_acpi_id_from_cpuid(
                     // the host.
                     has_leafb = true;
 
-                    let x2apic = Localx2APIC {
+                    let x2apic = Localx2Apic {
                         _type: MADT_TYPE_LOCAL_X2APIC,
-                        _length: std::mem::size_of::<Localx2APIC>() as u8,
+                        _length: std::mem::size_of::<Localx2Apic>() as u8,
                         _x2apic_id: cpuid_entry.edx,
                         _flags: MADT_ENABLED,
                         _processor_id: (vcpu + 1) as u32,
@@ -244,9 +244,9 @@ fn sync_acpi_id_from_cpuid(
                 apic_id = (cpuid_entry.ebx >> CPUID_LEAF0_EBX_CPUID_SHIFT & 0xff) as u8;
             }
 
-            let apic = LocalAPIC {
+            let apic = LocalApic {
                 _type: MADT_TYPE_LOCAL_APIC,
-                _length: std::mem::size_of::<LocalAPIC>() as u8,
+                _length: std::mem::size_of::<LocalApic>() as u8,
                 _processor_id: vcpu as u8,
                 _apic_id: apic_id,
                 _flags: MADT_ENABLED,
@@ -282,7 +282,7 @@ pub fn create_acpi_tables(
     guest_mem: &GuestMemory,
     num_cpus: u8,
     sci_irq: u32,
-    acpi_dev_resource: ACPIDevResource,
+    acpi_dev_resource: AcpiDevResource,
     host_cpus: Option<VcpuAffinity>,
     apic_ids: &mut Vec<usize>,
 ) -> Option<GuestAddress> {
@@ -365,9 +365,9 @@ pub fn create_acpi_tables(
         }
         _ => {
             for cpu in 0..num_cpus {
-                let apic = LocalAPIC {
+                let apic = LocalApic {
                     _type: MADT_TYPE_LOCAL_APIC,
-                    _length: std::mem::size_of::<LocalAPIC>() as u8,
+                    _length: std::mem::size_of::<LocalApic>() as u8,
                     _processor_id: cpu,
                     _apic_id: cpu,
                     _flags: MADT_ENABLED,
@@ -378,9 +378,9 @@ pub fn create_acpi_tables(
         }
     }
 
-    madt.append(IOAPIC {
+    madt.append(Ioapic {
         _type: MADT_TYPE_IO_APIC,
-        _length: std::mem::size_of::<IOAPIC>() as u8,
+        _length: std::mem::size_of::<Ioapic>() as u8,
         _apic_address: super::mptable::IO_APIC_DEFAULT_PHYS_BASE,
         ..Default::default()
     });

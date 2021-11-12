@@ -547,7 +547,7 @@ impl PciCapability for MsixCap {
     }
 
     fn id(&self) -> PciCapabilityID {
-        PciCapabilityID::MSIX
+        PciCapabilityID::Msix
     }
 
     fn writable_bits(&self) -> Vec<u32> {

@@ -2089,12 +2089,10 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
         }
     }
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-    if cfg.gdb.is_some() {
-        if cfg.vcpu_count.unwrap_or(1) != 1 {
-            return Err(argument::Error::ExpectedArgument(
-                "`gdb` requires the number of vCPU to be 1".to_owned(),
-            ));
-        }
+    if cfg.gdb.is_some() && cfg.vcpu_count.unwrap_or(1) != 1 {
+        return Err(argument::Error::ExpectedArgument(
+            "`gdb` requires the number of vCPU to be 1".to_owned(),
+        ));
     }
     if cfg.host_cpu_topology {
         // Safe because we pass a flag for this call and the host supports this system call

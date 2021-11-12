@@ -107,7 +107,7 @@ impl XhciController {
             0x01b73, // fresco logic, (google = 0x1ae0)
             0x1000,  // fresco logic pdk. This chip has broken msi. See kernel xhci-pci.c
             PciClassCode::SerialBusController,
-            &PciSerialBusSubClass::USB,
+            &PciSerialBusSubClass::Usb,
             Some(&UsbControllerProgrammingInterface::Usb3HostController),
             PciHeaderType::Device,
             false,

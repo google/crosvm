@@ -8,13 +8,7 @@ rustflags = [
     # "-Dwarnings",
 
     # TODO(crbug/908640): To be resolved.
-    "-Aclippy::collapsible_if", # 4 errors
-    "-Aclippy::comparison_chain", # 1 errors
     "-Aclippy::missing_safety_doc", # 26 errors
-    "-Aclippy::wrong_self_convention", # 8 errors
-    "-Aclippy::upper_case_acronyms", # 1 errors
-    "-Aclippy::from_over_into", # 1 errors
-    "-Aclippy::let-and-return", # 1 errors
 
     # False positives affecting WlVfd @ `devices/src/virtio/wl.rs`.
     # Bug: https://github.com/rust-lang/rust-clippy/issues/6312
@@ -43,4 +37,5 @@ rustflags = [
     "-Aclippy::useless_transmute",
     "-Aclippy::new-ret-no-self",
     "-Aclippy::result-unit-err",
+    "-Aclippy::collapsible_if",
 ]

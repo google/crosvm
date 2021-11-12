@@ -1096,7 +1096,7 @@ impl X8664arch {
         battery: (&Option<BatteryType>, Option<Minijail>),
         mmio_bus: &devices::Bus,
         resume_notify_devices: &mut Vec<Arc<Mutex<dyn BusResumeDevice>>>,
-    ) -> Result<(acpi::ACPIDevResource, Option<BatControl>)> {
+    ) -> Result<(acpi::AcpiDevResource, Option<BatControl>)> {
         // The AML data for the acpi devices
         let mut amls = Vec::new();
 
@@ -1185,7 +1185,7 @@ impl X8664arch {
         };
 
         Ok((
-            acpi::ACPIDevResource {
+            acpi::AcpiDevResource {
                 amls,
                 pm_iobase,
                 sdts,

@@ -4,7 +4,7 @@
 
 //! rutabaga_2d: Handles 2D virtio-gpu hypercalls.
 
-use std::cmp::{max, min};
+use std::cmp::{max, min, Ordering};
 
 use data_model::*;
 
@@ -84,15 +84,19 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
 
             let offset_within_src = src_copyable_start_offset.saturating_sub(src_start_offset);
 
-            if src_line_end_offset > src_end_offset {
-                next_src = true;
-                next_line = false;
-            } else if src_line_end_offset == src_end_offset {
-                next_src = true;
-                next_line = true;
-            } else {
-                next_src = false;
-                next_line = true;
+            match src_line_end_offset.cmp(&src_end_offset) {
+                Ordering::Greater => {
+                    next_src = true;
+                    next_line = false;
+                }
+                Ordering::Equal => {
+                    next_src = true;
+                    next_line = true;
+                }
+                Ordering::Less => {
+                    next_src = false;
+                    next_line = true;
+                }
             }
 
             let src_subslice = src.get_slice(offset_within_src as usize, copyable_size as usize)?;

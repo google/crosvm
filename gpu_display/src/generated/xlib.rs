@@ -4,6 +4,8 @@
 
 //! Generated using ./xlib_generator.sh
 
+#![allow(clippy::upper_case_acronyms)]
+
 #[link(name = "X11")]
 extern "C" {}
 
