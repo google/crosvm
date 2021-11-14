@@ -6,6 +6,8 @@
 # To build crosvm using cargo against libraries and crates provided by ChromeOS
 # use this script to update path references in Cargo.toml.
 
+CARGO_PATH=$(dirname "$0")/../../Cargo.toml
+
 declare -A replacements=(
     ["libcras_stub"]="../../third_party/adhd/cras/client/libcras"
     ["system_api_stub"]="../../platform2/system_api"
@@ -15,7 +17,7 @@ declare -A replacements=(
 for crate in "${!replacements[@]}"; do
     echo "Replacing '${crate}' with '${replacements[$crate]}'"
     sed -i "s|path = \"${crate}|path = \"${replacements[$crate]}|g" \
-        Cargo.toml
+        "${CARGO_PATH}"
 done
 
 echo "Modified Cargo.toml with new paths. Please do not commit those."
