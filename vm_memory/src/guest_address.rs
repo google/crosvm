@@ -112,6 +112,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::eq_op)]
     fn cmp() {
         let a = GuestAddress(0x300);
         let b = GuestAddress(0x301);

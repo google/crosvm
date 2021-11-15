@@ -268,7 +268,7 @@ fn dd(file_path: &str, source_path: &str, count: Option<usize>) -> std::result::
         } else {
             qcow_file.write(&buf).map_err(|_| ())?;
         }
-        read_count = read_count + nread;
+        read_count += nread;
         if nread == 0 || Some(read_count) == count {
             break;
         }

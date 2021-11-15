@@ -262,7 +262,7 @@ impl TestVm {
     /// files if necessary.
     pub fn new(additional_arguments: &[&str], debug: bool, o_direct: bool) -> Result<TestVm> {
         static PREP_ONCE: Once = Once::new();
-        PREP_ONCE.call_once(|| TestVm::initialize_once());
+        PREP_ONCE.call_once(TestVm::initialize_once);
 
         // Create two named pipes to communicate with the guest.
         let test_dir = TempDir::new()?;
@@ -276,7 +276,7 @@ impl TestVm {
         let mut command = Command::new(find_crosvm_binary());
         command.args(&["run", "--disable-sandbox"]);
         TestVm::configure_serial_devices(&mut command, &from_guest_pipe, &to_guest_pipe);
-        command.args(&["--socket", &control_socket_path.to_str().unwrap()]);
+        command.args(&["--socket", control_socket_path.to_str().unwrap()]);
         command.args(additional_arguments);
 
         TestVm::configure_kernel(&mut command, o_direct);

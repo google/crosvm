@@ -178,7 +178,7 @@ mod test {
     const MEM_SIZE: u64 = 0x8000;
 
     fn create_guest_mem() -> GuestMemory {
-        GuestMemory::new(&vec![(GuestAddress(0x0), MEM_SIZE)]).unwrap()
+        GuestMemory::new(&[(GuestAddress(0x0), MEM_SIZE)]).unwrap()
     }
 
     #[test]
@@ -208,19 +208,19 @@ mod test {
             )
         );
         let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
-        assert_eq!(val, '1' as u8);
+        assert_eq!(val, b'1');
         cmdline_address = cmdline_address.unchecked_add(1);
         let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
-        assert_eq!(val, '2' as u8);
+        assert_eq!(val, b'2');
         cmdline_address = cmdline_address.unchecked_add(1);
         let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
-        assert_eq!(val, '3' as u8);
+        assert_eq!(val, b'3');
         cmdline_address = cmdline_address.unchecked_add(1);
         let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
-        assert_eq!(val, '4' as u8);
+        assert_eq!(val, b'4');
         cmdline_address = cmdline_address.unchecked_add(1);
         let val: u8 = gm.read_obj_from_addr(cmdline_address).unwrap();
-        assert_eq!(val, '\0' as u8);
+        assert_eq!(val, b'\0');
     }
 
     // Elf64 image that prints hello world on x86_64.
@@ -235,7 +235,7 @@ mod test {
     fn mutate_elf_bin(mut f: &File, offset: u64, val: u8) {
         f.seek(SeekFrom::Start(offset))
             .expect("failed to seek file");
-        f.write(&[val])
+        f.write_all(&[val])
             .expect("failed to write mutated value to file");
     }
 

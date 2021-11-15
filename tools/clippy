@@ -15,25 +15,14 @@ cd "$(dirname $0)/.."
 # TODO(b/192373803): Clean up clippy error is the following crates
 EXCLUDE=(
     aarch64           # 16 errors
-    acpi_tables       # 4 errors
     crosvm-fuzz       # 7 errors
     devices           # 92 errors
     disk              # 36 errors
-    hypervisor        # 2 errors
-    integration_tests # 4 errors
-    kernel_loader     # 8 errors
     kvm               # 641 errors
     kvm_sys           # 613 errors
-    libcrosvm_control # 5 errors
     libvda            # 79 errors
     net_sys           # 3 errors
-    qcow_utils        # 4 errors
-    rutabaga_gfx      # 10 errors
-    rutabaga_gfx_ffi  # 3 errors
-    usb_util          # 5 errors
-    vhost             # 2 errors
     virtio_sys        # 9 errors
-    vm_memory         # 9 errors
     x86_64            # 56 errors
 )
 

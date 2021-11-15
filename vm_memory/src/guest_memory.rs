@@ -841,23 +841,14 @@ mod tests {
         let start_addr1 = GuestAddress(0x0);
         let start_addr2 = GuestAddress(0x4000);
         let gm = GuestMemory::new(&[(start_addr1, 0x2000), (start_addr2, 0x2000)]).unwrap();
-        assert_eq!(gm.address_in_range(GuestAddress(0x1000)), true);
-        assert_eq!(gm.address_in_range(GuestAddress(0x3000)), false);
-        assert_eq!(gm.address_in_range(GuestAddress(0x5000)), true);
-        assert_eq!(gm.address_in_range(GuestAddress(0x6000)), false);
-        assert_eq!(gm.address_in_range(GuestAddress(0x6000)), false);
-        assert_eq!(
-            gm.range_overlap(GuestAddress(0x1000), GuestAddress(0x3000)),
-            true
-        );
-        assert_eq!(
-            gm.range_overlap(GuestAddress(0x3000), GuestAddress(0x4000)),
-            false
-        );
-        assert_eq!(
-            gm.range_overlap(GuestAddress(0x3000), GuestAddress(0x7000)),
-            true
-        );
+        assert!(gm.address_in_range(GuestAddress(0x1000)));
+        assert!(!gm.address_in_range(GuestAddress(0x3000)));
+        assert!(gm.address_in_range(GuestAddress(0x5000)));
+        assert!(!gm.address_in_range(GuestAddress(0x6000)));
+        assert!(!gm.address_in_range(GuestAddress(0x6000)));
+        assert!(gm.range_overlap(GuestAddress(0x1000), GuestAddress(0x3000)));
+        assert!(!gm.range_overlap(GuestAddress(0x3000), GuestAddress(0x4000)));
+        assert!(gm.range_overlap(GuestAddress(0x3000), GuestAddress(0x7000)));
         assert!(gm.checked_offset(GuestAddress(0x1000), 0x1000).is_none());
         assert!(gm.checked_offset(GuestAddress(0x5000), 0x800).is_some());
         assert!(gm.checked_offset(GuestAddress(0x5000), 0x1000).is_none());

@@ -237,9 +237,9 @@ pub extern "C" fn crosvm_client_modify_battery(
 
             do_modify_battery(
                 &socket_path,
-                &battery_type.to_str().unwrap(),
-                &property.to_str().unwrap(),
-                &target.to_str().unwrap(),
+                battery_type.to_str().unwrap(),
+                property.to_str().unwrap(),
+                target.to_str().unwrap(),
             )
             .is_ok()
         } else {

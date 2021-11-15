@@ -360,6 +360,7 @@ pub fn control_request_type(
 }
 
 #[cfg(test)]
+#[allow(clippy::unusual_byte_groupings)]
 mod tests {
     use super::*;
 

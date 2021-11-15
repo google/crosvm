@@ -60,7 +60,7 @@ pub unsafe extern "C" fn expand_disk_image(path: *const c_char, virtual_size: u6
     };
 
     // Lock the disk image to prevent other processes from using it.
-    if let Err(_) = flock(&raw_image, FlockOperation::LockExclusive, true) {
+    if flock(&raw_image, FlockOperation::LockExclusive, true).is_err() {
         return -EIO;
     }
 

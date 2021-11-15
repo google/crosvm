@@ -240,6 +240,7 @@ pub fn parse_usbfs_descriptors(data: &[u8]) -> Result<DeviceDescriptorTree> {
 }
 
 #[cfg(test)]
+#[allow(clippy::useless_conversion)]
 mod tests {
     use super::*;
     #[test]
@@ -669,7 +670,7 @@ mod tests {
         ];
 
         let d = parse_usbfs_descriptors(data);
-        if !d.is_err() {
+        if d.is_ok() {
             panic!("parse_usbfs_descriptors should have failed");
         }
     }

@@ -366,8 +366,8 @@ mod tests {
         let reqs = gralloc.get_image_memory_requirements(info).unwrap();
         let min_reqs = canonical_image_requirements(info).unwrap();
 
-        assert_eq!(reqs.strides[0] >= min_reqs.strides[0], true);
-        assert_eq!(reqs.size >= min_reqs.size, true);
+        assert!(reqs.strides[0] >= min_reqs.strides[0]);
+        assert!(reqs.size >= min_reqs.size);
 
         let _handle = gralloc.allocate_memory(reqs).unwrap();
 
@@ -394,17 +394,17 @@ mod tests {
         let reqs = gralloc.get_image_memory_requirements(info).unwrap();
         let min_reqs = canonical_image_requirements(info).unwrap();
 
-        assert_eq!(reqs.strides[0] >= min_reqs.strides[0], true);
-        assert_eq!(reqs.strides[1] >= min_reqs.strides[1], true);
+        assert!(reqs.strides[0] >= min_reqs.strides[0]);
+        assert!(reqs.strides[1] >= min_reqs.strides[1]);
         assert_eq!(reqs.strides[2], 0);
         assert_eq!(reqs.strides[3], 0);
 
-        assert_eq!(reqs.offsets[0] >= min_reqs.offsets[0], true);
-        assert_eq!(reqs.offsets[1] >= min_reqs.offsets[1], true);
+        assert!(reqs.offsets[0] >= min_reqs.offsets[0]);
+        assert!(reqs.offsets[1] >= min_reqs.offsets[1]);
         assert_eq!(reqs.offsets[2], 0);
         assert_eq!(reqs.offsets[3], 0);
 
-        assert_eq!(reqs.size >= min_reqs.size, true);
+        assert!(reqs.size >= min_reqs.size);
 
         let _handle = gralloc.allocate_memory(reqs).unwrap();
 

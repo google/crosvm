@@ -126,7 +126,7 @@ mod tests {
             .iter()
             .fold(0u8, |acc, x| acc.wrapping_add(*x));
         assert_eq!(sum, 0);
-        sdt.write(36, 0x12345678 as u32);
+        sdt.write(36, 0x12345678_u32);
         let sum: u8 = sdt
             .as_slice()
             .iter()
@@ -142,7 +142,7 @@ mod tests {
         // Write SDT to file.
         {
             let mut writer = temp_file.as_file();
-            writer.write_all(&expected_sdt.as_slice())?;
+            writer.write_all(expected_sdt.as_slice())?;
         }
 
         // Read it back and verify.

@@ -233,7 +233,7 @@ pub unsafe extern "C" fn rutabaga_get_capset(
     capset_size: u32,
 ) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
-        let size: usize = capset_size.try_into().map_err(|_e| return -EINVAL).unwrap();
+        let size: usize = capset_size.try_into().map_err(|_e| -EINVAL).unwrap();
         let result = ptr.get_capset(capset_id, version);
         let vec = return_on_error!(result);
         copy_nonoverlapping(vec.as_ptr(), capset, size);
