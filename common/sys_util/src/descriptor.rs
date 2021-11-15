@@ -247,6 +247,7 @@ AsRawDescriptor!(Stdout);
 AsRawDescriptor!(Stderr);
 
 #[test]
+#[allow(clippy::eq_op)]
 fn clone_equality() {
     let ret = unsafe { libc::eventfd(0, 0) };
     if ret < 0 {

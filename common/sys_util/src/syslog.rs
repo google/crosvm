@@ -561,7 +561,7 @@ mod tests {
 
         let s = "Writing string to syslog\n";
         syslogger
-            .write_all(&s.as_bytes())
+            .write_all(s.as_bytes())
             .expect("error writing string");
     }
 
@@ -573,7 +573,7 @@ mod tests {
         let s = "Writing partial string";
         // Should not log because there is no newline character
         syslogger
-            .write_all(&s.as_bytes())
+            .write_all(s.as_bytes())
             .expect("error writing string");
     }
 }

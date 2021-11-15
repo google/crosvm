@@ -462,7 +462,7 @@ mod tests {
         }
         // Specifically chosen to not overlap a real descriptor to avoid having to allocate any
         // descriptors for this test.
-        let fake_rd = 5_123_457 as _;
+        let fake_rd = 5_123_457_i32;
         let v = RawContainer { rd: fake_rd };
         let v_serialize = SerializeDescriptors::new(&v);
         let json = serde_json::to_string(&v_serialize).unwrap();

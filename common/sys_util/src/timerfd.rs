@@ -252,13 +252,13 @@ mod tests {
     #[test]
     fn one_shot() {
         let tfd = TimerFd::new().expect("failed to create timerfd");
-        assert_eq!(tfd.is_armed().unwrap(), false);
+        assert!(!tfd.is_armed().unwrap());
 
         let dur = Duration::from_millis(200);
         let now = Instant::now();
         tfd.reset(dur, None).expect("failed to arm timer");
 
-        assert_eq!(tfd.is_armed().unwrap(), true);
+        assert!(tfd.is_armed().unwrap());
 
         let count = tfd.wait().expect("unable to wait for timer");
 
@@ -284,12 +284,12 @@ mod tests {
     fn fake_one_shot() {
         let clock = Arc::new(Mutex::new(FakeClock::new()));
         let mut tfd = FakeTimerFd::new(clock.clone());
-        assert_eq!(tfd.is_armed().unwrap(), false);
+        assert!(!tfd.is_armed().unwrap());
 
         let dur = Duration::from_nanos(200);
         tfd.reset(dur, None).expect("failed to arm timer");
 
-        assert_eq!(tfd.is_armed().unwrap(), true);
+        assert!(tfd.is_armed().unwrap());
         clock.lock().add_ns(200);
 
         let count = tfd.wait().expect("unable to wait for timer");

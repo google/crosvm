@@ -1003,8 +1003,8 @@ mod tests {
         let uring = URingContext::new(16).unwrap();
         let mut buf = [0u8; 4096];
         let mut f = create_test_file(0);
-        f.write(&buf).unwrap();
-        f.write(&buf).unwrap();
+        f.write_all(&buf).unwrap();
+        f.write_all(&buf).unwrap();
 
         unsafe {
             // Safe because the `wait` call waits until the kernel is done mutating `buf`.
@@ -1022,8 +1022,8 @@ mod tests {
         let uring = URingContext::new(16).unwrap();
         let mut buf = [0u8; 4096];
         let mut f = create_test_file(0);
-        f.write(&buf).unwrap();
-        f.write(&buf).unwrap();
+        f.write_all(&buf).unwrap();
+        f.write_all(&buf).unwrap();
 
         let ctx: PollContext<u64> = PollContext::build_with(&[(&uring, 1)]).unwrap();
         {
@@ -1079,11 +1079,11 @@ mod tests {
 
         let mut read_back = [0u8; BUF_SIZE];
         f.seek(SeekFrom::Start(OFFSET)).unwrap();
-        f.read(&mut read_back).unwrap();
+        f.read_exact(&mut read_back).unwrap();
         assert!(!read_back.iter().any(|&b| b != 0xaa));
-        f.read(&mut read_back).unwrap();
+        f.read_exact(&mut read_back).unwrap();
         assert!(!read_back.iter().any(|&b| b != 0xff));
-        f.read(&mut read_back).unwrap();
+        f.read_exact(&mut read_back).unwrap();
         assert!(!read_back.iter().any(|&b| b != 0x55));
     }
 
@@ -1101,7 +1101,7 @@ mod tests {
                 .truncate(true)
                 .open(&file_path)
                 .unwrap();
-            f.write(&buf).unwrap();
+            f.write_all(&buf).unwrap();
         }
 
         let init_size = std::fs::metadata(&file_path).unwrap().len() as usize;

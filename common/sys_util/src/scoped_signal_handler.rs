@@ -312,7 +312,7 @@ mod tests {
 
         // Safe because TestHandler is async-signal safe.
         assert!(matches!(
-            ScopedSignalHandler::new::<TestHandler>(&TEST_SIGNALS),
+            ScopedSignalHandler::new::<TestHandler>(TEST_SIGNALS),
             Err(Error::HandlerAlreadySet(Signal::User1))
         ));
 
@@ -350,9 +350,9 @@ mod tests {
             if count == 0 {
                 return Err(errno::Error::new(libc::EIO));
             }
-            if line.starts_with(PREFIX) {
+            if let Some(stripped) = line.strip_prefix(PREFIX) {
                 return Ok(matches!(
-                    line[PREFIX.len()..].trim_start().chars().next(),
+                    stripped.trim_start().chars().next(),
                     Some('S') | Some('D')
                 ));
             }

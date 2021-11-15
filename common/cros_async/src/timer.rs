@@ -62,7 +62,7 @@ mod tests {
 
     #[test]
     fn one_shot() {
-        async fn this_test(ex: &URingExecutor) -> () {
+        async fn this_test(ex: &URingExecutor) {
             let tfd = TimerFd::new().expect("failed to create timerfd");
             assert_eq!(tfd.is_armed().unwrap(), false);
 
@@ -85,7 +85,7 @@ mod tests {
 
     #[test]
     fn one_shot_fd() {
-        async fn this_test(ex: &FdExecutor) -> () {
+        async fn this_test(ex: &FdExecutor) {
             let tfd = TimerFd::new().expect("failed to create timerfd");
             assert_eq!(tfd.is_armed().unwrap(), false);
 
@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn timer() {
-        async fn this_test(ex: &Executor) -> () {
+        async fn this_test(ex: &Executor) {
             let dur = Duration::from_millis(200);
             let now = Instant::now();
             TimerAsync::sleep(ex, dur).await.expect("unable to sleep");

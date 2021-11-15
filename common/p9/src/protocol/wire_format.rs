@@ -605,6 +605,7 @@ mod test {
         val: Vec<u64>,
     }
 
+    #[allow(clippy::vec_init_then_push)]
     fn build_encoded_buffer(value: &Nested) -> Vec<u8> {
         let mut result: Vec<u8> = Vec::new();
 

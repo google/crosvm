@@ -55,7 +55,7 @@ fn generate_as_raw_token(enum_name: &Ident, variants: &[Variant]) -> TokenStream
         // The capture string is for everything between the variant identifier and the `=>` in
         // the match arm: the variant's data capture.
         let capture = variant.fields.iter().next().map(|field| {
-            let member = field_member(&field);
+            let member = field_member(field);
             quote!({ #member: data })
         });
 
@@ -96,7 +96,7 @@ fn generate_from_raw_token(enum_name: &Ident, variants: &[Variant]) -> TokenStre
         // The data string is for extracting the enum variant's data bits out of the raw token
         // data, which includes both variant index and data bits.
         let data = variant.fields.iter().next().map(|field| {
-            let member = field_member(&field);
+            let member = field_member(field);
             let ty = &field.ty;
             quote!({ #member: (data >> #variant_bits) as #ty })
         });

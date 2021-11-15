@@ -280,7 +280,7 @@ impl BlockingPool {
 
         state.shutting_down = true;
         let exited_threads = state.exited_threads.take().expect("exited_threads missing");
-        let unfinished_tasks = mem::replace(&mut state.tasks, VecDeque::new());
+        let unfinished_tasks = std::mem::take(&mut state.tasks);
         let mut worker_threads = mem::replace(&mut state.worker_threads, Slab::new());
         drop(state);
 

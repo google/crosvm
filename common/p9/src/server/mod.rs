@@ -247,7 +247,7 @@ fn map_id_from_host<T: Clone + Ord>(map: &ServerIdMap<T>, id: T) -> T {
 
 // Performs an ascii case insensitive lookup and returns an O_PATH fd for the entry, if found.
 fn ascii_casefold_lookup(proc: &File, parent: &File, name: &[u8]) -> io::Result<File> {
-    let mut dir = open_fid(proc, &parent, P9_DIRECTORY)?;
+    let mut dir = open_fid(proc, parent, P9_DIRECTORY)?;
     let mut dirents = read_dir(&mut dir, 0)?;
 
     while let Some(entry) = dirents.next().transpose()? {
@@ -869,7 +869,7 @@ impl Server {
         let dir = fid.file.as_mut().ok_or_else(ebadf)?;
         let mut dirents = read_dir(dir, readdir.offset as libc::off64_t)?;
         while let Some(dirent) = dirents.next().transpose()? {
-            let st = statat(&fid.path, &dirent.name, 0)?;
+            let st = statat(&fid.path, dirent.name, 0)?;
 
             let name = dirent
                 .name

@@ -63,7 +63,8 @@ impl<'a> RngCore for FuzzRng<'a> {
 
     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
         if self.buf.len() >= dest.len() {
-            Ok(self.fill_bytes(dest))
+            self.fill_bytes(dest);
+            Ok(())
         } else {
             Err(Error::new(
                 ErrorKind::Unavailable,
@@ -145,9 +146,7 @@ mod tests {
         dest.resize(97, 0x2c);
         rng.fill_bytes(&mut dest);
 
-        let mut zero_buf = Vec::with_capacity(dest.len());
-        zero_buf.resize(dest.len(), 0);
-
+        let zero_buf = vec![0; dest.len()];
         assert_eq!(zero_buf, dest);
     }
 

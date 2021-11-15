@@ -38,11 +38,7 @@ EXCLUDE=(
 )
 
 EXCLUDE_COMMON=(
-    common/cros-fuzz  # 2 errors
     common/cros_async # 8 errors
-    common/io_uring   # 8 errors
-    common/p9         # 3 errors
-    common/sys_util   # 2 errors
 )
 
 # Note: Clippy checks are configured in .cargo/config.toml

@@ -499,7 +499,7 @@ mod tests {
                 .write(true)
                 .open(&file_path)
                 .unwrap();
-            let source = UringSource::new(f, &ex).unwrap();
+            let source = UringSource::new(f, ex).unwrap();
             if let Err(e) = source.fallocate(0, 4096, 0).await {
                 match e {
                     crate::io_ext::Error::Uring(crate::uring_executor::Error::Io(io_err)) => {

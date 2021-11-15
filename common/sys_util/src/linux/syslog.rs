@@ -96,7 +96,7 @@ impl Syslog for PlatformSyslog {
             };
 
             if let Ok(len) = &res {
-                send_buf(&socket, &buf[..*len])
+                send_buf(socket, &buf[..*len])
             }
         }
     }

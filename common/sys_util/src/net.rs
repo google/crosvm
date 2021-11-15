@@ -807,6 +807,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unnecessary_cast)]
     fn sockaddr_un_pass() {
         let path_size = 50;
         let (addr, len) =
