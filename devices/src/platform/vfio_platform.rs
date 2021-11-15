@@ -8,12 +8,11 @@ use base::{
     RawDescriptor, Tube,
 };
 use resources::SystemAllocator;
-use std::convert::TryInto;
 use std::fs::File;
 use std::sync::Arc;
 use std::u32;
 use vfio_sys::*;
-use vm_control::{VmMemoryRequest, VmMemoryResponse};
+use vm_control::{VmMemoryDestination, VmMemoryRequest, VmMemoryResponse, VmMemorySource};
 
 struct MmioInfo {
     index: u32,
@@ -168,11 +167,13 @@ impl VfioPlatformDevice {
                 };
                 if self
                     .vm_socket_mem
-                    .send(&VmMemoryRequest::RegisterMmapMemory {
-                        descriptor,
-                        size: mmap_size.try_into().unwrap(),
-                        offset,
-                        gpa: guest_map_start,
+                    .send(&VmMemoryRequest::RegisterMemory {
+                        source: VmMemorySource::Descriptor {
+                            descriptor,
+                            offset,
+                            size: mmap_size,
+                        },
+                        dest: VmMemoryDestination::GuestPhysicalAddress(guest_map_start),
                         read_only: false,
                     })
                     .is_err()

@@ -36,7 +36,7 @@ use resources::{Alloc, MmioType, SystemAllocator};
 use sync::Mutex;
 use thiserror::Error as ThisError;
 
-use vm_control::{VmMemoryRequest, VmMemoryResponse};
+use vm_control::{VmMemoryDestination, VmMemoryRequest, VmMemoryResponse, VmMemorySource};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::pci::pci_configuration::{
@@ -1074,11 +1074,13 @@ impl CoIommuDev {
         gpa: u64,
         read_only: bool,
     ) -> Result<()> {
-        let request = VmMemoryRequest::RegisterMmapMemory {
-            descriptor,
-            size,
-            offset,
-            gpa,
+        let request = VmMemoryRequest::RegisterMemory {
+            source: VmMemorySource::Descriptor {
+                descriptor,
+                offset,
+                size: size as u64,
+            },
+            dest: VmMemoryDestination::GuestPhysicalAddress(gpa),
             read_only,
         };
         self.send_msg(&request)

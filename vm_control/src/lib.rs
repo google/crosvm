@@ -15,6 +15,7 @@ pub mod gdb;
 
 pub mod client;
 
+use std::convert::TryInto;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::os::raw::c_int;
@@ -28,7 +29,7 @@ use std::thread::JoinHandle;
 use remain::sorted;
 use thiserror::Error;
 
-use libc::{EINVAL, EIO, ENODEV, ENOTSUP};
+use libc::{EINVAL, EIO, ENODEV, ENOTSUP, ERANGE};
 use serde::{Deserialize, Serialize};
 
 pub use balloon_control::BalloonStats;
@@ -229,44 +230,142 @@ impl Display for UsbControlResult {
     }
 }
 
+/// Source of a `VmMemoryRequest::RegisterMemory` mapping.
 #[derive(Serialize, Deserialize)]
-pub enum VmMemoryRequest {
-    /// Register shared memory represented by the given descriptor into guest address space.
-    /// The response variant is `VmResponse::RegisterMemory`.
-    RegisterMemory(SharedMemory),
-    /// Similiar to `VmMemoryRequest::RegisterMemory`, but doesn't allocate new address space.
-    /// Useful for cases where the address space is already allocated (PCI regions).
-    RegisterFdAtPciBarOffset(Alloc, SafeDescriptor, usize, u64),
-    /// Similar to RegisterFdAtPciBarOffset, but is for buffers in the current address space.
-    RegisterHostPointerAtPciBarOffset(Alloc, u64),
-    /// Similiar to `RegisterFdAtPciBarOffset`, but uses Vulkano to map the resource instead of
-    /// the mmap system call.
-    RegisterVulkanMemoryAtPciBarOffset {
-        alloc: Alloc,
+pub enum VmMemorySource {
+    /// Register shared memory represented by the given descriptor.
+    SharedMemory(SharedMemory),
+    /// Register a file mapping from the given descriptor.
+    Descriptor {
+        /// File descriptor to map.
+        descriptor: SafeDescriptor,
+        /// Offset within the file in bytes.
+        offset: u64,
+        /// Size of the mapping in bytes.
+        size: u64,
+    },
+    /// Register memory mapped by Vulkano.
+    Vulkan {
         descriptor: SafeDescriptor,
         handle_type: u32,
         memory_idx: u32,
         physical_device_idx: u32,
-        offset: u64,
         size: u64,
     },
-    /// Unregister the given memory slot that was previously registered with `RegisterMemory*`.
-    UnregisterMemory(MemSlot),
+    /// Register the current rutabaga external mapping.
+    ExternalMapping { size: u64 },
+}
+
+impl VmMemorySource {
+    /// Map the resource and return its mapping and size in bytes.
+    pub fn map(
+        self,
+        map_request: Arc<Mutex<Option<ExternalMapping>>>,
+        gralloc: &mut RutabagaGralloc,
+        read_only: bool,
+    ) -> Result<(Box<dyn MappedRegion>, u64)> {
+        let (mem_region, size) = match self {
+            VmMemorySource::Descriptor {
+                descriptor,
+                offset,
+                size,
+            } => (map_descriptor(&descriptor, offset, size, read_only)?, size),
+            VmMemorySource::SharedMemory(shm) => {
+                (map_descriptor(&shm, 0, shm.size(), read_only)?, shm.size())
+            }
+            VmMemorySource::Vulkan {
+                descriptor,
+                handle_type,
+                memory_idx,
+                physical_device_idx,
+                size,
+            } => {
+                let mapped_region = match gralloc.import_and_map(
+                    RutabagaHandle {
+                        os_handle: descriptor,
+                        handle_type,
+                    },
+                    VulkanInfo {
+                        memory_idx,
+                        physical_device_idx,
+                    },
+                    size,
+                ) {
+                    Ok(mapped_region) => mapped_region,
+                    Err(e) => {
+                        error!("gralloc failed to import and map: {}", e);
+                        return Err(SysError::new(EINVAL));
+                    }
+                };
+                (mapped_region, size)
+            }
+            VmMemorySource::ExternalMapping { size } => {
+                let mem = map_request
+                    .lock()
+                    .take()
+                    .ok_or_else(|| VmMemoryResponse::Err(SysError::new(EINVAL)))
+                    .unwrap();
+                let mapped_region: Box<dyn MappedRegion> = Box::new(mem);
+                (mapped_region, size)
+            }
+        };
+        Ok((mem_region, size))
+    }
+}
+
+/// Destination of a `VmMemoryRequest::RegisterMemory` mapping in guest address space.
+#[derive(Serialize, Deserialize)]
+pub enum VmMemoryDestination {
+    /// Map at an offset within an existing PCI BAR allocation.
+    ExistingAllocation { allocation: Alloc, offset: u64 },
+    /// Create a new anonymous allocation in MMIO space.
+    NewAllocation,
+    /// Map at the specified guest physical address.
+    GuestPhysicalAddress(u64),
+}
+
+impl VmMemoryDestination {
+    /// Allocate and return the guest address of a memory mapping destination.
+    pub fn allocate(self, allocator: &mut SystemAllocator, size: u64) -> Result<GuestAddress> {
+        let addr = match self {
+            VmMemoryDestination::ExistingAllocation { allocation, offset } => allocator
+                .mmio_allocator(MmioType::High)
+                .address_from_pci_offset(allocation, offset, size)
+                .map_err(|_e| SysError::new(EINVAL))?,
+            VmMemoryDestination::NewAllocation => {
+                let alloc = allocator.get_anon_alloc();
+                allocator
+                    .mmio_allocator(MmioType::High)
+                    .allocate(size, alloc, "vmcontrol_register_memory".to_string())
+                    .map_err(|_e| SysError::new(EINVAL))?
+            }
+            VmMemoryDestination::GuestPhysicalAddress(gpa) => gpa,
+        };
+        Ok(GuestAddress(addr))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum VmMemoryRequest {
+    RegisterMemory {
+        /// Source of the memory to register (mapped file descriptor, shared memory region, etc.)
+        source: VmMemorySource,
+        /// Where to map the memory in the guest.
+        dest: VmMemoryDestination,
+        /// Whether to map the memory read only (true) or read-write (false).
+        read_only: bool,
+    },
     /// Allocate GPU buffer of a given size/format and register the memory into guest address space.
     /// The response variant is `VmResponse::AllocateAndRegisterGpuMemory`
     AllocateAndRegisterGpuMemory {
         width: u32,
         height: u32,
         format: u32,
+        /// Where to map the memory in the guest.
+        dest: VmMemoryDestination,
     },
-    /// Register mmaped memory into the hypervisor's EPT.
-    RegisterMmapMemory {
-        descriptor: SafeDescriptor,
-        size: usize,
-        offset: u64,
-        gpa: u64,
-        read_only: bool,
-    },
+    /// Unregister the given memory slot that was previously registered with `RegisterMemory`.
+    UnregisterMemory(MemSlot),
 }
 
 impl VmMemoryRequest {
@@ -288,151 +387,115 @@ impl VmMemoryRequest {
     ) -> VmMemoryResponse {
         use self::VmMemoryRequest::*;
         match self {
-            RegisterMemory(ref shm) => {
-                match register_memory(vm, sys_allocator, shm, shm.size() as usize, None) {
-                    Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
-                    Err(e) => VmMemoryResponse::Err(e),
-                }
-            }
-            RegisterFdAtPciBarOffset(alloc, ref descriptor, size, offset) => {
-                match register_memory(vm, sys_allocator, descriptor, size, Some((alloc, offset))) {
-                    Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
-                    Err(e) => VmMemoryResponse::Err(e),
-                }
+            RegisterMemory {
+                source,
+                dest,
+                read_only,
+            } => {
+                let (mapped_region, size) = match source.map(map_request, gralloc, read_only) {
+                    Ok((region, size)) => (region, size),
+                    Err(e) => return VmMemoryResponse::Err(e),
+                };
+
+                let guest_addr = match dest.allocate(sys_allocator, size) {
+                    Ok(addr) => addr,
+                    Err(e) => return VmMemoryResponse::Err(e),
+                };
+
+                let slot = match vm.add_memory_region(guest_addr, mapped_region, read_only, false) {
+                    Ok(slot) => slot,
+                    Err(e) => return VmMemoryResponse::Err(e),
+                };
+                let pfn = guest_addr.0 >> 12;
+                VmMemoryResponse::RegisterMemory { pfn, slot }
             }
             UnregisterMemory(slot) => match vm.remove_memory_region(slot) {
                 Ok(_) => VmMemoryResponse::Ok,
                 Err(e) => VmMemoryResponse::Err(e),
             },
-            RegisterHostPointerAtPciBarOffset(alloc, offset) => {
-                let mem = map_request
-                    .lock()
-                    .take()
-                    .ok_or_else(|| VmMemoryResponse::Err(SysError::new(EINVAL)))
-                    .unwrap();
-
-                match register_host_pointer(vm, sys_allocator, Box::new(mem), (alloc, offset)) {
-                    Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
-                    Err(e) => VmMemoryResponse::Err(e),
-                }
-            }
-            RegisterVulkanMemoryAtPciBarOffset {
-                alloc,
-                descriptor,
-                handle_type,
-                memory_idx,
-                physical_device_idx,
-                offset,
-                size,
-            } => {
-                let mapped_region = match gralloc.import_and_map(
-                    RutabagaHandle {
-                        os_handle: descriptor,
-                        handle_type,
-                    },
-                    VulkanInfo {
-                        memory_idx,
-                        physical_device_idx,
-                    },
-                    size,
-                ) {
-                    Ok(mapped_region) => mapped_region,
-                    Err(e) => {
-                        error!("gralloc failed to import and map: {}", e);
-                        return VmMemoryResponse::Err(SysError::new(EINVAL));
-                    }
-                };
-
-                match register_host_pointer(vm, sys_allocator, mapped_region, (alloc, offset)) {
-                    Ok((pfn, slot)) => VmMemoryResponse::RegisterMemory { pfn, slot },
-                    Err(e) => VmMemoryResponse::Err(e),
-                }
-            }
             AllocateAndRegisterGpuMemory {
                 width,
                 height,
                 format,
+                dest,
             } => {
-                let img = ImageAllocationInfo {
-                    width,
-                    height,
-                    drm_format: DrmFormat::from(format),
-                    // Linear layout is a requirement as virtio wayland guest expects
-                    // this for CPU access to the buffer. Scanout and texturing are
-                    // optional as the consumer (wayland compositor) is expected to
-                    // fall-back to a less efficient meachnisms for presentation if
-                    // neccesary. In practice, linear buffers for commonly used formats
-                    // will also support scanout and texturing.
-                    flags: RutabagaGrallocFlags::empty().use_linear(true),
+                let (mapped_region, size, descriptor, gpu_desc) =
+                    match Self::allocate_gpu_memory(gralloc, width, height, format) {
+                        Ok(v) => v,
+                        Err(e) => return VmMemoryResponse::Err(e),
+                    };
+
+                let guest_addr = match dest.allocate(sys_allocator, size) {
+                    Ok(addr) => addr,
+                    Err(e) => return VmMemoryResponse::Err(e),
                 };
 
-                let reqs = match gralloc.get_image_memory_requirements(img) {
-                    Ok(reqs) => reqs,
-                    Err(e) => {
-                        error!("gralloc failed to get image requirements: {}", e);
-                        return VmMemoryResponse::Err(SysError::new(EINVAL));
-                    }
+                let slot = match vm.add_memory_region(guest_addr, mapped_region, false, false) {
+                    Ok(slot) => slot,
+                    Err(e) => return VmMemoryResponse::Err(e),
                 };
+                let pfn = guest_addr.0 >> 12;
 
-                let handle = match gralloc.allocate_memory(reqs) {
-                    Ok(handle) => handle,
-                    Err(e) => {
-                        error!("gralloc failed to allocate memory: {}", e);
-                        return VmMemoryResponse::Err(SysError::new(EINVAL));
-                    }
-                };
-
-                let mut desc = GpuMemoryDesc::default();
-                for i in 0..3 {
-                    desc.planes[i] = GpuMemoryPlaneDesc {
-                        stride: reqs.strides[i],
-                        offset: reqs.offsets[i],
-                    }
-                }
-
-                match register_memory(
-                    vm,
-                    sys_allocator,
-                    &handle.os_handle,
-                    reqs.size as usize,
-                    None,
-                ) {
-                    Ok((pfn, slot)) => VmMemoryResponse::AllocateAndRegisterGpuMemory {
-                        // Safe because ownership is transferred to SafeDescriptor via
-                        // into_raw_descriptor
-                        descriptor: unsafe {
-                            SafeDescriptor::from_raw_descriptor(
-                                handle.os_handle.into_raw_descriptor(),
-                            )
-                        },
-                        pfn,
-                        slot,
-                        desc,
-                    },
-                    Err(e) => VmMemoryResponse::Err(e),
-                }
-            }
-            RegisterMmapMemory {
-                ref descriptor,
-                size,
-                offset,
-                gpa,
-                read_only,
-            } => {
-                let mmap = match MemoryMappingBuilder::new(size)
-                    .from_descriptor(descriptor)
-                    .offset(offset as u64)
-                    .build()
-                {
-                    Ok(v) => v,
-                    Err(_e) => return VmMemoryResponse::Err(SysError::new(EINVAL)),
-                };
-                match vm.add_memory_region(GuestAddress(gpa), Box::new(mmap), read_only, false) {
-                    Ok(slot) => VmMemoryResponse::RegisterMemory { pfn: 0, slot },
-                    Err(e) => VmMemoryResponse::Err(e),
+                VmMemoryResponse::AllocateAndRegisterGpuMemory {
+                    descriptor,
+                    pfn,
+                    slot,
+                    desc: gpu_desc,
                 }
             }
         }
+    }
+
+    fn allocate_gpu_memory(
+        gralloc: &mut RutabagaGralloc,
+        width: u32,
+        height: u32,
+        format: u32,
+    ) -> Result<(Box<dyn MappedRegion>, u64, SafeDescriptor, GpuMemoryDesc)> {
+        let img = ImageAllocationInfo {
+            width,
+            height,
+            drm_format: DrmFormat::from(format),
+            // Linear layout is a requirement as virtio wayland guest expects
+            // this for CPU access to the buffer. Scanout and texturing are
+            // optional as the consumer (wayland compositor) is expected to
+            // fall-back to a less efficient meachnisms for presentation if
+            // neccesary. In practice, linear buffers for commonly used formats
+            // will also support scanout and texturing.
+            flags: RutabagaGrallocFlags::empty().use_linear(true),
+        };
+
+        let reqs = match gralloc.get_image_memory_requirements(img) {
+            Ok(reqs) => reqs,
+            Err(e) => {
+                error!("gralloc failed to get image requirements: {}", e);
+                return Err(SysError::new(EINVAL));
+            }
+        };
+
+        let handle = match gralloc.allocate_memory(reqs) {
+            Ok(handle) => handle,
+            Err(e) => {
+                error!("gralloc failed to allocate memory: {}", e);
+                return Err(SysError::new(EINVAL));
+            }
+        };
+
+        let mut desc = GpuMemoryDesc::default();
+        for i in 0..3 {
+            desc.planes[i] = GpuMemoryPlaneDesc {
+                stride: reqs.strides[i],
+                offset: reqs.offsets[i],
+            }
+        }
+
+        // Safe because ownership is transferred to SafeDescriptor via
+        // into_raw_descriptor
+        let descriptor =
+            unsafe { SafeDescriptor::from_raw_descriptor(handle.os_handle.into_raw_descriptor()) };
+
+        let mapped_region = map_descriptor(&descriptor, 0, reqs.size, false)?;
+        Ok((mapped_region, reqs.size, descriptor, desc))
     }
 }
 
@@ -915,54 +978,28 @@ pub enum VmRequest {
     VfioCommand { vfio_path: PathBuf, add: bool },
 }
 
-fn register_memory(
-    vm: &mut impl Vm,
-    allocator: &mut SystemAllocator,
+fn map_descriptor(
     descriptor: &dyn AsRawDescriptor,
-    size: usize,
-    pci_allocation: Option<(Alloc, u64)>,
-) -> Result<(u64, MemSlot)> {
-    let mmap = match MemoryMappingBuilder::new(size)
+    offset: u64,
+    size: u64,
+    read_only: bool,
+) -> Result<Box<dyn MappedRegion>> {
+    let size: usize = size.try_into().map_err(|_e| SysError::new(ERANGE))?;
+    let prot = if read_only {
+        Protection::read()
+    } else {
+        Protection::read_write()
+    };
+    match MemoryMappingBuilder::new(size)
         .from_descriptor(descriptor)
+        .offset(offset)
+        .protection(prot)
         .build()
     {
-        Ok(v) => v,
-        Err(MmapError::SystemCallFailed(e)) => return Err(e),
-        _ => return Err(SysError::new(EINVAL)),
-    };
-
-    let addr = match pci_allocation {
-        Some(pci_allocation) => allocator
-            .mmio_allocator(MmioType::High)
-            .address_from_pci_offset(pci_allocation.0, pci_allocation.1, size as u64)
-            .map_err(|_e| SysError::new(EINVAL))?,
-        None => {
-            let alloc = allocator.get_anon_alloc();
-            allocator
-                .mmio_allocator(MmioType::High)
-                .allocate(size as u64, alloc, "vmcontrol_register_memory".to_string())
-                .map_err(|_e| SysError::new(EINVAL))?
-        }
-    };
-
-    let slot = vm.add_memory_region(GuestAddress(addr), Box::new(mmap), false, false)?;
-
-    Ok((addr >> 12, slot))
-}
-
-fn register_host_pointer(
-    vm: &mut impl Vm,
-    allocator: &mut SystemAllocator,
-    mem: Box<dyn MappedRegion>,
-    pci_allocation: (Alloc, u64),
-) -> Result<(u64, MemSlot)> {
-    let addr = allocator
-        .mmio_allocator(MmioType::High)
-        .address_from_pci_offset(pci_allocation.0, pci_allocation.1, mem.size() as u64)
-        .map_err(|_e| SysError::new(EINVAL))?;
-
-    let slot = vm.add_memory_region(GuestAddress(addr), mem, false, false)?;
-    Ok((addr >> 12, slot))
+        Ok(mmap) => Ok(Box::new(mmap)),
+        Err(MmapError::SystemCallFailed(e)) => Err(e),
+        _ => Err(SysError::new(EINVAL)),
+    }
 }
 
 impl VmRequest {

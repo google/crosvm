@@ -19,7 +19,8 @@ use resources::{Alloc, MmioType, SystemAllocator};
 
 use vfio_sys::*;
 use vm_control::{
-    VmIrqRequest, VmIrqResponse, VmMemoryRequest, VmMemoryResponse, VmRequest, VmResponse,
+    VmIrqRequest, VmIrqResponse, VmMemoryDestination, VmMemoryRequest, VmMemoryResponse,
+    VmMemorySource, VmRequest, VmResponse,
 };
 
 use crate::pci::msix::{
@@ -897,11 +898,13 @@ impl VfioPciDevice {
                 };
                 if self
                     .vm_socket_mem
-                    .send(&VmMemoryRequest::RegisterMmapMemory {
-                        descriptor,
-                        size: mmap_size as usize,
-                        offset,
-                        gpa: guest_map_start,
+                    .send(&VmMemoryRequest::RegisterMemory {
+                        source: VmMemorySource::Descriptor {
+                            descriptor,
+                            offset,
+                            size: mmap_size,
+                        },
+                        dest: VmMemoryDestination::GuestPhysicalAddress(guest_map_start),
                         read_only: false,
                     })
                     .is_err()

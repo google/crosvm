@@ -23,7 +23,7 @@ use data_model::{DataInit, Le32};
 use libc::{recv, MSG_DONTWAIT, MSG_PEEK};
 use resources::Alloc;
 use uuid::Uuid;
-use vm_control::{VmMemoryRequest, VmMemoryResponse};
+use vm_control::{VmMemoryDestination, VmMemoryRequest, VmMemoryResponse, VmMemorySource};
 use vm_memory::GuestMemory;
 use vmm_vhost::{
     connection::socket::Endpoint as SocketEndpoint,
@@ -713,12 +713,18 @@ impl Worker {
                 error!("Region mmap offset is not 0");
             }
 
-            let request = VmMemoryRequest::RegisterFdAtPciBarOffset(
-                self.pci_bar,
-                SafeDescriptor::from(file),
-                region.memory_size as usize,
-                self.mem_offset as u64,
-            );
+            let request = VmMemoryRequest::RegisterMemory {
+                source: VmMemorySource::Descriptor {
+                    descriptor: SafeDescriptor::from(file),
+                    offset: 0,
+                    size: region.memory_size,
+                },
+                dest: VmMemoryDestination::ExistingAllocation {
+                    allocation: self.pci_bar,
+                    offset: self.mem_offset as u64,
+                },
+                read_only: false,
+            };
             self.process_memory_mapping_request(&request)?;
             self.mem_offset += region.memory_size as usize;
         }
