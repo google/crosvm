@@ -1,3 +1,7 @@
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
 import enum
 
 
@@ -24,7 +28,8 @@ class TestOption(enum.Enum):
 # Please add a bug number when restricting a tests.
 CRATE_OPTIONS: dict[str, list[TestOption]] = {
     "aarch64": [TestOption.BUILD_ARM_ONLY],
-    "cros_async": [TestOption.DO_NOT_BUILD],  # b/202293468
+    "bit_field_derive": [TestOption.RUN_X86_ONLY],  # b/206843832
+    "cros_async": [TestOption.DO_NOT_RUN],  # b/202293468
     "crosvm_plugin": [TestOption.BUILD_X86_ONLY],
     "devices": [TestOption.SINGLE_THREADED],
     "disk": [TestOption.RUN_X86_ONLY],  # b/202294155
@@ -34,11 +39,12 @@ CRATE_OPTIONS: dict[str, list[TestOption]] = {
         TestOption.SINGLE_THREADED,
         TestOption.RUN_X86_ONLY,  # b/180196508
     ],
-    "io_uring": [TestOption.DO_NOT_BUILD],  # b/202294403
+    "io_uring": [TestOption.DO_NOT_RUN],  # b/202294403
     "kvm": [TestOption.RUN_X86_ONLY],  # b/181674144
     "libcras_stub": [TestOption.DO_NOT_BUILD],  # empty stub crate
     "libvda": [TestOption.DO_NOT_BUILD],  # b/202293971
     "system_api_stub": [TestOption.DO_NOT_BUILD],  # empty stub crate
     "x86_64": [TestOption.BUILD_X86_ONLY],
     "sys_util": [TestOption.SINGLE_THREADED],
+    "rutabaga_gfx_ffi": [TestOption.DO_NOT_BUILD],  # b/206689789
 }
