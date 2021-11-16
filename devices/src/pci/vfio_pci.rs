@@ -269,6 +269,7 @@ impl VfioMsixCap {
 
         let mut table_size = (msix_ctl & PCI_MSIX_FLAGS_QSIZE) as u64 + 1;
         if table_pci_bar == pba_pci_bar
+            && pba_offset > table_offset
             && (table_offset + table_size * MSIX_TABLE_ENTRIES_MODULO) > pba_offset
         {
             table_size = (pba_offset - table_offset) / MSIX_TABLE_ENTRIES_MODULO;
