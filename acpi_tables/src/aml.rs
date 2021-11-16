@@ -55,10 +55,12 @@ const CONCATRESOP: u8 = 0x84;
 const MODOP: u8 = 0x85;
 const NOTIFYOP: u8 = 0x86;
 const INDEXOP: u8 = 0x88;
+const CREATEDWFIELDOP: u8 = 0x8a;
 const LEQUALOP: u8 = 0x93;
 const LLESSOP: u8 = 0x95;
 const TOSTRINGOP: u8 = 0x9c;
 const IFOP: u8 = 0xa0;
+const ELSEOP: u8 = 0xa1;
 const WHILEOP: u8 = 0xa2;
 const RETURNOP: u8 = 0xa4;
 const ONESOP: u8 = 0xff;
@@ -213,6 +215,15 @@ impl Name {
         let mut bytes = vec![NAMEOP];
         path.to_aml_bytes(&mut bytes);
         inner.to_aml_bytes(&mut bytes);
+        Name { bytes }
+    }
+
+    /// Create Field name object
+    ///
+    /// * 'field_name' - name string
+    pub fn new_field_name(field_name: &str) -> Self {
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.extend_from_slice(field_name.as_bytes());
         Name { bytes }
     }
 }
@@ -940,6 +951,36 @@ impl<'a> Aml for If<'a> {
     }
 }
 
+/// Else object
+pub struct Else<'a> {
+    body: Vec<&'a dyn Aml>,
+}
+
+impl<'a> Else<'a> {
+    /// Create Else object.
+    pub fn new(body: Vec<&'a dyn Aml>) -> Self {
+        Else { body }
+    }
+}
+
+impl<'a> Aml for Else<'a> {
+    fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
+        let mut bytes = Vec::new();
+        for child in self.body.iter() {
+            child.to_aml_bytes(&mut bytes);
+        }
+
+        let mut pkg_length = create_pkg_length(&bytes, true);
+        pkg_length.reverse();
+        for byte in pkg_length {
+            bytes.insert(0, byte);
+        }
+
+        bytes.insert(0, ELSEOP);
+        aml.append(&mut bytes)
+    }
+}
+
 /// Equal object with its right part and left part, which are both ACPI objects.
 pub struct Equal<'a> {
     right: &'a dyn Aml,
@@ -1191,6 +1232,7 @@ binary_op!(ConcatRes, CONCATRESOP);
 binary_op!(Mod, MODOP);
 binary_op!(Index, INDEXOP);
 binary_op!(ToString, TOSTRINGOP);
+binary_op!(CreateDWordField, CREATEDWFIELDOP);
 
 /// MethodCall object with the method name and parameter objects.
 pub struct MethodCall<'a> {
@@ -1241,6 +1283,81 @@ impl Aml for Buffer {
         bytes.insert(0, BUFFEROP);
 
         aml.append(&mut bytes)
+    }
+}
+
+pub struct Uuid {
+    name: Buffer,
+}
+
+fn hex2byte(v1: char, v2: char) -> u8 {
+    let hi = v1.to_digit(16).unwrap() as u8;
+    assert!(hi <= 15);
+    let lo = v2.to_digit(16).unwrap() as u8;
+    assert!(lo <= 15);
+
+    (hi << 4) | lo
+}
+
+impl Uuid {
+    // Create Uuid object
+    // eg. UUID: aabbccdd-eeff-gghh-iijj-kkllmmnnoopp
+    pub fn new(name: &str) -> Self {
+        let name_vec: Vec<char> = name.chars().collect();
+        let mut data = Vec::new();
+
+        assert_eq!(name_vec.len(), 36);
+        assert_eq!(name_vec[8], '-');
+        assert_eq!(name_vec[13], '-');
+        assert_eq!(name_vec[18], '-');
+        assert_eq!(name_vec[23], '-');
+
+        // dd - at offset 00
+        data.push(hex2byte(name_vec[6], name_vec[7]));
+        // cc - at offset 01
+        data.push(hex2byte(name_vec[4], name_vec[5]));
+        // bb - at offset 02
+        data.push(hex2byte(name_vec[2], name_vec[3]));
+        // aa - at offset 03
+        data.push(hex2byte(name_vec[0], name_vec[1]));
+
+        // ff - at offset 04
+        data.push(hex2byte(name_vec[11], name_vec[12]));
+        // ee - at offset 05
+        data.push(hex2byte(name_vec[9], name_vec[10]));
+
+        // hh - at offset 06
+        data.push(hex2byte(name_vec[16], name_vec[17]));
+        // gg - at offset 07
+        data.push(hex2byte(name_vec[14], name_vec[15]));
+
+        // ii - at offset 08
+        data.push(hex2byte(name_vec[19], name_vec[20]));
+        // jj - at offset 09
+        data.push(hex2byte(name_vec[21], name_vec[22]));
+
+        // kk - at offset 10
+        data.push(hex2byte(name_vec[24], name_vec[25]));
+        // ll - at offset 11
+        data.push(hex2byte(name_vec[26], name_vec[27]));
+        // mm - at offset 12
+        data.push(hex2byte(name_vec[28], name_vec[29]));
+        // nn - at offset 13
+        data.push(hex2byte(name_vec[30], name_vec[31]));
+        // oo - at offset 14
+        data.push(hex2byte(name_vec[32], name_vec[33]));
+        // pp - at offset 15
+        data.push(hex2byte(name_vec[34], name_vec[35]));
+
+        Uuid {
+            name: Buffer::new(data),
+        }
+    }
+}
+
+impl Aml for Uuid {
+    fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
+        self.name.to_aml_bytes(bytes)
     }
 }
 

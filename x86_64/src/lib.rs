@@ -884,6 +884,89 @@ fn phys_addr(mem: &GuestMemory, vaddr: u64, sregs: &Sregs) -> Result<(u64, u64)>
     Err(Error::TranslatingVirtAddr)
 }
 
+// OSC returned status register in CDW1
+const OSC_STATUS_UNSUPPORT_UUID: u32 = 0x4;
+// pci host bridge OSC returned control register in CDW3
+#[allow(dead_code)]
+const PCI_HB_OSC_CONTROL_PCIE_HP: u32 = 0x1;
+const PCI_HB_OSC_CONTROL_SHPC_HP: u32 = 0x2;
+const PCI_HB_OSC_CONTROL_PCIE_PME: u32 = 0x4;
+const PCI_HB_OSC_CONTROL_PCIE_AER: u32 = 0x8;
+#[allow(dead_code)]
+const PCI_HB_OSC_CONTROL_PCIE_CAP: u32 = 0x10;
+
+struct PciRootOSC {}
+
+// Method (_OSC, 4, NotSerialized)  // _OSC: Operating System Capabilities
+// {
+//     CreateDWordField (Arg3, Zero, CDW1)  // flag and return value
+//     If (Arg0 == ToUUID ("33db4d5b-1ff7-401c-9657-7441c03dd766"))
+//     {
+//         CreateDWordField (Arg3, 8, CDW3) // control field
+//         if ( 0 == (CDW1 & 0x01))  // Query flag ?
+//         {
+//              CDW3 &= !(SHPC_HP | PME | AER)
+//         }
+//     } Else {
+//         CDW1 |= UNSUPPORT_UUID
+//     }
+//     Return (Arg3)
+// }
+impl Aml for PciRootOSC {
+    fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
+        let osc_uuid = "33DB4D5B-1FF7-401C-9657-7441C03DD766";
+        // virtual pcie root port supports hotplug and pcie cap register only, clear all
+        // the other bits.
+        let mask = !(PCI_HB_OSC_CONTROL_SHPC_HP
+            | PCI_HB_OSC_CONTROL_PCIE_PME
+            | PCI_HB_OSC_CONTROL_PCIE_AER);
+        aml::Method::new(
+            "_OSC".into(),
+            4,
+            false,
+            vec![
+                &aml::CreateDWordField::new(
+                    &aml::Name::new_field_name("CDW1"),
+                    &aml::Arg(3),
+                    &aml::ZERO,
+                ),
+                &aml::If::new(
+                    &aml::Equal::new(&aml::Arg(0), &aml::Uuid::new(osc_uuid)),
+                    vec![
+                        &aml::CreateDWordField::new(
+                            &aml::Name::new_field_name("CDW3"),
+                            &aml::Arg(3),
+                            &(8_u8),
+                        ),
+                        &aml::If::new(
+                            &aml::Equal::new(
+                                &aml::ZERO,
+                                &aml::And::new(
+                                    &aml::Local(0),
+                                    &aml::Name::new_field_name("CDW1"),
+                                    &aml::ONE,
+                                ),
+                            ),
+                            vec![&aml::And::new(
+                                &aml::Name::new_field_name("CDW3"),
+                                &mask,
+                                &aml::Name::new_field_name("CDW3"),
+                            )],
+                        ),
+                    ],
+                ),
+                &aml::Else::new(vec![&aml::Or::new(
+                    &aml::Name::new_field_name("CDW1"),
+                    &OSC_STATUS_UNSUPPORT_UUID,
+                    &aml::Name::new_field_name("CDW1"),
+                )]),
+                &aml::Return::new(&aml::Arg(3)),
+            ],
+        )
+        .to_aml_bytes(aml)
+    }
+}
+
 impl X8664arch {
     /// Loads the bios from an open file.
     ///
@@ -1187,6 +1270,9 @@ impl X8664arch {
             ]),
         );
         pci_dsdt_inner_data.push(&crs);
+
+        let pci_root_osc = PciRootOSC {};
+        pci_dsdt_inner_data.push(&pci_root_osc);
 
         aml::Device::new("_SB_.PCI0".into(), pci_dsdt_inner_data).to_aml_bytes(&mut amls);
 
