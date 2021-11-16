@@ -600,15 +600,11 @@ impl WlVfd {
         let vfd_shm =
             SharedMemory::named("virtwl_alloc", size_page_aligned).map_err(WlError::NewAlloc)?;
 
-        let register_request = VmMemoryRequest::RegisterMemory(vfd_shm);
-        let register_response = vm.request(&register_request)?;
+        let (vfd_shm, register_response) = vm.register_memory(vfd_shm)?;
+
         match register_response {
             VmMemoryResponse::RegisterMemory { pfn, slot } => {
                 let mut vfd = WlVfd::default();
-                let vfd_shm = match register_request {
-                    VmMemoryRequest::RegisterMemory(shm) => shm,
-                    _ => unreachable!(),
-                };
                 vfd.guest_shared_memory = Some(vfd_shm);
                 vfd.slot = Some((slot, pfn, vm));
                 Ok(vfd)
