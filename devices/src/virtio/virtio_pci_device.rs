@@ -255,7 +255,7 @@ impl VirtioPciDevice {
                 &PciDisplaySubclass::Other as &dyn PciSubclass,
             ),
             _ => (
-                PciClassCode::Other,
+                PciClassCode::TooOld,
                 &PciVirtioSubclass::NonTransitionalBase as &dyn PciSubclass,
             ),
         };

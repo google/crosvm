@@ -12,16 +12,15 @@ use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
 
 use crate::virtio::descriptor_utils::Error as DescriptorUtilsError;
-use crate::virtio::{copy_config, Interrupt, Queue, Reader, VirtioDevice, Writer};
+use crate::virtio::{copy_config, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_VHOST_USER};
 
 use remain::sorted;
 use thiserror::Error as ThisError;
 
-const QUEUE_SIZE: u16 = 256;
-const NUM_QUEUES: usize = 2;
-const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
-
-const TYPE_VIRTIO_VHOST_USER: u32 = 43;
+// Proxy device i.e. this device's configuration.
+const NUM_PROXY_DEVICE_QUEUES: usize = 2;
+const PROXY_DEVICE_QUEUE_SIZE: u16 = 256;
+const PROXY_DEVICE_QUEUE_SIZES: &[u16] = &[PROXY_DEVICE_QUEUE_SIZE; NUM_PROXY_DEVICE_QUEUES];
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -270,11 +269,11 @@ impl VirtioDevice for VirtioVhostUser {
     }
 
     fn device_type(&self) -> u32 {
-        TYPE_VIRTIO_VHOST_USER
+        TYPE_VHOST_USER
     }
 
     fn queue_max_sizes(&self) -> &[u16] {
-        QUEUE_SIZES
+        PROXY_DEVICE_QUEUE_SIZES
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
@@ -303,7 +302,7 @@ impl VirtioDevice for VirtioVhostUser {
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<Event>,
     ) {
-        if queues.len() != NUM_QUEUES || queue_evts.len() != NUM_QUEUES {
+        if queues.len() != NUM_PROXY_DEVICE_QUEUES || queue_evts.len() != NUM_PROXY_DEVICE_QUEUES {
             error!("bad queue length: {} {}", queues.len(), queue_evts.len());
             return;
         }
