@@ -143,22 +143,6 @@ impl<R: Req> Endpoint<R> for SocketEndpoint<R> {
         self.sock.send_bufs_with_fds(iovs, rfds).map_err(Into::into)
     }
 
-    /// Reads bytes from the socket into the given scatter/gather vectors.
-    ///
-    /// # Return:
-    /// * - (number of bytes received, buf) on success
-    /// * - SocketRetry: temporary error caused by signals or short of resources.
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
-    fn recv_data(&mut self, len: usize) -> Result<Vec<u8>> {
-        let mut rbuf = vec![0u8; len];
-        let (bytes, _) = self
-            .sock
-            .recv_with_fds(IoSliceMut::new(&mut rbuf[..]), &mut [])?;
-        rbuf.truncate(bytes);
-        Ok(rbuf)
-    }
-
     /// Reads bytes from the socket into the given scatter/gather vectors with optional attached
     /// file.
     ///
@@ -177,8 +161,16 @@ impl<R: Req> Endpoint<R> for SocketEndpoint<R> {
     /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
-    fn recv_into_bufs(&mut self, bufs: &mut [IoSliceMut]) -> Result<(usize, Option<Vec<File>>)> {
-        let mut fd_array = vec![0; MAX_ATTACHED_FD_ENTRIES];
+    fn recv_into_bufs(
+        &mut self,
+        bufs: &mut [IoSliceMut],
+        allow_fd: bool,
+    ) -> Result<(usize, Option<Vec<File>>)> {
+        let mut fd_array = if allow_fd {
+            vec![0; MAX_ATTACHED_FD_ENTRIES]
+        } else {
+            vec![]
+        };
         let mut iovs: Vec<_> = bufs.iter_mut().map(|s| IoSliceMut::new(s)).collect();
         let (bytes, fds) = self.sock.recv_iovecs_with_fds(&mut iovs, &mut fd_array)?;
 

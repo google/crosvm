@@ -46,17 +46,19 @@ pub trait Endpoint<R: Req>: Sized {
     /// * - number of bytes sent on success
     fn send_iovec(&mut self, iovs: &[&[u8]], fds: Option<&[RawFd]>) -> Result<usize>;
 
-    /// Reads `len` bytes at most.
-    ///
-    /// # Return:
-    /// * - (number of bytes received, buf) on success
-    fn recv_data(&mut self, len: usize) -> Result<Vec<u8>>;
-
     /// Reads bytes into the given scatter/gather vectors with optional attached file.
+    ///
+    /// # Arguements
+    /// * `bufs` - A slice of buffers to store received data.
+    /// * `allow_fd` - Indicates whether we can receive FDs.
     ///
     /// # Return:
     /// * - (number of bytes received, [received files]) on success
-    fn recv_into_bufs(&mut self, bufs: &mut [IoSliceMut]) -> Result<(usize, Option<Vec<File>>)>;
+    fn recv_into_bufs(
+        &mut self,
+        bufs: &mut [IoSliceMut],
+        allow_fd: bool,
+    ) -> Result<(usize, Option<Vec<File>>)>;
 }
 
 // Advance the internal cursor of the slices.
@@ -220,8 +222,20 @@ pub(super) trait EndpointExt<R: Req>: Endpoint<R> {
         Ok(())
     }
 
-    /// Reads all bytes from the socket into the given scatter/gather vectors with optional
-    /// attached files. Will loop until all data has been transferred.
+    /// Reads `len` bytes at most.
+    ///
+    /// # Return:
+    /// * - (number of bytes received, buf) on success
+    fn recv_data(&mut self, len: usize) -> Result<Vec<u8>> {
+        let mut buf = vec![0u8; len];
+        let (data_len, _) =
+            self.recv_into_bufs(&mut [IoSliceMut::new(&mut buf)], false /* allow_fd */)?;
+        buf.truncate(data_len);
+        Ok(buf)
+    }
+
+    /// Reads all bytes into the given scatter/gather vectors with optional attached files. Will
+    /// loop until all data has been transferred.
     ///
     /// # Return:
     /// * - (number of bytes received, [received fds]) on success
@@ -238,7 +252,7 @@ pub(super) trait EndpointExt<R: Req>: Endpoint<R> {
 
         while (data_total - data_read) > 0 {
             let mut slices: Vec<IoSliceMut> = bufs.iter_mut().map(|b| IoSliceMut::new(b)).collect();
-            let res = self.recv_into_bufs(&mut slices);
+            let res = self.recv_into_bufs(&mut slices, true);
             match res {
                 Ok((0, _)) => return Ok((data_read, rfds)),
                 Ok((n, fds)) => {
@@ -267,7 +281,7 @@ pub(super) trait EndpointExt<R: Req>: Endpoint<R> {
     fn recv_into_buf(&mut self, buf_size: usize) -> Result<(usize, Vec<u8>, Option<Vec<File>>)> {
         let mut buf = vec![0u8; buf_size];
         let mut slices = [IoSliceMut::new(buf.as_mut_slice())];
-        let (bytes, files) = self.recv_into_bufs(&mut slices)?;
+        let (bytes, files) = self.recv_into_bufs(&mut slices, true /* allow_fd */)?;
         Ok((bytes, buf, files))
     }
 
@@ -282,7 +296,10 @@ pub(super) trait EndpointExt<R: Req>: Endpoint<R> {
     /// * - backend specific errors
     fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<R>, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
-        let (bytes, files) = self.recv_into_bufs(&mut [IoSliceMut::new(hdr.as_mut_slice())])?;
+        let (bytes, files) = self.recv_into_bufs(
+            &mut [IoSliceMut::new(hdr.as_mut_slice())],
+            true, /* allow_fd */
+        )?;
 
         if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
             return Err(Error::PartialMessage);

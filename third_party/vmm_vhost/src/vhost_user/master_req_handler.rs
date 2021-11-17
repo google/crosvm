@@ -7,7 +7,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
 
-use super::connection::{Endpoint, EndpointExt, SocketEndpoint};
+use super::connection::{EndpointExt, SocketEndpoint};
 use super::message::*;
 use super::{Error, HandlerResult, Result};
 
