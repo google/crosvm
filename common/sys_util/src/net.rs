@@ -534,7 +534,8 @@ impl UnixSeqpacket {
         let packet_size = self.next_packet_size()?;
         let mut buf = vec![0; packet_size];
         let mut fd_buf = vec![-1; SCM_SOCKET_MAX_FD_COUNT];
-        let (read_bytes, read_fds) = self.recv_with_fds(&mut buf, &mut fd_buf)?;
+        let (read_bytes, read_fds) =
+            self.recv_with_fds(io::IoSliceMut::new(&mut buf), &mut fd_buf)?;
         buf.resize(read_bytes, 0);
         fd_buf.resize(read_fds, -1);
         Ok((buf, fd_buf))

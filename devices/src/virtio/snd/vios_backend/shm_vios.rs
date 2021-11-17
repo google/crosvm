@@ -14,7 +14,7 @@ use data_model::{DataInit, VolatileMemory, VolatileMemoryError, VolatileSlice};
 
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
-use std::io::{Error as IOError, ErrorKind as IOErrorKind, Seek, SeekFrom};
+use std::io::{Error as IOError, ErrorKind as IOErrorKind, IoSliceMut, Seek, SeekFrom};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::path::Path;
 use std::sync::mpsc::{channel, Receiver, RecvError, Sender};
@@ -137,7 +137,7 @@ impl VioSClient {
         const NUM_FDS: usize = 5;
         fds.resize(NUM_FDS, 0);
         let (recv_size, fd_count) = client_socket
-            .recv_with_fds(config.as_mut_slice(), &mut fds)
+            .recv_with_fds(IoSliceMut::new(config.as_mut_slice()), &mut fds)
             .map_err(Error::ServerError)?;
 
         // Resize the vector to the actual number of file descriptors received and wrap them in

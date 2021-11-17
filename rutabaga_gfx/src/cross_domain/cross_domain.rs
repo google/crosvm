@@ -9,7 +9,7 @@ use std::collections::BTreeMap as Map;
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::fs::File;
-use std::io::{Seek, SeekFrom};
+use std::io::{IoSliceMut, Seek, SeekFrom};
 use std::mem::size_of;
 use std::os::unix::net::UnixStream;
 use std::ptr::copy_nonoverlapping;
@@ -283,7 +283,8 @@ impl CrossDomainState {
         // If any errors happen, the socket will get dropped, preventing more reading.
         if let Some(connection) = &self.connection {
             let mut files: Vec<File> = Vec::new();
-            let (len, file_count) = connection.recv_with_fds(&mut opaque_data[..], descriptors)?;
+            let (len, file_count) =
+                connection.recv_with_fds(IoSliceMut::new(opaque_data), descriptors)?;
 
             for descriptor in descriptors.iter_mut().take(file_count) {
                 // Safe since the descriptors from recv_with_fds(..) are owned by us and valid.

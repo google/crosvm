@@ -17,7 +17,7 @@
 
 use std::env;
 use std::fs::File;
-use std::io::{IoSlice, Read, Write};
+use std::io::{IoSlice, IoSliceMut, Read, Write};
 use std::mem::{size_of, swap};
 use std::os::raw::{c_int, c_void};
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
@@ -300,7 +300,10 @@ impl crosvm {
         let mut datagram_fds = [0; MAX_DATAGRAM_FD];
         let (msg_size, fd_count) = self
             .socket
-            .recv_with_fds(&mut self.response_buffer, &mut datagram_fds)
+            .recv_with_fds(
+                IoSliceMut::new(&mut self.response_buffer),
+                &mut datagram_fds,
+            )
             .map_err(|e| -e.errno())?;
         // Safe because the first fd_count fds from recv_with_fds are owned by us and valid.
         let datagram_files = datagram_fds[..fd_count]

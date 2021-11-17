@@ -154,27 +154,15 @@ fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Resu
     }
 }
 
-fn raw_recvmsg(fd: RawFd, in_data: &mut [u8], in_fds: &mut [RawFd]) -> Result<(usize, usize)> {
-    let iovec = iovec {
-        iov_base: in_data.as_mut_ptr() as *mut c_void,
-        iov_len: in_data.len(),
-    };
-    raw_recvmsg_iovecs(fd, &mut [iovec], in_fds)
-}
-
-fn raw_recvmsg_iovecs(
-    fd: RawFd,
-    iovecs: &mut [iovec],
-    in_fds: &mut [RawFd],
-) -> Result<(usize, usize)> {
+fn raw_recvmsg(fd: RawFd, iovs: &mut [IoSliceMut], in_fds: &mut [RawFd]) -> Result<(usize, usize)> {
     let cmsg_capacity = CMSG_SPACE!(size_of::<RawFd>() * in_fds.len());
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
     let mut msg = msghdr {
         msg_name: null_mut(),
         msg_namelen: 0,
-        msg_iov: iovecs.as_mut_ptr() as *mut iovec,
-        msg_iovlen: iovecs.len(),
+        msg_iov: iovs.as_mut_ptr() as *mut iovec,
+        msg_iovlen: iovs.len(),
         msg_control: null_mut(),
         msg_controllen: 0,
         msg_flags: 0,
@@ -287,7 +275,7 @@ pub trait ScmSocket {
     /// # Arguments
     ///
     /// * `buf` - A buffer to receive data from the socket.vm
-    fn recv_with_fd(&self, buf: &mut [u8]) -> Result<(usize, Option<File>)> {
+    fn recv_with_fd(&self, buf: IoSliceMut) -> Result<(usize, Option<File>)> {
         let mut fd = [0];
         let (read_count, fd_count) = self.recv_with_fds(buf, &mut fd)?;
         let file = if fd_count == 0 {
@@ -313,8 +301,8 @@ pub trait ScmSocket {
     ///           returned tuple. The caller owns these file descriptors, but they will not be
     ///           closed on drop like a `File`-like type would be. It is recommended that each valid
     ///           file descriptor gets wrapped in a drop type that closes it after this returns.
-    fn recv_with_fds(&self, buf: &mut [u8], fds: &mut [RawFd]) -> Result<(usize, usize)> {
-        raw_recvmsg(self.socket_fd(), buf, fds)
+    fn recv_with_fds(&self, buf: IoSliceMut, fds: &mut [RawFd]) -> Result<(usize, usize)> {
+        raw_recvmsg(self.socket_fd(), &mut [buf], fds)
     }
 
     /// Receives data and file descriptors from the socket.
@@ -324,7 +312,10 @@ pub trait ScmSocket {
     ///
     /// # Arguments
     ///
-    /// * `ioves` - A slice of iovecs to store received data.
+    /// * `iovecs` - A slice of buffers to store received data.
+    /// * `offset` - An offset for `bufs`. The first `offset` bytes in `bufs` won't be touched.
+    ///              Returns an error if `offset` is larger than or equal to the total size of
+    ///              `bufs`.
     /// * `fds` - A slice of `RawFd`s to put the received file descriptors into. On success, the
     ///           number of valid file descriptors is indicated by the second element of the
     ///           returned tuple. The caller owns these file descriptors, but they will not be
@@ -332,10 +323,10 @@ pub trait ScmSocket {
     ///           file descriptor gets wrapped in a drop type that closes it after this returns.
     fn recv_iovecs_with_fds(
         &self,
-        iovecs: &mut [iovec],
+        iovecs: &mut [IoSliceMut],
         fds: &mut [RawFd],
     ) -> Result<(usize, usize)> {
-        raw_recvmsg_iovecs(self.socket_fd(), iovecs, fds)
+        raw_recvmsg(self.socket_fd(), iovecs, fds)
     }
 }
 
@@ -481,7 +472,7 @@ mod tests {
         let mut buf = [0; 6];
         let mut files = [0; 1];
         let (read_count, file_count) = s2
-            .recv_with_fds(&mut buf[..], &mut files)
+            .recv_with_fds(IoSliceMut::new(&mut buf), &mut files)
             .expect("failed to recv data");
 
         assert_eq!(read_count, 6);
@@ -494,7 +485,7 @@ mod tests {
 
         assert_eq!(write_count, 6);
         let (read_count, file_count) = s2
-            .recv_with_fds(&mut buf[..], &mut files)
+            .recv_with_fds(IoSliceMut::new(&mut buf), &mut files)
             .expect("failed to recv data");
 
         assert_eq!(read_count, 6);
@@ -514,7 +505,10 @@ mod tests {
 
         assert_eq!(write_count, 0);
 
-        let (read_count, file_opt) = s2.recv_with_fd(&mut []).expect("failed to recv fd");
+        let mut buf = [];
+        let (read_count, file_opt) = s2
+            .recv_with_fd(IoSliceMut::new(&mut buf))
+            .expect("failed to recv fd");
 
         let mut file = file_opt.unwrap();
 
@@ -545,7 +539,7 @@ mod tests {
         let mut files = [0; 2];
         let mut buf = [0u8];
         let (read_count, file_count) = s2
-            .recv_with_fds(&mut buf, &mut files)
+            .recv_with_fds(IoSliceMut::new(&mut buf), &mut files)
             .expect("failed to recv fd");
 
         assert_eq!(read_count, 1);

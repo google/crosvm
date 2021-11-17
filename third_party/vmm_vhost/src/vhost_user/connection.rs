@@ -8,6 +8,7 @@ mod socket;
 pub use self::socket::SocketListener;
 
 use std::fs::File;
+use std::io::IoSliceMut;
 use std::marker::PhantomData;
 use std::mem;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
@@ -15,7 +16,6 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 
 use data_model::DataInit;
-use libc::{c_void, iovec};
 use sys_util::ScmSocket;
 
 use super::message::*;
@@ -214,7 +214,9 @@ impl<R: Req> Endpoint<R> {
     /// * - SocketError: other socket related errors.
     pub fn recv_data(&mut self, len: usize) -> Result<(usize, Vec<u8>)> {
         let mut rbuf = vec![0u8; len];
-        let (bytes, _) = self.sock.recv_with_fds(&mut rbuf[..], &mut [])?;
+        let (bytes, _) = self
+            .sock
+            .recv_with_fds(IoSliceMut::new(&mut rbuf), &mut [])?;
         Ok((bytes, rbuf))
     }
 
@@ -236,9 +238,10 @@ impl<R: Req> Endpoint<R> {
     /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
-    pub fn recv_into_iovec(&mut self, iovs: &mut [iovec]) -> Result<(usize, Option<Vec<File>>)> {
+    pub fn recv_into_bufs(&mut self, bufs: &mut [&mut [u8]]) -> Result<(usize, Option<Vec<File>>)> {
         let mut fd_array = vec![0; MAX_ATTACHED_FD_ENTRIES];
-        let (bytes, fds) = self.sock.recv_iovecs_with_fds(iovs, &mut fd_array)?;
+        let mut iovs: Vec<_> = bufs.iter_mut().map(|s| IoSliceMut::new(s)).collect();
+        let (bytes, fds) = self.sock.recv_iovecs_with_fds(&mut iovs, &mut fd_array)?;
 
         let files = match fds {
             0 => None,
@@ -261,46 +264,21 @@ impl<R: Req> Endpoint<R> {
     /// Reads all bytes from the socket into the given scatter/gather vectors with optional
     /// attached files. Will loop until all data has been transferred.
     ///
-    /// The underlying communication channel is a Unix domain socket in STREAM mode. It's a little
-    /// tricky to pass file descriptors through such a communication channel. Let's assume that a
-    /// sender sending a message with some file descriptors attached. To successfully receive those
-    /// attached file descriptors, the receiver must obey following rules:
-    ///   1) file descriptors are attached to a message.
-    ///   2) message(packet) boundaries must be respected on the receive side.
-    /// In other words, recvmsg() operations must not cross the packet boundary, otherwise the
-    /// attached file descriptors will get lost.
-    /// Note that this function wraps received file descriptors as `File`.
-    ///
     /// # Return:
     /// * - (number of bytes received, [received fds]) on success
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
-    pub fn recv_into_iovec_all(
+    pub fn recv_into_bufs_all(
         &mut self,
-        iovs: &mut [iovec],
+        mut bufs: &mut [&mut [u8]],
     ) -> Result<(usize, Option<Vec<File>>)> {
+        let buf_lens: Vec<usize> = bufs.iter().map(|b| b.len()).collect();
+        let data_total: usize = buf_lens.iter().sum();
         let mut data_read = 0;
-        let mut data_total = 0;
         let mut rfds = None;
-        let iov_lens: Vec<usize> = iovs.iter().map(|iov| iov.iov_len).collect();
-        for len in &iov_lens {
-            data_total += len;
-        }
 
         while (data_total - data_read) > 0 {
-            let (nr_skip, offset) = get_sub_iovs_offset(&iov_lens, data_read);
-            let iov = &mut iovs[nr_skip];
-
-            let mut data = [
-                &[iovec {
-                    iov_base: (iov.iov_base as usize + offset) as *mut c_void,
-                    iov_len: iov.iov_len - offset,
-                }],
-                &iovs[(nr_skip + 1)..],
-            ]
-            .concat();
-
-            let res = self.recv_into_iovec(&mut data);
+            let res = self.recv_into_bufs(bufs);
             match res {
                 Ok((0, _)) => return Ok((data_read, rfds)),
                 Ok((n, fds)) => {
@@ -308,6 +286,7 @@ impl<R: Req> Endpoint<R> {
                         rfds = fds;
                     }
                     data_read += n;
+                    advance_slices_mut(&mut bufs, n);
                 }
                 Err(e) => match e {
                     Error::SocketRetry(_) => {}
@@ -332,13 +311,8 @@ impl<R: Req> Endpoint<R> {
         buf_size: usize,
     ) -> Result<(usize, Vec<u8>, Option<Vec<File>>)> {
         let mut buf = vec![0u8; buf_size];
-        let (bytes, files) = {
-            let mut iovs = [iovec {
-                iov_base: buf.as_mut_ptr() as *mut c_void,
-                iov_len: buf_size,
-            }];
-            self.recv_into_iovec(&mut iovs)?
-        };
+        let mut slices = vec![buf.as_mut_slice()];
+        let (bytes, files) = self.recv_into_bufs(&mut slices)?;
         Ok((bytes, buf, files))
     }
 
@@ -355,11 +329,7 @@ impl<R: Req> Endpoint<R> {
     /// * - InvalidMessage: received a invalid message.
     pub fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<R>, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
-        let mut iovs = [iovec {
-            iov_base: (&mut hdr as *mut VhostUserMsgHeader<R>) as *mut c_void,
-            iov_len: mem::size_of::<VhostUserMsgHeader<R>>(),
-        }];
-        let (bytes, files) = self.recv_into_iovec_all(&mut iovs[..])?;
+        let (bytes, files) = self.recv_into_bufs(&mut [hdr.as_mut_slice()])?;
 
         if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
             return Err(Error::PartialMessage);
@@ -386,17 +356,8 @@ impl<R: Req> Endpoint<R> {
     ) -> Result<(VhostUserMsgHeader<R>, T, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
         let mut body: T = Default::default();
-        let mut iovs = [
-            iovec {
-                iov_base: (&mut hdr as *mut VhostUserMsgHeader<R>) as *mut c_void,
-                iov_len: mem::size_of::<VhostUserMsgHeader<R>>(),
-            },
-            iovec {
-                iov_base: (&mut body as *mut T) as *mut c_void,
-                iov_len: mem::size_of::<T>(),
-            },
-        ];
-        let (bytes, files) = self.recv_into_iovec_all(&mut iovs[..])?;
+        let mut slices = vec![hdr.as_mut_slice(), body.as_mut_slice()];
+        let (bytes, files) = self.recv_into_bufs_all(&mut slices)?;
 
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>();
         if bytes != total {
@@ -428,17 +389,8 @@ impl<R: Req> Endpoint<R> {
         buf: &mut [u8],
     ) -> Result<(VhostUserMsgHeader<R>, usize, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
-        let mut iovs = [
-            iovec {
-                iov_base: (&mut hdr as *mut VhostUserMsgHeader<R>) as *mut c_void,
-                iov_len: mem::size_of::<VhostUserMsgHeader<R>>(),
-            },
-            iovec {
-                iov_base: buf.as_mut_ptr() as *mut c_void,
-                iov_len: buf.len(),
-            },
-        ];
-        let (bytes, files) = self.recv_into_iovec_all(&mut iovs[..])?;
+        let mut slices = vec![hdr.as_mut_slice(), buf];
+        let (bytes, files) = self.recv_into_bufs_all(&mut slices)?;
 
         if bytes < mem::size_of::<VhostUserMsgHeader<R>>() {
             return Err(Error::PartialMessage);
@@ -467,21 +419,8 @@ impl<R: Req> Endpoint<R> {
     ) -> Result<(VhostUserMsgHeader<R>, T, usize, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
         let mut body: T = Default::default();
-        let mut iovs = [
-            iovec {
-                iov_base: (&mut hdr as *mut VhostUserMsgHeader<R>) as *mut c_void,
-                iov_len: mem::size_of::<VhostUserMsgHeader<R>>(),
-            },
-            iovec {
-                iov_base: (&mut body as *mut T) as *mut c_void,
-                iov_len: mem::size_of::<T>(),
-            },
-            iovec {
-                iov_base: buf.as_mut_ptr() as *mut c_void,
-                iov_len: buf.len(),
-            },
-        ];
-        let (bytes, files) = self.recv_into_iovec_all(&mut iovs[..])?;
+        let mut slices = vec![hdr.as_mut_slice(), body.as_mut_slice(), buf];
+        let (bytes, files) = self.recv_into_bufs_all(&mut slices)?;
 
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>();
         if bytes < total {
@@ -500,28 +439,8 @@ impl<T: Req> AsRawFd for Endpoint<T> {
     }
 }
 
-// Given a slice of sizes and the `skip_size`, return the offset of `skip_size` in the slice.
-// For example:
-//     let iov_lens = vec![4, 4, 5];
-//     let size = 6;
-//     assert_eq!(get_sub_iovs_offset(&iov_len, size), (1, 2));
-fn get_sub_iovs_offset(iov_lens: &[usize], skip_size: usize) -> (usize, usize) {
-    let mut size = skip_size;
-    let mut nr_skip = 0;
-
-    for len in iov_lens {
-        if size >= *len {
-            size -= *len;
-            nr_skip += 1;
-        } else {
-            break;
-        }
-    }
-    (nr_skip, size)
-}
-
 // Advance the internal cursor of the slices.
-// This is same with a nightly API `IoSlice::advance_slices` but for `[&[u8]]`.
+// This is same with a nightly API `IoSlice::advance_slices` but for `&[u8]`.
 fn advance_slices(bufs: &mut &mut [&[u8]], mut count: usize) {
     use std::mem::replace;
 
@@ -539,6 +458,27 @@ fn advance_slices(bufs: &mut &mut [&[u8]], mut count: usize) {
     }
 }
 
+// Advance the internal cursor of the slices.
+// This is same with a nightly API `IoSliceMut::advance_slices` but for `&mut [u8]`.
+fn advance_slices_mut(bufs: &mut &mut [&mut [u8]], mut count: usize) {
+    use std::mem::replace;
+
+    let mut idx = 0;
+    for b in bufs.iter() {
+        if count < b.len() {
+            break;
+        }
+        count -= b.len();
+        idx += 1;
+    }
+    *bufs = &mut replace(bufs, &mut [])[idx..];
+    if !bufs.is_empty() {
+        let slice = replace(&mut bufs[0], &mut []);
+        let (_, remaining) = slice.split_at_mut(count);
+        bufs[0] = remaining;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -551,6 +491,18 @@ mod tests {
         let buf3 = [3; 8];
         let mut bufs = &mut [&buf1[..], &buf2[..], &buf3[..]][..];
         advance_slices(&mut bufs, 10);
+        assert_eq!(bufs[0], [2; 14].as_ref());
+        assert_eq!(bufs[1], [3; 8].as_ref());
+    }
+
+    #[test]
+    fn test_advance_slices_mut() {
+        // Test case from https://doc.rust-lang.org/std/io/struct.IoSliceMut.html#method.advance_slices
+        let mut buf1 = [1; 8];
+        let mut buf2 = [2; 16];
+        let mut buf3 = [3; 8];
+        let mut bufs = &mut [&mut buf1[..], &mut buf2[..], &mut buf3[..]][..];
+        advance_slices_mut(&mut bufs, 10);
         assert_eq!(bufs[0], [2; 14].as_ref());
         assert_eq!(bufs[1], [3; 8].as_ref());
     }

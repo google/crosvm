@@ -34,7 +34,7 @@ use std::convert::From;
 use std::error::Error as StdError;
 use std::fmt;
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, IoSliceMut, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 #[cfg(feature = "minigbm")]
 use std::os::raw::{c_uint, c_ulonglong};
@@ -809,7 +809,7 @@ impl WlVfd {
             let mut fd_buf = [0; VIRTWL_SEND_MAX_ALLOCS];
             // If any errors happen, the socket will get dropped, preventing more reading.
             let (len, file_count) = socket
-                .recv_with_fds(&mut buf[..], &mut fd_buf)
+                .recv_with_fds(IoSliceMut::new(&mut buf), &mut fd_buf)
                 .map_err(WlError::RecvVfd)?;
             // If any data gets read, the put the socket back for future recv operations.
             if len != 0 || file_count != 0 {
