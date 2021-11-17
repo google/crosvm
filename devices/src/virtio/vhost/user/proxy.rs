@@ -3,16 +3,17 @@
 // found in the LICENSE file.
 
 //! This module implements the "Vhost User" Virtio device as specified here -
-//! <https://stefanha.github.io/virtio/vhost-user-slave.html#x1-2830007>
-//! It acts as a proxy between the Vhost User Master running in a sibling VM's
-//! VMM and Virtio Vhost User Slave implementation in the device VM.
+//! <https://stefanha.github.io/virtio/vhost-user-slave.html#x1-2830007> It acts
+//! as a proxy between the Vhost User Master running in a sibling VM's VMM and
+//! Virtio Vhost User Slave implementation (referred to as `device backend` in
+//! this module) in the device VM.
 
 use std::io;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::thread;
 
-use base::{error, info, Event, EventType, PollToken, RawDescriptor, WaitContext};
+use base::{error, Event, EventType, PollToken, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le32};
 use resources::Alloc;
 use vm_memory::GuestMemory;
@@ -30,6 +31,14 @@ use crate::PciAddress;
 
 use remain::sorted;
 use thiserror::Error as ThisError;
+
+// Note: There are two sets of queues that will be mentioned here. 1st set is
+// for this Virtio PCI device itself. 2nd set is the actual device backends
+// which are set up via Virtio Vhost User (a protocol whose messages are
+// forwarded by this device) such as block, net, etc..
+//
+// The queue configuration about any device backends this proxy may support.
+const MAX_VHOST_DEVICE_QUEUES: usize = 16;
 
 // Proxy device i.e. this device's configuration.
 const NUM_PROXY_DEVICE_QUEUES: usize = 2;
@@ -49,7 +58,7 @@ const BAR_INDEX: u8 = 2;
 const BAR_SIZE: u64 = 1 << 33;
 
 // Bar configuration.
-// All offsets are from the starting of bar |BAR_INDEX|.
+// All offsets are from the starting of bar `BAR_INDEX`.
 const DOORBELL_OFFSET: u64 = 0;
 // TODO(abhishekbh): Copied from lspci in qemu with VVU support.
 const DOORBELL_SIZE: u64 = 0x2000;
@@ -60,6 +69,10 @@ const SHARED_MEMORY_OFFSET: u64 = NOTIFICATIONS_OFFSET + NOTIFICATIONS_SIZE;
 // `BAR_SIZE` but it's significantly lower than the memory allocated to a
 // sibling VM. Figure out how these two are related.
 const SHARED_MEMORY_SIZE: u64 = 0x1000;
+
+// Notifications region related constants.
+const NOTIFICATIONS_VRING_SELECT_OFFSET: u64 = 0;
+const NOTIFICATIONS_MSIX_VECTOR_SELECT_OFFSET: u64 = 2;
 
 // Capabilities related configuration.
 //
@@ -127,9 +140,9 @@ impl Worker {
         pub enum Token {
             // Data is available on the vhost vmm socket.
             VhostVmmSocket,
-            // The vhost-device has made a read buffer available.
+            // The device backend has made a read buffer available.
             RxQueue,
-            // The vhost-device has sent a buffer to the |Worker::tx_queue|.
+            // The device backend has sent a buffer to the `Worker::tx_queue`.
             TxQueue,
             // crosvm has requested the device to shut down.
             Kill,
@@ -280,7 +293,7 @@ pub struct VirtioPciDoorbellCap {
     cap: VirtioPciCap,
     doorbell_off_multiplier: Le32,
 }
-// It is safe to implement DataInit; |VirtioPciCap| implements DataInit and for
+// It is safe to implement DataInit; `VirtioPciCap` implements DataInit and for
 // Le32 any value is valid.
 unsafe impl DataInit for VirtioPciDoorbellCap {}
 
@@ -315,6 +328,12 @@ pub struct VirtioVhostUser {
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker>>,
     pci_bar: Option<Alloc>,
+    // The device backend queue index selected by the driver by writing to the
+    // Notifications region at offset `NOTIFICATIONS_MSIX_VECTOR_SELECT_OFFSET`
+    // in the bar. This points into `notification_msix_vectors`.
+    notification_select: Option<u16>,
+    // Stores msix vectors corresponding to each device backend queue.
+    notification_msix_vectors: [Option<u16>; MAX_VHOST_DEVICE_QUEUES],
 }
 
 impl VirtioVhostUser {
@@ -327,19 +346,72 @@ impl VirtioVhostUser {
             kill_evt: None,
             worker_thread: None,
             pci_bar: None,
+            notification_select: None,
+            notification_msix_vectors: [None; MAX_VHOST_DEVICE_QUEUES],
         })
     }
 
     // Implement writing to the notifications bar as per the VVU spec.
-    fn write_bar_notifications(&mut self, _offset: u64, _data: &[u8]) {
-        // TODO(abhishekbh): Implement write notifications.
-        info!("notifications write");
+    fn write_bar_notifications(&mut self, offset: u64, data: &[u8]) {
+        if data.len() < std::mem::size_of::<u16>() {
+            error!("data buffer is too small: {}", data.len());
+            return;
+        }
+
+        // The driver will first write to `NOTIFICATIONS_VRING_SELECT_OFFSET` to
+        // specify which index in `self.notification_msix_vectors` to write to.
+        // Then it writes the msix vector value by writing to
+        // `NOTIFICATIONS_MSIX_VECTOR_SELECT_OFFSET`.
+        let mut dst = [0u8; 2];
+        dst.copy_from_slice(&data[..2]);
+        let val = u16::from_le_bytes(dst);
+        match offset {
+            NOTIFICATIONS_VRING_SELECT_OFFSET => {
+                self.notification_select = Some(val);
+            }
+            NOTIFICATIONS_MSIX_VECTOR_SELECT_OFFSET => {
+                if let Some(notification_select) = self.notification_select {
+                    if notification_select as usize >= self.notification_msix_vectors.len() {
+                        error!("invalid notification select: {}", notification_select);
+                        return;
+                    }
+                    self.notification_msix_vectors[notification_select as usize] = Some(val);
+                } else {
+                    error!("no notification select set");
+                }
+            }
+            _ => {
+                error!("invalid notification cfg offset: {}", offset);
+            }
+        }
     }
 
     // Implement reading from the notifications bar as per the VVU spec.
-    fn read_bar_notifications(&mut self, _offset: u64, _data: &mut [u8]) {
-        // TODO(abhishekbh): Implement read notifications.
-        info!("notifications read");
+    fn read_bar_notifications(&mut self, offset: u64, data: &mut [u8]) {
+        if data.len() < std::mem::size_of::<u16>() {
+            error!("data buffer is too small: {}", data.len());
+            return;
+        }
+
+        // The driver will first write to `NOTIFICATIONS_VRING_SELECT_OFFSET` to
+        // specify which index in `self.notification_msix_vectors` to read from.
+        // Then it reads the msix vector value by reading from
+        // `NOTIFICATIONS_MSIX_VECTOR_SELECT_OFFSET`.
+        // Return 0 if a vector value hasn't been set for the queue.
+        let mut val = 0;
+        if offset == NOTIFICATIONS_VRING_SELECT_OFFSET {
+            val = self.notification_select.unwrap_or(0);
+        } else if offset == NOTIFICATIONS_MSIX_VECTOR_SELECT_OFFSET {
+            if let Some(notification_select) = self.notification_select {
+                val = self.notification_msix_vectors[notification_select as usize].unwrap_or(0);
+            } else {
+                error!("no notification select set");
+            }
+        } else {
+            error!("invalid notification cfg offset: {}", offset);
+        }
+        let d = u16::to_le_bytes(val);
+        data[..2].copy_from_slice(&d);
     }
 }
 
@@ -382,7 +454,7 @@ impl VirtioDevice for VirtioVhostUser {
     }
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {
-        // TODO: Confirm if |data| is guaranteed to be sent in LE.
+        // TODO: Confirm if `data` is guaranteed to be sent in LE.
         copy_config(
             self.config.as_mut_slice(),
             offset,
@@ -462,7 +534,7 @@ impl VirtioDevice for VirtioVhostUser {
         self.kill_evt = Some(self_kill_evt);
 
         // The socket will be moved to the worker thread. Guaranteed to be valid as a connection is
-        // ensured in |VirtioVhostUser::new|.
+        // ensured in `VirtioVhostUser::new`.
         let vhost_vmm_socket = self
             .vhost_vmm_socket
             .take()
