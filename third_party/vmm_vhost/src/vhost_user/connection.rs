@@ -50,7 +50,7 @@ pub trait Endpoint<R: Req>: Sized {
     ///
     /// # Return:
     /// * - (number of bytes received, buf) on success
-    fn recv_data(&mut self, len: usize) -> Result<(usize, Vec<u8>)>;
+    fn recv_data(&mut self, len: usize) -> Result<Vec<u8>>;
 
     /// Reads bytes into the given scatter/gather vectors with optional attached file.
     ///

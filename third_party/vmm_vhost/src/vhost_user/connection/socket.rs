@@ -150,12 +150,13 @@ impl<R: Req> Endpoint<R> for SocketEndpoint<R> {
     /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
-    fn recv_data(&mut self, len: usize) -> Result<(usize, Vec<u8>)> {
+    fn recv_data(&mut self, len: usize) -> Result<Vec<u8>> {
         let mut rbuf = vec![0u8; len];
         let (bytes, _) = self
             .sock
             .recv_with_fds(IoSliceMut::new(&mut rbuf[..]), &mut [])?;
-        Ok((bytes, rbuf))
+        rbuf.truncate(bytes);
+        Ok(rbuf)
     }
 
     /// Reads bytes from the socket into the given scatter/gather vectors with optional attached
@@ -345,8 +346,8 @@ mod tests {
             .unwrap();
         assert_eq!(len, 4);
 
-        let (bytes, buf4) = slave.recv_data(2).unwrap();
-        assert_eq!(bytes, 2);
+        let buf4 = slave.recv_data(2).unwrap();
+        assert_eq!(buf4.len(), 2);
         assert_eq!(&buf1[..2], &buf4[..]);
         let (bytes, buf2, files) = slave.recv_into_buf(0x2).unwrap();
         assert_eq!(bytes, 2);
@@ -402,8 +403,8 @@ mod tests {
             .unwrap();
         assert_eq!(len, 4);
 
-        let (bytes, _) = slave.recv_data(5).unwrap();
-        assert_eq!(bytes, 5);
+        let v = slave.recv_data(5).unwrap();
+        assert_eq!(v.len(), 5);
 
         let (bytes, _, files) = slave.recv_into_buf(0x4).unwrap();
         assert_eq!(bytes, 3);

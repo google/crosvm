@@ -313,16 +313,17 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
         let (hdr, files) = self.main_sock.recv_header()?;
         self.check_attached_files(&hdr, &files)?;
 
-        let (size, buf) = match hdr.get_size() {
-            0 => (0, vec![0u8; 0]),
+        let buf = match hdr.get_size() {
+            0 => vec![0u8; 0],
             len => {
-                let (size2, rbuf) = self.main_sock.recv_data(len as usize)?;
-                if size2 != len as usize {
+                let rbuf = self.main_sock.recv_data(len as usize)?;
+                if rbuf.len() != len as usize {
                     return Err(Error::InvalidMessage);
                 }
-                (size2, rbuf)
+                rbuf
             }
         };
+        let size = buf.len();
 
         match hdr.get_code() {
             MasterReq::SET_OWNER => {

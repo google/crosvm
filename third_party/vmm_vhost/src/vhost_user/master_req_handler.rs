@@ -201,19 +201,20 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         // . validate message body and optional payload
         let (hdr, files) = self.sub_sock.recv_header()?;
         self.check_attached_files(&hdr, &files)?;
-        let (size, buf) = match hdr.get_size() {
-            0 => (0, vec![0u8; 0]),
+        let buf = match hdr.get_size() {
+            0 => vec![0u8; 0],
             len => {
                 if len as usize > MAX_MSG_SIZE {
                     return Err(Error::InvalidMessage);
                 }
-                let (size2, rbuf) = self.sub_sock.recv_data(len as usize)?;
-                if size2 != len as usize {
+                let rbuf = self.sub_sock.recv_data(len as usize)?;
+                if rbuf.len() != len as usize {
                     return Err(Error::InvalidMessage);
                 }
-                (size2, rbuf)
+                rbuf
             }
         };
+        let size = buf.len();
 
         let res = match hdr.get_code() {
             SlaveReq::CONFIG_CHANGE_MSG => {
