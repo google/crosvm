@@ -559,12 +559,12 @@ impl VfioPciDevice {
                 .device
                 .irq_enable(&[interrupt_evt], VFIO_PCI_INTX_IRQ_INDEX)
             {
-                error!("Intx enable failed: {}", e);
+                error!("{} Intx enable failed: {}", self.debug_label(), e);
                 return;
             }
             if let Some(ref irq_resample_evt) = self.interrupt_resample_evt {
                 if let Err(e) = self.device.irq_mask(VFIO_PCI_INTX_IRQ_INDEX) {
-                    error!("Intx mask failed: {}", e);
+                    error!("{} Intx mask failed: {}", self.debug_label(), e);
                     self.disable_intx();
                     return;
                 }
@@ -572,12 +572,12 @@ impl VfioPciDevice {
                     .device
                     .resample_virq_enable(irq_resample_evt, VFIO_PCI_INTX_IRQ_INDEX)
                 {
-                    error!("resample enable failed: {}", e);
+                    error!("{} resample enable failed: {}", self.debug_label(), e);
                     self.disable_intx();
                     return;
                 }
                 if let Err(e) = self.device.irq_unmask(VFIO_PCI_INTX_IRQ_INDEX) {
-                    error!("Intx unmask failed: {}", e);
+                    error!("{} Intx unmask failed: {}", self.debug_label(), e);
                     self.disable_intx();
                     return;
                 }
@@ -589,7 +589,7 @@ impl VfioPciDevice {
 
     fn disable_intx(&mut self) {
         if let Err(e) = self.device.irq_disable(VFIO_PCI_INTX_IRQ_INDEX) {
-            error!("Intx disable failed: {}", e);
+            error!("{} Intx disable failed: {}", self.debug_label(), e);
         }
         self.irq_type = None;
     }
@@ -627,7 +627,7 @@ impl VfioPciDevice {
         };
 
         if let Err(e) = self.device.irq_enable(&[irqfd], VFIO_PCI_MSI_IRQ_INDEX) {
-            error!("failed to enable msi: {}", e);
+            error!("{} failed to enable msi: {}", self.debug_label(), e);
             self.enable_intx();
             return;
         }
@@ -637,7 +637,7 @@ impl VfioPciDevice {
 
     fn disable_msi(&mut self) {
         if let Err(e) = self.device.irq_disable(VFIO_PCI_MSI_IRQ_INDEX) {
-            error!("failed to disable msi: {}", e);
+            error!("{} failed to disable msi: {}", self.debug_label(), e);
             return;
         }
 
@@ -657,7 +657,7 @@ impl VfioPciDevice {
                 .device
                 .irq_enable(&descriptors, VFIO_PCI_MSIX_IRQ_INDEX)
             {
-                error!("failed to enable msix: {}", e);
+                error!("{} failed to enable msix: {}", self.debug_label(), e);
                 self.enable_intx();
                 return;
             }
@@ -671,7 +671,7 @@ impl VfioPciDevice {
 
     fn disable_msix(&mut self) {
         if let Err(e) = self.device.irq_disable(VFIO_PCI_MSIX_IRQ_INDEX) {
-            error!("failed to disable msix: {}", e);
+            error!("{} failed to disable msix: {}", self.debug_label(), e);
             return;
         }
 
@@ -706,7 +706,7 @@ impl VfioPciDevice {
             let mut to_mmap = match VfioMsixAllocator::new(mmap_offset, mmap_size) {
                 Ok(a) => a,
                 Err(e) => {
-                    error!("add_bar_mmap_msix failed: {}", e);
+                    error!("{} add_bar_mmap_msix failed: {}", self.debug_label(), e);
                     mmaps.clear();
                     return mmaps;
                 }
@@ -720,7 +720,7 @@ impl VfioPciDevice {
                         (min(msix_offset + msix_size, mmap_offset + mmap_size) + pgmask) & !pgmask;
                     if end > begin {
                         if let Err(e) = to_mmap.allocate_at(begin, end - begin) {
-                            error!("add_bar_mmap_msix failed: {}", e);
+                            error!("{} add_bar_mmap_msix failed: {}", self.debug_label(), e);
                             mmaps.clear();
                             return mmaps;
                         }
@@ -805,8 +805,12 @@ impl VfioPciDevice {
                             Ok(_) => mem_map.push(mmap),
                             Err(e) => {
                                 error!(
-                                    "{}, index: {}, bar_addr:0x{:x}, host:0x{:x}",
-                                    e, index, bar_addr, host
+                                    "{} {}, index: {}, bar_addr:0x{:x}, host:0x{:x}",
+                                    self.debug_label(),
+                                    e,
+                                    index,
+                                    bar_addr,
+                                    host
                                 );
                                 break;
                             }
