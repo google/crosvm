@@ -7,12 +7,15 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::thread;
 
-use base::{error, Event, EventType, PollToken, RawDescriptor, WaitContext};
+use base::{error, info, Event, EventType, PollToken, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le32};
+use resources::Alloc;
 use vm_memory::GuestMemory;
 
+use crate::pci::{PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType};
 use crate::virtio::descriptor_utils::Error as DescriptorUtilsError;
 use crate::virtio::{copy_config, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_VHOST_USER};
+use crate::PciAddress;
 
 use remain::sorted;
 use thiserror::Error as ThisError;
@@ -21,6 +24,27 @@ use thiserror::Error as ThisError;
 const NUM_PROXY_DEVICE_QUEUES: usize = 2;
 const PROXY_DEVICE_QUEUE_SIZE: u16 = 256;
 const PROXY_DEVICE_QUEUE_SIZES: &[u16] = &[PROXY_DEVICE_QUEUE_SIZE; NUM_PROXY_DEVICE_QUEUES];
+const BAR_INDEX: u8 = 2;
+// Bar size represents the amount of memory to be mapped for a sibling VM. Each
+// Virtio Vhost User Slave implementation requires access to the entire sibling
+// memory. It's assumed that sibling VM memory would be <= 8GB, hence this
+// constant value.
+//
+// TODO(abhishekbh): Understand why shared memory region size and overall bar
+// size differ in the QEMU implementation. The metadata required to map sibling
+// memory is about 16 MB per GB of sibling memory per device. Therefore, it is
+// in our interest to not waste space here and correlate it tightly to the
+// actual maximum memory a sibling VM can have.
+const BAR_SIZE: u64 = 1 << 33;
+
+// Bar configuration.
+// All offsets are from the starting of bar |BAR_INDEX|.
+const DOORBELL_OFFSET: u64 = 0;
+// TODO(abhishekbh): Copied from lspci in qemu with VVU support.
+const DOORBELL_SIZE: u64 = 0x2000;
+const NOTIFICATIONS_OFFSET: u64 = DOORBELL_OFFSET + DOORBELL_SIZE;
+const NOTIFICATIONS_SIZE: u64 = 0x1000;
+const SHARED_MEMORY_OFFSET: u64 = NOTIFICATIONS_OFFSET + NOTIFICATIONS_SIZE;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -232,6 +256,7 @@ pub struct VirtioVhostUser {
     config: VirtioVhostUserConfig,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker>>,
+    pci_bar: Option<Alloc>,
 }
 
 impl VirtioVhostUser {
@@ -243,7 +268,20 @@ impl VirtioVhostUser {
             config: Default::default(),
             kill_evt: None,
             worker_thread: None,
+            pci_bar: None,
         })
+    }
+
+    // Implement writing to the notifications bar as per the VVU spec.
+    fn write_bar_notifications(&mut self, _offset: u64, _data: &[u8]) {
+        // TODO(abhishekbh): Implement write notifications.
+        info!("notifications write");
+    }
+
+    // Implement reading from the notifications bar as per the VVU spec.
+    fn read_bar_notifications(&mut self, _offset: u64, _data: &mut [u8]) {
+        // TODO(abhishekbh): Implement read notifications.
+        info!("notifications read");
     }
 }
 
@@ -293,6 +331,22 @@ impl VirtioDevice for VirtioVhostUser {
             data,
             0, /* src_offset */
         );
+    }
+
+    fn get_device_bars(&mut self, address: PciAddress) -> Vec<PciBarConfiguration> {
+        self.pci_bar = Some(Alloc::PciBar {
+            bus: address.bus,
+            dev: address.dev,
+            func: address.func,
+            bar: BAR_INDEX,
+        });
+
+        vec![PciBarConfiguration::new(
+            BAR_INDEX as usize,
+            BAR_SIZE as u64,
+            PciBarRegionType::Memory64BitRegion,
+            PciBarPrefetchable::NotPrefetchable,
+        )]
     }
 
     fn activate(
@@ -348,6 +402,45 @@ impl VirtioDevice for VirtioVhostUser {
             Ok(join_handle) => {
                 self.worker_thread = Some(join_handle);
             }
+        }
+    }
+
+    fn read_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &mut [u8]) {
+        if self.pci_bar.is_none() {
+            error!("PCI bar is not allocated");
+            return;
+        }
+
+        if bar_index != BAR_INDEX as PciBarIndex {
+            error!("wrong PCI bar: {}", bar_index);
+            return;
+        }
+
+        if (NOTIFICATIONS_OFFSET..SHARED_MEMORY_OFFSET).contains(&offset) {
+            self.read_bar_notifications(offset - NOTIFICATIONS_OFFSET, data);
+        } else {
+            error!("addr is outside known region for reads");
+        }
+    }
+
+    fn write_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &[u8]) {
+        if self.pci_bar.is_none() {
+            error!("PCI bar is not allocated");
+            return;
+        }
+
+        if bar_index != BAR_INDEX as PciBarIndex {
+            error!("wrong PCI bar: {}", bar_index);
+            return;
+        }
+
+        if (DOORBELL_OFFSET..NOTIFICATIONS_OFFSET).contains(&offset) {
+            // TODO(abhishekbh): Implement doorbell writes.
+            unimplemented!();
+        } else if (NOTIFICATIONS_OFFSET..SHARED_MEMORY_OFFSET).contains(&offset) {
+            self.write_bar_notifications(offset - NOTIFICATIONS_OFFSET, data);
+        } else {
+            error!("addr is outside known region for writes");
         }
     }
 
