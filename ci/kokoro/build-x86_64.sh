@@ -4,8 +4,8 @@
 # found in the LICENSE file.
 source "$(dirname $0)/common.sh"
 
-./tools/dev_container bash -c "\
-    ./tools/run_tests --target=host \
+./tools/dev_container --hermetic bash -c "\
+    ./tools/run_tests --target=host -v \
     && ./tools/clippy \
     && ./tools/fmt --check \
     && mdbook build ./docs/book"

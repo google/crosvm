@@ -2,30 +2,96 @@
 # Copyright 2021 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+#
+# Usage:
+#
+# To get an interactive shell for development:
+#   ./tools/dev_container
+#
+# To run a command in the container, e.g. to run presubmits:
+#   ./tools/dev_container ./tools/presubmit
+#
+# The state of the container (including build artifacts) are preserved between
+# calls. To stop the container call:
+#   ./tools/dev_container --stop
+#
+# The dev container can also be called with a fresh container for each call that
+# is cleaned up afterwards (e.g. when run by Kokoro):
+#
+#   ./tools/dev_container --hermetic CMD
 
 set -e
-cd "$(dirname $0)/.."
-
-cli_args=(
-    --rm
-    --volume $(pwd):/workspace:rw
-    --device /dev/net/tun
-    --device /dev/kvm
-    --volume /dev/log:/dev/log
-    --privileged
-)
-
-# Enable interactive mode when running in an interactive terminal.
-if [ -t 1 ]; then
-    cli_args+=(-it)
-fi
+cd "$(dirname "$0")/.."
 
 # Allow to override the container CLI tool, similar to the Makefile. Try
 # "docker" first and fall back to "podman".
 DOCKER=${DOCKER:-$(which docker || which podman)}
 
-"${DOCKER}" run \
-    ${cli_args[@]} \
-    gcr.io/crosvm-packages/crosvm_dev:$(cat tools/impl/dev_container/version) \
-    "$@"
+# Name to identify the running crosvm dev container
+CONTAINER_NAME=crosvm_dev
 
+IMAGE_VERSION=$(cat tools/impl/dev_container/version)
+
+# Enable interactive mode when running in an interactive terminal.
+TTY_ARGS=()
+if [ -t 1 ]; then
+    TTY_ARGS+=(
+        --interactive
+        --tty
+    )
+fi
+
+DOCKER_ARGS=(
+    "${TTY_ARGS[@]}"
+    --volume "$(pwd):/workspace:rw"
+    --device "/dev/net/tun"
+    --device "/dev/kvm"
+    --volume "/dev/log:/dev/log"
+    --privileged
+    "gcr.io/crosvm-packages/crosvm_dev:$IMAGE_VERSION"
+)
+
+docker_run_detached() {
+    "${DOCKER}" run \
+        --detach --name "${CONTAINER_NAME}" \
+        "${DOCKER_ARGS[@]}" >/dev/null
+}
+
+docker_run() {
+    "${DOCKER}" run --rm "${DOCKER_ARGS[@]}" "$@"
+}
+
+get_container_id() {
+    docker ps -q -f name="${CONTAINER_NAME}"
+}
+
+docker_exec() {
+    if [[ $# -gt 0 ]]; then
+        cmd=("$@")
+    else
+        cmd=(/bin/bash)
+    fi
+    "${DOCKER}" exec "${TTY_ARGS[@]}" "$(get_container_id)" "${cmd[@]}"
+}
+
+main() {
+    if [[ "$1" == "--stop" ]]; then
+        if [ -n "$(get_container_id)" ]; then
+            docker rm -f "$(get_container_id)" >/dev/null
+        fi
+        exit
+    fi
+
+    if [[ "$1" == "--hermetic" ]]; then
+        shift
+        docker_run "$@"
+    else
+        if [ -z "$(get_container_id)" ]; then
+            docker_run_detached
+        fi
+        docker_exec "$@"
+    fi
+
+}
+
+main "$@"

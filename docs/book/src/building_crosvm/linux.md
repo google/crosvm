@@ -76,6 +76,16 @@ The container image is big and may take a while to download when first used.
 Once started, you can follow all instructions in this document within the
 container shell.
 
+Instead of using the interactive shell, commands to execute can be provided
+directly:
+
+```sh
+$ ./tools/dev_container cargo build
+```
+
+Note: The container and build artifacts are preserved between calls to
+`./tools/dev_container`. If you wish to start fresh, use the `--reset` flag.
+
 ## Building a binary
 
 If you simply want to try crosvm, run `cargo build`. Then the binary is
@@ -89,8 +99,8 @@ the `--features` flag. (e.g. `cargo build --features=gdb`)
 
 ### Iterative development
 
-You can use cargo as usual for crosvm development to `cargo build` and `cargo
-test` single crates that you are working on.
+You can use cargo as usual for crosvm development to `cargo build` and
+`cargo test` single crates that you are working on.
 
 If you are working on aarch64 specific code, you can use the `set_test_target`
 tool to instruct cargo to build for aarch64 and run tests on a VM:
@@ -127,14 +137,6 @@ you can use the dev container to build and run the tests.
 
 ```sh
 $ ./tools/dev_container ./tools/run_tests --target=vm:aarch64
-```
-
-Note however, that using an interactive shell in the container is preferred, as
-the build artifacts are not preserved between calls:
-
-```sh
-$ ./tools/dev_container
-crosvm_dev$ ./tools/run_tests --target=vm:aarch64
 ```
 
 It is also possible to run tests on a remote machine via ssh. The target
@@ -177,14 +179,15 @@ skip some slower checks, like building for other platforms.
     also stop minijail from killing processes that violate the seccomp rule,
     making the sandboxing much less aggressive.
 -   Seccomp policy files have hardcoded absolute paths. You can either fix up
-    the paths locally, or set up an awesome hacky symlink: `sudo mkdir
-    /usr/share/policy && sudo ln -s /path/to/crosvm/seccomp/x86_64
-    /usr/share/policy/crosvm`. We'll eventually build the precompiled policies
+    the paths locally, or set up an awesome hacky symlink:
+    `sudo mkdir /usr/share/policy && sudo ln -s /path/to/crosvm/seccomp/x86_64 /usr/share/policy/crosvm`.
+    We'll eventually build the precompiled policies
     [into the crosvm binary](http://crbug.com/1052126).
--   Devices can't be jailed if `/var/empty` doesn't exist. `sudo mkdir -p
-    /var/empty` to work around this for now.
+-   Devices can't be jailed if `/var/empty` doesn't exist.
+    `sudo mkdir -p /var/empty` to work around this for now.
 -   You need read/write permissions for `/dev/kvm` to run tests or other crosvm
-    instances. Usually it's owned by the `kvm` group, so `sudo usermod -a -G kvm
-    $USER` and then log out and back in again to fix this.
+    instances. Usually it's owned by the `kvm` group, so
+    `sudo usermod -a -G kvm $USER` and then log out and back in again to fix
+    this.
 -   Some other features (networking) require `CAP_NET_ADMIN` so those usually
     need to be run as root.

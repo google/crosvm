@@ -5,4 +5,4 @@
 
 source "$(dirname $0)/common.sh"
 
-./tools/dev_container ./tools/run_tests --target=vm:aarch64
+./tools/dev_container --hermetic ./tools/run_tests --target=vm:aarch64 -v

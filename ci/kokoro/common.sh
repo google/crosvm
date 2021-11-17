@@ -13,7 +13,7 @@ if [[ ! -z "${DEBUG_SSH_KEY}" ]]; then
   echo "${DEBUG_SSH_KEY}" >>~/.ssh/authorized_keys
   external_ip=$(
     curl -s -H "Metadata-Flavor: Google" \
-    http://metadata/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip
+      http://metadata/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip
   )
   echo "SSH Debug enabled. Connect to: kbuilder@${external_ip}"
 fi
@@ -66,7 +66,3 @@ setup_source || {
 # Set logs directory so we can copy them to sponge
 export CROSVM_BUILDER_LOGS_DIR="${KOKORO_ARTIFACTS_DIR}/logs"
 cd "${KOKORO_ARTIFACTS_DIR}/git/crosvm"
-
-# Log how long it takes to pull the docker container
-echo "Downloading dev container image"
-time ./tools/dev_container echo "done"
