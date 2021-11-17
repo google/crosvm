@@ -17,7 +17,7 @@ use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::thread;
 
-use base::{error, info, Event, EventType, PollToken, RawDescriptor, WaitContext};
+use base::{error, info, AsRawDescriptor, Event, EventType, PollToken, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le32};
 use libc::{recv, MSG_DONTWAIT, MSG_PEEK};
 use resources::Alloc;
@@ -741,7 +741,13 @@ impl Drop for VirtioVhostUser {
 
 impl VirtioDevice for VirtioVhostUser {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        vec![]
+        let mut rds = Vec::new();
+
+        if let Some(kill_evt) = &self.kill_evt {
+            rds.push(kill_evt.as_raw_descriptor());
+        }
+
+        rds
     }
 
     fn device_type(&self) -> u32 {
@@ -890,7 +896,22 @@ impl VirtioDevice for VirtioVhostUser {
     }
 
     fn reset(&mut self) -> bool {
-        // TODO
-        true
+        if let Some(kill_evt) = self.kill_evt.take() {
+            if let Err(e) = kill_evt.write(1) {
+                error!("failed to notify the kill event: {}", e);
+                return false;
+            }
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            if let Err(e) = worker_thread.join() {
+                error!("failed to get back resources: {:?}", e);
+                return false;
+            }
+        }
+
+        // TODO(abhishekbh): Disconnect from sibling and reset
+        // `sibling_connected`.
+        false
     }
 }
