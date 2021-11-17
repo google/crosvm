@@ -30,13 +30,18 @@ pub enum PciCapabilityType {
     IsrConfig = 3,
     DeviceConfig = 4,
     PciConfig = 5,
+    // Doorbell, Notification and SharedMemory are Virtio Vhost User related PCI
+    // capabilities. Specified in 5.7.7.4 here
+    // https://stefanha.github.io/virtio/vhost-user-slave.html#x1-2830007.
+    DoorbellConfig = 6,
+    NotificationConfig = 7,
     SharedMemoryConfig = 8,
 }
 
 #[allow(dead_code)]
 #[repr(C)]
 #[derive(Clone, Copy)]
-struct VirtioPciCap {
+pub struct VirtioPciCap {
     // _cap_vndr and _cap_next are autofilled based on id() in pci configuration
     _cap_vndr: u8,    // Generic PCI field: PCI_CAP_ID_VNDR
     _cap_next: u8,    // Generic PCI field: next ptr
@@ -78,6 +83,10 @@ impl VirtioPciCap {
             offset: Le32::from(offset),
             length: Le32::from(length),
         }
+    }
+
+    pub fn set_cap_len(&mut self, cap_len: u8) {
+        self.cap_len = cap_len;
     }
 }
 

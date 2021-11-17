@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+//! This module implements the "Vhost User" Virtio device as specified here -
+//! <https://stefanha.github.io/virtio/vhost-user-slave.html#x1-2830007>
+//! It acts as a proxy between the Vhost User Master running in a sibling VM's
+//! VMM and Virtio Vhost User Slave implementation in the device VM.
+
 use std::io;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
@@ -12,9 +17,15 @@ use data_model::{DataInit, Le32};
 use resources::Alloc;
 use vm_memory::GuestMemory;
 
-use crate::pci::{PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType};
+use crate::pci::{
+    PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType, PciCapability,
+    PciCapabilityID,
+};
 use crate::virtio::descriptor_utils::Error as DescriptorUtilsError;
-use crate::virtio::{copy_config, Interrupt, Queue, Reader, VirtioDevice, Writer, TYPE_VHOST_USER};
+use crate::virtio::{
+    copy_config, Interrupt, PciCapabilityType, Queue, Reader, VirtioDevice, VirtioPciCap, Writer,
+    TYPE_VHOST_USER,
+};
 use crate::PciAddress;
 
 use remain::sorted;
@@ -45,6 +56,17 @@ const DOORBELL_SIZE: u64 = 0x2000;
 const NOTIFICATIONS_OFFSET: u64 = DOORBELL_OFFSET + DOORBELL_SIZE;
 const NOTIFICATIONS_SIZE: u64 = 0x1000;
 const SHARED_MEMORY_OFFSET: u64 = NOTIFICATIONS_OFFSET + NOTIFICATIONS_SIZE;
+// TODO(abhishekbh): Copied from qemu with VVU support. This should be same as
+// `BAR_SIZE` but it's significantly lower than the memory allocated to a
+// sibling VM. Figure out how these two are related.
+const SHARED_MEMORY_SIZE: u64 = 0x1000;
+
+// Capabilities related configuration.
+//
+// Values written in the Doorbell must be within 32 bit i.e. a write to offset 0
+// to 3 represents a Vring 0 related event, a write to offset 4 to 7 represents
+// a Vring 1 related event.
+const DOORBELL_OFFSET_MULTIPLIER: u32 = 4;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -251,6 +273,42 @@ impl Worker {
     }
 }
 
+// Doorbell capability of the proxy device.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct VirtioPciDoorbellCap {
+    cap: VirtioPciCap,
+    doorbell_off_multiplier: Le32,
+}
+// It is safe to implement DataInit; |VirtioPciCap| implements DataInit and for
+// Le32 any value is valid.
+unsafe impl DataInit for VirtioPciDoorbellCap {}
+
+impl PciCapability for VirtioPciDoorbellCap {
+    fn bytes(&self) -> &[u8] {
+        self.as_slice()
+    }
+
+    // TODO: What should this be.
+    fn id(&self) -> PciCapabilityID {
+        PciCapabilityID::VendorSpecific
+    }
+
+    // TODO: What should this be.
+    fn writable_bits(&self) -> Vec<u32> {
+        vec![0u32; 4]
+    }
+}
+
+impl VirtioPciDoorbellCap {
+    pub fn new(cap: VirtioPciCap, doorbell_off_multiplier: u32) -> Self {
+        VirtioPciDoorbellCap {
+            cap,
+            doorbell_off_multiplier: Le32::from(doorbell_off_multiplier),
+        }
+    }
+}
+
 pub struct VirtioVhostUser {
     vhost_vmm_socket: Option<UnixStream>,
     config: VirtioVhostUserConfig,
@@ -331,6 +389,39 @@ impl VirtioDevice for VirtioVhostUser {
             data,
             0, /* src_offset */
         );
+    }
+
+    fn get_device_caps(&self) -> Vec<Box<dyn crate::pci::PciCapability>> {
+        // Allocate capabilities as per sections 5.7.7.5, 5.7.7.6, 5.7.7.7 of
+        // the link at the top of the file. The PCI bar is organized in the
+        // following format |Doorbell|Notification|Shared Memory|.
+        let mut doorbell_virtio_pci_cap = VirtioPciCap::new(
+            PciCapabilityType::DoorbellConfig,
+            BAR_INDEX,
+            DOORBELL_OFFSET as u32,
+            DOORBELL_SIZE as u32,
+        );
+        doorbell_virtio_pci_cap.set_cap_len(std::mem::size_of::<VirtioPciDoorbellCap>() as u8);
+        let doorbell = Box::new(VirtioPciDoorbellCap::new(
+            doorbell_virtio_pci_cap,
+            DOORBELL_OFFSET_MULTIPLIER,
+        ));
+
+        let notification = Box::new(VirtioPciCap::new(
+            PciCapabilityType::NotificationConfig,
+            BAR_INDEX,
+            NOTIFICATIONS_OFFSET as u32,
+            NOTIFICATIONS_SIZE as u32,
+        ));
+
+        let shared_memory = Box::new(VirtioPciCap::new(
+            PciCapabilityType::SharedMemoryConfig,
+            BAR_INDEX,
+            SHARED_MEMORY_OFFSET as u32,
+            SHARED_MEMORY_SIZE as u32,
+        ));
+
+        vec![doorbell, notification, shared_memory]
     }
 
     fn get_device_bars(&mut self, address: PciAddress) -> Vec<PciBarConfiguration> {
