@@ -206,6 +206,12 @@ impl<T: Req> AsRawDescriptor for Endpoint<T> {
     }
 }
 
+impl<T: Req> AsMut<UnixStream> for Endpoint<T> {
+    fn as_mut(&mut self) -> &mut UnixStream {
+        &mut self.sock
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

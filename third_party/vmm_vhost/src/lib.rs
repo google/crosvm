@@ -65,7 +65,8 @@ pub use self::slave::SlaveListener;
 mod slave_req_handler;
 #[cfg(feature = "device")]
 pub use self::slave_req_handler::{
-    SlaveReqHandler, SlaveReqHelper, VhostUserSlaveReqHandler, VhostUserSlaveReqHandlerMut,
+    Protocol, SlaveReqHandler, SlaveReqHelper, VhostUserSlaveReqHandler,
+    VhostUserSlaveReqHandlerMut,
 };
 #[cfg(feature = "device")]
 mod slave_fs_cache;

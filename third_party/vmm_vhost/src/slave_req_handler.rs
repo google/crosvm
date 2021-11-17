@@ -9,6 +9,7 @@ use std::slice;
 use std::sync::{Arc, Mutex};
 
 use data_model::DataInit;
+use sys_util::{AsRawDescriptor, RawDescriptor};
 
 use super::connection::{socket::Endpoint as SocketEndpoint, Endpoint, EndpointExt};
 use super::message::*;
@@ -362,6 +363,30 @@ impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
         }
 
         Ok((msg.value as u8, file))
+    }
+}
+
+impl<E: Endpoint<MasterReq>> AsRef<E> for SlaveReqHelper<E> {
+    fn as_ref(&self) -> &E {
+        &self.endpoint
+    }
+}
+
+impl<E: Endpoint<MasterReq>> AsMut<E> for SlaveReqHelper<E> {
+    fn as_mut(&mut self) -> &mut E {
+        &mut self.endpoint
+    }
+}
+
+impl<E: Endpoint<MasterReq> + AsRawDescriptor> AsRawDescriptor for SlaveReqHelper<E> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.endpoint.as_raw_descriptor()
+    }
+}
+
+impl<E: Endpoint<MasterReq> + AsRawFd> AsRawFd for SlaveReqHelper<E> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.endpoint.as_raw_fd()
     }
 }
 
