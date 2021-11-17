@@ -13,7 +13,7 @@ edition = "2018"
 [features]
 default = []
 vhost-vsock = []
-vhost-kern = ["vm-memory"]
+vhost-kern = ["vm_memory"]
 vhost-user = []
 vhost-user-master = ["vhost-user"]
 vhost-user-slave = ["vhost-user"]
@@ -26,7 +26,7 @@ remain = "*"
 sys_util = "*"
 tempfile = "*"
 thiserror = { version = "1.0.20" }
-vm-memory = { version = "0.2.0", optional = true }
+vm_memory = { path = "../../vm_memory", optional = true }
 
 [dev-dependencies]
-vm-memory = { version = "0.2.0", features=["backend-mmap"] }
+vm_memory = { path="../../vm_memory" }
