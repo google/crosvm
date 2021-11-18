@@ -158,14 +158,21 @@ To verify changes before submitting, use the `presubmit` script:
 $ ./tools/presubmit
 ```
 
-or
+This will run clippy, formatters and runs all tests. The presubmits will use the
+dev container to build for other platforms if your host is not set up to do so.
+
+To run checks faster, they can be run in parallel in multiple tmux panes:
+
+```
+$ ./tools/presubmit --tmux
+```
+
+The `--quick` variant will skip some slower checks, like building for other
+platforms altogether:
 
 ```
 $ ./tools/presubmit --quick
 ```
-
-This will run clippy, formatters and runs all tests. The `--quick` variant will
-skip some slower checks, like building for other platforms.
 
 ## Known issues
 

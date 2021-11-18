@@ -23,7 +23,7 @@ echo "Fmt crosvm workspace"
 cargo fmt --all -- "$@"
 
 for crate in common/*; do
-    if [ -d "${crate}" ]; then
+    if [ -e "${crate}/Cargo.toml" ]; then
         echo "Fmt ${crate}"
         (cd "${crate}" && cargo fmt)
     fi

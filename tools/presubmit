@@ -6,24 +6,96 @@ set -e
 
 cd "$(dirname $0)/.."
 
-if [[ "$1" == "-q" ]] || [[ "$1" == "--quick" ]]; then
-    QUICK=true
+HELP="This will run presubmit checks for crosvm.
+
+To run all checks just run
+
+    $ ./tools/presubmit
+
+The checks can be run in parallel for faster execution:
+
+    $ ./tools/presubmit --tmux
+
+This will open a tmux session to run all presubmit builds in parallel. It will
+create a nested tmux session if you are already using it.
+
+All tests are executed in the local development environment. If your host is not
+set up for aarch64 builds, it will use './tools/dev_container' to build run
+those.
+
+Aarch64 tests can be skipped with:
+
+    $ ./tools/presubmit --quick
+"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    -q | --quick)
+        QUICK=true
+        shift
+        ;;
+    --tmux)
+        RUN_IN_TMUX=true
+        shift
+        ;;
+    -h | --help)
+        echo "$HELP"
+        exit 0
+        shift
+        ;;
+    *)
+        echo "unknown argument $1"
+        exit 1
+        ;;
+    esac
+done
+
+run_commands_in_tmux() {
+    local tmux_commands=(
+        set-option -g default-shell /bin/bash \;
+        new-session "$1; read -p 'Press enter to close.'" \;
+    )
+    for cmd in "${@:2}"; do
+        tmux_commands+=(
+            split-window "$cmd; read -p 'Press enter to close.'" \;
+        )
+    done
+    tmux_commands+=(
+        select-layout even-horizontal \;
+    )
+    TMUX="" tmux "${tmux_commands[@]}"
+}
+
+run_commands() {
+    for cmd in "$@"; do
+        echo "$ ${cmd}"
+        bash -c "$cmd"
+        echo
+    done
+}
+
+aarch64_wrapper() {
+    if ! (rustup target list --installed | grep -q aarch64 &&
+        dpkg --print-foreign-architectures | grep -q arm64); then
+        echo "./tools/dev_container"
+    fi
+}
+
+commands=(
+    "./tools/fmt --check && ./tools/clippy"
+    "./tools/run_tests --target=host"
+)
+
+if [ "$QUICK" != true ]; then
+    commands+=(
+        "$(aarch64_wrapper) ./tools/run_tests --target=vm:aarch64"
+    )
 fi
 
-printf "\n\nRunning clippy...\n"
-./tools/clippy
-
-printf "\n\nRunning formatter...\n"
-./tools/fmt --check
-
-printf "\n\nRunning x86 tests...\n"
-./tools/run_tests --target=host
-
-if [ "$QUICK" = true ] ; then
-    exit
+if [ "$RUN_IN_TMUX" = true ]; then
+    run_commands_in_tmux "${commands[@]}"
+else
+    run_commands "${commands[@]}"
 fi
-
-printf "\n\nRunning aarch64 tests...\n"
-./tools/run_tests --target=vm:aarch64
 
 # TODO(b/203152778): Add armhf builds to presubmit
