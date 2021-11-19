@@ -32,9 +32,6 @@
 
 #![deny(missing_docs)]
 
-use remain::sorted;
-use thiserror::Error as ThisError;
-
 #[cfg_attr(feature = "vhost-user", macro_use)]
 extern crate bitflags;
 
@@ -43,35 +40,7 @@ pub use backend::*;
 
 #[cfg(feature = "vhost-user")]
 pub mod vhost_user;
+pub use vhost_user::Error;
 
-/// Error codes for vhost operations
-#[sorted]
-#[derive(Debug, ThisError)]
-pub enum Error {
-    /// Invalid guest memory.
-    #[error("invalid guest memory object")]
-    InvalidGuestMemory,
-    /// Invalid queue.
-    #[error("invalid virtqueue")]
-    InvalidQueue,
-    /// Error while running ioctl.
-    #[error("failure in vhost ioctl: {0}")]
-    IoctlError(std::io::Error),
-    /// Invalid log address.
-    #[error("invalid log address")]
-    LogAddress,
-    #[cfg(feature = "vhost-user")]
-    /// Error from the vhost-user subsystem.
-    #[error("failure while processing a vhost-user message: {0}")]
-    VhostUserProtocol(vhost_user::Error),
-}
-
-#[cfg(feature = "vhost-user")]
-impl std::convert::From<vhost_user::Error> for Error {
-    fn from(err: vhost_user::Error) -> Self {
-        Error::VhostUserProtocol(err)
-    }
-}
-
-/// Result of vhost operations
+/// Result of vhost-user operations
 pub type Result<T> = std::result::Result<T, Error>;

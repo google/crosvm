@@ -17,7 +17,7 @@ use super::connection::{Endpoint, EndpointExt, SocketEndpoint};
 use super::message::*;
 use super::{take_single_file, Error as VhostUserError, Result as VhostUserResult};
 use crate::backend::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
-use crate::{Error, Result};
+use crate::Result;
 
 /// Trait for vhost-user master to provide extra methods not covered by the VhostBackend yet.
 pub trait VhostUserMaster: VhostBackend {
@@ -70,10 +70,6 @@ pub trait VhostUserMaster: VhostBackend {
 
     /// Remove a guest memory mapping from vhost.
     fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
-}
-
-fn error_code<T>(err: VhostUserError) -> Result<T> {
-    Err(Error::VhostUserProtocol(err))
 }
 
 /// Struct for the vhost-user master endpoint.
@@ -164,7 +160,7 @@ impl VhostBackend for Master {
         let val = VhostUserU64::new(features);
         let hdr = node.send_request_with_body(MasterReq::SET_FEATURES, &val, None)?;
         node.acked_virtio_features = features & node.virtio_features;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     /// Set the current Master as an owner of the session.
@@ -173,26 +169,26 @@ impl VhostBackend for Master {
         // while holding the lock.
         let mut node = self.node();
         let hdr = node.send_request_header(MasterReq::SET_OWNER, None)?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     fn reset_owner(&self) -> Result<()> {
         let mut node = self.node();
         let hdr = node.send_request_header(MasterReq::RESET_OWNER, None)?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     /// Set the memory map regions on the slave so it can translate the vring
     /// addresses. In the ancillary data there is an array of file descriptors
     fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()> {
         if regions.is_empty() || regions.len() > MAX_ATTACHED_FD_ENTRIES {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
 
         let mut ctx = VhostUserMemoryContext::new();
         for region in regions.iter() {
             if region.memory_size == 0 || region.mmap_handle < 0 {
-                return error_code(VhostUserError::InvalidParam);
+                return Err(VhostUserError::InvalidParam);
             }
             let reg = VhostUserMemoryRegion {
                 guest_phys_addr: region.guest_phys_addr,
@@ -212,7 +208,7 @@ impl VhostBackend for Master {
             payload,
             Some(ctx.fds.as_slice()),
         )?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     // Clippy doesn't seem to know that if let with && is still experimental
@@ -236,19 +232,19 @@ impl VhostBackend for Master {
         let mut node = self.node();
         let fds = [fd];
         let hdr = node.send_request_header(MasterReq::SET_LOG_FD, Some(&fds))?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     /// Set the size of the queue.
     fn set_vring_num(&self, queue_index: usize, num: u16) -> Result<()> {
         let mut node = self.node();
         if queue_index as u64 >= node.max_queue_num {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
 
         let val = VhostUserVringState::new(queue_index as u32, num.into());
         let hdr = node.send_request_with_body(MasterReq::SET_VRING_NUM, &val, None)?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     /// Sets the addresses of the different aspects of the vring.
@@ -257,30 +253,30 @@ impl VhostBackend for Master {
         if queue_index as u64 >= node.max_queue_num
             || config_data.flags & !(VhostUserVringAddrFlags::all().bits()) != 0
         {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
 
         let val = VhostUserVringAddr::from_config_data(queue_index as u32, config_data);
         let hdr = node.send_request_with_body(MasterReq::SET_VRING_ADDR, &val, None)?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     /// Sets the base offset in the available vring.
     fn set_vring_base(&self, queue_index: usize, base: u16) -> Result<()> {
         let mut node = self.node();
         if queue_index as u64 >= node.max_queue_num {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
 
         let val = VhostUserVringState::new(queue_index as u32, base.into());
         let hdr = node.send_request_with_body(MasterReq::SET_VRING_BASE, &val, None)?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     fn get_vring_base(&self, queue_index: usize) -> Result<u32> {
         let mut node = self.node();
         if queue_index as u64 >= node.max_queue_num {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
 
         let req = VhostUserVringState::new(queue_index as u32, 0);
@@ -296,10 +292,10 @@ impl VhostBackend for Master {
     fn set_vring_call(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
         let mut node = self.node();
         if queue_index as u64 >= node.max_queue_num {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
         let hdr = node.send_fd_for_vring(MasterReq::SET_VRING_CALL, queue_index, fd.as_raw_fd())?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     /// Set the event file descriptor for adding buffers to the vring.
@@ -309,10 +305,10 @@ impl VhostBackend for Master {
     fn set_vring_kick(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
         let mut node = self.node();
         if queue_index as u64 >= node.max_queue_num {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
         let hdr = node.send_fd_for_vring(MasterReq::SET_VRING_KICK, queue_index, fd.as_raw_fd())?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     /// Set the event file descriptor to signal when error occurs.
@@ -321,10 +317,10 @@ impl VhostBackend for Master {
     fn set_vring_err(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
         let mut node = self.node();
         if queue_index as u64 >= node.max_queue_num {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
         let hdr = node.send_fd_for_vring(MasterReq::SET_VRING_ERR, queue_index, fd.as_raw_fd())?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 }
 
@@ -333,7 +329,7 @@ impl VhostUserMaster for Master {
         let mut node = self.node();
         let flag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         if node.virtio_features & flag == 0 {
-            return error_code(VhostUserError::InvalidOperation);
+            return Err(VhostUserError::InvalidOperation);
         }
         let hdr = node.send_request_header(MasterReq::GET_PROTOCOL_FEATURES, None)?;
         let val = node.recv_reply::<VhostUserU64>(&hdr)?;
@@ -342,7 +338,7 @@ impl VhostUserMaster for Master {
         // If so just mask out unrecognized flags instead of return errors.
         match VhostUserProtocolFeatures::from_bits(node.protocol_features) {
             Some(val) => Ok(val),
-            None => error_code(VhostUserError::InvalidMessage),
+            None => Err(VhostUserError::InvalidMessage),
         }
     }
 
@@ -350,7 +346,7 @@ impl VhostUserMaster for Master {
         let mut node = self.node();
         let flag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         if node.virtio_features & flag == 0 {
-            return error_code(VhostUserError::InvalidOperation);
+            return Err(VhostUserError::InvalidOperation);
         }
         let val = VhostUserU64::new(features.bits());
         let hdr = node.send_request_with_body(MasterReq::SET_PROTOCOL_FEATURES, &val, None)?;
@@ -358,19 +354,19 @@ impl VhostUserMaster for Master {
         // completed yet.
         node.acked_protocol_features = features.bits();
         node.protocol_features_ready = true;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     fn get_queue_num(&mut self) -> Result<u64> {
         let mut node = self.node();
         if !node.is_feature_mq_available() {
-            return error_code(VhostUserError::InvalidOperation);
+            return Err(VhostUserError::InvalidOperation);
         }
 
         let hdr = node.send_request_header(MasterReq::GET_QUEUE_NUM, None)?;
         let val = node.recv_reply::<VhostUserU64>(&hdr)?;
         if val.value > VHOST_USER_MAX_VRINGS {
-            return error_code(VhostUserError::InvalidMessage);
+            return Err(VhostUserError::InvalidMessage);
         }
         node.max_queue_num = val.value;
         Ok(node.max_queue_num)
@@ -380,15 +376,15 @@ impl VhostUserMaster for Master {
         let mut node = self.node();
         // set_vring_enable() is supported only when PROTOCOL_FEATURES has been enabled.
         if node.acked_virtio_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0 {
-            return error_code(VhostUserError::InvalidOperation);
+            return Err(VhostUserError::InvalidOperation);
         } else if queue_index as u64 >= node.max_queue_num {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
 
         let flag = if enable { 1 } else { 0 };
         let val = VhostUserVringState::new(queue_index as u32, flag);
         let hdr = node.send_request_with_body(MasterReq::SET_VRING_ENABLE, &val, None)?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     fn get_config(
@@ -400,13 +396,13 @@ impl VhostUserMaster for Master {
     ) -> Result<(VhostUserConfig, VhostUserConfigPayload)> {
         let body = VhostUserConfig::new(offset, size, flags);
         if !body.is_valid() {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
 
         let mut node = self.node();
         // depends on VhostUserProtocolFeatures::CONFIG
         if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
-            return error_code(VhostUserError::InvalidOperation);
+            return Err(VhostUserError::InvalidOperation);
         }
 
         // vhost-user spec states that:
@@ -416,14 +412,14 @@ impl VhostUserMaster for Master {
         let (body_reply, buf_reply, rfds) =
             node.recv_reply_with_payload::<VhostUserConfig>(&hdr)?;
         if rfds.is_some() {
-            return error_code(VhostUserError::InvalidMessage);
+            return Err(VhostUserError::InvalidMessage);
         } else if body_reply.size == 0 {
-            return error_code(VhostUserError::SlaveInternalError);
+            return Err(VhostUserError::SlaveInternalError);
         } else if body_reply.size != body.size
             || body_reply.size as usize != buf.len()
             || body_reply.offset != body.offset
         {
-            return error_code(VhostUserError::InvalidMessage);
+            return Err(VhostUserError::InvalidMessage);
         }
 
         Ok((body_reply, buf_reply))
@@ -431,31 +427,31 @@ impl VhostUserMaster for Master {
 
     fn set_config(&mut self, offset: u32, flags: VhostUserConfigFlags, buf: &[u8]) -> Result<()> {
         if buf.len() > MAX_MSG_SIZE {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
         let body = VhostUserConfig::new(offset, buf.len() as u32, flags);
         if !body.is_valid() {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
 
         let mut node = self.node();
         // depends on VhostUserProtocolFeatures::CONFIG
         if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIG.bits() == 0 {
-            return error_code(VhostUserError::InvalidOperation);
+            return Err(VhostUserError::InvalidOperation);
         }
 
         let hdr = node.send_request_with_payload(MasterReq::SET_CONFIG, &body, buf, None)?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     fn set_slave_request_fd(&mut self, fd: &dyn AsRawFd) -> Result<()> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::SLAVE_REQ.bits() == 0 {
-            return error_code(VhostUserError::InvalidOperation);
+            return Err(VhostUserError::InvalidOperation);
         }
         let fds = [fd.as_raw_fd()];
         let hdr = node.send_request_header(MasterReq::SET_SLAVE_REQ_FD, Some(&fds))?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     fn get_inflight_fd(
@@ -464,7 +460,7 @@ impl VhostUserMaster for Master {
     ) -> Result<(VhostUserInflight, File)> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits() == 0 {
-            return error_code(VhostUserError::InvalidOperation);
+            return Err(VhostUserError::InvalidOperation);
         }
 
         let hdr = node.send_request_with_body(MasterReq::GET_INFLIGHT_FD, inflight, None)?;
@@ -472,30 +468,30 @@ impl VhostUserMaster for Master {
 
         match take_single_file(files) {
             Some(file) => Ok((inflight, file)),
-            None => error_code(VhostUserError::IncorrectFds),
+            None => Err(VhostUserError::IncorrectFds),
         }
     }
 
     fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, fd: RawFd) -> Result<()> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits() == 0 {
-            return error_code(VhostUserError::InvalidOperation);
+            return Err(VhostUserError::InvalidOperation);
         }
 
         if inflight.mmap_size == 0 || inflight.num_queues == 0 || inflight.queue_size == 0 || fd < 0
         {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
 
         let hdr = node.send_request_with_body(MasterReq::SET_INFLIGHT_FD, inflight, Some(&[fd]))?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     fn get_max_mem_slots(&mut self) -> Result<u64> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
         {
-            return error_code(VhostUserError::InvalidOperation);
+            return Err(VhostUserError::InvalidOperation);
         }
 
         let hdr = node.send_request_header(MasterReq::GET_MAX_MEM_SLOTS, None)?;
@@ -508,10 +504,10 @@ impl VhostUserMaster for Master {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
         {
-            return error_code(VhostUserError::InvalidOperation);
+            return Err(VhostUserError::InvalidOperation);
         }
         if region.memory_size == 0 || region.mmap_handle < 0 {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
 
         let body = VhostUserSingleMemoryRegion::new(
@@ -522,17 +518,17 @@ impl VhostUserMaster for Master {
         );
         let fds = [region.mmap_handle];
         let hdr = node.send_request_with_body(MasterReq::ADD_MEM_REG, &body, Some(&fds))?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 
     fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::CONFIGURE_MEM_SLOTS.bits() == 0
         {
-            return error_code(VhostUserError::InvalidOperation);
+            return Err(VhostUserError::InvalidOperation);
         }
         if region.memory_size == 0 {
-            return error_code(VhostUserError::InvalidParam);
+            return Err(VhostUserError::InvalidParam);
         }
 
         let body = VhostUserSingleMemoryRegion::new(
@@ -542,7 +538,7 @@ impl VhostUserMaster for Master {
             region.mmap_offset,
         );
         let hdr = node.send_request_with_body(MasterReq::REM_MEM_REG, &body, None)?;
-        node.wait_for_ack(&hdr).map_err(|e| e.into())
+        node.wait_for_ack(&hdr)
     }
 }
 
