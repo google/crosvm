@@ -37,18 +37,12 @@ use thiserror::Error as ThisError;
 
 #[cfg_attr(feature = "vhost-user", macro_use)]
 extern crate bitflags;
-#[cfg_attr(feature = "vhost-kern", macro_use)]
-extern crate sys_util;
 
 mod backend;
 pub use backend::*;
 
-#[cfg(feature = "vhost-kern")]
-pub mod vhost_kern;
 #[cfg(feature = "vhost-user")]
 pub mod vhost_user;
-#[cfg(feature = "vhost-vsock")]
-pub mod vsock;
 
 /// Error codes for vhost operations
 #[sorted]
@@ -66,10 +60,6 @@ pub enum Error {
     /// Invalid log address.
     #[error("invalid log address")]
     LogAddress,
-    #[cfg(feature = "vhost-kern")]
-    /// Error opening the vhost backend driver.
-    #[error("failure in opening vhost file: {0}")]
-    VhostOpen(std::io::Error),
     #[cfg(feature = "vhost-user")]
     /// Error from the vhost-user subsystem.
     #[error("failure while processing a vhost-user message: {0}")]

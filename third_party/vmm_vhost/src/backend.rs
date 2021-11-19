@@ -7,7 +7,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE-BSD-Google file.
 
-//! Common traits and structs for vhost-kern and vhost-user backend drivers.
+//! Common traits and structs for vhost-user backend drivers.
 
 use std::cell::RefCell;
 use std::os::unix::io::RawFd;
