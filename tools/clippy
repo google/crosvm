@@ -44,6 +44,7 @@ for crate in common/*; do
         [[ ! " ${EXCLUDE_COMMON[*]} " =~ " ${crate} " ]]; then
         echo ""
         echo "Clippy ${crate}"
-        (cd "${crate}" && cargo clippy --all-targets "$@" -- -Dwarnings)
+        (cd "${crate}" && \
+             cargo clippy --all-targets --all-features "$@" -- -Dwarnings)
     fi
 done
