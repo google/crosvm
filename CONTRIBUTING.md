@@ -139,13 +139,21 @@ Note: This is different from other ChromeOS repositories, where Verified +1 bit
 is set by the developers to indicate that they successfully tested a change. The
 Verified bit can only be set by Kokoro in the crosvm repository.
 
-The commit queue will test your change on ChromeOS hardware, including high
-level end-to-end tests. Only if all of those pass, will the change be submitted.
+### Post submit uprev flow.
 
-Failures here will cause the commit queue to reject the change until it is
-re-added (CQ+2). Unfortunately, it is extremely common for false negatives to
-cause a change to get rejected, so be ready to re-apply the CQ+2 label if you're
-the owner of a ready to submit change.
+Daily job called Pupr will test the new change through the commit queue will
+test the new crosvm on ChromeOS hardware, including high level end-to-end
+tests. Only if all of those pass, the pinned version of crosvm (as specified in
+the `CROS_WORKON_COMMIT` in
+[crosvm-0.1.0-rXXXX.ebuild](https://chromium.googlesource.com/chromiumos/overlays/chromiumos-overlay/+/main/chromeos-base/crosvm))
+will be used in the Chrome OS build (this is referred to as `crosvm uprev
+process`).
+
+Failures here will delay the landing of the change and may cause Google
+engineers to revert your change. If there is any other change in Chrome OS that
+crosvm uprev needs to be coordinated, please ask your reviewer and find who is
+responsible for looking after the uprev so that they can add relevant Cq-Depend
+and other metadata.
 
 ## Contributing to the documentation
 
