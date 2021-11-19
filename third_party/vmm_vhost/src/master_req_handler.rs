@@ -362,9 +362,9 @@ impl<S: VhostUserMasterReqHandler> AsRawFd for MasterReqHandler<S> {
 mod tests {
     use super::*;
 
-    #[cfg(feature = "vhost-user-slave")]
+    #[cfg(feature = "device")]
     use crate::SlaveFsCacheReq;
-    #[cfg(feature = "vhost-user-slave")]
+    #[cfg(feature = "device")]
     use std::os::unix::io::FromRawFd;
 
     struct MockMasterReqHandler {}
@@ -400,7 +400,7 @@ mod tests {
         handler.check_state().unwrap_err();
     }
 
-    #[cfg(feature = "vhost-user-slave")]
+    #[cfg(feature = "device")]
     #[test]
     fn test_master_slave_req_handler() {
         let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
@@ -429,7 +429,7 @@ mod tests {
             .unwrap();
     }
 
-    #[cfg(feature = "vhost-user-slave")]
+    #[cfg(feature = "device")]
     #[test]
     fn test_master_slave_req_handler_with_ack() {
         let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));

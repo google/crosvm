@@ -46,30 +46,30 @@ pub mod message;
 mod connection;
 pub use self::connection::{SocketEndpoint, SocketListener};
 
-#[cfg(feature = "vhost-user-master")]
+#[cfg(feature = "vmm")]
 mod master;
-#[cfg(feature = "vhost-user-master")]
+#[cfg(feature = "vmm")]
 pub use self::master::{Master, VhostUserMaster};
-#[cfg(feature = "vhost-user")]
+#[cfg(feature = "vmm")]
 mod master_req_handler;
-#[cfg(feature = "vhost-user")]
+#[cfg(feature = "vmm")]
 pub use self::master_req_handler::{
     MasterReqHandler, VhostUserMasterReqHandler, VhostUserMasterReqHandlerMut,
 };
 
-#[cfg(feature = "vhost-user-slave")]
+#[cfg(feature = "device")]
 mod slave;
-#[cfg(feature = "vhost-user-slave")]
+#[cfg(feature = "device")]
 pub use self::slave::SlaveListener;
-#[cfg(feature = "vhost-user-slave")]
+#[cfg(feature = "device")]
 mod slave_req_handler;
-#[cfg(feature = "vhost-user-slave")]
+#[cfg(feature = "device")]
 pub use self::slave_req_handler::{
     SlaveReqHandler, VhostUserSlaveReqHandler, VhostUserSlaveReqHandlerMut,
 };
-#[cfg(feature = "vhost-user-slave")]
+#[cfg(feature = "device")]
 mod slave_fs_cache;
-#[cfg(feature = "vhost-user-slave")]
+#[cfg(feature = "device")]
 pub use self::slave_fs_cache::SlaveFsCacheReq;
 
 /// Errors for vhost-user operations
@@ -190,7 +190,7 @@ pub type HandlerResult<T> = std::result::Result<T, IOError>;
 
 /// Utility function to take the first element from option of a vector of files.
 /// Returns `None` if the vector contains no file or more than one file.
-#[cfg(any(feature = "vhost-user-master", feature = "vhost-user-slave"))]
+#[cfg(any(feature = "vmm", feature = "device"))]
 pub(crate) fn take_single_file(files: Option<Vec<File>>) -> Option<File> {
     let mut files = files?;
     if files.len() != 1 {
@@ -199,10 +199,10 @@ pub(crate) fn take_single_file(files: Option<Vec<File>>) -> Option<File> {
     Some(files.swap_remove(0))
 }
 
-#[cfg(all(test, feature = "vhost-user-slave"))]
+#[cfg(all(test, feature = "device"))]
 mod dummy_slave;
 
-#[cfg(all(test, feature = "vhost-user-master", feature = "vhost-user-slave"))]
+#[cfg(all(test, feature = "vmm", feature = "device"))]
 mod tests {
     use std::os::unix::io::AsRawFd;
     use std::path::Path;

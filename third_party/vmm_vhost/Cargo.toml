@@ -12,9 +12,8 @@ edition = "2018"
 
 [features]
 default = []
-vhost-user = []
-vhost-user-master = ["vhost-user"]
-vhost-user-slave = ["vhost-user"]
+vmm = []
+device = []
 
 [dependencies]
 bitflags = ">=1.0.1"

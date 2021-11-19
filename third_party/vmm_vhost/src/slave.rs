@@ -67,7 +67,7 @@ mod tests {
         slave_listener.set_nonblocking(true).unwrap();
     }
 
-    #[cfg(feature = "vhost-user-master")]
+    #[cfg(feature = "vmm")]
     #[test]
     fn test_slave_listener_accept() {
         use super::super::Master;
