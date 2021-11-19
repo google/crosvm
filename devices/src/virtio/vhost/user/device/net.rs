@@ -18,7 +18,7 @@ use once_cell::sync::OnceCell;
 use sync::Mutex;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
-use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::net::{
     build_config, process_ctrl, process_rx, process_tx, validate_and_configure_tap,

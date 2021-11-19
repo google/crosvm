@@ -818,7 +818,7 @@ mod tests {
     use std::os::unix::io::AsRawFd;
 
     use super::*;
-    use crate::vhost_user::dummy_slave::DummySlaveReqHandler;
+    use crate::dummy_slave::DummySlaveReqHandler;
 
     #[test]
     fn test_slave_req_handler_new() {

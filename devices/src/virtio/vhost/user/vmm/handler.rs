@@ -8,11 +8,12 @@ use std::path::Path;
 
 use base::{AsRawDescriptor, Event, Tube};
 use vm_memory::GuestMemory;
-use vmm_vhost::vhost_user::message::{
+use vmm_vhost::message::{
     VhostUserConfigFlags, VhostUserProtocolFeatures, VhostUserVirtioFeatures,
 };
-use vmm_vhost::vhost_user::{Master, VhostUserMaster};
-use vmm_vhost::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
+use vmm_vhost::{
+    Master, VhostBackend, VhostUserMaster, VhostUserMemoryRegionInfo, VringConfigData,
+};
 
 use crate::virtio::vhost::user::vmm::{Error, Result};
 use crate::virtio::{Interrupt, Queue};

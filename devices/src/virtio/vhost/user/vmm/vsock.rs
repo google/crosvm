@@ -7,7 +7,7 @@ use std::{cell::RefCell, os::unix::net::UnixStream, path::Path, thread};
 use base::{error, Event, RawDescriptor};
 use data_model::Le64;
 use vm_memory::GuestMemory;
-use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::{
     vhost::{

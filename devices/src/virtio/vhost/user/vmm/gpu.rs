@@ -6,7 +6,7 @@ use std::{cell::RefCell, path::Path, thread};
 
 use base::{error, Event, RawDescriptor, Tube};
 use vm_memory::GuestMemory;
-use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::{
     pci::{PciBarConfiguration, PciCapability},

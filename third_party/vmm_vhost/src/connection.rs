@@ -16,7 +16,7 @@ use data_model::DataInit;
 
 use super::message::*;
 use super::{Error, Result};
-use crate::vhost_user::connection::Req;
+use crate::connection::Req;
 
 /// Listener for accepting connections.
 pub trait Listener: Sized {

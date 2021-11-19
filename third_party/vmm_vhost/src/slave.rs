@@ -50,8 +50,8 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use crate::vhost_user::connection::{SocketEndpoint, SocketListener};
-    use crate::vhost_user::dummy_slave::DummySlaveReqHandler;
+    use crate::connection::{SocketEndpoint, SocketListener};
+    use crate::dummy_slave::DummySlaveReqHandler;
 
     #[test]
     fn test_slave_listener_set_nonblocking() {

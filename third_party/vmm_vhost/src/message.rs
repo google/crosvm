@@ -12,6 +12,7 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
+use bitflags::bitflags;
 use data_model::DataInit;
 
 use crate::VringConfigData;

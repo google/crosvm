@@ -13,7 +13,7 @@ use futures::future::{AbortHandle, Abortable};
 use getopts::Options;
 use once_cell::sync::OnceCell;
 use sync::Mutex;
-use vmm_vhost::vhost_user::message::*;
+use vmm_vhost::message::*;
 
 use base::{error, iov_max, warn, Event, Timer};
 use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor, TimerAsync};

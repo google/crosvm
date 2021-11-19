@@ -10,7 +10,7 @@ use std::thread;
 use base::{error, Event, RawDescriptor};
 use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
-use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 use vmm_vhost::Error as VhostUserError;
 
 use crate::virtio::fs::{virtio_fs_config, FS_MAX_TAG_LEN, QUEUE_SIZE};

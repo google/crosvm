@@ -25,7 +25,7 @@ use getopts::Options;
 use once_cell::sync::OnceCell;
 use vhost::{self, Vhost, Vsock};
 use vm_memory::GuestMemory;
-use vmm_vhost::vhost_user::{
+use vmm_vhost::{
     message::{
         VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion, VhostUserProtocolFeatures,
         VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,

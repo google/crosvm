@@ -363,7 +363,7 @@ mod tests {
     use super::*;
 
     #[cfg(feature = "vhost-user-slave")]
-    use crate::vhost_user::SlaveFsCacheReq;
+    use crate::SlaveFsCacheReq;
     #[cfg(feature = "vhost-user-slave")]
     use std::os::unix::io::FromRawFd;
 

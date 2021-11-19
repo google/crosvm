@@ -8,7 +8,7 @@ use std::thread;
 
 use base::{error, Event, RawDescriptor};
 use vm_memory::GuestMemory;
-use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::vhost::user::vmm::{worker::Worker, Result, VhostUserHandler};
 use crate::virtio::wl::{

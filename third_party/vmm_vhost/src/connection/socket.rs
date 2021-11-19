@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 use sys_util::ScmSocket;
 
 use super::{Error, Result};
-use crate::vhost_user::connection::{Endpoint, Listener, Req};
-use crate::vhost_user::message::*;
+use crate::connection::{Endpoint, Listener, Req};
+use crate::message::*;
 
 /// Unix domain socket listener for accepting incoming connections.
 pub struct SocketListener {
@@ -206,7 +206,7 @@ mod tests {
     use std::{mem, slice};
     use tempfile::{tempfile, Builder, TempDir};
 
-    use crate::vhost_user::connection::EndpointExt;
+    use crate::connection::EndpointExt;
 
     fn temp_dir() -> TempDir {
         Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()

@@ -64,7 +64,7 @@ use sync::Mutex;
 use sys_util::clear_fd_flags;
 use thiserror::Error as ThisError;
 use vm_memory::{GuestAddress, GuestMemory, MemoryRegion};
-use vmm_vhost::vhost_user::{
+use vmm_vhost::{
     message::{
         VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion, VhostUserProtocolFeatures,
         VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
@@ -72,9 +72,7 @@ use vmm_vhost::vhost_user::{
     },
     SlaveReqHandler,
 };
-use vmm_vhost::vhost_user::{
-    Error as VhostError, Result as VhostResult, VhostUserSlaveReqHandlerMut,
-};
+use vmm_vhost::{Error as VhostError, Result as VhostResult, VhostUserSlaveReqHandlerMut};
 
 use crate::virtio::{Queue, SignalableInterrupt};
 
@@ -763,7 +761,7 @@ mod tests {
 
     #[test]
     fn test_vhost_user_activate() {
-        use vmm_vhost::vhost_user::{SlaveListener, SocketEndpoint, SocketListener};
+        use vmm_vhost::{SlaveListener, SocketEndpoint, SocketListener};
 
         const QUEUES_NUM: usize = 2;
 
