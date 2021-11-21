@@ -10,6 +10,8 @@ mod gpu;
 mod handler;
 mod net;
 mod vsock;
+#[cfg(feature = "vvu")]
+mod vvu;
 mod wl;
 
 pub use block::run_block_device;
