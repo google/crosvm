@@ -41,8 +41,8 @@ use crate::pci::{
 };
 use crate::virtio::descriptor_utils::Error as DescriptorUtilsError;
 use crate::virtio::{
-    copy_config, DescriptorChain, Interrupt, PciCapabilityType, Queue, Reader, VirtioDevice,
-    VirtioPciCap, Writer, TYPE_VHOST_USER,
+    copy_config, DescriptorChain, Interrupt, PciCapabilityType, Queue, Reader, SignalableInterrupt,
+    VirtioDevice, VirtioPciCap, Writer, TYPE_VHOST_USER,
 };
 use crate::PciAddress;
 
@@ -139,12 +139,18 @@ pub enum Error {
     /// Failed to send ACK in response to Vhost-user sibling message.
     #[error("Failed to send Ack: {0}")]
     FailedAck(VhostError),
+    /// Failed to read kick event for a vring.
+    #[error("Failed to read kick event for {}-th vring: {1} {0}")]
+    FailedToReadKickEvt(base::Error, usize),
     /// Invalid PCI bar index.
     #[error("invalid bar index: {0}")]
     InvalidBar(PciBarIndex),
     /// Invalid Vhost-user sibling message.
     #[error("invalid Vhost-user sibling message")]
     InvalidSiblingMessage,
+    /// Kick data not set for a vring.
+    #[error("kick data not set for {}-th vring: {0}")]
+    KickDataNotSet(usize),
     /// Failed to send a memory mapping request.
     #[error("memory mapping request failed")]
     MemoryMappingRequestFailure,
@@ -169,6 +175,9 @@ pub enum Error {
     /// Failed to send a memory mapping request to the main process.
     #[error("sending mapping request to tube failed: {0}")]
     TubeSendFailure(TubeError),
+    /// Adding |SET_VRING_KICK| related epoll event failed.
+    #[error("failed to add kick event to the epoll set: {0}")]
+    WaitContextAddKickEvent(base::Error),
     /// Removing read event from the sibling VM socket events failed.
     #[error("failed to disable EPOLLIN on sibling VM socket fd: {0}")]
     WaitContextDisableSiblingVmSocket(base::Error),
@@ -255,22 +264,6 @@ fn check_attached_files(
     }
 }
 
-// Check if |hdr| size and |size| is of the |expected| size.
-fn check_request_size(
-    hdr: &VhostUserMsgHeader<MasterReq>,
-    size: usize,
-    expected: usize,
-) -> Result<()> {
-    if hdr.get_size() as usize != expected
-        || hdr.is_reply()
-        || hdr.get_version() != 0x1
-        || size != expected
-    {
-        return Err(Error::InvalidSiblingMessage);
-    }
-    Ok(())
-}
-
 // Check if `hdr` is valid.
 fn is_header_valid(hdr: &VhostUserMsgHeader<MasterReq>) -> bool {
     if hdr.is_reply() || hdr.get_version() != 0x1 {
@@ -279,9 +272,21 @@ fn is_header_valid(hdr: &VhostUserMsgHeader<MasterReq>) -> bool {
     true
 }
 
+// Payload sent by the sibling in a |SET_VRING_KICK| message.
+#[derive(Default)]
+struct KickData {
+    // Fd sent by the sibling. This is monitored and when it's written to an interrupt is injected
+    // into the guest.
+    kick_evt: Option<Event>,
+
+    // The interrupt to be injected to the guest in response to an event to |kick_evt|.
+    msi_vector: u16,
+}
+
 // Vring related data sent through |SET_VRING_KICK| and |SET_VRING_CALL|.
 #[derive(Default)]
 struct Vring {
+    kick_data: KickData,
     call_evt: Option<Event>,
 }
 
@@ -303,7 +308,7 @@ struct Worker {
     pci_bar: Alloc,
 
     // Offset at which to allocate the next shared memory region, corresponding
-    // to the |SET_MEM_TABLE| Vhost master message.
+    // to the |SET_MEM_TABLE| sibling message.
     mem_offset: usize,
 
     // Vring related data sent through |SET_VRING_KICK| and |SET_VRING_CALL|
@@ -311,22 +316,24 @@ struct Worker {
     vrings: [Vring; MAX_VHOST_DEVICE_QUEUES],
 }
 
+#[derive(PollToken, Debug, Clone)]
+enum Token {
+    // Data is available on the Vhost-user sibling socket.
+    SiblingSocket,
+    // The device backend has made a read buffer available.
+    RxQueue,
+    // The device backend has sent a buffer to the |Worker::tx_queue|.
+    TxQueue,
+    // The sibling writes a kick event for the |index|-th vring.
+    SiblingKick { index: usize },
+    // crosvm has requested the device to shut down.
+    Kill,
+}
+
 impl Worker {
     fn run(&mut self, rx_queue_evt: Event, tx_queue_evt: Event, kill_evt: Event) -> Result<()> {
-        #[derive(PollToken, Debug, Clone)]
-        pub enum Token {
-            // Data is available on the Vhost-user sibling socket.
-            SiblingSocket,
-            // The device backend has made a read buffer available.
-            RxQueue,
-            // The device backend has sent a buffer to the `Worker::tx_queue`.
-            TxQueue,
-            // crosvm has requested the device to shut down.
-            Kill,
-        }
-
         // TODO(abhishekbh): Should interrupt.signal_config_changed be called here ?.
-        let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
+        let mut wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (&self.slave_req_helper, Token::SiblingSocket),
             (&rx_queue_evt, Token::RxQueue),
             (&tx_queue_evt, Token::TxQueue),
@@ -341,7 +348,7 @@ impl Worker {
             let events = wait_ctx.wait().map_err(Error::WaitError)?;
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
-                    Token::SiblingSocket => match self.process_rx() {
+                    Token::SiblingSocket => match self.process_rx(&mut wait_ctx) {
                         Ok(()) => {}
                         Err(Error::RxDescriptorsExhausted) => {
                             // If the driver has no Rx buffers left, then no
@@ -384,6 +391,15 @@ impl Worker {
                         }
                         self.process_tx();
                     }
+                    Token::SiblingKick { index } => {
+                        if let Err(e) = self.process_sibling_kick(index) {
+                            error!(
+                                "error processing sibling kick for {}-th vring: {}",
+                                index, e
+                            );
+                            break 'wait;
+                        }
+                    }
                     Token::Kill => {
                         let _ = kill_evt.read();
                         break 'wait;
@@ -395,7 +411,7 @@ impl Worker {
     }
 
     // Processes data from the Vhost-user sibling and forward to the driver via Rx buffers.
-    fn process_rx(&mut self) -> Result<()> {
+    fn process_rx(&mut self, wait_ctx: &mut WaitContext<Token>) -> Result<()> {
         // Keep looping until -
         // - No more Rx buffers are available on the Rx queue. OR
         // - No more data is available on the Vhost-user sibling socket (checked via a
@@ -437,8 +453,9 @@ impl Worker {
                                 // along to the slave, else send a failed Ack back to the master.
                                 self.set_mem_table(&hdr, &buf, files)
                             }
-                            MasterReq::SET_VRING_CALL => {
-                                self.set_vring_evt(&hdr, &buf, files, false)
+                            MasterReq::SET_VRING_CALL => self.set_vring_call(&hdr, &buf, files),
+                            MasterReq::SET_VRING_KICK => {
+                                self.set_vring_kick(wait_ctx, &hdr, &buf, files)
                             }
                             _ => {
                                 unimplemented!("unimplemented action message:{:?}", hdr.get_code());
@@ -455,8 +472,8 @@ impl Worker {
                             Err(e) => Err(e),
                         }
                     } else {
-                        // If no special processing is required. Forward this
-                        // message as is to the device backend.
+                        // If no special processing required. Forward this message as is
+                        // to the device backend.
                         self.forward_msg_to_device(desc, &hdr, &buf)
                     }
                 };
@@ -499,7 +516,7 @@ impl Worker {
         }
     }
 
-    // Returns true iff any data is available on the Vhost-user sibling socket.
+    // Returns true iff any data is available on the sibling socket.
     fn is_sibling_data_available(&mut self) -> bool {
         // Peek if any data is left on the Vhost-user sibling socket. If no, then
         // nothing to forwad to the device backend.
@@ -571,10 +588,10 @@ impl Worker {
         Ok(bytes_written)
     }
 
-    // Handles `SET_MEM_TABLE` message from Vhost master. Parses `hdr` into
+    // Handles `SET_MEM_TABLE` message from sibling. Parses `hdr` into
     // memory region information. For each memory region sent by the Vhost
     // Master, it mmaps a region of memory in the main process. At the end of
-    // this function both this VMM and the Vhost Master have two regions of
+    // this function both this VMM and the sibling have two regions of
     // virtual memory pointing to the same physical page. These regions will be
     // accessed by the device VM and the silbing VM.
     fn set_mem_table(
@@ -628,7 +645,7 @@ impl Worker {
         Ok(())
     }
 
-    // Mmaps Vhost master memory in this device's VMM's main process' address
+    // Mmaps sibling memory in this device's VMM's main process' address
     // space.
     pub fn create_sibling_guest_memory(
         &mut self,
@@ -679,20 +696,26 @@ impl Worker {
         }
     }
 
-    // Handles |SET_VRING_CALL| and |SET_VRING_KICK| based on |is_kick_evt|.
-    fn set_vring_evt(
+    // Handles |SET_VRING_CALL|.
+    fn set_vring_call(
         &mut self,
         hdr: &VhostUserMsgHeader<MasterReq>,
-        buf: &[u8],
+        payload: &[u8],
         files: Option<Vec<File>>,
-        is_kick_evt: bool,
     ) -> Result<()> {
-        let size = buf.len();
-        check_request_size(hdr, size, std::mem::size_of::<VhostUserU64>())?;
+        if !is_header_valid(hdr) {
+            return Err(Error::InvalidSiblingMessage);
+        }
+
+        let payload_size = payload.len();
+        if payload_size != std::mem::size_of::<VhostUserU64>() {
+            error!("wrong payload size {}", payload_size);
+            return Err(Error::InvalidSiblingMessage);
+        }
 
         let (index, file) = self
             .slave_req_helper
-            .handle_vring_fd_request(buf, files)
+            .handle_vring_fd_request(payload, files)
             .map_err(Error::ParseVringFdRequest)?;
 
         if index as usize >= MAX_VHOST_DEVICE_QUEUES {
@@ -700,16 +723,65 @@ impl Worker {
             return Err(Error::InvalidSiblingMessage);
         }
 
-        if let Some(file) = file {
-            if is_kick_evt {
-                // TODO(abhishekbh): Implement SET_VRING_KICK.
-                unimplemented!();
-            } else {
-                // Safe because we own the file.
-                self.vrings[index as usize].call_evt =
-                    unsafe { Some(Event::from_raw_descriptor(file.into_raw_descriptor())) };
-            }
+        let file = file.ok_or_else(|| {
+            error!("no file found for SET_VRING_CALL");
+            Error::InvalidSiblingMessage
+        })?;
+
+        // Safe because we own the file.
+        self.vrings[index as usize].call_evt =
+            unsafe { Some(Event::from_raw_descriptor(file.into_raw_descriptor())) };
+
+        Ok(())
+    }
+
+    // Handles |SET_VRING_KICK|. If successful it sets up an event handler for a
+    // write to the sent kick fd.
+    fn set_vring_kick(
+        &mut self,
+        wait_ctx: &mut WaitContext<Token>,
+        hdr: &VhostUserMsgHeader<MasterReq>,
+        payload: &[u8],
+        files: Option<Vec<File>>,
+    ) -> Result<()> {
+        if !is_header_valid(hdr) {
+            return Err(Error::InvalidSiblingMessage);
         }
+
+        let payload_size = payload.len();
+        if payload_size != std::mem::size_of::<VhostUserU64>() {
+            error!("wrong payload size {}", payload_size);
+            return Err(Error::InvalidSiblingMessage);
+        }
+
+        let (index, file) = self
+            .slave_req_helper
+            .handle_vring_fd_request(payload, files)
+            .map_err(Error::ParseVringFdRequest)?;
+
+        if index as usize >= MAX_VHOST_DEVICE_QUEUES {
+            error!("illegal Vring index:{}", index);
+            return Err(Error::InvalidSiblingMessage);
+        }
+
+        let file = file.ok_or_else(|| {
+            error!("no file found for SET_VRING_KICK");
+            Error::InvalidSiblingMessage
+        })?;
+
+        // Safe because we own the file.
+        let kick_evt = unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) };
+        let kick_data = &mut self.vrings[index as usize].kick_data;
+
+        wait_ctx
+            .add(
+                &kick_evt,
+                Token::SiblingKick {
+                    index: index as usize,
+                },
+            )
+            .map_err(Error::WaitContextAddKickEvent)?;
+        kick_data.kick_evt = Some(kick_evt);
 
         Ok(())
     }
@@ -739,6 +811,24 @@ impl Worker {
                 panic!("failed inject tx queue interrupt");
             }
         }
+    }
+
+    // Processes a sibling kick for the |index|-th vring and injects the corresponding interrupt
+    // into the guest.
+    fn process_sibling_kick(&mut self, index: usize) -> Result<()> {
+        // The sibling is indicating a used queue event on
+        // vring number |index|. Acknowledge the event and
+        // inject the related interrupt into the guest.
+        let kick_data = &self.vrings[index as usize].kick_data;
+        let kick_evt = kick_data
+            .kick_evt
+            .as_ref()
+            .ok_or(Error::KickDataNotSet(index))?;
+        kick_evt
+            .read()
+            .map_err(|e| Error::FailedToReadKickEvt(e, index))?;
+        self.interrupt.signal_used_queue(kick_data.msi_vector);
+        Ok(())
     }
 }
 
@@ -954,6 +1044,22 @@ impl VirtioVhostUser {
         // Safe because a PCI bar is guaranteed to be allocated at this point.
         let pci_bar = self.pci_bar.expect("PCI bar unallocated");
 
+        // Initialize the Worker with the Msix vector values to be injected for
+        // each Vhost device queue.
+        let mut vrings: [Vring; MAX_VHOST_DEVICE_QUEUES] = Default::default();
+        for (i, vring) in vrings.iter_mut().enumerate() {
+            vring.kick_data = KickData {
+                kick_evt: None,
+                msi_vector: match self.notification_msix_vectors[i] {
+                    Some(msi_vector) => msi_vector,
+                    None => {
+                        error!("no vector set for ring {}", i);
+                        return;
+                    }
+                },
+            };
+        }
+
         // TODO(abhishekbh): Should interrupt.signal_config_changed be called ?
         self.sibling_connected = true;
         let mut activate_params = self.activate_params.take().unwrap();
@@ -971,7 +1077,7 @@ impl VirtioVhostUser {
                     main_process_tube,
                     pci_bar,
                     mem_offset: SHARED_MEMORY_OFFSET as usize,
-                    vrings: Default::default(),
+                    vrings,
                 };
                 let rx_queue_evt = activate_params.queue_evts.remove(0);
                 let tx_queue_evt = activate_params.queue_evts.remove(0);
