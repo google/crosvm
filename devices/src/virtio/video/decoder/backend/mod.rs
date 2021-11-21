@@ -20,14 +20,14 @@ pub mod vda;
 pub trait DecoderSession {
     /// Tell how many output buffers will be used for this session and which format they will carry.
     /// This method must be called after a `ProvidePictureBuffers` event is emitted, and before the
-    /// first call to `use_output_buffers()`.
+    /// first call to `use_output_buffer()`.
     fn set_output_parameters(&mut self, buffer_count: usize, format: Format) -> VideoResult<()>;
 
     /// Decode the compressed stream contained in [`offset`..`offset`+`bytes_used`]
-    /// of the shared memory in `descriptor`. `bitstream_id` is the identifier for that
+    /// of the shared memory in `resource`. `bitstream_id` is the identifier for that
     /// part of the stream (most likely, a timestamp).
     ///
-    /// The device takes ownership of `descriptor` and is responsible for closing it
+    /// The device takes ownership of `resource` and is responsible for closing it
     /// once it is not used anymore.
     ///
     /// The device will emit a `NotifyEndOfBitstreamBuffer` event after the input
@@ -44,8 +44,8 @@ pub trait DecoderSession {
         bytes_used: u32,
     ) -> VideoResult<()>;
 
-    /// Flush the decoder device, i.e. finish processing of all queued decode
-    /// requests.
+    /// Flush the decoder device, i.e. finish processing all queued decode requests and emit frames
+    /// for them.
     ///
     /// The device will emit a `FlushCompleted` event once the flush is done.
     fn flush(&mut self) -> VideoResult<()>;
@@ -94,15 +94,16 @@ pub trait DecoderBackend {
     /// Return the decoding capabilities for this backend instance.
     fn get_capabilities(&self) -> Capability;
 
-    /// Create a new decoding session for the passed `profile`.
+    /// Create a new decoding session for the passed `format`.
     fn new_session(&mut self, format: Format) -> VideoResult<Self::Session>;
 }
 
 #[derive(Debug)]
 pub enum DecoderEvent {
-    /// Emitted when the device knows the buffer format it will need to decode
-    /// frames, and how many buffers it will need. The decoder is supposed to
-    /// provide buffers of the requested dimensions using `use_output_buffer`.
+    /// Emitted when the device knows the buffer format it will need to decode frames, and how many
+    /// buffers it will need. The decoder is supposed to call `set_output_parameters()` to confirm
+    /// the pixel format and actual number of buffers used, and provide buffers of the requested
+    /// dimensions using `use_output_buffer()`.
     ProvidePictureBuffers {
         min_num_buffers: u32,
         width: i32,
