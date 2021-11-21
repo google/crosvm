@@ -7,7 +7,10 @@
 use std::convert::TryInto;
 use std::fmt;
 
-use base::{self, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
+use base::{
+    self, FromRawDescriptor, IntoRawDescriptor, MemoryMappingArena, MmapError, SafeDescriptor,
+};
+use sys_util::MemoryMapping;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 use thiserror::Error as ThisError;
@@ -58,6 +61,9 @@ pub trait BufferHandle: Sized {
     /// Try to clone this handle. This must only create a new reference to the same backing memory
     /// and not duplicate the buffer itself.
     fn try_clone(&self) -> Result<Self, base::Error>;
+
+    /// Returns a linear mapping of [`offset`..`offset`+`size`] of the memory backing this buffer.
+    fn get_mapping(&self, offset: usize, size: usize) -> Result<MemoryMappingArena, MmapError>;
 }
 
 /// Linear memory area of a `GuestMemHandle`
@@ -83,6 +89,34 @@ impl BufferHandle for GuestMemHandle {
             mem_areas: self.mem_areas.clone(),
         })
     }
+
+    fn get_mapping(&self, offset: usize, size: usize) -> Result<MemoryMappingArena, MmapError> {
+        let mut arena = MemoryMappingArena::new(size)?;
+        let mut mapped_size = 0;
+        let mut area_iter = self.mem_areas.iter();
+        let mut area_offset = offset;
+        while mapped_size < size {
+            let area = match area_iter.next() {
+                Some(area) => area,
+                None => {
+                    return Err(MmapError::InvalidRange(
+                        offset,
+                        size,
+                        self.mem_areas.iter().map(|a| a.length).sum(),
+                    ));
+                }
+            };
+            if area_offset > area.length {
+                area_offset -= area.length;
+            } else {
+                let mapping_length = std::cmp::min(area.length - area_offset, size - mapped_size);
+                arena.add_fd_offset(mapped_size, mapping_length, &self.desc, area.offset)?;
+                mapped_size += mapping_length;
+                area_offset = 0;
+            }
+        }
+        Ok(arena)
+    }
 }
 
 pub struct VirtioObjectHandle {
@@ -99,6 +133,10 @@ impl BufferHandle for VirtioObjectHandle {
             modifier: self.modifier,
         })
     }
+
+    fn get_mapping(&self, offset: usize, size: usize) -> Result<MemoryMappingArena, MmapError> {
+        MemoryMapping::from_fd_offset(&self.desc, size, offset as u64).map(MemoryMappingArena::from)
+    }
 }
 
 pub enum GuestResourceHandle {
@@ -112,6 +150,13 @@ impl BufferHandle for GuestResourceHandle {
             Self::GuestPages(handle) => Self::GuestPages(handle.try_clone()?),
             Self::VirtioObject(handle) => Self::VirtioObject(handle.try_clone()?),
         })
+    }
+
+    fn get_mapping(&self, offset: usize, size: usize) -> Result<MemoryMappingArena, MmapError> {
+        match self {
+            GuestResourceHandle::GuestPages(handle) => handle.get_mapping(offset, size),
+            GuestResourceHandle::VirtioObject(handle) => handle.get_mapping(offset, size),
+        }
     }
 }
 
@@ -265,5 +310,87 @@ impl GuestResource {
             handle: self.handle.try_clone()?,
             planes: self.planes.clone(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use base::{MappedRegion, SafeDescriptor};
+    use sys_util::{MemoryMapping, SharedMemory};
+
+    use super::*;
+
+    /// Creates a sparse guest memory handle using as many pages as there are entries in
+    /// `page_order`. The page with index `0` will be the first page, `1` will be the second page,
+    /// etc.
+    ///
+    /// The memory handle is filled with increasing u32s starting from page 0, then page 1, and so
+    /// on. Finally the handle is mapped into a linear space and we check that the written integers
+    /// appear in the expected order.
+    fn check_guest_mem_handle(page_order: &[usize]) {
+        const PAGE_SIZE: usize = 0x1000;
+        const U32_SIZE: usize = std::mem::size_of::<u32>();
+        const ENTRIES_PER_PAGE: usize = PAGE_SIZE as usize / std::mem::size_of::<u32>();
+
+        // Fill a vector of the same size as the handle with u32s of increasing value, following
+        // the page layout given as argument.
+        let mut data = vec![0u8; PAGE_SIZE * page_order.len()];
+        for (page_index, page) in page_order.iter().enumerate() {
+            let page_slice =
+                &mut data[(page * PAGE_SIZE as usize)..((page + 1) * PAGE_SIZE as usize)];
+            for (index, chunk) in page_slice.chunks_exact_mut(4).enumerate() {
+                let sized_chunk: &mut [u8; 4] = chunk.try_into().unwrap();
+                *sized_chunk = (((page_index * ENTRIES_PER_PAGE) + index) as u32).to_ne_bytes();
+            }
+        }
+
+        // Copy the initialized vector's content into an anonymous shared memory.
+        let mut mem = SharedMemory::anon().unwrap();
+        mem.set_size(data.len() as u64).unwrap();
+        let mapping = MemoryMapping::from_fd(&mem, mem.size() as usize).unwrap();
+        assert_eq!(mapping.write_slice(&data, 0).unwrap(), data.len());
+
+        // Create the `GuestMemHandle` we will try to map and retrieve the data from.
+        let mem_handle = GuestResourceHandle::GuestPages(GuestMemHandle {
+            desc: unsafe { SafeDescriptor::from_raw_descriptor(base::clone_fd(&mem).unwrap()) },
+            mem_areas: page_order
+                .iter()
+                .map(|&page| GuestMemArea {
+                    offset: page as u64 * PAGE_SIZE as u64,
+                    length: PAGE_SIZE as usize,
+                })
+                .collect(),
+        });
+
+        // Map the handle into a linear memory area, retrieve its data into a new vector, and check
+        // that its u32s appear to increase linearly.
+        let mapping = mem_handle.get_mapping(0, mem.size() as usize).unwrap();
+        let mut data = vec![0u8; PAGE_SIZE * page_order.len()];
+        unsafe { std::ptr::copy_nonoverlapping(mapping.as_ptr(), data.as_mut_ptr(), data.len()) };
+        for (index, chunk) in data.chunks_exact(U32_SIZE).enumerate() {
+            let sized_chunk: &[u8; 4] = chunk.try_into().unwrap();
+            assert_eq!(u32::from_ne_bytes(*sized_chunk), index as u32);
+        }
+    }
+
+    // Fill a guest memory handle with a single memory page.
+    // Then check that the data can be properly mapped and appears in the expected order.
+    #[test]
+    fn test_single_guest_mem_handle() {
+        check_guest_mem_handle(&[0])
+    }
+
+    // Fill a guest memory handle with 4 memory pages that are contiguous.
+    // Then check that the pages appear in the expected order in the mapping.
+    #[test]
+    fn test_linear_guest_mem_handle() {
+        check_guest_mem_handle(&[0, 1, 2, 3])
+    }
+
+    // Fill a guest memory handle with 8 pages mapped in non-linear order.
+    // Then check that the pages appear in the expected order in the mapping.
+    #[test]
+    fn test_sparse_guest_mem_handle() {
+        check_guest_mem_handle(&[1, 7, 6, 3, 5, 0, 4, 2])
     }
 }
