@@ -307,14 +307,16 @@ impl VfioMsixCap {
 
     fn write_msix_control(&mut self, data: &[u8]) -> Option<VfioMsiChange> {
         let old_enabled = self.config.enabled();
+        let old_masked = self.config.masked();
 
         self.config
             .write_msix_capability(PCI_MSIX_FLAGS.into(), data);
 
         let new_enabled = self.config.enabled();
-        if !old_enabled && new_enabled {
+        let new_masked = self.config.masked();
+        if (!old_enabled && new_enabled) || (new_enabled && old_masked && !new_masked) {
             Some(VfioMsiChange::Enable)
-        } else if old_enabled && !new_enabled {
+        } else if (old_enabled && !new_enabled) || (new_enabled && !old_masked && new_masked) {
             Some(VfioMsiChange::Disable)
         } else {
             None
