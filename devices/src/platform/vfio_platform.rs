@@ -173,6 +173,7 @@ impl VfioPlatformDevice {
                         size: mmap_size.try_into().unwrap(),
                         offset,
                         gpa: guest_map_start,
+                        read_only: false,
                     })
                     .is_err()
                 {

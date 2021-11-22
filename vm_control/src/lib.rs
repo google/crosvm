@@ -288,6 +288,7 @@ pub enum VmMemoryRequest {
         size: usize,
         offset: u64,
         gpa: u64,
+        read_only: bool,
     },
 }
 
@@ -439,6 +440,7 @@ impl VmMemoryRequest {
                 size,
                 offset,
                 gpa,
+                read_only,
             } => {
                 let mmap = match MemoryMappingBuilder::new(size)
                     .from_descriptor(descriptor)
@@ -448,7 +450,7 @@ impl VmMemoryRequest {
                     Ok(v) => v,
                     Err(_e) => return VmMemoryResponse::Err(SysError::new(EINVAL)),
                 };
-                match vm.add_memory_region(GuestAddress(gpa), Box::new(mmap), false, false) {
+                match vm.add_memory_region(GuestAddress(gpa), Box::new(mmap), read_only, false) {
                     Ok(slot) => VmMemoryResponse::RegisterMemory { pfn: 0, slot },
                     Err(e) => VmMemoryResponse::Err(e),
                 }

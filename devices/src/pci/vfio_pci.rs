@@ -782,6 +782,7 @@ impl VfioPciDevice {
                         size: mmap_size as usize,
                         offset,
                         gpa: guest_map_start,
+                        read_only: false,
                     })
                     .is_err()
                 {
