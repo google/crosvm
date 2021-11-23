@@ -671,10 +671,3 @@ pub async fn handle_event_queue<I: SignalableInterrupt>(
         queue.trigger_interrupt(&mem, interrupt);
     }
 }
-
-// Async task that waits for a signal from the kill event given to the device at startup.  Once this event is
-// readable, exit. Exiting this future will cause the main loop to break and the worker thread to
-// exit.
-pub async fn wait_kill(kill_evt: EventAsync) {
-    let _ = kill_evt.next_val().await;
-}

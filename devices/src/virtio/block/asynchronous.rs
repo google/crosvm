@@ -34,8 +34,8 @@ use vm_memory::GuestMemory;
 
 use super::common::*;
 use crate::virtio::{
-    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, SignalableInterrupt,
-    VirtioDevice, Writer, TYPE_BLOCK,
+    async_utils, copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader,
+    SignalableInterrupt, VirtioDevice, Writer, TYPE_BLOCK,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -271,41 +271,6 @@ async fn handle_queue(
     }
 }
 
-async fn handle_irq_resample(
-    ex: &Executor,
-    interrupt: Rc<RefCell<Interrupt>>,
-) -> result::Result<(), ControlError> {
-    let resample_evt = if let Some(resample_evt) = interrupt.borrow().get_resample_evt() {
-        let resample_evt = resample_evt
-            .try_clone()
-            .map_err(ControlError::CloneResampleEvent)?;
-        let resample_evt =
-            EventAsync::new(resample_evt.0, ex).map_err(ControlError::AsyncResampleCreate)?;
-        Some(resample_evt)
-    } else {
-        None
-    };
-    if let Some(resample_evt) = resample_evt {
-        loop {
-            let _ = resample_evt
-                .next_val()
-                .await
-                .map_err(ControlError::ReadResampleEvent)?;
-            interrupt.borrow().do_interrupt_resample();
-        }
-    } else {
-        // no resample event, park the future.
-        let () = futures::future::pending().await;
-        Ok(())
-    }
-}
-
-async fn wait_kill(kill_evt: EventAsync) {
-    // Once this event is readable, exit. Exiting this future will cause the main loop to
-    // break and the device process to exit.
-    let _ = kill_evt.next_val().await;
-}
-
 async fn handle_command_tube(
     command_tube: &Option<AsyncTube>,
     interrupt: Rc<RefCell<Interrupt>>,
@@ -423,7 +388,7 @@ fn run_worker(
     let flush_timer_armed = Rc::new(RefCell::new(false));
 
     // Process any requests to resample the irq value.
-    let resample = handle_irq_resample(&ex, Rc::clone(&interrupt));
+    let resample = async_utils::handle_irq_resample(&ex, Rc::clone(&interrupt));
     pin_mut!(resample);
 
     // Handles control requests.
@@ -472,8 +437,7 @@ fn run_worker(
     pin_mut!(disk_flush);
 
     // Exit if the kill event is triggered.
-    let kill_evt = EventAsync::new(kill_evt.0, &ex).expect("Failed to create async kill event fd");
-    let kill = wait_kill(kill_evt);
+    let kill = async_utils::await_and_exit(&ex, kill_evt);
     pin_mut!(kill);
 
     match ex.run_until(select5(queue_handlers, disk_flush, control, resample, kill)) {

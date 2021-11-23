@@ -29,8 +29,8 @@ use crate::virtio::snd::common::*;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
 use crate::virtio::{
-    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, VirtioDevice, Writer,
-    TYPE_SOUND,
+    async_utils, copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, VirtioDevice,
+    Writer, TYPE_SOUND,
 };
 
 pub mod async_funcs;
@@ -690,8 +690,7 @@ fn run_worker(
     let f_rx_response = send_pcm_response_worker(&mem, &rx_queue, interrupt.as_ref(), &mut rx_recv);
 
     // Exit if the kill event is triggered.
-    let kill_evt = EventAsync::new(kill_evt.0, &ex).expect("failed to set up the kill event");
-    let f_kill = wait_kill(kill_evt);
+    let f_kill = async_utils::await_and_exit(&ex, kill_evt);
 
     pin_mut!(f_ctrl, f_tx, f_tx_response, f_rx, f_rx_response, f_kill);
 

@@ -19,8 +19,8 @@ use vm_control::{BalloonStats, BalloonTubeCommand, BalloonTubeResult};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{
-    copy_config, descriptor_utils, DescriptorChain, Interrupt, Queue, Reader, SignalableInterrupt,
-    VirtioDevice, TYPE_BALLOON,
+    async_utils, copy_config, descriptor_utils, DescriptorChain, Interrupt, Queue, Reader,
+    SignalableInterrupt, VirtioDevice, TYPE_BALLOON,
 };
 
 #[sorted]
@@ -289,33 +289,6 @@ async fn handle_command_tube(
     }
 }
 
-// Async task that resamples the status of the interrupt when the guest sends a request by
-// signalling the resample event associated with the interrupt.
-async fn handle_irq_resample(ex: &Executor, interrupt: Rc<RefCell<Interrupt>>) {
-    let resample_evt = if let Some(resample_evt) = interrupt.borrow_mut().get_resample_evt() {
-        let resample_evt = resample_evt.try_clone().unwrap();
-        let resample_evt = EventAsync::new(resample_evt.0, ex).unwrap();
-        Some(resample_evt)
-    } else {
-        None
-    };
-    if let Some(resample_evt) = resample_evt {
-        while resample_evt.next_val().await.is_ok() {
-            interrupt.borrow_mut().do_interrupt_resample();
-        }
-    } else {
-        // no resample event, park the future.
-        let () = futures::future::pending().await;
-    }
-}
-
-// Async task that waits for a signal from the kill event given to the device at startup.  Once this event is
-// readable, exit. Exiting this future will cause the main loop to break and the worker thread to
-// exit.
-async fn wait_kill(kill_evt: EventAsync) {
-    let _ = kill_evt.next_val().await;
-}
-
 // The main worker thread. Initialized the asynchronous worker tasks and passes them to the executor
 // to be processed.
 fn run_worker(
@@ -385,12 +358,11 @@ fn run_worker(
         pin_mut!(command);
 
         // Process any requests to resample the irq value.
-        let resample = handle_irq_resample(&ex, interrupt);
+        let resample = async_utils::handle_irq_resample(&ex, interrupt);
         pin_mut!(resample);
 
         // Exit if the kill event is triggered.
-        let kill_evt = EventAsync::new(kill_evt.0, &ex).expect("failed to set up the kill event");
-        let kill = wait_kill(kill_evt);
+        let kill = async_utils::await_and_exit(&ex, kill_evt);
         pin_mut!(kill);
 
         if let Err(e) = ex.run_until(select6(inflate, deflate, stats, command, resample, kill)) {

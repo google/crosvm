@@ -2,23 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, Event};
-use cros_async::{select2, AsyncError, EventAsync, Executor, SelectResult};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use base::Event;
+use cros_async::{select2, Executor, SelectResult};
 use futures::pin_mut;
-use remain::sorted;
-use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
-use crate::virtio::interrupt::SignalableInterrupt;
-use crate::virtio::{Interrupt, Queue};
-
-#[sorted]
-#[derive(ThisError, Debug)]
-enum Error {
-    /// Failed to read the resample event.
-    #[error("failed to read the resample event: {0}")]
-    ReadResampleEvent(AsyncError),
-}
+use crate::virtio::{async_utils, Interrupt, Queue};
 
 pub struct Worker {
     pub queues: Vec<Queue>,
@@ -27,49 +19,16 @@ pub struct Worker {
 }
 
 impl Worker {
-    // Processes any requests to resample the irq value.
-    async fn handle_irq_resample(
-        resample_evt: EventAsync,
-        interrupt: Interrupt,
-    ) -> Result<(), Error> {
-        loop {
-            let _ = resample_evt
-                .next_val()
-                .await
-                .map_err(Error::ReadResampleEvent)?;
-            interrupt.do_interrupt_resample();
-        }
-    }
-
-    // Waits until the kill event is triggered.
-    async fn wait_kill(kill_evt: EventAsync) {
-        // Once this event is readable, exit. Exiting this future will cause the main loop to
-        // break and the device process to exit.
-        let _ = kill_evt.next_val().await;
-    }
-
     // Runs asynchronous tasks.
     pub fn run(&mut self, interrupt: Interrupt) -> Result<(), String> {
         let ex = Executor::new().expect("failed to create an executor");
-        let resample_evt = interrupt
-            .get_resample_evt()
-            .expect("resample event required")
-            .try_clone()
-            .expect("failed to clone resample event");
-        let async_resample_evt =
-            EventAsync::new(resample_evt.0, &ex).expect("failed to create async resample event");
-        let resample = Self::handle_irq_resample(async_resample_evt, interrupt);
+
+        let interrupt = Rc::new(RefCell::new(interrupt));
+        let resample = async_utils::handle_irq_resample(&ex, interrupt);
         pin_mut!(resample);
 
-        let kill_evt = EventAsync::new(
-            self.kill_evt
-                .try_clone()
-                .expect("failed to clone kill_evt")
-                .0,
-            &ex,
-        )
-        .expect("failed to create async kill event fd");
-        let kill = Self::wait_kill(kill_evt);
+        let kill_evt = self.kill_evt.try_clone().expect("failed to clone kill_evt");
+        let kill = async_utils::await_and_exit(&ex, kill_evt);
         pin_mut!(kill);
 
         match ex.run_until(select2(resample, kill)) {
