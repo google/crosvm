@@ -8,7 +8,6 @@ use std::path::Path;
 use std::thread;
 
 use base::{error, Event, RawDescriptor};
-use cros_async::Executor;
 use vm_memory::GuestMemory;
 use vmm_vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
@@ -121,14 +120,13 @@ impl VirtioDevice for Snd {
         let worker_result = thread::Builder::new()
             .name("vhost_user_virtio_snd".to_string())
             .spawn(move || {
-                let ex = Executor::new().expect("failed to create an executor");
                 let mut worker = Worker {
                     queues,
                     mem,
                     kill_evt,
                 };
 
-                if let Err(e) = worker.run(&ex, interrupt) {
+                if let Err(e) = worker.run(interrupt) {
                     error!("failed to start a worker: {}", e);
                 }
                 worker

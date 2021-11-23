@@ -9,7 +9,6 @@ use std::thread;
 use std::u32;
 
 use base::{error, Event, RawDescriptor};
-use cros_async::Executor;
 use remain::sorted;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
@@ -89,13 +88,12 @@ impl Mac80211Hwsim {
         let join_handle = thread::Builder::new()
             .name("vhost_user_mac80211_hwsim".to_string())
             .spawn(move || {
-                let ex = Executor::new().expect("failed to create an executor");
                 let mut worker = Worker {
                     queues,
                     mem,
                     kill_evt,
                 };
-                if let Err(e) = worker.run(&ex, interrupt) {
+                if let Err(e) = worker.run(interrupt) {
                     error!("failed to start a worker: {}", e);
                 }
                 worker

@@ -49,14 +49,15 @@ impl Worker {
     }
 
     // Runs asynchronous tasks.
-    pub fn run(&mut self, ex: &Executor, interrupt: Interrupt) -> Result<(), String> {
+    pub fn run(&mut self, interrupt: Interrupt) -> Result<(), String> {
+        let ex = Executor::new().expect("failed to create an executor");
         let resample_evt = interrupt
             .get_resample_evt()
             .expect("resample event required")
             .try_clone()
             .expect("failed to clone resample event");
         let async_resample_evt =
-            EventAsync::new(resample_evt.0, ex).expect("failed to create async resample event");
+            EventAsync::new(resample_evt.0, &ex).expect("failed to create async resample event");
         let resample = Self::handle_irq_resample(async_resample_evt, interrupt);
         pin_mut!(resample);
 
@@ -65,7 +66,7 @@ impl Worker {
                 .try_clone()
                 .expect("failed to clone kill_evt")
                 .0,
-            ex,
+            &ex,
         )
         .expect("failed to create async kill event fd");
         let kill = Self::wait_kill(kill_evt);
