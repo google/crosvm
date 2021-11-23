@@ -21,7 +21,7 @@ pub enum MmioType {
 }
 
 /// Region of memory.
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct MemRegion {
     pub base: u64,
     pub size: u64,

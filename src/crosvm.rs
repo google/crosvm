@@ -39,6 +39,8 @@ use hypervisor::ProtectionType;
 use libc::{getegid, geteuid};
 #[cfg(feature = "gpu")]
 use platform::GpuRenderServerParameters;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use resources::MemRegion;
 use uuid::Uuid;
 use vm_control::BatteryType;
 
@@ -412,6 +414,8 @@ pub struct Config {
     pub no_legacy: bool,
     pub no_smt: bool,
     pub params: Vec<String>,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub pcie_ecam: Option<MemRegion>,
     #[cfg(feature = "direct")]
     pub pcie_rp: Vec<HostPcieRootPortParameters>,
     pub per_vm_core_scheduling: bool,
@@ -602,6 +606,8 @@ impl Default for Config {
             #[cfg(target_os = "android")]
             task_profiles: Vec::new(),
             pvm_fw: None,
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            pcie_ecam: None,
         }
     }
 }

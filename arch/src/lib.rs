@@ -48,6 +48,7 @@ use {
 use {
     devices::IrqChipX86_64 as IrqChipArch,
     hypervisor::{HypervisorX86_64 as HypervisorArch, VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
+    resources::MemRegion,
 };
 
 pub use serial::{
@@ -111,6 +112,8 @@ pub struct VmComponents {
     /// A file to load as pVM firmware. Must be `Some` iff
     /// `protected_vm == ProtectionType::UnprotectedWithFirmware`.
     pub pvm_fw: Option<File>,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub pcie_ecam: Option<MemRegion>,
 }
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.

@@ -9,7 +9,7 @@ use devices::IrqChipX86_64;
 use hypervisor::{
     HypervisorX86_64, IoOperation, IoParams, ProtectionType, VcpuExit, VcpuX86_64, VmX86_64,
 };
-use resources::SystemAllocator;
+use resources::{MemRegion, SystemAllocator};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::cpuid::setup_cpuid;
@@ -103,7 +103,10 @@ where
     // write to 4th page
     let write_addr = GuestAddress(0x4000);
 
-    init_low_memory_layout();
+    init_low_memory_layout(Some(MemRegion {
+        base: 0xC000_0000,
+        size: 0x1000_0000,
+    }));
     // guest mem is 400 pages
     let arch_mem_regions = arch_memory_regions(memory_size, None);
     let guest_mem = GuestMemory::new(&arch_mem_regions).unwrap();

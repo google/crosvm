@@ -26,14 +26,14 @@ use arch::{
 use base::{debug, error, getpid, info, kill_process_group, pagesize, reap_child, syslog, warn};
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use crosvm::platform::GpuRenderServerParameters;
-#[cfg(feature = "direct")]
-use crosvm::{argument::parse_hex_or_decimal, DirectIoOption, HostPcieRootPortParameters};
 use crosvm::{
-    argument::{self, print_help, set_arguments, Argument},
+    argument::{self, parse_hex_or_decimal, print_help, set_arguments, Argument},
     platform, BindMount, Config, Executable, FileBackedMappingParameters, GidMap, SharedDir,
     TouchDeviceOption, VfioCommand, VhostUserFsOption, VhostUserOption, VhostUserWlOption,
     VvuOption,
 };
+#[cfg(feature = "direct")]
+use crosvm::{DirectIoOption, HostPcieRootPortParameters};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::virtio::block::block::DiskOption;
 #[cfg(feature = "audio_cras")]
@@ -64,6 +64,8 @@ use disk::{
     create_composite_disk, create_disk_file, create_zero_filler, ImagePartitionType, PartitionInfo,
 };
 use hypervisor::ProtectionType;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use resources::MemRegion;
 use serde_keyvalue::from_key_values;
 use uuid::Uuid;
 use vm_control::{
@@ -76,6 +78,11 @@ use vm_control::{
 };
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64::set_itmt_msr_config;
+
+const ONE_MB: u64 = 1 << 20;
+const MB_ALIGNED: u64 = ONE_MB - 1;
+// the max bus number is 256 and each bus occupy 1MB, so the max pcie cfg mmio size = 256M
+const MAX_PCIE_ECAM_SIZE: u64 = ONE_MB * 256;
 
 #[cfg(feature = "scudo")]
 #[global_allocator]
@@ -2474,6 +2481,58 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 cfg.task_profiles.push(name.to_owned());
             }
         }
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        "pcie-ecam" => {
+            let value = value.unwrap();
+            let paras: Vec<&str> = value.split(',').collect();
+            if paras.len() != 2 {
+                return Err(argument::Error::InvalidValue {
+                    value: value.to_owned(),
+                    expected: String::from(
+                        "pcie-ecam must have exactly 2 parameters: ecam_base,ecam_size",
+                    ),
+                });
+            }
+            let base =
+                parse_hex_or_decimal(paras[0]).map_err(|_| argument::Error::InvalidValue {
+                    value: value.to_owned(),
+                    expected: String::from("pcie-ecam, the first parameter base should be integer"),
+                })?;
+            let mut len =
+                parse_hex_or_decimal(paras[1]).map_err(|_| argument::Error::InvalidValue {
+                    value: value.to_owned(),
+                    expected: String::from(
+                        "pcie-ecam, the second parameter size should be integer",
+                    ),
+                })?;
+
+            if (base & MB_ALIGNED != 0) || (len & MB_ALIGNED != 0) {
+                return Err(argument::Error::InvalidValue {
+                    value: value.to_owned(),
+                    expected: String::from("pcie-ecam, the base and len should be aligned to 1MB"),
+                });
+            }
+
+            if len > MAX_PCIE_ECAM_SIZE {
+                len = MAX_PCIE_ECAM_SIZE;
+            }
+
+            if base + len >= 0x1_0000_0000 {
+                return Err(argument::Error::InvalidValue {
+                    value: value.to_owned(),
+                    expected: String::from("pcie-ecam, the end address couldn't beyond 4G"),
+                });
+            }
+
+            if base % len != 0 {
+                return Err(argument::Error::InvalidValue {
+                    value: value.to_owned(),
+                    expected: String::from("pcie-ecam, base should be multiple of len"),
+                });
+            }
+
+            cfg.pcie_ecam = Some(MemRegion { base, size: len });
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -3030,6 +3089,9 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                            incompatible with the default ranges calculated by crosvm."),
           #[cfg(target_os = "android")]
           Argument::value("task-profiles", "NAME[,...]", "Comma-separated names of the task profiles to apply to all threads in crosvm including the vCPU threads."),
+          #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+          Argument::value("pcie-ecam", "mmio_base,mmio_length",
+                          "Base and length for PCIE Enhanced Configuration Access Mechanism"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

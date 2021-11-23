@@ -910,6 +910,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         force_s2idle: cfg.force_s2idle,
         pvm_fw: pvm_fw_image,
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        pcie_ecam: cfg.pcie_ecam,
     })
 }
 
