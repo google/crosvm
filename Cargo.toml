@@ -173,4 +173,3 @@ sys_util = { path = "common/sys_util" }
 system_api = { path = "system_api_stub" } # ignored by ebuild
 wire_format_derive = { path = "common/p9/wire_format_derive" } # ignored by ebuild
 minijail = { path = "third_party/minijail/rust/minijail" } # ignored by ebuild
-vmm_vhost = { path = "third_party/vmm_vhost", features = ["vhost-user-master", "vhost-user-slave"] }
