@@ -410,7 +410,7 @@ impl VfioMsixAllocator {
     }
 
     // Allocates a range of addresses from the managed region with a required location.
-    // Returns OutOfSpace if requested range is not available (e.g. already allocated).
+    // Returns a new range of addresses excluding the required range.
     fn allocate_at(&mut self, start: u64, size: u64) -> Result<(), PciDeviceError> {
         if size == 0 {
             return Err(PciDeviceError::MsixAllocatorSizeZero);
@@ -418,24 +418,21 @@ impl VfioMsixAllocator {
         let end = start
             .checked_add(size - 1)
             .ok_or(PciDeviceError::MsixAllocatorOutOfSpace)?;
-        match self
+        while let Some(slot) = self
             .regions
             .iter()
-            .find(|range| range.0 <= start && range.1 >= end)
+            .find(|range| (start <= range.1 && end >= range.0))
             .cloned()
         {
-            Some(slot) => {
-                self.regions.remove(&slot);
-                if slot.0 < start {
-                    self.regions.insert((slot.0, start - 1));
-                }
-                if slot.1 > end {
-                    self.regions.insert((end + 1, slot.1));
-                }
-                Ok(())
+            self.regions.remove(&slot);
+            if slot.0 < start {
+                self.regions.insert((slot.0, start - 1));
             }
-            None => Err(PciDeviceError::MsixAllocatorOutOfSpace),
+            if slot.1 > end {
+                self.regions.insert((end + 1, slot.1));
+            }
         }
+        Ok(())
     }
 }
 
@@ -720,9 +717,7 @@ impl VfioPciDevice {
                         (min(msix_offset + msix_size, mmap_offset + mmap_size) + pgmask) & !pgmask;
                     if end > begin {
                         if let Err(e) = to_mmap.allocate_at(begin, end - begin) {
-                            error!("{} add_bar_mmap_msix failed: {}", self.debug_label(), e);
-                            mmaps.clear();
-                            return mmaps;
+                            error!("add_bar_mmap_msix failed: {}", e);
                         }
                     }
                 }
@@ -1265,5 +1260,78 @@ impl PciDevice for VfioPciDevice {
 
     fn destroy_device(&mut self) {
         self.close();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VfioMsixAllocator;
+
+    #[test]
+    fn no_overlap() {
+        // regions [32, 95]
+        let mut memory = VfioMsixAllocator::new(32, 64).unwrap();
+        memory.allocate_at(0, 16).unwrap();
+        memory.allocate_at(100, 16).unwrap();
+
+        let mut iter = memory.regions.iter();
+        assert_eq!(iter.next(), Some(&(32, 95)));
+    }
+
+    #[test]
+    fn full_overlap() {
+        // regions [32, 95]
+        let mut memory = VfioMsixAllocator::new(32, 64).unwrap();
+        // regions [32, 47], [64, 95]
+        memory.allocate_at(48, 16).unwrap();
+        // regions [64, 95]
+        memory.allocate_at(32, 16).unwrap();
+
+        let mut iter = memory.regions.iter();
+        assert_eq!(iter.next(), Some(&(64, 95)));
+    }
+
+    #[test]
+    fn partial_overlap_one() {
+        // regions [32, 95]
+        let mut memory = VfioMsixAllocator::new(32, 64).unwrap();
+        // regions [32, 47], [64, 95]
+        memory.allocate_at(48, 16).unwrap();
+        // regions [32, 39], [64, 95]
+        memory.allocate_at(40, 16).unwrap();
+
+        let mut iter = memory.regions.iter();
+        assert_eq!(iter.next(), Some(&(32, 39)));
+        assert_eq!(iter.next(), Some(&(64, 95)));
+    }
+
+    #[test]
+    fn partial_overlap_two() {
+        // regions [32, 95]
+        let mut memory = VfioMsixAllocator::new(32, 64).unwrap();
+        // regions [32, 47], [64, 95]
+        memory.allocate_at(48, 16).unwrap();
+        // regions [32, 39], [72, 95]
+        memory.allocate_at(40, 32).unwrap();
+
+        let mut iter = memory.regions.iter();
+        assert_eq!(iter.next(), Some(&(32, 39)));
+        assert_eq!(iter.next(), Some(&(72, 95)));
+    }
+
+    #[test]
+    fn partial_overlap_three() {
+        // regions [32, 95]
+        let mut memory = VfioMsixAllocator::new(32, 64).unwrap();
+        // regions [32, 39], [48, 95]
+        memory.allocate_at(40, 8).unwrap();
+        // regions [32, 39], [48, 63], [72, 95]
+        memory.allocate_at(64, 8).unwrap();
+        // regions [32, 35], [76, 95]
+        memory.allocate_at(36, 40).unwrap();
+
+        let mut iter = memory.regions.iter();
+        assert_eq!(iter.next(), Some(&(32, 35)));
+        assert_eq!(iter.next(), Some(&(76, 95)));
     }
 }
