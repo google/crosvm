@@ -363,6 +363,13 @@ bitflags! {
         /// mapping requests are pagesize-aligned. This field automatically set by the server and
         /// this feature is enabled by default.
         const MAP_ALIGNMENT = MAP_ALIGNMENT;
+
+
+        /// Indicates that the `max_pages` field of the `InitOut` struct is valid.
+        ///
+        /// This field is used by the kernel driver to determine the maximum number of pages that
+        /// may be used for any read or write requests.
+        const MAX_PAGES = MAX_PAGES;
     }
 }
 

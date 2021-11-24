@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::cmp::{max, min};
 use std::convert::TryInto;
 use std::ffi::CStr;
 use std::io;
@@ -954,6 +955,7 @@ impl<F: FileSystem + Sync> Server<F> {
             | FsOptions::DO_READDIRPLUS
             | FsOptions::READDIRPLUS_AUTO
             | FsOptions::ATOMIC_O_TRUNC
+            | FsOptions::MAX_PAGES
             | FsOptions::MAP_ALIGNMENT;
 
         let capable = FsOptions::from_bits_truncate(flags);
@@ -973,6 +975,11 @@ impl<F: FileSystem + Sync> Server<F> {
                     enabled.remove(FsOptions::ATOMIC_O_TRUNC);
                 }
 
+                let max_write = self.fs.max_buffer_size();
+                let max_pages = min(
+                    max(max_readahead, max_write) / pagesize() as u32,
+                    u16::MAX as u32,
+                ) as u16;
                 let out = InitOut {
                     major: KERNEL_VERSION,
                     minor: KERNEL_MINOR_VERSION,
@@ -980,8 +987,9 @@ impl<F: FileSystem + Sync> Server<F> {
                     flags: enabled.bits(),
                     max_background: ::std::u16::MAX,
                     congestion_threshold: (::std::u16::MAX / 4) * 3,
-                    max_write: self.fs.max_buffer_size(),
+                    max_write,
                     time_gran: 1, // nanoseconds
+                    max_pages,
                     map_alignment: pagesize().trailing_zeros() as u16,
                     ..Default::default()
                 };
