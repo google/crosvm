@@ -489,7 +489,7 @@ fn create_trackpad_device(
     idx: u32,
 ) -> DeviceResult {
     let socket = trackpad_spec.get_path().into_unix_stream().map_err(|e| {
-        error!("failed configuring virtio trackpad: {}", e);
+        error!("failed configuring virtio trackpad: {:#}", e);
         e
     })?;
 
@@ -511,7 +511,7 @@ fn create_trackpad_device(
 
 fn create_mouse_device<T: IntoUnixStream>(cfg: &Config, mouse_socket: T, idx: u32) -> DeviceResult {
     let socket = mouse_socket.into_unix_stream().map_err(|e| {
-        error!("failed configuring virtio mouse: {}", e);
+        error!("failed configuring virtio mouse: {:#}", e);
         e
     })?;
 
@@ -530,7 +530,7 @@ fn create_keyboard_device<T: IntoUnixStream>(
     idx: u32,
 ) -> DeviceResult {
     let socket = keyboard_socket.into_unix_stream().map_err(|e| {
-        error!("failed configuring virtio keyboard: {}", e);
+        error!("failed configuring virtio keyboard: {:#}", e);
         e
     })?;
 
@@ -549,7 +549,7 @@ fn create_switches_device<T: IntoUnixStream>(
     idx: u32,
 ) -> DeviceResult {
     let socket = switches_socket.into_unix_stream().map_err(|e| {
-        error!("failed configuring virtio switches: {}", e);
+        error!("failed configuring virtio switches: {:#}", e);
         e
     })?;
 
@@ -2111,7 +2111,7 @@ where
             let (vcpu, vcpu_run_handle) = match runnable_vcpu {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("failed to start vcpu {}: {}", cpu_id, e);
+                    error!("failed to start vcpu {}: {:#}", cpu_id, e);
                     return;
                 }
             };

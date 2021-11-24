@@ -328,7 +328,7 @@ pub fn run_console_device(program_name: &str, args: std::env::Args) -> anyhow::R
     };
 
     if let Err(e) = run_console(&params, &socket) {
-        bail!("error occurred: {}", e);
+        bail!("error occurred: {:#}", e);
     }
 
     // Restore terminal capabilities back to what they were before
