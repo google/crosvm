@@ -127,6 +127,9 @@ pub enum Error {
     /// Bar not allocated.
     #[error("bar not allocated: {0}")]
     BarNotAllocated(PciBarIndex),
+    /// Call event not set for a vring.
+    #[error("call event not set for {}-th vring: {0}")]
+    CallEventNotSet(usize),
     /// Failed to create a listener.
     #[error("failed to create a listener: {0}")]
     CreateListener(std::io::Error),
@@ -142,6 +145,12 @@ pub enum Error {
     /// Failed to read kick event for a vring.
     #[error("Failed to read kick event for {}-th vring: {1} {0}")]
     FailedToReadKickEvt(base::Error, usize),
+    /// Failed to receive doorbell data.
+    #[error("failed to receive doorbell data: {0}")]
+    FailedToReceiveDoorbellData(TubeError),
+    /// Failed to write call event.
+    #[error("failed to write call event for {}=th ring: {1} {0}")]
+    FailedToWriteCallEvent(base::Error, usize),
     /// Invalid PCI bar index.
     #[error("invalid bar index: {0}")]
     InvalidBar(PciBarIndex),
@@ -328,15 +337,24 @@ enum Token {
     SiblingKick { index: usize },
     // crosvm has requested the device to shut down.
     Kill,
+    // Message from the main thread.
+    MainThread,
 }
 
 impl Worker {
-    fn run(&mut self, rx_queue_evt: Event, tx_queue_evt: Event, kill_evt: Event) -> Result<()> {
+    fn run(
+        &mut self,
+        rx_queue_evt: Event,
+        tx_queue_evt: Event,
+        main_thread_tube: Tube,
+        kill_evt: Event,
+    ) -> Result<()> {
         // TODO(abhishekbh): Should interrupt.signal_config_changed be called here ?.
         let mut wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (&self.slave_req_helper, Token::SiblingSocket),
             (&rx_queue_evt, Token::RxQueue),
             (&tx_queue_evt, Token::TxQueue),
+            (&main_thread_tube, Token::MainThread),
             (&kill_evt, Token::Kill),
         ])
         .map_err(Error::CreateWaitContext)?;
@@ -397,6 +415,12 @@ impl Worker {
                                 "error processing sibling kick for {}-th vring: {}",
                                 index, e
                             );
+                            break 'wait;
+                        }
+                    }
+                    Token::MainThread => {
+                        if let Err(e) = self.process_doorbell_message(&main_thread_tube) {
+                            error!("error processing doorbell message: {}", e);
                             break 'wait;
                         }
                     }
@@ -834,6 +858,25 @@ impl Worker {
         self.interrupt.signal_used_queue(kick_data.msi_vector);
         Ok(())
     }
+
+    // Processes a message sent, on `main_thread_tube`, in response to a doorbell write. It writes
+    // to the corresponding call event of the vring index sent over `main_thread_tube`.
+    fn process_doorbell_message(&mut self, main_thread_tube: &Tube) -> Result<()> {
+        // It's okay to call |expect| here as there's no way to indicate failure on
+        // a doorbell write operation. We'd rather fail early than have inconsistent
+        // state.
+        let index: usize = main_thread_tube
+            .recv()
+            .map_err(Error::FailedToReceiveDoorbellData)?;
+        let call_evt = self.vrings[index]
+            .call_evt
+            .as_ref()
+            .ok_or(Error::CallEventNotSet(index))?;
+        call_evt
+            .write(1)
+            .map_err(|e| Error::FailedToWriteCallEvent(e, index))?;
+        Ok(())
+    }
 }
 
 // Doorbell capability of the proxy device.
@@ -910,6 +953,9 @@ pub struct VirtioVhostUser {
 
     // To communicate with the main process.
     main_process_tube: Option<Tube>,
+
+    // To communicate with the worker thread.
+    worker_thread_tube: Option<Tube>,
 }
 
 impl VirtioVhostUser {
@@ -934,6 +980,7 @@ impl VirtioVhostUser {
             activate_params: None,
             sibling_connected: false,
             main_process_tube: Some(main_process_tube),
+            worker_thread_tube: None,
         })
     }
 
@@ -947,6 +994,22 @@ impl VirtioVhostUser {
         }
 
         Ok(())
+    }
+
+    // Handles writes to the DOORBELL region of the BAR as per the VVU spec.
+    fn write_bar_doorbell(&mut self, offset: u64) {
+        // The |offset| represents the Vring number who call event needs to be
+        // written to.
+        match &self.worker_thread_tube {
+            Some(worker_thread_tube) => {
+                if let Err(e) = worker_thread_tube.send(&offset) {
+                    error!("failed to send doorbell write request: {}", e);
+                }
+            }
+            None => {
+                error!("worker thread tube not allocated");
+            }
+        }
     }
 
     // Implement writing to the notifications bar as per the VVU spec.
@@ -1064,6 +1127,11 @@ impl VirtioVhostUser {
             };
         }
 
+        // Create tube to communicate with the worker thread.
+        let (worker_thread_tube, main_thread_tube) =
+            Tube::pair().expect("failed to create tube pair");
+        self.worker_thread_tube = Some(worker_thread_tube);
+
         // TODO(abhishekbh): Should interrupt.signal_config_changed be called ?
         self.sibling_connected = true;
         let mut activate_params = self.activate_params.take().unwrap();
@@ -1085,7 +1153,7 @@ impl VirtioVhostUser {
                 };
                 let rx_queue_evt = activate_params.queue_evts.remove(0);
                 let tx_queue_evt = activate_params.queue_evts.remove(0);
-                let _ = worker.run(rx_queue_evt, tx_queue_evt, kill_evt);
+                let _ = worker.run(rx_queue_evt, tx_queue_evt, main_thread_tube, kill_evt);
                 worker
             });
 
@@ -1260,8 +1328,7 @@ impl VirtioDevice for VirtioVhostUser {
         }
 
         if (DOORBELL_OFFSET..NOTIFICATIONS_OFFSET).contains(&offset) {
-            // TODO(abhishekbh): Implement doorbell writes.
-            unimplemented!();
+            self.write_bar_doorbell(offset - DOORBELL_OFFSET);
         } else if (NOTIFICATIONS_OFFSET..SHARED_MEMORY_OFFSET).contains(&offset) {
             self.write_bar_notifications(offset - NOTIFICATIONS_OFFSET, data);
         } else {
