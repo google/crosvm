@@ -16,15 +16,22 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixListener;
 use std::thread;
 
-use base::{error, info, AsRawDescriptor, Event, EventType, PollToken, RawDescriptor, WaitContext};
+use base::{
+    error, info, AsRawDescriptor, Event, EventType, FromRawDescriptor, IntoRawDescriptor,
+    PollToken, RawDescriptor, SafeDescriptor, Tube, TubeError, WaitContext,
+};
 use data_model::{DataInit, Le32};
 use libc::{recv, MSG_DONTWAIT, MSG_PEEK};
 use resources::Alloc;
+use vm_control::{VmMemoryRequest, VmMemoryResponse};
 use vm_memory::GuestMemory;
 use vmm_vhost::{
     connection::socket::Endpoint as SocketEndpoint,
     connection::EndpointExt,
-    message::{MasterReq, VhostUserMsgHeader},
+    message::{
+        MasterReq, VhostUserMemory, VhostUserMemoryRegion, VhostUserMsgHeader,
+        VhostUserMsgValidator, VhostUserU64,
+    },
     Protocol, SlaveReqHelper,
 };
 
@@ -55,6 +62,11 @@ const MAX_VHOST_DEVICE_QUEUES: usize = 16;
 const NUM_PROXY_DEVICE_QUEUES: usize = 2;
 const PROXY_DEVICE_QUEUE_SIZE: u16 = 256;
 const PROXY_DEVICE_QUEUE_SIZES: &[u16] = &[PROXY_DEVICE_QUEUE_SIZE; NUM_PROXY_DEVICE_QUEUES];
+const CONFIG_UUID_SIZE: usize = 16;
+// Defined in the specification here -
+// https://stefanha.github.io/virtio/vhost-user-slave.html#x1-2870004.
+const VIRTIO_VHOST_USER_STATUS_SLAVE_UP: u8 = 0;
+
 const BAR_INDEX: u8 = 2;
 // Bar size represents the amount of memory to be mapped for a sibling VM. Each
 // Virtio Vhost User Slave implementation requires access to the entire sibling
@@ -67,8 +79,6 @@ const BAR_INDEX: u8 = 2;
 // in our interest to not waste space here and correlate it tightly to the
 // actual maximum memory a sibling VM can have.
 const BAR_SIZE: u64 = 1 << 33;
-const CONFIG_UUID_SIZE: usize = 16;
-const VIRTIO_VHOST_USER_STATUS_SLAVE_UP: u8 = 0;
 
 // Bar configuration.
 // All offsets are from the starting of bar `BAR_INDEX`.
@@ -107,12 +117,16 @@ const SIBLING_ACTION_MESSAGE_TYPES: &[MasterReq] = &[
     MasterReq::SET_INFLIGHT_FD,
 ];
 
+// TODO(abhishekbh): Migrate to anyhow::Error.
 #[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
     /// Failed to accept connection on a socket.
     #[error("failed to accept connection on a socket: {0}")]
     AcceptConnection(std::io::Error),
+    /// Bar not allocated.
+    #[error("bar not allocated: {0}")]
+    BarNotAllocated(PciBarIndex),
     /// Failed to create a listener.
     #[error("failed to create a listener: {0}")]
     CreateListener(std::io::Error),
@@ -125,9 +139,18 @@ pub enum Error {
     /// Failed to send ACK in response to Vhost-user sibling message.
     #[error("Failed to send Ack: {0}")]
     FailedAck(VhostError),
+    /// Invalid PCI bar index.
+    #[error("invalid bar index: {0}")]
+    InvalidBar(PciBarIndex),
     /// Invalid Vhost-user sibling message.
     #[error("invalid Vhost-user sibling message")]
     InvalidSiblingMessage,
+    /// Failed to send a memory mapping request.
+    #[error("memory mapping request failed")]
+    MemoryMappingRequestFailure,
+    /// Failed to parse vring kick / call file descriptors.
+    #[error("failed to parse vring kick / call file descriptors: {0}")]
+    ParseVringFdRequest(VhostError),
     /// Failed to read payload of a Vhost-user sibling header.
     #[error("failed to read Vhost-user sibling message header: {0}")]
     ReadSiblingHeader(VhostError),
@@ -140,6 +163,12 @@ pub enum Error {
     /// There are no more available descriptors to receive into.
     #[error("no rx descriptors available")]
     RxDescriptorsExhausted,
+    /// Failed to receive a memory mapping request from the main process.
+    #[error("receiving mapping request from tube failed: {0}")]
+    TubeReceiveFailure(TubeError),
+    /// Failed to send a memory mapping request to the main process.
+    #[error("sending mapping request to tube failed: {0}")]
+    TubeSendFailure(TubeError),
     /// Removing read event from the sibling VM socket events failed.
     #[error("failed to disable EPOLLIN on sibling VM socket fd: {0}")]
     WaitContextDisableSiblingVmSocket(base::Error),
@@ -226,6 +255,36 @@ fn check_attached_files(
     }
 }
 
+// Check if |hdr| size and |size| is of the |expected| size.
+fn check_request_size(
+    hdr: &VhostUserMsgHeader<MasterReq>,
+    size: usize,
+    expected: usize,
+) -> Result<()> {
+    if hdr.get_size() as usize != expected
+        || hdr.is_reply()
+        || hdr.get_version() != 0x1
+        || size != expected
+    {
+        return Err(Error::InvalidSiblingMessage);
+    }
+    Ok(())
+}
+
+// Check if `hdr` is valid.
+fn is_header_valid(hdr: &VhostUserMsgHeader<MasterReq>) -> bool {
+    if hdr.is_reply() || hdr.get_version() != 0x1 {
+        return false;
+    }
+    true
+}
+
+// Vring related data sent through |SET_VRING_KICK| and |SET_VRING_CALL|.
+#[derive(Default)]
+struct Vring {
+    call_evt: Option<Event>,
+}
+
 // Processes messages from the Vhost-user sibling and sends it to the device backend and
 // vice-versa.
 struct Worker {
@@ -236,6 +295,20 @@ struct Worker {
 
     // Helper to receive and parse messages from the Vhost-user sibling.
     slave_req_helper: SlaveReqHelper<SocketEndpoint<MasterReq>>,
+
+    // To communicate with the main process.
+    main_process_tube: Tube,
+
+    // The bar representing the doorbell, notification and shared memory regions.
+    pci_bar: Alloc,
+
+    // Offset at which to allocate the next shared memory region, corresponding
+    // to the |SET_MEM_TABLE| Vhost master message.
+    mem_offset: usize,
+
+    // Vring related data sent through |SET_VRING_KICK| and |SET_VRING_CALL|
+    // messages.
+    vrings: [Vring; MAX_VHOST_DEVICE_QUEUES],
 }
 
 impl Worker {
@@ -357,7 +430,30 @@ impl Worker {
                 let bytes_written = {
                     if is_action_request(&hdr) {
                         // TODO(abhishekbh): Implement action messages.
-                        unimplemented!()
+                        let res = match hdr.get_code() {
+                            MasterReq::SET_MEM_TABLE => {
+                                // Map the sibling memory in this process and forward the sibling
+                                // memory info to the slave. Only if the mapping succeeds send info
+                                // along to the slave, else send a failed Ack back to the master.
+                                self.set_mem_table(&hdr, &buf, files)
+                            }
+                            MasterReq::SET_VRING_CALL => {
+                                self.set_vring_evt(&hdr, &buf, files, false)
+                            }
+                            _ => {
+                                unimplemented!("unimplemented action message:{:?}", hdr.get_code());
+                            }
+                        };
+
+                        // If the "action" in response to the action messages
+                        // failed then no bytes have been written to the virt
+                        // queue. Else, the action is done. Now forward the
+                        // message to the virt queue and return how many bytes
+                        // were written.
+                        match res {
+                            Ok(()) => self.forward_msg_to_device(desc, &hdr, &buf),
+                            Err(e) => Err(e),
+                        }
                     } else {
                         // If no special processing is required. Forward this
                         // message as is to the device backend.
@@ -380,7 +476,8 @@ impl Worker {
                             panic!("failed to send interrupt");
                         }
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        error!("failed to forward message to the device: {}", e);
                         self.slave_req_helper
                             .send_ack_message(&hdr, false)
                             .map_err(Error::FailedAck)?;
@@ -474,6 +571,149 @@ impl Worker {
         Ok(bytes_written)
     }
 
+    // Handles `SET_MEM_TABLE` message from Vhost master. Parses `hdr` into
+    // memory region information. For each memory region sent by the Vhost
+    // Master, it mmaps a region of memory in the main process. At the end of
+    // this function both this VMM and the Vhost Master have two regions of
+    // virtual memory pointing to the same physical page. These regions will be
+    // accessed by the device VM and the silbing VM.
+    fn set_mem_table(
+        &mut self,
+        hdr: &VhostUserMsgHeader<MasterReq>,
+        payload: &[u8],
+        files: Option<Vec<File>>,
+    ) -> Result<()> {
+        if !is_header_valid(hdr) {
+            return Err(Error::InvalidSiblingMessage);
+        }
+
+        // `hdr` is followed by a `payload`. `payload` consists of metadata about the number of
+        // memory regions and then memory regions themeselves. The memory regions structs consist of
+        // metadata about actual device related memory passed from the sibling. Ensure that the size
+        // of the payload is consistent with this structure.
+        let (msg_slice, regions_slice) = payload.split_at(std::mem::size_of::<VhostUserMemory>());
+        let msg = VhostUserMemory::from_slice(msg_slice).ok_or(Error::InvalidSiblingMessage)?;
+        if !msg.is_valid() {
+            return Err(Error::InvalidSiblingMessage);
+        }
+
+        let payload_size = payload.len();
+        let memory_region_metadata_size = std::mem::size_of::<VhostUserMemory>();
+        if payload_size
+            != memory_region_metadata_size
+                + msg.num_regions as usize * std::mem::size_of::<VhostUserMemoryRegion>()
+        {
+            return Err(Error::InvalidSiblingMessage);
+        }
+
+        let regions: Vec<&VhostUserMemoryRegion> = regions_slice
+            .chunks(std::mem::size_of::<VhostUserMemoryRegion>())
+            .map(VhostUserMemoryRegion::from_slice)
+            .collect::<Option<_>>()
+            .ok_or_else(|| {
+                error!("failed to construct VhostUserMemoryRegion array");
+                Error::InvalidSiblingMessage
+            })?;
+
+        if !regions.iter().all(|r| r.is_valid()) {
+            return Err(Error::InvalidSiblingMessage);
+        }
+
+        let files = files.ok_or(Error::InvalidSiblingMessage)?;
+        if files.len() != msg.num_regions as usize {
+            return Err(Error::InvalidSiblingMessage);
+        }
+
+        self.create_sibling_guest_memory(&regions, files)?;
+        Ok(())
+    }
+
+    // Mmaps Vhost master memory in this device's VMM's main process' address
+    // space.
+    pub fn create_sibling_guest_memory(
+        &mut self,
+        contexts: &[&VhostUserMemoryRegion],
+        files: Vec<File>,
+    ) -> Result<()> {
+        if contexts.len() != files.len() {
+            return Err(Error::InvalidSiblingMessage);
+        }
+
+        for (region, file) in contexts.iter().zip(files.into_iter()) {
+            // TODO(abhishekbh): Figure out how to accomodate each |region|'s
+            // mmap offset. During testing it was 0 but we should probably account for it.
+            if region.mmap_offset != 0 {
+                error!("Region mmap offset is not 0");
+            }
+
+            let request = VmMemoryRequest::RegisterFdAtPciBarOffset(
+                self.pci_bar,
+                SafeDescriptor::from(file),
+                region.memory_size as usize,
+                self.mem_offset as u64,
+            );
+            self.process_memory_mapping_request(&request)?;
+            self.mem_offset += region.memory_size as usize;
+        }
+        Ok(())
+    }
+
+    // Sends memory mapping request to the main process. If successful adds the
+    // mmaped info into |sibling_mem|, else returns error.
+    fn process_memory_mapping_request(&mut self, request: &VmMemoryRequest) -> Result<()> {
+        self.main_process_tube
+            .send(request)
+            .map_err(Error::TubeSendFailure)?;
+
+        let response = self
+            .main_process_tube
+            .recv()
+            .map_err(Error::TubeReceiveFailure)?;
+        match response {
+            VmMemoryResponse::RegisterMemory { .. } => Ok(()),
+            VmMemoryResponse::Err(e) => {
+                error!("memory mapping failed: {}", e);
+                Err(Error::MemoryMappingRequestFailure)
+            }
+            _ => Err(Error::MemoryMappingRequestFailure),
+        }
+    }
+
+    // Handles |SET_VRING_CALL| and |SET_VRING_KICK| based on |is_kick_evt|.
+    fn set_vring_evt(
+        &mut self,
+        hdr: &VhostUserMsgHeader<MasterReq>,
+        buf: &[u8],
+        files: Option<Vec<File>>,
+        is_kick_evt: bool,
+    ) -> Result<()> {
+        let size = buf.len();
+        check_request_size(hdr, size, std::mem::size_of::<VhostUserU64>())?;
+
+        let (index, file) = self
+            .slave_req_helper
+            .handle_vring_fd_request(buf, files)
+            .map_err(Error::ParseVringFdRequest)?;
+
+        if index as usize >= MAX_VHOST_DEVICE_QUEUES {
+            error!("illegal Vring index:{}", index);
+            return Err(Error::InvalidSiblingMessage);
+        }
+
+        if let Some(file) = file {
+            if is_kick_evt {
+                // TODO(abhishekbh): Implement SET_VRING_KICK.
+                unimplemented!();
+            } else {
+                // Safe because we own the file.
+                self.vrings[index as usize].call_evt =
+                    unsafe { Some(Event::from_raw_descriptor(file.into_raw_descriptor())) };
+            }
+        }
+
+        Ok(())
+    }
+
     // Processes data from the device backend (via virtio Tx queue) and forward it to
     // the Vhost-user sibling over its socket connection.
     fn process_tx(&mut self) {
@@ -555,8 +795,11 @@ pub struct VirtioVhostUser {
 
     // Device configuration.
     config: VirtioVhostUserConfig,
+
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker>>,
+
+    // The bar representing the doorbell, notification and shared memory regions.
     pci_bar: Option<Alloc>,
     // The device backend queue index selected by the driver by writing to the
     // Notifications region at offset `NOTIFICATIONS_MSIX_VECTOR_SELECT_OFFSET`
@@ -570,10 +813,17 @@ pub struct VirtioVhostUser {
 
     // Is Vhost-user sibling connected.
     sibling_connected: bool,
+
+    // To communicate with the main process.
+    main_process_tube: Option<Tube>,
 }
 
 impl VirtioVhostUser {
-    pub fn new(base_features: u64, listener: UnixListener) -> Result<VirtioVhostUser> {
+    pub fn new(
+        base_features: u64,
+        listener: UnixListener,
+        main_process_tube: Tube,
+    ) -> Result<VirtioVhostUser> {
         Ok(VirtioVhostUser {
             base_features,
             listener,
@@ -589,7 +839,20 @@ impl VirtioVhostUser {
             notification_msix_vectors: [None; MAX_VHOST_DEVICE_QUEUES],
             activate_params: None,
             sibling_connected: false,
+            main_process_tube: Some(main_process_tube),
         })
+    }
+
+    fn check_bar_metadata(&self, bar_index: PciBarIndex) -> Result<()> {
+        if bar_index != BAR_INDEX as usize {
+            return Err(Error::InvalidBar(bar_index));
+        }
+
+        if self.pci_bar.is_none() {
+            return Err(Error::BarNotAllocated(bar_index));
+        }
+
+        Ok(())
     }
 
     // Implement writing to the notifications bar as per the VVU spec.
@@ -599,7 +862,7 @@ impl VirtioVhostUser {
             return;
         }
 
-        // The driver will first write to `NOTIFICATIONS_VRING_SELECT_OFFSET` to
+        // The driver will first write to |NOTIFICATIONS_VRING_SELECT_OFFSET| to
         // specify which index in `self.notification_msix_vectors` to write to.
         // Then it writes the msix vector value by writing to
         // `NOTIFICATIONS_MSIX_VECTOR_SELECT_OFFSET`.
@@ -634,10 +897,10 @@ impl VirtioVhostUser {
             return;
         }
 
-        // The driver will first write to `NOTIFICATIONS_VRING_SELECT_OFFSET` to
-        // specify which index in `self.notification_msix_vectors` to read from.
+        // The driver will first write to |NOTIFICATIONS_VRING_SELECT_OFFSET| to
+        // specify which index in |self.notification_msix_vectors| to read from.
         // Then it reads the msix vector value by reading from
-        // `NOTIFICATIONS_MSIX_VECTOR_SELECT_OFFSET`.
+        // |NOTIFICATIONS_MSIX_VECTOR_SELECT_OFFSET|.
         // Return 0 if a vector value hasn't been set for the queue.
         let mut val = 0;
         if offset == NOTIFICATIONS_VRING_SELECT_OFFSET {
@@ -686,6 +949,11 @@ impl VirtioVhostUser {
         let slave_req_helper: SlaveReqHelper<SocketEndpoint<MasterReq>> =
             SlaveReqHelper::new(SocketEndpoint::from(socket), Protocol::Regular);
 
+        let main_process_tube = self.main_process_tube.take().expect("tube missing");
+
+        // Safe because a PCI bar is guaranteed to be allocated at this point.
+        let pci_bar = self.pci_bar.expect("PCI bar unallocated");
+
         // TODO(abhishekbh): Should interrupt.signal_config_changed be called ?
         self.sibling_connected = true;
         let mut activate_params = self.activate_params.take().unwrap();
@@ -700,6 +968,10 @@ impl VirtioVhostUser {
                     rx_queue,
                     tx_queue,
                     slave_req_helper,
+                    main_process_tube,
+                    pci_bar,
+                    mem_offset: SHARED_MEMORY_OFFSET as usize,
+                    vrings: Default::default(),
                 };
                 let rx_queue_evt = activate_params.queue_evts.remove(0);
                 let tx_queue_evt = activate_params.queue_evts.remove(0);
@@ -817,6 +1089,9 @@ impl VirtioDevice for VirtioVhostUser {
     }
 
     fn get_device_bars(&mut self, address: PciAddress) -> Vec<PciBarConfiguration> {
+        // A PCI bar corresponding to |Doorbell|Notification|Shared Memory| will
+        // be allocated and its address (64 bit) will be stored in BAR 2 and BAR
+        // 3. This is as per the VVU spec and qemu implementation.
         self.pci_bar = Some(Alloc::PciBar {
             bus: address.bus,
             dev: address.dev,
@@ -828,6 +1103,8 @@ impl VirtioDevice for VirtioVhostUser {
             BAR_INDEX as usize,
             BAR_SIZE as u64,
             PciBarRegionType::Memory64BitRegion,
+            // NotPrefetchable so as to exit on every read / write event in the
+            // guest.
             PciBarPrefetchable::NotPrefetchable,
         )]
     }
@@ -854,13 +1131,8 @@ impl VirtioDevice for VirtioVhostUser {
     }
 
     fn read_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &mut [u8]) {
-        if self.pci_bar.is_none() {
-            error!("PCI bar is not allocated");
-            return;
-        }
-
-        if bar_index != BAR_INDEX as PciBarIndex {
-            error!("wrong PCI bar: {}", bar_index);
+        if let Err(e) = self.check_bar_metadata(bar_index) {
+            error!("invalid bar metadata: {}", e);
             return;
         }
 
@@ -872,13 +1144,8 @@ impl VirtioDevice for VirtioVhostUser {
     }
 
     fn write_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &[u8]) {
-        if self.pci_bar.is_none() {
-            error!("PCI bar is not allocated");
-            return;
-        }
-
-        if bar_index != BAR_INDEX as PciBarIndex {
-            error!("wrong PCI bar: {}", bar_index);
+        if let Err(e) = self.check_bar_metadata(bar_index) {
+            error!("invalid bar metadata: {}", e);
             return;
         }
 

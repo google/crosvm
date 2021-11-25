@@ -214,13 +214,13 @@ pub fn create_vhost_user_snd_device(cfg: &Config, option: &VhostUserOption) -> D
     })
 }
 
-pub fn create_vvu_proxy_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
+pub fn create_vvu_proxy_device(cfg: &Config, opt: &VhostUserOption, tube: Tube) -> DeviceResult {
     let listener = UnixListener::bind(&opt.socket).map_err(|e| {
         error!("failed to bind listener for vvu proxy device: {}", e);
         e
     })?;
 
-    let dev = VirtioVhostUser::new(virtio::base_features(cfg.protected_vm), listener)
+    let dev = VirtioVhostUser::new(virtio::base_features(cfg.protected_vm), listener, tube)
         .context("failed to create VVU proxy device")?;
 
     Ok(VirtioDeviceStub {

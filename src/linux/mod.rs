@@ -99,6 +99,7 @@ fn create_virtio_devices(
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     fs_device_tubes: &mut Vec<Tube>,
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
+    vvu_proxy_device_tubes: &mut Vec<Tube>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -236,7 +237,11 @@ fn create_virtio_devices(
     }
 
     for opt in &cfg.vvu_proxy {
-        devs.push(create_vvu_proxy_device(cfg, opt)?);
+        devs.push(create_vvu_proxy_device(
+            cfg,
+            opt,
+            vvu_proxy_device_tubes.remove(0),
+        )?);
     }
 
     #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
@@ -449,6 +454,7 @@ fn create_devices(
     #[cfg(feature = "usb")] usb_provider: HostBackendDeviceProvider,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
+    vvu_proxy_device_tubes: &mut Vec<Tube>,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
     let mut balloon_inflate_tube: Option<Tube> = None;
@@ -579,6 +585,7 @@ fn create_devices(
         fs_device_tubes,
         #[cfg(feature = "gpu")]
         render_server_fd,
+        vvu_proxy_device_tubes,
     )?;
 
     for stub in stubs {
@@ -978,6 +985,14 @@ where
         fs_device_tubes.push(fs_device_tube);
     }
 
+    let mut vvu_proxy_device_tubes = Vec::new();
+    for _ in 0..cfg.vvu_proxy.len() {
+        let (vvu_proxy_host_tube, vvu_proxy_device_tube) =
+            Tube::pair().context("failed to create VVU proxy tube")?;
+        control_tubes.push(TaggedControlTube::VmMemory(vvu_proxy_host_tube));
+        vvu_proxy_device_tubes.push(vvu_proxy_device_tube);
+    }
+
     let exit_evt = Event::new().context("failed to create event")?;
     let reset_evt = Event::new().context("failed to create event")?;
     let crash_evt = Event::new().context("failed to create event")?;
@@ -1037,6 +1052,7 @@ where
         Arc::clone(&map_request),
         #[cfg(feature = "gpu")]
         render_server_fd,
+        &mut vvu_proxy_device_tubes,
     )?;
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
