@@ -9,10 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::u32;
 
-use base::{
-    error, pagesize, AsRawDescriptor, Event, MappedRegion, MemoryMapping, MemoryMappingBuilder,
-    RawDescriptor, Tube,
-};
+use base::{error, pagesize, AsRawDescriptor, Event, RawDescriptor, Tube};
 use hypervisor::{Datamatch, MemSlot};
 
 use resources::{Alloc, MmioType, SystemAllocator};
@@ -446,13 +443,6 @@ enum DeviceData {
     IntelGfxData { opregion_index: u32 },
 }
 
-struct MmapInfo {
-    _mmap: MemoryMapping,
-    slot: MemSlot,
-    gpa: u64,
-    size: u64,
-}
-
 /// Implements the Vfio Pci device, then a pci device is added into vm
 pub struct VfioPciDevice {
     device: Arc<VfioDevice>,
@@ -469,7 +459,7 @@ pub struct VfioPciDevice {
     vm_socket_mem: Tube,
     device_data: Option<DeviceData>,
 
-    mmap_info: Vec<MmapInfo>,
+    mmap_slots: Vec<MemSlot>,
     remap: bool,
 }
 
@@ -532,7 +522,7 @@ impl VfioPciDevice {
             irq_type: None,
             vm_socket_mem: vfio_device_socket_mem,
             device_data,
-            mmap_info: Vec::new(),
+            mmap_slots: Vec::new(),
             remap: true,
         }
     }
@@ -749,8 +739,8 @@ impl VfioPciDevice {
         mmaps
     }
 
-    fn add_bar_mmap(&self, index: u32, bar_addr: u64) -> Vec<MmapInfo> {
-        let mut mmaps_info: Vec<MmapInfo> = Vec::new();
+    fn add_bar_mmap(&self, index: u32, bar_addr: u64) -> Vec<MemSlot> {
+        let mut mmaps_slots: Vec<MemSlot> = Vec::new();
         if self.device.get_region_flags(index) & VFIO_REGION_INFO_FLAG_MMAP != 0 {
             // the bar storing msix table and pba couldn't mmap.
             // these bars should be trapped, so that msix could be emulated.
@@ -760,7 +750,7 @@ impl VfioPciDevice {
                 mmaps = self.add_bar_mmap_msix(index, mmaps);
             }
             if mmaps.is_empty() {
-                return mmaps_info;
+                return mmaps_slots;
             }
 
             for mmap in mmaps.iter() {
@@ -792,74 +782,20 @@ impl VfioPciDevice {
                 };
                 match response {
                     VmMemoryResponse::RegisterMemory { pfn: _, slot } => {
-                        // Even if vm has mapped this region, but it is in vm main process,
-                        // device process doesn't has this mapping, but vfio_dma_map() need it
-                        // in device process, so here map it again.
-                        let mmap = match MemoryMappingBuilder::new(mmap_size as usize)
-                            .from_file(self.device.device_file())
-                            .offset(offset)
-                            .build()
-                        {
-                            Ok(v) => v,
-                            Err(_e) => break,
-                        };
-                        let host = (&mmap).as_ptr() as u64;
-                        let pgsz = pagesize() as u64;
-                        let size = (mmap_size + pgsz - 1) / pgsz * pgsz;
-                        // Safe because the given guest_map_start is valid guest bar address. and
-                        // the host pointer is correct and valid guaranteed by MemoryMapping interface.
-                        // The size will be extened to page size aligned if it is not which is also
-                        // safe because VFIO actually maps the BAR with page size aligned size.
-                        match unsafe { self.device.vfio_dma_map(guest_map_start, size, host, true) }
-                        {
-                            Ok(_) => mmaps_info.push(MmapInfo {
-                                _mmap: mmap,
-                                slot,
-                                gpa: guest_map_start,
-                                size,
-                            }),
-                            Err(e) => {
-                                error!(
-                                    "{} {}, index: {}, bar_addr:0x{:x}, host:0x{:x}",
-                                    self.debug_label(),
-                                    e,
-                                    index,
-                                    bar_addr,
-                                    host
-                                );
-                                mmaps_info.push(MmapInfo {
-                                    _mmap: mmap,
-                                    slot,
-                                    gpa: 0,
-                                    size: 0,
-                                });
-                                break;
-                            }
-                        }
+                        mmaps_slots.push(slot as MemSlot);
                     }
                     _ => break,
                 }
             }
         }
 
-        mmaps_info
+        mmaps_slots
     }
 
-    fn remove_bar_mmap(&self, mmap_info: &MmapInfo) {
-        if mmap_info.size != 0
-            && self
-                .device
-                .vfio_dma_unmap(mmap_info.gpa, mmap_info.size)
-                .is_err()
-        {
-            error!(
-                "vfio_dma_unmap fail, addr: {:x}, size: {:x}",
-                mmap_info.gpa, mmap_info.size
-            );
-        }
+    fn remove_bar_mmap(&self, mmap_slot: &MemSlot) {
         if self
             .vm_socket_mem
-            .send(&VmMemoryRequest::UnregisterMemory(mmap_info.slot as u32))
+            .send(&VmMemoryRequest::UnregisterMemory(*mmap_slot as u32))
             .is_err()
         {
             error!("failed to send UnregisterMemory request");
@@ -871,19 +807,19 @@ impl VfioPciDevice {
     }
 
     fn disable_bars_mmap(&mut self) {
-        for mmap_info in self.mmap_info.iter() {
-            self.remove_bar_mmap(mmap_info);
+        for mmap_slot in self.mmap_slots.iter() {
+            self.remove_bar_mmap(mmap_slot);
         }
-        self.mmap_info.clear();
+        self.mmap_slots.clear();
     }
 
     fn enable_bars_mmap(&mut self) {
         self.disable_bars_mmap();
 
         for mmio_info in self.mmio_regions.iter() {
-            let mut mmap_info =
+            let mut mmap_slots =
                 self.add_bar_mmap(mmio_info.bar_index() as u32, mmio_info.address());
-            self.mmap_info.append(&mut mmap_info);
+            self.mmap_slots.append(&mut mmap_slots);
         }
 
         self.remap = false;
