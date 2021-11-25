@@ -10,7 +10,7 @@ use crate::pci::PciAddress;
 use crate::vfio::{VfioContainer, VfioError};
 use acpi_tables::sdt::SDT;
 use base::{
-    error, warn, AsRawDescriptor, Error as SysError, Event, PollToken, RawDescriptor,
+    error, pagesize, warn, AsRawDescriptor, Error as SysError, Event, PollToken, RawDescriptor,
     Result as SysResult, WaitContext,
 };
 use data_model::DataInit;
@@ -649,8 +649,9 @@ impl Iommu {
         }
 
         if page_size_mask == 0 {
-            error!("failed to get IOMMU device valid page size masks");
-            return Err(SysError::new(libc::EIO));
+            // In case no endpoints bounded to vIOMMU during system booting,
+            // assume IOVA page size is the same as page_size
+            page_size_mask = (pagesize() as u64) - 1;
         }
 
         let input_range = VirtioIommuRange64 {
