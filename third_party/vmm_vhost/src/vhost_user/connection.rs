@@ -7,6 +7,7 @@ mod socket;
 pub use self::socket::{SocketEndpoint, SocketListener};
 
 use std::fs::File;
+use std::io::IoSliceMut;
 use std::mem;
 use std::os::unix::io::RawFd;
 use std::path::Path;
@@ -55,7 +56,7 @@ pub trait Endpoint<R: Req>: Sized {
     ///
     /// # Return:
     /// * - (number of bytes received, [received files]) on success
-    fn recv_into_bufs(&mut self, bufs: &mut [&mut [u8]]) -> Result<(usize, Option<Vec<File>>)>;
+    fn recv_into_bufs(&mut self, bufs: &mut [IoSliceMut]) -> Result<(usize, Option<Vec<File>>)>;
 }
 
 // Advance the internal cursor of the slices.
@@ -236,7 +237,8 @@ pub(super) trait EndpointExt<R: Req>: Endpoint<R> {
         let mut rfds = None;
 
         while (data_total - data_read) > 0 {
-            let res = self.recv_into_bufs(bufs);
+            let mut slices: Vec<IoSliceMut> = bufs.iter_mut().map(|b| IoSliceMut::new(b)).collect();
+            let res = self.recv_into_bufs(&mut slices);
             match res {
                 Ok((0, _)) => return Ok((data_read, rfds)),
                 Ok((n, fds)) => {
@@ -264,7 +266,7 @@ pub(super) trait EndpointExt<R: Req>: Endpoint<R> {
     #[cfg(test)]
     fn recv_into_buf(&mut self, buf_size: usize) -> Result<(usize, Vec<u8>, Option<Vec<File>>)> {
         let mut buf = vec![0u8; buf_size];
-        let mut slices = vec![buf.as_mut_slice()];
+        let mut slices = [IoSliceMut::new(buf.as_mut_slice())];
         let (bytes, files) = self.recv_into_bufs(&mut slices)?;
         Ok((bytes, buf, files))
     }
@@ -280,7 +282,7 @@ pub(super) trait EndpointExt<R: Req>: Endpoint<R> {
     /// * - backend specific errors
     fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<R>, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
-        let (bytes, files) = self.recv_into_bufs(&mut [hdr.as_mut_slice()])?;
+        let (bytes, files) = self.recv_into_bufs(&mut [IoSliceMut::new(hdr.as_mut_slice())])?;
 
         if bytes != mem::size_of::<VhostUserMsgHeader<R>>() {
             return Err(Error::PartialMessage);
