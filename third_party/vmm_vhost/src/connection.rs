@@ -7,7 +7,7 @@ mod socket;
 pub use self::socket::{SocketEndpoint, SocketListener};
 
 use std::fs::File;
-use std::io::IoSliceMut;
+use std::io::{IoSlice, IoSliceMut};
 use std::mem;
 use std::os::unix::io::RawFd;
 use std::path::Path;
@@ -45,7 +45,7 @@ pub trait Endpoint<R: Req>: Sized {
     ///
     /// # Return:
     /// * - number of bytes sent on success
-    fn send_iovec(&mut self, iovs: &[&[u8]], fds: Option<&[RawFd]>) -> Result<usize>;
+    fn send_iovec(&mut self, iovs: &[IoSlice], fds: Option<&[RawFd]>) -> Result<usize>;
 
     /// Reads bytes into the given scatter/gather vectors with optional attached file.
     ///
@@ -119,7 +119,8 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
 
         let mut data_sent = 0;
         while !iovs.is_empty() {
-            match self.send_iovec(iovs, fds) {
+            let iovec: Vec<_> = iovs.iter_mut().map(|i| IoSlice::new(i)).collect();
+            match self.send_iovec(&iovec, fds) {
                 Ok(0) => {
                     break;
                 }
@@ -142,7 +143,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// # Return:
     /// * - number of bytes sent on success
     #[cfg(test)]
-    fn send_slice(&mut self, data: &[u8], fds: Option<&[RawFd]>) -> Result<usize> {
+    fn send_slice(&mut self, data: IoSlice, fds: Option<&[RawFd]>) -> Result<usize> {
         self.send_iovec(&[data], fds)
     }
 

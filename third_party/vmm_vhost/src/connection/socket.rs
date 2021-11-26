@@ -4,7 +4,7 @@
 //! Structs for Unix Domain Socket listener and endpoint.
 
 use std::fs::File;
-use std::io::{ErrorKind, IoSliceMut};
+use std::io::{ErrorKind, IoSlice, IoSliceMut};
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -135,7 +135,7 @@ impl<R: Req> Endpoint<R> for SocketEndpoint<R> {
     /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
-    fn send_iovec(&mut self, iovs: &[&[u8]], fds: Option<&[RawFd]>) -> Result<usize> {
+    fn send_iovec(&mut self, iovs: &[IoSlice], fds: Option<&[RawFd]>) -> Result<usize> {
         let rfds = match fds {
             Some(rfds) => rfds,
             _ => &[],
@@ -253,13 +253,13 @@ mod tests {
         let mut slave = SocketEndpoint::<MasterReq>::from_stream(sock);
 
         let buf1 = vec![0x1, 0x2, 0x3, 0x4];
-        let mut len = master.send_slice(&buf1[..], None).unwrap();
+        let mut len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
         assert_eq!(len, 4);
         let (bytes, buf2, _) = slave.recv_into_buf(0x1000).unwrap();
         assert_eq!(bytes, 4);
         assert_eq!(&buf1[..], &buf2[..bytes]);
 
-        len = master.send_slice(&buf1[..], None).unwrap();
+        len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
         assert_eq!(len, 4);
         let (bytes, buf2, _) = slave.recv_into_buf(0x2).unwrap();
         assert_eq!(bytes, 2);
@@ -286,7 +286,7 @@ mod tests {
         // Normal case for sending/receiving file descriptors
         let buf1 = vec![0x1, 0x2, 0x3, 0x4];
         let len = master
-            .send_slice(&buf1[..], Some(&[fd.as_raw_fd()]))
+            .send_slice(IoSlice::new(&buf1[..]), Some(&[fd.as_raw_fd()]))
             .unwrap();
         assert_eq!(len, 4);
 
@@ -309,7 +309,7 @@ mod tests {
         // Receiving side: data(header) with fds, data(body)
         let len = master
             .send_slice(
-                &buf1[..],
+                IoSlice::new(&buf1[..]),
                 Some(&[fd.as_raw_fd(), fd.as_raw_fd(), fd.as_raw_fd()]),
             )
             .unwrap();
@@ -338,7 +338,7 @@ mod tests {
         // Receiving side: data(header), data(body) with fds
         let len = master
             .send_slice(
-                &buf1[..],
+                IoSlice::new(&buf1[..]),
                 Some(&[fd.as_raw_fd(), fd.as_raw_fd(), fd.as_raw_fd()]),
             )
             .unwrap();
@@ -355,11 +355,11 @@ mod tests {
         // Following communication pattern should work:
         // Sending side: data, data with fds
         // Receiving side: data, data with fds
-        let len = master.send_slice(&buf1[..], None).unwrap();
+        let len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
         assert_eq!(len, 4);
         let len = master
             .send_slice(
-                &buf1[..],
+                IoSlice::new(&buf1[..]),
                 Some(&[fd.as_raw_fd(), fd.as_raw_fd(), fd.as_raw_fd()]),
             )
             .unwrap();
@@ -391,11 +391,11 @@ mod tests {
         // Following communication pattern should not work:
         // Sending side: data1, data2 with fds
         // Receiving side: data + partial of data2, left of data2 with fds
-        let len = master.send_slice(&buf1[..], None).unwrap();
+        let len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
         assert_eq!(len, 4);
         let len = master
             .send_slice(
-                &buf1[..],
+                IoSlice::new(&buf1[..]),
                 Some(&[fd.as_raw_fd(), fd.as_raw_fd(), fd.as_raw_fd()]),
             )
             .unwrap();
@@ -411,7 +411,7 @@ mod tests {
         // If the target fd array is too small, extra file descriptors will get lost.
         let len = master
             .send_slice(
-                &buf1[..],
+                IoSlice::new(&buf1[..]),
                 Some(&[fd.as_raw_fd(), fd.as_raw_fd(), fd.as_raw_fd()]),
             )
             .unwrap();

@@ -251,7 +251,7 @@ pub trait ScmSocket {
     ///
     /// * `bufs` - A slice of slices of data to send on the `socket`.
     /// * `fd` - A file descriptors to be sent.
-    fn send_bufs_with_fd(&self, bufs: &[&[u8]], fd: RawFd) -> Result<usize> {
+    fn send_bufs_with_fd(&self, bufs: &[IoSlice], fd: RawFd) -> Result<usize> {
         self.send_bufs_with_fds(bufs, &[fd])
     }
 
@@ -263,9 +263,8 @@ pub trait ScmSocket {
     ///
     /// * `bufs` - A slice of slices of data to send on the `socket`.
     /// * `fds` - A list of file descriptors to be sent.
-    fn send_bufs_with_fds(&self, bufs: &[&[u8]], fd: &[RawFd]) -> Result<usize> {
-        let slices: Vec<IoSlice> = bufs.iter().map(|&b| IoSlice::new(b)).collect();
-        raw_sendmsg(self.socket_fd(), &slices, fd)
+    fn send_bufs_with_fds(&self, bufs: &[IoSlice], fd: &[RawFd]) -> Result<usize> {
+        raw_sendmsg(self.socket_fd(), bufs, fd)
     }
 
     /// Receives data and potentially a file descriptor from the socket.
@@ -480,7 +479,7 @@ mod tests {
         assert_eq!(buf, [1, 1, 2, 21, 34, 55]);
 
         let write_count = s1
-            .send_bufs_with_fds(&[&send_buf[..]], &[])
+            .send_bufs_with_fds(&[IoSlice::new(&send_buf[..])], &[])
             .expect("failed to send data");
 
         assert_eq!(write_count, 6);
