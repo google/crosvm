@@ -157,22 +157,22 @@ impl std::convert::From<sys_util::Error> for Error {
     #[allow(unreachable_patterns)] // EWOULDBLOCK equals to EGAIN on linux
     fn from(err: sys_util::Error) -> Self {
         match err.errno() {
-            // The socket is marked nonblocking and the requested operation would block.
-            libc::EAGAIN => Error::SocketRetry(IOError::from_raw_os_error(libc::EAGAIN)),
-            // The socket is marked nonblocking and the requested operation would block.
-            libc::EWOULDBLOCK => Error::SocketRetry(IOError::from_raw_os_error(libc::EWOULDBLOCK)),
-            // A signal occurred before any data was transmitted
-            libc::EINTR => Error::SocketRetry(IOError::from_raw_os_error(libc::EINTR)),
-            // The  output  queue  for  a network interface was full.  This generally indicates
-            // that the interface has stopped sending, but may be caused by transient congestion.
-            libc::ENOBUFS => Error::SocketRetry(IOError::from_raw_os_error(libc::ENOBUFS)),
-            // No memory available.
-            libc::ENOMEM => Error::SocketRetry(IOError::from_raw_os_error(libc::ENOMEM)),
-            // Connection reset by peer.
-            libc::ECONNRESET => Error::SocketBroken(IOError::from_raw_os_error(libc::ECONNRESET)),
-            // The local end has been shut down on a connection oriented socket. In this  case the
-            // process will also receive a SIGPIPE unless MSG_NOSIGNAL is set.
-            libc::EPIPE => Error::SocketBroken(IOError::from_raw_os_error(libc::EPIPE)),
+            // Retry:
+            // * EAGAIN, EWOULDBLOCK: The socket is marked nonblocking and the requested operation
+            //   would block.
+            // * EINTR: A signal occurred before any data was transmitted
+            // * ENOBUFS: The  output  queue  for  a network interface was full.  This generally
+            //   indicates that the interface has stopped sending, but may be caused by transient
+            //   congestion.
+            // * ENOMEM: No memory available.
+            libc::EAGAIN | libc::EWOULDBLOCK | libc::EINTR | libc::ENOBUFS | libc::ENOMEM => {
+                Error::SocketRetry(err.into())
+            }
+            // Broken:
+            // * ECONNRESET: Connection reset by peer.
+            // * EPIPE: The local end has been shut down on a connection oriented socket. In this
+            //   case the process will also receive a SIGPIPE unless MSG_NOSIGNAL is set.
+            libc::ECONNRESET | libc::EPIPE => Error::SocketBroken(err.into()),
             // Write permission is denied on the destination socket file, or search permission is
             // denied for one of the directories the path prefix.
             libc::EACCES => Error::SocketConnect(IOError::from_raw_os_error(libc::EACCES)),
