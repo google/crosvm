@@ -141,10 +141,12 @@ Verified bit can only be set by Kokoro in the crosvm repository.
 
 ### Post submit uprev flow.
 
-Daily job called Pupr will test the new change through the commit queue will
-test the new crosvm on ChromeOS hardware, including high level end-to-end
-tests. Only if all of those pass, the pinned version of crosvm (as specified in
-the `CROS_WORKON_COMMIT` in
+Daily job called Pupr will test the new change through the commit queue (see the
+topic
+[chromeos-base/crosvm](https://chromium-review.googlesource.com/q/topic:chromeos-base%252Fcrosvm)
+for the attempts). The commit queue will test the new crosvm on ChromeOS
+hardware, including high level end-to-end tests. Only if all of those pass, the
+pinned version of crosvm (as specified in the `CROS_WORKON_COMMIT` in
 [crosvm-0.1.0-rXXXX.ebuild](https://chromium.googlesource.com/chromiumos/overlays/chromiumos-overlay/+/main/chromeos-base/crosvm))
 will be used in the Chrome OS build (this is referred to as `crosvm uprev
 process`).
