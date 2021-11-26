@@ -307,7 +307,7 @@ pub(super) trait EndpointExt<R: Req>: Endpoint<R> {
     ) -> Result<(VhostUserMsgHeader<R>, T, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
         let mut body: T = Default::default();
-        let mut slices = vec![hdr.as_mut_slice(), body.as_mut_slice()];
+        let mut slices = [hdr.as_mut_slice(), body.as_mut_slice()];
         let (bytes, files) = self.recv_into_bufs_all(&mut slices)?;
 
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>();
@@ -338,7 +338,7 @@ pub(super) trait EndpointExt<R: Req>: Endpoint<R> {
         buf: &mut [u8],
     ) -> Result<(VhostUserMsgHeader<R>, usize, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
-        let mut slices = vec![hdr.as_mut_slice(), buf];
+        let mut slices = [hdr.as_mut_slice(), buf];
         let (bytes, files) = self.recv_into_bufs_all(&mut slices)?;
 
         if bytes < mem::size_of::<VhostUserMsgHeader<R>>() {
@@ -366,7 +366,7 @@ pub(super) trait EndpointExt<R: Req>: Endpoint<R> {
     ) -> Result<(VhostUserMsgHeader<R>, T, usize, Option<Vec<File>>)> {
         let mut hdr = VhostUserMsgHeader::default();
         let mut body: T = Default::default();
-        let mut slices = vec![hdr.as_mut_slice(), body.as_mut_slice(), buf];
+        let mut slices = [hdr.as_mut_slice(), body.as_mut_slice(), buf];
         let (bytes, files) = self.recv_into_bufs_all(&mut slices)?;
 
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>();
