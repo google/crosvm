@@ -90,6 +90,11 @@ enum KvmVfioGroupOps {
     Delete,
 }
 
+enum IommuType {
+    Type1V2 = VFIO_TYPE1v2_IOMMU as isize,
+    NoIommu = VFIO_NOIOMMU_IOMMU as isize,
+}
+
 /// VfioContainer contain multi VfioGroup, and delegate an IOMMU domain table
 pub struct VfioContainer {
     container: File,
@@ -133,24 +138,15 @@ impl VfioContainer {
         self.groups.get(&group_id).is_some()
     }
 
-    fn check_extension(&self, val: u32) -> bool {
-        if val != VFIO_TYPE1_IOMMU && val != VFIO_TYPE1v2_IOMMU {
-            panic!("IOMMU type error");
-        }
-
+    fn check_extension(&self, val: IommuType) -> bool {
         // Safe as file is vfio container and make sure val is valid.
-        let ret = unsafe { ioctl_with_val(self, VFIO_CHECK_EXTENSION(), val.into()) };
+        let ret = unsafe { ioctl_with_val(self, VFIO_CHECK_EXTENSION(), val as u64) };
         ret == 1
     }
 
-    fn set_iommu(&self, val: u32) -> i32 {
-        let supported_types = [VFIO_TYPE1_IOMMU, VFIO_TYPE1v2_IOMMU, VFIO_NOIOMMU_IOMMU];
-        if !supported_types.contains(&val) {
-            panic!("IOMMU type error");
-        }
-
+    fn set_iommu(&self, val: IommuType) -> i32 {
         // Safe as file is vfio container and make sure val is valid.
-        unsafe { ioctl_with_val(self, VFIO_SET_IOMMU(), val.into()) }
+        unsafe { ioctl_with_val(self, VFIO_SET_IOMMU(), val as u64) }
     }
 
     pub unsafe fn vfio_dma_map(
@@ -216,11 +212,11 @@ impl VfioContainer {
     }
 
     fn init(&mut self, guest_mem: &GuestMemory, iommu_enabled: bool) -> Result<()> {
-        if !self.check_extension(VFIO_TYPE1v2_IOMMU) {
+        if !self.check_extension(IommuType::Type1V2) {
             return Err(VfioError::VfioType1V2);
         }
 
-        if self.set_iommu(VFIO_TYPE1v2_IOMMU) < 0 {
+        if self.set_iommu(IommuType::Type1V2) < 0 {
             return Err(VfioError::ContainerSetIOMMU(get_error()));
         }
 
@@ -273,7 +269,7 @@ impl VfioContainer {
                 let group = Arc::new(Mutex::new(VfioGroup::new(self, self.host_iommu, id)?));
 
                 if self.groups.is_empty() && !self.host_iommu {
-                    if self.set_iommu(VFIO_NOIOMMU_IOMMU) < 0 {
+                    if self.set_iommu(IommuType::NoIommu) < 0 {
                         return Err(VfioError::ContainerSetIOMMU(get_error()));
                     }
                 }
