@@ -5,7 +5,7 @@
 use std::collections::hash_map::{Entry, HashMap, VacantEntry};
 use std::env::set_var;
 use std::fs::File;
-use std::io::{IoSlice, Write};
+use std::io::{IoSlice, IoSliceMut, Write};
 use std::mem::transmute;
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
@@ -529,7 +529,7 @@ impl Process {
         taps: &[Tap],
     ) -> Result<()> {
         let (msg_size, request_file) = self.request_sockets[index]
-            .recv_with_fd(&mut self.request_buffer)
+            .recv_with_fd(IoSliceMut::new(&mut self.request_buffer))
             .map_err(Error::PluginSocketRecv)?;
 
         if msg_size == 0 {
