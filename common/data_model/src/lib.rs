@@ -19,7 +19,7 @@ use std::slice::{from_raw_parts, from_raw_parts_mut};
 /// It is unsafe for `T` to be `DataInit` if `T` contains implicit padding. (LLVM considers access
 /// to implicit padding to be undefined behavior, which can cause UB when working with `T`.
 /// For details on structure padding in Rust, see
-/// https://doc.rust-lang.org/reference/type-layout.html#the-c-representation
+/// <https://doc.rust-lang.org/reference/type-layout.html#the-c-representation>.
 pub unsafe trait DataInit: Copy + Send + Sync {
     /// Converts a slice of raw data into a reference of `Self`.
     ///

@@ -118,7 +118,7 @@ pub trait IoSourceExt<F>: ReadAsync + WriteAsync {
 ///
 /// (Note: it'd be really nice to implement a TryFrom for any implementors, and
 /// remove our factory functions. Unfortunately
-/// https://github.com/rust-lang/rust/issues/50133 makes that too painful.)
+/// <https://github.com/rust-lang/rust/issues/50133> makes that too painful.)
 pub trait IntoAsync: AsRawFd {}
 
 impl IntoAsync for File {}

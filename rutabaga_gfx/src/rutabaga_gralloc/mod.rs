@@ -6,7 +6,7 @@
 //! In addition, it may perform mappings of GPU buffers.  This is based on
 //! "gralloc", a well-known Android hardware abstaction layer (HAL).
 //!
-//! https://source.android.com/devices/graphics/arch-bq-gralloc
+//! <https://source.android.com/devices/graphics/arch-bq-gralloc>
 
 mod formats;
 mod gralloc;

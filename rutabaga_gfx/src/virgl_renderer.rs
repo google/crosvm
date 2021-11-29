@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 //! virgl_renderer: Handles 3D virtio-gpu hypercalls using virglrenderer.
-//! External code found at https://gitlab.freedesktop.org/virgl/virglrenderer/.
+//! External code found at <https://gitlab.freedesktop.org/virgl/virglrenderer/>.
 
 #![cfg(feature = "virgl_renderer")]
 

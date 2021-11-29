@@ -4,7 +4,7 @@
 
 //! minigbm: implements swapchain allocation using ChromeOS's minigbm library.
 //!
-//! External code found at https://chromium.googlesource.com/chromiumos/platform/minigbm.
+//! External code found at <https://chromium.googlesource.com/chromiumos/platform/minigbm>.
 
 #![cfg(feature = "minigbm")]
 

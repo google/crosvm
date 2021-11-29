@@ -4,7 +4,7 @@
 
 //! gfxstream: Handles 3D virtio-gpu hypercalls using gfxstream.
 //!
-//! External code found at https://android.googlesource.com/device/generic/vulkan-cereal/.
+//! External code found at <https://android.googlesource.com/device/generic/vulkan-cereal/>.
 
 #![cfg(feature = "gfxstream")]
 
