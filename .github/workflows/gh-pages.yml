@@ -28,9 +28,7 @@ jobs:
       - name: Run cargo doc
         run: |
           git submodule update --init
-          # TODO audio_cras, chromeos, power-monitor-powerd
-          cargo doc --target-dir ./docs/target/ \
-          --features "audio composite-disk default default-no-sandbox direct gdb gfxstream gpu plugin tpm usb video-decoder video-encoder virgl_renderer virgl_renderer_next wl-dmabuf x"
+          ./tools/cargo-doc --target-dir ./docs/target/
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         with:

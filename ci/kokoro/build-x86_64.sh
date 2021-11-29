@@ -8,4 +8,5 @@ source "$(dirname $0)/common.sh"
     ./tools/run_tests --target=host -v \
     && ./tools/clippy \
     && ./tools/fmt --check \
-    && mdbook build ./docs/book"
+    && mdbook build ./docs/book \
+    && ./tools/cargo-doc"

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+set -ex
+
+# Build cargo-doc
+# $ ./tools/cargo-doc --target-dir /path/to/dir
+
+echo "start cargo-doc"
+
+MANIFEST_PATH=$(dirname "$0")/../Cargo.toml
+
+echo "manifest = ${MANIFEST_PATH}"
+
+DISABLED_FEATURES=(
+    audio_cras
+    chromeos
+    power-monitor-powerd
+)
+
+ALL_FEATURES=$(
+    cargo metadata --manifest-path "${MANIFEST_PATH}" | \
+    jq -r '.packages[] |
+        select(.name == "crosvm") |
+        .features |
+        keys[]')
+
+features=""
+
+for f in $ALL_FEATURES; do
+    if [[ ! "${DISABLED_FEATURES[*]}" =~ $f ]]; then
+        features+=",${f}"
+    fi
+done
+
+cargo doc \
+      --manifest-path="${MANIFEST_PATH}" \
+      --features="${features}" "$@"
