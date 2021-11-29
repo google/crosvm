@@ -1205,6 +1205,12 @@ impl VirtioDevice for VirtioVhostUser {
         PROXY_DEVICE_QUEUE_SIZES
     }
 
+    fn num_interrupts(&self) -> usize {
+        // The total interrupts include both this device's interrupts as well as
+        // the VVU device related interrupt.
+        NUM_PROXY_DEVICE_QUEUES + MAX_VHOST_DEVICE_QUEUES
+    }
+
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         copy_config(
             data,

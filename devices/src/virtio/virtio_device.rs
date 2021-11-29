@@ -36,6 +36,11 @@ pub trait VirtioDevice: Send {
     /// The maximum size of each queue that this device supports.
     fn queue_max_sizes(&self) -> &[u16];
 
+    /// The number of interrupts used by this device.
+    fn num_interrupts(&self) -> usize {
+        self.queue_max_sizes().len()
+    }
+
     /// The set of feature bits that this device supports in addition to the base features.
     fn features(&self) -> u64 {
         0
