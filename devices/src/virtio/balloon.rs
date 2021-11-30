@@ -274,7 +274,7 @@ async fn handle_command_tube(
                     let num_pages = (num_bytes >> VIRTIO_BALLOON_PFN_SHIFT) as usize;
 
                     config.num_pages.store(num_pages, Ordering::Relaxed);
-                    interrupt.borrow_mut().signal_config_changed();
+                    interrupt.borrow().signal_config_changed();
                 }
                 BalloonTubeCommand::Stats { id } => {
                     if let Err(e) = stats_tx.try_send(id) {

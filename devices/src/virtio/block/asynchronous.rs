@@ -296,7 +296,7 @@ async fn handle_command_tube(
                     .send(&resp)
                     .map_err(ExecuteError::SendingResponse)?;
                 if let DiskControlResult::Ok = resp {
-                    interrupt.borrow_mut().signal_config_changed();
+                    interrupt.borrow().signal_config_changed();
                 }
             }
             Err(e) => return Err(ExecuteError::ReceivingCommand(e)),
