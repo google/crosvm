@@ -30,8 +30,8 @@ pub struct StubPciParameters {
     pub subclass: u8,
     pub programming_interface: u8,
     pub multifunction: bool,
-    pub subsystem_device_id: u16,
     pub subsystem_vendor_id: u16,
+    pub subsystem_device_id: u16,
     pub revision_id: u8,
 }
 
@@ -69,8 +69,8 @@ impl StubPciDevice {
             )),
             PciHeaderType::Device,
             config.multifunction,
-            config.subsystem_device_id,
             config.subsystem_vendor_id,
+            config.subsystem_device_id,
             config.revision_id,
         );
 
@@ -124,4 +124,50 @@ impl PciDevice for StubPciDevice {
     fn read_bar(&mut self, _addr: u64, _data: &mut [u8]) {}
 
     fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const CONFIG: StubPciParameters = StubPciParameters {
+        address: PciAddress {
+            bus: 0x0a,
+            dev: 0x0b,
+            func: 0x1,
+        },
+        vendor_id: 2,
+        device_id: 3,
+        class: PciClassCode::MultimediaController,
+        subclass: 5,
+        programming_interface: 6,
+        multifunction: true,
+        subsystem_vendor_id: 7,
+        subsystem_device_id: 8,
+        revision_id: 9,
+    };
+
+    #[test]
+    fn configuration() {
+        let device = StubPciDevice::new(&CONFIG);
+
+        assert_eq!(device.read_config_register(0), 0x0003_0002);
+        assert_eq!(device.read_config_register(2), 0x04_05_06_09);
+        assert!((device.read_config_register(3) & 0x0080_0000) != 0);
+        assert_eq!(device.read_config_register(11), 0x0008_0007);
+    }
+
+    #[test]
+    fn address_allocation() {
+        let mut allocator = SystemAllocator::builder()
+            .add_io_addresses(0x1000_0000, 0x1000_0000)
+            .add_low_mmio_addresses(0x2000_0000, 0x1000_0000)
+            .add_high_mmio_addresses(0x3000_0000, 0x1000_0000)
+            .create_allocator(5)
+            .unwrap();
+        let mut device = StubPciDevice::new(&CONFIG);
+
+        assert!(device.allocate_address(&mut allocator).is_ok());
+        assert!(allocator.release_pci(0xa, 0xb, 1));
+    }
 }
