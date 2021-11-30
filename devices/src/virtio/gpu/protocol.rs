@@ -29,10 +29,10 @@ pub const VIRTIO_GPU_F_VIRGL: u32 = 0;
 pub const VIRTIO_GPU_F_EDID: u32 = 1;
 pub const VIRTIO_GPU_F_RESOURCE_UUID: u32 = 2;
 pub const VIRTIO_GPU_F_RESOURCE_BLOB: u32 = 3;
-/* The following capabilities are not upstreamed. */
 pub const VIRTIO_GPU_F_CONTEXT_INIT: u32 = 4;
-pub const VIRTIO_GPU_F_CREATE_GUEST_HANDLE: u32 = 5;
-pub const VIRTIO_GPU_F_RESOURCE_SYNC: u32 = 6;
+/* The following capabilities are not upstreamed. */
+pub const VIRTIO_GPU_F_RESOURCE_SYNC: u32 = 5;
+pub const VIRTIO_GPU_F_CREATE_GUEST_HANDLE: u32 = 6;
 
 pub const VIRTIO_GPU_UNDEFINED: u32 = 0x0;
 
@@ -145,7 +145,6 @@ pub fn virtio_gpu_cmd_str(cmd: u32) -> &'static str {
 }
 
 pub const VIRTIO_GPU_FLAG_FENCE: u32 = 1 << 0;
-/* Fence context index info flag not upstreamed. */
 pub const VIRTIO_GPU_FLAG_INFO_RING_IDX: u32 = 1 << 1;
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -367,7 +366,7 @@ pub struct virtio_gpu_resource_create_3d {
 
 unsafe impl DataInit for virtio_gpu_resource_create_3d {}
 
-/* VIRTIO_GPU_CMD_CTX_CREATE (context_init not upstreamed) */
+/* VIRTIO_GPU_CMD_CTX_CREATE */
 pub const VIRTIO_GPU_CONTEXT_INIT_CAPSET_ID_MASK: u32 = 1 << 0;
 #[derive(Copy)]
 #[repr(C)]
@@ -436,7 +435,6 @@ unsafe impl DataInit for virtio_gpu_cmd_submit {}
 
 pub const VIRTIO_GPU_CAPSET_VIRGL: u32 = 1;
 pub const VIRTIO_GPU_CAPSET_VIRGL2: u32 = 2;
-/* New capset IDs (not upstreamed) */
 pub const VIRTIO_GPU_CAPSET_GFXSTREAM: u32 = 3;
 pub const VIRTIO_GPU_CAPSET_VENUS: u32 = 4;
 pub const VIRTIO_GPU_CAPSET_CROSS_DOMAIN: u32 = 5;

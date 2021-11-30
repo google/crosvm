@@ -91,10 +91,10 @@ pub struct VulkanInfo {
     pub physical_device_idx: u32,
 }
 
-/// Rutabaga context init capset id mask (not upstreamed).
+/// Rutabaga context init capset id mask.
 pub const RUTABAGA_CONTEXT_INIT_CAPSET_ID_MASK: u32 = 0x00ff;
 
-/// Rutabaga flags for creating fences (fence ctx idx info not upstreamed).
+/// Rutabaga flags for creating fences.
 pub const RUTABAGA_FLAG_FENCE: u32 = 1 << 0;
 pub const RUTABAGA_FLAG_INFO_RING_IDX: u32 = 1 << 1;
 
@@ -116,7 +116,6 @@ pub const RUTABAGA_MAP_CACHE_WC: u32 = 0x03;
 /// Rutabaga capsets.
 pub const RUTABAGA_CAPSET_VIRGL: u32 = 1;
 pub const RUTABAGA_CAPSET_VIRGL2: u32 = 2;
-/// The following capsets are not upstreamed.
 pub const RUTABAGA_CAPSET_GFXSTREAM: u32 = 3;
 pub const RUTABAGA_CAPSET_VENUS: u32 = 4;
 pub const RUTABAGA_CAPSET_CROSS_DOMAIN: u32 = 5;
