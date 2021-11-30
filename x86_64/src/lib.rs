@@ -193,15 +193,15 @@ const BOOT_STACK_POINTER: u64 = 0x8000;
 const MEM_32BIT_GAP_SIZE: u64 = 768 << 20;
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 const END_ADDR_BEFORE_32BITS: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
-const MMIO_SIZE: u64 = MEM_32BIT_GAP_SIZE - 0x8000000;
+const MMIO_SIZE: u64 = MEM_32BIT_GAP_SIZE - 0x800_0000;
 // Linux (with 4-level paging) has a physical memory limit of 46 bits (64 TiB).
 const HIGH_MMIO_MAX_END: u64 = 1u64 << 46;
 const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
 const ZERO_PAGE_OFFSET: u64 = 0x7000;
-const TSS_ADDR: u64 = 0xfffbd000;
+const TSS_ADDR: u64 = 0xfffb_d000;
 
-const KERNEL_START_OFFSET: u64 = 0x200000;
-const CMDLINE_OFFSET: u64 = 0x20000;
+const KERNEL_START_OFFSET: u64 = 0x20_0000;
+const CMDLINE_OFFSET: u64 = 0x2_0000;
 const CMDLINE_MAX_SIZE: u64 = KERNEL_START_OFFSET - CMDLINE_OFFSET;
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;
 const X86_64_SERIAL_2_4_IRQ: u32 = 3;
@@ -214,11 +214,11 @@ const X86_64_SERIAL_2_4_IRQ: u32 = 3;
 pub const X86_64_SCI_IRQ: u32 = 5;
 // The CMOS RTC uses IRQ 8; start allocating IRQs at 9.
 pub const X86_64_IRQ_BASE: u32 = 9;
-const ACPI_HI_RSDP_WINDOW_BASE: u64 = 0x000E0000;
+const ACPI_HI_RSDP_WINDOW_BASE: u64 = 0x000E_0000;
 
 /// The x86 reset vector for i386+ and x86_64 puts the processor into an "unreal mode" where it
 /// can access the last 1 MB of the 32-bit address space in 16-bit mode, and starts the instruction
-/// pointer at the effective physical address 0xFFFFFFF0.
+/// pointer at the effective physical address 0xFFFF_FFF0.
 fn bios_start(bios_size: u64) -> GuestAddress {
     GuestAddress(FIRST_ADDR_PAST_32BITS - bios_size)
 }
@@ -233,11 +233,11 @@ fn configure_system(
     initrd: Option<(GuestAddress, usize)>,
     mut params: boot_params,
 ) -> Result<()> {
-    const EBDA_START: u64 = 0x0009fc00;
+    const EBDA_START: u64 = 0x0009_fc00;
     const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
-    const KERNEL_HDR_MAGIC: u32 = 0x53726448;
+    const KERNEL_HDR_MAGIC: u32 = 0x5372_6448;
     const KERNEL_LOADER_OTHER: u8 = 0xff;
-    const KERNEL_MIN_ALIGNMENT_BYTES: u32 = 0x1000000; // Must be non-zero.
+    const KERNEL_MIN_ALIGNMENT_BYTES: u32 = 0x100_0000; // Must be non-zero.
     let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
     let end_32bit_gap_start = GuestAddress(END_ADDR_BEFORE_32BITS);
 
