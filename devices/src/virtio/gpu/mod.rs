@@ -19,6 +19,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use anyhow::Context;
+
 use base::{
     debug, error, warn, AsRawDescriptor, Event, ExternalMapping, PollToken, RawDescriptor, Tube,
     WaitContext,
@@ -345,7 +347,7 @@ impl Frontend {
     }
 
     /// Processes incoming requests on `resource_bridge`.
-    pub fn process_resource_bridge(&mut self, resource_bridge: &Tube) {
+    pub fn process_resource_bridge(&mut self, resource_bridge: &Tube) -> anyhow::Result<()> {
         let response = match resource_bridge.recv() {
             Ok(ResourceRequest::GetBuffer { id }) => self.virtio_gpu.export_resource(id),
             Ok(ResourceRequest::GetFence { seqno }) => {
@@ -356,15 +358,14 @@ impl Frontend {
                     Err(_) => ResourceResponse::Invalid,
                 }
             }
-            Err(e) => {
-                error!("error receiving resource bridge request: {}", e);
-                return;
-            }
+            Err(e) => return Err(e).context("Error receiving resource bridge request"),
         };
 
-        if let Err(e) = resource_bridge.send(&response) {
-            error!("error sending resource bridge request: {}", e);
-        }
+        resource_bridge
+            .send(&response)
+            .context("Error sending resource bridge response")?;
+
+        Ok(())
     }
 
     fn process_gpu_command(
@@ -934,7 +935,13 @@ impl Worker {
                 self.resource_bridges.iter().zip(&process_resource_bridge)
             {
                 if should_process {
-                    self.state.process_resource_bridge(bridge);
+                    if let Err(e) = self.state.process_resource_bridge(bridge) {
+                        error!("Failed to process resource bridge: {}", e);
+                        error!("Removing that resource bridge from the wait context.");
+                        wait_ctx.delete(bridge).unwrap_or_else(|e| {
+                            error!("Failed to remove faulty resource bridge: {}", e)
+                        });
+                    }
                 }
             }
 
