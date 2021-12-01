@@ -715,6 +715,86 @@ fn create_vhost_user_gpu_device(
 }
 
 #[cfg(feature = "gpu")]
+fn gpu_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
+    match simple_jail(cfg, policy)? {
+        Some(mut jail) => {
+            // Create a tmpfs in the device's root directory so that we can bind mount the
+            // dri directory into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
+            jail.mount_with_data(
+                Path::new("none"),
+                Path::new("/"),
+                "tmpfs",
+                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+                "size=67108864",
+            )?;
+
+            // Device nodes required for DRM.
+            let sys_dev_char_path = Path::new("/sys/dev/char");
+            jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)?;
+            let sys_devices_path = Path::new("/sys/devices");
+            jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
+
+            let drm_dri_path = Path::new("/dev/dri");
+            if drm_dri_path.exists() {
+                jail.mount_bind(drm_dri_path, drm_dri_path, false)?;
+            }
+
+            // If the ARM specific devices exist on the host, bind mount them in.
+            let mali0_path = Path::new("/dev/mali0");
+            if mali0_path.exists() {
+                jail.mount_bind(mali0_path, mali0_path, true)?;
+            }
+
+            let pvr_sync_path = Path::new("/dev/pvr_sync");
+            if pvr_sync_path.exists() {
+                jail.mount_bind(pvr_sync_path, pvr_sync_path, true)?;
+            }
+
+            // If the udmabuf driver exists on the host, bind mount it in.
+            let udmabuf_path = Path::new("/dev/udmabuf");
+            if udmabuf_path.exists() {
+                jail.mount_bind(udmabuf_path, udmabuf_path, true)?;
+            }
+
+            // Libraries that are required when mesa drivers are dynamically loaded.
+            let lib_dirs = &[
+                "/usr/lib",
+                "/usr/lib64",
+                "/lib",
+                "/lib64",
+                "/usr/share/glvnd",
+                "/usr/share/vulkan",
+            ];
+            for dir in lib_dirs {
+                let dir_path = Path::new(dir);
+                if dir_path.exists() {
+                    jail.mount_bind(dir_path, dir_path, false)?;
+                }
+            }
+
+            // pvr driver requires read access to /proc/self/task/*/comm.
+            let proc_path = Path::new("/proc");
+            jail.mount(
+                proc_path,
+                proc_path,
+                "proc",
+                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_RDONLY) as usize,
+            )?;
+
+            // To enable perfetto tracing, we need to give access to the perfetto service IPC
+            // endpoints.
+            let perfetto_path = Path::new("/run/perfetto");
+            if perfetto_path.exists() {
+                jail.mount_bind(perfetto_path, perfetto_path, true)?;
+            }
+
+            Ok(Some(jail))
+        }
+        None => Ok(None),
+    }
+}
+
+#[cfg(feature = "gpu")]
 fn create_gpu_device(
     cfg: &Config,
     exit_evt: &Event,
@@ -757,29 +837,8 @@ fn create_gpu_device(
         cfg.wayland_socket_paths.clone(),
     );
 
-    let jail = match simple_jail(cfg, "gpu_device")? {
+    let jail = match gpu_jail(cfg, "gpu_device")? {
         Some(mut jail) => {
-            // Create a tmpfs in the device's root directory so that we can bind mount the
-            // dri directory into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
-            jail.mount_with_data(
-                Path::new("none"),
-                Path::new("/"),
-                "tmpfs",
-                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
-                "size=67108864",
-            )?;
-
-            // Device nodes required for DRM.
-            let sys_dev_char_path = Path::new("/sys/dev/char");
-            jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)?;
-            let sys_devices_path = Path::new("/sys/devices");
-            jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
-
-            let drm_dri_path = Path::new("/dev/dri");
-            if drm_dri_path.exists() {
-                jail.mount_bind(drm_dri_path, drm_dri_path, false)?;
-            }
-
             // Prepare GPU shader disk cache directory.
             if let Some(cache_dir) = cfg
                 .gpu_parameters
@@ -804,39 +863,6 @@ fn create_gpu_device(
                 }
             }
 
-            // If the ARM specific devices exist on the host, bind mount them in.
-            let mali0_path = Path::new("/dev/mali0");
-            if mali0_path.exists() {
-                jail.mount_bind(mali0_path, mali0_path, true)?;
-            }
-
-            let pvr_sync_path = Path::new("/dev/pvr_sync");
-            if pvr_sync_path.exists() {
-                jail.mount_bind(pvr_sync_path, pvr_sync_path, true)?;
-            }
-
-            // If the udmabuf driver exists on the host, bind mount it in.
-            let udmabuf_path = Path::new("/dev/udmabuf");
-            if udmabuf_path.exists() {
-                jail.mount_bind(udmabuf_path, udmabuf_path, true)?;
-            }
-
-            // Libraries that are required when mesa drivers are dynamically loaded.
-            let lib_dirs = &[
-                "/usr/lib",
-                "/usr/lib64",
-                "/lib",
-                "/lib64",
-                "/usr/share/glvnd",
-                "/usr/share/vulkan",
-            ];
-            for dir in lib_dirs {
-                let dir_path = Path::new(dir);
-                if dir_path.exists() {
-                    jail.mount_bind(dir_path, dir_path, false)?;
-                }
-            }
-
             // Bind mount the wayland socket's directory into jail's root. This is necessary since
             // each new wayland context must open() the socket. If the wayland socket is ever
             // destroyed and remade in the same host directory, new connections will be possible
@@ -846,22 +872,6 @@ fn create_gpu_device(
             }
 
             add_current_user_to_jail(&mut jail)?;
-
-            // pvr driver requires read access to /proc/self/task/*/comm.
-            let proc_path = Path::new("/proc");
-            jail.mount(
-                proc_path,
-                proc_path,
-                "proc",
-                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_RDONLY) as usize,
-            )?;
-
-            // To enable perfetto tracing, we need to give access to the perfetto service IPC
-            // endpoints.
-            let perfetto_path = Path::new("/run/perfetto");
-            if perfetto_path.exists() {
-                jail.mount_bind(perfetto_path, perfetto_path, true)?;
-            }
 
             Some(jail)
         }
