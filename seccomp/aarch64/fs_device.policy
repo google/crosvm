@@ -45,7 +45,6 @@ mknodat: 1
 openat: 1
 preadv: 1
 pwritev: 1
-readlinkat: 1
 renameat2: 1
 setresgid: 1
 setresuid: 1

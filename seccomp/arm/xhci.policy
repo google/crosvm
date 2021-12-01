@@ -6,8 +6,6 @@
 
 stat64: 1
 lstat64: 1
-readlink: 1
-readlinkat: 1
 getdents64: 1
 name_to_handle_at: 1
 access: 1

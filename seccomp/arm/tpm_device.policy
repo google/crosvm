@@ -18,6 +18,7 @@ exit: 1
 exit_group: 1
 futex: 1
 futex_time64: 1
+getcwd: 1
 getpid: 1
 getrandom: 1
 gettimeofday: 1
@@ -36,6 +37,8 @@ ppoll: 1
 ppoll_time64: 1
 prctl: arg0 == PR_SET_NAME
 read: 1
+readlink: 1
+readlinkat: 1
 recv: 1
 recvfrom: 1
 recvmsg: 1

@@ -16,6 +16,7 @@ eventfd2: 1
 exit: 1
 exit_group: 1
 futex: 1
+getcwd: 1
 getpid: 1
 gettimeofday: 1
 kill: 1
@@ -28,6 +29,8 @@ pipe2: 1
 ppoll: 1
 prctl: arg0 == PR_SET_NAME || arg0 == PR_GET_NAME
 read: 1
+readlink: 1
+readlinkat: 1
 readv: 1
 recvfrom: 1
 recvmsg: 1
@@ -72,7 +75,6 @@ openat: 1
 ## Rules specific to pvr
 geteuid: 1
 getuid: 1
-readlinkat: 1
 gettid: 1
 fcntl: 1
 tgkill: 1

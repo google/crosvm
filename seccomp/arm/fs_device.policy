@@ -48,7 +48,6 @@ open: return ENOENT
 openat: 1
 preadv: 1
 pwritev: 1
-readlinkat: 1
 renameat2: 1
 setresgid32: 1
 setresuid32: 1

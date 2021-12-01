@@ -17,6 +17,7 @@ exit: 1
 exit_group: 1
 futex: 1
 futex_time64: 1
+getcwd: 1
 getpid: 1
 gettimeofday: 1
 kill: 1
@@ -32,6 +33,8 @@ ppoll: 1
 ppoll_time64: 1
 prctl: arg0 == PR_SET_NAME || arg0 == PR_GET_NAME
 read: 1
+readlink: 1
+readlinkat: 1
 readv: 1
 recv: 1
 recvfrom: 1
@@ -87,7 +90,6 @@ openat: 1
 geteuid32: 1
 getuid32: 1
 lstat64: 1
-readlink: 1
 gettid: 1
 fcntl64: 1
 tgkill: 1
@@ -103,4 +105,3 @@ kcmp: 1
 access: 1
 getgid32: 1
 getegid32: 1
-getcwd: 1

@@ -7,7 +7,6 @@
 ioctl: arg1 == 0x3B6E || arg1 == 0x3B71 || arg1 == 0x3B72
 open: return ENOENT
 openat: return ENOENT
-readlink: 1
 pread64: 1
 pwrite64: 1
 prctl: arg0 == PR_SET_NAME
