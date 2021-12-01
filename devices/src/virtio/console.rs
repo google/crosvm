@@ -161,8 +161,14 @@ pub fn process_transmit_queue<I: SignalableInterrupt>(
 struct Worker {
     mem: GuestMemory,
     interrupt: Interrupt,
-    input: Option<Box<dyn io::Read + Send>>,
+    input: Option<Arc<Mutex<VecDeque<u8>>>>,
     output: Box<dyn io::Write + Send>,
+    kill_evt: Event,
+    in_avail_evt: Event,
+    receive_queue: Queue,
+    receive_evt: Event,
+    transmit_queue: Queue,
+    transmit_evt: Event,
 }
 
 fn write_output(output: &mut dyn io::Write, data: &[u8]) -> io::Result<()> {
@@ -172,7 +178,7 @@ fn write_output(output: &mut dyn io::Write, data: &[u8]) -> io::Result<()> {
 
 /// Starts a thread that reads rx and sends the input back via the returned buffer.
 ///
-/// The caller should listen on `in_avail_event` for events. When `in_avail_event` signals that data
+/// The caller should listen on `in_avail_evt` for events. When `in_avail_evt` signals that data
 /// is available, the caller should lock the returned `Mutex` and read data out of the inner
 /// `VecDeque`. The data should be removed from the beginning of the `VecDeque` as it is processed.
 ///
@@ -242,7 +248,7 @@ pub fn process_transmit_request(mut reader: Reader, output: &mut dyn io::Write) 
 }
 
 impl Worker {
-    fn run(&mut self, mut queues: Vec<Queue>, mut queue_evts: Vec<Event>, kill_evt: Event) {
+    fn run(&mut self) {
         #[derive(PollToken)]
         enum Token {
             ReceiveQueueAvailable,
@@ -252,35 +258,11 @@ impl Worker {
             Kill,
         }
 
-        // Device -> driver
-        let (mut receive_queue, receive_evt) = (queues.remove(0), queue_evts.remove(0));
-
-        // Driver -> device
-        let (mut transmit_queue, transmit_evt) = (queues.remove(0), queue_evts.remove(0));
-
-        let in_avail_evt = match Event::new() {
-            Ok(evt) => evt,
-            Err(e) => {
-                error!("failed creating Event: {}", e);
-                return;
-            }
-        };
-
-        // Spawn a separate thread to poll self.input.
-        // A thread is used because io::Read only provides a blocking interface, and there is no
-        // generic way to add an io::Read instance to a poll context (it may not be backed by a file
-        // descriptor).  Moving the blocking read call to a separate thread and sending data back to
-        // the main worker thread with an event for notification bridges this gap.
-        let in_buffer = match self.input.take() {
-            Some(input) => spawn_input_thread(input, &in_avail_evt),
-            None => None,
-        };
-
         let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
-            (&transmit_evt, Token::TransmitQueueAvailable),
-            (&receive_evt, Token::ReceiveQueueAvailable),
-            (&in_avail_evt, Token::InputAvailable),
-            (&kill_evt, Token::Kill),
+            (&self.transmit_evt, Token::TransmitQueueAvailable),
+            (&self.receive_evt, Token::ReceiveQueueAvailable),
+            (&self.in_avail_evt, Token::InputAvailable),
+            (&self.kill_evt, Token::Kill),
         ]) {
             Ok(pc) => pc,
             Err(e) => {
@@ -310,28 +292,28 @@ impl Worker {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::TransmitQueueAvailable => {
-                        if let Err(e) = transmit_evt.read() {
+                        if let Err(e) = self.transmit_evt.read() {
                             error!("failed reading transmit queue Event: {}", e);
                             break 'wait;
                         }
                         process_transmit_queue(
                             &self.mem,
                             &self.interrupt,
-                            &mut transmit_queue,
+                            &mut self.transmit_queue,
                             &mut self.output,
                         );
                     }
                     Token::ReceiveQueueAvailable => {
-                        if let Err(e) = receive_evt.read() {
+                        if let Err(e) = self.receive_evt.read() {
                             error!("failed reading receive queue Event: {}", e);
                             break 'wait;
                         }
-                        if let Some(in_buf_ref) = in_buffer.as_ref() {
+                        if let Some(in_buf_ref) = self.input.as_ref() {
                             match handle_input(
                                 &self.mem,
                                 &self.interrupt,
                                 in_buf_ref.lock().deref_mut(),
-                                &mut receive_queue,
+                                &mut self.receive_queue,
                             ) {
                                 Ok(()) => {}
                                 // Console errors are no-ops, so just continue.
@@ -342,16 +324,16 @@ impl Worker {
                         }
                     }
                     Token::InputAvailable => {
-                        if let Err(e) = in_avail_evt.read() {
+                        if let Err(e) = self.in_avail_evt.read() {
                             error!("failed reading in_avail_evt: {}", e);
                             break 'wait;
                         }
-                        if let Some(in_buf_ref) = in_buffer.as_ref() {
+                        if let Some(in_buf_ref) = self.input.as_ref() {
                             match handle_input(
                                 &self.mem,
                                 &self.interrupt,
                                 in_buf_ref.lock().deref_mut(),
-                                &mut receive_queue,
+                                &mut self.receive_queue,
                             ) {
                                 Ok(()) => {}
                                 // Console errors are no-ops, so just continue.
@@ -371,12 +353,18 @@ impl Worker {
     }
 }
 
+enum ConsoleInput {
+    FromRead(Box<dyn io::Read + Send>),
+    FromThread(Arc<Mutex<VecDeque<u8>>>),
+}
+
 /// Virtio console device.
 pub struct Console {
     base_features: u64,
     kill_evt: Option<Event>,
+    in_avail_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Worker>>,
-    input: Option<Box<dyn io::Read + Send>>,
+    input: Option<ConsoleInput>,
     output: Option<Box<dyn io::Write + Send>>,
     keep_rds: Vec<RawDescriptor>,
 }
@@ -391,9 +379,10 @@ impl SerialDevice for Console {
     ) -> Console {
         Console {
             base_features: base_features(protected_vm),
+            in_avail_evt: None,
             kill_evt: None,
             worker_thread: None,
-            input,
+            input: input.map(ConsoleInput::FromRead),
             output,
             keep_rds,
         }
@@ -442,8 +431,8 @@ impl VirtioDevice for Console {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: Vec<Queue>,
-        queue_evts: Vec<Event>,
+        mut queues: Vec<Queue>,
+        mut queue_evts: Vec<Event>,
     ) {
         if queues.len() < 2 || queue_evts.len() < 2 {
             return;
@@ -458,7 +447,39 @@ impl VirtioDevice for Console {
         };
         self.kill_evt = Some(self_kill_evt);
 
-        let input = self.input.take();
+        if self.in_avail_evt.is_none() {
+            self.in_avail_evt = match Event::new() {
+                Ok(evt) => Some(evt),
+                Err(e) => {
+                    error!("failed creating Event: {}", e);
+                    return;
+                }
+            };
+        }
+        let in_avail_evt = match self.in_avail_evt.as_ref().unwrap().try_clone() {
+            Ok(v) => v,
+            Err(e) => {
+                error!("failed creating input available Event pair: {}", e);
+                return;
+            }
+        };
+
+        // Spawn a separate thread to poll self.input.
+        // A thread is used because io::Read only provides a blocking interface, and there is no
+        // generic way to add an io::Read instance to a poll context (it may not be backed by a file
+        // descriptor).  Moving the blocking read call to a separate thread and sending data back to
+        // the main worker thread with an event for notification bridges this gap.
+        let input = match self.input.take() {
+            Some(ConsoleInput::FromRead(read)) => {
+                let buffer = spawn_input_thread(read, self.in_avail_evt.as_ref().unwrap());
+                if buffer.is_none() {
+                    error!("failed creating input thread");
+                };
+                buffer
+            }
+            Some(ConsoleInput::FromThread(buffer)) => Some(buffer),
+            None => None,
+        };
         let output = self.output.take().unwrap_or_else(|| Box::new(io::sink()));
 
         let worker_result = thread::Builder::new()
@@ -469,8 +490,16 @@ impl VirtioDevice for Console {
                     interrupt,
                     input,
                     output,
+                    in_avail_evt,
+                    kill_evt,
+                    // Device -> driver
+                    receive_queue: queues.remove(0),
+                    receive_evt: queue_evts.remove(0),
+                    // Driver -> device
+                    transmit_queue: queues.remove(0),
+                    transmit_evt: queue_evts.remove(0),
                 };
-                worker.run(queues, queue_evts, kill_evt);
+                worker.run();
                 worker
             });
 
@@ -499,7 +528,7 @@ impl VirtioDevice for Console {
                     return false;
                 }
                 Ok(worker) => {
-                    self.input = worker.input;
+                    self.input = worker.input.map(ConsoleInput::FromThread);
                     self.output = Some(worker.output);
                     return true;
                 }
