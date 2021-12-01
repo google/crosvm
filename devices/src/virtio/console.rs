@@ -162,7 +162,7 @@ struct Worker {
     mem: GuestMemory,
     interrupt: Interrupt,
     input: Option<Box<dyn io::Read + Send>>,
-    output: Option<Box<dyn io::Write + Send>>,
+    output: Box<dyn io::Write + Send>,
 }
 
 fn write_output(output: &mut dyn io::Write, data: &[u8]) -> io::Result<()> {
@@ -298,11 +298,6 @@ impl Worker {
             }
         }
 
-        let mut output: Box<dyn io::Write> = match self.output.take() {
-            Some(o) => o,
-            None => Box::new(io::sink()),
-        };
-
         'wait: loop {
             let events = match wait_ctx.wait() {
                 Ok(v) => v,
@@ -323,7 +318,7 @@ impl Worker {
                             &self.mem,
                             &self.interrupt,
                             &mut transmit_queue,
-                            &mut output,
+                            &mut self.output,
                         );
                     }
                     Token::ReceiveQueueAvailable => {
@@ -464,7 +459,7 @@ impl VirtioDevice for Console {
         self.kill_evt = Some(self_kill_evt);
 
         let input = self.input.take();
-        let output = self.output.take();
+        let output = self.output.take().unwrap_or_else(|| Box::new(io::sink()));
 
         let worker_result = thread::Builder::new()
             .name("virtio_console".to_string())
@@ -505,7 +500,7 @@ impl VirtioDevice for Console {
                 }
                 Ok(worker) => {
                     self.input = worker.input;
-                    self.output = worker.output;
+                    self.output = Some(worker.output);
                     return true;
                 }
             }
