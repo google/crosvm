@@ -216,6 +216,8 @@ where
         &guest_mem,
         1,
         X86_64_SCI_IRQ,
+        0xcf9,
+        6,
         acpi_dev_resource.0,
         None,
         &mut apic_ids,

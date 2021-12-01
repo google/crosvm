@@ -19,6 +19,19 @@ pub struct AcpiDevResource {
     pub sdts: Vec<SDT>,
 }
 
+#[repr(C, packed)]
+#[derive(Clone, Copy, Default)]
+struct GenericAddress {
+    _space_id: u8,
+    _bit_width: u8,
+    _bit_offset: u8,
+    _access_width: u8,
+    _address: u64,
+}
+
+// Safe as GenericAddress structure only contains raw data
+unsafe impl DataInit for GenericAddress {}
+
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 struct LocalApic {
@@ -74,6 +87,9 @@ struct Localx2Apic {
 // Safe as LocalAPIC structure only contains raw data
 unsafe impl DataInit for Localx2Apic {}
 
+// Space ID for GenericAddress
+const ADR_SPACE_SYSTEM_IO: u8 = 1;
+
 const OEM_REVISION: u32 = 1;
 //DSDT
 const DSDT_REVISION: u8 = 6;
@@ -84,6 +100,7 @@ const FADT_MINOR_REVISION: u8 = 3;
 // FADT flags
 const FADT_POWER_BUTTON: u32 = 1 << 4;
 const FADT_SLEEP_BUTTON: u32 = 1 << 5;
+const FADT_RESET_REGISTER: u32 = 1 << 10;
 // FADT fields offset
 const FADT_FIELD_FACS_ADDR32: usize = 36;
 const FADT_FIELD_DSDT_ADDR32: usize = 40;
@@ -94,6 +111,8 @@ const FADT_FIELD_PM1A_CONTROL_BLK_ADDR: usize = 64;
 const FADT_FIELD_PM1A_EVENT_BLK_LEN: usize = 88;
 const FADT_FIELD_PM1A_CONTROL_BLK_LEN: usize = 89;
 const FADT_FIELD_FLAGS: usize = 112;
+const FADT_FIELD_RESET_REGISTER: usize = 116;
+const FADT_FIELD_RESET_VALUE: usize = 130;
 const FADT_FIELD_MINOR_REVISION: usize = 131;
 const FADT_FIELD_FACS_ADDR: usize = 132;
 const FADT_FIELD_DSDT_ADDR: usize = 140;
@@ -142,7 +161,7 @@ fn create_dsdt_table(amls: Vec<u8>) -> SDT {
     dsdt
 }
 
-fn create_facp_table(sci_irq: u16, pm_iobase: u32) -> SDT {
+fn create_facp_table(sci_irq: u16, pm_iobase: u32, reset_port: u32, reset_value: u8) -> SDT {
     let mut facp = SDT::new(
         *b"FACP",
         FADT_LEN,
@@ -152,7 +171,8 @@ fn create_facp_table(sci_irq: u16, pm_iobase: u32) -> SDT {
         OEM_REVISION,
     );
 
-    let fadt_flags: u32 = FADT_POWER_BUTTON | FADT_SLEEP_BUTTON; // mask POWER and SLEEP BUTTON
+    let fadt_flags: u32 = FADT_POWER_BUTTON | FADT_SLEEP_BUTTON | // mask POWER and SLEEP BUTTON
+                          FADT_RESET_REGISTER; // indicate we support FADT RESET_REG
     facp.write(FADT_FIELD_FLAGS, fadt_flags);
 
     // SCI Interrupt
@@ -178,6 +198,19 @@ fn create_facp_table(sci_irq: u16, pm_iobase: u32) -> SDT {
         FADT_FIELD_PM1A_CONTROL_BLK_LEN,
         devices::acpi::ACPIPM_RESOURCE_CONTROLBLK_LEN as u8,
     );
+
+    // Reset register.
+    facp.write(
+        FADT_FIELD_RESET_REGISTER,
+        GenericAddress {
+            _space_id: ADR_SPACE_SYSTEM_IO,
+            _bit_width: 8,
+            _bit_offset: 0,
+            _access_width: 8,
+            _address: reset_port.into(),
+        },
+    );
+    facp.write(FADT_FIELD_RESET_VALUE, reset_value);
 
     facp.write(FADT_FIELD_MINOR_REVISION, FADT_MINOR_REVISION); // FADT minor version
     facp.write(FADT_FIELD_HYPERVISOR_ID, *b"CROSVM"); // Hypervisor Vendor Identity
@@ -305,6 +338,8 @@ pub fn create_acpi_tables(
     guest_mem: &GuestMemory,
     num_cpus: u8,
     sci_irq: u32,
+    reset_port: u32,
+    reset_value: u8,
     acpi_dev_resource: AcpiDevResource,
     host_cpus: Option<VcpuAffinity>,
     apic_ids: &mut Vec<usize>,
@@ -356,7 +391,8 @@ pub fn create_acpi_tables(
 
     // FACP aka FADT
     let pm_iobase = acpi_dev_resource.pm_iobase as u32;
-    let mut facp = facp.unwrap_or_else(|| create_facp_table(sci_irq as u16, pm_iobase));
+    let mut facp = facp
+        .unwrap_or_else(|| create_facp_table(sci_irq as u16, pm_iobase, reset_port, reset_value));
 
     // Crosvm FACP overrides.
     facp.write(FADT_FIELD_SMI_COMMAND, 0u32);

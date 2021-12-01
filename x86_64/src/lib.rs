@@ -510,6 +510,8 @@ impl arch::LinuxArch for X8664arch {
             &mem,
             vcpu_count as u8,
             X86_64_SCI_IRQ,
+            0xcf9,
+            6, // RST_CPU|SYS_RST
             acpi_dev_resource,
             host_cpus,
             kvm_vcpu_ids,

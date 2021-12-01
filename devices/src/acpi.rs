@@ -37,7 +37,7 @@ pub const ACPIPM_RESOURCE_LEN: u8 = 8;
 pub const ACPIPM_RESOURCE_EVENTBLK_LEN: u8 = 4;
 pub const ACPIPM_RESOURCE_CONTROLBLK_LEN: u8 = 2;
 
-/// ACPI PM register value definations
+/// ACPI PM register value definitions
 const PM1_STATUS: u16 = 0;
 const PM1_ENABLE: u16 = 2;
 const PM1_CONTROL: u16 = 4;
