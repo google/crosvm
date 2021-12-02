@@ -106,7 +106,7 @@ fn compute_mp_size(num_cpus: u8) -> usize {
 pub fn setup_mptable(
     mem: &GuestMemory,
     num_cpus: u8,
-    pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
+    pci_irqs: &[(PciAddress, u32, PciInterruptPin)],
 ) -> Result<()> {
     // Used to keep track of the next base pointer into the MP table.
     let mut base_mp = GuestAddress(MPTABLE_START);
@@ -285,7 +285,7 @@ pub fn setup_mptable(
     }
 
     let starting_isa_irq_num = pci_irqs
-        .into_iter()
+        .iter()
         .map(|(_, irq_num, _)| irq_num + 1)
         .fold(super::X86_64_IRQ_BASE, u32::max) as u8;
 
@@ -392,7 +392,7 @@ mod tests {
         )])
         .unwrap();
 
-        setup_mptable(&mem, num_cpus, Vec::new()).unwrap();
+        setup_mptable(&mem, num_cpus, &[]).unwrap();
     }
 
     #[test]
@@ -400,7 +400,7 @@ mod tests {
         let num_cpus = 255;
         let mem = GuestMemory::new(&[(GuestAddress(MPTABLE_START), 0x1000)]).unwrap();
 
-        assert!(setup_mptable(&mem, num_cpus, Vec::new()).is_err());
+        assert!(setup_mptable(&mem, num_cpus, &[]).is_err());
     }
 
     #[test]
@@ -412,7 +412,7 @@ mod tests {
         )])
         .unwrap();
 
-        setup_mptable(&mem, num_cpus, Vec::new()).unwrap();
+        setup_mptable(&mem, num_cpus, &[]).unwrap();
 
         let mpf_intel = mem.read_obj_from_addr(GuestAddress(MPTABLE_START)).unwrap();
 
@@ -428,7 +428,7 @@ mod tests {
         )])
         .unwrap();
 
-        setup_mptable(&mem, num_cpus, Vec::new()).unwrap();
+        setup_mptable(&mem, num_cpus, &[]).unwrap();
 
         let mpf_intel: mpf_intel = mem.read_obj_from_addr(GuestAddress(MPTABLE_START)).unwrap();
         let mpc_offset = GuestAddress(mpf_intel.physptr as u64);
@@ -454,7 +454,7 @@ mod tests {
         .unwrap();
 
         for i in 0..MAX_CPUS {
-            setup_mptable(&mem, i, Vec::new()).unwrap();
+            setup_mptable(&mem, i, &[]).unwrap();
 
             let mpf_intel: mpf_intel = mem.read_obj_from_addr(GuestAddress(MPTABLE_START)).unwrap();
             let mpc_offset = GuestAddress(mpf_intel.physptr as u64);
