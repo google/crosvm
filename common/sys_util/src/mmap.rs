@@ -19,8 +19,6 @@ use data_model::DataInit;
 
 use crate::{errno, pagesize};
 
-const MLOCK_ONFAULT: libc::c_int = 1;
-
 #[sorted]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -411,23 +409,6 @@ impl MemoryMapping {
         } else {
             Ok(())
         }
-    }
-
-    /// Mlock the guest pages as they are faulted in
-    pub fn mlock_on_fault(&self) -> Result<()> {
-        let ret = unsafe {
-            // TODO: Switch to libc::mlock2 once https://github.com/rust-lang/libc/pull/2525 lands
-            libc::syscall(
-                libc::SYS_mlock2,
-                self.as_ptr() as *mut libc::c_void,
-                self.size(),
-                MLOCK_ONFAULT,
-            )
-        };
-        if ret == -1 {
-            return Err(Error::SystemCallFailed(errno::Error::last()));
-        }
-        Ok(())
     }
 
     /// Calls msync with MS_SYNC on the mapping.

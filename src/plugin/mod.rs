@@ -35,7 +35,7 @@ use base::{
 use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use minijail::{self, Minijail};
 use net_util::{Error as TapError, Tap, TapT};
-use vm_memory::{GuestMemory, GuestMemoryError, MemoryPolicy};
+use vm_memory::{GuestMemory, MemoryPolicy};
 
 use self::process::*;
 use self::vcpu::*;
@@ -138,8 +138,6 @@ pub enum Error {
     RootNotDir,
     #[error("failed to set gidmap for jail: {0}")]
     SetGidMap(minijail::Error),
-    #[error("failed to set guest memory policy: {0}")]
-    SetMemoryPolicy(GuestMemoryError),
     #[error("failed to set uidmap for jail: {0}")]
     SetUidMap(minijail::Error),
     #[error("process {pid} died with signal {signo}, status {status}, and code {code}")]
@@ -697,8 +695,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     if cfg.hugepages {
         mem_policy |= MemoryPolicy::USE_HUGEPAGES;
     }
-    mem.set_memory_policy(mem_policy)
-        .map_err(Error::SetMemoryPolicy)?;
+    mem.set_memory_policy(mem_policy);
     let kvm = Kvm::new_with_path(&cfg.kvm_device_path).map_err(Error::CreateKvm)?;
     let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
     vm.create_irq_chip().map_err(Error::CreateIrqChip)?;

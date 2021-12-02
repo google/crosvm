@@ -42,10 +42,6 @@ impl MemoryMapping {
         self.mapping.use_hugepages()
     }
 
-    pub fn mlock_on_fault(&self) -> Result<()> {
-        self.mapping.mlock_on_fault()
-    }
-
     pub fn read_to_memory(
         &self,
         mem_offset: usize,
