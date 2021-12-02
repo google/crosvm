@@ -103,6 +103,9 @@ const MADT_LEN: u32 = 44;
 const MADT_REVISION: u8 = 5;
 // MADT fields offset
 const MADT_FIELD_LAPIC_ADDR: usize = 36;
+const MADT_FIELD_FLAGS: usize = 40;
+// MADT flags
+const MADT_FLAG_PCAT_COMPAT: u32 = 1 << 0;
 // MADT structure offsets
 const MADT_STRUCTURE_TYPE: usize = 0;
 const MADT_STRUCTURE_LEN: usize = 1;
@@ -379,6 +382,9 @@ pub fn create_acpi_tables(
         MADT_FIELD_LAPIC_ADDR,
         super::mptable::APIC_DEFAULT_PHYS_BASE as u32,
     );
+    // Our IrqChip implementations (the KVM in-kernel irqchip and the split irqchip) expose a pair
+    // of PC-compatible 8259 PICs.
+    madt.write(MADT_FIELD_FLAGS, MADT_FLAG_PCAT_COMPAT);
 
     match host_cpus {
         Some(VcpuAffinity::PerVcpu(cpus)) => {
