@@ -637,6 +637,7 @@ impl VfioPciDevice {
             error!("{} failed to disable msi: {}", self.debug_label(), e);
             return;
         }
+        self.irq_type = None;
 
         self.enable_intx();
     }
@@ -671,6 +672,7 @@ impl VfioPciDevice {
             error!("{} failed to disable msix: {}", self.debug_label(), e);
             return;
         }
+        self.irq_type = None;
 
         self.enable_intx();
     }
@@ -884,10 +886,6 @@ impl PciDevice for VfioPciDevice {
         irq_resample_evt: &Event,
         _irq_num: Option<u32>,
     ) -> Option<(u32, PciInterruptPin)> {
-        // Keep event/resample event references.
-        self.interrupt_evt = Some(irq_evt.try_clone().ok()?);
-        self.interrupt_resample_evt = Some(irq_resample_evt.try_clone().ok()?);
-
         // Is INTx configured?
         let pin = match self.config.read_config::<u8>(PCI_INTERRUPT_PIN) {
             1 => Some(PciInterruptPin::IntA),
@@ -896,6 +894,10 @@ impl PciDevice for VfioPciDevice {
             4 => Some(PciInterruptPin::IntD),
             _ => None,
         }?;
+
+        // Keep event/resample event references.
+        self.interrupt_evt = Some(irq_evt.try_clone().ok()?);
+        self.interrupt_resample_evt = Some(irq_resample_evt.try_clone().ok()?);
 
         // enable INTX
         self.enable_intx();
