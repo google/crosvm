@@ -491,6 +491,7 @@ impl arch::LinuxArch for X8664arch {
             acpi_dev_resource,
             host_cpus,
             kvm_vcpu_ids,
+            &pci_irqs,
         )
         .ok_or(Error::CreateAcpi)?;
 

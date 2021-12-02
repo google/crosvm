@@ -218,6 +218,7 @@ where
         acpi_dev_resource.0,
         None,
         &mut apic_ids,
+        &pci_irqs,
     );
 
     let guest_mem2 = guest_mem.clone();

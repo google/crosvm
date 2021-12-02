@@ -9,6 +9,7 @@ use acpi_tables::{facs::FACS, rsdp::RSDP, sdt::SDT};
 use arch::VcpuAffinity;
 use base::error;
 use data_model::DataInit;
+use devices::{PciAddress, PciInterruptPin};
 use vm_memory::{GuestAddress, GuestMemory};
 
 pub struct AcpiDevResource {
@@ -44,6 +45,20 @@ struct Ioapic {
 
 // Safe as IOAPIC structure only contains raw data
 unsafe impl DataInit for Ioapic {}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct IoapicInterruptSourceOverride {
+    _type: u8,
+    _length: u8,
+    _bus: u8,
+    _source: u8,
+    _gsi: u32,
+    _flags: u16,
+}
+
+// Safe as IoapicInterruptSourceOverride structure only contains raw data
+unsafe impl DataInit for IoapicInterruptSourceOverride {}
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -98,6 +113,8 @@ const MADT_TYPE_INTERRUPT_SOURCE_OVERRIDE: u8 = 2;
 const MADT_TYPE_LOCAL_X2APIC: u8 = 9;
 // MADT flags
 const MADT_ENABLED: u32 = 1;
+const MADT_INT_POLARITY_ACTIVE_LOW: u16 = 0b11;
+const MADT_INT_TRIGGER_LEVEL: u16 = 0b11 << 2;
 // MADT compatibility
 const MADT_MIN_LOCAL_APIC_ID: u32 = 255;
 // XSDT
@@ -278,6 +295,9 @@ fn sync_acpi_id_from_cpuid(
 ///                 id and set these apic id in MADT if `--host-cpu-topology`
 ///                 option is set.
 /// * `apic_ids` - The apic id for vCPU will be sent to KVM by KVM_CREATE_VCPU ioctl.
+/// * `pci_rqs` - PCI device to IRQ number assignments as returned by
+///               `arch::generate_pci_root()` (device address, IRQ number, and PCI
+///               interrupt pin assignment).
 pub fn create_acpi_tables(
     guest_mem: &GuestMemory,
     num_cpus: u8,
@@ -285,6 +305,7 @@ pub fn create_acpi_tables(
     acpi_dev_resource: AcpiDevResource,
     host_cpus: Option<VcpuAffinity>,
     apic_ids: &mut Vec<usize>,
+    pci_irqs: &[(PciAddress, u32, PciInterruptPin)],
 ) -> Option<GuestAddress> {
     // RSDP is at the HI RSDP WINDOW
     let rsdp_offset = GuestAddress(super::ACPI_HI_RSDP_WINDOW_BASE);
@@ -384,6 +405,20 @@ pub fn create_acpi_tables(
         _apic_address: super::mptable::IO_APIC_DEFAULT_PHYS_BASE,
         ..Default::default()
     });
+
+    // Add interrupt overrides for the PCI IRQs so that they are reported as level triggered, as
+    // required by the PCI bus. The source and system GSI are identical, so this does not actually
+    // override the mapping; we just use it to set the level-triggered flag.
+    for (_, irq_num, _) in pci_irqs.iter() {
+        madt.append(IoapicInterruptSourceOverride {
+            _type: MADT_TYPE_INTERRUPT_SOURCE_OVERRIDE,
+            _length: std::mem::size_of::<IoapicInterruptSourceOverride>() as u8,
+            _bus: 0, // ISA
+            _source: *irq_num as u8,
+            _gsi: *irq_num,
+            _flags: MADT_INT_POLARITY_ACTIVE_LOW | MADT_INT_TRIGGER_LEVEL,
+        });
+    }
 
     if let Some(host_madt) = host_madt {
         let mut idx = MADT_LEN as usize;
