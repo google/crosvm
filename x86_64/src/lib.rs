@@ -452,15 +452,6 @@ impl arch::LinuxArch for X8664arch {
             &mut resume_notify_devices,
         )?;
 
-        // Use IRQ info in ACPI if provided by the user.
-        let mut noirq = true;
-
-        for sdt in acpi_dev_resource.sdts.iter() {
-            if sdt.is_signature(b"DSDT") || sdt.is_signature(b"APIC") {
-                noirq = false;
-            }
-        }
-
         irq_chip
             .finalize_devices(system_allocator, &io_bus, &mmio_bus)
             .map_err(Error::RegisterIrqfd)?;
@@ -496,10 +487,6 @@ impl arch::LinuxArch for X8664arch {
         .ok_or(Error::CreateAcpi)?;
 
         let mut cmdline = Self::get_base_linux_cmdline();
-
-        if noirq {
-            cmdline.insert_str("acpi=noirq").unwrap();
-        }
 
         get_serial_cmdline(&mut cmdline, serial_parameters, "io")
             .map_err(Error::GetSerialCmdline)?;
