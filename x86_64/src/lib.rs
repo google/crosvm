@@ -453,13 +453,10 @@ impl arch::LinuxArch for X8664arch {
         )?;
 
         // Use IRQ info in ACPI if provided by the user.
-        let mut noirq = true;
-
-        for sdt in acpi_dev_resource.sdts.iter() {
-            if sdt.is_signature(b"DSDT") || sdt.is_signature(b"APIC") {
-                noirq = false;
-            }
-        }
+        let noirq = !acpi_dev_resource
+            .sdts
+            .iter()
+            .any(|sdt| sdt.is_signature(b"DSDT") || sdt.is_signature(b"APIC"));
 
         irq_chip
             .finalize_devices(system_allocator, &io_bus, &mmio_bus)
