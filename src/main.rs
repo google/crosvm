@@ -64,6 +64,10 @@ use vm_control::{
     VmResponse,
 };
 
+#[cfg(feature = "scudo")]
+#[global_allocator]
+static ALLOCATOR: scudo::GlobalScudoAllocator = scudo::GlobalScudoAllocator;
+
 fn executable_is_plugin(executable: &Option<Executable>) -> bool {
     matches!(executable, Some(Executable::Plugin(_)))
 }

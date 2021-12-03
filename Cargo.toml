@@ -143,6 +143,7 @@ protobuf = { version = "2.3", optional = true }
 protos = { path = "protos", optional = true }
 remain = "*"
 resources = { path = "resources" }
+scudo = { version = "0.1", optional = true }
 serde_json = "*"
 sync = { path = "common/sync" }
 tempfile = "3"

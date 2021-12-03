@@ -16,5 +16,5 @@ remain = "*"
 thiserror = "*"
 
 [build-dependencies]
-cc = "=1.0.25"
+cc = "1.0.25"
 pkg-config = "0.3.11"
