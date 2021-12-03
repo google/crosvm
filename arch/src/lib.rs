@@ -162,7 +162,10 @@ pub trait LinuxArch {
     /// # Arguments
     ///
     /// * `components` - Parts to use to build the VM.
-    /// * `exit_evt` - Event used by sub-devices to request that crosvm exit.
+    /// * `exit_evt` - Event used by sub-devices to request that crosvm exit because guest
+    ///     wants to stop/shut down.
+    /// * `reset_evt` - Event used by sub-devices to request that crosvm exit because guest
+    ///     requested reset.
     /// * `system_allocator` - Allocator created by this trait's implementation of
     ///   `create_system_allocator`.
     /// * `serial_parameters` - Definitions for how the serial devices should be configured.
@@ -175,6 +178,7 @@ pub trait LinuxArch {
     fn build_vm<V, Vcpu>(
         components: VmComponents,
         exit_evt: &Event,
+        reset_evt: &Event,
         system_allocator: &mut SystemAllocator,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,

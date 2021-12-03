@@ -382,6 +382,7 @@ impl arch::LinuxArch for X8664arch {
     fn build_vm<V, Vcpu>(
         mut components: VmComponents,
         exit_evt: &Event,
+        reset_evt: &Event,
         system_allocator: &mut SystemAllocator,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
@@ -433,7 +434,7 @@ impl arch::LinuxArch for X8664arch {
         let pci = Arc::new(Mutex::new(pci));
         let pci_cfg = PciConfigIo::new(
             pci.clone(),
-            exit_evt.try_clone().map_err(Error::CloneEvent)?,
+            reset_evt.try_clone().map_err(Error::CloneEvent)?,
         );
         let pci_bus = Arc::new(Mutex::new(pci_cfg));
         io_bus.insert(pci_bus.clone(), 0xcf8, 0x8).unwrap();
@@ -450,7 +451,7 @@ impl arch::LinuxArch for X8664arch {
             Self::setup_legacy_devices(
                 &io_bus,
                 irq_chip.pit_uses_speaker_port(),
-                exit_evt.try_clone().map_err(Error::CloneEvent)?,
+                reset_evt.try_clone().map_err(Error::CloneEvent)?,
                 components.memory_size,
             )?;
         }
@@ -1049,12 +1050,12 @@ impl X8664arch {
     ///
     /// * - `io_bus` - the IO bus object
     /// * - `pit_uses_speaker_port` - does the PIT use port 0x61 for the PC speaker
-    /// * - `exit_evt` - the event object which should receive exit events
+    /// * - `reset_evt` - the event object which should receive exit events
     /// * - `mem_size` - the size in bytes of physical ram for the guest
     fn setup_legacy_devices(
         io_bus: &devices::Bus,
         pit_uses_speaker_port: bool,
-        exit_evt: Event,
+        reset_evt: Event,
         mem_size: u64,
     ) -> Result<()> {
         struct NoDevice;
@@ -1088,7 +1089,7 @@ impl X8664arch {
 
         let nul_device = Arc::new(Mutex::new(NoDevice));
         let i8042 = Arc::new(Mutex::new(devices::I8042Device::new(
-            exit_evt.try_clone().map_err(Error::CloneEvent)?,
+            reset_evt.try_clone().map_err(Error::CloneEvent)?,
         )));
 
         if pit_uses_speaker_port {

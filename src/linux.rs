@@ -2449,7 +2449,12 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     })
 }
 
-pub fn run_config(cfg: Config) -> Result<()> {
+pub enum ExitState {
+    Reset,
+    Stop,
+}
+
+pub fn run_config(cfg: Config) -> Result<ExitState> {
     let components = setup_vm_components(&cfg)?;
 
     let guest_mem_layout =
@@ -2515,7 +2520,7 @@ fn run_vm<Vcpu, V>(
     mut vm: V,
     irq_chip: &mut dyn IrqChipArch,
     ioapic_host_tube: Option<Tube>,
-) -> Result<()>
+) -> Result<ExitState>
 where
     Vcpu: VcpuArch + 'static,
     V: VmArch + 'static,
@@ -2650,6 +2655,7 @@ where
     }
 
     let exit_evt = Event::new().context("failed to create event")?;
+    let reset_evt = Event::new().context("failed to create event")?;
     let mut sys_allocator = Arch::create_system_allocator(vm.get_memory());
 
     // Allocate the ramoops region first. AArch64::build_vm() assumes this.
@@ -2703,6 +2709,7 @@ where
     let mut linux = Arch::build_vm::<V, Vcpu>(
         components,
         &exit_evt,
+        &reset_evt,
         &mut sys_allocator,
         &cfg.serial_parameters,
         simple_jail(&cfg, "serial")?,
@@ -2814,6 +2821,7 @@ where
         #[cfg(feature = "usb")]
         usb_control_tube,
         exit_evt,
+        reset_evt,
         sigchld_fd,
         cfg.sandbox,
         Arc::clone(&map_request),
@@ -2936,6 +2944,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     disk_host_tubes: &[Tube],
     #[cfg(feature = "usb")] usb_control_tube: Tube,
     exit_evt: Event,
+    reset_evt: Event,
     sigchld_fd: SignalFd,
     sandbox: bool,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
@@ -2943,10 +2952,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     enable_per_vm_core_scheduling: bool,
     host_cpu_topology: bool,
     kvm_vcpu_ids: Vec<usize>,
-) -> Result<()> {
+) -> Result<ExitState> {
     #[derive(PollToken)]
     enum Token {
         Exit,
+        Reset,
         Suspend,
         ChildSignal,
         IrqFd { index: IrqEventIndex },
@@ -2960,6 +2970,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     let wait_ctx = WaitContext::build_with(&[
         (&exit_evt, Token::Exit),
+        (&reset_evt, Token::Reset),
         (&linux.suspend_evt, Token::Suspend),
         (&sigchld_fd, Token::ChildSignal),
     ])
@@ -3079,6 +3090,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     vcpu_thread_barrier.wait();
 
+    let mut exit_state = ExitState::Stop;
     let mut balloon_stats_id: u64 = 0;
 
     'wait: loop {
@@ -3101,6 +3113,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             match event.token {
                 Token::Exit => {
                     info!("vcpu requested shutdown");
+                    break 'wait;
+                }
+                Token::Reset => {
+                    info!("vcpu requested reset");
+                    exit_state = ExitState::Reset;
                     break 'wait;
                 }
                 Token::Suspend => {
@@ -3373,5 +3390,5 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         .set_canon_mode()
         .expect("failed to restore canonical mode for terminal");
 
-    Ok(())
+    Ok(exit_state)
 }

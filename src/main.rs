@@ -2190,7 +2190,13 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
     Ok(())
 }
 
-fn run_vm(args: std::env::Args) -> std::result::Result<(), ()> {
+enum CommandStatus {
+    Success,
+    VmReset,
+    VmStop,
+}
+
+fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
     let arguments =
         &[Argument::positional("KERNEL", "bzImage of kernel to run"),
           Argument::value("kvm-device", "PATH", "Path to the KVM device. (default /dev/kvm)"),
@@ -2422,7 +2428,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
             match crosvm::plugin::run_config(cfg) {
                 Ok(_) => {
                     info!("crosvm and plugin have exited normally");
-                    Ok(())
+                    Ok(CommandStatus::VmStop)
                 }
                 Err(e) => {
                     error!("{}", e);
@@ -2431,9 +2437,13 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
             }
         }
         Ok(()) => match platform::run_config(cfg) {
-            Ok(_) => {
+            Ok(platform::ExitState::Stop) => {
                 info!("crosvm has exited normally");
-                Ok(())
+                Ok(CommandStatus::VmStop)
+            }
+            Ok(platform::ExitState::Reset) => {
+                info!("crosvm has exited normally due to reset request");
+                Ok(CommandStatus::VmReset)
             }
             Err(e) => {
                 error!("crosvm has exited with error: {:#}", e);
@@ -2442,7 +2452,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
         },
         Err(argument::Error::PrintHelp) => {
             print_help("crosvm run", "KERNEL", &arguments[..]);
-            Ok(())
+            Ok(CommandStatus::Success)
         }
         Err(e) => {
             error!("{}", e);
@@ -2957,7 +2967,7 @@ fn print_usage() {
     println!("    version - Show package version.");
 }
 
-fn crosvm_main() -> std::result::Result<(), ()> {
+fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
     if let Err(e) = syslog::init() {
         println!("failed to initialize syslog: {}", e);
         return Err(());
@@ -2971,32 +2981,42 @@ fn crosvm_main() -> std::result::Result<(), ()> {
         return Err(());
     }
 
-    // Past this point, usage of exit is in danger of leaking zombie processes.
-    let ret = match args.next().as_ref().map(|a| a.as_ref()) {
+    let command = match args.next() {
+        Some(c) => c,
         None => {
             print_usage();
-            Ok(())
+            return Ok(CommandStatus::Success);
         }
-        Some("balloon") => balloon_vms(args),
-        Some("balloon_stats") => balloon_stats(args),
-        Some("battery") => modify_battery(args),
-        #[cfg(feature = "composite-disk")]
-        Some("create_composite") => create_composite(args),
-        Some("create_qcow2") => create_qcow2(args),
-        Some("device") => start_device(args),
-        Some("disk") => disk_cmd(args),
-        Some("make_rt") => make_rt(args),
-        Some("resume") => resume_vms(args),
-        Some("run") => run_vm(args),
-        Some("stop") => stop_vms(args),
-        Some("suspend") => suspend_vms(args),
-        Some("usb") => modify_usb(args),
-        Some("version") => pkg_version(),
-        Some(c) => {
-            println!("invalid subcommand: {:?}", c);
-            print_usage();
-            Err(())
+    };
+
+    // Past this point, usage of exit is in danger of leaking zombie processes.
+    let ret = if command == "run" {
+        // We handle run_vm separately because it does not simply signal sucess/error
+        // but also indicates whether the guest requested reset or stop.
+        run_vm(args)
+    } else {
+        match &command[..] {
+            "balloon" => balloon_vms(args),
+            "balloon_stats" => balloon_stats(args),
+            "battery" => modify_battery(args),
+            #[cfg(feature = "composite-disk")]
+            "create_composite" => create_composite(args),
+            "create_qcow2" => create_qcow2(args),
+            "device" => start_device(args),
+            "disk" => disk_cmd(args),
+            "make_rt" => make_rt(args),
+            "resume" => resume_vms(args),
+            "stop" => stop_vms(args),
+            "suspend" => suspend_vms(args),
+            "usb" => modify_usb(args),
+            "version" => pkg_version(),
+            c => {
+                println!("invalid subcommand: {:?}", c);
+                print_usage();
+                Err(())
+            }
         }
+        .map(|_| CommandStatus::Success)
     };
 
     // Reap exit status from any child device processes. At this point, all devices should have been
@@ -3017,7 +3037,12 @@ fn crosvm_main() -> std::result::Result<(), ()> {
 }
 
 fn main() {
-    std::process::exit(if crosvm_main().is_ok() { 0 } else { 1 });
+    let exit_code = match crosvm_main() {
+        Ok(CommandStatus::Success | CommandStatus::VmStop) => 0,
+        Ok(CommandStatus::VmReset) => 32,
+        Err(_) => 1,
+    };
+    std::process::exit(exit_code);
 }
 
 #[cfg(test)]

@@ -255,6 +255,7 @@ impl arch::LinuxArch for AArch64 {
     fn build_vm<V, Vcpu>(
         mut components: VmComponents,
         _exit_evt: &Event,
+        _reset_evt: &Event,
         system_allocator: &mut SystemAllocator,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
