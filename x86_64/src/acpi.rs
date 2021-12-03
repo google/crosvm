@@ -415,13 +415,16 @@ pub fn create_acpi_tables(
     // Add interrupt overrides for the PCI IRQs so that they are reported as level triggered, as
     // required by the PCI bus. The source and system GSI are identical, so this does not actually
     // override the mapping; we just use it to set the level-triggered flag.
-    for (_, irq_num, _) in pci_irqs.iter() {
+    let mut unique_pci_irqs: Vec<u32> = pci_irqs.iter().map(|(_, irq_num, _)| *irq_num).collect();
+    unique_pci_irqs.sort_unstable();
+    unique_pci_irqs.dedup();
+    for irq_num in unique_pci_irqs {
         madt.append(IoapicInterruptSourceOverride {
             _type: MADT_TYPE_INTERRUPT_SOURCE_OVERRIDE,
             _length: std::mem::size_of::<IoapicInterruptSourceOverride>() as u8,
             _bus: 0, // ISA
-            _source: *irq_num as u8,
-            _gsi: *irq_num,
+            _source: irq_num as u8,
+            _gsi: irq_num,
             _flags: MADT_INT_POLARITY_ACTIVE_LOW | MADT_INT_TRIGGER_LEVEL,
         });
     }
