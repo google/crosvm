@@ -13,7 +13,7 @@ use std::os::unix::net::{UnixDatagram, UnixStream};
 
 use serde::{Deserialize, Serialize};
 
-use crate::net::UnlinkUnixSeqpacketListener;
+use crate::net::{UnixSeqpacket, UnlinkUnixSeqpacketListener};
 use crate::{errno_result, PollToken, Result};
 
 pub type RawDescriptor = RawFd;
@@ -165,6 +165,13 @@ impl From<SafeDescriptor> for UnixStream {
     fn from(s: SafeDescriptor) -> Self {
         // Safe because we own the SafeDescriptor at this point.
         unsafe { Self::from_raw_fd(s.into_raw_descriptor()) }
+    }
+}
+
+impl From<UnixSeqpacket> for SafeDescriptor {
+    fn from(s: UnixSeqpacket) -> Self {
+        // Safe because we own the UnixSeqpacket at this point.
+        unsafe { SafeDescriptor::from_raw_descriptor(s.into_raw_descriptor()) }
     }
 }
 

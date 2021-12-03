@@ -27,7 +27,7 @@ use crate::{
     sock_ctrl_msg::{ScmSocket, SCM_SOCKET_MAX_FD_COUNT},
     FromRawDescriptor,
 };
-use crate::{AsRawDescriptor, RawDescriptor};
+use crate::{AsRawDescriptor, IntoRawDescriptor, RawDescriptor};
 
 /// Assist in handling both IP version 4 and IP version 6.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -611,6 +611,14 @@ impl FromRawFd for UnixSeqpacket {
 impl FromRawDescriptor for UnixSeqpacket {
     unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
         Self { fd: descriptor }
+    }
+}
+
+impl IntoRawDescriptor for UnixSeqpacket {
+    fn into_raw_descriptor(self) -> RawDescriptor {
+        let fd = self.fd;
+        mem::forget(self);
+        fd
     }
 }
 
