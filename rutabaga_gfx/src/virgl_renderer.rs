@@ -34,6 +34,8 @@ type Query = virgl_renderer_export_query;
 
 /// The virtio-gpu backend state tracker which supports accelerated rendering.
 pub struct VirglRenderer {
+    // Cookie must be kept alive until VirglRenderer is dropped.
+    _cookie: Box<VirglCookie>,
     fence_state: Rc<RefCell<FenceState>>,
 }
 
@@ -188,19 +190,14 @@ impl VirglRenderer {
             return Err(RutabagaError::AlreadyInUse);
         }
 
-        // Cookie is intentionally never freed because virglrenderer never gets uninitialized.
-        // Otherwise, Resource and Context would become invalid because their lifetime is not tied
-        // to the Renderer instance. Doing so greatly simplifies the ownership for users of this
-        // library.
-
         let fence_state = Rc::new(RefCell::new(FenceState {
             latest_fence: 0,
             handler: Some(fence_handler),
         }));
 
-        let cookie: *mut VirglCookie = Box::into_raw(Box::new(VirglCookie {
+        let mut cookie = Box::new(VirglCookie {
             fence_state: Rc::clone(&fence_state),
-        }));
+        });
 
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         unsafe {
@@ -211,14 +208,17 @@ impl VirglRenderer {
         // error.
         let ret = unsafe {
             virgl_renderer_init(
-                cookie as *mut c_void,
+                &mut *cookie as *mut _ as *mut c_void,
                 virglrenderer_flags.into(),
                 transmute(VIRGL_RENDERER_CALLBACKS),
             )
         };
 
         ret_to_res(ret)?;
-        Ok(Box::new(VirglRenderer { fence_state }))
+        Ok(Box::new(VirglRenderer {
+            _cookie: cookie,
+            fence_state,
+        }))
     }
 
     #[allow(unused_variables)]
@@ -280,6 +280,19 @@ impl VirglRenderer {
         }
         #[cfg(not(feature = "virgl_renderer_next"))]
         Err(RutabagaError::Unsupported)
+    }
+}
+
+impl Drop for VirglRenderer {
+    fn drop(&mut self) {
+        // Safe because virglrenderer is initialized.
+        //
+        // This invalidates all context ids and resource ids.  It is fine because struct Rutabaga
+        // makes sure contexts and resources are dropped before this is reached.  Even if it did
+        // not, virglrenderer is designed to deal with invalid ids safely.
+        unsafe {
+            virgl_renderer_cleanup(null_mut());
+        }
     }
 }
 

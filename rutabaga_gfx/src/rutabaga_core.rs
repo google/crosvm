@@ -209,8 +209,9 @@ struct RutabagaCapsetInfo {
 /// thread-safe is more difficult.
 pub struct Rutabaga {
     resources: Map<u32, RutabagaResource>,
-    components: Map<RutabagaComponentType, Box<dyn RutabagaComponent>>,
     contexts: Map<u32, Box<dyn RutabagaContext>>,
+    // Declare components after resources and contexts such that it is dropped last.
+    components: Map<RutabagaComponentType, Box<dyn RutabagaComponent>>,
     default_component: RutabagaComponentType,
     capset_info: Vec<RutabagaCapsetInfo>,
     fence_handler: RutabagaFenceHandler,
@@ -783,9 +784,9 @@ impl RutabagaBuilder {
         }
 
         Ok(Rutabaga {
-            components: rutabaga_components,
             resources: Default::default(),
             contexts: Default::default(),
+            components: rutabaga_components,
             default_component: self.default_component,
             capset_info: rutabaga_capsets,
             fence_handler,
