@@ -1,0 +1,74 @@
+#!/bin/bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Script to create a commit to merge cros/main into cros/chromeos with a useful
+# commit message.
+#
+# Basic usage to upload a merge to gerrit:
+#
+#   $ repo start uprev .
+#   $ ./tools/chromeos/create_merge
+#   $ git push cros HEAD:refs/for/chromeos
+#
+# To merge with a specific commit, use: ./tools/chromeos/create_merge $SHA
+
+set -e
+
+cd "$(dirname "${BASH_SOURCE[0]}")/../../" || exit
+
+ORIGIN="$(git remote get-url cros)"
+MERGE_TARGET="${1:-cros/main}"
+
+commit_list() {
+    git log --oneline --decorate=no --no-color "HEAD..${MERGE_TARGET}"
+}
+
+prerequisites() {
+    if [[ -e "${ORIGIN}" ]]; then
+        echo "'cros' remote does not exist."
+        echo "Are you running this in a ChromeOS checkout?"
+        exit 1
+    fi
+
+    local tracking="$(git rev-parse --abbrev-ref --symbolic-full-name @{u})"
+    if [[ "${tracking}" != "cros/chromeos" ]]; then
+        echo "Not tracking the cros/chromeos branch."
+        exit 1
+    fi
+
+    if [[ -n $(git status -s) ]]; then
+        echo "Working directory is not clean:"
+        git status -s
+        exit 1
+    fi
+
+    if [[ -z "$(commit_list)" ]]; then
+        echo "Nothing to merge."
+        exit 0
+    fi
+}
+
+merge_message() {
+    local old=$(git rev-parse HEAD)
+    local new=$(git rev-parse "${MERGE_TARGET}")
+    local count=$(commit_list | wc -l)
+
+    echo "Merge ${count} commits from ${MERGE_TARGET}"
+    echo ""
+    commit_list
+    echo ""
+    echo "${ORIGIN}/+log/${old}..${new}"
+    echo ""
+    echo "BUG=None"
+    echo "TEST=CQ"
+}
+
+main() {
+    prerequisites
+    git merge --no-ff "${MERGE_TARGET}" -m "$(merge_message)"
+    git log -n 1
+}
+
+main
