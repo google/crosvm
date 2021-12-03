@@ -5,9 +5,11 @@
 mod event;
 mod file;
 mod io_driver;
+mod seqpacket;
 
 pub use event::*;
 pub use file::*;
+pub use seqpacket::*;
 
 use crate::executor;
 

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{sync::Arc, time::Duration};
+use std::{os::unix::io::RawFd, sync::Arc, time::Duration};
 
 use sys_util::{AsRawDescriptor, SafeDescriptor};
 
@@ -84,6 +84,54 @@ pub async fn stat(desc: &Arc<SafeDescriptor>) -> anyhow::Result<libc::stat64> {
 }
 
 pub async fn fsync(desc: &Arc<SafeDescriptor>, datasync: bool) -> anyhow::Result<()> {
+    todo!();
+}
+
+pub async fn connect(
+    desc: &Arc<SafeDescriptor>,
+    addr: libc::sockaddr_un,
+    len: libc::socklen_t,
+) -> anyhow::Result<()> {
+    todo!();
+}
+
+pub async fn next_packet_size(desc: &Arc<SafeDescriptor>) -> anyhow::Result<usize> {
+    todo!();
+}
+
+pub async fn sendmsg(
+    desc: &Arc<SafeDescriptor>,
+    buf: &[u8],
+    fds: &[RawFd],
+) -> anyhow::Result<usize> {
+    todo!();
+}
+
+pub async fn recvmsg(
+    desc: &Arc<SafeDescriptor>,
+    buf: &mut [u8],
+    fds: &mut [RawFd],
+) -> anyhow::Result<(usize, usize)> {
+    todo!();
+}
+
+pub async fn send_iobuf_with_fds<B: AsIoBufs + 'static>(
+    desc: &Arc<SafeDescriptor>,
+    buf: B,
+    fds: &[RawFd],
+) -> (anyhow::Result<usize>, B) {
+    todo!();
+}
+
+pub async fn recv_iobuf_with_fds<B: AsIoBufs + 'static>(
+    desc: &Arc<SafeDescriptor>,
+    buf: B,
+    fds: &mut [RawFd],
+) -> (anyhow::Result<(usize, usize)>, B) {
+    todo!();
+}
+
+pub async fn accept(desc: &Arc<SafeDescriptor>) -> anyhow::Result<SafeDescriptor> {
     todo!();
 }
 

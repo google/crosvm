@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::{
+    os::unix::io::RawFd,
     sync::{
         atomic::{AtomicI32, Ordering},
         Arc,
@@ -244,4 +245,87 @@ pub async fn fsync(desc: &Arc<SafeDescriptor>, datasync: bool) -> anyhow::Result
     }
 
     mio::fsync(desc, datasync).await
+}
+
+pub async fn connect(
+    desc: &Arc<SafeDescriptor>,
+    addr: libc::sockaddr_un,
+    len: libc::socklen_t,
+) -> anyhow::Result<()> {
+    #[cfg(feature = "uring")]
+    if use_uring() {
+        return uring::connect(desc, addr, len).await;
+    }
+
+    mio::connect(desc, addr, len).await
+}
+
+pub async fn next_packet_size(desc: &Arc<SafeDescriptor>) -> anyhow::Result<usize> {
+    #[cfg(feature = "uring")]
+    if use_uring() {
+        return uring::next_packet_size(desc).await;
+    }
+
+    mio::next_packet_size(desc).await
+}
+
+pub async fn sendmsg(
+    desc: &Arc<SafeDescriptor>,
+    buf: &[u8],
+    fds: &[RawFd],
+) -> anyhow::Result<usize> {
+    #[cfg(feature = "uring")]
+    if use_uring() {
+        return uring::sendmsg(desc, buf, fds).await;
+    }
+
+    mio::sendmsg(desc, buf, fds).await
+}
+
+pub async fn recvmsg(
+    desc: &Arc<SafeDescriptor>,
+    buf: &mut [u8],
+    fds: &mut [RawFd],
+) -> anyhow::Result<(usize, usize)> {
+    #[cfg(feature = "uring")]
+    if use_uring() {
+        return uring::recvmsg(desc, buf, fds).await;
+    }
+
+    mio::recvmsg(desc, buf, fds).await
+}
+
+pub async fn send_iobuf_with_fds<B: AsIoBufs + 'static>(
+    desc: &Arc<SafeDescriptor>,
+    buf: B,
+    fds: &[RawFd],
+) -> (anyhow::Result<usize>, B) {
+    #[cfg(feature = "uring")]
+    if use_uring() {
+        return uring::send_iobuf_with_fds(desc, buf, fds).await;
+    }
+
+    mio::send_iobuf_with_fds(desc, buf, fds).await
+}
+
+pub async fn recv_iobuf_with_fds<B: AsIoBufs + 'static>(
+    desc: &Arc<SafeDescriptor>,
+    buf: B,
+    fds: &mut [RawFd],
+) -> (anyhow::Result<(usize, usize)>, B) {
+    #[cfg(feature = "uring")]
+    if use_uring() {
+        return uring::recv_iobuf_with_fds(desc, buf, fds).await;
+    }
+
+    mio::recv_iobuf_with_fds(desc, buf, fds).await
+}
+
+pub async fn accept(desc: &Arc<SafeDescriptor>) -> anyhow::Result<SafeDescriptor> {
+    #[cfg(feature = "uring")]
+    if use_uring() {
+        return uring::accept(desc).await;
+    }
+
+    mio::accept(desc).await
 }

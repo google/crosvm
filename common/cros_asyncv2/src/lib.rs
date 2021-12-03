@@ -103,4 +103,6 @@ pub use event::Event;
 pub use executor::Executor;
 pub use file::File;
 pub use iobuf::{AsIoBufs, OwnedIoBuf};
+#[cfg(unix)]
+pub use sys::{SeqPacket as UnixSeqPacket, SeqPacketListener as UnixSeqPacketListener};
 pub use timer::{with_deadline, TimedOut, Timer};
