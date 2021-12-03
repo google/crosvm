@@ -744,9 +744,21 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                 // Only a few parameters can be changed by the guest.
                 ctx.in_params.format = params.format;
                 ctx.in_params.plane_formats = params.plane_formats;
+                // The resource type can only be changed through the SET_PARAMS_EXT command.
+                if is_ext {
+                    ctx.in_params.resource_type = params.resource_type;
+                }
             }
             QueueType::Output => {
-                // The guest cannot update parameters for output queue in the decoder.
+                // The guest can only change the resource type of the output queue if no resource
+                // has been imported yet.
+                if ctx.out_res.output_params_set {
+                    error!("parameter for output cannot be changed once resources are imported");
+                    return Err(VideoError::InvalidParameter);
+                }
+                if is_ext {
+                    ctx.out_params.resource_type = params.resource_type;
+                }
             }
         };
         Ok(VideoCmdResponseType::Sync(CmdResponse::NoData))
