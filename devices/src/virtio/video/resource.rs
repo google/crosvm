@@ -21,6 +21,12 @@ pub enum ResourceType {
     Object,
 }
 
+impl Default for ResourceType {
+    fn default() -> Self {
+        ResourceType::Object
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 /// A guest resource which type is not decided yet.

@@ -170,9 +170,6 @@ enum PendingResponse {
 struct Context<S: DecoderSession> {
     stream_id: StreamId,
 
-    in_resource_type: ResourceType,
-    out_resource_type: ResourceType,
-
     in_params: Params,
     out_params: Params,
 
@@ -196,16 +193,18 @@ impl<S: DecoderSession> Context<S> {
     ) -> Self {
         Context {
             stream_id,
-            in_resource_type,
-            out_resource_type,
             in_params: Params {
                 format: Some(format),
+                resource_type: in_resource_type,
                 min_buffers: 1,
                 max_buffers: 32,
                 plane_formats: vec![Default::default()],
                 ..Default::default()
             },
-            out_params: Default::default(),
+            out_params: Params {
+                resource_type: out_resource_type,
+                ..Default::default()
+            },
             in_res: Default::default(),
             out_res: Default::default(),
             is_resetting: false,
@@ -328,6 +327,8 @@ impl<S: DecoderSession> Context<S> {
 
         self.out_params = Params {
             format,
+            // The resource type is not changed by a provide picture buffers event.
+            resource_type: self.out_params.resource_type,
             // Note that rect_width is sometimes smaller.
             frame_width: width as u32,
             frame_height: height as u32,
@@ -515,8 +516,8 @@ impl<'a, D: DecoderBackend> Decoder<D> {
 
         // Now try to resolve our resource.
         let resource_type = match queue_type {
-            QueueType::Input => ctx.in_resource_type,
-            QueueType::Output => ctx.out_resource_type,
+            QueueType::Input => ctx.in_params.resource_type,
+            QueueType::Output => ctx.out_params.resource_type,
         };
 
         let resource = match resource_type {

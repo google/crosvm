@@ -67,8 +67,6 @@ enum PendingCommand {
 
 struct Stream<T: EncoderSession> {
     id: u32,
-    src_resource_type: ResourceType,
-    dst_resource_type: ResourceType,
     src_params: Params,
     dst_params: Params,
     dst_bitrate: Bitrate,
@@ -114,6 +112,7 @@ impl<T: EncoderSession> Stream<T> {
         let mut src_params = Params {
             min_buffers: MIN_BUFFERS,
             max_buffers: MAX_BUFFERS,
+            resource_type: src_resource_type,
             ..Default::default()
         };
 
@@ -129,7 +128,10 @@ impl<T: EncoderSession> Stream<T> {
             )
             .map_err(|_| VideoError::InvalidArgument)?;
 
-        let mut dst_params = Default::default();
+        let mut dst_params = Params {
+            resource_type: dst_resource_type,
+            ..Default::default()
+        };
 
         // In order to support requesting encoder params change, we must know the default frame
         // rate, because VEA's request_encoding_params_change requires both framerate and
@@ -153,8 +155,6 @@ impl<T: EncoderSession> Stream<T> {
 
         Ok(Self {
             id,
-            src_resource_type,
-            dst_resource_type,
             src_params,
             dst_params,
             dst_bitrate: DEFAULT_BITRATE,
@@ -601,7 +601,7 @@ impl<T: Encoder> EncoderDevice<T> {
                     warn!("Replacing source resource with id {}", resource_id);
                 }
 
-                let resource = match stream.src_resource_type {
+                let resource = match stream.src_params.resource_type {
                     ResourceType::Object => GuestResource::from_virtio_object_entry(
                         // Safe because we confirmed the correct type for the resource.
                         unsafe { resource.object },
@@ -627,7 +627,7 @@ impl<T: Encoder> EncoderDevice<T> {
                     warn!("Replacing dest resource with id {}", resource_id);
                 }
 
-                let resource = match stream.dst_resource_type {
+                let resource = match stream.dst_params.resource_type {
                     ResourceType::Object => GuestResource::from_virtio_object_entry(
                         // Safe because we confirmed the correct type for the resource.
                         unsafe { resource.object },

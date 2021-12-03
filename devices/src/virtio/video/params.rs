@@ -12,6 +12,7 @@ use data_model::Le32;
 use crate::virtio::video::command::{QueueType, ReadCmdError};
 use crate::virtio::video::format::*;
 use crate::virtio::video::protocol::*;
+use crate::virtio::video::resource::ResourceType;
 
 /// Safe wrapper of `virtio_video_params`.
 /// Note that this struct doesn't have a field corresponding to `queue_type` in
@@ -21,6 +22,7 @@ pub struct Params {
     // Use `Option<Format>` instead of `Format` because an image format may not be determined until
     // video decoding is started in the decoder.
     pub format: Option<Format>,
+    pub resource_type: ResourceType,
     pub frame_width: u32,
     pub frame_height: u32,
     pub min_buffers: u32,
@@ -63,6 +65,7 @@ impl TryFrom<virtio_video_params> for Params {
 
         Ok(Params {
             format: Format::n(format.into()),
+            resource_type: Default::default(),
             frame_width: frame_width.into(),
             frame_height: frame_height.into(),
             min_buffers: min_buffers.into(),
@@ -78,6 +81,7 @@ impl Params {
     pub fn to_virtio_video_params(&self, queue_type: QueueType) -> virtio_video_params {
         let Params {
             format,
+            resource_type: _,
             frame_width,
             frame_height,
             min_buffers,
