@@ -22,6 +22,7 @@ use super::{
     async_utils, copy_config, descriptor_utils, DescriptorChain, Interrupt, Queue, Reader,
     SignalableInterrupt, VirtioDevice, TYPE_BALLOON,
 };
+use crate::{UnpinRequest, UnpinResponse};
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -113,8 +114,20 @@ impl BalloonStat {
     }
 }
 
+fn invoke_desc_handler<F>(ranges: Vec<(u64, u64)>, desc_handler: &mut F)
+where
+    F: FnMut(GuestAddress, u64),
+{
+    for range in ranges {
+        desc_handler(GuestAddress(range.0), range.1);
+    }
+}
+
 // Processes one message's list of addresses.
+// Unpin requests for each inflate range will be sent via `inflate_tube`
+// if provided, and then `desc_handler` will be called for each inflate range.
 fn handle_address_chain<F>(
+    inflate_tube: &Option<Tube>,
     avail_desc: DescriptorChain,
     mem: &GuestMemory,
     desc_handler: &mut F,
@@ -129,6 +142,7 @@ where
     let mut range_start = 0;
     let mut range_size = 0;
     let mut reader = Reader::new(mem.clone(), avail_desc)?;
+    let mut inflate_ranges: Vec<(u64, u64)> = Vec::new();
     for res in reader.iter::<Le32>() {
         let pfn = match res {
             Ok(pfn) => pfn,
@@ -147,15 +161,44 @@ where
             // Discontinuity, so flush the previous range. Note range_size
             // will be 0 on the first iteration, so skip that.
             if range_size != 0 {
-                desc_handler(GuestAddress(range_start), range_size);
+                inflate_ranges.push((range_start, range_size));
             }
             range_start = guest_address;
             range_size = VIRTIO_BALLOON_PF_SIZE;
         }
     }
     if range_size != 0 {
-        desc_handler(GuestAddress(range_start), range_size);
+        inflate_ranges.push((range_start, range_size));
     }
+
+    if let Some(tube) = inflate_tube {
+        let unpin_ranges = inflate_ranges
+            .iter()
+            .map(|v| {
+                (
+                    v.0 >> VIRTIO_BALLOON_PFN_SHIFT,
+                    v.1 / VIRTIO_BALLOON_PF_SIZE,
+                )
+            })
+            .collect();
+        let req = UnpinRequest {
+            ranges: unpin_ranges,
+        };
+        if let Err(e) = tube.send(&req) {
+            error!("failed to send unpin request: {}", e);
+        } else {
+            match tube.recv() {
+                Ok(resp) => match resp {
+                    UnpinResponse::Success => invoke_desc_handler(inflate_ranges, desc_handler),
+                    UnpinResponse::Failed => error!("failed to handle unpin request"),
+                },
+                Err(e) => error!("failed to handle get unpin response: {}", e),
+            }
+        }
+    } else {
+        invoke_desc_handler(inflate_ranges, desc_handler);
+    }
+
     Ok(())
 }
 
@@ -164,6 +207,7 @@ async fn handle_queue<F>(
     mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
+    inflate_tube: &Option<Tube>,
     interrupt: Rc<RefCell<Interrupt>>,
     mut desc_handler: F,
 ) where
@@ -178,7 +222,7 @@ async fn handle_queue<F>(
             Ok(d) => d,
         };
         let index = avail_desc.index;
-        if let Err(e) = handle_address_chain(avail_desc, mem, &mut desc_handler) {
+        if let Err(e) = handle_address_chain(inflate_tube, avail_desc, mem, &mut desc_handler) {
             error!("balloon: failed to process inflate addresses: {}", e);
         }
         queue.add_used(mem, index, 0);
@@ -295,11 +339,12 @@ fn run_worker(
     mut queue_evts: Vec<Event>,
     mut queues: Vec<Queue>,
     command_tube: Tube,
+    inflate_tube: Option<Tube>,
     interrupt: Interrupt,
     kill_evt: Event,
     mem: GuestMemory,
     config: Arc<BalloonConfig>,
-) -> Tube {
+) -> (Tube, Option<Tube>) {
     // Wrap the interrupt in a `RefCell` so it can be shared between async functions.
     let interrupt = Rc::new(RefCell::new(interrupt));
 
@@ -315,6 +360,7 @@ fn run_worker(
             &mem,
             queues.remove(0),
             inflate_event,
+            &inflate_tube,
             interrupt.clone(),
             |guest_address, len| {
                 if let Err(e) = mem.remove_range(guest_address, len) {
@@ -331,6 +377,7 @@ fn run_worker(
             &mem,
             queues.remove(0),
             deflate_event,
+            &None,
             interrupt.clone(),
             |_, _| {}, // Ignore these.
         );
@@ -370,23 +417,33 @@ fn run_worker(
         }
     }
 
-    command_tube.into()
+    (command_tube.into(), inflate_tube)
 }
 
 /// Virtio device for memory balloon inflation/deflation.
 pub struct Balloon {
     command_tube: Option<Tube>,
+    inflate_tube: Option<Tube>,
     config: Arc<BalloonConfig>,
     features: u64,
     kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<Tube>>,
+    worker_thread: Option<thread::JoinHandle<(Tube, Option<Tube>)>>,
 }
 
 impl Balloon {
     /// Creates a new virtio balloon device.
-    pub fn new(base_features: u64, command_tube: Tube) -> Result<Balloon> {
+    /// To let Balloon able to successfully release the memory which are pinned
+    /// by CoIOMMU to host, the inflate_tube will be used to send the inflate
+    /// ranges to CoIOMMU with UnpinRequest/UnpinResponse messages, so that The
+    /// memory in the inflate range can be unpinned first.
+    pub fn new(
+        base_features: u64,
+        command_tube: Tube,
+        inflate_tube: Option<Tube>,
+    ) -> Result<Balloon> {
         Ok(Balloon {
             command_tube: Some(command_tube),
+            inflate_tube,
             config: Arc::new(BalloonConfig {
                 num_pages: AtomicUsize::new(0),
                 actual_pages: AtomicUsize::new(0),
@@ -425,7 +482,14 @@ impl Drop for Balloon {
 
 impl VirtioDevice for Balloon {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        vec![self.command_tube.as_ref().unwrap().as_raw_descriptor()]
+        let mut rds = Vec::new();
+        if let Some(command_tube) = &self.command_tube {
+            rds.push(command_tube.as_raw_descriptor());
+        }
+        if let Some(inflate_tube) = &self.inflate_tube {
+            rds.push(inflate_tube.as_raw_descriptor());
+        }
+        rds
     }
 
     fn device_type(&self) -> u32 {
@@ -478,6 +542,7 @@ impl VirtioDevice for Balloon {
 
         let config = self.config.clone();
         let command_tube = self.command_tube.take().unwrap();
+        let inflate_tube = self.inflate_tube.take();
         let worker_result = thread::Builder::new()
             .name("virtio_balloon".to_string())
             .spawn(move || {
@@ -485,6 +550,7 @@ impl VirtioDevice for Balloon {
                     queue_evts,
                     queues,
                     command_tube,
+                    inflate_tube,
                     interrupt,
                     kill_evt,
                     mem,
@@ -516,8 +582,9 @@ impl VirtioDevice for Balloon {
                     error!("{}: failed to get back resources", self.debug_label());
                     return false;
                 }
-                Ok(command_tube) => {
+                Ok((command_tube, inflate_tube)) => {
                     self.command_tube = Some(command_tube);
+                    self.inflate_tube = inflate_tube;
                     return true;
                 }
             }
@@ -555,7 +622,7 @@ mod tests {
         .expect("create_descriptor_chain failed");
 
         let mut addrs = Vec::new();
-        let res = handle_address_chain(chain, &memory, &mut |guest_address, len| {
+        let res = handle_address_chain(&None, chain, &memory, &mut |guest_address, len| {
             addrs.push((guest_address, len));
         });
         assert!(res.is_ok());

@@ -595,7 +595,7 @@ fn create_vinput_device(cfg: &Config, dev_path: &Path) -> DeviceResult {
 }
 
 fn create_balloon_device(cfg: &Config, tube: Tube) -> DeviceResult {
-    let dev = virtio::Balloon::new(virtio::base_features(cfg.protected_vm), tube)
+    let dev = virtio::Balloon::new(virtio::base_features(cfg.protected_vm), tube, None)
         .context("failed to create balloon")?;
 
     Ok(VirtioDeviceStub {
