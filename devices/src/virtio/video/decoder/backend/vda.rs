@@ -179,7 +179,7 @@ impl DecoderSession for VdaDecoderSession {
         offset: u32,
         bytes_used: u32,
     ) -> VideoResult<()> {
-        let GuestResourceHandle::Object(handle) = resource;
+        let GuestResourceHandle::VirtioObject(handle) = resource;
 
         Ok(self.vda_session.decode(
             bitstream_id,
@@ -207,7 +207,7 @@ impl DecoderSession for VdaDecoderSession {
         picture_buffer_id: i32,
         resource: GuestResource,
     ) -> VideoResult<()> {
-        let GuestResourceHandle::Object(handle) = resource.handle;
+        let GuestResourceHandle::VirtioObject(handle) = resource.handle;
         let vda_planes: Vec<libvda::FramePlane> = resource.planes.iter().map(Into::into).collect();
 
         Ok(self.vda_session.use_output_buffer(

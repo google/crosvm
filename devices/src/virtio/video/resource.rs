@@ -18,12 +18,12 @@ use crate::virtio::video::protocol::virtio_video_object_entry;
 #[derive(Clone, Copy, Debug)]
 pub enum ResourceType {
     /// Resources are backed by virtio objects.
-    Object,
+    VirtioObject,
 }
 
 impl Default for ResourceType {
     fn default() -> Self {
-        ResourceType::Object
+        ResourceType::VirtioObject
     }
 }
 
@@ -42,14 +42,14 @@ impl fmt::Debug for UnresolvedGuestResource {
     }
 }
 
-pub struct GuestObjectHandle {
+pub struct VirtioObjectHandle {
     /// Descriptor for the object.
     pub desc: SafeDescriptor,
     /// Modifier to apply to frame resources.
     pub modifier: u64,
 }
 
-impl GuestObjectHandle {
+impl VirtioObjectHandle {
     pub fn try_clone(&self) -> Result<Self, base::Error> {
         Ok(Self {
             desc: self.desc.try_clone()?,
@@ -59,13 +59,13 @@ impl GuestObjectHandle {
 }
 
 pub enum GuestResourceHandle {
-    Object(GuestObjectHandle),
+    VirtioObject(VirtioObjectHandle),
 }
 
 impl GuestResourceHandle {
     pub fn try_clone(&self) -> Result<Self, base::Error> {
         Ok(match self {
-            Self::Object(handle) => Self::Object(handle.try_clone()?),
+            Self::VirtioObject(handle) => Self::VirtioObject(handle.try_clone()?),
         })
     }
 }
@@ -116,7 +116,7 @@ impl GuestResource {
         };
 
         Ok(GuestResource {
-            handle: GuestResourceHandle::Object(GuestObjectHandle {
+            handle: GuestResourceHandle::VirtioObject(VirtioObjectHandle {
                 // Safe because `buffer_info.file` is a valid file descriptor and we are stealing
                 // it.
                 desc: unsafe {

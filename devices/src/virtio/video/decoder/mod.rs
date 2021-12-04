@@ -521,7 +521,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         };
 
         let resource = match resource_type {
-            ResourceType::Object => GuestResource::from_virtio_object_entry(
+            ResourceType::VirtioObject => GuestResource::from_virtio_object_entry(
                 // Safe because we confirmed the correct type for the resource.
                 unsafe { resource.object },
                 &self.resource_bridge,

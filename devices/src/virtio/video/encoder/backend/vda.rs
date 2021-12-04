@@ -16,7 +16,7 @@ use crate::virtio::video::format::{
 use crate::virtio::video::{
     encoder::encoder::*,
     error::{VideoError, VideoResult},
-    resource::{GuestObjectHandle, GuestResource, GuestResourceHandle},
+    resource::{GuestResource, GuestResourceHandle, VirtioObjectHandle},
 };
 
 impl From<Bitrate> for libvda::encode::Bitrate {
@@ -287,7 +287,7 @@ impl EncoderSession for LibvdaEncoderSession {
         force_keyframe: bool,
     ) -> VideoResult<InputBufferId> {
         let input_buffer_id = self.next_input_buffer_id;
-        let GuestResourceHandle::Object(GuestObjectHandle { desc, .. }) = resource.handle;
+        let GuestResourceHandle::VirtioObject(VirtioObjectHandle { desc, .. }) = resource.handle;
 
         let libvda_planes = resource
             .planes
@@ -319,7 +319,7 @@ impl EncoderSession for LibvdaEncoderSession {
         size: u32,
     ) -> VideoResult<OutputBufferId> {
         let output_buffer_id = self.next_output_buffer_id;
-        let GuestResourceHandle::Object(GuestObjectHandle { desc, .. }) = resource;
+        let GuestResourceHandle::VirtioObject(VirtioObjectHandle { desc, .. }) = resource;
 
         self.session.use_output_buffer(
             output_buffer_id as i32,

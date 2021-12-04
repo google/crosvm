@@ -134,7 +134,7 @@ impl<'a> VideoCmd {
                 } = r.read_obj()?;
 
                 let input_resource_type = match in_mem_type.into() {
-                    VIRTIO_VIDEO_MEM_TYPE_VIRTIO_OBJECT => ResourceType::Object,
+                    VIRTIO_VIDEO_MEM_TYPE_VIRTIO_OBJECT => ResourceType::VirtioObject,
                     _ => {
                         error!("mem_type must be VIRTIO_OBJECT");
                         return Err(InvalidArgument);
@@ -142,7 +142,7 @@ impl<'a> VideoCmd {
                 };
 
                 let output_resource_type = match out_mem_type.into() {
-                    VIRTIO_VIDEO_MEM_TYPE_VIRTIO_OBJECT => ResourceType::Object,
+                    VIRTIO_VIDEO_MEM_TYPE_VIRTIO_OBJECT => ResourceType::VirtioObject,
                     _ => {
                         error!("mem_type must be VIRTIO_OBJECT");
                         return Err(InvalidArgument);
