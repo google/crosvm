@@ -957,8 +957,18 @@ fn create_video_device(
             #[cfg(feature = "libvda")]
             // Render node for libvda.
             if backend == VideoBackendType::Libvda {
-                let dev_dri_path = Path::new("/dev/dri/renderD128");
-                jail.mount_bind(dev_dri_path, dev_dri_path, false)?;
+                // follow the implementation at:
+                // https://source.corp.google.com/chromeos_public/src/platform/minigbm/cros_gralloc/cros_gralloc_driver.cc;l=90;bpv=0;cl=c06cc9cccb3cf3c7f9d2aec706c27c34cd6162a0
+                const DRM_NUM_NODES: u32 = 63;
+                const DRM_RENDER_NODE_START: u32 = 128;
+                for offset in 0..DRM_NUM_NODES {
+                    let path_str = format!("/dev/dri/renderD{}", DRM_RENDER_NODE_START + offset);
+                    let dev_dri_path = Path::new(&path_str);
+                    if !dev_dri_path.exists() {
+                        break;
+                    }
+                    jail.mount_bind(dev_dri_path, dev_dri_path, false)?;
+                }
             }
 
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
