@@ -111,6 +111,12 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     ///
     /// # Return:
     /// * - number of bytes sent on success
+    ///
+    /// # TODO
+    /// This function takes a slice of `&[u8]` instead of `IoSlice` because the internal
+    /// cursor needs to be moved by `advance_slices()`.
+    /// Once `IoSlice::advance_slices()` becomes stable, this should be updated.
+    /// <https://github.com/rust-lang/rust/issues/62726>.
     fn send_iovec_all(
         &mut self,
         mut iovs: &mut [&[u8]],
@@ -246,6 +252,12 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// * - (number of bytes received, [received fds]) on success
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
+    ///
+    /// # TODO
+    /// This function takes a slice of `&mut [u8]` instead of `IoSliceMut` because the internal
+    /// cursor needs to be moved by `advance_slices_mut()`.
+    /// Once `IoSliceMut::advance_slices()` becomes stable, this should be updated.
+    /// <https://github.com/rust-lang/rust/issues/62726>.
     fn recv_into_bufs_all(
         &mut self,
         mut bufs: &mut [&mut [u8]],
