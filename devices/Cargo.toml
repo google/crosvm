@@ -69,7 +69,7 @@ vm_memory = { path = "../vm_memory" }
 
 [dependencies.futures]
 version = "*"
-features = ["std"]
+features = ["async-await", "std"]
 default-features = false
 
 [dev-dependencies]
