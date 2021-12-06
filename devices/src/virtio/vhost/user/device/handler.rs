@@ -761,7 +761,10 @@ mod tests {
 
     #[test]
     fn test_vhost_user_activate() {
-        use vmm_vhost::{SlaveListener, SocketEndpoint, SocketListener};
+        use vmm_vhost::{
+            connection::socket::{Endpoint as SocketEndpoint, Listener as SocketListener},
+            SlaveListener,
+        };
 
         const QUEUES_NUM: usize = 2;
 

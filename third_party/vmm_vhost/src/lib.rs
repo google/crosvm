@@ -44,11 +44,7 @@ pub use backend::*;
 
 pub mod message;
 
-mod connection;
-pub use self::connection::{Endpoint, EndpointExt, SocketEndpoint, SocketListener};
-
-#[cfg(feature = "vfio-device")]
-pub use self::connection::{VfioDevice, VfioEndpoint, VfioListener};
+pub mod connection;
 
 #[cfg(feature = "vmm")]
 mod master;
@@ -217,7 +213,7 @@ mod tests {
     use std::sync::{Arc, Barrier, Mutex};
     use std::thread;
 
-    use super::connection::SocketEndpoint;
+    use super::connection::socket::{Endpoint, Listener};
     use super::dummy_slave::{DummySlaveReqHandler, VIRTIO_FEATURES};
     use super::message::*;
     use super::*;
@@ -232,12 +228,12 @@ mod tests {
     fn create_slave<P, S>(
         path: P,
         backend: Arc<S>,
-    ) -> (Master, SlaveReqHandler<S, SocketEndpoint<MasterReq>>)
+    ) -> (Master, SlaveReqHandler<S, Endpoint<MasterReq>>)
     where
         P: AsRef<Path>,
         S: VhostUserSlaveReqHandler,
     {
-        let listener = SocketListener::new(&path, true).unwrap();
+        let listener = Listener::new(&path, true).unwrap();
         let mut slave_listener = SlaveListener::new(listener, backend).unwrap();
         let master = Master::connect(&path, 1).unwrap();
         (master, slave_listener.accept().unwrap().unwrap())

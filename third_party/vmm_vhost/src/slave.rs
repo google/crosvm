@@ -50,15 +50,15 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use crate::connection::{SocketEndpoint, SocketListener};
+    use crate::connection::socket::{Endpoint, Listener};
     use crate::dummy_slave::DummySlaveReqHandler;
 
     #[test]
     fn test_slave_listener_set_nonblocking() {
         let backend = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
         let listener =
-            SocketListener::new("/tmp/vhost_user_lib_unit_test_slave_nonblocking", true).unwrap();
-        let slave_listener = SlaveListener::<SocketEndpoint<_>, _>::new(listener, backend).unwrap();
+            Listener::new("/tmp/vhost_user_lib_unit_test_slave_nonblocking", true).unwrap();
+        let slave_listener = SlaveListener::<Endpoint<_>, _>::new(listener, backend).unwrap();
 
         slave_listener.set_nonblocking(true).unwrap();
         slave_listener.set_nonblocking(false).unwrap();
@@ -74,9 +74,8 @@ mod tests {
 
         let path = "/tmp/vhost_user_lib_unit_test_slave_accept";
         let backend = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
-        let listener = SocketListener::new(path, true).unwrap();
-        let mut slave_listener =
-            SlaveListener::<SocketEndpoint<_>, _>::new(listener, backend).unwrap();
+        let listener = Listener::new(path, true).unwrap();
+        let mut slave_listener = SlaveListener::<Endpoint<_>, _>::new(listener, backend).unwrap();
 
         slave_listener.set_nonblocking(true).unwrap();
         assert!(slave_listener.accept().unwrap().is_none());

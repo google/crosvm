@@ -13,16 +13,16 @@ use std::path::{Path, PathBuf};
 use sys_util::{AsRawDescriptor, RawDescriptor, ScmSocket};
 
 use super::{Error, Result};
-use crate::connection::{Endpoint, Listener, Req};
+use crate::connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req};
 use crate::message::*;
 
 /// Unix domain socket listener for accepting incoming connections.
-pub struct SocketListener {
+pub struct Listener {
     fd: UnixListener,
     path: PathBuf,
 }
 
-impl SocketListener {
+impl Listener {
     /// Create a unix domain socket listener.
     ///
     /// # Return:
@@ -33,14 +33,14 @@ impl SocketListener {
             let _ = std::fs::remove_file(&path);
         }
         let fd = UnixListener::bind(&path).map_err(Error::SocketError)?;
-        Ok(SocketListener {
+        Ok(Listener {
             fd,
             path: path.as_ref().to_owned(),
         })
     }
 }
 
-impl Listener for SocketListener {
+impl ListenerTrait for Listener {
     type Connection = UnixStream;
 
     /// Accept an incoming connection.
@@ -78,25 +78,25 @@ impl Listener for SocketListener {
     }
 }
 
-impl AsRawFd for SocketListener {
+impl AsRawFd for Listener {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.as_raw_fd()
     }
 }
 
-impl Drop for SocketListener {
+impl Drop for Listener {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.path);
     }
 }
 
 /// Unix domain socket endpoint for vhost-user connection.
-pub struct SocketEndpoint<R: Req> {
+pub struct Endpoint<R: Req> {
     sock: UnixStream,
     _r: PhantomData<R>,
 }
 
-impl<R: Req> SocketEndpoint<R> {
+impl<R: Req> Endpoint<R> {
     /// Create an endpoint from a stream object.
     pub fn from_stream(sock: UnixStream) -> Self {
         Self {
@@ -106,11 +106,13 @@ impl<R: Req> SocketEndpoint<R> {
     }
 }
 
-impl<R: Req> Endpoint<R> for SocketEndpoint<R> {
-    type Listener = SocketListener;
+impl<R: Req> EndpointTrait<R> for Endpoint<R> {
+    type Listener = Listener;
 
     /// Create an endpoint from a stream object.
-    fn from_connection(sock: <<Self as Endpoint<R>>::Listener as Listener>::Connection) -> Self {
+    fn from_connection(
+        sock: <<Self as EndpointTrait<R>>::Listener as ListenerTrait>::Connection,
+    ) -> Self {
         Self {
             sock,
             _r: PhantomData,
@@ -193,13 +195,13 @@ impl<R: Req> Endpoint<R> for SocketEndpoint<R> {
     }
 }
 
-impl<T: Req> AsRawFd for SocketEndpoint<T> {
+impl<T: Req> AsRawFd for Endpoint<T> {
     fn as_raw_fd(&self) -> RawFd {
         self.sock.as_raw_fd()
     }
 }
 
-impl<T: Req> AsRawDescriptor for SocketEndpoint<T> {
+impl<T: Req> AsRawDescriptor for Endpoint<T> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.as_raw_fd()
     }
@@ -223,7 +225,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let listener = SocketListener::new(&path, true).unwrap();
+        let listener = Listener::new(&path, true).unwrap();
 
         assert!(listener.as_raw_fd() > 0);
     }
@@ -233,7 +235,7 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let mut listener = SocketListener::new(&path, true).unwrap();
+        let mut listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
 
         // accept on a fd without incoming connection
@@ -246,11 +248,11 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let mut listener = SocketListener::new(&path, true).unwrap();
+        let mut listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
+        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = SocketEndpoint::<MasterReq>::from_stream(sock);
+        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
 
         let buf1 = vec![0x1, 0x2, 0x3, 0x4];
         let mut len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
@@ -274,11 +276,11 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let mut listener = SocketListener::new(&path, true).unwrap();
+        let mut listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
+        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = SocketEndpoint::<MasterReq>::from_stream(sock);
+        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
 
         let mut fd = tempfile().unwrap();
         write!(fd, "test").unwrap();
@@ -427,11 +429,11 @@ mod tests {
         let dir = temp_dir();
         let mut path = dir.path().to_owned();
         path.push("sock");
-        let mut listener = SocketListener::new(&path, true).unwrap();
+        let mut listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let mut master = SocketEndpoint::<MasterReq>::connect(&path).unwrap();
+        let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = SocketEndpoint::<MasterReq>::from_stream(sock);
+        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
 
         let mut hdr1 =
             VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, mem::size_of::<u64>() as u32);

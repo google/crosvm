@@ -1,6 +1,8 @@
 // Copyright 2021 The Chromium OS Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Structs for VFIO listener and endpoint.
+
 use std::fs::File;
 use std::io::{IoSlice, IoSliceMut};
 use std::marker::PhantomData;
@@ -10,10 +12,10 @@ use std::path::Path;
 use sys_util::EventFd;
 
 use super::{Error, Result};
-use crate::connection::{Endpoint, Listener, Req};
+use crate::connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req};
 
 /// VFIO device which can be used as virtio-vhost-user device backend.
-pub trait VfioDevice {
+pub trait Device {
     /// This event must be read before handle_request() is called.
     fn event(&self) -> &EventFd;
 
@@ -35,12 +37,12 @@ pub trait VfioDevice {
 }
 
 /// Listener for accepting incoming connections from virtio-vhost-user device through VFIO.
-pub struct VfioListener<D: VfioDevice> {
+pub struct Listener<D: Device> {
     // device will be dropped when Listener::accept() is called.
     device: Option<D>,
 }
 
-impl<D: VfioDevice> VfioListener<D> {
+impl<D: Device> Listener<D> {
     /// Creates a VFIO listener.
     pub fn new(device: D) -> Result<Self> {
         Ok(Self {
@@ -49,14 +51,14 @@ impl<D: VfioDevice> VfioListener<D> {
     }
 }
 
-impl<D: VfioDevice> Listener for VfioListener<D> {
+impl<D: Device> ListenerTrait for Listener<D> {
     type Connection = D;
 
     fn accept(&mut self) -> Result<Option<Self::Connection>> {
         let mut device = self
             .device
             .take()
-            .expect("VfioListener isn't initialized correctly");
+            .expect("Listener isn't initialized correctly");
         device.start().map_err(Error::VfioDeviceError)?;
         Ok(Some(device))
     }
@@ -67,13 +69,13 @@ impl<D: VfioDevice> Listener for VfioListener<D> {
 }
 
 /// Endpoint for vhost-user connection through VFIO.
-pub struct VfioEndpoint<R: Req, D: VfioDevice> {
+pub struct Endpoint<R: Req, D: Device> {
     device: D,
     _r: PhantomData<R>,
 }
 
-impl<R: Req, D: VfioDevice> Endpoint<R> for VfioEndpoint<R, D> {
-    type Listener = VfioListener<D>;
+impl<R: Req, D: Device> EndpointTrait<R> for Endpoint<R, D> {
+    type Listener = Listener<D>;
 
     /// Create an endpoint from a stream object.
     fn from_connection(device: D) -> Self {
@@ -105,7 +107,7 @@ impl<R: Req, D: VfioDevice> Endpoint<R> for VfioEndpoint<R, D> {
     }
 }
 
-impl<R: Req, D: VfioDevice> AsRawFd for VfioEndpoint<R, D> {
+impl<R: Req, D: Device> AsRawFd for Endpoint<R, D> {
     fn as_raw_fd(&self) -> RawFd {
         self.device.event().as_raw_fd()
     }

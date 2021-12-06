@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use data_model::DataInit;
 
-use super::connection::{Endpoint, EndpointExt, SocketEndpoint};
+use super::connection::{socket::Endpoint as SocketEndpoint, Endpoint, EndpointExt};
 use super::message::*;
 use super::{take_single_file, Error, Result};
 

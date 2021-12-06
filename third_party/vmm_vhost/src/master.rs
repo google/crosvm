@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use data_model::DataInit;
 use sys_util::EventFd;
 
-use super::connection::{Endpoint, EndpointExt, SocketEndpoint};
+use super::connection::{socket::Endpoint as SocketEndpoint, Endpoint, EndpointExt};
 use super::message::*;
 use super::{take_single_file, Error as VhostUserError, Result as VhostUserResult};
 use crate::backend::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
@@ -762,7 +762,7 @@ impl MasterInternal {
 
 #[cfg(test)]
 mod tests {
-    use super::super::connection::{EndpointExt, Listener, SocketListener};
+    use super::super::connection::{socket::Listener as SocketListener, EndpointExt, Listener};
     use super::*;
     use tempfile::{Builder, TempDir};
 

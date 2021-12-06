@@ -3,13 +3,10 @@
 
 //! Common data structures for listener and endpoint.
 
-mod socket;
-pub use self::socket::{SocketEndpoint, SocketListener};
+pub mod socket;
 
 #[cfg(feature = "vfio-device")]
-mod vfio;
-#[cfg(feature = "vfio-device")]
-pub use self::vfio::{VfioDevice, VfioEndpoint, VfioListener};
+pub mod vfio;
 
 use std::fs::File;
 use std::io::{IoSlice, IoSliceMut};
