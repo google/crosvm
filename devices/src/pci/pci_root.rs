@@ -7,7 +7,7 @@ use std::convert::TryInto;
 use std::fmt::{self, Display};
 use std::sync::{Arc, Weak};
 
-use base::RawDescriptor;
+use base::{error, Event, RawDescriptor};
 use serde::{Deserialize, Serialize};
 use sync::Mutex;
 
@@ -269,15 +269,18 @@ pub struct PciConfigIo {
     pci_root: Arc<Mutex<PciRoot>>,
     /// Current address to read/write from (0xcf8 register, litte endian).
     config_address: u32,
+    /// Event to signal that the quest requested reset via writing to 0xcf9 register.
+    reset_evt: Event,
 }
 
 impl PciConfigIo {
     const REGISTER_BITS_NUM: usize = 8;
 
-    pub fn new(pci_root: Arc<Mutex<PciRoot>>) -> Self {
+    pub fn new(pci_root: Arc<Mutex<PciRoot>>, reset_evt: Event) -> Self {
         PciConfigIo {
             pci_root,
             config_address: 0,
+            reset_evt,
         }
     }
 
@@ -329,6 +332,8 @@ impl PciConfigIo {
     }
 }
 
+const PCI_RESET_CPU_BIT: u8 = 1 << 2;
+
 impl BusDevice for PciConfigIo {
     fn debug_label(&self) -> String {
         format!("pci config io-port 0x{:03x}", self.config_address)
@@ -359,6 +364,11 @@ impl BusDevice for PciConfigIo {
     fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
         // `offset` is relative to 0xcf8
         match info.offset {
+            _o @ 1 if data.len() == 1 && data[0] & PCI_RESET_CPU_BIT != 0 => {
+                if let Err(e) = self.reset_evt.write(1) {
+                    error!("failed to trigger PCI 0xcf9 reset event: {}", e);
+                }
+            }
             o @ 0..=3 => self.set_config_address(o, data),
             o @ 4..=7 => self.config_space_write(o - 4, data),
             _ => (),

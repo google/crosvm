@@ -429,8 +429,13 @@ impl arch::LinuxArch for X8664arch {
             4, // Share the four pin interrupts (INTx#)
         )
         .map_err(Error::CreatePciRoot)?;
+
         let pci = Arc::new(Mutex::new(pci));
-        let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci.clone())));
+        let pci_cfg = PciConfigIo::new(
+            pci.clone(),
+            exit_evt.try_clone().map_err(Error::CloneEvent)?,
+        );
+        let pci_bus = Arc::new(Mutex::new(pci_cfg));
         io_bus.insert(pci_bus.clone(), 0xcf8, 0x8).unwrap();
 
         let pcie_cfg_mmio = Arc::new(Mutex::new(PciConfigMmio::new(pci, 12)));

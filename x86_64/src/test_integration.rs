@@ -137,7 +137,7 @@ where
     )
     .unwrap();
     let pci = Arc::new(Mutex::new(pci));
-    let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci)));
+    let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci, Event::new().unwrap())));
     io_bus.insert(pci_bus, 0xcf8, 0x8).unwrap();
 
     X8664arch::setup_legacy_devices(
