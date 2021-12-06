@@ -29,12 +29,19 @@ pub trait PcieDevice: Send {
     fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize);
     fn set_secondary_bus_num(&mut self, secondary_number: u8);
     fn get_removed_devices(&self) -> Vec<PciAddress>;
+    fn get_bridge_window_size(&self) -> (u64, u64);
 }
 
 const BR_MSIX_TABLE_OFFSET: u64 = 0x0;
 const BR_MSIX_PBA_OFFSET: u64 = 0x100;
 const PCI_BRIDGE_BAR_SIZE: u64 = 0x1000;
 const BR_BUS_NUMBER_REG: usize = 0x6;
+const BR_MEM_REG: usize = 0x8;
+const BR_PREF_MEM_LOW_REG: usize = 0x9;
+const BR_PREF_MEM_BASE_HIGH_REG: usize = 0xa;
+const BR_PREF_MEM_LIMIT_HIGH_REG: usize = 0xb;
+const BR_WINDOW_ALIGNMENT: u64 = 0x100000;
+const BR_PREF_MEM_64BIT: u32 = 0x001_0001;
 pub struct PciBridge {
     device: Arc<Mutex<dyn PcieDevice>>,
     config: PciConfiguration,
@@ -88,6 +95,47 @@ impl PciBridge {
             msix_cap_reg_idx: None,
             interrupt_evt: None,
             interrupt_resample_evt: None,
+        }
+    }
+
+    fn configure_bridge_window(
+        &mut self,
+        window_base: u32,
+        window_size: u32,
+        pref_window_base: u64,
+        pref_window_size: u64,
+    ) {
+        // both window_base and window_size should be alighed to 1M
+        if window_base & (BR_WINDOW_ALIGNMENT as u32 - 1) == 0
+            && window_size != 0
+            && window_size & (BR_WINDOW_ALIGNMENT as u32 - 1) == 0
+        {
+            // the top of memory will be one less thn a 1MB bodundary
+            let limit = window_base + window_size - BR_WINDOW_ALIGNMENT as u32;
+            let value = (window_base >> 16) | limit;
+            self.write_config_register(BR_MEM_REG, 0, &value.to_le_bytes());
+        }
+        // both pref_window_base and pref_window_size should be alighed to 1M
+        if pref_window_base & (BR_WINDOW_ALIGNMENT - 1) == 0
+            && pref_window_size != 0
+            && pref_window_size & (BR_WINDOW_ALIGNMENT - 1) == 0
+        {
+            // the top of memory will be one less thn a 1MB bodundary
+            let limit = pref_window_base + pref_window_size - BR_WINDOW_ALIGNMENT;
+            let low_value = ((pref_window_base as u32) >> 16) | (limit as u32) | BR_PREF_MEM_64BIT;
+            self.write_config_register(BR_PREF_MEM_LOW_REG, 0, &low_value.to_le_bytes());
+            let high_base_value = (pref_window_base >> 32) as u32;
+            self.write_config_register(
+                BR_PREF_MEM_BASE_HIGH_REG,
+                0,
+                &high_base_value.to_le_bytes(),
+            );
+            let high_top_value = (limit >> 32) as u32;
+            self.write_config_register(
+                BR_PREF_MEM_LIMIT_HIGH_REG,
+                0,
+                &high_top_value.to_le_bytes(),
+            );
         }
     }
 }
@@ -181,6 +229,65 @@ impl PciDevice for PciBridge {
                 .add_pci_bar(config)
                 .map_err(|e| PciDeviceError::IoRegistrationFailed(bar_addr, e))? as u8;
         ranges.push((bar_addr, PCI_BRIDGE_BAR_SIZE));
+
+        let (mut window_size, mut pref_window_size) = self.device.lock().get_bridge_window_size();
+        let mut window_base = u64::MAX;
+        if window_size != 0 {
+            // align window_size to 1MB
+            if window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
+                window_size = (window_size + BR_WINDOW_ALIGNMENT - 1) & (BR_WINDOW_ALIGNMENT - 1);
+            }
+            match resources.mmio_allocator(MmioType::Low).allocate_with_align(
+                window_size,
+                Alloc::PciBridgeWindow {
+                    bus: address.bus,
+                    dev: address.dev,
+                    func: address.func,
+                },
+                "pci_bridge_window".to_string(),
+                BR_WINDOW_ALIGNMENT,
+            ) {
+                Ok(addr) => window_base = addr,
+                Err(e) => warn!(
+                    "{} failed to allocate bridge window: {}",
+                    self.debug_label(),
+                    e
+                ),
+            }
+        }
+        let mut pref_window_base = u64::MAX;
+        if pref_window_size != 0 {
+            // align pref_window_size to 1MB
+            if pref_window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
+                pref_window_size =
+                    (pref_window_size + BR_WINDOW_ALIGNMENT - 1) & (BR_WINDOW_ALIGNMENT - 1);
+            }
+            match resources
+                .mmio_allocator(MmioType::High)
+                .allocate_with_align(
+                    pref_window_size,
+                    Alloc::PciBridgePrefetchWindow {
+                        bus: address.bus,
+                        dev: address.dev,
+                        func: address.func,
+                    },
+                    "pci_bridge_pref_window".to_string(),
+                    BR_WINDOW_ALIGNMENT,
+                ) {
+                Ok(addr) => pref_window_base = addr,
+                Err(e) => warn!(
+                    "{} failed to allocate bridge prefetch window: {}",
+                    self.debug_label(),
+                    e
+                ),
+            }
+        }
+        self.configure_bridge_window(
+            window_base as u32,
+            window_size as u32,
+            pref_window_base,
+            pref_window_size,
+        );
 
         let msix_cap = MsixCap::new(
             self.setting_bar,
@@ -501,6 +608,11 @@ fn get_word(data: &[u8]) -> Option<u16> {
     Some(u16::from_le_bytes(value))
 }
 
+// reserve 8MB memory window
+const PCIE_RP_BR_MEM_SIZE: u64 = 0x80_0000;
+// reserve 64MB prefetch window
+const PCIE_RP_BR_PREF_MEM_SIZE: u64 = 0x400_0000;
+
 const PCIE_RP_DID: u16 = 0x3420;
 pub struct PcieRootPort {
     pcie_cap_reg_idx: Option<usize>,
@@ -670,6 +782,10 @@ impl PcieDevice for PcieRootPort {
         }
 
         removed_devices
+    }
+
+    fn get_bridge_window_size(&self) -> (u64, u64) {
+        (PCIE_RP_BR_MEM_SIZE, PCIE_RP_BR_PREF_MEM_SIZE)
     }
 }
 

@@ -29,6 +29,10 @@ pub enum Alloc {
     PmemDevice(usize),
     /// pstore region.
     Pstore,
+    /// A PCI bridge window with associated bus, dev, function.
+    PciBridgeWindow { bus: u8, dev: u8, func: u8 },
+    /// A PCI bridge prefetch window with associated bus, dev, function.
+    PciBridgePrefetchWindow { bus: u8, dev: u8, func: u8 },
 }
 
 #[sorted]
