@@ -270,6 +270,9 @@ impl<'a> StreamInfo<'a> {
             );
             return Err(Error::OperationNotSupported);
         }
+        if self.state == VIRTIO_SND_R_PCM_PREPARE {
+            self.release_worker().await?;
+        }
         let frame_size = self.channels as usize * self.format.sample_bytes();
         if self.period_bytes % frame_size != 0 {
             error!("period_bytes must be divisible by frame size");
