@@ -1,0 +1,59 @@
+#!/bin/bash
+# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+set -e
+cd "${KOKORO_ARTIFACTS_DIR}/git/crosvm"
+
+ORIGIN=https://chromium.googlesource.com/chromiumos/platform/crosvm
+RETRIES=3
+
+gerrit_prerequisites() {
+    set -e
+
+    # Authenticate to GoB if we don't already have a cookie.
+    # This should only happen when running in Kokoro, not locally.
+    # See: go/gob-gce
+    if [[ -z $(git config http.cookiefile) ]]; then
+        git clone https://gerrit.googlesource.com/gcompute-tools \
+            "${KOKORO_ARTIFACTS_DIR}/gcompute-tools"
+        "${KOKORO_ARTIFACTS_DIR}/gcompute-tools/git-cookie-authdaemon" --no-fork
+    fi
+
+    # We cannot use the original origin that kokoro used, as we no longer have
+    # access the GoB host via rpc://.
+    git remote remove origin
+    git remote add origin ${ORIGIN}
+    git fetch -q origin
+
+    # Set up gerrit Change-Id hook.
+    mkdir -p .git/hooks
+    curl -Lo .git/hooks/commit-msg \
+        https://gerrit-review.googlesource.com/tools/hooks/commit-msg
+    chmod +x .git/hooks/commit-msg
+}
+
+upload() {
+    # Try uploading to gerrit. Retry due to errors on first upload.
+    # See: b/209031134
+    for i in $(seq 1 $RETRIES); do
+        echo "Push attempt $i"
+        if git push origin HEAD:refs/for/chromeos; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+main() {
+    set -e
+    gerrit_prerequisites
+
+    # Perform merge on a tracking branch.
+    git checkout -b chromeos
+    git branch --set-upstream-to origin/chromeos chromeos
+    ./tools/chromeos/create_merge
+
+    upload
+}
+main

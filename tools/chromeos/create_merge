@@ -15,26 +15,25 @@
 # To merge with a specific commit, use: ./tools/chromeos/create_merge $SHA
 
 set -e
-
 cd "$(dirname "${BASH_SOURCE[0]}")/../../" || exit
 
-ORIGIN="$(git remote get-url cros)"
-MERGE_TARGET="${1:-cros/main}"
+LOCAL_BRANCH=$(git branch --show-current)
+REMOTE_NAME=$(git config "branch.${LOCAL_BRANCH}.remote")
+URL=$(git remote get-url "${REMOTE_NAME}")
+
+DEFAULT_TARGET="${REMOTE_NAME}/main"
+MERGE_TARGET="${1:-${DEFAULT_TARGET}}"
 
 commit_list() {
     git log --oneline --decorate=no --no-color "HEAD..${MERGE_TARGET}"
 }
 
 prerequisites() {
-    if [[ -e "${ORIGIN}" ]]; then
-        echo "'cros' remote does not exist."
-        echo "Are you running this in a ChromeOS checkout?"
-        exit 1
-    fi
-
-    local tracking="$(git rev-parse --abbrev-ref --symbolic-full-name @{u})"
-    if [[ "${tracking}" != "cros/chromeos" ]]; then
-        echo "Not tracking the cros/chromeos branch."
+    if [[ -e "${LOCAL_BRANCH}" ]] ||
+        [[ -e "${REMOTE_NAME}" ]] ||
+        [[ -e "${URL}" ]]; then
+        echo "This script requires the local repository to be on" \
+            "a tracking branch."
         exit 1
     fi
 
@@ -55,11 +54,11 @@ merge_message() {
     local new=$(git rev-parse "${MERGE_TARGET}")
     local count=$(commit_list | wc -l)
 
-    echo "Merge ${count} commits from ${MERGE_TARGET}"
+    echo "Merge ${count} commits from ${MERGE_TARGET} ($(date +%F))"
     echo ""
     commit_list
     echo ""
-    echo "${ORIGIN}/+log/${old}..${new}"
+    echo "${URL}/+log/${old}..${new}"
     echo ""
     echo "BUG=None"
     echo "TEST=CQ"
@@ -68,7 +67,7 @@ merge_message() {
 main() {
     prerequisites
     git merge --no-ff "${MERGE_TARGET}" -m "$(merge_message)"
-    git log -n 1
+    git --no-pager log -n 1
 }
 
 main
