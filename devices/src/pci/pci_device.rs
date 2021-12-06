@@ -183,14 +183,14 @@ impl<T: PciDevice> BusDevice for T {
                 // Enable memory, add new_mmio into mmio_bus
                 if new_command_reg & COMMAND_REG_MEMORY_SPACE_MASK != 0 {
                     for (range, bus_type) in new_ranges.iter() {
-                        if *bus_type == BusType::Mmio {
+                        if *bus_type == BusType::Mmio && range.base != 0 {
                             result.mmio_add.push(*range);
                         }
                     }
                 } else {
                     // Disable memory, remove old_mmio from mmio_bus
                     for (range, bus_type) in old_ranges.iter() {
-                        if *bus_type == BusType::Mmio {
+                        if *bus_type == BusType::Mmio && range.base != 0 {
                             result.mmio_remove.push(*range);
                         }
                     }
@@ -200,14 +200,14 @@ impl<T: PciDevice> BusDevice for T {
                 // Enable IO, add new_io into io_bus
                 if new_command_reg & COMMAND_REG_IO_SPACE_MASK != 0 {
                     for (range, bus_type) in new_ranges.iter() {
-                        if *bus_type == BusType::Io {
+                        if *bus_type == BusType::Io && range.base != 0 {
                             result.io_add.push(*range);
                         }
                     }
                 } else {
                     // Disable IO, remove old_io from io_bus
                     for (range, bus_type) in old_ranges.iter() {
-                        if *bus_type == BusType::Io {
+                        if *bus_type == BusType::Io && range.base != 0 {
                             result.io_remove.push(*range);
                         }
                     }
@@ -231,11 +231,19 @@ impl<T: PciDevice> BusDevice for T {
                 }
                 if old_range.base != new_range.base {
                     if *new_type == BusType::Mmio {
-                        result.mmio_remove.push(*old_range);
-                        result.mmio_add.push(*new_range);
+                        if old_range.base != 0 {
+                            result.mmio_remove.push(*old_range);
+                        }
+                        if new_range.base != 0 {
+                            result.mmio_add.push(*new_range);
+                        }
                     } else {
-                        result.io_remove.push(*old_range);
-                        result.io_add.push(*new_range);
+                        if old_range.base != 0 {
+                            result.io_remove.push(*old_range);
+                        }
+                        if new_range.base != 0 {
+                            result.io_add.push(*new_range);
+                        }
                     }
                 }
             }
