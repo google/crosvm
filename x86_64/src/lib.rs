@@ -4,9 +4,6 @@
 
 mod fdt;
 
-const E820_RAM: u32 = 1;
-const E820_RESERVED: u32 = 2;
-
 const SETUP_DTB: u32 = 2;
 const X86_64_FDT_MAX_SIZE: u64 = 0x200000;
 
@@ -190,6 +187,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct X8664arch;
 
+enum E820Type {
+    Ram = 0x01,
+    Reserved = 0x2,
+}
+
 const BOOT_STACK_POINTER: u64 = 0x8000;
 // Make sure it align to 256MB for MTRR convenient
 const MEM_32BIT_GAP_SIZE: u64 = 768 << 20;
@@ -262,7 +264,7 @@ fn configure_system(
         params.hdr.ramdisk_size = initrd_size as u32;
     }
 
-    add_e820_entry(&mut params, 0, EBDA_START, E820_RAM)?;
+    add_e820_entry(&mut params, 0, EBDA_START, E820Type::Ram)?;
 
     let mem_end = guest_mem.end_addr();
     if mem_end < end_32bit_gap_start {
@@ -270,21 +272,21 @@ fn configure_system(
             &mut params,
             kernel_addr.offset() as u64,
             mem_end.offset_from(kernel_addr) as u64,
-            E820_RAM,
+            E820Type::Ram,
         )?;
     } else {
         add_e820_entry(
             &mut params,
             kernel_addr.offset() as u64,
             end_32bit_gap_start.offset_from(kernel_addr) as u64,
-            E820_RAM,
+            E820Type::Ram,
         )?;
         if mem_end > first_addr_past_32bits {
             add_e820_entry(
                 &mut params,
                 first_addr_past_32bits.offset() as u64,
                 mem_end.offset_from(first_addr_past_32bits) as u64,
-                E820_RAM,
+                E820Type::Ram,
             )?;
         }
     }
@@ -293,7 +295,7 @@ fn configure_system(
         &mut params,
         PCIE_CFG_MMIO_START,
         PCIE_CFG_MMIO_SIZE,
-        E820_RESERVED,
+        E820Type::Reserved,
     )?;
 
     let zero_page_addr = GuestAddress(ZERO_PAGE_OFFSET);
@@ -309,14 +311,19 @@ fn configure_system(
 
 /// Add an e820 region to the e820 map.
 /// Returns Ok(()) if successful, or an error if there is no space left in the map.
-fn add_e820_entry(params: &mut boot_params, addr: u64, size: u64, mem_type: u32) -> Result<()> {
+fn add_e820_entry(
+    params: &mut boot_params,
+    addr: u64,
+    size: u64,
+    mem_type: E820Type,
+) -> Result<()> {
     if params.e820_entries >= params.e820_table.len() as u8 {
         return Err(Error::E820Configuration);
     }
 
     params.e820_table[params.e820_entries as usize].addr = addr;
     params.e820_table[params.e820_entries as usize].size = size;
-    params.e820_table[params.e820_entries as usize].type_ = mem_type;
+    params.e820_table[params.e820_entries as usize].type_ = mem_type as u32;
     params.e820_entries += 1;
 
     Ok(())
