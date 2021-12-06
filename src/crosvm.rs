@@ -96,6 +96,7 @@ pub struct GidMap {
 
 /// Direct IO forwarding options
 #[cfg(feature = "direct")]
+#[derive(Debug)]
 pub struct DirectIoOption {
     pub path: PathBuf,
     pub ranges: Vec<(u64, u64)>,

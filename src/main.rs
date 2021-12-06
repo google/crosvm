@@ -842,6 +842,16 @@ fn parse_battery_options(s: Option<&str>) -> argument::Result<BatteryType> {
 }
 
 #[cfg(feature = "direct")]
+fn parse_hex_or_decimal(maybe_hex_string: &str) -> Result<u64, std::num::ParseIntError> {
+    // Parse string starting with 0x as hex and others as numbers.
+    let without_prefix = maybe_hex_string.strip_prefix("0x");
+    match without_prefix {
+        Some(hex_string) => u64::from_str_radix(hex_string, 16),
+        None => u64::from_str(maybe_hex_string),
+    }
+}
+
+#[cfg(feature = "direct")]
 fn parse_direct_io_options(s: Option<&str>) -> argument::Result<DirectIoOption> {
     let s = s.ok_or(argument::Error::ExpectedValue(String::from(
         "expected path@range[,range] value",
@@ -866,11 +876,11 @@ fn parse_direct_io_options(s: Option<&str>) -> argument::Result<DirectIoOption> 
         .map(|mut range| {
             let base = range
                 .next()
-                .map(|v| v.parse::<u64>())
+                .map(|v| parse_hex_or_decimal(v))
                 .map_or(Ok(None), |r| r.map(Some));
             let last = range
                 .next()
-                .map(|v| v.parse::<u64>())
+                .map(|v| parse_hex_or_decimal(v))
                 .map_or(Ok(None), |r| r.map(Some));
             (base, last)
         })
@@ -2375,9 +2385,9 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("vhost-user-fs", "SOCKET_PATH:TAG",
                           "Path to a socket path for vhost-user fs, and tag for the shared dir"),
           #[cfg(feature = "direct")]
-          Argument::value("direct-pmio", "PATH@RANGE[,RANGE[,...]]", "Path and ranges for direct port mapped I/O access"),
+          Argument::value("direct-pmio", "PATH@RANGE[,RANGE[,...]]", "Path and ranges for direct port mapped I/O access. RANGE may be decimal or hex (starting with 0x)."),
           #[cfg(feature = "direct")]
-          Argument::value("direct-mmio", "PATH@RANGE[,RANGE[,...]]", "Path and ranges for direct memory mapped I/O access"),
+          Argument::value("direct-mmio", "PATH@RANGE[,RANGE[,...]]", "Path and ranges for direct memory mapped I/O access. RANGE may be decimal or hex (starting with 0x)."),
           #[cfg(feature = "direct")]
           Argument::value("direct-level-irq", "irq", "Enable interrupt passthrough"),
           #[cfg(feature = "direct")]
@@ -3665,5 +3675,32 @@ mod tests {
         assert_eq!(params.subsystem_vendor_id, 0xfffc);
         assert_eq!(params.subsystem_device_id, 0xfffb);
         assert_eq!(params.revision_id, 0xa);
+    }
+
+    #[cfg(feature = "direct")]
+    #[test]
+    fn parse_direct_io_options_valid() {
+        let params = parse_direct_io_options(Some("/dev/mem@1,100-110")).unwrap();
+        assert_eq!(params.path.to_str(), Some("/dev/mem"));
+        assert_eq!(params.ranges[0], (1, 1));
+        assert_eq!(params.ranges[1], (100, 11));
+    }
+
+    #[cfg(feature = "direct")]
+    #[test]
+    fn parse_direct_io_options_hex() {
+        let params = parse_direct_io_options(Some("/dev/mem@1,0x10,100-110,0x10-0x20")).unwrap();
+        assert_eq!(params.path.to_str(), Some("/dev/mem"));
+        assert_eq!(params.ranges[0], (1, 1));
+        assert_eq!(params.ranges[1], (0x10, 1));
+        assert_eq!(params.ranges[2], (100, 11));
+        assert_eq!(params.ranges[3], (0x10, 0x11));
+    }
+
+    #[cfg(feature = "direct")]
+    #[test]
+    fn parse_direct_io_options_invalid() {
+        let _ = parse_direct_io_options(Some("/dev/mem@0y10"))
+            .expect_err("invalid digit found in string");
     }
 }
