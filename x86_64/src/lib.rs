@@ -1037,9 +1037,7 @@ impl X8664arch {
         // pcie_ports=native is used to force enable pcie hotplug temporary.
         // Once pcie enhanced configuration access feature is enabled, _OSC
         // will be added, then this parameter will be removed.
-        cmdline
-            .insert_str("reboot=k panic=-1 pcie_ports=native")
-            .unwrap();
+        cmdline.insert_str("panic=-1 pcie_ports=native").unwrap();
 
         cmdline
     }
