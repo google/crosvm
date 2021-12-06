@@ -190,7 +190,7 @@ macro_rules! lock {
         match lock() {
             Ok(s) => s,
             _ => return,
-        };
+        }
     };
 }
 
