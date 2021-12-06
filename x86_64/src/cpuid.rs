@@ -70,7 +70,8 @@ fn filter_cpuid(
 
                 entry.ebx = (vcpu_id << EBX_CPUID_SHIFT) as u32
                     | (EBX_CLFLUSH_CACHELINE << EBX_CLFLUSH_SIZE_SHIFT);
-                if cpu_count > 1 {
+                if cpu_count > 1 && !no_smt {
+                    // This field is only valid if CPUID.1.EDX.HTT[bit 28]= 1.
                     entry.ebx |= (cpu_count as u32) << EBX_CPU_COUNT_SHIFT;
                     entry.edx |= 1 << EDX_HTT_SHIFT;
                 }
