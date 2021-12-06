@@ -2211,6 +2211,15 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
         ));
     }
     if cfg.host_cpu_topology {
+        if cfg.no_smt {
+            return Err(argument::Error::ExpectedArgument(
+                "`host-cpu-topology` cannot be set at the same time as `no_smt`, since \
+                the smt of the Guest is the same as that of the Host when \
+                `host-cpu-topology` is set."
+                    .to_owned(),
+            ));
+        }
+
         // Safe because we pass a flag for this call and the host supports this system call
         let pcpu_count = unsafe { libc::sysconf(libc::_SC_NPROCESSORS_CONF) } as usize;
         if cfg.vcpu_count.is_some() {

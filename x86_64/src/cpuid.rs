@@ -65,6 +65,10 @@ fn filter_cpuid(
 
                 if host_cpu_topology {
                     entry.ebx |= EBX_CLFLUSH_CACHELINE << EBX_CLFLUSH_SIZE_SHIFT;
+
+                    // Expose HT flag to Guest.
+                    let result = unsafe { __cpuid(entry.function) };
+                    entry.edx |= result.edx & (1 << EDX_HTT_SHIFT);
                     continue;
                 }
 
