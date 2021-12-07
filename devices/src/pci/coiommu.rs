@@ -50,6 +50,8 @@ use crate::{UnpinRequest, UnpinResponse};
 
 const PCI_VENDOR_ID_COIOMMU: u16 = 0x1234;
 const PCI_DEVICE_ID_COIOMMU: u16 = 0xabcd;
+const COIOMMU_CMD_DEACTIVATE: u64 = 0;
+const COIOMMU_CMD_ACTIVATE: u64 = 1;
 const COIOMMU_REVISION_ID: u8 = 0x10;
 const COIOMMU_MMIO_BAR: u8 = 0;
 const COIOMMU_MMIO_BAR_SIZE: u64 = 0x2000;
@@ -1239,17 +1241,28 @@ impl CoIommuDev {
             0 => {
                 if self.coiommu_reg.dtt_root == 0 {
                     self.coiommu_reg.dtt_root = v;
-                    if self.coiommu_reg.dtt_level != 0 {
+                }
+            }
+            1 => match v {
+                // Deactivate can happen if the frontend driver in the guest
+                // fails during probing or if the CoIommu device is removed
+                // by the guest. Neither of these cases is expected, and if
+                // either happens the guest will be non-functional due to
+                // pass-through devices which rely on CoIommu not working.
+                // So just fail hard and panic.
+                COIOMMU_CMD_DEACTIVATE => {
+                    panic!("{}: Deactivate is not supported", self.debug_label())
+                }
+                COIOMMU_CMD_ACTIVATE => {
+                    if self.coiommu_reg.dtt_root != 0 && self.coiommu_reg.dtt_level != 0 {
                         self.start_workers();
                     }
                 }
-            }
+                _ => {}
+            },
             2 => {
                 if self.coiommu_reg.dtt_level == 0 {
                     self.coiommu_reg.dtt_level = v;
-                    if self.coiommu_reg.dtt_root != 0 {
-                        self.start_workers();
-                    }
                 }
             }
             _ => {}
