@@ -52,6 +52,8 @@ const PCI_VENDOR_ID_COIOMMU: u16 = 0x1234;
 const PCI_DEVICE_ID_COIOMMU: u16 = 0xabcd;
 const COIOMMU_CMD_DEACTIVATE: u64 = 0;
 const COIOMMU_CMD_ACTIVATE: u64 = 1;
+const COIOMMU_CMD_PARK_UNPIN: u64 = 2;
+const COIOMMU_CMD_UNPARK_UNPIN: u64 = 3;
 const COIOMMU_REVISION_ID: u8 = 0x10;
 const COIOMMU_MMIO_BAR: u8 = 0;
 const COIOMMU_MMIO_BAR_SIZE: u64 = 0x2000;
@@ -138,8 +140,16 @@ struct CoIommuReg {
     dtt_level: u64,
 }
 
+#[derive(PartialEq, Debug)]
+enum UnpinThreadState {
+    Unparked,
+    Parked,
+}
+
 struct CoIommuPinState {
     pinned_pages: VecDeque<u64>,
+    unpin_thread_state: UnpinThreadState,
+    unpin_park_count: u64,
 }
 
 unsafe fn vfio_map(
@@ -341,9 +351,11 @@ enum UnpinResult {
     NotPinned,
     NotUnpinned,
     FailedUnpin,
+    UnpinParked,
 }
 
 fn unpin_page(
+    pinstate: &mut CoIommuPinState,
     vfio_container: &Arc<Mutex<VfioContainer>>,
     mem: &GuestMemory,
     dtt_level: u64,
@@ -352,6 +364,10 @@ fn unpin_page(
     gfn: u64,
     force: bool,
 ) -> UnpinResult {
+    if pinstate.unpin_thread_state == UnpinThreadState::Parked {
+        return UnpinResult::UnpinParked;
+    }
+
     let leaf_entry = match gfn_to_dtt_pte(mem, dtt_level, dtt_root, dtt_iter, gfn) {
         Ok(v) => v,
         Err(_) => {
@@ -757,6 +773,7 @@ impl UnpinWorker {
         if let Some(gfn) = pinstate.pinned_pages.pop_front() {
             (
                 unpin_page(
+                    &mut pinstate,
                     &self.vfio_container,
                     &self.mem,
                     self.dtt_level,
@@ -789,9 +806,15 @@ impl UnpinWorker {
                     }
                 }
                 UnpinResult::NotPinned => {}
-                UnpinResult::NotUnpinned | UnpinResult::FailedUnpin => {
+                UnpinResult::NotUnpinned | UnpinResult::FailedUnpin | UnpinResult::UnpinParked => {
+                    // Although UnpinParked means we didn't actually try to unpin
+                    // gfn, it's not worth specifically handing since parking is
+                    // expected to be relatively rare.
                     if let Some(gfn) = pinned_page {
                         not_unpinned_pages.push_back(gfn);
+                    }
+                    if result == UnpinResult::UnpinParked {
+                        thread::park();
                     }
                 }
             }
@@ -805,23 +828,33 @@ impl UnpinWorker {
 
     fn unpin_pages_in_range(&self, gfn: u64, count: u64) -> bool {
         let mut dtt_iter: DTTIter = Default::default();
-        for i in 0..count {
+        let mut index = 0;
+        while index != count {
+            let mut pinstate = self.pinstate.lock();
             let result = unpin_page(
+                &mut pinstate,
                 &self.vfio_container,
                 &self.mem,
                 self.dtt_level,
                 self.dtt_root,
                 &mut dtt_iter,
-                gfn + i,
+                gfn + index,
                 true,
             );
+            drop(pinstate);
+
             match result {
                 UnpinResult::Unpinned | UnpinResult::NotPinned => {}
+                UnpinResult::UnpinParked => {
+                    thread::park();
+                    continue;
+                }
                 _ => {
                     error!("coiommu: force unpin failed by {:?}", result);
                     return false;
                 }
             }
+            index += 1;
         }
         true
     }
@@ -930,6 +963,8 @@ impl CoIommuDev {
             vfio_container,
             pinstate: Arc::new(Mutex::new(CoIommuPinState {
                 pinned_pages: VecDeque::new(),
+                unpin_thread_state: UnpinThreadState::Unparked,
+                unpin_park_count: 0,
             })),
             params,
         })
@@ -1256,6 +1291,31 @@ impl CoIommuDev {
                 COIOMMU_CMD_ACTIVATE => {
                     if self.coiommu_reg.dtt_root != 0 && self.coiommu_reg.dtt_level != 0 {
                         self.start_workers();
+                    }
+                }
+                COIOMMU_CMD_PARK_UNPIN => {
+                    let mut pinstate = self.pinstate.lock();
+                    pinstate.unpin_thread_state = UnpinThreadState::Parked;
+                    if let Some(v) = pinstate.unpin_park_count.checked_add(1) {
+                        pinstate.unpin_park_count = v;
+                    } else {
+                        panic!("{}: Park request overflowing", self.debug_label());
+                    }
+                }
+                COIOMMU_CMD_UNPARK_UNPIN => {
+                    let mut pinstate = self.pinstate.lock();
+                    if pinstate.unpin_thread_state == UnpinThreadState::Parked {
+                        if let Some(v) = pinstate.unpin_park_count.checked_sub(1) {
+                            pinstate.unpin_park_count = v;
+                            if pinstate.unpin_park_count == 0 {
+                                if let Some(worker_thread) = &self.unpin_thread {
+                                    worker_thread.thread().unpark();
+                                }
+                                pinstate.unpin_thread_state = UnpinThreadState::Unparked;
+                            }
+                        } else {
+                            error!("{}: Park count is already reached to 0", self.debug_label());
+                        }
                     }
                 }
                 _ => {}
