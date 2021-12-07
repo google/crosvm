@@ -20,6 +20,7 @@ die() {
 
 dirs=(
     common/io_uring
+    devices/src/virtio/gpu
 )
 
 for d in "${dirs[@]}"; do
