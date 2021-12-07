@@ -15,7 +15,6 @@
 # To merge with a specific commit, use: ./tools/chromeos/create_merge $SHA
 
 set -e
-cd "$(dirname "${BASH_SOURCE[0]}")/../../" || exit
 
 LOCAL_BRANCH=$(git branch --show-current)
 REMOTE_NAME=$(git config "branch.${LOCAL_BRANCH}.remote")

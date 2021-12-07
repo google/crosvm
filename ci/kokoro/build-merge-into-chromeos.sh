@@ -34,11 +34,15 @@ gerrit_prerequisites() {
 }
 
 upload() {
+    git push origin HEAD:refs/for/chromeos%r=crosvm-uprev@google.com
+}
+
+upload_with_retries() {
     # Try uploading to gerrit. Retry due to errors on first upload.
     # See: b/209031134
     for i in $(seq 1 $RETRIES); do
         echo "Push attempt $i"
-        if git push origin HEAD:refs/for/chromeos; then
+        if upload; then
             return 0
         fi
     done
@@ -49,11 +53,15 @@ main() {
     set -e
     gerrit_prerequisites
 
-    # Perform merge on a tracking branch.
-    git checkout -b chromeos
-    git branch --set-upstream-to origin/chromeos chromeos
-    ./tools/chromeos/create_merge
+    # Make a copy of the merge script, so we are using the HEAD version to
+    # create the merge.
+    cp ./tools/chromeos/create_merge "${KOKORO_ARTIFACTS_DIR}/create_merge"
 
-    upload
+    # Perform merge on a tracking branch.
+    git checkout -b chromeos origin/chromeos
+    git branch --set-upstream-to origin/chromeos chromeos
+    "${KOKORO_ARTIFACTS_DIR}/create_merge"
+
+    upload_with_retries
 }
 main
