@@ -8,6 +8,7 @@ use std::ffi::CString;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::mem;
+use std::os::raw::c_ulong;
 use std::os::unix::prelude::FileExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -90,9 +91,10 @@ enum KvmVfioGroupOps {
     Delete,
 }
 
+#[repr(u32)]
 enum IommuType {
-    Type1V2 = VFIO_TYPE1v2_IOMMU as isize,
-    NoIommu = VFIO_NOIOMMU_IOMMU as isize,
+    Type1V2 = VFIO_TYPE1v2_IOMMU,
+    NoIommu = VFIO_NOIOMMU_IOMMU,
 }
 
 /// VfioContainer contain multi VfioGroup, and delegate an IOMMU domain table
@@ -140,13 +142,13 @@ impl VfioContainer {
 
     fn check_extension(&self, val: IommuType) -> bool {
         // Safe as file is vfio container and make sure val is valid.
-        let ret = unsafe { ioctl_with_val(self, VFIO_CHECK_EXTENSION(), val as u64) };
+        let ret = unsafe { ioctl_with_val(self, VFIO_CHECK_EXTENSION(), val as c_ulong) };
         ret == 1
     }
 
     fn set_iommu(&self, val: IommuType) -> i32 {
         // Safe as file is vfio container and make sure val is valid.
-        unsafe { ioctl_with_val(self, VFIO_SET_IOMMU(), val as u64) }
+        unsafe { ioctl_with_val(self, VFIO_SET_IOMMU(), val as c_ulong) }
     }
 
     pub unsafe fn vfio_dma_map(
