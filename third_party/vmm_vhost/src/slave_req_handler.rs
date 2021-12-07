@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::fs::File;
-use std::marker::PhantomData;
 use std::mem;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
@@ -14,6 +13,16 @@ use data_model::DataInit;
 use super::connection::{socket::Endpoint as SocketEndpoint, Endpoint, EndpointExt};
 use super::message::*;
 use super::{take_single_file, Error, Result};
+
+#[derive(PartialEq, Eq, Debug)]
+/// Vhost-user protocol variants used for the communication.
+pub enum Protocol {
+    /// Use the regular vhost-user protocol.
+    Regular,
+    /// Use the virtio-vhost-user protocol, which is proxied through virtqueues.
+    /// The protocol is mostly same as the vhost-user protocol but no file transfer is allowed.
+    Virtio,
+}
 
 /// Services provided to the master by the slave with interior mutability.
 ///
@@ -37,7 +46,8 @@ use super::{take_single_file, Error, Result};
 /// [SlaveReqHandler]: struct.SlaveReqHandler.html
 #[allow(missing_docs)]
 pub trait VhostUserSlaveReqHandler {
-    fn use_virtio_vhost_user() -> bool;
+    /// Returns the type of vhost-user protocol that the handler support.
+    fn protocol() -> Protocol;
 
     fn set_owner(&self) -> Result<()>;
     fn reset_owner(&self) -> Result<()>;
@@ -79,8 +89,9 @@ pub trait VhostUserSlaveReqHandler {
 /// This is a helper trait mirroring the [VhostUserSlaveReqHandler] trait.
 #[allow(missing_docs)]
 pub trait VhostUserSlaveReqHandlerMut {
-    fn use_virtio_vhost_user() -> bool {
-        false
+    /// Returns the type of vhost-user protocol that the handler support.
+    fn protocol() -> Protocol {
+        Protocol::Regular
     }
 
     fn set_owner(&mut self) -> Result<()>;
@@ -127,8 +138,8 @@ pub trait VhostUserSlaveReqHandlerMut {
 }
 
 impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
-    fn use_virtio_vhost_user() -> bool {
-        T::use_virtio_vhost_user()
+    fn protocol() -> Protocol {
+        T::protocol()
     }
 
     fn set_owner(&self) -> Result<()> {
@@ -239,24 +250,24 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
 }
 
 /// Abstracts |Endpoint| related operations for vhost-user slave implementations.
-pub struct SlaveReqHelper<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> {
+pub struct SlaveReqHelper<E: Endpoint<MasterReq>> {
     /// Underlying endpoint for communication.
     endpoint: E,
 
+    /// Protocol used for the communication.
+    protocol: Protocol,
+
     /// Sending ack for messages without payload.
     reply_ack_enabled: bool,
-
-    /// Phantom data to store the type information.
-    phantom: PhantomData<S>,
 }
 
-impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHelper<S, E> {
+impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
     /// Creates a new |SlaveReqHelper| instance with an |Endpoint| underneath it.
-    pub fn new(endpoint: E) -> Self {
+    pub fn new(endpoint: E, protocol: Protocol) -> Self {
         SlaveReqHelper {
             endpoint,
+            protocol,
             reply_ack_enabled: false,
-            phantom: PhantomData,
         }
     }
 
@@ -331,7 +342,8 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHelper<S, E> {
             return Err(Error::InvalidMessage);
         }
 
-        if S::use_virtio_vhost_user() {
+        // Virtio-vhost-user protocol doesn't send FDs.
+        if self.protocol == Protocol::Virtio {
             return Ok((msg.value as u8, None));
         }
 
@@ -365,7 +377,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHelper<S, E> {
 /// [VhostUserSlaveReqHandler]: trait.VhostUserSlaveReqHandler.html
 /// [SlaveReqHandler]: struct.SlaveReqHandler.html
 pub struct SlaveReqHandler<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> {
-    slave_req_helper: SlaveReqHelper<S, E>,
+    slave_req_helper: SlaveReqHelper<E>,
     // the vhost-user backend device object
     backend: Arc<S>,
 
@@ -389,7 +401,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     /// Create a vhost-user slave endpoint.
     pub(super) fn new(endpoint: E, backend: Arc<S>) -> Self {
         SlaveReqHandler {
-            slave_req_helper: SlaveReqHelper::new(endpoint),
+            slave_req_helper: SlaveReqHelper::new(endpoint, S::protocol()),
             backend,
             virtio_features: 0,
             acked_virtio_features: 0,
@@ -705,15 +717,16 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
             return Err(Error::InvalidMessage);
         }
 
-        let files = if S::use_virtio_vhost_user() {
-            vec![]
-        } else {
-            // validate number of fds matching number of memory regions
-            let files = files.ok_or(Error::InvalidMessage)?;
-            if files.len() != msg.num_regions as usize {
-                return Err(Error::InvalidMessage);
+        let files = match S::protocol() {
+            Protocol::Regular => {
+                // validate number of fds matching number of memory regions
+                let files = files.ok_or(Error::InvalidMessage)?;
+                if files.len() != msg.num_regions as usize {
+                    return Err(Error::InvalidMessage);
+                }
+                files
             }
-            files
+            Protocol::Virtio => vec![],
         };
 
         // Validate memory regions
