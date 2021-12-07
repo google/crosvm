@@ -20,6 +20,9 @@ gerrit_prerequisites() {
         "${KOKORO_ARTIFACTS_DIR}/gcompute-tools/git-cookie-authdaemon" --no-fork
     fi
 
+    git config user.name "Crosvm Bot"
+    git config user.email crosvm-bot@crosvm-packages.iam.gserviceaccount.com
+
     # We cannot use the original origin that kokoro used, as we no longer have
     # access the GoB host via rpc://.
     git remote remove origin
