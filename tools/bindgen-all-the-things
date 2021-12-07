@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Copyright 2022 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Regenerate all bindgen-generated Rust bindings in the crosvm tree.
+#
+# This script expects to be executed from a full Chrome OS checkout so it has access to the kernel
+# and other repositories.
+
+set -e
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+source tools/impl/bindgen-common.sh
+
+die() {
+    echo "$@"
+    exit 1
+}
+
+dirs=(
+)
+
+for d in "${dirs[@]}"; do
+    echo "bindgen ${d}"
+    "${d}"/bindgen.sh || die "Failed to generate bindings for ${d}"
+done
+
+echo "Done!"
