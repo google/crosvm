@@ -63,7 +63,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // b/208901617
     fn seek_data() {
         let mut file = tempfile().unwrap();
 
@@ -108,7 +107,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // b/208901617
     fn seek_hole() {
         let mut file = tempfile().unwrap();
 

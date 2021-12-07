@@ -57,6 +57,7 @@ DOCKER_ARGS=(
     --device "/dev/net/tun"
     --device "/dev/vhost-net"
     --device "/dev/vhost-vsock"
+    --mount "type=tmpfs,destination=/tmp"
     "${PRIV_ARGS[@]}"
     "gcr.io/crosvm-packages/crosvm_dev:$IMAGE_VERSION"
 )
