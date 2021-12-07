@@ -33,6 +33,8 @@ pub enum Alloc {
     PciBridgeWindow { bus: u8, dev: u8, func: u8 },
     /// A PCI bridge prefetch window with associated bus, dev, function.
     PciBridgePrefetchWindow { bus: u8, dev: u8, func: u8 },
+    /// File-backed memory mapping.
+    FileBacked(u64),
 }
 
 #[sorted]

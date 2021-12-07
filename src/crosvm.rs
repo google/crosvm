@@ -316,6 +316,16 @@ impl Default for VhostVsockDeviceParameter {
     }
 }
 
+#[derive(Debug)]
+pub struct FileBackedMappingParameters {
+    pub address: u64,
+    pub size: u64,
+    pub path: PathBuf,
+    pub offset: u64,
+    pub writable: bool,
+    pub sync: bool,
+}
+
 /// Aggregate of all configurable options for a running VM.
 pub struct Config {
     pub kvm_device_path: PathBuf,
@@ -414,6 +424,7 @@ pub struct Config {
     pub stub_pci_devices: Vec<StubPciParameters>,
     pub vvu_proxy: Vec<VhostUserOption>,
     pub coiommu_param: Option<devices::CoIommuParameters>,
+    pub file_backed_mappings: Vec<FileBackedMappingParameters>,
 }
 
 impl Default for Config {
@@ -515,6 +526,7 @@ impl Default for Config {
             host_cpu_topology: false,
             stub_pci_devices: Vec::new(),
             coiommu_param: None,
+            file_backed_mappings: Vec::new(),
         }
     }
 }

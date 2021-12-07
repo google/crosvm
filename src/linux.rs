@@ -4,7 +4,7 @@
 
 use std::cmp::{max, Reverse};
 use std::collections::{BTreeMap, HashSet};
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 #[cfg(feature = "gpu")]
 use std::env;
 use std::fs::{File, OpenOptions};
@@ -2119,6 +2119,56 @@ fn create_devices(
     Ok(devices)
 }
 
+fn create_file_backed_mappings(
+    cfg: &Config,
+    vm: &mut impl Vm,
+    resources: &mut SystemAllocator,
+) -> Result<()> {
+    for mapping in &cfg.file_backed_mappings {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(mapping.writable)
+            .custom_flags(if mapping.sync { libc::O_SYNC } else { 0 })
+            .open(&mapping.path)
+            .context("failed to open file for file-backed mapping")?;
+        let prot = if mapping.writable {
+            Protection::read_write()
+        } else {
+            Protection::read()
+        };
+        let size = mapping
+            .size
+            .try_into()
+            .context("Invalid size for file-backed mapping")?;
+        let memory_mapping = MemoryMappingBuilder::new(size)
+            .from_file(&file)
+            .offset(mapping.offset)
+            .protection(prot)
+            .build()
+            .context("failed to map backing file for file-backed mapping")?;
+
+        resources
+            .mmio_allocator_any()
+            .allocate_at(
+                mapping.address,
+                mapping.size,
+                Alloc::FileBacked(mapping.address),
+                "file-backed mapping".to_owned(),
+            )
+            .context("failed to allocate guest address for file-backed mapping")?;
+
+        vm.add_memory_region(
+            GuestAddress(mapping.address),
+            Box::new(memory_mapping),
+            !mapping.writable,
+            /* log_dirty_pages = */ false,
+        )
+        .context("failed to configure file-backed mapping")?;
+    }
+
+    Ok(())
+}
+
 #[derive(Copy, Clone)]
 #[cfg_attr(not(feature = "tpm"), allow(dead_code))]
 struct Ids {
@@ -2973,6 +3023,8 @@ where
         ),
         None => None,
     };
+
+    create_file_backed_mappings(&cfg, &mut vm, &mut sys_allocator)?;
 
     let phys_max_addr = (1u64 << vm.get_guest_phys_addr_bits()) - 1;
     let mut devices = create_devices(
