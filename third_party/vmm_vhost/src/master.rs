@@ -102,10 +102,7 @@ impl Master {
 
     /// Create a new instance from a Unix stream socket.
     pub fn from_stream(sock: UnixStream, max_queue_num: u64) -> Self {
-        Self::new(
-            SocketEndpoint::<MasterReq>::from_stream(sock),
-            max_queue_num,
-        )
+        Self::new(SocketEndpoint::<MasterReq>::from(sock), max_queue_num)
     }
 
     /// Create a new vhost-user master endpoint.
@@ -775,7 +772,7 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
         let master = Master::connect(path, 2).unwrap();
         let slave = listener.accept().unwrap().unwrap();
-        (master, SocketEndpoint::from_stream(slave))
+        (master, SocketEndpoint::from(slave))
     }
 
     #[test]
@@ -787,8 +784,7 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
 
         let master = Master::connect(&path, 1).unwrap();
-        let mut slave =
-            SocketEndpoint::<MasterReq>::from_stream(listener.accept().unwrap().unwrap());
+        let mut slave = SocketEndpoint::<MasterReq>::from(listener.accept().unwrap().unwrap());
 
         assert!(master.as_raw_fd() > 0);
         // Send two messages continuously

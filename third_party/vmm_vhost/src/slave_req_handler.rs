@@ -381,7 +381,7 @@ pub struct SlaveReqHandler<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> 
 impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S, SocketEndpoint<MasterReq>> {
     /// Create a vhost-user slave endpoint from a connected socket.
     pub fn from_stream(socket: UnixStream, backend: Arc<S>) -> Self {
-        Self::new(SocketEndpoint::from_stream(socket), backend)
+        Self::new(SocketEndpoint::from(socket), backend)
     }
 }
 
@@ -894,7 +894,7 @@ mod tests {
     #[test]
     fn test_slave_req_handler_new() {
         let (p1, _p2) = UnixStream::pair().unwrap();
-        let endpoint = SocketEndpoint::<MasterReq>::from_stream(p1);
+        let endpoint = SocketEndpoint::<MasterReq>::from(p1);
         let backend = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
         let mut handler = SlaveReqHandler::new(endpoint, backend);
 

@@ -145,7 +145,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         let (tx, rx) = UnixStream::pair().map_err(Error::SocketError)?;
 
         Ok(MasterReqHandler {
-            sub_sock: SocketEndpoint::<SlaveReq>::from_stream(rx),
+            sub_sock: SocketEndpoint::<SlaveReq>::from(rx),
             tx_sock: tx,
             reply_ack_negotiated: false,
             backend,

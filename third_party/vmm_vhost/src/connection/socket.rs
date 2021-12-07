@@ -96,9 +96,8 @@ pub struct Endpoint<R: Req> {
     _r: PhantomData<R>,
 }
 
-impl<R: Req> Endpoint<R> {
-    /// Create an endpoint from a stream object.
-    pub fn from_stream(sock: UnixStream) -> Self {
+impl<R: Req> From<UnixStream> for Endpoint<R> {
+    fn from(sock: UnixStream) -> Self {
         Self {
             sock,
             _r: PhantomData,
@@ -126,7 +125,7 @@ impl<R: Req> EndpointTrait<R> for Endpoint<R> {
     /// * - SocketConnect: failed to connect to peer.
     fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
         let sock = UnixStream::connect(path).map_err(Error::SocketConnect)?;
-        Ok(Self::from_stream(sock))
+        Ok(Self::from(sock))
     }
 
     /// Sends bytes from scatter-gather vectors over the socket with optional attached file
@@ -252,7 +251,7 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
         let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
+        let mut slave = Endpoint::<MasterReq>::from(sock);
 
         let buf1 = vec![0x1, 0x2, 0x3, 0x4];
         let mut len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
@@ -280,7 +279,7 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
         let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
+        let mut slave = Endpoint::<MasterReq>::from(sock);
 
         let mut fd = tempfile().unwrap();
         write!(fd, "test").unwrap();
@@ -433,7 +432,7 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
         let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
         let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from_stream(sock);
+        let mut slave = Endpoint::<MasterReq>::from(sock);
 
         let mut hdr1 =
             VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, mem::size_of::<u64>() as u32);
