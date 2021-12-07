@@ -19,6 +19,7 @@ die() {
 }
 
 dirs=(
+    common/io_uring
 )
 
 for d in "${dirs[@]}"; do

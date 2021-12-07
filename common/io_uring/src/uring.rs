@@ -81,22 +81,25 @@ struct SubmitQueue {
 // Helper functions to set io_uring_sqe bindgen union members in a less verbose manner.
 impl io_uring_sqe {
     pub fn set_addr(&mut self, val: u64) {
-        self.addr = val;
+        self.__bindgen_anon_2.addr = val;
     }
     pub fn set_off(&mut self, val: u64) {
         self.__bindgen_anon_1.off = val;
     }
 
     pub fn set_buf_index(&mut self, val: u16) {
-        self.__bindgen_anon_3.__bindgen_anon_1.buf_index = val;
+        self.__bindgen_anon_4
+            .__bindgen_anon_1
+            .__bindgen_anon_1
+            .buf_index = val;
     }
 
     pub fn set_rw_flags(&mut self, val: libc::c_int) {
-        self.__bindgen_anon_2.rw_flags = val;
+        self.__bindgen_anon_3.rw_flags = val;
     }
 
     pub fn set_poll_events(&mut self, val: u16) {
-        self.__bindgen_anon_2.poll_events = val;
+        self.__bindgen_anon_3.poll_events = val;
     }
 }
 
