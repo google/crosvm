@@ -44,7 +44,7 @@ members = [
     "kernel_loader",
     "kvm",
     "kvm_sys",
-    "libcrosvm_control",
+    "crosvm_control",
     "libvda",
     "linux_input_sys",
     "net_sys",
