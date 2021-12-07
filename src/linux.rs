@@ -50,8 +50,6 @@ use devices::virtio::{
 };
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
-#[cfg(feature = "direct")]
-use devices::BusRange;
 use devices::ProtectionType;
 use devices::{
     self, BusDeviceObj, HostHotPlugKey, HotPlugBus, IrqChip, IrqEventIndex, KvmKernelIrqChip,
@@ -2745,30 +2743,22 @@ where
         for range in pmio.ranges.iter() {
             linux
                 .io_bus
-                .insert_sync(direct_io.clone(), range.0, range.1)
+                .insert_sync(direct_io.clone(), range.base, range.len)
                 .unwrap();
         }
     };
 
     #[cfg(feature = "direct")]
     if let Some(mmio) = &cfg.direct_mmio {
-        let mut ranges = Vec::new();
-        for range in mmio.ranges.iter() {
-            ranges.push(BusRange {
-                base: range.0,
-                len: range.1,
-            });
-        }
-
         let direct_mmio = Arc::new(
-            devices::DirectMmio::new(&mmio.path, false, ranges)
+            devices::DirectMmio::new(&mmio.path, false, &mmio.ranges)
                 .context("failed to open direct mmio device")?,
         );
 
         for range in mmio.ranges.iter() {
             linux
                 .mmio_bus
-                .insert_sync(direct_mmio.clone(), range.0, range.1)
+                .insert_sync(direct_mmio.clone(), range.base, range.len)
                 .unwrap();
         }
     };

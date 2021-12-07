@@ -31,6 +31,8 @@ use devices::virtio::gpu::GpuParameters;
 use devices::virtio::VideoBackendType;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
+#[cfg(feature = "direct")]
+use devices::BusRange;
 use devices::ProtectionType;
 use devices::StubPciParameters;
 use libc::{getegid, geteuid};
@@ -99,7 +101,7 @@ pub struct GidMap {
 #[derive(Debug)]
 pub struct DirectIoOption {
     pub path: PathBuf,
-    pub ranges: Vec<(u64, u64)>,
+    pub ranges: Vec<BusRange>,
 }
 
 pub const DEFAULT_TOUCH_DEVICE_HEIGHT: u32 = 1024;

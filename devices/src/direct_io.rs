@@ -78,7 +78,7 @@ pub struct DirectMmio {
 
 impl DirectMmio {
     /// Create simple direct mmio access device.
-    pub fn new(path: &Path, read_only: bool, ranges: Vec<BusRange>) -> Result<Self, io::Error> {
+    pub fn new(path: &Path, read_only: bool, ranges: &[BusRange]) -> Result<Self, io::Error> {
         let dev = OpenOptions::new()
             .read(true)
             .write(!read_only)
@@ -92,7 +92,7 @@ impl DirectMmio {
             Protection::read_write()
         };
 
-        for range in &ranges {
+        for range in ranges {
             // set to the page start
             let start = range.base & (!((pagesize() - 1) as u64));
             // set to the next page of the end address

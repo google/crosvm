@@ -43,6 +43,8 @@ use devices::virtio::{
     },
     vhost::user::device::run_gpu_device,
 };
+#[cfg(feature = "direct")]
+use devices::BusRange;
 #[cfg(feature = "audio")]
 use devices::{Ac97Backend, Ac97Parameters};
 use devices::{PciAddress, PciClassCode, ProtectionType, StubPciParameters};
@@ -870,7 +872,7 @@ fn parse_direct_io_options(s: Option<&str>) -> argument::Result<DirectIoOption> 
             expected: String::from("the path does not exist"),
         });
     };
-    let ranges: argument::Result<Vec<(u64, u64)>> = parts[1]
+    let ranges: argument::Result<Vec<BusRange>> = parts[1]
         .split(',')
         .map(|frag| frag.split('-'))
         .map(|mut range| {
@@ -885,10 +887,11 @@ fn parse_direct_io_options(s: Option<&str>) -> argument::Result<DirectIoOption> 
             (base, last)
         })
         .map(|range| match range {
-            (Ok(Some(base)), Ok(None)) => Ok((base, 1)),
-            (Ok(Some(base)), Ok(Some(last))) => {
-                Ok((base, last.saturating_sub(base).saturating_add(1)))
-            }
+            (Ok(Some(base)), Ok(None)) => Ok(BusRange { base, len: 1 }),
+            (Ok(Some(base)), Ok(Some(last))) => Ok(BusRange {
+                base,
+                len: last.saturating_sub(base).saturating_add(1),
+            }),
             (Err(e), _) => Err(argument::Error::InvalidValue {
                 value: e.to_string(),
                 expected: String::from("invalid base range value"),
@@ -3682,8 +3685,8 @@ mod tests {
     fn parse_direct_io_options_valid() {
         let params = parse_direct_io_options(Some("/dev/mem@1,100-110")).unwrap();
         assert_eq!(params.path.to_str(), Some("/dev/mem"));
-        assert_eq!(params.ranges[0], (1, 1));
-        assert_eq!(params.ranges[1], (100, 11));
+        assert_eq!(params.ranges[0], BusRange { base: 1, len: 1 });
+        assert_eq!(params.ranges[1], BusRange { base: 100, len: 11 });
     }
 
     #[cfg(feature = "direct")]
@@ -3691,10 +3694,16 @@ mod tests {
     fn parse_direct_io_options_hex() {
         let params = parse_direct_io_options(Some("/dev/mem@1,0x10,100-110,0x10-0x20")).unwrap();
         assert_eq!(params.path.to_str(), Some("/dev/mem"));
-        assert_eq!(params.ranges[0], (1, 1));
-        assert_eq!(params.ranges[1], (0x10, 1));
-        assert_eq!(params.ranges[2], (100, 11));
-        assert_eq!(params.ranges[3], (0x10, 0x11));
+        assert_eq!(params.ranges[0], BusRange { base: 1, len: 1 });
+        assert_eq!(params.ranges[1], BusRange { base: 0x10, len: 1 });
+        assert_eq!(params.ranges[2], BusRange { base: 100, len: 11 });
+        assert_eq!(
+            params.ranges[3],
+            BusRange {
+                base: 0x10,
+                len: 0x11
+            }
+        );
     }
 
     #[cfg(feature = "direct")]
