@@ -228,7 +228,10 @@ mod tests {
     fn create_slave<P, S>(
         path: P,
         backend: Arc<S>,
-    ) -> (Master, SlaveReqHandler<S, Endpoint<MasterReq>>)
+    ) -> (
+        Master<Endpoint<MasterReq>>,
+        SlaveReqHandler<S, Endpoint<MasterReq>>,
+    )
     where
         P: AsRef<Path>,
         S: VhostUserSlaveReqHandler,

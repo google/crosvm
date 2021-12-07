@@ -70,7 +70,8 @@ mod tests {
     #[cfg(feature = "vmm")]
     #[test]
     fn test_slave_listener_accept() {
-        use super::super::Master;
+        use crate::connection::socket::Endpoint as SocketEndpoint;
+        use crate::Master;
 
         let path = "/tmp/vhost_user_lib_unit_test_slave_accept";
         let backend = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
@@ -81,7 +82,7 @@ mod tests {
         assert!(slave_listener.accept().unwrap().is_none());
         assert!(slave_listener.accept().unwrap().is_none());
 
-        let _master = Master::connect(path, 1).unwrap();
+        let _master = Master::<SocketEndpoint<_>>::connect(path, 1).unwrap();
         let _slave = slave_listener.accept().unwrap().unwrap();
     }
 }
