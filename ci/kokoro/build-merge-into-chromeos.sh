@@ -57,6 +57,10 @@ main() {
     # create the merge.
     cp ./tools/chromeos/create_merge "${KOKORO_ARTIFACTS_DIR}/create_merge"
 
+    # Clean possible stray files from previous builds.
+    git clean -f -d -x
+    git checkout -f
+
     # Perform merge on a tracking branch.
     git checkout -b chromeos origin/chromeos
     git branch --set-upstream-to origin/chromeos chromeos
