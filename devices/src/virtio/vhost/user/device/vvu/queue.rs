@@ -11,7 +11,7 @@ use std::sync::atomic::{fence, Ordering};
 
 use anyhow::{anyhow, bail, Context, Result};
 use data_model::{DataInit, Le16, Le32, Le64, VolatileSlice};
-use virtio_sys::vhost::VRING_DESC_F_WRITE;
+use virtio_sys::virtio_ring::VRING_DESC_F_WRITE;
 use vm_memory::{GuestAddress as IOVA, GuestMemory as QueueMemory};
 
 use crate::virtio::Desc;
