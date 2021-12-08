@@ -2436,7 +2436,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                 Ok(())
             }
             Err(e) => {
-                error!("crosvm has exited with error: {}", e);
+                error!("crosvm has exited with error: {:#}", e);
                 Err(())
             }
         },
