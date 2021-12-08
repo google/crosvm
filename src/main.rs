@@ -944,12 +944,12 @@ fn parse_direct_io_options(s: Option<&str>) -> argument::Result<DirectIoOption> 
                 base,
                 len: last.saturating_sub(base).saturating_add(1),
             }),
-            (Err(e), _) => Err(argument::Error::InvalidValue {
-                value: e.to_string(),
+            (Err(_), _) => Err(argument::Error::InvalidValue {
+                value: s.to_owned(),
                 expected: String::from("invalid base range value"),
             }),
-            (_, Err(e)) => Err(argument::Error::InvalidValue {
-                value: e.to_string(),
+            (_, Err(_)) => Err(argument::Error::InvalidValue {
+                value: s.to_owned(),
                 expected: String::from("invalid last range value"),
             }),
             _ => Err(argument::Error::InvalidValue {
@@ -3815,7 +3815,14 @@ mod tests {
     #[cfg(feature = "direct")]
     #[test]
     fn parse_direct_io_options_invalid() {
-        let _ = parse_direct_io_options(Some("/dev/mem@0y10"))
-            .expect_err("invalid digit found in string");
+        assert!(parse_direct_io_options(Some("/dev/mem@0y10"))
+            .unwrap_err()
+            .to_string()
+            .contains("invalid base range value"));
+
+        assert!(parse_direct_io_options(Some("/dev/mem@"))
+            .unwrap_err()
+            .to_string()
+            .contains("invalid base range value"));
     }
 }
