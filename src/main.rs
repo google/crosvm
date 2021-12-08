@@ -1091,7 +1091,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         #[cfg(feature = "audio_cras")]
         "cras-snd" => {
-            cfg.cras_snd = Some(
+            cfg.cras_snds.push(
                 value
                     .unwrap()
                     .parse()

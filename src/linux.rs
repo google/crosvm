@@ -1359,7 +1359,7 @@ fn create_virtio_devices(
 
     #[cfg(feature = "audio_cras")]
     {
-        if let Some(cras_snd) = &cfg.cras_snd {
+        for cras_snd in &cfg.cras_snds {
             devs.push(create_cras_snd_device(cfg, cras_snd.clone())?);
         }
     }
