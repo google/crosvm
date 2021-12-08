@@ -1,3 +1,4 @@
+## template: jinja
 #cloud-config
 #
 # This file is responsible for setting up the test VM when it is first booted.
@@ -19,6 +20,13 @@ users:
 
 preserve_hostname: true
 
+{% if v1.machine == 'aarch64' -%}
+# This needs to run as bootcmd to preceed processing `packages` section
+bootcmd:
+    - dpkg --add-architecture armhf
+{%- endif %}
+
+
 # Runtime dependencies of crosvm binaries.
 # Note: Keep in sync with ./install-[aarch64-]deps.sh
 packages:
@@ -31,6 +39,17 @@ packages:
     - libx11-6
     - libxext6
     - rsync
+{% if v1.machine == 'aarch64' %}
+# Note: Keep in sync with the above
+    - libcap2:armhf
+    - libdbus-1-3:armhf
+    - libdrm2:armhf
+    - libepoxy0:armhf
+    - libssl1.1:armhf
+    - libwayland-client0:armhf
+    - libx11-6:armhf
+    - libxext6:armhf
+{%- endif %}
 
 # Commands to run once during setup
 runcmd:
