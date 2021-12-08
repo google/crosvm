@@ -7,6 +7,7 @@
 use std::cell::RefCell;
 use std::fmt;
 use std::io;
+use std::num::ParseIntError;
 use std::rc::Rc;
 use std::str::{FromStr, ParseBoolError};
 use std::thread;
@@ -108,6 +109,9 @@ pub enum Error {
     /// Failed to parse bool value.
     #[error("Invalid bool value: {0}")]
     InvalidBoolValue(ParseBoolError),
+    /// Failed to parse int value.
+    #[error("Invalid int value: {0}")]
+    InvalidIntValue(ParseIntError),
 }
 
 /// Holds the parameters for a cras sound device
@@ -116,6 +120,8 @@ pub struct Parameters {
     pub capture: bool,
     pub client_type: CrasClientType,
     pub socket_type: CrasSocketType,
+    pub num_output_streams: u32,
+    pub num_input_streams: u32,
 }
 
 impl Default for Parameters {
@@ -124,6 +130,8 @@ impl Default for Parameters {
             capture: true,
             client_type: CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             socket_type: CrasSocketType::Unified,
+            num_output_streams: 1,
+            num_input_streams: 1,
         }
     }
 }
@@ -151,6 +159,12 @@ impl FromStr for Parameters {
                     params.socket_type = v.parse().map_err(|e: libcras::Error| {
                         Error::InvalidParameterValue(v.to_string(), e.to_string())
                     })?;
+                }
+                "num_output_streams" => {
+                    params.num_output_streams = v.parse::<u32>().map_err(Error::InvalidIntValue)?;
+                }
+                "num_input_streams" => {
+                    params.num_input_streams = v.parse::<u32>().map_err(Error::InvalidIntValue)?;
                 }
                 _ => {
                     return Err(Error::UnknownParameter(k.to_string()));
@@ -427,7 +441,7 @@ pub struct VirtioSndCras {
 
 impl VirtioSndCras {
     pub fn new(base_features: u64, params: Parameters) -> Result<VirtioSndCras, Error> {
-        let cfg = hardcoded_virtio_snd_config();
+        let cfg = hardcoded_virtio_snd_config(&params);
 
         let avail_features = base_features;
 
@@ -444,51 +458,48 @@ impl VirtioSndCras {
 }
 
 // To be used with hardcoded_snd_data
-pub fn hardcoded_virtio_snd_config() -> virtio_snd_config {
+pub fn hardcoded_virtio_snd_config(params: &Parameters) -> virtio_snd_config {
     virtio_snd_config {
         jacks: 0.into(),
-        streams: 2.into(),
+        streams: (params.num_output_streams + params.num_input_streams).into(),
         chmaps: 2.into(),
     }
 }
 
 // To be used with hardcoded_virtio_snd_config
-// TODO(woodychow): Remove this once we can query config from CRAS
-fn hardcoded_snd_data() -> SndData {
+fn hardcoded_snd_data(params: &Parameters) -> SndData {
     let jack_info: Vec<virtio_snd_jack_info> = Vec::new();
     let mut pcm_info: Vec<virtio_snd_pcm_info> = Vec::new();
     let mut chmap_info: Vec<virtio_snd_chmap_info> = Vec::new();
 
-    // for _ in 0..(Into::<u32>::into(self.cfg.streams) as usize) {
-    // TODO(woodychow): Remove this hack
-    // Assume this single device for now
-    pcm_info.push(virtio_snd_pcm_info {
-        hdr: virtio_snd_info {
-            hda_fn_nid: 0.into(),
-        },
-        features: 0.into(), /* 1 << VIRTIO_SND_PCM_F_XXX */
-        formats: SUPPORTED_FORMATS.into(),
-        rates: SUPPORTED_FRAME_RATES.into(),
-        direction: VIRTIO_SND_D_OUTPUT,
-        channels_min: 1,
-        channels_max: 2,
-        padding: [0; 5],
-    });
-    pcm_info.push(virtio_snd_pcm_info {
-        hdr: virtio_snd_info {
-            hda_fn_nid: 0.into(),
-        },
-        features: 0.into(), /* 1 << VIRTIO_SND_PCM_F_XXX */
-        formats: SUPPORTED_FORMATS.into(),
-        rates: SUPPORTED_FRAME_RATES.into(),
-        direction: VIRTIO_SND_D_INPUT,
-        channels_min: 1,
-        channels_max: 2,
-        padding: [0; 5],
-    });
-    // }
-
-    // for _ in 0..(Into::<u32>::into(self.cfg.chmaps) as usize) {
+    for _ in 0..params.num_output_streams {
+        pcm_info.push(virtio_snd_pcm_info {
+            hdr: virtio_snd_info {
+                hda_fn_nid: 0.into(),
+            },
+            features: 0.into(), /* 1 << VIRTIO_SND_PCM_F_XXX */
+            formats: SUPPORTED_FORMATS.into(),
+            rates: SUPPORTED_FRAME_RATES.into(),
+            direction: VIRTIO_SND_D_OUTPUT,
+            channels_min: 1,
+            channels_max: 2,
+            padding: [0; 5],
+        });
+    }
+    for _ in 0..params.num_input_streams {
+        pcm_info.push(virtio_snd_pcm_info {
+            hdr: virtio_snd_info {
+                hda_fn_nid: 0.into(),
+            },
+            features: 0.into(), /* 1 << VIRTIO_SND_PCM_F_XXX */
+            formats: SUPPORTED_FORMATS.into(),
+            rates: SUPPORTED_FRAME_RATES.into(),
+            direction: VIRTIO_SND_D_INPUT,
+            channels_min: 1,
+            channels_max: 2,
+            padding: [0; 5],
+        });
+    }
 
     // Use stereo channel map.
     let mut positions = [VIRTIO_SND_CHMAP_NONE; VIRTIO_SND_CHMAP_MAX_SIZE];
@@ -511,7 +522,6 @@ fn hardcoded_snd_data() -> SndData {
         channels: 2,
         positions,
     });
-    // }
 
     SndData {
         jack_info,
@@ -593,7 +603,7 @@ impl VirtioDevice for VirtioSndCras {
                     interrupt,
                     queues,
                     guest_mem,
-                    hardcoded_snd_data(),
+                    hardcoded_snd_data(&params),
                     queue_evts,
                     kill_evt,
                     params,
@@ -739,11 +749,15 @@ mod tests {
             capture: bool,
             client_type: CrasClientType,
             socket_type: CrasSocketType,
+            num_output_streams: u32,
+            num_input_streams: u32,
         ) {
             let params = s.parse::<Parameters>().expect("parse should have succeded");
             assert_eq!(params.capture, capture);
             assert_eq!(params.client_type, client_type);
             assert_eq!(params.socket_type, socket_type);
+            assert_eq!(params.num_output_streams, num_output_streams);
+            assert_eq!(params.num_input_streams, num_input_streams);
         }
         fn check_failure(s: &str) {
             s.parse::<Parameters>()
@@ -755,18 +769,24 @@ mod tests {
             false,
             CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             CrasSocketType::Unified,
+            1,
+            1,
         );
         check_success(
             "capture=true,client_type=crosvm",
             true,
             CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             CrasSocketType::Unified,
+            1,
+            1,
         );
         check_success(
             "capture=true,client_type=arcvm",
             true,
             CrasClientType::CRAS_CLIENT_TYPE_ARCVM,
             CrasSocketType::Unified,
+            1,
+            1,
         );
         check_failure("capture=true,client_type=none");
         check_success(
@@ -774,12 +794,24 @@ mod tests {
             true,
             CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             CrasSocketType::Legacy,
+            1,
+            1,
         );
         check_success(
             "socket_type=unified",
             true,
             CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             CrasSocketType::Unified,
+            1,
+            1,
+        );
+        check_success(
+            "capture=true,client_type=arcvm,num_output_streams=2,num_input_streams=3",
+            true,
+            CrasClientType::CRAS_CLIENT_TYPE_ARCVM,
+            CrasSocketType::Unified,
+            2,
+            3,
         );
     }
 }

@@ -2219,12 +2219,13 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
               This option is no-op on devices that have neither MDS nor L1TF vulnerability."),
           #[cfg(feature = "audio_cras")]
           Argument::value("cras-snd",
-          "[capture=true,client=crosvm,socket=unified]",
+          "[capture=true,client=crosvm,socket=unified,num_output_streams=1,num_input_streams=1]",
           "Comma separated key=value pairs for setting up cras snd devices.
               Possible key values:
               capture - Enable audio capture.
               client_type - Set specific client type for cras backend.
-              socket_type - Set specific socket type for cras backend (legacy/unified)"),
+              num_output_streams - Set number of output PCM streams
+              num_input_streams - Set number of input PCM streams"),
           Argument::flag("no-smt", "Don't use SMT in the guest"),
           Argument::value("rt-cpus", "CPUSET", "Comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: none)"),
           Argument::flag("delay-rt", "Don't set VCPUs real-time until make-rt command is run"),
