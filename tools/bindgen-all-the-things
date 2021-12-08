@@ -22,6 +22,7 @@ dirs=(
     common/io_uring
     devices/src/virtio/gpu
     kernel_loader
+    kvm_sys
 )
 
 for d in "${dirs[@]}"; do
