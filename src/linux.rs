@@ -605,7 +605,7 @@ fn create_tap_net_device(cfg: &Config, tap_fd: RawDescriptor) -> DeviceResult {
     }
     let features = virtio::base_features(cfg.protected_vm);
     let dev =
-        virtio::Net::from(features, tap, vq_pairs).context("failed to set up virtio networking")?;
+        virtio::Net::from(features, tap, vq_pairs).context("failed to create tap net device")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -639,7 +639,7 @@ fn create_net_device(
         Box::new(dev) as Box<dyn VirtioDevice>
     } else {
         let dev = virtio::Net::<Tap>::new(features, host_ip, netmask, mac_address, vq_pairs)
-            .context("failed to set up virtio networking")?;
+            .context("failed to create virtio network device")?;
         Box::new(dev) as Box<dyn VirtioDevice>
     };
 
