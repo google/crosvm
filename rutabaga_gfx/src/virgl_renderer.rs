@@ -8,7 +8,7 @@
 #![cfg(feature = "virgl_renderer")]
 
 use std::cell::RefCell;
-use std::ffi::CString;
+use std::cmp::min;
 use std::mem::{size_of, transmute};
 use std::os::raw::{c_char, c_void};
 use std::ptr::null_mut;
@@ -87,9 +87,10 @@ impl Drop for VirglRendererContext {
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 extern "C" fn debug_callback(fmt: *const ::std::os::raw::c_char, ap: *mut __va_list_tag) {
-    let len: u32 = 256;
-    let mut c_str = CString::new(vec![b' '; len as usize]).unwrap();
-    unsafe {
+    const BUF_LEN: usize = 256;
+    let mut v = [b' '; BUF_LEN];
+
+    let printed_len = unsafe {
         let mut varargs = __va_list_tag {
             gp_offset: (*ap).gp_offset,
             fp_offset: (*ap).fp_offset,
@@ -97,11 +98,20 @@ extern "C" fn debug_callback(fmt: *const ::std::os::raw::c_char, ap: *mut __va_l
             reg_save_area: (*ap).reg_save_area,
         };
 
-        let raw = c_str.into_raw();
-        vsnprintf(raw, len.into(), fmt, &mut varargs);
-        c_str = CString::from_raw(raw);
+        let ptr = v.as_mut_ptr() as *mut i8;
+        vsnprintf(ptr, BUF_LEN as u64, fmt, &mut varargs)
+    };
+
+    if printed_len < 0 {
+        base::debug!(
+            "rutabaga_gfx::virgl_renderer::debug_callback: vsnprintf returned {}",
+            printed_len
+        );
+    } else {
+        // vsnprintf returns the number of chars that *would* have been printed
+        let len = min(printed_len as usize, BUF_LEN - 1);
+        base::debug!("{}", String::from_utf8_lossy(&v[..len]));
     }
-    base::debug!("{}", c_str.to_string_lossy());
 }
 
 const VIRGL_RENDERER_CALLBACKS: &virgl_renderer_callbacks = &virgl_renderer_callbacks {
