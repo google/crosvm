@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::alloc::{alloc, alloc_zeroed, dealloc, Layout};
+use std::cmp::min;
 
 /// A contiguous memory allocation with a specified size and alignment, with a
 /// Drop impl to perform the deallocation.
@@ -109,6 +110,42 @@ impl LayoutAllocation {
     pub unsafe fn as_mut<T>(&mut self) -> &mut T {
         &mut *self.as_ptr()
     }
+
+    /// Returns a shared slice reference to the allocated data.
+    ///
+    /// # Arguments
+    ///
+    /// `num_elements` - Number of `T` elements to include in the slice.
+    ///                  The length of the slice will be capped to the allocation's size.
+    ///                  Caller must ensure that any sliced elements are initialized.
+    ///
+    /// # Safety
+    ///
+    /// Caller is responsible for ensuring that the data behind this pointer has
+    /// been initialized as much as necessary and that there are no already
+    /// existing mutable references to any part of the data.
+    pub unsafe fn as_slice<T>(&self, num_elements: usize) -> &[T] {
+        let len = min(num_elements, self.layout.size() / std::mem::size_of::<T>());
+        std::slice::from_raw_parts(self.as_ptr(), len)
+    }
+
+    /// Returns an exclusive slice reference to the allocated data.
+    ///
+    /// # Arguments
+    ///
+    /// `num_elements` - Number of `T` elements to include in the slice.
+    ///                  The length of the slice will be capped to the allocation's size.
+    ///                  Caller must ensure that any sliced elements are initialized.
+    ///
+    /// # Safety
+    ///
+    /// Caller is responsible for ensuring that the data behind this pointer has
+    /// been initialized as much as necessary and that there are no already
+    /// existing references to any part of the data.
+    pub unsafe fn as_mut_slice<T>(&mut self, num_elements: usize) -> &mut [T] {
+        let len = min(num_elements, self.layout.size() / std::mem::size_of::<T>());
+        std::slice::from_raw_parts_mut(self.as_ptr(), len)
+    }
 }
 
 impl Drop for LayoutAllocation {
@@ -119,5 +156,53 @@ impl Drop for LayoutAllocation {
                 dealloc(self.ptr, self.layout);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::mem::{align_of, size_of};
+
+    #[test]
+    fn test_as_slice_u32() {
+        let layout = Layout::from_size_align(size_of::<u32>() * 15, align_of::<u32>()).unwrap();
+        let allocation = LayoutAllocation::zeroed(layout);
+        let slice: &[u32] = unsafe { allocation.as_slice(15) };
+        assert_eq!(slice.len(), 15);
+        assert_eq!(slice[0], 0);
+        assert_eq!(slice[14], 0);
+    }
+
+    #[test]
+    fn test_as_slice_u32_smaller_len() {
+        let layout = Layout::from_size_align(size_of::<u32>() * 15, align_of::<u32>()).unwrap();
+        let allocation = LayoutAllocation::zeroed(layout);
+
+        // Slice less than the allocation size, which will return a slice of only the requested length.
+        let slice: &[u32] = unsafe { allocation.as_slice(5) };
+        assert_eq!(slice.len(), 5);
+    }
+
+    #[test]
+    fn test_as_slice_u32_larger_len() {
+        let layout = Layout::from_size_align(size_of::<u32>() * 15, align_of::<u32>()).unwrap();
+        let allocation = LayoutAllocation::zeroed(layout);
+
+        // Slice more than the allocation size, which will clamp the returned slice len to the limit.
+        let slice: &[u32] = unsafe { allocation.as_slice(100) };
+        assert_eq!(slice.len(), 15);
+    }
+
+    #[test]
+    fn test_as_slice_u32_remainder() {
+        // Allocate a buffer that is not a multiple of u32 in size.
+        let layout = Layout::from_size_align(size_of::<u32>() * 15 + 2, align_of::<u32>()).unwrap();
+        let allocation = LayoutAllocation::zeroed(layout);
+
+        // Slice as many u32s as possible, which should return a slice that only includes the full
+        // u32s, not the trailing 2 bytes.
+        let slice: &[u32] = unsafe { allocation.as_slice(100) };
+        assert_eq!(slice.len(), 15);
     }
 }
