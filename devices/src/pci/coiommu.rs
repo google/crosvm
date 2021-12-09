@@ -15,17 +15,20 @@
 //! Also presented at usenix ATC20:
 //! https://www.usenix.org/conference/atc20/presentation/tian
 
+use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::default::Default;
 use std::panic;
+use std::str::FromStr;
 use std::sync::atomic::{fence, AtomicU32, Ordering};
 use std::sync::Arc;
-use std::{mem, thread};
+use std::time::Duration;
+use std::{fmt, mem, thread};
 
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use base::{
     error, info, AsRawDescriptor, Event, MemoryMapping, MemoryMappingBuilder, PollToken,
-    RawDescriptor, SafeDescriptor, SharedMemory, Tube, TubeError, WaitContext,
+    RawDescriptor, SafeDescriptor, SharedMemory, Timer, Tube, TubeError, WaitContext,
 };
 use data_model::DataInit;
 use hypervisor::Datamatch;
@@ -73,11 +76,68 @@ enum Error {
     TubeError,
 }
 
+//default interval is 60s
+const UNPIN_DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
+/// Holds the coiommu unpin policy
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum CoIommuUnpinPolicy {
+    Off,
+    Lru,
+}
+
+impl FromStr for CoIommuUnpinPolicy {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "off" => Ok(CoIommuUnpinPolicy::Off),
+            "lru" => Ok(CoIommuUnpinPolicy::Lru),
+            _ => Err(anyhow!(
+                "CoIommu doesn't have such unpin policy: {}",
+                s.to_string()
+            )),
+        }
+    }
+}
+
+impl fmt::Display for CoIommuUnpinPolicy {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::CoIommuUnpinPolicy::*;
+
+        match self {
+            Off => write!(f, "off"),
+            Lru => write!(f, "lru"),
+        }
+    }
+}
+
+/// Holds the parameters for a coiommu device
+#[derive(Debug, Copy, Clone)]
+pub struct CoIommuParameters {
+    pub unpin_policy: CoIommuUnpinPolicy,
+    pub unpin_interval: Duration,
+    pub unpin_limit: Option<u64>,
+}
+
+impl Default for CoIommuParameters {
+    fn default() -> Self {
+        Self {
+            unpin_policy: CoIommuUnpinPolicy::Off,
+            unpin_interval: UNPIN_DEFAULT_INTERVAL,
+            unpin_limit: None,
+        }
+    }
+}
+
 #[derive(Default, Debug, Copy, Clone)]
 struct CoIommuReg {
     dtt_root: u64,
     cmd: u64,
     dtt_level: u64,
+}
+
+struct CoIommuPinState {
+    pinned_pages: VecDeque<u64>,
 }
 
 unsafe fn vfio_map(
@@ -235,6 +295,8 @@ fn gfn_to_dtt_pte(
 }
 
 fn pin_page(
+    pinstate: &mut CoIommuPinState,
+    policy: CoIommuUnpinPolicy,
     vfio_container: &Arc<Mutex<VfioContainer>>,
     mem: &GuestMemory,
     dtt_level: u64,
@@ -262,6 +324,9 @@ fn pin_page(
         // Safe because ptr is valid and guaranteed by the gfn_to_dtt_pte.
         // set PINNED flag
         unsafe { (*leaf_entry).fetch_or(DTTE_PINNED_FLAG, Ordering::SeqCst) };
+        if policy == CoIommuUnpinPolicy::Lru {
+            pinstate.pinned_pages.push_back(gfn);
+        }
     }
 
     Ok(())
@@ -269,6 +334,7 @@ fn pin_page(
 
 #[derive(PartialEq, Debug)]
 enum UnpinResult {
+    UnpinlistEmpty,
     Unpinned,
     NotPinned,
     NotUnpinned,
@@ -377,6 +443,8 @@ struct PinWorker {
     dtt_root: u64,
     ioevents: Vec<Event>,
     vfio_container: Arc<Mutex<VfioContainer>>,
+    pinstate: Arc<Mutex<CoIommuPinState>>,
+    params: CoIommuParameters,
 }
 
 impl PinWorker {
@@ -470,6 +538,7 @@ impl PinWorker {
         let mut nr_pages = pin_page_info.nr_pages;
         let mut offset = mem::size_of::<PinPageInfo>() as u64;
         let mut dtt_iter: DTTIter = Default::default();
+        let mut pinstate = self.pinstate.lock();
         while nr_pages > 0 {
             let gfn = self
                 .mem
@@ -477,6 +546,8 @@ impl PinWorker {
                 .context("failed to get pin page gfn")?;
 
             pin_page(
+                &mut pinstate,
+                self.params.unpin_policy,
                 &self.vfio_container,
                 &self.mem,
                 self.dtt_level,
@@ -506,7 +577,10 @@ impl PinWorker {
                 bdf
             );
 
+            let mut pinstate = self.pinstate.lock();
             pin_page(
+                &mut pinstate,
+                self.params.unpin_policy,
                 &self.vfio_container,
                 &self.mem,
                 self.dtt_level,
@@ -524,6 +598,8 @@ struct UnpinWorker {
     dtt_root: u64,
     vfio_container: Arc<Mutex<VfioContainer>>,
     unpin_tube: Option<Tube>,
+    pinstate: Arc<Mutex<CoIommuPinState>>,
+    params: CoIommuParameters,
 }
 
 impl UnpinWorker {
@@ -534,6 +610,7 @@ impl UnpinWorker {
     fn run(&mut self, kill_evt: Event) {
         #[derive(PollToken)]
         enum Token {
+            UnpinTimer,
             UnpinReq,
             Kill,
         }
@@ -554,6 +631,39 @@ impl UnpinWorker {
             }
         }
 
+        let mut unpin_timer = if self.params.unpin_policy != CoIommuUnpinPolicy::Off
+            && !self.params.unpin_interval.is_zero()
+        {
+            let duration = self.params.unpin_interval;
+            let interval = Some(self.params.unpin_interval);
+            let mut timer = match Timer::new() {
+                Ok(t) => t,
+                Err(e) => {
+                    error!(
+                        "{}: failed to create the unpin timer: {}",
+                        self.debug_label(),
+                        e
+                    );
+                    return;
+                }
+            };
+            if let Err(e) = timer.reset(duration, interval) {
+                error!(
+                    "{}: failed to start the unpin timer: {}",
+                    self.debug_label(),
+                    e
+                );
+                return;
+            }
+            if let Err(e) = wait_ctx.add(&timer, Token::UnpinTimer) {
+                error!("{}: failed creating WaitContext: {}", self.debug_label(), e);
+                return;
+            }
+            Some(timer)
+        } else {
+            None
+        };
+
         let unpin_tube = self.unpin_tube.take();
         'wait: loop {
             let events = match wait_ctx.wait() {
@@ -566,6 +676,19 @@ impl UnpinWorker {
 
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
+                    Token::UnpinTimer => {
+                        self.unpin_pages();
+                        if let Some(timer) = &mut unpin_timer {
+                            if let Err(e) = timer.wait() {
+                                error!(
+                                    "{}: failed to clear unpin timer: {}",
+                                    self.debug_label(),
+                                    e
+                                );
+                                break 'wait;
+                            }
+                        }
+                    }
                     Token::UnpinReq => {
                         if let Some(tube) = &unpin_tube {
                             match tube.recv::<UnpinRequest>() {
@@ -621,6 +744,63 @@ impl UnpinWorker {
         self.unpin_tube = unpin_tube;
     }
 
+    fn unpin_pages(&mut self) {
+        if self.params.unpin_policy == CoIommuUnpinPolicy::Lru {
+            self.lru_unpin_pages();
+        }
+    }
+
+    fn lru_unpin_page(&mut self, dtt_iter: &mut DTTIter) -> (UnpinResult, Option<u64>) {
+        let mut pinstate = self.pinstate.lock();
+        if let Some(gfn) = pinstate.pinned_pages.pop_front() {
+            (
+                unpin_page(
+                    &self.vfio_container,
+                    &self.mem,
+                    self.dtt_level,
+                    self.dtt_root,
+                    dtt_iter,
+                    gfn,
+                    false,
+                ),
+                Some(gfn),
+            )
+        } else {
+            (UnpinResult::UnpinlistEmpty, None)
+        }
+    }
+
+    fn lru_unpin_pages(&mut self) {
+        let mut not_unpinned_pages = VecDeque::new();
+        let mut limit_count: u64 = self.params.unpin_limit.unwrap_or(0);
+        let has_limit = self.params.unpin_limit.is_some();
+        let mut dtt_iter: DTTIter = Default::default();
+
+        // If has_limit is true but limit_count is 0, will not do the unpin
+        while !has_limit || limit_count != 0 {
+            let (result, pinned_page) = self.lru_unpin_page(&mut dtt_iter);
+            match result {
+                UnpinResult::UnpinlistEmpty => break,
+                UnpinResult::Unpinned => {
+                    if has_limit {
+                        limit_count -= 1;
+                    }
+                }
+                UnpinResult::NotPinned => {}
+                UnpinResult::NotUnpinned | UnpinResult::FailedUnpin => {
+                    if let Some(gfn) = pinned_page {
+                        not_unpinned_pages.push_back(gfn);
+                    }
+                }
+            }
+        }
+
+        if !not_unpinned_pages.is_empty() {
+            let mut pinstate = self.pinstate.lock();
+            pinstate.pinned_pages.append(&mut not_unpinned_pages);
+        }
+    }
+
     fn unpin_pages_in_range(&self, gfn: u64, count: u64) -> bool {
         let mut dtt_iter: DTTIter = Default::default();
         for i in 0..count {
@@ -665,6 +845,8 @@ pub struct CoIommuDev {
     unpin_tube: Option<Tube>,
     ioevents: Vec<Event>,
     vfio_container: Arc<Mutex<VfioContainer>>,
+    pinstate: Arc<Mutex<CoIommuPinState>>,
+    params: CoIommuParameters,
 }
 
 impl CoIommuDev {
@@ -743,6 +925,10 @@ impl CoIommuDev {
             unpin_tube: Some(unpin_tube),
             ioevents,
             vfio_container,
+            pinstate: Arc::new(Mutex::new(CoIommuPinState {
+                pinned_pages: VecDeque::new(),
+            })),
+            params: CoIommuParameters::default(),
         })
     }
 
@@ -846,6 +1032,8 @@ impl CoIommuDev {
             .map(|e| e.try_clone().unwrap())
             .collect();
         let vfio_container = self.vfio_container.clone();
+        let pinstate = self.pinstate.clone();
+        let params = self.params;
 
         let worker_result = thread::Builder::new()
             .name("coiommu_pin".to_string())
@@ -858,6 +1046,8 @@ impl CoIommuDev {
                     dtt_level,
                     ioevents,
                     vfio_container,
+                    pinstate,
+                    params,
                 };
                 worker.run(kill_evt);
                 worker
@@ -894,6 +1084,8 @@ impl CoIommuDev {
         let dtt_level = self.coiommu_reg.dtt_level;
         let vfio_container = self.vfio_container.clone();
         let unpin_tube = self.unpin_tube.take();
+        let pinstate = self.pinstate.clone();
+        let params = self.params;
         let worker_result = thread::Builder::new()
             .name("coiommu_unpin".to_string())
             .spawn(move || {
@@ -903,6 +1095,8 @@ impl CoIommuDev {
                     dtt_root,
                     vfio_container,
                     unpin_tube,
+                    pinstate,
+                    params,
                 };
                 worker.run(kill_evt);
                 worker
