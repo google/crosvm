@@ -6,6 +6,5 @@ edition = "2018"
 links = "tpm2"
 
 [build-dependencies]
-num_cpus = "*"
 pkg-config = "*"
 anyhow = "*"
