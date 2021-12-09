@@ -595,8 +595,8 @@ fn create_vinput_device(cfg: &Config, dev_path: &Path) -> DeviceResult {
     })
 }
 
-fn create_balloon_device(cfg: &Config, tube: Tube) -> DeviceResult {
-    let dev = virtio::Balloon::new(virtio::base_features(cfg.protected_vm), tube, None)
+fn create_balloon_device(cfg: &Config, tube: Tube, inflate_tube: Option<Tube>) -> DeviceResult {
+    let dev = virtio::Balloon::new(virtio::base_features(cfg.protected_vm), tube, inflate_tube)
         .context("failed to create balloon")?;
 
     Ok(VirtioDeviceStub {
@@ -1494,6 +1494,7 @@ fn create_virtio_devices(
     gpu_device_tube: Tube,
     vhost_user_gpu_tubes: Vec<(Tube, Tube)>,
     balloon_device_tube: Tube,
+    balloon_inflate_tube: Option<Tube>,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
@@ -1580,7 +1581,11 @@ fn create_virtio_devices(
         devs.push(create_vinput_device(cfg, dev_path)?);
     }
 
-    devs.push(create_balloon_device(cfg, balloon_device_tube)?);
+    devs.push(create_balloon_device(
+        cfg,
+        balloon_device_tube,
+        balloon_inflate_tube,
+    )?);
 
     // We checked above that if the IP is defined, then the netmask is, too.
     for tap_fd in &cfg.tap_fd {
@@ -1950,47 +1955,8 @@ fn create_devices(
     #[cfg(feature = "usb")] usb_provider: HostBackendDeviceProvider,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
-    let stubs = create_virtio_devices(
-        cfg,
-        vm,
-        resources,
-        exit_evt,
-        wayland_device_tube,
-        gpu_device_tube,
-        vhost_user_gpu_tubes,
-        balloon_device_tube,
-        disk_device_tubes,
-        pmem_device_tubes,
-        map_request,
-        fs_device_tubes,
-    )?;
-
-    let mut devices = Vec::new();
-
-    for stub in stubs {
-        let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-        control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
-        let dev = VirtioPciDevice::new(vm.get_memory().clone(), stub.dev, msi_device_tube)
-            .context("failed to create virtio pci dev")?;
-        let dev = Box::new(dev) as Box<dyn BusDeviceObj>;
-        devices.push((dev, stub.jail));
-    }
-
-    #[cfg(feature = "audio")]
-    for ac97_param in &cfg.ac97_parameters {
-        let dev = Ac97Dev::try_new(vm.get_memory().clone(), ac97_param.clone())
-            .context("failed to create ac97 device")?;
-        let jail = simple_jail(cfg, dev.minijail_policy())?;
-        devices.push((Box::new(dev), jail));
-    }
-
-    #[cfg(feature = "usb")]
-    {
-        // Create xhci controller.
-        let usb_controller = Box::new(XhciController::new(vm.get_memory().clone(), usb_provider));
-        devices.push((usb_controller, simple_jail(cfg, "xhci")?));
-    }
-
+    let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
+    let mut balloon_inflate_tube: Option<Tube> = None;
     if !cfg.vfio.is_empty() {
         let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>> =
             BTreeMap::new();
@@ -2083,11 +2049,14 @@ fn create_devices(
                 Tube::pair().context("failed to create coiommu tube")?;
             control_tubes.push(TaggedControlTube::VmMemory(coiommu_host_tube));
             let vcpu_count = cfg.vcpu_count.unwrap_or(1) as u64;
+            let (coiommu_tube, balloon_tube) =
+                Tube::pair().context("failed to create coiommu tube")?;
+            balloon_inflate_tube = Some(balloon_tube);
             let dev = CoIommuDev::new(
                 vm.get_memory().clone(),
                 vfio_container,
                 coiommu_device_tube,
-                None,
+                coiommu_tube,
                 coiommu_attached_endpoints,
                 vcpu_count,
             )
@@ -2095,6 +2064,46 @@ fn create_devices(
 
             devices.push((Box::new(dev), simple_jail(cfg, "coiommu")?));
         }
+    }
+
+    let stubs = create_virtio_devices(
+        cfg,
+        vm,
+        resources,
+        exit_evt,
+        wayland_device_tube,
+        gpu_device_tube,
+        vhost_user_gpu_tubes,
+        balloon_device_tube,
+        balloon_inflate_tube,
+        disk_device_tubes,
+        pmem_device_tubes,
+        map_request,
+        fs_device_tubes,
+    )?;
+
+    for stub in stubs {
+        let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
+        control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+        let dev = VirtioPciDevice::new(vm.get_memory().clone(), stub.dev, msi_device_tube)
+            .context("failed to create virtio pci dev")?;
+        let dev = Box::new(dev) as Box<dyn BusDeviceObj>;
+        devices.push((dev, stub.jail));
+    }
+
+    #[cfg(feature = "audio")]
+    for ac97_param in &cfg.ac97_parameters {
+        let dev = Ac97Dev::try_new(vm.get_memory().clone(), ac97_param.clone())
+            .context("failed to create ac97 device")?;
+        let jail = simple_jail(cfg, dev.minijail_policy())?;
+        devices.push((Box::new(dev), jail));
+    }
+
+    #[cfg(feature = "usb")]
+    {
+        // Create xhci controller.
+        let usb_controller = Box::new(XhciController::new(vm.get_memory().clone(), usb_provider));
+        devices.push((usb_controller, simple_jail(cfg, "xhci")?));
     }
 
     for params in &cfg.stub_pci_devices {

@@ -672,7 +672,7 @@ impl CoIommuDev {
         mem: GuestMemory,
         vfio_container: Arc<Mutex<VfioContainer>>,
         device_tube: Tube,
-        unpin_tube: Option<Tube>,
+        unpin_tube: Tube,
         endpoints: Vec<u16>,
         vcpu_count: u64,
     ) -> Result<Self> {
@@ -740,7 +740,7 @@ impl CoIommuDev {
             pin_kill_evt: None,
             unpin_thread: None,
             unpin_kill_evt: None,
-            unpin_tube,
+            unpin_tube: Some(unpin_tube),
             ioevents,
             vfio_container,
         })
