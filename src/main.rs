@@ -3001,7 +3001,7 @@ fn pkg_version() -> std::result::Result<(), ()> {
 }
 
 fn print_usage() {
-    print_help("crosvm", "[command]", &[]);
+    print_help("crosvm", "[--extended-status] [command]", &[]);
     println!("Commands:");
     println!("    balloon - Set balloon size of the crosvm instance.");
     println!("    balloon_stats - Prints virtio balloon statistics.");
@@ -3037,7 +3037,16 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
         return Err(());
     }
 
-    let command = match args.next() {
+    let mut cmd_arg = args.next();
+    let extended_status = match cmd_arg.as_ref().map(|s| s.as_ref()) {
+        Some("--extended-status") => {
+            cmd_arg = args.next();
+            true
+        }
+        _ => false,
+    } || cfg!(feature = "direct"); // TODO(dtor): remove default for crosvm-direct after transition
+
+    let command = match cmd_arg {
         Some(c) => c,
         None => {
             print_usage();
@@ -3047,7 +3056,7 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
 
     // Past this point, usage of exit is in danger of leaking zombie processes.
     let ret = if command == "run" {
-        // We handle run_vm separately because it does not simply signal sucess/error
+        // We handle run_vm separately because it does not simply signal success/error
         // but also indicates whether the guest requested reset or stop.
         run_vm(args)
     } else {
@@ -3089,7 +3098,13 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
 
     // WARNING: Any code added after this point is not guaranteed to run
     // since we may forcibly kill this process (and its children) above.
-    ret
+    ret.map(|s| {
+        if extended_status {
+            s
+        } else {
+            CommandStatus::Success
+        }
+    })
 }
 
 fn main() {
