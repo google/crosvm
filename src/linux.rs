@@ -660,6 +660,14 @@ fn create_tap_net_device_from_fd(cfg: &Config, tap_fd: RawDescriptor) -> DeviceR
     })
 }
 
+/// Returns a network device created by opening the persistent, configured TAP interface `tap_name`.
+fn create_tap_net_device_from_name(cfg: &Config, tap_name: &[u8]) -> DeviceResult {
+    create_net_device(cfg, "net_device", |features, vq_pairs| {
+        virtio::Net::<Tap>::new_from_name(features, tap_name, vq_pairs)
+            .context("failed to create configured virtio network device")
+    })
+}
+
 fn create_vhost_user_net_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
     let dev = VhostUserNet::new(virtio::base_features(cfg.protected_vm), &opt.socket)
         .context("failed to set up vhost-user net device")?;
@@ -1483,6 +1491,10 @@ fn create_virtio_devices(
             netmask,
             mac_address,
         )?);
+    }
+
+    for tap_name in &cfg.tap_name {
+        devs.push(create_tap_net_device_from_name(cfg, tap_name.as_bytes())?);
     }
 
     for net in &cfg.vhost_user_net {

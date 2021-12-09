@@ -345,6 +345,7 @@ pub struct Config {
     pub net_vq_pairs: Option<u16>,
     pub vhost_net: bool,
     pub tap_fd: Vec<RawFd>,
+    pub tap_name: Vec<String>,
     pub cid: Option<u64>,
     pub wayland_socket_paths: BTreeMap<String, PathBuf>,
     pub x_display: Option<String>,
@@ -443,6 +444,7 @@ impl Default for Config {
             net_vq_pairs: None,
             vhost_net: false,
             tap_fd: Vec::new(),
+            tap_name: Vec::new(),
             cid: None,
             #[cfg(feature = "gpu")]
             gpu_parameters: None,

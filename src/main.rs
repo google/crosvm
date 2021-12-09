@@ -1848,6 +1848,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     })?,
             );
         }
+        "tap-name" => {
+            cfg.tap_name.push(value.unwrap().to_owned());
+        }
         #[cfg(feature = "gpu")]
         "gpu" => {
             let gpu_parameters = cfg.gpu_parameters.get_or_insert_with(Default::default);
@@ -2376,6 +2379,9 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
           #[cfg(feature = "plugin")]
           Argument::value("plugin-gid-map-file", "PATH", "Path to the file listing supplemental GIDs that should be mapped in plugin jail.  Can be given more than once."),
           Argument::flag("vhost-net", "Use vhost for networking."),
+          Argument::value("tap-name",
+                          "NAME",
+                          "Name of a configured persistent TAP interface to use for networking. A different virtual network card will be added each time this argument is given."),
           Argument::value("tap-fd",
                           "fd",
                           "File descriptor for configured tap device. A different virtual network card will be added each time this argument is given."),

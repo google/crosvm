@@ -515,6 +515,19 @@ where
         Net::from(base_features, tap, vq_pairs)
     }
 
+    /// Try to open the already-configured TAP interface `name` and to create a network device from
+    /// it.
+    pub fn new_from_name(
+        base_features: u64,
+        name: &[u8],
+        vq_pairs: u16,
+    ) -> Result<Net<T>, NetError> {
+        let multi_queue = vq_pairs > 1;
+        let tap: T = T::new_with_name(name, true, multi_queue).map_err(NetError::TapOpen)?;
+
+        Net::from(base_features, tap, vq_pairs)
+    }
+
     /// Creates a new virtio network device from a tap device that has already been
     /// configured.
     pub fn from(base_features: u64, tap: T, vq_pairs: u16) -> Result<Net<T>, NetError> {

@@ -233,11 +233,24 @@ impl Tap {
 }
 
 pub trait TapT: FileReadWriteVolatile + Read + Write + AsRawDescriptor + Send + Sized {
-    /// Create a new tap interface. Set the `vnet_hdr` flag to true to allow offloading on this tap,
+    /// Create a new tap interface named `name`, or open it if it already exists with the same
+    /// parameters.
+    ///
+    /// Set the `vnet_hdr` flag to true to allow offloading on this tap, which will add an extra 12
+    /// byte virtio net header to incoming frames. Offloading cannot be used if `vnet_hdr` is false.
+    /// Set 'multi_vq' to true, if tap have multi virt queue pairs
+    fn new_with_name(name: &[u8], vnet_hdr: bool, multi_vq: bool) -> Result<Self>;
+
+    /// Create a new tap interface.
+    ///
+    /// Set the `vnet_hdr` flag to true to allow offloading on this tap,
     /// which will add an extra 12 byte virtio net header to incoming frames. Offloading cannot
     /// be used if `vnet_hdr` is false.
-    /// set 'multi_vq' to ture, if tap have multi virt queue pairs
-    fn new(vnet_hdr: bool, multi_vq: bool) -> Result<Self>;
+    /// Set 'multi_vq' to true, if tap have multi virt queue pairs
+    fn new(vnet_hdr: bool, multi_vq: bool) -> Result<Self> {
+        const TUNTAP_DEV_FORMAT: &[u8] = b"vmtap%d";
+        Self::new_with_name(TUNTAP_DEV_FORMAT, vnet_hdr, multi_vq)
+    }
 
     /// Change the origin tap into multiqueue taps, this means create other taps based on the
     /// origin tap.
@@ -283,17 +296,18 @@ pub trait TapT: FileReadWriteVolatile + Read + Write + AsRawDescriptor + Send + 
 }
 
 impl TapT for Tap {
-    fn new(vnet_hdr: bool, multi_vq: bool) -> Result<Tap> {
-        const TUNTAP_DEV_FORMAT: &[u8; 8usize] = b"vmtap%d\0";
-
+    fn new_with_name(name: &[u8], vnet_hdr: bool, multi_vq: bool) -> Result<Tap> {
         // This is pretty messy because of the unions used by ifreq. Since we
         // don't call as_mut on the same union field more than once, this block
         // is safe.
         let mut ifreq: net_sys::ifreq = Default::default();
         unsafe {
             let ifrn_name = ifreq.ifr_ifrn.ifrn_name.as_mut();
-            let name_slice = &mut ifrn_name[..TUNTAP_DEV_FORMAT.len()];
-            for (dst, src) in name_slice.iter_mut().zip(TUNTAP_DEV_FORMAT.iter()) {
+            for (dst, src) in ifrn_name
+                .iter_mut()
+                // Add a zero terminator to the source string.
+                .zip(name.iter().chain(std::iter::once(&0)))
+            {
                 *dst = *src as c_char;
             }
             ifreq.ifr_ifru.ifru_flags = (net_sys::IFF_TAP
@@ -584,7 +598,7 @@ pub mod fakes {
     }
 
     impl TapT for FakeTap {
-        fn new(_: bool, _: bool) -> Result<FakeTap> {
+        fn new_with_name(_: &[u8], _: bool, _: bool) -> Result<FakeTap> {
             Ok(FakeTap {
                 tap_file: OpenOptions::new()
                     .read(true)
