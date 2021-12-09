@@ -28,6 +28,8 @@ use crosvm::{
     DISK_ID_LEN,
 };
 use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
+#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+use devices::virtio::gpu::GpuRenderServerParameters;
 #[cfg(feature = "audio_cras")]
 use devices::virtio::snd::cras_backend::Error as CrasSndError;
 use devices::virtio::vhost::user::device::{
@@ -39,8 +41,7 @@ use devices::virtio::VideoBackendType;
 #[cfg(feature = "gpu")]
 use devices::virtio::{
     gpu::{
-        GpuDisplayParameters, GpuMode, GpuParameters, GpuRenderServerParameters,
-        DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH,
+        GpuDisplayParameters, GpuMode, GpuParameters, DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH,
     },
     vhost::user::device::run_gpu_device,
 };

@@ -87,6 +87,7 @@ pub unsafe extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
     fence_state.write(fence);
 }
 
+#[allow(dead_code)]
 pub unsafe extern "C" fn get_server_fd(cookie: *mut c_void, version: u32) -> c_int {
     assert!(!cookie.is_null());
     let cookie = &mut *(cookie as *mut VirglCookie);

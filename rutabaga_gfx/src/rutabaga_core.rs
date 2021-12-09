@@ -724,6 +724,11 @@ impl RutabagaBuilder {
 
         let mut rutabaga_capsets: Vec<RutabagaCapsetInfo> = Default::default();
 
+        #[cfg(not(feature = "virgl_renderer_next"))]
+        if render_server_fd.is_some() {
+            return Err(RutabagaError::InvalidRutabagaBuild);
+        }
+
         if self.default_component == RutabagaComponentType::Rutabaga2D {
             let rutabaga_2d = Rutabaga2D::init(fence_handler.clone())?;
             rutabaga_components.insert(RutabagaComponentType::Rutabaga2D, rutabaga_2d);
