@@ -3076,7 +3076,7 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
             true
         }
         _ => false,
-    } || cfg!(feature = "direct"); // TODO(dtor): remove default for crosvm-direct after transition
+    };
 
     let command = match cmd_arg {
         Some(c) => c,
