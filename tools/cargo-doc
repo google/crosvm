@@ -17,7 +17,10 @@ echo "manifest = ${MANIFEST_PATH}"
 DISABLED_FEATURES=(
     audio_cras
     chromeos
+    libvda
     power-monitor-powerd
+    video-decoder
+    video-encoder
 )
 
 ALL_FEATURES=$(
