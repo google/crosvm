@@ -42,3 +42,6 @@ rustflags = [
     "-Aclippy::result-unit-err",
     "-Aclippy::collapsible_if",
 ]
+
+[target.armv7-unknown-linux-gnueabihf]
+linker = "arm-linux-gnueabihf-gcc"

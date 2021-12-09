@@ -11,13 +11,19 @@ use std::process::Command;
 /// Returns the target triplet prefix for gcc commands. No prefix is required
 /// for native builds.
 fn get_cross_compile_prefix() -> String {
-    if env::var("HOST").unwrap() == env::var("TARGET").unwrap() {
+    let target = env::var("TARGET").unwrap();
+
+    if env::var("HOST").unwrap() == target {
         return String::from("");
     }
 
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let os = env::var("CARGO_CFG_TARGET_OS").unwrap();
-    let env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
+    let env = if target.ends_with("-gnueabihf") {
+        String::from("gnueabihf")
+    } else {
+        env::var("CARGO_CFG_TARGET_ENV").unwrap()
+    };
     return format!("{}-{}-{}-", arch, os, env);
 }
 

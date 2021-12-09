@@ -18,7 +18,7 @@ import typing
 import test_target
 from test_target import TestTarget
 import testvm
-from test_config import CRATE_OPTIONS, TestOption
+from test_config import CRATE_OPTIONS, TestOption, BUILD_FEATURES
 
 USAGE = """\
 Runs tests for crosvm locally, in a vm or on a remote device.
@@ -86,11 +86,13 @@ def get_workspace_excludes(target_arch: Arch):
     for crate, options in CRATE_OPTIONS.items():
         if TestOption.DO_NOT_BUILD in options:
             yield crate
-        if TestOption.BUILD_ARM_ONLY in options and (
+        elif TestOption.BUILD_ARM_ONLY in options and (
             target_arch != "aarch64" and target_arch != "armhf"
         ):
             yield crate
-        if TestOption.BUILD_X86_ONLY in options and target_arch != "x86_64":
+        elif TestOption.BUILD_X86_ONLY in options and target_arch != "x86_64":
+            yield crate
+        elif TestOption.DO_NOT_BUILD_ARMHF in options and target_arch == "armhf":
             yield crate
 
 
@@ -102,6 +104,8 @@ def should_run_executable(executable: Executable, target_arch: Arch):
         return target_arch == "aarch64" or target_arch == "armhf"
     if TestOption.RUN_X86_ONLY in options:
         return target_arch == "x86_64"
+    if TestOption.DO_NOT_RUN_ARMHF in options and target_arch == "armhf":
+        return False
     return True
 
 
@@ -208,7 +212,8 @@ def build_all_binaries(target: TestTarget, target_arch: Arch):
     print("Building crosvm workspace")
     yield from cargo_build_executables(
         [
-            "--features=all-linux",
+            "--features=" + BUILD_FEATURES[target_arch],
+            "--verbose",
             "--workspace",
             *[
                 f"--exclude={crate}"

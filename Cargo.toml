@@ -92,6 +92,12 @@ all-linux = [
     "virgl_renderer",
     "x",
     ]
+all-linux-armhf = [
+    "composite-disk",
+    "default",
+    "gdb",
+    "tpm",
+    ]
 audio = ["devices/audio"]
 audio_cras = ["devices/audio_cras"]
 chromeos = ["base/chromeos", "audio_cras", "devices/chromeos"]
