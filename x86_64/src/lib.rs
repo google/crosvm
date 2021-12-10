@@ -234,7 +234,6 @@ fn bios_start(bios_size: u64) -> GuestAddress {
 
 fn configure_system(
     guest_mem: &GuestMemory,
-    _mem_size: u64,
     kernel_addr: GuestAddress,
     cmdline_addr: GuestAddress,
     cmdline_size: usize,
@@ -570,7 +569,6 @@ impl arch::LinuxArch for X8664arch {
 
                 Self::setup_system_memory(
                     &mem,
-                    components.memory_size,
                     &CString::new(cmdline).unwrap(),
                     components.initrd_image,
                     components.android_fstab,
@@ -1034,7 +1032,6 @@ impl X8664arch {
     /// * `initrd_file` - an initial ramdisk image
     fn setup_system_memory(
         mem: &GuestMemory,
-        mem_size: u64,
         cmdline: &CStr,
         initrd_file: Option<File>,
         android_fstab: Option<File>,
@@ -1092,7 +1089,6 @@ impl X8664arch {
 
         configure_system(
             mem,
-            mem_size,
             GuestAddress(KERNEL_START_OFFSET),
             GuestAddress(CMDLINE_OFFSET),
             cmdline.to_bytes().len() + 1,

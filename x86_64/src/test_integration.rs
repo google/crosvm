@@ -200,7 +200,6 @@ where
 
     X8664arch::setup_system_memory(
         &guest_mem,
-        memory_size,
         &CString::new(cmdline).expect("failed to create cmdline"),
         initrd_image,
         None,
