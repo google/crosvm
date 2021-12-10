@@ -22,6 +22,7 @@ use base::{
 use cros_async::{AsyncWrapper, Executor};
 use data_model::{DataInit, Le64};
 use getopts::Options;
+use hypervisor::ProtectionType;
 use once_cell::sync::OnceCell;
 use vhost::{self, Vhost, Vsock};
 use vm_memory::GuestMemory;
@@ -34,16 +35,13 @@ use vmm_vhost::{
     Error, Result, SlaveReqHandler, VhostUserSlaveReqHandlerMut,
 };
 
-use crate::{
-    virtio::{
-        base_features,
-        vhost::{
-            user::device::handler::{create_guest_memory, vmm_va_to_gpa, MappingInfo},
-            vsock,
-        },
-        Queue,
+use crate::virtio::{
+    base_features,
+    vhost::{
+        user::device::handler::{create_guest_memory, vmm_va_to_gpa, MappingInfo},
+        vsock,
     },
-    ProtectionType,
+    Queue,
 };
 
 static VSOCK_EXECUTOR: OnceCell<Executor> = OnceCell::new();

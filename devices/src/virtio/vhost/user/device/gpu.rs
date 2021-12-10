@@ -17,19 +17,16 @@ use futures::{
     pin_mut,
 };
 use getopts::Options;
+use hypervisor::ProtectionType;
 use once_cell::sync::OnceCell;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
-use crate::{
-    virtio::{
-        self, gpu,
-        vhost::user::device::handler::{CallEvent, DeviceRequestHandler, VhostUserBackend},
-        DescriptorChain, Gpu, GpuDisplayParameters, GpuParameters, Queue, QueueReader,
-        VirtioDevice,
-    },
-    ProtectionType,
+use crate::virtio::{
+    self, gpu,
+    vhost::user::device::handler::{CallEvent, DeviceRequestHandler, VhostUserBackend},
+    DescriptorChain, Gpu, GpuDisplayParameters, GpuParameters, Queue, QueueReader, VirtioDevice,
 };
 
 static GPU_EXECUTOR: OnceCell<Executor> = OnceCell::new();

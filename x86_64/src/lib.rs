@@ -60,9 +60,9 @@ use base::Event;
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::{
     BusDeviceObj, BusResumeDevice, IrqChip, IrqChipX86_64, PciAddress, PciConfigIo, PciConfigMmio,
-    PciDevice, ProtectionType,
+    PciDevice,
 };
-use hypervisor::{HypervisorX86_64, VcpuX86_64, VmX86_64};
+use hypervisor::{HypervisorX86_64, ProtectionType, VcpuX86_64, VmX86_64};
 use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;

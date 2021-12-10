@@ -59,10 +59,10 @@ pub use self::virtio_device::*;
 pub use self::virtio_pci_device::*;
 pub use self::wl::*;
 
-use crate::ProtectionType;
 use std::cmp;
 use std::convert::TryFrom;
 
+use hypervisor::ProtectionType;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 
 const DEVICE_RESET: u32 = 0x0;

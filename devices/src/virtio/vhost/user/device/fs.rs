@@ -15,6 +15,7 @@ use data_model::{DataInit, Le32};
 use fuse::Server;
 use futures::future::{AbortHandle, Abortable};
 use getopts::Options;
+use hypervisor::ProtectionType;
 use minijail::{self, Minijail};
 use once_cell::sync::OnceCell;
 use sync::Mutex;
@@ -28,7 +29,6 @@ use crate::virtio::fs::{process_fs_queue, virtio_fs_config, FS_MAX_TAG_LEN};
 use crate::virtio::vhost::user::device::handler::{
     CallEvent, DeviceRequestHandler, VhostUserBackend,
 };
-use crate::ProtectionType;
 
 static FS_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 

@@ -10,9 +10,10 @@ use std::sync::Arc;
 use std::thread::{self};
 
 use base::{error, Event, RawDescriptor, Result};
+use hypervisor::ProtectionType;
 
 use crate::bus::BusAccessInfo;
-use crate::{BusDevice, ProtectionType, SerialDevice};
+use crate::{BusDevice, SerialDevice};
 
 const LOOP_SIZE: usize = 0x40;
 

@@ -13,6 +13,7 @@ use cros_async::{EventAsync, Executor, IoSourceExt};
 use data_model::DataInit;
 use futures::future::{AbortHandle, Abortable};
 use getopts::Options;
+use hypervisor::ProtectionType;
 use net_util::{MacAddress, Tap, TapT};
 use once_cell::sync::OnceCell;
 use sync::Mutex;
@@ -20,6 +21,7 @@ use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
+use crate::virtio;
 use crate::virtio::net::{
     build_config, process_ctrl, process_rx, process_tx, validate_and_configure_tap,
     virtio_features_to_tap_offload, NetError,
@@ -27,7 +29,6 @@ use crate::virtio::net::{
 use crate::virtio::vhost::user::device::handler::{
     CallEvent, DeviceRequestHandler, VhostUserBackend,
 };
-use crate::{virtio, ProtectionType};
 
 thread_local! {
     static NET_EXECUTOR: OnceCell<Executor> = OnceCell::new();

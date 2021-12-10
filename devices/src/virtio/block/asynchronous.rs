@@ -847,13 +847,13 @@ mod tests {
 
     use data_model::{Le32, Le64};
     use disk::SingleFileDisk;
+    use hypervisor::ProtectionType;
     use tempfile::TempDir;
     use vm_memory::GuestAddress;
 
     use crate::virtio::base_features;
     use crate::virtio::block::common::*;
     use crate::virtio::descriptor_utils::{create_descriptor_chain, DescriptorType};
-    use crate::ProtectionType;
 
     use super::*;
 

@@ -11,6 +11,7 @@ use std::thread;
 
 use base::{error, Event, PollToken, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le16, Le32};
+use hypervisor::ProtectionType;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error as ThisError;
@@ -20,7 +21,7 @@ use super::{
     base_features, copy_config, Interrupt, Queue, Reader, SignalableInterrupt, VirtioDevice,
     Writer, TYPE_CONSOLE,
 };
-use crate::{ProtectionType, SerialDevice};
+use crate::SerialDevice;
 
 pub(crate) const QUEUE_SIZE: u16 = 256;
 

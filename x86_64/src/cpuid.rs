@@ -230,7 +230,7 @@ pub fn phy_max_address_bits() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hypervisor::CpuIdEntry;
+    use hypervisor::{CpuIdEntry, ProtectionType};
 
     #[test]
     fn feature_and_vendor_name() {
@@ -238,7 +238,7 @@ mod tests {
         let guest_mem =
             vm_memory::GuestMemory::new(&[(vm_memory::GuestAddress(0), 0x10000)]).unwrap();
         let kvm = hypervisor::kvm::Kvm::new().unwrap();
-        let vm = hypervisor::kvm::KvmVm::new(&kvm, guest_mem).unwrap();
+        let vm = hypervisor::kvm::KvmVm::new(&kvm, guest_mem, ProtectionType::Unprotected).unwrap();
         let irq_chip = devices::KvmKernelIrqChip::new(vm, 1).unwrap();
 
         let entries = &mut cpuid.cpu_id_entries;

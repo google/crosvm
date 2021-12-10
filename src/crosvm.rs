@@ -33,8 +33,8 @@ use devices::virtio::VideoBackendType;
 use devices::Ac97Parameters;
 #[cfg(feature = "direct")]
 use devices::BusRange;
-use devices::ProtectionType;
 use devices::StubPciParameters;
+use hypervisor::ProtectionType;
 use libc::{getegid, geteuid};
 use vm_control::BatteryType;
 

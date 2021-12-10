@@ -12,9 +12,10 @@ use base::{Event, MemoryMappingBuilder};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::{
     Bus, BusDeviceObj, BusError, IrqChip, IrqChipAArch64, PciAddress, PciConfigMmio, PciDevice,
-    ProtectionType,
 };
-use hypervisor::{DeviceKind, Hypervisor, HypervisorCap, VcpuAArch64, VcpuFeature, VmAArch64};
+use hypervisor::{
+    DeviceKind, Hypervisor, HypervisorCap, ProtectionType, VcpuAArch64, VcpuFeature, VmAArch64,
+};
 use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
@@ -351,7 +352,7 @@ impl arch::LinuxArch for AArch64 {
         }
 
         if components.protected_vm == ProtectionType::Protected {
-            vm.enable_protected_vm(
+            vm.load_protected_vm_firmware(
                 GuestAddress(AARCH64_PROTECTED_VM_FW_START),
                 AARCH64_PROTECTED_VM_FW_MAX_SIZE,
             )

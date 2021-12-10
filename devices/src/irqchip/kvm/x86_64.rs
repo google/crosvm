@@ -723,7 +723,9 @@ mod tests {
     use hypervisor::kvm::Kvm;
     use vm_memory::GuestMemory;
 
-    use hypervisor::{IoapicRedirectionTableEntry, PitRWMode, TriggerMode, Vm, VmX86_64};
+    use hypervisor::{
+        IoapicRedirectionTableEntry, PitRWMode, ProtectionType, TriggerMode, Vm, VmX86_64,
+    };
 
     use super::super::super::tests::*;
     use crate::IrqChip;
@@ -732,7 +734,8 @@ mod tests {
     fn get_kernel_chip() -> KvmKernelIrqChip {
         let kvm = Kvm::new().expect("failed to instantiate Kvm");
         let mem = GuestMemory::new(&[]).unwrap();
-        let vm = KvmVm::new(&kvm, mem).expect("failed tso instantiate vm");
+        let vm =
+            KvmVm::new(&kvm, mem, ProtectionType::Unprotected).expect("failed tso instantiate vm");
 
         let mut chip = KvmKernelIrqChip::new(vm.try_clone().expect("failed to clone vm"), 1)
             .expect("failed to instantiate KvmKernelIrqChip");
@@ -748,7 +751,8 @@ mod tests {
     fn get_split_chip() -> KvmSplitIrqChip {
         let kvm = Kvm::new().expect("failed to instantiate Kvm");
         let mem = GuestMemory::new(&[]).unwrap();
-        let vm = KvmVm::new(&kvm, mem).expect("failed tso instantiate vm");
+        let vm =
+            KvmVm::new(&kvm, mem, ProtectionType::Unprotected).expect("failed tso instantiate vm");
 
         let (_, device_tube) = Tube::pair().expect("failed to create irq tube");
 

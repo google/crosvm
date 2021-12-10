@@ -42,7 +42,7 @@ use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::{
     ClockState, Datamatch, DeviceKind, Hypervisor, HypervisorCap, IoEventAddress, IrqRoute,
-    IrqSource, MPState, MemSlot, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap,
+    IrqSource, MPState, MemSlot, ProtectionType, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap,
 };
 
 // Wrapper around KVM_SET_USER_MEMORY_REGION ioctl, which creates, modifies, or deletes a mapping
@@ -163,10 +163,20 @@ pub struct KvmVm {
 
 impl KvmVm {
     /// Constructs a new `KvmVm` using the given `Kvm` instance.
-    pub fn new(kvm: &Kvm, guest_mem: GuestMemory) -> Result<KvmVm> {
+    pub fn new(
+        kvm: &Kvm,
+        guest_mem: GuestMemory,
+        protection_type: ProtectionType,
+    ) -> Result<KvmVm> {
         // Safe because we know kvm is a real kvm fd as this module is the only one that can make
         // Kvm objects.
-        let ret = unsafe { ioctl_with_val(kvm, KVM_CREATE_VM(), kvm.get_vm_type()) };
+        let ret = unsafe {
+            ioctl_with_val(
+                kvm,
+                KVM_CREATE_VM(),
+                kvm.get_vm_type(protection_type)? as c_ulong,
+            )
+        };
         if ret < 0 {
             return errno_result();
         }
@@ -1194,14 +1204,14 @@ mod tests {
     fn create_vm() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
-        KvmVm::new(&kvm, gm).unwrap();
+        KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
     }
 
     #[test]
     fn clone_vm() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         vm.try_clone().unwrap();
     }
 
@@ -1209,7 +1219,7 @@ mod tests {
     fn send_vm() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         thread::spawn(move || {
             let _vm = vm;
         })
@@ -1221,7 +1231,7 @@ mod tests {
     fn check_vm_capability() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         assert!(vm.check_raw_capability(KvmCap::UserMemory));
         // I assume nobody is testing this on s390
         assert!(!vm.check_raw_capability(KvmCap::S390UserSigp));
@@ -1231,7 +1241,7 @@ mod tests {
     fn create_vcpu() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         vm.create_vcpu(0).unwrap();
     }
 
@@ -1239,7 +1249,7 @@ mod tests {
     fn get_memory() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         let obj_addr = GuestAddress(0xf0);
         vm.get_memory().write_obj_at_addr(67u8, obj_addr).unwrap();
         let read_val: u8 = vm.get_memory().read_obj_from_addr(obj_addr).unwrap();
@@ -1251,7 +1261,7 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm =
             GuestMemory::new(&[(GuestAddress(0), 0x1000), (GuestAddress(0x5000), 0x5000)]).unwrap();
-        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         vm.add_memory_region(GuestAddress(0x1000), Box::new(mem), false, false)
@@ -1265,7 +1275,7 @@ mod tests {
     fn add_memory_ro() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
-        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         vm.add_memory_region(GuestAddress(0x1000), Box::new(mem), true, false)
@@ -1276,7 +1286,7 @@ mod tests {
     fn remove_memory() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
-        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         let mem_ptr = mem.as_ptr();
@@ -1292,7 +1302,7 @@ mod tests {
     fn remove_invalid_memory() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
-        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         assert!(vm.remove_memory_region(0).is_err());
     }
 
@@ -1300,7 +1310,7 @@ mod tests {
     fn overlap_memory() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         let mem_size = 0x2000;
         let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
         assert!(vm
@@ -1313,7 +1323,7 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let gm =
             GuestMemory::new(&[(GuestAddress(0), 0x1000), (GuestAddress(0x5000), 0x5000)]).unwrap();
-        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         let mem_size = 0x1000;
         let mem = MemoryMappingArena::new(mem_size).unwrap();
         let slot = vm
@@ -1328,7 +1338,7 @@ mod tests {
     fn register_irqfd() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         let evtfd1 = Event::new().unwrap();
         let evtfd2 = Event::new().unwrap();
         let evtfd3 = Event::new().unwrap();
@@ -1343,7 +1353,7 @@ mod tests {
     fn unregister_irqfd() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         let evtfd1 = Event::new().unwrap();
         let evtfd2 = Event::new().unwrap();
         let evtfd3 = Event::new().unwrap();
@@ -1360,7 +1370,7 @@ mod tests {
     fn irqfd_resample() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         let evtfd1 = Event::new().unwrap();
         let evtfd2 = Event::new().unwrap();
         vm.create_irq_chip().unwrap();
@@ -1375,7 +1385,7 @@ mod tests {
     fn set_signal_mask() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm).unwrap();
+        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         let vcpu = vm.create_vcpu(0).unwrap();
         vcpu.set_signal_mask(&[base::SIGRTMIN() + 0]).unwrap();
     }
@@ -1393,7 +1403,7 @@ mod tests {
     fn register_ioevent() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         let evtfd = Event::new().unwrap();
         vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
             .unwrap();
@@ -1429,7 +1439,7 @@ mod tests {
     fn unregister_ioevent() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let mut vm = KvmVm::new(&kvm, gm).unwrap();
+        let mut vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
         let evtfd = Event::new().unwrap();
         vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
             .unwrap();

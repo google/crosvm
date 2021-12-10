@@ -7,7 +7,8 @@ use std::sync::Arc;
 
 use base::Event;
 use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
-use devices::{Bus, ProtectionType, ProxyDevice, Serial};
+use devices::{Bus, ProxyDevice, Serial};
+use hypervisor::ProtectionType;
 use minijail::Minijail;
 use remain::sorted;
 use sync::Mutex;

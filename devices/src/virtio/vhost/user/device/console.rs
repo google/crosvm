@@ -15,6 +15,7 @@ use data_model::DataInit;
 
 use futures::future::{AbortHandle, Abortable};
 use getopts::Options;
+use hypervisor::ProtectionType;
 use once_cell::sync::OnceCell;
 use sync::Mutex;
 use vm_memory::GuestMemory;
@@ -28,7 +29,6 @@ use crate::virtio::vhost::user::device::handler::{
     CallEvent, DeviceRequestHandler, VhostUserBackend,
 };
 use crate::virtio::{self, copy_config};
-use crate::ProtectionType;
 
 static CONSOLE_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 

@@ -50,7 +50,6 @@ use devices::virtio::{
 };
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
-use devices::ProtectionType;
 use devices::{
     self, BusDeviceObj, HostHotPlugKey, HotPlugBus, IrqChip, IrqEventIndex, KvmKernelIrqChip,
     PciAddress, PciBridge, PciDevice, PcieRootPort, StubPciDevice, VcpuRunState, VfioContainer,
@@ -59,7 +58,7 @@ use devices::{
 #[cfg(feature = "usb")]
 use devices::{HostBackendDeviceProvider, XhciController};
 use hypervisor::kvm::{Kvm, KvmVcpu, KvmVm};
-use hypervisor::{HypervisorCap, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap};
+use hypervisor::{HypervisorCap, ProtectionType, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap};
 use minijail::{self, Minijail};
 use net_util::{MacAddress, Tap};
 use resources::{Alloc, MmioType, SystemAllocator};
@@ -2581,7 +2580,7 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
     }
     guest_mem.set_memory_policy(mem_policy);
     let kvm = Kvm::new_with_path(&cfg.kvm_device_path).context("failed to create kvm")?;
-    let vm = KvmVm::new(&kvm, guest_mem).context("failed to create vm")?;
+    let vm = KvmVm::new(&kvm, guest_mem, components.protected_vm).context("failed to create vm")?;
     let vm_clone = vm.try_clone().context("failed to clone vm")?;
 
     enum KvmIrqChip {

@@ -20,10 +20,10 @@ use base::{syslog, AsRawDescriptor, AsRawDescriptors, Event, Tube};
 use devices::virtio::VirtioDevice;
 use devices::{
     Bus, BusDevice, BusDeviceObj, BusError, BusResumeDevice, HotPlugBus, IrqChip, PciAddress,
-    PciDevice, PciDeviceError, PciInterruptPin, PciRoot, ProtectionType, ProxyDevice,
-    SerialHardware, SerialParameters, VfioPlatformDevice,
+    PciDevice, PciDeviceError, PciInterruptPin, PciRoot, ProxyDevice, SerialHardware,
+    SerialParameters, VfioPlatformDevice,
 };
-use hypervisor::{IoEventAddress, Vm};
+use hypervisor::{IoEventAddress, ProtectionType, Vm};
 use minijail::Minijail;
 use remain::sorted;
 use resources::{MmioType, SystemAllocator};

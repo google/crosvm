@@ -355,7 +355,7 @@ pub mod tests {
     use super::*;
     use crate::virtio::base_features;
     use crate::virtio::VIRTIO_MSI_NO_VECTOR;
-    use crate::ProtectionType;
+    use hypervisor::ProtectionType;
     use net_util::fakes::FakeTap;
     use std::path::PathBuf;
     use std::result;

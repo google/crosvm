@@ -49,12 +49,13 @@ use devices::virtio::{
 use devices::BusRange;
 #[cfg(feature = "audio")]
 use devices::{Ac97Backend, Ac97Parameters};
-use devices::{PciAddress, PciClassCode, ProtectionType, StubPciParameters};
+use devices::{PciAddress, PciClassCode, StubPciParameters};
 use disk::{self, QcowFile};
 #[cfg(feature = "composite-disk")]
 use disk::{
     create_composite_disk, create_disk_file, create_zero_filler, ImagePartitionType, PartitionInfo,
 };
+use hypervisor::ProtectionType;
 use vm_control::{
     client::{
         do_modify_battery, do_usb_attach, do_usb_detach, do_usb_list, handle_request, vms_request,

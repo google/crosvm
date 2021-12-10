@@ -698,13 +698,13 @@ mod tests {
     use std::mem::size_of_val;
 
     use data_model::{Le32, Le64};
+    use hypervisor::ProtectionType;
     use tempfile::tempfile;
     use vm_memory::GuestAddress;
 
     use crate::virtio::base_features;
     use crate::virtio::block::common::*;
     use crate::virtio::descriptor_utils::{create_descriptor_chain, DescriptorType};
-    use crate::ProtectionType;
 
     use super::*;
 

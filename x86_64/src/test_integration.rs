@@ -5,8 +5,8 @@
 #![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 
 use arch::LinuxArch;
-use devices::{IrqChipX86_64, ProtectionType};
-use hypervisor::{HypervisorX86_64, VcpuExit, VcpuX86_64, VmX86_64};
+use devices::IrqChipX86_64;
+use hypervisor::{HypervisorX86_64, ProtectionType, VcpuExit, VcpuX86_64, VmX86_64};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::cpuid::setup_cpuid;
@@ -41,7 +41,8 @@ fn simple_kvm_kernel_irqchip_test() {
     simple_vm_test::<_, _, KvmVcpu, _, _, _>(
         |guest_mem| {
             let kvm = Kvm::new().expect("failed to create kvm");
-            let vm = KvmVm::new(&kvm, guest_mem).expect("failed to create kvm vm");
+            let vm = KvmVm::new(&kvm, guest_mem, ProtectionType::Unprotected)
+                .expect("failed to create kvm vm");
             (kvm, vm)
         },
         |vm, vcpu_count, _| {
@@ -57,7 +58,8 @@ fn simple_kvm_split_irqchip_test() {
     simple_vm_test::<_, _, KvmVcpu, _, _, _>(
         |guest_mem| {
             let kvm = Kvm::new().expect("failed to create kvm");
-            let vm = KvmVm::new(&kvm, guest_mem).expect("failed to create kvm vm");
+            let vm = KvmVm::new(&kvm, guest_mem, ProtectionType::Unprotected)
+                .expect("failed to create kvm vm");
             (kvm, vm)
         },
         |vm, vcpu_count, device_tube| {

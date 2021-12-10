@@ -12,7 +12,7 @@ use std::sync::Arc;
 use base::Event;
 use cros_fuzz::fuzz_target;
 use devices::virtio::{base_features, Block, Interrupt, Queue, VirtioDevice};
-use devices::ProtectionType;
+use hypervisor::ProtectionType;
 use tempfile;
 use vm_memory::{GuestAddress, GuestMemory};
 

@@ -16,11 +16,10 @@ use base::{
     error, info, read_raw_stdin, safe_descriptor_from_path, syslog, AsRawDescriptor, Event,
     RawDescriptor,
 };
+use hypervisor::ProtectionType;
 use minijail::Minijail;
 use remain::sorted;
 use thiserror::Error as ThisError;
-
-use crate::ProtectionType;
 
 #[sorted]
 #[derive(ThisError, Debug)]
