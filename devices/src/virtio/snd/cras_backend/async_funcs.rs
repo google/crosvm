@@ -100,6 +100,50 @@ async fn process_pcm_ctrl(
     };
 }
 
+// Drain all DescriptorChain in desc_receiver during WorkerStatus::Quit process.
+async fn drain_desc_receiver(
+    desc_receiver: &mut mpsc::UnboundedReceiver<DescriptorChain>,
+    mem: &GuestMemory,
+    sender: &mut mpsc::UnboundedSender<PcmResponse>,
+) -> Result<(), Error> {
+    let mut o_desc_chain = desc_receiver.next().await;
+    while let Some(desc_chain) = o_desc_chain {
+        // From the virtio-snd spec:
+        // The device MUST complete all pending I/O messages for the specified stream ID.
+        let desc_index = desc_chain.index;
+        let writer = Writer::new(mem.clone(), desc_chain).map_err(Error::DescriptorChain)?;
+        let status = virtio_snd_pcm_status {
+            status: Le32::from(VIRTIO_SND_S_OK),
+            latency_bytes: Le32::from(0),
+        };
+        // Fetch next DescriptorChain to see if the current one is the last one.
+        o_desc_chain = desc_receiver.next().await;
+        let (done, future) = if o_desc_chain.is_none() {
+            let (done, future) = oneshot::channel();
+            (Some(done), Some(future))
+        } else {
+            (None, None)
+        };
+        sender
+            .send(PcmResponse {
+                desc_index,
+                status,
+                writer,
+                done,
+            })
+            .await
+            .map_err(Error::MpscSend)?;
+
+        if let Some(f) = future {
+            // From the virtio-snd spec:
+            // The device MUST NOT complete the control request (VIRTIO_SND_R_PCM_RELEASE)
+            // while there are pending I/O messages for the specified stream ID.
+            f.await.map_err(Error::DoneNotTriggered)?;
+        };
+    }
+    Ok(())
+}
+
 /// Start a pcm worker that receives descriptors containing PCM frames (audio data) from the tx/rx
 /// queue, and forward them to CRAS. One pcm worker per stream.
 ///
@@ -116,7 +160,6 @@ pub async fn start_pcm_worker(
     period_bytes: usize,
 ) -> Result<(), Error> {
     loop {
-        let mut o_desc_chain = desc_receiver.next().await;
         {
             let mut status = status_mutex.lock().await;
             while *status == WorkerStatus::Pause {
@@ -124,38 +167,14 @@ pub async fn start_pcm_worker(
                 status = cv.wait(status).await;
             }
             if *status == WorkerStatus::Quit {
-                while let Some(desc_chain) = o_desc_chain {
-                    // From the virtio-snd spec:
-                    // The device MUST complete all pending I/O messages for the specified stream ID.
-                    let desc_index = desc_chain.index;
-                    let writer =
-                        Writer::new(mem.clone(), desc_chain).map_err(Error::DescriptorChain)?;
-                    let status = virtio_snd_pcm_status {
-                        status: Le32::from(VIRTIO_SND_S_OK),
-                        latency_bytes: Le32::from(0),
-                    };
-                    let (done, future) = oneshot::channel();
-                    sender
-                        .send(PcmResponse {
-                            desc_index,
-                            status,
-                            writer,
-                            done: Some(done),
-                        })
-                        .await
-                        .map_err(Error::MpscSend)?;
-                    // From the virtio-snd spec:
-                    // The device MUST NOT complete the control request (VIRTIO_SND_R_PCM_RELEASE)
-                    // while there are pending I/O messages for the specified stream ID.
-                    future.await.map_err(Error::DoneNotTriggered)?;
-
-                    o_desc_chain = desc_receiver.next().await
-                }
+                drain_desc_receiver(&mut desc_receiver, &mem, &mut sender).await?;
                 break;
             }
         }
-        let desc_chain =
-            o_desc_chain.expect("Unreachable. status should be Quit when the channel is closed");
+        let desc_chain = desc_receiver
+            .next()
+            .await
+            .expect("Unreachable. status should be Quit when the channel is closed");
 
         let desc_index = desc_chain.index;
 
