@@ -588,70 +588,75 @@ fn create_balloon_device(cfg: &Config, tube: Tube) -> DeviceResult {
     })
 }
 
-fn create_tap_net_device(cfg: &Config, tap_fd: RawDescriptor) -> DeviceResult {
-    // Safe because we ensure that we get a unique handle to the fd.
-    let tap = unsafe {
-        Tap::from_raw_descriptor(
-            validate_raw_descriptor(tap_fd).context("failed to validate tap descriptor")?,
-        )
-        .context("failed to create tap device")?
-    };
-
+/// Generic method for creating a network device. `create_device` is a closure that takes the virtio
+/// features and number of queue pairs as parameters, and is responsible for creating the device
+/// itself.
+fn create_net_device<F, T>(cfg: &Config, policy: &str, create_device: F) -> DeviceResult
+where
+    F: Fn(u64, u16) -> Result<T>,
+    T: VirtioDevice + 'static,
+{
     let mut vq_pairs = cfg.net_vq_pairs.unwrap_or(1);
     let vcpu_count = cfg.vcpu_count.unwrap_or(1);
     if vcpu_count < vq_pairs as usize {
-        error!("net vq pairs must be smaller than vcpu count, fall back to single queue mode");
+        warn!("the number of net vq pairs must not exceed the vcpu count, falling back to single queue mode");
         vq_pairs = 1;
     }
     let features = virtio::base_features(cfg.protected_vm);
-    let dev =
-        virtio::Net::from(features, tap, vq_pairs).context("failed to create tap net device")?;
+
+    let dev = create_device(features, vq_pairs)?;
 
     Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail: simple_jail(cfg, "net_device")?,
+        dev: Box::new(dev) as Box<dyn VirtioDevice>,
+        jail: simple_jail(cfg, policy)?,
     })
 }
 
-fn create_net_device(
+/// Returns a network device created from a new TAP interface configured with `host_ip`, `netmask`,
+/// and `mac_address`.
+fn create_net_device_from_config(
     cfg: &Config,
     host_ip: Ipv4Addr,
     netmask: Ipv4Addr,
     mac_address: MacAddress,
 ) -> DeviceResult {
-    let mut vq_pairs = cfg.net_vq_pairs.unwrap_or(1);
-    let vcpu_count = cfg.vcpu_count.unwrap_or(1);
-    if vcpu_count < vq_pairs as usize {
-        error!("net vq pairs must be smaller than vcpu count, fall back to single queue mode");
-        vq_pairs = 1;
-    }
-
-    let features = virtio::base_features(cfg.protected_vm);
-    let dev = if cfg.vhost_net {
-        let dev = virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(
-            &cfg.vhost_net_device_path,
-            features,
-            host_ip,
-            netmask,
-            mac_address,
-        )
-        .context("failed to set up vhost networking")?;
-        Box::new(dev) as Box<dyn VirtioDevice>
-    } else {
-        let dev = virtio::Net::<Tap>::new(features, host_ip, netmask, mac_address, vq_pairs)
-            .context("failed to create virtio network device")?;
-        Box::new(dev) as Box<dyn VirtioDevice>
-    };
-
     let policy = if cfg.vhost_net {
         "vhost_net_device"
     } else {
         "net_device"
     };
 
-    Ok(VirtioDeviceStub {
-        dev,
-        jail: simple_jail(cfg, policy)?,
+    if cfg.vhost_net {
+        create_net_device(cfg, policy, |features, _vq_pairs| {
+            virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(
+                &cfg.vhost_net_device_path,
+                features,
+                host_ip,
+                netmask,
+                mac_address,
+            )
+            .context("failed to set up vhost networking")
+        })
+    } else {
+        create_net_device(cfg, policy, |features, vq_pairs| {
+            virtio::Net::<Tap>::new(features, host_ip, netmask, mac_address, vq_pairs)
+                .context("failed to create virtio network device")
+        })
+    }
+}
+
+/// Returns a network device from a file descriptor to a configured TAP interface.
+fn create_tap_net_device_from_fd(cfg: &Config, tap_fd: RawDescriptor) -> DeviceResult {
+    create_net_device(cfg, "net_device", |features, vq_pairs| {
+        // Safe because we ensure that we get a unique handle to the fd.
+        let tap = unsafe {
+            Tap::from_raw_descriptor(
+                validate_raw_descriptor(tap_fd).context("failed to validate tap descriptor")?,
+            )
+            .context("failed to create tap device")?
+        };
+
+        virtio::Net::from(features, tap, vq_pairs).context("failed to create tap net device")
     })
 }
 
@@ -1463,7 +1468,7 @@ fn create_virtio_devices(
 
     // We checked above that if the IP is defined, then the netmask is, too.
     for tap_fd in &cfg.tap_fd {
-        devs.push(create_tap_net_device(cfg, *tap_fd)?);
+        devs.push(create_tap_net_device_from_fd(cfg, *tap_fd)?);
     }
 
     if let (Some(host_ip), Some(netmask), Some(mac_address)) =
@@ -1472,7 +1477,12 @@ fn create_virtio_devices(
         if !cfg.vhost_user_net.is_empty() {
             bail!("vhost-user-net cannot be used with any of --host_ip, --netmask or --mac");
         }
-        devs.push(create_net_device(cfg, host_ip, netmask, mac_address)?);
+        devs.push(create_net_device_from_config(
+            cfg,
+            host_ip,
+            netmask,
+            mac_address,
+        )?);
     }
 
     for net in &cfg.vhost_user_net {
