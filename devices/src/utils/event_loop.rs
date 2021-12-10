@@ -99,39 +99,40 @@ impl EventLoop {
                         }
                     };
                     for event in &events {
-                        if event.token().as_raw_descriptor() == stop_evt.as_raw_descriptor() {
+                        let fd = event.token().as_raw_descriptor();
+                        if fd == stop_evt.as_raw_descriptor() {
                             return;
+                        }
+
+                        let mut locked = fd_callbacks.lock();
+                        let weak_handler = match locked.get(&fd) {
+                            Some(cb) => cb.clone(),
+                            None => {
+                                warn!("callback for fd {} already removed", fd);
+                                continue;
+                            }
+                        };
+
+                        // If the file descriptor is hung up, remove it after calling the handler
+                        // one final time.
+                        let mut remove = event.hungup();
+
+                        if let Some(handler) = weak_handler.upgrade() {
+                            // Drop lock before triggering the event.
+                            drop(locked);
+                            if let Err(e) = handler.on_event() {
+                                error!("removing event handler due to error: {:#}", e);
+                                remove = true;
+                            }
+                            locked = fd_callbacks.lock();
                         } else {
-                            let fd = event.token().as_raw_descriptor();
-                            let mut locked = fd_callbacks.lock();
-                            let weak_handler = match locked.get(&fd) {
-                                Some(cb) => cb.clone(),
-                                None => {
-                                    warn!("callback for fd {} already removed", fd);
-                                    continue;
-                                }
-                            };
-                            match weak_handler.upgrade() {
-                                Some(handler) => {
-                                    // Drop lock before triggering the event.
-                                    drop(locked);
-                                    match handler.on_event() {
-                                        Ok(()) => {}
-                                        Err(e) => {
-                                            error!("event loop stopping due to handle event error: {:#}", e);
-                                            fail_handle.fail();
-                                            return;
-                                        }
-                                    };
-                                }
-                                // If the handler is already gone, we remove the fd.
-                                None => {
-                                    let _ = poll_ctx.delete(&Descriptor(fd));
-                                    if locked.remove(&fd).is_none() {
-                                        error!("fail to remove handler for file descriptor {}", fd);
-                                    }
-                                }
-                            };
+                            // If the handler is already gone, we remove the fd.
+                            remove = true;
+                        }
+
+                        if remove {
+                            let _ = poll_ctx.delete(&event.token());
+                            let _ = locked.remove(&fd);
                         }
                     }
                 }
