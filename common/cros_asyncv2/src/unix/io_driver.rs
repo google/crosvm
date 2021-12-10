@@ -329,3 +329,21 @@ pub async fn accept(desc: &Arc<SafeDescriptor>) -> anyhow::Result<SafeDescriptor
 
     mio::accept(desc).await
 }
+
+pub async fn wait_readable(desc: &Arc<SafeDescriptor>) -> anyhow::Result<()> {
+    #[cfg(feature = "uring")]
+    if use_uring() {
+        return uring::wait_readable(desc).await;
+    }
+
+    mio::wait_readable(desc).await
+}
+
+pub async fn wait_writable(desc: &Arc<SafeDescriptor>) -> anyhow::Result<()> {
+    #[cfg(feature = "uring")]
+    if use_uring() {
+        return uring::wait_writable(desc).await;
+    }
+
+    mio::wait_writable(desc).await
+}

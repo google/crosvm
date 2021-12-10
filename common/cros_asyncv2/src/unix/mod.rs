@@ -2,11 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod descriptor;
 mod event;
 mod file;
 mod io_driver;
 mod seqpacket;
 
+pub use descriptor::*;
 pub use event::*;
 pub use file::*;
 pub use seqpacket::*;

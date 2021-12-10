@@ -830,6 +830,14 @@ pub async fn accept(desc: &Arc<SafeDescriptor>) -> anyhow::Result<SafeDescriptor
     }
 }
 
+pub async fn wait_readable(desc: &Arc<SafeDescriptor>) -> anyhow::Result<()> {
+    wait_for(desc, Interest::READABLE).await
+}
+
+pub async fn wait_writable(desc: &Arc<SafeDescriptor>) -> anyhow::Result<()> {
+    wait_for(desc, Interest::WRITABLE).await
+}
+
 pub fn prepare(fd: &dyn AsRawDescriptor) -> anyhow::Result<()> {
     add_fd_flags(fd.as_raw_descriptor(), libc::O_NONBLOCK)
         .map_err(io::Error::from)

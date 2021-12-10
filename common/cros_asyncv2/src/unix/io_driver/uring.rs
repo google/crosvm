@@ -135,6 +135,14 @@ pub async fn accept(desc: &Arc<SafeDescriptor>) -> anyhow::Result<SafeDescriptor
     todo!();
 }
 
+pub async fn wait_readable(desc: &Arc<SafeDescriptor>) -> anyhow::Result<()> {
+    todo!();
+}
+
+pub async fn wait_writable(desc: &Arc<SafeDescriptor>) -> anyhow::Result<()> {
+    todo!();
+}
+
 pub fn prepare(fd: &dyn AsRawDescriptor) -> anyhow::Result<()> {
     todo!();
 }
