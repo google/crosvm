@@ -5,21 +5,36 @@
 use data_model::{DataInit, Le16, SLe32};
 use std::mem::size_of;
 
-const EV_SYN: u16 = 0x00;
-const EV_KEY: u16 = 0x01;
-const EV_REL: u16 = 0x02;
-const EV_ABS: u16 = 0x03;
-const SYN_REPORT: u16 = 0;
-const REL_X: u16 = 0x00;
-const REL_Y: u16 = 0x01;
-const ABS_MT_TRACKING_ID: u16 = 0x39;
-const ABS_MT_SLOT: u16 = 0x2f;
-const ABS_MT_POSITION_X: u16 = 0x35;
-const ABS_MT_POSITION_Y: u16 = 0x36;
-const ABS_X: u16 = 0x00;
-const ABS_Y: u16 = 0x01;
-const BTN_TOUCH: u16 = 0x14a;
-const BTN_TOOL_FINGER: u16 = 0x145;
+pub const EV_SYN: u16 = 0x00;
+pub const EV_KEY: u16 = 0x01;
+pub const EV_REL: u16 = 0x02;
+pub const EV_ABS: u16 = 0x03;
+pub const SYN_REPORT: u16 = 0;
+pub const REL_X: u16 = 0x00;
+pub const REL_Y: u16 = 0x01;
+pub const ABS_X: u16 = 0x00;
+pub const ABS_Y: u16 = 0x01;
+pub const ABS_PRESSURE: u16 = 0x18;
+pub const ABS_TILT_X: u16 = 0x1a;
+pub const ABS_TILT_Y: u16 = 0x1b;
+pub const ABS_TOOL_WIDTH: u16 = 0x1c;
+pub const BTN_TOUCH: u16 = 0x14a;
+pub const BTN_TOOL_FINGER: u16 = 0x145;
+pub const ABS_MT_SLOT: u16 = 0x2f;
+pub const ABS_MT_TOUCH_MAJOR: u16 = 0x30;
+pub const ABS_MT_TOUCH_MINOR: u16 = 0x31;
+pub const ABS_MT_WIDTH_MAJOR: u16 = 0x32;
+pub const ABS_MT_WIDTH_MINOR: u16 = 0x33;
+pub const ABS_MT_ORIENTATION: u16 = 0x34;
+pub const ABS_MT_POSITION_X: u16 = 0x35;
+pub const ABS_MT_POSITION_Y: u16 = 0x36;
+pub const ABS_MT_TOOL_TYPE: u16 = 0x37;
+pub const ABS_MT_BLOB_ID: u16 = 0x38;
+pub const ABS_MT_TRACKING_ID: u16 = 0x39;
+pub const ABS_MT_PRESSURE: u16 = 0x3a;
+pub const ABS_MT_DISTANCE: u16 = 0x3b;
+pub const ABS_MT_TOOL_X: u16 = 0x3c;
+pub const ABS_MT_TOOL_Y: u16 = 0x3d;
 
 /// Allows a raw input event of the implementor's type to be decoded into
 /// a virtio_input_event.
@@ -172,6 +187,44 @@ impl virtio_input_event {
             type_: Le16::from(EV_KEY),
             code: Le16::from(code),
             value: SLe32::from(if pressed { 1 } else { 0 }),
+        }
+    }
+
+    #[inline]
+    pub fn is_valid_mt_event(self) -> bool {
+        match self.type_.to_native() {
+            EV_KEY => self.code.to_native() == BTN_TOUCH,
+            EV_ABS => matches!(
+                self.code.to_native(),
+                ABS_MT_SLOT
+                    | ABS_MT_TOUCH_MAJOR
+                    | ABS_MT_TOUCH_MINOR
+                    | ABS_MT_WIDTH_MAJOR
+                    | ABS_MT_WIDTH_MINOR
+                    | ABS_MT_ORIENTATION
+                    | ABS_MT_POSITION_X
+                    | ABS_MT_POSITION_Y
+                    | ABS_MT_TOOL_TYPE
+                    | ABS_MT_BLOB_ID
+                    | ABS_MT_TRACKING_ID
+                    | ABS_MT_PRESSURE
+                    | ABS_MT_DISTANCE
+                    | ABS_MT_TOOL_X
+                    | ABS_MT_TOOL_Y
+            ),
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_valid_st_event(self) -> bool {
+        match self.type_.to_native() {
+            EV_KEY => self.code.to_native() == BTN_TOUCH,
+            EV_ABS => matches!(
+                self.code.to_native(),
+                ABS_X | ABS_Y | ABS_PRESSURE | ABS_TILT_X | ABS_TILT_Y | ABS_TOOL_WIDTH
+            ),
+            _ => false,
         }
     }
 }
