@@ -2847,7 +2847,7 @@ fn start_device(mut args: std::env::Args) -> std::result::Result<(), ()> {
     };
 
     result.map_err(|e| {
-        error!("Failed to run {} device: {}", device, e);
+        error!("Failed to run {} device: {:#}", device, e);
     })
 }
 
