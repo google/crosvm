@@ -5,7 +5,7 @@
 mod fdt;
 
 const SETUP_DTB: u32 = 2;
-const X86_64_FDT_MAX_SIZE: u64 = 0x200000;
+const X86_64_FDT_MAX_SIZE: u64 = 0x20_0000;
 
 #[allow(dead_code)]
 #[allow(non_upper_case_globals)]
@@ -378,7 +378,7 @@ impl arch::LinuxArch for X8664arch {
         let high_mmio_start = Self::get_high_mmio_base(guest_mem);
         let high_mmio_size = Self::get_high_mmio_size(guest_mem);
         SystemAllocator::builder()
-            .add_io_addresses(0xc000, 0x10000)
+            .add_io_addresses(0xc000, 0x1_0000)
             .add_low_mmio_addresses(END_ADDR_BEFORE_32BITS, PCI_MMIO_SIZE)
             .add_high_mmio_addresses(high_mmio_start, high_mmio_size)
             .create_allocator(X86_64_IRQ_BASE)
