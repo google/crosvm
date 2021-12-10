@@ -152,12 +152,8 @@ impl Device {
             let result =
                 unsafe { self.ioctl_with_mut_ref(usb_sys::USBDEVFS_REAPURBNDELAY(), &mut urb_ptr) };
             match result {
-                Err(Error::IoctlFailed(_nr, e)) => {
-                    if e.errno() == EAGAIN {
-                        // No more completed transfers right now.
-                        break;
-                    }
-                }
+                // EAGAIN indicates no more completed transfers right now.
+                Err(Error::IoctlFailed(_nr, e)) if e.errno() == EAGAIN => break,
                 Err(e) => return Err(e),
                 Ok(_) => {}
             }
