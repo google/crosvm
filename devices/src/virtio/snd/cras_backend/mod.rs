@@ -462,7 +462,7 @@ pub fn hardcoded_virtio_snd_config(params: &Parameters) -> virtio_snd_config {
     virtio_snd_config {
         jacks: 0.into(),
         streams: (params.num_output_streams + params.num_input_streams).into(),
-        chmaps: 2.into(),
+        chmaps: 4.into(),
     }
 }
 
@@ -482,7 +482,7 @@ fn hardcoded_snd_data(params: &Parameters) -> SndData {
             rates: SUPPORTED_FRAME_RATES.into(),
             direction: VIRTIO_SND_D_OUTPUT,
             channels_min: 1,
-            channels_max: 2,
+            channels_max: 6,
             padding: [0; 5],
         });
     }
@@ -520,6 +520,28 @@ fn hardcoded_snd_data(params: &Parameters) -> SndData {
         },
         direction: VIRTIO_SND_D_INPUT,
         channels: 2,
+        positions,
+    });
+    positions[2] = VIRTIO_SND_CHMAP_RL;
+    positions[3] = VIRTIO_SND_CHMAP_RR;
+    chmap_info.push(virtio_snd_chmap_info {
+        hdr: virtio_snd_info {
+            hda_fn_nid: 0.into(),
+        },
+        direction: VIRTIO_SND_D_OUTPUT,
+        channels: 4,
+        positions,
+    });
+    positions[2] = VIRTIO_SND_CHMAP_FC;
+    positions[3] = VIRTIO_SND_CHMAP_LFE;
+    positions[4] = VIRTIO_SND_CHMAP_RL;
+    positions[5] = VIRTIO_SND_CHMAP_RR;
+    chmap_info.push(virtio_snd_chmap_info {
+        hdr: virtio_snd_info {
+            hda_fn_nid: 0.into(),
+        },
+        direction: VIRTIO_SND_D_OUTPUT,
+        channels: 6,
         positions,
     });
 
