@@ -419,41 +419,24 @@ mod tests {
 
     use crate::EventFd;
 
+    // Doing this as a macro makes it easier to see the line if it fails
+    macro_rules! CMSG_SPACE_TEST {
+        ($len:literal) => {
+            assert_eq!(
+                CMSG_SPACE!(size_of::<[RawFd; $len]>()) as libc::c_uint,
+                unsafe { libc::CMSG_SPACE(size_of::<[RawFd; $len]>() as libc::c_uint) }
+            );
+        };
+    }
+
     #[test]
     #[allow(clippy::erasing_op, clippy::identity_op)]
     fn buffer_len() {
-        assert_eq!(CMSG_SPACE!(0 * size_of::<RawFd>()), size_of::<cmsghdr>());
-        assert_eq!(
-            CMSG_SPACE!(1 * size_of::<RawFd>()),
-            size_of::<cmsghdr>() + size_of::<c_long>()
-        );
-        if size_of::<RawFd>() == 4 {
-            assert_eq!(
-                CMSG_SPACE!(2 * size_of::<RawFd>()),
-                size_of::<cmsghdr>() + size_of::<c_long>()
-            );
-            assert_eq!(
-                CMSG_SPACE!(3 * size_of::<RawFd>()),
-                size_of::<cmsghdr>() + size_of::<c_long>() * 2
-            );
-            assert_eq!(
-                CMSG_SPACE!(4 * size_of::<RawFd>()),
-                size_of::<cmsghdr>() + size_of::<c_long>() * 2
-            );
-        } else if size_of::<RawFd>() == 8 {
-            assert_eq!(
-                CMSG_SPACE!(2 * size_of::<RawFd>()),
-                size_of::<cmsghdr>() + size_of::<c_long>() * 2
-            );
-            assert_eq!(
-                CMSG_SPACE!(3 * size_of::<RawFd>()),
-                size_of::<cmsghdr>() + size_of::<c_long>() * 3
-            );
-            assert_eq!(
-                CMSG_SPACE!(4 * size_of::<RawFd>()),
-                size_of::<cmsghdr>() + size_of::<c_long>() * 4
-            );
-        }
+        CMSG_SPACE_TEST!(0);
+        CMSG_SPACE_TEST!(1);
+        CMSG_SPACE_TEST!(2);
+        CMSG_SPACE_TEST!(3);
+        CMSG_SPACE_TEST!(4);
     }
 
     #[test]
