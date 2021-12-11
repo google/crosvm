@@ -4,9 +4,9 @@
 
 @include /usr/share/policy/crosvm/gpu_common.policy
 
-# allow fork() and waitpid()
+# allow fork() and waitid()
 clone: 1
-wait4: 1
+waitid: 1
 
 # allow socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC)
 socketpair: arg0 == AF_UNIX && arg1 == SOCK_SEQPACKET|SOCK_CLOEXEC && arg2 == 0
