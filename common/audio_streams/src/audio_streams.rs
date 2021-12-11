@@ -354,15 +354,6 @@ impl<'a> AudioBuffer<'a> {
         Ok(len)
     }
 
-    /// Writes complete frames to `buf`, and return the number of bytes written.
-    pub fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // only write complete frames.
-        let len = buf.len() / self.frame_size * self.frame_size;
-        let written = (&mut self.buffer[self.offset..]).write(&buf[..len])?;
-        self.offset += written;
-        Ok(written)
-    }
-
     /// Reads up to `size` bytes directly from this buffer inside of the given callback function.
     pub fn read_copy_cb<F: FnOnce(&[u8])>(&mut self, size: usize, cb: F) -> io::Result<usize> {
         let len = self.calc_len(size);
@@ -374,9 +365,7 @@ impl<'a> AudioBuffer<'a> {
 
 impl<'a> Write for AudioBuffer<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // only write complete frames.
-        let len = buf.len() / self.frame_size * self.frame_size;
-        let written = (&mut self.buffer[self.offset..]).write(&buf[..len])?;
+        let written = (&mut self.buffer[self.offset..]).write(&buf[..buf.len()])?;
         self.offset += written;
         Ok(written)
     }
@@ -676,6 +665,7 @@ impl StreamSource for NoopStreamSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use io::{self, Write};
 
     #[test]
     fn invalid_buffer_length() {
@@ -685,6 +675,22 @@ mod tests {
             which_buffer: false,
         };
         assert!(PlaybackBuffer::new(2, &mut pb_buf, &mut buffer_drop).is_err());
+    }
+
+    #[test]
+    fn io_copy_audio_buffer() {
+        const PERIOD_SIZE: usize = 8192;
+        const NUM_CHANNELS: usize = 6;
+        const FRAME_SIZE: usize = NUM_CHANNELS * 2;
+        let mut dst_buf = [0u8; PERIOD_SIZE * FRAME_SIZE];
+        let src_buf = [0xa5u8; PERIOD_SIZE * FRAME_SIZE];
+        let mut aud_buf = AudioBuffer {
+            buffer: &mut dst_buf,
+            offset: 0,
+            frame_size: 6 * 2,
+        };
+        io::copy(&mut &src_buf[..], &mut aud_buf).expect("all data should be copied.");
+        assert_eq!(dst_buf, src_buf);
     }
 
     #[test]
