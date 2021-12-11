@@ -1030,7 +1030,7 @@ impl Gpu {
             .use_surfaceless(gpu_parameters.renderer_use_surfaceless)
             .use_external_blob(external_blob)
             .use_venus(gpu_parameters.use_vulkan)
-            .use_multi_process(gpu_parameters.render_server.is_some());
+            .use_render_server(gpu_parameters.render_server.is_some());
         let gfxstream_flags = GfxstreamFlags::new()
             .use_egl(gpu_parameters.renderer_use_egl)
             .use_gles(gpu_parameters.renderer_use_gles)

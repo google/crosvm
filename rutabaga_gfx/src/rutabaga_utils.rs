@@ -286,7 +286,7 @@ const VIRGLRENDERER_USE_EXTERNAL_BLOB: u32 = 1 << 5;
 const VIRGLRENDERER_VENUS: u32 = 1 << 6;
 const VIRGLRENDERER_NO_VIRGL: u32 = 1 << 7;
 const VIRGLRENDERER_USE_ASYNC_FENCE_CB: u32 = 1 << 8;
-const VIRGLRENDERER_MULTI_PROCESS: u32 = 1 << 9;
+const VIRGLRENDERER_RENDER_SERVER: u32 = 1 << 9;
 
 /// virglrenderer flag struct.
 #[derive(Copy, Clone)]
@@ -300,7 +300,7 @@ impl Default for VirglRendererFlags {
             .use_egl(true)
             .use_surfaceless(true)
             .use_gles(true)
-            .use_multi_process(false)
+            .use_render_server(false)
     }
 }
 
@@ -369,8 +369,8 @@ impl VirglRendererFlags {
         self.set_flag(VIRGLRENDERER_USE_ASYNC_FENCE_CB, v)
     }
 
-    pub fn use_multi_process(self, v: bool) -> VirglRendererFlags {
-        self.set_flag(VIRGLRENDERER_MULTI_PROCESS, v)
+    pub fn use_render_server(self, v: bool) -> VirglRendererFlags {
+        self.set_flag(VIRGLRENDERER_RENDER_SERVER, v)
     }
 }
 
