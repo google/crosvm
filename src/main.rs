@@ -2278,7 +2278,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
           "[capture=true,client=crosvm,socket=unified,num_output_streams=1,num_input_streams=1]",
           "Comma separated key=value pairs for setting up cras snd devices.
               Possible key values:
-              capture - Enable audio capture.
+              capture - Enable audio capture. Default to false.
               client_type - Set specific client type for cras backend.
               num_output_streams - Set number of output PCM streams
               num_input_streams - Set number of input PCM streams"),

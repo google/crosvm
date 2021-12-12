@@ -127,7 +127,7 @@ pub struct Parameters {
 impl Default for Parameters {
     fn default() -> Self {
         Parameters {
-            capture: true,
+            capture: false,
             client_type: CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             socket_type: CrasSocketType::Unified,
             num_output_streams: 1,
@@ -791,7 +791,7 @@ mod tests {
         check_failure("capture=true,client_type=none");
         check_success(
             "socket_type=legacy",
-            true,
+            false,
             CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             CrasSocketType::Legacy,
             1,
@@ -799,7 +799,7 @@ mod tests {
         );
         check_success(
             "socket_type=unified",
-            true,
+            false,
             CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             CrasSocketType::Unified,
             1,
