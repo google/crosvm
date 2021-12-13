@@ -31,6 +31,9 @@ use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 pub mod protocol;
 use crate::virtio::iommu::protocol::*;
+pub mod ipc_memory_mapper;
+pub mod memory_mapper;
+pub mod vfio_wrapper;
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;

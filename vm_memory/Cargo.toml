@@ -12,6 +12,7 @@ libc = "*"
 base = { path = "../common/base" }
 bitflags = "1"
 remain = "*"
+serde = { version = "1", features = [ "derive" ] }
 thiserror = "*"
 
 
