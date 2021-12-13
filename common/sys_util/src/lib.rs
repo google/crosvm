@@ -608,11 +608,11 @@ pub fn open_file<P: AsRef<Path>>(path: P, read_only: bool, o_direct: bool) -> Re
     Ok(if let Some(fd) = safe_descriptor_from_path(path)? {
         fd.into()
     } else {
-        let mut options = OpenOptions::new();
-        if o_direct {
-            options.custom_flags(O_DIRECT);
-        }
-        options.write(!read_only).read(true).open(path)?
+        OpenOptions::new()
+            .custom_flags(if o_direct { O_DIRECT } else { 0 })
+            .write(!read_only)
+            .read(true)
+            .open(path)?
     })
 }
 
