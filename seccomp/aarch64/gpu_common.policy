@@ -52,7 +52,6 @@ shutdown: 1
 ## Rules specific to gpu
 connect: 1
 getrandom: 1
-socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
 lseek: 1
 ftruncate: 1
 statx: 1

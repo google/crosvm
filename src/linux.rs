@@ -911,6 +911,12 @@ fn start_gpu_render_server(
         Some(mut jail) => {
             // TODO(olv) bind mount and enable shader cache
 
+            // bind mount /dev/log for syslog
+            let log_path = Path::new("/dev/log");
+            if log_path.exists() {
+                jail.mount_bind(log_path, log_path, true)?;
+            }
+
             // Run as root in the jail to keep capabilities after execve, which is needed for
             // mounting to work.  All capabilities will be dropped afterwards.
             add_current_user_as_root_to_jail(&mut jail)?;

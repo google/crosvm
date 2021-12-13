@@ -75,7 +75,6 @@ mmap: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ|PRO
 mprotect: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ
 open: 1
 openat: 1
-socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
 stat: 1
 statx: 1
 sysinfo: 1
