@@ -603,6 +603,7 @@ impl VfioDevice {
         let name = String::from(name_str);
         let dev = group.lock().get_device(&name)?;
         let regions = Self::get_regions(&dev)?;
+        group.lock().add_device_num();
         let group_descriptor = group.lock().as_raw_descriptor();
 
         Ok(VfioDevice {
