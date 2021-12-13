@@ -2514,7 +2514,9 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         )
     } else {
         match cfg.protected_vm {
-            ProtectionType::Protected => Some(64 * 1024 * 1024),
+            ProtectionType::Protected | ProtectionType::ProtectedWithoutFirmware => {
+                Some(64 * 1024 * 1024)
+            }
             ProtectionType::Unprotected => None,
         }
     };

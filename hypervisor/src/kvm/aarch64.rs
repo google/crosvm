@@ -33,7 +33,9 @@ impl Kvm {
         };
         let protection_flag = match protection_type {
             ProtectionType::Unprotected => 0,
-            ProtectionType::Protected => KVM_VM_TYPE_ARM_PROTECTED,
+            ProtectionType::Protected | ProtectionType::ProtectedWithoutFirmware => {
+                KVM_VM_TYPE_ARM_PROTECTED
+            }
         };
         // Use the lower 8 bits representing the IPA space as the machine type
         Ok((ipa_size & KVM_VM_TYPE_ARM_IPA_SIZE_MASK) | protection_flag)
