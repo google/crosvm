@@ -25,6 +25,7 @@ dirs=(
     kvm_sys
     media/libvda
     net_sys
+    vfio_sys
 )
 
 for d in "${dirs[@]}"; do

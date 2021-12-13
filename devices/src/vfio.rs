@@ -205,6 +205,7 @@ impl VfioContainer {
             flags: 0,
             iova,
             size,
+            ..Default::default()
         };
 
         // Safe as file is vfio container, dma_unmap is constructed by us, and
@@ -222,6 +223,7 @@ impl VfioContainer {
             argsz: mem::size_of::<vfio_iommu_type1_info>() as u32,
             flags: 0,
             iova_pgsizes: 0,
+            ..Default::default()
         };
 
         // Safe as file is vfio container, iommu_info has valid values,
@@ -870,6 +872,7 @@ impl VfioDevice {
             flags: 0,
             num_regions: 0,
             num_irqs: 0,
+            ..Default::default()
         };
 
         // Safe as we are the owner of device_file and dev_info which are valid value,
@@ -929,6 +932,7 @@ impl VfioDevice {
             flags: 0,
             num_regions: 0,
             num_irqs: 0,
+            ..Default::default()
         };
         // Safe as we are the owner of dev and dev_info which are valid value,
         // and we verify the return value.
