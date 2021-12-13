@@ -21,6 +21,7 @@ gfxstream = ["gpu", "rutabaga_gfx/gfxstream"]
 vvu = []
 
 [dependencies]
+argh = "0.1.7"
 async-task = "4"
 acpi_tables = {path = "../acpi_tables" }
 anyhow = "*"
@@ -33,7 +34,6 @@ dbus = { version = "0.9", optional = true }
 disk = { path = "../disk" }
 enumn = "0.1.0"
 fuse = {path = "../fuse" }
-getopts = { version = "0.2" }
 gpu_display = { path = "../gpu_display", optional = true }
 rutabaga_gfx = { path = "../rutabaga_gfx", optional = true }
 hypervisor = { path = "../hypervisor" }

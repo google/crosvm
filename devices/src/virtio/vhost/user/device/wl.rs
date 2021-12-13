@@ -11,6 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context};
+use argh::FromArgs;
 use base::{
     clone_descriptor, error,
     net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener},
@@ -18,7 +19,6 @@ use base::{
 };
 use cros_async::{AsyncWrapper, EventAsync, Executor, IoSourceExt};
 use futures::future::{AbortHandle, Abortable};
-use getopts::Options;
 use hypervisor::ProtectionType;
 use once_cell::sync::OnceCell;
 use sync::Mutex;
@@ -253,85 +253,82 @@ impl VhostUserBackend for WlBackend {
     }
 }
 
-fn parse_wayland_sock(value: String) -> anyhow::Result<(String, PathBuf)> {
+pub(crate) fn parse_wayland_sock(value: &str) -> Result<(String, PathBuf), String> {
     let mut components = value.split(',');
-    let path = PathBuf::from(
-        components
-            .next()
-            .ok_or_else(|| anyhow!("missing socket path"))?,
-    );
+    let path = PathBuf::from(match components.next() {
+        None => return Err("missing socket path".to_string()),
+        Some(c) => c,
+    });
     let mut name = "";
     for c in components {
         let mut kv = c.splitn(2, '=');
         let (kind, value) = match (kv.next(), kv.next()) {
             (Some(kind), Some(value)) => (kind, value),
-            _ => bail!("option must be of the form `kind=value`: {}", c),
+            _ => return Err(format!("option must be of the form `kind=value`: {}", c)),
         };
         match kind {
             "name" => name = value,
-            _ => bail!("unrecognized option: {}", kind),
+            _ => return Err(format!("unrecognized option: {}", kind)),
         }
     }
 
     Ok((name.to_string(), path))
 }
 
+#[derive(FromArgs)]
+#[argh(description = "")]
+struct Options {
+    #[argh(
+        option,
+        description = "path to bind a listening vhost-user socket",
+        arg_name = "PATH"
+    )]
+    socket: String,
+    #[argh(
+        option,
+        description = "path to a socket for wayland-specific messages",
+        arg_name = "PATH"
+    )]
+    vm_socket: String,
+    #[argh(
+        option,
+        description = "path to one or more Wayland sockets. The unnamed socket is used for\
+        displaying virtual screens while the named ones are used for IPC",
+        from_str_fn(parse_wayland_sock),
+        arg_name = "PATH[,name=NAME]"
+    )]
+    wayland_sock: Vec<(String, PathBuf)>,
+    #[argh(
+        option,
+        description = "path to the GPU resource bridge",
+        arg_name = "PATH"
+    )]
+    resource_bridge: Option<String>,
+}
+
 /// Starts a vhost-user wayland device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
-pub fn run_wl_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
-    let mut opts = Options::new();
-    opts.optflag("h", "help", "print this help menu");
-    opts.reqopt(
-        "",
-        "socket",
-        "path to bind a listening vhost-user socket",
-        "PATH",
-    );
-    opts.reqopt(
-        "",
-        "vm-socket",
-        "path to a socket for wayland-specific messages",
-        "PATH",
-    );
-    opts.optmulti(
-        "",
-        "wayland-sock",
-        "Path to one or more Wayland sockets. The unnamed socket is used for displaying virtual \
-         screens while the named ones are used for IPC",
-        "PATH[,name=NAME]",
-    );
-    opts.optopt(
-        "",
-        "resource-bridge",
-        "path to the GPU resource bridge",
-        "PATH",
-    );
-
-    let matches = match opts.parse(args) {
-        Ok(m) => m,
+pub fn run_wl_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
+    let Options {
+        vm_socket,
+        wayland_sock,
+        socket,
+        resource_bridge,
+    } = match Options::from_args(&[program_name], args) {
+        Ok(opts) => opts,
         Err(e) => {
-            bail!("failed to parse arguments: {}", e);
+            if e.status.is_err() {
+                bail!(e.output);
+            } else {
+                println!("{}", e.output);
+            }
+            return Ok(());
         }
     };
 
-    if matches.opt_present("h") {
-        println!("{}", opts.usage(program_name));
-        return Ok(());
-    }
+    let wayland_paths: BTreeMap<_, _> = wayland_sock.into_iter().collect();
 
-    // We can safely `unwrap()` this because it is a required option.
-    let socket = matches.opt_str("socket").unwrap();
-    let wayland_paths = matches
-        .opt_strs("wayland-sock")
-        .into_iter()
-        .map(parse_wayland_sock)
-        .collect::<anyhow::Result<BTreeMap<_, _>>>()?;
-    if wayland_paths.is_empty() {
-        bail!("at least one wayland socket must be provided");
-    }
-
-    let resource_bridge = matches
-        .opt_str("resource-bridge")
+    let resource_bridge = resource_bridge
         .map(|p| {
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
@@ -354,7 +351,7 @@ pub fn run_wl_device(program_name: &str, args: std::env::Args) -> anyhow::Result
     let _ = WL_EXECUTOR.set(ex.clone());
 
     // We can safely `unwrap()` this because it is a required option.
-    let vm_listener = UnixSeqpacketListener::bind(matches.opt_str("vm-socket").unwrap())
+    let vm_listener = UnixSeqpacketListener::bind(vm_socket)
         .map(UnlinkUnixSeqpacketListener)
         .context("failed to create listening socket")?;
     let vm_socket = vm_listener

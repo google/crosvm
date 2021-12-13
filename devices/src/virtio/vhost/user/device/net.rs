@@ -8,11 +8,11 @@ use std::sync::Arc;
 use std::thread;
 
 use anyhow::{anyhow, bail, Context};
+use argh::FromArgs;
 use base::{error, validate_raw_descriptor, warn, Event, RawDescriptor};
 use cros_async::{EventAsync, Executor, IoSourceExt};
 use data_model::DataInit;
 use futures::future::{AbortHandle, Abortable};
-use getopts::Options;
 use hypervisor::ProtectionType;
 use net_util::{MacAddress, Tap, TapT};
 use once_cell::sync::OnceCell;
@@ -336,46 +336,48 @@ impl VhostUserBackend for NetBackend {
     }
 }
 
+#[derive(FromArgs)]
+#[argh(description = "")]
+struct Options {
+    #[argh(
+        option,
+        description = "TAP device config. (e.g. \
+        \"/path/to/sock,10.0.2.2,255.255.255.0,12:34:56:78:9a:bc\")",
+        arg_name = "SOCKET_PATH,IP_ADDR,NET_MASK,MAC_ADDR"
+    )]
+    device: Vec<String>,
+    #[argh(
+        option,
+        description = "TAP FD with a socket path",
+        arg_name = "SOCKET_PATH,TAP_FD"
+    )]
+    tap_fd: Vec<String>,
+}
+
 /// Starts a vhost-user net device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
-pub fn run_net_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
-    let mut opts = Options::new();
-    opts.optflag("h", "help", "print this help menu");
-    opts.optmulti(
-        "",
-        "device",
-        "TAP device config. (e.g. \"/path/to/sock,10.0.2.2,255.255.255.0,12:34:56:78:9a:bc\")",
-        "SOCKET_PATH,IP_ADDR,NET_MASK,MAC_ADDR",
-    );
-    opts.optmulti(
-        "",
-        "tap-fd",
-        "TAP FD with a socket path",
-        "SOCKET_PATH,TAP_FD",
-    );
-
-    let matches = match opts.parse(args) {
-        Ok(m) => m,
+pub fn run_net_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
+    let opts = match Options::from_args(&[program_name], args) {
+        Ok(opts) => opts,
         Err(e) => {
-            bail!("failed to parse arguments: {}", e);
+            if e.status.is_err() {
+                bail!(e.output);
+            } else {
+                println!("{}", e.output);
+            }
+            return Ok(());
         }
     };
 
-    if matches.opt_present("h") {
-        println!("{}", opts.usage(program_name));
-        return Ok(());
-    }
+    let num_devices = opts.device.len() + opts.tap_fd.len();
 
-    let device_args = matches.opt_strs("device");
-    let tap_fd_args = matches.opt_strs("tap-fd");
-    let num_devices = device_args.len() + tap_fd_args.len();
     if num_devices == 0 {
         bail!("no device option was passed");
     }
 
     let mut devices: Vec<(String, NetBackend)> = Vec::with_capacity(num_devices);
 
-    for arg in device_args {
+    for arg in opts.device.iter() {
         let pos = match arg.find(',') {
             Some(p) => p,
             None => {
@@ -390,7 +392,7 @@ pub fn run_net_device(program_name: &str, args: std::env::Args) -> anyhow::Resul
         devices.push((socket.to_string(), backend));
     }
 
-    for arg in tap_fd_args {
+    for arg in opts.tap_fd.iter() {
         let pos = match arg.find(',') {
             Some(p) => p,
             None => {

@@ -13,8 +13,8 @@ use base::{error, warn, Event, RawDescriptor, Terminal};
 use cros_async::{EventAsync, Executor};
 use data_model::DataInit;
 
+use argh::FromArgs;
 use futures::future::{AbortHandle, Abortable};
-use getopts::Options;
 use hypervisor::ProtectionType;
 use once_cell::sync::OnceCell;
 use sync::Mutex;
@@ -273,36 +273,35 @@ fn run_console(params: &SerialParameters, socket: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[derive(FromArgs)]
+#[argh(description = "")]
+struct Options {
+    #[argh(option, description = "path to a socket", arg_name = "PATH")]
+    socket: String,
+    #[argh(option, description = "path to a file", arg_name = "OUTFILE")]
+    output_file: Option<PathBuf>,
+    #[argh(option, description = "path to a file", arg_name = "INFILE")]
+    input_file: Option<PathBuf>,
+}
+
 /// Starts a vhost-user console device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
-pub fn run_console_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
-    let mut opts = Options::new();
-    opts.optflag("h", "help", "print this help menu");
-    opts.optopt("", "socket", "path to a socket", "PATH");
-    opts.optopt("", "output-file", "path to a file", "OUTFILE");
-    opts.optopt("", "input-file", "path to a file", "INFILE");
-
-    let matches = match opts.parse(args) {
-        Ok(m) => m,
+pub fn run_console_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
+    let Options {
+        input_file,
+        output_file,
+        socket,
+    } = match Options::from_args(&[program_name], args) {
+        Ok(opts) => opts,
         Err(e) => {
-            bail!("failed to parse arguments: {}", e);
+            if e.status.is_err() {
+                bail!(e.output);
+            } else {
+                println!("{}", e.output);
+            }
+            return Ok(());
         }
     };
-
-    if matches.opt_present("h") {
-        println!("{}", opts.usage(program_name));
-        return Ok(());
-    }
-
-    if !matches.opt_present("socket") {
-        bail!("Must specify the socket for the vhost user device.");
-    }
-
-    // We can unwrap after `opt_str()` safely because we just checked for it being present.
-    let socket = matches.opt_str("socket").unwrap();
-
-    let output_file = matches.opt_str("output-file").map(PathBuf::from);
-    let input_file = matches.opt_str("input-file").map(PathBuf::from);
 
     // Set stdin() in raw mode so we can send over individual keystrokes unbuffered
     stdin()

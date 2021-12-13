@@ -11,6 +11,7 @@ use std::convert::TryFrom;
 use std::default::Default;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader};
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::string::String;
@@ -2846,6 +2847,11 @@ fn start_device(mut args: std::env::Args) -> std::result::Result<(), ()> {
     let device = args.next().unwrap();
 
     let program_name = format!("crosvm device {}", device);
+
+    let args = args.collect::<Vec<_>>();
+    let args = args.iter().map(Deref::deref).collect::<Vec<_>>();
+    let args = args.as_slice();
+
     let result = match device.as_str() {
         "block" => run_block_device(&program_name, args),
         "console" => run_console_device(&program_name, args),

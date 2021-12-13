@@ -15,13 +15,13 @@ use std::{
 };
 
 use anyhow::{bail, Context};
+use argh::FromArgs;
 use base::{
     clear_fd_flags, error, AsRawDescriptor, Event, FromRawDescriptor, IntoRawDescriptor,
     SafeDescriptor, UnlinkUnixListener,
 };
 use cros_async::{AsyncWrapper, Executor};
 use data_model::{DataInit, Le64};
-use getopts::Options;
 use hypervisor::ProtectionType;
 use once_cell::sync::OnceCell;
 use vhost::{self, Vhost, Vsock};
@@ -430,71 +430,53 @@ async fn run_device<P: AsRef<Path>>(
     }
 }
 
+#[derive(FromArgs)]
+#[argh(description = "")]
+struct Options {
+    #[argh(
+        option,
+        description = "path to bind a listening vhost-user socket",
+        arg_name = "PATH"
+    )]
+    socket: String,
+    #[argh(
+        option,
+        description = "the vsock context id for this device",
+        arg_name = "INT"
+    )]
+    cid: u64,
+    #[argh(
+        option,
+        description = "path to the vhost-vsock control socket",
+        default = "String::from(\"/dev/vhost-vsock\")",
+        arg_name = "PATH"
+    )]
+    vhost_socket: String,
+}
+
 /// Returns an error if the given `args` is invalid or the device fails to run.
-pub fn run_vsock_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
-    let mut opts = Options::new();
-    opts.optflag("h", "help", "print this help menu");
-    opts.optopt(
-        "s",
-        "socket",
-        "path to bind a listening vhost-user socket",
-        "PATH",
-    );
-    opts.optopt("c", "cid", "the vsock context id for this device", "INT");
-    opts.optopt(
-        "",
-        "vhost-socket",
-        "path to the vhost-vsock control socket (default: \"/dev/vhost-vsock\")",
-        "PATH",
-    );
-
-    let matches = match opts.parse(args) {
-        Ok(m) => m,
+pub fn run_vsock_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
+    let opts = match Options::from_args(&[program_name], args) {
+        Ok(opts) => opts,
         Err(e) => {
-            bail!("failed to parse arguments: {}", e);
+            if e.status.is_err() {
+                bail!(e.output);
+            } else {
+                println!("{}", e.output);
+            }
+            return Ok(());
         }
-    };
-
-    if matches.opt_present("h") {
-        println!("{}", opts.usage(program_name));
-        return Ok(());
-    }
-
-    // We can safely `unwrap()` this because it is a required option.
-    let socket = if let Some(s) = matches.opt_str("socket") {
-        s
-    } else {
-        println!("`--socket` is required");
-        println!("{}", opts.short_usage(program_name));
-        return Ok(());
-    };
-
-    let cid = if let Some(cid) = matches
-        .opt_str("cid")
-        .as_deref()
-        .map(str::parse)
-        .transpose()?
-    {
-        cid
-    } else {
-        println!("`--cid` is required");
-        println!("{}", opts.short_usage(program_name));
-        return Ok(());
     };
 
     let ex = Executor::new().context("failed to create executor")?;
     let _ = VSOCK_EXECUTOR.set(ex.clone());
 
-    let vhost_socket = matches
-        .opt_str("vhost-socket")
-        .unwrap_or_else(|| "/dev/vhost-vsock".to_string());
-
-    let backend = VsockBackend::new(cid, vhost_socket)
+    let backend = VsockBackend::new(opts.cid, opts.vhost_socket)
         .map(Mutex::new)
         .map(Arc::new)?;
 
     // TODO: Replace the `and_then` with `Result::flatten` once it is stabilized.
-    ex.run_until(run_device(&ex, socket, backend))
+    ex.run_until(run_device(&ex, opts.socket, backend))
         .context("failed to run vsock device")
         .and_then(convert::identity)
 }

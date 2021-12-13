@@ -9,8 +9,8 @@ use std::rc::Rc;
 use std::sync::{atomic::AtomicU64, atomic::Ordering, Arc};
 
 use anyhow::{anyhow, bail, Context};
+use argh::FromArgs;
 use futures::future::{AbortHandle, Abortable};
-use getopts::Options;
 use once_cell::sync::OnceCell;
 use sync::Mutex;
 use vmm_vhost::message::*;
@@ -53,7 +53,7 @@ impl BlockBackend {
     ///
     /// * `ex_cell`: `OnceCell` that must be initialized with an executor which is used in this device thread.
     /// * `filename`: Name of the disk image file.
-    /// * `options`: Vector of flie options.
+    /// * `options`: Vector of file options.
     ///   - `read-only`
     pub(crate) fn new(
         ex_cell: OnceCell<Executor>,
@@ -303,53 +303,46 @@ async fn handle_queue(
     }
 }
 
+#[derive(FromArgs)]
+#[argh(description = "")]
+struct Options {
+    #[argh(
+        option,
+        description = "path and options of the disk file.",
+        arg_name = "PATH<:read-only>"
+    )]
+    file: String,
+    #[argh(option, description = "path to a socket", arg_name = "PATH")]
+    socket: String,
+}
+
 /// Starts a vhost-user block device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
-pub fn run_block_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
-    let mut opts = Options::new();
-    opts.optopt(
-        "",
-        "file",
-        "path and options of the disk file",
-        "PATH<:read-only>",
-    );
-    opts.optflag("h", "help", "print this help menu");
-    opts.optopt("", "socket", "path to a socket", "PATH");
-
-    let matches = match opts.parse(args) {
-        Ok(m) => m,
+pub fn run_block_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
+    let opts = match Options::from_args(&[program_name], args) {
+        Ok(opts) => opts,
         Err(e) => {
-            bail!("failed to parse arguments: {}", e);
+            if e.status.is_err() {
+                bail!(e.output);
+            } else {
+                println!("{}", e.output);
+            }
+            return Ok(());
         }
     };
-
-    if matches.opt_present("h") {
-        println!("{}", opts.usage(program_name));
-        return Ok(());
-    }
-
-    if !matches.opt_present("file") {
-        bail!("Must specify the file for the block device.");
-    }
-
-    if !matches.opt_present("socket") {
-        bail!("Must specify the socket for the vhost user device.");
-    }
 
     let ex = Executor::new().context("failed to create executor")?;
     BLOCK_EXECUTOR
         .set(ex.clone())
         .map_err(|_| anyhow!("failed to set executor"))?;
 
-    // We can unwrap after `opt_str()` safely because they are required options.
-    let socket = matches.opt_str("socket").unwrap();
-    let filearg = matches.opt_str("file").unwrap();
-    let fileopts = filearg.split(':').collect::<Vec<&str>>();
-    let filename = fileopts.get(0).context("Must specify the filename")?;
-    let block = BlockBackend::new(BLOCK_EXECUTOR.clone(), filename, fileopts[1..].to_vec())?;
+    let mut fileopts = opts.file.split(":").collect::<Vec<_>>();
+    let filename = fileopts.remove(0);
+
+    let block = BlockBackend::new(BLOCK_EXECUTOR.clone(), filename, fileopts)?;
     let handler = DeviceRequestHandler::new(block);
 
-    if let Err(e) = ex.run_until(handler.run(socket, &ex)) {
+    if let Err(e) = ex.run_until(handler.run(opts.socket, &ex)) {
         bail!("error occurred: {}", e);
     }
 

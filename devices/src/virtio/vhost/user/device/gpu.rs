@@ -5,6 +5,7 @@
 use std::{cell::RefCell, collections::BTreeMap, fs::File, path::PathBuf, rc::Rc, sync::Arc};
 
 use anyhow::{anyhow, bail, Context};
+use argh::FromArgs;
 use async_task::Task;
 use base::{
     clone_descriptor, error,
@@ -16,7 +17,6 @@ use futures::{
     future::{select, Either},
     pin_mut,
 };
-use getopts::Options;
 use hypervisor::ProtectionType;
 use once_cell::sync::OnceCell;
 use sync::Mutex;
@@ -26,6 +26,7 @@ use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 use crate::virtio::{
     self, gpu,
     vhost::user::device::handler::{CallEvent, DeviceRequestHandler, VhostUserBackend},
+    vhost::user::device::wl::parse_wayland_sock,
     DescriptorChain, Gpu, GpuDisplayParameters, GpuParameters, Queue, QueueReader, VirtioDevice,
 };
 
@@ -331,93 +332,70 @@ impl VhostUserBackend for GpuBackend {
     }
 }
 
-fn parse_wayland_sock(value: String) -> anyhow::Result<(String, PathBuf)> {
-    let mut components = value.split(',');
-    let path = PathBuf::from(
-        components
-            .next()
-            .ok_or_else(|| anyhow!("missing socket path"))?,
-    );
-    let mut name = "";
-    for c in components {
-        let mut kv = c.splitn(2, '=');
-        let (kind, value) = match (kv.next(), kv.next()) {
-            (Some(kind), Some(value)) => (kind, value),
-            _ => bail!("option must be of the form `kind=value`: {}", c),
-        };
-        match kind {
-            "name" => name = value,
-            _ => bail!("unrecognized option: {}", kind),
-        }
-    }
-
-    Ok((name.to_string(), path))
+fn gpu_parameters_from_str(input: &str) -> Result<GpuParameters, String> {
+    serde_json::from_str(input).map_err(|e| e.to_string())
 }
 
-pub fn run_gpu_device(program_name: &str, args: std::env::Args) -> anyhow::Result<()> {
-    let mut opts = Options::new();
-    opts.optflag("h", "help", "print this help menu");
-    opts.optopt(
-        "",
-        "socket",
-        "path to bind a listening vhost-user socket",
-        "PATH",
-    );
-    opts.optmulti(
-        "",
-        "wayland-sock",
-        "Path to one or more Wayland sockets. The unnamed socket is used for displaying virtual \
-         screens while the named ones are used for IPC",
-        "PATH[,name=NAME]",
-    );
-    opts.optmulti(
-        "",
-        "resource-bridge",
-        "Path to one or more bridge sockets for communicating with other graphics devices \
-         (wayland, video, etc)",
-        "PATH",
-    );
-    opts.optopt("", "x-display", "X11 display name to use", "DISPLAY");
-    opts.optopt(
-        "p",
-        "params",
-        "A JSON object of virtio-gpu parameters",
-        "JSON",
-    );
+#[derive(FromArgs)]
+#[argh(description = "run gpu device")]
+struct Options {
+    #[argh(
+        option,
+        description = "path to bind a listening vhost-user socket",
+        arg_name = "PATH"
+    )]
+    socket: String,
+    #[argh(
+        option,
+        description = "path to one or more Wayland sockets. The unnamed socket is \
+        used for displaying virtual screens while the named ones are used for IPC",
+        from_str_fn(parse_wayland_sock),
+        arg_name = "PATH[,name=NAME]"
+    )]
+    wayland_sock: Vec<(String, PathBuf)>,
+    #[argh(
+        option,
+        description = "path to one or more bridge sockets for communicating with \
+        other graphics devices (wayland, video, etc)",
+        arg_name = "PATH"
+    )]
+    resource_bridge: Vec<String>,
+    #[argh(option, description = " X11 display name to use", arg_name = "DISPLAY")]
+    x_display: Option<String>,
+    #[argh(
+        option,
+        from_str_fn(gpu_parameters_from_str),
+        default = "Default::default()",
+        description = "a JSON object of virtio-gpu parameters",
+        arg_name = "JSON"
+    )]
+    params: GpuParameters,
+}
 
-    let matches = match opts.parse(args) {
-        Ok(m) => m,
+pub fn run_gpu_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
+    let Options {
+        x_display,
+        params: mut gpu_parameters,
+        resource_bridge,
+        socket,
+        wayland_sock,
+    } = match Options::from_args(&[program_name], args) {
+        Ok(opts) => opts,
         Err(e) => {
-            println!("{}", e);
-            println!("{}", opts.short_usage(program_name));
+            if e.status.is_err() {
+                bail!(e.output);
+            } else {
+                println!("{}", e.output);
+            }
             return Ok(());
         }
     };
 
-    if matches.opt_present("h") {
-        println!("{}", opts.usage(program_name));
-        return Ok(());
-    }
-
     base::syslog::init().context("failed to initialize syslog")?;
 
-    // We can safely `unwrap()` this because it is a required option.
-    let socket = if let Some(s) = matches.opt_str("socket") {
-        s
-    } else {
-        println!("--socket is required");
-        println!("{}", opts.short_usage(program_name));
-        return Ok(());
-    };
+    let wayland_paths: BTreeMap<_, _> = wayland_sock.into_iter().collect();
 
-    let wayland_paths = matches
-        .opt_strs("wayland-sock")
-        .into_iter()
-        .map(parse_wayland_sock)
-        .collect::<anyhow::Result<BTreeMap<_, _>>>()?;
-
-    let resource_bridge_listeners = matches
-        .opt_strs("resource-bridge")
+    let resource_bridge_listeners = resource_bridge
         .into_iter()
         .map(|p| {
             UnixSeqpacketListener::bind(&p)
@@ -425,12 +403,6 @@ pub fn run_gpu_device(program_name: &str, args: std::env::Args) -> anyhow::Resul
                 .with_context(|| format!("failed to bind socket at path {}", p))
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
-
-    let mut gpu_parameters: GpuParameters = if let Some(p) = matches.opt_str("params") {
-        serde_json::from_str(&p).context("failed to parse params")?
-    } else {
-        Default::default()
-    };
 
     if gpu_parameters.displays.is_empty() {
         gpu_parameters
@@ -473,7 +445,7 @@ pub fn run_gpu_device(program_name: &str, args: std::env::Args) -> anyhow::Resul
     let gpu_device_tube = None;
 
     let mut display_backends = vec![
-        virtio::DisplayBackend::X(matches.opt_str("x-display")),
+        virtio::DisplayBackend::X(x_display),
         virtio::DisplayBackend::Stub,
     ];
     if let Some(p) = wayland_paths.get("") {
