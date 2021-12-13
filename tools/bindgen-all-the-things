@@ -24,6 +24,7 @@ dirs=(
     kernel_loader
     kvm_sys
     media/libvda
+    net_sys
 )
 
 for d in "${dirs[@]}"; do

@@ -8,33 +8,13 @@
 
 use base::{ioctl_ior_nr, ioctl_iow_nr};
 
-// generated with bindgen /usr/include/linux/if.h --no-unstable-rust
-// --constified-enum '*' --with-derive-default -- -D __UAPI_DEF_IF_IFNAMSIZ -D
-// __UAPI_DEF_IF_NET_DEVICE_FLAGS -D __UAPI_DEF_IF_IFREQ -D __UAPI_DEF_IF_IFMAP
-// Name is "iff" to avoid conflicting with "if" keyword.
-// Generated against Linux 4.11 to include fix "uapi: fix linux/if.h userspace
-// compilation errors".
-// Manual fixup of ifrn_name to be of type c_uchar instead of c_char.
-#[allow(clippy::all)]
-pub mod iff;
-// generated with bindgen /usr/include/linux/if_tun.h --no-unstable-rust
-// --constified-enum '*' --with-derive-default
 pub mod if_tun;
-// generated with bindgen /usr/include/linux/in.h --no-unstable-rust
-// --constified-enum '*' --with-derive-default
-// Name is "inn" to avoid conflicting with "in" keyword.
-pub mod inn;
-// generated with bindgen /usr/include/linux/sockios.h --no-unstable-rust
-// --constified-enum '*' --with-derive-default
+pub mod iff; // Named "iff" to avoid conflicting with "if" keyword.
 pub mod sockios;
-pub use crate::if_tun::*;
-pub use crate::iff::*;
-pub use crate::inn::*;
-pub use crate::sockios::*;
+pub use crate::if_tun::{sock_fprog, TUN_F_CSUM, TUN_F_TSO4, TUN_F_TSO6, TUN_F_TSO_ECN, TUN_F_UFO};
+pub use crate::iff::{ifreq, net_device_flags};
 
 pub const TUNTAP: ::std::os::raw::c_uint = 84;
-
-pub const ARPHRD_ETHER: sa_family_t = 1;
 
 ioctl_iow_nr!(TUNSETNOCSUM, TUNTAP, 200, ::std::os::raw::c_int);
 ioctl_iow_nr!(TUNSETDEBUG, TUNTAP, 201, ::std::os::raw::c_int);
