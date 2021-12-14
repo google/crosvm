@@ -4,6 +4,8 @@
 
 use super::interrupter::Interrupter;
 use crate::utils::{EventHandler, EventLoop};
+
+use anyhow::Context;
 use base::{error, Event, WatchingEvents};
 use std::sync::Arc;
 use sync::Mutex;
@@ -37,15 +39,12 @@ impl IntrResampleHandler {
         Some(handler)
     }
 }
+
 impl EventHandler for IntrResampleHandler {
-    fn on_event(&self) -> Result<(), ()> {
-        match self.resample_evt.read() {
-            Ok(_) => {}
-            Err(e) => {
-                error!("cannot read resample evt: {}", e);
-                return Err(());
-            }
-        }
+    fn on_event(&self) -> anyhow::Result<()> {
+        self.resample_evt
+            .read()
+            .context("cannot read resample evt")?;
         usb_debug!("resample triggered");
         let mut interrupter = self.interrupter.lock();
         if !interrupter.event_ring_is_empty() {
@@ -54,10 +53,7 @@ impl EventHandler for IntrResampleHandler {
             // component is sending interrupt at the same time.
             // This might result in one more interrupt than we want. It's handled by
             // kernel correctly.
-            if let Err(e) = interrupter.interrupt() {
-                error!("cannot send interrupt: {}", e);
-                return Err(());
-            }
+            interrupter.interrupt().context("cannot send interrupt")?;
         }
         Ok(())
     }

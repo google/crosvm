@@ -15,6 +15,8 @@ use super::xhci_abi::{
 };
 use super::xhci_regs::{valid_slot_id, MAX_SLOTS};
 use crate::utils::EventLoop;
+
+use anyhow::Context;
 use base::{error, warn, Error as SysError, Event};
 use remain::sorted;
 use std::sync::Arc;
@@ -331,7 +333,7 @@ impl TransferDescriptorHandler for CommandRingTrbHandler {
         &self,
         descriptor: TransferDescriptor,
         complete_event: Event,
-    ) -> std::result::Result<(), ()> {
+    ) -> anyhow::Result<()> {
         // Command descriptor always consist of a single TRB.
         assert_eq!(descriptor.len(), 1);
         let atrb = &descriptor[0];
@@ -382,8 +384,6 @@ impl TransferDescriptorHandler for CommandRingTrbHandler {
                 }
             }
         };
-        command_result.map_err(|e| {
-            error!("command failed: {}", e);
-        })
+        command_result.context("command ring TRB failed")
     }
 }

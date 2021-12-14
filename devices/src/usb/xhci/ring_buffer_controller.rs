@@ -9,6 +9,7 @@ use std::fmt::{self, Display};
 use std::sync::{Arc, MutexGuard};
 use sync::Mutex;
 
+use anyhow::Context;
 use base::{error, Error as SysError, Event, WatchingEvents};
 use remain::sorted;
 use thiserror::Error;
@@ -46,7 +47,8 @@ pub trait TransferDescriptorHandler {
         &self,
         descriptor: TransferDescriptor,
         complete_event: Event,
-    ) -> std::result::Result<(), ()>;
+    ) -> anyhow::Result<()>;
+
     /// Stop is called when trying to stop ring buffer controller. Returns true when stop must be
     /// performed asynchronously. This happens because the handler is handling some descriptor
     /// asynchronously, the stop callback of ring buffer controller must be called after the
@@ -178,15 +180,9 @@ impl<T> EventHandler for RingBufferController<T>
 where
     T: 'static + TransferDescriptorHandler + Send,
 {
-    fn on_event(&self) -> std::result::Result<(), ()> {
+    fn on_event(&self) -> anyhow::Result<()> {
         // `self.event` triggers ring buffer controller to run, the value read is not important.
-        match self.event.read() {
-            Ok(_) => {}
-            Err(e) => {
-                error!("cannot read from event: {}", e);
-                return Err(());
-            }
-        }
+        let _ = self.event.read().context("cannot read from event")?;
         let mut state = self.state.lock();
 
         match *state {
@@ -200,13 +196,10 @@ where
             RingBufferState::Running => {}
         }
 
-        let transfer_descriptor = match self.lock_ring_buffer().dequeue_transfer_descriptor() {
-            Ok(t) => t,
-            Err(e) => {
-                error!("cannot dequeue transfer descriptor: {}", e);
-                return Err(());
-            }
-        };
+        let transfer_descriptor = self
+            .lock_ring_buffer()
+            .dequeue_transfer_descriptor()
+            .context("cannot dequeue transfer descriptor")?;
 
         let transfer_descriptor = match transfer_descriptor {
             Some(t) => t,
@@ -217,13 +210,7 @@ where
             }
         };
 
-        let event = match self.event.try_clone() {
-            Ok(evt) => evt,
-            Err(e) => {
-                error!("cannot clone event: {}", e);
-                return Err(());
-            }
-        };
+        let event = self.event.try_clone().context("cannot clone event")?;
         self.handler
             .lock()
             .handle_transfer_descriptor(transfer_descriptor, event)
@@ -245,7 +232,7 @@ mod tests {
             &self,
             descriptor: TransferDescriptor,
             complete_event: Event,
-        ) -> std::result::Result<(), ()> {
+        ) -> anyhow::Result<()> {
             for atrb in descriptor {
                 assert_eq!(atrb.trb.get_trb_type().unwrap(), TrbType::Normal);
                 self.sender.send(atrb.trb.get_parameter() as i32).unwrap();

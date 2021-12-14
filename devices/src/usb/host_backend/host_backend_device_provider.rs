@@ -11,6 +11,8 @@ use crate::usb::xhci::usb_hub::UsbHub;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::utils::AsyncJobQueue;
 use crate::utils::{EventHandler, EventLoop, FailHandle};
+
+use anyhow::Context;
 use base::{error, AsRawDescriptor, Descriptor, RawDescriptor, Tube, WatchingEvents};
 use std::collections::HashMap;
 use std::mem;
@@ -273,10 +275,9 @@ impl ProviderInner {
 }
 
 impl EventHandler for ProviderInner {
-    fn on_event(&self) -> std::result::Result<(), ()> {
-        self.on_event_helper().map_err(|e| {
-            error!("host backend device provider failed: {}", e);
-        })
+    fn on_event(&self) -> anyhow::Result<()> {
+        self.on_event_helper()
+            .context("host backend device provider failed")
     }
 }
 
@@ -285,7 +286,10 @@ struct UsbUtilEventHandler {
 }
 
 impl EventHandler for UsbUtilEventHandler {
-    fn on_event(&self) -> std::result::Result<(), ()> {
-        self.device.lock().poll_transfers().map_err(|_e| ())
+    fn on_event(&self) -> anyhow::Result<()> {
+        self.device
+            .lock()
+            .poll_transfers()
+            .context("UsbUtilEventHandler poll_transfers failed")
     }
 }

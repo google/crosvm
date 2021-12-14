@@ -48,7 +48,7 @@ pub struct EventLoop {
 
 /// Interface for event handler.
 pub trait EventHandler: Send + Sync {
-    fn on_event(&self) -> std::result::Result<(), ()>;
+    fn on_event(&self) -> anyhow::Result<()>;
 }
 
 impl EventLoop {
@@ -117,8 +117,8 @@ impl EventLoop {
                                     drop(locked);
                                     match handler.on_event() {
                                         Ok(()) => {}
-                                        Err(_) => {
-                                            error!("event loop stopping due to handle event error");
+                                        Err(e) => {
+                                            error!("event loop stopping due to handle event error: {:#}", e);
                                             fail_handle.fail();
                                             return;
                                         }
@@ -208,7 +208,7 @@ mod tests {
     }
 
     impl EventHandler for EventLoopTestHandler {
-        fn on_event(&self) -> std::result::Result<(), ()> {
+        fn on_event(&self) -> anyhow::Result<()> {
             self.evt.read().unwrap();
             *self.val.lock().unwrap() += 1;
             self.cvar.notify_one();
