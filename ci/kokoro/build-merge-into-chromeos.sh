@@ -64,10 +64,14 @@ main() {
     git clean -f -d -x
     git checkout -f
 
+    # Remember the HEAD that Kokoro checked out. This is usually origin/main
+    # but can also be manually specified when triggering the job.
+    local target=$(git rev-parse HEAD)
+
     # Perform merge on a tracking branch.
     git checkout -b chromeos origin/chromeos
     git branch --set-upstream-to origin/chromeos chromeos
-    "${KOKORO_ARTIFACTS_DIR}/create_merge"
+    "${KOKORO_ARTIFACTS_DIR}/create_merge" "${target}"
 
     upload_with_retries
 }
