@@ -221,6 +221,7 @@ pub struct __kernel_fd_set {
     pub fds_bits: [::std::os::raw::c_ulong; 16usize],
 }
 #[test]
+#[ignore]
 fn bindgen_test_layout___kernel_fd_set() {
     assert_eq!(
         ::std::mem::size_of::<__kernel_fd_set>(),

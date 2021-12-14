@@ -54,9 +54,6 @@ CRATE_OPTIONS: dict[str, list[TestOption]] = {
     "rutabaga_gfx": [TestOption.DO_NOT_BUILD_ARMHF], #b/210015864
     "vm_control": [TestOption.DO_NOT_BUILD_ARMHF], #b/210015864
     "libcrosvm_control": [TestOption.DO_NOT_BUILD_ARMHF], #b/210015864
-    "kvm_sys": [TestOption.DO_NOT_RUN_ARMHF], #b/210015827
-    "net_sys": [TestOption.DO_NOT_RUN_ARMHF], #b/210015827
-    "virtio_sys": [TestOption.DO_NOT_RUN_ARMHF], #b/210015827
 }
 
 BUILD_FEATURES: dict[str, str] = {
