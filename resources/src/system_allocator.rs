@@ -86,22 +86,22 @@ impl SystemAllocator {
         let page_size = pagesize() as u64;
         Ok(SystemAllocator {
             io_address_space: if let (Some(b), Some(s)) = (io_base, io_size) {
-                Some(AddressAllocator::new(b, s, Some(0x400))?)
+                Some(AddressAllocator::new(b, s, Some(0x400), None)?)
             } else {
                 None
             },
             mmio_address_spaces: [
                 // MmioType::Low
-                AddressAllocator::new(low_base, low_size, Some(page_size))?,
+                AddressAllocator::new(low_base, low_size, Some(page_size), None)?,
                 // MmioType::High
-                AddressAllocator::new(high_base, high_size, Some(page_size))?,
+                AddressAllocator::new(high_base, high_size, Some(page_size), None)?,
             ],
 
             pci_allocator: BTreeMap::new(),
 
             mmio_platform_address_spaces: if let (Some(b), Some(s)) = (platform_base, platform_size)
             {
-                Some(AddressAllocator::new(b, s, Some(page_size))?)
+                Some(AddressAllocator::new(b, s, Some(page_size), None)?)
             } else {
                 None
             },
@@ -110,6 +110,7 @@ impl SystemAllocator {
                 first_irq as u64,
                 1024 - first_irq as u64,
                 Some(1),
+                None,
             )?,
             next_anon_id: 0,
         })
@@ -148,9 +149,10 @@ impl SystemAllocator {
         if self.pci_allocator.get(&bus).is_none() {
             let base = if bus == 0 { 8 } else { 0 };
 
-            // Each bus supports up to  32(devices) x 8(functions) with default
-            // alignment allocating device with mandatory function number zero.
-            match AddressAllocator::new(base, (32 * 8) - base, Some(8)) {
+            // Each bus supports up to 32 (devices) x 8 (functions).
+            // Prefer allocating at device granularity (preferred_align = 8), but fall back to
+            // allocating individual functions (min_align = 1) when we run out of devices.
+            match AddressAllocator::new(base, (32 * 8) - base, Some(1), Some(8)) {
                 Ok(v) => self.pci_allocator.insert(bus, v),
                 Err(_) => return None,
             };
