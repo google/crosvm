@@ -727,6 +727,24 @@ fn create_vhost_user_gpu_device(
     })
 }
 
+/// Mirror-mount all the directories in `dirs` into `jail` on a best-effort basis.
+///
+/// This function will not return an error if any of the directories in `dirs` is missing.
+#[cfg(any(feature = "gpu", feature = "video-decoder", feature = "video-encoder"))]
+fn jail_mount_bind_if_exists<P: AsRef<std::ffi::OsStr>>(
+    jail: &mut Minijail,
+    dirs: &[P],
+) -> Result<()> {
+    for dir in dirs {
+        let dir_path = Path::new(dir);
+        if dir_path.exists() {
+            jail.mount_bind(dir_path, dir_path, false)?;
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(feature = "gpu")]
 fn gpu_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
     match simple_jail(cfg, policy)? {
@@ -770,20 +788,17 @@ fn gpu_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
             }
 
             // Libraries that are required when mesa drivers are dynamically loaded.
-            let lib_dirs = &[
-                "/usr/lib",
-                "/usr/lib64",
-                "/lib",
-                "/lib64",
-                "/usr/share/glvnd",
-                "/usr/share/vulkan",
-            ];
-            for dir in lib_dirs {
-                let dir_path = Path::new(dir);
-                if dir_path.exists() {
-                    jail.mount_bind(dir_path, dir_path, false)?;
-                }
-            }
+            jail_mount_bind_if_exists(
+                &mut jail,
+                &[
+                    "/usr/lib",
+                    "/usr/lib64",
+                    "/lib",
+                    "/lib64",
+                    "/usr/share/glvnd",
+                    "/usr/share/vulkan",
+                ],
+            )?;
 
             // pvr driver requires read access to /proc/self/task/*/comm.
             let proc_path = Path::new("/proc");
@@ -1049,8 +1064,7 @@ fn create_video_device(
                 jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
 
                 // Required for loading dri libraries loaded by minigbm on AMD devices.
-                let lib_dir = Path::new("/usr/lib64");
-                jail.mount_bind(lib_dir, lib_dir, false)?;
+                jail_mount_bind_if_exists(&mut jail, &["/usr/lib64"])?;
             }
 
             // Device nodes required by libchrome which establishes Mojo connection in libvda.
