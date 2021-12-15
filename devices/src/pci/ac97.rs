@@ -136,7 +136,6 @@ impl Ac97Dev {
             &PciMultimediaSubclass::AudioDevice,
             None, // No Programming interface.
             PciHeaderType::Device,
-            false,  // Multifunction
             0x8086, // Subsystem Vendor ID
             0x1,    // Subsystem ID.
             0,      //  Revision ID.

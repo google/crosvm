@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::fmt::{self, Display};
+use std::ops::Bound::Included;
 use std::sync::{Arc, Weak};
 
 use base::{error, Event, RawDescriptor};
@@ -13,6 +14,7 @@ use sync::Mutex;
 
 use crate::pci::pci_configuration::{
     PciBarConfiguration, PciBridgeSubclass, PciClassCode, PciConfiguration, PciHeaderType,
+    HEADER_TYPE_MULTIFUNCTION_MASK, HEADER_TYPE_REG,
 };
 use crate::pci::pci_device::{Error, PciDevice};
 use crate::{Bus, BusAccessInfo, BusDevice, BusType};
@@ -169,7 +171,6 @@ impl PciRoot {
                     &PciBridgeSubclass::HostBridge,
                     None,
                     PciHeaderType::Device,
-                    false,
                     0,
                     0,
                     0,
@@ -224,9 +225,36 @@ impl PciRoot {
                 self.root_configuration.config_register_read(register)
             }
         } else {
-            self.devices
+            let mut data = self
+                .devices
                 .get(&address)
-                .map_or(0xffff_ffff, |d| d.lock().config_register_read(register))
+                .map_or(0xffff_ffff, |d| d.lock().config_register_read(register));
+
+            if register == HEADER_TYPE_REG {
+                // Set multifunction bit in header type if there are devices at non-zero functions
+                // in this slot.
+                if self
+                    .devices
+                    .range((
+                        Included(&PciAddress {
+                            bus: address.bus,
+                            dev: address.dev,
+                            func: 1,
+                        }),
+                        Included(&PciAddress {
+                            bus: address.bus,
+                            dev: address.dev,
+                            func: 7,
+                        }),
+                    ))
+                    .next()
+                    .is_some()
+                {
+                    data |= HEADER_TYPE_MULTIFUNCTION_MASK;
+                }
+            }
+
+            data
         }
     }
 

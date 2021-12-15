@@ -110,7 +110,6 @@ impl XhciController {
             &PciSerialBusSubClass::Usb,
             Some(&UsbControllerProgrammingInterface::Usb3HostController),
             PciHeaderType::Device,
-            false,
             0,
             0,
             0,

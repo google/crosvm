@@ -997,7 +997,6 @@ fn parse_stub_pci_parameters(s: Option<&str>) -> argument::Result<StubPciParamet
         class: PciClassCode::Other,
         subclass: 0,
         programming_interface: 0,
-        multifunction: false,
         subsystem_device_id: 0,
         subsystem_vendor_id: 0,
         revision_id: 0,
@@ -1013,7 +1012,6 @@ fn parse_stub_pci_parameters(s: Option<&str>) -> argument::Result<StubPciParamet
                 params.subclass = (class >> 8) as u8;
                 params.programming_interface = class as u8;
             }
-            "multifunction" => params.multifunction = opt.parse_or::<bool>(true)?,
             "subsystem_vendor" => params.subsystem_vendor_id = opt.parse_numeric::<u16>()?,
             "subsystem_device" => params.subsystem_device_id = opt.parse_numeric::<u16>()?,
             "revision" => params.revision_id = opt.parse_numeric::<u8>()?,
@@ -2506,12 +2504,11 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::flag("no-legacy", "Don't use legacy KBD/RTC devices emulation"),
           #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("host-cpu-topology", "Use mirror cpu topology of Host for Guest VM"),
-          Argument::value("stub-pci-device", "DOMAIN:BUS:DEVICE.FUNCTION[,vendor=NUM][,device=NUM][,class=NUM][,multifunction][,subsystem_vendor=NUM][,subsystem_device=NUM][,revision=NUM]", "Comma-separated key=value pairs for setting up a stub PCI device that just enumerates. The first option in the list must specify a PCI address to claim.
+          Argument::value("stub-pci-device", "DOMAIN:BUS:DEVICE.FUNCTION[,vendor=NUM][,device=NUM][,class=NUM][,subsystem_vendor=NUM][,subsystem_device=NUM][,revision=NUM]", "Comma-separated key=value pairs for setting up a stub PCI device that just enumerates. The first option in the list must specify a PCI address to claim.
                               Optional further parameters
                               vendor=NUM - PCI vendor ID
                               device=NUM - PCI device ID
                               class=NUM - PCI class (including class code, subclass, and programming interface)
-                              multifunction - whether to set the multifunction flag
                               subsystem_vendor=NUM - PCI subsystem vendor ID
                               subsystem_device=NUM - PCI subsystem device ID
                               revision=NUM - revision"),
@@ -3813,7 +3810,7 @@ mod tests {
 
     #[test]
     fn parse_stub_pci() {
-        let params = parse_stub_pci_parameters(Some("0000:01:02.3,vendor=0xfffe,device=0xfffd,class=0xffc1c2,multifunction=true,subsystem_vendor=0xfffc,subsystem_device=0xfffb,revision=0xa")).unwrap();
+        let params = parse_stub_pci_parameters(Some("0000:01:02.3,vendor=0xfffe,device=0xfffd,class=0xffc1c2,subsystem_vendor=0xfffc,subsystem_device=0xfffb,revision=0xa")).unwrap();
         assert_eq!(params.address.bus, 1);
         assert_eq!(params.address.dev, 2);
         assert_eq!(params.address.func, 3);
@@ -3822,7 +3819,6 @@ mod tests {
         assert_eq!(params.class as u8, PciClassCode::Other as u8);
         assert_eq!(params.subclass, 0xc1);
         assert_eq!(params.programming_interface, 0xc2);
-        assert!(params.multifunction);
         assert_eq!(params.subsystem_vendor_id, 0xfffc);
         assert_eq!(params.subsystem_device_id, 0xfffb);
         assert_eq!(params.revision_id, 0xa);

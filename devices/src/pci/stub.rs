@@ -29,7 +29,6 @@ pub struct StubPciParameters {
     pub class: PciClassCode,
     pub subclass: u8,
     pub programming_interface: u8,
-    pub multifunction: bool,
     pub subsystem_vendor_id: u16,
     pub subsystem_device_id: u16,
     pub revision_id: u8,
@@ -68,7 +67,6 @@ impl StubPciDevice {
                 config.programming_interface,
             )),
             PciHeaderType::Device,
-            config.multifunction,
             config.subsystem_vendor_id,
             config.subsystem_device_id,
             config.revision_id,
@@ -141,7 +139,6 @@ mod test {
         class: PciClassCode::MultimediaController,
         subclass: 5,
         programming_interface: 6,
-        multifunction: true,
         subsystem_vendor_id: 7,
         subsystem_device_id: 8,
         revision_id: 9,
@@ -153,7 +150,6 @@ mod test {
 
         assert_eq!(device.read_config_register(0), 0x0003_0002);
         assert_eq!(device.read_config_register(2), 0x04_05_06_09);
-        assert!((device.read_config_register(3) & 0x0080_0000) != 0);
         assert_eq!(device.read_config_register(11), 0x0008_0007);
     }
 

@@ -426,7 +426,6 @@ mod tests {
                 &PciMultimediaSubclass::AudioDevice,
                 None,
                 PciHeaderType::Device,
-                false,
                 0x5678,
                 0xEF01,
                 0,
