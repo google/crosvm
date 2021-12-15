@@ -32,7 +32,7 @@
 
 use async_trait::async_trait;
 use std::{
-    io::{self, Read},
+    io::{self, Read, Write},
     time::{Duration, Instant},
 };
 
@@ -198,6 +198,11 @@ impl<'a> AsyncCaptureBuffer<'a> {
     /// Reads up to `size` bytes directly from this buffer inside of the given callback function.
     pub fn copy_cb<F: FnOnce(&[u8])>(&mut self, size: usize, cb: F) -> io::Result<usize> {
         self.buffer.read_copy_cb(size, cb)
+    }
+
+    /// Copy data to an io::Write
+    pub fn copy_to(&mut self, writer: &mut dyn Write) -> io::Result<usize> {
+        self.buffer.copy_to(writer)
     }
 }
 

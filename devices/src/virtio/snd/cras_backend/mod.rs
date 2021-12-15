@@ -15,7 +15,7 @@ use std::thread;
 use anyhow::Context;
 use audio_streams::{SampleFormat, StreamSource};
 use base::{error, warn, Error as SysError, Event, RawDescriptor};
-use cros_async::sync::{Condvar, Mutex as AsyncMutex};
+use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::{AsyncError, EventAsync, Executor};
 use data_model::DataInit;
 use futures::channel::{
@@ -112,6 +112,9 @@ pub enum Error {
     /// Failed to parse int value.
     #[error("Invalid int value: {0}")]
     InvalidIntValue(ParseIntError),
+    // Invalid PCM worker state.
+    #[error("Invalid PCM worker state")]
+    InvalidPCMWorkerState,
 }
 
 /// Holds the parameters for a cras sound device
@@ -200,7 +203,6 @@ pub struct StreamInfo<'a> {
 
     // Worker related
     status_mutex: Rc<AsyncMutex<WorkerStatus>>,
-    cv: Rc<Condvar>,
     sender: Option<mpsc::UnboundedSender<DescriptorChain>>,
     worker_future: Option<Box<dyn Future<Output = Result<(), Error>> + Unpin>>,
 }
@@ -231,7 +233,6 @@ impl Default for StreamInfo<'_> {
             direction: 0,
             state: 0,
             status_mutex: Rc::new(AsyncMutex::new(WorkerStatus::Pause)),
-            cv: Rc::new(Condvar::new()),
             sender: None,
             worker_future: None,
         }
@@ -354,13 +355,11 @@ impl<'a> StreamInfo<'a> {
         self.state = VIRTIO_SND_R_PCM_PREPARE;
 
         self.status_mutex = Rc::new(AsyncMutex::new(WorkerStatus::Pause));
-        self.cv = Rc::new(Condvar::new());
         let f = start_pcm_worker(
             ex.clone(),
             stream,
             receiver,
             self.status_mutex.clone(),
-            self.cv.clone(),
             mem,
             pcm_sender,
             self.period_bytes,
@@ -380,7 +379,6 @@ impl<'a> StreamInfo<'a> {
         }
         self.state = VIRTIO_SND_R_PCM_START;
         *self.status_mutex.lock().await = WorkerStatus::Running;
-        self.cv.notify_one();
         Ok(())
     }
 
@@ -395,7 +393,6 @@ impl<'a> StreamInfo<'a> {
         }
         self.state = VIRTIO_SND_R_PCM_STOP;
         *self.status_mutex.lock().await = WorkerStatus::Pause;
-        self.cv.notify_one();
         Ok(())
     }
 
@@ -416,7 +413,6 @@ impl<'a> StreamInfo<'a> {
 
     async fn release_worker(&mut self) -> Result<(), Error> {
         *self.status_mutex.lock().await = WorkerStatus::Quit;
-        self.cv.notify_one();
         match self.sender.take() {
             Some(s) => s.close_channel(),
             None => (),
