@@ -173,7 +173,6 @@ assertions = { path = "common/assertions" }
 audio_streams = { path = "common/audio_streams" }
 base = { path = "common/base" }
 cros_async =  { path = "common/cros_async" }
-cros_asyncv2 = { package = "cros_async", path = "common/cros_asyncv2" }
 cros_fuzz = { path = "common/cros-fuzz" } # ignored by ebuild
 data_model = { path = "common/data_model" }
 libcras = { path = "libcras_stub" } # ignored by ebuild
