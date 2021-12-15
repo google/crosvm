@@ -48,12 +48,21 @@ prerequisites() {
     fi
 }
 
+cq_depends() {
+    git log --no-color "HEAD..${MERGE_TARGET}" --pretty=email | grep ^Cq-Depend:
+}
+
 merge_message() {
     local old=$(git rev-parse HEAD)
     local new=$(git rev-parse "${MERGE_TARGET}")
     local count=$(commit_list | wc -l)
 
-    echo "Merge ${count} commits from ${MERGE_TARGET} ($(date +%F))"
+    local notes="$(date +%F)"
+    if [[ -n "$(cq_depends)" ]]; then
+        notes="${notes}, cq-depend"
+    fi
+
+    echo "Merge ${count} commits from ${MERGE_TARGET} (${notes})"
     echo ""
     commit_list
     echo ""
@@ -61,6 +70,8 @@ merge_message() {
     echo ""
     echo "BUG=None"
     echo "TEST=CQ"
+    echo ""
+    cq_depends
 }
 
 main() {
