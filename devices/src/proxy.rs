@@ -50,6 +50,11 @@ enum Command {
         len: u32,
         data: [u8; 4],
     },
+    ReadVirtualConfig(u32),
+    WriteVirtualConfig {
+        reg_idx: u32,
+        value: u32,
+    },
     Shutdown,
     GetRanges,
 }
@@ -65,6 +70,7 @@ enum CommandResult {
         io_add: Vec<BusRange>,
         removed_pci_devices: Vec<PciAddress>,
     },
+    ReadVirtualConfigResult(u32),
     GetRangesResult(Vec<(BusRange, BusType)>),
 }
 
@@ -112,6 +118,15 @@ fn child_proc<D: BusDevice>(tube: Tube, device: &mut D) {
                     io_add: res.io_add,
                     removed_pci_devices: res.removed_pci_devices,
                 })
+            }
+            Command::ReadVirtualConfig(idx) => {
+                let val = device.virtual_config_register_read(idx as usize);
+                tube.send(&CommandResult::ReadVirtualConfigResult(val))
+            }
+            Command::WriteVirtualConfig { reg_idx, value } => {
+                device.virtual_config_register_write(reg_idx as usize, value);
+                // Command::WriteVirtualConfig does not have a result.
+                Ok(())
             }
             Command::Shutdown => {
                 running = false;
@@ -275,6 +290,20 @@ impl BusDevice for ProxyDevice {
     fn config_register_read(&self, reg_idx: usize) -> u32 {
         let res = self.sync_send(&Command::ReadConfig(reg_idx as u32));
         if let Some(CommandResult::ReadConfigResult(val)) = res {
+            val
+        } else {
+            0
+        }
+    }
+
+    fn virtual_config_register_write(&mut self, reg_idx: usize, value: u32) {
+        let reg_idx = reg_idx as u32;
+        self.send_no_result(&Command::WriteVirtualConfig { reg_idx, value });
+    }
+
+    fn virtual_config_register_read(&self, reg_idx: usize) -> u32 {
+        let res = self.sync_send(&Command::ReadVirtualConfig(reg_idx as u32));
+        if let Some(CommandResult::ReadVirtualConfigResult(val)) = res {
             val
         } else {
             0

@@ -222,6 +222,24 @@ impl PciRoot {
             }
         }
     }
+
+    pub fn virtual_config_space_read(&self, address: PciAddress, register: usize) -> u32 {
+        if address.is_root() {
+            0u32
+        } else {
+            self.devices
+                .get(&address)
+                .map_or(0u32, |d| d.lock().virtual_config_register_read(register))
+        }
+    }
+
+    pub fn virtual_config_space_write(&mut self, address: PciAddress, register: usize, value: u32) {
+        if !address.is_root() {
+            if let Some(d) = self.devices.get(&address) {
+                d.lock().virtual_config_register_write(register, value);
+            }
+        }
+    }
 }
 
 /// Emulates PCI configuration access mechanism #1 (I/O ports 0xcf8 and 0xcfc).
@@ -391,5 +409,77 @@ impl BusDevice for PciConfigMmio {
             return;
         }
         self.config_space_write(info.offset as u32, info.offset % 4, data)
+    }
+}
+
+/// Inspired by PCI configuration space, CrosVM provides 1024 dword virtual registers (4KiB in
+/// total) for each PCI device. The guest can use these registers to exchange device-specific
+/// information with CrosVM.
+/// All these virtual registers from all PCI devices locate in a contiguous memory region.
+/// The base address of this memory region is provided by an IntObj named VCFG in the ACPI DSDT.
+/// The offset of each register is calculated in the same way as PCIe ECAM;
+/// i.e. offset = (bus << 20) | (device << 15) | (function << 12) | (register_index << 2)
+pub struct PciVirtualConfigMmio {
+    /// PCI root bridge.
+    pci_root: Arc<Mutex<PciRoot>>,
+    /// Register bit number in config address.
+    register_bit_num: usize,
+}
+
+impl PciVirtualConfigMmio {
+    pub fn new(pci_root: Arc<Mutex<PciRoot>>, register_bit_num: usize) -> Self {
+        PciVirtualConfigMmio {
+            pci_root,
+            register_bit_num,
+        }
+    }
+}
+
+impl BusDevice for PciVirtualConfigMmio {
+    fn debug_label(&self) -> String {
+        "pci virtual config mmio".to_owned()
+    }
+
+    fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
+        let value = if info.offset % 4 != 0 || data.len() != 4 {
+            error!(
+                "{} unexpected read at offset = {}, len = {}",
+                self.debug_label(),
+                info.offset,
+                data.len()
+            );
+            0u32
+        } else {
+            let (address, register) =
+                PciAddress::from_config_address(info.offset as u32, self.register_bit_num);
+            self.pci_root
+                .lock()
+                .virtual_config_space_read(address, register)
+        };
+        data[0] = (value >> (0 * 8)) as u8;
+        data[1] = (value >> (1 * 8)) as u8;
+        data[2] = (value >> (2 * 8)) as u8;
+        data[3] = (value >> (3 * 8)) as u8;
+    }
+
+    fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
+        if info.offset % 4 != 0 || data.len() != 4 {
+            error!(
+                "{} unexpected write at offset = {}, len = {}",
+                self.debug_label(),
+                info.offset,
+                data.len()
+            );
+            return;
+        }
+        let value = ((data[0] as u32) << (0 * 8))
+            | ((data[1] as u32) << (1 * 8))
+            | ((data[2] as u32) << (2 * 8))
+            | ((data[3] as u32) << (3 * 8));
+        let (address, register) =
+            PciAddress::from_config_address(info.offset as u32, self.register_bit_num);
+        self.pci_root
+            .lock()
+            .virtual_config_space_write(address, register, value)
     }
 }

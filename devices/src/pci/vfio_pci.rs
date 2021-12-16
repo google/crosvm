@@ -10,7 +10,9 @@ use std::sync::Arc;
 use std::thread;
 use std::u32;
 
-use base::{error, pagesize, AsRawDescriptor, Event, PollToken, RawDescriptor, Tube, WaitContext};
+use base::{
+    error, pagesize, warn, AsRawDescriptor, Event, PollToken, RawDescriptor, Tube, WaitContext,
+};
 use hypervisor::{Datamatch, MemSlot};
 
 use resources::{Alloc, MmioType, SystemAllocator};
@@ -1588,6 +1590,29 @@ impl PciDevice for VfioPciDevice {
                 }
             }
         }
+    }
+
+    fn read_virtual_config_register(&self, reg_idx: usize) -> u32 {
+        match reg_idx {
+            _ => {
+                warn!(
+                    "{} read unsupported register {}",
+                    self.debug_label(),
+                    reg_idx
+                );
+                0
+            }
+        }
+    }
+
+    fn write_virtual_config_register(&mut self, reg_idx: usize, value: u32) {
+        match reg_idx {
+            _ => warn!(
+                "{} write unsupported register {}",
+                self.debug_label(),
+                reg_idx
+            ),
+        };
     }
 
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {

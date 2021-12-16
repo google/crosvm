@@ -92,6 +92,15 @@ pub trait BusDevice: Send {
     fn config_register_read(&self, reg_idx: usize) -> u32 {
         0
     }
+    /// Sets a register in the virtual config space. Only used by PCI.
+    /// * `reg_idx` - The index of the config register to modify.
+    /// * `value` - The value to be written.
+    fn virtual_config_register_write(&mut self, reg_idx: usize, value: u32) {}
+    /// Gets a register from the virtual config space. Only used by PCI.
+    /// * `reg_idx` - The index of the config register to read.
+    fn virtual_config_register_read(&self, reg_idx: usize) -> u32 {
+        0
+    }
     /// Invoked when the device is sandboxed.
     fn on_sandboxed(&mut self) {}
 

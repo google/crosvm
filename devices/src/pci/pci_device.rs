@@ -136,6 +136,17 @@ pub trait PciDevice: Send {
     /// * `data`    - The data to write.
     fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]);
 
+    /// Reads from a virtual config register.
+    /// * `reg_idx` - virtual config register index (in units of 4 bytes).
+    fn read_virtual_config_register(&self, reg_idx: usize) -> u32 {
+        0
+    }
+
+    /// Writes to a virtual config register.
+    /// * `reg_idx` - virtual config register index (in units of 4 bytes).
+    /// * `value`   - the value to be written.
+    fn write_virtual_config_register(&mut self, reg_idx: usize, value: u32) {}
+
     /// Reads from a BAR region mapped in to the device.
     /// * `addr` - The guest address inside the BAR.
     /// * `data` - Filled with the data from `addr`.
@@ -297,6 +308,14 @@ impl<T: PciDevice> BusDevice for T {
         self.read_config_register(reg_idx)
     }
 
+    fn virtual_config_register_write(&mut self, reg_idx: usize, value: u32) {
+        self.write_virtual_config_register(reg_idx, value);
+    }
+
+    fn virtual_config_register_read(&self, reg_idx: usize) -> u32 {
+        self.read_virtual_config_register(reg_idx)
+    }
+
     fn on_sandboxed(&mut self) {
         self.on_device_sandboxed();
     }
@@ -361,6 +380,12 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     }
     fn ioevents(&self) -> Vec<(&Event, u64, Datamatch)> {
         (**self).ioevents()
+    }
+    fn read_virtual_config_register(&self, reg_idx: usize) -> u32 {
+        (**self).read_virtual_config_register(reg_idx)
+    }
+    fn write_virtual_config_register(&mut self, reg_idx: usize, value: u32) {
+        (**self).write_virtual_config_register(reg_idx, value)
     }
     fn read_config_register(&self, reg_idx: usize) -> u32 {
         (**self).read_config_register(reg_idx)
