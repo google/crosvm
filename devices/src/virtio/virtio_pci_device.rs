@@ -456,8 +456,12 @@ impl PciDevice for VirtioPciDevice {
         self.interrupt_evt = Some(irq_evt.try_clone().ok()?);
         self.interrupt_resample_evt = Some(irq_resample_evt.try_clone().ok()?);
         let gsi = irq_num?;
-        self.config_regs.set_irq(gsi as u8, PciInterruptPin::IntA);
-        Some((gsi, PciInterruptPin::IntA))
+        let pin = self.pci_address.map_or(
+            PciInterruptPin::IntA,
+            PciConfiguration::suggested_interrupt_pin,
+        );
+        self.config_regs.set_irq(gsi as u8, pin);
+        Some((gsi, pin))
     }
 
     fn allocate_io_bars(
