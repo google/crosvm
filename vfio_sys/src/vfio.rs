@@ -147,6 +147,9 @@ pub const VFIO_DEVICE_FEATURE_GET: u32 = 65536;
 pub const VFIO_DEVICE_FEATURE_SET: u32 = 131072;
 pub const VFIO_DEVICE_FEATURE_PROBE: u32 = 262144;
 pub const VFIO_DEVICE_FEATURE_PCI_VF_TOKEN: u32 = 0;
+pub const VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY: u32 = 3;
+pub const VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY_WITH_WAKEUP: u32 = 4;
+pub const VFIO_DEVICE_FEATURE_LOW_POWER_EXIT: u32 = 5;
 pub const VFIO_IOMMU_INFO_PGSIZES: u32 = 1;
 pub const VFIO_IOMMU_INFO_CAPS: u32 = 2;
 pub const VFIO_IOMMU_TYPE1_INFO_CAP_IOVA_RANGE: u32 = 1;
@@ -387,6 +390,12 @@ pub struct vfio_device_feature {
     pub argsz: u32,
     pub flags: u32,
     pub data: __IncompleteArrayField<u8>,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_device_low_power_entry_with_wakeup {
+    pub wakeup_eventfd: i32,
+    pub reserved: u32,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]

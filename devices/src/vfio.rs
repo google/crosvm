@@ -104,6 +104,10 @@ pub enum VfioError {
     VfioIrqMask(Error),
     #[error("failed to unmask vfio deviece's irq: {0}")]
     VfioIrqUnmask(Error),
+    #[error("failed to enter vfio deviece's low power state: {0}")]
+    VfioPmLowPowerEnter(Error),
+    #[error("failed to exit vfio deviece's low power state: {0}")]
+    VfioPmLowPowerExit(Error),
     #[error("container dones't support VfioType1V2 IOMMU driver type")]
     VfioType1V2,
 }
@@ -847,6 +851,34 @@ impl VfioDevice {
     /// Returns PCI device name, formatted as BUS:DEVICE.FUNCTION string.
     pub fn device_name(&self) -> &String {
         &self.name
+    }
+
+    /// enter the device's low power state
+    pub fn pm_low_power_enter(&self) -> Result<()> {
+        let mut device_feature = vec_with_array_field::<vfio_device_feature, u8>(0);
+        device_feature[0].argsz = mem::size_of::<vfio_device_feature>() as u32;
+        device_feature[0].flags = VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY;
+        // Safe as we are the owner of self and power_management which are valid value
+        let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_FEATURE(), &device_feature[0]) };
+        if ret < 0 {
+            Err(VfioError::VfioPmLowPowerEnter(get_error()))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// exit the device's low power state
+    pub fn pm_low_power_exit(&self) -> Result<()> {
+        let mut device_feature = vec_with_array_field::<vfio_device_feature, u8>(0);
+        device_feature[0].argsz = mem::size_of::<vfio_device_feature>() as u32;
+        device_feature[0].flags = VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_LOW_POWER_EXIT;
+        // Safe as we are the owner of self and power_management which are valid value
+        let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_FEATURE(), &device_feature[0]) };
+        if ret < 0 {
+            Err(VfioError::VfioPmLowPowerExit(get_error()))
+        } else {
+            Ok(())
+        }
     }
 
     /// Enable vfio device's irq and associate Irqfd Event with device.

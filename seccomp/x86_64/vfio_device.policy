@@ -4,8 +4,11 @@
 
 @include /usr/share/policy/crosvm/common_device.policy
 
-# VFIO_DEVICE_SET_IRQS, VFIO_IOMMU_MAP/UNMAP_DMA
-ioctl: arg1 == 0x3B6E || arg1 == 0x3B71 || arg1 == 0x3B72
+# 0x3B6E: VFIO_DEVICE_SET_IRQS
+# 0x3B71: VFIO_IOMMU_MAP_DMA
+# 0x3B72: VFIO_IOMMU_UNMAP_DMA
+# 0x3B75: VFIO_DEVICE_FEATURE
+ioctl: arg1 == 0x3B6E || arg1 == 0x3B71 || arg1 == 0x3B72 || arg1 == 0x3B75
 open: return ENOENT
 openat: return ENOENT
 pread64: 1
