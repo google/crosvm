@@ -13,3 +13,6 @@ socket: arg0 == AF_UNIX && arg2 == 0
 
 # allow socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC)
 socketpair: arg0 == AF_UNIX && arg1 == SOCK_SEQPACKET|SOCK_CLOEXEC && arg2 == 0
+
+# allow signalfd()
+signalfd4: 1
