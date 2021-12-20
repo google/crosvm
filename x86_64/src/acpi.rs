@@ -188,7 +188,7 @@ fn create_dsdt_table(amls: &[u8]) -> SDT {
     dsdt
 }
 
-fn create_facp_table(sci_irq: u16, reset_port: u32, reset_value: u8, force_s2idle: bool) -> SDT {
+fn create_facp_table(sci_irq: u16, force_s2idle: bool) -> SDT {
     let mut facp = SDT::new(
         *b"FACP",
         FADT_LEN,
@@ -198,8 +198,7 @@ fn create_facp_table(sci_irq: u16, reset_port: u32, reset_value: u8, force_s2idl
         OEM_REVISION,
     );
 
-    let mut fadt_flags: u32 = FADT_SLEEP_BUTTON | // mask SLEEP BUTTON
-                          FADT_RESET_REGISTER; // indicate we support FADT RESET_REG
+    let mut fadt_flags: u32 = FADT_SLEEP_BUTTON; // mask SLEEP BUTTON
 
     if force_s2idle {
         fadt_flags |= FADT_LOW_POWER_S2IDLE;
@@ -209,19 +208,6 @@ fn create_facp_table(sci_irq: u16, reset_port: u32, reset_value: u8, force_s2idl
 
     // SCI Interrupt
     facp.write(FADT_FIELD_SCI_INTERRUPT, sci_irq);
-
-    // Reset register.
-    facp.write(
-        FADT_FIELD_RESET_REGISTER,
-        GenericAddress {
-            _space_id: ADR_SPACE_SYSTEM_IO,
-            _bit_width: 8,
-            _bit_offset: 0,
-            _access_width: 8,
-            _address: reset_port.into(),
-        },
-    );
-    facp.write(FADT_FIELD_RESET_VALUE, reset_value);
 
     facp.write(FADT_FIELD_MINOR_REVISION, FADT_MINOR_REVISION); // FADT minor version
     facp.write(FADT_FIELD_HYPERVISOR_ID, *b"CROSVM"); // Hypervisor Vendor Identity
@@ -235,7 +221,13 @@ fn write_facp_overrides(
     facs_offset: GuestAddress,
     dsdt_offset: GuestAddress,
     pm_iobase: u32,
+    reset_port: u32,
+    reset_value: u8,
 ) {
+    let fadt_flags: u32 = facp.read(FADT_FIELD_FLAGS);
+    // indicate we support FADT RESET_REG
+    facp.write(FADT_FIELD_FLAGS, fadt_flags | FADT_RESET_REGISTER);
+
     facp.write(FADT_FIELD_SMI_COMMAND, 0u32);
     facp.write(FADT_FIELD_FACS_ADDR32, 0u32);
     facp.write(FADT_FIELD_DSDT_ADDR32, 0u32);
@@ -351,6 +343,19 @@ fn write_facp_overrides(
             ..Default::default()
         },
     );
+
+    // Reset register
+    facp.write(
+        FADT_FIELD_RESET_REGISTER,
+        GenericAddress {
+            _space_id: ADR_SPACE_SYSTEM_IO,
+            _bit_width: 8,
+            _bit_offset: 0,
+            _access_width: 8,
+            _address: reset_port.into(),
+        },
+    );
+    facp.write(FADT_FIELD_RESET_VALUE, reset_value);
 }
 
 fn next_offset(offset: GuestAddress, len: u64) -> Option<GuestAddress> {
@@ -533,7 +538,7 @@ pub fn create_acpi_tables(
 
     // FACP aka FADT
     let mut facp = facp.map_or_else(
-        || create_facp_table(sci_irq as u16, reset_port, reset_value, force_s2idle),
+        || create_facp_table(sci_irq as u16, force_s2idle),
         |facp| {
             let fadt_flags: u32 = facp.read(FADT_FIELD_FLAGS);
             if fadt_flags & FADT_POWER_BUTTON != 0 {
@@ -551,6 +556,8 @@ pub fn create_acpi_tables(
         facs_offset,
         dsdt_offset,
         acpi_dev_resource.pm_iobase as u32,
+        reset_port,
+        reset_value,
     );
 
     guest_mem.write_at_addr(facp.as_slice(), offset).ok()?;
