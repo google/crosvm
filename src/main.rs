@@ -479,7 +479,7 @@ fn parse_video_options(s: Option<&str>) -> argument::Result<VideoBackendType> {
         #[cfg(feature = "libvda")]
         Some("libvda") => Ok(VideoBackendType::Libvda),
         #[cfg(feature = "libvda")]
-        Some("libvda-vd") => Ok(VideoBackendType::LibvdaVD),
+        Some("libvda-vd") => Ok(VideoBackendType::LibvdaVd),
         Some(s) => Err(argument::Error::InvalidValue {
             value: s.to_owned(),
             expected: format!("should be one of ({})", VALID_VIDEO_BACKENDS.join("|")),
