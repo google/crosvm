@@ -16,6 +16,8 @@ pub struct ACPIPMResource {
     pm1_status: u16,
     pm1_enable: u16,
     pm1_control: u16,
+    gpe0_status: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
+    gpe0_enable: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
 }
 
 impl ACPIPMResource {
@@ -29,6 +31,8 @@ impl ACPIPMResource {
             pm1_status: 0,
             pm1_enable: 0,
             pm1_control: 0,
+            gpe0_status: Default::default(),
+            gpe0_enable: Default::default(),
         }
     }
 
@@ -46,12 +50,24 @@ impl ACPIPMResource {
             }
         }
     }
+
+    fn gpe_sci(&self) {
+        for i in 0..self.gpe0_status.len() {
+            if self.gpe0_status[i] & self.gpe0_enable[i] != 0 {
+                if let Err(e) = self.sci_evt.write(1) {
+                    error!("ACPIPM: failed to trigger sci event: {}", e);
+                }
+                return;
+            }
+        }
+    }
 }
 
 /// the ACPI PM register length.
-pub const ACPIPM_RESOURCE_LEN: u8 = 8;
 pub const ACPIPM_RESOURCE_EVENTBLK_LEN: u8 = 4;
 pub const ACPIPM_RESOURCE_CONTROLBLK_LEN: u8 = 2;
+pub const ACPIPM_RESOURCE_GPE0_BLK_LEN: u8 = 64;
+pub const ACPIPM_RESOURCE_LEN: u8 = ACPIPM_RESOURCE_EVENTBLK_LEN + 4 + ACPIPM_RESOURCE_GPE0_BLK_LEN;
 
 /// ACPI PM register value definitions
 
@@ -70,6 +86,26 @@ const PM1_ENABLE: u16 = PM1_STATUS + (ACPIPM_RESOURCE_EVENTBLK_LEN as u16 / 2);
 /// Register Location: <PM1a_CNT_BLK / PM1b_CNT_BLK> System I/O or Memory Space (defined in FADT)
 /// Size: PM1_CNT_LEN (defined in FADT)
 const PM1_CONTROL: u16 = PM1_STATUS + ACPIPM_RESOURCE_EVENTBLK_LEN as u16;
+
+/// 4.8.5.1 General-Purpose Event Register Blocks, ACPI Spec Version 6.4
+/// - Each register block contains two registers: an enable and a status register.
+/// - Each register block is 32-bit aligned.
+/// - Each register in the block is accessed as a byte.
+
+/// 4.8.5.1.1 General-Purpose Event 0 Register Block, ACPI Spec Version 6.4
+/// This register block consists of two registers: The GPE0_STS and the GPE0_EN registers. Each
+/// register’s length is defined to be half the length of the GPE0 register block, and is described
+/// in the ACPI FADT’s GPE0_BLK and GPE0_BLK_LEN operators.
+
+/// 4.8.5.1.1.1 General-Purpose Event 0 Status Register, ACPI Spec Version 6.4
+/// Register Location: <GPE0_STS> System I/O or System Memory Space (defined in FADT)
+/// Size: GPE0_BLK_LEN/2 (defined in FADT)
+const GPE0_STATUS: u16 = PM1_STATUS + ACPIPM_RESOURCE_EVENTBLK_LEN as u16 + 4; // ensure alignment
+
+/// 4.8.5.1.1.2 General-Purpose Event 0 Enable Register, ACPI Spec Version 6.4
+/// Register Location: <GPE0_EN> System I/O or System Memory Space (defined in FADT)
+/// Size: GPE0_BLK_LEN/2 (defined in FADT)
+const GPE0_ENABLE: u16 = GPE0_STATUS + (ACPIPM_RESOURCE_GPE0_BLK_LEN as u16 / 2);
 
 const BITMASK_PM1STS_PWRBTN_STS: u16 = 1 << 8;
 const BITMASK_PM1EN_GBL_EN: u16 = 1 << 5;
@@ -91,11 +127,23 @@ impl PmResource for ACPIPMResource {
         self.pm1_status |= BITMASK_PM1STS_PWRBTN_STS;
         self.pm_sci();
     }
+
+    fn gpe_evt(&mut self, gpe: u32) {
+        let byte = gpe as usize / 8;
+        if byte >= self.gpe0_status.len() {
+            error!("gpe_evt: GPE register {} does not exist", byte);
+            return;
+        }
+        self.gpe0_status[byte] |= 1 << (gpe % 8);
+        self.gpe_sci();
+    }
 }
 
 const PM1_STATUS_LAST: u16 = PM1_STATUS + (ACPIPM_RESOURCE_EVENTBLK_LEN as u16 / 2) - 1;
 const PM1_ENABLE_LAST: u16 = PM1_ENABLE + (ACPIPM_RESOURCE_EVENTBLK_LEN as u16 / 2) - 1;
 const PM1_CONTROL_LAST: u16 = PM1_CONTROL + ACPIPM_RESOURCE_CONTROLBLK_LEN as u16 - 1;
+const GPE0_STATUS_LAST: u16 = GPE0_STATUS + (ACPIPM_RESOURCE_GPE0_BLK_LEN as u16 / 2) - 1;
+const GPE0_ENABLE_LAST: u16 = GPE0_ENABLE + (ACPIPM_RESOURCE_GPE0_BLK_LEN as u16 / 2) - 1;
 
 impl BusDevice for ACPIPMResource {
     fn debug_label(&self) -> String {
@@ -134,6 +182,25 @@ impl BusDevice for ACPIPMResource {
                 }
                 let offset = (info.offset - PM1_CONTROL as u64) as usize;
                 data.copy_from_slice(&self.pm1_control.to_ne_bytes()[offset..offset + data.len()]);
+            }
+            // OSPM accesses GPE registers through byte accesses (regardless of their length)
+            GPE0_STATUS..=GPE0_STATUS_LAST => {
+                if data.len() > std::mem::size_of::<u8>()
+                    || info.offset + data.len() as u64 > (GPE0_STATUS_LAST + 1).into()
+                {
+                    warn!("ACPIPM: bad read size: {}", data.len());
+                    return;
+                }
+                data[0] = self.gpe0_status[(info.offset - GPE0_STATUS as u64) as usize];
+            }
+            GPE0_ENABLE..=GPE0_ENABLE_LAST => {
+                if data.len() > std::mem::size_of::<u8>()
+                    || info.offset + data.len() as u64 > (GPE0_ENABLE_LAST + 1).into()
+                {
+                    warn!("ACPIPM: bad read size: {}", data.len());
+                    return;
+                }
+                data[0] = self.gpe0_enable[(info.offset - GPE0_ENABLE as u64) as usize];
             }
             _ => {
                 warn!("ACPIPM: Bad read from {}", info);
@@ -213,6 +280,26 @@ impl BusDevice for ACPIPMResource {
                     }
                 }
                 self.pm1_control = val & !BITMASK_PM1CNT_SLEEP_ENABLE;
+            }
+            // OSPM accesses GPE registers through byte accesses (regardless of their length)
+            GPE0_STATUS..=GPE0_STATUS_LAST => {
+                if data.len() > std::mem::size_of::<u8>()
+                    || info.offset + data.len() as u64 > (GPE0_STATUS_LAST + 1).into()
+                {
+                    warn!("ACPIPM: bad write size: {}", data.len());
+                    return;
+                }
+                self.gpe0_status[(info.offset - GPE0_STATUS as u64) as usize] &= !data[0];
+            }
+            GPE0_ENABLE..=GPE0_ENABLE_LAST => {
+                if data.len() > std::mem::size_of::<u8>()
+                    || info.offset + data.len() as u64 > (GPE0_ENABLE_LAST + 1).into()
+                {
+                    warn!("ACPIPM: bad write size: {}", data.len());
+                    return;
+                }
+                self.gpe0_enable[(info.offset - GPE0_ENABLE as u64) as usize] = data[0];
+                self.gpe_sci();
             }
             _ => {
                 warn!("ACPIPM: Bad write to {}", info);

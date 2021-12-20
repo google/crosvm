@@ -109,6 +109,7 @@ impl Default for VmRunMode {
 
 pub trait PmResource {
     fn pwrbtn_evt(&mut self) {}
+    fn gpe_evt(&mut self, _gpe: u32) {}
 }
 
 /// The maximum number of devices that can be listed in one `UsbControlCommand`.
