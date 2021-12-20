@@ -589,7 +589,7 @@ impl arch::LinuxArch for X8664arch {
             sci_irq,
             0xcf9,
             6, // RST_CPU|SYS_RST
-            acpi_dev_resource,
+            &acpi_dev_resource,
             host_cpus,
             kvm_vcpu_ids,
             &pci_irqs,
@@ -662,6 +662,7 @@ impl arch::LinuxArch for X8664arch {
             bat_control,
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             gdb: components.gdb,
+            pm: Some(acpi_dev_resource.pm),
             root_config: pci,
             hotplug_bus: Vec::new(),
         })
@@ -1361,7 +1362,7 @@ impl X8664arch {
                 devices::acpi::ACPIPM_RESOURCE_LEN as u64,
             )
             .unwrap();
-        resume_notify_devices.push(pm);
+        resume_notify_devices.push(pm.clone());
 
         let bat_control = if let Some(battery_type) = battery.0 {
             match battery_type {
@@ -1384,6 +1385,7 @@ impl X8664arch {
             acpi::AcpiDevResource {
                 amls,
                 pm_iobase,
+                pm,
                 sdts,
             },
             bat_control,

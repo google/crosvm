@@ -29,7 +29,7 @@ use remain::sorted;
 use resources::{MmioType, SystemAllocator};
 use sync::Mutex;
 use thiserror::Error;
-use vm_control::{BatControl, BatteryType};
+use vm_control::{BatControl, BatteryType, PmResource};
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
@@ -123,6 +123,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub bat_control: Option<BatControl>,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<(u32, Tube)>,
+    pub pm: Option<Arc<Mutex<dyn PmResource>>>,
     /// Devices to be notified before the system resumes from the S3 suspended state.
     pub resume_notify_devices: Vec<Arc<Mutex<dyn BusResumeDevice>>>,
     pub root_config: Arc<Mutex<PciRoot>>,
@@ -692,7 +693,7 @@ pub fn add_goldfish_battery(
         create_monitor,
     )
     .map_err(DeviceRegistrationError::RegisterBattery)?;
-    Aml::to_aml_bytes(&goldfish_bat, amls);
+    goldfish_bat.to_aml_bytes(amls);
 
     match battery_jail.as_ref() {
         Some(jail) => {

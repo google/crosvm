@@ -222,7 +222,7 @@ where
         X86_64_SCI_IRQ,
         0xcf9,
         6,
-        acpi_dev_resource.0,
+        &acpi_dev_resource.0,
         None,
         &mut apic_ids,
         &pci_irqs,

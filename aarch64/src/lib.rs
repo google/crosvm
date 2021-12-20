@@ -482,6 +482,7 @@ impl arch::LinuxArch for AArch64 {
             rt_cpus: components.rt_cpus,
             delay_rt: components.delay_rt,
             bat_control: None,
+            pm: None,
             resume_notify_devices: Vec::new(),
             root_config: pci_root,
             hotplug_bus: Vec::new(),

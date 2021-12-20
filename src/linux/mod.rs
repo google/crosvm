@@ -1856,6 +1856,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             balloon_host_tube.as_ref(),
                                             &mut balloon_stats_id,
                                             disk_host_tubes,
+                                            &mut linux.pm,
                                             #[cfg(feature = "usb")]
                                             Some(&usb_control_tube),
                                             #[cfg(not(feature = "usb"))]

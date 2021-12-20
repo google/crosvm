@@ -9,12 +9,15 @@ use acpi_tables::{facs::FACS, rsdp::RSDP, sdt::SDT};
 use arch::VcpuAffinity;
 use base::{error, warn};
 use data_model::DataInit;
-use devices::{PciAddress, PciInterruptPin};
+use devices::{ACPIPMResource, PciAddress, PciInterruptPin};
+use std::sync::Arc;
+use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory};
 
 pub struct AcpiDevResource {
     pub amls: Vec<u8>,
     pub pm_iobase: u64,
+    pub pm: Arc<Mutex<ACPIPMResource>>,
     /// Additional system descriptor tables.
     pub sdts: Vec<SDT>,
 }
@@ -161,7 +164,7 @@ const MCFG_FIELD_BASE_ADDRESS: usize = 44;
 const MCFG_FIELD_START_BUS_NUMBER: usize = 54;
 const MCFG_FIELD_END_BUS_NUMBER: usize = 55;
 
-fn create_dsdt_table(amls: Vec<u8>) -> SDT {
+fn create_dsdt_table(amls: &[u8]) -> SDT {
     let mut dsdt = SDT::new(
         *b"DSDT",
         acpi_tables::HEADER_LEN,
@@ -172,7 +175,7 @@ fn create_dsdt_table(amls: Vec<u8>) -> SDT {
     );
 
     if !amls.is_empty() {
-        dsdt.append_slice(amls.as_slice());
+        dsdt.append_slice(amls);
     }
 
     dsdt
@@ -432,7 +435,7 @@ pub fn create_acpi_tables(
     sci_irq: u32,
     reset_port: u32,
     reset_value: u8,
-    acpi_dev_resource: AcpiDevResource,
+    acpi_dev_resource: &AcpiDevResource,
     host_cpus: Option<VcpuAffinity>,
     apic_ids: &mut Vec<usize>,
     pci_irqs: &[(PciAddress, u32, PciInterruptPin)],
@@ -477,7 +480,7 @@ pub fn create_acpi_tables(
         Some(dsdt_offset) => dsdt_offset,
         None => {
             let dsdt_offset = offset;
-            let dsdt = create_dsdt_table(acpi_dev_resource.amls);
+            let dsdt = create_dsdt_table(&acpi_dev_resource.amls);
             guest_mem.write_at_addr(dsdt.as_slice(), offset).ok()?;
             offset = next_offset(offset, dsdt.len() as u64)?;
             dsdt_offset
