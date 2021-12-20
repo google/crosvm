@@ -5,10 +5,12 @@
 use crate::{BusAccessInfo, BusDevice, BusResumeDevice};
 use acpi_tables::{aml, aml::Aml};
 use base::{error, warn, Event};
+use vm_control::PmResource;
 
 /// ACPI PM resource for handling OS suspend/resume request
 #[allow(dead_code)]
 pub struct ACPIPMResource {
+    sci_evt: Event,
     suspend_evt: Event,
     exit_evt: Event,
     pm1_status: u16,
@@ -19,13 +21,29 @@ pub struct ACPIPMResource {
 impl ACPIPMResource {
     /// Constructs ACPI Power Management Resouce.
     #[allow(dead_code)]
-    pub fn new(suspend_evt: Event, exit_evt: Event) -> ACPIPMResource {
+    pub fn new(sci_evt: Event, suspend_evt: Event, exit_evt: Event) -> ACPIPMResource {
         ACPIPMResource {
+            sci_evt,
             suspend_evt,
             exit_evt,
             pm1_status: 0,
             pm1_enable: 0,
             pm1_control: 0,
+        }
+    }
+
+    fn pm_sci(&self) {
+        if self.pm1_status
+            & self.pm1_enable
+            & (BITMASK_PM1EN_GBL_EN
+                | BITMASK_PM1EN_PWRBTN_EN
+                | BITMASK_PM1EN_SLPBTN_EN
+                | BITMASK_PM1EN_RTC_EN)
+            != 0
+        {
+            if let Err(e) = self.sci_evt.write(1) {
+                error!("ACPIPM: failed to trigger sci event: {}", e);
+            }
         }
     }
 }
@@ -53,6 +71,11 @@ const PM1_ENABLE: u16 = PM1_STATUS + (ACPIPM_RESOURCE_EVENTBLK_LEN as u16 / 2);
 /// Size: PM1_CNT_LEN (defined in FADT)
 const PM1_CONTROL: u16 = PM1_STATUS + ACPIPM_RESOURCE_EVENTBLK_LEN as u16;
 
+const BITMASK_PM1STS_PWRBTN_STS: u16 = 1 << 8;
+const BITMASK_PM1EN_GBL_EN: u16 = 1 << 5;
+const BITMASK_PM1EN_PWRBTN_EN: u16 = 1 << 8;
+const BITMASK_PM1EN_SLPBTN_EN: u16 = 1 << 9;
+const BITMASK_PM1EN_RTC_EN: u16 = 1 << 10;
 const BITMASK_PM1CNT_SLEEP_ENABLE: u16 = 0x2000;
 const BITMASK_PM1CNT_WAKE_STATUS: u16 = 0x8000;
 
@@ -62,6 +85,13 @@ const BITMASK_PM1CNT_SLEEP_TYPE: u16 = 0x1C00;
 const SLEEP_TYPE_S1: u16 = 1 << 10;
 #[cfg(not(feature = "direct"))]
 const SLEEP_TYPE_S5: u16 = 0 << 10;
+
+impl PmResource for ACPIPMResource {
+    fn pwrbtn_evt(&mut self) {
+        self.pm1_status |= BITMASK_PM1STS_PWRBTN_STS;
+        self.pm_sci();
+    }
+}
 
 const PM1_STATUS_LAST: u16 = PM1_STATUS + (ACPIPM_RESOURCE_EVENTBLK_LEN as u16 / 2) - 1;
 const PM1_ENABLE_LAST: u16 = PM1_ENABLE + (ACPIPM_RESOURCE_EVENTBLK_LEN as u16 / 2) - 1;
@@ -141,6 +171,7 @@ impl BusDevice for ACPIPMResource {
                     v[j] = data[i];
                 }
                 self.pm1_enable = u16::from_ne_bytes(v);
+                self.pm_sci(); // TODO take care of spurious interrupts
             }
             PM1_CONTROL..=PM1_CONTROL_LAST => {
                 if data.len() > std::mem::size_of::<u16>()

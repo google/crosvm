@@ -107,6 +107,10 @@ impl Default for VmRunMode {
     }
 }
 
+pub trait PmResource {
+    fn pwrbtn_evt(&mut self) {}
+}
+
 /// The maximum number of devices that can be listed in one `UsbControlCommand`.
 ///
 /// This value was set to be equal to `xhci_regs::MAX_PORTS` for convenience, but it is not

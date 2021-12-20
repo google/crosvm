@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use acpi_tables::{facs::FACS, rsdp::RSDP, sdt::SDT};
 use arch::VcpuAffinity;
-use base::error;
+use base::{error, warn};
 use data_model::DataInit;
 use devices::{PciAddress, PciInterruptPin};
 use vm_memory::{GuestAddress, GuestMemory};
@@ -105,7 +105,7 @@ const FADT_LOW_POWER_S2IDLE: u32 = 1 << 21;
 // FADT fields offset
 const FADT_FIELD_FACS_ADDR32: usize = 36;
 const FADT_FIELD_DSDT_ADDR32: usize = 40;
-const FADT_FIELD_SCI_INTERRUPT: usize = 46;
+pub const FADT_FIELD_SCI_INTERRUPT: usize = 46;
 const FADT_FIELD_SMI_COMMAND: usize = 48;
 const FADT_FIELD_PM1A_EVENT_BLK_ADDR: usize = 56;
 const FADT_FIELD_PM1B_EVENT_BLK_ADDR: usize = 60;
@@ -188,7 +188,7 @@ fn create_facp_table(sci_irq: u16, reset_port: u32, reset_value: u8, force_s2idl
         OEM_REVISION,
     );
 
-    let mut fadt_flags: u32 = FADT_POWER_BUTTON | FADT_SLEEP_BUTTON | // mask POWER and SLEEP BUTTON
+    let mut fadt_flags: u32 = FADT_SLEEP_BUTTON | // mask SLEEP BUTTON
                           FADT_RESET_REGISTER; // indicate we support FADT RESET_REG
 
     if force_s2idle {
@@ -485,9 +485,19 @@ pub fn create_acpi_tables(
     };
 
     // FACP aka FADT
-    let mut facp = facp.unwrap_or_else(|| {
-        create_facp_table(sci_irq as u16, reset_port, reset_value, force_s2idle)
-    });
+    let mut facp = facp.map_or_else(
+        || create_facp_table(sci_irq as u16, reset_port, reset_value, force_s2idle),
+        |facp| {
+            let fadt_flags: u32 = facp.read(FADT_FIELD_FLAGS);
+            if fadt_flags & FADT_POWER_BUTTON != 0 {
+                warn!(
+                    "Control Method Power Button is not supported. FADT flags = 0x{:x}",
+                    fadt_flags
+                );
+            }
+            facp
+        },
+    );
 
     write_facp_overrides(
         &mut facp,

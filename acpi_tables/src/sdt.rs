@@ -96,13 +96,23 @@ impl SDT {
         self.write(LENGTH_OFFSET, self.data.len() as u32);
     }
 
+    /// Read a value at the given offset
+    pub fn read<T: DataInit + Default>(&self, offset: usize) -> T {
+        let value_len = std::mem::size_of::<T>();
+        *T::from_slice(
+            self.as_slice()
+                .get(offset..offset + value_len)
+                .unwrap_or(T::default().as_slice()),
+        )
+        .unwrap()
+    }
+
     /// Write a value at the given offset
     pub fn write<T: DataInit>(&mut self, offset: usize, value: T) {
         let value_len = std::mem::size_of::<T>();
         if (offset + value_len) > self.data.len() {
             return;
         }
-
         self.data[offset..offset + value_len].copy_from_slice(value.as_slice());
         self.update_checksum();
     }

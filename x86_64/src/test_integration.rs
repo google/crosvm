@@ -193,6 +193,7 @@ where
         exit_evt.try_clone().expect("unable to clone exit_evt"),
         Default::default(),
         &mut irq_chip,
+        X86_64_SCI_IRQ,
         (&None, None),
         &mmio_bus,
         max_bus,

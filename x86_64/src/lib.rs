@@ -56,7 +56,7 @@ use crate::bootparam::boot_params;
 use acpi_tables::sdt::SDT;
 use acpi_tables::{aml, aml::Aml};
 use arch::{get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, VmComponents, VmImage};
-use base::Event;
+use base::{warn, Event};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::{
     BusDeviceObj, BusResumeDevice, IrqChip, IrqChipX86_64, PciAddress, PciConfigIo, PciConfigMmio,
@@ -453,6 +453,24 @@ impl arch::LinuxArch for X8664arch {
         let tss_addr = GuestAddress(TSS_ADDR);
         vm.set_tss_addr(tss_addr).map_err(Error::SetTssAddr)?;
 
+        // Use IRQ info in ACPI if provided by the user.
+        let mut noirq = true;
+        let mut mptable = true;
+        let mut sci_irq = X86_64_SCI_IRQ;
+
+        for sdt in components.acpi_sdts.iter() {
+            if sdt.is_signature(b"DSDT") || sdt.is_signature(b"APIC") {
+                noirq = false;
+            } else if sdt.is_signature(b"FACP") {
+                mptable = false;
+                let sci_irq_fadt: u16 = sdt.read(acpi::FADT_FIELD_SCI_INTERRUPT);
+                sci_irq = sci_irq_fadt.into();
+                if !system_allocator.reserve_irq(sci_irq) {
+                    warn!("sci irq {} already reserved.", sci_irq);
+                }
+            }
+        }
+
         let mmio_bus = Arc::new(devices::Bus::new());
         let io_bus = Arc::new(devices::Bus::new());
 
@@ -532,17 +550,12 @@ impl arch::LinuxArch for X8664arch {
             exit_evt.try_clone().map_err(Error::CloneEvent)?,
             components.acpi_sdts,
             irq_chip.as_irq_chip_mut(),
+            sci_irq,
             battery,
             &mmio_bus,
             max_bus,
             &mut resume_notify_devices,
         )?;
-
-        // Use IRQ info in ACPI if provided by the user.
-        let noirq = !acpi_dev_resource
-            .sdts
-            .iter()
-            .any(|sdt| sdt.is_signature(b"DSDT") || sdt.is_signature(b"APIC"));
 
         irq_chip
             .finalize_devices(system_allocator, &io_bus, &mmio_bus)
@@ -556,8 +569,11 @@ impl arch::LinuxArch for X8664arch {
         // If another guest does need a way to pass these tables down to it's BIOS, this approach
         // should be rethought.
 
-        // Note that this puts the mptable at 0x9FC00 in guest physical memory.
-        mptable::setup_mptable(&mem, vcpu_count as u8, &pci_irqs).map_err(Error::SetupMptable)?;
+        if mptable {
+            // Note that this puts the mptable at 0x9FC00 in guest physical memory.
+            mptable::setup_mptable(&mem, vcpu_count as u8, &pci_irqs)
+                .map_err(Error::SetupMptable)?;
+        }
         smbios::setup_smbios(&mem, components.dmi_path).map_err(Error::SetupSmbios)?;
 
         let host_cpus = if components.host_cpu_topology {
@@ -570,7 +586,7 @@ impl arch::LinuxArch for X8664arch {
         acpi::create_acpi_tables(
             &mem,
             vcpu_count as u8,
-            X86_64_SCI_IRQ,
+            sci_irq,
             0xcf9,
             6, // RST_CPU|SYS_RST
             acpi_dev_resource,
@@ -1266,6 +1282,7 @@ impl X8664arch {
         exit_evt: Event,
         sdts: Vec<SDT>,
         irq_chip: &mut dyn IrqChip,
+        sci_irq: u32,
         battery: (&Option<BatteryType>, Option<Minijail>),
         mmio_bus: &devices::Bus,
         max_bus: u8,
@@ -1288,10 +1305,14 @@ impl X8664arch {
         };
 
         let pcie_vcfg = aml::Name::new("VCFG".into(), &Self::get_pcie_vcfg_mmio_base(mem));
-        Aml::to_aml_bytes(&pcie_vcfg, &mut amls);
+        pcie_vcfg.to_aml_bytes(&mut amls);
 
-        let pmresource = devices::ACPIPMResource::new(suspend_evt, exit_evt);
-        Aml::to_aml_bytes(&pmresource, &mut amls);
+        let pm_sci_evt = Event::new().map_err(Error::CreateEvent)?;
+        irq_chip
+            .register_irq_event(sci_irq, &pm_sci_evt, None)
+            .map_err(Error::RegisterIrqfd)?;
+        let pmresource = devices::ACPIPMResource::new(pm_sci_evt, suspend_evt, exit_evt);
+        pmresource.to_aml_bytes(&mut amls);
 
         let mut pci_dsdt_inner_data: Vec<&dyn aml::Aml> = Vec::new();
         let hid = aml::Name::new("_HID".into(), &aml::EISAName::new("PNP0A08"));
@@ -1346,12 +1367,7 @@ impl X8664arch {
             match battery_type {
                 BatteryType::Goldfish => {
                     let control_tube = arch::add_goldfish_battery(
-                        &mut amls,
-                        battery.1,
-                        mmio_bus,
-                        irq_chip,
-                        X86_64_SCI_IRQ,
-                        resources,
+                        &mut amls, battery.1, mmio_bus, irq_chip, sci_irq, resources,
                     )
                     .map_err(Error::CreateBatDevices)?;
                     Some(BatControl {
