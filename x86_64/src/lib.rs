@@ -1281,7 +1281,7 @@ impl X8664arch {
                     devices::acpi::ACPIPM_RESOURCE_LEN as u64,
                     pm_alloc,
                     "ACPIPM".to_string(),
-                    devices::acpi::ACPIPM_RESOURCE_LEN as u64,
+                    4, // must be 32-bit aligned
                 )
                 .map_err(Error::AllocateIOResouce)?,
             None => 0x600,

@@ -108,15 +108,24 @@ const FADT_FIELD_DSDT_ADDR32: usize = 40;
 const FADT_FIELD_SCI_INTERRUPT: usize = 46;
 const FADT_FIELD_SMI_COMMAND: usize = 48;
 const FADT_FIELD_PM1A_EVENT_BLK_ADDR: usize = 56;
+const FADT_FIELD_PM1B_EVENT_BLK_ADDR: usize = 60;
 const FADT_FIELD_PM1A_CONTROL_BLK_ADDR: usize = 64;
+const FADT_FIELD_PM1B_CONTROL_BLK_ADDR: usize = 68;
+const FADT_FIELD_PM2_CONTROL_BLK_ADDR: usize = 72;
 const FADT_FIELD_PM1A_EVENT_BLK_LEN: usize = 88;
 const FADT_FIELD_PM1A_CONTROL_BLK_LEN: usize = 89;
+const FADT_FIELD_PM2_CONTROL_BLK_LEN: usize = 90;
 const FADT_FIELD_FLAGS: usize = 112;
 const FADT_FIELD_RESET_REGISTER: usize = 116;
 const FADT_FIELD_RESET_VALUE: usize = 128;
 const FADT_FIELD_MINOR_REVISION: usize = 131;
 const FADT_FIELD_FACS_ADDR: usize = 132;
 const FADT_FIELD_DSDT_ADDR: usize = 140;
+const FADT_FIELD_X_PM1A_EVENT_BLK_ADDR: usize = 148;
+const FADT_FIELD_X_PM1B_EVENT_BLK_ADDR: usize = 160;
+const FADT_FIELD_X_PM1A_CONTROL_BLK_ADDR: usize = 172;
+const FADT_FIELD_X_PM1B_CONTROL_BLK_ADDR: usize = 184;
+const FADT_FIELD_X_PM2_CONTROL_BLK_ADDR: usize = 196;
 const FADT_FIELD_HYPERVISOR_ID: usize = 268;
 // MADT
 const MADT_LEN: u32 = 44;
@@ -169,13 +178,7 @@ fn create_dsdt_table(amls: Vec<u8>) -> SDT {
     dsdt
 }
 
-fn create_facp_table(
-    sci_irq: u16,
-    pm_iobase: u32,
-    reset_port: u32,
-    reset_value: u8,
-    force_s2idle: bool,
-) -> SDT {
+fn create_facp_table(sci_irq: u16, reset_port: u32, reset_value: u8, force_s2idle: bool) -> SDT {
     let mut facp = SDT::new(
         *b"FACP",
         FADT_LEN,
@@ -197,27 +200,6 @@ fn create_facp_table(
     // SCI Interrupt
     facp.write(FADT_FIELD_SCI_INTERRUPT, sci_irq);
 
-    // PM1A Event Block Address
-    facp.write(FADT_FIELD_PM1A_EVENT_BLK_ADDR, pm_iobase);
-
-    // PM1A Control Block Address
-    facp.write(
-        FADT_FIELD_PM1A_CONTROL_BLK_ADDR,
-        pm_iobase + devices::acpi::ACPIPM_RESOURCE_EVENTBLK_LEN as u32,
-    );
-
-    // PM1 Event Block Length
-    facp.write(
-        FADT_FIELD_PM1A_EVENT_BLK_LEN,
-        devices::acpi::ACPIPM_RESOURCE_EVENTBLK_LEN as u8,
-    );
-
-    // PM1 Control Block Length
-    facp.write(
-        FADT_FIELD_PM1A_CONTROL_BLK_LEN,
-        devices::acpi::ACPIPM_RESOURCE_CONTROLBLK_LEN as u8,
-    );
-
     // Reset register.
     facp.write(
         FADT_FIELD_RESET_REGISTER,
@@ -235,6 +217,93 @@ fn create_facp_table(
     facp.write(FADT_FIELD_HYPERVISOR_ID, *b"CROSVM"); // Hypervisor Vendor Identity
 
     facp
+}
+
+// Write virtualized FADT fields
+fn write_facp_overrides(
+    facp: &mut SDT,
+    facs_offset: GuestAddress,
+    dsdt_offset: GuestAddress,
+    pm_iobase: u32,
+) {
+    facp.write(FADT_FIELD_SMI_COMMAND, 0u32);
+    facp.write(FADT_FIELD_FACS_ADDR32, 0u32);
+    facp.write(FADT_FIELD_DSDT_ADDR32, 0u32);
+    facp.write(FADT_FIELD_FACS_ADDR, facs_offset.0 as u64);
+    facp.write(FADT_FIELD_DSDT_ADDR, dsdt_offset.0 as u64);
+
+    // PM1A Event Block Address
+    facp.write(FADT_FIELD_PM1A_EVENT_BLK_ADDR, pm_iobase);
+
+    // PM1B Event Block Address (not supported)
+    facp.write(FADT_FIELD_PM1B_EVENT_BLK_ADDR, 0u32);
+
+    // PM1A Control Block Address
+    facp.write(
+        FADT_FIELD_PM1A_CONTROL_BLK_ADDR,
+        pm_iobase + devices::acpi::ACPIPM_RESOURCE_EVENTBLK_LEN as u32,
+    );
+
+    // PM1B Control Block Address (not supported)
+    facp.write(FADT_FIELD_PM1B_CONTROL_BLK_ADDR, 0u32);
+
+    // PM2 Control Block Address (not supported)
+    facp.write(FADT_FIELD_PM2_CONTROL_BLK_ADDR, 0u32);
+
+    // PM1 Event Block Length
+    facp.write(
+        FADT_FIELD_PM1A_EVENT_BLK_LEN,
+        devices::acpi::ACPIPM_RESOURCE_EVENTBLK_LEN,
+    );
+
+    // PM1 Control Block Length
+    facp.write(
+        FADT_FIELD_PM1A_CONTROL_BLK_LEN,
+        devices::acpi::ACPIPM_RESOURCE_CONTROLBLK_LEN,
+    );
+
+    // PM2 Control Block Length (not supported)
+    facp.write(FADT_FIELD_PM2_CONTROL_BLK_LEN, 0u8);
+
+    // PM1A Extended Event Block Address (not supported)
+    facp.write(
+        FADT_FIELD_X_PM1A_EVENT_BLK_ADDR,
+        GenericAddress {
+            ..Default::default()
+        },
+    );
+
+    // PM1B Extended Event Block Address (not supported)
+    facp.write(
+        FADT_FIELD_X_PM1B_EVENT_BLK_ADDR,
+        GenericAddress {
+            ..Default::default()
+        },
+    );
+
+    // PM1A Extended Control Block Address (not supported)
+    facp.write(
+        FADT_FIELD_X_PM1A_CONTROL_BLK_ADDR,
+        GenericAddress {
+            ..Default::default()
+        },
+    );
+
+    // PM1B Extended Control Block Address (not supported)
+    facp.write(
+        FADT_FIELD_X_PM1B_CONTROL_BLK_ADDR,
+        GenericAddress {
+            ..Default::default()
+        },
+    );
+
+    // PM2 Extended Control Block Address (not supported)
+    facp.write(
+        FADT_FIELD_X_PM2_CONTROL_BLK_ADDR,
+        GenericAddress {
+            ..Default::default()
+        },
+    );
 }
 
 fn next_offset(offset: GuestAddress, len: u64) -> Option<GuestAddress> {
@@ -416,23 +485,16 @@ pub fn create_acpi_tables(
     };
 
     // FACP aka FADT
-    let pm_iobase = acpi_dev_resource.pm_iobase as u32;
     let mut facp = facp.unwrap_or_else(|| {
-        create_facp_table(
-            sci_irq as u16,
-            pm_iobase,
-            reset_port,
-            reset_value,
-            force_s2idle,
-        )
+        create_facp_table(sci_irq as u16, reset_port, reset_value, force_s2idle)
     });
 
-    // Crosvm FACP overrides.
-    facp.write(FADT_FIELD_SMI_COMMAND, 0u32);
-    facp.write(FADT_FIELD_FACS_ADDR32, 0u32);
-    facp.write(FADT_FIELD_DSDT_ADDR32, 0u32);
-    facp.write(FADT_FIELD_FACS_ADDR, facs_offset.0 as u64);
-    facp.write(FADT_FIELD_DSDT_ADDR, dsdt_offset.0 as u64);
+    write_facp_overrides(
+        &mut facp,
+        facs_offset,
+        dsdt_offset,
+        acpi_dev_resource.pm_iobase as u32,
+    );
 
     guest_mem.write_at_addr(facp.as_slice(), offset).ok()?;
     tables.push(offset.0);
