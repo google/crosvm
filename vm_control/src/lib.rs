@@ -890,6 +890,8 @@ pub enum VmRequest {
     Suspend,
     /// Resume the VM's VCPUs that were previously suspended.
     Resume,
+    /// Inject a general-purpose event.
+    Gpe(u32),
     /// Make the VM's RT VCPU real-time.
     MakeRT,
     /// Command for balloon driver.
@@ -996,6 +998,15 @@ impl VmRequest {
             VmRequest::Resume => {
                 *run_mode = Some(VmRunMode::Running);
                 VmResponse::Ok
+            }
+            VmRequest::Gpe(gpe) => {
+                if pm.is_some() {
+                    pm.as_ref().unwrap().lock().gpe_evt(gpe);
+                    VmResponse::Ok
+                } else {
+                    error!("{:#?} not supported", *self);
+                    VmResponse::Err(SysError::new(ENOTSUP))
+                }
             }
             VmRequest::MakeRT => {
                 for (handle, channel) in vcpu_handles {

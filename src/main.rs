@@ -2892,6 +2892,25 @@ fn powerbtn_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     vms_request(&VmRequest::Powerbtn, socket_path)
 }
 
+fn inject_gpe(mut args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() < 2 {
+        print_help("crosvm gpe", "GPE# VM_SOCKET...", &[]);
+        println!("Injects a general-purpose event (GPE#) into the crosvm instance listening on each `VM_SOCKET` given.");
+        return Err(());
+    }
+    let gpe = match args.next().unwrap().parse::<u32>() {
+        Ok(n) => n,
+        Err(_) => {
+            error!("Failed to parse GPE#");
+            return Err(());
+        }
+    };
+
+    let socket_path = &args.next().unwrap();
+    let socket_path = Path::new(&socket_path);
+    vms_request(&VmRequest::Gpe(gpe), socket_path)
+}
+
 fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() < 2 {
         print_help("crosvm balloon", "SIZE VM_SOCKET...", &[]);
@@ -3405,6 +3424,7 @@ fn print_usage() {
     println!("    stop - Stops crosvm instances via their control sockets.");
     println!("    suspend - Suspends the crosvm instance.");
     println!("    powerbtn - Triggers a power button event in the crosvm instance.");
+    println!("    gpe - Injects a general-purpose event into the crosvm instance.");
     println!("    usb - Manage attached virtual USB devices.");
     println!("    version - Show package version.");
     println!("    vfio - add/remove host vfio pci device into guest.");
@@ -3461,6 +3481,7 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
             "stop" => stop_vms(args),
             "suspend" => suspend_vms(args),
             "powerbtn" => powerbtn_vms(args),
+            "gpe" => inject_gpe(args),
             "usb" => modify_usb(args),
             "version" => pkg_version(),
             "vfio" => modify_vfio(args),
