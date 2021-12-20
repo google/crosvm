@@ -484,8 +484,13 @@ fn parse_video_options(s: Option<&str>) -> argument::Result<VideoBackendType> {
     ];
 
     match s {
-        #[cfg(feature = "libvda")]
-        None => Ok(VideoBackendType::Libvda),
+        None => {
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "libvda")] {
+                    Ok(VideoBackendType::Libvda)
+                }
+            }
+        }
         #[cfg(feature = "libvda")]
         Some("libvda") => Ok(VideoBackendType::Libvda),
         #[cfg(feature = "libvda")]
