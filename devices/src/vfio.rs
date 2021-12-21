@@ -134,7 +134,7 @@ impl VfioContainer {
         Self::new_inner(true /* host_iommu */)
     }
 
-    /// Open VfioContainer with IOMMU enabled.
+    /// Open VfioContainer with IOMMU disabled.
     pub fn new_noiommu() -> Result<Self> {
         Self::new_inner(false /* host_iommu */)
     }
