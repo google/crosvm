@@ -731,7 +731,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         stream_id: StreamId,
         queue_type: QueueType,
         params: Params,
-        _is_ext: bool,
+        is_ext: bool,
     ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
         match queue_type {
