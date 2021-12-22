@@ -48,7 +48,7 @@ pub enum Protocol {
 #[allow(missing_docs)]
 pub trait VhostUserSlaveReqHandler {
     /// Returns the type of vhost-user protocol that the handler support.
-    fn protocol() -> Protocol;
+    fn protocol(&self) -> Protocol;
 
     fn set_owner(&self) -> Result<()>;
     fn reset_owner(&self) -> Result<()>;
@@ -91,7 +91,7 @@ pub trait VhostUserSlaveReqHandler {
 #[allow(missing_docs)]
 pub trait VhostUserSlaveReqHandlerMut {
     /// Returns the type of vhost-user protocol that the handler support.
-    fn protocol() -> Protocol {
+    fn protocol(&self) -> Protocol {
         Protocol::Regular
     }
 
@@ -139,8 +139,8 @@ pub trait VhostUserSlaveReqHandlerMut {
 }
 
 impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
-    fn protocol() -> Protocol {
-        T::protocol()
+    fn protocol(&self) -> Protocol {
+        self.lock().unwrap().protocol()
     }
 
     fn set_owner(&self) -> Result<()> {
@@ -426,7 +426,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     /// Create a vhost-user slave endpoint.
     pub(super) fn new(endpoint: E, backend: Arc<S>) -> Self {
         SlaveReqHandler {
-            slave_req_helper: SlaveReqHelper::new(endpoint, S::protocol()),
+            slave_req_helper: SlaveReqHelper::new(endpoint, backend.protocol()),
             backend,
             virtio_features: 0,
             acked_virtio_features: 0,
@@ -742,7 +742,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
             return Err(Error::InvalidMessage);
         }
 
-        let files = match S::protocol() {
+        let files = match self.slave_req_helper.protocol {
             Protocol::Regular => {
                 // validate number of fds matching number of memory regions
                 let files = files.ok_or(Error::InvalidMessage)?;

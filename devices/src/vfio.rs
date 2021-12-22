@@ -678,6 +678,11 @@ impl VfioDevice {
         })
     }
 
+    /// Returns the file for this device.
+    pub fn dev_file(&self) -> &File {
+        &self.dev
+    }
+
     /// Returns PCI device name, formatted as BUS:DEVICE.FUNCTION string.
     pub fn device_name(&self) -> &String {
         &self.name

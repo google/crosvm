@@ -5,5 +5,9 @@
 //! Implement a userspace driver for the virtio vhost-user device.
 
 mod bus;
-mod pci;
+pub mod device;
+pub mod doorbell;
+pub mod pci;
 mod queue;
+
+pub use device::*;

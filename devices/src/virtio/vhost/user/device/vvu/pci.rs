@@ -167,6 +167,18 @@ impl VvuPciCaps {
 
         Ok(caps)
     }
+
+    pub fn doorbell_off_multiplier(&self) -> u32 {
+        self.doorbell_off_multiplier
+    }
+
+    pub fn doorbell_base_addr(&self) -> &VfioRegionAddr {
+        &self.doorbell_base_addr
+    }
+
+    pub fn shared_mem_cfg_addr(&self) -> &VfioRegionAddr {
+        &self.shared_mem_cfg_addr
+    }
 }
 
 macro_rules! write_common_cfg_field {
