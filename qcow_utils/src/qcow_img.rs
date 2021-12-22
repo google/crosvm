@@ -5,108 +5,127 @@
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 
-use getopts::Options;
+use argh::FromArgs;
 
 use base::WriteZeroes;
 use disk::{self, QcowFile};
 
-fn show_usage(program_name: &str) {
-    println!("Usage: {} [subcommand] <subcommand args>", program_name);
-    println!("\nSubcommands:");
-    println!(
-        "{} header <file name> - Show the qcow2 header for a file.",
-        program_name
-    );
-    println!(
-        "{} l1_table <file name> - Show the L1 table entries for a file.",
-        program_name
-    );
-    println!(
-        "{} l22table <file name> <l1 index> - Show the L2 table pointed to by the nth L1 entry.",
-        program_name
-    );
-    println!(
-        "{} ref_table <file name> - Show the refblock table for the file.",
-        program_name
-    );
-    println!(
-        "{} ref_block <file_name> <table index> - Show the nth reblock in the file.",
-        program_name
-    );
-    println!(
-        "{} dd <file_name> <source_file> - Write bytes from the raw source_file to the file.",
-        program_name
-    );
-    println!(
-        "{} convert <src_file> <dst_file> - Convert from src_file to dst_file.",
-        program_name
-    );
+#[derive(FromArgs)]
+#[argh(
+    subcommand,
+    name = "header",
+    description = "Show the qcow2 header for a file."
+)]
+struct HeaderSubCommand {
+    #[argh(positional)]
+    file_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(
+    subcommand,
+    name = "l1_table",
+    description = "Show the L1 table entries for a file."
+)]
+struct L1TableSubCommand {
+    #[argh(positional)]
+    file_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(
+    subcommand,
+    name = "l22table",
+    description = "Show the L2 table pointed to by the nth L1 entry."
+)]
+struct L22TableSubCommand {
+    #[argh(positional)]
+    file_path: String,
+    #[argh(positional)]
+    l1_index: usize,
+}
+
+#[derive(FromArgs)]
+#[argh(
+    subcommand,
+    name = "ref_table",
+    description = "Show the refblock table for the file."
+)]
+struct RefTableSubCommand {
+    #[argh(positional)]
+    file_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(
+    subcommand,
+    name = "ref_block",
+    description = "Show the nth reblock in the file."
+)]
+struct RefBlockSubCommand {
+    #[argh(positional)]
+    file_path: String,
+    #[argh(positional)]
+    table_index: usize,
+}
+
+#[derive(FromArgs)]
+#[argh(
+    subcommand,
+    name = "dd",
+    description = "Write bytes from the raw source_file to the file."
+)]
+struct DDSubCommand {
+    #[argh(positional)]
+    file_path: String,
+    #[argh(positional)]
+    source_path: String,
+    #[argh(positional)]
+    count: Option<usize>,
+}
+
+#[derive(FromArgs)]
+#[argh(
+    subcommand,
+    name = "convert",
+    description = "Convert from src_file to dst_file."
+)]
+struct ConvertSubCommand {
+    #[argh(positional)]
+    src_path: String,
+    #[argh(positional)]
+    dst_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand)]
+#[allow(non_camel_case_types)]
+enum Command {
+    header(HeaderSubCommand),
+    l1_table(L1TableSubCommand),
+    l22_table(L22TableSubCommand),
+    ref_table(RefTableSubCommand),
+    ref_block(RefBlockSubCommand),
+    dd(DDSubCommand),
+    convert(ConvertSubCommand),
+}
+
+#[derive(FromArgs)]
+#[argh(description = "QCOW2 Utilities")]
+struct Options {
+    #[argh(subcommand)]
+    command: Command,
 }
 
 fn main() -> std::result::Result<(), ()> {
-    let args: Vec<String> = std::env::args().collect();
-    let opts = Options::new();
-
-    let matches = match opts.parse(&args[1..]) {
-        Ok(m) => m,
-        Err(f) => panic!("{}", f.to_string()),
-    };
-
-    if matches.free.len() < 2 {
-        println!("Must specify the subcommand and the QCOW file to operate on.");
-        show_usage(&args[0]);
-        return Err(());
-    }
-
-    match matches.free[0].as_ref() {
-        "header" => show_header(&matches.free[1]),
-        "help" => {
-            show_usage(&args[0]);
-            Ok(())
-        }
-        "l1_table" => show_l1_table(&matches.free[1]),
-        "l2_table" => {
-            if matches.free.len() < 2 {
-                println!("Filename and table index are required.");
-                show_usage(&args[0]);
-                return Err(());
-            }
-            show_l2_table(&matches.free[1], matches.free[2].parse().unwrap())
-        }
-        "ref_table" => show_ref_table(&matches.free[1]),
-        "ref_block" => {
-            if matches.free.len() < 2 {
-                println!("Filename and block index are required.");
-                show_usage(&args[0]);
-                return Err(());
-            }
-            show_ref_block(&matches.free[1], matches.free[2].parse().unwrap())
-        }
-        "dd" => {
-            if matches.free.len() < 2 {
-                println!("Qcow and source file are required.");
-                show_usage(&args[0]);
-                return Err(());
-            }
-            let count = if matches.free.len() > 3 {
-                Some(matches.free[3].parse().unwrap())
-            } else {
-                None
-            };
-            dd(&matches.free[1], &matches.free[2], count)
-        }
-        "convert" => {
-            if matches.free.len() < 2 {
-                println!("Source and destination files are required.");
-                show_usage(&args[0]);
-                return Err(());
-            }
-            convert(&matches.free[1], &matches.free[2])
-        }
-        c => {
-            println!("invalid subcommand: {:?}", c);
-            Err(())
-        }
+    match argh::from_env::<Options>().command {
+        Command::header(h) => show_header(&h.file_path),
+        Command::l1_table(l) => show_l1_table(&l.file_path),
+        Command::l22_table(l) => show_l2_table(&l.file_path, l.l1_index),
+        Command::ref_table(r) => show_ref_table(&r.file_path),
+        Command::ref_block(r) => show_ref_block(&r.file_path, r.table_index),
+        Command::dd(d) => dd(&d.file_path, &d.source_path, d.count),
+        Command::convert(c) => convert(&c.src_path, &c.dst_path),
     }
 }
 

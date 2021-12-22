@@ -13,7 +13,7 @@ name = "qcow_img"
 path = "src/qcow_img.rs"
 
 [dependencies]
-getopts = "*"
+argh = "0.1.7"
 libc = "*"
 disk = { path = "../disk" }
 base = { path = "../common/base" }
