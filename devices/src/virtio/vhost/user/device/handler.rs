@@ -47,22 +47,20 @@
 
 use std::convert::{From, TryFrom};
 use std::fs::File;
-use std::io;
 use std::num::Wrapping;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::sync::Arc;
 
+use anyhow::{Context, Result};
 use base::{
     error, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor, SharedMemory,
     SharedMemoryUnix, UnlinkUnixListener,
 };
-use cros_async::{AsyncError, AsyncWrapper, Executor};
-use remain::sorted;
+use cros_async::{AsyncWrapper, Executor};
 use sync::Mutex;
 use sys_util::clear_fd_flags;
-use thiserror::Error as ThisError;
 use vm_memory::{GuestAddress, GuestMemory, MemoryRegion};
 use vmm_vhost::{
     message::{
@@ -248,28 +246,6 @@ impl<I: SignalableInterrupt> Vring<I> {
     }
 }
 
-#[sorted]
-#[derive(ThisError, Debug)]
-pub enum HandlerError {
-    /// Failed to accept an incoming connection.
-    #[error("failed to accept an incoming connection: {0}")]
-    AcceptConnection(io::Error),
-    /// Failed to create an async source.
-    #[error("failed to create an async source: {0}")]
-    CreateAsyncSource(AsyncError),
-    /// Failed to create a UNIX domain socket listener.
-    #[error("failed to create a UNIX domain socket listener: {0}")]
-    CreateSocketListener(io::Error),
-    /// Failed to handle a vhost-user request.
-    #[error("failed to handle a vhost-user request: {0}")]
-    HandleVhostUserRequest(VhostError),
-    /// Failed to wait for the handler socket to become readable.
-    #[error("failed to wait for the handler socket to become readable: {0}")]
-    WaitForHandler(AsyncError),
-}
-
-type HandlerResult<T> = std::result::Result<T, HandlerError>;
-
 /// Structure to have an event loop for interaction between a VMM and `VhostUserBackend`.
 pub struct DeviceRequestHandler<B>
 where
@@ -304,10 +280,10 @@ where
 
     /// Creates a listening socket at `socket` and handles incoming messages from the VMM, which are
     /// dispatched to the device backend via the `VhostUserBackend` trait methods.
-    pub async fn run<P: AsRef<Path>>(self, socket: P, ex: &Executor) -> HandlerResult<()> {
+    pub async fn run<P: AsRef<Path>>(self, socket: P, ex: &Executor) -> Result<()> {
         let listener = UnixListener::bind(socket)
             .map(UnlinkUnixListener)
-            .map_err(HandlerError::CreateSocketListener)?;
+            .context("failed to create a UNIX domain socket listener")?;
         return self.run_with_listener(listener, ex).await;
     }
 
@@ -317,25 +293,31 @@ where
         self,
         listener: UnlinkUnixListener,
         ex: &Executor,
-    ) -> HandlerResult<()> {
+    ) -> Result<()> {
         let (socket, _) = ex
-            .spawn_blocking(move || listener.accept().map_err(HandlerError::AcceptConnection))
+            .spawn_blocking(move || {
+                listener
+                    .accept()
+                    .context("failed to accept an incoming connection")
+            })
             .await?;
         let mut req_handler =
             SlaveReqHandler::from_stream(socket, Arc::new(std::sync::Mutex::new(self)));
         let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawFd)
             .map(AsyncWrapper::new)
             .expect("failed to get safe descriptor for handler");
-        let handler_source = ex.async_from(h).map_err(HandlerError::CreateAsyncSource)?;
+        let handler_source = ex
+            .async_from(h)
+            .context("failed to create an async source")?;
 
         loop {
             handler_source
                 .wait_readable()
                 .await
-                .map_err(HandlerError::WaitForHandler)?;
+                .context("failed to wait for the handler socket to become readable")?;
             req_handler
                 .handle_request()
-                .map_err(HandlerError::HandleVhostUserRequest)?;
+                .context("failed to handle a vhost-user request")?;
         }
     }
 }
@@ -652,19 +634,11 @@ mod tests {
     use std::sync::mpsc::channel;
     use std::sync::Barrier;
 
+    use anyhow::{anyhow, bail};
     use data_model::DataInit;
     use tempfile::{Builder, TempDir};
 
     use crate::virtio::vhost::user::vmm::VhostUserHandler;
-
-    #[sorted]
-    #[derive(ThisError, Debug)]
-    enum FakeError {
-        #[error("invalid features are given: 0x{features:x}")]
-        InvalidFeatures { features: u64 },
-        #[error("invalid protocol features are given: 0x{features:x}")]
-        InvalidProtocolFeatures { features: u64 },
-    }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     #[repr(C)]
@@ -698,7 +672,7 @@ mod tests {
         const MAX_VRING_LEN: u16 = 256;
 
         type Doorbell = CallEvent;
-        type Error = FakeError;
+        type Error = anyhow::Error;
 
         fn features(&self) -> u64 {
             self.avail_features
@@ -707,9 +681,10 @@ mod tests {
         fn ack_features(&mut self, value: u64) -> std::result::Result<(), Self::Error> {
             let unrequested_features = value & !self.avail_features;
             if unrequested_features != 0 {
-                return Err(FakeError::InvalidFeatures {
-                    features: unrequested_features,
-                });
+                bail!(
+                    "invalid protocol features are given: 0x{:x}",
+                    unrequested_features
+                );
             }
             self.acked_features |= value;
             Ok(())
@@ -724,8 +699,10 @@ mod tests {
         }
 
         fn ack_protocol_features(&mut self, features: u64) -> std::result::Result<(), Self::Error> {
-            let features = VhostUserProtocolFeatures::from_bits(features)
-                .ok_or(FakeError::InvalidProtocolFeatures { features })?;
+            let features = VhostUserProtocolFeatures::from_bits(features).ok_or(anyhow!(
+                "invalid protocol features are given: 0x{:x}",
+                features
+            ))?;
             let supported = self.protocol_features();
             self.acked_protocol_features = features & supported;
             Ok(())
