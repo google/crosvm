@@ -25,7 +25,7 @@ use vm_memory::GuestMemory;
 use crate::virtio::block::asynchronous::{flush_disk, process_one_chain};
 use crate::virtio::block::*;
 use crate::virtio::vhost::user::device::handler::{
-    CallEvent, DeviceRequestHandler, VhostUserBackend,
+    DeviceRequestHandler, Doorbell, VhostUserBackend,
 };
 use crate::virtio::{self, base_features, copy_config, Queue};
 
@@ -159,7 +159,6 @@ impl VhostUserBackend for BlockBackend {
     const MAX_QUEUE_NUM: usize = NUM_QUEUES as usize;
     const MAX_VRING_LEN: u16 = QUEUE_SIZE;
 
-    type Doorbell = CallEvent;
     type Error = anyhow::Error;
 
     fn features(&self) -> u64 {
@@ -214,7 +213,7 @@ impl VhostUserBackend for BlockBackend {
         idx: usize,
         mut queue: virtio::Queue,
         mem: GuestMemory,
-        call_evt: Arc<Mutex<CallEvent>>,
+        doorbell: Arc<Mutex<Doorbell>>,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
@@ -241,7 +240,7 @@ impl VhostUserBackend for BlockBackend {
                 disk_state,
                 Rc::new(RefCell::new(queue)),
                 kick_evt,
-                call_evt,
+                doorbell,
                 timer,
                 timer_armed,
             ),
@@ -268,7 +267,7 @@ async fn handle_queue(
     disk_state: Rc<AsyncMutex<DiskState>>,
     queue: Rc<RefCell<Queue>>,
     evt: EventAsync,
-    interrupt: Arc<Mutex<CallEvent>>,
+    interrupt: Arc<Mutex<Doorbell>>,
     flush_timer: Rc<RefCell<TimerAsync>>,
     flush_timer_armed: Rc<RefCell<bool>>,
 ) {

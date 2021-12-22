@@ -164,11 +164,6 @@ where
     const MAX_QUEUE_NUM: usize;
     const MAX_VRING_LEN: u16;
 
-    /// A signal that is sent to the VMM when buffers are used.
-    /// For vhost-user, this should be converted from a FD sent via SET_VRING_CALL.
-    /// For virtio-vhost-user, this corresponds to the doorbell structure.
-    type Doorbell: SignalableInterrupt + TryFrom<File>;
-
     /// Error type specific to this backend.
     type Error;
 
@@ -212,7 +207,7 @@ where
         idx: usize,
         queue: Queue,
         mem: GuestMemory,
-        doorbell: Arc<Mutex<Self::Doorbell>>,
+        doorbell: Arc<Mutex<Doorbell>>,
         kick_evt: Event,
     ) -> std::result::Result<(), Self::Error>;
 
@@ -223,25 +218,55 @@ where
     fn reset(&mut self);
 }
 
+pub enum Doorbell {
+    Call(CallEvent),
+}
+
+impl SignalableInterrupt for Doorbell {
+    fn signal(&self, vector: u16, interrupt_status_mask: u32) {
+        match &self {
+            Self::Call(evt) => evt.signal(vector, interrupt_status_mask),
+        }
+    }
+
+    fn signal_config_changed(&self) {
+        match &self {
+            Self::Call(evt) => evt.signal_config_changed(),
+        }
+    }
+
+    fn get_resample_evt(&self) -> Option<&Event> {
+        match &self {
+            Self::Call(evt) => evt.get_resample_evt(),
+        }
+    }
+
+    fn do_interrupt_resample(&self) {
+        match &self {
+            Self::Call(evt) => evt.do_interrupt_resample(),
+        }
+    }
+}
+
 /// A virtio ring entry.
-struct Vring<I: SignalableInterrupt> {
+struct Vring {
     queue: Queue,
-    call_evt: Option<Arc<Mutex<I>>>,
+    doorbell: Option<Arc<Mutex<Doorbell>>>,
     enabled: bool,
 }
 
-impl<I: SignalableInterrupt> Vring<I> {
+impl Vring {
     fn new(max_size: u16) -> Self {
         Self {
             queue: Queue::new(max_size),
-            call_evt: None,
+            doorbell: None,
             enabled: false,
         }
     }
 
     fn reset(&mut self) {
         self.queue.reset();
-        self.call_evt = None;
+        self.doorbell = None;
         self.enabled = false;
     }
 }
@@ -251,7 +276,7 @@ pub struct DeviceRequestHandler<B>
 where
     B: 'static + VhostUserBackend,
 {
-    vrings: Vec<Vring<B::Doorbell>>,
+    vrings: Vec<Vring>,
     owned: bool,
     vmm_maps: Option<Vec<MappingInfo>>,
     mem: Option<GuestMemory>,
@@ -494,8 +519,8 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
             vring.queue.ready = true;
 
             let queue = vring.queue.clone();
-            let call_evt = vring
-                .call_evt
+            let doorbell = vring
+                .doorbell
                 .as_ref()
                 .ok_or(VhostError::InvalidOperation)?;
             let mem = self
@@ -506,7 +531,7 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
 
             if let Err(e) =
                 self.backend
-                    .start_queue(index as usize, queue, mem, Arc::clone(call_evt), kick_evt)
+                    .start_queue(index as usize, queue, mem, Arc::clone(doorbell), kick_evt)
             {
                 error!("Failed to start queue {}: {}", index, e);
                 return Err(VhostError::SlaveInternalError);
@@ -521,18 +546,18 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
         }
 
         if let Some(file) = file {
-            let call_evt = B::Doorbell::try_from(file).map_err(|_| {
+            let doorbell = Doorbell::Call(CallEvent::try_from(file).map_err(|_| {
                 error!("failed to convert callfd to CallSignal");
                 VhostError::InvalidParam
-            })?;
+            })?);
 
-            match &self.vrings[index as usize].call_evt {
+            match &self.vrings[index as usize].doorbell {
                 None => {
-                    self.vrings[index as usize].call_evt = Some(Arc::new(Mutex::new(call_evt)));
+                    self.vrings[index as usize].doorbell = Some(Arc::new(Mutex::new(doorbell)));
                 }
                 Some(cell) => {
                     let mut evt = cell.lock();
-                    *evt = call_evt;
+                    *evt = doorbell;
                 }
             }
         }
@@ -671,7 +696,6 @@ mod tests {
         const MAX_QUEUE_NUM: usize = 16;
         const MAX_VRING_LEN: u16 = 256;
 
-        type Doorbell = CallEvent;
         type Error = anyhow::Error;
 
         fn features(&self) -> u64 {
@@ -723,7 +747,7 @@ mod tests {
             _idx: usize,
             _queue: Queue,
             _mem: GuestMemory,
-            _doorbell: Arc<Mutex<Self::Doorbell>>,
+            _doorbell: Arc<Mutex<Doorbell>>,
             _kick_evt: Event,
         ) -> std::result::Result<(), Self::Error> {
             Ok(())

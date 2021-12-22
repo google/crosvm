@@ -27,7 +27,7 @@ use crate::virtio::net::{
     virtio_features_to_tap_offload, NetError,
 };
 use crate::virtio::vhost::user::device::handler::{
-    CallEvent, DeviceRequestHandler, VhostUserBackend,
+    DeviceRequestHandler, Doorbell, VhostUserBackend,
 };
 
 thread_local! {
@@ -38,7 +38,7 @@ async fn run_tx_queue(
     mut queue: virtio::Queue,
     mem: GuestMemory,
     mut tap: Tap,
-    call_evt: Arc<Mutex<CallEvent>>,
+    doorbell: Arc<Mutex<Doorbell>>,
     kick_evt: EventAsync,
 ) {
     loop {
@@ -47,7 +47,7 @@ async fn run_tx_queue(
             break;
         }
 
-        process_tx(&call_evt, &mut queue, &mem, &mut tap);
+        process_tx(&doorbell, &mut queue, &mem, &mut tap);
     }
 }
 
@@ -55,7 +55,7 @@ async fn run_rx_queue(
     mut queue: virtio::Queue,
     mem: GuestMemory,
     mut tap: Box<dyn IoSourceExt<Tap>>,
-    call_evt: Arc<Mutex<CallEvent>>,
+    doorbell: Arc<Mutex<Doorbell>>,
     kick_evt: EventAsync,
 ) {
     loop {
@@ -64,7 +64,7 @@ async fn run_rx_queue(
             break;
         }
 
-        match process_rx(&call_evt, &mut queue, &mem, tap.as_source_mut()) {
+        match process_rx(&doorbell, &mut queue, &mem, tap.as_source_mut()) {
             Ok(()) => {}
             Err(NetError::RxDescriptorsExhausted) => {
                 if let Err(e) = kick_evt.next_val().await {
@@ -84,7 +84,7 @@ async fn run_ctrl_queue(
     mut queue: virtio::Queue,
     mem: GuestMemory,
     mut tap: Tap,
-    call_evt: Arc<Mutex<CallEvent>>,
+    doorbell: Arc<Mutex<Doorbell>>,
     kick_evt: EventAsync,
     acked_features: u64,
     vq_pairs: u16,
@@ -96,7 +96,7 @@ async fn run_ctrl_queue(
         }
 
         if let Err(e) = process_ctrl(
-            &call_evt,
+            &doorbell,
             &mut queue,
             &mem,
             &mut tap,
@@ -214,7 +214,6 @@ impl VhostUserBackend for NetBackend {
     const MAX_QUEUE_NUM: usize = 3; /* rx, tx, ctrl */
     const MAX_VRING_LEN: u16 = 256;
 
-    type Doorbell = CallEvent;
     type Error = anyhow::Error;
 
     fn features(&self) -> u64 {
@@ -268,7 +267,7 @@ impl VhostUserBackend for NetBackend {
         idx: usize,
         mut queue: virtio::Queue,
         mem: GuestMemory,
-        call_evt: Arc<Mutex<CallEvent>>,
+        doorbell: Arc<Mutex<Doorbell>>,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
@@ -294,14 +293,14 @@ impl VhostUserBackend for NetBackend {
                         .context("failed to create async tap device")?;
 
                     ex.spawn_local(Abortable::new(
-                        run_rx_queue(queue, mem, tap, call_evt, kick_evt),
+                        run_rx_queue(queue, mem, tap, doorbell, kick_evt),
                         registration,
                     ))
                     .detach();
                 }
                 1 => {
                     ex.spawn_local(Abortable::new(
-                        run_tx_queue(queue, mem, tap, call_evt, kick_evt),
+                        run_tx_queue(queue, mem, tap, doorbell, kick_evt),
                         registration,
                     ))
                     .detach();
@@ -312,7 +311,7 @@ impl VhostUserBackend for NetBackend {
                             queue,
                             mem,
                             tap,
-                            call_evt,
+                            doorbell,
                             kick_evt,
                             self.acked_features,
                             1, /* vq_pairs */

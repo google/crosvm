@@ -26,7 +26,7 @@ use crate::virtio::snd::cras_backend::{
 };
 use crate::virtio::snd::layout::virtio_snd_config;
 use crate::virtio::vhost::user::device::handler::{
-    CallEvent, DeviceRequestHandler, VhostUserBackend,
+    DeviceRequestHandler, Doorbell, VhostUserBackend,
 };
 use crate::virtio::{self, copy_config};
 
@@ -91,7 +91,6 @@ impl VhostUserBackend for CrasSndBackend {
     const MAX_QUEUE_NUM: usize = MAX_QUEUE_NUM;
     const MAX_VRING_LEN: u16 = MAX_VRING_LEN;
 
-    type Doorbell = CallEvent;
     type Error = anyhow::Error;
 
     fn features(&self) -> u64 {
@@ -144,7 +143,7 @@ impl VhostUserBackend for CrasSndBackend {
         idx: usize,
         mut queue: virtio::Queue,
         mem: GuestMemory,
-        call_evt: Arc<Mutex<CallEvent>>,
+        doorbell: Arc<Mutex<Doorbell>>,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
@@ -172,7 +171,7 @@ impl VhostUserBackend for CrasSndBackend {
                 ex.spawn_local(Abortable::new(
                     async move {
                         handle_ctrl_queue(
-                            &ex, &mem, &streams, &*snd_data, queue, kick_evt, &call_evt, tx_send,
+                            &ex, &mem, &streams, &*snd_data, queue, kick_evt, &doorbell, tx_send,
                             rx_send, &params,
                         )
                         .await
@@ -204,7 +203,7 @@ impl VhostUserBackend for CrasSndBackend {
 
                 ex.spawn_local(Abortable::new(
                     async move {
-                        send_pcm_response_worker(&*mem2, &queue2, &call_evt, &mut recv).await
+                        send_pcm_response_worker(&*mem2, &queue2, &doorbell, &mut recv).await
                     },
                     registration2,
                 ))

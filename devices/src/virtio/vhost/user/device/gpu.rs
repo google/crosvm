@@ -25,7 +25,7 @@ use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::{
     self, gpu,
-    vhost::user::device::handler::{CallEvent, DeviceRequestHandler, VhostUserBackend},
+    vhost::user::device::handler::{DeviceRequestHandler, Doorbell, VhostUserBackend},
     vhost::user::device::wl::parse_wayland_sock,
     DescriptorChain, Gpu, GpuDisplayParameters, GpuParameters, Queue, QueueReader, VirtioDevice,
 };
@@ -35,7 +35,7 @@ static GPU_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 #[derive(Clone)]
 struct SharedReader {
     queue: Arc<Mutex<Queue>>,
-    call_evt: Arc<Mutex<CallEvent>>,
+    doorbell: Arc<Mutex<Doorbell>>,
 }
 
 impl gpu::QueueReader for SharedReader {
@@ -48,7 +48,7 @@ impl gpu::QueueReader for SharedReader {
     }
 
     fn signal_used(&self, mem: &GuestMemory) {
-        self.queue.lock().trigger_interrupt(mem, &self.call_evt);
+        self.queue.lock().trigger_interrupt(mem, &self.doorbell);
     }
 }
 
@@ -157,7 +157,6 @@ impl VhostUserBackend for GpuBackend {
     const MAX_QUEUE_NUM: usize = gpu::QUEUE_SIZES.len();
     const MAX_VRING_LEN: u16 = gpu::QUEUE_SIZES[0];
 
-    type Doorbell = CallEvent;
     type Error = anyhow::Error;
 
     fn features(&self) -> u64 {
@@ -238,7 +237,7 @@ impl VhostUserBackend for GpuBackend {
         idx: usize,
         queue: Queue,
         mem: GuestMemory,
-        call_evt: Arc<Mutex<CallEvent>>,
+        doorbell: Arc<Mutex<Doorbell>>,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if let Some(task) = self.workers.get_mut(idx).and_then(Option::take) {
@@ -262,7 +261,7 @@ impl VhostUserBackend for GpuBackend {
 
         let reader = SharedReader {
             queue: Arc::new(Mutex::new(queue)),
-            call_evt,
+            doorbell,
         };
 
         let state = if let Some(s) = self.state.as_ref() {

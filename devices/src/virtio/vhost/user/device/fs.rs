@@ -27,7 +27,7 @@ use crate::virtio::copy_config;
 use crate::virtio::fs::passthrough::PassthroughFs;
 use crate::virtio::fs::{process_fs_queue, virtio_fs_config, FS_MAX_TAG_LEN};
 use crate::virtio::vhost::user::device::handler::{
-    CallEvent, DeviceRequestHandler, VhostUserBackend,
+    DeviceRequestHandler, Doorbell, VhostUserBackend,
 };
 
 static FS_EXECUTOR: OnceCell<Executor> = OnceCell::new();
@@ -35,7 +35,7 @@ static FS_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 async fn handle_fs_queue(
     mut queue: virtio::Queue,
     mem: GuestMemory,
-    call_evt: Arc<Mutex<CallEvent>>,
+    doorbell: Arc<Mutex<Doorbell>>,
     kick_evt: EventAsync,
     server: Arc<fuse::Server<PassthroughFs>>,
     tube: Arc<Mutex<Tube>>,
@@ -48,7 +48,7 @@ async fn handle_fs_queue(
             error!("Failed to read kick event for fs queue: {}", e);
             break;
         }
-        if let Err(e) = process_fs_queue(&mem, &call_evt, &mut queue, &server, &tube, slot) {
+        if let Err(e) = process_fs_queue(&mem, &doorbell, &mut queue, &server, &tube, slot) {
             error!("Process FS queue failed: {}", e);
             break;
         }
@@ -162,7 +162,6 @@ impl VhostUserBackend for FsBackend {
     const MAX_QUEUE_NUM: usize = 2; /* worker queue and high priority queue */
     const MAX_VRING_LEN: u16 = 1024;
 
-    type Doorbell = CallEvent;
     type Error = anyhow::Error;
 
     fn features(&self) -> u64 {
@@ -219,7 +218,7 @@ impl VhostUserBackend for FsBackend {
         idx: usize,
         mut queue: virtio::Queue,
         mem: GuestMemory,
-        call_evt: Arc<Mutex<CallEvent>>,
+        doorbell: Arc<Mutex<Doorbell>>,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
@@ -242,7 +241,7 @@ impl VhostUserBackend for FsBackend {
             handle_fs_queue(
                 queue,
                 mem,
-                call_evt,
+                doorbell,
                 kick_evt,
                 self.server.clone(),
                 Arc::new(Mutex::new(fs_device_tube)),

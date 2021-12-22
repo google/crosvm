@@ -26,7 +26,7 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::vhost::user::device::handler::{
-    CallEvent, DeviceRequestHandler, VhostUserBackend,
+    DeviceRequestHandler, Doorbell, VhostUserBackend,
 };
 use crate::virtio::{base_features, wl, Queue};
 
@@ -35,7 +35,7 @@ static WL_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 async fn run_out_queue(
     mut queue: Queue,
     mem: GuestMemory,
-    call_evt: Arc<Mutex<CallEvent>>,
+    doorbell: Arc<Mutex<Doorbell>>,
     kick_evt: EventAsync,
     wlstate: Rc<RefCell<wl::WlState>>,
 ) {
@@ -45,14 +45,14 @@ async fn run_out_queue(
             break;
         }
 
-        wl::process_out_queue(&call_evt, &mut queue, &mem, &mut wlstate.borrow_mut());
+        wl::process_out_queue(&doorbell, &mut queue, &mem, &mut wlstate.borrow_mut());
     }
 }
 
 async fn run_in_queue(
     mut queue: Queue,
     mem: GuestMemory,
-    call_evt: Arc<Mutex<CallEvent>>,
+    doorbell: Arc<Mutex<Doorbell>>,
     kick_evt: EventAsync,
     wlstate: Rc<RefCell<wl::WlState>>,
     wlstate_ctx: Box<dyn IoSourceExt<AsyncWrapper<SafeDescriptor>>>,
@@ -67,7 +67,7 @@ async fn run_in_queue(
         }
 
         if let Err(wl::DescriptorsExhausted) =
-            wl::process_in_queue(&call_evt, &mut queue, &mem, &mut wlstate.borrow_mut())
+            wl::process_in_queue(&doorbell, &mut queue, &mem, &mut wlstate.borrow_mut())
         {
             if let Err(e) = kick_evt.next_val().await {
                 error!("Failed to read kick event for in queue: {}", e);
@@ -117,7 +117,6 @@ impl VhostUserBackend for WlBackend {
     const MAX_QUEUE_NUM: usize = wl::QUEUE_SIZES.len();
     const MAX_VRING_LEN: u16 = wl::QUEUE_SIZE;
 
-    type Doorbell = CallEvent;
     type Error = anyhow::Error;
 
     fn features(&self) -> u64 {
@@ -169,7 +168,7 @@ impl VhostUserBackend for WlBackend {
         idx: usize,
         mut queue: Queue,
         mem: GuestMemory,
-        call_evt: Arc<Mutex<CallEvent>>,
+        doorbell: Arc<Mutex<Doorbell>>,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
@@ -223,14 +222,14 @@ impl VhostUserBackend for WlBackend {
                     })?;
 
                 ex.spawn_local(Abortable::new(
-                    run_in_queue(queue, mem, call_evt, kick_evt, wlstate, wlstate_ctx),
+                    run_in_queue(queue, mem, doorbell, kick_evt, wlstate, wlstate_ctx),
                     registration,
                 ))
                 .detach();
             }
             1 => {
                 ex.spawn_local(Abortable::new(
-                    run_out_queue(queue, mem, call_evt, kick_evt, wlstate),
+                    run_out_queue(queue, mem, doorbell, kick_evt, wlstate),
                     registration,
                 ))
                 .detach();
