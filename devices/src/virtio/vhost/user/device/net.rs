@@ -26,8 +26,9 @@ use crate::virtio::net::{
     build_config, process_ctrl, process_rx, process_tx, validate_and_configure_tap,
     virtio_features_to_tap_offload, NetError,
 };
-use crate::virtio::vhost::user::device::handler::{
-    DeviceRequestHandler, Doorbell, VhostUserBackend,
+use crate::virtio::vhost::user::device::{
+    handler::{DeviceRequestHandler, Doorbell, VhostUserBackend},
+    vvu::pci::VvuPciDevice,
 };
 
 thread_local! {
@@ -351,6 +352,55 @@ struct Options {
         arg_name = "SOCKET_PATH,TAP_FD"
     )]
     tap_fd: Vec<String>,
+    #[argh(
+        option,
+        description = "TAP device config for virtio-vhost-user. \
+                       (e.g. \"0000:00:07.0,10.0.2.2,255.255.255.0,12:34:56:78:9a:bc\")",
+        arg_name = "DEVICE,IP_ADDR,NET_MASK,MAC_ADDR"
+    )]
+    vvu_device: Vec<String>,
+    #[argh(
+        option,
+        description = "TAP FD with a vfio device name for virtio-vhost-user",
+        arg_name = "DEVICE,TAP_FD"
+    )]
+    vvu_tap_fd: Vec<String>,
+}
+
+enum Connection {
+    Socket(String),
+    Vfio(String),
+}
+
+fn new_backend_from_device_arg(arg: &str) -> anyhow::Result<(String, NetBackend)> {
+    let pos = match arg.find(',') {
+        Some(p) => p,
+        None => {
+            bail!("device must take comma-separated argument");
+        }
+    };
+    let conn = &arg[0..pos];
+    let cfg = &arg[pos + 1..]
+        .parse::<TapConfig>()
+        .context("failed to parse tap config")?;
+    let backend = NetBackend::new_from_config(cfg).context("failed to create NetBackend")?;
+    Ok((conn.to_string(), backend))
+}
+
+fn new_backend_from_tapfd_arg(arg: &str) -> anyhow::Result<(String, NetBackend)> {
+    let pos = match arg.find(',') {
+        Some(p) => p,
+        None => {
+            bail!("'tap-fd' flag must take comma-separated argument");
+        }
+    };
+    let conn = &arg[0..pos];
+    let tap_fd = &arg[pos + 1..]
+        .parse::<i32>()
+        .context("failed to parse tap-fd")?;
+    let backend = NetBackend::new_from_tap_fd(*tap_fd).context("failed to create NetBackend")?;
+
+    Ok((conn.to_string(), backend))
 }
 
 /// Starts a vhost-user net device.
@@ -374,51 +424,59 @@ pub fn run_net_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
         bail!("no device option was passed");
     }
 
-    let mut devices: Vec<(String, NetBackend)> = Vec::with_capacity(num_devices);
+    let mut devices: Vec<(Connection, NetBackend)> = Vec::with_capacity(num_devices);
 
+    // vhost-user
     for arg in opts.device.iter() {
-        let pos = match arg.find(',') {
-            Some(p) => p,
-            None => {
-                bail!("device must take comma-separated argument");
-            }
-        };
-        let socket = &arg[0..pos];
-        let cfg = &arg[pos + 1..]
-            .parse::<TapConfig>()
-            .context("failed to parse tap config")?;
-        let backend = NetBackend::new_from_config(cfg).context("failed to create NetBackend")?;
-        devices.push((socket.to_string(), backend));
+        devices.push(
+            new_backend_from_device_arg(arg)
+                .map(|(s, backend)| (Connection::Socket(s), backend))?,
+        );
+    }
+    for arg in opts.tap_fd.iter() {
+        devices.push(
+            new_backend_from_tapfd_arg(arg).map(|(s, backend)| (Connection::Socket(s), backend))?,
+        );
     }
 
-    for arg in opts.tap_fd.iter() {
-        let pos = match arg.find(',') {
-            Some(p) => p,
-            None => {
-                bail!("'tap-fd' flag must take comma-separated argument");
-            }
-        };
-        let socket = &arg[0..pos];
-        let tap_fd = &arg[pos + 1..]
-            .parse::<i32>()
-            .context("failed to parse tap-fd")?;
-        let backend =
-            NetBackend::new_from_tap_fd(*tap_fd).context("failed to create NetBackend")?;
-        devices.push((socket.to_string(), backend));
+    // virtio-vhost-user
+    for arg in opts.vvu_device.iter() {
+        devices.push(
+            new_backend_from_device_arg(arg).map(|(s, backend)| (Connection::Vfio(s), backend))?,
+        );
+    }
+    for arg in opts.vvu_tap_fd.iter() {
+        devices.push(
+            new_backend_from_tapfd_arg(arg).map(|(s, backend)| (Connection::Vfio(s), backend))?,
+        );
     }
 
     let mut threads = Vec::with_capacity(num_devices);
-    for (socket, backend) in devices {
-        let handler = DeviceRequestHandler::new(backend);
-        let ex = Executor::new().context("failed to create executor")?;
 
-        threads.push(thread::spawn(move || -> anyhow::Result<()> {
-            NET_EXECUTOR.with(|thread_ex| {
-                let _ = thread_ex.set(ex.clone());
-            });
-            // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-            ex.run_until(handler.run(&socket, &ex))?
-        }));
+    for (conn, backend) in devices {
+        match conn {
+            Connection::Socket(socket) => {
+                let ex = Executor::new().context("failed to create executor")?;
+                let handler = DeviceRequestHandler::new(backend);
+                threads.push(thread::spawn(move || {
+                    NET_EXECUTOR.with(|thread_ex| {
+                        let _ = thread_ex.set(ex.clone());
+                    });
+                    ex.run_until(handler.run(&socket, &ex))?
+                }));
+            }
+            Connection::Vfio(device_name) => {
+                let device = VvuPciDevice::new(device_name.as_str(), NetBackend::MAX_QUEUE_NUM)?;
+                let handler = DeviceRequestHandler::new(backend);
+                let ex = Executor::new().context("failed to create executor")?;
+                threads.push(thread::spawn(move || {
+                    NET_EXECUTOR.with(|thread_ex| {
+                        let _ = thread_ex.set(ex.clone());
+                    });
+                    ex.run_until(handler.run_vvu(device, &ex))?
+                }));
+            }
+        };
     }
 
     for t in threads {
