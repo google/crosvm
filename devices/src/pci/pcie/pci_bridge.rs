@@ -21,7 +21,7 @@ use crate::pci::pcie::pcie_device::PcieDevice;
 const BR_MSIX_TABLE_OFFSET: u64 = 0x0;
 const BR_MSIX_PBA_OFFSET: u64 = 0x100;
 const PCI_BRIDGE_BAR_SIZE: u64 = 0x1000;
-const BR_BUS_NUMBER_REG: usize = 0x6;
+pub const BR_BUS_NUMBER_REG: usize = 0x6;
 const BR_MEM_REG: usize = 0x8;
 const BR_PREF_MEM_LOW_REG: usize = 0x9;
 const BR_PREF_MEM_BASE_HIGH_REG: usize = 0xa;
