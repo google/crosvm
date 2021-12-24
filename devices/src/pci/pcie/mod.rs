@@ -74,4 +74,12 @@ const PMC_CAP_VERSION: u16 = 0x2;
 const PMC_PME_STATUS: u16 = 0x8000;
 const PMC_PME_ENABLE: u16 = 0x100;
 const PMC_POWER_STATE_MASK: u16 = 0x3;
+const PMC_POWER_STATE_D0: u16 = 0;
 const PMC_POWER_STATE_D3: u16 = 0x3;
+
+#[derive(PartialEq)]
+pub enum PciDevicePower {
+    D0 = 0,
+    D3 = 3,
+    Unsupported = 0xFF,
+}

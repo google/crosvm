@@ -255,4 +255,13 @@ impl PmcConfig {
 
         false
     }
+
+    /// Get device power status
+    pub fn get_power_status(&self) -> PciDevicePower {
+        match self.power_control_status & PMC_POWER_STATE_MASK {
+            PMC_POWER_STATE_D0 => PciDevicePower::D0,
+            PMC_POWER_STATE_D3 => PciDevicePower::D3,
+            _ => PciDevicePower::Unsupported,
+        }
+    }
 }

@@ -729,7 +729,8 @@ fn create_pcie_root_port(
         // user specify host pcie root port which link to this virtual pcie rp,
         // reserve the host pci BDF and create a virtual pcie RP with some attrs same as host
         for pcie_sysfs in host_pcie_rp.iter() {
-            let pcie_host = PcieHostRootPort::new(pcie_sysfs.as_path())?;
+            let (vm_host_tube, vm_device_tube) = Tube::pair().context("failed to create tube")?;
+            let pcie_host = PcieHostRootPort::new(pcie_sysfs.as_path(), vm_device_tube)?;
             let bus_range = pcie_host.get_bus_range();
             let mut slot_implemented = true;
             for i in bus_range.secondary..=bus_range.subordinate {
@@ -745,6 +746,7 @@ fn create_pcie_root_port(
                 pcie_host,
                 slot_implemented,
             )?));
+            control_tubes.push(TaggedControlTube::Vm(vm_host_tube));
 
             let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
             control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));

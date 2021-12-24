@@ -2,13 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::{File, OpenOptions};
+use std::fs::{read, write, File, OpenOptions};
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::thread;
 
-use anyhow::{anyhow, Context, Result};
-use base::error;
+use anyhow::{anyhow, bail, Context, Result};
+use base::{error, Tube};
 use data_model::DataInit;
+use sync::Mutex;
+use vm_control::{VmRequest, VmResponse};
 
 use crate::pci::{PciCapabilityID, PciClassCode};
 
@@ -78,6 +82,127 @@ impl PciHostConfig {
     }
 }
 
+// Find the added pcie endpoint device
+fn visit_children(dir: &Path) -> Result<PathBuf> {
+    // Each pci device has a sysfs directory
+    if !dir.is_dir() {
+        bail!("{} isn't directory", dir.display());
+    }
+
+    let class_path = dir.join("class");
+    let class_id = read(class_path.as_path())
+        .with_context(|| format!("failed to read {}", class_path.display()))?;
+    // If the device isn't pci bridge, it is the target pcie endpoint device
+    if !class_id.starts_with("0x0604".as_bytes()) {
+        return Ok(dir.to_path_buf());
+    }
+
+    // Loop device sysfs subdirectory
+    let entries = dir
+        .read_dir()
+        .with_context(|| format!("failed to read dir {}", dir.display()))?;
+    for entry in entries {
+        let sub_dir = match entry {
+            Ok(sub) => sub,
+            _ => continue,
+        };
+
+        if !sub_dir.path().is_dir() {
+            continue;
+        }
+
+        let name = sub_dir
+            .file_name()
+            .into_string()
+            .map_err(|_| anyhow!("failed to get dir name"))?;
+        // Child pci device has name format 0000:xx:xx.x, length is 12
+        if name.len() != 12 || !name.starts_with("0000:") {
+            continue;
+        }
+        let child_path = dir.join(name);
+        match visit_children(child_path.as_path()) {
+            Ok(child) => return Ok(child),
+            Err(_) => continue,
+        }
+    }
+    Err(anyhow!(
+        "pcie child endpoint device isn't exist in {}",
+        dir.display()
+    ))
+}
+
+struct HotplugWorker {
+    host_name: String,
+}
+
+impl HotplugWorker {
+    fn run(&self, vm_socket: Arc<Mutex<Tube>>, child_exist: Arc<Mutex<bool>>) -> Result<()> {
+        let mut host_sysfs = PathBuf::new();
+        host_sysfs.push("/sys/bus/pci/devices/");
+        host_sysfs.push(self.host_name.clone());
+        let rescan_path = host_sysfs.join("rescan");
+        // Let pcie root port rescan to find the added or removed children devices
+        write(rescan_path.as_path(), "1")
+            .with_context(|| format!("failed to write {}", rescan_path.display()))?;
+
+        // If child device existed, but code run here again, this means host has a
+        // hotplug out event, after the above rescan, host should find the removed
+        // child device, and host vfio-pci kernel driver should notify crosvm vfio-pci
+        // devie such hotplug out event, so nothing is needed to do here, just return
+        // it now.
+        let mut child_exist = child_exist.lock();
+        if *child_exist {
+            return Ok(());
+        }
+
+        // Probe the new added pcied endpoint device
+        let child = visit_children(host_sysfs.as_path())?;
+
+        // In order to bind device to vfio-pci driver, get device VID and DID
+        let vendor_path = child.join("vendor");
+        let vendor_id = read(vendor_path.as_path())
+            .with_context(|| format!("failed to read {}", vendor_path.display()))?;
+        // Remove the first two elements 0x
+        let prefix: &str = "0x";
+        let vendor = match vendor_id.strip_prefix(prefix.as_bytes()) {
+            Some(v) => v.to_vec(),
+            None => vendor_id,
+        };
+        let device_path = child.join("device");
+        let device_id = read(device_path.as_path())
+            .with_context(|| format!("failed to read {}", device_path.display()))?;
+        // Remove the first two elements 0x
+        let device = match device_id.strip_prefix(prefix.as_bytes()) {
+            Some(d) => d.to_vec(),
+            None => device_id,
+        };
+        let new_id = vec![
+            String::from_utf8_lossy(&vendor),
+            String::from_utf8_lossy(&device),
+        ]
+        .join(" ");
+        write("/sys/bus/pci/drivers/vfio-pci/new_id", &new_id)
+            .with_context(|| format!("failed to write {} into vfio-pci/new_id", new_id))?;
+
+        // Request to hotplug the new added pcie device into guest
+        let request = VmRequest::VfioCommand {
+            vfio_path: child.clone(),
+            add: true,
+        };
+        vm_socket
+            .lock()
+            .send(&request)
+            .with_context(|| format!("failed to send hotplug request for {}", child.display()))?;
+        vm_socket.lock().recv::<VmResponse>().with_context(|| {
+            format!("failed to receive hotplug response for {}", child.display())
+        })?;
+
+        *child_exist = true;
+
+        Ok(())
+    }
+}
+
 const PCI_CONFIG_DEVICE_ID: u64 = 0x02;
 const PCI_BASE_CLASS_CODE: u64 = 0x0B;
 const PCI_SUB_CLASS_CODE: u64 = 0x0A;
@@ -86,12 +211,15 @@ const PCI_SUB_CLASS_CODE: u64 = 0x0A;
 pub struct PcieHostRootPort {
     host_config: PciHostConfig,
     host_name: String,
+    hotplug_in_process: Arc<Mutex<bool>>,
+    hotplug_child_exist: Arc<Mutex<bool>>,
+    vm_socket: Arc<Mutex<Tube>>,
 }
 
 impl PcieHostRootPort {
     /// Create PcieHostRootPort, host_syfsfs_patch specify host pcie root port
     /// sysfs path.
-    pub fn new(host_sysfs_path: &Path) -> Result<Self> {
+    pub fn new(host_sysfs_path: &Path, socket: Tube) -> Result<Self> {
         let host_config = PciHostConfig::new(host_sysfs_path)?;
         let host_name = host_sysfs_path
             .file_name()
@@ -135,6 +263,9 @@ impl PcieHostRootPort {
         Ok(PcieHostRootPort {
             host_config,
             host_name,
+            hotplug_in_process: Arc::new(Mutex::new(false)),
+            hotplug_child_exist: Arc::new(Mutex::new(false)),
+            vm_socket: Arc::new(Mutex::new(socket)),
         })
     }
 
@@ -200,5 +331,29 @@ impl PcieHostRootPort {
         };
 
         (mem_size, pref_mem_size)
+    }
+
+    pub fn hotplug_probe(&mut self) {
+        if *self.hotplug_in_process.lock() {
+            return;
+        }
+
+        let hotplug_process = self.hotplug_in_process.clone();
+        let child_exist = self.hotplug_child_exist.clone();
+        let socket = self.vm_socket.clone();
+        let name = self.host_name.clone();
+        let _ = thread::Builder::new()
+            .name("pcie_hotplug".to_string())
+            .spawn(move || {
+                let mut hotplug = hotplug_process.lock();
+                *hotplug = true;
+                let hotplug_worker = HotplugWorker { host_name: name };
+                let _ = hotplug_worker.run(socket, child_exist);
+                *hotplug = false;
+            });
+    }
+
+    pub fn hot_unplug(&mut self) {
+        *self.hotplug_child_exist.lock() = false;
     }
 }

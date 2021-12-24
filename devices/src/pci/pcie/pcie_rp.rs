@@ -41,6 +41,7 @@ pub struct PcieRootPort {
     downstream_device: Option<(PciAddress, Option<HostHotPlugKey>)>,
     removed_downstream: Option<PciAddress>,
     pcie_host: Option<PcieHostRootPort>,
+    prepare_hotplug: bool,
 }
 
 impl PcieRootPort {
@@ -71,6 +72,7 @@ impl PcieRootPort {
             downstream_device: None,
             removed_downstream: None,
             pcie_host: None,
+            prepare_hotplug: false,
         }
     }
 
@@ -105,6 +107,7 @@ impl PcieRootPort {
             downstream_device: None,
             removed_downstream: None,
             pcie_host: Some(pcie_host),
+            prepare_hotplug: false,
         })
     }
 
@@ -387,7 +390,18 @@ impl PcieDevice for PcieRootPort {
         }
         if let Some(pmc_cap_reg_idx) = self.pmc_cap_reg_idx {
             if reg_idx == pmc_cap_reg_idx + PMC_CAP_CONTROL_STATE_OFFSET {
+                let old_status = self.pmc_config.get_power_status();
                 self.pmc_config.write(offset, data);
+                let new_status = self.pmc_config.get_power_status();
+                if old_status == PciDevicePower::D3
+                    && new_status == PciDevicePower::D0
+                    && self.prepare_hotplug
+                {
+                    if let Some(host) = self.pcie_host.as_mut() {
+                        host.hotplug_probe();
+                        self.prepare_hotplug = false;
+                    }
+                }
             }
         }
         if let Some(host) = self.pcie_host.as_mut() {
@@ -449,6 +463,10 @@ impl HotPlugBus for PcieRootPort {
 
         self.slot_status = self.slot_status | PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP;
         self.trigger_hp_or_pme_interrupt();
+
+        if let Some(host) = self.pcie_host.as_mut() {
+            host.hot_unplug();
+        }
     }
 
     fn is_match(&self, host_addr: PciAddress) -> Option<u8> {
@@ -497,6 +515,10 @@ impl GpeNotify for PcieRootPort {
     fn notify(&mut self) {
         if self.slot_control.is_none() {
             return;
+        }
+
+        if self.pcie_host.is_some() {
+            self.prepare_hotplug = true;
         }
 
         if self.pmc_config.should_trigger_pme() {
