@@ -33,6 +33,10 @@ pub struct PcieRootPort {
     pci_address: Option<PciAddress>,
     slot_control: u16,
     slot_status: u16,
+    root_control: u16,
+    root_status: u32,
+    hp_interrupt_pending: bool,
+    pme_pending_request_id: Option<PciAddress>,
     bus_range: PciBridgeBusRange,
     downstream_device: Option<(PciAddress, Option<HostHotPlugKey>)>,
     removed_downstream: Option<PciAddress>,
@@ -55,6 +59,10 @@ impl PcieRootPort {
             pci_address: None,
             slot_control: PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF,
             slot_status: 0,
+            root_control: 0,
+            root_status: 0,
+            hp_interrupt_pending: false,
+            pme_pending_request_id: None,
             bus_range,
             downstream_device: None,
             removed_downstream: None,
@@ -84,6 +92,10 @@ impl PcieRootPort {
             pci_address: None,
             slot_control: PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF,
             slot_status: 0,
+            root_control: 0,
+            root_status: 0,
+            hp_interrupt_pending: false,
+            pme_pending_request_id: None,
             bus_range,
             downstream_device: None,
             removed_downstream: None,
@@ -94,6 +106,10 @@ impl PcieRootPort {
     fn read_pcie_cap(&self, offset: usize, data: &mut u32) {
         if offset == PCIE_SLTCTL_OFFSET {
             *data = ((self.slot_status as u32) << 16) | (self.slot_control as u32);
+        } else if offset == PCIE_ROOTCTL_OFFSET {
+            *data = self.root_control as u32;
+        } else if offset == PCIE_ROOTSTA_OFFSET {
+            *data = self.root_status;
         }
     }
 
@@ -152,6 +168,34 @@ impl PcieRootPort {
                     self.slot_status &= !PCIE_SLTSTA_DLLSC;
                 }
             }
+            PCIE_ROOTCTL_OFFSET => match u16::from_slice(data) {
+                Some(v) => self.root_control = *v,
+                None => warn!("write root control isn't word, len: {}", data.len()),
+            },
+            PCIE_ROOTSTA_OFFSET => match u32::from_slice(data) {
+                Some(v) => {
+                    if *v & PCIE_ROOTSTA_PME_STATUS != 0 {
+                        if let Some(request_id) = self.pme_pending_request_id {
+                            self.root_status &= !PCIE_ROOTSTA_PME_PENDING;
+                            let req_id = ((request_id.bus as u32) << 8)
+                                | ((request_id.dev as u32) << 3)
+                                | (request_id.func as u32);
+                            self.root_status &= !PCIE_ROOTSTA_PME_REQ_ID_MASK;
+                            self.root_status |= req_id;
+                            self.root_status |= PCIE_ROOTSTA_PME_STATUS;
+                            self.pme_pending_request_id = None;
+                            self.trigger_pme_interrupt();
+                        } else {
+                            self.root_status &= !PCIE_ROOTSTA_PME_STATUS;
+                            if self.hp_interrupt_pending {
+                                self.hp_interrupt_pending = false;
+                                self.trigger_hp_interrupt();
+                            }
+                        }
+                    }
+                }
+                None => warn!("write root status isn't dword, len: {}", data.len()),
+            },
             _ => (),
         }
     }
@@ -176,6 +220,38 @@ impl PcieRootPort {
             && (self.slot_status & self.slot_control & (PCIE_SLTCTL_ABPE | PCIE_SLTCTL_PDCE)) != 0
         {
             self.trigger_interrupt()
+        }
+    }
+
+    fn trigger_pme_interrupt(&self) {
+        if (self.root_control & PCIE_ROOTCTL_PME_ENABLE) != 0
+            && (self.root_status & PCIE_ROOTSTA_PME_STATUS) != 0
+        {
+            self.trigger_interrupt()
+        }
+    }
+
+    // when RP is D3, HP interrupt is disabled by pcie driver, so inject a PME to wakeup
+    // RP first, then inject HP interrupt.
+    fn trigger_hp_or_pme_interrupt(&mut self) {
+        if self.pmc_config.should_trigger_pme() {
+            self.hp_interrupt_pending = true;
+            if (self.root_status & PCIE_ROOTSTA_PME_STATUS) != 0 {
+                self.root_status |= PCIE_ROOTSTA_PME_PENDING;
+                self.pme_pending_request_id = self.pci_address;
+            } else {
+                let request_id = self.pci_address.unwrap();
+                let req_id = ((request_id.bus as u32) << 8)
+                    | ((request_id.dev as u32) << 3)
+                    | (request_id.func as u32);
+                self.root_status &= !PCIE_ROOTSTA_PME_REQ_ID_MASK;
+                self.root_status |= req_id;
+                self.pme_pending_request_id = None;
+                self.root_status |= PCIE_ROOTSTA_PME_STATUS;
+                self.trigger_pme_interrupt();
+            }
+        } else {
+            self.trigger_hp_interrupt();
         }
     }
 }
@@ -320,7 +396,7 @@ impl HotPlugBus for PcieRootPort {
         }
 
         self.slot_status = self.slot_status | PCIE_SLTSTA_PDS | PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP;
-        self.trigger_hp_interrupt();
+        self.trigger_hp_or_pme_interrupt();
     }
 
     fn hot_unplug(&mut self, addr: PciAddress) {
@@ -334,7 +410,7 @@ impl HotPlugBus for PcieRootPort {
         }
 
         self.slot_status = self.slot_status | PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP;
-        self.trigger_hp_interrupt();
+        self.trigger_hp_or_pme_interrupt();
     }
 
     fn is_match(&self, host_addr: PciAddress) -> Option<u8> {

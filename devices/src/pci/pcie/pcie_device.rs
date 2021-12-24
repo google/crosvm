@@ -173,7 +173,10 @@ impl PciCapability for PciPmcCap {
 
 impl PciPmcCap {
     pub fn new() -> Self {
-        let pmc_cap: u16 = PMC_CAP_VERSION;
+        let pmc_cap: u16 = PMC_CAP_PME_SUPPORT_D0
+            | PMC_CAP_PME_SUPPORT_D3_HOT
+            | PMC_CAP_PME_SUPPORT_D3_COLD
+            | PMC_CAP_VERSION;
         PciPmcCap {
             _cap_vndr: 0,
             _cap_next: 0,
@@ -208,5 +211,40 @@ impl PmcConfig {
             self.power_control_status &= !PMC_POWER_STATE_MASK;
             self.power_control_status |= data[0] as u16 & PMC_POWER_STATE_MASK;
         }
+
+        let write_data = if offset == 0 && (data.len() == 2 || data.len() == 4) {
+            Some((data[1] as u16) << 8)
+        } else if offset == 1 && data.len() == 1 {
+            Some((data[0] as u16) << 8)
+        } else {
+            None
+        };
+
+        if let Some(write_data) = write_data {
+            if write_data & PMC_PME_STATUS != 0 {
+                // clear PME_STATUS
+                self.power_control_status &= !PMC_PME_STATUS;
+            }
+
+            if write_data & PMC_PME_ENABLE != 0 {
+                self.power_control_status |= PMC_PME_ENABLE;
+            } else {
+                self.power_control_status &= !PMC_PME_ENABLE;
+            }
+        }
+    }
+
+    /// If device is in D3 and PME is enabled, set PME status, then device could
+    /// inject a pme interrupt into guest
+    pub fn should_trigger_pme(&mut self) -> bool {
+        if self.power_control_status & PMC_POWER_STATE_MASK == PMC_POWER_STATE_D3
+            && self.power_control_status & PMC_PME_ENABLE != 0
+        {
+            self.power_control_status |= PMC_PME_STATUS;
+
+            return true;
+        }
+
+        false
     }
 }
