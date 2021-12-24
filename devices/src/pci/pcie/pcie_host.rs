@@ -15,7 +15,13 @@ use crate::pci::{PciCapabilityID, PciClassCode};
 use crate::pci::pci_configuration::{
     PciBridgeSubclass, CAPABILITY_LIST_HEAD_OFFSET, PCI_CAP_NEXT_POINTER,
 };
-use crate::pci::pcie::pci_bridge::{PciBridgeBusRange, BR_BUS_NUMBER_REG};
+
+use crate::pci::pcie::pci_bridge::{
+    PciBridgeBusRange, BR_BUS_NUMBER_REG, BR_MEM_BASE_MASK, BR_MEM_BASE_SHIFT, BR_MEM_LIMIT_MASK,
+    BR_MEM_MINIMUM, BR_MEM_REG, BR_PREF_MEM_64BIT, BR_PREF_MEM_BASE_HIGH_REG,
+    BR_PREF_MEM_LIMIT_HIGH_REG, BR_PREF_MEM_LOW_REG, BR_WINDOW_ALIGNMENT,
+};
+
 use crate::pci::pcie::*;
 
 // Host Pci device's sysfs config file
@@ -159,4 +165,38 @@ impl PcieHostRootPort {
     }
 
     pub fn write_config(&mut self, _reg_idx: usize, _offset: u64, _data: &[u8]) {}
+
+    pub fn get_bridge_window_size(&self) -> (u64, u64) {
+        let br_memory: u32 = self.host_config.read_config(BR_MEM_REG as u64 * 4);
+        let mem_base = (br_memory & BR_MEM_BASE_MASK) << BR_MEM_BASE_SHIFT;
+        let mem_limit = br_memory & BR_MEM_LIMIT_MASK;
+        let mem_size = if mem_limit > mem_base {
+            (mem_limit - mem_base) as u64 + BR_WINDOW_ALIGNMENT
+        } else {
+            BR_MEM_MINIMUM
+        };
+        let br_pref_mem_low: u32 = self.host_config.read_config(BR_PREF_MEM_LOW_REG as u64 * 4);
+        let pref_mem_base_low = (br_pref_mem_low & BR_MEM_BASE_MASK) << BR_MEM_BASE_SHIFT;
+        let pref_mem_limit_low = br_pref_mem_low & BR_MEM_LIMIT_MASK;
+        let mut pref_mem_base: u64 = pref_mem_base_low as u64;
+        let mut pref_mem_limit: u64 = pref_mem_limit_low as u64;
+        if br_pref_mem_low & BR_PREF_MEM_64BIT == BR_PREF_MEM_64BIT {
+            // 64bit prefetch memory
+            let pref_mem_base_high: u32 = self
+                .host_config
+                .read_config(BR_PREF_MEM_BASE_HIGH_REG as u64 * 4);
+            let pref_mem_limit_high: u32 = self
+                .host_config
+                .read_config(BR_PREF_MEM_LIMIT_HIGH_REG as u64 * 4);
+            pref_mem_base = ((pref_mem_base_high as u64) << 32) | (pref_mem_base_low as u64);
+            pref_mem_limit = ((pref_mem_limit_high as u64) << 32) | (pref_mem_limit_low as u64);
+        }
+        let pref_mem_size = if pref_mem_limit > pref_mem_base {
+            pref_mem_limit - pref_mem_base + BR_WINDOW_ALIGNMENT
+        } else {
+            BR_MEM_MINIMUM
+        };
+
+        (mem_size, pref_mem_size)
+    }
 }

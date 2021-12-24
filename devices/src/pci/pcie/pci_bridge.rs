@@ -22,12 +22,20 @@ const BR_MSIX_TABLE_OFFSET: u64 = 0x0;
 const BR_MSIX_PBA_OFFSET: u64 = 0x100;
 const PCI_BRIDGE_BAR_SIZE: u64 = 0x1000;
 pub const BR_BUS_NUMBER_REG: usize = 0x6;
-const BR_MEM_REG: usize = 0x8;
-const BR_PREF_MEM_LOW_REG: usize = 0x9;
-const BR_PREF_MEM_BASE_HIGH_REG: usize = 0xa;
-const BR_PREF_MEM_LIMIT_HIGH_REG: usize = 0xb;
-const BR_WINDOW_ALIGNMENT: u64 = 0x100000;
-const BR_PREF_MEM_64BIT: u32 = 0x001_0001;
+pub const BR_MEM_REG: usize = 0x8;
+// bit[15:4] is memory base[31:20] and alignment to 1MB
+pub const BR_MEM_BASE_MASK: u32 = 0xFFF0;
+pub const BR_MEM_BASE_SHIFT: u32 = 16;
+// bit[31:20] is memory limit[31:20] and alignment to 1MB
+pub const BR_MEM_LIMIT_MASK: u32 = 0xFFF0_0000;
+pub const BR_PREF_MEM_LOW_REG: usize = 0x9;
+// bit[0] and bit[16] is 64bit memory flag
+pub const BR_PREF_MEM_64BIT: u32 = 0x001_0001;
+pub const BR_PREF_MEM_BASE_HIGH_REG: usize = 0xa;
+pub const BR_PREF_MEM_LIMIT_HIGH_REG: usize = 0xb;
+pub const BR_WINDOW_ALIGNMENT: u64 = 0x10_0000;
+// Kernel allocate at least 2MB mmio for each bridge memory window
+pub const BR_MEM_MINIMUM: u64 = 0x20_0000;
 
 /// Holds the bus range for a pci bridge
 ///
@@ -108,7 +116,7 @@ impl PciBridge {
         {
             // the top of memory will be one less thn a 1MB bodundary
             let limit = window_base + window_size - BR_WINDOW_ALIGNMENT as u32;
-            let value = (window_base >> 16) | limit;
+            let value = (window_base >> BR_MEM_BASE_SHIFT) | limit;
             self.write_config_register(BR_MEM_REG, 0, &value.to_le_bytes());
         }
         // both pref_window_base and pref_window_size should be alighed to 1M
@@ -118,7 +126,9 @@ impl PciBridge {
         {
             // the top of memory will be one less thn a 1MB bodundary
             let limit = pref_window_base + pref_window_size - BR_WINDOW_ALIGNMENT;
-            let low_value = ((pref_window_base as u32) >> 16) | (limit as u32) | BR_PREF_MEM_64BIT;
+            let low_value = ((pref_window_base as u32) >> BR_MEM_BASE_SHIFT)
+                | (limit as u32)
+                | BR_PREF_MEM_64BIT;
             self.write_config_register(BR_PREF_MEM_LOW_REG, 0, &low_value.to_le_bytes());
             let high_base_value = (pref_window_base >> 32) as u32;
             self.write_config_register(

@@ -283,7 +283,11 @@ impl PcieDevice for PcieRootPort {
     }
 
     fn get_bridge_window_size(&self) -> (u64, u64) {
-        (PCIE_RP_BR_MEM_SIZE, PCIE_RP_BR_PREF_MEM_SIZE)
+        if let Some(host) = &self.pcie_host {
+            host.get_bridge_window_size()
+        } else {
+            (PCIE_RP_BR_MEM_SIZE, PCIE_RP_BR_PREF_MEM_SIZE)
+        }
     }
 }
 
