@@ -107,6 +107,11 @@ impl Default for VmRunMode {
     }
 }
 
+// Trait for devices that get notification on specific GPE trigger
+pub trait GpeNotify: Send {
+    fn notify(&mut self) {}
+}
+
 pub trait PmResource {
     fn pwrbtn_evt(&mut self) {}
     fn gpe_evt(&mut self, _gpe: u32) {}

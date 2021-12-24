@@ -17,6 +17,7 @@ use anyhow::{anyhow, Result};
 use base::warn;
 use data_model::DataInit;
 use resources::{Alloc, SystemAllocator};
+use vm_control::GpeNotify;
 
 // reserve 8MB memory window
 const PCIE_RP_BR_MEM_SIZE: u64 = 0x80_0000;
@@ -255,25 +256,29 @@ impl PcieRootPort {
         }
     }
 
+    fn inject_pme(&mut self) {
+        if (self.root_status & PCIE_ROOTSTA_PME_STATUS) != 0 {
+            self.root_status |= PCIE_ROOTSTA_PME_PENDING;
+            self.pme_pending_request_id = self.pci_address;
+        } else {
+            let request_id = self.pci_address.unwrap();
+            let req_id = ((request_id.bus as u32) << 8)
+                | ((request_id.dev as u32) << 3)
+                | (request_id.func as u32);
+            self.root_status &= !PCIE_ROOTSTA_PME_REQ_ID_MASK;
+            self.root_status |= req_id;
+            self.pme_pending_request_id = None;
+            self.root_status |= PCIE_ROOTSTA_PME_STATUS;
+            self.trigger_pme_interrupt();
+        }
+    }
+
     // when RP is D3, HP interrupt is disabled by pcie driver, so inject a PME to wakeup
     // RP first, then inject HP interrupt.
     fn trigger_hp_or_pme_interrupt(&mut self) {
         if self.pmc_config.should_trigger_pme() {
             self.hp_interrupt_pending = true;
-            if (self.root_status & PCIE_ROOTSTA_PME_STATUS) != 0 {
-                self.root_status |= PCIE_ROOTSTA_PME_PENDING;
-                self.pme_pending_request_id = self.pci_address;
-            } else {
-                let request_id = self.pci_address.unwrap();
-                let req_id = ((request_id.bus as u32) << 8)
-                    | ((request_id.dev as u32) << 3)
-                    | (request_id.func as u32);
-                self.root_status &= !PCIE_ROOTSTA_PME_REQ_ID_MASK;
-                self.root_status |= req_id;
-                self.pme_pending_request_id = None;
-                self.root_status |= PCIE_ROOTSTA_PME_STATUS;
-                self.trigger_pme_interrupt();
-            }
+            self.inject_pme();
         } else {
             self.trigger_hp_interrupt();
         }
@@ -485,5 +490,17 @@ impl HotPlugBus for PcieRootPort {
         }
 
         None
+    }
+}
+
+impl GpeNotify for PcieRootPort {
+    fn notify(&mut self) {
+        if self.slot_control.is_none() {
+            return;
+        }
+
+        if self.pmc_config.should_trigger_pme() {
+            self.inject_pme();
+        }
     }
 }
