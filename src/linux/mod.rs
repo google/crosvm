@@ -13,7 +13,7 @@ use std::mem;
 #[cfg(feature = "gpu")]
 use std::os::unix::net::UnixStream;
 use std::os::unix::prelude::OpenOptionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Barrier};
 use std::time::Duration;
 
@@ -672,6 +672,53 @@ fn create_file_backed_mappings(
     Ok(())
 }
 
+fn create_pcie_root_port(
+    host_pcie_rp: Vec<PathBuf>,
+    sys_allocator: &mut SystemAllocator,
+    control_tubes: &mut Vec<TaggedControlTube>,
+    devices: &mut Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
+    hp_vec: &mut Vec<Arc<Mutex<dyn HotPlugBus>>>,
+) -> Result<()> {
+    if host_pcie_rp.is_empty() {
+        // user doesn't specify host pcie root port which link to this virtual pcie rp,
+        // find the empty bus and create a total virtual pcie rp
+        let sec_bus = (1..255)
+            .find(|&bus_num| sys_allocator.pci_bus_empty(bus_num))
+            .context("failed to find empty bus for Pci hotplug")?;
+        let pcie_root_port = Arc::new(Mutex::new(PcieRootPort::new(sec_bus)));
+        let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
+        control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+        let pci_bridge = Box::new(PciBridge::new(pcie_root_port.clone(), msi_device_tube));
+
+        devices.push((pci_bridge, None));
+        hp_vec.push(pcie_root_port as Arc<Mutex<dyn HotPlugBus>>);
+    } else {
+        // user specify host pcie root port which link to this virtual pcie rp,
+        // reserve the host pci BDF and create a virtual pcie RP with some attrs same as host
+        for pcie_sysfs in host_pcie_rp.iter() {
+            let pcie_host = PcieRootPort::new_from_host(pcie_sysfs.as_path())?;
+            let pcie_root_port = Arc::new(Mutex::new(pcie_host));
+
+            let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
+            control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+            let mut pci_bridge = Box::new(PciBridge::new(pcie_root_port.clone(), msi_device_tube));
+            // early reservation for host pcie root port devices.
+            let rootport_addr = pci_bridge.allocate_address(sys_allocator);
+            if rootport_addr.is_err() {
+                warn!(
+                    "address reservation failed for hot pcie root port {}",
+                    pci_bridge.debug_label()
+                );
+            }
+
+            devices.push((pci_bridge, None));
+            hp_vec.push(pcie_root_port as Arc<Mutex<dyn HotPlugBus>>);
+        }
+    }
+
+    Ok(())
+}
+
 fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     let initrd_image = if let Some(initrd_path) = &cfg.initrd_path {
         Some(
@@ -1053,6 +1100,24 @@ where
         &mut vvu_proxy_device_tubes,
     )?;
 
+    let mut hotplug_buses: Vec<Arc<Mutex<dyn HotPlugBus>>> = Vec::new();
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        #[cfg(feature = "direct")]
+        let rp_host = cfg.pcie_rp.clone();
+        #[cfg(not(feature = "direct"))]
+        let rp_host: Vec<PathBuf> = Vec::new();
+
+        // Create Pcie Root Port
+        create_pcie_root_port(
+            rp_host,
+            &mut sys_allocator,
+            &mut control_tubes,
+            &mut devices,
+            &mut hotplug_buses,
+        )?;
+    }
+
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     for device in devices
         .iter_mut()
@@ -1090,17 +1155,9 @@ where
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
-        // Create Pcie Root Port
-        let sec_bus = (1..255)
-            .find(|&bus_num| sys_allocator.pci_bus_empty(bus_num))
-            .context("failed to find empty bus for Pci hotplug")?;
-        let pcie_root_port = Arc::new(Mutex::new(PcieRootPort::new(sec_bus)));
-        let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-        control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
-        let pci_bridge = Box::new(PciBridge::new(pcie_root_port.clone(), msi_device_tube));
-        Arch::register_pci_device(&mut linux, pci_bridge, None, &mut sys_allocator)
-            .context("Failed to configure pci bridge device")?;
-        linux.hotplug_bus.push(pcie_root_port);
+        for hotplug_bus in hotplug_buses.iter() {
+            linux.hotplug_bus.push(hotplug_bus.clone());
+        }
     }
 
     #[cfg(feature = "direct")]

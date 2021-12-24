@@ -433,6 +433,8 @@ pub struct Config {
     pub coiommu_param: Option<devices::CoIommuParameters>,
     pub file_backed_mappings: Vec<FileBackedMappingParameters>,
     pub init_memory: Option<u64>,
+    #[cfg(feature = "direct")]
+    pub pcie_rp: Vec<PathBuf>,
 }
 
 impl Default for Config {
@@ -541,6 +543,8 @@ impl Default for Config {
             coiommu_param: None,
             file_backed_mappings: Vec::new(),
             init_memory: None,
+            #[cfg(feature = "direct")]
+            pcie_rp: Vec::new(),
         }
     }
 }

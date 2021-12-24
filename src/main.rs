@@ -2332,6 +2332,24 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         })?,
                 )
         }
+        #[cfg(feature = "direct")]
+        "pcie-root-port" => {
+            let pcie_path = PathBuf::from(value.unwrap());
+            if !pcie_path.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("the pcie root port path does not exist"),
+                });
+            }
+            if !pcie_path.is_dir() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("the pcie root port path should be directory"),
+                });
+            }
+
+            cfg.pcie_rp.push(pcie_path);
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -2705,6 +2723,8 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                               rw - make the mapping writable
                               sync - open backing file with O_SYNC
                               align - whether to adjust addr and size to page boundaries implicitly"),
+          #[cfg(feature = "direct")]
+          Argument::value("pcie-root-port", "PATH", "Path to sysfs of host pcie root port"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
