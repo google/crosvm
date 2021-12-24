@@ -10,7 +10,7 @@ use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::{MsixConfig, PciAddress, PciCapability, PciDeviceError};
 
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
-use crate::pci::pcie::pcie_device::{PcieCap, PcieDevice};
+use crate::pci::pcie::pcie_device::{PciPmcCap, PcieCap, PcieDevice, PmcConfig};
 use crate::pci::pcie::pcie_host::PcieHostRootPort;
 use crate::pci::pcie::*;
 
@@ -28,6 +28,8 @@ const PCIE_RP_DID: u16 = 0x3420;
 pub struct PcieRootPort {
     pcie_cap_reg_idx: Option<usize>,
     msix_config: Option<Arc<Mutex<MsixConfig>>>,
+    pmc_config: PmcConfig,
+    pmc_cap_reg_idx: Option<usize>,
     pci_address: Option<PciAddress>,
     slot_control: u16,
     slot_status: u16,
@@ -48,6 +50,8 @@ impl PcieRootPort {
         PcieRootPort {
             pcie_cap_reg_idx: None,
             msix_config: None,
+            pmc_config: PmcConfig::new(),
+            pmc_cap_reg_idx: None,
             pci_address: None,
             slot_control: PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF,
             slot_status: 0,
@@ -75,6 +79,8 @@ impl PcieRootPort {
         Ok(PcieRootPort {
             pcie_cap_reg_idx: None,
             msix_config: None,
+            pmc_config: PmcConfig::new(),
+            pmc_cap_reg_idx: None,
             pci_address: None,
             slot_control: PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF,
             slot_status: 0,
@@ -230,16 +236,17 @@ impl PcieDevice for PcieRootPort {
     }
 
     fn get_caps(&self) -> Vec<Box<dyn PciCapability>> {
-        vec![Box::new(PcieCap::new(
-            PcieDevicePortType::RootPort,
-            true,
-            0,
-        ))]
+        vec![
+            Box::new(PcieCap::new(PcieDevicePortType::RootPort, true, 0)),
+            Box::new(PciPmcCap::new()),
+        ]
     }
 
     fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize) {
-        if let PciCapabilityID::PciExpress = id {
-            self.pcie_cap_reg_idx = Some(reg_idx)
+        match id {
+            PciCapabilityID::PciExpress => self.pcie_cap_reg_idx = Some(reg_idx),
+            PciCapabilityID::PowerManagement => self.pmc_cap_reg_idx = Some(reg_idx),
+            _ => (),
         }
     }
 
@@ -248,6 +255,11 @@ impl PcieDevice for PcieRootPort {
             if reg_idx >= pcie_cap_reg_idx && reg_idx < pcie_cap_reg_idx + (PCIE_CAP_LEN / 4) {
                 let offset = (reg_idx - pcie_cap_reg_idx) * 4;
                 self.read_pcie_cap(offset, data);
+            }
+        }
+        if let Some(pmc_cap_reg_idx) = self.pmc_cap_reg_idx {
+            if reg_idx == pmc_cap_reg_idx + PMC_CAP_CONTROL_STATE_OFFSET {
+                self.pmc_config.read(data);
             }
         }
         if let Some(host) = &self.pcie_host {
@@ -261,6 +273,11 @@ impl PcieDevice for PcieRootPort {
             if reg_idx >= pcie_cap_reg_idx && reg_idx < pcie_cap_reg_idx + (PCIE_CAP_LEN / 4) {
                 let delta = ((reg_idx - pcie_cap_reg_idx) * 4) + offset as usize;
                 self.write_pcie_cap(delta, data);
+            }
+        }
+        if let Some(pmc_cap_reg_idx) = self.pmc_cap_reg_idx {
+            if reg_idx == pmc_cap_reg_idx + PMC_CAP_CONTROL_STATE_OFFSET {
+                self.pmc_config.write(offset, data);
             }
         }
         if let Some(host) = self.pcie_host.as_mut() {

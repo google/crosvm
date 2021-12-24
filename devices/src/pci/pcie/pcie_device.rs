@@ -143,3 +143,70 @@ impl PcieCap {
         }
     }
 }
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct PciPmcCap {
+    _cap_vndr: u8,
+    _cap_next: u8,
+    pmc_cap: u16,
+    pmc_control_status: u16,
+    padding: u16,
+}
+
+// It is safe to implement DataInit; all members are simple numbers and any value is valid.
+unsafe impl DataInit for PciPmcCap {}
+
+impl PciCapability for PciPmcCap {
+    fn bytes(&self) -> &[u8] {
+        self.as_slice()
+    }
+
+    fn id(&self) -> PciCapabilityID {
+        PciCapabilityID::PowerManagement
+    }
+
+    fn writable_bits(&self) -> Vec<u32> {
+        vec![0u32, 0x8103]
+    }
+}
+
+impl PciPmcCap {
+    pub fn new() -> Self {
+        let pmc_cap: u16 = PMC_CAP_VERSION;
+        PciPmcCap {
+            _cap_vndr: 0,
+            _cap_next: 0,
+            pmc_cap,
+            pmc_control_status: 0,
+            padding: 0,
+        }
+    }
+}
+
+pub struct PmcConfig {
+    power_control_status: u16,
+}
+
+impl PmcConfig {
+    pub fn new() -> Self {
+        PmcConfig {
+            power_control_status: 0,
+        }
+    }
+
+    pub fn read(&self, data: &mut u32) {
+        *data = self.power_control_status as u32;
+    }
+
+    pub fn write(&mut self, offset: u64, data: &[u8]) {
+        if offset > 1 {
+            return;
+        }
+
+        if offset == 0 {
+            self.power_control_status &= !PMC_POWER_STATE_MASK;
+            self.power_control_status |= data[0] as u16 & PMC_POWER_STATE_MASK;
+        }
+    }
+}
