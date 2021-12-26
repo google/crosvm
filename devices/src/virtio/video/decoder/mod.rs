@@ -308,21 +308,18 @@ impl<S: DecoderSession> Context<S> {
         // We only support NV12.
         let format = Some(Format::NV12);
 
-        let rect_width: u32 = (visible_rect.right - visible_rect.left) as u32;
-        let rect_height: u32 = (visible_rect.bottom - visible_rect.top) as u32;
-
         let plane_formats = vec![
             // Y plane, 1 sample per pixel.
             PlaneFormat {
-                plane_size: rect_width * rect_height,
-                stride: rect_width,
+                plane_size: (width * height) as u32,
+                stride: width as u32,
             },
             // UV plane, 1 sample per group of 4 pixels for U and V.
             PlaneFormat {
                 // Add one vertical line so odd resolutions result in an extra UV line to cover all the
                 // Y samples.
-                plane_size: rect_width * ((rect_height + 1) / 2),
-                stride: rect_width,
+                plane_size: (width * ((height + 1) / 2)) as u32,
+                stride: width as u32,
             },
         ];
 
@@ -339,8 +336,8 @@ impl<S: DecoderSession> Context<S> {
             crop: Crop {
                 left: visible_rect.left as u32,
                 top: visible_rect.top as u32,
-                width: rect_width,
-                height: rect_height,
+                width: (visible_rect.right - visible_rect.left) as u32,
+                height: (visible_rect.bottom - visible_rect.top) as u32,
             },
             plane_formats,
             // No need to set `frame_rate`, as it's only for the encoder.
