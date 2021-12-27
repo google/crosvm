@@ -3,16 +3,14 @@
 // found in the LICENSE file.
 
 use std::{
-    alloc::Layout,
     cell::RefCell,
-    cmp::min,
     convert::TryFrom,
     future::Future,
     io,
-    mem::{align_of, replace, size_of, MaybeUninit},
+    mem::{replace, size_of, MaybeUninit},
     os::{raw::c_int, unix::io::RawFd},
     pin::Pin,
-    ptr::{null_mut, NonNull},
+    ptr,
     rc::Rc,
     sync::Arc,
     task,
@@ -24,11 +22,10 @@ use data_model::IoBufMut;
 use mio::{unix::SourceFd, Events, Interest, Token};
 use once_cell::unsync::{Lazy, OnceCell};
 use slab::Slab;
-use sys_util::{
-    add_fd_flags, error, AsRawDescriptor, FromRawDescriptor, LayoutAllocation, SafeDescriptor,
-};
+use sys_util::{add_fd_flags, error, AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 use thiserror::Error as ThisError;
 
+use super::cmsg::*;
 use crate::AsIoBufs;
 
 // Tokens assigned to pending operations are based on their index in a Slab and we should run out of
@@ -468,13 +465,13 @@ pub async fn connect(
 
 pub async fn next_packet_size(desc: &Arc<SafeDescriptor>) -> anyhow::Result<usize> {
     #[cfg(not(debug_assertions))]
-    let buf = null_mut();
+    let buf = ptr::null_mut();
     // Work around for qemu's syscall translation which will reject null pointers in recvfrom.
     // This only matters for running the unit tests for a non-native architecture. See the
     // upstream thread for the qemu fix:
     // https://lists.nongnu.org/archive/html/qemu-devel/2021-03/msg09027.html
     #[cfg(debug_assertions)]
-    let buf = NonNull::dangling().as_ptr();
+    let buf = ptr::NonNull::dangling().as_ptr();
 
     loop {
         // Safe because this will not modify any memory and we check the return value.
@@ -484,8 +481,8 @@ pub async fn next_packet_size(desc: &Arc<SafeDescriptor>) -> anyhow::Result<usiz
                 buf,
                 0,
                 libc::MSG_TRUNC | libc::MSG_PEEK | libc::MSG_DONTWAIT,
-                null_mut(),
-                null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
             )
         };
 
@@ -502,101 +499,6 @@ pub async fn next_packet_size(desc: &Arc<SafeDescriptor>) -> anyhow::Result<usiz
     }
 }
 
-// Allocates a buffer to hold a `libc::cmsghdr` with `cap` bytes of data.
-//
-// Returns the `LayoutAllocation` for the buffer as well as the size of the allocation, which is
-// guaranteed to be at least `size_of::<libc::cmsghdr>() + cap` bytes.
-fn allocate_cmsg_buffer(cap: u32) -> anyhow::Result<(LayoutAllocation, usize)> {
-    // Not sure why this is unsafe.
-    let cmsg_cap = usize::try_from(unsafe { libc::CMSG_SPACE(cap) })
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-    let alloc = Layout::from_size_align(cmsg_cap, align_of::<libc::cmsghdr>())
-        .map(LayoutAllocation::zeroed)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-
-    Ok((alloc, cmsg_cap))
-}
-
-// Adds a control message with the file descriptors from `fds` to `msg`.
-//
-// Returns the `LayoutAllocation` backing the control message.
-fn add_fds_to_message(msg: &mut libc::msghdr, fds: &[RawFd]) -> anyhow::Result<LayoutAllocation> {
-    let fd_len = fds
-        .len()
-        .checked_mul(size_of::<RawFd>())
-        .and_then(|l| u32::try_from(l).ok())
-        .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))?;
-
-    let (cmsg_buffer, cmsg_cap) = allocate_cmsg_buffer(fd_len)?;
-    msg.msg_control = cmsg_buffer.as_ptr();
-    msg.msg_controllen = cmsg_cap;
-
-    unsafe {
-        // Safety:
-        // * CMSG_FIRSTHDR will either return a null pointer or a pointer to `msg.msg_control`.
-        // * `msg.msg_control` is properly aligned because `cmsg_buffer` is properly aligned.
-        // * The buffer is zeroed, which is a valid bit-pattern for `libc::cmsghdr`.
-        // * The reference does not escape this function.
-        let cmsg = libc::CMSG_FIRSTHDR(msg).as_mut().unwrap();
-        cmsg.cmsg_len = libc::CMSG_LEN(fd_len) as libc::size_t;
-        cmsg.cmsg_level = libc::SOL_SOCKET;
-        cmsg.cmsg_type = libc::SCM_RIGHTS;
-
-        // Safety: `libc::CMSG_DATA(cmsg)` and `fds` are valid for `fd_len` bytes of memory.
-        libc::memcpy(
-            libc::CMSG_DATA(cmsg).cast(),
-            fds.as_ptr().cast(),
-            fd_len as usize,
-        );
-    }
-
-    Ok(cmsg_buffer)
-}
-
-// Copies file descriptors from the control message in `msg` into `fds`.
-//
-// Returns the number of file descriptors that were copied from `msg`.
-fn take_fds_from_message(msg: &libc::msghdr, fds: &mut [RawFd]) -> anyhow::Result<usize> {
-    let cap = fds
-        .len()
-        .checked_mul(size_of::<RawFd>())
-        .ok_or_else(|| anyhow!(io::Error::from(io::ErrorKind::InvalidInput)))?;
-
-    let mut rem = cap;
-    unsafe {
-        let mut cmsg = libc::CMSG_FIRSTHDR(msg);
-
-        // Safety:
-        // * CMSG_FIRSTHDR will either return a null pointer or a pointer to `msg.msg_control`.
-        // * `msg.msg_control` is properly aligned because it was allocated by `allocate_cmsg_buffer`.
-        // * The buffer was zero-initialized, which is a valid bit-pattern for `libc::cmsghdr`.
-        // * The reference does not escape this function.
-        while let Some(current) = cmsg.as_ref() {
-            if current.cmsg_level != libc::SOL_SOCKET || current.cmsg_type != libc::SCM_RIGHTS {
-                cmsg = libc::CMSG_NXTHDR(msg, cmsg);
-                continue;
-            }
-
-            let data_len = min(current.cmsg_len - libc::CMSG_LEN(0) as usize, rem);
-
-            // Safety: `fds` and `libc::CMSG_DATA(cmsg)` are valid for `data_len` bytes of memory.
-            libc::memcpy(
-                fds.as_mut_ptr().cast(),
-                libc::CMSG_DATA(cmsg).cast(),
-                data_len,
-            );
-            rem -= data_len;
-            if rem == 0 {
-                break;
-            }
-
-            cmsg = libc::CMSG_NXTHDR(msg, cmsg);
-        }
-    }
-
-    Ok((cap - rem) / size_of::<RawFd>())
-}
-
 pub async fn sendmsg(
     desc: &Arc<SafeDescriptor>,
     buf: &[u8],
@@ -608,12 +510,12 @@ pub async fn sendmsg(
     };
 
     let mut msg = libc::msghdr {
-        msg_name: null_mut(),
+        msg_name: ptr::null_mut(),
         msg_namelen: 0,
         msg_iov: &mut iov,
         msg_iovlen: 1,
         msg_flags: 0,
-        msg_control: null_mut(),
+        msg_control: ptr::null_mut(),
         msg_controllen: 0,
     };
 
@@ -664,7 +566,7 @@ pub async fn recvmsg(
     let (cmsg_buffer, cmsg_cap) = allocate_cmsg_buffer(fd_cap)?;
 
     let mut msg = libc::msghdr {
-        msg_name: null_mut(),
+        msg_name: ptr::null_mut(),
         msg_namelen: 0,
         msg_iov: &mut iov,
         msg_iovlen: 1,
@@ -709,12 +611,12 @@ pub async fn send_iobuf_with_fds<B: AsIoBufs + 'static>(
         let iovs = IoBufMut::as_iobufs(buf.as_iobufs());
 
         let mut msg = libc::msghdr {
-            msg_name: null_mut(),
+            msg_name: ptr::null_mut(),
             msg_namelen: 0,
             msg_iov: iovs.as_ptr() as *mut libc::iovec,
             msg_iovlen: iovs.len(),
             msg_flags: 0,
-            msg_control: null_mut(),
+            msg_control: ptr::null_mut(),
             msg_controllen: 0,
         };
 
@@ -766,7 +668,7 @@ pub async fn recv_iobuf_with_fds<B: AsIoBufs + 'static>(
         let (cmsg_buffer, cmsg_cap) = allocate_cmsg_buffer(fd_cap)?;
 
         let mut msg = libc::msghdr {
-            msg_name: null_mut(),
+            msg_name: ptr::null_mut(),
             msg_namelen: 0,
             msg_iov: iovs.as_ptr() as *mut libc::iovec,
             msg_iovlen: iovs.len(),
@@ -810,8 +712,8 @@ pub async fn accept(desc: &Arc<SafeDescriptor>) -> anyhow::Result<SafeDescriptor
         let ret = unsafe {
             libc::accept4(
                 desc.as_raw_descriptor(),
-                null_mut(),
-                null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
                 libc::SOCK_CLOEXEC,
             )
         };
@@ -842,62 +744,4 @@ pub fn prepare(fd: &dyn AsRawDescriptor) -> anyhow::Result<()> {
     add_fd_flags(fd.as_raw_descriptor(), libc::O_NONBLOCK)
         .map_err(io::Error::from)
         .context("failed to make descriptor non-blocking")
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    use std::fs::File;
-    use std::io::Write;
-    use std::os::unix::io::AsRawFd;
-
-    use crate::Executor;
-
-    #[test]
-    fn wait_readable() {
-        async fn go() {
-            let (rx, mut tx) = sys_util::pipe(true).unwrap();
-
-            prepare(&rx).unwrap();
-            let rx = Arc::new(SafeDescriptor::from(rx));
-
-            let buf = [0x99u8; 32];
-            tx.write_all(&buf[..]).unwrap();
-
-            wait_for(&rx, Interest::READABLE).await.unwrap();
-
-            let mut v = vec![0x55u8; 32];
-            let count = read(&rx, &mut v, None).await.unwrap();
-            assert_eq!(count, v.len());
-            assert!(v.iter().all(|&b| b == 0x99));
-        }
-
-        let ex = Executor::new();
-        ex.run_until(go()).unwrap();
-    }
-
-    #[test]
-    fn readpipe() {
-        async fn read_from_pipe(ex: &Executor) {
-            let (rx, tx) = sys_util::pipe(true).unwrap();
-            add_fd_flags(rx.as_raw_fd(), libc::O_NONBLOCK).unwrap();
-            let rx = Arc::new(SafeDescriptor::from(rx));
-
-            ex.spawn_local(write_to_pipe(tx)).detach();
-
-            let mut buf = [0x2cu8; 18];
-            let count = read(&rx, &mut buf[..], None).await.unwrap();
-            assert_eq!(count, buf.len());
-            assert!(buf.iter().all(|&b| b == 0x99));
-        }
-
-        async fn write_to_pipe(mut tx: File) {
-            let buf = [0x99u8; 18];
-            tx.write_all(&buf[..]).unwrap();
-        }
-
-        let ex = Executor::new();
-        ex.run_until(read_from_pipe(&ex)).unwrap();
-    }
 }

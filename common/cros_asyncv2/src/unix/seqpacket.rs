@@ -168,7 +168,10 @@ impl SeqPacket {
     ///
     /// This function is like `send` but takes an owned buffer instead, avoiding the need to first
     /// copy the data into an intermediate buffer.
-    pub async fn send_iobuf<B: AsIoBufs + 'static>(&self, buf: B) -> (anyhow::Result<usize>, B) {
+    pub async fn send_iobuf<B: AsIoBufs + Unpin + 'static>(
+        &self,
+        buf: B,
+    ) -> (anyhow::Result<usize>, B) {
         io_driver::write_iobuf(&self.fd, buf, None).await
     }
 
@@ -176,7 +179,7 @@ impl SeqPacket {
     ///
     /// Like `send_with_fds` but doesn't require copying the data into an intermediate buffer first.
     /// Returns the number of bytes written to the socket.
-    pub async fn send_iobuf_with_fds<B: AsIoBufs + 'static>(
+    pub async fn send_iobuf_with_fds<B: AsIoBufs + Unpin + 'static>(
         &self,
         buf: B,
         fds: &[RawFd],
@@ -213,7 +216,10 @@ impl SeqPacket {
     ///
     /// This function is like `recv` but takes an owned buffer instead, avoiding the need to first
     /// copy the data into an intermediate buffer.
-    pub async fn recv_iobuf<B: AsIoBufs + 'static>(&self, buf: B) -> (anyhow::Result<usize>, B) {
+    pub async fn recv_iobuf<B: AsIoBufs + Unpin + 'static>(
+        &self,
+        buf: B,
+    ) -> (anyhow::Result<usize>, B) {
         io_driver::read_iobuf(&self.fd, buf, None).await
     }
 
@@ -222,7 +228,7 @@ impl SeqPacket {
     /// Like `recv_with_fds` but doesn't require copying the data into an intermediate buffer first.
     /// Returns the number of bytes read from the socket as well as the number of file descriptors
     /// received.
-    pub async fn recv_iobuf_with_fds<B: AsIoBufs + 'static>(
+    pub async fn recv_iobuf_with_fds<B: AsIoBufs + Unpin + 'static>(
         &self,
         buf: B,
         fds: &mut [RawFd],

@@ -17,6 +17,7 @@ use sys_util::{error, AsRawDescriptor, SafeDescriptor};
 
 use crate::{executor, AsIoBufs};
 
+mod cmsg;
 mod mio;
 
 #[cfg(feature = "uring")]
@@ -82,7 +83,7 @@ impl ArcWake for State {
         let oldstate = arc_self.state.swap(WOKEN, Ordering::AcqRel);
         if oldstate == WAITING {
             if let Err(e) = arc_self.waker.wake() {
-                error!("Failed to wake executor thread: {}", e);
+                error!("Failed to wake executor thread: {:#}", e);
             }
         }
     }
@@ -167,7 +168,7 @@ pub async fn read(
     mio::read(desc, buf, offset).await
 }
 
-pub async fn read_iobuf<B: AsIoBufs + 'static>(
+pub async fn read_iobuf<B: AsIoBufs + Unpin + 'static>(
     desc: &Arc<SafeDescriptor>,
     buf: B,
     offset: Option<u64>,
@@ -193,7 +194,7 @@ pub async fn write(
     mio::write(desc, buf, offset).await
 }
 
-pub async fn write_iobuf<B: AsIoBufs + 'static>(
+pub async fn write_iobuf<B: AsIoBufs + Unpin + 'static>(
     desc: &Arc<SafeDescriptor>,
     buf: B,
     offset: Option<u64>,
@@ -295,7 +296,7 @@ pub async fn recvmsg(
     mio::recvmsg(desc, buf, fds).await
 }
 
-pub async fn send_iobuf_with_fds<B: AsIoBufs + 'static>(
+pub async fn send_iobuf_with_fds<B: AsIoBufs + Unpin + 'static>(
     desc: &Arc<SafeDescriptor>,
     buf: B,
     fds: &[RawFd],
@@ -308,7 +309,7 @@ pub async fn send_iobuf_with_fds<B: AsIoBufs + 'static>(
     mio::send_iobuf_with_fds(desc, buf, fds).await
 }
 
-pub async fn recv_iobuf_with_fds<B: AsIoBufs + 'static>(
+pub async fn recv_iobuf_with_fds<B: AsIoBufs + Unpin + 'static>(
     desc: &Arc<SafeDescriptor>,
     buf: B,
     fds: &mut [RawFd],

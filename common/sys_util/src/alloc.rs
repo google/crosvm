@@ -89,6 +89,11 @@ impl LayoutAllocation {
         self.ptr as *mut T
     }
 
+    /// Returns a reference to the `Layout` used to create this allocation.
+    pub fn layout(&self) -> &Layout {
+        &self.layout
+    }
+
     /// Returns a shared reference to the allocated data.
     ///
     /// # Safety

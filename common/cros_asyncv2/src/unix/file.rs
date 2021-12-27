@@ -29,7 +29,7 @@ impl File {
         io_driver::read(&self.fd, buf, offset).await
     }
 
-    pub async fn read_iobuf<B: AsIoBufs + 'static>(
+    pub async fn read_iobuf<B: AsIoBufs + Unpin + 'static>(
         &self,
         buf: B,
         offset: Option<u64>,
@@ -41,7 +41,7 @@ impl File {
         io_driver::write(&self.fd, buf, offset).await
     }
 
-    pub async fn write_iobuf<B: AsIoBufs + 'static>(
+    pub async fn write_iobuf<B: AsIoBufs + Unpin + 'static>(
         &self,
         buf: B,
         offset: Option<u64>,
