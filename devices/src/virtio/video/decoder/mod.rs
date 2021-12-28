@@ -499,7 +499,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         queue_type: QueueType,
         resource_id: ResourceId,
         plane_offsets: Vec<u32>,
-        resource: UnresolvedResourceEntry,
+        plane_entries: Vec<Vec<UnresolvedResourceEntry>>,
     ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
 
@@ -514,6 +514,14 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             )?);
         }
 
+        // We only support single-buffer resources for now.
+        let entries = if plane_entries.len() != 1 {
+            return Err(VideoError::InvalidArgument);
+        } else {
+            // unwrap() is safe because we just tested that `plane_entries` had exactly one element.
+            plane_entries.get(0).unwrap()
+        };
+
         // Now try to resolve our resource.
         let resource_type = match queue_type {
             QueueType::Input => ctx.in_params.resource_type,
@@ -521,12 +529,20 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         };
 
         let resource = match resource_type {
-            ResourceType::VirtioObject => GuestResource::from_virtio_object_entry(
-                // Safe because we confirmed the correct type for the resource.
-                unsafe { resource.object },
-                &self.resource_bridge,
-            )
-            .map_err(|_| VideoError::InvalidArgument)?,
+            ResourceType::VirtioObject => {
+                // Virtio object resources only have one entry.
+                if entries.len() != 1 {
+                    return Err(VideoError::InvalidArgument);
+                }
+                GuestResource::from_virtio_object_entry(
+                    // Safe because we confirmed the correct type for the resource.
+                    // unwrap() is also safe here because we just tested above that `entries` had
+                    // exactly one element.
+                    unsafe { entries.get(0).unwrap().object },
+                    &self.resource_bridge,
+                )
+                .map_err(|_| VideoError::InvalidArgument)?
+            }
         };
 
         ctx.register_resource(queue_type, resource_id, resource);
@@ -901,14 +917,14 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 queue_type,
                 resource_id,
                 plane_offsets,
-                resource,
+                plane_entries,
             } => self.create_resource(
                 wait_ctx,
                 stream_id,
                 queue_type,
                 resource_id,
                 plane_offsets,
-                resource,
+                plane_entries,
             ),
             ResourceDestroyAll {
                 stream_id,

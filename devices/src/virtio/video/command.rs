@@ -68,7 +68,10 @@ pub enum VideoCmd {
         queue_type: QueueType,
         resource_id: u32,
         plane_offsets: Vec<u32>,
-        resource: UnresolvedResourceEntry,
+        /// The outer vector contains one entry per memory plane, whereas the inner vector contains
+        /// all the memory entries that make a single plane (i.e. one for virtio objects, one or
+        /// more for guest pages).
+        plane_entries: Vec<Vec<UnresolvedResourceEntry>>,
     },
     ResourceQueue {
         stream_id: u32,
@@ -179,40 +182,56 @@ impl<'a> VideoCmd {
                     planes_layout,
                     num_planes,
                     plane_offsets,
-                    ..
+                    num_entries,
                 } = r.read_obj()?;
 
                 // Assume ChromeOS-specific requirements.
-                if Into::<u32>::into(planes_layout) != VIRTIO_VIDEO_PLANES_LAYOUT_SINGLE_BUFFER {
-                    error!(
-                        "each buffer must be a single DMAbuf: {}",
-                        Into::<u32>::into(planes_layout),
-                    );
+                let planes_layout = Into::<u32>::into(planes_layout);
+                if planes_layout != VIRTIO_VIDEO_PLANES_LAYOUT_SINGLE_BUFFER {
+                    error!("Only single-planar formats are supported for now");
                     return Err(InvalidArgument);
                 }
 
-                let num_planes: u32 = num_planes.into();
-                if num_planes as usize > plane_offsets.len() {
+                let num_planes = Into::<u32>::into(num_planes) as usize;
+                if num_planes > plane_offsets.len() {
                     error!(
-                        "num_planes must not exceed {} but {}",
+                        "num_planes is {} but shall not exceed {}",
+                        num_planes,
                         plane_offsets.len(),
+                    );
+                    return Err(InvalidArgument);
+                }
+                if planes_layout == VIRTIO_VIDEO_PLANES_LAYOUT_SINGLE_BUFFER && num_planes != 1 {
+                    error!(
+                        "Single-planar format specified but num_planes is {}",
                         num_planes
                     );
                     return Err(InvalidArgument);
                 }
-                let plane_offsets = plane_offsets[0..num_planes as usize]
+
+                let plane_offsets = plane_offsets[0..num_planes]
                     .iter()
                     .map(|x| Into::<u32>::into(*x))
                     .collect::<Vec<u32>>();
 
-                let resource = r.read_obj()?;
+                // Read all the entries for all the planes.
+                let plane_entries = (0..num_planes as usize)
+                    .into_iter()
+                    .map(|i| {
+                        let num_entries: u32 = num_entries[i].into();
+                        (0..num_entries)
+                            .into_iter()
+                            .map(|_| r.read_obj::<UnresolvedResourceEntry>())
+                            .collect::<Result<Vec<_>, _>>()
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
 
                 ResourceCreate {
                     stream_id: hdr.stream_id.into(),
                     queue_type: queue_type.try_into()?,
                     resource_id: resource_id.into(),
                     plane_offsets,
-                    resource,
+                    plane_entries,
                 }
             }
             VIRTIO_VIDEO_CMD_RESOURCE_QUEUE => {

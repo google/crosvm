@@ -578,7 +578,7 @@ impl<T: Encoder> EncoderDevice<T> {
         queue_type: QueueType,
         resource_id: u32,
         plane_offsets: Vec<u32>,
-        resource: UnresolvedResourceEntry,
+        plane_entries: Vec<Vec<UnresolvedResourceEntry>>,
     ) -> VideoResult<VideoCmdResponseType> {
         let stream = self
             .streams
@@ -592,6 +592,14 @@ impl<T: Encoder> EncoderDevice<T> {
         }
 
         let num_planes = plane_offsets.len();
+
+        // We only support single-buffer resources for now.
+        let entries = if plane_entries.len() != 1 {
+            return Err(VideoError::InvalidArgument);
+        } else {
+            // unwrap() is safe because we just tested that `plane_entries` had exactly one element.
+            plane_entries.get(0).unwrap()
+        };
 
         match queue_type {
             QueueType::Input => {
@@ -607,12 +615,20 @@ impl<T: Encoder> EncoderDevice<T> {
                 }
 
                 let resource = match stream.src_params.resource_type {
-                    ResourceType::VirtioObject => GuestResource::from_virtio_object_entry(
-                        // Safe because we confirmed the correct type for the resource.
-                        unsafe { resource.object },
-                        &self.resource_bridge,
-                    )
-                    .map_err(|_| VideoError::InvalidArgument)?,
+                    ResourceType::VirtioObject => {
+                        // Virtio object resources only have one entry.
+                        if entries.len() != 1 {
+                            return Err(VideoError::InvalidArgument);
+                        }
+                        GuestResource::from_virtio_object_entry(
+                            // Safe because we confirmed the correct type for the resource.
+                            // unwrap() is also safe here because we just tested above that `entries` had
+                            // exactly one element.
+                            unsafe { entries.get(0).unwrap().object },
+                            &self.resource_bridge,
+                        )
+                        .map_err(|_| VideoError::InvalidArgument)?
+                    }
                 };
 
                 stream.src_resources.insert(
@@ -634,12 +650,20 @@ impl<T: Encoder> EncoderDevice<T> {
                 }
 
                 let resource = match stream.dst_params.resource_type {
-                    ResourceType::VirtioObject => GuestResource::from_virtio_object_entry(
-                        // Safe because we confirmed the correct type for the resource.
-                        unsafe { resource.object },
-                        &self.resource_bridge,
-                    )
-                    .map_err(|_| VideoError::InvalidArgument)?,
+                    ResourceType::VirtioObject => {
+                        // Virtio object resources only have one entry.
+                        if entries.len() != 1 {
+                            return Err(VideoError::InvalidArgument);
+                        }
+                        GuestResource::from_virtio_object_entry(
+                            // Safe because we confirmed the correct type for the resource.
+                            // unwrap() is also safe here because we just tested above that `entries` had
+                            // exactly one element.
+                            unsafe { entries.get(0).unwrap().object },
+                            &self.resource_bridge,
+                        )
+                        .map_err(|_| VideoError::InvalidArgument)?
+                    }
                 };
 
                 let offset = plane_offsets[0];
@@ -1330,14 +1354,14 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                 queue_type,
                 resource_id,
                 plane_offsets,
-                resource,
+                plane_entries,
             } => self.resource_create(
                 wait_ctx,
                 stream_id,
                 queue_type,
                 resource_id,
                 plane_offsets,
-                resource,
+                plane_entries,
             ),
             VideoCmd::ResourceQueue {
                 stream_id,
