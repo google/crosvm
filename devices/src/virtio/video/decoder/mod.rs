@@ -499,7 +499,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         queue_type: QueueType,
         resource_id: ResourceId,
         plane_offsets: Vec<u32>,
-        resource: UnresolvedGuestResource,
+        resource: UnresolvedResourceEntry,
     ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
 

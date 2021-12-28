@@ -17,7 +17,7 @@ use crate::virtio::video::control::*;
 use crate::virtio::video::format::*;
 use crate::virtio::video::params::Params;
 use crate::virtio::video::protocol::*;
-use crate::virtio::video::resource::{ResourceType, UnresolvedGuestResource};
+use crate::virtio::video::resource::{ResourceType, UnresolvedResourceEntry};
 use crate::virtio::Reader;
 
 /// An error indicating a failure while reading a request from the guest.
@@ -68,7 +68,7 @@ pub enum VideoCmd {
         queue_type: QueueType,
         resource_id: u32,
         plane_offsets: Vec<u32>,
-        resource: UnresolvedGuestResource,
+        resource: UnresolvedResourceEntry,
     },
     ResourceQueue {
         stream_id: u32,

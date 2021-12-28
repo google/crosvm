@@ -578,7 +578,7 @@ impl<T: Encoder> EncoderDevice<T> {
         queue_type: QueueType,
         resource_id: u32,
         plane_offsets: Vec<u32>,
-        resource: UnresolvedGuestResource,
+        resource: UnresolvedResourceEntry,
     ) -> VideoResult<VideoCmdResponseType> {
         let stream = self
             .streams

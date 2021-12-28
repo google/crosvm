@@ -29,13 +29,13 @@ impl Default for ResourceType {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-/// A guest resource which type is not decided yet.
-pub union UnresolvedGuestResource {
+/// A guest resource entry which type is not decided yet.
+pub union UnresolvedResourceEntry {
     pub object: virtio_video_object_entry,
 }
-unsafe impl data_model::DataInit for UnresolvedGuestResource {}
+unsafe impl data_model::DataInit for UnresolvedResourceEntry {}
 
-impl fmt::Debug for UnresolvedGuestResource {
+impl fmt::Debug for UnresolvedResourceEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // Safe because `self.object` is a [u8] and thus is valid no matter its raw data.
         write!(f, "unresolved {:?}", unsafe { self.object })
