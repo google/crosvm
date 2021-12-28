@@ -595,7 +595,10 @@ impl<T: Encoder> EncoderDevice<T> {
 
         match queue_type {
             QueueType::Input => {
-                if num_planes != stream.src_params.plane_formats.len() {
+                // We currently only support single-buffer formats, but some clients may mistake
+                // color planes with memory planes and submit several planes to us. This doesn't
+                // matter as we will only consider the first one.
+                if num_planes < 1 {
                     return Err(VideoError::InvalidParameter);
                 }
 
@@ -621,7 +624,8 @@ impl<T: Encoder> EncoderDevice<T> {
                 );
             }
             QueueType::Output => {
-                if num_planes != stream.dst_params.plane_formats.len() {
+                // Bitstream buffers always have only one plane.
+                if num_planes != 1 {
                     return Err(VideoError::InvalidParameter);
                 }
 
@@ -678,7 +682,10 @@ impl<T: Encoder> EncoderDevice<T> {
 
         match queue_type {
             QueueType::Input => {
-                if data_sizes.len() != stream.src_params.plane_formats.len() {
+                // We currently only support single-buffer formats, but some clients may mistake
+                // color planes with memory planes and submit several planes to us. This doesn't
+                // matter as we will only consider the first one.
+                if data_sizes.len() < 1 {
                     return Err(VideoError::InvalidParameter);
                 }
 
@@ -740,7 +747,8 @@ impl<T: Encoder> EncoderDevice<T> {
                 }))
             }
             QueueType::Output => {
-                if data_sizes.len() != stream.dst_params.plane_formats.len() {
+                // Bitstream buffers always have only one plane.
+                if data_sizes.len() != 1 {
                     return Err(VideoError::InvalidParameter);
                 }
 
