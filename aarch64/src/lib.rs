@@ -246,7 +246,7 @@ impl arch::LinuxArch for AArch64 {
     }
 
     fn create_system_allocator<V: Vm>(vm: &V) -> SystemAllocator {
-        Self::get_resource_allocator(vm.get_memory().memory_size())
+        Self::get_resource_allocator(vm.get_memory().memory_size(), vm.get_guest_phys_addr_bits())
     }
 
     fn build_vm<V, Vcpu>(
@@ -539,13 +539,26 @@ impl AArch64 {
     }
 
     /// Returns a system resource allocator.
-    fn get_resource_allocator(mem_size: u64) -> SystemAllocator {
+    ///
+    /// # Arguments
+    ///
+    /// * `mem_size` - Size of guest memory (RAM) in bytes.
+    /// * `guest_phys_addr_bits` - Size of guest physical addresses (IPA) in bits.
+    fn get_resource_allocator(mem_size: u64, guest_phys_addr_bits: u8) -> SystemAllocator {
+        let guest_phys_end = 1u64 << guest_phys_addr_bits;
         // The platform MMIO region is immediately past the end of RAM.
         let plat_mmio_base = AARCH64_PHYS_MEM_START + mem_size;
         let plat_mmio_size = AARCH64_PLATFORM_MMIO_SIZE;
         // The high MMIO region is the rest of the address space after the platform MMIO region.
         let high_mmio_base = plat_mmio_base + plat_mmio_size;
-        let high_mmio_size = u64::max_value() - high_mmio_base;
+        let high_mmio_size = guest_phys_end
+            .checked_sub(high_mmio_base)
+            .unwrap_or_else(|| {
+                panic!(
+                    "guest_phys_end {:#x} < high_mmio_base {:#x}",
+                    guest_phys_end, high_mmio_base,
+                );
+            });
         SystemAllocator::builder()
             .add_low_mmio_addresses(AARCH64_MMIO_BASE, AARCH64_MMIO_SIZE)
             .add_platform_mmio_addresses(plat_mmio_base, plat_mmio_size)

@@ -1115,7 +1115,7 @@ impl X8664arch {
     ///
     /// * `vm`: The virtual machine
     fn get_high_mmio_size<V: Vm>(vm: &V) -> u64 {
-        let phys_mem_end = 1u64 << vm.get_guest_phys_addr_size();
+        let phys_mem_end = 1u64 << vm.get_guest_phys_addr_bits();
         let high_mmio_end = std::cmp::min(phys_mem_end, HIGH_MMIO_MAX_END);
         high_mmio_end - Self::get_high_mmio_base(vm.get_memory())
     }

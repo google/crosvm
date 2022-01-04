@@ -2789,7 +2789,7 @@ where
         None => None,
     };
 
-    let phys_max_addr = (1u64 << vm.get_guest_phys_addr_size()) - 1;
+    let phys_max_addr = (1u64 << vm.get_guest_phys_addr_bits()) - 1;
     let mut devices = create_devices(
         &cfg,
         &mut vm,

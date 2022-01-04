@@ -42,7 +42,7 @@ impl Kvm {
     }
 
     /// Get the size of guest physical addresses (IPA) in bits.
-    pub fn get_guest_phys_addr_size(&self) -> u8 {
+    pub fn get_guest_phys_addr_bits(&self) -> u8 {
         // Safe because we know self is a real kvm fd
         let vm_ipa_size = match unsafe {
             ioctl_with_val(self, KVM_CHECK_EXTENSION(), KVM_CAP_ARM_VM_IPA_SIZE.into())

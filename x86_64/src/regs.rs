@@ -122,7 +122,7 @@ fn append_mtrr_entries(
         return;
     }
 
-    let phys_mask: u64 = (1 << vm.get_guest_phys_addr_size()) - 1;
+    let phys_mask: u64 = (1 << vm.get_guest_phys_addr_bits()) - 1;
     for (idx, (base, len)) in vecs.iter().enumerate() {
         let reg_idx = idx as u32 * 2;
         entries.push(Register {

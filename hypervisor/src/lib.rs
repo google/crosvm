@@ -53,7 +53,7 @@ pub trait Vm: Send {
     fn check_capability(&self, c: VmCap) -> bool;
 
     /// Get the guest physical address size in bits.
-    fn get_guest_phys_addr_size(&self) -> u8;
+    fn get_guest_phys_addr_bits(&self) -> u8;
 
     /// Gets the guest-mapped memory for the Vm.
     fn get_memory(&self) -> &GuestMemory;

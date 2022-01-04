@@ -78,7 +78,7 @@ impl Kvm {
     }
 
     /// Get the size of guest physical addresses in bits.
-    pub fn get_guest_phys_addr_size(&self) -> u8 {
+    pub fn get_guest_phys_addr_bits(&self) -> u8 {
         // Get host cpu max physical address bits.
         // Assume the guest physical address size is the same as the host.
         let highest_ext_function = unsafe { __cpuid(0x80000000) };
