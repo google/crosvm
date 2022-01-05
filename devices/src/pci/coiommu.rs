@@ -25,7 +25,7 @@ use std::{mem, thread};
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use base::{
     error, info, AsRawDescriptor, Event, MemoryMapping, MemoryMappingBuilder, PollToken,
-    RawDescriptor, SafeDescriptor, SharedMemory, Tube, WaitContext,
+    RawDescriptor, SafeDescriptor, SharedMemory, Tube, TubeError, WaitContext,
 };
 use data_model::DataInit;
 use hypervisor::Datamatch;
@@ -43,6 +43,7 @@ use crate::pci::pci_configuration::{
 use crate::pci::pci_device::{PciDevice, Result as PciResult};
 use crate::pci::{PciAddress, PciDeviceError};
 use crate::vfio::VfioContainer;
+use crate::{UnpinRequest, UnpinResponse};
 
 const PCI_VENDOR_ID_COIOMMU: u16 = 0x1234;
 const PCI_DEVICE_ID_COIOMMU: u16 = 0xabcd;
@@ -58,6 +59,7 @@ const PAGE_SHIFT_4K: u64 = 12;
 const PIN_PAGES_IN_BATCH: u64 = 1 << 63;
 
 const DTTE_PINNED_FLAG: u32 = 1 << 31;
+const DTTE_ACCESSED_FLAG: u32 = 1 << 30;
 const DTT_ENTRY_PRESENT: u64 = 1;
 const DTT_ENTRY_PFN_SHIFT: u64 = 12;
 
@@ -98,6 +100,16 @@ unsafe fn vfio_map(
                 }
             }
             error!("CoIommu: failed to map iova 0x{:x}: {}", iova, e);
+            false
+        }
+    }
+}
+
+fn vfio_unmap(vfio_container: &Arc<Mutex<VfioContainer>>, iova: u64, size: u64) -> bool {
+    match vfio_container.lock().vfio_dma_unmap(iova, size) {
+        Ok(_) => true,
+        Err(e) => {
+            error!("CoIommu: failed to unmap iova 0x{:x}: {}", iova, e);
             false
         }
     }
@@ -255,6 +267,108 @@ fn pin_page(
     Ok(())
 }
 
+#[derive(PartialEq, Debug)]
+enum UnpinResult {
+    Unpinned,
+    NotPinned,
+    NotUnpinned,
+    FailedUnpin,
+}
+
+fn unpin_page(
+    vfio_container: &Arc<Mutex<VfioContainer>>,
+    mem: &GuestMemory,
+    dtt_level: u64,
+    dtt_root: u64,
+    dtt_iter: &mut DTTIter,
+    gfn: u64,
+    force: bool,
+) -> UnpinResult {
+    let leaf_entry = match gfn_to_dtt_pte(mem, dtt_level, dtt_root, dtt_iter, gfn) {
+        Ok(v) => v,
+        Err(_) => {
+            // The case force == true may try to unpin a page which is not
+            // mapped in the dtt. For such page, the pte doesn't exist yet
+            // thus don't need to report any error log.
+            // The case force == false is used by coiommu to periodically
+            // unpin the pages which have been mapped in dtt, thus the pte
+            // for such page does exist. However with the unpin request from
+            // virtio balloon, such pages can be unpinned already and the DTT
+            // pages might be reclaimed by the Guest OS kernel as well, thus
+            // it is also possible to be here. Not to report an error log.
+            return UnpinResult::NotPinned;
+        }
+    };
+
+    if force {
+        // Safe because leaf_entry is valid and guaranteed by the gfn_to_dtt_pte.
+        // This case is for balloon to evict pages so these pages should
+        // already been locked by balloon and no device driver in VM is
+        // able to access these pages, so just clear ACCESSED flag first
+        // to make sure the following unpin can be success.
+        unsafe { (*leaf_entry).fetch_and(!DTTE_ACCESSED_FLAG, Ordering::SeqCst) };
+    }
+
+    // Safe because leaf_entry is valid and guaranteed by the gfn_to_dtt_pte.
+    if let Err(entry) = unsafe {
+        (*leaf_entry).compare_exchange(DTTE_PINNED_FLAG, 0, Ordering::SeqCst, Ordering::SeqCst)
+    } {
+        // The compare_exchange failed as the original leaf entry is
+        // not DTTE_PINNED_FLAG so cannot do the unpin.
+        if entry == 0 {
+            // The GFN is already unpinned. This is very similar to the
+            // gfn_to_dtt_pte error case, with the only difference being
+            // that the dtt_pte happens to be on a present page table.
+            UnpinResult::NotPinned
+        } else {
+            if !force {
+                // Safe because leaf_entry is valid and guaranteed by the gfn_to_dtt_pte.
+                // The ACCESSED_FLAG is set by the guest if guest requires DMA map for
+                // this page. It represents whether or not this page is touched by the
+                // guest. By clearing this flag after an unpin work, we can detect if
+                // this page has been touched by the guest in the next round of unpin
+                // work. If the ACCESSED_FLAG is set at the next round, unpin this page
+                // will be failed and we will be here again to clear this flag. If this
+                // flag is not set at the next round, unpin this page will be probably
+                // success.
+                unsafe { (*leaf_entry).fetch_and(!DTTE_ACCESSED_FLAG, Ordering::SeqCst) };
+            } else {
+                // If we're here, then the guest is trying to release a page via the
+                // balloon that it still has pinned. This most likely that something is
+                // wrong in the guest kernel. Just leave the page pinned and log
+                // an error.
+                // This failure blocks the balloon from removing the page, which ensures
+                // that the guest's view of memory will remain consistent with device
+                // DMA's view of memory. Also note that the host kernel maintains an
+                // elevated refcount for pinned pages, which is a second guarantee the
+                // pages accessible by device DMA won't be freed until after they are
+                // unpinned.
+                error!(
+                    "CoIommu: force case cannot pin gfn 0x{:x} entry 0x{:x}",
+                    gfn, entry
+                );
+            }
+            // GFN cannot be unpinned either because the unmap count
+            // is non-zero or the it has accessed flag set.
+            UnpinResult::NotUnpinned
+        }
+    } else {
+        // The compare_exchange success as the original leaf entry is
+        // DTTE_PINNED_FLAG and the new leaf entry is 0 now. Unpin the
+        // page.
+        let gpa = (gfn << PAGE_SHIFT_4K) as u64;
+        if vfio_unmap(vfio_container, gpa, PAGE_SIZE_4K) {
+            UnpinResult::Unpinned
+        } else {
+            // Safe because leaf_entry is valid and guaranteed by the gfn_to_dtt_pte.
+            // make sure the pinned flag is set
+            unsafe { (*leaf_entry).fetch_or(DTTE_PINNED_FLAG, Ordering::SeqCst) };
+            // need to put this gfn back to pinned vector
+            UnpinResult::FailedUnpin
+        }
+    }
+}
+
 struct PinWorker {
     mem: GuestMemory,
     endpoints: Vec<u16>,
@@ -404,24 +518,23 @@ impl PinWorker {
     }
 }
 
-#[allow(dead_code)]
 struct UnpinWorker {
     mem: GuestMemory,
     dtt_level: u64,
     dtt_root: u64,
     vfio_container: Arc<Mutex<VfioContainer>>,
+    unpin_tube: Option<Tube>,
 }
 
 impl UnpinWorker {
     fn debug_label(&self) -> &'static str {
         "CoIommuUnpinWorker"
     }
-    // Currently the event is just the kill event but in future will extend with other
-    // events. So allow never_loop temporarily
-    #[allow(clippy::never_loop)]
+
     fn run(&mut self, kill_evt: Event) {
         #[derive(PollToken)]
         enum Token {
+            UnpinReq,
             Kill,
         }
 
@@ -434,6 +547,14 @@ impl UnpinWorker {
                 }
             };
 
+        if let Some(tube) = &self.unpin_tube {
+            if let Err(e) = wait_ctx.add(tube, Token::UnpinReq) {
+                error!("{}: failed creating WaitContext: {}", self.debug_label(), e);
+                return;
+            }
+        }
+
+        let unpin_tube = self.unpin_tube.take();
         'wait: loop {
             let events = match wait_ctx.wait() {
                 Ok(v) => v,
@@ -445,10 +566,82 @@ impl UnpinWorker {
 
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
+                    Token::UnpinReq => {
+                        if let Some(tube) = &unpin_tube {
+                            match tube.recv::<UnpinRequest>() {
+                                Ok(req) => {
+                                    let mut unpin_done = true;
+                                    for range in req.ranges {
+                                        // Locking with respect to pin_pages isn't necessary
+                                        // for this case because the unpinned pages in the range
+                                        // should all be in the balloon and so nothing will attempt
+                                        // to pin them.
+                                        if !self.unpin_pages_in_range(range.0, range.1) {
+                                            unpin_done = false;
+                                            break;
+                                        }
+                                    }
+                                    let resp = if unpin_done {
+                                        UnpinResponse::Success
+                                    } else {
+                                        UnpinResponse::Failed
+                                    };
+                                    if let Err(e) = tube.send(&resp) {
+                                        error!(
+                                            "{}: failed to send unpin response {}",
+                                            self.debug_label(),
+                                            e
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    if let TubeError::Disconnected = e {
+                                        if let Err(e) = wait_ctx.delete(tube) {
+                                            error!(
+                                                "{}: failed to remove unpin_tube: {}",
+                                                self.debug_label(),
+                                                e
+                                            );
+                                        }
+                                    } else {
+                                        error!(
+                                            "{}: failed to recv Unpin Request: {}",
+                                            self.debug_label(),
+                                            e
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
                     Token::Kill => break 'wait,
                 }
             }
         }
+        self.unpin_tube = unpin_tube;
+    }
+
+    fn unpin_pages_in_range(&self, gfn: u64, count: u64) -> bool {
+        let mut dtt_iter: DTTIter = Default::default();
+        for i in 0..count {
+            let result = unpin_page(
+                &self.vfio_container,
+                &self.mem,
+                self.dtt_level,
+                self.dtt_root,
+                &mut dtt_iter,
+                gfn + i,
+                true,
+            );
+            match result {
+                UnpinResult::Unpinned | UnpinResult::NotPinned => {}
+                _ => {
+                    error!("coiommu: force unpin failed by {:?}", result);
+                    return false;
+                }
+            }
+        }
+        true
     }
 }
 
@@ -469,6 +662,7 @@ pub struct CoIommuDev {
     pin_kill_evt: Option<Event>,
     unpin_thread: Option<thread::JoinHandle<UnpinWorker>>,
     unpin_kill_evt: Option<Event>,
+    unpin_tube: Option<Tube>,
     ioevents: Vec<Event>,
     vfio_container: Arc<Mutex<VfioContainer>>,
 }
@@ -478,6 +672,7 @@ impl CoIommuDev {
         mem: GuestMemory,
         vfio_container: Arc<Mutex<VfioContainer>>,
         device_tube: Tube,
+        unpin_tube: Option<Tube>,
         endpoints: Vec<u16>,
         vcpu_count: u64,
     ) -> Result<Self> {
@@ -545,6 +740,7 @@ impl CoIommuDev {
             pin_kill_evt: None,
             unpin_thread: None,
             unpin_kill_evt: None,
+            unpin_tube,
             ioevents,
             vfio_container,
         })
@@ -697,6 +893,7 @@ impl CoIommuDev {
         let dtt_root = self.coiommu_reg.dtt_root;
         let dtt_level = self.coiommu_reg.dtt_level;
         let vfio_container = self.vfio_container.clone();
+        let unpin_tube = self.unpin_tube.take();
         let worker_result = thread::Builder::new()
             .name("coiommu_unpin".to_string())
             .spawn(move || {
@@ -705,6 +902,7 @@ impl CoIommuDev {
                     dtt_level,
                     dtt_root,
                     vfio_container,
+                    unpin_tube,
                 };
                 worker.run(kill_evt);
                 worker
@@ -955,12 +1153,16 @@ impl PciDevice for CoIommuDev {
     }
 
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        vec![
+        let mut rds = vec![
             self.vfio_container.lock().as_raw_descriptor(),
             self.device_tube.as_raw_descriptor(),
             self.notifymap_mem.as_raw_descriptor(),
             self.topologymap_mem.as_raw_descriptor(),
-        ]
+        ];
+        if let Some(unpin_tube) = &self.unpin_tube {
+            rds.push(unpin_tube.as_raw_descriptor());
+        }
+        rds
     }
 
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {

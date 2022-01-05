@@ -69,3 +69,17 @@ pub use self::usb::host_backend::host_backend_device_provider::HostBackendDevice
 pub use self::usb::xhci::xhci_controller::XhciController;
 pub use self::vfio::{VfioContainer, VfioDevice};
 pub use self::virtio::VirtioPciDevice;
+
+/// Request CoIOMMU to unpin a specific range.
+use serde::{Deserialize, Serialize};
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UnpinRequest {
+    /// The ranges presents (start gfn, count).
+    ranges: Vec<(u64, u64)>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum UnpinResponse {
+    Success,
+    Failed,
+}
