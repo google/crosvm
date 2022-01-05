@@ -2071,7 +2071,7 @@ where
     }
 
     Arch::configure_vcpu(
-        vm.get_memory(),
+        &vm,
         vm.get_hypervisor(),
         irq_chip,
         &mut vcpu,
@@ -2778,7 +2778,7 @@ where
 
     let exit_evt = Event::new().context("failed to create event")?;
     let reset_evt = Event::new().context("failed to create event")?;
-    let mut sys_allocator = Arch::create_system_allocator(vm.get_memory());
+    let mut sys_allocator = Arch::create_system_allocator(&vm);
 
     // Allocate the ramoops region first. AArch64::build_vm() assumes this.
     let ramoops_region = match &components.pstore {
@@ -2789,7 +2789,7 @@ where
         None => None,
     };
 
-    let phys_max_addr = Arch::get_phys_max_addr();
+    let phys_max_addr = (1u64 << vm.get_guest_phys_addr_size()) - 1;
     let mut devices = create_devices(
         &cfg,
         &mut vm,

@@ -53,16 +53,14 @@ use std::sync::Arc;
 use crate::bootparam::boot_params;
 use acpi_tables::sdt::SDT;
 use acpi_tables::{aml, aml::Aml};
-use arch::{
-    get_serial_cmdline, GetSerialCmdlineError, LinuxArch, RunnableLinuxVm, VmComponents, VmImage,
-};
+use arch::{get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, VmComponents, VmImage};
 use base::Event;
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::{
     BusDeviceObj, BusResumeDevice, IrqChip, IrqChipX86_64, PciAddress, PciConfigIo, PciConfigMmio,
     PciDevice,
 };
-use hypervisor::{HypervisorX86_64, ProtectionType, VcpuX86_64, VmX86_64};
+use hypervisor::{HypervisorX86_64, ProtectionType, VcpuX86_64, Vm, VmX86_64};
 use minijail::Minijail;
 use remain::sorted;
 use resources::SystemAllocator;
@@ -370,13 +368,10 @@ impl arch::LinuxArch for X8664arch {
         Ok(arch_memory_regions(components.memory_size, bios_size))
     }
 
-    fn get_phys_max_addr() -> u64 {
-        (1u64 << cpuid::phy_max_address_bits()) - 1
-    }
-
-    fn create_system_allocator(guest_mem: &GuestMemory) -> SystemAllocator {
+    fn create_system_allocator<V: Vm>(vm: &V) -> SystemAllocator {
+        let guest_mem = vm.get_memory();
         let high_mmio_start = Self::get_high_mmio_base(guest_mem);
-        let high_mmio_size = Self::get_high_mmio_size(guest_mem);
+        let high_mmio_size = Self::get_high_mmio_size(vm);
         SystemAllocator::builder()
             .add_io_addresses(0xc000, 0x1_0000)
             .add_low_mmio_addresses(END_ADDR_BEFORE_32BITS, PCI_MMIO_SIZE)
@@ -476,6 +471,7 @@ impl arch::LinuxArch for X8664arch {
         let max_bus = ((PCIE_CFG_MMIO_SIZE / 0x100000) - 1) as u8;
 
         let (acpi_dev_resource, bat_control) = Self::setup_acpi_devices(
+            &vm,
             &mem,
             &io_bus,
             system_allocator,
@@ -601,8 +597,8 @@ impl arch::LinuxArch for X8664arch {
         })
     }
 
-    fn configure_vcpu(
-        guest_mem: &GuestMemory,
+    fn configure_vcpu<V: Vm>(
+        vm: &V,
         hypervisor: &dyn HypervisorX86_64,
         irq_chip: &mut dyn IrqChipX86_64,
         vcpu: &mut dyn VcpuX86_64,
@@ -627,8 +623,9 @@ impl arch::LinuxArch for X8664arch {
             return Ok(());
         }
 
+        let guest_mem = vm.get_memory();
         let kernel_load_addr = GuestAddress(KERNEL_START_OFFSET);
-        regs::setup_msrs(vcpu, END_ADDR_BEFORE_32BITS).map_err(Error::SetupMsrs)?;
+        regs::setup_msrs(vm, vcpu, END_ADDR_BEFORE_32BITS).map_err(Error::SetupMsrs)?;
         let kernel_end = guest_mem
             .checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
             .ok_or(Error::KernelOffsetPastEnd)?;
@@ -1116,11 +1113,11 @@ impl X8664arch {
     ///
     /// # Arguments
     ///
-    /// * mem: The memory to be used by the guest
-    fn get_high_mmio_size(mem: &GuestMemory) -> u64 {
-        let phys_mem_end = Self::get_phys_max_addr() + 1;
+    /// * `vm`: The virtual machine
+    fn get_high_mmio_size<V: Vm>(vm: &V) -> u64 {
+        let phys_mem_end = 1u64 << vm.get_guest_phys_addr_size();
         let high_mmio_end = std::cmp::min(phys_mem_end, HIGH_MMIO_MAX_END);
-        high_mmio_end - Self::get_high_mmio_base(mem)
+        high_mmio_end - Self::get_high_mmio_base(vm.get_memory())
     }
 
     /// This returns a minimal kernel command for this architecture
@@ -1204,7 +1201,8 @@ impl X8664arch {
     /// * - `irq_chip` the IrqChip object for registering irq events
     /// * - `battery` indicate whether to create the battery
     /// * - `mmio_bus` the MMIO bus to add the devices to
-    fn setup_acpi_devices(
+    fn setup_acpi_devices<V: VmX86_64>(
+        vm: &V,
         mem: &GuestMemory,
         io_bus: &devices::Bus,
         resources: &mut SystemAllocator,
@@ -1264,7 +1262,7 @@ impl X8664arch {
                     aml::AddressSpaceCachable::NotCacheable,
                     true,
                     Self::get_high_mmio_base(mem),
-                    Self::get_high_mmio_size(mem),
+                    Self::get_high_mmio_size(vm),
                 ),
             ]),
         );

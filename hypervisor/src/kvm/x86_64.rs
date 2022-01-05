@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::arch::x86_64::__cpuid;
+
 use base::IoctlNr;
 
 use libc::E2BIG;
@@ -72,6 +74,20 @@ impl Kvm {
         } else {
             error!("Protected mode is not supported on x86_64.");
             Err(Error::new(libc::EINVAL))
+        }
+    }
+
+    /// Get the size of guest physical addresses in bits.
+    pub fn get_guest_phys_addr_size(&self) -> u8 {
+        // Get host cpu max physical address bits.
+        // Assume the guest physical address size is the same as the host.
+        let highest_ext_function = unsafe { __cpuid(0x80000000) };
+        if highest_ext_function.eax >= 0x80000008 {
+            let addr_size = unsafe { __cpuid(0x80000008) };
+            // Low 8 bits of 0x80000008 leaf: host physical address size in bits.
+            addr_size.eax as u8
+        } else {
+            36
         }
     }
 }

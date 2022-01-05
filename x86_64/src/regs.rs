@@ -5,7 +5,7 @@
 use std::{mem, result};
 
 use base::{self, warn};
-use hypervisor::{Fpu, Register, Regs, Sregs, VcpuX86_64};
+use hypervisor::{Fpu, Register, Regs, Sregs, VcpuX86_64, Vm};
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory};
@@ -93,7 +93,12 @@ fn get_mtrr_pairs(base: u64, len: u64) -> Vec<(u64, u64)> {
     vecs
 }
 
-fn append_mtrr_entries(vpu: &dyn VcpuX86_64, pci_start: u64, entries: &mut Vec<Register>) {
+fn append_mtrr_entries(
+    vm: &dyn Vm,
+    vpu: &dyn VcpuX86_64,
+    pci_start: u64,
+    entries: &mut Vec<Register>,
+) {
     // Get VAR MTRR num from MSR_MTRRcap
     let mut msrs = vec![Register {
         id: crate::msr_index::MSR_MTRRcap,
@@ -117,7 +122,7 @@ fn append_mtrr_entries(vpu: &dyn VcpuX86_64, pci_start: u64, entries: &mut Vec<R
         return;
     }
 
-    let phys_mask: u64 = (1 << crate::cpuid::phy_max_address_bits()) - 1;
+    let phys_mask: u64 = (1 << vm.get_guest_phys_addr_size()) - 1;
     for (idx, (base, len)) in vecs.iter().enumerate() {
         let reg_idx = idx as u32 * 2;
         entries.push(Register {
@@ -137,7 +142,7 @@ fn append_mtrr_entries(vpu: &dyn VcpuX86_64, pci_start: u64, entries: &mut Vec<R
     });
 }
 
-fn create_msr_entries(vcpu: &dyn VcpuX86_64, pci_start: u64) -> Vec<Register> {
+fn create_msr_entries(vm: &dyn Vm, vcpu: &dyn VcpuX86_64, pci_start: u64) -> Vec<Register> {
     let mut entries = vec![
         Register {
             id: crate::msr_index::MSR_IA32_SYSENTER_CS,
@@ -182,7 +187,7 @@ fn create_msr_entries(vcpu: &dyn VcpuX86_64, pci_start: u64) -> Vec<Register> {
             value: crate::msr_index::MSR_IA32_MISC_ENABLE_FAST_STRING as u64,
         },
     ];
-    append_mtrr_entries(vcpu, pci_start, &mut entries);
+    append_mtrr_entries(vm, vcpu, pci_start, &mut entries);
     entries
 }
 
@@ -191,8 +196,8 @@ fn create_msr_entries(vcpu: &dyn VcpuX86_64, pci_start: u64) -> Vec<Register> {
 /// # Arguments
 ///
 /// * `vcpu` - Structure for the vcpu that holds the vcpu fd.
-pub fn setup_msrs(vcpu: &dyn VcpuX86_64, pci_start: u64) -> Result<()> {
-    let msrs = create_msr_entries(vcpu, pci_start);
+pub fn setup_msrs(vm: &dyn Vm, vcpu: &dyn VcpuX86_64, pci_start: u64) -> Result<()> {
+    let msrs = create_msr_entries(vm, vcpu, pci_start);
     vcpu.set_msrs(&msrs).map_err(Error::MsrIoctlFailed)
 }
 

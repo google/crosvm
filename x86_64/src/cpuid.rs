@@ -214,19 +214,6 @@ pub fn setup_cpuid(
         .map_err(Error::SetSupportedCpusFailed)
 }
 
-/// get host cpu max physical address bits
-pub fn phy_max_address_bits() -> u32 {
-    let mut phys_bits: u32 = 36;
-
-    let highest_ext_function = unsafe { __cpuid(0x80000000) };
-    if highest_ext_function.eax >= 0x80000008 {
-        let addr_size = unsafe { __cpuid(0x80000008) };
-        phys_bits = addr_size.eax & 0xff;
-    }
-
-    phys_bits
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

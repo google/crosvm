@@ -40,6 +40,19 @@ impl Kvm {
         // Use the lower 8 bits representing the IPA space as the machine type
         Ok((ipa_size & KVM_VM_TYPE_ARM_IPA_SIZE_MASK) | protection_flag)
     }
+
+    /// Get the size of guest physical addresses (IPA) in bits.
+    pub fn get_guest_phys_addr_size(&self) -> u8 {
+        // Safe because we know self is a real kvm fd
+        let vm_ipa_size = match unsafe {
+            ioctl_with_val(self, KVM_CHECK_EXTENSION(), KVM_CAP_ARM_VM_IPA_SIZE.into())
+        } {
+            // Default physical address size is 40 bits if the extension is not supported.
+            ret if ret < 0 => 40,
+            ipa => ipa as u8,
+        };
+        vm_ipa_size
+    }
 }
 
 impl KvmVm {

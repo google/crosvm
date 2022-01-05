@@ -14,7 +14,7 @@ use devices::{
     Bus, BusDeviceObj, BusError, IrqChip, IrqChipAArch64, PciAddress, PciConfigMmio, PciDevice,
 };
 use hypervisor::{
-    DeviceKind, Hypervisor, HypervisorCap, ProtectionType, VcpuAArch64, VcpuFeature, VmAArch64,
+    DeviceKind, Hypervisor, HypervisorCap, ProtectionType, VcpuAArch64, VcpuFeature, Vm, VmAArch64,
 };
 use minijail::Minijail;
 use remain::sorted;
@@ -245,12 +245,8 @@ impl arch::LinuxArch for AArch64 {
         Ok(arch_memory_regions(components.memory_size))
     }
 
-    fn get_phys_max_addr() -> u64 {
-        u64::max_value()
-    }
-
-    fn create_system_allocator(guest_mem: &GuestMemory) -> SystemAllocator {
-        Self::get_resource_allocator(guest_mem.memory_size())
+    fn create_system_allocator<V: Vm>(vm: &V) -> SystemAllocator {
+        Self::get_resource_allocator(vm.get_memory().memory_size())
     }
 
     fn build_vm<V, Vcpu>(
@@ -507,8 +503,8 @@ impl arch::LinuxArch for AArch64 {
         })
     }
 
-    fn configure_vcpu(
-        _guest_mem: &GuestMemory,
+    fn configure_vcpu<V: Vm>(
+        _vm: &V,
         _hypervisor: &dyn Hypervisor,
         _irq_chip: &mut dyn IrqChipAArch64,
         _vcpu: &mut dyn VcpuAArch64,

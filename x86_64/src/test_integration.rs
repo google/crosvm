@@ -101,9 +101,8 @@ where
     let arch_mem_regions = arch_memory_regions(memory_size, None);
     let guest_mem = GuestMemory::new(&arch_mem_regions).unwrap();
 
-    let mut resources = X8664arch::create_system_allocator(&guest_mem);
-
     let (hyp, mut vm) = create_vm(guest_mem.clone());
+    let mut resources = X8664arch::create_system_allocator(&vm);
     let (irqchip_tube, device_tube) = Tube::pair().expect("failed to create irq tube");
 
     let mut irq_chip = create_irq_chip(vm.try_clone().expect("failed to clone vm"), 1, device_tube);
@@ -184,6 +183,7 @@ where
     let suspend_evt = Event::new().unwrap();
     let mut resume_notify_devices = Vec::new();
     let acpi_dev_resource = X8664arch::setup_acpi_devices(
+        &vm,
         &guest_mem,
         &io_bus,
         &mut resources,
@@ -246,7 +246,7 @@ where
                 .expect("failed to add vcpu to irqchip");
 
             setup_cpuid(&hyp, &irq_chip, &vcpu, 0, 1, false, false).unwrap();
-            setup_msrs(&vcpu, END_ADDR_BEFORE_32BITS).unwrap();
+            setup_msrs(&vm, &vcpu, END_ADDR_BEFORE_32BITS).unwrap();
 
             setup_regs(
                 &vcpu,

@@ -148,14 +148,12 @@ pub trait LinuxArch {
         components: &VmComponents,
     ) -> std::result::Result<Vec<(GuestAddress, u64)>, Self::Error>;
 
-    /// Creates a new `SystemAllocator` that fits the given `GuestMemory`'s layout.
+    /// Creates a new `SystemAllocator` that fits the given `Vm`'s memory layout.
     ///
     /// # Arguments
     ///
-    /// * `guest_mem` - The memory to be used as a template for the `SystemAllocator`.
-    fn create_system_allocator(guest_mem: &GuestMemory) -> SystemAllocator;
-
-    fn get_phys_max_addr() -> u64;
+    /// * `vm` - The virtual machine to be used as a template for the `SystemAllocator`.
+    fn create_system_allocator<V: Vm>(vm: &V) -> SystemAllocator;
 
     /// Takes `VmComponents` and generates a `RunnableLinuxVm`.
     ///
@@ -197,15 +195,15 @@ pub trait LinuxArch {
     ///
     /// # Arguments
     ///
-    /// * `guest_mem` - The memory to be used by the guest.
+    /// * `vm` - The virtual machine object.
     /// * `hypervisor` - The `Hypervisor` that created the vcpu.
     /// * `irq_chip` - The `IrqChip` associated with this vm.
     /// * `vcpu` - The VCPU object to configure.
     /// * `vcpu_id` - The id of the given `vcpu`.
     /// * `num_cpus` - Number of virtual CPUs the guest will have.
     /// * `has_bios` - Whether the `VmImage` is a `Bios` image
-    fn configure_vcpu(
-        guest_mem: &GuestMemory,
+    fn configure_vcpu<V: Vm>(
+        vm: &V,
         hypervisor: &dyn HypervisorArch,
         irq_chip: &mut dyn IrqChipArch,
         vcpu: &mut dyn VcpuArch,

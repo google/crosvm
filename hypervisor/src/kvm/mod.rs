@@ -453,6 +453,10 @@ impl Vm for KvmVm {
         }
     }
 
+    fn get_guest_phys_addr_size(&self) -> u8 {
+        self.kvm.get_guest_phys_addr_size()
+    }
+
     fn get_memory(&self) -> &GuestMemory {
         &self.guest_mem
     }
