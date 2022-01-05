@@ -1441,13 +1441,6 @@ fn create_virtio_devices(
 
     devs.push(create_rng_device(cfg)?);
 
-    #[cfg(feature = "audio_cras")]
-    {
-        for cras_snd in &cfg.cras_snds {
-            devs.push(create_cras_snd_device(cfg, cras_snd.clone())?);
-        }
-    }
-
     #[cfg(feature = "tpm")]
     {
         if cfg.software_tpm {
@@ -1650,6 +1643,13 @@ fn create_virtio_devices(
                 event_devices,
                 map_request,
             )?);
+        }
+    }
+
+    #[cfg(feature = "audio_cras")]
+    {
+        for cras_snd in &cfg.cras_snds {
+            devs.push(create_cras_snd_device(cfg, cras_snd.clone())?);
         }
     }
 
