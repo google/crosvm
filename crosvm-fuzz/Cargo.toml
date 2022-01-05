@@ -10,6 +10,7 @@ data_model = { path = "../common/data_model" }
 devices = { path = "../devices" }
 disk = { path = "../disk" }
 fuse = { path = "../fuse" }
+hypervisor = { path = "../hypervisor" }
 kernel_loader = { path = "../kernel_loader" }
 libc = "*"
 rand = "0.6"
