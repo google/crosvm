@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use crate::virtio::video::control::*;
 use crate::virtio::video::format::*;
 
+#[derive(Clone)]
 pub struct Capability {
     in_fmts: Vec<FormatDesc>,
     out_fmts: Vec<FormatDesc>,
