@@ -334,10 +334,7 @@ impl Vring {
 
 enum HandlerType {
     VhostUser,
-    #[allow(dead_code)]
-    Vvu {
-        device: Arc<Mutex<VvuPciDevice>>,
-    },
+    Vvu { device: Arc<Mutex<VvuPciDevice>> },
 }
 
 impl Default for HandlerType {
@@ -426,7 +423,6 @@ where
 
     /// Starts listening virtio-vhost-user device with VFIO to handle incoming vhost-user messages
     /// forwarded by it.
-    #[allow(dead_code)]
     pub async fn run_vvu(mut self, device: VvuPciDevice, ex: &Executor) -> Result<()> {
         let device = Arc::new(Mutex::new(device));
         let driver = VvuDevice::new(Arc::clone(&device));

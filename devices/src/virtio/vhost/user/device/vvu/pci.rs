@@ -4,9 +4,6 @@
 
 //! Implement a userspace PCI device driver for the virtio vhost-user device.
 
-// TODO(keiichiw): Remove once block driver is landed.
-#![allow(dead_code)]
-
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 

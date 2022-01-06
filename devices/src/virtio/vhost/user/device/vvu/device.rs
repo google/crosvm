@@ -4,9 +4,6 @@
 
 //! Implement a struct that works as a `vmm_vhost`'s backend.
 
-// TODO(keiichiw): Remove once block driver is landed.
-#![allow(dead_code)]
-
 use std::fs::File;
 use std::io::{IoSlice, IoSliceMut};
 use std::mem;

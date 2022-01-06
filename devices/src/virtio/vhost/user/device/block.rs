@@ -24,8 +24,9 @@ use vm_memory::GuestMemory;
 
 use crate::virtio::block::asynchronous::{flush_disk, process_one_chain};
 use crate::virtio::block::*;
-use crate::virtio::vhost::user::device::handler::{
-    DeviceRequestHandler, Doorbell, VhostUserBackend,
+use crate::virtio::vhost::user::device::{
+    handler::{DeviceRequestHandler, Doorbell, VhostUserBackend},
+    vvu::pci::VvuPciDevice,
 };
 use crate::virtio::{self, base_features, copy_config, Queue};
 
@@ -311,8 +312,14 @@ struct Options {
         arg_name = "PATH<:read-only>"
     )]
     file: String,
-    #[argh(option, description = "path to a socket", arg_name = "PATH")]
-    socket: String,
+    #[argh(option, description = "path to a vhost-user socket", arg_name = "PATH")]
+    socket: Option<String>,
+    #[argh(
+        option,
+        description = "VFIO-PCI device name (e.g. '0000:00:07.0')",
+        arg_name = "STRING"
+    )]
+    vfio: Option<String>,
 }
 
 /// Starts a vhost-user block device.
@@ -330,6 +337,10 @@ pub fn run_block_device(program_name: &str, args: &[&str]) -> anyhow::Result<()>
         }
     };
 
+    if !(opts.socket.is_some() ^ opts.vfio.is_some()) {
+        bail!("Exactly one of `--socket` or `--vfio` is required");
+    }
+
     let ex = Executor::new().context("failed to create executor")?;
     BLOCK_EXECUTOR
         .set(ex.clone())
@@ -340,7 +351,15 @@ pub fn run_block_device(program_name: &str, args: &[&str]) -> anyhow::Result<()>
 
     let block = BlockBackend::new(BLOCK_EXECUTOR.clone(), filename, fileopts)?;
     let handler = DeviceRequestHandler::new(block);
-
-    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-    ex.run_until(handler.run(opts.socket, &ex))?
+    match (opts.socket, opts.vfio) {
+        (Some(socket), None) => {
+            // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
+            ex.run_until(handler.run(socket, &ex))?
+        }
+        (None, Some(device_name)) => {
+            let device = VvuPciDevice::new(device_name.as_str(), BlockBackend::MAX_QUEUE_NUM)?;
+            ex.run_until(handler.run_vvu(device, &ex))?
+        }
+        _ => unreachable!("Must be checked above"),
+    }
 }
