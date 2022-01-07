@@ -49,19 +49,19 @@ impl<'a> Iterator for NetlinkMessageIter<'a> {
         let hdr = NlMsgHdr::from_slice(&self.data[..HDR_SIZE])?;
 
         // NLMSG_OK
-        let hdr_len = hdr.nlmsg_len as usize;
-        if hdr_len < HDR_SIZE || hdr_len > self.data.len() {
+        let msg_len = hdr.nlmsg_len as usize;
+        if msg_len < HDR_SIZE || msg_len > self.data.len() {
             return None;
         }
 
         // NLMSG_DATA
         let data_start = HDR_SIZE;
-        let data_end = hdr_len - data_start;
+        let data_end = msg_len - data_start;
         let data = &self.data[data_start..data_end];
 
         // NLMSG_NEXT
         let align_to = std::mem::align_of::<NlMsgHdr>();
-        let next_hdr = (hdr_len + align_to - 1) & !(align_to - 1);
+        let next_hdr = (msg_len + align_to - 1) & !(align_to - 1);
         if next_hdr >= self.data.len() {
             self.data = &[];
         } else {
