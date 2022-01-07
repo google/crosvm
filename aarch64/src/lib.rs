@@ -531,18 +531,6 @@ impl arch::LinuxArch for AArch64 {
 }
 
 impl AArch64 {
-    fn get_high_mmio_base_size(mem_size: u64) -> (u64, u64) {
-        let base = AARCH64_PHYS_MEM_START + mem_size + AARCH64_PLATFORM_MMIO_SIZE;
-        let size = u64::max_value() - base;
-        (base, size)
-    }
-
-    fn get_platform_mmio_base_size(mem_size: u64) -> (u64, u64) {
-        let base = AARCH64_PHYS_MEM_START + mem_size;
-        let size = AARCH64_PLATFORM_MMIO_SIZE;
-        (base, size)
-    }
-
     /// This returns a base part of the kernel command for this architecture
     fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
         let mut cmdline = kernel_cmdline::Cmdline::new(base::pagesize());
@@ -552,12 +540,16 @@ impl AArch64 {
 
     /// Returns a system resource allocator.
     fn get_resource_allocator(mem_size: u64) -> SystemAllocator {
-        let (high_mmio_base, high_mmio_size) = Self::get_high_mmio_base_size(mem_size);
-        let (plat_mmio_base, plat_mmio_size) = Self::get_platform_mmio_base_size(mem_size);
+        // The platform MMIO region is immediately past the end of RAM.
+        let plat_mmio_base = AARCH64_PHYS_MEM_START + mem_size;
+        let plat_mmio_size = AARCH64_PLATFORM_MMIO_SIZE;
+        // The high MMIO region is the rest of the address space after the platform MMIO region.
+        let high_mmio_base = plat_mmio_base + plat_mmio_size;
+        let high_mmio_size = u64::max_value() - high_mmio_base;
         SystemAllocator::builder()
-            .add_high_mmio_addresses(high_mmio_base, high_mmio_size)
             .add_low_mmio_addresses(AARCH64_MMIO_BASE, AARCH64_MMIO_SIZE)
             .add_platform_mmio_addresses(plat_mmio_base, plat_mmio_size)
+            .add_high_mmio_addresses(high_mmio_base, high_mmio_size)
             .create_allocator(AARCH64_IRQ_BASE)
             .unwrap()
     }
