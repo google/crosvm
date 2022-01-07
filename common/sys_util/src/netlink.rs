@@ -56,8 +56,7 @@ impl<'a> Iterator for NetlinkMessageIter<'a> {
 
         // NLMSG_DATA
         let data_start = HDR_SIZE;
-        let data_end = msg_len - data_start;
-        let data = &self.data[data_start..data_end];
+        let data = &self.data[data_start..msg_len];
 
         // NLMSG_NEXT
         let align_to = std::mem::align_of::<NlMsgHdr>();
