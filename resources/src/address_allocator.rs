@@ -26,6 +26,8 @@ use crate::{Alloc, Error, Result};
 /// ```
 #[derive(Debug, Eq, PartialEq)]
 pub struct AddressAllocator {
+    pool_base: u64,
+    pool_size: u64,
     alignment: u64,
     allocs: HashMap<Alloc, (u64, u64, String)>,
     regions: BTreeSet<(u64, u64)>,
@@ -56,10 +58,26 @@ impl AddressAllocator {
         let mut regions = BTreeSet::new();
         regions.insert((pool_base, pool_end));
         Ok(AddressAllocator {
+            pool_base,
+            pool_size,
             alignment,
             allocs: HashMap::new(),
             regions,
         })
+    }
+
+    /// Gets the starting address of the allocator.
+    ///
+    /// This returns the original `pool_base` value provided to `AddressAllocator::new()`.
+    pub fn pool_base(&self) -> u64 {
+        self.pool_base
+    }
+
+    /// Gets the size of the allocator's address range in bytes.
+    ///
+    /// This returns the original `pool_size` value provided to `AddressAllocator::new()`.
+    pub fn pool_size(&self) -> u64 {
+        self.pool_size
     }
 
     fn internal_allocate_with_align(
