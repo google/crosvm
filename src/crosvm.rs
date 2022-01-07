@@ -33,6 +33,7 @@ use devices::virtio::VideoBackendType;
 use devices::Ac97Parameters;
 #[cfg(feature = "direct")]
 use devices::BusRange;
+use devices::IommuDevType;
 use devices::StubPciParameters;
 use hypervisor::ProtectionType;
 use libc::{getegid, geteuid};
@@ -273,15 +274,16 @@ impl VfioCommand {
 
     fn validate_params(kind: &str, value: &str) -> Result<(), argument::Error> {
         match kind {
-            "iommu" => match value {
-                "on" | "off" => Ok(()),
-                _ => {
-                    return Err(argument::Error::InvalidValue {
+            "iommu" => {
+                if IommuDevType::from_str(value).is_ok() {
+                    Ok(())
+                } else {
+                    Err(argument::Error::InvalidValue {
                         value: format!("{}={}", kind.to_owned(), value.to_owned()),
-                        expected: String::from("option must be `iommu=on|off`"),
+                        expected: String::from("option must be `iommu=viommu|coiommu|off`"),
                     })
                 }
-            },
+            }
             _ => Err(argument::Error::InvalidValue {
                 value: format!("{}={}", kind.to_owned(), value.to_owned()),
                 expected: String::from("option must be `iommu=<val>`"),
@@ -293,8 +295,13 @@ impl VfioCommand {
         self.dev_type
     }
 
-    pub fn iommu_enabled(&self) -> bool {
-        matches!(self.params.get("iommu"), Some(value) if value.as_str() == "on")
+    pub fn iommu_dev_type(&self) -> IommuDevType {
+        if let Some(iommu) = self.params.get("iommu") {
+            if let Ok(v) = IommuDevType::from_str(iommu) {
+                return v;
+            }
+        }
+        IommuDevType::NoIommu
     }
 }
 
