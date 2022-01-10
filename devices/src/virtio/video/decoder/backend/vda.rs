@@ -273,7 +273,19 @@ impl DecoderBackend for LibvdaDecoder {
                     in_fmts.push(FormatDesc {
                         mask,
                         format,
-                        frame_formats: vec![Default::default()],
+                        frame_formats: vec![FrameFormat {
+                            width: FormatRange {
+                                min: fmt.min_width,
+                                max: fmt.max_width,
+                                step: 1,
+                            },
+                            height: FormatRange {
+                                min: fmt.min_height,
+                                max: fmt.max_height,
+                                step: 1,
+                            },
+                            bitrates: Vec::new(),
+                        }],
                     });
                     match profiles.entry(format) {
                         Entry::Occupied(mut e) => e.get_mut().push(profile),
