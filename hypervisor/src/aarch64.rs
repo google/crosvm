@@ -39,6 +39,43 @@ impl TryFrom<u32> for PsciVersion {
 pub const PSCI_0_2: PsciVersion = PsciVersion { major: 0, minor: 2 };
 pub const PSCI_1_0: PsciVersion = PsciVersion { major: 1, minor: 0 };
 
+pub enum VcpuRegAArch64 {
+    W0 = 0,
+    W1 = 1,
+    W2 = 2,
+    W3 = 3,
+    W4 = 4,
+    W5 = 5,
+    W6 = 6,
+    W7 = 7,
+    W8 = 8,
+    W9 = 9,
+    W10 = 10,
+    W11 = 11,
+    W12 = 12,
+    W13 = 13,
+    W14 = 14,
+    W15 = 15,
+    W16 = 16,
+    W17 = 17,
+    W18 = 18,
+    W19 = 19,
+    W20 = 20,
+    W21 = 21,
+    W22 = 22,
+    W23 = 23,
+    W24 = 24,
+    W25 = 25,
+    W26 = 26,
+    W27 = 27,
+    W28 = 28,
+    W29 = 29,
+    Lr = 30,
+    Sp = 31,
+    Pc,
+    Pstate,
+}
+
 /// A wrapper for using a VM on aarch64 and getting/setting its state.
 pub trait VmAArch64: Vm {
     /// Gets the `Hypervisor` that created this VM.
@@ -72,13 +109,11 @@ pub trait VcpuAArch64: Vcpu {
     /// structure as `pvtime_ipa`.
     fn init_pvtime(&self, pvtime_ipa: u64) -> Result<()>;
 
-    /// Sets the value of a register on this VCPU.  `reg_id` is the register ID, as specified in the
-    /// KVM API documentation for KVM_SET_ONE_REG.
-    fn set_one_reg(&self, reg_id: u64, data: u64) -> Result<()>;
+    /// Sets the value of a register on this VCPU.
+    fn set_one_reg(&self, reg_id: VcpuRegAArch64, data: u64) -> Result<()>;
 
-    /// Gets the value of a register on this VCPU.  `reg_id` is the register ID, as specified in the
-    /// KVM API documentation for KVM_GET_ONE_REG.
-    fn get_one_reg(&self, reg_id: u64) -> Result<u64>;
+    /// Gets the value of a register on this VCPU.
+    fn get_one_reg(&self, reg_id: VcpuRegAArch64) -> Result<u64>;
 
     /// Gets the current PSCI version.
     fn get_psci_version(&self) -> Result<PsciVersion>;

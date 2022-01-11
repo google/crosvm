@@ -15,8 +15,7 @@ use devices::{
     Bus, BusDeviceObj, BusError, IrqChip, IrqChipAArch64, PciAddress, PciConfigMmio, PciDevice,
 };
 use hypervisor::{
-    arm64_core_reg, DeviceKind, Hypervisor, HypervisorCap, ProtectionType, VcpuAArch64,
-    VcpuFeature, Vm, VmAArch64,
+    DeviceKind, Hypervisor, HypervisorCap, ProtectionType, VcpuAArch64, VcpuFeature, Vm, VmAArch64,
 };
 use minijail::Minijail;
 use remain::sorted;
@@ -602,7 +601,7 @@ impl AArch64 {
 
         // All interrupts masked
         let pstate = PSR_D_BIT | PSR_A_BIT | PSR_I_BIT | PSR_F_BIT | PSR_MODE_EL1H;
-        vcpu.set_one_reg(arm64_core_reg!(pstate), pstate)
+        vcpu.set_one_reg(hypervisor::VcpuRegAArch64::Pstate, pstate)
             .map_err(Error::SetReg)?;
 
         // Other cpus are powered off initially
@@ -613,9 +612,9 @@ impl AArch64 {
                 get_kernel_addr()
             };
             let entry_addr_reg_id = if protected_vm == ProtectionType::Protected {
-                arm64_core_reg!(regs, 1)
+                hypervisor::VcpuRegAArch64::W1
             } else {
-                arm64_core_reg!(pc)
+                hypervisor::VcpuRegAArch64::Pc
             };
             vcpu.set_one_reg(entry_addr_reg_id, entry_addr.offset())
                 .map_err(Error::SetReg)?;
@@ -623,12 +622,12 @@ impl AArch64 {
             /* X0 -- fdt address */
             let mem_size = guest_mem.memory_size();
             let fdt_addr = (AARCH64_PHYS_MEM_START + fdt_offset(mem_size, has_bios)) as u64;
-            vcpu.set_one_reg(arm64_core_reg!(regs, 0), fdt_addr)
+            vcpu.set_one_reg(hypervisor::VcpuRegAArch64::W0, fdt_addr)
                 .map_err(Error::SetReg)?;
 
             /* X2 -- image size */
             if protected_vm == ProtectionType::Protected {
-                vcpu.set_one_reg(arm64_core_reg!(regs, 2), image_size as u64)
+                vcpu.set_one_reg(hypervisor::VcpuRegAArch64::W2, image_size as u64)
                     .map_err(Error::SetReg)?;
             }
         }
