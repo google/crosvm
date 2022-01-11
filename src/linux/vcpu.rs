@@ -63,7 +63,7 @@ pub fn setup_vcpu_signal_handler<T: Vcpu>(use_hypervisor_signals: bool) -> Resul
 // Sets up a vcpu and converts it into a runnable vcpu.
 pub fn runnable_vcpu<V>(
     cpu_id: usize,
-    kvm_vcpu_id: usize,
+    vcpu_id: usize,
     vcpu: Option<V>,
     vm: impl VmArch,
     irq_chip: &mut dyn IrqChipArch,
@@ -86,7 +86,7 @@ where
             // If vcpu is None, it means this arch/hypervisor requires create_vcpu to be called from
             // the vcpu thread.
             match vm
-                .create_vcpu(kvm_vcpu_id)
+                .create_vcpu(vcpu_id)
                 .context("failed to create vcpu")?
                 .downcast::<V>()
             {
@@ -587,7 +587,7 @@ impl MsrHandlers {
 
 pub fn run_vcpu<V>(
     cpu_id: usize,
-    kvm_vcpu_id: usize,
+    vcpu_id: usize,
     vcpu: Option<V>,
     vm: impl VmArch + 'static,
     mut irq_chip: Box<dyn IrqChipArch + 'static>,
@@ -648,7 +648,7 @@ where
             let guest_mem = vm.get_memory().clone();
             let runnable_vcpu = runnable_vcpu(
                 cpu_id,
-                kvm_vcpu_id,
+                vcpu_id,
                 vcpu,
                 vm,
                 irq_chip.as_mut(),

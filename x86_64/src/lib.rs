@@ -437,7 +437,7 @@ impl arch::LinuxArch for X8664arch {
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipX86_64,
-        kvm_vcpu_ids: &mut Vec<usize>,
+        vcpu_ids: &mut Vec<usize>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmX86_64,
@@ -593,7 +593,7 @@ impl arch::LinuxArch for X8664arch {
             6, // RST_CPU|SYS_RST
             &acpi_dev_resource,
             host_cpus,
-            kvm_vcpu_ids,
+            vcpu_ids,
             &pci_irqs,
             PCIE_CFG_MMIO_START,
             max_bus,

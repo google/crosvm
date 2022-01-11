@@ -1379,7 +1379,7 @@ where
     }
 
     // KVM_CREATE_VCPU uses apic id for x86 and uses cpu id for others.
-    let mut kvm_vcpu_ids = Vec::new();
+    let mut vcpu_ids = Vec::new();
 
     #[cfg_attr(not(feature = "direct"), allow(unused_mut))]
     let mut linux = Arch::build_vm::<V, Vcpu>(
@@ -1394,7 +1394,7 @@ where
         ramoops_region,
         devices,
         irq_chip,
-        &mut kvm_vcpu_ids,
+        &mut vcpu_ids,
     )
     .context("the architecture failed to build the vm")?;
 
@@ -1457,7 +1457,7 @@ where
         sigchld_fd,
         Arc::clone(&map_request),
         gralloc,
-        kvm_vcpu_ids,
+        vcpu_ids,
         iommu_host_tube,
     )
 }
@@ -1630,7 +1630,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     sigchld_fd: SignalFd,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     mut gralloc: RutabagaGralloc,
-    kvm_vcpu_ids: Vec<usize>,
+    vcpu_ids: Vec<usize>,
     iommu_host_tube: Option<Tube>,
 ) -> Result<ExitState> {
     #[derive(PollToken)]
@@ -1746,7 +1746,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         };
         let handle = vcpu::run_vcpu(
             cpu_id,
-            kvm_vcpu_ids[cpu_id],
+            vcpu_ids[cpu_id],
             vcpu,
             linux.vm.try_clone().context("failed to clone vm")?,
             linux

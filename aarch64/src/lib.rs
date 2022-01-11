@@ -226,7 +226,7 @@ impl arch::LinuxArch for AArch64 {
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipAArch64,
-        kvm_vcpu_ids: &mut Vec<usize>,
+        vcpu_ids: &mut Vec<usize>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmAArch64,
@@ -294,7 +294,7 @@ impl arch::LinuxArch for AArch64 {
             )?;
             has_pvtime &= vcpu.has_pvtime_support();
             vcpus.push(vcpu);
-            kvm_vcpu_ids.push(vcpu_id);
+            vcpu_ids.push(vcpu_id);
         }
 
         irq_chip.finalize().map_err(Error::FinalizeIrqChip)?;
