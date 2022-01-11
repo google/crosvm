@@ -1804,7 +1804,7 @@ where
     }
 
     // KVM_CREATE_VCPU uses apic id for x86 and uses cpu id for others.
-    let mut kvm_vcpu_ids = Vec::new();
+    let mut vcpu_ids = Vec::new();
 
     #[cfg_attr(not(feature = "direct"), allow(unused_mut))]
     let mut linux = Arch::build_vm::<V, Vcpu>(
@@ -1818,7 +1818,7 @@ where
         ramoops_region,
         devices,
         irq_chip,
-        &mut kvm_vcpu_ids,
+        &mut vcpu_ids,
         simple_jail(&cfg.jail_config, "serial_device")?,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         simple_jail(&cfg.jail_config, "block_device")?,
@@ -1899,7 +1899,7 @@ where
         vm_evt_wrtube,
         sigchld_fd,
         gralloc,
-        kvm_vcpu_ids,
+        vcpu_ids,
         iommu_host_tube,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         hp_control_tube,
@@ -2370,7 +2370,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     vm_evt_wrtube: SendTube,
     sigchld_fd: SignalFd,
     mut gralloc: RutabagaGralloc,
-    kvm_vcpu_ids: Vec<usize>,
+    vcpu_ids: Vec<usize>,
     iommu_host_tube: Option<Tube>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] hp_control_tube: mpsc::Sender<
         PciRootCommand,
@@ -2576,7 +2576,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
         let handle = vcpu::run_vcpu(
             cpu_id,
-            kvm_vcpu_ids[cpu_id],
+            vcpu_ids[cpu_id],
             vcpu,
             vcpu_init,
             linux.vm.try_clone().context("failed to clone vm")?,
