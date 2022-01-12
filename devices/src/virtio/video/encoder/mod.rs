@@ -59,8 +59,10 @@ struct OutputResource {
 
 #[derive(Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
 enum PendingCommand {
-    GetSrcParams,
-    GetDstParams,
+    // TODO(b/193202566): remove this is_ext parameter throughout the code along with
+    // support for the old GET_PARAMS and SET_PARAMS commands.
+    GetSrcParams { is_ext: bool },
+    GetDstParams { is_ext: bool },
     Drain,
     SrcQueueClear,
     DstQueueClear,
@@ -252,7 +254,20 @@ impl<T: EncoderSession> Stream<T> {
         let mut responses = vec![];
 
         // Respond to any GetParams commands that were waiting.
-        if self.pending_commands.remove(&PendingCommand::GetSrcParams) {
+        let pending_get_src_params = if self
+            .pending_commands
+            .remove(&PendingCommand::GetSrcParams { is_ext: false })
+        {
+            Some(false)
+        } else if self
+            .pending_commands
+            .remove(&PendingCommand::GetSrcParams { is_ext: true })
+        {
+            Some(true)
+        } else {
+            None
+        };
+        if let Some(is_ext) = pending_get_src_params {
             responses.push(VideoEvtResponseType::AsyncCmd(
                 AsyncCmdResponse::from_response(
                     AsyncCmdTag::GetParams {
@@ -262,12 +277,25 @@ impl<T: EncoderSession> Stream<T> {
                     CmdResponse::GetParams {
                         queue_type: QueueType::Input,
                         params: self.src_params.clone(),
-                        is_ext: false,
+                        is_ext,
                     },
                 ),
             ));
         }
-        if self.pending_commands.remove(&PendingCommand::GetDstParams) {
+        let pending_get_dst_params = if self
+            .pending_commands
+            .remove(&PendingCommand::GetDstParams { is_ext: false })
+        {
+            Some(false)
+        } else if self
+            .pending_commands
+            .remove(&PendingCommand::GetDstParams { is_ext: true })
+        {
+            Some(true)
+        } else {
+            None
+        };
+        if let Some(is_ext) = pending_get_dst_params {
             responses.push(VideoEvtResponseType::AsyncCmd(
                 AsyncCmdResponse::from_response(
                     AsyncCmdTag::GetParams {
@@ -277,7 +305,7 @@ impl<T: EncoderSession> Stream<T> {
                     CmdResponse::GetParams {
                         queue_type: QueueType::Output,
                         params: self.dst_params.clone(),
-                        is_ext: false,
+                        is_ext,
                     },
                 ),
             ));
@@ -953,8 +981,8 @@ impl<T: Encoder> EncoderDevice<T> {
             // event, we need to wait for that before replying so that
             // the G_FMT response has the correct data.
             let pending_command = match queue_type {
-                QueueType::Input => PendingCommand::GetSrcParams,
-                QueueType::Output => PendingCommand::GetDstParams,
+                QueueType::Input => PendingCommand::GetSrcParams { is_ext },
+                QueueType::Output => PendingCommand::GetDstParams { is_ext },
             };
 
             if !stream.pending_commands.insert(pending_command) {
