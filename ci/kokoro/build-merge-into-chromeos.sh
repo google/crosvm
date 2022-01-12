@@ -3,36 +3,54 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 set -e
-cd "${KOKORO_ARTIFACTS_DIR}/git/crosvm"
 
 readonly GERRIT_URL=https://chromium-review.googlesource.com
 readonly ORIGIN=${GERRIT_URL}/chromiumos/platform/crosvm
 readonly RETRIES=3
 
-gerrit_api() {
-    # Call gerrit API. Strips XSSI protection line from output.
+gerrit_api_get() {
+    # GET request to the gerrit API. Strips XSSI protection line from output.
     # See: https://gerrit-review.googlesource.com/Documentation/dev-rest-api.html
     local url="${GERRIT_URL}/${1}"
     curl --silent "$url" | tail -n +2
 }
 
+gerrit_api_post() {
+    # POST to gerrit API using http cookies from git.
+    local endpoint=$1
+    local body=$2
+    local cookie_file=$(git config http.cookiefile)
+    if [[ -z "${cookie_file}" ]]; then
+        echo 1>&2 "Cannot find git http cookie file."
+        return 1
+    fi
+    local url="${GERRIT_URL}/${endpoint}"
+    curl --silent \
+        --cookie "${cookie_file}" \
+        -X POST \
+        -d "${body}" \
+        -H "Content-Type: application/json" \
+        "$url" |
+        tail -n +2
+}
+
 query_change() {
     # Query gerrit for a specific change.
     # See: https://gerrit-review.googlesource.com/Documentation/rest-api-changes.html#get-change
-    gerrit_api "changes/$1/?o=CURRENT_REVISION"
+    gerrit_api_get "changes/$1/?o=CURRENT_REVISION"
 }
 
 query_changes() {
     # Query gerrit for a list of changes.
     # See: https://gerrit-review.googlesource.com/Documentation/rest-api-changes.html#list-changes
     local query=$(printf '%s+' "$@")
-    gerrit_api "changes/?q=${query}"
+    gerrit_api_get "changes/?q=${query}"
 }
 
 query_related_changes() {
     # Query related changes from gerrit.
     # See: https://gerrit-review.googlesource.com/Documentation/rest-api-changes.html#get-related-changes
-    gerrit_api "changes/$1/revisions/current/related"
+    gerrit_api_get "changes/$1/revisions/current/related"
 }
 
 get_previous_merge_id() {
@@ -47,6 +65,11 @@ get_previous_merge_id() {
     # Pick the one that was created last.
     query_changes "${query[@]}" |
         jq --raw-output 'sort_by(.created)[-1].change_id'
+}
+
+get_change_id_from_commit() {
+    query_changes "project:chromiumos/platform/crosvm" "$1" |
+        jq --raw-output ".[0].change_id"
 }
 
 get_last_change_in_chain() {
@@ -65,6 +88,21 @@ get_last_change_in_chain() {
         echo "${change_id}"
     else
         echo "${last_change}"
+    fi
+}
+
+get_all_related_changes() {
+    # Queries the change ids of all related changes that are still open.
+    local change_id=$1
+    local all_changes
+    all_changes=$(query_related_changes "$change_id" | jq --raw-output \
+        ".changes[] | select(.status == \"NEW\").change_id")
+
+    # If there are no related changes the list will be empty.
+    if [ -z "${all_changes}" ]; then
+        echo "${change_id}"
+    else
+        echo "${all_changes}"
     fi
 }
 
@@ -107,7 +145,8 @@ gerrit_prerequisites() {
 }
 
 upload() {
-    git push origin HEAD:refs/for/chromeos%r=crosvm-uprev@google.com
+    git push origin \
+        HEAD:refs/for/chromeos%r=crosvm-uprev@google.com
 }
 
 upload_with_retries() {
@@ -122,7 +161,22 @@ upload_with_retries() {
     return 1
 }
 
+dry_run_change() {
+    # Sets the Commit-Queue+1 bit on the provided change id and all it's
+    # ancestors.
+    local change_id=$1
+
+    local all_changes=$(get_all_related_changes "$change_id")
+    for change in ${all_changes}; do
+        body='{"message": "Dry-Running the latest merge.","labels": {"Commit-Queue": +1}}'
+        echo "Setting CQ+1 on ${GERRIT_URL}/q/${change}"
+        gerrit_api_post "a/changes/${change}/revisions/current/review" "$body" >/dev/null
+    done
+}
+
 main() {
+    cd "${KOKORO_ARTIFACTS_DIR}/git/crosvm"
+
     gerrit_prerequisites
 
     # Make a copy of the merge script, so we are using the HEAD version to
@@ -167,5 +221,11 @@ main() {
     "${KOKORO_ARTIFACTS_DIR}/create_merge" "origin/main"
 
     upload_with_retries
+
+    # Look up the change id for the newly created merge and CQ+1
+    local new_commit=$(git rev-parse HEAD)
+    local new_change_id
+    new_change_id=$(get_change_id_from_commit "${new_commit}")
+    dry_run_change "${new_change_id}"
 }
 main
