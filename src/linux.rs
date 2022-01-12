@@ -839,6 +839,45 @@ fn gpu_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
 }
 
 #[cfg(feature = "gpu")]
+struct GpuCacheInfo<'a> {
+    directory: Option<&'a str>,
+    environment: Vec<(&'a str, &'a str)>,
+}
+
+#[cfg(feature = "gpu")]
+fn get_gpu_cache_info<'a>(
+    cache_dir: Option<&'a String>,
+    cache_size: Option<&'a String>,
+    sandbox: bool,
+) -> GpuCacheInfo<'a> {
+    let mut dir = None;
+    let mut env = Vec::new();
+
+    if let Some(cache_dir) = cache_dir {
+        if !Path::new(cache_dir).exists() {
+            warn!("shader caching dir {} does not exist", cache_dir);
+            env.push(("MESA_GLSL_CACHE_DISABLE", "true"));
+        } else if cfg!(any(target_arch = "arm", target_arch = "aarch64")) && sandbox {
+            warn!("shader caching not yet supported on ARM with sandbox enabled");
+            env.push(("MESA_GLSL_CACHE_DISABLE", "true"));
+        } else {
+            dir = Some(cache_dir.as_str());
+
+            env.push(("MESA_GLSL_CACHE_DISABLE", "false"));
+            env.push(("MESA_GLSL_CACHE_DIR", cache_dir.as_str()));
+            if let Some(cache_size) = cache_size {
+                env.push(("MESA_GLSL_CACHE_MAX_SIZE", cache_size.as_str()));
+            }
+        }
+    }
+
+    GpuCacheInfo {
+        directory: dir,
+        environment: env,
+    }
+}
+
+#[cfg(feature = "gpu")]
 fn create_gpu_device(
     cfg: &Config,
     exit_evt: &Event,
@@ -886,27 +925,18 @@ fn create_gpu_device(
     let jail = match gpu_jail(cfg, "gpu_device")? {
         Some(mut jail) => {
             // Prepare GPU shader disk cache directory.
-            if let Some(cache_dir) = cfg
+            let (cache_dir, cache_size) = cfg
                 .gpu_parameters
                 .as_ref()
-                .and_then(|params| params.cache_path.as_ref())
-            {
-                if cfg!(any(target_arch = "arm", target_arch = "aarch64")) && cfg.sandbox {
-                    warn!("shader caching not yet supported on ARM with sandbox enabled");
-                    env::set_var("MESA_GLSL_CACHE_DISABLE", "true");
-                } else {
-                    env::set_var("MESA_GLSL_CACHE_DISABLE", "false");
-                    env::set_var("MESA_GLSL_CACHE_DIR", cache_dir);
-                    if let Some(cache_size) = cfg
-                        .gpu_parameters
-                        .as_ref()
-                        .and_then(|params| params.cache_size.as_ref())
-                    {
-                        env::set_var("MESA_GLSL_CACHE_MAX_SIZE", cache_size);
-                    }
-                    let shadercache_path = Path::new(cache_dir);
-                    jail.mount_bind(shadercache_path, shadercache_path, true)?;
-                }
+                .map(|params| (params.cache_path.as_ref(), params.cache_size.as_ref()))
+                .unwrap();
+            let cache_info = get_gpu_cache_info(cache_dir, cache_size, cfg.sandbox);
+
+            if let Some(dir) = cache_info.directory {
+                jail.mount_bind(dir, dir, true)?;
+            }
+            for (key, val) in cache_info.environment {
+                env::set_var(key, val);
             }
 
             // Bind mount the wayland socket's directory into jail's root. This is necessary since
