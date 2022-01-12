@@ -3,21 +3,26 @@
 // found in the LICENSE file.
 
 use super::{
-    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, SignalableInterrupt,
-    VirtioDevice, Writer, TYPE_IOMMU,
+    async_utils, copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader,
+    SignalableInterrupt, VirtioDevice, Writer, TYPE_IOMMU,
 };
 use crate::pci::PciAddress;
 use crate::vfio::{VfioContainer, VfioError};
 use acpi_tables::sdt::SDT;
+use anyhow::Context;
 use base::{
-    error, pagesize, warn, AsRawDescriptor, Error as SysError, Event, PollToken, RawDescriptor,
-    Result as SysResult, WaitContext,
+    error, pagesize, warn, AsRawDescriptor, Error as SysError, Event, RawDescriptor,
+    Result as SysResult,
 };
+use cros_async::{AsyncError, EventAsync, Executor};
 use data_model::{DataInit, Le64};
+use futures::{select, FutureExt};
 use remain::sorted;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::mem::size_of;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::{result, thread};
 use sync::Mutex;
@@ -82,9 +87,13 @@ struct VirtioIommuViotPciRangeNode {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for VirtioIommuViotPciRangeNode {}
 
+type Result<T> = result::Result<T, IommuError>;
+
 #[sorted]
 #[derive(Error, Debug)]
 pub enum IommuError {
+    #[error("async executor error: {0}")]
+    AsyncExec(AsyncError),
     #[error("failed to create reader: {0}")]
     CreateReader(DescriptorError),
     #[error("failed to create wait context: {0}")]
@@ -97,6 +106,8 @@ pub enum IommuError {
     GuestMemoryRead(io::Error),
     #[error("failed to write to guest address: {0}")]
     GuestMemoryWrite(io::Error),
+    #[error("Failed to read descriptor asynchronously: {0}")]
+    ReadAsyncDesc(AsyncError),
     #[error("failed to read from virtio queue Event: {0}")]
     ReadQueueEvent(SysError),
     #[error("unexpected descriptor error")]
@@ -110,7 +121,6 @@ pub enum IommuError {
 }
 
 struct Worker {
-    interrupt: Interrupt,
     mem: GuestMemory,
     page_mask: u64,
     // contains all pass-through endpoints that attach to the IOMMU device
@@ -166,7 +176,7 @@ impl Worker {
         &mut self,
         reader: &mut Reader,
         tail: &mut virtio_iommu_req_tail,
-    ) -> result::Result<usize, IommuError> {
+    ) -> Result<usize> {
         let req: virtio_iommu_req_attach =
             reader.read_obj().map_err(IommuError::GuestMemoryRead)?;
 
@@ -213,7 +223,7 @@ impl Worker {
         &mut self,
         reader: &mut Reader,
         tail: &mut virtio_iommu_req_tail,
-    ) -> result::Result<usize, IommuError> {
+    ) -> Result<usize> {
         let req: virtio_iommu_req_map = reader.read_obj().map_err(IommuError::GuestMemoryRead)?;
 
         // If virt_start, phys_start or (virt_end + 1) is not aligned
@@ -286,7 +296,7 @@ impl Worker {
         &mut self,
         reader: &mut Reader,
         tail: &mut virtio_iommu_req_tail,
-    ) -> result::Result<usize, IommuError> {
+    ) -> Result<usize> {
         let req: virtio_iommu_req_unmap = reader.read_obj().map_err(IommuError::GuestMemoryRead)?;
 
         let domain: u32 = req.domain.into();
@@ -312,7 +322,7 @@ impl Worker {
         reader: &mut Reader,
         writer: &mut Writer,
         tail: &mut virtio_iommu_req_tail,
-    ) -> result::Result<usize, IommuError> {
+    ) -> Result<usize> {
         let req: virtio_iommu_req_probe = reader.read_obj().map_err(IommuError::GuestMemoryRead)?;
         let endpoint: u32 = req.endpoint.into();
 
@@ -368,10 +378,7 @@ impl Worker {
         Ok(properties_size)
     }
 
-    fn execute_request(
-        &mut self,
-        avail_desc: &DescriptorChain,
-    ) -> result::Result<usize, IommuError> {
+    fn execute_request(&mut self, avail_desc: &DescriptorChain) -> Result<usize> {
         let mut reader =
             Reader::new(self.mem.clone(), avail_desc.clone()).map_err(IommuError::CreateReader)?;
         let mut writer =
@@ -424,9 +431,17 @@ impl Worker {
         Ok((reply_len as usize) + size_of::<virtio_iommu_req_tail>())
     }
 
-    fn request_queue(&mut self, req_queue: &mut Queue) -> bool {
-        let mut needs_interrupt = false;
-        while let Some(avail_desc) = req_queue.pop(&self.mem) {
+    async fn request_queue<I: SignalableInterrupt>(
+        &mut self,
+        mut queue: Queue,
+        mut queue_event: EventAsync,
+        interrupt: &I,
+    ) -> Result<()> {
+        loop {
+            let avail_desc = queue
+                .next_async(&self.mem, &mut queue_event)
+                .await
+                .map_err(IommuError::ReadAsyncDesc)?;
             let desc_index = avail_desc.index;
 
             let len = match self.execute_request(&avail_desc) {
@@ -440,56 +455,46 @@ impl Worker {
                 }
             };
 
-            req_queue.add_used(&self.mem, desc_index, len as u32);
-            needs_interrupt = true;
+            queue.add_used(&self.mem, desc_index, len as u32);
+            queue.trigger_interrupt(&self.mem, interrupt);
         }
-
-        needs_interrupt
     }
 
     fn run(
         &mut self,
         mut queues: Vec<Queue>,
-        mut queue_evts: Vec<Event>,
+        queue_evts: Vec<Event>,
         kill_evt: Event,
-    ) -> Result<(), IommuError> {
-        #[derive(PollToken)]
-        enum Token {
-            RequestQueue,
-            InterruptResample,
-            Kill,
-        }
+        interrupt: Interrupt,
+    ) -> Result<()> {
+        let ex = Executor::new().expect("Failed to create an executor");
 
-        let (mut req_queue, req_evt) = (queues.remove(0), queue_evts.remove(0));
-        let wait_ctx: WaitContext<Token> =
-            WaitContext::build_with(&[(&req_evt, Token::RequestQueue), (&kill_evt, Token::Kill)])
-                .map_err(IommuError::CreateWaitContext)?;
+        let mut evts_async: Vec<EventAsync> = queue_evts
+            .into_iter()
+            .map(|e| EventAsync::new(e.0, &ex).expect("Failed to create async event for queue"))
+            .collect();
+        let interrupt = Rc::new(RefCell::new(interrupt));
+        let interrupt_ref = &*interrupt.borrow();
 
-        if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-            wait_ctx
-                .add(resample_evt, Token::InterruptResample)
-                .map_err(IommuError::CreateWaitContext)?;
-        }
+        let (req_queue, req_evt) = (queues.remove(0), evts_async.remove(0));
 
-        'wait: loop {
-            let mut needs_interrupt = false;
-            let events = wait_ctx.wait().map_err(IommuError::WaitError)?;
-            for event in events.iter().filter(|e| e.is_readable) {
-                match event.token {
-                    Token::RequestQueue => {
-                        req_evt.read().map_err(IommuError::ReadQueueEvent)?;
-                        needs_interrupt |= self.request_queue(&mut req_queue);
-                    }
-                    Token::InterruptResample => {
-                        self.interrupt.interrupt_resample();
-                    }
-                    Token::Kill => break 'wait,
-                }
+        let f_request = self.request_queue(req_queue, req_evt, interrupt_ref);
+        let f_resample = async_utils::handle_irq_resample(&ex, interrupt.clone());
+        let f_kill = async_utils::await_and_exit(&ex, kill_evt);
+
+        let done = async {
+            select! {
+                res = f_request.fuse() => res.context("error in handling request queue"),
+                res = f_resample.fuse() => res.context("error in handle_irq_resample"),
+                res = f_kill.fuse() => res.context("error in await_and_exit"),
             }
-            if needs_interrupt {
-                req_queue.trigger_interrupt(&self.mem, &self.interrupt);
-            }
+        };
+        match ex.run_until(done) {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => error!("Error in worker: {}", e),
+            Err(e) => return Err(IommuError::AsyncExec(e)),
         }
+
         Ok(())
     }
 }
@@ -622,14 +627,13 @@ impl VirtioDevice for Iommu {
             .name("virtio_iommu".to_string())
             .spawn(move || {
                 let mut worker = Worker {
-                    interrupt,
                     mem,
                     page_mask,
                     endpoints: eps,
                     endpoint_map: BTreeMap::new(),
                     domain_map: BTreeMap::new(),
                 };
-                let result = worker.run(queues, queue_evts, kill_evt);
+                let result = worker.run(queues, queue_evts, kill_evt, interrupt);
                 if let Err(e) = result {
                     error!("virtio-iommu worker thread exited with error: {}", e);
                 }
