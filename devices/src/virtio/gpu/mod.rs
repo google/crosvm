@@ -85,6 +85,8 @@ impl Default for GpuDisplayParameters {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GpuRenderServerParameters {
     pub path: PathBuf,
+    pub cache_path: Option<String>,
+    pub cache_size: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
