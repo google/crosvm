@@ -46,6 +46,7 @@ extern "C" {
         renderer_cookie: *mut c_void,
         renderer_flags: i32,
         renderer_callbacks: *mut GfxstreamRendererCallbacks,
+        gfxstream_callbacks: *mut c_void,
     );
 
     // virtio-gpu-3d ioctl functions (begin)
@@ -221,6 +222,7 @@ impl Gfxstream {
                 cookie as *mut c_void,
                 gfxstream_flags.into(),
                 transmute(GFXSTREAM_RENDERER_CALLBACKS),
+                null_mut(),
             );
         }
 
