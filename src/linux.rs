@@ -8,6 +8,7 @@ use std::convert::{TryFrom, TryInto};
 #[cfg(feature = "gpu")]
 use std::env;
 use std::fs::{File, OpenOptions};
+use std::io::prelude::*;
 use std::io::stdin;
 use std::iter;
 use std::mem;
@@ -19,6 +20,7 @@ use std::str;
 use std::sync::{mpsc, Arc, Barrier};
 use std::time::Duration;
 
+use std::process;
 use std::thread;
 use std::thread::JoinHandle;
 
@@ -404,7 +406,6 @@ fn create_cras_snd_device(cfg: &Config, cras_snd: CrasSndParameters) -> DeviceRe
 fn create_tpm_device(cfg: &Config) -> DeviceResult {
     use std::ffi::CString;
     use std::fs;
-    use std::process;
 
     let tpm_storage: PathBuf;
     let mut tpm_jail = simple_jail(cfg, "tpm_device")?;
@@ -2300,6 +2301,7 @@ fn runnable_vcpu<V>(
     use_hypervisor_signals: bool,
     enable_per_vm_core_scheduling: bool,
     host_cpu_topology: bool,
+    vcpu_cgroup_tasks_file: Option<File>,
 ) -> Result<(V, VcpuRunHandle)>
 where
     V: VcpuArch,
@@ -2348,6 +2350,12 @@ where
         if let Err(e) = enable_core_scheduling() {
             error!("Failed to enable core scheduling: {}", e);
         }
+    }
+
+    // Move vcpu thread to cgroup
+    if let Some(mut f) = vcpu_cgroup_tasks_file {
+        f.write_all(base::gettid().to_string().as_bytes())
+            .context("failed to write vcpu tid to cgroup tasks")?;
     }
 
     if run_rt {
@@ -2476,6 +2484,7 @@ fn run_vcpu<V>(
     >,
     enable_per_vm_core_scheduling: bool,
     host_cpu_topology: bool,
+    vcpu_cgroup_tasks_file: Option<File>,
 ) -> Result<JoinHandle<()>>
 where
     V: VcpuArch + 'static,
@@ -2503,6 +2512,7 @@ where
                 use_hypervisor_signals,
                 enable_per_vm_core_scheduling,
                 host_cpu_topology,
+                vcpu_cgroup_tasks_file,
             );
 
             start_barrier.wait();
@@ -3469,6 +3479,15 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             error!("Failed to enable core scheduling: {}", e);
         }
     }
+    let vcpu_cgroup_tasks_file = match &cfg.vcpu_cgroup_path {
+        None => None,
+        Some(cgroup_path) => {
+            // Move main process to cgroup_path
+            let mut f = File::create(&cgroup_path.join("tasks"))?;
+            f.write_all(process::id().to_string().as_bytes())?;
+            Some(f)
+        }
+    };
     for (cpu_id, vcpu) in vcpus.into_iter().enumerate() {
         let (to_vcpu_channel, from_main_channel) = mpsc::channel();
         let vcpu_affinity = match linux.vcpu_affinity.clone() {
@@ -3502,6 +3521,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             to_gdb_channel.clone(),
             cfg.per_vm_core_scheduling,
             cfg.host_cpu_topology,
+            match vcpu_cgroup_tasks_file {
+                None => None,
+                Some(ref f) => Some(
+                    f.try_clone()
+                        .context("failed to clone vcpu cgroup tasks file")?,
+                ),
+            },
         )?;
         vcpu_handles.push((handle, to_vcpu_channel));
     }

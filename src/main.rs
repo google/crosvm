@@ -1210,6 +1210,17 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "per-vm-core-scheduling" => {
             cfg.per_vm_core_scheduling = true;
         }
+        "vcpu-cgroup-path" => {
+            let vcpu_cgroup_path = PathBuf::from(value.unwrap());
+            if !vcpu_cgroup_path.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("This vcpu_cgroup_path path does not exist"),
+                });
+            }
+
+            cfg.vcpu_cgroup_path = Some(vcpu_cgroup_path);
+        }
         #[cfg(feature = "audio_cras")]
         "cras-snd" => {
             cfg.cras_snds.push(
@@ -2442,6 +2453,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
           Argument::flag("per-vm-core-scheduling", "Enable per-VM core scheduling intead of the default one (per-vCPU core scheduing) by
               making all vCPU threads share same cookie for core scheduling.
               This option is no-op on devices that have neither MDS nor L1TF vulnerability."),
+          Argument::value("vcpu-cgroup-path", "PATH", "Move all vCPU threads to this CGroup (default: nothing moves)."),
 #[cfg(feature = "audio_cras")]
           Argument::value("cras-snd",
           "[capture=true,client=crosvm,socket=unified,num_output_streams=1,num_input_streams=1]",
