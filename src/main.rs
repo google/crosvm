@@ -2293,6 +2293,23 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.file_backed_mappings
                 .push(parse_file_backed_mapping(value)?);
         }
+        "init-mem" => {
+            if cfg.init_memory.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`init-mem` already given".to_owned(),
+                ));
+            }
+            cfg.init_memory =
+                Some(
+                    value
+                        .unwrap()
+                        .parse()
+                        .map_err(|_| argument::Error::InvalidValue {
+                            value: value.unwrap().to_owned(),
+                            expected: String::from("this value for `init-mem` needs to be integer"),
+                        })?,
+                )
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -2440,6 +2457,9 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
                                 "mem",
                                 "N",
                                 "Amount of guest memory in MiB. (default: 256)"),
+          Argument::value("init-mem",
+                          "N",
+                          "Amount of guest memory outside the balloon at boot in MiB. (default: --mem)"),
           Argument::flag("hugepages", "Advise the kernel to use Huge Pages for guest memory mappings."),
           Argument::short_value('r',
                                 "root",

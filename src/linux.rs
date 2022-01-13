@@ -601,9 +601,19 @@ fn create_vinput_device(cfg: &Config, dev_path: &Path) -> DeviceResult {
     })
 }
 
-fn create_balloon_device(cfg: &Config, tube: Tube, inflate_tube: Option<Tube>) -> DeviceResult {
-    let dev = virtio::Balloon::new(virtio::base_features(cfg.protected_vm), tube, inflate_tube)
-        .context("failed to create balloon")?;
+fn create_balloon_device(
+    cfg: &Config,
+    tube: Tube,
+    inflate_tube: Option<Tube>,
+    init_balloon_size: u64,
+) -> DeviceResult {
+    let dev = virtio::Balloon::new(
+        virtio::base_features(cfg.protected_vm),
+        tube,
+        inflate_tube,
+        init_balloon_size,
+    )
+    .context("failed to create balloon")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1509,6 +1519,7 @@ fn create_virtio_devices(
     vhost_user_gpu_tubes: Vec<(Tube, Tube)>,
     balloon_device_tube: Option<Tube>,
     balloon_inflate_tube: Option<Tube>,
+    init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
@@ -1601,6 +1612,7 @@ fn create_virtio_devices(
             cfg,
             balloon_device_tube,
             balloon_inflate_tube,
+            init_balloon_size,
         )?);
     }
 
@@ -1961,6 +1973,7 @@ fn create_devices(
     gpu_device_tube: Tube,
     vhost_user_gpu_tubes: Vec<(Tube, Tube)>,
     balloon_device_tube: Option<Tube>,
+    init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
     fs_device_tubes: &mut Vec<Tube>,
@@ -2090,6 +2103,7 @@ fn create_devices(
         vhost_user_gpu_tubes,
         balloon_device_tube,
         balloon_inflate_tube,
+        init_balloon_size,
         disk_device_tubes,
         pmem_device_tubes,
         map_request,
@@ -3061,6 +3075,13 @@ where
         }
     }
 
+    let init_balloon_size = components
+        .memory_size
+        .checked_sub(cfg.init_memory.map_or(components.memory_size, |m| {
+            m.checked_mul(1024 * 1024).unwrap_or(u64::MAX)
+        }))
+        .context("failed to calculate init balloon size")?;
+
     let mut devices = create_devices(
         &cfg,
         &mut vm,
@@ -3072,6 +3093,7 @@ where
         gpu_device_tube,
         vhost_user_gpu_tubes,
         balloon_device_tube,
+        init_balloon_size,
         &mut disk_device_tubes,
         &mut pmem_device_tubes,
         &mut fs_device_tubes,

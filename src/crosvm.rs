@@ -426,6 +426,7 @@ pub struct Config {
     pub vvu_proxy: Vec<VhostUserOption>,
     pub coiommu_param: Option<devices::CoIommuParameters>,
     pub file_backed_mappings: Vec<FileBackedMappingParameters>,
+    pub init_memory: Option<u64>,
 }
 
 impl Default for Config {
@@ -529,6 +530,7 @@ impl Default for Config {
             stub_pci_devices: Vec::new(),
             coiommu_param: None,
             file_backed_mappings: Vec::new(),
+            init_memory: None,
         }
     }
 }

@@ -440,12 +440,15 @@ impl Balloon {
         base_features: u64,
         command_tube: Tube,
         inflate_tube: Option<Tube>,
+        init_balloon_size: u64,
     ) -> Result<Balloon> {
         Ok(Balloon {
             command_tube: Some(command_tube),
             inflate_tube,
             config: Arc::new(BalloonConfig {
-                num_pages: AtomicUsize::new(0),
+                num_pages: AtomicUsize::new(
+                    (init_balloon_size >> VIRTIO_BALLOON_PFN_SHIFT) as usize,
+                ),
                 actual_pages: AtomicUsize::new(0),
             }),
             kill_evt: None,
