@@ -1,0 +1,15 @@
+# Copyright 2022 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Configure network with static IP 192.168.10.2
+
+network:
+    version: 2
+    renderer: networkd
+    ethernets:
+        enp0s4:
+            addresses: [192.168.10.2/24]
+            nameservers:
+                addresses: [8.8.8.8]
+            gateway4: 192.168.10.1
