@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::cmp::Ordering;
+use std::convert::TryFrom;
 use std::ffi::OsString;
 use std::fs::remove_file;
 use std::io;
@@ -15,7 +17,7 @@ use std::os::unix::{
 use std::path::Path;
 use std::path::PathBuf;
 use std::ptr::null_mut;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use libc::{
     c_int, in6_addr, in_addr, recvfrom, sa_family_t, sockaddr, sockaddr_in, sockaddr_in6,
@@ -25,7 +27,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     sock_ctrl_msg::{ScmSocket, SCM_SOCKET_MAX_FD_COUNT},
-    FromRawDescriptor,
+    Error, FromRawDescriptor,
 };
 use crate::{AsRawDescriptor, IntoRawDescriptor, RawDescriptor};
 
@@ -335,7 +337,7 @@ fn sockaddr_un<P: AsRef<Path>>(path: P) -> io::Result<(libc::sockaddr_un, libc::
 }
 
 /// A Unix `SOCK_SEQPACKET` socket point to given `path`
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UnixSeqpacket {
     #[serde(with = "crate::with_raw_descriptor")]
     fd: RawFd,
@@ -640,6 +642,30 @@ impl AsRawDescriptor for UnixSeqpacket {
     }
 }
 
+impl io::Read for UnixSeqpacket {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.recv(buf)
+    }
+}
+
+impl io::Write for UnixSeqpacket {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.send(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl IntoRawFd for UnixSeqpacket {
+    fn into_raw_fd(self) -> RawFd {
+        let fd = self.fd;
+        mem::forget(self);
+        fd
+    }
+}
+
 /// Like a `UnixListener` but for accepting `UnixSeqpacket` type sockets.
 pub struct UnixSeqpacketListener {
     fd: RawFd,
@@ -685,6 +711,32 @@ impl UnixSeqpacketListener {
         // Safe because we checked the return value of accept. Therefore, the return value must be a
         // valid socket.
         Ok(unsafe { UnixSeqpacket::from_raw_fd(ret) })
+    }
+
+    pub fn accept_with_timeout(&self, timeout: Duration) -> io::Result<UnixSeqpacket> {
+        let start = Instant::now();
+
+        loop {
+            let mut fds = libc::pollfd {
+                fd: self.fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            let elapsed = Instant::now().saturating_duration_since(start);
+            let remaining = timeout.checked_sub(elapsed).unwrap_or(Duration::ZERO);
+            let cur_timeout_ms = i32::try_from(remaining.as_millis()).unwrap_or(i32::MAX);
+            // Safe because we give a valid pointer to a list (of 1) FD and we check
+            // the return value.
+            match unsafe { libc::poll(&mut fds, 1, cur_timeout_ms) }.cmp(&0) {
+                Ordering::Greater => return self.accept(),
+                Ordering::Equal => return Err(io::Error::from_raw_os_error(libc::ETIMEDOUT)),
+                Ordering::Less => {
+                    if Error::last() != Error::new(libc::EINTR) {
+                        return Err(io::Error::last_os_error());
+                    }
+                }
+            }
+        }
     }
 
     /// Gets the path that this listener is bound to.
@@ -863,6 +915,40 @@ mod tests {
         );
         let _res =
             UnixSeqpacket::connect(socket_path.as_path()).expect("UnixSeqpacket::connect failed");
+    }
+
+    #[test]
+    fn unix_seqpacket_path_listener_accept_with_timeout() {
+        let mut socket_path = tmpdir();
+        socket_path.push("path_listerner_accept_with_timeout");
+        let listener = UnlinkUnixSeqpacketListener(
+            UnixSeqpacketListener::bind(&socket_path)
+                .expect("failed to create UnixSeqpacketListener"),
+        );
+
+        for d in [Duration::from_millis(10), Duration::ZERO] {
+            let _ = listener.accept_with_timeout(d).expect_err(&format!(
+                "UnixSeqpacket::accept_with_timeout {:?} connected",
+                d
+            ));
+
+            let s1 = UnixSeqpacket::connect(socket_path.as_path())
+                .unwrap_or_else(|_| panic!("UnixSeqpacket::connect {:?} failed", d));
+
+            let s2 = listener
+                .accept_with_timeout(d)
+                .unwrap_or_else(|_| panic!("UnixSeqpacket::accept {:?} failed", d));
+
+            let data1 = &[0, 1, 2, 3, 4];
+            let data2 = &[10, 11, 12, 13, 14];
+            s2.send(data2).expect("failed to send data2");
+            s1.send(data1).expect("failed to send data1");
+            let recv_data = &mut [0; 5];
+            s2.recv(recv_data).expect("failed to recv data");
+            assert_eq!(data1, recv_data);
+            s1.recv(recv_data).expect("failed to recv data");
+            assert_eq!(data2, recv_data);
+        }
     }
 
     #[test]
