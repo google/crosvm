@@ -1674,6 +1674,21 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.socket_path = Some(socket_path);
         }
+        "balloon-control" => {
+            if cfg.balloon_control.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`balloon-control` already given".to_owned(),
+                ));
+            }
+            let path = PathBuf::from(value.unwrap());
+            if path.is_dir() || !path.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: path.to_string_lossy().into_owned(),
+                    expected: String::from("path is directory or missing"),
+                });
+            }
+            cfg.balloon_control = Some(path);
+        }
         "disable-sandbox" => {
             cfg.sandbox = false;
         }
@@ -2422,6 +2437,11 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
             }
         }
     }
+    if !cfg.balloon && cfg.balloon_control.is_some() {
+        return Err(argument::Error::ExpectedArgument(
+            "'balloon-control' requires enabled balloon".to_owned(),
+        ));
+    }
     set_default_serial_parameters(&mut cfg.serial_parameters);
     Ok(())
 }
@@ -2537,6 +2557,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
                                 "socket",
                                 "PATH",
                                 "Path to put the control socket. If PATH is a directory, a name will be generated."),
+          Argument::value("balloon-control", "PATH", "Path for balloon controller socket."),
           Argument::flag("disable-sandbox", "Run all devices in one, non-sandboxed process."),
           Argument::value("cid", "CID", "Context ID for virtual sockets."),
           Argument::value("shared-dir", "PATH:TAG[:type=TYPE:writeback=BOOL:timeout=SECONDS:uidmap=UIDMAP:gidmap=GIDMAP:cache=CACHE:dax=BOOL,posix_acl=BOOL]",
