@@ -908,7 +908,6 @@ pub enum ExitState {
     Crash,
     GuestPanic,
 }
-
 // Remove ranges in `guest_mem_layout` that overlap with ranges in `file_backed_mappings`.
 // Returns the updated guest memory layout.
 fn punch_holes_in_guest_mem_layout_for_mappings(
@@ -952,21 +951,7 @@ fn punch_holes_in_guest_mem_layout_for_mappings(
         .collect()
 }
 
-pub fn run_config(cfg: Config) -> Result<ExitState> {
-    let components = setup_vm_components(&cfg)?;
-
-    let guest_mem_layout =
-        Arch::guest_memory_layout(&components).context("failed to create guest memory layout")?;
-
-    let guest_mem_layout =
-        punch_holes_in_guest_mem_layout_for_mappings(guest_mem_layout, &cfg.file_backed_mappings);
-
-    let guest_mem = GuestMemory::new(&guest_mem_layout).context("failed to create guest memory")?;
-    let mut mem_policy = MemoryPolicy::empty();
-    if components.hugepages {
-        mem_policy |= MemoryPolicy::USE_HUGEPAGES;
-    }
-    guest_mem.set_memory_policy(mem_policy);
+fn run_kvm(cfg: Config, components: VmComponents, guest_mem: GuestMemory) -> Result<ExitState> {
     let kvm = Kvm::new_with_path(&cfg.kvm_device_path).context("failed to create kvm")?;
     let vm = KvmVm::new(&kvm, guest_mem, components.protected_vm).context("failed to create vm")?;
 
@@ -1024,6 +1009,29 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
     };
 
     run_vm::<KvmVcpu, KvmVm>(cfg, components, vm, irq_chip.as_mut(), ioapic_host_tube)
+}
+
+pub fn run_config(cfg: Config) -> Result<ExitState> {
+    let components = setup_vm_components(&cfg)?;
+
+    let guest_mem_layout =
+        Arch::guest_memory_layout(&components).context("failed to create guest memory layout")?;
+
+    let guest_mem_layout =
+        punch_holes_in_guest_mem_layout_for_mappings(guest_mem_layout, &cfg.file_backed_mappings);
+
+    let guest_mem = GuestMemory::new(&guest_mem_layout).context("failed to create guest memory")?;
+    let mut mem_policy = MemoryPolicy::empty();
+    if components.hugepages {
+        mem_policy |= MemoryPolicy::USE_HUGEPAGES;
+    }
+    guest_mem.set_memory_policy(mem_policy);
+
+    if cfg.kvm_device_path.exists() {
+        return run_kvm(cfg, components, guest_mem);
+    };
+
+    Err(anyhow!("No hypervsior available to run VM."))
 }
 
 fn run_vm<Vcpu, V>(
