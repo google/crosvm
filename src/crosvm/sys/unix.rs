@@ -1296,6 +1296,23 @@ fn create_guest_memory(
     components: &VmComponents,
     hypervisor: &impl Hypervisor,
 ) -> Result<CreateGuestMemoryResult> {
+    let guest_mem_layout = Arch::guest_memory_layout(components, hypervisor)
+        .context("failed to create guest memory layout")?;
+
+    let guest_mem_layout =
+        punch_holes_in_guest_mem_layout_for_mappings(guest_mem_layout, &cfg.file_backed_mappings);
+
+    let guest_mem = GuestMemory::new(&guest_mem_layout).context("failed to create guest memory")?;
+    let mut mem_policy = MemoryPolicy::empty();
+    if components.hugepages {
+        mem_policy |= MemoryPolicy::USE_HUGEPAGES;
+    }
+
+    if cfg.lock_guest_memory {
+        mem_policy |= MemoryPolicy::LOCK_GUEST_MEMORY;
+    }
+    guest_mem.set_memory_policy(mem_policy);
+
     if cfg.unmap_guest_memory_on_fork {
         // Note that this isn't compatible with sandboxing. We could potentially fix that by
         // delaying the call until after the sandboxed devices are forked. However, the main use
@@ -1409,6 +1426,24 @@ fn run_kvm(cfg: Config, components: VmComponents) -> Result<ExitState> {
 
 fn get_default_hypervisor() -> Result<HypervisorKind> {
     Ok(HypervisorKind::Kvm)
+}
+
+pub fn run_config(cfg: Config) -> Result<ExitState> {
+    if let Some(async_executor) = cfg.async_executor {
+        Executor::set_default_executor_kind(async_executor)
+            .context("Failed to set the default async executor")?;
+    }
+
+    let components = setup_vm_components(&cfg)?;
+
+    let default_hypervisor = get_default_hypervisor().context("no enabled hypervisor")?;
+    let hypervisor = cfg.hypervisor.unwrap_or(default_hypervisor);
+
+    debug!("creating {:?} hypervisor", hypervisor);
+
+    match hypervisor {
+        HypervisorKind::Kvm => run_kvm(cfg, components),
+    }
 }
 
 fn run_vm<Vcpu, V>(
