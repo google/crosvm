@@ -2169,6 +2169,58 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "vvu-proxy" => cfg.vvu_proxy.push(VhostUserOption {
             socket: PathBuf::from(value.unwrap()),
         }),
+        "coiommu" => {
+            let mut params: devices::CoIommuParameters = Default::default();
+            if let Some(v) = value {
+                let opts = v
+                    .split(',')
+                    .map(|frag| frag.splitn(2, '='))
+                    .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
+
+                for (k, v) in opts {
+                    match k {
+                        "unpin_policy" => {
+                            params.unpin_policy = v
+                                .parse::<devices::CoIommuUnpinPolicy>()
+                                .map_err(|e| argument::Error::UnknownArgument(format!("{}", e)))?
+                        }
+                        "unpin_interval" => {
+                            params.unpin_interval =
+                                Duration::from_secs(v.parse::<u64>().map_err(|e| {
+                                    argument::Error::UnknownArgument(format!("{}", e))
+                                })?)
+                        }
+                        "unpin_limit" => {
+                            let limit = v
+                                .parse::<u64>()
+                                .map_err(|e| argument::Error::UnknownArgument(format!("{}", e)))?;
+
+                            if limit == 0 {
+                                return Err(argument::Error::InvalidValue {
+                                    value: v.to_owned(),
+                                    expected: String::from("Please use non-zero unpin_limit value"),
+                                });
+                            }
+
+                            params.unpin_limit = Some(limit)
+                        }
+                        _ => {
+                            return Err(argument::Error::UnknownArgument(format!(
+                                "coiommu parameter {}",
+                                k
+                            )));
+                        }
+                    }
+                }
+            }
+
+            if cfg.coiommu_param.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "coiommu param already given".to_owned(),
+                ));
+            }
+            cfg.coiommu_param = Some(params);
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -2512,6 +2564,13 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                               subsystem_vendor=NUM - PCI subsystem vendor ID
                               subsystem_device=NUM - PCI subsystem device ID
                               revision=NUM - revision"),
+          Argument::flag_or_value("coiommu",
+                          "unpin_policy=POLICY,unpin_interval=NUM,unpin_limit=NUM",
+                          "Comma separated key=value pairs for setting up coiommu devices.
+                              Possible key values:
+                              unpin_policy=lru - LRU unpin policy.
+                              unpin_interval=NUM - Unpin interval time in seconds.
+                              unpin_limit=NUM - Unpin limit for each unpin cycle, in unit of page count. 0 is invalid."),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

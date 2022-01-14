@@ -2059,6 +2059,7 @@ fn create_devices(
                 coiommu_tube,
                 coiommu_attached_endpoints,
                 vcpu_count,
+                cfg.coiommu_param.unwrap_or_default(),
             )
             .context("failed to create coiommu device")?;
 

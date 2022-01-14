@@ -857,6 +857,7 @@ impl CoIommuDev {
         unpin_tube: Tube,
         endpoints: Vec<u16>,
         vcpu_count: u64,
+        params: CoIommuParameters,
     ) -> Result<Self> {
         let config_regs = PciConfiguration::new(
             PCI_VENDOR_ID_COIOMMU,
@@ -928,7 +929,7 @@ impl CoIommuDev {
             pinstate: Arc::new(Mutex::new(CoIommuPinState {
                 pinned_pages: VecDeque::new(),
             })),
-            params: CoIommuParameters::default(),
+            params,
         })
     }
 

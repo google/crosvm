@@ -413,6 +413,7 @@ pub struct Config {
     pub host_cpu_topology: bool,
     pub stub_pci_devices: Vec<StubPciParameters>,
     pub vvu_proxy: Vec<VhostUserOption>,
+    pub coiommu_param: Option<devices::CoIommuParameters>,
 }
 
 impl Default for Config {
@@ -513,6 +514,7 @@ impl Default for Config {
             no_legacy: false,
             host_cpu_topology: false,
             stub_pci_devices: Vec::new(),
+            coiommu_param: None,
         }
     }
 }
