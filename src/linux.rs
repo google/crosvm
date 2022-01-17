@@ -2476,6 +2476,7 @@ fn run_vcpu<V>(
     mut io_bus: devices::Bus,
     mut mmio_bus: devices::Bus,
     exit_evt: Event,
+    reset_evt: Event,
     requires_pvclock_ctrl: bool,
     from_main_tube: mpsc::Receiver<VcpuControl>,
     use_hypervisor_signals: bool,
@@ -2492,9 +2493,10 @@ where
     thread::Builder::new()
         .name(format!("crosvm_vcpu{}", cpu_id))
         .spawn(move || {
-            // The VCPU thread must trigger the `exit_evt` in all paths, and a `ScopedEvent`'s Drop
-            // implementation accomplishes that.
-            let _scoped_exit_evt = ScopedEvent::from(exit_evt);
+            // The VCPU thread must trigger either `exit_evt` or `reset_event` in all paths. A
+            // `ScopedEvent`'s Drop implementation ensures that the `exit_evt` will be sent if
+            // anything happens before we get to writing the final event.
+            let scoped_exit_evt = ScopedEvent::from(exit_evt);
 
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             let guest_mem = vm.get_memory().clone();
@@ -2525,6 +2527,7 @@ where
                 }
             };
 
+            #[allow(unused_mut)]
             let mut run_mode = VmRunMode::Running;
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             if to_gdb_tube.is_some() {
@@ -2532,225 +2535,292 @@ where
                 run_mode = VmRunMode::Breakpoint;
             }
 
-            let mut interrupted_by_signal = false;
-
             mmio_bus.set_access_id(cpu_id);
             io_bus.set_access_id(cpu_id);
 
-            'vcpu_loop: loop {
-                // Start by checking for messages to process and the run state of the CPU.
-                // An extra check here for Running so there isn't a need to call recv unless a
-                // message is likely to be ready because a signal was sent.
-                if interrupted_by_signal || run_mode != VmRunMode::Running {
-                    'state_loop: loop {
-                        // Tries to get a pending message without blocking first.
-                        let msg = match from_main_tube.try_recv() {
-                            Ok(m) => m,
-                            Err(mpsc::TryRecvError::Empty) if run_mode == VmRunMode::Running => {
-                                // If the VM is running and no message is pending, the state won't
-                                // change.
-                                break 'state_loop;
-                            }
-                            Err(mpsc::TryRecvError::Empty) => {
-                                // If the VM is not running, wait until a message is ready.
-                                match from_main_tube.recv() {
-                                    Ok(m) => m,
-                                    Err(mpsc::RecvError) => {
-                                        error!("Failed to read from main tube in vcpu");
-                                        break 'vcpu_loop;
-                                    }
-                                }
-                            }
-                            Err(mpsc::TryRecvError::Disconnected) => {
-                                error!("Failed to read from main tube in vcpu");
-                                break 'vcpu_loop;
-                            }
-                        };
+            let exit_reason = vcpu_loop(
+                run_mode,
+                cpu_id,
+                vcpu,
+                vcpu_run_handle,
+                irq_chip,
+                run_rt,
+                delay_rt,
+                io_bus,
+                mmio_bus,
+                requires_pvclock_ctrl,
+                from_main_tube,
+                use_hypervisor_signals,
+                #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                to_gdb_tube,
+                #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                guest_mem,
+            );
 
-                        // Collect all pending messages.
-                        let mut messages = vec![msg];
-                        messages.append(&mut from_main_tube.try_iter().collect());
-
-                        for msg in messages {
-                            match msg {
-                                VcpuControl::RunState(new_mode) => {
-                                    run_mode = new_mode;
-                                    match run_mode {
-                                        VmRunMode::Running => break 'state_loop,
-                                        VmRunMode::Suspending => {
-                                            // On KVM implementations that use a paravirtualized
-                                            // clock (e.g. x86), a flag must be set to indicate to
-                                            // the guest kernel that a vCPU was suspended. The guest
-                                            // kernel will use this flag to prevent the soft lockup
-                                            // detection from triggering when this vCPU resumes,
-                                            // which could happen days later in realtime.
-                                            if requires_pvclock_ctrl {
-                                                if let Err(e) = vcpu.pvclock_ctrl() {
-                                                    error!(
-                                                        "failed to tell hypervisor vcpu {} is suspending: {}",
-                                                        cpu_id, e
-                                                    );
-                                                }
-                                            }
-                                        }
-                                        VmRunMode::Breakpoint => {}
-                                        VmRunMode::Exiting => break 'vcpu_loop,
-                                    }
-                                }
-                                #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-                                VcpuControl::Debug(d) => {
-                                    match &to_gdb_tube {
-                                        Some(ref ch) => {
-                                            if let Err(e) = handle_debug_msg(
-                                                cpu_id, &vcpu, &guest_mem, d, ch,
-                                            ) {
-                                                error!("Failed to handle gdb message: {}", e);
-                                            }
-                                        },
-                                        None => {
-                                            error!("VcpuControl::Debug received while GDB feature is disabled: {:?}", d);
-                                        }
-                                    }
-                                }
-                                VcpuControl::MakeRT => {
-                                    if run_rt && delay_rt {
-                                        info!("Making vcpu {} RT\n", cpu_id);
-                                        const DEFAULT_VCPU_RT_LEVEL: u16 = 6;
-                                        if let Err(e) = set_rt_prio_limit(
-                                            u64::from(DEFAULT_VCPU_RT_LEVEL))
-                                            .and_then(|_|
-                                                set_rt_round_robin(
-                                                i32::from(DEFAULT_VCPU_RT_LEVEL)
-                                            ))
-                                        {
-                                            warn!("Failed to set vcpu to real time: {}", e);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                interrupted_by_signal = false;
-
-                // Vcpus may have run a HLT instruction, which puts them into a state other than
-                // VcpuRunState::Runnable. In that case, this call to wait_until_runnable blocks
-                // until either the irqchip receives an interrupt for this vcpu, or until the main
-                // thread kicks this vcpu as a result of some VmControl operation. In most IrqChip
-                // implementations HLT instructions do not make it to crosvm, and thus this is a
-                // no-op that always returns VcpuRunState::Runnable.
-                match irq_chip.wait_until_runnable(&vcpu) {
-                    Ok(VcpuRunState::Runnable) => {}
-                    Ok(VcpuRunState::Interrupted) => interrupted_by_signal = true,
-                    Err(e) => error!(
-                        "error waiting for vcpu {} to become runnable: {}",
-                        cpu_id, e
-                    ),
-                }
-
-                if !interrupted_by_signal {
-                    match vcpu.run(&vcpu_run_handle) {
-                        Ok(VcpuExit::IoIn { port, mut size }) => {
-                            let mut data = [0; 8];
-                            if size > data.len() {
-                                error!("unsupported IoIn size of {} bytes at port {:#x}", size, port);
-                                size = data.len();
-                            }
-                            io_bus.read(port as u64, &mut data[..size]);
-                            if let Err(e) = vcpu.set_data(&data[..size]) {
-                                error!("failed to set return data for IoIn at port {:#x}: {}", port, e);
-                            }
-                        }
-                        Ok(VcpuExit::IoOut {
-                            port,
-                            mut size,
-                            data,
-                        }) => {
-                            if size > data.len() {
-                                error!("unsupported IoOut size of {} bytes at port {:#x}", size, port);
-                                size = data.len();
-                            }
-                            io_bus.write(port as u64, &data[..size]);
-                        }
-                        Ok(VcpuExit::MmioRead { address, size }) => {
-                            let mut data = [0; 8];
-                            mmio_bus.read(address, &mut data[..size]);
-                            // Setting data for mmio can not fail.
-                            let _ = vcpu.set_data(&data[..size]);
-                        }
-                        Ok(VcpuExit::MmioWrite {
-                            address,
-                            size,
-                            data,
-                        }) => {
-                            mmio_bus.write(address, &data[..size]);
-                        }
-                        Ok(VcpuExit::IoapicEoi { vector }) => {
-                            if let Err(e) = irq_chip.broadcast_eoi(vector) {
-                                error!(
-                                    "failed to broadcast eoi {} on vcpu {}: {}",
-                                    vector, cpu_id, e
-                                );
-                            }
-                        }
-                        Ok(VcpuExit::IrqWindowOpen) => {}
-                        Ok(VcpuExit::Hlt) => irq_chip.halted(cpu_id),
-                        Ok(VcpuExit::Shutdown) => break,
-                        Ok(VcpuExit::FailEntry {
-                            hardware_entry_failure_reason,
-                        }) => {
-                            error!("vcpu hw run failure: {:#x}", hardware_entry_failure_reason);
-                            break;
-                        }
-                        Ok(VcpuExit::SystemEvent(_, _)) => break,
-                        Ok(VcpuExit::Debug { .. }) => {
-                            #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-                            {
-                                let msg = VcpuDebugStatusMessage {
-                                    cpu: cpu_id as usize,
-                                    msg: VcpuDebugStatus::HitBreakPoint,
-                                };
-                                if let Some(ref ch) = to_gdb_tube {
-                                    if let Err(e) = ch.send(msg) {
-                                        error!("failed to notify breakpoint to GDB thread: {}", e);
-                                        break;
-                                    }
-                                }
-                                run_mode = VmRunMode::Breakpoint;
-                            }
-                        }
-                        Ok(r) => warn!("unexpected vcpu exit: {:?}", r),
-                        Err(e) => match e.errno() {
-                            libc::EINTR => interrupted_by_signal = true,
-                            libc::EAGAIN => {}
-                            _ => {
-                                error!("vcpu hit unknown error: {}", e);
-                                break;
-                            }
-                        },
-                    }
-                }
-
-                if interrupted_by_signal {
-                    if use_hypervisor_signals {
-                        // Try to clear the signal that we use to kick VCPU if it is pending before
-                        // attempting to handle pause requests.
-                        if let Err(e) = clear_signal(SIGRTMIN() + 0) {
-                            error!("failed to clear pending signal: {}", e);
-                            break;
-                        }
-                    } else {
-                        vcpu.set_immediate_exit(false);
-                    }
-                }
-
-                if let Err(e) = irq_chip.inject_interrupts(&vcpu) {
-                    error!("failed to inject interrupts for vcpu {}: {}", cpu_id, e);
-                }
+            let exit_evt = scoped_exit_evt.into();
+            let final_event = match exit_reason {
+                ExitState::Stop => exit_evt,
+                ExitState::Reset => reset_evt,
+            };
+            if let Err(e) = final_event.write(1) {
+                error!(
+                    "failed to send final event {:?} on vcpu {}: {}",
+                    final_event, cpu_id, e
+                )
             }
         })
         .context("failed to spawn VCPU thread")
+}
+
+fn vcpu_loop<V>(
+    mut run_mode: VmRunMode,
+    cpu_id: usize,
+    vcpu: V,
+    vcpu_run_handle: VcpuRunHandle,
+    irq_chip: Box<dyn IrqChipArch + 'static>,
+    run_rt: bool,
+    delay_rt: bool,
+    io_bus: devices::Bus,
+    mmio_bus: devices::Bus,
+    requires_pvclock_ctrl: bool,
+    from_main_tube: mpsc::Receiver<VcpuControl>,
+    use_hypervisor_signals: bool,
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))] to_gdb_tube: Option<
+        mpsc::Sender<VcpuDebugStatusMessage>,
+    >,
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))] guest_mem: GuestMemory,
+) -> ExitState
+where
+    V: VcpuArch + 'static,
+{
+    let mut interrupted_by_signal = false;
+
+    loop {
+        // Start by checking for messages to process and the run state of the CPU.
+        // An extra check here for Running so there isn't a need to call recv unless a
+        // message is likely to be ready because a signal was sent.
+        if interrupted_by_signal || run_mode != VmRunMode::Running {
+            'state_loop: loop {
+                // Tries to get a pending message without blocking first.
+                let msg = match from_main_tube.try_recv() {
+                    Ok(m) => m,
+                    Err(mpsc::TryRecvError::Empty) if run_mode == VmRunMode::Running => {
+                        // If the VM is running and no message is pending, the state won't
+                        // change.
+                        break 'state_loop;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => {
+                        // If the VM is not running, wait until a message is ready.
+                        match from_main_tube.recv() {
+                            Ok(m) => m,
+                            Err(mpsc::RecvError) => {
+                                error!("Failed to read from main tube in vcpu");
+                                return ExitState::Stop;
+                            }
+                        }
+                    }
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        error!("Failed to read from main tube in vcpu");
+                        return ExitState::Stop;
+                    }
+                };
+
+                // Collect all pending messages.
+                let mut messages = vec![msg];
+                messages.append(&mut from_main_tube.try_iter().collect());
+
+                for msg in messages {
+                    match msg {
+                        VcpuControl::RunState(new_mode) => {
+                            run_mode = new_mode;
+                            match run_mode {
+                                VmRunMode::Running => break 'state_loop,
+                                VmRunMode::Suspending => {
+                                    // On KVM implementations that use a paravirtualized
+                                    // clock (e.g. x86), a flag must be set to indicate to
+                                    // the guest kernel that a vCPU was suspended. The guest
+                                    // kernel will use this flag to prevent the soft lockup
+                                    // detection from triggering when this vCPU resumes,
+                                    // which could happen days later in realtime.
+                                    if requires_pvclock_ctrl {
+                                        if let Err(e) = vcpu.pvclock_ctrl() {
+                                            error!(
+                                                "failed to tell hypervisor vcpu {} is suspending: {}",
+                                                cpu_id, e
+                                            );
+                                        }
+                                    }
+                                }
+                                VmRunMode::Breakpoint => {}
+                                VmRunMode::Exiting => return ExitState::Stop,
+                            }
+                        }
+                        #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                        VcpuControl::Debug(d) => match &to_gdb_tube {
+                            Some(ref ch) => {
+                                if let Err(e) = handle_debug_msg(cpu_id, &vcpu, &guest_mem, d, ch) {
+                                    error!("Failed to handle gdb message: {}", e);
+                                }
+                            }
+                            None => {
+                                error!("VcpuControl::Debug received while GDB feature is disabled: {:?}", d);
+                            }
+                        },
+                        VcpuControl::MakeRT => {
+                            if run_rt && delay_rt {
+                                info!("Making vcpu {} RT\n", cpu_id);
+                                const DEFAULT_VCPU_RT_LEVEL: u16 = 6;
+                                if let Err(e) = set_rt_prio_limit(u64::from(DEFAULT_VCPU_RT_LEVEL))
+                                    .and_then(|_| {
+                                        set_rt_round_robin(i32::from(DEFAULT_VCPU_RT_LEVEL))
+                                    })
+                                {
+                                    warn!("Failed to set vcpu to real time: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        interrupted_by_signal = false;
+
+        // Vcpus may have run a HLT instruction, which puts them into a state other than
+        // VcpuRunState::Runnable. In that case, this call to wait_until_runnable blocks
+        // until either the irqchip receives an interrupt for this vcpu, or until the main
+        // thread kicks this vcpu as a result of some VmControl operation. In most IrqChip
+        // implementations HLT instructions do not make it to crosvm, and thus this is a
+        // no-op that always returns VcpuRunState::Runnable.
+        match irq_chip.wait_until_runnable(&vcpu) {
+            Ok(VcpuRunState::Runnable) => {}
+            Ok(VcpuRunState::Interrupted) => interrupted_by_signal = true,
+            Err(e) => error!(
+                "error waiting for vcpu {} to become runnable: {}",
+                cpu_id, e
+            ),
+        }
+
+        if !interrupted_by_signal {
+            match vcpu.run(&vcpu_run_handle) {
+                Ok(VcpuExit::IoIn { port, mut size }) => {
+                    let mut data = [0; 8];
+                    if size > data.len() {
+                        error!(
+                            "unsupported IoIn size of {} bytes at port {:#x}",
+                            size, port
+                        );
+                        size = data.len();
+                    }
+                    io_bus.read(port as u64, &mut data[..size]);
+                    if let Err(e) = vcpu.set_data(&data[..size]) {
+                        error!(
+                            "failed to set return data for IoIn at port {:#x}: {}",
+                            port, e
+                        );
+                    }
+                }
+                Ok(VcpuExit::IoOut {
+                    port,
+                    mut size,
+                    data,
+                }) => {
+                    if size > data.len() {
+                        error!(
+                            "unsupported IoOut size of {} bytes at port {:#x}",
+                            size, port
+                        );
+                        size = data.len();
+                    }
+                    io_bus.write(port as u64, &data[..size]);
+                }
+                Ok(VcpuExit::MmioRead { address, size }) => {
+                    let mut data = [0; 8];
+                    mmio_bus.read(address, &mut data[..size]);
+                    // Setting data for mmio can not fail.
+                    let _ = vcpu.set_data(&data[..size]);
+                }
+                Ok(VcpuExit::MmioWrite {
+                    address,
+                    size,
+                    data,
+                }) => {
+                    mmio_bus.write(address, &data[..size]);
+                }
+                Ok(VcpuExit::IoapicEoi { vector }) => {
+                    if let Err(e) = irq_chip.broadcast_eoi(vector) {
+                        error!(
+                            "failed to broadcast eoi {} on vcpu {}: {}",
+                            vector, cpu_id, e
+                        );
+                    }
+                }
+                Ok(VcpuExit::IrqWindowOpen) => {}
+                Ok(VcpuExit::Hlt) => irq_chip.halted(cpu_id),
+                Ok(VcpuExit::Shutdown) => return ExitState::Stop,
+                Ok(VcpuExit::FailEntry {
+                    hardware_entry_failure_reason,
+                }) => {
+                    error!("vcpu hw run failure: {:#x}", hardware_entry_failure_reason);
+                    return ExitState::Stop;
+                }
+                Ok(VcpuExit::SystemEventShutdown) => {
+                    info!("system shutdown event on vcpu {}", cpu_id);
+                    return ExitState::Stop;
+                }
+                Ok(VcpuExit::SystemEventReset) => {
+                    info!("system reset event");
+                    return ExitState::Reset;
+                }
+                Ok(VcpuExit::SystemEventCrash) => {
+                    info!("system crash event on vcpu {}", cpu_id);
+                    return ExitState::Stop;
+                }
+                #[rustfmt::skip] Ok(VcpuExit::Debug { .. }) => {
+                    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                    {
+                        let msg = VcpuDebugStatusMessage {
+                            cpu: cpu_id as usize,
+                            msg: VcpuDebugStatus::HitBreakPoint,
+                        };
+                        if let Some(ref ch) = to_gdb_tube {
+                            if let Err(e) = ch.send(msg) {
+                                error!("failed to notify breakpoint to GDB thread: {}", e);
+                                return ExitState::Stop;
+                            }
+                        }
+                        run_mode = VmRunMode::Breakpoint;
+                    }
+                }
+                Ok(r) => warn!("unexpected vcpu exit: {:?}", r),
+                Err(e) => match e.errno() {
+                    libc::EINTR => interrupted_by_signal = true,
+                    libc::EAGAIN => {}
+                    _ => {
+                        error!("vcpu hit unknown error: {}", e);
+                        return ExitState::Stop;
+                    }
+                },
+            }
+        }
+
+        if interrupted_by_signal {
+            if use_hypervisor_signals {
+                // Try to clear the signal that we use to kick VCPU if it is pending before
+                // attempting to handle pause requests.
+                if let Err(e) = clear_signal(SIGRTMIN() + 0) {
+                    error!("failed to clear pending signal: {}", e);
+                    return ExitState::Stop;
+                }
+            } else {
+                vcpu.set_immediate_exit(false);
+            }
+        }
+
+        if let Err(e) = irq_chip.inject_interrupts(&vcpu) {
+            error!("failed to inject interrupts for vcpu {}: {}", cpu_id, e);
+        }
+    }
 }
 
 fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
@@ -2841,6 +2911,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     })
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ExitState {
     Reset,
     Stop,
@@ -3522,6 +3593,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             (*linux.io_bus).clone(),
             (*linux.mmio_bus).clone(),
             exit_evt.try_clone().context("failed to clone event")?,
+            reset_evt.try_clone().context("failed to clone event")?,
             linux.vm.check_capability(VmCap::PvClockSuspend),
             from_main_channel,
             use_hypervisor_signals,

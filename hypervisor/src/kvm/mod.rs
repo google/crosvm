@@ -1020,7 +1020,18 @@ impl Vcpu for KvmVcpu {
                 // field is valid
                 let event_type = unsafe { run.__bindgen_anon_1.system_event.type_ };
                 let event_flags = unsafe { run.__bindgen_anon_1.system_event.flags };
-                Ok(VcpuExit::SystemEvent(event_type, event_flags))
+                match event_type {
+                    KVM_SYSTEM_EVENT_SHUTDOWN => Ok(VcpuExit::SystemEventShutdown),
+                    KVM_SYSTEM_EVENT_RESET => Ok(VcpuExit::SystemEventReset),
+                    KVM_SYSTEM_EVENT_CRASH => Ok(VcpuExit::SystemEventCrash),
+                    _ => {
+                        error!(
+                            "Unknown KVM system event {} with flags {}",
+                            event_type, event_flags
+                        );
+                        Err(Error::new(EINVAL))
+                    }
+                }
             }
             r => panic!("unknown kvm exit reason: {}", r),
         }
