@@ -113,6 +113,7 @@ extern "C" {
         out_size: *mut u64,
     ) -> c_int;
     fn stream_renderer_resource_unmap(res_handle: u32) -> c_int;
+    fn stream_renderer_resource_map_info(res_handle: u32, map_info: *mut u32) -> c_int;
 }
 
 /// The virtio-gpu backend state tracker which supports accelerated rendering.
@@ -232,9 +233,12 @@ impl Gfxstream {
         }))
     }
 
-    #[allow(clippy::unnecessary_wraps)]
-    fn map_info(&self, _resource_id: u32) -> RutabagaResult<u32> {
-        Ok(RUTABAGA_MAP_CACHE_WC)
+    fn map_info(&self, resource_id: u32) -> RutabagaResult<u32> {
+        let mut map_info = 0;
+        let ret = unsafe { stream_renderer_resource_map_info(resource_id, &mut map_info) };
+        ret_to_res(ret)?;
+
+        Ok(map_info)
     }
 }
 
