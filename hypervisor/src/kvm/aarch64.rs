@@ -48,7 +48,7 @@ impl Kvm {
             ioctl_with_val(self, KVM_CHECK_EXTENSION(), KVM_CAP_ARM_VM_IPA_SIZE.into())
         } {
             // Default physical address size is 40 bits if the extension is not supported.
-            ret if ret < 0 => 40,
+            ret if ret <= 0 => 40,
             ipa => ipa as u8,
         };
         vm_ipa_size
