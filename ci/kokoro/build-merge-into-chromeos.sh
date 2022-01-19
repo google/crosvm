@@ -7,6 +7,7 @@ set -e
 readonly GERRIT_URL=https://chromium-review.googlesource.com
 readonly ORIGIN=${GERRIT_URL}/chromiumos/platform/crosvm
 readonly RETRIES=3
+readonly MIN_COMMIT_COUNT=${MIN_COMMIT_COUNT:-5}
 
 gerrit_api_get() {
     # GET request to the gerrit API. Strips XSSI protection line from output.
@@ -203,15 +204,11 @@ main() {
         parent_commit="FETCH_HEAD"
     fi
 
-    local merge_list=$(git log --oneline --decorate=no --no-color \
-        "${parent_commit}..origin/main")
-    if [ -z "$merge_list" ]; then
-        echo "Already up to date, nothing to merge."
+    local merge_count=$(git log --oneline --decorate=no --no-color \
+        "${parent_commit}..origin/main" | wc -l)
+    if [ "${merge_count}" -lt "$MIN_COMMIT_COUNT" ]; then
+        echo "Not enough commits to merge. Skipping."
         return
-    else
-        echo "Merge list:"
-        echo "${merge_list}"
-        echo ""
     fi
 
     echo "Checking out parent: ${parent_commit}"
