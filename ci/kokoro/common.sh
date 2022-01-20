@@ -28,9 +28,6 @@ setup_source() {
 
   cd "${KOKORO_ARTIFACTS_DIR}/git/crosvm"
 
-  echo "Fetching Submodules..."
-  git submodule update --init
-
   echo "Rebasing changes to ToT"
   # We cannot use the original origin that kokoro used, as we no longer have
   # access the GoB host via rpc://.
@@ -42,6 +39,9 @@ setup_source() {
   # us from rebasing the changes.
   git checkout -f
   git rebase origin/main
+
+  echo "Fetching Submodules..."
+  git submodule update --init
 }
 
 cleanup() {
