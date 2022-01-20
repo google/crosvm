@@ -811,6 +811,7 @@ fn gpu_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
                     "/usr/lib64",
                     "/lib",
                     "/lib64",
+                    "/usr/share/drirc.d",
                     "/usr/share/glvnd",
                     "/usr/share/vulkan",
                 ],
