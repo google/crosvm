@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cmp::Reverse;
+use std::cmp::{max, Reverse};
 use std::collections::{BTreeMap, HashSet};
 use std::convert::TryFrom;
 #[cfg(feature = "gpu")]
@@ -2034,6 +2034,30 @@ fn create_devices(
             )?;
 
             devices.push((Box::new(vfio_plat_dev), jail));
+        }
+
+        if !coiommu_attached_endpoints.is_empty() || !iommu_attached_endpoints.is_empty() {
+            let mut buf = mem::MaybeUninit::<libc::rlimit>::zeroed();
+            let res = unsafe { libc::getrlimit(libc::RLIMIT_MEMLOCK, buf.as_mut_ptr()) };
+            if res == 0 {
+                let limit = unsafe { buf.assume_init() };
+                let rlim_new = limit
+                    .rlim_cur
+                    .saturating_add(vm.get_memory().memory_size() as libc::rlim_t);
+                let rlim_max = max(limit.rlim_max, rlim_new);
+                if limit.rlim_cur < rlim_new {
+                    let limit_arg = libc::rlimit {
+                        rlim_cur: rlim_new as libc::rlim_t,
+                        rlim_max: rlim_max as libc::rlim_t,
+                    };
+                    let res = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &limit_arg) };
+                    if res != 0 {
+                        bail!("Set rlimit failed");
+                    }
+                }
+            } else {
+                bail!("Get rlimit failed");
+            }
         }
 
         if !iommu_attached_endpoints.is_empty() {
