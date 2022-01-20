@@ -2204,6 +2204,11 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
 
                             params.unpin_limit = Some(limit)
                         }
+                        "unpin_gen_threshold" => {
+                            params.unpin_gen_threshold = v
+                                .parse::<u64>()
+                                .map_err(|e| argument::Error::UnknownArgument(format!("{}", e)))?
+                        }
                         _ => {
                             return Err(argument::Error::UnknownArgument(format!(
                                 "coiommu parameter {}",
@@ -2565,12 +2570,13 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                               subsystem_device=NUM - PCI subsystem device ID
                               revision=NUM - revision"),
           Argument::flag_or_value("coiommu",
-                          "unpin_policy=POLICY,unpin_interval=NUM,unpin_limit=NUM",
+                          "unpin_policy=POLICY,unpin_interval=NUM,unpin_limit=NUM,unpin_gen_threshold=NUM ",
                           "Comma separated key=value pairs for setting up coiommu devices.
                               Possible key values:
                               unpin_policy=lru - LRU unpin policy.
                               unpin_interval=NUM - Unpin interval time in seconds.
-                              unpin_limit=NUM - Unpin limit for each unpin cycle, in unit of page count. 0 is invalid."),
+                              unpin_limit=NUM - Unpin limit for each unpin cycle, in unit of page count. 0 is invalid.
+                              unpin_gen_threshold=NUM -  Number of unpin intervals a pinned page must be busy for to be aged into the older which is less frequently checked generation."),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

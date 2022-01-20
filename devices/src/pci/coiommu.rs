@@ -82,6 +82,7 @@ enum Error {
 
 //default interval is 60s
 const UNPIN_DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
+const UNPIN_GEN_DEFAULT_THRES: u64 = 10;
 /// Holds the coiommu unpin policy
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CoIommuUnpinPolicy {
@@ -121,6 +122,9 @@ pub struct CoIommuParameters {
     pub unpin_policy: CoIommuUnpinPolicy,
     pub unpin_interval: Duration,
     pub unpin_limit: Option<u64>,
+    // Number of unpin intervals a pinned page must be busy for to be aged into the
+    // older, less frequently checked generation.
+    pub unpin_gen_threshold: u64,
 }
 
 impl Default for CoIommuParameters {
@@ -129,6 +133,7 @@ impl Default for CoIommuParameters {
             unpin_policy: CoIommuUnpinPolicy::Off,
             unpin_interval: UNPIN_DEFAULT_INTERVAL,
             unpin_limit: None,
+            unpin_gen_threshold: UNPIN_GEN_DEFAULT_THRES,
         }
     }
 }
@@ -140,6 +145,21 @@ struct CoIommuReg {
     dtt_level: u64,
 }
 
+#[derive(Default, Debug, Copy, Clone, PartialEq)]
+struct PinnedPageInfo {
+    gfn: u64,
+    unpin_busy_cnt: u64,
+}
+
+impl PinnedPageInfo {
+    fn new(gfn: u64, unpin_busy_cnt: u64) -> Self {
+        PinnedPageInfo {
+            gfn,
+            unpin_busy_cnt,
+        }
+    }
+}
+
 #[derive(PartialEq, Debug)]
 enum UnpinThreadState {
     Unparked,
@@ -147,7 +167,8 @@ enum UnpinThreadState {
 }
 
 struct CoIommuPinState {
-    pinned_pages: VecDeque<u64>,
+    new_gen_pinned_pages: VecDeque<PinnedPageInfo>,
+    old_gen_pinned_pages: VecDeque<u64>,
     unpin_thread_state: UnpinThreadState,
     unpin_park_count: u64,
 }
@@ -337,7 +358,9 @@ fn pin_page(
         // set PINNED flag
         unsafe { (*leaf_entry).fetch_or(DTTE_PINNED_FLAG, Ordering::SeqCst) };
         if policy == CoIommuUnpinPolicy::Lru {
-            pinstate.pinned_pages.push_back(gfn);
+            pinstate
+                .new_gen_pinned_pages
+                .push_back(PinnedPageInfo::new(gfn, 0));
         }
     }
 
@@ -618,6 +641,7 @@ struct UnpinWorker {
     unpin_tube: Option<Tube>,
     pinstate: Arc<Mutex<CoIommuPinState>>,
     params: CoIommuParameters,
+    unpin_gen_threshold: u64,
 }
 
 impl UnpinWorker {
@@ -768,9 +792,22 @@ impl UnpinWorker {
         }
     }
 
-    fn lru_unpin_page(&mut self, dtt_iter: &mut DTTIter) -> (UnpinResult, Option<u64>) {
+    fn lru_unpin_page(
+        &mut self,
+        dtt_iter: &mut DTTIter,
+        new_gen: bool,
+    ) -> (UnpinResult, Option<PinnedPageInfo>) {
         let mut pinstate = self.pinstate.lock();
-        if let Some(gfn) = pinstate.pinned_pages.pop_front() {
+        let pageinfo = if new_gen {
+            pinstate.new_gen_pinned_pages.pop_front()
+        } else {
+            pinstate
+                .old_gen_pinned_pages
+                .pop_front()
+                .map(|gfn| PinnedPageInfo::new(gfn, 0))
+        };
+
+        pageinfo.map_or((UnpinResult::UnpinlistEmpty, None), |pageinfo| {
             (
                 unpin_page(
                     &mut pinstate,
@@ -779,39 +816,57 @@ impl UnpinWorker {
                     self.dtt_level,
                     self.dtt_root,
                     dtt_iter,
-                    gfn,
+                    pageinfo.gfn,
                     false,
                 ),
-                Some(gfn),
+                Some(pageinfo),
             )
-        } else {
-            (UnpinResult::UnpinlistEmpty, None)
-        }
+        })
     }
 
-    fn lru_unpin_pages(&mut self) {
-        let mut not_unpinned_pages = VecDeque::new();
-        let mut limit_count: u64 = self.params.unpin_limit.unwrap_or(0);
-        let has_limit = self.params.unpin_limit.is_some();
+    fn lru_unpin_pages_in_loop(&mut self, unpin_limit: Option<u64>, new_gen: bool) -> u64 {
+        let mut not_unpinned_new_gen_pages = VecDeque::new();
+        let mut not_unpinned_old_gen_pages = VecDeque::new();
+        let mut unpinned_count = 0;
+        let has_limit = unpin_limit.is_some();
+        let limit_count = unpin_limit.unwrap_or(0);
         let mut dtt_iter: DTTIter = Default::default();
 
         // If has_limit is true but limit_count is 0, will not do the unpin
-        while !has_limit || limit_count != 0 {
-            let (result, pinned_page) = self.lru_unpin_page(&mut dtt_iter);
+        while !has_limit || unpinned_count != limit_count {
+            let (result, pinned_page) = self.lru_unpin_page(&mut dtt_iter, new_gen);
             match result {
                 UnpinResult::UnpinlistEmpty => break,
-                UnpinResult::Unpinned => {
-                    if has_limit {
-                        limit_count -= 1;
+                UnpinResult::Unpinned => unpinned_count += 1,
+                UnpinResult::NotPinned => {}
+                UnpinResult::NotUnpinned => {
+                    if let Some(mut page) = pinned_page {
+                        if self.params.unpin_gen_threshold != 0 {
+                            page.unpin_busy_cnt += 1;
+                            // Unpin from new_gen queue but not
+                            // successfully unpinned. Need to check
+                            // the unpin_gen threshold. If reach, put
+                            // it to old_gen queue.
+                            // And if it is not from new_gen, directly
+                            // put into old_gen queue.
+                            if !new_gen || page.unpin_busy_cnt >= self.params.unpin_gen_threshold {
+                                not_unpinned_old_gen_pages.push_back(page.gfn);
+                            } else {
+                                not_unpinned_new_gen_pages.push_back(page);
+                            }
+                        }
                     }
                 }
-                UnpinResult::NotPinned => {}
-                UnpinResult::NotUnpinned | UnpinResult::FailedUnpin | UnpinResult::UnpinParked => {
+                UnpinResult::FailedUnpin | UnpinResult::UnpinParked => {
                     // Although UnpinParked means we didn't actually try to unpin
                     // gfn, it's not worth specifically handing since parking is
                     // expected to be relatively rare.
-                    if let Some(gfn) = pinned_page {
-                        not_unpinned_pages.push_back(gfn);
+                    if let Some(page) = pinned_page {
+                        if new_gen {
+                            not_unpinned_new_gen_pages.push_back(page);
+                        } else {
+                            not_unpinned_old_gen_pages.push_back(page.gfn);
+                        }
                     }
                     if result == UnpinResult::UnpinParked {
                         thread::park();
@@ -820,10 +875,40 @@ impl UnpinWorker {
             }
         }
 
-        if !not_unpinned_pages.is_empty() {
+        if !not_unpinned_new_gen_pages.is_empty() {
             let mut pinstate = self.pinstate.lock();
-            pinstate.pinned_pages.append(&mut not_unpinned_pages);
+            pinstate
+                .new_gen_pinned_pages
+                .append(&mut not_unpinned_new_gen_pages);
         }
+
+        if !not_unpinned_old_gen_pages.is_empty() {
+            let mut pinstate = self.pinstate.lock();
+            pinstate
+                .old_gen_pinned_pages
+                .append(&mut not_unpinned_old_gen_pages);
+        }
+
+        unpinned_count
+    }
+
+    fn lru_unpin_pages(&mut self) {
+        let mut unpin_count = 0;
+        if self.params.unpin_gen_threshold != 0 {
+            self.unpin_gen_threshold += 1;
+            if self.unpin_gen_threshold == self.params.unpin_gen_threshold {
+                self.unpin_gen_threshold = 0;
+                // Try to unpin inactive queue first if reaches the thres hold
+                unpin_count = self.lru_unpin_pages_in_loop(self.params.unpin_limit, false);
+            }
+        }
+        // Unpin the new_gen queue with the updated unpin_limit after unpin old_gen queue
+        self.lru_unpin_pages_in_loop(
+            self.params
+                .unpin_limit
+                .map(|limit| limit.saturating_sub(unpin_count)),
+            true,
+        );
     }
 
     fn unpin_pages_in_range(&self, gfn: u64, count: u64) -> bool {
@@ -962,7 +1047,8 @@ impl CoIommuDev {
             ioevents,
             vfio_container,
             pinstate: Arc::new(Mutex::new(CoIommuPinState {
-                pinned_pages: VecDeque::new(),
+                new_gen_pinned_pages: VecDeque::new(),
+                old_gen_pinned_pages: VecDeque::new(),
                 unpin_thread_state: UnpinThreadState::Unparked,
                 unpin_park_count: 0,
             })),
@@ -1135,6 +1221,7 @@ impl CoIommuDev {
                     unpin_tube,
                     pinstate,
                     params,
+                    unpin_gen_threshold: 0,
                 };
                 worker.run(kill_evt);
                 worker
