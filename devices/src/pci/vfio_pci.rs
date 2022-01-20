@@ -2085,12 +2085,24 @@ impl PciDevice for VfioPciDevice {
     }
 
     fn read_virtual_config_register(&self, reg_idx: usize) -> u32 {
+        // HACK TODO:
+        // The results should be passed via shared memory (see `write_virtual_config_register`);
+        // HOWEVER, for not-yet-known reasons, Guest is unable to see the changes immediately
+        // even after `msync`. While the investigation is still ongoing, let's use this hack
+        // temporarily to unblock integration tests.
+        if reg_idx < 1024 {
+            if let Some(shm) = &self.vcfg_shm_mmap {
+                return shm
+                    .read_obj::<u32>(reg_idx * std::mem::size_of::<u32>())
+                    .expect("failed to read vcfg.");
+            }
+        }
         warn!(
-            "{} read unsupported register {}",
+            "{} read unsupported vcfg register {}",
             self.debug_label(),
             reg_idx
         );
-        0
+        0xFFFF_FFFF
     }
 
     fn write_virtual_config_register(&mut self, reg_idx: usize, value: u32) {
@@ -2113,8 +2125,22 @@ impl PciDevice for VfioPciDevice {
                     }
                 };
             }
+            1 => {
+                if let Some(shm) = &self.vcfg_shm_mmap {
+                    let mut args = [0u8; 4096];
+                    shm.read_slice(&mut args, 0)
+                        .expect("failed to read DSM Args.");
+                    let res = self
+                        .device
+                        .acpi_dsm(args.to_vec())
+                        .expect("failed to call DSM.");
+                    shm.write_slice(&res, 0)
+                        .expect("failed to write DSM result.");
+                    shm.msync().expect("failed to msync.");
+                }
+            }
             _ => warn!(
-                "{} write unsupported register {}",
+                "{} write unsupported vcfg register {}",
                 self.debug_label(),
                 reg_idx
             ),

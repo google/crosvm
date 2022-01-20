@@ -43,6 +43,7 @@ use resources::Alloc;
 use resources::Error as ResourcesError;
 use sync::Mutex;
 use thiserror::Error;
+use vfio_sys::vfio::vfio_acpi_dsm;
 use vfio_sys::*;
 use vm_memory::MemoryRegionInformation;
 use zerocopy::AsBytes;
@@ -93,6 +94,8 @@ pub enum VfioError {
     Resources(ResourcesError),
     #[error("unknown vfio device type (flags: {0:#x})")]
     UnknownDeviceType(u32),
+    #[error("failed to call vfio device's ACPI _DSM: {0}")]
+    VfioAcpiDsm(Error),
     #[error(
         "vfio API version doesn't match with VFIO_API_VERSION defined in vfio_sys/src/vfio.rs"
     )]
@@ -944,6 +947,27 @@ impl VfioDevice {
             Err(VfioError::VfioPmLowPowerExit(get_error()))
         } else {
             Ok(())
+        }
+    }
+
+    /// call _DSM from the device's ACPI table
+    pub fn acpi_dsm(&self, args: Vec<u8>) -> Result<Vec<u8>> {
+        let count = args.len();
+        let mut dsm = vec_with_array_field::<vfio_acpi_dsm, u8>(count);
+        dsm[0].argsz = (mem::size_of::<vfio_acpi_dsm>() + count * mem::size_of::<u8>()) as u32;
+        dsm[0].padding = 0;
+        // Safe as we allocated enough space to hold args
+        unsafe {
+            dsm[0].args.as_mut_slice(count).clone_from_slice(&args);
+        }
+        // Safe as we are the owner of self and dsm which are valid value
+        let ret = unsafe { ioctl_with_mut_ref(&self.dev, VFIO_DEVICE_ACPI_DSM(), &mut dsm[0]) };
+        if ret < 0 {
+            Err(VfioError::VfioAcpiDsm(get_error()))
+        } else {
+            // Safe as we allocated enough space to hold args
+            let res = unsafe { dsm[0].args.as_slice(count) };
+            Ok(res.to_vec())
         }
     }
 
