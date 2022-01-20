@@ -23,6 +23,25 @@ struct NlMsgHdr {
 }
 unsafe impl DataInit for NlMsgHdr {}
 
+/// Netlink attribute struct, can be used by netlink consumer
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct NlAttr {
+    pub len: u16,
+    pub _type: u16,
+}
+unsafe impl DataInit for NlAttr {}
+
+/// Generic netlink header struct, can be used by netlink consumer
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct GenlMsgHdr {
+    pub cmd: u8,
+    pub version: u8,
+    pub reserved: u16,
+}
+unsafe impl DataInit for GenlMsgHdr {}
+
 /// A single netlink message, including its header and data.
 pub struct NetlinkMessage<'a> {
     pub _type: u16,

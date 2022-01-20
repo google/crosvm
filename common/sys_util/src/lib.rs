@@ -19,6 +19,7 @@ pub mod handle_eintr;
 pub mod ioctl;
 #[macro_use]
 pub mod syslog;
+mod acpi_event;
 mod capabilities;
 mod clock;
 mod descriptor;
@@ -51,6 +52,7 @@ mod timerfd;
 pub mod vsock;
 mod write_zeroes;
 
+pub use crate::acpi_event::*;
 pub use crate::alloc::LayoutAllocation;
 pub use crate::capabilities::drop_capabilities;
 pub use crate::clock::{Clock, FakeClock};
