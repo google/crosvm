@@ -190,9 +190,12 @@ enum E820Type {
     Reserved = 0x2,
 }
 
+const MB: u64 = 1 << 20;
+const GB: u64 = 1 << 30;
+
 const BOOT_STACK_POINTER: u64 = 0x8000;
 // Make sure it align to 256MB for MTRR convenient
-const MEM_32BIT_GAP_SIZE: u64 = 768 << 20;
+const MEM_32BIT_GAP_SIZE: u64 = 768 * MB;
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 // Reserved memory for nand_bios/LAPIC/IOAPIC/HPET/.....
 const RESERVED_MEM_SIZE: u64 = 0x800_0000;
@@ -1103,8 +1106,6 @@ impl X8664arch {
     /// * mem: The memory to be used by the guest
     fn get_high_mmio_base(mem: &GuestMemory) -> u64 {
         // Put device memory at a 2MB boundary after physical memory or 4gb, whichever is greater.
-        const MB: u64 = 1 << 20;
-        const GB: u64 = 1 << 30;
         let ram_end_round_2mb = (mem.end_addr().offset() + 2 * MB - 1) / (2 * MB) * (2 * MB);
         std::cmp::max(ram_end_round_2mb, 4 * GB)
     }
@@ -1379,7 +1380,7 @@ mod tests {
 
     #[test]
     fn regions_lt_4gb_bios() {
-        let bios_len = 1 << 20;
+        let bios_len = 1 * MB;
         let regions = arch_memory_regions(1u64 << 29, Some(bios_len));
         assert_eq!(2, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
@@ -1393,7 +1394,7 @@ mod tests {
 
     #[test]
     fn regions_gt_4gb_bios() {
-        let bios_len = 1 << 20;
+        let bios_len = 1 * MB;
         let regions = arch_memory_regions((1u64 << 32) + 0x8000, Some(bios_len));
         assert_eq!(3, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
@@ -1407,21 +1408,21 @@ mod tests {
 
     #[test]
     fn regions_eq_4gb_nobios() {
-        // Test with size = 3328, which is exactly 4 GiB minus the size of the gap (768 MiB).
-        let regions = arch_memory_regions(3328 << 20, /* bios_size */ None);
+        // Test with size = 3328, which is exactly 4 GiB minus the size of the gap (768 MB).
+        let regions = arch_memory_regions(3328 * MB, /* bios_size */ None);
         assert_eq!(1, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
-        assert_eq!(3328 << 20, regions[0].1);
+        assert_eq!(3328 * MB, regions[0].1);
     }
 
     #[test]
     fn regions_eq_4gb_bios() {
-        // Test with size = 3328, which is exactly 4 GiB minus the size of the gap (768 MiB).
-        let bios_len = 1 << 20;
-        let regions = arch_memory_regions(3328 << 20, Some(bios_len));
+        // Test with size = 3328, which is exactly 4 GiB minus the size of the gap (768 MB).
+        let bios_len = 1 * MB;
+        let regions = arch_memory_regions(3328 * MB, Some(bios_len));
         assert_eq!(2, regions.len());
         assert_eq!(GuestAddress(0), regions[0].0);
-        assert_eq!(3328 << 20, regions[0].1);
+        assert_eq!(3328 * MB, regions[0].1);
         assert_eq!(
             GuestAddress(FIRST_ADDR_PAST_32BITS - bios_len),
             regions[1].0
