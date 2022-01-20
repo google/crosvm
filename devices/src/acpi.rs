@@ -4,7 +4,8 @@
 
 use crate::{BusAccessInfo, BusDevice, BusResumeDevice};
 use acpi_tables::{aml, aml::Aml};
-use base::{error, warn, Error as SysError, Event, PollToken, WaitContext};
+use base::{error, info, warn, Error as SysError, Event, PollToken, WaitContext};
+use base::{AcpiNotifyEvent, NetlinkGenericSocket};
 use std::sync::Arc;
 use std::thread;
 use sync::Mutex;
@@ -22,6 +23,10 @@ pub enum ACPIPMError {
     /// Error while waiting for events.
     #[error("failed to wait for events: {0}")]
     WaitError(SysError),
+    #[error("Did not found group_id corresponding to acpi_mc_group")]
+    AcpiMcGroupError,
+    #[error("Failed to create and bind NETLINK_GENERIC socket, listening on acpi_mc_group: {0}")]
+    AcpiEventSockError(base::Error),
 }
 
 struct Pm1Resource {
@@ -156,8 +161,28 @@ fn run_worker(
     gpe0: Arc<Mutex<GpeResource>>,
     #[cfg(feature = "direct")] sci_direct_evt: Option<(Event, Event)>,
 ) -> Result<(), ACPIPMError> {
+    // Get group id corresponding to acpi_mc_group of acpi_event family
+    let nl_groups: u32;
+    match get_acpi_event_group() {
+        Some(group) => {
+            nl_groups = 1 << (group - 1);
+            info!("Listening on acpi_mc_group of acpi_event family");
+        }
+        None => {
+            return Err(ACPIPMError::AcpiMcGroupError);
+        }
+    }
+
+    let acpi_event_sock = match NetlinkGenericSocket::new(nl_groups) {
+        Ok(acpi_sock) => acpi_sock,
+        Err(e) => {
+            return Err(ACPIPMError::AcpiEventSockError(e));
+        }
+    };
+
     #[derive(PollToken)]
     enum Token {
+        AcpiEvent,
         InterruptResample,
         #[cfg(feature = "direct")]
         InterruptTriggerDirect,
@@ -165,6 +190,7 @@ fn run_worker(
     }
 
     let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
+        (&acpi_event_sock, Token::AcpiEvent),
         (&sci_resample, Token::InterruptResample),
         (&kill_evt, Token::Kill),
     ])
@@ -184,6 +210,9 @@ fn run_worker(
         let events = wait_ctx.wait().map_err(ACPIPMError::WaitError)?;
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
+                Token::AcpiEvent => {
+                    acpi_event_run(&acpi_event_sock, &gpe0, &sci_evt);
+                }
                 Token::InterruptResample => {
                     let _ = sci_resample.read();
 
@@ -212,6 +241,66 @@ fn run_worker(
                 Token::Kill => return Ok(()),
             }
         }
+    }
+}
+
+fn acpi_event_gpe_class(
+    gpe_number: u32,
+    _type: u32,
+    gpe0: &Arc<Mutex<GpeResource>>,
+    sci_evt: &Event,
+) {
+    // If gpe event, emulate GPE and trigger SCI
+    if _type == 0 && gpe_number < 256 {
+        let mut gpe0 = gpe0.lock();
+        let byte = gpe_number as usize / 8;
+
+        if byte >= gpe0.status.len() {
+            error!("gpe_evt: GPE register {} does not exist", byte);
+            return;
+        }
+        gpe0.status[byte] |= 1 << (gpe_number % 8);
+        gpe0.trigger_sci(sci_evt);
+    }
+}
+
+fn get_acpi_event_group() -> Option<u32> {
+    // Create netlink generic socket which will be used to query about given family name
+    let netlink_ctrl_sock = NetlinkGenericSocket::new(0).unwrap();
+
+    let nlmsg_family_response = netlink_ctrl_sock
+        .family_name_query("acpi_event".to_string())
+        .unwrap();
+    return nlmsg_family_response.get_multicast_group_id("acpi_mc_group".to_string());
+}
+
+fn acpi_event_run(
+    acpi_event_sock: &NetlinkGenericSocket,
+    gpe0: &Arc<Mutex<GpeResource>>,
+    sci_evt: &Event,
+) {
+    let nl_msg = match acpi_event_sock.recv() {
+        Ok(msg) => msg,
+        Err(e) => {
+            error!("recv returned with error {}", e);
+            return;
+        }
+    };
+
+    for netlink_message in nl_msg.iter() {
+        let acpi_event = match AcpiNotifyEvent::new(netlink_message) {
+            Ok(evt) => evt,
+            Err(e) => {
+                error!("Received netlink message is not an acpi_event, error {}", e);
+                continue;
+            }
+        };
+        match acpi_event.device_class.as_str() {
+            "gpe" => {
+                acpi_event_gpe_class(acpi_event.data, acpi_event._type, gpe0, sci_evt);
+            }
+            c => warn!("unknown acpi event {}", c),
+        };
     }
 }
 

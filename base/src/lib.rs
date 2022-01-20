@@ -43,6 +43,7 @@ pub use sys_util::{
     ScmSocket, UnlinkUnixListener,
 };
 pub use sys_util::{pagesize, round_up_to_page_size};
+pub use sys_util::{AcpiNotifyEvent, NetlinkGenericSocket};
 pub use sys_util::{Clock, FakeClock};
 pub use sys_util::{EpollContext, EpollEvents};
 pub use sys_util::{ExternalMapping, ExternalMappingError, ExternalMappingResult};
