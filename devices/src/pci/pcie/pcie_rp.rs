@@ -8,6 +8,7 @@ use crate::bus::{HostHotPlugKey, HotPlugBus};
 use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::{MsixConfig, PciAddress, PciCapability};
 
+use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::pcie_device::{PcieCap, PcieDevice};
 use crate::pci::pcie::*;
 use base::warn;
@@ -24,20 +25,25 @@ pub struct PcieRootPort {
     msix_config: Option<Arc<Mutex<MsixConfig>>>,
     slot_control: u16,
     slot_status: u16,
-    secondary_number: u8,
+    bus_range: PciBridgeBusRange,
     downstream_device: Option<(PciAddress, Option<HostHotPlugKey>)>,
     removed_downstream: Option<PciAddress>,
 }
 
 impl PcieRootPort {
     /// Constructs a new PCIE root port
-    pub fn new() -> Self {
+    pub fn new(secondary_bus_num: u8) -> Self {
+        let bus_range = PciBridgeBusRange {
+            primary: 0,
+            secondary: secondary_bus_num,
+            subordinate: secondary_bus_num,
+        };
         PcieRootPort {
             pcie_cap_reg_idx: None,
             msix_config: None,
             slot_control: PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF,
             slot_status: 0,
-            secondary_number: 255,
+            bus_range,
             downstream_device: None,
             removed_downstream: None,
         }
@@ -176,8 +182,8 @@ impl PcieDevice for PcieRootPort {
         }
     }
 
-    fn set_secondary_bus_num(&mut self, secondary_number: u8) {
-        self.secondary_number = secondary_number;
+    fn get_bus_range(&self) -> Option<PciBridgeBusRange> {
+        Some(self.bus_range)
     }
 
     fn get_removed_devices(&self) -> Vec<PciAddress> {
@@ -225,7 +231,7 @@ impl HotPlugBus for PcieRootPort {
 
     fn is_match(&self, _host_addr: PciAddress) -> Option<u8> {
         if self.downstream_device.is_none() {
-            Some(self.secondary_number)
+            Some(self.bus_range.secondary)
         } else {
             None
         }

@@ -1091,18 +1091,13 @@ where
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
         // Create Pcie Root Port
-        let pcie_root_port = Arc::new(Mutex::new(PcieRootPort::new()));
-        let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-        control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
         let sec_bus = (1..255)
             .find(|&bus_num| sys_allocator.pci_bus_empty(bus_num))
             .context("failed to find empty bus for Pci hotplug")?;
-        let pci_bridge = Box::new(PciBridge::new(
-            pcie_root_port.clone(),
-            msi_device_tube,
-            0,
-            sec_bus,
-        ));
+        let pcie_root_port = Arc::new(Mutex::new(PcieRootPort::new(sec_bus)));
+        let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
+        control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+        let pci_bridge = Box::new(PciBridge::new(pcie_root_port.clone(), msi_device_tube));
         Arch::register_pci_device(&mut linux, pci_bridge, None, &mut sys_allocator)
             .context("Failed to configure pci bridge device")?;
         linux.hotplug_bus.push(pcie_root_port);

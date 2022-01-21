@@ -5,6 +5,7 @@ use std::sync::Arc;
 use sync::Mutex;
 
 use crate::pci::pci_configuration::PciCapabilityID;
+use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::*;
 use crate::pci::{MsixConfig, PciAddress, PciCapability};
 use data_model::DataInit;
@@ -17,7 +18,9 @@ pub trait PcieDevice: Send {
     fn clone_interrupt(&mut self, msix_config: Arc<Mutex<MsixConfig>>);
     fn get_caps(&self) -> Vec<Box<dyn PciCapability>>;
     fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize);
-    fn set_secondary_bus_num(&mut self, secondary_number: u8);
+    fn get_bus_range(&self) -> Option<PciBridgeBusRange> {
+        None
+    }
     fn get_removed_devices(&self) -> Vec<PciAddress>;
     fn get_bridge_window_size(&self) -> (u64, u64);
 }

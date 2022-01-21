@@ -28,13 +28,24 @@ const BR_PREF_MEM_BASE_HIGH_REG: usize = 0xa;
 const BR_PREF_MEM_LIMIT_HIGH_REG: usize = 0xb;
 const BR_WINDOW_ALIGNMENT: u64 = 0x100000;
 const BR_PREF_MEM_64BIT: u32 = 0x001_0001;
+
+/// Holds the bus range for a pci bridge
+///
+/// * primary - primary bus number
+/// * secondary - secondary bus number
+/// * subordinate - subordinate bus number
+#[derive(Debug, Copy, Clone)]
+pub struct PciBridgeBusRange {
+    pub primary: u8,
+    pub secondary: u8,
+    pub subordinate: u8,
+}
+
 pub struct PciBridge {
     device: Arc<Mutex<dyn PcieDevice>>,
     config: PciConfiguration,
     pci_address: Option<PciAddress>,
-    primary_number: u8,
-    secondary_number: u8,
-    subordinate_number: u8,
+    bus_range: PciBridgeBusRange,
     setting_bar: u8,
     msix_config: Arc<Mutex<MsixConfig>>,
     msix_cap_reg_idx: Option<usize>,
@@ -43,12 +54,7 @@ pub struct PciBridge {
 }
 
 impl PciBridge {
-    pub fn new(
-        device: Arc<Mutex<dyn PcieDevice>>,
-        msi_device_tube: Tube,
-        primary_number: u8,
-        secondary_number: u8,
-    ) -> Self {
+    pub fn new(device: Arc<Mutex<dyn PcieDevice>>, msi_device_tube: Tube) -> Self {
         let msix_config = Arc::new(Mutex::new(MsixConfig::new(1, msi_device_tube)));
         let device_id = device.lock().get_device_id();
         let mut config = PciConfiguration::new(
@@ -63,18 +69,23 @@ impl PciBridge {
             0,
         );
 
-        let data = [primary_number, secondary_number, secondary_number, 0];
+        let bus_range = device
+            .lock()
+            .get_bus_range()
+            .expect("PciBridge's backend device must implement get_bus_range()");
+        let data = [
+            bus_range.primary,
+            bus_range.secondary,
+            bus_range.subordinate,
+            0,
+        ];
         config.write_reg(BR_BUS_NUMBER_REG, 0, &data[..]);
-
-        device.lock().set_secondary_bus_num(secondary_number);
 
         PciBridge {
             device,
             config,
             pci_address: None,
-            primary_number,
-            secondary_number,
-            subordinate_number: secondary_number,
+            bus_range,
             setting_bar: 0,
             msix_config,
             msix_cap_reg_idx: None,
@@ -135,16 +146,16 @@ impl PciDevice for PciBridge {
         resources: &mut SystemAllocator,
     ) -> std::result::Result<PciAddress, PciDeviceError> {
         if self.pci_address.is_none() {
-            self.pci_address = match resources.allocate_pci(self.primary_number, self.debug_label())
-            {
-                Some(Alloc::PciBar {
-                    bus,
-                    dev,
-                    func,
-                    bar: _,
-                }) => Some(PciAddress { bus, dev, func }),
-                _ => None,
-            }
+            self.pci_address =
+                match resources.allocate_pci(self.bus_range.primary, self.debug_label()) {
+                    Some(Alloc::PciBar {
+                        bus,
+                        dev,
+                        func,
+                        bar: _,
+                    }) => Some(PciAddress { bus, dev, func }),
+                    _ => None,
+                }
         }
         self.pci_address.ok_or(PciDeviceError::PciAllocationFailed)
     }
@@ -349,33 +360,33 @@ impl PciDevice for PciBridge {
         // if it indeed modify, print a warning
         if reg_idx == BR_BUS_NUMBER_REG {
             let len = data.len();
-            if offset == 0 && len == 1 && data[0] != self.primary_number {
+            if offset == 0 && len == 1 && data[0] != self.bus_range.primary {
                 warn!(
                     "kernel modify primary bus number: {} -> {}",
-                    self.primary_number, data[0]
+                    self.bus_range.primary, data[0]
                 );
             } else if offset == 0 && len == 2 {
-                if data[0] != self.primary_number {
+                if data[0] != self.bus_range.primary {
                     warn!(
                         "kernel modify primary bus number: {} -> {}",
-                        self.primary_number, data[0]
+                        self.bus_range.primary, data[0]
                     );
                 }
-                if data[1] != self.secondary_number {
+                if data[1] != self.bus_range.secondary {
                     warn!(
                         "kernel modify secondary bus number: {} -> {}",
-                        self.secondary_number, data[1]
+                        self.bus_range.secondary, data[1]
                     );
                 }
-            } else if offset == 1 && len == 1 && data[0] != self.secondary_number {
+            } else if offset == 1 && len == 1 && data[0] != self.bus_range.secondary {
                 warn!(
                     "kernel modify secondary bus number: {} -> {}",
-                    self.secondary_number, data[0]
+                    self.bus_range.secondary, data[0]
                 );
-            } else if offset == 2 && len == 1 && data[0] != self.subordinate_number {
+            } else if offset == 2 && len == 1 && data[0] != self.bus_range.subordinate {
                 warn!(
                     "kernel modify subordinate bus number: {} -> {}",
-                    self.subordinate_number, data[0]
+                    self.bus_range.subordinate, data[0]
                 );
             }
         }
