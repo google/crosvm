@@ -9,8 +9,8 @@ use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
 use libc::{
     self, c_char, c_int, c_long, c_uint, close, fcntl, ftruncate64, off64_t, syscall,
-    SYS_memfd_create, EINVAL, F_ADD_SEALS, F_GET_SEALS, F_SEAL_GROW, F_SEAL_SEAL, F_SEAL_SHRINK,
-    F_SEAL_WRITE, MFD_ALLOW_SEALING,
+    SYS_memfd_create, EINVAL, F_ADD_SEALS, F_GET_SEALS, F_SEAL_FUTURE_WRITE, F_SEAL_GROW,
+    F_SEAL_SEAL, F_SEAL_SHRINK, F_SEAL_WRITE, MFD_ALLOW_SEALING,
 };
 use serde::{Deserialize, Serialize};
 
@@ -50,7 +50,7 @@ impl MemfdSeals {
         self.0
     }
 
-    /// True of the grow seal bit is present.
+    /// True if the grow seal bit is present.
     #[inline]
     pub fn grow_seal(self) -> bool {
         self.0 & F_SEAL_GROW != 0
@@ -62,7 +62,7 @@ impl MemfdSeals {
         self.0 |= F_SEAL_GROW;
     }
 
-    /// True of the shrink seal bit is present.
+    /// True if the shrink seal bit is present.
     #[inline]
     pub fn shrink_seal(self) -> bool {
         self.0 & F_SEAL_SHRINK != 0
@@ -74,7 +74,7 @@ impl MemfdSeals {
         self.0 |= F_SEAL_SHRINK;
     }
 
-    /// True of the write seal bit is present.
+    /// True if the write seal bit is present.
     #[inline]
     pub fn write_seal(self) -> bool {
         self.0 & F_SEAL_WRITE != 0
@@ -84,6 +84,18 @@ impl MemfdSeals {
     #[inline]
     pub fn set_write_seal(&mut self) {
         self.0 |= F_SEAL_WRITE;
+    }
+
+    /// True if the future write seal bit is present.
+    #[inline]
+    pub fn future_write_seal(self) -> bool {
+        self.0 & F_SEAL_FUTURE_WRITE != 0
+    }
+
+    /// Sets the future write seal bit.
+    #[inline]
+    pub fn set_future_write_seal(&mut self) {
+        self.0 |= F_SEAL_FUTURE_WRITE;
     }
 
     /// True of the seal seal bit is present.
