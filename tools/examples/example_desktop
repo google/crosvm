@@ -1,0 +1,51 @@
+#!/bin/bash
+# Copyright 2022 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Example VM with a full desktop
+
+set -e
+
+SRC=$(realpath "$(dirname "${BASH_SOURCE[0]}")")
+mkdir -p "$SRC/images/desktop" && cd "$_"
+
+if ! [ -f rootfs ]; then
+    # ANCHOR: build
+    builder_args=(
+        # Create user with no password.
+        --run-command "useradd -m -g sudo -p '' $USER ; chage -d 0 $USER"
+
+        # Configure network. See ./example_network
+        --hostname crosvm-test
+        --copy-in "$SRC/guest/01-netcfg.yaml:/etc/netplan/"
+
+        # Install a desktop environment to launch
+        --install xfce4
+
+        -o rootfs
+    )
+    virt-builder ubuntu-20.04 "${builder_args[@]}"
+    # ANCHOR_END: build
+
+    virt-builder --get-kernel ./rootfs -o .
+fi
+
+# ANCHOR: run
+# Enable the GPU and keyboard/mouse input. Since this will be a much heavier
+# system to run we also need to increase the cpu/memory given to the VM.
+# Note: GDM does not allow you to set your password on first login, you have to
+#       log in on the command line first to set a password.
+cargo run --features=gpu,x,virgl_renderer -- run \
+    --cpus 4 \
+    --mem 4096 \
+    --disable-sandbox \
+    --gpu backend=virglrenderer,width=1920,height=1080 \
+    --display-window-keyboard \
+    --display-window-mouse \
+    --tap-name crosvm_tap \
+    --rwroot ./rootfs \
+    --initrd ./initrd.img-* \
+    -p "root=/dev/vda5" \
+    ./vmlinuz-*
+# ANCHOR_END: run

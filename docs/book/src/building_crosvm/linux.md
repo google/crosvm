@@ -90,7 +90,7 @@ Note: The container and build artifacts are preserved between calls to
 
 If you simply want to try crosvm, run `cargo build`. Then the binary is
 generated at `./target/debug/crosvm`. Now you can move to
-[Basic Usage](../running_crosvm/basic_usage.md).
+[Example Usage](../running_crosvm/example_usage.md).
 
 If you want to enable [additional features](../running_crosvm/features.md), use
 the `--features` flag. (e.g. `cargo build --features=gdb`)
