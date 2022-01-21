@@ -244,8 +244,8 @@ const X86_CR4_PAE: u64 = 0x20;
 const EFER_LME: u64 = 0x100;
 const EFER_LMA: u64 = 0x400;
 
-const BOOT_GDT_OFFSET: u64 = 0x500;
-const BOOT_IDT_OFFSET: u64 = 0x520;
+const BOOT_GDT_OFFSET: u64 = 0x1500;
+const BOOT_IDT_OFFSET: u64 = 0x1520;
 
 const BOOT_GDT_MAX: usize = 4;
 

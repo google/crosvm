@@ -6,6 +6,7 @@ edition = "2018"
 
 [features]
 gdb = ["gdbstub_arch", "arch/gdb"]
+direct = []
 
 [dependencies]
 arch = { path = "../arch" }

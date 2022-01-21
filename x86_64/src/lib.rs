@@ -195,7 +195,18 @@ const GB: u64 = 1 << 30;
 
 const BOOT_STACK_POINTER: u64 = 0x8000;
 // Make sure it align to 256MB for MTRR convenient
-const MEM_32BIT_GAP_SIZE: u64 = 768 * MB;
+const MEM_32BIT_GAP_SIZE: u64 = if cfg!(feature = "direct") {
+    // Allow space for identity mapping coreboot memory regions on the host
+    // which is found at around 7a00_0000 (little bit before 2GB)
+    //
+    // TODO(b/188011323): stop hardcoding sizes and addresses here and instead
+    // determine the memory map from how the VM has been configured via the
+    // command line.
+    2560 * MB
+} else {
+    768 * MB
+};
+const START_OF_RAM_32BITS: u64 = if cfg!(feature = "direct") { 0x1000 } else { 0 };
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 // Reserved memory for nand_bios/LAPIC/IOAPIC/HPET/.....
 const RESERVED_MEM_SIZE: u64 = 0x800_0000;
@@ -264,7 +275,12 @@ fn configure_system(
         params.hdr.ramdisk_size = initrd_size as u32;
     }
 
-    add_e820_entry(&mut params, 0, EBDA_START, E820Type::Ram)?;
+    add_e820_entry(
+        &mut params,
+        START_OF_RAM_32BITS,
+        EBDA_START - START_OF_RAM_32BITS,
+        E820Type::Ram,
+    )?;
 
     let mem_end = guest_mem.end_addr();
     if mem_end < end_32bit_gap_start {
@@ -334,18 +350,21 @@ fn add_e820_entry(
 /// For x86_64 all addresses are valid from the start of the kernel except a
 /// carve out at the end of 32bit address space.
 fn arch_memory_regions(size: u64, bios_size: Option<u64>) -> Vec<(GuestAddress, u64)> {
-    let mem_end = GuestAddress(size);
+    let mem_start = START_OF_RAM_32BITS;
+    let mem_end = GuestAddress(size + mem_start);
     let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
     let end_32bit_gap_start = GuestAddress(END_ADDR_BEFORE_32BITS);
-
     let mut regions = Vec::new();
     if mem_end <= end_32bit_gap_start {
-        regions.push((GuestAddress(0), size));
+        regions.push((GuestAddress(mem_start), size));
         if let Some(bios_size) = bios_size {
             regions.push((bios_start(bios_size), bios_size));
         }
     } else {
-        regions.push((GuestAddress(0), end_32bit_gap_start.offset()));
+        regions.push((
+            GuestAddress(mem_start),
+            end_32bit_gap_start.offset() - mem_start,
+        ));
         if let Some(bios_size) = bios_size {
             regions.push((bios_start(bios_size), bios_size));
         }
@@ -1364,27 +1383,29 @@ mod tests {
 
     #[test]
     fn regions_lt_4gb_nobios() {
-        let regions = arch_memory_regions(1u64 << 29, /* bios_size */ None);
+        let regions = arch_memory_regions(512 * MB, /* bios_size */ None);
         assert_eq!(1, regions.len());
-        assert_eq!(GuestAddress(0), regions[0].0);
+        assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
         assert_eq!(1u64 << 29, regions[0].1);
     }
 
     #[test]
     fn regions_gt_4gb_nobios() {
-        let regions = arch_memory_regions((1u64 << 32) + 0x8000, /* bios_size */ None);
+        let size = 4 * GB + 0x8000;
+        let regions = arch_memory_regions(size, /* bios_size */ None);
         assert_eq!(2, regions.len());
-        assert_eq!(GuestAddress(0), regions[0].0);
-        assert_eq!(GuestAddress(1u64 << 32), regions[1].0);
+        assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
+        assert_eq!(GuestAddress(4 * GB), regions[1].0);
+        assert_eq!(4 * GB + 0x8000, regions[0].1 + regions[1].1);
     }
 
     #[test]
     fn regions_lt_4gb_bios() {
         let bios_len = 1 * MB;
-        let regions = arch_memory_regions(1u64 << 29, Some(bios_len));
+        let regions = arch_memory_regions(512 * MB, Some(bios_len));
         assert_eq!(2, regions.len());
-        assert_eq!(GuestAddress(0), regions[0].0);
-        assert_eq!(1u64 << 29, regions[0].1);
+        assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
+        assert_eq!(512 * MB, regions[0].1);
         assert_eq!(
             GuestAddress(FIRST_ADDR_PAST_32BITS - bios_len),
             regions[1].0
@@ -1395,38 +1416,71 @@ mod tests {
     #[test]
     fn regions_gt_4gb_bios() {
         let bios_len = 1 * MB;
-        let regions = arch_memory_regions((1u64 << 32) + 0x8000, Some(bios_len));
+        let regions = arch_memory_regions(4 * GB + 0x8000, Some(bios_len));
         assert_eq!(3, regions.len());
-        assert_eq!(GuestAddress(0), regions[0].0);
+        assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
         assert_eq!(
             GuestAddress(FIRST_ADDR_PAST_32BITS - bios_len),
             regions[1].0
         );
         assert_eq!(bios_len, regions[1].1);
-        assert_eq!(GuestAddress(1u64 << 32), regions[2].0);
+        assert_eq!(GuestAddress(4 * GB), regions[2].0);
     }
 
     #[test]
     fn regions_eq_4gb_nobios() {
-        // Test with size = 3328, which is exactly 4 GiB minus the size of the gap (768 MB).
-        let regions = arch_memory_regions(3328 * MB, /* bios_size */ None);
+        // Test with exact size of 4GB - the overhead.
+        let regions = arch_memory_regions(
+            4 * GB - MEM_32BIT_GAP_SIZE - START_OF_RAM_32BITS,
+            /* bios_size */ None,
+        );
+        dbg!(&regions);
         assert_eq!(1, regions.len());
-        assert_eq!(GuestAddress(0), regions[0].0);
-        assert_eq!(3328 * MB, regions[0].1);
+        assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
+        assert_eq!(
+            4 * GB - MEM_32BIT_GAP_SIZE - START_OF_RAM_32BITS,
+            regions[0].1
+        );
     }
 
     #[test]
     fn regions_eq_4gb_bios() {
-        // Test with size = 3328, which is exactly 4 GiB minus the size of the gap (768 MB).
+        // Test with exact size of 4GB - the overhead.
         let bios_len = 1 * MB;
-        let regions = arch_memory_regions(3328 * MB, Some(bios_len));
+        let regions = arch_memory_regions(
+            4 * GB - MEM_32BIT_GAP_SIZE - START_OF_RAM_32BITS,
+            Some(bios_len),
+        );
         assert_eq!(2, regions.len());
-        assert_eq!(GuestAddress(0), regions[0].0);
-        assert_eq!(3328 * MB, regions[0].1);
+        assert_eq!(GuestAddress(START_OF_RAM_32BITS), regions[0].0);
+        assert_eq!(
+            4 * GB - MEM_32BIT_GAP_SIZE - START_OF_RAM_32BITS,
+            regions[0].1
+        );
         assert_eq!(
             GuestAddress(FIRST_ADDR_PAST_32BITS - bios_len),
             regions[1].0
         );
         assert_eq!(bios_len, regions[1].1);
+    }
+
+    #[test]
+    #[cfg(feature = "direct")]
+    fn end_addr_before_32bits() {
+        // On volteer, type16 (coreboot) region is at 0x00000000769f3000-0x0000000076ffffff.
+        // On brya, type16 region is at 0x0000000076876000-0x00000000803fffff
+        let brya_type16_address = 0x7687_6000;
+        assert!(
+            END_ADDR_BEFORE_32BITS < brya_type16_address,
+            "{} < {}",
+            END_ADDR_BEFORE_32BITS,
+            brya_type16_address
+        );
+    }
+
+    #[test]
+    fn check_32bit_gap_size_alignment() {
+        // 32bit gap memory is 256 MB aligned to be friendly for MTRR mappings.
+        assert_eq!(MEM_32BIT_GAP_SIZE % (256 * MB), 0);
     }
 }
