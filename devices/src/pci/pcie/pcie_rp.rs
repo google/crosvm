@@ -6,13 +6,14 @@ use sync::Mutex;
 
 use crate::bus::{HostHotPlugKey, HotPlugBus};
 use crate::pci::pci_configuration::PciCapabilityID;
-use crate::pci::{MsixConfig, PciAddress, PciCapability};
+use crate::pci::{MsixConfig, PciAddress, PciCapability, PciDeviceError};
 
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::pcie_device::{PcieCap, PcieDevice};
 use crate::pci::pcie::*;
 use base::warn;
 use data_model::DataInit;
+use resources::{Alloc, SystemAllocator};
 
 // reserve 8MB memory window
 const PCIE_RP_BR_MEM_SIZE: u64 = 0x80_0000;
@@ -23,6 +24,7 @@ const PCIE_RP_DID: u16 = 0x3420;
 pub struct PcieRootPort {
     pcie_cap_reg_idx: Option<usize>,
     msix_config: Option<Arc<Mutex<MsixConfig>>>,
+    pci_address: Option<PciAddress>,
     slot_control: u16,
     slot_status: u16,
     bus_range: PciBridgeBusRange,
@@ -41,6 +43,7 @@ impl PcieRootPort {
         PcieRootPort {
             pcie_cap_reg_idx: None,
             msix_config: None,
+            pci_address: None,
             slot_control: PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF,
             slot_status: 0,
             bus_range,
@@ -144,6 +147,25 @@ impl PcieDevice for PcieRootPort {
     }
     fn debug_label(&self) -> String {
         "PcieRootPort".to_string()
+    }
+
+    fn allocate_address(
+        &mut self,
+        resources: &mut SystemAllocator,
+    ) -> std::result::Result<PciAddress, PciDeviceError> {
+        if self.pci_address.is_none() {
+            self.pci_address =
+                match resources.allocate_pci(self.bus_range.primary, self.debug_label()) {
+                    Some(Alloc::PciBar {
+                        bus,
+                        dev,
+                        func,
+                        bar: _,
+                    }) => Some(PciAddress { bus, dev, func }),
+                    _ => None,
+                }
+        }
+        self.pci_address.ok_or(PciDeviceError::PciAllocationFailed)
     }
 
     fn clone_interrupt(&mut self, msix_config: Arc<Mutex<MsixConfig>>) {

@@ -145,19 +145,9 @@ impl PciDevice for PciBridge {
         &mut self,
         resources: &mut SystemAllocator,
     ) -> std::result::Result<PciAddress, PciDeviceError> {
-        if self.pci_address.is_none() {
-            self.pci_address =
-                match resources.allocate_pci(self.bus_range.primary, self.debug_label()) {
-                    Some(Alloc::PciBar {
-                        bus,
-                        dev,
-                        func,
-                        bar: _,
-                    }) => Some(PciAddress { bus, dev, func }),
-                    _ => None,
-                }
-        }
-        self.pci_address.ok_or(PciDeviceError::PciAllocationFailed)
+        let address = self.device.lock().allocate_address(resources)?;
+        self.pci_address = Some(address);
+        Ok(address)
     }
 
     fn keep_rds(&self) -> Vec<RawDescriptor> {

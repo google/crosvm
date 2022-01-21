@@ -7,12 +7,17 @@ use sync::Mutex;
 use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::*;
-use crate::pci::{MsixConfig, PciAddress, PciCapability};
+use crate::pci::{MsixConfig, PciAddress, PciCapability, PciDeviceError};
 use data_model::DataInit;
+use resources::SystemAllocator;
 
 pub trait PcieDevice: Send {
     fn get_device_id(&self) -> u16;
     fn debug_label(&self) -> String;
+    fn allocate_address(
+        &mut self,
+        resources: &mut SystemAllocator,
+    ) -> std::result::Result<PciAddress, PciDeviceError>;
     fn read_config(&self, reg_idx: usize, data: &mut u32);
     fn write_config(&mut self, reg_idx: usize, offset: u64, data: &[u8]);
     fn clone_interrupt(&mut self, msix_config: Arc<Mutex<MsixConfig>>);
