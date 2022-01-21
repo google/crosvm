@@ -215,7 +215,7 @@ pub fn setup_mptable(
     {
         let size = mem::size_of::<mpc_intsrc>();
         let mpc_intsrc = mpc_intsrc {
-            type_: MP_INTSRC as u8,
+            type_: MP_LINTSRC as u8,
             irqtype: mp_irq_source_types_mp_INT as u8,
             irqflag: MP_IRQDIR_DEFAULT as u16,
             srcbus: isa_bus_id,
