@@ -1,5 +1,20 @@
 {
     "image": "gcr.io/crosvm-packages/crosvm_dev:latest",
     "extensions": [
+        "matklad.rust-analyzer",
+        "bungcip.better-toml",
+        "esbenp.prettier-vscode",
+        "ms-python.vscode-pylance",
+        "foxundermoon.shell-format",
+        "timonwong.shellcheck",
+    ],
+    "runArgs": [
+        "--privileged",
+        "--device=/dev/kvm",
+        "--volume=/dev/log:/dev/log",
+        "--device=/dev/net/tun",
+        "--device=/dev/vhost-net",
+        "--device=/dev/vhost-vsock",
+        "--mount=type=tmpfs,destination=/tmp",
     ]
 }
