@@ -80,7 +80,10 @@ fn filter_cpuid(
                     entry.edx |= 1 << EDX_HTT_SHIFT;
                 }
             }
-            2 | 0x80000005 | 0x80000006 => unsafe {
+            2 | // Cache and TLB Descriptor information
+            0x80000002 | 0x80000003 | 0x80000004 | // Processor Brand String
+            0x80000005 | 0x80000006 // L1 and L2 cache information
+              => unsafe {
                 let result = __cpuid(entry.function);
                 entry.eax = result.eax;
                 entry.ebx = result.ebx;
