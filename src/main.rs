@@ -2450,6 +2450,7 @@ enum CommandStatus {
     Success,
     VmReset,
     VmStop,
+    VmCrash,
 }
 
 fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
@@ -2739,6 +2740,10 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
             Ok(platform::ExitState::Reset) => {
                 info!("crosvm has exited normally due to reset request");
                 Ok(CommandStatus::VmReset)
+            }
+            Ok(platform::ExitState::Crash) => {
+                info!("crosvm has exited due to a VM crash");
+                Ok(CommandStatus::VmCrash)
             }
             Err(e) => {
                 error!("crosvm has exited with error: {:#}", e);
@@ -3395,6 +3400,7 @@ fn main() {
     let exit_code = match crosvm_main() {
         Ok(CommandStatus::Success | CommandStatus::VmStop) => 0,
         Ok(CommandStatus::VmReset) => 32,
+        Ok(CommandStatus::VmCrash) => 33,
         Err(_) => 1,
     };
     std::process::exit(exit_code);

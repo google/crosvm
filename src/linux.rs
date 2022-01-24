@@ -2477,6 +2477,7 @@ fn run_vcpu<V>(
     mut mmio_bus: devices::Bus,
     exit_evt: Event,
     reset_evt: Event,
+    crash_evt: Event,
     requires_pvclock_ctrl: bool,
     from_main_tube: mpsc::Receiver<VcpuControl>,
     use_hypervisor_signals: bool,
@@ -2561,6 +2562,7 @@ where
             let final_event = match exit_reason {
                 ExitState::Stop => exit_evt,
                 ExitState::Reset => reset_evt,
+                ExitState::Crash => crash_evt,
             };
             if let Err(e) = final_event.write(1) {
                 error!(
@@ -2615,13 +2617,13 @@ where
                             Ok(m) => m,
                             Err(mpsc::RecvError) => {
                                 error!("Failed to read from main tube in vcpu");
-                                return ExitState::Stop;
+                                return ExitState::Crash;
                             }
                         }
                     }
                     Err(mpsc::TryRecvError::Disconnected) => {
                         error!("Failed to read from main tube in vcpu");
-                        return ExitState::Stop;
+                        return ExitState::Crash;
                     }
                 };
 
@@ -2762,7 +2764,7 @@ where
                     hardware_entry_failure_reason,
                 }) => {
                     error!("vcpu hw run failure: {:#x}", hardware_entry_failure_reason);
-                    return ExitState::Stop;
+                    return ExitState::Crash;
                 }
                 Ok(VcpuExit::SystemEventShutdown) => {
                     info!("system shutdown event on vcpu {}", cpu_id);
@@ -2786,7 +2788,7 @@ where
                         if let Some(ref ch) = to_gdb_tube {
                             if let Err(e) = ch.send(msg) {
                                 error!("failed to notify breakpoint to GDB thread: {}", e);
-                                return ExitState::Stop;
+                                return ExitState::Crash;
                             }
                         }
                         run_mode = VmRunMode::Breakpoint;
@@ -2798,7 +2800,7 @@ where
                     libc::EAGAIN => {}
                     _ => {
                         error!("vcpu hit unknown error: {}", e);
-                        return ExitState::Stop;
+                        return ExitState::Crash;
                     }
                 },
             }
@@ -2810,7 +2812,7 @@ where
                 // attempting to handle pause requests.
                 if let Err(e) = clear_signal(SIGRTMIN() + 0) {
                     error!("failed to clear pending signal: {}", e);
-                    return ExitState::Stop;
+                    return ExitState::Crash;
                 }
             } else {
                 vcpu.set_immediate_exit(false);
@@ -2915,6 +2917,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
 pub enum ExitState {
     Reset,
     Stop,
+    Crash,
 }
 
 pub fn run_config(cfg: Config) -> Result<ExitState> {
@@ -3135,6 +3138,7 @@ where
 
     let exit_evt = Event::new().context("failed to create event")?;
     let reset_evt = Event::new().context("failed to create event")?;
+    let crash_evt = Event::new().context("failed to create event")?;
     let mut sys_allocator = Arch::create_system_allocator(&vm);
 
     // Allocate the ramoops region first. AArch64::build_vm() assumes this.
@@ -3329,6 +3333,7 @@ where
         usb_control_tube,
         exit_evt,
         reset_evt,
+        crash_evt,
         sigchld_fd,
         Arc::clone(&map_request),
         gralloc,
@@ -3473,6 +3478,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     #[cfg(feature = "usb")] usb_control_tube: Tube,
     exit_evt: Event,
     reset_evt: Event,
+    crash_evt: Event,
     sigchld_fd: SignalFd,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     mut gralloc: RutabagaGralloc,
@@ -3482,6 +3488,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     enum Token {
         Exit,
         Reset,
+        Crash,
         Suspend,
         ChildSignal,
         IrqFd { index: IrqEventIndex },
@@ -3496,6 +3503,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let wait_ctx = WaitContext::build_with(&[
         (&exit_evt, Token::Exit),
         (&reset_evt, Token::Reset),
+        (&crash_evt, Token::Crash),
         (&linux.suspend_evt, Token::Suspend),
         (&sigchld_fd, Token::ChildSignal),
     ])
@@ -3594,6 +3602,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             (*linux.mmio_bus).clone(),
             exit_evt.try_clone().context("failed to clone event")?,
             reset_evt.try_clone().context("failed to clone event")?,
+            crash_evt.try_clone().context("failed to clone event")?,
             linux.vm.check_capability(VmCap::PvClockSuspend),
             from_main_channel,
             use_hypervisor_signals,
@@ -3660,6 +3669,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 Token::Reset => {
                     info!("vcpu requested reset");
                     exit_state = ExitState::Reset;
+                    break 'wait;
+                }
+                Token::Crash => {
+                    info!("vcpu crashed");
+                    exit_state = ExitState::Crash;
                     break 'wait;
                 }
                 Token::Suspend => {
