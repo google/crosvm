@@ -22,7 +22,7 @@ use std::time::Duration;
 use std::thread;
 use std::thread::JoinHandle;
 
-use libc::{self, c_int, gid_t, uid_t};
+use libc::{self, c_int, c_ulong, gid_t, uid_t};
 
 use acpi_tables::sdt::SDT;
 
@@ -122,6 +122,7 @@ struct SandboxConfig<'a> {
     seccomp_policy: &'a Path,
     uid_map: Option<&'a str>,
     gid_map: Option<&'a str>,
+    remount_mode: Option<c_ulong>,
 }
 
 fn create_base_minijail(
@@ -181,6 +182,10 @@ fn create_base_minijail(
         j.use_seccomp_filter();
         // Don't do init setup.
         j.run_as_init();
+        // Set up requested remount mode instead of default MS_PRIVATE.
+        if let Some(mode) = config.remount_mode {
+            j.set_remount_mode(mode);
+        }
     }
 
     // Only pivot_root if we are not re-using the current root directory.
@@ -214,6 +219,7 @@ fn simple_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
             seccomp_policy: &policy_path,
             uid_map: None,
             gid_map: None,
+            remount_mode: None,
         };
         Ok(Some(create_base_minijail(root_path, None, Some(&config))?))
     } else {
@@ -1247,13 +1253,11 @@ fn create_fs_device(
             gid_map: Some(gid_map),
             log_failures: cfg.seccomp_log_failures,
             seccomp_policy: &seccomp_policy,
+            // We want bind mounts from the parent namespaces to propagate into the fs device's
+            // namespace.
+            remount_mode: Some(libc::MS_SLAVE),
         };
-        let mut jail = create_base_minijail(src, Some(max_open_files), Some(&config))?;
-        // We want bind mounts from the parent namespaces to propagate into the fs device's
-        // namespace.
-        jail.set_remount_mode(libc::MS_SLAVE);
-
-        jail
+        create_base_minijail(src, Some(max_open_files), Some(&config))?
     } else {
         create_base_minijail(src, Some(max_open_files), None)?
     };
@@ -1288,12 +1292,12 @@ fn create_9p_device(
             gid_map: Some(gid_map),
             log_failures: cfg.seccomp_log_failures,
             seccomp_policy: &seccomp_policy,
+            // We want bind mounts from the parent namespaces to propagate into the 9p server's
+            // namespace.
+            remount_mode: Some(libc::MS_SLAVE),
         };
 
-        let mut jail = create_base_minijail(src, Some(max_open_files), Some(&config))?;
-        // We want bind mounts from the parent namespaces to propagate into the 9p server's
-        // namespace.
-        jail.set_remount_mode(libc::MS_SLAVE);
+        let jail = create_base_minijail(src, Some(max_open_files), Some(&config))?;
 
         //  The shared directory becomes the root of the device's file system.
         let root = Path::new("/");
