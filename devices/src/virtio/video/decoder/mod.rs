@@ -327,6 +327,9 @@ impl<S: DecoderSession> Context<S> {
         let plane_formats =
             PlaneFormat::get_plane_layout(Format::NV12, width as u32, height as u32).unwrap();
 
+        self.in_params.frame_width = width as u32;
+        self.in_params.frame_height = height as u32;
+
         self.out_params = Params {
             format,
             // The resource type is not changed by a provide picture buffers event.

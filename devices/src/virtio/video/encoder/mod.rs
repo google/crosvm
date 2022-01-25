@@ -133,6 +133,8 @@ impl<T: EncoderSession> Stream<T> {
 
         let mut dst_params = Params {
             resource_type: dst_resource_type,
+            frame_width: DEFAULT_WIDTH,
+            frame_height: DEFAULT_HEIGHT,
             ..Default::default()
         };
 
@@ -1075,6 +1077,9 @@ impl<T: Encoder> EncoderDevice<T> {
                         frame_height,
                         plane_formats[0].stride,
                     )?;
+
+                    stream.dst_params.frame_width = frame_width;
+                    stream.dst_params.frame_height = frame_height;
 
                     create_session = true
                 }
