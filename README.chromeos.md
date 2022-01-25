@@ -8,9 +8,8 @@ See [Creating a CL for Chromium OS Developers](CONTRIBUTING.md#chromiumos-cl).
 
 ## Building
 
-See
-[Building for ChromeOS](https://google.github.io/crosvm/building_crosvm/chromium_os.html)
-in the crosvm mdbook.
+See [Building for ChromeOS](https://google.github.io/crosvm/building_crosvm/chromium_os.html) in the
+crosvm mdbook.
 
 ## Submitting
 

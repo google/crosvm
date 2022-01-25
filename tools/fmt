@@ -28,3 +28,6 @@ for crate in common/*; do
         (cd "${crate}" && cargo fmt)
     fi
 done
+
+echo "Fmt markdown docs"
+mdformat --wrap=100 "$@" $(find . -name '*.md' -not -path './third_party/*')

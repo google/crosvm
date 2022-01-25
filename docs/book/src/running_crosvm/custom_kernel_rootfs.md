@@ -1,14 +1,15 @@
 # Custom Kernel / Rootfs
 
-This document explains how to build a custom kernel and use debootstrab to build a
-rootfs for running crosvm.
+This document explains how to build a custom kernel and use debootstrab to build a rootfs for
+running crosvm.
 
 For an easier way to get started with prebuilt images, see [Example Usage](./example_usage.md)
 
 ### Build a kernel
 
-The linux kernel in chromiumos comes preconfigured for running in a crosvm guest and is the easiest to build. You can use any mainline kernel though as long as it's
-configured for para-virtualized (virtio) devices
+The linux kernel in chromiumos comes preconfigured for running in a crosvm guest and is the easiest
+to build. You can use any mainline kernel though as long as it's configured for para-virtualized
+(virtio) devices
 
 If you are using the chroot for Chromium OS development, you already have the kernel source.
 Otherwise, you can clone it:

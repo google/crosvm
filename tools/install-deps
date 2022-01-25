@@ -42,6 +42,9 @@ sudo apt-get install --yes --no-install-recommends \
 # Install meson for rutabaga_gfx
 pip3 install meson
 
+# We use mdformat to keep the mdbook at docs/ formatted
+pip3 install mdformat
+
 rustup component add clippy
 rustup component add rustfmt
 
