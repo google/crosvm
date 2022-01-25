@@ -16,16 +16,7 @@ use data_model::{DataInit, Le16, Le32, Le64, VolatileSlice};
 use virtio_sys::vhost::VRING_DESC_F_WRITE;
 use vm_memory::{GuestAddress, GuestMemory};
 
-#[derive(Copy, Clone, Debug)]
-#[repr(C)]
-struct Desc {
-    addr: Le64,
-    len: Le32,
-    flags: Le16,
-    next: Le16,
-}
-// Safe as there are no implicit offset.
-unsafe impl DataInit for Desc {}
+use crate::virtio::Desc;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]

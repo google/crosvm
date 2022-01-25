@@ -100,12 +100,15 @@ pub trait MemoryMapper: Send {
     fn add_map(&mut self, new_map: MappingInfo) -> Result<()>;
     fn remove_map(&mut self, iova_start: u64, size: u64) -> Result<()>;
     fn get_mask(&self) -> Result<u64>;
+}
+
+pub trait Translate {
     /// Multiple MemRegions should be returned when the gpa is discontiguous or perms are different.
     fn translate(&self, iova: u64, size: u64) -> Result<Vec<MemRegion>>;
 }
 
-pub trait MemoryMapperDescriptors: MemoryMapper + AsRawDescriptors {}
-impl<T: MemoryMapper + AsRawDescriptors> MemoryMapperDescriptors for T {}
+pub trait MemoryMapperTrait: MemoryMapper + Translate + AsRawDescriptors {}
+impl<T: MemoryMapper + Translate + AsRawDescriptors> MemoryMapperTrait for T {}
 
 impl BasicMemoryMapper {
     pub fn new(mask: u64) -> BasicMemoryMapper {
@@ -180,7 +183,9 @@ impl MemoryMapper for BasicMemoryMapper {
     fn get_mask(&self) -> Result<u64> {
         Ok(self.mask)
     }
+}
 
+impl Translate for BasicMemoryMapper {
     /// Regions of contiguous iovas and gpas, and identical permission are merged
     fn translate(&self, iova: u64, size: u64) -> Result<Vec<MemRegion>> {
         if size == 0 {

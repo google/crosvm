@@ -16,8 +16,11 @@ use anyhow::{anyhow, bail, Context, Result};
 use base::*;
 use devices::serial_device::SerialParameters;
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
+use devices::virtio::ipc_memory_mapper::{create_ipc_mapper, CreateIpcMapperRet};
+use devices::virtio::memory_mapper::{BasicMemoryMapper, MemoryMapperTrait};
 #[cfg(feature = "audio_cras")]
 use devices::virtio::snd::cras_backend::Parameters as CrasSndParameters;
+use devices::virtio::vfio_wrapper::VfioWrapper;
 use devices::virtio::vhost::user::proxy::VirtioVhostUser;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::vmm::Snd as VhostUserSnd;
@@ -30,7 +33,7 @@ use devices::virtio::vhost::user::vmm::{
 use devices::virtio::VideoBackendType;
 use devices::virtio::{self, Console, VirtioDevice};
 use devices::IommuDevType;
-use devices::{self, PciDevice, VfioContainer, VfioDevice, VfioPciDevice, VfioPlatformDevice};
+use devices::{self, BusDeviceObj, PciDevice, VfioDevice, VfioPciDevice, VfioPlatformDevice};
 use hypervisor::Vm;
 use minijail::{self, Minijail};
 use net_util::{MacAddress, Tap};
@@ -985,12 +988,16 @@ pub fn create_pmem_device(
 pub fn create_iommu_device(
     cfg: &Config,
     phys_max_addr: u64,
-    endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>>,
+    endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
+    translate_response_senders: Option<BTreeMap<u32, Tube>>,
+    translate_request_rx: Option<Tube>,
 ) -> DeviceResult {
     let dev = virtio::Iommu::new(
         virtio::base_features(cfg.protected_vm),
         endpoints,
         phys_max_addr,
+        translate_response_senders,
+        translate_request_rx,
     )
     .context("failed to create IOMMU device")?;
 
@@ -1053,7 +1060,7 @@ pub fn create_vfio_device(
     control_tubes: &mut Vec<TaggedControlTube>,
     vfio_path: &Path,
     bus_num: Option<u8>,
-    iommu_endpoints: &mut BTreeMap<u32, Arc<Mutex<VfioContainer>>>,
+    iommu_endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
     coiommu_endpoints: Option<&mut Vec<u16>>,
     iommu_dev: IommuDevType,
 ) -> DeviceResult<(Box<VfioPciDevice>, Option<Minijail>)> {
@@ -1105,7 +1112,13 @@ pub fn create_vfio_device(
     match iommu_dev {
         IommuDevType::NoIommu => {}
         IommuDevType::VirtioIommu => {
-            iommu_endpoints.insert(endpoint_addr.to_u32(), vfio_container);
+            iommu_endpoints.insert(
+                endpoint_addr.to_u32(),
+                Arc::new(Mutex::new(Box::new(VfioWrapper::new(
+                    vfio_container.clone(),
+                    vm.get_memory().clone(),
+                )))),
+            );
         }
         IommuDevType::CoIommu => {
             if let Some(endpoints) = coiommu_endpoints {
@@ -1129,7 +1142,7 @@ pub fn create_vfio_platform_device(
     _resources: &mut SystemAllocator,
     control_tubes: &mut Vec<TaggedControlTube>,
     vfio_path: &Path,
-    _endpoints: &mut BTreeMap<u32, Arc<Mutex<VfioContainer>>>,
+    _endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
     iommu_dev: IommuDevType,
 ) -> DeviceResult<(VfioPlatformDevice, Option<Minijail>)> {
     let vfio_container = VfioCommonSetup::vfio_get_container(iommu_dev, Some(vfio_path))
@@ -1149,4 +1162,48 @@ pub fn create_vfio_platform_device(
     let vfio_plat_dev = VfioPlatformDevice::new(vfio_device, vfio_device_tube_mem);
 
     Ok((vfio_plat_dev, simple_jail(cfg, "vfio_platform_device")?))
+}
+
+/// Setup for devices with VIRTIO_F_ACCESS_PLATFORM
+pub fn setup_virtio_access_platform(
+    resources: &mut SystemAllocator,
+    iommu_attached_endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
+    devices: &mut Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
+) -> DeviceResult<(Option<BTreeMap<u32, Tube>>, Option<Tube>)> {
+    let mut translate_response_senders: Option<
+        BTreeMap<
+            u32, // endpoint id
+            Tube,
+        >,
+    > = None;
+    let mut tube_pair: Option<(Tube, Tube)> = None;
+
+    for dev in devices.iter_mut() {
+        if let Some(pci_dev) = dev.0.as_pci_device_mut() {
+            if pci_dev.supports_iommu() {
+                let endpoint_id = pci_dev
+                    .allocate_address(resources)
+                    .context("failed to allocate resources for pci dev")?
+                    .to_u32();
+                let mapper: Arc<Mutex<Box<dyn MemoryMapperTrait>>> =
+                    Arc::new(Mutex::new(Box::new(BasicMemoryMapper::new(u64::MAX))));
+                let (request_tx, _request_rx) =
+                    tube_pair.get_or_insert_with(|| Tube::pair().unwrap());
+                let CreateIpcMapperRet {
+                    mapper: ipc_mapper,
+                    response_tx,
+                } = create_ipc_mapper(endpoint_id, request_tx.try_clone()?);
+                translate_response_senders
+                    .get_or_insert_with(|| BTreeMap::new())
+                    .insert(endpoint_id, response_tx);
+                iommu_attached_endpoints.insert(endpoint_id, mapper);
+                pci_dev.set_iommu(ipc_mapper)?;
+            }
+        }
+    }
+
+    Ok((
+        translate_response_senders,
+        tube_pair.map(|(_request_tx, request_rx)| request_rx),
+    ))
 }

@@ -4,12 +4,13 @@
 
 //! Provide utility to communicate with an iommu in another process
 
+use std::ops::Deref;
 use std::result;
 
 use base::{AsRawDescriptor, AsRawDescriptors, RawDescriptor, Tube};
 use serde::{Deserialize, Serialize};
 
-use crate::virtio::memory_mapper::{Error, MemRegion};
+use crate::virtio::memory_mapper::{Error, MemRegion, Translate};
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -43,8 +44,10 @@ impl IpcMemoryMapper {
             endpoint_id,
         }
     }
+}
 
-    pub fn translate(&self, iova: u64, size: u64) -> Result<Vec<MemRegion>> {
+impl Translate for IpcMemoryMapper {
+    fn translate(&self, iova: u64, size: u64) -> Result<Vec<MemRegion>> {
         let req = TranslateRequest {
             endpoint_id: self.endpoint_id,
             iova,
@@ -62,6 +65,12 @@ impl AsRawDescriptors for IpcMemoryMapper {
             self.request_tx.as_raw_descriptor(),
             self.response_rx.as_raw_descriptor(),
         ]
+    }
+}
+
+impl Translate for std::sync::MutexGuard<'_, IpcMemoryMapper> {
+    fn translate(&self, iova: u64, size: u64) -> Result<Vec<MemRegion>> {
+        self.deref().translate(iova, size)
     }
 }
 

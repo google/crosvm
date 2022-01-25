@@ -11,7 +11,7 @@ use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::virtio::iommu::memory_mapper::{
-    Error as MemoryMapperError, MappingInfo, MemRegion, MemoryMapper, Permission,
+    Error as MemoryMapperError, MappingInfo, MemRegion, MemoryMapper, Permission, Translate,
 };
 use crate::VfioContainer;
 
@@ -43,7 +43,15 @@ impl MemoryMapper for VfioWrapper {
                 (map.perm as u8 & Permission::Write as u8) != 0,
             )
         }
-        .map_err(MemoryMapperError::Vfio)
+        .map_err(|e| {
+            match base::Error::last() {
+                err if err.errno() == libc::EEXIST => {
+                    // A mapping already exists in the requested range,
+                    return MemoryMapperError::IovaRegionOverlap;
+                }
+                _ => MemoryMapperError::Vfio(e),
+            }
+        })
     }
 
     fn remove_map(&mut self, iova_start: u64, size: u64) -> Result<(), MemoryMapperError> {
@@ -62,7 +70,9 @@ impl MemoryMapper for VfioWrapper {
             .vfio_get_iommu_page_size_mask()
             .map_err(MemoryMapperError::Vfio)
     }
+}
 
+impl Translate for VfioWrapper {
     fn translate(&self, _iova: u64, _size: u64) -> Result<Vec<MemRegion>, MemoryMapperError> {
         Err(MemoryMapperError::Unimplemented)
     }

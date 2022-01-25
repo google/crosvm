@@ -220,35 +220,44 @@ impl<'a, T: DataInit> Iterator for ReaderIterator<'a, T> {
     }
 }
 
+/// Get all the mem regions from a `DescriptorChain` iterator, regardless if the `DescriptorChain`
+/// contains GPAs (guest physical address), or IOVAs (io virtual address). IOVAs will
+/// be translated to GPAs via IOMMU.
+pub fn get_mem_regions<I>(mem: &GuestMemory, vals: I) -> Result<SmallVec<[MemRegion; 16]>>
+where
+    I: Iterator<Item = DescriptorChain>,
+{
+    let mut total_len: usize = 0;
+    let mut regions = SmallVec::new();
+
+    // TODO(jstaron): Update this code to take the indirect descriptors into account.
+    for desc in vals {
+        // Verify that summing the descriptor sizes does not overflow.
+        // This can happen if a driver tricks a device into reading/writing more data than
+        // fits in a `usize`.
+        total_len = total_len
+            .checked_add(desc.len as usize)
+            .ok_or(Error::DescriptorChainOverflow)?;
+
+        for r in desc.get_mem_regions().map_err(Error::InvalidChain)? {
+            // Check that all the regions are totally contained in GuestMemory.
+            mem.get_slice_at_addr(r.gpa, r.len.try_into().expect("u32 doesn't fit in usize"))
+                .map_err(Error::GuestMemoryError)?;
+
+            regions.push(MemRegion {
+                offset: r.gpa.offset(),
+                len: r.len.try_into().expect("u32 doesn't fit in usize"),
+            });
+        }
+    }
+
+    Ok(regions)
+}
+
 impl Reader {
     /// Construct a new Reader wrapper over `desc_chain`.
     pub fn new(mem: GuestMemory, desc_chain: DescriptorChain) -> Result<Reader> {
-        // TODO(jstaron): Update this code to take the indirect descriptors into account.
-        let mut total_len: usize = 0;
-        let regions = desc_chain
-            .into_iter()
-            .readable()
-            .map(|desc| {
-                // Verify that summing the descriptor sizes does not overflow.
-                // This can happen if a driver tricks a device into reading more data than
-                // fits in a `usize`.
-                total_len = total_len
-                    .checked_add(desc.len as usize)
-                    .ok_or(Error::DescriptorChainOverflow)?;
-
-                // Check that all the regions are totally contained in GuestMemory.
-                mem.get_slice_at_addr(
-                    desc.addr,
-                    desc.len.try_into().expect("u32 doesn't fit in usize"),
-                )
-                .map_err(Error::GuestMemoryError)?;
-
-                Ok(MemRegion {
-                    offset: desc.addr.0,
-                    len: desc.len.try_into().expect("u32 doesn't fit in usize"),
-                })
-            })
-            .collect::<Result<SmallVec<[MemRegion; 16]>>>()?;
+        let regions = get_mem_regions(&mem, desc_chain.into_iter().readable())?;
         Ok(Reader {
             mem,
             regions: DescriptorChainRegions {
@@ -499,30 +508,7 @@ pub struct Writer {
 impl Writer {
     /// Construct a new Writer wrapper over `desc_chain`.
     pub fn new(mem: GuestMemory, desc_chain: DescriptorChain) -> Result<Writer> {
-        let mut total_len: usize = 0;
-        let regions = desc_chain
-            .into_iter()
-            .writable()
-            .map(|desc| {
-                // Verify that summing the descriptor sizes does not overflow.
-                // This can happen if a driver tricks a device into writing more data than
-                // fits in a `usize`.
-                total_len = total_len
-                    .checked_add(desc.len as usize)
-                    .ok_or(Error::DescriptorChainOverflow)?;
-
-                mem.get_slice_at_addr(
-                    desc.addr,
-                    desc.len.try_into().expect("u32 doesn't fit in usize"),
-                )
-                .map_err(Error::GuestMemoryError)?;
-
-                Ok(MemRegion {
-                    offset: desc.addr.0,
-                    len: desc.len.try_into().expect("u32 doesn't fit in usize"),
-                })
-            })
-            .collect::<Result<SmallVec<[MemRegion; 16]>>>()?;
+        let regions = get_mem_regions(&mem, desc_chain.into_iter().writable())?;
         Ok(Writer {
             mem,
             regions: DescriptorChainRegions {
@@ -815,7 +801,7 @@ pub fn create_descriptor_chain(
         );
     }
 
-    DescriptorChain::checked_new(memory, descriptor_array_addr, 0x100, 0, 0)
+    DescriptorChain::checked_new(memory, descriptor_array_addr, 0x100, 0, 0, None)
         .map_err(Error::InvalidChain)
 }
 

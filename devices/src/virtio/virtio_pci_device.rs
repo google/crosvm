@@ -9,7 +9,7 @@ use sync::Mutex;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
 use anyhow::{bail, Context};
-use base::{error, warn, AsRawDescriptor, Event, RawDescriptor, Result, Tube};
+use base::{error, warn, AsRawDescriptor, AsRawDescriptors, Event, RawDescriptor, Result, Tube};
 use data_model::{DataInit, Le32};
 use hypervisor::Datamatch;
 use libc::ERANGE;
@@ -22,6 +22,7 @@ use crate::pci::{
     PciBarRegionType, PciCapability, PciCapabilityID, PciClassCode, PciConfiguration, PciDevice,
     PciDeviceError, PciDisplaySubclass, PciHeaderType, PciInterruptPin, PciSubclass,
 };
+use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 
 use self::virtio_pci_common_config::VirtioPciCommonConfig;
 
@@ -240,6 +241,8 @@ pub struct VirtioPciDevice {
     msix_config: Arc<Mutex<MsixConfig>>,
     msix_cap_reg_idx: Option<usize>,
     common_config: VirtioPciCommonConfig,
+
+    iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
 }
 
 impl VirtioPciDevice {
@@ -253,7 +256,7 @@ impl VirtioPciDevice {
         for _ in device.queue_max_sizes() {
             queue_evts.push(Event::new()?)
         }
-        let queues = device
+        let queues: Vec<Queue> = device
             .queue_max_sizes()
             .iter()
             .map(|&s| Queue::new(s))
@@ -312,6 +315,7 @@ impl VirtioPciDevice {
                 queue_select: 0,
                 msix_config: VIRTIO_MSI_NO_VECTOR,
             },
+            iommu: None,
         })
     }
 
@@ -475,6 +479,10 @@ impl VirtioPciDevice {
 }
 
 impl PciDevice for VirtioPciDevice {
+    fn supports_iommu(&self) -> bool {
+        self.device.supports_iommu()
+    }
+
     fn debug_label(&self) -> String {
         format!("pci{}", self.device.debug_label())
     }
@@ -507,6 +515,9 @@ impl PciDevice for VirtioPciDevice {
         }
         let descriptor = self.msix_config.lock().get_msi_socket();
         rds.push(descriptor);
+        if let Some(iommu) = &self.iommu {
+            rds.append(&mut iommu.lock().as_raw_descriptors());
+        }
         rds
     }
 
@@ -788,9 +799,17 @@ impl PciDevice for VirtioPciDevice {
             }
         }
 
-        if !self.device_activated && self.is_driver_ready() && self.are_queues_valid() {
-            if let Err(e) = self.activate() {
-                error!("failed to activate device: {:#}", e);
+        if !self.device_activated && self.is_driver_ready() {
+            if let Some(iommu) = &self.iommu {
+                for q in &mut self.queues {
+                    q.set_iommu(Arc::clone(&iommu));
+                }
+            }
+
+            if self.are_queues_valid() {
+                if let Err(e) = self.activate() {
+                    error!("failed to activate device: {:#}", e);
+                }
             }
         }
 
@@ -811,5 +830,11 @@ impl PciDevice for VirtioPciDevice {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn generate_acpi(&mut self, sdts: Vec<SDT>) -> Option<Vec<SDT>> {
         self.device.generate_acpi(&self.pci_address, sdts)
+    }
+
+    fn set_iommu(&mut self, iommu: IpcMemoryMapper) -> anyhow::Result<()> {
+        assert!(self.device.supports_iommu());
+        self.iommu = Some(Arc::new(Mutex::new(iommu)));
+        Ok(())
     }
 }

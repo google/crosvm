@@ -30,6 +30,7 @@ use base::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListene
 use base::*;
 use devices::serial_device::SerialHardware;
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
+use devices::virtio::memory_mapper::MemoryMapperTrait;
 #[cfg(feature = "gpu")]
 use devices::virtio::{self, EventDevice};
 #[cfg(feature = "audio")]
@@ -37,7 +38,7 @@ use devices::Ac97Dev;
 use devices::{
     self, BusDeviceObj, HostHotPlugKey, HotPlugBus, IrqEventIndex, KvmKernelIrqChip, PciAddress,
     PciBridge, PciDevice, PcieHostRootPort, PcieRootPort, PvPanicCode, PvPanicPciDevice,
-    StubPciDevice, VfioContainer, VirtioPciDevice,
+    StubPciDevice, VirtioPciDevice,
 };
 use devices::{CoIommuDev, IommuDevType};
 #[cfg(feature = "usb")]
@@ -464,9 +465,9 @@ fn create_devices(
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
     let mut balloon_inflate_tube: Option<Tube> = None;
+    let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>> =
+        BTreeMap::new();
     if !cfg.vfio.is_empty() {
-        let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>> =
-            BTreeMap::new();
         let mut coiommu_attached_endpoints = Vec::new();
 
         for vfio_dev in cfg
@@ -531,21 +532,6 @@ fn create_devices(
             } else {
                 bail!("Get rlimit failed");
             }
-        }
-
-        if !iommu_attached_endpoints.is_empty() {
-            let iommu_dev = create_iommu_device(cfg, phys_max_addr, iommu_attached_endpoints)?;
-
-            let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-            control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
-            let mut dev =
-                VirtioPciDevice::new(vm.get_memory().clone(), iommu_dev.dev, msi_device_tube)
-                    .context("failed to create virtio pci dev")?;
-            // early reservation for viommu.
-            dev.allocate_address(resources)
-                .context("failed to allocate resources early for virtio pci dev")?;
-            let dev = Box::new(dev);
-            devices.push((dev, iommu_dev.jail));
         }
 
         if !coiommu_attached_endpoints.is_empty() {
@@ -624,6 +610,29 @@ fn create_devices(
     }
 
     devices.push((Box::new(PvPanicPciDevice::new(panic_wrtube)), None));
+
+    let (translate_response_senders, request_rx) =
+        setup_virtio_access_platform(resources, &mut iommu_attached_endpoints, &mut devices)?;
+
+    if !iommu_attached_endpoints.is_empty() {
+        let iommu_dev = create_iommu_device(
+            cfg,
+            phys_max_addr,
+            iommu_attached_endpoints,
+            translate_response_senders,
+            request_rx,
+        )?;
+
+        let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
+        control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+        let mut dev = VirtioPciDevice::new(vm.get_memory().clone(), iommu_dev.dev, msi_device_tube)
+            .context("failed to create virtio pci dev")?;
+        // early reservation for viommu.
+        dev.allocate_address(resources)
+            .context("failed to allocate resources early for virtio pci dev")?;
+        let dev = Box::new(dev);
+        devices.push((dev, iommu_dev.jail));
+    }
 
     Ok(devices)
 }
@@ -1323,7 +1332,7 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
 
     let (hp_bus, bus_num) = get_hp_bus(linux, host_addr)?;
 
-    let mut endpoints: BTreeMap<u32, Arc<Mutex<VfioContainer>>> = BTreeMap::new();
+    let mut endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>> = BTreeMap::new();
     let (vfio_pci_device, jail) = create_vfio_device(
         cfg,
         &linux.vm,

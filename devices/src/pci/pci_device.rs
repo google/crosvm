@@ -4,6 +4,7 @@
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
+use anyhow::bail;
 use base::{error, Event, RawDescriptor};
 use hypervisor::Datamatch;
 use remain::sorted;
@@ -16,6 +17,7 @@ use crate::pci::pci_configuration::{
     COMMAND_REG_MEMORY_SPACE_MASK, NUM_BAR_REGS, ROM_BAR_REG,
 };
 use crate::pci::{PciAddress, PciInterruptPin};
+use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 #[cfg(feature = "audio")]
 use crate::virtio::snd::vios_backend::Error as VioSError;
 use crate::{BusAccessInfo, BusDevice};
@@ -40,6 +42,9 @@ pub enum Error {
     /// Allocating space for an IO BAR failed.
     #[error("failed to allocate space for an IO BAR, size={0}: {1}")]
     IoAllocationFailed(u64, SystemAllocatorFaliure),
+    /// supports_iommu is false.
+    #[error("Iommu is not supported")]
+    IommuNotSupported,
     /// Registering an IO BAR failed.
     #[error("failed to register an IO BAR, addr={0} err={1}")]
     IoRegistrationFailed(u64, pci_configuration::Error),
@@ -162,6 +167,16 @@ pub trait PciDevice: Send {
         _bar_ranges: &[BarRange],
     ) -> Result<()> {
         Ok(())
+    }
+
+    /// Indicates whether the device supports IOMMU
+    fn supports_iommu(&self) -> bool {
+        false
+    }
+
+    /// Sets the IOMMU for the device if `supports_iommu()`
+    fn set_iommu(&mut self, _iommu: IpcMemoryMapper) -> anyhow::Result<()> {
+        bail!("Iommu not supported.");
     }
 }
 

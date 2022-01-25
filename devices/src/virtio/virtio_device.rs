@@ -42,6 +42,7 @@ pub trait VirtioDevice: Send {
     }
 
     /// The set of feature bits that this device supports in addition to the base features.
+    /// If this returns VIRTIO_F_ACCESS_PLATFORM, virtio-iommu will be enabled for this device.
     fn features(&self) -> u64 {
         0
     }
@@ -118,5 +119,11 @@ pub trait VirtioDevice: Send {
     /// Returns `None` if any address is good for the device.
     fn pci_address(&self) -> Option<PciAddress> {
         None
+    }
+}
+
+impl VirtioDevice {
+    pub fn supports_iommu(&self) -> bool {
+        (self.features() & (1 << VIRTIO_F_ACCESS_PLATFORM)) != 0
     }
 }
