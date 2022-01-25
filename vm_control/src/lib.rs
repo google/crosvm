@@ -25,7 +25,7 @@ use std::sync::{mpsc, Arc};
 
 use std::thread::JoinHandle;
 
-use libc::{EINVAL, EIO, ENODEV};
+use libc::{EINVAL, EIO, ENODEV, ENOTSUP};
 use serde::{Deserialize, Serialize};
 
 use base::{
@@ -994,7 +994,7 @@ impl VmRequest {
     pub fn execute(
         &self,
         run_mode: &mut Option<VmRunMode>,
-        balloon_host_tube: &Tube,
+        balloon_host_tube: Option<&Tube>,
         balloon_stats_id: &mut u64,
         disk_host_tubes: &[Tube],
         usb_control_tube: Option<&Tube>,
@@ -1024,51 +1024,59 @@ impl VmRequest {
                 VmResponse::Ok
             }
             VmRequest::BalloonCommand(BalloonControlCommand::Adjust { num_bytes }) => {
-                match balloon_host_tube.send(&BalloonTubeCommand::Adjust { num_bytes }) {
-                    Ok(_) => VmResponse::Ok,
-                    Err(_) => VmResponse::Err(SysError::last()),
+                if let Some(balloon_host_tube) = balloon_host_tube {
+                    match balloon_host_tube.send(&BalloonTubeCommand::Adjust { num_bytes }) {
+                        Ok(_) => VmResponse::Ok,
+                        Err(_) => VmResponse::Err(SysError::last()),
+                    }
+                } else {
+                    VmResponse::Err(SysError::new(ENOTSUP))
                 }
             }
             VmRequest::BalloonCommand(BalloonControlCommand::Stats) => {
-                // NB: There are a few reasons stale balloon stats could be left
-                // in balloon_host_tube:
-                //  - the send succeeds, but the recv fails because the device
-                //      is not ready yet. So when the device is ready, there are
-                //      extra stats requests queued.
-                //  - the send succeed, but the recv times out. When the device
-                //      does return the stats, there will be no consumer.
-                //
-                // To guard against this, add an `id` to the stats request. If
-                // the id returned to us doesn't match, we keep trying to read
-                // until it does.
-                *balloon_stats_id = (*balloon_stats_id).wrapping_add(1);
-                let sent_id = *balloon_stats_id;
-                match balloon_host_tube.send(&BalloonTubeCommand::Stats { id: sent_id }) {
-                    Ok(_) => {
-                        loop {
-                            match balloon_host_tube.recv() {
-                                Ok(BalloonTubeResult::Stats {
-                                    stats,
-                                    balloon_actual,
-                                    id,
-                                }) => {
-                                    if sent_id != id {
-                                        // Keep trying to get the fresh stats.
-                                        continue;
-                                    }
-                                    break VmResponse::BalloonStats {
+                if let Some(balloon_host_tube) = balloon_host_tube {
+                    // NB: There are a few reasons stale balloon stats could be left
+                    // in balloon_host_tube:
+                    //  - the send succeeds, but the recv fails because the device
+                    //      is not ready yet. So when the device is ready, there are
+                    //      extra stats requests queued.
+                    //  - the send succeed, but the recv times out. When the device
+                    //      does return the stats, there will be no consumer.
+                    //
+                    // To guard against this, add an `id` to the stats request. If
+                    // the id returned to us doesn't match, we keep trying to read
+                    // until it does.
+                    *balloon_stats_id = (*balloon_stats_id).wrapping_add(1);
+                    let sent_id = *balloon_stats_id;
+                    match balloon_host_tube.send(&BalloonTubeCommand::Stats { id: sent_id }) {
+                        Ok(_) => {
+                            loop {
+                                match balloon_host_tube.recv() {
+                                    Ok(BalloonTubeResult::Stats {
                                         stats,
                                         balloon_actual,
-                                    };
-                                }
-                                Err(e) => {
-                                    error!("balloon socket recv failed: {}", e);
-                                    break VmResponse::Err(SysError::last());
+                                        id,
+                                    }) => {
+                                        if sent_id != id {
+                                            // Keep trying to get the fresh stats.
+                                            continue;
+                                        }
+                                        break VmResponse::BalloonStats {
+                                            stats,
+                                            balloon_actual,
+                                        };
+                                    }
+                                    Err(e) => {
+                                        error!("balloon socket recv failed: {}", e);
+                                        break VmResponse::Err(SysError::last());
+                                    }
                                 }
                             }
                         }
+                        Err(_) => VmResponse::Err(SysError::last()),
                     }
-                    Err(_) => VmResponse::Err(SysError::last()),
+                } else {
+                    VmResponse::Err(SysError::new(ENOTSUP))
                 }
             }
             VmRequest::DiskCommand {

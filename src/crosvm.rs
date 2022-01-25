@@ -399,6 +399,7 @@ pub struct Config {
     pub battery_type: Option<BatteryType>,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<u32>,
+    pub balloon: bool,
     pub balloon_bias: i64,
     pub vhost_user_blk: Vec<VhostUserOption>,
     pub vhost_user_console: Vec<VhostUserOption>,
@@ -501,6 +502,7 @@ impl Default for Config {
             battery_type: None,
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             gdb: None,
+            balloon: true,
             balloon_bias: 0,
             vhost_user_blk: Vec::new(),
             vhost_user_console: Vec::new(),

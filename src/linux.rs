@@ -1507,7 +1507,7 @@ fn create_virtio_devices(
     wayland_device_tube: Tube,
     gpu_device_tube: Tube,
     vhost_user_gpu_tubes: Vec<(Tube, Tube)>,
-    balloon_device_tube: Tube,
+    balloon_device_tube: Option<Tube>,
     balloon_inflate_tube: Option<Tube>,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
@@ -1596,11 +1596,13 @@ fn create_virtio_devices(
         devs.push(create_vinput_device(cfg, dev_path)?);
     }
 
-    devs.push(create_balloon_device(
-        cfg,
-        balloon_device_tube,
-        balloon_inflate_tube,
-    )?);
+    if let Some(balloon_device_tube) = balloon_device_tube {
+        devs.push(create_balloon_device(
+            cfg,
+            balloon_device_tube,
+            balloon_inflate_tube,
+        )?);
+    }
 
     // We checked above that if the IP is defined, then the netmask is, too.
     for tap_fd in &cfg.tap_fd {
@@ -1958,7 +1960,7 @@ fn create_devices(
     wayland_device_tube: Tube,
     gpu_device_tube: Tube,
     vhost_user_gpu_tubes: Vec<(Tube, Tube)>,
-    balloon_device_tube: Tube,
+    balloon_device_tube: Option<Tube>,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
     fs_device_tubes: &mut Vec<Tube>,
@@ -2943,12 +2945,20 @@ where
 
     let (wayland_host_tube, wayland_device_tube) = Tube::pair().context("failed to create tube")?;
     control_tubes.push(TaggedControlTube::VmMemory(wayland_host_tube));
-    // Balloon gets a special socket so balloon requests can be forwarded from the main process.
-    let (balloon_host_tube, balloon_device_tube) = Tube::pair().context("failed to create tube")?;
-    // Set recv timeout to avoid deadlock on sending BalloonControlCommand before guest is ready.
-    balloon_host_tube
-        .set_recv_timeout(Some(Duration::from_millis(100)))
-        .context("failed to create tube")?;
+
+    let (balloon_host_tube, balloon_device_tube) = if cfg.balloon {
+        // Balloon gets a special socket so balloon requests can be forwarded from the main process.
+        let (balloon_host_tube, balloon_device_tube) =
+            Tube::pair().context("failed to create tube")?;
+        // Set recv timeout to avoid deadlock on sending BalloonControlCommand before guest is
+        // ready.
+        balloon_host_tube
+            .set_recv_timeout(Some(Duration::from_millis(100)))
+            .context("failed to create tube")?;
+        (Some(balloon_host_tube), Some(balloon_device_tube))
+    } else {
+        (None, None)
+    };
 
     // Create one control socket per disk.
     let mut disk_device_tubes = Vec::new();
@@ -3347,7 +3357,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     cfg: Config,
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
     mut control_tubes: Vec<TaggedControlTube>,
-    balloon_host_tube: Tube,
+    balloon_host_tube: Option<Tube>,
     disk_host_tubes: &[Tube],
     #[cfg(feature = "usb")] usb_control_tube: Tube,
     exit_evt: Event,
@@ -3593,7 +3603,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         }
                                         _ => request.execute(
                                             &mut run_mode_opt,
-                                            &balloon_host_tube,
+                                            balloon_host_tube.as_ref(),
                                             &mut balloon_stats_id,
                                             disk_host_tubes,
                                             #[cfg(feature = "usb")]

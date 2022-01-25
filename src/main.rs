@@ -2049,9 +2049,13 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         "protected-vm" => {
             cfg.protected_vm = ProtectionType::Protected;
+            // Balloon device only works for unprotected VMs.
+            cfg.balloon = false;
         }
         "protected-vm-without-firmware" => {
             cfg.protected_vm = ProtectionType::ProtectedWithoutFirmware;
+            // Balloon device only works for unprotected VMs.
+            cfg.balloon = false;
         }
         "battery" => {
             let params = parse_battery_options(value)?;
@@ -2067,6 +2071,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     expected: String::from("expected a valid port number"),
                 })?;
             cfg.gdb = Some(port);
+        }
+        "no-balloon" => {
+            cfg.balloon = false;
         }
         "balloon_bias_mib" => {
             cfg.balloon_bias =
@@ -2596,6 +2603,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                               Possible key values:
                               type=goldfish - type of battery emulation, defaults to goldfish"),
           Argument::value("gdb", "PORT", "(EXPERIMENTAL) gdb on the given port"),
+          Argument::flag("no-balloon", "Don't use virtio-balloon device in the guest"),
           Argument::value("balloon_bias_mib", "N", "Amount to bias balance of memory between host and guest as the balloon inflates, in MiB."),
           Argument::value("vhost-user-blk", "SOCKET_PATH", "Path to a socket for vhost-user block"),
           Argument::value("vhost-user-console", "SOCKET_PATH", "Path to a socket for vhost-user console"),
