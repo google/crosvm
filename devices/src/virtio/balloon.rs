@@ -14,7 +14,7 @@ use thiserror::Error as ThisError;
 
 use balloon_control::{BalloonStats, BalloonTubeCommand, BalloonTubeResult};
 use base::{self, error, warn, AsRawDescriptor, AsyncTube, Event, RawDescriptor, Tube};
-use cros_async::{select6, EventAsync, Executor};
+use cros_async::{select6, select7, EventAsync, Executor};
 use data_model::{DataInit, Le16, Le32, Le64};
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -39,9 +39,9 @@ pub enum BalloonError {
 }
 pub type Result<T> = std::result::Result<T, BalloonError>;
 
-// Balloon has three virt IO queues: Inflate, Deflate, and Stats.
+// Balloon implements four virt IO queues: Inflate, Deflate, Stats, Event.
 const QUEUE_SIZE: u16 = 128;
-const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE, QUEUE_SIZE];
+const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE, QUEUE_SIZE, QUEUE_SIZE];
 
 const VIRTIO_BALLOON_PFN_SHIFT: u32 = 12;
 const VIRTIO_BALLOON_PF_SIZE: u64 = 1 << VIRTIO_BALLOON_PFN_SHIFT;
@@ -50,6 +50,10 @@ const VIRTIO_BALLOON_PF_SIZE: u64 = 1 << VIRTIO_BALLOON_PFN_SHIFT;
 const VIRTIO_BALLOON_F_MUST_TELL_HOST: u32 = 0; // Tell before reclaiming pages
 const VIRTIO_BALLOON_F_STATS_VQ: u32 = 1; // Stats reporting enabled
 const VIRTIO_BALLOON_F_DEFLATE_ON_OOM: u32 = 2; // Deflate balloon on OOM
+
+// These feature bits are part of the proposal:
+//  https://lists.oasis-open.org/archives/virtio-comment/202201/msg00139.html
+const VIRTIO_BALLOON_F_EVENTS_VQ: u32 = 7; // Event vq is enabled
 
 // virtio_balloon_config is the balloon device configuration space defined by the virtio spec.
 #[derive(Copy, Clone, Debug, Default)]
@@ -113,6 +117,18 @@ impl BalloonStat {
         }
     }
 }
+
+const VIRTIO_BALLOON_EVENT_PRESSURE: u32 = 1;
+const VIRTIO_BALLOON_EVENT_PUFF_FAILURE: u32 = 2;
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+struct virtio_balloon_event_header {
+    evt_type: Le32,
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for virtio_balloon_event_header {}
 
 fn invoke_desc_handler<F>(ranges: Vec<(u64, u64)>, desc_handler: &mut F)
 where
@@ -230,6 +246,20 @@ async fn handle_queue<F>(
     }
 }
 
+fn parse_balloon_stats(reader: &mut Reader) -> BalloonStats {
+    let mut stats: BalloonStats = Default::default();
+    for res in reader.iter::<BalloonStat>() {
+        match res {
+            Ok(stat) => stat.update_stats(&mut stats),
+            Err(e) => {
+                error!("error while reading stats: {}", e);
+                break;
+            }
+        };
+    }
+    stats
+}
+
 // Async task that handles the stats queue. Note that the cadence of this is driven by requests for
 // balloon stats from the control pipe.
 // The guests queues an initial buffer on boot, which is read and then this future will block until
@@ -281,16 +311,7 @@ async fn handle_stats_queue(
                 continue;
             }
         };
-        let mut stats: BalloonStats = Default::default();
-        for res in reader.iter::<BalloonStat>() {
-            match res {
-                Ok(stat) => stat.update_stats(&mut stats),
-                Err(e) => {
-                    error!("error while reading stats: {}", e);
-                    break;
-                }
-            };
-        }
+        let stats = parse_balloon_stats(&mut reader);
         let actual_pages = config.actual_pages.load(Ordering::Relaxed) as u64;
         let result = BalloonTubeResult::Stats {
             balloon_actual: actual_pages << VIRTIO_BALLOON_PFN_SHIFT,
@@ -300,6 +321,49 @@ async fn handle_stats_queue(
         if let Err(e) = command_tube.send(&result) {
             error!("failed to send stats result: {}", e);
         }
+    }
+}
+
+fn handle_event(config: Arc<BalloonConfig>, interrupt: Rc<RefCell<Interrupt>>, r: &mut Reader) {
+    match r.read_obj::<virtio_balloon_event_header>() {
+        Ok(hdr) => match hdr.evt_type.to_native() {
+            VIRTIO_BALLOON_EVENT_PRESSURE => {
+                // TODO(b/213962590): See how this can be integrated this into memory rebalancing
+            }
+            VIRTIO_BALLOON_EVENT_PUFF_FAILURE => {}
+            _ => {
+                warn!("Unknown event {}", hdr.evt_type.to_native());
+            }
+        },
+        Err(e) => error!("Failed to parse event header {:?}", e),
+    }
+}
+
+// Async task that handles the events queue.
+async fn handle_events_queue(
+    mem: &GuestMemory,
+    mut queue: Queue,
+    mut queue_event: EventAsync,
+    config: Arc<BalloonConfig>,
+    interrupt: Rc<RefCell<Interrupt>>,
+) {
+    loop {
+        let avail_desc = match queue.next_async(mem, &mut queue_event).await {
+            Err(e) => {
+                error!("Failed to read descriptor {}", e);
+                return;
+            }
+            Ok(d) => d,
+        };
+
+        let index = avail_desc.index;
+        match Reader::new(mem.clone(), avail_desc) {
+            Ok(mut r) => handle_event(config.clone(), interrupt.clone(), &mut r),
+            Err(e) => error!("balloon: failed to CREATE Reader: {}", e),
+        };
+
+        queue.add_used(mem, index, 0);
+        queue.trigger_interrupt(mem, &*interrupt.borrow());
     }
 }
 
@@ -400,19 +464,35 @@ fn run_worker(
         );
         pin_mut!(stats);
 
-        // Future to handle command messages that resize the balloon.
-        let command = handle_command_tube(&command_tube, interrupt.clone(), config, stats_tx);
+        let command =
+            handle_command_tube(&command_tube, interrupt.clone(), config.clone(), stats_tx);
         pin_mut!(command);
 
         // Process any requests to resample the irq value.
-        let resample = async_utils::handle_irq_resample(&ex, interrupt);
+        let resample = async_utils::handle_irq_resample(&ex, interrupt.clone());
         pin_mut!(resample);
 
         // Exit if the kill event is triggered.
         let kill = async_utils::await_and_exit(&ex, kill_evt);
         pin_mut!(kill);
 
-        if let Err(e) = ex.run_until(select6(inflate, deflate, stats, command, resample, kill)) {
+        let res = if !queues.is_empty() {
+            let events_event = EventAsync::new(queue_evts.remove(0).0, &ex)
+                .expect("failed to set up the events event");
+            let events =
+                handle_events_queue(&mem, queues.remove(0), events_event, config, interrupt);
+            pin_mut!(events);
+
+            ex.run_until(select7(
+                inflate, deflate, stats, command, resample, kill, events,
+            ))
+            .map(|_| ())
+        } else {
+            ex.run_until(select6(inflate, deflate, stats, command, resample, kill))
+                .map(|_| ())
+        };
+
+        if let Err(e) = res {
             error!("error happened in executor: {}", e);
         }
     }
@@ -426,6 +506,7 @@ pub struct Balloon {
     inflate_tube: Option<Tube>,
     config: Arc<BalloonConfig>,
     features: u64,
+    acked_features: u64,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<(Tube, Option<Tube>)>>,
 }
@@ -456,7 +537,9 @@ impl Balloon {
             features: base_features
                 | 1 << VIRTIO_BALLOON_F_MUST_TELL_HOST
                 | 1 << VIRTIO_BALLOON_F_STATS_VQ
-                | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM,
+                | 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM
+                | 1 << VIRTIO_BALLOON_F_EVENTS_VQ,
+            acked_features: 0,
         })
     }
 
@@ -467,6 +550,10 @@ impl Balloon {
             num_pages: num_pages.into(),
             actual: actual_pages.into(),
         }
+    }
+
+    fn event_queue_enabled(&self) -> bool {
+        (self.acked_features & ((1 << VIRTIO_BALLOON_F_EVENTS_VQ) as u64)) != 0
     }
 }
 
@@ -519,8 +606,12 @@ impl VirtioDevice for Balloon {
         self.features
     }
 
-    fn ack_features(&mut self, value: u64) {
-        self.features &= value;
+    fn ack_features(&mut self, mut value: u64) {
+        if value & !self.features != 0 {
+            warn!("virtio_balloon got unknown feature ack {:x}", value);
+            value &= self.features;
+        }
+        self.acked_features |= value;
     }
 
     fn activate(
@@ -530,7 +621,8 @@ impl VirtioDevice for Balloon {
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
     ) {
-        if queues.len() != QUEUE_SIZES.len() || queue_evts.len() != QUEUE_SIZES.len() {
+        let expected_queues = if self.event_queue_enabled() { 4 } else { 3 };
+        if queues.len() != expected_queues || queue_evts.len() != expected_queues {
             return;
         }
 
