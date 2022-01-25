@@ -2594,7 +2594,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                     Ok(CommandStatus::VmStop)
                 }
                 Err(e) => {
-                    error!("{}", e);
+                    error!("{:#}", e);
                     Err(())
                 }
             }

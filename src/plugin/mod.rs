@@ -10,7 +10,6 @@ use std::io;
 use std::io::Read;
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
-use std::result;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
@@ -26,15 +25,16 @@ use protobuf::ProtobufError;
 use remain::sorted;
 use thiserror::Error;
 
+use anyhow::{anyhow, bail, Context, Result};
 use base::{
     add_fd_flags, block_signal, clear_signal, drop_capabilities, enable_core_scheduling, error,
     getegid, geteuid, info, pipe, register_rt_signal_handler, validate_raw_descriptor, warn,
     AsRawDescriptor, Error as SysError, Event, FromRawDescriptor, Killable, MmapError, PollToken,
-    Result as SysResult, SignalFd, SignalFdError, WaitContext, SIGRTMIN,
+    Result as SysResult, SignalFd, WaitContext, SIGRTMIN,
 };
 use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use minijail::{self, Minijail};
-use net_util::{Error as TapError, Tap, TapT};
+use net_util::{Tap, TapT};
 use vm_memory::{GuestMemory, MemoryPolicy};
 
 use self::process::*;
@@ -44,132 +44,21 @@ use crate::{Config, Executable};
 const MAX_DATAGRAM_SIZE: usize = 4096;
 const MAX_VCPU_DATAGRAM_SIZE: usize = 0x40000;
 
-/// An error that occurs during the lifetime of a plugin process.
+/// An error that occurs when communicating with the plugin process.
 #[sorted]
 #[derive(Error, Debug)]
-pub enum Error {
-    #[error("failed to clone event: {0}")]
-    CloneEvent(SysError),
-    #[error("failed to clone vcpu pipe: {0}")]
-    CloneVcpuPipe(io::Error),
-    #[error("failed to create event: {0}")]
-    CreateEvent(SysError),
-    #[error("failed to create kvm irqchip: {0}")]
-    CreateIrqChip(SysError),
-    #[error("failed to create jail: {0}")]
-    CreateJail(minijail::Error),
-    #[error("error creating Kvm: {0}")]
-    CreateKvm(SysError),
-    #[error("error creating main request socket: {0}")]
-    CreateMainSocket(SysError),
-    #[error("failed to create kvm PIT: {0}")]
-    CreatePIT(SysError),
-    #[error("failed to create signalfd: {0}")]
-    CreateSignalFd(SignalFdError),
-    #[error("failed to create socket pair: {0}")]
-    CreateSocketPair(io::Error),
-    #[error("failed to create stderr pipe: {0}")]
-    CreateStderrPipe(SysError),
-    #[error("failed to create tap device from raw fd: {0}")]
-    CreateTapFd(TapError),
-    #[error("error creating vcpu: {0}")]
-    CreateVcpu(SysError),
-    #[error("error creating vcpu request socket: {0}")]
-    CreateVcpuSocket(SysError),
-    #[error("error creating vm: {0}")]
-    CreateVm(SysError),
-    #[error("failed to create wait context: {0}")]
-    CreateWaitContext(SysError),
+pub enum CommError {
     #[error("failed to decode plugin request: {0}")]
     DecodeRequest(ProtobufError),
-    #[error("failed to drop process capabilities: {0}")]
-    DropCapabilities(SysError),
     #[error("failed to encode plugin response: {0}")]
     EncodeResponse(ProtobufError),
-    #[error("failed to mount: {0}")]
-    Mount(minijail::Error),
-    #[error("failed to mount dev: {0}")]
-    MountDev(minijail::Error),
-    #[error("failed to mount lib: {0}")]
-    MountLib(minijail::Error),
-    #[error("failed to mount lib64: {0}")]
-    MountLib64(minijail::Error),
-    #[error("failed to mount plugin: {0}")]
-    MountPlugin(minijail::Error),
-    #[error("failed to mount pluginlib: {0}")]
-    MountPluginLib(minijail::Error),
-    #[error("failed to mount proc: {0}")]
-    MountProc(minijail::Error),
-    #[error("failed to mount root: {0}")]
-    MountRoot(minijail::Error),
-    #[error("no root directory for jailed process to pivot root into")]
-    NoRootDir,
-    #[error("failed to set jail pivot root: {0}")]
-    ParsePivotRoot(minijail::Error),
-    #[error("failed to parse jail seccomp filter: {0}")]
-    ParseSeccomp(minijail::Error),
-    #[error("plugin exited with error: {0}")]
-    PluginFailed(i32),
-    #[error("error sending kill signal to plugin: {0}")]
-    PluginKill(SysError),
-    #[error("plugin exited with signal {0}")]
-    PluginKilled(i32),
-    #[error("failed to run jail: {0}")]
-    PluginRunJail(minijail::Error),
     #[error("plugin request socket has been hung up")]
     PluginSocketHup,
-    #[error("failed to poll plugin request sockets: {0}")]
-    PluginSocketPoll(SysError),
     #[error("failed to recv from plugin request socket: {0}")]
     PluginSocketRecv(SysError),
     #[error("failed to send to plugin request socket: {0}")]
     PluginSocketSend(SysError),
-    #[error("failed to spawn plugin: {0}")]
-    PluginSpawn(io::Error),
-    #[error("plugin did not exit within timeout")]
-    PluginTimeout,
-    #[error("error waiting for plugin to exit: {0}")]
-    PluginWait(SysError),
-    #[error("failed to poll all FDs: {0}")]
-    Poll(SysError),
-    #[error("path to the root directory must be absolute")]
-    RootNotAbsolute,
-    #[error("specified root directory is not a directory")]
-    RootNotDir,
-    #[error("failed to set gidmap for jail: {0}")]
-    SetGidMap(minijail::Error),
-    #[error("failed to set uidmap for jail: {0}")]
-    SetUidMap(minijail::Error),
-    #[error("process {pid} died with signal {signo}, status {status}, and code {code}")]
-    SigChild {
-        pid: u32,
-        signo: u32,
-        status: i32,
-        code: i32,
-    },
-    #[error("failed to read signal fd: {0}")]
-    SignalFd(SignalFdError),
-    #[error("error spawning vcpu thread: {0}")]
-    SpawnVcpu(io::Error),
-    #[error("error marking stderr nonblocking: {0}")]
-    StderrNonblock(SysError),
-    #[error("error enabling tap device: {0}")]
-    TapEnable(TapError),
-    #[error("error opening tap device: {0}")]
-    TapOpen(TapError),
-    #[error("error setting tap ip: {0}")]
-    TapSetIp(TapError),
-    #[error("error setting tap mac address: {0}")]
-    TapSetMacAddress(TapError),
-    #[error("error setting tap netmask: {0}")]
-    TapSetNetmask(TapError),
-    #[error("failed to validate raw tap fd: {0}")]
-    ValidateTapFd(SysError),
-    #[error("failed to add descriptor to wait context: {0}")]
-    WaitContextAdd(SysError),
 }
-
-type Result<T> = result::Result<T, Error>;
 
 fn new_seqpacket_pair() -> SysResult<(UnixDatagram, UnixDatagram)> {
     let mut fds = [0, 0];
@@ -257,19 +146,20 @@ fn mmap_to_sys_err(e: MmapError) -> SysError {
 fn create_plugin_jail(root: &Path, log_failures: bool, seccomp_policy: &Path) -> Result<Minijail> {
     // All child jails run in a new user namespace without any users mapped,
     // they run as nobody unless otherwise configured.
-    let mut j = Minijail::new().map_err(Error::CreateJail)?;
+    let mut j = Minijail::new().context("failed to create jail")?;
     j.namespace_pids();
     j.namespace_user();
     j.uidmap(&format!("0 {0} 1", geteuid()))
-        .map_err(Error::SetUidMap)?;
+        .context("failed to set uidmap for jail")?;
     j.gidmap(&format!("0 {0} 1", getegid()))
-        .map_err(Error::SetGidMap)?;
+        .context("failed to set gidmap for jail")?;
     j.namespace_user_disable_setgroups();
     // Don't need any capabilities.
     j.use_caps(0);
     // Create a new mount namespace with an empty root FS.
     j.namespace_vfs();
-    j.enter_pivot_root(root).map_err(Error::ParsePivotRoot)?;
+    j.enter_pivot_root(root)
+        .context("failed to set jail pivot root")?;
     // Run in an empty network namespace.
     j.namespace_net();
     j.no_new_privs();
@@ -283,7 +173,7 @@ fn create_plugin_jail(root: &Path, log_failures: bool, seccomp_policy: &Path) ->
     let bpf_policy_file = seccomp_policy.with_extension("bpf");
     if bpf_policy_file.exists() && !log_failures {
         j.parse_seccomp_program(&bpf_policy_file)
-            .map_err(Error::ParseSeccomp)?;
+            .context("failed to parse jail seccomp BPF program")?;
     } else {
         // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP,
         // which will correctly kill the entire device process if a worker
@@ -293,7 +183,7 @@ fn create_plugin_jail(root: &Path, log_failures: bool, seccomp_policy: &Path) ->
             j.log_seccomp_filter_failures();
         }
         j.parse_seccomp_filters(&seccomp_policy.with_extension("policy"))
-            .map_err(Error::ParseSeccomp)?;
+            .context("failed to parse jail seccomp filter")?;
     }
     j.use_seccomp_filter();
     // Don't do init setup.
@@ -308,7 +198,7 @@ fn create_plugin_jail(root: &Path, log_failures: bool, seccomp_policy: &Path) ->
         (MS_NOSUID | MS_NODEV | MS_NOEXEC) as usize,
         "size=67108864",
     )
-    .map_err(Error::MountRoot)?;
+    .context("failed to mount root")?;
 
     // Because we requested to "run as init", minijail will not mount /proc for us even though
     // plugin will be running in its own PID namespace, so we have to mount it ourselves.
@@ -318,7 +208,7 @@ fn create_plugin_jail(root: &Path, log_failures: bool, seccomp_policy: &Path) ->
         "proc",
         (MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RDONLY) as usize,
     )
-    .map_err(Error::MountProc)?;
+    .context("failed to mount proc")?;
 
     Ok(j)
 }
@@ -431,9 +321,9 @@ pub fn run_vcpus(
     for cpu_id in 0..vcpu_count {
         let kill_signaled = kill_signaled.clone();
         let vcpu_thread_barrier = vcpu_thread_barrier.clone();
-        let vcpu_exit_evt = exit_evt.try_clone().map_err(Error::CloneEvent)?;
+        let vcpu_exit_evt = exit_evt.try_clone().context("failed to clone event")?;
         let vcpu_plugin = plugin.create_vcpu(cpu_id)?;
-        let vcpu = Vcpu::new(cpu_id as c_ulong, kvm, vm).map_err(Error::CreateVcpu)?;
+        let vcpu = Vcpu::new(cpu_id as c_ulong, kvm, vm).context("error creating vcpu")?;
 
         vcpu_handles.push(
             thread::Builder::new()
@@ -577,7 +467,7 @@ pub fn run_vcpus(
                         .write(1)
                         .expect("failed to signal vcpu exit event");
                 })
-                .map_err(Error::SpawnVcpu)?,
+                .context("error spawning vcpu thread")?,
         );
     }
     Ok(())
@@ -601,11 +491,12 @@ pub fn run_config(cfg: Config) -> Result<()> {
     // Masking signals is inherently dangerous, since this can persist across clones/execs. Do this
     // before any jailed devices have been spawned, so that we can catch any of them that fail very
     // quickly.
-    let sigchld_fd = SignalFd::new(SIGCHLD).map_err(Error::CreateSignalFd)?;
+    let sigchld_fd = SignalFd::new(SIGCHLD).context("failed to create signalfd")?;
 
     // Create a pipe to capture error messages from plugin and minijail.
-    let (mut stderr_rd, stderr_wr) = pipe(true).map_err(Error::CreateStderrPipe)?;
-    add_fd_flags(stderr_rd.as_raw_descriptor(), O_NONBLOCK).map_err(Error::StderrNonblock)?;
+    let (mut stderr_rd, stderr_wr) = pipe(true).context("failed to create stderr pipe")?;
+    add_fd_flags(stderr_rd.as_raw_descriptor(), O_NONBLOCK)
+        .context("error marking stderr nonblocking")?;
 
     let jail = if cfg.sandbox {
         // An empty directory for jailed plugin pivot root.
@@ -615,15 +506,15 @@ pub fn run_config(cfg: Config) -> Result<()> {
         };
 
         if root_path.is_relative() {
-            return Err(Error::RootNotAbsolute);
+            bail!("path to the root directory must be absolute");
         }
 
         if !root_path.exists() {
-            return Err(Error::NoRootDir);
+            bail!("no root directory for jailed process to pivot root into");
         }
 
         if !root_path.is_dir() {
-            return Err(Error::RootNotDir);
+            bail!("specified root directory is not a directory");
         }
 
         let policy_path = cfg.seccomp_policy_dir.join("plugin");
@@ -637,7 +528,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                     .into_iter()
                     .map(|m| format!(",{} {} {}", m.inner, m.outer, m.count))
                     .collect::<String>();
-            jail.gidmap(&map).map_err(Error::SetGidMap)?;
+            jail.gidmap(&map).context("failed to set gidmap for jail")?;
         }
 
         // Mount minimal set of devices (full, zero, urandom, etc). We can not use
@@ -646,12 +537,23 @@ pub fn run_config(cfg: Config) -> Result<()> {
         for name in &device_names {
             let device = Path::new("/dev").join(&name);
             jail.mount_bind(&device, &device, true)
-                .map_err(Error::MountDev)?;
+                .context("failed to mount dev")?;
         }
 
         for bind_mount in &cfg.plugin_mounts {
             jail.mount_bind(&bind_mount.src, &bind_mount.dst, bind_mount.writable)
-                .map_err(Error::Mount)?;
+                .with_context(|| {
+                    format!(
+                        "failed to bind mount {} -> {} as {} ",
+                        bind_mount.src.display(),
+                        bind_mount.dst.display(),
+                        if bind_mount.writable {
+                            "writable"
+                        } else {
+                            "read only"
+                        }
+                    )
+                })?;
         }
 
         Some(jail)
@@ -663,13 +565,14 @@ pub fn run_config(cfg: Config) -> Result<()> {
     if let Some(host_ip) = cfg.host_ip {
         if let Some(netmask) = cfg.netmask {
             if let Some(mac_address) = cfg.mac_address {
-                let tap = Tap::new(false, false).map_err(Error::TapOpen)?;
-                tap.set_ip_addr(host_ip).map_err(Error::TapSetIp)?;
-                tap.set_netmask(netmask).map_err(Error::TapSetNetmask)?;
+                let tap = Tap::new(false, false).context("error opening tap device")?;
+                tap.set_ip_addr(host_ip).context("error setting tap ip")?;
+                tap.set_netmask(netmask)
+                    .context("error setting tap netmask")?;
                 tap.set_mac_address(mac_address)
-                    .map_err(Error::TapSetMacAddress)?;
+                    .context("error setting tap mac address")?;
 
-                tap.enable().map_err(Error::TapEnable)?;
+                tap.enable().context("error enabling tap device")?;
                 tap_interfaces.push(tap);
             }
         }
@@ -677,8 +580,10 @@ pub fn run_config(cfg: Config) -> Result<()> {
     for tap_fd in cfg.tap_fd {
         // Safe because we ensure that we get a unique handle to the fd.
         let tap = unsafe {
-            Tap::from_raw_descriptor(validate_raw_descriptor(tap_fd).map_err(Error::ValidateTapFd)?)
-                .map_err(Error::CreateTapFd)?
+            Tap::from_raw_descriptor(
+                validate_raw_descriptor(tap_fd).context("failed to validate raw tap fd")?,
+            )
+            .context("failed to create tap device from raw fd")?
         };
         tap_interfaces.push(tap);
     }
@@ -696,22 +601,23 @@ pub fn run_config(cfg: Config) -> Result<()> {
         mem_policy |= MemoryPolicy::USE_HUGEPAGES;
     }
     mem.set_memory_policy(mem_policy);
-    let kvm = Kvm::new_with_path(&cfg.kvm_device_path).map_err(Error::CreateKvm)?;
-    let mut vm = Vm::new(&kvm, mem).map_err(Error::CreateVm)?;
-    vm.create_irq_chip().map_err(Error::CreateIrqChip)?;
-    vm.create_pit().map_err(Error::CreatePIT)?;
+    let kvm = Kvm::new_with_path(&cfg.kvm_device_path).context("error creating Kvm")?;
+    let mut vm = Vm::new(&kvm, mem).context("error creating vm")?;
+    vm.create_irq_chip()
+        .context("failed to create kvm irqchip")?;
+    vm.create_pit().context("failed to create kvm PIT")?;
 
     let mut plugin = Process::new(vcpu_count, plugin_path, &plugin_args, jail, stderr_wr)?;
     // Now that the jail for the plugin has been created and we had a chance to adjust gids there,
     // we can drop all our capabilities in case we had any.
-    drop_capabilities().map_err(Error::DropCapabilities)?;
+    drop_capabilities().context("failed to drop process capabilities")?;
 
     let mut res = Ok(());
     // If Some, we will exit after enough time is passed to shutdown cleanly.
     let mut dying_instant: Option<Instant> = None;
     let duration_to_die = Duration::from_millis(1000);
 
-    let exit_evt = Event::new().map_err(Error::CreateEvent)?;
+    let exit_evt = Event::new().context("failed to create event")?;
     let kill_signaled = Arc::new(AtomicBool::new(false));
     let mut vcpu_handles = Vec::with_capacity(vcpu_count as usize);
 
@@ -720,7 +626,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         (&sigchld_fd, Token::ChildSignal),
         (&stderr_rd, Token::Stderr),
     ])
-    .map_err(Error::WaitContextAdd)?;
+    .context("failed to add control descriptors to wait context")?;
 
     let mut sockets_to_drop = Vec::new();
     let mut redo_wait_ctx_sockets = true;
@@ -741,7 +647,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
             for (index, socket) in plugin.sockets().iter().enumerate() {
                 wait_ctx
                     .add(socket, Token::Plugin { index })
-                    .map_err(Error::WaitContextAdd)?;
+                    .context("failed to add plugin sockets to wait context")?;
             }
         }
 
@@ -756,7 +662,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 Err(e) => {
                     // Polling no longer works, time to break and cleanup,
                     if res.is_ok() {
-                        res = Err(Error::Poll(e));
+                        res = Err(e).context("failed to poll all FDs");
                     }
                     break;
                 }
@@ -777,7 +683,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                     dying_instant.get_or_insert(Instant::now());
                     let sig_res = plugin.signal_kill();
                     if res.is_ok() && sig_res.is_err() {
-                        res = sig_res.map_err(Error::PluginKill);
+                        res = sig_res.context("error sending kill signal to plugin on exit event");
                     }
                 }
                 Token::ChildSignal => {
@@ -793,12 +699,13 @@ pub fn run_config(cfg: Config) -> Result<()> {
                                 // Because SIGCHLD is not expected from anything other than the
                                 // plugin process, report it as an error.
                                 if res.is_ok() {
-                                    res = Err(Error::SigChild {
-                                        pid: siginfo.ssi_pid,
-                                        signo: siginfo.ssi_signo,
-                                        status: siginfo.ssi_status,
-                                        code: siginfo.ssi_code,
-                                    })
+                                    res = Err(anyhow!(
+                                        "process {} died with signal {}, status {}, and code {}",
+                                        siginfo.ssi_pid,
+                                        siginfo.ssi_signo,
+                                        siginfo.ssi_status,
+                                        siginfo.ssi_code,
+                                    ));
                                 }
                             }
                             Ok(None) => break, // No more signals to read.
@@ -806,7 +713,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                                 // Something really must be messed up for this to happen, continue
                                 // processing connections for a limited time.
                                 if res.is_ok() {
-                                    res = Err(Error::SignalFd(e));
+                                    res = Err(e).context("failed to read signal fd");
                                 }
                                 break;
                             }
@@ -817,7 +724,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                     dying_instant.get_or_insert(Instant::now());
                     let sig_res = plugin.signal_kill();
                     if res.is_ok() && sig_res.is_err() {
-                        res = sig_res.map_err(Error::PluginKill);
+                        res = sig_res.context("error sending kill signal to plugin on SIGCHLD");
                     }
                 }
                 Token::Stderr => loop {
@@ -843,7 +750,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                         Ok(_) => {}
                         // A HUP is an expected event for a socket, so don't bother warning about
                         // it.
-                        Err(Error::PluginSocketHup) => sockets_to_drop.push(index),
+                        Err(CommError::PluginSocketHup) => sockets_to_drop.push(index),
                         // Only one connection out of potentially many is broken. Drop it, but don't
                         // start cleaning up. Because the error isn't returned, we will warn about
                         // it here.
@@ -892,7 +799,9 @@ pub fn run_config(cfg: Config) -> Result<()> {
     // Depending on how we ended up here, the plugin process, or a VCPU thread waiting for requests
     // might be stuck. The `signal_kill` call will unstick all the VCPU threads by closing their
     // blocked connections.
-    plugin.signal_kill().map_err(Error::PluginKill)?;
+    plugin
+        .signal_kill()
+        .context("error sending kill signal to plugin on cleanup")?;
     for handle in vcpu_handles {
         match handle.kill(SIGRTMIN() + 0) {
             Ok(_) => {
@@ -906,11 +815,11 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
     match plugin.try_wait() {
         // The plugin has run out of time by now
-        Ok(ProcessStatus::Running) => Err(Error::PluginTimeout),
+        Ok(ProcessStatus::Running) => Err(anyhow!("plugin did not exit within timeout")),
         // Return an error discovered earlier in this function.
-        Ok(ProcessStatus::Success) => res,
-        Ok(ProcessStatus::Fail(code)) => Err(Error::PluginFailed(code)),
-        Ok(ProcessStatus::Signal(code)) => Err(Error::PluginKilled(code)),
-        Err(e) => Err(Error::PluginWait(e)),
+        Ok(ProcessStatus::Success) => res.map_err(anyhow::Error::msg),
+        Ok(ProcessStatus::Fail(code)) => Err(anyhow!("plugin exited with error: {}", code)),
+        Ok(ProcessStatus::Signal(code)) => Err(anyhow!("plugin exited with signal {}", code)),
+        Err(e) => Err(anyhow!("error waiting for plugin to exit: {}", e)),
     }
 }
