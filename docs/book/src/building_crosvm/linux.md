@@ -21,7 +21,7 @@ submodules in sync with the main repository (But do not push them, as that can
 conflict with `repo`):
 
 ```sh
-git config --global submodule.recurse true
+git config submodule.recurse true
 git config push.recurseSubmodules no
 ```
 
