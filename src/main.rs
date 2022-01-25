@@ -2260,6 +2260,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "host-cpu-topology" => {
             cfg.host_cpu_topology = true;
         }
+        "privileged-vm" => {
+            cfg.privileged_vm = true;
+        }
         "stub-pci-device" => {
             cfg.stub_pci_devices.push(parse_stub_pci_parameters(value)?);
         }
@@ -2741,6 +2744,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::flag("no-legacy", "Don't use legacy KBD/RTC devices emulation"),
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("host-cpu-topology", "Use mirror cpu topology of Host for Guest VM"),
+          Argument::flag("privileged-vm", "Grant this Guest VM certian privileges to manage Host resources, such as power management."),
           Argument::value("stub-pci-device", "DOMAIN:BUS:DEVICE.FUNCTION[,vendor=NUM][,device=NUM][,class=NUM][,subsystem_vendor=NUM][,subsystem_device=NUM][,revision=NUM]", "Comma-separated key=value pairs for setting up a stub PCI device that just enumerates. The first option in the list must specify a PCI address to claim.
                               Optional further parameters
                               vendor=NUM - PCI vendor ID
