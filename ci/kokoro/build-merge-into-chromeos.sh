@@ -5,7 +5,7 @@
 set -e
 
 readonly GERRIT_URL=https://chromium-review.googlesource.com
-readonly ORIGIN=${GERRIT_URL}/chromiumos/platform/crosvm
+readonly ORIGIN=https://chromium.googlesource.com/chromiumos/platform/crosvm
 readonly RETRIES=3
 readonly MIN_COMMIT_COUNT=${MIN_COMMIT_COUNT:-5}
 
@@ -68,11 +68,6 @@ get_previous_merge_id() {
         jq --raw-output 'sort_by(.created)[-1].change_id'
 }
 
-get_change_id_from_commit() {
-    query_changes "project:chromiumos/platform/crosvm" "$1" |
-        jq --raw-output ".[0].change_id"
-}
-
 get_last_change_in_chain() {
     # Use the related changes API to find the last change in the chain of
     # commits.
@@ -92,21 +87,6 @@ get_last_change_in_chain() {
     fi
 }
 
-get_all_related_changes() {
-    # Queries the change ids of all related changes that are still open.
-    local change_id=$1
-    local all_changes
-    all_changes=$(query_related_changes "$change_id" | jq --raw-output \
-        ".changes[] | select(.status == \"NEW\").change_id")
-
-    # If there are no related changes the list will be empty.
-    if [ -z "${all_changes}" ]; then
-        echo "${change_id}"
-    else
-        echo "${all_changes}"
-    fi
-}
-
 fetch_change() {
     # Fetch the provided change and print the commit sha.
     local change_id=$1
@@ -116,6 +96,28 @@ fetch_change() {
     change_ref=$(query_change "$change_id" |
         jq --raw-output -e ".revisions[.current_revision].ref")
     git fetch -q origin "${change_ref}"
+}
+
+get_dry_run_ids() {
+    # Query all dry run changes. They are identified by the hashtag:dryrun when
+    # uploaded.
+    query=(
+        project:chromiumos/platform/crosvm
+        branch:chromeos
+        status:open
+        hashtag:dryrun
+        owner:crosvm-bot@crosvm-packages.iam.gserviceaccount.com
+    )
+    query_changes "${query[@]}" |
+        jq --raw-output '.[].change_id'
+}
+
+abandon_dry_runs() {
+    # Abandon all pending dry run commits
+    for change in $(get_dry_run_ids); do
+        echo "Abandoning ${GERRIT_URL}/q/${change}"
+        gerrit_api_post "a/changes/${change}/abandon" "{}" >/dev/null
+    done
 }
 
 gerrit_prerequisites() {
@@ -147,7 +149,7 @@ gerrit_prerequisites() {
 
 upload() {
     git push origin \
-        HEAD:refs/for/chromeos%r=crosvm-uprev@google.com
+        "HEAD:refs/for/chromeos%r=crosvm-uprev@google.com,$1"
 }
 
 upload_with_retries() {
@@ -155,24 +157,11 @@ upload_with_retries() {
     # See: b/209031134
     for i in $(seq 1 $RETRIES); do
         echo "Push attempt $i"
-        if upload; then
+        if upload "$1"; then
             return 0
         fi
     done
     return 1
-}
-
-dry_run_change() {
-    # Sets the Commit-Queue+1 bit on the provided change id and all it's
-    # ancestors.
-    local change_id=$1
-
-    local all_changes=$(get_all_related_changes "$change_id")
-    for change in ${all_changes}; do
-        body='{"message": "Dry-Running the latest merge.","labels": {"Commit-Queue": +1}}'
-        echo "Setting CQ+1 on ${GERRIT_URL}/q/${change}"
-        gerrit_api_post "a/changes/${change}/revisions/current/review" "$body" >/dev/null
-    done
 }
 
 main() {
@@ -216,13 +205,16 @@ main() {
     git branch --set-upstream-to origin/chromeos chromeos
 
     "${KOKORO_ARTIFACTS_DIR}/create_merge" "origin/main"
-
     upload_with_retries
 
-    # Look up the change id for the newly created merge and CQ+1
-    local new_commit=$(git rev-parse HEAD)
-    local new_change_id
-    new_change_id=$(get_change_id_from_commit "${new_commit}")
-    dry_run_change "${new_change_id}"
+    echo "Abandoning previous dry runs"
+    abandon_dry_runs
+
+    echo "Creating dry run merge"
+    git checkout -b dryrun --track origin/chromeos
+
+    "${KOKORO_ARTIFACTS_DIR}/create_merge" --dry-run-only "origin/main"
+    upload_with_retries "hashtag=dryrun,l=Commit-Queue+1"
 }
+
 main

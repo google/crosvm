@@ -16,6 +16,11 @@
 
 set -e
 
+if [ "$1" == "--dry-run-only" ]; then
+    DRY_RUN_ONLY=true
+    shift
+fi
+
 LOCAL_BRANCH=$(git branch --show-current)
 REMOTE_NAME=$(git config "branch.${LOCAL_BRANCH}.remote")
 URL=$(git remote get-url "${REMOTE_NAME}")
@@ -62,7 +67,11 @@ merge_message() {
         notes="${notes}, cq-depend"
     fi
 
-    echo "Merge ${count} commits from ${MERGE_TARGET} (${notes})"
+    if [ "${DRY_RUN_ONLY}" = true ]; then
+        echo "Merge dry run (${notes})"
+    else
+        echo "Merge ${count} commits from ${MERGE_TARGET} (${notes})"
+    fi
     echo ""
     commit_list
     echo ""
@@ -72,6 +81,9 @@ merge_message() {
     echo "TEST=CQ"
     echo ""
     cq_depends
+    if [ "${DRY_RUN_ONLY}" = true ]; then
+        echo "Commit: false"
+    fi
 }
 
 main() {
