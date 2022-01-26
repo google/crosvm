@@ -407,7 +407,7 @@ mod tests {
 
         fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
 
-        fn allocate_address(&mut self, resources: &mut SystemAllocator) -> Result<PciAddress> {
+        fn allocate_address(&mut self, _resources: &mut SystemAllocator) -> Result<PciAddress> {
             Err(Error::PciAllocationFailed)
         }
 

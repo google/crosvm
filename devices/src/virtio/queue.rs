@@ -677,6 +677,7 @@ mod tests {
         );
 
         // Calculating the offset of used_event within Avail structure
+        #[allow(deref_nullptr)]
         let used_event_offset: u64 =
             unsafe { &(*(::std::ptr::null::<Avail>())).used_event as *const _ as u64 };
         let used_event_address = GuestAddress(AVAIL_OFFSET + used_event_offset);
@@ -753,6 +754,7 @@ mod tests {
         );
 
         // Calculating the offset of used_event within Avail structure
+        #[allow(deref_nullptr)]
         let used_event_offset: u64 =
             unsafe { &(*(::std::ptr::null::<Avail>())).used_event as *const _ as u64 };
         let used_event_address = GuestAddress(AVAIL_OFFSET + used_event_offset);
