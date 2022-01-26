@@ -993,10 +993,20 @@ fn get_gpu_render_server_environment(cache_info: &GpuCacheInfo) -> Result<Vec<St
 }
 
 #[cfg(feature = "gpu")]
+struct ScopedMinijail(Minijail);
+
+#[cfg(feature = "gpu")]
+impl Drop for ScopedMinijail {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+    }
+}
+
+#[cfg(feature = "gpu")]
 fn start_gpu_render_server(
     cfg: &Config,
     render_server_parameters: &GpuRenderServerParameters,
-) -> Result<SafeDescriptor> {
+) -> Result<(Minijail, SafeDescriptor)> {
     let (server_socket, client_socket) =
         UnixSeqpacket::pair().context("failed to create render server socket")?;
 
@@ -1058,7 +1068,7 @@ fn start_gpu_render_server(
     )?)
     .context("failed to start gpu render server")?;
 
-    Ok(SafeDescriptor::from(client_socket))
+    Ok((jail, SafeDescriptor::from(client_socket)))
 }
 
 fn create_wayland_device(
@@ -1503,6 +1513,7 @@ fn create_virtio_devices(
     pmem_device_tubes: &mut Vec<Tube>,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     fs_device_tubes: &mut Vec<Tube>,
+    #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -1735,11 +1746,6 @@ fn create_virtio_devices(
                 event_devices.push(EventDevice::keyboard(event_device_socket));
             }
 
-            let mut render_server_fd = None;
-            if let Some(ref render_server_parameters) = gpu_parameters.render_server {
-                render_server_fd = Some(start_gpu_render_server(cfg, render_server_parameters)?);
-            }
-
             devs.push(create_gpu_device(
                 cfg,
                 _exit_evt,
@@ -1958,6 +1964,7 @@ fn create_devices(
     fs_device_tubes: &mut Vec<Tube>,
     #[cfg(feature = "usb")] usb_provider: HostBackendDeviceProvider,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
+    #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
     let mut balloon_inflate_tube: Option<Tube> = None;
@@ -2085,6 +2092,8 @@ fn create_devices(
         pmem_device_tubes,
         map_request,
         fs_device_tubes,
+        #[cfg(feature = "gpu")]
+        render_server_fd,
     )?;
 
     for stub in stubs {
@@ -3027,6 +3036,21 @@ where
     create_file_backed_mappings(&cfg, &mut vm, &mut sys_allocator)?;
 
     let phys_max_addr = (1u64 << vm.get_guest_phys_addr_bits()) - 1;
+
+    #[cfg(feature = "gpu")]
+    // Hold on to the render server jail so it keeps running until we exit run_vm()
+    let mut _render_server_jail = None;
+    #[cfg(feature = "gpu")]
+    let mut render_server_fd = None;
+    #[cfg(feature = "gpu")]
+    if let Some(gpu_parameters) = &cfg.gpu_parameters {
+        if let Some(ref render_server_parameters) = gpu_parameters.render_server {
+            let (jail, fd) = start_gpu_render_server(&cfg, render_server_parameters)?;
+            _render_server_jail = Some(ScopedMinijail(jail));
+            render_server_fd = Some(fd);
+        }
+    }
+
     let mut devices = create_devices(
         &cfg,
         &mut vm,
@@ -3044,6 +3068,8 @@ where
         #[cfg(feature = "usb")]
         usb_provider,
         Arc::clone(&map_request),
+        #[cfg(feature = "gpu")]
+        render_server_fd,
     )?;
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
