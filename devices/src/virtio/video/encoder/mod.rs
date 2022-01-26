@@ -75,7 +75,6 @@ struct Stream<T: EncoderSession> {
     dst_bitrate: Bitrate,
     dst_profile: Profile,
     dst_h264_level: Option<Level>,
-    frame_rate: u32,
     force_keyframe: bool,
 
     encoder_session: Option<T>,
@@ -113,6 +112,7 @@ impl<T: EncoderSession> Stream<T> {
         const DEFAULT_FPS: u32 = 30;
 
         let mut src_params = Params {
+            frame_rate: DEFAULT_FPS,
             min_buffers: MIN_BUFFERS,
             max_buffers: MAX_BUFFERS,
             resource_type: src_resource_type,
@@ -133,6 +133,7 @@ impl<T: EncoderSession> Stream<T> {
 
         let mut dst_params = Params {
             resource_type: dst_resource_type,
+            frame_rate: DEFAULT_FPS,
             frame_width: DEFAULT_WIDTH,
             frame_height: DEFAULT_HEIGHT,
             ..Default::default()
@@ -165,7 +166,6 @@ impl<T: EncoderSession> Stream<T> {
             dst_bitrate: DEFAULT_BITRATE,
             dst_profile,
             dst_h264_level,
-            frame_rate: DEFAULT_FPS,
             force_keyframe: false,
             encoder_session: None,
             received_input_buffers_event: false,
@@ -202,7 +202,7 @@ impl<T: EncoderSession> Stream<T> {
                 dst_profile: self.dst_profile,
                 dst_bitrate: self.dst_bitrate,
                 dst_h264_level: self.dst_h264_level,
-                frame_rate: self.frame_rate,
+                frame_rate: self.dst_params.frame_rate,
             })
             .map_err(|_| VideoError::InvalidOperation)?;
 
@@ -1037,14 +1037,16 @@ impl<T: Encoder> EncoderDevice<T> {
         // encoder session as long as no resources have been queued yet. If an encoder session is
         // active we will request a dynamic framerate change instead, and it's up to the encoder
         // backend to return an error on invalid requests.
-        if stream.frame_rate != frame_rate {
-            stream.frame_rate = frame_rate;
+        if stream.dst_params.frame_rate != frame_rate {
+            stream.src_params.frame_rate = frame_rate;
+            stream.dst_params.frame_rate = frame_rate;
             if let Some(ref mut encoder_session) = stream.encoder_session {
                 if !resources_queued {
                     create_session = true;
-                } else if let Err(e) = encoder_session
-                    .request_encoding_params_change(stream.dst_bitrate, stream.frame_rate)
-                {
+                } else if let Err(e) = encoder_session.request_encoding_params_change(
+                    stream.dst_bitrate,
+                    stream.dst_params.frame_rate,
+                ) {
                     error!("failed to dynamically request framerate change: {}", e);
                     return Err(VideoError::InvalidOperation);
                 }
@@ -1282,9 +1284,10 @@ impl<T: Encoder> EncoderDevice<T> {
                         Bitrate::CBR { target } | Bitrate::VBR { target, .. } => *target = bitrate,
                     }
                     if let Some(ref mut encoder_session) = stream.encoder_session {
-                        if let Err(e) = encoder_session
-                            .request_encoding_params_change(new_bitrate, stream.frame_rate)
-                        {
+                        if let Err(e) = encoder_session.request_encoding_params_change(
+                            new_bitrate,
+                            stream.dst_params.frame_rate,
+                        ) {
                             error!("failed to dynamically request target bitrate change: {}", e);
                             return Err(VideoError::InvalidOperation);
                         }
@@ -1301,9 +1304,10 @@ impl<T: Encoder> EncoderDevice<T> {
                                 peak: bitrate,
                             };
                             if let Some(ref mut encoder_session) = stream.encoder_session {
-                                if let Err(e) = encoder_session
-                                    .request_encoding_params_change(new_bitrate, stream.frame_rate)
-                                {
+                                if let Err(e) = encoder_session.request_encoding_params_change(
+                                    new_bitrate,
+                                    stream.dst_params.frame_rate,
+                                ) {
                                     error!(
                                         "failed to dynamically request peak bitrate change: {}",
                                         e
