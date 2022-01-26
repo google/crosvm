@@ -9,7 +9,6 @@ use std::env;
 use std::path::PathBuf;
 
 use devices::virtio::vhost::user::vmm::Gpu as VhostUserGpu;
-use devices::virtio::GpuRenderServerParameters;
 
 use crate::VhostUserOption;
 
@@ -234,7 +233,14 @@ pub fn create_gpu_device(
     })
 }
 
-pub fn get_gpu_render_server_environment(cache_info: &GpuCacheInfo) -> Result<Vec<String>> {
+#[derive(Debug)]
+pub struct GpuRenderServerParameters {
+    pub path: PathBuf,
+    pub cache_path: Option<String>,
+    pub cache_size: Option<String>,
+}
+
+fn get_gpu_render_server_environment(cache_info: &GpuCacheInfo) -> Result<Vec<String>> {
     let mut env = Vec::new();
 
     let mut cache_env_keys = HashSet::with_capacity(cache_info.environment.len());
@@ -255,14 +261,6 @@ pub fn get_gpu_render_server_environment(cache_info: &GpuCacheInfo) -> Result<Ve
     }
 
     Ok(env)
-}
-
-pub struct ScopedMinijail(pub Minijail);
-
-impl Drop for ScopedMinijail {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-    }
 }
 
 pub fn start_gpu_render_server(

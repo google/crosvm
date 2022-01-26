@@ -37,6 +37,7 @@ use devices::IommuDevType;
 use devices::StubPciParameters;
 use hypervisor::ProtectionType;
 use libc::{getegid, geteuid};
+use platform::GpuRenderServerParameters;
 use vm_control::BatteryType;
 
 static KVM_PATH: &str = "/dev/kvm";
@@ -374,6 +375,8 @@ pub struct Config {
     pub seccomp_log_failures: bool,
     #[cfg(feature = "gpu")]
     pub gpu_parameters: Option<GpuParameters>,
+    #[cfg(feature = "gpu")]
+    pub gpu_render_server_parameters: Option<GpuRenderServerParameters>,
     pub software_tpm: bool,
     pub display_window_keyboard: bool,
     pub display_window_mouse: bool,
@@ -474,6 +477,8 @@ impl Default for Config {
             cid: None,
             #[cfg(feature = "gpu")]
             gpu_parameters: None,
+            #[cfg(feature = "gpu")]
+            gpu_render_server_parameters: None,
             software_tpm: false,
             wayland_socket_paths: BTreeMap::new(),
             x_display: None,

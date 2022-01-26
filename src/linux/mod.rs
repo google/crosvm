@@ -79,6 +79,8 @@ mod vcpu;
 #[cfg(feature = "gpu")]
 mod gpu;
 #[cfg(feature = "gpu")]
+pub use gpu::GpuRenderServerParameters;
+#[cfg(feature = "gpu")]
 use gpu::*;
 
 // gpu_device_tube is not used when GPU support is disabled.
@@ -1013,17 +1015,13 @@ where
 
     #[cfg(feature = "gpu")]
     // Hold on to the render server jail so it keeps running until we exit run_vm()
-    let mut _render_server_jail = None;
-    #[cfg(feature = "gpu")]
-    let mut render_server_fd = None;
-    #[cfg(feature = "gpu")]
-    if let Some(gpu_parameters) = &cfg.gpu_parameters {
-        if let Some(ref render_server_parameters) = gpu_parameters.render_server {
-            let (jail, fd) = start_gpu_render_server(&cfg, render_server_parameters)?;
-            _render_server_jail = Some(ScopedMinijail(jail));
-            render_server_fd = Some(fd);
-        }
-    }
+    let (_render_server_jail, render_server_fd) =
+        if let Some(parameters) = &cfg.gpu_render_server_parameters {
+            let (jail, fd) = start_gpu_render_server(&cfg, parameters)?;
+            (Some(ScopedMinijail(jail)), Some(fd))
+        } else {
+            (None, None)
+        };
 
     let init_balloon_size = components
         .memory_size

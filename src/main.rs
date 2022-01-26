@@ -20,6 +20,8 @@ use std::time::Duration;
 
 use arch::{set_default_serial_parameters, Pstore, VcpuAffinity};
 use base::{debug, error, getpid, info, kill_process_group, pagesize, reap_child, syslog, warn};
+#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+use crosvm::platform::GpuRenderServerParameters;
 #[cfg(feature = "direct")]
 use crosvm::DirectIoOption;
 use crosvm::{
@@ -29,8 +31,6 @@ use crosvm::{
     VhostUserWlOption, VhostVsockDeviceParameter, DISK_ID_LEN,
 };
 use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
-#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
-use devices::virtio::gpu::GpuRenderServerParameters;
 #[cfg(feature = "audio_cras")]
 use devices::virtio::snd::cras_backend::Error as CrasSndError;
 #[cfg(feature = "audio_cras")]
@@ -554,10 +554,7 @@ fn parse_gpu_display_options(
 }
 
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
-fn parse_gpu_render_server_options(
-    s: Option<&str>,
-    gpu_params: &mut GpuParameters,
-) -> argument::Result<()> {
+fn parse_gpu_render_server_options(s: Option<&str>) -> argument::Result<GpuRenderServerParameters> {
     let mut path: Option<PathBuf> = None;
     let mut cache_path = None;
     let mut cache_size = None;
@@ -593,12 +590,11 @@ fn parse_gpu_render_server_options(
     }
 
     if let Some(p) = path {
-        gpu_params.render_server = Some(GpuRenderServerParameters {
+        Ok(GpuRenderServerParameters {
             path: p,
             cache_path,
             cache_size,
-        });
-        Ok(())
+        })
     } else {
         Err(argument::Error::InvalidValue {
             value: s.unwrap_or("").to_string(),
@@ -1962,8 +1958,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
         "gpu-render-server" => {
-            let gpu_parameters = cfg.gpu_parameters.get_or_insert_with(Default::default);
-            parse_gpu_render_server_options(value, gpu_parameters)?;
+            cfg.gpu_render_server_parameters = Some(parse_gpu_render_server_options(value)?);
         }
         "software-tpm" => {
             cfg.software_tpm = true;

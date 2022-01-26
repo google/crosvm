@@ -22,6 +22,14 @@ pub(super) struct SandboxConfig<'a> {
     pub(super) remount_mode: Option<c_ulong>,
 }
 
+pub(super) struct ScopedMinijail(pub Minijail);
+
+impl Drop for ScopedMinijail {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+    }
+}
+
 pub(super) fn create_base_minijail(
     root: &Path,
     r_limit: Option<u64>,

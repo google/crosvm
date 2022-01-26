@@ -83,17 +83,9 @@ impl Default for GpuDisplayParameters {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct GpuRenderServerParameters {
-    pub path: PathBuf,
-    pub cache_path: Option<String>,
-    pub cache_size: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GpuParameters {
     pub displays: Vec<GpuDisplayParameters>,
-    pub render_server: Option<GpuRenderServerParameters>,
     pub renderer_use_egl: bool,
     pub renderer_use_gles: bool,
     pub renderer_use_glx: bool,
@@ -120,7 +112,6 @@ impl Default for GpuParameters {
     fn default() -> Self {
         GpuParameters {
             displays: vec![],
-            render_server: None,
             renderer_use_egl: true,
             renderer_use_gles: true,
             renderer_use_glx: false,
@@ -1032,7 +1023,7 @@ impl Gpu {
             .use_surfaceless(gpu_parameters.renderer_use_surfaceless)
             .use_external_blob(external_blob)
             .use_venus(gpu_parameters.use_vulkan)
-            .use_render_server(gpu_parameters.render_server.is_some());
+            .use_render_server(render_server_fd.is_some());
         let gfxstream_flags = GfxstreamFlags::new()
             .use_egl(gpu_parameters.renderer_use_egl)
             .use_gles(gpu_parameters.renderer_use_gles)
