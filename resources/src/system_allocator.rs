@@ -10,7 +10,7 @@ use crate::{Alloc, Error, Result};
 
 /// Manages allocating system resources such as address space and interrupt numbers.
 ///
-/// # Example - Use the `SystemAddress` builder.
+/// # Example - Use the `SystemAllocator` builder.
 ///
 /// ```
 /// # use resources::{Alloc, MmioType, SystemAllocator};
@@ -71,6 +71,8 @@ impl SystemAllocator {
     /// * `high_size` - The size of high MMIO space.
     /// * `low_base` - The starting address of low MMIO space.
     /// * `low_size` - The size of low MMIO space.
+    /// * `platform_base` - The starting address of platform MMIO space.
+    /// * `platform_size` - The size of platform MMIO space.
     /// * `first_irq` - The first irq number to give out.
     fn new(
         io_base: Option<u64>,
