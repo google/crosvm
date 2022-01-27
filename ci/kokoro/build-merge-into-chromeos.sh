@@ -62,6 +62,7 @@ get_previous_merge_id() {
         branch:chromeos
         status:open
         owner:crosvm-bot@crosvm-packages.iam.gserviceaccount.com
+        -hashtag:dryrun
     )
     # Pick the one that was created last.
     query_changes "${query[@]}" |
