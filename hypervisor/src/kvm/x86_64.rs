@@ -1554,7 +1554,7 @@ mod tests {
     #[test]
     fn xcrs() {
         let kvm = Kvm::new().unwrap();
-        if !kvm.check_capability(&HypervisorCap::Xcrs) {
+        if !kvm.check_capability(HypervisorCap::Xcrs) {
             return;
         }
 

@@ -172,7 +172,7 @@ impl IrqChip for KvmKernelIrqChip {
             IrqChipCap::TscDeadlineTimer => self
                 .vm
                 .get_hypervisor()
-                .check_capability(&HypervisorCap::TscDeadlineTimer),
+                .check_capability(HypervisorCap::TscDeadlineTimer),
             IrqChipCap::X2Apic => true,
         }
     }

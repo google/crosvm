@@ -139,7 +139,7 @@ impl Hypervisor for Kvm {
         })
     }
 
-    fn check_capability(&self, cap: &HypervisorCap) -> bool {
+    fn check_capability(&self, cap: HypervisorCap) -> bool {
         if let Ok(kvm_cap) = KvmCap::try_from(cap) {
             // this ioctl is safe because we know this kvm descriptor is valid,
             // and we are copying over the kvm capability (u32) as a c_ulong value.
@@ -1071,10 +1071,10 @@ impl AsRawDescriptor for KvmVcpu {
     }
 }
 
-impl<'a> TryFrom<&'a HypervisorCap> for KvmCap {
+impl TryFrom<HypervisorCap> for KvmCap {
     type Error = Error;
 
-    fn try_from(cap: &'a HypervisorCap) -> Result<KvmCap> {
+    fn try_from(cap: HypervisorCap) -> Result<KvmCap> {
         match cap {
             HypervisorCap::ArmPmuV3 => Ok(KvmCap::ArmPmuV3),
             HypervisorCap::ImmediateExit => Ok(KvmCap::ImmediateExit),
@@ -1200,8 +1200,8 @@ mod tests {
     #[test]
     fn check_capability() {
         let kvm = Kvm::new().unwrap();
-        assert!(kvm.check_capability(&HypervisorCap::UserMemory));
-        assert!(!kvm.check_capability(&HypervisorCap::S390UserSigp));
+        assert!(kvm.check_capability(HypervisorCap::UserMemory));
+        assert!(!kvm.check_capability(HypervisorCap::S390UserSigp));
     }
 
     #[test]

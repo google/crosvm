@@ -308,7 +308,7 @@ impl arch::LinuxArch for AArch64 {
 
         let mut use_pmu = vm
             .get_hypervisor()
-            .check_capability(&HypervisorCap::ArmPmuV3);
+            .check_capability(HypervisorCap::ArmPmuV3);
         let vcpu_count = components.vcpu_count;
         let mut has_pvtime = true;
         let mut vcpus = Vec::with_capacity(vcpu_count);

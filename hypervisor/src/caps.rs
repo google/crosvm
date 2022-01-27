@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 /// An enumeration of different hypervisor capabilities.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HypervisorCap {
     ArmPmuV3,
     ImmediateExit,
@@ -14,7 +15,7 @@ pub enum HypervisorCap {
 }
 
 /// A capability the `Vm` can possibly expose.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VmCap {
     /// Track dirty pages
     DirtyLog,

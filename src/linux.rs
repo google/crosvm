@@ -3471,7 +3471,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let use_hypervisor_signals = !linux
         .vm
         .get_hypervisor()
-        .check_capability(&HypervisorCap::ImmediateExit);
+        .check_capability(HypervisorCap::ImmediateExit);
     setup_vcpu_signal_handler::<Vcpu>(use_hypervisor_signals)?;
 
     let vcpus: Vec<Option<_>> = match linux.vcpus.take() {

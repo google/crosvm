@@ -35,7 +35,7 @@ pub trait Hypervisor: Send {
         Self: Sized;
 
     /// Checks if a particular `HypervisorCap` is available.
-    fn check_capability(&self, cap: &HypervisorCap) -> bool;
+    fn check_capability(&self, cap: HypervisorCap) -> bool;
 }
 
 /// A wrapper for using a VM and getting/setting its state.
