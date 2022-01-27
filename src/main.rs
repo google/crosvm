@@ -1012,6 +1012,7 @@ fn parse_stub_pci_parameters(s: Option<&str>) -> argument::Result<StubPciParamet
                 params.subclass = (class >> 8) as u8;
                 params.programming_interface = class as u8;
             }
+            "multifunction" => {} // Ignore but allow the multifunction option for compatibility.
             "subsystem_vendor" => params.subsystem_vendor_id = opt.parse_numeric::<u16>()?,
             "subsystem_device" => params.subsystem_device_id = opt.parse_numeric::<u16>()?,
             "revision" => params.revision_id = opt.parse_numeric::<u8>()?,
