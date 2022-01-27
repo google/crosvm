@@ -135,9 +135,6 @@ impl VmAArch64 for KvmVm {
         fw_addr: GuestAddress,
         fw_max_size: u64,
     ) -> Result<()> {
-        if !self.check_capability(VmCap::Protected) {
-            return Err(Error::new(ENOSYS));
-        }
         let info = self.get_protected_vm_info()?;
         if info.firmware_size == 0 {
             Err(Error::new(EINVAL))

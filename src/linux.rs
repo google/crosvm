@@ -2933,6 +2933,10 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
     guest_mem.set_memory_policy(mem_policy);
     let kvm = Kvm::new_with_path(&cfg.kvm_device_path).context("failed to create kvm")?;
     let vm = KvmVm::new(&kvm, guest_mem, components.protected_vm).context("failed to create vm")?;
+    // Check that the VM was actually created in protected mode as expected.
+    if cfg.protected_vm != ProtectionType::Unprotected && !vm.check_capability(VmCap::Protected) {
+        bail!("Failed to create protected VM");
+    }
     let vm_clone = vm.try_clone().context("failed to clone vm")?;
 
     enum KvmIrqChip {
