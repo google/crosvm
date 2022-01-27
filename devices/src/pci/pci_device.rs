@@ -23,6 +23,9 @@ use crate::{BusAccessInfo, BusDevice};
 #[sorted]
 #[derive(Error, Debug)]
 pub enum Error {
+    /// Invalid alignment encountered.
+    #[error("Alignment must be a power of 2")]
+    BadAlignment,
     /// Setup of the device capabilities failed.
     #[error("failed to add capability {0}")]
     CapabilitiesSetup(pci_configuration::Error),
@@ -40,21 +43,21 @@ pub enum Error {
     /// Registering an IO BAR failed.
     #[error("failed to register an IO BAR, addr={0} err={1}")]
     IoRegistrationFailed(u64, pci_configuration::Error),
-    /// MSIX Allocator encounters out-of-space
-    #[error("Out-of-space detected in MSIX Allocator")]
-    MsixAllocatorOutOfSpace,
-    /// MSIX Allocator encounters overflow
-    #[error("base={base} + size={size} overflows in MSIX Allocator")]
-    MsixAllocatorOverflow { base: u64, size: u64 },
-    /// MSIX Allocator encounters size of zero
-    #[error("Size of zero detected in MSIX Allocator")]
-    MsixAllocatorSizeZero,
+    /// Out-of-space encountered
+    #[error("Out-of-space detected")]
+    OutOfSpace,
+    /// Overflow encountered
+    #[error("base={0} + size={1} overflows")]
+    Overflow(u64, u64),
     /// PCI Address is not allocated.
     #[error("PCI address is not allocated")]
     PciAddressMissing,
     /// PCI Address allocation failure.
     #[error("failed to allocate PCI address")]
     PciAllocationFailed,
+    /// Size of zero encountered
+    #[error("Size of zero detected")]
+    SizeZero,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -728,6 +728,10 @@ impl PciBarConfiguration {
     pub fn is_io(&self) -> bool {
         self.region_type == PciBarRegionType::IoRegion
     }
+
+    pub fn is_prefetchable(&self) -> bool {
+        self.is_memory() && self.prefetchable == PciBarPrefetchable::Prefetchable
+    }
 }
 
 #[cfg(test)]
