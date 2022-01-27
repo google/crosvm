@@ -214,7 +214,7 @@ main() {
     git checkout -b dryrun --track origin/chromeos
 
     "${KOKORO_ARTIFACTS_DIR}/create_merge" --dry-run-only "origin/main"
-    upload_with_retries "hashtag=dryrun,l=Commit-Queue+1"
+    upload_with_retries "hashtag=dryrun,l=Commit-Queue+1,l=Bot-Commit+1"
 }
 
 main
