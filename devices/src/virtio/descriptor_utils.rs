@@ -12,6 +12,7 @@ use std::ptr::copy_nonoverlapping;
 use std::result;
 use std::sync::Arc;
 
+use anyhow::Context;
 use base::{FileReadWriteAtVolatile, FileReadWriteVolatile};
 use cros_async::MemRegion;
 use data_model::{DataInit, Le16, Le32, Le64, VolatileMemoryError, VolatileSlice};
@@ -30,8 +31,8 @@ pub enum Error {
     DescriptorChainOverflow,
     #[error("descriptor guest memory error: {0}")]
     GuestMemoryError(vm_memory::GuestMemoryError),
-    #[error("invalid descriptor chain")]
-    InvalidChain,
+    #[error("invalid descriptor chain: {0:#}")]
+    InvalidChain(anyhow::Error),
     #[error("descriptor I/O error: {0}")]
     IoError(io::Error),
     #[error("`DescriptorChain` split is out of bounds: {0}")]
@@ -802,18 +803,20 @@ pub fn create_descriptor_chain(
         let offset = size + spaces_between_regions;
         buffers_start_addr = buffers_start_addr
             .checked_add(offset as u64)
-            .ok_or(Error::InvalidChain)?;
+            .context("Invalid buffers_start_addr)")
+            .map_err(Error::InvalidChain)?;
 
         let _ = memory.write_obj_at_addr(
             desc,
             descriptor_array_addr
                 .checked_add(index as u64 * std::mem::size_of::<virtq_desc>() as u64)
-                .ok_or(Error::InvalidChain)?,
+                .context("Invalid descriptor_array_addr")
+                .map_err(Error::InvalidChain)?,
         );
     }
 
     DescriptorChain::checked_new(memory, descriptor_array_addr, 0x100, 0, 0)
-        .ok_or(Error::InvalidChain)
+        .map_err(Error::InvalidChain)
 }
 
 #[cfg(test)]

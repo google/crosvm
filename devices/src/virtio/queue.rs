@@ -6,6 +6,7 @@ use std::cmp::min;
 use std::num::Wrapping;
 use std::sync::atomic::{fence, Ordering};
 
+use anyhow::{bail, Context};
 use base::error;
 use cros_async::{AsyncError, EventAsync};
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
@@ -85,15 +86,18 @@ impl DescriptorChain {
         queue_size: u16,
         index: u16,
         required_flags: u16,
-    ) -> Option<DescriptorChain> {
+    ) -> anyhow::Result<DescriptorChain> {
         if index >= queue_size {
-            return None;
+            bail!("index ({}) >= queue_size ({})", index, queue_size);
         }
 
-        let desc_head = mem.checked_offset(desc_table, (index as u64) * 16)?;
+        let desc_head = mem
+            .checked_offset(desc_table, (index as u64) * 16)
+            .context("desc_table checked_offset failed")?;
         // These reads can't fail unless Guest memory is hopelessly broken.
         let addr = GuestAddress(mem.read_obj_from_addr::<u64>(desc_head).unwrap() as u64);
-        mem.checked_offset(desc_head, 16)?;
+        mem.checked_offset(desc_head, 16)
+            .context("desc_head checked_offset failed")?;
         let len: u32 = mem.read_obj_from_addr(desc_head.unchecked_add(8)).unwrap();
         let flags: u16 = mem.read_obj_from_addr(desc_head.unchecked_add(12)).unwrap();
         let next: u16 = mem.read_obj_from_addr(desc_head.unchecked_add(14)).unwrap();
@@ -110,9 +114,9 @@ impl DescriptorChain {
         };
 
         if chain.is_valid() && chain.flags & required_flags == required_flags {
-            Some(chain)
+            Ok(chain)
         } else {
-            None
+            bail!("chain is invalid")
         }
     }
 
@@ -161,17 +165,22 @@ impl DescriptorChain {
         if self.has_next() {
             // Once we see a write-only descriptor, all subsequent descriptors must be write-only.
             let required_flags = self.flags & VIRTQ_DESC_F_WRITE;
-            DescriptorChain::checked_new(
+            match DescriptorChain::checked_new(
                 &self.mem,
                 self.desc_table,
                 self.queue_size,
                 self.next,
                 required_flags,
-            )
-            .map(|mut c| {
-                c.ttl = self.ttl - 1;
-                c
-            })
+            ) {
+                Ok(mut c) => {
+                    c.ttl = self.ttl - 1;
+                    Some(c)
+                }
+                Err(e) => {
+                    error!("{:#}", e);
+                    None
+                }
+            }
         } else {
             None
         }
@@ -431,6 +440,11 @@ impl Queue {
         let descriptor_index: u16 = mem.read_obj_from_addr(desc_idx_addr).unwrap();
 
         DescriptorChain::checked_new(mem, self.desc_table, queue_size, descriptor_index, 0)
+            .map_err(|e| {
+                error!("{:#}", e);
+                e
+            })
+            .ok()
     }
 
     /// Remove the first available descriptor chain from the queue.
