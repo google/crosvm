@@ -93,13 +93,13 @@ If you are not interested in other Chromium OS components, you can simply clone 
 crosvm only. Before you make a commit locally, please set up [Gerrit's Change-Id hook] on your
 system.
 
-```bash
-$ git clone https://chromium.googlesource.com/chromiumos/platform/crosvm
+```sh
+git clone https://chromium.googlesource.com/chromiumos/platform/crosvm
 # Modify code and make a git commit with a commit message following this rule:
 # https://chromium.googlesource.com/chromiumos/docs/+/HEAD/contributing.md#Commit-messages
-$ git commit
+git commit
 # Push your commit to Chromium Gerrit (https://chromium-review.googlesource.com/).
-$ git push origin HEAD:refs/for/main
+git push origin HEAD:refs/for/main
 ```
 
 ### Code review
@@ -150,7 +150,7 @@ through the CQ and watched by the crosvm-uprev rotation.
 To render the book locally, you need to install mdbook and [mdbook-mermaid], which should be
 installed when you run `./tools/install-deps`script.
 
-```bash
+```sh
 cd crosvm/docs/book/
 mdbook build
 ```

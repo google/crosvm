@@ -4,7 +4,7 @@
 
 Obtain the source code via git clone.
 
-```
+```sh
 git clone https://chromium.googlesource.com/chromiumos/platform/crosvm
 ```
 
@@ -27,8 +27,8 @@ git config push.recurseSubmodules no
 Crosvm development best works on Debian derivatives. First install rust via https://rustup.rs/. Then
 for the rest, we provide a script to install the necessary packages on Debian:
 
-```
-$ ./tools/install-deps
+```sh
+./tools/install-deps
 ```
 
 For other systems, please see below for instructions on
@@ -42,9 +42,9 @@ installation of foreign architecture packages.
 On Debian this is as easy as:
 
 ```sh
-$ sudo dpkg --add-architecture arm64
-$ sudo dpkg --add-architecture armhf
-$ sudo apt update
+sudo dpkg --add-architecture arm64
+sudo dpkg --add-architecture armhf
+sudo apt update
 ```
 
 On ubuntu this is a little harder and needs some
@@ -57,8 +57,8 @@ For other systems (**including gLinux**), please see below for instructions on
 With that enabled, the following scripts will install the needed packages:
 
 ```sh
-$ ./tools/install-aarch64-deps
-$ ./tools/install-armhf-deps
+./tools/install-aarch64-deps
+./tools/install-armhf-deps
 ```
 
 ### Using the development container
@@ -67,7 +67,7 @@ We provide a Debian container with the required packages installed. With
 [Docker installed](https://docs.docker.com/get-docker/), it can be started with:
 
 ```sh
-$ ./tools/dev_container
+./tools/dev_container
 ```
 
 The container image is big and may take a while to download when first used. Once started, you can
@@ -76,7 +76,7 @@ follow all instructions in this document within the container shell.
 Instead of using the interactive shell, commands to execute can be provided directly:
 
 ```sh
-$ ./tools/dev_container cargo build
+./tools/dev_container cargo build
 ```
 
 Note: The container and build artifacts are preserved between calls to `./tools/dev_container`. If
@@ -101,8 +101,8 @@ If you are working on aarch64 specific code, you can use the `set_test_target` t
 cargo to build for aarch64 and run tests on a VM:
 
 ```sh
-$ ./tools/set_test_target vm:aarch64 && source .envrc
-$ cd mycrate && cargo test
+./tools/set_test_target vm:aarch64 && source .envrc
+cd mycrate && cargo test
 ```
 
 The script will start a VM for testing and write environment variables for cargo to `.envrc`. With
@@ -116,28 +116,28 @@ Crosvm cannot use `cargo test --workspace` because of various restrictions of ca
 own test runner:
 
 ```sh
-$ ./tools/run_tests
+./tools/run_tests
 ```
 
 Which will run all tests locally. Since we have some architecture-dependent code, we also have the
 option of running tests within an aarch64 VM:
 
 ```sh
-$ ./tools/run_tests --target=vm:aarch64
+./tools/run_tests --target=vm:aarch64
 ```
 
 When working on a machine that does not support cross-compilation (e.g. gLinux), you can use the dev
 container to build and run the tests.
 
 ```sh
-$ ./tools/dev_container ./tools/run_tests --target=vm:aarch64
+./tools/dev_container ./tools/run_tests --target=vm:aarch64
 ```
 
 It is also possible to run tests on a remote machine via ssh. The target architecture is
 automatically detected:
 
 ```sh
-$ ./tools/run_tests --target=ssh:hostname
+./tools/run_tests --target=ssh:hostname
 ```
 
 However, it is your responsibility to make sure the required libraries for crosvm are installed and
@@ -148,8 +148,8 @@ the VM has installed.
 
 To verify changes before submitting, use the `presubmit` script:
 
-```
-$ ./tools/presubmit
+```sh
+./tools/presubmit
 ```
 
 This will run clippy, formatters and runs all tests. The presubmits will use the dev container to
@@ -157,14 +157,14 @@ build for other platforms if your host is not set up to do so.
 
 To run checks faster, they can be run in parallel in multiple tmux panes:
 
-```
-$ ./tools/presubmit --tmux
+```sh
+./tools/presubmit --tmux
 ```
 
 The `--quick` variant will skip some slower checks, like building for other platforms altogether:
 
-```
-$ ./tools/presubmit --quick
+```sh
+./tools/presubmit --quick
 ```
 
 ## Known issues
