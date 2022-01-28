@@ -1557,6 +1557,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             to_gdb_channel.clone(),
             cfg.per_vm_core_scheduling,
             cfg.host_cpu_topology,
+            cfg.privileged_vm,
             match vcpu_cgroup_tasks_file {
                 None => None,
                 Some(ref f) => Some(

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::prelude::*;
 use std::sync::{mpsc, Arc, Barrier};
 
@@ -231,6 +231,32 @@ where
     }
 }
 
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+fn handle_s2idle_request(_privileged_vm: bool) {}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn handle_s2idle_request(privileged_vm: bool) {
+    const POWER_STATE_FREEZE: &[u8] = b"freeze";
+
+    // For non privileged guests, we silently ignore the suspend request
+    if !privileged_vm {
+        return;
+    }
+
+    let mut power_state = match OpenOptions::new().write(true).open("/sys/power/state") {
+        Ok(s) => s,
+        Err(err) => {
+            error!("Failed on open /sys/power/state: {}", err);
+            return;
+        }
+    };
+
+    if let Err(err) = power_state.write(POWER_STATE_FREEZE) {
+        error!("Failed on writing to /sys/power/state: {}", err);
+        return;
+    }
+}
+
 fn vcpu_loop<V>(
     mut run_mode: VmRunMode,
     cpu_id: usize,
@@ -244,6 +270,7 @@ fn vcpu_loop<V>(
     requires_pvclock_ctrl: bool,
     from_main_tube: mpsc::Receiver<VcpuControl>,
     use_hypervisor_signals: bool,
+    privileged_vm: bool,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))] to_gdb_tube: Option<
         mpsc::Sender<VcpuDebugStatusMessage>,
     >,
@@ -435,6 +462,9 @@ where
                     info!("system crash event on vcpu {}", cpu_id);
                     return ExitState::Stop;
                 }
+                Ok(VcpuExit::SystemEventS2Idle) => {
+                    handle_s2idle_request(privileged_vm);
+                }
                 #[rustfmt::skip] Ok(VcpuExit::Debug { .. }) => {
                     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
                     {
@@ -508,6 +538,7 @@ pub fn run_vcpu<V>(
     >,
     enable_per_vm_core_scheduling: bool,
     host_cpu_topology: bool,
+    privileged_vm: bool,
     vcpu_cgroup_tasks_file: Option<File>,
 ) -> Result<JoinHandle<()>>
 where
@@ -574,6 +605,7 @@ where
                 requires_pvclock_ctrl,
                 from_main_tube,
                 use_hypervisor_signals,
+                privileged_vm,
                 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
                 to_gdb_tube,
                 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]

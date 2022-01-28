@@ -372,6 +372,7 @@ pub enum VcpuExit {
     SystemEventShutdown,
     SystemEventReset,
     SystemEventCrash,
+    SystemEventS2Idle,
 }
 
 /// A device type to create with `Vm.create_device`.
