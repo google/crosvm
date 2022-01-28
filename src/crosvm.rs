@@ -8,7 +8,7 @@
 pub mod argument;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 pub mod gdb;
-#[path = "linux.rs"]
+#[path = "linux/mod.rs"]
 pub mod platform;
 #[cfg(feature = "plugin")]
 pub mod plugin;
