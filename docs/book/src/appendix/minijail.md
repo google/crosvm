@@ -8,8 +8,8 @@ The fact that minijail was written, maintained, and continuously tested by a pro
 team more than makes up for its being written in an memory unsafe language.
 
 The exact configuration of the sandbox varies by device, but they are mostly alike. See
-`create_base_minijail` from `linux.rs`. The set of security constraints explicitly used in crosvm
-are:
+`create_base_minijail` from `linux/jail_helpers.rs`. The set of security constraints explicitly used
+in crosvm are:
 
 - PID Namespace
   - Runs as init
