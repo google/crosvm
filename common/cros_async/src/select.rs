@@ -24,7 +24,7 @@ macro_rules! generate {
         $(#[$doc:meta])*
         ($Select:ident, <$($Fut:ident),*>),
     )*) => ($(
-        #[must_use = "Combinations of futures don't do anything unless run in an executor."]
+
         paste::item! {
             pub(crate) struct $Select<$($Fut: Future + Unpin),*> {
                 $($Fut: MaybeDone<$Fut>,)*
