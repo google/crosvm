@@ -11,10 +11,14 @@
 use std::cell::RefCell;
 use std::mem::{size_of, transmute};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
-use std::ptr::null_mut;
+use std::ptr::{null, null_mut};
 use std::rc::Rc;
+use std::sync::Arc;
 
-use base::{ExternalMapping, ExternalMappingError, ExternalMappingResult};
+use base::{
+    ExternalMapping, ExternalMappingError, ExternalMappingResult, FromRawDescriptor,
+    IntoRawDescriptor, SafeDescriptor,
+};
 
 use crate::generated::virgl_renderer_bindings::{
     iovec, virgl_box, virgl_renderer_resource_create_args,
@@ -33,6 +37,16 @@ pub struct GfxstreamRendererCallbacks {
     pub version: c_int,
     pub write_fence: unsafe extern "C" fn(cookie: *mut c_void, fence: u32),
 }
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct stream_renderer_handle {
+    pub os_handle: i32,
+    pub handle_type: u32,
+}
+
+#[allow(non_camel_case_types)]
+type stream_renderer_create_blob = ResourceCreateBlob;
 
 #[link(name = "gfxstream_backend")]
 extern "C" {
@@ -106,7 +120,16 @@ extern "C" {
     fn pipe_virgl_renderer_ctx_attach_resource(ctx_id: c_int, res_handle: c_int);
     fn pipe_virgl_renderer_ctx_detach_resource(ctx_id: c_int, res_handle: c_int);
 
-    fn stream_renderer_resource_create_v2(res_handle: u32, hostmemId: u64);
+    fn stream_renderer_create_blob(
+        ctx_id: u32,
+        res_handle: u32,
+        create_blob: *const stream_renderer_create_blob,
+        iovecs: *const iovec,
+        num_iovs: u32,
+        handle: *const stream_renderer_handle,
+    ) -> c_int;
+
+    fn stream_renderer_export_blob(res_handle: u32, handle: *mut stream_renderer_handle) -> c_int;
     fn stream_renderer_resource_map(
         res_handle: u32,
         map: *mut *mut c_void,
@@ -243,6 +266,21 @@ impl Gfxstream {
         ret_to_res(ret)?;
 
         Ok(map_info)
+    }
+
+    fn export_blob(&self, resource_id: u32) -> RutabagaResult<Arc<RutabagaHandle>> {
+        let mut stream_handle: stream_renderer_handle = Default::default();
+        let ret = unsafe { stream_renderer_export_blob(resource_id as u32, &mut stream_handle) };
+        ret_to_res(ret)?;
+
+        // Safe because the handle was just returned by a successful gfxstream call so it must be
+        // valid and owned by us.
+        let handle = unsafe { SafeDescriptor::from_raw_descriptor(stream_handle.os_handle) };
+
+        Ok(Arc::new(RutabagaHandle {
+            os_handle: handle,
+            handle_type: stream_handle.handle_type,
+        }))
     }
 }
 
@@ -428,17 +466,43 @@ impl RutabagaComponent for Gfxstream {
 
     fn create_blob(
         &mut self,
-        _ctx_id: u32,
+        ctx_id: u32,
         resource_id: u32,
         resource_create_blob: ResourceCreateBlob,
-        iovec_opt: Option<Vec<RutabagaIovec>>,
+        mut iovec_opt: Option<Vec<RutabagaIovec>>,
+        handle_opt: Option<RutabagaHandle>,
     ) -> RutabagaResult<RutabagaResource> {
-        unsafe {
-            stream_renderer_resource_create_v2(resource_id, resource_create_blob.blob_id);
+        let mut iovec_ptr = null_mut();
+        let mut num_iovecs = 0;
+        if let Some(ref mut iovecs) = iovec_opt {
+            iovec_ptr = iovecs.as_mut_ptr();
+            num_iovecs = iovecs.len() as u32;
         }
+
+        let mut handle_ptr = null();
+        let mut stream_handle: stream_renderer_handle = Default::default();
+        if let Some(handle) = handle_opt {
+            stream_handle.handle_type = handle.handle_type;
+            stream_handle.os_handle = handle.os_handle.into_raw_descriptor();
+            handle_ptr = &stream_handle;
+        }
+
+        let ret = unsafe {
+            stream_renderer_create_blob(
+                ctx_id,
+                resource_id,
+                &resource_create_blob as *const stream_renderer_create_blob,
+                iovec_ptr as *const iovec,
+                num_iovecs,
+                handle_ptr as *const stream_renderer_handle,
+            )
+        };
+
+        ret_to_res(ret)?;
+
         Ok(RutabagaResource {
             resource_id,
-            handle: None,
+            handle: self.export_blob(resource_id).ok(),
             blob: true,
             blob_mem: resource_create_blob.blob_mem,
             blob_flags: resource_create_blob.blob_flags,

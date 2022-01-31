@@ -133,6 +133,7 @@ pub trait RutabagaComponent {
         _resource_id: u32,
         _resource_create_blob: ResourceCreateBlob,
         _iovec_opt: Option<Vec<RutabagaIovec>>,
+        _handle_opt: Option<RutabagaHandle>,
     ) -> RutabagaResult<RutabagaResource> {
         Err(RutabagaError::Unsupported)
     }
@@ -167,7 +168,7 @@ pub trait RutabagaContext {
         &mut self,
         _resource_id: u32,
         _resource_create_blob: ResourceCreateBlob,
-        _handle: Option<RutabagaHandle>,
+        _handle_opt: Option<RutabagaHandle>,
     ) -> RutabagaResult<RutabagaResource> {
         Err(RutabagaError::Unsupported)
     }
@@ -463,28 +464,33 @@ impl Rutabaga {
             return Err(RutabagaError::InvalidResourceId);
         }
 
+        let component = self
+            .components
+            .get_mut(&self.default_component)
+            .ok_or(RutabagaError::InvalidComponent)?;
+
+        let mut context = None;
         // For the cross-domain context, we'll need to create the blob resource via a home-grown
-        // rutabaga context rather than one from an external C/C++ component.  Use `ctx_id` to check
-        // if it happens to be a cross-domain context.
+        // rutabaga context rather than one from an external C/C++ component.  Use `ctx_id` and
+        // the component type if it happens to be a cross-domain context.
         if ctx_id > 0 {
             let ctx = self
                 .contexts
                 .get_mut(&ctx_id)
                 .ok_or(RutabagaError::InvalidContextId)?;
 
-            if let Ok(resource) = ctx.context_create_blob(resource_id, resource_create_blob, handle)
-            {
-                self.resources.insert(resource_id, resource);
-                return Ok(());
+            if ctx.component_type() == RutabagaComponentType::CrossDomain {
+                context = Some(ctx);
             }
         }
 
-        let component = self
-            .components
-            .get_mut(&self.default_component)
-            .ok_or(RutabagaError::InvalidComponent)?;
+        let resource = match context {
+            Some(ctx) => ctx.context_create_blob(resource_id, resource_create_blob, handle)?,
+            None => {
+                component.create_blob(ctx_id, resource_id, resource_create_blob, iovecs, handle)?
+            }
+        };
 
-        let resource = component.create_blob(ctx_id, resource_id, resource_create_blob, iovecs)?;
         self.resources.insert(resource_id, resource);
         Ok(())
     }
