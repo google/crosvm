@@ -35,7 +35,6 @@ def generate_module(module_name, allowlist, header, clang_args, lib_name,
     '--allowlist-var', allowlist,
     '--allowlist-type', allowlist,
     '--no-prepend-enum-name',
-    '--no-rustfmt-bindings',
     '-o', module_name + '_bindings.rs',
   ];
 
@@ -87,7 +86,6 @@ def get_parser():
                       default='/',
                       help='sysroot directory (default=%(default)s)')
   parser.add_argument('--virglrenderer',
-                      default='git://git.freedesktop.org/git/virglrenderer',
                       help='virglrenderer src dir/repo (default=%(default)s)')
   parser.add_argument('--virgl_branch',
                       default='master',
@@ -105,23 +103,29 @@ def main(argv):
   if opts.verbose:
     verbose = True
 
-  virgl_src_dir = opts.virglrenderer
-  virgl_src_dir_temp = None
-  if '://' in opts.virglrenderer:
-    virgl_src_dir_temp = tempfile.TemporaryDirectory(prefix='virglrenderer-src')
-    virgl_src_dir = virgl_src_dir_temp.name
-    if not download_virgl(opts.virglrenderer, virgl_src_dir, opts.virgl_branch):
-      print('failed to clone \'{}\' to \'{}\''.format(virgl_src_dir,
-                                                      opts.virgl_branch))
-      sys.exit(1)
+  if opts.virglrenderer:
+    if '://' in opts.virglrenderer:
+      virgl_src_dir_temp = tempfile.TemporaryDirectory(prefix='virglrenderer-src')
+      virgl_src_dir = virgl_src_dir_temp.name
+      if not download_virgl(opts.virglrenderer, virgl_src_dir, opts.virgl_branch):
+        print('failed to clone \'{}\' to \'{}\''.format(virgl_src_dir,
+                                                        opts.virgl_branch))
+        sys.exit(1)
+    else:
+      virgl_src_dir = opts.virglrenderer
 
-  clang_args = ['-I', os.path.join(opts.sysroot, 'usr/include')]
+    header = os.path.join(virgl_src_dir, 'src/virglrenderer.h')
+  else:
+    header = os.path.join(opts.sysroot, 'usr/include/virgl/virglrenderer.h')
+
+  clang_args = ['-I', os.path.join(opts.sysroot, 'usr/include'),
+                '-D', 'VIRGL_RENDERER_UNSTABLE_APIS']
 
   modules = (
     (
       'virgl_renderer',
       '(virgl|VIRGL)_.+',
-      os.path.join(opts.sysroot, 'usr/include/virgl/virglrenderer.h'),
+      header,
       clang_args,
       'virglrenderer',
       True,
