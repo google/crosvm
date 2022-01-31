@@ -91,15 +91,8 @@ extern "C" fn debug_callback(fmt: *const ::std::os::raw::c_char, ap: *mut __va_l
     let mut v = [b' '; BUF_LEN];
 
     let printed_len = unsafe {
-        let mut varargs = __va_list_tag {
-            gp_offset: (*ap).gp_offset,
-            fp_offset: (*ap).fp_offset,
-            overflow_arg_area: (*ap).overflow_arg_area,
-            reg_save_area: (*ap).reg_save_area,
-        };
-
         let ptr = v.as_mut_ptr() as *mut i8;
-        vsnprintf(ptr, BUF_LEN as u64, fmt, &mut varargs)
+        vsnprintf(ptr, BUF_LEN as u64, fmt, ap)
     };
 
     if printed_len < 0 {
