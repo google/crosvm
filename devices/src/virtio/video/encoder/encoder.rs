@@ -83,22 +83,9 @@ impl EncoderCapabilities {
             stride = allowed_width;
         }
 
-        let plane_formats = match format_desc.format {
-            Format::NV12 => {
-                let y_plane = PlaneFormat {
-                    plane_size: stride * allowed_height,
-                    stride,
-                };
-                let crcb_plane = PlaneFormat {
-                    plane_size: y_plane.plane_size / 2,
-                    stride,
-                };
-                vec![y_plane, crcb_plane]
-            }
-            _ => {
-                return Err(VideoError::InvalidFormat);
-            }
-        };
+        let plane_formats =
+            PlaneFormat::get_plane_layout(format_desc.format, stride, allowed_height)
+                .ok_or(VideoError::InvalidFormat)?;
 
         src_params.frame_width = allowed_width;
         src_params.frame_height = allowed_height;

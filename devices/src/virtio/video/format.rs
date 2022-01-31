@@ -168,6 +168,28 @@ pub struct PlaneFormat {
 }
 impl_from_for_interconvertible_structs!(virtio_video_plane_format, PlaneFormat, plane_size, stride);
 
+impl PlaneFormat {
+    pub fn get_plane_layout(format: Format, width: u32, height: u32) -> Option<Vec<PlaneFormat>> {
+        match format {
+            Format::NV12 => Some(vec![
+                // Y plane, 1 sample per pixel.
+                PlaneFormat {
+                    plane_size: width * height,
+                    stride: width,
+                },
+                // UV plane, 1 sample per group of 4 pixels for U and V.
+                PlaneFormat {
+                    // Add one vertical line so odd resolutions result in an extra UV line to cover all the
+                    // Y samples.
+                    plane_size: width * ((height + 1) / 2),
+                    stride: width,
+                },
+            ]),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct FormatRange {
     pub min: u32,
