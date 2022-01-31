@@ -26,14 +26,17 @@ END_COLOR = '\033[0m'
 
 verbose = False
 
-def generate_module(module_name, allowlist, header, clang_args, lib_name,
-                    derive_default):
+def generate_module(module_name, allowlist, blocklist, header, clang_args,
+                    lib_name, derive_default):
   args = [
     'bindgen',
     '--no-layout-tests',
     '--allowlist-function', allowlist,
     '--allowlist-var', allowlist,
     '--allowlist-type', allowlist,
+    '--blocklist-function', blocklist,
+    '--blocklist-item', blocklist,
+    '--blocklist-type', blocklist,
     '--no-prepend-enum-name',
     '-o', module_name + '_bindings.rs',
   ];
@@ -124,7 +127,8 @@ def main(argv):
   modules = (
     (
       'virgl_renderer',
-      '(virgl|VIRGL)_.+',
+      '(virgl|VIRGL)_.+', # allowlist
+      '.*(va_list|debug_callback).*', # blocklist
       header,
       clang_args,
       'virglrenderer',
@@ -157,6 +161,7 @@ def main(argv):
     print('#![allow(non_camel_case_types)]', file=f)
     print('#![allow(non_snake_case)]', file=f)
     print('#![allow(non_upper_case_globals)]', file=f)
+    print('pub mod virgl_debug_callback_bindings;', file=f)
     for module in modules:
       print('pub mod', module[0] + '_bindings;', file=f)
 
