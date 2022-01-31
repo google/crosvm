@@ -10,9 +10,10 @@ use std::io::prelude::*;
 use std::io::stdin;
 use std::iter;
 use std::mem;
-use std::os::unix::{net::UnixStream, prelude::OpenOptionsExt};
-use std::path::{Path, PathBuf};
-use std::str;
+#[cfg(feature = "gpu")]
+use std::os::unix::net::UnixStream;
+use std::os::unix::prelude::OpenOptionsExt;
+use std::path::Path;
 use std::sync::{mpsc, Arc, Barrier};
 use std::time::Duration;
 
@@ -29,6 +30,7 @@ use base::net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListene
 use base::*;
 use devices::serial_device::SerialHardware;
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
+#[cfg(feature = "gpu")]
 use devices::virtio::{self, EventDevice};
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
@@ -50,7 +52,7 @@ use vm_memory::{GuestAddress, GuestMemory, MemoryPolicy};
 
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use crate::gdb::{gdb_thread, GdbStub};
-use crate::{Config, Executable, SharedDir, SharedDirKind, VfioType, VhostUserOption};
+use crate::{Config, Executable, SharedDir, SharedDirKind, VfioType};
 use arch::{
     self, LinuxArch, RunnableLinuxVm, VcpuAffinity, VirtioDeviceStub, VmComponents, VmImage,
 };

@@ -149,6 +149,7 @@ pub(super) struct Ids {
     pub(super) gid: gid_t,
 }
 
+#[cfg(feature = "gpu")]
 pub(super) fn add_current_user_as_root_to_jail(jail: &mut Minijail) -> Result<Ids> {
     let crosvm_uid = geteuid();
     let crosvm_gid = getegid();

@@ -6,9 +6,12 @@
 //! depends on "gpu" feature
 use std::collections::HashSet;
 use std::env;
+use std::path::PathBuf;
 
 use devices::virtio::vhost::user::vmm::Gpu as VhostUserGpu;
 use devices::virtio::GpuRenderServerParameters;
+
+use crate::VhostUserOption;
 
 use super::*;
 
