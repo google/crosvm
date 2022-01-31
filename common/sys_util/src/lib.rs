@@ -4,7 +4,6 @@
 
 //! Small system utility modules for usage by other modules.
 
-mod alloc;
 #[cfg(target_os = "android")]
 mod android;
 #[cfg(target_os = "android")]
@@ -26,7 +25,6 @@ mod descriptor;
 mod descriptor_reflection;
 mod errno;
 mod eventfd;
-mod external_mapping;
 mod file_flags;
 pub mod file_traits;
 mod fork;
@@ -53,13 +51,11 @@ pub mod vsock;
 mod write_zeroes;
 
 pub use crate::acpi_event::*;
-pub use crate::alloc::LayoutAllocation;
 pub use crate::capabilities::drop_capabilities;
 pub use crate::clock::{Clock, FakeClock};
 pub use crate::descriptor::*;
 pub use crate::errno::{errno_result, Error, Result};
 pub use crate::eventfd::*;
-pub use crate::external_mapping::*;
 pub use crate::file_flags::*;
 pub use crate::fork::*;
 pub use crate::get_filesystem_type::*;
@@ -82,9 +78,8 @@ pub use descriptor_reflection::{
     SerializeDescriptors,
 };
 pub use poll_token_derive::*;
+pub use sys_util_core::*;
 
-pub use crate::external_mapping::Error as ExternalMappingError;
-pub use crate::external_mapping::Result as ExternalMappingResult;
 pub use crate::file_traits::{
     AsRawFds, FileAllocate, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen,
     FileSync,

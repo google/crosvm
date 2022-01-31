@@ -9,7 +9,9 @@ use std::os::unix::io::AsRawFd;
 use data_model::DataInit;
 use libc::EINVAL;
 
-use crate::{errno_result, Error, FromRawDescriptor, LayoutAllocation, Result, SafeDescriptor};
+use sys_util_core::LayoutAllocation;
+
+use crate::{errno_result, Error, FromRawDescriptor, Result, SafeDescriptor};
 
 // Custom nlmsghdr struct that can be declared DataInit.
 #[repr(C)]

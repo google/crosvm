@@ -6,9 +6,10 @@ edition = "2018"
 include = ["src/**/*", "Cargo.toml"]
 
 [dependencies]
+sys_util_core = { path = "../sys_util_core" } # provided by ebuild
 data_model = { path = "../data_model" } # provided by ebuild
 libc = "*"
-poll_token_derive = { version = "*", path = "poll_token_derive" }
+poll_token_derive = { path = "../sys_util_core/poll_token_derive" } # provided by ebuild
 remain = "0.2"
 thiserror = "*"
 serde = { version = "1", features = [ "derive" ] }

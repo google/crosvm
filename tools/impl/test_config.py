@@ -32,6 +32,7 @@ class TestOption(enum.Enum):
 # Please add a bug number when restricting a tests.
 CRATE_OPTIONS: dict[str, list[TestOption]] = {
     "aarch64": [TestOption.BUILD_ARM_ONLY, TestOption.DO_NOT_BUILD_ARMHF], #b/210015864
+    "sys_util_core": [TestOption.SINGLE_THREADED],
     "crosvm_plugin": [TestOption.BUILD_X86_ONLY],
     "devices": [TestOption.SINGLE_THREADED, TestOption.DO_NOT_BUILD_ARMHF],
     "disk": [TestOption.RUN_X86_ONLY],  # b/202294155
@@ -49,9 +50,9 @@ CRATE_OPTIONS: dict[str, list[TestOption]] = {
     "x86_64": [TestOption.BUILD_X86_ONLY],
     "sys_util": [TestOption.SINGLE_THREADED],
     "rutabaga_gfx_ffi": [TestOption.DO_NOT_BUILD],  # b/206689789
-    "rutabaga_gfx": [TestOption.DO_NOT_BUILD_ARMHF], #b/210015864
-    "vm_control": [TestOption.DO_NOT_BUILD_ARMHF], #b/210015864
-    "libcrosvm_control": [TestOption.DO_NOT_BUILD_ARMHF], #b/210015864
+    "rutabaga_gfx": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
+    "vm_control": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
+    "libcrosvm_control": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
 }
 
 BUILD_FEATURES: dict[str, str] = {

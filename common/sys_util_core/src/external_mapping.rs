@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::MappedRegion;
-
 use remain::sorted;
 use thiserror::Error;
 
@@ -70,16 +68,14 @@ impl ExternalMapping {
             unmap,
         })
     }
-}
 
-unsafe impl MappedRegion for ExternalMapping {
     /// used for passing this region to ioctls for setting guest memory.
-    fn as_ptr(&self) -> *mut u8 {
+    pub fn as_ptr(&self) -> *mut u8 {
         self.ptr as *mut u8
     }
 
     /// Returns the size of the memory region in bytes.
-    fn size(&self) -> usize {
+    pub fn size(&self) -> usize {
         self.size
     }
 }

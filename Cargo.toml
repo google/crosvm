@@ -71,6 +71,7 @@ exclude = [
     "common/assertions",
     "common/audio_streams",
     "common/base",
+    "common/sys_util_core",
     "common/cros-fuzz",
     "common/cros_async",
     "common/cros_asyncv2",
@@ -172,6 +173,7 @@ base = "*"
 assertions = { path = "common/assertions" }
 audio_streams = { path = "common/audio_streams" }
 base = { path = "common/base" }
+sys_util_core = { path = "common/sys_util_core" }
 cros_async =  { path = "common/cros_async" }
 cros_fuzz = { path = "common/cros-fuzz" } # ignored by ebuild
 data_model = { path = "common/data_model" }

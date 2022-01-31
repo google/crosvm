@@ -13,6 +13,7 @@ use std::ptr::{copy_nonoverlapping, null_mut, read_unaligned, write_unaligned};
 
 use libc::{self, c_int, c_void, read, write};
 use remain::sorted;
+use sys_util_core::ExternalMapping;
 
 use data_model::volatile_memory::*;
 use data_model::DataInit;
@@ -167,6 +168,17 @@ impl dyn MappedRegion {
         } else {
             Err(Error::SystemCallFailed(errno::Error::last()))
         }
+    }
+}
+
+unsafe impl MappedRegion for ExternalMapping {
+    fn as_ptr(&self) -> *mut u8 {
+        self.as_ptr()
+    }
+
+    /// Returns the size of the memory region in bytes.
+    fn size(&self) -> usize {
+        self.size()
     }
 }
 
