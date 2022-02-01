@@ -921,6 +921,10 @@ impl RutabagaContext for CrossDomainContext {
 
         Ok(())
     }
+
+    fn component_type(&self) -> RutabagaComponentType {
+        RutabagaComponentType::CrossDomain
+    }
 }
 
 impl RutabagaComponent for CrossDomain {

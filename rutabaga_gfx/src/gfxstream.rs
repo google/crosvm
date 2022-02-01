@@ -165,6 +165,10 @@ impl RutabagaContext for GfxstreamContext {
             );
         }
     }
+
+    fn component_type(&self) -> RutabagaComponentType {
+        RutabagaComponentType::Gfxstream
+    }
 }
 
 impl Drop for GfxstreamContext {

@@ -75,6 +75,10 @@ impl RutabagaContext for VirglRendererContext {
             virgl_renderer_ctx_detach_resource(self.ctx_id as i32, resource.resource_id as i32);
         }
     }
+
+    fn component_type(&self) -> RutabagaComponentType {
+        RutabagaComponentType::VirglRenderer
+    }
 }
 
 impl Drop for VirglRendererContext {

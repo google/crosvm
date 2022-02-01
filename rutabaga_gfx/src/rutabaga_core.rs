@@ -192,6 +192,9 @@ pub trait RutabagaContext {
     fn context_poll(&mut self) -> Option<Vec<RutabagaFence>> {
         None
     }
+
+    /// Implementations must return the component type associated with the context.
+    fn component_type(&self) -> RutabagaComponentType;
 }
 
 #[derive(Copy, Clone)]
