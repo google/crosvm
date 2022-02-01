@@ -218,7 +218,7 @@ struct RutabagaCapsetInfo {
     pub _name: &'static str,
 }
 
-const RUTABAGA_CAPSETS: [RutabagaCapsetInfo; 5] = [
+const RUTABAGA_CAPSETS: [RutabagaCapsetInfo; 6] = [
     RutabagaCapsetInfo {
         capset_id: RUTABAGA_CAPSET_VIRGL,
         component: RutabagaComponentType::VirglRenderer,
@@ -243,6 +243,11 @@ const RUTABAGA_CAPSETS: [RutabagaCapsetInfo; 5] = [
         capset_id: RUTABAGA_CAPSET_CROSS_DOMAIN,
         component: RutabagaComponentType::CrossDomain,
         _name: "cross-domain",
+    },
+    RutabagaCapsetInfo {
+        capset_id: RUTABAGA_CAPSET_DRM,
+        component: RutabagaComponentType::VirglRenderer,
+        _name: "drm",
     },
 ];
 
@@ -872,8 +877,9 @@ impl RutabagaBuilder {
 
         if self.context_mask != 0 {
             let supports_gfxstream = capset_enabled(RUTABAGA_CAPSET_GFXSTREAM);
-            let supports_virglrenderer =
-                capset_enabled(RUTABAGA_CAPSET_VIRGL2) | capset_enabled(RUTABAGA_CAPSET_VENUS);
+            let supports_virglrenderer = capset_enabled(RUTABAGA_CAPSET_VIRGL2)
+                | capset_enabled(RUTABAGA_CAPSET_VENUS)
+                | capset_enabled(RUTABAGA_CAPSET_DRM);
 
             if supports_gfxstream {
                 self.default_component = RutabagaComponentType::Gfxstream;
@@ -886,7 +892,9 @@ impl RutabagaBuilder {
             self.virglrenderer_flags = self
                 .virglrenderer_flags
                 .use_virgl(capset_enabled(RUTABAGA_CAPSET_VIRGL2))
-                .use_venus(capset_enabled(RUTABAGA_CAPSET_VENUS));
+                .use_venus(capset_enabled(RUTABAGA_CAPSET_VENUS))
+                .use_async_fence_cb(capset_enabled(RUTABAGA_CAPSET_DRM))
+                .use_drm(capset_enabled(RUTABAGA_CAPSET_DRM));
         }
 
         // Make sure that disabled components are not used as default.
@@ -936,6 +944,7 @@ impl RutabagaBuilder {
                 push_capset(RUTABAGA_CAPSET_VIRGL);
                 push_capset(RUTABAGA_CAPSET_VIRGL2);
                 push_capset(RUTABAGA_CAPSET_VENUS);
+                push_capset(RUTABAGA_CAPSET_DRM);
             }
 
             #[cfg(feature = "gfxstream")]

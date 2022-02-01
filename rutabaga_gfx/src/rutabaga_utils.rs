@@ -123,6 +123,7 @@ pub const RUTABAGA_CAPSET_VIRGL2: u32 = 2;
 pub const RUTABAGA_CAPSET_GFXSTREAM: u32 = 3;
 pub const RUTABAGA_CAPSET_VENUS: u32 = 4;
 pub const RUTABAGA_CAPSET_CROSS_DOMAIN: u32 = 5;
+pub const RUTABAGA_CAPSET_DRM: u32 = 6;
 
 /// An error generated while using this crate.
 #[sorted]
@@ -299,6 +300,7 @@ const VIRGLRENDERER_VENUS: u32 = 1 << 6;
 const VIRGLRENDERER_NO_VIRGL: u32 = 1 << 7;
 pub const VIRGLRENDERER_USE_ASYNC_FENCE_CB: u32 = 1 << 8;
 const VIRGLRENDERER_RENDER_SERVER: u32 = 1 << 9;
+const VIRGLRENDERER_DRM: u32 = 1 << 10;
 
 /// virglrenderer flag struct.
 #[derive(Copy, Clone)]
@@ -350,6 +352,11 @@ impl VirglRendererFlags {
     /// Enable venus support
     pub fn use_venus(self, v: bool) -> VirglRendererFlags {
         self.set_flag(VIRGLRENDERER_VENUS, v)
+    }
+
+    /// Enable drm native context support
+    pub fn use_drm(self, v: bool) -> VirglRendererFlags {
+        self.set_flag(VIRGLRENDERER_DRM, v)
     }
 
     /// Use EGL for context creation.
