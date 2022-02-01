@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::errno::Result;
 use crate::syscall;
+use crate::Result;
 use libc::fstatfs;
 use std::fs::File;
 use std::mem::MaybeUninit;

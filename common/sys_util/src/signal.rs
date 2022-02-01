@@ -21,7 +21,7 @@ use std::result;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use crate::{duration_to_timespec, errno, errno_result, getsid, Pid, Result};
+use crate::{duration_to_timespec, errno_result, getsid, Error as ErrnoError, Pid, Result};
 use std::ops::{Deref, DerefMut};
 
 const POLL_RATE: Duration = Duration::from_millis(50);
@@ -32,28 +32,28 @@ const DEFAULT_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 pub enum Error {
     /// The signal could not be blocked.
     #[error("signal could not be blocked: {0}")]
-    BlockSignal(errno::Error),
+    BlockSignal(ErrnoError),
     /// Failed to check if given signal is in the set of pending signals.
     #[error("failed to check whether given signal is in the pending set: {0}")]
-    ClearCheckPending(errno::Error),
+    ClearCheckPending(ErrnoError),
     /// Failed to get pending signals.
     #[error("failed to get pending signals: {0}")]
-    ClearGetPending(errno::Error),
+    ClearGetPending(ErrnoError),
     /// Failed to wait for given signal.
     #[error("failed to wait for given signal: {0}")]
-    ClearWaitPending(errno::Error),
+    ClearWaitPending(ErrnoError),
     /// Failed to check if the requested signal is in the blocked set already.
     #[error("failed to check whether requested signal is in the blocked set: {0}")]
-    CompareBlockedSignals(errno::Error),
+    CompareBlockedSignals(ErrnoError),
     /// Couldn't create a sigset.
     #[error("couldn't create a sigset: {0}")]
-    CreateSigset(errno::Error),
+    CreateSigset(ErrnoError),
     /// Failed to get session id.
     #[error("failed to get session id: {0}")]
-    GetSid(errno::Error),
+    GetSid(ErrnoError),
     /// Failed to send signal to pid.
     #[error("failed to send signal: {0}")]
-    Kill(errno::Error),
+    Kill(ErrnoError),
     /// The signal mask could not be retrieved.
     #[error("failed to retrieve signal mask: {}", io::Error::from_raw_os_error(*.0))]
     RetrieveSignalMask(i32),
@@ -68,16 +68,16 @@ pub enum Error {
     TimedOut,
     /// The signal could not be unblocked.
     #[error("signal could not be unblocked: {0}")]
-    UnblockSignal(errno::Error),
+    UnblockSignal(ErrnoError),
     /// Failed to convert signum to Signal.
     #[error("unrecoginized signal number: {0}")]
     UnrecognizedSignum(i32),
     /// Failed to wait for signal.
     #[error("failed to wait for signal: {0}")]
-    WaitForSignal(errno::Error),
+    WaitForSignal(ErrnoError),
     /// Failed to wait for pid.
     #[error("failed to wait for process: {0}")]
-    WaitPid(errno::Error),
+    WaitPid(ErrnoError),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -278,10 +278,7 @@ fn valid_rt_signal_num(num: c_int) -> bool {
 ///
 /// This is considered unsafe because the given handler will be called asynchronously, interrupting
 /// whatever the thread was doing and therefore must only do async-signal-safe operations.
-pub unsafe fn register_signal_handler(
-    num: c_int,
-    handler: extern "C" fn(c_int),
-) -> errno::Result<()> {
+pub unsafe fn register_signal_handler(num: c_int, handler: extern "C" fn(c_int)) -> Result<()> {
     let mut sigact: sigaction = mem::zeroed();
     sigact.sa_flags = SA_RESTART;
     sigact.sa_sigaction = handler as *const () as usize;
@@ -295,7 +292,7 @@ pub unsafe fn register_signal_handler(
 }
 
 /// Resets the signal handler of signum `num` back to the default.
-pub fn clear_signal_handler(num: c_int) -> errno::Result<()> {
+pub fn clear_signal_handler(num: c_int) -> Result<()> {
     // Safe because sigaction is owned and expected to be initialized ot zeros.
     let mut sigact: sigaction = unsafe { mem::zeroed() };
     sigact.sa_flags = SA_RESTART;
@@ -311,7 +308,7 @@ pub fn clear_signal_handler(num: c_int) -> errno::Result<()> {
 }
 
 /// Returns true if the signal handler for signum `num` is the default.
-pub fn has_default_signal_handler(num: c_int) -> errno::Result<bool> {
+pub fn has_default_signal_handler(num: c_int) -> Result<bool> {
     // Safe because sigaction is owned and expected to be initialized ot zeros.
     let mut sigact: sigaction = unsafe { mem::zeroed() };
 
@@ -332,12 +329,9 @@ pub fn has_default_signal_handler(num: c_int) -> errno::Result<bool> {
 ///
 /// This is considered unsafe because the given handler will be called asynchronously, interrupting
 /// whatever the thread was doing and therefore must only do async-signal-safe operations.
-pub unsafe fn register_rt_signal_handler(
-    num: c_int,
-    handler: extern "C" fn(c_int),
-) -> errno::Result<()> {
+pub unsafe fn register_rt_signal_handler(num: c_int, handler: extern "C" fn(c_int)) -> Result<()> {
     if !valid_rt_signal_num(num) {
-        return Err(errno::Error::new(EINVAL));
+        return Err(ErrnoError::new(EINVAL));
     }
 
     register_signal_handler(num, handler)
@@ -346,7 +340,7 @@ pub unsafe fn register_rt_signal_handler(
 /// Creates `sigset` from an array of signal numbers.
 ///
 /// This is a helper function used when we want to manipulate signals.
-pub fn create_sigset(signals: &[c_int]) -> errno::Result<sigset_t> {
+pub fn create_sigset(signals: &[c_int]) -> Result<sigset_t> {
     // sigset will actually be initialized by sigemptyset below.
     let mut sigset: sigset_t = unsafe { mem::zeroed() };
 
@@ -369,7 +363,7 @@ pub fn create_sigset(signals: &[c_int]) -> errno::Result<sigset_t> {
 
 /// Wait for signal before continuing. The signal number of the consumed signal is returned on
 /// success. EAGAIN means the timeout was reached.
-pub fn wait_for_signal(signals: &[c_int], timeout: Option<Duration>) -> errno::Result<c_int> {
+pub fn wait_for_signal(signals: &[c_int], timeout: Option<Duration>) -> Result<c_int> {
     let sigset = create_sigset(signals)?;
 
     match timeout {
@@ -387,7 +381,7 @@ pub fn wait_for_signal(signals: &[c_int], timeout: Option<Duration>) -> errno::R
             let mut ret: c_int = 0;
             let err = handle_eintr_rc!(unsafe { sigwait(&sigset, &mut ret as *mut c_int) });
             if err != 0 {
-                Err(errno::Error::new(err))
+                Err(ErrnoError::new(err))
             } else {
                 Ok(ret)
             }
@@ -429,12 +423,12 @@ pub fn block_signal(num: c_int) -> SignalResult<()> {
         let mut old_sigset: sigset_t = mem::zeroed();
         let ret = pthread_sigmask(SIG_BLOCK, &sigset, &mut old_sigset as *mut sigset_t);
         if ret < 0 {
-            return Err(Error::BlockSignal(errno::Error::last()));
+            return Err(Error::BlockSignal(ErrnoError::last()));
         }
         let ret = sigismember(&old_sigset, num);
         match ret.cmp(&0) {
             Ordering::Less => {
-                return Err(Error::CompareBlockedSignals(errno::Error::last()));
+                return Err(Error::CompareBlockedSignals(ErrnoError::last()));
             }
             Ordering::Greater => {
                 return Err(Error::SignalAlreadyBlocked(num));
@@ -452,7 +446,7 @@ pub fn unblock_signal(num: c_int) -> SignalResult<()> {
     // Safe - return value is checked.
     let ret = unsafe { pthread_sigmask(SIG_UNBLOCK, &sigset, null_mut()) };
     if ret < 0 {
-        return Err(Error::UnblockSignal(errno::Error::last()));
+        return Err(Error::UnblockSignal(ErrnoError::last()));
     }
     Ok(())
 }
@@ -474,11 +468,11 @@ pub fn clear_signal(num: c_int) -> SignalResult<()> {
             // is not pending, the call will fail with EAGAIN or EINTR.
             let ret = sigtimedwait(&sigset, &mut siginfo, &ts);
             if ret < 0 {
-                let e = errno::Error::last();
+                let e = ErrnoError::last();
                 match e.errno() {
                     EAGAIN | EINTR => {}
                     _ => {
-                        return Err(Error::ClearWaitPending(errno::Error::last()));
+                        return Err(Error::ClearWaitPending(ErrnoError::last()));
                     }
                 }
             }
@@ -488,12 +482,12 @@ pub fn clear_signal(num: c_int) -> SignalResult<()> {
             // See if more instances of the signal are pending.
             let ret = sigpending(&mut chkset);
             if ret < 0 {
-                return Err(Error::ClearGetPending(errno::Error::last()));
+                return Err(Error::ClearGetPending(ErrnoError::last()));
             }
 
             let ret = sigismember(&chkset, num);
             if ret < 0 {
-                return Err(Error::ClearCheckPending(errno::Error::last()));
+                return Err(Error::ClearCheckPending(ErrnoError::last()));
             }
 
             // This is do-while loop condition.
@@ -531,9 +525,9 @@ pub unsafe trait Killable {
     /// Sends the signal `num` to this killable thread.
     ///
     /// The value of `num` must be within [`SIGRTMIN`, `SIGRTMAX`] range.
-    fn kill(&self, num: c_int) -> errno::Result<()> {
+    fn kill(&self, num: c_int) -> Result<()> {
         if !valid_rt_signal_num(num) {
-            return Err(errno::Error::new(EINVAL));
+            return Err(ErrnoError::new(EINVAL));
         }
 
         // Safe because we ensure we are using a valid pthread handle, a valid signal number, and
@@ -595,7 +589,7 @@ pub fn kill_tree(child: &mut Child, terminate_timeout: Duration) -> SignalResult
         if child_running {
             if child
                 .try_wait()
-                .map_err(|e| Error::WaitPid(errno::Error::from(e)))?
+                .map_err(|e| Error::WaitPid(ErrnoError::from(e)))?
                 .is_some()
             {
                 child_running = false;
@@ -608,7 +602,7 @@ pub fn kill_tree(child: &mut Child, terminate_timeout: Duration) -> SignalResult
             let ret = unsafe { waitpid(target, null_mut(), WNOHANG) };
             match ret {
                 -1 => {
-                    let err = errno::Error::last();
+                    let err = ErrnoError::last();
                     if err.errno() == libc::ECHILD {
                         // No group members to wait on.
                         break;

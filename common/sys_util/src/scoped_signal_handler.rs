@@ -14,11 +14,11 @@ use libc::{c_int, c_void, STDERR_FILENO};
 use remain::sorted;
 use thiserror::Error;
 
-use crate::errno;
 use crate::signal::{
     clear_signal_handler, has_default_signal_handler, register_signal_handler, wait_for_signal,
     Signal,
 };
+use crate::Error as ErrnoError;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -31,16 +31,16 @@ pub enum Error {
     HandlerAlreadySet(Signal),
     /// Failed to check if signal has the default signal handler.
     #[error("failed to check the signal handler for {0:?}: {1}")]
-    HasDefaultSignalHandler(Signal, errno::Error),
+    HasDefaultSignalHandler(Signal, ErrnoError),
     /// Failed to register a signal handler.
     #[error("failed to register a signal handler for {0:?}: {1}")]
-    RegisterSignalHandler(Signal, errno::Error),
+    RegisterSignalHandler(Signal, ErrnoError),
     /// Sigaction failed.
     #[error("sigaction failed for {0:?}: {1}")]
-    Sigaction(Signal, errno::Error),
+    Sigaction(Signal, ErrnoError),
     /// Failed to wait for signal.
     #[error("wait_for_signal failed: {0}")]
-    WaitForSignal(errno::Error),
+    WaitForSignal(ErrnoError),
 }
 
 pub type Result<T> = result::Result<T, Error>;
@@ -219,7 +219,7 @@ mod tests {
         let mut sigact: sigaction = unsafe { zeroed() };
 
         if unsafe { sigaction(signal.into(), null(), &mut sigact) } < 0 {
-            Err(Error::Sigaction(signal, errno::Error::last()))
+            Err(Error::Sigaction(signal, ErrnoError::last()))
         } else {
             Ok(sigact)
         }
@@ -229,7 +229,7 @@ mod tests {
     /// This is only safe if the signal handler set in sigaction is safe.
     unsafe fn restore_sigaction(signal: Signal, sigact: sigaction) -> Result<sigaction> {
         if sigaction(signal.into(), &sigact, null_mut()) < 0 {
-            Err(Error::Sigaction(signal, errno::Error::last()))
+            Err(Error::Sigaction(signal, ErrnoError::last()))
         } else {
             Ok(sigact)
         }
@@ -341,14 +341,14 @@ mod tests {
 
     /// Query /proc/${tid}/status for its State and check if it is either S (sleeping) or in
     /// D (disk sleep).
-    fn thread_is_sleeping(tid: Pid) -> result::Result<bool, errno::Error> {
+    fn thread_is_sleeping(tid: Pid) -> result::Result<bool, ErrnoError> {
         const PREFIX: &str = "State:";
         let mut status_reader = BufReader::new(File::open(format!("/proc/{}/status", tid))?);
         let mut line = String::new();
         loop {
             let count = status_reader.read_line(&mut line)?;
             if count == 0 {
-                return Err(errno::Error::new(libc::EIO));
+                return Err(ErrnoError::new(libc::EIO));
             }
             if let Some(stripped) = line.strip_prefix(PREFIX) {
                 return Ok(matches!(
@@ -361,14 +361,14 @@ mod tests {
     }
 
     /// Wait for a process to block either in a sleeping or disk sleep state.
-    fn wait_for_thread_to_sleep(tid: Pid, timeout: Duration) -> result::Result<(), errno::Error> {
+    fn wait_for_thread_to_sleep(tid: Pid, timeout: Duration) -> result::Result<(), ErrnoError> {
         let start = Instant::now();
         loop {
             if thread_is_sleeping(tid)? {
                 return Ok(());
             }
             if start.elapsed() > timeout {
-                return Err(errno::Error::new(libc::EAGAIN));
+                return Err(ErrnoError::new(libc::EAGAIN));
             }
             sleep(Duration::from_millis(50));
         }
@@ -389,7 +389,7 @@ mod tests {
         let tid = gettid();
         WAIT_FOR_INTERRUPT_THREAD_ID.store(tid, Ordering::SeqCst);
 
-        let join_handle = spawn(move || -> result::Result<(), errno::Error> {
+        let join_handle = spawn(move || -> result::Result<(), ErrnoError> {
             // Wait unitl the thread is ready to receive the signal.
             wait_for_thread_to_sleep(tid, Duration::from_secs(10)).unwrap();
 

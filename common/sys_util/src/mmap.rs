@@ -18,7 +18,7 @@ use sys_util_core::ExternalMapping;
 use data_model::volatile_memory::*;
 use data_model::DataInit;
 
-use crate::{errno, pagesize};
+use crate::{pagesize, Error as ErrnoError};
 
 #[sorted]
 #[derive(Debug, thiserror::Error)]
@@ -40,7 +40,7 @@ pub enum Error {
     #[error("`remove_mapping` is unsupported")]
     RemoveMappingIsUnsupported,
     #[error("mmap related system call failed: {0}")]
-    SystemCallFailed(#[source] errno::Error),
+    SystemCallFailed(#[source] ErrnoError),
     #[error("failed to write from memory to file: {0}")]
     WriteFromMemory(#[source] io::Error),
 }
@@ -166,7 +166,7 @@ impl dyn MappedRegion {
         if ret != -1 {
             Ok(())
         } else {
-            Err(Error::SystemCallFailed(errno::Error::last()))
+            Err(Error::SystemCallFailed(ErrnoError::last()))
         }
     }
 }
@@ -386,7 +386,7 @@ impl MemoryMapping {
         };
         let addr = libc::mmap(addr, size, prot, flags, fd, offset);
         if addr == libc::MAP_FAILED {
-            return Err(Error::SystemCallFailed(errno::Error::last()));
+            return Err(Error::SystemCallFailed(ErrnoError::last()));
         }
         // This is safe because we call madvise with a valid address and size.
         let _ = libc::madvise(addr, size, libc::MADV_DONTDUMP);
@@ -417,7 +417,7 @@ impl MemoryMapping {
             )
         };
         if ret == -1 {
-            Err(Error::SystemCallFailed(errno::Error::last()))
+            Err(Error::SystemCallFailed(ErrnoError::last()))
         } else {
             Ok(())
         }
@@ -435,7 +435,7 @@ impl MemoryMapping {
             )
         };
         if ret == -1 {
-            return Err(Error::SystemCallFailed(errno::Error::last()));
+            return Err(Error::SystemCallFailed(ErrnoError::last()));
         }
         Ok(())
     }

@@ -13,7 +13,7 @@ use libc::{EAGAIN, SFD_CLOEXEC, SFD_NONBLOCK};
 use remain::sorted;
 use thiserror::Error;
 
-use crate::{errno, signal, AsRawDescriptor, RawDescriptor};
+use crate::{signal, AsRawDescriptor, Error as ErrnoError, RawDescriptor};
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -23,17 +23,17 @@ pub enum Error {
     CreateBlockSignal(signal::Error),
     /// Failed to create a new signalfd.
     #[error("failed to create a new signalfd: {0}")]
-    CreateSignalFd(errno::Error),
+    CreateSignalFd(ErrnoError),
     /// Failed to construct sigset when creating signalfd.
     #[error("failed to construct sigset when creating signalfd: {0}")]
-    CreateSigset(errno::Error),
+    CreateSigset(ErrnoError),
     /// Signalfd could be read, but didn't return a full siginfo struct.
     /// This wraps the number of bytes that were actually read.
     #[error("signalfd failed to return a full siginfo struct, read only {0} bytes")]
     SignalFdPartialRead(usize),
     /// Unable to read from signalfd.
     #[error("unable to read from signalfd: {0}")]
-    SignalFdRead(errno::Error),
+    SignalFdRead(ErrnoError),
 }
 
 pub type Result<T> = result::Result<T, Error>;
@@ -59,7 +59,7 @@ impl SignalFd {
         // This is safe as we check the return value and know that fd is valid.
         let fd = unsafe { signalfd(-1, &sigset, SFD_CLOEXEC | SFD_NONBLOCK) };
         if fd < 0 {
-            return Err(Error::CreateSignalFd(errno::Error::last()));
+            return Err(Error::CreateSignalFd(ErrnoError::last()));
         }
 
         // Mask out the normal handler for the signal.
@@ -95,7 +95,7 @@ impl SignalFd {
         };
 
         if ret < 0 {
-            let err = errno::Error::last();
+            let err = ErrnoError::last();
             if err.errno() == EAGAIN {
                 Ok(None)
             } else {

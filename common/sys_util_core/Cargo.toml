@@ -8,6 +8,7 @@ include = ["src/**/*", "Cargo.toml"]
 [dependencies]
 libc = "*"
 remain = "0.2"
+serde = { version = "1", features = [ "derive" ] }
 thiserror = "*"
 
 [workspace]

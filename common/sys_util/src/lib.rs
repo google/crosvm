@@ -28,7 +28,6 @@ mod capabilities;
 mod clock;
 mod descriptor;
 mod descriptor_reflection;
-mod errno;
 mod eventfd;
 mod file_flags;
 pub mod file_traits;
@@ -58,7 +57,6 @@ pub use crate::acpi_event::*;
 pub use crate::capabilities::drop_capabilities;
 pub use crate::clock::{Clock, FakeClock};
 pub use crate::descriptor::*;
-pub use crate::errno::{errno_result, Error, Result};
 pub use crate::eventfd::*;
 pub use crate::file_flags::*;
 pub use crate::fork::*;
@@ -82,7 +80,7 @@ pub use descriptor_reflection::{
     SerializeDescriptors,
 };
 pub use poll_token_derive::*;
-pub use sys_util_core::*;
+pub use sys_util_core::{Error, Result, *};
 
 pub use crate::file_traits::{
     AsRawFds, FileAllocate, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen,

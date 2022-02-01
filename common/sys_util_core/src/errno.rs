@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::convert::{From, TryInto};
 use std::fmt::{self, Display};
 use std::io;
 use std::result;
@@ -9,23 +10,28 @@ use std::result;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// An error number, retrieved from errno (man 3 errno), set by a libc
+/// A system error
+/// In Unix systems, retrieved from errno (man 3 errno), set by a libc
 /// function that returned an error.
+/// On Windows, retrieved from GetLastError, set by a Windows function
+/// that returned an error
 #[derive(Error, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 #[serde(transparent)]
 pub struct Error(i32);
 pub type Result<T> = result::Result<T, Error>;
 
 impl Error {
-    /// Constructs a new error with the given errno.
-    pub fn new(e: i32) -> Error {
-        Error(e)
+    /// Constructs a new error with the given error number.
+    pub fn new<T: TryInto<i32>>(e: T) -> Error {
+        // A value outside the bounds of an i32 will never be a valid
+        // errno/GetLastError
+        Error(e.try_into().unwrap_or_default())
     }
 
-    /// Constructs an error from the current errno.
+    /// Constructs an Error from the most recent system error.
     ///
-    /// The result of this only has any meaning just after a libc call that returned a value
-    /// indicating errno was set.
+    /// The result of this only has any meaning just after a libc/Windows call that returned
+    /// a value indicating errno was set.
     pub fn last() -> Error {
         Error(io::Error::last_os_error().raw_os_error().unwrap())
     }
@@ -38,13 +44,19 @@ impl Error {
 
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
-        Error::new(e.raw_os_error().unwrap_or_default())
+        Error(e.raw_os_error().unwrap_or_default())
     }
 }
 
 impl From<Error> for io::Error {
     fn from(e: Error) -> io::Error {
         io::Error::from_raw_os_error(e.0)
+    }
+}
+
+impl From<Error> for Box<dyn std::error::Error + Send> {
+    fn from(e: Error) -> Self {
+        Box::new(e)
     }
 }
 
