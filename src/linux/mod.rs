@@ -105,129 +105,6 @@ fn create_virtio_devices(
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
-    for (_, param) in cfg
-        .serial_parameters
-        .iter()
-        .filter(|(_k, v)| v.hardware == SerialHardware::VirtioConsole)
-    {
-        let dev = create_console_device(cfg, param)?;
-        devs.push(dev);
-    }
-
-    for disk in &cfg.disks {
-        let disk_device_tube = disk_device_tubes.remove(0);
-        devs.push(create_block_device(cfg, disk, disk_device_tube)?);
-    }
-
-    for blk in &cfg.vhost_user_blk {
-        devs.push(create_vhost_user_block_device(cfg, blk)?);
-    }
-
-    for console in &cfg.vhost_user_console {
-        devs.push(create_vhost_user_console_device(cfg, console)?);
-    }
-
-    for (index, pmem_disk) in cfg.pmem_devices.iter().enumerate() {
-        let pmem_device_tube = pmem_device_tubes.remove(0);
-        devs.push(create_pmem_device(
-            cfg,
-            vm,
-            resources,
-            pmem_disk,
-            index,
-            pmem_device_tube,
-        )?);
-    }
-
-    devs.push(create_rng_device(cfg)?);
-
-    #[cfg(feature = "tpm")]
-    {
-        if cfg.software_tpm {
-            devs.push(create_tpm_device(cfg)?);
-        }
-    }
-
-    for (idx, single_touch_spec) in cfg.virtio_single_touch.iter().enumerate() {
-        devs.push(create_single_touch_device(
-            cfg,
-            single_touch_spec,
-            idx as u32,
-        )?);
-    }
-
-    for (idx, multi_touch_spec) in cfg.virtio_multi_touch.iter().enumerate() {
-        devs.push(create_multi_touch_device(
-            cfg,
-            multi_touch_spec,
-            idx as u32,
-        )?);
-    }
-
-    for (idx, trackpad_spec) in cfg.virtio_trackpad.iter().enumerate() {
-        devs.push(create_trackpad_device(cfg, trackpad_spec, idx as u32)?);
-    }
-
-    for (idx, mouse_socket) in cfg.virtio_mice.iter().enumerate() {
-        devs.push(create_mouse_device(cfg, mouse_socket, idx as u32)?);
-    }
-
-    for (idx, keyboard_socket) in cfg.virtio_keyboard.iter().enumerate() {
-        devs.push(create_keyboard_device(cfg, keyboard_socket, idx as u32)?);
-    }
-
-    for (idx, switches_socket) in cfg.virtio_switches.iter().enumerate() {
-        devs.push(create_switches_device(cfg, switches_socket, idx as u32)?);
-    }
-
-    for dev_path in &cfg.virtio_input_evdevs {
-        devs.push(create_vinput_device(cfg, dev_path)?);
-    }
-
-    if let Some(balloon_device_tube) = balloon_device_tube {
-        devs.push(create_balloon_device(
-            cfg,
-            balloon_device_tube,
-            balloon_inflate_tube,
-            init_balloon_size,
-        )?);
-    }
-
-    // We checked above that if the IP is defined, then the netmask is, too.
-    for tap_fd in &cfg.tap_fd {
-        devs.push(create_tap_net_device_from_fd(cfg, *tap_fd)?);
-    }
-
-    if let (Some(host_ip), Some(netmask), Some(mac_address)) =
-        (cfg.host_ip, cfg.netmask, cfg.mac_address)
-    {
-        if !cfg.vhost_user_net.is_empty() {
-            bail!("vhost-user-net cannot be used with any of --host_ip, --netmask or --mac");
-        }
-        devs.push(create_net_device_from_config(
-            cfg,
-            host_ip,
-            netmask,
-            mac_address,
-        )?);
-    }
-
-    for tap_name in &cfg.tap_name {
-        devs.push(create_tap_net_device_from_name(cfg, tap_name.as_bytes())?);
-    }
-
-    for net in &cfg.vhost_user_net {
-        devs.push(create_vhost_user_net_device(cfg, net)?);
-    }
-
-    for vsock in &cfg.vhost_user_vsock {
-        devs.push(create_vhost_user_vsock_device(cfg, vsock)?);
-    }
-
-    for opt in &cfg.vhost_user_wl {
-        devs.push(create_vhost_user_wl_device(cfg, opt)?);
-    }
-
     #[cfg(feature = "gpu")]
     for (opt, (host_tube, device_tube)) in cfg.vhost_user_gpu.iter().zip(vhost_user_gpu_tubes) {
         devs.push(create_vhost_user_gpu_device(
@@ -354,6 +231,129 @@ fn create_virtio_devices(
                 map_request,
             )?);
         }
+    }
+
+    for (_, param) in cfg
+        .serial_parameters
+        .iter()
+        .filter(|(_k, v)| v.hardware == SerialHardware::VirtioConsole)
+    {
+        let dev = create_console_device(cfg, param)?;
+        devs.push(dev);
+    }
+
+    for disk in &cfg.disks {
+        let disk_device_tube = disk_device_tubes.remove(0);
+        devs.push(create_block_device(cfg, disk, disk_device_tube)?);
+    }
+
+    for blk in &cfg.vhost_user_blk {
+        devs.push(create_vhost_user_block_device(cfg, blk)?);
+    }
+
+    for console in &cfg.vhost_user_console {
+        devs.push(create_vhost_user_console_device(cfg, console)?);
+    }
+
+    for (index, pmem_disk) in cfg.pmem_devices.iter().enumerate() {
+        let pmem_device_tube = pmem_device_tubes.remove(0);
+        devs.push(create_pmem_device(
+            cfg,
+            vm,
+            resources,
+            pmem_disk,
+            index,
+            pmem_device_tube,
+        )?);
+    }
+
+    devs.push(create_rng_device(cfg)?);
+
+    #[cfg(feature = "tpm")]
+    {
+        if cfg.software_tpm {
+            devs.push(create_tpm_device(cfg)?);
+        }
+    }
+
+    for (idx, single_touch_spec) in cfg.virtio_single_touch.iter().enumerate() {
+        devs.push(create_single_touch_device(
+            cfg,
+            single_touch_spec,
+            idx as u32,
+        )?);
+    }
+
+    for (idx, multi_touch_spec) in cfg.virtio_multi_touch.iter().enumerate() {
+        devs.push(create_multi_touch_device(
+            cfg,
+            multi_touch_spec,
+            idx as u32,
+        )?);
+    }
+
+    for (idx, trackpad_spec) in cfg.virtio_trackpad.iter().enumerate() {
+        devs.push(create_trackpad_device(cfg, trackpad_spec, idx as u32)?);
+    }
+
+    for (idx, mouse_socket) in cfg.virtio_mice.iter().enumerate() {
+        devs.push(create_mouse_device(cfg, mouse_socket, idx as u32)?);
+    }
+
+    for (idx, keyboard_socket) in cfg.virtio_keyboard.iter().enumerate() {
+        devs.push(create_keyboard_device(cfg, keyboard_socket, idx as u32)?);
+    }
+
+    for (idx, switches_socket) in cfg.virtio_switches.iter().enumerate() {
+        devs.push(create_switches_device(cfg, switches_socket, idx as u32)?);
+    }
+
+    for dev_path in &cfg.virtio_input_evdevs {
+        devs.push(create_vinput_device(cfg, dev_path)?);
+    }
+
+    if let Some(balloon_device_tube) = balloon_device_tube {
+        devs.push(create_balloon_device(
+            cfg,
+            balloon_device_tube,
+            balloon_inflate_tube,
+            init_balloon_size,
+        )?);
+    }
+
+    // We checked above that if the IP is defined, then the netmask is, too.
+    for tap_fd in &cfg.tap_fd {
+        devs.push(create_tap_net_device_from_fd(cfg, *tap_fd)?);
+    }
+
+    if let (Some(host_ip), Some(netmask), Some(mac_address)) =
+        (cfg.host_ip, cfg.netmask, cfg.mac_address)
+    {
+        if !cfg.vhost_user_net.is_empty() {
+            bail!("vhost-user-net cannot be used with any of --host_ip, --netmask or --mac");
+        }
+        devs.push(create_net_device_from_config(
+            cfg,
+            host_ip,
+            netmask,
+            mac_address,
+        )?);
+    }
+
+    for tap_name in &cfg.tap_name {
+        devs.push(create_tap_net_device_from_name(cfg, tap_name.as_bytes())?);
+    }
+
+    for net in &cfg.vhost_user_net {
+        devs.push(create_vhost_user_net_device(cfg, net)?);
+    }
+
+    for vsock in &cfg.vhost_user_vsock {
+        devs.push(create_vhost_user_vsock_device(cfg, vsock)?);
+    }
+
+    for opt in &cfg.vhost_user_wl {
+        devs.push(create_vhost_user_wl_device(cfg, opt)?);
     }
 
     #[cfg(feature = "audio_cras")]
