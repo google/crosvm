@@ -1191,9 +1191,16 @@ impl VirtioDevice for VirtioVhostUser {
 
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut rds = vec![self.listener.as_raw_fd()];
-        if let Some(kill_evt) = &self.kill_evt {
-            rds.push(kill_evt.as_raw_descriptor());
+        if let Some(rd) = &self.kill_evt {
+            rds.push(rd.as_raw_descriptor());
         }
+
+        if let Some(rd) = &self.main_process_tube {
+            rds.push(rd.as_raw_descriptor());
+        };
+
+        // `self.worker_thread_tube` is set after a fork / keep_rds is called in multiprocess mode.
+        // Hence, it's not required to be processed in this function.
         rds
     }
 
