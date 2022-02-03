@@ -37,6 +37,7 @@ use devices::IommuDevType;
 use devices::StubPciParameters;
 use hypervisor::ProtectionType;
 use libc::{getegid, geteuid};
+#[cfg(feature = "gpu")]
 use platform::GpuRenderServerParameters;
 use vm_control::BatteryType;
 
