@@ -8,7 +8,6 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, stdin, stdout, ErrorKind};
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
 
@@ -18,6 +17,7 @@ use base::{
 };
 use hypervisor::ProtectionType;
 use remain::sorted;
+use serde::Deserialize;
 use thiserror::Error as ThisError;
 
 #[sorted]
@@ -54,13 +54,21 @@ pub trait SerialDevice {
 }
 
 /// Enum for possible type of serial devices
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum SerialType {
     File,
     Stdout,
     Sink,
     Syslog,
+    #[serde(rename = "unix")]
     UnixSocket,
+}
+
+impl Default for SerialType {
+    fn default() -> Self {
+        Self::Sink
+    }
 }
 
 impl Display for SerialType {
@@ -77,25 +85,18 @@ impl Display for SerialType {
     }
 }
 
-impl FromStr for SerialType {
-    type Err = Error;
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s {
-            "file" | "File" => Ok(SerialType::File),
-            "stdout" | "Stdout" => Ok(SerialType::Stdout),
-            "sink" | "Sink" => Ok(SerialType::Sink),
-            "syslog" | "Syslog" => Ok(SerialType::Syslog),
-            "unix" | "UnixSocket" => Ok(SerialType::UnixSocket),
-            _ => Err(Error::InvalidSerialType(s.to_string())),
-        }
-    }
-}
-
 /// Serial device hardware types
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum SerialHardware {
     Serial,        // Standard PC-style (8250/16550 compatible) UART
     VirtioConsole, // virtio-console device
+}
+
+impl Default for SerialHardware {
+    fn default() -> Self {
+        Self::Serial
+    }
 }
 
 impl Display for SerialHardware {
@@ -106,17 +107,6 @@ impl Display for SerialHardware {
         };
 
         write!(f, "{}", s)
-    }
-}
-
-impl FromStr for SerialHardware {
-    type Err = Error;
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s {
-            "serial" => Ok(SerialHardware::Serial),
-            "virtio-console" => Ok(SerialHardware::VirtioConsole),
-            _ => Err(Error::InvalidSerialHardware(s.to_string())),
-        }
     }
 }
 
@@ -187,13 +177,19 @@ impl io::Write for WriteSocket {
     }
 }
 
-/// Holds the parameters for a serial device
-#[derive(Clone, Debug)]
+fn serial_parameters_default_num() -> u8 {
+    1
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, default)]
 pub struct SerialParameters {
+    #[serde(rename = "type")]
     pub type_: SerialType,
     pub hardware: SerialHardware,
     pub path: Option<PathBuf>,
     pub input: Option<PathBuf>,
+    #[serde(default = "serial_parameters_default_num")]
     pub num: u8,
     pub console: bool,
     pub earlycon: bool,
@@ -346,5 +342,118 @@ impl SerialParameters {
             }
         };
         Ok(T::new(protected_vm, evt, input, output, keep_rds.to_vec()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_keyvalue::*;
+
+    fn from_serial_arg(options: &str) -> Result<SerialParameters, ParseError> {
+        from_key_values(options)
+    }
+
+    #[test]
+    fn params_from_key_values() {
+        // Defaults
+        let params = from_serial_arg("").unwrap();
+        assert_eq!(
+            params,
+            SerialParameters {
+                type_: SerialType::Sink,
+                hardware: SerialHardware::Serial,
+                path: None,
+                input: None,
+                num: 1,
+                console: false,
+                earlycon: false,
+                stdin: false,
+            }
+        );
+
+        // type parameter
+        let params = from_serial_arg("type=file").unwrap();
+        assert_eq!(params.type_, SerialType::File);
+        let params = from_serial_arg("type=stdout").unwrap();
+        assert_eq!(params.type_, SerialType::Stdout);
+        let params = from_serial_arg("type=sink").unwrap();
+        assert_eq!(params.type_, SerialType::Sink);
+        let params = from_serial_arg("type=syslog").unwrap();
+        assert_eq!(params.type_, SerialType::Syslog);
+        let params = from_serial_arg("type=unix").unwrap();
+        assert_eq!(params.type_, SerialType::UnixSocket);
+        let params = from_serial_arg("type=foobar");
+        assert!(params.is_err());
+
+        // hardware parameter
+        let params = from_serial_arg("hardware=serial").unwrap();
+        assert_eq!(params.hardware, SerialHardware::Serial);
+        let params = from_serial_arg("hardware=virtio-console").unwrap();
+        assert_eq!(params.hardware, SerialHardware::VirtioConsole);
+        let params = from_serial_arg("hardware=foobar");
+        assert!(params.is_err());
+
+        // path parameter
+        let params = from_serial_arg("path=/test/path").unwrap();
+        assert_eq!(params.path, Some("/test/path".into()));
+        let params = from_serial_arg("path");
+        assert!(params.is_err());
+
+        // input parameter
+        let params = from_serial_arg("input=/path/to/input").unwrap();
+        assert_eq!(params.input, Some("/path/to/input".into()));
+        let params = from_serial_arg("input");
+        assert!(params.is_err());
+
+        // console parameter
+        let params = from_serial_arg("console").unwrap();
+        assert!(params.console);
+        let params = from_serial_arg("console=true").unwrap();
+        assert!(params.console);
+        let params = from_serial_arg("console=false").unwrap();
+        assert!(!params.console);
+        let params = from_serial_arg("console=foobar");
+        assert!(params.is_err());
+
+        // earlycon parameter
+        let params = from_serial_arg("earlycon").unwrap();
+        assert!(params.earlycon);
+        let params = from_serial_arg("earlycon=true").unwrap();
+        assert!(params.earlycon);
+        let params = from_serial_arg("earlycon=false").unwrap();
+        assert!(!params.earlycon);
+        let params = from_serial_arg("earlycon=foobar");
+        assert!(params.is_err());
+
+        // stdin parameter
+        let params = from_serial_arg("stdin").unwrap();
+        assert!(params.stdin);
+        let params = from_serial_arg("stdin=true").unwrap();
+        assert!(params.stdin);
+        let params = from_serial_arg("stdin=false").unwrap();
+        assert!(!params.stdin);
+        let params = from_serial_arg("stdin=foobar");
+        assert!(params.is_err());
+
+        // all together
+        let params = from_serial_arg("type=stdout,path=/some/path,hardware=virtio-console,num=5,earlycon,console,stdin,input=/some/input").unwrap();
+        assert_eq!(
+            params,
+            SerialParameters {
+                type_: SerialType::Stdout,
+                hardware: SerialHardware::VirtioConsole,
+                path: Some("/some/path".into()),
+                input: Some("/some/input".into()),
+                num: 5,
+                console: true,
+                earlycon: true,
+                stdin: true,
+            }
+        );
+
+        // invalid field
+        let params = from_serial_arg("type=stdout,foo=bar");
+        assert!(params.is_err());
     }
 }

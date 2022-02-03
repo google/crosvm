@@ -54,6 +54,9 @@ use thiserror::Error;
 #[sorted]
 #[derive(Error, Debug)]
 pub enum Error {
+    /// Free error for use with the `serde_keyvalue` crate parser.
+    #[error("failed to parse key-value arguments: {0}")]
+    ConfigParserError(String),
     /// The argument was required.
     #[error("expected argument: {0}")]
     ExpectedArgument(String),

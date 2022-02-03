@@ -32,7 +32,7 @@ use crosvm::{
     SharedDir, TouchDeviceOption, VfioCommand, VhostUserFsOption, VhostUserOption,
     VhostUserWlOption, VhostVsockDeviceParameter, VvuOption, DISK_ID_LEN,
 };
-use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
+use devices::serial_device::{SerialHardware, SerialParameters};
 #[cfg(feature = "audio_cras")]
 use devices::virtio::snd::cras_backend::Error as CrasSndError;
 #[cfg(feature = "audio_cras")]
@@ -61,6 +61,7 @@ use disk::{
     create_composite_disk, create_disk_file, create_zero_filler, ImagePartitionType, PartitionInfo,
 };
 use hypervisor::ProtectionType;
+use serde_keyvalue::from_key_values;
 use uuid::Uuid;
 use vm_control::{
     client::{
@@ -690,88 +691,19 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
 }
 
 fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
-    let mut serial_setting = SerialParameters {
-        type_: SerialType::Sink,
-        hardware: SerialHardware::Serial,
-        path: None,
-        input: None,
-        num: 1,
-        console: false,
-        earlycon: false,
-        stdin: false,
-    };
+    let serial_setting: SerialParameters =
+        from_key_values(s).map_err(|e| argument::Error::ConfigParserError(e.to_string()))?;
 
-    let opts = s
-        .split(',')
-        .map(|frag| frag.splitn(2, '='))
-        .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
-
-    for (k, v) in opts {
-        match k {
-            "hardware" => {
-                serial_setting.hardware = v
-                    .parse::<SerialHardware>()
-                    .map_err(|e| argument::Error::UnknownArgument(format!("{}", e)))?
-            }
-            "type" => {
-                serial_setting.type_ = v
-                    .parse::<SerialType>()
-                    .map_err(|e| argument::Error::UnknownArgument(format!("{}", e)))?
-            }
-            "num" => {
-                let num = v.parse::<u8>().map_err(|e| {
-                    argument::Error::Syntax(format!("serial device number is not parsable: {}", e))
-                })?;
-                if num < 1 {
-                    return Err(argument::Error::InvalidValue {
-                        value: num.to_string(),
-                        expected: String::from("Serial port num must be at least 1"),
-                    });
-                }
-                serial_setting.num = num;
-            }
-            "console" => {
-                serial_setting.console = v.parse::<bool>().map_err(|e| {
-                    argument::Error::Syntax(format!(
-                        "serial device console is not parseable: {}",
-                        e
-                    ))
-                })?
-            }
-            "earlycon" => {
-                serial_setting.earlycon = v.parse::<bool>().map_err(|e| {
-                    argument::Error::Syntax(format!(
-                        "serial device earlycon is not parseable: {}",
-                        e,
-                    ))
-                })?
-            }
-            "stdin" => {
-                serial_setting.stdin = v.parse::<bool>().map_err(|e| {
-                    argument::Error::Syntax(format!("serial device stdin is not parseable: {}", e))
-                })?;
-                if serial_setting.stdin && serial_setting.input.is_some() {
-                    return Err(argument::Error::TooManyArguments(
-                        "Cannot specify both stdin and input options".to_string(),
-                    ));
-                }
-            }
-            "path" => serial_setting.path = Some(PathBuf::from(v)),
-            "input" => {
-                if serial_setting.stdin {
-                    return Err(argument::Error::TooManyArguments(
-                        "Cannot specify both stdin and input options".to_string(),
-                    ));
-                }
-                serial_setting.input = Some(PathBuf::from(v));
-            }
-            _ => {
-                return Err(argument::Error::UnknownArgument(format!(
-                    "serial parameter {}",
-                    k
-                )));
-            }
-        }
+    if serial_setting.stdin && serial_setting.input.is_some() {
+        return Err(argument::Error::TooManyArguments(
+            "Cannot specify both stdin and input options".to_string(),
+        ));
+    }
+    if serial_setting.num < 1 {
+        return Err(argument::Error::InvalidValue {
+            value: serial_setting.num.to_string(),
+            expected: String::from("Serial port num must be at least 1"),
+        });
     }
 
     if serial_setting.hardware == SerialHardware::Serial && serial_setting.num > 4 {
