@@ -347,15 +347,9 @@ impl CrossDomainWorker {
                             .zip(files.into_iter())
                             .take(num_files);
 
-                        for (((identifier, mut identifier_type), mut identifier_size), mut file) in
-                            iter
-                        {
+                        for (((identifier, identifier_type), identifier_size), mut file) in iter {
                             // Safe since the descriptors from receive_msg(..) are owned by us and valid.
-                            descriptor_analysis(
-                                &mut file,
-                                &mut identifier_type,
-                                &mut identifier_size,
-                            )?;
+                            descriptor_analysis(&mut file, identifier_type, identifier_size)?;
 
                             *identifier = match *identifier_type {
                                 CROSS_DOMAIN_ID_TYPE_VIRTGPU_BLOB => add_item(

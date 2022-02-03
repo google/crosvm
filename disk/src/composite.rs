@@ -326,9 +326,7 @@ impl PunchHole for CompositeDiskFile {
                 intersection.start - disk.offset,
                 intersection.end - intersection.start,
             );
-            if result.is_err() {
-                return result;
-            }
+            result?;
         }
         Ok(())
     }
@@ -347,9 +345,7 @@ impl FileAllocate for CompositeDiskFile {
                 intersection.start - disk.offset,
                 intersection.end - intersection.start,
             );
-            if result.is_err() {
-                return result;
-            }
+            result?;
         }
         Ok(())
     }

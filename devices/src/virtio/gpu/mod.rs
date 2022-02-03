@@ -149,18 +149,10 @@ struct FenceDescriptor {
     len: u32,
 }
 
+#[derive(Default)]
 pub struct FenceState {
     descs: Vec<FenceDescriptor>,
     completed_fences: HashMap<VirtioGpuRing, u64>,
-}
-
-impl Default for FenceState {
-    fn default() -> Self {
-        FenceState {
-            descs: Vec::new(),
-            completed_fences: HashMap::new(),
-        }
-    }
 }
 
 pub trait QueueReader {

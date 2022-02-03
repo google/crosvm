@@ -411,7 +411,7 @@ impl<'a> KeyValuePair<'a> {
                 "Failed to parse parameter `{}` as {}: {}",
                 self.key,
                 std::any::type_name::<T>(),
-                e.to_string()
+                e
             ))
         })
     }

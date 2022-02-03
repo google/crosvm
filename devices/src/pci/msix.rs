@@ -19,7 +19,7 @@ pub const BITS_PER_PBA_ENTRY: usize = 64;
 const FUNCTION_MASK_BIT: u16 = 0x4000;
 const MSIX_ENABLE_BIT: u16 = 0x8000;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct MsixTableEntry {
     msg_addr_lo: u32,
     msg_addr_hi: u32,
@@ -30,17 +30,6 @@ struct MsixTableEntry {
 impl MsixTableEntry {
     fn masked(&self) -> bool {
         self.vector_ctl & 0x1 == 0x1
-    }
-}
-
-impl Default for MsixTableEntry {
-    fn default() -> Self {
-        MsixTableEntry {
-            msg_addr_lo: 0,
-            msg_addr_hi: 0,
-            msg_data: 0,
-            vector_ctl: 0,
-        }
     }
 }
 

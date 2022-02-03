@@ -20,12 +20,8 @@ choco install -y rustup.install --version=%rustup_version%
 :: Reload path for installed rustup binary
 call RefreshEnv.cmd
 
-set /p rust_version=<rust-toolchain
-echo [%TIME%] installing rust %rust_version%-x86_64-pc-windows-msvc
-rustup toolchain install %rust_version%-x86_64-pc-windows-msvc
-
-rustup component add clippy
-rustup component add rustfmt
+:: Toolchain version and necessary components will be automatically picked
+:: up from rust-toolchain
 cargo install bindgen
 
 :: Reload path for installed rust toolchain.

@@ -67,7 +67,7 @@ pub trait Endpoint<R: Req>: Sized {
 // Advance the internal cursor of the slices.
 // This is same with a nightly API `IoSlice::advance_slices` but for `&[u8]`.
 fn advance_slices(bufs: &mut &mut [&[u8]], mut count: usize) {
-    use std::mem::replace;
+    use std::mem::take;
 
     let mut idx = 0;
     for b in bufs.iter() {
@@ -77,7 +77,7 @@ fn advance_slices(bufs: &mut &mut [&[u8]], mut count: usize) {
         count -= b.len();
         idx += 1;
     }
-    *bufs = &mut replace(bufs, &mut [])[idx..];
+    *bufs = &mut take(bufs)[idx..];
     if !bufs.is_empty() {
         bufs[0] = &bufs[0][count..];
     }
@@ -86,7 +86,7 @@ fn advance_slices(bufs: &mut &mut [&[u8]], mut count: usize) {
 // Advance the internal cursor of the slices.
 // This is same with a nightly API `IoSliceMut::advance_slices` but for `&mut [u8]`.
 fn advance_slices_mut(bufs: &mut &mut [&mut [u8]], mut count: usize) {
-    use std::mem::replace;
+    use std::mem::take;
 
     let mut idx = 0;
     for b in bufs.iter() {
@@ -96,9 +96,9 @@ fn advance_slices_mut(bufs: &mut &mut [&mut [u8]], mut count: usize) {
         count -= b.len();
         idx += 1;
     }
-    *bufs = &mut replace(bufs, &mut [])[idx..];
+    *bufs = &mut take(bufs)[idx..];
     if !bufs.is_empty() {
-        let slice = replace(&mut bufs[0], &mut []);
+        let slice = take(&mut bufs[0]);
         let (_, remaining) = slice.split_at_mut(count);
         bufs[0] = remaining;
     }

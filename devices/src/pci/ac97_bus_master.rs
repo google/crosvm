@@ -657,7 +657,6 @@ impl Ac97BusMaster {
 
 #[derive(Debug)]
 struct GuestBuffer {
-    index: u8,
     offset: usize,
     frames: usize,
 }
@@ -734,11 +733,7 @@ fn next_guest_buffer(
         .map_err(|_| AudioError::InvalidBufferOffset)?;
     let frames = get_buffer_samples(func_regs, mem, index)? / regs.tube_count(func);
 
-    Ok(Some(GuestBuffer {
-        index,
-        offset,
-        frames,
-    }))
+    Ok(Some(GuestBuffer { offset, frames }))
 }
 
 // Marks the current buffer completed and moves to the next buffer for the given

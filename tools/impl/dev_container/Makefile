@@ -16,7 +16,7 @@ export DOCKER_BUILDKIT=1
 
 TAG_BASE=gcr.io/crosvm-packages
 VERSION=$(shell cat version)
-RUST_VERSION=$(shell cat ../../../rust-toolchain)
+RUST_VERSION=$(shell cat ../../../rust-toolchain | grep channel | grep -E -o "[0-9\.]+")
 BUILD_CONTEXT=$(shell realpath ../../../)
 
 DOCKER ?= docker

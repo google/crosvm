@@ -623,12 +623,12 @@ impl Rutabaga {
             .get_mut(&ctx_id)
             .ok_or(RutabagaError::InvalidContextId)?;
 
-        let mut resource = self
+        let resource = self
             .resources
             .get_mut(&resource_id)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
-        ctx.attach(&mut resource);
+        ctx.attach(resource);
         Ok(())
     }
 

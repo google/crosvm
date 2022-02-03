@@ -363,14 +363,14 @@ where
     }
 
     fn process_ctrl(&mut self) -> Result<(), NetError> {
-        let mut ctrl_queue = match self.ctrl_queue.as_mut() {
+        let ctrl_queue = match self.ctrl_queue.as_mut() {
             Some(queue) => queue,
             None => return Ok(()),
         };
 
         process_ctrl(
             self.interrupt.as_ref(),
-            &mut ctrl_queue,
+            ctrl_queue,
             &self.mem,
             &mut self.tap,
             self.acked_features,

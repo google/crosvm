@@ -18,6 +18,7 @@ pub enum VcpuDebug {
 }
 
 /// Messages that can be sent from a vCPU to update the state to the debugger.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum VcpuDebugStatus {
     RegValues(CoreRegs),
