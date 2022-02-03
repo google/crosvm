@@ -83,6 +83,7 @@ aarch64_wrapper() {
 
 commands=(
     "./tools/fmt --check && ./tools/clippy"
+    "cargo build --verbose --no-default-features"
     "./tools/run_tests --target=host"
 )
 
