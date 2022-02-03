@@ -70,6 +70,7 @@ members = [
     "qcow_utils",
     "resources",
     "rutabaga_gfx",
+    "serde_keyvalue",
     "system_api_stub",
     "tpm2",
     "tpm2-sys",
@@ -172,6 +173,7 @@ remain = "*"
 resources = { path = "resources" }
 scudo = { version = "0.1", optional = true }
 serde_json = "*"
+serde_keyvalue = { path = "serde_keyvalue" }
 sync = { path = "common/sync" }
 tempfile = "3"
 thiserror = { version = "1.0.20" }
