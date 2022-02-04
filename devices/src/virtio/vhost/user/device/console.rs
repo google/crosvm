@@ -326,14 +326,16 @@ pub fn run_console_device(program_name: &str, args: &[&str]) -> anyhow::Result<(
         stdin: true,
     };
 
-    if let Err(e) = run_console(&params, &socket) {
-        bail!("error occurred: {:#}", e);
-    }
+    let res = run_console(&params, &socket);
 
     // Restore terminal capabilities back to what they were before
     stdin()
         .set_canon_mode()
         .context("Failed to restore canonical mode for terminal")?;
+
+    if let Err(e) = res {
+        bail!("error occurred: {:#}", e);
+    }
 
     Ok(())
 }
