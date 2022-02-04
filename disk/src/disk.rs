@@ -590,7 +590,7 @@ mod tests {
         // detect_image_type is ever updated to validate more of the header, this test would need
         // to be updated.
         let buf: &[u8] = &[0x51, 0x46, 0x49, 0xfb];
-        t.write_all(&buf).unwrap();
+        t.write_all(buf).unwrap();
         let image_type = detect_image_type(&t).expect("failed to detect image type");
         assert_eq!(image_type, ImageType::Qcow2);
     }
@@ -602,7 +602,7 @@ mod tests {
         // detect_image_type is ever updated to validate more of the header, this test would need
         // to be updated.
         let buf: &[u8] = &[0x3a, 0xff, 0x26, 0xed];
-        t.write_all(&buf).unwrap();
+        t.write_all(buf).unwrap();
         let image_type = detect_image_type(&t).expect("failed to detect image type");
         assert_eq!(image_type, ImageType::AndroidSparse);
     }
@@ -615,7 +615,7 @@ mod tests {
         // detect_image_type is ever updated to validate more of the header, this test would need
         // to be updated.
         let buf = "composite_disk\x1d".as_bytes();
-        t.write_all(&buf).unwrap();
+        t.write_all(buf).unwrap();
         let image_type = detect_image_type(&t).expect("failed to detect image type");
         assert_eq!(image_type, ImageType::CompositeDisk);
     }
@@ -626,7 +626,7 @@ mod tests {
         // Write a file smaller than the four-byte qcow2/sparse magic to ensure the small file logic
         // works correctly and handles it as a raw file.
         let buf: &[u8] = &[0xAA, 0xBB];
-        t.write_all(&buf).unwrap();
+        t.write_all(buf).unwrap();
         let image_type = detect_image_type(&t).expect("failed to detect image type");
         assert_eq!(image_type, ImageType::Raw);
     }

@@ -725,7 +725,7 @@ mod tests {
             file2.as_raw_descriptor(),
             file3.as_raw_descriptor(),
         ];
-        in_fds.sort();
+        in_fds.sort_unstable();
         let disk_part1 = ComponentDiskPart {
             file: Box::new(file1),
             offset: 0,
@@ -743,7 +743,7 @@ mod tests {
         };
         let composite = CompositeDiskFile::new(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let mut out_fds = composite.as_raw_descriptors();
-        out_fds.sort();
+        out_fds.sort_unstable();
         assert_eq!(in_fds, out_fds);
     }
 
@@ -816,9 +816,7 @@ mod tests {
             .read_exact_at_volatile(output_volatile_memory.get_slice(0, 300).unwrap(), 0)
             .unwrap();
 
-        for i in 50..250 {
-            input_memory[i] = 0;
-        }
+        input_memory[50..250].iter_mut().for_each(|x| *x = 0);
         assert!(input_memory.iter().eq(output_memory.iter()));
     }
 
@@ -861,9 +859,7 @@ mod tests {
             .read_exact_at_volatile(output_volatile_memory.get_slice(0, 300).unwrap(), 0)
             .unwrap();
 
-        for i in 50..250 {
-            input_memory[i] = 0;
-        }
+        input_memory[50..250].iter_mut().for_each(|x| *x = 0);
         for i in 0..300 {
             println!(
                 "input[{0}] = {1}, output[{0}] = {2}",

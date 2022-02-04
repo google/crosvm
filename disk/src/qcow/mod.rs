@@ -1822,7 +1822,7 @@ mod tests {
 
     fn basic_file(header: &[u8]) -> File {
         let mut disk_file = tempfile().expect("failed to create tempfile");
-        disk_file.write_all(&header).unwrap();
+        disk_file.write_all(header).unwrap();
         disk_file.set_len(0x8000_0000).unwrap();
         disk_file.seek(SeekFrom::Start(0)).unwrap();
         disk_file
@@ -1920,7 +1920,7 @@ mod tests {
     #[test]
     fn test_header_excessive_file_size_rejected() {
         let mut header = valid_header();
-        &mut header[24..32].copy_from_slice(&[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x1e]);
+        header[24..32].copy_from_slice(&[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x1e]);
         with_basic_file(&header, |disk_file: File| {
             QcowFile::from(disk_file, MAX_NESTING_DEPTH).expect_err("Failed to create file.");
         });
@@ -1970,7 +1970,7 @@ mod tests {
     #[test]
     fn test_header_huge_num_refcounts() {
         let mut header = valid_header();
-        &mut header[56..60].copy_from_slice(&[0x02, 0x00, 0xe8, 0xff]);
+        header[56..60].copy_from_slice(&[0x02, 0x00, 0xe8, 0xff]);
         with_basic_file(&header, |disk_file: File| {
             QcowFile::from(disk_file, MAX_NESTING_DEPTH)
                 .expect_err("Created disk with excessive refcount clusters");
@@ -1980,7 +1980,7 @@ mod tests {
     #[test]
     fn test_header_huge_refcount_offset() {
         let mut header = valid_header();
-        &mut header[48..56].copy_from_slice(&[0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x02, 0x00]);
+        header[48..56].copy_from_slice(&[0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x02, 0x00]);
         with_basic_file(&header, |disk_file: File| {
             QcowFile::from(disk_file, MAX_NESTING_DEPTH)
                 .expect_err("Created disk with excessive refcount offset");
@@ -1991,11 +1991,11 @@ mod tests {
     fn write_read_start() {
         with_basic_file(&valid_header(), |disk_file: File| {
             let mut q = QcowFile::from(disk_file, MAX_NESTING_DEPTH).unwrap();
-            q.write(b"test first bytes")
+            q.write_all(b"test first bytes")
                 .expect("Failed to write test string.");
             let mut buf = [0u8; 4];
             q.seek(SeekFrom::Start(0)).expect("Failed to seek.");
-            q.read(&mut buf).expect("Failed to read.");
+            q.read_exact(&mut buf).expect("Failed to read.");
             assert_eq!(&buf, b"test");
         });
     }
@@ -2005,14 +2005,14 @@ mod tests {
         let disk_file = basic_file(&valid_header());
         let mut backing = QcowFile::from(disk_file, MAX_NESTING_DEPTH).unwrap();
         backing
-            .write(b"test first bytes")
+            .write_all(b"test first bytes")
             .expect("Failed to write test string.");
         let mut buf = [0u8; 4];
         let wrapping_disk_file = basic_file(&valid_header());
         let mut wrapping = QcowFile::from(wrapping_disk_file, MAX_NESTING_DEPTH).unwrap();
         wrapping.set_backing_file(Some(Box::new(backing)));
         wrapping.seek(SeekFrom::Start(0)).expect("Failed to seek.");
-        wrapping.read(&mut buf).expect("Failed to read.");
+        wrapping.read_exact(&mut buf).expect("Failed to read.");
         assert_eq!(&buf, b"test");
     }
 
@@ -2021,18 +2021,18 @@ mod tests {
         let disk_file = basic_file(&valid_header());
         let mut backing = QcowFile::from(disk_file, MAX_NESTING_DEPTH).unwrap();
         backing
-            .write(b"test first bytes")
+            .write_all(b"test first bytes")
             .expect("Failed to write test string.");
         let wrapping_disk_file = basic_file(&valid_header());
         let mut wrapping = QcowFile::from(wrapping_disk_file, MAX_NESTING_DEPTH).unwrap();
         wrapping.set_backing_file(Some(Box::new(backing)));
         wrapping.seek(SeekFrom::Start(0)).expect("Failed to seek.");
         wrapping
-            .write(b"TEST")
+            .write_all(b"TEST")
             .expect("Failed to write second test string.");
         let mut buf = [0u8; 10];
         wrapping.seek(SeekFrom::Start(0)).expect("Failed to seek.");
-        wrapping.read(&mut buf).expect("Failed to read.");
+        wrapping.read_exact(&mut buf).expect("Failed to read.");
         assert_eq!(&buf, b"TEST first");
     }
 
@@ -2042,10 +2042,10 @@ mod tests {
             let mut q = QcowFile::from(disk_file, MAX_NESTING_DEPTH).unwrap();
             let b = [0x55u8; 0x1000];
             q.seek(SeekFrom::Start(0xfff2000)).expect("Failed to seek.");
-            q.write(&b).expect("Failed to write test string.");
+            q.write_all(&b).expect("Failed to write test string.");
             let mut buf = [0u8; 4];
             q.seek(SeekFrom::Start(0xfff2000)).expect("Failed to seek.");
-            q.read(&mut buf).expect("Failed to read.");
+            q.read_exact(&mut buf).expect("Failed to read.");
             assert_eq!(buf[0], 0x55);
         });
     }
@@ -2057,14 +2057,14 @@ mod tests {
             // Write some test data.
             let b = [0x55u8; 0x1000];
             q.seek(SeekFrom::Start(0xfff2000)).expect("Failed to seek.");
-            q.write(&b).expect("Failed to write test string.");
+            q.write_all(&b).expect("Failed to write test string.");
             // Overwrite the test data with zeroes.
             q.seek(SeekFrom::Start(0xfff2000)).expect("Failed to seek.");
             q.write_zeroes_all(0x200).expect("Failed to write zeroes.");
             // Verify that the correct part of the data was zeroed out.
             let mut buf = [0u8; 0x1000];
             q.seek(SeekFrom::Start(0xfff2000)).expect("Failed to seek.");
-            q.read(&mut buf).expect("Failed to read.");
+            q.read_exact(&mut buf).expect("Failed to read.");
             assert_eq!(buf[0], 0);
             assert_eq!(buf[0x1FF], 0);
             assert_eq!(buf[0x200], 0x55);
@@ -2082,7 +2082,7 @@ mod tests {
             // Write some test data.
             let b = [0x55u8; CHUNK_SIZE];
             q.seek(SeekFrom::Start(0)).expect("Failed to seek.");
-            q.write(&b).expect("Failed to write test string.");
+            q.write_all(&b).expect("Failed to write test string.");
             // Overwrite the full cluster with zeroes.
             q.seek(SeekFrom::Start(0)).expect("Failed to seek.");
             q.write_zeroes_all(CHUNK_SIZE)
@@ -2090,7 +2090,7 @@ mod tests {
             // Verify that the data was zeroed out.
             let mut buf = [0u8; CHUNK_SIZE];
             q.seek(SeekFrom::Start(0)).expect("Failed to seek.");
-            q.read(&mut buf).expect("Failed to read.");
+            q.read_exact(&mut buf).expect("Failed to read.");
             assert_eq!(buf[0], 0);
             assert_eq!(buf[CHUNK_SIZE - 1], 0);
         });
@@ -2105,7 +2105,7 @@ mod tests {
         backing
             .seek(SeekFrom::Start(0xfff2000))
             .expect("Failed to seek.");
-        backing.write(&b).expect("Failed to write test string.");
+        backing.write_all(&b).expect("Failed to write test string.");
         let wrapping_disk_file = basic_file(&valid_header());
         let mut wrapping = QcowFile::from(wrapping_disk_file, MAX_NESTING_DEPTH).unwrap();
         wrapping.set_backing_file(Some(Box::new(backing)));
@@ -2122,7 +2122,7 @@ mod tests {
         wrapping
             .seek(SeekFrom::Start(0xfff2000))
             .expect("Failed to seek.");
-        wrapping.read(&mut buf).expect("Failed to read.");
+        wrapping.read_exact(&mut buf).expect("Failed to read.");
         assert_eq!(buf[0], 0);
         assert_eq!(buf[0x1FF], 0);
         assert_eq!(buf[0x200], 0x55);
@@ -2143,7 +2143,7 @@ mod tests {
             let mut q = QcowFile::from(disk_file, MAX_NESTING_DEPTH).unwrap();
             let mut b = [5u8; 16];
             q.seek(SeekFrom::Start(1000)).expect("Failed to seek.");
-            q.read(&mut b).expect("Failed to read.");
+            q.read_exact(&mut b).expect("Failed to read.");
             assert_eq!(0, b[0]);
             assert_eq!(0, b[15]);
         });
@@ -2516,7 +2516,7 @@ mod tests {
             for xfer in &xfers {
                 q.seek(SeekFrom::Start(xfer.addr)).expect("Failed to seek.");
                 if xfer.write {
-                    q.write(&b).expect("Failed to write.");
+                    q.write_all(&b).expect("Failed to write.");
                 } else {
                     let read_count: usize = q.read(&mut b).expect("Failed to read.");
                     assert_eq!(read_count, BUF_SIZE);
@@ -2720,7 +2720,7 @@ mod tests {
             .unwrap();
         let _level1_qcow_file = QcowFile::new_from_backing(
             level1_qcow_file,
-            &backing_file_path.to_str().unwrap(),
+            backing_file_path.to_str().unwrap(),
             1000, /* allow deep nesting */
         )
         .unwrap();
@@ -2728,7 +2728,7 @@ mod tests {
         let level2_qcow_file = tempfile().unwrap();
         let _level2_qcow_file = QcowFile::new_from_backing(
             level2_qcow_file,
-            &level1_qcow_file_path.to_str().unwrap(),
+            level1_qcow_file_path.to_str().unwrap(),
             1000, /* allow deep nesting */
         )
         .expect("failed to create level2 qcow file");
