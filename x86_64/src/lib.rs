@@ -63,7 +63,7 @@ use devices::{
 use hypervisor::{HypervisorX86_64, ProtectionType, VcpuX86_64, Vm, VmX86_64};
 use minijail::Minijail;
 use remain::sorted;
-use resources::SystemAllocator;
+use resources::{MemRegion, SystemAllocator, SystemAllocatorConfig};
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::{BatControl, BatteryType};
@@ -394,12 +394,23 @@ impl arch::LinuxArch for X8664arch {
         let guest_mem = vm.get_memory();
         let high_mmio_start = Self::get_high_mmio_base(guest_mem);
         let high_mmio_size = Self::get_high_mmio_size(vm);
-        SystemAllocator::builder()
-            .add_io_addresses(0xc000, 0x1_0000)
-            .add_low_mmio_addresses(END_ADDR_BEFORE_32BITS, PCI_MMIO_SIZE)
-            .add_high_mmio_addresses(high_mmio_start, high_mmio_size)
-            .create_allocator(X86_64_IRQ_BASE)
-            .unwrap()
+        SystemAllocator::new(SystemAllocatorConfig {
+            io: Some(MemRegion {
+                base: 0xc000,
+                size: 0x1_0000,
+            }),
+            low_mmio: MemRegion {
+                base: END_ADDR_BEFORE_32BITS,
+                size: PCI_MMIO_SIZE,
+            },
+            high_mmio: MemRegion {
+                base: high_mmio_start,
+                size: high_mmio_size,
+            },
+            platform_mmio: None,
+            first_irq: X86_64_IRQ_BASE,
+        })
+        .unwrap()
     }
 
     fn build_vm<V, Vcpu>(

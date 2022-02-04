@@ -6,37 +6,9 @@ use std::collections::BTreeMap;
 use base::pagesize;
 
 use crate::address_allocator::{AddressAllocator, AddressAllocatorSet};
-use crate::{Alloc, Error, Result};
+use crate::{Alloc, Result};
 
 /// Manages allocating system resources such as address space and interrupt numbers.
-///
-/// # Example - Use the `SystemAllocator` builder.
-///
-/// ```
-/// # use resources::{Alloc, MmioType, SystemAllocator};
-///   if let Ok(mut a) = SystemAllocator::builder()
-///           .add_io_addresses(0x1000, 0x10000)
-///           .add_high_mmio_addresses(0x10000000, 0x10000000)
-///           .add_low_mmio_addresses(0x30000000, 0x10000)
-///           .create_allocator(5) {
-///       assert_eq!(a.allocate_irq(), Some(5));
-///       assert_eq!(a.allocate_irq(), Some(6));
-///       assert_eq!(
-///           a.mmio_allocator(MmioType::High)
-///              .allocate(
-///                  0x100,
-///                  Alloc::PciBar { bus: 0, dev: 0, func: 0, bar: 0 },
-///                  "bar0".to_string()
-///              ),
-///           Ok(0x10000000)
-///       );
-///       assert_eq!(
-///           a.mmio_allocator(MmioType::High)
-///              .get(&Alloc::PciBar { bus: 0, dev: 0, func: 0, bar: 0 }),
-///           Some(&(0x10000000, 0x100, "bar0".to_string()))
-///       );
-///   }
-/// ```
 
 /// MMIO address Type
 ///    Low: address allocated from low_address_space
@@ -44,6 +16,25 @@ use crate::{Alloc, Error, Result};
 pub enum MmioType {
     Low,
     High,
+}
+
+/// Region of memory.
+pub struct MemRegion {
+    pub base: u64,
+    pub size: u64,
+}
+
+pub struct SystemAllocatorConfig {
+    /// IO memory. Only for x86_64.
+    pub io: Option<MemRegion>,
+    /// Low (<=4GB) MMIO region.
+    pub low_mmio: MemRegion,
+    /// High (>4GB) MMIO region.
+    pub high_mmio: MemRegion,
+    /// Platform MMIO space. Only for ARM.
+    pub platform_mmio: Option<MemRegion>,
+    /// The first IRQ number to give out.
+    pub first_irq: u32,
 }
 
 #[derive(Debug)]
@@ -65,62 +56,53 @@ impl SystemAllocator {
     /// Can return `None` if `base` + `size` overflows a u64 or if alignment isn't a power
     /// of two.
     ///
-    /// * `io_base` - The starting address of IO memory.
-    /// * `io_size` - The size of IO memory.
-    /// * `high_base` - The starting address of high MMIO space.
-    /// * `high_size` - The size of high MMIO space.
-    /// * `low_base` - The starting address of low MMIO space.
-    /// * `low_size` - The size of low MMIO space.
-    /// * `platform_base` - The starting address of platform MMIO space.
-    /// * `platform_size` - The size of platform MMIO space.
-    /// * `first_irq` - The first irq number to give out.
-    fn new(
-        io_base: Option<u64>,
-        io_size: Option<u64>,
-        high_base: u64,
-        high_size: u64,
-        low_base: u64,
-        low_size: u64,
-        platform_base: Option<u64>,
-        platform_size: Option<u64>,
-        first_irq: u32,
-    ) -> Result<Self> {
+    pub fn new(config: SystemAllocatorConfig) -> Result<Self> {
         let page_size = pagesize() as u64;
+
         Ok(SystemAllocator {
-            io_address_space: if let (Some(b), Some(s)) = (io_base, io_size) {
-                Some(AddressAllocator::new(b, s, Some(0x400), None)?)
+            io_address_space: if let Some(io) = config.io {
+                Some(AddressAllocator::new(io.base, io.size, Some(0x400), None)?)
             } else {
                 None
             },
             mmio_address_spaces: [
                 // MmioType::Low
-                AddressAllocator::new(low_base, low_size, Some(page_size), None)?,
+                AddressAllocator::new(
+                    config.low_mmio.base,
+                    config.low_mmio.size,
+                    Some(page_size),
+                    None,
+                )?,
                 // MmioType::High
-                AddressAllocator::new(high_base, high_size, Some(page_size), None)?,
+                AddressAllocator::new(
+                    config.high_mmio.base,
+                    config.high_mmio.size,
+                    Some(page_size),
+                    None,
+                )?,
             ],
 
             pci_allocator: BTreeMap::new(),
 
-            mmio_platform_address_spaces: if let (Some(b), Some(s)) = (platform_base, platform_size)
-            {
-                Some(AddressAllocator::new(b, s, Some(page_size), None)?)
+            mmio_platform_address_spaces: if let Some(platform) = config.platform_mmio {
+                Some(AddressAllocator::new(
+                    platform.base,
+                    platform.size,
+                    Some(page_size),
+                    None,
+                )?)
             } else {
                 None
             },
 
             irq_allocator: AddressAllocator::new(
-                first_irq as u64,
-                1024 - first_irq as u64,
+                config.first_irq as u64,
+                1024 - config.first_irq as u64,
                 Some(1),
                 None,
             )?,
             next_anon_id: 0,
         })
-    }
-
-    /// Returns a `SystemAllocatorBuilder` that can create a new `SystemAllocator`.
-    pub fn builder() -> SystemAllocatorBuilder {
-        SystemAllocatorBuilder::new()
     }
 
     /// Reserves the next available system irq number.
@@ -250,67 +232,53 @@ impl SystemAllocator {
     }
 }
 
-/// Used to build a system address map for use in creating a `SystemAllocator`.
-pub struct SystemAllocatorBuilder {
-    io_base: Option<u64>,
-    io_size: Option<u64>,
-    low_mmio_base: Option<u64>,
-    low_mmio_size: Option<u64>,
-    high_mmio_base: Option<u64>,
-    high_mmio_size: Option<u64>,
-    platform_mmio_base: Option<u64>,
-    platform_mmio_size: Option<u64>,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl SystemAllocatorBuilder {
-    pub fn new() -> Self {
-        SystemAllocatorBuilder {
-            io_base: None,
-            io_size: None,
-            low_mmio_base: None,
-            low_mmio_size: None,
-            high_mmio_base: None,
-            high_mmio_size: None,
-            platform_mmio_base: None,
-            platform_mmio_size: None,
-        }
-    }
+    #[test]
+    fn example() {
+        let mut a = SystemAllocator::new(SystemAllocatorConfig {
+            io: Some(MemRegion {
+                base: 0x1000,
+                size: 0x1_0000,
+            }),
+            low_mmio: MemRegion {
+                base: 0x3000_0000,
+                size: 0x1_0000,
+            },
+            high_mmio: MemRegion {
+                base: 0x1000_0000,
+                size: 0x1000_0000,
+            },
+            platform_mmio: None,
+            first_irq: 5,
+        })
+        .unwrap();
 
-    pub fn add_io_addresses(mut self, base: u64, size: u64) -> Self {
-        self.io_base = Some(base);
-        self.io_size = Some(size);
-        self
-    }
-
-    pub fn add_low_mmio_addresses(mut self, base: u64, size: u64) -> Self {
-        self.low_mmio_base = Some(base);
-        self.low_mmio_size = Some(size);
-        self
-    }
-
-    pub fn add_high_mmio_addresses(mut self, base: u64, size: u64) -> Self {
-        self.high_mmio_base = Some(base);
-        self.high_mmio_size = Some(size);
-        self
-    }
-
-    pub fn add_platform_mmio_addresses(mut self, base: u64, size: u64) -> Self {
-        self.platform_mmio_base = Some(base);
-        self.platform_mmio_size = Some(size);
-        self
-    }
-
-    pub fn create_allocator(&self, first_irq: u32) -> Result<SystemAllocator> {
-        SystemAllocator::new(
-            self.io_base,
-            self.io_size,
-            self.high_mmio_base.ok_or(Error::MissingHighMMIOAddresses)?,
-            self.high_mmio_size.ok_or(Error::MissingHighMMIOAddresses)?,
-            self.low_mmio_base.ok_or(Error::MissingLowMMIOAddresses)?,
-            self.low_mmio_size.ok_or(Error::MissingLowMMIOAddresses)?,
-            self.platform_mmio_base,
-            self.platform_mmio_size,
-            first_irq,
-        )
+        assert_eq!(a.allocate_irq(), Some(5));
+        assert_eq!(a.allocate_irq(), Some(6));
+        assert_eq!(
+            a.mmio_allocator(MmioType::High).allocate(
+                0x100,
+                Alloc::PciBar {
+                    bus: 0,
+                    dev: 0,
+                    func: 0,
+                    bar: 0
+                },
+                "bar0".to_string()
+            ),
+            Ok(0x10000000)
+        );
+        assert_eq!(
+            a.mmio_allocator(MmioType::High).get(&Alloc::PciBar {
+                bus: 0,
+                dev: 0,
+                func: 0,
+                bar: 0
+            }),
+            Some(&(0x10000000, 0x100, "bar0".to_string()))
+        );
     }
 }

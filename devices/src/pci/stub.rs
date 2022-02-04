@@ -127,6 +127,7 @@ impl PciDevice for StubPciDevice {
 #[cfg(test)]
 mod test {
     use super::*;
+    use resources::{MemRegion, SystemAllocator, SystemAllocatorConfig};
 
     const CONFIG: StubPciParameters = StubPciParameters {
         address: PciAddress {
@@ -155,12 +156,23 @@ mod test {
 
     #[test]
     fn address_allocation() {
-        let mut allocator = SystemAllocator::builder()
-            .add_io_addresses(0x1000_0000, 0x1000_0000)
-            .add_low_mmio_addresses(0x2000_0000, 0x1000_0000)
-            .add_high_mmio_addresses(0x3000_0000, 0x1000_0000)
-            .create_allocator(5)
-            .unwrap();
+        let mut allocator = SystemAllocator::new(SystemAllocatorConfig {
+            io: Some(MemRegion {
+                base: 0x1000_0000,
+                size: 0x1000_0000,
+            }),
+            low_mmio: MemRegion {
+                base: 0x2000_0000,
+                size: 0x1000_0000,
+            },
+            high_mmio: MemRegion {
+                base: 0x3000_0000,
+                size: 0x1000_0000,
+            },
+            platform_mmio: None,
+            first_irq: 5,
+        })
+        .unwrap();
         let mut device = StubPciDevice::new(&CONFIG);
 
         assert!(device.allocate_address(&mut allocator).is_ok());

@@ -20,7 +20,7 @@ use hypervisor::{
 };
 use minijail::Minijail;
 use remain::sorted;
-use resources::{MmioType, SystemAllocator};
+use resources::{MemRegion, MmioType, SystemAllocator, SystemAllocatorConfig};
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::BatteryType;
@@ -561,12 +561,23 @@ impl AArch64 {
                     guest_phys_end, high_mmio_base,
                 );
             });
-        SystemAllocator::builder()
-            .add_low_mmio_addresses(AARCH64_MMIO_BASE, AARCH64_MMIO_SIZE)
-            .add_platform_mmio_addresses(plat_mmio_base, plat_mmio_size)
-            .add_high_mmio_addresses(high_mmio_base, high_mmio_size)
-            .create_allocator(AARCH64_IRQ_BASE)
-            .unwrap()
+        SystemAllocator::new(SystemAllocatorConfig {
+            io: None,
+            low_mmio: MemRegion {
+                base: AARCH64_MMIO_BASE,
+                size: AARCH64_MMIO_SIZE,
+            },
+            high_mmio: MemRegion {
+                base: high_mmio_base,
+                size: high_mmio_size,
+            },
+            platform_mmio: Some(MemRegion {
+                base: plat_mmio_base,
+                size: plat_mmio_size,
+            }),
+            first_irq: AARCH64_IRQ_BASE,
+        })
+        .unwrap()
     }
 
     /// This adds any early platform devices for this architecture.
