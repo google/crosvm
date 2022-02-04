@@ -608,7 +608,7 @@ fn create_devices(
     }
 
     #[cfg(feature = "usb")]
-    {
+    if cfg.usb {
         // Create xhci controller.
         let usb_controller = Box::new(XhciController::new(vm.get_memory().clone(), usb_provider));
         devices.push((usb_controller, simple_jail(cfg, "xhci")?));
