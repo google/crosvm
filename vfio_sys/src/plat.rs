@@ -62,9 +62,14 @@ pub const __FD_SETSIZE: u32 = 1024;
 pub const PLAT_IRQ_FORWARD_API_VERSION: u32 = 0;
 pub const PLAT_IRQ_FORWARD_TYPE: u32 = 59;
 pub const PLAT_IRQ_FORWARD_BASE: u32 = 100;
+pub const GPE_FORWARD_BASE: u32 = 130;
 pub const PLAT_IRQ_FORWARD_SET_LEVEL_TRIGGER_EVENTFD: u32 = 1;
 pub const PLAT_IRQ_FORWARD_SET_LEVEL_UNMASK_EVENTFD: u32 = 2;
 pub const PLAT_IRQ_FORWARD_SET_EDGE_TRIGGER: u32 = 4;
+pub const PLAT_IRQ_FORWARD_SET_LEVEL_SCI_FOR_GPE_TRIGGER_EVENTFD: u32 = 8;
+pub const PLAT_IRQ_FORWARD_SET_LEVEL_SCI_FOR_GPE_UNMASK_EVENTFD: u32 = 16;
+pub const ACPI_GPE_FORWARD_SET_TRIGGER: u32 = 1;
+pub const ACPI_GPE_FORWARD_CLEAR_TRIGGER: u32 = 2;
 pub type __s8 = ::std::os::raw::c_schar;
 pub type __u8 = ::std::os::raw::c_uchar;
 pub type __s16 = ::std::os::raw::c_short;
@@ -130,4 +135,11 @@ pub struct plat_irq_forward_set {
     pub irq_number_host: __u32,
     pub count: __u32,
     pub eventfd: __IncompleteArrayField<__u8>,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct gpe_forward_set {
+    pub argsz: __u32,
+    pub action_flags: __u32,
+    pub gpe_host_nr: __u32,
 }
