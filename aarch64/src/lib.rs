@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+
 use std::collections::BTreeMap;
 use std::io;
 use std::mem::size_of;

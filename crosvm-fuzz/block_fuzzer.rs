@@ -13,7 +13,6 @@ use base::Event;
 use cros_fuzz::fuzz_target;
 use devices::virtio::{base_features, Block, Interrupt, Queue, VirtioDevice};
 use hypervisor::ProtectionType;
-use tempfile;
 use vm_memory::{GuestAddress, GuestMemory};
 
 const MEM_SIZE: u64 = 256 * 1024 * 1024;

@@ -14,16 +14,14 @@ cd "$(dirname $0)/.."
 
 # TODO(b/192373803): Clean up clippy error is the following crates
 EXCLUDE=(
-    aarch64           # 16 errors
-    crosvm-fuzz       # 7 errors
-    devices           # 92 errors
-    disk              # 36 errors
-    kvm               # 641 errors
-    kvm_sys           # 613 errors
-    libvda            # 79 errors
-    net_sys           # 3 errors
-    virtio_sys        # 9 errors
-    x86_64            # 56 errors
+    devices    # 92 errors
+    disk       # 36 errors
+    kvm        # 641 errors
+    kvm_sys    # 613 errors
+    libvda     # 79 errors
+    net_sys    # 3 errors
+    virtio_sys # 9 errors
+    x86_64     # 56 errors
 )
 
 EXCLUDE_COMMON=(
@@ -44,7 +42,7 @@ for crate in common/*; do
         [[ ! " ${EXCLUDE_COMMON[*]} " =~ " ${crate} " ]]; then
         echo ""
         echo "Clippy ${crate}"
-        (cd "${crate}" && \
-             cargo clippy --all-targets --all-features "$@" -- -Dwarnings)
+        (cd "${crate}" &&
+            cargo clippy --all-targets --all-features "$@" -- -Dwarnings)
     fi
 done

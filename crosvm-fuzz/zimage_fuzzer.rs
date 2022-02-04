@@ -5,7 +5,6 @@
 #![no_main]
 
 use cros_fuzz::fuzz_target;
-use tempfile;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use std::fs::File;

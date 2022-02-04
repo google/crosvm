@@ -6,7 +6,6 @@
 
 use cros_fuzz::fuzz_target;
 use disk::QcowFile;
-use tempfile;
 
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
