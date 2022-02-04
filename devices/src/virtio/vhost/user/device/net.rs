@@ -413,20 +413,19 @@ pub fn run_net_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
         let handler = DeviceRequestHandler::new(backend);
         let ex = Executor::new().context("failed to create executor")?;
 
-        threads.push(thread::spawn(move || {
+        threads.push(thread::spawn(move || -> anyhow::Result<()> {
             NET_EXECUTOR.with(|thread_ex| {
                 let _ = thread_ex.set(ex.clone());
             });
-            if let Err(e) = ex.run_until(handler.run(&socket, &ex)) {
-                bail!("error occurred: {}", e);
-            }
-            Ok(())
+            // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
+            ex.run_until(handler.run(&socket, &ex))?
         }));
     }
 
     for t in threads {
-        if let Err(e) = t.join() {
-            bail!("failed to join threads: {:?}", e);
+        match t.join() {
+            Ok(r) => r?,
+            Err(e) => bail!("thread panicked: {:?}", e),
         }
     }
     Ok(())

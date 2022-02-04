@@ -342,9 +342,6 @@ pub fn run_block_device(program_name: &str, args: &[&str]) -> anyhow::Result<()>
     let block = BlockBackend::new(BLOCK_EXECUTOR.clone(), filename, fileopts)?;
     let handler = DeviceRequestHandler::new(block);
 
-    if let Err(e) = ex.run_until(handler.run(opts.socket, &ex)) {
-        bail!("error occurred: {}", e);
-    }
-
-    Ok(())
+    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
+    ex.run_until(handler.run(opts.socket, &ex))?
 }

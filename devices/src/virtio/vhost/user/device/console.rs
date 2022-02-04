@@ -267,10 +267,8 @@ fn run_console(params: &SerialParameters, socket: &str) -> anyhow::Result<()> {
 
     let _ = CONSOLE_EXECUTOR.set(ex.clone());
 
-    if let Err(e) = ex.run_until(handler.run(socket, &ex)) {
-        bail!(e);
-    }
-    Ok(())
+    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
+    ex.run_until(handler.run(socket, &ex))?
 }
 
 #[derive(FromArgs)]

@@ -337,9 +337,6 @@ pub fn run_fs_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
 
     let _ = FS_EXECUTOR.set(ex.clone());
 
-    if let Err(e) = ex.run_until(handler.run_with_listener(listener, &ex)) {
-        bail!(e);
-    }
-
-    Ok(())
+    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
+    ex.run_until(handler.run_with_listener(listener, &ex))?
 }

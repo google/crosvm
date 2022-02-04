@@ -285,7 +285,6 @@ pub fn run_cras_snd_device(program_name: &str, args: &[&str]) -> anyhow::Result<
 
     let _ = SND_EXECUTOR.set(ex.clone());
 
-    let _ = ex.run_until(handler.run_with_listener(listener, &ex))?;
-
-    Ok(())
+    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
+    ex.run_until(handler.run_with_listener(listener, &ex))?
 }

@@ -361,9 +361,6 @@ pub fn run_wl_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
     let handler =
         DeviceRequestHandler::new(WlBackend::new(wayland_paths, vm_socket, resource_bridge));
 
-    if let Err(e) = ex.run_until(handler.run(socket, &ex)) {
-        bail!("error occurred: {}", e);
-    }
-
-    Ok(())
+    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
+    ex.run_until(handler.run(socket, &ex))?
 }
