@@ -1262,7 +1262,7 @@ mod tests {
             CommandAccess::CommandRWBoth,
         );
 
-        advance_by_ticks(&mut data, (3 * FREQUENCY_HZ).into());
+        advance_by_ticks(&mut data, 3 * FREQUENCY_HZ);
         read_counter(&mut data.pit, 0, 0, CommandAccess::CommandRWBoth);
     }
 

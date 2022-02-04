@@ -911,7 +911,7 @@ mod tests {
                 PciBarRegionType::Memory64BitRegion,
                 PciBarPrefetchable::NotPrefetchable,
             )
-            .set_address(0x01234567_89ABCDE0),
+            .set_address(0x0123_4567_89AB_CDE0),
         )
         .expect("add_pci_bar failed");
 
@@ -919,7 +919,7 @@ mod tests {
             cfg.get_bar_type(0),
             Some(PciBarRegionType::Memory64BitRegion)
         );
-        assert_eq!(cfg.get_bar_addr(0), 0x01234567_89ABCDE0);
+        assert_eq!(cfg.get_bar_addr(0), 0x0123_4567_89AB_CDE0);
         assert_eq!(cfg.writable_bits[BAR0_REG + 1], 0xFFFFFFFF);
         assert_eq!(cfg.writable_bits[BAR0_REG + 0], 0xFFFFFFF0);
 
@@ -927,7 +927,7 @@ mod tests {
         assert_eq!(
             bar_iter.next(),
             Some(PciBarConfiguration {
-                addr: 0x01234567_89ABCDE0,
+                addr: 0x0123_4567_89AB_CDE0,
                 size: 0x10,
                 bar_idx: 0,
                 region_type: PciBarRegionType::Memory64BitRegion,
@@ -1048,7 +1048,7 @@ mod tests {
                 PciBarRegionType::Memory64BitRegion,
                 PciBarPrefetchable::NotPrefetchable,
             )
-            .set_address(0x01234567_89ABCDE0),
+            .set_address(0x0123_4567_89AB_CDE0),
         )
         .expect("add_pci_bar failed");
 
@@ -1081,7 +1081,7 @@ mod tests {
         assert_eq!(
             bar_iter.next(),
             Some(PciBarConfiguration {
-                addr: 0x01234567_89ABCDE0,
+                addr: 0x0123_4567_89AB_CDE0,
                 size: 0x10,
                 bar_idx: 0,
                 region_type: PciBarRegionType::Memory64BitRegion,
@@ -1118,7 +1118,7 @@ mod tests {
         assert_eq!(
             bar_iter.next(),
             Some(PciBarConfiguration {
-                addr: 0xFFEEDDCC_BBAA9980,
+                addr: 0xFFEE_DDCC_BBAA_9980,
                 size: 0x10,
                 bar_idx: 0,
                 region_type: PciBarRegionType::Memory64BitRegion,

@@ -607,7 +607,7 @@ mod tests {
         // Check that the memory addresses are parsed correctly by 'handle_address_chain' and passed
         // to the closure.
         let memory_start_addr = GuestAddress(0x0);
-        let memory = GuestMemory::new(&vec![(memory_start_addr, 0x10000)]).unwrap();
+        let memory = GuestMemory::new(&[(memory_start_addr, 0x10000)]).unwrap();
         memory
             .write_obj_at_addr(0x10u32, GuestAddress(0x100))
             .unwrap();

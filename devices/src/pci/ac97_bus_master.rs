@@ -1078,7 +1078,7 @@ mod test {
                 mem.write_obj_at_addr(GUEST_ADDR_BASE + FRAGMENT_SIZE as u32, pointer_addr)
                     .expect("Writing guest memory failed.");
             };
-            mem.write_obj_at_addr(IOC_MASK | (FRAGMENT_SIZE as u32) / 2, control_addr)
+            mem.write_obj_at_addr(IOC_MASK | ((FRAGMENT_SIZE as u32) / 2), control_addr)
                 .expect("Writing guest memory failed.");
         }
 
@@ -1216,8 +1216,7 @@ mod test {
                 GS_MINT,
             ),
             _ => {
-                assert!(false, "Invalid Ac97Function.");
-                (0, 0, 0, 0, 0, 0, 0)
+                panic!("Invalid Ac97Function.");
             }
         };
 
@@ -1231,7 +1230,7 @@ mod test {
             let control_addr = GuestAddress(GUEST_ADDR_BASE as u64 + i as u64 * 8 + 4);
             mem.write_obj_at_addr(GUEST_ADDR_BASE + FRAGMENT_SIZE as u32, pointer_addr)
                 .expect("Writing guest memory failed.");
-            mem.write_obj_at_addr(IOC_MASK | (FRAGMENT_SIZE as u32) / 2, control_addr)
+            mem.write_obj_at_addr(IOC_MASK | ((FRAGMENT_SIZE as u32) / 2), control_addr)
                 .expect("Writing guest memory failed.");
         }
 

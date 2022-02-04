@@ -148,7 +148,7 @@ mod test {
     #[test]
     fn ring_test_dequeue() {
         let trb_size = size_of::<Trb>() as u64;
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
         let mut transfer_ring = RingBuffer::new(String::new(), gm.clone());
 
         // Structure of ring buffer:
@@ -160,8 +160,7 @@ mod test {
         trb.set_trb_type(TrbType::Normal);
         trb.set_data_buffer(1);
         trb.set_chain(true);
-        gm.write_obj_at_addr(trb.clone(), GuestAddress(0x100))
-            .unwrap();
+        gm.write_obj_at_addr(trb, GuestAddress(0x100)).unwrap();
 
         trb.set_data_buffer(2);
         gm.write_obj_at_addr(trb, GuestAddress(0x100 + trb_size))
@@ -227,15 +226,14 @@ mod test {
     #[test]
     fn transfer_ring_test_dequeue_failure() {
         let trb_size = size_of::<Trb>() as u64;
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
         let mut transfer_ring = RingBuffer::new(String::new(), gm.clone());
 
         let mut trb = NormalTrb::new();
         trb.set_trb_type(TrbType::Normal);
         trb.set_data_buffer(1);
         trb.set_chain(true);
-        gm.write_obj_at_addr(trb.clone(), GuestAddress(0x100))
-            .unwrap();
+        gm.write_obj_at_addr(trb, GuestAddress(0x100)).unwrap();
 
         trb.set_data_buffer(2);
         gm.write_obj_at_addr(trb, GuestAddress(0x100 + trb_size))
@@ -262,7 +260,7 @@ mod test {
     #[test]
     fn ring_test_toggle_cycle() {
         let trb_size = size_of::<Trb>() as u64;
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
         let mut transfer_ring = RingBuffer::new(String::new(), gm.clone());
 
         let mut trb = NormalTrb::new();
@@ -270,8 +268,7 @@ mod test {
         trb.set_data_buffer(1);
         trb.set_chain(false);
         trb.set_cycle(false);
-        gm.write_obj_at_addr(trb.clone(), GuestAddress(0x100))
-            .unwrap();
+        gm.write_obj_at_addr(trb, GuestAddress(0x100)).unwrap();
 
         let mut ltrb = LinkTrb::new();
         ltrb.set_trb_type(TrbType::Link);
@@ -302,8 +299,7 @@ mod test {
         trb.set_trb_type(TrbType::Normal);
         trb.set_data_buffer(2);
         trb.set_cycle(true); // Link TRB toggled the cycle.
-        gm.write_obj_at_addr(trb.clone(), GuestAddress(0x100))
-            .unwrap();
+        gm.write_obj_at_addr(trb, GuestAddress(0x100)).unwrap();
 
         // Read new transfer descriptor.
         let descriptor = transfer_ring
@@ -330,8 +326,7 @@ mod test {
         trb.set_trb_type(TrbType::Normal);
         trb.set_data_buffer(3);
         trb.set_cycle(false); // Link TRB toggled the cycle.
-        gm.write_obj_at_addr(trb.clone(), GuestAddress(0x100))
-            .unwrap();
+        gm.write_obj_at_addr(trb, GuestAddress(0x100)).unwrap();
 
         // Read new transfer descriptor.
         let descriptor = transfer_ring

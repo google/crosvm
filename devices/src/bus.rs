@@ -444,7 +444,7 @@ mod tests {
         assert!(bus.insert(dummy.clone(), 0x0, 0x20).is_err());
         assert!(bus.insert(dummy.clone(), 0x20, 0x05).is_ok());
         assert!(bus.insert(dummy.clone(), 0x25, 0x05).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x0, 0x10).is_ok());
+        assert!(bus.insert(dummy, 0x0, 0x10).is_ok());
     }
 
     #[test]
@@ -461,14 +461,14 @@ mod tests {
         assert!(bus.insert(dummy.clone(), 0x0, 0x20).is_err());
         assert!(bus.insert(dummy.clone(), 0x20, 0x05).is_ok());
         assert!(bus.insert(dummy.clone(), 0x25, 0x05).is_ok());
-        assert!(bus.insert(dummy.clone(), 0x0, 0x10).is_ok());
+        assert!(bus.insert(dummy, 0x0, 0x10).is_ok());
     }
 
     #[test]
     fn bus_read_write() {
         let bus = Bus::new();
         let dummy = Arc::new(Mutex::new(DummyDevice));
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
+        assert!(bus.insert(dummy, 0x10, 0x10).is_ok());
         assert!(bus.read(0x10, &mut [0, 0, 0, 0]));
         assert!(bus.write(0x10, &[0, 0, 0, 0]));
         assert!(bus.read(0x11, &mut [0, 0, 0, 0]));
@@ -476,9 +476,9 @@ mod tests {
         assert!(bus.read(0x16, &mut [0, 0, 0, 0]));
         assert!(bus.write(0x16, &[0, 0, 0, 0]));
         assert!(!bus.read(0x20, &mut [0, 0, 0, 0]));
-        assert!(!bus.write(0x20, &mut [0, 0, 0, 0]));
+        assert!(!bus.write(0x20, &[0, 0, 0, 0]));
         assert!(!bus.read(0x06, &mut [0, 0, 0, 0]));
-        assert!(!bus.write(0x06, &mut [0, 0, 0, 0]));
+        assert!(!bus.write(0x06, &[0, 0, 0, 0]));
     }
 
     #[test]
@@ -487,7 +487,7 @@ mod tests {
         let dummy = Arc::new(Mutex::new(ConstantDevice {
             uses_full_addr: false,
         }));
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
+        assert!(bus.insert(dummy, 0x10, 0x10).is_ok());
 
         let mut values = [0, 1, 2, 3];
         assert!(bus.read(0x10, &mut values));
@@ -504,7 +504,7 @@ mod tests {
         let dummy = Arc::new(Mutex::new(ConstantDevice {
             uses_full_addr: true,
         }));
-        assert!(bus.insert(dummy.clone(), 0x10, 0x10).is_ok());
+        assert!(bus.insert(dummy, 0x10, 0x10).is_ok());
 
         let mut values = [0u8; 4];
         assert!(bus.read(0x10, &mut values));

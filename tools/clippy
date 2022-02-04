@@ -14,7 +14,6 @@ cd "$(dirname $0)/.."
 
 # TODO(b/192373803): Clean up clippy error is the following crates
 EXCLUDE=(
-    devices    # 92 errors
     kvm        # 641 errors
     kvm_sys    # 613 errors
     libvda     # 79 errors

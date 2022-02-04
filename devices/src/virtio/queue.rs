@@ -679,7 +679,7 @@ mod tests {
     fn queue_event_id_guest_fast() {
         let mut queue = Queue::new(QUEUE_SIZE.try_into().unwrap());
         let memory_start_addr = GuestAddress(0x0);
-        let mem = GuestMemory::new(&vec![(memory_start_addr, GUEST_MEMORY_SIZE)]).unwrap();
+        let mem = GuestMemory::new(&[(memory_start_addr, GUEST_MEMORY_SIZE)]).unwrap();
         setup_vq(&mut queue, &mem);
 
         let interrupt = Interrupt::new(
@@ -756,7 +756,7 @@ mod tests {
     fn queue_event_id_guest_slow() {
         let mut queue = Queue::new(QUEUE_SIZE.try_into().unwrap());
         let memory_start_addr = GuestAddress(0x0);
-        let mem = GuestMemory::new(&vec![(memory_start_addr, GUEST_MEMORY_SIZE)]).unwrap();
+        let mem = GuestMemory::new(&[(memory_start_addr, GUEST_MEMORY_SIZE)]).unwrap();
         setup_vq(&mut queue, &mem);
 
         let interrupt = Interrupt::new(

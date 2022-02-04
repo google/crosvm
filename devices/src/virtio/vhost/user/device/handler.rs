@@ -779,7 +779,7 @@ mod tests {
             assert_eq!(*config, FAKE_CONFIG_DATA);
 
             println!("set_mem_table");
-            let mem = GuestMemory::new(&vec![(GuestAddress(0x0), 0x10000)]).unwrap();
+            let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
             vmm_handler.set_mem_table(&mem).unwrap();
 
             for idx in 0..QUEUES_NUM {

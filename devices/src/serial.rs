@@ -427,13 +427,10 @@ mod tests {
             Vec::new(),
         );
 
-        serial.write(serial_bus_address(DATA), &['a' as u8]);
-        serial.write(serial_bus_address(DATA), &['b' as u8]);
-        serial.write(serial_bus_address(DATA), &['c' as u8]);
-        assert_eq!(
-            serial_out.buf.lock().as_slice(),
-            &['a' as u8, 'b' as u8, 'c' as u8]
-        );
+        serial.write(serial_bus_address(DATA), &[b'a']);
+        serial.write(serial_bus_address(DATA), &[b'b']);
+        serial.write(serial_bus_address(DATA), &[b'c']);
+        assert_eq!(serial_out.buf.lock().as_slice(), &[b'a', b'b', b'c']);
     }
 
     #[test]
@@ -445,22 +442,20 @@ mod tests {
             ProtectionType::Unprotected,
             intr_evt.try_clone().unwrap(),
             None,
-            Some(Box::new(serial_out.clone())),
+            Some(Box::new(serial_out)),
             Vec::new(),
         );
 
         serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
-        serial
-            .queue_input_bytes(&['a' as u8, 'b' as u8, 'c' as u8])
-            .unwrap();
+        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
 
         assert_eq!(intr_evt.read(), Ok(1));
         let mut data = [0u8; 1];
         serial.read(serial_bus_address(DATA), &mut data[..]);
-        assert_eq!(data[0], 'a' as u8);
+        assert_eq!(data[0], b'a');
         serial.read(serial_bus_address(DATA), &mut data[..]);
-        assert_eq!(data[0], 'b' as u8);
+        assert_eq!(data[0], b'b');
         serial.read(serial_bus_address(DATA), &mut data[..]);
-        assert_eq!(data[0], 'c' as u8);
+        assert_eq!(data[0], b'c');
     }
 }

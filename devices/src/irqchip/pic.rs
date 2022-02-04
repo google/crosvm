@@ -541,15 +541,17 @@ mod tests {
         // The PIC is added to the io_bus in three locations, so the offset depends on which
         // address range the address is in. The PIC implementation currently does not use the
         // offset, but we're setting it accurately here in case it does in the future.
-        let offset = match address {
-            x if x >= PIC_PRIMARY && x < PIC_PRIMARY + 0x2 => address - PIC_PRIMARY,
-            x if x >= PIC_SECONDARY && x < PIC_SECONDARY + 0x2 => address - PIC_SECONDARY,
-            x if x >= PIC_PRIMARY_ELCR && x < PIC_PRIMARY_ELCR + 0x2 => address - PIC_PRIMARY_ELCR,
-            _ => panic!("invalid PIC address: {:#x}", address),
+        let base_address = if (PIC_PRIMARY..PIC_PRIMARY + 0x2).contains(&address) {
+            PIC_PRIMARY
+        } else if (PIC_SECONDARY..PIC_SECONDARY + 0x2).contains(&address) {
+            PIC_SECONDARY
+        } else if (PIC_PRIMARY_ELCR..PIC_PRIMARY_ELCR + 0x2).contains(&address) {
+            PIC_PRIMARY_ELCR
+        } else {
+            panic!("invalid PIC address: {:#x}", address);
         };
-
         BusAccessInfo {
-            offset,
+            offset: address - base_address,
             address,
             id: 0,
         }

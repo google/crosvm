@@ -244,7 +244,7 @@ mod tests {
 
     fn setup_mem() -> GuestMemory {
         let trb_size = size_of::<Trb>() as u64;
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
 
         // Structure of ring buffer:
         //  0x100  --> 0x200  --> 0x300
@@ -255,8 +255,7 @@ mod tests {
         trb.set_trb_type(TrbType::Normal);
         trb.set_data_buffer(1);
         trb.set_chain(true);
-        gm.write_obj_at_addr(trb.clone(), GuestAddress(0x100))
-            .unwrap();
+        gm.write_obj_at_addr(trb, GuestAddress(0x100)).unwrap();
 
         trb.set_data_buffer(2);
         gm.write_obj_at_addr(trb, GuestAddress(0x100 + trb_size))

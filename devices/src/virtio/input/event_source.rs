@@ -252,11 +252,11 @@ mod tests {
     }
 
     impl SourceMock {
-        fn new(evts: &Vec<input_event>) -> SourceMock {
+        fn new(evts: &[input_event]) -> SourceMock {
             let mut events: Vec<u8> = vec![];
             for evt in evts {
                 for byte in evt.as_slice() {
-                    events.push(byte.clone());
+                    events.push(*byte);
                 }
             }
             SourceMock { events }
@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn empty_new() {
-        let mut source = EventSourceImpl::new(SourceMock::new(&vec![]), 128);
+        let mut source = EventSourceImpl::new(SourceMock::new(&[]), 128);
         assert_eq!(
             source.available_events(),
             0,
@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn empty_receive() {
-        let mut source = EventSourceImpl::new(SourceMock::new(&vec![]), 128);
+        let mut source = EventSourceImpl::new(SourceMock::new(&[]), 128);
         assert_eq!(
             source.receive_events::<input_event>().unwrap(),
             0,
@@ -358,9 +358,9 @@ mod tests {
             evts.len(),
             "should receive all events"
         );
-        for idx in 0..EVENT_COUNT {
+        for expected_evt in evts[..EVENT_COUNT].iter() {
             let evt = source.pop_available_event().unwrap();
-            assert_events_match(&evt, &evts[idx]);
+            assert_events_match(&evt, expected_evt);
         }
         assert_eq!(
             source.available_events(),

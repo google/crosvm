@@ -248,7 +248,7 @@ mod tests {
 
     struct DummyDevice(u32);
     const QUEUE_SIZE: u16 = 256;
-    const QUEUE_SIZES: &'static [u16] = &[QUEUE_SIZE];
+    const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
     const DUMMY_FEATURES: u64 = 0x5555_aaaa;
     impl VirtioDevice for DummyDevice {
         fn keep_rds(&self) -> Vec<RawDescriptor> {

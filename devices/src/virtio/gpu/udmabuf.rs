@@ -162,7 +162,7 @@ mod tests {
         let start_addr2 = GuestAddress(0x1100);
         let start_addr3 = GuestAddress(0x2100);
 
-        let mem = GuestMemory::new(&vec![
+        let mem = GuestMemory::new(&[
             (start_addr1, 0x1000),
             (start_addr2, 0x1000),
             (start_addr3, 0x1000),
@@ -209,10 +209,10 @@ mod tests {
         let mem = GuestMemory::new(&sg_list[..]).unwrap();
 
         let mut udmabuf_create_list = vec![
-            (start_addr3, 0x1000 as usize),
-            (start_addr2, 0x1000 as usize),
-            (start_addr1, 0x1000 as usize),
-            (GuestAddress(0x4000), 0x1000 as usize),
+            (start_addr3, 0x1000),
+            (start_addr2, 0x1000),
+            (start_addr1, 0x1000),
+            (GuestAddress(0x4000), 0x1000),
         ];
 
         let result = driver.create_udmabuf(&mem, &udmabuf_create_list[..]);

@@ -144,7 +144,7 @@ mod test {
 
     #[test]
     fn scatter_gather_buffer_test() {
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
         let mut td = TransferDescriptor::new();
 
         // In this td, we are going to have scatter buffer at 0x100, length 4, 0x200 length 2 and
@@ -192,7 +192,7 @@ mod test {
 
     #[test]
     fn immediate_data_test() {
-        let gm = GuestMemory::new(&vec![(GuestAddress(0), 0x1000)]).unwrap();
+        let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
         let mut td = TransferDescriptor::new();
 
         let expected_immediate_data: [u8; 8] = [0xDE, 0xAD, 0xBE, 0xEF, 0xF0, 0x0D, 0xCA, 0xFE];
@@ -207,7 +207,7 @@ mod test {
 
         gm.write_obj_at_addr(trb, GuestAddress(0xc00)).unwrap();
 
-        let buffer = ScatterGatherBuffer::new(gm.clone(), td).unwrap();
+        let buffer = ScatterGatherBuffer::new(gm, td).unwrap();
 
         let mut data_read = [0; 8];
         buffer.read(&mut data_read).unwrap();

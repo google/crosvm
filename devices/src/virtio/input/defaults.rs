@@ -337,7 +337,7 @@ mod tests {
 
         // The bitmap should contain SW_CNT=0x10+1=17 ones,
         // where each one is packed into the u8 bitmap.
-        let mut expected_bitmap = [0 as u8; 128];
+        let mut expected_bitmap = [0_u8; 128];
         expected_bitmap[0] = 0b11111111u8;
         expected_bitmap[1] = 0b11111111u8;
         expected_bitmap[2] = 0b1u8;
