@@ -11,6 +11,7 @@ use vm_control::PmResource;
 #[allow(dead_code)]
 pub struct ACPIPMResource {
     sci_evt: Event,
+    sci_evt_resample: Event,
     suspend_evt: Event,
     exit_evt: Event,
     pm1_status: u16,
@@ -23,9 +24,15 @@ pub struct ACPIPMResource {
 impl ACPIPMResource {
     /// Constructs ACPI Power Management Resouce.
     #[allow(dead_code)]
-    pub fn new(sci_evt: Event, suspend_evt: Event, exit_evt: Event) -> ACPIPMResource {
+    pub fn new(
+        sci_evt: Event,
+        sci_evt_resample: Event,
+        suspend_evt: Event,
+        exit_evt: Event,
+    ) -> ACPIPMResource {
         ACPIPMResource {
             sci_evt,
+            sci_evt_resample,
             suspend_evt,
             exit_evt,
             pm1_status: 0,

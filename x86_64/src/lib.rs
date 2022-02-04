@@ -1295,10 +1295,12 @@ impl X8664arch {
         pcie_vcfg.to_aml_bytes(&mut amls);
 
         let pm_sci_evt = Event::new().map_err(Error::CreateEvent)?;
+        let pm_sci_evt_resample = Event::new().map_err(Error::CreateEvent)?;
         irq_chip
-            .register_irq_event(sci_irq, &pm_sci_evt, None)
+            .register_irq_event(sci_irq, &pm_sci_evt, Some(&pm_sci_evt_resample))
             .map_err(Error::RegisterIrqfd)?;
-        let pmresource = devices::ACPIPMResource::new(pm_sci_evt, suspend_evt, exit_evt);
+        let pmresource =
+            devices::ACPIPMResource::new(pm_sci_evt, pm_sci_evt_resample, suspend_evt, exit_evt);
         pmresource.to_aml_bytes(&mut amls);
 
         let mut crs_entries: Vec<Box<dyn Aml>> = vec![
