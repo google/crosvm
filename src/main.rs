@@ -28,11 +28,12 @@ use crosvm::platform::GpuRenderServerParameters;
 use crosvm::{argument::parse_hex_or_decimal, DirectIoOption};
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
-    platform, BindMount, Config, DiskOption, Executable, FileBackedMappingParameters, GidMap,
-    SharedDir, TouchDeviceOption, VfioCommand, VhostUserFsOption, VhostUserOption,
-    VhostUserWlOption, VhostVsockDeviceParameter, VvuOption, DISK_ID_LEN,
+    platform, BindMount, Config, Executable, FileBackedMappingParameters, GidMap, SharedDir,
+    TouchDeviceOption, VfioCommand, VhostUserFsOption, VhostUserOption, VhostUserWlOption,
+    VhostVsockDeviceParameter, VvuOption,
 };
 use devices::serial_device::{SerialHardware, SerialParameters};
+use devices::virtio::block::block::DiskOption;
 #[cfg(feature = "audio_cras")]
 use devices::virtio::snd::cras_backend::Error as CrasSndError;
 #[cfg(feature = "audio_cras")]
@@ -1287,21 +1288,21 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.syslog_tag = Some(value.unwrap().to_owned());
         }
         "root" | "rwroot" | "disk" | "rwdisk" => {
-            let param = value.unwrap();
-            let mut components = param.split(',');
-            let read_only = !name.starts_with("rw");
-            let disk_path =
-                PathBuf::from(
-                    components
-                        .next()
-                        .ok_or_else(|| argument::Error::InvalidValue {
-                            value: param.to_owned(),
-                            expected: String::from("missing disk path"),
-                        })?,
-                );
+            let value = value.ok_or(argument::Error::ExpectedArgument(
+                "path to the disk image is missing".to_owned(),
+            ))?;
+            let mut params: DiskOption = from_key_values(value).map_err(|e| {
+                argument::Error::Syntax(format!("while parsing \"{}\" parameter: {}", name, e))
+            })?;
+
+            if !name.starts_with("rw") {
+                params.read_only = true;
+            }
+
+            let disk_path = &params.path;
             if !disk_path.exists() {
                 return Err(argument::Error::InvalidValue {
-                    value: param.to_owned(),
+                    value: disk_path.to_string_lossy().into_owned(),
                     expected: String::from("this disk path does not exist"),
                 });
             }
@@ -1314,80 +1315,11 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 cfg.params.push(format!(
                     "root=/dev/vd{} {}",
                     char::from(b'a' + cfg.disks.len() as u8),
-                    if read_only { "ro" } else { "rw" }
+                    if params.read_only { "ro" } else { "rw" }
                 ));
             }
 
-            let mut disk = DiskOption {
-                path: disk_path,
-                read_only,
-                o_direct: false,
-                sparse: true,
-                block_size: 512,
-                id: None,
-            };
-
-            for opt in components {
-                let mut o = opt.splitn(2, '=');
-                let kind = o.next().ok_or_else(|| argument::Error::InvalidValue {
-                    value: opt.to_owned(),
-                    expected: String::from("disk options must not be empty"),
-                })?;
-                let value = o.next().ok_or_else(|| argument::Error::InvalidValue {
-                    value: opt.to_owned(),
-                    expected: String::from("disk options must be of the form `kind=value`"),
-                })?;
-
-                match kind {
-                    "sparse" => {
-                        let sparse = value.parse().map_err(|_| argument::Error::InvalidValue {
-                            value: value.to_owned(),
-                            expected: String::from("`sparse` must be a boolean"),
-                        })?;
-                        disk.sparse = sparse;
-                    }
-                    "o_direct" => {
-                        let o_direct =
-                            value.parse().map_err(|_| argument::Error::InvalidValue {
-                                value: value.to_owned(),
-                                expected: String::from("`o_direct` must be a boolean"),
-                            })?;
-                        disk.o_direct = o_direct;
-                    }
-                    "block_size" => {
-                        let block_size =
-                            value.parse().map_err(|_| argument::Error::InvalidValue {
-                                value: value.to_owned(),
-                                expected: String::from("`block_size` must be an integer"),
-                            })?;
-                        disk.block_size = block_size;
-                    }
-                    "id" => {
-                        if value.len() > DISK_ID_LEN {
-                            return Err(argument::Error::InvalidValue {
-                                value: value.to_owned(),
-                                expected: format!(
-                                    "`id` must be {} or fewer characters",
-                                    DISK_ID_LEN
-                                ),
-                            });
-                        }
-                        let mut id = [0u8; DISK_ID_LEN];
-                        // Slicing id to value's length will never panic
-                        // because we checked that value will fit into id above.
-                        id[..value.len()].copy_from_slice(value.as_bytes());
-                        disk.id = Some(id);
-                    }
-                    _ => {
-                        return Err(argument::Error::InvalidValue {
-                            value: kind.to_owned(),
-                            expected: String::from("unrecognized disk option"),
-                        });
-                    }
-                }
-            }
-
-            cfg.disks.push(disk);
+            cfg.disks.push(params);
         }
         "pmem-device" | "rw-pmem-device" => {
             let disk_path = PathBuf::from(value.unwrap());

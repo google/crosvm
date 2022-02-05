@@ -5,6 +5,7 @@
 use std::cmp::{max, min};
 use std::io::{self, Write};
 use std::mem::size_of;
+use std::path::PathBuf;
 use std::result;
 use std::sync::Arc;
 use std::thread;
@@ -21,6 +22,7 @@ use data_model::DataInit;
 use disk::DiskFile;
 
 use remain::sorted;
+use serde::{Deserialize, Deserializer};
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::{DiskControlCommand, DiskControlResult};
@@ -99,6 +101,53 @@ impl ExecuteError {
             ExecuteError::Unsupported(_) => VIRTIO_BLK_S_UNSUPP,
         }
     }
+}
+
+fn block_option_sparse_default() -> bool {
+    true
+}
+fn block_option_block_size_default() -> u32 {
+    512
+}
+
+/// Maximum length of a `DiskOption` identifier.
+///
+/// This is based on the virtio-block ID length limit.
+pub const DISK_ID_LEN: usize = 20;
+
+fn deserialize_disk_id<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<[u8; DISK_ID_LEN]>, D::Error> {
+    let id = String::deserialize(deserializer)?;
+
+    if id.len() > DISK_ID_LEN {
+        return Err(serde::de::Error::custom(format!(
+            "disk id must be {} or fewer characters",
+            DISK_ID_LEN
+        )));
+    }
+
+    let mut ret = [0u8; DISK_ID_LEN];
+    // Slicing id to value's length will never panic
+    // because we checked that value will fit into id above.
+    ret[..id.len()].copy_from_slice(id.as_bytes());
+    Ok(Some(ret))
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct DiskOption {
+    pub path: PathBuf,
+    #[serde(default, rename = "ro")]
+    pub read_only: bool,
+    #[serde(default = "block_option_sparse_default")]
+    pub sparse: bool,
+    #[serde(default)]
+    pub o_direct: bool,
+    #[serde(default = "block_option_block_size_default")]
+    pub block_size: u32,
+    #[serde(default, deserialize_with = "deserialize_disk_id")]
+    pub id: Option<[u8; DISK_ID_LEN]>,
 }
 
 struct Worker {
@@ -699,6 +748,7 @@ mod tests {
 
     use data_model::{Le32, Le64};
     use hypervisor::ProtectionType;
+    use serde_keyvalue::*;
     use tempfile::tempfile;
     use vm_memory::GuestAddress;
 
@@ -940,5 +990,156 @@ mod tests {
         let id_offset = GuestAddress(0x1000 + size_of_val(&req_hdr) as u64);
         let returned_id = mem.read_obj_from_addr::<[u8; 20]>(id_offset).unwrap();
         assert_eq!(returned_id, *id);
+    }
+
+    fn from_block_arg(options: &str) -> Result<DiskOption, ParseError> {
+        from_key_values(options)
+    }
+
+    #[test]
+    fn params_from_key_values() {
+        // Path argument is mandatory.
+        let err = from_block_arg("").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: ErrorKind::SerdeError("missing field `path`".into()),
+                pos: 0,
+            }
+        );
+
+        // Path is the default argument.
+        let params = from_block_arg("/path/to/disk.img").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/path/to/disk.img".into(),
+                read_only: false,
+                sparse: true,
+                o_direct: false,
+                block_size: 512,
+                id: None,
+            }
+        );
+
+        // Explicitly-specified path.
+        let params = from_block_arg("path=/path/to/disk.img").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/path/to/disk.img".into(),
+                read_only: false,
+                sparse: true,
+                o_direct: false,
+                block_size: 512,
+                id: None,
+            }
+        );
+
+        // read_only
+        let params = from_block_arg("/some/path.img,ro").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/some/path.img".into(),
+                read_only: true,
+                sparse: true,
+                o_direct: false,
+                block_size: 512,
+                id: None,
+            }
+        );
+
+        // sparse
+        let params = from_block_arg("/some/path.img,sparse").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/some/path.img".into(),
+                read_only: false,
+                sparse: true,
+                o_direct: false,
+                block_size: 512,
+                id: None,
+            }
+        );
+        let params = from_block_arg("/some/path.img,sparse=false").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/some/path.img".into(),
+                read_only: false,
+                sparse: false,
+                o_direct: false,
+                block_size: 512,
+                id: None,
+            }
+        );
+
+        // o_direct
+        let params = from_block_arg("/some/path.img,o_direct").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/some/path.img".into(),
+                read_only: false,
+                sparse: true,
+                o_direct: true,
+                block_size: 512,
+                id: None,
+            }
+        );
+
+        // block_size
+        let params = from_block_arg("/some/path.img,block_size=128").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/some/path.img".into(),
+                read_only: false,
+                sparse: true,
+                o_direct: false,
+                block_size: 128,
+                id: None,
+            }
+        );
+
+        // id
+        let params = from_block_arg("/some/path.img,id=DISK").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/some/path.img".into(),
+                read_only: false,
+                sparse: true,
+                o_direct: false,
+                block_size: 512,
+                id: Some(*b"DISK\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
+            }
+        );
+        let err = from_block_arg("/some/path.img,id=DISK_ID_IS_WAY_TOO_LONG").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: ErrorKind::SerdeError("disk id must be 20 or fewer characters".into()),
+                pos: 0,
+            }
+        );
+
+        // All together
+        let params =
+            from_block_arg("/some/path.img,block_size=256,ro,sparse=false,id=DISK_LABEL,o_direct")
+                .unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/some/path.img".into(),
+                read_only: true,
+                sparse: false,
+                o_direct: true,
+                block_size: 256,
+                id: Some(*b"DISK_LABEL\0\0\0\0\0\0\0\0\0\0"),
+            }
+        );
     }
 }

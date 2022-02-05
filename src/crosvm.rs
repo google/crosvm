@@ -23,6 +23,7 @@ use std::str::FromStr;
 use arch::{Pstore, VcpuAffinity};
 use base::RawDescriptor;
 use devices::serial_device::{SerialHardware, SerialParameters};
+use devices::virtio::block::block::DiskOption;
 #[cfg(feature = "audio_cras")]
 use devices::virtio::cras_backend::Parameters as CrasSndParameters;
 use devices::virtio::fs::passthrough;
@@ -56,20 +57,6 @@ pub enum Executable {
     Kernel(PathBuf),
     /// Path to a plugin executable that is forked by crosvm.
     Plugin(PathBuf),
-}
-
-/// Maximum length of a `DiskOption` identifier.
-///
-/// This is based on the virtio-block ID length limit.
-pub const DISK_ID_LEN: usize = 20;
-
-pub struct DiskOption {
-    pub path: PathBuf,
-    pub read_only: bool,
-    pub sparse: bool,
-    pub o_direct: bool,
-    pub block_size: u32,
-    pub id: Option<[u8; DISK_ID_LEN]>,
 }
 
 pub struct VhostUserOption {
