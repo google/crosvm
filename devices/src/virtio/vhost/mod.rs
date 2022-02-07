@@ -13,7 +13,7 @@ use vhost::Error as VhostError;
 mod control_socket;
 mod net;
 pub mod user;
-mod vsock;
+pub mod vsock;
 mod worker;
 
 pub use self::control_socket::*;

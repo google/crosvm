@@ -21,7 +21,6 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use arch::{Pstore, VcpuAffinity};
-use base::RawDescriptor;
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::virtio::block::block::DiskOption;
 #[cfg(feature = "audio_cras")]
@@ -29,6 +28,7 @@ use devices::virtio::cras_backend::Parameters as CrasSndParameters;
 use devices::virtio::fs::passthrough;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
+use devices::virtio::vhost::vsock::VhostVsockDeviceParameter;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
 #[cfg(feature = "audio")]
@@ -44,7 +44,6 @@ use uuid::Uuid;
 use vm_control::BatteryType;
 
 static KVM_PATH: &str = "/dev/kvm";
-static VHOST_VSOCK_PATH: &str = "/dev/vhost-vsock";
 static VHOST_NET_PATH: &str = "/dev/vhost-net";
 static SECCOMP_POLICY_DIR: &str = "/usr/share/policy/crosvm";
 
@@ -317,17 +316,6 @@ impl VfioCommand {
             }
         }
         IommuDevType::NoIommu
-    }
-}
-
-pub enum VhostVsockDeviceParameter {
-    Path(PathBuf),
-    Fd(RawDescriptor),
-}
-
-impl Default for VhostVsockDeviceParameter {
-    fn default() -> Self {
-        VhostVsockDeviceParameter::Path(PathBuf::from(VHOST_VSOCK_PATH))
     }
 }
 

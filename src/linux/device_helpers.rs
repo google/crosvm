@@ -8,14 +8,14 @@ use std::fs::{File, OpenOptions};
 use std::net::Ipv4Addr;
 use std::ops::RangeInclusive;
 use std::os::unix::net::UnixListener;
-use std::os::unix::{io::FromRawFd, net::UnixStream, prelude::OpenOptionsExt};
+use std::os::unix::{net::UnixStream, prelude::OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::str;
 use std::sync::Arc;
 
 use crate::{
     Config, DiskOption, TouchDeviceOption, VhostUserFsOption, VhostUserOption, VhostUserWlOption,
-    VhostVsockDeviceParameter, VvuOption,
+    VvuOption,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use arch::{self, VirtioDeviceStub};
@@ -35,6 +35,7 @@ use devices::virtio::vhost::user::vmm::{
     Mac80211Hwsim as VhostUserMac80211Hwsim, Net as VhostUserNet, Vsock as VhostUserVsock,
     Wl as VhostUserWl,
 };
+use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
 use devices::virtio::{self, BalloonMode, Console, VirtioDevice};
@@ -780,30 +781,10 @@ pub fn register_video_device(
     Ok(())
 }
 
-pub fn create_vhost_vsock_device(cfg: &Config, cid: u64) -> DeviceResult {
+pub fn create_vhost_vsock_device(cfg: &Config, vhost_config: &VhostVsockConfig) -> DeviceResult {
     let features = virtio::base_features(cfg.protected_vm);
 
-    let device_file = match cfg
-        .vhost_vsock_device
-        .as_ref()
-        .unwrap_or(&VhostVsockDeviceParameter::default())
-    {
-        VhostVsockDeviceParameter::Fd(fd) => {
-            let fd = validate_raw_descriptor(*fd)
-                .context("failed to validate fd for virtual socket device")?;
-            // Safe because the `fd` is actually owned by this process and
-            // we have a unique handle to it.
-            unsafe { File::from_raw_fd(fd) }
-        }
-        VhostVsockDeviceParameter::Path(path) => OpenOptions::new()
-            .read(true)
-            .write(true)
-            .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
-            .open(path)
-            .context("failed to open virtual socket device")?,
-    };
-
-    let dev = virtio::vhost::Vsock::new(device_file, features, cid)
+    let dev = virtio::vhost::Vsock::new(features, vhost_config)
         .context("failed to set up virtual socket device")?;
 
     Ok(VirtioDeviceStub {
