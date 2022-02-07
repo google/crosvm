@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::pci::{PciCapability, PciCapabilityID};
 use base::{error, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube, TubeError};
-
+use bit_field::*;
+use data_model::DataInit;
 use remain::sorted;
 use std::convert::TryInto;
 use thiserror::Error;
 use vm_control::{VmIrqRequest, VmIrqResponse};
 
-use data_model::DataInit;
+use crate::pci::{PciCapability, PciCapabilityID};
 
 const MAX_MSIX_VECTORS_PER_DEVICE: u16 = 2048;
 pub const MSIX_TABLE_ENTRIES_MODULO: u64 = 16;
@@ -516,6 +516,21 @@ impl AsRawDescriptor for MsixConfig {
     }
 }
 
+/// Message Control Register
+//   10-0:  MSI-X Table size
+//   13-11: Reserved
+//   14:    Mask. Mask all MSI-X when set.
+//   15:    Enable. Enable all MSI-X when set.
+// See <https://wiki.osdev.org/PCI#Enabling_MSI-X> for the details.
+#[bitfield]
+#[derive(Copy, Clone, Default)]
+pub struct MsixCtrl {
+    table_size: B10,
+    reserved: B4,
+    mask: B1,
+    enable: B1,
+}
+
 // It is safe to implement DataInit; all members are simple numbers and any value is valid.
 unsafe impl DataInit for MsixCap {}
 
@@ -528,11 +543,7 @@ pub struct MsixCap {
     _cap_vndr: u8,
     _cap_next: u8,
     // Message Control Register
-    //   10-0:  MSI-X Table size
-    //   13-11: Reserved
-    //   14:    Mask. Mask all MSI-X when set.
-    //   15:    Enable. Enable all MSI-X when set.
-    msg_ctl: u16,
+    msg_ctl: MsixCtrl,
     // Table. Contains the offset and the BAR indicator (BIR)
     //   2-0:  Table BAR indicator (BIR). Can be 0 to 5.
     //   31-3: Table offset in the BAR pointed by the BIR.
@@ -569,7 +580,10 @@ impl MsixCap {
         assert!(table_size < MAX_MSIX_VECTORS_PER_DEVICE);
 
         // Set the table size and enable MSI-X.
-        let msg_ctl: u16 = MSIX_ENABLE_BIT + table_size - 1;
+        let mut msg_ctl = MsixCtrl::new();
+        msg_ctl.set_enable(1);
+        // Table Size is N - 1 encoded.
+        msg_ctl.set_table_size(table_size - 1);
 
         MsixCap {
             _cap_vndr: 0,
