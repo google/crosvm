@@ -9,6 +9,7 @@
 #![cfg(feature = "gfxstream")]
 
 use std::cell::RefCell;
+use std::convert::TryInto;
 use std::mem::{size_of, transmute};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::ptr::{null, null_mut};
@@ -41,7 +42,7 @@ pub struct GfxstreamRendererCallbacks {
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
 pub struct stream_renderer_handle {
-    pub os_handle: i32,
+    pub os_handle: i64,
     pub handle_type: u32,
 }
 
@@ -275,7 +276,8 @@ impl Gfxstream {
 
         // Safe because the handle was just returned by a successful gfxstream call so it must be
         // valid and owned by us.
-        let handle = unsafe { SafeDescriptor::from_raw_descriptor(stream_handle.os_handle) };
+        let raw_descriptor = stream_handle.os_handle.try_into()?;
+        let handle = unsafe { SafeDescriptor::from_raw_descriptor(raw_descriptor) };
 
         Ok(Arc::new(RutabagaHandle {
             os_handle: handle,
@@ -483,7 +485,7 @@ impl RutabagaComponent for Gfxstream {
         let mut stream_handle: stream_renderer_handle = Default::default();
         if let Some(handle) = handle_opt {
             stream_handle.handle_type = handle.handle_type;
-            stream_handle.os_handle = handle.os_handle.into_raw_descriptor();
+            stream_handle.os_handle = handle.os_handle.into_raw_descriptor().into();
             handle_ptr = &stream_handle;
         }
 

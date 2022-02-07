@@ -123,7 +123,7 @@ struct rutabaga_iovecs {
 };
 
 struct rutabaga_handle {
-	int32_t os_handle;
+	int64_t os_handle;
 	uint32_t handle_type;
 };
 
