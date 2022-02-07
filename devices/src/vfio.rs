@@ -822,16 +822,16 @@ impl VfioDevice {
         Err(VfioError::VfioDeviceGetInfo(get_error()))
     }
 
-    /// Query interrupt information
-    /// return: Vector of interrupts information, each of which contains flags and index
-    pub fn get_irqs(&self) -> Result<Vec<VfioIrq>> {
+    /// Get and validate VFIO device information.
+    pub fn check_device_info(&self) -> Result<vfio_device_info> {
         let mut dev_info = vfio_device_info {
             argsz: mem::size_of::<vfio_device_info>() as u32,
             flags: 0,
             num_regions: 0,
             num_irqs: 0,
         };
-        // Safe as we are the owner of dev and dev_info which are valid value,
+
+        // Safe as we are the owner of device_file and dev_info which are valid value,
         // and we verify the return value.
         let ret = unsafe {
             ioctl_with_mut_ref(self.device_file(), VFIO_DEVICE_GET_INFO(), &mut dev_info)
@@ -841,6 +841,13 @@ impl VfioDevice {
         }
 
         Self::validate_dev_info(&mut dev_info)?;
+        Ok(dev_info)
+    }
+
+    /// Query interrupt information
+    /// return: Vector of interrupts information, each of which contains flags and index
+    pub fn get_irqs(&self) -> Result<Vec<VfioIrq>> {
+        let dev_info = self.check_device_info()?;
         let mut irqs: Vec<VfioIrq> = Vec::new();
 
         for i in 0..dev_info.num_irqs {
