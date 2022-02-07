@@ -12,13 +12,6 @@
 set -e
 cd "$(dirname $0)/.."
 
-# TODO(b/192373803): Clean up clippy error is the following crates
-EXCLUDE=(
-    net_sys    # 3 errors
-    virtio_sys # 9 errors
-    x86_64     # 56 errors
-)
-
 EXCLUDE_COMMON=(
     common/cros_async # 8 errors
 )
@@ -29,7 +22,6 @@ cargo clippy \
     --workspace \
     --features all-linux \
     --all-targets \
-    ${EXCLUDE[@]/#/--exclude } \
     "$@" -- -Dwarnings
 
 for crate in common/*; do
