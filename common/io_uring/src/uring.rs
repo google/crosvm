@@ -78,6 +78,28 @@ struct SubmitQueue {
     num_sqes: usize,   // The total number of sqes allocated in shared memory.
 }
 
+// Helper functions to set io_uring_sqe bindgen union members in a less verbose manner.
+impl io_uring_sqe {
+    pub fn set_addr(&mut self, val: u64) {
+        self.addr = val;
+    }
+    pub fn set_off(&mut self, val: u64) {
+        self.__bindgen_anon_1.off = val;
+    }
+
+    pub fn set_buf_index(&mut self, val: u16) {
+        self.__bindgen_anon_3.__bindgen_anon_1.buf_index = val;
+    }
+
+    pub fn set_rw_flags(&mut self, val: libc::c_int) {
+        self.__bindgen_anon_2.rw_flags = val;
+    }
+
+    pub fn set_poll_events(&mut self, val: u16) {
+        self.__bindgen_anon_2.poll_events = val;
+    }
+}
+
 impl SubmitQueue {
     // Call `f` with the next available sqe or return an error if none are available.
     // After `f` returns, the sqe is appended to the kernel's queue.
@@ -151,10 +173,10 @@ impl SubmitQueue {
             iovec.iov_base = ptr as *const libc::c_void as *mut _;
             iovec.iov_len = len;
             sqe.opcode = op;
-            sqe.addr = iovec as *const _ as *const libc::c_void as u64;
+            sqe.set_addr(iovec as *const _ as *const libc::c_void as u64);
             sqe.len = 1;
-            sqe.__bindgen_anon_1.off = offset;
-            sqe.__bindgen_anon_3.__bindgen_anon_1.buf_index = 0;
+            sqe.set_off(offset);
+            sqe.set_buf_index(0);
             sqe.ioprio = 0;
             sqe.user_data = user_data;
             sqe.flags = 0;
@@ -358,10 +380,10 @@ impl URingContext {
     ) -> Result<()> {
         self.submit_ring.lock().prep_next_sqe(|sqe, _iovec| {
             sqe.opcode = IORING_OP_WRITEV as u8;
-            sqe.addr = iovecs.as_ptr() as *const _ as *const libc::c_void as u64;
+            sqe.set_addr(iovecs.as_ptr() as *const _ as *const libc::c_void as u64);
             sqe.len = iovecs.len() as u32;
-            sqe.__bindgen_anon_1.off = offset;
-            sqe.__bindgen_anon_3.__bindgen_anon_1.buf_index = 0;
+            sqe.set_off(offset);
+            sqe.set_buf_index(0);
             sqe.ioprio = 0;
             sqe.user_data = user_data;
             sqe.flags = 0;
@@ -417,10 +439,10 @@ impl URingContext {
     ) -> Result<()> {
         self.submit_ring.lock().prep_next_sqe(|sqe, _iovec| {
             sqe.opcode = IORING_OP_READV as u8;
-            sqe.addr = iovecs.as_ptr() as *const _ as *const libc::c_void as u64;
+            sqe.set_addr(iovecs.as_ptr() as *const _ as *const libc::c_void as u64);
             sqe.len = iovecs.len() as u32;
-            sqe.__bindgen_anon_1.off = offset;
-            sqe.__bindgen_anon_3.__bindgen_anon_1.buf_index = 0;
+            sqe.set_off(offset);
+            sqe.set_buf_index(0);
             sqe.ioprio = 0;
             sqe.user_data = user_data;
             sqe.flags = 0;
@@ -438,11 +460,11 @@ impl URingContext {
             sqe.fd = -1;
             sqe.user_data = user_data;
 
-            sqe.addr = 0;
+            sqe.set_addr(0);
             sqe.len = 0;
-            sqe.__bindgen_anon_1.off = 0;
-            sqe.__bindgen_anon_3.__bindgen_anon_1.buf_index = 0;
-            sqe.__bindgen_anon_2.rw_flags = 0;
+            sqe.set_off(0);
+            sqe.set_buf_index(0);
+            sqe.set_rw_flags(0);
             sqe.ioprio = 0;
             sqe.flags = 0;
         })
@@ -456,11 +478,11 @@ impl URingContext {
             sqe.fd = fd;
             sqe.user_data = user_data;
 
-            sqe.addr = 0;
+            sqe.set_addr(0);
             sqe.len = 0;
-            sqe.__bindgen_anon_1.off = 0;
-            sqe.__bindgen_anon_3.__bindgen_anon_1.buf_index = 0;
-            sqe.__bindgen_anon_2.rw_flags = 0;
+            sqe.set_off(0);
+            sqe.set_buf_index(0);
+            sqe.set_rw_flags(0);
             sqe.ioprio = 0;
             sqe.flags = 0;
         })
@@ -481,13 +503,13 @@ impl URingContext {
             sqe.opcode = IORING_OP_FALLOCATE as u8;
 
             sqe.fd = fd;
-            sqe.addr = len;
+            sqe.set_addr(len);
             sqe.len = mode;
-            sqe.__bindgen_anon_1.off = offset;
+            sqe.set_off(offset);
             sqe.user_data = user_data;
 
-            sqe.__bindgen_anon_3.__bindgen_anon_1.buf_index = 0;
-            sqe.__bindgen_anon_2.rw_flags = 0;
+            sqe.set_buf_index(0);
+            sqe.set_rw_flags(0);
             sqe.ioprio = 0;
             sqe.flags = 0;
         })
@@ -508,12 +530,12 @@ impl URingContext {
             sqe.opcode = IORING_OP_POLL_ADD as u8;
             sqe.fd = fd;
             sqe.user_data = user_data;
-            sqe.__bindgen_anon_2.poll_events = events.get_raw() as u16;
+            sqe.set_poll_events(events.get_raw() as u16);
 
-            sqe.addr = 0;
+            sqe.set_addr(0);
             sqe.len = 0;
-            sqe.__bindgen_anon_1.off = 0;
-            sqe.__bindgen_anon_3.__bindgen_anon_1.buf_index = 0;
+            sqe.set_off(0);
+            sqe.set_buf_index(0);
             sqe.ioprio = 0;
             sqe.flags = 0;
         })
@@ -530,12 +552,12 @@ impl URingContext {
             sqe.opcode = IORING_OP_POLL_REMOVE as u8;
             sqe.fd = fd;
             sqe.user_data = user_data;
-            sqe.__bindgen_anon_2.poll_events = events.get_raw() as u16;
+            sqe.set_poll_events(events.get_raw() as u16);
 
-            sqe.addr = 0;
+            sqe.set_addr(0);
             sqe.len = 0;
-            sqe.__bindgen_anon_1.off = 0;
-            sqe.__bindgen_anon_3.__bindgen_anon_1.buf_index = 0;
+            sqe.set_off(0);
+            sqe.set_buf_index(0);
             sqe.ioprio = 0;
             sqe.flags = 0;
         })
