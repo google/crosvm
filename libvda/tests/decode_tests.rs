@@ -53,6 +53,6 @@ fn test_decode_and_get_picture_ready_fake() {
             assert_eq!(bitstream_id, fake_bitstream_id);
         }
         Ok(event) => panic!("Obtained event is not PictureReady but {:?}", event),
-        Err(msg) => panic!(msg),
+        Err(msg) => panic!("{}", msg),
     }
 }

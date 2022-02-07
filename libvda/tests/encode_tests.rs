@@ -74,7 +74,7 @@ fn test_encode_and_get_buffer_back() {
             assert_eq!(fake_input_buffer_id, returned_input_buffer_id);
         }
         Ok(event) => panic!("Obtained event is not ProcessedInputBuffer but {:?}", event),
-        Err(msg) => panic!(msg),
+        Err(msg) => panic!("{}", msg),
     }
 }
 
@@ -110,6 +110,6 @@ fn test_use_output_buffer_and_get_buffer_back() {
             "Obtained event is not ProcessedOutputBuffer but {:?}",
             event
         ),
-        Err(msg) => panic!(msg),
+        Err(msg) => panic!("{}", msg),
     }
 }

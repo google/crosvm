@@ -107,8 +107,8 @@ impl PixelFormat {
         PixelFormat::n(f).ok_or(Error::UnknownPixelFormat(f))
     }
 
-    pub(crate) fn to_raw_pixel_format(&self) -> bindings::video_pixel_format_t {
-        match *self {
+    pub(crate) fn to_raw_pixel_format(self) -> bindings::video_pixel_format_t {
+        match self {
             PixelFormat::YV12 => bindings::video_pixel_format_YV12,
             PixelFormat::NV12 => bindings::video_pixel_format_NV12,
         }
