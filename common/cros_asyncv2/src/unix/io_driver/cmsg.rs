@@ -128,6 +128,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(target_arch = "arm"))]
     fn test_add_fds_to_message() {
         let buf = [0xEAu8, 0xDD, 0xAA, 0xCC];
         let mut iov = libc::iovec {
@@ -168,6 +169,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_arch = "arm"))]
     fn test_take_fds_from_message() {
         let buf = [0xEAu8, 0xDD, 0xAA, 0xCC];
         let mut iov = libc::iovec {

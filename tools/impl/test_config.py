@@ -33,7 +33,6 @@ class TestOption(enum.Enum):
 CRATE_OPTIONS: dict[str, list[TestOption]] = {
     "aarch64": [TestOption.BUILD_ARM_ONLY, TestOption.DO_NOT_BUILD_ARMHF], #b/210015864
     "bit_field_derive": [TestOption.RUN_X86_ONLY],  # b/206843832
-    "cros_async": [TestOption.DO_NOT_RUN],  # b/202293468
     "crosvm_plugin": [TestOption.BUILD_X86_ONLY],
     "devices": [TestOption.SINGLE_THREADED, TestOption.DO_NOT_BUILD_ARMHF],
     "disk": [TestOption.RUN_X86_ONLY],  # b/202294155

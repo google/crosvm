@@ -58,10 +58,15 @@ impl IntoAsync for TimerFd {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::uring_executor::use_uring;
     use std::time::{Duration, Instant};
 
     #[test]
     fn one_shot() {
+        if !use_uring() {
+            return;
+        }
+
         async fn this_test(ex: &URingExecutor) {
             let tfd = TimerFd::new().expect("failed to create timerfd");
             assert_eq!(tfd.is_armed().unwrap(), false);

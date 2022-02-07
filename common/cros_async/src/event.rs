@@ -40,6 +40,7 @@ impl IntoAsync for EventFd {}
 mod tests {
     use super::*;
 
+    use crate::uring_executor::use_uring;
     use crate::{Executor, FdExecutor, URingExecutor};
 
     #[test]
@@ -58,6 +59,10 @@ mod tests {
 
     #[test]
     fn next_val_reads_value_poll_and_ring() {
+        if !use_uring() {
+            return;
+        }
+
         async fn go(event_async: EventAsync) -> u64 {
             event_async.next_val().await.unwrap()
         }
