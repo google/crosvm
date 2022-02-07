@@ -11,6 +11,8 @@
  * $ bindgen --with-derive-default -o bindings.rs include/linux/kvm.h -- -Iinclude
  */
 
+#![allow(warnings)]
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct __BindgenBitfieldUnit<Storage, Align>
