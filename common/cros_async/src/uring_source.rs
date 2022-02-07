@@ -237,7 +237,7 @@ mod tests {
         // Use guest memory as a test file, it implements AsRawFd.
         let mut source = tempfile().unwrap();
         let data = vec![0x55; 8192];
-        source.write(&data).unwrap();
+        source.write_all(&data).unwrap();
 
         let io_obj = UringSource::new(source, &ex).unwrap();
 
@@ -390,7 +390,7 @@ mod tests {
                 Either::Right((5, pending)) => {
                     // Write to the pipe so that the kernel will release the memory associated with
                     // the uring read operation.
-                    w.write(&[0]).expect("failed to write to pipe");
+                    w.write_all(&[0]).expect("failed to write to pipe");
                     ::std::mem::drop(pending);
                 }
                 _ => panic!("unexpected select result"),

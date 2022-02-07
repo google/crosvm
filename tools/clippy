@@ -12,10 +12,6 @@
 set -e
 cd "$(dirname $0)/.."
 
-EXCLUDE_COMMON=(
-    common/cros_async # 8 errors
-)
-
 # Note: Clippy checks are configured in .cargo/config.toml
 echo "Clippy crosvm workspace"
 cargo clippy \
@@ -25,8 +21,7 @@ cargo clippy \
     "$@" -- -Dwarnings
 
 for crate in common/*; do
-    if [ -d "${crate}" ] &&
-        [[ ! " ${EXCLUDE_COMMON[*]} " =~ " ${crate} " ]]; then
+    if [ -d "${crate}" ]; then
         echo ""
         echo "Clippy ${crate}"
         (cd "${crate}" &&
