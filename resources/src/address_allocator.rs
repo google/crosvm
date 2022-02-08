@@ -30,7 +30,9 @@ pub struct AddressAllocator {
     pool_size: u64,
     min_align: u64,
     preferred_align: u64,
+    /// The region that is allocated.
     allocs: HashMap<Alloc, (u64, u64, String)>,
+    /// The region that is not allocated yet.
     regions: BTreeSet<(u64, u64)>,
 }
 
@@ -241,9 +243,10 @@ impl AddressAllocator {
 
     /// Releases exising allocation back to free pool.
     pub fn release(&mut self, alloc: Alloc) -> Result<()> {
-        self.allocs
-            .remove(&alloc)
-            .map_or_else(|| Err(Error::BadAlloc(alloc)), |v| self.insert_at(v.0, v.1))
+        self.allocs.remove(&alloc).map_or_else(
+            || Err(Error::BadAlloc(alloc)),
+            |v| self.insert_to_free_pool_at(v.0, v.1),
+        )
     }
 
     /// Release a allocation contains the value.
@@ -268,8 +271,8 @@ impl AddressAllocator {
         self.allocs.get(alloc)
     }
 
-    /// Insert range of addresses into the pool, coalescing neighboring regions.
-    fn insert_at(&mut self, start: u64, size: u64) -> Result<()> {
+    /// Insert range of addresses into the available pool, coalescing neighboring regions.
+    pub fn insert_to_free_pool_at(&mut self, start: u64, size: u64) -> Result<()> {
         if size == 0 {
             return Err(Error::AllocSizeZero);
         }
@@ -604,11 +607,11 @@ mod tests {
     #[test]
     fn coalescing_and_overlap() {
         let mut pool = AddressAllocator::new(0x1000, 0x1000, None, None).unwrap();
-        assert!(pool.insert_at(0x3000, 0x1000).is_ok());
-        assert!(pool.insert_at(0x1fff, 0x20).is_err());
-        assert!(pool.insert_at(0x2ff1, 0x10).is_err());
-        assert!(pool.insert_at(0x1800, 0x1000).is_err());
-        assert!(pool.insert_at(0x2000, 0x1000).is_ok());
+        assert!(pool.insert_to_free_pool_at(0x3000, 0x1000).is_ok());
+        assert!(pool.insert_to_free_pool_at(0x1fff, 0x20).is_err());
+        assert!(pool.insert_to_free_pool_at(0x2ff1, 0x10).is_err());
+        assert!(pool.insert_to_free_pool_at(0x1800, 0x1000).is_err());
+        assert!(pool.insert_to_free_pool_at(0x2000, 0x1000).is_ok());
         assert_eq!(
             pool.allocate(0x3000, Alloc::Anon(0), String::from("bar0")),
             Ok(0x1000)
@@ -618,10 +621,10 @@ mod tests {
     #[test]
     fn coalescing_single_addresses() {
         let mut pool = AddressAllocator::new(0x1000, 0x1000, None, None).unwrap();
-        assert!(pool.insert_at(0x2001, 1).is_ok());
-        assert!(pool.insert_at(0x2003, 1).is_ok());
-        assert!(pool.insert_at(0x2000, 1).is_ok());
-        assert!(pool.insert_at(0x2002, 1).is_ok());
+        assert!(pool.insert_to_free_pool_at(0x2001, 1).is_ok());
+        assert!(pool.insert_to_free_pool_at(0x2003, 1).is_ok());
+        assert!(pool.insert_to_free_pool_at(0x2000, 1).is_ok());
+        assert!(pool.insert_to_free_pool_at(0x2002, 1).is_ok());
         assert_eq!(
             pool.allocate(0x1004, Alloc::Anon(0), String::from("bar0")),
             Ok(0x1000)

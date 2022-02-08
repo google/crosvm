@@ -909,10 +909,10 @@ mod tests {
                 base: 0xc000,
                 size: 0x1_0000,
             }),
-            low_mmio: MemRegion {
+            low_mmio: vec![MemRegion {
                 base: 0,
                 size: 2048,
-            },
+            }],
             high_mmio: MemRegion {
                 base: 2048,
                 size: 4096,
@@ -1038,10 +1038,10 @@ mod tests {
                 base: 0xc000,
                 size: 0x1_0000,
             }),
-            low_mmio: MemRegion {
+            low_mmio: vec![MemRegion {
                 base: 0,
                 size: 2048,
-            },
+            }],
             high_mmio: MemRegion {
                 base: 2048,
                 size: 4096,

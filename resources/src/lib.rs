@@ -50,6 +50,8 @@ pub enum Error {
     ExistingAlloc(Alloc),
     #[error("Invalid Alloc: {0:?}")]
     InvalidAlloc(Alloc),
+    #[error("Low MMIO address range not specified")]
+    MissingLowMMIOAddresses,
     #[error("Platform MMIO address range not specified")]
     MissingPlatformMMIOAddresses,
     #[error("No IO address range specified")]

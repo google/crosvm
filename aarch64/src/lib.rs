@@ -563,10 +563,10 @@ impl AArch64 {
             });
         SystemAllocator::new(SystemAllocatorConfig {
             io: None,
-            low_mmio: MemRegion {
+            low_mmio: vec![MemRegion {
                 base: AARCH64_MMIO_BASE,
                 size: AARCH64_MMIO_SIZE,
-            },
+            }],
             high_mmio: MemRegion {
                 base: high_mmio_base,
                 size: high_mmio_size,
