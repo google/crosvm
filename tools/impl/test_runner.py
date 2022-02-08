@@ -96,7 +96,8 @@ def get_workspace_excludes(target_arch: Arch):
             yield crate
 
 
-def should_run_executable(executable: Executable, target_arch: Arch):
+def should_run_executable(executable: Executable, target_arch: Arch,
+    build_arch: Arch):
     options = CRATE_OPTIONS.get(executable.crate_name, [])
     if TestOption.DO_NOT_RUN in options:
         return False
@@ -105,6 +106,8 @@ def should_run_executable(executable: Executable, target_arch: Arch):
     if TestOption.DO_NOT_RUN_AARCH64 in options and target_arch == "aarch64":
         return False
     if TestOption.DO_NOT_RUN_ARMHF in options and target_arch == "armhf":
+        return False
+    if TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL in options and target_arch != build_arch:
         return False
     return True
 
@@ -280,11 +283,12 @@ def execute_test(target: TestTarget, executable: Executable):
 def execute_all(
     executables: list[Executable],
     target: test_target.TestTarget,
-    arch: Arch,
+    target_arch: Arch,
+    build_arch: Arch,
     repeat: int,
 ):
     """Executes all tests in the `executables` list in parallel."""
-    executables = [e for e in executables if should_run_executable(e, arch)]
+    executables = [e for e in executables if should_run_executable(e, target_arch, build_arch)]
     if repeat > 1:
         executables = executables * repeat
         random.shuffle(executables)
@@ -357,10 +361,9 @@ def main():
     )
     print("Test target:", target)
 
-    arch = args.arch
-    if not arch:
-        arch = test_target.get_target_arch(target)
-    print("Building for architecture:", arch)
+    target_arch = test_target.get_target_arch(target)
+    build_arch = args.arch or target_arch
+    print("Building for architecture:", build_arch)
 
     # Start booting VM while we build
     if target.vm:
@@ -374,7 +377,7 @@ def main():
         print("Offending line: " + error)
         sys.exit(-1)
 
-    executables = list(build_all_binaries(target, arch))
+    executables = list(build_all_binaries(target, build_arch))
 
     if args.build_only:
         print("Not running tests as requested.")
@@ -388,7 +391,7 @@ def main():
     # Execute all test binaries
     test_executables = [e for e in executables if e.is_test]
     all_results = list(
-        execute_all(test_executables, target, arch, repeat=args.repeat)
+        execute_all(test_executables, target, target_arch, build_arch, repeat=args.repeat)
     )
 
     failed = [r for r in all_results if not r.success]
