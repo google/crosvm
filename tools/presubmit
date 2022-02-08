@@ -23,15 +23,25 @@ All tests are executed in the local development environment. If your host is not
 set up for aarch64 builds, it will use './tools/dev_container' to build run
 those.
 
-Aarch64 tests can be skipped with:
+There are three levels of presubmit tests that can be run:
 
     $ ./tools/presubmit --quick
+    $ ./tools/presubmit
+    $ ./tools/presubmit --all
+
+The quick mode will only cover x86 and does not require a dev_container. The
+default mode will add aarch64 tests, and the all mode will test everything that
+is also tested on Kokoro.
 "
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
     -q | --quick)
         QUICK=true
+        shift
+        ;;
+    -a | --all)
+        ALL=true
         shift
         ;;
     --tmux)
@@ -57,7 +67,7 @@ run_commands_in_tmux() {
     )
     for cmd in "${@:2}"; do
         tmux_commands+=(
-            split-window "$cmd; read -p 'Press enter to close.'" \;
+            split-window -h "$cmd; read -p 'Press enter to close.'" \;
         )
     done
     tmux_commands+=(
@@ -83,13 +93,19 @@ aarch64_wrapper() {
 
 commands=(
     "./tools/fmt --check && ./tools/clippy"
-    "cargo build --verbose --no-default-features"
     "./tools/run_tests --target=host"
 )
 
-if [ "$QUICK" != true ]; then
+if [ "$ALL" == true ]; then
     commands+=(
         "$(aarch64_wrapper) ./tools/run_tests --target=vm:aarch64"
+        "$(aarch64_wrapper) ./tools/run_tests --target=vm:aarch64 --arch=armhf"
+        "cargo build --verbose --no-default-features"
+    )
+elif [ "$QUICK" != true ]; then
+    commands+=(
+        # Test via user-space emulation for faster, but less complete results.
+        "$(aarch64_wrapper) ./tools/run_tests --target=host --arch=aarch64"
     )
 fi
 
@@ -98,5 +114,3 @@ if [ "$RUN_IN_TMUX" = true ]; then
 else
     run_commands "${commands[@]}"
 fi
-
-# TODO(b/203152778): Add armhf builds to presubmit
