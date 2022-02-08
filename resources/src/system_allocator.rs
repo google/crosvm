@@ -251,7 +251,7 @@ mod tests {
         let mut a = SystemAllocator::new(SystemAllocatorConfig {
             io: Some(MemRegion {
                 base: 0x1000,
-                size: 0x1_0000,
+                size: 0xf000,
             }),
             low_mmio: vec![MemRegion {
                 base: 0x3000_0000,

@@ -449,8 +449,8 @@ mod tests {
             Ac97Dev::new(mem, Ac97Backend::NULL, Box::new(MockShmStreamSource::new()));
         let mut allocator = SystemAllocator::new(SystemAllocatorConfig {
             io: Some(MemRegion {
-                base: 0x1000_0000,
-                size: 0x1000_0000,
+                base: 0xc000,
+                size: 0x1_0000,
             }),
             low_mmio: vec![MemRegion {
                 base: 0x2000_0000,

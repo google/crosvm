@@ -914,8 +914,8 @@ mod tests {
                 size: 2048,
             }],
             high_mmio: MemRegion {
-                base: 2048,
-                size: 4096,
+                base: 0x1_0000_0000,
+                size: 0x2_0000_0000,
             },
             platform_mmio: None,
             first_irq: 5,
@@ -1043,8 +1043,8 @@ mod tests {
                 size: 2048,
             }],
             high_mmio: MemRegion {
-                base: 2048,
-                size: 4096,
+                base: 0x1_0000_0000,
+                size: 0x2_0000_0000,
             },
             platform_mmio: None,
             first_irq: 5,
