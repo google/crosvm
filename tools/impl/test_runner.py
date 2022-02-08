@@ -74,6 +74,7 @@ class Executable(NamedTuple):
     binary_path: Path
     crate_name: str
     cargo_target: str
+    kind: str
     is_test: bool
     is_fresh: bool
 
@@ -168,6 +169,7 @@ def cargo(
                 Path(json_line.get("executable")),
                 crate_name=json_line.get("package_id", "").split(" ")[0],
                 cargo_target=json_line.get("target").get("name"),
+                kind=json_line.get("target").get("kind")[0],
                 is_test=json_line.get("profile", {}).get("test", False),
                 is_fresh=json_line.get("fresh", False),
             )
@@ -245,8 +247,12 @@ def execute_test(target: TestTarget, executable: Executable):
     if TestOption.SINGLE_THREADED in options:
         args += ["--test-threads=1"]
 
+    # proc-macros and their tests are executed on the host.
+    if executable.kind == "proc-macro":
+        target = TestTarget("host")
+
     if VERBOSE:
-        print(f"Running test {executable.name}...")
+        print(f"Running test {executable.name} on {target}...")
     try:
         # Pipe stdout/err to be printed in the main process if needed.
         test_process = test_target.exec_file_on_target(
