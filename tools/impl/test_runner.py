@@ -88,11 +88,9 @@ def get_workspace_excludes(target_arch: Arch):
     for crate, options in CRATE_OPTIONS.items():
         if TestOption.DO_NOT_BUILD in options:
             yield crate
-        elif TestOption.BUILD_ARM_ONLY in options and (
-            target_arch != "aarch64" and target_arch != "armhf"
-        ):
+        elif TestOption.DO_NOT_BUILD_X86_64 in options and target_arch == "x86_64":
             yield crate
-        elif TestOption.BUILD_X86_ONLY in options and target_arch != "x86_64":
+        elif TestOption.DO_NOT_BUILD_AARCH64 in options and target_arch == "aarch64":
             yield crate
         elif TestOption.DO_NOT_BUILD_ARMHF in options and target_arch == "armhf":
             yield crate
@@ -102,10 +100,10 @@ def should_run_executable(executable: Executable, target_arch: Arch):
     options = CRATE_OPTIONS.get(executable.crate_name, [])
     if TestOption.DO_NOT_RUN in options:
         return False
-    if TestOption.RUN_ARM_ONLY in options:
-        return target_arch == "aarch64" or target_arch == "armhf"
-    if TestOption.RUN_X86_ONLY in options:
-        return target_arch == "x86_64"
+    if TestOption.DO_NOT_RUN_X86_64 in options and target_arch == "x86_64":
+        return False
+    if TestOption.DO_NOT_RUN_AARCH64 in options and target_arch == "aarch64":
+        return False
     if TestOption.DO_NOT_RUN_ARMHF in options and target_arch == "armhf":
         return False
     return True
