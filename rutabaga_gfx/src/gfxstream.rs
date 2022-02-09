@@ -485,7 +485,7 @@ impl RutabagaComponent for Gfxstream {
         let mut stream_handle: stream_renderer_handle = Default::default();
         if let Some(handle) = handle_opt {
             stream_handle.handle_type = handle.handle_type;
-            stream_handle.os_handle = handle.os_handle.into_raw_descriptor().into();
+            stream_handle.os_handle = handle.os_handle.into_raw_descriptor() as i64;
             handle_ptr = &stream_handle;
         }
 
