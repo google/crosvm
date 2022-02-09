@@ -34,7 +34,7 @@ pub const ROM_BAR_REG: usize = 12;
 pub const CAPABILITY_LIST_HEAD_OFFSET: usize = 0x34;
 pub const PCI_CAP_NEXT_POINTER: usize = 0x1;
 const FIRST_CAPABILITY_OFFSET: usize = 0x40;
-const CAPABILITY_MAX_OFFSET: usize = 255;
+pub const CAPABILITY_MAX_OFFSET: usize = 255;
 
 const INTERRUPT_LINE_PIN_REG: usize = 15;
 

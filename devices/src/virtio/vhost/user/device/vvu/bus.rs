@@ -4,8 +4,6 @@
 
 //! Provides utilities to bind and open a VFIO PCI device.
 
-#![allow(dead_code)]
-
 use std::fs::write;
 use std::sync::Arc;
 

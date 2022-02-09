@@ -18,7 +18,6 @@ minigbm = ["rutabaga_gfx/minigbm"]
 x = ["gpu_display/x"]
 virgl_renderer = ["gpu", "rutabaga_gfx/virgl_renderer"]
 gfxstream = ["gpu", "rutabaga_gfx/gfxstream"]
-vvu = []
 
 [dependencies]
 argh = "0.1.7"
@@ -43,6 +42,7 @@ libc = "*"
 libcras = { version = "*", optional = true }
 libvda = { path = "../libvda", optional = true }
 linux_input_sys = { path = "../linux_input_sys" }
+memoffset = { version = "0.6" }
 minijail = "*"
 net_sys = { path = "../net_sys" }
 net_util = { path = "../net_util" }
