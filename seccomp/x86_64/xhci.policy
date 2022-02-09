@@ -18,6 +18,7 @@ open: return ENOENT
 openat: 1
 socket: arg0 == AF_NETLINK
 stat: 1
+statx: 1
 # The following ioctls are:
 # 0x4008550d == USBDEVFS_REAPURBNDELAY
 # 0x41045508 == USBDEVFS_GETDRIVER
