@@ -267,7 +267,9 @@ fn create_virtio_devices(
         )?);
     }
 
-    devs.push(create_rng_device(cfg)?);
+    if cfg.rng {
+        devs.push(create_rng_device(cfg)?);
+    }
 
     #[cfg(feature = "tpm")]
     {

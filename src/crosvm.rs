@@ -436,6 +436,7 @@ pub struct Config {
     pub init_memory: Option<u64>,
     #[cfg(feature = "direct")]
     pub pcie_rp: Vec<PathBuf>,
+    pub rng: bool,
 }
 
 impl Default for Config {
@@ -547,6 +548,7 @@ impl Default for Config {
             init_memory: None,
             #[cfg(feature = "direct")]
             pcie_rp: Vec::new(),
+            rng: true,
         }
     }
 }

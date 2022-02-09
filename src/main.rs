@@ -2071,19 +2071,19 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         "protected-vm" => {
             cfg.protected_vm = ProtectionType::Protected;
-            // Balloon device only works for unprotected VMs.
+            // Balloon and USB devices only work for unprotected VMs.
             cfg.balloon = false;
-
-            // USB device only works for unprotected VMs.
             cfg.usb = false;
+            // Protected VMs can't trust the RNG device, so don't provide it.
+            cfg.rng = false;
         }
         "protected-vm-without-firmware" => {
             cfg.protected_vm = ProtectionType::ProtectedWithoutFirmware;
-            // Balloon device only works for unprotected VMs.
+            // Balloon and USB devices only work for unprotected VMs.
             cfg.balloon = false;
-
-            // USB device only works for unprotected VMs.
             cfg.usb = false;
+            // Protected VMs can't trust the RNG device, so don't provide it.
+            cfg.rng = false;
         }
         "battery" => {
             let params = parse_battery_options(value)?;
@@ -2102,6 +2102,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         "no-balloon" => {
             cfg.balloon = false;
+        }
+        "no-rng" => {
+            cfg.rng = false;
         }
         "no-usb" => {
             cfg.usb = false;
@@ -2683,6 +2686,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::flag("no-balloon", "Don't use virtio-balloon device in the guest"),
           #[cfg(feature = "usb")]
           Argument::flag("no-usb", "Don't use usb devices in the guest"),
+          Argument::flag("no-rng", "Don't create RNG device in the guest"),
           Argument::value("balloon_bias_mib", "N", "Amount to bias balance of memory between host and guest as the balloon inflates, in MiB."),
           Argument::value("vhost-user-blk", "SOCKET_PATH", "Path to a socket for vhost-user block"),
           Argument::value("vhost-user-console", "SOCKET_PATH", "Path to a socket for vhost-user console"),
