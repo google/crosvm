@@ -11,19 +11,6 @@ use crate::{Alloc, Error, Result};
 /// Use `AddressAllocator` whenever an address range needs to be allocated to different users.
 /// Allocations must be uniquely tagged with an Alloc enum, which can be used for lookup.
 /// An human-readable tag String must also be provided for debugging / reference.
-///
-/// # Examples
-///
-/// ```
-/// // Anon is used for brevity. Don't manually instantiate Anon allocs!
-/// # use resources::{Alloc, AddressAllocator};
-///   AddressAllocator::new(0x1000, 0x10000, Some(0x100), None).map(|mut pool| {
-///       assert_eq!(pool.allocate(0x110, Alloc::Anon(0), "caps".to_string()), Ok(0x1000));
-///       assert_eq!(pool.allocate(0x100, Alloc::Anon(1), "cache".to_string()), Ok(0x1200));
-///       assert_eq!(pool.allocate(0x100, Alloc::Anon(2), "etc".to_string()), Ok(0x1300));
-///       assert_eq!(pool.get(&Alloc::Anon(1)), Some(&(0x1200, 0x100, "cache".to_string())));
-///   });
-/// ```
 #[derive(Debug, Eq, PartialEq)]
 pub struct AddressAllocator {
     pool_base: u64,
@@ -428,6 +415,28 @@ impl<'a> AddressAllocatorSet<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn example() {
+        // Anon is used for brevity. Don't manually instantiate Anon allocs!
+        let mut pool = AddressAllocator::new(0x1000, 0x10000, Some(0x100), None).unwrap();
+        assert_eq!(
+            pool.allocate(0x110, Alloc::Anon(0), "caps".to_string()),
+            Ok(0x1000)
+        );
+        assert_eq!(
+            pool.allocate(0x100, Alloc::Anon(1), "cache".to_string()),
+            Ok(0x1200)
+        );
+        assert_eq!(
+            pool.allocate(0x100, Alloc::Anon(2), "etc".to_string()),
+            Ok(0x1300)
+        );
+        assert_eq!(
+            pool.get(&Alloc::Anon(1)),
+            Some(&(0x1200, 0x100, "cache".to_string()))
+        );
+    }
 
     #[test]
     fn new_fails_overflow() {

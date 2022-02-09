@@ -8,7 +8,6 @@ use remain::sorted;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub use crate::address_allocator::AddressAllocator;
 pub use crate::system_allocator::{MemRegion, MmioType, SystemAllocator, SystemAllocatorConfig};
 
 mod address_allocator;
