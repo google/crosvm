@@ -31,7 +31,7 @@ pub struct PcieRootPort {
     pmc_config: PmcConfig,
     pmc_cap_reg_idx: Option<usize>,
     pci_address: Option<PciAddress>,
-    slot_control: u16,
+    slot_control: Option<u16>,
     slot_status: u16,
     root_control: u16,
     root_status: u32,
@@ -45,7 +45,7 @@ pub struct PcieRootPort {
 
 impl PcieRootPort {
     /// Constructs a new PCIE root port
-    pub fn new(secondary_bus_num: u8) -> Self {
+    pub fn new(secondary_bus_num: u8, slot_implemented: bool) -> Self {
         let bus_range = PciBridgeBusRange {
             primary: 0,
             secondary: secondary_bus_num,
@@ -57,7 +57,11 @@ impl PcieRootPort {
             pmc_config: PmcConfig::new(),
             pmc_cap_reg_idx: None,
             pci_address: None,
-            slot_control: PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF,
+            slot_control: if slot_implemented {
+                Some(PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF)
+            } else {
+                None
+            },
             slot_status: 0,
             root_control: 0,
             root_status: 0,
@@ -90,7 +94,7 @@ impl PcieRootPort {
             pmc_config: PmcConfig::new(),
             pmc_cap_reg_idx: None,
             pci_address: None,
-            slot_control: PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF,
+            slot_control: Some(PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF),
             slot_status: 0,
             root_control: 0,
             root_status: 0,
@@ -103,9 +107,16 @@ impl PcieRootPort {
         })
     }
 
+    fn get_slot_control(&self) -> u16 {
+        if let Some(slot_control) = self.slot_control {
+            return slot_control;
+        }
+        0
+    }
+
     fn read_pcie_cap(&self, offset: usize, data: &mut u32) {
         if offset == PCIE_SLTCTL_OFFSET {
-            *data = ((self.slot_status as u32) << 16) | (self.slot_control as u32);
+            *data = ((self.slot_status as u32) << 16) | (self.get_slot_control() as u32);
         } else if offset == PCIE_ROOTCTL_OFFSET {
             *data = self.root_control as u32;
         } else if offset == PCIE_ROOTSTA_OFFSET {
@@ -116,35 +127,45 @@ impl PcieRootPort {
     fn write_pcie_cap(&mut self, offset: usize, data: &[u8]) {
         self.removed_downstream = None;
         match offset {
-            PCIE_SLTCTL_OFFSET => match u16::from_slice(data) {
-                Some(v) => {
-                    let old_control = self.slot_control;
-                    self.slot_control = *v;
-
-                    // if slot is populated, power indicator is off,
-                    // it will detach devices
-                    if (self.slot_status & PCIE_SLTSTA_PDS != 0)
-                        && (v & PCIE_SLTCTL_PIC_OFF == PCIE_SLTCTL_PIC_OFF)
-                        && (old_control & PCIE_SLTCTL_PIC_OFF != PCIE_SLTCTL_PIC_OFF)
-                    {
-                        if let Some((guest_pci_addr, _)) = self.downstream_device {
-                            self.removed_downstream = Some(guest_pci_addr);
-                            self.downstream_device = None;
-                        }
-                        self.slot_status &= !PCIE_SLTSTA_PDS;
-                        self.slot_status |= PCIE_SLTSTA_PDC;
-                        self.trigger_hp_interrupt();
+            PCIE_SLTCTL_OFFSET => {
+                let value = match u16::from_slice(data) {
+                    Some(&v) => v,
+                    None => {
+                        warn!("write SLTCTL isn't word, len: {}", data.len());
+                        return;
                     }
+                };
 
-                    if old_control != *v {
-                        // send Command completed events
-                        self.slot_status |= PCIE_SLTSTA_CC;
-                        self.trigger_cc_interrupt();
-                    }
+                // if slot is populated, power indicator is off,
+                // it will detach devices
+                let old_control = self.get_slot_control();
+                match self.slot_control.as_mut() {
+                    Some(v) => *v = value,
+                    None => return,
                 }
-                None => warn!("write SLTCTL isn't word, len: {}", data.len()),
-            },
+                if (self.slot_status & PCIE_SLTSTA_PDS != 0)
+                    && (value & PCIE_SLTCTL_PIC_OFF == PCIE_SLTCTL_PIC_OFF)
+                    && (old_control & PCIE_SLTCTL_PIC_OFF != PCIE_SLTCTL_PIC_OFF)
+                {
+                    if let Some((guest_pci_addr, _)) = self.downstream_device {
+                        self.removed_downstream = Some(guest_pci_addr);
+                        self.downstream_device = None;
+                    }
+                    self.slot_status &= !PCIE_SLTSTA_PDS;
+                    self.slot_status |= PCIE_SLTSTA_PDC;
+                    self.trigger_hp_interrupt();
+                }
+
+                if old_control != value {
+                    // send Command completed events
+                    self.slot_status |= PCIE_SLTSTA_CC;
+                    self.trigger_cc_interrupt();
+                }
+            }
             PCIE_SLTSTA_OFFSET => {
+                if self.slot_control.is_none() {
+                    return;
+                }
                 let value = match u16::from_slice(data) {
                     Some(v) => *v,
                     None => {
@@ -210,14 +231,17 @@ impl PcieRootPort {
     }
 
     fn trigger_cc_interrupt(&self) {
-        if (self.slot_control & PCIE_SLTCTL_CCIE) != 0 && (self.slot_status & PCIE_SLTSTA_CC) != 0 {
+        if (self.get_slot_control() & PCIE_SLTCTL_CCIE) != 0
+            && (self.slot_status & PCIE_SLTSTA_CC) != 0
+        {
             self.trigger_interrupt()
         }
     }
 
     fn trigger_hp_interrupt(&self) {
-        if (self.slot_control & PCIE_SLTCTL_HPIE) != 0
-            && (self.slot_status & self.slot_control & (PCIE_SLTCTL_ABPE | PCIE_SLTCTL_PDCE)) != 0
+        let slot_control = self.get_slot_control();
+        if (slot_control & PCIE_SLTCTL_HPIE) != 0
+            && (self.slot_status & slot_control & (PCIE_SLTCTL_ABPE | PCIE_SLTCTL_PDCE)) != 0
         {
             self.trigger_interrupt()
         }
@@ -313,7 +337,11 @@ impl PcieDevice for PcieRootPort {
 
     fn get_caps(&self) -> Vec<Box<dyn PciCapability>> {
         vec![
-            Box::new(PcieCap::new(PcieDevicePortType::RootPort, true, 0)),
+            Box::new(PcieCap::new(
+                PcieDevicePortType::RootPort,
+                self.slot_control.is_some(),
+                0,
+            )),
             Box::new(PciPmcCap::new()),
         ]
     }
@@ -414,6 +442,8 @@ impl HotPlugBus for PcieRootPort {
     }
 
     fn is_match(&self, host_addr: PciAddress) -> Option<u8> {
+        let _ = self.slot_control?;
+
         if self.downstream_device.is_none()
             && host_addr.bus >= self.bus_range.secondary
             && host_addr.bus <= self.bus_range.subordinate
@@ -425,6 +455,10 @@ impl HotPlugBus for PcieRootPort {
     }
 
     fn add_hotplug_device(&mut self, host_key: HostHotPlugKey, guest_addr: PciAddress) {
+        if self.slot_control.is_none() {
+            return;
+        }
+
         self.downstream_device = Some((guest_addr, Some(host_key)))
     }
 
