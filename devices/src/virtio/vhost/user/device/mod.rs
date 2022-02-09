@@ -12,7 +12,6 @@ mod gpu;
 mod handler;
 mod net;
 mod vsock;
-#[cfg(feature = "vvu")]
 mod vvu;
 mod wl;
 

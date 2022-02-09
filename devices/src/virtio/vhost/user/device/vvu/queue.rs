@@ -520,7 +520,7 @@ mod test {
         let index = desc_chain.index;
 
         let mut writer = Writer::new(mem.clone(), desc_chain).unwrap();
-        let written = writer.write(&data).unwrap();
+        let written = writer.write(data).unwrap();
         q.add_used(mem, index, written as u32);
         written
     }
@@ -530,7 +530,7 @@ mod test {
         let desc_index = desc_chain.index;
         let mut reader = Reader::new(mem.clone(), desc_chain).unwrap();
         let mut buf = vec![0; len];
-        reader.read(&mut buf).unwrap();
+        reader.read_exact(&mut buf).unwrap();
         q.add_used(mem, desc_index, len as u32);
         buf
     }
@@ -582,6 +582,9 @@ mod test {
     fn test_driver_write_wrapping() {
         // Test the index can be wrapped around when the iteration count exceeds 16bits.
         let queue_size = 256;
+
+        // TODO(keiichiw): Looping (65536 + 20) times takes a long time especially on QEMU for CI.
+        // It's nice if we can modify queues' internal state to avoid the actual looping.
         let iteration = u32::from(u16::MAX) + 20;
         drv_to_dev(queue_size, iteration);
     }
@@ -624,6 +627,8 @@ mod test {
     fn test_driver_read_wrapping() {
         // Test the index can be wrapped around when the iteration count exceeds 16bits.
         let queue_size = 256;
+        // TODO(keichiw): Looping (65536 + 20) times takes a long time especially on QEMU for CI.
+        // It's nice if we can modify queues' internal state to avoid the actual looping.
         let iteration = u32::from(u16::MAX) + 20;
         dev_to_drv(queue_size, iteration);
     }

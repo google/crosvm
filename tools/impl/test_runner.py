@@ -50,8 +50,8 @@ Arch = test_target.Arch
 # Print debug info. Overriden by -v
 VERBOSE = False
 
-# Kill a test after 60 seconds to prevent frozen tests from running too long.
-TEST_TIMEOUT_SECS = 60
+# Kill a test after 120 seconds to prevent frozen tests from running too long.
+TEST_TIMEOUT_SECS = 120
 
 # Number of parallel processes for executing tests.
 PARALLELISM = 4
