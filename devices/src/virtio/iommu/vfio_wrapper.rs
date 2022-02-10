@@ -11,7 +11,7 @@ use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::virtio::iommu::memory_mapper::{
-    Error as MemoryMapperError, MappingInfo, MemoryMapper, Permission,
+    Error as MemoryMapperError, MappingInfo, MemRegion, MemoryMapper, Permission,
 };
 use crate::VfioContainer;
 
@@ -63,7 +63,7 @@ impl MemoryMapper for VfioWrapper {
             .map_err(MemoryMapperError::Vfio)
     }
 
-    fn translate(&self, _iova: u64, _size: u64) -> Result<GuestAddress, MemoryMapperError> {
+    fn translate(&self, _iova: u64, _size: u64) -> Result<Vec<MemRegion>, MemoryMapperError> {
         Err(MemoryMapperError::Unimplemented)
     }
 }

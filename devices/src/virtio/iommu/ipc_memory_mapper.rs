@@ -8,9 +8,8 @@ use std::result;
 
 use base::{AsRawDescriptor, AsRawDescriptors, RawDescriptor, Tube};
 use serde::{Deserialize, Serialize};
-use vm_memory::GuestAddress;
 
-use crate::virtio::memory_mapper::Error;
+use crate::virtio::memory_mapper::{Error, MemRegion};
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -35,7 +34,7 @@ impl IpcMemoryMapper {
     /// # Arguments
     ///
     /// * `request_tx` - A tube to send `TranslateRequest` to another process.
-    /// * `response_rx` - A tube to receive `Option<GuestAddress>`.
+    /// * `response_rx` - A tube to receive `Option<Vec<MemRegion>>`
     /// * `endpoint_id` - For the remote iommu to identify the device/ipc mapper.
     pub fn new(request_tx: Tube, response_rx: Tube, endpoint_id: u32) -> Self {
         Self {
@@ -45,14 +44,14 @@ impl IpcMemoryMapper {
         }
     }
 
-    pub fn translate(&self, iova: u64, size: u64) -> Result<GuestAddress> {
+    pub fn translate(&self, iova: u64, size: u64) -> Result<Vec<MemRegion>> {
         let req = TranslateRequest {
             endpoint_id: self.endpoint_id,
             iova,
             size,
         };
         self.request_tx.send(&req).map_err(Error::Tube)?;
-        let res: Option<GuestAddress> = self.response_rx.recv().map_err(Error::Tube)?;
+        let res: Option<Vec<MemRegion>> = self.response_rx.recv().map_err(Error::Tube)?;
         res.ok_or(Error::InvalidIOVA(iova, size))
     }
 }
@@ -91,7 +90,9 @@ pub fn create_ipc_mapper(endpoint_id: u32, request_tx: Tube) -> CreateIpcMapperR
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::virtio::memory_mapper::Permission;
     use std::thread;
+    use vm_memory::GuestAddress;
 
     #[test]
     fn test() {
@@ -101,7 +102,16 @@ mod tests {
             response_tx,
         } = create_ipc_mapper(3, request_tx);
         let user_handle = thread::spawn(move || {
-            assert_eq!(mapper.translate(0x555, 1).unwrap(), GuestAddress(0x777));
+            assert!(mapper
+                .translate(0x555, 1)
+                .unwrap()
+                .iter()
+                .zip(&vec![MemRegion {
+                    gpa: GuestAddress(0x777),
+                    len: 1,
+                    perm: Permission::RW,
+                },])
+                .all(|(a, b)| a == b));
         });
         let iommu_handle = thread::spawn(move || {
             let TranslateRequest {
@@ -112,7 +122,13 @@ mod tests {
             assert_eq!(endpoint_id, 3);
             assert_eq!(iova, 0x555);
             assert_eq!(size, 1);
-            response_tx.send(&Some(GuestAddress(0x777))).unwrap();
+            response_tx
+                .send(&Some(vec![MemRegion {
+                    gpa: GuestAddress(0x777),
+                    len: 1,
+                    perm: Permission::RW,
+                }]))
+                .unwrap();
         });
         iommu_handle.join().unwrap();
         user_handle.join().unwrap();
