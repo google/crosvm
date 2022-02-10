@@ -14,7 +14,6 @@ use data_model::DataInit;
 use futures::channel::mpsc;
 use futures::future::{AbortHandle, Abortable};
 use hypervisor::ProtectionType;
-use once_cell::sync::OnceCell;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
@@ -30,8 +29,6 @@ use crate::virtio::vhost::user::device::handler::{
 };
 use crate::virtio::{self, copy_config};
 
-static SND_EXECUTOR: OnceCell<Executor> = OnceCell::new();
-
 // Async workers:
 // 0 - ctrl
 // 1 - event
@@ -39,6 +36,7 @@ static SND_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 // 3 - rx
 const PCM_RESPONSE_WORKER_IDX_OFFSET: usize = 2;
 struct CrasSndBackend {
+    ex: Executor,
     cfg: virtio_snd_config,
     avail_features: u64,
     acked_features: u64,
@@ -55,7 +53,7 @@ struct CrasSndBackend {
 }
 
 impl CrasSndBackend {
-    pub fn new(params: Parameters) -> anyhow::Result<Self> {
+    pub fn new(ex: &Executor, params: Parameters) -> anyhow::Result<Self> {
         let cfg = hardcoded_virtio_snd_config(&params);
         let avail_features = virtio::base_features(ProtectionType::Unprotected)
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
@@ -70,6 +68,7 @@ impl CrasSndBackend {
         let (rx_send, rx_recv) = mpsc::unbounded();
 
         Ok(CrasSndBackend {
+            ex: ex.clone(),
             cfg,
             avail_features,
             acked_features: 0,
@@ -151,14 +150,11 @@ impl VhostUserBackend for CrasSndBackend {
             handle.abort();
         }
 
-        // Safe because the executor is initialized in main() below.
-        let ex = SND_EXECUTOR.get().expect("Executor not initialized");
-
         // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
         queue.ack_features(self.acked_features);
 
-        let kick_evt =
-            EventAsync::new(kick_evt.0, ex).context("failed to create EventAsync for kick_evt")?;
+        let kick_evt = EventAsync::new(kick_evt.0, &self.ex)
+            .context("failed to create EventAsync for kick_evt")?;
         let (handle, registration) = AbortHandle::new_pair();
         match idx {
             0 => {
@@ -168,17 +164,18 @@ impl VhostUserBackend for CrasSndBackend {
                 let tx_send = self.tx_send.clone();
                 let rx_send = self.rx_send.clone();
                 let params = self.params.clone();
-                ex.spawn_local(Abortable::new(
-                    async move {
-                        handle_ctrl_queue(
-                            &ex, &mem, &streams, &*snd_data, queue, kick_evt, &doorbell, tx_send,
-                            rx_send, &params,
-                        )
-                        .await
-                    },
-                    registration,
-                ))
-                .detach();
+                self.ex
+                    .spawn_local(Abortable::new(
+                        async move {
+                            handle_ctrl_queue(
+                                &self.ex, &mem, &streams, &*snd_data, queue, kick_evt, &doorbell,
+                                tx_send, rx_send, &params,
+                            )
+                            .await
+                        },
+                        registration,
+                    ))
+                    .detach();
             }
             1 => {} // TODO(woodychow): Add event queue support
             2 | 3 => {
@@ -193,7 +190,7 @@ impl VhostUserBackend for CrasSndBackend {
                 let mem = Rc::new(mem);
                 let mem2 = Rc::clone(&mem);
                 let streams = Rc::clone(&self.streams);
-                ex.spawn_local(Abortable::new(
+                self.ex.spawn_local(Abortable::new(
                     async move { handle_pcm_queue(&*mem, &streams, send, &queue, kick_evt).await },
                     registration,
                 ))
@@ -201,13 +198,14 @@ impl VhostUserBackend for CrasSndBackend {
 
                 let (handle2, registration2) = AbortHandle::new_pair();
 
-                ex.spawn_local(Abortable::new(
-                    async move {
-                        send_pcm_response_worker(&*mem2, &queue2, &doorbell, &mut recv).await
-                    },
-                    registration2,
-                ))
-                .detach();
+                self.ex
+                    .spawn_local(Abortable::new(
+                        async move {
+                            send_pcm_response_worker(&*mem2, &queue2, &doorbell, &mut recv).await
+                        },
+                        registration2,
+                    ))
+                    .detach();
 
                 self.response_workers[idx - PCM_RESPONSE_WORKER_IDX_OFFSET] = Some(handle2);
             }
@@ -272,17 +270,15 @@ pub fn run_cras_snd_device(program_name: &str, args: &[&str]) -> anyhow::Result<
         .unwrap_or("".to_string())
         .parse::<Parameters>()?;
 
-    let snd_device = CrasSndBackend::new(params)?;
+    // Child, we can continue by spawning the executor and set up the device
+    let ex = Executor::new().context("Failed to create executor")?;
+
+    let snd_device = CrasSndBackend::new(&ex, params)?;
 
     // Create and bind unix socket
     let listener = UnixListener::bind(opts.socket).map(UnlinkUnixListener)?;
 
     let handler = DeviceRequestHandler::new(snd_device);
-
-    // Child, we can continue by spawning the executor and set up the device
-    let ex = Executor::new().context("Failed to create executor")?;
-
-    let _ = SND_EXECUTOR.set(ex.clone());
 
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
     ex.run_until(handler.run_with_listener(listener, &ex))?
