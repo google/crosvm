@@ -39,7 +39,6 @@ class TestOption(enum.Enum):
 # Please add a bug number when restricting a tests.
 if os.name == "posix":
     CRATE_OPTIONS: dict[str, list[TestOption]] = {
-        "aarch64": [TestOption.DO_NOT_BUILD_X86_64, TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
         "cros_async": [TestOption.LARGE],
         "crosvm_plugin": [TestOption.DO_NOT_BUILD_AARCH64, TestOption.DO_NOT_BUILD_ARMHF],
         "devices": [
@@ -49,7 +48,7 @@ if os.name == "posix":
         ],
         "disk": [TestOption.DO_NOT_RUN_AARCH64, TestOption.DO_NOT_RUN_ARMHF],  # b/202294155
         "crosvm-fuzz": [TestOption.DO_NOT_BUILD],  # b/194499769
-        "fuzz": [TestOption.DO_NOT_BUILD],  # b/194499769
+        "fuzz": [TestOption.DO_NOT_BUILD],
         "hypervisor": [
             TestOption.DO_NOT_RUN_AARCH64,
             TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
@@ -66,10 +65,7 @@ if os.name == "posix":
             TestOption.DO_NOT_RUN_AARCH64,
             TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
         ],  # b/181674144
-        "libcras_stub": [TestOption.DO_NOT_BUILD],  # empty stub crate
         "libvda": [TestOption.DO_NOT_BUILD],  # b/202293971
-        "system_api_stub": [TestOption.DO_NOT_BUILD],  # empty stub crate
-        "x86_64": [TestOption.DO_NOT_BUILD_AARCH64, TestOption.DO_NOT_BUILD_ARMHF],
         "sys_util": [TestOption.SINGLE_THREADED],
         "sys_util_core": [TestOption.SINGLE_THREADED],
         "rutabaga_gfx": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
