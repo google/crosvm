@@ -23,7 +23,6 @@ use base::{
 use cros_async::{AsyncWrapper, EventAsync, Executor};
 use data_model::{DataInit, Le64};
 use hypervisor::ProtectionType;
-use once_cell::sync::OnceCell;
 use sync::Mutex;
 use vhost::{self, Vhost, Vsock};
 use vm_memory::GuestMemory;
@@ -55,13 +54,12 @@ use crate::{
     },
 };
 
-static VSOCK_EXECUTOR: OnceCell<Executor> = OnceCell::new();
-
 const MAX_VRING_LEN: u16 = vsock::QUEUE_SIZE;
 const NUM_QUEUES: usize = vsock::QUEUE_SIZES.len();
 const EVENT_QUEUE: usize = NUM_QUEUES - 1;
 
 struct VsockBackend {
+    ex: Executor,
     handle: Vsock,
     cid: u64,
     features: u64,
@@ -76,6 +74,7 @@ struct VsockBackend {
 
 impl VsockBackend {
     fn new<P: AsRef<Path>>(
+        ex: &Executor,
         cid: u64,
         vhost_socket: P,
         vvu_device: Option<Arc<Mutex<VvuPciDevice>>>,
@@ -92,6 +91,7 @@ impl VsockBackend {
         let features = handle.get_features().context("failed to get features")?;
         let protocol_features = VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
         Ok(VsockBackend {
+            ex: ex.clone(),
             handle,
             cid,
             features,
@@ -380,20 +380,22 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
                 };
 
                 let kernel_evt = Event::new().map_err(|_| Error::SlaveInternalError)?;
-                let ex = VSOCK_EXECUTOR.get().expect("Executor not initialized");
-                let task_evt =
-                    EventAsync::new(kernel_evt.try_clone().expect("failed to clone event").0, ex)
-                        .map_err(|_| Error::SlaveInternalError)?;
-                ex.spawn_local(async move {
-                    loop {
-                        let _ = task_evt
-                            .next_val()
-                            .await
-                            .expect("failed to wait for event fd");
-                        call_evt.signal_used_queue(index as u16);
-                    }
-                })
-                .detach();
+                let task_evt = EventAsync::new(
+                    kernel_evt.try_clone().expect("failed to clone event").0,
+                    &self.ex,
+                )
+                .map_err(|_| Error::SlaveInternalError)?;
+                self.ex
+                    .spawn_local(async move {
+                        loop {
+                            let _ = task_evt
+                                .next_val()
+                                .await
+                                .expect("failed to wait for event fd");
+                            call_evt.signal_used_queue(index as u16);
+                        }
+                    })
+                    .detach();
                 kernel_evt
             }
             None => {
@@ -575,7 +577,7 @@ fn run_vvu_device<P: AsRef<Path>>(
         .map(Arc::new)
         .context("failed to create `VvuPciDevice`")?;
     let driver = VvuDevice::new(device.clone());
-    let backend = VsockBackend::new(cid, vhost_socket, Some(device))
+    let backend = VsockBackend::new(ex, cid, vhost_socket, Some(device))
         .map(StdMutex::new)
         .map(Arc::new)
         .context("failed to create `VsockBackend`")?;
@@ -632,11 +634,10 @@ pub fn run_vsock_device(program_name: &str, args: &[&str]) -> anyhow::Result<()>
     };
 
     let ex = Executor::new().context("failed to create executor")?;
-    let _ = VSOCK_EXECUTOR.set(ex.clone());
 
     match (opts.socket, opts.vfio) {
         (Some(socket), None) => {
-            let backend = VsockBackend::new(opts.cid, opts.vhost_socket, None)
+            let backend = VsockBackend::new(&ex, opts.cid, opts.vhost_socket, None)
                 .map(StdMutex::new)
                 .map(Arc::new)?;
 
