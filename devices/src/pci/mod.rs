@@ -32,8 +32,7 @@ pub use self::pci_configuration::{
     PciCapabilityID, PciClassCode, PciConfiguration, PciDisplaySubclass, PciHeaderType,
     PciProgrammingInterface, PciSerialBusSubClass, PciSubclass, CAPABILITY_LIST_HEAD_OFFSET,
 };
-pub use self::pci_device::Error as PciDeviceError;
-pub use self::pci_device::PciDevice;
+pub use self::pci_device::{BarRange, Error as PciDeviceError, PciDevice};
 pub use self::pci_root::{PciConfigIo, PciConfigMmio, PciRoot};
 pub use self::pcie::{PciBridge, PcieRootPort};
 pub use self::stub::{StubPciDevice, StubPciParameters};

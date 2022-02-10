@@ -24,7 +24,7 @@ use crate::pci::msix::{
     MsixConfig, BITS_PER_PBA_ENTRY, MSIX_PBA_ENTRIES_MODULO, MSIX_TABLE_ENTRIES_MODULO,
 };
 
-use crate::pci::pci_device::{Error as PciDeviceError, PciDevice};
+use crate::pci::pci_device::{BarRange, Error as PciDeviceError, PciDevice};
 use crate::pci::{
     PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciClassCode,
     PciInterruptPin,
@@ -1103,9 +1103,9 @@ impl VfioPciDevice {
         &mut self,
         mem_bars: &[PciBarConfiguration],
         resources: &mut SystemAllocator,
-    ) -> Result<Vec<(u64, u64)>, PciDeviceError> {
+    ) -> Result<Vec<BarRange>, PciDeviceError> {
         let address = self.pci_address.unwrap();
-        let mut ranges = Vec::new();
+        let mut ranges: Vec<BarRange> = Vec::new();
         for mem_bar in mem_bars {
             let mmio_type = if mem_bar.is_64bit_memory() {
                 MmioType::High
@@ -1131,7 +1131,11 @@ impl VfioPciDevice {
                         bar_size,
                     )
                     .map_err(|e| PciDeviceError::IoAllocationFailed(bar_size, e))?;
-                ranges.push((bar_addr, bar_size));
+                ranges.push(BarRange {
+                    addr: bar_addr,
+                    size: bar_size,
+                    prefetchable: mem_bar.is_prefetchable(),
+                });
             }
             self.configure_barmem(mem_bar, bar_addr);
         }
@@ -1142,7 +1146,7 @@ impl VfioPciDevice {
         &mut self,
         mem_bars: &[PciBarConfiguration],
         resources: &mut SystemAllocator,
-    ) -> Result<Vec<(u64, u64)>, PciDeviceError> {
+    ) -> Result<Vec<BarRange>, PciDeviceError> {
         const NON_PREFETCHABLE: usize = 0;
         const PREFETCHABLE: usize = 1;
         const ARRAY_SIZE: usize = 2;
@@ -1209,7 +1213,7 @@ impl VfioPciDevice {
         }
 
         let address = self.pci_address.unwrap();
-        let mut ranges = Vec::new();
+        let mut ranges: Vec<BarRange> = Vec::new();
         for (index, bars) in membars.iter().enumerate() {
             if bars.is_empty() {
                 continue;
@@ -1249,7 +1253,11 @@ impl VfioPciDevice {
                     .map_err(|e| PciDeviceError::IoAllocationFailed(window_sz[i], e))?;
                 for mem_info in bars {
                     let bar_addr = window_addr + mem_info.address();
-                    ranges.push((bar_addr, mem_info.size()));
+                    ranges.push(BarRange {
+                        addr: bar_addr,
+                        size: mem_info.size(),
+                        prefetchable: mem_info.is_prefetchable(),
+                    });
                 }
             }
 
@@ -1353,7 +1361,7 @@ impl PciDevice for VfioPciDevice {
     fn allocate_io_bars(
         &mut self,
         resources: &mut SystemAllocator,
-    ) -> Result<Vec<(u64, u64)>, PciDeviceError> {
+    ) -> Result<Vec<BarRange>, PciDeviceError> {
         let address = self
             .pci_address
             .expect("allocate_address must be called prior to allocate_device_bars");
@@ -1379,8 +1387,8 @@ impl PciDevice for VfioPciDevice {
     fn allocate_device_bars(
         &mut self,
         resources: &mut SystemAllocator,
-    ) -> Result<Vec<(u64, u64)>, PciDeviceError> {
-        let mut ranges = Vec::new();
+    ) -> Result<Vec<BarRange>, PciDeviceError> {
+        let mut ranges: Vec<BarRange> = Vec::new();
 
         if !self.is_intel_gfx() {
             return Ok(ranges);
@@ -1408,7 +1416,11 @@ impl PciDevice for VfioPciDevice {
                     "vfio_bar".to_string(),
                 )
                 .map_err(|e| PciDeviceError::IoAllocationFailed(size, e))?;
-            ranges.push((bar_addr, size));
+            ranges.push(BarRange {
+                addr: bar_addr,
+                size,
+                prefetchable: false,
+            });
             self.device_data = Some(DeviceData::IntelGfxData {
                 opregion_index: index,
             });

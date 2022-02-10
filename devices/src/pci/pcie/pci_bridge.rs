@@ -8,7 +8,7 @@ use sync::Mutex;
 use crate::pci::msix::{MsixCap, MsixConfig};
 use crate::pci::pci_configuration::PciBridgeSubclass;
 use crate::pci::{
-    PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciClassCode,
+    BarRange, PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciClassCode,
     PciConfiguration, PciDevice, PciDeviceError, PciHeaderType, PCI_VENDOR_ID_INTEL,
 };
 use crate::PciInterruptPin;
@@ -197,12 +197,12 @@ impl PciDevice for PciBridge {
     fn allocate_io_bars(
         &mut self,
         resources: &mut SystemAllocator,
-    ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
+    ) -> std::result::Result<Vec<BarRange>, PciDeviceError> {
         let address = self
             .pci_address
             .expect("allocate_address must be called prior to allocate_io_bars");
         // Pci bridge need one bar for msix
-        let mut ranges = Vec::new();
+        let mut ranges: Vec<BarRange> = Vec::new();
         let bar_addr = resources
             .mmio_allocator(MmioType::Low)
             .allocate_with_align(
@@ -228,7 +228,11 @@ impl PciDevice for PciBridge {
             self.config
                 .add_pci_bar(config)
                 .map_err(|e| PciDeviceError::IoRegistrationFailed(bar_addr, e))? as u8;
-        ranges.push((bar_addr, PCI_BRIDGE_BAR_SIZE));
+        ranges.push(BarRange {
+            addr: bar_addr,
+            size: PCI_BRIDGE_BAR_SIZE,
+            prefetchable: false,
+        });
 
         let (mut window_size, mut pref_window_size) = self.device.lock().get_bridge_window_size();
         let mut window_base = u64::MAX;
@@ -308,7 +312,7 @@ impl PciDevice for PciBridge {
     fn allocate_device_bars(
         &mut self,
         _resources: &mut SystemAllocator,
-    ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
+    ) -> std::result::Result<Vec<BarRange>, PciDeviceError> {
         Ok(Vec::new())
     }
 

@@ -18,9 +18,9 @@ use vm_memory::GuestMemory;
 
 use super::*;
 use crate::pci::{
-    MsixCap, MsixConfig, PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType,
-    PciCapability, PciCapabilityID, PciClassCode, PciConfiguration, PciDevice, PciDeviceError,
-    PciDisplaySubclass, PciHeaderType, PciInterruptPin, PciSubclass,
+    BarRange, MsixCap, MsixConfig, PciAddress, PciBarConfiguration, PciBarPrefetchable,
+    PciBarRegionType, PciCapability, PciCapabilityID, PciClassCode, PciConfiguration, PciDevice,
+    PciDeviceError, PciDisplaySubclass, PciHeaderType, PciInterruptPin, PciSubclass,
 };
 
 use self::virtio_pci_common_config::VirtioPciCommonConfig;
@@ -530,12 +530,12 @@ impl PciDevice for VirtioPciDevice {
     fn allocate_io_bars(
         &mut self,
         resources: &mut SystemAllocator,
-    ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
+    ) -> std::result::Result<Vec<BarRange>, PciDeviceError> {
         let address = self
             .pci_address
             .expect("allocaten_address must be called prior to allocate_io_bars");
         // Allocate one bar for the structures pointed to by the capability structures.
-        let mut ranges = Vec::new();
+        let mut ranges: Vec<BarRange> = Vec::new();
         let settings_config_addr = resources
             .mmio_allocator(MmioType::Low)
             .allocate_with_align(
@@ -565,7 +565,11 @@ impl PciDevice for VirtioPciDevice {
             .add_pci_bar(config)
             .map_err(|e| PciDeviceError::IoRegistrationFailed(settings_config_addr, e))?
             as u8;
-        ranges.push((settings_config_addr, CAPABILITY_BAR_SIZE));
+        ranges.push(BarRange {
+            addr: settings_config_addr,
+            size: CAPABILITY_BAR_SIZE,
+            prefetchable: false,
+        });
 
         // Once the BARs are allocated, the capabilities can be added to the PCI configuration.
         self.add_settings_pci_capabilities(settings_bar)?;
@@ -576,11 +580,11 @@ impl PciDevice for VirtioPciDevice {
     fn allocate_device_bars(
         &mut self,
         resources: &mut SystemAllocator,
-    ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
+    ) -> std::result::Result<Vec<BarRange>, PciDeviceError> {
         let address = self
             .pci_address
             .expect("allocaten_address must be called prior to allocate_device_bars");
-        let mut ranges = Vec::new();
+        let mut ranges: Vec<BarRange> = Vec::new();
         for config in self.device.get_device_bars(address) {
             let device_addr = resources
                 .mmio_allocator(MmioType::High)
@@ -604,7 +608,11 @@ impl PciDevice for VirtioPciDevice {
                 .config_regs
                 .add_pci_bar(config)
                 .map_err(|e| PciDeviceError::IoRegistrationFailed(device_addr, e))?;
-            ranges.push((device_addr, config.size()));
+            ranges.push(BarRange {
+                addr: device_addr,
+                size: config.size(),
+                prefetchable: false,
+            });
         }
         Ok(ranges)
     }

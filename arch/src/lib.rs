@@ -401,14 +401,14 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
     for range in &mmio_ranges {
         linux
             .mmio_bus
-            .insert(arced_dev.clone(), range.0, range.1)
+            .insert(arced_dev.clone(), range.addr, range.size)
             .map_err(DeviceRegistrationError::MmioInsert)?;
     }
 
     for range in &device_ranges {
         linux
             .mmio_bus
-            .insert(arced_dev.clone(), range.0, range.1)
+            .insert(arced_dev.clone(), range.addr, range.size)
             .map_err(DeviceRegistrationError::MmioInsert)?;
     }
 
@@ -584,13 +584,13 @@ pub fn generate_pci_root(
         root.add_device(address, arced_dev.clone());
         for range in &ranges {
             mmio_bus
-                .insert(arced_dev.clone(), range.0, range.1)
+                .insert(arced_dev.clone(), range.addr, range.size)
                 .map_err(DeviceRegistrationError::MmioInsert)?;
         }
 
         for range in &device_ranges {
             mmio_bus
-                .insert(arced_dev.clone(), range.0, range.1)
+                .insert(arced_dev.clone(), range.addr, range.size)
                 .map_err(DeviceRegistrationError::MmioInsert)?;
         }
     }

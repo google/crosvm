@@ -3,10 +3,11 @@
 // found in the LICENSE file.
 
 use crate::pci::{
-    PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciClassCode,
+    BarRange, PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciClassCode,
     PciConfiguration, PciDevice, PciDeviceError, PciHeaderType, PciInterruptPin,
     PciProgrammingInterface, PciSerialBusSubClass,
 };
+
 use crate::register_space::{Register, RegisterSpace};
 use crate::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
 use crate::usb::xhci::xhci::Xhci;
@@ -236,7 +237,7 @@ impl PciDevice for XhciController {
     fn allocate_io_bars(
         &mut self,
         resources: &mut SystemAllocator,
-    ) -> std::result::Result<Vec<(u64, u64)>, PciDeviceError> {
+    ) -> std::result::Result<Vec<BarRange>, PciDeviceError> {
         let address = self
             .pci_address
             .expect("assign_address must be called prior to allocate_io_bars");
@@ -265,7 +266,11 @@ impl PciDevice for XhciController {
         self.config_regs
             .add_pci_bar(bar0_config)
             .map_err(|e| PciDeviceError::IoRegistrationFailed(bar0_addr, e))?;
-        Ok(vec![(bar0_addr, XHCI_BAR0_SIZE)])
+        Ok(vec![BarRange {
+            addr: bar0_addr,
+            size: XHCI_BAR0_SIZE,
+            prefetchable: false,
+        }])
     }
 
     fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {

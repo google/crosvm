@@ -62,6 +62,17 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Pci Bar Range information
+#[derive(Clone)]
+pub struct BarRange {
+    /// pci bar start address
+    pub addr: u64,
+    /// pci bar size
+    pub size: u64,
+    /// pci bar is prefetchable or not, it used to set parent's bridge window
+    pub prefetchable: bool,
+}
+
 pub trait PciDevice: Send {
     /// Returns a label suitable for debug output.
     fn debug_label(&self) -> String;
@@ -84,18 +95,15 @@ pub trait PciDevice: Send {
         None
     }
     /// Allocates the needed IO BAR space using the `allocate` function which takes a size and
-    /// returns an address. Returns a Vec of (address, length) tuples.
-    fn allocate_io_bars(&mut self, _resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
+    /// returns an address. Returns a Vec of BarRange{addr, size, prefetchable}.
+    fn allocate_io_bars(&mut self, _resources: &mut SystemAllocator) -> Result<Vec<BarRange>> {
         Ok(Vec::new())
     }
 
-    /// Allocates the needed device BAR space. Returns a Vec of (address, length) tuples.
+    /// Allocates the needed device BAR space. Returns a Vec of BarRange{addr, size, prefetchable}.
     /// Unlike MMIO BARs (see allocate_io_bars), device BARs are not expected to incur VM exits
     /// - these BARs represent normal memory.
-    fn allocate_device_bars(
-        &mut self,
-        _resources: &mut SystemAllocator,
-    ) -> Result<Vec<(u64, u64)>> {
+    fn allocate_device_bars(&mut self, _resources: &mut SystemAllocator) -> Result<Vec<BarRange>> {
         Ok(Vec::new())
     }
 
@@ -315,10 +323,10 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     ) -> Option<(u32, PciInterruptPin)> {
         (**self).assign_irq(irq_evt, irq_resample_evt, irq_num)
     }
-    fn allocate_io_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
+    fn allocate_io_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<BarRange>> {
         (**self).allocate_io_bars(resources)
     }
-    fn allocate_device_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<(u64, u64)>> {
+    fn allocate_device_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<BarRange>> {
         (**self).allocate_device_bars(resources)
     }
     fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
