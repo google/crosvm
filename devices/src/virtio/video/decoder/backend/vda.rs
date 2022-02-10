@@ -24,6 +24,7 @@ impl TryFrom<Format> for libvda::Profile {
             Format::VP8 => libvda::Profile::VP8,
             Format::VP9 => libvda::Profile::VP9Profile0,
             Format::H264 => libvda::Profile::H264ProfileBaseline,
+            Format::HEVC => libvda::Profile::HevcProfileMain,
             _ => {
                 error!("specified format {} is not supported by VDA", format);
                 return Err(VideoError::InvalidParameter);
