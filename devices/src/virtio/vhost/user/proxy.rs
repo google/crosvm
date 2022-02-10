@@ -12,7 +12,6 @@
 
 use std::fs::File;
 use std::io::Write;
-use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixListener;
 use std::thread;
 
@@ -145,6 +144,9 @@ pub enum Error {
     /// Failed to send ACK in response to Vhost-user sibling message.
     #[error("Failed to send Ack: {0}")]
     FailedAck(VhostError),
+    /// Failed to accept sibling connection.
+    #[error("failed to accept sibling connection: {0}")]
+    FailedToAcceptSiblingConnection(std::io::Error),
     /// Failed to read kick event for a vring.
     #[error("Failed to read kick event for {}-th vring: {1} {0}")]
     FailedToReadKickEvt(base::Error, usize),
@@ -313,9 +315,6 @@ struct Worker {
     rx_queue: Queue,
     tx_queue: Queue,
 
-    // Helper to receive and parse messages from the Vhost-user sibling.
-    slave_req_helper: SlaveReqHelper<SocketEndpoint<MasterReq>>,
-
     // To communicate with the main process.
     main_process_tube: Tube,
 
@@ -329,6 +328,9 @@ struct Worker {
     // Vring related data sent through |SET_VRING_KICK| and |SET_VRING_CALL|
     // messages.
     vrings: [Vring; MAX_VHOST_DEVICE_QUEUES],
+
+    // Helps with communication and parsing messages from the sibling.
+    slave_req_helper: SlaveReqHelper<SocketEndpoint<MasterReq>>,
 }
 
 #[derive(PollToken, Debug, Clone)]
@@ -348,6 +350,11 @@ enum Token {
 }
 
 impl Worker {
+    // The entry point into `Worker`.
+    // - At this point the connection with the sibling is already established.
+    // - Process messages from the device over Virtio, from the sibling over a unix domain socket,
+    //   from the main thread in this device over a tube and from the main crosvm process over a
+    //   tube.
     fn run(
         &mut self,
         rx_queue_evt: Event,
@@ -372,23 +379,25 @@ impl Worker {
             let events = wait_ctx.wait().map_err(Error::WaitError)?;
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
-                    Token::SiblingSocket => match self.process_rx(&mut wait_ctx) {
-                        Ok(()) => {}
-                        Err(Error::RxDescriptorsExhausted) => {
-                            // If the driver has no Rx buffers left, then no
-                            // point monitoring the Vhost-user sibling for data. There
-                            // would be no way to send it to the device backend.
-                            wait_ctx
-                                .modify(
-                                    &self.slave_req_helper,
-                                    EventType::None,
-                                    Token::SiblingSocket,
-                                )
-                                .map_err(Error::WaitContextDisableSiblingVmSocket)?;
-                            sibling_socket_polling_enabled = false;
+                    Token::SiblingSocket => {
+                        match self.process_rx(&mut wait_ctx) {
+                            Ok(()) => {}
+                            Err(Error::RxDescriptorsExhausted) => {
+                                // If the driver has no Rx buffers left, then no
+                                // point monitoring the Vhost-user sibling for data. There
+                                // would be no way to send it to the device backend.
+                                wait_ctx
+                                    .modify(
+                                        &self.slave_req_helper,
+                                        EventType::None,
+                                        Token::SiblingSocket,
+                                    )
+                                    .map_err(Error::WaitContextDisableSiblingVmSocket)?;
+                                sibling_socket_polling_enabled = false;
+                            }
+                            Err(e) => return Err(e),
                         }
-                        Err(e) => return Err(e),
-                    },
+                    }
                     Token::RxQueue => {
                         if let Err(e) = rx_queue_evt.read() {
                             error!("error reading rx queue Event: {}", e);
@@ -547,7 +556,7 @@ impl Worker {
     }
 
     // Returns true iff any data is available on the sibling socket.
-    fn is_sibling_data_available(&mut self) -> bool {
+    fn is_sibling_data_available(&self) -> bool {
         // Peek if any data is left on the Vhost-user sibling socket. If no, then
         // nothing to forwad to the device backend.
         let mut peek_buf = [0; 1];
@@ -939,13 +948,13 @@ pub struct VirtioVhostUser {
 
     // Bound socket waiting to accept a socket connection from the Vhost-user
     // sibling.
-    listener: UnixListener,
+    listener: Option<UnixListener>,
 
     // Device configuration.
     config: VirtioVhostUserConfig,
 
     kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<Worker>>,
+    worker_thread: Option<thread::JoinHandle<Result<Worker>>>,
 
     // The bar representing the doorbell, notification and shared memory regions.
     pci_bar: Option<Alloc>,
@@ -981,7 +990,7 @@ impl VirtioVhostUser {
     ) -> Result<VirtioVhostUser> {
         Ok(VirtioVhostUser {
             base_features,
-            listener,
+            listener: Some(listener),
             config: VirtioVhostUserConfig {
                 status: Le32::from(0),
                 max_vhost_queues: Le32::from(MAX_VHOST_DEVICE_QUEUES as u32),
@@ -1097,8 +1106,9 @@ impl VirtioVhostUser {
         data[..2].copy_from_slice(&d);
     }
 
-    // Wait for Vhost-user sibling to connect.
-    fn wait_for_sibling(&mut self) {
+    // Initializes state and starts the worker thread which will process all messages to this device
+    // and send out messages in response.
+    fn start_worker(&mut self) {
         // This function should never be called if this device hasn't been
         // activated.
         if self.activate_params.is_none() {
@@ -1114,19 +1124,7 @@ impl VirtioVhostUser {
         };
         self.kill_evt = Some(self_kill_evt);
 
-        let socket = match self.listener.accept() {
-            Ok((socket, _)) => socket,
-            Err(e) => {
-                error!("failed to accept connection: {}", e);
-                return;
-            }
-        };
-        // Although this device is relates to Virtio Vhost User but it uses
-        // `slave_req_helper` to parse messages from  a Vhost-user sibling.
-        // Thus, we need `slave_req_helper` in `Protocol::Regular` mode and not
-        // in `Protocol::Virtio' mode.
-        let slave_req_helper: SlaveReqHelper<SocketEndpoint<MasterReq>> =
-            SlaveReqHelper::new(SocketEndpoint::from(socket), Protocol::Regular);
+        let listener = self.listener.take().expect("listener should be set");
 
         let main_process_tube = self.main_process_tube.take().expect("tube missing");
 
@@ -1151,26 +1149,42 @@ impl VirtioVhostUser {
         // TODO(abhishekbh): Should interrupt.signal_config_changed be called ?
         self.sibling_connected = true;
         let mut activate_params = self.activate_params.take().unwrap();
+        // This thread will wait for the sibling to connect and the continuously parse messages from
+        // the sibling as well as the device (over Virtio).
         let worker_result = thread::Builder::new()
             .name("virtio_vhost_user".to_string())
             .spawn(move || {
                 let rx_queue = activate_params.queues.remove(0);
                 let tx_queue = activate_params.queues.remove(0);
+
+                // Block until the connection with the sibling is established. We do this in a
+                // thread to avoid blocking the main thread.
+                let (socket, _) = listener
+                    .accept()
+                    .map_err(Error::FailedToAcceptSiblingConnection)?;
+
+                // Although this device is relates to Virtio Vhost User but it uses
+                // `slave_req_helper` to parse messages from  a Vhost-user sibling.
+                // Thus, we need `slave_req_helper` in `Protocol::Regular` mode and not
+                // in `Protocol::Virtio' mode.
+                let slave_req_helper: SlaveReqHelper<SocketEndpoint<MasterReq>> =
+                    SlaveReqHelper::new(SocketEndpoint::from(socket), Protocol::Regular);
+
                 let mut worker = Worker {
                     mem: activate_params.mem,
                     interrupt: activate_params.interrupt,
                     rx_queue,
                     tx_queue,
-                    slave_req_helper,
                     main_process_tube,
                     pci_bar,
                     mem_offset: SHARED_MEMORY_OFFSET as usize,
                     vrings,
+                    slave_req_helper,
                 };
                 let rx_queue_evt = activate_params.queue_evts.remove(0);
                 let tx_queue_evt = activate_params.queue_evts.remove(0);
                 let _ = worker.run(rx_queue_evt, tx_queue_evt, main_thread_tube, kill_evt);
-                worker
+                Ok(worker)
             });
 
         match worker_result {
@@ -1206,14 +1220,19 @@ impl VirtioDevice for VirtioVhostUser {
     }
 
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        let mut rds = vec![self.listener.as_raw_fd()];
+        let mut rds = Vec::new();
+
+        if let Some(rd) = &self.listener {
+            rds.push(rd.as_raw_descriptor());
+        }
+
         if let Some(rd) = &self.kill_evt {
             rds.push(rd.as_raw_descriptor());
         }
 
         if let Some(rd) = &self.main_process_tube {
             rds.push(rd.as_raw_descriptor());
-        };
+        }
 
         // `self.worker_thread_tube` is set after a fork / keep_rds is called in multiprocess mode.
         // Hence, it's not required to be processed in this function.
@@ -1254,11 +1273,7 @@ impl VirtioDevice for VirtioVhostUser {
         // The driver has indicated that it's safe for the Vhost-user sibling to
         // initiate a connection and send data over.
         if self.config.is_slave_up() && !self.sibling_connected {
-            // TODO(abhishekbh): This function blocks till the sibling connects
-            // to the proxy. `write_config` is synchronous so we're blocking the
-            // guest vCPU indefinitely here. Figure out a way to do this
-            // asynchronously.
-            self.wait_for_sibling();
+            self.start_worker();
         }
     }
 
@@ -1328,7 +1343,7 @@ impl VirtioDevice for VirtioVhostUser {
             return;
         }
 
-        // Cache these to be used later in the `wait_for_sibling` function.
+        // Cache these to be used later in the `start_worker` function.
         self.activate_params = Some(ActivateParams {
             mem,
             interrupt,
