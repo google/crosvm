@@ -138,9 +138,9 @@ const AARCH64_PCI_CFG_BASE: u64 = 0x10000;
 // PCI MMIO configuration region size.
 const AARCH64_PCI_CFG_SIZE: u64 = 0x1000000;
 // This is the base address of MMIO devices.
-const AARCH64_MMIO_BASE: u64 = 0x1010000;
+const AARCH64_MMIO_BASE: u64 = 0x2000000;
 // Size of the whole MMIO region.
-const AARCH64_MMIO_SIZE: u64 = 0x100000;
+const AARCH64_MMIO_SIZE: u64 = 0x2000000;
 // Virtio devices start at SPI interrupt number 3
 const AARCH64_IRQ_BASE: u32 = 3;
 
