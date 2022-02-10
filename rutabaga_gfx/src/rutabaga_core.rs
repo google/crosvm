@@ -193,7 +193,7 @@ pub trait RutabagaContext {
     fn detach(&mut self, _resource: &RutabagaResource);
 
     /// Implementations must create a fence on specified `ring_idx` in `fence`.  This
-    /// allows for multiple syncrhonizations timelines per RutabagaContext.
+    /// allows for multiple synchronizations timelines per RutabagaContext.
     fn context_create_fence(&mut self, _fence: RutabagaFence) -> RutabagaResult<()> {
         Err(RutabagaError::Unsupported)
     }

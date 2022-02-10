@@ -96,7 +96,7 @@ pub struct virgl_renderer_callbacks {
             cookie: *mut ::std::os::raw::c_void,
             ctx_id: u32,
             queue_id: u64,
-            fence_cookie: *mut ::std::os::raw::c_void,
+            fence_id: u64,
         ),
     >,
     pub get_server_fd: ::std::option::Option<
@@ -418,7 +418,7 @@ extern "C" {
         ctx_id: u32,
         flags: u32,
         queue_id: u64,
-        fence_cookie: *mut ::std::os::raw::c_void,
+        fence_id: u64,
     ) -> ::std::os::raw::c_int;
 }
 extern "C" {
