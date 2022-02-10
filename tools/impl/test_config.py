@@ -55,7 +55,6 @@ CRATE_OPTIONS: dict[str, list[TestOption]] = {
     "x86_64": [TestOption.DO_NOT_BUILD_AARCH64, TestOption.DO_NOT_BUILD_ARMHF],
     "sys_util": [TestOption.SINGLE_THREADED],
     "sys_util_core": [TestOption.SINGLE_THREADED],
-    "rutabaga_gfx_ffi": [TestOption.DO_NOT_BUILD],  # b/206689789
     "rutabaga_gfx": [TestOption.DO_NOT_BUILD_ARMHF], #b/210015864
     "vhost": [TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL],
     "vm_control": [TestOption.DO_NOT_BUILD_ARMHF], #b/210015864

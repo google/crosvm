@@ -24,3 +24,5 @@ vulkano = ["rutabaga_gfx/vulkano"]
 [profile.dev]
 lto = true
 incremental = false
+
+[workspace]

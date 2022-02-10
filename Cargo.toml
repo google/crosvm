@@ -64,7 +64,6 @@ members = [
     "qcow_utils",
     "resources",
     "rutabaga_gfx",
-    "rutabaga_gfx/ffi",
     "tpm2",
     "tpm2-sys",
     "usb_sys",
