@@ -27,6 +27,7 @@ use crate::virtio::console::{
 use crate::virtio::vhost::user::device::handler::{
     DeviceRequestHandler, Doorbell, VhostUserBackend,
 };
+use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
 use crate::virtio::{self, copy_config};
 
 async fn run_tx_queue(
@@ -259,34 +260,17 @@ impl VhostUserBackend for ConsoleBackend {
     }
 }
 
-fn run_console(params: &SerialParameters, socket: &str) -> anyhow::Result<()> {
-    // We need to pass an event as per Serial Device API but we don't really use it anyway.
-    let evt = Event::new()?;
-    // Same for keep_rds, we don't really use this.
-    let mut keep_rds = Vec::new();
-    let console = match params.create_serial_device::<ConsoleDevice>(
-        ProtectionType::Unprotected,
-        &evt,
-        &mut keep_rds,
-    ) {
-        Ok(c) => c,
-        Err(e) => bail!(e),
-    };
-
-    let ex = Executor::new().context("Failed to create executor")?;
-    let backend = ConsoleBackend::new(&ex, console);
-
-    let handler = DeviceRequestHandler::new(backend);
-
-    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-    ex.run_until(handler.run(socket, &ex))?
-}
-
 #[derive(FromArgs)]
 #[argh(description = "")]
 struct Options {
-    #[argh(option, description = "path to a socket", arg_name = "PATH")]
-    socket: String,
+    #[argh(option, description = "path to a vhost-user socket", arg_name = "PATH")]
+    socket: Option<String>,
+    #[argh(
+        option,
+        description = "VFIO-PCI device name (e.g. '0000:00:07.0')",
+        arg_name = "STRING"
+    )]
+    vfio: Option<String>,
     #[argh(option, description = "path to a file", arg_name = "OUTFILE")]
     output_file: Option<PathBuf>,
     #[argh(option, description = "path to a file", arg_name = "INFILE")]
@@ -296,11 +280,7 @@ struct Options {
 /// Starts a vhost-user console device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn run_console_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
-    let Options {
-        input_file,
-        output_file,
-        socket,
-    } = match Options::from_args(&[program_name], args) {
+    let opts = match Options::from_args(&[program_name], args) {
         Ok(opts) => opts,
         Err(e) => {
             if e.status.is_err() {
@@ -312,12 +292,7 @@ pub fn run_console_device(program_name: &str, args: &[&str]) -> anyhow::Result<(
         }
     };
 
-    // Set stdin() in raw mode so we can send over individual keystrokes unbuffered
-    stdin()
-        .set_raw_mode()
-        .context("Failed to set terminal raw mode")?;
-
-    let type_ = match output_file {
+    let type_ = match opts.output_file {
         Some(_) => SerialType::File,
         None => SerialType::Stdout,
     };
@@ -326,8 +301,8 @@ pub fn run_console_device(program_name: &str, args: &[&str]) -> anyhow::Result<(
         type_,
         hardware: SerialHardware::VirtioConsole,
         // Required only if type_ is SerialType::File or SerialType::UnixSocket
-        path: output_file,
-        input: input_file,
+        path: opts.output_file,
+        input: opts.input_file,
         num: 1,
         console: true,
         earlycon: false,
@@ -335,16 +310,41 @@ pub fn run_console_device(program_name: &str, args: &[&str]) -> anyhow::Result<(
         stdin: true,
     };
 
-    let res = run_console(&params, &socket);
+    let console = match params.create_serial_device::<ConsoleDevice>(
+        ProtectionType::Unprotected,
+        // We need to pass an event as per Serial Device API but we don't really use it anyway.
+        &Event::new()?,
+        // Same for keep_rds, we don't really use this.
+        &mut Vec::new(),
+    ) {
+        Ok(c) => c,
+        Err(e) => bail!(e),
+    };
+    let ex = Executor::new().context("Failed to create executor")?;
+    let backend = ConsoleBackend::new(&ex, console);
+    let handler = DeviceRequestHandler::new(backend);
+
+    // Set stdin() in raw mode so we can send over individual keystrokes unbuffered
+    stdin()
+        .set_raw_mode()
+        .context("Failed to set terminal raw mode")?;
+
+    let res = match (opts.socket, opts.vfio) {
+        (Some(socket), None) => {
+            // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
+            ex.run_until(handler.run(socket, &ex))?
+        }
+        (None, Some(vfio)) => {
+            let device = VvuPciDevice::new(&vfio, ConsoleBackend::MAX_QUEUE_NUM)?;
+            ex.run_until(handler.run_vvu(device, &ex))?
+        }
+        _ => Err(anyhow!("exactly one of `--socket` or `--vfio` is required")),
+    };
 
     // Restore terminal capabilities back to what they were before
     stdin()
         .set_canon_mode()
         .context("Failed to restore canonical mode for terminal")?;
 
-    if let Err(e) = res {
-        bail!("error occurred: {:#}", e);
-    }
-
-    Ok(())
+    res
 }
