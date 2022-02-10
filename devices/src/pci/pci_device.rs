@@ -154,6 +154,15 @@ pub trait PciDevice: Send {
     fn get_removed_children_devices(&self) -> Vec<PciAddress> {
         Vec::new()
     }
+
+    /// if device is a pci brdige, configure pci bridge window
+    fn configure_bridge_window(
+        &mut self,
+        _resources: &mut SystemAllocator,
+        _bar_ranges: &[BarRange],
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 impl<T: PciDevice> BusDevice for T {
@@ -365,6 +374,14 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     }
     fn get_removed_children_devices(&self) -> Vec<PciAddress> {
         (**self).get_removed_children_devices()
+    }
+
+    fn configure_bridge_window(
+        &mut self,
+        resources: &mut SystemAllocator,
+        bar_ranges: &[BarRange],
+    ) -> Result<()> {
+        (**self).configure_bridge_window(resources, bar_ranges)
     }
 }
 

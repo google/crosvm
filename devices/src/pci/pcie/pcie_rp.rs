@@ -403,6 +403,10 @@ impl PcieDevice for PcieRootPort {
         removed_devices
     }
 
+    fn hotplug_implemented(&self) -> bool {
+        self.slot_control.is_some()
+    }
+
     fn get_bridge_window_size(&self) -> (u64, u64) {
         if let Some(host) = &self.pcie_host {
             host.get_bridge_window_size()
