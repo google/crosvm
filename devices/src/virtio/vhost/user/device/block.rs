@@ -11,7 +11,6 @@ use std::sync::{atomic::AtomicU64, atomic::Ordering, Arc};
 use anyhow::{anyhow, bail, Context};
 use argh::FromArgs;
 use futures::future::{AbortHandle, Abortable};
-use once_cell::sync::OnceCell;
 use sync::Mutex;
 use vmm_vhost::message::*;
 
@@ -30,13 +29,11 @@ use crate::virtio::vhost::user::device::{
 };
 use crate::virtio::{self, base_features, copy_config, Queue};
 
-static BLOCK_EXECUTOR: OnceCell<Executor> = OnceCell::new();
-
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: u16 = 16;
 
 pub(crate) struct BlockBackend {
-    ex_cell: OnceCell<Executor>,
+    ex: Executor,
     disk_state: Rc<AsyncMutex<DiskState>>,
     disk_size: Arc<AtomicU64>,
     block_size: u32,
@@ -52,15 +49,11 @@ pub(crate) struct BlockBackend {
 impl BlockBackend {
     /// Creates a new block backend.
     ///
-    /// * `ex_cell`: `OnceCell` that must be initialized with an executor which is used in this device thread.
+    /// * `ex`: executor used to run this device task.
     /// * `filename`: Name of the disk image file.
     /// * `options`: Vector of file options.
     ///   - `read-only`
-    pub(crate) fn new(
-        ex_cell: OnceCell<Executor>,
-        filename: &str,
-        options: Vec<&str>,
-    ) -> anyhow::Result<Self> {
+    pub(crate) fn new(ex: &Executor, filename: &str, options: Vec<&str>) -> anyhow::Result<Self> {
         let read_only = options.contains(&"read-only");
         let sparse = false;
         let block_size = 512;
@@ -99,8 +92,6 @@ impl BlockBackend {
         // number of segments must be smaller than the queue size.
         // In addition, the request header and status each consume a descriptor.
         let seg_max = min(seg_max, u32::from(QUEUE_SIZE) - 2);
-
-        let ex = ex_cell.get().context("Executor not initialized")?;
 
         let async_image = disk_image.to_async_disk(ex)?;
 
@@ -141,7 +132,7 @@ impl BlockBackend {
         .detach();
 
         Ok(BlockBackend {
-            ex_cell,
+            ex: ex.clone(),
             disk_state,
             disk_size,
             block_size,
@@ -225,29 +216,28 @@ impl VhostUserBackend for BlockBackend {
         // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
         queue.ack_features(self.acked_features);
 
-        // Safe because the executor is initialized in main() below.
-        let ex = self.ex_cell.get().expect("Executor not initialized");
-
-        let kick_evt =
-            EventAsync::new(kick_evt.0, ex).context("failed to create EventAsync for kick_evt")?;
+        let kick_evt = EventAsync::new(kick_evt.0, &self.ex)
+            .context("failed to create EventAsync for kick_evt")?;
         let (handle, registration) = AbortHandle::new_pair();
 
         let disk_state = Rc::clone(&self.disk_state);
         let timer = Rc::clone(&self.flush_timer);
         let timer_armed = Rc::clone(&self.flush_timer_armed);
-        ex.spawn_local(Abortable::new(
-            handle_queue(
-                mem,
-                disk_state,
-                Rc::new(RefCell::new(queue)),
-                kick_evt,
-                doorbell,
-                timer,
-                timer_armed,
-            ),
-            registration,
-        ))
-        .detach();
+        self.ex
+            .spawn_local(Abortable::new(
+                handle_queue(
+                    self.ex.clone(),
+                    mem,
+                    disk_state,
+                    Rc::new(RefCell::new(queue)),
+                    kick_evt,
+                    doorbell,
+                    timer,
+                    timer_armed,
+                ),
+                registration,
+            ))
+            .detach();
 
         self.workers[idx] = Some(handle);
         Ok(())
@@ -264,6 +254,7 @@ impl VhostUserBackend for BlockBackend {
 // Receives messages from the guest and queues a task to complete the operations with the async
 // executor.
 async fn handle_queue(
+    ex: Executor,
     mem: GuestMemory,
     disk_state: Rc<AsyncMutex<DiskState>>,
     queue: Rc<RefCell<Queue>>,
@@ -277,8 +268,6 @@ async fn handle_queue(
             error!("Failed to read the next queue event: {}", e);
             continue;
         }
-        // Safe because the executor is initialized in main() below.
-        let ex = BLOCK_EXECUTOR.get().expect("Executor not initialized");
         while let Some(descriptor_chain) = queue.borrow_mut().pop(&mem) {
             let queue = Rc::clone(&queue);
             let disk_state = Rc::clone(&disk_state);
@@ -342,14 +331,11 @@ pub fn run_block_device(program_name: &str, args: &[&str]) -> anyhow::Result<()>
     }
 
     let ex = Executor::new().context("failed to create executor")?;
-    BLOCK_EXECUTOR
-        .set(ex.clone())
-        .map_err(|_| anyhow!("failed to set executor"))?;
 
     let mut fileopts = opts.file.split(":").collect::<Vec<_>>();
     let filename = fileopts.remove(0);
 
-    let block = BlockBackend::new(BLOCK_EXECUTOR.clone(), filename, fileopts)?;
+    let block = BlockBackend::new(&ex, filename, fileopts)?;
     let handler = DeviceRequestHandler::new(block);
     match (opts.socket, opts.vfio) {
         (Some(socket), None) => {
