@@ -20,7 +20,6 @@ use base::{
 use cros_async::{AsyncWrapper, EventAsync, Executor, IoSourceExt};
 use futures::future::{AbortHandle, Abortable};
 use hypervisor::ProtectionType;
-use once_cell::sync::OnceCell;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
@@ -29,8 +28,6 @@ use crate::virtio::vhost::user::device::handler::{
     DeviceRequestHandler, Doorbell, VhostUserBackend,
 };
 use crate::virtio::{base_features, wl, Queue};
-
-static WL_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 
 async fn run_out_queue(
     mut queue: Queue,
@@ -78,6 +75,7 @@ async fn run_in_queue(
 }
 
 struct WlBackend {
+    ex: Executor,
     wayland_paths: Option<BTreeMap<String, PathBuf>>,
     vm_socket: Option<Tube>,
     resource_bridge: Option<Tube>,
@@ -91,6 +89,7 @@ struct WlBackend {
 
 impl WlBackend {
     fn new(
+        ex: &Executor,
         wayland_paths: BTreeMap<String, PathBuf>,
         vm_socket: Tube,
         resource_bridge: Option<Tube>,
@@ -100,6 +99,7 @@ impl WlBackend {
             | 1 << wl::VIRTIO_WL_F_SEND_FENCES
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         WlBackend {
+            ex: ex.clone(),
             wayland_paths: Some(wayland_paths),
             vm_socket: Some(vm_socket),
             resource_bridge,
@@ -179,11 +179,8 @@ impl VhostUserBackend for WlBackend {
         // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
         queue.ack_features(self.acked_features);
 
-        // Safe because the executor is initialized in main() below.
-        let ex = WL_EXECUTOR.get().expect("Executor not initialized");
-
-        let kick_evt =
-            EventAsync::new(kick_evt.0, ex).context("failed to create EventAsync for kick_evt")?;
+        let kick_evt = EventAsync::new(kick_evt.0, &self.ex)
+            .context("failed to create EventAsync for kick_evt")?;
 
         // We use this de-structuring let binding to separate borrows so that the compiler doesn't
         // think we're borrowing all of `self` in the closure below.
@@ -217,22 +214,25 @@ impl VhostUserBackend for WlBackend {
                     })
                     .context("failed to clone inner WaitContext for WlState")
                     .and_then(|ctx| {
-                        ex.async_from(ctx)
+                        self.ex
+                            .async_from(ctx)
                             .context("failed to create async WaitContext")
                     })?;
 
-                ex.spawn_local(Abortable::new(
-                    run_in_queue(queue, mem, doorbell, kick_evt, wlstate, wlstate_ctx),
-                    registration,
-                ))
-                .detach();
+                self.ex
+                    .spawn_local(Abortable::new(
+                        run_in_queue(queue, mem, doorbell, kick_evt, wlstate, wlstate_ctx),
+                        registration,
+                    ))
+                    .detach();
             }
             1 => {
-                ex.spawn_local(Abortable::new(
-                    run_out_queue(queue, mem, doorbell, kick_evt, wlstate),
-                    registration,
-                ))
-                .detach();
+                self.ex
+                    .spawn_local(Abortable::new(
+                        run_out_queue(queue, mem, doorbell, kick_evt, wlstate),
+                        registration,
+                    ))
+                    .detach();
             }
             _ => bail!("attempted to start unknown queue: {}", idx),
         }
@@ -347,7 +347,6 @@ pub fn run_wl_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
         .context("failed to connect to resource bridge socket")?;
 
     let ex = Executor::new().context("failed to create executor")?;
-    let _ = WL_EXECUTOR.set(ex.clone());
 
     // We can safely `unwrap()` this because it is a required option.
     let vm_listener = UnixSeqpacketListener::bind(vm_socket)
@@ -357,8 +356,12 @@ pub fn run_wl_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
         .accept()
         .map(Tube::new)
         .context("failed to accept vm socket connection")?;
-    let handler =
-        DeviceRequestHandler::new(WlBackend::new(wayland_paths, vm_socket, resource_bridge));
+    let handler = DeviceRequestHandler::new(WlBackend::new(
+        &ex,
+        wayland_paths,
+        vm_socket,
+        resource_bridge,
+    ));
 
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
     ex.run_until(handler.run(socket, &ex))?
