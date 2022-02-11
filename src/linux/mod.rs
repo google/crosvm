@@ -806,6 +806,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         dmi_path: cfg.dmi_path.clone(),
         no_legacy: cfg.no_legacy,
         host_cpu_topology: cfg.host_cpu_topology,
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        force_s2idle: cfg.force_s2idle,
     })
 }
 

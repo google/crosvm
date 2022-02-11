@@ -101,6 +101,7 @@ const FADT_MINOR_REVISION: u8 = 3;
 const FADT_POWER_BUTTON: u32 = 1 << 4;
 const FADT_SLEEP_BUTTON: u32 = 1 << 5;
 const FADT_RESET_REGISTER: u32 = 1 << 10;
+const FADT_LOW_POWER_S2IDLE: u32 = 1 << 21;
 // FADT fields offset
 const FADT_FIELD_FACS_ADDR32: usize = 36;
 const FADT_FIELD_DSDT_ADDR32: usize = 40;
@@ -168,7 +169,13 @@ fn create_dsdt_table(amls: Vec<u8>) -> SDT {
     dsdt
 }
 
-fn create_facp_table(sci_irq: u16, pm_iobase: u32, reset_port: u32, reset_value: u8) -> SDT {
+fn create_facp_table(
+    sci_irq: u16,
+    pm_iobase: u32,
+    reset_port: u32,
+    reset_value: u8,
+    force_s2idle: bool,
+) -> SDT {
     let mut facp = SDT::new(
         *b"FACP",
         FADT_LEN,
@@ -178,8 +185,13 @@ fn create_facp_table(sci_irq: u16, pm_iobase: u32, reset_port: u32, reset_value:
         OEM_REVISION,
     );
 
-    let fadt_flags: u32 = FADT_POWER_BUTTON | FADT_SLEEP_BUTTON | // mask POWER and SLEEP BUTTON
+    let mut fadt_flags: u32 = FADT_POWER_BUTTON | FADT_SLEEP_BUTTON | // mask POWER and SLEEP BUTTON
                           FADT_RESET_REGISTER; // indicate we support FADT RESET_REG
+
+    if force_s2idle {
+        fadt_flags |= FADT_LOW_POWER_S2IDLE;
+    }
+
     facp.write(FADT_FIELD_FLAGS, fadt_flags);
 
     // SCI Interrupt
@@ -357,6 +369,7 @@ pub fn create_acpi_tables(
     pci_irqs: &[(PciAddress, u32, PciInterruptPin)],
     pcie_cfg_mmio: u64,
     max_bus: u8,
+    force_s2idle: bool,
 ) -> Option<GuestAddress> {
     // RSDP is at the HI RSDP WINDOW
     let rsdp_offset = GuestAddress(super::ACPI_HI_RSDP_WINDOW_BASE);
@@ -404,8 +417,15 @@ pub fn create_acpi_tables(
 
     // FACP aka FADT
     let pm_iobase = acpi_dev_resource.pm_iobase as u32;
-    let mut facp = facp
-        .unwrap_or_else(|| create_facp_table(sci_irq as u16, pm_iobase, reset_port, reset_value));
+    let mut facp = facp.unwrap_or_else(|| {
+        create_facp_table(
+            sci_irq as u16,
+            pm_iobase,
+            reset_port,
+            reset_value,
+            force_s2idle,
+        )
+    });
 
     // Crosvm FACP overrides.
     facp.write(FADT_FIELD_SMI_COMMAND, 0u32);

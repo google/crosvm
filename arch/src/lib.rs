@@ -99,6 +99,8 @@ pub struct VmComponents {
     pub dmi_path: Option<PathBuf>,
     pub no_legacy: bool,
     pub host_cpu_topology: bool,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub force_s2idle: bool,
 }
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.

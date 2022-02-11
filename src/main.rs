@@ -2384,6 +2384,10 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "pivot-root" => {
             cfg.pivot_root = Some(PathBuf::from(value.unwrap()));
         }
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        "s2idle" => {
+            cfg.force_s2idle = true;
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -2765,6 +2769,8 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           #[cfg(feature = "direct")]
           Argument::value("pcie-root-port", "PATH", "Path to sysfs of host pcie root port"),
           Argument::value("pivot-root", "PATH", "Path to empty directory to use for sandbox pivot root."),
+          #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+          Argument::flag("s2idle", "Set Low Power S0 Idle Capable Flag for guest Fixed ACPI Description Table"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

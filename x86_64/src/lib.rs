@@ -566,6 +566,7 @@ impl arch::LinuxArch for X8664arch {
             &pci_irqs,
             PCIE_CFG_MMIO_START,
             max_bus,
+            components.force_s2idle,
         )
         .ok_or(Error::CreateAcpi)?;
 

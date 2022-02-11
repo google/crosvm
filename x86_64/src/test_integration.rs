@@ -227,6 +227,7 @@ where
         &pci_irqs,
         PCIE_CFG_MMIO_START,
         max_bus,
+        false,
     );
 
     let guest_mem2 = guest_mem.clone();

@@ -443,6 +443,7 @@ pub struct Config {
     pub pcie_rp: Vec<PathBuf>,
     pub rng: bool,
     pub pivot_root: Option<PathBuf>,
+    pub force_s2idle: bool,
 }
 
 impl Default for Config {
@@ -556,6 +557,7 @@ impl Default for Config {
             pcie_rp: Vec::new(),
             rng: true,
             pivot_root: None,
+            force_s2idle: false,
         }
     }
 }
