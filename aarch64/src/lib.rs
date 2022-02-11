@@ -465,16 +465,38 @@ impl arch::LinuxArch for AArch64 {
             None => (high_mmio_base, high_mmio_size),
         };
 
+        let pci_cfg = fdt::PciConfigRegion {
+            base: AARCH64_PCI_CFG_BASE,
+            size: AARCH64_PCI_CFG_SIZE,
+        };
+
+        let pci_ranges = &[
+            fdt::PciRange {
+                space: fdt::PciAddressSpace::Memory64,
+                bus_address: AARCH64_MMIO_BASE,
+                cpu_physical_address: AARCH64_MMIO_BASE,
+                size: AARCH64_MMIO_SIZE,
+                prefetchable: false,
+            },
+            fdt::PciRange {
+                space: fdt::PciAddressSpace::Memory64,
+                bus_address: pci_device_base,
+                cpu_physical_address: pci_device_base,
+                size: pci_device_size,
+                prefetchable: false,
+            },
+        ];
+
         fdt::create_fdt(
             AARCH64_FDT_MAX_SIZE as usize,
             &mem,
             pci_irqs,
+            pci_cfg,
+            pci_ranges,
             vcpu_count as u32,
             components.cpu_clusters,
             components.cpu_capacity,
             fdt_offset(components.memory_size, has_bios),
-            pci_device_base,
-            pci_device_size,
             cmdline.as_str(),
             initrd,
             components.android_fstab,
