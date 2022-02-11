@@ -52,9 +52,9 @@ uname: 1
 
 # Rules specific to gpu
 connect: 1
-# 1033 is F_ADD_SEALS
+# 1033 is F_ADD_SEALS, 1034 is F_GET_SEALS
 fcntl: arg1 == F_DUPFD_CLOEXEC || arg1 == F_SETFD || arg1 == F_GETFL || \
-       arg1 == F_SETFL || arg1 == 1033
+       arg1 == F_SETFL || arg1 == 1033 || arg1 == 1034
 fstat: 1
 # Used to set of size new memfd.
 ftruncate: 1
