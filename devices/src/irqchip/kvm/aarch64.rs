@@ -48,7 +48,7 @@ const AARCH64_GIC_REDIST_SIZE: u64 = 0x20000;
 // PPI (16) and GSI (16).
 pub const AARCH64_GIC_NR_IRQS: u32 = 64;
 // Number of SPIs (32), which is the NR_IRQS (64) minus the number of PPIs (16) and GSIs (16)
-const AARCH64_GIC_NR_SPIS: u32 = 32;
+pub const AARCH64_GIC_NR_SPIS: u32 = 32;
 
 const AARCH64_AXI_BASE: u64 = 0x40000000;
 

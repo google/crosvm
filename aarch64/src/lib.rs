@@ -389,7 +389,7 @@ impl arch::LinuxArch for AArch64 {
             io_bus.clone(),
             system_allocator,
             &mut vm,
-            (devices::AARCH64_GIC_NR_IRQS - AARCH64_IRQ_BASE) as usize,
+            (devices::AARCH64_GIC_NR_SPIS - AARCH64_IRQ_BASE) as usize,
         )
         .map_err(Error::CreatePciRoot)?;
 
