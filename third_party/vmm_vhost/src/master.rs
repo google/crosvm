@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 // TODO(b/219522861): Remove this alias and use Event in the code.
-use base::Event as EventFd;
+use base::{Event as EventFd, INVALID_DESCRIPTOR};
 use data_model::DataInit;
 
 use super::connection::{Endpoint, EndpointExt};
@@ -490,7 +490,10 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
             return Err(VhostUserError::InvalidOperation);
         }
 
-        if inflight.mmap_size == 0 || inflight.num_queues == 0 || inflight.queue_size == 0 || fd < 0
+        if inflight.mmap_size == 0
+            || inflight.num_queues == 0
+            || inflight.queue_size == 0
+            || fd == INVALID_DESCRIPTOR
         {
             return Err(VhostUserError::InvalidParam);
         }
@@ -779,6 +782,7 @@ mod tests {
         Listener,
     };
     use super::*;
+    use base::INVALID_DESCRIPTOR;
     use tempfile::{Builder, TempDir};
 
     fn temp_dir() -> TempDir {
@@ -806,7 +810,7 @@ mod tests {
         let master = Master::<SocketEndpoint<_>>::connect(&path, 1).unwrap();
         let mut slave = SocketEndpoint::<MasterReq>::from(listener.accept().unwrap().unwrap());
 
-        assert!(master.as_raw_descriptor() > 0);
+        assert!(master.as_raw_descriptor() != INVALID_DESCRIPTOR);
         // Send two messages continuously
         master.set_owner().unwrap();
         master.reset_owner().unwrap();

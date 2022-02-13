@@ -23,6 +23,5 @@ bitflags = ">=1.0.1"
 data_model= "*"
 libc = ">=0.2.39"
 remain = "*"
-sys_util = "*"
 tempfile = "*"
 thiserror = { version = "1.0.20" }

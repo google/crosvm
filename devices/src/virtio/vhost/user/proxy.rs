@@ -545,7 +545,7 @@ impl Worker {
         // Peek if any data is left on the Vhost-user sibling socket. If no, then
         // nothing to forwad to the device backend.
         let mut peek_buf = [0; 1];
-        let raw_fd = self.slave_req_helper.as_raw_fd();
+        let raw_fd = self.slave_req_helper.as_raw_descriptor();
         // Safe because `raw_fd` and `peek_buf` are owned by this struct.
         let peek_ret = unsafe {
             recv(

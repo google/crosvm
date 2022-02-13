@@ -1,9 +1,9 @@
 // Copyright (C) 2020 Alibaba Cloud. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use base::{AsRawDescriptor, RawDescriptor};
 use std::io;
 use std::mem;
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -33,7 +33,7 @@ impl SlaveFsCacheReqInternal {
         &mut self,
         request: SlaveReq,
         fs: &VhostUserFSSlaveMsg,
-        fds: Option<&[RawFd]>,
+        fds: Option<&[RawDescriptor]>,
     ) -> Result<u64> {
         self.check_state()?;
 
@@ -99,7 +99,7 @@ impl SlaveFsCacheReq {
         &self,
         request: SlaveReq,
         fs: &VhostUserFSSlaveMsg,
-        fds: Option<&[RawFd]>,
+        fds: Option<&[RawDescriptor]>,
     ) -> io::Result<u64> {
         self.node()
             .send_message(request, fs, fds)
@@ -128,8 +128,12 @@ impl SlaveFsCacheReq {
 
 impl VhostUserMasterReqHandler for SlaveFsCacheReq {
     /// Forward vhost-user-fs map file requests to the slave.
-    fn fs_slave_map(&self, fs: &VhostUserFSSlaveMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
-        self.send_message(SlaveReq::FS_MAP, fs, Some(&[fd.as_raw_fd()]))
+    fn fs_slave_map(
+        &self,
+        fs: &VhostUserFSSlaveMsg,
+        fd: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
+        self.send_message(SlaveReq::FS_MAP, fs, Some(&[fd.as_raw_descriptor()]))
     }
 
     /// Forward vhost-user-fs unmap file requests to the master.
@@ -140,7 +144,6 @@ impl VhostUserMasterReqHandler for SlaveFsCacheReq {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::io::AsRawFd;
 
     use super::*;
 
@@ -184,7 +187,7 @@ mod tests {
         let body = VhostUserU64::new(0);
 
         master
-            .send_message(&hdr, &body, Some(&[master.as_raw_fd()]))
+            .send_message(&hdr, &body, Some(&[master.as_raw_descriptor()]))
             .unwrap();
         fs_cache
             .fs_slave_map(&VhostUserFSSlaveMsg::default(), &master)

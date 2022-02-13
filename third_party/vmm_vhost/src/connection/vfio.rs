@@ -6,10 +6,10 @@
 use std::fs::File;
 use std::io::{IoSlice, IoSliceMut};
 use std::marker::PhantomData;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::RawFd;
 use std::path::Path;
 
-use sys_util::EventFd;
+use base::{AsRawDescriptor, EventFd, RawDescriptor};
 
 use super::{Error, Result};
 use crate::connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req};
@@ -107,8 +107,8 @@ impl<R: Req, D: Device> EndpointTrait<R> for Endpoint<R, D> {
     }
 }
 
-impl<R: Req, D: Device> AsRawFd for Endpoint<R, D> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.device.event().as_raw_fd()
+impl<R: Req, D: Device> AsRawDescriptor for Endpoint<R, D> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.device.event().as_raw_descriptor()
     }
 }

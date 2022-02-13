@@ -6,10 +6,11 @@ use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{Stderr, Stdin, Stdout};
 use std::mem;
+use std::mem::ManuallyDrop;
 use std::net::UdpSocket;
 use std::ops::Drop;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-use std::os::unix::net::{UnixDatagram, UnixStream};
+use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
 
 use serde::{Deserialize, Serialize};
 
@@ -135,6 +136,27 @@ impl TryFrom<&dyn AsRawFd> for SafeDescriptor {
     }
 }
 
+impl TryFrom<&dyn AsRawDescriptor> for SafeDescriptor {
+    type Error = std::io::Error;
+
+    /// Clones the underlying descriptor (handle), internally creating a new descriptor.
+    fn try_from(rd: &dyn AsRawDescriptor) -> std::result::Result<Self, Self::Error> {
+        // Safe because the underlying raw descriptor is guaranteed valid by rd's existence.
+        //
+        // Note that we are cloning the underlying raw descriptor since we have no guarantee of
+        // its existence after this function returns.
+        let rd_as_safe_desc = ManuallyDrop::new(unsafe {
+            SafeDescriptor::from_raw_descriptor(rd.as_raw_descriptor())
+        });
+
+        // We have to clone rd because we have no guarantee ownership was transferred (rd is
+        // borrowed).
+        rd_as_safe_desc
+            .try_clone()
+            .map_err(|e| Self::Error::from_raw_os_error(e.errno()))
+    }
+}
+
 impl SafeDescriptor {
     /// Clones this descriptor, internally creating a new descriptor. The new SafeDescriptor will
     /// share the same underlying count within the kernel.
@@ -246,6 +268,7 @@ AsRawDescriptor!(File);
 AsRawDescriptor!(UnlinkUnixSeqpacketListener);
 AsRawDescriptor!(UdpSocket);
 AsRawDescriptor!(UnixDatagram);
+AsRawDescriptor!(UnixListener);
 AsRawDescriptor!(UnixStream);
 FromRawDescriptor!(File);
 FromRawDescriptor!(UnixDatagram);

@@ -45,6 +45,7 @@
 // VhostUserSlaveReqHandlerMut trait methods. These dispatch back to the supplied VhostUserBackend
 // implementation (this is what our devices implement).
 
+use base::AsRawDescriptor;
 use std::convert::{From, TryFrom};
 use std::fs::File;
 use std::num::Wrapping;
@@ -403,7 +404,7 @@ where
             .await?;
         let mut req_handler =
             SlaveReqHandler::from_stream(socket, Arc::new(std::sync::Mutex::new(self)));
-        let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawFd)
+        let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
             .map(AsyncWrapper::new)
             .expect("failed to get safe descriptor for handler");
         let handler_source = ex
@@ -443,7 +444,7 @@ where
             .map_err(|e| anyhow!("failed to accept VFIO connection: {}", e))?
             .expect("vvu proxy is unavailable via VFIO");
 
-        let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawFd)
+        let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
             .map(AsyncWrapper::new)
             .expect("failed to get safe descriptor for handler");
         let handler_source = ex

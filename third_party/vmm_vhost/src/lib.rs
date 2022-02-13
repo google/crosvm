@@ -148,10 +148,10 @@ impl Error {
     }
 }
 
-impl std::convert::From<sys_util::Error> for Error {
+impl std::convert::From<base::Error> for Error {
     /// Convert raw socket errors into meaningful vhost-user errors.
     ///
-    /// The sys_util::Error is a simple wrapper over the raw errno, which doesn't means
+    /// The base::Error is a simple wrapper over the raw errno, which doesn't means
     /// much to the vhost-user connection manager. So convert it into meaningful errors to simplify
     /// the connection manager logic.
     ///
@@ -160,7 +160,7 @@ impl std::convert::From<sys_util::Error> for Error {
     /// * - Error::SocketBroken: the underline socket is broken.
     /// * - Error::SocketError: other socket related errors.
     #[allow(unreachable_patterns)] // EWOULDBLOCK equals to EGAIN on linux
-    fn from(err: sys_util::Error) -> Self {
+    fn from(err: base::Error) -> Self {
         match err.errno() {
             // Retry:
             // * EAGAIN, EWOULDBLOCK: The socket is marked nonblocking and the requested operation
@@ -209,12 +209,12 @@ mod dummy_slave;
 
 #[cfg(all(test, feature = "vmm", feature = "device"))]
 mod tests {
-    use std::os::unix::io::AsRawFd;
     use std::path::Path;
     use std::sync::{Arc, Barrier, Mutex};
     use std::thread;
 
     use super::connection::socket::{Endpoint, Listener};
+
     use super::dummy_slave::{DummySlaveReqHandler, VIRTIO_FEATURES};
     use super::message::*;
     use super::*;
@@ -412,7 +412,7 @@ mod tests {
             .unwrap();
         // Set the buffer back to the backend
         master
-            .set_inflight_fd(&inflight_info, inflight_file.as_raw_fd())
+            .set_inflight_fd(&inflight_info, inflight_file.as_raw_descriptor())
             .unwrap();
 
         let num = master.get_queue_num().unwrap();
@@ -473,7 +473,7 @@ mod tests {
             memory_size: 0x10_0000,
             userspace_addr: 0,
             mmap_offset: 0,
-            mmap_handle: region_file.as_raw_fd(),
+            mmap_handle: region_file.as_raw_descriptor(),
         };
         master.add_mem_region(&region).unwrap();
 
@@ -489,8 +489,8 @@ mod tests {
     }
 
     #[test]
-    fn test_error_from_sys_util_error() {
-        let e: Error = sys_util::Error::new(libc::EAGAIN).into();
+    fn test_error_from_base_error() {
+        let e: Error = base::Error::new(libc::EAGAIN).into();
         if let Error::SocketRetry(e1) = e {
             assert_eq!(e1.raw_os_error().unwrap(), libc::EAGAIN);
         } else {

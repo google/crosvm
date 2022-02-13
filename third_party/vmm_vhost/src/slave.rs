@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Traits and Structs for vhost-user slave.
+//!
+//! These are used on platforms where the slave has to listen for connections (e.g. POSIX only).
 
 use std::sync::Arc;
 

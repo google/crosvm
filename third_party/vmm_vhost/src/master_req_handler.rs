@@ -3,13 +3,14 @@
 
 use std::fs::File;
 use std::mem;
-use std::os::unix::io::{AsRawFd, RawFd};
-use std::os::unix::net::UnixStream;
+use std::os::unix::{io::AsRawFd, net::UnixStream};
 use std::sync::{Arc, Mutex};
 
 use super::connection::{socket::Endpoint as SocketEndpoint, EndpointExt};
 use super::message::*;
 use super::{Error, HandlerResult, Result};
+
+use base::{AsRawDescriptor, RawDescriptor};
 
 /// Define services provided by masters for the slave communication channel.
 ///
@@ -34,7 +35,11 @@ pub trait VhostUserMasterReqHandler {
     }
 
     /// Handle virtio-fs map file requests.
-    fn fs_slave_map(&self, _fs: &VhostUserFSSlaveMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
+    fn fs_slave_map(
+        &self,
+        _fs: &VhostUserFSSlaveMsg,
+        _fd: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
@@ -49,12 +54,16 @@ pub trait VhostUserMasterReqHandler {
     }
 
     /// Handle virtio-fs file IO requests.
-    fn fs_slave_io(&self, _fs: &VhostUserFSSlaveMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
+    fn fs_slave_io(
+        &self,
+        _fs: &VhostUserFSSlaveMsg,
+        _fd: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     // fn handle_iotlb_msg(&mut self, iotlb: VhostUserIotlb);
-    // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: &dyn AsRawFd);
+    // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: &dyn AsRawDescriptor);
 }
 
 /// A helper trait mirroring [VhostUserMasterReqHandler] but without interior mutability.
@@ -67,7 +76,11 @@ pub trait VhostUserMasterReqHandlerMut {
     }
 
     /// Handle virtio-fs map file requests.
-    fn fs_slave_map(&mut self, _fs: &VhostUserFSSlaveMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
+    fn fs_slave_map(
+        &mut self,
+        _fs: &VhostUserFSSlaveMsg,
+        _fd: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
@@ -82,12 +95,16 @@ pub trait VhostUserMasterReqHandlerMut {
     }
 
     /// Handle virtio-fs file IO requests.
-    fn fs_slave_io(&mut self, _fs: &VhostUserFSSlaveMsg, _fd: &dyn AsRawFd) -> HandlerResult<u64> {
+    fn fs_slave_io(
+        &mut self,
+        _fs: &VhostUserFSSlaveMsg,
+        _fd: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     // fn handle_iotlb_msg(&mut self, iotlb: VhostUserIotlb);
-    // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: RawFd);
+    // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: RawDescriptor);
 }
 
 impl<S: VhostUserMasterReqHandlerMut> VhostUserMasterReqHandler for Mutex<S> {
@@ -95,7 +112,11 @@ impl<S: VhostUserMasterReqHandlerMut> VhostUserMasterReqHandler for Mutex<S> {
         self.lock().unwrap().handle_config_change()
     }
 
-    fn fs_slave_map(&self, fs: &VhostUserFSSlaveMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
+    fn fs_slave_map(
+        &self,
+        fs: &VhostUserFSSlaveMsg,
+        fd: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
         self.lock().unwrap().fs_slave_map(fs, fd)
     }
 
@@ -107,7 +128,11 @@ impl<S: VhostUserMasterReqHandlerMut> VhostUserMasterReqHandler for Mutex<S> {
         self.lock().unwrap().fs_slave_sync(fs)
     }
 
-    fn fs_slave_io(&self, fs: &VhostUserFSSlaveMsg, fd: &dyn AsRawFd) -> HandlerResult<u64> {
+    fn fs_slave_io(
+        &self,
+        fs: &VhostUserFSSlaveMsg,
+        fd: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
         self.lock().unwrap().fs_slave_io(fs, fd)
     }
 }
@@ -158,7 +183,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     /// The returned fd should be sent to the slave by [VhostUserMaster::set_slave_request_fd()].
     ///
     /// [VhostUserMaster::set_slave_request_fd()]: trait.VhostUserMaster.html#tymethod.set_slave_request_fd
-    pub fn get_tx_raw_fd(&self) -> RawFd {
+    pub fn get_tx_raw_fd(&self) -> RawDescriptor {
         self.tx_sock.as_raw_fd()
     }
 
@@ -352,15 +377,16 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     }
 }
 
-impl<S: VhostUserMasterReqHandler> AsRawFd for MasterReqHandler<S> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.sub_sock.as_raw_fd()
+impl<S: VhostUserMasterReqHandler> AsRawDescriptor for MasterReqHandler<S> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.sub_sock.as_raw_descriptor()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base::{AsRawDescriptor, Descriptor, INVALID_DESCRIPTOR};
 
     #[cfg(feature = "device")]
     use crate::SlaveFsCacheReq;
@@ -374,7 +400,7 @@ mod tests {
         fn fs_slave_map(
             &mut self,
             _fs: &VhostUserFSSlaveMsg,
-            _fd: &dyn AsRawFd,
+            _fd: &dyn AsRawDescriptor,
         ) -> HandlerResult<u64> {
             Ok(0)
         }
@@ -391,7 +417,7 @@ mod tests {
         let mut handler = MasterReqHandler::new(backend).unwrap();
 
         assert!(handler.get_tx_raw_fd() >= 0);
-        assert!(handler.as_raw_fd() >= 0);
+        assert!(handler.as_raw_descriptor() != INVALID_DESCRIPTOR);
         handler.check_state().unwrap();
 
         assert_eq!(handler.error, None);
@@ -420,7 +446,7 @@ mod tests {
         });
 
         fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &fd)
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &Descriptor(fd))
             .unwrap();
         // When REPLY_ACK has not been negotiated, the master has no way to detect failure from
         // slave side.
@@ -451,7 +477,7 @@ mod tests {
 
         fs_cache.set_reply_ack_flag(true);
         fs_cache
-            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &fd)
+            .fs_slave_map(&VhostUserFSSlaveMsg::default(), &Descriptor(fd))
             .unwrap();
         fs_cache
             .fs_slave_unmap(&VhostUserFSSlaveMsg::default())

@@ -8,7 +8,7 @@ use std::{
     fs::{File, OpenOptions},
     mem::size_of,
     num::Wrapping,
-    os::unix::{io::AsRawFd, net::UnixListener},
+    os::unix::net::UnixListener,
     path::Path,
     str,
     sync::{Arc, Mutex as StdMutex},
@@ -522,7 +522,7 @@ async fn run_device<P: AsRef<Path>>(
         .context("failed to accept socket connection")?;
 
     let mut req_handler = SlaveReqHandler::from_stream(socket, backend);
-    let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawFd)
+    let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
         .map(AsyncWrapper::new)
         .expect("failed to get safe descriptor for handler");
     let handler_source = ex.async_from(h).context("failed to create async handler")?;
@@ -590,7 +590,7 @@ fn run_vvu_device<P: AsRef<Path>>(
         .accept()
         .context("failed to accept vfio connection")?
         .expect("no incoming connection detected");
-    let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawFd)
+    let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
         .map(AsyncWrapper::new)
         .expect("failed to get safe descriptor for handler");
     let handler_source = ex
