@@ -9,11 +9,12 @@
 
 //! Common traits and structs for vhost-user backend drivers.
 
+use base::RawDescriptor;
 use std::cell::RefCell;
-use std::os::unix::io::RawFd;
 use std::sync::RwLock;
 
-use sys_util::EventFd;
+// TODO(b/219522861): Remove this alias and use Event in the code.
+use base::Event as EventFd;
 
 use super::Result;
 
@@ -70,7 +71,7 @@ pub struct VhostUserMemoryRegionInfo {
     /// Optional offset where region starts in the mapped memory.
     pub mmap_offset: u64,
     /// Optional file descriptor for mmap.
-    pub mmap_handle: RawFd,
+    pub mmap_handle: RawDescriptor,
 }
 
 /// An interface for setting up vhost-based backend drivers with interior mutability.
@@ -107,10 +108,10 @@ pub trait VhostBackend: std::marker::Sized {
     fn set_mem_table(&self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()>;
 
     /// Set base address for page modification logging.
-    fn set_log_base(&self, base: u64, fd: Option<RawFd>) -> Result<()>;
+    fn set_log_base(&self, base: u64, fd: Option<RawDescriptor>) -> Result<()>;
 
     /// Specify an eventfd file descriptor to signal on log write.
-    fn set_log_fd(&self, fd: RawFd) -> Result<()>;
+    fn set_log_fd(&self, fd: RawDescriptor) -> Result<()>;
 
     /// Set the number of descriptors in the vring.
     ///
@@ -193,10 +194,10 @@ pub trait VhostBackendMut: std::marker::Sized {
     fn set_mem_table(&mut self, regions: &[VhostUserMemoryRegionInfo]) -> Result<()>;
 
     /// Set base address for page modification logging.
-    fn set_log_base(&mut self, base: u64, fd: Option<RawFd>) -> Result<()>;
+    fn set_log_base(&mut self, base: u64, fd: Option<RawDescriptor>) -> Result<()>;
 
     /// Specify an eventfd file descriptor to signal on log write.
-    fn set_log_fd(&mut self, fd: RawFd) -> Result<()>;
+    fn set_log_fd(&mut self, fd: RawDescriptor) -> Result<()>;
 
     /// Set the number of descriptors in the vring.
     ///
@@ -266,11 +267,11 @@ impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
         self.write().unwrap().set_mem_table(regions)
     }
 
-    fn set_log_base(&self, base: u64, fd: Option<RawFd>) -> Result<()> {
+    fn set_log_base(&self, base: u64, fd: Option<RawDescriptor>) -> Result<()> {
         self.write().unwrap().set_log_base(base, fd)
     }
 
-    fn set_log_fd(&self, fd: RawFd) -> Result<()> {
+    fn set_log_fd(&self, fd: RawDescriptor) -> Result<()> {
         self.write().unwrap().set_log_fd(fd)
     }
 
@@ -326,11 +327,11 @@ impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
         self.borrow_mut().set_mem_table(regions)
     }
 
-    fn set_log_base(&self, base: u64, fd: Option<RawFd>) -> Result<()> {
+    fn set_log_base(&self, base: u64, fd: Option<RawDescriptor>) -> Result<()> {
         self.borrow_mut().set_log_base(base, fd)
     }
 
-    fn set_log_fd(&self, fd: RawFd) -> Result<()> {
+    fn set_log_fd(&self, fd: RawDescriptor) -> Result<()> {
         self.borrow_mut().set_log_fd(fd)
     }
 
@@ -390,13 +391,13 @@ mod tests {
             Ok(())
         }
 
-        fn set_log_base(&mut self, base: u64, fd: Option<RawFd>) -> Result<()> {
+        fn set_log_base(&mut self, base: u64, fd: Option<RawDescriptor>) -> Result<()> {
             assert_eq!(base, 0x100);
             assert_eq!(fd, Some(100));
             Ok(())
         }
 
-        fn set_log_fd(&mut self, fd: RawFd) -> Result<()> {
+        fn set_log_fd(&mut self, fd: RawDescriptor) -> Result<()> {
             assert_eq!(fd, 100);
             Ok(())
         }

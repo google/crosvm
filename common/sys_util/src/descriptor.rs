@@ -18,6 +18,8 @@ use crate::{errno_result, PollToken, Result};
 
 pub type RawDescriptor = RawFd;
 
+pub const INVALID_DESCRIPTOR: RawDescriptor = -1;
+
 /// Trait for forfeiting ownership of the current raw descriptor, and returning the raw descriptor
 pub trait IntoRawDescriptor {
     fn into_raw_descriptor(self) -> RawDescriptor;

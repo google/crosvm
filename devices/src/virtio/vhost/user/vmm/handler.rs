@@ -170,7 +170,7 @@ impl VhostUserHandler {
     /// Sets the channel for device-specific messages.
     pub fn set_device_request_channel(&mut self, channel: Tube) -> Result<()> {
         self.vu
-            .set_slave_request_fd(&channel.as_raw_descriptor())
+            .set_slave_request_fd(&channel)
             .map_err(Error::SetDeviceRequestChannel)
     }
 
@@ -236,10 +236,10 @@ impl VhostUserHandler {
             .map_err(Error::SetVringBase)?;
 
         self.vu
-            .set_vring_call(queue_index, &irqfd.0)
+            .set_vring_call(queue_index, irqfd)
             .map_err(Error::SetVringCall)?;
         self.vu
-            .set_vring_kick(queue_index, &queue_evt.0)
+            .set_vring_kick(queue_index, queue_evt)
             .map_err(Error::SetVringKick)?;
         self.vu
             .set_vring_enable(queue_index, true)

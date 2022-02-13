@@ -3,15 +3,16 @@
 
 //! Traits and Struct for vhost-user master.
 
+use base::{AsRawDescriptor, RawDescriptor};
 use std::fs::File;
 use std::mem;
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+// TODO(b/219522861): Remove this alias and use Event in the code.
+use base::Event as EventFd;
 use data_model::DataInit;
-use sys_util::EventFd;
 
 use super::connection::{Endpoint, EndpointExt};
 use super::message::*;
@@ -51,7 +52,7 @@ pub trait VhostUserMaster: VhostBackend {
     fn set_config(&mut self, offset: u32, flags: VhostUserConfigFlags, buf: &[u8]) -> Result<()>;
 
     /// Setup slave communication channel.
-    fn set_slave_request_fd(&mut self, fd: &dyn AsRawFd) -> Result<()>;
+    fn set_slave_request_fd(&mut self, fd: &dyn AsRawDescriptor) -> Result<()>;
 
     /// Retrieve shared buffer for inflight I/O tracking.
     fn get_inflight_fd(
@@ -60,7 +61,7 @@ pub trait VhostUserMaster: VhostBackend {
     ) -> Result<(VhostUserInflight, File)>;
 
     /// Set shared buffer for inflight I/O tracking.
-    fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, fd: RawFd) -> Result<()>;
+    fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, fd: RawDescriptor) -> Result<()>;
 
     /// Query the maximum amount of memory slots supported by the backend.
     fn get_max_mem_slots(&mut self) -> Result<u64>;
@@ -212,7 +213,7 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
 
     // Clippy doesn't seem to know that if let with && is still experimental
     #[allow(clippy::unnecessary_unwrap)]
-    fn set_log_base(&self, base: u64, fd: Option<RawFd>) -> Result<()> {
+    fn set_log_base(&self, base: u64, fd: Option<RawDescriptor>) -> Result<()> {
         let mut node = self.node();
         let val = VhostUserU64::new(base);
 
@@ -227,7 +228,7 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         Ok(())
     }
 
-    fn set_log_fd(&self, fd: RawFd) -> Result<()> {
+    fn set_log_fd(&self, fd: RawDescriptor) -> Result<()> {
         let mut node = self.node();
         let fds = [fd];
         let hdr = node.send_request_header(MasterReq::SET_LOG_FD, Some(&fds))?;
@@ -293,7 +294,11 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         if queue_index as u64 >= node.max_queue_num {
             return Err(VhostUserError::InvalidParam);
         }
-        let hdr = node.send_fd_for_vring(MasterReq::SET_VRING_CALL, queue_index, fd.as_raw_fd())?;
+        let hdr = node.send_fd_for_vring(
+            MasterReq::SET_VRING_CALL,
+            queue_index,
+            fd.as_raw_descriptor(),
+        )?;
         node.wait_for_ack(&hdr)
     }
 
@@ -306,7 +311,11 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         if queue_index as u64 >= node.max_queue_num {
             return Err(VhostUserError::InvalidParam);
         }
-        let hdr = node.send_fd_for_vring(MasterReq::SET_VRING_KICK, queue_index, fd.as_raw_fd())?;
+        let hdr = node.send_fd_for_vring(
+            MasterReq::SET_VRING_KICK,
+            queue_index,
+            fd.as_raw_descriptor(),
+        )?;
         node.wait_for_ack(&hdr)
     }
 
@@ -318,7 +327,11 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         if queue_index as u64 >= node.max_queue_num {
             return Err(VhostUserError::InvalidParam);
         }
-        let hdr = node.send_fd_for_vring(MasterReq::SET_VRING_ERR, queue_index, fd.as_raw_fd())?;
+        let hdr = node.send_fd_for_vring(
+            MasterReq::SET_VRING_ERR,
+            queue_index,
+            fd.as_raw_descriptor(),
+        )?;
         node.wait_for_ack(&hdr)
     }
 }
@@ -443,12 +456,12 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    fn set_slave_request_fd(&mut self, fd: &dyn AsRawFd) -> Result<()> {
+    fn set_slave_request_fd(&mut self, fd: &dyn AsRawDescriptor) -> Result<()> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::SLAVE_REQ.bits() == 0 {
             return Err(VhostUserError::InvalidOperation);
         }
-        let fds = [fd.as_raw_fd()];
+        let fds = [fd.as_raw_descriptor()];
         let hdr = node.send_request_header(MasterReq::SET_SLAVE_REQ_FD, Some(&fds))?;
         node.wait_for_ack(&hdr)
     }
@@ -471,7 +484,7 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         }
     }
 
-    fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, fd: RawFd) -> Result<()> {
+    fn set_inflight_fd(&mut self, inflight: &VhostUserInflight, fd: RawDescriptor) -> Result<()> {
         let mut node = self.node();
         if node.acked_protocol_features & VhostUserProtocolFeatures::INFLIGHT_SHMFD.bits() == 0 {
             return Err(VhostUserError::InvalidOperation);
@@ -541,17 +554,17 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
     }
 }
 
-impl<E: Endpoint<MasterReq> + AsRawFd> AsRawFd for Master<E> {
-    fn as_raw_fd(&self) -> RawFd {
+impl<E: Endpoint<MasterReq> + AsRawDescriptor> AsRawDescriptor for Master<E> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         let node = self.node();
-        node.main_sock.as_raw_fd()
+        node.main_sock.as_raw_descriptor()
     }
 }
 
 /// Context object to pass guest memory configuration to VhostUserMaster::set_mem_table().
 struct VhostUserMemoryContext {
     regions: VhostUserMemoryPayload,
-    fds: Vec<RawFd>,
+    fds: Vec<RawDescriptor>,
 }
 
 impl VhostUserMemoryContext {
@@ -563,8 +576,8 @@ impl VhostUserMemoryContext {
         }
     }
 
-    /// Append a user memory region and corresponding RawFd into the context object.
-    pub fn append(&mut self, region: &VhostUserMemoryRegion, fd: RawFd) {
+    /// Append a user memory region and corresponding RawDescriptor into the context object.
+    pub fn append(&mut self, region: &VhostUserMemoryRegion, fd: RawDescriptor) {
         self.regions.push(*region);
         self.fds.push(fd);
     }
@@ -595,7 +608,7 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
     fn send_request_header(
         &mut self,
         code: MasterReq,
-        fds: Option<&[RawFd]>,
+        fds: Option<&[RawDescriptor]>,
     ) -> VhostUserResult<VhostUserMsgHeader<MasterReq>> {
         self.check_state()?;
         let hdr = self.new_request_header(code, 0);
@@ -607,7 +620,7 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         &mut self,
         code: MasterReq,
         msg: &T,
-        fds: Option<&[RawFd]>,
+        fds: Option<&[RawDescriptor]>,
     ) -> VhostUserResult<VhostUserMsgHeader<MasterReq>> {
         if mem::size_of::<T>() > MAX_MSG_SIZE {
             return Err(VhostUserError::InvalidParam);
@@ -624,7 +637,7 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         code: MasterReq,
         msg: &T,
         payload: &[u8],
-        fds: Option<&[RawFd]>,
+        fds: Option<&[RawDescriptor]>,
     ) -> VhostUserResult<VhostUserMsgHeader<MasterReq>> {
         let len = mem::size_of::<T>() + payload.len();
         if len > MAX_MSG_SIZE {
@@ -647,7 +660,7 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         &mut self,
         code: MasterReq,
         queue_index: usize,
-        fd: RawFd,
+        fd: RawDescriptor,
     ) -> VhostUserResult<VhostUserMsgHeader<MasterReq>> {
         if queue_index as u64 >= self.max_queue_num {
             return Err(VhostUserError::InvalidParam);
@@ -793,7 +806,7 @@ mod tests {
         let master = Master::<SocketEndpoint<_>>::connect(&path, 1).unwrap();
         let mut slave = SocketEndpoint::<MasterReq>::from(listener.accept().unwrap().unwrap());
 
-        assert!(master.as_raw_fd() > 0);
+        assert!(master.as_raw_descriptor() > 0);
         // Send two messages continuously
         master.set_owner().unwrap();
         master.reset_owner().unwrap();

@@ -220,6 +220,7 @@ mod tests {
     use super::*;
     use crate::backend::VhostBackend;
     use crate::{VhostUserMemoryRegionInfo, VringConfigData};
+    use base::AsRawDescriptor;
     use tempfile::{tempfile, Builder, TempDir};
 
     fn temp_dir() -> TempDir {
@@ -417,13 +418,13 @@ mod tests {
         let num = master.get_queue_num().unwrap();
         assert_eq!(num, 2);
 
-        let eventfd = sys_util::EventFd::new().unwrap();
+        let eventfd = base::Event::new().unwrap();
         let mem = [VhostUserMemoryRegionInfo {
             guest_phys_addr: 0,
             memory_size: 0x10_0000,
             userspace_addr: 0,
             mmap_offset: 0,
-            mmap_handle: eventfd.as_raw_fd(),
+            mmap_handle: eventfd.as_raw_descriptor(),
         }];
         master.set_mem_table(&mem).unwrap();
 
@@ -442,8 +443,10 @@ mod tests {
         master.set_vring_enable(0, true).unwrap();
 
         // unimplemented yet
-        master.set_log_base(0, Some(eventfd.as_raw_fd())).unwrap();
-        master.set_log_fd(eventfd.as_raw_fd()).unwrap();
+        master
+            .set_log_base(0, Some(eventfd.as_raw_descriptor()))
+            .unwrap();
+        master.set_log_fd(eventfd.as_raw_descriptor()).unwrap();
 
         master.set_vring_num(0, 256).unwrap();
         master.set_vring_base(0, 0).unwrap();
