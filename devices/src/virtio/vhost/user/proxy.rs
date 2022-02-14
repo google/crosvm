@@ -608,13 +608,17 @@ impl Worker {
         // memory regions and then memory regions themeselves. The memory regions structs consist of
         // metadata about actual device related memory passed from the sibling. Ensure that the size
         // of the payload is consistent with this structure.
+        let payload_size = payload.len();
+        if payload_size < std::mem::size_of::<VhostUserMemory>() {
+            error!("payload size {} lesser than minimum required", payload_size);
+            return Err(Error::InvalidSiblingMessage);
+        }
         let (msg_slice, regions_slice) = payload.split_at(std::mem::size_of::<VhostUserMemory>());
         let msg = VhostUserMemory::from_slice(msg_slice).ok_or(Error::InvalidSiblingMessage)?;
         if !msg.is_valid() {
             return Err(Error::InvalidSiblingMessage);
         }
 
-        let payload_size = payload.len();
         let memory_region_metadata_size = std::mem::size_of::<VhostUserMemory>();
         if payload_size
             != memory_region_metadata_size
