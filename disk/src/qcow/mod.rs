@@ -1487,37 +1487,6 @@ impl Write for QcowFile {
     }
 }
 
-impl FileReadWriteVolatile for QcowFile {
-    fn read_volatile(&mut self, slice: VolatileSlice) -> io::Result<usize> {
-        let read_count = self.read_cb(
-            self.current_offset,
-            slice.size(),
-            |file, read, offset, count| {
-                let sub_slice = slice.get_slice(read, count).unwrap();
-                match file {
-                    Some(f) => f.read_exact_at_volatile(sub_slice, offset),
-                    None => {
-                        sub_slice.write_bytes(0);
-                        Ok(())
-                    }
-                }
-            },
-        )?;
-        self.current_offset += read_count as u64;
-        Ok(read_count)
-    }
-
-    fn write_volatile(&mut self, slice: VolatileSlice) -> io::Result<usize> {
-        let write_count =
-            self.write_cb(self.current_offset, slice.size(), |file, offset, count| {
-                let sub_slice = slice.get_slice(offset, count).unwrap();
-                file.write_all_volatile(sub_slice)
-            })?;
-        self.current_offset += write_count as u64;
-        Ok(write_count)
-    }
-}
-
 impl FileReadWriteAtVolatile for QcowFile {
     fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
         self.read_cb(offset, slice.size(), |file, read, offset, count| {
