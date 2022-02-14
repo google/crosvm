@@ -8,7 +8,8 @@ use sync::Mutex;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
-use base::{warn, AsRawDescriptor, Event, RawDescriptor, Result, Tube};
+use anyhow::{bail, Context};
+use base::{error, warn, AsRawDescriptor, Event, RawDescriptor, Result, Tube};
 use data_model::{DataInit, Le32};
 use hypervisor::Datamatch;
 use libc::ERANGE;
@@ -234,7 +235,7 @@ pub struct VirtioPciDevice {
     interrupt_resample_evt: Option<Event>,
     queues: Vec<Queue>,
     queue_evts: Vec<Event>,
-    mem: Option<GuestMemory>,
+    mem: GuestMemory,
     settings_bar: u8,
     msix_config: Arc<Mutex<MsixConfig>>,
     msix_cap_reg_idx: Option<usize>,
@@ -299,7 +300,7 @@ impl VirtioPciDevice {
             interrupt_resample_evt: None,
             queues,
             queue_evts,
-            mem: Some(mem),
+            mem,
             settings_bar: 0,
             msix_config,
             msix_cap_reg_idx: None,
@@ -327,15 +328,11 @@ impl VirtioPciDevice {
     }
 
     fn are_queues_valid(&self) -> bool {
-        if let Some(mem) = self.mem.as_ref() {
-            // All queues marked as ready must be valid.
-            self.queues
-                .iter()
-                .filter(|q| q.ready)
-                .all(|q| q.is_valid(mem))
-        } else {
-            false
-        }
+        // All queues marked as ready must be valid.
+        self.queues
+            .iter()
+            .filter(|q| q.ready)
+            .all(|q| q.is_valid(&self.mem))
     }
 
     fn add_settings_pci_capabilities(
@@ -410,6 +407,70 @@ impl VirtioPciDevice {
 
     fn clone_queue_evts(&self) -> Result<Vec<Event>> {
         self.queue_evts.iter().map(|e| e.try_clone()).collect()
+    }
+
+    /// Activates the underlying `VirtioDevice`. `assign_irq` has to be called first.
+    fn activate(&mut self) -> anyhow::Result<()> {
+        let interrupt_evt = self.interrupt_evt.take().context("interrupt_evt is none")?;
+        self.interrupt_evt = match interrupt_evt.try_clone() {
+            Ok(evt) => Some(evt),
+            Err(e) => {
+                warn!(
+                    "{} failed to clone interrupt_evt: {}",
+                    self.debug_label(),
+                    e
+                );
+                None
+            }
+        };
+        let interrupt_resample_evt = self
+            .interrupt_resample_evt
+            .take()
+            .context("interrupt_resample_evt is none")?;
+        self.interrupt_resample_evt = match interrupt_resample_evt.try_clone() {
+            Ok(evt) => Some(evt),
+            Err(e) => {
+                warn!(
+                    "{} failed to clone interrupt_resample_evt: {}",
+                    self.debug_label(),
+                    e
+                );
+                None
+            }
+        };
+        let mem = self.mem.clone();
+
+        let interrupt = Interrupt::new(
+            self.interrupt_status.clone(),
+            interrupt_evt,
+            interrupt_resample_evt,
+            Some(self.msix_config.clone()),
+            self.common_config.msix_config,
+        );
+
+        match self.clone_queue_evts() {
+            Ok(queue_evts) => {
+                // Use ready queues and their events.
+                let (queues, queue_evts) = self
+                    .queues
+                    .clone()
+                    .into_iter()
+                    .zip(queue_evts.into_iter())
+                    .filter(|(q, _)| q.ready)
+                    .unzip();
+
+                self.device.activate(mem, interrupt, queues, queue_evts);
+                self.device_activated = true;
+            }
+            Err(e) => {
+                bail!(
+                    "{} not activate due to failed to clone queue_evts: {}",
+                    self.debug_label(),
+                    e
+                );
+            }
+        }
+        Ok(())
     }
 }
 
@@ -720,64 +781,8 @@ impl PciDevice for VirtioPciDevice {
         }
 
         if !self.device_activated && self.is_driver_ready() && self.are_queues_valid() {
-            if let Some(interrupt_evt) = self.interrupt_evt.take() {
-                self.interrupt_evt = match interrupt_evt.try_clone() {
-                    Ok(evt) => Some(evt),
-                    Err(e) => {
-                        warn!(
-                            "{} failed to clone interrupt_evt: {}",
-                            self.debug_label(),
-                            e
-                        );
-                        None
-                    }
-                };
-                if let Some(interrupt_resample_evt) = self.interrupt_resample_evt.take() {
-                    self.interrupt_resample_evt = match interrupt_resample_evt.try_clone() {
-                        Ok(evt) => Some(evt),
-                        Err(e) => {
-                            warn!(
-                                "{} failed to clone interrupt_resample_evt: {}",
-                                self.debug_label(),
-                                e
-                            );
-                            None
-                        }
-                    };
-                    if let Some(mem) = self.mem.take() {
-                        self.mem = Some(mem.clone());
-                        let interrupt = Interrupt::new(
-                            self.interrupt_status.clone(),
-                            interrupt_evt,
-                            interrupt_resample_evt,
-                            Some(self.msix_config.clone()),
-                            self.common_config.msix_config,
-                        );
-
-                        match self.clone_queue_evts() {
-                            Ok(queue_evts) => {
-                                // Use ready queues and their events.
-                                let (queues, queue_evts) = self
-                                    .queues
-                                    .clone()
-                                    .into_iter()
-                                    .zip(queue_evts.into_iter())
-                                    .filter(|(q, _)| q.ready)
-                                    .unzip();
-
-                                self.device.activate(mem, interrupt, queues, queue_evts);
-                                self.device_activated = true;
-                            }
-                            Err(e) => {
-                                warn!(
-                                    "{} not activate due to failed to clone queue_evts: {}",
-                                    self.debug_label(),
-                                    e
-                                );
-                            }
-                        }
-                    }
-                }
+            if let Err(e) = self.activate() {
+                error!("failed to activate device: {:#}", e);
             }
         }
 
