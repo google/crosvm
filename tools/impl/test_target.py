@@ -3,7 +3,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file
 import argparse
-import functools
 import platform
 import subprocess
 from pathlib import Path
@@ -151,7 +150,12 @@ class TestTarget(object):
 
 def find_rust_lib_dir():
     cargo_path = Path(subprocess.check_output(["rustup", "which", "cargo"], text=True))
-    return cargo_path.parent.parent.joinpath("lib")
+    if os.name == "posix":
+        return cargo_path.parent.parent.joinpath("lib")
+    elif os.name == "nt":
+        return cargo_path.parent
+    else:
+        raise Exception(f"Unsupported build target: {os.name}")
 
 
 def find_rust_libs():
@@ -175,10 +179,15 @@ def prepare_target(target: TestTarget, extra_files: list[Path] = []):
 
 
 def get_cargo_build_target(arch: Arch):
-    if arch == "armhf":
-        return "armv7-unknown-linux-gnueabihf"
+    if os.name == "posix":
+        if arch == "armhf":
+            return "armv7-unknown-linux-gnueabihf"
+        else:
+            return f"{arch}-unknown-linux-gnu"
+    elif os.name == "nt":
+        return f"{arch}-pc-windows-msvc"
     else:
-        return f"{arch}-unknown-linux-gnu"
+        raise Exception(f"Unsupported build target: {os.name}")
 
 
 def get_cargo_env(target: TestTarget, build_arch: Arch):
@@ -231,7 +240,16 @@ def exec_file_on_target(
     env = os.environ.copy()
     if not target.ssh:
         # Allow test binaries to find rust's test libs.
-        env["LD_LIBRARY_PATH"] = str(find_rust_lib_dir())
+        if os.name == "posix":
+            env["LD_LIBRARY_PATH"] = str(find_rust_lib_dir())
+        elif os.name == "nt":
+            if not env["PATH"]:
+                env["PATH"] = str(find_rust_lib_dir())
+            else:
+                env["PATH"] += ";" + str(find_rust_lib_dir())
+        else:
+            raise Exception(f"Unsupported build target: {os.name}")
+
         cmd_line = [str(filepath), *args]
         return subprocess.run(
             cmd_line,

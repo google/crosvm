@@ -90,6 +90,13 @@ class Executable(NamedTuple):
         return f"{self.crate_name}:{self.cargo_target}"
 
 
+class Crate(NamedTuple):
+    """Container for info about crate."""
+
+    name: str
+    path: Path
+
+
 def get_workspace_excludes(target_arch: Arch):
     for crate, options in CRATE_OPTIONS.items():
         if TestOption.DO_NOT_BUILD in options:
@@ -117,9 +124,15 @@ def should_run_executable(executable: Executable, target_arch: Arch):
     return True
 
 
-def list_common_crates():
-    for path in COMMON_ROOT.glob("*/Cargo.toml"):
-        yield path.parent.name
+def list_common_crates(target_arch: Arch):
+    excluded_crates = list(get_workspace_excludes(target_arch))
+    for path in COMMON_ROOT.glob("**/Cargo.toml"):
+        if not path.parent.name in excluded_crates:
+            yield Crate(name=path.parent.name, path=path.parent)
+
+
+def exclude_crosvm(target_arch: Arch):
+    return "crosvm" in get_workspace_excludes(target_arch)
 
 
 def cargo(
@@ -204,16 +217,9 @@ def cargo_build_executables(
     yield from cargo("test", cwd, ["--no-run", *flags], env, build_arch)
 
 
-def build_common_crate(build_env: dict[str, str], build_arch: Arch, crate_name: str):
-    print(f"Building tests for: common/{crate_name}")
-    return list(
-        cargo_build_executables(
-            [],
-            build_arch,
-            env=build_env,
-            cwd=COMMON_ROOT / crate_name,
-        )
-    )
+def build_common_crate(build_env: dict[str, str], build_arch: Arch, crate: Crate):
+    print(f"Building tests for: common/{crate.name}")
+    return list(cargo_build_executables([], build_arch, env=build_env, cwd=crate.path))
 
 
 def build_all_binaries(target: TestTarget, build_arch: Arch):
@@ -237,7 +243,7 @@ def build_all_binaries(target: TestTarget, build_arch: Arch):
     with Pool(PARALLELISM) as pool:
         for executables in pool.imap(
             functools.partial(build_common_crate, build_env, build_arch),
-            list_common_crates(),
+            list_common_crates(build_arch),
         ):
             yield from executables
 
@@ -399,8 +405,13 @@ def main():
         print("Not running tests as requested.")
         sys.exit(0)
 
-    # Upload dependencies plus the main crosvm binary for integration tests
-    test_target.prepare_target(target, extra_files=[find_crosvm_binary(executables).binary_path])
+    # Upload dependencies plus the main crosvm binary for integration tests if the
+    # crosvm binary is not excluded from testing.
+    extra_files = (
+        [find_crosvm_binary(executables).binary_path] if not exclude_crosvm(build_arch) else []
+    )
+
+    test_target.prepare_target(target, extra_files=extra_files)
 
     # Execute all test binaries
     test_executables = [e for e in executables if e.is_test]

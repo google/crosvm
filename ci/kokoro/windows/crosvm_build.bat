@@ -24,6 +24,11 @@ call RefreshEnv.cmd
 :: up from rust-toolchain
 cargo install bindgen
 
+:: Install python. The default kokoro intalled version is 3.7 but linux tests
+:: seem to run on 3.9+.
+choco install -y python
+choco install python --version=3.9.0
+
 :: Reload path for installed rust toolchain.
 call RefreshEnv.cmd
 
@@ -32,8 +37,12 @@ echo [%TIME%] Using Rust toolchain version:
 cargo --version
 rustc --version
 
+:: Log python version
+echo [%TIME%] Python version:
+py --version
+
 echo [%TIME%] Calling crosvm\build_test.py
-py ./tools/windows/build_test.py --copy True --job_type kokoro --skip_file_name .windows_build_test_skip
+py ./tools\impl/test_runner.py --arch x86_64 
 if %ERRORLEVEL% neq 0 ( exit /b %ERRORLEVEL% )
 
 exit /b %ERRORLEVEL%

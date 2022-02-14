@@ -13,5 +13,3 @@ path = "poll_token_derive.rs"
 proc-macro2 = "^1"
 quote = "^1"
 syn = "^1"
-
-[workspace]

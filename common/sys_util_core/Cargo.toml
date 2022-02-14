@@ -11,3 +11,6 @@ remain = "0.2"
 thiserror = "*"
 
 [workspace]
+members = [
+    "poll_token_derive",
+]
