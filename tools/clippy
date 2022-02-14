@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env python3
 # Copyright 2019 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
@@ -9,22 +9,28 @@
 # To fix violations where possible:
 # $ ./tools/clippy --fix
 
-set -e
-cd "$(dirname $0)/.."
+from impl.common import CROSVM_ROOT, cwd, run_main, cmd, chdir
 
-# Note: Clippy checks are configured in .cargo/config.toml
-echo "Clippy crosvm workspace"
-cargo clippy \
-    --workspace \
-    --features all-linux \
-    --all-targets \
-    "$@" -- -Dwarnings
+clippy = cmd("cargo clippy")
 
-for crate in common/*; do
-    if [ -d "${crate}" ]; then
-        echo ""
-        echo "Clippy ${crate}"
-        (cd "${crate}" &&
-            cargo clippy --all-targets --all-features "$@" -- -Dwarnings)
-    fi
-done
+
+def main(fix: bool = False):
+    chdir(CROSVM_ROOT)
+
+    # Note: Clippy checks are configured in .cargo/config.toml
+    clippy_args = [
+        "--fix" if fix else None,
+        "--all-targets",
+        "--",
+        "-Dwarnings",
+    ]
+    print("Clippy crosvm workspace")
+    clippy("--workspace", "--features=all-linux", *clippy_args).fg()
+
+    for crate in CROSVM_ROOT.glob("common/*/Cargo.toml"):
+        print("Clippy", crate.parent.relative_to(CROSVM_ROOT))
+        with cwd(crate.parent):
+            clippy("--all-features", *clippy_args).fg()
+
+
+run_main(main)

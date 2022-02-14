@@ -1,5 +1,5 @@
-#!/bin/bash
-# Copyright 2019 The Chromium OS Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2022 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -16,18 +16,27 @@
 #    $ bin/fmt --check
 #
 
-set -e
-cd "$(dirname $0)/.."
+from impl.common import CROSVM_ROOT, cwd, run_main, cmd, chdir
 
-echo "Fmt crosvm workspace"
-cargo fmt --all -- "$@"
+cargo = cmd("cargo")
+mdformat = cmd("mdformat")
+find = cmd("find")
 
-for crate in common/*; do
-    if [ -e "${crate}/Cargo.toml" ]; then
-        echo "Fmt ${crate}"
-        (cd "${crate}" && cargo fmt)
-    fi
-done
 
-echo "Fmt markdown docs"
-mdformat --wrap=100 "$@" $(find . -name '*.md' -not -path './third_party/*')
+def main(check: bool = False):
+    chdir(CROSVM_ROOT)
+    check_arg = "--check" if check else None
+
+    print("Format crosvm workspace")
+    cargo("fmt --all --", check_arg).fg()
+
+    for crate in CROSVM_ROOT.glob("common/*/Cargo.toml"):
+        print("Format", crate.parent.relative_to(CROSVM_ROOT))
+        with cwd(crate.parent):
+            cargo("fmt --", check_arg).fg()
+
+    print("Format markdown docs")
+    mdformat("--wrap 100", check_arg, find(".", "-name *.md -not -path ./third_party/*")).fg()
+
+
+run_main(main)

@@ -45,6 +45,9 @@ pip3 install meson
 # We use mdformat to keep the mdbook at docs/ formatted
 pip3 install mdformat
 
+# We use argh in our cli developer tools
+pip3 install argh
+
 rustup component add clippy
 rustup component add rustfmt
 
