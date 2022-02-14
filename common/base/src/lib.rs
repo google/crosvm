@@ -24,9 +24,8 @@ pub use shm::{SharedMemory, Unix as SharedMemoryUnix};
 pub use sys_util::ioctl::*;
 pub use sys_util::{
     volatile_at_impl, volatile_impl, FileAllocate, FileGetLen, FileReadWriteAtVolatile,
-    FileReadWriteVolatile, FileSetLen, FileSync,
+    FileReadWriteVolatile, FileSetLen, FileSync, WriteZeroesAt,
 };
-pub use sys_util::{SeekHole, WriteZeroesAt};
 pub use timer::{FakeTimer, Timer};
 pub use tube::{AsyncTube, Error as TubeError, Result as TubeResult, Tube};
 pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};

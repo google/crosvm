@@ -45,7 +45,6 @@ pub mod read_dir;
 mod sched;
 pub mod scoped_path;
 pub mod scoped_signal_handler;
-mod seek_hole;
 mod shm;
 pub mod signal;
 mod signalfd;
@@ -90,7 +89,6 @@ pub use crate::file_traits::{
     FileSync,
 };
 pub use crate::mmap::Error as MmapError;
-pub use crate::seek_hole::SeekHole;
 pub use crate::signalfd::Error as SignalFdError;
 pub use crate::write_zeroes::{PunchHole, WriteZeroes, WriteZeroesAt};
 
