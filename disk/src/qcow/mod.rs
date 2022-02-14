@@ -8,7 +8,7 @@ mod vec_cache;
 
 use base::{
     error, open_file, AsRawDescriptor, AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile,
-    FileReadWriteVolatile, FileSetLen, FileSync, PunchHole, RawDescriptor, WriteZeroesAt,
+    FileSetLen, FileSync, PunchHole, RawDescriptor, WriteZeroesAt,
 };
 use data_model::{VolatileMemory, VolatileSlice};
 use libc::{EINVAL, ENOSPC, ENOTSUP};
@@ -1372,10 +1372,11 @@ impl QcowFile {
     }
 
     // Writes `count` bytes starting at `address`, calling `cb` repeatedly with the backing file,
-    // number of bytes written so far, and number of bytes to write to the file in that invocation.
+    // number of bytes written so far, raw file offset, and number of bytes to write to the file in
+    // that invocation.
     fn write_cb<F>(&mut self, address: u64, count: usize, mut cb: F) -> std::io::Result<usize>
     where
-        F: FnMut(&mut File, usize, usize) -> std::io::Result<()>,
+        F: FnMut(&mut File, usize, u64, usize) -> std::io::Result<()>,
     {
         let write_count: usize = self.limit_range_file(address, count);
 
@@ -1385,10 +1386,7 @@ impl QcowFile {
             let offset = self.file_offset_write(curr_addr)?;
             let count = self.limit_range_cluster(curr_addr, write_count - nwritten);
 
-            if let Err(e) = self.raw_file.file_mut().seek(SeekFrom::Start(offset)) {
-                return Err(e);
-            }
-            if let Err(e) = cb(self.raw_file.file_mut(), nwritten, count) {
+            if let Err(e) = cb(self.raw_file.file_mut(), nwritten, offset, count) {
                 return Err(e);
             }
 
@@ -1429,9 +1427,9 @@ impl FileReadWriteAtVolatile for QcowFile {
     }
 
     fn write_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
-        self.write_cb(offset, slice.size(), |file, offset, count| {
+        self.write_cb(offset, slice.size(), |file, offset, raw_offset, count| {
             let sub_slice = slice.get_slice(offset, count).unwrap();
-            file.write_all_volatile(sub_slice)
+            file.write_all_at_volatile(sub_slice, raw_offset)
         })
     }
 }
@@ -1463,7 +1461,11 @@ impl FileAllocate for QcowFile {
     fn allocate(&mut self, offset: u64, len: u64) -> io::Result<()> {
         // Call write_cb with a do-nothing callback, which will have the effect
         // of allocating all clusters in the specified range.
-        self.write_cb(offset, len as usize, |_file, _offset, _count| Ok(()))?;
+        self.write_cb(
+            offset,
+            len as usize,
+            |_file, _offset, _raw_offset, _count| Ok(()),
+        )?;
         Ok(())
     }
 }
