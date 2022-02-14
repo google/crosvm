@@ -5,16 +5,15 @@
 use std::cmp::min;
 use std::fmt::Debug;
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use base::{
     get_filesystem_type, info, AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileSetLen,
-    FileSync, PunchHole, SeekHole, WriteZeroesAt,
+    FileSync, PunchHole, WriteZeroesAt,
 };
 use cros_async::Executor;
-use libc::EINVAL;
 use remain::sorted;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
@@ -157,122 +156,6 @@ pub enum ImageType {
     Qcow2,
     CompositeDisk,
     AndroidSparse,
-}
-
-fn convert_copy<R, W>(reader: &mut R, writer: &mut W, offset: u64, size: u64) -> Result<()>
-where
-    R: Read + Seek,
-    W: Write + Seek,
-{
-    const CHUNK_SIZE: usize = 65536;
-    let mut buf = [0; CHUNK_SIZE];
-    let mut read_count = 0;
-    reader
-        .seek(SeekFrom::Start(offset))
-        .map_err(Error::SeekingFile)?;
-    writer
-        .seek(SeekFrom::Start(offset))
-        .map_err(Error::SeekingFile)?;
-    loop {
-        let this_count = min(CHUNK_SIZE as u64, size - read_count) as usize;
-        let nread = reader
-            .read(&mut buf[..this_count])
-            .map_err(Error::ReadingData)?;
-        writer.write(&buf[..nread]).map_err(Error::WritingData)?;
-        read_count += nread as u64;
-        if nread == 0 || read_count == size {
-            break;
-        }
-    }
-
-    Ok(())
-}
-
-fn convert_reader_writer<R, W>(reader: &mut R, writer: &mut W, size: u64) -> Result<()>
-where
-    R: Read + Seek + SeekHole,
-    W: Write + Seek,
-{
-    let mut offset = 0;
-    while offset < size {
-        // Find the next range of data.
-        let next_data = match reader.seek_data(offset).map_err(Error::SeekingFile)? {
-            Some(o) => o,
-            None => {
-                // No more data in the file.
-                break;
-            }
-        };
-        let next_hole = match reader.seek_hole(next_data).map_err(Error::SeekingFile)? {
-            Some(o) => o,
-            None => {
-                // This should not happen - there should always be at least one hole
-                // after any data.
-                return Err(Error::SeekingFile(io::Error::from_raw_os_error(EINVAL)));
-            }
-        };
-        let count = next_hole - next_data;
-        convert_copy(reader, writer, next_data, count)?;
-        offset = next_hole;
-    }
-
-    Ok(())
-}
-
-fn convert_reader<R>(reader: &mut R, dst_file: File, dst_type: ImageType) -> Result<()>
-where
-    R: Read + Seek + SeekHole,
-{
-    let src_size = reader.seek(SeekFrom::End(0)).map_err(Error::SeekingFile)?;
-    reader
-        .seek(SeekFrom::Start(0))
-        .map_err(Error::SeekingFile)?;
-
-    // Ensure the destination file is empty before writing to it.
-    dst_file.set_len(0).map_err(Error::SettingFileSize)?;
-
-    match dst_type {
-        ImageType::Qcow2 => {
-            let mut dst_writer = QcowFile::new(dst_file, src_size).map_err(Error::QcowError)?;
-            convert_reader_writer(reader, &mut dst_writer, src_size)
-        }
-        ImageType::Raw => {
-            let mut dst_writer = dst_file;
-            // Set the length of the destination file to convert it into a sparse file
-            // of the desired size.
-            dst_writer
-                .set_len(src_size)
-                .map_err(Error::SettingFileSize)?;
-            convert_reader_writer(reader, &mut dst_writer, src_size)
-        }
-        _ => Err(Error::ConversionNotSupported),
-    }
-}
-
-/// Copy the contents of a disk image in `src_file` into `dst_file`.
-/// The type of `src_file` is automatically detected, and the output file type is
-/// determined by `dst_type`.
-pub fn convert(
-    src_file: File,
-    dst_file: File,
-    dst_type: ImageType,
-    src_max_nesting_depth: u32,
-) -> Result<()> {
-    let src_type = detect_image_type(&src_file)?;
-    match src_type {
-        ImageType::Qcow2 => {
-            let mut src_reader =
-                QcowFile::from(src_file, src_max_nesting_depth).map_err(Error::QcowError)?;
-            convert_reader(&mut src_reader, dst_file, dst_type)
-        }
-        ImageType::Raw => {
-            // src_file is a raw file.
-            let mut src_reader = src_file;
-            convert_reader(&mut src_reader, dst_file, dst_type)
-        }
-        // TODO(schuffelen): Implement Read + Write + SeekHole for CompositeDiskFile
-        _ => Err(Error::ConversionNotSupported),
-    }
 }
 
 fn log_host_fs_type(file: &File) -> Result<()> {
@@ -529,6 +412,7 @@ mod tests {
     use super::*;
 
     use std::fs::{File, OpenOptions};
+    use std::io::Write;
 
     use cros_async::{Executor, MemRegion};
     use vm_memory::{GuestAddress, GuestMemory};
