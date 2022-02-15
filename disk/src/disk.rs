@@ -160,7 +160,7 @@ impl<
 }
 
 /// A `DiskFile` that can be converted for asychronous access.
-pub trait ToAsyncDisk: DiskFile {
+pub trait ToAsyncDisk: AsRawDescriptors + DiskGetLen + Send {
     /// Convert a boxed self in to a box-wrapped implementaiton of AsyncDisk.
     /// Used to convert a standard disk image to an async disk image. This conversion and the
     /// inverse are needed so that the `Send` DiskImage can be given to the block thread where it is
