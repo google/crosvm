@@ -25,10 +25,10 @@ use base::FileSync;
 use base::PunchHole;
 use base::WriteZeroesAt;
 use cros_async::AllocateMode;
+use cros_async::BackingMemory;
 use cros_async::Executor;
 use cros_async::IoSourceExt;
 use thiserror::Error as ThisError;
-use vm_memory::GuestMemory;
 
 mod qcow;
 pub use qcow::QcowFile;
@@ -318,7 +318,7 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
     async fn read_to_mem<'a>(
         &self,
         file_offset: u64,
-        mem: Arc<GuestMemory>,
+        mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [cros_async::MemRegion],
     ) -> Result<usize>;
 
@@ -326,7 +326,7 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
     async fn write_from_mem<'a>(
         &self,
         file_offset: u64,
-        mem: Arc<GuestMemory>,
+        mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [cros_async::MemRegion],
     ) -> Result<usize>;
 
@@ -381,7 +381,7 @@ impl AsyncDisk for SingleFileDisk {
     async fn read_to_mem<'a>(
         &self,
         file_offset: u64,
-        mem: Arc<GuestMemory>,
+        mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [cros_async::MemRegion],
     ) -> Result<usize> {
         self.inner
@@ -393,7 +393,7 @@ impl AsyncDisk for SingleFileDisk {
     async fn write_from_mem<'a>(
         &self,
         file_offset: u64,
-        mem: Arc<GuestMemory>,
+        mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [cros_async::MemRegion],
     ) -> Result<usize> {
         self.inner
