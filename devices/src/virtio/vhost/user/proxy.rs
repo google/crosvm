@@ -16,8 +16,8 @@ use std::os::unix::net::UnixListener;
 use std::thread;
 
 use base::{
-    error, info, AsRawDescriptor, Event, EventType, FromRawDescriptor, IntoRawDescriptor,
-    PollToken, RawDescriptor, SafeDescriptor, Tube, TubeError, WaitContext,
+    error, AsRawDescriptor, Event, EventType, FromRawDescriptor, IntoRawDescriptor, PollToken,
+    RawDescriptor, SafeDescriptor, Tube, TubeError, WaitContext,
 };
 use data_model::{DataInit, Le32};
 use libc::{recv, MSG_DONTWAIT, MSG_PEEK};
@@ -186,6 +186,9 @@ pub enum Error {
     /// There are no more available descriptors to receive into.
     #[error("no rx descriptors available")]
     RxDescriptorsExhausted,
+    /// Sibling is disconnected.
+    #[error("sibling disconnected")]
+    SiblingDisconnected,
     /// Failed to receive a memory mapping request from the main process.
     #[error("receiving mapping request from tube failed: {0}")]
     TubeReceiveFailure(TubeError),
@@ -395,6 +398,9 @@ impl Worker {
                                     .map_err(Error::WaitContextDisableSiblingVmSocket)?;
                                 sibling_socket_polling_enabled = false;
                             }
+                            // TODO(b/216407443): Handle sibling disconnection. The sibling sends
+                            // 0-length data the proxy device forwards it to the guest so that the
+                            // VVU backend can get notified that the connection is closed.
                             Err(e) => return Err(e),
                         }
                     }
@@ -461,102 +467,95 @@ impl Worker {
         // - Parse the Vhost-user sibling message. If it's not an action type message
         //   then copy the message as is to the Rx buffer and forward it to the
         //   device backend.
-        let mut exhausted_queue = false;
+        //
         // Peek if any data is left on the Vhost-user sibling socket. If no, then
         // nothing to forwad to the device backend.
-        while self.is_sibling_data_available() {
-            if let Some(desc) = self.rx_queue.peek(&self.mem) {
-                // To successfully receive attached file descriptors, we need to
-                // receive messages and corresponding attached file descriptors in
-                // this way:
-                // - receive messsage header and optional attached files.
-                // - receive optional message body and payload according size field
-                //   in message header.
-                // - forward it to the device backend.
-                let (hdr, files) = self
-                    .slave_req_helper
-                    .as_mut()
-                    .recv_header()
-                    .map_err(Error::ReadSiblingHeader)?;
-                check_attached_files(&hdr, &files)?;
-                let buf = self.get_sibling_msg_data(&hdr)?;
+        while self.is_sibling_data_available()? {
+            let desc = self
+                .rx_queue
+                .peek(&self.mem)
+                .ok_or(Error::RxDescriptorsExhausted)?;
+            // To successfully receive attached file descriptors, we need to
+            // receive messages and corresponding attached file descriptors in
+            // this way:
+            // - receive messsage header and optional attached files.
+            // - receive optional message body and payload according size field
+            //   in message header.
+            // - forward it to the device backend.
+            let (hdr, files) = self
+                .slave_req_helper
+                .as_mut()
+                .recv_header()
+                .map_err(Error::ReadSiblingHeader)?;
+            check_attached_files(&hdr, &files)?;
+            let buf = self.get_sibling_msg_data(&hdr)?;
 
-                let index = desc.index;
-                let bytes_written = {
-                    if is_action_request(&hdr) {
-                        // TODO(abhishekbh): Implement action messages.
-                        let res = match hdr.get_code() {
-                            MasterReq::SET_MEM_TABLE => {
-                                // Map the sibling memory in this process and forward the sibling
-                                // memory info to the slave. Only if the mapping succeeds send info
-                                // along to the slave, else send a failed Ack back to the master.
-                                self.set_mem_table(&hdr, &buf, files)
-                            }
-                            MasterReq::SET_VRING_CALL => self.set_vring_call(&hdr, &buf, files),
-                            MasterReq::SET_VRING_KICK => {
-                                self.set_vring_kick(wait_ctx, &hdr, &buf, files)
-                            }
-                            _ => {
-                                unimplemented!("unimplemented action message:{:?}", hdr.get_code());
-                            }
-                        };
-
-                        // If the "action" in response to the action messages
-                        // failed then no bytes have been written to the virt
-                        // queue. Else, the action is done. Now forward the
-                        // message to the virt queue and return how many bytes
-                        // were written.
-                        match res {
-                            Ok(()) => self.forward_msg_to_device(desc, &hdr, &buf),
-                            Err(e) => Err(e),
+            let index = desc.index;
+            let bytes_written = {
+                if is_action_request(&hdr) {
+                    // TODO(abhishekbh): Implement action messages.
+                    let res = match hdr.get_code() {
+                        MasterReq::SET_MEM_TABLE => {
+                            // Map the sibling memory in this process and forward the
+                            // sibling memory info to the slave. Only if the mapping
+                            // succeeds send info along to the slave, else send a failed
+                            // Ack back to the master.
+                            self.set_mem_table(&hdr, &buf, files)
                         }
-                    } else {
-                        // If no special processing required. Forward this message as is
-                        // to the device backend.
-                        self.forward_msg_to_device(desc, &hdr, &buf)
-                    }
-                };
-
-                // If some bytes were written to the virt queue, now it's time
-                // to add a used buffer and notify the guest. Else if there was
-                // an error of any sort, we notify the sibling by sending an ACK
-                // with failure.
-                match bytes_written {
-                    Ok(bytes_written) => {
-                        // The driver is able to deal with a descriptor with 0 bytes written.
-                        self.rx_queue.pop_peeked(&self.mem);
-                        self.rx_queue.add_used(&self.mem, index, bytes_written);
-                        if !self.rx_queue.trigger_interrupt(&self.mem, &self.interrupt) {
-                            // This interrupt should always be injected. We'd rather fail fast
-                            // if there is an error.
-                            panic!("failed to send interrupt");
+                        MasterReq::SET_VRING_CALL => self.set_vring_call(&hdr, &buf, files),
+                        MasterReq::SET_VRING_KICK => {
+                            self.set_vring_kick(wait_ctx, &hdr, &buf, files)
                         }
+                        _ => {
+                            unimplemented!("unimplemented action message:{:?}", hdr.get_code());
+                        }
+                    };
+
+                    // If the "action" in response to the action messages
+                    // failed then no bytes have been written to the virt
+                    // queue. Else, the action is done. Now forward the
+                    // message to the virt queue and return how many bytes
+                    // were written.
+                    match res {
+                        Ok(()) => self.forward_msg_to_device(desc, &hdr, &buf),
+                        Err(e) => Err(e),
                     }
-                    Err(e) => {
-                        error!("failed to forward message to the device: {}", e);
-                        self.slave_req_helper
-                            .send_ack_message(&hdr, false)
-                            .map_err(Error::FailedAck)?;
+                } else {
+                    // If no special processing required. Forward this message as is
+                    // to the device backend.
+                    self.forward_msg_to_device(desc, &hdr, &buf)
+                }
+            };
+
+            // If some bytes were written to the virt queue, now it's time
+            // to add a used buffer and notify the guest. Else if there was
+            // an error of any sort, we notify the sibling by sending an ACK
+            // with failure.
+            match bytes_written {
+                Ok(bytes_written) => {
+                    // The driver is able to deal with a descriptor with 0 bytes written.
+                    self.rx_queue.pop_peeked(&self.mem);
+                    self.rx_queue.add_used(&self.mem, index, bytes_written);
+                    if !self.rx_queue.trigger_interrupt(&self.mem, &self.interrupt) {
+                        // This interrupt should always be injected. We'd rather fail
+                        // fast if there is an error.
+                        panic!("failed to send interrupt");
                     }
                 }
-            } else {
-                // No buffer left to fill up. No point processing any data
-                // from the Vhost-user sibling.
-                exhausted_queue = true;
-                break;
+                Err(e) => {
+                    error!("failed to forward message to the device: {}", e);
+                    self.slave_req_helper
+                        .send_ack_message(&hdr, false)
+                        .map_err(Error::FailedAck)?;
+                }
             }
         }
 
-        if exhausted_queue {
-            Err(Error::RxDescriptorsExhausted)
-        } else {
-            info!("no more data available on the sibling socket");
-            Ok(())
-        }
+        Ok(())
     }
 
-    // Returns true iff any data is available on the sibling socket.
-    fn is_sibling_data_available(&self) -> bool {
+    // Returns the sibling connection status.
+    fn is_sibling_data_available(&self) -> Result<bool> {
         // Peek if any data is left on the Vhost-user sibling socket. If no, then
         // nothing to forwad to the device backend.
         let mut peek_buf = [0; 1];
@@ -571,9 +570,16 @@ impl Worker {
             )
         };
 
-        // TODO(abhishekbh): Should we log on < 0 ?. Peek should
-        // succeed.
-        peek_ret > 0
+        match peek_ret {
+            0 => Err(Error::SiblingDisconnected),
+            ret if ret < 0 => match base::Error::last() {
+                // EAGAIN means that no data is available. Any other error means that the sibling
+                // has disconnected.
+                e if e.errno() == libc::EAGAIN => Ok(false),
+                _ => Err(Error::SiblingDisconnected),
+            },
+            _ => Ok(true),
+        }
     }
 
     // Returns any data attached to a Vhost-user sibling message.
@@ -1183,7 +1189,10 @@ impl VirtioVhostUser {
                 };
                 let rx_queue_evt = activate_params.queue_evts.remove(0);
                 let tx_queue_evt = activate_params.queue_evts.remove(0);
-                let _ = worker.run(rx_queue_evt, tx_queue_evt, main_thread_tube, kill_evt);
+                if let Err(e) = worker.run(rx_queue_evt, tx_queue_evt, main_thread_tube, kill_evt) {
+                    // TODO(b/216407443): Handle sibling reconnect events.
+                    error!("worker thread exited: {}", e);
+                }
                 Ok(worker)
             });
 
