@@ -28,6 +28,16 @@ setup_source() {
 
   cd "${KOKORO_ARTIFACTS_DIR}/git/crosvm"
 
+  # The Kokoro builder has not the required packages from ./tools/install-deps and an old python
+  # version.
+  # Install what is needed to run ./tools/dev_container
+  # Note: This won't be necessary once we switch to a custom Kokoro image (or luci)
+  if command -v pyenv; then
+    pyenv install -v 3.9.5
+    pyenv global 3.9.5
+    pip install argh
+  fi
+
   echo "Rebasing changes to ToT"
   # We cannot use the original origin that kokoro used, as we no longer have
   # access the GoB host via rpc://.

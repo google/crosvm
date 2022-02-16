@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env python3
 # Copyright 2021 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
@@ -20,89 +20,72 @@
 #
 #   ./tools/dev_container --hermetic CMD
 
-set -e
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+import argparse
+import getpass
+from argh import arg
+from impl.common import CROSVM_ROOT, run_main, cmd, chdir, quoted
+import sys
+import os
 
-# Allow to override the container CLI tool, similar to the Makefile. Try
-# "docker" first and fall back to "podman".
-DOCKER=${DOCKER:-$(which docker || which podman)}
+CONTAINER_NAME = f"crosvm_dev_{getpass.getuser()}"
+IMAGE_VERSION = (CROSVM_ROOT / "tools/impl/dev_container/version").read_text().strip()
 
-# Name to identify the running crosvm dev container
-CONTAINER_NAME=crosvm_dev
+try:
+    docker = cmd(os.environ.get("DOCKER", "docker"))
+except ValueError:
+    docker = cmd("podman")
 
-IMAGE_VERSION=$(cat tools/impl/dev_container/version)
+is_podman = docker.executable.name == "podman"
 
 # Enable interactive mode when running in an interactive terminal.
-TTY_ARGS=()
-if [ -t 1 ]; then
-    TTY_ARGS+=(
-        --interactive
-        --tty
-    )
-fi
+TTY_ARGS = "--interactive --tty" if sys.stdin.isatty() else None
 
-# Podman will not share devices when `--privileged` is specified
-PRIV_ARGS=()
-if [ "${DOCKER}" != "${podman}" ]; then
-    PRIV_ARGS+=(
-        --privileged
-    )
-fi
 
-DOCKER_ARGS=(
-    "${TTY_ARGS[@]}"
-    --volume "$(pwd):/workspace:rw"
-    --device "/dev/kvm"
-    --volume "/dev/log:/dev/log"
-    --device "/dev/net/tun"
-    --device "/dev/vhost-net"
-    --device "/dev/vhost-vsock"
-    --mount "type=tmpfs,destination=/tmp"
-    "${PRIV_ARGS[@]}"
-    "gcr.io/crosvm-packages/crosvm_dev:$IMAGE_VERSION"
-)
+DOCKER_ARGS = [
+    TTY_ARGS,
+    # Podman will not share devices when `--privileged` is specified
+    "--privileged" if not is_podman else None,
+    # Share crosvm source
+    f"--volume {quoted(CROSVM_ROOT)}:/workspace:rw",
+    # Share devices and syslog
+    "--device /dev/kvm",
+    "--volume /dev/log:/dev/log",
+    "--device /dev/net/tun",
+    "--device /dev/vhost-net",
+    "--device /dev/vhost-vsock",
+    # Use tmpfs in the container for faster performance.
+    "--mount type=tmpfs,destination=/tmp",
+    f"gcr.io/crosvm-packages/crosvm_dev:{IMAGE_VERSION}",
+]
 
-docker_run_detached() {
-    "${DOCKER}" run \
-        --detach --name "${CONTAINER_NAME}" \
-        "${DOCKER_ARGS[@]}" >/dev/null
-}
 
-docker_run() {
-    "${DOCKER}" run --rm "${DOCKER_ARGS[@]}" "$@"
-}
+@arg("command", nargs=argparse.REMAINDER)
+def main(command: tuple[str, ...], stop: bool = False, hermetic: bool = False):
+    chdir(CROSVM_ROOT)
+    container_id = docker(f"ps -q -f name={CONTAINER_NAME}").stdout()
 
-get_container_id() {
-    "${DOCKER}" ps -q -f name="${CONTAINER_NAME}"
-}
+    # Start an interactive shell by default
+    if not command:
+        command = ("/bin/bash",)
 
-docker_exec() {
-    if [[ $# -gt 0 ]]; then
-        cmd=("$@")
-    else
-        cmd=(/bin/bash)
-    fi
-    "${DOCKER}" exec "${TTY_ARGS[@]}" "$(get_container_id)" "${cmd[@]}"
-}
+    if stop:
+        if container_id:
+            print(f"Stopping dev-container {container_id}.")
+            docker("rm -f", container_id).fg(quiet=True)
+        else:
+            print(f"Dev-container is not running.")
+        return
 
-main() {
-    if [[ "$1" == "--stop" ]]; then
-        if [ -n "$(get_container_id)" ]; then
-            "${DOCKER}" rm -f "$(get_container_id)" >/dev/null
-        fi
-        exit
-    fi
+    if hermetic:
+        docker(f"run --rm", *DOCKER_ARGS, *command).fg()
+    else:
+        if not container_id:
+            container_id = docker(f"run --detach --name {CONTAINER_NAME}", *DOCKER_ARGS).stdout()
+            print(f"Started dev-container ({container_id}).")
+        else:
+            print(f"Using existing dev-container instance ({container_id}).")
 
-    if [[ "$1" == "--hermetic" ]]; then
-        shift
-        docker_run "$@"
-    else
-        if [ -z "$(get_container_id)" ]; then
-            docker_run_detached
-        fi
-        docker_exec "$@"
-    fi
+        docker("exec", TTY_ARGS, container_id, *command).fg()
 
-}
 
-main "$@"
+run_main(main)

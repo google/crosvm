@@ -117,7 +117,14 @@ class Command(object):
     def __init__(self, *args: Any, stdin_cmd: Optional[Command] = None):
         self.args = Command.__parse_cmd(args)
         self.stdin_cmd = stdin_cmd
-        self.__verify_executable()
+        if len(self.args) > 0:
+            executable = self.args[0]
+            path = shutil.which(executable)
+            if not path:
+                raise ValueError(f'Required program "{executable}" cannot be found in PATH.')
+            elif very_verbose():
+                print(f"Using {executable}: {path}")
+            self.executable = Path(path)
 
     ### High level execution API
 
@@ -287,16 +294,6 @@ class Command(object):
     def __debug_print(self):
         if verbose():
             print("$", repr(self) if very_verbose() else str(self))
-
-    def __verify_executable(self):
-        "Ensures the executable exists so we can exit early."
-        if len(self.args) > 0:
-            executable = self.args[0]
-            path = shutil.which(executable)
-            if not path:
-                raise ValueError(f'Required program "{executable}" cannot be found in PATH.')
-            elif very_verbose():
-                print(f"Using {executable}: {path}")
 
     @staticmethod
     def __shell_like_split(value: str):
