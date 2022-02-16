@@ -59,6 +59,13 @@ DOCKER_ARGS = [
 ]
 
 
+def container_revision(container_id: str):
+    image = docker("container inspect -f {{.Config.Image}}", container_id).stdout()
+    parts = image.split(":")
+    assert len(parts) == 2, f"Invalid image name {image}"
+    return parts[1]
+
+
 @arg("command", nargs=argparse.REMAINDER)
 def main(command: tuple[str, ...], stop: bool = False, hermetic: bool = False):
     chdir(CROSVM_ROOT)
@@ -79,6 +86,11 @@ def main(command: tuple[str, ...], stop: bool = False, hermetic: bool = False):
     if hermetic:
         docker(f"run --rm", *DOCKER_ARGS, *command).fg()
     else:
+        if container_id and container_revision(container_id) != IMAGE_VERSION:
+            print(f"New image is available. Stopping old container ({container_id}).")
+            docker("rm -f", container_id).fg(quiet=True)
+            container_id = None
+
         if not container_id:
             container_id = docker(f"run --detach --name {CONTAINER_NAME}", *DOCKER_ARGS).stdout()
             print(f"Started dev-container ({container_id}).")
