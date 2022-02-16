@@ -8,6 +8,7 @@ mod pcie_host;
 mod pcie_rp;
 
 pub use pci_bridge::PciBridge;
+pub use pcie_host::PcieHostRootPort;
 pub use pcie_rp::PcieRootPort;
 
 #[allow(dead_code)]

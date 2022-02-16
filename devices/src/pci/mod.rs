@@ -34,7 +34,7 @@ pub use self::pci_configuration::{
 };
 pub use self::pci_device::{BarRange, Error as PciDeviceError, PciDevice};
 pub use self::pci_root::{PciConfigIo, PciConfigMmio, PciRoot};
-pub use self::pcie::{PciBridge, PcieRootPort};
+pub use self::pcie::{PciBridge, PcieHostRootPort, PcieRootPort};
 pub use self::stub::{StubPciDevice, StubPciParameters};
 pub use self::vfio_pci::VfioPciDevice;
 

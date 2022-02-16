@@ -36,7 +36,8 @@ use devices::virtio::{self, EventDevice};
 use devices::Ac97Dev;
 use devices::{
     self, BusDeviceObj, HostHotPlugKey, HotPlugBus, IrqEventIndex, KvmKernelIrqChip, PciAddress,
-    PciBridge, PciDevice, PcieRootPort, StubPciDevice, VfioContainer, VirtioPciDevice,
+    PciBridge, PciDevice, PcieHostRootPort, PcieRootPort, StubPciDevice, VfioContainer,
+    VirtioPciDevice,
 };
 use devices::{CoIommuDev, IommuDevType};
 #[cfg(feature = "usb")]
@@ -717,8 +718,22 @@ fn create_pcie_root_port(
         // user specify host pcie root port which link to this virtual pcie rp,
         // reserve the host pci BDF and create a virtual pcie RP with some attrs same as host
         for pcie_sysfs in host_pcie_rp.iter() {
-            let pcie_host = PcieRootPort::new_from_host(pcie_sysfs.as_path())?;
-            let pcie_root_port = Arc::new(Mutex::new(pcie_host));
+            let pcie_host = PcieHostRootPort::new(pcie_sysfs.as_path())?;
+            let bus_range = pcie_host.get_bus_range();
+            let mut slot_implemented = true;
+            for i in bus_range.secondary..=bus_range.subordinate {
+                // if this bus is occupied by one vfio-pci device, this vfio-pci device is
+                // connected to a pci bridge on host statically, then it should be connected
+                // to a virtual pci bridge in guest statically, this bridge won't have
+                // hotplug capability and won't use slot.
+                if !sys_allocator.pci_bus_empty(i) {
+                    slot_implemented = false;
+                }
+            }
+            let pcie_root_port = Arc::new(Mutex::new(PcieRootPort::new_from_host(
+                pcie_host,
+                slot_implemented,
+            )?));
 
             let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
             control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));

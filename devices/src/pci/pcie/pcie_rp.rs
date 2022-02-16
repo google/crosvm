@@ -1,7 +1,6 @@
 // Copyright 2021 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-use std::path::Path;
 use std::sync::Arc;
 use sync::Mutex;
 
@@ -75,10 +74,7 @@ impl PcieRootPort {
     }
 
     /// Constructs a new PCIE root port which associated with the host physical pcie RP
-    /// As a lot of checking is done on host pcie RP, if the check is failure, this
-    /// physical pcie RP will be ignored, and virtual pcie RP won't be created.
-    pub fn new_from_host(pcie_host_sysfs: &Path) -> Result<Self> {
-        let pcie_host = PcieHostRootPort::new(pcie_host_sysfs)?;
+    pub fn new_from_host(pcie_host: PcieHostRootPort, slot_implemented: bool) -> Result<Self> {
         let bus_range = pcie_host.get_bus_range();
         // if physical pcie root port isn't on bus 0, ignore this physical pcie root port.
         if bus_range.primary != 0 {
@@ -94,7 +90,11 @@ impl PcieRootPort {
             pmc_config: PmcConfig::new(),
             pmc_cap_reg_idx: None,
             pci_address: None,
-            slot_control: Some(PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF),
+            slot_control: if slot_implemented {
+                Some(PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF)
+            } else {
+                None
+            },
             slot_status: 0,
             root_control: 0,
             root_status: 0,

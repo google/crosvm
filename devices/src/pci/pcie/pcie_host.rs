@@ -89,6 +89,8 @@ pub struct PcieHostRootPort {
 }
 
 impl PcieHostRootPort {
+    /// Create PcieHostRootPort, host_syfsfs_patch specify host pcie root port
+    /// sysfs path.
     pub fn new(host_sysfs_path: &Path) -> Result<Self> {
         let host_config = PciHostConfig::new(host_sysfs_path)?;
         let host_name = host_sysfs_path
