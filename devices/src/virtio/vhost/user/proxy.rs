@@ -1000,9 +1000,10 @@ impl VirtioVhostUser {
     fn write_bar_doorbell(&mut self, offset: u64) {
         // The |offset| represents the Vring number who call event needs to be
         // written to.
+        let vring = offset / DOORBELL_OFFSET_MULTIPLIER as u64;
         match &self.worker_thread_tube {
             Some(worker_thread_tube) => {
-                if let Err(e) = worker_thread_tube.send(&offset) {
+                if let Err(e) = worker_thread_tube.send(&vring) {
                     error!("failed to send doorbell write request: {}", e);
                 }
             }
