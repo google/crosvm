@@ -3,6 +3,7 @@
 
 //! Structs for VFIO listener and endpoint.
 
+use std::convert::From;
 use std::fs::File;
 use std::io::{IoSlice, IoSliceMut};
 use std::marker::PhantomData;
@@ -10,9 +11,32 @@ use std::os::unix::io::RawFd;
 use std::path::Path;
 
 use base::{AsRawDescriptor, EventFd, RawDescriptor};
+use remain::sorted;
+use thiserror::Error as ThisError;
 
 use super::{Error, Result};
 use crate::connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req};
+
+/// Errors for `Device::recv_into_bufs()`.
+#[sorted]
+#[derive(Debug, ThisError)]
+pub enum RecvIntoBufsError {
+    /// Connection is closed.
+    #[error("connection is closed")]
+    Disconnect,
+    /// Fatal error while receiving data.
+    #[error("failed to receive data via VFIO: {0:#}")]
+    Fatal(anyhow::Error),
+}
+
+impl From<RecvIntoBufsError> for Error {
+    fn from(e: RecvIntoBufsError) -> Self {
+        match e {
+            RecvIntoBufsError::Disconnect => Error::Disconnect,
+            RecvIntoBufsError::Fatal(e) => Error::VfioDeviceError(e),
+        }
+    }
+}
 
 /// VFIO device which can be used as virtio-vhost-user device backend.
 pub trait Device {
@@ -33,7 +57,7 @@ pub trait Device {
     fn recv_into_bufs(
         &mut self,
         iovs: &mut [IoSliceMut],
-    ) -> std::result::Result<usize, anyhow::Error>;
+    ) -> std::result::Result<usize, RecvIntoBufsError>;
 }
 
 /// Listener for accepting incoming connections from virtio-vhost-user device through VFIO.
@@ -104,9 +128,9 @@ impl<R: Req, D: Device> EndpointTrait<R> for Endpoint<R, D> {
         let size = self
             .device
             .recv_into_bufs(bufs)
-            .map_err(Error::VfioDeviceError)?;
+            .map_err::<Error, _>(From::<RecvIntoBufsError>::from)?;
 
-        // VFIO backend doesn't receive files.
+        // VFIO backend doesn't receive any files.
         Ok((size, None))
     }
 }

@@ -77,6 +77,13 @@ pub use self::slave_fs_cache::SlaveFsCacheReq;
 #[sorted]
 #[derive(Debug, ThisError)]
 pub enum Error {
+    /// client exited properly.
+    #[error("client exited properly")]
+    ClientExit,
+    /// client disconnected.
+    /// If connection is closed properly, use `ClientExit` instead.
+    #[error("client closed the connection")]
+    Disconnect,
     /// Virtio/protocol features mismatch.
     #[error("virtio features mismatch")]
     FeatureMismatch,

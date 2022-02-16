@@ -17,7 +17,7 @@ use std::{
 use anyhow::{bail, Context};
 use argh::FromArgs;
 use base::{
-    clear_fd_flags, error, AsRawDescriptor, Event, FromRawDescriptor, IntoRawDescriptor,
+    clear_fd_flags, error, info, AsRawDescriptor, Event, FromRawDescriptor, IntoRawDescriptor,
     SafeDescriptor, UnlinkUnixListener,
 };
 use cros_async::{AsyncWrapper, EventAsync, Executor};
@@ -534,9 +534,17 @@ async fn run_device<P: AsRef<Path>>(
             .wait_readable()
             .await
             .context("failed to wait for vhost socket to become readable")?;
-        req_handler
-            .handle_request()
-            .context("failed to handle vhost request")?;
+        match req_handler.handle_request() {
+            Ok(()) => (),
+            Err(Error::Disconnect) => {
+                info!("vhost-user connection closed");
+                // Exit as the client closed the connection.
+                return Ok(());
+            }
+            Err(e) => {
+                bail!("failed to handle a vhost-user request: {}", e);
+            }
+        };
     }
 }
 

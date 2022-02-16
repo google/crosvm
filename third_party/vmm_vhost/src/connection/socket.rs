@@ -158,6 +158,7 @@ impl<R: Req> EndpointTrait<R> for Endpoint<R> {
     ///
     /// # Return:
     /// * - (number of bytes received, [received files]) on success
+    /// * - Disconnect: the connection is closed.
     /// * - SocketRetry: temporary error caused by signals or short of resources.
     /// * - SocketBroken: the underline socket is broken.
     /// * - SocketError: other socket related errors.
@@ -173,6 +174,11 @@ impl<R: Req> EndpointTrait<R> for Endpoint<R> {
         };
         let mut iovs: Vec<_> = bufs.iter_mut().map(|s| IoSliceMut::new(s)).collect();
         let (bytes, fds) = self.sock.recv_iovecs_with_fds(&mut iovs, &mut fd_array)?;
+
+        // 0-bytes indicates that the connection is closed.
+        if bytes == 0 {
+            return Err(Error::Disconnect);
+        }
 
         let files = match fds {
             0 => None,

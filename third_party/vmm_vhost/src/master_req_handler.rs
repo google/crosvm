@@ -224,7 +224,17 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         // . recv optional message body and payload according size field in
         //   message header
         // . validate message body and optional payload
-        let (hdr, files) = self.sub_sock.recv_header()?;
+        let (hdr, files) = match self.sub_sock.recv_header() {
+            Ok((hdr, files)) => (hdr, files),
+            Err(Error::Disconnect) => {
+                // If the client closed the connection before sending a header, this should be
+                // handled as a legal exit.
+                return Err(Error::ClientExit);
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        };
         self.check_attached_files(&hdr, &files)?;
         let buf = match hdr.get_size() {
             0 => vec![0u8; 0],

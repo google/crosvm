@@ -54,9 +54,9 @@ use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use base::{
-    clear_fd_flags, error, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
+    clear_fd_flags, error, info, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
     SharedMemory, SharedMemoryUnix, UnlinkUnixListener,
 };
 use cros_async::{AsyncWrapper, Executor};
@@ -415,9 +415,17 @@ where
                 .wait_readable()
                 .await
                 .context("failed to wait for the handler socket to become readable")?;
-            req_handler
-                .handle_request()
-                .context("failed to handle a vhost-user request")?;
+            match req_handler.handle_request() {
+                Ok(()) => (),
+                Err(VhostError::ClientExit) => {
+                    info!("vhost-user connection closed");
+                    // Exit as the client closed the connection.
+                    return Ok(());
+                }
+                Err(e) => {
+                    bail!("failed to handle a vhost-user request: {}", e);
+                }
+            };
         }
     }
 

@@ -56,7 +56,8 @@ pub trait Endpoint<R: Req>: Sized {
     /// * `allow_fd` - Indicates whether we can receive FDs.
     ///
     /// # Return:
-    /// * - (number of bytes received, [received files]) on success
+    /// * - (number of bytes received, [received files]) on success.
+    /// * - `Error::Disconnect` if the client closed.
     fn recv_into_bufs(
         &mut self,
         bufs: &mut [IoSliceMut],
@@ -254,8 +255,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     ///
     /// # Return:
     /// * - (number of bytes received, [received fds]) on success
-    /// * - SocketBroken: the underline socket is broken.
-    /// * - SocketError: other socket related errors.
+    /// * - `Disconnect` - client is closed
     ///
     /// # TODO
     /// This function takes a slice of `&mut [u8]` instead of `IoSliceMut` because the internal
@@ -312,6 +312,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     ///
     /// # Return:
     /// * - (message header, [received files]) on success.
+    /// * - Disconnect: the client closed the connection.
     /// * - PartialMessage: received a partial message.
     /// * - InvalidMessage: received a invalid message.
     /// * - backend specific errors
