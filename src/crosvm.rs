@@ -437,6 +437,7 @@ pub struct Config {
     #[cfg(feature = "direct")]
     pub pcie_rp: Vec<PathBuf>,
     pub rng: bool,
+    pub pivot_root: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -549,6 +550,7 @@ impl Default for Config {
             #[cfg(feature = "direct")]
             pcie_rp: Vec::new(),
             rng: true,
+            pivot_root: None,
         }
     }
 }

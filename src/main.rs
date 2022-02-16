@@ -2362,6 +2362,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
 
             cfg.pcie_rp.push(pcie_path);
         }
+        "pivot-root" => {
+            cfg.pivot_root = Some(PathBuf::from(value.unwrap()));
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -2740,6 +2743,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                               align - whether to adjust addr and size to page boundaries implicitly"),
           #[cfg(feature = "direct")]
           Argument::value("pcie-root-port", "PATH", "Path to sysfs of host pcie root port"),
+          Argument::value("pivot-root", "PATH", "Path to empty directory to use for sandbox pivot root."),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();
