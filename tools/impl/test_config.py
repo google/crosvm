@@ -28,6 +28,8 @@ class TestOption(enum.Enum):
     # Run tests single-threaded
     SINGLE_THREADED = "single_threaded"
 
+    # This test needs longer than usual to run.
+    LARGE = "large"
 
 
 # Configuration to restrict how and where tests of a certain crate can
@@ -35,14 +37,23 @@ class TestOption(enum.Enum):
 #
 # Please add a bug number when restricting a tests.
 CRATE_OPTIONS: dict[str, list[TestOption]] = {
-    "aarch64": [TestOption.DO_NOT_BUILD_X86_64, TestOption.DO_NOT_BUILD_ARMHF], #b/210015864
+    "aarch64": [TestOption.DO_NOT_BUILD_X86_64, TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
+    "cros_async": [TestOption.LARGE],
     "crosvm_plugin": [TestOption.DO_NOT_BUILD_AARCH64, TestOption.DO_NOT_BUILD_ARMHF],
-    "devices": [TestOption.SINGLE_THREADED, TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL],
+    "devices": [
+        TestOption.SINGLE_THREADED,
+        TestOption.LARGE,
+        TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
+    ],
     "disk": [TestOption.DO_NOT_RUN_AARCH64, TestOption.DO_NOT_RUN_ARMHF],  # b/202294155
     "crosvm-fuzz": [TestOption.DO_NOT_BUILD],  # b/194499769
-    "hypervisor": [TestOption.DO_NOT_RUN_AARCH64, TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL],  # b/181672912
+    "hypervisor": [
+        TestOption.DO_NOT_RUN_AARCH64,
+        TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
+    ],  # b/181672912
     "integration_tests": [  # b/180196508
         TestOption.SINGLE_THREADED,
+        TestOption.LARGE,
         TestOption.DO_NOT_RUN_AARCH64,
         TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
     ],
@@ -55,14 +66,14 @@ CRATE_OPTIONS: dict[str, list[TestOption]] = {
     "x86_64": [TestOption.DO_NOT_BUILD_AARCH64, TestOption.DO_NOT_BUILD_ARMHF],
     "sys_util": [TestOption.SINGLE_THREADED],
     "sys_util_core": [TestOption.SINGLE_THREADED],
-    "rutabaga_gfx": [TestOption.DO_NOT_BUILD_ARMHF], #b/210015864
+    "rutabaga_gfx": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
     "vhost": [TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL],
-    "vm_control": [TestOption.DO_NOT_BUILD_ARMHF], #b/210015864
-    "libcrosvm_control": [TestOption.DO_NOT_BUILD_ARMHF], #b/210015864
+    "vm_control": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
+    "libcrosvm_control": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
 }
 
 BUILD_FEATURES: dict[str, str] = {
     "x86_64": "all-linux",
     "aarch64": "all-linux",
-    "armhf": "all-linux-armhf"
+    "armhf": "all-linux-armhf",
 }

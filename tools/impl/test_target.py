@@ -3,6 +3,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file
 import argparse
+import functools
 import platform
 import subprocess
 from pathlib import Path
@@ -90,9 +91,7 @@ class Ssh:
             check=True,
         ).stdout
 
-    def upload_files(
-        self, files: list[Path], remote_dir: str = "", quiet: bool = False
-    ):
+    def upload_files(self, files: list[Path], remote_dir: str = "", quiet: bool = False):
         """Wrapper around SCP."""
         flags: list[str] = []
         if quiet:
@@ -114,6 +113,7 @@ class TestTarget(object):
     is_host: bool = False
     vm: Optional[testvm.Arch] = None
     ssh: Optional[Ssh] = None
+    __arch: Optional[Arch] = None
 
     @classmethod
     def default(cls):
@@ -134,14 +134,23 @@ class TestTarget(object):
         else:
             raise Exception(f"Invalid target {target_str}")
 
+    @property
+    def arch(self) -> Arch:
+        if not self.__arch:
+            if self.vm:
+                self.__arch = self.vm
+            elif self.ssh:
+                self.__arch = cast(Arch, self.ssh.check_output("arch").strip())
+            else:
+                self.__arch = cast(Arch, platform.machine())
+        return self.__arch
+
     def __str__(self):
         return self.target_str
 
 
 def find_rust_lib_dir():
-    cargo_path = Path(
-        subprocess.check_output(["rustup", "which", "cargo"], text=True)
-    )
+    cargo_path = Path(subprocess.check_output(["rustup", "which", "cargo"], text=True))
     return cargo_path.parent.parent.joinpath("lib")
 
 
@@ -163,15 +172,6 @@ def prepare_target(target: TestTarget, extra_files: list[Path] = []):
         testvm.wait(target.vm)
     if target.ssh:
         prepare_remote(target.ssh, extra_files)
-
-
-def get_target_arch(target: TestTarget) -> testvm.Arch:
-    if target.vm:
-        return target.vm
-    elif target.ssh:
-        return cast(testvm.Arch, target.ssh.check_output("arch").strip())
-    else:
-        return cast(testvm.Arch, platform.machine())
 
 
 def get_cargo_build_target(arch: Arch):
@@ -203,7 +203,7 @@ def write_envrc(values: dict[str, str]):
 def set_target(target: TestTarget, build_arch: Optional[Arch]):
     prepare_target(target)
     if not build_arch:
-        build_arch = get_target_arch(target)
+        build_arch = target.arch
     write_envrc(get_cargo_env(target, build_arch))
     print(f"Test target: {target}")
     print(f"Target Architecture: {build_arch}")
@@ -245,8 +245,7 @@ def exec_file_on_target(
         target.ssh.upload_files([filepath] + extra_files, quiet=True)
         try:
             result = target.ssh.run(
-                f"chmod +x {filename} "
-                f"&& sudo LD_LIBRARY_PATH=. ./{filename} {' '.join(args)}",
+                f"chmod +x {filename} && sudo LD_LIBRARY_PATH=. ./{filename} {' '.join(args)}",
                 timeout=timeout,
                 text=True,
                 **kwargs,
@@ -270,11 +269,7 @@ def exec_file(
 
     print(f"Executing `{Path(filepath).name} {' '.join(args)}` on {target}")
     try:
-        sys.exit(
-            exec_file_on_target(
-                target, filepath, timeout, args, extra_files
-            ).returncode
-        )
+        sys.exit(exec_file_on_target(target, filepath, timeout, args, extra_files).returncode)
     except subprocess.TimeoutExpired as e:
         print(f"Process timed out after {e.timeout}s")
 
@@ -287,9 +282,7 @@ def main():
 
     parser = argparse.ArgumentParser(usage=USAGE)
     parser.add_argument("command", choices=COMMANDS)
-    parser.add_argument(
-        "--target", type=str, help="Override default test target."
-    )
+    parser.add_argument("--target", type=str, help="Override default test target.")
     parser.add_argument(
         "--arch",
         choices=typing.get_args(Arch),
