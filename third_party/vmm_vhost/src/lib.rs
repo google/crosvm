@@ -124,30 +124,6 @@ pub enum Error {
     VfioDeviceError(anyhow::Error),
 }
 
-impl Error {
-    /// Determine whether to rebuild the underline communication channel.
-    pub fn should_reconnect(&self) -> bool {
-        match *self {
-            // Should reconnect because it may be caused by temporary network errors.
-            Error::PartialMessage => true,
-            // Should reconnect because the underline socket is broken.
-            Error::SocketBroken(_) => true,
-            // Slave internal error, hope it recovers on reconnect.
-            Error::SlaveInternalError => true,
-            // Master internal error, hope it recovers on reconnect.
-            Error::MasterInternalError => true,
-            // Should just retry the IO operation instead of rebuilding the underline connection.
-            Error::SocketRetry(_) => false,
-            Error::InvalidParam | Error::InvalidOperation => false,
-            Error::InvalidMessage | Error::IncorrectFds | Error::OversizedMsg => false,
-            Error::SocketError(_) | Error::SocketConnect(_) => false,
-            Error::FeatureMismatch => false,
-            Error::ReqHandlerError(_) => false,
-            Error::VfioDeviceError(_) => false,
-        }
-    }
-}
-
 impl std::convert::From<base::Error> for Error {
     /// Convert raw socket errors into meaningful vhost-user errors.
     ///
