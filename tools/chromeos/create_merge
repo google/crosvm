@@ -54,7 +54,16 @@ prerequisites() {
 }
 
 cq_depends() {
-    git log --no-color "HEAD..${MERGE_TARGET}" --pretty=email | grep ^Cq-Depend:
+    git log --no-color "HEAD..${MERGE_TARGET}" --pretty=email |
+        grep ^Cq-Depend: |
+        sort -u
+}
+
+bug_references() {
+    git log --no-color "HEAD..${MERGE_TARGET}" --pretty=email |
+        grep ^BUG= |
+        grep -vi ^BUG=none |
+        sort -u
 }
 
 merge_message() {
@@ -77,7 +86,9 @@ merge_message() {
     echo ""
     echo "${URL}/+log/${old}..${new}"
     echo ""
-    echo "BUG=None"
+    if [ "${DRY_RUN_ONLY}" != true ]; then
+        bug_references
+    fi
     echo "TEST=CQ"
     echo ""
     cq_depends
