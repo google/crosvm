@@ -35,16 +35,19 @@ use vmm_vhost::{
     Protocol, SlaveReqHelper,
 };
 
-use crate::pci::{
-    PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType, PciCapability,
-    PciCapabilityID,
-};
 use crate::virtio::descriptor_utils::Error as DescriptorUtilsError;
 use crate::virtio::{
     copy_config, DescriptorChain, Interrupt, PciCapabilityType, Queue, Reader, SignalableInterrupt,
     VirtioDevice, VirtioPciCap, Writer, TYPE_VHOST_USER,
 };
 use crate::PciAddress;
+use crate::{
+    pci::{
+        PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType, PciCapability,
+        PciCapabilityID,
+    },
+    virtio::VIRTIO_MSI_NO_VECTOR,
+};
 
 use remain::sorted;
 use thiserror::Error as ThisError;
@@ -1045,7 +1048,12 @@ impl VirtioVhostUser {
                         error!("invalid notification select: {}", notification_select);
                         return;
                     }
-                    self.notification_msix_vectors[notification_select as usize] = Some(val);
+                    self.notification_msix_vectors[notification_select as usize] =
+                        if val == VIRTIO_MSI_NO_VECTOR {
+                            None
+                        } else {
+                            Some(val)
+                        };
                 } else {
                     error!("no notification select set");
                 }
