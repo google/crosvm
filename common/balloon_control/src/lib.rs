@@ -8,10 +8,23 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub enum BalloonTubeCommand {
     // Set the size of the VM's balloon.
-    Adjust { num_bytes: u64 },
+    Adjust {
+        num_bytes: u64,
+        // When this flag is set, adjust attempts can fail. After adjustment, the final
+        // size of the balloon is returned via a BalloonTubeResult::Adjust message.
+        //
+        // The flag changes the semantics of inflating the balloon. By default, the driver
+        // will indefinitely retry if it fails to allocate pages when inflating the
+        // balloon.  However, when this flag is set, the balloon device responds to page
+        // allocation failures in the guest by stopping inflation at the balloon's current
+        // size.
+        allow_failure: bool,
+    },
     // Fetch balloon stats. The ID can be used to discard stale states
     // if any previous stats requests failed or timed out.
-    Stats { id: u64 },
+    Stats {
+        id: u64,
+    },
 }
 
 // BalloonStats holds stats returned from the stats_queue.
@@ -38,5 +51,8 @@ pub enum BalloonTubeResult {
         stats: BalloonStats,
         balloon_actual: u64,
         id: u64,
+    },
+    Adjusted {
+        num_bytes: u64,
     },
 }

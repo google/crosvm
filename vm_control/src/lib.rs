@@ -988,7 +988,10 @@ impl VmRequest {
             }
             VmRequest::BalloonCommand(BalloonControlCommand::Adjust { num_bytes }) => {
                 if let Some(balloon_host_tube) = balloon_host_tube {
-                    match balloon_host_tube.send(&BalloonTubeCommand::Adjust { num_bytes }) {
+                    match balloon_host_tube.send(&BalloonTubeCommand::Adjust {
+                        num_bytes,
+                        allow_failure: false,
+                    }) {
                         Ok(_) => VmResponse::Ok,
                         Err(_) => VmResponse::Err(SysError::last()),
                     }
@@ -1032,6 +1035,9 @@ impl VmRequest {
                                     Err(e) => {
                                         error!("balloon socket recv failed: {}", e);
                                         break VmResponse::Err(SysError::last());
+                                    }
+                                    Ok(BalloonTubeResult::Adjusted { .. }) => {
+                                        unreachable!("unexpected adjusted response")
                                     }
                                 }
                             }
