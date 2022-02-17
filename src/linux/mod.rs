@@ -615,12 +615,15 @@ fn create_devices(
         setup_virtio_access_platform(resources, &mut iommu_attached_endpoints, &mut devices)?;
 
     if !iommu_attached_endpoints.is_empty() {
+        let (_iommu_host_tube, iommu_device_tube) =
+            Tube::pair().context("failed to create tube")?;
         let iommu_dev = create_iommu_device(
             cfg,
             phys_max_addr,
             iommu_attached_endpoints,
             translate_response_senders,
             request_rx,
+            iommu_device_tube,
         )?;
 
         let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;

@@ -1190,3 +1190,6 @@ impl Display for VmResponse {
         }
     }
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum VirtioIOMMURequest {}

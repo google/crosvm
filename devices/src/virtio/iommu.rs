@@ -22,6 +22,7 @@ use futures::{select, FutureExt};
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;
+use vm_control::VirtioIOMMURequest;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 use crate::pci::PciAddress;
@@ -123,6 +124,10 @@ pub enum IommuError {
     Tube(TubeError),
     #[error("unexpected descriptor error")]
     UnexpectedDescriptor,
+    #[error("failed to receive virtio-iommu control request: {0}")]
+    VirtioIOMMUReqError(TubeError),
+    #[error("failed to send virtio-iommu control response: {0}")]
+    VirtioIOMMUResponseError(TubeError),
     #[error("failed to wait for events: {0}")]
     WaitError(SysError),
     #[error("write buffer length too small")]
@@ -471,8 +476,23 @@ impl Worker {
         }
     }
 
+    // Async task that handles messages from the host
+    pub async fn handle_command_tube(command_tube: &AsyncTube) -> Result<()> {
+        loop {
+            match command_tube.next::<VirtioIOMMURequest>().await {
+                Ok(_) => {
+                    // To-Do: handle the requests from virtio-iommu tube
+                }
+                Err(e) => {
+                    return Err(IommuError::VirtioIOMMUReqError(e));
+                }
+            }
+        }
+    }
+
     fn run(
         &mut self,
+        iommu_device_tube: Tube,
         mut queues: Vec<Queue>,
         queue_evts: Vec<Event>,
         kill_evt: Event,
@@ -517,12 +537,18 @@ impl Worker {
         let f_handle_translate_request =
             handle_translate_request(&endpoints, request_tube, response_tubes);
         let f_request = self.request_queue(req_queue, req_evt, interrupt_ref, &endpoints);
+
+        let command_tube = iommu_device_tube.into_async_tube(&ex).unwrap();
+        // Future to handle command messages from host, such as passing vfio containers.
+        let f_cmd = Self::handle_command_tube(&command_tube);
+
         let done = async {
             select! {
                 res = f_request.fuse() => res.context("error in handling request queue"),
                 res = f_resample.fuse() => res.context("error in handle_irq_resample"),
                 res = f_kill.fuse() => res.context("error in await_and_exit"),
                 res = f_handle_translate_request.fuse() => res.context("error in handle_translate_request"),
+                res = f_cmd.fuse() => res.context("error in handling host request"),
             }
         };
         match ex.run_until(done) {
@@ -584,6 +610,7 @@ pub struct Iommu {
     endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
     translate_response_senders: Option<BTreeMap<u32, Tube>>,
     translate_request_rx: Option<Tube>,
+    iommu_device_tube: Option<Tube>,
 }
 
 impl Iommu {
@@ -594,6 +621,7 @@ impl Iommu {
         phys_max_addr: u64,
         translate_response_senders: Option<BTreeMap<u32, Tube>>,
         translate_request_rx: Option<Tube>,
+        iommu_device_tube: Option<Tube>,
     ) -> SysResult<Iommu> {
         let mut page_size_mask = !0_u64;
         for (_, container) in endpoints.iter() {
@@ -637,6 +665,7 @@ impl Iommu {
             endpoints,
             translate_response_senders,
             translate_request_rx,
+            iommu_device_tube,
         })
     }
 }
@@ -718,33 +747,42 @@ impl VirtioDevice for Iommu {
         let translate_response_senders = self.translate_response_senders.take();
         let translate_request_rx = self.translate_request_rx.take();
 
-        let worker_result = thread::Builder::new()
-            .name("virtio_iommu".to_string())
-            .spawn(move || {
-                let mut worker = Worker {
-                    mem,
-                    page_mask,
-                    endpoint_map: BTreeMap::new(),
-                    domain_map: BTreeMap::new(),
-                };
-                let result = worker.run(
-                    queues,
-                    queue_evts,
-                    kill_evt,
-                    interrupt,
-                    eps,
-                    translate_response_senders,
-                    translate_request_rx,
-                );
-                if let Err(e) = result {
-                    error!("virtio-iommu worker thread exited with error: {}", e);
-                }
-                worker
-            });
+        match self.iommu_device_tube.take() {
+            Some(iommu_device_tube) => {
+                let worker_result = thread::Builder::new()
+                    .name("virtio_iommu".to_string())
+                    .spawn(move || {
+                        let mut worker = Worker {
+                            mem,
+                            page_mask,
+                            endpoint_map: BTreeMap::new(),
+                            domain_map: BTreeMap::new(),
+                        };
+                        let result = worker.run(
+                            iommu_device_tube,
+                            queues,
+                            queue_evts,
+                            kill_evt,
+                            interrupt,
+                            eps,
+                            translate_response_senders,
+                            translate_request_rx,
+                        );
+                        if let Err(e) = result {
+                            error!("virtio-iommu worker thread exited with error: {}", e);
+                        }
+                        worker
+                    });
 
-        match worker_result {
-            Err(e) => error!("failed to spawn virtio_iommu worker thread: {}", e),
-            Ok(join_handle) => self.worker_thread = Some(join_handle),
+                match worker_result {
+                    Err(e) => error!("failed to spawn virtio_iommu worker thread: {}", e),
+                    Ok(join_handle) => self.worker_thread = Some(join_handle),
+                }
+            }
+            None => {
+                error!("failed to start virtio-iommu worker: No control tube");
+                return;
+            }
         }
     }
 

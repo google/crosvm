@@ -996,6 +996,7 @@ pub fn create_iommu_device(
     endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
     translate_response_senders: Option<BTreeMap<u32, Tube>>,
     translate_request_rx: Option<Tube>,
+    iommu_device_tube: Tube,
 ) -> DeviceResult {
     let dev = virtio::Iommu::new(
         virtio::base_features(cfg.protected_vm),
@@ -1003,6 +1004,7 @@ pub fn create_iommu_device(
         phys_max_addr,
         translate_response_senders,
         translate_request_rx,
+        Some(iommu_device_tube),
     )
     .context("failed to create IOMMU device")?;
 
