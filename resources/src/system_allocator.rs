@@ -25,7 +25,7 @@ pub struct MemRegion {
 }
 
 pub struct SystemAllocatorConfig {
-    /// IO memory. Only for x86_64.
+    /// IO ports. Only for x86_64.
     pub io: Option<MemRegion>,
     /// Low (<=4GB) MMIO region.
     pub low_mmio: Vec<MemRegion>,
@@ -86,6 +86,11 @@ impl SystemAllocator {
 
         Ok(SystemAllocator {
             io_address_space: if let Some(io) = config.io {
+                // TODO make sure we don't overlap with existing well known
+                // ports such as 0xcf8 (serial ports).
+                if io.base > 0x1_0000 || io.size + io.base > 0x1_0000 {
+                    return Err(Error::IOPortOutOfRange(io.base, io.size));
+                }
                 Some(AddressAllocator::new(io.base, io.size, Some(0x400), None)?)
             } else {
                 None
