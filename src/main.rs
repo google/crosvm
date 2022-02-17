@@ -2391,6 +2391,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "s2idle" => {
             cfg.force_s2idle = true;
         }
+        "strict-balloon" => {
+            cfg.strict_balloon = true;
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -2776,6 +2779,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("pivot-root", "PATH", "Path to empty directory to use for sandbox pivot root."),
           #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("s2idle", "Set Low Power S0 Idle Capable Flag for guest Fixed ACPI Description Table"),
+          Argument::flag("strict-balloon", "Don't allow guest to use pages from the balloon"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

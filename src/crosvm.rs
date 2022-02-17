@@ -445,6 +445,7 @@ pub struct Config {
     pub rng: bool,
     pub pivot_root: Option<PathBuf>,
     pub force_s2idle: bool,
+    pub strict_balloon: bool,
 }
 
 impl Default for Config {
@@ -560,6 +561,7 @@ impl Default for Config {
             rng: true,
             pivot_root: None,
             force_s2idle: false,
+            strict_balloon: false,
         }
     }
 }

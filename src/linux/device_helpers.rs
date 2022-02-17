@@ -31,7 +31,7 @@ use devices::virtio::vhost::user::vmm::{
 };
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
-use devices::virtio::{self, Console, VirtioDevice};
+use devices::virtio::{self, BalloonMode, Console, VirtioDevice};
 use devices::IommuDevType;
 use devices::{self, BusDeviceObj, PciDevice, VfioDevice, VfioPciDevice, VfioPlatformDevice};
 use hypervisor::Vm;
@@ -499,6 +499,11 @@ pub fn create_balloon_device(
         tube,
         inflate_tube,
         init_balloon_size,
+        if cfg.strict_balloon {
+            BalloonMode::Strict
+        } else {
+            BalloonMode::Relaxed
+        },
     )
     .context("failed to create balloon")?;
 
