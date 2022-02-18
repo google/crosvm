@@ -292,7 +292,7 @@ impl VirtioPciDevice {
 
         Ok(VirtioPciDevice {
             config_regs,
-            pci_address: None,
+            pci_address: device.pci_address(),
             device,
             device_activated: false,
             interrupt_status: Arc::new(AtomicUsize::new(0)),

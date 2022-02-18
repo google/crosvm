@@ -40,7 +40,7 @@ use vm_memory::GuestAddress;
 
 use crate::{
     Config, DiskOption, TouchDeviceOption, VhostUserFsOption, VhostUserOption, VhostUserWlOption,
-    VhostVsockDeviceParameter,
+    VhostVsockDeviceParameter, VvuOption,
 };
 use arch::{self, VirtioDeviceStub};
 
@@ -214,14 +214,19 @@ pub fn create_vhost_user_snd_device(cfg: &Config, option: &VhostUserOption) -> D
     })
 }
 
-pub fn create_vvu_proxy_device(cfg: &Config, opt: &VhostUserOption, tube: Tube) -> DeviceResult {
+pub fn create_vvu_proxy_device(cfg: &Config, opt: &VvuOption, tube: Tube) -> DeviceResult {
     let listener = UnixListener::bind(&opt.socket).map_err(|e| {
         error!("failed to bind listener for vvu proxy device: {}", e);
         e
     })?;
 
-    let dev = VirtioVhostUser::new(virtio::base_features(cfg.protected_vm), listener, tube)
-        .context("failed to create VVU proxy device")?;
+    let dev = VirtioVhostUser::new(
+        virtio::base_features(cfg.protected_vm),
+        listener,
+        tube,
+        opt.addr,
+    )
+    .context("failed to create VVU proxy device")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),

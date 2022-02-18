@@ -113,4 +113,10 @@ pub trait VirtioDevice: Send {
     /// * `addr` - The guest address inside the BAR.
     /// * `data` - The data to write.
     fn write_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &[u8]) {}
+
+    /// Returns the PCI address where the device will be allocated.
+    /// Returns `None` if any address is good for the device.
+    fn pci_address(&self) -> Option<PciAddress> {
+        None
+    }
 }

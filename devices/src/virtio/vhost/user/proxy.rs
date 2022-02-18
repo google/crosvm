@@ -967,6 +967,9 @@ pub struct VirtioVhostUser {
 
     // To communicate with the worker thread.
     worker_thread_tube: Option<Tube>,
+
+    // PCI address that this device needs to be allocated if specified.
+    pci_address: Option<PciAddress>,
 }
 
 impl VirtioVhostUser {
@@ -974,6 +977,7 @@ impl VirtioVhostUser {
         base_features: u64,
         listener: UnixListener,
         main_process_tube: Tube,
+        pci_address: Option<PciAddress>,
     ) -> Result<VirtioVhostUser> {
         Ok(VirtioVhostUser {
             base_features,
@@ -992,6 +996,7 @@ impl VirtioVhostUser {
             sibling_connected: false,
             main_process_tube: Some(main_process_tube),
             worker_thread_tube: None,
+            pci_address,
         })
     }
 
@@ -1378,5 +1383,9 @@ impl VirtioDevice for VirtioVhostUser {
         // TODO(abhishekbh): Disconnect from sibling and reset
         // `sibling_connected`.
         false
+    }
+
+    fn pci_address(&self) -> Option<PciAddress> {
+        self.pci_address
     }
 }

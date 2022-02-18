@@ -33,8 +33,7 @@ use devices::virtio::VideoBackendType;
 use devices::Ac97Parameters;
 #[cfg(feature = "direct")]
 use devices::BusRange;
-use devices::IommuDevType;
-use devices::StubPciParameters;
+use devices::{IommuDevType, PciAddress, StubPciParameters};
 use hypervisor::ProtectionType;
 use libc::{getegid, geteuid};
 #[cfg(feature = "gpu")]
@@ -83,6 +82,12 @@ pub struct VhostUserFsOption {
 pub struct VhostUserWlOption {
     pub socket: PathBuf,
     pub vm_tube: PathBuf,
+}
+
+/// Options for virtio-vhost-user proxy device.
+pub struct VvuOption {
+    pub socket: PathBuf,
+    pub addr: Option<PciAddress>,
 }
 
 /// A bind mount for directories in the plugin process.
@@ -430,7 +435,7 @@ pub struct Config {
     pub no_legacy: bool,
     pub host_cpu_topology: bool,
     pub stub_pci_devices: Vec<StubPciParameters>,
-    pub vvu_proxy: Vec<VhostUserOption>,
+    pub vvu_proxy: Vec<VvuOption>,
     pub coiommu_param: Option<devices::CoIommuParameters>,
     pub file_backed_mappings: Vec<FileBackedMappingParameters>,
     pub init_memory: Option<u64>,

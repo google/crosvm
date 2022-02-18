@@ -28,7 +28,7 @@ use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
     platform, BindMount, Config, DiskOption, Executable, FileBackedMappingParameters, GidMap,
     SharedDir, TouchDeviceOption, VfioCommand, VhostUserFsOption, VhostUserOption,
-    VhostUserWlOption, VhostVsockDeviceParameter, DISK_ID_LEN,
+    VhostUserWlOption, VhostVsockDeviceParameter, VvuOption, DISK_ID_LEN,
 };
 use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
 #[cfg(feature = "audio_cras")]
@@ -2263,9 +2263,28 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "stub-pci-device" => {
             cfg.stub_pci_devices.push(parse_stub_pci_parameters(value)?);
         }
-        "vvu-proxy" => cfg.vvu_proxy.push(VhostUserOption {
-            socket: PathBuf::from(value.unwrap()),
-        }),
+        "vvu-proxy" => {
+            let opts: Vec<_> = value.unwrap().split(',').collect();
+            let socket = PathBuf::from(opts[0]);
+            let addr = match opts.get(1) {
+                Some(opt) => {
+                    let kvs = argument::parse_key_value_options("vvu-proxy", opt, ',')
+                        .collect::<Vec<_>>();
+                    if kvs.len() != 1 || kvs[0].key() != "addr" {
+                        return Err(argument::Error::InvalidValue {
+                            value: opt.to_string(),
+                            expected: String::from(
+                                "Please specify PCI address for VVU: addr=BUS:DEVICE.FUNCTION",
+                            ),
+                        });
+                    }
+                    Some(PciAddress::from_string(kvs[0].value()?))
+                }
+                None => None,
+            };
+
+            cfg.vvu_proxy.push(VvuOption { socket, addr });
+        }
         "coiommu" => {
             let mut params: devices::CoIommuParameters = Default::default();
             if let Some(v) = value {
@@ -2702,7 +2721,9 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("vhost-user-wl", "SOCKET_PATH:TUBE_PATH", "Paths to a vhost-user socket for wayland and a Tube socket for additional wayland-specific messages"),
           Argument::value("vhost-user-fs", "SOCKET_PATH:TAG",
                           "Path to a socket path for vhost-user fs, and tag for the shared dir"),
-          Argument::value("vvu-proxy", "SOCKET_PATH", "Socket path for the Virtio Vhost User proxy device"),
+          Argument::value("vvu-proxy", "SOCKET_PATH[,addr=DOMAIN:BUS:DEVICE.FUNCTION]", "Socket path for the Virtio Vhost User proxy device.
+                              Parameters
+                              addr=BUS:DEVICE.FUNCTION - PCI address that the proxy device will be allocated"),
           #[cfg(feature = "direct")]
           Argument::value("direct-pmio", "PATH@RANGE[,RANGE[,...]]", "Path and ranges for direct port mapped I/O access. RANGE may be decimal or hex (starting with 0x)."),
           #[cfg(feature = "direct")]
