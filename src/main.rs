@@ -2502,6 +2502,7 @@ enum CommandStatus {
     VmReset,
     VmStop,
     VmCrash,
+    GuestPanic,
 }
 
 fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
@@ -2805,6 +2806,10 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
             Ok(platform::ExitState::Crash) => {
                 info!("crosvm has exited due to a VM crash");
                 Ok(CommandStatus::VmCrash)
+            }
+            Ok(platform::ExitState::GuestPanic) => {
+                info!("crosvm has exited due to a kernel panic in guest");
+                Ok(CommandStatus::GuestPanic)
             }
             Err(e) => {
                 error!("crosvm has exited with error: {:#}", e);
@@ -3462,6 +3467,7 @@ fn main() {
         Ok(CommandStatus::Success | CommandStatus::VmStop) => 0,
         Ok(CommandStatus::VmReset) => 32,
         Ok(CommandStatus::VmCrash) => 33,
+        Ok(CommandStatus::GuestPanic) => 34,
         Err(_) => 1,
     };
     std::process::exit(exit_code);

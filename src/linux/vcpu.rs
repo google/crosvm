@@ -582,15 +582,19 @@ where
 
             let exit_evt = scoped_exit_evt.into();
             let final_event = match exit_reason {
-                ExitState::Stop => exit_evt,
-                ExitState::Reset => reset_evt,
-                ExitState::Crash => crash_evt,
+                ExitState::Stop => Some(exit_evt),
+                ExitState::Reset => Some(reset_evt),
+                ExitState::Crash => Some(crash_evt),
+                // vcpu_loop doesn't exit with GuestPanic.
+                ExitState::GuestPanic => None,
             };
-            if let Err(e) = final_event.write(1) {
-                error!(
-                    "failed to send final event {:?} on vcpu {}: {}",
-                    final_event, cpu_id, e
-                )
+            if let Some(final_event) = final_event {
+                if let Err(e) = final_event.write(1) {
+                    error!(
+                        "failed to send final event {:?} on vcpu {}: {}",
+                        final_event, cpu_id, e
+                    )
+                }
             }
         })
         .context("failed to spawn VCPU thread")

@@ -36,8 +36,8 @@ use devices::virtio::{self, EventDevice};
 use devices::Ac97Dev;
 use devices::{
     self, BusDeviceObj, HostHotPlugKey, HotPlugBus, IrqEventIndex, KvmKernelIrqChip, PciAddress,
-    PciBridge, PciDevice, PcieHostRootPort, PcieRootPort, StubPciDevice, VfioContainer,
-    VirtioPciDevice,
+    PciBridge, PciDevice, PcieHostRootPort, PcieRootPort, PvPanicCode, PvPanicPciDevice,
+    StubPciDevice, VfioContainer, VirtioPciDevice,
 };
 use devices::{CoIommuDev, IommuDevType};
 #[cfg(feature = "usb")]
@@ -446,6 +446,7 @@ fn create_devices(
     vm: &mut impl Vm,
     resources: &mut SystemAllocator,
     exit_evt: &Event,
+    panic_wrtube: Tube,
     phys_max_addr: u64,
     control_tubes: &mut Vec<TaggedControlTube>,
     wayland_device_tube: Tube,
@@ -621,6 +622,8 @@ fn create_devices(
         // Stub devices don't need jailing since they don't do anything.
         devices.push((Box::new(StubPciDevice::new(params)), None));
     }
+
+    devices.push((Box::new(PvPanicPciDevice::new(panic_wrtube)), None));
 
     Ok(devices)
 }
@@ -850,6 +853,7 @@ pub enum ExitState {
     Reset,
     Stop,
     Crash,
+    GuestPanic,
 }
 
 pub fn run_config(cfg: Config) -> Result<ExitState> {
@@ -1083,6 +1087,7 @@ where
     let exit_evt = Event::new().context("failed to create event")?;
     let reset_evt = Event::new().context("failed to create event")?;
     let crash_evt = Event::new().context("failed to create event")?;
+    let (panic_rdtube, panic_wrtube) = Tube::pair().context("failed to create tube")?;
     let mut sys_allocator = Arch::create_system_allocator(&vm);
 
     // Allocate the ramoops region first. AArch64::build_vm() assumes this.
@@ -1120,6 +1125,7 @@ where
         &mut vm,
         &mut sys_allocator,
         &exit_evt,
+        panic_wrtube,
         phys_max_addr,
         &mut control_tubes,
         wayland_device_tube,
@@ -1280,6 +1286,7 @@ where
         exit_evt,
         reset_evt,
         crash_evt,
+        panic_rdtube,
         sigchld_fd,
         Arc::clone(&map_request),
         gralloc,
@@ -1407,6 +1414,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     exit_evt: Event,
     reset_evt: Event,
     crash_evt: Event,
+    panic_rdtube: Tube,
     sigchld_fd: SignalFd,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     mut gralloc: RutabagaGralloc,
@@ -1417,6 +1425,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         Exit,
         Reset,
         Crash,
+        Panic,
         Suspend,
         ChildSignal,
         IrqFd { index: IrqEventIndex },
@@ -1432,6 +1441,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         (&exit_evt, Token::Exit),
         (&reset_evt, Token::Reset),
         (&crash_evt, Token::Crash),
+        (&panic_rdtube, Token::Panic),
         (&linux.suspend_evt, Token::Suspend),
         (&sigchld_fd, Token::ChildSignal),
     ])
@@ -1603,6 +1613,26 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     info!("vcpu crashed");
                     exit_state = ExitState::Crash;
                     break 'wait;
+                }
+                Token::Panic => {
+                    let mut break_to_wait: bool = true;
+                    match panic_rdtube.recv::<u8>() {
+                        Ok(panic_code) => {
+                            let panic_code = PvPanicCode::from_u8(panic_code);
+                            info!("Guest reported panic [Code: {}]", panic_code);
+                            if panic_code == PvPanicCode::CrashLoaded {
+                                // VM is booting to crash kernel.
+                                break_to_wait = false;
+                            }
+                        }
+                        Err(e) => {
+                            warn!("failed to recv panic event: {} ", e);
+                        }
+                    }
+                    if break_to_wait {
+                        exit_state = ExitState::GuestPanic;
+                        break 'wait;
+                    }
                 }
                 Token::Suspend => {
                     info!("VM requested suspend");

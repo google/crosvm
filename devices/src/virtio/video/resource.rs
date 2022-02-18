@@ -319,8 +319,8 @@ impl GuestResource {
 
 #[cfg(test)]
 mod tests {
-    use base::{MappedRegion, SafeDescriptor, SharedMemory};
     use super::*;
+    use base::{MappedRegion, SafeDescriptor, SharedMemory};
 
     /// Creates a sparse guest memory handle using as many pages as there are entries in
     /// `page_order`. The page with index `0` will be the first page, `1` will be the second page,

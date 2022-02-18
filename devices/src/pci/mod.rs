@@ -19,6 +19,7 @@ mod pci_configuration;
 mod pci_device;
 mod pci_root;
 mod pcie;
+mod pvpanic;
 mod stub;
 mod vfio_pci;
 
@@ -35,6 +36,7 @@ pub use self::pci_configuration::{
 pub use self::pci_device::{BarRange, Error as PciDeviceError, PciDevice};
 pub use self::pci_root::{PciConfigIo, PciConfigMmio, PciRoot};
 pub use self::pcie::{PciBridge, PcieHostRootPort, PcieRootPort};
+pub use self::pvpanic::{PvPanicCode, PvPanicPciDevice};
 pub use self::stub::{StubPciDevice, StubPciParameters};
 pub use self::vfio_pci::VfioPciDevice;
 
@@ -54,3 +56,4 @@ impl PciInterruptPin {
 }
 
 pub const PCI_VENDOR_ID_INTEL: u16 = 0x8086;
+pub const PCI_VENDOR_ID_REDHAT: u16 = 0x1b36;
