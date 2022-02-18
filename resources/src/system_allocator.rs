@@ -53,9 +53,9 @@ pub struct SystemAllocator {
 }
 
 impl SystemAllocator {
-    /// Creates a new `SystemAllocator` for managing addresses and irq numvers.
-    /// Can return `None` if `base` + `size` overflows a u64 or if alignment isn't a power
-    /// of two.
+    /// Creates a new `SystemAllocator` for managing addresses and irq numbers.
+    /// Will return an error if `base` + `size` overflows u64 (or allowed
+    /// maximum for the specific type), or if alignment isn't a power of two.
     ///
     pub fn new(config: SystemAllocatorConfig) -> Result<Self> {
         let page_size = pagesize() as u64;
