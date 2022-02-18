@@ -16,27 +16,34 @@
 #    $ bin/fmt --check
 #
 
-from impl.common import CROSVM_ROOT, cwd, run_main, cmd, chdir
+from impl.common import CROSVM_ROOT, parallel, run_main, cmd, chdir
+from pathlib import Path
 
-cargo = cmd("cargo")
 mdformat = cmd("mdformat")
-find = cmd("find")
+rustfmt = cmd(cmd("rustup which rustfmt"))
+
+# How many files to check at once in each thread.
+BATCH_SIZE = 8
+
+
+def find_sources(extension: str):
+    for file in Path(".").glob(f"**/{extension}"):
+        if file.is_relative_to("third_party"):
+            continue
+        if "target" in file.parts:
+            continue
+        yield str(file)
 
 
 def main(check: bool = False):
     chdir(CROSVM_ROOT)
     check_arg = "--check" if check else None
 
-    print("Format crosvm workspace")
-    cargo("fmt --all --", check_arg).fg()
-
-    for crate in CROSVM_ROOT.glob("common/*/Cargo.toml"):
-        print("Format", crate.parent.relative_to(CROSVM_ROOT))
-        with cwd(crate.parent):
-            cargo("fmt --", check_arg).fg()
-
-    print("Format markdown docs")
-    mdformat("--wrap 100", check_arg, find(".", "-name *.md -not -path ./third_party/*")).fg()
+    print(f"{'Checking' if check else 'Formatting'}: Rust, Markdown")
+    parallel(
+        *rustfmt(check_arg).foreach(find_sources("*.rs"), batch_size=BATCH_SIZE),
+        *mdformat("--wrap 100", check_arg).foreach(find_sources("*.md"), batch_size=BATCH_SIZE),
+    ).fg()
 
 
 run_main(main)

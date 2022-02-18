@@ -24,9 +24,10 @@ import subprocess
 import sys
 import traceback
 from io import StringIO
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from subprocess import DEVNULL, PIPE, STDOUT  # type: ignore
-from typing import Any, Callable, Iterable, NamedTuple, Optional, Union
+from typing import Any, Callable, Iterable, NamedTuple, Optional, TypeVar, Union
 
 try:
     import argh  # type: ignore
@@ -172,7 +173,7 @@ class Command(object):
             )
 
         if result.returncode != 0:
-            if quiet:
+            if quiet and result.stdout:
                 print(result.stdout)
             if check:
                 raise subprocess.CalledProcessError(result.returncode, str(self), result.stdout)
@@ -207,7 +208,7 @@ class Command(object):
         if len(args) == 1 and isinstance(args[0], Command):
             cmd = Command(stdin_cmd=self)
             cmd.args = args[0].args
-            return cmd.args
+            return cmd
         else:
             return Command(*args, stdin_cmd=self)
 
@@ -250,6 +251,27 @@ class Command(object):
             stdin=self.__stdin_stream(),
             text=True,
         )
+
+    def foreach(self, arguments: Iterable[Any], batch_size: int = 1):
+        """
+        Yields a new command for each entry in `arguments`.
+
+        The argument is appended to each command and is intended to be used in
+        conjunction with `parallel()` to execute a command on a list of arguments in
+        parallel.
+
+        >>> parallel(*cmd('echo').foreach((1, 2, 3))).stdout()
+        ['1', '2', '3']
+
+        Arguments can also be batched by setting batch_size > 1, which will append multiple
+        arguments to each command.
+
+        >>> parallel(*cmd('echo').foreach((1, 2, 3), batch_size=2)).stdout()
+        ['1 2', '3']
+
+        """
+        for batch in batched(arguments, batch_size):
+            yield self(*batch)
 
     def __call__(self, *args: Any):
         """Returns a new Command with added arguments.
@@ -325,6 +347,29 @@ class Command(object):
             return [*Command.__shell_like_split(str(arg))]
 
 
+class ParallelCommands(object):
+    """
+    Allows commands to be run in parallel.
+
+    >>> parallel(cmd('true'), cmd('false')).fg(check=False)
+    [0, 1]
+
+    >>> parallel(cmd('echo a'), cmd('echo b')).stdout()
+    ['a', 'b']
+    """
+
+    def __init__(self, *commands: Command):
+        self.commands = commands
+
+    def fg(self, quiet: bool = True, check: bool = True):
+        with ThreadPool(os.cpu_count()) as pool:
+            return pool.map(lambda command: command.fg(quiet=quiet, check=check), self.commands)
+
+    def stdout(self):
+        with ThreadPool(os.cpu_count()) as pool:
+            return pool.map(lambda command: command.stdout(), self.commands)
+
+
 @contextlib.contextmanager
 def cwd_context(path: PathLike):
     """Context for temporarily changing the cwd.
@@ -365,10 +410,26 @@ class QuotedString(object):
         return f'"{self.value}"'
 
 
+T = TypeVar("T")
+
+
+def batched(source: Iterable[T], batch_size: int) -> Iterable[list[T]]:
+    """
+    Returns an iterator over batches of elements from source_list.
+
+    >>> list(batched([1, 2, 3, 4, 5], batch_size=2))
+    [[1, 2], [3, 4], [5]]
+    """
+    source_list = list(source)
+    for index in range(0, len(source_list), batch_size):
+        yield source_list[index : min(index + batch_size, len(source_list))]
+
+
 # Shorthands
 quoted = QuotedString
 cmd = Command
 cwd = cwd_context
+parallel = ParallelCommands
 
 
 def run_main(main_fn: Callable[..., Any]):
