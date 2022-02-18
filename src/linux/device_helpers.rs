@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fs::{File, OpenOptions};
 use std::net::Ipv4Addr;
+use std::ops::RangeInclusive;
 use std::os::unix::net::UnixListener;
 use std::os::unix::{io::FromRawFd, net::UnixStream, prelude::OpenOptionsExt};
 use std::path::{Path, PathBuf};
@@ -994,6 +995,7 @@ pub fn create_iommu_device(
     cfg: &Config,
     phys_max_addr: u64,
     endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
+    hp_endpoints_ranges: Vec<RangeInclusive<u32>>,
     translate_response_senders: Option<BTreeMap<u32, Tube>>,
     translate_request_rx: Option<Tube>,
     iommu_device_tube: Tube,
@@ -1002,6 +1004,7 @@ pub fn create_iommu_device(
         virtio::base_features(cfg.protected_vm),
         endpoints,
         phys_max_addr,
+        hp_endpoints_ranges,
         translate_response_senders,
         translate_request_rx,
         Some(iommu_device_tube),

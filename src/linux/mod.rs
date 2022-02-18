@@ -10,6 +10,7 @@ use std::io::prelude::*;
 use std::io::stdin;
 use std::iter;
 use std::mem;
+use std::ops::RangeInclusive;
 #[cfg(feature = "gpu")]
 use std::os::unix::net::UnixStream;
 use std::os::unix::prelude::OpenOptionsExt;
@@ -448,7 +449,7 @@ fn create_devices(
     resources: &mut SystemAllocator,
     exit_evt: &Event,
     panic_wrtube: Tube,
-    phys_max_addr: u64,
+    iommu_attached_endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
     control_tubes: &mut Vec<TaggedControlTube>,
     wayland_device_tube: Tube,
     gpu_device_tube: Tube,
@@ -465,8 +466,6 @@ fn create_devices(
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
     let mut balloon_inflate_tube: Option<Tube> = None;
-    let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>> =
-        BTreeMap::new();
     if !cfg.vfio.is_empty() {
         let mut coiommu_attached_endpoints = Vec::new();
 
@@ -483,7 +482,7 @@ fn create_devices(
                 control_tubes,
                 vfio_path.as_path(),
                 None,
-                &mut iommu_attached_endpoints,
+                iommu_attached_endpoints,
                 Some(&mut coiommu_attached_endpoints),
                 vfio_dev.iommu_dev_type(),
             )?;
@@ -503,7 +502,7 @@ fn create_devices(
                 resources,
                 control_tubes,
                 vfio_path.as_path(),
-                &mut iommu_attached_endpoints,
+                iommu_attached_endpoints,
                 IommuDevType::NoIommu, // Virtio IOMMU is not supported yet
             )?;
 
@@ -610,33 +609,6 @@ fn create_devices(
     }
 
     devices.push((Box::new(PvPanicPciDevice::new(panic_wrtube)), None));
-
-    let (translate_response_senders, request_rx) =
-        setup_virtio_access_platform(resources, &mut iommu_attached_endpoints, &mut devices)?;
-
-    if !iommu_attached_endpoints.is_empty() {
-        let (_iommu_host_tube, iommu_device_tube) =
-            Tube::pair().context("failed to create tube")?;
-        let iommu_dev = create_iommu_device(
-            cfg,
-            phys_max_addr,
-            iommu_attached_endpoints,
-            translate_response_senders,
-            request_rx,
-            iommu_device_tube,
-        )?;
-
-        let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-        control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
-        let mut dev = VirtioPciDevice::new(vm.get_memory().clone(), iommu_dev.dev, msi_device_tube)
-            .context("failed to create virtio pci dev")?;
-        // early reservation for viommu.
-        dev.allocate_address(resources)
-            .context("failed to allocate resources early for virtio pci dev")?;
-        let dev = Box::new(dev);
-        devices.push((dev, iommu_dev.jail));
-    }
-
     Ok(devices)
 }
 
@@ -696,6 +668,7 @@ fn create_pcie_root_port(
     control_tubes: &mut Vec<TaggedControlTube>,
     devices: &mut Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
     hp_vec: &mut Vec<Arc<Mutex<dyn HotPlugBus>>>,
+    hp_endpoints_ranges: &mut Vec<RangeInclusive<u32>>,
 ) -> Result<()> {
     if host_pcie_rp.is_empty() {
         // user doesn't specify host pcie root port which link to this virtual pcie rp,
@@ -726,6 +699,21 @@ fn create_pcie_root_port(
         let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
         control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
         let pci_bridge = Box::new(PciBridge::new(pcie_root_port.clone(), msi_device_tube));
+
+        hp_endpoints_ranges.push(RangeInclusive::new(
+            PciAddress {
+                bus: pci_bridge.get_secondary_num(),
+                dev: 0,
+                func: 0,
+            }
+            .to_u32(),
+            PciAddress {
+                bus: pci_bridge.get_subordinate_num(),
+                dev: 32,
+                func: 8,
+            }
+            .to_u32(),
+        ));
 
         devices.push((pci_bridge, None));
         hp_vec.push(pcie_root_port as Arc<Mutex<dyn HotPlugBus>>);
@@ -761,6 +749,21 @@ fn create_pcie_root_port(
                     pci_bridge.debug_label()
                 );
             }
+
+            hp_endpoints_ranges.push(RangeInclusive::new(
+                PciAddress {
+                    bus: pci_bridge.get_secondary_num(),
+                    dev: 0,
+                    func: 0,
+                }
+                .to_u32(),
+                PciAddress {
+                    bus: pci_bridge.get_subordinate_num(),
+                    dev: 32,
+                    func: 8,
+                }
+                .to_u32(),
+            ));
 
             devices.push((pci_bridge, None));
             hp_vec.push(pcie_root_port as Arc<Mutex<dyn HotPlugBus>>);
@@ -1113,8 +1116,6 @@ where
 
     create_file_backed_mappings(&cfg, &mut vm, &mut sys_allocator)?;
 
-    let phys_max_addr = (1u64 << vm.get_guest_phys_addr_bits()) - 1;
-
     #[cfg(feature = "gpu")]
     // Hold on to the render server jail so it keeps running until we exit run_vm()
     let (_render_server_jail, render_server_fd) =
@@ -1132,13 +1133,15 @@ where
         }))
         .context("failed to calculate init balloon size")?;
 
+    let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>> =
+        BTreeMap::new();
     let mut devices = create_devices(
         &cfg,
         &mut vm,
         &mut sys_allocator,
         &exit_evt,
         panic_wrtube,
-        phys_max_addr,
+        &mut iommu_attached_endpoints,
         &mut control_tubes,
         wayland_device_tube,
         gpu_device_tube,
@@ -1156,6 +1159,8 @@ where
         &mut vvu_proxy_device_tubes,
     )?;
 
+    let mut hp_endpoints_ranges: Vec<RangeInclusive<u32>> = Vec::new();
+
     let mut hotplug_buses: Vec<Arc<Mutex<dyn HotPlugBus>>> = Vec::new();
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
@@ -1171,7 +1176,38 @@ where
             &mut control_tubes,
             &mut devices,
             &mut hotplug_buses,
+            &mut hp_endpoints_ranges,
         )?;
+    }
+
+    let (translate_response_senders, request_rx) = setup_virtio_access_platform(
+        &mut sys_allocator,
+        &mut iommu_attached_endpoints,
+        &mut devices,
+    )?;
+
+    if !iommu_attached_endpoints.is_empty() {
+        let (_iommu_host_tube, iommu_device_tube) =
+            Tube::pair().context("failed to create tube")?;
+        let iommu_dev = create_iommu_device(
+            &cfg,
+            (1u64 << vm.get_guest_phys_addr_bits()) - 1,
+            iommu_attached_endpoints,
+            hp_endpoints_ranges,
+            translate_response_senders,
+            request_rx,
+            iommu_device_tube,
+        )?;
+
+        let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
+        control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+        let mut dev = VirtioPciDevice::new(vm.get_memory().clone(), iommu_dev.dev, msi_device_tube)
+            .context("failed to create virtio pci dev")?;
+        // early reservation for viommu.
+        dev.allocate_address(&mut sys_allocator)
+            .context("failed to allocate resources early for virtio pci dev")?;
+        let dev = Box::new(dev);
+        devices.push((dev, iommu_dev.jail));
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

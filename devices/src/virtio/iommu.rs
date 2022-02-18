@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::mem::size_of;
+use std::ops::RangeInclusive;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::{result, thread};
@@ -143,7 +144,7 @@ struct Worker {
     endpoint_map: BTreeMap<u32, u32>,
     // All attached domains
     // key: domain ID
-    // value: reference counter and VfioContainer
+    // value: reference counter and MemoryMapperTrait
     domain_map: BTreeMap<u32, (u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>)>,
 }
 
@@ -608,6 +609,9 @@ pub struct Iommu {
     config: virtio_iommu_config,
     avail_features: u64,
     endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
+    // Hot-pluggable PCI endpoints ranges
+    // RangeInclusive: (start endpoint PCI address .. =end endpoint PCI address)
+    hp_endpoints_ranges: Vec<RangeInclusive<u32>>,
     translate_response_senders: Option<BTreeMap<u32, Tube>>,
     translate_request_rx: Option<Tube>,
     iommu_device_tube: Option<Tube>,
@@ -619,6 +623,7 @@ impl Iommu {
         base_features: u64,
         endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
         phys_max_addr: u64,
+        hp_endpoints_ranges: Vec<RangeInclusive<u32>>,
         translate_response_senders: Option<BTreeMap<u32, Tube>>,
         translate_request_rx: Option<Tube>,
         iommu_device_tube: Option<Tube>,
@@ -663,6 +668,7 @@ impl Iommu {
             config,
             avail_features,
             endpoints,
+            hp_endpoints_ranges,
             translate_response_senders,
             translate_request_rx,
             iommu_device_tube,
@@ -813,7 +819,7 @@ impl VirtioDevice for Iommu {
         );
         viot.append(VirtioIommuViotHeader {
             // # of PCI range nodes + 1 virtio-pci node
-            node_count: (self.endpoints.len() + 1) as u16,
+            node_count: (self.endpoints.len() + self.hp_endpoints_ranges.len() + 1) as u16,
             node_offset: (viot.len() + std::mem::size_of::<VirtioIommuViotHeader>()) as u16,
             ..Default::default()
         });
@@ -844,6 +850,20 @@ impl VirtioDevice for Iommu {
                 ..Default::default()
             });
         }
+
+        for endpoints_range in self.hp_endpoints_ranges.iter() {
+            let (endpoint_start, endpoint_end) = endpoints_range.clone().into_inner();
+            viot.append(VirtioIommuViotPciRangeNode {
+                type_: VIRTIO_IOMMU_VIOT_NODE_PCI_RANGE,
+                length: size_of::<VirtioIommuViotPciRangeNode>() as u16,
+                endpoint_start,
+                bdf_start: endpoint_start as u16,
+                bdf_end: endpoint_end as u16,
+                output_node: iommu_offset as u16,
+                ..Default::default()
+            });
+        }
+
         sdts.push(viot);
         Some(sdts)
     }

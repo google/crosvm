@@ -156,6 +156,14 @@ impl PciBridge {
             );
         }
     }
+
+    pub fn get_secondary_num(&self) -> u8 {
+        self.bus_range.secondary
+    }
+
+    pub fn get_subordinate_num(&self) -> u8 {
+        self.bus_range.subordinate
+    }
 }
 
 impl PciDevice for PciBridge {
