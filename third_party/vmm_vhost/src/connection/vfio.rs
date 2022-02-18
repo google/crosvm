@@ -29,11 +29,11 @@ pub trait Device {
         fds: Option<&[RawFd]>,
     ) -> std::result::Result<usize, anyhow::Error>;
 
-    /// Receives data into the given slice of slices.
+    /// Receives data into the given slice of slices and returns the size of the received data.
     fn recv_into_bufs(
         &mut self,
         iovs: &mut [IoSliceMut],
-    ) -> std::result::Result<(usize, Option<Vec<File>>), anyhow::Error>;
+    ) -> std::result::Result<usize, anyhow::Error>;
 }
 
 /// Listener for accepting incoming connections from virtio-vhost-user device through VFIO.
@@ -101,9 +101,13 @@ impl<R: Req, D: Device> EndpointTrait<R> for Endpoint<R, D> {
         bufs: &mut [IoSliceMut],
         _allow_fd: bool, /* ignore, as VFIO doesn't receive FDs */
     ) -> Result<(usize, Option<Vec<File>>)> {
-        self.device
+        let size = self
+            .device
             .recv_into_bufs(bufs)
-            .map_err(Error::VfioDeviceError)
+            .map_err(Error::VfioDeviceError)?;
+
+        // VFIO backend doesn't receive files.
+        Ok((size, None))
     }
 }
 

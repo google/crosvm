@@ -4,7 +4,6 @@
 
 //! Implement a struct that works as a `vmm_vhost`'s backend.
 
-use std::fs::File;
 use std::io::{IoSlice, IoSliceMut};
 use std::mem;
 use std::os::unix::io::RawFd;
@@ -204,7 +203,7 @@ impl VfioDeviceTrait for VvuDevice {
         Ok(size)
     }
 
-    fn recv_into_bufs(&mut self, bufs: &mut [IoSliceMut]) -> Result<(usize, Option<Vec<File>>)> {
+    fn recv_into_bufs(&mut self, bufs: &mut [IoSliceMut]) -> Result<usize> {
         let (rxq_receiver, rxq_notifier, rxq_buf, vfio) = match &mut self.state {
             DeviceState::Initialized { .. } => {
                 bail!("VvuDevice hasn't started yet");
@@ -235,6 +234,6 @@ impl VfioDeviceTrait for VvuDevice {
             rxq_notifier.lock().notify(vfio, QueueType::Rx as u16);
         }
 
-        Ok((size, None))
+        Ok(size)
     }
 }
