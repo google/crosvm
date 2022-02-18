@@ -2044,6 +2044,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             let vfio_dev = VfioCommand::new(vfio_type, value.unwrap())?;
             cfg.vfio.push(vfio_dev);
         }
+        "virtio-iommu" => {
+            cfg.virtio_iommu = true;
+        }
         #[cfg(feature = "video-decoder")]
         "video-decoder" => {
             cfg.video_dec = Some(parse_video_options(value)?);
@@ -2699,6 +2702,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
           Argument::value("vfio", "PATH[,iommu=on|off]", "Path to sysfs of PCI pass through or mdev device.
 iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("vfio-platform", "PATH", "Path to sysfs of platform pass through"),
+          Argument::flag("virtio-iommu", "Add a virtio-iommu device"),
           #[cfg(feature = "video-decoder")]
           Argument::flag_or_value("video-decoder", "[backend]", "(EXPERIMENTAL) enable virtio-video decoder device
                               Possible backend values: libvda"),

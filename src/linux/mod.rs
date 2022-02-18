@@ -1186,7 +1186,7 @@ where
         &mut devices,
     )?;
 
-    let iommu_host_tube = if !iommu_attached_endpoints.is_empty() {
+    let iommu_host_tube = if !iommu_attached_endpoints.is_empty() || cfg.virtio_iommu {
         let (iommu_host_tube, iommu_device_tube) = Tube::pair().context("failed to create tube")?;
         let iommu_dev = create_iommu_device(
             &cfg,
