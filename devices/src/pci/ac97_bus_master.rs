@@ -568,7 +568,7 @@ impl Ac97BusMaster {
             StreamDirection::Playback => [0, 0],
         };
 
-        // Create a `sys_util::SharedMemory` object from a descriptor backing `self.mem`.
+        // Create a `base::SharedMemory` object from a descriptor backing `self.mem`.
         // This creation is expected to succeed because we can assume that `self.mem` was created
         // from a `SharedMemory` object and its type was generalized to `dyn AsRawDescriptor`.
         let desc: &dyn AsRawDescriptor = self

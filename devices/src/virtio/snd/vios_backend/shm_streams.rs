@@ -17,7 +17,9 @@ use audio_streams::shm_streams::{
 };
 use audio_streams::{BoxError, SampleFormat, StreamDirection, StreamEffect};
 
-use base::{error, MemoryMapping, MemoryMappingBuilder, SharedMemory, SharedMemoryUnix};
+use base::{
+    error, Error as SysError, MemoryMapping, MemoryMappingBuilder, SharedMemory, SharedMemoryUnix,
+};
 use data_model::VolatileMemory;
 use sync::Mutex;
 
@@ -26,8 +28,6 @@ use std::os::unix::io::{FromRawFd, RawFd};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-
-use sys_util::Error as SysError;
 
 use super::shm_vios::{Error, Result};
 

@@ -6,15 +6,16 @@
 import argparse
 from pathlib import Path
 import re
-import subprocess
 import sys
 
 
 USAGE = """\
 Checks code hygiene of a given directory.
 
-The tool verifies that not code under given directory has conditionally
-compiled platform specific code.
+The tool verifies that
+- code under given directory has no conditionally compiled platform specific code.
+- crates in current directory, excluding crates in ./common/, do not depend on
+  on sys_util, sys_util_core or on win_sys_util.
 
 To check
 
@@ -22,6 +23,8 @@ To check
 
 On finding platform specific code, the tool prints the file, line number and the
 line containing conditional compilation.
+On finding dependency on sys_util, sys_util_core or on win_sys_util, the tool prints
+the names of crates.
 """
 
 
@@ -38,32 +41,66 @@ def has_platform_dependent_code(rootdir: Path):
     if not rootdir.is_dir():
         return False, "'" + str(rootdir) + "' does not exists or is not a directory"
 
-    cfg_unix = 'cfg.*unix'
-    cfg_linux = 'cfg.*linux'
-    cfg_windows = 'cfg.*windows'
-    cfg_android = 'cfg.*android'
-    target_os = 'target_os = '
+    cfg_unix = "cfg.*unix"
+    cfg_linux = "cfg.*linux"
+    cfg_windows = "cfg.*windows"
+    cfg_android = "cfg.*android"
+    target_os = "target_os = "
 
-    target_os_pattern = re.compile('%s|%s|%s|%s|%s' % (
-        cfg_android, cfg_linux, cfg_unix, cfg_windows, target_os))
+    target_os_pattern = re.compile(
+        "%s|%s|%s|%s|%s" % (cfg_android, cfg_linux, cfg_unix, cfg_windows, target_os)
+    )
 
-    for file_path in rootdir.rglob('**/*.rs'):
+    for file_path in rootdir.rglob("**/*.rs"):
         for line_number, line in enumerate(open(file_path, encoding="utf8")):
             if re.search(target_os_pattern, line):
-                return False, str(file_path) + ':' + str(line_number) + ':' + line
+                return False, str(file_path) + ":" + str(line_number) + ":" + line
     return True, ""
+
+
+def is_sys_util_independent():
+    """Recursively searches for that depend on sys_util, sys_util_core or win_util.
+    Does not search crates in common/ as they are allowed to be platform specific.
+    Returns false and a list of crates that depend on those crates. Otherwise
+    returns true and am empty list.
+
+    """
+
+    crates: list[str] = []
+    sys_util_crates = re.compile("sys_util|sys_util_core|win_sys_util")
+    files: list[Path] = list(Path(".").glob("**/Cargo.toml"))
+    files.extend(Path("src").glob("**/*.rs"))
+
+    # Exclude common as it is allowed to depend on sys_util and exclude Cargo.toml
+    # from root directory as it contains workspace related entries for sys_util.
+    files[:] = [
+        file for file in files if not file.is_relative_to("common") and str(file) != "Cargo.toml"
+    ]
+
+    for file_path in files:
+        with open(file_path) as open_file:
+            for line in open_file:
+                if sys_util_crates.match(line):
+                    crates.append(str(file_path))
+
+    return not crates, crates
 
 
 def main():
     parser = argparse.ArgumentParser(usage=USAGE)
-    parser.add_argument('path', type=Path,
-                        help="Path of the directory to check.")
+    parser.add_argument("path", type=Path, help="Path of the directory to check.")
     args = parser.parse_args()
 
-    is_hygiene, error = has_platform_dependent_code(args.path)
-    if not is_hygiene:
+    hygiene, error = has_platform_dependent_code(args.path)
+    if not hygiene:
         print("Error: Platform dependent code not allowed in sys_util_core crate.")
         print("Offending line: " + error)
+        sys.exit(-1)
+
+    hygiene, crates = is_sys_util_independent()
+    if not hygiene:
+        print("Error: Following files depend on sys_util, sys_util_core or on win_sys_util")
+        print(crates)
         sys.exit(-1)
 
 

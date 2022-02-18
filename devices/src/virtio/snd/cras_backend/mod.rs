@@ -14,7 +14,9 @@ use std::thread;
 
 use anyhow::Context;
 use audio_streams::{SampleFormat, StreamSource};
-use base::{error, warn, Error as SysError, Event, RawDescriptor};
+use base::{
+    error, set_rt_prio_limit, set_rt_round_robin, warn, Error as SysError, Event, RawDescriptor,
+};
 use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::{AsyncError, EventAsync, Executor};
 use data_model::DataInit;
@@ -24,7 +26,6 @@ use futures::channel::{
 };
 use futures::{pin_mut, select, Future, FutureExt, TryFutureExt};
 use libcras::{BoxError, CrasClient, CrasClientType, CrasSocketType};
-use sys_util::{set_rt_prio_limit, set_rt_round_robin};
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 

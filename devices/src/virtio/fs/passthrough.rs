@@ -21,7 +21,7 @@ use std::{
 };
 
 use base::{
-    error, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr, ioctl_with_mut_ptr, ioctl_with_ptr,
+    error, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr, ioctl_with_mut_ptr, ioctl_with_ptr, syscall,
     AsRawDescriptor, FileFlags, FromRawDescriptor, RawDescriptor,
 };
 use data_model::DataInit;
@@ -33,7 +33,6 @@ use fuse::filesystem::{
 use fuse::sys::WRITE_KILL_PRIV;
 use fuse::Mapper;
 use sync::Mutex;
-use sys_util::syscall;
 
 #[cfg(feature = "chromeos")]
 use {
@@ -1037,7 +1036,7 @@ impl PassthroughFs {
                 let mut proto: SetMediaRWDataFileProjectIdRequest = Message::new();
                 proto.project_id = in_attr.fsx_projid;
                 // Safe because data is a valid file descriptor.
-                let fd = unsafe { dbus::arg::OwnedFd::new(sys_util::clone_descriptor(&*data)?) };
+                let fd = unsafe { dbus::arg::OwnedFd::new(base::clone_descriptor(&*data)?) };
                 match proxy.set_media_rwdata_file_project_id(fd, proto.write_to_bytes().unwrap()) {
                     Ok(r) => {
                         let r = protobuf::parse_from_bytes::<SetMediaRWDataFileProjectIdReply>(&r)

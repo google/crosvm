@@ -19,7 +19,7 @@ import test_target
 from test_target import TestTarget
 import testvm
 from test_config import CRATE_OPTIONS, TestOption, BUILD_FEATURES
-from check_code_hygiene import has_platform_dependent_code
+from check_code_hygiene import has_platform_dependent_code, is_sys_util_independent
 
 USAGE = """\
 Runs tests for crosvm locally, in a vm or on a remote device.
@@ -393,10 +393,16 @@ def main():
         testvm.build_if_needed(target.vm)
         testvm.up(target.vm)
 
-    is_hygiene, error = has_platform_dependent_code(Path("common/sys_util_core"))
-    if not is_hygiene:
+    hygiene, error = has_platform_dependent_code(Path("common/sys_util_core"))
+    if not hygiene:
         print("Error: Platform dependent code not allowed in sys_util_core crate.")
         print("Offending line: " + error)
+        sys.exit(-1)
+
+    hygiene, crates = is_sys_util_independent()
+    if not hygiene:
+        print("Error: Following files depend on sys_util, sys_util_core or on win_sys_util")
+        print(crates)
         sys.exit(-1)
 
     executables = list(build_all_binaries(target, build_arch))

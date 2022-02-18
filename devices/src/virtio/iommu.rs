@@ -279,7 +279,7 @@ impl Worker {
 
             match vfio_map_result {
                 Ok(()) => (),
-                Err(e) => match sys_util::Error::last() {
+                Err(e) => match base::Error::last() {
                     err if err.errno() == libc::EEXIST => {
                         // If a mapping already exists in the requested range,
                         // the device SHOULD reject the request and set status

@@ -8,9 +8,9 @@ use std::convert::TryInto;
 use std::fmt;
 
 use base::{
-    self, FromRawDescriptor, IntoRawDescriptor, MemoryMappingArena, MmapError, SafeDescriptor,
+    self, FromRawDescriptor, IntoRawDescriptor, MemoryMapping, MemoryMappingArena, MmapError,
+    SafeDescriptor,
 };
-use sys_util::MemoryMapping;
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 use thiserror::Error as ThisError;
@@ -316,7 +316,7 @@ impl GuestResource {
 #[cfg(test)]
 mod tests {
     use base::{MappedRegion, SafeDescriptor};
-    use sys_util::{MemoryMapping, SharedMemory};
+    use base::{MemoryMapping, SharedMemory};
 
     use super::*;
 

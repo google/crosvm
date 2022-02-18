@@ -122,7 +122,7 @@ impl VvuDevice {
 }
 
 impl VfioDeviceTrait for VvuDevice {
-    fn event(&self) -> &sys_util::EventFd {
+    fn event(&self) -> &base::EventFd {
         &self.rxq_evt.0
     }
 

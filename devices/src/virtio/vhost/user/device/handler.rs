@@ -56,12 +56,11 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use base::{
-    error, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor, SharedMemory,
-    SharedMemoryUnix, UnlinkUnixListener,
+    clear_fd_flags, error, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
+    SharedMemory, SharedMemoryUnix, UnlinkUnixListener,
 };
 use cros_async::{AsyncWrapper, Executor};
 use sync::Mutex;
-use sys_util::clear_fd_flags;
 use vm_memory::{GuestAddress, GuestMemory, MemoryRegion};
 use vmm_vhost::{
     connection::vfio::{Endpoint as VfioEndpoint, Listener as VfioListener},
@@ -176,7 +175,7 @@ pub fn create_vvu_guest_memory(
 
     let mut vmm_maps = Vec::with_capacity(contexts.len());
     let mut regions = Vec::with_capacity(contexts.len());
-    let page_size = sys_util::pagesize() as u64;
+    let page_size = base::pagesize() as u64;
     for region in contexts {
         let offset = file_offset + region.mmap_offset;
         assert_eq!(offset % page_size, 0);
