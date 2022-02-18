@@ -1038,6 +1038,8 @@ impl<T: Encoder> EncoderDevice<T> {
         // active we will request a dynamic framerate change instead, and it's up to the encoder
         // backend to return an error on invalid requests.
         if stream.dst_params.frame_rate != frame_rate {
+            stream.src_params.frame_rate = frame_rate;
+            stream.dst_params.frame_rate = frame_rate;
             if let Some(ref mut encoder_session) = stream.encoder_session {
                 if !resources_queued {
                     create_session = true;
@@ -1049,8 +1051,6 @@ impl<T: Encoder> EncoderDevice<T> {
                     return Err(VideoError::InvalidOperation);
                 }
             }
-            stream.src_params.frame_rate = frame_rate;
-            stream.dst_params.frame_rate = frame_rate;
         }
 
         match queue_type {
