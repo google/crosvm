@@ -20,8 +20,8 @@ use super::{Kvm, KvmVcpu, KvmVm};
 use crate::{
     ClockState, CpuId, CpuIdEntry, DebugRegs, DescriptorTable, DeviceKind, Fpu, HypervisorX86_64,
     IoapicRedirectionTableEntry, IoapicState, IrqSourceChip, LapicState, PicSelect, PicState,
-    PitChannelState, PitState, ProtectionType, Register, Regs, Segment, Sregs, VcpuX86_64, VmCap,
-    VmX86_64, MAX_IOAPIC_PINS, NUM_IOAPIC_PINS,
+    PitChannelState, PitState, ProtectionType, Register, Regs, Segment, Sregs, VcpuExit,
+    VcpuX86_64, VmCap, VmX86_64, MAX_IOAPIC_PINS, NUM_IOAPIC_PINS,
 };
 
 type KvmCpuId = kvm::CpuId;
@@ -384,6 +384,12 @@ impl KvmVcpu {
         } else {
             errno_result()
         }
+    }
+
+    /// Handles a `KVM_EXIT_SYSTEM_EVENT` with event type `KVM_SYSTEM_EVENT_RESET` with the given
+    /// event flags and returns the appropriate `VcpuExit` value for the run loop to handle.
+    pub fn system_event_reset(&self, _event_flags: u64) -> Result<VcpuExit> {
+        Ok(VcpuExit::SystemEventReset)
     }
 }
 

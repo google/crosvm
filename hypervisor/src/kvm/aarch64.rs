@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::{EINVAL, ENOMEM, ENOSYS, ENXIO};
+use libc::{EINVAL, ENOMEM, ENXIO};
 
 use base::{
-    errno_result, error, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, Error,
+    errno_result, error, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, warn, Error,
     MemoryMappingBuilder, Result,
 };
 use kvm_sys::*;
@@ -14,8 +14,53 @@ use vm_memory::GuestAddress;
 use super::{Kvm, KvmCap, KvmVcpu, KvmVm};
 use crate::{
     ClockState, DeviceKind, Hypervisor, IrqSourceChip, ProtectionType, PsciVersion, VcpuAArch64,
-    VcpuFeature, Vm, VmAArch64, VmCap,
+    VcpuExit, VcpuFeature, Vm, VmAArch64, VmCap,
 };
+
+#[macro_export]
+macro_rules! offset__of {
+    ($type:path, $field:tt) => {{
+        // Check that the field actually exists. This will generate a compiler error if the field is
+        // accessed through a Deref impl.
+        #[allow(clippy::unneeded_field_pattern)]
+        let $type { $field: _, .. };
+
+        // Get a pointer to the uninitialized field.  This is taken from the docs for `addr_of_mut`.
+        let mut uninit = ::std::mem::MaybeUninit::<$type>::uninit();
+        let field_ptr = unsafe { ::std::ptr::addr_of_mut!((*uninit.as_mut_ptr()).$field) };
+
+        // Now get the offset.
+        (field_ptr as usize) - (uninit.as_mut_ptr() as usize)
+    }};
+}
+
+/// Gives the ID for a register to be used with `set_one_reg`.
+///
+/// Pass the name of a field in `user_pt_regs` to get the corresponding register
+/// ID, e.g. `arm64_core_reg!(pstate)`
+///
+/// To get ID for registers `x0`-`x31`, refer to the `regs` field along with the
+/// register number, e.g. `arm64_core_reg!(regs, 5)` for `x5`. This is different
+/// to work around `offset__of!(kvm_sys::user_pt_regs, regs[$x])` not working.
+#[macro_export]
+macro_rules! arm64_core_reg {
+    ($reg: tt) => {{
+        let off = ($crate::offset__of!(::kvm_sys::user_pt_regs, $reg) / 4) as u64;
+        ::kvm_sys::KVM_REG_ARM64
+            | ::kvm_sys::KVM_REG_SIZE_U64
+            | ::kvm_sys::KVM_REG_ARM_CORE as u64
+            | off
+    }};
+    (regs, $x: literal) => {{
+        let off = (($crate::offset__of!(::kvm_sys::user_pt_regs, regs)
+            + ($x * ::std::mem::size_of::<u64>()))
+            / 4) as u64;
+        ::kvm_sys::KVM_REG_ARM64
+            | ::kvm_sys::KVM_REG_SIZE_U64
+            | ::kvm_sys::KVM_REG_ARM_CORE as u64
+            | off
+    }};
+}
 
 impl Kvm {
     // Compute the machine type, which should be the IPA range for the VM
@@ -161,6 +206,24 @@ impl KvmVcpu {
     /// Arch-specific implementation of `Vcpu::pvclock_ctrl`.  Always returns an error on AArch64.
     pub fn pvclock_ctrl_arch(&self) -> Result<()> {
         Err(Error::new(ENXIO))
+    }
+
+    /// Handles a `KVM_EXIT_SYSTEM_EVENT` with event type `KVM_SYSTEM_EVENT_RESET` with the given
+    /// event flags and returns the appropriate `VcpuExit` value for the run loop to handle.
+    ///
+    /// `event_flags` should be one or more of the `KVM_SYSTEM_EVENT_RESET_FLAG_*` values defined by
+    /// KVM.
+    pub fn system_event_reset(&self, event_flags: u64) -> Result<VcpuExit> {
+        if event_flags & KVM_SYSTEM_EVENT_RESET_FLAG_PSCI_RESET2 != 0 {
+            // Read reset_type and cookie from x1 and x2.
+            let reset_type = self.get_one_reg(arm64_core_reg!(regs, 1))?;
+            let cookie = self.get_one_reg(arm64_core_reg!(regs, 2))?;
+            warn!(
+                "PSCI SYSTEM_RESET2 with reset_type={:#x}, cookie={:#x}",
+                reset_type, cookie
+            );
+        }
+        Ok(VcpuExit::SystemEventReset)
     }
 }
 

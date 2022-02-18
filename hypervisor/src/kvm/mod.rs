@@ -1022,7 +1022,7 @@ impl Vcpu for KvmVcpu {
                 let event_flags = unsafe { run.__bindgen_anon_1.system_event.flags };
                 match event_type {
                     KVM_SYSTEM_EVENT_SHUTDOWN => Ok(VcpuExit::SystemEventShutdown),
-                    KVM_SYSTEM_EVENT_RESET => Ok(VcpuExit::SystemEventReset),
+                    KVM_SYSTEM_EVENT_RESET => self.system_event_reset(event_flags),
                     KVM_SYSTEM_EVENT_CRASH => Ok(VcpuExit::SystemEventCrash),
                     _ => {
                         error!(
