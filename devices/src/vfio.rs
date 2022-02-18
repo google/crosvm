@@ -34,6 +34,8 @@ use vm_memory::GuestMemory;
 pub enum VfioError {
     #[error("failed to borrow global vfio container")]
     BorrowVfioContainer,
+    #[error("failed to duplicate VfioContainer")]
+    ContainerDupError,
     #[error("failed to set container's IOMMU driver type as VfioType1V2: {0}")]
     ContainerSetIOMMU(Error),
     #[error("failed to create KVM vfio device: {0}")]
@@ -138,6 +140,21 @@ impl VfioContainer {
     /// Open VfioContainer with IOMMU disabled.
     pub fn new_noiommu() -> Result<Self> {
         Self::new_inner(false /* host_iommu */)
+    }
+
+    // Construct a VfioContainer from an exist container file.
+    pub fn new_from_container(container: File) -> Result<Self> {
+        // Safe as file is vfio container descriptor and ioctl is defined by kernel.
+        let version = unsafe { ioctl(&container, VFIO_GET_API_VERSION()) };
+        if version as u8 != VFIO_API_VERSION {
+            return Err(VfioError::VfioApiVersion);
+        }
+
+        Ok(VfioContainer {
+            container,
+            groups: HashMap::new(),
+            host_iommu: true,
+        })
     }
 
     fn is_group_set(&self, group_id: u32) -> bool {
@@ -308,6 +325,15 @@ impl VfioContainer {
 
         if remove {
             self.groups.remove(&id);
+        }
+    }
+
+    pub fn into_raw_descriptor(&self) -> Result<RawDescriptor> {
+        let raw_descriptor = unsafe { libc::dup(self.container.as_raw_descriptor()) };
+        if raw_descriptor < 0 {
+            Err(VfioError::ContainerDupError)
+        } else {
+            Ok(raw_descriptor)
         }
     }
 }

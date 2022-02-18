@@ -24,6 +24,10 @@ impl VfioWrapper {
     pub fn new(container: Arc<Mutex<VfioContainer>>, mem: GuestMemory) -> Self {
         Self { container, mem }
     }
+
+    pub fn as_vfio_container(&self) -> Arc<Mutex<VfioContainer>> {
+        self.container.clone()
+    }
 }
 
 impl MemoryMapper for VfioWrapper {
@@ -69,6 +73,16 @@ impl MemoryMapper for VfioWrapper {
             .lock()
             .vfio_get_iommu_page_size_mask()
             .map_err(MemoryMapperError::Vfio)
+    }
+
+    fn as_vfio_wrapper(&self) -> Option<&VfioWrapper> {
+        Some(self)
+    }
+    fn as_vfio_wrapper_mut(&mut self) -> Option<&mut VfioWrapper> {
+        Some(self)
+    }
+    fn into_vfio_wrapper(self: Box<Self>) -> Option<Box<VfioWrapper>> {
+        Some(self)
     }
 }
 

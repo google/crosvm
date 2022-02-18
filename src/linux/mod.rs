@@ -1186,9 +1186,8 @@ where
         &mut devices,
     )?;
 
-    if !iommu_attached_endpoints.is_empty() {
-        let (_iommu_host_tube, iommu_device_tube) =
-            Tube::pair().context("failed to create tube")?;
+    let iommu_host_tube = if !iommu_attached_endpoints.is_empty() {
+        let (iommu_host_tube, iommu_device_tube) = Tube::pair().context("failed to create tube")?;
         let iommu_dev = create_iommu_device(
             &cfg,
             (1u64 << vm.get_guest_phys_addr_bits()) - 1,
@@ -1208,7 +1207,10 @@ where
             .context("failed to allocate resources early for virtio pci dev")?;
         let dev = Box::new(dev);
         devices.push((dev, iommu_dev.jail));
-    }
+        Some(iommu_host_tube)
+    } else {
+        None
+    };
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     for device in devices
@@ -1339,6 +1341,7 @@ where
         Arc::clone(&map_request),
         gralloc,
         kvm_vcpu_ids,
+        iommu_host_tube,
     )
 }
 
@@ -1359,6 +1362,7 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     sys_allocator: &mut SystemAllocator,
     cfg: &Config,
     control_tubes: &mut Vec<TaggedControlTube>,
+    iommu_host_tube: &Option<Tube>,
     vfio_path: &Path,
 ) -> Result<()> {
     let host_os_str = vfio_path
@@ -1381,11 +1385,38 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
         Some(bus_num),
         &mut endpoints,
         None,
-        IommuDevType::NoIommu,
+        if iommu_host_tube.is_some() {
+            IommuDevType::VirtioIommu
+        } else {
+            IommuDevType::NoIommu
+        },
     )?;
 
     let pci_address = Arch::register_pci_device(linux, vfio_pci_device, jail, sys_allocator)
         .context("Failed to configure pci hotplug device")?;
+
+    if let Some(iommu_host_tube) = iommu_host_tube {
+        let &endpoint_addr = endpoints.iter().next().unwrap().0;
+        let mapper = endpoints.remove(&endpoint_addr).unwrap();
+        if let Some(vfio_wrapper) = mapper.lock().as_vfio_wrapper() {
+            let vfio_container = vfio_wrapper.as_vfio_container();
+            let descriptor = vfio_container.lock().into_raw_descriptor()?;
+            let request = VirtioIOMMURequest::VfioCommand(VirtioIOMMUVfioCommand::VfioDeviceAdd {
+                endpoint_addr,
+                container: {
+                    // Safe because the descriptor is uniquely owned by `descriptor`.
+                    unsafe { File::from_raw_descriptor(descriptor) }
+                },
+            });
+
+            match virtio_iommu_request(iommu_host_tube, &request)
+                .map_err(|_| VirtioIOMMUVfioError::SocketFailed)?
+            {
+                VirtioIOMMUResponse::VfioResponse(VirtioIOMMUVfioResult::Ok) => (),
+                resp => bail!("Unexpected message response: {:?}", resp),
+            }
+        };
+    }
 
     let host_os_str = vfio_path
         .file_name()
@@ -1404,6 +1435,7 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
 fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     linux: &RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
+    iommu_host_tube: &Option<Tube>,
     vfio_path: &Path,
 ) -> Result<()> {
     let host_os_str = vfio_path
@@ -1417,6 +1449,19 @@ fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     for hp_bus in linux.hotplug_bus.iter() {
         let mut hp_bus_lock = hp_bus.lock();
         if let Some(pci_addr) = hp_bus_lock.get_hotplug_device(host_key) {
+            if let Some(iommu_host_tube) = iommu_host_tube {
+                let request =
+                    VirtioIOMMURequest::VfioCommand(VirtioIOMMUVfioCommand::VfioDeviceDel {
+                        endpoint_addr: pci_addr.to_u32(),
+                    });
+                match virtio_iommu_request(iommu_host_tube, &request)
+                    .map_err(|_| VirtioIOMMUVfioError::SocketFailed)?
+                {
+                    VirtioIOMMUResponse::VfioResponse(VirtioIOMMUVfioResult::Ok) => (),
+                    resp => bail!("Unexpected message response: {:?}", resp),
+                }
+            }
+
             hp_bus_lock.hot_unplug(pci_addr);
             sys_allocator.release_pci(pci_addr.bus, pci_addr.dev, pci_addr.func);
             return Ok(());
@@ -1431,13 +1476,21 @@ fn handle_vfio_command<V: VmArch, Vcpu: VcpuArch>(
     sys_allocator: &mut SystemAllocator,
     cfg: &Config,
     add_tubes: &mut Vec<TaggedControlTube>,
+    iommu_host_tube: &Option<Tube>,
     vfio_path: &Path,
     add: bool,
 ) -> VmResponse {
     let ret = if add {
-        add_vfio_device(linux, sys_allocator, cfg, add_tubes, vfio_path)
+        add_vfio_device(
+            linux,
+            sys_allocator,
+            cfg,
+            add_tubes,
+            iommu_host_tube,
+            vfio_path,
+        )
     } else {
-        remove_vfio_device(linux, sys_allocator, vfio_path)
+        remove_vfio_device(linux, sys_allocator, iommu_host_tube, vfio_path)
     };
 
     match ret {
@@ -1467,6 +1520,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     mut gralloc: RutabagaGralloc,
     kvm_vcpu_ids: Vec<usize>,
+    iommu_host_tube: Option<Tube>,
 ) -> Result<ExitState> {
     #[derive(PollToken)]
     enum Token {
@@ -1746,6 +1800,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 &mut sys_allocator,
                                                 &cfg,
                                                 &mut add_tubes,
+                                                &iommu_host_tube,
                                                 &vfio_path,
                                                 add,
                                             )

@@ -25,6 +25,9 @@ use std::sync::{mpsc, Arc};
 
 use std::thread::JoinHandle;
 
+use remain::sorted;
+use thiserror::Error;
+
 use libc::{EINVAL, EIO, ENODEV, ENOTSUP};
 use serde::{Deserialize, Serialize};
 
@@ -1191,5 +1194,123 @@ impl Display for VmResponse {
     }
 }
 
+#[sorted]
+#[derive(Error, Debug)]
+pub enum VirtioIOMMUVfioError {
+    #[error("socket failed")]
+    SocketFailed,
+    #[error("unexpected response: {0}")]
+    UnexpectedResponse(VirtioIOMMUResponse),
+    #[error("unknown command: `{0}`")]
+    UnknownCommand(String),
+    #[error("{0}")]
+    VfioControl(VirtioIOMMUVfioResult),
+}
+
 #[derive(Serialize, Deserialize, Debug)]
-pub enum VirtioIOMMURequest {}
+pub enum VirtioIOMMUVfioCommand {
+    // Add the vfio device attached to virtio-iommu.
+    VfioDeviceAdd {
+        endpoint_addr: u32,
+        #[serde(with = "with_as_descriptor")]
+        container: File,
+    },
+    // Delete the vfio device attached to virtio-iommu.
+    VfioDeviceDel {
+        endpoint_addr: u32,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum VirtioIOMMUVfioResult {
+    Ok,
+    NotInPCIRanges,
+    NoAvailableContainer,
+    NoSuchDevice,
+}
+
+impl Display for VirtioIOMMUVfioResult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::VirtioIOMMUVfioResult::*;
+
+        match self {
+            Ok => write!(f, "successfully"),
+            NotInPCIRanges => write!(f, "not in the pci ranges of virtio-iommu"),
+            NoAvailableContainer => write!(f, "no available vfio container"),
+            NoSuchDevice => write!(f, "no such a vfio device"),
+        }
+    }
+}
+
+/// A request to the virtio-iommu process to perform some operations.
+///
+/// Unless otherwise noted, each request should expect a `VirtioIOMMUResponse::Ok` to be received on
+/// success.
+#[derive(Serialize, Deserialize, Debug)]
+pub enum VirtioIOMMURequest {
+    /// Command for vfio related operations.
+    VfioCommand(VirtioIOMMUVfioCommand),
+}
+
+/// Indication of success or failure of a `VirtioIOMMURequest`.
+///
+/// Success is usually indicated `VirtioIOMMUResponse::Ok` unless there is data associated with the
+/// response.
+#[derive(Serialize, Deserialize, Debug)]
+pub enum VirtioIOMMUResponse {
+    /// Indicates the request was executed successfully.
+    Ok,
+    /// Indicates the request encountered some error during execution.
+    Err(SysError),
+    /// Results for Vfio commands.
+    VfioResponse(VirtioIOMMUVfioResult),
+}
+
+impl Display for VirtioIOMMUResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::VirtioIOMMUResponse::*;
+        match self {
+            Ok => write!(f, "ok"),
+            Err(e) => write!(f, "error: {}", e),
+            VfioResponse(result) => write!(
+                f,
+                "The vfio-related virtio-iommu request got result: {:?}",
+                result
+            ),
+        }
+    }
+}
+
+/// Send VirtioIOMMURequest without waiting for the response
+pub fn virtio_iommu_request_async(
+    iommu_control_tube: &Tube,
+    req: &VirtioIOMMURequest,
+) -> VirtioIOMMUResponse {
+    match iommu_control_tube.send(&req) {
+        Ok(_) => VirtioIOMMUResponse::Ok,
+        Err(e) => {
+            error!("virtio-iommu socket send failed: {:?}", e);
+            VirtioIOMMUResponse::Err(SysError::last())
+        }
+    }
+}
+
+pub type VirtioIOMMURequestResult = std::result::Result<VirtioIOMMUResponse, ()>;
+
+/// Send VirtioIOMMURequest and wait to get the response
+pub fn virtio_iommu_request(
+    iommu_control_tube: &Tube,
+    req: &VirtioIOMMURequest,
+) -> VirtioIOMMURequestResult {
+    let response = match virtio_iommu_request_async(iommu_control_tube, req) {
+        VirtioIOMMUResponse::Ok => match iommu_control_tube.recv() {
+            Ok(response) => response,
+            Err(e) => {
+                error!("virtio-iommu socket recv failed: {:?}", e);
+                VirtioIOMMUResponse::Err(SysError::last())
+            }
+        },
+        resp => resp,
+    };
+    Ok(response)
+}

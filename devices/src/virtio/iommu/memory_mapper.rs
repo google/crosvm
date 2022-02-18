@@ -16,6 +16,7 @@ use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemoryError};
 
 use crate::vfio::VfioError;
+use crate::vfio_wrapper::VfioWrapper;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,6 +101,19 @@ pub trait MemoryMapper: Send {
     fn add_map(&mut self, new_map: MappingInfo) -> Result<()>;
     fn remove_map(&mut self, iova_start: u64, size: u64) -> Result<()>;
     fn get_mask(&self) -> Result<u64>;
+
+    /// Trait for generic MemoryMapper abstraction, that is, all reside on MemoryMapper and want to
+    /// be converted back to its original type. Each must provide as_XXX_wrapper() +
+    /// as_XXX_wrapper_mut() + into_XXX_wrapper(), default impl methods return None.
+    fn as_vfio_wrapper(&self) -> Option<&VfioWrapper> {
+        None
+    }
+    fn as_vfio_wrapper_mut(&mut self) -> Option<&mut VfioWrapper> {
+        None
+    }
+    fn into_vfio_wrapper(self: Box<Self>) -> Option<Box<VfioWrapper>> {
+        None
+    }
 }
 
 pub trait Translate {

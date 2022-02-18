@@ -4,6 +4,7 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::fs::File;
 use std::io::{self, Write};
 use std::mem::size_of;
 use std::ops::RangeInclusive;
@@ -23,7 +24,9 @@ use futures::{select, FutureExt};
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;
-use vm_control::VirtioIOMMURequest;
+use vm_control::{
+    VirtioIOMMURequest, VirtioIOMMUResponse, VirtioIOMMUVfioCommand, VirtioIOMMUVfioResult,
+};
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 use crate::pci::PciAddress;
@@ -31,6 +34,7 @@ use crate::virtio::{
     async_utils, copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader,
     SignalableInterrupt, VirtioDevice, Writer, TYPE_IOMMU,
 };
+use crate::VfioContainer;
 
 pub mod protocol;
 use crate::virtio::iommu::protocol::*;
@@ -40,6 +44,8 @@ pub mod memory_mapper;
 pub mod memory_util;
 pub mod vfio_wrapper;
 use crate::virtio::iommu::memory_mapper::{Error as MemoryMapperError, *};
+
+use self::vfio_wrapper::VfioWrapper;
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
@@ -138,6 +144,9 @@ pub enum IommuError {
 struct Worker {
     mem: GuestMemory,
     page_mask: u64,
+    // Hot-pluggable PCI endpoints ranges
+    // RangeInclusive: (start endpoint PCI address .. =end endpoint PCI address)
+    hp_endpoints_ranges: Vec<RangeInclusive<u32>>,
     // All PCI endpoints that attach to certain IOMMU domain
     // key: endpoint PCI address
     // value: attached domain ID
@@ -477,12 +486,97 @@ impl Worker {
         }
     }
 
+    fn handle_add_vfio_device(
+        mem: &GuestMemory,
+        endpoint_addr: u32,
+        container_fd: File,
+        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
+        hp_endpoints_ranges: &Rc<Vec<RangeInclusive<u32>>>,
+    ) -> VirtioIOMMUVfioResult {
+        let exists = |endpoint_addr: u32| -> bool {
+            for endpoints_range in hp_endpoints_ranges.iter() {
+                if endpoints_range.contains(&endpoint_addr) {
+                    return true;
+                }
+            }
+            false
+        };
+
+        if !exists(endpoint_addr) {
+            return VirtioIOMMUVfioResult::NotInPCIRanges;
+        }
+
+        let vfio_container = match VfioContainer::new_from_container(container_fd) {
+            Ok(vfio_container) => vfio_container,
+            Err(e) => {
+                error!("failed to verify the new container: {}", e);
+                return VirtioIOMMUVfioResult::NoAvailableContainer;
+            }
+        };
+        endpoints.borrow_mut().insert(
+            endpoint_addr,
+            Arc::new(Mutex::new(Box::new(VfioWrapper::new(
+                Arc::new(Mutex::new(vfio_container)),
+                mem.clone(),
+            )))),
+        );
+        VirtioIOMMUVfioResult::Ok
+    }
+
+    fn handle_del_vfio_device(
+        pci_address: u32,
+        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
+    ) -> VirtioIOMMUVfioResult {
+        if endpoints.borrow_mut().remove(&pci_address).is_none() {
+            error!("There is no vfio container of {}", pci_address);
+            return VirtioIOMMUVfioResult::NoSuchDevice;
+        }
+        VirtioIOMMUVfioResult::Ok
+    }
+
+    fn handle_vfio(
+        mem: &GuestMemory,
+        vfio_cmd: VirtioIOMMUVfioCommand,
+        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
+        hp_endpoints_ranges: &Rc<Vec<RangeInclusive<u32>>>,
+    ) -> VirtioIOMMUResponse {
+        use VirtioIOMMUVfioCommand::*;
+        let vfio_result = match vfio_cmd {
+            VfioDeviceAdd {
+                endpoint_addr,
+                container,
+            } => Self::handle_add_vfio_device(
+                mem,
+                endpoint_addr,
+                container,
+                endpoints,
+                hp_endpoints_ranges,
+            ),
+            VfioDeviceDel { endpoint_addr } => {
+                Self::handle_del_vfio_device(endpoint_addr, endpoints)
+            }
+        };
+        VirtioIOMMUResponse::VfioResponse(vfio_result)
+    }
+
     // Async task that handles messages from the host
-    pub async fn handle_command_tube(command_tube: &AsyncTube) -> Result<()> {
+    async fn handle_command_tube(
+        mem: &GuestMemory,
+        command_tube: AsyncTube,
+        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
+        hp_endpoints_ranges: &Rc<Vec<RangeInclusive<u32>>>,
+    ) -> Result<()> {
         loop {
             match command_tube.next::<VirtioIOMMURequest>().await {
-                Ok(_) => {
-                    // To-Do: handle the requests from virtio-iommu tube
+                Ok(command) => {
+                    let response: VirtioIOMMUResponse = match command {
+                        VirtioIOMMURequest::VfioCommand(vfio_cmd) => {
+                            Self::handle_vfio(mem, vfio_cmd, endpoints, hp_endpoints_ranges)
+                        }
+                    };
+                    if let Err(e) = command_tube.send(&response) {
+                        error!("{}", IommuError::VirtioIOMMUResponseError(e));
+                    }
                 }
                 Err(e) => {
                     return Err(IommuError::VirtioIOMMUReqError(e));
@@ -513,6 +607,11 @@ impl Worker {
 
         let (req_queue, req_evt) = (queues.remove(0), evts_async.remove(0));
 
+        let hp_endpoints_ranges = Rc::new(self.hp_endpoints_ranges.clone());
+        let mem = Rc::new(self.mem.clone());
+        // contains all pass-through endpoints that attach to this IOMMU device
+        // key: endpoint PCI address
+        // value: reference counter and MemoryMapperTrait
         let endpoints: Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>> =
             Rc::new(RefCell::new(endpoints));
 
@@ -541,7 +640,7 @@ impl Worker {
 
         let command_tube = iommu_device_tube.into_async_tube(&ex).unwrap();
         // Future to handle command messages from host, such as passing vfio containers.
-        let f_cmd = Self::handle_command_tube(&command_tube);
+        let f_cmd = Self::handle_command_tube(&mem, command_tube, &endpoints, &hp_endpoints_ranges);
 
         let done = async {
             select! {
@@ -608,6 +707,9 @@ pub struct Iommu {
     worker_thread: Option<thread::JoinHandle<Worker>>,
     config: virtio_iommu_config,
     avail_features: u64,
+    // Attached endpoints
+    // key: endpoint PCI address
+    // value: reference counter and MemoryMapperTrait
     endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
     // Hot-pluggable PCI endpoints ranges
     // RangeInclusive: (start endpoint PCI address .. =end endpoint PCI address)
@@ -704,6 +806,10 @@ impl VirtioDevice for Iommu {
             rds.push(rx.as_raw_descriptor());
         }
 
+        if let Some(iommu_device_tube) = &self.iommu_device_tube {
+            rds.push(iommu_device_tube.as_raw_descriptor());
+        }
+
         rds
     }
 
@@ -749,6 +855,7 @@ impl VirtioDevice for Iommu {
         // granularity of IOMMU mappings
         let page_mask = (1u64 << u64::from(self.config.page_size_mask).trailing_zeros()) - 1;
         let eps = self.endpoints.clone();
+        let hp_endpoints_ranges = self.hp_endpoints_ranges.to_owned();
 
         let translate_response_senders = self.translate_response_senders.take();
         let translate_request_rx = self.translate_request_rx.take();
@@ -761,6 +868,7 @@ impl VirtioDevice for Iommu {
                         let mut worker = Worker {
                             mem,
                             page_mask,
+                            hp_endpoints_ranges,
                             endpoint_map: BTreeMap::new(),
                             domain_map: BTreeMap::new(),
                         };

@@ -69,7 +69,7 @@ pub use self::usb::host_backend::host_backend_device_provider::HostBackendDevice
 #[cfg(feature = "usb")]
 pub use self::usb::xhci::xhci_controller::XhciController;
 pub use self::vfio::{VfioContainer, VfioDevice};
-pub use self::virtio::VirtioPciDevice;
+pub use self::virtio::{vfio_wrapper, VirtioPciDevice};
 
 /// Request CoIOMMU to unpin a specific range.
 use serde::{Deserialize, Serialize};

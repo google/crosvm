@@ -13,7 +13,12 @@ use std::path::{Path, PathBuf};
 use std::str;
 use std::sync::Arc;
 
+use crate::{
+    Config, DiskOption, TouchDeviceOption, VhostUserFsOption, VhostUserOption, VhostUserWlOption,
+    VhostVsockDeviceParameter, VvuOption,
+};
 use anyhow::{anyhow, bail, Context, Result};
+use arch::{self, VirtioDeviceStub};
 use base::*;
 use devices::serial_device::SerialParameters;
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
@@ -41,12 +46,6 @@ use net_util::{MacAddress, Tap};
 use resources::{Alloc, MmioType, SystemAllocator};
 use sync::Mutex;
 use vm_memory::GuestAddress;
-
-use crate::{
-    Config, DiskOption, TouchDeviceOption, VhostUserFsOption, VhostUserOption, VhostUserWlOption,
-    VhostVsockDeviceParameter, VvuOption,
-};
-use arch::{self, VirtioDeviceStub};
 
 use super::jail_helpers::*;
 
