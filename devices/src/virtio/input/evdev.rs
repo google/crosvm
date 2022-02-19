@@ -234,12 +234,12 @@ pub fn supported_events<T: AsRawDescriptor>(
 
 /// Gets the absolute axes of an event device (see EVIOCGABS ioctl for details).
 pub fn abs_info<T: AsRawDescriptor>(descriptor: &T) -> BTreeMap<u16, virtio_input_absinfo> {
-    let mut ret: BTreeMap<u16, virtio_input_absinfo> = BTreeMap::new();
+    let mut map: BTreeMap<u16, virtio_input_absinfo> = BTreeMap::new();
 
     for abs in 0..ABS_MAX {
         // Create a new one, zero-ed out every time to avoid carry-overs.
         let mut abs_info = evdev_abs_info::new();
-        let len = unsafe {
+        let ret = unsafe {
             // Safe because the kernel won't write more than size of evdev_buffer and we check the
             // return value
             ioctl_with_mut_ref(
@@ -248,11 +248,11 @@ pub fn abs_info<T: AsRawDescriptor>(descriptor: &T) -> BTreeMap<u16, virtio_inpu
                 &mut abs_info,
             )
         };
-        if len > 0 {
-            ret.insert(abs, virtio_input_absinfo::from(abs_info));
+        if ret == 0 {
+            map.insert(abs, virtio_input_absinfo::from(abs_info));
         }
     }
-    ret
+    map
 }
 
 /// Grabs an event device (see EVIOCGGRAB ioctl for details). After this function succeeds the given
