@@ -52,7 +52,6 @@ mod smbios;
 use once_cell::sync::OnceCell;
 use std::arch::x86_64::__cpuid;
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::{self, Seek};
@@ -66,7 +65,7 @@ use arch::{
     get_serial_cmdline, GetSerialCmdlineError, MsrAction, MsrConfig, MsrRWType, MsrValueFrom,
     RunnableLinuxVm, VmComponents, VmImage,
 };
-use base::{warn, Event};
+use base::{warn, Event, SendTube, TubeError};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::{
     BusDeviceObj, BusResumeDevice, IrqChip, IrqChipX86_64, PciAddress, PciConfigIo, PciConfigMmio,
@@ -99,6 +98,8 @@ pub enum Error {
     CloneEvent(base::Error),
     #[error("failed to clone IRQ chip: {0}")]
     CloneIrqChip(base::Error),
+    #[error("unable to clone a Tube: {0}")]
+    CloneTube(TubeError),
     #[error("the given kernel command line was invalid: {0}")]
     Cmdline(kernel_cmdline::Error),
     #[error("failed to configure hotplugged pci device: {0}")]
@@ -498,8 +499,7 @@ impl arch::LinuxArch for X8664arch {
 
     fn build_vm<V, Vcpu>(
         mut components: VmComponents,
-        exit_evt: &Event,
-        reset_evt: &Event,
+        vm_evt_wrtube: &SendTube,
         system_allocator: &mut SystemAllocator,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
@@ -576,7 +576,7 @@ impl arch::LinuxArch for X8664arch {
         pci.lock().enable_pcie_cfg_mmio(read_pcie_cfg_mmio_start());
         let pci_cfg = PciConfigIo::new(
             pci.clone(),
-            reset_evt.try_clone().map_err(Error::CloneEvent)?,
+            vm_evt_wrtube.try_clone().map_err(Error::CloneTube)?,
         );
         let pci_bus = Arc::new(Mutex::new(pci_cfg));
         io_bus.insert(pci_bus, 0xcf8, 0x8).unwrap();
@@ -606,7 +606,7 @@ impl arch::LinuxArch for X8664arch {
             Self::setup_legacy_devices(
                 &io_bus,
                 irq_chip.pit_uses_speaker_port(),
-                reset_evt.try_clone().map_err(Error::CloneEvent)?,
+                vm_evt_wrtube.try_clone().map_err(Error::CloneTube)?,
                 components.memory_size,
             )?;
         }
@@ -627,7 +627,7 @@ impl arch::LinuxArch for X8664arch {
             &io_bus,
             system_allocator,
             suspend_evt.try_clone().map_err(Error::CloneEvent)?,
-            exit_evt.try_clone().map_err(Error::CloneEvent)?,
+            vm_evt_wrtube.try_clone().map_err(Error::CloneTube)?,
             components.acpi_sdts,
             #[cfg(feature = "direct")]
             &components.direct_gpe,
@@ -1293,12 +1293,12 @@ impl X8664arch {
     ///
     /// * - `io_bus` - the IO bus object
     /// * - `pit_uses_speaker_port` - does the PIT use port 0x61 for the PC speaker
-    /// * - `reset_evt` - the event object which should receive exit events
+    /// * - `vm_evt_wrtube` - Tube for sending exit events
     /// * - `mem_size` - the size in bytes of physical ram for the guest
     fn setup_legacy_devices(
         io_bus: &devices::Bus,
         pit_uses_speaker_port: bool,
-        reset_evt: Event,
+        vm_evt_wrtube: SendTube,
         mem_size: u64,
     ) -> Result<()> {
         let mem_regions = arch_memory_regions(mem_size, None);
@@ -1324,7 +1324,7 @@ impl X8664arch {
             .unwrap();
 
         let i8042 = Arc::new(Mutex::new(devices::I8042Device::new(
-            reset_evt.try_clone().map_err(Error::CloneEvent)?,
+            vm_evt_wrtube.try_clone().map_err(Error::CloneTube)?,
         )));
 
         if pit_uses_speaker_port {
@@ -1354,7 +1354,7 @@ impl X8664arch {
         io_bus: &devices::Bus,
         resources: &mut SystemAllocator,
         suspend_evt: Event,
-        exit_evt: Event,
+        vm_evt_wrtube: SendTube,
         sdts: Vec<SDT>,
         #[cfg(feature = "direct")] direct_gpe: &[u32],
         irq_chip: &mut dyn IrqChip,
@@ -1429,7 +1429,7 @@ impl X8664arch {
             #[cfg(feature = "direct")]
             direct_gpe_info,
             suspend_evt,
-            exit_evt,
+            vm_evt_wrtube,
         );
         pmresource.to_aml_bytes(&mut amls);
         pmresource.start();

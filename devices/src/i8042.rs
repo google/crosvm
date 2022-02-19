@@ -2,19 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, Event};
+use base::{error, SendTube, VmEventType};
 
 use crate::{BusAccessInfo, BusDevice};
 
 /// A i8042 PS/2 controller that emulates just enough to shutdown the machine.
 pub struct I8042Device {
-    reset_evt: Event,
+    reset_evt_wrtube: SendTube,
 }
 
 impl I8042Device {
     /// Constructs a i8042 device that will signal the given event when the guest requests it.
-    pub fn new(reset_evt: Event) -> I8042Device {
-        I8042Device { reset_evt }
+    pub fn new(reset_evt_wrtube: SendTube) -> I8042Device {
+        I8042Device { reset_evt_wrtube }
     }
 }
 
@@ -37,7 +37,10 @@ impl BusDevice for I8042Device {
 
     fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
         if data.len() == 1 && data[0] == 0xfe && info.address == 0x64 {
-            if let Err(e) = self.reset_evt.write(1) {
+            if let Err(e) = self
+                .reset_evt_wrtube
+                .send::<VmEventType>(&VmEventType::Reset)
+            {
                 error!("failed to trigger i8042 reset event: {}", e);
             }
         }

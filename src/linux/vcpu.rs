@@ -535,9 +535,7 @@ pub fn run_vcpu<V>(
     has_bios: bool,
     mut io_bus: Bus,
     mut mmio_bus: Bus,
-    exit_evt: Event,
-    reset_evt: Event,
-    crash_evt: Event,
+    vm_evt_wrtube: SendTube,
     requires_pvclock_ctrl: bool,
     from_main_tube: mpsc::Receiver<VcpuControl>,
     use_hypervisor_signals: bool,
@@ -557,100 +555,97 @@ where
     thread::Builder::new()
         .name(format!("crosvm_vcpu{}", cpu_id))
         .spawn(move || {
-            // The VCPU thread must trigger either `exit_evt` or `reset_event` in all paths. A
-            // `ScopedEvent`'s Drop implementation ensures that the `exit_evt` will be sent if
-            // anything happens before we get to writing the final event.
-            let scoped_exit_evt = ScopedEvent::from(exit_evt);
+            // Having a closure returning ExitState guarentees that we
+            // send a VmEventType on all code paths after the closure
+            // returns.
+            let vcpu_fn = || -> ExitState {
+                #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                let guest_mem = vm.get_memory().clone();
+                let runnable_vcpu = runnable_vcpu(
+                    cpu_id,
+                    vcpu_id,
+                    vcpu,
+                    vm,
+                    irq_chip.as_mut(),
+                    vcpu_count,
+                    run_rt && !delay_rt,
+                    vcpu_affinity,
+                    no_smt,
+                    has_bios,
+                    use_hypervisor_signals,
+                    enable_per_vm_core_scheduling,
+                    host_cpu_topology,
+                    itmt,
+                    vcpu_cgroup_tasks_file,
+                );
 
-            #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-            let guest_mem = vm.get_memory().clone();
-            let runnable_vcpu = runnable_vcpu(
-                cpu_id,
-                vcpu_id,
-                vcpu,
-                vm,
-                irq_chip.as_mut(),
-                vcpu_count,
-                run_rt && !delay_rt,
-                vcpu_affinity,
-                no_smt,
-                has_bios,
-                use_hypervisor_signals,
-                enable_per_vm_core_scheduling,
-                host_cpu_topology,
-                itmt,
-                vcpu_cgroup_tasks_file,
-            );
-
-            // Add MSR handlers after CPU affinity setting.
-            // This avoids redundant MSR file fd creation.
-            let mut msr_handlers = MsrHandlers::new();
-            if !userspace_msr.is_empty() {
-                userspace_msr.iter().for_each(|(index, msr_config)| {
-                    if let Err(e) = msr_handlers.add_handler(*index, msr_config.clone(), cpu_id) {
-                        error!("failed to add msr handler {}: {:#}", cpu_id, e);
-                        return;
-                    };
-                });
-            }
-
-            start_barrier.wait();
-
-            let (vcpu, vcpu_run_handle) = match runnable_vcpu {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("failed to start vcpu {}: {:#}", cpu_id, e);
-                    return;
+                // Add MSR handlers after CPU affinity setting.
+                // This avoids redundant MSR file fd creation.
+                let mut msr_handlers = MsrHandlers::new();
+                if !userspace_msr.is_empty() {
+                    userspace_msr.iter().for_each(|(index, msr_config)| {
+                        if let Err(e) = msr_handlers.add_handler(*index, msr_config.clone(), cpu_id)
+                        {
+                            error!("failed to add msr handler {}: {:#}", cpu_id, e);
+                        };
+                    });
                 }
+
+                start_barrier.wait();
+
+                let (vcpu, vcpu_run_handle) = match runnable_vcpu {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("failed to start vcpu {}: {:#}", cpu_id, e);
+                        return ExitState::Stop;
+                    }
+                };
+
+                #[allow(unused_mut)]
+                let mut run_mode = VmRunMode::Running;
+                #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                if to_gdb_tube.is_some() {
+                    // Wait until a GDB client attaches
+                    run_mode = VmRunMode::Breakpoint;
+                }
+
+                mmio_bus.set_access_id(cpu_id);
+                io_bus.set_access_id(cpu_id);
+
+                vcpu_loop(
+                    run_mode,
+                    cpu_id,
+                    vcpu,
+                    vcpu_run_handle,
+                    irq_chip,
+                    run_rt,
+                    delay_rt,
+                    io_bus,
+                    mmio_bus,
+                    requires_pvclock_ctrl,
+                    from_main_tube,
+                    use_hypervisor_signals,
+                    privileged_vm,
+                    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                    to_gdb_tube,
+                    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                    guest_mem,
+                    msr_handlers,
+                )
             };
 
-            #[allow(unused_mut)]
-            let mut run_mode = VmRunMode::Running;
-            #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-            if to_gdb_tube.is_some() {
-                // Wait until a GDB client attaches
-                run_mode = VmRunMode::Breakpoint;
-            }
-
-            mmio_bus.set_access_id(cpu_id);
-            io_bus.set_access_id(cpu_id);
-
-            let exit_reason = vcpu_loop(
-                run_mode,
-                cpu_id,
-                vcpu,
-                vcpu_run_handle,
-                irq_chip,
-                run_rt,
-                delay_rt,
-                io_bus,
-                mmio_bus,
-                requires_pvclock_ctrl,
-                from_main_tube,
-                use_hypervisor_signals,
-                privileged_vm,
-                #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-                to_gdb_tube,
-                #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-                guest_mem,
-                msr_handlers,
-            );
-
-            let exit_evt = scoped_exit_evt.into();
-            let final_event = match exit_reason {
-                ExitState::Stop => Some(exit_evt),
-                ExitState::Reset => Some(reset_evt),
-                ExitState::Crash => Some(crash_evt),
+            let final_event_data = match vcpu_fn() {
+                ExitState::Stop => VmEventType::Exit,
+                ExitState::Reset => VmEventType::Reset,
+                ExitState::Crash => VmEventType::Crash,
                 // vcpu_loop doesn't exit with GuestPanic.
-                ExitState::GuestPanic => None,
+                ExitState::GuestPanic => unreachable!(),
             };
-            if let Some(final_event) = final_event {
-                if let Err(e) = final_event.write(1) {
-                    error!(
-                        "failed to send final event {:?} on vcpu {}: {}",
-                        final_event, cpu_id, e
-                    )
-                }
+            if let Err(e) = vm_evt_wrtube.send::<VmEventType>(&final_event_data) {
+                error!(
+                    "failed to send final event {:?} on vcpu {}: {}",
+                    final_event_data, cpu_id, e
+                )
             }
         })
         .context("failed to spawn VCPU thread")

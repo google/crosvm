@@ -146,3 +146,12 @@ pub fn generate_uuid() -> String {
         .encode_lower(&mut buf)
         .to_owned()
 }
+
+use serde::{Deserialize, Serialize};
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
+pub enum VmEventType {
+    Exit,
+    Reset,
+    Crash,
+    Panic(u8),
+}

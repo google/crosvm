@@ -439,7 +439,11 @@ pub fn run_gpu_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
         .detach();
     }
 
-    let exit_evt = Event::new().context("failed to create Event")?;
+    // TODO(b/232344535): Read side of the tube is ignored currently.
+    // Complete the implementation by polling `exit_evt_rdtube` and
+    // kill the sibling VM.
+    let (exit_evt_wrtube, _) =
+        Tube::directional_pair().context("failed to create vm event tube")?;
 
     // Initialized later.
     let gpu_device_tube = None;
@@ -465,7 +469,7 @@ pub fn run_gpu_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
     let channels = wayland_paths;
 
     let gpu = Rc::new(RefCell::new(Gpu::new(
-        exit_evt,
+        exit_evt_wrtube,
         gpu_device_tube,
         Vec::new(), // resource_bridges, handled separately by us
         display_backends,

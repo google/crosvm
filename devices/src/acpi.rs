@@ -4,7 +4,9 @@
 
 use crate::{BusAccessInfo, BusDevice, BusResumeDevice, IrqLevelEvent};
 use acpi_tables::{aml, aml::Aml};
-use base::{error, info, warn, Error as SysError, Event, PollToken, WaitContext};
+use base::{
+    error, info, warn, Error as SysError, Event, PollToken, SendTube, VmEventType, WaitContext,
+};
 use base::{AcpiNotifyEvent, NetlinkGenericSocket};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -63,7 +65,7 @@ pub struct ACPIPMResource {
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<()>>,
     suspend_evt: Event,
-    exit_evt: Event,
+    exit_evt_wrtube: SendTube,
     pm1: Arc<Mutex<Pm1Resource>>,
     gpe0: Arc<Mutex<GpeResource>>,
 }
@@ -77,7 +79,7 @@ impl ACPIPMResource {
         sci_evt: IrqLevelEvent,
         #[cfg(feature = "direct")] direct_gpe_info: Option<(IrqLevelEvent, &[u32])>,
         suspend_evt: Event,
-        exit_evt: Event,
+        exit_evt_wrtube: SendTube,
     ) -> ACPIPMResource {
         let pm1 = Pm1Resource {
             status: 0,
@@ -108,7 +110,7 @@ impl ACPIPMResource {
             kill_evt: None,
             worker_thread: None,
             suspend_evt,
-            exit_evt,
+            exit_evt_wrtube,
             pm1: Arc::new(Mutex::new(pm1)),
             gpe0: Arc::new(Mutex::new(gpe0)),
         }
@@ -777,7 +779,7 @@ impl BusDevice for ACPIPMResource {
                 if (val & BITMASK_PM1CNT_SLEEP_ENABLE) != 0 {
                     // only support S5 in direct mode
                     #[cfg(feature = "direct")]
-                    if let Err(e) = self.exit_evt.write(1) {
+                    if let Err(e) = self.exit_evt_wrtube.send::<VmEventType>(&VmEventType::Exit) {
                         error!("ACPIPM: failed to trigger exit event: {}", e);
                     }
                     #[cfg(not(feature = "direct"))]
@@ -788,7 +790,9 @@ impl BusDevice for ACPIPMResource {
                             }
                         }
                         SLEEP_TYPE_S5 => {
-                            if let Err(e) = self.exit_evt.write(1) {
+                            if let Err(e) =
+                                self.exit_evt_wrtube.send::<VmEventType>(&VmEventType::Exit)
+                            {
                                 error!("ACPIPM: failed to trigger exit event: {}", e);
                             }
                         }

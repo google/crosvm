@@ -153,7 +153,7 @@ pub fn get_gpu_cache_info<'a>(
 
 pub fn create_gpu_device(
     cfg: &Config,
-    exit_evt: &Event,
+    exit_evt_wrtube: &SendTube,
     gpu_device_tube: Tube,
     resource_bridges: Vec<Tube>,
     wayland_socket_path: Option<&PathBuf>,
@@ -182,7 +182,9 @@ pub fn create_gpu_device(
     }
 
     let dev = virtio::Gpu::new(
-        exit_evt.try_clone().context("failed to clone event")?,
+        exit_evt_wrtube
+            .try_clone()
+            .context("failed to clone tube")?,
         Some(gpu_device_tube),
         resource_bridges,
         display_backends,

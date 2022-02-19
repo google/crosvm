@@ -23,7 +23,7 @@ use anyhow::Context;
 
 use base::{
     debug, error, warn, AsRawDescriptor, Event, ExternalMapping, PollToken, RawDescriptor,
-    SafeDescriptor, Tube, WaitContext,
+    SafeDescriptor, SendTube, Tube, VmEventType, WaitContext,
 };
 
 use data_model::*;
@@ -795,7 +795,7 @@ impl Frontend {
 
 struct Worker {
     interrupt: Arc<Interrupt>,
-    exit_evt: Event,
+    exit_evt_wrtube: SendTube,
     mem: GuestMemory,
     ctrl_queue: SharedQueueReader,
     ctrl_evt: Event,
@@ -914,7 +914,7 @@ impl Worker {
                     Token::Display => {
                         let close_requested = self.state.process_display();
                         if close_requested {
-                            let _ = self.exit_evt.write(1);
+                            let _ = self.exit_evt_wrtube.send::<VmEventType>(&VmEventType::Exit);
                         }
                     }
                     Token::ResourceBridge { index } => {
@@ -1002,7 +1002,7 @@ impl DisplayBackend {
 }
 
 pub struct Gpu {
-    exit_evt: Event,
+    exit_evt_wrtube: SendTube,
     gpu_device_tube: Option<Tube>,
     resource_bridges: Vec<Tube>,
     event_devices: Vec<EventDevice>,
@@ -1023,7 +1023,7 @@ pub struct Gpu {
 
 impl Gpu {
     pub fn new(
-        exit_evt: Event,
+        exit_evt_wrtube: SendTube,
         gpu_device_tube: Option<Tube>,
         resource_bridges: Vec<Tube>,
         display_backends: Vec<DisplayBackend>,
@@ -1090,7 +1090,7 @@ impl Gpu {
             .set_rutabaga_channels(rutabaga_channels_opt);
 
         Gpu {
-            exit_evt,
+            exit_evt_wrtube,
             gpu_device_tube,
             resource_bridges,
             event_devices,
@@ -1215,7 +1215,7 @@ impl VirtioDevice for Gpu {
             keep_rds.push(render_server_fd.as_raw_descriptor());
         }
 
-        keep_rds.push(self.exit_evt.as_raw_descriptor());
+        keep_rds.push(self.exit_evt_wrtube.as_raw_descriptor());
         for bridge in &self.resource_bridges {
             keep_rds.push(bridge.as_raw_descriptor());
         }
@@ -1281,10 +1281,10 @@ impl VirtioDevice for Gpu {
             return;
         }
 
-        let exit_evt = match self.exit_evt.try_clone() {
+        let exit_evt_wrtube = match self.exit_evt_wrtube.try_clone() {
             Ok(e) => e,
             Err(e) => {
-                error!("error cloning exit event: {}", e);
+                error!("error cloning exit tube: {}", e);
                 return;
             }
         };
@@ -1347,7 +1347,7 @@ impl VirtioDevice for Gpu {
 
                         Worker {
                             interrupt: irq,
-                            exit_evt,
+                            exit_evt_wrtube,
                             mem,
                             ctrl_queue: ctrl_queue.clone(),
                             ctrl_evt,

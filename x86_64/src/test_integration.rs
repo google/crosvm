@@ -124,7 +124,7 @@ where
 
     let mmio_bus = Arc::new(devices::Bus::new());
     let io_bus = Arc::new(devices::Bus::new());
-    let exit_evt = Event::new().unwrap();
+    let (exit_evt_wrtube, _) = Tube::directional_pair().unwrap();
 
     let mut control_tubes = vec![TaggedControlTube::VmIrq(irqchip_tube)];
     // Create one control socket per disk.
@@ -153,13 +153,14 @@ where
     )
     .unwrap();
     let pci = Arc::new(Mutex::new(pci));
-    let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci, Event::new().unwrap())));
+    let (pcibus_exit_evt_wrtube, _) = Tube::directional_pair().unwrap();
+    let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci, pcibus_exit_evt_wrtube)));
     io_bus.insert(pci_bus, 0xcf8, 0x8).unwrap();
 
     X8664arch::setup_legacy_devices(
         &io_bus,
         irq_chip.pit_uses_speaker_port(),
-        exit_evt.try_clone().unwrap(),
+        exit_evt_wrtube.try_clone().unwrap(),
         memory_size,
     )
     .unwrap();
@@ -204,7 +205,9 @@ where
         suspend_evt
             .try_clone()
             .expect("unable to clone suspend_evt"),
-        exit_evt.try_clone().expect("unable to clone exit_evt"),
+        exit_evt_wrtube
+            .try_clone()
+            .expect("unable to clone exit_evt_wrtube"),
         Default::default(),
         &mut irq_chip,
         X86_64_SCI_IRQ,

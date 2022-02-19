@@ -15,7 +15,7 @@
 use std::fmt;
 
 use base::RawDescriptor;
-use base::{self, error, Tube};
+use base::{self, error, SendTube, VmEventType};
 use resources::{Alloc, MmioType, SystemAllocator};
 
 use crate::pci::pci_configuration::{
@@ -69,11 +69,11 @@ impl fmt::Display for PvPanicCode {
 pub struct PvPanicPciDevice {
     pci_address: Option<PciAddress>,
     config_regs: PciConfiguration,
-    evt_tube: Tube,
+    evt_wrtube: SendTube,
 }
 
 impl PvPanicPciDevice {
-    pub fn new(evt_tube: Tube) -> PvPanicPciDevice {
+    pub fn new(evt_wrtube: SendTube) -> PvPanicPciDevice {
         let config_regs = PciConfiguration::new(
             PCI_VENDOR_ID_REDHAT,
             PCI_DEVICE_ID_REDHAT_PVPANIC,
@@ -89,7 +89,7 @@ impl PvPanicPciDevice {
         Self {
             pci_address: None,
             config_regs,
-            evt_tube,
+            evt_wrtube,
         }
     }
 }
@@ -182,8 +182,12 @@ impl PciDevice for PvPanicPciDevice {
         if addr != mmio_addr || data.len() != 1 {
             return;
         }
-        if let Err(e) = self.evt_tube.send::<u8>(&data[0]) {
-            error!("Failed to send to the panic event: {}", e);
+
+        if let Err(e) = self
+            .evt_wrtube
+            .send::<VmEventType>(&VmEventType::Panic(data[0]))
+        {
+            error!("Failed to write to the event tube: {}", e);
         }
     }
 }
@@ -191,6 +195,7 @@ impl PciDevice for PvPanicPciDevice {
 #[cfg(test)]
 mod test {
     use super::*;
+    use base::Tube;
     use resources::{MemRegion, SystemAllocator, SystemAllocatorConfig};
 
     #[test]
@@ -217,7 +222,7 @@ mod test {
         )
         .unwrap();
 
-        let (evt_rdtube, evt_wrtube) = Tube::pair().unwrap();
+        let (evt_wrtube, evt_rdtube) = Tube::directional_pair().unwrap();
         let mut device = PvPanicPciDevice::new(evt_wrtube);
 
         assert!(device.allocate_address(&mut allocator).is_ok());
@@ -239,7 +244,7 @@ mod test {
         device.write_bar(mmio_addr, &data);
 
         // Verify the event
-        let val = evt_rdtube.recv::<u8>().unwrap();
-        assert_eq!(val, PVPANIC_CRASH_LOADED);
+        let val = evt_rdtube.recv::<VmEventType>().unwrap();
+        assert_eq!(val, VmEventType::Panic(PVPANIC_CRASH_LOADED));
     }
 }

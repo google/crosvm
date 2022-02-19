@@ -7,7 +7,7 @@ use std::convert::TryInto;
 use std::ops::Bound::Included;
 use std::sync::{Arc, Weak};
 
-use base::{error, Event, RawDescriptor};
+use base::{error, RawDescriptor, SendTube, VmEventType};
 use sync::Mutex;
 
 use crate::pci::pci_configuration::{
@@ -248,18 +248,18 @@ pub struct PciConfigIo {
     pci_root: Arc<Mutex<PciRoot>>,
     /// Current address to read/write from (0xcf8 register, litte endian).
     config_address: u32,
-    /// Event to signal that the quest requested reset via writing to 0xcf9 register.
-    reset_evt: Event,
+    /// Tube to signal that the guest requested reset via writing to 0xcf9 register.
+    reset_evt_wrtube: SendTube,
 }
 
 impl PciConfigIo {
     const REGISTER_BITS_NUM: usize = 8;
 
-    pub fn new(pci_root: Arc<Mutex<PciRoot>>, reset_evt: Event) -> Self {
+    pub fn new(pci_root: Arc<Mutex<PciRoot>>, reset_evt_wrtube: SendTube) -> Self {
         PciConfigIo {
             pci_root,
             config_address: 0,
-            reset_evt,
+            reset_evt_wrtube,
         }
     }
 
@@ -344,7 +344,10 @@ impl BusDevice for PciConfigIo {
         // `offset` is relative to 0xcf8
         match info.offset {
             _o @ 1 if data.len() == 1 && data[0] & PCI_RESET_CPU_BIT != 0 => {
-                if let Err(e) = self.reset_evt.write(1) {
+                if let Err(e) = self
+                    .reset_evt_wrtube
+                    .send::<VmEventType>(&VmEventType::Reset)
+                {
                     error!("failed to trigger PCI 0xcf9 reset event: {}", e);
                 }
             }

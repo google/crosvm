@@ -98,7 +98,7 @@ fn create_virtio_devices(
     cfg: &Config,
     vm: &mut impl Vm,
     resources: &mut SystemAllocator,
-    _exit_evt: &Event,
+    vm_evt_wrtube: &SendTube,
     wayland_device_tube: Tube,
     gpu_device_tube: Tube,
     vhost_user_gpu_tubes: Vec<(Tube, Tube, Tube)>,
@@ -233,7 +233,7 @@ fn create_virtio_devices(
 
             devs.push(create_gpu_device(
                 cfg,
-                _exit_evt,
+                vm_evt_wrtube,
                 gpu_device_tube,
                 resource_bridges,
                 // Use the unnamed socket for GPU display screens.
@@ -461,8 +461,7 @@ fn create_devices(
     cfg: &Config,
     vm: &mut impl Vm,
     resources: &mut SystemAllocator,
-    exit_evt: &Event,
-    panic_wrtube: Tube,
+    vm_evt_wrtube: &SendTube,
     iommu_attached_endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
     control_tubes: &mut Vec<TaggedControlTube>,
     wayland_device_tube: Tube,
@@ -585,7 +584,7 @@ fn create_devices(
         cfg,
         vm,
         resources,
-        exit_evt,
+        vm_evt_wrtube,
         wayland_device_tube,
         gpu_device_tube,
         vhost_user_gpu_tubes,
@@ -631,7 +630,11 @@ fn create_devices(
         devices.push((Box::new(StubPciDevice::new(params)), None));
     }
 
-    devices.push((Box::new(PvPanicPciDevice::new(panic_wrtube)), None));
+    devices.push((
+        Box::new(PvPanicPciDevice::new(vm_evt_wrtube.try_clone()?)),
+        None,
+    ));
+
     Ok(devices)
 }
 
@@ -1218,10 +1221,8 @@ where
         vvu_proxy_device_tubes.push(vvu_proxy_device_tube);
     }
 
-    let exit_evt = Event::new().context("failed to create event")?;
-    let reset_evt = Event::new().context("failed to create event")?;
-    let crash_evt = Event::new().context("failed to create event")?;
-    let (panic_rdtube, panic_wrtube) = Tube::pair().context("failed to create tube")?;
+    let (vm_evt_wrtube, vm_evt_rdtube) =
+        Tube::directional_pair().context("failed to create vm event tube")?;
 
     let pstore_size = components.pstore.as_ref().map(|pstore| pstore.size as u64);
     let mut sys_allocator = SystemAllocator::new(
@@ -1318,8 +1319,7 @@ where
         &cfg,
         &mut vm,
         &mut sys_allocator,
-        &exit_evt,
-        panic_wrtube,
+        &vm_evt_wrtube,
         &mut iommu_attached_endpoints,
         &mut control_tubes,
         wayland_device_tube,
@@ -1418,8 +1418,7 @@ where
     #[cfg_attr(not(feature = "direct"), allow(unused_mut))]
     let mut linux = Arch::build_vm::<V, Vcpu>(
         components,
-        &exit_evt,
-        &reset_evt,
+        &vm_evt_wrtube,
         &mut sys_allocator,
         &cfg.serial_parameters,
         simple_jail(&cfg.jail_config, "serial")?,
@@ -1484,10 +1483,8 @@ where
         &disk_host_tubes,
         #[cfg(feature = "usb")]
         usb_control_tube,
-        exit_evt,
-        reset_evt,
-        crash_evt,
-        panic_rdtube,
+        vm_evt_rdtube,
+        vm_evt_wrtube,
         sigchld_fd,
         Arc::clone(&map_request),
         gralloc,
@@ -1669,10 +1666,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     balloon_host_tube: Option<Tube>,
     disk_host_tubes: &[Tube],
     #[cfg(feature = "usb")] usb_control_tube: Tube,
-    exit_evt: Event,
-    reset_evt: Event,
-    crash_evt: Event,
-    panic_rdtube: Tube,
+    vm_evt_rdtube: RecvTube,
+    vm_evt_wrtube: SendTube,
     sigchld_fd: SignalFd,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     mut gralloc: RutabagaGralloc,
@@ -1681,10 +1676,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 ) -> Result<ExitState> {
     #[derive(PollToken)]
     enum Token {
-        Exit,
-        Reset,
-        Crash,
-        Panic,
+        VmEvent,
         Suspend,
         ChildSignal,
         IrqFd { index: IrqEventIndex },
@@ -1698,12 +1690,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         .expect("failed to set terminal raw mode");
 
     let wait_ctx = WaitContext::build_with(&[
-        (&exit_evt, Token::Exit),
-        (&reset_evt, Token::Reset),
-        (&crash_evt, Token::Crash),
-        (&panic_rdtube, Token::Panic),
         (&linux.suspend_evt, Token::Suspend),
         (&sigchld_fd, Token::ChildSignal),
+        (&vm_evt_rdtube, Token::VmEvent),
     ])
     .context("failed to add descriptor to wait context")?;
 
@@ -1808,9 +1797,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             linux.has_bios,
             (*linux.io_bus).clone(),
             (*linux.mmio_bus).clone(),
-            exit_evt.try_clone().context("failed to clone event")?,
-            reset_evt.try_clone().context("failed to clone event")?,
-            crash_evt.try_clone().context("failed to clone event")?,
+            vm_evt_wrtube
+                .try_clone()
+                .context("failed to clone vm event tube")?,
             linux.vm.check_capability(VmCap::PvClockSuspend),
             from_main_channel,
             use_hypervisor_signals,
@@ -1869,37 +1858,38 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         let mut vm_control_indices_to_remove = Vec::new();
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
-                Token::Exit => {
-                    info!("vcpu requested shutdown");
-                    break 'wait;
-                }
-                Token::Reset => {
-                    info!("vcpu requested reset");
-                    exit_state = ExitState::Reset;
-                    break 'wait;
-                }
-                Token::Crash => {
-                    info!("vcpu crashed");
-                    exit_state = ExitState::Crash;
-                    break 'wait;
-                }
-                Token::Panic => {
+                Token::VmEvent => {
                     let mut break_to_wait: bool = true;
-                    match panic_rdtube.recv::<u8>() {
-                        Ok(panic_code) => {
-                            let panic_code = PvPanicCode::from_u8(panic_code);
-                            info!("Guest reported panic [Code: {}]", panic_code);
-                            if panic_code == PvPanicCode::CrashLoaded {
-                                // VM is booting to crash kernel.
-                                break_to_wait = false;
+                    match vm_evt_rdtube.recv::<VmEventType>() {
+                        Ok(vm_event) => match vm_event {
+                            VmEventType::Exit => {
+                                info!("vcpu requested shutdown");
+                                exit_state = ExitState::Stop;
                             }
-                        }
+                            VmEventType::Reset => {
+                                info!("vcpu requested reset");
+                                exit_state = ExitState::Reset;
+                            }
+                            VmEventType::Crash => {
+                                info!("vcpu crashed");
+                                exit_state = ExitState::Crash;
+                            }
+                            VmEventType::Panic(panic_code) => {
+                                let panic_code = PvPanicCode::from_u8(panic_code);
+                                info!("Guest reported panic [Code: {}]", panic_code);
+                                if panic_code == PvPanicCode::CrashLoaded {
+                                    // VM is booting to crash kernel.
+                                    break_to_wait = false;
+                                } else {
+                                    exit_state = ExitState::GuestPanic;
+                                }
+                            }
+                        },
                         Err(e) => {
-                            warn!("failed to recv panic event: {} ", e);
+                            warn!("failed to recv VmEvent: {}", e);
                         }
                     }
                     if break_to_wait {
-                        exit_state = ExitState::GuestPanic;
                         break 'wait;
                     }
                 }

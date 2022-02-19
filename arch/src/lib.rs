@@ -20,7 +20,7 @@ use libc::sched_getcpu;
 
 use acpi_tables::aml::Aml;
 use acpi_tables::sdt::SDT;
-use base::{syslog, AsRawDescriptor, AsRawDescriptors, Event, Tube};
+use base::{syslog, AsRawDescriptor, AsRawDescriptors, Event, SendTube, Tube};
 use devices::virtio::VirtioDevice;
 use devices::{
     BarRange, Bus, BusDevice, BusDeviceObj, BusError, BusResumeDevice, HotPlugBus, IrqChip,
@@ -184,10 +184,8 @@ pub trait LinuxArch {
     /// # Arguments
     ///
     /// * `components` - Parts to use to build the VM.
-    /// * `exit_evt` - Event used by sub-devices to request that crosvm exit because guest
-    ///     wants to stop/shut down.
-    /// * `reset_evt` - Event used by sub-devices to request that crosvm exit because guest
-    ///     requested reset.
+    /// * `vm_evt_wrtube` - Tube used by sub-devices to request that crosvm exit because guest
+    ///     wants to stop/shut down or requested reset.
     /// * `system_allocator` - Allocator created by this trait's implementation of
     ///   `get_system_allocator_config`.
     /// * `serial_parameters` - Definitions for how the serial devices should be configured.
@@ -199,8 +197,7 @@ pub trait LinuxArch {
     /// * `irq_chip` - The IRQ chip implemention for the VM.
     fn build_vm<V, Vcpu>(
         components: VmComponents,
-        exit_evt: &Event,
-        reset_evt: &Event,
+        vm_evt_wrtube: &SendTube,
         system_allocator: &mut SystemAllocator,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
