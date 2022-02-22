@@ -5,6 +5,7 @@
 # Rules from common_device.policy with some rules removed because they block certain flags needed
 # for gpu.
 brk: 1
+clock_gettime: 1
 close: 1
 dup3: 1
 dup: 1
@@ -75,7 +76,6 @@ getuid: 1
 gettid: 1
 fcntl: 1
 tgkill: 1
-clock_gettime: 1
 
 # Rules specific to Mesa.
 sched_setscheduler: 1

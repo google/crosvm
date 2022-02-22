@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 brk: 1
+clock_gettime: 1
 clone: arg0 & CLONE_THREAD
 close: 1
 dup3: 1

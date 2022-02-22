@@ -5,6 +5,7 @@
 # Rules from common_device.policy with mmap and mprotect removed because the video device needs
 # to allow more arguments for them.
 brk: 1
+clock_gettime: 1
 clone: arg0 & CLONE_THREAD
 close: 1
 dup2: 1

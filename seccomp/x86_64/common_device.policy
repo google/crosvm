@@ -4,6 +4,7 @@
 
 @frequency ./common_device.frequency
 brk: 1
+clock_gettime: 1
 clone: arg0 & CLONE_THREAD
 close: 1
 dup2: 1

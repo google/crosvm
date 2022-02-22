@@ -11,7 +11,6 @@ faccessat: 1
 faccessat2: 1
 newfstatat: 1
 gettid: 1
-clock_gettime: 1
 timerfd_create: 1
 getsockname: 1
 openat: 1

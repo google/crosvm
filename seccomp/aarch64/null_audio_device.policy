@@ -7,6 +7,5 @@
 madvise: 1
 prlimit64: 1
 setrlimit: 1
-clock_gettime: 1
 openat: return ENOENT
 prctl: arg0 == PR_SET_NAME
