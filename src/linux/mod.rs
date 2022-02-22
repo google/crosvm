@@ -1184,6 +1184,42 @@ where
         }))
         .context("failed to calculate init balloon size")?;
 
+    #[cfg(feature = "direct")]
+    let mut irqs = Vec::new();
+
+    #[cfg(feature = "direct")]
+    for irq in &cfg.direct_level_irq {
+        if !sys_allocator.reserve_irq(*irq) {
+            warn!("irq {} already reserved.", irq);
+        }
+        let trigger = Event::new().context("failed to create event")?;
+        let resample = Event::new().context("failed to create event")?;
+        irq_chip
+            .register_irq_event(*irq, &trigger, Some(&resample))
+            .unwrap();
+        let direct_irq = devices::DirectIrq::new(trigger, Some(resample))
+            .context("failed to enable interrupt forwarding")?;
+        direct_irq
+            .irq_enable(*irq)
+            .context("failed to enable interrupt forwarding")?;
+        irqs.push(direct_irq);
+    }
+
+    #[cfg(feature = "direct")]
+    for irq in &cfg.direct_edge_irq {
+        if !sys_allocator.reserve_irq(*irq) {
+            warn!("irq {} already reserved.", irq);
+        }
+        let trigger = Event::new().context("failed to create event")?;
+        irq_chip.register_irq_event(*irq, &trigger, None).unwrap();
+        let direct_irq = devices::DirectIrq::new(trigger, None)
+            .context("failed to enable interrupt forwarding")?;
+        direct_irq
+            .irq_enable(*irq)
+            .context("failed to enable interrupt forwarding")?;
+        irqs.push(direct_irq);
+    }
+
     let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>> =
         BTreeMap::new();
     let mut devices = create_devices(
@@ -1332,46 +1368,6 @@ where
                 .unwrap();
         }
     };
-
-    #[cfg(feature = "direct")]
-    let mut irqs = Vec::new();
-
-    #[cfg(feature = "direct")]
-    for irq in &cfg.direct_level_irq {
-        if !sys_allocator.reserve_irq(*irq) {
-            warn!("irq {} already reserved.", irq);
-        }
-        let trigger = Event::new().context("failed to create event")?;
-        let resample = Event::new().context("failed to create event")?;
-        linux
-            .irq_chip
-            .register_irq_event(*irq, &trigger, Some(&resample))
-            .unwrap();
-        let direct_irq = devices::DirectIrq::new(trigger, Some(resample))
-            .context("failed to enable interrupt forwarding")?;
-        direct_irq
-            .irq_enable(*irq)
-            .context("failed to enable interrupt forwarding")?;
-        irqs.push(direct_irq);
-    }
-
-    #[cfg(feature = "direct")]
-    for irq in &cfg.direct_edge_irq {
-        if !sys_allocator.reserve_irq(*irq) {
-            warn!("irq {} already reserved.", irq);
-        }
-        let trigger = Event::new().context("failed to create event")?;
-        linux
-            .irq_chip
-            .register_irq_event(*irq, &trigger, None)
-            .unwrap();
-        let direct_irq = devices::DirectIrq::new(trigger, None)
-            .context("failed to enable interrupt forwarding")?;
-        direct_irq
-            .irq_enable(*irq)
-            .context("failed to enable interrupt forwarding")?;
-        irqs.push(direct_irq);
-    }
 
     let gralloc = RutabagaGralloc::new().context("failed to create gralloc")?;
     run_control(
