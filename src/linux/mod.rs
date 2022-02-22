@@ -1371,7 +1371,8 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     let host_str = host_os_str
         .to_str()
         .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
-    let host_addr = PciAddress::from_string(host_str);
+    let host_addr =
+        PciAddress::from_string(host_str).context("failed to parse vfio pci address")?;
 
     let (hp_bus, bus_num) = get_hp_bus(linux, host_addr)?;
 
@@ -1424,7 +1425,8 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     let host_str = host_os_str
         .to_str()
         .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
-    let host_addr = PciAddress::from_string(host_str);
+    let host_addr =
+        PciAddress::from_string(host_str).context("failed to parse vfio pci address")?;
     let host_key = HostHotPlugKey::Vfio { host_addr };
     let mut hp_bus = hp_bus.lock();
     hp_bus.add_hotplug_device(host_key, pci_address);
@@ -1444,7 +1446,8 @@ fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     let host_str = host_os_str
         .to_str()
         .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
-    let host_addr = PciAddress::from_string(host_str);
+    let host_addr =
+        PciAddress::from_string(host_str).context("failed to parse vfio pci address")?;
     let host_key = HostHotPlugKey::Vfio { host_addr };
     for hp_bus in linux.hotplug_bus.iter() {
         let mut hp_bus_lock = hp_bus.lock();

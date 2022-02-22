@@ -27,6 +27,7 @@ mod vfio_pci;
 pub use self::ac97::{Ac97Backend, Ac97Dev, Ac97Parameters};
 pub use self::coiommu::{CoIommuDev, CoIommuParameters, CoIommuUnpinPolicy};
 pub use self::msix::{MsixCap, MsixConfig, MsixStatus};
+pub use self::pci_address::Error as PciAddressError;
 pub use self::pci_address::PciAddress;
 pub use self::pci_configuration::{
     PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType, PciCapability,

@@ -302,7 +302,8 @@ impl PcieDevice for PcieRootPort {
         if self.pci_address.is_none() {
             match &self.pcie_host {
                 Some(host) => {
-                    let address = PciAddress::from_string(&host.host_name());
+                    let address = PciAddress::from_string(&host.host_name())
+                        .map_err(|e| PciDeviceError::PciAddressParseFailure(host.host_name(), e))?;
                     if resources.reserve_pci(
                         Alloc::PciBar {
                             bus: address.bus,

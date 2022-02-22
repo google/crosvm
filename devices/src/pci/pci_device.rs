@@ -16,7 +16,7 @@ use crate::pci::pci_configuration::{
     self, PciBarConfiguration, BAR0_REG, COMMAND_REG, COMMAND_REG_IO_SPACE_MASK,
     COMMAND_REG_MEMORY_SPACE_MASK, NUM_BAR_REGS, ROM_BAR_REG,
 };
-use crate::pci::{PciAddress, PciInterruptPin};
+use crate::pci::{PciAddress, PciAddressError, PciInterruptPin};
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 #[cfg(feature = "audio")]
 use crate::virtio::snd::vios_backend::Error as VioSError;
@@ -57,6 +57,9 @@ pub enum Error {
     /// PCI Address is not allocated.
     #[error("PCI address is not allocated")]
     PciAddressMissing,
+    /// PCI Address parsing failure.
+    #[error("PCI address '{0}' could not be parsed: {1}")]
+    PciAddressParseFailure(String, PciAddressError),
     /// PCI Address allocation failure.
     #[error("failed to allocate PCI address")]
     PciAllocationFailed,

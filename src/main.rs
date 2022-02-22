@@ -987,7 +987,10 @@ fn parse_stub_pci_parameters(s: Option<&str>) -> argument::Result<StubPciParamet
         )))?
         .key();
     let mut params = StubPciParameters {
-        address: PciAddress::from_string(addr),
+        address: PciAddress::from_string(addr).map_err(|e| argument::Error::InvalidValue {
+            value: addr.to_owned(),
+            expected: format!("stub-pci-device: expected PCI address: {}", e),
+        })?,
         vendor_id: 0,
         device_id: 0,
         class: PciClassCode::Other,
@@ -2284,7 +2287,13 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                             ),
                         });
                     }
-                    Some(PciAddress::from_string(kvs[0].value()?))
+                    let pci_address = kvs[0].value()?;
+                    Some(PciAddress::from_string(pci_address).map_err(|e| {
+                        argument::Error::InvalidValue {
+                            value: pci_address.to_string(),
+                            expected: format!("vvu-proxy PCI address: {}", e),
+                        }
+                    })?)
                 }
                 None => None,
             };

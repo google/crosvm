@@ -1284,7 +1284,9 @@ impl PciDevice for VfioPciDevice {
         resources: &mut SystemAllocator,
     ) -> Result<PciAddress, PciDeviceError> {
         if self.pci_address.is_none() {
-            let mut address = PciAddress::from_string(self.device.device_name());
+            let mut address = PciAddress::from_string(self.device.device_name()).map_err(|e| {
+                PciDeviceError::PciAddressParseFailure(self.device.device_name().clone(), e)
+            })?;
             if let Some(bus_num) = self.hotplug_bus_number {
                 // Caller specify pcie bus number for hotplug device
                 address.bus = bus_num;
