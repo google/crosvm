@@ -15,8 +15,8 @@ use crate::virtio::video::control::CtrlType;
 #[derive(Debug, ThisError)]
 pub enum VideoError {
     /// Backend-specific error.
-    #[error("backend failure: {0}")]
-    BackendFailure(Box<dyn std::error::Error + Send>),
+    #[error("backend failure: {0:#}")]
+    BackendFailure(anyhow::Error),
     /// Invalid argument.
     #[error("invalid argument")]
     InvalidArgument,
@@ -40,12 +40,6 @@ pub enum VideoError {
     #[allow(dead_code)]
     #[error("unsupported control: {0:?}")]
     UnsupportedControl(CtrlType),
-}
-
-impl VideoError {
-    pub fn backend_failure<E: std::error::Error + Send + 'static>(error: E) -> Self {
-        VideoError::BackendFailure(Box::new(error))
-    }
 }
 
 pub type VideoResult<T> = Result<T, VideoError>;

@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use anyhow::anyhow;
 use base::{error, warn, AsRawDescriptor, IntoRawDescriptor};
-use remain::sorted;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
-use thiserror::Error as ThisError;
 
 use libvda::decode::Event as LibvdaEvent;
 
@@ -16,23 +15,6 @@ use crate::virtio::video::{
     error::{VideoError, VideoResult},
     format::*,
 };
-
-#[sorted]
-#[derive(Debug, ThisError)]
-enum VdaBackendError {
-    #[error("set_output_parameters() must be called before use_output_buffer()")]
-    OutputParamsNotSet,
-    #[error("VDA backend only supports virtio object resources")]
-    UnsupportedMemoryType,
-    #[error("VDA failure: {0}")]
-    VdaFailure(libvda::decode::Response),
-}
-
-impl From<VdaBackendError> for VideoError {
-    fn from(e: VdaBackendError) -> Self {
-        VideoError::backend_failure(e)
-    }
-}
 
 impl TryFrom<Format> for libvda::Profile {
     type Error = VideoError;
@@ -80,7 +62,7 @@ impl From<libvda::decode::Event> for DecoderEvent {
         fn vda_response_to_result(resp: libvda::decode::Response) -> VideoResult<()> {
             match resp {
                 libvda::decode::Response::Success => Ok(()),
-                resp => Err(VdaBackendError::VdaFailure(resp).into()),
+                resp => Err(VideoError::BackendFailure(anyhow!("VDA failure: {}", resp))),
             }
         }
 
@@ -124,9 +106,9 @@ impl From<libvda::decode::Event> for DecoderEvent {
             LibvdaEvent::NotifyEndOfBitstreamBuffer { bitstream_id } => {
                 DecoderEvent::NotifyEndOfBitstreamBuffer(bitstream_id)
             }
-            LibvdaEvent::NotifyError(resp) => {
-                DecoderEvent::NotifyError(VdaBackendError::VdaFailure(resp).into())
-            }
+            LibvdaEvent::NotifyError(resp) => DecoderEvent::NotifyError(
+                VideoError::BackendFailure(anyhow!("VDA failure: {}", resp)),
+            ),
             LibvdaEvent::ResetResponse(resp) => {
                 DecoderEvent::ResetCompleted(vda_response_to_result(resp))
             }
@@ -182,7 +164,11 @@ impl DecoderSession for VdaDecoderSession {
     ) -> VideoResult<()> {
         let handle = match resource {
             GuestResourceHandle::VirtioObject(handle) => handle,
-            _ => return Err(VdaBackendError::UnsupportedMemoryType.into()),
+            _ => {
+                return Err(VideoError::BackendFailure(anyhow!(
+                    "VDA backend only supports virtio object resources"
+                )))
+            }
         };
 
         Ok(self.vda_session.decode(
@@ -213,13 +199,19 @@ impl DecoderSession for VdaDecoderSession {
     ) -> VideoResult<()> {
         let handle = match resource.handle {
             GuestResourceHandle::VirtioObject(handle) => handle,
-            _ => return Err(VdaBackendError::UnsupportedMemoryType.into()),
+            _ => {
+                return Err(VideoError::BackendFailure(anyhow!(
+                    "VDA backend only supports virtio object resources"
+                )))
+            }
         };
         let vda_planes: Vec<libvda::FramePlane> = resource.planes.iter().map(Into::into).collect();
 
         Ok(self.vda_session.use_output_buffer(
             picture_buffer_id,
-            self.format.ok_or(VdaBackendError::OutputParamsNotSet)?,
+            self.format.ok_or(VideoError::BackendFailure(anyhow!(
+                "set_output_parameters() must be called before use_output_buffer()"
+            )))?,
             // Steal the descriptor of the resource, as libvda will close it.
             handle.desc.into_raw_descriptor(),
             &vda_planes,

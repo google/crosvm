@@ -8,7 +8,7 @@ use crate::virtio::video::{error::VideoError, format::Profile, protocol};
 /// Transparent convertion from libvda error to VideoError backend failure.
 impl From<libvda::Error> for VideoError {
     fn from(error: libvda::Error) -> Self {
-        VideoError::backend_failure(error)
+        VideoError::BackendFailure(error.into())
     }
 }
 
