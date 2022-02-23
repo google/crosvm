@@ -164,6 +164,8 @@ pub struct KvmSplitIrqChip {
     /// locked the ioapic and the ioapic sends a AddMsiRoute signal to the main thread (which
     /// itself may be busy trying to call service_irq).
     delayed_ioapic_irq_events: Arc<Mutex<Vec<usize>>>,
+    /// Event which is meant to trigger process of any irqs events that were delayed.
+    delayed_ioapic_irq_trigger: Event,
     /// Array of Events that devices will use to assert ioapic pins.
     irq_events: Arc<Mutex<Vec<Option<IrqEvent>>>>,
 }
@@ -218,6 +220,7 @@ impl KvmSplitIrqChip {
             ioapic: Arc::new(Mutex::new(Ioapic::new(irq_tube, ioapic_pins)?)),
             ioapic_pins,
             delayed_ioapic_irq_events: Arc::new(Mutex::new(Vec::new())),
+            delayed_ioapic_irq_trigger: Event::new()?,
             irq_events: Arc::new(Mutex::new(Default::default())),
         };
 
@@ -465,6 +468,7 @@ impl IrqChip for KvmSplitIrqChip {
                             }
                         } else {
                             self.delayed_ioapic_irq_events.lock().push(event_index);
+                            self.delayed_ioapic_irq_trigger.write(1).unwrap();
                         }
                     }
                     _ => {}
@@ -549,6 +553,7 @@ impl IrqChip for KvmSplitIrqChip {
             ioapic: self.ioapic.clone(),
             ioapic_pins: self.ioapic_pins,
             delayed_ioapic_irq_events: self.delayed_ioapic_irq_events.clone(),
+            delayed_ioapic_irq_trigger: Event::new()?,
             irq_events: self.irq_events.clone(),
         })
     }
@@ -641,7 +646,15 @@ impl IrqChip for KvmSplitIrqChip {
                 }
             });
 
+        if self.delayed_ioapic_irq_events.lock().is_empty() {
+            self.delayed_ioapic_irq_trigger.read()?;
+        }
+
         Ok(())
+    }
+
+    fn irq_delayed_event_token(&self) -> Result<Option<Event>> {
+        Ok(Some(self.delayed_ioapic_irq_trigger.try_clone()?))
     }
 
     fn check_capability(&self, c: IrqChipCap) -> bool {

@@ -1577,6 +1577,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         IrqFd { index: IrqEventIndex },
         VmControlServer,
         VmControl { index: usize },
+        DelayedIrqFd,
     }
 
     stdin()
@@ -1612,6 +1613,12 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     for (index, _gsi, evt) in events {
         wait_ctx
             .add(&evt, Token::IrqFd { index })
+            .context("failed to add descriptor to wait context")?;
+    }
+
+    if let Some(delayed_ioapic_irq_trigger) = linux.irq_chip.irq_delayed_event_token()? {
+        wait_ctx
+            .add(&delayed_ioapic_irq_trigger, Token::DelayedIrqFd)
             .context("failed to add descriptor to wait context")?;
     }
 
@@ -1740,10 +1747,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             }
         };
 
-        if let Err(e) = linux.irq_chip.process_delayed_irq_events() {
-            warn!("can't deliver delayed irqs: {}", e);
-        }
-
         let mut vm_control_indices_to_remove = Vec::new();
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
@@ -1810,6 +1813,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 Token::IrqFd { index } => {
                     if let Err(e) = linux.irq_chip.service_irq_event(index) {
                         error!("failed to signal irq {}: {}", index, e);
+                    }
+                }
+                Token::DelayedIrqFd => {
+                    if let Err(e) = linux.irq_chip.process_delayed_irq_events() {
+                        warn!("can't deliver delayed irqs: {}", e);
                     }
                 }
                 Token::VmControlServer => {

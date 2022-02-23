@@ -167,6 +167,10 @@ impl IrqChip for KvmKernelIrqChip {
         Ok(())
     }
 
+    fn irq_delayed_event_token(&self) -> Result<Option<Event>> {
+        Ok(None)
+    }
+
     fn check_capability(&self, c: IrqChipCap) -> bool {
         match c {
             IrqChipCap::TscDeadlineTimer => self
