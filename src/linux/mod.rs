@@ -1419,14 +1419,6 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
         };
     }
 
-    let host_os_str = vfio_path
-        .file_name()
-        .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
-    let host_str = host_os_str
-        .to_str()
-        .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
-    let host_addr =
-        PciAddress::from_string(host_str).context("failed to parse vfio pci address")?;
     let host_key = HostHotPlugKey::Vfio { host_addr };
     let mut hp_bus = hp_bus.lock();
     hp_bus.add_hotplug_device(host_key, pci_address);
