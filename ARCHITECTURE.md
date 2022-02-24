@@ -51,7 +51,7 @@ separation in case a device becomes compromised by a malicious guest. For exampl
 that is able to allocate MSI routes would not be able to use the same socket to (de)register guest
 memory. During the device initialization stage, each device that requires some aspect of VM control
 will have a constructor that requires the corresponding control socket. The control socket will get
-preserved when the device is sandboxed and and the other side of the socket will be waited on in the
+preserved when the device is sandboxed and the other side of the socket will be waited on in the
 main process's control loop.
 
 The socket exposed by crosvm with the `--socket` command line argument is another form of the VM
