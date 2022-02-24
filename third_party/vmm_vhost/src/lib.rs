@@ -46,32 +46,40 @@ pub mod message;
 
 pub mod connection;
 
-#[cfg(feature = "vmm")]
-mod master;
-#[cfg(feature = "vmm")]
-pub use self::master::{Master, VhostUserMaster};
-#[cfg(feature = "vmm")]
-mod master_req_handler;
-#[cfg(feature = "vmm")]
-pub use self::master_req_handler::{
-    MasterReqHandler, VhostUserMasterReqHandler, VhostUserMasterReqHandlerMut,
-};
+mod sys;
+pub use sys::{SystemStream, *};
 
-#[cfg(feature = "device")]
-mod slave;
-#[cfg(feature = "device")]
-pub use self::slave::SlaveListener;
-#[cfg(feature = "device")]
-mod slave_req_handler;
-#[cfg(feature = "device")]
-pub use self::slave_req_handler::{
-    Protocol, SlaveReqHandler, SlaveReqHelper, VhostUserSlaveReqHandler,
-    VhostUserSlaveReqHandlerMut,
-};
-#[cfg(feature = "device")]
-mod slave_fs_cache;
-#[cfg(feature = "device")]
-pub use self::slave_fs_cache::SlaveFsCacheReq;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "vmm")] {
+        pub(crate) mod master;
+        pub use self::master::{Master, VhostUserMaster};
+        mod master_req_handler;
+        pub use self::master_req_handler::{VhostUserMasterReqHandler,
+                                    VhostUserMasterReqHandlerMut};
+    }
+}
+cfg_if::cfg_if! {
+    if #[cfg(feature = "device")] {
+        mod slave_req_handler;
+        mod slave_fs_cache;
+        pub use self::slave_req_handler::{
+            Protocol, SlaveReqHandler, SlaveReqHelper, VhostUserSlaveReqHandler,
+            VhostUserSlaveReqHandlerMut,
+        };
+        pub use self::slave_fs_cache::SlaveFsCacheReq;
+    }
+}
+cfg_if::cfg_if! {
+    if #[cfg(all(feature = "device", unix))] {
+        mod slave;
+        pub use self::slave::SlaveListener;
+    }
+}
+cfg_if::cfg_if! {
+    if #[cfg(all(feature = "vmm", unix))] {
+        pub use self::master_req_handler::MasterReqHandler;
+    }
+}
 
 /// Errors for vhost-user operations
 #[sorted]
@@ -108,6 +116,14 @@ pub enum Error {
     /// Only part of a message have been sent or received successfully
     #[error("partial message")]
     PartialMessage,
+    /// Provided recv buffer was too small, and data was dropped.
+    #[error("buffer for recv was too small, data was dropped: got size {got}, needed {want}")]
+    RecvBufferTooSmall {
+        /// The size of the buffer received.
+        got: usize,
+        /// The expected size of the buffer.
+        want: usize,
+    },
     /// Error from request handler
     #[error("handler failed to handle request: {0}")]
     ReqHandlerError(IOError),
@@ -126,6 +142,9 @@ pub enum Error {
     /// Should retry the socket operation again.
     #[error("temporary socket error: {0}")]
     SocketRetry(std::io::Error),
+    /// Error from tx/rx on a Tube.
+    #[error("failed to read/write on Tube: {0}")]
+    TubeError(base::TubeError),
     /// Error from VFIO device.
     #[error("error occurred in VFIO device: {0}")]
     VfioDeviceError(anyhow::Error),
@@ -192,40 +211,17 @@ mod dummy_slave;
 
 #[cfg(all(test, feature = "vmm", feature = "device"))]
 mod tests {
-    use std::path::Path;
+    use base::AsRawDescriptor;
     use std::sync::{Arc, Barrier, Mutex};
     use std::thread;
 
-    use super::connection::socket::{Endpoint, Listener};
-
+    use super::connection::tests::*;
     use super::dummy_slave::{DummySlaveReqHandler, VIRTIO_FEATURES};
     use super::message::*;
     use super::*;
     use crate::backend::VhostBackend;
     use crate::{VhostUserMemoryRegionInfo, VringConfigData};
-    use base::AsRawDescriptor;
-    use tempfile::{tempfile, Builder, TempDir};
-
-    fn temp_dir() -> TempDir {
-        Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
-    }
-
-    fn create_slave<P, S>(
-        path: P,
-        backend: Arc<S>,
-    ) -> (
-        Master<Endpoint<MasterReq>>,
-        SlaveReqHandler<S, Endpoint<MasterReq>>,
-    )
-    where
-        P: AsRef<Path>,
-        S: VhostUserSlaveReqHandler,
-    {
-        let listener = Listener::new(&path, true).unwrap();
-        let mut slave_listener = SlaveListener::new(listener, backend).unwrap();
-        let master = Master::connect(&path, 1).unwrap();
-        (master, slave_listener.accept().unwrap().unwrap())
-    }
+    use tempfile::tempfile;
 
     #[test]
     fn create_dummy_slave() {
@@ -238,10 +234,7 @@ mod tests {
     #[test]
     fn test_set_owner() {
         let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
-        let dir = temp_dir();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
-        let (master, mut slave) = create_slave(&path, slave_be.clone());
+        let (master, mut slave) = create_master_slave_pair(slave_be.clone());
 
         assert!(!slave_be.lock().unwrap().owned);
         master.set_owner().unwrap();
@@ -256,11 +249,8 @@ mod tests {
     fn test_set_features() {
         let mbar = Arc::new(Barrier::new(2));
         let sbar = mbar.clone();
-        let dir = temp_dir();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
         let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
-        let (mut master, mut slave) = create_slave(&path, slave_be.clone());
+        let (mut master, mut slave) = create_master_slave_pair(slave_be.clone());
 
         thread::spawn(move || {
             slave.handle_request().unwrap();
@@ -302,11 +292,8 @@ mod tests {
     fn test_master_slave_process() {
         let mbar = Arc::new(Barrier::new(2));
         let sbar = mbar.clone();
-        let dir = temp_dir();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
         let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
-        let (mut master, mut slave) = create_slave(&path, slave_be.clone());
+        let (mut master, mut slave) = create_master_slave_pair(slave_be.clone());
 
         thread::spawn(move || {
             // set_own()
@@ -343,8 +330,12 @@ mod tests {
             slave.handle_request().unwrap();
             slave.handle_request().unwrap();
 
-            // set_slave_request_fd
-            slave.handle_request().unwrap();
+            // set_slave_request_rd isn't implemented on Windows.
+            #[cfg(unix)]
+            {
+                // set_slave_request_fd
+                slave.handle_request().unwrap();
+            }
 
             // set_vring_enable
             slave.handle_request().unwrap();
@@ -422,7 +413,13 @@ mod tests {
         assert_eq!(offset, 0x100);
         assert_eq!(reply_payload[0], 0xa5);
 
-        master.set_slave_request_fd(&eventfd).unwrap();
+        // slave request rds are not implemented on Windows.
+        #[cfg(unix)]
+        {
+            master
+                .set_slave_request_fd(&eventfd as &dyn AsRawDescriptor)
+                .unwrap();
+        }
         master.set_vring_enable(0, true).unwrap();
 
         // unimplemented yet

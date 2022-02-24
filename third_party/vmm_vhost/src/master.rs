@@ -3,22 +3,20 @@
 
 //! Traits and Struct for vhost-user master.
 
-use base::{AsRawDescriptor, RawDescriptor};
 use std::fs::File;
 use std::mem;
-use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 // TODO(b/219522861): Remove this alias and use Event in the code.
-use base::{Event as EventFd, INVALID_DESCRIPTOR};
+use base::{AsRawDescriptor, Event as EventFd, RawDescriptor, INVALID_DESCRIPTOR};
 use data_model::DataInit;
 
 use super::connection::{Endpoint, EndpointExt};
 use super::message::*;
 use super::{take_single_file, Error as VhostUserError, Result as VhostUserResult};
 use crate::backend::{VhostBackend, VhostUserMemoryRegionInfo, VringConfigData};
-use crate::Result;
+use crate::{Result, SystemStream};
 
 /// Trait for vhost-user master to provide extra methods not covered by the VhostBackend yet.
 pub trait VhostUserMaster: VhostBackend {
@@ -79,9 +77,9 @@ pub struct Master<E: Endpoint<MasterReq>> {
     node: Arc<Mutex<MasterInternal<E>>>,
 }
 
-impl<E: Endpoint<MasterReq> + From<UnixStream>> Master<E> {
+impl<E: Endpoint<MasterReq> + From<SystemStream>> Master<E> {
     /// Create a new instance from a Unix stream socket.
-    pub fn from_stream(sock: UnixStream, max_queue_num: u64) -> Self {
+    pub fn from_stream(sock: SystemStream, max_queue_num: u64) -> Self {
         Self::new(E::from(sock), max_queue_num)
     }
 }
@@ -187,7 +185,9 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
 
         let mut ctx = VhostUserMemoryContext::new();
         for region in regions.iter() {
-            if region.memory_size == 0 || region.mmap_handle < 0 {
+            // TODO(b/221882601): once mmap handle cross platform story exists, update this null
+            // check.
+            if region.memory_size == 0 || (region.mmap_handle as isize) < 0 {
                 return Err(VhostUserError::InvalidParam);
             }
             let reg = VhostUserMemoryRegion {
@@ -521,7 +521,8 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         {
             return Err(VhostUserError::InvalidOperation);
         }
-        if region.memory_size == 0 || region.mmap_handle < 0 {
+        // TODO(b/221882601): once mmap handle cross platform story exists, update this null check.
+        if region.memory_size == 0 || (region.mmap_handle as isize) < 0 {
             return Err(VhostUserError::InvalidParam);
         }
 
@@ -560,10 +561,13 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
 impl<E: Endpoint<MasterReq> + AsRawDescriptor> AsRawDescriptor for Master<E> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         let node = self.node();
+        // TODO(b/221882601): why is this here? The underlying Tube needs to use a read notifier
+        // if this is for polling.
         node.main_sock.as_raw_descriptor()
     }
 }
 
+// TODO(b/221882601): likely need pairs of RDs and/or SharedMemory to represent mmaps on Windows.
 /// Context object to pass guest memory configuration to VhostUserMaster::set_mem_table().
 struct VhostUserMemoryContext {
     regions: VhostUserMemoryPayload,
@@ -777,38 +781,13 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::connection::{
-        socket::Endpoint as SocketEndpoint, socket::Listener as SocketListener, EndpointExt,
-        Listener,
-    };
     use super::*;
+    use crate::connection::tests::{create_pair, TestEndpoint, TestMaster};
     use base::INVALID_DESCRIPTOR;
-    use tempfile::{Builder, TempDir};
-
-    fn temp_dir() -> TempDir {
-        Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
-    }
-
-    fn create_pair<P: AsRef<Path>>(
-        path: P,
-    ) -> (Master<SocketEndpoint<MasterReq>>, SocketEndpoint<MasterReq>) {
-        let mut listener = SocketListener::new(&path, true).unwrap();
-        listener.set_nonblocking(true).unwrap();
-        let master = Master::connect(path, 2).unwrap();
-        let slave = listener.accept().unwrap().unwrap();
-        (master, SocketEndpoint::from(slave))
-    }
 
     #[test]
     fn create_master() {
-        let dir = temp_dir();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
-        let mut listener = SocketListener::new(&path, true).unwrap();
-        listener.set_nonblocking(true).unwrap();
-
-        let master = Master::<SocketEndpoint<_>>::connect(&path, 1).unwrap();
-        let mut slave = SocketEndpoint::<MasterReq>::from(listener.accept().unwrap().unwrap());
+        let (master, mut slave) = create_pair();
 
         assert!(master.as_raw_descriptor() != INVALID_DESCRIPTOR);
         // Send two messages continuously
@@ -829,28 +808,8 @@ mod tests {
     }
 
     #[test]
-    fn test_create_failure() {
-        let dir = temp_dir();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
-        let _ = SocketListener::new(&path, true).unwrap();
-        let _ = SocketListener::new(&path, false).is_err();
-        assert!(Master::<SocketEndpoint<_>>::connect(&path, 1).is_err());
-
-        let mut listener = SocketListener::new(&path, true).unwrap();
-        assert!(SocketListener::new(&path, false).is_err());
-        listener.set_nonblocking(true).unwrap();
-
-        let _master = Master::<SocketEndpoint<_>>::connect(&path, 1).unwrap();
-        let _slave = listener.accept().unwrap().unwrap();
-    }
-
-    #[test]
     fn test_features() {
-        let dir = temp_dir();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
-        let (master, mut peer) = create_pair(&path);
+        let (master, mut peer) = create_pair();
 
         master.set_owner().unwrap();
         let (hdr, rfds) = peer.recv_header().unwrap();
@@ -884,10 +843,7 @@ mod tests {
 
     #[test]
     fn test_protocol_features() {
-        let dir = temp_dir();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
-        let (mut master, mut peer) = create_pair(&path);
+        let (mut master, mut peer) = create_pair();
 
         master.set_owner().unwrap();
         let (hdr, rfds) = peer.recv_header().unwrap();
@@ -937,10 +893,7 @@ mod tests {
 
     #[test]
     fn test_master_set_config_negative() {
-        let dir = temp_dir();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
-        let (mut master, _peer) = create_pair(&path);
+        let (mut master, _peer) = create_pair();
         let buf = vec![0x0; MAX_MSG_SIZE + 1];
 
         master
@@ -983,12 +936,8 @@ mod tests {
             .unwrap_err();
     }
 
-    fn create_pair2() -> (Master<SocketEndpoint<MasterReq>>, SocketEndpoint<MasterReq>) {
-        let dir = temp_dir();
-        let mut path = dir.path().to_owned();
-        path.push("sock");
-        let (master, peer) = create_pair(&path);
-
+    fn create_pair2() -> (TestMaster, TestEndpoint) {
+        let (master, peer) = create_pair();
         {
             let mut node = master.node();
             node.virtio_features = 0xffff_ffff;

@@ -1,18 +1,18 @@
 // Copyright (C) 2020 Alibaba Cloud. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::{SlaveFsCacheReqSocket, SystemStream};
 use base::{AsRawDescriptor, RawDescriptor};
 use std::io;
 use std::mem;
-use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use super::connection::{socket::Endpoint as SocketEndpoint, EndpointExt};
+use super::connection::EndpointExt;
 use super::message::*;
 use super::{Error, HandlerResult, Result, VhostUserMasterReqHandler};
 
 struct SlaveFsCacheReqInternal {
-    sock: SocketEndpoint<SlaveReq>,
+    sock: SlaveFsCacheReqSocket,
 
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
@@ -76,12 +76,12 @@ impl SlaveFsCacheReqInternal {
 /// [MasterReqHandler]: struct.MasterReqHandler.html
 #[derive(Clone)]
 pub struct SlaveFsCacheReq {
-    // underlying Unix domain socket for communication
+    // underlying socket for communication
     node: Arc<Mutex<SlaveFsCacheReqInternal>>,
 }
 
 impl SlaveFsCacheReq {
-    fn new(ep: SocketEndpoint<SlaveReq>) -> Self {
+    fn new(ep: SlaveFsCacheReqSocket) -> Self {
         SlaveFsCacheReq {
             node: Arc::new(Mutex::new(SlaveFsCacheReqInternal {
                 sock: ep,
@@ -106,9 +106,9 @@ impl SlaveFsCacheReq {
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{}", e)))
     }
 
-    /// Create a new instance from a `UnixStream` object.
-    pub fn from_stream(sock: UnixStream) -> Self {
-        Self::new(SocketEndpoint::<SlaveReq>::from(sock))
+    /// Create a new instance from a `SystemStream` object.
+    pub fn from_stream(sock: SystemStream) -> Self {
+        Self::new(SlaveFsCacheReqSocket::from(sock))
     }
 
     /// Set the negotiation state of the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature.
@@ -146,10 +146,11 @@ impl VhostUserMasterReqHandler for SlaveFsCacheReq {
 mod tests {
 
     use super::*;
+    use crate::connection::Endpoint;
 
     #[test]
     fn test_slave_fs_cache_req_set_failed() {
-        let (p1, _p2) = UnixStream::pair().unwrap();
+        let (p1, _p2) = SystemStream::pair().unwrap();
         let fs_cache = SlaveFsCacheReq::from_stream(p1);
 
         assert!(fs_cache.node().error.is_none());
@@ -159,7 +160,7 @@ mod tests {
 
     #[test]
     fn test_slave_fs_cache_send_failure() {
-        let (p1, p2) = UnixStream::pair().unwrap();
+        let (p1, p2) = SystemStream::pair().unwrap();
         let fs_cache = SlaveFsCacheReq::from_stream(p1);
 
         fs_cache.set_failed(libc::ECONNRESET);
@@ -174,9 +175,9 @@ mod tests {
 
     #[test]
     fn test_slave_fs_cache_recv_negative() {
-        let (p1, p2) = UnixStream::pair().unwrap();
+        let (p1, p2) = SystemStream::pair().unwrap();
         let fs_cache = SlaveFsCacheReq::from_stream(p1);
-        let mut master = SocketEndpoint::<SlaveReq>::from(p2);
+        let mut master = SlaveFsCacheReqSocket::from_connection(p2);
 
         let len = mem::size_of::<VhostUserFSSlaveMsg>();
         let mut hdr = VhostUserMsgHeader::new(

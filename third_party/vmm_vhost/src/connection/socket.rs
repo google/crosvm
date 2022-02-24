@@ -6,7 +6,6 @@
 use std::fs::File;
 use std::io::{ErrorKind, IoSlice, IoSliceMut};
 use std::marker::PhantomData;
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 
 use base::{AsRawDescriptor, FromRawDescriptor, RawDescriptor, ScmSocket};
@@ -14,10 +13,11 @@ use base::{AsRawDescriptor, FromRawDescriptor, RawDescriptor, ScmSocket};
 use super::{Error, Result};
 use crate::connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req};
 use crate::message::*;
+use crate::{SystemListener, SystemStream};
 
 /// Unix domain socket listener for accepting incoming connections.
 pub struct Listener {
-    fd: UnixListener,
+    fd: SystemListener,
     path: PathBuf,
 }
 
@@ -31,7 +31,7 @@ impl Listener {
         if unlink {
             let _ = std::fs::remove_file(&path);
         }
-        let fd = UnixListener::bind(&path).map_err(Error::SocketError)?;
+        let fd = SystemListener::bind(&path).map_err(Error::SocketError)?;
         Ok(Listener {
             fd,
             path: path.as_ref().to_owned(),
@@ -40,18 +40,18 @@ impl Listener {
 }
 
 impl ListenerTrait for Listener {
-    type Connection = UnixStream;
+    type Connection = SystemStream;
 
     /// Accept an incoming connection.
     ///
     /// # Return:
-    /// * - Some(UnixStream): new UnixStream object if new incoming connection is available.
+    /// * - Some(SystemListener): new SystemListener object if new incoming connection is available.
     /// * - None: no incoming connection available.
     /// * - SocketError: errors from accept().
     fn accept(&mut self) -> Result<Option<Self::Connection>> {
         loop {
             match self.fd.accept() {
-                Ok((socket, _addr)) => return Ok(Some(socket)),
+                Ok((stream, _addr)) => return Ok(Some(stream)),
                 Err(e) => {
                     match e.kind() {
                         // No incoming connection available.
@@ -91,12 +91,12 @@ impl Drop for Listener {
 
 /// Unix domain socket endpoint for vhost-user connection.
 pub struct Endpoint<R: Req> {
-    sock: UnixStream,
+    sock: SystemStream,
     _r: PhantomData<R>,
 }
 
-impl<R: Req> From<UnixStream> for Endpoint<R> {
-    fn from(sock: UnixStream) -> Self {
+impl<R: Req> From<SystemStream> for Endpoint<R> {
+    fn from(sock: SystemStream) -> Self {
         Self {
             sock,
             _r: PhantomData,
@@ -123,7 +123,7 @@ impl<R: Req> EndpointTrait<R> for Endpoint<R> {
     /// * - the new Endpoint object on success.
     /// * - SocketConnect: failed to connect to peer.
     fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let sock = UnixStream::connect(path).map_err(Error::SocketConnect)?;
+        let sock = SystemStream::connect(path).map_err(Error::SocketConnect)?;
         Ok(Self::from(sock))
     }
 
@@ -205,8 +205,8 @@ impl<T: Req> AsRawDescriptor for Endpoint<T> {
     }
 }
 
-impl<T: Req> AsMut<UnixStream> for Endpoint<T> {
-    fn as_mut(&mut self) -> &mut UnixStream {
+impl<T: Req> AsMut<SystemStream> for Endpoint<T> {
+    fn as_mut(&mut self) -> &mut SystemStream {
         &mut self.sock
     }
 }

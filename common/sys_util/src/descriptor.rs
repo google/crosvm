@@ -278,6 +278,7 @@ AsRawDescriptor!(UnixDatagram);
 AsRawDescriptor!(UnixListener);
 AsRawDescriptor!(UnixStream);
 FromRawDescriptor!(File);
+FromRawDescriptor!(UnixStream);
 FromRawDescriptor!(UnixDatagram);
 IntoRawDescriptor!(File);
 IntoRawDescriptor!(UnixDatagram);

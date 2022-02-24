@@ -9,7 +9,7 @@
 
 //! Common traits and structs for vhost-user backend drivers.
 
-use base::RawDescriptor;
+use base::{RawDescriptor, INVALID_DESCRIPTOR};
 use std::cell::RefCell;
 use std::sync::RwLock;
 
@@ -60,7 +60,7 @@ impl VringConfigData {
 }
 
 /// Memory region configuration data.
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct VhostUserMemoryRegionInfo {
     /// Guest physical address of the memory region.
     pub guest_phys_addr: u64,
@@ -72,6 +72,19 @@ pub struct VhostUserMemoryRegionInfo {
     pub mmap_offset: u64,
     /// Optional file descriptor for mmap.
     pub mmap_handle: RawDescriptor,
+}
+
+// We cannot derive default because windows Handle does not implement a default.
+impl Default for VhostUserMemoryRegionInfo {
+    fn default() -> Self {
+        VhostUserMemoryRegionInfo {
+            guest_phys_addr: u64::default(),
+            memory_size: u64::default(),
+            userspace_addr: u64::default(),
+            mmap_offset: u64::default(),
+            mmap_handle: INVALID_DESCRIPTOR,
+        }
+    }
 }
 
 /// An interface for setting up vhost-based backend drivers with interior mutability.
@@ -393,12 +406,16 @@ mod tests {
 
         fn set_log_base(&mut self, base: u64, fd: Option<RawDescriptor>) -> Result<()> {
             assert_eq!(base, 0x100);
-            assert_eq!(fd, Some(100));
+            #[allow(clippy::unnecessary_cast)]
+            let rd = 100 as RawDescriptor;
+            assert_eq!(fd, Some(rd));
             Ok(())
         }
 
         fn set_log_fd(&mut self, fd: RawDescriptor) -> Result<()> {
-            assert_eq!(fd, 100);
+            #[allow(clippy::unnecessary_cast)]
+            let rd = 100 as RawDescriptor;
+            assert_eq!(fd, rd);
             Ok(())
         }
 
@@ -453,8 +470,11 @@ mod tests {
         b.set_owner().unwrap();
         b.reset_owner().unwrap();
         b.set_mem_table(&[]).unwrap();
-        b.set_log_base(0x100, Some(100)).unwrap();
-        b.set_log_fd(100).unwrap();
+
+        #[allow(clippy::unnecessary_cast)]
+        let rd = 100 as RawDescriptor;
+        b.set_log_base(0x100, Some(rd)).unwrap();
+        b.set_log_fd(rd).unwrap();
         b.set_vring_num(1, 256).unwrap();
 
         let config = VringConfigData {

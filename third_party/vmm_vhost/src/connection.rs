@@ -3,10 +3,18 @@
 
 //! Common data structures for listener and endpoint.
 
-pub mod socket;
-
-#[cfg(feature = "vfio-device")]
-pub mod vfio;
+cfg_if::cfg_if! {
+    if #[cfg(unix)] {
+        pub mod socket;
+        #[cfg(feature = "vfio-device")]
+        pub mod vfio;
+        mod unix;
+    } else if #[cfg(windows)] {
+        mod tube;
+        pub use tube::{TubeEndpoint, TubeListener};
+        mod windows;
+    }
+}
 
 use base::RawDescriptor;
 use std::fs::File;
@@ -192,8 +200,11 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
         if mem::size_of::<T>() > MAX_MSG_SIZE {
             return Err(Error::OversizedMsg);
         }
-        let mut iovs = [hdr.as_slice(), body.as_slice()];
-        let bytes = self.send_iovec_all(&mut iovs[..], fds)?;
+
+        // We send the header and the body separately here. This is necessary on Windows. Otherwise
+        // the recv side cannot read the header independently (the transport is message oriented).
+        let mut bytes = self.send_iovec_all(&mut [hdr.as_slice()], fds)?;
+        bytes += self.send_iovec_all(&mut [body.as_slice()], None)?;
         if bytes != mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() {
             return Err(Error::PartialMessage);
         }
@@ -229,9 +240,13 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
             }
         }
 
-        let mut iovs = [hdr.as_slice(), body.as_slice(), payload];
         let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() + len;
-        let len = self.send_iovec_all(&mut iovs, fds)?;
+
+        // We send the header and the body separately here. This is necessary on Windows. Otherwise
+        // the recv side cannot read the header independently (the transport is message oriented).
+        let mut len = self.send_iovec_all(&mut [hdr.as_slice()], fds)?;
+        len += self.send_iovec_all(&mut [body.as_slice(), payload], None)?;
+
         if len != total {
             return Err(Error::PartialMessage);
         }
@@ -422,8 +437,17 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
 impl<R: Req, E: Endpoint<R>> EndpointExt<R> for E {}
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+    cfg_if::cfg_if! {
+        if #[cfg(unix)] {
+            #[cfg(feature = "vmm")]
+            pub(crate) use super::unix::tests::*;
+        } else if #[cfg(windows)] {
+            #[cfg(feature = "vmm")]
+            pub(crate) use windows::tests::*;
+        }
+    }
 
     #[test]
     fn test_advance_slices() {

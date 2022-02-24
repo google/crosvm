@@ -10,12 +10,15 @@ use std::marker::PhantomData;
 use std::os::unix::io::RawFd;
 use std::path::Path;
 
-use base::{AsRawDescriptor, EventFd, RawDescriptor};
+use base::{AsRawDescriptor, RawDescriptor};
 use remain::sorted;
 use thiserror::Error as ThisError;
 
 use super::{Error, Result};
-use crate::connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req};
+use crate::{
+    connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req},
+    EventFd,
+};
 
 /// Errors for `Device::recv_into_bufs()`.
 #[sorted]
