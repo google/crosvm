@@ -418,7 +418,8 @@ pub fn run_net_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
         }
     };
 
-    let num_devices = opts.device.len() + opts.tap_fd.len();
+    let num_devices =
+        opts.device.len() + opts.tap_fd.len() + opts.vvu_device.len() + opts.vvu_tap_fd.len();
 
     if num_devices == 0 {
         bail!("no device option was passed");
