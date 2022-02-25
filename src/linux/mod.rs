@@ -836,7 +836,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         cpu_clusters: cfg.cpu_clusters.clone(),
         cpu_capacity: cfg.cpu_capacity.clone(),
         #[cfg(feature = "direct")]
-        direct_gpe: Vec::new(),
+        direct_gpe: cfg.direct_gpe.clone(),
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
         vm_image,
