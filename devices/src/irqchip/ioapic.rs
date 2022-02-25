@@ -162,6 +162,22 @@ impl Ioapic {
         })
     }
 
+    pub fn init_direct_gsi<F>(&mut self, register_irqfd: F) -> Result<()>
+    where
+        F: Fn(u32, &Event) -> Result<()>,
+    {
+        for (gsi, out_event) in self.out_events.iter_mut().enumerate() {
+            let event = Event::new()?;
+            register_irqfd(gsi as u32, &event)?;
+            *out_event = Some(IrqEvent {
+                gsi: gsi as u32,
+                event,
+                resample_event: None,
+            });
+        }
+        Ok(())
+    }
+
     pub fn get_ioapic_state(&self) -> IoapicState {
         // Convert vector of first NUM_IOAPIC_PINS active interrupts into an u32 value.
         let level_bitmap = self
