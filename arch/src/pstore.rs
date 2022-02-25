@@ -84,9 +84,6 @@ pub fn add_ramoops_kernel_cmdline(
     let ramoops_opts = [
         ("mem_address", ramoops_region.address),
         ("mem_size", ramoops_region.size as u64),
-        ("console_size", (ramoops_region.size / 4) as u64),
-        ("record_size", (ramoops_region.size / 4) as u64),
-        ("dump_oops", 1_u64),
     ];
     for (name, val) in &ramoops_opts {
         cmdline.insert_str(format!("ramoops.{}={:#x}", name, val))?;

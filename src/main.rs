@@ -2583,7 +2583,7 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
                               See --disk for valid options."),
           Argument::value("rw-pmem-device", "PATH", "Path to a writable disk image."),
           Argument::value("pmem-device", "PATH", "Path to a disk image."),
-          Argument::value("pstore", "path=PATH,size=SIZE", "Path to pstore buffer backend file follewed by size."),
+          Argument::value("pstore", "path=PATH,size=SIZE", "Path to pstore buffer backend file followed by size."),
           Argument::value("host_ip",
                           "IP",
                           "IP address to assign to host tap interface."),
