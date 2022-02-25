@@ -1304,6 +1304,8 @@ impl X8664arch {
             pm_sci_evt_resample,
             #[cfg(feature = "direct")]
             None,
+            #[cfg(feature = "direct")]
+            Vec::new(),
             suspend_evt,
             exit_evt,
         );

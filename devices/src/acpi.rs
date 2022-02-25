@@ -11,6 +11,9 @@ use sync::Mutex;
 use thiserror::Error;
 use vm_control::PmResource;
 
+#[cfg(feature = "direct")]
+use {std::fs, std::io::Error as IoError, std::path::PathBuf};
+
 #[derive(Error, Debug)]
 pub enum ACPIPMError {
     /// Creating WaitContext failed.
@@ -32,6 +35,14 @@ struct GpeResource {
     enable: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
 }
 
+#[cfg(feature = "direct")]
+struct DirectGpe {
+    num: u32,
+    path: PathBuf,
+    ready: bool,
+    enabled: bool,
+}
+
 /// ACPI PM resource for handling OS suspend/resume request
 #[allow(dead_code)]
 pub struct ACPIPMResource {
@@ -39,6 +50,8 @@ pub struct ACPIPMResource {
     sci_evt_resample: Event,
     #[cfg(feature = "direct")]
     sci_direct_evt: Option<(Event, Event)>,
+    #[cfg(feature = "direct")]
+    direct_gpe: Vec<DirectGpe>,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<()>>,
     suspend_evt: Event,
@@ -54,6 +67,7 @@ impl ACPIPMResource {
         sci_evt: Event,
         sci_evt_resample: Event,
         #[cfg(feature = "direct")] sci_direct_evt: Option<(Event, Event)>,
+        #[cfg(feature = "direct")] direct_gpe: Vec<u32>,
         suspend_evt: Event,
         exit_evt: Event,
     ) -> ACPIPMResource {
@@ -72,6 +86,8 @@ impl ACPIPMResource {
             sci_evt_resample,
             #[cfg(feature = "direct")]
             sci_direct_evt,
+            #[cfg(feature = "direct")]
+            direct_gpe: direct_gpe.iter().map(|gpe| DirectGpe::new(*gpe)).collect(),
             kill_evt: None,
             worker_thread: None,
             suspend_evt,
@@ -238,6 +254,91 @@ impl GpeResource {
     }
 }
 
+#[cfg(feature = "direct")]
+impl DirectGpe {
+    fn new(gpe: u32) -> DirectGpe {
+        DirectGpe {
+            num: gpe,
+            path: PathBuf::from("/sys/firmware/acpi/interrupts").join(format!("gpe{:02X}", gpe)),
+            ready: false,
+            enabled: false,
+        }
+    }
+
+    fn is_status_set(&self) -> Result<bool, IoError> {
+        match fs::read_to_string(&self.path) {
+            Err(e) => {
+                error!("ACPIPM: failed to read gpe {} STS: {}", self.num, e);
+                Err(e)
+            }
+            Ok(s) => Ok(s.split_whitespace().any(|s| s == "STS")),
+        }
+    }
+
+    fn is_enabled(&self) -> Result<bool, IoError> {
+        match fs::read_to_string(&self.path) {
+            Err(e) => {
+                error!("ACPIPM: failed to read gpe {} EN: {}", self.num, e);
+                Err(e)
+            }
+            Ok(s) => Ok(s.split_whitespace().any(|s| s == "EN")),
+        }
+    }
+
+    fn clear(&self) {
+        if !self.is_status_set().unwrap_or(false) {
+            // Just to avoid harmless error messages due to clearing an already cleared GPE.
+            return;
+        }
+
+        if let Err(e) = fs::write(&self.path, "clear\n") {
+            error!("ACPIPM: failed to clear gpe {}: {}", self.num, e);
+        }
+    }
+
+    fn enable(&mut self) {
+        if self.enabled {
+            // Just to avoid harmless error messages due to enabling an already enabled GPE.
+            return;
+        }
+
+        if !self.ready {
+            // The GPE is being enabled for the first time.
+            // Use "enable" to ensure the ACPICA's reference count for this GPE is > 0.
+            match fs::write(&self.path, "enable\n") {
+                Err(e) => error!("ACPIPM: failed to enable gpe {}: {}", self.num, e),
+                Ok(()) => {
+                    self.ready = true;
+                    self.enabled = true;
+                }
+            }
+        } else {
+            // Use "unmask" instead of "enable", to bypass ACPICA's reference counting.
+            match fs::write(&self.path, "unmask\n") {
+                Err(e) => error!("ACPIPM: failed to unmask gpe {}: {}", self.num, e),
+                Ok(()) => {
+                    self.enabled = true;
+                }
+            }
+        }
+    }
+
+    fn disable(&mut self) {
+        if !self.enabled {
+            // Just to avoid harmless error messages due to disabling an already disabled GPE.
+            return;
+        }
+
+        // Use "mask" instead of "disable", to bypass ACPICA's reference counting.
+        match fs::write(&self.path, "mask\n") {
+            Err(e) => error!("ACPIPM: failed to mask gpe {}: {}", self.num, e),
+            Ok(()) => {
+                self.enabled = false;
+            }
+        }
+    }
+}
+
 /// the ACPI PM register length.
 pub const ACPIPM_RESOURCE_EVENTBLK_LEN: u8 = 4;
 pub const ACPIPM_RESOURCE_CONTROLBLK_LEN: u8 = 2;
@@ -376,7 +477,20 @@ impl BusDevice for ACPIPMResource {
                     warn!("ACPIPM: bad read size: {}", data.len());
                     return;
                 }
-                data[0] = self.gpe0.lock().status[(info.offset - GPE0_STATUS as u64) as usize];
+                let offset = (info.offset - GPE0_STATUS as u64) as usize;
+                data[0] = self.gpe0.lock().status[offset];
+
+                #[cfg(feature = "direct")]
+                for gpe in self
+                    .direct_gpe
+                    .iter()
+                    .filter(|gpe| gpe.num / 8 == offset as u32)
+                {
+                    data[0] &= !(1 << (gpe.num % 8));
+                    if gpe.is_status_set().unwrap_or(false) {
+                        data[0] |= 1 << (gpe.num % 8);
+                    }
+                }
             }
             GPE0_ENABLE..=GPE0_ENABLE_LAST => {
                 if data.len() > std::mem::size_of::<u8>()
@@ -385,7 +499,20 @@ impl BusDevice for ACPIPMResource {
                     warn!("ACPIPM: bad read size: {}", data.len());
                     return;
                 }
-                data[0] = self.gpe0.lock().enable[(info.offset - GPE0_ENABLE as u64) as usize];
+                let offset = (info.offset - GPE0_ENABLE as u64) as usize;
+                data[0] = self.gpe0.lock().enable[offset];
+
+                #[cfg(feature = "direct")]
+                for gpe in self
+                    .direct_gpe
+                    .iter()
+                    .filter(|gpe| gpe.num / 8 == offset as u32)
+                {
+                    data[0] &= !(1 << (gpe.num % 8));
+                    if gpe.is_enabled().unwrap_or(false) {
+                        data[0] |= 1 << (gpe.num % 8);
+                    }
+                }
             }
             _ => {
                 warn!("ACPIPM: Bad read from {}", info);
@@ -481,7 +608,20 @@ impl BusDevice for ACPIPMResource {
                     warn!("ACPIPM: bad write size: {}", data.len());
                     return;
                 }
-                self.gpe0.lock().status[(info.offset - GPE0_STATUS as u64) as usize] &= !data[0];
+                let offset = (info.offset - GPE0_STATUS as u64) as usize;
+
+                #[cfg(feature = "direct")]
+                for gpe in self
+                    .direct_gpe
+                    .iter()
+                    .filter(|gpe| gpe.num / 8 == offset as u32)
+                {
+                    if data[0] & (1 << (gpe.num % 8)) != 0 {
+                        gpe.clear();
+                    }
+                }
+
+                self.gpe0.lock().status[offset] &= !data[0];
             }
             GPE0_ENABLE..=GPE0_ENABLE_LAST => {
                 if data.len() > std::mem::size_of::<u8>()
@@ -490,9 +630,23 @@ impl BusDevice for ACPIPMResource {
                     warn!("ACPIPM: bad write size: {}", data.len());
                     return;
                 }
+                let offset = (info.offset - GPE0_ENABLE as u64) as usize;
+
+                #[cfg(feature = "direct")]
+                for gpe in self
+                    .direct_gpe
+                    .iter_mut()
+                    .filter(|gpe| gpe.num / 8 == offset as u32)
+                {
+                    if data[0] & (1 << (gpe.num % 8)) != 0 {
+                        gpe.enable();
+                    } else {
+                        gpe.disable();
+                    }
+                }
 
                 let mut gpe = self.gpe0.lock();
-                gpe.enable[(info.offset - GPE0_ENABLE as u64) as usize] = data[0];
+                gpe.enable[offset] = data[0];
                 gpe.trigger_sci(&self.sci_evt);
             }
             _ => {
