@@ -8,8 +8,8 @@ use std::convert::TryInto;
 use std::fmt;
 
 use base::{
-    self, FromRawDescriptor, IntoRawDescriptor, MemoryMapping, MemoryMappingArena, MmapError,
-    SafeDescriptor,
+    self, FromRawDescriptor, IntoRawDescriptor, MemoryMappingArena, MemoryMappingBuilder,
+    MemoryMappingBuilderUnix, MmapError, SafeDescriptor,
 };
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
@@ -135,7 +135,11 @@ impl BufferHandle for VirtioObjectHandle {
     }
 
     fn get_mapping(&self, offset: usize, size: usize) -> Result<MemoryMappingArena, MmapError> {
-        MemoryMapping::from_fd_offset(&self.desc, size, offset as u64).map(MemoryMappingArena::from)
+        MemoryMappingBuilder::new(size)
+            .from_descriptor(&self.desc)
+            .offset(offset as u64)
+            .build()
+            .map(MemoryMappingArena::from)
     }
 }
 
