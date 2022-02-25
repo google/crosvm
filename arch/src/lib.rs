@@ -101,6 +101,8 @@ pub struct VmComponents {
     pub host_cpu_topology: bool,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub force_s2idle: bool,
+    #[cfg(feature = "direct")]
+    pub direct_gpe: Vec<u32>,
 }
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.
