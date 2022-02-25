@@ -1299,8 +1299,14 @@ impl X8664arch {
         irq_chip
             .register_irq_event(sci_irq, &pm_sci_evt, Some(&pm_sci_evt_resample))
             .map_err(Error::RegisterIrqfd)?;
-        let mut pmresource =
-            devices::ACPIPMResource::new(pm_sci_evt, pm_sci_evt_resample, suspend_evt, exit_evt);
+        let mut pmresource = devices::ACPIPMResource::new(
+            pm_sci_evt,
+            pm_sci_evt_resample,
+            #[cfg(feature = "direct")]
+            None,
+            suspend_evt,
+            exit_evt,
+        );
         pmresource.to_aml_bytes(&mut amls);
         pmresource.start();
 

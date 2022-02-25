@@ -37,6 +37,8 @@ struct GpeResource {
 pub struct ACPIPMResource {
     sci_evt: Event,
     sci_evt_resample: Event,
+    #[cfg(feature = "direct")]
+    sci_direct_evt: Option<(Event, Event)>,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<()>>,
     suspend_evt: Event,
@@ -51,6 +53,7 @@ impl ACPIPMResource {
     pub fn new(
         sci_evt: Event,
         sci_evt_resample: Event,
+        #[cfg(feature = "direct")] sci_direct_evt: Option<(Event, Event)>,
         suspend_evt: Event,
         exit_evt: Event,
     ) -> ACPIPMResource {
@@ -67,6 +70,8 @@ impl ACPIPMResource {
         ACPIPMResource {
             sci_evt,
             sci_evt_resample,
+            #[cfg(feature = "direct")]
+            sci_direct_evt,
             kill_evt: None,
             worker_thread: None,
             suspend_evt,
@@ -94,10 +99,28 @@ impl ACPIPMResource {
         let pm1 = self.pm1.clone();
         let gpe0 = self.gpe0.clone();
 
+        #[cfg(feature = "direct")]
+        let sci_direct_evt = if let Some((trigger, resample)) = &self.sci_direct_evt {
+            Some((
+                trigger.try_clone().expect("failed to clone event"),
+                resample.try_clone().expect("failed to clone event"),
+            ))
+        } else {
+            None
+        };
+
         let worker_result = thread::Builder::new()
             .name("ACPI PM worker".to_string())
             .spawn(move || {
-                if let Err(e) = run_worker(sci_resample, kill_evt, sci_evt, pm1, gpe0) {
+                if let Err(e) = run_worker(
+                    sci_resample,
+                    kill_evt,
+                    sci_evt,
+                    pm1,
+                    gpe0,
+                    #[cfg(feature = "direct")]
+                    sci_direct_evt,
+                ) {
                     error!("{}", e);
                 }
             });
@@ -115,10 +138,13 @@ fn run_worker(
     sci_evt: Event,
     pm1: Arc<Mutex<Pm1Resource>>,
     gpe0: Arc<Mutex<GpeResource>>,
+    #[cfg(feature = "direct")] sci_direct_evt: Option<(Event, Event)>,
 ) -> Result<(), ACPIPMError> {
     #[derive(PollToken)]
     enum Token {
         InterruptResample,
+        #[cfg(feature = "direct")]
+        InterruptTriggerDirect,
         Kill,
     }
 
@@ -128,6 +154,16 @@ fn run_worker(
     ])
     .map_err(ACPIPMError::CreateWaitContext)?;
 
+    #[cfg(feature = "direct")]
+    if let Some((ref trigger, _)) = sci_direct_evt {
+        wait_ctx
+            .add(trigger, Token::InterruptTriggerDirect)
+            .map_err(ACPIPMError::CreateWaitContext)?;
+    }
+
+    #[cfg(feature = "direct")]
+    let mut pending_sci_direct_resample: Option<&Event> = None;
+
     loop {
         let events = wait_ctx.wait().map_err(ACPIPMError::WaitError)?;
         for event in events.iter().filter(|e| e.is_readable) {
@@ -135,9 +171,27 @@ fn run_worker(
                 Token::InterruptResample => {
                     let _ = sci_resample.read();
 
+                    #[cfg(feature = "direct")]
+                    if let Some(resample) = pending_sci_direct_resample.take() {
+                        if let Err(e) = resample.write(1) {
+                            error!("ACPIPM: failed to resample sci event: {}", e);
+                        }
+                    }
+
                     // Re-trigger SCI if PM1 or GPE status is still not cleared.
                     pm1.lock().trigger_sci(&sci_evt);
                     gpe0.lock().trigger_sci(&sci_evt);
+                }
+                #[cfg(feature = "direct")]
+                Token::InterruptTriggerDirect => {
+                    if let Some((ref trigger, ref resample)) = sci_direct_evt {
+                        let _ = trigger.read();
+
+                        if let Err(e) = sci_evt.write(1) {
+                            error!("ACPIPM: failed to trigger sci event: {}", e);
+                        }
+                        pending_sci_direct_resample = Some(resample);
+                    }
                 }
                 Token::Kill => return Ok(()),
             }
