@@ -130,6 +130,14 @@ impl ACPIPMResource {
             None
         };
 
+        #[cfg(feature = "direct")]
+        // Direct GPEs are forwarded via direct SCI forwarding,
+        // not via ACPI netlink events.
+        let acpi_event_ignored_gpe = self.direct_gpe.iter().map(|gpe| gpe.num).collect();
+
+        #[cfg(not(feature = "direct"))]
+        let acpi_event_ignored_gpe = Vec::new();
+
         let worker_result = thread::Builder::new()
             .name("ACPI PM worker".to_string())
             .spawn(move || {
@@ -139,6 +147,7 @@ impl ACPIPMResource {
                     sci_evt,
                     pm1,
                     gpe0,
+                    acpi_event_ignored_gpe,
                     #[cfg(feature = "direct")]
                     sci_direct_evt,
                 ) {
@@ -159,6 +168,7 @@ fn run_worker(
     sci_evt: Event,
     pm1: Arc<Mutex<Pm1Resource>>,
     gpe0: Arc<Mutex<GpeResource>>,
+    acpi_event_ignored_gpe: Vec<u32>,
     #[cfg(feature = "direct")] sci_direct_evt: Option<(Event, Event)>,
 ) -> Result<(), ACPIPMError> {
     // Get group id corresponding to acpi_mc_group of acpi_event family
@@ -211,7 +221,7 @@ fn run_worker(
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
                 Token::AcpiEvent => {
-                    acpi_event_run(&acpi_event_sock, &gpe0, &sci_evt);
+                    acpi_event_run(&acpi_event_sock, &gpe0, &sci_evt, &acpi_event_ignored_gpe);
                 }
                 Token::InterruptResample => {
                     let _ = sci_resample.read();
@@ -249,9 +259,10 @@ fn acpi_event_gpe_class(
     _type: u32,
     gpe0: &Arc<Mutex<GpeResource>>,
     sci_evt: &Event,
+    ignored_gpe: &[u32],
 ) {
     // If gpe event, emulate GPE and trigger SCI
-    if _type == 0 && gpe_number < 256 {
+    if _type == 0 && gpe_number < 256 && !ignored_gpe.contains(&gpe_number) {
         let mut gpe0 = gpe0.lock();
         let byte = gpe_number as usize / 8;
 
@@ -278,6 +289,7 @@ fn acpi_event_run(
     acpi_event_sock: &NetlinkGenericSocket,
     gpe0: &Arc<Mutex<GpeResource>>,
     sci_evt: &Event,
+    ignored_gpe: &[u32],
 ) {
     let nl_msg = match acpi_event_sock.recv() {
         Ok(msg) => msg,
@@ -297,7 +309,13 @@ fn acpi_event_run(
         };
         match acpi_event.device_class.as_str() {
             "gpe" => {
-                acpi_event_gpe_class(acpi_event.data, acpi_event._type, gpe0, sci_evt);
+                acpi_event_gpe_class(
+                    acpi_event.data,
+                    acpi_event._type,
+                    gpe0,
+                    sci_evt,
+                    ignored_gpe,
+                );
             }
             c => warn!("unknown acpi event {}", c),
         };
