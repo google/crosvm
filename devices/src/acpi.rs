@@ -4,10 +4,22 @@
 
 use crate::{BusAccessInfo, BusDevice, BusResumeDevice};
 use acpi_tables::{aml, aml::Aml};
-use base::{error, warn, Event};
+use base::{error, warn, Error as SysError, Event, PollToken, WaitContext};
 use std::sync::Arc;
+use std::thread;
 use sync::Mutex;
+use thiserror::Error;
 use vm_control::PmResource;
+
+#[derive(Error, Debug)]
+pub enum ACPIPMError {
+    /// Creating WaitContext failed.
+    #[error("failed to create wait context: {0}")]
+    CreateWaitContext(SysError),
+    /// Error while waiting for events.
+    #[error("failed to wait for events: {0}")]
+    WaitError(SysError),
+}
 
 struct Pm1Resource {
     status: u16,
@@ -25,6 +37,8 @@ struct GpeResource {
 pub struct ACPIPMResource {
     sci_evt: Event,
     sci_evt_resample: Event,
+    kill_evt: Option<Event>,
+    worker_thread: Option<thread::JoinHandle<()>>,
     suspend_evt: Event,
     exit_evt: Event,
     pm1: Arc<Mutex<Pm1Resource>>,
@@ -53,10 +67,92 @@ impl ACPIPMResource {
         ACPIPMResource {
             sci_evt,
             sci_evt_resample,
+            kill_evt: None,
+            worker_thread: None,
             suspend_evt,
             exit_evt,
             pm1: Arc::new(Mutex::new(pm1)),
             gpe0: Arc::new(Mutex::new(gpe0)),
+        }
+    }
+
+    pub fn start(&mut self) {
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("failed to create kill Event pair: {}", e);
+                return;
+            }
+        };
+        self.kill_evt = Some(self_kill_evt);
+
+        let sci_resample = self
+            .sci_evt_resample
+            .try_clone()
+            .expect("failed to clone event");
+        let sci_evt = self.sci_evt.try_clone().expect("failed to clone event");
+        let pm1 = self.pm1.clone();
+        let gpe0 = self.gpe0.clone();
+
+        let worker_result = thread::Builder::new()
+            .name("ACPI PM worker".to_string())
+            .spawn(move || {
+                if let Err(e) = run_worker(sci_resample, kill_evt, sci_evt, pm1, gpe0) {
+                    error!("{}", e);
+                }
+            });
+
+        match worker_result {
+            Err(e) => error!("failed to spawn ACPI PM worker thread: {}", e),
+            Ok(join_handle) => self.worker_thread = Some(join_handle),
+        }
+    }
+}
+
+fn run_worker(
+    sci_resample: Event,
+    kill_evt: Event,
+    sci_evt: Event,
+    pm1: Arc<Mutex<Pm1Resource>>,
+    gpe0: Arc<Mutex<GpeResource>>,
+) -> Result<(), ACPIPMError> {
+    #[derive(PollToken)]
+    enum Token {
+        InterruptResample,
+        Kill,
+    }
+
+    let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
+        (&sci_resample, Token::InterruptResample),
+        (&kill_evt, Token::Kill),
+    ])
+    .map_err(ACPIPMError::CreateWaitContext)?;
+
+    loop {
+        let events = wait_ctx.wait().map_err(ACPIPMError::WaitError)?;
+        for event in events.iter().filter(|e| e.is_readable) {
+            match event.token {
+                Token::InterruptResample => {
+                    let _ = sci_resample.read();
+
+                    // Re-trigger SCI if PM1 or GPE status is still not cleared.
+                    pm1.lock().trigger_sci(&sci_evt);
+                    gpe0.lock().trigger_sci(&sci_evt);
+                }
+                Token::Kill => return Ok(()),
+            }
+        }
+    }
+}
+
+impl Drop for ACPIPMResource {
+    fn drop(&mut self) {
+        if let Some(kill_evt) = self.kill_evt.take() {
+            let _ = kill_evt.write(1);
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
         }
     }
 }

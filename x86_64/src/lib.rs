@@ -1299,9 +1299,10 @@ impl X8664arch {
         irq_chip
             .register_irq_event(sci_irq, &pm_sci_evt, Some(&pm_sci_evt_resample))
             .map_err(Error::RegisterIrqfd)?;
-        let pmresource =
+        let mut pmresource =
             devices::ACPIPMResource::new(pm_sci_evt, pm_sci_evt_resample, suspend_evt, exit_evt);
         pmresource.to_aml_bytes(&mut amls);
+        pmresource.start();
 
         let mut crs_entries: Vec<Box<dyn Aml>> = vec![
             Box::new(aml::AddressSpace::new_bus_number(0x0u16, max_bus as u16)),
