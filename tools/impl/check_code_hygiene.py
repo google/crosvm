@@ -6,6 +6,7 @@
 import argparse
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 
@@ -86,6 +87,37 @@ def is_sys_util_independent():
     return not crates, crates
 
 
+def has_crlf_line_endings():
+    """Searches for files with crlf(dos) line endings in a git repo. Returns
+    a list of files having crlf line endings.
+
+    """
+    process = subprocess.Popen(
+        "git ls-files --eol",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        shell=True,
+    )
+
+    stdout, _ = process.communicate()
+    dos_files: list[str] = []
+
+    if process.returncode != 0:
+        return dos_files
+
+    crlf_re = re.compile("crlf|mixed")
+    assert process.stdout
+    for line in iter(stdout.splitlines()):
+        # A typical output of git ls-files --eol looks like below
+        # i/lf    w/lf    attr/                   vhost/Cargo.toml
+        fields = line.split()
+        if fields and crlf_re.search(fields[0] + fields[1]):
+            dos_files.append(fields[3] + "\n")
+
+    return dos_files
+
+
 def main():
     parser = argparse.ArgumentParser(usage=USAGE)
     parser.add_argument("path", type=Path, help="Path of the directory to check.")
@@ -101,6 +133,12 @@ def main():
     if not hygiene:
         print("Error: Following files depend on sys_util, sys_util_core or on win_sys_util")
         print(crates)
+        sys.exit(-1)
+
+    crlf_endings = has_crlf_line_endings()
+    if crlf_endings:
+        print("Error: Following files have crlf(dos) line encodings")
+        print(*crlf_endings)
         sys.exit(-1)
 
 

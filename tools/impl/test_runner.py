@@ -19,7 +19,11 @@ import test_target
 from test_target import TestTarget
 import testvm
 from test_config import CRATE_OPTIONS, TestOption, BUILD_FEATURES
-from check_code_hygiene import has_platform_dependent_code, is_sys_util_independent
+from check_code_hygiene import (
+    has_platform_dependent_code,
+    is_sys_util_independent,
+    has_crlf_line_endings,
+)
 
 USAGE = """\
 Runs tests for crosvm locally, in a vm or on a remote device.
@@ -403,6 +407,12 @@ def main():
     if not hygiene:
         print("Error: Following files depend on sys_util, sys_util_core or on win_sys_util")
         print(crates)
+        sys.exit(-1)
+
+    crlf_endings = has_crlf_line_endings()
+    if crlf_endings:
+        print("Error: Following files have crlf(dos) line encodings")
+        print(*crlf_endings)
         sys.exit(-1)
 
     executables = list(build_all_binaries(target, build_arch))
