@@ -319,9 +319,7 @@ impl GuestResource {
 
 #[cfg(test)]
 mod tests {
-    use base::{MappedRegion, SafeDescriptor};
-    use base::{MemoryMapping, SharedMemory};
-
+    use base::{MappedRegion, SafeDescriptor, SharedMemory};
     use super::*;
 
     /// Creates a sparse guest memory handle using as many pages as there are entries in
@@ -349,14 +347,18 @@ mod tests {
         }
 
         // Copy the initialized vector's content into an anonymous shared memory.
-        let mut mem = SharedMemory::anon().unwrap();
-        mem.set_size(data.len() as u64).unwrap();
-        let mapping = MemoryMapping::from_fd(&mem, mem.size() as usize).unwrap();
+        let mem = SharedMemory::anon(data.len() as u64).unwrap();
+        let mapping = MemoryMappingBuilder::new(mem.size() as usize)
+            .from_shared_memory(&mem)
+            .build()
+            .unwrap();
         assert_eq!(mapping.write_slice(&data, 0).unwrap(), data.len());
 
         // Create the `GuestMemHandle` we will try to map and retrieve the data from.
         let mem_handle = GuestResourceHandle::GuestPages(GuestMemHandle {
-            desc: unsafe { SafeDescriptor::from_raw_descriptor(base::clone_fd(&mem).unwrap()) },
+            desc: unsafe {
+                SafeDescriptor::from_raw_descriptor(base::clone_descriptor(&mem).unwrap())
+            },
             mem_areas: page_order
                 .iter()
                 .map(|&page| GuestMemArea {
