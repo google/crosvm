@@ -99,7 +99,7 @@ merge_message() {
 
 main() {
     prerequisites
-    git merge --no-ff "${MERGE_TARGET}" -m "$(merge_message)"
+    git merge -X theirs --no-ff "${MERGE_TARGET}" -m "$(merge_message)"
     git --no-pager log -n 1
 }
 
