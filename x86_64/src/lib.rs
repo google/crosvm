@@ -197,18 +197,8 @@ const GB: u64 = 1 << 30;
 
 const BOOT_STACK_POINTER: u64 = 0x8000;
 // Make sure it align to 256MB for MTRR convenient
-const MEM_32BIT_GAP_SIZE: u64 = if cfg!(feature = "direct") {
-    // Allow space for identity mapping coreboot memory regions on the host
-    // which is found at around 7a00_0000 (little bit before 2GB)
-    //
-    // TODO(b/188011323): stop hardcoding sizes and addresses here and instead
-    // determine the memory map from how the VM has been configured via the
-    // command line.
-    2560 * MB
-} else {
-    768 * MB
-};
-const START_OF_RAM_32BITS: u64 = if cfg!(feature = "direct") { 0x1000 } else { 0 };
+const MEM_32BIT_GAP_SIZE: u64 = 768 * MB;
+const START_OF_RAM_32BITS: u64 = 0;
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 // Reserved memory for nand_bios/LAPIC/IOAPIC/HPET/.....
 const RESERVED_MEM_SIZE: u64 = 0x800_0000;
@@ -1519,20 +1509,6 @@ mod tests {
             regions[1].0
         );
         assert_eq!(bios_len, regions[1].1);
-    }
-
-    #[test]
-    #[cfg(feature = "direct")]
-    fn end_addr_before_32bits() {
-        // On volteer, type16 (coreboot) region is at 0x00000000769f3000-0x0000000076ffffff.
-        // On brya, type16 region is at 0x0000000076876000-0x00000000803fffff
-        let brya_type16_address = 0x7687_6000;
-        assert!(
-            END_ADDR_BEFORE_32BITS < brya_type16_address,
-            "{} < {}",
-            END_ADDR_BEFORE_32BITS,
-            brya_type16_address
-        );
     }
 
     #[test]
