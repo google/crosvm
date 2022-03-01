@@ -195,8 +195,8 @@ impl AddressAllocator {
 
     /// Allocates a range of addresses from the managed region with an optional tag
     /// and required location. Allocation alignment is not enforced.
-    /// Returns OutOfSpace if requested range is not available (e.g. already allocated
-    /// with a different alloc tag).
+    /// Returns OutOfSpace if requested range is not available or ExistingAlloc if the requested
+    /// range overlaps an existing allocation.
     pub fn allocate_at(&mut self, start: u64, size: u64, alloc: Alloc, tag: String) -> Result<()> {
         if self.allocs.contains_key(&alloc) {
             return Err(Error::ExistingAlloc(alloc));
@@ -224,7 +224,13 @@ impl AddressAllocator {
 
                 Ok(())
             }
-            None => Err(Error::OutOfSpace),
+            None => {
+                if let Some(existing_alloc) = self.find_overlapping(start, size) {
+                    Err(Error::ExistingAlloc(existing_alloc))
+                } else {
+                    Err(Error::OutOfSpace)
+                }
+            }
         }
     }
 
@@ -237,19 +243,29 @@ impl AddressAllocator {
 
     /// Release a allocation contains the value.
     pub fn release_containing(&mut self, value: u64) -> Result<()> {
-        let mut alloc = None;
-        for (key, val) in self.allocs.iter() {
-            if value >= val.0 && value < val.0 + val.1 {
-                alloc = Some(*key);
-                break;
-            }
+        if let Some(alloc) = self.find_overlapping(value, 1) {
+            self.release(alloc)
+        } else {
+            Err(Error::OutOfSpace)
+        }
+    }
+
+    // Find an existing allocation that overlaps the region defined by `address` and `size`. If more
+    // than one allocation overlaps the given region, any of them may be returned, since the HashMap
+    // iterator is not ordered in any particular way.
+    fn find_overlapping(&self, start: u64, size: u64) -> Option<Alloc> {
+        if size == 0 {
+            return None;
         }
 
-        if let Some(key) = alloc {
-            return self.release(key);
-        }
-
-        Err(Error::OutOfSpace)
+        let end = start.saturating_add(size - 1);
+        self.allocs
+            .iter()
+            .find(|(_, &(alloc_start, alloc_size, _))| {
+                let alloc_end = alloc_start + alloc_size;
+                start < alloc_end && end >= alloc_start
+            })
+            .map(|(&alloc, _)| alloc)
     }
 
     /// Returns allocation associated with `alloc`, or None if no such allocation exists.
@@ -506,7 +522,8 @@ mod tests {
 
     #[test]
     fn allocate_and_split_allocate_at() {
-        let mut pool = AddressAllocator::new(0x1000, 0x1000, Some(0x100), None).unwrap();
+        let mut pool = AddressAllocator::new(0x1000, 0x1000, Some(1), None).unwrap();
+        // 0x1200..0x1a00
         assert_eq!(
             pool.allocate_at(0x1200, 0x800, Alloc::Anon(0), String::from("bar0")),
             Ok(())
@@ -515,14 +532,41 @@ mod tests {
             pool.allocate(0x800, Alloc::Anon(1), String::from("bar1")),
             Err(Error::OutOfSpace)
         );
+        // 0x600..0x2000
         assert_eq!(
             pool.allocate(0x600, Alloc::Anon(2), String::from("bar2")),
             Ok(0x1a00)
         );
+        // 0x1000..0x1200
         assert_eq!(
             pool.allocate(0x200, Alloc::Anon(3), String::from("bar3")),
             Ok(0x1000)
         );
+        // 0x1b00..0x1c00 (overlaps with 0x600..0x2000)
+        assert_eq!(
+            pool.allocate_at(0x1b00, 0x100, Alloc::Anon(4), String::from("bar4")),
+            Err(Error::ExistingAlloc(Alloc::Anon(2)))
+        );
+        // 0x1fff..0x2000 (overlaps with 0x600..0x2000)
+        assert_eq!(
+            pool.allocate_at(0x1fff, 1, Alloc::Anon(5), String::from("bar5")),
+            Err(Error::ExistingAlloc(Alloc::Anon(2)))
+        );
+        // 0x1200..0x1201 (overlaps with 0x1200..0x1a00)
+        assert_eq!(
+            pool.allocate_at(0x1200, 1, Alloc::Anon(6), String::from("bar6")),
+            Err(Error::ExistingAlloc(Alloc::Anon(0)))
+        );
+        // 0x11ff..0x1200 (overlaps with 0x1000..0x1200)
+        assert_eq!(
+            pool.allocate_at(0x11ff, 1, Alloc::Anon(7), String::from("bar7")),
+            Err(Error::ExistingAlloc(Alloc::Anon(3)))
+        );
+        // 0x1100..0x1300 (overlaps with 0x1000..0x1200 and 0x1200..0x1a00)
+        match pool.allocate_at(0x1100, 0x200, Alloc::Anon(8), String::from("bar8")) {
+            Err(Error::ExistingAlloc(Alloc::Anon(0) | Alloc::Anon(3))) => {}
+            x => panic!("unexpected result {:?}", x),
+        }
     }
 
     #[test]
