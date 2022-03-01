@@ -51,8 +51,6 @@ pub enum Error {
     InvalidAlloc(Alloc),
     #[error("IO port out of range: base:{0} size:{1}")]
     IOPortOutOfRange(u64, u64),
-    #[error("Low MMIO address range not specified")]
-    MissingLowMMIOAddresses,
     #[error("Platform MMIO address range not specified")]
     MissingPlatformMMIOAddresses,
     #[error("No IO address range specified")]

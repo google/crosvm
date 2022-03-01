@@ -396,22 +396,15 @@ impl arch::LinuxArch for X8664arch {
         let guest_mem = vm.get_memory();
         let high_mmio_start = Self::get_high_mmio_base(guest_mem);
         let high_mmio_size = Self::get_high_mmio_size(vm);
-        let mut low_mmio = vec![MemRegion {
-            base: END_ADDR_BEFORE_32BITS,
-            size: PCI_MMIO_SIZE,
-        }];
-        if cfg!(feature = "direct") {
-            low_mmio.push(MemRegion {
-                base: 0,
-                size: START_OF_RAM_32BITS,
-            });
-        }
         SystemAllocator::new(SystemAllocatorConfig {
             io: Some(MemRegion {
                 base: 0xc000,
                 size: 0x4000,
             }),
-            low_mmio,
+            low_mmio: MemRegion {
+                base: END_ADDR_BEFORE_32BITS,
+                size: PCI_MMIO_SIZE,
+            },
             high_mmio: MemRegion {
                 base: high_mmio_start,
                 size: high_mmio_size,
