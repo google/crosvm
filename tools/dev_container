@@ -75,6 +75,8 @@ def main(command: tuple[str, ...], stop: bool = False, hermetic: bool = False):
     if not command:
         command = ("/bin/bash",)
 
+    command = list(map(quoted, command))
+
     if stop:
         if container_id:
             print(f"Stopping dev-container {container_id}.")
