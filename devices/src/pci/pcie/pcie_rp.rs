@@ -449,8 +449,9 @@ impl HotPlugBus for PcieRootPort {
         let _ = self.slot_control?;
 
         if self.downstream_device.is_none()
-            && host_addr.bus >= self.bus_range.secondary
-            && host_addr.bus <= self.bus_range.subordinate
+            && ((host_addr.bus >= self.bus_range.secondary
+                && host_addr.bus <= self.bus_range.subordinate)
+                || self.pcie_host.is_none())
         {
             Some(self.bus_range.secondary)
         } else {
