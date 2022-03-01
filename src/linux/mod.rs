@@ -640,15 +640,19 @@ fn create_file_backed_mappings(
             .build()
             .context("failed to map backing file for file-backed mapping")?;
 
-        resources
-            .mmio_allocator_any()
-            .allocate_at(
-                mapping.address,
-                mapping.size,
-                Alloc::FileBacked(mapping.address),
-                "file-backed mapping".to_owned(),
-            )
-            .context("failed to allocate guest address for file-backed mapping")?;
+        match resources.mmio_allocator_any().allocate_at(
+            mapping.address,
+            mapping.size,
+            Alloc::FileBacked(mapping.address),
+            "file-backed mapping".to_owned(),
+        ) {
+            // OutOfSpace just means that this mapping is not in the MMIO regions at all, so don't
+            // consider it an error.
+            // TODO(b/222769529): Reserve this region in a global memory address space allocator once
+            // we have that so nothing else can accidentally overlap with it.
+            Ok(()) | Err(resources::Error::OutOfSpace) => {}
+            e => e.context("failed to allocate guest address for file-backed mapping")?,
+        }
 
         vm.add_memory_region(
             GuestAddress(mapping.address),
