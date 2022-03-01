@@ -13,6 +13,7 @@ kernel_cmdline = { path = "../kernel_cmdline" }
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
+memoffset = "0.6.5"
 minijail = "*"
 remain = "*"
 resources = { path = "../resources" }

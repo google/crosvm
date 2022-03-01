@@ -12,6 +12,7 @@ enumn = "0.1.0"
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
+memoffset = "0.6.5"
 serde = { version = "1", features = [ "derive" ] }
 sync = { path = "../common/sync" }
 base = { path = "../common/base" }
