@@ -207,8 +207,11 @@ impl arch::LinuxArch for AArch64 {
         Ok(arch_memory_regions(components.memory_size))
     }
 
-    fn create_system_allocator<V: Vm>(vm: &V) -> SystemAllocator {
-        Self::get_resource_allocator(vm.get_memory().memory_size(), vm.get_guest_phys_addr_bits())
+    fn get_system_allocator_config<V: Vm>(vm: &V) -> SystemAllocatorConfig {
+        Self::get_resource_allocator_config(
+            vm.get_memory().memory_size(),
+            vm.get_guest_phys_addr_bits(),
+        )
     }
 
     fn build_vm<V, Vcpu>(
@@ -523,13 +526,16 @@ impl AArch64 {
         cmdline
     }
 
-    /// Returns a system resource allocator.
+    /// Returns a system resource allocator configuration.
     ///
     /// # Arguments
     ///
     /// * `mem_size` - Size of guest memory (RAM) in bytes.
     /// * `guest_phys_addr_bits` - Size of guest physical addresses (IPA) in bits.
-    fn get_resource_allocator(mem_size: u64, guest_phys_addr_bits: u8) -> SystemAllocator {
+    fn get_resource_allocator_config(
+        mem_size: u64,
+        guest_phys_addr_bits: u8,
+    ) -> SystemAllocatorConfig {
         let guest_phys_end = 1u64 << guest_phys_addr_bits;
         // The platform MMIO region is immediately past the end of RAM.
         let plat_mmio_base = AARCH64_PHYS_MEM_START + mem_size;
@@ -544,7 +550,7 @@ impl AArch64 {
                     guest_phys_end, high_mmio_base,
                 );
             });
-        SystemAllocator::new(SystemAllocatorConfig {
+        SystemAllocatorConfig {
             io: None,
             low_mmio: MemRegion {
                 base: AARCH64_MMIO_BASE,
@@ -559,8 +565,7 @@ impl AArch64 {
                 size: plat_mmio_size,
             }),
             first_irq: AARCH64_IRQ_BASE,
-        })
-        .unwrap()
+        }
     }
 
     /// This adds any early platform devices for this architecture.

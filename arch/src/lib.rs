@@ -26,7 +26,7 @@ use devices::{
 use hypervisor::{IoEventAddress, ProtectionType, Vm};
 use minijail::Minijail;
 use remain::sorted;
-use resources::{MmioType, SystemAllocator};
+use resources::{MmioType, SystemAllocator, SystemAllocatorConfig};
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::{BatControl, BatteryType, PmResource};
@@ -151,12 +151,16 @@ pub trait LinuxArch {
         components: &VmComponents,
     ) -> std::result::Result<Vec<(GuestAddress, u64)>, Self::Error>;
 
-    /// Creates a new `SystemAllocator` that fits the given `Vm`'s memory layout.
+    /// Gets the configuration for a new `SystemAllocator` that fits the given `Vm`'s memory layout.
+    ///
+    /// This is the per-architecture template for constructing the `SystemAllocator`. Platform
+    /// agnostic modifications may be made to this configuration, but the final `SystemAllocator`
+    /// will be at least as strict as this configuration.
     ///
     /// # Arguments
     ///
     /// * `vm` - The virtual machine to be used as a template for the `SystemAllocator`.
-    fn create_system_allocator<V: Vm>(vm: &V) -> SystemAllocator;
+    fn get_system_allocator_config<V: Vm>(vm: &V) -> SystemAllocatorConfig;
 
     /// Takes `VmComponents` and generates a `RunnableLinuxVm`.
     ///
@@ -168,7 +172,7 @@ pub trait LinuxArch {
     /// * `reset_evt` - Event used by sub-devices to request that crosvm exit because guest
     ///     requested reset.
     /// * `system_allocator` - Allocator created by this trait's implementation of
-    ///   `create_system_allocator`.
+    ///   `get_system_allocator_config`.
     /// * `serial_parameters` - Definitions for how the serial devices should be configured.
     /// * `serial_jail` - Jail used for serial devices created here.
     /// * `battery` - Defines what battery device will be created.

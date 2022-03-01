@@ -391,11 +391,11 @@ impl arch::LinuxArch for X8664arch {
         Ok(arch_memory_regions(components.memory_size, bios_size))
     }
 
-    fn create_system_allocator<V: Vm>(vm: &V) -> SystemAllocator {
+    fn get_system_allocator_config<V: Vm>(vm: &V) -> SystemAllocatorConfig {
         let guest_mem = vm.get_memory();
         let high_mmio_start = Self::get_high_mmio_base(guest_mem);
         let high_mmio_size = Self::get_high_mmio_size(vm);
-        SystemAllocator::new(SystemAllocatorConfig {
+        SystemAllocatorConfig {
             io: Some(MemRegion {
                 base: 0xc000,
                 size: 0x4000,
@@ -410,8 +410,7 @@ impl arch::LinuxArch for X8664arch {
             },
             platform_mmio: None,
             first_irq: X86_64_IRQ_BASE,
-        })
-        .unwrap()
+        }
     }
 
     fn build_vm<V, Vcpu>(

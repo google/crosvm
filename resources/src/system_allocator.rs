@@ -29,8 +29,16 @@ pub struct SystemAllocatorConfig {
     /// IO ports. Only for x86_64.
     pub io: Option<MemRegion>,
     /// Low (<=4GB) MMIO region.
+    ///
+    /// Parts of this region may be reserved or otherwise excluded from the
+    /// created SystemAllocator's MmioType::Low allocator. However, no new
+    /// regions will be added.
     pub low_mmio: MemRegion,
     /// High (>4GB) MMIO region.
+    ///
+    /// Parts of this region may be reserved or otherwise excluded from the
+    /// created SystemAllocator's MmioType::High allocator. However, no new
+    /// regions will be added.
     pub high_mmio: MemRegion,
     /// Platform MMIO space. Only for ARM.
     pub platform_mmio: Option<MemRegion>,
