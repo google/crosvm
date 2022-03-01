@@ -209,11 +209,7 @@ impl DescriptorChain {
         if self.has_next() {
             // Once we see a write-only descriptor, all subsequent descriptors must be write-only.
             let required_flags = self.flags & VIRTQ_DESC_F_WRITE;
-            let iommu = if let Some(iommu) = &self.iommu {
-                Some(Arc::clone(&iommu))
-            } else {
-                None
-            };
+            let iommu = self.iommu.as_ref().map(Arc::clone);
             match DescriptorChain::checked_new(
                 &self.mem,
                 self.desc_table,
@@ -358,7 +354,7 @@ impl Queue {
             (avail_ring, avail_ring_size, "available ring"),
             (used_ring, used_ring_size, "used ring"),
         ] {
-            match is_valid_wrapper(&mem, &iommu, addr, size as u64) {
+            match is_valid_wrapper(mem, &iommu, addr, size as u64) {
                 Ok(valid) => {
                     if !valid {
                         error!(
@@ -489,11 +485,7 @@ impl Queue {
         let descriptor_index: u16 =
             read_obj_from_addr_wrapper(mem, &self.iommu, desc_idx_addr).unwrap();
 
-        let iommu = if let Some(iommu) = &self.iommu {
-            Some(Arc::clone(&iommu))
-        } else {
-            None
-        };
+        let iommu = self.iommu.as_ref().map(Arc::clone);
         DescriptorChain::checked_new(mem, self.desc_table, queue_size, descriptor_index, 0, iommu)
             .map_err(|e| {
                 error!("{:#}", e);

@@ -480,7 +480,7 @@ impl VirtioPciDevice {
 
 impl PciDevice for VirtioPciDevice {
     fn supports_iommu(&self) -> bool {
-        self.device.supports_iommu()
+        (self.device.features() & (1 << VIRTIO_F_ACCESS_PLATFORM)) != 0
     }
 
     fn debug_label(&self) -> String {
@@ -802,7 +802,7 @@ impl PciDevice for VirtioPciDevice {
         if !self.device_activated && self.is_driver_ready() {
             if let Some(iommu) = &self.iommu {
                 for q in &mut self.queues {
-                    q.set_iommu(Arc::clone(&iommu));
+                    q.set_iommu(Arc::clone(iommu));
                 }
             }
 
@@ -833,7 +833,7 @@ impl PciDevice for VirtioPciDevice {
     }
 
     fn set_iommu(&mut self, iommu: IpcMemoryMapper) -> anyhow::Result<()> {
-        assert!(self.device.supports_iommu());
+        assert!(self.supports_iommu());
         self.iommu = Some(Arc::new(Mutex::new(iommu)));
         Ok(())
     }

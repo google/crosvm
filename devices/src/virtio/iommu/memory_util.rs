@@ -42,14 +42,7 @@ pub fn is_valid<T: Translate>(
     match iommu.translate(iova, size) {
         Ok(regions) => {
             for r in regions {
-                if !mem.address_in_range(r.gpa)
-                    || mem
-                        .checked_offset(
-                            r.gpa,
-                            r.len.try_into().context("u64 doesn't fit in usize")?,
-                        )
-                        .is_none()
-                {
+                if !mem.address_in_range(r.gpa) || mem.checked_offset(r.gpa, r.len).is_none() {
                     return Ok(false);
                 }
             }

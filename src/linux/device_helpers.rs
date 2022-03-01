@@ -1115,7 +1115,7 @@ pub fn create_vfio_device(
             iommu_endpoints.insert(
                 endpoint_addr.to_u32(),
                 Arc::new(Mutex::new(Box::new(VfioWrapper::new(
-                    vfio_container.clone(),
+                    vfio_container,
                     vm.get_memory().clone(),
                 )))),
             );
@@ -1194,7 +1194,7 @@ pub fn setup_virtio_access_platform(
                     response_tx,
                 } = create_ipc_mapper(endpoint_id, request_tx.try_clone()?);
                 translate_response_senders
-                    .get_or_insert_with(|| BTreeMap::new())
+                    .get_or_insert_with(BTreeMap::new)
                     .insert(endpoint_id, response_tx);
                 iommu_attached_endpoints.insert(endpoint_id, mapper);
                 pci_dev.set_iommu(ipc_mapper)?;

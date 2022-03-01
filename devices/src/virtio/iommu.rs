@@ -553,7 +553,7 @@ async fn handle_translate_request(
             endpoint_id,
             iova,
             size,
-        } = request_tube.next().await.map_err(|e| IommuError::Tube(e))?;
+        } = request_tube.next().await.map_err(IommuError::Tube)?;
         if let Some(mapper) = endpoints.borrow_mut().get(&endpoint_id) {
             response_tubes
                 .get(&endpoint_id)

@@ -121,9 +121,3 @@ pub trait VirtioDevice: Send {
         None
     }
 }
-
-impl VirtioDevice {
-    pub fn supports_iommu(&self) -> bool {
-        (self.features() & (1 << VIRTIO_F_ACCESS_PLATFORM)) != 0
-    }
-}
