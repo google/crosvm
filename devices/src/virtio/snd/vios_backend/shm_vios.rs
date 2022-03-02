@@ -6,9 +6,9 @@ use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
 
 use base::{
-    error, net::UnixSeqpacket, AsRawDescriptor, Error as BaseError, Event, FromRawDescriptor,
-    IntoRawDescriptor, MemoryMapping, MemoryMappingBuilder, MmapError, PollToken, SafeDescriptor,
-    ScmSocket, WaitContext,
+    error, AsRawDescriptor, Error as BaseError, Event, FromRawDescriptor, IntoRawDescriptor,
+    MemoryMapping, MemoryMappingBuilder, MmapError, PollToken, SafeDescriptor, ScmSocket,
+    UnixSeqpacket, WaitContext,
 };
 use data_model::{DataInit, VolatileMemory, VolatileMemoryError, VolatileSlice};
 

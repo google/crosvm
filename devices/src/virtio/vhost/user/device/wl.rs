@@ -13,9 +13,8 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, bail, Context};
 use argh::FromArgs;
 use base::{
-    clone_descriptor, error,
-    net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener},
-    warn, Event, FromRawDescriptor, SafeDescriptor, Tube,
+    clone_descriptor, error, warn, Event, FromRawDescriptor, SafeDescriptor, Tube, UnixSeqpacket,
+    UnixSeqpacketListener, UnlinkUnixSeqpacketListener,
 };
 use cros_async::{AsyncWrapper, EventAsync, Executor, IoSourceExt};
 use futures::future::{AbortHandle, Abortable};

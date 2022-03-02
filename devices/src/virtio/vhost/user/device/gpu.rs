@@ -8,9 +8,8 @@ use anyhow::{anyhow, bail, Context};
 use argh::FromArgs;
 use async_task::Task;
 use base::{
-    clone_descriptor, error,
-    net::{UnixSeqpacketListener, UnlinkUnixSeqpacketListener},
-    warn, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor, TimerFd, Tube,
+    clone_descriptor, error, warn, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
+    TimerFd, Tube, UnixSeqpacketListener, UnlinkUnixSeqpacketListener,
 };
 use cros_async::{AsyncWrapper, EventAsync, Executor, IoSourceExt, TimerAsync};
 use futures::{

@@ -8,7 +8,7 @@ use std::ops::Deref;
 use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::time::Duration;
 
-use crate::{net::UnixSeqpacket, FromRawDescriptor, SafeDescriptor, ScmSocket, UnsyncMarker};
+use crate::{FromRawDescriptor, SafeDescriptor, ScmSocket, UnixSeqpacket, UnsyncMarker};
 
 use cros_async::{Executor, IntoAsync, IoSourceExt};
 use remain::sorted;

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 use crate::*;
-use base::{info, net::UnixSeqpacket, validate_raw_descriptor, RawDescriptor, Tube};
+use base::{info, validate_raw_descriptor, RawDescriptor, Tube, UnixSeqpacket};
 use remain::sorted;
 use thiserror::Error;
 
