@@ -638,8 +638,7 @@ impl Drop for Balloon {
 
 impl VirtioDevice for Balloon {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        let mut rds = Vec::new();
-        rds.push(self.command_tube.as_raw_descriptor());
+        let mut rds = vec![self.command_tube.as_raw_descriptor()];
         if let Some(inflate_tube) = &self.inflate_tube {
             rds.push(inflate_tube.as_raw_descriptor());
         }
