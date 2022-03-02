@@ -443,7 +443,7 @@ impl PciDevice for PciBridge {
         }
         // align window_size to 1MB
         if window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-            window_size = (window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_ALIGNMENT;
+            window_size = (window_size + BR_WINDOW_ALIGNMENT - 1) & (!(BR_WINDOW_ALIGNMENT - 1));
         }
         // if window_base isn't set, allocate a new one
         if window_base == u64::MAX {
@@ -467,7 +467,8 @@ impl PciDevice for PciBridge {
         } else {
             // align window_base to 1MB
             if window_base & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                window_base = (window_base + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_ALIGNMENT;
+                window_base =
+                    (window_base + BR_WINDOW_ALIGNMENT - 1) & (!(BR_WINDOW_ALIGNMENT - 1));
             }
         }
 
@@ -477,7 +478,8 @@ impl PciDevice for PciBridge {
         }
         // align pref_window_size to 1MB
         if pref_window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-            pref_window_size = (pref_window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_ALIGNMENT;
+            pref_window_size =
+                (pref_window_size + BR_WINDOW_ALIGNMENT - 1) & (!(BR_WINDOW_ALIGNMENT - 1));
         }
         // if pref_window_base isn't set, allocate a new one
         if pref_window_base == u64::MAX {
@@ -503,7 +505,8 @@ impl PciDevice for PciBridge {
         } else {
             // align pref_window_base to 1MB
             if pref_window_base & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                pref_window_base = (window_base + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_ALIGNMENT;
+                pref_window_base =
+                    (window_base + BR_WINDOW_ALIGNMENT - 1) & (!(BR_WINDOW_ALIGNMENT - 1));
             }
         }
 
