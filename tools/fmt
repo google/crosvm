@@ -34,6 +34,12 @@ black = cmd("black", "--line-length 100")
 # How many files to check at once in each thread.
 BATCH_SIZE = 8
 
+# Files not under our control or auto-generated.
+IGNORE = [
+    "infra/README.recipes.md",
+    "infra/recipes.py",
+]
+
 
 def main(check: bool = False):
     chdir(CROSVM_ROOT)
@@ -42,10 +48,13 @@ def main(check: bool = False):
     print(f"{'Checking format' if check else 'Formatting'}: Rust, Markdown")
     parallel(
         *rustfmt(check_arg).foreach(find_source_files("rs"), batch_size=BATCH_SIZE),
-        *mdformat("--wrap 100", check_arg).foreach(find_source_files("md"), batch_size=BATCH_SIZE),
+        *mdformat("--wrap 100", check_arg).foreach(
+            find_source_files("md", IGNORE),
+            batch_size=BATCH_SIZE,
+        ),
         *black(check_arg).foreach(
             (
-                *find_source_files("py"),
+                *find_source_files("py", IGNORE),
                 *find_scripts(Path("tools"), "/usr/bin/env python3"),
             ),
             batch_size=BATCH_SIZE,

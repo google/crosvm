@@ -52,6 +52,7 @@ luci.realm(name = "pools/try")
 
 # Global recipe defaults
 luci.recipe.defaults.cipd_version.set("refs/heads/main")
+luci.recipe.defaults.cipd_package.set("infra/recipe_bundles/chromium.googlesource.com/crosvm/crosvm")
 luci.recipe.defaults.use_python3.set(True)
 
 # The try bucket will include builders which work on pre-commit or pre-review
@@ -64,3 +65,23 @@ luci.bucket(name = "ci")
 # The prod bucket will include builders which work on post-commit code and
 # generate executable artifacts used by other users or machines.
 luci.bucket(name = "prod")
+
+# This sets the default CIPD ref to use in builds to get the right version of
+# recipes for the build.
+#
+# The recipe bundler sets CIPD refs equal in name to the git refs that it
+# processed the recipe code from.
+#
+# Note: This will cause all recipe commits to automatically deploy as soon
+# as the recipe bundler compiles them from your refs/heads/main branch.
+cipd_version = "refs/heads/main"
+
+# Example builder to verify configuration
+luci.builder(
+    name = "Example Builder",
+    bucket = "ci",
+    executable = luci.recipe(
+        name = "hello_world",
+    ),
+    schedule = "with 1m interval",
+)

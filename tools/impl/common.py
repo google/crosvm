@@ -526,11 +526,13 @@ def __add_verbose_args(parser: argparse.ArgumentParser):
     )
 
 
-def find_source_files(extension: str):
+def find_source_files(extension: str, ignore: list[str] = []):
     for file in Path(".").glob(f"**/*.{extension}"):
         if file.is_relative_to("third_party"):
             continue
         if "target" in file.parts:
+            continue
+        if str(file) in ignore:
             continue
         yield file
 
