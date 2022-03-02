@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cmp::{max, min};
+use std::cmp::{max, min, Reverse};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
@@ -1144,7 +1144,7 @@ impl VfioPciDevice {
 
     fn allocate_nonroot_barmem(
         &mut self,
-        mem_bars: &[PciBarConfiguration],
+        mem_bars: &mut [PciBarConfiguration],
         resources: &mut SystemAllocator,
     ) -> Result<Vec<BarRange>, PciDeviceError> {
         const NON_PREFETCHABLE: usize = 0;
@@ -1180,6 +1180,8 @@ impl VfioPciDevice {
         let mut window_sz: [u64; ARRAY_SIZE] = [0; 2];
         let mut alignment: [u64; ARRAY_SIZE] = [0x100000; 2];
 
+        // Descend by bar size, this could reduce allocated size for all the bars.
+        mem_bars.sort_by_key(|a| Reverse(a.size()));
         for mem_bar in mem_bars {
             let prefetchable = mem_bar.is_prefetchable();
             let is_64bit = mem_bar.is_64bit_memory();
@@ -1366,12 +1368,12 @@ impl PciDevice for VfioPciDevice {
             .pci_address
             .expect("allocate_address must be called prior to allocate_device_bars");
 
-        let mem_bars = self.collect_bars();
+        let mut mem_bars = self.collect_bars();
 
         let ranges = if address.bus == 0 {
             self.allocate_root_barmem(&mem_bars, resources)?
         } else {
-            self.allocate_nonroot_barmem(&mem_bars, resources)?
+            self.allocate_nonroot_barmem(&mut mem_bars, resources)?
         };
 
         // Quirk, enable igd memory for guest vga arbitrate, otherwise kernel vga arbitrate
