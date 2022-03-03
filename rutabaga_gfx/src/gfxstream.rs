@@ -390,6 +390,7 @@ impl RutabagaComponent for Gfxstream {
             info_3d: None,
             vulkan_info: None,
             backing_iovecs: None,
+            import_mask: 0,
         })
     }
 
@@ -560,6 +561,7 @@ impl RutabagaComponent for Gfxstream {
             info_3d: None,
             vulkan_info: None,
             backing_iovecs: iovec_opt,
+            import_mask: 0,
         })
     }
 

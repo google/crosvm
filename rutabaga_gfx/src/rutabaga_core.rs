@@ -40,6 +40,9 @@ pub struct RutabagaResource {
     pub info_3d: Option<Resource3DInfo>,
     pub vulkan_info: Option<VulkanInfo>,
     pub backing_iovecs: Option<Vec<RutabagaIovec>>,
+
+    /// Bitmask of components that have already imported this resource
+    pub import_mask: u32,
 }
 
 /// A RutabagaComponent is a building block of the Virtual Graphics Interface (VGI).  Each component

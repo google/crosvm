@@ -45,6 +45,43 @@ struct VirglRendererContext {
     ctx_id: u32,
 }
 
+fn import_resource(resource: &mut RutabagaResource) {
+    if (resource.import_mask & (1 << (RutabagaComponentType::VirglRenderer as u32))) != 0 {
+        return;
+    }
+
+    if let Some(handle) = &resource.handle {
+        if handle.handle_type == RUTABAGA_MEM_HANDLE_TYPE_DMABUF {
+            if let Ok(dmabuf_fd) = base::clone_descriptor(&handle.os_handle) {
+                // Safe because we are being passed a valid fd
+                unsafe {
+                    let dmabuf_size = libc::lseek64(dmabuf_fd, 0, libc::SEEK_END);
+                    libc::lseek64(dmabuf_fd, 0, libc::SEEK_SET);
+                    let args = virgl_renderer_resource_import_blob_args {
+                        res_handle: resource.resource_id,
+                        blob_mem: resource.blob_mem,
+                        fd_type: VIRGL_RENDERER_BLOB_FD_TYPE_DMABUF,
+                        fd: dmabuf_fd,
+                        size: dmabuf_size as u64,
+                    };
+                    let ret = virgl_renderer_resource_import_blob(&args);
+                    if ret != 0 {
+                        // import_blob can fail if we've previously imported this resource,
+                        // but in any case virglrenderer does not take ownership of the fd
+                        // in error paths
+                        //
+                        // Because of the re-import case we must still fall through to the
+                        // virgl_renderer_ctx_attach_resource() call.
+                        libc::close(dmabuf_fd);
+                        return;
+                    }
+                    resource.import_mask |= 1 << (RutabagaComponentType::VirglRenderer as u32);
+                }
+            }
+        }
+    }
+}
+
 impl RutabagaContext for VirglRendererContext {
     fn submit_cmd(&mut self, commands: &mut [u8]) -> RutabagaResult<()> {
         if commands.len() % size_of::<u32>() != 0 {
@@ -64,6 +101,8 @@ impl RutabagaContext for VirglRendererContext {
     }
 
     fn attach(&mut self, resource: &mut RutabagaResource) {
+        import_resource(resource);
+
         // The context id and resource id must be valid because the respective instances ensure
         // their lifetime.
         unsafe {
@@ -444,6 +483,7 @@ impl RutabagaComponent for VirglRenderer {
             info_3d: self.query(resource_id).ok(),
             vulkan_info: None,
             backing_iovecs: None,
+            import_mask: 1 << (RutabagaComponentType::VirglRenderer as u32),
         })
     }
 
@@ -609,6 +649,7 @@ impl RutabagaComponent for VirglRenderer {
                 info_3d: self.query(resource_id).ok(),
                 vulkan_info: None,
                 backing_iovecs: iovec_opt,
+                import_mask: 1 << (RutabagaComponentType::VirglRenderer as u32),
             })
         }
         #[cfg(not(feature = "virgl_renderer_next"))]
