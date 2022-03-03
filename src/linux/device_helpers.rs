@@ -132,7 +132,7 @@ pub fn create_block_device(
             .context("failed to create block device")?,
         ) as Box<dyn VirtioDevice>
     } else {
-        let disk_file = disk::create_disk_file(raw_image, disk::MAX_NESTING_DEPTH)
+        let disk_file = disk::create_disk_file(raw_image, disk::MAX_NESTING_DEPTH, &disk.path)
             .context("failed to create virtual disk")?;
         Box::new(
             virtio::Block::new(

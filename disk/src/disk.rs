@@ -6,6 +6,7 @@ use std::cmp::min;
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
+use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -234,7 +235,11 @@ pub fn create_async_disk_file(raw_image: File) -> Result<Box<dyn ToAsyncDisk>> {
 }
 
 /// Inspect the image file type and create an appropriate disk file to match it.
-pub fn create_disk_file(raw_image: File, mut max_nesting_depth: u32) -> Result<Box<dyn DiskFile>> {
+pub fn create_disk_file(
+    raw_image: File,
+    mut max_nesting_depth: u32,
+    image_path: &Path,
+) -> Result<Box<dyn DiskFile>> {
     if max_nesting_depth == 0 {
         return Err(Error::MaxNestingDepthExceeded);
     }
@@ -251,7 +256,7 @@ pub fn create_disk_file(raw_image: File, mut max_nesting_depth: u32) -> Result<B
         ImageType::CompositeDisk => {
             // Valid composite disk header present
             Box::new(
-                CompositeDiskFile::from_file(raw_image, max_nesting_depth)
+                CompositeDiskFile::from_file(raw_image, max_nesting_depth, image_path)
                     .map_err(Error::CreateCompositeDisk)?,
             ) as Box<dyn DiskFile>
         }

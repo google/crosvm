@@ -124,7 +124,7 @@ fn range_intersection(a: &Range<u64>, b: &Range<u64>) -> Range<u64> {
 }
 
 /// The version of the composite disk format supported by this implementation.
-const COMPOSITE_DISK_VERSION: u64 = 1;
+const COMPOSITE_DISK_VERSION: u64 = 2;
 
 /// A magic string placed at the beginning of a composite disk file to identify it.
 pub const CDISK_MAGIC: &str = "composite_disk\x1d";
@@ -157,7 +157,11 @@ impl CompositeDiskFile {
     /// Set up a composite disk by reading the specification from a file. The file must consist of
     /// the CDISK_MAGIC string followed by one binary instance of the CompositeDisk protocol
     /// buffer. Returns an error if it could not read the file or if the specification was invalid.
-    pub fn from_file(mut file: File, max_nesting_depth: u32) -> Result<CompositeDiskFile> {
+    pub fn from_file(
+        mut file: File,
+        max_nesting_depth: u32,
+        image_path: &Path,
+    ) -> Result<CompositeDiskFile> {
         file.seek(SeekFrom::Start(0))
             .map_err(Error::ReadSpecificationError)?;
         let mut magic_space = [0u8; CDISK_MAGIC_LEN];
@@ -168,22 +172,27 @@ impl CompositeDiskFile {
         }
         let proto: cdisk_spec::CompositeDisk =
             Message::parse_from_reader(&mut file).map_err(Error::InvalidProto)?;
-        if proto.get_version() != COMPOSITE_DISK_VERSION {
+        if proto.get_version() > COMPOSITE_DISK_VERSION {
             return Err(Error::UnknownVersion(proto.get_version()));
         }
         let mut disks: Vec<ComponentDiskPart> = proto
             .get_component_disks()
             .iter()
             .map(|disk| {
-                let file = open_file(
-                    Path::new(disk.get_file_path()),
+                let path = if proto.get_version() == 1 {
+                    PathBuf::from(disk.get_file_path())
+                } else {
+                    image_path.parent().unwrap().join(disk.get_file_path())
+                };
+                let comp_file = open_file(
+                    &path,
                     disk.get_read_write_capability() != cdisk_spec::ReadWriteCapability::READ_WRITE,
                     // TODO(b/190435784): add support for O_DIRECT.
                     false, /*O_DIRECT*/
                 )
                 .map_err(|e| Error::OpenFile(e.into(), disk.get_file_path().to_string()))?;
                 Ok(ComponentDiskPart {
-                    file: create_disk_file(file, max_nesting_depth)
+                    file: create_disk_file(comp_file, max_nesting_depth, &path)
                         .map_err(|e| Error::DiskError(Box::new(e)))?,
                     offset: disk.get_offset(),
                     length: 0, // Assigned later
