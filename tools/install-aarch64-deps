@@ -5,7 +5,6 @@
 set -ex
 
 sudo apt-get install --yes --no-install-recommends \
-    g++-aarch64-linux-gnu \
     gcc-aarch64-linux-gnu \
     ipxe-qemu \
     libc-dev:arm64 \

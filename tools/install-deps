@@ -7,12 +7,10 @@ set -ex
 sudo apt-get update
 sudo apt-get install --yes --no-install-recommends \
     ca-certificates \
-    clang \
     cloud-image-utils \
     curl \
     dpkg-dev \
     expect \
-    g++ \
     gcc \
     git \
     jq \
@@ -37,6 +35,8 @@ sudo apt-get install --yes --no-install-recommends \
     qemu-system-x86 \
     rsync \
     screen \
+    wine64 \
+    gcc-mingw-w64-x86-64-win32 \
     wayland-protocols
 
 # Install meson for rutabaga_gfx
@@ -50,6 +50,8 @@ pip3 install argh
 
 rustup component add clippy
 rustup component add rustfmt
+
+rustup target add x86_64-pc-windows-gnu
 
 # The bindgen tool is required to build a crosvm dependency.
 cargo install bindgen

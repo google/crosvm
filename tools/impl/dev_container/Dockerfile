@@ -25,8 +25,13 @@ RUN apt-get update \
     # Delete build artifacts from 'cargo install' to save space in layer.
     && rm -rf /scratch/cargo_target/*
 
+# Prepare wine64
+RUN ln -sf /usr/bin/wine64-stable /usr/bin/wine64 \
+    && wine64 wineboot
+
 # Install cross-compilation dependencies.
 COPY tools/install-aarch64-deps tools/install-armhf-deps /tools/
+
 RUN apt-get update \
     && /tools/install-aarch64-deps \
     && /tools/install-armhf-deps \

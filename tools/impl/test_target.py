@@ -44,7 +44,7 @@ TESTVM_DIR = SCRIPT_DIR.parent.joinpath("testvm")
 TARGET_DIR = testvm.cargo_target_dir().joinpath("crosvm_tools")
 ENVRC_PATH = SCRIPT_DIR.parent.parent.joinpath(".envrc")
 
-Arch = Literal["x86_64", "aarch64", "armhf"]
+Arch = Literal["x86_64", "aarch64", "armhf", "win64"]
 
 # Enviroment variables needed for building with cargo
 BUILD_ENV = {
@@ -182,10 +182,15 @@ def get_cargo_build_target(arch: Arch):
     if os.name == "posix":
         if arch == "armhf":
             return "armv7-unknown-linux-gnueabihf"
+        elif arch == "win64":
+            return "x86_64-pc-windows-gnu"
         else:
             return f"{arch}-unknown-linux-gnu"
     elif os.name == "nt":
-        return f"{arch}-pc-windows-msvc"
+        if arch == "win64":
+            return f"x86_64-pc-windows-msvc"
+        else:
+            return f"{arch}-pc-windows-msvc"
     else:
         raise Exception(f"Unsupported build target: {os.name}")
 

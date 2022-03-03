@@ -116,6 +116,7 @@ all-linux = [
     "virgl_renderer",
     "x",
     ]
+win64 = []
 audio = ["devices/audio"]
 audio_cras = ["devices/audio_cras"]
 chromeos = ["base/chromeos", "audio_cras", "devices/chromeos"]

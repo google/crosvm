@@ -110,6 +110,8 @@ def get_workspace_excludes(target_arch: Arch):
             yield crate
         elif TestOption.DO_NOT_BUILD_ARMHF in options and target_arch == "armhf":
             yield crate
+        elif TestOption.DO_NOT_BUILD_WIN64 in options and target_arch == "win64":
+            yield crate
 
 
 def should_run_executable(executable: Executable, target_arch: Arch):
@@ -282,6 +284,13 @@ def execute_test(target: TestTarget, executable: Executable):
     if TestOption.SINGLE_THREADED in options:
         args += ["--test-threads=1"]
 
+    binary_path = executable.binary_path
+
+    if executable.arch == "win64" and executable.kind != "proc-macro" and os.name != "nt":
+        args.insert(0, binary_path)
+        binary_path = "wine64"
+
+
     # proc-macros and their tests are executed on the host.
     if executable.kind == "proc-macro":
         target = TestTarget("host")
@@ -292,7 +301,7 @@ def execute_test(target: TestTarget, executable: Executable):
         # Pipe stdout/err to be printed in the main process if needed.
         test_process = test_target.exec_file_on_target(
             target,
-            executable.binary_path,
+            binary_path,
             args=args,
             timeout=get_test_timeout(target, executable),
             stdout=subprocess.PIPE,

@@ -5,7 +5,6 @@
 set -ex
 
 sudo apt-get install --yes --no-install-recommends \
-    g++-arm-linux-gnueabihf \
     gcc-arm-linux-gnueabihf \
     libc-dev:armhf \
     libcap-dev:armhf \

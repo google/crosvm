@@ -42,3 +42,6 @@ rustflags = [
 
 [target.armv7-unknown-linux-gnueabihf]
 linker = "arm-linux-gnueabihf-gcc"
+
+[target.x86_64-pc-windows-gnu]
+runner = "wine64"
