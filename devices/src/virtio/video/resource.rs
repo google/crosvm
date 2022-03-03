@@ -220,7 +220,7 @@ impl GuestResource {
         };
 
         let mem_areas = mem_entries
-            .into_iter()
+            .iter()
             .map(|entry| {
                 let addr: u64 = entry.addr.into();
                 let length: u32 = entry.length.into();
