@@ -6,12 +6,33 @@
 #![allow(dead_code)]
 
 // Added by vfio_sys/bindgen.sh
+use data_model::DataInit;
+
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct vfio_region_info_with_cap {
     pub region_info: vfio_region_info,
     pub cap_info: __IncompleteArrayField<u8>,
 }
+
+// vfio_iommu_type1_info_cap_iova_range minus the incomplete iova_ranges
+// array, so that Copy/DataInit can be implemented.
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_iommu_type1_info_cap_iova_range_header {
+    pub header: vfio_info_cap_header,
+    pub nr_iovas: u32,
+    pub reserved: u32,
+}
+
+// Safe because it only has data and no implicit padding.
+unsafe impl DataInit for vfio_info_cap_header {}
+
+// Safe because it only has data and no implicit padding.
+unsafe impl DataInit for vfio_iommu_type1_info_cap_iova_range_header {}
+
+// Safe because it only has data and no implicit padding.
+unsafe impl DataInit for vfio_iova_range {}
 
 #[repr(C)]
 #[derive(Default)]

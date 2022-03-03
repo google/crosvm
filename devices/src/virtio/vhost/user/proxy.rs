@@ -46,7 +46,7 @@ use crate::{
         PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType, PciCapability,
         PciCapabilityID,
     },
-    virtio::VIRTIO_MSI_NO_VECTOR,
+    virtio::{VIRTIO_F_ACCESS_PLATFORM, VIRTIO_MSI_NO_VECTOR},
 };
 
 use remain::sorted;
@@ -997,7 +997,7 @@ impl VirtioVhostUser {
         uuid: Option<Uuid>,
     ) -> Result<VirtioVhostUser> {
         Ok(VirtioVhostUser {
-            base_features,
+            base_features: base_features | 1 << VIRTIO_F_ACCESS_PLATFORM,
             listener: Some(listener),
             config: VirtioVhostUserConfig {
                 status: Le32::from(0),

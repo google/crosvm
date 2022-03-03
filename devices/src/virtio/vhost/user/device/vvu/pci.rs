@@ -11,6 +11,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use base::{info, Event};
 use data_model::DataInit;
 use memoffset::offset_of;
+use resources::Alloc;
 use vfio_sys::*;
 use virtio_sys::vhost::VIRTIO_F_VERSION_1;
 
@@ -18,7 +19,7 @@ use crate::pci::{MsixCap, PciAddress, PciCapabilityID, CAPABILITY_LIST_HEAD_OFFS
 use crate::vfio::{VfioDevice, VfioPciConfig, VfioRegionAddr};
 use crate::virtio::vhost::user::device::vvu::{
     bus::open_vfio_device,
-    queue::{DescTableAddrs, UserQueue},
+    queue::{DescTableAddrs, IovaAllocator, UserQueue},
 };
 use crate::virtio::{PciCapabilityType, VirtioPciCap};
 
@@ -252,6 +253,13 @@ impl VvuPciDevice {
             .check_device_info()
             .context("failed to check VFIO device information")?;
 
+        let page_mask = vfio_dev
+            .vfio_get_iommu_page_size_mask()
+            .context("failed to get iommu page size mask")?;
+        if page_mask & (base::pagesize() as u64) == 0 {
+            bail!("Unsupported iommu page mask {:x}", page_mask);
+        }
+
         let mut pci_dev = Self {
             vfio_dev,
             caps,
@@ -309,7 +317,7 @@ impl VvuPciDevice {
             QueueType::Rx => true,
             QueueType::Tx => false,
         };
-        let queue = UserQueue::new(queue_size, device_writable)?;
+        let queue = UserQueue::new(queue_size, device_writable, typ as u8, self)?;
         let DescTableAddrs { desc, avail, used } = queue.desc_table_addrs()?;
 
         let desc_lo = (desc & 0xffffffff) as u32;
@@ -489,5 +497,19 @@ impl VvuPciDevice {
 
         info!("vvu device started");
         Ok(())
+    }
+}
+
+impl IovaAllocator for VvuPciDevice {
+    fn alloc_iova(&self, size: u64, tag: u8) -> Result<u64> {
+        self.vfio_dev
+            .alloc_iova(size, base::pagesize() as u64, Alloc::VvuQueue(tag))
+            .context("failed to find an iova region to map the gpa region to")
+    }
+
+    unsafe fn map_iova(&self, iova: u64, size: u64, addr: *const u8) -> Result<()> {
+        self.vfio_dev
+            .vfio_dma_map(iova, size, addr as u64, true)
+            .context("failed to map iova")
     }
 }

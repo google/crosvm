@@ -12,7 +12,7 @@ use thiserror::Error;
 
 pub use crate::system_allocator::{MemRegion, MmioType, SystemAllocator, SystemAllocatorConfig};
 
-mod address_allocator;
+pub mod address_allocator;
 mod system_allocator;
 
 /// Used to tag SystemAllocator allocations.
@@ -36,6 +36,8 @@ pub enum Alloc {
     PciBridgePrefetchWindow { bus: u8, dev: u8, func: u8 },
     /// File-backed memory mapping.
     FileBacked(u64),
+    /// virtio vhost user queue with queue id
+    VvuQueue(u8),
 }
 
 #[sorted]

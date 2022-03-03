@@ -8,13 +8,11 @@
 use std::mem;
 use std::num::Wrapping;
 use std::sync::atomic::{fence, Ordering};
-#[cfg(not(test))]
-use std::{collections::BTreeMap, fs::File};
 
 use anyhow::{anyhow, bail, Context, Result};
 use data_model::{DataInit, Le16, Le32, Le64, VolatileSlice};
 use virtio_sys::vhost::VRING_DESC_F_WRITE;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::{GuestAddress as IOVA, GuestMemory as QueueMemory};
 
 use crate::virtio::Desc;
 
@@ -36,19 +34,17 @@ pub struct DescTableAddrs {
 }
 
 struct MemLayout {
-    /// Address of the descriptor table.
-    /// Since the vvu driver runs in the guest user space, `GuestAddress` here stores the guest
-    /// virtual address.
-    desc_table: GuestAddress,
+    /// Address of the descriptor table in UserQueue.mem.
+    desc_table: IOVA,
 
-    /// Virtual address of the available ring
-    avail_ring: GuestAddress,
+    /// Address of the available ring in UserQueue.mem.
+    avail_ring: IOVA,
 
-    /// Virtual address of the used ring
-    used_ring: GuestAddress,
+    /// Address of the used ring in UserQueue.mem.
+    used_ring: IOVA,
 
-    /// Virtual address of the start of buffers.
-    buffer_addr: GuestAddress,
+    /// Address of the start of buffers in UserQueue.mem.
+    buffer_addr: IOVA,
 }
 
 /// Represents a virtqueue that is allocated in the guest userspace and manipulated from a VFIO
@@ -59,8 +55,12 @@ struct MemLayout {
 ///
 /// # Memory Layout
 ///
-/// `mem` is a continuous memory allocated in the guest userspace and used to have a virtqueue.
-/// Its layout is defined in the following table and stored in `mem_layout`.
+/// `mem` is the memory allocated in the guest userspace for the virtqueue, which is mapped into
+/// the vvu device via VFIO. The GuestAddresses of `mem` are the IOVAs that should be used when
+/// communicating with the vvu device. All accesses to the shared memory from the device backend
+/// must be done through the GuestMemory read/write functions.
+///
+/// The layout `mem` is defined in the following table and stored in `mem_layout`.
 ///
 /// |                  | Alignment     | Size                         |
 /// |-----------------------------------------------------------------|
@@ -81,7 +81,7 @@ pub struct UserQueue {
     size: Wrapping<u16>,
 
     /// The underlying memory.
-    mem: GuestMemory,
+    mem: QueueMemory,
 
     /// Virtqueue layout on `mem`.
     mem_layout: MemLayout,
@@ -100,21 +100,30 @@ pub struct UserQueue {
     /// one virtqueue. Also, it's better to use `crate::virtio::DescriptorChain` for descirptors as
     /// a part of b/215153367.
     device_writable: bool,
+}
 
-    /// Mapping from a virtual address to the physical address.
-    /// This mapping is initialized by reading `/proc/self/pagemap`.
-    /// TODO(b/215310597): This workaround won't work if memory mapping is changed. Currently, we
-    /// are assuming that memory mapping is fixed during the vvu negotiation.
-    /// Once virtio-iommu supports VFIO usage, we can remove this workaround and we should use
-    /// VFIO_IOMMU_MAP_DMA call to get physical addresses.
-    #[cfg(not(test))]
-    addr_table: BTreeMap<GuestAddress, u64>,
+/// Interface used by UserQueue to interact with the IOMMU.
+pub trait IovaAllocator {
+    /// Allocates an IO virtual address region of the requested size.
+    fn alloc_iova(&self, size: u64, tag: u8) -> Result<u64>;
+    /// Maps the given address at the given IOVA.
+    ///
+    /// # Safety
+    ///
+    /// `addr` must reference a region of at least length `size`. Memory passed
+    /// to this function may be mutated at any time, so `addr` must not be memory
+    /// that is directly managed by rust.
+    unsafe fn map_iova(&self, iova: u64, size: u64, addr: *const u8) -> Result<()>;
 }
 
 impl UserQueue {
     /// Creats a `UserQueue` instance.
-    pub fn new(queue_size: u16, device_writable: bool) -> Result<Self> {
-        let (mem, size, mem_layout) = Self::init_memory(queue_size)?;
+    pub fn new<I>(queue_size: u16, device_writable: bool, tag: u8, iova_alloc: &I) -> Result<Self>
+    where
+        I: IovaAllocator,
+    {
+        let (mem, size, mem_layout) = Self::init_memory(queue_size, tag, iova_alloc)?;
+
         let mut queue = Self {
             mem,
             size: Wrapping(size),
@@ -123,8 +132,6 @@ impl UserQueue {
             used_count: Wrapping(0),
             free_count: Wrapping(size),
             device_writable,
-            #[cfg(not(test))]
-            addr_table: Default::default(),
         };
 
         queue.init_descriptor_table()?;
@@ -133,7 +140,14 @@ impl UserQueue {
     }
 
     /// Allocates memory region and returns addresses on the regions for (`desc_table`, `avail_ring`, `used_ring`, `buffer``).
-    fn init_memory(max_queue_size: u16) -> Result<(GuestMemory, u16, MemLayout)> {
+    fn init_memory<I>(
+        max_queue_size: u16,
+        tag: u8,
+        iova_alloc: &I,
+    ) -> Result<(QueueMemory, u16, MemLayout)>
+    where
+        I: IovaAllocator,
+    {
         // Since vhost-user negotiation finishes within ~20 messages, queue size 32 is enough.
         const MAX_QUEUE_SIZE: u16 = 256;
 
@@ -149,51 +163,44 @@ impl UserQueue {
             ((n + m - 1) / m) * m
         }
 
-        let desc_table = GuestAddress(0);
+        let desc_table = IOVA(0);
         let desc_size = 16u64 * u64::from(queue_size);
         let desc_end = desc_table.0 + desc_size;
 
-        let avail_ring = GuestAddress(align(desc_end, 2));
+        let avail_ring = IOVA(align(desc_end, 2));
         let avail_size = 6 + 2 * u64::from(queue_size);
         let avail_end = avail_ring.0 + avail_size;
 
-        let used_ring = GuestAddress(align(avail_end, 4));
+        let used_ring = IOVA(align(avail_end, 4));
         let used_size = 6 + 8 * u64::from(queue_size);
         let used_end = used_ring.0 + used_size;
 
-        let buffer_addr = GuestAddress(align(used_end, BUF_SIZE));
+        let buffer_addr = IOVA(align(used_end, BUF_SIZE));
         let buffer_size = BUF_SIZE * u64::from(queue_size);
 
         let mem_size = align(buffer_addr.0 + buffer_size, base::pagesize() as u64);
+        let iova_start = iova_alloc
+            .alloc_iova(mem_size, tag)
+            .context("failed to allocate queue iova")?;
 
-        let mem = GuestMemory::new(&[(desc_table, mem_size)])
-            .map_err(|e| anyhow!("failed to create GuestMemory for virtqueue: {}", e))?;
+        let mem = QueueMemory::new(&[(IOVA(iova_start), mem_size)])
+            .map_err(|e| anyhow!("failed to create QueueMemory for virtqueue: {}", e))?;
 
-        // Call `mlock()` to guarantees that pages will stay in RAM.
-        // Note that this can't ensure that physical address mapping is consistent.
-        // TODO(b/215310597) We're assume that the kernel won't swap these memory region at least
-        // during the vvu negotiation. Although this assumption is risky, it'll be resolved once
-        // virtio-iommu for virtio devices is supported.
-        mem.with_regions(|_, _, size, ptr, _, _| {
-            let ret = unsafe { libc::mlock(ptr as *const libc::c_void, size) };
-            if ret == -1 {
-                bail!("failed to mlock(): {}", base::Error::last());
-            }
-            Ok(())
-        })?;
-
-        // To ensure the GuestMemory is mapped to physical memory, read the entire buffer first.
-        // Otherwise, reading `/proc/self/pagemap` returns invalid values.
-        // TODO(b/215310597): Once we use iommu for VFIO, we can probably remove this workaround.
-        let mut buf = vec![0; mem_size as usize];
-        mem.read_at_addr(&mut buf, desc_table)
-            .map_err(|e| anyhow!("failed to read_slice: {}", e))?;
+        let host_addr = mem
+            .get_host_address_range(IOVA(iova_start), mem_size as usize)
+            .context("failed to get host address")?;
+        // Safe because the region being mapped is managed via the GuestMemory interface.
+        unsafe {
+            iova_alloc
+                .map_iova(iova_start, mem_size, host_addr)
+                .context("failed to map queue")?;
+        }
 
         let mem_layout = MemLayout {
-            desc_table,
-            avail_ring,
-            used_ring,
-            buffer_addr,
+            desc_table: desc_table.unchecked_add(iova_start),
+            avail_ring: avail_ring.unchecked_add(iova_start),
+            used_ring: used_ring.unchecked_add(iova_start),
+            buffer_addr: buffer_addr.unchecked_add(iova_start),
         };
 
         Ok((mem, queue_size, mem_layout))
@@ -201,8 +208,6 @@ impl UserQueue {
 
     /// Initialize the descriptor table.
     fn init_descriptor_table(&mut self) -> Result<()> {
-        self.init_addr_table()?;
-
         let flags = if self.device_writable {
             Le16::from(VRING_DESC_F_WRITE as u16)
         } else {
@@ -214,9 +219,9 @@ impl UserQueue {
         // Register pre-allocated buffers to the descriptor area.
         for i in 0..self.size.0 {
             let idx = Wrapping(i);
-            let addr = Le64::from(self.to_phys_addr(&self.buffer_guest_addr(idx)?)?);
+            let iova = self.buffer_address(idx)?.offset();
             let desc = Desc {
-                addr,
+                addr: iova.into(),
                 len,
                 flags,
                 next,
@@ -247,91 +252,16 @@ impl UserQueue {
         Ok(())
     }
 
-    #[cfg(not(test))]
-    /// Reads `/proc/self/pagemap` and stores mapping from virtual addresses for virtqueue
-    /// information and buffers to physical addresses.
-    fn init_addr_table(&mut self) -> Result<()> {
-        let pagemap = File::open("/proc/self/pagemap").context("failed to open pagemap")?;
-        self.register_addr(&pagemap, &self.mem_layout.desc_table.clone())?;
-        self.register_addr(&pagemap, &self.mem_layout.avail_ring.clone())?;
-        self.register_addr(&pagemap, &self.mem_layout.used_ring.clone())?;
-        self.register_addr(&pagemap, &self.mem_layout.buffer_addr.clone())?;
-        // Register addresses of buffers.
-        for i in 0..self.size.0 {
-            self.register_addr(&pagemap, &self.buffer_guest_addr(Wrapping(i))?)?;
-        }
-        Ok(())
-    }
-
-    #[cfg(test)]
-    fn init_addr_table(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    /// Registers an address mapping for the given virtual address to `self.addr_table`.
-    // TODO(b/215310597): This function reads `/proc/self/pagemap`, which requires root
-    // privileges. Instead, we should use VFIO_IOMMU_MAP_DMA call with virtio-iommu to get
-    // physical addresses.
-    #[cfg(not(test))]
-    fn register_addr(&mut self, pagemap_file: &File, addr: &GuestAddress) -> Result<u64> {
-        use std::os::unix::fs::FileExt;
-
-        let vaddr = self
-            .mem
-            .get_slice_at_addr(*addr, 1)
-            .context("failed to get slice")?
-            .as_ptr() as u64;
-
-        let page_size = base::pagesize() as u64;
-        let virt_page_number = vaddr / page_size;
-        let offset = std::mem::size_of::<u64>() as u64 * virt_page_number;
-
-        let mut buf = [0u8; 8];
-        pagemap_file
-            .read_exact_at(&mut buf, offset)
-            .context("failed to read pagemap")?;
-
-        let pagemap = u64::from_le_bytes(buf);
-        // Bit 55 is soft-dirty.
-        if (pagemap & (1u64 << 55)) != 0 {
-            bail!("page table entry is soft-dirty")
-        }
-        // page frame numbers are bits 0-54
-        let page = pagemap & 0x7f_ffff_ffff_ffffu64;
-        if page == 0 {
-            bail!("failed to get page frame number: page={:x}", page);
-        }
-
-        let paddr = page * page_size + (vaddr % page_size);
-        self.addr_table.insert(*addr, paddr);
-        Ok(paddr)
-    }
-
-    /// Translate a virtual address to the physical address.
-    #[cfg(not(test))]
-    fn to_phys_addr(&self, addr: &GuestAddress) -> Result<u64> {
-        self.addr_table
-            .get(addr)
-            .context(anyhow!("addr {} not found", addr))
-            .map(|v| *v)
-    }
-
-    #[cfg(test)]
-    fn to_phys_addr(&self, addr: &GuestAddress) -> Result<u64> {
-        Ok(addr.0)
-    }
-
-    /// Returns physical addresses of the descriptor table, the avail ring and the used ring.
     pub fn desc_table_addrs(&self) -> Result<DescTableAddrs> {
-        let desc = self.to_phys_addr(&self.mem_layout.desc_table)?;
-        let avail = self.to_phys_addr(&self.mem_layout.avail_ring)?;
-        let used = self.to_phys_addr(&self.mem_layout.used_ring)?;
-
-        Ok(DescTableAddrs { desc, avail, used })
+        Ok(DescTableAddrs {
+            desc: self.mem_layout.desc_table.offset(),
+            avail: self.mem_layout.avail_ring.offset(),
+            used: self.mem_layout.used_ring.offset(),
+        })
     }
 
-    /// Returns a virtual address of the buffer for the given `index`.
-    fn buffer_guest_addr(&self, index: Wrapping<u16>) -> Result<GuestAddress> {
+    /// Returns the IOVA of the buffer for the given `index`.
+    fn buffer_address(&self, index: Wrapping<u16>) -> Result<IOVA> {
         let offset = u64::from((index % self.size).0) * BUF_SIZE;
         self.mem_layout
             .buffer_addr
@@ -341,7 +271,10 @@ impl UserQueue {
 
     /// Writes the given descriptor table entry.
     fn write_desc_entry(&self, index: Wrapping<u16>, desc: Desc) -> Result<()> {
-        let addr = GuestAddress(u64::from((index % self.size).0) * mem::size_of::<Desc>() as u64);
+        let addr = self
+            .mem_layout
+            .desc_table
+            .unchecked_add(u64::from((index % self.size).0) * mem::size_of::<Desc>() as u64);
         fence(Ordering::SeqCst);
         self.mem
             .write_obj_at_addr(desc, addr)
@@ -402,7 +335,7 @@ impl UserQueue {
         let id = Wrapping(u32::from(elem.id) as u16);
         let len = u32::from(elem.len) as usize;
 
-        let addr = self.buffer_guest_addr(id)?;
+        let addr = self.buffer_address(id)?;
 
         fence(Ordering::SeqCst);
         let s = self
@@ -419,7 +352,7 @@ impl UserQueue {
     /// Writes data into virtqueue's buffer and returns its address.
     ///
     /// TODO: Use `descriptor_utils::Writer`.
-    fn write_to_buffer(&self, index: Wrapping<u16>, data: &[u8]) -> Result<GuestAddress> {
+    fn write_to_buffer(&self, index: Wrapping<u16>, data: &[u8]) -> Result<IOVA> {
         if data.len() as u64 > BUF_SIZE {
             bail!(
                 "data size {} is larger than the buffer size {}",
@@ -428,7 +361,7 @@ impl UserQueue {
             );
         }
 
-        let addr = self.buffer_guest_addr(index)?;
+        let addr = self.buffer_address(index)?;
         fence(Ordering::SeqCst);
         let written = self
             .mem
@@ -473,7 +406,7 @@ impl UserQueue {
             .context("failed to write data to virtqueue")?;
 
         let desc = Desc {
-            addr: Le64::from(self.to_phys_addr(&addr)?),
+            addr: Le64::from(addr.offset()),
             len: Le32::from(data.len() as u32),
             flags: Le16::from(0),
             next: Le16::from(0),
@@ -492,19 +425,40 @@ impl UserQueue {
 mod test {
     use super::*;
 
+    use std::cell::RefCell;
     use std::io::Read;
     use std::io::Write;
 
     use crate::virtio::{Queue as DeviceQueue, Reader, Writer};
 
+    // An allocator that just allocates 0 as an IOVA.
+    struct SimpleIovaAllocator(RefCell<bool>);
+
+    impl IovaAllocator for SimpleIovaAllocator {
+        fn alloc_iova(&self, _size: u64, _tag: u8) -> Result<u64> {
+            if *self.0.borrow() {
+                bail!("exhaused");
+            }
+            *self.0.borrow_mut() = true;
+            Ok(0)
+        }
+
+        unsafe fn map_iova(&self, _iova: u64, _size: u64, _addr: *const u8) -> Result<()> {
+            if !*self.0.borrow() {
+                bail!("not allocated");
+            }
+            Ok(())
+        }
+    }
+
     fn setup_vq(queue: &mut DeviceQueue, addrs: DescTableAddrs) {
-        queue.desc_table = GuestAddress(addrs.desc);
-        queue.avail_ring = GuestAddress(addrs.avail);
-        queue.used_ring = GuestAddress(addrs.used);
+        queue.desc_table = IOVA(addrs.desc);
+        queue.avail_ring = IOVA(addrs.avail);
+        queue.used_ring = IOVA(addrs.used);
         queue.ready = true;
     }
 
-    fn device_write(mem: &GuestMemory, q: &mut DeviceQueue, data: &[u8]) -> usize {
+    fn device_write(mem: &QueueMemory, q: &mut DeviceQueue, data: &[u8]) -> usize {
         let desc_chain = q.pop(mem).unwrap();
         let index = desc_chain.index;
 
@@ -514,7 +468,7 @@ mod test {
         written
     }
 
-    fn device_read(mem: &GuestMemory, q: &mut DeviceQueue, len: usize) -> Vec<u8> {
+    fn device_read(mem: &QueueMemory, q: &mut DeviceQueue, len: usize) -> Vec<u8> {
         let desc_chain = q.pop(mem).unwrap();
         let desc_index = desc_chain.index;
         let mut reader = Reader::new(mem.clone(), desc_chain).unwrap();
@@ -538,7 +492,9 @@ mod test {
 
     // Send an array from the driver to the device `count` times.
     fn drv_to_dev(queue_size: u16, count: u32) {
-        let mut drv_queue = UserQueue::new(queue_size, false /* device_writable */).unwrap();
+        let iova_alloc = SimpleIovaAllocator(RefCell::new(false));
+        let mut drv_queue =
+            UserQueue::new(queue_size, false /* device_writable */, 0, &iova_alloc).unwrap();
         let mut dev_queue = DeviceQueue::new(queue_size);
         setup_vq(&mut dev_queue, drv_queue.desc_table_addrs().unwrap());
 
@@ -582,7 +538,9 @@ mod test {
 
     // Send an array from the device to the driver `count` times.
     fn dev_to_drv(queue_size: u16, count: u32) {
-        let mut drv_queue = UserQueue::new(queue_size, true /* device_writable */).unwrap();
+        let iova_alloc = SimpleIovaAllocator(RefCell::new(false));
+        let mut drv_queue =
+            UserQueue::new(queue_size, true /* device_writable */, 0, &iova_alloc).unwrap();
         let mut dev_queue = DeviceQueue::new(queue_size);
         setup_vq(&mut dev_queue, drv_queue.desc_table_addrs().unwrap());
 

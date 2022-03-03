@@ -41,8 +41,7 @@ pub fn open_vfio_device(pci_address: PciAddress) -> Result<VfioDevice> {
     .context("failed to clear driver_override")?;
 
     let vfio_path = format!("/sys/bus/pci/devices/{}", &addr_str);
-    // TODO(b/202151642): Use `VfioContainer::new()` once virtio-iommu for VFIO is implemented.
-    let vfio_container = Arc::new(Mutex::new(VfioContainer::new_noiommu()?));
+    let vfio_container = Arc::new(Mutex::new(VfioContainer::new()?));
     let vfio = VfioDevice::new(&vfio_path, vfio_container)
         .map_err(|e| anyhow!("failed to create VFIO device: {}", e))?;
     Ok(vfio)

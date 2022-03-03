@@ -16,18 +16,20 @@ use std::sync::Arc;
 use std::u32;
 
 use crate::IommuDevType;
+use base::error;
 use base::{
-    ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val, warn,
-    AsRawDescriptor, Error, Event, FromRawDescriptor, RawDescriptor, SafeDescriptor,
+    ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
+    warn, AsRawDescriptor, Error, Event, FromRawDescriptor, RawDescriptor, SafeDescriptor,
 };
 use data_model::{vec_with_array_field, DataInit};
 use hypervisor::{DeviceKind, Vm};
 use once_cell::sync::OnceCell;
 use remain::sorted;
+use resources::address_allocator::AddressAllocator;
+use resources::{Alloc, Error as ResourcesError};
 use sync::Mutex;
 use thiserror::Error;
 use vfio_sys::*;
-use vm_memory::GuestMemory;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -56,14 +58,20 @@ pub enum VfioError {
     IommuDmaMap(Error),
     #[error("failed to remove guest memory map from iommu table: {0}")]
     IommuDmaUnmap(Error),
+    #[error("failed to get IOMMU cap info from host")]
+    IommuGetCapInfo,
     #[error("failed to get IOMMU info from host: {0}")]
     IommuGetInfo(Error),
     #[error("failed to set KVM vfio device's attribute: {0}")]
     KvmSetDeviceAttr(Error),
+    #[error("AddressAllocator is unavailable")]
+    NoRescAlloc,
     #[error("failed to open /dev/vfio/vfio container: {0}")]
     OpenContainer(io::Error),
     #[error("failed to open /dev/vfio/$group_num group: {0}")]
     OpenGroup(io::Error),
+    #[error("resources error: {0}")]
+    Resources(ResourcesError),
     #[error(
         "vfio API version doesn't match with VFIO_API_VERSION defined in vfio_sys/src/vfio.rs"
     )]
@@ -100,19 +108,24 @@ enum KvmVfioGroupOps {
 #[repr(u32)]
 enum IommuType {
     Type1V2 = VFIO_TYPE1v2_IOMMU,
-    NoIommu = VFIO_NOIOMMU_IOMMU,
 }
 
 /// VfioContainer contain multi VfioGroup, and delegate an IOMMU domain table
 pub struct VfioContainer {
     container: File,
     groups: HashMap<u32, Arc<Mutex<VfioGroup>>>,
-    host_iommu: bool,
+}
+
+fn extract_vfio_struct<T>(bytes: &[u8], offset: usize) -> T
+where
+    T: DataInit,
+{
+    T::from_reader(&bytes[offset..(offset + mem::size_of::<T>())]).expect("malformed kernel data")
 }
 
 const VFIO_API_VERSION: u8 = 0;
 impl VfioContainer {
-    fn new_inner(host_iommu: bool) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let container = OpenOptions::new()
             .read(true)
             .write(true)
@@ -128,18 +141,7 @@ impl VfioContainer {
         Ok(VfioContainer {
             container,
             groups: HashMap::new(),
-            host_iommu,
         })
-    }
-
-    /// Open VfioContainer with IOMMU enabled.
-    pub fn new() -> Result<Self> {
-        Self::new_inner(true /* host_iommu */)
-    }
-
-    /// Open VfioContainer with IOMMU disabled.
-    pub fn new_noiommu() -> Result<Self> {
-        Self::new_inner(false /* host_iommu */)
     }
 
     // Construct a VfioContainer from an exist container file.
@@ -153,7 +155,6 @@ impl VfioContainer {
         Ok(VfioContainer {
             container,
             groups: HashMap::new(),
-            host_iommu: true,
         })
     }
 
@@ -236,22 +237,82 @@ impl VfioContainer {
         Ok(iommu_info.iova_pgsizes)
     }
 
-    fn init(&mut self, guest_mem: &GuestMemory, iommu_enabled: bool) -> Result<()> {
+    pub fn vfio_iommu_iova_get_iova_ranges(&self) -> Result<Vec<vfio_iova_range>> {
+        // Query the buffer size needed fetch the capabilities.
+        let mut iommu_info_argsz = vfio_iommu_type1_info {
+            argsz: mem::size_of::<vfio_iommu_type1_info>() as u32,
+            flags: 0,
+            iova_pgsizes: 0,
+            ..Default::default()
+        };
+
+        // Safe as file is vfio container, iommu_info_argsz has valid values,
+        // and we check the return value
+        let ret = unsafe { ioctl_with_mut_ref(self, VFIO_IOMMU_GET_INFO(), &mut iommu_info_argsz) };
+        if ret != 0 {
+            return Err(VfioError::IommuGetInfo(get_error()));
+        }
+
+        if (iommu_info_argsz.flags & VFIO_IOMMU_INFO_CAPS) == 0 {
+            return Err(VfioError::IommuGetCapInfo);
+        }
+
+        let mut iommu_info = vec_with_array_field::<vfio_iommu_type1_info, u8>(
+            iommu_info_argsz.argsz as usize - mem::size_of::<vfio_iommu_type1_info>(),
+        );
+        iommu_info[0].argsz = iommu_info_argsz.argsz;
+        // Safe as file is vfio container, iommu_info has valid values,
+        // and we check the return value
+        let ret =
+            unsafe { ioctl_with_mut_ptr(self, VFIO_IOMMU_GET_INFO(), iommu_info.as_mut_ptr()) };
+        if ret != 0 {
+            return Err(VfioError::IommuGetInfo(get_error()));
+        }
+
+        // Safe because we initialized iommu_info with enough space, u8 has less strict
+        // alignment, and since it will no longer be mutated.
+        let info_bytes = unsafe {
+            std::slice::from_raw_parts(
+                iommu_info.as_ptr() as *const u8,
+                iommu_info_argsz.argsz as usize,
+            )
+        };
+
+        if (iommu_info[0].flags & VFIO_IOMMU_INFO_CAPS) == 0 {
+            return Err(VfioError::IommuGetCapInfo);
+        }
+
+        let mut offset = iommu_info[0].cap_offset as usize;
+        while offset != 0 {
+            let header = extract_vfio_struct::<vfio_info_cap_header>(info_bytes, offset);
+
+            if header.id == VFIO_IOMMU_TYPE1_INFO_CAP_IOVA_RANGE as u16 && header.version == 1 {
+                let iova_header = extract_vfio_struct::<vfio_iommu_type1_info_cap_iova_range_header>(
+                    info_bytes, offset,
+                );
+                let range_offset = offset + mem::size_of::<vfio_iommu_type1_info_cap_iova_range>();
+                let mut ret = Vec::new();
+                for i in 0..iova_header.nr_iovas {
+                    ret.push(extract_vfio_struct::<vfio_iova_range>(
+                        info_bytes,
+                        range_offset + i as usize * mem::size_of::<vfio_iova_range>(),
+                    ));
+                }
+                return Ok(ret);
+            }
+            offset = header.next as usize;
+        }
+
+        Err(VfioError::IommuGetCapInfo)
+    }
+
+    fn init_vfio_iommu(&mut self) -> Result<()> {
         if !self.check_extension(IommuType::Type1V2) {
             return Err(VfioError::VfioType1V2);
         }
 
         if self.set_iommu(IommuType::Type1V2) < 0 {
             return Err(VfioError::ContainerSetIOMMU(get_error()));
-        }
-
-        // Add all guest memory regions into vfio container's iommu table,
-        // then vfio kernel driver could access guest memory from gfn
-        if !iommu_enabled {
-            guest_mem.with_regions(|_index, guest_addr, size, host_addr, _mmap, _fd_offset| {
-                // Safe because the guest regions are guaranteed not to overlap
-                unsafe { self.vfio_dma_map(guest_addr.0, size as u64, host_addr as u64, true) }
-            })?;
         }
 
         Ok(())
@@ -266,11 +327,27 @@ impl VfioContainer {
         match self.groups.get(&id) {
             Some(group) => Ok(group.clone()),
             None => {
-                let group = Arc::new(Mutex::new(VfioGroup::new(self, self.host_iommu, id)?));
+                let group = Arc::new(Mutex::new(VfioGroup::new(self, id)?));
                 if self.groups.is_empty() {
-                    // Before the first group is added into container, do once cotainer
-                    // initialize for a vm
-                    self.init(vm.get_memory(), iommu_enabled)?;
+                    // Before the first group is added into container, do once per
+                    // container initialization.
+                    self.init_vfio_iommu()?;
+
+                    if !iommu_enabled {
+                        vm.get_memory().with_regions(
+                            |_index, guest_addr, size, host_addr, _mmap, _fd_offset| {
+                                // Safe because the guest regions are guaranteed not to overlap
+                                unsafe {
+                                    self.vfio_dma_map(
+                                        guest_addr.0,
+                                        size as u64,
+                                        host_addr as u64,
+                                        true,
+                                    )
+                                }
+                            },
+                        )?;
+                    }
                 }
 
                 let kvm_vfio_file = KVM_VFIO_FILE
@@ -291,12 +368,12 @@ impl VfioContainer {
         match self.groups.get(&id) {
             Some(group) => Ok(group.clone()),
             None => {
-                let group = Arc::new(Mutex::new(VfioGroup::new(self, self.host_iommu, id)?));
+                let group = Arc::new(Mutex::new(VfioGroup::new(self, id)?));
 
-                if self.groups.is_empty() && !self.host_iommu {
-                    if self.set_iommu(IommuType::NoIommu) < 0 {
-                        return Err(VfioError::ContainerSetIOMMU(get_error()));
-                    }
+                if self.groups.is_empty() {
+                    // Before the first group is added into container, do once per
+                    // container initialization.
+                    self.init_vfio_iommu()?;
                 }
 
                 self.groups.insert(id, group.clone());
@@ -352,12 +429,8 @@ struct VfioGroup {
 }
 
 impl VfioGroup {
-    fn new(container: &VfioContainer, host_iommu: bool, id: u32) -> Result<Self> {
-        let group_path = if host_iommu {
-            format!("/dev/vfio/{}", id)
-        } else {
-            format!("/dev/vfio/noiommu-{}", id)
-        };
+    fn new(container: &VfioContainer, id: u32) -> Result<Self> {
+        let group_path = format!("/dev/vfio/{}", id);
         let group_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -628,6 +701,8 @@ pub struct VfioDevice {
     group_id: u32,
     // vec for vfio device's regions
     regions: Vec<VfioRegion>,
+
+    iova_alloc: Option<Arc<Mutex<AddressAllocator>>>,
 }
 
 impl VfioDevice {
@@ -663,6 +738,7 @@ impl VfioDevice {
             group_descriptor,
             group_id,
             regions,
+            iova_alloc: None,
         })
     }
 
@@ -696,6 +772,14 @@ impl VfioDevice {
         group.lock().add_device_num();
         let group_descriptor = group.lock().as_raw_descriptor();
 
+        let iova_ranges = container
+            .lock()
+            .vfio_iommu_iova_get_iova_ranges()?
+            .into_iter()
+            .map(|r| std::ops::RangeInclusive::new(r.start, r.end));
+        let iova_alloc = AddressAllocator::new_from_list(iova_ranges, None, None)
+            .map_err(VfioError::Resources)?;
+
         Ok(VfioDevice {
             dev,
             name,
@@ -703,6 +787,7 @@ impl VfioDevice {
             group_descriptor,
             group_id,
             regions,
+            iova_alloc: Some(Arc::new(Mutex::new(iova_alloc))),
         })
     }
 
@@ -1260,6 +1345,20 @@ impl VfioDevice {
     /// Remove (iova, user_addr) map from vfio container iommu table
     pub fn vfio_dma_unmap(&self, iova: u64, size: u64) -> Result<()> {
         self.container.lock().vfio_dma_unmap(iova, size)
+    }
+
+    pub fn vfio_get_iommu_page_size_mask(&self) -> Result<u64> {
+        self.container.lock().vfio_get_iommu_page_size_mask()
+    }
+
+    pub fn alloc_iova(&self, size: u64, align_size: u64, alloc: Alloc) -> Result<u64> {
+        match &self.iova_alloc {
+            None => Err(VfioError::NoRescAlloc),
+            Some(iova_alloc) => iova_alloc
+                .lock()
+                .allocate_with_align(size, alloc, "alloc_iova".to_owned(), align_size)
+                .map_err(VfioError::Resources),
+        }
     }
 
     /// Gets the vfio device backing `File`.
