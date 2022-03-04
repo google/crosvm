@@ -394,6 +394,7 @@ pub struct QcowFile {
     l2_entries: u64,
     l2_cache: CacheMap<VecCache<u64>>,
     refcounts: RefCount,
+    current_offset: u64,
     unref_clusters: Vec<u64>, // List of freshly unreferenced clusters.
     // List of unreferenced clusters available to be used. unref clusters become available once the
     // removal of references to them have been synced to disk.
@@ -540,6 +541,7 @@ impl QcowFile {
             l2_entries,
             l2_cache: CacheMap::new(100),
             refcounts,
+            current_offset: 0,
             unref_clusters: Vec::new(),
             avail_clusters: Vec::new(),
             backing_file,
@@ -1412,6 +1414,80 @@ impl AsRawDescriptors for QcowFile {
     }
 }
 
+impl Read for QcowFile {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let len = buf.len();
+        let slice = VolatileSlice::new(buf);
+        let read_count = self.read_cb(
+            self.current_offset,
+            len,
+            |file, already_read, offset, count| {
+                let sub_slice = slice.get_slice(already_read, count).unwrap();
+                match file {
+                    Some(f) => f.read_exact_at_volatile(sub_slice, offset),
+                    None => {
+                        sub_slice.write_bytes(0);
+                        Ok(())
+                    }
+                }
+            },
+        )?;
+        self.current_offset += read_count as u64;
+        Ok(read_count)
+    }
+}
+
+impl Seek for QcowFile {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        let new_offset: Option<u64> = match pos {
+            SeekFrom::Start(off) => Some(off),
+            SeekFrom::End(off) => {
+                if off < 0 {
+                    0i64.checked_sub(off)
+                        .and_then(|increment| self.virtual_size().checked_sub(increment as u64))
+                } else {
+                    self.virtual_size().checked_add(off as u64)
+                }
+            }
+            SeekFrom::Current(off) => {
+                if off < 0 {
+                    0i64.checked_sub(off)
+                        .and_then(|increment| self.current_offset.checked_sub(increment as u64))
+                } else {
+                    self.current_offset.checked_add(off as u64)
+                }
+            }
+        };
+
+        if let Some(o) = new_offset {
+            if o <= self.virtual_size() {
+                self.current_offset = o;
+                return Ok(o);
+            }
+        }
+        Err(std::io::Error::from_raw_os_error(EINVAL))
+    }
+}
+
+impl Write for QcowFile {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let write_count = self.write_cb(
+            self.current_offset,
+            buf.len(),
+            |file, offset, raw_offset, count| {
+                file.seek(SeekFrom::Start(raw_offset))?;
+                file.write_all(&buf[offset..(offset + count)])
+            },
+        )?;
+        self.current_offset += write_count as u64;
+        Ok(write_count)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.fsync()
+    }
+}
+
 impl FileReadWriteAtVolatile for QcowFile {
     fn read_at_volatile(&mut self, slice: VolatileSlice, offset: u64) -> io::Result<usize> {
         self.read_cb(offset, slice.size(), |file, read, offset, count| {
@@ -1514,7 +1590,7 @@ mod tests {
     use super::*;
     use crate::MAX_NESTING_DEPTH;
     use std::fs::OpenOptions;
-    use std::io::{Seek, SeekFrom, Write};
+    use std::io::{Read, Seek, SeekFrom, Write};
     use tempfile::{tempfile, TempDir};
 
     fn valid_header() -> Vec<u8> {
@@ -2335,5 +2411,98 @@ mod tests {
             1000, /* allow deep nesting */
         )
         .expect("failed to create level2 qcow file");
+    }
+
+    #[test]
+    fn io_seek() {
+        with_default_file(1024 * 1024 * 10, |mut qcow_file| {
+            // Cursor should start at 0.
+            assert_eq!(qcow_file.seek(SeekFrom::Current(0)).unwrap(), 0);
+
+            // Seek 1 MB from start.
+            assert_eq!(
+                qcow_file.seek(SeekFrom::Start(1024 * 1024)).unwrap(),
+                1024 * 1024
+            );
+
+            // Rewind 1 MB + 1 byte (past beginning) - seeking to a negative offset is an error and
+            // should not move the cursor.
+            qcow_file
+                .seek(SeekFrom::Current(-(1024 * 1024 + 1)))
+                .expect_err("negative offset seek should fail");
+            assert_eq!(qcow_file.seek(SeekFrom::Current(0)).unwrap(), 1024 * 1024);
+
+            // Seek to last byte.
+            assert_eq!(
+                qcow_file.seek(SeekFrom::End(-1)).unwrap(),
+                1024 * 1024 * 10 - 1
+            );
+
+            // Seek to EOF.
+            assert_eq!(qcow_file.seek(SeekFrom::End(0)).unwrap(), 1024 * 1024 * 10);
+
+            // Seek past EOF is not allowed.
+            qcow_file
+                .seek(SeekFrom::End(1))
+                .expect_err("seek past EOF should fail");
+        });
+    }
+
+    #[test]
+    fn io_write_read() {
+        with_default_file(1024 * 1024 * 10, |mut qcow_file| {
+            const BLOCK_SIZE: usize = 0x1_0000;
+            let data_55 = [0x55u8; BLOCK_SIZE];
+            let data_aa = [0xaau8; BLOCK_SIZE];
+            let mut readback = [0u8; BLOCK_SIZE];
+
+            qcow_file.write_all(&data_55).unwrap();
+            assert_eq!(
+                qcow_file.seek(SeekFrom::Current(0)).unwrap(),
+                BLOCK_SIZE as u64
+            );
+
+            qcow_file.write_all(&data_aa).unwrap();
+            assert_eq!(
+                qcow_file.seek(SeekFrom::Current(0)).unwrap(),
+                BLOCK_SIZE as u64 * 2
+            );
+
+            // Read BLOCK_SIZE of just 0xaa.
+            assert_eq!(
+                qcow_file
+                    .seek(SeekFrom::Current(-(BLOCK_SIZE as i64)))
+                    .unwrap(),
+                BLOCK_SIZE as u64
+            );
+            qcow_file.read_exact(&mut readback).unwrap();
+            assert_eq!(
+                qcow_file.seek(SeekFrom::Current(0)).unwrap(),
+                BLOCK_SIZE as u64 * 2
+            );
+            for (orig, read) in data_aa.iter().zip(readback.iter()) {
+                assert_eq!(orig, read);
+            }
+
+            // Read BLOCK_SIZE of just 0x55.
+            qcow_file.rewind().unwrap();
+            qcow_file.read_exact(&mut readback).unwrap();
+            for (orig, read) in data_55.iter().zip(readback.iter()) {
+                assert_eq!(orig, read);
+            }
+
+            // Read BLOCK_SIZE crossing between the block of 0x55 and 0xaa.
+            qcow_file
+                .seek(SeekFrom::Start(BLOCK_SIZE as u64 / 2))
+                .unwrap();
+            qcow_file.read_exact(&mut readback).unwrap();
+            for (orig, read) in data_55[BLOCK_SIZE / 2..]
+                .iter()
+                .chain(data_aa[..BLOCK_SIZE / 2].iter())
+                .zip(readback.iter())
+            {
+                assert_eq!(orig, read);
+            }
+        });
     }
 }
