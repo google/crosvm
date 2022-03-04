@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
 use anyhow::bail;
@@ -9,6 +12,7 @@ use base::{error, Event, RawDescriptor};
 use hypervisor::Datamatch;
 use remain::sorted;
 use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
+use sync::Mutex;
 use thiserror::Error;
 
 use crate::bus::{BusDeviceObj, BusRange, BusType, ConfigWriteResult};
@@ -25,9 +29,15 @@ use crate::{BusAccessInfo, BusDevice, IrqLevelEvent};
 #[sorted]
 #[derive(Error, Debug)]
 pub enum Error {
+    /// Device does not located on this bus
+    #[error("pci device {0} does not located on bus {1}")]
+    AddedDeviceBusNotExist(PciAddress, u8),
     /// Invalid alignment encountered.
     #[error("Alignment must be a power of 2")]
     BadAlignment,
+    /// The new bus has already been added to this bus
+    #[error("Added bus {0} already existed on bus {1}")]
+    BusAlreadyExist(u8, u8),
     /// Setup of the device capabilities failed.
     #[error("failed to add capability {0}")]
     CapabilitiesSetup(pci_configuration::Error),
@@ -39,6 +49,10 @@ pub enum Error {
     #[cfg(feature = "audio")]
     #[error("failed to create VioS Client: {0}")]
     CreateViosClientFailed(VioSError),
+    /// Device is already on this bus
+    #[error("pci device {0} has already been added to bus {1}")]
+    DeviceAlreadyExist(PciAddress, u8),
+
     /// Allocating space for an IO BAR failed.
     #[error("failed to allocate space for an IO BAR, size={0}: {1}")]
     IoAllocationFailed(u64, SystemAllocatorFaliure),
@@ -54,6 +68,9 @@ pub enum Error {
     /// Overflow encountered
     #[error("base={0} + size={1} overflows")]
     Overflow(u64, u64),
+    /// The new added bus does not located on this bus
+    #[error("Added bus {0} does not located on bus {1}")]
+    ParentBusNotExist(u8, u8),
     /// PCI Address is not allocated.
     #[error("PCI address is not allocated")]
     PciAddressMissing,
@@ -71,7 +88,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Pci Bar Range information
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BarRange {
     /// pci bar start address
     pub addr: u64,
@@ -79,6 +96,93 @@ pub struct BarRange {
     pub size: u64,
     /// pci bar is prefetchable or not, it used to set parent's bridge window
     pub prefetchable: bool,
+}
+
+/// Pci Bus information
+#[derive(Debug)]
+pub struct PciBus {
+    // bus number
+    bus_num: u8,
+    // parent bus number
+    parent_bus_num: u8,
+    // devices located on this bus
+    child_devices: HashSet<PciAddress>,
+    // Hash map that stores all direct child buses of this bus.
+    // It maps from child bus number to its pci bus structure.
+    child_buses: HashMap<u8, Arc<Mutex<PciBus>>>,
+}
+
+impl PciBus {
+    // Creates a new pci bus
+    pub fn new(bus_num: u8, parent_bus_num: u8) -> Self {
+        PciBus {
+            bus_num,
+            parent_bus_num,
+            child_devices: HashSet::new(),
+            child_buses: HashMap::new(),
+        }
+    }
+
+    // Add a new child device to this pci bus tree recursively.
+    pub fn add_child_device(&mut self, add_device: PciAddress) -> Result<()> {
+        if self.bus_num == add_device.bus {
+            if !self.child_devices.insert(add_device) {
+                return Err(Error::DeviceAlreadyExist(add_device, self.bus_num));
+            }
+            return Ok(());
+        }
+
+        for child_bus in self.child_buses.values() {
+            match child_bus.lock().add_child_device(add_device) {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    if let Error::DeviceAlreadyExist(_, _) = e {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+        Err(Error::AddedDeviceBusNotExist(add_device, self.bus_num))
+    }
+
+    // Add a new child bus to this pci bus tree recursively.
+    pub fn add_child_bus(&mut self, add_bus: Arc<Mutex<PciBus>>) -> Result<()> {
+        let add_bus_num = add_bus.lock().bus_num;
+        let add_bus_parent = add_bus.lock().parent_bus_num;
+        if self.bus_num == add_bus_parent {
+            if self.child_buses.contains_key(&add_bus_num) {
+                return Err(Error::BusAlreadyExist(self.bus_num, add_bus_num));
+            }
+            self.child_buses.insert(add_bus_num, add_bus);
+            return Ok(());
+        }
+
+        for child_bus in self.child_buses.values() {
+            match child_bus.lock().add_child_bus(add_bus.clone()) {
+                Ok(_) => return Ok(()),
+                Err(e) => {
+                    if let Error::BusAlreadyExist(_, _) = e {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+        Err(Error::ParentBusNotExist(add_bus_num, self.bus_num))
+    }
+
+    // Get all devices in this pci bus tree
+    pub fn get_downstream_devices(&self) -> Vec<PciAddress> {
+        let mut devices = Vec::new();
+        for child_bus in self.child_buses.values() {
+            devices.extend(child_bus.lock().get_downstream_devices());
+        }
+        devices.extend(self.child_devices.clone());
+        devices
+    }
+
+    pub fn get_bus_num(&self) -> u8 {
+        self.bus_num
+    }
 }
 
 pub trait PciDevice: Send {
@@ -173,6 +277,11 @@ pub trait PciDevice: Send {
         Vec::new()
     }
 
+    /// Get the pci bus generated by this pci device
+    fn get_new_pci_bus(&self) -> Option<Arc<Mutex<PciBus>>> {
+        None
+    }
+
     /// if device is a pci brdige, configure pci bridge window
     fn configure_bridge_window(
         &mut self,
@@ -181,6 +290,9 @@ pub trait PciDevice: Send {
     ) -> Result<Vec<BarRange>> {
         Ok(Vec::new())
     }
+
+    /// if device is a pci bridge, configure subordinate bus number
+    fn set_subordinate_bus(&mut self, _bus_no: u8) {}
 
     /// Indicates whether the device supports IOMMU
     fn supports_iommu(&self) -> bool {
@@ -417,6 +529,9 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
 
     fn destroy_device(&mut self) {
         (**self).destroy_device();
+    }
+    fn get_new_pci_bus(&self) -> Option<Arc<Mutex<PciBus>>> {
+        (**self).get_new_pci_bus()
     }
     fn get_removed_children_devices(&self) -> Vec<PciAddress> {
         (**self).get_removed_children_devices()

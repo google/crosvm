@@ -6,9 +6,9 @@ use std::sync::Arc;
 use sync::Mutex;
 
 use crate::pci::msi::{MsiCap, MsiConfig};
-use crate::pci::pci_configuration::{PciBridgeSubclass, PciSubclass, CLASS_REG};
+use crate::pci::pci_configuration::PciBridgeSubclass;
 use crate::pci::{
-    BarRange, PciAddress, PciBarConfiguration, PciClassCode, PciConfiguration, PciDevice,
+    BarRange, PciAddress, PciBarConfiguration, PciBus, PciClassCode, PciConfiguration, PciDevice,
     PciDeviceError, PciHeaderType, PCI_VENDOR_ID_INTEL,
 };
 use crate::PciInterruptPin;
@@ -20,6 +20,7 @@ use crate::pci::pcie::pcie_device::PcieDevice;
 use crate::IrqLevelEvent;
 
 pub const BR_BUS_NUMBER_REG: usize = 0x6;
+pub const BR_BUS_SUBORDINATE_OFFSET: usize = 0x2;
 pub const BR_MEM_REG: usize = 0x8;
 // bit[15:4] is memory base[31:20] and alignment to 1MB
 pub const BR_MEM_BASE_MASK: u32 = 0xFFF0;
@@ -52,6 +53,7 @@ pub struct PciBridge {
     device: Arc<Mutex<dyn PcieDevice>>,
     config: PciConfiguration,
     pci_address: Option<PciAddress>,
+    pci_bus: Arc<Mutex<PciBus>>,
     bus_range: PciBridgeBusRange,
     msi_config: Arc<Mutex<MsiConfig>>,
     msi_cap_offset: u32,
@@ -102,22 +104,15 @@ impl PciBridge {
             device,
             config,
             pci_address: None,
+            pci_bus: Arc::new(Mutex::new(PciBus::new(
+                bus_range.secondary,
+                bus_range.primary,
+            ))),
             bus_range,
             msi_config,
             msi_cap_offset,
             interrupt_evt: None,
         }
-    }
-
-    pub fn is_pci_bridge(dev: &dyn PciDevice) -> bool {
-        let class_reg = dev.read_config_register(CLASS_REG);
-        class_reg >> 16
-            == ((PciClassCode::BridgeDevice.get_register_value() as u32) << 8)
-                | PciBridgeSubclass::PciToPciBridge.get_register_value() as u32
-    }
-
-    pub fn get_secondary_bus_num(dev: &dyn PciDevice) -> u8 {
-        (dev.read_config_register(BR_BUS_NUMBER_REG) >> 8) as u8
     }
 
     fn write_bridge_window(
@@ -310,7 +305,17 @@ impl PciDevice for PciBridge {
     fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
 
     fn get_removed_children_devices(&self) -> Vec<PciAddress> {
-        self.device.lock().get_removed_devices()
+        let mut removed_devices = Vec::new();
+        let devices = self.device.lock().get_removed_devices();
+        for device in devices.iter() {
+            removed_devices.push(*device);
+            removed_devices.extend(&self.pci_bus.lock().get_downstream_devices());
+        }
+        removed_devices
+    }
+
+    fn get_new_pci_bus(&self) -> Option<Arc<Mutex<PciBus>>> {
+        Some(self.pci_bus.clone())
     }
 
     fn configure_bridge_window(
@@ -462,5 +467,17 @@ impl PciDevice for PciBridge {
             })
         }
         Ok(windows)
+    }
+
+    fn set_subordinate_bus(&mut self, bus_no: u8) {
+        let bus_reg = self.read_config_register(BR_BUS_NUMBER_REG);
+        // Keep the maxmium bus number here because this bridge could have reserved
+        // subordinate bus number earlier
+        let subordinate_bus = u8::max((bus_reg >> (BR_BUS_SUBORDINATE_OFFSET * 8)) as u8, bus_no);
+        self.write_config_register(
+            BR_BUS_NUMBER_REG,
+            BR_BUS_SUBORDINATE_OFFSET as u64,
+            &[subordinate_bus],
+        );
     }
 }

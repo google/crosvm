@@ -61,7 +61,7 @@ pub use self::irqchip::*;
 pub use self::pci::{Ac97Backend, Ac97Dev, Ac97Parameters};
 pub use self::pci::{
     BarRange, CoIommuDev, CoIommuParameters, CoIommuUnpinPolicy, PciAddress, PciAddressError,
-    PciBridge, PciClassCode, PciConfigIo, PciConfigMmio, PciDevice, PciDeviceError,
+    PciBridge, PciBus, PciClassCode, PciConfigIo, PciConfigMmio, PciDevice, PciDeviceError,
     PciInterruptPin, PciRoot, PciVirtualConfigMmio, PcieHostRootPort, PcieRootPort, PvPanicCode,
     PvPanicPciDevice, StubPciDevice, StubPciParameters, VfioPciDevice,
 };
