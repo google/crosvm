@@ -178,8 +178,8 @@ pub trait PciDevice: Send {
         &mut self,
         _resources: &mut SystemAllocator,
         _bar_ranges: &[BarRange],
-    ) -> Result<()> {
-        Ok(())
+    ) -> Result<Vec<BarRange>> {
+        Ok(Vec::new())
     }
 
     /// Indicates whether the device supports IOMMU
@@ -426,7 +426,7 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
         &mut self,
         resources: &mut SystemAllocator,
         bar_ranges: &[BarRange],
-    ) -> Result<()> {
+    ) -> Result<Vec<BarRange>> {
         (**self).configure_bridge_window(resources, bar_ranges)
     }
 }

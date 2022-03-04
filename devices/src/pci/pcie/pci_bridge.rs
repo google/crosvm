@@ -32,6 +32,7 @@ pub const BR_PREF_MEM_64BIT: u32 = 0x001_0001;
 pub const BR_PREF_MEM_BASE_HIGH_REG: usize = 0xa;
 pub const BR_PREF_MEM_LIMIT_HIGH_REG: usize = 0xb;
 pub const BR_WINDOW_ALIGNMENT: u64 = 0x10_0000;
+pub const BR_WINDOW_MASK: u64 = !(BR_WINDOW_ALIGNMENT - 1);
 // Kernel allocate at least 2MB mmio for each bridge memory window
 pub const BR_MEM_MINIMUM: u64 = 0x20_0000;
 
@@ -316,11 +317,10 @@ impl PciDevice for PciBridge {
         &mut self,
         resources: &mut SystemAllocator,
         bar_ranges: &[BarRange],
-    ) -> std::result::Result<(), PciDeviceError> {
+    ) -> std::result::Result<Vec<BarRange>, PciDeviceError> {
         let address = self
             .pci_address
             .expect("allocate_address must be called prior to configure_bridge_window");
-
         let mut window_base: u64 = u64::MAX;
         let mut window_size: u64 = 0;
         let mut pref_window_base: u64 = u64::MAX;
@@ -330,14 +330,11 @@ impl PciDevice for PciBridge {
             // Bridge for children hotplug, get desired bridge window size and reserve
             // it for guest OS use
             let (win_size, pref_win_size) = self.device.lock().get_bridge_window_size();
-            if win_size != 0 {
-                window_size = win_size;
-            }
-
-            if pref_win_size != 0 {
-                pref_window_size = pref_win_size;
-            }
+            window_size = win_size;
+            pref_window_size = pref_win_size;
         } else {
+            let mut window_end: u64 = 0;
+            let mut pref_window_end: u64 = 0;
             // Bridge has children connected, get bridge window size from children
             for &BarRange {
                 addr,
@@ -347,11 +344,17 @@ impl PciDevice for PciBridge {
             {
                 if prefetchable {
                     pref_window_base = min(pref_window_base, addr);
-                    pref_window_size = max(pref_window_size, addr + size - pref_window_base);
+                    pref_window_end = max(pref_window_end, addr + size);
                 } else {
                     window_base = min(window_base, addr);
-                    window_size = max(window_size, addr + size - window_base);
+                    window_end = max(window_end, addr + size);
                 }
+            }
+            if window_end > 0 {
+                window_size = window_end - window_base;
+            }
+            if pref_window_end > 0 {
+                pref_window_size = pref_window_end - pref_window_base;
             }
         }
 
@@ -359,12 +362,12 @@ impl PciDevice for PciBridge {
             // Allocate at least 2MB bridge winodw
             window_size = BR_MEM_MINIMUM;
         }
-        // align window_size to 1MB
-        if window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-            window_size = (window_size + BR_WINDOW_ALIGNMENT - 1) & (!(BR_WINDOW_ALIGNMENT - 1));
-        }
         // if window_base isn't set, allocate a new one
         if window_base == u64::MAX {
+            // align window_size to 1MB
+            if window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
+                window_size = (window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
+            }
             match resources.mmio_allocator(MmioType::Low).allocate_with_align(
                 window_size,
                 Alloc::PciBridgeWindow {
@@ -385,8 +388,12 @@ impl PciDevice for PciBridge {
         } else {
             // align window_base to 1MB
             if window_base & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                window_base =
-                    (window_base + BR_WINDOW_ALIGNMENT - 1) & (!(BR_WINDOW_ALIGNMENT - 1));
+                window_size += window_base - (window_base & BR_WINDOW_MASK);
+                // align window_size to 1MB
+                if window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
+                    window_size = (window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
+                }
+                window_base &= BR_WINDOW_MASK;
             }
         }
 
@@ -394,13 +401,12 @@ impl PciDevice for PciBridge {
             // Allocate at least 2MB prefetch bridge window
             pref_window_size = BR_MEM_MINIMUM;
         }
-        // align pref_window_size to 1MB
-        if pref_window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-            pref_window_size =
-                (pref_window_size + BR_WINDOW_ALIGNMENT - 1) & (!(BR_WINDOW_ALIGNMENT - 1));
-        }
         // if pref_window_base isn't set, allocate a new one
         if pref_window_base == u64::MAX {
+            // align pref_window_size to 1MB
+            if pref_window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
+                pref_window_size = (pref_window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
+            }
             match resources
                 .mmio_allocator(MmioType::High)
                 .allocate_with_align(
@@ -423,8 +429,13 @@ impl PciDevice for PciBridge {
         } else {
             // align pref_window_base to 1MB
             if pref_window_base & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                pref_window_base =
-                    (window_base + BR_WINDOW_ALIGNMENT - 1) & (!(BR_WINDOW_ALIGNMENT - 1));
+                pref_window_size += pref_window_base - (pref_window_base & BR_WINDOW_MASK);
+                // align pref_window_size to 1MB
+                if pref_window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
+                    pref_window_size =
+                        (pref_window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
+                }
+                pref_window_base &= BR_WINDOW_MASK;
             }
         }
 
@@ -434,6 +445,22 @@ impl PciDevice for PciBridge {
             pref_window_base,
             pref_window_size,
         );
-        Ok(())
+
+        let mut windows = Vec::new();
+        if window_size > 0 {
+            windows.push(BarRange {
+                addr: window_base,
+                size: window_size,
+                prefetchable: false,
+            })
+        }
+        if pref_window_size > 0 {
+            windows.push(BarRange {
+                addr: pref_window_base,
+                size: pref_window_size,
+                prefetchable: true,
+            })
+        }
+        Ok(windows)
     }
 }
