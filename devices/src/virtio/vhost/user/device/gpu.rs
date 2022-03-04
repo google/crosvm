@@ -216,7 +216,15 @@ impl VhostUserBackend for GpuBackend {
                     error!("Failed to send `PciBarConfiguration`: {}", e);
                 }
 
-                gpu.borrow_mut().set_device_tube(tube.into());
+                let device_tube: Tube = match tube.next().await {
+                    Ok(tube) => tube,
+                    Err(e) => {
+                        error!("Failed to get device tube: {}", e);
+                        return;
+                    }
+                };
+
+                gpu.borrow_mut().set_device_tube(device_tube);
             })
             .detach();
 

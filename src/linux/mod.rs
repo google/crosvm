@@ -95,7 +95,7 @@ fn create_virtio_devices(
     _exit_evt: &Event,
     wayland_device_tube: Tube,
     gpu_device_tube: Tube,
-    vhost_user_gpu_tubes: Vec<(Tube, Tube)>,
+    vhost_user_gpu_tubes: Vec<(Tube, Tube, Tube)>,
     balloon_device_tube: Option<Tube>,
     balloon_inflate_tube: Option<Tube>,
     init_balloon_size: u64,
@@ -109,12 +109,14 @@ fn create_virtio_devices(
     let mut devs = Vec::new();
 
     #[cfg(feature = "gpu")]
-    for (opt, (host_tube, device_tube)) in cfg.vhost_user_gpu.iter().zip(vhost_user_gpu_tubes) {
+    for (opt, (host_gpu_tube, device_gpu_tube, device_control_tube)) in
+        cfg.vhost_user_gpu.iter().zip(vhost_user_gpu_tubes)
+    {
         devs.push(create_vhost_user_gpu_device(
             cfg,
             opt,
-            host_tube,
-            device_tube,
+            (host_gpu_tube, device_gpu_tube),
+            device_control_tube,
         )?);
     }
 
@@ -453,7 +455,8 @@ fn create_devices(
     control_tubes: &mut Vec<TaggedControlTube>,
     wayland_device_tube: Tube,
     gpu_device_tube: Tube,
-    vhost_user_gpu_tubes: Vec<(Tube, Tube)>,
+    // Tuple content: (host-side GPU tube, device-side GPU tube, device-side control tube).
+    vhost_user_gpu_tubes: Vec<(Tube, Tube, Tube)>,
     balloon_device_tube: Option<Tube>,
     init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
@@ -1039,12 +1042,11 @@ where
 
     let mut vhost_user_gpu_tubes = Vec::with_capacity(cfg.vhost_user_gpu.len());
     for _ in 0..cfg.vhost_user_gpu.len() {
-        let (host_tube, device_tube) = Tube::pair().context("failed to create tube")?;
-        vhost_user_gpu_tubes.push((
-            host_tube.try_clone().context("failed to clone tube")?,
-            device_tube,
-        ));
-        control_tubes.push(TaggedControlTube::VmMemory(host_tube));
+        let (host_control_tube, device_control_tube) =
+            Tube::pair().context("failed to create tube")?;
+        let (host_gpu_tube, device_gpu_tube) = Tube::pair().context("failed to create tube")?;
+        vhost_user_gpu_tubes.push((host_gpu_tube, device_gpu_tube, device_control_tube));
+        control_tubes.push(TaggedControlTube::VmMemory(host_control_tube));
     }
 
     let (wayland_host_tube, wayland_device_tube) = Tube::pair().context("failed to create tube")?;

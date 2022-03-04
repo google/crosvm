@@ -12,7 +12,7 @@ use crate::{FromRawDescriptor, SafeDescriptor, ScmSocket, UnixSeqpacket, UnsyncM
 
 use cros_async::{Executor, IntoAsync, IoSourceExt};
 use remain::sorted;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sys_util::{
     deserialize_with_descriptors, AsRawDescriptor, RawDescriptor, SerializeDescriptors,
 };
@@ -44,6 +44,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Bidirectional tube that support both send and recv.
+#[derive(Serialize, Deserialize)]
 pub struct Tube {
     socket: UnixSeqpacket,
     _unsync_marker: UnsyncMarker,

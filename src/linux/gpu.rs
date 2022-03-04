@@ -17,16 +17,16 @@ use super::*;
 pub fn create_vhost_user_gpu_device(
     cfg: &Config,
     opt: &VhostUserOption,
-    host_tube: Tube,
-    device_tube: Tube,
+    gpu_tubes: (Tube, Tube),
+    device_control_tube: Tube,
 ) -> DeviceResult {
     // The crosvm gpu device expects us to connect the tube before it will accept a vhost-user
     // connection.
     let dev = VhostUserGpu::new(
         virtio::base_features(cfg.protected_vm),
         &opt.socket,
-        host_tube,
-        device_tube,
+        gpu_tubes,
+        device_control_tube,
     )
     .context("failed to set up vhost-user gpu device")?;
 
