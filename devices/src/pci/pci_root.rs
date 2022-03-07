@@ -456,10 +456,7 @@ impl BusDevice for PciVirtualConfigMmio {
                 .lock()
                 .virtual_config_space_read(address, register)
         };
-        data[0] = value as u8;
-        data[1] = (value >> (1 * 8)) as u8;
-        data[2] = (value >> (2 * 8)) as u8;
-        data[3] = (value >> (3 * 8)) as u8;
+        data[0..4].copy_from_slice(&value.to_le_bytes()[..]);
     }
 
     fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
@@ -472,10 +469,8 @@ impl BusDevice for PciVirtualConfigMmio {
             );
             return;
         }
-        let value = (data[0] as u32)
-            | ((data[1] as u32) << (1 * 8))
-            | ((data[2] as u32) << (2 * 8))
-            | ((data[3] as u32) << (3 * 8));
+        // Unwrap is safe as we verified length above
+        let value = u32::from_le_bytes(data.try_into().unwrap());
         let (address, register) =
             PciAddress::from_config_address(info.offset as u32, self.register_bit_num);
         self.pci_root
