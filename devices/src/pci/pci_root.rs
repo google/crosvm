@@ -456,7 +456,7 @@ impl BusDevice for PciVirtualConfigMmio {
                 .lock()
                 .virtual_config_space_read(address, register)
         };
-        data[0] = (value >> (0 * 8)) as u8;
+        data[0] = value as u8;
         data[1] = (value >> (1 * 8)) as u8;
         data[2] = (value >> (2 * 8)) as u8;
         data[3] = (value >> (3 * 8)) as u8;
@@ -472,7 +472,7 @@ impl BusDevice for PciVirtualConfigMmio {
             );
             return;
         }
-        let value = ((data[0] as u32) << (0 * 8))
+        let value = (data[0] as u32)
             | ((data[1] as u32) << (1 * 8))
             | ((data[2] as u32) << (2 * 8))
             | ((data[3] as u32) << (3 * 8));

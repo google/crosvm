@@ -138,14 +138,14 @@ pub trait PciDevice: Send {
 
     /// Reads from a virtual config register.
     /// * `reg_idx` - virtual config register index (in units of 4 bytes).
-    fn read_virtual_config_register(&self, reg_idx: usize) -> u32 {
+    fn read_virtual_config_register(&self, _reg_idx: usize) -> u32 {
         0
     }
 
     /// Writes to a virtual config register.
     /// * `reg_idx` - virtual config register index (in units of 4 bytes).
     /// * `value`   - the value to be written.
-    fn write_virtual_config_register(&mut self, reg_idx: usize, value: u32) {}
+    fn write_virtual_config_register(&mut self, _reg_idx: usize, _value: u32) {}
 
     /// Reads from a BAR region mapped in to the device.
     /// * `addr` - The guest address inside the BAR.

@@ -1593,26 +1593,20 @@ impl PciDevice for VfioPciDevice {
     }
 
     fn read_virtual_config_register(&self, reg_idx: usize) -> u32 {
-        match reg_idx {
-            _ => {
-                warn!(
-                    "{} read unsupported register {}",
-                    self.debug_label(),
-                    reg_idx
-                );
-                0
-            }
-        }
+        warn!(
+            "{} read unsupported register {}",
+            self.debug_label(),
+            reg_idx
+        );
+        0
     }
 
-    fn write_virtual_config_register(&mut self, reg_idx: usize, value: u32) {
-        match reg_idx {
-            _ => warn!(
-                "{} write unsupported register {}",
-                self.debug_label(),
-                reg_idx
-            ),
-        };
+    fn write_virtual_config_register(&mut self, reg_idx: usize, _value: u32) {
+        warn!(
+            "{} write unsupported register {}",
+            self.debug_label(),
+            reg_idx
+        )
     }
 
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
