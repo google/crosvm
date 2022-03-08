@@ -1294,13 +1294,6 @@ impl X8664arch {
         reset_evt: Event,
         mem_size: u64,
     ) -> Result<()> {
-        struct NoDevice;
-        impl devices::BusDevice for NoDevice {
-            fn debug_label(&self) -> String {
-                "no device".to_owned()
-            }
-        }
-
         let mem_regions = arch_memory_regions(mem_size, None);
 
         let mem_below_4g = mem_regions
@@ -1323,7 +1316,6 @@ impl X8664arch {
             )
             .unwrap();
 
-        let nul_device = Arc::new(Mutex::new(NoDevice));
         let i8042 = Arc::new(Mutex::new(devices::I8042Device::new(
             reset_evt.try_clone().map_err(Error::CloneEvent)?,
         )));
@@ -1333,9 +1325,6 @@ impl X8664arch {
         } else {
             io_bus.insert(i8042, 0x061, 0x4).unwrap();
         }
-
-        io_bus.insert(nul_device.clone(), 0x0ed, 0x1).unwrap(); // most likely this one does nothing
-        io_bus.insert(nul_device, 0x0f0, 0x2).unwrap(); // ignore fpu
 
         Ok(())
     }
