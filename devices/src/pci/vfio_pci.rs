@@ -918,7 +918,7 @@ impl VfioPciDevice {
                 };
                 match response {
                     VmMemoryResponse::RegisterMemory { pfn: _, slot } => {
-                        mmaps_slots.push(slot as MemSlot);
+                        mmaps_slots.push(slot);
                     }
                     _ => break,
                 }
@@ -931,7 +931,7 @@ impl VfioPciDevice {
     fn remove_bar_mmap(&self, mmap_slot: &MemSlot) {
         if self
             .vm_socket_mem
-            .send(&VmMemoryRequest::UnregisterMemory(*mmap_slot as u32))
+            .send(&VmMemoryRequest::UnregisterMemory(*mmap_slot))
             .is_err()
         {
             error!("failed to send UnregisterMemory request");
