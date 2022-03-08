@@ -2,7 +2,7 @@
 name = "rutabaga_gfx_ffi"
 version = "0.1.0"
 authors = ["The Chromium OS Authors + Android Open Source Project"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "rutabaga_gfx_ffi"

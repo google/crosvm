@@ -549,19 +549,12 @@ unsafe impl<T> Killable for JoinHandle<T> {
 
 /// Treat some errno's as Ok(()).
 macro_rules! ok_if {
-    ($result:expr, $($errno:pat)|+) => {{
-    let res = $result;
-    match res {
-        Ok(_) => Ok(()),
-        Err(err) => {
-            if matches!(err.errno(), $($errno)|+) {
-                Ok(())
-            } else {
-                Err(err)
-            }
+    ($result:expr, $errno:pat) => {{
+        match $result {
+            Err(err) if !matches!(err.errno(), $errno) => Err(err),
+            _ => Ok(()),
         }
-    }
-    }}
+    }};
 }
 
 /// Terminates and reaps a child process. If the child process is a group leader, its children will

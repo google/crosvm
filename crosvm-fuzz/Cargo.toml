@@ -2,7 +2,7 @@
 name = "crosvm-fuzz"
 version = "0.0.1"
 authors = ["The Chromium OS Authors"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 cros_fuzz = "*"
