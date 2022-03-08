@@ -707,16 +707,10 @@ impl Worker {
         }
 
         for (region, file) in contexts.iter().zip(files.into_iter()) {
-            // TODO(abhishekbh): Figure out how to accomodate each |region|'s
-            // mmap offset. During testing it was 0 but we should probably account for it.
-            if region.mmap_offset != 0 {
-                error!("Region mmap offset is not 0");
-            }
-
             let request = VmMemoryRequest::RegisterMemory {
                 source: VmMemorySource::Descriptor {
                     descriptor: SafeDescriptor::from(file),
-                    offset: 0,
+                    offset: region.mmap_offset,
                     size: region.memory_size,
                 },
                 dest: VmMemoryDestination::ExistingAllocation {
