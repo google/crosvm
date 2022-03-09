@@ -10,6 +10,7 @@ path = "src/lib.rs"
 [dependencies]
 base = "*"
 bitflags = "1"
+crossbeam-utils = "0.8"
 data_model = "*"
 enumn = "0.1.0"
 libc = "*"

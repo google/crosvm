@@ -56,6 +56,9 @@ pub enum Error {
     /// One or more parameters are missing.
     #[error("one or more parameters are missing")]
     MissingParameter,
+    /// Thread exited
+    #[error("Thread exited")]
+    ThreadExited,
     /// Requested too many `iovec`s for an `ioctl` retry.
     #[error(
         "requested too many `iovec`s for an `ioctl` retry reply: requested\
@@ -71,6 +74,7 @@ pub struct FuseConfig {
     dev_fuse_file: Option<File>,
     max_write_bytes: Option<u32>,
     max_read_bytes: Option<u32>,
+    num_of_threads: Option<usize>,
 }
 
 impl FuseConfig {
@@ -95,17 +99,34 @@ impl FuseConfig {
         self
     }
 
+    pub fn num_threads(&mut self, num: usize) -> &mut Self {
+        self.num_of_threads = Some(num);
+        self
+    }
+
     pub fn enter_message_loop<F: FileSystem + Sync + Send>(self, fs: F) -> Result<()> {
         let FuseConfig {
             dev_fuse_file,
             max_write_bytes,
             max_read_bytes,
+            num_of_threads,
         } = self;
-        worker::start_message_loop(
-            dev_fuse_file.ok_or(Error::MissingParameter)?,
-            max_write_bytes.ok_or(Error::MissingParameter)?,
-            max_read_bytes.ok_or(Error::MissingParameter)?,
-            fs,
-        )
+        let num = num_of_threads.unwrap_or(1);
+        if num == 1 {
+            worker::start_message_loop(
+                dev_fuse_file.ok_or(Error::MissingParameter)?,
+                max_write_bytes.ok_or(Error::MissingParameter)?,
+                max_read_bytes.ok_or(Error::MissingParameter)?,
+                fs,
+            )
+        } else {
+            worker::internal::start_message_loop_mt(
+                dev_fuse_file.ok_or(Error::MissingParameter)?,
+                max_write_bytes.ok_or(Error::MissingParameter)?,
+                max_read_bytes.ok_or(Error::MissingParameter)?,
+                num,
+                fs,
+            )
+        }
     }
 }

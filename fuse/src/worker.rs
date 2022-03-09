@@ -7,6 +7,7 @@ use std::io::{self, BufRead, BufReader, Cursor, Read, Write};
 use std::mem::size_of;
 use std::os::unix::fs::FileExt;
 use std::os::unix::io::AsRawFd;
+use std::sync::Arc;
 
 use crate::filesystem::{FileSystem, ZeroCopyReader, ZeroCopyWriter};
 use crate::server::{Mapper, Reader, Server, Writer};
@@ -153,6 +154,15 @@ pub fn start_message_loop<F: FileSystem + Sync>(
     fs: F,
 ) -> Result<()> {
     let server = Server::new(fs);
+    do_start_message_loop(dev_fuse, max_write, max_read, &server)
+}
+
+fn do_start_message_loop<F: FileSystem + Sync>(
+    dev_fuse: File,
+    max_write: u32,
+    max_read: u32,
+    server: &Server<F>,
+) -> Result<()> {
     let mut dev_fuse_reader = {
         let rfile = dev_fuse.try_clone().map_err(Error::EndpointSetup)?;
         let buf_reader = BufReader::with_capacity(
@@ -162,7 +172,7 @@ pub fn start_message_loop<F: FileSystem + Sync>(
         DevFuseReader::new(buf_reader)
     };
     let mut dev_fuse_writer = {
-        let wfile = dev_fuse.try_clone().map_err(Error::EndpointSetup)?;
+        let wfile = dev_fuse;
         let write_buf = Cursor::new(Vec::with_capacity(max_read as usize));
         DevFuseWriter::new(wfile, write_buf)
     };
@@ -173,5 +183,36 @@ pub fn start_message_loop<F: FileSystem + Sync>(
         // Since we're reusing the buffer to avoid repeated allocation, drain the possible
         // residual from the buffer.
         dev_fuse_reader.drain();
+    }
+}
+
+// TODO: Remove worker and this namespace from public
+pub mod internal {
+    use super::*;
+    use crossbeam_utils::thread;
+
+    /// Start the FUSE message handling loops in multiple threads. Returns when an error happens.
+    ///
+    /// [deprecated(note="Please migrate to the `FuseConfig` builder API"]
+    pub fn start_message_loop_mt<F: FileSystem + Sync + Send>(
+        dev_fuse: File,
+        max_write: u32,
+        max_read: u32,
+        thread_numbers: usize,
+        fs: F,
+    ) -> Result<()> {
+        let result = thread::scope(|s| {
+            let server = Arc::new(Server::new(fs));
+            for _ in 0..thread_numbers {
+                let dev_fuse = dev_fuse
+                    .try_clone()
+                    .map_err(Error::EndpointSetup)
+                    .expect("Failed to clone /dev/fuse FD");
+                let server = server.clone();
+                s.spawn(move |_| do_start_message_loop(dev_fuse, max_write, max_read, &server));
+            }
+        });
+
+        unreachable!("Threads exited or crashed unexpectedly: {:?}", result);
     }
 }
