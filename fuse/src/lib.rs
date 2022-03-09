@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::ffi::FromBytesWithNulError;
+use std::fs::File;
 use std::io;
 
 use remain::sorted;
@@ -19,6 +20,8 @@ pub mod worker;
 
 pub use mount::mount;
 pub use server::{Mapper, Reader, Server, Writer};
+
+use filesystem::FileSystem;
 
 /// Errors that may occur during the creation or operation of an Fs device.
 #[sorted]
@@ -62,3 +65,47 @@ pub enum Error {
 }
 
 pub type Result<T> = ::std::result::Result<T, Error>;
+
+#[derive(Default)]
+pub struct FuseConfig {
+    dev_fuse_file: Option<File>,
+    max_write_bytes: Option<u32>,
+    max_read_bytes: Option<u32>,
+}
+
+impl FuseConfig {
+    pub fn new() -> Self {
+        FuseConfig {
+            ..Default::default()
+        }
+    }
+
+    pub fn dev_fuse(&mut self, file: File) -> &mut Self {
+        self.dev_fuse_file = Some(file);
+        self
+    }
+
+    pub fn max_read(&mut self, bytes: u32) -> &mut Self {
+        self.max_read_bytes = Some(bytes);
+        self
+    }
+
+    pub fn max_write(&mut self, bytes: u32) -> &mut Self {
+        self.max_write_bytes = Some(bytes);
+        self
+    }
+
+    pub fn enter_message_loop<F: FileSystem + Sync + Send>(self, fs: F) -> Result<()> {
+        let FuseConfig {
+            dev_fuse_file,
+            max_write_bytes,
+            max_read_bytes,
+        } = self;
+        worker::start_message_loop(
+            dev_fuse_file.ok_or(Error::MissingParameter)?,
+            max_write_bytes.ok_or(Error::MissingParameter)?,
+            max_read_bytes.ok_or(Error::MissingParameter)?,
+            fs,
+        )
+    }
+}

@@ -144,6 +144,8 @@ impl Mapper for DevFuseMapper {
 }
 
 /// Start the FUSE message handling loop. Returns when an error happens.
+///
+/// [deprecated(note="Please migrate to the `FuseConfig` builder API"]
 pub fn start_message_loop<F: FileSystem + Sync>(
     dev_fuse: File,
     max_write: u32,
