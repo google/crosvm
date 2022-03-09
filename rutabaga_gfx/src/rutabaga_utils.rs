@@ -200,8 +200,8 @@ pub enum RutabagaError {
     #[error("invalid resource id")]
     InvalidResourceId,
     /// Indicates an error in the RutabagaBuilder.
-    #[error("invalid rutabaga build parameters")]
-    InvalidRutabagaBuild,
+    #[error("invalid rutabaga build parameters: {0}")]
+    InvalidRutabagaBuild(&'static str),
     /// An error with the RutabagaHandle
     #[error("invalid rutabaga handle")]
     InvalidRutabagaHandle,

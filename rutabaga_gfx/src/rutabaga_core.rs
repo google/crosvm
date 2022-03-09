@@ -733,9 +733,25 @@ impl RutabagaBuilder {
 
         let mut rutabaga_capsets: Vec<RutabagaCapsetInfo> = Default::default();
 
+        // Make sure that disabled components are not used as default.
+        #[cfg(not(feature = "virgl_renderer"))]
+        if self.default_component == RutabagaComponentType::VirglRenderer {
+            return Err(RutabagaError::InvalidRutabagaBuild(
+                "virgl renderer feature not enabled",
+            ));
+        }
+        #[cfg(not(feature = "gfxstream"))]
+        if self.default_component == RutabagaComponentType::Gfxstream {
+            return Err(RutabagaError::InvalidRutabagaBuild(
+                "gfxstream feature not enabled",
+            ));
+        }
+
         #[cfg(not(feature = "virgl_renderer_next"))]
         if render_server_fd.is_some() {
-            return Err(RutabagaError::InvalidRutabagaBuild);
+            return Err(RutabagaError::InvalidRutabagaBuild(
+                "render server FD is not supported with virgl_renderer_next feature",
+            ));
         }
 
         if self.default_component == RutabagaComponentType::Rutabaga2D {
@@ -744,9 +760,11 @@ impl RutabagaBuilder {
         } else {
             #[cfg(feature = "virgl_renderer")]
             if self.default_component == RutabagaComponentType::VirglRenderer {
-                let virglrenderer_flags = self
-                    .virglrenderer_flags
-                    .ok_or(RutabagaError::InvalidRutabagaBuild)?;
+                let virglrenderer_flags =
+                    self.virglrenderer_flags
+                        .ok_or(RutabagaError::InvalidRutabagaBuild(
+                            "missing virgl renderer flags",
+                        ))?;
 
                 let virgl = VirglRenderer::init(
                     virglrenderer_flags,
@@ -773,14 +791,18 @@ impl RutabagaBuilder {
             if self.default_component == RutabagaComponentType::Gfxstream {
                 let display_width = self
                     .display_width
-                    .ok_or(RutabagaError::InvalidRutabagaBuild)?;
-                let display_height = self
-                    .display_height
-                    .ok_or(RutabagaError::InvalidRutabagaBuild)?;
+                    .ok_or(RutabagaError::InvalidRutabagaBuild("missing display width"))?;
+                let display_height =
+                    self.display_height
+                        .ok_or(RutabagaError::InvalidRutabagaBuild(
+                            "missing display height",
+                        ))?;
 
-                let gfxstream_flags = self
-                    .gfxstream_flags
-                    .ok_or(RutabagaError::InvalidRutabagaBuild)?;
+                let gfxstream_flags =
+                    self.gfxstream_flags
+                        .ok_or(RutabagaError::InvalidRutabagaBuild(
+                            "missing gfxstream flags",
+                        ))?;
 
                 let gfxstream = Gfxstream::init(
                     display_width,
