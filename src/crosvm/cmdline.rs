@@ -1115,7 +1115,7 @@ pub struct RunCommand {
         from_str_fn(parse_video_options)
     )]
     /// (EXPERIMENTAL) enable virtio-video decoder device
-    // Possible backend values: libvda, ffmpeg
+    /// Possible backend values: libvda, ffmpeg, vaapi
     pub video_dec: Option<VideoBackendType>,
     #[cfg(feature = "video-encoder")]
     #[argh(

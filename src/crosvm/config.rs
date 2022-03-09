@@ -610,6 +610,8 @@ pub fn parse_video_options(s: &str) -> Result<VideoBackendType, String> {
         "libvda",
         #[cfg(feature = "ffmpeg")]
         "ffmpeg",
+        #[cfg(feature = "vaapi")]
+        "vaapi",
     ];
 
     match s {
@@ -617,6 +619,8 @@ pub fn parse_video_options(s: &str) -> Result<VideoBackendType, String> {
             cfg_if::cfg_if! {
                 if #[cfg(feature = "libvda")] {
                     Ok(VideoBackendType::Libvda)
+                } else if #[cfg(feature = "vaapi")] {
+                    Ok(VideoBackendType::Vaapi)
                 } else if #[cfg(feature = "ffmpeg")] {
                     Ok(VideoBackendType::Ffmpeg)
                 } else {
@@ -632,6 +636,8 @@ pub fn parse_video_options(s: &str) -> Result<VideoBackendType, String> {
         "libvda-vd" => Ok(VideoBackendType::LibvdaVd),
         #[cfg(feature = "ffmpeg")]
         "ffmpeg" => Ok(VideoBackendType::Ffmpeg),
+        #[cfg(feature = "vaapi")]
+        "vaapi" => Ok(VideoBackendType::Vaapi),
         _ => Err(invalid_value_err(
             s,
             format!("should be one of ({})", VALID_VIDEO_BACKENDS.join("|")),

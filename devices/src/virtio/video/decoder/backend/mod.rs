@@ -16,6 +16,9 @@ use base::AsRawDescriptor;
 #[cfg(feature = "ffmpeg")]
 pub mod ffmpeg;
 pub mod utils;
+
+#[cfg(feature = "vaapi")]
+pub mod vaapi;
 #[cfg(feature = "libvda")]
 pub mod vda;
 

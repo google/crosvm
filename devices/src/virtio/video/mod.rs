@@ -42,9 +42,9 @@ mod worker;
 
 #[cfg(all(
     feature = "video-decoder",
-    not(any(feature = "libvda", feature = "ffmpeg"))
+    not(any(feature = "libvda", feature = "ffmpeg", feature = "vaapi"))
 ))]
-compile_error!("The \"video-decoder\" feature requires at least one of \"ffmpeg\" or \"libvda\" to also be enabled.");
+compile_error!("The \"video-decoder\" feature requires at least one of \"ffmpeg\", \"libvda\" or \"vaapi\" to also be enabled.");
 
 #[cfg(all(feature = "video-encoder", not(feature = "libvda")))]
 compile_error!("The \"video-encoder\" feature requires \"libvda\" to also be enabled.");
@@ -147,6 +147,8 @@ pub enum VideoBackendType {
     LibvdaVd,
     #[cfg(feature = "ffmpeg")]
     Ffmpeg,
+    #[cfg(feature = "vaapi")]
+    Vaapi,
 }
 
 #[cfg(feature = "ffmpeg")]
@@ -188,6 +190,12 @@ impl VirtioDevice for VideoDevice {
             }
             #[cfg(feature = "ffmpeg")]
             VideoBackendType::Ffmpeg => ffmpeg_supported_virtio_features(),
+            #[cfg(feature = "vaapi")]
+            VideoBackendType::Vaapi => {
+                1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES
+                    | 1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG
+                    | 1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT
+            }
         };
 
         self.base_features | backend_features
@@ -208,6 +216,8 @@ impl VirtioDevice for VideoDevice {
             VideoBackendType::Ffmpeg => {
                 (&mut device_name[0..6]).copy_from_slice("ffmpeg".as_bytes())
             }
+            #[cfg(feature = "vaapi")]
+            VideoBackendType::Vaapi => (&mut device_name[0..5]).copy_from_slice("vaapi".as_bytes()),
         };
         let mut cfg = protocol::virtio_video_config {
             version: Le32::from(0),
@@ -308,6 +318,20 @@ impl VirtioDevice for VideoDevice {
                             let ffmpeg = decoder::backend::ffmpeg::FfmpegDecoder::new();
                             Box::new(decoder::Decoder::new(ffmpeg, resource_bridge, mem))
                         }
+                        #[cfg(feature = "vaapi")]
+                        VideoBackendType::Vaapi => {
+                            let va = match decoder::backend::vaapi::VaapiDecoder::new() {
+                                Ok(va) => va,
+                                Err(e) => {
+                                    error!(
+                                        "Failed to initialize the VA-API driver for decoder: {}",
+                                        e
+                                    );
+                                    return;
+                                }
+                            };
+                            Box::new(decoder::Decoder::new(va, resource_bridge, mem))
+                        }
                     };
 
                     if let Err(e) = worker.run(device) {
@@ -346,6 +370,11 @@ impl VirtioDevice for VideoDevice {
                         #[cfg(feature = "ffmpeg")]
                         VideoBackendType::Ffmpeg => {
                             error!("ffmpeg encoder is not supported yet");
+                            return;
+                        }
+                        #[cfg(feature = "vaapi")]
+                        VideoBackendType::Vaapi => {
+                            error!("The VA-API encoder is not supported yet");
                             return;
                         }
                     };

@@ -46,7 +46,7 @@ pub enum Profile {
 impl_try_from_le32_for_enumn!(Profile, "profile");
 
 impl Profile {
-    #[cfg(any(feature = "video-encoder", feature = "libvda"))]
+    #[cfg(any(feature = "video-encoder", feature = "libvda", feature = "vaapi"))]
     pub fn to_format(self) -> Format {
         use Profile::*;
         match self {

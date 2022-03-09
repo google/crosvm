@@ -132,6 +132,7 @@ gfxstream = ["devices/gfxstream"]
 gpu = ["devices/gpu", "vm_memory/udmabuf"]
 haxm = ["hypervisor/haxm"]
 whpx = ["devices/whpx", "hypervisor/whpx"]
+vaapi = ["devices/vaapi"]
 libvda = ["devices/libvda"]
 linux-armhf = [
     "composite-disk",
