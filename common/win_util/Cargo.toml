@@ -1,0 +1,17 @@
+[package]
+name = "win_util"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2018"
+
+[dependencies]
+anyhow = "*"
+winapi = { version = "*", features = ["everything", "std", "impl-default"] }
+libc = "*"
+windows = "0.10.0"
+lazy_static = "*"
+
+[build-dependencies]
+windows = "0.10.0"
+
+[workspace]
