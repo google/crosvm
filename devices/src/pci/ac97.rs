@@ -455,22 +455,25 @@ mod tests {
         let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)]).unwrap();
         let mut ac97_dev =
             Ac97Dev::new(mem, Ac97Backend::NULL, Box::new(MockShmStreamSource::new()));
-        let mut allocator = SystemAllocator::new(SystemAllocatorConfig {
-            io: Some(MemRegion {
-                base: 0xc000,
-                size: 0x4000,
-            }),
-            low_mmio: MemRegion {
-                base: 0x2000_0000,
-                size: 0x1000_0000,
+        let mut allocator = SystemAllocator::new(
+            SystemAllocatorConfig {
+                io: Some(MemRegion {
+                    base: 0xc000,
+                    size: 0x4000,
+                }),
+                low_mmio: MemRegion {
+                    base: 0x2000_0000,
+                    size: 0x1000_0000,
+                },
+                high_mmio: MemRegion {
+                    base: 0x3000_0000,
+                    size: 0x1000_0000,
+                },
+                platform_mmio: None,
+                first_irq: 5,
             },
-            high_mmio: MemRegion {
-                base: 0x3000_0000,
-                size: 0x1000_0000,
-            },
-            platform_mmio: None,
-            first_irq: 5,
-        })
+            None,
+        )
         .unwrap();
         assert!(ac97_dev.allocate_address(&mut allocator).is_ok());
         assert!(ac97_dev.allocate_io_bars(&mut allocator).is_ok());

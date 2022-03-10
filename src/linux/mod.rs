@@ -1156,14 +1156,20 @@ where
     let reset_evt = Event::new().context("failed to create event")?;
     let crash_evt = Event::new().context("failed to create event")?;
     let (panic_rdtube, panic_wrtube) = Tube::pair().context("failed to create tube")?;
-    let mut sys_allocator = SystemAllocator::new(Arch::get_system_allocator_config(&vm))
-        .context("failed to create system allocator")?;
 
-    // Allocate the ramoops region first. AArch64::build_vm() assumes this.
+    let pstore_size = components.pstore.as_ref().map(|pstore| pstore.size as u64);
+    let mut sys_allocator =
+        SystemAllocator::new(Arch::get_system_allocator_config(&vm), pstore_size)
+            .context("failed to create system allocator")?;
+
     let ramoops_region = match &components.pstore {
         Some(pstore) => Some(
-            arch::pstore::create_memory_region(&mut vm, &mut sys_allocator, pstore)
-                .context("failed to allocate pstore region")?,
+            arch::pstore::create_memory_region(
+                &mut vm,
+                sys_allocator.reserved_region().unwrap(),
+                pstore,
+            )
+            .context("failed to allocate pstore region")?,
         ),
         None => None,
     };

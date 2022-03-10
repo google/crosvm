@@ -10,6 +10,7 @@ gdb = ["gdbstub_arch"]
 
 [dependencies]
 acpi_tables = { path = "../acpi_tables" }
+anyhow = "*"
 base = { path = "../base" }
 devices = { path = "../devices" }
 gdbstub_arch = { version = "0.1.0", optional = true }

@@ -137,8 +137,6 @@ pub enum Error {
     LoadKernel(kernel_loader::Error),
     #[error("error translating address: Page not present")]
     PageNotPresent,
-    #[error("failed to allocate pstore region: {0}")]
-    Pstore(arch::pstore::Error),
     #[error("error reading guest memory {0}")]
     ReadingGuestMemory(vm_memory::GuestMemoryError),
     #[error("error reading CPU registers {0}")]

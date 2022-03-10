@@ -926,22 +926,25 @@ mod tests {
 
         let mmio_bus = Bus::new();
         let io_bus = Bus::new();
-        let mut resources = SystemAllocator::new(SystemAllocatorConfig {
-            io: Some(MemRegion {
-                base: 0xc000,
-                size: 0x4000,
-            }),
-            low_mmio: MemRegion {
-                base: 0,
-                size: 2048,
+        let mut resources = SystemAllocator::new(
+            SystemAllocatorConfig {
+                io: Some(MemRegion {
+                    base: 0xc000,
+                    size: 0x4000,
+                }),
+                low_mmio: MemRegion {
+                    base: 0,
+                    size: 2048,
+                },
+                high_mmio: MemRegion {
+                    base: 0x1_0000_0000,
+                    size: 0x2_0000_0000,
+                },
+                platform_mmio: None,
+                first_irq: 5,
             },
-            high_mmio: MemRegion {
-                base: 0x1_0000_0000,
-                size: 0x2_0000_0000,
-            },
-            platform_mmio: None,
-            first_irq: 5,
-        })
+            None,
+        )
         .expect("failed to create SystemAllocator");
 
         // setup an event and a resample event for irq line 1
@@ -1055,22 +1058,25 @@ mod tests {
 
         let mmio_bus = Bus::new();
         let io_bus = Bus::new();
-        let mut resources = SystemAllocator::new(SystemAllocatorConfig {
-            io: Some(MemRegion {
-                base: 0xc000,
-                size: 0x4000,
-            }),
-            low_mmio: MemRegion {
-                base: 0,
-                size: 2048,
+        let mut resources = SystemAllocator::new(
+            SystemAllocatorConfig {
+                io: Some(MemRegion {
+                    base: 0xc000,
+                    size: 0x4000,
+                }),
+                low_mmio: MemRegion {
+                    base: 0,
+                    size: 2048,
+                },
+                high_mmio: MemRegion {
+                    base: 0x1_0000_0000,
+                    size: 0x2_0000_0000,
+                },
+                platform_mmio: None,
+                first_irq: 5,
             },
-            high_mmio: MemRegion {
-                base: 0x1_0000_0000,
-                size: 0x2_0000_0000,
-            },
-            platform_mmio: None,
-            first_irq: 5,
-        })
+            None,
+        )
         .expect("failed to create SystemAllocator");
 
         // setup an event and a resample event for irq line 1

@@ -407,26 +407,16 @@ impl arch::LinuxArch for AArch64 {
             cmdline.insert_str(&param).map_err(Error::Cmdline)?;
         }
 
+        if let Some(ramoops_region) = ramoops_region {
+            arch::pstore::add_ramoops_kernel_cmdline(&mut cmdline, &ramoops_region)
+                .map_err(Error::Cmdline)?;
+        }
+
         let psci_version = vcpus[0].get_psci_version().map_err(Error::GetPsciVersion)?;
 
-        // Use the entire high MMIO except the ramoops region for PCI.
-        // Note: This assumes that the ramoops region is the first thing allocated from the high
-        //       MMIO region.
         let high_mmio_alloc = system_allocator.mmio_allocator(MmioType::High);
         let high_mmio_base = *high_mmio_alloc.pool().start();
         let high_mmio_size = high_mmio_alloc.pool().end() - high_mmio_base + 1;
-        let (pci_device_base, pci_device_size) = match &ramoops_region {
-            Some(r) => {
-                if r.address != high_mmio_base {
-                    return Err(Error::RamoopsAddress(r.address, high_mmio_base));
-                }
-                arch::pstore::add_ramoops_kernel_cmdline(&mut cmdline, r)
-                    .map_err(Error::Cmdline)?;
-                let base = r.address + r.size as u64;
-                (base, high_mmio_size - (base - high_mmio_base))
-            }
-            None => (high_mmio_base, high_mmio_size),
-        };
 
         let pci_cfg = fdt::PciConfigRegion {
             base: AARCH64_PCI_CFG_BASE,
@@ -443,9 +433,9 @@ impl arch::LinuxArch for AArch64 {
             },
             fdt::PciRange {
                 space: fdt::PciAddressSpace::Memory64,
-                bus_address: pci_device_base,
-                cpu_physical_address: pci_device_base,
-                size: pci_device_size,
+                bus_address: high_mmio_base,
+                cpu_physical_address: high_mmio_base,
+                size: high_mmio_size,
                 prefetchable: false,
             },
         ];

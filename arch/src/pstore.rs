@@ -3,32 +3,13 @@
 // found in the LICENSE file.
 
 use std::fs::OpenOptions;
-use std::io;
 
 use crate::Pstore;
+use anyhow::{bail, Context, Result};
 use base::MemoryMappingBuilder;
 use hypervisor::Vm;
-use remain::sorted;
-use resources::SystemAllocator;
-use resources::{Alloc, MmioType};
-use thiserror::Error;
+use resources::MemRegion;
 use vm_memory::GuestAddress;
-
-/// Error for pstore.
-#[sorted]
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("failed to create pstore backend file: {0}")]
-    IoError(io::Error),
-    #[error("failed to get file mapped address: {0}")]
-    MmapError(base::MmapError),
-    #[error("failed to allocate pstore region: {0}")]
-    ResourcesError(resources::Error),
-    #[error("file to add pstore region to mmio: {0}")]
-    SysUtilError(base::Error),
-}
-
-type Result<T> = std::result::Result<T, Error>;
 
 pub struct RamoopsRegion {
     pub address: u64,
@@ -38,37 +19,37 @@ pub struct RamoopsRegion {
 /// Creates a mmio memory region for pstore.
 pub fn create_memory_region(
     vm: &mut impl Vm,
-    resources: &mut SystemAllocator,
+    region: &MemRegion,
     pstore: &Pstore,
 ) -> Result<RamoopsRegion> {
+    if region.size < pstore.size.into() {
+        bail!("insufficient space for pstore {:?} {}", region, pstore.size);
+    }
+
     let file = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .open(&pstore.path)
-        .map_err(Error::IoError)?;
-    file.set_len(pstore.size as u64).map_err(Error::IoError)?;
-
-    let address = resources
-        .mmio_allocator(MmioType::High)
-        .allocate(pstore.size as u64, Alloc::Pstore, "pstore".to_owned())
-        .map_err(Error::ResourcesError)?;
+        .context("failed to open pstore")?;
+    file.set_len(pstore.size as u64)
+        .context("failed to set pstore length")?;
 
     let memory_mapping = MemoryMappingBuilder::new(pstore.size as usize)
         .from_file(&file)
         .build()
-        .map_err(Error::MmapError)?;
+        .context("failed to mmap pstore")?;
 
     vm.add_memory_region(
-        GuestAddress(address),
+        GuestAddress(region.base),
         Box::new(memory_mapping),
         false,
         false,
     )
-    .map_err(Error::SysUtilError)?;
+    .context("failed to add pstore region")?;
 
     Ok(RamoopsRegion {
-        address,
+        address: region.base,
         size: pstore.size,
     })
 }

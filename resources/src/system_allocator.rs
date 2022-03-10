@@ -21,6 +21,7 @@ pub enum MmioType {
 }
 
 /// Region of memory.
+#[derive(Debug)]
 pub struct MemRegion {
     pub base: u64,
     pub size: u64,
@@ -55,6 +56,8 @@ pub struct SystemAllocator {
     mmio_address_spaces: [AddressAllocator; 2],
     mmio_platform_address_spaces: Option<AddressAllocator>,
 
+    reserved_region: Option<MemRegion>,
+
     // Each bus number has a AddressAllocator
     pci_allocator: BTreeMap<u8, AddressAllocator>,
     irq_allocator: AddressAllocator,
@@ -73,8 +76,29 @@ impl SystemAllocator {
     /// Will return an error if `base` + `size` overflows u64 (or allowed
     /// maximum for the specific type), or if alignment isn't a power of two.
     ///
-    pub fn new(config: SystemAllocatorConfig) -> Result<Self> {
+    /// If `reserve_region_size` is not None, then a region is reserved from
+    /// the start of `config.high_mmio` before the mmio allocator is created.
+    pub fn new(config: SystemAllocatorConfig, reserve_region_size: Option<u64>) -> Result<Self> {
         let page_size = pagesize() as u64;
+
+        let (high_mmio, reserved_region) = match reserve_region_size {
+            Some(len) => {
+                if len > config.high_mmio.size {
+                    return Err(Error::PoolSizeZero);
+                }
+                (
+                    MemRegion {
+                        base: config.high_mmio.base + len,
+                        size: config.high_mmio.size - len,
+                    },
+                    Some(MemRegion {
+                        base: config.high_mmio.base,
+                        size: len,
+                    }),
+                )
+            }
+            None => (config.high_mmio, None),
+        };
 
         Ok(SystemAllocator {
             io_address_space: if let Some(io) = config.io {
@@ -100,7 +124,7 @@ impl SystemAllocator {
                 )?,
                 // MmioType::High
                 AddressAllocator::new(
-                    to_range_inclusive(config.high_mmio.base, config.high_mmio.size)?,
+                    to_range_inclusive(high_mmio.base, high_mmio.size)?,
                     Some(page_size),
                     None,
                 )?,
@@ -117,6 +141,8 @@ impl SystemAllocator {
             } else {
                 None
             },
+
+            reserved_region,
 
             irq_allocator: AddressAllocator::new(
                 RangeInclusive::new(config.first_irq as u64, 1023),
@@ -247,6 +273,11 @@ impl SystemAllocator {
         AddressAllocatorSet::new(&mut self.mmio_address_spaces)
     }
 
+    /// Gets the reserved address space region.
+    pub fn reserved_region(&self) -> Option<&MemRegion> {
+        self.reserved_region.as_ref()
+    }
+
     /// Gets a unique anonymous allocation
     pub fn get_anon_alloc(&mut self) -> Alloc {
         self.next_anon_id += 1;
@@ -260,22 +291,25 @@ mod tests {
 
     #[test]
     fn example() {
-        let mut a = SystemAllocator::new(SystemAllocatorConfig {
-            io: Some(MemRegion {
-                base: 0x1000,
-                size: 0xf000,
-            }),
-            low_mmio: MemRegion {
-                base: 0x3000_0000,
-                size: 0x1_0000,
+        let mut a = SystemAllocator::new(
+            SystemAllocatorConfig {
+                io: Some(MemRegion {
+                    base: 0x1000,
+                    size: 0xf000,
+                }),
+                low_mmio: MemRegion {
+                    base: 0x3000_0000,
+                    size: 0x1_0000,
+                },
+                high_mmio: MemRegion {
+                    base: 0x1000_0000,
+                    size: 0x1000_0000,
+                },
+                platform_mmio: None,
+                first_irq: 5,
             },
-            high_mmio: MemRegion {
-                base: 0x1000_0000,
-                size: 0x1000_0000,
-            },
-            platform_mmio: None,
-            first_irq: 5,
-        })
+            None,
+        )
         .unwrap();
 
         assert_eq!(a.allocate_irq(), Some(5));

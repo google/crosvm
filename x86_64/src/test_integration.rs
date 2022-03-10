@@ -103,7 +103,7 @@ where
     let guest_mem = GuestMemory::new(&arch_mem_regions).unwrap();
 
     let (hyp, mut vm) = create_vm(guest_mem.clone());
-    let mut resources = SystemAllocator::new(X8664arch::get_system_allocator_config(&vm))
+    let mut resources = SystemAllocator::new(X8664arch::get_system_allocator_config(&vm), None)
         .expect("failed to create system allocator");
     let (irqchip_tube, device_tube) = Tube::pair().expect("failed to create irq tube");
 
