@@ -41,6 +41,7 @@ if os.name == "posix":
     CRATE_OPTIONS: dict[str, list[TestOption]] = {
         "cros_async": [TestOption.LARGE],
         "crosvm_plugin": [TestOption.DO_NOT_BUILD_AARCH64, TestOption.DO_NOT_BUILD_ARMHF],
+        "crosvm": [TestOption.SINGLE_THREADED],
         "devices": [
             TestOption.SINGLE_THREADED,
             TestOption.LARGE,
@@ -75,9 +76,9 @@ if os.name == "posix":
     }
 
     BUILD_FEATURES: dict[str, str] = {
-        "x86_64": "all-linux",
-        "aarch64": "all-linux",
-        "armhf": "all-linux-armhf",
+        "x86_64": "linux-x86_64",
+        "aarch64": "linux-aarch64",
+        "armhf": "linux-armhf",
     }
 elif os.name == "nt":
     CRATE_OPTIONS: dict[str, list[TestOption]] = {

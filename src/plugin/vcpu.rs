@@ -725,8 +725,10 @@ impl PluginVcpu {
                 {
                     Err(SysError::new(EINVAL))
                 } else {
-                    let mut cap: kvm_enable_cap = Default::default();
-                    cap.cap = capability;
+                    let cap = kvm_enable_cap {
+                        cap: capability,
+                        ..Default::default()
+                    };
                     // Safe because the allowed capabilities don't take pointer arguments.
                     unsafe { vcpu.kvm_enable_cap(&cap) }
                 }

@@ -102,12 +102,6 @@ all-linux = [
     "virgl_renderer",
     "x",
     ]
-all-linux-armhf = [
-    "composite-disk",
-    "default",
-    "gdb",
-    "tpm",
-    ]
 audio = ["devices/audio"]
 audio_cras = ["devices/audio_cras"]
 chromeos = ["base/chromeos", "audio_cras", "devices/chromeos"]
@@ -119,6 +113,14 @@ gdb = ["gdbstub", "gdbstub_arch", "arch/gdb", "vm_control/gdb", "x86_64/gdb"]
 gfxstream = ["devices/gfxstream"]
 gpu = ["devices/gpu"]
 libvda = ["devices/libvda"]
+linux-armhf = [
+    "composite-disk",
+    "default",
+    "gdb",
+    "tpm",
+    ]
+linux-x86_64 = ["all-linux", "plugin"]
+linux-aarch64 = ["all-linux"]
 plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]
 power-monitor-powerd = ["arch/power-monitor-powerd"]
 tpm = ["devices/tpm"]
