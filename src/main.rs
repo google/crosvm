@@ -12,6 +12,8 @@ use std::default::Default;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader};
 use std::ops::Deref;
+#[cfg(feature = "direct")]
+use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::string::String;
@@ -2396,6 +2398,35 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "strict-balloon" => {
             cfg.strict_balloon = true;
         }
+        #[cfg(feature = "direct")]
+        "mmio-address-range" => {
+            let ranges: argument::Result<Vec<RangeInclusive<u64>>> = value
+                .unwrap()
+                .split(",")
+                .map(|s| {
+                    let r: Vec<&str> = s.split("-").collect();
+                    if r.len() != 2 {
+                        return Err(argument::Error::InvalidValue {
+                            value: s.to_string(),
+                            expected: String::from("invalid range"),
+                        });
+                    }
+                    let parse = |s: &str| -> argument::Result<u64> {
+                        match parse_hex_or_decimal(s) {
+                            Ok(v) => Ok(v),
+                            Err(_) => {
+                                return Err(argument::Error::InvalidValue {
+                                    value: s.to_owned(),
+                                    expected: String::from("expected u64 value"),
+                                });
+                            }
+                        }
+                    };
+                    Ok(RangeInclusive::new(parse(r[0])?, parse(r[1])?))
+                })
+                .collect();
+            cfg.mmio_address_ranges = ranges?;
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -2783,6 +2814,10 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("s2idle", "Set Low Power S0 Idle Capable Flag for guest Fixed ACPI Description Table"),
           Argument::flag("strict-balloon", "Don't allow guest to use pages from the balloon"),
+          Argument::value("mmio-address-range", "STARTADDR-ENDADDR[,STARTADDR-ENDADDR]*",
+                          "Ranges (inclusive) into which to limit guest mmio addresses. Note that
+                           this this may cause mmio allocations to fail if the specified ranges are
+                           incompatible with the default ranges calculated by crosvm."),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

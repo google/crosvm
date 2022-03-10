@@ -71,6 +71,13 @@ fn to_range_inclusive(base: u64, size: u64) -> Result<RangeInclusive<u64>> {
     Ok(RangeInclusive::new(base, end))
 }
 
+fn range_intersect(r1: &RangeInclusive<u64>, r2: &RangeInclusive<u64>) -> RangeInclusive<u64> {
+    RangeInclusive::new(
+        u64::max(*r1.start(), *r2.start()),
+        u64::min(*r1.end(), *r2.end()),
+    )
+}
+
 impl SystemAllocator {
     /// Creates a new `SystemAllocator` for managing addresses and irq numbers.
     /// Will return an error if `base` + `size` overflows u64 (or allowed
@@ -78,7 +85,14 @@ impl SystemAllocator {
     ///
     /// If `reserve_region_size` is not None, then a region is reserved from
     /// the start of `config.high_mmio` before the mmio allocator is created.
-    pub fn new(config: SystemAllocatorConfig, reserve_region_size: Option<u64>) -> Result<Self> {
+    ///
+    /// If `mmio_address_ranges` is not empty, then `config.low_mmio` and
+    /// `config.high_mmio` are intersected with the ranges specified.
+    pub fn new(
+        config: SystemAllocatorConfig,
+        reserve_region_size: Option<u64>,
+        mmio_address_ranges: &[RangeInclusive<u64>],
+    ) -> Result<Self> {
         let page_size = pagesize() as u64;
 
         let (high_mmio, reserved_region) = match reserve_region_size {
@@ -100,6 +114,18 @@ impl SystemAllocator {
             None => (config.high_mmio, None),
         };
 
+        let intersect_mmio_range = |src: MemRegion| -> Result<Vec<RangeInclusive<u64>>> {
+            let src_range = to_range_inclusive(src.base, src.size)?;
+            Ok(if mmio_address_ranges.is_empty() {
+                vec![src_range]
+            } else {
+                mmio_address_ranges
+                    .iter()
+                    .map(|r| range_intersect(r, &src_range))
+                    .collect()
+            })
+        };
+
         Ok(SystemAllocator {
             io_address_space: if let Some(io) = config.io {
                 // TODO make sure we don't overlap with existing well known
@@ -117,14 +143,14 @@ impl SystemAllocator {
             },
             mmio_address_spaces: [
                 // MmioType::Low
-                AddressAllocator::new(
-                    to_range_inclusive(config.low_mmio.base, config.low_mmio.size)?,
+                AddressAllocator::new_from_list(
+                    intersect_mmio_range(config.low_mmio)?,
                     Some(page_size),
                     None,
                 )?,
                 // MmioType::High
-                AddressAllocator::new(
-                    to_range_inclusive(high_mmio.base, high_mmio.size)?,
+                AddressAllocator::new_from_list(
+                    intersect_mmio_range(high_mmio)?,
                     Some(page_size),
                     None,
                 )?,
@@ -274,10 +300,10 @@ impl SystemAllocator {
     }
 
     /// Gets the pools of all mmio allocators.
-    pub fn mmio_pools(&self) -> Vec<RangeInclusive<u64>> {
+    pub fn mmio_pools(&self) -> Vec<&RangeInclusive<u64>> {
         self.mmio_address_spaces
             .iter()
-            .map(|mmio_as| mmio_as.pool())
+            .flat_map(|mmio_as| mmio_as.pools())
             .collect()
     }
 
@@ -317,6 +343,7 @@ mod tests {
                 first_irq: 5,
             },
             None,
+            &[],
         )
         .unwrap();
 

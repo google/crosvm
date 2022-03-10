@@ -174,6 +174,7 @@ mod test {
                 first_irq: 5,
             },
             None,
+            &[],
         )
         .unwrap();
         let mut device = StubPciDevice::new(&CONFIG);

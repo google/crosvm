@@ -15,6 +15,7 @@ pub mod plugin;
 
 use std::collections::BTreeMap;
 use std::net;
+use std::ops::RangeInclusive;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -447,6 +448,7 @@ pub struct Config {
     pub pivot_root: Option<PathBuf>,
     pub force_s2idle: bool,
     pub strict_balloon: bool,
+    pub mmio_address_ranges: Vec<RangeInclusive<u64>>,
 }
 
 impl Default for Config {
@@ -564,6 +566,7 @@ impl Default for Config {
             pivot_root: None,
             force_s2idle: false,
             strict_balloon: false,
+            mmio_address_ranges: Vec::new(),
         }
     }
 }

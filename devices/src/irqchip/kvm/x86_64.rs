@@ -944,6 +944,7 @@ mod tests {
                 first_irq: 5,
             },
             None,
+            &[],
         )
         .expect("failed to create SystemAllocator");
 
@@ -1076,6 +1077,7 @@ mod tests {
                 first_irq: 5,
             },
             None,
+            &[],
         )
         .expect("failed to create SystemAllocator");
 

@@ -14,7 +14,9 @@ use crate::{Alloc, Error, Result};
 /// An human-readable tag String must also be provided for debugging / reference.
 #[derive(Debug, Eq, PartialEq)]
 pub struct AddressAllocator {
-    pool: RangeInclusive<u64>,
+    /// The list of pools from which address are allocated. The union
+    /// of all regions from |allocs| and |regions| equals the pools.
+    pools: Vec<RangeInclusive<u64>>,
     min_align: u64,
     preferred_align: u64,
     /// The region that is allocated.
@@ -38,9 +40,31 @@ impl AddressAllocator {
         min_align: Option<u64>,
         preferred_align: Option<u64>,
     ) -> Result<Self> {
-        if pool.is_empty() {
+        Self::new_from_list(vec![pool], min_align, preferred_align)
+    }
+
+    /// Creates a new `AddressAllocator` for managing a range of addresses.
+    /// Can return `None` if all pools are empty alignment isn't a power of two.
+    ///
+    /// * `pools` - The list of pools to initialize the allocator with.
+    /// * `min_align` - The minimum size of an address region to align to, defaults to four.
+    /// * `preferred_align` - The preferred alignment of an address region, used if possible.
+    ///
+    /// If an allocation cannot be satisfied with the preferred alignment, the minimum alignment
+    /// will be used instead.
+    pub fn new_from_list<T>(
+        pools: T,
+        min_align: Option<u64>,
+        preferred_align: Option<u64>,
+    ) -> Result<Self>
+    where
+        T: IntoIterator<Item = RangeInclusive<u64>>,
+    {
+        let pools: Vec<RangeInclusive<u64>> = pools.into_iter().filter(|p| !p.is_empty()).collect();
+        if pools.is_empty() {
             return Err(Error::PoolSizeZero);
         }
+
         let min_align = min_align.unwrap_or(4);
         if !min_align.is_power_of_two() || min_align == 0 {
             return Err(Error::BadAlignment);
@@ -52,9 +76,11 @@ impl AddressAllocator {
         }
 
         let mut regions = BTreeSet::new();
-        regions.insert((*pool.start(), *pool.end()));
+        for r in pools.iter() {
+            regions.insert((*r.start(), *r.end()));
+        }
         Ok(AddressAllocator {
-            pool,
+            pools,
             min_align,
             preferred_align,
             allocs: HashMap::new(),
@@ -62,11 +88,11 @@ impl AddressAllocator {
         })
     }
 
-    /// Gets the pool managed by the allocator.
+    /// Gets the regions managed by the allocator.
     ///
-    /// This returns the original `pool` value provided to `AddressAllocator::new()`.
-    pub fn pool(&self) -> RangeInclusive<u64> {
-        self.pool.clone()
+    /// This returns the original `pools` value provided to `AddressAllocator::new()`.
+    pub fn pools(&self) -> &Vec<RangeInclusive<u64>> {
+        &self.pools
     }
 
     fn internal_allocate_with_align(

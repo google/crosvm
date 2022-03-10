@@ -1158,9 +1158,12 @@ where
     let (panic_rdtube, panic_wrtube) = Tube::pair().context("failed to create tube")?;
 
     let pstore_size = components.pstore.as_ref().map(|pstore| pstore.size as u64);
-    let mut sys_allocator =
-        SystemAllocator::new(Arch::get_system_allocator_config(&vm), pstore_size)
-            .context("failed to create system allocator")?;
+    let mut sys_allocator = SystemAllocator::new(
+        Arch::get_system_allocator_config(&vm),
+        pstore_size,
+        &cfg.mmio_address_ranges,
+    )
+    .context("failed to create system allocator")?;
 
     let ramoops_region = match &components.pstore {
         Some(pstore) => Some(

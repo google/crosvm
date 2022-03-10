@@ -473,6 +473,7 @@ mod tests {
                 first_irq: 5,
             },
             None,
+            &[],
         )
         .unwrap();
         assert!(ac97_dev.allocate_address(&mut allocator).is_ok());
