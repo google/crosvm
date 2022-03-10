@@ -20,7 +20,7 @@ use hypervisor::{
 };
 use minijail::Minijail;
 use remain::sorted;
-use resources::{MemRegion, MmioType, SystemAllocator, SystemAllocatorConfig};
+use resources::{range_inclusive_len, MemRegion, SystemAllocator, SystemAllocatorConfig};
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::BatteryType;
@@ -414,38 +414,29 @@ impl arch::LinuxArch for AArch64 {
 
         let psci_version = vcpus[0].get_psci_version().map_err(Error::GetPsciVersion)?;
 
-        let high_mmio_alloc = system_allocator.mmio_allocator(MmioType::High);
-        let high_mmio_base = *high_mmio_alloc.pool().start();
-        let high_mmio_size = high_mmio_alloc.pool().end() - high_mmio_base + 1;
-
         let pci_cfg = fdt::PciConfigRegion {
             base: AARCH64_PCI_CFG_BASE,
             size: AARCH64_PCI_CFG_SIZE,
         };
 
-        let pci_ranges = &[
-            fdt::PciRange {
+        let pci_ranges: Vec<fdt::PciRange> = system_allocator
+            .mmio_pools()
+            .iter()
+            .map(|range| fdt::PciRange {
                 space: fdt::PciAddressSpace::Memory64,
-                bus_address: AARCH64_MMIO_BASE,
-                cpu_physical_address: AARCH64_MMIO_BASE,
-                size: AARCH64_MMIO_SIZE,
+                bus_address: *range.start(),
+                cpu_physical_address: *range.start(),
+                size: range_inclusive_len(range).unwrap(),
                 prefetchable: false,
-            },
-            fdt::PciRange {
-                space: fdt::PciAddressSpace::Memory64,
-                bus_address: high_mmio_base,
-                cpu_physical_address: high_mmio_base,
-                size: high_mmio_size,
-                prefetchable: false,
-            },
-        ];
+            })
+            .collect();
 
         fdt::create_fdt(
             AARCH64_FDT_MAX_SIZE as usize,
             &mem,
             pci_irqs,
             pci_cfg,
-            pci_ranges,
+            &pci_ranges,
             vcpu_count as u32,
             components.cpu_clusters,
             components.cpu_capacity,

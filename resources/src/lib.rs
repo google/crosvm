@@ -4,6 +4,8 @@
 
 //! Manages system resources that can be allocated to VMs and their devices.
 
+use std::ops::RangeInclusive;
+
 use remain::sorted;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -68,3 +70,9 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Computes the length of a RangeInclusive value. Returns None
+/// if the range is 0..=u64::MAX.
+pub fn range_inclusive_len(r: &RangeInclusive<u64>) -> Option<u64> {
+    (r.end() - r.start()).checked_add(1)
+}

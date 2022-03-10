@@ -185,7 +185,6 @@ where
     let suspend_evt = Event::new().unwrap();
     let mut resume_notify_devices = Vec::new();
     let acpi_dev_resource = X8664arch::setup_acpi_devices(
-        &vm,
         &guest_mem,
         &io_bus,
         &mut resources,

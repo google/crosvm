@@ -273,6 +273,14 @@ impl SystemAllocator {
         AddressAllocatorSet::new(&mut self.mmio_address_spaces)
     }
 
+    /// Gets the pools of all mmio allocators.
+    pub fn mmio_pools(&self) -> Vec<RangeInclusive<u64>> {
+        self.mmio_address_spaces
+            .iter()
+            .map(|mmio_as| mmio_as.pool())
+            .collect()
+    }
+
     /// Gets the reserved address space region.
     pub fn reserved_region(&self) -> Option<&MemRegion> {
         self.reserved_region.as_ref()
