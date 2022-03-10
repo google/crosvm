@@ -413,8 +413,8 @@ impl arch::LinuxArch for AArch64 {
         // Note: This assumes that the ramoops region is the first thing allocated from the high
         //       MMIO region.
         let high_mmio_alloc = system_allocator.mmio_allocator(MmioType::High);
-        let high_mmio_base = high_mmio_alloc.pool_base();
-        let high_mmio_size = high_mmio_alloc.pool_size();
+        let high_mmio_base = *high_mmio_alloc.pool().start();
+        let high_mmio_size = high_mmio_alloc.pool().end() - high_mmio_base + 1;
         let (pci_device_base, pci_device_size) = match &ramoops_region {
             Some(r) => {
                 if r.address != high_mmio_base {

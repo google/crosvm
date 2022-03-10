@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 use std::collections::BTreeMap;
+use std::ops::RangeInclusive;
 
 use base::pagesize;
 
@@ -60,6 +61,13 @@ pub struct SystemAllocator {
     next_anon_id: usize,
 }
 
+fn to_range_inclusive(base: u64, size: u64) -> Result<RangeInclusive<u64>> {
+    let end = base
+        .checked_add(size.checked_sub(1).ok_or(Error::PoolSizeZero)?)
+        .ok_or(Error::PoolOverflow { base, size })?;
+    Ok(RangeInclusive::new(base, end))
+}
+
 impl SystemAllocator {
     /// Creates a new `SystemAllocator` for managing addresses and irq numbers.
     /// Will return an error if `base` + `size` overflows u64 (or allowed
@@ -75,22 +83,24 @@ impl SystemAllocator {
                 if io.base > 0x1_0000 || io.size + io.base > 0x1_0000 {
                     return Err(Error::IOPortOutOfRange(io.base, io.size));
                 }
-                Some(AddressAllocator::new(io.base, io.size, Some(0x400), None)?)
+                Some(AddressAllocator::new(
+                    to_range_inclusive(io.base, io.size)?,
+                    Some(0x400),
+                    None,
+                )?)
             } else {
                 None
             },
             mmio_address_spaces: [
                 // MmioType::Low
                 AddressAllocator::new(
-                    config.low_mmio.base,
-                    config.low_mmio.size,
+                    to_range_inclusive(config.low_mmio.base, config.low_mmio.size)?,
                     Some(page_size),
                     None,
                 )?,
                 // MmioType::High
                 AddressAllocator::new(
-                    config.high_mmio.base,
-                    config.high_mmio.size,
+                    to_range_inclusive(config.high_mmio.base, config.high_mmio.size)?,
                     Some(page_size),
                     None,
                 )?,
@@ -100,8 +110,7 @@ impl SystemAllocator {
 
             mmio_platform_address_spaces: if let Some(platform) = config.platform_mmio {
                 Some(AddressAllocator::new(
-                    platform.base,
-                    platform.size,
+                    to_range_inclusive(platform.base, platform.size)?,
                     Some(page_size),
                     None,
                 )?)
@@ -110,8 +119,7 @@ impl SystemAllocator {
             },
 
             irq_allocator: AddressAllocator::new(
-                config.first_irq as u64,
-                1024 - config.first_irq as u64,
+                RangeInclusive::new(config.first_irq as u64, 1023),
                 Some(1),
                 None,
             )?,
@@ -150,7 +158,7 @@ impl SystemAllocator {
             // Each bus supports up to 32 (devices) x 8 (functions).
             // Prefer allocating at device granularity (preferred_align = 8), but fall back to
             // allocating individual functions (min_align = 1) when we run out of devices.
-            match AddressAllocator::new(base, (32 * 8) - base, Some(1), Some(8)) {
+            match AddressAllocator::new(RangeInclusive::new(base, (32 * 8) - 1), Some(1), Some(8)) {
                 Ok(v) => self.pci_allocator.insert(bus, v),
                 Err(_) => return None,
             };
