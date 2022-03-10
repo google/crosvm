@@ -55,6 +55,8 @@ DOCKER_ARGS = [
     "--device /dev/vhost-vsock",
     # Use tmpfs in the container for faster performance.
     "--mount type=tmpfs,destination=/tmp",
+    # For plugin process jail
+    "--mount type=tmpfs,destination=/var/empty",
     f"gcr.io/crosvm-packages/crosvm_dev:{IMAGE_VERSION}",
 ]
 

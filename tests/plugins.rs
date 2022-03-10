@@ -62,11 +62,11 @@ fn build_plugin(src: &str) -> RemovePath {
         .arg(&out_bin)
         .arg("-L") // Path of shared object to link to.
         .arg(&libcrosvm_plugin_dir)
-        .arg("-lcrosvm_plugin")
         .arg("-Wl,-rpath") // Search for shared object in the same path when exec'd.
         .arg(&libcrosvm_plugin_dir)
         .args(&["-Wl,-rpath", "."]) // Also check current directory in case of sandboxing.
         .args(&["-xc", "-"]) // Read source code from piped stdin.
+        .arg("-lcrosvm_plugin")
         .stdin(Stdio::piped())
         .spawn()
         .expect("failed to spawn compiler");
@@ -262,6 +262,8 @@ fn test_supported_cpuid() {
     test_plugin(include_str!("plugin_supported_cpuid.c"));
 }
 
+// b:223675792
+#[ignore]
 #[test]
 fn test_enable_cap() {
     test_plugin(include_str!("plugin_enable_cap.c"));
