@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2021"
 default-run = "crosvm"
+# b:223855233
+resolver = "1"
 
 [lib]
 path = "src/crosvm.rs"
