@@ -175,6 +175,7 @@ serde_json = "*"
 sync = { path = "common/sync" }
 tempfile = "3"
 thiserror = { version = "1.0.20" }
+uuid = { version = "0.8.2" }
 vhost = { path = "vhost" }
 vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }

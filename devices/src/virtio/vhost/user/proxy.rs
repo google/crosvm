@@ -22,6 +22,7 @@ use base::{
 use data_model::{DataInit, Le32};
 use libc::{recv, MSG_DONTWAIT, MSG_PEEK};
 use resources::Alloc;
+use uuid::Uuid;
 use vm_control::{VmMemoryRequest, VmMemoryResponse};
 use vm_memory::GuestMemory;
 use vmm_vhost::{
@@ -993,6 +994,7 @@ impl VirtioVhostUser {
         listener: UnixListener,
         main_process_tube: Tube,
         pci_address: Option<PciAddress>,
+        uuid: Option<Uuid>,
     ) -> Result<VirtioVhostUser> {
         Ok(VirtioVhostUser {
             base_features,
@@ -1000,7 +1002,7 @@ impl VirtioVhostUser {
             config: VirtioVhostUserConfig {
                 status: Le32::from(0),
                 max_vhost_queues: Le32::from(MAX_VHOST_DEVICE_QUEUES as u32),
-                uuid: [0; CONFIG_UUID_SIZE],
+                uuid: *uuid.unwrap_or_default().as_bytes(),
             },
             kill_evt: None,
             worker_thread: None,

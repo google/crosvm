@@ -228,6 +228,7 @@ pub fn create_vvu_proxy_device(cfg: &Config, opt: &VvuOption, tube: Tube) -> Dev
         listener,
         tube,
         opt.addr,
+        opt.uuid,
     )
     .context("failed to create VVU proxy device")?;
 

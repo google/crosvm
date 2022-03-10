@@ -39,6 +39,7 @@ use hypervisor::ProtectionType;
 use libc::{getegid, geteuid};
 #[cfg(feature = "gpu")]
 use platform::GpuRenderServerParameters;
+use uuid::Uuid;
 use vm_control::BatteryType;
 
 static KVM_PATH: &str = "/dev/kvm";
@@ -89,6 +90,7 @@ pub struct VhostUserWlOption {
 pub struct VvuOption {
     pub socket: PathBuf,
     pub addr: Option<PciAddress>,
+    pub uuid: Option<Uuid>,
 }
 
 /// A bind mount for directories in the plugin process.

@@ -61,6 +61,7 @@ use disk::{
     create_composite_disk, create_disk_file, create_zero_filler, ImagePartitionType, PartitionInfo,
 };
 use hypervisor::ProtectionType;
+use uuid::Uuid;
 use vm_control::{
     client::{
         do_modify_battery, do_usb_attach, do_usb_detach, do_usb_list, handle_request, vms_request,
@@ -2276,32 +2277,56 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.stub_pci_devices.push(parse_stub_pci_parameters(value)?);
         }
         "vvu-proxy" => {
-            let opts: Vec<_> = value.unwrap().split(',').collect();
+            let opts: Vec<_> = value.unwrap().splitn(2, ',').collect();
             let socket = PathBuf::from(opts[0]);
-            let addr = match opts.get(1) {
-                Some(opt) => {
-                    let kvs = argument::parse_key_value_options("vvu-proxy", opt, ',')
-                        .collect::<Vec<_>>();
-                    if kvs.len() != 1 || kvs[0].key() != "addr" {
-                        return Err(argument::Error::InvalidValue {
-                            value: opt.to_string(),
-                            expected: String::from(
-                                "Please specify PCI address for VVU: addr=BUS:DEVICE.FUNCTION",
-                            ),
-                        });
-                    }
-                    let pci_address = kvs[0].value()?;
-                    Some(PciAddress::from_string(pci_address).map_err(|e| {
-                        argument::Error::InvalidValue {
-                            value: pci_address.to_string(),
-                            expected: format!("vvu-proxy PCI address: {}", e),
-                        }
-                    })?)
-                }
-                None => None,
+            let mut vvu_opt = VvuOption {
+                socket,
+                addr: None,
+                uuid: Default::default(),
             };
 
-            cfg.vvu_proxy.push(VvuOption { socket, addr });
+            if let Some(kvs) = opts.get(1) {
+                for kv in argument::parse_key_value_options("vvu-proxy", kvs, ',') {
+                    match kv.key() {
+                        "addr" => {
+                            let pci_address = kv.value()?;
+                            if vvu_opt.addr.is_some() {
+                                return Err(argument::Error::TooManyArguments(
+                                    "`addr` already given".to_owned(),
+                                ));
+                            }
+
+                            vvu_opt.addr =
+                                Some(PciAddress::from_string(pci_address).map_err(|e| {
+                                    argument::Error::InvalidValue {
+                                        value: pci_address.to_string(),
+                                        expected: format!("vvu-proxy PCI address: {}", e),
+                                    }
+                                })?);
+                        }
+                        "uuid" => {
+                            let value = kv.value()?;
+                            if vvu_opt.uuid.is_some() {
+                                return Err(argument::Error::TooManyArguments(
+                                    "`uuid` already given".to_owned(),
+                                ));
+                            }
+                            let uuid = Uuid::parse_str(value).map_err(|e| {
+                                argument::Error::InvalidValue {
+                                    value: value.to_string(),
+                                    expected: format!("invalid UUID is given for vvu-proxy: {}", e),
+                                }
+                            })?;
+                            vvu_opt.uuid = Some(uuid);
+                        }
+                        _ => {
+                            kv.invalid_key_err();
+                        }
+                    }
+                }
+            }
+
+            cfg.vvu_proxy.push(vvu_opt);
         }
         "coiommu" => {
             let mut params: devices::CoIommuParameters = Default::default();
@@ -2777,9 +2802,10 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("vhost-user-wl", "SOCKET_PATH:TUBE_PATH", "Paths to a vhost-user socket for wayland and a Tube socket for additional wayland-specific messages"),
           Argument::value("vhost-user-fs", "SOCKET_PATH:TAG",
                           "Path to a socket path for vhost-user fs, and tag for the shared dir"),
-          Argument::value("vvu-proxy", "SOCKET_PATH[,addr=DOMAIN:BUS:DEVICE.FUNCTION]", "Socket path for the Virtio Vhost User proxy device.
+          Argument::value("vvu-proxy", "SOCKET_PATH[,addr=DOMAIN:BUS:DEVICE.FUNCTION,uuid=UUID]", "Socket path for the Virtio Vhost User proxy device.
                               Parameters
-                              addr=BUS:DEVICE.FUNCTION - PCI address that the proxy device will be allocated"),
+                              addr=BUS:DEVICE.FUNCTION - PCI address that the proxy device will be allocated (default: automatically allocated)
+                              uuid=UUID - UUID which will be stored in VVU PCI config space that is readable from guest userspace"),
           #[cfg(feature = "direct")]
           Argument::value("direct-pmio", "PATH@RANGE[,RANGE[,...]]", "Path and ranges for direct port mapped I/O access. RANGE may be decimal or hex (starting with 0x)."),
           #[cfg(feature = "direct")]
