@@ -5,7 +5,20 @@
 use crate::{BusAccessInfo, BusDevice, BusResumeDevice};
 use acpi_tables::{aml, aml::Aml};
 use base::{error, warn, Event};
+use std::sync::Arc;
+use sync::Mutex;
 use vm_control::PmResource;
+
+struct Pm1Resource {
+    status: u16,
+    enable: u16,
+    control: u16,
+}
+
+struct GpeResource {
+    status: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
+    enable: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
+}
 
 /// ACPI PM resource for handling OS suspend/resume request
 #[allow(dead_code)]
@@ -14,11 +27,8 @@ pub struct ACPIPMResource {
     sci_evt_resample: Event,
     suspend_evt: Event,
     exit_evt: Event,
-    pm1_status: u16,
-    pm1_enable: u16,
-    pm1_control: u16,
-    gpe0_status: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
-    gpe0_enable: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
+    pm1: Arc<Mutex<Pm1Resource>>,
+    gpe0: Arc<Mutex<GpeResource>>,
 }
 
 impl ACPIPMResource {
@@ -30,41 +40,49 @@ impl ACPIPMResource {
         suspend_evt: Event,
         exit_evt: Event,
     ) -> ACPIPMResource {
+        let pm1 = Pm1Resource {
+            status: 0,
+            enable: 0,
+            control: 0,
+        };
+        let gpe0 = GpeResource {
+            status: Default::default(),
+            enable: Default::default(),
+        };
+
         ACPIPMResource {
             sci_evt,
             sci_evt_resample,
             suspend_evt,
             exit_evt,
-            pm1_status: 0,
-            pm1_enable: 0,
-            pm1_control: 0,
-            gpe0_status: Default::default(),
-            gpe0_enable: Default::default(),
+            pm1: Arc::new(Mutex::new(pm1)),
+            gpe0: Arc::new(Mutex::new(gpe0)),
         }
     }
+}
 
-    fn pm_sci(&self) {
-        if self.pm1_status
-            & self.pm1_enable
+impl Pm1Resource {
+    fn trigger_sci(&self, sci_evt: &Event) {
+        if self.status
+            & self.enable
             & (BITMASK_PM1EN_GBL_EN
                 | BITMASK_PM1EN_PWRBTN_EN
                 | BITMASK_PM1EN_SLPBTN_EN
                 | BITMASK_PM1EN_RTC_EN)
             != 0
         {
-            if let Err(e) = self.sci_evt.write(1) {
-                error!("ACPIPM: failed to trigger sci event: {}", e);
+            if let Err(e) = sci_evt.write(1) {
+                error!("ACPIPM: failed to trigger sci event for pm1: {}", e);
             }
         }
     }
+}
 
-    fn gpe_sci(&self) {
-        for i in 0..self.gpe0_status.len() {
-            if self.gpe0_status[i] & self.gpe0_enable[i] != 0 {
-                if let Err(e) = self.sci_evt.write(1) {
-                    error!("ACPIPM: failed to trigger sci event: {}", e);
-                }
-                return;
+impl GpeResource {
+    fn trigger_sci(&self, sci_evt: &Event) {
+        if (0..self.status.len()).any(|i| self.status[i] & self.enable[i] != 0) {
+            if let Err(e) = sci_evt.write(1) {
+                error!("ACPIPM: failed to trigger sci event for gpe: {}", e);
             }
         }
     }
@@ -131,18 +149,22 @@ const SLEEP_TYPE_S5: u16 = 0 << 10;
 
 impl PmResource for ACPIPMResource {
     fn pwrbtn_evt(&mut self) {
-        self.pm1_status |= BITMASK_PM1STS_PWRBTN_STS;
-        self.pm_sci();
+        let mut pm1 = self.pm1.lock();
+
+        pm1.status |= BITMASK_PM1STS_PWRBTN_STS;
+        pm1.trigger_sci(&self.sci_evt);
     }
 
     fn gpe_evt(&mut self, gpe: u32) {
+        let mut gpe0 = self.gpe0.lock();
+
         let byte = gpe as usize / 8;
-        if byte >= self.gpe0_status.len() {
+        if byte >= gpe0.status.len() {
             error!("gpe_evt: GPE register {} does not exist", byte);
             return;
         }
-        self.gpe0_status[byte] |= 1 << (gpe % 8);
-        self.gpe_sci();
+        gpe0.status[byte] |= 1 << (gpe % 8);
+        gpe0.trigger_sci(&self.sci_evt);
     }
 }
 
@@ -168,7 +190,9 @@ impl BusDevice for ACPIPMResource {
                     return;
                 }
                 let offset = (info.offset - PM1_STATUS as u64) as usize;
-                data.copy_from_slice(&self.pm1_status.to_ne_bytes()[offset..offset + data.len()]);
+                data.copy_from_slice(
+                    &self.pm1.lock().status.to_ne_bytes()[offset..offset + data.len()],
+                );
             }
             PM1_ENABLE..=PM1_ENABLE_LAST => {
                 if data.len() > std::mem::size_of::<u16>()
@@ -178,7 +202,9 @@ impl BusDevice for ACPIPMResource {
                     return;
                 }
                 let offset = (info.offset - PM1_ENABLE as u64) as usize;
-                data.copy_from_slice(&self.pm1_enable.to_ne_bytes()[offset..offset + data.len()]);
+                data.copy_from_slice(
+                    &self.pm1.lock().enable.to_ne_bytes()[offset..offset + data.len()],
+                );
             }
             PM1_CONTROL..=PM1_CONTROL_LAST => {
                 if data.len() > std::mem::size_of::<u16>()
@@ -188,7 +214,9 @@ impl BusDevice for ACPIPMResource {
                     return;
                 }
                 let offset = (info.offset - PM1_CONTROL as u64) as usize;
-                data.copy_from_slice(&self.pm1_control.to_ne_bytes()[offset..offset + data.len()]);
+                data.copy_from_slice(
+                    &self.pm1.lock().control.to_ne_bytes()[offset..offset + data.len()],
+                );
             }
             // OSPM accesses GPE registers through byte accesses (regardless of their length)
             GPE0_STATUS..=GPE0_STATUS_LAST => {
@@ -198,7 +226,7 @@ impl BusDevice for ACPIPMResource {
                     warn!("ACPIPM: bad read size: {}", data.len());
                     return;
                 }
-                data[0] = self.gpe0_status[(info.offset - GPE0_STATUS as u64) as usize];
+                data[0] = self.gpe0.lock().status[(info.offset - GPE0_STATUS as u64) as usize];
             }
             GPE0_ENABLE..=GPE0_ENABLE_LAST => {
                 if data.len() > std::mem::size_of::<u8>()
@@ -207,7 +235,7 @@ impl BusDevice for ACPIPMResource {
                     warn!("ACPIPM: bad read size: {}", data.len());
                     return;
                 }
-                data[0] = self.gpe0_enable[(info.offset - GPE0_ENABLE as u64) as usize];
+                data[0] = self.gpe0.lock().enable[(info.offset - GPE0_ENABLE as u64) as usize];
             }
             _ => {
                 warn!("ACPIPM: Bad read from {}", info);
@@ -226,11 +254,13 @@ impl BusDevice for ACPIPMResource {
                     return;
                 }
                 let offset = (info.offset - PM1_STATUS as u64) as usize;
-                let mut v = self.pm1_status.to_ne_bytes();
+
+                let mut pm1 = self.pm1.lock();
+                let mut v = pm1.status.to_ne_bytes();
                 for (i, j) in (offset..offset + data.len()).enumerate() {
                     v[j] &= !data[i];
                 }
-                self.pm1_status = u16::from_ne_bytes(v);
+                pm1.status = u16::from_ne_bytes(v);
             }
             PM1_ENABLE..=PM1_ENABLE_LAST => {
                 if data.len() > std::mem::size_of::<u16>()
@@ -240,12 +270,14 @@ impl BusDevice for ACPIPMResource {
                     return;
                 }
                 let offset = (info.offset - PM1_ENABLE as u64) as usize;
-                let mut v = self.pm1_enable.to_ne_bytes();
+
+                let mut pm1 = self.pm1.lock();
+                let mut v = pm1.enable.to_ne_bytes();
                 for (i, j) in (offset..offset + data.len()).enumerate() {
                     v[j] = data[i];
                 }
-                self.pm1_enable = u16::from_ne_bytes(v);
-                self.pm_sci(); // TODO take care of spurious interrupts
+                pm1.enable = u16::from_ne_bytes(v);
+                pm1.trigger_sci(&self.sci_evt);
             }
             PM1_CONTROL..=PM1_CONTROL_LAST => {
                 if data.len() > std::mem::size_of::<u16>()
@@ -255,7 +287,10 @@ impl BusDevice for ACPIPMResource {
                     return;
                 }
                 let offset = (info.offset - PM1_CONTROL as u64) as usize;
-                let mut v = self.pm1_control.to_ne_bytes();
+
+                let mut pm1 = self.pm1.lock();
+
+                let mut v = pm1.control.to_ne_bytes();
                 for (i, j) in (offset..offset + data.len()).enumerate() {
                     v[j] = data[i];
                 }
@@ -286,7 +321,7 @@ impl BusDevice for ACPIPMResource {
                         ),
                     }
                 }
-                self.pm1_control = val & !BITMASK_PM1CNT_SLEEP_ENABLE;
+                pm1.control = val & !BITMASK_PM1CNT_SLEEP_ENABLE;
             }
             // OSPM accesses GPE registers through byte accesses (regardless of their length)
             GPE0_STATUS..=GPE0_STATUS_LAST => {
@@ -296,7 +331,7 @@ impl BusDevice for ACPIPMResource {
                     warn!("ACPIPM: bad write size: {}", data.len());
                     return;
                 }
-                self.gpe0_status[(info.offset - GPE0_STATUS as u64) as usize] &= !data[0];
+                self.gpe0.lock().status[(info.offset - GPE0_STATUS as u64) as usize] &= !data[0];
             }
             GPE0_ENABLE..=GPE0_ENABLE_LAST => {
                 if data.len() > std::mem::size_of::<u8>()
@@ -305,8 +340,10 @@ impl BusDevice for ACPIPMResource {
                     warn!("ACPIPM: bad write size: {}", data.len());
                     return;
                 }
-                self.gpe0_enable[(info.offset - GPE0_ENABLE as u64) as usize] = data[0];
-                self.gpe_sci();
+
+                let mut gpe = self.gpe0.lock();
+                gpe.enable[(info.offset - GPE0_ENABLE as u64) as usize] = data[0];
+                gpe.trigger_sci(&self.sci_evt);
             }
             _ => {
                 warn!("ACPIPM: Bad write to {}", info);
@@ -317,7 +354,7 @@ impl BusDevice for ACPIPMResource {
 
 impl BusResumeDevice for ACPIPMResource {
     fn resume_imminent(&mut self) {
-        self.pm1_status |= BITMASK_PM1CNT_WAKE_STATUS;
+        self.pm1.lock().status |= BITMASK_PM1CNT_WAKE_STATUS;
     }
 }
 
