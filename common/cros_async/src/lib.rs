@@ -58,6 +58,7 @@
 //! See the docs for `IoSourceExt` if support for kernels <5.4 is required. Focus on `UringSource` if
 //! all systems have support for io_uring.
 
+pub mod audio_streams_async;
 mod blocking;
 mod complete;
 mod event;

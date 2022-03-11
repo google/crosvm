@@ -36,10 +36,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use super::async_api::AudioStreamsExecutor;
 use super::{
     AsyncBufferCommit, AudioBuffer, BoxError, BufferCommit, NoopBufferCommit, SampleFormat,
 };
-use cros_async::{Executor, TimerAsync};
 use remain::sorted;
 use thiserror::Error;
 
@@ -70,7 +70,7 @@ impl<S: CaptureBufferStream + ?Sized> CaptureBufferStream for &mut S {
 pub trait AsyncCaptureBufferStream: Send {
     async fn next_capture_buffer<'a>(
         &'a mut self,
-        _ex: &Executor,
+        _ex: &dyn AudioStreamsExecutor,
     ) -> Result<AsyncCaptureBuffer<'a>, BoxError>;
 }
 
@@ -78,7 +78,7 @@ pub trait AsyncCaptureBufferStream: Send {
 impl<S: AsyncCaptureBufferStream + ?Sized> AsyncCaptureBufferStream for &mut S {
     async fn next_capture_buffer<'a>(
         &'a mut self,
-        ex: &Executor,
+        ex: &dyn AudioStreamsExecutor,
     ) -> Result<AsyncCaptureBuffer<'a>, BoxError> {
         (**self).next_capture_buffer(ex).await
     }
@@ -268,12 +268,12 @@ impl CaptureBufferStream for NoopCaptureStream {
 impl AsyncCaptureBufferStream for NoopCaptureStream {
     async fn next_capture_buffer<'a>(
         &'a mut self,
-        ex: &Executor,
+        ex: &dyn AudioStreamsExecutor,
     ) -> Result<AsyncCaptureBuffer<'a>, BoxError> {
         if let Some(start_time) = self.start_time {
             let elapsed = start_time.elapsed();
             if elapsed < self.next_frame {
-                TimerAsync::sleep(ex, self.next_frame - elapsed).await?;
+                ex.delay(self.next_frame - elapsed).await?;
             }
             self.next_frame += self.interval;
         } else {
@@ -295,7 +295,7 @@ impl AsyncCaptureBufferStream for NoopCaptureStream {
 pub async fn async_read_capture_buffer<F>(
     stream: &mut dyn AsyncCaptureBufferStream,
     f: F,
-    ex: &Executor,
+    ex: &dyn AudioStreamsExecutor,
 ) -> Result<(), BoxError>
 where
     F: FnOnce(&mut AsyncCaptureBuffer) -> Result<(), BoxError>,
@@ -308,8 +308,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::super::async_api::test::TestExecutor;
     use super::super::*;
     use super::*;
+    use futures::FutureExt;
 
     #[test]
     fn invalid_buffer_length() {
@@ -416,13 +418,12 @@ mod tests {
             assert_eq!(test_commit.frame_count, 480);
         }
 
-        let ex = Executor::new().expect("failed to create executor");
-        ex.run_until(this_test()).unwrap();
+        this_test().now_or_never();
     }
 
     #[test]
     fn consumption_rate_async() {
-        async fn this_test(ex: &Executor) {
+        async fn this_test(ex: &TestExecutor) {
             let mut server = NoopStreamSource::new();
             let (_, mut stream) = server
                 .new_async_capture_stream(2, SampleFormat::S16LE, 48000, 480, &[], ex)
@@ -446,7 +447,7 @@ mod tests {
                 let elapsed = start.elapsed();
                 assert!(
                     elapsed > Duration::from_millis(10),
-                    "next_capture_buffer didn't block long enough {}",
+                    "write_playback_buffer didn't block long enough {}",
                     elapsed.subsec_millis()
                 );
                 Ok(())
@@ -456,7 +457,7 @@ mod tests {
                 .unwrap();
         }
 
-        let ex = Executor::new().expect("failed to create executor");
-        ex.run_until(this_test(&ex)).unwrap();
+        let ex = TestExecutor {};
+        this_test(&ex).now_or_never();
     }
 }

@@ -9,10 +9,10 @@ path = "src/audio_streams.rs"
 
 [dependencies]
 async-trait = "0.1.36"
-cros_async = { path = "../cros_async" } # provided by ebuild
 remain = "0.2"
 sync = { path = "../sync" } # provided by ebuild
 thiserror = "1.0.20"
+futures = "0.3"
 
 [target.'cfg(unix)'.dev-dependencies]
 sys_util = { path = "../sys_util" } # provided by ebuild

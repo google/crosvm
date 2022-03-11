@@ -19,6 +19,8 @@ slab = "0.4"
 sync = { path = "../sync" } # provided by ebuild
 sys_util = { path = "../sys_util" } # provided by ebuild
 thiserror = "1.0.20"
+audio_streams = { path = "../audio_streams" } # provided by ebuild
+anyhow = "1.0"
 
 [dependencies.futures]
 version = "*"
