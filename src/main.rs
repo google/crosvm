@@ -25,7 +25,7 @@ use base::{debug, error, getpid, info, kill_process_group, pagesize, reap_child,
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use crosvm::platform::GpuRenderServerParameters;
 #[cfg(feature = "direct")]
-use crosvm::{argument::parse_hex_or_decimal, DirectIoOption};
+use crosvm::{argument::parse_hex_or_decimal, DirectIoOption, HostPcieRootPortParameters};
 use crosvm::{
     argument::{self, print_help, set_arguments, Argument},
     platform, BindMount, Config, Executable, FileBackedMappingParameters, GidMap, SharedDir,
@@ -2272,21 +2272,51 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         #[cfg(feature = "direct")]
         "pcie-root-port" => {
-            let pcie_path = PathBuf::from(value.unwrap());
+            let opts: Vec<_> = value.unwrap().split(',').collect();
+            if opts.len() > 2 {
+                return Err(argument::Error::TooManyArguments(
+                    "pcie-root-port has maxmimum two arguments".to_owned(),
+                ));
+            }
+            let pcie_path = PathBuf::from(opts[0]);
             if !pcie_path.exists() {
                 return Err(argument::Error::InvalidValue {
-                    value: value.unwrap().to_owned(),
+                    value: opts[0].to_owned(),
                     expected: String::from("the pcie root port path does not exist"),
                 });
             }
             if !pcie_path.is_dir() {
                 return Err(argument::Error::InvalidValue {
-                    value: value.unwrap().to_owned(),
+                    value: opts[0].to_owned(),
                     expected: String::from("the pcie root port path should be directory"),
                 });
             }
 
-            cfg.pcie_rp.push(pcie_path);
+            let hp_gpe = if opts.len() == 2 {
+                let gpes: Vec<&str> = opts[1].split('=').collect();
+                if gpes.len() != 2 || gpes[0] != "hp_gpe" {
+                    return Err(argument::Error::InvalidValue {
+                        value: opts[1].to_owned(),
+                        expected: String::from("it should be hp_gpe=Num"),
+                    });
+                }
+                match gpes[1].parse::<u32>() {
+                    Ok(gpe) => Some(gpe),
+                    Err(_) => {
+                        return Err(argument::Error::InvalidValue {
+                            value: gpes[1].to_owned(),
+                            expected: String::from("host hp gpe must be a non-negative integer"),
+                        });
+                    }
+                }
+            } else {
+                None
+            };
+
+            cfg.pcie_rp.push(HostPcieRootPortParameters {
+                host_path: pcie_path,
+                hp_gpe,
+            });
         }
         "pivot-root" => {
             cfg.pivot_root = Some(PathBuf::from(value.unwrap()));
@@ -2713,7 +2743,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                               sync - open backing file with O_SYNC
                               align - whether to adjust addr and size to page boundaries implicitly"),
           #[cfg(feature = "direct")]
-          Argument::value("pcie-root-port", "PATH", "Path to sysfs of host pcie root port"),
+          Argument::value("pcie-root-port", "PATH[,hp_gpe=NUM]", "Path to sysfs of host pcie root port and host pcie root port hotplug gpe number"),
           Argument::value("pivot-root", "PATH", "Path to empty directory to use for sandbox pivot root."),
           #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("s2idle", "Set Low Power S0 Idle Capable Flag for guest Fixed ACPI Description Table"),

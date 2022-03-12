@@ -341,6 +341,12 @@ pub struct FileBackedMappingParameters {
     pub sync: bool,
 }
 
+#[derive(Clone)]
+pub struct HostPcieRootPortParameters {
+    pub host_path: PathBuf,
+    pub hp_gpe: Option<u32>,
+}
+
 /// Aggregate of all configurable options for a running VM.
 pub struct Config {
     pub kvm_device_path: PathBuf,
@@ -452,7 +458,7 @@ pub struct Config {
     pub file_backed_mappings: Vec<FileBackedMappingParameters>,
     pub init_memory: Option<u64>,
     #[cfg(feature = "direct")]
-    pub pcie_rp: Vec<PathBuf>,
+    pub pcie_rp: Vec<HostPcieRootPortParameters>,
     pub rng: bool,
     pub pivot_root: Option<PathBuf>,
     pub force_s2idle: bool,

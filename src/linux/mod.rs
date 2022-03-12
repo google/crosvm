@@ -14,7 +14,7 @@ use std::ops::RangeInclusive;
 #[cfg(feature = "gpu")]
 use std::os::unix::net::UnixStream;
 use std::os::unix::prelude::OpenOptionsExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{mpsc, Arc, Barrier};
 use std::time::Duration;
 
@@ -38,8 +38,7 @@ use devices::virtio::{self, EventDevice};
 use devices::Ac97Dev;
 use devices::{
     self, BusDeviceObj, HostHotPlugKey, HotPlugBus, IrqEventIndex, KvmKernelIrqChip, PciAddress,
-    PciBridge, PciDevice, PcieHostRootPort, PcieRootPort, PvPanicCode, PvPanicPciDevice,
-    StubPciDevice, VirtioPciDevice,
+    PciDevice, PvPanicCode, PvPanicPciDevice, StubPciDevice, VirtioPciDevice,
 };
 use devices::{CoIommuDev, IommuDevType};
 #[cfg(feature = "usb")]
@@ -60,17 +59,20 @@ use arch::{
     self, LinuxArch, RunnableLinuxVm, VcpuAffinity, VirtioDeviceStub, VmComponents, VmImage,
 };
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use {
+    crate::HostPcieRootPortParameters,
+    devices::{
+        IrqChipX86_64 as IrqChipArch, KvmSplitIrqChip, PciBridge, PcieHostRootPort, PcieRootPort,
+    },
+    hypervisor::{VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
+    x86_64::X8664arch as Arch,
+};
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use {
     aarch64::AArch64 as Arch,
     devices::IrqChipAArch64 as IrqChipArch,
     hypervisor::{VcpuAArch64 as VcpuArch, VmAArch64 as VmArch},
-};
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use {
-    devices::{IrqChipX86_64 as IrqChipArch, KvmSplitIrqChip},
-    hypervisor::{VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
-    x86_64::X8664arch as Arch,
 };
 
 mod device_helpers;
@@ -672,13 +674,13 @@ fn create_file_backed_mappings(
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn create_pcie_root_port(
-    host_pcie_rp: Vec<PathBuf>,
+    host_pcie_rp: Vec<HostPcieRootPortParameters>,
     sys_allocator: &mut SystemAllocator,
     control_tubes: &mut Vec<TaggedControlTube>,
     devices: &mut Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
     hp_vec: &mut Vec<Arc<Mutex<dyn HotPlugBus>>>,
     hp_endpoints_ranges: &mut Vec<RangeInclusive<u32>>,
-    _gpe_notify_devs: &mut Vec<(u32, Arc<Mutex<dyn GpeNotify>>)>,
+    gpe_notify_devs: &mut Vec<(u32, Arc<Mutex<dyn GpeNotify>>)>,
 ) -> Result<()> {
     if host_pcie_rp.is_empty() {
         // user doesn't specify host pcie root port which link to this virtual pcie rp,
@@ -730,9 +732,9 @@ fn create_pcie_root_port(
     } else {
         // user specify host pcie root port which link to this virtual pcie rp,
         // reserve the host pci BDF and create a virtual pcie RP with some attrs same as host
-        for pcie_sysfs in host_pcie_rp.iter() {
+        for host_pcie in host_pcie_rp.iter() {
             let (vm_host_tube, vm_device_tube) = Tube::pair().context("failed to create tube")?;
-            let pcie_host = PcieHostRootPort::new(pcie_sysfs.as_path(), vm_device_tube)?;
+            let pcie_host = PcieHostRootPort::new(host_pcie.host_path.as_path(), vm_device_tube)?;
             let bus_range = pcie_host.get_bus_range();
             let mut slot_implemented = true;
             for i in bus_range.secondary..=bus_range.subordinate {
@@ -744,6 +746,7 @@ fn create_pcie_root_port(
                     slot_implemented = false;
                 }
             }
+
             let pcie_root_port = Arc::new(Mutex::new(PcieRootPort::new_from_host(
                 pcie_host,
                 slot_implemented,
@@ -778,7 +781,13 @@ fn create_pcie_root_port(
             ));
 
             devices.push((pci_bridge, None));
-            hp_vec.push(pcie_root_port as Arc<Mutex<dyn HotPlugBus>>);
+            if slot_implemented {
+                if let Some(gpe) = host_pcie.hp_gpe {
+                    gpe_notify_devs
+                        .push((gpe, pcie_root_port.clone() as Arc<Mutex<dyn GpeNotify>>));
+                }
+                hp_vec.push(pcie_root_port as Arc<Mutex<dyn HotPlugBus>>);
+            }
         }
     }
 
@@ -1275,7 +1284,7 @@ where
         #[cfg(feature = "direct")]
         let rp_host = cfg.pcie_rp.clone();
         #[cfg(not(feature = "direct"))]
-        let rp_host: Vec<PathBuf> = Vec::new();
+        let rp_host: Vec<HostPcieRootPortParameters> = Vec::new();
 
         // Create Pcie Root Port
         create_pcie_root_port(
@@ -2124,6 +2133,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     // Create a file-backed mapping parameters struct with the given `address` and `size` and other
     // parameters set to default values.
