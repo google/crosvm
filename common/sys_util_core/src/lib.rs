@@ -23,3 +23,4 @@ pub use crate::errno::{errno_result, Error, Result};
 pub use crate::external_mapping::Error as ExternalMappingError;
 pub use crate::external_mapping::Result as ExternalMappingResult;
 pub use crate::external_mapping::*;
+pub use crate::scoped_event_macro::*;

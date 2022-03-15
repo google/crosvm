@@ -79,7 +79,7 @@ pub use descriptor_reflection::{
     SerializeDescriptors,
 };
 pub use poll_token_derive::*;
-pub use sys_util_core::{Error, Result, *};
+pub use sys_util_core::{generate_scoped_event, Error, Result, *};
 
 pub use crate::file_traits::{
     AsRawFds, FileAllocate, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen,
