@@ -44,6 +44,7 @@
 //! ```
 
 use std::convert::TryFrom;
+use std::env;
 use std::result;
 use std::str::FromStr;
 
@@ -358,6 +359,62 @@ where
     })
 }
 
+const DEFAULT_COLUMNS: usize = 80;
+
+/// Get the number of columns on a display.
+fn get_columns() -> usize {
+    if let Ok(columns_string) = env::var("COLUMNS") {
+        if let Ok(columns) = usize::from_str(&columns_string) {
+            return columns;
+        }
+    }
+    DEFAULT_COLUMNS
+}
+
+/// Poor man's reflowing function for string. This function will unsplit the
+/// lines, an empty line splits a paragraph.
+fn reflow(s: &str, offset: usize, width: usize) -> String {
+    let mut lines: Vec<String> = vec![];
+    let mut prev = "";
+    let filler = " ".repeat(offset);
+    for line in s.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            // Skip the empty line, the paragraph delimiter.
+        } else if prev.is_empty() {
+            // Start a new paragraph if the previous line was empty.
+            lines.push(line.to_string());
+        } else if let Some(last) = lines.last_mut() {
+            *last += " ";
+            *last += line;
+        }
+        prev = line;
+    }
+    let mut lines = lines.into_iter().flat_map(|line| {
+        let mut output = vec![];
+        // Split the line with the last space found, or if the word exceeds
+        // length of one line, give up and use the full width.
+        let mut line = line.as_str();
+        while let Some(s) = line.get(0..width) {
+            let offset = s.rfind(" ").unwrap_or(s.len());
+            output.push(s[0..offset].to_string());
+            line = &line[offset + 1..];
+        }
+        // Here we should have the remaining part of the line that is less
+        // than `width`.
+        output.push(line.to_string());
+
+        output
+    });
+    match lines.next() {
+        None => String::new(),
+        Some(line) => std::iter::once(line)
+            .chain(lines.map(|line| filler.clone() + &line))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    }
+}
+
 /// Prints command line usage information to stdout.
 ///
 /// Usage information is printed according to the help fields in `args` with a leading usage line.
@@ -372,29 +429,38 @@ pub fn print_help(program_name: &str, required_arg: &str, args: &[Argument]) {
     if args.is_empty() {
         return;
     }
+
+    let indent_depth = 30;
+    let minimum_width_of_help = DEFAULT_COLUMNS - 1 - indent_depth;
+    let columns = get_columns();
+    let columns = minimum_width_of_help.max(columns - indent_depth);
+
     println!("Argument{}:", if args.len() > 1 { "s" } else { "" });
     for arg in args {
-        match arg.short {
-            Some(s) => print!(" -{}, ", s),
-            None => print!("     "),
-        }
-        if arg.long.is_empty() {
-            print!("  ");
-        } else {
-            print!("--");
-        }
-        print!("{:<12}", arg.long);
-        if let Some(v) = arg.value {
+        let leading_part = [
+            match arg.short {
+                Some(s) => format!(" -{}, ", s),
+                None => "     ".to_string(),
+            },
             if arg.long.is_empty() {
-                print!(" ");
+                "  ".to_string()
             } else {
-                print!("=");
-            }
-            print!("{:<10}", v);
+                "--".to_string()
+            },
+            format!("{:<12}", arg.long),
+            if let Some(v) = arg.value {
+                format!("{}{:<10}", if arg.long.is_empty() { " " } else { "=" }, v)
+            } else {
+                format!("{:<11}", "")
+            },
+        ]
+        .join("");
+        if leading_part.len() <= indent_depth {
+            print!("{}", leading_part);
         } else {
-            print!("{:<11}", "");
+            print!("{}\n{}", leading_part, " ".repeat(indent_depth));
         }
-        println!("{}", arg.help);
+        println!("{}", reflow(arg.help, indent_depth, columns));
     }
 }
 
@@ -756,5 +822,41 @@ mod tests {
         let kv = opts.next().unwrap();
         assert!(kv.key_numeric::<u32>().is_err());
         assert_eq!(kv.key(), "nonnumeric");
+    }
+
+    #[test]
+    fn reflow_simple() {
+        assert_eq!(reflow("Hello world, this is a sample of reflowing operation that should work generally. However I don't know if it is useful", 10, 40),
+        "Hello world, this is a sample of
+          reflowing operation that should work
+          generally. However I don't know if it
+          is useful");
+    }
+
+    #[test]
+    fn reflow_paragraph() {
+        assert_eq!(
+            reflow(
+                "Hello world, this is a sample of reflowing operation that should work generally.
+
+I am going to give you another paragraph. However I don't know if it is useful",
+                10,
+                40
+            ),
+            "Hello world, this is a sample of
+          reflowing operation that should work
+          generally.
+          I am going to give you another
+          paragraph. However I don't know if it
+          is useful"
+        );
+    }
+
+    #[test]
+    fn column() {
+        env::set_var("COLUMNS", "100");
+        assert_eq!(get_columns(), 100);
+        env::remove_var("COLUMNS");
+        assert_eq!(get_columns(), 80);
     }
 }

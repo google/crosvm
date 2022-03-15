@@ -2582,10 +2582,15 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
           Argument::value("cras-snd",
           "[capture=true,client=crosvm,socket=unified,num_output_streams=1,num_input_streams=1]",
           "Comma separated key=value pairs for setting up cras snd devices.
+
               Possible key values:
+
               capture - Enable audio capture. Default to false.
+
               client_type - Set specific client type for cras backend.
+
               num_output_streams - Set number of output PCM streams
+
               num_input_streams - Set number of input PCM streams"),
           Argument::flag("no-smt", "Don't use SMT in the guest"),
           Argument::value("rt-cpus", "CPUSET", "Comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: none)"),
@@ -2607,10 +2612,15 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
           Argument::value("rwroot", "PATH[,key=value[,key=value[,...]]", "Path to a writable root disk image followed by optional comma-separated options.
                               See --disk for valid options."),
           Argument::short_value('d', "disk", "PATH[,key=value[,key=value[,...]]", "Path to a disk image followed by optional comma-separated options.
+
                               Valid keys:
+
                               sparse=BOOL - Indicates whether the disk should support the discard operation (default: true)
+
                               block_size=BYTES - Set the reported block size of the disk (default: 512)
+
                               id=STRING - Set the block device identifier to an ASCII string, up to 20 characters (default: no ID)
+
                               o_direct=BOOL - Use O_DIRECT mode to bypass page cache"),
           Argument::value("rwdisk", "PATH[,key=value[,key=value[,...]]", "Path to a writable disk image followed by optional comma-separated options.
                               See --disk for valid options."),
@@ -2627,27 +2637,43 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
           Argument::value("ac97",
                           "[backend=BACKEND,capture=true,capture_effect=EFFECT,client_type=TYPE,shm-fd=FD,client-fd=FD,server-fd=FD]",
                           "Comma separated key=value pairs for setting up Ac97 devices. Can be given more than once .
+
                               Possible key values:
+
                               backend=(null, cras, vios) - Where to route the audio device. If not provided, backend will default to null.
                               `null` for /dev/null, cras for CRAS server and vios for VioS server.
+
                               capture - Enable audio capture
+
                               capture_effects - | separated effects to be enabled for recording. The only supported effect value now is EchoCancellation or aec.
+
                               client_type - Set specific client type for cras backend.
+
                               socket_type - Set specific socket type for cras backend.
+
                               server - The to the VIOS server (unix socket)."),
           #[cfg(feature = "audio")]
           Argument::value("sound", "[PATH]", "Path to the VioS server socket for setting up virtio-snd devices."),
           Argument::value("serial",
                           "type=TYPE,[hardware=HW,num=NUM,path=PATH,input=PATH,console,earlycon,stdin]",
                           "Comma separated key=value pairs for setting up serial devices. Can be given more than once.
+
                               Possible key values:
+
                               type=(stdout,syslog,sink,file) - Where to route the serial device
+
                               hardware=(serial,virtio-console) - Which type of serial hardware to emulate. Defaults to 8250 UART (serial).
+
                               num=(1,2,3,4) - Serial Device Number. If not provided, num will default to 1.
+
                               path=PATH - The path to the file to write to when type=file
+
                               input=PATH - The path to the file to read from when not stdin
+
                               console - Use this serial device as the guest console. Can only be given once. Will default to first serial port if not provided.
+
                               earlycon - Use this serial device as the early console. Can only be given once.
+
                               stdin - Direct standard input to this serial device. Can only be given once. Will default to first serial port if not provided.
                               "),
           Argument::value("syslog-tag", "TAG", "When logging to syslog, use the provided tag."),
@@ -2666,15 +2692,26 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
           Argument::value("cid", "CID", "Context ID for virtual sockets."),
           Argument::value("shared-dir", "PATH:TAG[:type=TYPE:writeback=BOOL:timeout=SECONDS:uidmap=UIDMAP:gidmap=GIDMAP:cache=CACHE:dax=BOOL,posix_acl=BOOL]",
                           "Colon-separated options for configuring a directory to be shared with the VM.
+
                               The first field is the directory to be shared and the second field is the tag that the VM can use to identify the device.
+
                               The remaining fields are key=value pairs that may appear in any order.  Valid keys are:
+
                               type=(p9, fs) - Indicates whether the directory should be shared via virtio-9p or virtio-fs (default: p9).
+
                               uidmap=UIDMAP - The uid map to use for the device's jail in the format \"inner outer count[,inner outer count]\" (default: 0 <current euid> 1).
+
                               gidmap=GIDMAP - The gid map to use for the device's jail in the format \"inner outer count[,inner outer count]\" (default: 0 <current egid> 1).
+
                               cache=(never, auto, always) - Indicates whether the VM can cache the contents of the shared directory (default: auto).  When set to \"auto\" and the type is \"fs\", the VM will use close-to-open consistency for file contents.
+
                               timeout=SECONDS - How long the VM should consider file attributes and directory entries to be valid (default: 5).  If the VM has exclusive access to the directory, then this should be a large value.  If the directory can be modified by other processes, then this should be 0.
+
                               writeback=BOOL - Enables writeback caching (default: false).  This is only safe to do when the VM has exclusive access to the files in a directory.  Additionally, the server should have read permission for all files as the VM may issue read requests even for files that are opened write-only.
-                              dax=BOOL - Enables DAX support.  Enabling DAX can improve performance for frequently accessed files by mapping regions of the file directly into the VM's memory.  There is a cost of slightly increased latency the first time the file is accessed.  Since the mapping is shared directly from the host kernel's file cache, enabling DAX can improve performance even when the guest cache policy is \"Never\".  The default value for this option is \"false\".
+
+                              dax=BOOL - Enables DAX support.  Enabling DAX can improve performance for frequently accessed files by mapping regions of the file directly into the VM's memory.
+There is a cost of slightly increased latency the first time the file is accessed.  Since the mapping is shared directly from the host kernel's file cache, enabling DAX can improve performance even when the guest cache policy is \"Never\".  The default value for this option is \"false\".
+
                               posix_acl=BOOL - Indicates whether the shared directory supports POSIX ACLs.  This should only be enabled when the underlying file system supports POSIX ACLs.  The default value for this option is \"true\".
 "),
           Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
@@ -2702,32 +2739,51 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
           Argument::flag_or_value("gpu",
                                   "[width=INT,height=INT]",
                                   "(EXPERIMENTAL) Comma separated key=value pairs for setting up a virtio-gpu device
+
                               Possible key values:
+
                               backend=(2d|virglrenderer|gfxstream) - Which backend to use for virtio-gpu (determining rendering protocol)
+
                               width=INT - The width of the virtual display connected to the virtio-gpu.
+
                               height=INT - The height of the virtual display connected to the virtio-gpu.
+
                               egl[=true|=false] - If the backend should use a EGL context for rendering.
+
                               glx[=true|=false] - If the backend should use a GLX context for rendering.
+
                               surfaceless[=true|=false] - If the backend should use a surfaceless context for rendering.
+
                               angle[=true|=false] - If the gfxstream backend should use ANGLE (OpenGL on Vulkan) as its native OpenGL driver.
+
                               syncfd[=true|=false] - If the gfxstream backend should support EGL_ANDROID_native_fence_sync
+
                               vulkan[=true|=false] - If the backend should support vulkan
+
                               cache-path=PATH - The path to the virtio-gpu device shader cache.
+
                               cache-size=SIZE - The maximum size of the shader cache."),
           #[cfg(feature = "gpu")]
           Argument::flag_or_value("gpu-display",
                                   "[width=INT,height=INT]",
                                   "(EXPERIMENTAL) Comma separated key=value pairs for setting up a display on the virtio-gpu device
+
                               Possible key values:
+
                               width=INT - The width of the virtual display connected to the virtio-gpu.
+
                               height=INT - The height of the virtual display connected to the virtio-gpu."),
           #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
           Argument::flag_or_value("gpu-render-server",
                                   "[path=PATH]",
                                   "(EXPERIMENTAL) Comma separated key=value pairs for setting up a render server for the virtio-gpu device
+
                               Possible key values:
+
                               path=PATH - The path to the render server executable.
+
                               cache-path=PATH - The path to the render server shader cache.
+
                               cache-size=SIZE - The maximum size of the shader cache."),
           #[cfg(feature = "tpm")]
           Argument::flag("software-tpm", "enable a software emulated trusted platform module device"),
@@ -2742,7 +2798,9 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
           Argument::flag("split-irqchip", "(EXPERIMENTAL) enable split-irqchip support"),
           Argument::value("bios", "PATH", "Path to BIOS/firmware ROM"),
           Argument::value("vfio", "PATH[,guest-address=auto|<BUS:DEVICE.FUNCTION>][,iommu=on|off]", "Path to sysfs of PCI pass through or mdev device.
+
 guest-address=auto|<BUS:DEVICE.FUNCTION> - PCI address that the device will be assigned in the guest (default: auto).  When set to \"auto\", the device will be assigned an address that mirrors its address in the host.
+
 iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("vfio-platform", "PATH", "Path to sysfs of platform pass through"),
           Argument::flag("virtio-iommu", "Add a virtio-iommu device"),
@@ -2760,7 +2818,9 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::flag_or_value("battery",
                                   "[type=TYPE]",
                                   "Comma separated key=value pairs for setting up battery device
+
                               Possible key values:
+
                               type=goldfish - type of battery emulation, defaults to goldfish"),
           Argument::value("gdb", "PORT", "(EXPERIMENTAL) gdb on the given port"),
           Argument::flag("no-balloon", "Don't use virtio-balloon device in the guest"),
@@ -2781,7 +2841,9 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                           "Path to a socket path for vhost-user fs, and tag for the shared dir"),
           Argument::value("vvu-proxy", "SOCKET_PATH[,addr=DOMAIN:BUS:DEVICE.FUNCTION,uuid=UUID]", "Socket path for the Virtio Vhost User proxy device.
                               Parameters
+
                               addr=BUS:DEVICE.FUNCTION - PCI address that the proxy device will be allocated (default: automatically allocated)
+
                               uuid=UUID - UUID which will be stored in VVU PCI config space that is readable from guest userspace"),
           #[cfg(feature = "direct")]
           Argument::value("direct-pmio", "PATH@RANGE[,RANGE[,...]]", "Path and ranges for direct port mapped I/O access. RANGE may be decimal or hex (starting with 0x)."),
@@ -2798,6 +2860,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("dmi", "DIR", "Directory with smbios_entry_point/DMI files"),
           Argument::flag("no-legacy", "Don't use legacy KBD/RTC devices emulation"),
           Argument::value("userspace-msr", "INDEX,action=r0", "Userspace MSR handling. Takes INDEX of the MSR and how they are handled.
+
                               action=r0 - forward RDMSR to host kernel cpu0.
 "),
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -2805,29 +2868,49 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::flag("privileged-vm", "Grant this Guest VM certian privileges to manage Host resources, such as power management."),
           Argument::value("stub-pci-device", "DOMAIN:BUS:DEVICE.FUNCTION[,vendor=NUM][,device=NUM][,class=NUM][,subsystem_vendor=NUM][,subsystem_device=NUM][,revision=NUM]", "Comma-separated key=value pairs for setting up a stub PCI device that just enumerates. The first option in the list must specify a PCI address to claim.
                               Optional further parameters
+
                               vendor=NUM - PCI vendor ID
+
                               device=NUM - PCI device ID
+
                               class=NUM - PCI class (including class code, subclass, and programming interface)
+
                               subsystem_vendor=NUM - PCI subsystem vendor ID
+
                               subsystem_device=NUM - PCI subsystem device ID
+
                               revision=NUM - revision"),
           Argument::flag_or_value("coiommu",
                           "unpin_policy=POLICY,unpin_interval=NUM,unpin_limit=NUM,unpin_gen_threshold=NUM ",
                           "Comma separated key=value pairs for setting up coiommu devices.
+
                               Possible key values:
+
                               unpin_policy=lru - LRU unpin policy.
+
                               unpin_interval=NUM - Unpin interval time in seconds.
+
                               unpin_limit=NUM - Unpin limit for each unpin cycle, in unit of page count. 0 is invalid.
+
                               unpin_gen_threshold=NUM -  Number of unpin intervals a pinned page must be busy for to be aged into the older which is less frequently checked generation."),
           Argument::value("file-backed-mapping", "addr=NUM,size=SIZE,path=PATH[,offset=NUM][,ro][,rw][,sync]", "Map the given file into guest memory at the specified address.
+
                               Parameters (addr, size, path are required):
+
                               addr=NUM - guest physical address to map at
+
                               size=NUM - amount of memory to map
+
                               path=PATH - path to backing file/device to map
+
                               offset=NUM - offset in backing file (default 0)
+
                               ro - make the mapping readonly (default)
+
                               rw - make the mapping writable
+
                               sync - open backing file with O_SYNC
+
                               align - whether to adjust addr and size to page boundaries implicitly"),
           #[cfg(feature = "direct")]
           Argument::value("pcie-root-port", "PATH[,hp_gpe=NUM]", "Path to sysfs of host pcie root port and host pcie root port hotplug gpe number"),
