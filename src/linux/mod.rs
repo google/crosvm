@@ -678,6 +678,7 @@ fn create_pcie_root_port(
     devices: &mut Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
     hp_vec: &mut Vec<Arc<Mutex<dyn HotPlugBus>>>,
     hp_endpoints_ranges: &mut Vec<RangeInclusive<u32>>,
+    _gpe_notify_devs: &mut Vec<(u32, Arc<Mutex<dyn GpeNotify>>)>,
 ) -> Result<()> {
     if host_pcie_rp.is_empty() {
         // user doesn't specify host pcie root port which link to this virtual pcie rp,
@@ -1265,10 +1266,10 @@ where
     )?;
 
     let mut hp_endpoints_ranges: Vec<RangeInclusive<u32>> = Vec::new();
-
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let mut hotplug_buses: Vec<Arc<Mutex<dyn HotPlugBus>>> = Vec::new();
-
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let mut gpe_notify_devs: Vec<(u32, Arc<Mutex<dyn GpeNotify>>)> = Vec::new();
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
         #[cfg(feature = "direct")]
@@ -1284,6 +1285,7 @@ where
             &mut devices,
             &mut hotplug_buses,
             &mut hp_endpoints_ranges,
+            &mut gpe_notify_devs,
         )?;
     }
 
@@ -1358,6 +1360,12 @@ where
     {
         for hotplug_bus in hotplug_buses.iter() {
             linux.hotplug_bus.push(hotplug_bus.clone());
+        }
+
+        if let Some(pm) = &linux.pm {
+            while let Some((gpe, notify_dev)) = gpe_notify_devs.pop() {
+                pm.lock().register_gpe_notify_dev(gpe, notify_dev);
+            }
         }
     }
 

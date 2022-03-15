@@ -116,6 +116,7 @@ pub trait GpeNotify: Send {
 pub trait PmResource {
     fn pwrbtn_evt(&mut self) {}
     fn gpe_evt(&mut self, _gpe: u32) {}
+    fn register_gpe_notify_dev(&mut self, _gpe: u32, _notify_dev: Arc<Mutex<dyn GpeNotify>>) {}
 }
 
 /// The maximum number of devices that can be listed in one `UsbControlCommand`.

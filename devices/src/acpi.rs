@@ -6,11 +6,12 @@ use crate::{BusAccessInfo, BusDevice, BusResumeDevice};
 use acpi_tables::{aml, aml::Aml};
 use base::{error, info, warn, Error as SysError, Event, PollToken, WaitContext};
 use base::{AcpiNotifyEvent, NetlinkGenericSocket};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;
 use sync::Mutex;
 use thiserror::Error;
-use vm_control::PmResource;
+use vm_control::{GpeNotify, PmResource};
 
 #[cfg(feature = "direct")]
 use {std::fs, std::io::Error as IoError, std::path::PathBuf};
@@ -38,6 +39,7 @@ struct Pm1Resource {
 struct GpeResource {
     status: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
     enable: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
+    gpe_notify: BTreeMap<u32, Vec<Arc<Mutex<dyn GpeNotify>>>>,
 }
 
 #[cfg(feature = "direct")]
@@ -85,6 +87,7 @@ impl ACPIPMResource {
         let gpe0 = GpeResource {
             status: Default::default(),
             enable: Default::default(),
+            gpe_notify: BTreeMap::new(),
         };
 
         #[cfg(feature = "direct")]
@@ -258,6 +261,14 @@ fn run_worker(
                     if let Some((ref trigger, ref resample)) = sci_direct_evt {
                         let _ = trigger.read();
 
+                        for (gpe, devs) in &gpe0.lock().gpe_notify {
+                            if DirectGpe::is_gpe_trigger(*gpe).unwrap_or(false) {
+                                for dev in devs {
+                                    dev.lock().notify();
+                                }
+                            }
+                        }
+
                         if let Err(e) = sci_evt.write(1) {
                             error!("ACPIPM: failed to trigger sci event: {}", e);
                         }
@@ -387,7 +398,29 @@ impl Pm1Resource {
 
 impl GpeResource {
     fn trigger_sci(&self, sci_evt: &Event) {
-        if (0..self.status.len()).any(|i| self.status[i] & self.enable[i] != 0) {
+        let mut trigger = false;
+        for i in 0..self.status.len() {
+            let gpes = self.status[i] & self.enable[i];
+            if gpes == 0 {
+                continue;
+            }
+
+            for j in 0..8 {
+                if gpes & (1 << j) == 0 {
+                    continue;
+                }
+
+                let gpe_num: u32 = i as u32 * 8 + j;
+                if let Some(notify_devs) = self.gpe_notify.get(&gpe_num) {
+                    for notify_dev in notify_devs.iter() {
+                        notify_dev.lock().notify();
+                    }
+                }
+            }
+            trigger = true;
+        }
+
+        if trigger {
             if let Err(e) = sci_evt.write(1) {
                 error!("ACPIPM: failed to trigger sci event for gpe: {}", e);
             }
@@ -478,6 +511,22 @@ impl DirectGpe {
             }
         }
     }
+
+    fn is_gpe_trigger(gpe: u32) -> Result<bool, IoError> {
+        let path = PathBuf::from("/sys/firmware/acpi/interrupts").join(format!("gpe{:02X}", gpe));
+        let s = fs::read_to_string(&path)?;
+        let mut enable = false;
+        let mut status = false;
+        for itr in s.split_whitespace() {
+            match itr {
+                "EN" => enable = true,
+                "STS" => status = true,
+                _ => (),
+            }
+        }
+
+        Ok(enable && status)
+    }
 }
 
 /// the ACPI PM register length.
@@ -557,6 +606,16 @@ impl PmResource for ACPIPMResource {
         }
         gpe0.status[byte] |= 1 << (gpe % 8);
         gpe0.trigger_sci(&self.sci_evt);
+    }
+
+    fn register_gpe_notify_dev(&mut self, gpe: u32, notify_dev: Arc<Mutex<dyn GpeNotify>>) {
+        let mut gpe0 = self.gpe0.lock();
+        match gpe0.gpe_notify.get_mut(&gpe) {
+            Some(v) => v.push(notify_dev),
+            None => {
+                gpe0.gpe_notify.insert(gpe, vec![notify_dev]);
+            }
+        }
     }
 }
 
