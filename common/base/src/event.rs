@@ -11,6 +11,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, Result};
+use sys_util::generate_scoped_event;
 use sys_util::EventFd;
 pub use sys_util::EventReadResult;
 
@@ -59,40 +60,4 @@ impl IntoRawDescriptor for Event {
     }
 }
 
-/// See [ScopedEvent](sys_util::ScopedEvent) for struct- and method-level
-/// documentation.
-pub struct ScopedEvent(Event);
-
-impl ScopedEvent {
-    pub fn new() -> Result<ScopedEvent> {
-        Ok(Event::new()?.into())
-    }
-}
-
-impl From<Event> for ScopedEvent {
-    fn from(e: Event) -> Self {
-        Self(e)
-    }
-}
-
-impl From<ScopedEvent> for Event {
-    fn from(scoped_event: ScopedEvent) -> Self {
-        let evt = unsafe { ptr::read(&scoped_event.0) };
-        mem::forget(scoped_event);
-        evt
-    }
-}
-
-impl Deref for ScopedEvent {
-    type Target = Event;
-
-    fn deref(&self) -> &Event {
-        &self.0
-    }
-}
-
-impl Drop for ScopedEvent {
-    fn drop(&mut self) {
-        self.write(1).expect("failed to trigger scoped event");
-    }
-}
+generate_scoped_event!(Event);

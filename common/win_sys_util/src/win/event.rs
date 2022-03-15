@@ -4,10 +4,14 @@
 
 use serde::{Deserialize, Serialize};
 use std::ffi::CString;
+use std::mem;
 use std::mem::MaybeUninit;
+use std::ops::Deref;
 use std::os::windows::io::{AsRawHandle, RawHandle};
+use std::ptr;
 use std::ptr::null;
 use std::time::Duration;
+use sys_util_core::generate_scoped_event;
 use win_util::{SecurityAttributes, SelfRelativeSecurityDescriptor};
 use winapi::shared::minwindef::{DWORD, FALSE, TRUE};
 use winapi::shared::winerror::WAIT_TIMEOUT;
@@ -209,6 +213,8 @@ impl IntoRawDescriptor for Event {
 unsafe impl Send for Event {}
 unsafe impl Sync for Event {}
 
+generate_scoped_event!(Event);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -276,5 +282,20 @@ mod tests {
                 .expect("failed to read from event with timeout"),
             EventReadResult::Timeout
         );
+    }
+
+    #[test]
+    fn scoped_event() {
+        let scoped_evt = ScopedEvent::new().unwrap();
+        let evt_clone: Event = scoped_evt.try_clone().unwrap();
+        drop(scoped_evt);
+        assert_eq!(evt_clone.read(), Ok(1));
+    }
+
+    #[test]
+    fn eventfd_from_scoped_event() {
+        let scoped_evt = ScopedEvent::new().unwrap();
+        let evt: Event = scoped_evt.into();
+        evt.write(1).unwrap();
     }
 }

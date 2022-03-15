@@ -16,6 +16,7 @@
 mod alloc;
 mod errno;
 mod external_mapping;
+mod scoped_event_macro;
 
 pub use crate::alloc::LayoutAllocation;
 pub use crate::errno::{errno_result, Error, Result};

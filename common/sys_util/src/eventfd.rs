@@ -12,8 +12,8 @@ use libc::{c_void, eventfd, read, write, POLLIN};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    duration_to_timespec, errno_result, AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor,
-    RawDescriptor, Result, SafeDescriptor,
+    duration_to_timespec, errno_result, generate_scoped_event, AsRawDescriptor, FromRawDescriptor,
+    IntoRawDescriptor, RawDescriptor, Result, SafeDescriptor,
 };
 
 /// A safe wrapper around a Linux eventfd (man 2 eventfd).
@@ -172,49 +172,7 @@ impl From<EventFd> for SafeDescriptor {
     }
 }
 
-/// An `EventFd` wrapper which triggers when it goes out of scope.
-///
-/// If the underlying `EventFd` fails to trigger during drop, a panic is triggered instead.
-pub struct ScopedEvent(EventFd);
-
-impl ScopedEvent {
-    /// Creates a new `ScopedEvent` which triggers when it goes out of scope.
-    pub fn new() -> Result<ScopedEvent> {
-        Ok(EventFd::new()?.into())
-    }
-}
-
-impl From<EventFd> for ScopedEvent {
-    fn from(e: EventFd) -> Self {
-        Self(e)
-    }
-}
-
-impl From<ScopedEvent> for EventFd {
-    fn from(scoped_event: ScopedEvent) -> Self {
-        // Rust doesn't allow moving out of types with a Drop implementation, so we have to use
-        // something that copies instead of moves. This is safe because we prevent the drop of
-        // `scoped_event` using `mem::forget`, so the underlying `EventFd` will not experience a
-        // double-drop.
-        let evt = unsafe { ptr::read(&scoped_event.0) };
-        mem::forget(scoped_event);
-        evt
-    }
-}
-
-impl Deref for ScopedEvent {
-    type Target = EventFd;
-
-    fn deref(&self) -> &EventFd {
-        &self.0
-    }
-}
-
-impl Drop for ScopedEvent {
-    fn drop(&mut self) {
-        self.write(1).expect("failed to trigger scoped event");
-    }
-}
+generate_scoped_event!(EventFd);
 
 #[cfg(test)]
 mod tests {

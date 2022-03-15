@@ -33,7 +33,6 @@ mod notifiers;
 mod poll;
 #[path = "win/priority.rs"]
 mod priority;
-mod scoped_event;
 // Add conditional compile?
 #[path = "win/sched.rs"]
 mod sched;
@@ -58,7 +57,6 @@ pub use crate::notifiers::*;
 pub use crate::poll::*;
 pub use crate::priority::*;
 pub use crate::sched::*;
-pub use crate::scoped_event::*;
 pub use crate::shm::*;
 pub use crate::stream_channel::*;
 pub use crate::timer::*;
