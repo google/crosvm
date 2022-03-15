@@ -395,6 +395,21 @@ pub fn print_help(program_name: &str, required_arg: &str, args: &[Argument]) {
     }
 }
 
+pub fn parse_hex_or_decimal(maybe_hex_string: &str) -> Result<u64> {
+    // Parse string starting with 0x as hex and others as numbers.
+    if let Some(hex_string) = maybe_hex_string.strip_prefix("0x") {
+        u64::from_str_radix(hex_string, 16)
+    } else if let Some(hex_string) = maybe_hex_string.strip_prefix("0X") {
+        u64::from_str_radix(hex_string, 16)
+    } else {
+        u64::from_str(maybe_hex_string)
+    }
+    .map_err(|e| Error::InvalidValue {
+        value: maybe_hex_string.to_string(),
+        expected: e.to_string(),
+    })
+}
+
 pub struct KeyValuePair<'a> {
     context: &'a str,
     key: &'a str,
@@ -433,12 +448,7 @@ impl<'a> KeyValuePair<'a> {
         <T as TryFrom<u64>>::Error: std::error::Error,
     {
         let val = self.value()?;
-        let numres = if val.starts_with("0x") || val.starts_with("0X") {
-            u64::from_str_radix(&val[2..], 16)
-        } else {
-            u64::from_str(val)
-        };
-        let num = self.handle_parse_err(numres)?;
+        let num = parse_hex_or_decimal(val)?;
         self.handle_parse_err(T::try_from(num))
     }
 
@@ -703,5 +713,14 @@ mod tests {
         let kv = opts.next().unwrap();
         assert!(kv.parse::<u32>().is_err());
         assert!(kv.parse_numeric::<u32>().is_err());
+    }
+
+    #[test]
+    fn parse_hex_or_decimal_simple() {
+        assert_eq!(parse_hex_or_decimal("15").unwrap(), 15);
+        assert_eq!(parse_hex_or_decimal("0x15").unwrap(), 0x15);
+        assert_eq!(parse_hex_or_decimal("0X15").unwrap(), 0x15);
+        assert!(parse_hex_or_decimal("0xz").is_err());
+        assert!(parse_hex_or_decimal("hello world").is_err());
     }
 }

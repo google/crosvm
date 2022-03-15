@@ -25,7 +25,7 @@ use crosvm::platform::GpuRenderServerParameters;
 #[cfg(feature = "direct")]
 use crosvm::DirectIoOption;
 use crosvm::{
-    argument::{self, print_help, set_arguments, Argument},
+    argument::{self, parse_hex_or_decimal, print_help, set_arguments, Argument},
     platform, BindMount, Config, DiskOption, Executable, FileBackedMappingParameters, GidMap,
     SharedDir, TouchDeviceOption, VfioCommand, VhostUserFsOption, VhostUserOption,
     VhostUserWlOption, VhostVsockDeviceParameter, VvuOption, DISK_ID_LEN,
@@ -903,16 +903,6 @@ fn parse_battery_options(s: Option<&str>) -> argument::Result<BatteryType> {
     }
 
     Ok(battery_type)
-}
-
-#[cfg(feature = "direct")]
-fn parse_hex_or_decimal(maybe_hex_string: &str) -> Result<u64, std::num::ParseIntError> {
-    // Parse string starting with 0x as hex and others as numbers.
-    let without_prefix = maybe_hex_string.strip_prefix("0x");
-    match without_prefix {
-        Some(hex_string) => u64::from_str_radix(hex_string, 16),
-        None => u64::from_str(maybe_hex_string),
-    }
 }
 
 #[cfg(feature = "direct")]
