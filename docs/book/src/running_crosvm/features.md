@@ -59,7 +59,7 @@ feature.
 ## `power-monitor-powerd`
 
 Enables emulation of a battery using the host's power information provided by
-[powerd](https://chromium.googlesource.com/chromiumos/platform2/+/master/power_manager/README.md).
+[powerd](https://chromium.googlesource.com/chromiumos/platform2/+/HEAD/power_manager/README.md).
 
 ## `tpm`
 
