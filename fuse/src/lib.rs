@@ -84,21 +84,26 @@ impl FuseConfig {
         }
     }
 
+    /// Set the FUSE device.
     pub fn dev_fuse(&mut self, file: File) -> &mut Self {
         self.dev_fuse_file = Some(file);
         self
     }
 
+    /// Set the maximum data in a read request. Must be large enough (usually equal) to `n` in
+    /// `MountOption::MaxRead(n)`.
     pub fn max_read(&mut self, bytes: u32) -> &mut Self {
         self.max_read_bytes = Some(bytes);
         self
     }
 
+    /// Set the maximum data in a write request.
     pub fn max_write(&mut self, bytes: u32) -> &mut Self {
         self.max_write_bytes = Some(bytes);
         self
     }
 
+    /// Set the number of threads to run the `FileSystem`.
     pub fn num_threads(&mut self, num: usize) -> &mut Self {
         self.num_of_threads = Some(num);
         self
@@ -115,15 +120,15 @@ impl FuseConfig {
         if num == 1 {
             worker::start_message_loop(
                 dev_fuse_file.ok_or(Error::MissingParameter)?,
-                max_write_bytes.ok_or(Error::MissingParameter)?,
                 max_read_bytes.ok_or(Error::MissingParameter)?,
+                max_write_bytes.ok_or(Error::MissingParameter)?,
                 fs,
             )
         } else {
             worker::internal::start_message_loop_mt(
                 dev_fuse_file.ok_or(Error::MissingParameter)?,
-                max_write_bytes.ok_or(Error::MissingParameter)?,
                 max_read_bytes.ok_or(Error::MissingParameter)?,
+                max_write_bytes.ok_or(Error::MissingParameter)?,
                 num,
                 fs,
             )

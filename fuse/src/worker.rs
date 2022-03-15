@@ -146,34 +146,41 @@ impl Mapper for DevFuseMapper {
 
 /// Start the FUSE message handling loop. Returns when an error happens.
 ///
+/// # Arguments
+///
+/// * `dev_fuse` - A `File` object of /dev/fuse
+/// * `input_buffer_size` - Maximum bytes of the buffer when reads from /dev/fuse.
+/// * `output_buffer_size` - Maximum bytes of the buffer when writes to /dev/fuse. Must be large
+///                          enough (usually equal) to `n` in `MountOption::MaxRead(n)`.
+///
 /// [deprecated(note="Please migrate to the `FuseConfig` builder API"]
 pub fn start_message_loop<F: FileSystem + Sync>(
     dev_fuse: File,
-    max_write: u32,
-    max_read: u32,
+    input_buffer_size: u32,
+    output_buffer_size: u32,
     fs: F,
 ) -> Result<()> {
     let server = Server::new(fs);
-    do_start_message_loop(dev_fuse, max_write, max_read, &server)
+    do_start_message_loop(dev_fuse, input_buffer_size, output_buffer_size, &server)
 }
 
 fn do_start_message_loop<F: FileSystem + Sync>(
     dev_fuse: File,
-    max_write: u32,
-    max_read: u32,
+    input_buffer_size: u32,
+    output_buffer_size: u32,
     server: &Server<F>,
 ) -> Result<()> {
     let mut dev_fuse_reader = {
         let rfile = dev_fuse.try_clone().map_err(Error::EndpointSetup)?;
         let buf_reader = BufReader::with_capacity(
-            max_write as usize + size_of::<sys::InHeader>() + size_of::<sys::WriteIn>(),
+            input_buffer_size as usize + size_of::<sys::InHeader>() + size_of::<sys::WriteIn>(),
             rfile,
         );
         DevFuseReader::new(buf_reader)
     };
     let mut dev_fuse_writer = {
         let wfile = dev_fuse;
-        let write_buf = Cursor::new(Vec::with_capacity(max_read as usize));
+        let write_buf = Cursor::new(Vec::with_capacity(output_buffer_size as usize));
         DevFuseWriter::new(wfile, write_buf)
     };
     let dev_fuse_mapper = DevFuseMapper::new();
@@ -193,11 +200,17 @@ pub mod internal {
 
     /// Start the FUSE message handling loops in multiple threads. Returns when an error happens.
     ///
+    /// # Arguments
+    ///
+    /// * `dev_fuse` - A `File` object of /dev/fuse
+    /// * `input_buffer_size` - Maximum bytes of the buffer when reads from /dev/fuse.
+    /// * `output_buffer_size` - Maximum bytes of the buffer when writes to /dev/fuse.
+    ///
     /// [deprecated(note="Please migrate to the `FuseConfig` builder API"]
     pub fn start_message_loop_mt<F: FileSystem + Sync + Send>(
         dev_fuse: File,
-        max_write: u32,
-        max_read: u32,
+        input_buffer_size: u32,
+        output_buffer_size: u32,
         thread_numbers: usize,
         fs: F,
     ) -> Result<()> {
@@ -209,7 +222,9 @@ pub mod internal {
                     .map_err(Error::EndpointSetup)
                     .expect("Failed to clone /dev/fuse FD");
                 let server = server.clone();
-                s.spawn(move |_| do_start_message_loop(dev_fuse, max_write, max_read, &server));
+                s.spawn(move |_| {
+                    do_start_message_loop(dev_fuse, input_buffer_size, output_buffer_size, &server)
+                });
             }
         });
 
