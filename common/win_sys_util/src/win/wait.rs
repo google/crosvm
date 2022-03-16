@@ -2,18 +2,23 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cmp::min;
-use std::collections::HashMap;
-use std::os::windows::io::RawHandle;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::{
+    cmp::min,
+    collections::HashMap,
+    os::windows::io::RawHandle,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
-use winapi::shared::minwindef::{DWORD, FALSE};
-use winapi::shared::winerror::{ERROR_INVALID_PARAMETER, WAIT_TIMEOUT};
-use winapi::um::synchapi::WaitForMultipleObjects;
-use winapi::um::winbase::WAIT_OBJECT_0;
+use winapi::{
+    shared::{
+        minwindef::{DWORD, FALSE},
+        winerror::{ERROR_INVALID_PARAMETER, WAIT_TIMEOUT},
+    },
+    um::{synchapi::WaitForMultipleObjects, winbase::WAIT_OBJECT_0},
+};
 
-use crate::{
+use super::super::{
     errno_result, error, AsRawDescriptor, Descriptor, Error, Event, EventTrigger, EventType,
     PollToken, Result, TriggeredEvent,
 };

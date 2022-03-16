@@ -2,9 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::AsRawDescriptor;
-use std::ffi::c_void;
-use std::io;
+use super::super::AsRawDescriptor;
+use std::{ffi::c_void, io};
 pub use winapi::um::winioctl::FSCTL_SET_SPARSE;
 
 /// Marks the given file as sparse. Required if we want hole punching to be performant.
@@ -15,7 +14,7 @@ pub fn set_sparse_file<T: AsRawDescriptor>(handle: &T) -> io::Result<()> {
     // Safe because we check the return value and handle is guaranteed to be a
     // valid file handle by the caller.
     let result = unsafe {
-        crate::ioctl::ioctl_with_ptr(
+        super::super::ioctl::ioctl_with_ptr(
             handle,
             FSCTL_SET_SPARSE,
             std::ptr::null_mut() as *mut c_void,

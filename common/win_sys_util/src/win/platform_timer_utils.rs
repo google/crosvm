@@ -2,24 +2,33 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io;
-use std::mem::MaybeUninit;
-use std::sync::Once;
-use std::time::{Duration, Instant};
+use std::{
+    io,
+    mem::MaybeUninit,
+    sync::Once,
+    time::{Duration, Instant},
+};
 
-use winapi::shared::minwindef::{self, HINSTANCE, HMODULE, PULONG};
+use winapi::shared::minwindef::{
+    HINSTANCE, HMODULE, PULONG, {self},
+};
 
-use winapi::shared::ntdef::{NTSTATUS, ULONG};
-use winapi::shared::ntstatus::STATUS_SUCCESS;
-use winapi::um::libloaderapi;
-use winapi::um::mmsystem::TIMERR_NOERROR;
+use winapi::{
+    shared::{
+        ntdef::{NTSTATUS, ULONG},
+        ntstatus::STATUS_SUCCESS,
+    },
+    um::{libloaderapi, mmsystem::TIMERR_NOERROR},
+};
 
 use std::thread::sleep;
 use win_util::{win32_string, win32_wide_string};
-use winapi::um::timeapi::{timeBeginPeriod, timeEndPeriod};
-use winapi::um::winnt::BOOLEAN;
+use winapi::um::{
+    timeapi::{timeBeginPeriod, timeEndPeriod},
+    winnt::BOOLEAN,
+};
 
-use crate::{warn, Error, Result};
+use super::super::{warn, Error, Result};
 
 static NT_INIT: Once = Once::new();
 static mut NT_LIBRARY: MaybeUninit<HMODULE> = MaybeUninit::uninit();

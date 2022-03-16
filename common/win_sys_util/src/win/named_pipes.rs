@@ -3,35 +3,43 @@
 // found in the LICENSE file.
 
 use rand::Rng;
-use std::ffi::CString;
-use std::fs::OpenOptions;
-use std::io;
-use std::io::Result;
-use std::mem;
-use std::os::windows::fs::OpenOptionsExt;
-use std::process;
-use std::ptr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    ffi::CString,
+    fs::OpenOptions,
+    io,
+    io::Result,
+    mem,
+    os::windows::fs::OpenOptionsExt,
+    process, ptr,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
-use crate::{
+use super::{
     AsRawDescriptor, Event, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, SafeDescriptor,
 };
 use serde::{Deserialize, Serialize};
 use win_util::{SecurityAttributes, SelfRelativeSecurityDescriptor};
-use winapi::shared::minwindef::{DWORD, LPCVOID, LPVOID, TRUE};
-use winapi::shared::winerror::{ERROR_IO_PENDING, ERROR_NO_DATA, ERROR_PIPE_CONNECTED};
-use winapi::um::errhandlingapi::GetLastError;
-use winapi::um::fileapi::{FlushFileBuffers, ReadFile, WriteFile};
-use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-use winapi::um::ioapiset::{CancelIoEx, GetOverlappedResult};
-use winapi::um::minwinbase::OVERLAPPED;
-use winapi::um::namedpipeapi::{
-    ConnectNamedPipe, GetNamedPipeInfo, PeekNamedPipe, SetNamedPipeHandleState,
-};
-use winapi::um::winbase::{
-    CreateNamedPipeA, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, PIPE_ACCESS_DUPLEX,
-    PIPE_NOWAIT, PIPE_READMODE_BYTE, PIPE_READMODE_MESSAGE, PIPE_REJECT_REMOTE_CLIENTS,
-    PIPE_TYPE_BYTE, PIPE_TYPE_MESSAGE, PIPE_WAIT, SECURITY_IDENTIFICATION,
+use winapi::{
+    shared::{
+        minwindef::{DWORD, LPCVOID, LPVOID, TRUE},
+        winerror::{ERROR_IO_PENDING, ERROR_NO_DATA, ERROR_PIPE_CONNECTED},
+    },
+    um::{
+        errhandlingapi::GetLastError,
+        fileapi::{FlushFileBuffers, ReadFile, WriteFile},
+        handleapi::INVALID_HANDLE_VALUE,
+        ioapiset::{CancelIoEx, GetOverlappedResult},
+        minwinbase::OVERLAPPED,
+        namedpipeapi::{
+            ConnectNamedPipe, GetNamedPipeInfo, PeekNamedPipe, SetNamedPipeHandleState,
+        },
+        winbase::{
+            CreateNamedPipeA, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED,
+            PIPE_ACCESS_DUPLEX, PIPE_NOWAIT, PIPE_READMODE_BYTE, PIPE_READMODE_MESSAGE,
+            PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_TYPE_MESSAGE, PIPE_WAIT,
+            SECURITY_IDENTIFICATION,
+        },
+    },
 };
 
 /// The default buffer size for all named pipes in the system. If this size is too small, writers

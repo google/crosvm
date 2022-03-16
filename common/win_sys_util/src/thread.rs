@@ -2,12 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::any::Any;
-use std::panic::UnwindSafe;
-use std::sync::mpsc::{channel, Receiver};
-use std::thread::JoinHandle;
-use std::time::Duration;
-use std::{panic, thread};
+use std::{
+    any::Any,
+    panic,
+    panic::UnwindSafe,
+    sync::mpsc::{channel, Receiver},
+    thread,
+    thread::JoinHandle,
+    time::Duration,
+};
 
 /// Spawns a thread that can be joined with a timeout.
 pub fn spawn_with_timeout<F, T>(f: F) -> JoinHandleWithTimeout<T>

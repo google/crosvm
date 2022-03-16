@@ -2,8 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::File;
-use std::io::{self, Error, ErrorKind, Seek, SeekFrom};
+use std::{
+    fs::File,
+    io::{
+        Error, ErrorKind, Seek, SeekFrom, {self},
+    },
+};
 
 #[path = "win/punch_hole.rs"]
 mod punch_hole;
@@ -11,7 +15,7 @@ mod punch_hole;
 #[path = "win/write_zeros.rs"]
 mod write_zeros;
 
-use crate::write_zeroes::punch_hole::execute_punch_hole;
+use super::write_zeroes::punch_hole::execute_punch_hole;
 
 /// A trait for deallocating space in a file.
 pub trait PunchHole {
@@ -100,8 +104,10 @@ impl<T: WriteZeroesAt + Seek> WriteZeroes for T {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::OpenOptions;
-    use std::io::{Read, Seek, SeekFrom, Write};
+    use std::{
+        fs::OpenOptions,
+        io::{Read, Seek, SeekFrom, Write},
+    };
     use tempfile::TempDir;
 
     #[test]

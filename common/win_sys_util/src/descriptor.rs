@@ -2,28 +2,33 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{PollToken, Result};
-use std::convert::TryFrom;
-use std::fs::File;
-use std::io::{Stderr, Stdin, Stdout};
-use std::mem;
-use std::ops::Drop;
+use super::{PollToken, Result};
+use std::{
+    convert::TryFrom,
+    fs::File,
+    io::{Stderr, Stdin, Stdout},
+    mem,
+    ops::Drop,
+};
 
 use serde::{Deserialize, Serialize};
 
 // Windows imports
-use std::ffi::CString;
-use std::marker::{Send, Sync};
-use std::mem::ManuallyDrop;
-use std::mem::MaybeUninit;
-use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle};
-use std::sync::Once;
-use win_util::duplicate_handle;
-use win_util::win32_wide_string;
-use winapi::shared::minwindef::{BOOL, HMODULE, TRUE};
-use winapi::um::handleapi::CloseHandle;
-use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-use winapi::um::libloaderapi;
+use std::{
+    ffi::CString,
+    marker::{Send, Sync},
+    mem::{ManuallyDrop, MaybeUninit},
+    os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle},
+    sync::Once,
+};
+use win_util::{duplicate_handle, win32_wide_string};
+use winapi::{
+    shared::minwindef::{BOOL, HMODULE, TRUE},
+    um::{
+        handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
+        libloaderapi,
+    },
+};
 
 pub type RawDescriptor = RawHandle;
 
@@ -51,7 +56,7 @@ pub trait FromRawDescriptor {
 #[derive(Serialize, Deserialize, Debug, Eq)]
 #[serde(transparent)]
 pub struct SafeDescriptor {
-    #[serde(with = "crate::with_raw_descriptor")]
+    #[serde(with = "super::with_raw_descriptor")]
     descriptor: RawDescriptor,
 }
 
@@ -262,7 +267,7 @@ AsRawDescriptor!(Stderr);
 #[test]
 #[allow(clippy::eq_op)]
 fn clone_equality() {
-    use crate::{Event, IntoRawDescriptor};
+    use super::{Event, IntoRawDescriptor};
 
     let evt = Event::new().unwrap();
     let descriptor = unsafe { SafeDescriptor::from_raw_descriptor(evt.into_raw_descriptor()) };

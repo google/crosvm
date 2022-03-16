@@ -4,14 +4,11 @@
 
 //! Macros and wrapper functions for dealing with ioctls.
 
-use std::mem::size_of;
-use std::os::raw::*;
-use std::ptr::null_mut;
+use std::{mem::size_of, os::raw::*, ptr::null_mut};
 
-use crate::AsRawDescriptor;
-use winapi::um::errhandlingapi::GetLastError;
-use winapi::um::ioapiset::DeviceIoControl;
+use super::AsRawDescriptor;
 pub use winapi::um::winioctl::{CTL_CODE, FILE_ANY_ACCESS, METHOD_BUFFERED};
+use winapi::um::{errhandlingapi::GetLastError, ioapiset::DeviceIoControl};
 
 /// Raw macro to declare the expression that calculates an ioctl number
 #[macro_export]
@@ -307,21 +304,18 @@ mod tests {
 
     use winapi::um::winioctl::{FSCTL_GET_COMPRESSION, FSCTL_SET_COMPRESSION};
 
-    use winapi::um::fileapi::{CreateFileW, OPEN_EXISTING};
-    use winapi::um::winbase::SECURITY_SQOS_PRESENT;
-    use winapi::um::winnt::{
-        COMPRESSION_FORMAT_LZNT1, COMPRESSION_FORMAT_NONE, FILE_SHARE_READ, FILE_SHARE_WRITE,
-        GENERIC_READ, GENERIC_WRITE,
+    use winapi::um::{
+        fileapi::{CreateFileW, OPEN_EXISTING},
+        winbase::SECURITY_SQOS_PRESENT,
+        winnt::{
+            COMPRESSION_FORMAT_LZNT1, COMPRESSION_FORMAT_NONE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+            GENERIC_READ, GENERIC_WRITE,
+        },
     };
 
-    use std::fs::OpenOptions;
-    use std::os::raw::*;
-    use std::ptr::null_mut;
+    use std::{fs::OpenOptions, os::raw::*, ptr::null_mut};
 
-    use std::ffi::OsStr;
-    use std::fs::File;
-    use std::io::prelude::*;
-    use std::os::windows::ffi::OsStrExt;
+    use std::{ffi::OsStr, fs::File, io::prelude::*, os::windows::ffi::OsStrExt};
 
     use std::os::windows::prelude::*;
 
@@ -351,8 +345,9 @@ mod tests {
         f.sync_all().expect("Failed to sync all.");
 
         // read the compression status
-        let ecode =
-            unsafe { crate::ioctl::ioctl_with_mut_ref(&f, FSCTL_GET_COMPRESSION, &mut compressed) };
+        let ecode = unsafe {
+            super::super::ioctl::ioctl_with_mut_ref(&f, FSCTL_GET_COMPRESSION, &mut compressed)
+        };
 
         // shouldn't error
         assert_eq!(ecode, 0);
@@ -387,7 +382,8 @@ mod tests {
             ))
         };
 
-        let ecode = unsafe { crate::ioctl::ioctl_with_ref(&f, FSCTL_SET_COMPRESSION, &compressed) };
+        let ecode =
+            unsafe { super::super::ioctl::ioctl_with_ref(&f, FSCTL_SET_COMPRESSION, &compressed) };
 
         assert_eq!(ecode, 0);
         // set compressed short back to 0 for reading purposes,
@@ -395,8 +391,9 @@ mod tests {
         // is writing anything to the compressed pointer.
         compressed = 0;
 
-        let ecode =
-            unsafe { crate::ioctl::ioctl_with_mut_ref(&f, FSCTL_GET_COMPRESSION, &mut compressed) };
+        let ecode = unsafe {
+            super::super::ioctl::ioctl_with_mut_ref(&f, FSCTL_GET_COMPRESSION, &mut compressed)
+        };
 
         // now should be compressed
         assert_eq!(ecode, 0);
@@ -454,8 +451,9 @@ mod tests {
 
         // now we call ioctl_with_val, which isn't particularly any more helpful than
         // ioctl_with_ref except for the cases where the input is only a word long
-        let ecode =
-            unsafe { crate::ioctl::ioctl_with_val(&f, FSCTL_SET_COMPRESSION, compressed.into()) };
+        let ecode = unsafe {
+            super::super::ioctl::ioctl_with_val(&f, FSCTL_SET_COMPRESSION, compressed.into())
+        };
 
         assert_eq!(ecode, 0);
         // set compressed short back to 0 for reading purposes,
@@ -463,8 +461,9 @@ mod tests {
         // is writing anything to the compressed pointer.
         compressed = 0;
 
-        let ecode =
-            unsafe { crate::ioctl::ioctl_with_mut_ref(&f, FSCTL_GET_COMPRESSION, &mut compressed) };
+        let ecode = unsafe {
+            super::super::ioctl::ioctl_with_mut_ref(&f, FSCTL_GET_COMPRESSION, &mut compressed)
+        };
 
         // now should be compressed
         assert_eq!(ecode, 0);

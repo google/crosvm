@@ -2,11 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::clone::Clone;
-use std::default::Default;
-use std::marker::Copy;
+use std::{clone::Clone, default::Default, marker::Copy};
 
-use crate::{AsRawDescriptor, PollToken, RawDescriptor};
+use super::{AsRawDescriptor, PollToken, RawDescriptor};
 
 #[path = "win/wait.rs"]
 mod wait;
@@ -73,8 +71,7 @@ pub enum EventType {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::Event;
+    use super::{super::Event, *};
     use std::time::Duration;
 
     #[test]

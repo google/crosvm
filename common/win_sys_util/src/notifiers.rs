@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::AsRawDescriptor;
+use super::AsRawDescriptor;
 
 pub trait ReadNotifier {
     /// Gets a descriptor that can be used in EventContext to wait for events to be available (e.g.

@@ -44,36 +44,36 @@ pub mod thread;
 
 mod write_zeroes;
 
-pub use crate::clock::{Clock, FakeClock};
-pub use crate::console::*;
-pub use crate::descriptor::*;
-pub use crate::event::*;
-pub use crate::events::*;
-pub use crate::get_filesystem_type::*;
-pub use crate::gmtime::*;
-pub use crate::ioctl::*;
-pub use crate::mmap::*;
-pub use crate::notifiers::*;
-pub use crate::poll::*;
-pub use crate::priority::*;
-pub use crate::sched::*;
-pub use crate::shm::*;
-pub use crate::stream_channel::*;
-pub use crate::timer::*;
-pub use crate::win::*;
+pub use clock::{Clock, FakeClock};
+pub use console::*;
+pub use descriptor::*;
 pub use descriptor_reflection::{
     deserialize_with_descriptors, with_as_descriptor, with_raw_descriptor, FileSerdeWrapper,
     SerializeDescriptors,
 };
+pub use event::*;
+pub use events::*;
+pub use get_filesystem_type::*;
+pub use gmtime::*;
+pub use ioctl::*;
+pub use mmap::*;
+pub use notifiers::*;
+pub use poll::*;
 pub use poll_token_derive::*;
+pub use priority::*;
+pub use sched::*;
+pub use shm::*;
+pub use stream_channel::*;
 pub use sys_util_core::{Error, Result, *};
+pub use timer::*;
+pub use win::*;
 
-pub use crate::file_traits::{
+pub use file_traits::{
     AsRawDescriptors, FileAllocate, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile,
     FileSetLen, FileSync,
 };
-pub use crate::mmap::Error as MmapError;
-pub use crate::write_zeroes::{PunchHole, WriteZeroes, WriteZeroesAt};
+pub use mmap::Error as MmapError;
+pub use write_zeroes::{PunchHole, WriteZeroes, WriteZeroesAt};
 
 use std::cell::Cell;
 

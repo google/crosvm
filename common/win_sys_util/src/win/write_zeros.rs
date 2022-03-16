@@ -2,12 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::PunchHole;
-use super::WriteZeroesAt;
-use std::cmp::min;
-use std::fs::File;
-use std::io;
-use std::os::windows::fs::FileExt;
+use super::{PunchHole, WriteZeroesAt};
+use std::{cmp::min, fs::File, io, os::windows::fs::FileExt};
 
 impl WriteZeroesAt for File {
     // TODO(b/195151495): Fix so that this will extend a file size if needed.

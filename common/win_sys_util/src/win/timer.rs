@@ -2,19 +2,28 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::windows::io::{AsRawHandle, RawHandle};
-use std::ptr;
-use std::time::Duration;
+use std::{
+    os::windows::io::{AsRawHandle, RawHandle},
+    ptr,
+    time::Duration,
+};
 
 use win_util::{LargeInteger, SecurityAttributes, SelfRelativeSecurityDescriptor};
-use winapi::shared::minwindef::FALSE;
-use winapi::shared::winerror::WAIT_TIMEOUT;
-use winapi::um::synchapi::{CancelWaitableTimer, SetWaitableTimer, WaitForSingleObject};
-use winapi::um::winbase::{CreateWaitableTimerA, INFINITE, WAIT_OBJECT_0};
+use winapi::{
+    shared::{minwindef::FALSE, winerror::WAIT_TIMEOUT},
+    um::{
+        synchapi::{CancelWaitableTimer, SetWaitableTimer, WaitForSingleObject},
+        winbase::{CreateWaitableTimerA, INFINITE, WAIT_OBJECT_0},
+    },
+};
 
-use super::{Timer, WaitResult};
-use crate::win::nt_query_timer_resolution;
-use crate::{errno_result, AsRawDescriptor, FromRawDescriptor, Result, SafeDescriptor};
+use super::{
+    super::{
+        errno_result, win::nt_query_timer_resolution, AsRawDescriptor, FromRawDescriptor, Result,
+        SafeDescriptor,
+    },
+    Timer, WaitResult,
+};
 
 impl AsRawHandle for Timer {
     fn as_raw_handle(&self) -> RawHandle {

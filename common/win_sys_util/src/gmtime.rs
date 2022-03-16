@@ -2,8 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::gmtime_s;
-use libc::{time_t, tm};
+use libc::{gmtime_s, time_t, tm};
 
 /// # Safety
 /// safe because we are passing in the allocated tm struct

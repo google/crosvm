@@ -21,17 +21,21 @@
 //! ```
 
 pub use super::win::syslog::PlatformSyslog;
-use crate::{syslog_lock, AsRawDescriptor, RawDescriptor, CHRONO_TIMESTAMP_FIXED_FMT};
+use super::{syslog_lock, AsRawDescriptor, RawDescriptor, CHRONO_TIMESTAMP_FIXED_FMT};
 use serde::{Deserialize, Serialize};
-use std::convert::{From, Into, TryFrom};
-use std::env;
-use std::ffi::{OsStr, OsString};
-use std::fmt::{self, Display};
-use std::fs::File;
-use std::io;
-use std::io::{stderr, Cursor, Write};
-use std::path::{Path, PathBuf};
-use std::sync::{MutexGuard, Once};
+use std::{
+    convert::{From, Into, TryFrom},
+    env,
+    ffi::{OsStr, OsString},
+    fmt::{
+        Display, {self},
+    },
+    fs::File,
+    io,
+    io::{stderr, Cursor, Write},
+    path::{Path, PathBuf},
+    sync::{MutexGuard, Once},
+};
 
 use remain::sorted;
 use sync::Mutex;
@@ -586,11 +590,9 @@ impl io::Write for Syslogger {
 mod tests {
     use super::*;
 
-    use crate::{BlockingMode, FramingMode, StreamChannel};
+    use super::super::{BlockingMode, FramingMode, StreamChannel};
     use regex::Regex;
-    use std::convert::TryInto;
-    use std::io::Read;
-    use std::os::windows::io::FromRawHandle;
+    use std::{convert::TryInto, io::Read, os::windows::io::FromRawHandle};
 
     #[test]
     #[ignore]

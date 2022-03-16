@@ -3,17 +3,18 @@
 // found in the LICENSE file.
 
 use remain::sorted;
-use std::cmp::min;
-use std::io;
-use std::mem::size_of;
-use std::ptr::{copy_nonoverlapping, read_unaligned, write_unaligned};
+use std::{
+    cmp::min,
+    io,
+    mem::size_of,
+    ptr::{copy_nonoverlapping, read_unaligned, write_unaligned},
+};
 
-use data_model::volatile_memory::*;
-use data_model::DataInit;
+use data_model::{volatile_memory::*, DataInit};
 
 use libc::{c_int, c_uint, c_void};
 
-use crate::{AsRawDescriptor, Descriptor, ExternalMapping, RawDescriptor};
+use super::{AsRawDescriptor, Descriptor, ExternalMapping, RawDescriptor};
 
 #[path = "win/mmap.rs"]
 mod mmap_platform;
@@ -41,7 +42,7 @@ pub enum Error {
     #[error("system call failed while creating the mapping: {0}")]
     StdSyscallFailed(io::Error),
     #[error("mmap related system call failed: {0}")]
-    SystemCallFailed(#[source] crate::Error),
+    SystemCallFailed(#[source] super::Error),
     #[error("failed to write from memory to file: {0}")]
     WriteFromMemory(#[source] io::Error),
 }
@@ -183,7 +184,7 @@ impl dyn MappedRegion {
         if ret != -1 {
             Ok(())
         } else {
-            Err(Error::SystemCallFailed(crate::Error::last()))
+            Err(Error::SystemCallFailed(super::Error::last()))
         }
     }
 }
@@ -421,8 +422,7 @@ impl VolatileMemory for MemoryMapping {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::shm::SharedMemory;
+    use super::{super::shm::SharedMemory, *};
     use data_model::{VolatileMemory, VolatileMemoryError};
 
     #[test]

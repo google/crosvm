@@ -14,22 +14,26 @@ pub use platform_timer_utils::*;
 mod file_util;
 pub use file_util::*;
 
-use crate::{
+use super::{
     errno_result, pid_t, AsRawDescriptor, Error, FromRawDescriptor, Result, SafeDescriptor,
 };
 use serde::{Deserialize, Serialize};
-use std::fs::{File, OpenOptions};
-use std::path::Path;
-use std::ptr::null_mut;
-use std::sync::Once;
-use winapi::shared::minwindef::DWORD;
-use winapi::shared::winerror::WAIT_TIMEOUT;
-use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-use winapi::um::processthreadsapi::GetCurrentProcessId;
-use winapi::um::synchapi::{CreateMutexA, ReleaseMutex, WaitForSingleObject};
-use winapi::um::winbase::WAIT_ABANDONED;
-use winapi::um::winbase::{INFINITE, WAIT_OBJECT_0};
-use winapi::um::winuser::AllowSetForegroundWindow;
+use std::{
+    fs::{File, OpenOptions},
+    path::Path,
+    ptr::null_mut,
+    sync::Once,
+};
+use winapi::{
+    shared::{minwindef::DWORD, winerror::WAIT_TIMEOUT},
+    um::{
+        handleapi::INVALID_HANDLE_VALUE,
+        processthreadsapi::GetCurrentProcessId,
+        synchapi::{CreateMutexA, ReleaseMutex, WaitForSingleObject},
+        winbase::{INFINITE, WAIT_ABANDONED, WAIT_OBJECT_0},
+        winuser::AllowSetForegroundWindow,
+    },
+};
 
 #[inline(always)]
 pub fn pagesize() -> usize {

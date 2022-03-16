@@ -2,16 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::named_pipes::{self, PipeConnection};
-use crate::stream_channel::{BlockingMode, FramingMode};
-use crate::{
+use super::super::{
+    named_pipes::{
+        PipeConnection, {self},
+    },
+    stream_channel::{BlockingMode, FramingMode},
     AsRawDescriptor, CloseNotifier, Event, MultiProcessMutex, RawDescriptor, ReadNotifier, Result,
 };
-use serde::ser::SerializeStruct;
-use serde::{Deserialize, Serialize, Serializer};
-use std::cell::RefCell;
-use std::io;
-use std::sync::Arc;
+use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
+use std::{cell::RefCell, io, sync::Arc};
 use sync::Mutex;
 
 impl From<FramingMode> for named_pipes::FramingMode {
@@ -366,10 +365,14 @@ impl CloseNotifier for StreamChannel {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{EventContext, EventTrigger, PollToken, ReadNotifier};
-    use std::io::{Read, Write};
-    use std::time::Duration;
+    use super::{
+        super::super::{EventContext, EventTrigger, PollToken, ReadNotifier},
+        *,
+    };
+    use std::{
+        io::{Read, Write},
+        time::Duration,
+    };
 
     #[derive(PollToken, Debug, Eq, PartialEq, Copy, Clone)]
     enum Token {

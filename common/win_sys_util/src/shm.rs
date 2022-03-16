@@ -4,11 +4,13 @@
 
 use std::ffi::CString;
 
-use crate::{
+use super::{
     AsRawDescriptor, IntoRawDescriptor, MemoryMapping, RawDescriptor, Result, SafeDescriptor,
 };
 use libc::EINVAL;
-use std::io::{self, Error, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::io::{
+    Error, ErrorKind, Read, Seek, SeekFrom, Write, {self},
+};
 
 #[path = "win/shm.rs"]
 mod shm_platform;
@@ -32,7 +34,7 @@ impl SharedMemory {
     /// error.
     pub fn named<T: Into<Vec<u8>>>(name: T, size: u64) -> Result<SharedMemory> {
         SharedMemory::new(
-            Some(&CString::new(name).map_err(|_| crate::Error::new(EINVAL))?),
+            Some(&CString::new(name).map_err(|_| super::Error::new(EINVAL))?),
             size,
         )
     }

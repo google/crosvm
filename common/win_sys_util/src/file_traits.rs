@@ -3,10 +3,12 @@
 // found in the LICENSE file.
 
 pub use super::win::file_traits::*;
-use crate::{AsRawDescriptor, RawDescriptor};
+use super::{AsRawDescriptor, RawDescriptor};
 
-use std::fs::File;
-use std::io::{Error, ErrorKind, Result};
+use std::{
+    fs::File,
+    io::{Error, ErrorKind, Result},
+};
 
 use data_model::VolatileSlice;
 
@@ -271,8 +273,8 @@ where
     }
 }
 
-crate::volatile_impl!(File);
-crate::volatile_at_impl!(File);
+super::volatile_impl!(File);
+super::volatile_at_impl!(File);
 
 #[cfg(test)]
 mod tests {

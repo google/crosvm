@@ -2,9 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{FileAllocate, WriteZeroesAt};
-use std::fs::File;
-use std::io;
+use super::super::{FileAllocate, WriteZeroesAt};
+use std::{fs::File, io};
 
 #[macro_export]
 macro_rules! volatile_impl {

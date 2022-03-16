@@ -2,13 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::AsRawDescriptor;
-use std::io::Error;
-use std::io::{stdin, Read, Result};
-use winapi::shared::minwindef::LPVOID;
-use winapi::shared::ntdef::NULL;
-use winapi::um::fileapi::ReadFile;
-use winapi::um::minwinbase::LPOVERLAPPED;
+use super::AsRawDescriptor;
+use std::io::{stdin, Error, Read, Result};
+use winapi::{
+    shared::{minwindef::LPVOID, ntdef::NULL},
+    um::{fileapi::ReadFile, minwinbase::LPOVERLAPPED},
+};
 
 pub struct Console;
 

@@ -5,18 +5,24 @@
 //! The mmap module provides a safe interface to map memory and ensures UnmapViewOfFile is called when the
 //! mmap object leaves scope.
 
-use std::io;
-use std::slice::{from_raw_parts, from_raw_parts_mut};
+use std::{
+    io,
+    slice::{from_raw_parts, from_raw_parts_mut},
+};
 
-use libc::{self, c_uint, c_void};
+use libc::{
+    c_uint, c_void, {self},
+};
 
 use win_util::{allocation_granularity, get_high_order, get_low_order};
 use winapi::um::memoryapi::{
     FlushViewOfFile, MapViewOfFile, MapViewOfFileEx, UnmapViewOfFile, FILE_MAP_READ, FILE_MAP_WRITE,
 };
 
-use super::{Error, MappedRegion, MemoryMapping, Protection, Result};
-use crate::{warn, AsRawDescriptor, RawDescriptor};
+use super::{
+    super::{warn, AsRawDescriptor, RawDescriptor},
+    Error, MappedRegion, MemoryMapping, Protection, Result,
+};
 
 pub(super) const PROT_NONE: c_uint = 0;
 pub(super) const PROT_READ: c_uint = FILE_MAP_READ;
@@ -169,7 +175,7 @@ impl MemoryMapping {
         };
 
         if created_address.is_null() {
-            return Err(Error::SystemCallFailed(crate::Error::last()));
+            return Err(Error::SystemCallFailed(super::super::Error::last()));
         }
 
         Ok(MemoryMapping {
@@ -184,7 +190,7 @@ impl MemoryMapping {
         // Safe because self can only be created as a successful memory mapping
         unsafe {
             if FlushViewOfFile(self.addr, self.size) == 0 {
-                return Err(Error::SystemCallFailed(crate::Error::last()));
+                return Err(Error::SystemCallFailed(super::super::Error::last()));
             }
         };
         Ok(())
@@ -280,7 +286,10 @@ impl Drop for MemoryMapping {
         // else is holding a reference to it.
         unsafe {
             if UnmapViewOfFile(self.addr) == 0 {
-                warn!("Unsuccessful unmap of file: {}", crate::Error::last());
+                warn!(
+                    "Unsuccessful unmap of file: {}",
+                    super::super::Error::last()
+                );
             }
         }
     }
@@ -293,8 +302,10 @@ pub struct MemoryMappingArena();
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{pagesize, FromRawDescriptor, SharedMemory};
+    use super::{
+        super::super::{pagesize, FromRawDescriptor, SharedMemory},
+        *,
+    };
     use data_model::{VolatileMemory, VolatileMemoryError};
     use std::ptr;
     use winapi::shared::winerror;

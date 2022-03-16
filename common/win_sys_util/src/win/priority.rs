@@ -2,12 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{errno_result, Result};
+use super::{errno_result, Result};
 use std::os::windows::raw::HANDLE;
-use winapi::shared::minwindef::FALSE;
-use winapi::um::avrt::{AvRevertMmThreadCharacteristics, AvSetMmThreadCharacteristicsA};
-use winapi::um::errhandlingapi::GetLastError;
-use winapi::um::processthreadsapi::{GetCurrentThread, SetThreadPriority};
+use winapi::{
+    shared::minwindef::FALSE,
+    um::{
+        avrt::{AvRevertMmThreadCharacteristics, AvSetMmThreadCharacteristicsA},
+        errhandlingapi::GetLastError,
+        processthreadsapi::{GetCurrentThread, SetThreadPriority},
+    },
+};
 
 pub fn set_audio_thread_priorities() -> Result<SafeMultimediaHandle> {
     // Safe because we know Pro Audio is part of windows and we down task_index.
@@ -61,10 +65,10 @@ impl Drop for SafeMultimediaHandle {
 #[cfg(test)]
 mod test {
     use super::*;
-    use winapi::um::processthreadsapi::GetCurrentThread;
-    use winapi::um::processthreadsapi::GetThreadPriority;
-    use winapi::um::winbase::THREAD_PRIORITY_NORMAL;
-    use winapi::um::winbase::THREAD_PRIORITY_TIME_CRITICAL;
+    use winapi::um::{
+        processthreadsapi::{GetCurrentThread, GetThreadPriority},
+        winbase::{THREAD_PRIORITY_NORMAL, THREAD_PRIORITY_TIME_CRITICAL},
+    };
 
     // TODO(b/223733375): Enable ignored flaky tests.
     #[test]

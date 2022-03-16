@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::Result;
+use super::Result;
 use std::fs::File;
 
 pub fn get_filesystem_type(_file: &File) -> Result<i64> {

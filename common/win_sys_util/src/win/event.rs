@@ -3,25 +3,33 @@
 // found in the LICENSE file.
 
 use serde::{Deserialize, Serialize};
-use std::ffi::CString;
-use std::mem;
-use std::mem::MaybeUninit;
-use std::ops::Deref;
-use std::os::windows::io::{AsRawHandle, RawHandle};
-use std::ptr;
-use std::ptr::null;
-use std::time::Duration;
+use std::{
+    ffi::CString,
+    mem,
+    mem::MaybeUninit,
+    ops::Deref,
+    os::windows::io::{AsRawHandle, RawHandle},
+    ptr,
+    ptr::null,
+    time::Duration,
+};
 use sys_util_core::generate_scoped_event;
 use win_util::{SecurityAttributes, SelfRelativeSecurityDescriptor};
-use winapi::shared::minwindef::{DWORD, FALSE, TRUE};
-use winapi::shared::winerror::WAIT_TIMEOUT;
-use winapi::um::handleapi::DuplicateHandle;
-use winapi::um::processthreadsapi::GetCurrentProcess;
-use winapi::um::synchapi::{CreateEventA, OpenEventA, ResetEvent, SetEvent, WaitForSingleObject};
-use winapi::um::winbase::WAIT_FAILED;
-use winapi::um::winnt::{DUPLICATE_SAME_ACCESS, EVENT_MODIFY_STATE, HANDLE};
+use winapi::{
+    shared::{
+        minwindef::{DWORD, FALSE, TRUE},
+        winerror::WAIT_TIMEOUT,
+    },
+    um::{
+        handleapi::DuplicateHandle,
+        processthreadsapi::GetCurrentProcess,
+        synchapi::{CreateEventA, OpenEventA, ResetEvent, SetEvent, WaitForSingleObject},
+        winbase::WAIT_FAILED,
+        winnt::{DUPLICATE_SAME_ACCESS, EVENT_MODIFY_STATE, HANDLE},
+    },
+};
 
-use crate::{
+use super::{
     errno_result, AsRawDescriptor, Error, FromRawDescriptor, IntoRawDescriptor, RawDescriptor,
     Result, SafeDescriptor,
 };
@@ -218,8 +226,10 @@ generate_scoped_event!(Event);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use winapi::shared::winerror::WAIT_TIMEOUT;
-    use winapi::um::winbase::{INFINITE, WAIT_OBJECT_0};
+    use winapi::{
+        shared::winerror::WAIT_TIMEOUT,
+        um::winbase::{INFINITE, WAIT_OBJECT_0},
+    };
 
     #[test]
     fn new() {

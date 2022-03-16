@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{AsRawDescriptor, RawDescriptor};
+use super::{AsRawDescriptor, RawDescriptor};
 use std::io;
 #[path = "win/stream_channel.rs"]
 mod stream_channel;
@@ -40,8 +40,10 @@ impl AsRawDescriptor for StreamChannel {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{EventContext, EventTrigger, PollToken, ReadNotifier};
+    use super::{
+        super::{EventContext, EventTrigger, PollToken, ReadNotifier},
+        *,
+    };
     use std::io::{Read, Write};
 
     #[derive(PollToken, Debug, Eq, PartialEq, Copy, Clone)]

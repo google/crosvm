@@ -4,8 +4,10 @@
 
 //! Implementation of the Syslog trait as a wrapper around Window's events
 
-use crate::syslog::{Error, Facility, Priority, Syslog};
-use crate::RawDescriptor;
+use super::super::{
+    syslog::{Error, Facility, Priority, Syslog},
+    RawDescriptor,
+};
 
 pub struct PlatformSyslog {
     enabled: bool,
