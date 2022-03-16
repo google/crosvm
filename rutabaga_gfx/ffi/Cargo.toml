@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 rutabaga_gfx = { path = "../" }
-base = {path = "../../common/base" }
+base = {path = "../../base" }
 data_model = {path = "../../common/data_model" }
 libc = "0.2.93"
 

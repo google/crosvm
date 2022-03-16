@@ -16,4 +16,4 @@ kvm_sys = { path = "../kvm_sys" }
 libc = "*"
 protobuf = "2.3"
 protos = { path = "../protos", features = ["plugin"] }
-base = { path = "../common/base" }
+base = { path = "../base" }

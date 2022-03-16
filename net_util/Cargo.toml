@@ -8,7 +8,7 @@ edition = "2021"
 libc = "*"
 data_model = { path = "../common/data_model" }
 net_sys = { path = "../net_sys" }
-base = { path = "../common/base" }
+base = { path = "../base" }
 cros_async = { path = "../common/cros_async" }
 remain = "*"
 thiserror = "*"

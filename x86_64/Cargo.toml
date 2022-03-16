@@ -22,7 +22,7 @@ remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../common/sync" }
 thiserror = "*"
-base = { path = "../common/base" }
+base = { path = "../base" }
 acpi_tables = {path = "../acpi_tables" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }

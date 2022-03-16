@@ -14,7 +14,7 @@ hypervisor = { path = "../hypervisor" }
 kernel_loader = { path = "../kernel_loader" }
 libc = "*"
 rand = "0.6"
-base = { path = "../common/base" }
+base = { path = "../base" }
 tempfile = "3"
 usb_util = { path = "../usb_util" }
 vm_memory = { path = "../vm_memory" }

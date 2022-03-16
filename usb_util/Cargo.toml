@@ -10,5 +10,5 @@ data_model = { path = "../common/data_model" }
 libc = "*"
 remain = "*"
 thiserror = "*"
-base = { path = "../common/base" }
+base = { path = "../base" }
 usb_sys = { path = "../usb_sys" }

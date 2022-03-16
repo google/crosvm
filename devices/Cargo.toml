@@ -26,7 +26,7 @@ acpi_tables = {path = "../acpi_tables" }
 anyhow = "*"
 audio_streams = "*"
 balloon_control = { path = "../common/balloon_control" }
-base = { path = "../common/base" }
+base = { path = "../base" }
 bit_field = { path = "../bit_field" }
 cros_async = { path = "../common/cros_async" }
 data_model = { path = "../common/data_model" }

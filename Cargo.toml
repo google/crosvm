@@ -43,8 +43,10 @@ members = [
     "aarch64",
     "acpi_tables",
     "arch",
+    "base",
     "bit_field",
     "crosvm-fuzz",
+    "crosvm_control",
     "crosvm_plugin",
     "devices",
     "disk",
@@ -56,7 +58,7 @@ members = [
     "kernel_loader",
     "kvm",
     "kvm_sys",
-    "crosvm_control",
+    "libcras_stub",
     "libvda",
     "linux_input_sys",
     "net_sys",
@@ -66,6 +68,7 @@ members = [
     "qcow_utils",
     "resources",
     "rutabaga_gfx",
+    "system_api_stub",
     "tpm2",
     "tpm2-sys",
     "usb_sys",
@@ -75,14 +78,13 @@ members = [
     "virtio_sys",
     "vm_control",
     "vm_memory",
-    "third_party/vmm_vhost",
     "x86_64",
+    "third_party/vmm_vhost",
 ]
 exclude = [
     "common/assertions",
     "common/audio_streams",
-    "common/base",
-    "common/sys_util_core",
+    "common/balloon_control",
     "common/cros-fuzz",
     "common/cros_async",
     "common/cros_asyncv2",
@@ -91,6 +93,9 @@ exclude = [
     "common/p9",
     "common/sync",
     "common/sys_util",
+    "common/sys_util_core",
+    "common/win_sys_util",
+    "common/win_util",
 ]
 
 [features]
@@ -185,7 +190,7 @@ base = "*"
 [patch.crates-io]
 assertions = { path = "common/assertions" }
 audio_streams = { path = "common/audio_streams" }
-base = { path = "common/base" }
+base = { path = "base" }
 sys_util_core = { path = "common/sys_util_core" }
 cros_async =  { path = "common/cros_async" }
 cros_fuzz = { path = "common/cros-fuzz" } # ignored by ebuild

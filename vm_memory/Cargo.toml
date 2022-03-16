@@ -9,7 +9,7 @@ include = ["src/**/*", "Cargo.toml"]
 cros_async = { path = "../common/cros_async" }
 data_model = { path = "../common/data_model" }
 libc = "*"
-base = { path = "../common/base" }
+base = { path = "../base" }
 bitflags = "1"
 remain = "*"
 serde = { version = "1", features = [ "derive" ] }

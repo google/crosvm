@@ -8,6 +8,6 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-base = { path = "../common/base" }
+base = { path = "../base" }
 vm_control = { path = "../vm_control" }
 libc = "0.2.65"

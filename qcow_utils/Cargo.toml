@@ -11,4 +11,4 @@ crate-type = ["cdylib"]
 [dependencies]
 libc = "*"
 disk = { path = "../disk" }
-base = { path = "../common/base" }
+base = { path = "../base" }

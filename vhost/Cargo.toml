@@ -8,7 +8,7 @@ edition = "2021"
 assertions = { path = "../common/assertions" }
 libc = "*"
 net_util = { path = "../net_util" }
-base = { path = "../common/base" }
+base = { path = "../base" }
 remain = "*"
 thiserror = "*"
 virtio_sys = { path = "../virtio_sys" }

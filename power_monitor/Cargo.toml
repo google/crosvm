@@ -8,7 +8,7 @@ edition = "2021"
 powerd = ["dbus", "protobuf", "protoc-rust"]
 
 [dependencies]
-base = { path = "../common/base" }
+base = { path = "../base" }
 dbus = { version = "0.9", optional = true }
 protobuf = { version = "2.8.1", optional = true }
 remain = "0.2"

@@ -16,7 +16,7 @@ vulkano = []
 [dependencies]
 data_model = { path = "../common/data_model" }
 libc = "*"
-base = { path = "../common/base" }
+base = { path = "../base" }
 remain = "*"
 sync = { path = "../common/sync" }
 thiserror = "*"

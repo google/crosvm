@@ -8,6 +8,6 @@ edition = "2021"
 data_model = { path = "../common/data_model" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
-base = { path = "../common/base" }
+base = { path = "../base" }
 sync = { path = "../common/sync" }
 vm_memory = { path = "../vm_memory" }
