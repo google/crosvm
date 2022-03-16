@@ -116,6 +116,25 @@ def use_super_instead_of_crate(root: Path):
     that directory to be the module crate:: refers to."""
 
     def replace(module: list[str], use: str):
+        # Patch up weird module structure...
+        if len(module) > 1 and module[0] == "win":
+            # Only the listed modules are actually in win::.
+            # The rest is in the top level.
+            if module[1] not in (
+                "file_traits",
+                "syslog",
+                "platform_timer_utils",
+                "file_util",
+                "shm",
+                "wait",
+                "mmap",
+                "stream_channel",
+                "timer",
+            ):
+                del module[0]
+        if len(module) > 0 and module[0] in ("punch_hole", "write_zeros"):
+            module = ["write_zeroes", module[0]]
+
         if use.startswith("crate::"):
             new_use = use.replace("crate::", "super::" * len(module))
             print("::".join(module), use, "->", new_use)
@@ -128,18 +147,17 @@ def use_super_instead_of_crate(root: Path):
 
 
 def main():
-    for crate in ("sys_util", "win_sys_util", "sys_util_core", "cros_async"):
-        path = Path("common") / crate / "src"
-        subprocess.check_call(["git", "checkout", "-f", str(path)])
+    path = Path("common") / "win_sys_util/src"
+    subprocess.check_call(["git", "checkout", "-f", str(path)])
 
-        # Use rustfmt to re-format use statements to be one per line.
-        subprocess.check_call(
-            ["rustfmt", "+nightly", "--config=imports_granularity=item", f"{path}/lib.rs"]
-        )
-        use_super_instead_of_crate(path)
-        subprocess.check_call(
-            ["rustfmt", "+nightly", "--config=imports_granularity=crate", f"{path}/lib.rs"]
-        )
+    # Use rustfmt to re-format use statements to be one per line.
+    subprocess.check_call(
+        ["rustfmt", "+nightly", "--config=imports_granularity=item", f"{path}/lib.rs"]
+    )
+    use_super_instead_of_crate(path)
+    subprocess.check_call(
+        ["rustfmt", "+nightly", "--config=imports_granularity=crate", f"{path}/lib.rs"]
+    )
 
 
 main()
