@@ -1021,7 +1021,7 @@ pub fn create_iommu_device(
 
 fn add_bind_mounts(param: &SerialParameters, jail: &mut Minijail) -> Result<(), minijail::Error> {
     if let Some(path) = &param.path {
-        if let SerialType::UnixSocket = param.type_ {
+        if let SerialType::SystemSerialType = param.type_ {
             if let Some(parent) = path.as_path().parent() {
                 if parent.exists() {
                     info!("Bind mounting dir {}", parent.display());

@@ -42,6 +42,7 @@ pub fn set_default_serial_parameters(
                 console: true,
                 earlycon: false,
                 stdin: true,
+                out_timestamp: false,
             });
     }
 
@@ -59,6 +60,7 @@ pub fn set_default_serial_parameters(
             console: false,
             earlycon: false,
             stdin: false,
+            out_timestamp: false,
         });
     }
 }
@@ -230,6 +232,7 @@ mod tests {
                 console: true,
                 earlycon: false,
                 stdin: true,
+                out_timestamp: false,
             },
         );
 
@@ -258,6 +261,7 @@ mod tests {
                 console: true,
                 earlycon: false,
                 stdin: true,
+                out_timestamp: false,
             },
         );
 
@@ -273,6 +277,7 @@ mod tests {
                 console: false,
                 earlycon: true,
                 stdin: false,
+                out_timestamp: false,
             },
         );
 
@@ -302,6 +307,7 @@ mod tests {
                 console: false,
                 earlycon: true,
                 stdin: true,
+                out_timestamp: false,
             },
         );
 

@@ -2,23 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::borrow::Cow;
 use std::fmt::{self, Display};
 use std::fs::{File, OpenOptions};
-use std::io::{self, stdin, stdout, ErrorKind};
-use std::os::unix::net::UnixDatagram;
-use std::path::{Path, PathBuf};
-use std::thread;
-use std::time::Duration;
+use std::io::{self, stdin, stdout};
+use std::path::PathBuf;
 
-use base::{
-    error, info, read_raw_stdin, safe_descriptor_from_path, syslog, AsRawDescriptor, Event,
-    RawDescriptor,
-};
+use base::{error, syslog, AsRawDescriptor, Event, FileSync, RawDescriptor};
 use hypervisor::ProtectionType;
 use remain::sorted;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error as ThisError;
+
+pub use crate::sys::serial_device::SerialDevice;
+use crate::sys::serial_device::*;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -37,32 +33,23 @@ pub enum Error {
     PathRequired,
     #[error("Failed to create unbound socket")]
     SocketCreateFailed,
+    #[error("Unable to open system type serial: {0}")]
+    SystemTypeError(std::io::Error),
     #[error("Serial device type {0} not implemented")]
     Unimplemented(SerialType),
 }
 
-/// Abstraction over serial-like devices that can be created given an event and optional input and
-/// output streams.
-pub trait SerialDevice {
-    fn new(
-        protected_vm: ProtectionType,
-        interrupt_evt: Event,
-        input: Option<Box<dyn io::Read + Send>>,
-        output: Option<Box<dyn io::Write + Send>>,
-        keep_rds: Vec<RawDescriptor>,
-    ) -> Self;
-}
-
 /// Enum for possible type of serial devices
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SerialType {
     File,
     Stdout,
     Sink,
     Syslog,
-    #[serde(rename = "unix")]
-    UnixSocket,
+    #[cfg_attr(unix, serde(rename = "unix"))]
+    #[cfg_attr(windows, serde(rename = "namedpipe"))]
+    SystemSerialType,
 }
 
 impl Default for SerialType {
@@ -78,7 +65,7 @@ impl Display for SerialType {
             SerialType::Stdout => "Stdout".to_string(),
             SerialType::Sink => "Sink".to_string(),
             SerialType::Syslog => "Syslog".to_string(),
-            SerialType::UnixSocket => "UnixSocket".to_string(),
+            SerialType::SystemSerialType => SYSTEM_SERIAL_TYPE_NAME.to_string(),
         };
 
         write!(f, "{}", s)
@@ -86,7 +73,7 @@ impl Display for SerialType {
 }
 
 /// Serial device hardware types
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SerialHardware {
     Serial,        // Standard PC-style (8250/16550 compatible) UART
@@ -110,73 +97,6 @@ impl Display for SerialHardware {
     }
 }
 
-struct WriteSocket {
-    sock: UnixDatagram,
-    buf: String,
-}
-
-const BUF_CAPACITY: usize = 1024;
-
-impl WriteSocket {
-    pub fn new(s: UnixDatagram) -> WriteSocket {
-        WriteSocket {
-            sock: s,
-            buf: String::with_capacity(BUF_CAPACITY),
-        }
-    }
-
-    pub fn send_buf(&self, buf: &[u8]) -> io::Result<usize> {
-        const SEND_RETRY: usize = 2;
-        let mut sent = 0;
-        for _ in 0..SEND_RETRY {
-            match self.sock.send(buf) {
-                Ok(bytes_sent) => {
-                    sent = bytes_sent;
-                    break;
-                }
-                Err(e) => info!("Send error: {:?}", e),
-            }
-        }
-        Ok(sent)
-    }
-}
-
-impl io::Write for WriteSocket {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let parsed_str = String::from_utf8_lossy(buf);
-
-        let last_newline_idx = match parsed_str.rfind('\n') {
-            Some(newline_idx) => Some(self.buf.len() + newline_idx),
-            None => None,
-        };
-        self.buf.push_str(&parsed_str);
-
-        match last_newline_idx {
-            Some(last_newline_idx) => {
-                for line in (self.buf[..last_newline_idx]).lines() {
-                    if self.send_buf(line.as_bytes()).is_err() {
-                        break;
-                    }
-                }
-                self.buf.drain(..=last_newline_idx);
-            }
-            None => {
-                if self.buf.len() >= BUF_CAPACITY {
-                    if let Err(e) = self.send_buf(self.buf.as_bytes()) {
-                        info!("Couldn't send full buffer. {:?}", e);
-                    }
-                    self.buf.clear();
-                }
-            }
-        }
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
 fn serial_parameters_default_num() -> u8 {
     1
 }
@@ -194,20 +114,16 @@ pub struct SerialParameters {
     pub console: bool,
     pub earlycon: bool,
     pub stdin: bool,
+    pub out_timestamp: bool,
 }
-
-// The maximum length of a path that can be used as the address of a
-// unix socket. Note that this includes the null-terminator.
-const MAX_SOCKET_PATH_LENGTH: usize = 108;
 
 impl SerialParameters {
     /// Helper function to create a serial device from the defined parameters.
     ///
     /// # Arguments
     /// * `evt` - event used for interrupt events
-    /// * `keep_rds` - Vector of descriptors required by this device if it were sandboxed
-    ///                in a child process. `evt` will always be added to this vector by
-    ///                this function.
+    /// * `keep_rds` - Vector of FDs required by this device if it were sandboxed in a child
+    ///                process. `evt` will always be added to this vector by this function.
     pub fn create_serial_device<T: SerialDevice>(
         &self,
         protected_vm: ProtectionType,
@@ -218,130 +134,74 @@ impl SerialParameters {
         keep_rds.push(evt.as_raw_descriptor());
         let input: Option<Box<dyn io::Read + Send>> = if let Some(input_path) = &self.input {
             let input_path = input_path.as_path();
-            let input_file = if let Some(fd) =
-                safe_descriptor_from_path(input_path).map_err(|e| Error::FileError(e.into()))?
-            {
-                fd.into()
+
+            let input_file = if let Some(file) = file_from_path(input_path)? {
+                file
             } else {
                 File::open(input_path).map_err(Error::FileError)?
             };
+
             keep_rds.push(input_file.as_raw_descriptor());
             Some(Box::new(input_file))
         } else if self.stdin {
             keep_rds.push(stdin().as_raw_descriptor());
-            // This wrapper is used in place of the libstd native version because we don't want
-            // buffering for stdin.
-            struct StdinWrapper;
-            impl io::Read for StdinWrapper {
-                fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
-                    read_raw_stdin(out).map_err(|e| e.into())
-                }
-            }
-            Some(Box::new(StdinWrapper))
+            Some(Box::new(ConsoleInput))
         } else {
             None
         };
-        let output: Option<Box<dyn io::Write + Send>> = match self.type_ {
+        let (output, sync): (
+            Option<Box<dyn io::Write + Send>>,
+            Option<Box<dyn FileSync + Send>>,
+        ) = match self.type_ {
             SerialType::Stdout => {
                 keep_rds.push(stdout().as_raw_descriptor());
-                Some(Box::new(stdout()))
+                (Some(Box::new(stdout())), None)
             }
-            SerialType::Sink => None,
+            SerialType::Sink => (None, None),
             SerialType::Syslog => {
                 syslog::push_descriptors(keep_rds);
-                Some(Box::new(syslog::Syslogger::new(
-                    syslog::Priority::Info,
-                    syslog::Facility::Daemon,
-                )))
+                (
+                    Some(Box::new(syslog::Syslogger::new(
+                        syslog::Priority::Info,
+                        syslog::Facility::Daemon,
+                    ))),
+                    None,
+                )
             }
             SerialType::File => match &self.path {
                 Some(path) => {
-                    let path = path.as_path();
-                    let file = if let Some(fd) =
-                        safe_descriptor_from_path(path).map_err(|e| Error::FileError(e.into()))?
-                    {
-                        fd.into()
+                    let file = if let Some(file) = file_from_path(path.as_path())? {
+                        file
                     } else {
                         OpenOptions::new()
                             .append(true)
                             .create(true)
-                            .open(path)
+                            .open(path.as_path())
                             .map_err(Error::FileError)?
                     };
+
+                    let sync = file.try_clone().map_err(Error::FileError)?;
+
                     keep_rds.push(file.as_raw_descriptor());
-                    Some(Box::new(file))
+                    keep_rds.push(sync.as_raw_descriptor());
+
+                    (Some(Box::new(file)), Some(Box::new(sync)))
                 }
                 None => return Err(Error::PathRequired),
             },
-            SerialType::UnixSocket => {
-                match &self.path {
-                    Some(path) => {
-                        // If the path is longer than 107 characters,
-                        // then we won't be able to connect directly
-                        // to it. Instead we can shorten the path by
-                        // opening the containing directory and using
-                        // /proc/self/fd/*/ to access it via a shorter
-                        // path.
-                        let mut path_cow = Cow::<Path>::Borrowed(path);
-                        let mut _dir_fd = None;
-                        if path.as_os_str().len() >= MAX_SOCKET_PATH_LENGTH {
-                            let mut short_path = PathBuf::with_capacity(MAX_SOCKET_PATH_LENGTH);
-                            short_path.push("/proc/self/fd/");
-
-                            // We don't actually want to open this
-                            // directory for reading, but the stdlib
-                            // requires all files be opened as at
-                            // least one of readable, writeable, or
-                            // appeandable.
-                            let dir = OpenOptions::new()
-                                .read(true)
-                                .open(path.parent().ok_or(Error::InvalidPath)?)
-                                .map_err(Error::FileError)?;
-
-                            short_path.push(dir.as_raw_descriptor().to_string());
-                            short_path.push(path.file_name().ok_or(Error::InvalidPath)?);
-                            path_cow = Cow::Owned(short_path);
-                            _dir_fd = Some(dir);
-                        }
-
-                        // The shortened path may still be too long,
-                        // in which case we must give up here.
-                        if path_cow.as_os_str().len() >= MAX_SOCKET_PATH_LENGTH {
-                            return Err(Error::InvalidPath);
-                        }
-
-                        // There's a race condition between
-                        // vmlog_forwarder making the logging socket and
-                        // crosvm starting up, so we loop here until it's
-                        // available.
-                        let sock = UnixDatagram::unbound().map_err(Error::FileError)?;
-                        loop {
-                            match sock.connect(&path_cow) {
-                                Ok(_) => break,
-                                Err(e) => {
-                                    match e.kind() {
-                                        ErrorKind::NotFound | ErrorKind::ConnectionRefused => {
-                                            // logging socket doesn't
-                                            // exist yet, sleep for 10 ms
-                                            // and try again.
-                                            thread::sleep(Duration::from_millis(10))
-                                        }
-                                        _ => {
-                                            error!("Unexpected error connecting to logging socket: {:?}", e);
-                                            return Err(Error::FileError(e));
-                                        }
-                                    }
-                                }
-                            };
-                        }
-                        keep_rds.push(sock.as_raw_descriptor());
-                        Some(Box::new(WriteSocket::new(sock)))
-                    }
-                    None => return Err(Error::PathRequired),
-                }
+            SerialType::SystemSerialType => {
+                return create_system_type_serial_device(self, protected_vm, evt, input, keep_rds);
             }
         };
-        Ok(T::new(protected_vm, evt, input, output, keep_rds.to_vec()))
+        Ok(T::new(
+            protected_vm,
+            evt,
+            input,
+            output,
+            sync,
+            self.out_timestamp,
+            keep_rds.to_vec(),
+        ))
     }
 }
 
@@ -369,6 +229,7 @@ mod tests {
                 console: false,
                 earlycon: false,
                 stdin: false,
+                out_timestamp: false,
             }
         );
 
@@ -381,8 +242,12 @@ mod tests {
         assert_eq!(params.type_, SerialType::Sink);
         let params = from_serial_arg("type=syslog").unwrap();
         assert_eq!(params.type_, SerialType::Syslog);
-        let params = from_serial_arg("type=unix").unwrap();
-        assert_eq!(params.type_, SerialType::UnixSocket);
+        #[cfg(unix)]
+        let opt = "type=unix";
+        #[cfg(window)]
+        let opt = "type=namedpipe";
+        let params = from_serial_arg(opt).unwrap();
+        assert_eq!(params.type_, SerialType::SystemSerialType);
         let params = from_serial_arg("type=foobar");
         assert!(params.is_err());
 
@@ -437,7 +302,7 @@ mod tests {
         assert!(params.is_err());
 
         // all together
-        let params = from_serial_arg("type=stdout,path=/some/path,hardware=virtio-console,num=5,earlycon,console,stdin,input=/some/input").unwrap();
+        let params = from_serial_arg("type=stdout,path=/some/path,hardware=virtio-console,num=5,earlycon,console,stdin,input=/some/input,out_timestamp").unwrap();
         assert_eq!(
             params,
             SerialParameters {
@@ -449,6 +314,7 @@ mod tests {
                 console: true,
                 earlycon: true,
                 stdin: true,
+                out_timestamp: true,
             }
         );
 

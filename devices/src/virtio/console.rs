@@ -9,7 +9,7 @@ use std::result;
 use std::sync::Arc;
 use std::thread;
 
-use base::{error, Event, PollToken, RawDescriptor, WaitContext};
+use base::{error, Event, FileSync, PollToken, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le16, Le32};
 use hypervisor::ProtectionType;
 use remain::sorted;
@@ -376,6 +376,8 @@ impl SerialDevice for Console {
         _evt: Event,
         input: Option<Box<dyn io::Read + Send>>,
         output: Option<Box<dyn io::Write + Send>>,
+        _sync: Option<Box<dyn FileSync + Send>>,
+        _out_timestamp: bool,
         keep_rds: Vec<RawDescriptor>,
     ) -> Console {
         Console {

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context};
-use base::{error, warn, Event, RawDescriptor, Terminal};
+use base::{error, warn, Event, FileSync, RawDescriptor, Terminal};
 use cros_async::{EventAsync, Executor};
 use data_model::DataInit;
 
@@ -83,6 +83,8 @@ impl SerialDevice for ConsoleDevice {
         _evt: Event,
         input: Option<Box<dyn io::Read + Send>>,
         output: Option<Box<dyn io::Write + Send>>,
+        _sync: Option<Box<dyn FileSync + Send>>,
+        _out_timestamp: bool,
         _keep_rds: Vec<RawDescriptor>,
     ) -> ConsoleDevice {
         let avail_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
@@ -308,6 +310,7 @@ pub fn run_console_device(program_name: &str, args: &[&str]) -> anyhow::Result<(
         earlycon: false,
         // We do not support stdin-less mode
         stdin: true,
+        out_timestamp: false,
     };
 
     let console = match params.create_serial_device::<ConsoleDevice>(

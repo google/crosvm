@@ -25,6 +25,7 @@ pub mod acpi;
 pub mod bat;
 mod serial;
 pub mod serial_device;
+mod sys;
 #[cfg(feature = "usb")]
 pub mod usb;
 #[cfg(feature = "usb")]

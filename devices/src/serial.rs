@@ -9,7 +9,7 @@ use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::Arc;
 use std::thread::{self};
 
-use base::{error, Event, RawDescriptor, Result};
+use base::{error, Event, FileSync, RawDescriptor, Result};
 use hypervisor::ProtectionType;
 
 use crate::bus::BusAccessInfo;
@@ -89,6 +89,8 @@ impl SerialDevice for Serial {
         interrupt_evt: Event,
         input: Option<Box<dyn io::Read + Send>>,
         out: Option<Box<dyn io::Write + Send>>,
+        _sync: Option<Box<dyn FileSync + Send>>,
+        _out_timestamp: bool,
         _keep_rds: Vec<RawDescriptor>,
     ) -> Serial {
         Serial {
@@ -424,6 +426,8 @@ mod tests {
             intr_evt,
             None,
             Some(Box::new(serial_out.clone())),
+            None,
+            false,
             Vec::new(),
         );
 
@@ -443,6 +447,8 @@ mod tests {
             intr_evt.try_clone().unwrap(),
             None,
             Some(Box::new(serial_out)),
+            None,
+            false,
             Vec::new(),
         );
 
