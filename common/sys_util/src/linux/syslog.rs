@@ -4,21 +4,27 @@
 
 //! Implementation of the Syslog trait for Linux.
 
-use std::fmt;
-use std::fs::File;
-use std::io::{Cursor, ErrorKind, Write};
-use std::mem;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::os::unix::net::UnixDatagram;
-use std::ptr::null;
+use std::{
+    fmt,
+    fs::File,
+    io::{Cursor, ErrorKind, Write},
+    mem,
+    os::unix::{
+        io::{AsRawFd, FromRawFd, RawFd},
+        net::UnixDatagram,
+    },
+    ptr::null,
+};
 
 use libc::{
     closelog, fcntl, localtime_r, openlog, time, time_t, tm, F_GETFD, LOG_NDELAY, LOG_PERROR,
     LOG_PID, LOG_USER,
 };
 
-use crate::getpid;
-use crate::syslog::{Error, Facility, Priority, Syslog};
+use super::super::{
+    getpid,
+    syslog::{Error, Facility, Priority, Syslog},
+};
 
 const SYSLOG_PATH: &str = "/dev/log";
 

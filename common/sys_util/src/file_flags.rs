@@ -6,7 +6,7 @@ use std::os::unix::io::AsRawFd;
 
 use libc::{fcntl, EINVAL, F_GETFL, O_ACCMODE, O_RDONLY, O_RDWR, O_WRONLY};
 
-use crate::{errno_result, Error, Result};
+use super::{errno_result, Error, Result};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FileFlags {
@@ -35,8 +35,10 @@ impl FileFlags {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{pipe, EventFd};
+    use super::{
+        super::{pipe, EventFd},
+        *,
+    };
 
     #[test]
     fn pipe_pair() {

@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::alloc::{alloc, alloc_zeroed, dealloc, Layout};
-use std::cmp::min;
+use std::{
+    alloc::{alloc, alloc_zeroed, dealloc, Layout},
+    cmp::min,
+};
 
 /// A contiguous memory allocation with a specified size and alignment, with a
 /// Drop impl to perform the deallocation.

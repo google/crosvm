@@ -4,7 +4,7 @@
 
 use sys_util::EventFd;
 
-use crate::{AsyncResult, Executor, IntoAsync, IoSourceExt};
+use super::{AsyncResult, Executor, IntoAsync, IoSourceExt};
 
 /// An async version of `sys_util::EventFd`.
 pub struct EventAsync {
@@ -18,13 +18,13 @@ impl EventAsync {
     }
 
     #[cfg(test)]
-    pub(crate) fn new_poll(event: EventFd, ex: &crate::FdExecutor) -> AsyncResult<EventAsync> {
-        crate::executor::async_poll_from(event, ex).map(|io_source| EventAsync { io_source })
+    pub(crate) fn new_poll(event: EventFd, ex: &super::FdExecutor) -> AsyncResult<EventAsync> {
+        super::executor::async_poll_from(event, ex).map(|io_source| EventAsync { io_source })
     }
 
     #[cfg(test)]
-    pub(crate) fn new_uring(event: EventFd, ex: &crate::URingExecutor) -> AsyncResult<EventAsync> {
-        crate::executor::async_uring_from(event, ex).map(|io_source| EventAsync { io_source })
+    pub(crate) fn new_uring(event: EventFd, ex: &super::URingExecutor) -> AsyncResult<EventAsync> {
+        super::executor::async_uring_from(event, ex).map(|io_source| EventAsync { io_source })
     }
 
     /// Gets the next value from the eventfd.
@@ -40,8 +40,7 @@ impl IntoAsync for EventFd {}
 mod tests {
     use super::*;
 
-    use crate::uring_executor::use_uring;
-    use crate::{Executor, FdExecutor, URingExecutor};
+    use super::super::{uring_executor::use_uring, Executor, FdExecutor, URingExecutor};
 
     #[test]
     fn next_val_reads_value() {

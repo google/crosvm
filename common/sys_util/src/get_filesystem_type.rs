@@ -2,12 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::syscall;
-use crate::Result;
+use super::{syscall, Result};
 use libc::fstatfs;
-use std::fs::File;
-use std::mem::MaybeUninit;
-use std::os::unix::io::AsRawFd;
+use std::{fs::File, mem::MaybeUninit, os::unix::io::AsRawFd};
 
 /// Obtain file system type of the file system that the file is served from.
 pub fn get_filesystem_type(file: &File) -> Result<i64> {

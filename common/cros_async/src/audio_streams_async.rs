@@ -9,10 +9,9 @@
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
 
-use std::io::Result;
-use std::time::Duration;
+use std::{io::Result, time::Duration};
 
-use crate::{AsyncWrapper, IntoAsync, IoSourceExt, TimerAsync};
+use super::{AsyncWrapper, IntoAsync, IoSourceExt, TimerAsync};
 use async_trait::async_trait;
 use audio_streams::async_api::{
     AsyncStream, AudioStreamsExecutor, ReadAsync, ReadWriteAsync, WriteAsync,
@@ -55,7 +54,7 @@ impl<T: IntoAsync + Send> WriteAsync for IoSourceWrapper<T> {
 impl<T: IntoAsync + Send> ReadWriteAsync for IoSourceWrapper<T> {}
 
 #[async_trait(?Send)]
-impl AudioStreamsExecutor for crate::Executor {
+impl AudioStreamsExecutor for super::Executor {
     #[cfg(unix)]
     fn async_unix_stream(&self, stream: UnixStream) -> Result<AsyncStream> {
         return Ok(Box::new(IoSourceWrapper {

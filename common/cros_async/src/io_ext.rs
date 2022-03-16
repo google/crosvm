@@ -15,28 +15,30 @@
 //! Operations can only access memory in a `Vec` or an implementor of `BackingMemory`. See the
 //! `URingExecutor` documentation for an explaination of why.
 
-use std::fs::File;
-use std::io;
-use std::ops::{Deref, DerefMut};
-use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::Arc;
+use std::{
+    fs::File,
+    io,
+    ops::{Deref, DerefMut},
+    os::unix::io::{AsRawFd, RawFd},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use remain::sorted;
 use sys_util::net::UnixSeqpacket;
 use thiserror::Error as ThisError;
 
-use crate::{BackingMemory, MemRegion};
+use super::{BackingMemory, MemRegion};
 
 #[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
     /// An error with a polled(FD) source.
     #[error("An error with a poll source: {0}")]
-    Poll(#[from] crate::poll_source::Error),
+    Poll(#[from] super::poll_source::Error),
     /// An error with a uring source.
     #[error("An error with a uring source: {0}")]
-    Uring(#[from] crate::uring_executor::Error),
+    Uring(#[from] super::uring_executor::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -164,21 +166,27 @@ impl<T: AsRawFd> IntoAsync for AsyncWrapper<T> {}
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{File, OpenOptions};
-    use std::future::Future;
-    use std::os::unix::io::AsRawFd;
-    use std::pin::Pin;
-    use std::sync::Arc;
-    use std::task::{Context, Poll, Waker};
-    use std::thread;
+    use std::{
+        fs::{File, OpenOptions},
+        future::Future,
+        os::unix::io::AsRawFd,
+        pin::Pin,
+        sync::Arc,
+        task::{Context, Poll, Waker},
+        thread,
+    };
 
     use sync::Mutex;
 
-    use super::*;
-    use crate::executor::{async_poll_from, async_uring_from};
-    use crate::mem::VecIoWrapper;
-    use crate::uring_executor::use_uring;
-    use crate::{Executor, FdExecutor, MemRegion, PollSource, URingExecutor, UringSource};
+    use super::{
+        super::{
+            executor::{async_poll_from, async_uring_from},
+            mem::VecIoWrapper,
+            uring_executor::use_uring,
+            Executor, FdExecutor, MemRegion, PollSource, URingExecutor, UringSource,
+        },
+        *,
+    };
 
     struct State {
         should_quit: bool,

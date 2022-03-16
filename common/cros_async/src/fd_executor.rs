@@ -9,15 +9,18 @@
 //! `FdExecutor` is meant to be used with the `futures-rs` crate that provides combinators and
 //! utility functions to combine futures.
 
-use std::fs::File;
-use std::future::Future;
-use std::io;
-use std::mem;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::pin::Pin;
-use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::{Arc, Weak};
-use std::task::{Context, Poll, Waker};
+use std::{
+    fs::File,
+    future::Future,
+    io, mem,
+    os::unix::io::{AsRawFd, FromRawFd, RawFd},
+    pin::Pin,
+    sync::{
+        atomic::{AtomicI32, Ordering},
+        Arc, Weak,
+    },
+    task::{Context, Poll, Waker},
+};
 
 use async_task::Task;
 use futures::task::noop_waker;
@@ -28,8 +31,11 @@ use sync::Mutex;
 use sys_util::{add_fd_flags, warn, EpollContext, EpollEvents, EventFd, WatchingEvents};
 use thiserror::Error as ThisError;
 
-use crate::waker::{new_waker, WakerToken, WeakWake};
-use crate::{queue::RunnableQueue, BlockingPool};
+use super::{
+    queue::RunnableQueue,
+    waker::{new_waker, WakerToken, WeakWake},
+    BlockingPool,
+};
 
 #[sorted]
 #[derive(Debug, ThisError)]
@@ -521,7 +527,7 @@ impl FdExecutor {
         let waker = new_waker(Arc::downgrade(&self.raw));
         let mut cx = Context::from_waker(&waker);
 
-        self.raw.run(&mut cx, crate::empty::<()>())
+        self.raw.run(&mut cx, super::empty::<()>())
     }
 
     pub fn run_until<F: Future>(&self, f: F) -> Result<F::Output> {
@@ -553,9 +559,11 @@ unsafe fn dup_fd(fd: RawFd) -> Result<RawFd> {
 
 #[cfg(test)]
 mod test {
-    use std::cell::RefCell;
-    use std::io::{Read, Write};
-    use std::rc::Rc;
+    use std::{
+        cell::RefCell,
+        io::{Read, Write},
+        rc::Rc,
+    };
 
     use futures::future::Either;
 
@@ -583,7 +591,7 @@ mod test {
         }
 
         let x = Rc::new(RefCell::new(0));
-        crate::run_one_poll(my_async(x.clone())).unwrap();
+        super::super::run_one_poll(my_async(x.clone())).unwrap();
         assert_eq!(*x.borrow(), 4);
     }
 

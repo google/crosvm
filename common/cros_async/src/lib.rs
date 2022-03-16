@@ -91,11 +91,13 @@ pub use timer::TimerAsync;
 pub use uring_executor::URingExecutor;
 pub use uring_source::UringSource;
 
-use std::future::Future;
-use std::io;
-use std::marker::PhantomData;
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::{
+    future::Future,
+    io,
+    marker::PhantomData,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use remain::sorted;
 use thiserror::Error as ThisError;

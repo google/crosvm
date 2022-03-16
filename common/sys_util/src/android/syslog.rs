@@ -6,15 +6,17 @@
 
 extern crate android_log_sys;
 
-use crate::syslog::{Error, Facility, Priority, Syslog};
+use super::super::syslog::{Error, Facility, Priority, Syslog};
 use android_log_sys::{
     __android_log_is_loggable, __android_log_message, __android_log_write_log_message, log_id_t,
     LogPriority,
 };
-use std::ffi::{CString, NulError};
-use std::fmt;
-use std::mem::size_of;
-use std::os::unix::io::RawFd;
+use std::{
+    ffi::{CString, NulError},
+    fmt,
+    mem::size_of,
+    os::unix::io::RawFd,
+};
 
 pub struct PlatformSyslog {
     enabled: bool,

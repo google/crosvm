@@ -5,20 +5,25 @@
 //! A wrapped IO source that uses FdExecutor to drive asynchronous completion. Used from
 //! `IoSourceExt::new` when uring isn't available in the kernel.
 
-use std::io;
-use std::ops::{Deref, DerefMut};
-use std::os::unix::io::AsRawFd;
-use std::sync::Arc;
+use std::{
+    io,
+    ops::{Deref, DerefMut},
+    os::unix::io::AsRawFd,
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use data_model::VolatileSlice;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
-use crate::fd_executor::{self, FdExecutor, RegisteredSource};
-use crate::mem::{BackingMemory, MemRegion};
-use crate::{AsyncError, AsyncResult};
-use crate::{IoSourceExt, ReadAsync, WriteAsync};
+use super::{
+    fd_executor::{
+        FdExecutor, RegisteredSource, {self},
+    },
+    mem::{BackingMemory, MemRegion},
+    AsyncError, AsyncResult, IoSourceExt, ReadAsync, WriteAsync,
+};
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -359,8 +364,10 @@ impl<F: AsRawFd> IoSourceExt<F> for PollSource<F> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{File, OpenOptions};
-    use std::path::PathBuf;
+    use std::{
+        fs::{File, OpenOptions},
+        path::PathBuf,
+    };
 
     use super::*;
 

@@ -4,21 +4,25 @@
 
 //! Provides a struct for registering signal handlers that get cleared on drop.
 
-use std::convert::TryFrom;
-use std::fmt;
-use std::io::{Cursor, Write};
-use std::panic::catch_unwind;
-use std::result;
+use std::{
+    convert::TryFrom,
+    fmt,
+    io::{Cursor, Write},
+    panic::catch_unwind,
+    result,
+};
 
 use libc::{c_int, c_void, STDERR_FILENO};
 use remain::sorted;
 use thiserror::Error;
 
-use crate::signal::{
-    clear_signal_handler, has_default_signal_handler, register_signal_handler, wait_for_signal,
-    Signal,
+use super::{
+    signal::{
+        clear_signal_handler, has_default_signal_handler, register_signal_handler, wait_for_signal,
+        Signal,
+    },
+    Error as ErrnoError,
 };
-use crate::Error as ErrnoError;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -177,18 +181,22 @@ pub fn wait_for_interrupt() -> Result<()> {
 mod tests {
     use super::*;
 
-    use std::fs::File;
-    use std::io::{BufRead, BufReader};
-    use std::mem::zeroed;
-    use std::ptr::{null, null_mut};
-    use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
-    use std::sync::{Arc, Mutex, MutexGuard, Once};
-    use std::thread::{sleep, spawn};
-    use std::time::{Duration, Instant};
+    use std::{
+        fs::File,
+        io::{BufRead, BufReader},
+        mem::zeroed,
+        ptr::{null, null_mut},
+        sync::{
+            atomic::{AtomicI32, AtomicUsize, Ordering},
+            Arc, Mutex, MutexGuard, Once,
+        },
+        thread::{sleep, spawn},
+        time::{Duration, Instant},
+    };
 
     use libc::sigaction;
 
-    use crate::{gettid, kill, Pid};
+    use super::super::{gettid, kill, Pid};
 
     const TEST_SIGNAL: Signal = Signal::User1;
     const TEST_SIGNALS: &[Signal] = &[Signal::User1, Signal::User2];

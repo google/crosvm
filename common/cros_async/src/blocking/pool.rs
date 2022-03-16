@@ -9,7 +9,9 @@ use std::{
         mpsc::{channel, Receiver, Sender},
         Arc,
     },
-    thread::{self, JoinHandle},
+    thread::{
+        JoinHandle, {self},
+    },
     time::{Duration, Instant},
 };
 
@@ -341,7 +343,7 @@ mod test {
     use futures::{stream::FuturesUnordered, StreamExt};
     use sync::{Condvar, Mutex};
 
-    use crate::{block_on, BlockingPool};
+    use super::super::super::{block_on, BlockingPool};
 
     #[test]
     fn blocking_sleep() {

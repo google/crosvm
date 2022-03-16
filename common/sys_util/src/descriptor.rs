@@ -2,20 +2,27 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::convert::TryFrom;
-use std::fs::File;
-use std::io::{Stderr, Stdin, Stdout};
-use std::mem;
-use std::mem::ManuallyDrop;
-use std::net::UdpSocket;
-use std::ops::Drop;
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
+use std::{
+    convert::TryFrom,
+    fs::File,
+    io::{Stderr, Stdin, Stdout},
+    mem,
+    mem::ManuallyDrop,
+    net::UdpSocket,
+    ops::Drop,
+    os::unix::{
+        io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
+        net::{UnixDatagram, UnixListener, UnixStream},
+    },
+};
 
 use serde::{Deserialize, Serialize};
 
-use crate::net::{UnixSeqpacket, UnlinkUnixSeqpacketListener};
-use crate::{errno_result, PollToken, Result};
+use super::{
+    errno_result,
+    net::{UnixSeqpacket, UnlinkUnixSeqpacketListener},
+    PollToken, Result,
+};
 
 pub type RawDescriptor = RawFd;
 
@@ -63,7 +70,7 @@ pub fn clone_fd(fd: &dyn AsRawFd) -> Result<RawFd> {
 #[derive(Serialize, Deserialize, Debug, Eq)]
 #[serde(transparent)]
 pub struct SafeDescriptor {
-    #[serde(with = "crate::with_raw_descriptor")]
+    #[serde(with = "super::with_raw_descriptor")]
     descriptor: RawDescriptor,
 }
 

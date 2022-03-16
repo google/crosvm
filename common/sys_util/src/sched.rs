@@ -4,15 +4,14 @@
 
 //! Wrappers for CPU affinity functions.
 
-use std::iter::FromIterator;
-use std::mem;
+use std::{iter::FromIterator, mem};
 
 use libc::{
     cpu_set_t, prctl, sched_getaffinity, sched_setaffinity, CPU_ISSET, CPU_SET, CPU_SETSIZE,
     CPU_ZERO, EINVAL,
 };
 
-use crate::{errno_result, Error, Result};
+use super::{errno_result, Error, Result};
 
 // This is needed because otherwise the compiler will complain that the
 // impl doesn't reference any types from inside this crate.
@@ -91,7 +90,7 @@ pub fn get_cpu_affinity() -> Result<Vec<usize>> {
 
     // Safe because we pass 0 for the current thread, and cpu_set.0 is a valid pointer and only
     // used for the duration of this call.
-    crate::syscall!(unsafe { sched_getaffinity(0, mem::size_of_val(&cpu_set.0), &mut cpu_set.0) })?;
+    super::syscall!(unsafe { sched_getaffinity(0, mem::size_of_val(&cpu_set.0), &mut cpu_set.0) })?;
 
     Ok(cpu_set.to_cpus())
 }

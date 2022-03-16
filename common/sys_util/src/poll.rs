@@ -2,24 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::{Cell, Ref, RefCell};
-use std::cmp::min;
-use std::fs::File;
-use std::i32;
-use std::i64;
-use std::marker::PhantomData;
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-use std::ptr::null_mut;
-use std::slice;
-use std::thread;
-use std::time::Duration;
+use std::{
+    cell::{Cell, Ref, RefCell},
+    cmp::min,
+    fs::File,
+    i32, i64,
+    marker::PhantomData,
+    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
+    ptr::null_mut,
+    slice, thread,
+    time::Duration,
+};
 
 use libc::{
     c_int, epoll_create1, epoll_ctl, epoll_event, epoll_wait, EPOLLHUP, EPOLLIN, EPOLLOUT,
     EPOLLRDHUP, EPOLL_CLOEXEC, EPOLL_CTL_ADD, EPOLL_CTL_DEL, EPOLL_CTL_MOD,
 };
 
-use crate::{errno_result, Result};
+use super::{errno_result, Result};
 
 const POLL_CONTEXT_MAX_EVENTS: usize = 16;
 
@@ -691,11 +691,9 @@ impl<T: PollToken> IntoRawFd for PollContext<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::EventFd;
+    use super::{super::EventFd, *};
     use poll_token_derive::PollToken;
-    use std::os::unix::net::UnixStream;
-    use std::time::Instant;
+    use std::{os::unix::net::UnixStream, time::Instant};
 
     #[test]
     fn poll_context() {

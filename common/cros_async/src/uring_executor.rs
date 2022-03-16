@@ -51,19 +51,26 @@
 //! ensures that only the kernel is allowed to access the `Vec` and wraps the the `Vec` in an Arc to
 //! ensure it lives long enough.
 
-use std::convert::TryInto;
-use std::ffi::CStr;
-use std::fs::File;
-use std::future::Future;
-use std::io;
-use std::mem::{self, MaybeUninit};
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::pin::Pin;
-use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::{Arc, Weak};
-use std::task::Waker;
-use std::task::{Context, Poll};
-use std::thread::{self, ThreadId};
+use std::{
+    convert::TryInto,
+    ffi::CStr,
+    fs::File,
+    future::Future,
+    io,
+    mem::{
+        MaybeUninit, {self},
+    },
+    os::unix::io::{AsRawFd, FromRawFd, RawFd},
+    pin::Pin,
+    sync::{
+        atomic::{AtomicI32, Ordering},
+        Arc, Weak,
+    },
+    task::{Context, Poll, Waker},
+    thread::{
+        ThreadId, {self},
+    },
+};
 
 use async_task::Task;
 use futures::task::noop_waker;
@@ -76,10 +83,10 @@ use sync::Mutex;
 use sys_util::{warn, WatchingEvents};
 use thiserror::Error as ThisError;
 
-use crate::queue::RunnableQueue;
-use crate::waker::{new_waker, WakerToken, WeakWake};
-use crate::{
+use super::{
     mem::{BackingMemory, MemRegion},
+    queue::RunnableQueue,
+    waker::{new_waker, WakerToken, WeakWake},
     BlockingPool,
 };
 
@@ -800,7 +807,7 @@ impl URingExecutor {
         let waker = new_waker(Arc::downgrade(&self.raw));
         let mut cx = Context::from_waker(&waker);
 
-        self.raw.run(&mut cx, crate::empty::<()>())
+        self.raw.run(&mut cx, super::empty::<()>())
     }
 
     pub fn run_until<F: Future>(&self, f: F) -> Result<F::Output> {
@@ -893,16 +900,20 @@ impl Drop for PendingOperation {
 
 #[cfg(test)]
 mod tests {
-    use std::future::Future;
-    use std::io::{Read, Write};
-    use std::mem;
-    use std::pin::Pin;
-    use std::task::{Context, Poll};
+    use std::{
+        future::Future,
+        io::{Read, Write},
+        mem,
+        pin::Pin,
+        task::{Context, Poll},
+    };
 
     use futures::executor::block_on;
 
-    use super::*;
-    use crate::mem::{BackingMemory, MemRegion, VecIoWrapper};
+    use super::{
+        super::mem::{BackingMemory, MemRegion, VecIoWrapper},
+        *,
+    };
 
     // A future that returns ready when the uring queue is empty.
     struct UringQueueEmpty<'a> {

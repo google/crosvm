@@ -2,20 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::File;
-use std::mem;
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-use std::ptr;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+    fs::File,
+    mem,
+    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
+    ptr,
+    sync::Arc,
+    time::Duration,
+};
 use sync::Mutex;
 
 use libc::{
-    self, clock_getres, timerfd_create, timerfd_gettime, timerfd_settime, CLOCK_MONOTONIC,
-    TFD_CLOEXEC,
+    clock_getres, timerfd_create, timerfd_gettime, timerfd_settime, CLOCK_MONOTONIC, TFD_CLOEXEC,
+    {self},
 };
 
-use crate::{errno_result, EventFd, FakeClock, Result};
+use super::{errno_result, EventFd, FakeClock, Result};
 
 /// A safe wrapper around a Linux timerfd (man 2 timerfd_create).
 pub struct TimerFd(File);
@@ -246,8 +248,10 @@ impl IntoRawFd for FakeTimerFd {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread::sleep;
-    use std::time::{Duration, Instant};
+    use std::{
+        thread::sleep,
+        time::{Duration, Instant},
+    };
 
     #[test]
     fn one_shot() {

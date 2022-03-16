@@ -2,15 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::UnsafeCell;
-use std::hint;
-use std::mem;
-use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::thread::yield_now;
+use std::{
+    cell::UnsafeCell,
+    hint, mem,
+    ops::{Deref, DerefMut},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    thread::yield_now,
+};
 
-use crate::sync::waiter::{Kind as WaiterKind, Waiter, WaiterAdapter, WaiterList, WaitingFor};
+use super::super::sync::waiter::{
+    Kind as WaiterKind, Waiter, WaiterAdapter, WaiterList, WaitingFor,
+};
 
 // Set when the mutex is exclusively locked.
 const LOCKED: usize = 1 << 0;
@@ -882,24 +887,31 @@ impl<'a, T: ?Sized> Drop for MutexReadGuard<'a, T> {
 mod test {
     use super::*;
 
-    use std::future::Future;
-    use std::mem;
-    use std::pin::Pin;
-    use std::rc::Rc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::mpsc::{channel, Sender};
-    use std::sync::Arc;
-    use std::task::{Context, Poll, Waker};
-    use std::thread;
-    use std::time::Duration;
+    use std::{
+        future::Future,
+        mem,
+        pin::Pin,
+        rc::Rc,
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            mpsc::{channel, Sender},
+            Arc,
+        },
+        task::{Context, Poll, Waker},
+        thread,
+        time::Duration,
+    };
 
-    use futures::channel::oneshot;
-    use futures::task::{waker_ref, ArcWake};
-    use futures::{pending, select, FutureExt};
+    use futures::{
+        channel::oneshot,
+        pending, select,
+        task::{waker_ref, ArcWake},
+        FutureExt,
+    };
     use futures_executor::{LocalPool, ThreadPool};
     use futures_util::task::LocalSpawnExt;
 
-    use crate::{
+    use super::super::super::{
         block_on,
         sync::{Condvar, SpinLock},
     };

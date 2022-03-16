@@ -2,13 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cmp::min;
-use std::fs::File;
-use std::io::{self, Error, ErrorKind, Seek, SeekFrom};
-use std::os::unix::fs::FileExt;
+use std::{
+    cmp::min,
+    fs::File,
+    io::{
+        Error, ErrorKind, Seek, SeekFrom, {self},
+    },
+    os::unix::fs::FileExt,
+};
 
-use crate::fallocate;
-use crate::FallocateMode;
+use super::{fallocate, FallocateMode};
 
 /// A trait for deallocating space in a file.
 pub trait PunchHole {

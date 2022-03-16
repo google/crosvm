@@ -4,17 +4,23 @@
 
 /// Support for virtual sockets.
 use std::fmt;
-use std::io;
-use std::mem::{self, size_of};
-use std::num::ParseIntError;
-use std::os::raw::{c_uchar, c_uint, c_ushort};
-use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
-use std::result;
-use std::str::FromStr;
+use std::{
+    io,
+    mem::{
+        size_of, {self},
+    },
+    num::ParseIntError,
+    os::{
+        raw::{c_uchar, c_uint, c_ushort},
+        unix::io::{AsRawFd, IntoRawFd, RawFd},
+    },
+    result,
+    str::FromStr,
+};
 
 use libc::{
-    self, c_void, sa_family_t, size_t, sockaddr, socklen_t, F_GETFL, F_SETFL, O_NONBLOCK,
-    VMADDR_CID_ANY, VMADDR_CID_HOST, VMADDR_CID_HYPERVISOR,
+    c_void, sa_family_t, size_t, sockaddr, socklen_t, F_GETFL, F_SETFL, O_NONBLOCK, VMADDR_CID_ANY,
+    VMADDR_CID_HOST, VMADDR_CID_HYPERVISOR, {self},
 };
 use thiserror::Error;
 

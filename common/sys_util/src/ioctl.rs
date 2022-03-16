@@ -8,8 +8,7 @@
 // `libc::ioctl`. Their safety follows `libc::ioctl`'s safety.
 #![allow(clippy::missing_safety_doc)]
 
-use std::os::raw::*;
-use std::os::unix::io::AsRawFd;
+use std::os::{raw::*, unix::io::AsRawFd};
 
 /// Raw macro to declare the expression that calculates an ioctl number
 #[macro_export]

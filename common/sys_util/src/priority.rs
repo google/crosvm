@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{errno_result, Result};
+use super::{errno_result, Result};
 
 /// Enables real time thread priorities in the current thread up to `limit`.
 pub fn set_rt_prio_limit(limit: u64) -> Result<()> {

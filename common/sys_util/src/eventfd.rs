@@ -2,16 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::mem;
-use std::ops::Deref;
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-use std::ptr;
-use std::time::Duration;
+use std::{
+    mem,
+    ops::Deref,
+    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
+    ptr,
+    time::Duration,
+};
 
 use libc::{c_void, eventfd, read, write, POLLIN};
 use serde::{Deserialize, Serialize};
 
-use crate::{
+use super::{
     duration_to_timespec, errno_result, generate_scoped_event, AsRawDescriptor, FromRawDescriptor,
     IntoRawDescriptor, RawDescriptor, Result, SafeDescriptor,
 };

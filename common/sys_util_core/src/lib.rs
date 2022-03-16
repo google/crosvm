@@ -18,9 +18,7 @@ mod errno;
 mod external_mapping;
 mod scoped_event_macro;
 
-pub use crate::alloc::LayoutAllocation;
-pub use crate::errno::{errno_result, Error, Result};
-pub use crate::external_mapping::Error as ExternalMappingError;
-pub use crate::external_mapping::Result as ExternalMappingResult;
-pub use crate::external_mapping::*;
-pub use crate::scoped_event_macro::*;
+pub use alloc::LayoutAllocation;
+pub use errno::{errno_result, Error, Result};
+pub use external_mapping::{Error as ExternalMappingError, Result as ExternalMappingResult, *};
+pub use scoped_event_macro::*;

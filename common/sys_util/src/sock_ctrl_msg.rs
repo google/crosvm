@@ -5,13 +5,17 @@
 //! Used to send and receive messages with file descriptors on sockets that accept control messages
 //! (e.g. Unix domain sockets).
 
-use std::fs::File;
-use std::io::{IoSlice, IoSliceMut};
-use std::mem::size_of;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::os::unix::net::{UnixDatagram, UnixStream};
-use std::ptr::{copy_nonoverlapping, null_mut, write_unaligned};
-use std::slice;
+use std::{
+    fs::File,
+    io::{IoSlice, IoSliceMut},
+    mem::size_of,
+    os::unix::{
+        io::{AsRawFd, FromRawFd, RawFd},
+        net::{UnixDatagram, UnixStream},
+    },
+    ptr::{copy_nonoverlapping, null_mut, write_unaligned},
+    slice,
+};
 
 use libc::{
     c_long, c_void, cmsghdr, iovec, msghdr, recvmsg, sendmsg, MSG_NOSIGNAL, SCM_RIGHTS, SOL_SOCKET,
@@ -19,8 +23,7 @@ use libc::{
 
 use data_model::{IoBufMut, VolatileSlice};
 
-use crate::net::UnixSeqpacket;
-use crate::{Error, Result};
+use super::{net::UnixSeqpacket, Error, Result};
 
 // Each of the following macros performs the same function as their C counterparts. They are each
 // macros because they are used to size statically allocated arrays.
@@ -409,15 +412,16 @@ unsafe impl<'a> AsIobuf for VolatileSlice<'a> {
 mod tests {
     use super::*;
 
-    use std::io::Write;
-    use std::mem::size_of;
-    use std::os::raw::c_long;
-    use std::os::unix::net::UnixDatagram;
-    use std::slice::from_raw_parts;
+    use std::{
+        io::Write,
+        mem::size_of,
+        os::{raw::c_long, unix::net::UnixDatagram},
+        slice::from_raw_parts,
+    };
 
     use libc::cmsghdr;
 
-    use crate::EventFd;
+    use super::super::EventFd;
 
     // Doing this as a macro makes it easier to see the line if it fails
     macro_rules! CMSG_SPACE_TEST {

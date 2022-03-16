@@ -20,17 +20,20 @@
 //! error!("something went horribly wrong: {}", "out of RAMs");
 //! ```
 
-use crate::target_os::syslog::PlatformSyslog;
-use crate::RawDescriptor;
-use std::env;
-use std::ffi::{OsStr, OsString};
-use std::fmt::{self, Display};
-use std::fs::File;
-use std::io;
-use std::io::{stderr, Cursor, Write};
-use std::os::unix::io::{AsRawFd, RawFd};
-use std::path::PathBuf;
-use std::sync::{MutexGuard, Once};
+use super::{target_os::syslog::PlatformSyslog, RawDescriptor};
+use std::{
+    env,
+    ffi::{OsStr, OsString},
+    fmt::{
+        Display, {self},
+    },
+    fs::File,
+    io,
+    io::{stderr, Cursor, Write},
+    os::unix::io::{AsRawFd, RawFd},
+    path::PathBuf,
+    sync::{MutexGuard, Once},
+};
 
 use remain::sorted;
 use sync::Mutex;
@@ -450,9 +453,11 @@ mod tests {
 
     use libc::{shm_open, shm_unlink, O_CREAT, O_EXCL, O_RDWR};
 
-    use std::ffi::CStr;
-    use std::io::{Read, Seek, SeekFrom};
-    use std::os::unix::io::FromRawFd;
+    use std::{
+        ffi::CStr,
+        io::{Read, Seek, SeekFrom},
+        os::unix::io::FromRawFd,
+    };
 
     #[test]
     fn init_syslog() {

@@ -48,18 +48,23 @@
 //!        .expect("failed to deserialize");
 //! ```
 
-use std::cell::{Cell, RefCell};
-use std::convert::TryInto;
-use std::fmt;
-use std::fs::File;
-use std::ops::{Deref, DerefMut};
-use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
+use std::{
+    cell::{Cell, RefCell},
+    convert::TryInto,
+    fmt,
+    fs::File,
+    ops::{Deref, DerefMut},
+    panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
+};
 
-use serde::de::{self, Error, Visitor};
-use serde::ser;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{
+    de::{
+        Error, Visitor, {self},
+    },
+    ser, Deserialize, Deserializer, Serialize, Serializer,
+};
 
-use crate::{RawDescriptor, SafeDescriptor};
+use super::{RawDescriptor, SafeDescriptor};
 
 thread_local! {
     static DESCRIPTOR_DST: RefCell<Option<Vec<RawDescriptor>>> = Default::default();
@@ -334,7 +339,7 @@ where
 /// }
 /// ```
 pub mod with_raw_descriptor {
-    use crate::{IntoRawDescriptor, RawDescriptor};
+    use super::super::{IntoRawDescriptor, RawDescriptor};
     use serde::Deserializer;
 
     pub use super::serialize_descriptor as serialize;
@@ -364,7 +369,7 @@ pub mod with_raw_descriptor {
 /// }
 /// ```
 pub mod with_as_descriptor {
-    use crate::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor};
+    use super::super::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor};
     use serde::{Deserializer, Serializer};
 
     pub fn serialize<S: Serializer>(
@@ -425,15 +430,12 @@ impl DerefMut for FileSerdeWrapper {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
+    use super::super::{
         deserialize_with_descriptors, with_as_descriptor, with_raw_descriptor, FileSerdeWrapper,
         FromRawDescriptor, RawDescriptor, SafeDescriptor, SerializeDescriptors,
     };
 
-    use std::collections::HashMap;
-    use std::fs::File;
-    use std::mem::ManuallyDrop;
-    use std::os::unix::io::AsRawFd;
+    use std::{collections::HashMap, fs::File, mem::ManuallyDrop, os::unix::io::AsRawFd};
 
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
     use tempfile::tempfile;

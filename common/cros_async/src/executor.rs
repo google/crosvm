@@ -6,10 +6,9 @@ use std::future::Future;
 
 use async_task::Task;
 
-use crate::poll_source::Error as PollError;
-use crate::uring_executor::use_uring;
-use crate::{
-    AsyncResult, FdExecutor, IntoAsync, IoSourceExt, PollSource, URingExecutor, UringSource,
+use super::{
+    poll_source::Error as PollError, uring_executor::use_uring, AsyncResult, FdExecutor, IntoAsync,
+    IoSourceExt, PollSource, URingExecutor, UringSource,
 };
 
 pub(crate) fn async_uring_from<'a, F: IntoAsync + Send + 'a>(

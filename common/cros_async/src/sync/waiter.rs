@@ -2,19 +2,26 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::UnsafeCell;
-use std::future::Future;
-use std::mem;
-use std::pin::Pin;
-use std::ptr::NonNull;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::sync::Arc;
-use std::task::{Context, Poll, Waker};
+use std::{
+    cell::UnsafeCell,
+    future::Future,
+    mem,
+    pin::Pin,
+    ptr::NonNull,
+    sync::{
+        atomic::{AtomicBool, AtomicU8, Ordering},
+        Arc,
+    },
+    task::{Context, Poll, Waker},
+};
 
-use intrusive_collections::linked_list::{LinkedList, LinkedListOps};
-use intrusive_collections::{intrusive_adapter, DefaultLinkOps, LinkOps};
+use intrusive_collections::{
+    intrusive_adapter,
+    linked_list::{LinkedList, LinkedListOps},
+    DefaultLinkOps, LinkOps,
+};
 
-use crate::sync::SpinLock;
+use super::super::sync::SpinLock;
 
 // An atomic version of a LinkedListLink. See https://github.com/Amanieu/intrusive-rs/issues/47 for
 // more details.

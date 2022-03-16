@@ -2,16 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::Stdin;
-use std::mem::zeroed;
-use std::os::unix::io::RawFd;
+use std::{io::Stdin, mem::zeroed, os::unix::io::RawFd};
 
 use libc::{
     isatty, read, tcgetattr, tcsetattr, termios, ECHO, ICANON, ISIG, O_NONBLOCK, STDIN_FILENO,
     TCSANOW,
 };
 
-use crate::{add_fd_flags, clear_fd_flags, errno_result, Result};
+use super::{add_fd_flags, clear_fd_flags, errno_result, Result};
 
 fn modify_mode<F: FnOnce(&mut termios)>(fd: RawFd, f: F) -> Result<()> {
     // Safe because we check the return value of isatty.

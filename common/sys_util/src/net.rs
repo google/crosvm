@@ -2,22 +2,25 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cmp::Ordering;
-use std::convert::TryFrom;
-use std::ffi::OsString;
-use std::fs::remove_file;
-use std::io;
-use std::mem::{self, size_of};
-use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6, TcpListener, TcpStream, ToSocketAddrs};
-use std::ops::Deref;
-use std::os::unix::{
-    ffi::{OsStrExt, OsStringExt},
-    io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
+use std::{
+    cmp::Ordering,
+    convert::TryFrom,
+    ffi::OsString,
+    fs::remove_file,
+    io,
+    mem::{
+        size_of, {self},
+    },
+    net::{SocketAddr, SocketAddrV4, SocketAddrV6, TcpListener, TcpStream, ToSocketAddrs},
+    ops::Deref,
+    os::unix::{
+        ffi::{OsStrExt, OsStringExt},
+        io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
+    },
+    path::{Path, PathBuf},
+    ptr::null_mut,
+    time::{Duration, Instant},
 };
-use std::path::Path;
-use std::path::PathBuf;
-use std::ptr::null_mut;
-use std::time::{Duration, Instant};
 
 use libc::{
     c_int, in6_addr, in_addr, recvfrom, sa_family_t, sockaddr, sockaddr_in, sockaddr_in6,
@@ -25,11 +28,10 @@ use libc::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{
+use super::{
     sock_ctrl_msg::{ScmSocket, SCM_SOCKET_MAX_FD_COUNT},
-    Error, FromRawDescriptor,
+    AsRawDescriptor, Error, FromRawDescriptor, IntoRawDescriptor, RawDescriptor,
 };
-use crate::{AsRawDescriptor, IntoRawDescriptor, RawDescriptor};
 
 /// Assist in handling both IP version 4 and IP version 6.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -339,7 +341,7 @@ fn sockaddr_un<P: AsRef<Path>>(path: P) -> io::Result<(libc::sockaddr_un, libc::
 /// A Unix `SOCK_SEQPACKET` socket point to given `path`
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UnixSeqpacket {
-    #[serde(with = "crate::with_raw_descriptor")]
+    #[serde(with = "super::with_raw_descriptor")]
     fd: RawFd,
 }
 
@@ -837,9 +839,7 @@ impl Drop for UnlinkUnixSeqpacketListener {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
-    use std::io::ErrorKind;
-    use std::path::PathBuf;
+    use std::{env, io::ErrorKind, path::PathBuf};
 
     fn tmpdir() -> PathBuf {
         env::temp_dir()

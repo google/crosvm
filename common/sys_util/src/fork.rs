@@ -2,17 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs;
-use std::io;
-use std::path::Path;
-use std::process;
-use std::result;
+use std::{fs, io, path::Path, process, result};
 
 use libc::{c_long, pid_t, syscall, SYS_clone, CLONE_NEWPID, CLONE_NEWUSER, SIGCHLD};
 use remain::sorted;
 use thiserror::Error;
 
-use crate::errno_result;
+use super::errno_result;
 
 /// Controls what namespace `clone_process` will have. See NAMESPACES(7).
 #[repr(u32)]
@@ -34,10 +30,10 @@ pub enum CloneError {
     Multithreaded(usize),
     /// There was an error while cloning.
     #[error("error while cloning")]
-    Sys(crate::Error),
+    Sys(super::Error),
 }
 
-unsafe fn do_clone(flags: i32) -> crate::Result<pid_t> {
+unsafe fn do_clone(flags: i32) -> super::Result<pid_t> {
     // Forking is unsafe, this function must be unsafe as there is no way to guarantee safety
     // without more context about the state of the program.
     let pid = syscall(SYS_clone as c_long, flags | SIGCHLD as i32, 0);
@@ -100,10 +96,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{getpid, EventFd};
+    use super::{
+        super::{getpid, EventFd},
+        *,
+    };
 
-    fn wait_process(pid: libc::pid_t) -> crate::Result<libc::c_int> {
+    fn wait_process(pid: libc::pid_t) -> super::super::Result<libc::c_int> {
         let mut status: libc::c_int = 0;
         unsafe {
             if libc::waitpid(pid, &mut status as *mut libc::c_int, 0) < 0 {

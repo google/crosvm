@@ -5,20 +5,23 @@
 //! The mmap module provides a safe interface to mmap memory and ensures unmap is called when the
 //! mmap object leaves scope.
 
-use std::cmp::min;
-use std::io;
-use std::mem::size_of;
-use std::os::unix::io::AsRawFd;
-use std::ptr::{copy_nonoverlapping, null_mut, read_unaligned, write_unaligned};
+use std::{
+    cmp::min,
+    io,
+    mem::size_of,
+    os::unix::io::AsRawFd,
+    ptr::{copy_nonoverlapping, null_mut, read_unaligned, write_unaligned},
+};
 
-use libc::{self, c_int, c_void, read, write};
+use libc::{
+    c_int, c_void, read, write, {self},
+};
 use remain::sorted;
 use sys_util_core::ExternalMapping;
 
-use data_model::volatile_memory::*;
-use data_model::DataInit;
+use data_model::{volatile_memory::*, DataInit};
 
-use crate::{pagesize, Error as ErrnoError};
+use super::{pagesize, Error as ErrnoError};
 
 #[sorted]
 #[derive(Debug, thiserror::Error)]
@@ -944,8 +947,7 @@ impl Drop for MemoryMappingArena {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::Descriptor;
+    use super::{super::Descriptor, *};
     use data_model::{VolatileMemory, VolatileMemoryError};
     use tempfile::tempfile;
 

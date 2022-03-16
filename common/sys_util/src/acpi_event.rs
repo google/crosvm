@@ -4,7 +4,7 @@
 
 use std::str;
 
-use crate::netlink::*;
+use super::netlink::*;
 use thiserror::Error;
 
 use data_model::DataInit;

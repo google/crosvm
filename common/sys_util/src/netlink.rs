@@ -2,16 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::alloc::Layout;
-use std::mem::MaybeUninit;
-use std::os::unix::io::AsRawFd;
+use std::{alloc::Layout, mem::MaybeUninit, os::unix::io::AsRawFd};
 
 use data_model::DataInit;
 use libc::EINVAL;
 
 use sys_util_core::LayoutAllocation;
 
-use crate::{errno_result, Error, FromRawDescriptor, Result, SafeDescriptor};
+use super::{errno_result, Error, FromRawDescriptor, Result, SafeDescriptor};
 
 // Custom nlmsghdr struct that can be declared DataInit.
 #[repr(C)]

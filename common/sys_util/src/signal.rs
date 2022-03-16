@@ -10,18 +10,19 @@ use libc::{
 use remain::sorted;
 use thiserror::Error;
 
-use std::cmp::Ordering;
-use std::convert::TryFrom;
-use std::io;
-use std::mem;
-use std::os::unix::thread::JoinHandleExt;
-use std::process::Child;
-use std::ptr::{null, null_mut};
-use std::result;
-use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::{
+    cmp::Ordering,
+    convert::TryFrom,
+    io, mem,
+    os::unix::thread::JoinHandleExt,
+    process::Child,
+    ptr::{null, null_mut},
+    result,
+    thread::JoinHandle,
+    time::{Duration, Instant},
+};
 
-use crate::{duration_to_timespec, errno_result, getsid, Error as ErrnoError, Pid, Result};
+use super::{duration_to_timespec, errno_result, getsid, Error as ErrnoError, Pid, Result};
 use std::ops::{Deref, DerefMut};
 
 const POLL_RATE: Duration = Duration::from_millis(50);

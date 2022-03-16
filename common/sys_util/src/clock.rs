@@ -5,10 +5,12 @@
 // Utility file to provide a fake clock object representing current time, and a timerfd driven by
 // that time.
 
-use std::os::unix::io::AsRawFd;
-use std::time::{Duration, Instant};
+use std::{
+    os::unix::io::AsRawFd,
+    time::{Duration, Instant},
+};
 
-use crate::EventFd;
+use super::EventFd;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Clock(Instant);

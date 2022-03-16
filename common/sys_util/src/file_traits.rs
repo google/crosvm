@@ -2,14 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::File;
-use std::io::{Error, ErrorKind, Result};
-use std::os::unix::io::{AsRawFd, RawFd};
-use std::os::unix::net::UnixStream;
+use std::{
+    fs::File,
+    io::{Error, ErrorKind, Result},
+    os::unix::{
+        io::{AsRawFd, RawFd},
+        net::UnixStream,
+    },
+};
 
 use data_model::VolatileSlice;
 
-use crate::{fallocate, FallocateMode};
+use super::{fallocate, FallocateMode};
 
 /// A trait for flushing the contents of a file to disk.
 /// This is equivalent to File's `sync_all` method, but

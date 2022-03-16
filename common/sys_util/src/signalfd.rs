@@ -2,18 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::File;
-use std::mem;
-use std::os::raw::c_int;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::result;
+use std::{
+    fs::File,
+    mem,
+    os::{
+        raw::c_int,
+        unix::io::{AsRawFd, FromRawFd, RawFd},
+    },
+    result,
+};
 
-use libc::{c_void, read, signalfd, signalfd_siginfo};
-use libc::{EAGAIN, SFD_CLOEXEC, SFD_NONBLOCK};
+use libc::{c_void, read, signalfd, signalfd_siginfo, EAGAIN, SFD_CLOEXEC, SFD_NONBLOCK};
 use remain::sorted;
 use thiserror::Error;
 
-use crate::{signal, AsRawDescriptor, Error as ErrnoError, RawDescriptor};
+use super::{signal, AsRawDescriptor, Error as ErrnoError, RawDescriptor};
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -136,10 +139,9 @@ impl Drop for SignalFd {
 mod tests {
     use super::*;
 
-    use crate::signal::SIGRTMIN;
+    use super::super::signal::SIGRTMIN;
     use libc::{pthread_sigmask, raise, sigismember, sigset_t};
-    use std::mem;
-    use std::ptr::null;
+    use std::{mem, ptr::null};
 
     #[test]
     fn new() {

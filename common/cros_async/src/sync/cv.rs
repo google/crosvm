@@ -2,14 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::UnsafeCell;
-use std::hint;
-use std::mem;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::{
+    cell::UnsafeCell,
+    hint, mem,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
 
-use crate::sync::mu::{MutexGuard, MutexReadGuard, RawMutex};
-use crate::sync::waiter::{Kind as WaiterKind, Waiter, WaiterAdapter, WaiterList, WaitingFor};
+use super::super::sync::{
+    mu::{MutexGuard, MutexReadGuard, RawMutex},
+    waiter::{Kind as WaiterKind, Waiter, WaiterAdapter, WaiterList, WaitingFor},
+};
 
 const SPINLOCK: usize = 1 << 0;
 const HAS_WAITERS: usize = 1 << 1;
@@ -448,23 +453,31 @@ fn cancel_waiter(cv: usize, waiter: &Waiter, wake_next: bool) {
 mod test {
     use super::*;
 
-    use std::future::Future;
-    use std::mem;
-    use std::ptr;
-    use std::rc::Rc;
-    use std::sync::mpsc::{channel, Sender};
-    use std::sync::Arc;
-    use std::task::{Context, Poll};
-    use std::thread::{self, JoinHandle};
-    use std::time::Duration;
+    use std::{
+        future::Future,
+        mem, ptr,
+        rc::Rc,
+        sync::{
+            mpsc::{channel, Sender},
+            Arc,
+        },
+        task::{Context, Poll},
+        thread::{
+            JoinHandle, {self},
+        },
+        time::Duration,
+    };
 
-    use futures::channel::oneshot;
-    use futures::task::{waker_ref, ArcWake};
-    use futures::{select, FutureExt};
+    use futures::{
+        channel::oneshot,
+        select,
+        task::{waker_ref, ArcWake},
+        FutureExt,
+    };
     use futures_executor::{LocalPool, LocalSpawner, ThreadPool};
     use futures_util::task::LocalSpawnExt;
 
-    use crate::{block_on, sync::Mutex};
+    use super::super::super::{block_on, sync::Mutex};
 
     // Dummy waker used when we want to manually drive futures.
     struct TestWaker;
