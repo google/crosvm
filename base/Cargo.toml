@@ -18,3 +18,4 @@ smallvec = "1.6.1"
 sync = { path = "../common/sync" }
 sys_util = { path = "../common/sys_util" }
 thiserror = "1.0.20"
+tempfile = "3"

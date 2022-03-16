@@ -39,6 +39,7 @@ class TestOption(enum.Enum):
 # Please add a bug number when restricting a tests.
 if os.name == "posix":
     CRATE_OPTIONS: dict[str, list[TestOption]] = {
+        "base": [TestOption.SINGLE_THREADED, TestOption.LARGE],
         "cros_async": [TestOption.LARGE],
         "crosvm_plugin": [TestOption.DO_NOT_BUILD_AARCH64, TestOption.DO_NOT_BUILD_ARMHF],
         "crosvm": [TestOption.SINGLE_THREADED],
