@@ -115,11 +115,13 @@ const FADT_FIELD_PM1B_EVENT_BLK_ADDR: usize = 60;
 const FADT_FIELD_PM1A_CONTROL_BLK_ADDR: usize = 64;
 const FADT_FIELD_PM1B_CONTROL_BLK_ADDR: usize = 68;
 const FADT_FIELD_PM2_CONTROL_BLK_ADDR: usize = 72;
+const FADT_FIELD_PM_TMR_BLK_ADDR: usize = 76;
 const FADT_FIELD_GPE0_BLK_ADDR: usize = 80;
 const FADT_FIELD_GPE1_BLK_ADDR: usize = 84;
 const FADT_FIELD_PM1A_EVENT_BLK_LEN: usize = 88;
 const FADT_FIELD_PM1A_CONTROL_BLK_LEN: usize = 89;
 const FADT_FIELD_PM2_CONTROL_BLK_LEN: usize = 90;
+const FADT_FIELD_PM_TMR_LEN: usize = 91;
 const FADT_FIELD_GPE0_BLK_LEN: usize = 92;
 const FADT_FIELD_GPE1_BLK_LEN: usize = 93;
 const FADT_FIELD_GPE1_BASE: usize = 94;
@@ -134,6 +136,7 @@ const FADT_FIELD_X_PM1B_EVENT_BLK_ADDR: usize = 160;
 const FADT_FIELD_X_PM1A_CONTROL_BLK_ADDR: usize = 172;
 const FADT_FIELD_X_PM1B_CONTROL_BLK_ADDR: usize = 184;
 const FADT_FIELD_X_PM2_CONTROL_BLK_ADDR: usize = 196;
+const FADT_FIELD_X_PM_TMR_BLK_ADDR: usize = 208;
 const FADT_FIELD_X_GPE0_BLK_ADDR: usize = 220;
 const FADT_FIELD_X_GPE1_BLK_ADDR: usize = 232;
 const FADT_FIELD_HYPERVISOR_ID: usize = 268;
@@ -252,6 +255,9 @@ fn write_facp_overrides(
     // PM2 Control Block Address (not supported)
     facp.write(FADT_FIELD_PM2_CONTROL_BLK_ADDR, 0u32);
 
+    // PM Timer Control Block Address (not supported)
+    facp.write(FADT_FIELD_PM_TMR_BLK_ADDR, 0u32);
+
     // GPE0 Block Address
     facp.write(
         FADT_FIELD_GPE0_BLK_ADDR,
@@ -275,6 +281,9 @@ fn write_facp_overrides(
 
     // PM2 Control Block Length (not supported)
     facp.write(FADT_FIELD_PM2_CONTROL_BLK_LEN, 0u8);
+
+    // PM Timer Control Block Length (not supported)
+    facp.write(FADT_FIELD_PM_TMR_LEN, 0u8);
 
     // GPE0 Block Length
     facp.write(
@@ -323,6 +332,14 @@ fn write_facp_overrides(
     // PM2 Extended Control Block Address (not supported)
     facp.write(
         FADT_FIELD_X_PM2_CONTROL_BLK_ADDR,
+        GenericAddress {
+            ..Default::default()
+        },
+    );
+
+    // PM Timer Extended Control Block Address (not supported)
+    facp.write(
+        FADT_FIELD_X_PM_TMR_BLK_ADDR,
         GenericAddress {
             ..Default::default()
         },
