@@ -119,7 +119,11 @@ impl Default for GpuParameters {
             gfxstream_use_guest_angle: false,
             gfxstream_use_syncfd: true,
             use_vulkan: false,
-            mode: GpuMode::ModeVirglRenderer,
+            mode: if cfg!(feature = "virgl_renderer") {
+                GpuMode::ModeVirglRenderer
+            } else {
+                GpuMode::Mode2D
+            },
             cache_path: None,
             cache_size: None,
             udmabuf: false,
