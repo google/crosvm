@@ -403,12 +403,6 @@ def main():
         print("Offending line: " + error)
         sys.exit(-1)
 
-    hygiene, crates = is_sys_util_independent()
-    if not hygiene:
-        print("Error: Following files depend on sys_util, sys_util_core or on win_sys_util")
-        print(crates)
-        sys.exit(-1)
-
     crlf_endings = has_crlf_line_endings()
     if crlf_endings:
         print("Error: Following files have crlf(dos) line encodings")
