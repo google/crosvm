@@ -23,9 +23,9 @@ use base::{debug, error, getpid, info, kill_process_group, pagesize, reap_child,
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use crosvm::platform::GpuRenderServerParameters;
 #[cfg(feature = "direct")]
-use crosvm::DirectIoOption;
+use crosvm::{argument::parse_hex_or_decimal, DirectIoOption};
 use crosvm::{
-    argument::{self, parse_hex_or_decimal, print_help, set_arguments, Argument},
+    argument::{self, print_help, set_arguments, Argument},
     platform, BindMount, Config, DiskOption, Executable, FileBackedMappingParameters, GidMap,
     SharedDir, TouchDeviceOption, VfioCommand, VhostUserFsOption, VhostUserOption,
     VhostUserWlOption, VhostVsockDeviceParameter, VvuOption, DISK_ID_LEN,
