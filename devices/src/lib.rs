@@ -77,6 +77,7 @@ cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod platform;
         mod proxy;
+        pub mod vmwdt;
         #[cfg(feature = "usb")]
         pub mod usb;
         #[cfg(feature = "usb")]

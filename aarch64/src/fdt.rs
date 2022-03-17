@@ -331,6 +331,19 @@ pub struct PciConfigRegion {
     pub size: u64,
 }
 
+/// Location of memory-mapped vm watchdog
+#[derive(Copy, Clone)]
+pub struct VmWdtConfig {
+    /// Physical address of the base of the memory-mapped vm watchdog region.
+    pub base: u64,
+    /// Size of the vm watchdog region in bytes.
+    pub size: u64,
+    /// The internal clock frequency of the watchdog.
+    pub clock_hz: u32,
+    /// The expiration timeout measured in seconds.
+    pub timeout_sec: u32,
+}
+
 fn create_pci_nodes(
     fdt: &mut FdtWriter,
     pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
@@ -462,6 +475,18 @@ fn create_battery_node(fdt: &mut FdtWriter, mmio_base: u64, irq: u32) -> Result<
     Ok(())
 }
 
+fn create_vmwdt_node(fdt: &mut FdtWriter, vmwdt_cfg: VmWdtConfig) -> Result<()> {
+    let vmwdt_name = format!("vmwdt@{:x}", vmwdt_cfg.base);
+    let reg = [vmwdt_cfg.base, vmwdt_cfg.size];
+    let vmwdt_node = fdt.begin_node(&vmwdt_name)?;
+    fdt.property_string("compatible", "qemu,vm-watchdog")?;
+    fdt.property_array_u64("reg", &reg)?;
+    fdt.property_u32("clock", vmwdt_cfg.clock_hz)?;
+    fdt.property_u32("timeout-sec", vmwdt_cfg.timeout_sec)?;
+    fdt.end_node(vmwdt_node)?;
+    Ok(())
+}
+
 /// Creates a flattened device tree containing all of the parameters for the
 /// kernel and loads it into the guest memory at the specified offset.
 ///
@@ -481,6 +506,8 @@ fn create_battery_node(fdt: &mut FdtWriter, mmio_base: u64, irq: u32) -> Result<
 /// * `psci_version` - the current PSCI version
 /// * `bat_mmio_base` - The battery base address
 /// * `bat_irq` - The battery irq number
+/// * `swiotlb` - Reserve a memory pool for DMA
+/// * `vmwdt_cfg` - The virtual watchdog configuration
 pub fn create_fdt(
     fdt_max_size: usize,
     guest_mem: &GuestMemory,
@@ -500,6 +527,7 @@ pub fn create_fdt(
     swiotlb: Option<u64>,
     bat_mmio_base: u64,
     bat_irq: u32,
+    vmwdt_cfg: VmWdtConfig,
 ) -> Result<()> {
     let mut fdt = FdtWriter::new(&[]);
 
@@ -526,6 +554,7 @@ pub fn create_fdt(
     create_pci_nodes(&mut fdt, pci_irqs, pci_cfg, pci_ranges, dma_pool_phandle)?;
     create_rtc_node(&mut fdt)?;
     create_battery_node(&mut fdt, bat_mmio_base, bat_irq)?;
+    create_vmwdt_node(&mut fdt, vmwdt_cfg)?;
     // End giant node
     fdt.end_node(root_node)?;
 

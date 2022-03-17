@@ -93,6 +93,7 @@ pub enum CrosvmDeviceId {
     DirectIo = 14,
     DirectMmio = 15,
     UserspaceIrqChip = 16,
+    VmWatchdog = 17,
 }
 
 impl TryFrom<u16> for CrosvmDeviceId {

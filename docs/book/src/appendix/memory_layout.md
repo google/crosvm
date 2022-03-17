@@ -51,6 +51,7 @@ These apply for all boot modes.
 | [`SERIAL_ADDR[2]`][serial_addr]   | `3e8`           | `3f0`           | 8 bytes    | Serial port MMIO                                              |
 | [`SERIAL_ADDR[0]`][serial_addr]   | `3f8`           | `400`           | 8 bytes    | Serial port MMIO                                              |
 | [`AARCH64_RTC_ADDR`]              | `2000`          | `3000`          | 4 KiB      | Real-time clock                                               |
+| [`AARCH64_VMWDT_ADDR`]            | `3000`          | `4000`          | 4 KiB      | Watchdog device                                               |
 | [`AARCH64_PCI_CFG_BASE`]          | `1_0000`        | `2_0000`        | 64 KiB     | PCI configuration (CAM)                                       |
 | [`AARCH64_PVTIME_IPA_START`]      | `1f0_0000`      | `200_0000`      | 64 KiB     | Paravirtualized time                                          |
 | [`AARCH64_MMIO_BASE`]             | `200_0000`      | `400_0000`      | 32 MiB     | Low MMIO allocation area                                      |
@@ -83,6 +84,7 @@ These apply when a bootloader is passed with `--bios`.
 
 [serial_addr]: https://crsrc.org/o/src/platform/crosvm-upstream/arch/src/serial.rs;l=70?q=SERIAL_ADDR
 [`aarch64_rtc_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=93?q=AARCH64_RTC_ADDR
+[`aarch64_vmwdt_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=93?q=AARCH64_VMWDT_ADDR
 [`aarch64_pci_cfg_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=100?q=AARCH64_PCI_CFG_BASE
 [`aarch64_mmio_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=104?q=AARCH64_MMIO_BASE
 [`aarch64_gic_cpui_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/devices/src/irqchip/kvm/aarch64.rs;l=44?q=AARCH64_GIC_CPUI_BASE
