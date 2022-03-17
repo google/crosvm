@@ -10,15 +10,12 @@ use std::marker::PhantomData;
 use std::os::unix::io::RawFd;
 use std::path::Path;
 
-use base::{AsRawDescriptor, RawDescriptor};
+use base::{AsRawDescriptor, Event, RawDescriptor};
 use remain::sorted;
 use thiserror::Error as ThisError;
 
 use super::{Error, Result};
-use crate::{
-    connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req},
-    EventFd,
-};
+use crate::connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req};
 
 /// Errors for `Device::recv_into_bufs()`.
 #[sorted]
@@ -44,7 +41,7 @@ impl From<RecvIntoBufsError> for Error {
 /// VFIO device which can be used as virtio-vhost-user device backend.
 pub trait Device {
     /// This event must be read before handle_request() is called.
-    fn event(&self) -> &EventFd;
+    fn event(&self) -> &Event;
 
     /// Starts VFIO device.
     fn start(&mut self) -> std::result::Result<(), anyhow::Error>;

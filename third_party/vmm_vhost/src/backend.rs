@@ -13,8 +13,7 @@ use base::{RawDescriptor, INVALID_DESCRIPTOR};
 use std::cell::RefCell;
 use std::sync::RwLock;
 
-// TODO(b/219522861): Remove this alias and use Event in the code.
-use base::Event as EventFd;
+use base::Event;
 
 use super::Result;
 
@@ -123,7 +122,7 @@ pub trait VhostBackend: std::marker::Sized {
     /// Set base address for page modification logging.
     fn set_log_base(&self, base: u64, fd: Option<RawDescriptor>) -> Result<()>;
 
-    /// Specify an eventfd file descriptor to signal on log write.
+    /// Specify an event file descriptor to signal on log write.
     fn set_log_fd(&self, fd: RawDescriptor) -> Result<()>;
 
     /// Set the number of descriptors in the vring.
@@ -150,27 +149,27 @@ pub trait VhostBackend: std::marker::Sized {
     /// Get the available vring base offset.
     fn get_vring_base(&self, queue_index: usize) -> Result<u32>;
 
-    /// Set the eventfd to trigger when buffers have been used by the host.
+    /// Set the event to trigger when buffers have been used by the host.
     ///
     /// # Arguments
     /// * `queue_index` - Index of the queue to modify.
-    /// * `fd` - EventFd to trigger.
-    fn set_vring_call(&self, queue_index: usize, fd: &EventFd) -> Result<()>;
+    /// * `event` - Event to trigger.
+    fn set_vring_call(&self, queue_index: usize, event: &Event) -> Result<()>;
 
-    /// Set the eventfd that will be signaled by the guest when buffers are
+    /// Set the event that will be signaled by the guest when buffers are
     /// available for the host to process.
     ///
     /// # Arguments
     /// * `queue_index` - Index of the queue to modify.
-    /// * `fd` - EventFd that will be signaled from guest.
-    fn set_vring_kick(&self, queue_index: usize, fd: &EventFd) -> Result<()>;
+    /// * `event` - Event that will be signaled from guest.
+    fn set_vring_kick(&self, queue_index: usize, event: &Event) -> Result<()>;
 
-    /// Set the eventfd that will be signaled by the guest when error happens.
+    /// Set the event that will be signaled by the guest when error happens.
     ///
     /// # Arguments
     /// * `queue_index` - Index of the queue to modify.
-    /// * `fd` - EventFd that will be signaled from guest.
-    fn set_vring_err(&self, queue_index: usize, fd: &EventFd) -> Result<()>;
+    /// * `event` - Event that will be signaled from guest.
+    fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()>;
 }
 
 /// An interface for setting up vhost-based backend drivers.
@@ -209,7 +208,7 @@ pub trait VhostBackendMut: std::marker::Sized {
     /// Set base address for page modification logging.
     fn set_log_base(&mut self, base: u64, fd: Option<RawDescriptor>) -> Result<()>;
 
-    /// Specify an eventfd file descriptor to signal on log write.
+    /// Specify an event file descriptor to signal on log write.
     fn set_log_fd(&mut self, fd: RawDescriptor) -> Result<()>;
 
     /// Set the number of descriptors in the vring.
@@ -236,27 +235,27 @@ pub trait VhostBackendMut: std::marker::Sized {
     /// Get the available vring base offset.
     fn get_vring_base(&mut self, queue_index: usize) -> Result<u32>;
 
-    /// Set the eventfd to trigger when buffers have been used by the host.
+    /// Set the event to trigger when buffers have been used by the host.
     ///
     /// # Arguments
     /// * `queue_index` - Index of the queue to modify.
-    /// * `fd` - EventFd to trigger.
-    fn set_vring_call(&mut self, queue_index: usize, fd: &EventFd) -> Result<()>;
+    /// * `event` - Event to trigger.
+    fn set_vring_call(&mut self, queue_index: usize, event: &Event) -> Result<()>;
 
-    /// Set the eventfd that will be signaled by the guest when buffers are
+    /// Set the event that will be signaled by the guest when buffers are
     /// available for the host to process.
     ///
     /// # Arguments
     /// * `queue_index` - Index of the queue to modify.
-    /// * `fd` - EventFd that will be signaled from guest.
-    fn set_vring_kick(&mut self, queue_index: usize, fd: &EventFd) -> Result<()>;
+    /// * `event` - Event that will be signaled from guest.
+    fn set_vring_kick(&mut self, queue_index: usize, event: &Event) -> Result<()>;
 
-    /// Set the eventfd that will be signaled by the guest when error happens.
+    /// Set the event that will be signaled by the guest when error happens.
     ///
     /// # Arguments
     /// * `queue_index` - Index of the queue to modify.
-    /// * `fd` - EventFd that will be signaled from guest.
-    fn set_vring_err(&mut self, queue_index: usize, fd: &EventFd) -> Result<()>;
+    /// * `event` - Event that will be signaled from guest.
+    fn set_vring_err(&mut self, queue_index: usize, event: &Event) -> Result<()>;
 }
 
 impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
@@ -306,16 +305,16 @@ impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
         self.write().unwrap().get_vring_base(queue_index)
     }
 
-    fn set_vring_call(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
-        self.write().unwrap().set_vring_call(queue_index, fd)
+    fn set_vring_call(&self, queue_index: usize, event: &Event) -> Result<()> {
+        self.write().unwrap().set_vring_call(queue_index, event)
     }
 
-    fn set_vring_kick(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
-        self.write().unwrap().set_vring_kick(queue_index, fd)
+    fn set_vring_kick(&self, queue_index: usize, event: &Event) -> Result<()> {
+        self.write().unwrap().set_vring_kick(queue_index, event)
     }
 
-    fn set_vring_err(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
-        self.write().unwrap().set_vring_err(queue_index, fd)
+    fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()> {
+        self.write().unwrap().set_vring_err(queue_index, event)
     }
 }
 
@@ -364,16 +363,16 @@ impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
         self.borrow_mut().get_vring_base(queue_index)
     }
 
-    fn set_vring_call(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
-        self.borrow_mut().set_vring_call(queue_index, fd)
+    fn set_vring_call(&self, queue_index: usize, event: &Event) -> Result<()> {
+        self.borrow_mut().set_vring_call(queue_index, event)
     }
 
-    fn set_vring_kick(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
-        self.borrow_mut().set_vring_kick(queue_index, fd)
+    fn set_vring_kick(&self, queue_index: usize, event: &Event) -> Result<()> {
+        self.borrow_mut().set_vring_kick(queue_index, event)
     }
 
-    fn set_vring_err(&self, queue_index: usize, fd: &EventFd) -> Result<()> {
-        self.borrow_mut().set_vring_err(queue_index, fd)
+    fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()> {
+        self.borrow_mut().set_vring_err(queue_index, event)
     }
 }
 #[cfg(test)]
@@ -445,17 +444,17 @@ mod tests {
             Ok(2)
         }
 
-        fn set_vring_call(&mut self, queue_index: usize, _fd: &EventFd) -> Result<()> {
+        fn set_vring_call(&mut self, queue_index: usize, _event: &Event) -> Result<()> {
             assert_eq!(queue_index, 1);
             Ok(())
         }
 
-        fn set_vring_kick(&mut self, queue_index: usize, _fd: &EventFd) -> Result<()> {
+        fn set_vring_kick(&mut self, queue_index: usize, _event: &Event) -> Result<()> {
             assert_eq!(queue_index, 1);
             Ok(())
         }
 
-        fn set_vring_err(&mut self, queue_index: usize, _fd: &EventFd) -> Result<()> {
+        fn set_vring_err(&mut self, queue_index: usize, _event: &Event) -> Result<()> {
             assert_eq!(queue_index, 1);
             Ok(())
         }
@@ -491,10 +490,10 @@ mod tests {
         b.set_vring_base(1, 2).unwrap();
         assert_eq!(b.get_vring_base(1).unwrap(), 2);
 
-        let eventfd = EventFd::new().unwrap();
-        b.set_vring_call(1, &eventfd).unwrap();
-        b.set_vring_kick(1, &eventfd).unwrap();
-        b.set_vring_err(1, &eventfd).unwrap();
+        let event = Event::new().unwrap();
+        b.set_vring_call(1, &event).unwrap();
+        b.set_vring_kick(1, &event).unwrap();
+        b.set_vring_err(1, &event).unwrap();
     }
 
     #[test]

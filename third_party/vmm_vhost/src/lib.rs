@@ -392,13 +392,13 @@ mod tests {
         let num = master.get_queue_num().unwrap();
         assert_eq!(num, 2);
 
-        let eventfd = base::Event::new().unwrap();
+        let event = base::Event::new().unwrap();
         let mem = [VhostUserMemoryRegionInfo {
             guest_phys_addr: 0,
             memory_size: 0x10_0000,
             userspace_addr: 0,
             mmap_offset: 0,
-            mmap_handle: eventfd.as_raw_descriptor(),
+            mmap_handle: event.as_raw_descriptor(),
         }];
         master.set_mem_table(&mem).unwrap();
 
@@ -417,16 +417,16 @@ mod tests {
         #[cfg(unix)]
         {
             master
-                .set_slave_request_fd(&eventfd as &dyn AsRawDescriptor)
+                .set_slave_request_fd(&event as &dyn AsRawDescriptor)
                 .unwrap();
         }
         master.set_vring_enable(0, true).unwrap();
 
         // unimplemented yet
         master
-            .set_log_base(0, Some(eventfd.as_raw_descriptor()))
+            .set_log_base(0, Some(event.as_raw_descriptor()))
             .unwrap();
-        master.set_log_fd(eventfd.as_raw_descriptor()).unwrap();
+        master.set_log_fd(event.as_raw_descriptor()).unwrap();
 
         master.set_vring_num(0, 256).unwrap();
         master.set_vring_base(0, 0).unwrap();
@@ -440,9 +440,9 @@ mod tests {
             log_addr: Some(0x4000),
         };
         master.set_vring_addr(0, &config).unwrap();
-        master.set_vring_call(0, &eventfd).unwrap();
-        master.set_vring_kick(0, &eventfd).unwrap();
-        master.set_vring_err(0, &eventfd).unwrap();
+        master.set_vring_call(0, &event).unwrap();
+        master.set_vring_kick(0, &event).unwrap();
+        master.set_vring_err(0, &event).unwrap();
 
         let max_mem_slots = master.get_max_mem_slots().unwrap();
         assert_eq!(max_mem_slots, 32);

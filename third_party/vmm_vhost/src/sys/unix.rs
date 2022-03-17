@@ -33,7 +33,3 @@ impl SystemListenerExt for SystemListener {
         self.accept().map(|(socket, _address)| socket)
     }
 }
-
-// TODO(b/221882601): Once base has Event/EventFd, we can drop this type.
-#[cfg(feature = "vfio-device")]
-pub(crate) type EventFd = base::EventFd;
