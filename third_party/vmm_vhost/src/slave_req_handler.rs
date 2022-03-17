@@ -443,12 +443,19 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
         self.error = Some(error);
     }
 
-    /// Main entrance to server slave request from the slave communication channel.
+    /// Main entrance to request from the communication channel.
     ///
-    /// Receive and handle one incoming request message from the master. The caller needs to:
+    /// Receive and handle one incoming request message from the vmm. The caller needs to:
     /// - serialize calls to this function
     /// - decide what to do when error happens
     /// - optional recover from failure
+    ///
+    /// # Return:
+    /// * - `Ok(())`: one request was successfully handled.
+    /// * - `Err(ClientExit)`: the vmm closed the connection properly. This isn't an actual failure.
+    /// * - `Err(Disconnect)`: the connection was closed unexpectedly.
+    /// * - `Err(InvalidMessage)`: the vmm sent a illegal message.
+    /// * - other errors: failed to handle a request.
     pub fn handle_request(&mut self) -> Result<()> {
         // Return error if the endpoint is already in failed state.
         self.check_state()?;
@@ -462,7 +469,18 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
         // . recv optional message body and payload according size field in
         //   message header
         // . validate message body and optional payload
-        let (hdr, files) = self.slave_req_helper.endpoint.recv_header()?;
+        let (hdr, files) = match self.slave_req_helper.endpoint.recv_header() {
+            Ok((hdr, files)) => (hdr, files),
+            Err(Error::Disconnect) => {
+                // If the client closed the connection before sending a header, this should be
+                // handled as a legal exit.
+                return Err(Error::ClientExit);
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        };
+
         self.check_attached_files(&hdr, &files)?;
 
         let buf = match hdr.get_size() {
