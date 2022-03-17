@@ -55,6 +55,7 @@ members = [
     "gpu_display",
     "hypervisor",
     "integration_tests",
+    "io_uring",
     "kernel_cmdline",
     "kernel_loader",
     "kvm",
