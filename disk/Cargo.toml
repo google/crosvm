@@ -20,7 +20,7 @@ remain = "*"
 tempfile = "3"
 thiserror = "*"
 uuid = { version = "0.8.2", features = ["v4"], optional = true }
-cros_async = { path = "../common/cros_async" }
+cros_async = { path = "../cros_async" }
 data_model = { path = "../common/data_model" }
 protos = { path = "../protos", features = ["composite-disk"], optional = true }
 vm_memory = { path = "../vm_memory" }

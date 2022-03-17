@@ -9,6 +9,6 @@ libc = "*"
 data_model = { path = "../common/data_model" }
 net_sys = { path = "../net_sys" }
 base = { path = "../base" }
-cros_async = { path = "../common/cros_async" }
+cros_async = { path = "../cros_async" }
 remain = "*"
 thiserror = "*"

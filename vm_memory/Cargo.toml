@@ -6,7 +6,7 @@ edition = "2021"
 include = ["src/**/*", "Cargo.toml"]
 
 [dependencies]
-cros_async = { path = "../common/cros_async" }
+cros_async = { path = "../cros_async" }
 data_model = { path = "../common/data_model" }
 libc = "*"
 base = { path = "../base" }

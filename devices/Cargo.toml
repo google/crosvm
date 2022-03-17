@@ -28,7 +28,7 @@ audio_streams = "*"
 balloon_control = { path = "../common/balloon_control" }
 base = { path = "../base" }
 bit_field = { path = "../bit_field" }
-cros_async = { path = "../common/cros_async" }
+cros_async = { path = "../cros_async" }
 data_model = { path = "../common/data_model" }
 dbus = { version = "0.9", optional = true }
 disk = { path = "../disk" }

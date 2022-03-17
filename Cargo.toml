@@ -45,6 +45,7 @@ members = [
     "arch",
     "base",
     "bit_field",
+    "cros_async",
     "crosvm-fuzz",
     "crosvm_control",
     "crosvm_plugin",
@@ -192,7 +193,7 @@ assertions = { path = "common/assertions" }
 audio_streams = { path = "common/audio_streams" }
 base = { path = "base" }
 sys_util_core = { path = "common/sys_util_core" }
-cros_async =  { path = "common/cros_async" }
+cros_async =  { path = "cros_async" }
 cros_fuzz = { path = "common/cros-fuzz" } # ignored by ebuild
 data_model = { path = "common/data_model" }
 libcras = { path = "libcras_stub" } # ignored by ebuild

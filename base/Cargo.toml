@@ -9,7 +9,7 @@ chromeos = ["sys_util/chromeos"]
 
 [dependencies]
 audio_streams = { path = "../common/audio_streams" }
-cros_async = { path = "../common/cros_async" }
+cros_async = { path = "../cros_async" }
 data_model = { path = "../common/data_model" }
 libc = "*"
 remain = "0.2"
