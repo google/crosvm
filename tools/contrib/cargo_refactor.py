@@ -91,8 +91,10 @@ def update_workspace_members():
 def main():
     os.chdir(Path(__file__).parent.parent.parent)
 
-    move_crate(Path("common/cros_async"), Path("cros_async"))
-    replace_in_file(Path("cros_async/Cargo.toml"), "[workspace]", "")
+    move_crate(Path("common/io_uring"), Path("io_uring"))
+    replace_in_file(Path("io_uring/Cargo.toml"), "[workspace]", "")
+    replace_in_file(Path("io_uring/bindgen.sh"), "common/io_uring", "io_uring")
+
     update_workspace_members()
 
 
