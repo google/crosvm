@@ -13,10 +13,10 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
+use base::{MappedRegion, MemoryMapping, MemoryMappingBuilder, Protection, WatchingEvents};
 use data_model::IoBufMut;
 use remain::sorted;
 use sync::Mutex;
-use sys_util::{MappedRegion, MemoryMapping, Protection, WatchingEvents};
 use thiserror::Error as ThisError;
 
 use crate::bindings::*;
@@ -31,13 +31,13 @@ pub type UserData = u64;
 pub enum Error {
     /// Failed to map the completion ring.
     #[error("Failed to mmap completion ring {0}")]
-    MappingCompleteRing(sys_util::MmapError),
+    MappingCompleteRing(base::MmapError),
     /// Failed to map submit entries.
     #[error("Failed to mmap submit entries {0}")]
-    MappingSubmitEntries(sys_util::MmapError),
+    MappingSubmitEntries(base::MmapError),
     /// Failed to map the submit ring.
     #[error("Failed to mmap submit ring {0}")]
-    MappingSubmitRing(sys_util::MmapError),
+    MappingSubmitRing(base::MmapError),
     /// Too many ops are already queued.
     #[error("No space for more ring entries, try increasing the size passed to `new`")]
     NoSpace,
@@ -202,7 +202,7 @@ impl SubmitQueue {
 /// # use std::fs::File;
 /// # use std::os::unix::io::AsRawFd;
 /// # use std::path::Path;
-/// # use sys_util::WatchingEvents;
+/// # use base::WatchingEvents;
 /// # use io_uring::URingContext;
 /// let f = File::open(Path::new("/dev/zero")).unwrap();
 /// let uring = URingContext::new(16).unwrap();
@@ -241,40 +241,43 @@ impl URingContext {
             // Safe because we trust the kernel to set valid sizes in `io_uring_setup` and any error
             // is checked.
             let submit_ring = SubmitQueueState::new(
-                MemoryMapping::from_fd_offset_protection_populate(
-                    &ring_file,
+                MemoryMappingBuilder::new(
                     ring_params.sq_off.array as usize
                         + ring_params.sq_entries as usize * std::mem::size_of::<u32>(),
-                    u64::from(IORING_OFF_SQ_RING),
-                    Protection::read_write(),
-                    true,
                 )
+                .from_file(&ring_file)
+                .offset(u64::from(IORING_OFF_SQ_RING))
+                .protection(Protection::read_write())
+                .populate()
+                .build()
                 .map_err(Error::MappingSubmitRing)?,
                 &ring_params,
             );
 
             let num_sqe = ring_params.sq_entries as usize;
             let submit_queue_entries = SubmitQueueEntries {
-                mmap: MemoryMapping::from_fd_offset_protection_populate(
-                    &ring_file,
+                mmap: MemoryMappingBuilder::new(
                     ring_params.sq_entries as usize * std::mem::size_of::<io_uring_sqe>(),
-                    u64::from(IORING_OFF_SQES),
-                    Protection::read_write(),
-                    true,
                 )
+                .from_file(&ring_file)
+                .offset(u64::from(IORING_OFF_SQES))
+                .protection(Protection::read_write())
+                .populate()
+                .build()
                 .map_err(Error::MappingSubmitEntries)?,
                 len: num_sqe,
             };
 
             let complete_ring = CompleteQueueState::new(
-                MemoryMapping::from_fd_offset_protection_populate(
-                    &ring_file,
+                MemoryMappingBuilder::new(
                     ring_params.cq_off.cqes as usize
                         + ring_params.cq_entries as usize * std::mem::size_of::<io_uring_cqe>(),
-                    u64::from(IORING_OFF_CQ_RING),
-                    Protection::read_write(),
-                    true,
                 )
+                .from_file(&ring_file)
+                .offset(u64::from(IORING_OFF_CQ_RING))
+                .protection(Protection::read_write())
+                .populate()
+                .build()
                 .map_err(Error::MappingCompleteRing)?,
                 &ring_params,
             );
@@ -880,8 +883,8 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
+    use base::{pipe, PollContext};
     use sync::{Condvar, Mutex};
-    use sys_util::{pipe, PollContext};
     use tempfile::{tempfile, TempDir};
 
     use super::*;

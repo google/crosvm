@@ -9,7 +9,7 @@ data_model = { path = "../common/data_model" } # provided by ebuild
 libc = "0.2.93"
 remain = "0.2"
 sync = { path = "../common/sync" } # provided by ebuild
-sys_util = { path = "../common/sys_util" } # provided by ebuild
+base = { path = "../base" } # provided by ebuild
 thiserror = "1"
 
 [dev-dependencies]

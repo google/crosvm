@@ -51,8 +51,7 @@ pub use sys_util::{ExternalMapping, ExternalMappingError, ExternalMappingResult}
 pub use sys_util::{
     LayoutAllocation, MappedRegion, MemfdSeals, MemoryMappingArena, MmapError, Protection,
 };
-pub use sys_util::{PollToken, WatchingEvents};
-
+pub use sys_util::{PollContext, PollToken, WatchingEvents};
 mod event;
 mod ioctl;
 mod mmap;
