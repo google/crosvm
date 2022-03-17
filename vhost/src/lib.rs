@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(unix)]
 pub mod net;
 mod vsock;
 
-pub use crate::net::Net;
-pub use crate::net::NetT;
+#[cfg(unix)]
+pub use crate::net::{Net, NetT};
 pub use crate::vsock::Vsock;
 
 use std::alloc::Layout;
@@ -60,7 +61,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     /// Set the current process as the owner of this file descriptor.
     /// This must be run before any other vhost ioctls.
     fn set_owner(&self) -> Result<()> {
-        // This ioctl is called on a valid vhost_net fd and has its
+        // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
         let ret = unsafe { ioctl(self, virtio_sys::VHOST_SET_OWNER()) };
         if ret < 0 {
@@ -84,7 +85,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     /// Get a bitmask of supported virtio/vhost features.
     fn get_features(&self) -> Result<u64> {
         let mut avail_features: u64 = 0;
-        // This ioctl is called on a valid vhost_net fd and has its
+        // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
         let ret = unsafe {
             ioctl_with_mut_ref(self, virtio_sys::VHOST_GET_FEATURES(), &mut avail_features)
@@ -101,7 +102,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     /// # Arguments
     /// * `features` - Bitmask of features to set.
     fn set_features(&self, features: u64) -> Result<()> {
-        // This ioctl is called on a valid vhost_net fd and has its
+        // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
         let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_FEATURES(), &features) };
         if ret < 0 {
@@ -166,7 +167,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
             num: num as u32,
         };
 
-        // This ioctl is called on a valid vhost_net fd and has its
+        // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
         let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_NUM(), &vring_state) };
         if ret < 0 {
@@ -270,7 +271,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
             log_guest_addr: log_addr as u64,
         };
 
-        // This ioctl is called on a valid vhost_net fd and has its
+        // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
         let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_ADDR(), &vring_addr) };
         if ret < 0 {
@@ -290,7 +291,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
             num: num as u32,
         };
 
-        // This ioctl is called on a valid vhost_net fd and has its
+        // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
         let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_BASE(), &vring_state) };
         if ret < 0 {
@@ -328,10 +329,10 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     fn set_vring_call(&self, queue_index: usize, event: &Event) -> Result<()> {
         let vring_file = virtio_sys::vhost_vring_file {
             index: queue_index as u32,
-            event: event.as_raw_descriptor(),
+            event: event.as_raw_descriptor() as i32,
         };
 
-        // This ioctl is called on a valid vhost_net fd and has its
+        // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
         let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_CALL(), &vring_file) };
         if ret < 0 {
@@ -348,7 +349,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()> {
         let vring_file = virtio_sys::vhost_vring_file {
             index: queue_index as u32,
-            event: event.as_raw_descriptor(),
+            event: event.as_raw_descriptor() as i32,
         };
 
         // This ioctl is called on a valid vhost_net fd and has its
@@ -365,14 +366,14 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     ///
     /// # Arguments
     /// * `queue_index` - Index of the queue to modify.
-    /// * `fd` - Event that will be signaled from guest.
+    /// * `event` - Event that will be signaled from guest.
     fn set_vring_kick(&self, queue_index: usize, event: &Event) -> Result<()> {
         let vring_file = virtio_sys::vhost_vring_file {
             index: queue_index as u32,
-            event: event.as_raw_descriptor(),
+            event: event.as_raw_descriptor() as i32,
         };
 
-        // This ioctl is called on a valid vhost_net fd and has its
+        // This ioctl is called on a valid vhost_net descriptor and has its
         // return value checked.
         let ret = unsafe { ioctl_with_ref(self, virtio_sys::VHOST_SET_VRING_KICK(), &vring_file) };
         if ret < 0 {
@@ -382,6 +383,8 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     }
 }
 
+// TODO(225193541): Enable/add tests for windows.
+#[cfg(unix)]
 #[cfg(test)]
 mod tests {
     use super::*;
