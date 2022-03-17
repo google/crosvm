@@ -64,7 +64,7 @@ def move_crate(from_path: Path, to_path: Path):
     print(f"{from_path} -> {to_path}")
     if to_path.exists():
         shutil.rmtree(to_path)
-    subprocess.check_call(["git", "mv", str(from_path), str(to_path)])
+    shutil.copytree(str(from_path), str(to_path))
     update_path_deps(to_path / "Cargo.toml", from_path, to_path)
     replace_in_files("**/*/Cargo.toml", [(str(from_path), str(to_path))])
     replace_in_file(Path("Cargo.toml"), str(from_path), str(to_path))
@@ -91,7 +91,8 @@ def update_workspace_members():
 def main():
     os.chdir(Path(__file__).parent.parent.parent)
 
-    move_crate(Path("common/base"), Path("base"))
+    move_crate(Path("common/cros_async"), Path("cros_async"))
+    replace_in_file(Path("cros_async/Cargo.toml"), "[workspace]", "")
     update_workspace_members()
 
 
