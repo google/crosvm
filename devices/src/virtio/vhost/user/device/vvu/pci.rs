@@ -14,10 +14,10 @@ use memoffset::offset_of;
 use vfio_sys::*;
 use virtio_sys::vhost::VIRTIO_F_VERSION_1;
 
-use crate::pci::{MsixCap, PciCapabilityID, CAPABILITY_LIST_HEAD_OFFSET};
+use crate::pci::{MsixCap, PciAddress, PciCapabilityID, CAPABILITY_LIST_HEAD_OFFSET};
 use crate::vfio::{VfioDevice, VfioPciConfig, VfioRegionAddr};
 use crate::virtio::vhost::user::device::vvu::{
-    bus::PciSlot,
+    bus::open_vfio_device,
     queue::{DescTableAddrs, UserQueue},
 };
 use crate::virtio::{PciCapabilityType, VirtioPciCap};
@@ -244,8 +244,8 @@ impl VvuPciDevice {
     /// * `pci_id` - PCI device ID such as `"0000:00:05.0"`.
     /// * `device_vq_num` - number of virtqueues that the device backend (e.g. block) may use.
     pub fn new(pci_id: &str, device_vq_num: usize) -> Result<Self> {
-        let slot = PciSlot::new(pci_id)?;
-        let vfio_dev = Arc::new(slot.open()?);
+        let pci_address = PciAddress::from_string(pci_id).context("failed to parse PCI address")?;
+        let vfio_dev = Arc::new(open_vfio_device(pci_address)?);
         let config = VfioPciConfig::new(vfio_dev.clone());
         let caps = VvuPciCaps::new(&config)?;
         vfio_dev
