@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::AsRawDescriptor;
-use cros_async::IntoAsync;
+use crate::{Executor, IntoAsync, IoSourceExt};
+use base::{AsRawDescriptor, Tube, TubeResult};
+use serde::de::DeserializeOwned;
+use std::ops::Deref;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 /// Like `cros_async::IntoAsync`, except for use with crosvm's AsRawDescriptor
@@ -23,3 +25,36 @@ where
     }
 }
 impl<T> IntoAsync for DescriptorAdapter<T> where T: DescriptorIntoAsync {}
+
+impl IntoAsync for Tube {}
+
+pub struct AsyncTube {
+    inner: Box<dyn IoSourceExt<Tube>>,
+}
+
+impl AsyncTube {
+    pub fn new(ex: &Executor, tube: Tube) -> std::io::Result<AsyncTube> {
+        return Ok(AsyncTube {
+            inner: ex.async_from(tube)?,
+        });
+    }
+
+    pub async fn next<T: DeserializeOwned>(&self) -> TubeResult<T> {
+        self.inner.wait_readable().await.unwrap();
+        self.inner.as_source().recv()
+    }
+}
+
+impl Deref for AsyncTube {
+    type Target = Tube;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner.as_source()
+    }
+}
+
+impl From<AsyncTube> for Tube {
+    fn from(at: AsyncTube) -> Tube {
+        at.inner.into_source()
+    }
+}

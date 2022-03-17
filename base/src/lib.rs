@@ -7,6 +7,7 @@ pub use sys_util::drop_capabilities;
 pub use sys_util::handle_eintr_errno;
 pub use sys_util::iov_max;
 pub use sys_util::kernel_has_memfd;
+pub use sys_util::new_pipe_full;
 pub use sys_util::pipe;
 pub use sys_util::read_raw_stdin;
 pub use sys_util::syscall;
@@ -52,7 +53,6 @@ pub use sys_util::{
 };
 pub use sys_util::{PollToken, WatchingEvents};
 
-mod async_types;
 mod event;
 mod ioctl;
 mod mmap;
@@ -61,7 +61,6 @@ mod timer;
 mod tube;
 mod wait_context;
 
-pub use async_types::*;
 pub use event::{Event, EventReadResult, ScopedEvent};
 pub use ioctl::{
     ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
@@ -75,7 +74,7 @@ pub use sys_util::{
     FileReadWriteVolatile, FileSetLen, FileSync, WriteZeroesAt,
 };
 pub use timer::{FakeTimer, Timer};
-pub use tube::{AsyncTube, Error as TubeError, Result as TubeResult, Tube};
+pub use tube::{Error as TubeError, Result as TubeResult, Tube};
 pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
 
 /// Wraps an AsRawDescriptor in the simple Descriptor struct, which

@@ -24,8 +24,8 @@ use std::{
 };
 
 use async_trait::async_trait;
+use base::UnixSeqpacket;
 use remain::sorted;
-use sys_util::net::UnixSeqpacket;
 use thiserror::Error as ThisError;
 
 use super::{BackingMemory, MemRegion};
@@ -116,7 +116,7 @@ pub trait IoSourceExt<F>: ReadAsync + WriteAsync {
 }
 
 /// Marker trait signifying that the implementor is suitable for use with
-/// cros_async. Examples of this include File, and sys_util::net::UnixSeqpacket.
+/// cros_async. Examples of this include File, and base::net::UnixSeqpacket.
 ///
 /// (Note: it'd be really nice to implement a TryFrom for any implementors, and
 /// remove our factory functions. Unfortunately
@@ -434,7 +434,7 @@ mod tests {
         if !use_uring() {
             return;
         }
-        use sys_util::EventFd;
+        use base::EventFd;
 
         async fn go<F: AsRawFd>(source: Box<dyn IoSourceExt<F>>) -> u64 {
             source.read_u64().await.unwrap()

@@ -4,14 +4,14 @@
 
 use std::time::Duration;
 
-use sys_util::{Result as SysResult, TimerFd};
+use base::{Result as SysResult, TimerFd};
 
 use super::{AsyncResult, Error, Executor, IntoAsync, IoSourceExt};
 
 #[cfg(test)]
 use super::{FdExecutor, URingExecutor};
 
-/// An async version of sys_util::TimerFd.
+/// An async version of base::TimerFd.
 pub struct TimerAsync {
     io_source: Box<dyn IoSourceExt<TimerFd>>,
 }

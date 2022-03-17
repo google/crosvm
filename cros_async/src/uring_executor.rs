@@ -73,6 +73,7 @@ use std::{
 };
 
 use async_task::Task;
+use base::{warn, WatchingEvents};
 use futures::task::noop_waker;
 use io_uring::URingContext;
 use once_cell::sync::Lazy;
@@ -80,7 +81,6 @@ use pin_utils::pin_mut;
 use remain::sorted;
 use slab::Slab;
 use sync::Mutex;
-use sys_util::{warn, WatchingEvents};
 use thiserror::Error as ThisError;
 
 use super::{
@@ -98,7 +98,7 @@ pub enum Error {
     CreatingContext(io_uring::Error),
     /// Failed to copy the FD for the polling context.
     #[error("Failed to copy the FD for the polling context: {0}")]
-    DuplicatingFd(sys_util::Error),
+    DuplicatingFd(base::Error),
     /// The Executor is gone.
     #[error("The URingExecutor is gone")]
     ExecutorGone,
@@ -529,7 +529,7 @@ impl RawExecutor {
     fn submit_poll(
         &self,
         source: &RegisteredSource,
-        events: &sys_util::WatchingEvents,
+        events: &base::WatchingEvents,
     ) -> Result<WakerToken> {
         let mut ring = self.ring.lock();
         let src = ring
@@ -836,7 +836,7 @@ impl URingExecutor {
 unsafe fn dup_fd(fd: RawFd) -> Result<RawFd> {
     let ret = libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0);
     if ret < 0 {
-        Err(Error::DuplicatingFd(sys_util::Error::last()))
+        Err(Error::DuplicatingFd(base::Error::last()))
     } else {
         Ok(ret)
     }
@@ -944,7 +944,7 @@ mod tests {
             Arc::new(VecIoWrapper::from(vec![0u8; 4096])) as Arc<dyn BackingMemory + Send + Sync>;
 
         // Use pipes to create a future that will block forever.
-        let (rx, mut tx) = sys_util::pipe(true).unwrap();
+        let (rx, mut tx) = base::pipe(true).unwrap();
 
         // Set up the TLS for the uring_executor by creating one.
         let ex = URingExecutor::new().unwrap();
@@ -988,7 +988,7 @@ mod tests {
             Arc::new(VecIoWrapper::from(vec![0u8; 4096])) as Arc<dyn BackingMemory + Send + Sync>;
 
         // Use pipes to create a future that will block forever.
-        let (mut rx, tx) = sys_util::new_pipe_full().expect("Pipe failed");
+        let (mut rx, tx) = base::new_pipe_full().expect("Pipe failed");
 
         // Set up the TLS for the uring_executor by creating one.
         let ex = URingExecutor::new().unwrap();
@@ -1014,7 +1014,7 @@ mod tests {
         // Finishing the operation should put the Arc count back to 1.
         // write to the pipe to wake the read pipe and then wait for the uring result in the
         // executor.
-        let mut buf = vec![0u8; sys_util::round_up_to_page_size(1)];
+        let mut buf = vec![0u8; base::round_up_to_page_size(1)];
         rx.read_exact(&mut buf).expect("read to empty failed");
         ex.run_until(UringQueueEmpty { ex: &ex })
             .expect("Failed to wait for write pipe ready");
@@ -1039,7 +1039,7 @@ mod tests {
         let bm =
             Arc::new(VecIoWrapper::from(vec![0u8; 16])) as Arc<dyn BackingMemory + Send + Sync>;
 
-        let (rx, tx) = sys_util::pipe(true).expect("Pipe failed");
+        let (rx, tx) = base::pipe(true).expect("Pipe failed");
 
         let ex = URingExecutor::new().unwrap();
 
@@ -1079,7 +1079,7 @@ mod tests {
             }
         }
 
-        let (mut rx, mut tx) = sys_util::pipe(true).expect("Pipe failed");
+        let (mut rx, mut tx) = base::pipe(true).expect("Pipe failed");
 
         let ex = URingExecutor::new().unwrap();
 
@@ -1127,7 +1127,7 @@ mod tests {
 
         // Leave an uncompleted operation in the queue so that the drop impl will try to drive it to
         // completion.
-        let (_rx, tx) = sys_util::pipe(true).expect("Pipe failed");
+        let (_rx, tx) = base::pipe(true).expect("Pipe failed");
         let tx = ex.register_source(&tx).expect("Failed to register source");
         let bm = Arc::new(VecIoWrapper::from(0xf2e96u64.to_ne_bytes().to_vec()));
         let op = tx

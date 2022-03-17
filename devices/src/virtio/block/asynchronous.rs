@@ -21,11 +21,11 @@ use thiserror::Error as ThisError;
 use base::Error as SysError;
 use base::Result as SysResult;
 use base::{
-    error, info, iov_max, warn, AsRawDescriptor, AsyncTube, Event, RawDescriptor, Timer, Tube,
-    TubeError,
+    error, info, iov_max, warn, AsRawDescriptor, Event, RawDescriptor, Timer, Tube, TubeError,
 };
 use cros_async::{
-    select5, sync::Mutex as AsyncMutex, AsyncError, EventAsync, Executor, SelectResult, TimerAsync,
+    select5, sync::Mutex as AsyncMutex, AsyncError, AsyncTube, EventAsync, Executor, SelectResult,
+    TimerAsync,
 };
 use data_model::DataInit;
 use disk::{AsyncDisk, ToAsyncDisk};
@@ -767,7 +767,7 @@ impl VirtioDevice for BlockAsync {
                         let ex = Executor::new().expect("Failed to create an executor");
 
                         let async_control = control_tube
-                            .map(|c| c.into_async_tube(&ex).expect("failed to create async tube"));
+                            .map(|c| AsyncTube::new(&ex, c).expect("failed to create async tube"));
                         let async_image = match disk_image.to_async_disk(&ex) {
                             Ok(d) => d,
                             Err(e) => panic!("Failed to create async disk {}", e),

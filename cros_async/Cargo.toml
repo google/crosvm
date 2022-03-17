@@ -17,10 +17,11 @@ pin-utils = "0.1.0-alpha.4"
 remain = "0.2"
 slab = "0.4"
 sync = { path = "../common/sync" } # provided by ebuild
-sys_util = { path = "../common/sys_util" } # provided by ebuild
+base = { path = "../base" } # provided by ebuild
 thiserror = "1.0.20"
 audio_streams = { path = "../common/audio_streams" } # provided by ebuild
 anyhow = "1.0"
+serde = "*"
 
 [dependencies.futures]
 version = "*"

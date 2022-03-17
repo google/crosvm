@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use sys_util::EventFd;
+use base::EventFd;
 
 use super::{AsyncResult, Executor, IntoAsync, IoSourceExt};
 
-/// An async version of `sys_util::EventFd`.
+/// An async version of `base::EventFd`.
 pub struct EventAsync {
     io_source: Box<dyn IoSourceExt<EventFd>>,
 }

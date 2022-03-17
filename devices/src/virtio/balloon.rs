@@ -12,8 +12,10 @@ use remain::sorted;
 use thiserror::Error as ThisError;
 
 use balloon_control::{BalloonStats, BalloonTubeCommand, BalloonTubeResult};
-use base::{self, error, warn, AsRawDescriptor, AsyncTube, Event, RawDescriptor, Tube};
-use cros_async::{block_on, select6, select7, sync::Mutex as AsyncMutex, EventAsync, Executor};
+use base::{self, error, warn, AsRawDescriptor, Event, RawDescriptor, Tube};
+use cros_async::{
+    block_on, select6, select7, sync::Mutex as AsyncMutex, AsyncTube, EventAsync, Executor,
+};
 use data_model::{DataInit, Le16, Le32, Le64};
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -458,7 +460,7 @@ fn run_worker(
     let interrupt = Rc::new(RefCell::new(interrupt));
 
     let ex = Executor::new().unwrap();
-    let command_tube = command_tube.into_async_tube(&ex).unwrap();
+    let command_tube = AsyncTube::new(&ex, command_tube).unwrap();
 
     // We need a block to release all references to command_tube at the end before returning it.
     {

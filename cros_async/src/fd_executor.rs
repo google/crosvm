@@ -23,12 +23,12 @@ use std::{
 };
 
 use async_task::Task;
+use base::{add_fd_flags, warn, EpollContext, EpollEvents, EventFd, WatchingEvents};
 use futures::task::noop_waker;
 use pin_utils::pin_mut;
 use remain::sorted;
 use slab::Slab;
 use sync::Mutex;
-use sys_util::{add_fd_flags, warn, EpollContext, EpollEvents, EventFd, WatchingEvents};
 use thiserror::Error as ThisError;
 
 use super::{
@@ -42,28 +42,28 @@ use super::{
 pub enum Error {
     /// Failed to clone the EventFd for waking the executor.
     #[error("Failed to clone the EventFd for waking the executor: {0}")]
-    CloneEventFd(sys_util::Error),
+    CloneEventFd(base::Error),
     /// Failed to create the EventFd for waking the executor.
     #[error("Failed to create the EventFd for waking the executor: {0}")]
-    CreateEventFd(sys_util::Error),
+    CreateEventFd(base::Error),
     /// Creating a context to wait on FDs failed.
     #[error("An error creating the fd waiting context: {0}")]
-    CreatingContext(sys_util::Error),
+    CreatingContext(base::Error),
     /// Failed to copy the FD for the polling context.
     #[error("Failed to copy the FD for the polling context: {0}")]
-    DuplicatingFd(sys_util::Error),
+    DuplicatingFd(base::Error),
     /// The Executor is gone.
     #[error("The FDExecutor is gone")]
     ExecutorGone,
     /// PollContext failure.
     #[error("PollContext failure: {0}")]
-    PollContextError(sys_util::Error),
+    PollContextError(base::Error),
     /// An error occurred when setting the FD non-blocking.
     #[error("An error occurred setting the FD non-blocking: {0}.")]
-    SettingNonBlocking(sys_util::Error),
+    SettingNonBlocking(base::Error),
     /// Failed to submit the waker to the polling context.
     #[error("An error adding to the Aio context: {0}")]
-    SubmittingWaker(sys_util::Error),
+    SubmittingWaker(base::Error),
     /// A Waker was canceled, but the operation isn't running.
     #[error("Unknown waker")]
     UnknownWaker,
@@ -551,7 +551,7 @@ impl FdExecutor {
 unsafe fn dup_fd(fd: RawFd) -> Result<RawFd> {
     let ret = libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0);
     if ret < 0 {
-        Err(Error::DuplicatingFd(sys_util::Error::last()))
+        Err(Error::DuplicatingFd(base::Error::last()))
     } else {
         Ok(ret)
     }
@@ -572,7 +572,7 @@ mod test {
     #[test]
     fn test_it() {
         async fn do_test(ex: &FdExecutor) {
-            let (r, _w) = sys_util::pipe(true).unwrap();
+            let (r, _w) = base::pipe(true).unwrap();
             let done = Box::pin(async { 5usize });
             let source = ex.register_source(r).unwrap();
             let pending = source.wait_readable().unwrap();
@@ -612,7 +612,7 @@ mod test {
             }
         }
 
-        let (mut rx, tx) = sys_util::pipe(true).expect("Pipe failed");
+        let (mut rx, tx) = base::pipe(true).expect("Pipe failed");
 
         let ex = FdExecutor::new().unwrap();
 

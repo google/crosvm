@@ -4,13 +4,11 @@
 
 use std::io::{self, IoSlice};
 use std::marker::PhantomData;
-use std::ops::Deref;
 use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::time::Duration;
 
 use crate::{FromRawDescriptor, SafeDescriptor, ScmSocket, UnixSeqpacket, UnsyncMarker};
 
-use cros_async::{Executor, IntoAsync, IoSourceExt};
 use remain::sorted;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sys_util::{
@@ -23,8 +21,6 @@ use thiserror::Error as ThisError;
 pub enum Error {
     #[error("failed to clone UnixSeqpacket: {0}")]
     Clone(io::Error),
-    #[error("failed to create async tube: {0}")]
-    CreateAsync(cros_async::AsyncError),
     #[error("tube was disconnected")]
     Disconnected,
     #[error("failed to serialize/deserialize json from packet: {0}")]
@@ -66,11 +62,6 @@ impl Tube {
             socket,
             _unsync_marker: PhantomData,
         }
-    }
-
-    pub fn into_async_tube(self, ex: &Executor) -> Result<AsyncTube> {
-        let inner = ex.async_from(self).map_err(Error::CreateAsync)?;
-        Ok(AsyncTube { inner })
     }
 
     pub fn try_clone(&self) -> Result<Self> {
@@ -144,33 +135,6 @@ impl AsRawDescriptor for Tube {
 impl AsRawFd for Tube {
     fn as_raw_fd(&self) -> RawFd {
         self.socket.as_raw_fd()
-    }
-}
-
-impl IntoAsync for Tube {}
-
-pub struct AsyncTube {
-    inner: Box<dyn IoSourceExt<Tube>>,
-}
-
-impl AsyncTube {
-    pub async fn next<T: DeserializeOwned>(&self) -> Result<T> {
-        self.inner.wait_readable().await.unwrap();
-        self.inner.as_source().recv()
-    }
-}
-
-impl Deref for AsyncTube {
-    type Target = Tube;
-
-    fn deref(&self) -> &Self::Target {
-        self.inner.as_source()
-    }
-}
-
-impl From<AsyncTube> for Tube {
-    fn from(at: AsyncTube) -> Tube {
-        at.inner.into_source()
     }
 }
 

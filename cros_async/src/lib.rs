@@ -58,6 +58,7 @@
 //! See the docs for `IoSourceExt` if support for kernels <5.4 is required. Focus on `UringSource` if
 //! all systems have support for io_uring.
 
+mod async_types;
 pub mod audio_streams_async;
 mod blocking;
 mod complete;
@@ -75,6 +76,8 @@ mod uring_executor;
 mod uring_source;
 mod waker;
 
+pub use async_types::*;
+pub use base;
 pub use blocking::{block_on, BlockingPool};
 pub use event::EventAsync;
 pub use executor::Executor;
@@ -86,7 +89,6 @@ pub use io_ext::{
 pub use mem::{BackingMemory, MemRegion};
 pub use poll_source::PollSource;
 pub use select::SelectResult;
-pub use sys_util;
 pub use timer::TimerAsync;
 pub use uring_executor::URingExecutor;
 pub use uring_source::UringSource;
@@ -113,7 +115,7 @@ pub enum Error {
     TimerAsync(AsyncError),
     /// Error from TimerFd.
     #[error("Failure in TimerFd: {0}")]
-    TimerFd(sys_util::Error),
+    TimerFd(base::Error),
     /// Error from the uring executor.
     #[error("Failure in the uring executor: {0}")]
     URingExecutor(uring_executor::Error),

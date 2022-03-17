@@ -15,10 +15,10 @@ use std::{result, thread};
 use acpi_tables::sdt::SDT;
 use anyhow::Context;
 use base::{
-    error, pagesize, warn, AsRawDescriptor, AsyncTube, Error as SysError, Event, RawDescriptor,
+    error, pagesize, warn, AsRawDescriptor, Error as SysError, Event, RawDescriptor,
     Result as SysResult, Tube, TubeError,
 };
-use cros_async::{AsyncError, EventAsync, Executor};
+use cros_async::{AsyncError, AsyncTube, EventAsync, Executor};
 use data_model::{DataInit, Le64};
 use futures::{select, FutureExt};
 use remain::sorted;
@@ -618,17 +618,14 @@ impl Worker {
         let f_resample = async_utils::handle_irq_resample(&ex, interrupt.clone());
         let f_kill = async_utils::await_and_exit(&ex, kill_evt);
 
-        let request_tube = translate_request_rx.map(|t| {
-            t.into_async_tube(&ex)
-                .expect("Failed to create async tube for rx")
-        });
+        let request_tube = translate_request_rx
+            .map(|t| AsyncTube::new(&ex, t).expect("Failed to create async tube for rx"));
         let response_tubes = translate_response_senders.map(|m| {
             m.into_iter()
                 .map(|x| {
                     (
                         x.0,
-                        x.1.into_async_tube(&ex)
-                            .expect("Failed to create async tube"),
+                        AsyncTube::new(&ex, x.1).expect("Failed to create async tube"),
                     )
                 })
                 .collect()
@@ -638,7 +635,7 @@ impl Worker {
             handle_translate_request(&endpoints, request_tube, response_tubes);
         let f_request = self.request_queue(req_queue, req_evt, interrupt_ref, &endpoints);
 
-        let command_tube = iommu_device_tube.into_async_tube(&ex).unwrap();
+        let command_tube = AsyncTube::new(&ex, iommu_device_tube).unwrap();
         // Future to handle command messages from host, such as passing vfio containers.
         let f_cmd = Self::handle_command_tube(&mem, command_tube, &endpoints, &hp_endpoints_ranges);
 
