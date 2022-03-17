@@ -238,7 +238,8 @@ pub fn create_async_disk_file(raw_image: File) -> Result<Box<dyn ToAsyncDisk>> {
 pub fn create_disk_file(
     raw_image: File,
     mut max_nesting_depth: u32,
-    image_path: &Path,
+    // image_path is only used if the composite-disk feature is enabled.
+    #[allow(unused_variables)] image_path: &Path,
 ) -> Result<Box<dyn DiskFile>> {
     if max_nesting_depth == 0 {
         return Err(Error::MaxNestingDepthExceeded);
