@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::cmp::{max, min, Reverse};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -29,8 +29,8 @@ use crate::pci::msix::{
 
 use crate::pci::pci_device::{BarRange, Error as PciDeviceError, PciDevice};
 use crate::pci::{
-    PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciClassCode,
-    PciInterruptPin,
+    PciAddress, PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType,
+    PciClassCode, PciInterruptPin,
 };
 
 use crate::vfio::{VfioDevice, VfioIrqType, VfioPciConfig};
@@ -588,8 +588,7 @@ pub struct VfioPciDevice {
     worker_thread: Option<thread::JoinHandle<VfioPciWorker>>,
     vm_socket_vm: Option<Tube>,
 
-    mmap_slots: Vec<MemSlot>,
-    remap: bool,
+    mapped_mmio_bars: BTreeMap<PciBarIndex, (u64, Vec<MemSlot>)>,
 }
 
 impl VfioPciDevice {
@@ -655,8 +654,7 @@ impl VfioPciDevice {
             kill_evt: None,
             worker_thread: None,
             vm_socket_vm: vfio_device_socket_vm,
-            mmap_slots: Vec::new(),
-            remap: true,
+            mapped_mmio_bars: BTreeMap::new(),
         }
     }
 
@@ -928,39 +926,54 @@ impl VfioPciDevice {
         mmaps_slots
     }
 
-    fn remove_bar_mmap(&self, mmap_slot: &MemSlot) {
-        if self
-            .vm_socket_mem
-            .send(&VmMemoryRequest::UnregisterMemory(*mmap_slot))
-            .is_err()
-        {
-            error!("failed to send UnregisterMemory request");
-            return;
-        }
-        if self.vm_socket_mem.recv::<VmMemoryResponse>().is_err() {
-            error!("failed to receive UnregisterMemory response");
+    fn remove_bar_mmap(&self, mmap_slots: &[MemSlot]) {
+        for mmap_slot in mmap_slots {
+            if self
+                .vm_socket_mem
+                .send(&VmMemoryRequest::UnregisterMemory(*mmap_slot))
+                .is_err()
+            {
+                error!("failed to send UnregisterMemory request");
+                return;
+            }
+            if self.vm_socket_mem.recv::<VmMemoryResponse>().is_err() {
+                error!("failed to receive UnregisterMemory response");
+            }
         }
     }
 
     fn disable_bars_mmap(&mut self) {
-        for mmap_slot in self.mmap_slots.iter() {
-            self.remove_bar_mmap(mmap_slot);
+        for (_, (_, mmap_slots)) in self.mapped_mmio_bars.iter() {
+            self.remove_bar_mmap(mmap_slots);
         }
-        self.mmap_slots.clear();
+        self.mapped_mmio_bars.clear();
     }
 
-    fn enable_bars_mmap(&mut self) {
-        self.disable_bars_mmap();
-
+    fn commit_bars_mmap(&mut self) {
+        // Unmap all bars before remapping bars, to prevent issues with overlap
+        let mut needs_map = Vec::new();
         for mmio_info in self.mmio_regions.iter() {
-            if mmio_info.address() != 0 {
-                let mut mmap_slots =
-                    self.add_bar_mmap(mmio_info.bar_index() as u32, mmio_info.address());
-                self.mmap_slots.append(&mut mmap_slots);
+            let bar_idx = mmio_info.bar_index();
+            let addr = mmio_info.address();
+
+            if let Some((cur_addr, slots)) = self.mapped_mmio_bars.remove(&bar_idx) {
+                if cur_addr == addr {
+                    self.mapped_mmio_bars.insert(bar_idx, (cur_addr, slots));
+                    continue;
+                } else {
+                    self.remove_bar_mmap(&slots);
+                }
+            }
+
+            if addr != 0 {
+                needs_map.push((bar_idx, addr));
             }
         }
 
-        self.remap = false;
+        for (bar_idx, addr) in needs_map.iter() {
+            let slots = self.add_bar_mmap(*bar_idx as u32, *addr);
+            self.mapped_mmio_bars.insert(*bar_idx, (*addr, slots));
+        }
     }
 
     fn close(&mut self) {
@@ -1539,59 +1552,49 @@ impl PciDevice for VfioPciDevice {
         if start == PCI_COMMAND as u64
             && data.len() == 2
             && data[0] & PCI_COMMAND_MEMORY == PCI_COMMAND_MEMORY
-            && self.remap
         {
-            self.enable_bars_mmap();
+            self.commit_bars_mmap();
         } else if (0x10..=0x24).contains(&start) && data.len() == 4 {
             let bar_idx = (start as u32 - 0x10) / 4;
             let value: [u8; 4] = [data[0], data[1], data[2], data[3]];
             let val = u32::from_le_bytes(value);
-            if val != 0xFFFFFFFF || val != 0 {
-                let mut mmio_clone = self.mmio_regions.clone();
-                let mut modify = false;
-                for region in mmio_clone.iter_mut() {
-                    if region.bar_index() == bar_idx as usize {
-                        let old_addr = region.address();
-                        let new_addr = val & 0xFFFFFFF0;
-                        if !region.is_64bit_memory() && (old_addr as u32) != new_addr {
-                            // Change 32bit bar address
-                            *region = region.set_address(u64::from(new_addr));
-                            self.remap = true;
-                            modify = true;
-                        } else if region.is_64bit_memory() && (old_addr as u32) != new_addr {
-                            // Change 64bit bar low address
-                            *region =
-                                region.set_address(u64::from(new_addr) | ((old_addr >> 32) << 32));
-                            self.remap = true;
-                            modify = true;
-                        }
-                        break;
-                    } else if region.is_64bit_memory()
-                        && ((bar_idx % 2) == 1)
-                        && (region.bar_index() + 1 == bar_idx as usize)
-                    {
-                        // Change 64bit bar high address
-                        let old_addr = region.address();
-                        if val != (old_addr >> 32) as u32 {
-                            let mut new_addr = (u64::from(val)) << 32;
-                            new_addr |= old_addr & 0xFFFFFFFF;
-                            *region = region.set_address(new_addr);
-                            self.remap = true;
-                            modify = true;
-                        }
-                        break;
+            let mut modify = false;
+            for region in self.mmio_regions.iter_mut() {
+                if region.bar_index() == bar_idx as usize {
+                    let old_addr = region.address();
+                    let new_addr = val & 0xFFFFFFF0;
+                    if !region.is_64bit_memory() && (old_addr as u32) != new_addr {
+                        // Change 32bit bar address
+                        *region = region.set_address(u64::from(new_addr));
+                        modify = true;
+                    } else if region.is_64bit_memory() && (old_addr as u32) != new_addr {
+                        // Change 64bit bar low address
+                        *region =
+                            region.set_address(u64::from(new_addr) | ((old_addr >> 32) << 32));
+                        modify = true;
                     }
+                    break;
+                } else if region.is_64bit_memory()
+                    && ((bar_idx % 2) == 1)
+                    && (region.bar_index() + 1 == bar_idx as usize)
+                {
+                    // Change 64bit bar high address
+                    let old_addr = region.address();
+                    if val != (old_addr >> 32) as u32 {
+                        let mut new_addr = (u64::from(val)) << 32;
+                        new_addr |= old_addr & 0xFFFFFFFF;
+                        *region = region.set_address(new_addr);
+                        modify = true;
+                    }
+                    break;
                 }
-
-                if modify {
-                    self.mmio_regions.clear();
-                    self.mmio_regions.append(&mut mmio_clone);
-                    // if bar is changed under memory enabled, mmap the
-                    // new bar immediately.
-                    let cmd = self.config.read_config::<u8>(PCI_COMMAND);
-                    if cmd & PCI_COMMAND_MEMORY == PCI_COMMAND_MEMORY {
-                        self.enable_bars_mmap();
-                    }
+            }
+            if modify {
+                // if bar is changed under memory enabled, mmap the
+                // new bar immediately.
+                let cmd = self.config.read_config::<u8>(PCI_COMMAND);
+                if cmd & PCI_COMMAND_MEMORY == PCI_COMMAND_MEMORY {
+                    self.commit_bars_mmap();
                 }
             }
         }
