@@ -33,7 +33,7 @@ try:
     import argh  # type: ignore
 except ImportError as e:
     print("Missing module:", e)
-    print("(Re-)Run install-deps.sh to install the required dependencies.")
+    print("(Re-)Run ./tools/install-deps to install the required dependencies.")
     sys.exit(1)
 
 "Root directory of crosvm"
