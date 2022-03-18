@@ -41,7 +41,12 @@ pub struct PciAddress {
 
 impl Display for PciAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:04x}:{:02x}.{:0x}", self.bus, self.dev, self.func)
+        let domain = 0;
+        write!(
+            f,
+            "{:04x}:{:02x}:{:02x}.{:0x}",
+            domain, self.bus, self.dev, self.func,
+        )
     }
 }
 
@@ -282,6 +287,22 @@ mod tests {
         assert_eq!(
             PciAddress::from_string("0001:00:00.0").expect_err("parse should fail"),
             Error::ComponentOutOfRange(PciAddressComponent::Domain)
+        );
+    }
+
+    #[test]
+    fn format_simple() {
+        assert_eq!(
+            PciAddress::new(0, 1, 2, 3).unwrap().to_string(),
+            "0000:01:02.3"
+        );
+    }
+
+    #[test]
+    fn format_max() {
+        assert_eq!(
+            PciAddress::new(0, 0xff, 0x1f, 7).unwrap().to_string(),
+            "0000:ff:1f.7"
         );
     }
 }
