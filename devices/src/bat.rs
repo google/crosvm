@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{BusAccessInfo, BusDevice};
+use crate::{BusAccessInfo, BusDevice, IrqLevelEvent};
 use acpi_tables::{aml, aml::Aml};
 use base::{
     error, warn, AsRawDescriptor, Descriptor, Event, PollToken, RawDescriptor, Tube, WaitContext,
@@ -93,8 +93,7 @@ pub struct GoldfishBattery {
     state: Arc<Mutex<GoldfishBatteryState>>,
     mmio_base: u32,
     irq_num: u32,
-    irq_evt: Event,
-    irq_resample_evt: Event,
+    irq_evt: IrqLevelEvent,
     activated: bool,
     monitor_thread: Option<thread::JoinHandle<()>>,
     kill_evt: Option<Event>,
@@ -136,8 +135,7 @@ const BATTERY_HEALTH_VAL_UNKNOWN: u32 = 0;
 
 fn command_monitor(
     tube: Tube,
-    irq_evt: Event,
-    irq_resample_evt: Event,
+    irq_evt: IrqLevelEvent,
     kill_evt: Event,
     state: Arc<Mutex<GoldfishBatteryState>>,
     create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
@@ -145,7 +143,7 @@ fn command_monitor(
     let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
         (&Descriptor(tube.as_raw_descriptor()), Token::Commands),
         (
-            &Descriptor(irq_resample_evt.as_raw_descriptor()),
+            &Descriptor(irq_evt.get_resample().as_raw_descriptor()),
             Token::Resample,
         ),
         (&Descriptor(kill_evt.as_raw_descriptor()), Token::Kill),
@@ -221,7 +219,7 @@ fn command_monitor(
                     };
 
                     if inject_irq {
-                        let _ = irq_evt.write(1);
+                        let _ = irq_evt.trigger();
                     }
 
                     if let Err(e) = tube.send(&BatControlResult::Ok) {
@@ -269,14 +267,14 @@ fn command_monitor(
                     }
 
                     if inject_irq {
-                        let _ = irq_evt.write(1);
+                        let _ = irq_evt.trigger();
                     }
                 }
 
                 Token::Resample => {
-                    let _ = irq_resample_evt.read();
+                    irq_evt.clear_resample();
                     if state.lock().int_status() != 0 {
-                        let _ = irq_evt.write(1);
+                        let _ = irq_evt.trigger();
                     }
                 }
 
@@ -294,13 +292,11 @@ impl GoldfishBattery {
     ///               which will be put into the ACPI DSDT.
     /// * `irq_evt` - The interrupt event used to notify driver about
     ///               the battery properties changing.
-    /// * `irq_resample_evt` - Resample interrupt event notified at EOI.
     /// * `socket` - Battery control socket
     pub fn new(
         mmio_base: u64,
         irq_num: u32,
-        irq_evt: Event,
-        irq_resample_evt: Event,
+        irq_evt: IrqLevelEvent,
         tube: Tube,
         create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
     ) -> Result<Self> {
@@ -326,7 +322,6 @@ impl GoldfishBattery {
             mmio_base: mmio_base as u32,
             irq_num,
             irq_evt,
-            irq_resample_evt,
             activated: false,
             monitor_thread: None,
             kill_evt: None,
@@ -338,8 +333,8 @@ impl GoldfishBattery {
     /// return the fds used by this device
     pub fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut rds = vec![
-            self.irq_evt.as_raw_descriptor(),
-            self.irq_resample_evt.as_raw_descriptor(),
+            self.irq_evt.get_trigger().as_raw_descriptor(),
+            self.irq_evt.get_resample().as_raw_descriptor(),
         ];
 
         if let Some(tube) = &self.tube {
@@ -369,21 +364,13 @@ impl GoldfishBattery {
 
         if let Some(tube) = self.tube.take() {
             let irq_evt = self.irq_evt.try_clone().unwrap();
-            let irq_resample_evt = self.irq_resample_evt.try_clone().unwrap();
             let bat_state = self.state.clone();
 
             let create_monitor_fn = self.create_power_monitor.take();
             let monitor_result = thread::Builder::new()
                 .name(self.debug_label())
                 .spawn(move || {
-                    command_monitor(
-                        tube,
-                        irq_evt,
-                        irq_resample_evt,
-                        kill_evt,
-                        bat_state,
-                        create_monitor_fn,
-                    );
+                    command_monitor(tube, irq_evt, kill_evt, bat_state, create_monitor_fn);
                 });
 
             self.monitor_thread = match monitor_result {

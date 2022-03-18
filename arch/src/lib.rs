@@ -673,11 +673,10 @@ pub fn add_goldfish_battery(
         )
         .map_err(DeviceRegistrationError::AllocateIoResource)?;
 
-    let irq_evt = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
-    let irq_resample_evt = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
+    let irq_evt = devices::IrqLevelEvent::new().map_err(DeviceRegistrationError::EventCreate)?;
 
     irq_chip
-        .register_irq_event(irq_num, &irq_evt, Some(&irq_resample_evt))
+        .register_irq_event(irq_num, irq_evt.get_trigger(), Some(irq_evt.get_resample()))
         .map_err(DeviceRegistrationError::RegisterIrqfd)?;
 
     let (control_tube, response_tube) =
@@ -690,15 +689,9 @@ pub fn add_goldfish_battery(
     #[cfg(not(feature = "power-monitor-powerd"))]
     let create_monitor = None;
 
-    let goldfish_bat = devices::GoldfishBattery::new(
-        mmio_base,
-        irq_num,
-        irq_evt,
-        irq_resample_evt,
-        response_tube,
-        create_monitor,
-    )
-    .map_err(DeviceRegistrationError::RegisterBattery)?;
+    let goldfish_bat =
+        devices::GoldfishBattery::new(mmio_base, irq_num, irq_evt, response_tube, create_monitor)
+            .map_err(DeviceRegistrationError::RegisterBattery)?;
     goldfish_bat.to_aml_bytes(amls);
 
     match battery_jail.as_ref() {
