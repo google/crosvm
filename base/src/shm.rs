@@ -6,16 +6,18 @@ use crate::{
     AsRawDescriptor, Error, FromRawDescriptor, IntoRawDescriptor, MemfdSeals, RawDescriptor,
     Result, SafeDescriptor,
 };
-use std::ffi::CStr;
-use std::fs::File;
 #[cfg(unix)]
 use std::os::unix::io::RawFd;
-use std::os::unix::io::{AsRawFd, IntoRawFd};
+use std::{
+    ffi::CStr,
+    fs::File,
+    os::unix::io::{AsRawFd, IntoRawFd},
+};
 
+use crate::unix::SharedMemory as SysUtilSharedMemory;
 use serde::{Deserialize, Serialize};
-use sys_util::SharedMemory as SysUtilSharedMemory;
 
-/// See [SharedMemory](sys_util::SharedMemory) for struct- and method-level
+/// See [SharedMemory](crate::unix::SharedMemory) for struct- and method-level
 /// documentation.
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]

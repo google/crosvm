@@ -19,3 +19,4 @@ sync = { path = "../common/sync" }
 sys_util = { path = "../common/sys_util" }
 thiserror = "1.0.20"
 tempfile = "3"
+base_poll_token_derive = { path = "base_poll_token_derive" }

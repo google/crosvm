@@ -3,17 +3,15 @@
 // found in the LICENSE file.
 
 use crate::{
-    wrap_descriptor, AsRawDescriptor, MappedRegion, MemoryMappingArena, MmapError, Protection,
-    SharedMemory,
+    unix::MemoryMapping as SysUtilMmap, wrap_descriptor, AsRawDescriptor, MappedRegion,
+    MemoryMappingArena, MmapError, Protection, SharedMemory,
 };
-use data_model::volatile_memory::*;
-use data_model::DataInit;
+use data_model::{volatile_memory::*, DataInit};
 use std::fs::File;
-use sys_util::MemoryMapping as SysUtilMmap;
 
 pub type Result<T> = std::result::Result<T, MmapError>;
 
-/// See [MemoryMapping](sys_util::MemoryMapping) for struct- and method-level
+/// See [MemoryMapping](crate::unix::MemoryMapping) for struct- and method-level
 /// documentation.
 #[derive(Debug)]
 pub struct MemoryMapping {

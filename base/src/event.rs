@@ -2,20 +2,23 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::mem;
-use std::ops::Deref;
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
-use std::ptr;
-use std::time::Duration;
+use std::{
+    mem,
+    ops::Deref,
+    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd},
+    ptr,
+    time::Duration,
+};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, Result};
-use sys_util::generate_scoped_event;
-use sys_util::EventFd;
-pub use sys_util::EventReadResult;
+pub use crate::unix::EventReadResult;
+use crate::{
+    generate_scoped_event, unix::EventFd, AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor,
+    RawDescriptor, Result,
+};
 
-/// See [EventFd](sys_util::EventFd) for struct- and method-level
+/// See [EventFd](crate::unix::EventFd) for struct- and method-level
 /// documentation.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]

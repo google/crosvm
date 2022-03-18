@@ -2,12 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::unix::io::AsRawFd;
-use std::time::Duration;
+use std::{os::unix::io::AsRawFd, time::Duration};
 
-use crate::{wrap_descriptor, AsRawDescriptor, RawDescriptor, Result};
+use crate::{
+    unix::{PollContext, PollToken, WatchingEvents},
+    wrap_descriptor, AsRawDescriptor, RawDescriptor, Result,
+};
 use smallvec::SmallVec;
-use sys_util::{PollContext, PollToken, WatchingEvents};
 
 // Typedef PollToken as EventToken for better adherance to base naming.
 // As actual typdefing is experimental, define a new trait with the mirrored

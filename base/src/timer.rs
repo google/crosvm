@@ -6,13 +6,15 @@ use crate::{
     AsRawDescriptor, FakeClock, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, Result,
 };
 
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
-use std::sync::Arc;
-use std::time::Duration;
+use crate::unix::{FakeTimerFd, TimerFd};
+use std::{
+    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd},
+    sync::Arc,
+    time::Duration,
+};
 use sync::Mutex;
-use sys_util::{FakeTimerFd, TimerFd};
 
-/// See [TimerFd](sys_util::TimerFd) for struct- and method-level
+/// See [TimerFd](crate::unix::TimerFd) for struct- and method-level
 /// documentation.
 pub struct Timer(pub TimerFd);
 impl Timer {
@@ -21,7 +23,7 @@ impl Timer {
     }
 }
 
-/// See [FakeTimerFd](sys_util::FakeTimerFd) for struct- and method-level
+/// See [FakeTimerFd](crate::unix::FakeTimerFd) for struct- and method-level
 /// documentation.
 pub struct FakeTimer(FakeTimerFd);
 impl FakeTimer {

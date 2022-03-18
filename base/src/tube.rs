@@ -2,18 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::{self, IoSlice};
-use std::marker::PhantomData;
-use std::os::unix::prelude::{AsRawFd, RawFd};
-use std::time::Duration;
+use std::{
+    io::{
+        IoSlice, {self},
+    },
+    marker::PhantomData,
+    os::unix::prelude::{AsRawFd, RawFd},
+    time::Duration,
+};
 
 use crate::{FromRawDescriptor, SafeDescriptor, ScmSocket, UnixSeqpacket, UnsyncMarker};
 
-use remain::sorted;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use sys_util::{
+use crate::unix::{
     deserialize_with_descriptors, AsRawDescriptor, RawDescriptor, SerializeDescriptors,
 };
+use remain::sorted;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error as ThisError;
 
 #[sorted]
@@ -30,7 +34,7 @@ pub enum Error {
     #[error("failed to receive packet: {0}")]
     Recv(io::Error),
     #[error("failed to send packet: {0}")]
-    Send(sys_util::Error),
+    Send(crate::unix::Error),
     #[error("failed to set recv timeout: {0}")]
     SetRecvTimeout(io::Error),
     #[error("failed to set send timeout: {0}")]
@@ -143,8 +147,7 @@ mod tests {
     use super::*;
     use crate::Event;
 
-    use std::collections::HashMap;
-    use std::time::Duration;
+    use std::{collections::HashMap, time::Duration};
 
     use serde::{Deserialize, Serialize};
 
