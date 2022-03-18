@@ -707,6 +707,7 @@ impl VirtioDevice for Balloon {
         self.kill_evt = Some(self_kill_evt);
 
         let state = self.state.clone();
+        #[allow(deprecated)]
         let command_tube = match self.command_tube.try_clone() {
             Ok(tube) => tube,
             Err(e) => {

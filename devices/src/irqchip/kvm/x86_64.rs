@@ -950,7 +950,7 @@ mod tests {
 
         // setup an event and a resample event for irq line 1
         let evt = Event::new().expect("failed to create event");
-        let mut resample_evt = Event::new().expect("failed to create event");
+        let resample_evt = Event::new().expect("failed to create event");
 
         let evt_index = chip
             .register_irq_event(1, &evt, Some(&resample_evt))
@@ -1083,7 +1083,7 @@ mod tests {
 
         // setup an event and a resample event for irq line 1
         let evt = Event::new().expect("failed to create event");
-        let mut resample_evt = Event::new().expect("failed to create event");
+        let resample_evt = Event::new().expect("failed to create event");
 
         chip.register_irq_event(1, &evt, Some(&resample_evt))
             .expect("failed to register_irq_event");

@@ -43,7 +43,7 @@ use winapi::{
 };
 
 /// The default buffer size for all named pipes in the system. If this size is too small, writers
-/// on named pipes that expect not to block can block until the reading side empties the buffer.
+/// on named pipes that expect not to block *can* block until the reading side empties the buffer.
 ///
 /// The general rule is this should be *at least* as big as the largest message, otherwise
 /// unexpected blocking behavior can result; for example, if too small, this can interact badly with
@@ -712,6 +712,11 @@ impl PipeConnection {
         } else {
             Ok(())
         }
+    }
+
+    /// Get the framing mode of the pipe.
+    pub fn get_framing_mode(&self) -> FramingMode {
+        self.framing_mode
     }
 
     /// Returns metadata about the connected NamedPipe.

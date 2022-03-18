@@ -213,7 +213,7 @@ impl VhostUserBackend for GpuBackend {
                     }
                 };
 
-                if let Err(e) = tube.send(&response) {
+                if let Err(e) = tube.send(response).await {
                     error!("Failed to send `PciBarConfiguration`: {}", e);
                 }
 

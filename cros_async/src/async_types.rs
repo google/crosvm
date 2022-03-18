@@ -2,11 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{Executor, IntoAsync, IoSourceExt};
-use base::{AsRawDescriptor, Tube, TubeResult};
-use serde::de::DeserializeOwned;
-use std::ops::Deref;
+use crate::{Executor, IntoAsync};
+use base::{AsRawDescriptor, RecvTube, SendTube, Tube, TubeResult};
+use serde::{de::DeserializeOwned, Serialize};
+use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
+
+#[cfg_attr(windows, path = "win/async_types.rs")]
+#[cfg_attr(not(windows), path = "unix/async_types.rs")]
+mod async_types;
+pub use async_types::*;
 
 /// Like `cros_async::IntoAsync`, except for use with crosvm's AsRawDescriptor
 /// trait object family.
@@ -27,34 +32,40 @@ where
 impl<T> IntoAsync for DescriptorAdapter<T> where T: DescriptorIntoAsync {}
 
 impl IntoAsync for Tube {}
+impl IntoAsync for SendTube {}
+impl IntoAsync for RecvTube {}
 
-pub struct AsyncTube {
-    inner: Box<dyn IoSourceExt<Tube>>,
-}
-
-impl AsyncTube {
-    pub fn new(ex: &Executor, tube: Tube) -> std::io::Result<AsyncTube> {
-        return Ok(AsyncTube {
-            inner: ex.async_from(tube)?,
-        });
+pub struct RecvTubeAsync(AsyncTube);
+#[allow(dead_code)]
+impl RecvTubeAsync {
+    pub fn new(tube: RecvTube, ex: &Executor) -> io::Result<Self> {
+        Ok(Self(AsyncTube::new(
+            ex,
+            #[allow(deprecated)]
+            tube.into_tube(),
+        )?))
     }
 
-    pub async fn next<T: DeserializeOwned>(&self) -> TubeResult<T> {
-        self.inner.wait_readable().await.unwrap();
-        self.inner.as_source().recv()
-    }
-}
-
-impl Deref for AsyncTube {
-    type Target = Tube;
-
-    fn deref(&self) -> &Self::Target {
-        self.inner.as_source()
+    /// TODO(b/145998747, b/184398671): this async approach needs to be refactored
+    /// upstream, but for now is implemented to work using simple blocking futures
+    /// (avoiding the unimplemented wait_readable).
+    pub async fn next<T: 'static + DeserializeOwned + Send>(&self) -> TubeResult<T> {
+        self.0.next().await
     }
 }
 
-impl From<AsyncTube> for Tube {
-    fn from(at: AsyncTube) -> Tube {
-        at.inner.into_source()
+pub struct SendTubeAsync(AsyncTube);
+#[allow(dead_code)]
+impl SendTubeAsync {
+    pub fn new(tube: SendTube, ex: &Executor) -> io::Result<Self> {
+        Ok(Self(AsyncTube::new(
+            ex,
+            #[allow(deprecated)]
+            tube.into_tube(),
+        )?))
+    }
+
+    pub async fn send<T: 'static + Serialize + Send + Sync>(&self, msg: T) -> TubeResult<()> {
+        self.0.send(msg).await
     }
 }

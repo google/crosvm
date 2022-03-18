@@ -92,7 +92,7 @@ impl EventFd {
     /// a timeout does not occur then the count is returned as a EventReadResult::Count(count),
     /// and the count is reset to 0. If a timeout does occur then this function will return
     /// EventReadResult::Timeout.
-    pub fn read_timeout(&mut self, timeout: Duration) -> Result<EventReadResult> {
+    pub fn read_timeout(&self, timeout: Duration) -> Result<EventReadResult> {
         let mut pfd = libc::pollfd {
             fd: self.as_raw_descriptor(),
             events: POLLIN,
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn timeout() {
-        let mut evt = EventFd::new().expect("failed to create eventfd");
+        let evt = EventFd::new().expect("failed to create eventfd");
         assert_eq!(
             evt.read_timeout(Duration::from_millis(1))
                 .expect("failed to read from eventfd with timeout"),

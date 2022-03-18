@@ -23,6 +23,7 @@ pub mod common;
 mod event;
 mod ioctl;
 mod mmap;
+mod notifiers;
 mod shm;
 mod timer;
 mod tube;
@@ -40,9 +41,10 @@ pub use ioctl::{
 pub use mmap::{
     MemoryMapping, MemoryMappingBuilder, MemoryMappingBuilderUnix, Unix as MemoryMappingUnix,
 };
+pub use notifiers::*;
 pub use shm::{SharedMemory, Unix as SharedMemoryUnix};
 pub use timer::{FakeTimer, Timer};
-pub use tube::{Error as TubeError, Result as TubeResult, Tube};
+pub use tube::{Error as TubeError, RecvTube, Result as TubeResult, SendTube, Tube};
 pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
 
 /// Wraps an AsRawDescriptor in the simple Descriptor struct, which

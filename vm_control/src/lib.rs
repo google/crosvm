@@ -154,7 +154,7 @@ impl Display for DiskControlCommand {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DiskControlResult {
     Ok,
     Err(SysError),

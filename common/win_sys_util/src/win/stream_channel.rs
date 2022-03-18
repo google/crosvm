@@ -31,9 +31,14 @@ impl From<BlockingMode> for named_pipes::BlockingMode {
     }
 }
 
+pub const DEFAULT_BUFFER_SIZE: usize = 50 * 1024;
+
 /// An abstraction over named pipes and unix socketpairs.
 ///
 /// The ReadNotifier will return an event handle that is set when data is in the channel.
+///
+/// In message mode, single writes larger than
+/// `win_sys_util::named_pipes::DEFAULT_BUFFER_SIZE` are not permitted.
 ///
 /// # Notes for maintainers
 /// 1. This struct contains extremely subtle thread safety considerations.
@@ -75,6 +80,10 @@ pub struct StreamChannel {
     #[serde(skip)]
     #[serde(default = "create_true_cell")]
     is_channel_closed_on_drop: RefCell<bool>,
+
+    // For StreamChannels created via pair_with_buffer_size, allows the channel to accept messages
+    // up to that size.
+    send_buffer_size: usize,
 }
 
 fn create_read_lock() -> Arc<Mutex<()>> {
@@ -93,13 +102,14 @@ impl Serialize for StreamChannel {
     where
         S: Serializer,
     {
-        let mut s = serializer.serialize_struct("StreamChannel", 6)?;
+        let mut s = serializer.serialize_struct("StreamChannel", 7)?;
         s.serialize_field("pipe_conn", &self.pipe_conn)?;
         s.serialize_field("write_notify", &self.write_notify)?;
         s.serialize_field("read_notify", &self.read_notify)?;
         s.serialize_field("pipe_closed", &self.pipe_closed)?;
         s.serialize_field("remote_write_lock", &self.remote_write_lock)?;
         s.serialize_field("local_write_lock", &self.local_write_lock)?;
+        s.serialize_field("send_buffer_size", &self.send_buffer_size)?;
         let ret = s.end();
 
         // Because this end has been serialized, the serialized copy is now responsible for setting
@@ -134,10 +144,8 @@ impl StreamChannel {
         }
     }
 
-    // WARNING: Generally, multiple StreamChannels are not wanted. StreamChannels can only
-    // have 1 reader. However, this is used for the net process backend to work with Slirp, since
-    // one StreamChannel clone is put in a reader only loop and another is put in an writer only
-    // loop.
+    // WARNING: Generally, multiple StreamChannel ends are not wanted. StreamChannel behavior with
+    // > 1 reader per end is not defined.
     pub fn try_clone(&self) -> io::Result<Self> {
         Ok(StreamChannel {
             pipe_conn: self.pipe_conn.try_clone()?,
@@ -148,6 +156,7 @@ impl StreamChannel {
             local_write_lock: self.local_write_lock.try_clone()?,
             read_lock: self.read_lock.clone(),
             is_channel_closed_on_drop: create_true_cell(),
+            send_buffer_size: self.send_buffer_size,
         })
     }
 
@@ -242,6 +251,19 @@ impl StreamChannel {
     /// Exists as a workaround for Tube which does not expect its transport to be mutable,
     /// even though io::Write requires it.
     pub fn write_immutable(&self, buf: &[u8]) -> io::Result<usize> {
+        if self.pipe_conn.get_framing_mode() == named_pipes::FramingMode::Message
+            && buf.len() > self.send_buffer_size
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!(
+                    "StreamChannel forbids message mode writes larger than the \
+                     default buffer size of {}.",
+                    self.send_buffer_size,
+                ),
+            ));
+        }
+
         let _lock = self.local_write_lock.lock();
         let res = self.pipe_conn.write(buf);
 
@@ -268,6 +290,7 @@ impl StreamChannel {
     pub fn from_pipes(
         pipe_a: PipeConnection,
         pipe_b: PipeConnection,
+        send_buffer_size: usize,
     ) -> Result<(StreamChannel, StreamChannel)> {
         let (notify_a_write, notify_b_write) = (Event::new()?, Event::new()?);
         let pipe_closed = Event::new()?;
@@ -284,6 +307,7 @@ impl StreamChannel {
             remote_write_lock: write_lock_b.try_clone()?,
             pipe_closed: pipe_closed.try_clone()?,
             is_channel_closed_on_drop: create_true_cell(),
+            send_buffer_size,
         };
         let sock_b = StreamChannel {
             pipe_conn: pipe_b,
@@ -294,10 +318,13 @@ impl StreamChannel {
             remote_write_lock: write_lock_a,
             pipe_closed,
             is_channel_closed_on_drop: create_true_cell(),
+            send_buffer_size,
         };
         Ok((sock_a, sock_b))
     }
 
+    /// Create a pair with a specific buffer size. Note that this is the only way to send messages
+    /// larger than the default named pipe buffer size.
     pub fn pair_with_buffer_size(
         blocking_mode: BlockingMode,
         framing_mode: FramingMode,
@@ -310,7 +337,7 @@ impl StreamChannel {
             buffer_size,
             false,
         )?;
-        Self::from_pipes(pipe_a, pipe_b)
+        Self::from_pipes(pipe_a, pipe_b, buffer_size)
     }
     /// Creates a cross platform channel pair.
     /// On Windows the result is in the form (server, client).
@@ -318,12 +345,14 @@ impl StreamChannel {
         blocking_mode: BlockingMode,
         framing_mode: FramingMode,
     ) -> Result<(StreamChannel, StreamChannel)> {
-        let (pipe_a, pipe_b) = named_pipes::pair(
+        let (pipe_a, pipe_b) = named_pipes::pair_with_buffer_size(
             &named_pipes::FramingMode::from(framing_mode),
             &named_pipes::BlockingMode::from(blocking_mode),
             0,
+            DEFAULT_BUFFER_SIZE,
+            false,
         )?;
-        Self::from_pipes(pipe_a, pipe_b)
+        Self::from_pipes(pipe_a, pipe_b, DEFAULT_BUFFER_SIZE)
     }
 
     /// Blocks until the pipe buffer is empty.

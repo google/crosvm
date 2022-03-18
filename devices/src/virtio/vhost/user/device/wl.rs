@@ -327,7 +327,7 @@ pub fn run_wl_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
     let wayland_paths: BTreeMap<_, _> = wayland_sock.into_iter().collect();
 
     let resource_bridge = resource_bridge
-        .map(|p| {
+        .map(|p| -> anyhow::Result<Tube> {
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
                 match UnixSeqpacket::connect(&p) {
@@ -336,7 +336,7 @@ pub fn run_wl_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
                         if Instant::now() < deadline {
                             thread::sleep(Duration::from_millis(50));
                         } else {
-                            return Err(e);
+                            return Err(anyhow::Error::new(e));
                         }
                     }
                 }

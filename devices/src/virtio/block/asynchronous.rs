@@ -292,8 +292,10 @@ async fn handle_command_tube(
                     }
                 };
 
+                let resp_clone = resp.clone();
                 command_tube
-                    .send(&resp)
+                    .send(resp_clone)
+                    .await
                     .map_err(ExecuteError::SendingResponse)?;
                 if let DiskControlResult::Ok = resp {
                     interrupt.borrow().signal_config_changed();

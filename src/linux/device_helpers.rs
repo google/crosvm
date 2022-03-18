@@ -1201,7 +1201,11 @@ pub fn setup_virtio_access_platform(
                 let CreateIpcMapperRet {
                     mapper: ipc_mapper,
                     response_tx,
-                } = create_ipc_mapper(endpoint_id, request_tx.try_clone()?);
+                } = create_ipc_mapper(
+                    endpoint_id,
+                    #[allow(deprecated)]
+                    request_tx.try_clone()?,
+                );
                 translate_response_senders
                     .get_or_insert_with(BTreeMap::new)
                     .insert(endpoint_id, response_tx);

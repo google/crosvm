@@ -36,7 +36,7 @@ impl Event {
         self.0.read()
     }
 
-    pub fn read_timeout(&mut self, timeout: Duration) -> Result<EventReadResult> {
+    pub fn read_timeout(&self, timeout: Duration) -> Result<EventReadResult> {
         self.0.read_timeout(timeout)
     }
 

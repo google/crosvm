@@ -574,7 +574,7 @@ impl Worker {
                             Self::handle_vfio(mem, vfio_cmd, endpoints, hp_endpoints_ranges)
                         }
                     };
-                    if let Err(e) = command_tube.send(&response) {
+                    if let Err(e) = command_tube.send(response).await {
                         error!("{}", IommuError::VirtioIOMMUResponseError(e));
                     }
                 }
@@ -682,7 +682,7 @@ async fn handle_translate_request(
                 .get(&endpoint_id)
                 .unwrap()
                 .send(
-                    &mapper
+                    mapper
                         .lock()
                         .translate(iova, size)
                         .map_err(|e| {
@@ -691,6 +691,7 @@ async fn handle_translate_request(
                         })
                         .ok(),
                 )
+                .await
                 .map_err(IommuError::Tube)?;
         } else {
             error!("endpoint_id {} not found", endpoint_id)
