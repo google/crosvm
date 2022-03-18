@@ -271,6 +271,18 @@ impl VfioCommand {
 
     fn validate_params(kind: &str, value: &str) -> Result<(), argument::Error> {
         match kind {
+            "guest-address" => {
+                if value.eq_ignore_ascii_case("auto") || PciAddress::from_string(value).is_ok() {
+                    Ok(())
+                } else {
+                    Err(argument::Error::InvalidValue {
+                        value: format!("{}={}", kind.to_owned(), value.to_owned()),
+                        expected: String::from(
+                            "option must be `guest-address=auto|<BUS:DEVICE.FUNCTION>`",
+                        ),
+                    })
+                }
+            }
             "iommu" => {
                 if IommuDevType::from_str(value).is_ok() {
                     Ok(())
@@ -283,13 +295,19 @@ impl VfioCommand {
             }
             _ => Err(argument::Error::InvalidValue {
                 value: format!("{}={}", kind.to_owned(), value.to_owned()),
-                expected: String::from("option must be `iommu=<val>`"),
+                expected: String::from("option must be `guest-address=<val>` and/or `iommu=<val>`"),
             }),
         }
     }
 
     pub fn get_type(&self) -> VfioType {
         self.dev_type
+    }
+
+    pub fn guest_address(&self) -> Option<PciAddress> {
+        self.params
+            .get("guest-address")
+            .and_then(|addr| PciAddress::from_string(addr).ok())
     }
 
     pub fn iommu_dev_type(&self) -> IommuDevType {

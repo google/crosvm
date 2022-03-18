@@ -574,6 +574,7 @@ pub struct VfioPciDevice {
     device: Arc<VfioDevice>,
     config: VfioPciConfig,
     hotplug_bus_number: Option<u8>, // hot plug device has bus number specified at device creation.
+    guest_address: Option<PciAddress>,
     pci_address: Option<PciAddress>,
     interrupt_evt: Option<Event>,
     interrupt_resample_evt: Option<Event>,
@@ -596,6 +597,7 @@ impl VfioPciDevice {
     pub fn new(
         device: VfioDevice,
         hotplug_bus_number: Option<u8>,
+        guest_address: Option<PciAddress>,
         vfio_device_socket_msi: Tube,
         vfio_device_socket_msix: Tube,
         vfio_device_socket_mem: Tube,
@@ -641,6 +643,7 @@ impl VfioPciDevice {
             device: dev,
             config,
             hotplug_bus_number,
+            guest_address,
             pci_address: None,
             interrupt_evt: None,
             interrupt_resample_evt: None,
@@ -1300,9 +1303,11 @@ impl PciDevice for VfioPciDevice {
         resources: &mut SystemAllocator,
     ) -> Result<PciAddress, PciDeviceError> {
         if self.pci_address.is_none() {
-            let mut address = PciAddress::from_string(self.device.device_name()).map_err(|e| {
-                PciDeviceError::PciAddressParseFailure(self.device.device_name().clone(), e)
-            })?;
+            let mut address = self.guest_address.unwrap_or(
+                PciAddress::from_string(self.device.device_name()).map_err(|e| {
+                    PciDeviceError::PciAddressParseFailure(self.device.device_name().clone(), e)
+                })?,
+            );
             if let Some(bus_num) = self.hotplug_bus_number {
                 // Caller specify pcie bus number for hotplug device
                 address.bus = bus_num;

@@ -39,7 +39,9 @@ use devices::virtio::vhost::user::vmm::{
 use devices::virtio::VideoBackendType;
 use devices::virtio::{self, BalloonMode, Console, VirtioDevice};
 use devices::IommuDevType;
-use devices::{self, BusDeviceObj, PciDevice, VfioDevice, VfioPciDevice, VfioPlatformDevice};
+use devices::{
+    self, BusDeviceObj, PciAddress, PciDevice, VfioDevice, VfioPciDevice, VfioPlatformDevice,
+};
 use hypervisor::Vm;
 use minijail::{self, Minijail};
 use net_util::{MacAddress, Tap};
@@ -1084,6 +1086,7 @@ pub fn create_vfio_device(
     control_tubes: &mut Vec<TaggedControlTube>,
     vfio_path: &Path,
     bus_num: Option<u8>,
+    guest_address: Option<PciAddress>,
     iommu_endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
     coiommu_endpoints: Option<&mut Vec<u16>>,
     iommu_dev: IommuDevType,
@@ -1123,6 +1126,7 @@ pub fn create_vfio_device(
     let mut vfio_pci_device = Box::new(VfioPciDevice::new(
         vfio_device,
         bus_num,
+        guest_address,
         vfio_device_tube_msi,
         vfio_device_tube_msix,
         vfio_device_tube_mem,

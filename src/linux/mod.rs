@@ -485,6 +485,7 @@ fn create_devices(
                 control_tubes,
                 vfio_path.as_path(),
                 None,
+                vfio_dev.guest_address(),
                 iommu_attached_endpoints,
                 Some(&mut coiommu_attached_endpoints),
                 vfio_dev.iommu_dev_type(),
@@ -1450,6 +1451,7 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
         control_tubes,
         vfio_path,
         Some(bus_num),
+        None,
         &mut endpoints,
         None,
         if iommu_host_tube.is_some() {
