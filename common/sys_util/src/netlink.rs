@@ -9,7 +9,9 @@ use libc::EINVAL;
 
 use sys_util_core::LayoutAllocation;
 
-use super::{errno_result, Error, FromRawDescriptor, Result, SafeDescriptor};
+use super::{
+    errno_result, AsRawDescriptor, Error, FromRawDescriptor, RawDescriptor, Result, SafeDescriptor,
+};
 
 // Custom nlmsghdr struct that can be declared DataInit.
 #[repr(C)]
@@ -99,6 +101,12 @@ impl<'a> Iterator for NetlinkMessageIter<'a> {
 /// Safe wrapper for `NETLINK_GENERIC` netlink sockets.
 pub struct NetlinkGenericSocket {
     sock: SafeDescriptor,
+}
+
+impl AsRawDescriptor for NetlinkGenericSocket {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.sock.as_raw_descriptor()
+    }
 }
 
 impl NetlinkGenericSocket {
