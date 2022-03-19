@@ -35,6 +35,7 @@ use crate::pci::{
 };
 
 use crate::vfio::{VfioDevice, VfioError, VfioIrqType, VfioPciConfig};
+use crate::IrqLevelEvent;
 
 const PCI_VENDOR_ID: u32 = 0x0;
 const PCI_DEVICE_ID: u32 = 0x2;
@@ -647,8 +648,7 @@ pub struct VfioPciDevice {
     hotplug_bus_number: Option<u8>, // hot plug device has bus number specified at device creation.
     guest_address: Option<PciAddress>,
     pci_address: Option<PciAddress>,
-    interrupt_evt: Option<Event>,
-    interrupt_resample_evt: Option<Event>,
+    interrupt_evt: Option<IrqLevelEvent>,
     mmio_regions: Vec<PciBarConfiguration>,
     io_regions: Vec<PciBarConfiguration>,
     msi_cap: Option<VfioMsiCap>,
@@ -733,7 +733,6 @@ impl VfioPciDevice {
             guest_address,
             pci_address: None,
             interrupt_evt: None,
-            interrupt_resample_evt: None,
             mmio_regions: Vec::new(),
             io_regions: Vec::new(),
             msi_cap,
@@ -771,41 +770,35 @@ impl VfioPciDevice {
     }
 
     fn enable_intx(&mut self) {
-        if self.interrupt_evt.is_none() || self.interrupt_resample_evt.is_none() {
-            return;
-        }
-
         if let Some(ref interrupt_evt) = self.interrupt_evt {
-            if let Err(e) =
-                self.device
-                    .irq_enable(&[Some(interrupt_evt)], VFIO_PCI_INTX_IRQ_INDEX, 0)
-            {
+            if let Err(e) = self.device.irq_enable(
+                &[Some(interrupt_evt.get_trigger())],
+                VFIO_PCI_INTX_IRQ_INDEX,
+                0,
+            ) {
                 error!("{} Intx enable failed: {}", self.debug_label(), e);
                 return;
             }
-            if let Some(ref irq_resample_evt) = self.interrupt_resample_evt {
-                if let Err(e) = self.device.irq_mask(VFIO_PCI_INTX_IRQ_INDEX) {
-                    error!("{} Intx mask failed: {}", self.debug_label(), e);
-                    self.disable_intx();
-                    return;
-                }
-                if let Err(e) = self
-                    .device
-                    .resample_virq_enable(irq_resample_evt, VFIO_PCI_INTX_IRQ_INDEX)
-                {
-                    error!("{} resample enable failed: {}", self.debug_label(), e);
-                    self.disable_intx();
-                    return;
-                }
-                if let Err(e) = self.device.irq_unmask(VFIO_PCI_INTX_IRQ_INDEX) {
-                    error!("{} Intx unmask failed: {}", self.debug_label(), e);
-                    self.disable_intx();
-                    return;
-                }
+            if let Err(e) = self.device.irq_mask(VFIO_PCI_INTX_IRQ_INDEX) {
+                error!("{} Intx mask failed: {}", self.debug_label(), e);
+                self.disable_intx();
+                return;
             }
+            if let Err(e) = self
+                .device
+                .resample_virq_enable(interrupt_evt.get_resample(), VFIO_PCI_INTX_IRQ_INDEX)
+            {
+                error!("{} resample enable failed: {}", self.debug_label(), e);
+                self.disable_intx();
+                return;
+            }
+            if let Err(e) = self.device.irq_unmask(VFIO_PCI_INTX_IRQ_INDEX) {
+                error!("{} Intx unmask failed: {}", self.debug_label(), e);
+                self.disable_intx();
+                return;
+            }
+            self.irq_type = Some(VfioIrqType::Intx);
         }
-
-        self.irq_type = Some(VfioIrqType::Intx);
     }
 
     fn disable_intx(&mut self) {
@@ -1485,10 +1478,8 @@ impl PciDevice for VfioPciDevice {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut rds = self.device.keep_rds();
         if let Some(ref interrupt_evt) = self.interrupt_evt {
-            rds.push(interrupt_evt.as_raw_descriptor());
-        }
-        if let Some(ref interrupt_resample_evt) = self.interrupt_resample_evt {
-            rds.push(interrupt_resample_evt.as_raw_descriptor());
+            rds.push(interrupt_evt.get_trigger().as_raw_descriptor());
+            rds.push(interrupt_evt.get_resample().as_raw_descriptor());
         }
         rds.push(self.vm_socket_mem.as_raw_descriptor());
         if let Some(msi_cap) = &self.msi_cap {
@@ -1516,8 +1507,10 @@ impl PciDevice for VfioPciDevice {
         }?;
 
         // Keep event/resample event references.
-        self.interrupt_evt = Some(irq_evt.try_clone().ok()?);
-        self.interrupt_resample_evt = Some(irq_resample_evt.try_clone().ok()?);
+        self.interrupt_evt = Some(IrqLevelEvent::from_event_pair(
+            irq_evt.try_clone().ok()?,
+            irq_resample_evt.try_clone().ok()?,
+        ));
 
         // enable INTX
         self.enable_intx();
