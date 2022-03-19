@@ -17,6 +17,7 @@ use hypervisor::Datamatch;
 use resources::{Alloc, MmioType, SystemAllocator};
 
 use crate::pci::pcie::pcie_device::PcieDevice;
+use crate::IrqLevelEvent;
 
 const BR_MSIX_TABLE_OFFSET: u64 = 0x0;
 const BR_MSIX_PBA_OFFSET: u64 = 0x100;
@@ -57,8 +58,7 @@ pub struct PciBridge {
     setting_bar: u8,
     msix_config: Arc<Mutex<MsixConfig>>,
     msix_cap_reg_idx: Option<usize>,
-    interrupt_evt: Option<Event>,
-    interrupt_resample_evt: Option<Event>,
+    interrupt_evt: Option<IrqLevelEvent>,
 }
 
 impl PciBridge {
@@ -103,7 +103,6 @@ impl PciBridge {
             msix_config,
             msix_cap_reg_idx: None,
             interrupt_evt: None,
-            interrupt_resample_evt: None,
         }
     }
 
@@ -188,10 +187,8 @@ impl PciDevice for PciBridge {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut rds = Vec::new();
         if let Some(interrupt_evt) = &self.interrupt_evt {
-            rds.push(interrupt_evt.as_raw_descriptor());
-        }
-        if let Some(interrupt_resample_evt) = &self.interrupt_resample_evt {
-            rds.push(interrupt_resample_evt.as_raw_descriptor());
+            rds.push(interrupt_evt.get_trigger().as_raw_descriptor());
+            rds.push(interrupt_evt.get_resample().as_raw_descriptor());
         }
         let descriptor = self.msix_config.lock().get_msi_socket();
         rds.push(descriptor);
@@ -204,8 +201,10 @@ impl PciDevice for PciBridge {
         irq_resample_evt: &Event,
         irq_num: Option<u32>,
     ) -> Option<(u32, PciInterruptPin)> {
-        self.interrupt_evt = Some(irq_evt.try_clone().ok()?);
-        self.interrupt_resample_evt = Some(irq_resample_evt.try_clone().ok()?);
+        self.interrupt_evt = Some(IrqLevelEvent::from_event_pair(
+            irq_evt.try_clone().ok()?,
+            irq_resample_evt.try_clone().ok()?,
+        ));
         let msix_config_clone = self.msix_config.clone();
         self.device.lock().clone_interrupt(msix_config_clone);
 
