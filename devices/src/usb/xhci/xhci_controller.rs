@@ -14,6 +14,7 @@ use crate::usb::xhci::xhci::Xhci;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::usb::xhci::xhci_regs::{init_xhci_mmio_space_and_regs, XhciRegs};
 use crate::utils::FailHandle;
+use crate::IrqLevelEvent;
 use base::{error, AsRawDescriptor, Event, RawDescriptor};
 use resources::{Alloc, MmioType, SystemAllocator};
 use std::mem;
@@ -81,8 +82,7 @@ enum XhciControllerState {
     },
     IrqAssigned {
         device_provider: HostBackendDeviceProvider,
-        irq_evt: Event,
-        irq_resample_evt: Event,
+        irq_evt: IrqLevelEvent,
     },
     Initialized {
         mmio: RegisterSpace,
@@ -131,7 +131,6 @@ impl XhciController {
             XhciControllerState::IrqAssigned {
                 device_provider,
                 irq_evt,
-                irq_resample_evt,
             } => {
                 let (mmio, regs) = init_xhci_mmio_space_and_regs();
                 let fail_handle: Arc<dyn FailHandle> = Arc::new(XhciFailHandle::new(&regs));
@@ -140,7 +139,6 @@ impl XhciController {
                     self.mem.clone(),
                     device_provider,
                     irq_evt,
-                    irq_resample_evt,
                     regs,
                 ) {
                     Ok(xhci) => Some(xhci),
@@ -193,11 +191,10 @@ impl PciDevice for XhciController {
             XhciControllerState::IrqAssigned {
                 device_provider,
                 irq_evt,
-                irq_resample_evt,
             } => {
                 let mut keep_rds = device_provider.keep_rds();
-                keep_rds.push(irq_evt.as_raw_descriptor());
-                keep_rds.push(irq_resample_evt.as_raw_descriptor());
+                keep_rds.push(irq_evt.get_trigger().as_raw_descriptor());
+                keep_rds.push(irq_evt.get_resample().as_raw_descriptor());
                 keep_rds
             }
             _ => {
@@ -223,8 +220,10 @@ impl PciDevice for XhciController {
                 self.config_regs.set_irq(gsi as u8, pin);
                 self.state = XhciControllerState::IrqAssigned {
                     device_provider,
-                    irq_evt: irq_evt.try_clone().ok()?,
-                    irq_resample_evt: irq_resample_evt.try_clone().ok()?,
+                    irq_evt: IrqLevelEvent::from_event_pair(
+                        irq_evt.try_clone().ok()?,
+                        irq_resample_evt.try_clone().ok()?,
+                    ),
                 }
             }
             _ => {

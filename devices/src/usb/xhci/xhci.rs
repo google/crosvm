@@ -15,7 +15,8 @@ use crate::usb::host_backend::{
     host_backend_device_provider::HostBackendDeviceProvider,
 };
 use crate::utils::{Error as UtilsError, EventLoop, FailHandle};
-use base::{error, Event};
+use crate::IrqLevelEvent;
+use base::error;
 use remain::sorted;
 use std::sync::Arc;
 use std::thread;
@@ -26,6 +27,10 @@ use vm_memory::{GuestAddress, GuestMemory};
 #[sorted]
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("failed to clone irq event: {0}")]
+    CloneIrqEvent(base::Error),
+    #[error("failed to clone resample event: {0}")]
+    CloneResampleEvent(base::Error),
     #[error("failed to create command ring controller: {0}")]
     CreateCommandRingController(CommandRingControllerError),
     #[error("failed to enable interrupter: {0}")]
@@ -78,15 +83,22 @@ impl Xhci {
         fail_handle: Arc<dyn FailHandle>,
         mem: GuestMemory,
         device_provider: HostBackendDeviceProvider,
-        irq_evt: Event,
-        irq_resample_evt: Event,
+        interrupt_evt: IrqLevelEvent,
         regs: XhciRegs,
     ) -> Result<Arc<Self>> {
         let (event_loop, join_handle) =
             EventLoop::start("xhci".to_string(), Some(fail_handle.clone()))
                 .map_err(Error::StartEventLoop)?;
+        let irq_evt = interrupt_evt
+            .get_trigger()
+            .try_clone()
+            .map_err(Error::CloneIrqEvent)?;
         let interrupter = Arc::new(Mutex::new(Interrupter::new(mem.clone(), irq_evt, &regs)));
         let event_loop = Arc::new(event_loop);
+        let irq_resample_evt = interrupt_evt
+            .get_resample()
+            .try_clone()
+            .map_err(Error::CloneResampleEvent)?;
         let intr_resample_handler =
             IntrResampleHandler::start(&event_loop, interrupter.clone(), irq_resample_evt)
                 .ok_or(Error::StartResampleHandler)?;
