@@ -23,6 +23,7 @@ use crate::pci::{
     PciDeviceError, PciDisplaySubclass, PciHeaderType, PciId, PciInterruptPin, PciSubclass,
 };
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
+use crate::IrqLevelEvent;
 
 use self::virtio_pci_common_config::VirtioPciCommonConfig;
 
@@ -451,8 +452,7 @@ impl VirtioPciDevice {
 
         let interrupt = Interrupt::new(
             self.interrupt_status.clone(),
-            interrupt_evt,
-            interrupt_resample_evt,
+            IrqLevelEvent::from_event_pair(interrupt_evt, interrupt_resample_evt),
             Some(self.msix_config.clone()),
             self.common_config.msix_config,
         );

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use super::{INTERRUPT_STATUS_CONFIG_CHANGED, INTERRUPT_STATUS_USED_RING, VIRTIO_MSI_NO_VECTOR};
+use crate::irq_event::IrqLevelEvent;
 use crate::pci::MsixConfig;
 use base::Event;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -31,8 +32,7 @@ pub trait SignalableInterrupt {
 
 pub struct Interrupt {
     interrupt_status: Arc<AtomicUsize>,
-    interrupt_evt: Event,
-    interrupt_resample_evt: Event,
+    interrupt_evt: IrqLevelEvent,
     msix_config: Option<Arc<Mutex<MsixConfig>>>,
     config_msix_vector: u16,
 }
@@ -62,7 +62,7 @@ impl SignalableInterrupt for Interrupt {
             == 0
         {
             // Write to irqfd to inject INTx interrupt
-            self.interrupt_evt.write(1).unwrap();
+            self.interrupt_evt.trigger().unwrap();
         }
     }
 
@@ -71,12 +71,12 @@ impl SignalableInterrupt for Interrupt {
     }
 
     fn get_resample_evt(&self) -> Option<&Event> {
-        Some(&self.interrupt_resample_evt)
+        Some(self.interrupt_evt.get_resample())
     }
 
     fn do_interrupt_resample(&self) {
         if self.interrupt_status.load(Ordering::SeqCst) != 0 {
-            self.interrupt_evt.write(1).unwrap();
+            self.interrupt_evt.trigger().unwrap();
         }
     }
 }
@@ -105,15 +105,13 @@ impl<I: SignalableInterrupt> SignalableInterrupt for Arc<Mutex<I>> {
 impl Interrupt {
     pub fn new(
         interrupt_status: Arc<AtomicUsize>,
-        interrupt_evt: Event,
-        interrupt_resample_evt: Event,
+        interrupt_evt: IrqLevelEvent,
         msix_config: Option<Arc<Mutex<MsixConfig>>>,
         config_msix_vector: u16,
     ) -> Interrupt {
         Interrupt {
             interrupt_status,
             interrupt_evt,
-            interrupt_resample_evt,
             msix_config,
             config_msix_vector,
         }
@@ -121,12 +119,12 @@ impl Interrupt {
 
     /// Get a reference to the interrupt event.
     pub fn get_interrupt_evt(&self) -> &Event {
-        &self.interrupt_evt
+        self.interrupt_evt.get_trigger()
     }
 
     /// Handle interrupt resampling event, reading the value from the event and doing the resample.
     pub fn interrupt_resample(&self) {
-        let _ = self.interrupt_resample_evt.read();
+        self.interrupt_evt.clear_resample();
         self.do_interrupt_resample();
     }
 

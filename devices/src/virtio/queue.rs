@@ -621,7 +621,7 @@ impl Queue {
 mod tests {
     use super::super::Interrupt;
     use super::*;
-    use base::Event;
+    use crate::IrqLevelEvent;
     use std::convert::TryInto;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Arc;
@@ -723,8 +723,7 @@ mod tests {
 
         let interrupt = Interrupt::new(
             Arc::new(AtomicUsize::new(0)),
-            Event::new().unwrap(),
-            Event::new().unwrap(),
+            IrqLevelEvent::new().unwrap(),
             None,
             10,
         );
@@ -800,8 +799,7 @@ mod tests {
 
         let interrupt = Interrupt::new(
             Arc::new(AtomicUsize::new(0)),
-            Event::new().unwrap(),
-            Event::new().unwrap(),
+            IrqLevelEvent::new().unwrap(),
             None,
             10,
         );
