@@ -15,7 +15,7 @@ use audio_streams::{
 };
 use base::{
     self, error, set_rt_prio_limit, set_rt_round_robin, warn, AsRawDescriptor, AsRawDescriptors,
-    Event, FromRawDescriptor, RawDescriptor, SharedMemoryUnix,
+    FromRawDescriptor, RawDescriptor, SharedMemoryUnix,
 };
 use remain::sorted;
 use sync::{Condvar, Mutex};
@@ -24,6 +24,7 @@ use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::pci::ac97_mixer::Ac97Mixer;
 use crate::pci::ac97_regs::*;
+use crate::IrqLevelEvent;
 
 const INPUT_SAMPLE_RATE: u32 = 48000;
 const DEVICE_INPUT_CHANNEL_COUNT: usize = 2;
@@ -39,7 +40,7 @@ struct Ac97BusMasterRegs {
     glob_sta: u32,
 
     // IRQ event - driven by the glob_sta register.
-    irq_evt: Option<Event>,
+    irq_evt: Option<IrqLevelEvent>,
 }
 
 impl Ac97BusMasterRegs {
@@ -248,12 +249,12 @@ impl Ac97BusMaster {
     }
 
     /// Provides the events needed to raise interrupts in the guest.
-    pub fn set_irq_event(&mut self, irq_evt: Event, irq_resample_evt: Event) {
+    pub fn set_irq_event(&mut self, irq_evt: IrqLevelEvent) {
         let thread_regs = self.regs.clone();
-        self.regs.lock().irq_evt = Some(irq_evt);
+        self.regs.lock().irq_evt = Some(irq_evt.try_clone().expect("cloning irq_evt failed"));
         self.irq_resample_thread = Some(thread::spawn(move || {
             loop {
-                if let Err(e) = irq_resample_evt.read() {
+                if let Err(e) = irq_evt.get_resample().read() {
                     error!(
                         "Failed to read the irq event from the resample thread: {}.",
                         e,
@@ -264,11 +265,9 @@ impl Ac97BusMaster {
                     // Scope for the lock on thread_regs.
                     let regs = thread_regs.lock();
                     if regs.has_irq() {
-                        if let Some(irq_evt) = regs.irq_evt.as_ref() {
-                            if let Err(e) = irq_evt.write(1) {
-                                error!("Failed to set the irq from the resample thread: {}.", e);
-                                break;
-                            }
+                        if let Err(e) = irq_evt.trigger() {
+                            error!("Failed to set the irq from the resample thread: {}.", e);
+                            break;
                         }
                     }
                 }
@@ -939,9 +938,9 @@ fn update_sr(regs: &mut Ac97BusMasterRegs, func: Ac97Function, val: u16) {
 
     if interrupt_high {
         regs.glob_sta |= int_mask;
-        if let Some(irq_evt) = regs.irq_evt.as_ref() {
+        if let Some(ref irq_evt) = regs.irq_evt {
             // Ignore write failure, nothing can be done about it from here.
-            let _ = irq_evt.write(1);
+            let _ = irq_evt.trigger();
         }
     } else {
         regs.glob_sta &= !int_mask;
