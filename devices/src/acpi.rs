@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{BusAccessInfo, BusDevice, BusResumeDevice};
+use crate::{BusAccessInfo, BusDevice, BusResumeDevice, IrqLevelEvent};
 use acpi_tables::{aml, aml::Aml};
 use base::{error, info, warn, Error as SysError, Event, PollToken, WaitContext};
 use base::{AcpiNotifyEvent, NetlinkGenericSocket};
@@ -53,10 +53,11 @@ struct DirectGpe {
 /// ACPI PM resource for handling OS suspend/resume request
 #[allow(dead_code)]
 pub struct ACPIPMResource {
-    sci_evt: Event,
-    sci_evt_resample: Event,
+    // This is SCI interrupt that will be raised in the VM.
+    sci_evt: IrqLevelEvent,
+    // This is the host SCI that is being handled by crosvm.
     #[cfg(feature = "direct")]
-    sci_direct_evt: Option<(Event, Event)>,
+    sci_direct_evt: Option<IrqLevelEvent>,
     #[cfg(feature = "direct")]
     direct_gpe: Vec<DirectGpe>,
     kill_evt: Option<Event>,
@@ -73,9 +74,8 @@ impl ACPIPMResource {
     /// `direct_gpe_info` - tuple of host SCI trigger and resample events, and list of direct GPEs
     #[allow(dead_code)]
     pub fn new(
-        sci_evt: Event,
-        sci_evt_resample: Event,
-        #[cfg(feature = "direct")] direct_gpe_info: Option<(Event, Event, &[u32])>,
+        sci_evt: IrqLevelEvent,
+        #[cfg(feature = "direct")] direct_gpe_info: Option<(IrqLevelEvent, &[u32])>,
         suspend_evt: Event,
         exit_evt: Event,
     ) -> ACPIPMResource {
@@ -92,16 +92,15 @@ impl ACPIPMResource {
 
         #[cfg(feature = "direct")]
         let (sci_direct_evt, direct_gpe) = if let Some(info) = direct_gpe_info {
-            let (trigger_evt, resample_evt, gpes) = info;
+            let (evt, gpes) = info;
             let gpe_vec = gpes.iter().map(|gpe| DirectGpe::new(*gpe)).collect();
-            (Some((trigger_evt, resample_evt)), gpe_vec)
+            (Some(evt), gpe_vec)
         } else {
             (None, Vec::new())
         };
 
         ACPIPMResource {
             sci_evt,
-            sci_evt_resample,
             #[cfg(feature = "direct")]
             sci_direct_evt,
             #[cfg(feature = "direct")]
@@ -125,23 +124,12 @@ impl ACPIPMResource {
         };
         self.kill_evt = Some(self_kill_evt);
 
-        let sci_resample = self
-            .sci_evt_resample
-            .try_clone()
-            .expect("failed to clone event");
         let sci_evt = self.sci_evt.try_clone().expect("failed to clone event");
         let pm1 = self.pm1.clone();
         let gpe0 = self.gpe0.clone();
 
         #[cfg(feature = "direct")]
-        let sci_direct_evt = if let Some((trigger, resample)) = &self.sci_direct_evt {
-            Some((
-                trigger.try_clone().expect("failed to clone event"),
-                resample.try_clone().expect("failed to clone event"),
-            ))
-        } else {
-            None
-        };
+        let sci_direct_evt = self.sci_direct_evt.take();
 
         #[cfg(feature = "direct")]
         // Direct GPEs are forwarded via direct SCI forwarding,
@@ -155,9 +143,8 @@ impl ACPIPMResource {
             .name("ACPI PM worker".to_string())
             .spawn(move || {
                 if let Err(e) = run_worker(
-                    sci_resample,
-                    kill_evt,
                     sci_evt,
+                    kill_evt,
                     pm1,
                     gpe0,
                     acpi_event_ignored_gpe,
@@ -176,13 +163,12 @@ impl ACPIPMResource {
 }
 
 fn run_worker(
-    sci_resample: Event,
+    sci_evt: IrqLevelEvent,
     kill_evt: Event,
-    sci_evt: Event,
     pm1: Arc<Mutex<Pm1Resource>>,
     gpe0: Arc<Mutex<GpeResource>>,
     acpi_event_ignored_gpe: Vec<u32>,
-    #[cfg(feature = "direct")] sci_direct_evt: Option<(Event, Event)>,
+    #[cfg(feature = "direct")] sci_direct_evt: Option<IrqLevelEvent>,
 ) -> Result<(), ACPIPMError> {
     // Get group id corresponding to acpi_mc_group of acpi_event family
     let nl_groups: u32;
@@ -214,20 +200,20 @@ fn run_worker(
 
     let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
         (&acpi_event_sock, Token::AcpiEvent),
-        (&sci_resample, Token::InterruptResample),
+        (sci_evt.get_resample(), Token::InterruptResample),
         (&kill_evt, Token::Kill),
     ])
     .map_err(ACPIPMError::CreateWaitContext)?;
 
     #[cfg(feature = "direct")]
-    if let Some((ref trigger, _)) = sci_direct_evt {
+    if let Some(ref evt) = sci_direct_evt {
         wait_ctx
-            .add(trigger, Token::InterruptTriggerDirect)
+            .add(evt.get_trigger(), Token::InterruptTriggerDirect)
             .map_err(ACPIPMError::CreateWaitContext)?;
     }
 
     #[cfg(feature = "direct")]
-    let mut pending_sci_direct_resample: Option<&Event> = None;
+    let mut pending_sci_direct: Option<&IrqLevelEvent> = None;
 
     loop {
         let events = wait_ctx.wait().map_err(ACPIPMError::WaitError)?;
@@ -243,11 +229,11 @@ fn run_worker(
                     );
                 }
                 Token::InterruptResample => {
-                    let _ = sci_resample.read();
+                    sci_evt.clear_resample();
 
                     #[cfg(feature = "direct")]
-                    if let Some(resample) = pending_sci_direct_resample.take() {
-                        if let Err(e) = resample.write(1) {
+                    if let Some(evt) = pending_sci_direct.take() {
+                        if let Err(e) = evt.trigger_resample() {
                             error!("ACPIPM: failed to resample sci event: {}", e);
                         }
                     }
@@ -258,8 +244,8 @@ fn run_worker(
                 }
                 #[cfg(feature = "direct")]
                 Token::InterruptTriggerDirect => {
-                    if let Some((ref trigger, ref resample)) = sci_direct_evt {
-                        let _ = trigger.read();
+                    if let Some(ref evt) = sci_direct_evt {
+                        evt.clear_trigger();
 
                         for (gpe, devs) in &gpe0.lock().gpe_notify {
                             if DirectGpe::is_gpe_trigger(*gpe).unwrap_or(false) {
@@ -269,10 +255,10 @@ fn run_worker(
                             }
                         }
 
-                        if let Err(e) = sci_evt.write(1) {
+                        if let Err(e) = sci_evt.trigger() {
                             error!("ACPIPM: failed to trigger sci event: {}", e);
                         }
-                        pending_sci_direct_resample = Some(resample);
+                        pending_sci_direct = Some(evt);
                     }
                 }
                 Token::Kill => return Ok(()),
@@ -281,11 +267,11 @@ fn run_worker(
     }
 }
 
-fn acpi_event_gpe_class(
+fn acpi_event_handle_gpe(
     gpe_number: u32,
     _type: u32,
     gpe0: &Arc<Mutex<GpeResource>>,
-    sci_evt: &Event,
+    sci_evt: &IrqLevelEvent,
     ignored_gpe: &[u32],
 ) {
     // If gpe event, emulate GPE and trigger SCI
@@ -304,10 +290,10 @@ fn acpi_event_gpe_class(
 
 const ACPI_BUTTON_NOTIFY_STATUS: u32 = 0x80;
 
-fn acpi_event_pwrbtn_class(
+fn acpi_event_handle_power_button(
     acpi_event: AcpiNotifyEvent,
     pm1: &Arc<Mutex<Pm1Resource>>,
-    sci_evt: &Event,
+    sci_evt: &IrqLevelEvent,
 ) {
     // If received power button event, emulate PM/PWRBTN_STS and trigger SCI
     if acpi_event._type == ACPI_BUTTON_NOTIFY_STATUS && acpi_event.bus_id.contains("LNXPWRBN") {
@@ -338,7 +324,7 @@ fn acpi_event_run(
     acpi_event_sock: &NetlinkGenericSocket,
     gpe0: &Arc<Mutex<GpeResource>>,
     pm1: &Arc<Mutex<Pm1Resource>>,
-    sci_evt: &Event,
+    sci_evt: &IrqLevelEvent,
     ignored_gpe: &[u32],
 ) {
     let nl_msg = match acpi_event_sock.recv() {
@@ -359,7 +345,7 @@ fn acpi_event_run(
         };
         match acpi_event.device_class.as_str() {
             "gpe" => {
-                acpi_event_gpe_class(
+                acpi_event_handle_gpe(
                     acpi_event.data,
                     acpi_event._type,
                     gpe0,
@@ -367,7 +353,7 @@ fn acpi_event_run(
                     ignored_gpe,
                 );
             }
-            "button/power" => acpi_event_pwrbtn_class(acpi_event, pm1, sci_evt),
+            "button/power" => acpi_event_handle_power_button(acpi_event, pm1, sci_evt),
             c => warn!("unknown acpi event {}", c),
         };
     }
@@ -386,7 +372,7 @@ impl Drop for ACPIPMResource {
 }
 
 impl Pm1Resource {
-    fn trigger_sci(&self, sci_evt: &Event) {
+    fn trigger_sci(&self, sci_evt: &IrqLevelEvent) {
         if self.status
             & self.enable
             & (BITMASK_PM1EN_GBL_EN
@@ -395,7 +381,7 @@ impl Pm1Resource {
                 | BITMASK_PM1EN_RTC_EN)
             != 0
         {
-            if let Err(e) = sci_evt.write(1) {
+            if let Err(e) = sci_evt.trigger() {
                 error!("ACPIPM: failed to trigger sci event for pm1: {}", e);
             }
         }
@@ -403,7 +389,7 @@ impl Pm1Resource {
 }
 
 impl GpeResource {
-    fn trigger_sci(&self, sci_evt: &Event) {
+    fn trigger_sci(&self, sci_evt: &IrqLevelEvent) {
         let mut trigger = false;
         for i in 0..self.status.len() {
             let gpes = self.status[i] & self.enable[i];
@@ -427,7 +413,7 @@ impl GpeResource {
         }
 
         if trigger {
-            if let Err(e) = sci_evt.write(1) {
+            if let Err(e) = sci_evt.trigger() {
                 error!("ACPIPM: failed to trigger sci event for gpe: {}", e);
             }
         }

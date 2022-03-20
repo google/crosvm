@@ -1327,23 +1327,28 @@ impl X8664arch {
         let pcie_vcfg = aml::Name::new("VCFG".into(), &Self::get_pcie_vcfg_mmio_base(mem));
         pcie_vcfg.to_aml_bytes(&mut amls);
 
-        let pm_sci_evt = Event::new().map_err(Error::CreateEvent)?;
-        let pm_sci_evt_resample = Event::new().map_err(Error::CreateEvent)?;
+        let pm_sci_evt = devices::IrqLevelEvent::new().map_err(Error::CreateEvent)?;
         irq_chip
-            .register_irq_event(sci_irq, &pm_sci_evt, Some(&pm_sci_evt_resample))
+            .register_irq_event(
+                sci_irq,
+                pm_sci_evt.get_trigger(),
+                Some(pm_sci_evt.get_resample()),
+            )
             .map_err(Error::RegisterIrqfd)?;
 
         #[cfg(feature = "direct")]
         let direct_gpe_info = if direct_gpe.is_empty() {
             None
         } else {
-            let direct_sci_evt = Event::new().map_err(Error::CreateEvent)?;
-            let direct_sci_evt_resample = Event::new().map_err(Error::CreateEvent)?;
-
+            let direct_sci_evt = devices::IrqLevelEvent::new().map_err(Error::CreateEvent)?;
             let mut sci_devirq = devices::DirectIrq::new(
-                direct_sci_evt.try_clone().map_err(Error::CloneEvent)?,
+                direct_sci_evt
+                    .get_trigger()
+                    .try_clone()
+                    .map_err(Error::CloneEvent)?,
                 Some(
-                    direct_sci_evt_resample
+                    direct_sci_evt
+                        .get_resample()
                         .try_clone()
                         .map_err(Error::CloneEvent)?,
                 ),
@@ -1358,12 +1363,11 @@ impl X8664arch {
                     .map_err(Error::CreateGpe)?;
             }
 
-            Some((direct_sci_evt, direct_sci_evt_resample, direct_gpe))
+            Some((direct_sci_evt, direct_gpe))
         };
 
         let mut pmresource = devices::ACPIPMResource::new(
             pm_sci_evt,
-            pm_sci_evt_resample,
             #[cfg(feature = "direct")]
             direct_gpe_info,
             suspend_evt,
