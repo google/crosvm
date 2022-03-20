@@ -90,20 +90,28 @@ impl VfioPlatformDevice {
 
     pub fn assign_platform_irq(
         &mut self,
-        irq_evt: Event,
-        irq_resample_evt: Option<Event>,
+        irq_evt: &Event,
+        irq_resample_evt: Option<&Event>,
         index: u32,
     ) -> Result<()> {
         self.device
-            .irq_enable(&[Some(&irq_evt)], index, 0)
+            .irq_enable(&[Some(irq_evt)], index, 0)
             .context("platform irq enable failed")?;
-        if let Some(ref irq_res_evt) = irq_resample_evt {
+        let trigger_evt = Some(irq_evt.try_clone().context("failed to clone irq_evt")?);
+        let resample_evt = if let Some(irq_res_evt) = irq_resample_evt {
             if let Err(e) = self.setup_irq_resample(irq_res_evt, index) {
                 self.disable_irqs(index);
                 bail!("failed to set up irq resampling: {}", e);
             }
-        }
-        self.interrupt_evt.push((Some(irq_evt), irq_resample_evt));
+            Some(
+                irq_res_evt
+                    .try_clone()
+                    .context("failed to clone irq_resample_evt")?,
+            )
+        } else {
+            None
+        };
+        self.interrupt_evt.push((trigger_evt, resample_evt));
         Ok(())
     }
 

@@ -470,7 +470,7 @@ pub fn generate_platform_bus(
                 .register_irq_event(irq_num, &irqfd, irq_resample_fd.as_ref())
                 .map_err(DeviceRegistrationError::RegisterIrqfd)?;
             device
-                .assign_platform_irq(irqfd, irq_resample_fd, irq.index)
+                .assign_platform_irq(&irqfd, irq_resample_fd.as_ref(), irq.index)
                 .map_err(DeviceRegistrationError::SetupVfioPlatformIrq)?;
         }
 
