@@ -12,9 +12,15 @@ use remain::sorted;
 use thiserror::Error;
 use vfio_sys::*;
 
+use crate::{IrqEdgeEvent, IrqLevelEvent};
+
 #[sorted]
 #[derive(Error, Debug)]
 pub enum DirectIrqError {
+    #[error("failed to clone trigger event: {0}")]
+    CloneEvent(base::Error),
+    #[error("failed to clone resample event: {0}")]
+    CloneResampleEvent(base::Error),
     #[error("failed to enable direct irq")]
     Enable,
     #[error("failed to enable gpe irq")]
@@ -33,8 +39,19 @@ pub struct DirectIrq {
 }
 
 impl DirectIrq {
-    /// Create DirectIrq object to access hardware triggered interrupts.
-    pub fn new(trigger: Event, resample: Option<Event>) -> Result<Self, DirectIrqError> {
+    fn new(trigger_evt: &Event, resample_evt: Option<&Event>) -> Result<Self, DirectIrqError> {
+        let trigger = trigger_evt
+            .try_clone()
+            .map_err(DirectIrqError::CloneEvent)?;
+        let resample = if let Some(event) = resample_evt {
+            Some(
+                event
+                    .try_clone()
+                    .map_err(DirectIrqError::CloneResampleEvent)?,
+            )
+        } else {
+            None
+        };
         let dev = OpenOptions::new()
             .read(true)
             .write(true)
@@ -46,6 +63,16 @@ impl DirectIrq {
             resample,
             sci_irq_prepared: false,
         })
+    }
+
+    /// Create DirectIrq object to access hardware edge triggered interrupts.
+    pub fn new_edge(irq_evt: &IrqEdgeEvent) -> Result<Self, DirectIrqError> {
+        DirectIrq::new(irq_evt.get_trigger(), None)
+    }
+
+    /// Create DirectIrq object to access hardware level triggered interrupts.
+    pub fn new_level(irq_evt: &IrqLevelEvent) -> Result<Self, DirectIrqError> {
+        DirectIrq::new(irq_evt.get_trigger(), Some(irq_evt.get_resample()))
     }
 
     /// Enable hardware triggered interrupt handling.

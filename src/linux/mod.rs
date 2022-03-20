@@ -1231,12 +1231,11 @@ where
         if !sys_allocator.reserve_irq(*irq) {
             warn!("irq {} already reserved.", irq);
         }
-        let trigger = Event::new().context("failed to create event")?;
-        let resample = Event::new().context("failed to create event")?;
+        let irq_evt = devices::IrqLevelEvent::new().context("failed to create event")?;
         irq_chip
-            .register_irq_event(*irq, &trigger, Some(&resample))
+            .register_irq_event(*irq, irq_evt.get_trigger(), Some(irq_evt.get_resample()))
             .unwrap();
-        let direct_irq = devices::DirectIrq::new(trigger, Some(resample))
+        let direct_irq = devices::DirectIrq::new_level(&irq_evt)
             .context("failed to enable interrupt forwarding")?;
         direct_irq
             .irq_enable(*irq)
@@ -1249,9 +1248,11 @@ where
         if !sys_allocator.reserve_irq(*irq) {
             warn!("irq {} already reserved.", irq);
         }
-        let trigger = Event::new().context("failed to create event")?;
-        irq_chip.register_irq_event(*irq, &trigger, None).unwrap();
-        let direct_irq = devices::DirectIrq::new(trigger, None)
+        let irq_evt = devices::IrqEdgeEvent::new().context("failed to create event")?;
+        irq_chip
+            .register_irq_event(*irq, irq_evt.get_trigger(), None)
+            .unwrap();
+        let direct_irq = devices::DirectIrq::new_edge(&irq_evt)
             .context("failed to enable interrupt forwarding")?;
         direct_irq
             .irq_enable(*irq)

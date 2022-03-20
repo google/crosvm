@@ -1341,19 +1341,8 @@ impl X8664arch {
             None
         } else {
             let direct_sci_evt = devices::IrqLevelEvent::new().map_err(Error::CreateEvent)?;
-            let mut sci_devirq = devices::DirectIrq::new(
-                direct_sci_evt
-                    .get_trigger()
-                    .try_clone()
-                    .map_err(Error::CloneEvent)?,
-                Some(
-                    direct_sci_evt
-                        .get_resample()
-                        .try_clone()
-                        .map_err(Error::CloneEvent)?,
-                ),
-            )
-            .map_err(Error::CreateGpe)?;
+            let mut sci_devirq =
+                devices::DirectIrq::new_level(&direct_sci_evt).map_err(Error::CreateGpe)?;
 
             sci_devirq.sci_irq_prepare().map_err(Error::CreateGpe)?;
 
