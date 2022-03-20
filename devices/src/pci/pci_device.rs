@@ -20,7 +20,7 @@ use crate::pci::{PciAddress, PciAddressError, PciInterruptPin};
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 #[cfg(feature = "audio")]
 use crate::virtio::snd::vios_backend::Error as VioSError;
-use crate::{BusAccessInfo, BusDevice};
+use crate::{BusAccessInfo, BusDevice, IrqLevelEvent};
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -96,8 +96,7 @@ pub trait PciDevice: Send {
     /// If legacy INTx is used, function shall return requested IRQ number and PCI INTx pin.
     fn assign_irq(
         &mut self,
-        _irq_evt: &Event,
-        _irq_resample_evt: &Event,
+        _irq_evt: &IrqLevelEvent,
         _irq_num: Option<u32>,
     ) -> Option<(u32, PciInterruptPin)> {
         None
@@ -368,11 +367,10 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     }
     fn assign_irq(
         &mut self,
-        irq_evt: &Event,
-        irq_resample_evt: &Event,
+        irq_evt: &IrqLevelEvent,
         irq_num: Option<u32>,
     ) -> Option<(u32, PciInterruptPin)> {
-        (**self).assign_irq(irq_evt, irq_resample_evt, irq_num)
+        (**self).assign_irq(irq_evt, irq_num)
     }
     fn allocate_io_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<BarRange>> {
         (**self).allocate_io_bars(resources)

@@ -1493,8 +1493,7 @@ impl PciDevice for VfioPciDevice {
 
     fn assign_irq(
         &mut self,
-        irq_evt: &Event,
-        irq_resample_evt: &Event,
+        irq_evt: &IrqLevelEvent,
         _irq_num: Option<u32>,
     ) -> Option<(u32, PciInterruptPin)> {
         // Is INTx configured?
@@ -1507,10 +1506,7 @@ impl PciDevice for VfioPciDevice {
         }?;
 
         // Keep event/resample event references.
-        self.interrupt_evt = Some(IrqLevelEvent::from_event_pair(
-            irq_evt.try_clone().ok()?,
-            irq_resample_evt.try_clone().ok()?,
-        ));
+        self.interrupt_evt = Some(irq_evt.try_clone().ok()?);
 
         // enable INTX
         self.enable_intx();

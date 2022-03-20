@@ -15,7 +15,7 @@ use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::usb::xhci::xhci_regs::{init_xhci_mmio_space_and_regs, XhciRegs};
 use crate::utils::FailHandle;
 use crate::IrqLevelEvent;
-use base::{error, AsRawDescriptor, Event, RawDescriptor};
+use base::{error, AsRawDescriptor, RawDescriptor};
 use resources::{Alloc, MmioType, SystemAllocator};
 use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -206,8 +206,7 @@ impl PciDevice for XhciController {
 
     fn assign_irq(
         &mut self,
-        irq_evt: &Event,
-        irq_resample_evt: &Event,
+        irq_evt: &IrqLevelEvent,
         irq_num: Option<u32>,
     ) -> Option<(u32, PciInterruptPin)> {
         let gsi = irq_num?;
@@ -220,10 +219,7 @@ impl PciDevice for XhciController {
                 self.config_regs.set_irq(gsi as u8, pin);
                 self.state = XhciControllerState::IrqAssigned {
                     device_provider,
-                    irq_evt: IrqLevelEvent::from_event_pair(
-                        irq_evt.try_clone().ok()?,
-                        irq_resample_evt.try_clone().ok()?,
-                    ),
+                    irq_evt: irq_evt.try_clone().ok()?,
                 }
             }
             _ => {

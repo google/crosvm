@@ -364,16 +364,19 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
         .map_err(DeviceRegistrationError::AllocateDeviceAddrs)?;
 
     // Do not suggest INTx for hot-plug devices.
-    let intx_event = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
-    let intx_resample = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
+    let intx_event = devices::IrqLevelEvent::new().map_err(DeviceRegistrationError::EventCreate)?;
 
-    if let Some((gsi, _pin)) = device.assign_irq(&intx_event, &intx_resample, None) {
+    if let Some((gsi, _pin)) = device.assign_irq(&intx_event, None) {
         resources.reserve_irq(gsi);
 
         linux
             .irq_chip
             .as_irq_chip_mut()
-            .register_irq_event(gsi, &intx_event, Some(&intx_resample))
+            .register_irq_event(
+                gsi,
+                intx_event.get_trigger(),
+                Some(intx_event.get_resample()),
+            )
             .map_err(DeviceRegistrationError::RegisterIrqfd)?;
     }
 
@@ -583,16 +586,20 @@ pub fn generate_pci_root(
             irq
         };
 
-        let intx_event = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
-        let intx_resample = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
+        let intx_event =
+            devices::IrqLevelEvent::new().map_err(DeviceRegistrationError::EventCreate)?;
 
-        if let Some((gsi, pin)) = device.assign_irq(&intx_event, &intx_resample, Some(irq_num)) {
+        if let Some((gsi, pin)) = device.assign_irq(&intx_event, Some(irq_num)) {
             // reserve INTx if needed and non-default.
             if gsi != irq_num {
                 resources.reserve_irq(gsi);
             };
             irq_chip
-                .register_irq_event(gsi, &intx_event, Some(&intx_resample))
+                .register_irq_event(
+                    gsi,
+                    intx_event.get_trigger(),
+                    Some(intx_event.get_resample()),
+                )
                 .map_err(DeviceRegistrationError::RegisterIrqfd)?;
 
             pci_irqs.push((device_addrs[dev_idx], gsi, pin));

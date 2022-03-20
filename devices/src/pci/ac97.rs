@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use audio_streams::shm_streams::{NullShmStreamSource, ShmStreamSource};
-use base::{error, AsRawDescriptor, Event, RawDescriptor};
+use base::{error, AsRawDescriptor, RawDescriptor};
 #[cfg(feature = "audio_cras")]
 use libcras::{CrasClient, CrasClientType, CrasSocketType, CrasSysError};
 use remain::sorted;
@@ -303,14 +303,10 @@ impl PciDevice for Ac97Dev {
 
     fn assign_irq(
         &mut self,
-        irq_evt: &Event,
-        irq_resample_evt: &Event,
+        irq_evt: &IrqLevelEvent,
         irq_num: Option<u32>,
     ) -> Option<(u32, PciInterruptPin)> {
-        self.irq_evt = Some(IrqLevelEvent::from_event_pair(
-            irq_evt.try_clone().ok()?,
-            irq_resample_evt.try_clone().ok()?,
-        ));
+        self.irq_evt = Some(irq_evt.try_clone().ok()?);
         let gsi = irq_num?;
         let pin = self.pci_address.map_or(
             PciInterruptPin::IntA,

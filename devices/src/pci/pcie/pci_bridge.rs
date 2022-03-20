@@ -197,14 +197,10 @@ impl PciDevice for PciBridge {
 
     fn assign_irq(
         &mut self,
-        irq_evt: &Event,
-        irq_resample_evt: &Event,
+        irq_evt: &IrqLevelEvent,
         irq_num: Option<u32>,
     ) -> Option<(u32, PciInterruptPin)> {
-        self.interrupt_evt = Some(IrqLevelEvent::from_event_pair(
-            irq_evt.try_clone().ok()?,
-            irq_resample_evt.try_clone().ok()?,
-        ));
+        self.interrupt_evt = Some(irq_evt.try_clone().ok()?);
         let msix_config_clone = self.msix_config.clone();
         self.device.lock().clone_interrupt(msix_config_clone);
 
