@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 use crate::vfio::{VfioDevice, VfioError, VfioIrq};
 use crate::{BusAccessInfo, BusDevice, BusDeviceObj};
+use anyhow::{bail, Context, Result};
 use base::{
     error, pagesize, AsRawDescriptor, Event, MappedRegion, MemoryMapping, MemoryMappingBuilder,
     RawDescriptor, Tube,
@@ -76,34 +77,34 @@ impl VfioPlatformDevice {
         irq.flags & VFIO_IRQ_INFO_AUTOMASKED != 0
     }
 
+    fn setup_irq_resample(&mut self, resample_evt: &Event, index: u32) -> Result<()> {
+        self.device.irq_mask(index).context("Intx mask failed")?;
+        self.device
+            .resample_virq_enable(resample_evt, index)
+            .context("resample enable failed")?;
+        self.device
+            .irq_unmask(index)
+            .context("Intx unmask failed")?;
+        Ok(())
+    }
+
     pub fn assign_platform_irq(
         &mut self,
         irq_evt: Event,
         irq_resample_evt: Option<Event>,
         index: u32,
-    ) {
-        if let Err(e) = self.device.irq_enable(&[Some(&irq_evt)], index, 0) {
-            error!("platform irq enable failed: {}", e);
-            return;
-        }
+    ) -> Result<()> {
+        self.device
+            .irq_enable(&[Some(&irq_evt)], index, 0)
+            .context("platform irq enable failed")?;
         if let Some(ref irq_res_evt) = irq_resample_evt {
-            if let Err(e) = self.device.irq_mask(index) {
-                error!("Intx mask failed: {}", e);
+            if let Err(e) = self.setup_irq_resample(irq_res_evt, index) {
                 self.disable_irqs(index);
-                return;
-            }
-            if let Err(e) = self.device.resample_virq_enable(irq_res_evt, index) {
-                error!("resample enable failed: {}", e);
-                self.disable_irqs(index);
-                return;
-            }
-            if let Err(e) = self.device.irq_unmask(index) {
-                error!("Intx unmask failed: {}", e);
-                self.disable_irqs(index);
-                return;
+                bail!("failed to set up irq resampling: {}", e);
             }
         }
         self.interrupt_evt.push((Some(irq_evt), irq_resample_evt));
+        Ok(())
     }
 
     fn find_region(&self, addr: u64) -> Option<MmioInfo> {

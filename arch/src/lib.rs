@@ -339,6 +339,9 @@ pub enum DeviceRegistrationError {
     /// Failed to register irq event with VM.
     #[error("failed to register irq event to VM: {0}")]
     RegisterIrqfd(base::Error),
+    /// Could not setup VFIO platform IRQ for the device.
+    #[error("Setting up VFIO platform IRQ: {0}")]
+    SetupVfioPlatformIrq(anyhow::Error),
 }
 
 /// Config a PCI device for used by this vm.
@@ -466,7 +469,9 @@ pub fn generate_platform_bus(
             irq_chip
                 .register_irq_event(irq_num, &irqfd, irq_resample_fd.as_ref())
                 .map_err(DeviceRegistrationError::RegisterIrqfd)?;
-            device.assign_platform_irq(irqfd, irq_resample_fd, irq.index);
+            device
+                .assign_platform_irq(irqfd, irq_resample_fd, irq.index)
+                .map_err(DeviceRegistrationError::SetupVfioPlatformIrq)?;
         }
 
         let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
