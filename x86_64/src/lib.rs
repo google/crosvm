@@ -550,7 +550,7 @@ impl arch::LinuxArch for X8664arch {
             exit_evt.try_clone().map_err(Error::CloneEvent)?,
             components.acpi_sdts,
             #[cfg(feature = "direct")]
-            components.direct_gpe,
+            &components.direct_gpe,
             irq_chip.as_irq_chip_mut(),
             sci_irq,
             battery,
@@ -1283,7 +1283,7 @@ impl X8664arch {
         suspend_evt: Event,
         exit_evt: Event,
         sdts: Vec<SDT>,
-        #[cfg(feature = "direct")] direct_gpe: Vec<u32>,
+        #[cfg(feature = "direct")] direct_gpe: &[u32],
         irq_chip: &mut dyn IrqChip,
         sci_irq: u32,
         battery: (&Option<BatteryType>, Option<Minijail>),
@@ -1335,7 +1335,7 @@ impl X8664arch {
 
             sci_devirq.sci_irq_prepare().map_err(Error::CreateGpe)?;
 
-            for gpe in &direct_gpe {
+            for gpe in direct_gpe {
                 sci_devirq
                     .gpe_enable_forwarding(*gpe)
                     .map_err(Error::CreateGpe)?;

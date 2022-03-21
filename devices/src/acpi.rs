@@ -72,7 +72,7 @@ impl ACPIPMResource {
         sci_evt: Event,
         sci_evt_resample: Event,
         #[cfg(feature = "direct")] sci_direct_evt: Option<(Event, Event)>,
-        #[cfg(feature = "direct")] direct_gpe: Vec<u32>,
+        #[cfg(feature = "direct")] direct_gpe: &[u32],
         suspend_evt: Event,
         exit_evt: Event,
     ) -> ACPIPMResource {
