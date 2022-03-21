@@ -1317,7 +1317,7 @@ impl X8664arch {
             .map_err(Error::RegisterIrqfd)?;
 
         #[cfg(feature = "direct")]
-        let sci_direct = if direct_gpe.is_empty() {
+        let direct_gpe_info = if direct_gpe.is_empty() {
             None
         } else {
             let direct_sci_evt = Event::new().map_err(Error::CreateEvent)?;
@@ -1341,16 +1341,14 @@ impl X8664arch {
                     .map_err(Error::CreateGpe)?;
             }
 
-            Some((direct_sci_evt, direct_sci_evt_resample))
+            Some((direct_sci_evt, direct_sci_evt_resample, direct_gpe))
         };
 
         let mut pmresource = devices::ACPIPMResource::new(
             pm_sci_evt,
             pm_sci_evt_resample,
             #[cfg(feature = "direct")]
-            sci_direct,
-            #[cfg(feature = "direct")]
-            direct_gpe,
+            direct_gpe_info,
             suspend_evt,
             exit_evt,
         );

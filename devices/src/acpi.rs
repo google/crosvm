@@ -67,12 +67,13 @@ pub struct ACPIPMResource {
 
 impl ACPIPMResource {
     /// Constructs ACPI Power Management Resouce.
+    ///
+    /// `direct_gpe_info` - tuple of host SCI trigger and resample events, and list of direct GPEs
     #[allow(dead_code)]
     pub fn new(
         sci_evt: Event,
         sci_evt_resample: Event,
-        #[cfg(feature = "direct")] sci_direct_evt: Option<(Event, Event)>,
-        #[cfg(feature = "direct")] direct_gpe: &[u32],
+        #[cfg(feature = "direct")] direct_gpe_info: Option<(Event, Event, &[u32])>,
         suspend_evt: Event,
         exit_evt: Event,
     ) -> ACPIPMResource {
@@ -86,13 +87,22 @@ impl ACPIPMResource {
             enable: Default::default(),
         };
 
+        #[cfg(feature = "direct")]
+        let (sci_direct_evt, direct_gpe) = if let Some(info) = direct_gpe_info {
+            let (trigger_evt, resample_evt, gpes) = info;
+            let gpe_vec = gpes.iter().map(|gpe| DirectGpe::new(*gpe)).collect();
+            (Some((trigger_evt, resample_evt)), gpe_vec)
+        } else {
+            (None, Vec::new())
+        };
+
         ACPIPMResource {
             sci_evt,
             sci_evt_resample,
             #[cfg(feature = "direct")]
             sci_direct_evt,
             #[cfg(feature = "direct")]
-            direct_gpe: direct_gpe.iter().map(|gpe| DirectGpe::new(*gpe)).collect(),
+            direct_gpe,
             kill_evt: None,
             worker_thread: None,
             suspend_evt,
