@@ -1329,11 +1329,7 @@ impl X8664arch {
 
         let pm_sci_evt = devices::IrqLevelEvent::new().map_err(Error::CreateEvent)?;
         irq_chip
-            .register_irq_event(
-                sci_irq,
-                pm_sci_evt.get_trigger(),
-                Some(pm_sci_evt.get_resample()),
-            )
+            .register_level_irq_event(sci_irq, &pm_sci_evt)
             .map_err(Error::RegisterIrqfd)?;
 
         #[cfg(feature = "direct")]
@@ -1447,24 +1443,24 @@ impl X8664arch {
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
     ) -> Result<()> {
-        let com_evt_1_3 = Event::new().map_err(Error::CreateEvent)?;
-        let com_evt_2_4 = Event::new().map_err(Error::CreateEvent)?;
+        let com_evt_1_3 = devices::IrqEdgeEvent::new().map_err(Error::CreateEvent)?;
+        let com_evt_2_4 = devices::IrqEdgeEvent::new().map_err(Error::CreateEvent)?;
 
         arch::add_serial_devices(
             protected_vm,
             io_bus,
-            &com_evt_1_3,
-            &com_evt_2_4,
+            com_evt_1_3.get_trigger(),
+            com_evt_2_4.get_trigger(),
             serial_parameters,
             serial_jail,
         )
         .map_err(Error::CreateSerialDevices)?;
 
         irq_chip
-            .register_irq_event(X86_64_SERIAL_1_3_IRQ, &com_evt_1_3, None)
+            .register_edge_irq_event(X86_64_SERIAL_1_3_IRQ, &com_evt_1_3)
             .map_err(Error::RegisterIrqfd)?;
         irq_chip
-            .register_irq_event(X86_64_SERIAL_2_4_IRQ, &com_evt_2_4, None)
+            .register_edge_irq_event(X86_64_SERIAL_2_4_IRQ, &com_evt_2_4)
             .map_err(Error::RegisterIrqfd)?;
 
         Ok(())

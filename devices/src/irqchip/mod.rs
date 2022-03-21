@@ -4,7 +4,7 @@
 
 use std::marker::{Send, Sized};
 
-use crate::Bus;
+use crate::{Bus, IrqEdgeEvent, IrqLevelEvent};
 use base::{Event, Result};
 use hypervisor::{IrqRoute, MPState, Vcpu};
 use resources::SystemAllocator;
@@ -61,16 +61,25 @@ pub trait IrqChip: Send {
     /// Add a vcpu to the irq chip.
     fn add_vcpu(&mut self, vcpu_id: usize, vcpu: &dyn Vcpu) -> Result<()>;
 
-    /// Register an event that can trigger an interrupt for a particular GSI.
-    fn register_irq_event(
+    /// Register an event with edge-trigger semantic that can trigger an interrupt for a particular GSI.
+    fn register_edge_irq_event(
         &mut self,
         irq: u32,
-        irq_event: &Event,
-        resample_event: Option<&Event>,
+        irq_event: &IrqEdgeEvent,
     ) -> Result<Option<IrqEventIndex>>;
 
-    /// Unregister an event for a particular GSI.
-    fn unregister_irq_event(&mut self, irq: u32, irq_event: &Event) -> Result<()>;
+    /// Unregister an event with edge-trigger semantic for a particular GSI.
+    fn unregister_edge_irq_event(&mut self, irq: u32, irq_event: &IrqEdgeEvent) -> Result<()>;
+
+    /// Register an event with level-trigger semantic that can trigger an interrupt for a particular GSI.
+    fn register_level_irq_event(
+        &mut self,
+        irq: u32,
+        irq_event: &IrqLevelEvent,
+    ) -> Result<Option<IrqEventIndex>>;
+
+    /// Unregister an event with level-trigger semantic for a particular GSI.
+    fn unregister_level_irq_event(&mut self, irq: u32, irq_event: &IrqLevelEvent) -> Result<()>;
 
     /// Route an IRQ line to an interrupt controller, or to a particular MSI vector.
     fn route_irq(&mut self, route: IrqRoute) -> Result<()>;

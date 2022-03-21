@@ -1232,9 +1232,7 @@ where
             warn!("irq {} already reserved.", irq);
         }
         let irq_evt = devices::IrqLevelEvent::new().context("failed to create event")?;
-        irq_chip
-            .register_irq_event(*irq, irq_evt.get_trigger(), Some(irq_evt.get_resample()))
-            .unwrap();
+        irq_chip.register_level_irq_event(*irq, &irq_evt).unwrap();
         let direct_irq = devices::DirectIrq::new_level(&irq_evt)
             .context("failed to enable interrupt forwarding")?;
         direct_irq
@@ -1249,9 +1247,7 @@ where
             warn!("irq {} already reserved.", irq);
         }
         let irq_evt = devices::IrqEdgeEvent::new().context("failed to create event")?;
-        irq_chip
-            .register_irq_event(*irq, irq_evt.get_trigger(), None)
-            .unwrap();
+        irq_chip.register_edge_irq_event(*irq, &irq_evt).unwrap();
         let direct_irq = devices::DirectIrq::new_edge(&irq_evt)
             .context("failed to enable interrupt forwarding")?;
         direct_irq
@@ -1982,8 +1978,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         request.execute(
                                             |setup| match setup {
                                                 IrqSetup::Event(irq, ev, _, _, _) => {
+                                                    let irq_evt = devices::IrqEdgeEvent::from_event(ev.try_clone()?);
                                                     if let Some(event_index) = irq_chip
-                                                        .register_irq_event(irq, ev, None)?
+                                                        .register_edge_irq_event(irq, &irq_evt)?
                                                     {
                                                         match wait_ctx.add(
                                                             ev,
@@ -2004,7 +2001,10 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                     }
                                                 }
                                                 IrqSetup::Route(route) => irq_chip.route_irq(route),
-                                                IrqSetup::UnRegister(irq, ev) => irq_chip.unregister_irq_event(irq, ev),
+                                                IrqSetup::UnRegister(irq, ev) => {
+                                                    let irq_evt = devices::IrqEdgeEvent::from_event(ev.try_clone()?);
+                                                    irq_chip.unregister_edge_irq_event(irq, &irq_evt)
+                                                }
                                             },
                                             &mut sys_allocator,
                                         )

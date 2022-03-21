@@ -375,11 +375,7 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
         linux
             .irq_chip
             .as_irq_chip_mut()
-            .register_irq_event(
-                gsi,
-                intx_event.get_trigger(),
-                Some(intx_event.get_resample()),
-            )
+            .register_level_irq_event(gsi, &intx_event)
             .map_err(DeviceRegistrationError::RegisterIrqfd)?;
     }
 
@@ -453,25 +449,36 @@ pub fn generate_platform_bus(
             .get_platform_irqs()
             .map_err(DeviceRegistrationError::AllocateIrqResource)?;
         for irq in irqs.into_iter() {
-            let irqfd = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
-            keep_rds.push(irqfd.as_raw_descriptor());
-            let irq_resample_fd = if device.irq_is_automask(&irq) {
-                let evt = Event::new().map_err(DeviceRegistrationError::EventCreate)?;
-                keep_rds.push(evt.as_raw_descriptor());
-                Some(evt)
-            } else {
-                None
-            };
-
             let irq_num = resources
                 .allocate_irq()
                 .ok_or(DeviceRegistrationError::AllocateIrq)?;
-            irq_chip
-                .register_irq_event(irq_num, &irqfd, irq_resample_fd.as_ref())
-                .map_err(DeviceRegistrationError::RegisterIrqfd)?;
-            device
-                .assign_platform_irq(&irqfd, irq_resample_fd.as_ref(), irq.index)
-                .map_err(DeviceRegistrationError::SetupVfioPlatformIrq)?;
+
+            if device.irq_is_automask(&irq) {
+                let irq_evt =
+                    devices::IrqLevelEvent::new().map_err(DeviceRegistrationError::EventCreate)?;
+                irq_chip
+                    .register_level_irq_event(irq_num, &irq_evt)
+                    .map_err(DeviceRegistrationError::RegisterIrqfd)?;
+                device
+                    .assign_platform_irq(
+                        irq_evt.get_trigger(),
+                        Some(irq_evt.get_resample()),
+                        irq.index,
+                    )
+                    .map_err(DeviceRegistrationError::SetupVfioPlatformIrq)?;
+                keep_rds.push(irq_evt.get_trigger().as_raw_descriptor());
+                keep_rds.push(irq_evt.get_resample().as_raw_descriptor());
+            } else {
+                let irq_evt =
+                    devices::IrqEdgeEvent::new().map_err(DeviceRegistrationError::EventCreate)?;
+                irq_chip
+                    .register_edge_irq_event(irq_num, &irq_evt)
+                    .map_err(DeviceRegistrationError::RegisterIrqfd)?;
+                device
+                    .assign_platform_irq(irq_evt.get_trigger(), None, irq.index)
+                    .map_err(DeviceRegistrationError::SetupVfioPlatformIrq)?;
+                keep_rds.push(irq_evt.get_trigger().as_raw_descriptor());
+            }
         }
 
         let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
@@ -600,11 +607,7 @@ pub fn generate_pci_root(
                 resources.reserve_irq(gsi);
             };
             irq_chip
-                .register_irq_event(
-                    gsi,
-                    intx_event.get_trigger(),
-                    Some(intx_event.get_resample()),
-                )
+                .register_level_irq_event(gsi, &intx_event)
                 .map_err(DeviceRegistrationError::RegisterIrqfd)?;
 
             pci_irqs.push((device_addrs[dev_idx], gsi, pin));
@@ -688,7 +691,7 @@ pub fn add_goldfish_battery(
     let irq_evt = devices::IrqLevelEvent::new().map_err(DeviceRegistrationError::EventCreate)?;
 
     irq_chip
-        .register_irq_event(irq_num, irq_evt.get_trigger(), Some(irq_evt.get_resample()))
+        .register_level_irq_event(irq_num, &irq_evt)
         .map_err(DeviceRegistrationError::RegisterIrqfd)?;
 
     let (control_tube, response_tube) =

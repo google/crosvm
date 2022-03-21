@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::Bus;
+use crate::{Bus, IrqEdgeEvent, IrqLevelEvent};
 use base::{error, Error, Event, Result};
 use hypervisor::kvm::KvmVcpu;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -36,20 +36,37 @@ impl IrqChip for KvmKernelIrqChip {
         Ok(())
     }
 
-    /// Register an event that can trigger an interrupt for a particular GSI.
-    fn register_irq_event(
+    /// Register an event with edge-trigger semantic that can trigger an interrupt
+    /// for a particular GSI.
+    fn register_edge_irq_event(
         &mut self,
         irq: u32,
-        irq_event: &Event,
-        resample_event: Option<&Event>,
+        irq_event: &IrqEdgeEvent,
     ) -> Result<Option<IrqEventIndex>> {
-        self.vm.register_irqfd(irq, irq_event, resample_event)?;
+        self.vm.register_irqfd(irq, irq_event.get_trigger(), None)?;
         Ok(None)
     }
 
-    /// Unregister an event for a particular GSI.
-    fn unregister_irq_event(&mut self, irq: u32, irq_event: &Event) -> Result<()> {
-        self.vm.unregister_irqfd(irq, irq_event)
+    /// Unregister an event with edge-trigger semantic for a particular GSI.
+    fn unregister_edge_irq_event(&mut self, irq: u32, irq_event: &IrqEdgeEvent) -> Result<()> {
+        self.vm.unregister_irqfd(irq, irq_event.get_trigger())
+    }
+
+    /// Register an event with level-trigger semantic that can trigger an interrupt
+    /// for a particular GSI.
+    fn register_level_irq_event(
+        &mut self,
+        irq: u32,
+        irq_event: &IrqLevelEvent,
+    ) -> Result<Option<IrqEventIndex>> {
+        self.vm
+            .register_irqfd(irq, irq_event.get_trigger(), Some(irq_event.get_resample()))?;
+        Ok(None)
+    }
+
+    /// Unregister an event with level-trigger semantic for a particular GSI.
+    fn unregister_level_irq_event(&mut self, irq: u32, irq_event: &IrqLevelEvent) -> Result<()> {
+        self.vm.unregister_irqfd(irq, irq_event.get_trigger())
     }
 
     /// Route an IRQ line to an interrupt controller, or to a particular MSI vector.
