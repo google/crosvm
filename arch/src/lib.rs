@@ -460,11 +460,7 @@ pub fn generate_platform_bus(
                     .register_level_irq_event(irq_num, &irq_evt)
                     .map_err(DeviceRegistrationError::RegisterIrqfd)?;
                 device
-                    .assign_platform_irq(
-                        irq_evt.get_trigger(),
-                        Some(irq_evt.get_resample()),
-                        irq.index,
-                    )
+                    .assign_level_platform_irq(&irq_evt, irq.index)
                     .map_err(DeviceRegistrationError::SetupVfioPlatformIrq)?;
                 keep_rds.push(irq_evt.get_trigger().as_raw_descriptor());
                 keep_rds.push(irq_evt.get_resample().as_raw_descriptor());
@@ -475,7 +471,7 @@ pub fn generate_platform_bus(
                     .register_edge_irq_event(irq_num, &irq_evt)
                     .map_err(DeviceRegistrationError::RegisterIrqfd)?;
                 device
-                    .assign_platform_irq(irq_evt.get_trigger(), None, irq.index)
+                    .assign_edge_platform_irq(&irq_evt, irq.index)
                     .map_err(DeviceRegistrationError::SetupVfioPlatformIrq)?;
                 keep_rds.push(irq_evt.get_trigger().as_raw_descriptor());
             }
