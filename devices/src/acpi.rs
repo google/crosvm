@@ -23,9 +23,9 @@ pub enum ACPIPMError {
     /// Error while waiting for events.
     #[error("failed to wait for events: {0}")]
     WaitError(SysError),
-    #[error("Did not found group_id corresponding to acpi_mc_group")]
+    #[error("Did not find group_id corresponding to acpi_mc_group")]
     AcpiMcGroupError,
-    #[error("Failed to create and bind NETLINK_GENERIC socket, listening on acpi_mc_group: {0}")]
+    #[error("Failed to create and bind NETLINK_GENERIC socket for acpi_mc_group: {0}")]
     AcpiEventSockError(base::Error),
 }
 
@@ -174,11 +174,11 @@ fn run_worker(
     // Get group id corresponding to acpi_mc_group of acpi_event family
     let nl_groups: u32;
     match get_acpi_event_group() {
-        Some(group) => {
+        Some(group) if group > 0 => {
             nl_groups = 1 << (group - 1);
             info!("Listening on acpi_mc_group of acpi_event family");
         }
-        None => {
+        _ => {
             return Err(ACPIPMError::AcpiMcGroupError);
         }
     }
