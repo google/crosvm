@@ -5,7 +5,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 
 [features]
-chromeos = ["sys_util/chromeos"]
+chromeos = []
 
 [dependencies]
 audio_streams = { path = "../common/audio_streams" }
@@ -16,7 +16,17 @@ serde = { version = "1", features = [ "derive" ] }
 serde_json = "*"
 smallvec = "1.6.1"
 sync = { path = "../common/sync" }
-sys_util = { path = "../common/sys_util" }
 thiserror = "1.0.20"
 tempfile = "3"
 base_poll_token_derive = { path = "base_poll_token_derive" }
+cfg-if = "*"
+rand = "*"
+chrono = "*"
+regex = "*"
+
+[target.'cfg(windows)'.dependencies]
+winapi = "*"
+win_util = { path = "../common/win_util"}
+
+[build-dependencies]
+cc = "*"

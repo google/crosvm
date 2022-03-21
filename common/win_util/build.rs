@@ -8,5 +8,6 @@ fn main() {}
 
 #[cfg(windows)]
 fn main() {
+    #[cfg(target_env = "msvc")]
     windows::build!(Windows::Win32::Globalization::ImmDisableIME)
 }

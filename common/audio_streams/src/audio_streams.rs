@@ -46,6 +46,7 @@ use std::cmp::min;
 use std::error;
 use std::fmt::{self, Display};
 use std::io::{self, Read, Write};
+#[cfg(unix)]
 use std::os::unix::io::RawFd;
 use std::result::Result;
 use std::str::FromStr;
@@ -226,6 +227,7 @@ pub trait StreamSource: Send {
 
     /// Returns any open file descriptors needed by the implementor. The FD list helps users of the
     /// StreamSource enter Linux jails making sure not to close needed FDs.
+    #[cfg(unix)]
     fn keep_fds(&self) -> Option<Vec<RawFd>> {
         None
     }

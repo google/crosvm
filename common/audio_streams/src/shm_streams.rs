@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(unix)]
 use std::os::unix::io::RawFd;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -218,6 +219,7 @@ pub trait ShmStreamSource<E: std::error::Error>: Send {
     /// Returns any open file descriptors needed by the implementation.
     /// This list helps users of the ShmStreamSource enter Linux jails without
     /// closing needed file descriptors.
+    #[cfg(unix)]
     fn keep_fds(&self) -> Vec<RawFd> {
         Vec::new()
     }
