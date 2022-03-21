@@ -88,7 +88,6 @@ elif os.name == "nt":
         "arch": [TestOption.DO_NOT_BUILD],
         "audio_streams": [TestOption.DO_NOT_BUILD],
         "balloon_control": [],
-        "base": [TestOption.DO_NOT_BUILD],
         "bit_field_derive": [TestOption.DO_NOT_BUILD],
         "bit_field": [TestOption.DO_NOT_BUILD],
         "cros_async": [TestOption.DO_NOT_BUILD],

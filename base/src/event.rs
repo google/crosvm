@@ -12,13 +12,13 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-pub use crate::unix::EventReadResult;
+pub use crate::platform::EventReadResult;
 use crate::{
-    generate_scoped_event, unix::EventFd, AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor,
-    RawDescriptor, Result,
+    generate_scoped_event, platform::EventFd, AsRawDescriptor, FromRawDescriptor,
+    IntoRawDescriptor, RawDescriptor, Result,
 };
 
-/// See [EventFd](crate::unix::EventFd) for struct- and method-level
+/// See [EventFd](crate::platform::EventFd) for struct- and method-level
 /// documentation.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]

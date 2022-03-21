@@ -20,9 +20,10 @@ use winapi::um::memoryapi::{
 };
 
 use super::{
-    super::{warn, AsRawDescriptor, RawDescriptor},
+    super::{AsRawDescriptor, RawDescriptor},
     Error, MappedRegion, MemoryMapping, Protection, Result,
 };
+use crate::warn;
 
 pub(super) const PROT_NONE: c_uint = 0;
 pub(super) const PROT_READ: c_uint = FILE_MAP_READ;
@@ -208,8 +209,8 @@ impl MemoryMapping {
     /// * Read bytes from /dev/urandom
     ///
     /// ```
-    ///   use win_sys_util::MemoryMapping;
-    ///   use win_sys_util::SharedMemory;
+    ///   use crate::platform::MemoryMapping;
+    ///   use crate::platform::SharedMemory;
     ///   use std::fs::File;
     ///   use std::path::Path;
     ///   fn test_read_random() -> Result<u32, ()> {
@@ -250,8 +251,8 @@ impl MemoryMapping {
     /// * Write 128 bytes to /dev/null
     ///
     /// ```
-    ///   use win_sys_util::MemoryMapping;
-    ///   use win_sys_util::SharedMemory;
+    ///   use crate::platform::MemoryMapping;
+    ///   use crate::platform::SharedMemory;
     ///   use std::fs::File;
     ///   use std::path::Path;
     ///   fn test_write_null() -> Result<(), ()> {

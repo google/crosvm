@@ -499,7 +499,7 @@ impl<T: PollToken> IntoRawFd for EpollContext<T> {
 /// # Example
 ///
 /// ```
-/// # use crate::unix::{Result, EventFd, PollContext, PollEvents};
+/// # use crate::platform::{Result, EventFd, PollContext, PollEvents};
 /// # fn test() -> Result<()> {
 ///     let evt1 = EventFd::new()?;
 ///     let evt2 = EventFd::new()?;

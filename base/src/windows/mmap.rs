@@ -251,8 +251,8 @@ impl MemoryMapping {
     /// * Write a slice at offset 256.
     ///
     /// ```
-    ///     use win_sys_util::MemoryMapping;
-    ///     use win_sys_util::SharedMemory;
+    ///     use crate::platform::MemoryMapping;
+    ///     use crate::platform::SharedMemory;
     ///     let mut mem_map = MemoryMapping::from_descriptor(
     ///         &SharedMemory::anon(1024).unwrap(), 1024).unwrap();
     ///     let res = mem_map.write_slice(&[1,2,3,4,5], 256);
@@ -284,8 +284,8 @@ impl MemoryMapping {
     /// * Read a slice of size 16 at offset 256.
     ///
     /// ```
-    ///     use win_sys_util::MemoryMapping;
-    ///     use win_sys_util::SharedMemory;
+    ///     use crate::platform::MemoryMapping;
+    ///     use crate::platform::SharedMemory;
     ///     let mut mem_map = MemoryMapping::from_descriptor(
     ///         &SharedMemory::anon(1024).unwrap(), 1024).unwrap();
     ///     let buf = &mut [0u8; 16];
@@ -320,8 +320,8 @@ impl MemoryMapping {
     /// * Write a u64 at offset 16.
     ///
     /// ```
-    ///     use win_sys_util::MemoryMapping;
-    ///     use win_sys_util::SharedMemory;
+    ///     use crate::platform::MemoryMapping;
+    ///     use crate::platform::SharedMemory;
     ///     let mut mem_map = MemoryMapping::from_descriptor(
     ///         &SharedMemory::anon(1024).unwrap(), 1024).unwrap();
     ///     let res = mem_map.write_obj(55u64, 16);
@@ -345,8 +345,8 @@ impl MemoryMapping {
     /// * Read a u64 written to offset 32.
     ///
     /// ```
-    ///     use win_sys_util::MemoryMapping;
-    ///     use win_sys_util::SharedMemory;
+    ///     use crate::platform::MemoryMapping;
+    ///     use crate::platform::SharedMemory;
     ///     let mut mem_map = MemoryMapping::from_descriptor(
     ///         &SharedMemory::anon(1024).unwrap(), 1024).unwrap();
     ///     let res = mem_map.write_obj(55u64, 32);

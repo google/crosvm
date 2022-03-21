@@ -44,6 +44,8 @@ pub mod thread;
 
 mod write_zeroes;
 
+pub use crate::common::{Error, Result, *};
+pub use base_poll_token_derive::*;
 pub use clock::{Clock, FakeClock};
 pub use console::*;
 pub use descriptor::*;
@@ -59,12 +61,10 @@ pub use ioctl::*;
 pub use mmap::*;
 pub use notifiers::*;
 pub use poll::*;
-pub use poll_token_derive::*;
 pub use priority::*;
 pub use sched::*;
 pub use shm::*;
 pub use stream_channel::*;
-pub use sys_util_core::{Error, Result, *};
 pub use timer::*;
 pub use win::*;
 

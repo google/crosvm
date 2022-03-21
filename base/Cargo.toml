@@ -26,7 +26,7 @@ regex = "*"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "*"
-win_util = { path = "../common/win_util"}
+win_util = { path = "../win_util"}
 
 [build-dependencies]
 cc = "*"

@@ -108,7 +108,7 @@ pub enum Error {
     RecvUnexpectedEmptyBody,
     #[error("failed to send packet: {0}")]
     #[cfg(unix)]
-    Send(crate::unix::Error),
+    Send(crate::platform::Error),
     #[cfg(windows)]
     Send(crate::windows::Error),
     #[error("failed to send packet: {0}")]
@@ -131,8 +131,10 @@ mod tests {
     use std::{collections::HashMap, time::Duration};
 
     use serde::{Deserialize, Serialize};
-    use std::sync::{Arc, Barrier};
-    use std::thread;
+    use std::{
+        sync::{Arc, Barrier},
+        thread,
+    };
 
     #[derive(Serialize, Deserialize)]
     struct DataStruct {

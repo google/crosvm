@@ -97,7 +97,7 @@ exclude = [
     "common/sys_util",
     "common/sys_util_core",
     "common/win_sys_util",
-    "common/win_util",
+    "win_util",
 ]
 
 [features]

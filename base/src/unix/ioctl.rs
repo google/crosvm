@@ -14,10 +14,10 @@ use std::os::{raw::*, unix::io::AsRawFd};
 #[macro_export]
 macro_rules! ioctl_expr {
     ($dir:expr, $ty:expr, $nr:expr, $size:expr) => {
-        (($dir << $crate::unix::ioctl::_IOC_DIRSHIFT)
-            | ($ty << $crate::unix::ioctl::_IOC_TYPESHIFT)
-            | ($nr << $crate::unix::ioctl::_IOC_NRSHIFT)
-            | ($size << $crate::unix::ioctl::_IOC_SIZESHIFT)) as $crate::unix::IoctlNr
+        (($dir << $crate::platform::ioctl::_IOC_DIRSHIFT)
+            | ($ty << $crate::platform::ioctl::_IOC_TYPESHIFT)
+            | ($nr << $crate::platform::ioctl::_IOC_NRSHIFT)
+            | ($size << $crate::platform::ioctl::_IOC_SIZESHIFT)) as $crate::platform::IoctlNr
     };
 }
 
@@ -26,13 +26,13 @@ macro_rules! ioctl_expr {
 macro_rules! ioctl_ioc_nr {
     ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr) => {
         #[allow(non_snake_case)]
-        pub const fn $name() -> $crate::unix::IoctlNr {
+        pub const fn $name() -> $crate::platform::IoctlNr {
             $crate::ioctl_expr!($dir, $ty, $nr, $size)
         }
     };
     ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr, $($v:ident),+) => {
         #[allow(non_snake_case)]
-        pub const fn $name($($v: ::std::os::raw::c_uint),+) -> $crate::unix::IoctlNr {
+        pub const fn $name($($v: ::std::os::raw::c_uint),+) -> $crate::platform::IoctlNr {
             $crate::ioctl_expr!($dir, $ty, $nr, $size)
         }
     };
@@ -42,10 +42,10 @@ macro_rules! ioctl_ioc_nr {
 #[macro_export]
 macro_rules! ioctl_io_nr {
     ($name:ident, $ty:expr, $nr:expr) => {
-        $crate::ioctl_ioc_nr!($name, $crate::unix::ioctl::_IOC_NONE, $ty, $nr, 0);
+        $crate::ioctl_ioc_nr!($name, $crate::platform::ioctl::_IOC_NONE, $ty, $nr, 0);
     };
     ($name:ident, $ty:expr, $nr:expr, $($v:ident),+) => {
-        $crate::ioctl_ioc_nr!($name, $crate::unix::ioctl::_IOC_NONE, $ty, $nr, 0, $($v),+);
+        $crate::ioctl_ioc_nr!($name, $crate::platform::ioctl::_IOC_NONE, $ty, $nr, 0, $($v),+);
     };
 }
 
@@ -55,7 +55,7 @@ macro_rules! ioctl_ior_nr {
     ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
         $crate::ioctl_ioc_nr!(
             $name,
-            $crate::unix::ioctl::_IOC_READ,
+            $crate::platform::ioctl::_IOC_READ,
             $ty,
             $nr,
             ::std::mem::size_of::<$size>() as u32
@@ -64,7 +64,7 @@ macro_rules! ioctl_ior_nr {
     ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
         $crate::ioctl_ioc_nr!(
             $name,
-            $crate::unix::ioctl::_IOC_READ,
+            $crate::platform::ioctl::_IOC_READ,
             $ty,
             $nr,
             ::std::mem::size_of::<$size>() as u32,
@@ -79,7 +79,7 @@ macro_rules! ioctl_iow_nr {
     ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
         $crate::ioctl_ioc_nr!(
             $name,
-            $crate::unix::ioctl::_IOC_WRITE,
+            $crate::platform::ioctl::_IOC_WRITE,
             $ty,
             $nr,
             ::std::mem::size_of::<$size>() as u32
@@ -88,7 +88,7 @@ macro_rules! ioctl_iow_nr {
     ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
         $crate::ioctl_ioc_nr!(
             $name,
-            $crate::unix::ioctl::_IOC_WRITE,
+            $crate::platform::ioctl::_IOC_WRITE,
             $ty,
             $nr,
             ::std::mem::size_of::<$size>() as u32,
@@ -103,7 +103,7 @@ macro_rules! ioctl_iowr_nr {
     ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
         $crate::ioctl_ioc_nr!(
             $name,
-            $crate::unix::ioctl::_IOC_READ | $crate::unix::ioctl::_IOC_WRITE,
+            $crate::platform::ioctl::_IOC_READ | $crate::platform::ioctl::_IOC_WRITE,
             $ty,
             $nr,
             ::std::mem::size_of::<$size>() as u32
@@ -112,7 +112,7 @@ macro_rules! ioctl_iowr_nr {
     ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
         $crate::ioctl_ioc_nr!(
             $name,
-            $crate::unix::ioctl::_IOC_READ | $crate::unix::ioctl::_IOC_WRITE,
+            $crate::platform::ioctl::_IOC_READ | $crate::platform::ioctl::_IOC_WRITE,
             $ty,
             $nr,
             ::std::mem::size_of::<$size>() as u32,

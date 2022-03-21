@@ -19,11 +19,11 @@ macro_rules! device_io_control_expr {
     //  just use that for now. However, we may need to support more
     //  options later.
     ($dtype:expr, $code:expr) => {
-        $crate::CTL_CODE(
+        $crate::platform::CTL_CODE(
             $dtype,
             $code,
-            $crate::METHOD_BUFFERED,
-            $crate::FILE_ANY_ACCESS,
+            $crate::platform::METHOD_BUFFERED,
+            $crate::platform::FILE_ANY_ACCESS,
         ) as ::std::os::raw::c_ulong
     };
 }

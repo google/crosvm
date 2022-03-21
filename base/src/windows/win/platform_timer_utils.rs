@@ -28,7 +28,8 @@ use winapi::um::{
     winnt::BOOLEAN,
 };
 
-use super::super::{warn, Error, Result};
+use super::super::{Error, Result};
+use crate::warn;
 
 static NT_INIT: Once = Once::new();
 static mut NT_LIBRARY: MaybeUninit<HMODULE> = MaybeUninit::uninit();

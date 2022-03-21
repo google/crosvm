@@ -19,7 +19,7 @@ use super::{errno_result, Error, Result};
 /// 0, 1, 5, and 6.
 ///
 /// ```
-/// # use win_sys_util::set_cpu_affinity;
+/// # use crate::platform::set_cpu_affinity;
 ///   set_cpu_affinity(vec![0, 1, 5, 6]).unwrap();
 /// ```
 pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(cpus: I) -> Result<usize> {

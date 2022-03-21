@@ -47,7 +47,7 @@ use winapi::{
 ///
 /// The general rule is this should be *at least* as big as the largest message, otherwise
 /// unexpected blocking behavior can result; for example, if too small, this can interact badly with
-/// win_sys_util::StreamChannel, which expects to be able to make a complete write before releasing
+/// crate::platform::StreamChannel, which expects to be able to make a complete write before releasing
 /// a lock that the opposite side needs to complete a read. This means that if the buffer is too
 /// small:
 ///     * The writer can't complete its write and release the lock because the buffer is too small.

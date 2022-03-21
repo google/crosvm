@@ -10,7 +10,7 @@
 //! # Examples
 //!
 //! ```
-//! use crate::unix::{error, syslog, warn};
+//! use crate::platform::{error, syslog, warn};
 //!
 //! if let Err(e) = syslog::init() {
 //!     println!("failed to initiailize syslog: {}", e);
@@ -325,7 +325,7 @@ pub fn push_descriptors(descriptors: &mut Vec<RawDescriptor>) {
 /// # Examples
 ///
 /// ```
-/// # use crate::unix::syslog;
+/// # use crate::platform::syslog;
 /// # if let Err(e) = syslog::init() {
 /// #     println!("failed to initiailize syslog: {}", e);
 /// #     return;
@@ -373,7 +373,7 @@ pub fn log(pri: Priority, fac: Facility, file_line: Option<(&str, u32)>, args: f
 #[macro_export]
 macro_rules! log {
     ($pri:expr, $($args:tt)+) => ({
-        $crate::unix::syslog::log($pri, $crate::unix::syslog::Facility::User, Some((file!(), line!())), format_args!($($args)+))
+        $crate::platform::syslog::log($pri, $crate::platform::syslog::Facility::User, Some((file!(), line!())), format_args!($($args)+))
     })
 }
 
@@ -382,7 +382,7 @@ macro_rules! log {
 /// Note that this will fail silently if syslog was not initialized.
 #[macro_export]
 macro_rules! error {
-    ($($args:tt)+) => ($crate::log!($crate::unix::syslog::Priority::Error, $($args)*))
+    ($($args:tt)+) => ($crate::log!($crate::platform::syslog::Priority::Error, $($args)*))
 }
 
 /// A macro for logging a warning.
@@ -390,7 +390,7 @@ macro_rules! error {
 /// Note that this will fail silently if syslog was not initialized.
 #[macro_export]
 macro_rules! warn {
-    ($($args:tt)+) => ($crate::log!($crate::unix::syslog::Priority::Warning, $($args)*))
+    ($($args:tt)+) => ($crate::log!($crate::platform::syslog::Priority::Warning, $($args)*))
 }
 
 /// A macro for logging info.
@@ -398,7 +398,7 @@ macro_rules! warn {
 /// Note that this will fail silently if syslog was not initialized.
 #[macro_export]
 macro_rules! info {
-    ($($args:tt)+) => ($crate::log!($crate::unix::syslog::Priority::Info, $($args)*))
+    ($($args:tt)+) => ($crate::log!($crate::platform::syslog::Priority::Info, $($args)*))
 }
 
 /// A macro for logging debug information.
@@ -406,7 +406,7 @@ macro_rules! info {
 /// Note that this will fail silently if syslog was not initialized.
 #[macro_export]
 macro_rules! debug {
-    ($($args:tt)+) => ($crate::log!($crate::unix::syslog::Priority::Debug, $($args)*))
+    ($($args:tt)+) => ($crate::log!($crate::platform::syslog::Priority::Debug, $($args)*))
 }
 
 // Struct that implements io::Write to be used for writing directly to the syslog

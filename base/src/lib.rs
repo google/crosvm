@@ -7,6 +7,9 @@ pub mod common;
 #[cfg(unix)]
 pub mod unix;
 
+#[cfg(windows)]
+pub mod windows;
+
 cfg_if::cfg_if! {
      if #[cfg(unix)] {
         mod event;

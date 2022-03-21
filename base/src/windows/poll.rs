@@ -81,7 +81,7 @@ impl PollToken for () {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use poll_token_derive::PollToken;
+    use base_poll_token_derive::PollToken;
 
     #[test]
     #[allow(dead_code)]

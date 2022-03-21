@@ -273,8 +273,8 @@ where
     }
 }
 
-super::volatile_impl!(File);
-super::volatile_at_impl!(File);
+crate::volatile_impl!(File);
+crate::volatile_at_impl!(File);
 
 #[cfg(test)]
 mod tests {

@@ -8,7 +8,7 @@
 //!
 //! ```
 //! use serde_json::to_string;
-//! use crate::unix::{
+//! use crate::platform::{
 //!     FileSerdeWrapper, FromRawDescriptor, SafeDescriptor, SerializeDescriptors,
 //!     deserialize_with_descriptors,
 //! };
@@ -139,7 +139,7 @@ pub fn serialize_descriptor<S: Serializer>(
 ///
 /// ```
 /// use serde_json::to_string;
-/// use crate::unix::{FileSerdeWrapper, SerializeDescriptors};
+/// use crate::platform::{FileSerdeWrapper, SerializeDescriptors};
 /// use tempfile::tempfile;
 ///
 /// let tmp_f = tempfile().unwrap();
@@ -330,11 +330,11 @@ where
 ///
 /// ```
 /// use serde::{Deserialize, Serialize};
-/// use crate::unix::RawDescriptor;
+/// use crate::platform::RawDescriptor;
 ///
 /// #[derive(Serialize, Deserialize)]
 /// struct RawContainer {
-///     #[serde(with = "crate::unix::with_raw_descriptor")]
+///     #[serde(with = "crate::platform::with_raw_descriptor")]
 ///     rd: RawDescriptor,
 /// }
 /// ```
@@ -360,11 +360,11 @@ pub mod with_raw_descriptor {
 /// ```
 /// use std::fs::File;
 /// use serde::{Deserialize, Serialize};
-/// use crate::unix::RawDescriptor;
+/// use crate::platform::RawDescriptor;
 ///
 /// #[derive(Serialize, Deserialize)]
 /// struct FileContainer {
-///     #[serde(with = "crate::unix::with_as_descriptor")]
+///     #[serde(with = "crate::platform::with_as_descriptor")]
 ///     file: File,
 /// }
 /// ```

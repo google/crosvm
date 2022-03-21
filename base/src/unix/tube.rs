@@ -2,15 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::IoSlice;
-use std::marker::PhantomData;
-use std::os::unix::prelude::{AsRawFd, RawFd};
-use std::time::Duration;
+use std::{
+    io::IoSlice,
+    marker::PhantomData,
+    os::unix::prelude::{AsRawFd, RawFd},
+    time::Duration,
+};
 
 use crate::{
+    platform::{deserialize_with_descriptors, SerializeDescriptors},
     tube::{Error, RecvTube, Result, SendTube},
-    unix::deserialize_with_descriptors,
-    unix::SerializeDescriptors,
     AsRawDescriptor, FromRawDescriptor, RawDescriptor, ReadNotifier, SafeDescriptor, ScmSocket,
     UnixSeqpacket, UnsyncMarker,
 };

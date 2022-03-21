@@ -2,11 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::{self, Cursor, Read, Write};
-use std::time::Duration;
+use std::{
+    io::{
+        Cursor, Read, Write, {self},
+    },
+    time::Duration,
+};
 
-use crate::tube::{Error, RecvTube, Result, SendTube};
 use crate::{
+    platform::{
+        deserialize_with_descriptors, AsRawDescriptor, Descriptor, RawDescriptor,
+        SerializeDescriptors,
+    },
+    tube::{Error, RecvTube, Result, SendTube},
     BlockingMode, CloseNotifier, FramingMode, FromRawDescriptor, PollToken, ReadNotifier,
     SafeDescriptor, StreamChannel,
 };
@@ -14,11 +22,10 @@ use cros_async::{unblock, Executor};
 use data_model::DataInit;
 use lazy_static::lazy_static;
 use serde::{de::DeserializeOwned, Deserialize, Serialize, Serializer};
-use std::mem;
-use std::os::windows::io::{AsRawHandle, RawHandle};
-use std::sync::{Arc, Mutex};
-use win_sys_util::{
-    deserialize_with_descriptors, AsRawDescriptor, Descriptor, RawDescriptor, SerializeDescriptors,
+use std::{
+    mem,
+    os::windows::io::{AsRawHandle, RawHandle},
+    sync::{Arc, Mutex},
 };
 use winapi::shared::winerror::ERROR_MORE_DATA;
 

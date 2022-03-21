@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use crate::generate_scoped_event;
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::CString,
@@ -13,7 +14,6 @@ use std::{
     ptr::null,
     time::Duration,
 };
-use sys_util_core::generate_scoped_event;
 use win_util::{SecurityAttributes, SelfRelativeSecurityDescriptor};
 use winapi::{
     shared::{

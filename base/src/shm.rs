@@ -14,10 +14,10 @@ use std::{
     os::unix::io::{AsRawFd, IntoRawFd},
 };
 
-use crate::unix::SharedMemory as SysUtilSharedMemory;
+use crate::platform::SharedMemory as SysUtilSharedMemory;
 use serde::{Deserialize, Serialize};
 
-/// See [SharedMemory](crate::unix::SharedMemory) for struct- and method-level
+/// See [SharedMemory](crate::platform::SharedMemory) for struct- and method-level
 /// documentation.
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
