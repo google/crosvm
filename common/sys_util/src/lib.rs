@@ -42,6 +42,7 @@ pub mod rand;
 mod raw_fd;
 pub mod read_dir;
 mod sched;
+pub mod scoped_path;
 pub mod scoped_signal_handler;
 mod shm;
 pub mod signal;
