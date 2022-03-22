@@ -17,7 +17,6 @@ use base::{
     RawDescriptor,
 };
 use hypervisor::ProtectionType;
-use minijail::Minijail;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
@@ -347,19 +346,5 @@ impl SerialParameters {
             }
         };
         Ok(T::new(protected_vm, evt, input, output, keep_rds.to_vec()))
-    }
-
-    pub fn add_bind_mounts(&self, jail: &mut Minijail) -> Result<(), minijail::Error> {
-        if let Some(path) = &self.path {
-            if let SerialType::UnixSocket = self.type_ {
-                if let Some(parent) = path.as_path().parent() {
-                    if parent.exists() {
-                        info!("Bind mounting dir {}", parent.display());
-                        jail.mount_bind(parent, parent, true)?;
-                    }
-                }
-            }
-        }
-        Ok(())
     }
 }

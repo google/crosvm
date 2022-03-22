@@ -20,7 +20,7 @@ use crate::{
 use anyhow::{anyhow, bail, Context, Result};
 use arch::{self, VirtioDeviceStub};
 use base::*;
-use devices::serial_device::SerialParameters;
+use devices::serial_device::{SerialParameters, SerialType};
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
 use devices::virtio::ipc_memory_mapper::{create_ipc_mapper, CreateIpcMapperRet};
 use devices::virtio::memory_mapper::{BasicMemoryMapper, MemoryMapperTrait};
@@ -1017,6 +1017,20 @@ pub fn create_iommu_device(
     })
 }
 
+fn add_bind_mounts(param: &SerialParameters, jail: &mut Minijail) -> Result<(), minijail::Error> {
+    if let Some(path) = &param.path {
+        if let SerialType::UnixSocket = param.type_ {
+            if let Some(parent) = path.as_path().parent() {
+                if parent.exists() {
+                    info!("Bind mounting dir {}", parent.display());
+                    jail.mount_bind(parent, parent, true)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult {
     let mut keep_rds = Vec::new();
     let evt = Event::new().context("failed to create event")?;
@@ -1037,7 +1051,7 @@ pub fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceRe
                 "size=67108864",
             )?;
             add_current_user_to_jail(&mut jail)?;
-            let res = param.add_bind_mounts(&mut jail);
+            let res = add_bind_mounts(param, &mut jail);
             if res.is_err() {
                 error!("failed to add bind mounts for console device");
             }
