@@ -669,6 +669,7 @@ fn create_file_backed_mappings(
     Ok(())
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn create_pcie_root_port(
     host_pcie_rp: Vec<PathBuf>,
     sys_allocator: &mut SystemAllocator,
@@ -1262,7 +1263,9 @@ where
 
     let mut hp_endpoints_ranges: Vec<RangeInclusive<u32>> = Vec::new();
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let mut hotplug_buses: Vec<Arc<Mutex<dyn HotPlugBus>>> = Vec::new();
+
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
         #[cfg(feature = "direct")]

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::prelude::*;
 use std::sync::{mpsc, Arc, Barrier};
 
@@ -236,6 +236,8 @@ fn handle_s2idle_request(_privileged_vm: bool) {}
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn handle_s2idle_request(privileged_vm: bool) {
+    use std::fs::OpenOptions;
+
     const POWER_STATE_FREEZE: &[u8] = b"freeze";
 
     // For non privileged guests, we silently ignore the suspend request
