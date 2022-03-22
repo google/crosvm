@@ -31,13 +31,13 @@ use crate::pci::msix::{
 use crate::pci::pci_device::{BarRange, Error as PciDeviceError, PciDevice};
 use crate::pci::{
     PciAddress, PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType,
-    PciClassCode, PciInterruptPin,
+    PciClassCode, PciId, PciInterruptPin, PCI_VENDOR_ID_INTEL,
 };
 
 use crate::vfio::{VfioDevice, VfioError, VfioIrqType, VfioPciConfig};
 
 const PCI_VENDOR_ID: u32 = 0x0;
-const INTEL_VENDOR_ID: u16 = 0x8086;
+const PCI_DEVICE_ID: u32 = 0x2;
 const PCI_COMMAND: u32 = 0x4;
 const PCI_COMMAND_MEMORY: u8 = 0x2;
 const PCI_BASE_CLASS_CODE: u32 = 0x0B;
@@ -81,10 +81,18 @@ struct VfioMsiCap {
     vm_socket_irq: Tube,
     irqfd: Option<Event>,
     gsi: Option<u32>,
+    device_id: u32,
+    device_name: String,
 }
 
 impl VfioMsiCap {
-    fn new(config: &VfioPciConfig, msi_cap_start: u32, vm_socket_irq: Tube) -> Self {
+    fn new(
+        config: &VfioPciConfig,
+        msi_cap_start: u32,
+        vm_socket_irq: Tube,
+        device_id: u32,
+        device_name: String,
+    ) -> Self {
         let msi_ctl: u16 = config.read_config(msi_cap_start + PCI_MSI_FLAGS);
 
         VfioMsiCap {
@@ -97,6 +105,8 @@ impl VfioMsiCap {
             vm_socket_irq,
             irqfd: None,
             gsi: None,
+            device_id,
+            device_name,
         }
     }
 
@@ -207,12 +217,17 @@ impl VfioMsiCap {
             },
         };
 
-        let request = VmIrqRequest::AllocateOneMsi { irqfd };
+        let request = VmIrqRequest::AllocateOneMsi {
+            irqfd,
+            device_id: self.device_id,
+            queue_id: 0,
+            device_name: self.device_name.clone(),
+        };
         let request_result = self.vm_socket_irq.send(&request);
 
         // Stash the irqfd in self immediately because we used take above.
         self.irqfd = match request {
-            VmIrqRequest::AllocateOneMsi { irqfd } => Some(irqfd),
+            VmIrqRequest::AllocateOneMsi { irqfd, .. } => Some(irqfd),
             _ => unreachable!(),
         };
 
@@ -275,7 +290,13 @@ struct VfioMsixCap {
 }
 
 impl VfioMsixCap {
-    fn new(config: &VfioPciConfig, msix_cap_start: u32, vm_socket_irq: Tube) -> Self {
+    fn new(
+        config: &VfioPciConfig,
+        msix_cap_start: u32,
+        vm_socket_irq: Tube,
+        pci_id: u32,
+        device_name: String,
+    ) -> Self {
         let msix_ctl: u16 = config.read_config(msix_cap_start + PCI_MSIX_FLAGS);
         let table: u32 = config.read_config(msix_cap_start + PCI_MSIX_TABLE);
         let table_pci_bar = table & PCI_MSIX_TABLE_BIR;
@@ -301,7 +322,7 @@ impl VfioMsixCap {
             msix_interrupt_evt.push(Event::new().expect("failed to create msix interrupt"));
         }
         VfioMsixCap {
-            config: MsixConfig::new(table_size as u16, vm_socket_irq),
+            config: MsixConfig::new(table_size as u16, vm_socket_irq, pci_id, device_name),
             offset: msix_cap_start,
             table_size: table_size as u16,
             table_pci_bar,
@@ -661,11 +682,22 @@ impl VfioPciDevice {
         let mut msix_cap: Option<Arc<Mutex<VfioMsixCap>>> = None;
 
         let mut cap_next: u32 = config.read_config::<u8>(PCI_CAPABILITY_LIST).into();
+        let vendor_id: u16 = config.read_config(PCI_VENDOR_ID);
+        let device_id: u16 = config.read_config(PCI_DEVICE_ID);
+
+        let pci_id = PciId::new(vendor_id, device_id);
+
         while cap_next != 0 {
             let cap_id: u8 = config.read_config(cap_next);
             if cap_id == PCI_CAP_ID_MSI {
                 if let Some(msi_socket) = msi_socket.take() {
-                    msi_cap = Some(VfioMsiCap::new(&config, cap_next, msi_socket));
+                    msi_cap = Some(VfioMsiCap::new(
+                        &config,
+                        cap_next,
+                        msi_socket,
+                        pci_id.into(),
+                        dev.device_name().to_string(),
+                    ));
                 }
             } else if cap_id == PCI_CAP_ID_MSIX {
                 if let Some(msix_socket) = msix_socket.take() {
@@ -673,6 +705,8 @@ impl VfioPciDevice {
                         &config,
                         cap_next,
                         msix_socket,
+                        pci_id.into(),
+                        dev.device_name().to_string(),
                     ))));
                 }
             }
@@ -680,10 +714,9 @@ impl VfioPciDevice {
             cap_next = config.read_config::<u8>(offset).into();
         }
 
-        let vendor_id: u16 = config.read_config(PCI_VENDOR_ID);
         let class_code: u8 = config.read_config(PCI_BASE_CLASS_CODE);
 
-        let is_intel_gfx = vendor_id == INTEL_VENDOR_ID
+        let is_intel_gfx = vendor_id == PCI_VENDOR_ID_INTEL
             && class_code == PciClassCode::DisplayController.get_register_value();
         let device_data = if is_intel_gfx {
             Some(DeviceData::IntelGfxData {
@@ -1542,7 +1575,7 @@ impl PciDevice for VfioPciDevice {
         // Make intel gfx's opregion as mmio bar, and allocate a gpa for it
         // then write this gpa into pci cfg register
         if let Some((index, size)) = self.device.get_cap_type_info(
-            VFIO_REGION_TYPE_PCI_VENDOR_TYPE | (INTEL_VENDOR_ID as u32),
+            VFIO_REGION_TYPE_PCI_VENDOR_TYPE | (PCI_VENDOR_ID_INTEL as u32),
             VFIO_REGION_SUBTYPE_INTEL_IGD_OPREGION,
         ) {
             let address = self

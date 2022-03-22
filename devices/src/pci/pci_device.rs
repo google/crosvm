@@ -14,7 +14,7 @@ use thiserror::Error;
 use crate::bus::{BusDeviceObj, BusRange, BusType, ConfigWriteResult};
 use crate::pci::pci_configuration::{
     self, PciBarConfiguration, BAR0_REG, COMMAND_REG, COMMAND_REG_IO_SPACE_MASK,
-    COMMAND_REG_MEMORY_SPACE_MASK, NUM_BAR_REGS, ROM_BAR_REG,
+    COMMAND_REG_MEMORY_SPACE_MASK, NUM_BAR_REGS, PCI_ID_REG, ROM_BAR_REG,
 };
 use crate::pci::{PciAddress, PciAddressError, PciInterruptPin};
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
@@ -197,6 +197,11 @@ pub trait PciDevice: Send {
 impl<T: PciDevice> BusDevice for T {
     fn debug_label(&self) -> String {
         PciDevice::debug_label(self)
+    }
+
+    fn device_id(&self) -> u32 {
+        // Use the PCI ID for PCI devices, which contains the PCI vendor ID and the PCI device ID
+        PciDevice::read_config_register(self, PCI_ID_REG)
     }
 
     fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {

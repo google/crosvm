@@ -9,6 +9,9 @@
 //!
 //! This implementation emulates pci interface for pvpanic virtual device.
 
+// TODO(218575411): Support pvpanic on windows crosvm.
+#![cfg_attr(windows, allow(dead_code))]
+
 use std::fmt;
 
 use base::RawDescriptor;

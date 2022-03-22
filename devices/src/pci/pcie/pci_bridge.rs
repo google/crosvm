@@ -63,8 +63,13 @@ pub struct PciBridge {
 
 impl PciBridge {
     pub fn new(device: Arc<Mutex<dyn PcieDevice>>, msi_device_tube: Tube) -> Self {
-        let msix_config = Arc::new(Mutex::new(MsixConfig::new(1, msi_device_tube)));
         let device_id = device.lock().get_device_id();
+        let msix_config = Arc::new(Mutex::new(MsixConfig::new(
+            1,
+            msi_device_tube,
+            (PCI_VENDOR_ID_INTEL as u32) | (device_id as u32) << 16,
+            device.lock().debug_label(),
+        )));
         let mut config = PciConfiguration::new(
             PCI_VENDOR_ID_INTEL,
             device_id,

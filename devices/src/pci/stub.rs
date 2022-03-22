@@ -21,7 +21,9 @@ use crate::pci::pci_configuration::{
 };
 use crate::pci::pci_device::{PciDevice, Result};
 use crate::pci::{PciAddress, PciDeviceError};
+use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize)]
 pub struct StubPciParameters {
     pub address: PciAddress,
     pub vendor_id: u16,

@@ -20,7 +20,7 @@ use super::*;
 use crate::pci::{
     BarRange, MsixCap, MsixConfig, PciAddress, PciBarConfiguration, PciBarPrefetchable,
     PciBarRegionType, PciCapability, PciCapabilityID, PciClassCode, PciConfiguration, PciDevice,
-    PciDeviceError, PciDisplaySubclass, PciHeaderType, PciInterruptPin, PciSubclass,
+    PciDeviceError, PciDisplaySubclass, PciHeaderType, PciId, PciInterruptPin, PciSubclass,
 };
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 
@@ -279,7 +279,12 @@ impl VirtioPciDevice {
 
         // One MSI-X vector per queue plus one for configuration changes.
         let msix_num = u16::try_from(num_interrupts + 1).map_err(|_| base::Error::new(ERANGE))?;
-        let msix_config = Arc::new(Mutex::new(MsixConfig::new(msix_num, msi_device_tube)));
+        let msix_config = Arc::new(Mutex::new(MsixConfig::new(
+            msix_num,
+            msi_device_tube,
+            PciId::new(VIRTIO_PCI_VENDOR_ID, pci_device_id).into(),
+            device.debug_label(),
+        )));
 
         let config_regs = PciConfiguration::new(
             VIRTIO_PCI_VENDOR_ID,

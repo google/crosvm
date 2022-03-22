@@ -33,6 +33,7 @@ use base::{
 use data_model::DataInit;
 use hypervisor::Datamatch;
 use resources::{Alloc, MmioType, SystemAllocator};
+use serde::{Deserialize, Serialize};
 use sync::Mutex;
 use thiserror::Error as ThisError;
 
@@ -84,7 +85,7 @@ enum Error {
 const UNPIN_DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
 const UNPIN_GEN_DEFAULT_THRES: u64 = 10;
 /// Holds the coiommu unpin policy
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum CoIommuUnpinPolicy {
     Off,
     Lru,
@@ -117,7 +118,7 @@ impl fmt::Display for CoIommuUnpinPolicy {
 }
 
 /// Holds the parameters for a coiommu device
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct CoIommuParameters {
     pub unpin_policy: CoIommuUnpinPolicy,
     pub unpin_interval: Duration,

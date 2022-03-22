@@ -58,3 +58,26 @@ impl PciInterruptPin {
 
 pub const PCI_VENDOR_ID_INTEL: u16 = 0x8086;
 pub const PCI_VENDOR_ID_REDHAT: u16 = 0x1b36;
+
+/// A wrapper structure for pci device and vendor id.
+#[derive(Copy, Clone)]
+pub struct PciId {
+    vendor_id: u16,
+    device_id: u16,
+}
+
+impl PciId {
+    pub fn new(vendor_id: u16, device_id: u16) -> Self {
+        Self {
+            vendor_id,
+            device_id,
+        }
+    }
+}
+
+impl From<PciId> for u32 {
+    fn from(pci_id: PciId) -> Self {
+        // vendor ID is the lower 16 bits and device id is the upper 16 bits
+        pci_id.vendor_id as u32 | (pci_id.device_id as u32) << 16
+    }
+}

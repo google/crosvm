@@ -15,7 +15,7 @@ use crate::pci::pci_configuration::{
     HEADER_TYPE_MULTIFUNCTION_MASK, HEADER_TYPE_REG,
 };
 use crate::pci::pci_device::{Error, PciDevice};
-use crate::pci::{PciAddress, PCI_VENDOR_ID_INTEL};
+use crate::pci::{PciAddress, PciId, PCI_VENDOR_ID_INTEL};
 use crate::{Bus, BusAccessInfo, BusDevice, BusType};
 use resources::SystemAllocator;
 
@@ -314,6 +314,10 @@ impl BusDevice for PciConfigIo {
         format!("pci config io-port 0x{:03x}", self.config_address)
     }
 
+    fn device_id(&self) -> u32 {
+        PciId::new(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_82441).into()
+    }
+
     fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
         // `offset` is relative to 0xcf8
         let value = match info.offset {
@@ -387,6 +391,10 @@ impl BusDevice for PciConfigMmio {
         "pci config mmio".to_owned()
     }
 
+    fn device_id(&self) -> u32 {
+        PciId::new(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_82441).into()
+    }
+
     fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
         // Only allow reads to the register boundary.
         let start = info.offset as usize % 4;
@@ -438,6 +446,10 @@ impl PciVirtualConfigMmio {
 impl BusDevice for PciVirtualConfigMmio {
     fn debug_label(&self) -> String {
         "pci virtual config mmio".to_owned()
+    }
+
+    fn device_id(&self) -> u32 {
+        PciId::new(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_82441).into()
     }
 
     fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {

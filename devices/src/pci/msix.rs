@@ -48,6 +48,8 @@ pub struct MsixConfig {
     enabled: bool,
     msi_device_socket: Tube,
     msix_num: u16,
+    pci_id: u32,
+    device_name: String,
 }
 
 #[sorted]
@@ -76,7 +78,7 @@ pub enum MsixStatus {
 }
 
 impl MsixConfig {
-    pub fn new(msix_vectors: u16, vm_socket: Tube) -> Self {
+    pub fn new(msix_vectors: u16, vm_socket: Tube, pci_id: u32, device_name: String) -> Self {
         assert!(msix_vectors <= MAX_MSIX_VECTORS_PER_DEVICE);
 
         let mut table_entries: Vec<MsixTableEntry> = Vec::new();
@@ -100,6 +102,8 @@ impl MsixConfig {
             enabled: false,
             msi_device_socket: vm_socket,
             msix_num: msix_vectors,
+            pci_id,
+            device_name,
         }
     }
 
@@ -239,7 +243,12 @@ impl MsixConfig {
             return Ok(());
         }
         let irqfd = Event::new().map_err(MsixError::AllocateOneMsi)?;
-        let request = VmIrqRequest::AllocateOneMsi { irqfd };
+        let request = VmIrqRequest::AllocateOneMsi {
+            irqfd,
+            device_id: self.pci_id,
+            queue_id: index as usize,
+            device_name: self.device_name.clone(),
+        };
         self.msi_device_socket
             .send(&request)
             .map_err(MsixError::AllocateOneMsiSend)?;
@@ -255,7 +264,7 @@ impl MsixConfig {
         }
         self.irq_vec[index] = Some(IrqfdGsi {
             irqfd: match request {
-                VmIrqRequest::AllocateOneMsi { irqfd } => irqfd,
+                VmIrqRequest::AllocateOneMsi { irqfd, .. } => irqfd,
                 _ => unreachable!(),
             },
             gsi: irq_num,
@@ -518,7 +527,7 @@ impl MsixConfig {
         }
     }
 
-    /// Return the raw fd of the MSI device socket
+    /// Return the raw descriptor of the MSI device socket
     pub fn get_msi_socket(&self) -> RawDescriptor {
         self.msi_device_socket.as_raw_descriptor()
     }
@@ -634,6 +643,7 @@ impl MsixCap {
         }
     }
 
+    #[cfg(unix)]
     pub fn msg_ctl(&self) -> MsixCtrl {
         self.msg_ctl
     }

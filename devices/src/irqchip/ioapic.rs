@@ -397,7 +397,12 @@ impl Ioapic {
             evt.gsi
         } else {
             let event = Event::new().map_err(IoapicError::CreateEvent)?;
-            let request = VmIrqRequest::AllocateOneMsi { irqfd: event };
+            let request = VmIrqRequest::AllocateOneMsi {
+                irqfd: event,
+                device_id: self.device_id(),
+                queue_id: index,
+                device_name: self.debug_label(),
+            };
             self.irq_tube
                 .send(&request)
                 .map_err(IoapicError::AllocateOneMsiSend)?;
@@ -410,7 +415,7 @@ impl Ioapic {
                     self.out_events[index] = Some(IrqEvent {
                         gsi,
                         event: match request {
-                            VmIrqRequest::AllocateOneMsi { irqfd } => irqfd,
+                            VmIrqRequest::AllocateOneMsi { irqfd, .. } => irqfd,
                             _ => unreachable!(),
                         },
                         resample_event: None,
