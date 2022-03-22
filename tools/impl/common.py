@@ -121,9 +121,15 @@ class Command(object):
     this API.
     """
 
-    def __init__(self, *args: Any, stdin_cmd: Optional[Command] = None):
+    def __init__(
+        self,
+        *args: Any,
+        stdin_cmd: Optional[Command] = None,
+        env_vars: dict[str, str] = {},
+    ):
         self.args = Command.__parse_cmd(args)
         self.stdin_cmd = stdin_cmd
+        self.env_vars = env_vars
         if len(self.args) > 0:
             executable = self.args[0]
             if Path(executable).exists:
@@ -173,12 +179,15 @@ class Command(object):
                 stdout=PIPE,
                 stderr=STDOUT,
                 stdin=self.__stdin_stream(),
+                env={**os.environ, **self.env_vars},
                 text=True,
             )
         else:
             result = subprocess.run(
                 self.args,
                 stdin=self.__stdin_stream(),
+                env={**os.environ, **self.env_vars},
+                text=True,
             )
 
         if result.returncode != 0:
@@ -223,9 +232,10 @@ class Command(object):
         if len(args) == 1 and isinstance(args[0], Command):
             cmd = Command(stdin_cmd=self)
             cmd.args = args[0].args
+            cmd.env_vars = self.env_vars.copy()
             return cmd
         else:
-            return Command(*args, stdin_cmd=self)
+            return Command(*args, stdin_cmd=self, env_vars=self.env_vars)
 
     ### Lower level execution API
 
@@ -249,6 +259,7 @@ class Command(object):
             stdout=subprocess.PIPE,
             stderr=stderr,
             stdin=self.__stdin_stream(),
+            env={**os.environ, **self.env_vars},
             check=check,
             text=True,
         )
@@ -264,8 +275,15 @@ class Command(object):
             stdout=subprocess.PIPE,
             stderr=stderr,
             stdin=self.__stdin_stream(),
+            env={**os.environ, **self.env_vars},
             text=True,
         )
+
+    def env(self, key: str, value: str):
+        cmd = Command()
+        cmd.args = self.args
+        cmd.env_vars = {**self.env_vars, key: value}
+        return cmd
 
     def foreach(self, arguments: Iterable[Any], batch_size: int = 1):
         """
@@ -297,6 +315,7 @@ class Command(object):
         """
         cmd = Command()
         cmd.args = [*self.args, *Command.__parse_cmd(args)]
+        cmd.env_vars = self.env_vars
         return cmd
 
     def __iter__(self):
@@ -505,6 +524,21 @@ def __add_verbose_args(parser: argparse.ArgumentParser):
         default=False,
         help="Print more debug output",
     )
+
+
+def find_source_files(extension: str):
+    for file in Path(".").glob(f"**/*.{extension}"):
+        if file.is_relative_to("third_party"):
+            continue
+        if "target" in file.parts:
+            continue
+        yield file
+
+
+def find_scripts(path: Path, shebang: str):
+    for file in path.glob("*"):
+        if file.is_file() and file.read_text().startswith(f"#!{shebang}"):
+            yield file
 
 
 if __name__ == "__main__":

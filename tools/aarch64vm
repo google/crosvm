@@ -1,2 +1,6 @@
-#!/usr/bin/env bash
-python3 $(dirname $0)/impl/testvm.py --arch=aarch64 "$@"
+#!/usr/bin/env python3
+from impl.testvm import main
+import sys
+
+if __name__ == "__main__":
+    main("aarch64", sys.argv[1:])

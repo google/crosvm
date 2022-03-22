@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+# Copyright 2022 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import doctest
+import importlib
+from pathlib import Path
+import sys
+from impl.common import CROSVM_ROOT, run_main, cmd, chdir, parallel, find_scripts
+from impl.check_code_hygiene import has_crlf_line_endings
+
+mypy = cmd("mypy --pretty --color-output").env("MYPY_FORCE_COLOR", "1").env("MYPYPATH", "tools")
+
+
+def check_python():
+    print("Running python doctests")
+    for source in Path("tools/impl").glob("*.py"):
+        lib = importlib.import_module(f"impl.{source.stem}")
+        doctest.testmod(lib, optionflags=doctest.ELLIPSIS)
+
+    print("Type-checking python")
+    parallel(
+        mypy("tools/impl"),
+        *mypy.foreach(find_scripts(Path("tools"), "/usr/bin/env python3")),
+    ).fg()
+
+
+def check_crlf_line_endings():
+    crlf_endings = has_crlf_line_endings()
+    if crlf_endings:
+        print("Error: Following files have crlf(dos) line encodings")
+        print(*crlf_endings)
+        sys.exit(-1)
+
+
+def main():
+    chdir(CROSVM_ROOT)
+
+    check_python()
+    check_crlf_line_endings()
+    cmd("./tools/fmt --check").fg()
+    cmd("./tools/clippy").fg()
+
+
+if __name__ == "__main__":
+    run_main(main)

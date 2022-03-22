@@ -92,7 +92,7 @@ aarch64_wrapper() {
 }
 
 commands=(
-    "./tools/fmt --check && ./tools/clippy"
+    "./tools/health-check"
     "./tools/run_tests --target=host"
 )
 

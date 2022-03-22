@@ -1,8 +1,7 @@
 # The lists/dictionaries in this file let vendors build/link custom libraries
 
 # paths are relative to platform/crosvm dir
-DLLS = [
-]
+DLLS = []
 
 VS_PROJECTS_FROM_CMAKE = {
     # Format of this dictionary is:

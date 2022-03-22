@@ -47,8 +47,8 @@ echo [%TIME%] Calling crosvm\tools\clippy
 py .\tools\clippy
 if %ERRORLEVEL% neq 0 ( exit /b %ERRORLEVEL% )
 
-echo [%TIME%] Calling crosvm\build_test.py
-py ./tools\impl/test_runner.py --arch win64 -v
+echo [%TIME%] Calling crosvm\tools\run_tests
+py .\tools\run_tests --arch win64 -v
 if %ERRORLEVEL% neq 0 ( exit /b %ERRORLEVEL% )
 
 exit /b %ERRORLEVEL%

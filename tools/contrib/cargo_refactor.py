@@ -195,7 +195,12 @@ def main():
 
     replace_in_files(
         f"base/src/windows/**/*.rs",
-        [(re.compile(r"([\w\*\_\$]+\:\:)+([\w\*\_\!]+)"), replace_references_in_macros)],
+        [
+            (
+                re.compile(r"([\w\*\_\$]+\:\:)+([\w\*\_\!]+)"),
+                replace_references_in_macros,
+            )
+        ],
     )
 
     # Unflatten imports again

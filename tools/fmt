@@ -16,34 +16,42 @@
 #    $ bin/fmt --check
 #
 
-from impl.common import CROSVM_ROOT, parallel, run_main, cmd, chdir
+from impl.common import (
+    CROSVM_ROOT,
+    find_scripts,
+    parallel,
+    run_main,
+    cmd,
+    chdir,
+    find_source_files,
+)
 from pathlib import Path
 
 mdformat = cmd("mdformat")
 rustfmt = cmd(cmd("rustup which rustfmt"))
+black = cmd("black", "--line-length 100")
 
 # How many files to check at once in each thread.
 BATCH_SIZE = 8
-
-
-def find_sources(extension: str):
-    for file in Path(".").glob(f"**/{extension}"):
-        if file.is_relative_to("third_party"):
-            continue
-        if "target" in file.parts:
-            continue
-        yield str(file)
 
 
 def main(check: bool = False):
     chdir(CROSVM_ROOT)
     check_arg = "--check" if check else None
 
-    print(f"{'Checking' if check else 'Formatting'}: Rust, Markdown")
+    print(f"{'Checking format' if check else 'Formatting'}: Rust, Markdown")
     parallel(
-        *rustfmt(check_arg).foreach(find_sources("*.rs"), batch_size=BATCH_SIZE),
-        *mdformat("--wrap 100", check_arg).foreach(find_sources("*.md"), batch_size=BATCH_SIZE),
+        *rustfmt(check_arg).foreach(find_source_files("rs"), batch_size=BATCH_SIZE),
+        *mdformat("--wrap 100", check_arg).foreach(find_source_files("md"), batch_size=BATCH_SIZE),
+        *black(check_arg).foreach(
+            (
+                *find_source_files("py"),
+                *find_scripts(Path("tools"), "/usr/bin/env python3"),
+            ),
+            batch_size=BATCH_SIZE,
+        ),
     ).fg()
 
 
-run_main(main)
+if __name__ == "__main__":
+    run_main(main)

@@ -37,14 +37,12 @@ sudo apt-get install --yes --no-install-recommends \
     gcc-mingw-w64-x86-64-win32 \
     wayland-protocols
 
-# Install meson for rutabaga_gfx
-pip3 install meson
-
-# We use mdformat to keep the mdbook at docs/ formatted
-pip3 install mdformat
-
-# We use argh in our cli developer tools
-pip3 install argh
+pip3 install \
+    meson \
+    mdformat \
+    argh \
+    mypy \
+    black
 
 rustup component add clippy
 rustup component add rustfmt

@@ -22,7 +22,7 @@
 
 import argparse
 import getpass
-from argh import arg
+from argh import arg  # type: ignore
 from impl.common import CROSVM_ROOT, run_main, cmd, chdir, quoted
 import sys
 import os
@@ -77,7 +77,7 @@ def main(command: tuple[str, ...], stop: bool = False, hermetic: bool = False):
     if not command:
         command = ("/bin/bash",)
 
-    command = list(map(quoted, command))
+    quoted_cmd = list(map(quoted, command))
 
     if stop:
         if container_id:
@@ -88,7 +88,7 @@ def main(command: tuple[str, ...], stop: bool = False, hermetic: bool = False):
         return
 
     if hermetic:
-        docker(f"run --rm", *DOCKER_ARGS, *command).fg()
+        docker(f"run --rm", *DOCKER_ARGS, *quoted_cmd).fg()
     else:
         if container_id and container_revision(container_id) != IMAGE_VERSION:
             print(f"New image is available. Stopping old container ({container_id}).")
@@ -101,7 +101,8 @@ def main(command: tuple[str, ...], stop: bool = False, hermetic: bool = False):
         else:
             print(f"Using existing dev-container instance ({container_id}).")
 
-        docker("exec", TTY_ARGS, container_id, *command).fg()
+        docker("exec", TTY_ARGS, container_id, *quoted_cmd).fg()
 
 
-run_main(main)
+if __name__ == "__main__":
+    run_main(main)
