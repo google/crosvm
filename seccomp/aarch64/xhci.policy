@@ -10,7 +10,6 @@ name_to_handle_at: 1
 faccessat: 1
 faccessat2: 1
 newfstatat: 1
-gettid: 1
 timerfd_create: 1
 getsockname: 1
 openat: 1

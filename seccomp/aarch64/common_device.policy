@@ -17,6 +17,7 @@ exit_group: 1
 futex: 1
 getcwd: 1
 getpid: 1
+gettid: 1
 gettimeofday: 1
 io_uring_setup: 1
 io_uring_enter: 1

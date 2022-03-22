@@ -18,6 +18,7 @@ exit_group: 1
 futex: 1
 getcwd: 1
 getpid: 1
+gettid: 1
 gettimeofday: 1
 kill: 1
 madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE
@@ -73,7 +74,6 @@ openat: 1
 ## Rules specific to pvr
 geteuid: 1
 getuid: 1
-gettid: 1
 fcntl: 1
 tgkill: 1
 
@@ -81,3 +81,9 @@ tgkill: 1
 sched_setscheduler: 1
 sched_setaffinity: 1
 kcmp: 1
+
+# Rules for Vulkan loader / layers
+faccessat: 1
+faccessat2: 1
+getgid: 1
+getegid: 1
