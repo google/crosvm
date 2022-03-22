@@ -15,7 +15,7 @@ usb = []
 video-decoder = []
 video-encoder = []
 minigbm = ["rutabaga_gfx/minigbm"]
-x = ["gpu_display/x"]
+x = ["gpu_display/x", "rutabaga_gfx/x"]
 virgl_renderer = ["gpu", "rutabaga_gfx/virgl_renderer"]
 gfxstream = ["gpu", "rutabaga_gfx/gfxstream"]
 

@@ -102,10 +102,17 @@ fn build_virglrenderer(out_dir: &Path) -> Result<()> {
         );
     }
 
+    let platforms = [
+        "egl",
+        #[cfg(feature = "x")]
+        "glx",
+    ];
+
     let minigbm_src_abs = PathBuf::from(MINIGBM_SRC).canonicalize()?;
     let status = Command::new("meson")
         .env("PKG_CONFIG_PATH", &minigbm_src_abs)
         .arg("setup")
+        .arg(format!("-Dplatforms={}", platforms.join(",")))
         .arg("-Ddefault_library=static")
         .args(get_meson_cross_args())
         .arg(out_dir.as_os_str())

@@ -12,6 +12,7 @@ minigbm = []
 # To try out Vulkano, delete the following line and uncomment the line in "dependencies".  vulkano
 # features are just a prototype and not integrated yet into the ChromeOS build system.
 vulkano = []
+x = []
 
 [dependencies]
 data_model = { path = "../common/data_model" }
