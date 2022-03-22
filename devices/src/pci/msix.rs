@@ -18,6 +18,7 @@ pub const MSIX_PBA_ENTRIES_MODULO: u64 = 8;
 pub const BITS_PER_PBA_ENTRY: usize = 64;
 const FUNCTION_MASK_BIT: u16 = 0x4000;
 const MSIX_ENABLE_BIT: u16 = 0x8000;
+const MSIX_TABLE_ENTRY_MASK_BIT: u32 = 0x1;
 
 #[derive(Clone, Default)]
 struct MsixTableEntry {
@@ -29,7 +30,7 @@ struct MsixTableEntry {
 
 impl MsixTableEntry {
     fn masked(&self) -> bool {
-        self.vector_ctl & 0x1 == 0x1
+        self.vector_ctl & MSIX_TABLE_ENTRY_MASK_BIT == MSIX_TABLE_ENTRY_MASK_BIT
     }
 }
 
@@ -42,7 +43,7 @@ struct IrqfdGsi {
 pub struct MsixConfig {
     table_entries: Vec<MsixTableEntry>,
     pba_entries: Vec<u64>,
-    irq_vec: Vec<IrqfdGsi>,
+    irq_vec: Vec<Option<IrqfdGsi>>,
     masked: bool,
     enabled: bool,
     msi_device_socket: Tube,
@@ -80,15 +81,21 @@ impl MsixConfig {
 
         let mut table_entries: Vec<MsixTableEntry> = Vec::new();
         table_entries.resize_with(msix_vectors as usize, Default::default);
+        table_entries
+            .iter_mut()
+            .for_each(|entry| entry.vector_ctl |= MSIX_TABLE_ENTRY_MASK_BIT);
         let mut pba_entries: Vec<u64> = Vec::new();
         let num_pba_entries: usize =
             ((msix_vectors as usize) + BITS_PER_PBA_ENTRY - 1) / BITS_PER_PBA_ENTRY;
         pba_entries.resize_with(num_pba_entries, Default::default);
 
+        let mut irq_vec = Vec::new();
+        irq_vec.resize_with(msix_vectors.into(), || None::<IrqfdGsi>);
+
         MsixConfig {
             table_entries,
             pba_entries,
-            irq_vec: Vec::new(),
+            irq_vec,
             masked: false,
             enabled: false,
             msi_device_socket: vm_socket,
@@ -155,7 +162,7 @@ impl MsixConfig {
             self.enabled = (reg & MSIX_ENABLE_BIT) == MSIX_ENABLE_BIT;
 
             if !old_enabled && self.enabled {
-                if let Err(e) = self.msix_enable() {
+                if let Err(e) = self.msix_enable_all() {
                     error!("failed to enable MSI-X: {}", e);
                     self.enabled = false;
                 }
@@ -213,34 +220,48 @@ impl MsixConfig {
         Ok(())
     }
 
-    fn msix_enable(&mut self) -> MsixResult<()> {
-        self.irq_vec.clear();
-        for i in 0..self.msix_num {
-            let irqfd = Event::new().unwrap();
-            let request = VmIrqRequest::AllocateOneMsi { irqfd };
-            self.msi_device_socket
-                .send(&request)
-                .map_err(MsixError::AllocateOneMsiSend)?;
-            let irq_num: u32;
-            match self
-                .msi_device_socket
-                .recv()
-                .map_err(MsixError::AllocateOneMsiRecv)?
-            {
-                VmIrqResponse::AllocateOneMsi { gsi } => irq_num = gsi,
-                VmIrqResponse::Err(e) => return Err(MsixError::AllocateOneMsi(e)),
-                _ => unreachable!(),
-            }
-            self.irq_vec.push(IrqfdGsi {
-                irqfd: match request {
-                    VmIrqRequest::AllocateOneMsi { irqfd } => irqfd,
-                    _ => unreachable!(),
-                },
-                gsi: irq_num,
-            });
-
-            self.add_msi_route(i, irq_num)?;
+    // Enable MSI-X
+    fn msix_enable_all(&mut self) -> MsixResult<()> {
+        for index in 0..self.irq_vec.len() {
+            self.msix_enable_one(index)?;
         }
+        Ok(())
+    }
+
+    // Use a new MSI-X vector
+    // Create a new eventfd and bind them to a new msi
+    fn msix_enable_one(&mut self, index: usize) -> MsixResult<()> {
+        if self.irq_vec[index].is_some()
+            || !self.enabled()
+            || self.masked()
+            || self.table_masked(index)
+        {
+            return Ok(());
+        }
+        let irqfd = Event::new().map_err(MsixError::AllocateOneMsi)?;
+        let request = VmIrqRequest::AllocateOneMsi { irqfd };
+        self.msi_device_socket
+            .send(&request)
+            .map_err(MsixError::AllocateOneMsiSend)?;
+        let irq_num: u32;
+        match self
+            .msi_device_socket
+            .recv()
+            .map_err(MsixError::AllocateOneMsiRecv)?
+        {
+            VmIrqResponse::AllocateOneMsi { gsi } => irq_num = gsi,
+            VmIrqResponse::Err(e) => return Err(MsixError::AllocateOneMsi(e)),
+            _ => unreachable!(),
+        }
+        self.irq_vec[index] = Some(IrqfdGsi {
+            irqfd: match request {
+                VmIrqRequest::AllocateOneMsi { irqfd } => irqfd,
+                _ => unreachable!(),
+            },
+            gsi: irq_num,
+        });
+
+        self.add_msi_route(index as u16, irq_num)?;
         Ok(())
     }
 
@@ -344,14 +365,31 @@ impl MsixConfig {
         };
 
         let new_entry = self.table_entries[index].clone();
+
+        // This MSI-X vector is enabled for the first time.
+        if self.enabled()
+            && !self.masked()
+            && self.irq_vec[index].is_none()
+            && old_entry.masked()
+            && !new_entry.masked()
+        {
+            if let Err(e) = self.msix_enable_one(index) {
+                error!("failed to enable MSI-X vector {}: {}", index, e);
+                self.table_entries[index].vector_ctl |= MSIX_TABLE_ENTRY_MASK_BIT;
+            }
+            return MsixStatus::EntryChanged(index);
+        }
+
         if self.enabled()
             && (old_entry.msg_addr_lo != new_entry.msg_addr_lo
                 || old_entry.msg_addr_hi != new_entry.msg_addr_hi
                 || old_entry.msg_data != new_entry.msg_data)
         {
-            let irq_num = self.irq_vec[index].gsi;
-            if let Err(e) = self.add_msi_route(index as u16, irq_num) {
-                error!("add_msi_route failed: {}", e);
+            if let Some(irqfd_gsi) = &self.irq_vec[index] {
+                let irq_num = irqfd_gsi.gsi;
+                if let Err(e) = self.add_msi_route(index as u16, irq_num) {
+                    error!("add_msi_route failed: {}", e);
+                }
             }
         }
 
@@ -449,7 +487,7 @@ impl MsixConfig {
     }
 
     fn inject_msix_and_clear_pba(&mut self, vector: usize) {
-        if let Some(irq) = self.irq_vec.get(vector) {
+        if let Some(irq) = &self.irq_vec[vector] {
             irq.irqfd.write(1).unwrap();
         }
 
@@ -475,7 +513,7 @@ impl MsixConfig {
     pub fn trigger(&mut self, vector: u16) {
         if self.table_entries[vector as usize].masked() || self.masked() {
             self.set_pba_bit(vector, true);
-        } else if let Some(irq) = self.irq_vec.get(vector as usize) {
+        } else if let Some(irq) = self.irq_vec.get(vector as usize).unwrap_or(&None) {
             irq.irqfd.write(1).unwrap();
         }
     }
@@ -490,7 +528,7 @@ impl MsixConfig {
     ///  # Arguments
     ///  * 'vector' - the index to the MSI-X table entry
     pub fn get_irqfd(&self, vector: usize) -> Option<&Event> {
-        match self.irq_vec.get(vector) {
+        match self.irq_vec.get(vector as usize).unwrap_or(&None) {
             Some(irq) => Some(&irq.irqfd),
             None => None,
         }
@@ -498,14 +536,16 @@ impl MsixConfig {
 
     pub fn destroy(&mut self) {
         while let Some(irq) = self.irq_vec.pop() {
-            let request = VmIrqRequest::ReleaseOneIrq {
-                gsi: irq.gsi,
-                irqfd: irq.irqfd,
-            };
-            if self.msi_device_socket.send(&request).is_err() {
-                continue;
+            if let Some(irq) = irq {
+                let request = VmIrqRequest::ReleaseOneIrq {
+                    gsi: irq.gsi,
+                    irqfd: irq.irqfd,
+                };
+                if self.msi_device_socket.send(&request).is_err() {
+                    continue;
+                }
+                let _ = self.msi_device_socket.recv::<VmIrqResponse>();
             }
-            let _ = self.msi_device_socket.recv::<VmIrqResponse>();
         }
     }
 }
