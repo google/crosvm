@@ -8,6 +8,7 @@ use std::fs::File;
 use std::io::{IoSlice, IoSliceMut, Write};
 use std::mem::transmute;
 use std::os::unix::net::UnixDatagram;
+use std::os::unix::prelude::RawFd;
 use std::path::Path;
 use std::process::Command;
 use std::result;
@@ -141,12 +142,23 @@ impl Process {
     /// Set the `jail` argument to spawn the plugin process within the preconfigured jail.
     /// Due to an API limitation in libminijail necessitating that this function set an environment
     /// variable, this function is not thread-safe.
+    ///
+    /// Arguments:
+    ///
+    /// * `cpu_count`: number of vcpus
+    /// * `cmd`: path to plugin executable
+    /// * `args`: arguments to plugin executable
+    /// * `jail`: jail to launch plugin in. If None plugin will just be spawned as a child
+    /// * `stderr`: File to redirect stderr of plugin process to
+    /// * `env_fds`: collection of (Name, FD) where FD will be inherited by spawned process
+    ///             and added to child's environment as a variable Name
     pub fn new(
         cpu_count: u32,
         cmd: &Path,
         args: &[&str],
         jail: Option<Minijail>,
         stderr: File,
+        env_fds: Vec<(String, RawFd)>,
     ) -> Result<Process> {
         let (request_socket, child_socket) =
             new_seqpacket_pair().context("error creating main request socket")?;
@@ -165,21 +177,32 @@ impl Process {
                     "CROSVM_SOCKET",
                     child_socket.as_raw_descriptor().to_string(),
                 );
+                env_fds
+                    .iter()
+                    .for_each(|(k, fd)| set_var(k, fd.to_string()));
                 jail.run_remap(
                     cmd,
-                    &[
-                        (stderr.as_raw_descriptor(), STDERR_FILENO),
-                        (
-                            child_socket.as_raw_descriptor(),
-                            child_socket.as_raw_descriptor(),
-                        ),
-                    ],
+                    &env_fds
+                        .into_iter()
+                        .map(|(_, fd)| (fd, fd))
+                        .chain(
+                            [
+                                (stderr.as_raw_descriptor(), STDERR_FILENO),
+                                (
+                                    child_socket.as_raw_descriptor(),
+                                    child_socket.as_raw_descriptor(),
+                                ),
+                            ]
+                            .into_iter(),
+                        )
+                        .collect::<Vec<_>>(),
                     args,
                 )
                 .context("failed to run plugin jail")?
             }
             None => Command::new(cmd)
                 .args(args)
+                .envs(env_fds.into_iter().map(|(k, fd)| (k, fd.to_string())))
                 .env(
                     "CROSVM_SOCKET",
                     child_socket.as_raw_descriptor().to_string(),

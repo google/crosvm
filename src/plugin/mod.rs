@@ -9,6 +9,7 @@ use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::os::unix::net::UnixDatagram;
+use std::os::unix::prelude::RawFd;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
@@ -498,6 +499,40 @@ pub fn run_config(cfg: Config) -> Result<()> {
     add_fd_flags(stderr_rd.as_raw_descriptor(), O_NONBLOCK)
         .context("error marking stderr nonblocking")?;
 
+    #[allow(unused_mut)]
+    let mut fds: Vec<(String, RawFd)> = Vec::default();
+
+    let _default_render_server_params = crate::platform::GpuRenderServerParameters {
+        path: std::path::PathBuf::from("/usr/libexec/virgl_render_server"),
+        cache_path: None,
+        cache_size: None,
+    };
+
+    #[cfg(feature = "gpu")]
+    let gpu_render_server_parameters = if let Some(parameters) = &cfg.gpu_render_server_parameters {
+        Some(parameters)
+    } else {
+        if cfg!(feature = "plugin-render-server") {
+            Some(&_default_render_server_params)
+        } else {
+            None
+        }
+    };
+
+    #[cfg(feature = "gpu")]
+    // Hold on to the render server jail so it keeps running until we exit run_config()
+    let (_render_server_jail, _render_server_fd) =
+        if let Some(parameters) = &gpu_render_server_parameters {
+            let (jail, fd) = crate::platform::gpu::start_gpu_render_server(&cfg, parameters)?;
+            fds.push((String::from("CROSVM_GPU_SERVER_FD"), fd.as_raw_descriptor()));
+            (
+                Some(crate::platform::jail_helpers::ScopedMinijail(jail)),
+                Some(fd),
+            )
+        } else {
+            (None, None)
+        };
+
     let jail = if let Some(jail_config) = &cfg.jail_config {
         // An empty directory for jailed plugin pivot root.
         let root_path = match &cfg.plugin_root {
@@ -608,7 +643,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         .context("failed to create kvm irqchip")?;
     vm.create_pit().context("failed to create kvm PIT")?;
 
-    let mut plugin = Process::new(vcpu_count, plugin_path, &plugin_args, jail, stderr_wr)?;
+    let mut plugin = Process::new(vcpu_count, plugin_path, &plugin_args, jail, stderr_wr, fds)?;
     // Now that the jail for the plugin has been created and we had a chance to adjust gids there,
     // we can drop all our capabilities in case we had any.
     drop_capabilities().context("failed to drop process capabilities")?;

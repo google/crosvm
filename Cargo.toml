@@ -136,6 +136,7 @@ linux-armhf = [
 linux-x86_64 = ["all-linux", "plugin"]
 linux-aarch64 = ["all-linux"]
 plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]
+plugin-render-server = []
 power-monitor-powerd = ["arch/power-monitor-powerd"]
 tpm = ["devices/tpm"]
 usb = ["devices/usb"]

@@ -22,7 +22,7 @@ pub(super) struct SandboxConfig<'a> {
     pub(super) remount_mode: Option<c_ulong>,
 }
 
-pub(super) struct ScopedMinijail(pub Minijail);
+pub(crate) struct ScopedMinijail(pub Minijail);
 
 impl Drop for ScopedMinijail {
     fn drop(&mut self) {

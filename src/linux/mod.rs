@@ -78,12 +78,12 @@ use {
 
 mod device_helpers;
 use device_helpers::*;
-mod jail_helpers;
+pub(crate) mod jail_helpers;
 use jail_helpers::*;
 mod vcpu;
 
 #[cfg(feature = "gpu")]
-mod gpu;
+pub(crate) mod gpu;
 #[cfg(feature = "gpu")]
 pub use gpu::GpuRenderServerParameters;
 #[cfg(feature = "gpu")]
