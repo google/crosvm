@@ -56,7 +56,7 @@ pub fn clone_descriptor(descriptor: &dyn AsRawDescriptor) -> Result<RawDescripto
 /// Clones `fd`, returning a new file descriptor that refers to the same open file description as
 /// `fd`. The cloned fd will have the `FD_CLOEXEC` flag set but will not share any other file
 /// descriptor flags with `fd`.
-pub fn clone_fd(fd: &dyn AsRawFd) -> Result<RawFd> {
+fn clone_fd(fd: &dyn AsRawFd) -> Result<RawFd> {
     // Safe because this doesn't modify any memory and we check the return value.
     let ret = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
     if ret < 0 {
