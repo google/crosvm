@@ -74,9 +74,12 @@ fn filter_cpuid(
 
                 entry.ebx = (vcpu_id << EBX_CPUID_SHIFT) as u32
                     | (EBX_CLFLUSH_CACHELINE << EBX_CLFLUSH_SIZE_SHIFT);
-                if cpu_count > 1 && !no_smt {
+                if cpu_count > 1 {
                     // This field is only valid if CPUID.1.EDX.HTT[bit 28]= 1.
                     entry.ebx |= (cpu_count as u32) << EBX_CPU_COUNT_SHIFT;
+                    // A value of 0 for HTT indicates there is only a single logical
+                    // processor in the package and software should assume only a
+                    // single APIC ID is reserved.
                     entry.edx |= 1 << EDX_HTT_SHIFT;
                 }
             }
