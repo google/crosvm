@@ -934,10 +934,10 @@ impl Worker {
             {
                 if should_process {
                     if let Err(e) = self.state.process_resource_bridge(bridge) {
-                        error!("Failed to process resource bridge: {}", e);
+                        error!("Failed to process resource bridge: {:#}", e);
                         error!("Removing that resource bridge from the wait context.");
                         wait_ctx.delete(bridge).unwrap_or_else(|e| {
-                            error!("Failed to remove faulty resource bridge: {}", e)
+                            error!("Failed to remove faulty resource bridge: {:#}", e)
                         });
                     }
                 }

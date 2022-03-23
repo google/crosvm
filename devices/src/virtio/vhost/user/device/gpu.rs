@@ -125,7 +125,7 @@ async fn run_resource_bridge(tube: Box<dyn IoSourceExt<Tube>>, state: Rc<RefCell
         }
 
         if let Err(e) = state.borrow_mut().process_resource_bridge(tube.as_source()) {
-            error!("Failed to process resource bridge: {}", e);
+            error!("Failed to process resource bridge: {:#}", e);
             break;
         }
     }
