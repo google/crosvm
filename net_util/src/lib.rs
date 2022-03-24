@@ -165,24 +165,6 @@ pub struct Tap {
 }
 
 impl Tap {
-    pub unsafe fn from_raw_descriptor(fd: RawDescriptor) -> Result<Tap> {
-        let tap_file = File::from_raw_descriptor(fd);
-
-        // Get the interface name since we will need it for some ioctls.
-        let mut ifreq: net_sys::ifreq = Default::default();
-        let ret = ioctl_with_mut_ref(&tap_file, net_sys::TUNGETIFF(), &mut ifreq);
-
-        if ret < 0 {
-            return Err(Error::IoctlError(SysError::last()));
-        }
-
-        Ok(Tap {
-            tap_file,
-            if_name: ifreq.ifr_ifrn.ifrn_name,
-            if_flags: ifreq.ifr_ifru.ifru_flags,
-        })
-    }
-
     pub fn create_tap_with_ifreq(ifreq: &mut net_sys::ifreq) -> Result<Tap> {
         // Open calls are safe because we give a constant nul-terminated
         // string and verify the result.
@@ -217,18 +199,6 @@ impl Tap {
             if_name: unsafe { ifreq.ifr_ifrn.ifrn_name },
             if_flags: unsafe { ifreq.ifr_ifru.ifru_flags },
         })
-    }
-
-    pub fn try_clone(&self) -> Result<Tap> {
-        self.tap_file
-            .try_clone()
-            .map(|tap_file| Tap {
-                tap_file,
-                if_name: self.if_name,
-                if_flags: self.if_flags,
-            })
-            .map_err(SysError::from)
-            .map_err(Error::CloneTap)
     }
 }
 
@@ -293,6 +263,12 @@ pub trait TapT: FileReadWriteVolatile + Read + Write + AsRawDescriptor + Send + 
 
     /// Get the interface flags
     fn if_flags(&self) -> i32;
+
+    /// Try to clone
+    fn try_clone(&self) -> Result<Self>;
+
+    /// Convert raw descriptor to TapT.
+    unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Result<Self>;
 }
 
 impl TapT for Tap {
@@ -551,6 +527,38 @@ impl TapT for Tap {
     fn if_flags(&self) -> i32 {
         self.if_flags.into()
     }
+
+    fn try_clone(&self) -> Result<Tap> {
+        self.tap_file
+            .try_clone()
+            .map(|tap_file| Tap {
+                tap_file,
+                if_name: self.if_name,
+                if_flags: self.if_flags,
+            })
+            .map_err(SysError::from)
+            .map_err(Error::CloneTap)
+    }
+
+    /// # Safety: fd is a valid FD and ownership of it is transferred when
+    /// calling this function.
+    unsafe fn from_raw_descriptor(fd: RawDescriptor) -> Result<Tap> {
+        let tap_file = File::from_raw_descriptor(fd);
+
+        // Get the interface name since we will need it for some ioctls.
+        let mut ifreq: net_sys::ifreq = Default::default();
+        let ret = ioctl_with_mut_ref(&tap_file, net_sys::TUNGETIFF(), &mut ifreq);
+
+        if ret < 0 {
+            return Err(Error::IoctlError(SysError::last()));
+        }
+
+        Ok(Tap {
+            tap_file,
+            if_name: ifreq.ifr_ifrn.ifrn_name,
+            if_flags: ifreq.ifr_ifru.ifru_flags,
+        })
+    }
 }
 
 impl Read for Tap {
@@ -663,6 +671,15 @@ pub mod fakes {
 
         fn if_flags(&self) -> i32 {
             libc::IFF_TAP
+        }
+
+        fn try_clone(&self) -> Result<Self> {
+            unimplemented!()
+        }
+
+        /// # Safety: panics on call / does nothing.
+        unsafe fn from_raw_descriptor(_descriptor: RawDescriptor) -> Result<Self> {
+            unimplemented!()
         }
     }
 

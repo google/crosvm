@@ -22,6 +22,8 @@ pub use cras_snd::run_cras_snd_device;
 pub use fs::run_fs_device;
 #[cfg(feature = "gpu")]
 pub use gpu::run_gpu_device;
+
+#[cfg(any(all(windows, feature = "slirp"), not(windows)))]
 pub use net::run_net_device;
 pub use vsock::run_vsock_device;
 pub use wl::run_wl_device;

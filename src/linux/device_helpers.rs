@@ -47,7 +47,7 @@ use devices::{
 };
 use hypervisor::Vm;
 use minijail::{self, Minijail};
-use net_util::{MacAddress, Tap};
+use net_util::{MacAddress, Tap, TapT};
 use resources::{Alloc, MmioType, SystemAllocator};
 use sync::Mutex;
 use vm_memory::GuestAddress;
