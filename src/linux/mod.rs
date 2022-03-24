@@ -744,6 +744,7 @@ fn create_pcie_root_port(
                 // hotplug capability and won't use slot.
                 if !sys_allocator.pci_bus_empty(i) {
                     slot_implemented = false;
+                    break;
                 }
             }
 
@@ -765,20 +766,23 @@ fn create_pcie_root_port(
                 );
             }
 
-            hp_endpoints_ranges.push(RangeInclusive::new(
-                PciAddress {
-                    bus: pci_bridge.get_secondary_num(),
-                    dev: 0,
-                    func: 0,
-                }
-                .to_u32(),
-                PciAddress {
-                    bus: pci_bridge.get_subordinate_num(),
-                    dev: 32,
-                    func: 8,
-                }
-                .to_u32(),
-            ));
+            // Only append the sub pci range of a hot-pluggable root port to virtio-iommu
+            if slot_implemented {
+                hp_endpoints_ranges.push(RangeInclusive::new(
+                    PciAddress {
+                        bus: pci_bridge.get_secondary_num(),
+                        dev: 0,
+                        func: 0,
+                    }
+                    .to_u32(),
+                    PciAddress {
+                        bus: pci_bridge.get_subordinate_num(),
+                        dev: 32,
+                        func: 8,
+                    }
+                    .to_u32(),
+                ));
+            }
 
             devices.push((pci_bridge, None));
             if slot_implemented {
