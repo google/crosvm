@@ -498,7 +498,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     add_fd_flags(stderr_rd.as_raw_descriptor(), O_NONBLOCK)
         .context("error marking stderr nonblocking")?;
 
-    let jail = if cfg.sandbox {
+    let jail = if let Some(jail_config) = &cfg.jail_config {
         // An empty directory for jailed plugin pivot root.
         let root_path = match &cfg.plugin_root {
             Some(dir) => dir,
@@ -517,8 +517,9 @@ pub fn run_config(cfg: Config) -> Result<()> {
             bail!("specified root directory is not a directory");
         }
 
-        let policy_path = cfg.seccomp_policy_dir.join("plugin");
-        let mut jail = create_plugin_jail(root_path, cfg.seccomp_log_failures, &policy_path)?;
+        let policy_path = jail_config.seccomp_policy_dir.join("plugin");
+        let mut jail =
+            create_plugin_jail(root_path, jail_config.seccomp_log_failures, &policy_path)?;
 
         // Update gid map of the jail if caller provided supplemental groups.
         if !cfg.plugin_gid_maps.is_empty() {

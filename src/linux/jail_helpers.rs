@@ -11,7 +11,7 @@ use anyhow::{bail, Context, Result};
 use base::*;
 use minijail::{self, Minijail};
 
-use crate::Config;
+use crate::JailConfig;
 
 pub(super) struct SandboxConfig<'a> {
     pub(super) limit_caps: bool,
@@ -109,27 +109,32 @@ pub(super) fn create_base_minijail(
     Ok(j)
 }
 
-pub(super) fn simple_jail(cfg: &Config, policy: &str) -> Result<Option<Minijail>> {
-    if cfg.sandbox {
-        let default_pivot_root: &str = option_env!("DEFAULT_PIVOT_ROOT").unwrap_or("/var/empty");
+pub(super) fn simple_jail(
+    jail_config: &Option<JailConfig>,
+    policy: &str,
+) -> Result<Option<Minijail>> {
+    if let Some(jail_config) = jail_config {
         // A directory for a jailed device's pivot root.
-        let root_path = cfg
-            .pivot_root
-            .as_deref()
-            .unwrap_or_else(|| Path::new(default_pivot_root));
-        if !root_path.exists() {
-            bail!("{:?} doesn't exist, can't jail devices", root_path);
+        if !jail_config.pivot_root.exists() {
+            bail!(
+                "{:?} doesn't exist, can't jail devices",
+                jail_config.pivot_root
+            );
         }
-        let policy_path: PathBuf = cfg.seccomp_policy_dir.join(policy);
+        let policy_path: PathBuf = jail_config.seccomp_policy_dir.join(policy);
         let config = SandboxConfig {
             limit_caps: true,
-            log_failures: cfg.seccomp_log_failures,
+            log_failures: jail_config.seccomp_log_failures,
             seccomp_policy: &policy_path,
             uid_map: None,
             gid_map: None,
             remount_mode: None,
         };
-        Ok(Some(create_base_minijail(root_path, None, Some(&config))?))
+        Ok(Some(create_base_minijail(
+            &jail_config.pivot_root,
+            None,
+            Some(&config),
+        )?))
     } else {
         Ok(None)
     }

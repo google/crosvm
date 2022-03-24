@@ -1547,7 +1547,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.balloon_control = Some(path);
         }
         "disable-sandbox" => {
-            cfg.sandbox = false;
+            cfg.jail_config = None;
         }
         "cid" => {
             if cfg.cid.is_some() {
@@ -1710,8 +1710,10 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.shared_dirs.push(shared_dir);
         }
         "seccomp-policy-dir" => {
-            // `value` is Some because we are in this match so it's safe to unwrap.
-            cfg.seccomp_policy_dir = PathBuf::from(value.unwrap());
+            if let Some(jail_config) = &mut cfg.jail_config {
+                // `value` is Some because we are in this match so it's safe to unwrap.
+                jail_config.seccomp_policy_dir = PathBuf::from(value.unwrap());
+            }
         }
         "seccomp-log-failures" => {
             // A side-effect of this flag is to force the use of .policy files
@@ -1731,7 +1733,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             // or 2) do not use this command-line parameter and instead
             // temporarily change the build by passing "log" rather than
             // "trap" as the "--default-action" to compile_seccomp_policy.py.
-            cfg.seccomp_log_failures = true;
+            if let Some(jail_config) = &mut cfg.jail_config {
+                jail_config.seccomp_log_failures = true;
+            }
         }
         "plugin" => {
             if cfg.executable_path.is_some() {
@@ -2320,7 +2324,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             });
         }
         "pivot-root" => {
-            cfg.pivot_root = Some(PathBuf::from(value.unwrap()));
+            if let Some(jail_config) = &mut cfg.jail_config {
+                jail_config.pivot_root = PathBuf::from(value.unwrap());
+            }
         }
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         "s2idle" => {
@@ -2468,6 +2474,11 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
         &mut cfg.serial_parameters,
         !cfg.vhost_user_console.is_empty(),
     );
+
+    // Remove jail configuration if it has not been enabled.
+    if !cfg.jail_enabled {
+        cfg.jail_config = None;
+    }
 
     Ok(())
 }

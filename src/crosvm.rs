@@ -335,6 +335,23 @@ pub struct HostPcieRootPortParameters {
     pub hp_gpe: Option<u32>,
 }
 
+#[derive(Debug)]
+pub struct JailConfig {
+    pub pivot_root: PathBuf,
+    pub seccomp_policy_dir: PathBuf,
+    pub seccomp_log_failures: bool,
+}
+
+impl Default for JailConfig {
+    fn default() -> Self {
+        JailConfig {
+            pivot_root: PathBuf::from(option_env!("DEFAULT_PIVOT_ROOT").unwrap_or("/var/empty")),
+            seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
+            seccomp_log_failures: false,
+        }
+    }
+}
+
 /// Aggregate of all configurable options for a running VM.
 pub struct Config {
     pub kvm_device_path: PathBuf,
@@ -358,6 +375,8 @@ pub struct Config {
     pub executable_path: Option<Executable>,
     pub android_fstab: Option<PathBuf>,
     pub initrd_path: Option<PathBuf>,
+    pub jail_config: Option<JailConfig>,
+    pub jail_enabled: bool,
     pub params: Vec<String>,
     pub socket_path: Option<PathBuf>,
     pub balloon_control: Option<PathBuf>,
@@ -378,9 +397,6 @@ pub struct Config {
     pub wayland_socket_paths: BTreeMap<String, PathBuf>,
     pub x_display: Option<String>,
     pub shared_dirs: Vec<SharedDir>,
-    pub sandbox: bool,
-    pub seccomp_policy_dir: PathBuf,
-    pub seccomp_log_failures: bool,
     #[cfg(feature = "gpu")]
     pub gpu_parameters: Option<GpuParameters>,
     #[cfg(feature = "gpu")]
@@ -448,7 +464,6 @@ pub struct Config {
     #[cfg(feature = "direct")]
     pub pcie_rp: Vec<HostPcieRootPortParameters>,
     pub rng: bool,
-    pub pivot_root: Option<PathBuf>,
     pub force_s2idle: bool,
     pub strict_balloon: bool,
     pub mmio_address_ranges: Vec<RangeInclusive<u64>>,
@@ -478,6 +493,12 @@ impl Default for Config {
             executable_path: None,
             android_fstab: None,
             initrd_path: None,
+            // We initialize the jail configuration with a default value so jail-related options can
+            // apply irrespective of whether jail is enabled or not. `jail_config` will then be
+            // assigned `None` if it turns out that `jail_enabled` is `false` after we parse all the
+            // arguments.
+            jail_config: Some(Default::default()),
+            jail_enabled: !cfg!(feature = "default-no-sandbox"),
             params: Vec::new(),
             socket_path: None,
             balloon_control: None,
@@ -505,9 +526,6 @@ impl Default for Config {
             display_window_keyboard: false,
             display_window_mouse: false,
             shared_dirs: Vec::new(),
-            sandbox: !cfg!(feature = "default-no-sandbox"),
-            seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
-            seccomp_log_failures: false,
             #[cfg(feature = "audio")]
             ac97_parameters: Vec::new(),
             #[cfg(feature = "audio")]
@@ -568,7 +586,6 @@ impl Default for Config {
             #[cfg(feature = "direct")]
             pcie_rp: Vec::new(),
             rng: true,
-            pivot_root: None,
             force_s2idle: false,
             strict_balloon: false,
             mmio_address_ranges: Vec::new(),

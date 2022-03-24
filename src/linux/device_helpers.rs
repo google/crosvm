@@ -161,7 +161,7 @@ pub fn create_block_device(
 
     Ok(VirtioDeviceStub {
         dev,
-        jail: simple_jail(cfg, "block_device")?,
+        jail: simple_jail(&cfg.jail_config, "block_device")?,
     })
 }
 
@@ -245,7 +245,7 @@ pub fn create_vvu_proxy_device(cfg: &Config, opt: &VvuOption, tube: Tube) -> Dev
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(cfg, "vvu_proxy_device")?,
+        jail: simple_jail(&cfg.jail_config, "vvu_proxy_device")?,
     })
 }
 
@@ -255,7 +255,7 @@ pub fn create_rng_device(cfg: &Config) -> DeviceResult {
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(cfg, "rng_device")?,
+        jail: simple_jail(&cfg.jail_config, "rng_device")?,
     })
 }
 
@@ -267,7 +267,7 @@ pub fn create_cras_snd_device(cfg: &Config, cras_snd: CrasSndParameters) -> Devi
     )
     .context("failed to create cras sound device")?;
 
-    let jail = match simple_jail(&cfg, "cras_snd_device")? {
+    let jail = match simple_jail(&cfg.jail_config, "cras_snd_device")? {
         Some(mut jail) => {
             // Create a tmpfs in the device's root directory for cras_snd_device.
             // The size is 20*1024, or 20 KB.
@@ -302,7 +302,7 @@ pub fn create_tpm_device(cfg: &Config) -> DeviceResult {
     use std::process;
 
     let tpm_storage: PathBuf;
-    let mut tpm_jail = simple_jail(cfg, "tpm_device")?;
+    let mut tpm_jail = simple_jail(&cfg.jail_config, "tpm_device")?;
 
     match &mut tpm_jail {
         Some(jail) => {
@@ -368,7 +368,7 @@ pub fn create_single_touch_device(
     .context("failed to set up input device")?;
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(cfg, "input_device")?,
+        jail: simple_jail(&cfg.jail_config, "input_device")?,
     })
 }
 
@@ -397,7 +397,7 @@ pub fn create_multi_touch_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(cfg, "input_device")?,
+        jail: simple_jail(&cfg.jail_config, "input_device")?,
     })
 }
 
@@ -423,7 +423,7 @@ pub fn create_trackpad_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(cfg, "input_device")?,
+        jail: simple_jail(&cfg.jail_config, "input_device")?,
     })
 }
 
@@ -442,7 +442,7 @@ pub fn create_mouse_device<T: IntoUnixStream>(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(cfg, "input_device")?,
+        jail: simple_jail(&cfg.jail_config, "input_device")?,
     })
 }
 
@@ -461,7 +461,7 @@ pub fn create_keyboard_device<T: IntoUnixStream>(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(cfg, "input_device")?,
+        jail: simple_jail(&cfg.jail_config, "input_device")?,
     })
 }
 
@@ -480,7 +480,7 @@ pub fn create_switches_device<T: IntoUnixStream>(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(cfg, "input_device")?,
+        jail: simple_jail(&cfg.jail_config, "input_device")?,
     })
 }
 
@@ -496,7 +496,7 @@ pub fn create_vinput_device(cfg: &Config, dev_path: &Path) -> DeviceResult {
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(cfg, "input_device")?,
+        jail: simple_jail(&cfg.jail_config, "input_device")?,
     })
 }
 
@@ -521,7 +521,7 @@ pub fn create_balloon_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(cfg, "balloon_device")?,
+        jail: simple_jail(&cfg.jail_config, "balloon_device")?,
     })
 }
 
@@ -545,7 +545,7 @@ where
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev) as Box<dyn VirtioDevice>,
-        jail: simple_jail(cfg, policy)?,
+        jail: simple_jail(&cfg.jail_config, policy)?,
     })
 }
 
@@ -661,7 +661,7 @@ pub fn create_wayland_device(
     )
     .context("failed to create wayland device")?;
 
-    let jail = match simple_jail(cfg, "wl_device")? {
+    let jail = match simple_jail(&cfg.jail_config, "wl_device")? {
         Some(mut jail) => {
             // Create a tmpfs in the device's root directory so that we can bind mount the wayland
             // socket directory into it. The size=67108864 is size=64*1024*1024 or size=64MB.
@@ -700,7 +700,7 @@ pub fn create_video_device(
     typ: devices::virtio::VideoDeviceType,
     resource_bridge: Tube,
 ) -> DeviceResult {
-    let jail = match simple_jail(cfg, "video_device")? {
+    let jail = match simple_jail(&cfg.jail_config, "video_device")? {
         Some(mut jail) => {
             match typ {
                 #[cfg(feature = "video-decoder")]
@@ -789,7 +789,7 @@ pub fn create_vhost_vsock_device(cfg: &Config, vhost_config: &VhostVsockConfig) 
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(cfg, "vhost_vsock_device")?,
+        jail: simple_jail(&cfg.jail_config, "vhost_vsock_device")?,
     })
 }
 
@@ -804,13 +804,13 @@ pub fn create_fs_device(
 ) -> DeviceResult {
     let max_open_files =
         base::get_max_open_files().context("failed to get max number of open files")?;
-    let j = if cfg.sandbox {
-        let seccomp_policy = cfg.seccomp_policy_dir.join("fs_device");
+    let j = if let Some(jail_config) = &cfg.jail_config {
+        let seccomp_policy = jail_config.seccomp_policy_dir.join("fs_device");
         let config = SandboxConfig {
             limit_caps: false,
             uid_map: Some(uid_map),
             gid_map: Some(gid_map),
-            log_failures: cfg.seccomp_log_failures,
+            log_failures: jail_config.seccomp_log_failures,
             seccomp_policy: &seccomp_policy,
             // We want bind mounts from the parent namespaces to propagate into the fs device's
             // namespace.
@@ -843,13 +843,13 @@ pub fn create_9p_device(
 ) -> DeviceResult {
     let max_open_files =
         base::get_max_open_files().context("failed to get max number of open files")?;
-    let (jail, root) = if cfg.sandbox {
-        let seccomp_policy = cfg.seccomp_policy_dir.join("9p_device");
+    let (jail, root) = if let Some(jail_config) = &cfg.jail_config {
+        let seccomp_policy = jail_config.seccomp_policy_dir.join("9p_device");
         let config = SandboxConfig {
             limit_caps: false,
             uid_map: Some(uid_map),
             gid_map: Some(gid_map),
-            log_failures: cfg.seccomp_log_failures,
+            log_failures: jail_config.seccomp_log_failures,
             seccomp_policy: &seccomp_policy,
             // We want bind mounts from the parent namespaces to propagate into the 9p server's
             // namespace.
@@ -981,7 +981,7 @@ pub fn create_pmem_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev) as Box<dyn VirtioDevice>,
-        jail: simple_jail(cfg, "pmem_device")?,
+        jail: simple_jail(&cfg.jail_config, "pmem_device")?,
     })
 }
 
@@ -1007,7 +1007,7 @@ pub fn create_iommu_device(
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(cfg, "iommu_device")?,
+        jail: simple_jail(&cfg.jail_config, "iommu_device")?,
     })
 }
 
@@ -1032,7 +1032,7 @@ pub fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceRe
         .create_serial_device::<Console>(cfg.protected_vm, &evt, &mut keep_rds)
         .context("failed to create console device")?;
 
-    let jail = match simple_jail(cfg, "serial")? {
+    let jail = match simple_jail(&cfg.jail_config, "serial")? {
         Some(mut jail) => {
             // Create a tmpfs in the device's root directory so that we can bind mount the
             // log socket directory into it.
@@ -1067,7 +1067,7 @@ pub fn create_sound_device(path: &Path, cfg: &Config) -> DeviceResult {
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
-        jail: simple_jail(cfg, "vios_audio_device")?,
+        jail: simple_jail(&cfg.jail_config, "vios_audio_device")?,
     })
 }
 
@@ -1152,7 +1152,10 @@ pub fn create_vfio_device(
     if hotplug {
         Ok((vfio_pci_device, None))
     } else {
-        Ok((vfio_pci_device, simple_jail(cfg, "vfio_device")?))
+        Ok((
+            vfio_pci_device,
+            simple_jail(&cfg.jail_config, "vfio_device")?,
+        ))
     }
 }
 
@@ -1181,7 +1184,10 @@ pub fn create_vfio_platform_device(
     .context("Failed to create vfio device")?;
     let vfio_plat_dev = VfioPlatformDevice::new(vfio_device, vfio_device_tube_mem);
 
-    Ok((vfio_plat_dev, simple_jail(cfg, "vfio_platform_device")?))
+    Ok((
+        vfio_plat_dev,
+        simple_jail(&cfg.jail_config, "vfio_platform_device")?,
+    ))
 }
 
 /// Setup for devices with VIRTIO_F_ACCESS_PLATFORM
