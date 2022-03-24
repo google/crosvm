@@ -23,6 +23,10 @@ required-features = [ "direct" ]
 panic = 'abort'
 overflow-checks = true
 
+[profile.release-test]
+inherits = 'release'
+panic = 'unwind'
+
 # Reproduces the options used when building crosvm for Chrome OS.
 [profile.chromeos]
 inherits = "release"
