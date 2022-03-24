@@ -19,7 +19,7 @@ if [[ ! -z "${DEBUG_SSH_KEY}" ]]; then
 fi
 
 setup_source() {
-  if [ -z "${KOKORO_ARTIFACTS_DIR}/git" ]; then
+  if [ ! -d "${KOKORO_ARTIFACTS_DIR}" ]; then
     echo "This script must be run in kokoro"
     exit 1
   fi
@@ -49,6 +49,9 @@ setup_source() {
   # us from rebasing the changes.
   git checkout -f
   git rebase origin/main
+  if [ $? -ne 0 ]; then
+      return 1
+  fi
 
   echo "Fetching Submodules..."
   git submodule update --init
