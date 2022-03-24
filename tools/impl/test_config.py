@@ -88,6 +88,7 @@ elif os.name == "nt":
         "arch": [TestOption.DO_NOT_BUILD],
         "audio_streams": [TestOption.DO_NOT_BUILD],
         "balloon_control": [],
+        "base": [TestOption.SINGLE_THREADED, TestOption.LARGE],
         "bit_field_derive": [TestOption.DO_NOT_BUILD],
         "bit_field": [TestOption.DO_NOT_BUILD],
         "cros_async": [TestOption.DO_NOT_BUILD],
@@ -138,7 +139,6 @@ elif os.name == "nt":
         "virtio_sys": [TestOption.DO_NOT_BUILD],
         "vm_control": [TestOption.DO_NOT_BUILD],
         "vm_memory": [TestOption.DO_NOT_BUILD],
-        "vmm_vhost": [TestOption.DO_NOT_BUILD],
         "wire_format_derive": [TestOption.DO_NOT_BUILD],
         "x86_64": [TestOption.DO_NOT_BUILD],
     }

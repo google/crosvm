@@ -42,7 +42,7 @@ echo [%TIME%] Python version:
 py --version
 
 echo [%TIME%] Calling crosvm\build_test.py
-py ./tools\impl/test_runner.py --arch x86_64 
+py ./tools\impl/test_runner.py --arch x86_64 -v
 if %ERRORLEVEL% neq 0 ( exit /b %ERRORLEVEL% )
 
 exit /b %ERRORLEVEL%

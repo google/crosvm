@@ -7,7 +7,7 @@ use std::io;
 
 use thiserror::Error as ThisError;
 
-#[cfg_attr(windows, path = "win/tube.rs")]
+#[cfg_attr(windows, path = "windows/tube.rs")]
 #[cfg_attr(not(windows), path = "unix/tube.rs")]
 mod tube;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -107,10 +107,7 @@ pub enum Error {
     #[error("Received a message with a zero sized body. This should not happen.")]
     RecvUnexpectedEmptyBody,
     #[error("failed to send packet: {0}")]
-    #[cfg(unix)]
     Send(crate::platform::Error),
-    #[cfg(windows)]
-    Send(crate::windows::Error),
     #[error("failed to send packet: {0}")]
     SendIo(io::Error),
     #[error("failed to write packet to intermediate buffer: {0}")]

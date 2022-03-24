@@ -10,6 +10,10 @@ pub mod unix;
 #[cfg(windows)]
 pub mod windows;
 
+mod tube;
+
+pub use tube::{Error as TubeError, RecvTube, Result as TubeResult, SendTube, Tube};
+
 cfg_if::cfg_if! {
      if #[cfg(unix)] {
         mod event;
@@ -18,7 +22,6 @@ cfg_if::cfg_if! {
         mod notifiers;
         mod shm;
         mod timer;
-        mod tube;
         mod wait_context;
 
         pub use unix as platform;
@@ -36,10 +39,9 @@ cfg_if::cfg_if! {
         pub use notifiers::*;
         pub use shm::{SharedMemory, Unix as SharedMemoryUnix};
         pub use timer::{FakeTimer, Timer};
-        pub use tube::{Error as TubeError, RecvTube, Result as TubeResult, SendTube, Tube};
         pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
      } else if #[cfg(windows)] {
-         pub use windows as platform;
+        pub use windows as platform;
      } else {
         compile_error!("Unsupported platform");
      }

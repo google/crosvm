@@ -11,21 +11,18 @@ use std::{
 
 use crate::{
     platform::{
-        deserialize_with_descriptors, AsRawDescriptor, Descriptor, RawDescriptor,
-        SerializeDescriptors,
+        deserialize_with_descriptors, AsRawDescriptor, RawDescriptor, SerializeDescriptors,
     },
     tube::{Error, RecvTube, Result, SendTube},
     BlockingMode, CloseNotifier, FramingMode, FromRawDescriptor, PollToken, ReadNotifier,
     SafeDescriptor, StreamChannel,
 };
-use cros_async::{unblock, Executor};
 use data_model::DataInit;
 use lazy_static::lazy_static;
 use serde::{de::DeserializeOwned, Deserialize, Serialize, Serializer};
 use std::{
     mem,
     os::windows::io::{AsRawHandle, RawHandle},
-    sync::{Arc, Mutex},
 };
 use winapi::shared::winerror::ERROR_MORE_DATA;
 

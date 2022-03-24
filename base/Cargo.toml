@@ -25,6 +25,7 @@ chrono = "*"
 regex = "*"
 
 [target.'cfg(windows)'.dependencies]
+lazy_static = "*"
 winapi = "*"
 win_util = { path = "../win_util"}
 
