@@ -8,7 +8,6 @@ use base::named_pipes::{BlockingMode, FramingMode};
 use base::FileSync;
 use base::{AsRawDescriptor, Event, RawDescriptor};
 use hypervisor::ProtectionType;
-use std::fs::File;
 use std::io::{self};
 use std::path::Path;
 
@@ -78,8 +77,4 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
             ));
         }
     }
-}
-
-pub(crate) fn file_from_path(_path: &Path) -> Result<Option<File>, Error> {
-    Ok(None)
 }

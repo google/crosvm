@@ -3,11 +3,11 @@
 // found in the LICENSE file.
 
 use std::fmt::{self, Display};
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{self, stdin, stdout};
 use std::path::PathBuf;
 
-use base::{error, syslog, AsRawDescriptor, Event, FileSync, RawDescriptor};
+use base::{error, open_file, syslog, AsRawDescriptor, Event, FileSync, RawDescriptor};
 use hypervisor::ProtectionType;
 use remain::sorted;
 use serde::{Deserialize, Serialize};
@@ -135,11 +135,8 @@ impl SerialParameters {
         let input: Option<Box<dyn io::Read + Send>> = if let Some(input_path) = &self.input {
             let input_path = input_path.as_path();
 
-            let input_file = if let Some(file) = file_from_path(input_path)? {
-                file
-            } else {
-                File::open(input_path).map_err(Error::FileError)?
-            };
+            let input_file = open_file(input_path, OpenOptions::new().read(true))
+                .map_err(|e| Error::FileError(e.into()))?;
 
             keep_rds.push(input_file.as_raw_descriptor());
             Some(Box::new(input_file))
@@ -170,16 +167,8 @@ impl SerialParameters {
             }
             SerialType::File => match &self.path {
                 Some(path) => {
-                    let file = if let Some(file) = file_from_path(path.as_path())? {
-                        file
-                    } else {
-                        OpenOptions::new()
-                            .append(true)
-                            .create(true)
-                            .open(path.as_path())
-                            .map_err(Error::FileError)?
-                    };
-
+                    let file = open_file(path, OpenOptions::new().append(true).create(true))
+                        .map_err(|e| Error::FileError(e.into()))?;
                     let sync = file.try_clone().map_err(Error::FileError)?;
 
                     keep_rds.push(file.as_raw_descriptor());

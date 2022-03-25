@@ -4,10 +4,10 @@
 
 use crate::serial_device::{Error, SerialParameters};
 use base::{error, AsRawDescriptor, Event, FileSync, RawDescriptor};
-use base::{info, read_raw_stdin, safe_descriptor_from_path};
+use base::{info, read_raw_stdin};
 use hypervisor::ProtectionType;
 use std::borrow::Cow;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io;
 use std::io::{ErrorKind, Write};
 use std::os::unix::net::UnixDatagram;
@@ -192,11 +192,4 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
         }
         None => return Err(Error::PathRequired),
     }
-}
-
-pub(crate) fn file_from_path(path: &Path) -> Result<Option<File>, Error> {
-    if let Some(fd) = safe_descriptor_from_path(path).map_err(|e| Error::FileError(e.into()))? {
-        return Ok(Some(fd.into()));
-    }
-    Ok(None)
 }
