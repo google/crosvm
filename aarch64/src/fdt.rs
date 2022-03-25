@@ -9,7 +9,7 @@ use std::io::Read;
 use arch::fdt::{Error, FdtWriter, Result};
 use arch::SERIAL_ADDR;
 use devices::{PciAddress, PciInterruptPin};
-use hypervisor::PsciVersion;
+use hypervisor::{PsciVersion, PSCI_0_2, PSCI_1_0};
 use vm_memory::{GuestAddress, GuestMemory};
 
 // This is the start of DRAM in the physical address space.
@@ -224,14 +224,22 @@ fn create_serial_nodes(fdt: &mut FdtWriter) -> Result<()> {
 }
 
 fn create_psci_node(fdt: &mut FdtWriter, version: &PsciVersion) -> Result<()> {
-    let mut compatible = vec![format!("arm,psci-{}.{}", version.major, version.minor)];
-    if version.major == 1 {
-        // Put `psci-0.2` as well because PSCI 1.0 is compatible with PSCI 0.2.
-        compatible.push(format!("arm,psci-0.2"))
-    };
+    // The PSCI kernel driver only supports compatible strings for the following
+    // backward-compatible versions.
+    let supported = [(PSCI_1_0, "arm,psci-1.0"), (PSCI_0_2, "arm,psci-0.2")];
+
+    let compatible: Vec<_> = supported
+        .iter()
+        .filter(|&(v, _)| *version >= *v)
+        .map(|&(_, c)| c)
+        .collect();
+
+    // The PSCI kernel driver also supports PSCI v0.1, which is NOT forward-compatible.
+    if compatible.is_empty() {
+        let compatible = vec!["arm,psci"];
+    }
 
     let psci_node = fdt.begin_node("psci")?;
-    let compatible: Vec<_> = compatible.iter().map(String::as_str).collect();
     fdt.property_string_list("compatible", &compatible)?;
     // Only support aarch64 guest
     fdt.property_string("method", "hvc")?;
