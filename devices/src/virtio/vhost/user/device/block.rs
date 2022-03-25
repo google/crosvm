@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::cmp::{max, min};
 use std::fs::OpenOptions;
 use std::rc::Rc;
 use std::sync::{atomic::AtomicU64, atomic::Ordering, Arc};
@@ -14,7 +13,7 @@ use futures::future::{AbortHandle, Abortable};
 use sync::Mutex;
 use vmm_vhost::message::*;
 
-use base::{error, iov_max, warn, Event, Timer};
+use base::{error, warn, Event, Timer};
 use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor, TimerAsync};
 use data_model::DataInit;
 use disk::create_async_disk_file;
@@ -27,7 +26,7 @@ use crate::virtio::vhost::user::device::{
     handler::{DeviceRequestHandler, Doorbell, VhostUserBackend},
     vvu::pci::VvuPciDevice,
 };
-use crate::virtio::{self, base_features, copy_config, Queue};
+use crate::virtio::{self, base_features, block::sys::*, copy_config, Queue};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: u16 = 16;
@@ -86,12 +85,7 @@ impl BlockBackend {
         let avail_features = build_avail_features(base_features, read_only, sparse, true)
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
 
-        let seg_max = min(max(iov_max(), 1), u32::max_value() as usize) as u32;
-
-        // Since we do not currently support indirect descriptors, the maximum
-        // number of segments must be smaller than the queue size.
-        // In addition, the request header and status each consume a descriptor.
-        let seg_max = min(seg_max, u32::from(QUEUE_SIZE) - 2);
+        let seg_max = get_seg_max(QUEUE_SIZE);
 
         let async_image = disk_image.to_async_disk(ex)?;
 

@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use crate::virtio::block::sys::*;
 use data_model::{DataInit, Le16, Le32, Le64};
 
 pub const SECTOR_SHIFT: u8 = 9;
@@ -33,7 +34,6 @@ pub const VIRTIO_BLK_S_OK: u8 = 0;
 pub const VIRTIO_BLK_S_IOERR: u8 = 1;
 pub const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 
-pub const VIRTIO_BLK_F_SEG_MAX: u32 = 2;
 pub const VIRTIO_BLK_F_RO: u32 = 5;
 pub const VIRTIO_BLK_F_BLK_SIZE: u32 = 6;
 pub const VIRTIO_BLK_F_FLUSH: u32 = 9;
@@ -152,7 +152,7 @@ pub fn build_avail_features(
         }
         avail_features |= 1 << VIRTIO_BLK_F_WRITE_ZEROES;
     }
-    avail_features |= 1 << VIRTIO_BLK_F_SEG_MAX;
+    avail_features |= system_block_avail_features();
     avail_features |= 1 << VIRTIO_BLK_F_BLK_SIZE;
     if multi_queue {
         avail_features |= 1 << VIRTIO_BLK_F_MQ;

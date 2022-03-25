@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::cmp::{max, min};
 use std::io::{self, Write};
 use std::mem::size_of;
 use std::rc::Rc;
@@ -20,9 +19,7 @@ use thiserror::Error as ThisError;
 
 use base::Error as SysError;
 use base::Result as SysResult;
-use base::{
-    error, info, iov_max, warn, AsRawDescriptor, Event, RawDescriptor, Timer, Tube, TubeError,
-};
+use base::{error, info, warn, AsRawDescriptor, Event, RawDescriptor, Timer, Tube, TubeError};
 use cros_async::{
     select5, sync::Mutex as AsyncMutex, AsyncError, AsyncTube, EventAsync, Executor, SelectResult,
     TimerAsync,
@@ -34,8 +31,8 @@ use vm_memory::GuestMemory;
 
 use super::common::*;
 use crate::virtio::{
-    async_utils, copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader,
-    SignalableInterrupt, VirtioDevice, Writer, TYPE_BLOCK,
+    async_utils, block::sys::*, copy_config, DescriptorChain, DescriptorError, Interrupt, Queue,
+    Reader, SignalableInterrupt, VirtioDevice, Writer, TYPE_BLOCK,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -503,12 +500,7 @@ impl BlockAsync {
 
         let avail_features = build_avail_features(base_features, read_only, sparse, true);
 
-        let seg_max = min(max(iov_max(), 1), u32::max_value() as usize) as u32;
-
-        // Since we do not currently support indirect descriptors, the maximum
-        // number of segments must be smaller than the queue size.
-        // In addition, the request header and status each consume a descriptor.
-        let seg_max = min(seg_max, u32::from(QUEUE_SIZE) - 2);
+        let seg_max = get_seg_max(QUEUE_SIZE);
 
         Ok(BlockAsync {
             kill_evt: None,
