@@ -12,7 +12,8 @@ use std::u32;
 use sync::Mutex;
 
 use base::{
-    error, pagesize, warn, AsRawDescriptor, Event, PollToken, RawDescriptor, Tube, WaitContext,
+    error, pagesize, warn, AsRawDescriptor, AsRawDescriptors, Event, PollToken, RawDescriptor,
+    Tube, WaitContext,
 };
 use hypervisor::{Datamatch, MemSlot};
 
@@ -1478,8 +1479,7 @@ impl PciDevice for VfioPciDevice {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut rds = self.device.keep_rds();
         if let Some(ref interrupt_evt) = self.interrupt_evt {
-            rds.push(interrupt_evt.get_trigger().as_raw_descriptor());
-            rds.push(interrupt_evt.get_resample().as_raw_descriptor());
+            rds.extend(interrupt_evt.as_raw_descriptors());
         }
         rds.push(self.vm_socket_mem.as_raw_descriptor());
         if let Some(msi_cap) = &self.msi_cap {

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{Event, Result};
+use base::{AsRawDescriptor, AsRawDescriptors, Event, RawDescriptor, Result};
 
 /// A structure suitable for implementing edge triggered interrupts in device backends.
 pub struct IrqEdgeEvent(Event);
@@ -101,5 +101,20 @@ impl IrqLevelEvent {
     /// Allows backend to consume or clear the resample event.
     pub fn clear_resample(&self) {
         let _ = self.resample_evt.read();
+    }
+}
+
+impl AsRawDescriptors for IrqEdgeEvent {
+    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
+        vec![self.0.as_raw_descriptor()]
+    }
+}
+
+impl AsRawDescriptors for IrqLevelEvent {
+    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
+        vec![
+            self.trigger_evt.as_raw_descriptor(),
+            self.resample_evt.as_raw_descriptor(),
+        ]
     }
 }

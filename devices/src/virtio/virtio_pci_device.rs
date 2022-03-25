@@ -9,7 +9,7 @@ use sync::Mutex;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
 use anyhow::{anyhow, bail, Context};
-use base::{error, AsRawDescriptor, AsRawDescriptors, Event, RawDescriptor, Result, Tube};
+use base::{error, AsRawDescriptors, Event, RawDescriptor, Result, Tube};
 use data_model::{DataInit, Le32};
 use hypervisor::Datamatch;
 use libc::ERANGE;
@@ -491,8 +491,7 @@ impl PciDevice for VirtioPciDevice {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut rds = self.device.keep_rds();
         if let Some(interrupt_evt) = &self.interrupt_evt {
-            rds.push(interrupt_evt.get_trigger().as_raw_descriptor());
-            rds.push(interrupt_evt.get_resample().as_raw_descriptor());
+            rds.extend(interrupt_evt.as_raw_descriptors());
         }
         let descriptor = self.msix_config.lock().get_msi_socket();
         rds.push(descriptor);

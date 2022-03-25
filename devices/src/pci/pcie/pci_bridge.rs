@@ -12,7 +12,7 @@ use crate::pci::{
     PciConfiguration, PciDevice, PciDeviceError, PciHeaderType, PCI_VENDOR_ID_INTEL,
 };
 use crate::PciInterruptPin;
-use base::{warn, AsRawDescriptor, Event, RawDescriptor, Tube};
+use base::{warn, AsRawDescriptors, Event, RawDescriptor, Tube};
 use hypervisor::Datamatch;
 use resources::{Alloc, MmioType, SystemAllocator};
 
@@ -187,8 +187,7 @@ impl PciDevice for PciBridge {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut rds = Vec::new();
         if let Some(interrupt_evt) = &self.interrupt_evt {
-            rds.push(interrupt_evt.get_trigger().as_raw_descriptor());
-            rds.push(interrupt_evt.get_resample().as_raw_descriptor());
+            rds.extend(interrupt_evt.as_raw_descriptors());
         }
         let descriptor = self.msix_config.lock().get_msi_socket();
         rds.push(descriptor);

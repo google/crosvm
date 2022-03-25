@@ -5,8 +5,8 @@ use crate::vfio::{VfioDevice, VfioError, VfioIrq};
 use crate::{BusAccessInfo, BusDevice, BusDeviceObj, IrqEdgeEvent, IrqLevelEvent};
 use anyhow::{bail, Context, Result};
 use base::{
-    error, pagesize, AsRawDescriptor, Event, MappedRegion, MemoryMapping, MemoryMappingBuilder,
-    RawDescriptor, Tube,
+    error, pagesize, AsRawDescriptor, AsRawDescriptors, Event, MappedRegion, MemoryMapping,
+    MemoryMappingBuilder, RawDescriptor, Tube,
 };
 use resources::SystemAllocator;
 use std::fs::File;
@@ -268,12 +268,11 @@ impl VfioPlatformDevice {
         let mut rds = self.device.keep_rds();
 
         for irq_evt in self.interrupt_edge_evt.iter() {
-            rds.push(irq_evt.get_trigger().as_raw_descriptor());
+            rds.extend(irq_evt.as_raw_descriptors());
         }
 
         for irq_evt in self.interrupt_level_evt.iter() {
-            rds.push(irq_evt.get_trigger().as_raw_descriptor());
-            rds.push(irq_evt.get_resample().as_raw_descriptor());
+            rds.extend(irq_evt.as_raw_descriptors());
         }
 
         rds.push(self.vm_socket_mem.as_raw_descriptor());

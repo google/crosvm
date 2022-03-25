@@ -462,8 +462,7 @@ pub fn generate_platform_bus(
                 device
                     .assign_level_platform_irq(&irq_evt, irq.index)
                     .map_err(DeviceRegistrationError::SetupVfioPlatformIrq)?;
-                keep_rds.push(irq_evt.get_trigger().as_raw_descriptor());
-                keep_rds.push(irq_evt.get_resample().as_raw_descriptor());
+                keep_rds.extend(irq_evt.as_raw_descriptors());
             } else {
                 let irq_evt =
                     devices::IrqEdgeEvent::new().map_err(DeviceRegistrationError::EventCreate)?;
@@ -473,7 +472,7 @@ pub fn generate_platform_bus(
                 device
                     .assign_edge_platform_irq(&irq_evt, irq.index)
                     .map_err(DeviceRegistrationError::SetupVfioPlatformIrq)?;
-                keep_rds.push(irq_evt.get_trigger().as_raw_descriptor());
+                keep_rds.extend(irq_evt.as_raw_descriptors());
             }
         }
 
