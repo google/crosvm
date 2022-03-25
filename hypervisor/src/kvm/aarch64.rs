@@ -363,17 +363,14 @@ impl VcpuAArch64 for KvmVcpu {
         const KVM_REG_ARM_PSCI_VERSION: u64 =
             KVM_REG_ARM64 | (KVM_REG_SIZE_U64 as u64) | (KVM_REG_ARM_FW as u64);
 
-        match self.get_one_reg(KVM_REG_ARM_PSCI_VERSION) {
-            Ok(v) => {
-                let major = (v >> PSCI_VERSION_MAJOR_SHIFT) as u32;
-                let minor = (v as u32) & PSCI_VERSION_MINOR_MASK;
-                Ok(PsciVersion { major, minor })
-            }
-            Err(_) => {
-                // When `KVM_REG_ARM_PSCI_VERSION` is not supported, we can return PSCI 0.2, as vCPU
-                // has been initialized with `KVM_ARM_VCPU_PSCI_0_2` successfully.
-                Ok(PsciVersion { major: 0, minor: 2 })
-            }
+        if let Ok(v) = self.get_one_reg(KVM_REG_ARM_PSCI_VERSION) {
+            let major = (v >> PSCI_VERSION_MAJOR_SHIFT) as u32;
+            let minor = (v as u32) & PSCI_VERSION_MINOR_MASK;
+            Ok(PsciVersion { major, minor })
+        } else {
+            // When `KVM_REG_ARM_PSCI_VERSION` is not supported, we can return PSCI 0.2, as vCPU
+            // has been initialized with `KVM_ARM_VCPU_PSCI_0_2` successfully.
+            Ok(PsciVersion { major: 0, minor: 2 })
         }
     }
 }
