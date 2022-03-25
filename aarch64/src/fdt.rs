@@ -231,7 +231,8 @@ fn create_psci_node(fdt: &mut FdtWriter, version: &PsciVersion) -> Result<()> {
     };
 
     let psci_node = fdt.begin_node("psci")?;
-    fdt.property_string_list("compatible", compatible)?;
+    let compatible: Vec<_> = compatible.iter().map(String::as_str).collect();
+    fdt.property_string_list("compatible", &compatible)?;
     // Only support aarch64 guest
     fdt.property_string("method", "hvc")?;
     fdt.end_node(psci_node)?;
