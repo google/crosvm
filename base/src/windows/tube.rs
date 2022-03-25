@@ -139,7 +139,7 @@ impl Tube {
     }
 
     pub fn recv<T: DeserializeOwned>(&self) -> Result<T> {
-        deserialize_and_recv(|buf| (&*&self.socket).read(buf))
+        deserialize_and_recv(|buf| (&self.socket).read(buf))
     }
 
     /// NOTE: On Windows this will only succeed if called on a server pipe. See #pair

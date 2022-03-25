@@ -841,11 +841,13 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     }
 
     fn set_slave_req_fd(&mut self, files: Option<Vec<File>>) -> Result<()> {
-        #[cfg(windows)]
-        unimplemented!();
-        let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
-        self.backend.set_slave_req_fd(file);
-        Ok(())
+        if cfg!(windows) {
+            unimplemented!();
+        } else {
+            let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
+            self.backend.set_slave_req_fd(file);
+            Ok(())
+        }
     }
 
     fn handle_vring_fd_request(

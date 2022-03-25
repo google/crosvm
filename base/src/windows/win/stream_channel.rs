@@ -451,7 +451,7 @@ mod test {
         let writer = std::thread::spawn(move || {
             let buf = [0u8; 100];
             for _ in 0..NUM_OPS {
-                writer.write(&buf).unwrap();
+                assert_eq!(writer.write(&buf).unwrap(), buf.len());
             }
             writer
         });

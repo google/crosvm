@@ -21,7 +21,6 @@ import testvm
 from test_config import CRATE_OPTIONS, TestOption, BUILD_FEATURES
 from check_code_hygiene import (
     has_platform_dependent_code,
-    is_sys_util_independent,
     has_crlf_line_endings,
 )
 

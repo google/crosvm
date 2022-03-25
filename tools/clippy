@@ -9,28 +9,54 @@
 # To fix violations where possible:
 # $ ./tools/clippy --fix
 
+import os
+import sys
+
+sys.path.append(os.path.join(sys.path[0], "impl"))
 from impl.common import CROSVM_ROOT, cwd, run_main, cmd, chdir
+from impl.test_runner import get_workspace_excludes
 
 clippy = cmd("cargo clippy")
+
+
+if os.name == "posix":
+    EXCLUDED_CRATES: list[str] = []
+    EXCLUDED_CRATES_ARGS: list[str] = []
+    FEATURES: str = "--features=all-linux"
+
+elif os.name == "nt":
+    EXCLUDED_CRATES: list[str] = list(get_workspace_excludes("x86_64"))
+    EXCLUDED_CRATES_ARGS: list[str] = [f"--exclude={crate}" for crate in EXCLUDED_CRATES]
+    FEATURES: str = ""
+
+else:
+    raise Exception(f"Unsupported build target: {os.name}")
+
+
+def is_crate_excluded(crate: str) -> bool:
+    return crate in EXCLUDED_CRATES
 
 
 def main(fix: bool = False):
     chdir(CROSVM_ROOT)
 
     # Note: Clippy checks are configured in .cargo/config.toml
-    clippy_args = [
+    common_args = [
         "--fix" if fix else None,
         "--all-targets",
         "--",
         "-Dwarnings",
     ]
     print("Clippy crosvm workspace")
-    clippy("--workspace", "--features=all-linux", *clippy_args).fg()
+    clippy("--workspace", FEATURES, *EXCLUDED_CRATES_ARGS, *common_args).fg()
 
     for crate in CROSVM_ROOT.glob("common/*/Cargo.toml"):
-        print("Clippy", crate.parent.relative_to(CROSVM_ROOT))
-        with cwd(crate.parent):
-            clippy("--all-features", *clippy_args).fg()
+        if not is_crate_excluded(crate.parent.name):
+            print("Clippy", crate.parent.relative_to(CROSVM_ROOT))
+            with cwd(crate.parent):
+                clippy("--all-features", *common_args).fg()
+        else:
+            print("Skipping crate", crate.parent.relative_to(CROSVM_ROOT))
 
 
 run_main(main)

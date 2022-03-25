@@ -42,6 +42,7 @@ cfg_if::cfg_if! {
         pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
      } else if #[cfg(windows)] {
         pub use windows as platform;
+        pub use tube::{set_duplicate_handle_tube, set_alias_pid, DuplicateHandleTube};
      } else {
         compile_error!("Unsupported platform");
      }
