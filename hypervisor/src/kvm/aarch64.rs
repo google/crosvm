@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::{EINVAL, ENOMEM, ENXIO};
+use std::convert::TryFrom;
+
+use libc::{EINVAL, ENOMEM, ENOTSUP, ENXIO};
 
 use base::{
     errno_result, error, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, warn, Error,
@@ -14,7 +16,7 @@ use vm_memory::GuestAddress;
 use super::{Kvm, KvmCap, KvmVcpu, KvmVm};
 use crate::{
     ClockState, DeviceKind, Hypervisor, IrqSourceChip, ProtectionType, PsciVersion, VcpuAArch64,
-    VcpuExit, VcpuFeature, Vm, VmAArch64, VmCap,
+    VcpuExit, VcpuFeature, Vm, VmAArch64, VmCap, PSCI_0_2,
 };
 
 /// Gives the ID for a register to be used with `set_one_reg`.
@@ -363,14 +365,20 @@ impl VcpuAArch64 for KvmVcpu {
         const KVM_REG_ARM_PSCI_VERSION: u64 =
             KVM_REG_ARM64 | (KVM_REG_SIZE_U64 as u64) | (KVM_REG_ARM_FW as u64);
 
-        if let Ok(v) = self.get_one_reg(KVM_REG_ARM_PSCI_VERSION) {
-            let major = (v >> PSCI_VERSION_MAJOR_SHIFT) as u32;
-            let minor = (v as u32) & PSCI_VERSION_MINOR_MASK;
-            Ok(PsciVersion { major, minor })
+        let version = if let Ok(v) = self.get_one_reg(KVM_REG_ARM_PSCI_VERSION) {
+            let v = u32::try_from(v).map_err(|_| Error::new(EINVAL))?;
+            PsciVersion::try_from(v)?
         } else {
             // When `KVM_REG_ARM_PSCI_VERSION` is not supported, we can return PSCI 0.2, as vCPU
             // has been initialized with `KVM_ARM_VCPU_PSCI_0_2` successfully.
-            Ok(PsciVersion { major: 0, minor: 2 })
+            PSCI_0_2
+        };
+
+        if version < PSCI_0_2 {
+            // PSCI v0.1 isn't currently supported for guests
+            Err(Error::new(ENOTSUP))
+        } else {
+            Ok(version)
         }
     }
 }
