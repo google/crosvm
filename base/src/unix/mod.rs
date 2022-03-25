@@ -100,7 +100,6 @@ use std::{
     mem,
     ops::Deref,
     os::unix::{
-        fs::OpenOptionsExt,
         io::{AsRawFd, FromRawFd, RawFd},
         net::{UnixDatagram, UnixListener},
     },
@@ -111,7 +110,7 @@ use std::{
 
 use libc::{
     c_int, c_long, fcntl, pipe2, syscall, sysconf, waitpid, SYS_getpid, SYS_gettid, EINVAL,
-    F_GETFL, F_SETFL, O_CLOEXEC, O_DIRECT, SIGKILL, WNOHANG, _SC_IOV_MAX, _SC_PAGESIZE,
+    F_GETFL, F_SETFL, O_CLOEXEC, SIGKILL, WNOHANG, _SC_IOV_MAX, _SC_PAGESIZE,
 };
 
 /// Re-export libc types that are part of the API.
@@ -606,17 +605,13 @@ pub fn safe_descriptor_from_path<P: AsRef<Path>>(path: P) -> Result<Option<SafeD
 /// Note that this will not work properly if the same `/proc/self/fd/N` path is used twice in
 /// different places, as the metadata (including the offset) will be shared between both file
 /// descriptors.
-pub fn open_file<P: AsRef<Path>>(path: P, read_only: bool, o_direct: bool) -> Result<File> {
+pub fn open_file<P: AsRef<Path>>(path: P, options: &OpenOptions) -> Result<File> {
     let path = path.as_ref();
     // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
     Ok(if let Some(fd) = safe_descriptor_from_path(path)? {
         fd.into()
     } else {
-        OpenOptions::new()
-            .custom_flags(if o_direct { O_DIRECT } else { 0 })
-            .write(!read_only)
-            .read(true)
-            .open(path)?
+        options.open(path)?
     })
 }
 

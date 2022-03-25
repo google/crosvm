@@ -16,7 +16,7 @@ use remain::sorted;
 use thiserror::Error;
 
 use std::cmp::{max, min};
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::path::Path;
@@ -432,9 +432,7 @@ impl QcowFile {
             let path = backing_file_path.clone();
             let backing_raw_file = open_file(
                 Path::new(&path),
-                true, /*read_only*/
-                // TODO(b/190435784): Add support for O_DIRECT.
-                false, /*O_DIRECT*/
+                OpenOptions::new().read(true), // TODO(b/190435784): Add support for O_DIRECT.
             )
             .map_err(|e| Error::BackingFileIo(e.into()))?;
             let backing_file =
@@ -578,9 +576,7 @@ impl QcowFile {
         let backing_path = Path::new(backing_file_name);
         let backing_raw_file = open_file(
             backing_path,
-            true, /*read_only*/
-            // TODO(b/190435784): add support for O_DIRECT.
-            false, /*O_DIRECT*/
+            OpenOptions::new().read(true), // TODO(b/190435784): add support for O_DIRECT.
         )
         .map_err(|e| Error::BackingFileIo(e.into()))?;
         let backing_file = create_disk_file(

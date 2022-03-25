@@ -107,7 +107,15 @@ pub fn create_block_device(
     disk: &DiskOption,
     disk_device_tube: Tube,
 ) -> DeviceResult {
-    let raw_image: File = open_file(&disk.path, disk.read_only, disk.o_direct)
+    let mut options = OpenOptions::new();
+    options.read(true).write(!disk.read_only);
+
+    #[cfg(unix)]
+    if disk.o_direct {
+        options.custom_flags(libc::O_DIRECT);
+    }
+
+    let raw_image: File = open_file(&disk.path, &options)
         .with_context(|| format!("failed to load disk image {}", disk.path.display()))?;
     // Lock the disk image to prevent other crosvm instances from using it.
     let lock_op = if disk.read_only {
@@ -896,8 +904,11 @@ pub fn create_pmem_device(
     index: usize,
     pmem_device_tube: Tube,
 ) -> DeviceResult {
-    let fd = open_file(&disk.path, disk.read_only, false /*O_DIRECT*/)
-        .with_context(|| format!("failed to load disk image {}", disk.path.display()))?;
+    let fd = open_file(
+        &disk.path,
+        OpenOptions::new().read(true).write(!disk.read_only),
+    )
+    .with_context(|| format!("failed to load disk image {}", disk.path.display()))?;
 
     let (disk_size, arena_size) = {
         let metadata = std::fs::metadata(&disk.path).with_context(|| {

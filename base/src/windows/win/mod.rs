@@ -159,11 +159,8 @@ impl<'a> Drop for MultiProcessMutexGuard<'a> {
 /// Note that on POSIX< this wrapper handles opening existing FDs via /proc/self/fd/N. On Windows,
 /// this functionality doesn't exist, but we preserve this seemingly not very useful function to
 /// simplify cross platform code.
-pub fn open_file<P: AsRef<Path>>(path: P, read_only: bool) -> Result<File> {
-    Ok(OpenOptions::new()
-        .read(true)
-        .write(!read_only)
-        .open(&path)?)
+pub fn open_file<P: AsRef<Path>>(path: P, options: &OpenOptions) -> Result<File> {
+    Ok(options.open(path)?)
 }
 
 /// Grants the given process id temporary permission to foreground another window. This succeeds
