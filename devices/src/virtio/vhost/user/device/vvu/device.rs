@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::thread;
 
 use anyhow::{anyhow, bail, Context, Result};
-use base::{error, Event};
+use base::{error, info, Event};
 use cros_async::{EventAsync, Executor};
 use futures::{pin_mut, select, FutureExt};
 use sync::Mutex;
@@ -235,6 +235,13 @@ impl VfioDeviceTrait for VvuDevice {
                     .recv()
                     .context("failed to receive data")
                     .map_err(RecvIntoBufsError::Fatal)?;
+
+                if data.len() == 0 {
+                    // TODO(b/216407443): We should change `self.state` and exit gracefully.
+                    info!("VVU connection is closed");
+                    return Err(RecvIntoBufsError::Disconnect);
+                }
+
                 rxq_buf.append(&mut data);
                 // Decrement the event counter as we received one buffer.
                 self.rxq_evt
@@ -252,10 +259,6 @@ impl VfioDeviceTrait for VvuDevice {
             rxq_notifier.lock().notify(vfio, QueueType::Rx as u16);
         }
 
-        if size == 0 {
-            // TODO(b/216407443): We should change `self.state` and exit gracefully.
-            return Err(RecvIntoBufsError::Disconnect);
-        }
         Ok(size)
     }
 }
