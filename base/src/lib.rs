@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 pub mod common;
+pub mod descriptor_reflection;
 
 #[cfg(unix)]
 pub mod unix;

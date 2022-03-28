@@ -18,7 +18,6 @@ mod clock;
 #[path = "win/console.rs"]
 mod console;
 mod descriptor;
-mod descriptor_reflection;
 #[path = "win/event.rs"]
 mod event;
 mod events;
@@ -45,14 +44,14 @@ pub mod thread;
 mod write_zeroes;
 
 pub use crate::common::{Error, Result, *};
+pub use crate::descriptor_reflection::{
+    deserialize_with_descriptors, with_as_descriptor, with_raw_descriptor, FileSerdeWrapper,
+    SerializeDescriptors,
+};
 pub use base_poll_token_derive::*;
 pub use clock::{Clock, FakeClock};
 pub use console::*;
 pub use descriptor::*;
-pub use descriptor_reflection::{
-    deserialize_with_descriptors, with_as_descriptor, with_raw_descriptor, FileSerdeWrapper,
-    SerializeDescriptors,
-};
 pub use event::*;
 pub use events::*;
 pub use get_filesystem_type::*;

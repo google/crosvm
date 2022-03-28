@@ -27,7 +27,6 @@ mod acpi_event;
 mod capabilities;
 mod clock;
 mod descriptor;
-mod descriptor_reflection;
 mod eventfd;
 mod file_flags;
 pub mod file_traits;
@@ -52,6 +51,10 @@ mod timerfd;
 pub mod vsock;
 mod write_zeroes;
 
+pub use crate::descriptor_reflection::{
+    deserialize_with_descriptors, with_as_descriptor, with_raw_descriptor, FileSerdeWrapper,
+    SerializeDescriptors,
+};
 pub use crate::{
     common::{Error, Result, *},
     generate_scoped_event,
@@ -61,10 +64,6 @@ pub use base_poll_token_derive::*;
 pub use capabilities::drop_capabilities;
 pub use clock::{Clock, FakeClock};
 pub use descriptor::*;
-pub use descriptor_reflection::{
-    deserialize_with_descriptors, with_as_descriptor, with_raw_descriptor, FileSerdeWrapper,
-    SerializeDescriptors,
-};
 pub use eventfd::*;
 pub use file_flags::*;
 pub use fork::*;
