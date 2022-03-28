@@ -402,12 +402,12 @@ impl VvuPciDevice {
         }
 
         let mut msix_vec = Vec::with_capacity(msix_num);
-        msix_vec.push(&vvu_irqs[0]);
-        msix_vec.push(&vvu_irqs[1]);
-        msix_vec.extend(notification_evts.iter().take(device_vq_num));
+        msix_vec.push(Some(&vvu_irqs[0]));
+        msix_vec.push(Some(&vvu_irqs[1]));
+        msix_vec.extend(notification_evts.iter().take(device_vq_num).map(Some));
 
         self.vfio_dev
-            .irq_enable(&msix_vec, VFIO_PCI_MSIX_IRQ_INDEX)
+            .irq_enable(&msix_vec, VFIO_PCI_MSIX_IRQ_INDEX, 0)
             .map_err(|e| anyhow!("failed to enable irq: {}", e))?;
 
         // Registers VVU virtqueue's irqs by writing `queue_msix_vector`.

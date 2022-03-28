@@ -715,18 +715,25 @@ impl VfioDevice {
     }
 
     /// Enable vfio device's irq and associate Irqfd Event with device.
-    /// When MSIx is enabled, multi vectors will be supported, so descriptors is vector and the vector
-    /// length is the num of MSIx vectors.
+    /// When MSIx is enabled, multi vectors will be supported, and vectors starting from subindex to subindex +
+    /// descriptors length will be assigned with irqfd in the descriptors array.
     /// when index = VFIO_PCI_REQ_IRQ_INDEX, kernel vfio will trigger this event when physical device
     /// is removed.
-    pub fn irq_enable(&self, descriptors: &[&Event], index: u32) -> Result<()> {
+    /// If descriptor is None, -1 is assigned to the irq. A value of -1 is used to either de-assign
+    /// interrupts if already assigned or skip un-assigned interrupts.
+    pub fn irq_enable(
+        &self,
+        descriptors: &[Option<&Event>],
+        index: u32,
+        subindex: u32,
+    ) -> Result<()> {
         let count = descriptors.len();
         let u32_size = mem::size_of::<u32>();
         let mut irq_set = vec_with_array_field::<vfio_irq_set, u32>(count);
         irq_set[0].argsz = (mem::size_of::<vfio_irq_set>() + count * u32_size) as u32;
         irq_set[0].flags = VFIO_IRQ_SET_DATA_EVENTFD | VFIO_IRQ_SET_ACTION_TRIGGER;
         irq_set[0].index = index;
-        irq_set[0].start = 0;
+        irq_set[0].start = subindex;
         irq_set[0].count = count as u32;
 
         // irq_set.data could be none, bool or descriptor according to flags, so irq_set.data
@@ -736,7 +743,10 @@ impl VfioDevice {
         let mut data = unsafe { irq_set[0].data.as_mut_slice(count * u32_size) };
         for descriptor in descriptors.iter().take(count) {
             let (left, right) = data.split_at_mut(u32_size);
-            left.copy_from_slice(&descriptor.as_raw_descriptor().to_ne_bytes()[..]);
+            match descriptor {
+                Some(fd) => left.copy_from_slice(&fd.as_raw_descriptor().to_ne_bytes()[..]),
+                None => left.copy_from_slice(&(-1i32).to_ne_bytes()[..]),
+            }
             data = right;
         }
 

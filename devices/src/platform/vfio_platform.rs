@@ -82,7 +82,7 @@ impl VfioPlatformDevice {
         irq_resample_evt: Option<Event>,
         index: u32,
     ) {
-        if let Err(e) = self.device.irq_enable(&[&irq_evt], index) {
+        if let Err(e) = self.device.irq_enable(&[Some(&irq_evt)], index, 0) {
             error!("platform irq enable failed: {}", e);
             return;
         }
