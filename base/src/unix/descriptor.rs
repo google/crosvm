@@ -6,8 +6,6 @@ use std::{
     convert::TryFrom,
     fs::File,
     io::{Stderr, Stdin, Stdout},
-    mem,
-    mem::ManuallyDrop,
     net::UdpSocket,
     ops::Drop,
     os::unix::{
@@ -16,35 +14,18 @@ use std::{
     },
 };
 
-use serde::{Deserialize, Serialize};
-
 use super::{
     errno_result,
     net::{UnixSeqpacket, UnlinkUnixSeqpacketListener},
-    PollToken, Result,
+    Result,
+};
+use crate::descriptor::{
+    AsRawDescriptor, Descriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
 };
 
 pub type RawDescriptor = RawFd;
 
 pub const INVALID_DESCRIPTOR: RawDescriptor = -1;
-
-/// Trait for forfeiting ownership of the current raw descriptor, and returning the raw descriptor
-pub trait IntoRawDescriptor {
-    fn into_raw_descriptor(self) -> RawDescriptor;
-}
-
-/// Trait for returning the underlying raw descriptor, without giving up ownership of the
-/// descriptor.
-pub trait AsRawDescriptor {
-    fn as_raw_descriptor(&self) -> RawDescriptor;
-}
-
-pub trait FromRawDescriptor {
-    /// # Safety
-    /// Safe only if the caller ensures nothing has access to the descriptor after passing it to
-    /// `from_raw_descriptor`
-    unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self;
-}
 
 /// Clones `descriptor`, returning a new `RawDescriptor` that refers to the same open file
 /// description as `descriptor`. The cloned descriptor will have the `FD_CLOEXEC` flag set but will
@@ -64,14 +45,6 @@ fn clone_fd(fd: &dyn AsRawFd) -> Result<RawFd> {
     } else {
         Ok(ret)
     }
-}
-
-/// Wraps a RawDescriptor and safely closes it when self falls out of scope.
-#[derive(Serialize, Deserialize, Debug, Eq)]
-#[serde(transparent)]
-pub struct SafeDescriptor {
-    #[serde(with = "super::with_raw_descriptor")]
-    descriptor: RawDescriptor,
 }
 
 const KCMP_FILE: u32 = 0;
@@ -107,26 +80,6 @@ impl Drop for SafeDescriptor {
     }
 }
 
-impl AsRawDescriptor for SafeDescriptor {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.descriptor
-    }
-}
-
-impl IntoRawDescriptor for SafeDescriptor {
-    fn into_raw_descriptor(self) -> RawDescriptor {
-        let descriptor = self.descriptor;
-        mem::forget(self);
-        descriptor
-    }
-}
-
-impl FromRawDescriptor for SafeDescriptor {
-    unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
-        SafeDescriptor { descriptor }
-    }
-}
-
 impl AsRawFd for SafeDescriptor {
     fn as_raw_fd(&self) -> RawFd {
         self.as_raw_descriptor()
@@ -140,27 +93,6 @@ impl TryFrom<&dyn AsRawFd> for SafeDescriptor {
         Ok(SafeDescriptor {
             descriptor: clone_fd(fd)?,
         })
-    }
-}
-
-impl TryFrom<&dyn AsRawDescriptor> for SafeDescriptor {
-    type Error = std::io::Error;
-
-    /// Clones the underlying descriptor (handle), internally creating a new descriptor.
-    fn try_from(rd: &dyn AsRawDescriptor) -> std::result::Result<Self, Self::Error> {
-        // Safe because the underlying raw descriptor is guaranteed valid by rd's existence.
-        //
-        // Note that we are cloning the underlying raw descriptor since we have no guarantee of
-        // its existence after this function returns.
-        let rd_as_safe_desc = ManuallyDrop::new(unsafe {
-            SafeDescriptor::from_raw_descriptor(rd.as_raw_descriptor())
-        });
-
-        // We have to clone rd because we have no guarantee ownership was transferred (rd is
-        // borrowed).
-        rd_as_safe_desc
-            .try_clone()
-            .map_err(|e| Self::Error::from_raw_os_error(e.errno()))
     }
 }
 
@@ -185,13 +117,6 @@ impl From<SafeDescriptor> for File {
     }
 }
 
-impl From<File> for SafeDescriptor {
-    fn from(f: File) -> SafeDescriptor {
-        // Safe because we own the File at this point.
-        unsafe { SafeDescriptor::from_raw_descriptor(f.into_raw_descriptor()) }
-    }
-}
-
 impl From<SafeDescriptor> for UnixStream {
     fn from(s: SafeDescriptor) -> Self {
         // Safe because we own the SafeDescriptor at this point.
@@ -206,34 +131,11 @@ impl From<UnixSeqpacket> for SafeDescriptor {
     }
 }
 
-/// For use cases where a simple wrapper around a RawDescriptor is needed.
-/// This is a simply a wrapper and does not manage the lifetime of the descriptor.
-/// Most usages should prefer SafeDescriptor or using a RawDescriptor directly
-#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[repr(transparent)]
-pub struct Descriptor(pub RawDescriptor);
-impl AsRawDescriptor for Descriptor {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.0
-    }
-}
-
 // AsRawFd for interoperability with interfaces that require it. Within crosvm,
 // always use AsRawDescriptor when possible.
 impl AsRawFd for Descriptor {
     fn as_raw_fd(&self) -> RawFd {
         self.0
-    }
-}
-
-/// Implement token for implementations that wish to use this struct as such
-impl PollToken for Descriptor {
-    fn as_raw_token(&self) -> u64 {
-        self.0 as u64
-    }
-
-    fn from_raw_token(data: u64) -> Self {
-        Descriptor(data as RawDescriptor)
     }
 }
 

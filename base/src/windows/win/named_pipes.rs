@@ -14,9 +14,8 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use super::{
-    AsRawDescriptor, Event, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, SafeDescriptor,
-};
+use super::{Event, RawDescriptor};
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
 use serde::{Deserialize, Serialize};
 use win_util::{SecurityAttributes, SelfRelativeSecurityDescriptor};
 use winapi::{

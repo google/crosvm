@@ -7,8 +7,9 @@ use super::super::{
         PipeConnection, {self},
     },
     stream_channel::{BlockingMode, FramingMode},
-    AsRawDescriptor, CloseNotifier, Event, MultiProcessMutex, RawDescriptor, ReadNotifier, Result,
+    CloseNotifier, Event, MultiProcessMutex, RawDescriptor, ReadNotifier, Result,
 };
+use crate::descriptor::AsRawDescriptor;
 use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
 use std::{cell::RefCell, io, sync::Arc};
 use sync::Mutex;

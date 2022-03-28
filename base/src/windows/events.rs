@@ -4,7 +4,8 @@
 
 use std::{clone::Clone, default::Default, marker::Copy};
 
-use super::{AsRawDescriptor, PollToken, RawDescriptor};
+use super::{PollToken, RawDescriptor};
+use crate::descriptor::AsRawDescriptor;
 
 #[path = "win/wait.rs"]
 mod wait;

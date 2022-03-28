@@ -14,9 +14,8 @@ pub use platform_timer_utils::*;
 mod file_util;
 pub use file_util::*;
 
-use super::{
-    errno_result, pid_t, AsRawDescriptor, Error, FromRawDescriptor, Result, SafeDescriptor,
-};
+use super::{errno_result, pid_t, Error, Result};
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{File, OpenOptions},

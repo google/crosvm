@@ -4,9 +4,8 @@
 
 use std::ffi::CString;
 
-use super::{
-    AsRawDescriptor, IntoRawDescriptor, MemoryMapping, RawDescriptor, Result, SafeDescriptor,
-};
+use super::{MemoryMapping, RawDescriptor, Result};
+use crate::descriptor::{AsRawDescriptor, IntoRawDescriptor, SafeDescriptor};
 use libc::EINVAL;
 use std::io::{
     Error, ErrorKind, Read, Seek, SeekFrom, Write, {self},

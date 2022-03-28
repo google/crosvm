@@ -9,13 +9,11 @@ use std::{
     time::Duration,
 };
 
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 use crate::{
-    platform::{
-        deserialize_with_descriptors, AsRawDescriptor, RawDescriptor, SerializeDescriptors,
-    },
+    platform::{deserialize_with_descriptors, RawDescriptor, SerializeDescriptors},
     tube::{Error, RecvTube, Result, SendTube},
-    BlockingMode, CloseNotifier, FramingMode, FromRawDescriptor, PollToken, ReadNotifier,
-    SafeDescriptor, StreamChannel,
+    BlockingMode, CloseNotifier, FramingMode, PollToken, ReadNotifier, StreamChannel,
 };
 use data_model::DataInit;
 use lazy_static::lazy_static;

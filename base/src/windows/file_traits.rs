@@ -3,7 +3,8 @@
 // found in the LICENSE file.
 
 pub use super::win::file_traits::*;
-use super::{AsRawDescriptor, RawDescriptor};
+use super::RawDescriptor;
+use crate::descriptor::AsRawDescriptor;
 
 use std::{
     fs::File,

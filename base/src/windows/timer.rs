@@ -8,10 +8,8 @@ use std::{
 };
 use sync::Mutex;
 
-use super::{
-    AsRawDescriptor, Event, EventReadResult, FakeClock, FromRawDescriptor, IntoRawDescriptor,
-    RawDescriptor, Result, SafeDescriptor,
-};
+use super::{Event, EventReadResult, FakeClock, RawDescriptor, Result};
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
 
 #[path = "win/timer.rs"]
 mod timer_platform;

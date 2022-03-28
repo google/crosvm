@@ -19,9 +19,9 @@ use winapi::{
 };
 
 use super::super::{
-    errno_result, AsRawDescriptor, Descriptor, Error, Event, EventTrigger, EventType, PollToken,
-    Result, TriggeredEvent,
+    errno_result, Error, Event, EventTrigger, EventType, PollToken, Result, TriggeredEvent,
 };
+use crate::descriptor::{AsRawDescriptor, Descriptor};
 use crate::error;
 // MAXIMUM_WAIT_OBJECTS = 64
 pub const MAXIMUM_WAIT_OBJECTS: usize = winapi::um::winnt::MAXIMUM_WAIT_OBJECTS as usize;

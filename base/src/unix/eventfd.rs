@@ -13,10 +13,8 @@ use std::{
 use libc::{c_void, eventfd, read, write, POLLIN};
 use serde::{Deserialize, Serialize};
 
-use super::{
-    duration_to_timespec, errno_result, AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor,
-    RawDescriptor, Result, SafeDescriptor,
-};
+use super::{duration_to_timespec, errno_result, RawDescriptor, Result};
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
 use crate::generate_scoped_event;
 
 /// A safe wrapper around a Linux eventfd (man 2 eventfd).

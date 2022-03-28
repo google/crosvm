@@ -5,7 +5,7 @@
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
 
-use crate::AsRawDescriptor;
+use crate::descriptor::AsRawDescriptor;
 
 pub trait ReadNotifier {
     /// Gets a descriptor that can be used in EventContext to wait for events to be available (e.g.

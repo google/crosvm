@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::super::AsRawDescriptor;
+use crate::descriptor::AsRawDescriptor;
 use std::{ffi::c_void, io};
 pub use winapi::um::winioctl::FSCTL_SET_SPARSE;
 

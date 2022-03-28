@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 pub mod common;
+pub mod descriptor;
 pub mod descriptor_reflection;
 
 #[cfg(unix)]
@@ -49,6 +50,9 @@ cfg_if::cfg_if! {
      }
 }
 
+pub use crate::descriptor::{
+    AsRawDescriptor, Descriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
+};
 pub use platform::*;
 
 /// Wraps an AsRawDescriptor in the simple Descriptor struct, which

@@ -2,10 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{
-    AsRawDescriptor, Error, FromRawDescriptor, IntoRawDescriptor, MemfdSeals, RawDescriptor,
-    Result, SafeDescriptor,
-};
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
+use crate::{Error, MemfdSeals, RawDescriptor, Result};
 #[cfg(unix)]
 use std::os::unix::io::RawFd;
 use std::{

@@ -16,7 +16,8 @@ use libc::{c_void, read, signalfd, signalfd_siginfo, EAGAIN, SFD_CLOEXEC, SFD_NO
 use remain::sorted;
 use thiserror::Error;
 
-use super::{signal, AsRawDescriptor, Error as ErrnoError, RawDescriptor};
+use super::{signal, Error as ErrnoError, RawDescriptor};
+use crate::descriptor::AsRawDescriptor;
 
 #[sorted]
 #[derive(Error, Debug)]

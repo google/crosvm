@@ -30,8 +30,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     sock_ctrl_msg::{ScmSocket, SCM_SOCKET_MAX_FD_COUNT},
-    AsRawDescriptor, Error, FromRawDescriptor, IntoRawDescriptor, RawDescriptor,
+    Error, RawDescriptor,
 };
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor};
 
 /// Assist in handling both IP version 4 and IP version 6.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

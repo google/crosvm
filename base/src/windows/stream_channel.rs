@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::{AsRawDescriptor, RawDescriptor};
+use super::RawDescriptor;
+use crate::descriptor::AsRawDescriptor;
 use std::io;
 #[path = "win/stream_channel.rs"]
 mod stream_channel;

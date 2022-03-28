@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{AsRawDescriptor, IoctlNr};
+use crate::descriptor::AsRawDescriptor;
+use crate::IoctlNr;
 use std::os::raw::{c_int, c_ulong, c_void};
 
 /// Run an ioctl with no arguments.

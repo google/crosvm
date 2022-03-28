@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::AsRawDescriptor;
+use crate::descriptor::AsRawDescriptor;
 use std::io::{stdin, Error, Read, Result};
 use winapi::{
     shared::{minwindef::LPVOID, ntdef::NULL},

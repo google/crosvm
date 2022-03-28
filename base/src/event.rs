@@ -12,11 +12,9 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor};
 pub use crate::platform::EventReadResult;
-use crate::{
-    generate_scoped_event, platform::EventFd, AsRawDescriptor, FromRawDescriptor,
-    IntoRawDescriptor, RawDescriptor, Result,
-};
+use crate::{generate_scoped_event, platform::EventFd, RawDescriptor, Result};
 
 /// See [EventFd](crate::platform::EventFd) for struct- and method-level
 /// documentation.

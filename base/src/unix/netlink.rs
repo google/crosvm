@@ -9,10 +9,8 @@ use libc::EINVAL;
 
 use crate::common::LayoutAllocation;
 
-use super::{
-    errno_result, getpid, AsRawDescriptor, Error, FromRawDescriptor, RawDescriptor, Result,
-    SafeDescriptor,
-};
+use super::{errno_result, getpid, Error, RawDescriptor, Result};
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 
 macro_rules! debug_pr {
     // By default debugs are suppressed, to enabled them replace macro body with:

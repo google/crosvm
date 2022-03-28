@@ -947,7 +947,8 @@ impl Drop for MemoryMappingArena {
 
 #[cfg(test)]
 mod tests {
-    use super::{super::Descriptor, *};
+    use super::*;
+    use crate::descriptor::Descriptor;
     use data_model::{VolatileMemory, VolatileMemoryError};
     use tempfile::tempfile;
 

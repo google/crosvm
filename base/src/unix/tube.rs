@@ -9,11 +9,11 @@ use std::{
     time::Duration,
 };
 
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 use crate::{
     platform::{deserialize_with_descriptors, SerializeDescriptors},
     tube::{Error, RecvTube, Result, SendTube},
-    AsRawDescriptor, FromRawDescriptor, RawDescriptor, ReadNotifier, SafeDescriptor, ScmSocket,
-    UnixSeqpacket, UnsyncMarker,
+    RawDescriptor, ReadNotifier, ScmSocket, UnixSeqpacket, UnsyncMarker,
 };
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};

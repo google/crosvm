@@ -64,7 +64,8 @@ use serde::{
     ser, Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use super::{RawDescriptor, SafeDescriptor};
+use super::RawDescriptor;
+use crate::descriptor::SafeDescriptor;
 
 thread_local! {
     static DESCRIPTOR_DST: RefCell<Option<Vec<RawDescriptor>>> = Default::default();
@@ -339,7 +340,8 @@ where
 /// }
 /// ```
 pub mod with_raw_descriptor {
-    use super::super::{IntoRawDescriptor, RawDescriptor};
+    use super::super::RawDescriptor;
+    use crate::descriptor::IntoRawDescriptor;
     use serde::Deserializer;
 
     pub use super::serialize_descriptor as serialize;
@@ -369,7 +371,7 @@ pub mod with_raw_descriptor {
 /// }
 /// ```
 pub mod with_as_descriptor {
-    use super::super::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor};
+    use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor};
     use serde::{Deserializer, Serializer};
 
     pub fn serialize<S: Serializer>(

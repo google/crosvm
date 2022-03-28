@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use crate::descriptor::AsRawDescriptor;
 use crate::{
-    platform::MemoryMapping as SysUtilMmap, wrap_descriptor, AsRawDescriptor, MappedRegion,
-    MemoryMappingArena, MmapError, Protection, SharedMemory,
+    platform::MemoryMapping as SysUtilMmap, wrap_descriptor, MappedRegion, MemoryMappingArena,
+    MmapError, Protection, SharedMemory,
 };
 use data_model::{volatile_memory::*, DataInit};
 use std::fs::File;

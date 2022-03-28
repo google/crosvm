@@ -6,7 +6,7 @@
 
 use std::os::raw::*;
 
-use super::AsRawDescriptor;
+use crate::descriptor::AsRawDescriptor;
 
 /// Raw macro to declare the expression that calculates an ioctl number
 #[macro_export]

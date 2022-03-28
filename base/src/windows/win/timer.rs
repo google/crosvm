@@ -18,12 +18,10 @@ use winapi::{
 };
 
 use super::{
-    super::{
-        errno_result, win::nt_query_timer_resolution, AsRawDescriptor, FromRawDescriptor, Result,
-        SafeDescriptor,
-    },
+    super::{errno_result, win::nt_query_timer_resolution, Result},
     Timer, WaitResult,
 };
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 
 impl AsRawHandle for Timer {
     fn as_raw_handle(&self) -> RawHandle {

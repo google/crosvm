@@ -21,7 +21,8 @@
 //! ```
 
 pub use super::win::syslog::PlatformSyslog;
-use super::{AsRawDescriptor, RawDescriptor};
+use super::RawDescriptor;
+use crate::descriptor::AsRawDescriptor;
 use crate::{syslog_lock, CHRONO_TIMESTAMP_FIXED_FMT};
 use serde::{Deserialize, Serialize};
 use std::{

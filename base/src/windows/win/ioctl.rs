@@ -6,7 +6,7 @@
 
 use std::{mem::size_of, os::raw::*, ptr::null_mut};
 
-use super::AsRawDescriptor;
+use crate::descriptor::AsRawDescriptor;
 pub use winapi::um::winioctl::{CTL_CODE, FILE_ANY_ACCESS, METHOD_BUFFERED};
 use winapi::um::{errhandlingapi::GetLastError, ioapiset::DeviceIoControl};
 

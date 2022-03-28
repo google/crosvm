@@ -10,10 +10,8 @@ use std::time::Duration;
 use libc::{c_void, eventfd, read, write, POLLIN};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    duration_to_timespec, errno_result, AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor,
-    RawDescriptor, Result, SafeDescriptor,
-};
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
+use crate::{duration_to_timespec, errno_result, RawDescriptor, Result};
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 
 /// A safe wrapper around a Linux eventfd (man 2 eventfd).

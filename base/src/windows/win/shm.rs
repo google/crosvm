@@ -6,10 +6,8 @@ use std::ffi::CStr;
 use win_util::create_file_mapping;
 use winapi::um::winnt::PAGE_EXECUTE_READWRITE;
 
-use super::super::{
-    shm::SharedMemory, AsRawDescriptor, FromRawDescriptor, MemoryMapping, MmapError, Result,
-    SafeDescriptor,
-};
+use super::super::{shm::SharedMemory, MemoryMapping, MmapError, Result};
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 
 impl SharedMemory {
     /// Creates a new shared memory file mapping with zero size.

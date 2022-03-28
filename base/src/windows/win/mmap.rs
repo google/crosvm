@@ -19,10 +19,8 @@ use winapi::um::memoryapi::{
     FlushViewOfFile, MapViewOfFile, MapViewOfFileEx, UnmapViewOfFile, FILE_MAP_READ, FILE_MAP_WRITE,
 };
 
-use super::{
-    super::{AsRawDescriptor, RawDescriptor},
-    Error, MappedRegion, MemoryMapping, Protection, Result,
-};
+use super::{super::RawDescriptor, Error, MappedRegion, MemoryMapping, Protection, Result};
+use crate::descriptor::AsRawDescriptor;
 use crate::warn;
 
 pub(super) const PROT_NONE: c_uint = 0;
@@ -304,9 +302,10 @@ pub struct MemoryMappingArena();
 #[cfg(test)]
 mod tests {
     use super::{
-        super::super::{pagesize, FromRawDescriptor, SharedMemory},
+        super::super::{pagesize, SharedMemory},
         *,
     };
+    use crate::descriptor::FromRawDescriptor;
     use data_model::{VolatileMemory, VolatileMemoryError};
     use std::ptr;
     use winapi::shared::winerror;

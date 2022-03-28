@@ -29,10 +29,8 @@ use winapi::{
     },
 };
 
-use super::{
-    errno_result, AsRawDescriptor, Error, FromRawDescriptor, IntoRawDescriptor, RawDescriptor,
-    Result, SafeDescriptor,
-};
+use super::{errno_result, Error, RawDescriptor, Result};
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
 
 /// A safe wrapper around Windows synchapi methods used to mimic Linux eventfd (man 2 eventfd).
 /// Since the eventfd isn't using "EFD_SEMAPHORE", we don't need to keep count so we can just use

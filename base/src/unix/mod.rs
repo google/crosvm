@@ -83,6 +83,7 @@ pub use sock_ctrl_msg::*;
 pub use terminal::*;
 pub use timerfd::*;
 
+use crate::descriptor::{FromRawDescriptor, SafeDescriptor};
 pub use file_traits::{
     AsRawFds, FileAllocate, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen,
     FileSync,
