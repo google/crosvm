@@ -271,6 +271,7 @@ struct VfioMsixCap {
     pba_pci_bar: u32,
     pba_offset: u64,
     pba_size_bytes: u64,
+    msix_interrupt_evt: Vec<Event>,
 }
 
 impl VfioMsixCap {
@@ -295,7 +296,10 @@ impl VfioMsixCap {
         let pba_size_bytes = ((table_size + BITS_PER_PBA_ENTRY as u64 - 1)
             / BITS_PER_PBA_ENTRY as u64)
             * MSIX_PBA_ENTRIES_MODULO;
-
+        let mut msix_interrupt_evt = Vec::new();
+        for _ in 0..table_size {
+            msix_interrupt_evt.push(Event::new().expect("failed to create msix interrupt"));
+        }
         VfioMsixCap {
             config: MsixConfig::new(table_size as u16, vm_socket_irq),
             offset: msix_cap_start,
@@ -306,6 +310,7 @@ impl VfioMsixCap {
             pba_pci_bar,
             pba_offset,
             pba_size_bytes,
+            msix_interrupt_evt,
         }
     }
 
@@ -391,10 +396,15 @@ impl VfioMsixCap {
     }
 
     fn get_msix_irqfd(&self, index: usize) -> Option<&Event> {
-        if self.msix_vector_masked(index) {
-            None
+        let irqfd = self.config.get_irqfd(index);
+        if let Some(fd) = irqfd {
+            if self.msix_vector_masked(index) {
+                Some(&self.msix_interrupt_evt[index])
+            } else {
+                Some(fd)
+            }
         } else {
-            self.config.get_irqfd(index)
+            None
         }
     }
 
@@ -412,8 +422,19 @@ impl VfioMsixCap {
         self.table_size.into()
     }
 
+    fn clone_msix_evt(&self) -> Vec<Event> {
+        self.msix_interrupt_evt
+            .iter()
+            .map(|irq| irq.try_clone().unwrap())
+            .collect()
+    }
+
     fn msix_vector_masked(&self, index: usize) -> bool {
         !self.config.enabled() || self.config.masked() || self.config.table_masked(index)
+    }
+
+    fn trigger(&mut self, index: usize) {
+        self.config.trigger(index as u16);
     }
 
     fn destroy(&mut self) {
@@ -522,15 +543,16 @@ impl VfioResourceAllocator {
 struct VfioPciWorker {
     vm_socket: Tube,
     name: String,
-    _msix_cap: Option<Arc<Mutex<VfioMsixCap>>>,
+    msix_cap: Option<Arc<Mutex<VfioMsixCap>>>,
 }
 
 impl VfioPciWorker {
-    fn run(&mut self, req_irq_evt: Event, kill_evt: Event) {
+    fn run(&mut self, req_irq_evt: Event, kill_evt: Event, msix_evt: Vec<Event>) {
         #[derive(PollToken)]
         enum Token {
             ReqIrq,
             Kill,
+            MsixIrqi { index: usize },
         }
 
         let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
@@ -548,6 +570,12 @@ impl VfioPciWorker {
             }
         };
 
+        for (index, msix_int) in msix_evt.iter().enumerate() {
+            wait_ctx
+                .add(msix_int, Token::MsixIrqi { index })
+                .expect("Failed to create vfio WaitContext for msix interrupt event")
+        }
+
         'wait: loop {
             let events = match wait_ctx.wait() {
                 Ok(v) => v,
@@ -559,6 +587,11 @@ impl VfioPciWorker {
 
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
+                    Token::MsixIrqi { index } => {
+                        if let Some(msix_cap) = &self.msix_cap {
+                            msix_cap.lock().trigger(index);
+                        }
+                    }
                     Token::ReqIrq => {
                         let mut sysfs_path = PathBuf::new();
                         sysfs_path.push("/sys/bus/pci/devices/");
@@ -1095,6 +1128,11 @@ impl VfioPciDevice {
         };
         self.kill_evt = Some(self_kill_evt);
 
+        let mut msix_evt = Vec::new();
+        if let Some(msix_cap) = &self.msix_cap {
+            msix_evt = msix_cap.lock().clone_msix_evt();
+        }
+
         let name = self.device.device_name().to_string();
         let msix_cap = self.msix_cap.clone();
         let worker_result = thread::Builder::new()
@@ -1103,9 +1141,9 @@ impl VfioPciDevice {
                 let mut worker = VfioPciWorker {
                     vm_socket,
                     name,
-                    _msix_cap: msix_cap,
+                    msix_cap,
                 };
-                worker.run(req_evt, kill_evt);
+                worker.run(req_evt, kill_evt, msix_evt);
                 worker
             });
 
