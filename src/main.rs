@@ -697,6 +697,41 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
     Ok(ac97_params)
 }
 
+enum MsrAction {
+    Invalid,
+    /// Read MSR value from host CPU0 regardless of current vcpu.
+    ReadFromCPU0,
+}
+
+fn parse_userspace_msr_options(value: &str) -> argument::Result<u32> {
+    // TODO(b/215297064): Implement different type of operations, such
+    // as write or reading from the correct CPU.
+    let mut options = argument::parse_key_value_options("userspace-msr", value, ',');
+    let index: u32 = options
+        .next()
+        .ok_or(argument::Error::ExpectedValue(String::from(
+            "userspace-msr: expected index",
+        )))?
+        .key_numeric()?;
+    let mut msr_config = MsrAction::Invalid;
+    for opt in options {
+        match opt.key() {
+            "action" => match opt.value()? {
+                "r0" => msr_config = MsrAction::ReadFromCPU0,
+                _ => return Err(opt.invalid_value_err(String::from("bad action"))),
+            },
+            _ => return Err(opt.invalid_key_err()),
+        }
+    }
+
+    match msr_config {
+        MsrAction::ReadFromCPU0 => Ok(index),
+        _ => Err(argument::Error::UnknownArgument(
+            "userspace-msr action not specified".to_string(),
+        )),
+    }
+}
+
 fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
     let serial_setting: SerialParameters =
         from_key_values(s).map_err(|e| argument::Error::ConfigParserError(e.to_string()))?;
@@ -2140,6 +2175,10 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "no-legacy" => {
             cfg.no_legacy = true;
         }
+        "userspace-msr" => {
+            let index = parse_userspace_msr_options(value.unwrap())?;
+            cfg.userspace_msr.insert(index);
+        }
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         "host-cpu-topology" => {
             cfg.host_cpu_topology = true;
@@ -2735,6 +2774,9 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("direct-gpe", "gpe", "Enable GPE interrupt and register access passthrough"),
           Argument::value("dmi", "DIR", "Directory with smbios_entry_point/DMI files"),
           Argument::flag("no-legacy", "Don't use legacy KBD/RTC devices emulation"),
+          Argument::value("userspace-msr", "INDEX,action=r0", "Userspace MSR handling. Takes INDEX of the MSR and how they are handled.
+                              action=r0 - forward RDMSR to host kernel cpu0.
+"),
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("host-cpu-topology", "Use mirror cpu topology of Host for Guest VM"),
           Argument::flag("privileged-vm", "Grant this Guest VM certian privileges to manage Host resources, such as power management."),
@@ -4261,5 +4303,14 @@ mod tests {
             parse_file_backed_mapping(Some("addr=0x3042,size=0xff0,path=/dev/mem,align")).unwrap();
         assert_eq!(params.address, 0x3000);
         assert_eq!(params.size, 0x2000);
+    }
+
+    #[test]
+    fn parse_userspace_msr_options_test() {
+        let index = parse_userspace_msr_options("0x10,action=r0").unwrap();
+        assert_eq!(index, 0x10);
+        assert!(parse_userspace_msr_options("0x10,action=none").is_err());
+        assert!(parse_userspace_msr_options("0x10").is_err());
+        assert!(parse_userspace_msr_options("hoge").is_err());
     }
 }

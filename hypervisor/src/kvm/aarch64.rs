@@ -147,6 +147,11 @@ impl KvmVm {
             )
         }
     }
+
+    /// Enable userspace msr. This is not available on ARM, just succeed.
+    pub fn enable_userspace_msr(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[repr(C)]

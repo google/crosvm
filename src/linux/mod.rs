@@ -959,6 +959,12 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
     guest_mem.set_memory_policy(mem_policy);
     let kvm = Kvm::new_with_path(&cfg.kvm_device_path).context("failed to create kvm")?;
     let vm = KvmVm::new(&kvm, guest_mem, components.protected_vm).context("failed to create vm")?;
+
+    if !cfg.userspace_msr.is_empty() {
+        vm.enable_userspace_msr()
+            .context("failed to enable userspace MSR handling, do you have kernel 5.10 or later")?;
+    }
+
     // Check that the VM was actually created in protected mode as expected.
     if cfg.protected_vm != ProtectionType::Unprotected && !vm.check_capability(VmCap::Protected) {
         bail!("Failed to create protected VM");
@@ -1750,6 +1756,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         .context("failed to clone vcpu cgroup tasks file")?,
                 ),
             },
+            cfg.userspace_msr.clone(),
         )?;
         vcpu_handles.push((handle, to_vcpu_channel));
     }

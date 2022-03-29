@@ -13,7 +13,7 @@ pub mod platform;
 #[cfg(feature = "plugin")]
 pub mod plugin;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net;
 use std::ops::RangeInclusive;
 use std::os::unix::io::RawFd;
@@ -467,6 +467,7 @@ pub struct Config {
     pub force_s2idle: bool,
     pub strict_balloon: bool,
     pub mmio_address_ranges: Vec<RangeInclusive<u64>>,
+    pub userspace_msr: BTreeSet<u32>,
 }
 
 impl Default for Config {
@@ -589,6 +590,7 @@ impl Default for Config {
             force_s2idle: false,
             strict_balloon: false,
             mmio_address_ranges: Vec::new(),
+            userspace_msr: BTreeSet::new(),
         }
     }
 }

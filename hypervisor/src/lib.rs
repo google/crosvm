@@ -373,6 +373,13 @@ pub enum VcpuExit {
     SystemEventReset,
     SystemEventCrash,
     SystemEventS2Idle,
+    RdMsr {
+        index: u32,
+    },
+    WrMsr {
+        index: u32,
+        data: u64,
+    },
 }
 
 /// A device type to create with `Vm.create_device`.
