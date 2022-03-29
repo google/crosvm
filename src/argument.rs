@@ -44,11 +44,11 @@
 //! ```
 
 use std::convert::TryFrom;
-use std::env;
 use std::result;
 use std::str::FromStr;
 
 use remain::sorted;
+use terminal_size::{terminal_size, Width};
 use thiserror::Error;
 
 /// An error with argument parsing.
@@ -361,12 +361,10 @@ where
 
 const DEFAULT_COLUMNS: usize = 80;
 
-/// Get the number of columns on a display.
+/// Get the number of columns on a display, with a reasonable default.
 fn get_columns() -> usize {
-    if let Ok(columns_string) = env::var("COLUMNS") {
-        if let Ok(columns) = usize::from_str(&columns_string) {
-            return columns;
-        }
+    if let Some((Width(columns), _)) = terminal_size() {
+        return columns.into();
     }
     DEFAULT_COLUMNS
 }
@@ -850,13 +848,5 @@ I am going to give you another paragraph. However I don't know if it is useful",
           paragraph. However I don't know if it
           is useful"
         );
-    }
-
-    #[test]
-    fn column() {
-        env::set_var("COLUMNS", "100");
-        assert_eq!(get_columns(), 100);
-        env::remove_var("COLUMNS");
-        assert_eq!(get_columns(), 80);
     }
 }

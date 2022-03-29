@@ -184,6 +184,7 @@ serde_json = "*"
 serde_keyvalue = { path = "serde_keyvalue" }
 sync = { path = "common/sync" }
 tempfile = "3"
+terminal_size = "0.1.17"
 thiserror = { version = "1.0.20" }
 uuid = { version = "0.8.2" }
 vhost = { path = "vhost" }
