@@ -6,6 +6,8 @@ use super::{INTERRUPT_STATUS_CONFIG_CHANGED, INTERRUPT_STATUS_USED_RING, VIRTIO_
 use crate::irq_event::IrqLevelEvent;
 use crate::pci::MsixConfig;
 use base::Event;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use sync::Mutex;
@@ -92,6 +94,27 @@ impl<I: SignalableInterrupt> SignalableInterrupt for Arc<Mutex<I>> {
 
     fn signal_config_changed(&self) {
         self.lock().signal_config_changed();
+    }
+
+    fn get_resample_evt(&self) -> Option<&Event> {
+        // Cannot get resample event from a borrowed item.
+        None
+    }
+
+    fn do_interrupt_resample(&self) {}
+}
+
+impl<I: SignalableInterrupt> SignalableInterrupt for Rc<RefCell<I>> {
+    fn signal(&self, vector: u16, interrupt_status_mask: u32) {
+        self.borrow().signal(vector, interrupt_status_mask);
+    }
+
+    fn signal_used_queue(&self, vector: u16) {
+        self.borrow().signal_used_queue(vector);
+    }
+
+    fn signal_config_changed(&self) {
+        self.borrow().signal_config_changed();
     }
 
     fn get_resample_evt(&self) -> Option<&Event> {

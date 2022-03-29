@@ -13,20 +13,20 @@ use futures::future::{AbortHandle, Abortable};
 use sync::Mutex;
 use vmm_vhost::message::*;
 
-use base::{error, warn, Event, Timer};
+use base::{warn, Event, Timer};
 use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor, TimerAsync};
 use data_model::DataInit;
 use disk::create_async_disk_file;
 use hypervisor::ProtectionType;
 use vm_memory::GuestMemory;
 
-use crate::virtio::block::asynchronous::{flush_disk, process_one_chain};
+use crate::virtio::block::asynchronous::{flush_disk, handle_queue};
 use crate::virtio::block::*;
 use crate::virtio::vhost::user::device::{
     handler::{DeviceRequestHandler, Doorbell, VhostUserBackend},
     vvu::pci::VvuPciDevice,
 };
-use crate::virtio::{self, base_features, block::sys::*, copy_config, Queue};
+use crate::virtio::{self, base_features, block::sys::*, copy_config};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: u16 = 16;
@@ -240,48 +240,6 @@ impl VhostUserBackend for BlockBackend {
     fn stop_queue(&mut self, idx: usize) {
         if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
             handle.abort();
-        }
-    }
-}
-
-// There is one async task running `handle_queue` per virtio queue in use.
-// Receives messages from the guest and queues a task to complete the operations with the async
-// executor.
-async fn handle_queue(
-    ex: Executor,
-    mem: GuestMemory,
-    disk_state: Rc<AsyncMutex<DiskState>>,
-    queue: Rc<RefCell<Queue>>,
-    evt: EventAsync,
-    interrupt: Arc<Mutex<Doorbell>>,
-    flush_timer: Rc<RefCell<TimerAsync>>,
-    flush_timer_armed: Rc<RefCell<bool>>,
-) {
-    loop {
-        if let Err(e) = evt.next_val().await {
-            error!("Failed to read the next queue event: {}", e);
-            continue;
-        }
-        while let Some(descriptor_chain) = queue.borrow_mut().pop(&mem) {
-            let queue = Rc::clone(&queue);
-            let disk_state = Rc::clone(&disk_state);
-            let mem = mem.clone();
-            let interrupt = Arc::clone(&interrupt);
-            let flush_timer = Rc::clone(&flush_timer);
-            let flush_timer_armed = Rc::clone(&flush_timer_armed);
-            ex.spawn_local(async move {
-                process_one_chain(
-                    queue,
-                    descriptor_chain,
-                    disk_state,
-                    mem,
-                    &interrupt,
-                    flush_timer,
-                    flush_timer_armed,
-                )
-                .await
-            })
-            .detach();
         }
     }
 }
