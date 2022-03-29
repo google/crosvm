@@ -83,6 +83,7 @@ struct virtio_pci_notification_cfg {
 
 unsafe impl DataInit for virtio_pci_notification_cfg {}
 
+#[derive(Clone)]
 pub struct VvuPciCaps {
     msix_table_size: u16,
     common_cfg_addr: VfioRegionAddr,

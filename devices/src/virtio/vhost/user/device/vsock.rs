@@ -173,7 +173,11 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
                     return Err(Error::InvalidParam);
                 }
                 let device = dev.lock();
-                create_vvu_guest_memory(&device, contexts)?
+                create_vvu_guest_memory(
+                    &device.vfio_dev,
+                    device.caps.shared_mem_cfg_addr(),
+                    contexts,
+                )?
             }
         };
 
