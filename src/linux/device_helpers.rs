@@ -790,7 +790,7 @@ pub fn create_vhost_vsock_device(cfg: &Config, cid: u64) -> DeviceResult {
     {
         VhostVsockDeviceParameter::Fd(fd) => {
             let fd = validate_raw_descriptor(*fd)
-                .context("failed to validate fd for virtual socker device")?;
+                .context("failed to validate fd for virtual socket device")?;
             // Safe because the `fd` is actually owned by this process and
             // we have a unique handle to it.
             unsafe { File::from_raw_fd(fd) }
