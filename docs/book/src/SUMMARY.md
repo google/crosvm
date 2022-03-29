@@ -12,7 +12,8 @@
   - [Features](./running_crosvm/features.md)
   - [Devices](./running_crosvm/devices.md)
 - [Architecture](./architecture.md)
-- [Contributing](./contributing.md)
+- [Contributing](./contributing/index.md)
+  - [Style Guide for Platform-Specific Code](./contributing/style_guide_platform_specific_code.md)
 
 ______________________________________________________________________
 
