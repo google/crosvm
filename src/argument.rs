@@ -445,14 +445,30 @@ impl<'a> KeyValuePair<'a> {
         )))
     }
 
+    fn get_numeric<T>(&self, val: &str) -> Result<T>
+    where
+        T: TryFrom<u64>,
+        <T as TryFrom<u64>>::Error: std::error::Error,
+    {
+        let num = parse_hex_or_decimal(val)?;
+        self.handle_parse_err(T::try_from(num))
+    }
+
     pub fn parse_numeric<T>(&self) -> Result<T>
     where
         T: TryFrom<u64>,
         <T as TryFrom<u64>>::Error: std::error::Error,
     {
         let val = self.value()?;
-        let num = parse_hex_or_decimal(val)?;
-        self.handle_parse_err(T::try_from(num))
+        self.get_numeric(val)
+    }
+
+    pub fn key_numeric<T>(&self) -> Result<T>
+    where
+        T: TryFrom<u64>,
+        <T as TryFrom<u64>>::Error: std::error::Error,
+    {
+        self.get_numeric(self.key())
     }
 
     pub fn parse<T>(&self) -> Result<T>
@@ -725,5 +741,20 @@ mod tests {
         assert_eq!(parse_hex_or_decimal("0X15").unwrap(), 0x15);
         assert!(parse_hex_or_decimal("0xz").is_err());
         assert!(parse_hex_or_decimal("hello world").is_err());
+    }
+
+    #[test]
+    fn parse_key_value_options_numeric_key() {
+        let mut opts = parse_key_value_options("test", "0x30,0x100=value,nonnumeric=value", ',');
+        let kv = opts.next().unwrap();
+        assert_eq!(kv.key_numeric::<u32>().unwrap(), 0x30);
+
+        let kv = opts.next().unwrap();
+        assert_eq!(kv.key_numeric::<u32>().unwrap(), 0x100);
+        assert_eq!(kv.value().unwrap(), "value");
+
+        let kv = opts.next().unwrap();
+        assert!(kv.key_numeric::<u32>().is_err());
+        assert_eq!(kv.key(), "nonnumeric");
     }
 }
