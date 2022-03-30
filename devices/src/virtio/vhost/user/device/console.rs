@@ -87,9 +87,8 @@ impl SerialDevice for ConsoleDevice {
         _out_timestamp: bool,
         _keep_rds: Vec<RawDescriptor>,
     ) -> ConsoleDevice {
-        let avail_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
-            | virtio::base_features(protected_vm)
-            | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+        let avail_features =
+            virtio::base_features(protected_vm) | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         ConsoleDevice {
             input,
             output,
