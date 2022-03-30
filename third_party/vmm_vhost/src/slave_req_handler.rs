@@ -90,9 +90,7 @@ pub trait VhostUserSlaveReqHandler {
 #[allow(missing_docs)]
 pub trait VhostUserSlaveReqHandlerMut {
     /// Returns the type of vhost-user protocol that the handler support.
-    fn protocol(&self) -> Protocol {
-        Protocol::Regular
-    }
+    fn protocol(&self) -> Protocol;
 
     fn set_owner(&mut self) -> Result<()>;
     fn reset_owner(&mut self) -> Result<()>;
