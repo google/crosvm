@@ -195,18 +195,21 @@ main() {
         parent_commit="FETCH_HEAD"
     fi
 
-    local merge_count=$(git log --oneline --decorate=no --no-color \
-        "${parent_commit}..origin/main" | wc -l)
-    if [ "${merge_count}" -lt "$MIN_COMMIT_COUNT" ]; then
-        echo "Not enough commits to merge. Skipping."
-        return
-    fi
-
     echo "Checking out parent: ${parent_commit}"
     git checkout -b chromeos "${parent_commit}"
     git branch --set-upstream-to origin/chromeos chromeos
 
-    "${KOKORO_ARTIFACTS_DIR}/create_merge" "origin/main"
+    local merge_count=$(git log --oneline --decorate=no --no-color \
+        "${parent_commit}..origin/main" | wc -l)
+    if [ "${merge_count}" -ge "$MIN_COMMIT_COUNT" ]; then
+        "${KOKORO_ARTIFACTS_DIR}/create_merge" "origin/main"
+    else
+        echo "Not enough commits to merge."
+    fi
+
+    # Rebase to integrate cherry-picks. Always resolve conflicts with content from origin/main.
+    git rebase --rebase-merges -X theirs
+
     upload_with_retries
 
     echo "Abandoning previous dry runs"
