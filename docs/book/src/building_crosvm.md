@@ -1,4 +1,7 @@
-# Building for Linux
+# Building Crosvm
+
+This page describes how to build and develop crosvm on linux. If you are targeting another OS such
+as ChromeOS, please see [Integration](integration/index.md)
 
 ## Checking out
 
@@ -85,10 +88,10 @@ you wish to start fresh, use the `--reset` flag.
 ## Building a binary
 
 If you simply want to try crosvm, run `cargo build`. Then the binary is generated at
-`./target/debug/crosvm`. Now you can move to [Example Usage](../running_crosvm/example_usage.md).
+`./target/debug/crosvm`. Now you can move to [Example Usage](running_crosvm/example_usage.md).
 
-If you want to enable [additional features](../running_crosvm/features.md), use the `--features`
-flag. (e.g. `cargo build --features=gdb`)
+If you want to enable [additional features](running_crosvm/features.md), use the `--features` flag.
+(e.g. `cargo build --features=gdb`)
 
 ## Development
 

@@ -1,9 +1,7 @@
 # Summary
 
 - [Introduction](./introduction.md)
-- [Building Crosvm](./building_crosvm/index.md)
-  - [For Linux](./building_crosvm/linux.md)
-  - [For Chromium OS](./building_crosvm/chromium_os.md)
+- [Building Crosvm](./building_crosvm.md)
 - [Running Crosvm](./running_crosvm/index.md)
   - [Example Usage](./running_crosvm/example_usage.md)
   - [Advanced Usage](./running_crosvm/advanced_usage.md)
@@ -11,6 +9,8 @@
   - [System Requirements](./running_crosvm/requirements.md)
   - [Features](./running_crosvm/features.md)
   - [Devices](./running_crosvm/devices.md)
+- [Integration](./integration/index.md)
+  - [ChromeOS](./integration/chromeos.md)
 - [Architecture](./architecture.md)
 - [Contributing](./contributing/index.md)
   - [Style Guide for Platform-Specific Code](./contributing/style_guide_platform_specific_code.md)

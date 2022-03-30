@@ -116,6 +116,6 @@ The full source for this example can be executed directly (Note, you may want to
 ./tools/examples/example_desktop
 ```
 
-[building crosvm]: ../building_crosvm/index.md
+[building crosvm]: ../building_crosvm.md
 [tools/examples]: https://source.chromium.org/chromiumos/chromiumos/codesearch/+/main:src/platform/crosvm/tools/examples
 [virt-builder]: https://libguestfs.org/virt-builder.1.html

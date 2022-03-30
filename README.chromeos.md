@@ -1,17 +1,7 @@
 # Crosvm on ChromeOS
 
-Here are pointers to useful documentation for working on Crosvm on Chrome OS.
+Crosvm is an independently developed project and is using different workflows than other ChromeOS
+repositories.
 
-## Uploading changes
-
-See [Creating a CL for Chromium OS Developers](CONTRIBUTING.md#chromiumos-cl).
-
-## Building
-
-See [Building for ChromeOS](https://google.github.io/crosvm/building_crosvm/chromium_os.html) in the
-crosvm mdbook.
-
-## Submitting
-
-See [presubmit checking](CONTRIBUTING.md#presubmit) and
-[postsubmit merging](CONTRIBUTING.md#chromiumos-postsubmit)
+Please review [Crosvm on Chromeos](https://google.github.io/crosvm/integration/chromeos.html) for
+how to submit code and how changes are brought into ChromeOS.

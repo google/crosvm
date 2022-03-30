@@ -77,25 +77,11 @@ CLs are listed at the [crosvm component].
 
 > Note: We don't accept any pull requests on the [GitHub mirror].
 
-#### For Chromium OS Developers {#chromiumos-cl}
-
-If you have already set up the `chromiumos` repository and the `repo` command, you can simply create
-and upload your CL in a similar manner as other Chromium OS projects.
-
-`repo start` will create a branch tracking `cros/chromeos` so you can develop with the latest,
-CQ-tested code as a foundation.
-
-However, changes are not acceped to the `cros/chromeos` branch, and should be submitted to
-`cros/main` instead.
-
-Use `repo upload -D main` to upload changes to the main branch, which works fine in most cases where
-gerrit can rebase the commit cleanly. If not, please rebase to `cros/main` manually.
-
 #### For non-Chromium OS Developers
 
 If you are not interested in other Chromium OS components, you can simply
-[clone and contribute crosvm only](https://google.github.io/crosvm/building_crosvm/linux.html).
-Before you make a commit locally, please set up [Gerrit's Change-Id hook] on your system.
+[clone and contribute crosvm only](https://google.github.io/crosvm/building_crosvm.html). Before you
+make a commit locally, please set up [Gerrit's Change-Id hook] on your system.
 
 ```sh
 # Modify code and make a git commit with a commit message following this rule:
@@ -127,23 +113,6 @@ by setting CQ+2.
 Note: This is different from other ChromeOS repositories, where Verified +1 bit is set by the
 developers to indicate that they successfully tested a change. The Verified bit can only be set by
 Kokoro in the crosvm repository.
-
-### Postsubmit merging to Chrome OS {#chromiumos-postsubmit}
-
-Crosvm has a unique setup to integrate with ChromeOS infrastructure.
-
-The chromeos checkout tracks the
-[cros/chromeos](https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/chromeos)
-branch of crosvm, not the
-[cros/main](https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main) branch.
-
-While upstream development is happening on the `main` branch, changes submitted to that branch are
-only tested by the crosvm kokoro CI system, not by the ChromeOS CQ.
-
-There is a
-[daily process](https://chromium-review.googlesource.com/q/project:chromiumos%252Fplatform%252Fcrosvm+branch:chromeos)
-that creates a commit to merge changes from `main` into the `chromeos` branch, which is then tested
-through the CQ and watched by the crosvm-uprev rotation.
 
 ## Contributing to the documentation
 
