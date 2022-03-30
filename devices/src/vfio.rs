@@ -1294,6 +1294,24 @@ impl VfioPciConfig {
             offset.into(),
         );
     }
+
+    /// Set the VFIO device this config refers to as the bus master.
+    pub fn set_bus_master(&self) {
+        /// Constant definitions from `linux/pci_regs.h`.
+        const PCI_COMMAND: u32 = 0x4;
+        /// Enable bus mastering
+        const PCI_COMMAND_MASTER: u16 = 0x4;
+
+        let mut cmd: u16 = self.read_config(PCI_COMMAND);
+
+        if cmd & PCI_COMMAND_MASTER != 0 {
+            return;
+        }
+
+        cmd |= PCI_COMMAND_MASTER;
+
+        self.write_config(cmd, PCI_COMMAND);
+    }
 }
 
 impl AsRawDescriptor for VfioDevice {

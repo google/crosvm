@@ -24,11 +24,6 @@ use crate::virtio::{PciCapabilityType, VirtioPciCap};
 
 const VIRTIO_CONFIG_STATUS_RESET: u8 = 0;
 
-/// Getting constant definitions from `linux/pci_regs.h`.`
-const PCI_COMMAND: u32 = 0x4;
-/// Enable bus mastering
-const PCI_COMMAND_MASTER: u16 = 0x4;
-
 fn get_pci_cap_addr(cap: &VirtioPciCap) -> Result<VfioRegionAddr> {
     const PCI_MAX_RESOURCE: u8 = 6;
 
@@ -227,7 +222,6 @@ impl QueueNotifier {
 
 pub struct VvuPciDevice {
     pub vfio_dev: Arc<VfioDevice>,
-    config: VfioPciConfig,
     pub caps: VvuPciCaps,
     pub queues: Vec<UserQueue>,
     pub queue_notifiers: Vec<QueueNotifier>,
@@ -259,7 +253,6 @@ impl VvuPciDevice {
 
         let mut pci_dev = Self {
             vfio_dev,
-            config,
             caps,
             queues: vec![],
             queue_notifiers: vec![],
@@ -267,21 +260,10 @@ impl VvuPciDevice {
             notification_evts: vec![],
         };
 
+        config.set_bus_master();
         pci_dev.init(device_vq_num)?;
 
         Ok(pci_dev)
-    }
-
-    fn set_bus_master(&self) {
-        let mut cmd: u16 = self.config.read_config(PCI_COMMAND);
-
-        if cmd & PCI_COMMAND_MASTER != 0 {
-            return;
-        }
-
-        cmd |= PCI_COMMAND_MASTER;
-
-        self.config.write_config(cmd, PCI_COMMAND);
     }
 
     fn set_status(&self, status: u8) {
@@ -445,8 +427,6 @@ impl VvuPciDevice {
     }
 
     fn init(&mut self, device_vq_num: usize) -> Result<()> {
-        self.set_bus_master();
-
         self.set_status(VIRTIO_CONFIG_STATUS_RESET as u8);
         // Wait until reset is done with timeout.
         let deadline = Instant::now() + Duration::from_secs(1);
