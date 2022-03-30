@@ -332,7 +332,7 @@ impl Vring {
     }
 }
 
-enum HandlerType {
+pub(super) enum HandlerType {
     VhostUser,
     Vvu {
         vfio_dev: Arc<VfioDevice>,

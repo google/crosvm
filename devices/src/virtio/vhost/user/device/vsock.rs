@@ -44,7 +44,8 @@ use crate::{
         vhost::{
             user::device::{
                 handler::{
-                    create_guest_memory, create_vvu_guest_memory, vmm_va_to_gpa, MappingInfo,
+                    create_guest_memory, create_vvu_guest_memory, vmm_va_to_gpa, HandlerType,
+                    MappingInfo,
                 },
                 vvu::{doorbell::DoorbellRegion, pci::VvuPciDevice, VvuDevice},
             },
@@ -63,7 +64,7 @@ struct VsockBackend {
     handle: Vsock,
     cid: u64,
     features: u64,
-    vvu_device: Option<Arc<Mutex<VvuPciDevice>>>,
+    handler_type: HandlerType,
     protocol_features: VhostUserProtocolFeatures,
     mem: Option<GuestMemory>,
     vmm_maps: Option<Vec<MappingInfo>>,
@@ -77,7 +78,7 @@ impl VsockBackend {
         ex: &Executor,
         cid: u64,
         vhost_socket: P,
-        vvu_device: Option<Arc<Mutex<VvuPciDevice>>>,
+        handler_type: HandlerType,
     ) -> anyhow::Result<VsockBackend> {
         let handle = Vsock::new(
             OpenOptions::new()
@@ -95,7 +96,7 @@ impl VsockBackend {
             handle,
             cid,
             features,
-            vvu_device,
+            handler_type,
             protocol_features,
             mem: None,
             vmm_maps: None,
@@ -119,10 +120,9 @@ fn convert_vhost_error(err: vhost::Error) -> Error {
 
 impl VhostUserSlaveReqHandlerMut for VsockBackend {
     fn protocol(&self) -> Protocol {
-        if self.vvu_device.is_some() {
-            Protocol::Virtio
-        } else {
-            Protocol::Regular
+        match self.handler_type {
+            HandlerType::VhostUser => Protocol::Regular,
+            HandlerType::Vvu { .. } => Protocol::Virtio,
         }
     }
 
@@ -165,19 +165,14 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
         contexts: &[VhostUserMemoryRegion],
         files: Vec<File>,
     ) -> Result<()> {
-        let (guest_mem, vmm_maps) = match self.vvu_device.as_ref() {
-            None => create_guest_memory(contexts, files)?,
-            Some(dev) => {
+        let (guest_mem, vmm_maps) = match &self.handler_type {
+            HandlerType::VhostUser => create_guest_memory(contexts, files)?,
+            HandlerType::Vvu { vfio_dev, caps, .. } => {
                 // virtio-vhost-user doesn't pass FDs.
                 if !files.is_empty() {
                     return Err(Error::InvalidParam);
                 }
-                let device = dev.lock();
-                create_vvu_guest_memory(
-                    &device.vfio_dev,
-                    device.caps.shared_mem_cfg_addr(),
-                    contexts,
-                )?
+                create_vvu_guest_memory(vfio_dev.as_ref(), caps.shared_mem_cfg_addr(), contexts)?
             }
         };
 
@@ -306,8 +301,10 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
         }
 
         let index = usize::from(index);
-        let event = match self.vvu_device.as_ref() {
-            Some(dev) => {
+        let event = match &self.handler_type {
+            HandlerType::Vvu {
+                notification_evts, ..
+            } => {
                 if fd.is_some() {
                     return Err(Error::InvalidParam);
                 }
@@ -317,15 +314,12 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
                     return Err(Error::InvalidOperation);
                 }
 
-                let kick_evt = dev.lock().notification_evts[index]
-                    .try_clone()
-                    .map_err(|e| {
-                        error!("failed to clone notification_evts[{}]: {}", index, e);
-                        Error::InvalidOperation
-                    })?;
-                kick_evt
+                notification_evts[index].try_clone().map_err(|e| {
+                    error!("failed to clone notification_evts[{}]: {}", index, e);
+                    Error::InvalidOperation
+                })?
             }
-            None => {
+            HandlerType::VhostUser => {
                 let file = fd.ok_or(Error::InvalidParam)?;
 
                 // Safe because the descriptor is uniquely owned by `file`.
@@ -356,14 +350,13 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
         }
 
         let index = usize::from(index);
-        let event = match self.vvu_device.as_ref() {
-            Some(dev) => {
-                let dev = dev.lock();
-                let vfio = Arc::clone(&dev.vfio_dev);
-                let base = dev.caps.doorbell_base_addr();
+        let event = match &self.handler_type {
+            HandlerType::Vvu { vfio_dev, caps, .. } => {
+                let vfio = Arc::clone(vfio_dev);
+                let base = caps.doorbell_base_addr();
                 let addr = VfioRegionAddr {
                     index: base.index,
-                    addr: base.addr + (index as u64 * dev.caps.doorbell_off_multiplier() as u64),
+                    addr: base.addr + (index as u64 * caps.doorbell_off_multiplier() as u64),
                 };
 
                 let doorbell = DoorbellRegion {
@@ -402,7 +395,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
                     .detach();
                 kernel_evt
             }
-            None => {
+            HandlerType::VhostUser => {
                 let file = fd.ok_or(Error::InvalidParam)?;
                 // Safe because the descriptor is uniquely owned by `file`.
                 unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) }
@@ -584,15 +577,22 @@ fn run_vvu_device<P: AsRef<Path>>(
     vhost_socket: P,
     device_name: &str,
 ) -> anyhow::Result<()> {
-    let device = VvuPciDevice::new(device_name, NUM_QUEUES)
-        .map(Mutex::new)
-        .map(Arc::new)
-        .context("failed to create `VvuPciDevice`")?;
-    let driver = VvuDevice::new(device.clone());
-    let backend = VsockBackend::new(ex, cid, vhost_socket, Some(device))
-        .map(StdMutex::new)
-        .map(Arc::new)
-        .context("failed to create `VsockBackend`")?;
+    let mut device =
+        VvuPciDevice::new(device_name, NUM_QUEUES).context("failed to create `VvuPciDevice`")?;
+    let backend = VsockBackend::new(
+        ex,
+        cid,
+        vhost_socket,
+        HandlerType::Vvu {
+            vfio_dev: Arc::clone(&device.vfio_dev),
+            caps: device.caps.clone(),
+            notification_evts: std::mem::take(&mut device.notification_evts),
+        },
+    )
+    .map(StdMutex::new)
+    .map(Arc::new)
+    .context("failed to create `VsockBackend`")?;
+    let driver = VvuDevice::new(Arc::new(Mutex::new(device)));
 
     let mut listener = VfioListener::new(driver)
         .context("failed to create `VfioListener`")
@@ -649,9 +649,10 @@ pub fn run_vsock_device(program_name: &str, args: &[&str]) -> anyhow::Result<()>
 
     match (opts.socket, opts.vfio) {
         (Some(socket), None) => {
-            let backend = VsockBackend::new(&ex, opts.cid, opts.vhost_socket, None)
-                .map(StdMutex::new)
-                .map(Arc::new)?;
+            let backend =
+                VsockBackend::new(&ex, opts.cid, opts.vhost_socket, HandlerType::VhostUser)
+                    .map(StdMutex::new)
+                    .map(Arc::new)?;
 
             // TODO: Replace the `and_then` with `Result::flatten` once it is stabilized.
             ex.run_until(run_device(&ex, socket, backend))
