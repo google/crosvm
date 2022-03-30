@@ -154,7 +154,7 @@ where
 
     let mut serial_params = BTreeMap::new();
 
-    arch::set_default_serial_parameters(&mut serial_params);
+    arch::set_default_serial_parameters(&mut serial_params, false);
 
     X8664arch::setup_serial_devices(
         ProtectionType::Unprotected,

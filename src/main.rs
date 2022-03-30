@@ -2462,7 +2462,12 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
             "'balloon-control' requires enabled balloon".to_owned(),
         ));
     }
-    set_default_serial_parameters(&mut cfg.serial_parameters);
+
+    set_default_serial_parameters(
+        &mut cfg.serial_parameters,
+        !cfg.vhost_user_console.is_empty(),
+    );
+
     Ok(())
 }
 
