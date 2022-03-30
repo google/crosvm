@@ -592,7 +592,7 @@ fn run_vvu_device<P: AsRef<Path>>(
     .map(StdMutex::new)
     .map(Arc::new)
     .context("failed to create `VsockBackend`")?;
-    let driver = VvuDevice::new(Arc::new(Mutex::new(device)));
+    let driver = VvuDevice::new(device);
 
     let mut listener = VfioListener::new(driver)
         .context("failed to create `VfioListener`")

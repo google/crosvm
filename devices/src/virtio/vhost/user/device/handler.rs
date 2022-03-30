@@ -441,8 +441,7 @@ where
             caps: device.caps.clone(),
             notification_evts: std::mem::take(&mut device.notification_evts),
         };
-        let device = Arc::new(Mutex::new(device));
-        let driver = VvuDevice::new(Arc::clone(&device));
+        let driver = VvuDevice::new(device);
 
         let mut listener = VfioListener::new(driver)
             .map_err(|e| anyhow!("failed to create a VFIO listener: {}", e))

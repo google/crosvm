@@ -92,7 +92,7 @@ enum DeviceState {
     Initialized {
         // TODO(keiichiw): Update `VfioDeviceTrait::start()` to take `VvuPciDevice` so that we can
         // drop this field.
-        device: Arc<Mutex<VvuPciDevice>>,
+        device: VvuPciDevice,
     },
     Running {
         vfio: Arc<VfioDevice>,
@@ -113,7 +113,7 @@ pub struct VvuDevice {
 }
 
 impl VvuDevice {
-    pub fn new(device: Arc<Mutex<VvuPciDevice>>) -> Self {
+    pub fn new(device: VvuPciDevice) -> Self {
         Self {
             state: DeviceState::Initialized { device },
             rxq_evt: Event::new().expect("failed to create VvuDevice's rxq_evt"),
@@ -127,20 +127,18 @@ impl VfioDeviceTrait for VvuDevice {
     }
 
     fn start(&mut self) -> Result<()> {
-        let device = match &self.state {
-            DeviceState::Initialized { device } => Arc::clone(device),
+        let device = match &mut self.state {
+            DeviceState::Initialized { device } => device,
             DeviceState::Running { .. } => {
                 bail!("VvuDevice has already started");
             }
         };
         let ex = Executor::new().expect("Failed to create an executor");
 
-        let mut dev = device.lock();
-        let mut irqs = mem::take(&mut dev.irqs);
-        let mut queues = mem::take(&mut dev.queues);
-        let mut queue_notifiers = mem::take(&mut dev.queue_notifiers);
-        let vfio = Arc::clone(&dev.vfio_dev);
-        drop(dev);
+        let mut irqs = mem::take(&mut device.irqs);
+        let mut queues = mem::take(&mut device.queues);
+        let mut queue_notifiers = mem::take(&mut device.queue_notifiers);
+        let vfio = Arc::clone(&device.vfio_dev);
 
         let rxq = queues.remove(0);
         let rxq_irq = irqs.remove(0);
@@ -154,25 +152,33 @@ impl VfioDeviceTrait for VvuDevice {
         let txq_irq = irqs.remove(0);
         let txq_notifier = Arc::new(Mutex::new(queue_notifiers.remove(0)));
 
+        let old_state = std::mem::replace(
+            &mut self.state,
+            DeviceState::Running {
+                vfio,
+                rxq_notifier,
+                rxq_receiver,
+                rxq_buf: vec![],
+                txq,
+                txq_notifier,
+            },
+        );
+
+        let device = match old_state {
+            DeviceState::Initialized { device } => device,
+            _ => unreachable!(),
+        };
+
         thread::Builder::new()
             .name("virtio-vhost-user driver".to_string())
             .spawn(move || {
-                device.lock().start().expect("failed to start device");
+                device.start().expect("failed to start device");
                 if let Err(e) =
                     run_worker(ex, rxq, rxq_irq, rxq_sender, rxq_evt, txq_cloned, txq_irq)
                 {
                     error!("worker thread exited with error: {}", e);
                 }
             })?;
-
-        self.state = DeviceState::Running {
-            vfio,
-            rxq_notifier,
-            rxq_receiver,
-            rxq_buf: vec![],
-            txq,
-            txq_notifier,
-        };
 
         Ok(())
     }
