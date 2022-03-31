@@ -28,7 +28,6 @@ use devices::virtio::cras_backend::Parameters as CrasSndParameters;
 use devices::virtio::fs::passthrough;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
-use devices::virtio::vhost::vsock::VhostVsockDeviceParameter;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
 #[cfg(feature = "audio")]
@@ -355,7 +354,7 @@ impl Default for JailConfig {
 /// Aggregate of all configurable options for a running VM.
 pub struct Config {
     pub kvm_device_path: PathBuf,
-    pub vhost_vsock_device: Option<VhostVsockDeviceParameter>,
+    pub vhost_vsock_device: Option<PathBuf>,
     pub vhost_net_device_path: PathBuf,
     pub vcpu_count: Option<usize>,
     pub vcpu_cgroup_path: Option<PathBuf>,

@@ -44,7 +44,6 @@ use devices::virtio::vhost::user::device::{
     run_block_device, run_console_device, run_fs_device, run_net_device, run_vsock_device,
     run_wl_device,
 };
-use devices::virtio::vhost::vsock::VhostVsockDeviceParameter;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
 #[cfg(feature = "gpu")]
@@ -1109,17 +1108,14 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     expected: String::from("A vhost-vsock device was already specified"),
                 });
             }
-            cfg.vhost_vsock_device = Some(VhostVsockDeviceParameter::Fd(
-                value
-                    .unwrap()
-                    .parse()
-                    .map_err(|_| argument::Error::InvalidValue {
-                        value: value.unwrap().to_owned(),
-                        expected: String::from(
-                            "this value for `vhost-vsock-fd` needs to be integer",
-                        ),
-                    })?,
-            ));
+            let fd: i32 = value
+                .unwrap()
+                .parse()
+                .map_err(|_| argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("this value for `vhost-vsock-fd` needs to be integer"),
+                })?;
+            cfg.vhost_vsock_device = Some(PathBuf::from(format!("/proc/self/fd/{}", fd)));
         }
         "vhost-vsock-device" => {
             if cfg.vhost_vsock_device.is_some() {
@@ -1136,7 +1132,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 });
             }
 
-            cfg.vhost_vsock_device = Some(VhostVsockDeviceParameter::Path(vhost_vsock_device_path));
+            cfg.vhost_vsock_device = Some(vhost_vsock_device_path);
         }
         "vhost-net-device" => {
             let vhost_net_device_path = PathBuf::from(value.unwrap());

@@ -23,7 +23,6 @@ use std::process;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use std::thread;
 
-use devices::virtio::vhost::vsock::{VhostVsockConfig, VhostVsockDeviceParameter};
 use libc;
 
 use acpi_tables::sdt::SDT;
@@ -34,6 +33,7 @@ use base::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 use devices::serial_device::SerialHardware;
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
 use devices::virtio::memory_mapper::MemoryMapperTrait;
+use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::{self, EventDevice};
 #[cfg(feature = "audio")]
@@ -407,10 +407,7 @@ fn create_virtio_devices(
 
     if let Some(cid) = cfg.cid {
         let vhost_config = VhostVsockConfig {
-            device: cfg
-                .vhost_vsock_device
-                .clone()
-                .unwrap_or(VhostVsockDeviceParameter::default()),
+            device: cfg.vhost_vsock_device.clone(),
             cid,
         };
         devs.push(create_vhost_vsock_device(cfg, &vhost_config)?);
