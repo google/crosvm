@@ -1,6 +1,6 @@
 [package]
 name = "io_uring"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["The Chromium OS Authors"]
 edition = "2021"
 
