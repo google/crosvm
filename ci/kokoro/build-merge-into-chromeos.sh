@@ -207,9 +207,6 @@ main() {
         echo "Not enough commits to merge."
     fi
 
-    # Rebase to integrate cherry-picks. Always resolve conflicts with content from origin/main.
-    git rebase --rebase-merges -X theirs
-
     upload_with_retries
 
     echo "Abandoning previous dry runs"
