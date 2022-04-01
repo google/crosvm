@@ -41,7 +41,7 @@ hypervisor = { path = "../hypervisor" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
 libcras = { version = "*", optional = true }
-libvda = { path = "../libvda", optional = true }
+libvda = { path = "../media/libvda", optional = true }
 linux_input_sys = { path = "../linux_input_sys" }
 memoffset = { version = "0.6" }
 minijail = "*"

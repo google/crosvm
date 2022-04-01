@@ -208,7 +208,8 @@ Source code is organized into crates, each with their own unit tests.
 - `kernel_loader` - Loads elf64 kernel files to a slice of memory.
 - `kvm_sys` - Low-level (mostly) auto-generated structures and constants for using KVM.
 - `kvm` - Unsafe, low-level wrapper code for using `kvm_sys`.
-- `libvda` - Safe wrapper of [libvda], a Chrome OS HW-accelerated video decoding/encoding library.
+- `media/libvda` - Safe wrapper of [libvda], a Chrome OS HW-accelerated video decoding/encoding
+  library.
 - `net_sys` - Low-level (mostly) auto-generated structures and constants for creating TUN/TAP
   devices.
 - `net_util` - Wrapper for creating TUN/TAP devices.
