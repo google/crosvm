@@ -1,0 +1,21 @@
+#!/bin/bash
+# Copyright 2022 The ChromiumOS Authors.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+set -e
+
+function main() {
+  local review_branch="tmp-$(date +%Y%m%d)-$RANDOM"
+  git checkout -b "${review_branch}"
+  git branch --set-upstream-to cros/main
+  git fetch cros main
+  git rebase --onto cros/main cros/chromeos "${review_branch}" || true
+  echo "
+
+Review branch ${review_branch} created!
+
+Resolve any conflicts and do review with repo upload.
+git checkout - to go back to the previous branch."
+}
+
+main

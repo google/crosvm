@@ -29,12 +29,15 @@ However, changes are not acceped to the `cros/chromeos` branch, and should be su
 `cros/main` instead.
 
 Use `repo upload -D main` to upload changes to the main branch, which works fine in most cases where
-gerrit can rebase the commit cleanly. If not, please rebase to `cros/main` manually:
+gerrit and kokoro can rebase the commit cleanly. If not, please rebase to `cros/main` manually:
 
 ```bash
 git branch --set-upstream-to cros/main
 git rebase
 ```
+
+If this doesn't work, use `tools/chromeos/rebase_for_review` to rebase the changes onto main and
+`repo upload` to upload changes to the main branch.
 
 ## First time setup / running tools
 
