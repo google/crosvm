@@ -470,6 +470,8 @@ pub struct Config {
     pub strict_balloon: bool,
     pub mmio_address_ranges: Vec<RangeInclusive<u64>>,
     pub userspace_msr: BTreeSet<u32>,
+    #[cfg(target_os = "android")]
+    pub task_profiles: Vec<String>,
 }
 
 impl Default for Config {
@@ -595,6 +597,8 @@ impl Default for Config {
             strict_balloon: false,
             mmio_address_ranges: Vec::new(),
             userspace_msr: BTreeSet::new(),
+            #[cfg(target_os = "android")]
+            task_profiles: Vec::new(),
         }
     }
 }

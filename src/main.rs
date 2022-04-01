@@ -2423,6 +2423,12 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 .collect();
             cfg.mmio_address_ranges = ranges?;
         }
+        #[cfg(target_os = "android")]
+        "task-profiles" => {
+            for name in value.unwrap().split(',') {
+                cfg.task_profiles.push(name.to_owned());
+            }
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => unreachable!(),
     }
@@ -2833,6 +2839,8 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                           "Ranges (inclusive) into which to limit guest mmio addresses. Note that
                            this this may cause mmio allocations to fail if the specified ranges are
                            incompatible with the default ranges calculated by crosvm."),
+          #[cfg(target_os = "android")]
+          Argument::value("task-profiles", "NAME[,...]", "Comma-separated names of the task profiles to apply to all threads in crosvm including the vCPU threads."),
           Argument::short_flag('h', "help", "Print help message.")];
 
     let mut cfg = Config::default();

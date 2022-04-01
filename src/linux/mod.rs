@@ -89,6 +89,9 @@ pub use gpu::GpuRenderServerParameters;
 #[cfg(feature = "gpu")]
 use gpu::*;
 
+#[cfg(target_os = "android")]
+mod android;
+
 // gpu_device_tube is not used when GPU support is disabled.
 #[cfg_attr(not(feature = "gpu"), allow(unused_variables))]
 fn create_virtio_devices(
@@ -1729,6 +1732,10 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             Some(f)
         }
     };
+
+    #[cfg(target_os = "android")]
+    android::set_process_profiles(&cfg.task_profiles)?;
+
     for (cpu_id, vcpu) in vcpus.into_iter().enumerate() {
         let (to_vcpu_channel, from_main_channel) = mpsc::channel();
         let vcpu_affinity = match linux.vcpu_affinity.clone() {
