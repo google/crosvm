@@ -159,6 +159,8 @@ pub enum Error {
     RegisterIrqfd(base::Error),
     #[error("error registering virtual socket device: {0}")]
     RegisterVsock(arch::DeviceRegistrationError),
+    #[error("error reserved pcie config mmio")]
+    ReservePcieCfgMmio(resources::Error),
     #[error("failed to set a hardware breakpoint: {0}")]
     SetHwBreakpoint(base::Error),
     #[error("failed to set interrupts: {0}")]
@@ -230,7 +232,7 @@ const PCIE_CFG_MMIO_START: u64 = FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - PC
 // Reserve memory region for pcie virtual configuration
 const PCIE_VCFG_MMIO_SIZE: u64 = PCIE_CFG_MMIO_SIZE;
 const END_ADDR_BEFORE_32BITS: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
-const PCI_MMIO_SIZE: u64 = MEM_32BIT_GAP_SIZE - RESERVED_MEM_SIZE - PCIE_CFG_MMIO_SIZE;
+const PCI_MMIO_SIZE: u64 = MEM_32BIT_GAP_SIZE - RESERVED_MEM_SIZE;
 // Linux (with 4-level paging) has a physical memory limit of 46 bits (64 TiB).
 const HIGH_MMIO_MAX_END: u64 = 1u64 << 46;
 const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
@@ -468,6 +470,12 @@ impl arch::LinuxArch for X8664arch {
         let mut noirq = true;
         let mut mptable = true;
         let mut sci_irq = X86_64_SCI_IRQ;
+
+        // punch pcie config mmio from pci low mmio, so that it couldn't be
+        // allocated to any device.
+        system_allocator
+            .reserve_mmio(PCIE_CFG_MMIO_START, PCIE_CFG_MMIO_SIZE)
+            .map_err(Error::ReservePcieCfgMmio)?;
 
         for sdt in components.acpi_sdts.iter() {
             if sdt.is_signature(b"DSDT") || sdt.is_signature(b"APIC") {
