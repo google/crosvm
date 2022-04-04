@@ -18,7 +18,7 @@ use std::{
 /// ```
 /// use std::alloc::Layout;
 /// use std::mem;
-/// use crate::common::LayoutAllocation;
+/// use crate::LayoutAllocation;
 ///
 /// #[repr(C)]
 /// struct Header {

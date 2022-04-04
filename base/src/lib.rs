@@ -2,9 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-pub mod common;
+mod alloc;
 pub mod descriptor;
 pub mod descriptor_reflection;
+mod errno;
+pub mod external_mapping;
+pub mod scoped_event_macro;
+mod tube;
 
 #[cfg(unix)]
 pub mod unix;
@@ -12,8 +16,10 @@ pub mod unix;
 #[cfg(windows)]
 pub mod windows;
 
-mod tube;
-
+pub use alloc::LayoutAllocation;
+pub use errno::{errno_result, Error, Result};
+pub use external_mapping::{Error as ExternalMappingError, Result as ExternalMappingResult, *};
+pub use scoped_event_macro::*;
 pub use tube::{Error as TubeError, RecvTube, Result as TubeResult, SendTube, Tube};
 
 cfg_if::cfg_if! {

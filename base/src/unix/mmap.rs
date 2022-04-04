@@ -13,7 +13,7 @@ use std::{
     ptr::{copy_nonoverlapping, null_mut, read_unaligned, write_unaligned},
 };
 
-use crate::common::ExternalMapping;
+use crate::external_mapping::ExternalMapping;
 use libc::{
     c_int, c_void, read, write, {self},
 };

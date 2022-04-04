@@ -14,8 +14,9 @@ use data_model::{volatile_memory::*, DataInit};
 
 use libc::{c_int, c_uint, c_void};
 
-use super::{ExternalMapping, RawDescriptor};
+use super::RawDescriptor;
 use crate::descriptor::{AsRawDescriptor, Descriptor};
+use crate::external_mapping::ExternalMapping;
 
 #[path = "win/mmap.rs"]
 mod mmap_platform;

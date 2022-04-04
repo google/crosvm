@@ -7,7 +7,7 @@ use std::{alloc::Layout, mem::MaybeUninit, os::unix::io::AsRawFd, str};
 use data_model::DataInit;
 use libc::EINVAL;
 
-use crate::common::LayoutAllocation;
+use crate::alloc::LayoutAllocation;
 
 use super::{errno_result, getpid, Error, RawDescriptor, Result};
 use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};

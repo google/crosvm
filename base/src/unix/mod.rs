@@ -56,7 +56,7 @@ pub use crate::descriptor_reflection::{
     SerializeDescriptors,
 };
 pub use crate::{
-    common::{Error, Result, *},
+    errno::{Error, Result, *},
     generate_scoped_event,
 };
 pub use acpi_event::*;
