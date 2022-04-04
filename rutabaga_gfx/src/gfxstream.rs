@@ -8,12 +8,10 @@
 
 #![cfg(feature = "gfxstream")]
 
-use std::cell::RefCell;
 use std::convert::TryInto;
 use std::mem::{size_of, transmute};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::ptr::{null, null_mut};
-use std::rc::Rc;
 use std::sync::Arc;
 
 use base::{
