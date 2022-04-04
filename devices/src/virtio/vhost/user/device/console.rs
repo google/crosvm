@@ -28,12 +28,12 @@ use crate::virtio::vhost::user::device::handler::{
     DeviceRequestHandler, Doorbell, VhostUserBackend,
 };
 use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
-use crate::virtio::{self, copy_config};
+use crate::virtio::{self, copy_config, SignalableInterrupt};
 
-async fn run_tx_queue(
+async fn run_tx_queue<I: SignalableInterrupt>(
     mut queue: virtio::Queue,
     mem: GuestMemory,
-    doorbell: Arc<Mutex<Doorbell>>,
+    doorbell: I,
     kick_evt: EventAsync,
     mut output: Box<dyn io::Write>,
 ) {
@@ -46,10 +46,10 @@ async fn run_tx_queue(
     }
 }
 
-async fn run_rx_queue(
+async fn run_rx_queue<I: SignalableInterrupt>(
     mut queue: virtio::Queue,
     mem: GuestMemory,
-    doorbell: Arc<Mutex<Doorbell>>,
+    doorbell: I,
     kick_evt: EventAsync,
     in_buffer: Arc<Mutex<VecDeque<u8>>>,
     in_avail_evt: EventAsync,
