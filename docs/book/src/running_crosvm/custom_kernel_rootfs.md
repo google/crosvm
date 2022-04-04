@@ -20,8 +20,9 @@ git clone --depth 1 -b chromeos-5.10 https://chromium.googlesource.com/chromiumo
 
 Either way that you get the kernel, the next steps are to configure and build the bzImage:
 
-```bas
-make chromiumos-container-vm-x86_64_defconfig
+```bash
+CHROMEOS_KERNEL_FAMILY=termina ./chromeos/scripts/prepareconfig container-vm-x86_64
+make olddefconfig
 make -j$(nproc) bzImage
 ```
 
