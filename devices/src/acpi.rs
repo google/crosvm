@@ -320,7 +320,13 @@ fn acpi_event_pwrbtn_class(
 
 fn get_acpi_event_group() -> Option<u32> {
     // Create netlink generic socket which will be used to query about given family name
-    let netlink_ctrl_sock = NetlinkGenericSocket::new(0).unwrap();
+    let netlink_ctrl_sock = match NetlinkGenericSocket::new(0) {
+        Ok(sock) => sock,
+        Err(e) => {
+            error!("netlink generic socket creation error: {}", e);
+            return None;
+        }
+    };
 
     let nlmsg_family_response = netlink_ctrl_sock
         .family_name_query("acpi_event".to_string())
