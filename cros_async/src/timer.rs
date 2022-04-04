@@ -69,13 +69,10 @@ mod tests {
 
         async fn this_test(ex: &URingExecutor) {
             let tfd = TimerFd::new().expect("failed to create timerfd");
-            assert_eq!(tfd.is_armed().unwrap(), false);
 
             let dur = Duration::from_millis(200);
             let now = Instant::now();
             tfd.reset(dur, None).expect("failed to arm timer");
-
-            assert_eq!(tfd.is_armed().unwrap(), true);
 
             let t = TimerAsync::new_uring(tfd, ex).unwrap();
             let count = t.next_val().await.expect("unable to wait for timer");
@@ -92,13 +89,10 @@ mod tests {
     fn one_shot_fd() {
         async fn this_test(ex: &FdExecutor) {
             let tfd = TimerFd::new().expect("failed to create timerfd");
-            assert_eq!(tfd.is_armed().unwrap(), false);
 
             let dur = Duration::from_millis(200);
             let now = Instant::now();
             tfd.reset(dur, None).expect("failed to arm timer");
-
-            assert_eq!(tfd.is_armed().unwrap(), true);
 
             let t = TimerAsync::new_poll(tfd, ex).unwrap();
             let count = t.next_val().await.expect("unable to wait for timer");

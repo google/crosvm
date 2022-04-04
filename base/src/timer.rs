@@ -42,10 +42,6 @@ macro_rules! build_timer {
                 self.0.wait().map(|_| ())
             }
 
-            pub fn is_armed(&self) -> Result<bool> {
-                self.0.is_armed()
-            }
-
             pub fn clear(&mut self) -> Result<()> {
                 self.0.clear()
             }

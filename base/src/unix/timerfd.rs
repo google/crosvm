@@ -12,10 +12,7 @@ use std::{
 };
 use sync::Mutex;
 
-use libc::{
-    clock_getres, timerfd_create, timerfd_gettime, timerfd_settime, CLOCK_MONOTONIC, TFD_CLOEXEC,
-    {self},
-};
+use libc::{self, clock_getres, timerfd_create, timerfd_settime, CLOCK_MONOTONIC, TFD_CLOEXEC};
 
 use super::{errno_result, EventFd, FakeClock, Result};
 
@@ -90,20 +87,6 @@ impl TimerFd {
         // The bytes in the buffer are guaranteed to be in native byte-order so we don't need to
         // use from_le or from_be.
         Ok(count)
-    }
-
-    /// Returns `true` if the timer is currently armed.
-    pub fn is_armed(&self) -> Result<bool> {
-        // Safe because we are zero-initializing a struct with only primitive member fields.
-        let mut spec: libc::itimerspec = unsafe { mem::zeroed() };
-
-        // Safe because timerfd_gettime is trusted to only modify `spec`.
-        let ret = unsafe { timerfd_gettime(self.as_raw_fd(), &mut spec) };
-        if ret < 0 {
-            return errno_result();
-        }
-
-        Ok(spec.it_value.tv_sec != 0 || spec.it_value.tv_nsec != 0)
     }
 
     /// Disarms the timer.
@@ -215,11 +198,6 @@ impl FakeTimerFd {
         }
     }
 
-    /// Returns `true` if the timer is currently armed.
-    pub fn is_armed(&self) -> Result<bool> {
-        Ok(self.deadline_ns.is_some())
-    }
-
     /// Disarms the timer.
     pub fn clear(&mut self) -> Result<()> {
         self.deadline_ns = None;
@@ -256,13 +234,10 @@ mod tests {
     #[test]
     fn one_shot() {
         let tfd = TimerFd::new().expect("failed to create timerfd");
-        assert!(!tfd.is_armed().unwrap());
 
         let dur = Duration::from_millis(200);
         let now = Instant::now();
         tfd.reset(dur, None).expect("failed to arm timer");
-
-        assert!(tfd.is_armed().unwrap());
 
         let count = tfd.wait().expect("unable to wait for timer");
 
@@ -288,12 +263,10 @@ mod tests {
     fn fake_one_shot() {
         let clock = Arc::new(Mutex::new(FakeClock::new()));
         let mut tfd = FakeTimerFd::new(clock.clone());
-        assert!(!tfd.is_armed().unwrap());
 
         let dur = Duration::from_nanos(200);
         tfd.reset(dur, None).expect("failed to arm timer");
 
-        assert!(tfd.is_armed().unwrap());
         clock.lock().add_ns(200);
 
         let count = tfd.wait().expect("unable to wait for timer");
