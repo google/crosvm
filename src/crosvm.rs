@@ -13,14 +13,14 @@ pub mod platform;
 #[cfg(feature = "plugin")]
 pub mod plugin;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::net;
 use std::ops::RangeInclusive;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use arch::{Pstore, VcpuAffinity};
+use arch::{MsrConfig, Pstore, VcpuAffinity};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::virtio::block::block::DiskOption;
 #[cfg(feature = "audio_cras")]
@@ -469,7 +469,7 @@ pub struct Config {
     pub force_s2idle: bool,
     pub strict_balloon: bool,
     pub mmio_address_ranges: Vec<RangeInclusive<u64>>,
-    pub userspace_msr: BTreeSet<u32>,
+    pub userspace_msr: BTreeMap<u32, MsrConfig>,
     #[cfg(target_os = "android")]
     pub task_profiles: Vec<String>,
 }
@@ -596,7 +596,7 @@ impl Default for Config {
             force_s2idle: false,
             strict_balloon: false,
             mmio_address_ranges: Vec::new(),
-            userspace_msr: BTreeSet::new(),
+            userspace_msr: BTreeMap::new(),
             #[cfg(target_os = "android")]
             task_profiles: Vec::new(),
         }

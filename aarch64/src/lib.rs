@@ -8,7 +8,10 @@ use std::collections::BTreeMap;
 use std::io;
 use std::sync::Arc;
 
-use arch::{get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, VmComponents, VmImage};
+use arch::{
+    get_serial_cmdline, GetSerialCmdlineError, MsrExitHandler, RunnableLinuxVm, VmComponents,
+    VmImage,
+};
 use base::{Event, MemoryMappingBuilder};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::{
@@ -635,3 +638,8 @@ impl AArch64 {
         Ok(())
     }
 }
+
+#[derive(Default)]
+pub struct MsrAArch64;
+
+impl MsrExitHandler for MsrAArch64 {}

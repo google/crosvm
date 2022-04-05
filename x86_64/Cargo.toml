@@ -10,6 +10,7 @@ direct = []
 
 [dependencies]
 arch = { path = "../arch" }
+anyhow = "*"
 assertions = { path = "../common/assertions" }
 data_model = { path = "../common/data_model" }
 devices = { path = "../devices" }

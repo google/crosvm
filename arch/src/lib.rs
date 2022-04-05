@@ -14,6 +14,8 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use libc::sched_getcpu;
+
 use acpi_tables::aml::Aml;
 use acpi_tables::sdt::SDT;
 use base::{syslog, AsRawDescriptor, AsRawDescriptors, Event, Tube};
@@ -835,4 +837,106 @@ where
         .map_err(LoadImageError::ReadToMemory)?;
 
     Ok((guest_addr, size))
+}
+
+/// Read and write permissions setting
+///
+/// Wrap read_allow and write_allow to store them in MsrHandlers level.
+#[derive(Clone, Copy, Default, PartialEq)]
+pub struct MsrRWType {
+    pub read_allow: bool,
+    pub write_allow: bool,
+}
+
+/// Handler types for userspace-msr
+#[derive(Clone, Debug, PartialEq)]
+pub enum MsrAction {
+    /// Read and write from host directly, and the control of MSR will
+    /// take effect on host.
+    MsrPassthrough,
+    /// Store the dummy value for msr (copy from host or custom values),
+    /// and the control(WRMSR) of MSR won't take effect on host.
+    MsrEmulate,
+}
+
+/// Source CPU of MSR value
+///
+/// Indicate which CPU that user get/set MSRs from/to.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MsrValueFrom {
+    /// Read/write MSR value from/into CPU 0.
+    /// The MSR source CPU always be CPU 0.
+    RWFromCPU0,
+    /// Read/write MSR value from/into the running CPU.
+    /// If vCPU migrates to another pcpu, the MSR source CPU will also change.
+    RWFromRunningCPU,
+}
+
+impl MsrValueFrom {
+    /// Get the physical(host) CPU id from MsrValueFrom type.
+    pub fn get_cpu_id(&self) -> usize {
+        match self {
+            MsrValueFrom::RWFromCPU0 => 0,
+            MsrValueFrom::RWFromRunningCPU => {
+                // Safe because the host supports this sys call.
+                (unsafe { sched_getcpu() }) as usize
+            }
+        }
+    }
+}
+
+/// If user doesn't specific CPU0, the default source CPU is running CPU.
+impl Default for MsrValueFrom {
+    fn default() -> Self {
+        MsrValueFrom::RWFromRunningCPU
+    }
+}
+
+/// Config option for userspace-msr handing
+///
+/// MsrConfig will be collected with its corresponding MSR's index.
+/// eg, (msr_index, msr_config)
+#[derive(Clone, Default, PartialEq)]
+pub struct MsrConfig {
+    /// If support RDMSR/WRMSR emulation in crosvm?
+    pub rw_type: MsrRWType,
+    /// Handlers should be used to handling MSR.
+    /// User must set this field.
+    pub action: Option<MsrAction>,
+    /// MSR source CPU.
+    pub from: MsrValueFrom,
+}
+
+impl MsrConfig {
+    pub fn new() -> Self {
+        Default::default()
+    }
+}
+
+#[sorted]
+#[derive(Error, Debug)]
+pub enum MsrExitHandlerError {
+    #[error("Fail to create MSR handler")]
+    HandlerCreateFailed,
+    #[error("Error parameter")]
+    InvalidParam,
+}
+
+pub trait MsrExitHandler {
+    fn read(&self, _index: u32) -> Option<u64> {
+        None
+    }
+
+    fn write(&self, _index: u32, _data: u64) -> Option<()> {
+        None
+    }
+
+    fn add_handler(
+        &mut self,
+        _index: u32,
+        _msr_config: MsrConfig,
+        _cpu_id: usize,
+    ) -> std::result::Result<(), MsrExitHandlerError> {
+        Ok(())
+    }
 }

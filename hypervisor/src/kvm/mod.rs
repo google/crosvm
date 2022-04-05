@@ -851,6 +851,13 @@ impl Vcpu for KvmVcpu {
                 }
                 Ok(())
             }
+            KVM_EXIT_X86_WRMSR => {
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let msr = unsafe { &mut run.__bindgen_anon_1.msr };
+                msr.error = 0;
+                Ok(())
+            }
             _ => Err(Error::new(EINVAL)),
         }
     }

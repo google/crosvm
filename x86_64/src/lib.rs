@@ -36,6 +36,8 @@ unsafe impl data_model::DataInit for mpspec::mpc_table {}
 unsafe impl data_model::DataInit for mpspec::mpc_lintsrc {}
 unsafe impl data_model::DataInit for mpspec::mpf_intel {}
 
+pub mod msr;
+
 mod acpi;
 mod bzimage;
 mod cpuid;

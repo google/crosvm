@@ -2,11 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::prelude::*;
-use std::os::unix::fs::FileExt;
-use std::rc::Rc;
 use std::sync::{mpsc, Arc, Barrier};
 
 use std::thread;
@@ -22,11 +20,10 @@ use vm_control::*;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use vm_memory::GuestMemory;
 
-use arch::{self, LinuxArch};
-
+use arch::{self, LinuxArch, MsrConfig, MsrExitHandler};
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use {
-    aarch64::AArch64 as Arch,
+    aarch64::{AArch64 as Arch, MsrAArch64 as MsrHandlers},
     devices::IrqChipAArch64 as IrqChipArch,
     hypervisor::{VcpuAArch64 as VcpuArch, VmAArch64 as VmArch},
 };
@@ -34,7 +31,7 @@ use {
 use {
     devices::IrqChipX86_64 as IrqChipArch,
     hypervisor::{VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
-    x86_64::X8664arch as Arch,
+    x86_64::{msr::MsrHandlers, X8664arch as Arch},
 };
 
 use super::ExitState;
@@ -278,7 +275,7 @@ fn vcpu_loop<V>(
         mpsc::Sender<VcpuDebugStatusMessage>,
     >,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))] guest_mem: GuestMemory,
-    msr_handlers: MsrHandlers,
+    msr_handlers: Box<dyn MsrExitHandler>,
 ) -> ExitState
 where
     V: VcpuArch + 'static,
@@ -442,8 +439,10 @@ where
                         let _ = vcpu.set_data(&data.to_ne_bytes());
                     }
                 }
-                Ok(VcpuExit::WrMsr { .. }) => {
-                    // TODO(b/215297064): implement MSR write
+                Ok(VcpuExit::WrMsr { index, data }) => {
+                    if msr_handlers.write(index, data).is_some() {
+                        let _ = vcpu.set_data(&[]);
+                    }
                 }
                 Ok(VcpuExit::IoapicEoi { vector }) => {
                     if let Err(e) = irq_chip.broadcast_eoi(vector) {
@@ -524,67 +523,6 @@ where
     }
 }
 
-trait MsrHandling {
-    fn read(&self, index: u32) -> Result<u64>;
-    fn write(&self, index: u32, data: u64) -> Result<()>;
-}
-
-struct ReadPassthrough {
-    dev_msr: std::fs::File,
-}
-
-impl MsrHandling for ReadPassthrough {
-    fn read(&self, index: u32) -> Result<u64> {
-        let mut data = [0; 8];
-        self.dev_msr.read_exact_at(&mut data, index.into())?;
-        Ok(u64::from_ne_bytes(data))
-    }
-
-    fn write(&self, _index: u32, _data: u64) -> Result<()> {
-        // TODO(b/215297064): implement MSR write
-        unimplemented!();
-    }
-}
-
-impl ReadPassthrough {
-    fn new() -> Result<Self> {
-        // TODO(b/215297064): Support reading from other CPUs than 0, should match running CPU.
-        let filename = "/dev/cpu/0/msr";
-        let dev_msr = OpenOptions::new()
-            .read(true)
-            .open(&filename)
-            .context("Cannot open /dev/cpu/0/msr, are you root?")?;
-        Ok(ReadPassthrough { dev_msr })
-    }
-}
-
-/// MSR handler configuration. Per-cpu.
-struct MsrHandlers {
-    handler: BTreeMap<u32, Rc<Box<dyn MsrHandling>>>,
-}
-
-impl MsrHandlers {
-    fn new() -> Self {
-        MsrHandlers {
-            handler: BTreeMap::new(),
-        }
-    }
-
-    fn read(&self, index: u32) -> Option<u64> {
-        if let Some(handler) = self.handler.get(&index) {
-            match handler.read(index) {
-                Ok(data) => Some(data),
-                Err(e) => {
-                    error!("MSR host read failed {:#x} {:?}", index, e);
-                    None
-                }
-            }
-        } else {
-            None
-        }
-    }
-}
-
 pub fn run_vcpu<V>(
     cpu_id: usize,
     vcpu_id: usize,
@@ -613,7 +551,7 @@ pub fn run_vcpu<V>(
     host_cpu_topology: bool,
     privileged_vm: bool,
     vcpu_cgroup_tasks_file: Option<File>,
-    userspace_msr: BTreeSet<u32>,
+    userspace_msr: BTreeMap<u32, MsrConfig>,
 ) -> Result<JoinHandle<()>>
 where
     V: VcpuArch + 'static,
@@ -626,21 +564,13 @@ where
             // anything happens before we get to writing the final event.
             let scoped_exit_evt = ScopedEvent::from(exit_evt);
 
-            let mut msr_handlers = MsrHandlers::new();
+            let mut msr_handlers: MsrHandlers = Default::default();
             if !userspace_msr.is_empty() {
-                let read_passthrough: Rc<Box<dyn MsrHandling>> = match ReadPassthrough::new() {
-                    Ok(r) => Rc::new(Box::new(r)),
-                    Err(e) => {
-                        error!(
-                            "failed to create MSR read passthrough handler for vcpu {}: {:#}",
-                            cpu_id, e
-                        );
+                userspace_msr.iter().for_each(|(index, msr_config)| {
+                    if let Err(e) = msr_handlers.add_handler(*index, msr_config.clone(), cpu_id) {
+                        error!("failed to add msr handler {}: {:#}", cpu_id, e);
                         return;
-                    }
-                };
-
-                userspace_msr.iter().for_each(|&index| {
-                    msr_handlers.handler.insert(index, read_passthrough.clone());
+                    };
                 });
             }
 
@@ -702,7 +632,7 @@ where
                 to_gdb_tube,
                 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
                 guest_mem,
-                msr_handlers,
+                Box::new(msr_handlers),
             );
 
             let exit_evt = scoped_exit_evt.into();
