@@ -338,6 +338,25 @@ impl KvmVm {
         }
     }
 
+    /// Set MSR_PLATFORM_INFO read access.
+    pub fn set_platform_info_read_access(&self, allow_read: bool) -> Result<()> {
+        let mut cap = kvm_enable_cap {
+            cap: KVM_CAP_MSR_PLATFORM_INFO,
+            ..Default::default()
+        };
+        cap.args[0] = allow_read as u64;
+
+        // Safe because we know that our file is a VM fd, we know that the
+        // kernel will only read correct amount of memory from our pointer, and
+        // we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_ENABLE_CAP(), &cap) };
+        if ret < 0 {
+            errno_result()
+        } else {
+            Ok(())
+        }
+    }
+
     /// Enable support for split-irqchip.
     pub fn enable_split_irqchip(&self, ioapic_pins: usize) -> Result<()> {
         let mut cap = kvm_enable_cap {
