@@ -2141,6 +2141,21 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 );
         }
         #[cfg(feature = "direct")]
+        "direct-wake-irq" => {
+            cfg.direct_wake_irq
+                .push(
+                    value
+                        .unwrap()
+                        .parse()
+                        .map_err(|_| argument::Error::InvalidValue {
+                            value: value.unwrap().to_owned(),
+                            expected: String::from(
+                                "this value for `direct-wake-irq` must be an unsigned integer",
+                            ),
+                        })?,
+                );
+        }
+        #[cfg(feature = "direct")]
         "direct-gpe" => {
             cfg.direct_gpe.push(value.unwrap().parse().map_err(|_| {
                 argument::Error::InvalidValue {
@@ -2770,6 +2785,8 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("direct-level-irq", "irq", "Enable interrupt passthrough"),
 #[cfg(feature = "direct")]
           Argument::value("direct-edge-irq", "irq", "Enable interrupt passthrough"),
+#[cfg(feature = "direct")]
+          Argument::value("direct-wake-irq", "irq", "Enable wakeup interrupt for host"),
 #[cfg(feature = "direct")]
           Argument::value("direct-gpe", "gpe", "Enable GPE interrupt and register access passthrough"),
           Argument::value("dmi", "DIR", "Directory with smbios_entry_point/DMI files"),

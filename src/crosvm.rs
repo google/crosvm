@@ -451,6 +451,8 @@ pub struct Config {
     #[cfg(feature = "direct")]
     pub direct_edge_irq: Vec<u32>,
     #[cfg(feature = "direct")]
+    pub direct_wake_irq: Vec<u32>,
+    #[cfg(feature = "direct")]
     pub direct_gpe: Vec<u32>,
     pub dmi_path: Option<PathBuf>,
     pub no_legacy: bool,
@@ -574,6 +576,8 @@ impl Default for Config {
             direct_level_irq: Vec::new(),
             #[cfg(feature = "direct")]
             direct_edge_irq: Vec::new(),
+            #[cfg(feature = "direct")]
+            direct_wake_irq: Vec::new(),
             #[cfg(feature = "direct")]
             direct_gpe: Vec::new(),
             dmi_path: None,

@@ -1238,6 +1238,13 @@ where
         direct_irq
             .irq_enable(*irq)
             .context("failed to enable interrupt forwarding")?;
+
+        if cfg.direct_wake_irq.contains(&irq) {
+            direct_irq
+                .irq_wake_enable(*irq)
+                .context("failed to enable interrupt wake")?;
+        }
+
         irqs.push(direct_irq);
     }
 
@@ -1253,6 +1260,13 @@ where
         direct_irq
             .irq_enable(*irq)
             .context("failed to enable interrupt forwarding")?;
+
+        if cfg.direct_wake_irq.contains(&irq) {
+            direct_irq
+                .irq_wake_enable(*irq)
+                .context("failed to enable interrupt wake")?;
+        }
+
         irqs.push(direct_irq);
     }
 

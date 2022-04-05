@@ -27,6 +27,8 @@ pub enum DirectIrqError {
     EnableGpe,
     #[error("failed to enable direct sci irq")]
     EnableSci,
+    #[error("failed to enable wake irq")]
+    EnableWake,
     #[error("failed to open /dev/plat-irq-forward: {0}")]
     Open(io::Error),
 }
@@ -107,6 +109,10 @@ impl DirectIrq {
         Ok(())
     }
 
+    pub fn irq_wake_enable(&self, irq_num: u32) -> Result<(), DirectIrqError> {
+        self.plat_irq_wake_ioctl(irq_num, PLAT_IRQ_WAKE_ENABLE)
+    }
+
     /// Enable hardware triggered SCI interrupt handling for GPE.
     ///
     /// Note: sci_irq_prepare() itself does not enable SCI forwarding yet
@@ -155,6 +161,21 @@ impl DirectIrq {
         let ret = unsafe { ioctl_with_ref(self, PLAT_IRQ_FORWARD_SET(), &irq_set[0]) };
         if ret < 0 {
             Err(DirectIrqError::Enable)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn plat_irq_wake_ioctl(&self, irq_num: u32, action: u32) -> Result<(), DirectIrqError> {
+        let mut irq_wake_set = vec_with_array_field::<plat_irq_wake_set, u32>(0);
+        irq_wake_set[0].argsz = (size_of::<plat_irq_wake_set>()) as u32;
+        irq_wake_set[0].action_flags = action;
+        irq_wake_set[0].irq_number_host = irq_num;
+
+        // Safe as we are the owner of plat_irq_wake_set and irq_wake_set which are valid value
+        let ret = unsafe { ioctl_with_ref(self, PLAT_IRQ_WAKE_SET(), &irq_wake_set[0]) };
+        if ret < 0 {
+            Err(DirectIrqError::EnableWake)
         } else {
             Ok(())
         }

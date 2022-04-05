@@ -47,6 +47,12 @@ ioctl_io_nr!(
 );
 
 ioctl_io_nr!(
+    PLAT_IRQ_WAKE_SET,
+    PLAT_IRQ_FORWARD_TYPE,
+    PLAT_IRQ_FORWARD_BASE + 1
+);
+
+ioctl_io_nr!(
     ACPI_GPE_FORWARD_SET,
     PLAT_IRQ_FORWARD_TYPE,
     GPE_FORWARD_BASE
