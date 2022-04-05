@@ -9,11 +9,11 @@ use std::{
     cmp::min,
     io,
     mem::size_of,
-    os::unix::io::AsRawFd,
     ptr::{copy_nonoverlapping, null_mut, read_unaligned, write_unaligned},
 };
 
 use crate::external_mapping::ExternalMapping;
+use crate::AsRawDescriptor;
 use libc::{
     c_int, c_void, read, write, {self},
 };
@@ -137,7 +137,7 @@ pub unsafe trait MappedRegion: Send + Sync {
         &mut self,
         _offset: usize,
         _size: usize,
-        _fd: &dyn AsRawFd,
+        _fd: &dyn AsRawDescriptor,
         _fd_offset: u64,
         _prot: Protection,
     ) -> Result<()> {
@@ -233,11 +233,15 @@ impl MemoryMapping {
     /// # Arguments
     /// * `fd` - File descriptor to mmap from.
     /// * `size` - Size of memory region in bytes.
-    pub fn from_fd(fd: &dyn AsRawFd, size: usize) -> Result<MemoryMapping> {
+    pub fn from_fd(fd: &dyn AsRawDescriptor, size: usize) -> Result<MemoryMapping> {
         MemoryMapping::from_fd_offset(fd, size, 0)
     }
 
-    pub fn from_fd_offset(fd: &dyn AsRawFd, size: usize, offset: u64) -> Result<MemoryMapping> {
+    pub fn from_fd_offset(
+        fd: &dyn AsRawDescriptor,
+        size: usize,
+        offset: u64,
+    ) -> Result<MemoryMapping> {
         MemoryMapping::from_fd_offset_protection(fd, size, offset, Protection::read_write())
     }
 
@@ -250,7 +254,7 @@ impl MemoryMapping {
     /// * `flags` - flags passed directly to mmap.
     /// * `prot` - Protection (e.g. readable/writable) of the memory region.
     fn from_fd_offset_flags(
-        fd: &dyn AsRawFd,
+        fd: &dyn AsRawDescriptor,
         size: usize,
         offset: u64,
         flags: c_int,
@@ -271,7 +275,7 @@ impl MemoryMapping {
     /// * `offset` - Offset in bytes from the beginning of `fd` to start the mmap.
     /// * `prot` - Protection (e.g. readable/writable) of the memory region.
     pub fn from_fd_offset_protection(
-        fd: &dyn AsRawFd,
+        fd: &dyn AsRawDescriptor,
         size: usize,
         offset: u64,
         prot: Protection,
@@ -286,7 +290,7 @@ impl MemoryMapping {
     /// * `size` - Size of memory region in bytes.
     /// * `offset` - Offset in bytes from the beginning of `fd` to start the mmap.
     pub fn from_fd_offset_protection_populate(
-        fd: &dyn AsRawFd,
+        fd: &dyn AsRawDescriptor,
         size: usize,
         offset: u64,
         prot: Protection,
@@ -342,7 +346,7 @@ impl MemoryMapping {
     /// present at `(addr..addr+size)`.
     pub unsafe fn from_fd_offset_protection_fixed(
         addr: *mut u8,
-        fd: &dyn AsRawFd,
+        fd: &dyn AsRawDescriptor,
         size: usize,
         offset: u64,
         prot: Protection,
@@ -363,7 +367,7 @@ impl MemoryMapping {
         size: usize,
         prot: c_int,
         flags: c_int,
-        fd: Option<(&dyn AsRawFd, u64)>,
+        fd: Option<(&dyn AsRawDescriptor, u64)>,
     ) -> Result<MemoryMapping> {
         let mut flags = flags;
         // If addr is provided, set the FIXED flag, and validate addr alignment
@@ -383,7 +387,7 @@ impl MemoryMapping {
                 if offset > libc::off_t::max_value() as u64 {
                     return Err(Error::InvalidOffset);
                 }
-                (fd.as_raw_fd(), offset as libc::off_t)
+                (fd.as_raw_descriptor(), offset as libc::off_t)
             }
             None => (-1, 0),
         };
@@ -584,7 +588,7 @@ impl MemoryMapping {
     pub fn read_to_memory(
         &self,
         mut mem_offset: usize,
-        src: &dyn AsRawFd,
+        src: &dyn AsRawDescriptor,
         mut count: usize,
     ) -> Result<()> {
         self.range_end(mem_offset, count)
@@ -594,7 +598,7 @@ impl MemoryMapping {
             // read call.
             match unsafe {
                 read(
-                    src.as_raw_fd(),
+                    src.as_raw_descriptor(),
                     self.as_ptr().add(mem_offset) as *mut c_void,
                     count,
                 )
@@ -643,7 +647,7 @@ impl MemoryMapping {
     pub fn write_from_memory(
         &self,
         mut mem_offset: usize,
-        dst: &dyn AsRawFd,
+        dst: &dyn AsRawDescriptor,
         mut count: usize,
     ) -> Result<()> {
         self.range_end(mem_offset, count)
@@ -653,7 +657,7 @@ impl MemoryMapping {
             // write call.
             match unsafe {
                 write(
-                    dst.as_raw_fd(),
+                    dst.as_raw_descriptor(),
                     self.as_ptr().add(mem_offset) as *const c_void,
                     count,
                 )
@@ -808,7 +812,7 @@ impl MemoryMappingArena {
     /// * `offset` - Page aligned offset into the arena in bytes.
     /// * `size` - Size of memory region in bytes.
     /// * `fd` - File descriptor to mmap from.
-    pub fn add_fd(&mut self, offset: usize, size: usize, fd: &dyn AsRawFd) -> Result<()> {
+    pub fn add_fd(&mut self, offset: usize, size: usize, fd: &dyn AsRawDescriptor) -> Result<()> {
         self.add_fd_offset(offset, size, fd, 0)
     }
 
@@ -824,7 +828,7 @@ impl MemoryMappingArena {
         &mut self,
         offset: usize,
         size: usize,
-        fd: &dyn AsRawFd,
+        fd: &dyn AsRawDescriptor,
         fd_offset: u64,
     ) -> Result<()> {
         self.add_fd_offset_protection(offset, size, fd, fd_offset, Protection::read_write())
@@ -844,7 +848,7 @@ impl MemoryMappingArena {
         &mut self,
         offset: usize,
         size: usize,
-        fd: &dyn AsRawFd,
+        fd: &dyn AsRawDescriptor,
         fd_offset: u64,
         prot: Protection,
     ) -> Result<()> {
@@ -858,7 +862,7 @@ impl MemoryMappingArena {
         offset: usize,
         size: usize,
         prot: Protection,
-        fd: Option<(&dyn AsRawFd, u64)>,
+        fd: Option<(&dyn AsRawDescriptor, u64)>,
     ) -> Result<()> {
         // Ensure offset is page-aligned
         if offset % pagesize() != 0 {
@@ -911,7 +915,7 @@ unsafe impl MappedRegion for MemoryMappingArena {
         &mut self,
         offset: usize,
         size: usize,
-        fd: &dyn AsRawFd,
+        fd: &dyn AsRawDescriptor,
         fd_offset: u64,
         prot: Protection,
     ) -> Result<()> {

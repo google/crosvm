@@ -8,7 +8,6 @@ use std::{
     fs::File,
     i32, i64,
     marker::PhantomData,
-    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
     ptr::null_mut,
     slice, thread,
     time::Duration,
@@ -20,6 +19,7 @@ use libc::{
 };
 
 use super::{errno_result, Result};
+use crate::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, RawDescriptor};
 
 const POLL_CONTEXT_MAX_EVENTS: usize = 16;
 
@@ -305,7 +305,7 @@ impl<T: PollToken> EpollContext<T> {
             return errno_result();
         }
         Ok(EpollContext {
-            epoll_ctx: unsafe { File::from_raw_fd(epoll_fd) },
+            epoll_ctx: unsafe { File::from_raw_descriptor(epoll_fd) },
             tokens: PhantomData,
         })
     }
@@ -315,7 +315,7 @@ impl<T: PollToken> EpollContext<T> {
     ///
     /// This is equivalent to calling `new` followed by `add_many`. If there is an error, this will
     /// return the error instead of the new context.
-    pub fn build_with(fd_tokens: &[(&dyn AsRawFd, T)]) -> Result<EpollContext<T>> {
+    pub fn build_with(fd_tokens: &[(&dyn AsRawDescriptor, T)]) -> Result<EpollContext<T>> {
         let ctx = EpollContext::new()?;
         ctx.add_many(fd_tokens)?;
         Ok(ctx)
@@ -326,7 +326,7 @@ impl<T: PollToken> EpollContext<T> {
     /// This is equivalent to calling `add` with each `fd` and `token`. If there are any errors,
     /// this method will stop adding `fd`s and return the first error, leaving this context in a
     /// undefined state.
-    pub fn add_many(&self, fd_tokens: &[(&dyn AsRawFd, T)]) -> Result<()> {
+    pub fn add_many(&self, fd_tokens: &[(&dyn AsRawDescriptor, T)]) -> Result<()> {
         for (fd, token) in fd_tokens {
             self.add(*fd, T::from_raw_token(token.as_raw_token()))?;
         }
@@ -339,7 +339,7 @@ impl<T: PollToken> EpollContext<T> {
     /// A `fd` can only be added once and does not need to be kept open. If the `fd` is dropped and
     /// there were no duplicated file descriptors (i.e. adding the same descriptor with a different
     /// FD number) added to this context, events will not be reported by `wait` anymore.
-    pub fn add(&self, fd: &dyn AsRawFd, token: T) -> Result<()> {
+    pub fn add(&self, fd: &dyn AsRawDescriptor, token: T) -> Result<()> {
         self.add_fd_with_events(fd, WatchingEvents::empty().set_read(), token)
     }
 
@@ -351,7 +351,7 @@ impl<T: PollToken> EpollContext<T> {
     /// FD number) added to this context, events will not be reported by `wait` anymore.
     pub fn add_fd_with_events(
         &self,
-        fd: &dyn AsRawFd,
+        fd: &dyn AsRawDescriptor,
         events: WatchingEvents,
         token: T,
     ) -> Result<()> {
@@ -363,9 +363,9 @@ impl<T: PollToken> EpollContext<T> {
         // structure. Then we check the return value.
         let ret = unsafe {
             epoll_ctl(
-                self.epoll_ctx.as_raw_fd(),
+                self.epoll_ctx.as_raw_descriptor(),
                 EPOLL_CTL_ADD,
-                fd.as_raw_fd(),
+                fd.as_raw_descriptor(),
                 &mut evt,
             )
         };
@@ -377,7 +377,7 @@ impl<T: PollToken> EpollContext<T> {
 
     /// If `fd` was previously added to this context, the watched events will be replaced with
     /// `events` and the token associated with it will be replaced with the given `token`.
-    pub fn modify(&self, fd: &dyn AsRawFd, events: WatchingEvents, token: T) -> Result<()> {
+    pub fn modify(&self, fd: &dyn AsRawDescriptor, events: WatchingEvents, token: T) -> Result<()> {
         let mut evt = epoll_event {
             events: events.0,
             u64: token.as_raw_token(),
@@ -386,9 +386,9 @@ impl<T: PollToken> EpollContext<T> {
         // structure. Then we check the return value.
         let ret = unsafe {
             epoll_ctl(
-                self.epoll_ctx.as_raw_fd(),
+                self.epoll_ctx.as_raw_descriptor(),
                 EPOLL_CTL_MOD,
-                fd.as_raw_fd(),
+                fd.as_raw_descriptor(),
                 &mut evt,
             )
         };
@@ -404,14 +404,14 @@ impl<T: PollToken> EpollContext<T> {
     /// method or by closing/dropping (if and only if the fd was never dup()'d/fork()'d) the `fd`.
     /// Failure to do so will cause the `wait` method to always return immediately, causing ~100%
     /// CPU load.
-    pub fn delete(&self, fd: &dyn AsRawFd) -> Result<()> {
+    pub fn delete(&self, fd: &dyn AsRawDescriptor) -> Result<()> {
         // Safe because we give a valid epoll FD and FD to stop watching. Then we check the return
         // value.
         let ret = unsafe {
             epoll_ctl(
-                self.epoll_ctx.as_raw_fd(),
+                self.epoll_ctx.as_raw_descriptor(),
                 EPOLL_CTL_DEL,
-                fd.as_raw_fd(),
+                fd.as_raw_descriptor(),
                 null_mut(),
             )
         };
@@ -462,7 +462,7 @@ impl<T: PollToken> EpollContext<T> {
             // pointer, which we trust the kernel to fill in properly.
             unsafe {
                 handle_eintr_errno!(epoll_wait(
-                    self.epoll_ctx.as_raw_fd(),
+                    self.epoll_ctx.as_raw_descriptor(),
                     &mut epoll_events[0],
                     max_events,
                     timeout_millis
@@ -482,15 +482,15 @@ impl<T: PollToken> EpollContext<T> {
     }
 }
 
-impl<T: PollToken> AsRawFd for EpollContext<T> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.epoll_ctx.as_raw_fd()
+impl<T: PollToken> AsRawDescriptor for EpollContext<T> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.epoll_ctx.as_raw_descriptor()
     }
 }
 
-impl<T: PollToken> IntoRawFd for EpollContext<T> {
-    fn into_raw_fd(self) -> RawFd {
-        self.epoll_ctx.into_raw_fd()
+impl<T: PollToken> IntoRawDescriptor for EpollContext<T> {
+    fn into_raw_descriptor(self) -> RawDescriptor {
+        self.epoll_ctx.into_raw_descriptor()
     }
 }
 
@@ -547,7 +547,7 @@ impl<T: PollToken> PollContext<T> {
     ///
     /// This is equivalent to calling `new` followed by `add_many`. If there is an error, this will
     /// return the error instead of the new context.
-    pub fn build_with(fd_tokens: &[(&dyn AsRawFd, T)]) -> Result<PollContext<T>> {
+    pub fn build_with(fd_tokens: &[(&dyn AsRawDescriptor, T)]) -> Result<PollContext<T>> {
         let ctx = PollContext::new()?;
         ctx.add_many(fd_tokens)?;
         Ok(ctx)
@@ -558,7 +558,7 @@ impl<T: PollToken> PollContext<T> {
     /// This is equivalent to calling `add` with each `fd` and `token`. If there are any errors,
     /// this method will stop adding `fd`s and return the first error, leaving this context in a
     /// undefined state.
-    pub fn add_many(&self, fd_tokens: &[(&dyn AsRawFd, T)]) -> Result<()> {
+    pub fn add_many(&self, fd_tokens: &[(&dyn AsRawDescriptor, T)]) -> Result<()> {
         for (fd, token) in fd_tokens {
             self.add(*fd, T::from_raw_token(token.as_raw_token()))?;
         }
@@ -571,7 +571,7 @@ impl<T: PollToken> PollContext<T> {
     /// A `fd` can only be added once and does not need to be kept open. If the `fd` is dropped and
     /// there were no duplicated file descriptors (i.e. adding the same descriptor with a different
     /// FD number) added to this context, events will not be reported by `wait` anymore.
-    pub fn add(&self, fd: &dyn AsRawFd, token: T) -> Result<()> {
+    pub fn add(&self, fd: &dyn AsRawDescriptor, token: T) -> Result<()> {
         self.add_fd_with_events(fd, WatchingEvents::empty().set_read(), token)
     }
 
@@ -583,7 +583,7 @@ impl<T: PollToken> PollContext<T> {
     /// FD number) added to this context, events will not be reported by `wait` anymore.
     pub fn add_fd_with_events(
         &self,
-        fd: &dyn AsRawFd,
+        fd: &dyn AsRawDescriptor,
         events: WatchingEvents,
         token: T,
     ) -> Result<()> {
@@ -595,7 +595,7 @@ impl<T: PollToken> PollContext<T> {
 
     /// If `fd` was previously added to this context, the watched events will be replaced with
     /// `events` and the token associated with it will be replaced with the given `token`.
-    pub fn modify(&self, fd: &dyn AsRawFd, events: WatchingEvents, token: T) -> Result<()> {
+    pub fn modify(&self, fd: &dyn AsRawDescriptor, events: WatchingEvents, token: T) -> Result<()> {
         self.epoll_ctx.modify(fd, events, token)
     }
 
@@ -605,7 +605,7 @@ impl<T: PollToken> PollContext<T> {
     /// method or by closing/dropping (if and only if the fd was never dup()'d/fork()'d) the `fd`.
     /// Failure to do so will cause the `wait` method to always return immediately, causing ~100%
     /// CPU load.
-    pub fn delete(&self, fd: &dyn AsRawFd) -> Result<()> {
+    pub fn delete(&self, fd: &dyn AsRawDescriptor) -> Result<()> {
         self.epoll_ctx.delete(fd)?;
         self.hangups.set(0);
         self.max_hangups.set(self.max_hangups.get() - 1);
@@ -677,15 +677,15 @@ impl<T: PollToken> PollContext<T> {
     }
 }
 
-impl<T: PollToken> AsRawFd for PollContext<T> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.epoll_ctx.as_raw_fd()
+impl<T: PollToken> AsRawDescriptor for PollContext<T> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.epoll_ctx.as_raw_descriptor()
     }
 }
 
-impl<T: PollToken> IntoRawFd for PollContext<T> {
-    fn into_raw_fd(self) -> RawFd {
-        self.epoll_ctx.into_raw_fd()
+impl<T: PollToken> IntoRawDescriptor for PollContext<T> {
+    fn into_raw_descriptor(self) -> RawDescriptor {
+        self.epoll_ctx.into_raw_descriptor()
     }
 }
 

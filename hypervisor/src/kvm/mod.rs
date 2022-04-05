@@ -19,7 +19,7 @@ use std::convert::{TryFrom, TryInto};
 use std::ffi::CString;
 use std::mem::{size_of, ManuallyDrop};
 use std::os::raw::{c_int, c_ulong, c_void};
-use std::os::unix::{io::AsRawFd, prelude::OsStrExt};
+use std::os::unix::prelude::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr::copy_nonoverlapping;
 use std::sync::atomic::AtomicU64;
@@ -623,7 +623,7 @@ impl Vm for KvmVm {
         slot: u32,
         offset: usize,
         size: usize,
-        fd: &dyn AsRawFd,
+        fd: &dyn AsRawDescriptor,
         fd_offset: u64,
         prot: Protection,
     ) -> Result<()> {

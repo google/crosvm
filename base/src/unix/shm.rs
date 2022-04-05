@@ -19,6 +19,7 @@ use libc::{
 use serde::{Deserialize, Serialize};
 
 use super::{errno_result, Error, Result};
+use crate::{AsRawDescriptor, RawDescriptor};
 
 /// A shared memory file descriptor and its size.
 #[derive(Serialize, Deserialize)]
@@ -286,6 +287,12 @@ impl AsRawFd for &SharedMemory {
 impl IntoRawFd for SharedMemory {
     fn into_raw_fd(self) -> RawFd {
         self.fd.into_raw_fd()
+    }
+}
+
+impl AsRawDescriptor for SharedMemory {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.fd.as_raw_descriptor()
     }
 }
 

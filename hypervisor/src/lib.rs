@@ -11,11 +11,10 @@ pub mod kvm;
 pub mod x86_64;
 
 use std::os::raw::c_int;
-use std::os::unix::io::AsRawFd;
 
 use serde::{Deserialize, Serialize};
 
-use base::{Event, MappedRegion, Protection, Result, SafeDescriptor};
+use base::{AsRawDescriptor, Event, MappedRegion, Protection, Result, SafeDescriptor};
 use vm_memory::{GuestAddress, GuestMemory};
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -153,7 +152,7 @@ pub trait Vm: Send {
         slot: u32,
         offset: usize,
         size: usize,
-        fd: &dyn AsRawFd,
+        fd: &dyn AsRawDescriptor,
         fd_offset: u64,
         prot: Protection,
     ) -> Result<()>;

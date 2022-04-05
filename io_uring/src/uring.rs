@@ -13,7 +13,10 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
-use base::{MappedRegion, MemoryMapping, MemoryMappingBuilder, Protection, WatchingEvents};
+use base::{
+    AsRawDescriptor, MappedRegion, MemoryMapping, MemoryMappingBuilder, Protection, RawDescriptor,
+    WatchingEvents,
+};
 use data_model::IoBufMut;
 use remain::sorted;
 use sync::Mutex;
@@ -656,6 +659,12 @@ impl URingContext {
 impl AsRawFd for URingContext {
     fn as_raw_fd(&self) -> RawFd {
         self.ring_file.as_raw_fd()
+    }
+}
+
+impl AsRawDescriptor for URingContext {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.ring_file.as_raw_descriptor()
     }
 }
 

@@ -4,8 +4,8 @@
 
 use super::error::{Error, Result};
 use base::{
-    error, warn, wrap_descriptor, AsRawDescriptor, Descriptor, EpollContext, EpollEvents, Event,
-    RawDescriptor, WatchingEvents,
+    error, warn, AsRawDescriptor, Descriptor, EpollContext, EpollEvents, Event, RawDescriptor,
+    WatchingEvents,
 };
 use std::collections::BTreeMap;
 use std::mem::drop;
@@ -65,11 +65,8 @@ impl EventLoop {
             Arc::new(Mutex::new(BTreeMap::new()));
         let poll_ctx: EpollContext<Descriptor> = EpollContext::new()
             .and_then(|pc| {
-                pc.add(
-                    &wrap_descriptor(&stop_evt),
-                    Descriptor(stop_evt.as_raw_descriptor()),
-                )
-                .and(Ok(pc))
+                pc.add(&stop_evt, Descriptor(stop_evt.as_raw_descriptor()))
+                    .and(Ok(pc))
             })
             .map_err(Error::CreateWaitContext)?;
 
@@ -163,7 +160,7 @@ impl EventLoop {
         // This might fail due to epoll syscall. Check epoll_ctl(2).
         self.poll_ctx
             .add_fd_with_events(
-                &wrap_descriptor(descriptor),
+                descriptor,
                 events,
                 Descriptor(descriptor.as_raw_descriptor()),
             )
@@ -179,7 +176,7 @@ impl EventLoop {
         }
         // This might fail due to epoll syscall. Check epoll_ctl(2).
         self.poll_ctx
-            .delete(&wrap_descriptor(descriptor))
+            .delete(descriptor)
             .map_err(Error::WaitContextDeleteDescriptor)?;
         self.handlers.lock().remove(&descriptor.as_raw_descriptor());
         Ok(())

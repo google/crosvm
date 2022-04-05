@@ -36,7 +36,7 @@ pub use balloon_control::BalloonStats;
 use balloon_control::{BalloonTubeCommand, BalloonTubeResult};
 
 use base::{
-    error, with_as_descriptor, AsRawDescriptor, Error as SysError, Event, ExternalMapping, Fd,
+    error, with_as_descriptor, AsRawDescriptor, Error as SysError, Event, ExternalMapping,
     FromRawDescriptor, IntoRawDescriptor, Killable, MappedRegion, MemoryMappingArena,
     MemoryMappingBuilder, MemoryMappingBuilderUnix, MmapError, Protection, Result, SafeDescriptor,
     SharedMemory, Tube, SIGRTMIN,
@@ -936,13 +936,11 @@ impl FsMappingRequest {
                 prot,
                 mem_offset,
             } => {
-                let raw_fd: Fd = Fd(fd.as_raw_descriptor());
-
                 match vm.add_fd_mapping(
                     slot,
                     mem_offset,
                     size,
-                    &raw_fd,
+                    fd,
                     file_offset,
                     Protection::from(prot as c_int & (libc::PROT_READ | libc::PROT_WRITE)),
                 ) {
