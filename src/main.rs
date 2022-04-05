@@ -6,7 +6,7 @@
 
 pub mod panic_hook;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryFrom;
 use std::default::Default;
 use std::fs::{File, OpenOptions};
@@ -75,6 +75,8 @@ use vm_control::{
     BalloonControlCommand, BatteryType, DiskControlCommand, UsbControlResult, VmRequest,
     VmResponse,
 };
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::set_itmt_msr_config;
 
 #[cfg(feature = "scudo")]
 #[global_allocator]
@@ -2237,6 +2239,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 }
             }
         }
+        "itmt" => {
+            cfg.itmt = true;
+        }
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         "host-cpu-topology" => {
             cfg.host_cpu_topology = true;
@@ -2584,6 +2589,48 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
             }
         }
     }
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    if cfg.itmt {
+        // ITMT only works on the case each vCPU is 1:1 mapping to a pCPU.
+        // `host-cpu-topology` has already set this 1:1 mapping. If no
+        // `host-cpu-topology`, we need check the cpu affinity setting.
+        if !cfg.host_cpu_topology {
+            // only VcpuAffinity::PerVcpu supports setting cpu affinity
+            // for each vCPU.
+            if let Some(VcpuAffinity::PerVcpu(v)) = &cfg.vcpu_affinity {
+                // ITMT allows more pCPUs than vCPUs.
+                if v.len() != cfg.vcpu_count.unwrap_or(1) {
+                    return Err(argument::Error::ExpectedArgument(
+                        "`itmt` requires affinity to be set for every vCPU.".to_owned(),
+                    ));
+                }
+
+                let mut pcpu_set = BTreeSet::new();
+                for cpus in v.values() {
+                    if cpus.len() != 1 {
+                        return Err(argument::Error::ExpectedArgument(
+                            "`itmt` requires affinity to be set 1 pCPU for 1 vCPU.".to_owned(),
+                        ));
+                    }
+                    // Ensure that each vCPU corresponds to a different pCPU to avoid pCPU sharing,
+                    // otherwise it will seriously affect the ITMT scheduling optimization effect.
+                    if !pcpu_set.insert(cpus[0]) {
+                        return Err(argument::Error::ExpectedArgument(
+                            "`cpu_host` requires affinity to be set different pVPU for each vCPU."
+                                .to_owned(),
+                        ));
+                    }
+                }
+            } else {
+                return Err(argument::Error::ExpectedArgument(
+                    "`itmt` requires affinity to be set for every vCPU.".to_owned(),
+                ));
+            }
+        }
+        set_itmt_msr_config(&mut cfg.userspace_msr).map_err(|e| {
+            argument::Error::UnknownArgument(format!("the cpu doesn't support itmt {}", e))
+        })?;
+    }
     if !cfg.balloon && cfg.balloon_control.is_some() {
         return Err(argument::Error::ExpectedArgument(
             "'balloon-control' requires enabled balloon".to_owned(),
@@ -2925,6 +2972,8 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                               from=(cpu0) - source of msr value. if not set, the source is running CPU."),
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("host-cpu-topology", "Use mirror cpu topology of Host for Guest VM, also copy some cpu feature to Guest VM."),
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+          Argument::flag("itmt", "Enable ITMT scheduling feature."),
           Argument::flag("privileged-vm", "Grant this Guest VM certian privileges to manage Host resources, such as power management."),
           Argument::value("stub-pci-device", "DOMAIN:BUS:DEVICE.FUNCTION[,vendor=NUM][,device=NUM][,class=NUM][,subsystem_vendor=NUM][,subsystem_device=NUM][,revision=NUM]", "Comma-separated key=value pairs for setting up a stub PCI device that just enumerates. The first option in the list must specify a PCI address to claim.
                               Optional further parameters

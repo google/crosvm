@@ -896,6 +896,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         dmi_path: cfg.dmi_path.clone(),
         no_legacy: cfg.no_legacy,
         host_cpu_topology: cfg.host_cpu_topology,
+        itmt: cfg.itmt,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         force_s2idle: cfg.force_s2idle,
     })
@@ -954,6 +955,12 @@ fn punch_holes_in_guest_mem_layout_for_mappings(
 fn run_kvm(cfg: Config, components: VmComponents, guest_mem: GuestMemory) -> Result<ExitState> {
     let kvm = Kvm::new_with_path(&cfg.kvm_device_path).context("failed to create kvm")?;
     let vm = KvmVm::new(&kvm, guest_mem, components.protected_vm).context("failed to create vm")?;
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    if cfg.itmt {
+        vm.set_platform_info_read_access(false)
+            .context("failed to disable MSR_PLATFORM_INFO read access")?;
+    }
 
     if !cfg.userspace_msr.is_empty() {
         vm.enable_userspace_msr()
@@ -1780,6 +1787,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             to_gdb_channel.clone(),
             cfg.per_vm_core_scheduling,
             cfg.host_cpu_topology,
+            cfg.itmt,
             cfg.privileged_vm,
             match vcpu_cgroup_tasks_file {
                 None => None,

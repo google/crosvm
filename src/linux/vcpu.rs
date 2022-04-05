@@ -72,6 +72,7 @@ pub fn runnable_vcpu<V>(
     use_hypervisor_signals: bool,
     enable_per_vm_core_scheduling: bool,
     host_cpu_topology: bool,
+    itmt: bool,
     vcpu_cgroup_tasks_file: Option<File>,
 ) -> Result<(V, VcpuRunHandle)>
 where
@@ -113,6 +114,7 @@ where
         has_bios,
         no_smt,
         host_cpu_topology,
+        itmt,
     )
     .context("failed to configure vcpu")?;
 
@@ -549,6 +551,7 @@ pub fn run_vcpu<V>(
     >,
     enable_per_vm_core_scheduling: bool,
     host_cpu_topology: bool,
+    itmt: bool,
     privileged_vm: bool,
     vcpu_cgroup_tasks_file: Option<File>,
     userspace_msr: BTreeMap<u32, MsrConfig>,
@@ -590,6 +593,7 @@ where
                 use_hypervisor_signals,
                 enable_per_vm_core_scheduling,
                 host_cpu_topology,
+                itmt,
                 vcpu_cgroup_tasks_file,
             );
 

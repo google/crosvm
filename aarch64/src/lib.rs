@@ -485,6 +485,7 @@ impl arch::LinuxArch for AArch64 {
         _has_bios: bool,
         _no_smt: bool,
         _host_cpu_topology: bool,
+        _itmt: bool,
     ) -> std::result::Result<(), Self::Error> {
         // AArch64 doesn't configure vcpus on the vcpu thread, so nothing to do here.
         Ok(())

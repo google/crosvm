@@ -101,6 +101,7 @@ pub struct VmComponents {
     pub dmi_path: Option<PathBuf>,
     pub no_legacy: bool,
     pub host_cpu_topology: bool,
+    pub itmt: bool,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub force_s2idle: bool,
     #[cfg(feature = "direct")]
@@ -223,6 +224,7 @@ pub trait LinuxArch {
         has_bios: bool,
         no_smt: bool,
         host_cpu_topology: bool,
+        itmt: bool,
     ) -> Result<(), Self::Error>;
 
     /// Configures and add a pci device into vm
