@@ -160,11 +160,6 @@ struct Worker {
     transmit_evt: Event,
 }
 
-fn write_output(output: &mut dyn io::Write, data: &[u8]) -> io::Result<()> {
-    output.write_all(data)?;
-    output.flush()
-}
-
 /// Starts a thread that reads rx and sends the input back via the returned buffer.
 ///
 /// The caller should listen on `in_avail_evt` for events. When `in_avail_evt` signals that data
@@ -232,7 +227,8 @@ pub fn process_transmit_request(mut reader: Reader, output: &mut dyn io::Write) 
     let len = reader.available_bytes();
     let mut data = vec![0u8; len];
     reader.read_exact(&mut data)?;
-    write_output(output, &data)?;
+    output.write_all(&data)?;
+    output.flush()?;
     Ok(0)
 }
 
