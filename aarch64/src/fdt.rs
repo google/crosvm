@@ -223,7 +223,7 @@ fn create_serial_nodes(fdt: &mut FdtWriter) -> Result<()> {
     Ok(())
 }
 
-fn create_psci_node(fdt: &mut FdtWriter, version: &PsciVersion) -> Result<()> {
+fn psci_compatible(version: &PsciVersion) -> Vec<&str> {
     // The PSCI kernel driver only supports compatible strings for the following
     // backward-compatible versions.
     let supported = [(PSCI_1_0, "arm,psci-1.0"), (PSCI_0_2, "arm,psci-0.2")];
@@ -239,6 +239,11 @@ fn create_psci_node(fdt: &mut FdtWriter, version: &PsciVersion) -> Result<()> {
         compatible = vec!["arm,psci"];
     }
 
+    compatible
+}
+
+fn create_psci_node(fdt: &mut FdtWriter, version: &PsciVersion) -> Result<()> {
+    let compatible = psci_compatible(version);
     let psci_node = fdt.begin_node("psci")?;
     fdt.property_string_list("compatible", &compatible)?;
     // Only support aarch64 guest
@@ -508,4 +513,52 @@ pub fn create_fdt(
         return Err(Error::FdtGuestMemoryWriteError);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn psci_compatible_v0_1() {
+        assert_eq!(
+            psci_compatible(&PsciVersion::new(0, 1).unwrap()),
+            vec!["arm,psci"]
+        );
+    }
+
+    #[test]
+    fn psci_compatible_v0_2() {
+        assert_eq!(
+            psci_compatible(&PsciVersion::new(0, 2).unwrap()),
+            vec!["arm,psci-0.2"]
+        );
+    }
+
+    #[test]
+    fn psci_compatible_v0_5() {
+        // Only the 0.2 version supported by the kernel should be added.
+        assert_eq!(
+            psci_compatible(&PsciVersion::new(0, 5).unwrap()),
+            vec!["arm,psci-0.2"]
+        );
+    }
+
+    #[test]
+    fn psci_compatible_v1_0() {
+        // Both 1.0 and 0.2 should be listed, in that order.
+        assert_eq!(
+            psci_compatible(&PsciVersion::new(1, 0).unwrap()),
+            vec!["arm,psci-1.0", "arm,psci-0.2"]
+        );
+    }
+
+    #[test]
+    fn psci_compatible_v1_5() {
+        // Only the 1.0 and 0.2 versions supported by the kernel should be listed.
+        assert_eq!(
+            psci_compatible(&PsciVersion::new(1, 5).unwrap()),
+            vec!["arm,psci-1.0", "arm,psci-0.2"]
+        );
+    }
 }
