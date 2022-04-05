@@ -1233,6 +1233,10 @@ impl VirtioDevice for VirtioVhostUser {
         self.base_features
     }
 
+    fn supports_iommu(&self) -> bool {
+        true
+    }
+
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut rds = Vec::new();
 

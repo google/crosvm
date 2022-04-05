@@ -463,7 +463,7 @@ impl VirtioPciDevice {
 
 impl PciDevice for VirtioPciDevice {
     fn supports_iommu(&self) -> bool {
-        (self.device.features() & (1 << VIRTIO_F_ACCESS_PLATFORM)) != 0
+        self.device.supports_iommu()
     }
 
     fn debug_label(&self) -> String {

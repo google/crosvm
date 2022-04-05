@@ -1201,7 +1201,7 @@ pub fn create_vfio_platform_device(
     ))
 }
 
-/// Setup for devices with VIRTIO_F_ACCESS_PLATFORM
+/// Setup for devices with virtio-iommu
 pub fn setup_virtio_access_platform(
     resources: &mut SystemAllocator,
     iommu_attached_endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,

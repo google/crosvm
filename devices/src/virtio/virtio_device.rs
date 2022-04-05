@@ -41,8 +41,12 @@ pub trait VirtioDevice: Send {
         self.queue_max_sizes().len()
     }
 
+    /// Whether this device supports a virtio-iommu.
+    fn supports_iommu(&self) -> bool {
+        false
+    }
+
     /// The set of feature bits that this device supports in addition to the base features.
-    /// If this returns VIRTIO_F_ACCESS_PLATFORM, virtio-iommu will be enabled for this device.
     fn features(&self) -> u64 {
         0
     }
