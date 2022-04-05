@@ -61,12 +61,6 @@ pub use crate::descriptor::{
 };
 pub use platform::*;
 
-/// Wraps an AsRawDescriptor in the simple Descriptor struct, which
-/// has AsRawFd methods for interfacing with sys_util
-pub fn wrap_descriptor(descriptor: &dyn AsRawDescriptor) -> Descriptor {
-    Descriptor(descriptor.as_raw_descriptor())
-}
-
 /// Verifies that |raw_descriptor| is actually owned by this process and duplicates it
 /// to ensure that we have a unique handle to it.
 #[cfg(unix)]
