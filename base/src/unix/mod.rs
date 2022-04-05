@@ -484,6 +484,12 @@ impl Drop for UnlinkUnixListener {
     }
 }
 
+/// Verifies that |raw_descriptor| is actually owned by this process and duplicates it
+/// to ensure that we have a unique handle to it.
+pub fn validate_raw_descriptor(raw_descriptor: RawDescriptor) -> Result<RawDescriptor> {
+    validate_raw_fd(raw_descriptor)
+}
+
 /// Verifies that |raw_fd| is actually owned by this process and duplicates it to ensure that
 /// we have a unique handle to it.
 pub fn validate_raw_fd(raw_fd: RawFd) -> Result<RawFd> {

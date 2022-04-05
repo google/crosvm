@@ -57,27 +57,7 @@ cfg_if::cfg_if! {
 }
 
 pub use crate::descriptor::{
-    AsRawDescriptor, Descriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
+    AsRawDescriptor, AsRawDescriptors, Descriptor, FromRawDescriptor, IntoRawDescriptor,
+    SafeDescriptor,
 };
 pub use platform::*;
-
-/// Verifies that |raw_descriptor| is actually owned by this process and duplicates it
-/// to ensure that we have a unique handle to it.
-#[cfg(unix)]
-pub fn validate_raw_descriptor(raw_descriptor: RawDescriptor) -> Result<RawDescriptor> {
-    validate_raw_fd(raw_descriptor)
-}
-
-/// A trait similar to `AsRawDescriptor` but supports an arbitrary number of descriptors.
-pub trait AsRawDescriptors {
-    fn as_raw_descriptors(&self) -> Vec<RawDescriptor>;
-}
-
-impl<T> AsRawDescriptors for T
-where
-    T: AsRawDescriptor,
-{
-    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
-        vec![self.as_raw_descriptor()]
-    }
-}
