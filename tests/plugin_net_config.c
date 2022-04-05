@@ -49,7 +49,8 @@ int main(int argc, char** argv) {
     unsigned int features;
     if (ioctl(net_config.tap_fd, TUNGETFEATURES, &features) < 0) {
         fprintf(stderr,
-                "failed to read tap features: %s\n",
+                "failed to read tap(fd: %d) features: %s\n",
+                net_config.tap_fd,
                 strerror(errno));
         return 1;
     }

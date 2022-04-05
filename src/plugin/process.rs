@@ -8,7 +8,6 @@ use std::fs::File;
 use std::io::{IoSlice, IoSliceMut, Write};
 use std::mem::transmute;
 use std::os::unix::net::UnixDatagram;
-use std::os::unix::prelude::RawFd;
 use std::path::Path;
 use std::process::Command;
 use std::result;
@@ -25,9 +24,8 @@ use libc::{
 use protobuf::Message;
 
 use base::{
-    error, AsRawDescriptor, Error as SysError, Event, IntoRawDescriptor, Killable,
-    MemoryMappingBuilder, RawDescriptor, Result as SysResult, ScmSocket, SharedMemory,
-    SharedMemoryUnix, SIGRTMIN,
+    error, AsRawDescriptor, Descriptor, Error as SysError, Event, IntoRawDescriptor, Killable,
+    MemoryMappingBuilder, Result as SysResult, ScmSocket, SharedMemory, SharedMemoryUnix, SIGRTMIN,
 };
 use kvm::{dirty_log_bitmap_size, Datamatch, IoeventAddress, IrqRoute, IrqSource, PicId, Vm};
 use kvm_sys::{kvm_clock_data, kvm_ioapic_state, kvm_pic_state, kvm_pit_state2};
@@ -158,7 +156,7 @@ impl Process {
         args: &[&str],
         jail: Option<Minijail>,
         stderr: File,
-        env_fds: Vec<(String, RawFd)>,
+        env_fds: Vec<(String, Descriptor)>,
     ) -> Result<Process> {
         let (request_socket, child_socket) =
             new_seqpacket_pair().context("error creating main request socket")?;
@@ -174,17 +172,17 @@ impl Process {
         let plugin_pid = match jail {
             Some(jail) => {
                 set_var(
-                    "CROSVM_SOCKET",
+                    crosvm_plugin::CROSVM_SOCKET_ENV,
                     child_socket.as_raw_descriptor().to_string(),
                 );
                 env_fds
                     .iter()
-                    .for_each(|(k, fd)| set_var(k, fd.to_string()));
+                    .for_each(|(k, fd)| set_var(k, fd.as_raw_descriptor().to_string()));
                 jail.run_remap(
                     cmd,
                     &env_fds
                         .into_iter()
-                        .map(|(_, fd)| (fd, fd))
+                        .map(|(_, fd)| (fd.as_raw_descriptor(), fd.as_raw_descriptor()))
                         .chain(
                             [
                                 (stderr.as_raw_descriptor(), STDERR_FILENO),
@@ -200,17 +198,26 @@ impl Process {
                 )
                 .context("failed to run plugin jail")?
             }
-            None => Command::new(cmd)
-                .args(args)
-                .envs(env_fds.into_iter().map(|(k, fd)| (k, fd.to_string())))
-                .env(
-                    "CROSVM_SOCKET",
-                    child_socket.as_raw_descriptor().to_string(),
-                )
-                .stderr(stderr)
-                .spawn()
-                .context("failed to spawn plugin")?
-                .id() as pid_t,
+            None => {
+                for (_, fd) in env_fds.iter() {
+                    base::clear_descriptor_cloexec(fd)?;
+                }
+                Command::new(cmd)
+                    .args(args)
+                    .envs(
+                        env_fds
+                            .into_iter()
+                            .map(|(k, fd)| (k, { fd.as_raw_descriptor().to_string() })),
+                    )
+                    .env(
+                        crosvm_plugin::CROSVM_SOCKET_ENV,
+                        child_socket.as_raw_descriptor().to_string(),
+                    )
+                    .stderr(stderr)
+                    .spawn()
+                    .context("failed to spawn plugin")?
+                    .id() as pid_t
+            }
         };
 
         Ok(Process {

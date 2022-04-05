@@ -47,6 +47,29 @@ fn clone_fd(fd: &dyn AsRawFd) -> Result<RawFd> {
     }
 }
 
+/// Clears CLOEXEC flag on descriptor
+pub fn clear_descriptor_cloexec<A: AsRawDescriptor>(fd_owner: &A) -> Result<()> {
+    clear_fd_cloexec(&fd_owner.as_raw_descriptor())
+}
+
+/// Clears CLOEXEC flag on fd
+fn clear_fd_cloexec<A: AsRawFd>(fd_owner: &A) -> Result<()> {
+    let fd = fd_owner.as_raw_fd();
+    // Safe because fd is read only.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    if flags == -1 {
+        return errno_result();
+    }
+
+    let masked_flags = flags & !libc::FD_CLOEXEC;
+    // Safe because this has no side effect(s) on the current process.
+    if masked_flags != flags && unsafe { libc::fcntl(fd, libc::F_SETFD, masked_flags) } == -1 {
+        errno_result()
+    } else {
+        Ok(())
+    }
+}
+
 const KCMP_FILE: u32 = 0;
 
 impl PartialEq for SafeDescriptor {
