@@ -31,7 +31,6 @@ mod descriptor_reflection;
 mod eventfd;
 mod file_flags;
 pub mod file_traits;
-mod fork;
 mod get_filesystem_type;
 mod mmap;
 pub mod net;
@@ -63,7 +62,6 @@ pub use descriptor_reflection::{
 };
 pub use eventfd::*;
 pub use file_flags::*;
-pub use fork::*;
 pub use get_filesystem_type::*;
 pub use ioctl::*;
 pub use mmap::*;
