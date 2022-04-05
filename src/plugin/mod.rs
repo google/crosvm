@@ -9,7 +9,6 @@ use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::os::unix::net::UnixDatagram;
-use std::os::unix::prelude::RawFd;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
@@ -22,16 +21,16 @@ use libc::{
     MS_RDONLY, O_NONBLOCK, SIGCHLD, SOCK_SEQPACKET,
 };
 
+use anyhow::{anyhow, bail, Context, Result};
 use protobuf::ProtobufError;
 use remain::sorted;
 use thiserror::Error;
 
-use anyhow::{anyhow, bail, Context, Result};
 use base::{
     add_fd_flags, block_signal, clear_signal, drop_capabilities, enable_core_scheduling, error,
     getegid, geteuid, info, pipe, register_rt_signal_handler, validate_raw_descriptor, warn,
-    AsRawDescriptor, Error as SysError, Event, FromRawDescriptor, Killable, MmapError, PollToken,
-    Result as SysResult, SignalFd, WaitContext, SIGRTMIN,
+    AsRawDescriptor, Descriptor, Error as SysError, Event, FromRawDescriptor, Killable, MmapError,
+    PollToken, RawDescriptor, Result as SysResult, SignalFd, WaitContext, SIGRTMIN,
 };
 use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use minijail::{self, Minijail};
@@ -44,6 +43,7 @@ use crate::{Config, Executable};
 
 const MAX_DATAGRAM_SIZE: usize = 4096;
 const MAX_VCPU_DATAGRAM_SIZE: usize = 0x40000;
+const CROSVM_GPU_SERVER_FD_ENV: &str = "CROSVM_GPU_SERVER_FD";
 
 /// An error that occurs when communicating with the plugin process.
 #[sorted]
@@ -500,7 +500,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         .context("error marking stderr nonblocking")?;
 
     #[allow(unused_mut)]
-    let mut fds: Vec<(String, RawFd)> = Vec::default();
+    let mut env_fds: Vec<(String, Descriptor)> = Vec::default();
 
     let _default_render_server_params = crate::platform::GpuRenderServerParameters {
         path: std::path::PathBuf::from("/usr/libexec/virgl_render_server"),
@@ -524,7 +524,10 @@ pub fn run_config(cfg: Config) -> Result<()> {
     let (_render_server_jail, _render_server_fd) =
         if let Some(parameters) = &gpu_render_server_parameters {
             let (jail, fd) = crate::platform::gpu::start_gpu_render_server(&cfg, parameters)?;
-            fds.push((String::from("CROSVM_GPU_SERVER_FD"), fd.as_raw_descriptor()));
+            env_fds.push((
+                CROSVM_GPU_SERVER_FD_ENV.to_string(),
+                Descriptor(fd.as_raw_descriptor()),
+            ));
             (
                 Some(crate::platform::jail_helpers::ScopedMinijail(jail)),
                 Some(fd),
@@ -643,7 +646,14 @@ pub fn run_config(cfg: Config) -> Result<()> {
         .context("failed to create kvm irqchip")?;
     vm.create_pit().context("failed to create kvm PIT")?;
 
-    let mut plugin = Process::new(vcpu_count, plugin_path, &plugin_args, jail, stderr_wr, fds)?;
+    let mut plugin = Process::new(
+        vcpu_count,
+        plugin_path,
+        &plugin_args,
+        jail,
+        stderr_wr,
+        env_fds,
+    )?;
     // Now that the jail for the plugin has been created and we had a chance to adjust gids there,
     // we can drop all our capabilities in case we had any.
     drop_capabilities().context("failed to drop process capabilities")?;
