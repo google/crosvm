@@ -228,7 +228,7 @@ fn create_psci_node(fdt: &mut FdtWriter, version: &PsciVersion) -> Result<()> {
     // backward-compatible versions.
     let supported = [(PSCI_1_0, "arm,psci-1.0"), (PSCI_0_2, "arm,psci-0.2")];
 
-    let compatible: Vec<_> = supported
+    let mut compatible: Vec<_> = supported
         .iter()
         .filter(|&(v, _)| *version >= *v)
         .map(|&(_, c)| c)
@@ -236,7 +236,7 @@ fn create_psci_node(fdt: &mut FdtWriter, version: &PsciVersion) -> Result<()> {
 
     // The PSCI kernel driver also supports PSCI v0.1, which is NOT forward-compatible.
     if compatible.is_empty() {
-        let compatible = vec!["arm,psci"];
+        compatible = vec!["arm,psci"];
     }
 
     let psci_node = fdt.begin_node("psci")?;
