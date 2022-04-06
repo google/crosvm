@@ -120,20 +120,13 @@ pub fn process_transmit_queue<I: SignalableInterrupt>(
     while let Some(avail_desc) = transmit_queue.pop(mem) {
         let desc_index = avail_desc.index;
 
-        let reader = match Reader::new(mem.clone(), avail_desc) {
-            Ok(r) => r,
+        match Reader::new(mem.clone(), avail_desc) {
+            Ok(reader) => process_transmit_request(reader, output)
+                .unwrap_or_else(|e| error!("console: process_transmit_request failed: {}", e)),
             Err(e) => {
                 error!("console: failed to create reader: {}", e);
-                transmit_queue.add_used(mem, desc_index, 0);
-                needs_interrupt = true;
-                continue;
             }
         };
-
-        match process_transmit_request(reader, output) {
-            Ok(()) => (),
-            Err(e) => error!("console: process_transmit_request failed: {}", e),
-        }
 
         transmit_queue.add_used(mem, desc_index, 0);
         needs_interrupt = true;
