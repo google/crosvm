@@ -130,15 +130,12 @@ pub fn process_transmit_queue<I: SignalableInterrupt>(
             }
         };
 
-        let len = match process_transmit_request(reader, output) {
-            Ok(written) => written,
-            Err(e) => {
-                error!("console: process_transmit_request failed: {}", e);
-                0
-            }
-        };
+        match process_transmit_request(reader, output) {
+            Ok(()) => (),
+            Err(e) => error!("console: process_transmit_request failed: {}", e),
+        }
 
-        transmit_queue.add_used(mem, desc_index, len);
+        transmit_queue.add_used(mem, desc_index, 0);
         needs_interrupt = true;
     }
 
@@ -223,13 +220,13 @@ pub fn spawn_input_thread(
 ///
 /// * `reader` - The Reader with the data we want to write.
 /// * `output` - The output sink we are going to write the data to.
-pub fn process_transmit_request(mut reader: Reader, output: &mut dyn io::Write) -> io::Result<u32> {
+pub fn process_transmit_request(mut reader: Reader, output: &mut dyn io::Write) -> io::Result<()> {
     let len = reader.available_bytes();
     let mut data = vec![0u8; len];
     reader.read_exact(&mut data)?;
     output.write_all(&data)?;
     output.flush()?;
-    Ok(0)
+    Ok(())
 }
 
 impl Worker {
