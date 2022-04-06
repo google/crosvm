@@ -6,14 +6,14 @@
 # Regenerate libvda bindgen bindings.
 
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 source tools/impl/bindgen-common.sh
 
 bindgen_generate \
     --allowlist-type='video_.*' \
     "${BINDGEN_PLATFORM2}/arc/vm/libvda/libvda_common.h" \
-    > libvda/src/bindings.rs
+    > media/libvda/src/bindings.rs
 
 bindgen_generate \
     --raw-line 'pub use crate::bindings::*;' \
@@ -28,7 +28,7 @@ bindgen_generate \
     "${BINDGEN_PLATFORM2}/arc/vm/libvda/libvda_decode.h" \
     -- \
     -I "${BINDGEN_PLATFORM2}" \
-    > libvda/src/decode/bindings.rs
+    > media/libvda/src/decode/bindings.rs
 
 bindgen_generate \
     --raw-line 'pub use crate::bindings::*;' \
@@ -43,4 +43,4 @@ bindgen_generate \
     "${BINDGEN_PLATFORM2}/arc/vm/libvda/libvda_encode.h" \
     -- \
     -I "${BINDGEN_PLATFORM2}" \
-    > libvda/src/encode/bindings.rs
+    > media/libvda/src/encode/bindings.rs
