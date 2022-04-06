@@ -251,7 +251,7 @@ struct LowMemoryLayout {
 
 static LOW_MEMORY_LAYOUT: OnceCell<LowMemoryLayout> = OnceCell::new();
 
-fn init_low_memory_layout(pcie_ecam: Option<MemRegion>) {
+fn init_low_memory_layout(pcie_ecam: Option<MemRegion>, pci_low_start: Option<u64>) {
     LOW_MEMORY_LAYOUT.get_or_init(|| {
         // Make sure it align to 256MB for MTRR convenient
         const MEM_32BIT_GAP_SIZE: u64 = if cfg!(feature = "direct") {
@@ -279,7 +279,12 @@ fn init_low_memory_layout(pcie_ecam: Option<MemRegion>) {
             )
         };
 
-        let pci_start = pcie_cfg_mmio_start.min(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE);
+        let pci_start = if let Some(pci_low) = pci_low_start {
+            pcie_cfg_mmio_start.min(pci_low)
+        } else {
+            pcie_cfg_mmio_start.min(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE)
+        };
+
         let pci_size = FIRST_ADDR_PAST_32BITS - pci_start - RESERVED_MEM_SIZE;
 
         LowMemoryLayout {
@@ -459,7 +464,7 @@ impl arch::LinuxArch for X8664arch {
     fn guest_memory_layout(
         components: &VmComponents,
     ) -> std::result::Result<Vec<(GuestAddress, u64)>, Self::Error> {
-        init_low_memory_layout(components.pcie_ecam);
+        init_low_memory_layout(components.pcie_ecam, components.pci_low_start);
 
         let bios_size = match &components.vm_image {
             VmImage::Bios(bios_file) => Some(bios_file.metadata().map_err(Error::LoadBios)?.len()),
@@ -1669,7 +1674,8 @@ mod tests {
             base: 3 * GB,
             size: 256 * MB,
         });
-        init_low_memory_layout(pcie_ecam);
+        let pci_start = Some(2 * GB);
+        init_low_memory_layout(pcie_ecam, pci_start);
     }
 
     #[test]
@@ -1756,7 +1762,7 @@ mod tests {
     fn check_pci_mmio_layout() {
         setup();
 
-        assert_eq!(read_pci_start_before_32bit(), 3 * GB);
+        assert_eq!(read_pci_start_before_32bit(), 2 * GB);
         assert_eq!(read_pcie_cfg_mmio_start(), 3 * GB);
         assert_eq!(read_pcie_cfg_mmio_size(), 256 * MB);
     }

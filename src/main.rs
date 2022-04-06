@@ -2107,6 +2107,28 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
 
             cfg.pcie_ecam = Some(MemRegion { base, size: len });
         }
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        "pci-start" => {
+            if cfg.pci_low_start.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`pci-start` already given".to_owned(),
+                ));
+            }
+
+            let value = value.unwrap();
+            let start = parse_hex_or_decimal(value).map_err(|_| argument::Error::InvalidValue {
+                value: value.to_owned(),
+                expected: String::from("pci-start parameter should be integer"),
+            })?;
+            // pci-start should be below 4G and aligned to 256MB
+            if start >= 0x1_0000_0000 || start & 0xFFF_FFFF != 0 {
+                return Err(argument::Error::InvalidValue {
+                    value: value.to_owned(),
+                    expected: String::from("pci-start should be below 4G and alignment to 256MB"),
+                });
+            }
+            cfg.pci_low_start = Some(start);
+        }
         "help" => return Err(argument::Error::PrintHelp),
         _ => sys::set_arguments(cfg, name, value)?,
     }
@@ -2613,6 +2635,8 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::value("pcie-ecam", "mmio_base,mmio_length",
                           "Base and length for PCIE Enhanced Configuration Access Mechanism"),
+          #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+          Argument::value("pci-start", "pci_low_mmio_start", "the pci mmio start address below 4G"),
           Argument::short_flag('h', "help", "Print help message.")];
 
     arguments.append(&mut sys::get_arguments());

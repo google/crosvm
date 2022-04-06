@@ -104,6 +104,8 @@ pub struct VmComponents {
     pub no_legacy: bool,
     pub no_smt: bool,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub pci_low_start: Option<u64>,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub pcie_ecam: Option<MemRegion>,
     pub protected_vm: ProtectionType,
     pub pstore: Option<Pstore>,

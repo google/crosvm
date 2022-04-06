@@ -415,6 +415,8 @@ pub struct Config {
     pub no_smt: bool,
     pub params: Vec<String>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub pci_low_start: Option<u64>,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub pcie_ecam: Option<MemRegion>,
     #[cfg(feature = "direct")]
     pub pcie_rp: Vec<HostPcieRootPortParameters>,
@@ -545,6 +547,8 @@ impl Default for Config {
             no_legacy: false,
             no_smt: false,
             params: Vec::new(),
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            pci_low_start: None,
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             pcie_ecam: None,
             #[cfg(feature = "direct")]

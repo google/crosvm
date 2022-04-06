@@ -912,6 +912,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         pvm_fw: pvm_fw_image,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         pcie_ecam: cfg.pcie_ecam,
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        pci_low_start: cfg.pci_low_start,
     })
 }
 
