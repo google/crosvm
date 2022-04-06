@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{warn, Event};
+use base::warn;
 use std::convert::TryFrom;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{BusAccessInfo, BusDevice};
+use crate::{BusAccessInfo, BusDevice, IrqEdgeEvent};
 
 // Register offsets
 // Data register
@@ -36,7 +36,7 @@ pub const PL030_AMBA_MASK: u32 = 0x000FFFFF;
 /// An emulated ARM pl030 RTC
 pub struct Pl030 {
     // Event to be used to interrupt the guest for an alarm event
-    alarm_evt: Event,
+    alarm_evt: IrqEdgeEvent,
 
     // This is the delta we subtract from current time to get the
     // counter value
@@ -60,7 +60,7 @@ fn get_epoch_time() -> u32 {
 
 impl Pl030 {
     /// Constructs a Pl030 device
-    pub fn new(evt: Event) -> Pl030 {
+    pub fn new(evt: IrqEdgeEvent) -> Pl030 {
         Pl030 {
             alarm_evt: evt,
             counter_delta_time: get_epoch_time(),
@@ -100,7 +100,7 @@ impl BusDevice for Pl030 {
                 if reg_val == 0 {
                     self.interrupt_active = false;
                 } else {
-                    self.alarm_evt.write(1).unwrap();
+                    self.alarm_evt.trigger().unwrap();
                     self.interrupt_active = true;
                 }
             }
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn test_interrupt_status_register() {
-        let event = Event::new().unwrap();
+        let event = IrqEdgeEvent::new().unwrap();
         let mut device = Pl030::new(event.try_clone().unwrap());
         let mut register = [0, 0, 0, 0];
 
@@ -169,7 +169,7 @@ mod tests {
         device.write(pl030_bus_address(RTCEOI), &[1, 0, 0, 0]);
         device.read(pl030_bus_address(RTCSTAT), &mut register);
         assert_eq!(register, [1, 0, 0, 0]);
-        assert_eq!(event.read().unwrap(), 1);
+        assert_eq!(event.get_trigger().read().unwrap(), 1);
 
         // clear interrupt
         device.write(pl030_bus_address(RTCEOI), &[0, 0, 0, 0]);
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_match_register() {
-        let mut device = Pl030::new(Event::new().unwrap());
+        let mut device = Pl030::new(IrqEdgeEvent::new().unwrap());
         let mut register = [0, 0, 0, 0];
 
         device.write(pl030_bus_address(RTCMR), &[1, 2, 3, 4]);

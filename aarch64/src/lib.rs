@@ -556,9 +556,9 @@ impl AArch64 {
     /// * `irq_chip` - The IRQ chip to add irqs to.
     /// * `bus` - The bus to add devices to.
     fn add_arch_devs(irq_chip: &mut dyn IrqChip, bus: &Bus) -> Result<()> {
-        let rtc_evt = Event::new().map_err(Error::CreateEvent)?;
+        let rtc_evt = devices::IrqEdgeEvent::new().map_err(Error::CreateEvent)?;
         irq_chip
-            .register_irq_event(AARCH64_RTC_IRQ, &rtc_evt, None)
+            .register_irq_event(AARCH64_RTC_IRQ, rtc_evt.get_trigger(), None)
             .map_err(Error::RegisterIrqfd)?;
 
         let rtc = Arc::new(Mutex::new(devices::pl030::Pl030::new(rtc_evt)));
