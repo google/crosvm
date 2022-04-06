@@ -41,8 +41,22 @@ pub fn open_vfio_device(pci_address: PciAddress) -> Result<VfioDevice> {
     .context("failed to clear driver_override")?;
 
     let vfio_path = format!("/sys/bus/pci/devices/{}", &addr_str);
-    let vfio_container = Arc::new(Mutex::new(VfioContainer::new()?));
-    let vfio = VfioDevice::new(&vfio_path, vfio_container)
-        .map_err(|e| anyhow!("failed to create VFIO device: {}", e))?;
-    Ok(vfio)
+    let mut last_err = None;
+    // We can't create the container until udev updates the permissions on
+    // /dev/vfio/$group_id. There's no easy way to wait for that to happen, so
+    // just poll. In practice, this should take <100ms.
+    for _ in 1..50 {
+        let vfio_container = Arc::new(Mutex::new(VfioContainer::new()?));
+        match VfioDevice::new(&vfio_path, vfio_container) {
+            Ok(vfio_dev) => return Ok(vfio_dev),
+            Err(e) => {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(anyhow!(
+        "failed to create VFIO device: {}",
+        last_err.unwrap()
+    ))
 }
