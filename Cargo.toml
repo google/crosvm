@@ -198,6 +198,7 @@ aarch64 = { path = "aarch64" }
 
 [dev-dependencies]
 base = "*"
+lazy_static = "*"
 
 [patch.crates-io]
 assertions = { path = "common/assertions" }

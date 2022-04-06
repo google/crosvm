@@ -17,6 +17,13 @@ use std::time::Duration;
 use base::{ioctl, AsRawDescriptor};
 use tempfile::tempfile;
 
+lazy_static::lazy_static! {
+    static ref TAP_AVAILABLE: bool = {
+        use net_util::TapT;
+        net_util::Tap::new(true, false).is_ok()
+    };
+}
+
 struct RemovePath(PathBuf);
 impl Drop for RemovePath {
     fn drop(&mut self) {
@@ -89,12 +96,6 @@ fn run_plugin(bin_path: &Path, with_sandbox: bool) {
         "run",
         "-c",
         "1",
-        "--host_ip",
-        "100.115.92.5",
-        "--netmask",
-        "255.255.255.252",
-        "--mac",
-        "de:21:e8:47:6b:6a",
         "--seccomp-policy-dir",
         "tests",
         "--plugin",
@@ -104,6 +105,17 @@ fn run_plugin(bin_path: &Path, with_sandbox: bool) {
             .canonicalize()
             .expect("failed to canonicalize plugin path"),
     );
+
+    if *TAP_AVAILABLE {
+        cmd.args(&[
+            "--host_ip",
+            "100.115.92.5",
+            "--netmask",
+            "255.255.255.252",
+            "--mac",
+            "de:21:e8:47:6b:6a",
+        ]);
+    }
     if !with_sandbox {
         cmd.arg("--disable-sandbox");
     }
@@ -286,7 +298,9 @@ fn test_vcpu_pause() {
 
 #[test]
 fn test_net_config() {
-    test_plugin(include_str!("plugin_net_config.c"));
+    if *TAP_AVAILABLE {
+        test_plugin(include_str!("plugin_net_config.c"));
+    }
 }
 
 #[test]
