@@ -13,7 +13,7 @@ use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 use crate::{
     platform::{deserialize_with_descriptors, SerializeDescriptors},
     tube::{Error, RecvTube, Result, SendTube},
-    RawDescriptor, ReadNotifier, ScmSocket, UnixSeqpacket, UnsyncMarker,
+    CloseNotifier, RawDescriptor, ReadNotifier, ScmSocket, UnixSeqpacket, UnsyncMarker,
 };
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -117,6 +117,12 @@ impl AsRawFd for Tube {
 impl ReadNotifier for Tube {
     fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
         &self.socket
+    }
+}
+
+impl CloseNotifier for Tube {
+    fn get_close_notifier(&self) -> &dyn AsRawDescriptor {
+        self.socket.get_close_notifier()
     }
 }
 
