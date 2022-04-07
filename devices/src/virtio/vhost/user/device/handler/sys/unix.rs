@@ -8,18 +8,6 @@ use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::vfio::{VfioDevice, VfioRegionAddr};
-use crate::virtio::interrupt::SignalableInterrupt;
-use crate::virtio::vhost::user::device::handler::{
-    DeviceRequestHandler, Doorbell, GuestAddress, HandlerType, MappingInfo, MemoryRegion,
-    VhostUserBackend,
-};
-use crate::virtio::vhost::user::device::vvu::{
-    device::VvuDevice,
-    doorbell::DoorbellRegion,
-    pci::{VvuPciCaps, VvuPciDevice},
-};
-
 use anyhow::{anyhow, bail};
 use anyhow::{Context, Result};
 use base::{
@@ -35,6 +23,18 @@ use vmm_vhost::{
     message::{MasterReq, VhostUserMemoryRegion},
     Error as VhostError, Protocol, Result as VhostResult, SlaveListener, SlaveReqHandler,
     VhostUserSlaveReqHandler,
+};
+
+use crate::vfio::{VfioDevice, VfioRegionAddr};
+use crate::virtio::interrupt::SignalableInterrupt;
+use crate::virtio::vhost::user::device::handler::{
+    DeviceRequestHandler, Doorbell, GuestAddress, HandlerType, MappingInfo, MemoryRegion,
+    VhostUserBackend,
+};
+use crate::virtio::vhost::user::device::vvu::{
+    device::VvuDevice,
+    doorbell::DoorbellRegion,
+    pci::{VvuPciCaps, VvuPciDevice},
 };
 
 pub(crate) enum HandlerTypeSys {

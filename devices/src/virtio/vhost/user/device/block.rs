@@ -2,31 +2,27 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod sys;
+
 use std::cell::RefCell;
-use std::fs::OpenOptions;
 use std::rc::Rc;
 use std::sync::{atomic::AtomicU64, atomic::Ordering, Arc};
 
 use anyhow::{anyhow, bail, Context};
-use argh::FromArgs;
-use futures::future::{AbortHandle, Abortable};
-use sync::Mutex;
-use vmm_vhost::message::*;
-
 use base::{warn, Event, Timer};
 use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor, TimerAsync};
 use data_model::DataInit;
-use disk::create_async_disk_file;
-use hypervisor::ProtectionType;
+use disk::AsyncDisk;
+use futures::future::{AbortHandle, Abortable};
+use sync::Mutex;
 use vm_memory::GuestMemory;
+use vmm_vhost::message::*;
 
 use crate::virtio::block::asynchronous::{flush_disk, handle_queue};
 use crate::virtio::block::*;
-use crate::virtio::vhost::user::device::{
-    handler::{DeviceRequestHandler, Doorbell, VhostUserBackend},
-    vvu::pci::VvuPciDevice,
-};
-use crate::virtio::{self, base_features, block::sys::*, copy_config};
+use crate::virtio::vhost::user::device::block::sys::start_device;
+use crate::virtio::vhost::user::device::handler::{Doorbell, VhostUserBackend};
+use crate::virtio::{self, block::sys::*, copy_config};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: u16 = 16;
@@ -46,26 +42,14 @@ pub(crate) struct BlockBackend {
 }
 
 impl BlockBackend {
-    /// Creates a new block backend.
-    ///
-    /// * `ex`: executor used to run this device task.
-    /// * `filename`: Name of the disk image file.
-    /// * `options`: Vector of file options.
-    ///   - `read-only`
-    pub(crate) fn new(ex: &Executor, filename: &str, options: Vec<&str>) -> anyhow::Result<Self> {
-        let read_only = options.contains(&"read-only");
-        let sparse = false;
-        let block_size = 512;
-        let f = OpenOptions::new()
-            .read(true)
-            .write(!read_only)
-            .create(false)
-            .open(filename)
-            .context("Failed to open disk file")?;
-        let disk_image = create_async_disk_file(f).context("Failed to create async file")?;
-
-        let base_features = base_features(ProtectionType::Unprotected);
-
+    pub fn new_from_async_disk(
+        ex: &Executor,
+        async_image: Box<dyn AsyncDisk>,
+        base_features: u64,
+        read_only: bool,
+        sparse: bool,
+        block_size: u32,
+    ) -> anyhow::Result<BlockBackend> {
         if block_size % SECTOR_SIZE as u32 != 0 {
             bail!(
                 "Block size {} is not a multiple of {}.",
@@ -73,7 +57,7 @@ impl BlockBackend {
                 SECTOR_SIZE,
             );
         }
-        let disk_size = disk_image.get_len()?;
+        let disk_size = async_image.get_len()?;
         if disk_size % block_size as u64 != 0 {
             warn!(
                 "Disk size {} is not a multiple of block size {}; \
@@ -86,8 +70,6 @@ impl BlockBackend {
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
 
         let seg_max = get_seg_max(QUEUE_SIZE);
-
-        let async_image = disk_image.to_async_disk(ex)?;
 
         let disk_size = Arc::new(AtomicU64::new(disk_size));
 
@@ -115,7 +97,10 @@ impl BlockBackend {
         let flush_timer_read = timer
             .try_clone()
             .context("Failed to clone flush_timer")
-            .and_then(|t| TimerAsync::new(t, ex).context("Failed to create an async timer"))?;
+            .and_then(|t| {
+                // TODO(b/228645507): Update code below to match B* once B* Timer is upstreamed.
+                TimerAsync::new(t, ex).context("Failed to create an async timer")
+            })?;
         let flush_timer_armed = Rc::new(RefCell::new(false));
         ex.spawn_local(flush_disk(
             Rc::clone(&disk_state),
@@ -243,60 +228,8 @@ impl VhostUserBackend for BlockBackend {
     }
 }
 
-#[derive(FromArgs)]
-#[argh(description = "")]
-struct Options {
-    #[argh(
-        option,
-        description = "path and options of the disk file.",
-        arg_name = "PATH<:read-only>"
-    )]
-    file: String,
-    #[argh(option, description = "path to a vhost-user socket", arg_name = "PATH")]
-    socket: Option<String>,
-    #[argh(
-        option,
-        description = "VFIO-PCI device name (e.g. '0000:00:07.0')",
-        arg_name = "STRING"
-    )]
-    vfio: Option<String>,
-}
-
 /// Starts a vhost-user block device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn run_block_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
-    let opts = match Options::from_args(&[program_name], args) {
-        Ok(opts) => opts,
-        Err(e) => {
-            if e.status.is_err() {
-                bail!(e.output);
-            } else {
-                println!("{}", e.output);
-            }
-            return Ok(());
-        }
-    };
-
-    if !(opts.socket.is_some() ^ opts.vfio.is_some()) {
-        bail!("Exactly one of `--socket` or `--vfio` is required");
-    }
-
-    let ex = Executor::new().context("failed to create executor")?;
-
-    let mut fileopts = opts.file.split(":").collect::<Vec<_>>();
-    let filename = fileopts.remove(0);
-
-    let block = BlockBackend::new(&ex, filename, fileopts)?;
-    let handler = DeviceRequestHandler::new(block);
-    match (opts.socket, opts.vfio) {
-        (Some(socket), None) => {
-            // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-            ex.run_until(handler.run(socket, &ex))?
-        }
-        (None, Some(device_name)) => {
-            let device = VvuPciDevice::new(device_name.as_str(), BlockBackend::MAX_QUEUE_NUM)?;
-            ex.run_until(handler.run_vvu(device, &ex))?
-        }
-        _ => unreachable!("Must be checked above"),
-    }
+    return start_device(program_name, args);
 }
