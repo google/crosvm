@@ -63,11 +63,6 @@ const CROSVM_VCPU_EVENT_KIND_PAUSED: u32 = 2;
 const CROSVM_VCPU_EVENT_KIND_HYPERV_HCALL: u32 = 3;
 const CROSVM_VCPU_EVENT_KIND_HYPERV_SYNIC: u32 = 4;
 
-pub const CROSVM_GPU_SERVER_FD_ENV: &str = "CROSVM_GPU_SERVER_FD";
-pub const CROSVM_SOCKET_ENV: &str = "CROSVM_SOCKET";
-#[cfg(feature = "stats")]
-pub const CROSVM_STATS_ENV: &str = "CROSVM_STATS";
-
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct crosvm_net_config {
@@ -241,7 +236,7 @@ fn record(_a: Stat) -> u32 {
 #[cfg(feature = "stats")]
 fn printstats() {
     // Unsafe due to racy access - OK for stats
-    if std::env::var(CROSVM_STATS_ENV).is_ok() {
+    if std::env::var("CROSVM_STATS").is_ok() {
         unsafe {
             stats::STATS.print();
         }
@@ -1370,7 +1365,7 @@ fn to_crosvm_rc<T>(r: result::Result<T, c_int>) -> c_int {
 
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_get_render_server_fd() -> c_int {
-    let fd = match env::var(CROSVM_GPU_SERVER_FD_ENV) {
+    let fd = match env::var("CROSVM_GPU_SERVER_FD") {
         Ok(v) => v,
         _ => return -EINVAL,
     };
@@ -1384,7 +1379,7 @@ pub unsafe extern "C" fn crosvm_get_render_server_fd() -> c_int {
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_connect(out: *mut *mut crosvm) -> c_int {
     let _u = record(Stat::Connect);
-    let socket_name = match env::var(CROSVM_SOCKET_ENV) {
+    let socket_name = match env::var("CROSVM_SOCKET") {
         Ok(v) => v,
         _ => return -ENOTCONN,
     };

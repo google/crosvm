@@ -8,7 +8,7 @@ edition = "2021"
 stats = []
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 kvm = { path = "../kvm" }
