@@ -4,6 +4,7 @@
 
 //! Implement a userspace PCI device driver for the virtio vhost-user device.
 
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -245,7 +246,7 @@ impl VvuPciDevice {
     /// * `pci_id` - PCI device ID such as `"0000:00:05.0"`.
     /// * `device_vq_num` - number of virtqueues that the device backend (e.g. block) may use.
     pub fn new(pci_id: &str, device_vq_num: usize) -> Result<Self> {
-        let pci_address = PciAddress::from_string(pci_id).context("failed to parse PCI address")?;
+        let pci_address = PciAddress::from_str(pci_id).context("failed to parse PCI address")?;
         let vfio_dev = Arc::new(open_vfio_device(pci_address)?);
         let config = VfioPciConfig::new(vfio_dev.clone());
         let caps = VvuPciCaps::new(&config)?;

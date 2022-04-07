@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::fmt::{self, Display};
+use std::str::FromStr;
 
 use remain::sorted;
 use serde::{Deserialize, Serialize};
@@ -47,6 +48,44 @@ impl Display for PciAddress {
             "{:04x}:{:02x}:{:02x}.{:0x}",
             domain, self.bus, self.dev, self.func,
         )
+    }
+}
+
+/// Construct PciAddress from string [domain:]bus:device.function.
+impl FromStr for PciAddress {
+    type Err = Error;
+
+    fn from_str(address: &str) -> std::result::Result<Self, Self::Err> {
+        let (dev_bus_domain, func) = address.rsplit_once('.').ok_or(Error::MissingDelimiter(
+            PciAddressComponent::Device,
+            PciAddressComponent::Function,
+        ))?;
+        let func = u32::from_str_radix(func, 16)
+            .map_err(|_| Error::InvalidHex(PciAddressComponent::Function))?;
+
+        let (bus_domain, dev) = dev_bus_domain
+            .rsplit_once(':')
+            .ok_or(Error::MissingDelimiter(
+                PciAddressComponent::Bus,
+                PciAddressComponent::Device,
+            ))?;
+        let dev = u32::from_str_radix(dev, 16)
+            .map_err(|_| Error::InvalidHex(PciAddressComponent::Device))?;
+
+        // Domain is optional; if unspecified, the rest of the string is the bus, and domain
+        // defaults to 0.
+        let (domain, bus) = bus_domain.rsplit_once(':').unwrap_or(("0", bus_domain));
+        let bus = u32::from_str_radix(bus, 16)
+            .map_err(|_| Error::InvalidHex(PciAddressComponent::Bus))?;
+
+        if domain.contains(':') {
+            return Err(Error::TooManyComponents);
+        }
+
+        let domain = u32::from_str_radix(domain, 16)
+            .map_err(|_| Error::InvalidHex(PciAddressComponent::Domain))?;
+
+        Self::new(domain, bus, dev, func)
     }
 }
 
@@ -97,40 +136,6 @@ impl PciAddress {
         (PciAddress { bus, dev, func }, register)
     }
 
-    /// Construct PciAddress from string [domain:]bus:device.function.
-    pub fn from_string(address: &str) -> Result<Self> {
-        let (dev_bus_domain, func) = address.rsplit_once('.').ok_or(Error::MissingDelimiter(
-            PciAddressComponent::Device,
-            PciAddressComponent::Function,
-        ))?;
-        let func = u32::from_str_radix(func, 16)
-            .map_err(|_| Error::InvalidHex(PciAddressComponent::Function))?;
-
-        let (bus_domain, dev) = dev_bus_domain
-            .rsplit_once(':')
-            .ok_or(Error::MissingDelimiter(
-                PciAddressComponent::Bus,
-                PciAddressComponent::Device,
-            ))?;
-        let dev = u32::from_str_radix(dev, 16)
-            .map_err(|_| Error::InvalidHex(PciAddressComponent::Device))?;
-
-        // Domain is optional; if unspecified, the rest of the string is the bus, and domain
-        // defaults to 0.
-        let (domain, bus) = bus_domain.rsplit_once(':').unwrap_or(("0", bus_domain));
-        let bus = u32::from_str_radix(bus, 16)
-            .map_err(|_| Error::InvalidHex(PciAddressComponent::Bus))?;
-
-        if domain.contains(':') {
-            return Err(Error::TooManyComponents);
-        }
-
-        let domain = u32::from_str_radix(domain, 16)
-            .map_err(|_| Error::InvalidHex(PciAddressComponent::Domain))?;
-
-        Self::new(domain, bus, dev, func)
-    }
-
     /// Encode PciAddress into CONFIG_ADDRESS value.
     pub fn to_config_address(&self, register: usize, register_bits_num: usize) -> u32 {
         let bus_offset = register_bits_num + Self::FUNCTION_BITS_NUM + Self::DEVICE_BITS_NUM;
@@ -169,7 +174,7 @@ mod tests {
     #[test]
     fn from_string() {
         assert_eq!(
-            PciAddress::from_string("0000:00:00.0").unwrap(),
+            PciAddress::from_str("0000:00:00.0").unwrap(),
             PciAddress {
                 bus: 0,
                 dev: 0,
@@ -177,7 +182,7 @@ mod tests {
             }
         );
         assert_eq!(
-            PciAddress::from_string("00:00.0").unwrap(),
+            PciAddress::from_str("00:00.0").unwrap(),
             PciAddress {
                 bus: 0,
                 dev: 0,
@@ -185,7 +190,7 @@ mod tests {
             }
         );
         assert_eq!(
-            PciAddress::from_string("01:02.3").unwrap(),
+            PciAddress::from_str("01:02.3").unwrap(),
             PciAddress {
                 bus: 1,
                 dev: 2,
@@ -193,7 +198,7 @@ mod tests {
             }
         );
         assert_eq!(
-            PciAddress::from_string("ff:1f.7").unwrap(),
+            PciAddress::from_str("ff:1f.7").unwrap(),
             PciAddress {
                 bus: 0xff,
                 dev: 0x1f,
@@ -205,7 +210,7 @@ mod tests {
     #[test]
     fn from_string_missing_func_delim() {
         assert_eq!(
-            PciAddress::from_string("1").expect_err("parse should fail"),
+            PciAddress::from_str("1").expect_err("parse should fail"),
             Error::MissingDelimiter(PciAddressComponent::Device, PciAddressComponent::Function)
         );
     }
@@ -213,7 +218,7 @@ mod tests {
     #[test]
     fn from_string_missing_dev_delim() {
         assert_eq!(
-            PciAddress::from_string("2.1").expect_err("parse should fail"),
+            PciAddress::from_str("2.1").expect_err("parse should fail"),
             Error::MissingDelimiter(PciAddressComponent::Bus, PciAddressComponent::Device)
         );
     }
@@ -221,7 +226,7 @@ mod tests {
     #[test]
     fn from_string_extra_components() {
         assert_eq!(
-            PciAddress::from_string("0:0:0:0.0").expect_err("parse should fail"),
+            PciAddress::from_str("0:0:0:0.0").expect_err("parse should fail"),
             Error::TooManyComponents
         );
     }
@@ -229,7 +234,7 @@ mod tests {
     #[test]
     fn from_string_invalid_func_hex() {
         assert_eq!(
-            PciAddress::from_string("0000:00:00.g").expect_err("parse should fail"),
+            PciAddress::from_str("0000:00:00.g").expect_err("parse should fail"),
             Error::InvalidHex(PciAddressComponent::Function)
         );
     }
@@ -237,7 +242,7 @@ mod tests {
     #[test]
     fn from_string_invalid_func_range() {
         assert_eq!(
-            PciAddress::from_string("0000:00:00.8").expect_err("parse should fail"),
+            PciAddress::from_str("0000:00:00.8").expect_err("parse should fail"),
             Error::ComponentOutOfRange(PciAddressComponent::Function)
         );
     }
@@ -245,7 +250,7 @@ mod tests {
     #[test]
     fn from_string_invalid_dev_hex() {
         assert_eq!(
-            PciAddress::from_string("0000:00:gg.0").expect_err("parse should fail"),
+            PciAddress::from_str("0000:00:gg.0").expect_err("parse should fail"),
             Error::InvalidHex(PciAddressComponent::Device)
         );
     }
@@ -253,7 +258,7 @@ mod tests {
     #[test]
     fn from_string_invalid_dev_range() {
         assert_eq!(
-            PciAddress::from_string("0000:00:20.0").expect_err("parse should fail"),
+            PciAddress::from_str("0000:00:20.0").expect_err("parse should fail"),
             Error::ComponentOutOfRange(PciAddressComponent::Device)
         );
     }
@@ -261,7 +266,7 @@ mod tests {
     #[test]
     fn from_string_invalid_bus_hex() {
         assert_eq!(
-            PciAddress::from_string("0000:gg:00.0").expect_err("parse should fail"),
+            PciAddress::from_str("0000:gg:00.0").expect_err("parse should fail"),
             Error::InvalidHex(PciAddressComponent::Bus)
         );
     }
@@ -269,7 +274,7 @@ mod tests {
     #[test]
     fn from_string_invalid_bus_range() {
         assert_eq!(
-            PciAddress::from_string("0000:100:00.0").expect_err("parse should fail"),
+            PciAddress::from_str("0000:100:00.0").expect_err("parse should fail"),
             Error::ComponentOutOfRange(PciAddressComponent::Bus)
         );
     }
@@ -277,7 +282,7 @@ mod tests {
     #[test]
     fn from_string_invalid_domain_hex() {
         assert_eq!(
-            PciAddress::from_string("gggg:00:00.0").expect_err("parse should fail"),
+            PciAddress::from_str("gggg:00:00.0").expect_err("parse should fail"),
             Error::InvalidHex(PciAddressComponent::Domain)
         );
     }
@@ -285,7 +290,7 @@ mod tests {
     #[test]
     fn from_string_invalid_domain_range() {
         assert_eq!(
-            PciAddress::from_string("0001:00:00.0").expect_err("parse should fail"),
+            PciAddress::from_str("0001:00:00.0").expect_err("parse should fail"),
             Error::ComponentOutOfRange(PciAddressComponent::Domain)
         );
     }

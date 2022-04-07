@@ -1,6 +1,8 @@
 // Copyright 2021 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+use std::str::FromStr;
 use std::sync::Arc;
 use sync::Mutex;
 
@@ -310,7 +312,7 @@ impl PcieDevice for PcieRootPort {
         if self.pci_address.is_none() {
             match &self.pcie_host {
                 Some(host) => {
-                    let address = PciAddress::from_string(&host.host_name())
+                    let address = PciAddress::from_str(&host.host_name())
                         .map_err(|e| PciDeviceError::PciAddressParseFailure(host.host_name(), e))?;
                     if resources.reserve_pci(
                         Alloc::PciBar {

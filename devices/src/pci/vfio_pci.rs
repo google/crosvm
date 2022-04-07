@@ -6,6 +6,7 @@ use std::cmp::{max, min, Reverse};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 use std::u32;
@@ -1449,7 +1450,7 @@ impl PciDevice for VfioPciDevice {
     ) -> Result<PciAddress, PciDeviceError> {
         if self.pci_address.is_none() {
             let mut address = self.guest_address.unwrap_or(
-                PciAddress::from_string(self.device.device_name()).map_err(|e| {
+                PciAddress::from_str(self.device.device_name()).map_err(|e| {
                     PciDeviceError::PciAddressParseFailure(self.device.device_name().clone(), e)
                 })?,
             );

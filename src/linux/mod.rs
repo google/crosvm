@@ -15,6 +15,7 @@ use std::ops::RangeInclusive;
 use std::os::unix::net::UnixStream;
 use std::os::unix::prelude::OpenOptionsExt;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::{mpsc, Arc, Barrier};
 use std::time::Duration;
 
@@ -1485,8 +1486,7 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     let host_str = host_os_str
         .to_str()
         .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
-    let host_addr =
-        PciAddress::from_string(host_str).context("failed to parse vfio pci address")?;
+    let host_addr = PciAddress::from_str(host_str).context("failed to parse vfio pci address")?;
 
     let (hp_bus, bus_num) = get_hp_bus(linux, host_addr)?;
 
@@ -1553,8 +1553,7 @@ fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     let host_str = host_os_str
         .to_str()
         .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
-    let host_addr =
-        PciAddress::from_string(host_str).context("failed to parse vfio pci address")?;
+    let host_addr = PciAddress::from_str(host_str).context("failed to parse vfio pci address")?;
     let host_key = HostHotPlugKey::Vfio { host_addr };
     for hp_bus in linux.hotplug_bus.iter() {
         let mut hp_bus_lock = hp_bus.lock();

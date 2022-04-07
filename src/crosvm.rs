@@ -271,7 +271,7 @@ impl VfioCommand {
     fn validate_params(kind: &str, value: &str) -> Result<(), argument::Error> {
         match kind {
             "guest-address" => {
-                if value.eq_ignore_ascii_case("auto") || PciAddress::from_string(value).is_ok() {
+                if value.eq_ignore_ascii_case("auto") || PciAddress::from_str(value).is_ok() {
                     Ok(())
                 } else {
                     Err(argument::Error::InvalidValue {
@@ -306,7 +306,7 @@ impl VfioCommand {
     pub fn guest_address(&self) -> Option<PciAddress> {
         self.params
             .get("guest-address")
-            .and_then(|addr| PciAddress::from_string(addr).ok())
+            .and_then(|addr| PciAddress::from_str(addr).ok())
     }
 
     pub fn iommu_dev_type(&self) -> IommuDevType {
