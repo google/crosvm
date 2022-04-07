@@ -341,7 +341,7 @@ impl HostDevice {
         );
         self.release_interfaces();
 
-        let _cur_config = match self.device.lock().get_active_configuration() {
+        let cur_config = match self.device.lock().get_active_configuration() {
             Ok(c) => Some(c),
             Err(e) => {
                 // The device may be in the default state, in which case
@@ -352,11 +352,12 @@ impl HostDevice {
                 None
             }
         };
-
-        self.device
-            .lock()
-            .set_active_configuration(config)
-            .map_err(Error::SetActiveConfig)?;
+        if Some(config) != cur_config {
+            self.device
+                .lock()
+                .set_active_configuration(config)
+                .map_err(Error::SetActiveConfig)?;
+        }
 
         let config_descriptor = self
             .device
