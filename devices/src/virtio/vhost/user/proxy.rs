@@ -71,17 +71,6 @@ const CONFIG_UUID_SIZE: usize = 16;
 const VIRTIO_VHOST_USER_STATUS_SLAVE_UP: u8 = 0;
 
 const BAR_INDEX: u8 = 2;
-// Bar size represents the amount of memory to be mapped for a sibling VM. Each
-// Virtio Vhost User Slave implementation requires access to the entire sibling
-// memory. It's assumed that sibling VM memory would be <= 8GB, hence this
-// constant value.
-//
-// TODO(abhishekbh): Understand why shared memory region size and overall bar
-// size differ in the QEMU implementation. The metadata required to map sibling
-// memory is about 16 MB per GB of sibling memory per device. Therefore, it is
-// in our interest to not waste space here and correlate it tightly to the
-// actual maximum memory a sibling VM can have.
-const BAR_SIZE: u64 = 1 << 33;
 
 // Bar configuration.
 // All offsets are from the starting of bar `BAR_INDEX`.
@@ -92,8 +81,8 @@ const NOTIFICATIONS_OFFSET: u64 = DOORBELL_OFFSET + DOORBELL_SIZE;
 const NOTIFICATIONS_SIZE: u64 = 0x1000;
 const SHARED_MEMORY_OFFSET: u64 = NOTIFICATIONS_OFFSET + NOTIFICATIONS_SIZE;
 // TODO(abhishekbh): Copied from qemu with VVU support. This should be same as
-// `BAR_SIZE` but it's significantly lower than the memory allocated to a
-// sibling VM. Figure out how these two are related.
+// VirtioVhostUser.device_bar_size, but it's significantly  lower than the
+// memory allocated to a sibling VM. Figure out how these two are related.
 const SHARED_MEMORY_SIZE: u64 = 0x1000;
 
 // Notifications region related constants.
@@ -953,6 +942,14 @@ struct ActivateParams {
 pub struct VirtioVhostUser {
     base_features: u64,
 
+    // Represents the amount of memory to be mapped for a sibling VM. Each
+    // Virtio Vhost User Slave implementation requires access to the entire sibling
+    // memory.
+    //
+    // TODO(abhishekbh): Understand why shared memory region size and overall bar
+    // size differ in the QEMU implementation.
+    device_bar_size: u64,
+
     // Bound socket waiting to accept a socket connection from the Vhost-user
     // sibling.
     listener: Option<UnixListener>,
@@ -995,9 +992,15 @@ impl VirtioVhostUser {
         main_process_tube: Tube,
         pci_address: Option<PciAddress>,
         uuid: Option<Uuid>,
+        max_sibling_mem_size: u64,
     ) -> Result<VirtioVhostUser> {
+        let device_bar_size = max_sibling_mem_size
+            .checked_next_power_of_two()
+            .expect("Sibling too large");
+
         Ok(VirtioVhostUser {
             base_features: base_features | 1 << VIRTIO_F_ACCESS_PLATFORM,
+            device_bar_size,
             listener: Some(listener),
             config: VirtioVhostUserConfig {
                 status: Le32::from(0),
@@ -1334,7 +1337,7 @@ impl VirtioDevice for VirtioVhostUser {
 
         vec![PciBarConfiguration::new(
             BAR_INDEX as usize,
-            BAR_SIZE as u64,
+            self.device_bar_size,
             PciBarRegionType::Memory64BitRegion,
             // NotPrefetchable so as to exit on every read / write event in the
             // guest.

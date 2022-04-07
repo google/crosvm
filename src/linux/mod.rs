@@ -108,6 +108,7 @@ fn create_virtio_devices(
     fs_device_tubes: &mut Vec<Tube>,
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     vvu_proxy_device_tubes: &mut Vec<Tube>,
+    vvu_proxy_max_sibling_mem_size: u64,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -128,6 +129,7 @@ fn create_virtio_devices(
             cfg,
             opt,
             vvu_proxy_device_tubes.remove(0),
+            vvu_proxy_max_sibling_mem_size,
         )?);
     }
 
@@ -476,6 +478,7 @@ fn create_devices(
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     vvu_proxy_device_tubes: &mut Vec<Tube>,
+    vvu_proxy_max_sibling_mem_size: u64,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
     let mut balloon_inflate_tube: Option<Tube> = None;
@@ -591,6 +594,7 @@ fn create_devices(
         #[cfg(feature = "gpu")]
         render_server_fd,
         vvu_proxy_device_tubes,
+        vvu_proxy_max_sibling_mem_size,
     )?;
 
     for stub in stubs {
@@ -1294,6 +1298,7 @@ where
         #[cfg(feature = "gpu")]
         render_server_fd,
         &mut vvu_proxy_device_tubes,
+        components.memory_size,
     )?;
 
     let mut hp_endpoints_ranges: Vec<RangeInclusive<u32>> = Vec::new();

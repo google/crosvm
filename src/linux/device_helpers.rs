@@ -230,7 +230,12 @@ pub fn create_vhost_user_snd_device(cfg: &Config, option: &VhostUserOption) -> D
     })
 }
 
-pub fn create_vvu_proxy_device(cfg: &Config, opt: &VvuOption, tube: Tube) -> DeviceResult {
+pub fn create_vvu_proxy_device(
+    cfg: &Config,
+    opt: &VvuOption,
+    tube: Tube,
+    max_sibling_mem_size: u64,
+) -> DeviceResult {
     let listener = UnixListener::bind(&opt.socket).map_err(|e| {
         error!("failed to bind listener for vvu proxy device: {}", e);
         e
@@ -242,6 +247,7 @@ pub fn create_vvu_proxy_device(cfg: &Config, opt: &VvuOption, tube: Tube) -> Dev
         tube,
         opt.addr,
         opt.uuid,
+        max_sibling_mem_size,
     )
     .context("failed to create VVU proxy device")?;
 
