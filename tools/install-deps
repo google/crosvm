@@ -15,7 +15,6 @@ sudo apt-get install --yes --no-install-recommends \
     git \
     jq \
     libasound2-dev \
-    libcap-dev \
     libclang-dev \
     libdbus-1-dev \
     libdrm-dev \
@@ -28,7 +27,6 @@ sudo apt-get install --yes --no-install-recommends \
     ninja-build \
     openssh-client \
     pkg-config \
-    protobuf-compiler \
     python3 \
     python3-pip \
     python3-setuptools \
@@ -56,7 +54,5 @@ rustup target add x86_64-pc-windows-gnu
 # The bindgen tool is required to build a crosvm dependency.
 cargo install bindgen
 
-# The mdbook and mdbook-mermaid tools are used to build the crosvm book.
-cargo install mdbook --no-default-features --version "^0.4.10"
-cargo install mdbook-mermaid --version "^0.8.3"
-cargo install mdbook-linkcheck --version "^0.7.6"
+# Install dependencies used to generate mdbook documentation.
+$(dirname "$0")/install-docs-deps

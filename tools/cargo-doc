@@ -38,6 +38,8 @@ for f in $ALL_FEATURES; do
     fi
 done
 
-cargo doc \
+# Set an environment variable 'CARGO_DOC' here so that each build.rs can skip
+# building unnecessary dependencies to generate documentations.
+CARGO_DOC="true" cargo doc \
       --manifest-path="${MANIFEST_PATH}" \
       --features="${features}" "$@"

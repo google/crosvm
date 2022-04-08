@@ -20,7 +20,8 @@ jobs:
           mdbook-version: 'latest'
       - name: Install Dependencies
         run: |
-          ./tools/install-deps
+          sudo apt update
+          ./tools/install-docs-deps
       - name: Run mdbook
         run: |
           mkdir -p docs/target/
