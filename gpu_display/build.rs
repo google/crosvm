@@ -71,6 +71,11 @@ fn compile_protocol<P: AsRef<Path>>(name: &str, out: P) -> PathBuf {
 }
 
 fn main() {
+    // Skip installing dependencies when generating documents.
+    if std::env::var("CARGO_DOC").is_ok() {
+        return;
+    }
+
     println!("cargo:rerun-if-env-changed=WAYLAND_PROTOCOLS_PATH");
     let out_dir = env::var("OUT_DIR").unwrap();
 

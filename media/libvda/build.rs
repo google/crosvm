@@ -3,6 +3,11 @@
 // found in the LICENSE file.
 
 fn main() {
+    // Skip installing dependencies when generating documents.
+    if std::env::var("CARGO_DOC").is_ok() {
+        return;
+    }
+
     #[allow(clippy::single_match)]
     match pkg_config::probe_library("libvda") {
         Ok(_) => (),

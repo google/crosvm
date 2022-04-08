@@ -20,6 +20,11 @@ fn main() {
                 .collect()
         }
 
+        // Skip building dependencies when generating documents.
+        if std::env::var("CARGO_DOC").is_ok() {
+            return;
+        }
+
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
         let proto_root = match env::var("SYSROOT") {
             Ok(dir) => PathBuf::from(dir).join("usr/include/chromeos"),

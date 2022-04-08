@@ -57,6 +57,11 @@ fn build_libtpm2(out_dir: &Path) -> Result<()> {
 }
 
 fn main() -> Result<()> {
+    // Skip installing dependencies when generating documents.
+    if std::env::var("CARGO_DOC").is_ok() {
+        return Ok(());
+    }
+
     // Use tpm2 package from the standard system location if available.
     if pkg_config::Config::new()
         .statik(true)
