@@ -294,8 +294,7 @@ pub struct BalloonStatsFfi {
 
 impl From<&BalloonStats> for BalloonStatsFfi {
     fn from(other: &BalloonStats) -> Self {
-        let convert =
-            |x: Option<u64>| -> i64 { x.map(|y| y.try_into().ok()).flatten().unwrap_or(-1) };
+        let convert = |x: Option<u64>| -> i64 { x.and_then(|y| y.try_into().ok()).unwrap_or(-1) };
         Self {
             swap_in: convert(other.swap_in),
             swap_out: convert(other.swap_out),

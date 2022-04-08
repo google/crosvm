@@ -379,8 +379,7 @@ impl AsRawDescriptors for CompositeDiskFile {
     fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
         self.component_disks
             .iter()
-            .map(|d| d.file.as_raw_descriptors())
-            .flatten()
+            .flat_map(|d| d.file.as_raw_descriptors())
             .collect()
     }
 }

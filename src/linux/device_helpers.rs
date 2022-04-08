@@ -1205,7 +1205,7 @@ pub fn create_vfio_platform_device(
 pub fn setup_virtio_access_platform(
     resources: &mut SystemAllocator,
     iommu_attached_endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
-    devices: &mut Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
+    devices: &mut [(Box<dyn BusDeviceObj>, Option<Minijail>)],
 ) -> DeviceResult<(Option<BTreeMap<u32, Tube>>, Option<Tube>)> {
     let mut translate_response_senders: Option<
         BTreeMap<

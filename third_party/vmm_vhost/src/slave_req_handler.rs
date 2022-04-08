@@ -829,11 +829,10 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
         if size - mem::size_of::<VhostUserConfig>() != msg.size as usize {
             return Err(Error::InvalidMessage);
         }
-        let flags: VhostUserConfigFlags;
-        match VhostUserConfigFlags::from_bits(msg.flags) {
-            Some(val) => flags = val,
+        let flags: VhostUserConfigFlags = match VhostUserConfigFlags::from_bits(msg.flags) {
+            Some(val) => val,
             None => return Err(Error::InvalidMessage),
-        }
+        };
 
         self.backend.set_config(msg.offset, buf, flags)
     }

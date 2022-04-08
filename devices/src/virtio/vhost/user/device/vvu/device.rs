@@ -201,7 +201,7 @@ impl VfioDeviceTrait for VvuDevice {
         };
 
         let size = iovs.iter().map(|v| v.len()).sum();
-        let data: Vec<u8> = iovs.iter().map(|v| v.to_vec()).flatten().collect();
+        let data: Vec<u8> = iovs.iter().flat_map(|v| v.to_vec()).collect();
 
         txq.lock().write(&data).context("Failed to send data")?;
         txq_notifier.lock().notify(vfio, QueueType::Tx as u16);

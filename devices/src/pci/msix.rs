@@ -252,16 +252,15 @@ impl MsixConfig {
         self.msi_device_socket
             .send(&request)
             .map_err(MsixError::AllocateOneMsiSend)?;
-        let irq_num: u32;
-        match self
+        let irq_num: u32 = match self
             .msi_device_socket
             .recv()
             .map_err(MsixError::AllocateOneMsiRecv)?
         {
-            VmIrqResponse::AllocateOneMsi { gsi } => irq_num = gsi,
+            VmIrqResponse::AllocateOneMsi { gsi } => gsi,
             VmIrqResponse::Err(e) => return Err(MsixError::AllocateOneMsi(e)),
             _ => unreachable!(),
-        }
+        };
         self.irq_vec[index] = Some(IrqfdGsi {
             irqfd: match request {
                 VmIrqRequest::AllocateOneMsi { irqfd, .. } => irqfd,

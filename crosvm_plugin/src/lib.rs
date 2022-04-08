@@ -519,8 +519,7 @@ impl crosvm {
             entry.irq_id = route.irq_id;
             match route.kind {
                 CROSVM_IRQ_ROUTE_IRQCHIP => {
-                    let irqchip: &mut MainRequest_SetIrqRouting_Route_Irqchip;
-                    irqchip = entry.mut_irqchip();
+                    let irqchip: &mut MainRequest_SetIrqRouting_Route_Irqchip = entry.mut_irqchip();
                     // Safe because route.kind indicates which union field is valid.
                     irqchip.irqchip = unsafe { route.route.irqchip }.irqchip;
                     irqchip.pin = unsafe { route.route.irqchip }.pin;

@@ -156,7 +156,7 @@ mod tests {
         }
 
         // Read it back and verify.
-        let actual_sdt = SDT::from_file(&temp_file.path().to_path_buf())?;
+        let actual_sdt = SDT::from_file(temp_file.path())?;
         assert!(actual_sdt.is_signature(b"TEST"));
         assert_eq!(actual_sdt.as_slice(), expected_sdt.as_slice());
         Ok(())

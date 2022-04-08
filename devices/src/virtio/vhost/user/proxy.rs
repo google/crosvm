@@ -230,11 +230,11 @@ impl Default for VirtioVhostUserConfig {
 }
 
 impl VirtioVhostUserConfig {
-    fn is_slave_up(&mut self) -> bool {
+    fn is_slave_up(&self) -> bool {
         self.check_status_bit(VIRTIO_VHOST_USER_STATUS_SLAVE_UP)
     }
 
-    fn check_status_bit(&mut self, bit: u8) -> bool {
+    fn check_status_bit(&self, bit: u8) -> bool {
         let status = self.status.to_native();
         status & (1 << bit) > 0
     }

@@ -105,6 +105,8 @@ enum DirEntry<'a> {
 
 impl<'a> DirEntry<'a> {
     // Creates `self` in the path given by `dir`.
+    // TODO(b/228627457): clippy is warning about the `Cow` below, but it is necessary
+    #[allow(clippy::ptr_arg)]
     fn create(&self, dir: &mut Cow<Path>) {
         match *self {
             DirEntry::File { name, content } => {

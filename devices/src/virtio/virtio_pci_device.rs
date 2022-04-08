@@ -662,6 +662,7 @@ impl PciDevice for VirtioPciDevice {
     // expression `COMMON_CONFIG_BAR_OFFSET <= o` is always true, but this code
     // is written such that the value of the const may be changed independently.
     #[allow(clippy::absurd_extreme_comparisons)]
+    #[allow(clippy::manual_range_contains)]
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
         // The driver is only allowed to do aligned, properly sized access.
         let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
@@ -721,6 +722,7 @@ impl PciDevice for VirtioPciDevice {
     }
 
     #[allow(clippy::absurd_extreme_comparisons)]
+    #[allow(clippy::manual_range_contains)]
     fn write_bar(&mut self, addr: u64, data: &[u8]) {
         let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
         if addr < bar0 || addr >= bar0 + CAPABILITY_BAR_SIZE {

@@ -277,7 +277,7 @@ impl CrossDomainState {
 
     fn receive_msg(
         &self,
-        opaque_data: &mut Vec<u8>,
+        opaque_data: &mut [u8],
         descriptors: &mut [i32; CROSS_DOMAIN_MAX_IDENTIFIERS],
     ) -> RutabagaResult<(usize, Vec<File>)> {
         // If any errors happen, the socket will get dropped, preventing more reading.
@@ -320,7 +320,7 @@ impl CrossDomainWorker {
         &mut self,
         fence: RutabagaFence,
         resample_evt: &Event,
-        receive_buf: &mut Vec<u8>,
+        receive_buf: &mut [u8],
     ) -> RutabagaResult<bool> {
         let events = self.wait_ctx.wait()?;
         let mut stop_thread = false;

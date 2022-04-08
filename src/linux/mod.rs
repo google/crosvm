@@ -696,7 +696,9 @@ fn create_pcie_root_port(
     devices: &mut Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
     hp_vec: &mut Vec<Arc<Mutex<dyn HotPlugBus>>>,
     hp_endpoints_ranges: &mut Vec<RangeInclusive<u32>>,
-    gpe_notify_devs: &mut Vec<(u32, Arc<Mutex<dyn GpeNotify>>)>,
+    // TODO(b/228627457): clippy is incorrectly warning about this Vec, which needs to be a Vec so
+    // we can push into it
+    #[allow(clippy::ptr_arg)] gpe_notify_devs: &mut Vec<(u32, Arc<Mutex<dyn GpeNotify>>)>,
 ) -> Result<()> {
     if host_pcie_rp.is_empty() {
         // user doesn't specify host pcie root port which link to this virtual pcie rp,
