@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod sys;
+
 use std::cell::RefCell;
-use std::os::unix::net::UnixStream;
-use std::path::Path;
 use std::thread;
 use std::u32;
 
@@ -13,7 +13,7 @@ use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
-use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, worker::Worker, Error, Result};
+use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, worker::Worker};
 use crate::virtio::{block::common::virtio_blk_config, DeviceType, Interrupt, Queue, VirtioDevice};
 
 const VIRTIO_BLK_F_SEG_MAX: u32 = 2;
@@ -33,9 +33,7 @@ pub struct Block {
 }
 
 impl Block {
-    pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Block> {
-        let socket = UnixStream::connect(&socket_path).map_err(Error::SocketConnect)?;
-
+    fn get_all_features(base_features: u64) -> (u64, u64, VhostUserProtocolFeatures) {
         let allow_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
             | 1 << VIRTIO_BLK_F_SEG_MAX
             | 1 << VIRTIO_BLK_F_RO
@@ -46,25 +44,11 @@ impl Block {
             | 1 << VIRTIO_RING_F_EVENT_IDX
             | base_features
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
 
-        let mut handler = VhostUserHandler::new_from_stream(
-            socket,
-            // TODO(b/181753022): Support multiple queues.
-            1, /* queues_num */
-            allow_features,
-            init_features,
-            allow_protocol_features,
-        )?;
-        let queue_sizes = handler.queue_sizes(QUEUE_SIZE, 1)?;
-
-        Ok(Block {
-            kill_evt: None,
-            worker_thread: None,
-            handler: RefCell::new(handler),
-            queue_sizes,
-        })
+        (allow_features, init_features, allow_protocol_features)
     }
 }
 
