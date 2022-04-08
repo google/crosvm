@@ -1125,6 +1125,8 @@ pub fn create_vfio_device(
     )
     .context("failed to create vfio device")?;
     let mut vfio_pci_device = Box::new(VfioPciDevice::new(
+        #[cfg(feature = "direct")]
+        vfio_path,
         vfio_device,
         bus_num,
         guest_address,

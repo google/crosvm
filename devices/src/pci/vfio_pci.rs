@@ -2,9 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(feature = "direct")]
+use anyhow::Context;
 use std::cmp::{max, min, Reverse};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+#[cfg(feature = "direct")]
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -30,6 +34,8 @@ use crate::pci::msix::{
     MsixConfig, MsixStatus, BITS_PER_PBA_ENTRY, MSIX_PBA_ENTRIES_MODULO, MSIX_TABLE_ENTRIES_MODULO,
 };
 
+#[cfg(feature = "direct")]
+use crate::pci::pci_configuration::{CLASS_REG, CLASS_REG_REVISION_ID_OFFSET, HEADER_TYPE_REG};
 use crate::pci::pci_device::{BarRange, Error as PciDeviceError, PciDevice};
 use crate::pci::{
     PciAddress, PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType,
@@ -661,6 +667,10 @@ pub struct VfioPciDevice {
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<VfioPciWorker>>,
     vm_socket_vm: Option<Tube>,
+    #[cfg(feature = "direct")]
+    sysfs_path: Option<PathBuf>,
+    #[cfg(feature = "direct")]
+    header_type_reg: Option<u32>,
 
     mapped_mmio_bars: BTreeMap<PciBarIndex, (u64, Vec<MemSlot>)>,
 }
@@ -668,6 +678,7 @@ pub struct VfioPciDevice {
 impl VfioPciDevice {
     /// Constructs a new Vfio Pci device for the give Vfio device
     pub fn new(
+        #[cfg(feature = "direct")] sysfs_path: &Path,
         device: VfioDevice,
         hotplug_bus_number: Option<u8>,
         guest_address: Option<PciAddress>,
@@ -728,6 +739,25 @@ impl VfioPciDevice {
             None
         };
 
+        #[cfg(feature = "direct")]
+        let (sysfs_path, header_type_reg) = match VfioPciDevice::coordinated_pm(sysfs_path, true) {
+            Ok(_) => {
+                // Cache the dword at offset 0x0c (cacheline size, latency timer,
+                // header type, BIST).
+                // When using the "direct" feature, this dword can be accessed for
+                // device power state. Directly accessing a device's physical PCI
+                // config space in D3cold state causes a hang. We treat the cacheline
+                // size, latency timer and header type field as immutable in the
+                // guest.
+                let reg: u32 = config.read_config((HEADER_TYPE_REG as u32) * 4);
+                (Some(sysfs_path.to_path_buf()), Some(reg))
+            }
+            Err(e) => {
+                warn!("coordinated_pm not supported: {}", e);
+                (None, None)
+            }
+        };
+
         VfioPciDevice {
             device: dev,
             config,
@@ -745,6 +775,10 @@ impl VfioPciDevice {
             kill_evt: None,
             worker_thread: None,
             vm_socket_vm: vfio_device_socket_vm,
+            #[cfg(feature = "direct")]
+            sysfs_path,
+            #[cfg(feature = "direct")]
+            header_type_reg,
             mapped_mmio_bars: BTreeMap::new(),
         }
     }
@@ -1437,6 +1471,39 @@ impl VfioPciDevice {
         }
         Ok(ranges)
     }
+
+    #[cfg(feature = "direct")]
+    fn coordinated_pm(sysfs_path: &Path, enter: bool) -> anyhow::Result<()> {
+        let path = Path::new(sysfs_path).join("power/coordinated");
+        fs::write(&path, if enter { "enter\n" } else { "exit\n" })
+            .with_context(|| format!("Failed to write to {}", path.to_string_lossy()))
+    }
+
+    #[cfg(feature = "direct")]
+    fn power_state(&self) -> anyhow::Result<u8> {
+        let path = Path::new(&self.sysfs_path.as_ref().unwrap()).join("power_state");
+        let state = fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read from {}", path.to_string_lossy()))?;
+        match state.as_str() {
+            "D0\n" => Ok(0),
+            "D1\n" => Ok(1),
+            "D2\n" => Ok(2),
+            "D3hot\n" => Ok(3),
+            "D3cold\n" => Ok(4),
+            "unknown\n" => Ok(5),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "invalid state",
+            ))?,
+        }
+    }
+
+    #[cfg(feature = "direct")]
+    fn op_call(&self, id: u8) -> anyhow::Result<()> {
+        let path = Path::new(self.sysfs_path.as_ref().unwrap()).join("power/op_call");
+        fs::write(&path, &[id])
+            .with_context(|| format!("Failed to write to {}", path.to_string_lossy()))
+    }
 }
 
 impl PciDevice for VfioPciDevice {
@@ -1632,8 +1699,22 @@ impl PciDevice for VfioPciDevice {
     }
 
     fn read_config_register(&self, reg_idx: usize) -> u32 {
-        let reg: u32 = (reg_idx * 4) as u32;
+        #[cfg(feature = "direct")]
+        if reg_idx == HEADER_TYPE_REG {
+            if let Some(header_type_reg) = self.header_type_reg {
+                let mut v = header_type_reg.to_le_bytes();
+                // HACK
+                // Reads from the "BIST" register are interpreted as device
+                // PCI power state
+                v[3] = self.power_state().unwrap_or_else(|e| {
+                    error!("Failed to get device power state: {}", e);
+                    5 // unknown state
+                });
+                return u32::from_le_bytes(v);
+            }
+        }
 
+        let reg: u32 = (reg_idx * 4) as u32;
         let mut config: u32 = self.config.read_config(reg);
 
         // Ignore IO bar
@@ -1660,12 +1741,27 @@ impl PciDevice for VfioPciDevice {
     }
 
     fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
-        let start = (reg_idx * 4) as u64 + offset;
-
         // When guest write config register at the first time, start worker thread
         if self.worker_thread.is_none() && self.vm_socket_vm.is_some() {
             self.start_work_thread();
         };
+
+        #[cfg(feature = "direct")]
+        if self.sysfs_path.is_some()
+            && reg_idx == CLASS_REG
+            && offset == CLASS_REG_REVISION_ID_OFFSET as u64
+            && data.len() == 1
+        {
+            // HACK
+            // Byte writes to the "Revision ID" register are interpreted as PM
+            // op calls
+            if let Err(e) = self.op_call(data[0]) {
+                error!("Failed to perform op call: {}", e);
+            }
+            return;
+        }
+
+        let start = (reg_idx * 4) as u64 + offset;
 
         let mut msi_change: Option<VfioMsiChange> = None;
         if let Some(msi_cap) = self.msi_cap.as_mut() {
@@ -1831,6 +1927,11 @@ impl PciDevice for VfioPciDevice {
 
 impl Drop for VfioPciDevice {
     fn drop(&mut self) {
+        #[cfg(feature = "direct")]
+        if self.sysfs_path.is_some() {
+            let _ = VfioPciDevice::coordinated_pm(self.sysfs_path.as_ref().unwrap(), false);
+        }
+
         if let Some(kill_evt) = self.kill_evt.take() {
             let _ = kill_evt.write(1);
         }
