@@ -827,7 +827,7 @@ pub struct Rlock {
 
 #[derive(Debug, P9WireFormat)]
 pub struct Rgetlock {
-    pub ty: u8,
+    pub type_: u8,
     pub start: u64,
     pub length: u64,
     pub proc_id: u32,

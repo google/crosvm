@@ -103,6 +103,17 @@ const P9_SETATTR_CTIME: u32 = 0x00000040;
 const P9_SETATTR_ATIME_SET: u32 = 0x00000080;
 const P9_SETATTR_MTIME_SET: u32 = 0x00000100;
 
+// 9p lock constants. Taken from "include/net/9p/9p.h" in the linux kernel.
+const _P9_LOCK_TYPE_RDLCK: u8 = 0;
+const _P9_LOCK_TYPE_WRLCK: u8 = 1;
+const P9_LOCK_TYPE_UNLCK: u8 = 2;
+const _P9_LOCK_FLAGS_BLOCK: u8 = 1;
+const _P9_LOCK_FLAGS_RECLAIM: u8 = 2;
+const P9_LOCK_SUCCESS: u8 = 0;
+const _P9_LOCK_BLOCKED: u8 = 1;
+const _P9_LOCK_ERROR: u8 = 2;
+const _P9_LOCK_GRACE: u8 = 3;
+
 // Minimum and maximum message size that we'll expect from the client.
 const MIN_MESSAGE_SIZE: u32 = 256;
 const MAX_MESSAGE_SIZE: u32 = ::std::u16::MAX as u32;
@@ -916,13 +927,65 @@ impl Server {
         Ok(())
     }
 
-    fn lock(&mut self, _lock: &Tlock) -> io::Result<Rlock> {
-        // File locking is not supported.
-        Err(io::Error::from_raw_os_error(libc::EOPNOTSUPP))
+    /// Implement posix byte range locking code.
+    /// Our implementation mirrors that of QEMU/9p - that is to say,
+    /// we essentially punt on mirroring lock state between client/server
+    /// and defer lock semantics to the VFS layer on the client side. Aside
+    /// from fd existence check we always return success. QEMU reference:
+    /// <https://github.com/qemu/qemu/blob/754f756cc4c6d9d14b7230c62b5bb20f9d655888/hw/9pfs/9p.c#L3669>
+    ///
+    /// NOTE: this means that files locked on the client may be interefered with
+    /// from either the server's side, or from other clients (guests). This
+    /// tracks with QEMU implementation, and will be obviated if crosvm decides
+    /// to drop 9p in favor of virtio-fs. QEMU only allows for a single client,
+    /// and we leave it to users of the crate to provide actual lock handling.
+    fn lock(&mut self, lock: &Tlock) -> io::Result<Rlock> {
+        // Ensure fd passed in TLOCK request exists and has a mapping.
+        let fd = self
+            .fids
+            .get(&lock.fid)
+            .and_then(|fid| fid.file.as_ref())
+            .ok_or_else(ebadf)?
+            .as_raw_fd();
+
+        syscall!(unsafe {
+            // Safe because zero-filled libc::stat is a valid value, fstat
+            // populates the struct fields.
+            let mut stbuf: libc::stat = std::mem::zeroed();
+            // Safe because this doesn't modify memory and we check the return value.
+            libc::fstat(fd, &mut stbuf)
+        })?;
+
+        Ok(Rlock {
+            status: P9_LOCK_SUCCESS,
+        })
     }
-    fn get_lock(&mut self, _get_lock: &Tgetlock) -> io::Result<Rgetlock> {
-        // File locking is not supported.
-        Err(io::Error::from_raw_os_error(libc::EOPNOTSUPP))
+
+    ///
+    /// Much like lock(), defer locking semantics to VFS and return success.
+    ///
+    fn get_lock(&mut self, get_lock: &Tgetlock) -> io::Result<Rgetlock> {
+        // Ensure fd passed in GETTLOCK request exists and has a mapping.
+        let fd = self
+            .fids
+            .get(&get_lock.fid)
+            .and_then(|fid| fid.file.as_ref())
+            .ok_or_else(ebadf)?
+            .as_raw_fd();
+
+        // Safe because this doesn't modify memory and we check the return value.
+        syscall!(unsafe {
+            let mut stbuf: libc::stat = std::mem::zeroed();
+            libc::fstat(fd, &mut stbuf)
+        })?;
+
+        Ok(Rgetlock {
+            type_: P9_LOCK_TYPE_UNLCK,
+            start: get_lock.start,
+            length: get_lock.length,
+            proc_id: get_lock.proc_id,
+            client_id: get_lock.client_id.clone(),
+        })
     }
 
     fn link(&mut self, link: Tlink) -> io::Result<()> {
