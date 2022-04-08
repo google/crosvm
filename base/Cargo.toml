@@ -20,12 +20,12 @@ thiserror = "1.0.20"
 tempfile = "3"
 base_poll_token_derive = { path = "base_poll_token_derive" }
 cfg-if = "*"
-rand = "*"
-chrono = "*"
-regex = "*"
 
 [target.'cfg(windows)'.dependencies]
+chrono = "*"
 lazy_static = "*"
+rand = "*"
+regex = "*"
 winapi = "*"
 win_util = { path = "../win_util"}
 
