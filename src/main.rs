@@ -3273,7 +3273,12 @@ fn modify_vfio(mut args: std::env::Args) -> std::result::Result<(), ()> {
         }
     };
 
-    let request = VmRequest::VfioCommand { vfio_path, add };
+    let hp_interrupt = true;
+    let request = VmRequest::VfioCommand {
+        vfio_path,
+        add,
+        hp_interrupt,
+    };
     handle_request(&request, socket_path)?;
     Ok(())
 }

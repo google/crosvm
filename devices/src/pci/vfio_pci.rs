@@ -629,6 +629,7 @@ impl VfioPciWorker {
                         let request = VmRequest::VfioCommand {
                             vfio_path: sysfs_path,
                             add: false,
+                            hp_interrupt: true,
                         };
                         if self.vm_socket.send(&request).is_ok() {
                             if let Err(e) = self.vm_socket.recv::<VmResponse>() {

@@ -160,7 +160,24 @@ impl HotplugWorker {
         let mut children: Vec<PathBuf> = Vec::new();
         visit_children(host_sysfs.as_path(), &mut children)?;
 
-        for child in &children {
+        // Without reverse children, physical larger BDF device is at the top, it will be
+        // added into guest first with smaller virtual function number, so physical smaller
+        // BDF device has larger virtual function number, phyiscal larger BDF device has
+        // smaller virtual function number. During hotplug out process, host pcie root port
+        // driver remove physical smaller BDF pcie endpoint device first, so host vfio-pci
+        // driver send plug out event first for smaller BDF device and wait for this device
+        // removed from crosvm, when crosvm receives this plug out event, crosvm will remove
+        // all the children devices, crosvm remove smaller virtual function number device
+        // first, this isn't the target device which host vfio-pci driver is waiting for.
+        // Host vfio-pci driver holds a lock when it is waiting, when crosvm remove another
+        // device throgh vfio-pci which try to get the same lock, so deadlock happens in
+        // host kernel.
+        //
+        // In order to fix the deadlock, children is reversed, so physical smaller BDF
+        // device has smaller virtual function number, and it will have the same order
+        // between host kernel and crosvm during hotplug out process.
+        children.reverse();
+        while let Some(child) = children.pop() {
             // In order to bind device to vfio-pci driver, get device VID and DID
             let vendor_path = child.join("vendor");
             let vendor_id = read(vendor_path.as_path())
@@ -199,6 +216,7 @@ impl HotplugWorker {
             let request = VmRequest::VfioCommand {
                 vfio_path: child.clone(),
                 add: true,
+                hp_interrupt: children.is_empty(),
             };
             vm_socket.lock().send(&request).with_context(|| {
                 format!("failed to send hotplug request for {}", child.display())
@@ -206,10 +224,10 @@ impl HotplugWorker {
             vm_socket.lock().recv::<VmResponse>().with_context(|| {
                 format!("failed to receive hotplug response for {}", child.display())
             })?;
-        }
 
-        if !children.is_empty() {
-            *child_exist = true;
+            if !*child_exist {
+                *child_exist = true;
+            }
         }
 
         Ok(())

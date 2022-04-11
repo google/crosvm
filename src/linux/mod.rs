@@ -1514,6 +1514,7 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     control_tubes: &mut Vec<TaggedControlTube>,
     iommu_host_tube: &Option<Tube>,
     vfio_path: &Path,
+    hp_interrupt: bool,
 ) -> Result<()> {
     let host_os_str = vfio_path
         .file_name()
@@ -1572,7 +1573,9 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     let host_key = HostHotPlugKey::Vfio { host_addr };
     let mut hp_bus = hp_bus.lock();
     hp_bus.add_hotplug_device(host_key, pci_address);
-    hp_bus.hot_plug(pci_address);
+    if hp_interrupt {
+        hp_bus.hot_plug(pci_address);
+    }
     Ok(())
 }
 
@@ -1581,6 +1584,7 @@ fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     sys_allocator: &mut SystemAllocator,
     iommu_host_tube: &Option<Tube>,
     vfio_path: &Path,
+    _hp_interrupt: bool,
 ) -> Result<()> {
     let host_os_str = vfio_path
         .file_name()
@@ -1623,6 +1627,7 @@ fn handle_vfio_command<V: VmArch, Vcpu: VcpuArch>(
     iommu_host_tube: &Option<Tube>,
     vfio_path: &Path,
     add: bool,
+    hp_interrupt: bool,
 ) -> VmResponse {
     let ret = if add {
         add_vfio_device(
@@ -1632,9 +1637,16 @@ fn handle_vfio_command<V: VmArch, Vcpu: VcpuArch>(
             add_tubes,
             iommu_host_tube,
             vfio_path,
+            hp_interrupt,
         )
     } else {
-        remove_vfio_device(linux, sys_allocator, iommu_host_tube, vfio_path)
+        remove_vfio_device(
+            linux,
+            sys_allocator,
+            iommu_host_tube,
+            vfio_path,
+            hp_interrupt,
+        )
     };
 
     match ret {
@@ -1952,17 +1964,20 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                 Ok(request) => {
                                     let mut run_mode_opt = None;
                                     let response = match request {
-                                        VmRequest::VfioCommand { vfio_path, add } => {
-                                            handle_vfio_command(
-                                                &mut linux,
-                                                &mut sys_allocator,
-                                                &cfg,
-                                                &mut add_tubes,
-                                                &iommu_host_tube,
-                                                &vfio_path,
-                                                add,
-                                            )
-                                        }
+                                        VmRequest::VfioCommand {
+                                            vfio_path,
+                                            add,
+                                            hp_interrupt,
+                                        } => handle_vfio_command(
+                                            &mut linux,
+                                            &mut sys_allocator,
+                                            &cfg,
+                                            &mut add_tubes,
+                                            &iommu_host_tube,
+                                            &vfio_path,
+                                            add,
+                                            hp_interrupt,
+                                        ),
                                         _ => request.execute(
                                             &mut run_mode_opt,
                                             balloon_host_tube.as_ref(),

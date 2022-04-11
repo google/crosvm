@@ -991,7 +991,11 @@ pub enum VmRequest {
     /// Command to set battery.
     BatCommand(BatteryType, BatControlCommand),
     /// Command to add/remove vfio pci device
-    VfioCommand { vfio_path: PathBuf, add: bool },
+    VfioCommand {
+        vfio_path: PathBuf,
+        add: bool,
+        hp_interrupt: bool,
+    },
 }
 
 fn map_descriptor(
@@ -1218,6 +1222,7 @@ impl VmRequest {
             VmRequest::VfioCommand {
                 vfio_path: _,
                 add: _,
+                hp_interrupt: _,
             } => VmResponse::Ok,
         }
     }
