@@ -102,7 +102,7 @@ const FADT_REVISION: u8 = 6;
 const FADT_MINOR_REVISION: u8 = 3;
 // FADT flags
 const FADT_POWER_BUTTON: u32 = 1 << 4;
-const FADT_SLEEP_BUTTON: u32 = 1 << 5;
+const _FADT_SLEEP_BUTTON: u32 = 1 << 5;
 const FADT_RESET_REGISTER: u32 = 1 << 10;
 const FADT_LOW_POWER_S2IDLE: u32 = 1 << 21;
 // FADT fields offset
@@ -201,7 +201,7 @@ fn create_facp_table(sci_irq: u16, force_s2idle: bool) -> SDT {
         OEM_REVISION,
     );
 
-    let mut fadt_flags: u32 = FADT_SLEEP_BUTTON; // mask SLEEP BUTTON
+    let mut fadt_flags: u32 = 0;
 
     if force_s2idle {
         fadt_flags |= FADT_LOW_POWER_S2IDLE;

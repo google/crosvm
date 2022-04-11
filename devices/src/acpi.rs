@@ -566,6 +566,7 @@ const GPE0_STATUS: u16 = PM1_STATUS + ACPIPM_RESOURCE_EVENTBLK_LEN as u16 + 4; /
 const GPE0_ENABLE: u16 = GPE0_STATUS + (ACPIPM_RESOURCE_GPE0_BLK_LEN as u16 / 2);
 
 const BITMASK_PM1STS_PWRBTN_STS: u16 = 1 << 8;
+const BITMASK_PM1STS_SLPBTN_STS: u16 = 1 << 9;
 const BITMASK_PM1EN_GBL_EN: u16 = 1 << 5;
 const BITMASK_PM1EN_PWRBTN_EN: u16 = 1 << 8;
 const BITMASK_PM1EN_SLPBTN_EN: u16 = 1 << 9;
@@ -585,6 +586,13 @@ impl PmResource for ACPIPMResource {
         let mut pm1 = self.pm1.lock();
 
         pm1.status |= BITMASK_PM1STS_PWRBTN_STS;
+        pm1.trigger_sci(&self.sci_evt);
+    }
+
+    fn slpbtn_evt(&mut self) {
+        let mut pm1 = self.pm1.lock();
+
+        pm1.status |= BITMASK_PM1STS_SLPBTN_STS;
         pm1.trigger_sci(&self.sci_evt);
     }
 

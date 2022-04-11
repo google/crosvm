@@ -3115,6 +3115,20 @@ fn powerbtn_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     vms_request(&VmRequest::Powerbtn, socket_path)
 }
 
+fn sleepbtn_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
+    if args.len() == 0 {
+        print_help("crosvm sleepbtn", "VM_SOCKET...", &[]);
+        println!(
+            "Triggers a sleep button event in the crosvm instance listening on each `VM_SOCKET`
+            given."
+        );
+        return Err(());
+    }
+    let socket_path = &args.next().unwrap();
+    let socket_path = Path::new(&socket_path);
+    vms_request(&VmRequest::Sleepbtn, socket_path)
+}
+
 fn inject_gpe(mut args: std::env::Args) -> std::result::Result<(), ()> {
     if args.len() < 2 {
         print_help("crosvm gpe", "GPE# VM_SOCKET...", &[]);
@@ -3648,6 +3662,7 @@ fn print_usage() {
     println!("    stop - Stops crosvm instances via their control sockets.");
     println!("    suspend - Suspends the crosvm instance.");
     println!("    powerbtn - Triggers a power button event in the crosvm instance.");
+    println!("    sleepbtn - Triggers a sleep button event in the crosvm instance.");
     println!("    gpe - Injects a general-purpose event into the crosvm instance.");
     println!("    usb - Manage attached virtual USB devices.");
     println!("    version - Show package version.");
@@ -3705,6 +3720,7 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
             "stop" => stop_vms(args),
             "suspend" => suspend_vms(args),
             "powerbtn" => powerbtn_vms(args),
+            "sleepbtn" => sleepbtn_vms(args),
             "gpe" => inject_gpe(args),
             "usb" => modify_usb(args),
             "version" => pkg_version(),
