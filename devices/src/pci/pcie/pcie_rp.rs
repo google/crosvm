@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use sync::Mutex;
@@ -40,8 +41,8 @@ pub struct PcieRootPort {
     hp_interrupt_pending: bool,
     pme_pending_request_id: Option<PciAddress>,
     bus_range: PciBridgeBusRange,
-    downstream_device: Option<(PciAddress, Option<HostHotPlugKey>)>,
-    removed_downstream: Option<PciAddress>,
+    downstream_devices: BTreeMap<PciAddress, HostHotPlugKey>,
+    removed_downstream: Vec<PciAddress>,
     pcie_host: Option<PcieHostRootPort>,
     prepare_hotplug: bool,
 }
@@ -71,8 +72,8 @@ impl PcieRootPort {
             hp_interrupt_pending: false,
             pme_pending_request_id: None,
             bus_range,
-            downstream_device: None,
-            removed_downstream: None,
+            downstream_devices: BTreeMap::new(),
+            removed_downstream: Vec::new(),
             pcie_host: None,
             prepare_hotplug: false,
         }
@@ -106,8 +107,8 @@ impl PcieRootPort {
             hp_interrupt_pending: false,
             pme_pending_request_id: None,
             bus_range,
-            downstream_device: None,
-            removed_downstream: None,
+            downstream_devices: BTreeMap::new(),
+            removed_downstream: Vec::new(),
             pcie_host: Some(pcie_host),
             prepare_hotplug: false,
         })
@@ -131,7 +132,7 @@ impl PcieRootPort {
     }
 
     fn write_pcie_cap(&mut self, offset: usize, data: &[u8]) {
-        self.removed_downstream = None;
+        self.removed_downstream.clear();
         match offset {
             PCIE_SLTCTL_OFFSET => {
                 let value = match u16::from_slice(data) {
@@ -153,10 +154,10 @@ impl PcieRootPort {
                     && (value & PCIE_SLTCTL_PIC_OFF == PCIE_SLTCTL_PIC_OFF)
                     && (old_control & PCIE_SLTCTL_PIC_OFF != PCIE_SLTCTL_PIC_OFF)
                 {
-                    if let Some((guest_pci_addr, _)) = self.downstream_device {
-                        self.removed_downstream = Some(guest_pci_addr);
-                        self.downstream_device = None;
+                    for (guest_pci_addr, _) in self.downstream_devices.iter() {
+                        self.removed_downstream.push(*guest_pci_addr);
                     }
+                    self.downstream_devices.clear();
                     self.slot_status &= !PCIE_SLTSTA_PDS;
                     self.slot_status |= PCIE_SLTSTA_PDC;
                     self.trigger_hp_interrupt();
@@ -417,12 +418,7 @@ impl PcieDevice for PcieRootPort {
     }
 
     fn get_removed_devices(&self) -> Vec<PciAddress> {
-        let mut removed_devices = Vec::new();
-        if let Some(removed_downstream) = self.removed_downstream {
-            removed_devices.push(removed_downstream);
-        }
-
-        removed_devices
+        self.removed_downstream.clone()
     }
 
     fn hotplug_implemented(&self) -> bool {
@@ -440,13 +436,8 @@ impl PcieDevice for PcieRootPort {
 
 impl HotPlugBus for PcieRootPort {
     fn hot_plug(&mut self, addr: PciAddress) {
-        match self.downstream_device {
-            Some((guest_addr, _)) => {
-                if guest_addr != addr {
-                    return;
-                }
-            }
-            None => return,
+        if self.downstream_devices.get(&addr).is_none() {
+            return;
         }
 
         self.slot_status = self.slot_status | PCIE_SLTSTA_PDS | PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP;
@@ -454,13 +445,8 @@ impl HotPlugBus for PcieRootPort {
     }
 
     fn hot_unplug(&mut self, addr: PciAddress) {
-        match self.downstream_device {
-            Some((guest_addr, _)) => {
-                if guest_addr != addr {
-                    return;
-                }
-            }
-            None => return,
+        if self.downstream_devices.get(&addr).is_none() {
+            return;
         }
 
         self.slot_status = self.slot_status | PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP;
@@ -474,10 +460,9 @@ impl HotPlugBus for PcieRootPort {
     fn is_match(&self, host_addr: PciAddress) -> Option<u8> {
         let _ = self.slot_control?;
 
-        if self.downstream_device.is_none()
-            && ((host_addr.bus >= self.bus_range.secondary
-                && host_addr.bus <= self.bus_range.subordinate)
-                || self.pcie_host.is_none())
+        if (host_addr.bus >= self.bus_range.secondary
+            && host_addr.bus <= self.bus_range.subordinate)
+            || self.pcie_host.is_none()
         {
             Some(self.bus_range.secondary)
         } else {
@@ -490,11 +475,11 @@ impl HotPlugBus for PcieRootPort {
             return;
         }
 
-        self.downstream_device = Some((guest_addr, Some(host_key)))
+        self.downstream_devices.insert(guest_addr, host_key);
     }
 
     fn get_hotplug_device(&self, host_key: HostHotPlugKey) -> Option<PciAddress> {
-        if let Some((guest_address, Some(host_info))) = &self.downstream_device {
+        for (guest_address, host_info) in self.downstream_devices.iter() {
             match host_info {
                 HostHotPlugKey::Vfio { host_addr } => {
                     let saved_addr = *host_addr;
