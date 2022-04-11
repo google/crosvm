@@ -20,12 +20,20 @@ unsafe impl DataInit for virtio_net_hdr_mrg_rxbuf {}"
 bindgen_generate \
     --allowlist-type='vhost_.*' \
     --allowlist-var='VHOST_.*' \
-    --allowlist-var='VIRTIO_.*' \
     "${BINDGEN_LINUX_X86_HEADERS}/include/linux/vhost.h" \
     -- \
     -isystem "${BINDGEN_LINUX_X86_HEADERS}/include" \
     | replace_linux_int_types \
     > virtio_sys/src/vhost.rs
+
+bindgen_generate \
+    --allowlist-var='VIRTIO_.*' \
+    --allowlist-type='virtio_.*' \
+    "${BINDGEN_LINUX_X86_HEADERS}/include/linux/virtio_config.h" \
+    -- \
+    -isystem "${BINDGEN_LINUX_X86_HEADERS}/include" \
+    | replace_linux_int_types \
+    > virtio_sys/src/virtio_config.rs
 
 bindgen_generate \
     --raw-line "${VIRTIO_NET_EXTRA}" \

@@ -115,10 +115,11 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
 
     /// Set the guest memory mappings for vhost to use.
     fn set_mem_table(&self, mem: &GuestMemory) -> Result<()> {
-        const SIZE_OF_MEMORY: usize = std::mem::size_of::<virtio_sys::vhost_memory>();
-        const SIZE_OF_REGION: usize = std::mem::size_of::<virtio_sys::vhost_memory_region>();
-        const ALIGN_OF_MEMORY: usize = std::mem::align_of::<virtio_sys::vhost_memory>();
-        const ALIGN_OF_REGION: usize = std::mem::align_of::<virtio_sys::vhost_memory_region>();
+        const SIZE_OF_MEMORY: usize = std::mem::size_of::<virtio_sys::vhost::vhost_memory>();
+        const SIZE_OF_REGION: usize = std::mem::size_of::<virtio_sys::vhost::vhost_memory_region>();
+        const ALIGN_OF_MEMORY: usize = std::mem::align_of::<virtio_sys::vhost::vhost_memory>();
+        const ALIGN_OF_REGION: usize =
+            std::mem::align_of::<virtio_sys::vhost::vhost_memory_region>();
         const_assert!(ALIGN_OF_MEMORY >= ALIGN_OF_REGION);
 
         let num_regions = mem.num_regions() as usize;
@@ -128,7 +129,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
 
         // Safe to obtain an exclusive reference because there are no other
         // references to the allocation yet and all-zero is a valid bit pattern.
-        let vhost_memory = unsafe { allocation.as_mut::<virtio_sys::vhost_memory>() };
+        let vhost_memory = unsafe { allocation.as_mut::<virtio_sys::vhost::vhost_memory>() };
 
         vhost_memory.nregions = num_regions as u32;
         // regions is a zero-length array, so taking a mut slice requires that
@@ -136,7 +137,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         let vhost_regions = unsafe { vhost_memory.regions.as_mut_slice(num_regions as usize) };
 
         let _ = mem.with_regions::<_, ()>(|index, guest_addr, size, host_addr, _, _| {
-            vhost_regions[index] = virtio_sys::vhost_memory_region {
+            vhost_regions[index] = virtio_sys::vhost::vhost_memory_region {
                 guest_phys_addr: guest_addr.offset() as u64,
                 memory_size: size as u64,
                 userspace_addr: host_addr as u64,
@@ -164,7 +165,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     /// * `queue_index` - Index of the queue to set descriptor count for.
     /// * `num` - Number of descriptors in the queue.
     fn set_vring_num(&self, queue_index: usize, num: u16) -> Result<()> {
-        let vring_state = virtio_sys::vhost_vring_state {
+        let vring_state = virtio_sys::vhost::vhost_vring_state {
             index: queue_index as u32,
             num: num as u32,
         };
@@ -264,7 +265,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
             Some(a) => mem.get_host_address(a).map_err(Error::LogAddress)?,
         };
 
-        let vring_addr = virtio_sys::vhost_vring_addr {
+        let vring_addr = virtio_sys::vhost::vhost_vring_addr {
             index: queue_index as u32,
             flags,
             desc_user_addr: desc_addr as u64,
@@ -288,7 +289,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     /// * `queue_index` - Index of the queue to modify.
     /// * `num` - Index where available descriptors start.
     fn set_vring_base(&self, queue_index: usize, num: u16) -> Result<()> {
-        let vring_state = virtio_sys::vhost_vring_state {
+        let vring_state = virtio_sys::vhost::vhost_vring_state {
             index: queue_index as u32,
             num: num as u32,
         };
@@ -307,7 +308,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     /// # Arguments
     /// * `queue_index` - Index of the queue to query.
     fn get_vring_base(&self, queue_index: usize) -> Result<u16> {
-        let mut vring_state = virtio_sys::vhost_vring_state {
+        let mut vring_state = virtio_sys::vhost::vhost_vring_state {
             index: queue_index as u32,
             num: 0,
         };
@@ -329,7 +330,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     /// * `queue_index` - Index of the queue to modify.
     /// * `event` - Event to trigger.
     fn set_vring_call(&self, queue_index: usize, event: &Event) -> Result<()> {
-        let vring_file = virtio_sys::vhost_vring_file {
+        let vring_file = virtio_sys::vhost::vhost_vring_file {
             index: queue_index as u32,
             fd: event.as_raw_descriptor(),
         };
@@ -349,7 +350,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     /// * `queue_index` - Index of the queue to modify.
     /// * `event` - Event to trigger.
     fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()> {
-        let vring_file = virtio_sys::vhost_vring_file {
+        let vring_file = virtio_sys::vhost::vhost_vring_file {
             index: queue_index as u32,
             fd: event.as_raw_descriptor(),
         };
@@ -370,7 +371,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     /// * `queue_index` - Index of the queue to modify.
     /// * `event` - Event that will be signaled from guest.
     fn set_vring_kick(&self, queue_index: usize, event: &Event) -> Result<()> {
-        let vring_file = virtio_sys::vhost_vring_file {
+        let vring_file = virtio_sys::vhost::vhost_vring_file {
             index: queue_index as u32,
             fd: event.as_raw_descriptor(),
         };

@@ -14,7 +14,7 @@ use data_model::DataInit;
 use memoffset::offset_of;
 use resources::Alloc;
 use vfio_sys::*;
-use virtio_sys::vhost::VIRTIO_F_VERSION_1;
+use virtio_sys::virtio_config::{self, VIRTIO_F_VERSION_1};
 
 use crate::pci::{MsixCap, PciAddress, PciCapabilityID, CAPABILITY_LIST_HEAD_OFFSET};
 use crate::vfio::{VfioDevice, VfioPciConfig, VfioRegionAddr};
@@ -453,8 +453,8 @@ impl VvuPciDevice {
         }
 
         self.set_status(
-            (virtio_sys::vhost::VIRTIO_CONFIG_S_ACKNOWLEDGE
-                | virtio_sys::vhost::VIRTIO_CONFIG_S_DRIVER) as u8,
+            (virtio_config::VIRTIO_CONFIG_S_ACKNOWLEDGE | virtio_config::VIRTIO_CONFIG_S_DRIVER)
+                as u8,
         );
 
         // TODO(b/207364742): Support VIRTIO_RING_F_EVENT_IDX.
@@ -468,7 +468,7 @@ impl VvuPciDevice {
                 enabled_features
             );
         };
-        self.set_status(virtio_sys::vhost::VIRTIO_CONFIG_S_FEATURES_OK as u8);
+        self.set_status(virtio_config::VIRTIO_CONFIG_S_FEATURES_OK as u8);
 
         // Initialize Virtqueues
         let (queues, queue_notifiers) = self.create_queues()?;
@@ -479,7 +479,7 @@ impl VvuPciDevice {
         self.irqs = irqs;
         self.notification_evts = notification_evts;
 
-        self.set_status(virtio_sys::vhost::VIRTIO_CONFIG_S_DRIVER_OK as u8);
+        self.set_status(virtio_config::VIRTIO_CONFIG_S_DRIVER_OK as u8);
 
         Ok(())
     }

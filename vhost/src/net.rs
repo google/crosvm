@@ -59,7 +59,7 @@ where
     }
 
     fn set_backend(&self, queue_index: usize, event: Option<&T>) -> Result<()> {
-        let vring_file = virtio_sys::vhost_vring_file {
+        let vring_file = virtio_sys::vhost::vhost_vring_file {
             index: queue_index as u32,
             fd: event.map_or(-1, |event| event.as_raw_descriptor()),
         };

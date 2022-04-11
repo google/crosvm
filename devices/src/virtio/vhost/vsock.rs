@@ -13,6 +13,7 @@ use data_model::{DataInit, Le64};
 use serde::Deserialize;
 use vhost::Vhost;
 use vhost::Vsock as VhostVsockHandle;
+use virtio_sys::{virtio_config, virtio_ring};
 use vm_memory::GuestMemory;
 
 use super::worker::Worker;
@@ -60,11 +61,11 @@ impl Vsock {
         let handle = VhostVsockHandle::new(device_file);
 
         let avail_features = base_features
-            | 1 << virtio_sys::vhost::VIRTIO_F_NOTIFY_ON_EMPTY
-            | 1 << virtio_sys::vhost::VIRTIO_RING_F_INDIRECT_DESC
-            | 1 << virtio_sys::vhost::VIRTIO_RING_F_EVENT_IDX
+            | 1 << virtio_config::VIRTIO_F_NOTIFY_ON_EMPTY
+            | 1 << virtio_ring::VIRTIO_RING_F_INDIRECT_DESC
+            | 1 << virtio_ring::VIRTIO_RING_F_EVENT_IDX
             | 1 << virtio_sys::vhost::VHOST_F_LOG_ALL
-            | 1 << virtio_sys::vhost::VIRTIO_F_ANY_LAYOUT;
+            | 1 << virtio_config::VIRTIO_F_ANY_LAYOUT;
 
         let mut interrupts = Vec::new();
         for _ in 0..NUM_QUEUES {

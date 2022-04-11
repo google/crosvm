@@ -14,6 +14,10 @@ use data_model::{DataInit, Le32};
 use hypervisor::Datamatch;
 use libc::ERANGE;
 use resources::{Alloc, MmioType, SystemAllocator};
+use virtio_sys::virtio_config::{
+    VIRTIO_CONFIG_S_ACKNOWLEDGE, VIRTIO_CONFIG_S_DRIVER, VIRTIO_CONFIG_S_DRIVER_OK,
+    VIRTIO_CONFIG_S_FAILED, VIRTIO_CONFIG_S_FEATURES_OK,
+};
 use vm_memory::GuestMemory;
 
 use super::*;
@@ -324,10 +328,12 @@ impl VirtioPciDevice {
     }
 
     fn is_driver_ready(&self) -> bool {
-        let ready_bits =
-            (DEVICE_ACKNOWLEDGE | DEVICE_DRIVER | DEVICE_DRIVER_OK | DEVICE_FEATURES_OK) as u8;
+        let ready_bits = (VIRTIO_CONFIG_S_ACKNOWLEDGE
+            | VIRTIO_CONFIG_S_DRIVER
+            | VIRTIO_CONFIG_S_DRIVER_OK
+            | VIRTIO_CONFIG_S_FEATURES_OK) as u8;
         self.common_config.driver_status == ready_bits
-            && self.common_config.driver_status & DEVICE_FAILED as u8 == 0
+            && self.common_config.driver_status & VIRTIO_CONFIG_S_FAILED as u8 == 0
     }
 
     /// Determines if the driver has requested the device reset itself

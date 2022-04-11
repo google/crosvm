@@ -63,14 +63,10 @@ use std::cmp;
 use std::convert::TryFrom;
 
 use hypervisor::ProtectionType;
+use virtio_sys::virtio_config::{VIRTIO_F_ACCESS_PLATFORM, VIRTIO_F_VERSION_1};
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 
 const DEVICE_RESET: u32 = 0x0;
-const DEVICE_ACKNOWLEDGE: u32 = 0x01;
-const DEVICE_DRIVER: u32 = 0x02;
-const DEVICE_DRIVER_OK: u32 = 0x04;
-const DEVICE_FEATURES_OK: u32 = 0x08;
-const DEVICE_FAILED: u32 = 0x80;
 
 // Types taken from linux/virtio_ids.h
 const TYPE_NET: u32 = 1;
@@ -100,9 +96,6 @@ const TYPE_WL: u32 = MAX_VIRTIO_DEVICE_ID;
 const TYPE_TPM: u32 = MAX_VIRTIO_DEVICE_ID - 1;
 // TODO(abhishekbh): Fix this after this device is accepted upstream.
 const TYPE_VHOST_USER: u32 = MAX_VIRTIO_DEVICE_ID - 2;
-
-pub const VIRTIO_F_VERSION_1: u32 = 32;
-pub const VIRTIO_F_ACCESS_PLATFORM: u32 = 33;
 
 const INTERRUPT_STATUS_USED_RING: u32 = 0x1;
 const INTERRUPT_STATUS_CONFIG_CHANGED: u32 = 0x2;

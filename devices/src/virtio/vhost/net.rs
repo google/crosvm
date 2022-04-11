@@ -11,7 +11,7 @@ use net_util::{MacAddress, TapT};
 
 use base::{error, warn, AsRawDescriptor, Event, RawDescriptor, Tube};
 use vhost::NetT as VhostNetT;
-use virtio_sys::virtio_net;
+use virtio_sys::{virtio_config, virtio_net, virtio_ring};
 use vm_memory::GuestMemory;
 
 use super::control_socket::*;
@@ -81,9 +81,9 @@ where
             | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
             | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
             | 1 << virtio_net::VIRTIO_NET_F_MRG_RXBUF
-            | 1 << virtio_sys::vhost::VIRTIO_RING_F_INDIRECT_DESC
-            | 1 << virtio_sys::vhost::VIRTIO_RING_F_EVENT_IDX
-            | 1 << virtio_sys::vhost::VIRTIO_F_NOTIFY_ON_EMPTY;
+            | 1 << virtio_ring::VIRTIO_RING_F_INDIRECT_DESC
+            | 1 << virtio_ring::VIRTIO_RING_F_EVENT_IDX
+            | 1 << virtio_config::VIRTIO_F_NOTIFY_ON_EMPTY;
 
         let mut vhost_interrupt = Vec::new();
         for _ in 0..NUM_QUEUES {

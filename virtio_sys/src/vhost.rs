@@ -35,24 +35,6 @@ impl<T> ::std::fmt::Debug for __IncompleteArrayField<T> {
         fmt.write_str("__IncompleteArrayField")
     }
 }
-pub const VIRTIO_CONFIG_S_ACKNOWLEDGE: u32 = 1;
-pub const VIRTIO_CONFIG_S_DRIVER: u32 = 2;
-pub const VIRTIO_CONFIG_S_DRIVER_OK: u32 = 4;
-pub const VIRTIO_CONFIG_S_FEATURES_OK: u32 = 8;
-pub const VIRTIO_CONFIG_S_NEEDS_RESET: u32 = 64;
-pub const VIRTIO_CONFIG_S_FAILED: u32 = 128;
-pub const VIRTIO_TRANSPORT_F_START: u32 = 28;
-pub const VIRTIO_TRANSPORT_F_END: u32 = 38;
-pub const VIRTIO_F_NOTIFY_ON_EMPTY: u32 = 24;
-pub const VIRTIO_F_ANY_LAYOUT: u32 = 27;
-pub const VIRTIO_F_VERSION_1: u32 = 32;
-pub const VIRTIO_F_ACCESS_PLATFORM: u32 = 33;
-pub const VIRTIO_F_IOMMU_PLATFORM: u32 = 33;
-pub const VIRTIO_F_RING_PACKED: u32 = 34;
-pub const VIRTIO_F_ORDER_PLATFORM: u32 = 36;
-pub const VIRTIO_F_SR_IOV: u32 = 37;
-pub const VIRTIO_RING_F_INDIRECT_DESC: u32 = 28;
-pub const VIRTIO_RING_F_EVENT_IDX: u32 = 29;
 pub const VHOST_VRING_F_LOG: u32 = 0;
 pub const VHOST_ACCESS_RO: u32 = 1;
 pub const VHOST_ACCESS_WO: u32 = 2;

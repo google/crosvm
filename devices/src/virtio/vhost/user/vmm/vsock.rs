@@ -6,6 +6,7 @@ use std::{cell::RefCell, os::unix::net::UnixStream, path::Path, thread};
 
 use base::{error, Event, RawDescriptor};
 use data_model::Le64;
+use virtio_sys::{vhost, virtio_config, virtio_ring};
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
@@ -32,11 +33,11 @@ impl Vsock {
         let allow_features = init_features
             | base_features
             | 1 << VIRTIO_F_VERSION_1
-            | 1 << virtio_sys::vhost::VIRTIO_RING_F_INDIRECT_DESC
-            | 1 << virtio_sys::vhost::VIRTIO_RING_F_EVENT_IDX
-            | 1 << virtio_sys::vhost::VIRTIO_F_NOTIFY_ON_EMPTY
-            | 1 << virtio_sys::vhost::VHOST_F_LOG_ALL
-            | 1 << virtio_sys::vhost::VIRTIO_F_ANY_LAYOUT;
+            | 1 << virtio_ring::VIRTIO_RING_F_INDIRECT_DESC
+            | 1 << virtio_ring::VIRTIO_RING_F_EVENT_IDX
+            | 1 << virtio_config::VIRTIO_F_NOTIFY_ON_EMPTY
+            | 1 << vhost::VHOST_F_LOG_ALL
+            | 1 << virtio_config::VIRTIO_F_ANY_LAYOUT;
         let allow_protocol_features =
             VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
 
