@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::prelude::*;
 use std::sync::{mpsc, Arc, Barrier};
+use sync::{Condvar, Mutex};
 
 use std::thread;
 use std::thread::JoinHandle;
@@ -263,17 +264,30 @@ where
 }
 
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-fn handle_s2idle_request(_privileged_vm: bool) {}
+fn handle_s2idle_request(
+    _privileged_vm: bool,
+    _guest_suspended_cvar: &Arc<(Mutex<bool>, Condvar)>,
+) {
+}
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-fn handle_s2idle_request(privileged_vm: bool) {
+fn handle_s2idle_request(privileged_vm: bool, guest_suspended_cvar: &Arc<(Mutex<bool>, Condvar)>) {
     const POWER_STATE_FREEZE: &[u8] = b"freeze";
 
-    // For non privileged guests, we silently ignore the suspend request
+    // For non privileged guests, wake up blocked thread on condvar, which is awaiting
+    // non-privileged guest suspension to finish.
     if !privileged_vm {
+        let (lock, cvar) = &**guest_suspended_cvar;
+        let mut guest_suspended = lock.lock();
+        *guest_suspended = true;
+
+        cvar.notify_one();
+        info!("dbg: s2idle notified");
+
         return;
     }
 
+    // For privileged guests, proceed with the suspend request
     let mut power_state = match OpenOptions::new().write(true).open("/sys/power/state") {
         Ok(s) => s,
         Err(err) => {
@@ -307,6 +321,7 @@ fn vcpu_loop<V>(
     >,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))] guest_mem: GuestMemory,
     msr_handlers: MsrHandlers,
+    guest_suspended_cvar: Arc<(Mutex<bool>, Condvar)>,
 ) -> ExitState
 where
     V: VcpuArch + 'static,
@@ -471,7 +486,7 @@ where
                     return ExitState::Stop;
                 }
                 Ok(VcpuExit::SystemEventS2Idle) => {
-                    handle_s2idle_request(privileged_vm);
+                    handle_s2idle_request(privileged_vm, &guest_suspended_cvar);
                 }
                 #[rustfmt::skip] Ok(VcpuExit::Debug { .. }) => {
                     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
@@ -548,6 +563,7 @@ pub fn run_vcpu<V>(
     privileged_vm: bool,
     vcpu_cgroup_tasks_file: Option<File>,
     userspace_msr: BTreeMap<u32, MsrConfig>,
+    guest_suspended_cvar: Arc<(Mutex<bool>, Condvar)>,
 ) -> Result<JoinHandle<()>>
 where
     V: VcpuArch + 'static,
@@ -631,6 +647,7 @@ where
                     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
                     guest_mem,
                     msr_handlers,
+                    guest_suspended_cvar,
                 )
             };
 

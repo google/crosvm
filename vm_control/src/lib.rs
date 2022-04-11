@@ -36,7 +36,7 @@ pub use balloon_control::BalloonStats;
 use balloon_control::{BalloonTubeCommand, BalloonTubeResult};
 
 use base::{
-    error, trace, warn, with_as_descriptor, AsRawDescriptor, Error as SysError, Event,
+    error, info, trace, warn, with_as_descriptor, AsRawDescriptor, Error as SysError, Event,
     ExternalMapping, FromRawDescriptor, IntoRawDescriptor, Killable, MappedRegion,
     MemoryMappingArena, MemoryMappingBuilder, MemoryMappingBuilderUnix, MmapError, Protection,
     Result, SafeDescriptor, SharedMemory, Tube, SIGRTMIN,
@@ -47,7 +47,7 @@ use rutabaga_gfx::{
     DrmFormat, ImageAllocationInfo, RutabagaGralloc, RutabagaGrallocFlags, RutabagaHandle,
     VulkanInfo,
 };
-use sync::Mutex;
+use sync::{Condvar, Mutex};
 use vm_memory::GuestAddress;
 
 /// Struct that describes the offset and stride of a plane located in GPU memory.
@@ -1022,6 +1022,35 @@ fn map_descriptor(
     }
 }
 
+fn generate_sleep_button_event(
+    pm: &mut Option<Arc<Mutex<dyn PmResource>>>,
+    guest_suspended_cvar: &Arc<(Mutex<bool>, Condvar)>,
+) {
+    // During suspend also emulate sleepbtn, which allows to suspend VM (if running e.g. acpid and
+    // reacts on sleep button events)
+    if let Some(pm) = pm {
+        pm.lock().slpbtn_evt();
+    } else {
+        error!("generating sleepbtn during suspend not supported");
+    }
+
+    let (lock, cvar) = &**guest_suspended_cvar;
+    let mut guest_suspended = lock.lock();
+
+    *guest_suspended = false;
+
+    // Wait for notification about guest suspension, if not received after 15sec,
+    // proceed anyway.
+    let result = cvar.wait_timeout(guest_suspended, std::time::Duration::from_secs(15));
+    guest_suspended = result.0;
+
+    if result.1.timed_out() {
+        warn!("Guest suspension timeout - proceeding anyway");
+    } else if *guest_suspended {
+        info!("Guest suspended");
+    }
+}
+
 impl VmRequest {
     /// Executes this request on the given Vm and other mutable state.
     ///
@@ -1039,6 +1068,7 @@ impl VmRequest {
         bat_control: &mut Option<BatControl>,
         vcpu_handles: &[(JoinHandle<()>, mpsc::Sender<VcpuControl>)],
         force_s2idle: bool,
+        guest_suspended_cvar: Arc<(Mutex<bool>, Condvar)>,
     ) -> VmResponse {
         match *self {
             VmRequest::Exit => {
@@ -1064,6 +1094,10 @@ impl VmRequest {
                 }
             }
             VmRequest::Suspend => {
+                if force_s2idle {
+                    generate_sleep_button_event(pm, &guest_suspended_cvar);
+                }
+
                 *run_mode = Some(VmRunMode::Suspending);
                 VmResponse::Ok
             }

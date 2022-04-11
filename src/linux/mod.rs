@@ -49,7 +49,7 @@ use hypervisor::{HypervisorCap, ProtectionType, Vm, VmCap};
 use minijail::{self, Minijail};
 use resources::{Alloc, SystemAllocator};
 use rutabaga_gfx::RutabagaGralloc;
-use sync::Mutex;
+use sync::{Condvar, Mutex};
 use vm_control::*;
 use vm_memory::{GuestAddress, GuestMemory, MemoryPolicy};
 
@@ -1773,6 +1773,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     #[cfg(target_os = "android")]
     android::set_process_profiles(&cfg.task_profiles)?;
 
+    let guest_suspended_cvar = Arc::new((Mutex::new(false), Condvar::new()));
+
     for (cpu_id, vcpu) in vcpus.into_iter().enumerate() {
         let (to_vcpu_channel, from_main_channel) = mpsc::channel();
         let vcpu_affinity = match linux.vcpu_affinity.clone() {
@@ -1818,6 +1820,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 ),
             },
             cfg.userspace_msr.clone(),
+            guest_suspended_cvar.clone(),
         )?;
         vcpu_handles.push((handle, to_vcpu_channel));
     }
@@ -1982,6 +1985,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             &mut linux.bat_control,
                                             &vcpu_handles,
                                             cfg.force_s2idle,
+                                            guest_suspended_cvar.clone(),
                                         ),
                                     };
 
