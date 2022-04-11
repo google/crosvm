@@ -2469,7 +2469,9 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("pcie-root-port", "PATH[,hp_gpe=NUM]", "Path to sysfs of host pcie root port and host pcie root port hotplug gpe number"),
           Argument::value("pivot-root", "PATH", "Path to empty directory to use for sandbox pivot root."),
           #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-          Argument::flag("s2idle", "Set Low Power S0 Idle Capable Flag for guest Fixed ACPI Description Table"),
+          Argument::flag("s2idle", "Set Low Power S0 Idle Capable Flag for guest Fixed ACPI
+                         Description Table, additionally use enhanced crosvm suspend and resume
+                         routines to perform full guest suspension/resumption"),
           Argument::flag("strict-balloon", "Don't allow guest to use pages from the balloon"),
           Argument::value("mmio-address-range", "STARTADDR-ENDADDR[,STARTADDR-ENDADDR]*",
                           "Ranges (inclusive) into which to limit guest mmio addresses. Note that

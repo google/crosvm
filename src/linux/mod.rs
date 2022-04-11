@@ -1981,6 +1981,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             None,
                                             &mut linux.bat_control,
                                             &vcpu_handles,
+                                            cfg.force_s2idle,
                                         ),
                                     };
 

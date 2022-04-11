@@ -1038,6 +1038,7 @@ impl VmRequest {
         usb_control_tube: Option<&Tube>,
         bat_control: &mut Option<BatControl>,
         vcpu_handles: &[(JoinHandle<()>, mpsc::Sender<VcpuControl>)],
+        force_s2idle: bool,
     ) -> VmResponse {
         match *self {
             VmRequest::Exit => {
@@ -1068,6 +1069,18 @@ impl VmRequest {
             }
             VmRequest::Resume => {
                 *run_mode = Some(VmRunMode::Running);
+
+                if force_s2idle {
+                    // During resume also emulate powerbtn event which will allow to wakeup fully
+                    // suspended guest.
+                    if let Some(pm) = pm {
+                        pm.lock().pwrbtn_evt();
+                    } else {
+                        error!("triggering power btn during resume not supported");
+                        return VmResponse::Err(SysError::new(ENOTSUP));
+                    }
+                }
+
                 VmResponse::Ok
             }
             VmRequest::Gpe(gpe) => {
