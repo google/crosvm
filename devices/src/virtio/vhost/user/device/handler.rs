@@ -465,25 +465,18 @@ where
             .async_from(h)
             .context("failed to create asyn handler source")?;
 
-        let done = async move {
-            loop {
-                // Wait for requests from the sibling.
-                // `read_u64()` returns the number of requests arrived.
-                let count = handler_source
-                    .read_u64()
-                    .await
-                    .context("failed to wait for handler source")?;
-                for _ in 0..count {
-                    req_handler
-                        .handle_request()
-                        .context("failed to handle request")?;
-                }
+        loop {
+            // Wait for requests from the sibling.
+            // `read_u64()` returns the number of requests arrived.
+            let count = handler_source
+                .read_u64()
+                .await
+                .context("failed to wait for handler source")?;
+            for _ in 0..count {
+                req_handler
+                    .handle_request()
+                    .context("failed to handle request")?;
             }
-        };
-        match ex.run_until(done) {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => Err(e),
-            Err(e) => Err(e).context("executor error"),
         }
     }
 }
