@@ -24,8 +24,8 @@ use virtio_sys::virtio_net::{
 use vm_memory::GuestMemory;
 
 use super::{
-    copy_config, DescriptorError, Interrupt, Queue, Reader, SignalableInterrupt, VirtioDevice,
-    Writer, TYPE_NET,
+    copy_config, DescriptorError, DeviceType, Interrupt, Queue, Reader, SignalableInterrupt,
+    VirtioDevice, Writer,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -662,8 +662,8 @@ where
         keep_rds
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_NET
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Net
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

@@ -33,8 +33,8 @@ use crate::virtio::snd::common::*;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
 use crate::virtio::{
-    async_utils, copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, VirtioDevice,
-    Writer, TYPE_SOUND,
+    async_utils, copy_config, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue,
+    VirtioDevice, Writer,
 };
 
 pub mod async_funcs;
@@ -561,8 +561,8 @@ impl VirtioDevice for VirtioSndCras {
         Vec::new()
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_SOUND
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Sound
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

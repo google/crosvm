@@ -18,7 +18,7 @@ use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use crate::virtio::virtio_device::VirtioDevice;
-use crate::virtio::{self, copy_config, DescriptorError, Interrupt};
+use crate::virtio::{self, copy_config, DescriptorError, DeviceType, Interrupt};
 
 #[macro_use]
 mod macros;
@@ -143,12 +143,12 @@ impl VirtioDevice for VideoDevice {
         keep_rds
     }
 
-    fn device_type(&self) -> u32 {
+    fn device_type(&self) -> DeviceType {
         match &self.device_type {
             #[cfg(feature = "video-decoder")]
-            VideoDeviceType::Decoder => virtio::TYPE_VIDEO_DEC,
+            VideoDeviceType::Decoder => DeviceType::VideoDec,
             #[cfg(feature = "video-encoder")]
-            VideoDeviceType::Encoder => virtio::TYPE_VIDEO_ENC,
+            VideoDeviceType::Encoder => DeviceType::VideoEnc,
         }
     }
 

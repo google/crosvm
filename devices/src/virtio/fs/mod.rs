@@ -20,8 +20,8 @@ use crate::pci::{
     PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability,
 };
 use crate::virtio::{
-    copy_config, DescriptorError, Interrupt, PciCapabilityType, Queue, VirtioDevice,
-    VirtioPciShmCap, TYPE_FS,
+    copy_config, DescriptorError, DeviceType, Interrupt, PciCapabilityType, Queue, VirtioDevice,
+    VirtioPciShmCap,
 };
 
 mod caps;
@@ -197,8 +197,8 @@ impl VirtioDevice for Fs {
         fds
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_FS
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Fs
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

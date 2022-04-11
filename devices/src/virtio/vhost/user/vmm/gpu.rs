@@ -13,8 +13,8 @@ use crate::{
     virtio::{
         gpu::QUEUE_SIZES,
         vhost::user::vmm::{worker::Worker, Result, VhostUserHandler},
-        virtio_gpu_config, Interrupt, PciCapabilityType, Queue, VirtioDevice, VirtioPciShmCap,
-        GPU_BAR_NUM, GPU_BAR_OFFSET, GPU_BAR_SIZE, TYPE_GPU, VIRTIO_GPU_F_CONTEXT_INIT,
+        virtio_gpu_config, DeviceType, Interrupt, PciCapabilityType, Queue, VirtioDevice,
+        VirtioPciShmCap, GPU_BAR_NUM, GPU_BAR_OFFSET, GPU_BAR_SIZE, VIRTIO_GPU_F_CONTEXT_INIT,
         VIRTIO_GPU_F_CREATE_GUEST_HANDLE, VIRTIO_GPU_F_RESOURCE_BLOB, VIRTIO_GPU_F_RESOURCE_SYNC,
         VIRTIO_GPU_F_RESOURCE_UUID, VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_SHM_ID_HOST_VISIBLE,
     },
@@ -100,8 +100,8 @@ impl VirtioDevice for Gpu {
         Vec::new()
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_GPU
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Gpu
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

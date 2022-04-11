@@ -269,7 +269,7 @@ impl VirtioPciDevice {
         let pci_device_id = VIRTIO_PCI_DEVICE_ID_BASE + device.device_type() as u16;
 
         let (pci_device_class, pci_device_subclass) = match device.device_type() {
-            TYPE_GPU => (
+            DeviceType::Gpu => (
                 PciClassCode::DisplayController,
                 &PciDisplaySubclass::Other as &dyn PciSubclass,
             ),
@@ -541,10 +541,7 @@ impl PciDevice for VirtioPciDevice {
                     func: address.func,
                     bar: 0,
                 },
-                format!(
-                    "virtio-{}-cap_bar",
-                    type_to_str(self.device.device_type()).unwrap_or("?")
-                ),
+                format!("virtio-{}-cap_bar", self.device.device_type()),
                 CAPABILITY_BAR_SIZE,
             )
             .map_err(|e| PciDeviceError::IoAllocationFailed(CAPABILITY_BAR_SIZE, e))?;
@@ -591,10 +588,7 @@ impl PciDevice for VirtioPciDevice {
                         func: address.func,
                         bar: config.bar_index() as u8,
                     },
-                    format!(
-                        "virtio-{}-custom_bar",
-                        type_to_str(self.device.device_type()).unwrap_or("?")
-                    ),
+                    format!("virtio-{}-custom_bar", self.device.device_type()),
                     config.size(),
                 )
                 .map_err(|e| PciDeviceError::IoAllocationFailed(config.size(), e))?;

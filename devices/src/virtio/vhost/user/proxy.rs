@@ -37,8 +37,8 @@ use vmm_vhost::{
 
 use crate::virtio::descriptor_utils::Error as DescriptorUtilsError;
 use crate::virtio::{
-    copy_config, DescriptorChain, Interrupt, PciCapabilityType, Queue, Reader, SignalableInterrupt,
-    VirtioDevice, VirtioPciCap, Writer, TYPE_VHOST_USER,
+    copy_config, DescriptorChain, DeviceType, Interrupt, PciCapabilityType, Queue, Reader,
+    SignalableInterrupt, VirtioDevice, VirtioPciCap, Writer,
 };
 use crate::PciAddress;
 use crate::{
@@ -1257,8 +1257,8 @@ impl VirtioDevice for VirtioVhostUser {
         rds
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_VHOST_USER
+    fn device_type(&self) -> DeviceType {
+        DeviceType::VhostUser
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

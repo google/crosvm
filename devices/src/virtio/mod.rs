@@ -64,38 +64,10 @@ use std::convert::TryFrom;
 
 use hypervisor::ProtectionType;
 use virtio_sys::virtio_config::{VIRTIO_F_ACCESS_PLATFORM, VIRTIO_F_VERSION_1};
+use virtio_sys::virtio_ids;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 
 const DEVICE_RESET: u32 = 0x0;
-
-// Types taken from linux/virtio_ids.h
-const TYPE_NET: u32 = 1;
-const TYPE_BLOCK: u32 = 2;
-const TYPE_CONSOLE: u32 = 3;
-const TYPE_RNG: u32 = 4;
-const TYPE_BALLOON: u32 = 5;
-const TYPE_RPMSG: u32 = 7;
-const TYPE_SCSI: u32 = 8;
-const TYPE_9P: u32 = 9;
-const TYPE_RPROC_SERIAL: u32 = 11;
-const TYPE_CAIF: u32 = 12;
-const TYPE_GPU: u32 = 16;
-const TYPE_INPUT: u32 = 18;
-const TYPE_VSOCK: u32 = 19;
-const TYPE_CRYPTO: u32 = 20;
-const TYPE_IOMMU: u32 = 23;
-const TYPE_SOUND: u32 = 25;
-const TYPE_FS: u32 = 26;
-const TYPE_PMEM: u32 = 27;
-const TYPE_MAC80211_HWSIM: u32 = 29;
-const TYPE_VIDEO_ENC: u32 = 30;
-const TYPE_VIDEO_DEC: u32 = 31;
-// Additional types invented by crosvm
-const MAX_VIRTIO_DEVICE_ID: u32 = 63;
-const TYPE_WL: u32 = MAX_VIRTIO_DEVICE_ID;
-const TYPE_TPM: u32 = MAX_VIRTIO_DEVICE_ID - 1;
-// TODO(abhishekbh): Fix this after this device is accepted upstream.
-const TYPE_VHOST_USER: u32 = MAX_VIRTIO_DEVICE_ID - 2;
 
 const INTERRUPT_STATUS_USED_RING: u32 = 0x1;
 const INTERRUPT_STATUS_CONFIG_CHANGED: u32 = 0x2;
@@ -106,34 +78,65 @@ const VIRTIO_MSI_NO_VECTOR: u16 = 0xffff;
 /// queue events.
 pub const NOTIFY_REG_OFFSET: u32 = 0x50;
 
-/// Returns a string representation of the given virtio device type number.
-pub fn type_to_str(type_: u32) -> Option<&'static str> {
-    Some(match type_ {
-        TYPE_NET => "net",
-        TYPE_BLOCK => "block",
-        TYPE_CONSOLE => "console",
-        TYPE_RNG => "rng",
-        TYPE_BALLOON => "balloon",
-        TYPE_RPMSG => "rpmsg",
-        TYPE_SCSI => "scsi",
-        TYPE_9P => "9p",
-        TYPE_RPROC_SERIAL => "rproc-serial",
-        TYPE_CAIF => "caif",
-        TYPE_INPUT => "input",
-        TYPE_GPU => "gpu",
-        TYPE_VSOCK => "vsock",
-        TYPE_CRYPTO => "crypto",
-        TYPE_IOMMU => "iommu",
-        TYPE_VHOST_USER => "vhost-user",
-        TYPE_SOUND => "snd",
-        TYPE_FS => "fs",
-        TYPE_PMEM => "pmem",
-        TYPE_WL => "wl",
-        TYPE_TPM => "tpm",
-        TYPE_VIDEO_DEC => "video-decoder",
-        TYPE_VIDEO_ENC => "video-encoder",
-        _ => return None,
-    })
+#[derive(Copy, Clone, Eq, PartialEq)]
+#[repr(u32)]
+pub enum DeviceType {
+    Net = virtio_ids::VIRTIO_ID_NET,
+    Block = virtio_ids::VIRTIO_ID_BLOCK,
+    Console = virtio_ids::VIRTIO_ID_CONSOLE,
+    Rng = virtio_ids::VIRTIO_ID_RNG,
+    Balloon = virtio_ids::VIRTIO_ID_BALLOON,
+    Rpmsg = virtio_ids::VIRTIO_ID_RPMSG,
+    Scsi = virtio_ids::VIRTIO_ID_SCSI,
+    P9 = virtio_ids::VIRTIO_ID_9P,
+    RprocSerial = virtio_ids::VIRTIO_ID_RPROC_SERIAL,
+    Caif = virtio_ids::VIRTIO_ID_CAIF,
+    Gpu = virtio_ids::VIRTIO_ID_GPU,
+    Input = virtio_ids::VIRTIO_ID_INPUT,
+    Vsock = virtio_ids::VIRTIO_ID_VSOCK,
+    Crypto = virtio_ids::VIRTIO_ID_CRYPTO,
+    Iommu = virtio_ids::VIRTIO_ID_IOMMU,
+    Sound = virtio_ids::VIRTIO_ID_SOUND,
+    Fs = virtio_ids::VIRTIO_ID_FS,
+    Pmem = virtio_ids::VIRTIO_ID_PMEM,
+    Mac80211HwSim = virtio_ids::VIRTIO_ID_MAC80211_HWSIM,
+    VideoEnc = virtio_ids::VIRTIO_ID_VIDEO_ENC,
+    VideoDec = virtio_ids::VIRTIO_ID_VIDEO_DEC,
+    Wl = virtio_ids::VIRTIO_ID_WL,
+    Tpm = virtio_ids::VIRTIO_ID_TPM,
+    VhostUser = virtio_ids::VIRTIO_ID_VHOST_USER,
+}
+
+/// Prints a string representation of the given virtio device type.
+impl std::fmt::Display for DeviceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match &self {
+            DeviceType::Net => write!(f, "net"),
+            DeviceType::Block => write!(f, "block"),
+            DeviceType::Console => write!(f, "console"),
+            DeviceType::Rng => write!(f, "rng"),
+            DeviceType::Balloon => write!(f, "balloon"),
+            DeviceType::Rpmsg => write!(f, "rpmsg"),
+            DeviceType::Scsi => write!(f, "scsi"),
+            DeviceType::P9 => write!(f, "9p"),
+            DeviceType::RprocSerial => write!(f, "rproc-serial"),
+            DeviceType::Caif => write!(f, "caif"),
+            DeviceType::Input => write!(f, "input"),
+            DeviceType::Gpu => write!(f, "gpu"),
+            DeviceType::Vsock => write!(f, "vsock"),
+            DeviceType::Crypto => write!(f, "crypto"),
+            DeviceType::Iommu => write!(f, "iommu"),
+            DeviceType::VhostUser => write!(f, "vhost-user"),
+            DeviceType::Sound => write!(f, "snd"),
+            DeviceType::Fs => write!(f, "fs"),
+            DeviceType::Pmem => write!(f, "pmem"),
+            DeviceType::Wl => write!(f, "wl"),
+            DeviceType::Tpm => write!(f, "tpm"),
+            DeviceType::VideoDec => write!(f, "video-decoder"),
+            DeviceType::VideoEnc => write!(f, "video-encoder"),
+            t => write!(f, "unknown-{}", t),
+        }
+    }
 }
 
 /// Copy virtio device configuration data from a subslice of `src` to a subslice of `dst`.

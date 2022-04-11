@@ -16,7 +16,7 @@ mod worker;
 
 use std::thread;
 
-use crate::virtio::{copy_config, DescriptorError, Interrupt, Queue, VirtioDevice, TYPE_SOUND};
+use crate::virtio::{copy_config, DescriptorError, DeviceType, Interrupt, Queue, VirtioDevice};
 use base::{error, Error as BaseError, Event, RawDescriptor};
 use data_model::{DataInit, Le32};
 use remain::sorted;
@@ -84,8 +84,8 @@ impl VirtioDevice for Sound {
         self.vios_client.keep_fds()
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_SOUND
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Sound
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

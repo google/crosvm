@@ -12,6 +12,7 @@ use base::{ioctl_io_nr, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr};
 
 pub mod vhost;
 pub mod virtio_config;
+pub mod virtio_ids;
 pub mod virtio_net;
 pub mod virtio_ring;
 

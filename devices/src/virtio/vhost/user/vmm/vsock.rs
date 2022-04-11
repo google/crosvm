@@ -15,7 +15,7 @@ use crate::virtio::{
         user::vmm::{handler::VhostUserHandler, worker::Worker, Error, Result},
         vsock,
     },
-    Interrupt, Queue, VirtioDevice, TYPE_VSOCK, VIRTIO_F_VERSION_1,
+    DeviceType, Interrupt, Queue, VirtioDevice, VIRTIO_F_VERSION_1,
 };
 
 pub struct Vsock {
@@ -87,8 +87,8 @@ impl VirtioDevice for Vsock {
         }
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_VSOCK
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Vsock
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

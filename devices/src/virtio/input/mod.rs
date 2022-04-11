@@ -18,8 +18,8 @@ use vm_memory::GuestMemory;
 
 use self::event_source::{EvdevEventSource, EventSource, SocketEventSource};
 use super::{
-    copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader, SignalableInterrupt,
-    VirtioDevice, Writer, TYPE_INPUT,
+    copy_config, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue, Reader,
+    SignalableInterrupt, VirtioDevice, Writer,
 };
 use linux_input_sys::{virtio_input_event, InputEventDecoder};
 use std::collections::BTreeMap;
@@ -559,8 +559,8 @@ where
         Vec::new()
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_INPUT
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Input
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

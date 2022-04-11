@@ -20,10 +20,7 @@ use crate::pci::{MsixStatus, PciAddress, PciBarConfiguration, PciBarIndex, PciCa
 pub trait VirtioDevice: Send {
     /// Returns a label suitable for debug output.
     fn debug_label(&self) -> String {
-        match type_to_str(self.device_type()) {
-            Some(s) => format!("virtio-{}", s),
-            None => format!("virtio (type {})", self.device_type()),
-        }
+        format!("virtio-{}", self.device_type())
     }
 
     /// A vector of device-specific file descriptors that must be kept open
@@ -31,7 +28,7 @@ pub trait VirtioDevice: Send {
     fn keep_rds(&self) -> Vec<RawDescriptor>;
 
     /// The virtio device type.
-    fn device_type(&self) -> u32;
+    fn device_type(&self) -> DeviceType;
 
     /// The maximum size of each queue that this device supports.
     fn queue_max_sizes(&self) -> &[u16];

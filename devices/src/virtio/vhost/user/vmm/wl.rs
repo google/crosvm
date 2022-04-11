@@ -14,7 +14,7 @@ use crate::virtio::vhost::user::vmm::{worker::Worker, Result, VhostUserHandler};
 use crate::virtio::wl::{
     QUEUE_SIZE, QUEUE_SIZES, VIRTIO_WL_F_SEND_FENCES, VIRTIO_WL_F_TRANS_FLAGS,
 };
-use crate::virtio::{Interrupt, Queue, VirtioDevice, TYPE_WL};
+use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice};
 
 pub struct Wl {
     kill_evt: Option<Event>,
@@ -59,8 +59,8 @@ impl VirtioDevice for Wl {
         Vec::new()
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_WL
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Wl
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

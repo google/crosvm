@@ -6,7 +6,6 @@ use std::cell::RefCell;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::thread;
-use std::u32;
 
 use base::{error, Event, RawDescriptor};
 use remain::sorted;
@@ -15,7 +14,7 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, worker::Worker, Error};
-use crate::virtio::{Interrupt, Queue, VirtioDevice, TYPE_MAC80211_HWSIM, VIRTIO_F_VERSION_1};
+use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice, VIRTIO_F_VERSION_1};
 
 use std::result::Result;
 
@@ -135,8 +134,8 @@ impl VirtioDevice for Mac80211Hwsim {
         }
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_MAC80211_HWSIM
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Mac80211HwSim
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

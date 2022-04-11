@@ -13,7 +13,7 @@ use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::console::{virtio_console_config, QUEUE_SIZE};
 use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, worker::Worker, Error, Result};
-use crate::virtio::{Interrupt, Queue, VirtioDevice, TYPE_CONSOLE};
+use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice};
 
 pub struct Console {
     kill_evt: Option<Event>,
@@ -63,8 +63,8 @@ impl VirtioDevice for Console {
         self.handler.borrow().avail_features
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_CONSOLE
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Console
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

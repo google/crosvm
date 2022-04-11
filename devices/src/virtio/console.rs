@@ -18,8 +18,8 @@ use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
 use super::{
-    base_features, copy_config, Interrupt, Queue, Reader, SignalableInterrupt, VirtioDevice,
-    Writer, TYPE_CONSOLE,
+    base_features, copy_config, DeviceType, Interrupt, Queue, Reader, SignalableInterrupt,
+    VirtioDevice, Writer,
 };
 use crate::SerialDevice;
 
@@ -398,8 +398,8 @@ impl VirtioDevice for Console {
         self.base_features
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_CONSOLE
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Console
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

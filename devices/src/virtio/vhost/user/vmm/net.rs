@@ -6,7 +6,6 @@ mod sys;
 
 use std::cell::RefCell;
 use std::thread;
-use std::u32;
 
 use base::{error, Event, RawDescriptor};
 use virtio_sys::virtio_net;
@@ -15,7 +14,7 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, worker::Worker, Error};
-use crate::virtio::{Interrupt, Queue, VirtioDevice, VirtioNetConfig, TYPE_NET};
+use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice, VirtioNetConfig};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -79,8 +78,8 @@ impl VirtioDevice for Net {
         }
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_NET
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Net
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

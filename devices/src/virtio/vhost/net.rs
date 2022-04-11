@@ -18,7 +18,7 @@ use super::control_socket::*;
 use super::worker::Worker;
 use super::{Error, Result};
 use crate::pci::MsixStatus;
-use crate::virtio::{Interrupt, Queue, VirtioDevice, TYPE_NET};
+use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
@@ -161,8 +161,8 @@ where
         keep_rds
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_NET
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Net
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

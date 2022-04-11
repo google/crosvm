@@ -31,8 +31,8 @@ use vm_memory::GuestMemory;
 
 use super::common::*;
 use crate::virtio::{
-    async_utils, block::sys::*, copy_config, DescriptorChain, DescriptorError, Interrupt, Queue,
-    Reader, SignalableInterrupt, VirtioDevice, Writer, TYPE_BLOCK,
+    async_utils, block::sys::*, copy_config, DescriptorChain, DescriptorError, DeviceType,
+    Interrupt, Queue, Reader, SignalableInterrupt, VirtioDevice, Writer,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -713,8 +713,8 @@ impl VirtioDevice for BlockAsync {
         self.avail_features
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_BLOCK
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Block
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

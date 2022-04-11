@@ -11,7 +11,7 @@ use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
-use super::{Interrupt, Queue, SignalableInterrupt, VirtioDevice, Writer, TYPE_RNG};
+use super::{DeviceType, Interrupt, Queue, SignalableInterrupt, VirtioDevice, Writer};
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
@@ -163,8 +163,8 @@ impl VirtioDevice for Rng {
         keep_rds
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_RNG
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Rng
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

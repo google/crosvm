@@ -246,7 +246,7 @@ mod tests {
     use base::{Event, RawDescriptor};
     use vm_memory::GuestMemory;
 
-    struct DummyDevice(u32);
+    struct DummyDevice(DeviceType);
     const QUEUE_SIZE: u16 = 256;
     const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
     const DUMMY_FEATURES: u64 = 0x5555_aaaa;
@@ -254,8 +254,8 @@ mod tests {
         fn keep_rds(&self) -> Vec<RawDescriptor> {
             Vec::new()
         }
-        fn device_type(&self) -> u32 {
-            return self.0;
+        fn device_type(&self) -> DeviceType {
+            self.0
         }
         fn queue_max_sizes(&self) -> &[u16] {
             QUEUE_SIZES
@@ -284,7 +284,7 @@ mod tests {
             msix_config: 0x00,
         };
 
-        let dev = &mut DummyDevice(0) as &mut dyn VirtioDevice;
+        let dev = &mut DummyDevice(DeviceType::Rng) as &mut dyn VirtioDevice;
         let mut queues = Vec::new();
 
         // Can set all bits of driver_status.

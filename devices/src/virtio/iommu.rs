@@ -31,8 +31,8 @@ use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
 use crate::pci::PciAddress;
 use crate::virtio::{
-    async_utils, copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader,
-    SignalableInterrupt, VirtioDevice, Writer, TYPE_IOMMU,
+    async_utils, copy_config, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue,
+    Reader, SignalableInterrupt, VirtioDevice, Writer,
 };
 use crate::VfioContainer;
 
@@ -834,8 +834,8 @@ impl VirtioDevice for Iommu {
         rds
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_IOMMU
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Iommu
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

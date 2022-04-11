@@ -20,8 +20,8 @@ use data_model::{DataInit, Le16, Le32, Le64};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{
-    async_utils, copy_config, descriptor_utils, DescriptorChain, Interrupt, Queue, Reader,
-    SignalableInterrupt, VirtioDevice, TYPE_BALLOON,
+    async_utils, copy_config, descriptor_utils, DescriptorChain, DeviceType, Interrupt, Queue,
+    Reader, SignalableInterrupt, VirtioDevice,
 };
 use crate::{UnpinRequest, UnpinResponse};
 
@@ -647,8 +647,8 @@ impl VirtioDevice for Balloon {
         rds
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_BALLOON
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Balloon
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

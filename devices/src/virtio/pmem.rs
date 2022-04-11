@@ -19,8 +19,8 @@ use vm_control::{MemSlot, VmMsyncRequest, VmMsyncResponse};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{
-    async_utils, copy_config, DescriptorChain, DescriptorError, Interrupt, Queue, Reader,
-    VirtioDevice, Writer, TYPE_PMEM,
+    async_utils, copy_config, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue,
+    Reader, VirtioDevice, Writer,
 };
 
 const QUEUE_SIZE: u16 = 256;
@@ -279,8 +279,8 @@ impl VirtioDevice for Pmem {
         keep_rds
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_PMEM
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Pmem
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

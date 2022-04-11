@@ -15,7 +15,7 @@ use vmm_vhost::Error as VhostUserError;
 
 use crate::virtio::fs::{virtio_fs_config, FS_MAX_TAG_LEN, QUEUE_SIZE};
 use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, worker::Worker, Error, Result};
-use crate::virtio::{copy_config, TYPE_FS};
+use crate::virtio::{copy_config, DeviceType};
 use crate::virtio::{Interrupt, Queue, VirtioDevice};
 
 pub struct Fs {
@@ -79,8 +79,8 @@ impl VirtioDevice for Fs {
         Vec::new()
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_FS
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Fs
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

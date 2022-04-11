@@ -13,8 +13,7 @@ use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::snd::layout::virtio_snd_config;
 use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, worker::Worker, Error, Result};
-use crate::virtio::TYPE_SOUND;
-use crate::virtio::{Interrupt, Queue, VirtioDevice};
+use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice};
 
 // A vhost-user snd device.
 pub struct Snd {
@@ -63,8 +62,8 @@ impl VirtioDevice for Snd {
         Vec::new()
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_SOUND
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Sound
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

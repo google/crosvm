@@ -18,7 +18,7 @@ use vm_memory::GuestMemory;
 
 use super::worker::Worker;
 use super::{Error, Result};
-use crate::virtio::{copy_config, Interrupt, Queue, VirtioDevice, TYPE_VSOCK};
+use crate::virtio::{copy_config, DeviceType, Interrupt, Queue, VirtioDevice};
 
 pub const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 3;
@@ -133,8 +133,8 @@ impl VirtioDevice for Vsock {
         keep_rds
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_VSOCK
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Vsock
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

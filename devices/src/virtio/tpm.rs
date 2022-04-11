@@ -14,8 +14,8 @@ use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use super::{
-    DescriptorChain, DescriptorError, Interrupt, Queue, Reader, SignalableInterrupt, VirtioDevice,
-    Writer, TYPE_TPM,
+    DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue, Reader, SignalableInterrupt,
+    VirtioDevice, Writer,
 };
 
 // A single queue of size 2. The guest kernel driver will enqueue a single
@@ -194,8 +194,8 @@ impl VirtioDevice for Tpm {
         Vec::new()
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_TPM
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Tpm
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

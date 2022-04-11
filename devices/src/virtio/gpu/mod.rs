@@ -39,8 +39,8 @@ use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{
-    copy_config, resource_bridge::*, DescriptorChain, Interrupt, Queue, Reader,
-    SignalableInterrupt, VirtioDevice, Writer, TYPE_GPU,
+    copy_config, resource_bridge::*, DescriptorChain, DeviceType, Interrupt, Queue, Reader,
+    SignalableInterrupt, VirtioDevice, Writer,
 };
 
 use super::{PciCapabilityType, VirtioPciShmCap};
@@ -1207,8 +1207,8 @@ impl VirtioDevice for Gpu {
         keep_rds
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_GPU
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Gpu
     }
 
     fn queue_max_sizes(&self) -> &[u16] {

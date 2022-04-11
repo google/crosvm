@@ -13,8 +13,8 @@ use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use super::{
-    copy_config, DescriptorError, Interrupt, Queue, Reader, SignalableInterrupt, VirtioDevice,
-    Writer, TYPE_9P,
+    copy_config, DescriptorError, DeviceType, Interrupt, Queue, Reader, SignalableInterrupt,
+    VirtioDevice, Writer,
 };
 
 const QUEUE_SIZE: u16 = 128;
@@ -169,8 +169,8 @@ impl VirtioDevice for P9 {
             .unwrap_or_else(Vec::new)
     }
 
-    fn device_type(&self) -> u32 {
-        TYPE_9P
+    fn device_type(&self) -> DeviceType {
+        DeviceType::P9
     }
 
     fn queue_max_sizes(&self) -> &[u16] {
