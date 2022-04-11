@@ -332,7 +332,7 @@ impl VirtioPciDevice {
             | VIRTIO_CONFIG_S_DRIVER
             | VIRTIO_CONFIG_S_DRIVER_OK
             | VIRTIO_CONFIG_S_FEATURES_OK) as u8;
-        self.common_config.driver_status == ready_bits
+        (self.common_config.driver_status & ready_bits) == ready_bits
             && self.common_config.driver_status & VIRTIO_CONFIG_S_FAILED as u8 == 0
     }
 
