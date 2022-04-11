@@ -42,5 +42,7 @@ done
 # building unnecessary dependencies to generate documentations.
 CARGO_DOC="true" cargo doc \
       --manifest-path="${MANIFEST_PATH}" \
+      --workspace \
+      --no-deps \
       --features="${features}" "$@" \
       --document-private-items
