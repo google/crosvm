@@ -27,10 +27,9 @@ impl Wl {
     pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Wl> {
         let default_queue_size = QUEUE_SIZES.len();
 
-        let allow_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
+        let allow_features = base_features
             | 1 << VIRTIO_WL_F_TRANS_FLAGS
             | 1 << VIRTIO_WL_F_SEND_FENCES
-            | base_features
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let allow_protocol_features =

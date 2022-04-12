@@ -14,7 +14,7 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, worker::Worker, Error};
-use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice, VIRTIO_F_VERSION_1};
+use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice};
 
 use std::result::Result;
 
@@ -43,9 +43,7 @@ impl Mac80211Hwsim {
     pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Mac80211Hwsim, Error> {
         let socket = UnixStream::connect(&socket_path).map_err(Error::SocketConnect)?;
 
-        let allow_features = 1 << VIRTIO_F_VERSION_1
-            | base_features
-            | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+        let allow_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let allow_protocol_features = VhostUserProtocolFeatures::empty();
 

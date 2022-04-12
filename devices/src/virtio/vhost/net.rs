@@ -11,7 +11,7 @@ use net_util::{MacAddress, TapT};
 
 use base::{error, warn, AsRawDescriptor, Event, RawDescriptor, Tube};
 use vhost::NetT as VhostNetT;
-use virtio_sys::{virtio_config, virtio_net, virtio_ring};
+use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 
 use super::control_socket::*;
@@ -80,10 +80,7 @@ where
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_UFO
             | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
             | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
-            | 1 << virtio_net::VIRTIO_NET_F_MRG_RXBUF
-            | 1 << virtio_ring::VIRTIO_RING_F_INDIRECT_DESC
-            | 1 << virtio_ring::VIRTIO_RING_F_EVENT_IDX
-            | 1 << virtio_config::VIRTIO_F_NOTIFY_ON_EMPTY;
+            | 1 << virtio_net::VIRTIO_NET_F_MRG_RXBUF;
 
         let mut vhost_interrupt = Vec::new();
         for _ in 0..NUM_QUEUES {
@@ -398,7 +395,16 @@ pub mod tests {
     #[test]
     fn features() {
         let net = create_net_common();
-        assert_eq!(net.features(), 5117103235);
+        let expected_features = 1 << 0 // VIRTIO_NET_F_CSUM
+            | 1 << 1 // VIRTIO_NET_F_GUEST_CSUM
+            | 1 << 7 // VIRTIO_NET_F_GUEST_TSO4
+            | 1 << 10 // VIRTIO_NET_F_GUEST_UFO
+            | 1 << 11 // VIRTIO_NET_F_HOST_TSO4
+            | 1 << 14 // VIRTIO_NET_F_HOST_UFO
+            | 1 << 15 // VIRTIO_NET_F_MRG_RXBUF
+            | 1 << 29 // VIRTIO_RING_F_EVENT_IDX
+            | 1 << 32; // VIRTIO_F_VERSION_1
+        assert_eq!(net.features(), expected_features);
     }
 
     #[test]
