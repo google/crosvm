@@ -36,6 +36,8 @@ const ECX_TOPO_SMT_TYPE: u32 = 1; // SMT type.
 const ECX_TOPO_CORE_TYPE: u32 = 2; // CORE type.
 const EAX_CPU_CORES_SHIFT: u32 = 26; // Index of cpu cores in the same physical package.
 const EDX_HYBRID_CPU_SHIFT: u32 = 15; // Hybrid. The processor is identified as a hybrid part.
+const EAX_HWP_SHIFT: u32 = 7; // Intel Hardware P-states.
+const EAX_HWP_EPP_SHIFT: u32 = 10; // HWP Energy Perf. Preferen
 
 fn filter_cpuid(
     vcpu_id: usize,
@@ -121,6 +123,15 @@ fn filter_cpuid(
             6 => {
                 // Clear X86 EPB feature.  No frequency selection in the hypervisor.
                 entry.ecx &= !(1 << ECX_EPB_SHIFT);
+
+                if host_cpu_topology {
+                    // Expose HWP and HWP_EPP to guest.
+                    // Safe because we pass 6 for this call and the host
+                    // supports the `cpuid` instruction
+                    let result = unsafe { __cpuid(entry.function) };
+                    entry.eax |= result.eax & (1 << EAX_HWP_SHIFT);
+                    entry.eax |= result.eax & (1 << EAX_HWP_EPP_SHIFT);
+                }
             }
             7 => {
                 if host_cpu_topology && entry.index == 0 {
