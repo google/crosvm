@@ -413,6 +413,29 @@ fn reflow(s: &str, offset: usize, width: usize) -> String {
     }
 }
 
+/// Obtain the leading part of the help message. The output is later processed
+/// to reflow. Depending on how short this, newline is used.
+fn get_leading_part(arg: &Argument) -> String {
+    [
+        match arg.short {
+            Some(s) => format!(" -{}, ", s),
+            None => "     ".to_string(),
+        },
+        if arg.long.is_empty() {
+            "  ".to_string()
+        } else {
+            "--".to_string()
+        },
+        format!("{:<12}", arg.long),
+        if let Some(v) = arg.value {
+            format!("{}{:<9} ", if arg.long.is_empty() { " " } else { "=" }, v)
+        } else {
+            " ".to_string()
+        },
+    ]
+    .join("")
+}
+
 /// Prints command line usage information to stdout.
 ///
 /// Usage information is printed according to the help fields in `args` with a leading usage line.
@@ -435,26 +458,13 @@ pub fn print_help(program_name: &str, required_arg: &str, args: &[Argument]) {
 
     println!("Argument{}:", if args.len() > 1 { "s" } else { "" });
     for arg in args {
-        let leading_part = [
-            match arg.short {
-                Some(s) => format!(" -{}, ", s),
-                None => "     ".to_string(),
-            },
-            if arg.long.is_empty() {
-                "  ".to_string()
-            } else {
-                "--".to_string()
-            },
-            format!("{:<12}", arg.long),
-            if let Some(v) = arg.value {
-                format!("{}{:<10}", if arg.long.is_empty() { " " } else { "=" }, v)
-            } else {
-                format!("{:<11}", "")
-            },
-        ]
-        .join("");
+        let leading_part = get_leading_part(arg);
         if leading_part.len() <= indent_depth {
-            print!("{}", leading_part);
+            print!(
+                "{}{}",
+                leading_part,
+                " ".repeat(indent_depth - leading_part.len())
+            );
         } else {
             print!("{}\n{}", leading_part, " ".repeat(indent_depth));
         }
@@ -847,6 +857,44 @@ I am going to give you another paragraph. However I don't know if it is useful",
           I am going to give you another
           paragraph. However I don't know if it
           is useful"
+        );
+    }
+
+    #[test]
+    fn get_leading_part_short() {
+        assert_eq!(
+            get_leading_part(&Argument::positional("FILES", "files to operate on")).len(),
+            30
+        );
+        assert_eq!(
+            get_leading_part(&Argument::flag_or_value(
+                "gpu",
+                "[2D|3D]",
+                "Enable or configure gpu"
+            ))
+            .len(),
+            30
+        );
+        assert_eq!(
+            get_leading_part(&Argument::flag("foo", "Enable foo.")).len(),
+            20
+        );
+        assert_eq!(
+            get_leading_part(&Argument::value("bar", "stuff", "Configure bar.")).len(),
+            30
+        );
+    }
+
+    #[test]
+    fn get_leading_part_long() {
+        assert_eq!(
+            get_leading_part(&Argument::value(
+                "very-long-flag-name",
+                "stuff",
+                "Configure bar."
+            ))
+            .len(),
+            37
         );
     }
 }
