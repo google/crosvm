@@ -165,11 +165,6 @@ fn virglrenderer() -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    // Skip installing dependencies when generating documents.
-    if std::env::var("CARGO_DOC").is_ok() {
-        return Ok(());
-    }
-
     #[cfg(feature = "virgl_renderer")]
     virglrenderer()?;
 
