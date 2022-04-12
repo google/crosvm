@@ -8,12 +8,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context};
-use base::{error, warn, AsRawDescriptor, Event, FileSync, RawDescriptor, Terminal};
-use cros_async::{EventAsync, Executor, IntoAsync, IoSourceExt};
+use base::{error, AsRawDescriptor, Event, FileSync, RawDescriptor, Terminal};
+use cros_async::{select2, AsyncResult, EventAsync, Executor, IntoAsync, IoSourceExt};
 use data_model::DataInit;
 
 use argh::FromArgs;
-use futures::future::{AbortHandle, Abortable};
+use futures::FutureExt;
 use hypervisor::ProtectionType;
 use sync::Mutex;
 use vm_memory::GuestMemory;
@@ -22,6 +22,7 @@ use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 use crate::serial_device::{
     SerialDevice, SerialHardware, SerialInput, SerialParameters, SerialType,
 };
+use crate::virtio::async_device::AsyncQueueState;
 use crate::virtio::console::{
     handle_input, process_transmit_queue, virtio_console_config, ConsoleError,
 };
@@ -46,14 +47,14 @@ async fn run_tx_queue<I: SignalableInterrupt>(
     mem: GuestMemory,
     doorbell: I,
     kick_evt: EventAsync,
-    mut output: Box<dyn io::Write>,
+    output: &mut Box<dyn io::Write + Send>,
 ) {
     loop {
         if let Err(e) = kick_evt.next_val().await {
             error!("Failed to read kick event for tx queue: {}", e);
             break;
         }
-        process_transmit_queue(&mem, &doorbell, &mut queue, &mut output);
+        process_transmit_queue(&mem, &doorbell, &mut queue, output.as_mut());
     }
 }
 
@@ -62,7 +63,7 @@ async fn run_rx_queue<I: SignalableInterrupt>(
     mem: GuestMemory,
     doorbell: I,
     kick_evt: EventAsync,
-    input: Box<dyn IoSourceExt<AsyncSerialInput>>,
+    input: &dyn IoSourceExt<AsyncSerialInput>,
 ) {
     // Staging buffer, required because of `handle_input`'s API. We can probably remove this once
     // the regular virtio device is switched to async.
@@ -71,7 +72,7 @@ async fn run_rx_queue<I: SignalableInterrupt>(
     let mut input_offset = 0u64;
 
     loop {
-        match input.as_ref().read_to_vec(Some(input_offset), rx_buf).await {
+        match input.read_to_vec(Some(input_offset), rx_buf).await {
             // Input source has closed.
             Ok((0, _)) => break,
             Ok((size, v)) => {
@@ -102,9 +103,96 @@ async fn run_rx_queue<I: SignalableInterrupt>(
 }
 
 struct ConsoleDevice {
-    input: Option<Box<dyn SerialInput>>,
-    output: Option<Box<dyn io::Write + Send>>,
+    input: Option<AsyncQueueState<AsyncSerialInput>>,
+    output: Option<AsyncQueueState<Box<dyn io::Write + Send>>>,
     avail_features: u64,
+}
+
+impl ConsoleDevice {
+    fn start_receive_queue<I: SignalableInterrupt + 'static>(
+        &mut self,
+        ex: &Executor,
+        mem: GuestMemory,
+        queue: virtio::Queue,
+        doorbell: I,
+        kick_evt: Event,
+    ) -> anyhow::Result<()> {
+        let input_queue = match self.input.as_mut() {
+            Some(input_queue) => input_queue,
+            None => return Ok(()),
+        };
+
+        let kick_evt =
+            EventAsync::new(kick_evt, ex).context("Failed to create EventAsync for kick_evt")?;
+
+        let closure_ex = ex.clone();
+        let rx_future = move |input, abort| {
+            let async_input = closure_ex
+                .async_from(input)
+                .context("failed to create async input")?;
+
+            Ok(async move {
+                select2(
+                    run_rx_queue(queue, mem, doorbell, kick_evt, async_input.as_ref())
+                        .boxed_local(),
+                    abort,
+                )
+                .await;
+
+                async_input.into_source()
+            })
+        };
+
+        input_queue.start(ex, rx_future)
+    }
+
+    fn stop_receive_queue(&mut self) -> AsyncResult<bool> {
+        if let Some(queue) = self.input.as_mut() {
+            queue.stop()
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn start_transmit_queue<I: SignalableInterrupt + 'static>(
+        &mut self,
+        ex: &Executor,
+        mem: GuestMemory,
+        queue: virtio::Queue,
+        doorbell: I,
+        kick_evt: Event,
+    ) -> anyhow::Result<()> {
+        let output_queue = match self.output.as_mut() {
+            Some(output_queue) => output_queue,
+            None => return Ok(()),
+        };
+
+        let kick_evt =
+            EventAsync::new(kick_evt, ex).context("Failed to create EventAsync for kick_evt")?;
+
+        let tx_future = |mut output, abort| {
+            Ok(async move {
+                select2(
+                    run_tx_queue(queue, mem, doorbell, kick_evt, &mut output).boxed_local(),
+                    abort,
+                )
+                .await;
+
+                output
+            })
+        };
+
+        output_queue.start(ex, tx_future)
+    }
+
+    fn stop_transmit_queue(&mut self) -> AsyncResult<bool> {
+        if let Some(queue) = self.output.as_mut() {
+            queue.stop()?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
 }
 
 impl SerialDevice for ConsoleDevice {
@@ -120,8 +208,8 @@ impl SerialDevice for ConsoleDevice {
         let avail_features =
             virtio::base_features(protected_vm) | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         ConsoleDevice {
-            input,
-            output,
+            input: input.map(AsyncSerialInput).map(AsyncQueueState::Stopped),
+            output: output.map(AsyncQueueState::Stopped),
             avail_features,
         }
     }
@@ -132,7 +220,6 @@ struct ConsoleBackend {
     device: ConsoleDevice,
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
-    workers: [Option<AbortHandle>; Self::MAX_QUEUE_NUM],
 }
 
 impl ConsoleBackend {
@@ -142,7 +229,6 @@ impl ConsoleBackend {
             device,
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
-            workers: Default::default(),
         }
     }
 }
@@ -158,7 +244,7 @@ impl VhostUserBackend for ConsoleBackend {
     }
 
     fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
-        let unrequested_features = value & !self.device.avail_features;
+        let unrequested_features = value & !self.features();
         if unrequested_features != 0 {
             bail!("invalid features are given: {:#x}", unrequested_features);
         }
@@ -197,8 +283,8 @@ impl VhostUserBackend for ConsoleBackend {
     }
 
     fn reset(&mut self) {
-        for handle in self.workers.iter_mut().filter_map(Option::take) {
-            handle.abort();
+        for queue_num in 0..Self::MAX_QUEUE_NUM {
+            self.stop_queue(queue_num);
         }
     }
 
@@ -210,64 +296,36 @@ impl VhostUserBackend for ConsoleBackend {
         doorbell: Arc<Mutex<Doorbell>>,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
-        if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
-            warn!("Starting new queue handler without stopping old handler");
-            handle.abort();
-        }
-
         // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
         queue.ack_features(self.acked_features);
 
-        let kick_evt = EventAsync::new(kick_evt, &self.ex)
-            .context("Failed to create EventAsync for kick_evt")?;
-        let (handle, registration) = AbortHandle::new_pair();
         match idx {
             // ReceiveQueue
-            0 => {
-                let input_unpacked = self
-                    .device
-                    .input
-                    .take()
-                    .ok_or_else(|| anyhow!("input source unavailable"))?;
-                let async_input = self
-                    .ex
-                    .async_from(AsyncSerialInput(input_unpacked))
-                    .context("failed to create async console input")?;
-
-                self.ex
-                    .spawn_local(Abortable::new(
-                        run_rx_queue(queue, mem, doorbell, kick_evt, async_input),
-                        registration,
-                    ))
-                    .detach();
-            }
+            0 => self
+                .device
+                .start_receive_queue(&self.ex, mem, queue, doorbell, kick_evt),
             // TransmitQueue
-            1 => {
-                // Take ownership of output writer.
-                // Safe because output should always be initialized to something
-                let output_unwrapped: Box<dyn io::Write + Send> = self
-                    .device
-                    .output
-                    .take()
-                    .ok_or_else(|| anyhow!("no output available"))?;
-                self.ex
-                    .spawn_local(Abortable::new(
-                        run_tx_queue(queue, mem, doorbell, kick_evt, output_unwrapped),
-                        registration,
-                    ))
-                    .detach();
-            }
+            1 => self
+                .device
+                .start_transmit_queue(&self.ex, mem, queue, doorbell, kick_evt),
             _ => bail!("attempted to start unknown queue: {}", idx),
         }
-
-        self.workers[idx] = Some(handle);
-        Ok(())
     }
 
     fn stop_queue(&mut self, idx: usize) {
-        if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
-            handle.abort();
-        }
+        match idx {
+            0 => {
+                if let Err(e) = self.device.stop_receive_queue() {
+                    error!("error while stopping rx queue: {}", e);
+                }
+            }
+            1 => {
+                if let Err(e) = self.device.stop_transmit_queue() {
+                    error!("error while stopping tx queue: {}", e);
+                }
+            }
+            _ => error!("attempted to stop unknown queue: {}", idx),
+        };
     }
 }
 
