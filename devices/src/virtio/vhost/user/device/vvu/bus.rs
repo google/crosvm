@@ -5,6 +5,7 @@
 //! Provides utilities to bind and open a VFIO PCI device.
 
 use std::fs::write;
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
@@ -18,9 +19,11 @@ pub fn open_vfio_device(pci_address: PciAddress) -> Result<VfioDevice> {
     // Convert the PCI address to "DDDD:bb:dd.f" format.
     let addr_str = pci_address.to_string();
 
-    // Unbind virtio-pci from the device.
-    write("/sys/bus/pci/drivers/virtio-pci/unbind", &addr_str)
-        .context("failed to unbind as virtio-pci device")?;
+    // If some driver is already bounded to this device, unbind it first.
+    let unbind_path = format!("/sys/bus/pci/devices/{}/driver/unbind", addr_str);
+    if Path::new(&unbind_path).exists() {
+        write(unbind_path, &addr_str).context("failed to unbind driver")?;
+    }
 
     // Set "vfio-pci" for the driver so the device can be bound to our vfio driver.
     write(
