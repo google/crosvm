@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 #![deny(missing_docs)]
-#![allow(unreachable_code, dead_code)]
 
 use std::any::Any;
 use std::borrow::Borrow;
@@ -24,6 +23,8 @@ use crate::virtio::video::format::{
     Format, FormatDesc, FormatRange, FrameFormat, Level, Profile, Rect,
 };
 use crate::virtio::video::resource::{BufferHandle, GuestResource, GuestResourceHandle};
+
+mod vp8;
 
 /// A surface pool handle to reduce the number of costly Surface allocations.
 #[derive(Clone)]
@@ -912,8 +913,11 @@ impl DecoderSession for VaapiDecoderSession {
                 VideoError::BackendFailure(anyhow!("Can't queue the ResetCompleted event {}", e))
             })?;
 
-        #[allow(unused_variables, clippy::match_single_binding)]
+        let display = Rc::new(Display::open().map_err(VideoError::BackendFailure)?);
         let codec = match self.coded_format {
+            Format::VP8 => Box::new(
+                vp8::Vp8Codec::new(display).map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+            ),
             _ => return Err(VideoError::InvalidFormat),
         };
 
@@ -1010,8 +1014,12 @@ impl DecoderBackend for VaapiDecoder {
     }
 
     fn new_session(&mut self, format: Format) -> VideoResult<Self::Session> {
-        #[allow(unused_variables, clippy::match_single_binding)]
+        let display = Rc::new(Display::open().map_err(VideoError::BackendFailure)?);
+
         let codec = match format {
+            Format::VP8 => Box::new(
+                vp8::Vp8Codec::new(display).map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+            ),
             _ => return Err(VideoError::InvalidFormat),
         };
 

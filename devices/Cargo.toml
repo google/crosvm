@@ -12,7 +12,7 @@ direct = []
 gpu = ["gpu_display","rutabaga_gfx"]
 tpm = ["tpm2"]
 usb = []
-vaapi = ["libva", "downcast-rs", "crc32fast"]
+vaapi = ["libva", "vp8", "downcast-rs", "crc32fast"]
 video-decoder = []
 video-encoder = []
 minigbm = ["rutabaga_gfx/minigbm"]
@@ -71,6 +71,7 @@ vmm_vhost = { path = "../third_party/vmm_vhost", features = ["vmm", "device", "v
 virtio_sys = { path = "../virtio_sys" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }
+vp8 = { path = "../media/vp8", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 fuse = {path = "../fuse" }
@@ -94,5 +95,6 @@ features = ["async-await", "std"]
 default-features = false
 
 [dev-dependencies]
+bytes = "1.1.0"
 tempfile = "3"
 crc32fast = "1"
