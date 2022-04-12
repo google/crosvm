@@ -15,14 +15,20 @@ use vm_control::{
 use vm_memory::GuestAddress;
 
 use gdbstub::arch::Arch;
-use gdbstub::target::ext::base::singlethread::{ResumeAction, SingleThreadOps, StopReason};
-use gdbstub::target::ext::base::{BaseOps, GdbInterrupt};
+use gdbstub::common::Signal;
+use gdbstub::conn::{Connection, ConnectionExt};
+use gdbstub::stub::run_blocking::BlockingEventLoop;
+use gdbstub::stub::{run_blocking, SingleThreadStopReason};
+use gdbstub::target::ext::base::singlethread::{
+    SingleThreadBase, SingleThreadResume, SingleThreadResumeOps, SingleThreadSingleStep,
+    SingleThreadSingleStepOps,
+};
+use gdbstub::target::ext::base::BaseOps;
 use gdbstub::target::ext::breakpoints::{
     Breakpoints, BreakpointsOps, HwBreakpoint, HwBreakpointOps,
 };
 use gdbstub::target::TargetError::NonFatal;
 use gdbstub::target::{Target, TargetResult};
-use gdbstub::Connection;
 #[cfg(target_arch = "x86_64")]
 use gdbstub_arch::x86::X86_64_SSE as GdbArch;
 use remain::sorted;
@@ -51,10 +57,10 @@ pub fn gdb_thread(mut gdbstub: GdbStub, port: u32) {
     };
     info!("GDB connected from {}", addr);
 
-    let connection: Box<dyn Connection<Error = std::io::Error>> = Box::new(stream);
-    let mut gdb = gdbstub::GdbStub::new(connection);
+    let connection: Box<dyn ConnectionExt<Error = std::io::Error>> = Box::new(stream);
+    let gdb = gdbstub::stub::GdbStub::new(connection);
 
-    match gdb.run(&mut gdbstub) {
+    match gdb.run_blocking::<GdbStubEventLoop>(&mut gdbstub) {
         Ok(reason) => {
             info!("GDB session closed: {:?}", reason);
         }
@@ -95,6 +101,7 @@ pub struct GdbStub {
     vcpu_com: Vec<mpsc::Sender<VcpuControl>>,
     from_vcpu: mpsc::Receiver<VcpuDebugStatusMessage>,
 
+    single_step: bool,
     hw_breakpoints: Vec<GuestAddress>,
 }
 
@@ -108,6 +115,7 @@ impl GdbStub {
             vm_tube: Mutex::new(vm_tube),
             vcpu_com,
             from_vcpu,
+            single_step: false,
             hw_breakpoints: Default::default(),
         }
     }
@@ -134,8 +142,7 @@ impl GdbStub {
 }
 
 impl Target for GdbStub {
-    // TODO(keiichiw): Replace `()` with `X86_64CoreRegId` when we update the gdbstub crate.
-    type Arch = GdbArch<()>;
+    type Arch = GdbArch;
     type Error = &'static str;
 
     fn base_ops(&mut self) -> BaseOps<Self::Arch, Self::Error> {
@@ -143,70 +150,24 @@ impl Target for GdbStub {
     }
 
     // TODO(keiichiw): sw_breakpoint, hw_watchpoint, extended_mode, monitor_cmd, section_offsets
-    fn breakpoints(&mut self) -> Option<BreakpointsOps<Self>> {
+    fn support_breakpoints(&mut self) -> Option<BreakpointsOps<Self>> {
         Some(self)
+    }
+
+    // TODO(crbug.com/1141812): Remove this override once proper software breakpoint
+    // support has been added.
+    //
+    // Overriding this method to return `true` allows GDB to implement software
+    // breakpoints by writing breakpoint instructions directly into the target's
+    // instruction stream. This will be redundant once proper software breakpoints
+    // have been implemented. See the trait method's docs for more information:
+    // https://docs.rs/gdbstub/0.6.1/gdbstub/target/trait.Target.html#method.guard_rail_implicit_sw_breakpoints
+    fn guard_rail_implicit_sw_breakpoints(&self) -> bool {
+        true
     }
 }
 
-impl SingleThreadOps for GdbStub {
-    fn resume(
-        &mut self,
-        action: ResumeAction,
-        check_gdb_interrupt: GdbInterrupt,
-    ) -> Result<StopReason<ArchUsize>, Self::Error> {
-        let single_step = ResumeAction::Step == action;
-
-        if single_step {
-            match self.vcpu_request(VcpuControl::Debug(VcpuDebug::EnableSinglestep)) {
-                Ok(VcpuDebugStatus::CommandComplete) => {}
-                Ok(s) => {
-                    error!("Unexpected vCPU response for EnableSinglestep: {:?}", s);
-                    return Err("Unexpected vCPU response for EnableSinglestep");
-                }
-                Err(e) => {
-                    error!("Failed to request EnableSinglestep: {}", e);
-                    return Err("Failed to request EnableSinglestep");
-                }
-            };
-        }
-
-        self.vm_request(VmRequest::Resume).map_err(|e| {
-            error!("Failed to resume the target: {}", e);
-            "Failed to resume the target"
-        })?;
-
-        let mut check_gdb_interrupt = check_gdb_interrupt.no_async();
-        // Polling
-        loop {
-            // TODO(keiichiw): handle error?
-            if let Ok(msg) = self
-                .from_vcpu
-                .recv_timeout(std::time::Duration::from_millis(100))
-            {
-                match msg.msg {
-                    VcpuDebugStatus::HitBreakPoint => {
-                        if single_step {
-                            return Ok(StopReason::DoneStep);
-                        } else {
-                            return Ok(StopReason::HwBreak);
-                        }
-                    }
-                    status => {
-                        error!("Unexpected VcpuDebugStatus: {:?}", status);
-                    }
-                }
-            }
-
-            if check_gdb_interrupt.pending() {
-                self.vm_request(VmRequest::Suspend).map_err(|e| {
-                    error!("Failed to suspend the target: {}", e);
-                    "Failed to suspend the target"
-                })?;
-                return Ok(StopReason::GdbInterrupt);
-            }
-        }
-    }
-
+impl SingleThreadBase for GdbStub {
     fn read_registers(
         &mut self,
         regs: &mut <Self::Arch as Arch>::Registers,
@@ -292,10 +253,58 @@ impl SingleThreadOps for GdbStub {
             }
         }
     }
+
+    #[inline(always)]
+    fn support_resume(&mut self) -> Option<SingleThreadResumeOps<Self>> {
+        Some(self)
+    }
+}
+
+impl SingleThreadResume for GdbStub {
+    fn resume(&mut self, _signal: Option<Signal>) -> Result<(), Self::Error> {
+        // TODO: Handle any incoming signal.
+
+        self.vm_request(VmRequest::Resume).map_err(|e| {
+            error!("Failed to resume the target: {}", e);
+            "Failed to resume the target"
+        })
+    }
+
+    #[inline(always)]
+    fn support_single_step(&mut self) -> Option<SingleThreadSingleStepOps<'_, Self>> {
+        Some(self)
+    }
+}
+
+impl SingleThreadSingleStep for GdbStub {
+    fn step(&mut self, _signal: Option<Signal>) -> Result<(), Self::Error> {
+        // TODO: Handle any incoming signal.
+
+        match self.vcpu_request(VcpuControl::Debug(VcpuDebug::EnableSinglestep)) {
+            Ok(VcpuDebugStatus::CommandComplete) => {
+                self.single_step = true;
+            }
+            Ok(s) => {
+                error!("Unexpected vCPU response for EnableSinglestep: {:?}", s);
+                return Err("Unexpected vCPU response for EnableSinglestep");
+            }
+            Err(e) => {
+                error!("Failed to request EnableSinglestep: {}", e);
+                return Err("Failed to request EnableSinglestep");
+            }
+        };
+
+        self.vm_request(VmRequest::Resume).map_err(|e| {
+            error!("Failed to resume the target: {}", e);
+            "Failed to resume the target"
+        })?;
+
+        Ok(())
+    }
 }
 
 impl Breakpoints for GdbStub {
-    fn hw_breakpoint(&mut self) -> Option<HwBreakpointOps<Self>> {
+    fn support_hw_breakpoint(&mut self) -> Option<HwBreakpointOps<Self>> {
         Some(self)
     }
 }
@@ -352,5 +361,74 @@ impl HwBreakpoint for GdbStub {
                 Err(NonFatal)
             }
         }
+    }
+}
+
+struct GdbStubEventLoop;
+
+impl BlockingEventLoop for GdbStubEventLoop {
+    type Target = GdbStub;
+    type Connection = Box<dyn ConnectionExt<Error = std::io::Error>>;
+    type StopReason = SingleThreadStopReason<ArchUsize>;
+
+    fn wait_for_stop_reason(
+        target: &mut Self::Target,
+        conn: &mut Self::Connection,
+    ) -> Result<
+        run_blocking::Event<Self::StopReason>,
+        run_blocking::WaitForStopReasonError<
+            <Self::Target as Target>::Error,
+            <Self::Connection as Connection>::Error,
+        >,
+    > {
+        loop {
+            // TODO(keiichiw): handle error?
+            if let Ok(msg) = target
+                .from_vcpu
+                .recv_timeout(std::time::Duration::from_millis(100))
+            {
+                match msg.msg {
+                    VcpuDebugStatus::HitBreakPoint => {
+                        if target.single_step {
+                            target.single_step = false;
+                            return Ok(run_blocking::Event::TargetStopped(
+                                SingleThreadStopReason::DoneStep,
+                            ));
+                        } else {
+                            return Ok(run_blocking::Event::TargetStopped(
+                                SingleThreadStopReason::HwBreak(()),
+                            ));
+                        }
+                    }
+                    status => {
+                        error!("Unexpected VcpuDebugStatus: {:?}", status);
+                    }
+                }
+            }
+
+            // If no message was received within the timeout check for incoming data from
+            // the GDB client.
+            if conn
+                .peek()
+                .map_err(run_blocking::WaitForStopReasonError::Connection)?
+                .is_some()
+            {
+                let byte = conn
+                    .read()
+                    .map_err(run_blocking::WaitForStopReasonError::Connection)?;
+                return Ok(run_blocking::Event::IncomingData(byte));
+            }
+        }
+    }
+
+    fn on_interrupt(
+        target: &mut Self::Target,
+    ) -> Result<Option<Self::StopReason>, <Self::Target as Target>::Error> {
+        target.vm_request(VmRequest::Suspend).map_err(|e| {
+            error!("Failed to suspend the target: {}", e);
+            "Failed to suspend the target"
+        })?;
+
+        Ok(Some(SingleThreadStopReason::Signal(Signal::SIGINT)))
     }
 }

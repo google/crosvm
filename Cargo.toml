@@ -162,8 +162,8 @@ data_model = "*"
 devices = { path = "devices" }
 disk = { path = "disk" }
 enumn = "0.1.0"
-gdbstub = { version = "0.5.0", optional = true }
-gdbstub_arch = { version = "0.1.0", optional = true }
+gdbstub = { version = "0.6.1", optional = true }
+gdbstub_arch = { version = "0.2.2", optional = true }
 rutabaga_gfx = { path = "rutabaga_gfx"}
 hypervisor = { path = "hypervisor" }
 kernel_cmdline = { path = "kernel_cmdline" }

@@ -13,7 +13,7 @@ arch = { path = "../arch" }
 assertions = { path = "../common/assertions" }
 data_model = { path = "../common/data_model" }
 devices = { path = "../devices" }
-gdbstub_arch = { version = "0.1.0", optional = true }
+gdbstub_arch = { version = "0.2.2", optional = true }
 hypervisor = { path = "../hypervisor" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 kernel_loader = { path = "../kernel_loader" }
