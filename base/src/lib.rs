@@ -46,7 +46,7 @@ cfg_if::cfg_if! {
         pub use timer::{FakeTimer, Timer};
         pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
      } else if #[cfg(windows)] {
-        pub use tube::{set_duplicate_handle_tube, set_alias_pid, DuplicateHandleTube};
+        pub use tube::{deserialize_and_recv, serialize_and_send, set_duplicate_handle_tube, set_alias_pid, DuplicateHandleTube};
      } else {
         compile_error!("Unsupported platform");
      }
