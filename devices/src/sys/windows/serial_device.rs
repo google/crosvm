@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::serial_device::{Error, SerialParameters};
+use crate::serial_device::{Error, SerialInput, SerialParameters};
 use base::named_pipes;
 use base::named_pipes::{BlockingMode, FramingMode};
 use base::FileSync;
@@ -21,7 +21,7 @@ pub trait SerialDevice {
     fn new(
         protected_vm: ProtectionType,
         interrupt_evt: Event,
-        input: Option<Box<dyn io::Read + Send>>,
+        input: Option<Box<SerialInput>>,
         output: Option<Box<dyn io::Write + Send>>,
         sync: Option<Box<dyn FileSync + Send>>,
         out_timestamp: bool,
@@ -40,7 +40,7 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
     param: &SerialParameters,
     protected_vm: ProtectionType,
     evt: Event,
-    _input: Option<Box<dyn io::Read + Send>>,
+    _input: Option<Box<dyn SerialInput>>,
     keep_rds: &mut Vec<RawDescriptor>,
 ) -> std::result::Result<T, Error> {
     match &param.path {

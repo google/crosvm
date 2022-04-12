@@ -3,10 +3,12 @@
 // found in the LICENSE file.
 
 use std::fmt::{self, Display};
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::io::{self, stdin, stdout};
 use std::path::PathBuf;
 
+#[cfg(windows)]
+use base::platform::Console as WinConsole;
 use base::{error, open_file, syslog, AsRawDescriptor, Event, FileSync, RawDescriptor};
 use hypervisor::ProtectionType;
 use remain::sorted;
@@ -38,6 +40,12 @@ pub enum Error {
     #[error("Serial device type {0} not implemented")]
     Unimplemented(SerialType),
 }
+
+/// Trait for types that can be used as input for a serial device.
+pub trait SerialInput: io::Read + AsRawDescriptor + Send {}
+impl SerialInput for File {}
+#[cfg(windows)]
+impl SerialInput for WinConsole {}
 
 /// Enum for possible type of serial devices
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -132,7 +140,7 @@ impl SerialParameters {
     ) -> std::result::Result<T, Error> {
         let evt = evt.try_clone().map_err(Error::CloneEvent)?;
         keep_rds.push(evt.as_raw_descriptor());
-        let input: Option<Box<dyn io::Read + Send>> = if let Some(input_path) = &self.input {
+        let input: Option<Box<dyn SerialInput>> = if let Some(input_path) = &self.input {
             let input_path = input_path.as_path();
 
             let input_file = open_file(input_path, OpenOptions::new().read(true))

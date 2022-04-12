@@ -13,6 +13,7 @@ use base::{error, Event, FileSync, RawDescriptor, Result};
 use hypervisor::ProtectionType;
 
 use crate::bus::BusAccessInfo;
+use crate::serial_device::SerialInput;
 use crate::{BusDevice, SerialDevice};
 
 const LOOP_SIZE: usize = 0x40;
@@ -79,7 +80,7 @@ pub struct Serial {
     // Host input/output
     in_buffer: VecDeque<u8>,
     in_channel: Option<Receiver<u8>>,
-    input: Option<Box<dyn io::Read + Send>>,
+    input: Option<Box<dyn SerialInput>>,
     out: Option<Box<dyn io::Write + Send>>,
 }
 
@@ -87,7 +88,7 @@ impl SerialDevice for Serial {
     fn new(
         _protected_vm: ProtectionType,
         interrupt_evt: Event,
-        input: Option<Box<dyn io::Read + Send>>,
+        input: Option<Box<dyn SerialInput>>,
         out: Option<Box<dyn io::Write + Send>>,
         _sync: Option<Box<dyn FileSync + Send>>,
         _out_timestamp: bool,

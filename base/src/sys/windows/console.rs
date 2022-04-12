@@ -2,12 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::descriptor::AsRawDescriptor;
 use std::io::{stdin, Error, Read, Result};
+
 use winapi::{
     shared::{minwindef::LPVOID, ntdef::NULL},
     um::{fileapi::ReadFile, minwinbase::LPOVERLAPPED},
 };
+
+use crate::{AsRawDescriptor, RawDescriptor};
 
 pub struct Console;
 
@@ -31,5 +33,11 @@ impl Read for Console {
         } else {
             Ok(num_of_bytes_read as usize)
         }
+    }
+}
+
+impl AsRawDescriptor for Console {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        stdin().as_raw_descriptor()
     }
 }

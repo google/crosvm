@@ -20,7 +20,9 @@ use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
-use crate::serial_device::{SerialDevice, SerialHardware, SerialParameters, SerialType};
+use crate::serial_device::{
+    SerialDevice, SerialHardware, SerialInput, SerialParameters, SerialType,
+};
 use crate::virtio::console::{
     handle_input, process_transmit_queue, spawn_input_thread, virtio_console_config, ConsoleError,
 };
@@ -72,7 +74,7 @@ async fn run_rx_queue<I: SignalableInterrupt>(
 }
 
 struct ConsoleDevice {
-    input: Option<Box<dyn io::Read + Send>>,
+    input: Option<Box<dyn SerialInput>>,
     output: Option<Box<dyn io::Write + Send>>,
     avail_features: u64,
 }
@@ -81,7 +83,7 @@ impl SerialDevice for ConsoleDevice {
     fn new(
         protected_vm: ProtectionType,
         _evt: Event,
-        input: Option<Box<dyn io::Read + Send>>,
+        input: Option<Box<dyn SerialInput>>,
         output: Option<Box<dyn io::Write + Send>>,
         _sync: Option<Box<dyn FileSync + Send>>,
         _out_timestamp: bool,
