@@ -4,13 +4,12 @@
 
 use std::collections::VecDeque;
 use std::io::{self, stdin};
-use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context};
-use base::{error, warn, Event, FileSync, RawDescriptor, Terminal};
-use cros_async::{EventAsync, Executor};
+use base::{error, warn, AsRawDescriptor, Event, FileSync, RawDescriptor, Terminal};
+use cros_async::{EventAsync, Executor, IntoAsync, IoSourceExt};
 use data_model::DataInit;
 
 use argh::FromArgs;
@@ -24,13 +23,23 @@ use crate::serial_device::{
     SerialDevice, SerialHardware, SerialInput, SerialParameters, SerialType,
 };
 use crate::virtio::console::{
-    handle_input, process_transmit_queue, spawn_input_thread, virtio_console_config, ConsoleError,
+    handle_input, process_transmit_queue, virtio_console_config, ConsoleError,
 };
 use crate::virtio::vhost::user::device::handler::{
     DeviceRequestHandler, Doorbell, VhostUserBackend,
 };
 use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
 use crate::virtio::{self, copy_config, SignalableInterrupt};
+
+/// Wrapper that makes any `SerialInput` usable as an async source by providing an implementation of
+/// `IntoAsync`.
+struct AsyncSerialInput(Box<dyn SerialInput>);
+impl AsRawDescriptor for AsyncSerialInput {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.0.as_raw_descriptor()
+    }
+}
+impl IntoAsync for AsyncSerialInput {}
 
 async fn run_tx_queue<I: SignalableInterrupt>(
     mut queue: virtio::Queue,
@@ -53,20 +62,39 @@ async fn run_rx_queue<I: SignalableInterrupt>(
     mem: GuestMemory,
     doorbell: I,
     kick_evt: EventAsync,
-    in_buffer: Arc<Mutex<VecDeque<u8>>>,
-    in_avail_evt: EventAsync,
+    input: Box<dyn IoSourceExt<AsyncSerialInput>>,
 ) {
+    // Staging buffer, required because of `handle_input`'s API. We can probably remove this once
+    // the regular virtio device is switched to async.
+    let mut in_buffer = VecDeque::<u8>::new();
+    let mut rx_buf = vec![0u8; 4096];
+    let mut input_offset = 0u64;
+
     loop {
-        if let Err(e) = in_avail_evt.next_val().await {
-            error!("Failed reading in_avail_evt: {}", e);
-            break;
+        match input.as_ref().read_to_vec(Some(input_offset), rx_buf).await {
+            // Input source has closed.
+            Ok((0, _)) => break,
+            Ok((size, v)) => {
+                in_buffer.extend(&v[0..size]);
+                input_offset += size as u64;
+                rx_buf = v;
+            }
+            Err(e) => {
+                error!("Failed to read console input: {}", e);
+                return;
+            }
         }
-        match handle_input(&mem, &doorbell, in_buffer.lock().deref_mut(), &mut queue) {
-            Ok(()) => {}
-            Err(ConsoleError::RxDescriptorsExhausted) => {
-                if let Err(e) = kick_evt.next_val().await {
-                    error!("Failed to read kick event for rx queue: {}", e);
-                    break;
+
+        // Submit all the data obtained during this read.
+        while !in_buffer.is_empty() {
+            match handle_input(&mem, &doorbell, &mut in_buffer, &mut queue) {
+                Ok(()) => {}
+                Err(ConsoleError::RxDescriptorsExhausted) => {
+                    // Wait until a descriptor becomes available and try again.
+                    if let Err(e) = kick_evt.next_val().await {
+                        error!("Failed to read kick event for rx queue: {}", e);
+                        return;
+                    }
                 }
             }
         }
@@ -196,39 +224,19 @@ impl VhostUserBackend for ConsoleBackend {
         match idx {
             // ReceiveQueue
             0 => {
-                // See explanation in devices/src/virtio/console.rs
-                // We need a multithreaded input polling because io::Read only provides
-                // a blocking interface which we cannot use in an async function.
-                let in_avail_evt = match Event::new() {
-                    Ok(evt) => evt,
-                    Err(e) => {
-                        bail!("Failed creating Event: {}", e);
-                    }
-                };
-
                 let input_unpacked = self
                     .device
                     .input
                     .take()
                     .ok_or_else(|| anyhow!("input source unavailable"))?;
-                let in_buffer = spawn_input_thread(input_unpacked, &in_avail_evt)
-                    .take()
-                    .ok_or_else(|| anyhow!("input channel unavailable"))?;
-
-                // Create the async 'in' event so we can await on it.
-                let in_avail_async_evt = EventAsync::new(in_avail_evt, &self.ex)
-                    .context("Failed to create EventAsync for in_avail_evt")?;
+                let async_input = self
+                    .ex
+                    .async_from(AsyncSerialInput(input_unpacked))
+                    .context("failed to create async console input")?;
 
                 self.ex
                     .spawn_local(Abortable::new(
-                        run_rx_queue(
-                            queue,
-                            mem,
-                            doorbell,
-                            kick_evt,
-                            in_buffer,
-                            in_avail_async_evt,
-                        ),
+                        run_rx_queue(queue, mem, doorbell, kick_evt, async_input),
                         registration,
                     ))
                     .detach();
