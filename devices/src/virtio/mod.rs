@@ -4,6 +4,7 @@
 
 //! Implements virtio devices, queues, and transport mechanisms.
 
+mod async_device;
 mod async_utils;
 mod balloon;
 mod descriptor_utils;
