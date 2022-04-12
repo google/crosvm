@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import csv
+from math import ceil
 import os
 import re
 import shutil
@@ -173,7 +174,7 @@ class Command(object):
             )
 
         if result.returncode != 0:
-            if quiet and result.stdout:
+            if quiet and check and result.stdout:
                 print(result.stdout)
             if check:
                 raise subprocess.CalledProcessError(result.returncode, str(self), result.stdout)
@@ -184,6 +185,12 @@ class Command(object):
         Runs a program and returns stdout. Stderr is still directed to the user.
         """
         return self.run(stderr=None).stdout.strip()
+
+    def lines(self):
+        """
+        Runs a program and returns stdout line by line. Stderr is still directed to the user.
+        """
+        return self.stdout().splitlines()
 
     def write_to(self, filename: Path):
         """
@@ -413,7 +420,7 @@ class QuotedString(object):
 T = TypeVar("T")
 
 
-def batched(source: Iterable[T], batch_size: int) -> Iterable[list[T]]:
+def batched(source: Iterable[T], max_batch_size: int) -> Iterable[list[T]]:
     """
     Returns an iterator over batches of elements from source_list.
 
@@ -421,6 +428,9 @@ def batched(source: Iterable[T], batch_size: int) -> Iterable[list[T]]:
     [[1, 2], [3, 4], [5]]
     """
     source_list = list(source)
+    # Calculate batch size that spreads elements evenly across all batches
+    batch_count = ceil(len(source_list) / max_batch_size)
+    batch_size = ceil(len(source_list) / batch_count)
     for index in range(0, len(source_list), batch_size):
         yield source_list[index : min(index + batch_size, len(source_list))]
 
@@ -433,16 +443,24 @@ parallel = ParallelCommands
 
 
 def run_main(main_fn: Callable[..., Any]):
+    run_commands(default_fn=main_fn)
+
+
+def run_commands(*functions: Callable[..., Any], default_fn: Optional[Callable[..., Any]] = None):
     """
-    Runs the main function using argh to translate command line arguments into function arguments.
+    Allow the user to call the provided functions with command line arguments translated to
+    function arguments via argh: https://pythonhosted.org/argh
     """
     try:
         # Add global verbose arguments
         parser = argparse.ArgumentParser()
         __add_verbose_args(parser)
 
-        # Register main method as argh command
-        argh.set_default_command(parser, main_fn)  # type: ignore
+        # Add provided commands to parser. Do not use sub-commands if we just got one function.
+        if functions:
+            argh.add_commands(parser, functions)  # type: ignore
+        if default_fn:
+            argh.set_default_command(parser, default_fn)  # type: ignore
 
         # Call main method
         argh.dispatch(parser)  # type: ignore
