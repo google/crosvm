@@ -2,44 +2,30 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{Result as SysResult, Timer as TimerFd};
+use crate::{AsyncResult, Error, Executor, IntoAsync, IoSourceExt};
+use base::{Result as SysResult, Timer};
 use std::time::Duration;
 
-use super::{AsyncResult, Error, Executor, IntoAsync, IoSourceExt};
-
-#[cfg(test)]
-use super::{FdExecutor, URingExecutor};
-
-/// An async version of base::TimerFd.
+/// An async version of base::Timer.
 pub struct TimerAsync {
-    io_source: Box<dyn IoSourceExt<TimerFd>>,
+    pub(crate) io_source: Box<dyn IoSourceExt<Timer>>,
 }
 
 impl TimerAsync {
-    pub fn new(timer: TimerFd, ex: &Executor) -> AsyncResult<TimerAsync> {
+    pub fn new(timer: Timer, ex: &Executor) -> AsyncResult<TimerAsync> {
         ex.async_from(timer)
             .map(|io_source| TimerAsync { io_source })
     }
 
-    #[cfg(test)]
-    pub(crate) fn new_poll(timer: TimerFd, ex: &FdExecutor) -> AsyncResult<TimerAsync> {
-        super::executor::async_poll_from(timer, ex).map(|io_source| TimerAsync { io_source })
-    }
-
-    #[cfg(test)]
-    pub(crate) fn new_uring(timer: TimerFd, ex: &URingExecutor) -> AsyncResult<TimerAsync> {
-        super::executor::async_uring_from(timer, ex).map(|io_source| TimerAsync { io_source })
-    }
-
     /// Gets the next value from the timer.
     pub async fn next_val(&self) -> AsyncResult<u64> {
-        self.io_source.read_u64().await
+        self.io_source.wait_for_handle().await
     }
 
     /// Async sleep for the given duration
     pub async fn sleep(ex: &Executor, dur: Duration) -> std::result::Result<(), Error> {
-        let mut tfd = TimerFd::new().map_err(Error::TimerFd)?;
-        tfd.reset(dur, None).map_err(Error::TimerFd)?;
+        let mut tfd = Timer::new().map_err(Error::Timer)?;
+        tfd.reset(dur, None).map_err(Error::Timer)?;
         let t = TimerAsync::new(tfd, ex).map_err(Error::TimerAsync)?;
         t.next_val().await.map_err(Error::TimerAsync)?;
         Ok(())
@@ -53,67 +39,4 @@ impl TimerAsync {
     }
 }
 
-impl IntoAsync for TimerFd {}
-
-#[cfg(test)]
-mod tests {
-    use super::{super::uring_executor::use_uring, *};
-    use std::time::{Duration, Instant};
-
-    #[test]
-    fn one_shot() {
-        if !use_uring() {
-            return;
-        }
-
-        async fn this_test(ex: &URingExecutor) {
-            let mut tfd = TimerFd::new().expect("failed to create timerfd");
-
-            let dur = Duration::from_millis(200);
-            let now = Instant::now();
-            tfd.reset(dur, None).expect("failed to arm timer");
-
-            let t = TimerAsync::new_uring(tfd, ex).unwrap();
-            let count = t.next_val().await.expect("unable to wait for timer");
-
-            assert_eq!(count, 1);
-            assert!(now.elapsed() >= dur);
-        }
-
-        let ex = URingExecutor::new().unwrap();
-        ex.run_until(this_test(&ex)).unwrap();
-    }
-
-    #[test]
-    fn one_shot_fd() {
-        async fn this_test(ex: &FdExecutor) {
-            let mut tfd = TimerFd::new().expect("failed to create timerfd");
-
-            let dur = Duration::from_millis(200);
-            let now = Instant::now();
-            tfd.reset(dur, None).expect("failed to arm timer");
-
-            let t = TimerAsync::new_poll(tfd, ex).unwrap();
-            let count = t.next_val().await.expect("unable to wait for timer");
-
-            assert_eq!(count, 1);
-            assert!(now.elapsed() >= dur);
-        }
-
-        let ex = FdExecutor::new().unwrap();
-        ex.run_until(this_test(&ex)).unwrap();
-    }
-
-    #[test]
-    fn timer() {
-        async fn this_test(ex: &Executor) {
-            let dur = Duration::from_millis(200);
-            let now = Instant::now();
-            TimerAsync::sleep(ex, dur).await.expect("unable to sleep");
-            assert!(now.elapsed() >= dur);
-        }
-
-        let ex = Executor::new().expect("creating an executor failed");
-        ex.run_until(this_test(&ex)).unwrap();
-    }
-}
+impl IntoAsync for Timer {}

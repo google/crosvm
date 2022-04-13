@@ -7,14 +7,16 @@ use std::future::Future;
 use async_task::Task;
 
 use super::{
-    poll_source::Error as PollError, uring_executor::use_uring, AsyncResult, FdExecutor, IntoAsync,
-    IoSourceExt, PollSource, URingExecutor, UringSource,
+    poll_source::Error as PollError, uring_executor::use_uring, FdExecutor, PollSource,
+    URingExecutor, UringSource,
 };
+
+use crate::{AsyncResult, IntoAsync, IoSourceExt};
 
 pub(crate) fn async_uring_from<'a, F: IntoAsync + Send + 'a>(
     f: F,
     ex: &URingExecutor,
-) -> AsyncResult<Box<dyn IoSourceExt<F> + Send + 'a>> {
+) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a + Send>> {
     Ok(UringSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F> + Send>)?)
 }
 
@@ -34,6 +36,13 @@ pub(crate) fn async_poll_from<'a, F: IntoAsync + Send + 'a>(
 /// The returned type is a cheap, clonable handle to the underlying executor. Cloning it will only
 /// create a new reference, not a new executor.
 ///
+/// Note that language limitations (trait objects can have <=1 non auto trait) require this to be
+/// represented on the POSIX side as an enum, rather than a trait. This leads to some code &
+/// interface duplication, but as far as we understand that is unavoidable.
+///
+/// See https://chromium-review.googlesource.com/c/chromiumos/platform/crosvm/+/2571401/2..6/cros_async/src/executor.rs#b75
+/// for further details.
+///
 /// # Examples
 ///
 /// Concurrently wait for multiple files to become readable/writable and then read/write the data.
@@ -49,7 +58,7 @@ pub(crate) fn async_poll_from<'a, F: IntoAsync + Send + 'a>(
 /// // Write all bytes from `data` to `f`.
 /// async fn write_file(f: &dyn IoSourceExt<File>, mut data: Vec<u8>) -> AsyncResult<()> {
 ///     while data.len() > 0 {
-///         let (count, mut buf) = f.write_from_vec(None, data).await?;
+///         let (count, mut buf) = f.write_from_vec(Some(0), data).await?;
 ///
 ///         data = buf.split_off(count);
 ///     }
@@ -67,7 +76,7 @@ pub(crate) fn async_poll_from<'a, F: IntoAsync + Send + 'a>(
 ///
 ///     while rem > 0 {
 ///         let buf = vec![0u8; min(rem, CHUNK_SIZE)];
-///         let (count, mut data) = from.read_to_vec(None, buf).await?;
+///         let (count, mut data) = from.read_to_vec(Some(0), buf).await?;
 ///
 ///         if count == 0 {
 ///             // End of file. Return the number of bytes transferred.
@@ -83,10 +92,11 @@ pub(crate) fn async_poll_from<'a, F: IntoAsync + Send + 'a>(
 ///     Ok(len)
 /// }
 ///
+/// #[cfg(unix)]
 /// # fn do_it() -> Result<(), Box<dyn Error>> {
 ///     let ex = Executor::new()?;
 ///
-///     let (rx, tx) = base::pipe(true)?;
+///     let (rx, tx) = base::unix::pipe(true)?;
 ///     let zero = File::open("/dev/zero")?;
 ///     let zero_bytes = CHUNK_SIZE * 7;
 ///     let zero_to_pipe = transfer_data(
@@ -111,7 +121,7 @@ pub(crate) fn async_poll_from<'a, F: IntoAsync + Send + 'a>(
 ///
 /// #     Ok(())
 /// # }
-///
+/// #[cfg(unix)]
 /// # do_it().unwrap();
 /// ```
 

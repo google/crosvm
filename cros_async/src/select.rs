@@ -26,7 +26,6 @@ macro_rules! generate {
         $(#[$doc:meta])*
         ($Select:ident, <$($Fut:ident),*>),
     )*) => ($(
-
         paste::item! {
             pub(crate) struct $Select<$($Fut: Future + Unpin),*> {
                 $($Fut: MaybeDone<$Fut>,)*

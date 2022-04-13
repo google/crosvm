@@ -83,7 +83,7 @@ use slab::Slab;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 
-use super::{
+use crate::{
     mem::{BackingMemory, MemRegion},
     queue::RunnableQueue,
     waker::{new_waker, WakerToken, WeakWake},
@@ -542,7 +542,6 @@ impl RawExecutor {
         self.ctx
             .add_poll_fd(src.as_raw_fd(), events, usize_to_u64(next_op_token))
             .map_err(Error::SubmittingOp)?;
-
         entry.insert(OpStatus::Pending(OpData {
             _file: src,
             _mem: None,
@@ -600,7 +599,6 @@ impl RawExecutor {
         self.ctx
             .add_fsync(src.as_raw_fd(), usize_to_u64(next_op_token))
             .map_err(Error::SubmittingOp)?;
-
         entry.insert(OpStatus::Pending(OpData {
             _file: src,
             _mem: None,
@@ -807,7 +805,7 @@ impl URingExecutor {
         let waker = new_waker(Arc::downgrade(&self.raw));
         let mut cx = Context::from_waker(&waker);
 
-        self.raw.run(&mut cx, super::empty::<()>())
+        self.raw.run(&mut cx, crate::empty::<()>())
     }
 
     pub fn run_until<F: Future>(&self, f: F) -> Result<F::Output> {
@@ -908,12 +906,9 @@ mod tests {
         task::{Context, Poll},
     };
 
+    use super::*;
+    use crate::mem::{BackingMemory, MemRegion, VecIoWrapper};
     use futures::executor::block_on;
-
-    use super::{
-        super::mem::{BackingMemory, MemRegion, VecIoWrapper},
-        *,
-    };
 
     // A future that returns ready when the uring queue is empty.
     struct UringQueueEmpty<'a> {

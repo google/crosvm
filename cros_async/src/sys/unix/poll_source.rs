@@ -17,14 +17,12 @@ use data_model::VolatileSlice;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
-use crate::AllocateMode;
-
-use super::{
-    fd_executor::{
-        FdExecutor, RegisteredSource, {self},
-    },
+use super::fd_executor::{
+    FdExecutor, RegisteredSource, {self},
+};
+use crate::{
     mem::{BackingMemory, MemRegion},
-    AsyncError, AsyncResult, IoSourceExt, ReadAsync, WriteAsync,
+    AllocateMode, AsyncError, AsyncResult, IoSourceExt, ReadAsync, WriteAsync,
 };
 
 #[sorted]
@@ -320,10 +318,11 @@ impl<F: AsRawFd> WriteAsync for PollSource<F> {
 
     /// See `fallocate(2)` for details.
     async fn fallocate(&self, file_offset: u64, len: u64, mode: AllocateMode) -> AsyncResult<()> {
+        let mode_u32: u32 = mode.into();
         let ret = unsafe {
             libc::fallocate64(
                 self.as_raw_fd(),
-                mode as libc::c_int,
+                mode_u32 as libc::c_int,
                 file_offset as libc::off64_t,
                 len as libc::off64_t,
             )
@@ -361,6 +360,10 @@ impl<F: AsRawFd> IoSourceExt<F> for PollSource<F> {
     /// Provides a ref to the underlying IO source.
     fn as_source(&self) -> &F {
         self
+    }
+
+    async fn wait_for_handle(&self) -> AsyncResult<u64> {
+        self.read_u64().await
     }
 }
 

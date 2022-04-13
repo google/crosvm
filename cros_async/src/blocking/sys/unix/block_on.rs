@@ -125,7 +125,7 @@ mod test {
         time::Duration,
     };
 
-    use super::super::super::sync::SpinLock;
+    use crate::sync::SpinLock;
 
     struct TimerState {
         fired: bool,

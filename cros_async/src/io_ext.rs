@@ -19,29 +19,64 @@ use std::{
     fs::File,
     io,
     ops::{Deref, DerefMut},
-    os::unix::io::{AsRawFd, RawFd},
     sync::Arc,
 };
 
 use async_trait::async_trait;
-use base::UnixSeqpacket;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
 use super::{BackingMemory, MemRegion};
 
+#[cfg(unix)]
+use base::UnixSeqpacket;
+#[cfg(unix)]
+use std::os::unix::io::{AsRawFd, RawFd};
+
+#[cfg(windows)]
+use std::os::windows::io::{AsRawHandle, RawHandle};
+
+#[cfg(unix)]
 #[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
     /// An error with a polled(FD) source.
     #[error("An error with a poll source: {0}")]
-    Poll(#[from] super::poll_source::Error),
+    Poll(crate::sys::unix::poll_source::Error),
     /// An error with a uring source.
     #[error("An error with a uring source: {0}")]
-    Uring(#[from] super::uring_executor::Error),
+    Uring(crate::sys::unix::uring_executor::Error),
 }
+
+#[cfg(windows)]
+#[sorted]
+#[derive(ThisError, Debug)]
+pub enum Error {
+    #[error("An error with an EventAsync: {0}")]
+    EventAsync(base::Error),
+    #[error("An error with a handle executor: {0}")]
+    HandleExecutor(crate::sys::windows::handle_executor::Error),
+    #[error("An error with a handle source: {0}")]
+    HandleSource(crate::sys::windows::handle_source::Error),
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[cfg(unix)]
+impl From<crate::sys::unix::uring_executor::Error> for Error {
+    fn from(err: crate::sys::unix::uring_executor::Error) -> Self {
+        Error::Uring(err)
+    }
+}
+
+#[cfg(unix)]
+impl From<crate::sys::unix::poll_source::Error> for Error {
+    fn from(err: crate::sys::unix::poll_source::Error) -> Self {
+        Error::Poll(err)
+    }
+}
+
+#[cfg(unix)]
 impl From<Error> for io::Error {
     fn from(e: Error) -> Self {
         use Error::*;
@@ -49,6 +84,32 @@ impl From<Error> for io::Error {
             Poll(e) => e.into(),
             Uring(e) => e.into(),
         }
+    }
+}
+
+#[cfg(windows)]
+impl From<Error> for io::Error {
+    fn from(e: Error) -> Self {
+        use Error::*;
+        match e {
+            EventAsync(e) => e.into(),
+            HandleExecutor(e) => e.into(),
+            HandleSource(e) => e.into(),
+        }
+    }
+}
+
+#[cfg(windows)]
+impl From<crate::sys::windows::handle_source::Error> for Error {
+    fn from(err: crate::sys::windows::handle_source::Error) -> Self {
+        Error::HandleSource(err)
+    }
+}
+
+#[cfg(windows)]
+impl From<crate::sys::windows::handle_executor::Error> for Error {
+    fn from(err: crate::sys::windows::handle_executor::Error) -> Self {
+        Error::HandleExecutor(err)
     }
 }
 
@@ -136,6 +197,10 @@ pub trait IoSourceExt<F>: ReadAsync + WriteAsync {
 
     /// Provides a ref to the underlying IO source.
     fn as_source(&self) -> &F;
+
+    /// Waits on a waitable handle. Needed for
+    /// Windows currently, and subject to a potential future upstream.
+    async fn wait_for_handle(&self) -> Result<u64>;
 }
 
 /// Marker trait signifying that the implementor is suitable for use with
@@ -144,10 +209,15 @@ pub trait IoSourceExt<F>: ReadAsync + WriteAsync {
 /// (Note: it'd be really nice to implement a TryFrom for any implementors, and
 /// remove our factory functions. Unfortunately
 /// <https://github.com/rust-lang/rust/issues/50133> makes that too painful.)
+#[cfg(unix)]
 pub trait IntoAsync: AsRawFd {}
+#[cfg(windows)]
+pub trait IntoAsync: AsRawHandle {}
 
 impl IntoAsync for File {}
+#[cfg(unix)]
 impl IntoAsync for UnixSeqpacket {}
+#[cfg(unix)]
 impl IntoAsync for &UnixSeqpacket {}
 
 /// Simple wrapper struct to implement IntoAsync on foreign types.
@@ -179,16 +249,29 @@ impl<T> DerefMut for AsyncWrapper<T> {
     }
 }
 
+#[cfg(unix)]
 impl<T: AsRawFd> AsRawFd for AsyncWrapper<T> {
     fn as_raw_fd(&self) -> RawFd {
         self.0.as_raw_fd()
     }
 }
 
+#[cfg(windows)]
+impl<T: AsRawHandle> AsRawHandle for AsyncWrapper<T> {
+    fn as_raw_handle(&self) -> RawHandle {
+        self.0.as_raw_handle()
+    }
+}
+
+#[cfg(unix)]
 impl<T: AsRawFd> IntoAsync for AsyncWrapper<T> {}
 
-#[cfg(test)]
+#[cfg(windows)]
+impl<T: AsRawHandle> IntoAsync for AsyncWrapper<T> {}
+
+#[cfg(all(test, unix))]
 mod tests {
+    use base::Event;
     use std::{
         fs::{File, OpenOptions},
         future::Future,
@@ -200,16 +283,16 @@ mod tests {
     };
     use sync::Mutex;
 
-    use super::{
-        super::{
+    use super::*;
+    use crate::{
+        mem::VecIoWrapper,
+        sys::unix::{
             executor::{async_poll_from, async_uring_from},
-            mem::VecIoWrapper,
             uring_executor::use_uring,
-            Executor, FdExecutor, MemRegion, PollSource, URingExecutor, UringSource,
+            FdExecutor, PollSource, URingExecutor, UringSource,
         },
-        *,
+        Executor, MemRegion,
     };
-    use base::Event;
 
     struct State {
         should_quit: bool,

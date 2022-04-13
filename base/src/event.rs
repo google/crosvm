@@ -13,6 +13,9 @@ use crate::{generate_scoped_event, platform::EventFd, RawDescriptor, Result};
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
+#[cfg(windows)]
+use std::os::windows::io::{AsRawHandle, RawHandle};
+
 /// See [EventFd](crate::platform::EventFd) for struct- and method-level
 /// documentation.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,6 +65,13 @@ impl IntoRawDescriptor for Event {
 impl AsRawFd for Event {
     fn as_raw_fd(&self) -> RawFd {
         self.0.as_raw_fd()
+    }
+}
+
+#[cfg(windows)]
+impl AsRawHandle for Event {
+    fn as_raw_handle(&self) -> RawHandle {
+        self.0.as_raw_handle()
     }
 }
 

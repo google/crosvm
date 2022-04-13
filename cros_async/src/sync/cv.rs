@@ -449,6 +449,8 @@ fn cancel_waiter(cv: usize, waiter: &Waiter, wake_next: bool) {
     unsafe { (*condvar).cancel_waiter(waiter, wake_next) }
 }
 
+// TODO(b/194338842): Fix tests for windows
+#[cfg(unix)]
 #[cfg(test)]
 mod test {
     use super::*;

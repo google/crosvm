@@ -1,11 +1,13 @@
 // Copyright 2022 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-use crate::{Executor, IoSourceExt};
+
+use crate::{DescriptorAdapter, DescriptorIntoAsync, Executor, IoSourceExt};
 use base::{Tube, TubeResult};
 use serde::{de::DeserializeOwned, Serialize};
 use std::io;
 use std::ops::Deref;
+use std::os::unix::io::{AsRawFd, RawFd};
 
 pub struct AsyncTube {
     inner: Box<dyn IoSourceExt<Tube>>,
@@ -38,5 +40,14 @@ impl Deref for AsyncTube {
 impl From<AsyncTube> for Tube {
     fn from(at: AsyncTube) -> Tube {
         at.inner.into_source()
+    }
+}
+
+impl<T> AsRawFd for DescriptorAdapter<T>
+where
+    T: DescriptorIntoAsync,
+{
+    fn as_raw_fd(&self) -> RawFd {
+        self.0.as_raw_descriptor()
     }
 }

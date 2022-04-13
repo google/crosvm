@@ -12,12 +12,10 @@ use std::{
 
 use async_trait::async_trait;
 
-use crate::AllocateMode;
-
-use super::{
+use super::uring_executor::{Error, RegisteredSource, Result, URingExecutor};
+use crate::{
     mem::{BackingMemory, MemRegion, VecIoWrapper},
-    uring_executor::{Error, RegisteredSource, Result, URingExecutor},
-    AsyncError, AsyncResult,
+    AllocateMode, AsyncError, AsyncResult, ReadAsync, WriteAsync,
 };
 
 /// `UringSource` wraps FD backed IO sources for use with io_uring. It is a thin wrapper around
@@ -45,7 +43,7 @@ impl<F: AsRawFd> UringSource<F> {
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawFd> super::ReadAsync for UringSource<F> {
+impl<F: AsRawFd> ReadAsync for UringSource<F> {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
     async fn read_to_vec<'a>(
         &'a self,
@@ -125,7 +123,7 @@ impl<F: AsRawFd> super::ReadAsync for UringSource<F> {
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawFd> super::WriteAsync for UringSource<F> {
+impl<F: AsRawFd> WriteAsync for UringSource<F> {
     /// Writes from the given `vec` to the file starting at `file_offset`.
     async fn write_from_vec<'a>(
         &'a self,
@@ -185,7 +183,7 @@ impl<F: AsRawFd> super::WriteAsync for UringSource<F> {
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawFd> super::IoSourceExt<F> for UringSource<F> {
+impl<F: AsRawFd> crate::IoSourceExt<F> for UringSource<F> {
     /// Yields the underlying IO source.
     fn into_source(self: Box<Self>) -> F {
         self.source
@@ -199,6 +197,10 @@ impl<F: AsRawFd> super::IoSourceExt<F> for UringSource<F> {
     /// Provides a ref to the underlying IO source.
     fn as_source_mut(&mut self) -> &mut F {
         &mut self.source
+    }
+
+    async fn wait_for_handle(&self) -> AsyncResult<u64> {
+        self.read_u64().await
     }
 }
 
@@ -224,11 +226,8 @@ mod tests {
         path::PathBuf,
     };
 
-    use super::super::{
-        io_ext::{ReadAsync, WriteAsync},
-        uring_executor::use_uring,
-        UringSource,
-    };
+    use super::super::{uring_executor::use_uring, UringSource};
+    use crate::io_ext::{ReadAsync, WriteAsync};
 
     use super::*;
 
@@ -238,7 +237,7 @@ mod tests {
             return;
         }
 
-        use super::super::mem::VecIoWrapper;
+        use crate::mem::VecIoWrapper;
         use std::io::Write;
         use tempfile::tempfile;
 
@@ -345,7 +344,7 @@ mod tests {
             return;
         }
 
-        use base::EventFd;
+        use base::Event as EventFd;
 
         async fn write_event(ev: EventFd, wait: EventFd, ex: &URingExecutor) {
             let wait = UringSource::new(wait, ex).unwrap();
@@ -511,9 +510,9 @@ mod tests {
             let source = UringSource::new(f, ex).unwrap();
             if let Err(e) = source.fallocate(0, 4096, AllocateMode::Default).await {
                 match e {
-                    super::super::io_ext::Error::Uring(
-                        super::super::uring_executor::Error::Io(io_err),
-                    ) => {
+                    crate::io_ext::Error::Uring(super::super::uring_executor::Error::Io(
+                        io_err,
+                    )) => {
                         if io_err.kind() == std::io::ErrorKind::InvalidInput {
                             // Skip the test on kernels before fallocate support.
                             return;
@@ -577,7 +576,7 @@ mod tests {
                 .unwrap();
             let source = UringSource::new(f, ex).unwrap();
             let v = vec![0x55u8; 64];
-            let vw = Arc::new(super::super::mem::VecIoWrapper::from(v));
+            let vw = Arc::new(crate::mem::VecIoWrapper::from(v));
             let ret = source
                 .write_from_mem(None, vw, &[MemRegion { offset: 0, len: 32 }])
                 .await

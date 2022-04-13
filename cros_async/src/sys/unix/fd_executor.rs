@@ -23,7 +23,7 @@ use std::{
 };
 
 use async_task::Task;
-use base::{add_fd_flags, warn, EpollContext, EpollEvents, EventFd, WatchingEvents};
+use base::{add_fd_flags, warn, EpollContext, EpollEvents, Event as EventFd, WatchingEvents};
 use futures::task::noop_waker;
 use pin_utils::pin_mut;
 use remain::sorted;
@@ -31,7 +31,7 @@ use slab::Slab;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 
-use super::{
+use crate::{
     queue::RunnableQueue,
     waker::{new_waker, WakerToken, WeakWake},
     BlockingPool,
@@ -527,7 +527,7 @@ impl FdExecutor {
         let waker = new_waker(Arc::downgrade(&self.raw));
         let mut cx = Context::from_waker(&waker);
 
-        self.raw.run(&mut cx, super::empty::<()>())
+        self.raw.run(&mut cx, crate::empty::<()>())
     }
 
     pub fn run_until<F: Future>(&self, f: F) -> Result<F::Output> {

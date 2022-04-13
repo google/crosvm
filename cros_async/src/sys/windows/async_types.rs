@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{Executor, HandleWrapper};
-use base::{AsRawDescriptor, Descriptor, RecvTube, SendTube, Tube, TubeResult};
-use serde::de::DeserializeOwned;
+use super::HandleWrapper;
+use crate::{unblock, DescriptorAdapter, DescriptorIntoAsync, Executor};
+use base::{Descriptor, Tube, TubeError, TubeResult};
+use serde::{de::DeserializeOwned, Serialize};
 use std::io;
-use std::os::windows::io::AsRawHandle;
+use std::os::windows::io::{AsRawHandle, RawHandle};
 use std::sync::{Arc, Mutex};
 
 pub struct AsyncTube {
@@ -14,7 +15,7 @@ pub struct AsyncTube {
 }
 
 impl AsyncTube {
-    pub fn new(ex: &Executor, tube: Tube) -> io::Result<AsyncTube> {
+    pub fn new(_ex: &Executor, tube: Tube) -> io::Result<AsyncTube> {
         Ok(AsyncTube {
             inner: Arc::new(Mutex::new(tube)),
         })
@@ -28,7 +29,7 @@ impl AsyncTube {
         let handles = HandleWrapper::new(vec![Descriptor(tube.lock().unwrap().as_raw_handle())]);
         unblock(
             move || tube.lock().unwrap().recv(),
-            move || Err(handles.lock().cancel_sync_io(Error::OperationCancelled)),
+            move || Err(handles.lock().cancel_sync_io(TubeError::OperationCancelled)),
         )
         .await
     }
@@ -38,7 +39,7 @@ impl AsyncTube {
         let handles = HandleWrapper::new(vec![Descriptor(tube.lock().unwrap().as_raw_handle())]);
         unblock(
             move || tube.lock().unwrap().send(&msg),
-            move || Err(handles.lock().cancel_sync_io(Error::OperationCancelled)),
+            move || Err(handles.lock().cancel_sync_io(TubeError::OperationCancelled)),
         )
         .await
     }
@@ -52,7 +53,17 @@ impl From<AsyncTube> for Tube {
         //
         // This does however mean that into will block until all async
         // operations are complete.
-        let _ = at.inner.lock().unwrap();
+        std::mem::drop(at.inner.lock().unwrap());
         Arc::try_unwrap(at.inner).unwrap().into_inner().unwrap()
+    }
+}
+
+#[cfg(windows)]
+impl<T> AsRawHandle for DescriptorAdapter<T>
+where
+    T: DescriptorIntoAsync,
+{
+    fn as_raw_handle(&self) -> RawHandle {
+        self.0.as_raw_descriptor()
     }
 }

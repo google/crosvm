@@ -12,12 +12,22 @@ use sync::Mutex;
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
+#[cfg(windows)]
+use std::os::windows::io::{AsRawHandle, RawHandle};
+
 /// See [TimerFd](crate::platform::TimerFd) for struct- and method-level
 /// documentation.
 pub struct Timer(pub TimerFd);
 impl Timer {
     pub fn new() -> Result<Timer> {
         TimerFd::new().map(Timer)
+    }
+}
+
+#[cfg(windows)]
+impl AsRawHandle for Timer {
+    fn as_raw_handle(&self) -> RawHandle {
+        self.0.as_raw_handle()
     }
 }
 

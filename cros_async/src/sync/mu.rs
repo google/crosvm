@@ -883,6 +883,8 @@ impl<'a, T: ?Sized> Drop for MutexReadGuard<'a, T> {
     }
 }
 
+// TODO(b/194338842): Fix tests for windows
+#[cfg(unix)]
 #[cfg(test)]
 mod test {
     use super::*;

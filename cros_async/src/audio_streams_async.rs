@@ -11,11 +11,14 @@ use std::os::unix::net::UnixStream;
 
 use std::{io::Result, time::Duration};
 
-use super::{AsyncWrapper, IntoAsync, IoSourceExt, TimerAsync};
+use crate::{IntoAsync, IoSourceExt, TimerAsync};
 use async_trait::async_trait;
-use audio_streams::async_api::{
-    AsyncStream, AudioStreamsExecutor, ReadAsync, ReadWriteAsync, WriteAsync,
-};
+use audio_streams::async_api::{AudioStreamsExecutor, ReadAsync, ReadWriteAsync, WriteAsync};
+
+#[cfg(unix)]
+use super::AsyncWrapper;
+#[cfg(unix)]
+use audio_streams::async_api::AsyncStream;
 
 /// A wrapper around IoSourceExt that is compatible with the audio_streams traits.
 pub struct IoSourceWrapper<T: IntoAsync + Send> {

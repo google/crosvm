@@ -25,7 +25,7 @@ pub struct MemRegion {
     pub len: usize,
 }
 
-/// Trait for memory that can yeild both iovecs in to the backing memory.
+/// Trait for memory that can yield both iovecs in to the backing memory.
 /// Must be OK to modify the backing memory without owning a mut able reference. For example,
 /// this is safe for GuestMemory and VolatileSlices in crosvm as those types guarantee they are
 /// dealt with as volatile.
@@ -63,6 +63,7 @@ impl From<VecIoWrapper> for Vec<u8> {
 
 impl VecIoWrapper {
     /// Get the length of the Vec that is wrapped.
+    #[cfg_attr(windows, allow(dead_code))]
     pub fn len(&self) -> usize {
         self.inner.len()
     }

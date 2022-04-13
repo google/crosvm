@@ -1,0 +1,28 @@
+// Copyright 2022 The Chromium OS Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#[cfg(test)]
+mod test {
+    use crate::{Executor, TimerAsync};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn timer() {
+        async fn this_test(ex: &Executor) {
+            // On Windows, SetWaitableTimer, the underlying timer API, is not
+            // guaranteed to sleep for *at least* the supplied duration, so here
+            // we permit early wakeups.
+            let dur = Duration::from_millis(200);
+            let min_duration = Duration::from_millis(190);
+
+            let now = Instant::now();
+            TimerAsync::sleep(ex, dur).await.expect("unable to sleep");
+            let actual_sleep_duration = now.elapsed();
+            assert!(actual_sleep_duration >= min_duration);
+        }
+
+        let ex = Executor::new().expect("creating an executor failed");
+        ex.run_until(this_test(&ex)).unwrap();
+    }
+}

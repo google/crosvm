@@ -63,44 +63,41 @@ pub mod audio_streams_async;
 mod blocking;
 mod complete;
 mod event;
-mod executor;
-mod fd_executor;
 mod io_ext;
 pub mod mem;
-mod poll_source;
 mod queue;
 mod select;
 pub mod sync;
+pub mod sys;
+pub use sys::Executor;
 mod timer;
-mod uring_executor;
-mod uring_source;
 mod waker;
 
 pub use async_types::*;
-pub use base;
-pub use blocking::{block_on, BlockingPool};
+pub use base::Event;
+#[cfg(unix)]
+pub use blocking::sys::unix::block_on::block_on;
+pub use blocking::BlockingPool;
 pub use event::EventAsync;
-pub use executor::Executor;
-pub use fd_executor::FdExecutor;
+#[cfg(windows)]
+pub use futures::executor::block_on;
 pub use io_ext::{
     AllocateMode, AsyncWrapper, Error as AsyncError, IntoAsync, IoSourceExt, ReadAsync,
     Result as AsyncResult, WriteAsync,
 };
 pub use mem::{BackingMemory, MemRegion};
-pub use poll_source::PollSource;
 pub use select::SelectResult;
+pub use sys::run_one;
 pub use timer::TimerAsync;
-pub use uring_executor::URingExecutor;
-pub use uring_source::UringSource;
 
 use std::{
     future::Future,
-    io,
     marker::PhantomData,
     pin::Pin,
     task::{Context, Poll},
 };
 
+pub use blocking::{unblock, unblock_disarm, CancellableBlockingPool, TimeoutAction};
 use remain::sorted;
 use thiserror::Error as ThisError;
 
@@ -108,31 +105,25 @@ use thiserror::Error as ThisError;
 #[derive(ThisError, Debug)]
 pub enum Error {
     /// Error from the FD executor.
+    #[cfg(unix)]
     #[error("Failure in the FD executor: {0}")]
-    FdExecutor(fd_executor::Error),
+    FdExecutor(sys::unix::fd_executor::Error),
+    /// Error from the handle executor.
+    #[cfg(windows)]
+    #[error("Failure in the handle executor: {0}")]
+    HandleExecutor(sys::windows::handle_executor::Error),
+    /// Error from Timer.
+    #[error("Failure in Timer: {0}")]
+    Timer(base::Error),
     /// Error from TimerFd.
     #[error("Failure in TimerAsync: {0}")]
     TimerAsync(AsyncError),
-    /// Error from TimerFd.
-    #[error("Failure in TimerFd: {0}")]
-    TimerFd(base::Error),
     /// Error from the uring executor.
+    #[cfg(unix)]
     #[error("Failure in the uring executor: {0}")]
-    URingExecutor(uring_executor::Error),
+    URingExecutor(sys::unix::uring_executor::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl From<Error> for io::Error {
-    fn from(e: Error) -> Self {
-        use Error::*;
-        match e {
-            FdExecutor(e) => e.into(),
-            URingExecutor(e) => e.into(),
-            TimerFd(e) => e.into(),
-            TimerAsync(e) => e.into(),
-        }
-    }
-}
 
 // A Future that never completes.
 pub struct Empty<T> {
@@ -151,56 +142,6 @@ pub fn empty<T>() -> Empty<T> {
     Empty {
         phantom: PhantomData,
     }
-}
-
-/// Creates an Executor that runs one future to completion.
-///
-///  # Example
-///
-///    ```
-///    use cros_async::run_one;
-///
-///    let fut = async { 55 };
-///    assert_eq!(55, run_one(fut).unwrap());
-///    ```
-pub fn run_one<F: Future>(fut: F) -> Result<F::Output> {
-    if uring_executor::use_uring() {
-        run_one_uring(fut)
-    } else {
-        run_one_poll(fut)
-    }
-}
-
-/// Creates a URingExecutor that runs one future to completion.
-///
-///  # Example
-///
-///    ```
-///    use cros_async::run_one_uring;
-///
-///    let fut = async { 55 };
-///    assert_eq!(55, run_one_uring(fut).unwrap());
-///    ```
-pub fn run_one_uring<F: Future>(fut: F) -> Result<F::Output> {
-    URingExecutor::new()
-        .and_then(|ex| ex.run_until(fut))
-        .map_err(Error::URingExecutor)
-}
-
-/// Creates a FdExecutor that runs one future to completion.
-///
-///  # Example
-///
-///    ```
-///    use cros_async::run_one_poll;
-///
-///    let fut = async { 55 };
-///    assert_eq!(55, run_one_poll(fut).unwrap());
-///    ```
-pub fn run_one_poll<F: Future>(fut: F) -> Result<F::Output> {
-    FdExecutor::new()
-        .and_then(|ex| ex.run_until(fut))
-        .map_err(Error::FdExecutor)
 }
 
 // Select helpers to run until any future completes.

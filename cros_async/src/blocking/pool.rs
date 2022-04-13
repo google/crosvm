@@ -135,6 +135,24 @@ impl Inner {
             self.condvar.notify_one();
         }
     }
+
+    pub fn spawn<F, R>(self: &Arc<Self>, f: F) -> Task<R>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        let raw = Arc::downgrade(self);
+        let schedule = move |runnable| {
+            if let Some(i) = raw.upgrade() {
+                i.schedule(runnable);
+            }
+        };
+
+        let (runnable, task) = async_task::spawn(async move { f() }, schedule);
+        runnable.schedule();
+
+        task
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -253,17 +271,7 @@ impl BlockingPool {
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
     {
-        let raw = Arc::downgrade(&self.inner);
-        let schedule = move |runnable| {
-            if let Some(i) = raw.upgrade() {
-                i.schedule(runnable);
-            }
-        };
-
-        let (runnable, task) = async_task::spawn(async move { f() }, schedule);
-        runnable.schedule();
-
-        task
+        self.inner.spawn(f)
     }
 
     /// Shut down the `BlockingPool`.
@@ -316,6 +324,11 @@ impl BlockingPool {
             Ok(())
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn shutting_down(&self) -> bool {
+        self.inner.state.lock().shutting_down
+    }
 }
 
 impl Default for BlockingPool {
@@ -340,10 +353,10 @@ mod test {
         time::{Duration, Instant},
     };
 
-    use futures::{stream::FuturesUnordered, StreamExt};
+    use futures::{executor::block_on, stream::FuturesUnordered, StreamExt};
     use sync::{Condvar, Mutex};
 
-    use super::super::super::{block_on, BlockingPool};
+    use super::super::super::BlockingPool;
 
     #[test]
     fn blocking_sleep() {

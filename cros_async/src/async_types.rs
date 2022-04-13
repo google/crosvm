@@ -6,12 +6,8 @@ use crate::{Executor, IntoAsync};
 use base::{AsRawDescriptor, RecvTube, SendTube, Tube, TubeResult};
 use serde::{de::DeserializeOwned, Serialize};
 use std::io;
-use std::os::unix::io::{AsRawFd, RawFd};
 
-#[cfg_attr(windows, path = "win/async_types.rs")]
-#[cfg_attr(not(windows), path = "unix/async_types.rs")]
-mod async_types;
-pub use async_types::*;
+pub use crate::sys::async_types::*;
 
 /// Like `cros_async::IntoAsync`, except for use with crosvm's AsRawDescriptor
 /// trait object family.
@@ -21,15 +17,17 @@ pub trait DescriptorIntoAsync: AsRawDescriptor {}
 /// DescriptorIntoAsync (to signify it is suitable for use with async
 /// operations), and then wrapped with this type.
 pub struct DescriptorAdapter<T: DescriptorIntoAsync>(pub T);
-impl<T> AsRawFd for DescriptorAdapter<T>
-where
-    T: DescriptorIntoAsync,
-{
-    fn as_raw_fd(&self) -> RawFd {
-        self.0.as_raw_descriptor()
-    }
-}
+
 impl<T> IntoAsync for DescriptorAdapter<T> where T: DescriptorIntoAsync {}
+
+// NOTE: A StreamChannel can either be used fully in async mode, or not in async
+// mode. Mixing modes will break StreamChannel's internal read/write
+// notification system.
+//
+// TODO(b/213153157): this type isn't properly available upstream yet. Once it
+// is, we can re-enable these implementations.
+// impl DescriptorIntoAsync for StreamChannel {}
+// impl DescriptorIntoAsync for &StreamChannel {}
 
 impl IntoAsync for Tube {}
 impl IntoAsync for SendTube {}
