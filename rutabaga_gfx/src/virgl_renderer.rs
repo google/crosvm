@@ -12,8 +12,6 @@ use std::convert::TryFrom;
 use std::mem::{size_of, transmute};
 use std::os::raw::{c_char, c_void};
 use std::os::unix::io::AsRawFd;
-use std::panic::catch_unwind;
-use std::process::abort;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -77,18 +75,6 @@ impl RutabagaContext for VirglRendererContext {
     fn component_type(&self) -> RutabagaComponentType {
         RutabagaComponentType::VirglRenderer
     }
-
-    fn context_create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
-        let ret = unsafe {
-            virgl_renderer_context_create_fence(
-                fence.ctx_id,
-                fence.flags,
-                fence.ring_idx as u64,
-                fence.fence_id as *mut ::std::os::raw::c_void,
-            )
-        };
-        ret_to_res(ret)
-    }
 }
 
 impl Drop for VirglRendererContext {
@@ -127,35 +113,6 @@ extern "C" fn debug_callback(fmt: *const ::std::os::raw::c_char, ap: stdio::va_l
     }
 }
 
-/// Virglrenderer's vtest renderer currently expects an opaque "void *fence_cookie" rather than a
-/// bare "u64 fence_id", so we cannot use the common implementation from renderer_utils yet.
-///
-/// TODO(ryanneph): re-evaluate if vtest can be modified so this can be unified with
-/// write_context_fence() from renderer_utils before promoting to cfg(feature = "virgl_renderer").
-#[cfg(feature = "virgl_renderer_next")]
-extern "C" fn write_context_fence(
-    cookie: *mut c_void,
-    ctx_id: u32,
-    ring_idx: u64,
-    fence_cookie: *mut c_void,
-) {
-    catch_unwind(|| {
-        assert!(!cookie.is_null());
-        let cookie = unsafe { &*(cookie as *mut VirglCookie) };
-
-        // Call fence completion callback
-        if let Some(handler) = &cookie.fence_handler {
-            handler.call(RutabagaFence {
-                flags: RUTABAGA_FLAG_FENCE | RUTABAGA_FLAG_INFO_RING_IDX,
-                fence_id: fence_cookie as u64,
-                ctx_id,
-                ring_idx: ring_idx as u8,
-            });
-        }
-    })
-    .unwrap_or_else(|_| abort())
-}
-
 const VIRGL_RENDERER_CALLBACKS: &virgl_renderer_callbacks = &virgl_renderer_callbacks {
     #[cfg(not(feature = "virgl_renderer_next"))]
     version: 1,
@@ -166,10 +123,7 @@ const VIRGL_RENDERER_CALLBACKS: &virgl_renderer_callbacks = &virgl_renderer_call
     destroy_gl_context: None,
     make_current: None,
     get_drm_fd: None,
-    #[cfg(not(feature = "virgl_renderer_next"))]
     write_context_fence: None,
-    #[cfg(feature = "virgl_renderer_next")]
-    write_context_fence: Some(write_context_fence),
     #[cfg(not(feature = "virgl_renderer_next"))]
     get_server_fd: None,
     #[cfg(feature = "virgl_renderer_next")]
