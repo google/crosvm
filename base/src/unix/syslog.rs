@@ -10,7 +10,7 @@
 //! # Examples
 //!
 //! ```
-//! use crate::platform::{error, syslog, warn};
+//! use base::{error, syslog, warn};
 //!
 //! if let Err(e) = syslog::init() {
 //!     println!("failed to initiailize syslog: {}", e);
@@ -325,7 +325,7 @@ pub fn push_descriptors(descriptors: &mut Vec<RawDescriptor>) {
 /// # Examples
 ///
 /// ```
-/// # use crate::platform::syslog;
+/// # use base::platform::syslog;
 /// # if let Err(e) = syslog::init() {
 /// #     println!("failed to initiailize syslog: {}", e);
 /// #     return;

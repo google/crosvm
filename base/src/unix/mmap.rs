@@ -456,7 +456,7 @@ impl MemoryMapping {
     /// * Write a slice at offset 256.
     ///
     /// ```
-    /// #   use crate::platform::MemoryMapping;
+    /// #   use base::platform::MemoryMapping;
     /// #   let mut mem_map = MemoryMapping::new(1024).unwrap();
     ///     let res = mem_map.write_slice(&[1,2,3,4,5], 256);
     ///     assert!(res.is_ok());
@@ -487,7 +487,7 @@ impl MemoryMapping {
     /// * Read a slice of size 16 at offset 256.
     ///
     /// ```
-    /// #   use crate::platform::MemoryMapping;
+    /// #   use base::platform::MemoryMapping;
     /// #   let mut mem_map = MemoryMapping::new(1024).unwrap();
     ///     let buf = &mut [0u8; 16];
     ///     let res = mem_map.read_slice(buf, 256);
@@ -521,7 +521,7 @@ impl MemoryMapping {
     /// * Write a u64 at offset 16.
     ///
     /// ```
-    /// #   use crate::platform::MemoryMapping;
+    /// #   use base::platform::MemoryMapping;
     /// #   let mut mem_map = MemoryMapping::new(1024).unwrap();
     ///     let res = mem_map.write_obj(55u64, 16);
     ///     assert!(res.is_ok());
@@ -544,7 +544,7 @@ impl MemoryMapping {
     /// * Read a u64 written to offset 32.
     ///
     /// ```
-    /// #   use crate::platform::MemoryMapping;
+    /// #   use base::platform::MemoryMapping;
     /// #   let mut mem_map = MemoryMapping::new(1024).unwrap();
     ///     let res = mem_map.write_obj(55u64, 32);
     ///     assert!(res.is_ok());
@@ -574,7 +574,7 @@ impl MemoryMapping {
     /// * Read bytes from /dev/urandom
     ///
     /// ```
-    /// # use crate::platform::MemoryMapping;
+    /// # use base::platform::MemoryMapping;
     /// # use std::fs::File;
     /// # use std::path::Path;
     /// # fn test_read_random() -> Result<u32, ()> {
@@ -634,7 +634,7 @@ impl MemoryMapping {
     /// * Write 128 bytes to /dev/null
     ///
     /// ```
-    /// # use crate::platform::MemoryMapping;
+    /// # use base::platform::MemoryMapping;
     /// # use std::fs::File;
     /// # use std::path::Path;
     /// # fn test_write_null() -> Result<(), ()> {

@@ -105,7 +105,7 @@ impl<T> InterruptibleResult for io::Result<T> {
 /// # Examples
 ///
 /// ```
-/// # use crate::platform::handle_eintr;
+/// # use base::handle_eintr;
 /// # use std::io::stdin;
 /// # fn main() {
 /// let mut line = String::new();
