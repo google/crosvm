@@ -2864,7 +2864,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                               action=r0 - forward RDMSR to host kernel cpu0.
 "),
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-          Argument::flag("host-cpu-topology", "Use mirror cpu topology of Host for Guest VM"),
+          Argument::flag("host-cpu-topology", "Use mirror cpu topology of Host for Guest VM, also copy some cpu feature to Guest VM."),
           Argument::flag("privileged-vm", "Grant this Guest VM certian privileges to manage Host resources, such as power management."),
           Argument::value("stub-pci-device", "DOMAIN:BUS:DEVICE.FUNCTION[,vendor=NUM][,device=NUM][,class=NUM][,subsystem_vendor=NUM][,subsystem_device=NUM][,revision=NUM]", "Comma-separated key=value pairs for setting up a stub PCI device that just enumerates. The first option in the list must specify a PCI address to claim.
                               Optional further parameters
