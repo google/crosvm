@@ -4,7 +4,7 @@
 
 use std::{cmp::min, convert::TryFrom, fs::File as StdFile, io, path::Path, sync::Arc};
 
-use sys_util::{AsRawDescriptor, SafeDescriptor};
+use base::{AsRawDescriptor, SafeDescriptor};
 
 use super::io_driver;
 use crate::{AsIoBufs, OwnedIoBuf};
@@ -139,7 +139,7 @@ impl TryFrom<File> for StdFile {
 }
 
 impl AsRawDescriptor for File {
-    fn as_raw_descriptor(&self) -> sys_util::RawDescriptor {
+    fn as_raw_descriptor(&self) -> base::RawDescriptor {
         self.fd.as_raw_descriptor()
     }
 }

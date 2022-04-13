@@ -476,16 +476,16 @@ impl<E: std::error::Error> ShmStreamSource<E> for MockShmStreamSource {
     }
 }
 
-// Tests that run only for Unix, where `sys_util::SharedMemory` is used.
+// Tests that run only for Unix, where `base::SharedMemory` is used.
 #[cfg(all(test, unix))]
 pub mod tests {
     use super::*;
 
+    use base::unix::SharedMemory as SysSharedMemory;
     use std::os::unix::io::AsRawFd;
-    use sys_util::SharedMemory as SysSharedMemory;
 
     impl SharedMemory for SysSharedMemory {
-        type Error = sys_util::Error;
+        type Error = base::Error;
 
         fn anon(_: u64) -> Result<Self, Self::Error> {
             SysSharedMemory::anon()

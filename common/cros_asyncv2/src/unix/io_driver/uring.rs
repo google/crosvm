@@ -22,6 +22,9 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, ensure, Context};
+use base::{
+    error, warn, AsRawDescriptor, EventFd, FromRawDescriptor, LayoutAllocation, SafeDescriptor,
+};
 use data_model::IoBufMut;
 use io_uring::{
     cqueue::{self, buffer_select},
@@ -31,9 +34,6 @@ use io_uring::{
 };
 use once_cell::sync::{Lazy, OnceCell};
 use slab::Slab;
-use sys_util::{
-    error, warn, AsRawDescriptor, EventFd, FromRawDescriptor, LayoutAllocation, SafeDescriptor,
-};
 use thiserror::Error as ThisError;
 
 use super::cmsg::*;
@@ -941,7 +941,7 @@ pub async fn next_packet_size(desc: &Arc<SafeDescriptor>) -> anyhow::Result<usiz
             return Ok(ret as usize);
         }
 
-        match sys_util::Error::last() {
+        match base::Error::last() {
             e if e.errno() == libc::EWOULDBLOCK || e.errno() == libc::EAGAIN => {
                 wait_readable(desc).await?;
             }
@@ -1010,7 +1010,7 @@ pub async fn send_iobuf_with_fds<B: AsIoBufs + Unpin + 'static>(
                     return Ok(ret as usize);
                 }
 
-                match sys_util::Error::last() {
+                match base::Error::last() {
                     e if e.errno() == libc::EWOULDBLOCK || e.errno() == libc::EAGAIN => {
                         wait_writable(desc).await?;
                     }
@@ -1071,7 +1071,7 @@ pub async fn recv_iobuf_with_fds<B: AsIoBufs + Unpin + 'static>(
                     break ret as usize;
                 }
 
-                match sys_util::Error::last() {
+                match base::Error::last() {
                     e if e.errno() == libc::EWOULDBLOCK || e.errno() == libc::EAGAIN => {
                         wait_readable(desc).await?;
                     }

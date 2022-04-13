@@ -18,11 +18,11 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, ensure, Context};
+use base::{add_fd_flags, error, AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 use data_model::IoBufMut;
 use mio::{unix::SourceFd, Events, Interest, Token};
 use once_cell::unsync::{Lazy, OnceCell};
 use slab::Slab;
-use sys_util::{add_fd_flags, error, AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 use thiserror::Error as ThisError;
 
 use super::cmsg::*;
@@ -219,7 +219,7 @@ pub async fn read(
             return Ok(res as usize);
         }
 
-        match sys_util::Error::last() {
+        match base::Error::last() {
             e if e.errno() == libc::EWOULDBLOCK => wait_for(desc, Interest::READABLE).await?,
             e => return Err(io::Error::from_raw_os_error(e.errno()).into()),
         }
@@ -259,7 +259,7 @@ pub async fn read_iobuf<B: AsIoBufs + 'static>(
             return (Ok(res as usize), buf);
         }
 
-        match sys_util::Error::last() {
+        match base::Error::last() {
             e if e.errno() == libc::EWOULDBLOCK => {
                 if let Err(e) = wait_for(desc, Interest::READABLE).await {
                     return (Err(e), buf);
@@ -300,7 +300,7 @@ pub async fn write(
             return Ok(res as usize);
         }
 
-        match sys_util::Error::last() {
+        match base::Error::last() {
             e if e.errno() == libc::EWOULDBLOCK => wait_for(desc, Interest::WRITABLE).await?,
             e => return Err(io::Error::from_raw_os_error(e.errno()).into()),
         }
@@ -340,7 +340,7 @@ pub async fn write_iobuf<B: AsIoBufs + 'static>(
             return (Ok(res as usize), buf);
         }
 
-        match sys_util::Error::last() {
+        match base::Error::last() {
             e if e.errno() == libc::EWOULDBLOCK => {
                 if let Err(e) = wait_for(desc, Interest::WRITABLE).await {
                     return (Err(e), buf);
@@ -433,7 +433,7 @@ pub async fn connect(
         return Ok(());
     }
 
-    match sys_util::Error::last() {
+    match base::Error::last() {
         e if e.errno() == libc::EWOULDBLOCK || e.errno() == libc::EINPROGRESS => {
             wait_for(desc, Interest::WRITABLE).await?;
 
@@ -490,7 +490,7 @@ pub async fn next_packet_size(desc: &Arc<SafeDescriptor>) -> anyhow::Result<usiz
             return Ok(ret as usize);
         }
 
-        match sys_util::Error::last() {
+        match base::Error::last() {
             e if e.errno() == libc::EWOULDBLOCK || e.errno() == libc::EAGAIN => {
                 wait_for(desc, Interest::READABLE).await?;
             }
@@ -539,7 +539,7 @@ pub async fn sendmsg(
             return Ok(ret as usize);
         }
 
-        match sys_util::Error::last() {
+        match base::Error::last() {
             e if e.errno() == libc::EWOULDBLOCK || e.errno() == libc::EAGAIN => {
                 wait_for(desc, Interest::WRITABLE).await?;
             }
@@ -589,7 +589,7 @@ pub async fn recvmsg(
             break ret as usize;
         }
 
-        match sys_util::Error::last() {
+        match base::Error::last() {
             e if e.errno() == libc::EWOULDBLOCK || e.errno() == libc::EAGAIN => {
                 wait_for(desc, Interest::READABLE).await?;
             }
@@ -640,7 +640,7 @@ pub async fn send_iobuf_with_fds<B: AsIoBufs + 'static>(
                 return Ok(ret as usize);
             }
 
-            match sys_util::Error::last() {
+            match base::Error::last() {
                 e if e.errno() == libc::EWOULDBLOCK || e.errno() == libc::EAGAIN => {
                     wait_for(desc, Interest::WRITABLE).await?;
                 }
@@ -691,7 +691,7 @@ pub async fn recv_iobuf_with_fds<B: AsIoBufs + 'static>(
                 break ret as usize;
             }
 
-            match sys_util::Error::last() {
+            match base::Error::last() {
                 e if e.errno() == libc::EWOULDBLOCK || e.errno() == libc::EAGAIN => {
                     wait_for(desc, Interest::READABLE).await?;
                 }
@@ -723,7 +723,7 @@ pub async fn accept(desc: &Arc<SafeDescriptor>) -> anyhow::Result<SafeDescriptor
             return Ok(unsafe { SafeDescriptor::from_raw_descriptor(ret) });
         }
 
-        match sys_util::Error::last() {
+        match base::Error::last() {
             e if e.errno() == libc::EWOULDBLOCK || e.errno() == libc::EAGAIN => {
                 wait_for(desc, Interest::READABLE).await?;
             }

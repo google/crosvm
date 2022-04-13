@@ -18,8 +18,8 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context};
+use base::{warn, AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
 use memoffset::offset_of;
-use sys_util::{warn, AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
 use thiserror::Error as ThisError;
 
 use crate::{AsIoBufs, OwnedIoBuf};
@@ -248,7 +248,7 @@ impl SeqPacket {
     /// Reads data and file descriptors from the socket.
     pub async fn recv_as_vec_with_fds(&self) -> anyhow::Result<(Vec<u8>, Vec<RawFd>)> {
         let len = self.next_packet_size().await?;
-        let mut fds = vec![0; sys_util::SCM_SOCKET_MAX_FD_COUNT];
+        let mut fds = vec![0; base::SCM_SOCKET_MAX_FD_COUNT];
         let (res, mut buf) = self
             .recv_iobuf_with_fds(OwnedIoBuf::new(vec![0u8; len]), &mut fds)
             .await;
@@ -260,10 +260,10 @@ impl SeqPacket {
     }
 }
 
-impl TryFrom<sys_util::net::UnixSeqpacket> for SeqPacket {
+impl TryFrom<base::net::UnixSeqpacket> for SeqPacket {
     type Error = anyhow::Error;
 
-    fn try_from(value: sys_util::net::UnixSeqpacket) -> anyhow::Result<Self> {
+    fn try_from(value: base::net::UnixSeqpacket) -> anyhow::Result<Self> {
         // Safe because `value` owns the fd.
         let fd =
             Arc::new(unsafe { SafeDescriptor::from_raw_descriptor(value.into_raw_descriptor()) });
@@ -272,20 +272,20 @@ impl TryFrom<sys_util::net::UnixSeqpacket> for SeqPacket {
     }
 }
 
-impl TryFrom<SeqPacket> for sys_util::net::UnixSeqpacket {
+impl TryFrom<SeqPacket> for base::net::UnixSeqpacket {
     type Error = SeqPacket;
 
     fn try_from(value: SeqPacket) -> Result<Self, Self::Error> {
         Arc::try_unwrap(value.fd)
             .map(|fd| unsafe {
-                sys_util::net::UnixSeqpacket::from_raw_descriptor(fd.into_raw_descriptor())
+                base::net::UnixSeqpacket::from_raw_descriptor(fd.into_raw_descriptor())
             })
             .map_err(|fd| SeqPacket { fd })
     }
 }
 
 impl AsRawDescriptor for SeqPacket {
-    fn as_raw_descriptor(&self) -> sys_util::RawDescriptor {
+    fn as_raw_descriptor(&self) -> base::RawDescriptor {
         self.fd.as_raw_descriptor()
     }
 }
@@ -383,7 +383,7 @@ impl SeqPacketListener {
 }
 
 impl AsRawDescriptor for SeqPacketListener {
-    fn as_raw_descriptor(&self) -> sys_util::RawDescriptor {
+    fn as_raw_descriptor(&self) -> base::RawDescriptor {
         self.fd.as_raw_descriptor()
     }
 }
@@ -436,7 +436,7 @@ mod test {
         time::{Duration, Instant},
     };
 
-    use sys_util::{AsRawDescriptor, EventFd};
+    use base::{AsRawDescriptor, EventFd};
 
     use crate::{with_deadline, Executor};
 
