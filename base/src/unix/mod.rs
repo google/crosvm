@@ -38,7 +38,6 @@ mod poll;
 mod priority;
 pub mod rand;
 mod raw_fd;
-pub mod read_dir;
 mod sched;
 pub mod scoped_signal_handler;
 mod shm;

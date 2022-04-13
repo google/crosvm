@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod read_dir;
+
 use std::cmp::min;
 use std::collections::{btree_map, BTreeMap};
 use std::ffi::{CStr, CString};
@@ -14,9 +16,9 @@ use std::os::unix::fs::FileExt;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::path::Path;
 
-use sys_util::{read_dir::read_dir, syscall};
-
 use crate::protocol::*;
+use crate::syscall;
+use read_dir::read_dir;
 
 // Tlopen and Tlcreate flags.  Taken from "include/net/9p/9p.h" in the linux tree.
 const P9_RDONLY: u32 = 0o00000000;

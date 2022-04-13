@@ -4,8 +4,6 @@
 
 use std::{ffi::CStr, io::Result, mem::size_of, os::unix::io::AsRawFd};
 
-use data_model::DataInit;
-
 use crate::syscall;
 
 #[repr(C, packed)]
@@ -16,7 +14,25 @@ struct LinuxDirent64 {
     d_reclen: libc::c_ushort,
     d_ty: libc::c_uchar,
 }
-unsafe impl DataInit for LinuxDirent64 {}
+
+impl LinuxDirent64 {
+    // Note: Taken from data_model::DataInit
+    fn from_slice(data: &[u8]) -> Option<&Self> {
+        // Early out to avoid an unneeded `align_to` call.
+        if data.len() != size_of::<Self>() {
+            return None;
+        }
+        // The `align_to` method ensures that we don't have any unaligned references.
+        // This aliases a pointer, but because the pointer is from a const slice reference,
+        // there are no mutable aliases.
+        // Finally, the reference returned can not outlive data because they have equal implicit
+        // lifetime constraints.
+        match unsafe { data.align_to::<Self>() } {
+            ([], [mid], []) => Some(mid),
+            _ => None,
+        }
+    }
+}
 
 pub struct DirEntry<'r> {
     pub ino: libc::ino64_t,
@@ -45,8 +61,7 @@ impl<'d, D: AsRawFd> ReadDir<'d, D> {
                     self.buf.as_mut_ptr() as *mut LinuxDirent64,
                     self.buf.len() as libc::c_int,
                 )
-            })
-            .map_err(|e| e.into());
+            });
             match res {
                 Ok(end) => {
                     self.current = 0;

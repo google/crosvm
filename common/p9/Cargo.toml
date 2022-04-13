@@ -6,7 +6,6 @@ edition = "2021"
 
 [dependencies]
 libc = "*"
-sys_util = { path = "../sys_util" } # provided by ebuild
 wire_format_derive = { path = "wire_format_derive", version = "*" }
 
 [features]
