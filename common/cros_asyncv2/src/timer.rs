@@ -142,7 +142,7 @@ impl From<TimedOut> for io::Error {
 /// # use cros_async::{Executor, TimedOut};
 /// #
 /// # let ex = Executor::new();
-/// # let (rx, _tx) = sys_util::pipe(true).unwrap();
+/// # let (rx, _tx) = base::pipe(true).unwrap();
 /// # let rx = cros_async::File::from_std(rx).unwrap();
 /// # let mut buf = 0u64.to_ne_bytes();
 /// #

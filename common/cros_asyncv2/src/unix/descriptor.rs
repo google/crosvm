@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use sys_util::SafeDescriptor;
+use base::SafeDescriptor;
 
 use super::io_driver;
 

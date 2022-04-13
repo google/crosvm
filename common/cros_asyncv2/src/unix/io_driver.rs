@@ -11,9 +11,9 @@ use std::{
     time::Duration,
 };
 
+use base::{error, AsRawDescriptor, SafeDescriptor};
 use futures::task::{waker_ref, ArcWake, WakerRef};
 use once_cell::sync::OnceCell;
-use sys_util::{error, AsRawDescriptor, SafeDescriptor};
 
 use crate::{executor, AsIoBufs};
 

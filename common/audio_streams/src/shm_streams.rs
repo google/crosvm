@@ -477,7 +477,7 @@ impl<E: std::error::Error> ShmStreamSource<E> for MockShmStreamSource {
     }
 }
 
-// Tests that run only for Unix, where `sys_util::SharedMemory` is used.
+// Tests that run only for Unix, where `base::SharedMemory` is used.
 #[cfg(all(test, unix))]
 pub mod tests {
     use super::*;

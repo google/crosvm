@@ -94,7 +94,7 @@ pub(crate) fn add_timer(deadline: Instant, waker: &Waker) {
 /// }
 ///
 /// # fn do_it() -> Result<()> {
-///     let (rx, tx) = sys_util::pipe(true)?;
+///     let (rx, tx) = base::pipe(true)?;
 ///     let zero = File::open("/dev/zero")?;
 ///     let zero_bytes = CHUNK_SIZE * 7;
 ///     let zero_to_pipe = transfer_data(
@@ -522,7 +522,7 @@ mod test {
     #[test]
     fn basic() {
         async fn do_it() {
-            let (r, _w) = sys_util::pipe(true).unwrap();
+            let (r, _w) = base::pipe(true).unwrap();
             let done = async { 5usize };
 
             let rx = File::try_from(r).unwrap();
@@ -647,7 +647,7 @@ mod test {
 
         fn do_it() -> anyhow::Result<()> {
             let ex = Executor::new();
-            let (rx, tx) = sys_util::pipe(true)?;
+            let (rx, tx) = base::pipe(true)?;
             let zero = File::open("/dev/zero")?;
             let zero_bytes = CHUNK_SIZE * 7;
             let zero_to_pipe = ex.spawn(transfer_data(

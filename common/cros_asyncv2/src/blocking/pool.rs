@@ -14,9 +14,9 @@ use std::{
 };
 
 use async_task::{Runnable, Task};
+use base::{error, warn};
 use slab::Slab;
 use sync::{Condvar, Mutex};
-use sys_util::{error, warn};
 
 const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 

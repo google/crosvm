@@ -5,7 +5,7 @@
 use std::{convert::TryFrom, io, mem::size_of, sync::Arc};
 
 use anyhow::{ensure, Context};
-use sys_util::{EventFd, SafeDescriptor};
+use base::{EventFd, SafeDescriptor};
 
 use super::io_driver;
 

@@ -12,7 +12,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use sys_util::LayoutAllocation;
+use base::LayoutAllocation;
 
 // Allocates a buffer to hold a `libc::cmsghdr` with `cap` bytes of data.
 //
