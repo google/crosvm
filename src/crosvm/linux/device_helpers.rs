@@ -22,6 +22,7 @@ use base::*;
 use devices::serial_device::{SerialParameters, SerialType};
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
 use devices::virtio::block::block::DiskOption;
+use devices::virtio::console::asynchronous::AsyncConsole;
 use devices::virtio::ipc_memory_mapper::{create_ipc_mapper, CreateIpcMapperRet};
 use devices::virtio::memory_mapper::{BasicMemoryMapper, MemoryMapperTrait};
 #[cfg(feature = "audio_cras")]
@@ -38,7 +39,7 @@ use devices::virtio::vhost::user::vmm::{
 use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
-use devices::virtio::{self, BalloonMode, Console, VirtioDevice};
+use devices::virtio::{self, BalloonMode, VirtioDevice};
 use devices::IommuDevType;
 #[cfg(feature = "tpm")]
 use devices::SoftwareTpm;
@@ -1182,7 +1183,7 @@ pub fn create_console_device(
     let mut keep_rds = Vec::new();
     let evt = Event::new().context("failed to create event")?;
     let dev = param
-        .create_serial_device::<Console>(protected_vm, &evt, &mut keep_rds)
+        .create_serial_device::<AsyncConsole>(protected_vm, &evt, &mut keep_rds)
         .context("failed to create console device")?;
 
     let jail = match simple_jail(jail_config, "serial_device")? {

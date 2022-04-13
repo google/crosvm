@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+//! Legacy console device that uses a polling thread. This is kept because it is still used by
+//! Windows ; outside of this use-case, please use [[asynchronous::AsyncConsole]] instead.
+
+pub mod asynchronous;
 mod sys;
 
 use std::collections::VecDeque;
@@ -58,7 +62,7 @@ unsafe impl DataInit for virtio_console_config {}
 /// * `interrupt` - SignalableInterrupt used to signal that the queue has been used
 /// * `buffer` - Ring buffer providing data to put into the guest
 /// * `receive_queue` - The receive virtio Queue
-pub fn handle_input<I: SignalableInterrupt>(
+fn handle_input<I: SignalableInterrupt>(
     mem: &GuestMemory,
     interrupt: &I,
     buffer: &mut VecDeque<u8>,
@@ -109,7 +113,7 @@ pub fn handle_input<I: SignalableInterrupt>(
 ///
 /// * `reader` - The Reader with the data we want to write.
 /// * `output` - The output sink we are going to write the data to.
-pub fn process_transmit_request(mut reader: Reader, output: &mut dyn io::Write) -> io::Result<()> {
+fn process_transmit_request(mut reader: Reader, output: &mut dyn io::Write) -> io::Result<()> {
     let len = reader.available_bytes();
     let mut data = vec![0u8; len];
     reader.read_exact(&mut data)?;
@@ -126,7 +130,7 @@ pub fn process_transmit_request(mut reader: Reader, output: &mut dyn io::Write) 
 /// * `interrupt` - SignalableInterrupt used to signal (if required) that the queue has been used
 /// * `transmit_queue` - The transmit virtio Queue
 /// * `output` - The output sink we are going to write the data into
-pub fn process_transmit_queue<I: SignalableInterrupt>(
+fn process_transmit_queue<I: SignalableInterrupt>(
     mem: &GuestMemory,
     interrupt: &I,
     transmit_queue: &mut Queue,
@@ -176,7 +180,7 @@ struct Worker {
 ///
 /// * `rx` - Data source that the reader thread will wait on to send data back to the buffer
 /// * `in_avail_evt` - Event triggered by the thread when new input is available on the buffer
-pub fn spawn_input_thread(
+fn spawn_input_thread(
     mut rx: crate::serial::sys::InStreamType,
     in_avail_evt: &Event,
 ) -> Option<Arc<Mutex<VecDeque<u8>>>> {
