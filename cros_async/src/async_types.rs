@@ -3,22 +3,11 @@
 // found in the LICENSE file.
 
 use crate::{Executor, IntoAsync};
-use base::{AsRawDescriptor, RecvTube, SendTube, Tube, TubeResult};
+use base::{RecvTube, SendTube, Tube, TubeResult};
 use serde::{de::DeserializeOwned, Serialize};
 use std::io;
 
 pub use crate::sys::async_types::*;
-
-/// Like `cros_async::IntoAsync`, except for use with crosvm's AsRawDescriptor
-/// trait object family.
-pub trait DescriptorIntoAsync: AsRawDescriptor {}
-
-/// To use an IO struct with cros_async, the type must be marked with
-/// DescriptorIntoAsync (to signify it is suitable for use with async
-/// operations), and then wrapped with this type.
-pub struct DescriptorAdapter<T: DescriptorIntoAsync>(pub T);
-
-impl<T> IntoAsync for DescriptorAdapter<T> where T: DescriptorIntoAsync {}
 
 // NOTE: A StreamChannel can either be used fully in async mode, or not in async
 // mode. Mixing modes will break StreamChannel's internal read/write
@@ -26,8 +15,8 @@ impl<T> IntoAsync for DescriptorAdapter<T> where T: DescriptorIntoAsync {}
 //
 // TODO(b/213153157): this type isn't properly available upstream yet. Once it
 // is, we can re-enable these implementations.
-// impl DescriptorIntoAsync for StreamChannel {}
-// impl DescriptorIntoAsync for &StreamChannel {}
+// impl IntoAsync for StreamChannel {}
+// impl IntoAsync for &StreamChannel {}
 
 impl IntoAsync for Tube {}
 impl IntoAsync for SendTube {}

@@ -8,7 +8,6 @@
 use std::{
     io,
     ops::{Deref, DerefMut},
-    os::unix::io::AsRawFd,
     sync::Arc,
 };
 
@@ -24,6 +23,7 @@ use crate::{
     mem::{BackingMemory, MemRegion},
     AllocateMode, AsyncError, AsyncResult, IoSourceExt, ReadAsync, WriteAsync,
 };
+use base::AsRawDescriptor;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -71,7 +71,7 @@ impl From<Error> for io::Error {
 /// Used by `IoSourceExt::new` when uring isn't available.
 pub struct PollSource<F>(RegisteredSource<F>);
 
-impl<F: AsRawFd> PollSource<F> {
+impl<F: AsRawDescriptor> PollSource<F> {
     /// Create a new `PollSource` from the given IO source.
     pub fn new(f: F, ex: &FdExecutor) -> Result<Self> {
         ex.register_source(f)
@@ -85,7 +85,7 @@ impl<F: AsRawFd> PollSource<F> {
     }
 }
 
-impl<F: AsRawFd> Deref for PollSource<F> {
+impl<F: AsRawDescriptor> Deref for PollSource<F> {
     type Target = F;
 
     fn deref(&self) -> &Self::Target {
@@ -93,14 +93,14 @@ impl<F: AsRawFd> Deref for PollSource<F> {
     }
 }
 
-impl<F: AsRawFd> DerefMut for PollSource<F> {
+impl<F: AsRawDescriptor> DerefMut for PollSource<F> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.as_mut()
     }
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawFd> ReadAsync for PollSource<F> {
+impl<F: AsRawDescriptor> ReadAsync for PollSource<F> {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
     async fn read_to_vec<'a>(
         &'a self,
@@ -112,7 +112,7 @@ impl<F: AsRawFd> ReadAsync for PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 unsafe {
                     libc::pread64(
-                        self.as_raw_fd(),
+                        self.as_raw_descriptor(),
                         vec.as_mut_ptr() as *mut libc::c_void,
                         vec.len(),
                         offset as libc::off64_t,
@@ -121,7 +121,7 @@ impl<F: AsRawFd> ReadAsync for PollSource<F> {
             } else {
                 unsafe {
                     libc::read(
-                        self.as_raw_fd(),
+                        self.as_raw_descriptor(),
                         vec.as_mut_ptr() as *mut libc::c_void,
                         vec.len(),
                     )
@@ -160,7 +160,7 @@ impl<F: AsRawFd> ReadAsync for PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 unsafe {
                     libc::preadv64(
-                        self.as_raw_fd(),
+                        self.as_raw_descriptor(),
                         iovecs.as_mut_ptr() as *mut _,
                         iovecs.len() as i32,
                         offset as libc::off64_t,
@@ -169,7 +169,7 @@ impl<F: AsRawFd> ReadAsync for PollSource<F> {
             } else {
                 unsafe {
                     libc::readv(
-                        self.as_raw_fd(),
+                        self.as_raw_descriptor(),
                         iovecs.as_mut_ptr() as *mut _,
                         iovecs.len() as i32,
                     )
@@ -203,7 +203,7 @@ impl<F: AsRawFd> ReadAsync for PollSource<F> {
             // Safe because this will only modify `buf` and we check the return value.
             let res = unsafe {
                 libc::read(
-                    self.as_raw_fd(),
+                    self.as_raw_descriptor(),
                     buf.as_mut_ptr() as *mut libc::c_void,
                     buf.len(),
                 )
@@ -225,7 +225,7 @@ impl<F: AsRawFd> ReadAsync for PollSource<F> {
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawFd> WriteAsync for PollSource<F> {
+impl<F: AsRawDescriptor> WriteAsync for PollSource<F> {
     /// Writes from the given `vec` to the file starting at `file_offset`.
     async fn write_from_vec<'a>(
         &'a self,
@@ -237,7 +237,7 @@ impl<F: AsRawFd> WriteAsync for PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 unsafe {
                     libc::pwrite64(
-                        self.as_raw_fd(),
+                        self.as_raw_descriptor(),
                         vec.as_ptr() as *const libc::c_void,
                         vec.len(),
                         offset as libc::off64_t,
@@ -246,7 +246,7 @@ impl<F: AsRawFd> WriteAsync for PollSource<F> {
             } else {
                 unsafe {
                     libc::write(
-                        self.as_raw_fd(),
+                        self.as_raw_descriptor(),
                         vec.as_ptr() as *const libc::c_void,
                         vec.len(),
                     )
@@ -286,7 +286,7 @@ impl<F: AsRawFd> WriteAsync for PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 unsafe {
                     libc::pwritev64(
-                        self.as_raw_fd(),
+                        self.as_raw_descriptor(),
                         iovecs.as_ptr() as *mut _,
                         iovecs.len() as i32,
                         offset as libc::off64_t,
@@ -295,7 +295,7 @@ impl<F: AsRawFd> WriteAsync for PollSource<F> {
             } else {
                 unsafe {
                     libc::writev(
-                        self.as_raw_fd(),
+                        self.as_raw_descriptor(),
                         iovecs.as_ptr() as *mut _,
                         iovecs.len() as i32,
                     )
@@ -321,7 +321,7 @@ impl<F: AsRawFd> WriteAsync for PollSource<F> {
         let mode_u32: u32 = mode.into();
         let ret = unsafe {
             libc::fallocate64(
-                self.as_raw_fd(),
+                self.as_raw_descriptor(),
                 mode_u32 as libc::c_int,
                 file_offset as libc::off64_t,
                 len as libc::off64_t,
@@ -336,7 +336,7 @@ impl<F: AsRawFd> WriteAsync for PollSource<F> {
 
     /// Sync all completed write operations to the backing storage.
     async fn fsync(&self) -> AsyncResult<()> {
-        let ret = unsafe { libc::fsync(self.as_raw_fd()) };
+        let ret = unsafe { libc::fsync(self.as_raw_descriptor()) };
         if ret == 0 {
             Ok(())
         } else {
@@ -346,7 +346,7 @@ impl<F: AsRawFd> WriteAsync for PollSource<F> {
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawFd> IoSourceExt<F> for PollSource<F> {
+impl<F: AsRawDescriptor> IoSourceExt<F> for PollSource<F> {
     /// Yields the underlying IO source.
     fn into_source(self: Box<Self>) -> F {
         self.0.into_source()

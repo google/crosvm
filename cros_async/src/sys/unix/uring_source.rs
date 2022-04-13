@@ -6,7 +6,6 @@ use std::{
     convert::TryInto,
     io,
     ops::{Deref, DerefMut},
-    os::unix::io::AsRawFd,
     sync::Arc,
 };
 
@@ -17,16 +16,17 @@ use crate::{
     mem::{BackingMemory, MemRegion, VecIoWrapper},
     AllocateMode, AsyncError, AsyncResult, ReadAsync, WriteAsync,
 };
+use base::AsRawDescriptor;
 
 /// `UringSource` wraps FD backed IO sources for use with io_uring. It is a thin wrapper around
 /// registering an IO source with the uring that provides an `IoSource` implementation.
 /// Most useful functions are provided by 'IoSourceExt'.
-pub struct UringSource<F: AsRawFd> {
+pub struct UringSource<F: AsRawDescriptor> {
     registered_source: RegisteredSource,
     source: F,
 }
 
-impl<F: AsRawFd> UringSource<F> {
+impl<F: AsRawDescriptor> UringSource<F> {
     /// Creates a new `UringSource` that wraps the given `io_source` object.
     pub fn new(io_source: F, ex: &URingExecutor) -> Result<UringSource<F>> {
         let r = ex.register_source(&io_source)?;
@@ -43,7 +43,7 @@ impl<F: AsRawFd> UringSource<F> {
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawFd> ReadAsync for UringSource<F> {
+impl<F: AsRawDescriptor> ReadAsync for UringSource<F> {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
     async fn read_to_vec<'a>(
         &'a self,
@@ -123,7 +123,7 @@ impl<F: AsRawFd> ReadAsync for UringSource<F> {
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawFd> WriteAsync for UringSource<F> {
+impl<F: AsRawDescriptor> WriteAsync for UringSource<F> {
     /// Writes from the given `vec` to the file starting at `file_offset`.
     async fn write_from_vec<'a>(
         &'a self,
@@ -183,7 +183,7 @@ impl<F: AsRawFd> WriteAsync for UringSource<F> {
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawFd> crate::IoSourceExt<F> for UringSource<F> {
+impl<F: AsRawDescriptor> crate::IoSourceExt<F> for UringSource<F> {
     /// Yields the underlying IO source.
     fn into_source(self: Box<Self>) -> F {
         self.source
@@ -204,7 +204,7 @@ impl<F: AsRawFd> crate::IoSourceExt<F> for UringSource<F> {
     }
 }
 
-impl<F: AsRawFd> Deref for UringSource<F> {
+impl<F: AsRawDescriptor> Deref for UringSource<F> {
     type Target = F;
 
     fn deref(&self) -> &Self::Target {
@@ -212,7 +212,7 @@ impl<F: AsRawFd> Deref for UringSource<F> {
     }
 }
 
-impl<F: AsRawFd> DerefMut for UringSource<F> {
+impl<F: AsRawDescriptor> DerefMut for UringSource<F> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.source
     }
@@ -222,7 +222,6 @@ impl<F: AsRawFd> DerefMut for UringSource<F> {
 mod tests {
     use std::{
         fs::{File, OpenOptions},
-        os::unix::io::AsRawFd,
         path::PathBuf,
     };
 
@@ -242,7 +241,7 @@ mod tests {
         use tempfile::tempfile;
 
         let ex = URingExecutor::new().unwrap();
-        // Use guest memory as a test file, it implements AsRawFd.
+        // Use guest memory as a test file, it implements AsRawDescriptor.
         let mut source = tempfile().unwrap();
         let data = vec![0x55; 8192];
         source.write_all(&data).unwrap();
@@ -315,7 +314,7 @@ mod tests {
         ex.run_until(go(&ex)).unwrap();
     }
 
-    async fn read_u64<T: AsRawFd>(source: &UringSource<T>) -> u64 {
+    async fn read_u64<T: AsRawDescriptor>(source: &UringSource<T>) -> u64 {
         // Init a vec that translates to u64::max;
         let u64_mem = vec![0xffu8; std::mem::size_of::<u64>()];
         let (ret, u64_mem) = source.read_to_vec(None, u64_mem).await.unwrap();

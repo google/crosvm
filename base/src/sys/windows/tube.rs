@@ -349,14 +349,14 @@ impl CloseNotifier for Tube {
     }
 }
 
-impl AsRawHandle for SendTube {
-    fn as_raw_handle(&self) -> RawHandle {
+impl AsRawDescriptor for SendTube {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         self.0.as_raw_descriptor()
     }
 }
 
-impl AsRawHandle for RecvTube {
-    fn as_raw_handle(&self) -> RawHandle {
+impl AsRawDescriptor for RecvTube {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         self.0.as_raw_descriptor()
     }
 }

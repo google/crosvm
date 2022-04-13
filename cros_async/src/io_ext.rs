@@ -23,6 +23,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use base::{AsRawDescriptor, RawDescriptor};
 use remain::sorted;
 use thiserror::Error as ThisError;
 
@@ -30,11 +31,6 @@ use super::{BackingMemory, MemRegion};
 
 #[cfg(unix)]
 use base::UnixSeqpacket;
-#[cfg(unix)]
-use std::os::unix::io::{AsRawFd, RawFd};
-
-#[cfg(windows)]
-use std::os::windows::io::{AsRawHandle, RawHandle};
 
 #[cfg(unix)]
 #[sorted]
@@ -209,10 +205,7 @@ pub trait IoSourceExt<F>: ReadAsync + WriteAsync {
 /// (Note: it'd be really nice to implement a TryFrom for any implementors, and
 /// remove our factory functions. Unfortunately
 /// <https://github.com/rust-lang/rust/issues/50133> makes that too painful.)
-#[cfg(unix)]
-pub trait IntoAsync: AsRawFd {}
-#[cfg(windows)]
-pub trait IntoAsync: AsRawHandle {}
+pub trait IntoAsync: AsRawDescriptor {}
 
 impl IntoAsync for File {}
 #[cfg(unix)]
@@ -249,25 +242,13 @@ impl<T> DerefMut for AsyncWrapper<T> {
     }
 }
 
-#[cfg(unix)]
-impl<T: AsRawFd> AsRawFd for AsyncWrapper<T> {
-    fn as_raw_fd(&self) -> RawFd {
-        self.0.as_raw_fd()
+impl<T: AsRawDescriptor> AsRawDescriptor for AsyncWrapper<T> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.0.as_raw_descriptor()
     }
 }
 
-#[cfg(windows)]
-impl<T: AsRawHandle> AsRawHandle for AsyncWrapper<T> {
-    fn as_raw_handle(&self) -> RawHandle {
-        self.0.as_raw_handle()
-    }
-}
-
-#[cfg(unix)]
-impl<T: AsRawFd> IntoAsync for AsyncWrapper<T> {}
-
-#[cfg(windows)]
-impl<T: AsRawHandle> IntoAsync for AsyncWrapper<T> {}
+impl<T: AsRawDescriptor> IntoAsync for AsyncWrapper<T> {}
 
 #[cfg(all(test, unix))]
 mod tests {
@@ -275,7 +256,6 @@ mod tests {
     use std::{
         fs::{File, OpenOptions},
         future::Future,
-        os::unix::io::AsRawFd,
         pin::Pin,
         sync::Arc,
         task::{Context, Poll, Waker},
@@ -401,7 +381,7 @@ mod tests {
         if !use_uring() {
             return;
         }
-        async fn go<F: AsRawFd>(async_source: Box<dyn IoSourceExt<F>>) {
+        async fn go<F: AsRawDescriptor>(async_source: Box<dyn IoSourceExt<F>>) {
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
             let ret = async_source.read_to_vec(None, v).await.unwrap();
@@ -427,7 +407,7 @@ mod tests {
         if !use_uring() {
             return;
         }
-        async fn go<F: AsRawFd>(async_source: Box<dyn IoSourceExt<F>>) {
+        async fn go<F: AsRawDescriptor>(async_source: Box<dyn IoSourceExt<F>>) {
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
             let ret = async_source.write_from_vec(None, v).await.unwrap();
@@ -452,7 +432,7 @@ mod tests {
         if !use_uring() {
             return;
         }
-        async fn go<F: AsRawFd>(async_source: Box<dyn IoSourceExt<F>>) {
+        async fn go<F: AsRawDescriptor>(async_source: Box<dyn IoSourceExt<F>>) {
             let mem = Arc::new(VecIoWrapper::from(vec![0x55u8; 8192]));
             let ret = async_source
                 .read_to_mem(
@@ -495,7 +475,7 @@ mod tests {
         if !use_uring() {
             return;
         }
-        async fn go<F: AsRawFd>(async_source: Box<dyn IoSourceExt<F>>) {
+        async fn go<F: AsRawDescriptor>(async_source: Box<dyn IoSourceExt<F>>) {
             let mem = Arc::new(VecIoWrapper::from(vec![0x55u8; 8192]));
             let ret = async_source
                 .write_from_mem(
@@ -541,7 +521,7 @@ mod tests {
             return;
         }
 
-        async fn go<F: AsRawFd>(source: Box<dyn IoSourceExt<F>>) -> u64 {
+        async fn go<F: AsRawDescriptor>(source: Box<dyn IoSourceExt<F>>) -> u64 {
             source.read_u64().await.unwrap()
         }
 
@@ -565,7 +545,7 @@ mod tests {
         if !use_uring() {
             return;
         }
-        async fn go<F: AsRawFd>(source: Box<dyn IoSourceExt<F>>) {
+        async fn go<F: AsRawDescriptor>(source: Box<dyn IoSourceExt<F>>) {
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
             let ret = source.write_from_vec(None, v).await.unwrap();

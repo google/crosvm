@@ -133,14 +133,14 @@ impl FromRawDescriptor for Tube {
     }
 }
 
-impl AsRawFd for SendTube {
-    fn as_raw_fd(&self) -> RawFd {
+impl AsRawDescriptor for SendTube {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         self.0.as_raw_descriptor()
     }
 }
 
-impl AsRawFd for RecvTube {
-    fn as_raw_fd(&self) -> RawFd {
+impl AsRawDescriptor for RecvTube {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         self.0.as_raw_descriptor()
     }
 }

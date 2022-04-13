@@ -10,7 +10,7 @@ use crate::{
 use async_trait::async_trait;
 use base::{
     error, warn, AsRawDescriptor, Descriptor, Error as SysUtilError, FileReadWriteAtVolatile,
-    FileReadWriteVolatile, PunchHole, WriteZeroesAt,
+    FileReadWriteVolatile, FromRawDescriptor, PunchHole, WriteZeroesAt,
 };
 use data_model::VolatileSlice;
 use smallvec::SmallVec;
@@ -20,7 +20,6 @@ use std::{
         Read, Seek, SeekFrom, Write, {self},
     },
     mem::ManuallyDrop,
-    os::windows::io::{AsRawHandle, FromRawHandle},
     ptr::null_mut,
     sync::Arc,
     time::Duration,
@@ -108,13 +107,13 @@ impl HandleWrapper {
 /// operations. It demuxes IO requests across a set of handles that refer to the same underlying IO
 /// source, such as a file, and executes those requests across multiple threads. Benchmarks show
 /// that this is the fastest method to perform IO on Windows, especially for file reads.
-pub struct HandleSource<F: AsRawHandle> {
+pub struct HandleSource<F: AsRawDescriptor> {
     sources: Box<[F]>,
     source_descriptors: Vec<Descriptor>,
     blocking_pool: CancellableBlockingPool,
 }
 
-impl<F: AsRawHandle> HandleSource<F> {
+impl<F: AsRawDescriptor> HandleSource<F> {
     /// Create a new `HandleSource` from the given IO source.
     ///
     /// Each HandleSource uses its own thread pool, with one thread per source supplied. Since these
@@ -135,7 +134,7 @@ impl<F: AsRawHandle> HandleSource<F> {
 
         // Safe because consumers of the descriptors are tied to the lifetime of HandleSource.
         for source in sources.iter() {
-            source_descriptors.push(Descriptor(source.as_raw_handle()));
+            source_descriptors.push(Descriptor(source.as_raw_descriptor()));
         }
 
         Ok(Self {
@@ -167,12 +166,12 @@ impl<F: AsRawHandle> HandleSource<F> {
     fn as_descriptors(&self) -> Vec<Descriptor> {
         self.sources
             .iter()
-            .map(|i| Descriptor(i.as_raw_handle()))
+            .map(|i| Descriptor(i.as_raw_descriptor()))
             .collect()
     }
 }
 
-impl<F: AsRawHandle> Drop for HandleSource<F> {
+impl<F: AsRawDescriptor> Drop for HandleSource<F> {
     fn drop(&mut self) {
         if let Err(e) = self.blocking_pool.shutdown() {
             error!("failed to clean up HandleSource: {}", e);
@@ -184,14 +183,14 @@ fn get_thread_file(descriptors: Vec<Descriptor>) -> ManuallyDrop<File> {
     // Safe because all callers must exit *before* these handles will be closed (guaranteed by
     // HandleSource's Drop impl.).
     unsafe {
-        ManuallyDrop::new(File::from_raw_handle(
+        ManuallyDrop::new(File::from_raw_descriptor(
             descriptors[GetCurrentThreadId() as usize % descriptors.len()].0,
         ))
     }
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawHandle> ReadAsync for HandleSource<F> {
+impl<F: AsRawDescriptor> ReadAsync for HandleSource<F> {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
     async fn read_to_vec<'a>(
         &'a self,
@@ -264,7 +263,7 @@ impl<F: AsRawHandle> ReadAsync for HandleSource<F> {
 }
 
 #[async_trait(?Send)]
-impl<F: AsRawHandle> WriteAsync for HandleSource<F> {
+impl<F: AsRawDescriptor> WriteAsync for HandleSource<F> {
     /// Writes from the given `vec` to the file starting at `file_offset`.
     async fn write_from_vec<'a>(
         &'a self,
@@ -377,7 +376,7 @@ impl<F: AsRawHandle> WriteAsync for HandleSource<F> {
 /// Note that on Windows w/ multiple sources these functions do not make sense.
 /// TODO(nkgold): decide on what these should mean.
 #[async_trait(?Send)]
-impl<F: AsRawHandle> IoSourceExt<F> for HandleSource<F> {
+impl<F: AsRawDescriptor> IoSourceExt<F> for HandleSource<F> {
     /// Yields the underlying IO source.
     fn into_source(self: Box<Self>) -> F {
         unimplemented!("`into_source` is not supported on Windows.")

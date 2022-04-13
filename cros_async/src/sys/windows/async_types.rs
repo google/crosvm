@@ -3,11 +3,10 @@
 // found in the LICENSE file.
 
 use super::HandleWrapper;
-use crate::{unblock, DescriptorAdapter, DescriptorIntoAsync, Executor};
-use base::{Descriptor, Tube, TubeError, TubeResult};
+use crate::{unblock, Executor};
+use base::{AsRawDescriptor, Descriptor, Tube, TubeError, TubeResult};
 use serde::{de::DeserializeOwned, Serialize};
 use std::io;
-use std::os::windows::io::{AsRawHandle, RawHandle};
 use std::sync::{Arc, Mutex};
 
 pub struct AsyncTube {
@@ -26,7 +25,8 @@ impl AsyncTube {
     /// (avoiding the unimplemented wait_readable).
     pub async fn next<T: 'static + DeserializeOwned + Send>(&self) -> TubeResult<T> {
         let tube = Arc::clone(&self.inner);
-        let handles = HandleWrapper::new(vec![Descriptor(tube.lock().unwrap().as_raw_handle())]);
+        let handles =
+            HandleWrapper::new(vec![Descriptor(tube.lock().unwrap().as_raw_descriptor())]);
         unblock(
             move || tube.lock().unwrap().recv(),
             move || Err(handles.lock().cancel_sync_io(TubeError::OperationCancelled)),
@@ -36,7 +36,8 @@ impl AsyncTube {
 
     pub async fn send<T: 'static + Serialize + Send + Sync>(&self, msg: T) -> TubeResult<()> {
         let tube = Arc::clone(&self.inner);
-        let handles = HandleWrapper::new(vec![Descriptor(tube.lock().unwrap().as_raw_handle())]);
+        let handles =
+            HandleWrapper::new(vec![Descriptor(tube.lock().unwrap().as_raw_descriptor())]);
         unblock(
             move || tube.lock().unwrap().send(&msg),
             move || Err(handles.lock().cancel_sync_io(TubeError::OperationCancelled)),
@@ -55,15 +56,5 @@ impl From<AsyncTube> for Tube {
         // operations are complete.
         std::mem::drop(at.inner.lock().unwrap());
         Arc::try_unwrap(at.inner).unwrap().into_inner().unwrap()
-    }
-}
-
-#[cfg(windows)]
-impl<T> AsRawHandle for DescriptorAdapter<T>
-where
-    T: DescriptorIntoAsync,
-{
-    fn as_raw_handle(&self) -> RawHandle {
-        self.0.as_raw_descriptor()
     }
 }

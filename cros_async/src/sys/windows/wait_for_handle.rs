@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, warn, Descriptor};
+use base::{error, warn, AsRawDescriptor, Descriptor};
 use std::{
     ffi::c_void,
     future::Future,
     marker::{PhantomData, PhantomPinned},
-    os::windows::io::AsRawHandle,
     pin::Pin,
     ptr::null_mut,
     sync::MutexGuard,
@@ -60,7 +59,7 @@ enum WaitState {
 }
 
 /// Waits for a single handle valued HandleSource to be readable.
-pub struct WaitForHandle<'a, T: AsRawHandle> {
+pub struct WaitForHandle<'a, T: AsRawDescriptor> {
     handle: Descriptor,
     inner: Mutex<WaitForHandleInner>,
     _marker: PhantomData<&'a HandleSource<T>>,
@@ -69,11 +68,11 @@ pub struct WaitForHandle<'a, T: AsRawHandle> {
 
 impl<'a, T> WaitForHandle<'a, T>
 where
-    T: AsRawHandle,
+    T: AsRawDescriptor,
 {
     pub fn new(handle_source: &'a HandleSource<T>) -> WaitForHandle<'a, T> {
         WaitForHandle {
-            handle: Descriptor(handle_source.as_source().as_raw_handle()),
+            handle: Descriptor(handle_source.as_source().as_raw_descriptor()),
             inner: Mutex::new(WaitForHandleInner::new()),
             _marker: PhantomData,
             _pinned_marker: PhantomPinned,
@@ -83,7 +82,7 @@ where
 
 impl<'a, T> Future for WaitForHandle<'a, T>
 where
-    T: AsRawHandle,
+    T: AsRawDescriptor,
 {
     type Output = Result<()>;
 
@@ -149,7 +148,7 @@ where
 
 impl<'a, T> Drop for WaitForHandle<'a, T>
 where
-    T: AsRawHandle,
+    T: AsRawDescriptor,
 {
     fn drop(&mut self) {
         // We cannot hold the lock over the call to unregister_wait, otherwise we could deadlock

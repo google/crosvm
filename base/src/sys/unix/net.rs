@@ -645,6 +645,12 @@ impl AsRawDescriptor for UnixSeqpacket {
     }
 }
 
+impl AsRawDescriptor for &UnixSeqpacket {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.fd
+    }
+}
+
 impl io::Read for UnixSeqpacket {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.recv(buf)

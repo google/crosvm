@@ -13,7 +13,7 @@ use std::{
     fs::File,
     future::Future,
     io, mem,
-    os::unix::io::{AsRawFd, FromRawFd, RawFd},
+    os::unix::io::{FromRawFd, RawFd},
     pin::Pin,
     sync::{
         atomic::{AtomicI32, Ordering},
@@ -23,7 +23,10 @@ use std::{
 };
 
 use async_task::Task;
-use base::{add_fd_flags, warn, EpollContext, EpollEvents, Event as EventFd, WatchingEvents};
+use base::{
+    add_fd_flags, warn, AsRawDescriptor, EpollContext, EpollEvents, Event as EventFd,
+    WatchingEvents,
+};
 use futures::task::noop_waker;
 use pin_utils::pin_mut;
 use remain::sorted;
@@ -106,14 +109,16 @@ pub struct RegisteredSource<F> {
     ex: Weak<RawExecutor>,
 }
 
-impl<F: AsRawFd> RegisteredSource<F> {
+impl<F: AsRawDescriptor> RegisteredSource<F> {
     // Start an asynchronous operation to wait for this source to become readable. The returned
     // future will not be ready until the source is readable.
     pub fn wait_readable(&self) -> Result<PendingOperation> {
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
 
-        let token =
-            ex.add_operation(self.source.as_raw_fd(), WatchingEvents::empty().set_read())?;
+        let token = ex.add_operation(
+            self.source.as_raw_descriptor(),
+            WatchingEvents::empty().set_read(),
+        )?;
 
         Ok(PendingOperation {
             token: Some(token),
@@ -126,8 +131,10 @@ impl<F: AsRawFd> RegisteredSource<F> {
     pub fn wait_writable(&self) -> Result<PendingOperation> {
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
 
-        let token =
-            ex.add_operation(self.source.as_raw_fd(), WatchingEvents::empty().set_write())?;
+        let token = ex.add_operation(
+            self.source.as_raw_descriptor(),
+            WatchingEvents::empty().set_write(),
+        )?;
 
         Ok(PendingOperation {
             token: Some(token),
@@ -211,7 +218,7 @@ impl Drop for PendingOperation {
 //   completed, and the notify_task function, which then queues up another read on the eventfd and
 //   the process can repeat.
 async fn notify_task(notify: EventFd, raw: Weak<RawExecutor>) {
-    add_fd_flags(notify.as_raw_fd(), libc::O_NONBLOCK)
+    add_fd_flags(notify.as_raw_descriptor(), libc::O_NONBLOCK)
         .expect("Failed to set notify EventFd as non-blocking");
 
     loop {
@@ -223,7 +230,10 @@ async fn notify_task(notify: EventFd, raw: Weak<RawExecutor>) {
 
         if let Some(ex) = raw.upgrade() {
             let token = ex
-                .add_operation(notify.as_raw_fd(), WatchingEvents::empty().set_read())
+                .add_operation(
+                    notify.as_raw_descriptor(),
+                    WatchingEvents::empty().set_read(),
+                )
                 .expect("Failed to add notify EventFd to PollCtx");
 
             // We don't want to hold an active reference to the executor in the .await below.
@@ -537,8 +547,8 @@ impl FdExecutor {
         self.raw.run(&mut ctx, f)
     }
 
-    pub(crate) fn register_source<F: AsRawFd>(&self, f: F) -> Result<RegisteredSource<F>> {
-        add_fd_flags(f.as_raw_fd(), libc::O_NONBLOCK).map_err(Error::SettingNonBlocking)?;
+    pub(crate) fn register_source<F: AsRawDescriptor>(&self, f: F) -> Result<RegisteredSource<F>> {
+        add_fd_flags(f.as_raw_descriptor(), libc::O_NONBLOCK).map_err(Error::SettingNonBlocking)?;
         Ok(RegisteredSource {
             source: f,
             ex: Arc::downgrade(&self.raw),

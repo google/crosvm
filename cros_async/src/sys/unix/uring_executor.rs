@@ -60,7 +60,7 @@ use std::{
     mem::{
         MaybeUninit, {self},
     },
-    os::unix::io::{AsRawFd, FromRawFd, RawFd},
+    os::unix::io::{FromRawFd, RawFd},
     pin::Pin,
     sync::{
         atomic::{AtomicI32, Ordering},
@@ -73,7 +73,7 @@ use std::{
 };
 
 use async_task::Task;
-use base::{warn, WatchingEvents};
+use base::{warn, AsRawDescriptor, WatchingEvents};
 use futures::task::noop_waker;
 use io_uring::URingContext;
 use once_cell::sync::Lazy;
@@ -540,7 +540,7 @@ impl RawExecutor {
         let entry = ring.ops.vacant_entry();
         let next_op_token = entry.key();
         self.ctx
-            .add_poll_fd(src.as_raw_fd(), events, usize_to_u64(next_op_token))
+            .add_poll_fd(src.as_raw_descriptor(), events, usize_to_u64(next_op_token))
             .map_err(Error::SubmittingOp)?;
         entry.insert(OpStatus::Pending(OpData {
             _file: src,
@@ -569,7 +569,7 @@ impl RawExecutor {
         let next_op_token = entry.key();
         self.ctx
             .add_fallocate(
-                src.as_raw_fd(),
+                src.as_raw_descriptor(),
                 offset,
                 len,
                 mode,
@@ -597,7 +597,7 @@ impl RawExecutor {
         let entry = ring.ops.vacant_entry();
         let next_op_token = entry.key();
         self.ctx
-            .add_fsync(src.as_raw_fd(), usize_to_u64(next_op_token))
+            .add_fsync(src.as_raw_descriptor(), usize_to_u64(next_op_token))
             .map_err(Error::SubmittingOp)?;
         entry.insert(OpStatus::Pending(OpData {
             _file: src,
@@ -648,7 +648,12 @@ impl RawExecutor {
             // duration to ensure the memory is valid while the kernel accesses it.
             // Tested by `dont_drop_backing_mem_read` unit test.
             self.ctx
-                .add_readv_iter(iovecs, src.as_raw_fd(), offset, usize_to_u64(next_op_token))
+                .add_readv_iter(
+                    iovecs,
+                    src.as_raw_descriptor(),
+                    offset,
+                    usize_to_u64(next_op_token),
+                )
                 .map_err(Error::SubmittingOp)?;
         }
 
@@ -701,7 +706,12 @@ impl RawExecutor {
             // duration to ensure the memory is valid while the kernel accesses it.
             // Tested by `dont_drop_backing_mem_write` unit test.
             self.ctx
-                .add_writev_iter(iovecs, src.as_raw_fd(), offset, usize_to_u64(next_op_token))
+                .add_writev_iter(
+                    iovecs,
+                    src.as_raw_descriptor(),
+                    offset,
+                    usize_to_u64(next_op_token),
+                )
                 .map_err(Error::SubmittingOp)?;
         }
 
@@ -815,11 +825,11 @@ impl URingExecutor {
     }
 
     /// Register a file and memory pair for buffered asynchronous operation.
-    pub(crate) fn register_source<F: AsRawFd>(&self, fd: &F) -> Result<RegisteredSource> {
+    pub(crate) fn register_source<F: AsRawDescriptor>(&self, fd: &F) -> Result<RegisteredSource> {
         let duped_fd = unsafe {
             // Safe because duplicating an FD doesn't affect memory safety, and the dup'd FD
             // will only be added to the poll loop.
-            File::from_raw_fd(dup_fd(fd.as_raw_fd())?)
+            File::from_raw_fd(dup_fd(fd.as_raw_descriptor())?)
         };
 
         Ok(RegisteredSource {
