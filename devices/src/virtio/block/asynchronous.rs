@@ -404,27 +404,28 @@ fn run_worker(
         .expect("Failed to create an async timer"),
     ));
 
-    let queue_handlers =
-        queues
-            .into_iter()
-            .map(|q| Rc::new(RefCell::new(q)))
-            .zip(queue_evts.into_iter().map(|e| {
-                EventAsync::new(e.0, &ex).expect("Failed to create async event for queue")
-            }))
-            .map(|(queue, event)| {
-                handle_queue(
-                    ex.clone(),
-                    mem.clone(),
-                    Rc::clone(disk_state),
-                    Rc::clone(&queue),
-                    event,
-                    Rc::clone(&interrupt),
-                    Rc::clone(&flush_timer),
-                    Rc::clone(&flush_timer_armed),
-                )
-            })
-            .collect::<FuturesUnordered<_>>()
-            .into_future();
+    let queue_handlers = queues
+        .into_iter()
+        .map(|q| Rc::new(RefCell::new(q)))
+        .zip(
+            queue_evts
+                .into_iter()
+                .map(|e| EventAsync::new(e, &ex).expect("Failed to create async event for queue")),
+        )
+        .map(|(queue, event)| {
+            handle_queue(
+                ex.clone(),
+                mem.clone(),
+                Rc::clone(disk_state),
+                Rc::clone(&queue),
+                event,
+                Rc::clone(&interrupt),
+                Rc::clone(&flush_timer),
+                Rc::clone(&flush_timer_armed),
+            )
+        })
+        .collect::<FuturesUnordered<_>>()
+        .into_future();
 
     // Flushes the disk periodically.
     let flush_timer = TimerAsync::new(timer.0, &ex).expect("Failed to create an async timer");

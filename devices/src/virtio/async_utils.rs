@@ -16,7 +16,7 @@ use super::{Interrupt, SignalableInterrupt};
 /// Async task that waits for a signal from `event`.  Once this event is readable, exit. Exiting
 /// this future will cause the main loop to break and the worker thread to exit.
 pub async fn await_and_exit(ex: &Executor, event: Event) -> Result<()> {
-    let event_async = EventAsync::new(event.0, ex).context("failed to create EventAsync")?;
+    let event_async = EventAsync::new(event, ex).context("failed to create EventAsync")?;
     let _ = event_async.next_val().await;
     Ok(())
 }
@@ -30,7 +30,7 @@ pub async fn handle_irq_resample(ex: &Executor, interrupt: Rc<RefCell<Interrupt>
         let resample_evt = resample_evt
             .try_clone()
             .context("resample_evt.try_clone() failed")?;
-        Some(EventAsync::new(resample_evt.0, ex).context("failed to create async resample event")?)
+        Some(EventAsync::new(resample_evt, ex).context("failed to create async resample event")?)
     } else {
         None
     };

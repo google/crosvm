@@ -65,11 +65,11 @@ fn run_worker(
     tx_queue: Arc<Mutex<UserQueue>>,
     tx_irq: Event,
 ) -> Result<()> {
-    let rx_irq = EventAsync::new(rx_irq.0, &ex).context("failed to create async event")?;
+    let rx_irq = EventAsync::new(rx_irq, &ex).context("failed to create async event")?;
     let rxq = process_rxq(rx_irq, rx_queue, rx_sender, rx_evt);
     pin_mut!(rxq);
 
-    let tx_irq = EventAsync::new(tx_irq.0, &ex).context("failed to create async event")?;
+    let tx_irq = EventAsync::new(tx_irq, &ex).context("failed to create async event")?;
     let txq = process_txq(tx_irq, Arc::clone(&tx_queue));
     pin_mut!(txq);
 

@@ -600,7 +600,7 @@ impl Worker {
 
         let mut evts_async: Vec<EventAsync> = queue_evts
             .into_iter()
-            .map(|e| EventAsync::new(e.0, &ex).expect("Failed to create async event for queue"))
+            .map(|e| EventAsync::new(e, &ex).expect("Failed to create async event for queue"))
             .collect();
         let interrupt = Rc::new(RefCell::new(interrupt));
         let interrupt_ref = &*interrupt.borrow();

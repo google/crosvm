@@ -2,19 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    mem,
-    ops::Deref,
-    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd},
-    ptr,
-    time::Duration,
-};
+use std::{mem, ops::Deref, ptr, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
 use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor};
 pub use crate::platform::EventReadResult;
 use crate::{generate_scoped_event, platform::EventFd, RawDescriptor, Result};
+
+#[cfg(unix)]
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
 /// See [EventFd](crate::platform::EventFd) for struct- and method-level
 /// documentation.
@@ -58,6 +55,13 @@ impl FromRawDescriptor for Event {
 impl IntoRawDescriptor for Event {
     fn into_raw_descriptor(self) -> RawDescriptor {
         self.0.into_raw_fd()
+    }
+}
+
+#[cfg(unix)]
+impl AsRawFd for Event {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0.as_raw_fd()
     }
 }
 

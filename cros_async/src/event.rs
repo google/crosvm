@@ -2,9 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::EventFd;
-
 use super::{AsyncResult, Executor, IntoAsync, IoSourceExt};
+use base::Event as EventFd;
 
 /// An async version of `base::EventFd`.
 pub struct EventAsync {
@@ -83,3 +82,5 @@ mod tests {
         assert_eq!(val, 0xaa);
     }
 }
+// Safe because an `EventFd` is used underneath, which is safe to pass between threads.
+unsafe impl Send for EventAsync {}

@@ -188,7 +188,7 @@ impl VhostUserBackend for ConsoleBackend {
         // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
         queue.ack_features(self.acked_features);
 
-        let kick_evt = EventAsync::new(kick_evt.0, &self.ex)
+        let kick_evt = EventAsync::new(kick_evt, &self.ex)
             .context("Failed to create EventAsync for kick_evt")?;
         let (handle, registration) = AbortHandle::new_pair();
         match idx {
@@ -214,7 +214,7 @@ impl VhostUserBackend for ConsoleBackend {
                     .ok_or_else(|| anyhow!("input channel unavailable"))?;
 
                 // Create the async 'in' event so we can await on it.
-                let in_avail_async_evt = EventAsync::new(in_avail_evt.0, &self.ex)
+                let in_avail_async_evt = EventAsync::new(in_avail_evt, &self.ex)
                     .context("Failed to create EventAsync for in_avail_evt")?;
 
                 self.ex

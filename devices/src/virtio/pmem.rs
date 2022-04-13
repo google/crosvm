@@ -189,7 +189,7 @@ fn run_worker(
 
     let ex = Executor::new().unwrap();
 
-    let queue_evt = EventAsync::new(queue_evt.0, &ex).expect("failed to set up the queue event");
+    let queue_evt = EventAsync::new(queue_evt, &ex).expect("failed to set up the queue event");
 
     // Process requests from the virtio queue.
     let queue_fut = handle_queue(

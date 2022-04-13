@@ -158,7 +158,7 @@ impl VhostUserBackend for CrasSndBackend {
         queue.ack_features(self.acked_features);
 
         let kick_evt =
-            EventAsync::new(kick_evt.0, ex).context("failed to create EventAsync for kick_evt")?;
+            EventAsync::new(kick_evt, ex).context("failed to create EventAsync for kick_evt")?;
         let (handle, registration) = AbortHandle::new_pair();
         match idx {
             0 => {

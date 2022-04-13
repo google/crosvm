@@ -175,7 +175,6 @@ mod tests {
         task::{Context, Poll, Waker},
         thread,
     };
-
     use sync::Mutex;
 
     use super::{
@@ -187,6 +186,7 @@ mod tests {
         },
         *,
     };
+    use base::Event;
 
     struct State {
         should_quit: bool,
@@ -434,20 +434,19 @@ mod tests {
         if !use_uring() {
             return;
         }
-        use base::EventFd;
 
         async fn go<F: AsRawFd>(source: Box<dyn IoSourceExt<F>>) -> u64 {
             source.read_u64().await.unwrap()
         }
 
-        let eventfd = EventFd::new().unwrap();
+        let eventfd = Event::new().unwrap();
         eventfd.write(0x55).unwrap();
         let ex = URingExecutor::new().unwrap();
         let uring_source = async_uring_from(eventfd, &ex).unwrap();
         let val = ex.run_until(go(uring_source)).unwrap();
         assert_eq!(val, 0x55);
 
-        let eventfd = EventFd::new().unwrap();
+        let eventfd = Event::new().unwrap();
         eventfd.write(0xaa).unwrap();
         let poll_ex = FdExecutor::new().unwrap();
         let poll_source = async_poll_from(eventfd, &poll_ex).unwrap();

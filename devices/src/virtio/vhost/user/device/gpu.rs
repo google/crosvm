@@ -253,7 +253,7 @@ impl VhostUserBackend for GpuBackend {
             _ => bail!("attempted to start unknown queue: {}", idx),
         }
 
-        let kick_evt = EventAsync::new(kick_evt.0, &self.ex)
+        let kick_evt = EventAsync::new(kick_evt, &self.ex)
             .context("failed to create EventAsync for kick_evt")?;
 
         let reader = SharedReader {

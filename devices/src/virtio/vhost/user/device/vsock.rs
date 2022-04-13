@@ -378,7 +378,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
 
                 let kernel_evt = Event::new().map_err(|_| Error::SlaveInternalError)?;
                 let task_evt = EventAsync::new(
-                    kernel_evt.try_clone().expect("failed to clone event").0,
+                    kernel_evt.try_clone().expect("failed to clone event"),
                     &self.ex,
                 )
                 .map_err(|_| Error::SlaveInternalError)?;

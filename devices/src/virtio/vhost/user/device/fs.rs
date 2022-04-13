@@ -228,7 +228,7 @@ impl VhostUserBackend for FsBackend {
         // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
         queue.ack_features(self.acked_features);
 
-        let kick_evt = EventAsync::new(kick_evt.0, &self.ex)
+        let kick_evt = EventAsync::new(kick_evt, &self.ex)
             .context("failed to create EventAsync for kick_evt")?;
         let (handle, registration) = AbortHandle::new_pair();
         let (_, fs_device_tube) = Tube::pair()?;

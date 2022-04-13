@@ -131,7 +131,7 @@ pub(super) fn start_queue<T: 'static + IntoAsync + TapT>(
         let ex = ex.get().expect("Executor not initialized");
 
         let kick_evt =
-            EventAsync::new(kick_evt.0, ex).context("failed to create EventAsync for kick_evt")?;
+            EventAsync::new(kick_evt, ex).context("failed to create EventAsync for kick_evt")?;
         let tap = backend
             .tap
             .try_clone()

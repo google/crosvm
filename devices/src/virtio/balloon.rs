@@ -465,8 +465,8 @@ fn run_worker(
     // We need a block to release all references to command_tube at the end before returning it.
     {
         // The first queue is used for inflate messages
-        let inflate_event = EventAsync::new(queue_evts.remove(0).0, &ex)
-            .expect("failed to set up the inflate event");
+        let inflate_event =
+            EventAsync::new(queue_evts.remove(0), &ex).expect("failed to set up the inflate event");
         let inflate = handle_queue(
             &mem,
             queues.remove(0),
@@ -482,8 +482,8 @@ fn run_worker(
         pin_mut!(inflate);
 
         // The second queue is used for deflate messages
-        let deflate_event = EventAsync::new(queue_evts.remove(0).0, &ex)
-            .expect("failed to set up the deflate event");
+        let deflate_event =
+            EventAsync::new(queue_evts.remove(0), &ex).expect("failed to set up the deflate event");
         let deflate = handle_queue(
             &mem,
             queues.remove(0),
@@ -499,7 +499,7 @@ fn run_worker(
         // stats results that were queued during an error condition.
         let (stats_tx, stats_rx) = mpsc::channel::<u64>(1);
         let stats_event =
-            EventAsync::new(queue_evts.remove(0).0, &ex).expect("failed to set up the stats event");
+            EventAsync::new(queue_evts.remove(0), &ex).expect("failed to set up the stats event");
         let stats = handle_stats_queue(
             &mem,
             queues.remove(0),
@@ -525,7 +525,7 @@ fn run_worker(
         pin_mut!(kill);
 
         let res = if !queues.is_empty() {
-            let events_event = EventAsync::new(queue_evts.remove(0).0, &ex)
+            let events_event = EventAsync::new(queue_evts.remove(0), &ex)
                 .expect("failed to set up the events event");
             let events = handle_events_queue(
                 &mem,
