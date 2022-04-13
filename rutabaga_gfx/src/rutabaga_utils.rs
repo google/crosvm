@@ -510,7 +510,7 @@ pub struct RutabagaChannel {
 }
 
 /// Enumeration of possible rutabaga components.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum RutabagaComponentType {
     Rutabaga2D,
     VirglRenderer,

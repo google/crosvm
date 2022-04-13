@@ -71,13 +71,9 @@ pub trait RutabagaComponent {
         Err(RutabagaError::Unsupported)
     }
 
-    /// Used only by VirglRenderer to poll when its poll_descriptor is signaled.
-    fn poll(&self) {}
-
-    /// Used only by VirglRenderer to return a poll_descriptor that is signaled when a poll() is
-    /// necessary.
-    fn poll_descriptor(&self) -> Option<SafeDescriptor> {
-        None
+    /// Implementations must return the last completed fence_id.
+    fn poll(&self) -> u32 {
+        0
     }
 
     /// Implementations must create a resource with the given metadata.  For 2D rutabaga components,
@@ -192,6 +188,12 @@ pub trait RutabagaContext {
         Err(RutabagaError::Unsupported)
     }
 
+    /// Implementations must return an array of fences that have completed.  This will be used by
+    /// the cross-domain context for asynchronous Tx/Rx.
+    fn context_poll(&mut self) -> Option<Vec<RutabagaFence>> {
+        None
+    }
+
     /// Implementations must return the component type associated with the context.
     fn component_type(&self) -> RutabagaComponentType;
 }
@@ -301,19 +303,32 @@ impl Rutabaga {
         Ok(())
     }
 
-    /// Polls the default rutabaga component. In practice, only called if the default component is
-    /// virglrenderer.
-    pub fn poll(&self) {
-        if let Some(component) = self.components.get(&self.default_component) {
-            component.poll();
-        }
-    }
+    /// Polls all rutabaga components and contexts, and returns a vector of RutabagaFence
+    /// describing which fences have completed.
+    pub fn poll(&mut self) -> Vec<RutabagaFence> {
+        let mut completed_fences: Vec<RutabagaFence> = Vec::new();
+        // Poll the default component -- this the global timeline which does not take into account
+        // `ctx_id` or `ring_idx`.  This path exists for OpenGL legacy reasons and 2D mode.
+        let component = self
+            .components
+            .get_mut(&self.default_component)
+            .ok_or(0)
+            .unwrap();
 
-    /// Returns a pollable descriptor for the default rutabaga component. In practice, it is only
-    /// not None if the default component is virglrenderer.
-    pub fn poll_descriptor(&self) -> Option<SafeDescriptor> {
-        let component = self.components.get(&self.default_component).or(None)?;
-        component.poll_descriptor()
+        let global_fence_id = component.poll();
+        completed_fences.push(RutabagaFence {
+            flags: RUTABAGA_FLAG_FENCE,
+            fence_id: global_fence_id as u64,
+            ctx_id: 0,
+            ring_idx: 0,
+        });
+
+        for ctx in self.contexts.values_mut() {
+            if let Some(ref mut ctx_completed_fences) = ctx.context_poll() {
+                completed_fences.append(ctx_completed_fences);
+            }
+        }
+        completed_fences
     }
 
     /// Creates a resource with the `resource_create_3d` metadata.

@@ -9,9 +9,13 @@ use argh::FromArgs;
 use async_task::Task;
 use base::{
     clone_descriptor, error, warn, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
-    Tube, UnixSeqpacketListener, UnlinkUnixSeqpacketListener,
+    TimerFd, Tube, UnixSeqpacketListener, UnlinkUnixSeqpacketListener,
 };
-use cros_async::{AsyncTube, AsyncWrapper, EventAsync, Executor, IoSourceExt};
+use cros_async::{AsyncTube, AsyncWrapper, EventAsync, Executor, IoSourceExt, TimerAsync};
+use futures::{
+    future::{select, Either},
+    pin_mut,
+};
 use hypervisor::ProtectionType;
 use sync::Mutex;
 use vm_memory::GuestMemory;
@@ -48,15 +52,42 @@ async fn run_ctrl_queue(
     reader: SharedReader,
     mem: GuestMemory,
     kick_evt: EventAsync,
+    mut timer: TimerAsync,
     state: Rc<RefCell<gpu::Frontend>>,
 ) {
     loop {
-        if let Err(e) = kick_evt.next_val().await {
+        if state.borrow().has_pending_fences() {
+            if let Err(e) = timer.reset(gpu::FENCE_POLL_INTERVAL, None) {
+                error!("Failed to reset fence timer: {}", e);
+                break;
+            }
+
+            let kick_value = kick_evt.next_val();
+            let timer_value = timer.next_val();
+            pin_mut!(kick_value);
+            pin_mut!(timer_value);
+            match select(kick_value, timer_value).await {
+                Either::Left((res, _)) => {
+                    if let Err(e) = res {
+                        error!("Failed to read kick event for ctrl queue: {}", e);
+                        break;
+                    }
+                }
+                Either::Right((res, _)) => {
+                    if let Err(e) = res {
+                        error!("Failed to read timer for ctrl queue: {}", e);
+                        break;
+                    }
+                }
+            }
+        } else if let Err(e) = kick_evt.next_val().await {
             error!("Failed to read kick event for ctrl queue: {}", e);
+            break;
         }
 
         let mut state = state.borrow_mut();
         let needs_interrupt = state.process_queue(&mem, &reader);
+        state.fence_poll();
 
         if needs_interrupt {
             reader.signal_used(&mem);
@@ -274,9 +305,13 @@ impl VhostUserBackend for GpuBackend {
             self.display_worker = Some(task);
         }
 
+        let timer = TimerFd::new()
+            .context("failed to create TimerFd")
+            .and_then(|t| TimerAsync::new(t, &self.ex).context("failed to create TimerAsync"))?;
         let task = self
             .ex
-            .spawn_local(run_ctrl_queue(reader, mem, kick_evt, state));
+            .spawn_local(run_ctrl_queue(reader, mem, kick_evt, timer, state));
+
         self.workers[idx] = Some(task);
         Ok(())
     }

@@ -8,14 +8,16 @@ mod udmabuf_bindings;
 mod virtio_gpu;
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::convert::TryFrom;
+use std::i64;
 use std::io::Read;
 use std::mem::{self, size_of};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use anyhow::Context;
 
@@ -100,6 +102,7 @@ pub struct GpuParameters {
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
 // there to be fewer of.
 pub const QUEUE_SIZES: &[u16] = &[256, 16];
+pub const FENCE_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 pub const GPU_BAR_NUM: u8 = 4;
 pub const GPU_BAR_OFFSET: u64 = 0;
@@ -137,7 +140,7 @@ pub struct VirtioScanoutBlobData {
     pub offsets: [u32; 4],
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Hash, Eq, PartialEq)]
 enum VirtioGpuRing {
     Global,
     ContextSpecific { ctx_id: u32, ring_idx: u8 },
@@ -153,7 +156,7 @@ struct FenceDescriptor {
 #[derive(Default)]
 pub struct FenceState {
     descs: Vec<FenceDescriptor>,
-    completed_fences: BTreeMap<VirtioGpuRing, u64>,
+    completed_fences: HashMap<VirtioGpuRing, u64>,
 }
 
 pub trait QueueReader {
@@ -772,8 +775,12 @@ impl Frontend {
         self.return_cursor_descriptors.pop_front()
     }
 
-    pub fn poll(&self) {
-        self.virtio_gpu.poll();
+    pub fn fence_poll(&mut self) {
+        self.virtio_gpu.fence_poll();
+    }
+
+    pub fn has_pending_fences(&self) -> bool {
+        !self.fence_state.lock().descs.is_empty()
     }
 }
 
@@ -800,7 +807,6 @@ impl Worker {
             InterruptResample,
             Kill,
             ResourceBridge { index: usize },
-            VirtioGpuPoll,
         }
 
         let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
@@ -831,13 +837,6 @@ impl Worker {
             }
         }
 
-        if let Some(poll_desc) = self.state.virtio_gpu.poll_descriptor() {
-            if let Err(e) = wait_ctx.add(&poll_desc, Token::VirtioGpuPoll) {
-                error!("failed adding poll eventfd to WaitContext: {}", e);
-                return;
-            }
-        }
-
         // TODO(davidriley): The entire main loop processing is somewhat racey and incorrect with
         // respect to cursor vs control queue processing.  As both currently and originally
         // written, while the control queue is only processed/read from after the the cursor queue
@@ -849,7 +848,14 @@ impl Worker {
         // Declare this outside the loop so we don't keep allocating and freeing the vector.
         let mut process_resource_bridge = Vec::with_capacity(self.resource_bridges.len());
         'wait: loop {
-            let events = match wait_ctx.wait() {
+            // If there are outstanding fences, wake up early to poll them.
+            let duration = if self.state.has_pending_fences() {
+                FENCE_POLL_INTERVAL
+            } else {
+                Duration::new(i64::MAX as u64, 0)
+            };
+
+            let events = match wait_ctx.wait_timeout(duration) {
                 Ok(v) => v,
                 Err(e) => {
                     error!("failed polling for events: {}", e);
@@ -899,9 +905,6 @@ impl Worker {
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
                     }
-                    Token::VirtioGpuPoll => {
-                        self.state.poll();
-                    }
                     Token::Kill => {
                         break 'wait;
                     }
@@ -917,6 +920,8 @@ impl Worker {
             if ctrl_available && self.state.process_queue(&self.mem, &self.ctrl_queue) {
                 signal_used_ctrl = true;
             }
+
+            self.state.fence_poll();
 
             // Process the entire control queue before the resource bridge in case a resource is
             // created or destroyed by the control queue. Processing the resource bridge first may
@@ -1014,9 +1019,7 @@ impl Gpu {
             .use_surfaceless(gpu_parameters.renderer_use_surfaceless)
             .use_external_blob(external_blob)
             .use_venus(gpu_parameters.use_vulkan)
-            .use_render_server(render_server_fd.is_some())
-            .use_thread_sync(true)
-            .use_async_fence_cb(true);
+            .use_render_server(render_server_fd.is_some());
         let gfxstream_flags = GfxstreamFlags::new()
             .use_egl(gpu_parameters.renderer_use_egl)
             .use_gles(gpu_parameters.renderer_use_gles)

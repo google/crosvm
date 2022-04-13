@@ -8,10 +8,12 @@
 
 #![cfg(feature = "gfxstream")]
 
+use std::cell::RefCell;
 use std::convert::TryInto;
 use std::mem::{size_of, transmute};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::ptr::{null, null_mut};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use base::{
@@ -91,6 +93,7 @@ extern "C" {
     // forwarding and the notification of new API calls forwarded by the guest, unless they
     // correspond to minigbm resource targets (PIPE_TEXTURE_2D), in which case they create globally
     // visible shared GL textures to support gralloc.
+    fn pipe_virgl_renderer_poll();
     fn pipe_virgl_renderer_resource_create(
         args: *mut virgl_renderer_resource_create_args,
         iov: *mut iovec,
@@ -162,6 +165,7 @@ extern "C" {
 
 /// The virtio-gpu backend state tracker which supports accelerated rendering.
 pub struct Gfxstream {
+    fence_state: Rc<RefCell<FenceState>>,
     fence_handler: RutabagaFenceHandler,
 }
 
@@ -257,9 +261,14 @@ impl Gfxstream {
         gfxstream_flags: GfxstreamFlags,
         fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaComponent>> {
+        let fence_state = Rc::new(RefCell::new(FenceState {
+            latest_fence: 0,
+            handler: None,
+        }));
+
         let cookie: *mut VirglCookie = Box::into_raw(Box::new(VirglCookie {
+            fence_state: Rc::clone(&fence_state),
             render_server_fd: None,
-            fence_handler: None,
         }));
 
         unsafe {
@@ -274,7 +283,10 @@ impl Gfxstream {
             );
         }
 
-        Ok(Box::new(Gfxstream { fence_handler }))
+        Ok(Box::new(Gfxstream {
+            fence_state,
+            fence_handler,
+        }))
     }
 
     fn map_info(&self, resource_id: u32) -> RutabagaResult<u32> {
@@ -317,6 +329,11 @@ impl RutabagaComponent for Gfxstream {
         // write_fence callback in pipe_virgl_renderer_create_fence
         self.fence_handler.call(fence);
         ret_to_res(ret)
+    }
+
+    fn poll(&self) -> u32 {
+        unsafe { pipe_virgl_renderer_poll() };
+        self.fence_state.borrow().latest_fence
     }
 
     fn create_3d(
