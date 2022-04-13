@@ -40,6 +40,7 @@ async fn process_rxq(
             let mut buf = vec![0; slice.size()];
             slice.copy_to(&mut buf);
             rxq_sender.send(buf)?;
+            // Increment the event counter as we sent one buffer.
             rxq_evt.write(1).context("process_rxq")?;
         }
     }
@@ -235,6 +236,12 @@ impl VfioDeviceTrait for VvuDevice {
                     .context("failed to receive data")
                     .map_err(RecvIntoBufsError::Fatal)?;
                 rxq_buf.append(&mut data);
+                // Decrement the event counter as we received one buffer.
+                self.rxq_evt
+                    .read()
+                    .and_then(|c| self.rxq_evt.write(c - 1))
+                    .context("failed to decrease event counter")
+                    .map_err(RecvIntoBufsError::Fatal)?;
             }
 
             buf.clone_from_slice(&rxq_buf[..len]);

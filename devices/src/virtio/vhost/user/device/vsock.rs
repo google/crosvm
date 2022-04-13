@@ -4,7 +4,7 @@
 
 use std::os::unix::fs::OpenOptionsExt;
 use std::{
-    convert::{self, TryFrom, TryInto},
+    convert::{self, TryInto},
     fs::{File, OpenOptions},
     mem::size_of,
     num::Wrapping,
@@ -17,10 +17,10 @@ use std::{
 use anyhow::{bail, Context};
 use argh::FromArgs;
 use base::{
-    clear_fd_flags, error, info, AsRawDescriptor, Event, FromRawDescriptor, IntoRawDescriptor,
-    SafeDescriptor, UnlinkUnixListener,
+    clear_fd_flags, error, AsRawDescriptor, Event, FromRawDescriptor, IntoRawDescriptor,
+    UnlinkUnixListener,
 };
-use cros_async::{AsyncWrapper, EventAsync, Executor};
+use cros_async::{EventAsync, Executor};
 use data_model::{DataInit, Le64};
 use hypervisor::ProtectionType;
 use sync::Mutex;
@@ -44,8 +44,8 @@ use crate::{
         vhost::{
             user::device::{
                 handler::{
-                    create_guest_memory, create_vvu_guest_memory, vmm_va_to_gpa, HandlerType,
-                    MappingInfo,
+                    create_guest_memory, create_vvu_guest_memory, run_handler, vmm_va_to_gpa,
+                    HandlerType, MappingInfo,
                 },
                 vvu::{doorbell::DoorbellRegion, pci::VvuPciDevice, VvuDevice},
             },
@@ -520,29 +520,9 @@ async fn run_device<P: AsRef<Path>>(
         .await
         .context("failed to accept socket connection")?;
 
-    let mut req_handler = SlaveReqHandler::from_stream(socket, backend);
-    let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
-        .map(AsyncWrapper::new)
-        .expect("failed to get safe descriptor for handler");
-    let handler_source = ex.async_from(h).context("failed to create async handler")?;
+    let req_handler = SlaveReqHandler::from_stream(socket, backend);
 
-    loop {
-        handler_source
-            .wait_readable()
-            .await
-            .context("failed to wait for vhost socket to become readable")?;
-        match req_handler.handle_request() {
-            Ok(()) => (),
-            Err(Error::Disconnect) => {
-                info!("vhost-user connection closed");
-                // Exit as the client closed the connection.
-                return Ok(());
-            }
-            Err(e) => {
-                bail!("failed to handle a vhost-user request: {}", e);
-            }
-        };
-    }
+    ex.run_until(run_handler(req_handler, ex))?
 }
 
 #[derive(FromArgs)]
@@ -600,31 +580,12 @@ fn run_vvu_device<P: AsRef<Path>>(
             SlaveListener::<VfioEndpoint<_, _>, _>::new(l, backend)
                 .context("failed to create `SlaveListener`")
         })?;
-    let mut req_handler = listener
+    let req_handler = listener
         .accept()
         .context("failed to accept vfio connection")?
         .expect("no incoming connection detected");
-    let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
-        .map(AsyncWrapper::new)
-        .expect("failed to get safe descriptor for handler");
-    let handler_source = ex
-        .async_from(h)
-        .context("failed to create async handler source")?;
 
-    let done = async move {
-        loop {
-            let count = handler_source
-                .read_u64()
-                .await
-                .context("failed to wait for handler source")?;
-            for _ in 0..count {
-                req_handler
-                    .handle_request()
-                    .context("failed to handle request")?;
-            }
-        }
-    };
-    match ex.run_until(done) {
+    match ex.run_until(run_handler(req_handler, ex)) {
         Ok(Ok(())) => Ok(()),
         Ok(Err(e)) => Err(e),
         Err(e) => Err(e).context("executor error"),

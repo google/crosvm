@@ -63,16 +63,18 @@ use cros_async::{AsyncWrapper, Executor};
 use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory, MemoryRegion};
 use vmm_vhost::{
-    connection::vfio::{Endpoint as VfioEndpoint, Listener as VfioListener},
-    message::{
-        VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion, VhostUserProtocolFeatures,
-        VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
-        VhostUserVringState,
+    connection::{
+        vfio::{Endpoint as VfioEndpoint, Listener as VfioListener},
+        Endpoint,
     },
-    Protocol, SlaveListener, SlaveReqHandler,
+    message::{
+        MasterReq, VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion,
+        VhostUserProtocolFeatures, VhostUserSingleMemoryRegion, VhostUserVirtioFeatures,
+        VhostUserVringAddrFlags, VhostUserVringState,
+    },
+    Error as VhostError, Protocol, Result as VhostResult, SlaveListener, SlaveReqHandler,
+    VhostUserSlaveReqHandler, VhostUserSlaveReqHandlerMut,
 };
-
-use vmm_vhost::{Error as VhostError, Result as VhostResult, VhostUserSlaveReqHandlerMut};
 
 use crate::vfio::{VfioDevice, VfioRegionAddr};
 use crate::virtio::vhost::user::device::vvu::{
@@ -332,6 +334,38 @@ impl Vring {
     }
 }
 
+/// Performs the run loop for an already-constructor request handler.
+pub async fn run_handler<S, E>(mut req_handler: SlaveReqHandler<S, E>, ex: &Executor) -> Result<()>
+where
+    S: VhostUserSlaveReqHandler,
+    E: Endpoint<MasterReq> + AsRawDescriptor,
+{
+    let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
+        .map(AsyncWrapper::new)
+        .context("failed to get safe descriptor for handler")?;
+    let handler_source = ex
+        .async_from(h)
+        .context("failed to create an async source")?;
+
+    loop {
+        handler_source
+            .wait_readable()
+            .await
+            .context("failed to wait for the handler to become readable")?;
+        match req_handler.handle_request() {
+            Ok(()) => (),
+            Err(VhostError::ClientExit) => {
+                info!("vhost-user connection closed");
+                // Exit as the client closed the connection.
+                return Ok(());
+            }
+            Err(e) => {
+                bail!("failed to handle a vhost-user request: {}", e);
+            }
+        };
+    }
+}
+
 pub(super) enum HandlerType {
     VhostUser,
     Vvu {
@@ -405,32 +439,10 @@ where
                     .context("failed to accept an incoming connection")
             })
             .await?;
-        let mut req_handler =
+        let req_handler =
             SlaveReqHandler::from_stream(socket, Arc::new(std::sync::Mutex::new(self)));
-        let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
-            .map(AsyncWrapper::new)
-            .expect("failed to get safe descriptor for handler");
-        let handler_source = ex
-            .async_from(h)
-            .context("failed to create an async source")?;
 
-        loop {
-            handler_source
-                .wait_readable()
-                .await
-                .context("failed to wait for the handler socket to become readable")?;
-            match req_handler.handle_request() {
-                Ok(()) => (),
-                Err(VhostError::ClientExit) => {
-                    info!("vhost-user connection closed");
-                    // Exit as the client closed the connection.
-                    return Ok(());
-                }
-                Err(e) => {
-                    bail!("failed to handle a vhost-user request: {}", e);
-                }
-            };
-        }
+        run_handler(req_handler, ex).await
     }
 
     /// Starts listening virtio-vhost-user device with VFIO to handle incoming vhost-user messages
@@ -453,31 +465,12 @@ where
                 .map_err(|e| anyhow!("failed to create SlaveListener: {}", e))
             })?;
 
-        let mut req_handler = listener
+        let req_handler = listener
             .accept()
             .map_err(|e| anyhow!("failed to accept VFIO connection: {}", e))?
             .expect("vvu proxy is unavailable via VFIO");
 
-        let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
-            .map(AsyncWrapper::new)
-            .expect("failed to get safe descriptor for handler");
-        let handler_source = ex
-            .async_from(h)
-            .context("failed to create asyn handler source")?;
-
-        loop {
-            // Wait for requests from the sibling.
-            // `read_u64()` returns the number of requests arrived.
-            let count = handler_source
-                .read_u64()
-                .await
-                .context("failed to wait for handler source")?;
-            for _ in 0..count {
-                req_handler
-                    .handle_request()
-                    .context("failed to handle request")?;
-            }
-        }
+        run_handler(req_handler, ex).await
     }
 }
 
