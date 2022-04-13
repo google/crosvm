@@ -17,6 +17,8 @@ use data_model::VolatileSlice;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
+use crate::AllocateMode;
+
 use super::{
     fd_executor::{
         FdExecutor, RegisteredSource, {self},
@@ -317,7 +319,7 @@ impl<F: AsRawFd> WriteAsync for PollSource<F> {
     }
 
     /// See `fallocate(2)` for details.
-    async fn fallocate(&self, file_offset: u64, len: u64, mode: u32) -> AsyncResult<()> {
+    async fn fallocate(&self, file_offset: u64, len: u64, mode: AllocateMode) -> AsyncResult<()> {
         let ret = unsafe {
             libc::fallocate64(
                 self.as_raw_fd(),
@@ -419,7 +421,10 @@ mod tests {
                 .open(&file_path)
                 .unwrap();
             let source = PollSource::new(f, ex).unwrap();
-            source.fallocate(0, 4096, 0).await.unwrap();
+            source
+                .fallocate(0, 4096, AllocateMode::Default)
+                .await
+                .unwrap();
 
             let meta_data = std::fs::metadata(&file_path).unwrap();
             assert_eq!(meta_data.len(), 4096);

@@ -83,8 +83,8 @@ pub use event::EventAsync;
 pub use executor::Executor;
 pub use fd_executor::FdExecutor;
 pub use io_ext::{
-    AsyncWrapper, Error as AsyncError, IntoAsync, IoSourceExt, ReadAsync, Result as AsyncResult,
-    WriteAsync,
+    AllocateMode, AsyncWrapper, Error as AsyncError, IntoAsync, IoSourceExt, ReadAsync,
+    Result as AsyncResult, WriteAsync,
 };
 pub use mem::{BackingMemory, MemRegion};
 pub use poll_source::PollSource;

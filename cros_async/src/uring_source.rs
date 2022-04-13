@@ -12,6 +12,8 @@ use std::{
 
 use async_trait::async_trait;
 
+use crate::AllocateMode;
+
 use super::{
     mem::{BackingMemory, MemRegion, VecIoWrapper},
     uring_executor::{Error, RegisteredSource, Result, URingExecutor},
@@ -166,10 +168,10 @@ impl<F: AsRawFd> super::WriteAsync for UringSource<F> {
     }
 
     /// See `fallocate(2)`. Note this op is synchronous when using the Polled backend.
-    async fn fallocate(&self, file_offset: u64, len: u64, mode: u32) -> AsyncResult<()> {
+    async fn fallocate(&self, file_offset: u64, len: u64, mode: AllocateMode) -> AsyncResult<()> {
         let op = self
             .registered_source
-            .start_fallocate(file_offset, len, mode)?;
+            .start_fallocate(file_offset, len, mode.into())?;
         let _ = op.await?;
         Ok(())
     }
@@ -507,7 +509,7 @@ mod tests {
                 .open(&file_path)
                 .unwrap();
             let source = UringSource::new(f, ex).unwrap();
-            if let Err(e) = source.fallocate(0, 4096, 0).await {
+            if let Err(e) = source.fallocate(0, 4096, AllocateMode::Default).await {
                 match e {
                     super::super::io_ext::Error::Uring(
                         super::super::uring_executor::Error::Io(io_err),

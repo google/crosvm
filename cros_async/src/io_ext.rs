@@ -77,6 +77,29 @@ pub trait ReadAsync {
     async fn read_u64(&self) -> Result<u64>;
 }
 
+pub enum AllocateMode {
+    #[cfg(unix)]
+    Default,
+    PunchHole,
+    ZeroRange,
+}
+
+// This assume we always want KEEP_SIZE
+#[cfg(unix)]
+impl From<AllocateMode> for u32 {
+    fn from(value: AllocateMode) -> Self {
+        match value {
+            AllocateMode::Default => 0,
+            AllocateMode::PunchHole => {
+                (libc::FALLOC_FL_PUNCH_HOLE | libc::FALLOC_FL_KEEP_SIZE) as u32
+            }
+            AllocateMode::ZeroRange => {
+                (libc::FALLOC_FL_ZERO_RANGE | libc::FALLOC_FL_KEEP_SIZE) as u32
+            }
+        }
+    }
+}
+
 /// Ergonomic methods for async writes.
 #[async_trait(?Send)]
 pub trait WriteAsync {
@@ -96,7 +119,7 @@ pub trait WriteAsync {
     ) -> Result<usize>;
 
     /// See `fallocate(2)`. Note this op is synchronous when using the Polled backend.
-    async fn fallocate(&self, file_offset: u64, len: u64, mode: u32) -> Result<()>;
+    async fn fallocate(&self, file_offset: u64, len: u64, mode: AllocateMode) -> Result<()>;
 
     /// Sync all completed write operations to the backing storage.
     async fn fsync(&self) -> Result<()>;
