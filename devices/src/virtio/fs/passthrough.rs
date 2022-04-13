@@ -40,6 +40,8 @@ use {
     system_api::client::OrgChromiumArcQuota,
     system_api::UserDataAuth::{
         SetMediaRWDataFileProjectIdReply, SetMediaRWDataFileProjectIdRequest,
+        SetMediaRWDataFileProjectInheritanceFlagReply,
+        SetMediaRWDataFileProjectInheritanceFlagRequest,
     },
 };
 
@@ -57,6 +59,9 @@ const SELINUX_XATTR: &[u8] = b"security.selinux";
 
 const FSCRYPT_KEY_DESCRIPTOR_SIZE: usize = 8;
 const FSCRYPT_KEY_IDENTIFIER_SIZE: usize = 16;
+
+#[cfg(feature = "chromeos")]
+const FS_PROJINHERIT_FL: c_int = 0x20000000;
 
 // 25 seconds is the default timeout for dbus-send.
 #[cfg(feature = "chromeos")]
@@ -1082,7 +1087,13 @@ impl PassthroughFs {
         }
     }
 
-    fn set_flags<R: io::Read>(&self, inode: Inode, handle: Handle, r: R) -> io::Result<IoctlReply> {
+    fn set_flags<R: io::Read>(
+        &self,
+        #[cfg_attr(not(feature = "chromeos"), allow(unused_variables))] ctx: Context,
+        inode: Inode,
+        handle: Handle,
+        r: R,
+    ) -> io::Result<IoctlReply> {
         let data: Arc<dyn AsRawDescriptor> = if self.zero_message_open.load(Ordering::Relaxed) {
             self.find_inode(inode)?
         } else {
@@ -1090,10 +1101,63 @@ impl PassthroughFs {
         };
 
         // The ioctl encoding is a long but the parameter is actually an int.
-        let flags = c_int::from_reader(r)?;
+        let in_flags = c_int::from_reader(r)?;
+
+        #[cfg(feature = "chromeos")]
+        let st = stat(&*data)?;
+
+        // Only privleged uid can perform FS_IOC_SETFLAGS through cryptohome.
+        #[cfg(feature = "chromeos")]
+        if ctx.uid == st.st_uid || self.cfg.privileged_quota_uids.contains(&ctx.uid) {
+            // Get the current flag.
+            let mut buf = MaybeUninit::<c_int>::zeroed();
+            // Safe because the kernel will only write to `buf` and we check the return value.
+            let res = unsafe { ioctl_with_mut_ptr(&*data, FS_IOC_GETFLAGS(), buf.as_mut_ptr()) };
+            if res < 0 {
+                return Ok(IoctlReply::Done(Err(io::Error::last_os_error())));
+            }
+            // Safe because the kernel guarantees that the policy is now initialized.
+            let current_flags = unsafe { buf.assume_init() };
+
+            // Project inheritance flag cannot be changed inside a user namespace.
+            // Use UserDataAuth to avoid this restriction.
+            if (in_flags & FS_PROJINHERIT_FL) != (current_flags & FS_PROJINHERIT_FL) {
+                let connection = self.dbus_connection.as_ref().unwrap().lock();
+                let proxy = connection.with_proxy(
+                    "org.chromium.UserDataAuth",
+                    "/org/chromium/UserDataAuth",
+                    DEFAULT_DBUS_TIMEOUT,
+                );
+                let mut proto: SetMediaRWDataFileProjectInheritanceFlagRequest = Message::new();
+                // If the input flags contain FS_PROJINHERIT_FL, then it is a set. Otherwise it is a
+                // reset.
+                proto.enable = ((in_flags & FS_PROJINHERIT_FL) == FS_PROJINHERIT_FL);
+                // Safe because data is a valid file descriptor.
+                let fd = unsafe { dbus::arg::OwnedFd::new(base::clone_descriptor(&*data)?) };
+                match proxy.set_media_rwdata_file_project_inheritance_flag(
+                    fd,
+                    proto.write_to_bytes().unwrap(),
+                ) {
+                    Ok(r) => {
+                        let r = protobuf::parse_from_bytes::<
+                            SetMediaRWDataFileProjectInheritanceFlagReply,
+                        >(&r)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                        if !r.success {
+                            return Ok(IoctlReply::Done(Err(io::Error::from_raw_os_error(
+                                r.error,
+                            ))));
+                        }
+                    }
+                    Err(e) => {
+                        return Err(io::Error::new(io::ErrorKind::Other, e));
+                    }
+                };
+            }
+        }
 
         // Safe because this doesn't modify any memory and we check the return value.
-        let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_SETFLAGS(), &flags) };
+        let res = unsafe { ioctl_with_ptr(&*data, FS_IOC_SETFLAGS(), &in_flags) };
         if res < 0 {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
@@ -2336,7 +2400,7 @@ impl FileSystem for PassthroughFs {
                 if in_size < size_of::<c_int>() as u32 {
                     Err(io::Error::from_raw_os_error(libc::ENOMEM))
                 } else {
-                    self.set_flags(inode, handle, r)
+                    self.set_flags(ctx, inode, handle, r)
                 }
             }
             ENABLE_VERITY => {
