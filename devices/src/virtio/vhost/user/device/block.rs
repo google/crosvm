@@ -103,7 +103,7 @@ impl BlockBackend {
         let flush_timer_write = Rc::new(RefCell::new(
             TimerAsync::new(
                 // Call try_clone() to share the same underlying FD with the `flush_disk` task.
-                timer.0.try_clone().context("Failed to clone flush_timer")?,
+                timer.try_clone().context("Failed to clone flush_timer")?,
                 ex,
             )
             .context("Failed to create an async timer")?,
@@ -113,7 +113,6 @@ impl BlockBackend {
         // still borrow their copy momentarily to set timeouts.
         // Call try_clone() to share the same underlying FD with the `flush_disk` task.
         let flush_timer_read = timer
-            .0
             .try_clone()
             .context("Failed to clone flush_timer")
             .and_then(|t| TimerAsync::new(t, ex).context("Failed to create an async timer"))?;

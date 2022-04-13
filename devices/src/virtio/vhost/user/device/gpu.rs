@@ -9,7 +9,7 @@ use argh::FromArgs;
 use async_task::Task;
 use base::{
     clone_descriptor, error, warn, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
-    TimerFd, Tube, UnixSeqpacketListener, UnlinkUnixSeqpacketListener,
+    Timer, Tube, UnixSeqpacketListener, UnlinkUnixSeqpacketListener,
 };
 use cros_async::{AsyncTube, AsyncWrapper, EventAsync, Executor, IoSourceExt, TimerAsync};
 use futures::{
@@ -305,8 +305,8 @@ impl VhostUserBackend for GpuBackend {
             self.display_worker = Some(task);
         }
 
-        let timer = TimerFd::new()
-            .context("failed to create TimerFd")
+        let timer = Timer::new()
+            .context("failed to create Timer")
             .and_then(|t| TimerAsync::new(t, &self.ex).context("failed to create TimerAsync"))?;
         let task = self
             .ex

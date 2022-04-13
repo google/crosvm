@@ -398,7 +398,7 @@ fn run_worker(
     let flush_timer = Rc::new(RefCell::new(
         TimerAsync::new(
             // Call try_clone() to share the same underlying FD with the `flush_disk` task.
-            timer.0.try_clone().expect("Failed to clone flush_timer"),
+            timer.try_clone().expect("Failed to clone flush_timer"),
             &ex,
         )
         .expect("Failed to create an async timer"),
@@ -428,7 +428,7 @@ fn run_worker(
         .into_future();
 
     // Flushes the disk periodically.
-    let flush_timer = TimerAsync::new(timer.0, &ex).expect("Failed to create an async timer");
+    let flush_timer = TimerAsync::new(timer, &ex).expect("Failed to create an async timer");
     let disk_flush = flush_disk(disk_state.clone(), flush_timer, flush_timer_armed);
     pin_mut!(disk_flush);
 
@@ -972,7 +972,7 @@ mod tests {
 
         let timer = Timer::new().expect("Failed to create a timer");
         let flush_timer = Rc::new(RefCell::new(
-            TimerAsync::new(timer.0, &ex).expect("Failed to create an async timer"),
+            TimerAsync::new(timer, &ex).expect("Failed to create an async timer"),
         ));
         let flush_timer_armed = Rc::new(RefCell::new(false));
 
@@ -1042,7 +1042,7 @@ mod tests {
         let af = SingleFileDisk::new(f, &ex).expect("Failed to create SFD");
         let timer = Timer::new().expect("Failed to create a timer");
         let flush_timer = Rc::new(RefCell::new(
-            TimerAsync::new(timer.0, &ex).expect("Failed to create an async timer"),
+            TimerAsync::new(timer, &ex).expect("Failed to create an async timer"),
         ));
         let flush_timer_armed = Rc::new(RefCell::new(false));
         let disk_state = Rc::new(AsyncMutex::new(DiskState {
@@ -1110,7 +1110,7 @@ mod tests {
         let af = SingleFileDisk::new(f, &ex).expect("Failed to create SFD");
         let timer = Timer::new().expect("Failed to create a timer");
         let flush_timer = Rc::new(RefCell::new(
-            TimerAsync::new(timer.0, &ex).expect("Failed to create an async timer"),
+            TimerAsync::new(timer, &ex).expect("Failed to create an async timer"),
         ));
         let flush_timer_armed = Rc::new(RefCell::new(false));
 

@@ -2,9 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::{Result as SysResult, Timer as TimerFd};
 use std::time::Duration;
-
-use base::{Result as SysResult, TimerFd};
 
 use super::{AsyncResult, Error, Executor, IntoAsync, IoSourceExt};
 
@@ -39,7 +38,7 @@ impl TimerAsync {
 
     /// Async sleep for the given duration
     pub async fn sleep(ex: &Executor, dur: Duration) -> std::result::Result<(), Error> {
-        let tfd = TimerFd::new().map_err(Error::TimerFd)?;
+        let mut tfd = TimerFd::new().map_err(Error::TimerFd)?;
         tfd.reset(dur, None).map_err(Error::TimerFd)?;
         let t = TimerAsync::new(tfd, ex).map_err(Error::TimerAsync)?;
         t.next_val().await.map_err(Error::TimerAsync)?;
@@ -68,7 +67,7 @@ mod tests {
         }
 
         async fn this_test(ex: &URingExecutor) {
-            let tfd = TimerFd::new().expect("failed to create timerfd");
+            let mut tfd = TimerFd::new().expect("failed to create timerfd");
 
             let dur = Duration::from_millis(200);
             let now = Instant::now();
@@ -88,7 +87,7 @@ mod tests {
     #[test]
     fn one_shot_fd() {
         async fn this_test(ex: &FdExecutor) {
-            let tfd = TimerFd::new().expect("failed to create timerfd");
+            let mut tfd = TimerFd::new().expect("failed to create timerfd");
 
             let dur = Duration::from_millis(200);
             let now = Instant::now();

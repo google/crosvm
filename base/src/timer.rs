@@ -6,12 +6,11 @@ use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor};
 use crate::{FakeClock, RawDescriptor, Result};
 
 use crate::platform::{FakeTimerFd, TimerFd};
-use std::{
-    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd},
-    sync::Arc,
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 use sync::Mutex;
+
+#[cfg(unix)]
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
 /// See [TimerFd](crate::platform::TimerFd) for struct- and method-level
 /// documentation.
@@ -19,6 +18,13 @@ pub struct Timer(pub TimerFd);
 impl Timer {
     pub fn new() -> Result<Timer> {
         TimerFd::new().map(Timer)
+    }
+}
+
+#[cfg(unix)]
+impl AsRawFd for Timer {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0.as_raw_fd()
     }
 }
 
@@ -48,6 +54,10 @@ macro_rules! build_timer {
 
             pub fn resolution() -> Result<Duration> {
                 $inner::resolution()
+            }
+
+            pub fn try_clone(&self) -> std::result::Result<Timer, std::io::Error> {
+                Ok(Timer(self.0.try_clone()?))
             }
         }
 

@@ -209,6 +209,10 @@ impl FakeTimerFd {
     pub fn resolution() -> Result<Duration> {
         Ok(Duration::from_nanos(1))
     }
+
+    pub fn try_clone(&self) -> std::result::Result<TimerFd, std::io::Error> {
+        unimplemented!()
+    }
 }
 
 impl AsRawFd for FakeTimerFd {
