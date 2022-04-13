@@ -13,6 +13,7 @@ use std::{
 };
 
 use libc::{c_void, read, signalfd, signalfd_siginfo, EAGAIN, SFD_CLOEXEC, SFD_NONBLOCK};
+use log::error;
 use remain::sorted;
 use thiserror::Error;
 

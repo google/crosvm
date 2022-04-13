@@ -6,6 +6,7 @@ use std::{alloc::Layout, mem::MaybeUninit, os::unix::io::AsRawFd, str};
 
 use data_model::DataInit;
 use libc::EINVAL;
+use log::error;
 
 use crate::alloc::LayoutAllocation;
 

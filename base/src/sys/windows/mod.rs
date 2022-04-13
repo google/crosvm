@@ -101,10 +101,3 @@ pub fn round_up_to_page_size(v: usize) -> usize {
     let page_mask = pagesize() - 1;
     (v + page_mask) & !page_mask
 }
-
-#[macro_export]
-macro_rules! CHRONO_TIMESTAMP_FIXED_FMT {
-    () => {
-        "%F %T%.9f"
-    };
-}

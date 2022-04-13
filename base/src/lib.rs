@@ -8,6 +8,7 @@ pub mod descriptor_reflection;
 mod errno;
 pub mod external_mapping;
 pub mod scoped_event_macro;
+pub mod syslog;
 mod tube;
 
 pub mod sys;
@@ -56,4 +57,5 @@ pub use crate::descriptor::{
     AsRawDescriptor, AsRawDescriptors, Descriptor, FromRawDescriptor, IntoRawDescriptor,
     SafeDescriptor,
 };
+pub use log::*;
 pub use platform::*;

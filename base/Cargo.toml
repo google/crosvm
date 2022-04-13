@@ -9,8 +9,13 @@ chromeos = []
 
 [dependencies]
 audio_streams = { path = "../common/audio_streams" }
+base_poll_token_derive = { path = "base_poll_token_derive" }
 data_model = { path = "../common/data_model" }
+
+cfg-if = "*"
+chrono = "*"
 libc = "*"
+log = "0.4"
 remain = "0.2"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "*"
@@ -18,16 +23,15 @@ smallvec = "1.6.1"
 sync = { path = "../common/sync" }
 thiserror = "1.0.20"
 tempfile = "3"
-base_poll_token_derive = { path = "base_poll_token_derive" }
-cfg-if = "*"
 
 [target.'cfg(windows)'.dependencies]
-chrono = "*"
 lazy_static = "*"
 rand = "*"
-regex = "*"
 winapi = "*"
 win_util = { path = "../win_util"}
+
+[target.'cfg(windows)'.dev-dependencies]
+regex = "*"
 
 [build-dependencies]
 cc = "*"

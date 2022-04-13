@@ -8,9 +8,7 @@ use std::{
     ffi::OsString,
     fs::remove_file,
     io,
-    mem::{
-        size_of, {self},
-    },
+    mem::{self, size_of},
     net::{SocketAddr, SocketAddrV4, SocketAddrV6, TcpListener, TcpStream, ToSocketAddrs},
     ops::Deref,
     os::unix::{
@@ -26,6 +24,7 @@ use libc::{
     c_int, in6_addr, in_addr, recvfrom, sa_family_t, sockaddr, sockaddr_in, sockaddr_in6,
     socklen_t, AF_INET, AF_INET6, MSG_PEEK, MSG_TRUNC, SOCK_CLOEXEC, SOCK_STREAM,
 };
+use log::warn;
 use serde::{Deserialize, Serialize};
 
 use super::{

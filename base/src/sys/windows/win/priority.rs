@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use super::{errno_result, Result};
+use log::warn;
 use std::os::windows::raw::HANDLE;
 use winapi::{
     shared::minwindef::FALSE,

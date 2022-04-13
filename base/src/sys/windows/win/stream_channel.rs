@@ -2,17 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::{cell::RefCell, io, sync::Arc};
+
+use log::{error, warn};
+use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
+use sync::Mutex;
+
 use super::super::{
-    named_pipes::{
-        PipeConnection, {self},
-    },
+    named_pipes::{self, PipeConnection},
     stream_channel::{BlockingMode, FramingMode},
     CloseNotifier, Event, MultiProcessMutex, RawDescriptor, ReadNotifier, Result,
 };
 use crate::descriptor::AsRawDescriptor;
-use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
-use std::{cell::RefCell, io, sync::Arc};
-use sync::Mutex;
 
 impl From<FramingMode> for named_pipes::FramingMode {
     fn from(framing_mode: FramingMode) -> Self {

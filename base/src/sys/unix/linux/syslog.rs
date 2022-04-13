@@ -10,7 +10,7 @@ use std::{
     io::{Cursor, ErrorKind, Write},
     mem,
     os::unix::{
-        io::{AsRawFd, FromRawFd, RawFd},
+        io::{AsRawFd, FromRawFd},
         net::UnixDatagram,
     },
     ptr::null,
@@ -21,10 +21,8 @@ use libc::{
     LOG_PID, LOG_USER,
 };
 
-use super::super::{
-    getpid,
-    syslog::{Error, Facility, Priority, Syslog},
-};
+use super::super::getpid;
+use crate::syslog::{Error, Facility, Priority, Syslog};
 
 const SYSLOG_PATH: &str = "/dev/log";
 
@@ -56,7 +54,7 @@ impl Syslog for PlatformSyslog {
         Ok(())
     }
 
-    fn push_fds(&self, fds: &mut Vec<RawFd>) {
+    fn push_descriptors(&self, fds: &mut Vec<crate::RawDescriptor>) {
         fds.extend(self.socket.iter().map(|s| s.as_raw_fd()));
     }
 
@@ -66,7 +64,7 @@ impl Syslog for PlatformSyslog {
         pri: Priority,
         fac: Facility,
         file_line: Option<(&str, u32)>,
-        args: fmt::Arguments,
+        args: &fmt::Arguments,
     ) {
         const MONTHS: [&str; 12] = [
             "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",

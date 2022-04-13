@@ -6,7 +6,6 @@
 
 extern crate android_log_sys;
 
-use super::super::syslog::{Error, Facility, Priority, Syslog};
 use android_log_sys::{
     __android_log_is_loggable, __android_log_message, __android_log_write_log_message, log_id_t,
     LogPriority,
@@ -15,8 +14,9 @@ use std::{
     ffi::{CString, NulError},
     fmt,
     mem::size_of,
-    os::unix::io::RawFd,
 };
+
+use crate::syslog::{Error, Facility, Priority, Syslog};
 
 pub struct PlatformSyslog {
     enabled: bool,
@@ -32,7 +32,7 @@ impl Syslog for PlatformSyslog {
         Ok(())
     }
 
-    fn push_fds(&self, _fds: &mut Vec<RawFd>) {}
+    fn push_descriptors(&self, _fds: &mut Vec<crate::RawDescriptor>) {}
 
     fn log(
         &self,
@@ -40,7 +40,7 @@ impl Syslog for PlatformSyslog {
         pri: Priority,
         _fac: Facility,
         file_line: Option<(&str, u32)>,
-        args: fmt::Arguments,
+        args: &fmt::Arguments,
     ) {
         let priority = match pri {
             Priority::Emergency => LogPriority::ERROR,
@@ -53,7 +53,7 @@ impl Syslog for PlatformSyslog {
             Priority::Debug => LogPriority::VERBOSE,
         };
         let tag = proc_name.unwrap_or("crosvm");
-        let message = std::fmt::format(args);
+        let message = std::fmt::format(*args);
         let _ = android_log(
             log_id_t::SYSTEM,
             priority,

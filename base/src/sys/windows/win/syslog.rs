@@ -4,10 +4,8 @@
 
 //! Implementation of the Syslog trait as a wrapper around Window's events
 
-use super::super::{
-    syslog::{Error, Facility, Priority, Syslog},
-    RawDescriptor,
-};
+use crate::syslog::{Error, Facility, Priority, Syslog};
+use crate::RawDescriptor;
 
 pub struct PlatformSyslog {
     enabled: bool,
@@ -31,7 +29,7 @@ impl Syslog for PlatformSyslog {
         _pri: Priority,
         _fac: Facility,
         _file_line: Option<(&str, u32)>,
-        _args: std::fmt::Arguments,
+        _args: &std::fmt::Arguments,
     ) {
         // do nothing. We don't plan to support writing to windows system logs.
     }

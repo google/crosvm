@@ -17,6 +17,7 @@ use libc::{
     c_int, epoll_create1, epoll_ctl, epoll_event, epoll_wait, EPOLLHUP, EPOLLIN, EPOLLOUT,
     EPOLLRDHUP, EPOLL_CLOEXEC, EPOLL_CTL_ADD, EPOLL_CTL_DEL, EPOLL_CTL_MOD,
 };
+use log::warn;
 
 use super::{errno_result, Result};
 use crate::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, RawDescriptor};
