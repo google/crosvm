@@ -176,7 +176,7 @@ def setup_tracking_branch(branch_name: str, tracking: str):
 def gerrit_prerequisites():
     "Make sure we can upload to gerrit."
     # Make sure we have http cookies to access gerrit
-    cookie_file = git("config http.cookiefile").stdout()
+    cookie_file = git("config http.cookiefile").stdout(check=False)
     if not cookie_file:
         if is_gce_instance():
             # Grab http cookies for accessing GOB. See go/gob-gce

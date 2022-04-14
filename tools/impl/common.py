@@ -180,11 +180,11 @@ class Command(object):
                 raise subprocess.CalledProcessError(result.returncode, str(self), result.stdout)
         return result.returncode
 
-    def stdout(self):
+    def stdout(self, check: bool = True):
         """
         Runs a program and returns stdout. Stderr is still directed to the user.
         """
-        return self.run(stderr=None).stdout.strip()
+        return self.run(stderr=None, check=check).stdout.strip()
 
     def lines(self):
         """
