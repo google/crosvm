@@ -15,8 +15,8 @@ main() {
 
     # Ensure we have at least python 3.9. Kokoro does not and requires us to use pyenv to install
     # The required version.
-    if ! python -c "$VERSION_CHECK"; then
-        pyenv install -v 3.9.5
+    if ! python3 -c "$VERSION_CHECK"; then
+        pyenv install --verbose --skip-existing 3.9.5
         pyenv global 3.9.5
     fi
 
