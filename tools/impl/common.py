@@ -103,6 +103,11 @@ class Command(object):
     >>> Command('echo "abcd"').pipe(wc('-c')).stdout()
     '5'
 
+    Programs will be looked up in PATH or absolute paths to programs can be supplied as well:
+
+    >>> Command('/usr/bin/env').executable
+    PosixPath('/usr/bin/env')
+
     ## Executing
 
     Once built, commands can be executed using `Command.fg()`, to run the command in the
@@ -121,12 +126,15 @@ class Command(object):
         self.stdin_cmd = stdin_cmd
         if len(self.args) > 0:
             executable = self.args[0]
-            path = shutil.which(executable)
-            if not path:
-                raise ValueError(f'Required program "{executable}" cannot be found in PATH.')
-            elif very_verbose():
-                print(f"Using {executable}: {path}")
-            self.executable = Path(path)
+            if Path(executable).exists:
+                self.executable = Path(executable)
+            else:
+                path = shutil.which(executable)
+                if not path:
+                    raise ValueError(f'Required program "{executable}" cannot be found in PATH.')
+                elif very_verbose():
+                    print(f"Using {executable}: {path}")
+                self.executable = Path(path)
 
     ### High level execution API
 
