@@ -10,11 +10,8 @@ pub mod external_mapping;
 pub mod scoped_event_macro;
 mod tube;
 
-#[cfg(unix)]
-pub mod unix;
-
-#[cfg(windows)]
-pub mod windows;
+pub mod sys;
+pub use sys::platform;
 
 pub use alloc::LayoutAllocation;
 pub use errno::{errno_result, Error, Result};
@@ -32,7 +29,7 @@ cfg_if::cfg_if! {
         mod timer;
         mod wait_context;
 
-        pub use unix as platform;
+        pub use sys::unix;
 
         pub use unix::net::*;
         pub use unix::ioctl::*;
@@ -49,7 +46,6 @@ cfg_if::cfg_if! {
         pub use timer::{FakeTimer, Timer};
         pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
      } else if #[cfg(windows)] {
-        pub use windows as platform;
         pub use tube::{set_duplicate_handle_tube, set_alias_pid, DuplicateHandleTube};
      } else {
         compile_error!("Unsupported platform");

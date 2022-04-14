@@ -7,8 +7,8 @@ use std::io;
 
 use thiserror::Error as ThisError;
 
-#[cfg_attr(windows, path = "windows/tube.rs")]
-#[cfg_attr(not(windows), path = "unix/tube.rs")]
+#[cfg_attr(windows, path = "sys/windows/tube.rs")]
+#[cfg_attr(not(windows), path = "sys/unix/tube.rs")]
 mod tube;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::time::Duration;

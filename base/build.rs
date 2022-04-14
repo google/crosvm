@@ -9,6 +9,6 @@ fn main() {
     }
 
     cc::Build::new()
-        .file("src/windows/stdio_fileno.c")
+        .file("src/sys/windows/stdio_fileno.c")
         .compile("stdio_fileno");
 }
