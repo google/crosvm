@@ -8,6 +8,11 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 
 fn main() -> Result<()> {
+    // Skip building dependencies when generating documents.
+    if std::env::var("CARGO_DOC").is_ok() {
+        return Ok(());
+    }
+
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
     let target_dir = env::var("OUT_DIR").context("failed to get OUT_DIR")?;
