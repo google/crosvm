@@ -25,7 +25,7 @@ from impl.common import CROSVM_ROOT, batched, cmd, quoted, run_commands, very_ve
 
 git = cmd("git")
 git_log = git("log --decorate=no --color=never")
-curl = cmd("curl --silent --fail-with-body")
+curl = cmd("curl --silent --fail")
 chmod = cmd("chmod")
 
 GERRIT_URL = "https://chromium-review.googlesource.com"
