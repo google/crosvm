@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn create_dummy_slave() {
-        let slave = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
+        let slave = Mutex::new(DummySlaveReqHandler::new());
 
         slave.set_owner().unwrap();
         assert!(slave.set_owner().is_err());
@@ -233,40 +233,40 @@ mod tests {
 
     #[test]
     fn test_set_owner() {
-        let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
-        let (master, mut slave) = create_master_slave_pair(slave_be.clone());
+        let slave_be = Mutex::new(DummySlaveReqHandler::new());
+        let (master, mut slave) = create_master_slave_pair(slave_be);
 
-        assert!(!slave_be.lock().unwrap().owned);
+        assert!(!slave.as_ref().lock().unwrap().owned);
         master.set_owner().unwrap();
         slave.handle_request().unwrap();
-        assert!(slave_be.lock().unwrap().owned);
+        assert!(slave.as_ref().lock().unwrap().owned);
         master.set_owner().unwrap();
         assert!(slave.handle_request().is_err());
-        assert!(slave_be.lock().unwrap().owned);
+        assert!(slave.as_ref().lock().unwrap().owned);
     }
 
     #[test]
     fn test_set_features() {
         let mbar = Arc::new(Barrier::new(2));
         let sbar = mbar.clone();
-        let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
-        let (mut master, mut slave) = create_master_slave_pair(slave_be.clone());
+        let slave_be = Mutex::new(DummySlaveReqHandler::new());
+        let (mut master, mut slave) = create_master_slave_pair(slave_be);
 
         thread::spawn(move || {
             slave.handle_request().unwrap();
-            assert!(slave_be.lock().unwrap().owned);
+            assert!(slave.as_ref().lock().unwrap().owned);
 
             slave.handle_request().unwrap();
             slave.handle_request().unwrap();
             assert_eq!(
-                slave_be.lock().unwrap().acked_features,
+                slave.as_ref().lock().unwrap().acked_features,
                 VIRTIO_FEATURES & !0x1
             );
 
             slave.handle_request().unwrap();
             slave.handle_request().unwrap();
             assert_eq!(
-                slave_be.lock().unwrap().acked_protocol_features,
+                slave.as_ref().lock().unwrap().acked_protocol_features,
                 VhostUserProtocolFeatures::all().bits()
             );
 
@@ -292,26 +292,26 @@ mod tests {
     fn test_master_slave_process() {
         let mbar = Arc::new(Barrier::new(2));
         let sbar = mbar.clone();
-        let slave_be = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
-        let (mut master, mut slave) = create_master_slave_pair(slave_be.clone());
+        let slave_be = Mutex::new(DummySlaveReqHandler::new());
+        let (mut master, mut slave) = create_master_slave_pair(slave_be);
 
         thread::spawn(move || {
             // set_own()
             slave.handle_request().unwrap();
-            assert!(slave_be.lock().unwrap().owned);
+            assert!(slave.as_ref().lock().unwrap().owned);
 
             // get/set_features()
             slave.handle_request().unwrap();
             slave.handle_request().unwrap();
             assert_eq!(
-                slave_be.lock().unwrap().acked_features,
+                slave.as_ref().lock().unwrap().acked_features,
                 VIRTIO_FEATURES & !0x1
             );
 
             slave.handle_request().unwrap();
             slave.handle_request().unwrap();
             assert_eq!(
-                slave_be.lock().unwrap().acked_protocol_features,
+                slave.as_ref().lock().unwrap().acked_protocol_features,
                 VhostUserProtocolFeatures::all().bits()
             );
 

@@ -521,7 +521,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
 async fn run_device<P: AsRef<Path>>(
     ex: &Executor,
     socket: P,
-    backend: Arc<StdMutex<VsockBackend>>,
+    backend: StdMutex<VsockBackend>,
 ) -> anyhow::Result<()> {
     let listener = UnixListener::bind(socket)
         .map(UnlinkUnixListener)
@@ -581,7 +581,6 @@ fn run_vvu_device<P: AsRef<Path>>(
         }),
     )
     .map(StdMutex::new)
-    .map(Arc::new)
     .context("failed to create `VsockBackend`")?;
     let driver = VvuDevice::new(device);
 
@@ -623,8 +622,7 @@ pub fn run_vsock_device(program_name: &str, args: &[&str]) -> anyhow::Result<()>
         (Some(socket), None) => {
             let backend =
                 VsockBackend::new(&ex, opts.cid, opts.vhost_socket, HandlerType::VhostUser)
-                    .map(StdMutex::new)
-                    .map(Arc::new)?;
+                    .map(StdMutex::new)?;
 
             // TODO: Replace the `and_then` with `Result::flatten` once it is stabilized.
             ex.run_until(run_device(&ex, socket, backend))

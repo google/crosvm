@@ -280,8 +280,7 @@ where
                     .context("failed to accept an incoming connection")
             })
             .await?;
-        let req_handler =
-            SlaveReqHandler::from_stream(socket, Arc::new(std::sync::Mutex::new(self)));
+        let req_handler = SlaveReqHandler::from_stream(socket, std::sync::Mutex::new(self));
 
         run_handler(req_handler, ex).await
     }
@@ -299,11 +298,8 @@ where
         let mut listener = VfioListener::new(driver)
             .map_err(|e| anyhow!("failed to create a VFIO listener: {}", e))
             .and_then(|l| {
-                SlaveListener::<VfioEndpoint<_, _>, _>::new(
-                    l,
-                    Arc::new(std::sync::Mutex::new(self)),
-                )
-                .map_err(|e| anyhow!("failed to create SlaveListener: {}", e))
+                SlaveListener::<VfioEndpoint<_, _>, _>::new(l, std::sync::Mutex::new(self))
+                    .map_err(|e| anyhow!("failed to create SlaveListener: {}", e))
             })?;
 
         let req_handler = listener
@@ -376,9 +372,7 @@ mod tests {
         });
 
         // Device side
-        let handler = Arc::new(std::sync::Mutex::new(DeviceRequestHandler::new(
-            FakeBackend::new(),
-        )));
+        let handler = std::sync::Mutex::new(DeviceRequestHandler::new(FakeBackend::new()));
         let mut listener = SlaveListener::<SocketEndpoint<_>, _>::new(listener, handler).unwrap();
 
         // Notify listener is ready.

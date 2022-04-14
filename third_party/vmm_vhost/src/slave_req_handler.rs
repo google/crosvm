@@ -5,7 +5,7 @@ use base::{AsRawDescriptor, RawDescriptor};
 use std::fs::File;
 use std::mem;
 use std::slice;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use data_model::DataInit;
 
@@ -395,7 +395,7 @@ impl<E: Endpoint<MasterReq> + AsRawDescriptor> AsRawDescriptor for SlaveReqHelpe
 pub struct SlaveReqHandler<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> {
     slave_req_helper: SlaveReqHelper<E>,
     // the vhost-user backend device object
-    backend: Arc<S>,
+    backend: S,
 
     virtio_features: u64,
     acked_virtio_features: u64,
@@ -408,14 +408,20 @@ pub struct SlaveReqHandler<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> 
 
 impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S, MasterReqEndpoint> {
     /// Create a vhost-user slave endpoint from a connected socket.
-    pub fn from_stream(socket: SystemStream, backend: Arc<S>) -> Self {
+    pub fn from_stream(socket: SystemStream, backend: S) -> Self {
         Self::new(MasterReqEndpoint::from(socket), backend)
+    }
+}
+
+impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> AsRef<S> for SlaveReqHandler<S, E> {
+    fn as_ref(&self) -> &S {
+        &self.backend
     }
 }
 
 impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> {
     /// Create a vhost-user slave endpoint.
-    pub(super) fn new(endpoint: E, backend: Arc<S>) -> Self {
+    pub(super) fn new(endpoint: E, backend: S) -> Self {
         SlaveReqHandler {
             slave_req_helper: SlaveReqHelper::new(endpoint, backend.protocol()),
             backend,
@@ -432,7 +438,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     /// # Arguments
     /// * - `path` - path of Unix domain socket listener to connect to
     /// * - `backend` - handler for requests from the master to the slave
-    pub fn connect(path: &str, backend: Arc<S>) -> Result<Self> {
+    pub fn connect(path: &str, backend: S) -> Result<Self> {
         Ok(Self::new(Endpoint::<MasterReq>::connect(path)?, backend))
     }
 
@@ -946,7 +952,7 @@ mod tests {
     fn test_slave_req_handler_new() {
         let (p1, _p2) = SystemStream::pair().unwrap();
         let endpoint = MasterReqEndpoint::from(p1);
-        let backend = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
+        let backend = Mutex::new(DummySlaveReqHandler::new());
         let mut handler = SlaveReqHandler::new(endpoint, backend);
 
         handler.check_state().unwrap();

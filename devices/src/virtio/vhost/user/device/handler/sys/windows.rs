@@ -149,7 +149,7 @@ where
             EventAsync::new(exit_event, ex).context("failed to create an async event")?;
 
         let mut req_handler =
-            SlaveReqHandler::from_stream(vhost_user_tube, Arc::new(std::sync::Mutex::new(self)));
+            SlaveReqHandler::from_stream(vhost_user_tube, std::sync::Mutex::new(self));
 
         let read_event_fut = read_event.next_val().fuse();
         let close_event_fut = close_event.next_val().fuse();
@@ -220,9 +220,7 @@ mod tests {
         });
 
         // Device side
-        let backend = Arc::new(std::sync::Mutex::new(DeviceRequestHandler::new(
-            FakeBackend::new(),
-        )));
+        let backend = std::sync::Mutex::new(DeviceRequestHandler::new(FakeBackend::new()));
 
         let mut req_handler = SlaveReqHandler::from_stream(dev_tube, backend);
 

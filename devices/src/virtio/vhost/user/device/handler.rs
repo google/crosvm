@@ -825,9 +825,7 @@ mod tests {
         });
 
         // Device side
-        let handler = Arc::new(std::sync::Mutex::new(DeviceRequestHandler::new(
-            FakeBackend::new(),
-        )));
+        let handler = std::sync::Mutex::new(DeviceRequestHandler::new(FakeBackend::new()));
         let mut listener = SlaveListener::<SocketEndpoint<_>, _>::new(listener, handler).unwrap();
 
         // Notify listener is ready.

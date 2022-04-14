@@ -5,8 +5,6 @@
 //!
 //! These are used on platforms where the slave has to listen for connections (e.g. POSIX only).
 
-use std::sync::Arc;
-
 use super::connection::{Endpoint, Listener};
 use super::message::*;
 use super::{Result, SlaveReqHandler, VhostUserSlaveReqHandler};
@@ -14,14 +12,14 @@ use super::{Result, SlaveReqHandler, VhostUserSlaveReqHandler};
 /// Vhost-user slave side connection listener.
 pub struct SlaveListener<E: Endpoint<MasterReq>, S: VhostUserSlaveReqHandler> {
     listener: E::Listener,
-    backend: Option<Arc<S>>,
+    backend: Option<S>,
 }
 
 /// Sets up a listener for incoming master connections, and handles construction
 /// of a Slave on success.
 impl<E: Endpoint<MasterReq>, S: VhostUserSlaveReqHandler> SlaveListener<E, S> {
     /// Create a unix domain socket for incoming master connections.
-    pub fn new(listener: E::Listener, backend: Arc<S>) -> Result<Self> {
+    pub fn new(listener: E::Listener, backend: S) -> Result<Self> {
         Ok(SlaveListener {
             listener,
             backend: Some(backend),
@@ -57,7 +55,7 @@ mod tests {
 
     #[test]
     fn test_slave_listener_set_nonblocking() {
-        let backend = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
+        let backend = Mutex::new(DummySlaveReqHandler::new());
         let listener =
             Listener::new("/tmp/vhost_user_lib_unit_test_slave_nonblocking", true).unwrap();
         let slave_listener = SlaveListener::<Endpoint<_>, _>::new(listener, backend).unwrap();
@@ -76,7 +74,7 @@ mod tests {
         use crate::Master;
 
         let path = "/tmp/vhost_user_lib_unit_test_slave_accept";
-        let backend = Arc::new(Mutex::new(DummySlaveReqHandler::new()));
+        let backend = Mutex::new(DummySlaveReqHandler::new());
         let listener = Listener::new(path, true).unwrap();
         let mut slave_listener = SlaveListener::<Endpoint<_>, _>::new(listener, backend).unwrap();
 

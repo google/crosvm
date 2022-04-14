@@ -10,15 +10,12 @@ pub(crate) mod tests {
     };
     use crate::master::Master;
     use crate::message::MasterReq;
-    use tempfile::{Builder, TempDir};
     #[cfg(feature = "device")]
-    use {
-        crate::{
-            slave::SlaveListener,
-            slave_req_handler::{SlaveReqHandler, VhostUserSlaveReqHandler},
-        },
-        std::sync::Arc,
+    use crate::{
+        slave::SlaveListener,
+        slave_req_handler::{SlaveReqHandler, VhostUserSlaveReqHandler},
     };
+    use tempfile::{Builder, TempDir};
 
     pub(crate) type TestMaster = Master<SocketEndpoint<MasterReq>>;
     pub(crate) type TestEndpoint = SocketEndpoint<MasterReq>;
@@ -39,7 +36,7 @@ pub(crate) mod tests {
 
     #[cfg(feature = "device")]
     pub(crate) fn create_master_slave_pair<S>(
-        backend: Arc<S>,
+        backend: S,
     ) -> (TestMaster, SlaveReqHandler<S, TestEndpoint>)
     where
         S: VhostUserSlaveReqHandler,
