@@ -13,4 +13,5 @@ vm_control = { path = "../vm_control" }
 libc = "0.2.65"
 
 [build-dependencies]
+anyhow = "*"
 cbindgen = "0.20.0"
