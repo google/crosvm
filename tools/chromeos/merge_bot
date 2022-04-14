@@ -46,7 +46,7 @@ def is_gce_instance():
     See http://cloud.google.com/compute/docs/instances/detect-compute-engine
     """
     try:
-        metadata = curl("http://metadata.google.internal").stdout()
+        metadata = curl("-i http://metadata.google.internal").stdout()
         return "Metadata-Flavor: Google" in metadata
     except:
         return False
