@@ -12,6 +12,7 @@
 
 import functools
 import os
+from pathlib import Path
 import sys
 from datetime import date
 from typing import Any, cast
@@ -177,15 +178,16 @@ def gerrit_prerequisites():
     "Make sure we can upload to gerrit."
     if is_gce_instance():
         # Grab http cookies for accessing GOB. See go/gob-gce
-        gcompute_path = f"{os.environ['KOKORO_ARTIFACTS_DIR']}/gcompute-tools"
-        git("clone", "https://gerrit.googlesource.com/gcompute-tools", gcompute_path).fg()
-        cmd(f"{gcompute_path}/git-cookie-authdaemon", "--no-fork").fg()
+        gcompute_path = Path(f"{os.environ['KOKORO_ARTIFACTS_DIR']}/gcompute-tools")
+        if not gcompute_path.exists():
+            git("clone", "https://gerrit.googlesource.com/gcompute-tools", gcompute_path).fg()
+        cmd(f"{gcompute_path}/git-cookie-authdaemon").fg()
 
         # Setup correct user info for the GCE service account.
         git("config user.name", quoted("Crosvm Bot")).fg()
         git("config user.email", quoted("crosvm-bot@crosvm-packages.iam.gserviceaccount.com")).fg()
     else:
-        # Make sure we have http cookies to access gerrit
+        # Make sure we have http cookies to access gerrit.
         cookie_file = git("config http.cookiefile").stdout(check=False)
         if not cookie_file:
             print("Cannot access gerrit without http cookies.")
@@ -211,9 +213,10 @@ def upload_to_gerrit(target_branch: str, *extra_params: str):
         try:
             print(f"Uploading to gerrit (Attempt {i})")
             git(f"push origin HEAD:refs/for/{target_branch}%{','.join(extra_params)}").fg()
-            break
+            return
         except:
             continue
+    raise Exception("Could not upload changes to gerrit.")
 
 
 ####################################################################################################
@@ -237,7 +240,8 @@ def create_merge_commits(
     batches = list(batched(commits, max_size)) if max_size > 0 else [commits]
     for i, batch in enumerate(reversed(batches)):
         target = batch[0]
-        commit_range = f"{batch[-1]}..{batch[0]}"
+        previous_rev = git(f"rev-parse {batch[-1]}^").stdout()
+        commit_range = f"{previous_rev}..{batch[0]}"
 
         # Put together a message containing info about what's in the merge.
         batch_str = f"{i + 1}/{len(batches)}" if len(batches) > 1 else ""
