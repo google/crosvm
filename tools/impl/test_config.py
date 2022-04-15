@@ -47,7 +47,6 @@ WIN64_DISABLED_CRATES = [
     "audio_streams",
     "bit_field_derive",
     "bit_field",
-    "cros_async",
     "cros_asyncv2",
     "cros-fuzz",
     "crosvm_control",

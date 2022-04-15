@@ -126,7 +126,8 @@ def should_run_executable(executable: Executable, target_arch: Arch):
 def list_common_crates(target_arch: Arch):
     excluded_crates = list(get_workspace_excludes(target_arch))
     for path in COMMON_ROOT.glob("**/Cargo.toml"):
-        if not path.parent.name in excluded_crates:
+        # TODO(b/213147081): remove this once common/cros_async is gone.
+        if not path.parent.name in excluded_crates and path.parent.name != "cros_async":
             yield Crate(name=path.parent.name, path=path.parent)
 
 

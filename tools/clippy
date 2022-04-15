@@ -49,12 +49,16 @@ def main(fix: bool = False):
     ).fg()
 
     for crate in CROSVM_ROOT.glob("common/*/Cargo.toml"):
-        if not is_crate_excluded(crate.parent.name):
+        # TODO(b/213147081): remove the cros_async exclude this once
+        # common/cros_async is gone.
+        if is_crate_excluded(crate.parent.name) or (
+            os.name == "nt" and crate.parent.name == "cros_async"
+        ):
+            print("Skipping crate", crate.parent.relative_to(CROSVM_ROOT))
+        else:
             print("Clippy", crate.parent.relative_to(CROSVM_ROOT))
             with cwd(crate.parent):
                 clippy("--all-features", *common_args).fg()
-        else:
-            print("Skipping crate", crate.parent.relative_to(CROSVM_ROOT))
 
 
 if __name__ == "__main__":
