@@ -175,19 +175,19 @@ def setup_tracking_branch(branch_name: str, tracking: str):
 
 def gerrit_prerequisites():
     "Make sure we can upload to gerrit."
-    # Make sure we have http cookies to access gerrit
-    cookie_file = git("config http.cookiefile").stdout(check=False)
-    if not cookie_file:
-        if is_gce_instance():
-            # Grab http cookies for accessing GOB. See go/gob-gce
-            gcompute_path = f"{os.environ['KOKORO_ARTIFACTS_DIR']}/gcompute-tools"
-            git("clone", "https://gerrit.googlesource.com/gcompute-tools", gcompute_path).fg()
-            cmd(f"{gcompute_path}/git-cookie-authdaemon", "--no-fork").fg()
+    if is_gce_instance():
+        # Grab http cookies for accessing GOB. See go/gob-gce
+        gcompute_path = f"{os.environ['KOKORO_ARTIFACTS_DIR']}/gcompute-tools"
+        git("clone", "https://gerrit.googlesource.com/gcompute-tools", gcompute_path).fg()
+        cmd(f"{gcompute_path}/git-cookie-authdaemon", "--no-fork").fg()
 
-            # Setup correct user info for the GCE service account.
-            git("config user.name", quoted("Crosvm Bot"))
-            git("config user.email", quoted("crosvm-bot@crosvm-packages.iam.gserviceaccount.com"))
-        else:
+        # Setup correct user info for the GCE service account.
+        git("config user.name", quoted("Crosvm Bot")).fg()
+        git("config user.email", quoted("crosvm-bot@crosvm-packages.iam.gserviceaccount.com")).fg()
+    else:
+        # Make sure we have http cookies to access gerrit
+        cookie_file = git("config http.cookiefile").stdout(check=False)
+        if not cookie_file:
             print("Cannot access gerrit without http cookies.")
             print(f"Install one via: {GERRIT_URL}/new-password")
             sys.exit(1)
