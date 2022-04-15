@@ -181,7 +181,7 @@ def gerrit_prerequisites():
         if is_gce_instance():
             # Grab http cookies for accessing GOB. See go/gob-gce
             gcompute_path = f"{os.environ['KOKORO_ARTIFACTS_DIR']}/gcompute-tools"
-            git("clone", "https://gerrit.googlesource.com/gcompute-tools", gcompute_path)
+            git("clone", "https://gerrit.googlesource.com/gcompute-tools", gcompute_path).fg()
             cmd(f"{gcompute_path}/git-cookie-authdaemon", "--no-fork").fg()
 
             # Setup correct user info for the GCE service account.
