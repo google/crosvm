@@ -4,21 +4,19 @@
 
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
-use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail};
 use anyhow::{Context, Result};
-use base::{
-    clear_fd_flags, error, info, AsRawDescriptor, Event, SafeDescriptor, UnlinkUnixListener,
-};
+use base::{clear_fd_flags, error, info, AsRawDescriptor, Event, SafeDescriptor};
 use cros_async::{AsyncWrapper, Executor};
 use vm_memory::GuestMemory;
 use vmm_vhost::{
     connection::{
+        socket::Listener as SocketListener,
         vfio::{Endpoint as VfioEndpoint, Listener as VfioListener},
-        Endpoint,
+        Endpoint, Listener,
     },
     message::{MasterReq, VhostUserMemoryRegion},
     Error as VhostError, Protocol, Result as VhostResult, SlaveListener, SlaveReqHandler,
@@ -260,9 +258,8 @@ where
     /// Creates a listening socket at `socket` and handles incoming messages from the VMM, which are
     /// dispatched to the device backend via the `VhostUserBackend` trait methods.
     pub async fn run<P: AsRef<Path>>(self, socket: P, ex: &Executor) -> Result<()> {
-        let listener = UnixListener::bind(socket)
-            .map(UnlinkUnixListener)
-            .context("failed to create a UNIX domain socket listener")?;
+        let listener = SocketListener::new(socket, true /* unlink */)
+            .context("failed to create a socket listener")?;
         return self.run_with_listener(listener, ex).await;
     }
 
@@ -270,16 +267,17 @@ where
     /// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
     pub async fn run_with_listener(
         self,
-        listener: UnlinkUnixListener,
+        mut listener: SocketListener,
         ex: &Executor,
     ) -> Result<()> {
-        let (socket, _) = ex
+        let socket = ex
             .spawn_blocking(move || {
                 listener
                     .accept()
                     .context("failed to accept an incoming connection")
             })
-            .await?;
+            .await?
+            .ok_or(anyhow!("failed to accept an incoming connection"))?;
         let req_handler = SlaveReqHandler::from_stream(socket, std::sync::Mutex::new(self));
 
         run_handler(req_handler, ex).await

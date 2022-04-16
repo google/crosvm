@@ -4,14 +4,14 @@
 
 use std::io;
 use std::os::unix::io::AsRawFd;
-use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context};
 use argh::FromArgs;
-use base::{get_max_open_files, AsRawDescriptor, RawDescriptor, UnlinkUnixListener};
+use base::{get_max_open_files, AsRawDescriptor, RawDescriptor};
 use cros_async::Executor;
 use minijail::{self, Minijail};
+use vmm_vhost::connection::socket::Listener as SocketListener;
 
 use crate::virtio::vhost::user::device::fs::{FsBackend, Options};
 use crate::virtio::vhost::user::device::handler::{DeviceRequestHandler, VhostUserBackend};
@@ -102,8 +102,8 @@ pub fn start_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
         None => None,
         Some(socket) => {
             // Create and bind unix socket
-            let l = UnixListener::bind(socket).map(UnlinkUnixListener)?;
-            keep_rds.push(l.as_raw_fd());
+            let l = SocketListener::new(socket, true /* unlink */)?;
+            keep_rds.push(l.as_raw_descriptor());
             Some(l)
         }
     };
