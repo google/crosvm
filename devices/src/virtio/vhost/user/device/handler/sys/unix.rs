@@ -14,9 +14,9 @@ use cros_async::{AsyncWrapper, Executor};
 use vm_memory::GuestMemory;
 use vmm_vhost::{
     connection::{
-        socket::Listener as SocketListener,
+        socket::{Endpoint as SocketEndpoint, Listener as SocketListener},
         vfio::{Endpoint as VfioEndpoint, Listener as VfioListener},
-        Endpoint, Listener,
+        Endpoint,
     },
     message::{MasterReq, VhostUserMemoryRegion},
     Error as VhostError, Protocol, Result as VhostResult, SlaveListener, SlaveReqHandler,
@@ -255,22 +255,32 @@ where
 
     /// Attaches to an already bound socket via `listener` and handles incoming messages from the
     /// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
-    pub async fn run_with_listener(
-        self,
-        mut listener: SocketListener,
-        ex: &Executor,
-    ) -> Result<()> {
-        let socket = ex
-            .spawn_blocking(move || {
-                listener
-                    .accept()
-                    .context("failed to accept an incoming connection")
-            })
-            .await?
-            .ok_or(anyhow!("failed to accept an incoming connection"))?;
-        let req_handler = SlaveReqHandler::from_stream(socket, std::sync::Mutex::new(self));
+    pub async fn run_with_listener(self, listener: SocketListener, ex: &Executor) -> Result<()> {
+        let mut listener =
+            SlaveListener::<SocketEndpoint<_>, _>::new(listener, std::sync::Mutex::new(self))?;
+        listener.set_nonblocking(true)?;
 
-        run_handler(req_handler, ex).await
+        loop {
+            // If the listener is not ready on the first call to `accept` and returns `None`, we
+            // temporarily convert it into an async I/O source and yield until it signals there is
+            // input data awaiting, before trying again.
+            match listener
+                .accept()
+                .context("failed to accept an incoming connection")?
+            {
+                Some(req_handler) => return run_handler(req_handler, ex).await,
+                None => {
+                    // Nobody is on the other end yet, wait until we get a connection.
+                    let async_waiter = ex
+                        .async_from_local(AsyncWrapper::new(listener))
+                        .context("failed to create async waiter")?;
+                    async_waiter.wait_readable().await?;
+
+                    // Retrieve the listener back so we can use it again.
+                    listener = async_waiter.into_source().into_inner();
+                }
+            }
+        }
     }
 
     /// Starts listening virtio-vhost-user device with VFIO to handle incoming vhost-user messages

@@ -5,6 +5,8 @@
 //!
 //! These are used on platforms where the slave has to listen for connections (e.g. POSIX only).
 
+use base::AsRawDescriptor;
+
 use super::connection::{Endpoint, Listener};
 use super::message::*;
 use super::{Result, SlaveReqHandler, VhostUserSlaveReqHandler};
@@ -42,6 +44,17 @@ impl<E: Endpoint<MasterReq>, S: VhostUserSlaveReqHandler> SlaveListener<E, S> {
     /// Change blocking status on the listener.
     pub fn set_nonblocking(&self, block: bool) -> Result<()> {
         self.listener.set_nonblocking(block)
+    }
+}
+
+impl<E, S> AsRawDescriptor for SlaveListener<E, S>
+where
+    E: Endpoint<MasterReq>,
+    E::Listener: AsRawDescriptor,
+    S: VhostUserSlaveReqHandler,
+{
+    fn as_raw_descriptor(&self) -> base::RawDescriptor {
+        self.listener.as_raw_descriptor()
     }
 }
 
