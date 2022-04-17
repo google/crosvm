@@ -88,7 +88,8 @@ impl<D: Device> ListenerTrait for Listener<D> {
     }
 
     fn set_nonblocking(&self, _block: bool) -> Result<()> {
-        unimplemented!("set_nonblocking");
+        // `accept` will never block on a VFIO connection.
+        Ok(())
     }
 }
 
