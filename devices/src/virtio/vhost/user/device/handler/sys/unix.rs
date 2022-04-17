@@ -7,8 +7,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use base::{clear_fd_flags, error, info, AsRawDescriptor, Event, SafeDescriptor};
 use cros_async::{AsyncWrapper, Executor};
 use vm_memory::GuestMemory;
@@ -250,14 +249,18 @@ where
     pub async fn run<P: AsRef<Path>>(self, socket: P, ex: &Executor) -> Result<()> {
         let listener = SocketListener::new(socket, true /* unlink */)
             .context("failed to create a socket listener")?;
-        return self.run_with_listener(listener, ex).await;
+        self.run_with_listener::<SocketEndpoint<_>>(listener, ex)
+            .await
     }
 
     /// Attaches to an already bound socket via `listener` and handles incoming messages from the
     /// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
-    pub async fn run_with_listener(self, listener: SocketListener, ex: &Executor) -> Result<()> {
-        let mut listener =
-            SlaveListener::<SocketEndpoint<_>, _>::new(listener, std::sync::Mutex::new(self))?;
+    pub async fn run_with_listener<E>(self, listener: E::Listener, ex: &Executor) -> Result<()>
+    where
+        E: Endpoint<MasterReq> + AsRawDescriptor,
+        E::Listener: AsRawDescriptor,
+    {
+        let mut listener = SlaveListener::<E, _>::new(listener, std::sync::Mutex::new(self))?;
         listener.set_nonblocking(true)?;
 
         loop {
@@ -291,21 +294,10 @@ where
             caps: device.caps.clone(),
             notification_evts: std::mem::take(&mut device.notification_evts),
         });
-        let driver = VvuDevice::new(device);
 
-        let mut listener = VfioListener::new(driver)
-            .map_err(|e| anyhow!("failed to create a VFIO listener: {}", e))
-            .and_then(|l| {
-                SlaveListener::<VfioEndpoint<_, _>, _>::new(l, std::sync::Mutex::new(self))
-                    .map_err(|e| anyhow!("failed to create SlaveListener: {}", e))
-            })?;
-
-        let req_handler = listener
-            .accept()
-            .map_err(|e| anyhow!("failed to accept VFIO connection: {}", e))?
-            .expect("vvu proxy is unavailable via VFIO");
-
-        run_handler(req_handler, ex).await
+        let listener = VfioListener::new(VvuDevice::new(device))?;
+        self.run_with_listener::<VfioEndpoint<_, _>>(listener, ex)
+            .await
     }
 }
 

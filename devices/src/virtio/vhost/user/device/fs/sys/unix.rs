@@ -10,7 +10,7 @@ use anyhow::{anyhow, bail, Context};
 use base::{get_max_open_files, AsRawDescriptor, RawDescriptor};
 use cros_async::Executor;
 use minijail::{self, Minijail};
-use vmm_vhost::connection::socket::Listener as SocketListener;
+use vmm_vhost::connection::socket::{Endpoint as SocketEndpoint, Listener as SocketListener};
 
 use crate::virtio::vhost::user::device::fs::{FsBackend, Options};
 use crate::virtio::vhost::user::device::handler::{DeviceRequestHandler, VhostUserBackend};
@@ -138,7 +138,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     }
 
     let res = match (listener, device) {
-        (Some(l), None) => ex.run_until(handler.run_with_listener(l, &ex))?,
+        (Some(l), None) => ex.run_until(handler.run_with_listener::<SocketEndpoint<_>>(l, &ex))?,
         (None, Some(d)) => ex.run_until(handler.run_vvu(d, &ex))?,
         _ => Err(anyhow!("exactly one of `--socket` or `--vfio` is required")),
     };

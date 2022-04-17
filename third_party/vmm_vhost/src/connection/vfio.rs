@@ -93,6 +93,13 @@ impl<D: Device> ListenerTrait for Listener<D> {
     }
 }
 
+impl<D: Device> AsRawDescriptor for Listener<D> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        // `Listener::accept` cannot return `None` so this method won't ever be called.
+        unreachable!()
+    }
+}
+
 /// Endpoint for vhost-user connection through VFIO.
 pub struct Endpoint<R: Req, D: Device> {
     device: D,
