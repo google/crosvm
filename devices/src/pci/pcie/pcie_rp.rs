@@ -42,7 +42,9 @@ pub struct PcieRootPort {
     pme_pending_request_id: Option<PciAddress>,
     bus_range: PciBridgeBusRange,
     downstream_devices: BTreeMap<PciAddress, HostHotPlugKey>,
+    hotplug_out_begin: bool,
     removed_downstream: Vec<PciAddress>,
+    removed_downstream_valid: bool,
     pcie_host: Option<PcieHostRootPort>,
     prepare_hotplug: bool,
 }
@@ -73,7 +75,9 @@ impl PcieRootPort {
             pme_pending_request_id: None,
             bus_range,
             downstream_devices: BTreeMap::new(),
+            hotplug_out_begin: false,
             removed_downstream: Vec::new(),
+            removed_downstream_valid: false,
             pcie_host: None,
             prepare_hotplug: false,
         }
@@ -108,7 +112,9 @@ impl PcieRootPort {
             pme_pending_request_id: None,
             bus_range,
             downstream_devices: BTreeMap::new(),
+            hotplug_out_begin: false,
             removed_downstream: Vec::new(),
+            removed_downstream_valid: false,
             pcie_host: Some(pcie_host),
             prepare_hotplug: false,
         })
@@ -132,7 +138,7 @@ impl PcieRootPort {
     }
 
     fn write_pcie_cap(&mut self, offset: usize, data: &[u8]) {
-        self.removed_downstream.clear();
+        self.removed_downstream_valid = false;
         match offset {
             PCIE_SLTCTL_OFFSET => {
                 let value = match u16::from_slice(data) {
@@ -154,10 +160,7 @@ impl PcieRootPort {
                     && (value & PCIE_SLTCTL_PIC_OFF == PCIE_SLTCTL_PIC_OFF)
                     && (old_control & PCIE_SLTCTL_PIC_OFF != PCIE_SLTCTL_PIC_OFF)
                 {
-                    for (guest_pci_addr, _) in self.downstream_devices.iter() {
-                        self.removed_downstream.push(*guest_pci_addr);
-                    }
-                    self.downstream_devices.clear();
+                    self.removed_downstream_valid = true;
                     self.slot_status &= !PCIE_SLTSTA_PDS;
                     self.slot_status |= PCIE_SLTSTA_PDC;
                     self.trigger_hp_interrupt();
@@ -418,7 +421,11 @@ impl PcieDevice for PcieRootPort {
     }
 
     fn get_removed_devices(&self) -> Vec<PciAddress> {
-        self.removed_downstream.clone()
+        if self.removed_downstream_valid {
+            self.removed_downstream.clone()
+        } else {
+            Vec::new()
+        }
     }
 
     fn hotplug_implemented(&self) -> bool {
@@ -445,16 +452,27 @@ impl HotPlugBus for PcieRootPort {
     }
 
     fn hot_unplug(&mut self, addr: PciAddress) {
-        if self.downstream_devices.get(&addr).is_none() {
+        if self.downstream_devices.remove(&addr).is_none() {
             return;
         }
 
-        self.slot_status = self.slot_status | PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP;
-        self.trigger_hp_or_pme_interrupt();
+        if !self.hotplug_out_begin {
+            self.removed_downstream.clear();
+            self.removed_downstream.push(addr);
+            // All the remaine devices will be removed also in this hotplug out interrupt
+            for (guest_pci_addr, _) in self.downstream_devices.iter() {
+                self.removed_downstream.push(*guest_pci_addr);
+            }
 
-        if let Some(host) = self.pcie_host.as_mut() {
-            host.hot_unplug();
+            self.slot_status = self.slot_status | PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP;
+            self.trigger_hp_or_pme_interrupt();
+
+            if let Some(host) = self.pcie_host.as_mut() {
+                host.hot_unplug();
+            }
         }
+
+        self.hotplug_out_begin = true;
     }
 
     fn is_match(&self, host_addr: PciAddress) -> Option<u8> {
@@ -473,6 +491,13 @@ impl HotPlugBus for PcieRootPort {
     fn add_hotplug_device(&mut self, host_key: HostHotPlugKey, guest_addr: PciAddress) {
         if self.slot_control.is_none() {
             return;
+        }
+
+        // Begin the next round hotplug in process
+        if self.hotplug_out_begin {
+            self.hotplug_out_begin = false;
+            self.downstream_devices.clear();
+            self.removed_downstream.clear();
         }
 
         self.downstream_devices.insert(guest_addr, host_key);
