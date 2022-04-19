@@ -11,9 +11,11 @@ use disk::create_async_disk_file;
 use hypervisor::ProtectionType;
 
 use crate::virtio::base_features;
-use crate::virtio::vhost::user::device::block::BlockBackend;
-use crate::virtio::vhost::user::device::handler::{DeviceRequestHandler, VhostUserBackend};
-use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
+use crate::virtio::vhost::user::device::{
+    block::BlockBackend,
+    handler::VhostUserBackend,
+    listener::{sys::VhostUserListener, VhostUserListenerTrait},
+};
 
 impl BlockBackend {
     /// Creates a new block backend.
@@ -77,18 +79,13 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let mut fileopts = opts.file.split(":").collect::<Vec<_>>();
     let filename = fileopts.remove(0);
 
-    let block = BlockBackend::new(&ex, filename, fileopts)?;
-    let max_queue_num = block.max_queue_num();
-    let handler = DeviceRequestHandler::new(Box::new(block));
-    match (opts.socket, opts.vfio) {
-        (Some(socket), None) => {
-            // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-            ex.run_until(handler.run(socket, &ex))?
-        }
-        (None, Some(device_name)) => {
-            let device = VvuPciDevice::new(device_name.as_str(), max_queue_num)?;
-            ex.run_until(handler.run_vvu(device, &ex))?
-        }
-        _ => unreachable!("Must be checked above"),
-    }
+    let block = Box::new(BlockBackend::new(&ex, filename, fileopts)?);
+    let listener = VhostUserListener::new_from_socket_or_vfio(
+        &opts.socket,
+        &opts.vfio,
+        block.max_queue_num(),
+        None,
+    )?;
+    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
+    ex.run_until(listener.run_backend(block, &ex))?
 }

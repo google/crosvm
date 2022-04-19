@@ -268,14 +268,27 @@ pub enum QueueType {
 }
 
 impl VvuPciDevice {
-    /// Creates a driver for virtio-vhost-user PCI device.
+    /// Creates a driver for virtio-vhost-user PCI device from a PCI address.
     ///
     /// # Arguments
     ///
-    /// * `pci_id` - PCI device ID such as `"0000:00:05.0"`.
+    /// * `pci_id` - PCI device ID such as `"0000:00:05.0"`. An error will be returned if this is
+    /// not a valid PCI device ID string.
     /// * `device_vq_num` - number of virtqueues that the device backend (e.g. block) may use.
     pub fn new(pci_id: &str, device_vq_num: usize) -> Result<Self> {
-        let pci_address = PciAddress::from_str(pci_id).context("failed to parse PCI address")?;
+        Self::new_from_address(
+            PciAddress::from_str(pci_id).context("failed to parse PCI address")?,
+            device_vq_num,
+        )
+    }
+
+    /// Creates a driver for virtio-vhost-user PCI device from a string containing a PCI address.
+    ///
+    /// # Arguments
+    ///
+    /// * `pci_address` - PCI device address.
+    /// * `device_vq_num` - number of virtqueues that the device backend (e.g. block) may use.
+    pub fn new_from_address(pci_address: PciAddress, device_vq_num: usize) -> Result<Self> {
         let vfio_dev = Arc::new(open_vfio_device(pci_address)?);
         let config = VfioPciConfig::new(vfio_dev.clone());
         let caps = VvuPciCaps::new(&config)?;

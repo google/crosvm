@@ -23,9 +23,11 @@ use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::{
     self, gpu,
-    vhost::user::device::handler::{DeviceRequestHandler, Doorbell, VhostUserBackend},
-    vhost::user::device::vvu::pci::VvuPciDevice,
-    vhost::user::device::wl::parse_wayland_sock,
+    vhost::user::device::{
+        handler::{Doorbell, VhostUserBackend},
+        listener::{sys::VhostUserListener, VhostUserListenerTrait},
+        wl::parse_wayland_sock,
+    },
     DescriptorChain, Gpu, GpuDisplayParameters, GpuParameters, Queue, QueueReader, VirtioDevice,
 };
 
@@ -475,7 +477,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         channels,
     )));
 
-    let backend = GpuBackend {
+    let backend = Box::new(GpuBackend {
         ex: ex.clone(),
         gpu,
         resource_bridges,
@@ -484,18 +486,10 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         fence_state: Default::default(),
         display_worker: None,
         workers: Default::default(),
-    };
-    let max_queue_num = backend.max_queue_num();
+    });
 
-    let handler = DeviceRequestHandler::new(Box::new(backend));
+    let listener =
+        VhostUserListener::new_from_socket_or_vfio(&socket, &vfio, backend.max_queue_num(), None)?;
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-    let res = match (socket, vfio) {
-        (Some(socket), None) => ex.run_until(handler.run(socket, &ex))?,
-        (None, Some(vfio)) => {
-            let device = VvuPciDevice::new(&vfio, max_queue_num)?;
-            ex.run_until(handler.run_vvu(device, &ex))?
-        }
-        _ => Err(anyhow!("exactly one of `--socket` or `--vfio` is required")),
-    };
-    res
+    ex.run_until(listener.run_backend(backend, &ex))?
 }

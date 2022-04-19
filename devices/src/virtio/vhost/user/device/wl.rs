@@ -23,8 +23,9 @@ use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
-use crate::virtio::vhost::user::device::handler::{
-    DeviceRequestHandler, Doorbell, VhostUserBackend,
+use crate::virtio::vhost::user::device::{
+    handler::{Doorbell, VhostUserBackend},
+    listener::{sys::VhostUserListener, VhostUserListenerTrait},
 };
 use crate::virtio::{base_features, wl, Queue};
 
@@ -339,13 +340,14 @@ pub fn run_wl_device(opts: Options) -> anyhow::Result<()> {
         .accept()
         .map(Tube::new)
         .context("failed to accept vm socket connection")?;
-    let handler = DeviceRequestHandler::new(Box::new(WlBackend::new(
+    let backend = Box::new(WlBackend::new(
         &ex,
         wayland_paths,
         vm_socket,
         resource_bridge,
-    )));
+    ));
 
+    let listener = VhostUserListener::new_socket(&socket, None)?;
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-    ex.run_until(handler.run(socket, &ex))?
+    ex.run_until(listener.run_backend(backend, &ex))?
 }

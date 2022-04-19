@@ -4,6 +4,7 @@
 
 mod block;
 mod handler;
+mod listener;
 
 pub use block::{run_block_device, Options as BlockOptions};
 

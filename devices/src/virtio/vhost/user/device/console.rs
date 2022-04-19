@@ -20,8 +20,10 @@ use crate::{
         self,
         console::{asynchronous::ConsoleDevice, virtio_console_config},
         copy_config,
-        vhost::user::device::handler::{DeviceRequestHandler, Doorbell, VhostUserBackend},
-        vhost::user::device::vvu::pci::VvuPciDevice,
+        vhost::user::device::{
+            handler::{Doorbell, VhostUserBackend},
+            listener::{sys::VhostUserListener, VhostUserListenerTrait},
+        },
     },
     SerialHardware, SerialParameters, SerialType,
 };
@@ -198,31 +200,27 @@ pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
         Err(e) => bail!(e),
     };
     let ex = Executor::new().context("Failed to create executor")?;
-    let backend = ConsoleBackend::new(&ex, console);
-    let max_queue_num = backend.max_queue_num();
-    let handler = DeviceRequestHandler::new(Box::new(backend));
+    let backend = Box::new(ConsoleBackend::new(&ex, console));
 
     // Set stdin() in raw mode so we can send over individual keystrokes unbuffered
     stdin()
         .set_raw_mode()
         .context("Failed to set terminal raw mode")?;
 
-    let res = match (opts.socket, opts.vfio) {
-        (Some(socket), None) => {
-            // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-            ex.run_until(handler.run(socket, &ex))?
-        }
-        (None, Some(vfio)) => {
-            let device = VvuPciDevice::new(&vfio, max_queue_num)?;
-            ex.run_until(handler.run_vvu(device, &ex))?
-        }
-        _ => Err(anyhow!("exactly one of `--socket` or `--vfio` is required")),
-    };
+    let listener = VhostUserListener::new_from_socket_or_vfio(
+        &opts.socket,
+        &opts.vfio,
+        backend.max_queue_num(),
+        None,
+    )?;
+
+    let res = ex.run_until(listener.run_backend(backend, &ex));
 
     // Restore terminal capabilities back to what they were before
     stdin()
         .set_canon_mode()
         .context("Failed to restore canonical mode for terminal")?;
 
-    res
+    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
+    res?
 }

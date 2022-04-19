@@ -3,18 +3,18 @@
 // found in the LICENSE file.
 
 use std::io;
-use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, bail, Context};
-use base::{get_max_open_files, AsRawDescriptor, RawDescriptor};
+use anyhow::{bail, Context};
+use base::{get_max_open_files, RawDescriptor};
 use cros_async::Executor;
 use minijail::{self, Minijail};
-use vmm_vhost::connection::socket::{Endpoint as SocketEndpoint, Listener as SocketListener};
 
 use crate::virtio::vhost::user::device::fs::{FsBackend, Options};
-use crate::virtio::vhost::user::device::handler::{DeviceRequestHandler, VhostUserBackend};
-use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
+use crate::virtio::vhost::user::device::{
+    handler::VhostUserBackend,
+    listener::{sys::VhostUserListener, VhostUserListenerTrait},
+};
 
 fn default_uidmap() -> String {
     let euid = unsafe { libc::geteuid() };
@@ -82,31 +82,17 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     base::syslog::init().context("Failed to initialize syslog")?;
 
     let ex = Executor::new().context("Failed to create executor")?;
-    let fs_device = FsBackend::new(&ex, &opts.tag)?;
+    let fs_device = Box::new(FsBackend::new(&ex, &opts.tag)?);
 
     let mut keep_rds = fs_device.keep_rds.clone();
-    let listener = match opts.socket {
-        None => None,
-        Some(socket) => {
-            // Create and bind unix socket
-            let l = SocketListener::new(socket, true /* unlink */)?;
-            keep_rds.push(l.as_raw_descriptor());
-            Some(l)
-        }
-    };
-    let device = match opts.vfio {
-        None => None,
-        Some(vfio) => {
-            let d = VvuPciDevice::new(&vfio, fs_device.max_queue_num())?;
-            keep_rds.extend(d.irqs.iter().map(|e| e.as_raw_descriptor()));
-            keep_rds.extend(d.notification_evts.iter().map(|e| e.as_raw_descriptor()));
-            keep_rds.push(d.vfio_dev.device_file().as_raw_fd());
-            Some(d)
-        }
-    };
-    base::syslog::push_descriptors(&mut keep_rds);
+    let listener = VhostUserListener::new_from_socket_or_vfio(
+        &opts.socket,
+        &opts.vfio,
+        fs_device.max_queue_num(),
+        Some(&mut keep_rds),
+    )?;
 
-    let handler = DeviceRequestHandler::new(Box::new(fs_device));
+    base::syslog::push_descriptors(&mut keep_rds);
 
     let pid = jail_and_fork(keep_rds, opts.shared_dir, opts.uid_map, opts.gid_map)?;
 
@@ -137,10 +123,6 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         }
     }
 
-    let res = match (listener, device) {
-        (Some(l), None) => ex.run_until(handler.run_with_listener::<SocketEndpoint<_>>(l, &ex))?,
-        (None, Some(d)) => ex.run_until(handler.run_vvu(d, &ex))?,
-        _ => Err(anyhow!("exactly one of `--socket` or `--vfio` is required")),
-    };
-    res
+    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
+    ex.run_until(listener.run_backend(fs_device, &ex))?
 }

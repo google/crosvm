@@ -25,8 +25,9 @@ use crate::virtio::snd::cras_backend::{
     MAX_QUEUE_NUM, MAX_VRING_LEN,
 };
 use crate::virtio::snd::layout::virtio_snd_config;
-use crate::virtio::vhost::user::device::handler::{
-    DeviceRequestHandler, Doorbell, VhostUserBackend,
+use crate::virtio::vhost::user::device::{
+    handler::{DeviceRequestHandler, Doorbell, VhostUserBackend},
+    listener::{sys::VhostUserListener, VhostUserListenerTrait},
 };
 use crate::virtio::{self, copy_config};
 
@@ -266,18 +267,14 @@ pub fn run_cras_snd_device(opts: Options) -> anyhow::Result<()> {
         .unwrap_or("".to_string())
         .parse::<Parameters>()?;
 
-    let snd_device = CrasSndBackend::new(params)?;
-
-    // Create and bind unix socket
-    let listener = SocketListener::new(opts.socket, true /* unlink */)?;
-
-    let handler = DeviceRequestHandler::new(Box::new(snd_device));
+    let snd_device = Box::new(CrasSndBackend::new(params)?);
 
     // Child, we can continue by spawning the executor and set up the device
     let ex = Executor::new().context("Failed to create executor")?;
 
     let _ = SND_EXECUTOR.set(ex.clone());
 
+    let listener = VhostUserListener::new_socket(&socket, None);
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-    ex.run_until(handler.run_with_listener::<SocketEndpoint<_>>(listener, &ex))?
+    ex.run_until(listener.run_backend(snd_device, &ex))?
 }

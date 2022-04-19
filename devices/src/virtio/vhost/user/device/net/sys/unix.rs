@@ -21,16 +21,16 @@ use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
-use crate::virtio;
 use crate::virtio::net::validate_and_configure_tap;
 use crate::virtio::net::{process_rx, NetError};
-use crate::virtio::vhost::user::device::handler::{
-    DeviceRequestHandler, Doorbell, VhostUserBackend,
-};
 use crate::virtio::vhost::user::device::net::{
     run_ctrl_queue, run_tx_queue, NetBackend, NET_EXECUTOR,
 };
-use virtio::vhost::user::device::vvu::pci::VvuPciDevice;
+use crate::virtio::vhost::user::device::{
+    handler::{Doorbell, VhostUserBackend},
+    listener::{sys::VhostUserListener, VhostUserListenerTrait},
+};
+use crate::{virtio, PciAddress};
 
 struct TapConfig {
     host_ip: Ipv4Addr,
@@ -315,26 +315,33 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let mut threads = Vec::with_capacity(num_devices);
 
     for (conn, backend) in devices {
+        let ex = Executor::new().context("failed to create executor")?;
+
         match conn {
             Connection::Socket(socket) => {
-                let ex = Executor::new().context("failed to create executor")?;
                 threads.push(thread::spawn(move || {
-                    let handler = DeviceRequestHandler::new(Box::new(backend));
                     NET_EXECUTOR.with(|thread_ex| {
                         let _ = thread_ex.set(ex.clone());
                     });
-                    ex.run_until(handler.run(&socket, &ex))?
+                    let listener = VhostUserListener::new_socket(&socket, None)?;
+                    // run_until() returns an Result<Result<..>> which the ? operator lets us
+                    // flatten.
+                    ex.run_until(listener.run_backend(Box::new(backend), &ex))?
                 }));
             }
             Connection::Vfio(device_name) => {
-                let device = VvuPciDevice::new(device_name.as_str(), backend.max_queue_num())?;
-                let ex = Executor::new().context("failed to create executor")?;
                 threads.push(thread::spawn(move || {
-                    let handler = DeviceRequestHandler::new(Box::new(backend));
                     NET_EXECUTOR.with(|thread_ex| {
                         let _ = thread_ex.set(ex.clone());
                     });
-                    ex.run_until(handler.run_vvu(device, &ex))?
+                    let listener = VhostUserListener::new_vvu(
+                        PciAddress::from_str(&device_name)?,
+                        backend.max_queue_num(),
+                        None,
+                    )?;
+                    // run_until() returns an Result<Result<..>> which the ? operator lets us
+                    // flatten.
+                    ex.run_until(listener.run_backend(Box::new(backend), &ex))?
                 }));
             }
         };

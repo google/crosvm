@@ -4,7 +4,6 @@
 
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
-use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
@@ -12,25 +11,21 @@ use base::{clear_fd_flags, error, info, AsRawDescriptor, Event, SafeDescriptor};
 use cros_async::{AsyncWrapper, Executor};
 use vm_memory::GuestMemory;
 use vmm_vhost::{
-    connection::{
-        socket::{Endpoint as SocketEndpoint, Listener as SocketListener},
-        vfio::{Endpoint as VfioEndpoint, Listener as VfioListener},
-        Endpoint,
-    },
+    connection::Endpoint,
     message::{MasterReq, VhostUserMemoryRegion},
     Error as VhostError, Protocol, Result as VhostResult, SlaveListener, SlaveReqHandler,
     VhostUserSlaveReqHandler,
 };
 
-use crate::vfio::{VfioDevice, VfioRegionAddr};
-use crate::virtio::interrupt::SignalableInterrupt;
-use crate::virtio::vhost::user::device::handler::{
-    DeviceRequestHandler, Doorbell, GuestAddress, HandlerType, MappingInfo, MemoryRegion,
-};
-use crate::virtio::vhost::user::device::vvu::{
-    device::VvuDevice,
-    doorbell::DoorbellRegion,
-    pci::{VvuPciCaps, VvuPciDevice},
+use crate::{
+    vfio::{VfioDevice, VfioRegionAddr},
+    virtio::{
+        interrupt::SignalableInterrupt,
+        vhost::user::device::{
+            handler::{DeviceRequestHandler, Doorbell, GuestAddress, MappingInfo, MemoryRegion},
+            vvu::{doorbell::DoorbellRegion, pci::VvuPciCaps},
+        },
+    },
 };
 
 pub(crate) enum HandlerTypeSys {
@@ -240,18 +235,9 @@ where
 }
 
 impl DeviceRequestHandler {
-    /// Creates a listening socket at `socket` and handles incoming messages from the VMM, which are
-    /// dispatched to the device backend via the `VhostUserBackend` trait methods.
-    pub async fn run<P: AsRef<Path>>(self, socket: P, ex: &Executor) -> Result<()> {
-        let listener = SocketListener::new(socket, true /* unlink */)
-            .context("failed to create a socket listener")?;
-        self.run_with_listener::<SocketEndpoint<_>>(listener, ex)
-            .await
-    }
-
     /// Attaches to an already bound socket via `listener` and handles incoming messages from the
     /// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
-    pub async fn run_with_listener<E>(self, listener: E::Listener, ex: &Executor) -> Result<()>
+    pub async fn run_with_listener<E>(self, listener: E::Listener, ex: Executor) -> Result<()>
     where
         E: Endpoint<MasterReq> + AsRawDescriptor,
         E::Listener: AsRawDescriptor,
@@ -267,7 +253,7 @@ impl DeviceRequestHandler {
                 .accept()
                 .context("failed to accept an incoming connection")?
             {
-                Some(req_handler) => return run_handler(req_handler, ex).await,
+                Some(req_handler) => return run_handler(req_handler, &ex).await,
                 None => {
                     // Nobody is on the other end yet, wait until we get a connection.
                     let async_waiter = ex
@@ -281,22 +267,7 @@ impl DeviceRequestHandler {
             }
         }
     }
-
-    /// Starts listening virtio-vhost-user device with VFIO to handle incoming vhost-user messages
-    /// forwarded by it.
-    pub async fn run_vvu(mut self, mut device: VvuPciDevice, ex: &Executor) -> Result<()> {
-        self.handler_type = HandlerType::SystemHandlerType(HandlerTypeSys::Vvu {
-            vfio_dev: Arc::clone(&device.vfio_dev),
-            caps: device.caps.clone(),
-            notification_evts: std::mem::take(&mut device.notification_evts),
-        });
-
-        let listener = VfioListener::new(VvuDevice::new(device))?;
-        self.run_with_listener::<VfioEndpoint<_, _>>(listener, ex)
-            .await
-    }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
