@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use remain::sorted;
-use sync::{Condvar, Mutex};
+use std::sync::{Condvar, Mutex};
 use thiserror::Error;
 
 use crate::{BoxError, SampleFormat, StreamDirection, StreamEffect};
@@ -344,6 +344,7 @@ impl MockShmStream {
         format: SampleFormat,
         buffer_size: usize,
     ) -> Self {
+        #[allow(clippy::mutex_atomic)]
         Self {
             num_channels,
             frame_rate,
@@ -360,12 +361,12 @@ impl MockShmStream {
     /// Returns true if a response was successfully received.
     pub fn trigger_callback_with_timeout(&mut self, timeout: Duration) -> bool {
         let &(ref lock, ref cvar) = &*self.request_notifier;
-        let mut requested = lock.lock();
+        let mut requested = lock.lock().unwrap();
         *requested = true;
         cvar.notify_one();
         let start_time = Instant::now();
         while *requested {
-            requested = cvar.wait_timeout(requested, timeout).0;
+            requested = cvar.wait_timeout(requested, timeout).unwrap().0;
             if start_time.elapsed() > timeout {
                 // We failed to get a callback in time, mark this as false.
                 *requested = false;
@@ -378,7 +379,7 @@ impl MockShmStream {
 
     fn notify_request(&mut self) {
         let &(ref lock, ref cvar) = &*self.request_notifier;
-        let mut requested = lock.lock();
+        let mut requested = lock.lock().unwrap();
         *requested = false;
         cvar.notify_one();
     }
@@ -416,9 +417,9 @@ impl ShmStream for MockShmStream {
         {
             let start_time = Instant::now();
             let &(ref lock, ref cvar) = &*self.request_notifier;
-            let mut requested = lock.lock();
+            let mut requested = lock.lock().unwrap();
             while !*requested {
-                requested = cvar.wait_timeout(requested, timeout).0;
+                requested = cvar.wait_timeout(requested, timeout).unwrap().0;
                 if start_time.elapsed() > timeout {
                     return Ok(None);
                 }
@@ -444,10 +445,10 @@ impl MockShmStreamSource {
     /// has been created, block until one has.
     pub fn get_last_stream(&self) -> MockShmStream {
         let &(ref last_stream, ref cvar) = &*self.last_stream;
-        let mut stream = last_stream.lock();
+        let mut stream = last_stream.lock().unwrap();
         loop {
             match &*stream {
-                None => stream = cvar.wait(stream),
+                None => stream = cvar.wait(stream).unwrap(),
                 Some(ref s) => return s.clone(),
             };
         }
@@ -467,7 +468,7 @@ impl<E: std::error::Error> ShmStreamSource<E> for MockShmStreamSource {
         _buffer_offsets: [u64; 2],
     ) -> GenericResult<Box<dyn ShmStream>> {
         let &(ref last_stream, ref cvar) = &*self.last_stream;
-        let mut stream = last_stream.lock();
+        let mut stream = last_stream.lock().unwrap();
 
         let new_stream = MockShmStream::new(num_channels, frame_rate, format, buffer_size);
         *stream = Some(new_stream.clone());
@@ -481,23 +482,22 @@ impl<E: std::error::Error> ShmStreamSource<E> for MockShmStreamSource {
 pub mod tests {
     use super::*;
 
-    use std::os::unix::io::AsRawFd;
-    use sys_util::SharedMemory as SysSharedMemory;
+    struct MockSharedMemory {}
 
-    impl SharedMemory for SysSharedMemory {
-        type Error = sys_util::Error;
+    impl SharedMemory for MockSharedMemory {
+        type Error = super::Error;
 
         fn anon(_: u64) -> Result<Self, Self::Error> {
-            SysSharedMemory::anon()
+            Ok(MockSharedMemory {})
         }
 
         fn size(&self) -> u64 {
-            self.size()
+            0
         }
 
         #[cfg(unix)]
         fn as_raw_fd(&self) -> RawFd {
-            AsRawFd::as_raw_fd(self)
+            0
         }
     }
 
@@ -509,7 +509,7 @@ pub mod tests {
         let buffer_size = 480;
         let num_channels = 2;
         let format = SampleFormat::S24LE;
-        let shm = SysSharedMemory::anon().expect("Failed to create shm");
+        let shm = MockSharedMemory {};
 
         let handle = std::thread::spawn(move || {
             let mut stream = thread_stream_source
@@ -552,7 +552,7 @@ pub mod tests {
         let buffer_size = 480;
         let interval = Duration::from_millis(buffer_size as u64 * 1000 / frame_rate as u64);
 
-        let shm = SysSharedMemory::anon().expect("Failed to create shm");
+        let shm = MockSharedMemory {};
 
         let start = Instant::now();
 
