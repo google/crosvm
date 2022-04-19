@@ -26,10 +26,13 @@ use resources::{Alloc, MmioType, SystemAllocator};
 
 use vfio_sys::*;
 use vm_control::{
-    VmIrqRequest, VmIrqResponse, VmMemoryDestination, VmMemoryRequest, VmMemoryResponse,
-    VmMemorySource, VmRequest, VmResponse,
+    VmMemoryDestination, VmMemoryRequest, VmMemoryResponse, VmMemorySource, VmRequest, VmResponse,
 };
 
+use crate::pci::msi::{
+    MsiConfig, MsiStatus, PCI_MSI_FLAGS, PCI_MSI_FLAGS_64BIT, PCI_MSI_FLAGS_MASKBIT,
+    PCI_MSI_NEXT_POINTER,
+};
 use crate::pci::msix::{
     MsixConfig, MsixStatus, BITS_PER_PBA_ENTRY, MSIX_PBA_ENTRIES_MODULO, MSIX_TABLE_ENTRIES_MODULO,
 };
@@ -57,23 +60,6 @@ const PCI_CAPABILITY_LIST: u32 = 0x34;
 const PCI_CAP_ID_MSI: u8 = 0x05;
 const PCI_CAP_ID_MSIX: u8 = 0x11;
 
-// MSI registers
-const PCI_MSI_NEXT_POINTER: u32 = 0x1; // Next cap pointer
-const PCI_MSI_FLAGS: u32 = 0x2; // Message Control
-const PCI_MSI_FLAGS_ENABLE: u16 = 0x0001; // MSI feature enabled
-const PCI_MSI_FLAGS_64BIT: u16 = 0x0080; // 64-bit addresses allowed
-const PCI_MSI_FLAGS_MASKBIT: u16 = 0x0100; // Per-vector masking capable
-const PCI_MSI_ADDRESS_LO: u32 = 0x4; // MSI address lower 32 bits
-const PCI_MSI_ADDRESS_HI: u32 = 0x8; // MSI address upper 32 bits (if 64 bit allowed)
-const PCI_MSI_DATA_32: u32 = 0x8; // 16 bits of data for 32-bit message address
-const PCI_MSI_DATA_64: u32 = 0xC; // 16 bits of date for 64-bit message address
-
-// MSI length
-const MSI_LENGTH_32BIT_WITHOUT_MASK: u32 = 0xA;
-const MSI_LENGTH_32BIT_WITH_MASK: u32 = 0x14;
-const MSI_LENGTH_64BIT_WITHOUT_MASK: u32 = 0xE;
-const MSI_LENGTH_64BIT_WITH_MASK: u32 = 0x18;
-
 enum VfioMsiChange {
     Disable,
     Enable,
@@ -81,17 +67,8 @@ enum VfioMsiChange {
 }
 
 struct VfioMsiCap {
+    config: MsiConfig,
     offset: u32,
-    is_64bit: bool,
-    mask_cap: bool,
-    ctl: u16,
-    address: u64,
-    data: u16,
-    vm_socket_irq: Tube,
-    irqfd: Option<Event>,
-    gsi: Option<u32>,
-    device_id: u32,
-    device_name: String,
 }
 
 impl VfioMsiCap {
@@ -103,175 +80,34 @@ impl VfioMsiCap {
         device_name: String,
     ) -> Self {
         let msi_ctl: u16 = config.read_config(msi_cap_start + PCI_MSI_FLAGS);
+        let is_64bit = (msi_ctl & PCI_MSI_FLAGS_64BIT) != 0;
+        let mask_cap = (msi_ctl & PCI_MSI_FLAGS_MASKBIT) != 0;
 
         VfioMsiCap {
+            config: MsiConfig::new(is_64bit, mask_cap, vm_socket_irq, device_id, device_name),
             offset: msi_cap_start,
-            is_64bit: (msi_ctl & PCI_MSI_FLAGS_64BIT) != 0,
-            mask_cap: (msi_ctl & PCI_MSI_FLAGS_MASKBIT) != 0,
-            ctl: 0,
-            address: 0,
-            data: 0,
-            vm_socket_irq,
-            irqfd: None,
-            gsi: None,
-            device_id,
-            device_name,
         }
     }
 
     fn is_msi_reg(&self, index: u64, len: usize) -> bool {
-        let msi_len = match (self.is_64bit, self.mask_cap) {
-            (true, true) => MSI_LENGTH_64BIT_WITH_MASK,
-            (true, false) => MSI_LENGTH_64BIT_WITHOUT_MASK,
-            (false, true) => MSI_LENGTH_32BIT_WITH_MASK,
-            (false, false) => MSI_LENGTH_32BIT_WITHOUT_MASK,
-        };
-
-        index >= self.offset as u64
-            && index + len as u64 <= (self.offset + msi_len) as u64
-            && len as u32 <= msi_len
+        self.config.is_msi_reg(self.offset, index, len)
     }
 
     fn write_msi_reg(&mut self, index: u64, data: &[u8]) -> Option<VfioMsiChange> {
-        let len = data.len();
         let offset = index as u32 - self.offset;
-        let mut ret: Option<VfioMsiChange> = None;
-        let old_address = self.address;
-        let old_data = self.data;
-
-        // write msi ctl
-        if len == 2 && offset == PCI_MSI_FLAGS {
-            let was_enabled = self.is_msi_enabled();
-            let value: [u8; 2] = [data[0], data[1]];
-            self.ctl = u16::from_le_bytes(value);
-            let is_enabled = self.is_msi_enabled();
-            if !was_enabled && is_enabled {
-                self.enable();
-                ret = Some(VfioMsiChange::Enable);
-            } else if was_enabled && !is_enabled {
-                ret = Some(VfioMsiChange::Disable)
-            }
-        } else if len == 4 && offset == PCI_MSI_ADDRESS_LO && !self.is_64bit {
-            //write 32 bit message address
-            let value: [u8; 8] = [data[0], data[1], data[2], data[3], 0, 0, 0, 0];
-            self.address = u64::from_le_bytes(value);
-        } else if len == 4 && offset == PCI_MSI_ADDRESS_LO && self.is_64bit {
-            // write 64 bit message address low part
-            let value: [u8; 8] = [data[0], data[1], data[2], data[3], 0, 0, 0, 0];
-            self.address &= !0xffffffff;
-            self.address |= u64::from_le_bytes(value);
-        } else if len == 4 && offset == PCI_MSI_ADDRESS_HI && self.is_64bit {
-            //write 64 bit message address high part
-            let value: [u8; 8] = [0, 0, 0, 0, data[0], data[1], data[2], data[3]];
-            self.address &= 0xffffffff;
-            self.address |= u64::from_le_bytes(value);
-        } else if len == 8 && offset == PCI_MSI_ADDRESS_LO && self.is_64bit {
-            // write 64 bit message address
-            let value: [u8; 8] = [
-                data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
-            ];
-            self.address = u64::from_le_bytes(value);
-        } else if len == 2
-            && ((offset == PCI_MSI_DATA_32 && !self.is_64bit)
-                || (offset == PCI_MSI_DATA_64 && self.is_64bit))
-        {
-            // write message data
-            let value: [u8; 2] = [data[0], data[1]];
-            self.data = u16::from_le_bytes(value);
+        match self.config.write_msi_capability(offset, data) {
+            MsiStatus::Enabled => Some(VfioMsiChange::Enable),
+            MsiStatus::Disabled => Some(VfioMsiChange::Disable),
+            MsiStatus::NothingToDo => None,
         }
-
-        if self.is_msi_enabled() && (old_address != self.address || old_data != self.data) {
-            self.add_msi_route();
-        }
-
-        ret
-    }
-
-    fn is_msi_enabled(&self) -> bool {
-        self.ctl & PCI_MSI_FLAGS_ENABLE == PCI_MSI_FLAGS_ENABLE
-    }
-
-    fn add_msi_route(&self) {
-        let gsi = match self.gsi {
-            Some(g) => g,
-            None => {
-                error!("Add msi route but gsi is none");
-                return;
-            }
-        };
-        if let Err(e) = self.vm_socket_irq.send(&VmIrqRequest::AddMsiRoute {
-            gsi,
-            msi_address: self.address,
-            msi_data: self.data.into(),
-        }) {
-            error!("failed to send AddMsiRoute request at {:?}", e);
-            return;
-        }
-        match self.vm_socket_irq.recv() {
-            Ok(VmIrqResponse::Err(e)) => error!("failed to call AddMsiRoute request {:?}", e),
-            Ok(_) => {}
-            Err(e) => error!("failed to receive AddMsiRoute response {:?}", e),
-        }
-    }
-
-    fn allocate_one_msi(&mut self) {
-        let irqfd = match self.irqfd.take() {
-            Some(e) => e,
-            None => match Event::new() {
-                Ok(e) => e,
-                Err(e) => {
-                    error!("failed to create event: {:?}", e);
-                    return;
-                }
-            },
-        };
-
-        let request = VmIrqRequest::AllocateOneMsi {
-            irqfd,
-            device_id: self.device_id,
-            queue_id: 0,
-            device_name: self.device_name.clone(),
-        };
-        let request_result = self.vm_socket_irq.send(&request);
-
-        // Stash the irqfd in self immediately because we used take above.
-        self.irqfd = match request {
-            VmIrqRequest::AllocateOneMsi { irqfd, .. } => Some(irqfd),
-            _ => unreachable!(),
-        };
-
-        if let Err(e) = request_result {
-            error!("failed to send AllocateOneMsi request: {:?}", e);
-            return;
-        }
-
-        match self.vm_socket_irq.recv() {
-            Ok(VmIrqResponse::AllocateOneMsi { gsi }) => self.gsi = Some(gsi),
-            _ => error!("failed to receive AllocateOneMsi Response"),
-        }
-    }
-
-    fn enable(&mut self) {
-        if self.gsi.is_none() || self.irqfd.is_none() {
-            self.allocate_one_msi();
-        }
-
-        self.add_msi_route();
     }
 
     fn get_msi_irqfd(&self) -> Option<&Event> {
-        self.irqfd.as_ref()
+        self.config.get_irqfd()
     }
 
     fn destroy(&mut self) {
-        if let Some(gsi) = self.gsi {
-            if let Some(irqfd) = self.irqfd.take() {
-                let request = VmIrqRequest::ReleaseOneIrq { gsi, irqfd };
-                if self.vm_socket_irq.send(&request).is_ok() {
-                    let _ = self.vm_socket_irq.recv::<VmIrqResponse>();
-                }
-            }
-        }
+        self.config.destroy()
     }
 }
 
@@ -1565,7 +1401,7 @@ impl PciDevice for VfioPciDevice {
         }
         rds.push(self.vm_socket_mem.as_raw_descriptor());
         if let Some(msi_cap) = &self.msi_cap {
-            rds.push(msi_cap.vm_socket_irq.as_raw_descriptor());
+            rds.push(msi_cap.config.get_msi_socket());
         }
         if let Some(msix_cap) = &self.msix_cap {
             rds.push(msix_cap.lock().config.as_raw_descriptor());

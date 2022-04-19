@@ -13,6 +13,7 @@ mod ac97_mixer;
 #[cfg(feature = "audio")]
 mod ac97_regs;
 mod coiommu;
+mod msi;
 mod msix;
 mod pci_address;
 mod pci_configuration;
@@ -26,6 +27,7 @@ mod vfio_pci;
 #[cfg(feature = "audio")]
 pub use self::ac97::{Ac97Backend, Ac97Dev, Ac97Parameters};
 pub use self::coiommu::{CoIommuDev, CoIommuParameters, CoIommuUnpinPolicy};
+pub use self::msi::MsiConfig;
 pub use self::msix::{MsixCap, MsixConfig, MsixStatus};
 pub use self::pci_address::Error as PciAddressError;
 pub use self::pci_address::PciAddress;

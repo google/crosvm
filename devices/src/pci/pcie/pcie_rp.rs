@@ -9,7 +9,7 @@ use sync::Mutex;
 
 use crate::bus::{HostHotPlugKey, HotPlugBus};
 use crate::pci::pci_configuration::PciCapabilityID;
-use crate::pci::{MsixConfig, PciAddress, PciCapability, PciDeviceError};
+use crate::pci::{MsiConfig, PciAddress, PciCapability, PciDeviceError};
 
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::pcie_device::{PciPmcCap, PcieCap, PcieDevice, PmcConfig};
@@ -30,7 +30,7 @@ const PCIE_RP_BR_PREF_MEM_SIZE: u64 = 0x400_0000;
 const PCIE_RP_DID: u16 = 0x3420;
 pub struct PcieRootPort {
     pcie_cap_reg_idx: Option<usize>,
-    msix_config: Option<Arc<Mutex<MsixConfig>>>,
+    msi_config: Option<Arc<Mutex<MsiConfig>>>,
     pmc_config: PmcConfig,
     pmc_cap_reg_idx: Option<usize>,
     pci_address: Option<PciAddress>,
@@ -59,7 +59,7 @@ impl PcieRootPort {
         };
         PcieRootPort {
             pcie_cap_reg_idx: None,
-            msix_config: None,
+            msi_config: None,
             pmc_config: PmcConfig::new(),
             pmc_cap_reg_idx: None,
             pci_address: None,
@@ -96,7 +96,7 @@ impl PcieRootPort {
 
         Ok(PcieRootPort {
             pcie_cap_reg_idx: None,
-            msix_config: None,
+            msi_config: None,
             pmc_config: PmcConfig::new(),
             pmc_cap_reg_idx: None,
             pci_address: None,
@@ -232,10 +232,10 @@ impl PcieRootPort {
     }
 
     fn trigger_interrupt(&self) {
-        if let Some(msix_config) = &self.msix_config {
-            let mut msix_config = msix_config.lock();
-            if msix_config.enabled() {
-                msix_config.trigger(0)
+        if let Some(msi_config) = &self.msi_config {
+            let msi_config = msi_config.lock();
+            if msi_config.is_msi_enabled() {
+                msi_config.trigger()
             }
         }
     }
@@ -346,8 +346,8 @@ impl PcieDevice for PcieRootPort {
         self.pci_address.ok_or(PciDeviceError::PciAllocationFailed)
     }
 
-    fn clone_interrupt(&mut self, msix_config: Arc<Mutex<MsixConfig>>) {
-        self.msix_config = Some(msix_config);
+    fn clone_interrupt(&mut self, msi_config: Arc<Mutex<MsiConfig>>) {
+        self.msi_config = Some(msi_config);
     }
 
     fn get_caps(&self) -> Vec<Box<dyn PciCapability>> {
