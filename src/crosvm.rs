@@ -381,8 +381,6 @@ pub struct Config {
     pub direct_mmio: Option<DirectIoOption>,
     #[cfg(feature = "direct")]
     pub direct_pmio: Option<DirectIoOption>,
-    #[cfg(feature = "direct")]
-    pub direct_wake_irq: Vec<u32>,
     pub disks: Vec<DiskOption>,
     pub display_window_keyboard: bool,
     pub display_window_mouse: bool,
@@ -510,8 +508,6 @@ impl Default for Config {
             direct_mmio: None,
             #[cfg(feature = "direct")]
             direct_pmio: None,
-            #[cfg(feature = "direct")]
-            direct_wake_irq: Vec::new(),
             disks: Vec::new(),
             display_window_keyboard: false,
             display_window_mouse: false,

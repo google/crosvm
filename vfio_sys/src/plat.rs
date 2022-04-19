@@ -68,8 +68,6 @@ pub const PLAT_IRQ_FORWARD_SET_LEVEL_UNMASK_EVENTFD: u32 = 2;
 pub const PLAT_IRQ_FORWARD_SET_EDGE_TRIGGER: u32 = 4;
 pub const PLAT_IRQ_FORWARD_SET_LEVEL_SCI_FOR_GPE_TRIGGER_EVENTFD: u32 = 8;
 pub const PLAT_IRQ_FORWARD_SET_LEVEL_SCI_FOR_GPE_UNMASK_EVENTFD: u32 = 16;
-pub const PLAT_IRQ_WAKE_ENABLE: u32 = 1;
-pub const PLAT_IRQ_WAKE_DISABLE: u32 = 2;
 pub const ACPI_GPE_FORWARD_SET_TRIGGER: u32 = 1;
 pub const ACPI_GPE_FORWARD_CLEAR_TRIGGER: u32 = 2;
 pub type __s8 = ::std::os::raw::c_schar;
@@ -137,13 +135,6 @@ pub struct plat_irq_forward_set {
     pub irq_number_host: __u32,
     pub count: __u32,
     pub eventfd: __IncompleteArrayField<__u8>,
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct plat_irq_wake_set {
-    pub argsz: __u32,
-    pub action_flags: __u32,
-    pub irq_number_host: __u32,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
