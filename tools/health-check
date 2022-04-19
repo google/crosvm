@@ -17,8 +17,9 @@ def check_python():
     print("Running python doctests")
     for source in Path("tools/impl").glob("*.py"):
         lib = importlib.import_module(f"impl.{source.stem}")
-        doctest.testmod(lib, optionflags=doctest.ELLIPSIS)
-
+        result = doctest.testmod(lib, optionflags=doctest.ELLIPSIS)
+        if result.failed:
+            sys.exit(1)
     print("Type-checking python")
     parallel(
         mypy("tools/impl"),

@@ -451,7 +451,7 @@ def batched(source: Iterable[T], max_batch_size: int) -> Iterable[list[T]]:
     """
     Returns an iterator over batches of elements from source_list.
 
-    >>> list(batched([1, 2, 3, 4, 5], batch_size=2))
+    >>> list(batched([1, 2, 3, 4, 5], 2))
     [[1, 2], [3, 4], [5]]
     """
     source_list = list(source)
