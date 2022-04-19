@@ -9,7 +9,7 @@ use std::{
     path::Path,
 };
 
-use base::AsRawDescriptor;
+use sys_util::AsRawDescriptor;
 
 use crate::{sys, AsIoBufs};
 
@@ -349,7 +349,7 @@ impl TryFrom<File> for StdFile {
 }
 
 impl AsRawDescriptor for File {
-    fn as_raw_descriptor(&self) -> base::RawDescriptor {
+    fn as_raw_descriptor(&self) -> sys_util::RawDescriptor {
         self.inner.as_raw_descriptor()
     }
 }
@@ -424,7 +424,7 @@ mod test {
             .unwrap();
         });
 
-        let (pipe_out, pipe_in) = base::pipe(true).unwrap();
+        let (pipe_out, pipe_in) = sys_util::pipe(true).unwrap();
         ex.run_until(async move {
             tx.send(File::try_from(pipe_in).unwrap()).unwrap();
 

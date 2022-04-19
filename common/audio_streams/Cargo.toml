@@ -15,4 +15,4 @@ thiserror = "1.0.20"
 futures = "0.3"
 
 [target.'cfg(unix)'.dev-dependencies]
-base = { path = "../../base" } # provided by ebuild
+sys_util = { path = "../sys_util" } # provided by ebuild
