@@ -34,7 +34,7 @@ use base::{
 };
 use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use minijail::{self, Minijail};
-use net_util::{Tap, TapT};
+use net_util::{sys::unix::Tap, TapTCommon};
 use vm_memory::{GuestMemory, MemoryPolicy};
 
 use self::process::*;

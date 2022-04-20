@@ -14,7 +14,7 @@ use std::result;
 use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
 
-use net_util::Error as NetError;
+use net_util::{Error as NetError, TapTCommon};
 
 use libc::{
     pid_t, waitpid, EINVAL, ENODATA, ENOTTY, STDERR_FILENO, WEXITSTATUS, WIFEXITED, WNOHANG,
@@ -515,7 +515,7 @@ impl Process {
     }
 
     fn handle_get_net_config(
-        tap: &net_util::Tap,
+        tap: &net_util::sys::unix::Tap,
         config: &mut MainResponse_GetNetConfig,
     ) -> SysResult<()> {
         // Log any NetError so that the cause can be found later, but extract and return the

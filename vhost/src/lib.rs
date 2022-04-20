@@ -390,7 +390,7 @@ mod tests {
     use super::*;
 
     use crate::net::fakes::FakeNet;
-    use net_util::fakes::FakeTap;
+    use net_util::sys::unix::fakes::FakeTap;
     use std::{path::PathBuf, result};
     use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 

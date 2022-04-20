@@ -15,12 +15,13 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use base::{ioctl, AsRawDescriptor};
+use net_util::TapTCommon;
 use tempfile::tempfile;
 
 lazy_static::lazy_static! {
     static ref TAP_AVAILABLE: bool = {
         use net_util::TapT;
-        net_util::Tap::new(true, false).is_ok()
+        net_util::sys::unix::Tap::new(true, false).is_ok()
     };
 }
 

@@ -357,7 +357,7 @@ pub mod tests {
     use crate::virtio::VIRTIO_MSI_NO_VECTOR;
     use crate::IrqLevelEvent;
     use hypervisor::ProtectionType;
-    use net_util::fakes::FakeTap;
+    use net_util::sys::unix::fakes::FakeTap;
     use std::path::PathBuf;
     use std::result;
     use std::sync::atomic::AtomicUsize;

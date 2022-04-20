@@ -15,7 +15,7 @@ use cros_async::{EventAsync, Executor, IntoAsync, IoSourceExt};
 use futures::future::{AbortHandle, Abortable};
 use hypervisor::ProtectionType;
 use net_util::TapT;
-use net_util::{MacAddress, Tap};
+use net_util::{sys::unix::Tap, MacAddress};
 use sync::Mutex;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
