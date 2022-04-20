@@ -537,7 +537,7 @@ def find_source_files(extension: str):
 
 def find_scripts(path: Path, shebang: str):
     for file in path.glob("*"):
-        if file.is_file() and file.read_text().startswith(f"#!{shebang}"):
+        if file.is_file() and file.open(errors="ignore").read(512).startswith(f"#!{shebang}"):
             yield file
 
 
