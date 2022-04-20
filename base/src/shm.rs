@@ -6,11 +6,7 @@ use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, S
 use crate::{Error, MemfdSeals, RawDescriptor, Result};
 #[cfg(unix)]
 use std::os::unix::io::RawFd;
-use std::{
-    ffi::CStr,
-    fs::File,
-    os::unix::io::{AsRawFd, IntoRawFd},
-};
+use std::{ffi::CStr, fs::File, os::unix::io::IntoRawFd};
 
 use crate::platform::SharedMemory as SysUtilSharedMemory;
 use serde::{Deserialize, Serialize};
@@ -72,7 +68,7 @@ impl Unix for SharedMemory {
 
 impl AsRawDescriptor for SharedMemory {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.0.as_raw_fd()
+        self.0.as_raw_descriptor()
     }
 }
 

@@ -11,7 +11,7 @@ pub use crate::platform::EventReadResult;
 use crate::{generate_scoped_event, platform::EventFd, RawDescriptor, Result};
 
 #[cfg(unix)]
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
+use std::os::unix::io::{FromRawFd, IntoRawFd};
 
 /// See [EventFd](crate::platform::EventFd) for struct- and method-level
 /// documentation.
@@ -42,7 +42,7 @@ impl Event {
 
 impl AsRawDescriptor for Event {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.0.as_raw_fd()
+        self.0.as_raw_descriptor()
     }
 }
 
