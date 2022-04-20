@@ -21,12 +21,14 @@ use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
-use super::{run_ctrl_queue, run_tx_queue, NetBackend, NET_EXECUTOR};
 use crate::virtio;
 use crate::virtio::net::validate_and_configure_tap;
 use crate::virtio::net::{process_rx, NetError};
 use crate::virtio::vhost::user::device::handler::{
     DeviceRequestHandler, Doorbell, VhostUserBackend,
+};
+use crate::virtio::vhost::user::device::net::{
+    run_ctrl_queue, run_tx_queue, NetBackend, NET_EXECUTOR,
 };
 use virtio::vhost::user::device::vvu::pci::VvuPciDevice;
 
@@ -148,7 +150,7 @@ async fn run_rx_queue<T: TapT>(
 }
 
 /// Platform specific impl of VhostUserBackend::start_queue.
-pub(super) fn start_queue<T: 'static + IntoAsync + TapT>(
+pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + IntoAsync + TapT>(
     backend: &mut NetBackend<T>,
     idx: usize,
     mut queue: virtio::Queue,

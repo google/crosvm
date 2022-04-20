@@ -2,13 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[cfg_attr(windows, path = "windows/net.rs")]
-#[cfg_attr(not(windows), path = "unix/net.rs")]
-mod net;
-
-// Only Windows exposes public symbols, but the module level use is used on both platforms.
-#[allow(unused_imports)]
-pub use net::*;
+pub mod sys;
 
 use std::sync::Arc;
 
@@ -165,7 +159,7 @@ where
         doorbell: Arc<Mutex<Doorbell>>,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
-        net::start_queue(self, idx, queue, mem, doorbell, kick_evt)
+        sys::start_queue(self, idx, queue, mem, doorbell, kick_evt)
     }
 
     fn stop_queue(&mut self, idx: usize) {
@@ -177,5 +171,5 @@ where
 
 /// Starts a vhost-user net device.
 pub fn run_net_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
-    start_device(program_name, args)
+    sys::start_device(program_name, args)
 }

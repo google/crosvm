@@ -2,10 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use crate::virtio;
+#[cfg(feature = "slirp")]
+use crate::virtio::net::MAX_BUFFER_SIZE;
+use crate::virtio::net::{process_rx, NetError};
+use crate::virtio::vhost::user::device::handler::read_from_tube_transporter;
+use crate::virtio::vhost::user::device::handler::{DeviceRequestHandler, Doorbell};
+use crate::virtio::vhost::user::device::net::{
+    run_ctrl_queue, run_tx_queue, NetBackend, NET_EXECUTOR,
+};
+use crate::virtio::{base_features, SignalableInterrupt};
 use anyhow::{bail, Context};
 use argh::FromArgs;
 use base::named_pipes::{OverlappedWrapper, PipeConnection};
 use base::{error, warn, Event, RawDescriptor};
+use broker_ipc::{common_child_setup, CommonChildStartupArgs};
 use cros_async::{EventAsync, Executor, IntoAsync, IoSourceExt};
 use futures::future::{AbortHandle, Abortable};
 use hypervisor::ProtectionType;
@@ -16,20 +27,10 @@ use net_util::TapT;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use sync::Mutex;
+use tube_transporter::TubeToken;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
-
-use super::{run_ctrl_queue, run_tx_queue, NetBackend, NET_EXECUTOR};
-use crate::virtio;
-#[cfg(feature = "slirp")]
-use crate::virtio::net::MAX_BUFFER_SIZE;
-use crate::virtio::net::{process_rx, NetError};
-use crate::virtio::vhost::user::device::handler::read_from_tube_transporter;
-use crate::virtio::vhost::user::device::handler::{DeviceRequestHandler, Doorbell};
-use crate::virtio::{base_features, SignalableInterrupt};
-use broker_ipc::{common_child_setup, CommonChildStartupArgs};
-use tube_transporter::TubeToken;
 
 impl<T: 'static> NetBackend<T>
 where
@@ -107,7 +108,7 @@ async fn run_rx_queue<T: TapT>(
 }
 
 /// Platform specific impl of VhostUserBackend::start_queue.
-pub(super) fn start_queue<T: 'static + IntoAsync + TapT>(
+pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + IntoAsync + TapT>(
     backend: &mut NetBackend<T>,
     idx: usize,
     mut queue: virtio::Queue,
