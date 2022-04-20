@@ -372,7 +372,7 @@ impl AsyncDisk for SingleFileDisk {
 
     async fn punch_hole(&self, file_offset: u64, length: u64) -> Result<()> {
         self.inner
-            .fallocate(file_offset, length, AllocateMode::ZeroRange)
+            .fallocate(file_offset, length, AllocateMode::PunchHole)
             .await
             .map_err(Error::Fallocate)
     }
