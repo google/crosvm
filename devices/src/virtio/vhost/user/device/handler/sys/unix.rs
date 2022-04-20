@@ -17,7 +17,7 @@ use vmm_vhost::{
 };
 
 use crate::{
-    vfio::{VfioDevice, VfioRegionAddr},
+    vfio::VfioDevice,
     virtio::{
         vhost::user::device::{
             handler::{
@@ -75,54 +75,6 @@ impl SignalableInterrupt for Doorbell {
     }
 }
 
-pub(crate) fn create_vvu_guest_memory(
-    vfio_dev: &VfioDevice,
-    shared_mem_addr: &VfioRegionAddr,
-    contexts: &[VhostUserMemoryRegion],
-) -> VhostResult<(GuestMemory, Vec<MappingInfo>)> {
-    let file_offset = vfio_dev.get_offset_for_addr(shared_mem_addr).map_err(|e| {
-        error!("failed to get underlying file: {}", e);
-        VhostError::InvalidOperation
-    })?;
-
-    let mut vmm_maps = Vec::with_capacity(contexts.len());
-    let mut regions = Vec::with_capacity(contexts.len());
-    let page_size = base::pagesize() as u64;
-    for region in contexts {
-        let offset = file_offset + region.mmap_offset;
-        assert_eq!(offset % page_size, 0);
-
-        vmm_maps.push(MappingInfo {
-            vmm_addr: region.user_addr as u64,
-            guest_phys: region.guest_phys_addr as u64,
-            size: region.memory_size,
-        });
-
-        let cloned_file = vfio_dev.dev_file().try_clone().map_err(|e| {
-            error!("failed to clone vfio device file: {}", e);
-            VhostError::InvalidOperation
-        })?;
-        let region = MemoryRegion::new_from_file(
-            region.memory_size,
-            GuestAddress(region.guest_phys_addr),
-            file_offset + region.mmap_offset,
-            Arc::new(cloned_file),
-        )
-        .map_err(|e| {
-            error!("failed to create a memory region: {}", e);
-            VhostError::InvalidOperation
-        })?;
-        regions.push(region);
-    }
-
-    let guest_mem = GuestMemory::from_regions(regions).map_err(|e| {
-        error!("failed to create guest memory: {}", e);
-        VhostError::InvalidOperation
-    })?;
-
-    Ok((guest_mem, vmm_maps))
-}
-
 /// Ops for running vhost-user over virtio (i.e. virtio-vhost-user).
 pub struct VvuOps {
     vfio_dev: Arc<VfioDevice>,
@@ -155,11 +107,50 @@ impl VhostUserPlatformOps for VvuOps {
             return Err(VhostError::InvalidParam);
         }
 
-        create_vvu_guest_memory(
-            self.vfio_dev.as_ref(),
-            self.caps.shared_mem_cfg_addr(),
-            contexts,
-        )
+        let file_offset = self
+            .vfio_dev
+            .get_offset_for_addr(self.caps.shared_mem_cfg_addr())
+            .map_err(|e| {
+                error!("failed to get underlying file: {}", e);
+                VhostError::InvalidOperation
+            })?;
+
+        let mut vmm_maps = Vec::with_capacity(contexts.len());
+        let mut regions = Vec::with_capacity(contexts.len());
+        let page_size = base::pagesize() as u64;
+        for region in contexts {
+            let offset = file_offset + region.mmap_offset;
+            assert_eq!(offset % page_size, 0);
+
+            vmm_maps.push(MappingInfo {
+                vmm_addr: region.user_addr as u64,
+                guest_phys: region.guest_phys_addr as u64,
+                size: region.memory_size,
+            });
+
+            let cloned_file = self.vfio_dev.dev_file().try_clone().map_err(|e| {
+                error!("failed to clone vfio device file: {}", e);
+                VhostError::InvalidOperation
+            })?;
+            let region = MemoryRegion::new_from_file(
+                region.memory_size,
+                GuestAddress(region.guest_phys_addr),
+                file_offset + region.mmap_offset,
+                Arc::new(cloned_file),
+            )
+            .map_err(|e| {
+                error!("failed to create a memory region: {}", e);
+                VhostError::InvalidOperation
+            })?;
+            regions.push(region);
+        }
+
+        let guest_mem = GuestMemory::from_regions(regions).map_err(|e| {
+            error!("failed to create guest memory: {}", e);
+            VhostError::InvalidOperation
+        })?;
+
+        Ok((guest_mem, vmm_maps))
     }
 
     fn set_vring_kick(&mut self, index: u8, file: Option<File>) -> VhostResult<Event> {

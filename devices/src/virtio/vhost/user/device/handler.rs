@@ -131,46 +131,6 @@ pub fn vmm_va_to_gpa(maps: &[MappingInfo], vmm_va: u64) -> VhostResult<GuestAddr
     Err(VhostError::InvalidMessage)
 }
 
-pub fn create_guest_memory(
-    contexts: &[VhostUserMemoryRegion],
-    files: Vec<File>,
-) -> VhostResult<(GuestMemory, Vec<MappingInfo>)> {
-    let mut regions = Vec::with_capacity(files.len());
-    for (region, file) in contexts.iter().zip(files.into_iter()) {
-        let region = MemoryRegion::new_from_shm(
-            region.memory_size,
-            GuestAddress(region.guest_phys_addr),
-            region.mmap_offset,
-            Arc::new(
-                SharedMemory::from_safe_descriptor(
-                    SafeDescriptor::from(file),
-                    Some(region.memory_size),
-                )
-                .unwrap(),
-            ),
-        )
-        .map_err(|e| {
-            error!("failed to create a memory region: {}", e);
-            VhostError::InvalidOperation
-        })?;
-        regions.push(region);
-    }
-    let guest_mem = GuestMemory::from_regions(regions).map_err(|e| {
-        error!("failed to create guest memory: {}", e);
-        VhostError::InvalidOperation
-    })?;
-
-    let vmm_maps = contexts
-        .iter()
-        .map(|region| MappingInfo {
-            vmm_addr: region.user_addr,
-            guest_phys: region.guest_phys_addr,
-            size: region.memory_size,
-        })
-        .collect();
-    Ok((guest_mem, vmm_maps))
-}
-
 /// Trait for vhost-user backend.
 pub trait VhostUserBackend {
     /// The maximum number of queues that this backend can manage.
@@ -330,7 +290,44 @@ impl VhostUserPlatformOps for VhostUserRegularOps {
         contexts: &[VhostUserMemoryRegion],
         files: Vec<File>,
     ) -> VhostResult<(GuestMemory, Vec<MappingInfo>)> {
-        create_guest_memory(contexts, files)
+        if files.len() != contexts.len() {
+            return Err(VhostError::InvalidParam);
+        }
+
+        let mut regions = Vec::with_capacity(files.len());
+        for (region, file) in contexts.iter().zip(files.into_iter()) {
+            let region = MemoryRegion::new_from_shm(
+                region.memory_size,
+                GuestAddress(region.guest_phys_addr),
+                region.mmap_offset,
+                Arc::new(
+                    SharedMemory::from_safe_descriptor(
+                        SafeDescriptor::from(file),
+                        Some(region.memory_size),
+                    )
+                    .unwrap(),
+                ),
+            )
+            .map_err(|e| {
+                error!("failed to create a memory region: {}", e);
+                VhostError::InvalidOperation
+            })?;
+            regions.push(region);
+        }
+        let guest_mem = GuestMemory::from_regions(regions).map_err(|e| {
+            error!("failed to create guest memory: {}", e);
+            VhostError::InvalidOperation
+        })?;
+
+        let vmm_maps = contexts
+            .iter()
+            .map(|region| MappingInfo {
+                vmm_addr: region.user_addr,
+                guest_phys: region.guest_phys_addr,
+                size: region.memory_size,
+            })
+            .collect();
+        Ok((guest_mem, vmm_maps))
     }
 
     fn set_vring_kick(&mut self, _index: u8, file: Option<File>) -> VhostResult<Event> {
