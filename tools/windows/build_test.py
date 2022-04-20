@@ -424,6 +424,13 @@ def get_parser():
         ],
         help="Skips building and testing a crate if the crate contains specified file in its root directory.",
     )
+    parser.add_argument(
+        "--build_mode",
+        default="release",
+        choices=["release", "debug"],
+        help="Build mode of the binaries.",
+    )
+
     return parser
 
 
@@ -431,30 +438,34 @@ def main(argv):
     opts = get_parser().parse_args(argv)
     os.environ["RUST_BACKTRACE"] = "1"
     if IS_WINDOWS:
-        build_test_cases = [
-            # (sysroot path, target triple, debug/release, skip_file_name, should test?)
-            (
-                opts.x86_64_msvc_sysroot,
-                X86_64_WIN_MSVC_TRIPLE,
-                "debug",
-                opts.skip_file_name,
-                True,
-            ),
-            (
-                opts.x86_64_msvc_sysroot,
-                X86_64_WIN_MSVC_TRIPLE,
-                "release",
-                opts.skip_file_name,
-                True,
-            ),
-            (
-                opts.x86_64_msvc_sysroot,
-                X86_64_WIN_MSVC_TRIPLE,
-                "release",
-                opts.skip_file_name,
-                False,
-            ),
-        ]
+        if opts.build_mode == "release":
+            build_test_cases = [
+                # (sysroot path, target triple, debug/release, skip_file_name, should test?)
+                (
+                    opts.x86_64_msvc_sysroot,
+                    X86_64_WIN_MSVC_TRIPLE,
+                    "release",
+                    opts.skip_file_name,
+                    True,
+                ),
+                (
+                    opts.x86_64_msvc_sysroot,
+                    X86_64_WIN_MSVC_TRIPLE,
+                    "release",
+                    opts.skip_file_name,
+                    False,
+                ),
+            ]
+        elif opts.build_mode == "debug":
+            build_test_cases = [
+                (
+                    opts.x86_64_msvc_sysroot,
+                    X86_64_WIN_MSVC_TRIPLE,
+                    "debug",
+                    opts.skip_file_name,
+                    True,
+                ),
+            ]
     else:
         build_test_cases = [
             # (sysroot path, target triple, debug/release, skip_file_name, should test?)
