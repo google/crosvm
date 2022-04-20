@@ -47,28 +47,36 @@
 
 pub(super) mod sys;
 
-use sys::*;
+use sys::Doorbell;
 
 use std::convert::{From, TryFrom};
 use std::fs::File;
 use std::num::Wrapping;
 use std::sync::Arc;
 
-use base::{error, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor, SharedMemory};
+use anyhow::{bail, Context, Result};
+use base::{
+    error, info, AsRawDescriptor, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
+    SharedMemory,
+};
+use cros_async::{AsyncWrapper, Executor};
 use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory, MemoryRegion};
 use vmm_vhost::{
+    connection::Endpoint,
     message::{
-        VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion, VhostUserProtocolFeatures,
-        VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
-        VhostUserVringState,
+        MasterReq, VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion,
+        VhostUserProtocolFeatures, VhostUserSingleMemoryRegion, VhostUserVirtioFeatures,
+        VhostUserVringAddrFlags, VhostUserVringState,
     },
-    Protocol,
+    Error as VhostError, Protocol, Result as VhostResult, SlaveReqHandler,
+    VhostUserSlaveReqHandler, VhostUserSlaveReqHandlerMut,
 };
 
-use vmm_vhost::{Error as VhostError, Result as VhostResult, VhostUserSlaveReqHandlerMut};
-
 use crate::virtio::{Queue, SignalableInterrupt};
+
+#[cfg(unix)]
+use {base::clear_fd_flags, std::os::unix::io::AsRawFd};
 
 /// An event to deliver an interrupt to the guest.
 ///
@@ -77,6 +85,12 @@ use crate::virtio::{Queue, SignalableInterrupt};
 // status. For this purpose, we need a mechanism to share interrupt status between the vmm and the
 // device process.
 pub struct CallEvent(Event);
+
+impl CallEvent {
+    pub fn into_inner(self) -> Event {
+        self.0
+    }
+}
 
 impl SignalableInterrupt for CallEvent {
     fn signal(&self, _vector: u16, _interrupt_status_mask: u32) {
@@ -213,46 +227,6 @@ pub trait VhostUserBackend {
     fn reset(&mut self);
 }
 
-#[cfg_attr(windows, allow(dead_code))]
-pub enum Doorbell {
-    Call(CallEvent),
-    SystemDoorbell(DoorbellSys),
-}
-
-// TODO(b/230665747): Implement SignalableInterrupt trait for system specific
-// enums.
-impl SignalableInterrupt for Doorbell {
-    fn signal(&self, vector: u16, interrupt_status_mask: u32) {
-        match &self {
-            Self::Call(evt) => evt.signal(vector, interrupt_status_mask),
-            Self::SystemDoorbell(doorbell_sys) => {
-                system_signal(doorbell_sys, vector, interrupt_status_mask)
-            }
-        }
-    }
-
-    fn signal_config_changed(&self) {
-        match &self {
-            Self::Call(evt) => evt.signal_config_changed(),
-            Self::SystemDoorbell(doorbell_sys) => system_signal_config_changed(doorbell_sys),
-        }
-    }
-
-    fn get_resample_evt(&self) -> Option<&Event> {
-        match &self {
-            Self::Call(evt) => evt.get_resample_evt(),
-            Self::SystemDoorbell(doorbell_sys) => system_get_resample_evt(doorbell_sys),
-        }
-    }
-
-    fn do_interrupt_resample(&self) {
-        match &self {
-            Self::Call(evt) => evt.do_interrupt_resample(),
-            Self::SystemDoorbell(doorbell_sys) => system_do_interrupt_resample(doorbell_sys),
-        }
-    }
-}
-
 /// A virtio ring entry.
 struct Vring {
     queue: Queue,
@@ -276,31 +250,144 @@ impl Vring {
     }
 }
 
-pub(super) enum HandlerType {
-    VhostUser,
-    SystemHandlerType(HandlerTypeSys),
+/// Performs the run loop for an already-constructed request handler.
+pub async fn run_handler<S, E>(mut req_handler: SlaveReqHandler<S, E>, ex: &Executor) -> Result<()>
+where
+    S: VhostUserSlaveReqHandler,
+    E: Endpoint<MasterReq> + AsRawDescriptor,
+{
+    let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
+        .map(AsyncWrapper::new)
+        .context("failed to get safe descriptor for handler")?;
+    let handler_source = ex
+        .async_from(h)
+        .context("failed to create an async source")?;
+
+    loop {
+        handler_source
+            .wait_readable()
+            .await
+            .context("failed to wait for the handler to become readable")?;
+        match req_handler.handle_request() {
+            Ok(()) => (),
+            Err(VhostError::ClientExit) => {
+                info!("vhost-user connection closed");
+                // Exit as the client closed the connection.
+                return Ok(());
+            }
+            Err(e) => {
+                bail!("failed to handle a vhost-user request: {}", e);
+            }
+        };
+    }
 }
 
-impl Default for HandlerType {
-    fn default() -> Self {
-        Self::VhostUser
+/// Trait for defining vhost-user ops that are platform-dependent.
+pub trait VhostUserPlatformOps {
+    /// Returns the protocol implemented by these platform ops.
+    fn protocol(&self) -> Protocol;
+    /// Create the guest memory for the backend.
+    ///
+    /// `contexts` and `files` must be the same size, and provide a description of the memory
+    /// regions to map as well as the file descriptors from which to obtain the memory backing these
+    /// regions, respectively.
+    ///
+    /// The returned tuple contains the constructed `GuestMemory` from these memory contexts, as
+    /// well as a vector describing all the mappings described by these contexts.
+
+    fn set_mem_table(
+        &mut self,
+        contexts: &[VhostUserMemoryRegion],
+        files: Vec<File>,
+    ) -> VhostResult<(GuestMemory, Vec<MappingInfo>)>;
+
+    /// Return an `Event` that will be signaled by the frontend whenever vring `index` should be
+    /// processed.
+    ///
+    /// For protocols that support providing that event using a file descriptor (`Regular`), it is
+    /// provided by `file`. For other protocols, `file` will be `None`.
+    fn set_vring_kick(&mut self, index: u8, file: Option<File>) -> VhostResult<Event>;
+
+    /// Return a `Doorbell` that the backend will signal whenever it puts used buffers for vring
+    /// `index`.
+    ///
+    /// For protocols that support listening to a file descriptor (`Regular`), `file` provides a
+    /// file descriptor from which the `Doorbell` should be built. For other protocols, it will be
+    /// `None`.
+    fn set_vring_call(&mut self, index: u8, file: Option<File>) -> VhostResult<Doorbell>;
+}
+
+/// Ops for running vhost-user over a stream (i.e. regular protocol).
+pub(super) struct VhostUserRegularOps;
+
+impl VhostUserPlatformOps for VhostUserRegularOps {
+    fn protocol(&self) -> Protocol {
+        Protocol::Regular
+    }
+
+    fn set_mem_table(
+        &mut self,
+        contexts: &[VhostUserMemoryRegion],
+        files: Vec<File>,
+    ) -> VhostResult<(GuestMemory, Vec<MappingInfo>)> {
+        create_guest_memory(contexts, files)
+    }
+
+    fn set_vring_kick(&mut self, _index: u8, file: Option<File>) -> VhostResult<Event> {
+        let file = file.ok_or(VhostError::InvalidParam)?;
+        // Remove O_NONBLOCK from kick_fd. Otherwise, uring_executor will fails when we read
+        // values via `next_val()` later.
+        // This is only required (and can only be done) on Unix platforms.
+        #[cfg(unix)]
+        if let Err(e) = clear_fd_flags(file.as_raw_fd(), libc::O_NONBLOCK) {
+            error!("failed to remove O_NONBLOCK for kick fd: {}", e);
+            return Err(VhostError::InvalidParam);
+        }
+
+        // Safe because we own the file.
+        Ok(unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) })
+    }
+
+    fn set_vring_call(&mut self, _index: u8, file: Option<File>) -> VhostResult<Doorbell> {
+        let file = file.ok_or(VhostError::InvalidParam)?;
+        Ok(
+            // `Doorbell` is defined as `CallEvent` on Windows, prevent clippy from giving us a
+            // warning about the unneeded conversion.
+            #[allow(clippy::useless_conversion)]
+            Doorbell::from(CallEvent::try_from(file).map_err(|_| {
+                error!("failed to convert callfd to CallSignal");
+                VhostError::InvalidParam
+            })?),
+        )
     }
 }
 
 /// Structure to have an event loop for interaction between a VMM and `VhostUserBackend`.
-pub struct DeviceRequestHandler {
+pub struct DeviceRequestHandler<O>
+where
+    O: VhostUserPlatformOps,
+{
     vrings: Vec<Vring>,
     owned: bool,
     vmm_maps: Option<Vec<MappingInfo>>,
     mem: Option<GuestMemory>,
     backend: Box<dyn VhostUserBackend>,
-
-    handler_type: HandlerType,
+    ops: O,
 }
 
-impl DeviceRequestHandler {
-    /// Creates the vhost-user handler instance for `backend`.
+impl DeviceRequestHandler<VhostUserRegularOps> {
     pub fn new(backend: Box<dyn VhostUserBackend>) -> Self {
+        Self::new_with_ops(backend, VhostUserRegularOps)
+    }
+}
+
+impl<O> DeviceRequestHandler<O>
+where
+    O: VhostUserPlatformOps,
+{
+    /// Creates a vhost-user handler instance for `backend` with a different set of platform ops
+    /// than the regular vhost-user ones.
+    pub(crate) fn new_with_ops(backend: Box<dyn VhostUserBackend>, ops: O) -> Self {
         let mut vrings = Vec::with_capacity(backend.max_queue_num());
         for _ in 0..backend.max_queue_num() {
             vrings.push(Vring::new(backend.max_vring_len() as u16));
@@ -312,17 +399,14 @@ impl DeviceRequestHandler {
             vmm_maps: None,
             mem: None,
             backend,
-            handler_type: Default::default(), // For vvu, this field will be overwritten later.
+            ops,
         }
     }
 }
 
-impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
+impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<O> {
     fn protocol(&self) -> Protocol {
-        match &self.handler_type {
-            HandlerType::VhostUser => Protocol::Regular,
-            HandlerType::SystemHandlerType(handler_type_sys) => system_protocol(handler_type_sys),
-        }
+        self.ops.protocol()
     }
 
     fn set_owner(&mut self) -> VhostResult<()> {
@@ -391,18 +475,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         contexts: &[VhostUserMemoryRegion],
         files: Vec<File>,
     ) -> VhostResult<()> {
-        let (guest_mem, vmm_maps) = match &self.handler_type {
-            HandlerType::VhostUser => {
-                if files.len() != contexts.len() {
-                    return Err(VhostError::InvalidParam);
-                }
-                create_guest_memory(contexts, files)?
-            }
-            HandlerType::SystemHandlerType(handler_type_sys) => {
-                system_set_mem_table(handler_type_sys, files, contexts)?
-            }
-        };
-
+        let (guest_mem, vmm_maps) = self.ops.set_mem_table(contexts, files)?;
         self.mem = Some(guest_mem);
         self.vmm_maps = Some(vmm_maps);
         Ok(())
@@ -494,20 +567,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
             return Err(VhostError::InvalidOperation);
         }
 
-        let kick_evt = match &self.handler_type {
-            HandlerType::VhostUser => {
-                let file = file.ok_or(VhostError::InvalidParam)?;
-
-                system_clear_rd_flags(&file)?;
-
-                // Safe because we own the file.
-                unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) }
-            }
-            HandlerType::SystemHandlerType(handler_type_sys) => {
-                system_get_kick_evt(handler_type_sys, index, file)?
-            }
-        };
-
+        let kick_evt = self.ops.set_vring_kick(index, file)?;
         let vring = &mut self.vrings[index as usize];
         vring.queue.set_ready(true);
 
@@ -538,19 +598,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
             return Err(VhostError::InvalidParam);
         }
 
-        let doorbell = match &self.handler_type {
-            HandlerType::VhostUser => {
-                let file = file.ok_or(VhostError::InvalidParam)?;
-                Doorbell::Call(CallEvent::try_from(file).map_err(|_| {
-                    error!("failed to convert callfd to CallSignal");
-                    VhostError::InvalidParam
-                })?)
-            }
-            HandlerType::SystemHandlerType(handler_type_sys) => {
-                system_create_doorbell(handler_type_sys, index)?
-            }
-        };
-
+        let doorbell = self.ops.set_vring_call(index, file)?;
         match &self.vrings[index as usize].doorbell {
             None => {
                 self.vrings[index as usize].doorbell = Some(Arc::new(Mutex::new(doorbell)));
@@ -661,8 +709,6 @@ mod tests {
     use anyhow::{anyhow, bail};
     use data_model::DataInit;
     use tempfile::{Builder, TempDir};
-    use vmm_vhost::message::MasterReq;
-    use vmm_vhost::{connection::Endpoint, SlaveReqHandler, VhostUserSlaveReqHandler};
 
     use crate::virtio::vhost::user::vmm::VhostUserHandler;
 
@@ -833,8 +879,10 @@ mod tests {
         });
 
         // Device side
-        let handler =
-            std::sync::Mutex::new(DeviceRequestHandler::new(Box::new(FakeBackend::new())));
+        let handler = std::sync::Mutex::new(DeviceRequestHandler::new_with_ops(
+            Box::new(FakeBackend::new()),
+            VhostUserRegularOps,
+        ));
         let mut listener = SlaveListener::<SocketEndpoint<_>, _>::new(listener, handler).unwrap();
 
         // Notify listener is ready.

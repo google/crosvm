@@ -16,16 +16,15 @@ use tube_transporter::{TubeTransferDataList, TubeTransporterReader};
 use vm_memory::GuestMemory;
 use vmm_vhost::{Protocol, SlaveReqHandler};
 
-use crate::virtio::vhost::user::device::handler::{
-    DeviceRequestHandler, Doorbell, MappingInfo, VhostUserBackend,
+use crate::virtio::vhost::user::device::{
+    handler::{
+        CallEvent, DeviceRequestHandler, MappingInfo, VhostResult, VhostUserBackend,
+        VhostUserMemoryRegion, VhostUserRegularOps,
+    },
+    listener::{VhostUserListener, VhostUserListenerTrait},
 };
-use crate::virtio::vhost::user::device::handler::{VhostResult, VhostUserMemoryRegion};
 
-#[allow(dead_code)]
-pub(crate) enum HandlerTypeSys {}
-
-#[allow(dead_code)]
-pub enum DoorbellSys {}
+pub type Doorbell = CallEvent;
 
 pub fn read_from_tube_transporter(
     raw_transport_tube: RawDescriptor,
@@ -43,69 +42,7 @@ pub fn read_from_tube_transporter(
     tube_transporter.read_tubes().map_err(anyhow::Error::msg)
 }
 
-pub(in crate::virtio::vhost::user::device::handler) fn system_protocol(
-    _handler_type: &HandlerTypeSys,
-) -> Protocol {
-    unimplemented!("This method shouldn't be called on Windows");
-}
-
-pub(in crate::virtio::vhost::user::device::handler) fn system_set_mem_table(
-    _handler_type_sys: &HandlerTypeSys,
-    _files: Vec<File>,
-    _contexts: &[VhostUserMemoryRegion],
-) -> VhostResult<(GuestMemory, Vec<MappingInfo>)> {
-    unimplemented!("This method shouldn't be called on Windows");
-}
-
-pub(in crate::virtio::vhost::user::device::handler) fn system_get_kick_evt(
-    _handler_type_sys: &HandlerTypeSys,
-    _index: u8,
-    _file: Option<File>,
-) -> VhostResult<Event> {
-    unimplemented!("This method shouldn't be called on Windows");
-}
-
-pub(in crate::virtio::vhost::user::device::handler) fn system_create_doorbell(
-    _handler_type_sys: &HandlerTypeSys,
-    _index: u8,
-) -> VhostResult<Doorbell> {
-    unimplemented!("This method shouldn't be called on Windows");
-}
-
-pub(in crate::virtio::vhost::user::device::handler) fn system_signal(
-    _doorbell_sys: &DoorbellSys,
-    _vector: u16,
-    _interrupt_status_mask: u32,
-) {
-    unimplemented!("This method shouldn't be called on Windows");
-}
-
-pub(in crate::virtio::vhost::user::device::handler) fn system_signal_config_changed(
-    _doorbell_sys: &DoorbellSys,
-) {
-    unimplemented!("This method shouldn't be called on Windows");
-}
-
-pub(in crate::virtio::vhost::user::device::handler) fn system_get_resample_evt(
-    _doorbell_sys: &DoorbellSys,
-) -> Option<&Event> {
-    unimplemented!("This method shouldn't be called on Windows");
-}
-
-pub(in crate::virtio::vhost::user::device::handler) fn system_do_interrupt_resample(
-    _doorbell_sys: &DoorbellSys,
-) {
-    unimplemented!("This method shouldn't be called on Windows");
-}
-
-/// Window's doesn't require clearing rd flags, so this is a no-op.
-pub(in crate::virtio::vhost::user::device::handler) fn system_clear_rd_flags(
-    _file: &File,
-) -> VhostResult<()> {
-    Ok(())
-}
-
-impl DeviceRequestHandler {
+impl DeviceRequestHandler<VhostUserRegularOps> {
     pub async fn run(self, vhost_user_tube: Tube, exit_event: Event, ex: &Executor) -> Result<()> {
         let read_notifier = vhost_user_tube.get_read_notifier();
         let close_notifier = vhost_user_tube.get_close_notifier();

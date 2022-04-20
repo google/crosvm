@@ -20,7 +20,7 @@ use winapi::um::winnt::{FILE_SHARE_READ, FILE_SHARE_WRITE};
 use crate::virtio::base_features;
 use crate::virtio::block::block::DiskOption;
 use crate::virtio::vhost::user::device::block::BlockBackend;
-use crate::virtio::vhost::user::device::handler::sys::read_from_tube_transporter;
+use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 
 impl BlockBackend {

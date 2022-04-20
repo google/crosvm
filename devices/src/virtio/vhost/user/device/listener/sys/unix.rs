@@ -15,18 +15,18 @@ use vmm_vhost::connection::{
 
 use crate::{
     virtio::vhost::user::device::{
-        handler::{DeviceRequestHandler, VhostUserBackend},
+        handler::{sys::unix::VvuOps, DeviceRequestHandler, VhostUserBackend},
         listener::VhostUserListenerTrait,
         vvu::{pci::VvuPciDevice, VvuDevice},
     },
     PciAddress,
 };
 
-/// On Unix we can listen to either a socket or a vhost-user device.
+//// On Unix we can listen to either a socket or a vhost-user device.
 pub enum VhostUserListener {
     Socket(SocketListener),
     // We use a box here to avoid clippy warning about large size difference between variants.
-    Vvu(Box<VfioListener<VvuDevice>>),
+    Vvu(Box<VfioListener<VvuDevice>>, VvuOps),
 }
 
 impl VhostUserListener {
@@ -56,7 +56,7 @@ impl VhostUserListener {
         max_num_queues: usize,
         mut keep_rds: Option<&mut Vec<RawDescriptor>>,
     ) -> anyhow::Result<Self> {
-        let pci_device = VvuPciDevice::new_from_address(pci_addr, max_num_queues)?;
+        let mut pci_device = VvuPciDevice::new_from_address(pci_addr, max_num_queues)?;
         if let Some(rds) = &mut keep_rds {
             rds.extend(pci_device.irqs.iter().map(|e| e.as_raw_descriptor()));
             rds.extend(
@@ -68,13 +68,17 @@ impl VhostUserListener {
             rds.push(pci_device.vfio_dev.device_file().as_raw_descriptor());
         }
 
+        // We create the ops now because they need the PCI device for building, and we won't have
+        // access to it anymore after creating the listener.
+        let ops = VvuOps::new(&mut pci_device);
+
         let device = VvuDevice::new(pci_device);
         if let Some(rds) = &mut keep_rds {
             rds.push(device.event().as_raw_descriptor());
         }
 
         let listener = VfioListener::new(device)?;
-        Ok(VhostUserListener::Vvu(Box::new(listener)))
+        Ok(VhostUserListener::Vvu(Box::new(listener), ops))
     }
 
     /// Helper for the `device` command, which separates the socket and vfio arguments.
@@ -128,16 +132,21 @@ impl VhostUserListenerTrait for VhostUserListener {
         backend: Box<dyn VhostUserBackend>,
         ex: &Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>>>> {
-        let handler = DeviceRequestHandler::new(backend);
         let ex = ex.clone();
 
         match self {
-            VhostUserListener::Socket(listener) => handler
-                .run_with_listener::<SocketEndpoint<_>>(listener, ex)
-                .boxed_local(),
-            VhostUserListener::Vvu(listener) => handler
-                .run_with_listener::<VfioEndpoint<_, _>>(*listener, ex)
-                .boxed_local(),
+            VhostUserListener::Socket(listener) => {
+                let handler = DeviceRequestHandler::new(backend);
+                handler
+                    .run_with_listener::<SocketEndpoint<_>>(listener, ex)
+                    .boxed_local()
+            }
+            VhostUserListener::Vvu(listener, ops) => {
+                let handler = DeviceRequestHandler::new_with_ops(backend, ops);
+                handler
+                    .run_with_listener::<VfioEndpoint<_, _>>(*listener, ex)
+                    .boxed_local()
+            }
         }
     }
 }

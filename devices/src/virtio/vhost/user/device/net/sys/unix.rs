@@ -27,7 +27,7 @@ use crate::virtio::vhost::user::device::net::{
     run_ctrl_queue, run_tx_queue, NetBackend, NET_EXECUTOR,
 };
 use crate::virtio::vhost::user::device::{
-    handler::{Doorbell, VhostUserBackend},
+    handler::{sys::Doorbell, VhostUserBackend},
     listener::{sys::VhostUserListener, VhostUserListenerTrait},
 };
 use crate::{virtio, PciAddress};

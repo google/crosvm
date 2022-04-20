@@ -12,4 +12,4 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(crate) use platform::*;
+pub use platform::Doorbell;

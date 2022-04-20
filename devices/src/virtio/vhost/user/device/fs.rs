@@ -25,7 +25,7 @@ use crate::virtio;
 use crate::virtio::copy_config;
 use crate::virtio::fs::passthrough::PassthroughFs;
 use crate::virtio::fs::{process_fs_queue, virtio_fs_config, FS_MAX_TAG_LEN};
-use crate::virtio::vhost::user::device::handler::{Doorbell, VhostUserBackend};
+use crate::virtio::vhost::user::device::handler::{sys::Doorbell, VhostUserBackend};
 
 const MAX_QUEUE_NUM: usize = 2; /* worker queue and high priority queue */
 const MAX_VRING_LEN: u16 = 1024;

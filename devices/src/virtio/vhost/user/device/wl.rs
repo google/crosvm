@@ -24,7 +24,7 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::vhost::user::device::{
-    handler::{Doorbell, VhostUserBackend},
+    handler::{sys::Doorbell, VhostUserBackend},
     listener::{sys::VhostUserListener, VhostUserListenerTrait},
 };
 use crate::virtio::{base_features, wl, Queue};

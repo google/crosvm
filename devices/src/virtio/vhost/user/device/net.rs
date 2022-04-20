@@ -19,7 +19,7 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 
 use crate::virtio;
 use crate::virtio::net::{build_config, process_ctrl, process_tx, virtio_features_to_tap_offload};
-use crate::virtio::vhost::user::device::handler::{Doorbell, VhostUserBackend};
+use crate::virtio::vhost::user::device::handler::{sys::Doorbell, VhostUserBackend};
 
 pub use sys::{start_device as run_net_device, Options};
 

@@ -6,7 +6,7 @@ use crate::virtio;
 #[cfg(feature = "slirp")]
 use crate::virtio::net::MAX_BUFFER_SIZE;
 use crate::virtio::net::{process_rx, NetError};
-use crate::virtio::vhost::user::device::handler::read_from_tube_transporter;
+use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
 use crate::virtio::vhost::user::device::handler::{DeviceRequestHandler, Doorbell};
 use crate::virtio::vhost::user::device::net::{
     run_ctrl_queue, run_tx_queue, NetBackend, NET_EXECUTOR,

@@ -24,7 +24,7 @@ use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 use crate::virtio::{
     self, gpu,
     vhost::user::device::{
-        handler::{Doorbell, VhostUserBackend},
+        handler::{sys::Doorbell, VhostUserBackend},
         listener::{sys::VhostUserListener, VhostUserListenerTrait},
         wl::parse_wayland_sock,
     },

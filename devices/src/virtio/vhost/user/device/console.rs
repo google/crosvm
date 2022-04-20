@@ -21,7 +21,7 @@ use crate::{
         console::{asynchronous::ConsoleDevice, virtio_console_config},
         copy_config,
         vhost::user::device::{
-            handler::{Doorbell, VhostUserBackend},
+            handler::{sys::Doorbell, VhostUserBackend},
             listener::{sys::VhostUserListener, VhostUserListenerTrait},
         },
     },

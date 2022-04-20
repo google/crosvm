@@ -26,7 +26,7 @@ use crate::virtio::snd::cras_backend::{
 };
 use crate::virtio::snd::layout::virtio_snd_config;
 use crate::virtio::vhost::user::device::{
-    handler::{DeviceRequestHandler, Doorbell, VhostUserBackend},
+    handler::{sys::Doorbell, DeviceRequestHandler, VhostUserBackend},
     listener::{sys::VhostUserListener, VhostUserListenerTrait},
 };
 use crate::virtio::{self, copy_config};
