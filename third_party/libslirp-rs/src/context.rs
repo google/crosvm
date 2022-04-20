@@ -1,114 +1,170 @@
-use libslirp_sys::*;
-use std::io::{Read, Write};
+// Documentation for code maintainers:
+//
+// Closure pointers as *c_void
+// -----------------
+// This file interfaces with Slirp's callbacks extensively. As part of that, it passes Rust closures
+// to callbacks as opaque data, and those closures are executed during a call into Slirp; in other
+// words, the sequence of events looks like this:
+//    1. Rust creates a closure C.
+//    2. Rust calls Slirp and gives it callback CB (a Rust func.), and opaque data that contains C.
+//    3. (0...n times) CB runs and unpacks C from the opaque data.
+//          a. CB calls C.
+//    4. The call from #2 completes.
+// Closures are represented as trait objects, and trait object references are wide/fat pointers
+// (2x machine pointer size) that contain pointers to the closure's struct & its vtable. Since wide
+// pointers are obviously too large to fit into a *mut c_void (this is the opaque data), we cannot
+// pass them directly. Luckily, wide pointers themselves are simple sized data structures, so we can
+// pass a reference to the wide pointer as a *mut c_void; in other words, the way to pass a closure
+// is to cast &mut &mut some_closure into a *mut c_void. We can then unpack this easily and call
+// the closure.
+//
+// Why is CallbackHandler involved in the outbound (guest -> host) packet path?
+// ----------------------------------------------------------------------------
+// In short, ownership. Since the CallbackHandler is responsible for writing to the guest, it must
+// own the connection/stream that is attached to the guest. Because CallbackHandler owns the
+// connection, it would be significantly complicated to have any other entity read from the
+// connection.
+//
+// Safety assumptions
+// ------------------
+// Most statements explaining the safety of unsafe code depend on libslirp behaving in a safe
+// & expected manner. Given that libslirp is has experienced CVEs related to safety problems,
+// these statements should be taken with a grain of salt. Consumers of this library are STRONGLY
+// RECOMMENDED to run this code in a separate process with strong sandboxing.
 
-#[cfg(feature = "structopt")]
-use crate::Opt;
-use std::cell::RefCell;
+// Some bindings of the libslirp API are used, but we want to keep them for completeness
+#![allow(dead_code)]
+
+use libslirp_sys::*;
+
+use crate::{Error, Result};
+
+use base::{error, RawDescriptor};
 use std::ffi::{CStr, CString};
-use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::os::raw::{c_char, c_int, c_void};
-use std::os::unix::io::RawFd;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::{fmt, mem, ops, slice, str};
+use std::{fmt, io, ops, slice, str};
 
+/// An instance of libslirp is represented by a Context, which provides methods that consumers use
+/// to interact with Slirp. The Context is also where consumers register their CallbackHandler,
+/// which provides required functions to libslirp, and allows libslirp to communicate back to the
+/// consumer. The Context is intended to be used from an event loop which handles polling for IO
+/// from the guest and host (see `Context.pollfds_fill`, `Context.pollfds_poll`, and
+/// `Context.handle_guest_input`).
+///
+/// Example data flow for an outbound packet:
+/// 1. Context `ctx` created with CallbackHandler `h`. An event loop (henceforth the slirp loop) is
+///    started, which polls for packets from the guest, and from the outside world (sockets).
+/// 2. Guest emits an ethernet frame. The consumer makes this frame available through their
+///    implementation of `h.read_from_guest`.
+/// 3. The slirp loop is notified there is a packet from the guest, and invokes
+///    `ctx.handle_guest_input`. `ctx.handle_guest_input` reads all currently available packets
+///    using `h.read_from_guest` & returns back to the slirp loop.
+///
+/// Example data flow for an inbound packet:
+/// 1. Same as above.
+/// 2. An ethernet frame arrives to the host, and gets demuxed by the host kernel into one of the
+///    host sockets opened by libslirp.
+/// 3. The slirp loop receives a notification that data has arrived on one of the libslirp sockets,
+///    and invokes `ctx.pollfds_poll` to notify libslirp.
+///    a. libslirp calls into `h.send_packet` to deliver the packet to the consumer.
 pub struct Context<H> {
-    pub inner: Box<Inner<H>>,
-}
-
-pub struct Inner<H> {
-    pub context: *mut Slirp,
+    slirp: *mut Slirp,
     callbacks: SlirpCb,
-    handler: H,
+    callback_handler: H,
 }
 
 impl<H> Drop for Context<H> {
     fn drop(&mut self) {
-        unsafe {
-            slirp_cleanup(self.inner.context);
+        // Safe because self.context is guaranteed to be valid or null upon construction.
+        if !self.slirp.is_null() {
+            unsafe {
+                slirp_cleanup(self.slirp);
+            }
         }
     }
 }
 
-//unsafe impl<H: Send> Send for Inner<H> {}
-
-pub trait Handler {
+/// `CallbackHandler` is the safe Rust interface for the Slirp callbacks. Consumers of Slirp MUST
+/// implement this interface to handle the required callbacks from Slirp.
+///
+/// ## Notes about timers
+/// To send NDP router advertisements on IPv6, libslirp uses a timer. If IPv6 support is not
+/// needed, the timer callbacks can be left unimplemented.
+///
+/// Example data flow for timer creation/modification (`timer_new`/`timer_mod`/`timer_free`):
+/// 1. libslirp calls into `timer_new` to request a new timer. `timer_new` creates some entity to
+///    represent the timer and boxes it. A pointer to that boxed entity is returned to libslirp,
+///    and is how libslirp will refer to the timer in the future.
+/// 2. The timer's expire time can be changed when timer_mod is called by libslirp. A pointer to the
+///    boxed timer is passed in by libslirp.
+/// 3. The implementor of `CallbackHandler` is responsible for ensuring that the timer's callback as
+///    provided in `timer_new` is invoked at/after the `expire_time`.
+/// 4. libslirp will free timers using `timer_free` when `slirp_cleanup` runs.
+///
+/// libslirp never does anything with the timer pointer beyond passing it to/from the the functions
+/// in `CallbackHandler`.
+pub trait CallbackHandler {
     type Timer;
 
+    /// Returns a timestamp in nanoseconds relative to the moment that this instance of libslirp
+    /// started running.
     fn clock_get_ns(&mut self) -> i64;
 
     fn send_packet(&mut self, buf: &[u8]) -> io::Result<usize>;
 
-    fn register_poll_fd(&mut self, fd: RawFd);
+    /// Gets an iterator of timers (as raw descriptors) so they can be awaited with a suitable
+    /// polling function as part of libslirp's main consumer loop.
+    fn get_timers<'a>(&'a self) -> Box<dyn Iterator<Item = &RawDescriptor> + 'a>;
 
-    fn unregister_poll_fd(&mut self, fd: RawFd);
+    /// Runs the handler function for a specific timer.
+    fn execute_timer(&mut self, timer: RawDescriptor);
+
+    // Normally in CrosVM we refer to FDs as descriptors, because FDs are platform specific;
+    // however, this interface is very close to the libslirp FFI, and libslirp follows the Linux
+    // philosophy of everything is an FD. Since even Windows refers to FDs in WSAPoll, keeping FD
+    // as a concept here helps keep terminology consistent between CrosVM code interfacing with
+    // libslirp, and libslirp itself.
+    fn register_poll_fd(&mut self, fd: i32);
+    fn unregister_poll_fd(&mut self, fd: i32);
 
     fn guest_error(&mut self, msg: &str);
 
     fn notify(&mut self);
 
-    fn timer_new(&mut self, func: Box<dyn FnMut()>) -> Box<Self::Timer>;
+    fn timer_new(&mut self, callback: Box<dyn FnMut()>) -> Box<Self::Timer>;
 
-    fn timer_mod(&mut self, timer: &mut Box<Self::Timer>, expire_time: i64);
+    /// Sets a timer to expire in expire_time_ms - (clock_get_ns() (as ms).
+    fn timer_mod(&mut self, timer: &mut Self::Timer, expire_time: i64);
 
     fn timer_free(&mut self, timer: Box<Self::Timer>);
+
+    fn begin_read_from_guest(&mut self) -> io::Result<()>;
+
+    fn end_read_from_guest<'a>(&'a mut self) -> io::Result<&'a [u8]>;
 }
 
-impl<T: Handler> Handler for Rc<RefCell<T>> {
-    type Timer = T::Timer;
+extern "C" fn write_handler_callback(buf: *const c_void, len: usize, opaque: *mut c_void) -> isize {
+    // Safe because we pass in opaque as exactly this type.
+    let closure = unsafe { &mut *(opaque as *mut &mut dyn FnMut(&[u8]) -> isize) };
 
-    fn clock_get_ns(&mut self) -> i64 {
-        self.borrow_mut().clock_get_ns()
-    }
-
-    fn send_packet(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.borrow_mut().send_packet(buf)
-    }
-
-    fn register_poll_fd(&mut self, fd: RawFd) {
-        self.borrow_mut().register_poll_fd(fd);
-    }
-
-    fn unregister_poll_fd(&mut self, fd: RawFd) {
-        self.borrow_mut().unregister_poll_fd(fd);
-    }
-
-    fn guest_error(&mut self, msg: &str) {
-        self.borrow_mut().guest_error(msg);
-    }
-
-    fn notify(&mut self) {
-        self.borrow_mut().notify();
-    }
-
-    fn timer_new(&mut self, func: Box<dyn FnMut()>) -> Box<Self::Timer> {
-        self.borrow_mut().timer_new(func)
-    }
-
-    fn timer_mod(&mut self, timer: &mut Box<Self::Timer>, expire_time: i64) {
-        self.borrow_mut().timer_mod(timer, expire_time)
-    }
-
-    fn timer_free(&mut self, timer: Box<Self::Timer>) {
-        self.borrow_mut().timer_free(timer)
-    }
-}
-
-extern "C" fn write_handler_cl(buf: *const c_void, len: usize, opaque: *mut c_void) -> isize {
-    let closure: &mut &mut dyn FnMut(&[u8]) -> isize = unsafe { mem::transmute(opaque) };
+    // Safe because libslirp provides us with a valid buffer & that buffer's length.
     let slice = unsafe { slice::from_raw_parts(buf as *const u8, len) };
 
     closure(slice)
 }
 
-extern "C" fn read_handler_cl(buf: *mut c_void, len: usize, opaque: *mut c_void) -> isize {
-    let closure: &mut &mut dyn FnMut(&mut [u8]) -> isize = unsafe { mem::transmute(opaque) };
+extern "C" fn read_handler_callback(buf: *mut c_void, len: usize, opaque: *mut c_void) -> isize {
+    // Safe because we pass in opaque as exactly this type.
+    let closure = unsafe { &mut *(opaque as *mut &mut dyn FnMut(&mut [u8]) -> isize) };
+
+    // Safe because libslirp provides us with a valid buffer & that buffer's length.
     let slice = unsafe { slice::from_raw_parts_mut(buf as *mut u8, len) };
 
     closure(slice)
 }
 
+/// Represents poll events in libslirp's format (e.g. `struct pollfd.[r]events`).
 #[derive(Copy, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct PollEvents(usize);
 
@@ -207,369 +263,401 @@ impl fmt::Debug for PollEvents {
     }
 }
 
-extern "C" fn add_poll_handler_cl(fd: c_int, events: c_int, opaque: *mut c_void) -> c_int {
-    let closure: &mut &mut dyn FnMut(RawFd, PollEvents) -> i32 = unsafe { mem::transmute(opaque) };
+extern "C" fn add_poll_handler_callback(fd: c_int, events: c_int, opaque: *mut c_void) -> c_int {
+    // Safe because we pass in opaque as exactly this type.
+    let closure = unsafe { &mut *(opaque as *mut &mut dyn FnMut(i32, PollEvents) -> i32) };
 
     closure(fd, PollEvents(events as usize))
 }
 
-extern "C" fn get_revents_handler_cl(idx: c_int, opaque: *mut c_void) -> c_int {
-    let closure: &mut &mut dyn FnMut(i32) -> PollEvents = unsafe { mem::transmute(opaque) };
+extern "C" fn get_revents_handler_callback(idx: c_int, opaque: *mut c_void) -> c_int {
+    // Safe because we pass in opaque as exactly this type.
+    let closure = unsafe { &mut *(opaque as *mut &mut dyn FnMut(i32) -> PollEvents) };
 
     closure(idx).0 as c_int
 }
 
-extern "C" fn send_packet_handler<H: Handler>(
+/// Inbound packets from libslirp are delivered to this handler, which passes them on to the
+/// Context's CallbackHandler for forwarding to the guest.
+extern "C" fn send_packet_handler<H: CallbackHandler>(
     buf: *const c_void,
     len: usize,
     opaque: *mut c_void,
 ) -> isize {
+    // Safe because libslirp gives us a valid buffer & that buffer's length.
     let slice = unsafe { slice::from_raw_parts(buf as *const u8, len) };
-    let res = unsafe { (*(opaque as *mut Inner<H>)).handler.send_packet(slice) };
-    if res.is_ok() {
-        res.unwrap() as isize
-    } else {
-        eprintln!("send_packet error: {}", res.unwrap_err());
-        -1
+
+    // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
+    let res = unsafe {
+        (*(opaque as *mut Context<H>))
+            .callback_handler
+            .send_packet(slice)
+    };
+
+    match res {
+        Ok(res) => res as isize,
+        Err(e) => {
+            error!("send_packet error: {}", e);
+            -1
+        }
     }
 }
 
-extern "C" fn guest_error_handler<H: Handler>(msg: *const c_char, opaque: *mut c_void) {
+extern "C" fn guest_error_handler<H: CallbackHandler>(msg: *const c_char, opaque: *mut c_void) {
+    // Safe because libslirp gives us a valid C string representing the error message.
     let msg = str::from_utf8(unsafe { CStr::from_ptr(msg) }.to_bytes()).unwrap_or("");
-    unsafe { (*(opaque as *mut Inner<H>)).handler.guest_error(msg) }
+
+    // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
+    unsafe {
+        (*(opaque as *mut Context<H>))
+            .callback_handler
+            .guest_error(msg)
+    }
 }
 
-extern "C" fn clock_get_ns_handler<H: Handler>(opaque: *mut c_void) -> i64 {
-    unsafe { (*(opaque as *mut Inner<H>)).handler.clock_get_ns() }
+extern "C" fn clock_get_ns_handler<H: CallbackHandler>(opaque: *mut c_void) -> i64 {
+    // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
+    unsafe {
+        (*(opaque as *mut Context<H>))
+            .callback_handler
+            .clock_get_ns()
+    }
 }
 
-extern "C" fn timer_new_handler<H: Handler>(
+extern "C" fn timer_new_handler<H: CallbackHandler>(
     cb: SlirpTimerCb,
     cb_opaque: *mut c_void,
     opaque: *mut c_void,
 ) -> *mut c_void {
-    let func = Box::new(move || {
+    let callback = Box::new(move || {
         if let Some(cb) = cb {
+            // Safe because libslirp gives us a valid callback function to call.
             unsafe {
                 cb(cb_opaque);
             }
         }
     });
-    let timer = unsafe { (*(opaque as *mut Inner<H>)).handler.timer_new(func) };
+
+    // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
+    let timer = unsafe {
+        (*(opaque as *mut Context<H>))
+            .callback_handler
+            .timer_new(callback)
+    };
+
     Box::into_raw(timer) as *mut c_void
 }
 
-extern "C" fn timer_free_handler<H: Handler>(timer: *mut c_void, opaque: *mut c_void) {
+extern "C" fn timer_free_handler<H: CallbackHandler>(timer: *mut c_void, opaque: *mut c_void) {
+    // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
+    // Also, timer was created by us as exactly the type we unpack into.
     unsafe {
         let timer = Box::from_raw(timer as *mut H::Timer);
-        (*(opaque as *mut Inner<H>)).handler.timer_free(timer);
+        (*(opaque as *mut Context<H>))
+            .callback_handler
+            .timer_free(timer);
     }
 }
 
-extern "C" fn timer_mod_handler<H: Handler>(
+extern "C" fn timer_mod_handler<H: CallbackHandler>(
     timer: *mut c_void,
     expire_time: i64,
     opaque: *mut c_void,
 ) {
+    // Safe because:
+    // 1. We pass in opaque as exactly this type when constructing the Slirp object.
+    // 2. timer was created by us as exactly the type we unpack into
+    // 3. libslirp is responsible for freeing timer, so forgetting about it is safe.
     unsafe {
         let mut timer = Box::from_raw(timer as *mut H::Timer);
-        (*(opaque as *mut Inner<H>))
-            .handler
+        (*(opaque as *mut Context<H>))
+            .callback_handler
             .timer_mod(&mut timer, expire_time);
         Box::into_raw(timer);
     }
 }
 
-extern "C" fn register_poll_fd_handler<H: Handler>(fd: c_int, opaque: *mut c_void) {
-    unsafe { (*(opaque as *mut Inner<H>)).handler.register_poll_fd(fd) }
+extern "C" fn register_poll_fd_handler<H: CallbackHandler>(fd: c_int, opaque: *mut c_void) {
+    // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
+    unsafe {
+        (*(opaque as *mut Context<H>))
+            .callback_handler
+            .register_poll_fd(fd)
+    }
 }
 
-extern "C" fn unregister_poll_fd_handler<H: Handler>(fd: c_int, opaque: *mut c_void) {
-    unsafe { (*(opaque as *mut Inner<H>)).handler.unregister_poll_fd(fd) }
+extern "C" fn unregister_poll_fd_handler<H: CallbackHandler>(fd: c_int, opaque: *mut c_void) {
+    // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
+    unsafe {
+        (*(opaque as *mut Context<H>))
+            .callback_handler
+            .unregister_poll_fd(fd)
+    }
 }
 
-extern "C" fn notify_handler<H: Handler>(opaque: *mut c_void) {
-    unsafe { (*(opaque as *mut Inner<H>)).handler.notify() }
+extern "C" fn notify_handler<H: CallbackHandler>(opaque: *mut c_void) {
+    // Safe because we pass in opaque as exactly this type when constructing the Slirp object.
+    unsafe { (*(opaque as *mut Context<H>)).callback_handler.notify() }
 }
 
-impl<H: Handler> Context<H> {
-    #[cfg(feature = "structopt")]
-    pub fn new_with_opt(opt: &Opt, handler: H) -> Self {
-        let cstr_vdns: Vec<_> = opt
-            .dns_suffixes
+impl<H: CallbackHandler> Context<H> {
+    /// Create a new instance of the libslirp context.
+    ///
+    /// The parameters which are prefixed by "host" refer to the system on which libslirp runs;
+    /// for example, host_v4_address is the IP address of the host system that the guest will be
+    /// able to connect to.
+    ///
+    /// `host_v[4|6]_address` maps to the host's local loopback interface.
+    /// `dns_server_` options configure the DNS server provided on the virtual network by libslirp.
+    pub fn new(
+        disable_access_to_host: bool,
+        ipv4_enabled: bool,
+        virtual_network_v4_address: Ipv4Addr,
+        virtual_network_v4_mask: Ipv4Addr,
+        host_v4_address: Ipv4Addr,
+        ipv6_enabled: bool,
+        virtual_network_v6_address: Ipv6Addr,
+        virtual_network_v6_prefix_len: u8,
+        host_v6_address: Ipv6Addr,
+        host_hostname: Option<String>,
+        dhcp_start_addr: Ipv4Addr,
+        dns_server_v4_addr: Ipv4Addr,
+        dns_server_v6_addr: Ipv6Addr,
+        virtual_network_dns_search_domains: Vec<String>,
+        dns_server_domain_name: Option<String>,
+        callback_handler: H,
+    ) -> Result<Box<Context<H>>> {
+        let mut ret = Box::new(Context {
+            slirp: std::ptr::null_mut(),
+            callbacks: SlirpCb {
+                send_packet: Some(send_packet_handler::<H>),
+                guest_error: Some(guest_error_handler::<H>),
+                clock_get_ns: Some(clock_get_ns_handler::<H>),
+                timer_new: Some(timer_new_handler::<H>),
+                timer_free: Some(timer_free_handler::<H>),
+                timer_mod: Some(timer_mod_handler::<H>),
+                register_poll_fd: Some(register_poll_fd_handler::<H>),
+                unregister_poll_fd: Some(unregister_poll_fd_handler::<H>),
+                notify: Some(notify_handler::<H>),
+            },
+            callback_handler,
+        });
+
+        let cstr_dns_search: Vec<_> = virtual_network_dns_search_domains
             .iter()
             .map(|arg| CString::new(arg.clone().into_bytes()).unwrap())
             .collect();
-        let mut p_vdns: Vec<_> = cstr_vdns.iter().map(|arg| arg.as_ptr()).collect();
-        p_vdns.push(std::ptr::null());
+        let mut p_dns_search: Vec<_> = cstr_dns_search.iter().map(|arg| arg.as_ptr()).collect();
+        p_dns_search.push(std::ptr::null());
+
+        let host_hostname = host_hostname.and_then(|s| CString::new(s).ok());
+        let dns_server_domain_name = dns_server_domain_name.and_then(|s| CString::new(s).ok());
+        let rust_context_ptr = &*ret as *const _ as *mut _;
 
         let as_ptr = |p: &Option<CString>| p.as_ref().map_or(std::ptr::null(), |s| s.as_ptr());
 
-        let tftp_path = opt
-            .tftp
-            .root
-            .as_ref()
-            .and_then(|s| CString::new(s.to_string_lossy().into_owned()).ok());
-        let vhostname = opt.hostname.clone().and_then(|s| CString::new(s).ok());
-        let tftp_server_name = opt.tftp.name.clone().and_then(|s| CString::new(s).ok());
-        let tftp_bootfile = opt.tftp.bootfile.clone().and_then(|s| CString::new(s).ok());
-        let vdomainname = opt.domainname.clone().and_then(|s| CString::new(s).ok());
-
-        let config = SlirpConfig {
-            version: 2,
-            restricted: opt.restrict as i32,
-            in_enabled: !opt.ipv4.disable,
-            vnetwork: opt.ipv4.net.ip().into(),
-            vnetmask: opt.ipv4.net.mask().into(),
-            vhost: opt.ipv4.host.into(),
-            in6_enabled: !opt.ipv6.disable,
-            vprefix_addr6: opt.ipv6.net6.ip().into(),
-            vprefix_len: opt.ipv6.net6.prefix(),
-            vhost6: opt.ipv6.host.into(),
-            vhostname: as_ptr(&vhostname),
-            tftp_server_name: as_ptr(&tftp_server_name),
-            tftp_path: as_ptr(&tftp_path),
-            bootfile: as_ptr(&tftp_bootfile),
-            vdhcp_start: opt.ipv4.dhcp_start.into(),
-            vnameserver: opt.ipv4.dns.into(),
-            vnameserver6: opt.ipv6.dns.into(),
-            vdnssearch: p_vdns.as_ptr() as *mut *const _,
-            vdomainname: as_ptr(&vdomainname),
-            if_mtu: opt.mtu,
-            if_mru: opt.mtu,
-            disable_host_loopback: opt.disable_host_loopback,
+        let slirp_config = SlirpConfig {
+            version: 1,
+            restricted: 0,
+            disable_dhcp: false,
+            in_enabled: ipv4_enabled,
+            vnetwork: virtual_network_v4_address.into(),
+            vnetmask: virtual_network_v4_mask.into(),
+            vhost: host_v4_address.into(),
+            in6_enabled: ipv6_enabled,
+            vprefix_addr6: virtual_network_v6_address.into(),
+            vprefix_len: virtual_network_v6_prefix_len,
+            vhost6: host_v6_address.into(),
+            vhostname: as_ptr(&host_hostname),
+            tftp_server_name: std::ptr::null(),
+            tftp_path: std::ptr::null(),
+            bootfile: std::ptr::null(),
+            vdhcp_start: dhcp_start_addr.into(),
+            vnameserver: dns_server_v4_addr.into(),
+            vnameserver6: dns_server_v6_addr.into(),
+            vdnssearch: p_dns_search.as_ptr() as *mut *const _,
+            vdomainname: as_ptr(&dns_server_domain_name),
+            if_mtu: 0,
+            if_mru: 0,
+            disable_host_loopback: disable_access_to_host,
             enable_emu: false,
             outbound_addr: std::ptr::null(),
             outbound_addr6: std::ptr::null(),
             disable_dns: false,
         };
 
-        Self::new_with_config(&config, handler)
-    }
-
-    pub fn new_with_config(config: &SlirpConfig, handler: H) -> Self {
-        let mut ret = Context {
-            inner: Box::new(Inner {
-                context: std::ptr::null_mut(),
-                callbacks: SlirpCb {
-                    send_packet: Some(send_packet_handler::<H>),
-                    guest_error: Some(guest_error_handler::<H>),
-                    clock_get_ns: Some(clock_get_ns_handler::<H>),
-                    timer_new: Some(timer_new_handler::<H>),
-                    timer_free: Some(timer_free_handler::<H>),
-                    timer_mod: Some(timer_mod_handler::<H>),
-                    register_poll_fd: Some(register_poll_fd_handler::<H>),
-                    unregister_poll_fd: Some(unregister_poll_fd_handler::<H>),
-                    notify: Some(notify_handler::<H>),
-                },
-                handler,
-            }),
-        };
-
-        let ptr = &*ret.inner as *const _ as *mut _;
-        ret.inner.context = unsafe { slirp_new(config as *const _, &ret.inner.callbacks, ptr) };
-
-        assert!(!ret.inner.context.is_null());
-        ret
-    }
-
-    pub fn new(
-        restricted: bool,
-        ipv4_enabled: bool,
-        vnetwork: Ipv4Addr,
-        vnetmask: Ipv4Addr,
-        vhost: Ipv4Addr,
-        ipv6_enabled: bool,
-        vprefix_addr6: Ipv6Addr,
-        vprefix_len: u8,
-        vhost6: Ipv6Addr,
-        vhostname: Option<String>,
-        tftp_server_name: Option<String>,
-        tftp_path: Option<PathBuf>,
-        tftp_bootfile: Option<String>,
-        vdhcp_start: Ipv4Addr,
-        vnameserver: Ipv4Addr,
-        vnameserver6: Ipv6Addr,
-        vdnssearch: Vec<String>,
-        vdomainname: Option<String>,
-        handler: H,
-    ) -> Self {
-        let mut ret = Context {
-            inner: Box::new(Inner {
-                context: std::ptr::null_mut(),
-                callbacks: SlirpCb {
-                    send_packet: Some(send_packet_handler::<H>),
-                    guest_error: Some(guest_error_handler::<H>),
-                    clock_get_ns: Some(clock_get_ns_handler::<H>),
-                    timer_new: Some(timer_new_handler::<H>),
-                    timer_free: Some(timer_free_handler::<H>),
-                    timer_mod: Some(timer_mod_handler::<H>),
-                    register_poll_fd: Some(register_poll_fd_handler::<H>),
-                    unregister_poll_fd: Some(unregister_poll_fd_handler::<H>),
-                    notify: Some(notify_handler::<H>),
-                },
-                handler,
-            }),
-        };
-
-        let cstr_vdns: Vec<_> = vdnssearch
-            .iter()
-            .map(|arg| CString::new(arg.clone().into_bytes()).unwrap())
-            .collect();
-        let mut p_vdns: Vec<_> = cstr_vdns.iter().map(|arg| arg.as_ptr()).collect();
-        p_vdns.push(std::ptr::null());
-
-        let as_ptr = |p: &Option<CString>| p.as_ref().map_or(std::ptr::null(), |s| s.as_ptr());
-
-        let tftp_path = tftp_path.and_then(|s| CString::new(s.to_string_lossy().into_owned()).ok());
-        let vhostname = vhostname.and_then(|s| CString::new(s).ok());
-        let tftp_server_name = tftp_server_name.and_then(|s| CString::new(s).ok());
-        let tftp_bootfile = tftp_bootfile.and_then(|s| CString::new(s).ok());
-        let vdomainname = vdomainname.and_then(|s| CString::new(s).ok());
-
-        let ptr = &*ret.inner as *const _ as *mut _;
-        ret.inner.context = unsafe {
-            slirp_init(
-                restricted as i32,
-                ipv4_enabled,
-                vnetwork.into(),
-                vnetmask.into(),
-                vhost.into(),
-                ipv6_enabled,
-                vprefix_addr6.into(),
-                vprefix_len,
-                vhost6.into(),
-                as_ptr(&vhostname),
-                as_ptr(&tftp_server_name),
-                as_ptr(&tftp_path),
-                as_ptr(&tftp_bootfile),
-                vdhcp_start.into(),
-                vnameserver.into(),
-                vnameserver6.into(),
-                p_vdns.as_ptr() as *mut *const _,
-                as_ptr(&vdomainname),
-                &ret.inner.callbacks,
-                ptr,
+        // Safe because we pass valid pointers (or null as appropriate) as parameters and we check
+        // that the return value is valid.
+        let slirp = unsafe {
+            slirp_new(
+                &slirp_config,
+                &ret.callbacks,
+                // This value is passed to callbacks as opaque data, which allows those callbacks
+                // to get access to the Context struct. It allows them to invoke the appropriate
+                // methods on the CallbackHandler to notify it about new packets, get data about
+                // sockets that are ready for reading, etc.
+                rust_context_ptr,
             )
         };
-
-        assert!(!ret.inner.context.is_null());
-        ret
-    }
-
-    pub fn input(&self, buf: &[u8]) {
-        unsafe {
-            slirp_input(self.inner.context, buf.as_ptr(), buf.len() as i32);
+        assert!(!slirp.is_null());
+        match ret.callback_handler.begin_read_from_guest() {
+            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                return Err(Error::BrokenPipe(e));
+            }
+            Err(e) => {
+                return Err(Error::OverlappedError(e));
+            }
+            _ => {}
         }
+        ret.slirp = slirp;
+        Ok(ret)
     }
 
-    pub fn connection_info(&self) -> &str {
-        str::from_utf8(
-            unsafe { CStr::from_ptr(slirp_connection_info(self.inner.context)) }.to_bytes(),
-        )
-        .unwrap_or("")
+    /// Reads from the guest & injects into Slirp. This method reads until an error is encountered
+    /// or io::ErrorKind::WouldBlock is returned by the callback_handler's read_from_guest.
+    pub fn handle_guest_input(&mut self) -> Result<()> {
+        loop {
+            match self.callback_handler.end_read_from_guest() {
+                Ok(ethernet_frame) => unsafe {
+                    // Safe because the buffer (ethernet_frame) is valid & libslirp is provided
+                    // with the data's underlying length.
+                    slirp_input(
+                        self.slirp,
+                        ethernet_frame.as_ptr(),
+                        ethernet_frame.len() as i32,
+                    );
+                },
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                    error!("error reading packet from guest: {}", e);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // No packets are available. Yield back to the Slirp loop.
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                    return Err(Error::BrokenPipe(e));
+                }
+                Err(_) => {
+                    match self.callback_handler.begin_read_from_guest() {
+                        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                            return Err(Error::BrokenPipe(e));
+                        }
+                        Err(e) => {
+                            return Err(Error::OverlappedError(e));
+                        }
+                        _ => {}
+                    }
+                    break;
+                }
+            }
+            match self.callback_handler.begin_read_from_guest() {
+                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                    return Err(Error::BrokenPipe(e));
+                }
+                Err(e) => {
+                    return Err(Error::OverlappedError(e));
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
-    pub fn pollfds_fill<F>(&self, timeout: &mut u32, mut add_poll_cb: F)
+    pub fn connection_info(&mut self) -> &str {
+        str::from_utf8(unsafe { CStr::from_ptr(slirp_connection_info(self.slirp)) }.to_bytes())
+            .unwrap_or("")
+    }
+
+    /// Requests libslirp provide the set of sockets & events that should be polled for. These
+    /// sockets are provided to you by 0..n calls to `add_poll_cb`. `add_poll_cb` must return an
+    /// integer (henceforth the socket reference) which libslirp can use to later request the
+    /// revents that came from polling on that socket.
+    ///
+    /// The `timeout` value expresses how long (in ms) the consumer intends to wait (at most) when
+    /// it invokes the polling function. libslirp will overwrite this with the time that the
+    /// consumer should wait.
+    pub fn pollfds_fill<F>(&mut self, timeout: &mut u32, mut add_poll_cb: F)
     where
-        F: FnMut(RawFd, PollEvents) -> i32,
+        F: FnMut(i32, PollEvents) -> i32,
     {
-        let mut cb: &mut dyn FnMut(RawFd, PollEvents) -> i32 = &mut add_poll_cb;
-        let cb = &mut cb;
-
+        let cb = &mut (&mut add_poll_cb as &mut dyn FnMut(i32, PollEvents) -> i32);
+        // Safe because cb is only used while slirp_pollfds_fill is running, and self.slirp is
+        // guaranteed to be valid.
         unsafe {
             slirp_pollfds_fill(
-                self.inner.context,
+                self.slirp,
                 timeout,
-                Some(add_poll_handler_cl),
+                Some(add_poll_handler_callback),
                 cb as *mut _ as *mut c_void,
             );
         }
     }
 
-    pub fn pollfds_poll<F>(&self, error: bool, mut get_revents_cb: F)
+    /// Informs libslirp that polling has returned with some events on sockets that libslirp said
+    /// should be polled for when you called `pollfds_fill`. You provide the results of polling by
+    /// supplying `get_revents_cb`, which returns the `PollEvents` for each provided socket
+    /// reference. libslirp will call that function 0..n times to gather results from the polling
+    /// operation.
+    pub fn pollfds_poll<F>(&mut self, error: bool, mut get_revents_cb: F)
     where
         F: FnMut(i32) -> PollEvents,
     {
-        let mut cb: &mut dyn FnMut(i32) -> PollEvents = &mut get_revents_cb;
-        let cb = &mut cb;
+        let cb = &mut (&mut get_revents_cb as &mut dyn FnMut(i32) -> PollEvents);
 
+        // Safe because cb is only used while slirp_pollfds_poll is running, and self.slirp is
+        // guaranteed to be valid.
         unsafe {
             slirp_pollfds_poll(
-                self.inner.context,
+                self.slirp,
                 error as i32,
-                Some(get_revents_handler_cl),
+                Some(get_revents_handler_callback),
                 cb as *mut _ as *mut c_void,
             );
         }
     }
 
-    pub fn state_save<F>(&self, mut write_cb: F)
+    pub fn state_save<F>(&mut self, mut write_cb: F)
     where
         F: FnMut(&[u8]) -> isize,
     {
-        let mut cb: &mut dyn FnMut(&[u8]) -> isize = &mut write_cb;
-        let cb = &mut cb;
-
+        // Safe because cb is only used while state_save is running, and self.slirp is
+        // guaranteed to be valid.
+        let cb = &mut (&mut write_cb as &mut dyn FnMut(&[u8]) -> isize);
         unsafe {
             slirp_state_save(
-                self.inner.context,
-                Some(write_handler_cl),
+                self.slirp,
+                Some(write_handler_callback),
                 cb as *mut _ as *mut c_void,
             );
         }
     }
 
-    pub fn state_write<F: Write>(&self, writer: &mut F) -> std::io::Result<usize> {
-        let mut res = Ok(0);
-        self.state_save(|buf| match writer.write(buf) {
-            Ok(n) => {
-                res = Ok(*res.as_ref().unwrap() + n);
-                n as isize
-            }
-            Err(e) => {
-                res = Err(e);
-                -1
-            }
-        });
-        res
-    }
-
-    pub fn state_get(&self) -> std::io::Result<Vec<u8>> {
-        let mut state = vec![];
-        self.state_write(&mut state)?;
-        Ok(state)
-    }
-
-    pub fn state_load<F>(&self, version_id: i32, mut read_cb: F)
+    pub fn state_load<F>(&mut self, version_id: i32, mut read_cb: F) -> i32
     where
         F: FnMut(&mut [u8]) -> isize,
     {
-        let mut cb: &mut dyn FnMut(&mut [u8]) -> isize = &mut read_cb;
-        let cb = &mut cb;
-
+        // Safe because cb is only used while state_load is running, and self.slirp is
+        // guaranteed to be valid. While this function may fail, interpretation of the error code
+        // is the responsibility of the caller.
+        //
+        // TODO(nkgold): if state_load becomes used by CrosVM, interpretation of the error code
+        // should occur here.
+        let cb = &mut (&mut read_cb as &mut dyn FnMut(&mut [u8]) -> isize);
         unsafe {
             slirp_state_load(
-                self.inner.context,
+                self.slirp,
                 version_id,
-                Some(read_handler_cl),
+                Some(read_handler_callback),
                 cb as *mut _ as *mut c_void,
-            );
+            )
         }
     }
 
-    pub fn state_read<R: Read>(&self, version_id: i32, reader: &mut R) -> std::io::Result<usize> {
-        let mut res = Ok(0);
-        self.state_load(version_id, |buf| match reader.read(buf) {
-            Ok(n) => {
-                res = Ok(*res.as_ref().unwrap() + n);
-                n as isize
-            }
-            Err(e) => {
-                res = Err(e);
-                -1
-            }
-        });
-        res
+    pub fn get_timers<'a>(&'a self) -> Box<dyn Iterator<Item = &RawDescriptor> + 'a> {
+        self.callback_handler.get_timers()
+    }
+
+    pub fn execute_timer(&mut self, timer: RawDescriptor) {
+        self.callback_handler.execute_timer(timer)
     }
 }

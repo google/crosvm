@@ -3,6 +3,16 @@
 // found in the LICENSE file.
 
 //! Network API wrappers for TAP interfaces.
+//! # Slirp specific crate features
+//! * **guest-to-host-net-loopback** -
+//!     Enables the guest to reach the host at a well known IP address on the
+//!     virtual network.
+//! * **slirp** -
+//!     Enables the libslirp backend for virtio-net.
+//! * **slirp-debug** -
+//!     Enables capture of all packets sent through libslirp in a pcap file.
+//! *  **slirp-ring-capture** -
+//!     Captures packets in a ring buffer and dumps them to a pcap file on exit.
 
 pub mod sys;
 use std::fmt::{self, Display};
