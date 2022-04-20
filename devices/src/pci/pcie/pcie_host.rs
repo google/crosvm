@@ -187,8 +187,16 @@ impl HotplugWorker {
             String::from_utf8_lossy(&device),
         ]
         .join(" ");
-        write("/sys/bus/pci/drivers/vfio-pci/new_id", &new_id)
-            .with_context(|| format!("failed to write {} into vfio-pci/new_id", new_id))?;
+        if Path::new("/sys/bus/pci/drivers/vfio-pci-pm/new_id").exists() {
+            let _ = write("/sys/bus/pci/drivers/vfio-pci-pm/new_id", &new_id);
+        }
+        // This is normal - either the kernel doesn't support vfio-pci-pm driver,
+        // or the device failed to attach to vfio-pci-pm driver (most likely due to
+        // lack of power management capability).
+        if !child.join("driver/unbind").exists() {
+            write("/sys/bus/pci/drivers/vfio-pci/new_id", &new_id)
+                .with_context(|| format!("failed to write {} into vfio-pci/new_id", new_id))?;
+        }
 
         // Request to hotplug the new added pcie device into guest
         let request = VmRequest::VfioCommand {
