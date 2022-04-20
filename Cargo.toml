@@ -171,6 +171,7 @@ kvm = { path = "kvm", optional = true }
 kvm_sys = { path = "kvm_sys", optional = true }
 libc = "0.2.93"
 libcras = "*"
+log = { version = "0", features = ["release_max_level_info"]}
 minijail = "*" # provided by ebuild
 net_util = { path = "net_util" }
 p9 = "*"
