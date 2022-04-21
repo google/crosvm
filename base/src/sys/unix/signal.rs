@@ -544,7 +544,7 @@ pub unsafe trait Killable {
 // Safe because we fulfill our contract of returning a genuine pthread handle.
 unsafe impl<T> Killable for JoinHandle<T> {
     fn pthread_handle(&self) -> pthread_t {
-        self.as_pthread_t()
+        self.as_pthread_t() as _
     }
 }
 

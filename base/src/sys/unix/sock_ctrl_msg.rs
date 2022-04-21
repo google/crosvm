@@ -9,6 +9,7 @@ use std::{
     fs::File,
     io::{IoSlice, IoSliceMut},
     mem::size_of,
+    mem::MaybeUninit,
     os::unix::{
         io::{AsRawFd, FromRawFd, RawFd},
         net::{UnixDatagram, UnixStream},
@@ -30,7 +31,7 @@ use super::{net::UnixSeqpacket, Error, Result};
 
 macro_rules! CMSG_ALIGN {
     ($len:expr) => {
-        (($len) + size_of::<c_long>() - 1) & !(size_of::<c_long>() - 1)
+        ((($len) as usize) + size_of::<c_long>() - 1) & !(size_of::<c_long>() - 1)
     };
 }
 
@@ -42,7 +43,7 @@ macro_rules! CMSG_SPACE {
 
 macro_rules! CMSG_LEN {
     ($len:expr) => {
-        size_of::<cmsghdr>() + ($len)
+        size_of::<cmsghdr>() + (($len) as usize)
     };
 }
 
@@ -64,7 +65,7 @@ fn get_next_cmsg(msghdr: &msghdr, cmsg: &cmsghdr, cmsg_ptr: *mut cmsghdr) -> *mu
     if next_cmsg
         .wrapping_offset(1)
         .wrapping_sub(msghdr.msg_control as usize) as usize
-        > msghdr.msg_controllen
+        > msghdr.msg_controllen as usize
     {
         null_mut()
     } else {
@@ -88,11 +89,9 @@ impl CmsgBuffer {
         } else {
             CmsgBuffer::Heap(
                 vec![
-                    cmsghdr {
-                        cmsg_len: 0,
-                        cmsg_level: 0,
-                        cmsg_type: 0,
-                    };
+                    // Safe because cmsghdr only contains primitive types for
+                    // which zero initialization is valid.
+                    unsafe { MaybeUninit::<cmsghdr>::zeroed().assume_init() };
                     cap_in_cmsghdr_units
                 ]
                 .into_boxed_slice(),
@@ -108,28 +107,32 @@ impl CmsgBuffer {
     }
 }
 
+// Musl requires a try_into when assigning to msg_iovlen and msg_controllen
+// that is unnecessary when compiling for glibc.
+#[allow(clippy::useless_conversion)]
 fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Result<usize> {
     let cmsg_capacity = CMSG_SPACE!(size_of::<RawFd>() * out_fds.len());
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
     let iovec = AsIobuf::as_iobuf_slice(out_data);
 
-    let mut msg = msghdr {
-        msg_name: null_mut(),
-        msg_namelen: 0,
-        msg_iov: iovec.as_ptr() as *mut iovec,
-        msg_iovlen: iovec.len(),
-        msg_control: null_mut(),
-        msg_controllen: 0,
-        msg_flags: 0,
-    };
+    // msghdr on musl has private __pad1 and __pad2 fields that cannot be initialized.
+    // Safe because msghdr only contains primitive types for which zero
+    // initialization is valid.
+    let mut msg: msghdr = unsafe { MaybeUninit::zeroed().assume_init() };
+    msg.msg_iov = iovec.as_ptr() as *mut iovec;
+    msg.msg_iovlen = iovec.len().try_into().unwrap();
 
     if !out_fds.is_empty() {
-        let cmsg = cmsghdr {
-            cmsg_len: CMSG_LEN!(size_of::<RawFd>() * out_fds.len()),
-            cmsg_level: SOL_SOCKET,
-            cmsg_type: SCM_RIGHTS,
-        };
+        // msghdr on musl has an extra __pad1 field, initialize the whole struct to zero.
+        // Safe because cmsghdr only contains primitive types for which zero
+        // initialization is valid.
+        let mut cmsg: cmsghdr = unsafe { MaybeUninit::zeroed().assume_init() };
+        cmsg.cmsg_len = CMSG_LEN!(size_of::<RawFd>() * out_fds.len())
+            .try_into()
+            .unwrap();
+        cmsg.cmsg_level = SOL_SOCKET;
+        cmsg.cmsg_type = SCM_RIGHTS;
         unsafe {
             // Safe because cmsg_buffer was allocated to be large enough to contain cmsghdr.
             write_unaligned(cmsg_buffer.as_mut_ptr() as *mut cmsghdr, cmsg);
@@ -143,7 +146,7 @@ fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Resu
         }
 
         msg.msg_control = cmsg_buffer.as_mut_ptr() as *mut c_void;
-        msg.msg_controllen = cmsg_capacity;
+        msg.msg_controllen = cmsg_capacity.try_into().unwrap();
     }
 
     // Safe because the msghdr was properly constructed from valid (or null) pointers of the
@@ -157,23 +160,23 @@ fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Resu
     }
 }
 
+// Musl requires a try_into when assigning to msg_iovlen, msg_controllen and
+// cmsg_len that is unnecessary when compiling for glibc.
+#[allow(clippy::useless_conversion)]
 fn raw_recvmsg(fd: RawFd, iovs: &mut [IoSliceMut], in_fds: &mut [RawFd]) -> Result<(usize, usize)> {
     let cmsg_capacity = CMSG_SPACE!(size_of::<RawFd>() * in_fds.len());
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
-    let mut msg = msghdr {
-        msg_name: null_mut(),
-        msg_namelen: 0,
-        msg_iov: iovs.as_mut_ptr() as *mut iovec,
-        msg_iovlen: iovs.len(),
-        msg_control: null_mut(),
-        msg_controllen: 0,
-        msg_flags: 0,
-    };
+    // msghdr on musl has private __pad1 and __pad2 fields that cannot be initialized.
+    // Safe because msghdr only contains primitive types for which zero
+    // initialization is valid.
+    let mut msg: msghdr = unsafe { MaybeUninit::zeroed().assume_init() };
+    msg.msg_iov = iovs.as_mut_ptr() as *mut iovec;
+    msg.msg_iovlen = iovs.len().try_into().unwrap();
 
     if !in_fds.is_empty() {
         msg.msg_control = cmsg_buffer.as_mut_ptr() as *mut c_void;
-        msg.msg_controllen = cmsg_capacity;
+        msg.msg_controllen = cmsg_capacity.try_into().unwrap();
     }
 
     // Safe because the msghdr was properly constructed from valid (or null) pointers of the
@@ -184,7 +187,7 @@ fn raw_recvmsg(fd: RawFd, iovs: &mut [IoSliceMut], in_fds: &mut [RawFd]) -> Resu
         return Err(Error::last());
     }
 
-    if total_read == 0 && msg.msg_controllen < size_of::<cmsghdr>() {
+    if total_read == 0 && (msg.msg_controllen as usize) < size_of::<cmsghdr>() {
         return Ok((0, 0));
     }
 
@@ -196,7 +199,7 @@ fn raw_recvmsg(fd: RawFd, iovs: &mut [IoSliceMut], in_fds: &mut [RawFd]) -> Resu
         let cmsg = unsafe { (cmsg_ptr as *mut cmsghdr).read_unaligned() };
 
         if cmsg.cmsg_level == SOL_SOCKET && cmsg.cmsg_type == SCM_RIGHTS {
-            let fd_count = (cmsg.cmsg_len - CMSG_LEN!(0)) / size_of::<RawFd>();
+            let fd_count = (cmsg.cmsg_len as usize - CMSG_LEN!(0)) / size_of::<RawFd>();
             unsafe {
                 copy_nonoverlapping(
                     CMSG_DATA(cmsg_ptr),

@@ -143,9 +143,9 @@ pub const IOC_INOUT: c_uint = 3_221_225_472;
 pub const IOCSIZE_MASK: c_uint = 1_073_676_288;
 pub const IOCSIZE_SHIFT: c_uint = 16;
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_env = "musl"))]
 pub type IoctlNr = c_int;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "musl")))]
 pub type IoctlNr = c_ulong;
 
 /// Run an ioctl with no arguments.
