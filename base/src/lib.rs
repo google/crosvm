@@ -10,6 +10,7 @@ pub mod external_mapping;
 mod notifiers;
 pub mod scoped_event_macro;
 pub mod syslog;
+mod timer;
 mod tube;
 
 pub mod sys;
@@ -20,6 +21,7 @@ pub use errno::{errno_result, Error, Result};
 pub use external_mapping::{Error as ExternalMappingError, Result as ExternalMappingResult, *};
 pub use notifiers::*;
 pub use scoped_event_macro::*;
+pub use timer::{FakeTimer, Timer};
 pub use tube::{Error as TubeError, RecvTube, Result as TubeResult, SendTube, Tube};
 
 cfg_if::cfg_if! {
@@ -28,7 +30,6 @@ cfg_if::cfg_if! {
         mod ioctl;
         mod mmap;
         mod shm;
-        mod timer;
         mod wait_context;
 
         pub use sys::unix;
@@ -44,7 +45,6 @@ cfg_if::cfg_if! {
             MemoryMapping, MemoryMappingBuilder, MemoryMappingBuilderUnix, Unix as MemoryMappingUnix,
         };
         pub use shm::{SharedMemory, Unix as SharedMemoryUnix};
-        pub use timer::{FakeTimer, Timer};
         pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
      } else if #[cfg(windows)] {
         pub use tube::{deserialize_and_recv, serialize_and_send, set_duplicate_handle_tube, set_alias_pid, DuplicateHandleTube};

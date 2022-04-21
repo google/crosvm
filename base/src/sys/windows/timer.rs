@@ -17,11 +17,11 @@ use winapi::{
     },
 };
 
-use super::{
-    super::{errno_result, win::nt_query_timer_resolution, Result},
-    Timer, WaitResult,
+use super::{errno_result, win::nt_query_timer_resolution, Result};
+use crate::{
+    descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor},
+    timer::{Timer, WaitResult},
 };
-use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 
 impl AsRawHandle for Timer {
     fn as_raw_handle(&self) -> RawHandle {
@@ -110,7 +110,7 @@ impl Timer {
     ///
     /// If timeout is not None, block for a maximum of the given `timeout` duration.
     /// If a timeout occurs, return WaitResult::Timeout.
-    pub fn wait(&mut self, timeout: Option<Duration>) -> Result<WaitResult> {
+    pub fn wait_for(&mut self, timeout: Option<Duration>) -> Result<WaitResult> {
         let timeout = match timeout {
             None => INFINITE,
             Some(dur) => dur.as_millis() as u32,
@@ -126,6 +126,12 @@ impl Timer {
             WAIT_TIMEOUT => Ok(WaitResult::Timeout),
             _ => errno_result(),
         }
+    }
+
+    /// Block for a maximum of the given `timeout` duration.
+    /// If a timeout occurs, return WaitResult::Timeout.
+    pub fn wait(&mut self) -> Result<WaitResult> {
+        self.wait_for(None)
     }
 
     /// After a timer is triggered from an EventContext, mark the timer as having been waited for.
