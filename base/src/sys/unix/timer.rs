@@ -3,26 +3,32 @@
 // found in the LICENSE file.
 
 use std::{
-    fs::File,
     mem,
-    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
+    os::unix::io::{AsRawFd, RawFd},
     ptr,
     time::Duration,
 };
 
-use libc::{self, clock_getres, timerfd_create, timerfd_settime, CLOCK_MONOTONIC, TFD_CLOEXEC};
+use libc::{
+    clock_getres, timerfd_create, timerfd_settime, CLOCK_MONOTONIC, EAGAIN, POLLIN, TFD_CLOEXEC,
+    {self},
+};
 
-use crate::AsRawDescriptor;
+use super::super::{errno_result, Error, Result};
+use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 
-use super::{errno_result, Result};
+use crate::timer::{Timer, WaitResult};
 
-/// A safe wrapper around a Linux timerfd (man 2 timerfd_create).
-pub struct TimerFd(File);
+impl AsRawFd for Timer {
+    fn as_raw_fd(&self) -> RawFd {
+        self.handle.as_raw_descriptor()
+    }
+}
 
-impl TimerFd {
+impl Timer {
     /// Creates a new timerfd.  The timer is initally disarmed and must be armed by calling
     /// `reset`.
-    pub fn new() -> Result<TimerFd> {
+    pub fn new() -> Result<Timer> {
         // Safe because this doesn't modify any memory and we check the return value.
         let ret = unsafe { timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC) };
         if ret < 0 {
@@ -30,13 +36,10 @@ impl TimerFd {
         }
 
         // Safe because we uniquely own the file descriptor.
-        Ok(TimerFd(unsafe { File::from_raw_fd(ret) }))
-    }
-
-    /// Creates a new `TimerFd` instance that shares the same underlying `File` as the existing
-    /// `TimerFd` instance.
-    pub fn try_clone(&self) -> std::result::Result<TimerFd, std::io::Error> {
-        self.0.try_clone().map(TimerFd)
+        Ok(Timer {
+            handle: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
+            interval: None,
+        })
     }
 
     /// Sets the timer to expire after `dur`.  If `interval` is not `None` it represents
@@ -50,6 +53,10 @@ impl TimerFd {
         let nsec = dur.subsec_nanos() as i32;
         spec.it_value.tv_nsec = libc::c_long::from(nsec);
 
+        // The posix implementation of timer does not need self.interval, but we
+        // save it anyways to keep a consistent interface.
+        self.interval = interval;
+
         if let Some(int) = interval {
             spec.it_interval.tv_sec = int.as_secs() as libc::time_t;
             // nsec always fits in i32 because subsec_nanos is defined to be less than one billion.
@@ -58,7 +65,7 @@ impl TimerFd {
         }
 
         // Safe because this doesn't modify any memory and we check the return value.
-        let ret = unsafe { timerfd_settime(self.as_raw_fd(), 0, &spec, ptr::null_mut()) };
+        let ret = unsafe { timerfd_settime(self.as_raw_descriptor(), 0, &spec, ptr::null_mut()) };
         if ret < 0 {
             return errno_result();
         }
@@ -66,39 +73,128 @@ impl TimerFd {
         Ok(())
     }
 
-    /// Waits until the timer expires.  The return value represents the number of times the timer
-    /// has expired since the last time `wait` was called.  If the timer has not yet expired once
-    /// this call will block until it does.
-    pub fn wait(&self) -> Result<u64> {
+    /// Waits until the timer expires, returing WaitResult::Expired when it expires.
+    ///
+    /// If timeout is not None, block for a maximum of the given `timeout` duration.
+    /// If a timeout occurs, return WaitResult::Timeout.
+    pub fn wait_for(&mut self, timeout: Option<Duration>) -> Result<WaitResult> {
+        let mut pfd = libc::pollfd {
+            fd: self.as_raw_descriptor(),
+            events: POLLIN,
+            revents: 0,
+        };
+
+        // Safe because we are zero-initializing a struct with only primitive member fields.
+
+        let ret = if let Some(timeout_inner) = timeout {
+            let mut timeoutspec: libc::timespec = unsafe { mem::zeroed() };
+
+            timeoutspec.tv_sec = timeout_inner.as_secs() as libc::time_t;
+            // nsec always fits in i32 because subsec_nanos is defined to be less than one billion.
+            let nsec = timeout_inner.subsec_nanos() as i32;
+            timeoutspec.tv_nsec = libc::c_long::from(nsec);
+            // Safe because this only modifies |pfd| and we check the return value
+            unsafe {
+                libc::ppoll(
+                    &mut pfd as *mut libc::pollfd,
+                    1,
+                    &timeoutspec,
+                    ptr::null_mut(),
+                )
+            }
+        } else {
+            // Safe because this only modifies |pfd| and we check the return value
+            unsafe {
+                libc::ppoll(
+                    &mut pfd as *mut libc::pollfd,
+                    1,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                )
+            }
+        };
+
+        if ret < 0 {
+            return errno_result();
+        }
+
+        // no return events (revents) means we got a timeout
+        if pfd.revents == 0 {
+            return Ok(WaitResult::Timeout);
+        }
+
         let mut count = 0u64;
 
         // Safe because this will only modify |buf| and we check the return value.
         let ret = unsafe {
             libc::read(
-                self.as_raw_fd(),
+                self.as_raw_descriptor(),
                 &mut count as *mut _ as *mut libc::c_void,
                 mem::size_of_val(&count),
             )
         };
+
+        // EAGAIN is a valid error in the case where another thread has called timerfd_settime
+        // in between this thread calling ppoll and read. Since the ppoll returned originally
+        // without any revents it means the timer did expire, so we treat this as a
+        // WaitResult::Expired.
         if ret < 0 {
-            return errno_result();
+            let error = Error::last();
+            if error.errno() != EAGAIN {
+                return Err(error);
+            }
         }
 
-        // The bytes in the buffer are guaranteed to be in native byte-order so we don't need to
-        // use from_le or from_be.
-        Ok(count)
+        Ok(WaitResult::Expired)
+    }
+
+    /// Block for a maximum of the given `timeout` duration.
+    /// If a timeout occurs, return WaitResult::Timeout.
+    pub fn wait(&mut self) -> Result<WaitResult> {
+        self.wait_for(None)
+    }
+
+    /// After a timer is triggered from an EventContext, mark the timer as having been waited for.
+    /// If a timer is not marked waited, it will immediately trigger the event context again. This
+    /// does not need to be called after calling Timer::wait.
+    ///
+    /// Returns true if the timer has been adjusted since the EventContext was triggered by this
+    /// timer.
+    pub fn mark_waited(&mut self) -> Result<bool> {
+        let mut count = 0u64;
+
+        // The timerfd is in non-blocking mode, so this should return immediately.
+        let ret = unsafe {
+            libc::read(
+                self.as_raw_descriptor(),
+                &mut count as *mut _ as *mut libc::c_void,
+                mem::size_of_val(&count),
+            )
+        };
+
+        if ret < 0 {
+            if Error::last().errno() == EAGAIN {
+                Ok(true)
+            } else {
+                errno_result()
+            }
+        } else {
+            Ok(false)
+        }
     }
 
     /// Disarms the timer.
-    pub fn clear(&self) -> Result<()> {
+    pub fn clear(&mut self) -> Result<()> {
         // Safe because we are zero-initializing a struct with only primitive member fields.
         let spec: libc::itimerspec = unsafe { mem::zeroed() };
 
         // Safe because this doesn't modify any memory and we check the return value.
-        let ret = unsafe { timerfd_settime(self.as_raw_fd(), 0, &spec, ptr::null_mut()) };
+        let ret = unsafe { timerfd_settime(self.as_raw_descriptor(), 0, &spec, ptr::null_mut()) };
         if ret < 0 {
             return errno_result();
         }
+
+        self.interval = None;
 
         Ok(())
     }
@@ -116,66 +212,5 @@ impl TimerFd {
         }
 
         Ok(Duration::new(res.tv_sec as u64, res.tv_nsec as u32))
-    }
-}
-
-impl AsRawFd for TimerFd {
-    fn as_raw_fd(&self) -> RawFd {
-        self.0.as_raw_fd()
-    }
-}
-
-impl AsRawDescriptor for TimerFd {
-    fn as_raw_descriptor(&self) -> crate::RawDescriptor {
-        self.0.as_raw_descriptor()
-    }
-}
-
-impl FromRawFd for TimerFd {
-    unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        TimerFd(File::from_raw_fd(fd))
-    }
-}
-
-impl IntoRawFd for TimerFd {
-    fn into_raw_fd(self) -> RawFd {
-        self.0.into_raw_fd()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::{
-        thread::sleep,
-        time::{Duration, Instant},
-    };
-
-    #[test]
-    fn one_shot() {
-        let mut tfd = TimerFd::new().expect("failed to create timerfd");
-
-        let dur = Duration::from_millis(200);
-        let now = Instant::now();
-        tfd.reset(dur, None).expect("failed to arm timer");
-
-        let count = tfd.wait().expect("unable to wait for timer");
-
-        assert_eq!(count, 1);
-        assert!(now.elapsed() >= dur);
-    }
-
-    #[test]
-    fn repeating() {
-        let mut tfd = TimerFd::new().expect("failed to create timerfd");
-
-        let dur = Duration::from_millis(200);
-        let interval = Duration::from_millis(100);
-        tfd.reset(dur, Some(interval)).expect("failed to arm timer");
-
-        sleep(dur * 3);
-
-        let count = tfd.wait().expect("unable to wait for timer");
-        assert!(count >= 5, "count = {}", count);
     }
 }

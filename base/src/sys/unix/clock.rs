@@ -5,12 +5,9 @@
 // Utility file to provide a fake clock object representing current time, and a timerfd driven by
 // that time.
 
-use std::{
-    os::unix::io::AsRawFd,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
-use super::EventFd;
+use crate::{AsRawDescriptor, Event};
 
 #[derive(Debug, Copy, Clone)]
 pub struct Clock(Instant);
@@ -48,7 +45,7 @@ const NS_PER_SEC: u64 = 1_000_000_000;
 #[derive(Debug)]
 pub struct FakeClock {
     ns_since_epoch: u64,
-    deadlines: Vec<(u64, EventFd)>,
+    deadlines: Vec<(u64, Event)>,
 }
 
 impl FakeClock {
@@ -94,9 +91,9 @@ impl FakeClock {
 
     /// Register the event fd for a notification when self's time is |deadline_ns|.
     /// Drop any existing events registered to the same raw fd.
-    pub fn add_event_fd(&mut self, deadline_ns: u64, fd: EventFd) {
+    pub fn add_event(&mut self, deadline_ns: u64, fd: Event) {
         self.deadlines
-            .retain(|(_, old_fd)| fd.as_raw_fd() != old_fd.as_raw_fd());
+            .retain(|(_, old_fd)| fd.as_raw_descriptor() != old_fd.as_raw_descriptor());
         self.deadlines.push((deadline_ns, fd));
     }
 

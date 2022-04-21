@@ -36,7 +36,6 @@ mod priority;
 mod sched;
 mod shm;
 mod stream_channel;
-mod timer;
 
 pub mod thread;
 
@@ -62,7 +61,6 @@ pub use priority::*;
 pub use sched::*;
 pub use shm::*;
 pub use stream_channel::*;
-pub use timer::*;
 pub use win::*;
 
 pub use file_traits::{
