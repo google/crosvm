@@ -2,24 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod sys;
+
 use std::io::Write;
-use std::os::unix::net::UnixStream;
-use std::path::Path;
 
 use base::{AsRawDescriptor, Event, Tube};
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{
-    MasterReq, VhostUserConfigFlags, VhostUserProtocolFeatures, VhostUserVirtioFeatures,
+    VhostUserConfigFlags, VhostUserProtocolFeatures, VhostUserVirtioFeatures,
 };
-use vmm_vhost::{
-    connection::socket::Endpoint as SocketEndpoint, Master, VhostBackend, VhostUserMaster,
-    VhostUserMemoryRegionInfo, VringConfigData,
-};
+use vmm_vhost::{VhostBackend, VhostUserMaster, VhostUserMemoryRegionInfo, VringConfigData};
 
+use crate::virtio::vhost::user::vmm::handler::sys::SocketMaster;
 use crate::virtio::vhost::user::vmm::{Error, Result};
 use crate::virtio::{Interrupt, Queue};
-
-type SocketMaster = Master<SocketEndpoint<MasterReq>>;
 
 fn set_features(vu: &mut SocketMaster, avail_features: u64, ack_features: u64) -> Result<u64> {
     let features = avail_features & ack_features;
@@ -35,41 +31,6 @@ pub struct VhostUserHandler {
 }
 
 impl VhostUserHandler {
-    /// Creates a `VhostUserHandler` instance attached to the provided UDS path
-    /// with features and protocol features initialized.
-    pub fn new_from_path<P: AsRef<Path>>(
-        path: P,
-        max_queue_num: u64,
-        allow_features: u64,
-        init_features: u64,
-        allow_protocol_features: VhostUserProtocolFeatures,
-    ) -> Result<Self> {
-        Self::new(
-            SocketMaster::connect(path, max_queue_num)
-                .map_err(Error::SocketConnectOnMasterCreate)?,
-            allow_features,
-            init_features,
-            allow_protocol_features,
-        )
-    }
-
-    /// Creates a `VhostUserHandler` instance attached to the provided
-    /// UnixStream with features and protocol features initialized.
-    pub fn new_from_stream(
-        sock: UnixStream,
-        max_queue_num: u64,
-        allow_features: u64,
-        init_features: u64,
-        allow_protocol_features: VhostUserProtocolFeatures,
-    ) -> Result<Self> {
-        Self::new(
-            SocketMaster::from_stream(sock, max_queue_num),
-            allow_features,
-            init_features,
-            allow_protocol_features,
-        )
-    }
-
     /// Creates a `VhostUserHandler` instance with features and protocol features initialized.
     fn new(
         mut vu: SocketMaster,
