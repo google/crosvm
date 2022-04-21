@@ -207,8 +207,8 @@ impl MemoryMapping {
     /// * Read bytes from /dev/urandom
     ///
     /// ```
-    ///   use crate::platform::MemoryMapping;
-    ///   use crate::platform::SharedMemory;
+    ///   use base::platform::MemoryMapping;
+    ///   use base::platform::SharedMemory;
     ///   use std::fs::File;
     ///   use std::path::Path;
     ///   fn test_read_random() -> Result<u32, ()> {
@@ -249,8 +249,8 @@ impl MemoryMapping {
     /// * Write 128 bytes to /dev/null
     ///
     /// ```
-    ///   use crate::platform::MemoryMapping;
-    ///   use crate::platform::SharedMemory;
+    ///   use base::platform::MemoryMapping;
+    ///   use base::platform::SharedMemory;
     ///   use std::fs::File;
     ///   use std::path::Path;
     ///   fn test_write_null() -> Result<(), ()> {
