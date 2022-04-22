@@ -164,6 +164,13 @@ fn virglrenderer() -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "gfxstream")]
+fn gfxstream() -> Result<()> {
+    let gfxstream_path = std::env::var("GFXSTREAM_PATH")?;
+    println!("cargo:rustc-link-search={}", gfxstream_path);
+    Ok(())
+}
+
 fn main() -> Result<()> {
     // Skip installing dependencies when generating documents.
     if std::env::var("CARGO_DOC").is_ok() {
@@ -172,6 +179,8 @@ fn main() -> Result<()> {
 
     #[cfg(feature = "virgl_renderer")]
     virglrenderer()?;
+    #[cfg(feature = "gfxstream")]
+    gfxstream()?;
 
     Ok(())
 }
