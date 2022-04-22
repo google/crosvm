@@ -996,7 +996,7 @@ pub fn create_pmem_device(
 
 pub fn create_iommu_device(
     cfg: &Config,
-    phys_max_addr: u64,
+    iova_max_addr: u64,
     endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
     hp_endpoints_ranges: Vec<RangeInclusive<u32>>,
     translate_response_senders: Option<BTreeMap<u32, Tube>>,
@@ -1006,7 +1006,7 @@ pub fn create_iommu_device(
     let dev = virtio::Iommu::new(
         virtio::base_features(cfg.protected_vm),
         endpoints,
-        phys_max_addr,
+        iova_max_addr,
         hp_endpoints_ranges,
         translate_response_senders,
         translate_request_rx,

@@ -277,6 +277,11 @@ impl AddressAllocator {
             .map(|(&alloc, _)| alloc)
     }
 
+    // Return the max address of the allocated address ranges.
+    pub fn get_max_addr(&self) -> u64 {
+        self.regions.iter().fold(0, |x, (_, end)| x.max(*end))
+    }
+
     /// Returns allocation associated with `alloc`, or None if no such allocation exists.
     pub fn get(&self, alloc: &Alloc) -> Option<&(u64, u64, String)> {
         self.allocs.get(alloc)
@@ -763,5 +768,16 @@ mod tests {
             pool.address_from_pci_offset(anon, 0x600, 0x100),
             Err(Error::InvalidAlloc(anon))
         );
+    }
+
+    #[test]
+    fn get_max_address_of_ranges() {
+        let ranges = vec![
+            RangeInclusive::new(0x1000, 0xFFFF),
+            RangeInclusive::new(0x20000, 0xFFFFF),
+        ];
+        let pool = AddressAllocator::new_from_list(ranges.into_iter(), None, None).unwrap();
+
+        assert_eq!(pool.get_max_addr(), 0xFFFFF);
     }
 }

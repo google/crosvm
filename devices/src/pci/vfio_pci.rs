@@ -1472,6 +1472,11 @@ impl VfioPciDevice {
         Ok(ranges)
     }
 
+    /// Return the supported iova max address of the Vfio Pci device
+    pub fn get_max_iova(&self) -> u64 {
+        self.device.get_max_addr()
+    }
+
     #[cfg(feature = "direct")]
     fn coordinated_pm(sysfs_path: &Path, enter: bool) -> anyhow::Result<()> {
         let path = Path::new(sysfs_path).join("power/coordinated");

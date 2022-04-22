@@ -483,6 +483,7 @@ fn create_devices(
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     vvu_proxy_device_tubes: &mut Vec<Tube>,
     vvu_proxy_max_sibling_mem_size: u64,
+    iova_max_addr: &mut Option<u64>,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
     let mut balloon_inflate_tube: Option<Tube> = None;
@@ -508,6 +509,10 @@ fn create_devices(
                 vfio_dev.iommu_dev_type(),
             )?;
 
+            *iova_max_addr = Some(max(
+                vfio_pci_device.get_max_iova(),
+                iova_max_addr.unwrap_or(0),
+            ));
             devices.push((vfio_pci_device, jail));
         }
 
@@ -1297,6 +1302,7 @@ where
 
     let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>> =
         BTreeMap::new();
+    let mut iova_max_addr: Option<u64> = None;
     let mut devices = create_devices(
         &cfg,
         &mut vm,
@@ -1320,6 +1326,7 @@ where
         render_server_fd,
         &mut vvu_proxy_device_tubes,
         components.memory_size,
+        &mut iova_max_addr,
     )?;
 
     let mut hp_endpoints_ranges: Vec<RangeInclusive<u32>> = Vec::new();
@@ -1356,7 +1363,7 @@ where
         let (iommu_host_tube, iommu_device_tube) = Tube::pair().context("failed to create tube")?;
         let iommu_dev = create_iommu_device(
             &cfg,
-            (1u64 << vm.get_guest_phys_addr_bits()) - 1,
+            iova_max_addr.unwrap_or(u64::MAX),
             iommu_attached_endpoints,
             hp_endpoints_ranges,
             translate_response_senders,

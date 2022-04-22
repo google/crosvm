@@ -747,7 +747,7 @@ impl Iommu {
     pub fn new(
         base_features: u64,
         endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
-        phys_max_addr: u64,
+        iova_max_addr: u64,
         hp_endpoints_ranges: Vec<RangeInclusive<u32>>,
         translate_response_senders: Option<BTreeMap<u32, Tube>>,
         translate_request_rx: Option<Tube>,
@@ -767,7 +767,7 @@ impl Iommu {
 
         let input_range = virtio_iommu_range_64 {
             start: Le64::from(0),
-            end: phys_max_addr.into(),
+            end: iova_max_addr.into(),
         };
 
         let config = virtio_iommu_config {

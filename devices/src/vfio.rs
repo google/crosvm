@@ -702,7 +702,7 @@ pub struct VfioDevice {
     // vec for vfio device's regions
     regions: Vec<VfioRegion>,
 
-    iova_alloc: Option<Arc<Mutex<AddressAllocator>>>,
+    iova_alloc: Arc<Mutex<AddressAllocator>>,
 }
 
 impl VfioDevice {
@@ -731,6 +731,14 @@ impl VfioDevice {
         group.lock().add_device_num();
         let group_descriptor = group.lock().as_raw_descriptor();
 
+        let iova_ranges = container
+            .lock()
+            .vfio_iommu_iova_get_iova_ranges()?
+            .into_iter()
+            .map(|r| std::ops::RangeInclusive::new(r.start, r.end));
+        let iova_alloc = AddressAllocator::new_from_list(iova_ranges, None, None)
+            .map_err(VfioError::Resources)?;
+
         Ok(VfioDevice {
             dev,
             name,
@@ -738,7 +746,7 @@ impl VfioDevice {
             group_descriptor,
             group_id,
             regions,
-            iova_alloc: None,
+            iova_alloc: Arc::new(Mutex::new(iova_alloc)),
         })
     }
 
@@ -787,7 +795,7 @@ impl VfioDevice {
             group_descriptor,
             group_id,
             regions,
-            iova_alloc: Some(Arc::new(Mutex::new(iova_alloc))),
+            iova_alloc: Arc::new(Mutex::new(iova_alloc)),
         })
     }
 
@@ -1352,13 +1360,14 @@ impl VfioDevice {
     }
 
     pub fn alloc_iova(&self, size: u64, align_size: u64, alloc: Alloc) -> Result<u64> {
-        match &self.iova_alloc {
-            None => Err(VfioError::NoRescAlloc),
-            Some(iova_alloc) => iova_alloc
-                .lock()
-                .allocate_with_align(size, alloc, "alloc_iova".to_owned(), align_size)
-                .map_err(VfioError::Resources),
-        }
+        self.iova_alloc
+            .lock()
+            .allocate_with_align(size, alloc, "alloc_iova".to_owned(), align_size)
+            .map_err(VfioError::Resources)
+    }
+
+    pub fn get_max_addr(&self) -> u64 {
+        self.iova_alloc.lock().get_max_addr()
     }
 
     /// Gets the vfio device backing `File`.
