@@ -45,43 +45,29 @@
 // VhostUserSlaveReqHandlerMut trait methods. These dispatch back to the supplied VhostUserBackend
 // implementation (this is what our devices implement).
 
-use base::AsRawDescriptor;
+pub(super) mod sys;
+
+use sys::*;
+
 use std::convert::{From, TryFrom};
 use std::fs::File;
 use std::num::Wrapping;
-use std::os::unix::io::AsRawFd;
-use std::os::unix::net::UnixListener;
-use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Context, Result};
-use base::{
-    clear_fd_flags, error, info, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
-    SharedMemory, SharedMemoryUnix, UnlinkUnixListener,
-};
-use cros_async::{AsyncWrapper, Executor};
+use base::{error, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor, SharedMemory};
 use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory, MemoryRegion};
 use vmm_vhost::{
-    connection::{
-        vfio::{Endpoint as VfioEndpoint, Listener as VfioListener},
-        Endpoint,
-    },
     message::{
-        MasterReq, VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion,
-        VhostUserProtocolFeatures, VhostUserSingleMemoryRegion, VhostUserVirtioFeatures,
-        VhostUserVringAddrFlags, VhostUserVringState,
+        VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion, VhostUserProtocolFeatures,
+        VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
+        VhostUserVringState,
     },
-    Error as VhostError, Protocol, Result as VhostResult, SlaveListener, SlaveReqHandler,
-    VhostUserSlaveReqHandler, VhostUserSlaveReqHandlerMut,
+    Protocol,
 };
 
-use crate::vfio::{VfioDevice, VfioRegionAddr};
-use crate::virtio::vhost::user::device::vvu::{
-    device::VvuDevice,
-    doorbell::DoorbellRegion,
-    pci::{VvuPciCaps, VvuPciDevice},
-};
+use vmm_vhost::{Error as VhostError, Result as VhostResult, VhostUserSlaveReqHandlerMut};
+
 use crate::virtio::{Queue, SignalableInterrupt};
 
 /// An event to deliver an interrupt to the guest.
@@ -165,54 +151,6 @@ pub fn create_guest_memory(
     Ok((guest_mem, vmm_maps))
 }
 
-pub fn create_vvu_guest_memory(
-    vfio_dev: &VfioDevice,
-    shared_mem_addr: &VfioRegionAddr,
-    contexts: &[VhostUserMemoryRegion],
-) -> VhostResult<(GuestMemory, Vec<MappingInfo>)> {
-    let file_offset = vfio_dev.get_offset_for_addr(shared_mem_addr).map_err(|e| {
-        error!("failed to get underlying file: {}", e);
-        VhostError::InvalidOperation
-    })?;
-
-    let mut vmm_maps = Vec::with_capacity(contexts.len());
-    let mut regions = Vec::with_capacity(contexts.len());
-    let page_size = base::pagesize() as u64;
-    for region in contexts {
-        let offset = file_offset + region.mmap_offset;
-        assert_eq!(offset % page_size, 0);
-
-        vmm_maps.push(MappingInfo {
-            vmm_addr: region.user_addr as u64,
-            guest_phys: region.guest_phys_addr as u64,
-            size: region.memory_size,
-        });
-
-        let cloned_file = vfio_dev.dev_file().try_clone().map_err(|e| {
-            error!("failed to clone vfio device file: {}", e);
-            VhostError::InvalidOperation
-        })?;
-        let region = MemoryRegion::new_from_file(
-            region.memory_size,
-            GuestAddress(region.guest_phys_addr),
-            file_offset + region.mmap_offset,
-            Arc::new(cloned_file),
-        )
-        .map_err(|e| {
-            error!("failed to create a memory region: {}", e);
-            VhostError::InvalidOperation
-        })?;
-        regions.push(region);
-    }
-
-    let guest_mem = GuestMemory::from_regions(regions).map_err(|e| {
-        error!("failed to create guest memory: {}", e);
-        VhostError::InvalidOperation
-    })?;
-
-    Ok((guest_mem, vmm_maps))
-}
-
 /// Trait for vhost-user backend.
 pub trait VhostUserBackend
 where
@@ -276,37 +214,42 @@ where
     fn reset(&mut self);
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 pub enum Doorbell {
     Call(CallEvent),
-    Vfio(DoorbellRegion),
+    SystemDoorbell(DoorbellSys),
 }
 
+// TODO(b/230665747): Implement SignalableInterrupt trait for system specific
+// enums.
 impl SignalableInterrupt for Doorbell {
     fn signal(&self, vector: u16, interrupt_status_mask: u32) {
         match &self {
             Self::Call(evt) => evt.signal(vector, interrupt_status_mask),
-            Self::Vfio(evt) => evt.signal(vector, interrupt_status_mask),
+            Self::SystemDoorbell(doorbell_sys) => {
+                system_signal(doorbell_sys, vector, interrupt_status_mask)
+            }
         }
     }
 
     fn signal_config_changed(&self) {
         match &self {
             Self::Call(evt) => evt.signal_config_changed(),
-            Self::Vfio(evt) => evt.signal_config_changed(),
+            Self::SystemDoorbell(doorbell_sys) => system_signal_config_changed(doorbell_sys),
         }
     }
 
     fn get_resample_evt(&self) -> Option<&Event> {
         match &self {
             Self::Call(evt) => evt.get_resample_evt(),
-            Self::Vfio(evt) => evt.get_resample_evt(),
+            Self::SystemDoorbell(doorbell_sys) => system_get_resample_evt(doorbell_sys),
         }
     }
 
     fn do_interrupt_resample(&self) {
         match &self {
             Self::Call(evt) => evt.do_interrupt_resample(),
-            Self::Vfio(evt) => evt.do_interrupt_resample(),
+            Self::SystemDoorbell(doorbell_sys) => system_do_interrupt_resample(doorbell_sys),
         }
     }
 }
@@ -334,45 +277,9 @@ impl Vring {
     }
 }
 
-/// Performs the run loop for an already-constructor request handler.
-pub async fn run_handler<S, E>(mut req_handler: SlaveReqHandler<S, E>, ex: &Executor) -> Result<()>
-where
-    S: VhostUserSlaveReqHandler,
-    E: Endpoint<MasterReq> + AsRawDescriptor,
-{
-    let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
-        .map(AsyncWrapper::new)
-        .context("failed to get safe descriptor for handler")?;
-    let handler_source = ex
-        .async_from(h)
-        .context("failed to create an async source")?;
-
-    loop {
-        handler_source
-            .wait_readable()
-            .await
-            .context("failed to wait for the handler to become readable")?;
-        match req_handler.handle_request() {
-            Ok(()) => (),
-            Err(VhostError::ClientExit) => {
-                info!("vhost-user connection closed");
-                // Exit as the client closed the connection.
-                return Ok(());
-            }
-            Err(e) => {
-                bail!("failed to handle a vhost-user request: {}", e);
-            }
-        };
-    }
-}
-
 pub(super) enum HandlerType {
     VhostUser,
-    Vvu {
-        vfio_dev: Arc<VfioDevice>,
-        caps: VvuPciCaps,
-        notification_evts: Vec<Event>,
-    },
+    SystemHandlerType(HandlerTypeSys),
 }
 
 impl Default for HandlerType {
@@ -415,70 +322,13 @@ where
             handler_type: Default::default(), // For vvu, this field will be overwritten later.
         }
     }
-
-    /// Creates a listening socket at `socket` and handles incoming messages from the VMM, which are
-    /// dispatched to the device backend via the `VhostUserBackend` trait methods.
-    pub async fn run<P: AsRef<Path>>(self, socket: P, ex: &Executor) -> Result<()> {
-        let listener = UnixListener::bind(socket)
-            .map(UnlinkUnixListener)
-            .context("failed to create a UNIX domain socket listener")?;
-        return self.run_with_listener(listener, ex).await;
-    }
-
-    /// Attaches to an already bound socket via `listener` and handles incoming messages from the
-    /// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
-    pub async fn run_with_listener(
-        self,
-        listener: UnlinkUnixListener,
-        ex: &Executor,
-    ) -> Result<()> {
-        let (socket, _) = ex
-            .spawn_blocking(move || {
-                listener
-                    .accept()
-                    .context("failed to accept an incoming connection")
-            })
-            .await?;
-        let req_handler =
-            SlaveReqHandler::from_stream(socket, Arc::new(std::sync::Mutex::new(self)));
-
-        run_handler(req_handler, ex).await
-    }
-
-    /// Starts listening virtio-vhost-user device with VFIO to handle incoming vhost-user messages
-    /// forwarded by it.
-    pub async fn run_vvu(mut self, mut device: VvuPciDevice, ex: &Executor) -> Result<()> {
-        self.handler_type = HandlerType::Vvu {
-            vfio_dev: Arc::clone(&device.vfio_dev),
-            caps: device.caps.clone(),
-            notification_evts: std::mem::take(&mut device.notification_evts),
-        };
-        let driver = VvuDevice::new(device);
-
-        let mut listener = VfioListener::new(driver)
-            .map_err(|e| anyhow!("failed to create a VFIO listener: {}", e))
-            .and_then(|l| {
-                SlaveListener::<VfioEndpoint<_, _>, _>::new(
-                    l,
-                    Arc::new(std::sync::Mutex::new(self)),
-                )
-                .map_err(|e| anyhow!("failed to create SlaveListener: {}", e))
-            })?;
-
-        let req_handler = listener
-            .accept()
-            .map_err(|e| anyhow!("failed to accept VFIO connection: {}", e))?
-            .expect("vvu proxy is unavailable via VFIO");
-
-        run_handler(req_handler, ex).await
-    }
 }
 
 impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B> {
     fn protocol(&self) -> Protocol {
-        match self.handler_type {
+        match &self.handler_type {
             HandlerType::VhostUser => Protocol::Regular,
-            HandlerType::Vvu { .. } => Protocol::Virtio,
+            HandlerType::SystemHandlerType(handler_type_sys) => system_protocol(handler_type_sys),
         }
     }
 
@@ -555,16 +405,8 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
                 }
                 create_guest_memory(contexts, files)?
             }
-            HandlerType::Vvu {
-                vfio_dev: device,
-                caps,
-                ..
-            } => {
-                // virtio-vhost-user doesn't pass FDs.
-                if !files.is_empty() {
-                    return Err(VhostError::InvalidParam);
-                }
-                create_vvu_guest_memory(device.as_ref(), caps.shared_mem_cfg_addr(), contexts)?
+            HandlerType::SystemHandlerType(handler_type_sys) => {
+                system_set_mem_table(handler_type_sys, files, contexts)?
             }
         };
 
@@ -655,26 +497,14 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
         let kick_evt = match &self.handler_type {
             HandlerType::VhostUser => {
                 let file = file.ok_or(VhostError::InvalidParam)?;
-                // Remove O_NONBLOCK from kick_fd. Otherwise, uring_executor will fails when we read
-                // values via `next_val()` later.
-                if let Err(e) = clear_fd_flags(file.as_raw_fd(), libc::O_NONBLOCK) {
-                    error!("failed to remove O_NONBLOCK for kick fd: {}", e);
-                    return Err(VhostError::InvalidParam);
-                }
+
+                system_clear_rd_flags(&file)?;
 
                 // Safe because we own the file.
                 unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) }
             }
-            HandlerType::Vvu {
-                notification_evts, ..
-            } => {
-                if file.is_some() {
-                    return Err(VhostError::InvalidParam);
-                }
-                notification_evts[index as usize].try_clone().map_err(|e| {
-                    error!("failed to clone notification_evts[{}]: {}", index, e);
-                    VhostError::InvalidOperation
-                })?
+            HandlerType::SystemHandlerType(handler_type_sys) => {
+                system_get_kick_evt(handler_type_sys, index, file)?
             }
         };
 
@@ -716,21 +546,8 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
                     VhostError::InvalidParam
                 })?)
             }
-            HandlerType::Vvu {
-                vfio_dev: device,
-                caps,
-                ..
-            } => {
-                let base = caps.doorbell_base_addr();
-                let addr = VfioRegionAddr {
-                    index: base.index,
-                    addr: base.addr + (index as u64 * caps.doorbell_off_multiplier() as u64),
-                };
-                Doorbell::Vfio(DoorbellRegion {
-                    vfio: Arc::clone(device),
-                    index,
-                    addr,
-                })
+            HandlerType::SystemHandlerType(handler_type_sys) => {
+                system_create_doorbell(handler_type_sys, index)?
             }
         };
 
@@ -844,6 +661,8 @@ mod tests {
     use anyhow::{anyhow, bail};
     use data_model::DataInit;
     use tempfile::{Builder, TempDir};
+    use vmm_vhost::message::MasterReq;
+    use vmm_vhost::{connection::Endpoint, SlaveReqHandler, VhostUserSlaveReqHandler};
 
     use crate::virtio::vhost::user::vmm::VhostUserHandler;
 
@@ -858,14 +677,14 @@ mod tests {
 
     const FAKE_CONFIG_DATA: FakeConfig = FakeConfig { x: 1, y: 2 };
 
-    struct FakeBackend {
+    pub(super) struct FakeBackend {
         avail_features: u64,
         acked_features: u64,
         acked_protocol_features: VhostUserProtocolFeatures,
     }
 
     impl FakeBackend {
-        fn new() -> Self {
+        pub(super) fn new() -> Self {
             Self {
                 avail_features: VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits(),
                 acked_features: 0,
@@ -1044,6 +863,58 @@ mod tests {
         match listener.handle_request() {
             Err(VhostError::ClientExit) => (),
             r => panic!("Err(ClientExit) was expected but {:?}", r),
+        }
+    }
+
+    pub(super) fn vmm_handler_send_requests(vmm_handler: &mut VhostUserHandler, queues_num: usize) {
+        println!("read_config");
+        let mut buf = vec![0; std::mem::size_of::<FakeConfig>()];
+        vmm_handler.read_config::<FakeConfig>(0, &mut buf).unwrap();
+        // Check if the obtained config data is correct.
+        let config = FakeConfig::from_slice(&buf).unwrap();
+        assert_eq!(*config, FAKE_CONFIG_DATA);
+
+        println!("set_mem_table");
+        let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
+        vmm_handler.set_mem_table(&mem).unwrap();
+
+        for idx in 0..queues_num {
+            println!("activate_mem_table: queue_index={}", idx);
+            let queue = Queue::new(0x10);
+            let queue_evt = Event::new().unwrap();
+            let irqfd = Event::new().unwrap();
+
+            vmm_handler
+                .activate_vring(&mem, idx, &queue, &queue_evt, &irqfd)
+                .unwrap();
+        }
+    }
+
+    pub(super) fn test_handle_requests<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>>(
+        req_handler: &mut SlaveReqHandler<S, E>,
+        queues_num: usize,
+    ) {
+        // VhostUserHandler::new()
+        req_handler.handle_request().expect("set_owner");
+        req_handler.handle_request().expect("get_features");
+        req_handler.handle_request().expect("set_features");
+        req_handler.handle_request().expect("get_protocol_features");
+        req_handler.handle_request().expect("set_protocol_features");
+
+        // VhostUserHandler::read_config()
+        req_handler.handle_request().expect("get_config");
+
+        // VhostUserHandler::set_mem_table()
+        req_handler.handle_request().expect("set_mem_table");
+
+        for _ in 0..queues_num {
+            // VhostUserHandler::activate_vring()
+            req_handler.handle_request().expect("set_vring_num");
+            req_handler.handle_request().expect("set_vring_addr");
+            req_handler.handle_request().expect("set_vring_base");
+            req_handler.handle_request().expect("set_vring_call");
+            req_handler.handle_request().expect("set_vring_kick");
+            req_handler.handle_request().expect("set_vring_enable");
         }
     }
 }

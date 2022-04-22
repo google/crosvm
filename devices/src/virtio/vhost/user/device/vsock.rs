@@ -44,8 +44,9 @@ use crate::{
         vhost::{
             user::device::{
                 handler::{
-                    create_guest_memory, create_vvu_guest_memory, run_handler, vmm_va_to_gpa,
-                    HandlerType, MappingInfo,
+                    create_guest_memory,
+                    sys::{create_vvu_guest_memory, run_handler, HandlerTypeSys},
+                    vmm_va_to_gpa, HandlerType, MappingInfo,
                 },
                 vvu::{doorbell::DoorbellRegion, pci::VvuPciDevice, VvuDevice},
             },
@@ -120,9 +121,12 @@ fn convert_vhost_error(err: vhost::Error) -> Error {
 
 impl VhostUserSlaveReqHandlerMut for VsockBackend {
     fn protocol(&self) -> Protocol {
-        match self.handler_type {
+        match &self.handler_type {
             HandlerType::VhostUser => Protocol::Regular,
-            HandlerType::Vvu { .. } => Protocol::Virtio,
+            // TODO(b/230666089): Put in sys directory.
+            HandlerType::SystemHandlerType(system_handler_type) => match system_handler_type {
+                HandlerTypeSys::Vvu { .. } => Protocol::Virtio,
+            },
         }
     }
 
@@ -167,13 +171,20 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
     ) -> Result<()> {
         let (guest_mem, vmm_maps) = match &self.handler_type {
             HandlerType::VhostUser => create_guest_memory(contexts, files)?,
-            HandlerType::Vvu { vfio_dev, caps, .. } => {
-                // virtio-vhost-user doesn't pass FDs.
-                if !files.is_empty() {
-                    return Err(Error::InvalidParam);
+            // TODO(b/230666089): Put in sys directory.
+            HandlerType::SystemHandlerType(system_handler_type) => match system_handler_type {
+                HandlerTypeSys::Vvu { vfio_dev, caps, .. } => {
+                    // virtio-vhost-user doesn't pass FDs.
+                    if !files.is_empty() {
+                        return Err(Error::InvalidParam);
+                    }
+                    create_vvu_guest_memory(
+                        vfio_dev.as_ref(),
+                        caps.shared_mem_cfg_addr(),
+                        contexts,
+                    )?
                 }
-                create_vvu_guest_memory(vfio_dev.as_ref(), caps.shared_mem_cfg_addr(), contexts)?
-            }
+            },
         };
 
         self.handle
@@ -302,9 +313,9 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
 
         let index = usize::from(index);
         let event = match &self.handler_type {
-            HandlerType::Vvu {
+            HandlerType::SystemHandlerType(HandlerTypeSys::Vvu {
                 notification_evts, ..
-            } => {
+            }) => {
                 if fd.is_some() {
                     return Err(Error::InvalidParam);
                 }
@@ -351,7 +362,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
 
         let index = usize::from(index);
         let event = match &self.handler_type {
-            HandlerType::Vvu { vfio_dev, caps, .. } => {
+            HandlerType::SystemHandlerType(HandlerTypeSys::Vvu { vfio_dev, caps, .. }) => {
                 let vfio = Arc::clone(vfio_dev);
                 let base = caps.doorbell_base_addr();
                 let addr = VfioRegionAddr {
@@ -563,11 +574,11 @@ fn run_vvu_device<P: AsRef<Path>>(
         ex,
         cid,
         vhost_socket,
-        HandlerType::Vvu {
+        HandlerType::SystemHandlerType(HandlerTypeSys::Vvu {
             vfio_dev: Arc::clone(&device.vfio_dev),
             caps: device.caps.clone(),
             notification_evts: std::mem::take(&mut device.notification_evts),
-        },
+        }),
     )
     .map(StdMutex::new)
     .map(Arc::new)
