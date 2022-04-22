@@ -75,6 +75,22 @@ impl MemoryMapper for VfioWrapper {
             .map_err(MemoryMapperError::Vfio)
     }
 
+    fn supports_detach(&self) -> bool {
+        // A few reasons why we don't support detach:
+        //
+        // 1. Seems it's not possible to dynamically attach and detach a IOMMU domain if the
+        //    virtio IOMMU device is running on top of VFIO
+        // 2. Even if VIRTIO_IOMMU_T_DETACH is implemented in front-end driver, it could violate
+        //    the following virtio IOMMU spec: Detach an endpoint from a domain. when this request
+        //    completes, the endpoint cannot access any mapping from that domain anymore.
+        //
+        //    This is because VFIO doesn't support detaching a single device. When the virtio-iommu
+        //    device receives a VIRTIO_IOMMU_T_DETACH request, it can either to:
+        //    - detach a group: any other endpoints in the group lose access to the domain.
+        //    - do not detach the group at all: this breaks the above mentioned spec.
+        false
+    }
+
     fn as_vfio_wrapper(&self) -> Option<&VfioWrapper> {
         Some(self)
     }

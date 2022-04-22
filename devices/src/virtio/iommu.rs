@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{btree_map::Entry, BTreeMap};
 use std::fs::File;
 use std::io::{self, Write};
 use std::mem::size_of;
@@ -158,27 +158,34 @@ struct Worker {
 }
 
 impl Worker {
-    // Remove the endpoint from the endpoint_map and
-    // decrement the reference counter (or remove the entry if the ref count is 1)
-    // from domain_map
-    fn detach_endpoint(&mut self, endpoint: u32) {
+    // Remove the endpoint from the endpoint_map and decrement the reference
+    // counter (or remove the entry if the ref count is 1) from domain_map.
+    // Returns true on success, and false if the endpoint can't be detached.
+    fn detach_endpoint(&mut self, endpoint: u32) -> bool {
         // The endpoint has attached to an IOMMU domain
         if let Some(attached_domain) = self.endpoint_map.get(&endpoint) {
             // Remove the entry or update the domain reference count
-            if let Some(dm_val) = self.domain_map.get(attached_domain) {
-                match dm_val.0 {
+            if let Entry::Occupied(mut o) = self.domain_map.entry(*attached_domain) {
+                let (refs, mapper) = o.get();
+                if !mapper.lock().supports_detach() {
+                    return false;
+                }
+
+                match refs {
                     0 => unreachable!(),
-                    1 => self.domain_map.remove(attached_domain),
-                    _ => {
-                        let new_refs = dm_val.0 - 1;
-                        let vfio = dm_val.1.clone();
-                        self.domain_map.insert(*attached_domain, (new_refs, vfio))
+                    1 => {
+                        mapper.lock().reset_domain();
+                        o.remove();
                     }
-                };
+                    _ => {
+                        *o.get_mut() = (refs - 1, mapper.clone());
+                    }
+                }
             }
         }
 
         self.endpoint_map.remove(&endpoint);
+        true
     }
 
     // Notes: if a VFIO group contains multiple devices, it could violate the follow
@@ -225,7 +232,14 @@ impl Worker {
         // to another domain, then the device SHOULD first detach it
         // from that domain and attach it to the one identified by domain.
         if self.endpoint_map.contains_key(&endpoint) {
-            self.detach_endpoint(endpoint);
+            // In that case the device SHOULD behave as if the driver issued
+            // a DETACH request with this endpoint, followed by the ATTACH
+            // request. If the device cannot do so, it MUST reject the request
+            // and set status to VIRTIO_IOMMU_S_UNSUPP.
+            if !self.detach_endpoint(endpoint) {
+                tail.status = VIRTIO_IOMMU_S_UNSUPP;
+                return Ok(0);
+            }
         }
 
         if let Some(vfio_container) = endpoints.borrow_mut().get(&endpoint) {
@@ -237,6 +251,31 @@ impl Worker {
             self.endpoint_map.insert(endpoint, domain);
             self.domain_map
                 .insert(domain, (new_ref, vfio_container.clone()));
+        }
+
+        Ok(0)
+    }
+
+    fn process_detach_request(
+        &mut self,
+        reader: &mut Reader,
+        tail: &mut virtio_iommu_req_tail,
+        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
+    ) -> Result<usize> {
+        let req: virtio_iommu_req_detach =
+            reader.read_obj().map_err(IommuError::GuestMemoryRead)?;
+
+        // If the endpoint identified by |req.endpoint| doesn’t exist,
+        // the device MUST reject the request and set status to
+        // VIRTIO_IOMMU_S_NOENT.
+        let endpoint: u32 = req.endpoint.into();
+        if !endpoints.borrow().contains_key(&endpoint) {
+            tail.status = VIRTIO_IOMMU_S_NOENT;
+            return Ok(0);
+        }
+
+        if !self.detach_endpoint(endpoint) {
+            tail.status = VIRTIO_IOMMU_S_UNSUPP;
         }
 
         Ok(0)
@@ -425,21 +464,7 @@ impl Worker {
                 self.process_attach_request(&mut reader, &mut tail, endpoints)?
             }
             VIRTIO_IOMMU_T_DETACH => {
-                // A few reasons why we don't support VIRTIO_IOMMU_T_DETACH for now:
-                //
-                // 1. Linux virtio IOMMU front-end driver doesn't implement VIRTIO_IOMMU_T_DETACH request
-                // 2. Seems it's not possible to dynamically attach and detach a IOMMU domain if the
-                //    virtio IOMMU device is running on top of VFIO
-                // 3. Even if VIRTIO_IOMMU_T_DETACH is implemented in front-end driver, it could violate
-                //    the following virtio IOMMU spec: Detach an endpoint from a domain. when this request
-                //    completes, the endpoint cannot access any mapping from that domain anymore.
-                //
-                //    This is because VFIO doesn't support detaching a single device. When the virtio-iommu
-                //    device receives a VIRTIO_IOMMU_T_DETACH request, it can either to:
-                //    - detach a group: any other endpoints in the group lose access to the domain.
-                //    - do not detach the group at all: this breaks the above mentioned spec.
-                tail.status = VIRTIO_IOMMU_S_UNSUPP;
-                0
+                self.process_detach_request(&mut reader, &mut tail, endpoints)?
             }
             VIRTIO_IOMMU_T_MAP => self.process_dma_map_request(&mut reader, &mut tail)?,
             VIRTIO_IOMMU_T_UNMAP => self.process_dma_unmap_request(&mut reader, &mut tail)?,

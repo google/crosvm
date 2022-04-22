@@ -102,6 +102,12 @@ pub trait MemoryMapper: Send {
     fn remove_map(&mut self, iova_start: u64, size: u64) -> Result<()>;
     fn get_mask(&self) -> Result<u64>;
 
+    /// Whether or not endpoints can be safely detached from this mapper.
+    fn supports_detach(&self) -> bool;
+    /// Resets the mapper's domain back into its initial state. Only necessary
+    /// if |supports_detach| returns true.
+    fn reset_domain(&mut self) {}
+
     /// Trait for generic MemoryMapper abstraction, that is, all reside on MemoryMapper and want to
     /// be converted back to its original type. Each must provide as_XXX_wrapper() +
     /// as_XXX_wrapper_mut() + into_XXX_wrapper(), default impl methods return None.
@@ -196,6 +202,14 @@ impl MemoryMapper for BasicMemoryMapper {
 
     fn get_mask(&self) -> Result<u64> {
         Ok(self.mask)
+    }
+
+    fn supports_detach(&self) -> bool {
+        true
+    }
+
+    fn reset_domain(&mut self) {
+        self.maps.clear();
     }
 }
 
