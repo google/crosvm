@@ -20,6 +20,10 @@ pub use alloc::LayoutAllocation;
 pub use errno::{errno_result, Error, Result};
 pub use external_mapping::{Error as ExternalMappingError, Result as ExternalMappingResult, *};
 pub use notifiers::*;
+pub use platform::ioctl::{
+    ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
+    *,
+};
 pub use scoped_event_macro::*;
 pub use timer::{FakeTimer, Timer};
 pub use tube::{Error as TubeError, RecvTube, Result as TubeResult, SendTube, Tube};
@@ -36,9 +40,6 @@ cfg_if::cfg_if! {
         pub use unix::net::*;
 
         pub use event::{Event, EventReadResult, ScopedEvent};
-        pub use unix::ioctl::{*,
-            ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
-        };
         pub use mmap::{
             MemoryMapping, MemoryMappingBuilder, MemoryMappingBuilderUnix, Unix as MemoryMappingUnix,
         };

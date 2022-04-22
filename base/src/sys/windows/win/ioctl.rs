@@ -4,7 +4,12 @@
 
 //! Macros and wrapper functions for dealing with ioctls.
 
-use std::{mem::size_of, os::raw::*, ptr::null_mut};
+use std::{
+    mem::size_of,
+    os::raw::*,
+    os::raw::{c_int, c_ulong},
+    ptr::null_mut,
+};
 
 use crate::descriptor::AsRawDescriptor;
 pub use winapi::um::winioctl::{CTL_CODE, FILE_ANY_ACCESS, METHOD_BUFFERED};
@@ -128,12 +133,13 @@ pub type IoctlNr = c_ulong;
 // remove it right now until we re-implement all the code that calls
 // this funciton for windows.
 /// # Safety
+/// The caller is responsible for determining the safety of the particular ioctl.
 /// This method should be safe as `DeviceIoControl` will handle error cases
 /// and it does size checking.
-pub unsafe fn ioctl<F: AsRawDescriptor>(handle: &F, nr: IoctlNr) -> c_int {
+pub unsafe fn ioctl<F: AsRawDescriptor>(descriptor: &F, nr: IoctlNr) -> c_int {
     let mut byte_ret: c_ulong = 0;
     let ret = DeviceIoControl(
-        handle.as_raw_descriptor(),
+        descriptor.as_raw_descriptor(),
         nr,
         null_mut(),
         0,
@@ -150,15 +156,20 @@ pub unsafe fn ioctl<F: AsRawDescriptor>(handle: &F, nr: IoctlNr) -> c_int {
     GetLastError() as i32
 }
 
-/// Run an ioctl with a single value argument
+/// Run an ioctl with a single value argument.
 /// # Safety
+/// The caller is responsible for determining the safety of the particular ioctl.
 /// This method should be safe as `DeviceIoControl` will handle error cases
 /// and it does size checking.
-pub unsafe fn ioctl_with_val(handle: &dyn AsRawDescriptor, nr: IoctlNr, mut arg: c_ulong) -> c_int {
+pub unsafe fn ioctl_with_val(
+    descriptor: &dyn AsRawDescriptor,
+    nr: IoctlNr,
+    mut arg: c_ulong,
+) -> c_int {
     let mut byte_ret: c_ulong = 0;
 
     let ret = DeviceIoControl(
-        handle.as_raw_descriptor(),
+        descriptor.as_raw_descriptor(),
         nr,
         &mut arg as *mut c_ulong as *mut c_void,
         size_of::<c_ulong>() as u32,
@@ -177,20 +188,22 @@ pub unsafe fn ioctl_with_val(handle: &dyn AsRawDescriptor, nr: IoctlNr, mut arg:
 
 /// Run an ioctl with an immutable reference.
 /// # Safety
+/// The caller is responsible for determining the safety of the particular ioctl.
 /// Look at `ioctl_with_ptr` comments.
-pub unsafe fn ioctl_with_ref<T>(handle: &dyn AsRawDescriptor, nr: IoctlNr, arg: &T) -> c_int {
-    ioctl_with_ptr(handle, nr, arg)
+pub unsafe fn ioctl_with_ref<T>(descriptor: &dyn AsRawDescriptor, nr: IoctlNr, arg: &T) -> c_int {
+    ioctl_with_ptr(descriptor, nr, arg)
 }
 
 /// Run an ioctl with a mutable reference.
 /// # Safety
+/// The caller is responsible for determining the safety of the particular ioctl.
 /// Look at `ioctl_with_ptr` comments.
 pub unsafe fn ioctl_with_mut_ref<T>(
-    handle: &dyn AsRawDescriptor,
+    descriptor: &dyn AsRawDescriptor,
     nr: IoctlNr,
     arg: &mut T,
 ) -> c_int {
-    ioctl_with_mut_ptr(handle, nr, arg)
+    ioctl_with_mut_ptr(descriptor, nr, arg)
 }
 
 /// Run an ioctl with a raw pointer, specifying the size of the buffer.
@@ -198,7 +211,7 @@ pub unsafe fn ioctl_with_mut_ref<T>(
 /// This method should be safe as `DeviceIoControl` will handle error cases
 /// and it does size checking. Also The caller should make sure `T` is valid.
 pub unsafe fn ioctl_with_ptr_sized<T>(
-    handle: &dyn AsRawDescriptor,
+    descriptor: &dyn AsRawDescriptor,
     nr: IoctlNr,
     arg: *const T,
     size: usize,
@@ -209,7 +222,7 @@ pub unsafe fn ioctl_with_ptr_sized<T>(
     // to the input buffer. Just because it's a *const does not prevent
     // the unsafe call from writing to it.
     let ret = DeviceIoControl(
-        handle.as_raw_descriptor(),
+        descriptor.as_raw_descriptor(),
         nr,
         arg as *mut c_void,
         size as u32,
@@ -231,25 +244,31 @@ pub unsafe fn ioctl_with_ptr_sized<T>(
 
 /// Run an ioctl with a raw pointer.
 /// # Safety
+/// The caller is responsible for determining the safety of the particular ioctl.
 /// This method should be safe as `DeviceIoControl` will handle error cases
 /// and it does size checking. Also The caller should make sure `T` is valid.
-pub unsafe fn ioctl_with_ptr<T>(handle: &dyn AsRawDescriptor, nr: IoctlNr, arg: *const T) -> c_int {
-    ioctl_with_ptr_sized(handle, nr, arg, size_of::<T>())
+pub unsafe fn ioctl_with_ptr<T>(
+    descriptor: &dyn AsRawDescriptor,
+    nr: IoctlNr,
+    arg: *const T,
+) -> c_int {
+    ioctl_with_ptr_sized(descriptor, nr, arg, size_of::<T>())
 }
 
 /// Run an ioctl with a mutable raw pointer.
 /// # Safety
+/// The caller is responsible for determining the safety of the particular ioctl.
 /// This method should be safe as `DeviceIoControl` will handle error cases
 /// and it does size checking. Also The caller should make sure `T` is valid.
 pub unsafe fn ioctl_with_mut_ptr<T>(
-    handle: &dyn AsRawDescriptor,
+    descriptor: &dyn AsRawDescriptor,
     nr: IoctlNr,
     arg: *mut T,
 ) -> c_int {
     let mut byte_ret: c_ulong = 0;
 
     let ret = DeviceIoControl(
-        handle.as_raw_descriptor(),
+        descriptor.as_raw_descriptor(),
         nr,
         arg as *mut c_void,
         size_of::<T>() as u32,
@@ -272,7 +291,7 @@ pub unsafe fn ioctl_with_mut_ptr<T>(
 /// for invalid paramters and takes input buffer and output buffer size
 /// arguments. Also The caller should make sure `T` is valid.
 pub unsafe fn device_io_control<F: AsRawDescriptor, T, T2>(
-    handle: &F,
+    descriptor: &F,
     nr: IoctlNr,
     input: &T,
     inputsize: u32,
@@ -282,7 +301,7 @@ pub unsafe fn device_io_control<F: AsRawDescriptor, T, T2>(
     let mut byte_ret: c_ulong = 0;
 
     let ret = DeviceIoControl(
-        handle.as_raw_descriptor(),
+        descriptor.as_raw_descriptor(),
         nr,
         input as *const T as *mut c_void,
         inputsize,
