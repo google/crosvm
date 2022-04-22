@@ -103,6 +103,21 @@ pub fn handle_input<I: SignalableInterrupt>(
     }
 }
 
+/// Writes the available data from the reader into the given output queue.
+///
+/// # Arguments
+///
+/// * `reader` - The Reader with the data we want to write.
+/// * `output` - The output sink we are going to write the data to.
+pub fn process_transmit_request(mut reader: Reader, output: &mut dyn io::Write) -> io::Result<()> {
+    let len = reader.available_bytes();
+    let mut data = vec![0u8; len];
+    reader.read_exact(&mut data)?;
+    output.write_all(&data)?;
+    output.flush()?;
+    Ok(())
+}
+
 /// Processes the data taken from the given transmit queue into the output sink.
 ///
 /// # Arguments
@@ -206,21 +221,6 @@ pub fn spawn_input_thread(
         return None;
     }
     Some(buffer_cloned)
-}
-
-/// Writes the available data from the reader into the given output queue.
-///
-/// # Arguments
-///
-/// * `reader` - The Reader with the data we want to write.
-/// * `output` - The output sink we are going to write the data to.
-pub fn process_transmit_request(mut reader: Reader, output: &mut dyn io::Write) -> io::Result<()> {
-    let len = reader.available_bytes();
-    let mut data = vec![0u8; len];
-    reader.read_exact(&mut data)?;
-    output.write_all(&data)?;
-    output.flush()?;
-    Ok(())
 }
 
 impl Worker {
