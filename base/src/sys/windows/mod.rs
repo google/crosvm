@@ -28,7 +28,6 @@ mod gmtime;
 mod mmap;
 #[path = "win/named_pipes.rs"]
 pub mod named_pipes;
-mod notifiers;
 mod poll;
 #[path = "win/priority.rs"]
 mod priority;
@@ -58,7 +57,6 @@ pub use get_filesystem_type::*;
 pub use gmtime::*;
 pub use ioctl::*;
 pub use mmap::*;
-pub use notifiers::*;
 pub use poll::*;
 pub use priority::*;
 pub use sched::*;

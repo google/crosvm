@@ -11,9 +11,9 @@ use sync::Mutex;
 use super::super::{
     named_pipes::{self, PipeConnection},
     stream_channel::{BlockingMode, FramingMode},
-    CloseNotifier, Event, MultiProcessMutex, RawDescriptor, ReadNotifier, Result,
+    Event, MultiProcessMutex, RawDescriptor, Result,
 };
-use crate::descriptor::AsRawDescriptor;
+use crate::{descriptor::AsRawDescriptor, CloseNotifier, ReadNotifier};
 
 impl From<FramingMode> for named_pipes::FramingMode {
     fn from(framing_mode: FramingMode) -> Self {
@@ -397,9 +397,10 @@ impl CloseNotifier for StreamChannel {
 #[cfg(test)]
 mod test {
     use super::{
-        super::super::{EventContext, EventTrigger, PollToken, ReadNotifier},
+        super::super::{EventContext, EventTrigger, PollToken},
         *,
     };
+    use crate::ReadNotifier;
     use std::{
         io::{Read, Write},
         time::Duration,

@@ -42,9 +42,11 @@ impl AsRawDescriptor for StreamChannel {
 #[cfg(test)]
 mod test {
     use super::{
-        super::{EventContext, EventTrigger, PollToken, ReadNotifier},
+        super::{EventContext, EventTrigger, PollToken},
         *,
     };
+
+    use crate::ReadNotifier;
     use std::io::{Read, Write};
 
     #[derive(PollToken, Debug, Eq, PartialEq, Copy, Clone)]

@@ -7,6 +7,7 @@ pub mod descriptor;
 pub mod descriptor_reflection;
 mod errno;
 pub mod external_mapping;
+mod notifiers;
 pub mod scoped_event_macro;
 pub mod syslog;
 mod tube;
@@ -17,6 +18,7 @@ pub use sys::platform;
 pub use alloc::LayoutAllocation;
 pub use errno::{errno_result, Error, Result};
 pub use external_mapping::{Error as ExternalMappingError, Result as ExternalMappingResult, *};
+pub use notifiers::*;
 pub use scoped_event_macro::*;
 pub use tube::{Error as TubeError, RecvTube, Result as TubeResult, SendTube, Tube};
 
@@ -25,7 +27,6 @@ cfg_if::cfg_if! {
         mod event;
         mod ioctl;
         mod mmap;
-        mod notifiers;
         mod shm;
         mod timer;
         mod wait_context;
@@ -42,7 +43,6 @@ cfg_if::cfg_if! {
         pub use mmap::{
             MemoryMapping, MemoryMappingBuilder, MemoryMappingBuilderUnix, Unix as MemoryMappingUnix,
         };
-        pub use notifiers::*;
         pub use shm::{SharedMemory, Unix as SharedMemoryUnix};
         pub use timer::{FakeTimer, Timer};
         pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
