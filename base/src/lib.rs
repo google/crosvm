@@ -27,7 +27,6 @@ pub use tube::{Error as TubeError, RecvTube, Result as TubeResult, SendTube, Tub
 cfg_if::cfg_if! {
      if #[cfg(unix)] {
         mod event;
-        mod ioctl;
         mod mmap;
         mod shm;
         mod wait_context;
@@ -35,10 +34,9 @@ cfg_if::cfg_if! {
         pub use sys::unix;
 
         pub use unix::net::*;
-        pub use unix::ioctl::*;
 
         pub use event::{Event, EventReadResult, ScopedEvent};
-        pub use crate::ioctl::{
+        pub use unix::ioctl::{*,
             ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
         };
         pub use mmap::{
