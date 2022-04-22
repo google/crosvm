@@ -9,7 +9,6 @@
 #[macro_use]
 pub mod win;
 
-#[path = "win/ioctl.rs"]
 #[macro_use]
 pub mod ioctl;
 #[macro_use]
