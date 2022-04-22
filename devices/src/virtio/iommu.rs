@@ -753,7 +753,7 @@ impl Iommu {
         translate_request_rx: Option<Tube>,
         iommu_device_tube: Option<Tube>,
     ) -> SysResult<Iommu> {
-        let mut page_size_mask = !0_u64;
+        let mut page_size_mask = !((pagesize() as u64) - 1);
         for (_, container) in endpoints.iter() {
             page_size_mask &= container
                 .lock()
@@ -762,9 +762,7 @@ impl Iommu {
         }
 
         if page_size_mask == 0 {
-            // In case no endpoints bounded to vIOMMU during system booting,
-            // assume IOVA page size is the same as page_size
-            page_size_mask = (pagesize() as u64) - 1;
+            return Err(SysError::new(libc::EIO));
         }
 
         let input_range = virtio_iommu_range_64 {
