@@ -276,6 +276,37 @@ impl SystemAllocator {
         allocator.release_containing(df).is_ok()
     }
 
+    /// Reserve specified range from pci mmio, get the overlap of specified
+    /// range with mmio pools, exclude the overlap from mmio allocator.
+    ///
+    /// If any part of the specified range has been allocated, return Error.
+    pub fn reserve_mmio(&mut self, start: u64, len: u64) -> Result<()> {
+        let target = to_range_inclusive(start, len)?;
+        let mut pools = Vec::new();
+        for pool in self.mmio_pools() {
+            pools.push(RangeInclusive::new(*pool.start(), *pool.end()));
+        }
+        pools.sort_by(|a, b| a.start().cmp(b.start()));
+        for pool in &pools {
+            if pool.start() > target.end() {
+                break;
+            }
+
+            let overlap = range_intersect(pool, &target);
+            if !overlap.is_empty() {
+                let id = self.get_anon_alloc();
+                self.mmio_allocator_any().allocate_at(
+                    *overlap.start(),
+                    *overlap.end() - *overlap.start() + 1,
+                    id,
+                    "pci mmio reserve".to_string(),
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Gets an allocator to be used for platform device MMIO allocation.
     pub fn mmio_platform_allocator(&mut self) -> Option<&mut AddressAllocator> {
         self.mmio_platform_address_spaces.as_mut()
@@ -370,6 +401,25 @@ mod tests {
                 bar: 0
             }),
             Some(&(0x10000000, 0x100, "bar0".to_string()))
+        );
+
+        let id = a.get_anon_alloc();
+        assert_eq!(
+            a.mmio_allocator(MmioType::Low).allocate_at(
+                0x3000_5000,
+                0x5000,
+                id,
+                "Test".to_string()
+            ),
+            Ok(())
+        );
+        assert_eq!(a.mmio_allocator(MmioType::Low).release(id), Ok(()));
+        assert_eq!(a.reserve_mmio(0x3000_2000, 0x4000), Ok(()));
+        assert_eq!(
+            a.mmio_allocator(MmioType::Low)
+                .allocate_at(0x3000_5000, 0x5000, id, "Test".to_string())
+                .is_err(),
+            true
         );
     }
 }
