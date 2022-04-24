@@ -1310,6 +1310,22 @@ where
         irqs.push(direct_irq);
     }
 
+    // Reserve direct mmio range in advance.
+    #[cfg(feature = "direct")]
+    if let Some(mmio) = &cfg.direct_mmio {
+        for range in mmio.ranges.iter() {
+            sys_allocator
+                .reserve_mmio(range.base, range.len)
+                .with_context(|| {
+                    format!(
+                        "failed to reserved direct mmio: {:x}-{:x}",
+                        range.base,
+                        range.base + range.len - 1,
+                    )
+                })?;
+        }
+    };
+
     let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>> =
         BTreeMap::new();
     let mut iova_max_addr: Option<u64> = None;
