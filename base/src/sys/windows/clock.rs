@@ -7,8 +7,7 @@
 
 use std::time::{Duration, Instant};
 
-use super::Event;
-use crate::descriptor::AsRawDescriptor;
+use crate::{descriptor::AsRawDescriptor, Event};
 
 #[derive(Debug, Copy, Clone)]
 pub struct Clock(Instant);
