@@ -9,6 +9,8 @@
   - [System Requirements](./running_crosvm/requirements.md)
   - [Features](./running_crosvm/features.md)
 - [Devices](./devices/index.md)
+  - [Network](./devices/net.md)
+  - [Wayland](./devices/wayland.md)
 - [Integration](./integration/index.md)
   - [ChromeOS](./integration/chromeos.md)
 - [Architecture](./architecture.md)
