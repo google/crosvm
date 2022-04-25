@@ -9,4 +9,3 @@ This chapter includes instructions on how to run crosvm.
   rootfs for crosvm.
 - [System Requirements](./requirements.md): Host and guest requirements for running crosvm
 - [Features](./features.md): Feature flags available when building crosvm
-- [Devices](./devices.md): Devices provided by crosvm

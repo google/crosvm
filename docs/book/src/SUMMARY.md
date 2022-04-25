@@ -8,7 +8,7 @@
   - [Custom Kernel / Rootfs](./running_crosvm/custom_kernel_rootfs.md)
   - [System Requirements](./running_crosvm/requirements.md)
   - [Features](./running_crosvm/features.md)
-  - [Devices](./running_crosvm/devices.md)
+- [Devices](./devices/index.md)
 - [Integration](./integration/index.md)
   - [ChromeOS](./integration/chromeos.md)
 - [Architecture](./architecture.md)

@@ -1,14 +1,18 @@
 # Devices
 
-This document lists emulated devices in crosvm.
+This chapter describes emulated devices in crosvm. These devices work like hardware for the guest.
 
-## Emulated Devices
+## List of devices
+
+Here is a (non-comprehensive) list of emulated devices provided by crosvm.
+
+### Emulated Devices
 
 - [`CMOS/RTC`] - Used to get the current calendar time.
 - [`i8042`] - Used by the guest kernel to exit crosvm.
 - [`serial`] - x86 I/O port driven serial devices that print to stdout and take input from stdin.
 
-## VirtIO Devices
+### VirtIO Devices
 
 - [`balloon`] - Allows the host to reclaim the guest's memories.
 - [`block`] - Basic read/write block device.
