@@ -269,11 +269,16 @@ impl MsrExitHandler for MsrHandlers {
             return Err(MsrExitHandlerError::InvalidParam);
         }
 
-        let msr_file = Rc::new(RefCell::new(BTreeMap::new()));
+        let new_msr_file = Rc::new(RefCell::new(BTreeMap::new()));
+        let msr_file = match &self.msr_file {
+            Some(old_msr_file) => old_msr_file,
+            None => &new_msr_file,
+        };
+
         match msr_config.action.as_ref().unwrap() {
             MsrAction::MsrPassthrough => {
                 let msr_handler: Rc<RefCell<Box<dyn MsrHandling>>> =
-                    match MsrPassthroughHandler::new(index, &msr_config, &msr_file) {
+                    match MsrPassthroughHandler::new(index, &msr_config, msr_file) {
                         Ok(r) => Rc::new(RefCell::new(Box::new(r))),
                         Err(e) => {
                             error!(
@@ -288,7 +293,7 @@ impl MsrExitHandler for MsrHandlers {
             }
             MsrAction::MsrEmulate => {
                 let msr_handler: Rc<RefCell<Box<dyn MsrHandling>>> =
-                    match MsrEmulateHandler::new(index, &msr_config, &msr_file) {
+                    match MsrEmulateHandler::new(index, &msr_config, msr_file) {
                         Ok(r) => Rc::new(RefCell::new(Box::new(r))),
                         Err(e) => {
                             error!(
@@ -303,8 +308,8 @@ impl MsrExitHandler for MsrHandlers {
             }
         };
         // Empty only when no 'passthrough' handler exists.
-        if !msr_file.borrow().is_empty() {
-            self.msr_file = Some(msr_file);
+        if self.msr_file.is_none() && !msr_file.borrow().is_empty() {
+            self.msr_file = Some(new_msr_file);
         }
         Ok(())
     }
