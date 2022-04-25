@@ -331,6 +331,15 @@ impl Queue {
         self.last_used = Wrapping(0);
     }
 
+    /// Reset queue's counters.
+    /// This method doesn't change the queue's metadata so it's reusable without initializing it
+    /// again.
+    pub fn reset_counters(&mut self) {
+        self.next_avail = Wrapping(0);
+        self.next_used = Wrapping(0);
+        self.last_used = Wrapping(0);
+    }
+
     pub fn is_valid(&self, mem: &GuestMemory) -> bool {
         let queue_size = self.actual_size() as usize;
         let desc_table = self.desc_table;
