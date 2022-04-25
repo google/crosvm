@@ -21,6 +21,12 @@ PACKAGE_LIST=(
     'chromeos-base/crosvm'
 )
 
+# Python script to check for at least version 3.9
+VERSION_CHECK="
+import sys
+sys.exit(sys.version_info.major != 3 or sys.version_info.minor < 9)
+"
+
 setup_depot_tools() {
     git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git \
         "$DEPOT_TOOLS"
@@ -58,6 +64,13 @@ build_and_test_crosvm() {
 }
 
 main() {
+    # Ensure we have at least python 3.9. Kokoro requires us to use pyenv to install the required
+    # version.
+    if ! python3 -c "$VERSION_CHECK"; then
+        pyenv install --verbose --skip-existing 3.9.5
+        pyenv global 3.9.5
+    fi
+
     mkdir -p "$CROS_ROOT"
     cd "$CROS_ROOT"
 
