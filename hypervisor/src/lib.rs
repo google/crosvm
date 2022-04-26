@@ -211,6 +211,26 @@ impl Drop for VcpuRunHandle {
     }
 }
 
+/// Operation for Io and Mmio
+#[derive(Copy, Clone, Debug)]
+pub enum IoOperation {
+    Read,
+    Write {
+        /// Data to be written.
+        ///
+        /// For 64 bit architecture, Mmio and Io only work with at most 8 bytes of data.
+        data: [u8; 8],
+    },
+}
+
+/// Parameters describing an MMIO or PIO from the guest.
+#[derive(Copy, Clone, Debug)]
+pub struct IoParams {
+    pub address: u64,
+    pub size: usize,
+    pub operation: IoOperation,
+}
+
 /// A virtual CPU holding a virtualized hardware thread's state, such as registers and interrupt
 /// state, which may be used to execute virtual machines.
 ///
@@ -239,7 +259,7 @@ pub trait Vcpu: downcast_rs::DowncastSync {
     /// Note that the state of the VCPU and associated VM must be setup first for this to do
     /// anything useful. The given `run_handle` must be the same as the one returned by
     /// `take_run_handle` for this `Vcpu`.
-    fn run(&self, run_handle: &VcpuRunHandle) -> Result<VcpuExit>;
+    fn run(&mut self, run_handle: &VcpuRunHandle) -> Result<VcpuExit>;
 
     /// Returns the vcpu id.
     fn id(&self) -> usize;
@@ -256,11 +276,48 @@ pub trait Vcpu: downcast_rs::DowncastSync {
     /// signal-safe way when called.
     fn set_local_immediate_exit_fn(&self) -> extern "C" fn();
 
-    /// Sets the data received by a mmio read, ioport in, or hypercall instruction.
+    /// Handles an incoming MMIO request from the guest.
     ///
-    /// This function should be called after `Vcpu::run` returns an `VcpuExit::IoIn`,
-    /// `VcpuExit::MmioRead`, or 'VcpuExit::HypervHcall`.
-    fn set_data(&self, data: &[u8]) -> Result<()>;
+    /// This function should be called after `Vcpu::run` returns `VcpuExit::Mmio`, and in the same
+    /// thread as run().
+    ///
+    /// Once called, it will determine whether a MMIO read or MMIO write was the reason for the MMIO
+    /// exit, call `handle_fn` with the respective IoParams to perform the MMIO read or write, and
+    /// set the return data in the vcpu so that the vcpu can resume running.
+    fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()>;
+
+    /// Handles an incoming PIO from the guest.
+    ///
+    /// This function should be called after `Vcpu::run` returns `VcpuExit::Io`, and in the same
+    /// thread as run().
+    ///
+    /// Once called, it will determine whether an input or output was the reason for the Io exit,
+    /// call `handle_fn` with the respective IoParams to perform the input/output operation, and set
+    /// the return data in the vcpu so that the vcpu can resume running.
+    fn handle_io(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()>;
+
+    /// Handles the HYPERV_HYPERCALL exit from a vcpu.
+    ///
+    /// This function should be called after `Vcpu::run` returns `VcpuExit::HypervHcall`, and in the
+    /// same thread as run.
+    ///
+    /// Once called, it will parse the appropriate input parameters to the provided function to
+    /// handle the hyperv call, and then set the return data into the vcpu so it can resume running.
+    fn handle_hyperv_hypercall(&self, func: &mut dyn FnMut(HypervHypercall) -> u64) -> Result<()>;
+
+    /// Handles a RDMSR exit from the guest.
+    ///
+    /// This function should be called after `Vcpu::run` returns `VcpuExit::RdMsr`,
+    /// and in the same thread as run.
+    ///
+    /// It will put `data` into the guest buffer and return.
+    fn handle_rdmsr(&self, data: u64) -> Result<()>;
+
+    /// Handles a WRMSR exit from the guest by removing any error indication for the operation.
+    ///
+    /// This function should be called after `Vcpu::run` returns `VcpuExit::WrMsr`,
+    /// and in the same thread as run.
+    fn handle_wrmsr(&self);
 
     /// Signals to the hypervisor that this guest is being paused by userspace.  Only works on Vms
     /// that support `VmCap::PvClockSuspend`.
@@ -303,47 +360,16 @@ pub enum Datamatch {
 /// A reason why a VCPU exited. One of these returns every time `Vcpu::run` is called.
 #[derive(Debug)]
 pub enum VcpuExit {
-    /// An out port instruction was run on the given port with the given data.
-    IoOut {
-        port: u16,
-        size: usize,
-        data: [u8; 8],
-    },
-    /// An in port instruction was run on the given port.
-    ///
-    /// The data that the instruction receives should be set with `set_data` before `Vcpu::run` is
-    /// called again.
-    IoIn {
-        port: u16,
-        size: usize,
-    },
-    /// A read instruction was run against the given MMIO address.
-    ///
-    /// The data that the instruction receives should be set with `set_data` before `Vcpu::run` is
-    /// called again.
-    MmioRead {
-        address: u64,
-        size: usize,
-    },
-    /// A write instruction was run against the given MMIO address with the given data.
-    MmioWrite {
-        address: u64,
-        size: usize,
-        data: [u8; 8],
-    },
+    /// An io instruction needs to be emulated.
+    /// vcpu handle_io should be called to handle the io operation
+    Io,
+    /// A mmio instruction needs to be emulated.
+    /// vcpu handle_mmio should be called to handle the mmio operation
+    Mmio,
     IoapicEoi {
         vector: u8,
     },
-    HypervSynic {
-        msr: u32,
-        control: u64,
-        evt_page: u64,
-        msg_page: u64,
-    },
-    HypervHcall {
-        input: u64,
-        params: [u64; 2],
-    },
+    HypervHypercall,
     Unknown,
     Exception,
     Hypercall,
@@ -378,6 +404,21 @@ pub enum VcpuExit {
     WrMsr {
         index: u32,
         data: u64,
+    },
+}
+
+/// A hypercall with parameters being made from the guest.
+#[derive(Debug)]
+pub enum HypervHypercall {
+    HypervSynic {
+        msr: u32,
+        control: u64,
+        evt_page: u64,
+        msg_page: u64,
+    },
+    HypervHcall {
+        input: u64,
+        params: [u64; 2],
     },
 }
 

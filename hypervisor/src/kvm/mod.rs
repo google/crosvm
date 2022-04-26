@@ -15,7 +15,7 @@ use x86_64::*;
 use std::cell::RefCell;
 use std::cmp::{min, Reverse};
 use std::collections::{BTreeMap, BinaryHeap};
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::ffi::CString;
 use std::mem::{size_of, ManuallyDrop};
 use std::os::raw::{c_int, c_ulong, c_void};
@@ -41,8 +41,9 @@ use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::{
-    ClockState, Datamatch, DeviceKind, Hypervisor, HypervisorCap, IoEventAddress, IrqRoute,
-    IrqSource, MPState, MemSlot, ProtectionType, Vcpu, VcpuExit, VcpuRunHandle, Vm, VmCap,
+    ClockState, Datamatch, DeviceKind, HypervHypercall, Hypervisor, HypervisorCap, IoEventAddress,
+    IoOperation, IoParams, IrqRoute, IrqSource, MPState, MemSlot, ProtectionType, Vcpu, VcpuExit,
+    VcpuRunHandle, Vm, VmCap,
 };
 
 // Wrapper around KVM_SET_USER_MEMORY_REGION ioctl, which creates, modifies, or deletes a mapping
@@ -780,88 +781,6 @@ impl Vcpu for KvmVcpu {
         f
     }
 
-    #[allow(clippy::cast_ptr_alignment)]
-    fn set_data(&self, data: &[u8]) -> Result<()> {
-        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
-        // kernel told us how large it was. The pointer is page aligned so casting to a different
-        // type is well defined, hence the clippy allow attribute.
-        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
-        match run.exit_reason {
-            KVM_EXIT_IO => {
-                let run_start = run as *mut kvm_run as *mut u8;
-                // Safe because the exit_reason (which comes from the kernel) told us which
-                // union field to use.
-                let io = unsafe { run.__bindgen_anon_1.io };
-                if io.direction as u32 != KVM_EXIT_IO_IN {
-                    return Err(Error::new(EINVAL));
-                }
-                let data_size = (io.count as usize) * (io.size as usize);
-                if data_size != data.len() {
-                    return Err(Error::new(EINVAL));
-                }
-                // The data_offset is defined by the kernel to be some number of bytes into the
-                // kvm_run structure, which we have fully mmap'd.
-                unsafe {
-                    let data_ptr = run_start.offset(io.data_offset as isize);
-                    copy_nonoverlapping(data.as_ptr(), data_ptr, data_size);
-                }
-                Ok(())
-            }
-            KVM_EXIT_MMIO => {
-                // Safe because the exit_reason (which comes from the kernel) told us which
-                // union field to use.
-                let mmio = unsafe { &mut run.__bindgen_anon_1.mmio };
-                if mmio.is_write != 0 {
-                    return Err(Error::new(EINVAL));
-                }
-                let len = mmio.len as usize;
-                if len != data.len() {
-                    return Err(Error::new(EINVAL));
-                }
-                mmio.data[..len].copy_from_slice(data);
-                Ok(())
-            }
-            KVM_EXIT_HYPERV => {
-                // Safe because the exit_reason (which comes from the kernel) told us which
-                // union field to use.
-                let hyperv = unsafe { &mut run.__bindgen_anon_1.hyperv };
-                if hyperv.type_ != KVM_EXIT_HYPERV_HCALL {
-                    return Err(Error::new(EINVAL));
-                }
-                let hcall = unsafe { &mut hyperv.u.hcall };
-                match data.try_into() {
-                    Ok(data) => {
-                        hcall.result = u64::from_ne_bytes(data);
-                    }
-                    _ => return Err(Error::new(EINVAL)),
-                }
-                Ok(())
-            }
-            KVM_EXIT_X86_RDMSR => {
-                // Safe because the exit_reason (which comes from the kernel) told us which
-                // union field to use.
-                let msr = unsafe { &mut run.__bindgen_anon_1.msr };
-
-                match data.try_into() {
-                    Ok(data) => {
-                        msr.data = u64::from_ne_bytes(data);
-                        msr.error = 0;
-                    }
-                    _ => return Err(Error::new(EINVAL)),
-                }
-                Ok(())
-            }
-            KVM_EXIT_X86_WRMSR => {
-                // Safe because the exit_reason (which comes from the kernel) told us which
-                // union field to use.
-                let msr = unsafe { &mut run.__bindgen_anon_1.msr };
-                msr.error = 0;
-                Ok(())
-            }
-            _ => Err(Error::new(EINVAL)),
-        }
-    }
-
     fn pvclock_ctrl(&self) -> Result<()> {
         self.pvclock_ctrl_arch()
     }
@@ -917,7 +836,7 @@ impl Vcpu for KvmVcpu {
     #[allow(clippy::cast_ptr_alignment)]
     // The pointer is page aligned so casting to a different type is well defined, hence the clippy
     // allow attribute.
-    fn run(&self, run_handle: &VcpuRunHandle) -> Result<VcpuExit> {
+    fn run(&mut self, run_handle: &VcpuRunHandle) -> Result<VcpuExit> {
         // Acquire is used to ensure this check is ordered after the `compare_exchange` in `run`.
         if self
             .vcpu_run_handle_fingerprint
@@ -937,74 +856,15 @@ impl Vcpu for KvmVcpu {
         // kernel told us how large it was.
         let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
         match run.exit_reason {
-            KVM_EXIT_IO => {
-                // Safe because the exit_reason (which comes from the kernel) told us which
-                // union field to use.
-                let io = unsafe { run.__bindgen_anon_1.io };
-                let port = io.port;
-                let size = (io.count as usize) * (io.size as usize);
-                match io.direction as u32 {
-                    KVM_EXIT_IO_IN => Ok(VcpuExit::IoIn { port, size }),
-                    KVM_EXIT_IO_OUT => {
-                        let mut data = [0; 8];
-                        let run_start = run as *const kvm_run as *const u8;
-                        // The data_offset is defined by the kernel to be some number of bytes
-                        // into the kvm_run structure, which we have fully mmap'd.
-                        unsafe {
-                            let data_ptr = run_start.offset(io.data_offset as isize);
-                            copy_nonoverlapping(data_ptr, data.as_mut_ptr(), min(size, data.len()));
-                        }
-                        Ok(VcpuExit::IoOut { port, size, data })
-                    }
-                    _ => Err(Error::new(EINVAL)),
-                }
-            }
-            KVM_EXIT_MMIO => {
-                // Safe because the exit_reason (which comes from the kernel) told us which
-                // union field to use.
-                let mmio = unsafe { &run.__bindgen_anon_1.mmio };
-                let address = mmio.phys_addr;
-                let size = min(mmio.len as usize, mmio.data.len());
-                if mmio.is_write != 0 {
-                    Ok(VcpuExit::MmioWrite {
-                        address,
-                        size,
-                        data: mmio.data,
-                    })
-                } else {
-                    Ok(VcpuExit::MmioRead { address, size })
-                }
-            }
+            KVM_EXIT_IO => Ok(VcpuExit::Io),
+            KVM_EXIT_MMIO => Ok(VcpuExit::Mmio),
             KVM_EXIT_IOAPIC_EOI => {
                 // Safe because the exit_reason (which comes from the kernel) told us which
                 // union field to use.
                 let vector = unsafe { run.__bindgen_anon_1.eoi.vector };
                 Ok(VcpuExit::IoapicEoi { vector })
             }
-            KVM_EXIT_HYPERV => {
-                // Safe because the exit_reason (which comes from the kernel) told us which
-                // union field to use.
-                let hyperv = unsafe { &run.__bindgen_anon_1.hyperv };
-                match hyperv.type_ as u32 {
-                    KVM_EXIT_HYPERV_SYNIC => {
-                        let synic = unsafe { &hyperv.u.synic };
-                        Ok(VcpuExit::HypervSynic {
-                            msr: synic.msr,
-                            control: synic.control,
-                            evt_page: synic.evt_page,
-                            msg_page: synic.msg_page,
-                        })
-                    }
-                    KVM_EXIT_HYPERV_HCALL => {
-                        let hcall = unsafe { &hyperv.u.hcall };
-                        Ok(VcpuExit::HypervHcall {
-                            input: hcall.input,
-                            params: hcall.params,
-                        })
-                    }
-                    _ => Err(Error::new(EINVAL)),
-                }
-            }
+            KVM_EXIT_HYPERV => Ok(VcpuExit::HypervHypercall),
             KVM_EXIT_UNKNOWN => Ok(VcpuExit::Unknown),
             KVM_EXIT_EXCEPTION => Ok(VcpuExit::Exception),
             KVM_EXIT_HYPERCALL => Ok(VcpuExit::Hypercall),
@@ -1078,6 +938,147 @@ impl Vcpu for KvmVcpu {
             }
             r => panic!("unknown kvm exit reason: {}", r),
         }
+    }
+
+    fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
+        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+        // kernel told us how large it was. The pointer is page aligned so casting to a different
+        // type is well defined, hence the clippy allow attribute.
+        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+        // Verify that the handler is called in the right context.
+        assert!(run.exit_reason == KVM_EXIT_MMIO);
+        // Safe because the exit_reason (which comes from the kernel) told us which
+        // union field to use.
+        let mmio = unsafe { &mut run.__bindgen_anon_1.mmio };
+        let address = mmio.phys_addr;
+        let size = min(mmio.len as usize, mmio.data.len());
+        if mmio.is_write != 0 {
+            handle_fn(IoParams {
+                address,
+                size,
+                operation: IoOperation::Write { data: mmio.data },
+            });
+            Ok(())
+        } else if let Some(data) = handle_fn(IoParams {
+            address,
+            size,
+            operation: IoOperation::Read,
+        }) {
+            mmio.data[..size].copy_from_slice(&data[..size]);
+            Ok(())
+        } else {
+            Err(Error::new(EINVAL))
+        }
+    }
+
+    fn handle_io(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
+        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+        // kernel told us how large it was. The pointer is page aligned so casting to a different
+        // type is well defined, hence the clippy allow attribute.
+        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+        // Verify that the handler is called in the right context.
+        assert!(run.exit_reason == KVM_EXIT_IO);
+        let run_start = run as *mut kvm_run as *mut u8;
+        // Safe because the exit_reason (which comes from the kernel) told us which
+        // union field to use.
+        let io = unsafe { run.__bindgen_anon_1.io };
+        let size = (io.count as usize) * (io.size as usize);
+        match io.direction as u32 {
+            KVM_EXIT_IO_IN => {
+                if let Some(data) = handle_fn(IoParams {
+                    address: io.port.into(),
+                    size,
+                    operation: IoOperation::Read,
+                }) {
+                    // The data_offset is defined by the kernel to be some number of bytes
+                    // into the kvm_run structure, which we have fully mmap'd.
+                    unsafe {
+                        let data_ptr = run_start.offset(io.data_offset as isize);
+                        copy_nonoverlapping(data.as_ptr(), data_ptr, size);
+                    }
+                    Ok(())
+                } else {
+                    Err(Error::new(EINVAL))
+                }
+            }
+            KVM_EXIT_IO_OUT => {
+                let mut data = [0; 8];
+                // The data_offset is defined by the kernel to be some number of bytes
+                // into the kvm_run structure, which we have fully mmap'd.
+                unsafe {
+                    let data_ptr = run_start.offset(io.data_offset as isize);
+                    copy_nonoverlapping(data_ptr, data.as_mut_ptr(), min(size, data.len()));
+                }
+                handle_fn(IoParams {
+                    address: io.port.into(),
+                    size,
+                    operation: IoOperation::Write { data },
+                });
+                Ok(())
+            }
+            _ => Err(Error::new(EINVAL)),
+        }
+    }
+
+    fn handle_hyperv_hypercall(
+        &self,
+        handle_fn: &mut dyn FnMut(HypervHypercall) -> u64,
+    ) -> Result<()> {
+        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+        // kernel told us how large it was.
+        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+        // Verify that the handler is called in the right context.
+        assert!(run.exit_reason == KVM_EXIT_HYPERV_HCALL);
+        // Safe because the exit_reason (which comes from the kernel) told us which
+        // union field to use.
+        let hyperv = unsafe { &mut run.__bindgen_anon_1.hyperv };
+        match hyperv.type_ as u32 {
+            KVM_EXIT_HYPERV_SYNIC => {
+                let synic = unsafe { &hyperv.u.synic };
+                handle_fn(HypervHypercall::HypervSynic {
+                    msr: synic.msr,
+                    control: synic.control,
+                    evt_page: synic.evt_page,
+                    msg_page: synic.msg_page,
+                });
+                Ok(())
+            }
+            KVM_EXIT_HYPERV_HCALL => {
+                let hcall = unsafe { &mut hyperv.u.hcall };
+                hcall.result = handle_fn(HypervHypercall::HypervHcall {
+                    input: hcall.input,
+                    params: hcall.params,
+                });
+                Ok(())
+            }
+            _ => Err(Error::new(EINVAL)),
+        }
+    }
+
+    fn handle_rdmsr(&self, data: u64) -> Result<()> {
+        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+        // kernel told us how large it was.
+        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+        // Verify that the handler is called in the right context.
+        assert!(run.exit_reason == KVM_EXIT_X86_RDMSR);
+        // Safe because the exit_reason (which comes from the kernel) told us which
+        // union field to use.
+        let msr = unsafe { &mut run.__bindgen_anon_1.msr };
+        msr.data = data;
+        msr.error = 0;
+        Ok(())
+    }
+
+    fn handle_wrmsr(&self) {
+        // Safe because we know we mapped enough memory to hold the kvm_run struct because the
+        // kernel told us how large it was.
+        let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
+        // Verify that the handler is called in the right context.
+        assert!(run.exit_reason == KVM_EXIT_X86_WRMSR);
+        // Safe because the exit_reason (which comes from the kernel) told us which
+        // union field to use.
+        let msr = unsafe { &mut run.__bindgen_anon_1.msr };
+        msr.error = 0;
     }
 }
 

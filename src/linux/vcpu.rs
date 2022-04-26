@@ -14,8 +14,8 @@ use libc::{self, c_int};
 
 use anyhow::{Context, Result};
 use base::*;
-use devices::{self, IrqChip, VcpuRunState};
-use hypervisor::{Vcpu, VcpuExit, VcpuRunHandle};
+use devices::{self, Bus, IrqChip, VcpuRunState};
+use hypervisor::{IoOperation, IoParams, Vcpu, VcpuExit, VcpuRunHandle};
 use vm_control::*;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use vm_memory::GuestMemory;
@@ -55,6 +55,32 @@ pub fn setup_vcpu_signal_handler<T: Vcpu>(use_hypervisor_signals: bool) -> Resul
         }
     }
     Ok(())
+}
+
+fn bus_io_handler(bus: &Bus) -> impl FnMut(IoParams) -> Option<[u8; 8]> + '_ {
+    |IoParams {
+         address,
+         mut size,
+         operation: direction,
+     }| match direction {
+        IoOperation::Read => {
+            let mut data = [0u8; 8];
+            if size > data.len() {
+                error!("unsupported Read size of {} bytes", size);
+                size = data.len();
+            }
+            bus.read(address, &mut data[..size]).then(|| data)
+        }
+        IoOperation::Write { data } => {
+            if size > data.len() {
+                error!("unsupported Write size of {} bytes", size);
+                size = data.len()
+            }
+            let data = &data[..size];
+            bus.write(address, data);
+            None
+        }
+    }
 }
 
 // Sets up a vcpu and converts it into a runnable vcpu.
@@ -262,13 +288,13 @@ fn handle_s2idle_request(privileged_vm: bool) {
 fn vcpu_loop<V>(
     mut run_mode: VmRunMode,
     cpu_id: usize,
-    vcpu: V,
+    mut vcpu: V,
     vcpu_run_handle: VcpuRunHandle,
     irq_chip: Box<dyn IrqChipArch + 'static>,
     run_rt: bool,
     delay_rt: bool,
-    io_bus: devices::Bus,
-    mmio_bus: devices::Bus,
+    io_bus: Bus,
+    mmio_bus: Bus,
     requires_pvclock_ctrl: bool,
     from_main_tube: mpsc::Receiver<VcpuControl>,
     use_hypervisor_signals: bool,
@@ -392,58 +418,24 @@ where
 
         if !interrupted_by_signal {
             match vcpu.run(&vcpu_run_handle) {
-                Ok(VcpuExit::IoIn { port, mut size }) => {
-                    let mut data = [0; 8];
-                    if size > data.len() {
-                        error!(
-                            "unsupported IoIn size of {} bytes at port {:#x}",
-                            size, port
-                        );
-                        size = data.len();
-                    }
-                    io_bus.read(port as u64, &mut data[..size]);
-                    if let Err(e) = vcpu.set_data(&data[..size]) {
-                        error!(
-                            "failed to set return data for IoIn at port {:#x}: {}",
-                            port, e
-                        );
+                Ok(VcpuExit::Io) => {
+                    if let Err(e) = vcpu.handle_io(&mut bus_io_handler(&io_bus)) {
+                        error!("failed to handle io: {}", e)
                     }
                 }
-                Ok(VcpuExit::IoOut {
-                    port,
-                    mut size,
-                    data,
-                }) => {
-                    if size > data.len() {
-                        error!(
-                            "unsupported IoOut size of {} bytes at port {:#x}",
-                            size, port
-                        );
-                        size = data.len();
+                Ok(VcpuExit::Mmio) => {
+                    if let Err(e) = vcpu.handle_mmio(&mut bus_io_handler(&mmio_bus)) {
+                        error!("failed to handle mmio: {}", e);
                     }
-                    io_bus.write(port as u64, &data[..size]);
-                }
-                Ok(VcpuExit::MmioRead { address, size }) => {
-                    let mut data = [0; 8];
-                    mmio_bus.read(address, &mut data[..size]);
-                    // Setting data for mmio can not fail.
-                    let _ = vcpu.set_data(&data[..size]);
-                }
-                Ok(VcpuExit::MmioWrite {
-                    address,
-                    size,
-                    data,
-                }) => {
-                    mmio_bus.write(address, &data[..size]);
                 }
                 Ok(VcpuExit::RdMsr { index }) => {
                     if let Some(data) = msr_handlers.read(index) {
-                        let _ = vcpu.set_data(&data.to_ne_bytes());
+                        let _ = vcpu.handle_rdmsr(data);
                     }
                 }
                 Ok(VcpuExit::WrMsr { index, data }) => {
                     if msr_handlers.write(index, data).is_some() {
-                        let _ = vcpu.set_data(&[]);
+                        vcpu.handle_wrmsr();
                     }
                 }
                 Ok(VcpuExit::IoapicEoi { vector }) => {
@@ -538,8 +530,8 @@ pub fn run_vcpu<V>(
     no_smt: bool,
     start_barrier: Arc<Barrier>,
     has_bios: bool,
-    mut io_bus: devices::Bus,
-    mut mmio_bus: devices::Bus,
+    mut io_bus: Bus,
+    mut mmio_bus: Bus,
     exit_evt: Event,
     reset_evt: Event,
     crash_evt: Event,

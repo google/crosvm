@@ -6,7 +6,9 @@
 
 use arch::LinuxArch;
 use devices::IrqChipX86_64;
-use hypervisor::{HypervisorX86_64, ProtectionType, VcpuExit, VcpuX86_64, VmX86_64};
+use hypervisor::{
+    HypervisorX86_64, IoOperation, IoParams, ProtectionType, VcpuExit, VcpuX86_64, VmX86_64,
+};
 use resources::SystemAllocator;
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -238,7 +240,7 @@ where
     let handle = thread::Builder::new()
         .name("crosvm_simple_vm_vcpu".to_string())
         .spawn(move || {
-            let vcpu = *vm
+            let mut vcpu = *vm
                 .create_vcpu(0)
                 .expect("failed to create vcpu")
                 .downcast::<Vcpu>()
@@ -279,16 +281,26 @@ where
             let run_handle = vcpu.take_run_handle(None).unwrap();
             loop {
                 match vcpu.run(&run_handle).expect("run failed") {
-                    VcpuExit::IoOut {
-                        port: 0xff,
-                        size,
-                        data,
-                    } => {
-                        // We consider this test to be done when this particular
-                        // one-byte port-io to port 0xff with the value of 0x12, which was in
-                        // register eax
-                        assert_eq!(size, 1);
-                        assert_eq!(data[0], 0x12);
+                    VcpuExit::Io => {
+                        vcpu.handle_io(&mut |IoParams {
+                                                 address,
+                                                 size,
+                                                 operation: direction,
+                                             }| {
+                            match direction {
+                                IoOperation::Write { data } => {
+                                    // We consider this test to be done when this particular
+                                    // one-byte port-io to port 0xff with the value of 0x12, which
+                                    // was in register eax
+                                    assert_eq!(address, 0xff);
+                                    assert_eq!(size, 1);
+                                    assert_eq!(data[0], 0x12);
+                                }
+                                _ => panic!("unexpected direction {:?}", direction),
+                            }
+                            None
+                        })
+                        .expect("vcpu.handle_io failed");
                         break;
                     }
                     r => {
