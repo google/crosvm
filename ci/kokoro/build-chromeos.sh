@@ -11,6 +11,8 @@
 
 set -ex
 
+source "$(dirname $0)/common.sh"
+
 CROS_ROOT="${KOKORO_ARTIFACTS_DIR}/cros"
 CROSVM_ROOT="${KOKORO_ARTIFACTS_DIR}/git/crosvm"
 DEPOT_TOOLS="${KOKORO_ARTIFACTS_DIR}/depot_tools"
@@ -64,13 +66,6 @@ build_and_test_crosvm() {
 }
 
 main() {
-    # Ensure we have at least python 3.9. Kokoro requires us to use pyenv to install the required
-    # version.
-    if ! python3 -c "$VERSION_CHECK"; then
-        pyenv install --verbose --skip-existing 3.9.5
-        pyenv global 3.9.5
-    fi
-
     mkdir -p "$CROS_ROOT"
     cd "$CROS_ROOT"
 
