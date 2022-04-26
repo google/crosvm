@@ -139,6 +139,8 @@ pub struct VmComponents {
     pub cpu_clusters: Vec<Vec<usize>>,
     pub delay_rt: bool,
     #[cfg(feature = "direct")]
+    pub direct_fixed_evts: Vec<devices::ACPIPMFixedEvent>,
+    #[cfg(feature = "direct")]
     pub direct_gpe: Vec<u32>,
     pub dmi_path: Option<PathBuf>,
     pub extra_kernel_params: Vec<String>,

@@ -199,6 +199,8 @@ where
         Default::default(),
         #[cfg(feature = "direct")]
         &[], // direct_gpe
+        #[cfg(feature = "direct")]
+        &[], // direct_fixed_evts
         &mut irq_chip,
         X86_64_SCI_IRQ,
         (None, None),
