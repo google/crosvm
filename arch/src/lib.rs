@@ -849,7 +849,7 @@ where
 /// Read and write permissions setting
 ///
 /// Wrap read_allow and write_allow to store them in MsrHandlers level.
-#[derive(Clone, Copy, Default, PartialEq)]
+#[derive(Clone, Copy, Default)]
 pub struct MsrRWType {
     pub read_allow: bool,
     pub write_allow: bool,
@@ -903,7 +903,7 @@ impl Default for MsrValueFrom {
 ///
 /// MsrConfig will be collected with its corresponding MSR's index.
 /// eg, (msr_index, msr_config)
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, Default)]
 pub struct MsrConfig {
     /// If support RDMSR/WRMSR emulation in crosvm?
     pub rw_type: MsrRWType,

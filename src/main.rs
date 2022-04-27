@@ -725,13 +725,6 @@ fn parse_userspace_msr_options(value: &str) -> argument::Result<(u32, MsrConfig)
                 }
             },
             "action" => match opt.value()? {
-                // Compatible with the original command line format.
-                // TODO(b:225375705): Deprecate the old cmd format in the future.
-                "r0" => {
-                    msr_config.rw_type.read_allow = true;
-                    msr_config.action = Some(MsrAction::MsrPassthrough);
-                    msr_config.from = MsrValueFrom::RWFromCPU0;
-                }
                 "pass" => msr_config.action = Some(MsrAction::MsrPassthrough),
                 "emu" => msr_config.action = Some(MsrAction::MsrEmulate),
                 _ => return Err(opt.invalid_value_err(String::from("bad action"))),
@@ -2236,14 +2229,11 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         "userspace-msr" => {
             let (index, msr_config) = parse_userspace_msr_options(value.unwrap())?;
-            // TODO(b:225375705): MSR configuration must be unique in the future.
-            if let Some(old_config) = cfg.userspace_msr.insert(index, msr_config.clone()) {
-                if old_config != msr_config {
-                    return Err(argument::Error::InvalidValue {
-                        value: value.unwrap().to_owned(),
-                        expected: String::from("Same msr must has the same configuration"),
-                    });
-                }
+            if cfg.userspace_msr.insert(index, msr_config).is_some() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("msr must be unique"),
+                });
             }
         }
         "itmt" => {
@@ -4573,18 +4563,6 @@ mod tests {
             MsrAction::MsrEmulate
         );
         assert_eq!(pass_cpus_cfg.from, MsrValueFrom::RWFromRunningCPU);
-
-        // Compatible with the original command line format.
-        // TODO(b:225375705): Deprecate the old cmd format in the future.
-        let (old_index, old_cfg) = parse_userspace_msr_options("0x10,action=r0").unwrap();
-        assert_eq!(old_index, 0x10);
-        assert!(old_cfg.rw_type.read_allow);
-        assert!(!pass_cpu0_cfg.rw_type.write_allow);
-        assert_eq!(
-            *pass_cpu0_cfg.action.as_ref().unwrap(),
-            MsrAction::MsrPassthrough
-        );
-        assert_eq!(old_cfg.from, MsrValueFrom::RWFromCPU0);
 
         assert!(parse_userspace_msr_options("0x10,action=none").is_err());
         assert!(parse_userspace_msr_options("0x10,action=pass").is_err());
