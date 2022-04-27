@@ -7,6 +7,10 @@
 
 pub const TUN_READQ_SIZE: u32 = 500;
 pub const TUN_TYPE_MASK: u32 = 15;
+pub const IFF_TAP: u32 = 2;
+pub const IFF_NO_PI: u32 = 4096;
+pub const IFF_VNET_HDR: u32 = 16384;
+pub const IFF_MULTI_QUEUE: u32 = 256;
 pub const TUN_TX_TIMESTAMP: u32 = 1;
 pub const TUN_F_CSUM: u32 = 1;
 pub const TUN_F_TSO4: u32 = 2;

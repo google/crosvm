@@ -164,7 +164,7 @@ pub trait TapTCommon: Read + Write + AsRawDescriptor + Send + Sized {
     fn get_ifreq(&self) -> net_sys::ifreq;
 
     /// Get the interface flags
-    fn if_flags(&self) -> i32;
+    fn if_flags(&self) -> u32;
 
     /// Try to clone
     fn try_clone(&self) -> Result<Self>;

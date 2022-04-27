@@ -44,6 +44,10 @@ bindgen_generate \
 bindgen_generate \
     --allowlist-type='sock_fprog' \
     --allowlist-var='TUN_.*' \
+    --allowlist-var='IFF_NO_PI' \
+    --allowlist-var='IFF_MULTI_QUEUE' \
+    --allowlist-var='IFF_TAP' \
+    --allowlist-var='IFF_VNET_HDR' \
     "${BINDGEN_LINUX}/include/uapi/linux/if_tun.h" \
     | replace_linux_int_types \
     > net_sys/src/if_tun.rs

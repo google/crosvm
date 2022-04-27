@@ -11,7 +11,10 @@ use base::{ioctl_ior_nr, ioctl_iow_nr};
 pub mod if_tun;
 pub mod iff; // Named "iff" to avoid conflicting with "if" keyword.
 pub mod sockios;
-pub use crate::if_tun::{sock_fprog, TUN_F_CSUM, TUN_F_TSO4, TUN_F_TSO6, TUN_F_TSO_ECN, TUN_F_UFO};
+pub use crate::if_tun::{
+    sock_fprog, IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TAP, IFF_VNET_HDR, TUN_F_CSUM, TUN_F_TSO4,
+    TUN_F_TSO6, TUN_F_TSO_ECN, TUN_F_UFO,
+};
 pub use crate::iff::{ifreq, net_device_flags};
 
 pub const TUNTAP: ::std::os::raw::c_uint = 84;

@@ -582,14 +582,14 @@ where
 // Ensure that the tap interface has the correct flags and sets the offload and VNET header size
 // to the appropriate values.
 pub fn validate_and_configure_tap<T: TapT>(tap: &T, vq_pairs: u16) -> Result<(), NetError> {
-    let flags = tap.if_flags() as i32;
+    let flags = tap.if_flags();
     let mut required_flags = vec![
-        (libc::IFF_TAP, "IFF_TAP"),
-        (libc::IFF_NO_PI, "IFF_NO_PI"),
-        (libc::IFF_VNET_HDR, "IFF_VNET_HDR"),
+        (net_sys::IFF_TAP, "IFF_TAP"),
+        (net_sys::IFF_NO_PI, "IFF_NO_PI"),
+        (net_sys::IFF_VNET_HDR, "IFF_VNET_HDR"),
     ];
     if vq_pairs > 1 {
-        required_flags.push((libc::IFF_MULTI_QUEUE, "IFF_MULTI_QUEUE"));
+        required_flags.push((net_sys::IFF_MULTI_QUEUE, "IFF_MULTI_QUEUE"));
     }
     let missing_flags = required_flags
         .iter()

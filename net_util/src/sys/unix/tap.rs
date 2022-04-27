@@ -367,8 +367,8 @@ impl TapTCommon for Tap {
         ifreq
     }
 
-    fn if_flags(&self) -> i32 {
-        self.if_flags.into()
+    fn if_flags(&self) -> u32 {
+        self.if_flags as u32
     }
 
     fn try_clone(&self) -> Result<Self> {
@@ -535,8 +535,8 @@ pub mod fakes {
             ifreq
         }
 
-        fn if_flags(&self) -> i32 {
-            libc::IFF_TAP
+        fn if_flags(&self) -> u32 {
+            net_sys::IFF_TAP
         }
 
         // Return self so it can compile
