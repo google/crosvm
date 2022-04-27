@@ -127,7 +127,7 @@ fn filter_cpuid(
                 entry.ecx &= !(1 << ECX_EPB_SHIFT);
 
                 // Set ITMT related features.
-                if itmt {
+                if host_cpu_topology || itmt {
                     // Safe because we pass 6 for this call and the host
                     // supports the `cpuid` instruction
                     let result = unsafe { __cpuid(entry.function) };
