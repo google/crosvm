@@ -32,6 +32,7 @@ use std::{
 };
 
 use remain::sorted;
+use serde::{Deserialize, Serialize};
 use sync::Mutex;
 use thiserror::Error as ThisError;
 
@@ -42,7 +43,7 @@ use crate::platform::RawDescriptor;
 /// The priority (i.e. severity) of a syslog message.
 ///
 /// See syslog man pages for information on their semantics.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Priority {
     Emergency = 0,
     Alert = 1,
@@ -190,7 +191,7 @@ pub(crate) trait Syslog {
     fn push_descriptors(&self, fds: &mut Vec<RawDescriptor>);
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PriorityFilter {
     Silent,
     Priority(Priority),
