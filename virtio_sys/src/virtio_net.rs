@@ -5,6 +5,12 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
+// Added by virtio_sys/bindgen.sh
+use data_model::DataInit;
+
+// Safe because virtio_net_hdr_mrg_rxbuf has no implicit padding.
+unsafe impl DataInit for virtio_net_hdr_mrg_rxbuf {}
+
 #[repr(C)]
 #[derive(Default)]
 pub struct __IncompleteArrayField<T>(::std::marker::PhantomData<T>, [T; 0]);
