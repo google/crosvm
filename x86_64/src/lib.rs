@@ -1517,9 +1517,7 @@ pub fn set_itmt_msr_config(
                     write_allow: false,
                 },
                 action: Some(MsrAction::MsrPassthrough),
-                // Compatible with the configuration in initramfs.
-                // TODO(b:225375705): Change to `RWFromRunningCPU` in the future.
-                from: MsrValueFrom::RWFromCPU0,
+                from: MsrValueFrom::RWFromRunningCPU,
             },
         )
         .is_some()
