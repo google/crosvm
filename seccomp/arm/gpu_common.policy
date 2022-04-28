@@ -18,6 +18,7 @@ futex: 1
 futex_time64: 1
 getcwd: 1
 getpid: 1
+gettid: 1
 gettimeofday: 1
 kill: 1
 madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE
@@ -88,7 +89,6 @@ openat: 1
 geteuid32: 1
 getuid32: 1
 lstat64: 1
-gettid: 1
 fcntl64: 1
 tgkill: 1
 clock_gettime: 1
