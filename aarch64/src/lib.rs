@@ -11,8 +11,8 @@ use std::io;
 use std::sync::Arc;
 
 use arch::{
-    get_serial_cmdline, GetSerialCmdlineError, MsrExitHandler, RunnableLinuxVm, VmComponents,
-    VmImage,
+    get_serial_cmdline, GetSerialCmdlineError, MsrConfig, MsrExitHandlerError, RunnableLinuxVm,
+    VmComponents, VmImage,
 };
 use base::{Event, MemoryMappingBuilder};
 use devices::serial_device::{SerialHardware, SerialParameters};
@@ -680,7 +680,27 @@ impl AArch64 {
     }
 }
 
-#[derive(Default)]
-pub struct MsrAArch64;
+pub struct MsrHandlers;
 
-impl MsrExitHandler for MsrAArch64 {}
+impl MsrHandlers {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn read(&self, _index: u32) -> Option<u64> {
+        None
+    }
+
+    pub fn write(&self, _index: u32, _data: u64) -> Option<()> {
+        None
+    }
+
+    pub fn add_handler(
+        &mut self,
+        _index: u32,
+        _msr_config: MsrConfig,
+        _cpu_id: usize,
+    ) -> std::result::Result<(), MsrExitHandlerError> {
+        Ok(())
+    }
+}

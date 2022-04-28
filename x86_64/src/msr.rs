@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use anyhow::Context;
 
-use arch::{MsrAction, MsrConfig, MsrExitHandler, MsrExitHandlerError, MsrRWType, MsrValueFrom};
+use arch::{MsrAction, MsrConfig, MsrExitHandlerError, MsrRWType, MsrValueFrom};
 use base::{debug, error};
 
 use remain::sorted;
@@ -88,6 +88,8 @@ pub trait MsrHandling {
     fn write(&mut self, data: u64) -> Result<()>;
 }
 
+type MsrFileType = Rc<RefCell<BTreeMap<usize /* vcpu */, Rc<MsrDevFile>>>>;
+
 /// MsrPassthroughHandler - passthrough handler that will handle RDMSR/WRMSR
 ///                         by reading/writing MSR file directly.
 /// For RDMSR, this handler will give Guest the current MSR value on Host.
@@ -99,19 +101,15 @@ struct MsrPassthroughHandler {
     /// MSR source CPU, CPU 0 or running CPU.
     from: MsrValueFrom,
     /// Reference of MSR file descriptors.
-    msr_file: Rc<RefCell<BTreeMap<usize, Rc<MsrDevFile>>>>,
+    msr_file: MsrFileType,
 }
 
 impl MsrPassthroughHandler {
-    fn new(
-        index: u32,
-        msr_config: &MsrConfig,
-        msr_file: &Rc<RefCell<BTreeMap<usize, Rc<MsrDevFile>>>>,
-    ) -> Result<Self> {
+    fn new(index: u32, msr_config: &MsrConfig, msr_file: MsrFileType) -> Result<Self> {
         let pass = MsrPassthroughHandler {
             index,
             from: msr_config.from,
-            msr_file: Rc::clone(msr_file), // Clone first, and then modify it.
+            msr_file,
         };
         pass.get_msr_dev()?;
         Ok(pass)
@@ -120,20 +118,21 @@ impl MsrPassthroughHandler {
     /// A helper interface to get MSR file descriptor.
     fn get_msr_dev(&self) -> Result<Rc<MsrDevFile>> {
         let cpu_id = self.from.get_cpu_id();
-        let mut msr_file = self.msr_file.borrow_mut();
         // First, check if the descriptor is stored before.
-        if let Some(dev_msr) = msr_file.get(&cpu_id) {
-            Ok(Rc::clone(dev_msr))
-        } else {
-            // If descriptor isn't found, create new one.
-            let new_dev_msr = Rc::new(MsrDevFile::new(cpu_id, false)?);
-            // Note: For MsrValueFrom::RWFromRunningCPU case, just store
-            // the new descriptor and don't remove the previous.
-            // This is for convenience, since the most decriptor number is
-            // same as Host CPU count.
-            msr_file.insert(cpu_id, Rc::clone(&new_dev_msr));
-            Ok(new_dev_msr)
+        if let Some(dev_msr) = self.msr_file.borrow().get(&cpu_id) {
+            return Ok(Rc::clone(dev_msr));
         }
+
+        // If descriptor isn't found, create new one.
+        let new_dev_msr = Rc::new(MsrDevFile::new(cpu_id, false)?);
+        // Note: For MsrValueFrom::RWFromRunningCPU case, just store
+        // the new descriptor and don't remove the previous.
+        // This is for convenience, since the most decriptor number is
+        // same as Host CPU count.
+        self.msr_file
+            .borrow_mut()
+            .insert(cpu_id, Rc::clone(&new_dev_msr));
+        Ok(new_dev_msr)
     }
 }
 
@@ -171,17 +170,10 @@ struct MsrEmulateHandler {
 }
 
 impl MsrEmulateHandler {
-    fn new(
-        index: u32,
-        msr_config: &MsrConfig,
-        msr_file: &Rc<RefCell<BTreeMap<usize, Rc<MsrDevFile>>>>,
-    ) -> Result<Self> {
+    fn new(index: u32, msr_config: &MsrConfig, msr_file: &MsrFileType) -> Result<Self> {
         let cpu_id = msr_config.from.get_cpu_id();
-        let msr_file_map = msr_file.borrow();
-        let dev_msr = msr_file_map.get(&cpu_id);
-
-        let msr_data: u64 = if dev_msr.is_some() {
-            dev_msr.unwrap().read(index)?
+        let msr_data: u64 = if let Some(dev_msr) = msr_file.borrow().get(&cpu_id) {
+            dev_msr.read(index)?
         } else {
             // Don't allow to write. Only read the value to initialize
             // `msr_data` and won't store in MsrHandlers level.
@@ -213,11 +205,17 @@ pub struct MsrHandlers {
     /// for each MSR.
     /// Only collect descriptor of 'passthrough' handler, since 'emulate'
     /// uses descriptor only once during initialization.
-    pub msr_file: Option<Rc<RefCell<BTreeMap<usize, Rc<MsrDevFile>>>>>,
+    pub msr_file: MsrFileType,
 }
 
-impl MsrExitHandler for MsrHandlers {
-    fn read(&self, index: u32) -> Option<u64> {
+impl MsrHandlers {
+    pub fn new() -> Self {
+        MsrHandlers {
+            ..Default::default()
+        }
+    }
+
+    pub fn read(&self, index: u32) -> Option<u64> {
         if let Some((rw_type, handler)) = self.handler.get(&index) {
             // It's not error. This means user does't want to handle
             // RDMSR. Just log it.
@@ -238,7 +236,7 @@ impl MsrExitHandler for MsrHandlers {
         }
     }
 
-    fn write(&self, index: u32, data: u64) -> Option<()> {
+    pub fn write(&self, index: u32, data: u64) -> Option<()> {
         if let Some((rw_type, handler)) = self.handler.get(&index) {
             // It's not error. This means user does't want to handle
             // WRMSR. Just log it.
@@ -259,7 +257,7 @@ impl MsrExitHandler for MsrHandlers {
         }
     }
 
-    fn add_handler(
+    pub fn add_handler(
         &mut self,
         index: u32,
         msr_config: MsrConfig,
@@ -269,16 +267,11 @@ impl MsrExitHandler for MsrHandlers {
             return Err(MsrExitHandlerError::InvalidParam);
         }
 
-        let new_msr_file = Rc::new(RefCell::new(BTreeMap::new()));
-        let msr_file = match &self.msr_file {
-            Some(old_msr_file) => old_msr_file,
-            None => &new_msr_file,
-        };
-
         match msr_config.action.as_ref().unwrap() {
             MsrAction::MsrPassthrough => {
                 let msr_handler: Rc<RefCell<Box<dyn MsrHandling>>> =
-                    match MsrPassthroughHandler::new(index, &msr_config, msr_file) {
+                    match MsrPassthroughHandler::new(index, &msr_config, Rc::clone(&self.msr_file))
+                    {
                         Ok(r) => Rc::new(RefCell::new(Box::new(r))),
                         Err(e) => {
                             error!(
@@ -293,7 +286,7 @@ impl MsrExitHandler for MsrHandlers {
             }
             MsrAction::MsrEmulate => {
                 let msr_handler: Rc<RefCell<Box<dyn MsrHandling>>> =
-                    match MsrEmulateHandler::new(index, &msr_config, msr_file) {
+                    match MsrEmulateHandler::new(index, &msr_config, &self.msr_file) {
                         Ok(r) => Rc::new(RefCell::new(Box::new(r))),
                         Err(e) => {
                             error!(
@@ -307,10 +300,6 @@ impl MsrExitHandler for MsrHandlers {
                     .insert(index, (msr_config.rw_type, msr_handler));
             }
         };
-        // Empty only when no 'passthrough' handler exists.
-        if self.msr_file.is_none() && !msr_file.borrow().is_empty() {
-            self.msr_file = Some(new_msr_file);
-        }
         Ok(())
     }
 }

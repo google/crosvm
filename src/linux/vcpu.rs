@@ -20,10 +20,10 @@ use vm_control::*;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use vm_memory::GuestMemory;
 
-use arch::{self, LinuxArch, MsrConfig, MsrExitHandler};
+use arch::{self, LinuxArch, MsrConfig};
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use {
-    aarch64::{AArch64 as Arch, MsrAArch64 as MsrHandlers},
+    aarch64::{AArch64 as Arch, MsrHandlers},
     devices::IrqChipAArch64 as IrqChipArch,
     hypervisor::{VcpuAArch64 as VcpuArch, VmAArch64 as VmArch},
 };
@@ -306,7 +306,7 @@ fn vcpu_loop<V>(
         mpsc::Sender<VcpuDebugStatusMessage>,
     >,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))] guest_mem: GuestMemory,
-    msr_handlers: Box<dyn MsrExitHandler>,
+    msr_handlers: MsrHandlers,
 ) -> ExitState
 where
     V: VcpuArch + 'static,
@@ -562,7 +562,7 @@ where
             // anything happens before we get to writing the final event.
             let scoped_exit_evt = ScopedEvent::from(exit_evt);
 
-            let mut msr_handlers: MsrHandlers = Default::default();
+            let mut msr_handlers = MsrHandlers::new();
             if !userspace_msr.is_empty() {
                 userspace_msr.iter().for_each(|(index, msr_config)| {
                     if let Err(e) = msr_handlers.add_handler(*index, msr_config.clone(), cpu_id) {
@@ -631,7 +631,7 @@ where
                 to_gdb_tube,
                 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
                 guest_mem,
-                Box::new(msr_handlers),
+                msr_handlers,
             );
 
             let exit_evt = scoped_exit_evt.into();

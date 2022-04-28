@@ -928,22 +928,3 @@ pub enum MsrExitHandlerError {
     #[error("Error parameter")]
     InvalidParam,
 }
-
-pub trait MsrExitHandler {
-    fn read(&self, _index: u32) -> Option<u64> {
-        None
-    }
-
-    fn write(&self, _index: u32, _data: u64) -> Option<()> {
-        None
-    }
-
-    fn add_handler(
-        &mut self,
-        _index: u32,
-        _msr_config: MsrConfig,
-        _cpu_id: usize,
-    ) -> std::result::Result<(), MsrExitHandlerError> {
-        Ok(())
-    }
-}
