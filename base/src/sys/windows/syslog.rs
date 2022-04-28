@@ -10,9 +10,9 @@
 //! # Examples
 //!
 //! ```
-//! use base::syslog::{error, self, warn};
+//! use base::{error, self, warn};
 //!
-//! if let Err(e) = syslog::init() {
+//! if let Err(e) = base::syslog::init() {
 //!     println!("failed to initiailize syslog: {}", e);
 //!     return;
 //! }
