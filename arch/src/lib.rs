@@ -106,6 +106,9 @@ pub struct VmComponents {
     pub force_s2idle: bool,
     #[cfg(feature = "direct")]
     pub direct_gpe: Vec<u32>,
+    /// A file to load as pVM firmware. Must be `Some` iff
+    /// `protected_vm == ProtectionType::UnprotectedWithFirmware`.
+    pub pvm_fw: Option<File>,
 }
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.

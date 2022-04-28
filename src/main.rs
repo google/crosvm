@@ -2014,6 +2014,29 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             // Protected VMs can't trust the RNG device, so don't provide it.
             cfg.rng = false;
         }
+        "unprotected-vm-with-firmware" => {
+            let pvm_fw = PathBuf::from(value.unwrap());
+            if !pvm_fw.exists() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("the unprotected-vm-with-firmware path does not exist"),
+                });
+            }
+            if !pvm_fw.is_file() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from(
+                        "the unprotected-vm-with-firmware path should be a file",
+                    ),
+                });
+            }
+            cfg.protected_vm = ProtectionType::UnprotectedWithFirmware;
+            cfg.pvm_fw = Some(pvm_fw);
+            // Disable balloon, USB and RNG devices the same as we do for protected VMs.
+            cfg.balloon = false;
+            cfg.usb = false;
+            cfg.rng = false;
+        }
         "battery" => {
             let params = parse_battery_options(value)?;
             cfg.battery_type = Some(params);
@@ -2896,8 +2919,9 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::flag_or_value("video-encoder", "[backend]", "(EXPERIMENTAL) enable virtio-video encoder device
                               Possible backend values: libvda"),
           Argument::value("acpi-table", "PATH", "Path to user provided ACPI table"),
-          Argument::flag("protected-vm", "(EXPERIMENTAL) prevent host access to guest memory"),
+          Argument::flag("protected-vm", "Prevent host access to guest memory"),
           Argument::flag("protected-vm-without-firmware", "(EXPERIMENTAL) prevent host access to guest memory, but don't use protected VM firmware"),
+          Argument::value("unprotected-vm-with-firmware","PATH", "(EXPERIMENTAL/FOR DEBUGGING) Use VM firmware, but allow host access to guest memory"),
           #[cfg(target_arch = "aarch64")]
           Argument::value("swiotlb", "N", "(EXPERIMENTAL) Size of virtio swiotlb buffer in MiB (default: 64 if `--protected-vm` or `--protected-vm-without-firmware` is present)."),
           Argument::flag_or_value("battery",

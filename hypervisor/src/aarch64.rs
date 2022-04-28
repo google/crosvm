@@ -83,7 +83,7 @@ pub trait VmAArch64: Vm {
 
     /// Load pVM firmware for the VM, creating a memslot for it as needed.
     ///
-    /// Only works on protected VMs (i.e. those  that support `VmCap::Protected`).
+    /// Only works on protected VMs (i.e. those that support `VmCap::Protected`).
     fn load_protected_vm_firmware(&mut self, fw_addr: GuestAddress, fw_max_size: u64)
         -> Result<()>;
 

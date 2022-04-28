@@ -62,7 +62,7 @@ impl Kvm {
             ipa => ipa as u32,
         };
         let protection_flag = match protection_type {
-            ProtectionType::Unprotected => 0,
+            ProtectionType::Unprotected | ProtectionType::UnprotectedWithFirmware => 0,
             ProtectionType::Protected | ProtectionType::ProtectedWithoutFirmware => {
                 KVM_VM_TYPE_ARM_PROTECTED
             }

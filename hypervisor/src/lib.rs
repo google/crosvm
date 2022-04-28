@@ -459,4 +459,8 @@ pub enum ProtectionType {
     /// The VM should be run in protected mode, but booted directly without pVM firmware. The host
     /// will still be unable to access the VM memory, but it won't be given any secrets.
     ProtectedWithoutFirmware,
+    /// The VM should be run in unprotected mode, but with the same memory layout as protected mode,
+    /// protected VM firmware loaded, and simulating protected mode as much as possible. This is
+    /// useful for debugging the protected VM firmware and other protected mode issues.
+    UnprotectedWithFirmware,
 }

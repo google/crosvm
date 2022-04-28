@@ -827,6 +827,14 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     } else {
         None
     };
+    let pvm_fw_image = if let Some(pvm_fw_path) = &cfg.pvm_fw {
+        Some(
+            open_file(pvm_fw_path, OpenOptions::new().read(true))
+                .with_context(|| format!("failed to open pvm_fw {}", pvm_fw_path.display()))?,
+        )
+    } else {
+        None
+    };
 
     let vm_image = match cfg.executable_path {
         Some(Executable::Kernel(ref kernel_path)) => VmImage::Kernel(
@@ -851,7 +859,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             ProtectionType::Protected | ProtectionType::ProtectedWithoutFirmware => {
                 Some(64 * 1024 * 1024)
             }
-            ProtectionType::Unprotected => None,
+            ProtectionType::Unprotected | ProtectionType::UnprotectedWithFirmware => None,
         }
     };
 
@@ -901,6 +909,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         itmt: cfg.itmt,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         force_s2idle: cfg.force_s2idle,
+        pvm_fw: pvm_fw_image,
     })
 }
 
@@ -970,7 +979,11 @@ fn run_kvm(cfg: Config, components: VmComponents, guest_mem: GuestMemory) -> Res
     }
 
     // Check that the VM was actually created in protected mode as expected.
-    if cfg.protected_vm != ProtectionType::Unprotected && !vm.check_capability(VmCap::Protected) {
+    if matches!(
+        cfg.protected_vm,
+        ProtectionType::Protected | ProtectionType::ProtectedWithoutFirmware
+    ) && !vm.check_capability(VmCap::Protected)
+    {
         bail!("Failed to create protected VM");
     }
     let vm_clone = vm.try_clone().context("failed to clone vm")?;
