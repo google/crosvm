@@ -43,6 +43,7 @@ cfg_if::cfg_if! {
     }
 }
 
+pub use self::acpi::ACPIPMFixedEvent;
 pub use self::acpi::ACPIPMResource;
 pub use self::bat::BatteryError;
 pub use self::bat::GoldfishBattery;

@@ -12,9 +12,9 @@ use base::NetlinkGenericSocket;
 use sync::Mutex;
 
 use crate::acpi::ACPIPMError;
+use crate::acpi::ACPIPMFixedEvent;
 use crate::acpi::GpeResource;
 use crate::acpi::Pm1Resource;
-use crate::acpi::BITMASK_PM1STS_PWRBTN_STS;
 use crate::IrqLevelEvent;
 
 pub(crate) fn get_acpi_event_sock() -> Result<Option<NetlinkGenericSocket>, ACPIPMError> {
@@ -105,7 +105,7 @@ fn acpi_event_handle_power_button(
     if acpi_event._type == ACPI_BUTTON_NOTIFY_STATUS && acpi_event.bus_id.contains("LNXPWRBN") {
         let mut pm1 = pm1.lock();
 
-        pm1.status |= BITMASK_PM1STS_PWRBTN_STS;
+        pm1.status |= ACPIPMFixedEvent::PowerButton.bitmask();
         pm1.trigger_sci(sci_evt);
     }
 }

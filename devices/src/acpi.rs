@@ -9,6 +9,7 @@ use std::fs;
 use std::io::Error as IoError;
 #[cfg(feature = "direct")]
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 
@@ -22,6 +23,7 @@ use base::EventToken;
 use base::SendTube;
 use base::VmEventType;
 use base::WaitContext;
+use serde::{Deserialize, Serialize};
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::GpeNotify;
@@ -46,6 +48,14 @@ pub enum ACPIPMError {
     AcpiMcGroupError,
     #[error("Failed to create and bind NETLINK_GENERIC socket for acpi_mc_group: {0}")]
     AcpiEventSockError(base::Error),
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub enum ACPIPMFixedEvent {
+    GlobalLock,
+    PowerButton,
+    SleepButton,
+    RTC,
 }
 
 pub(crate) struct Pm1Resource {
@@ -285,14 +295,7 @@ impl Drop for ACPIPMResource {
 
 impl Pm1Resource {
     pub(crate) fn trigger_sci(&self, sci_evt: &IrqLevelEvent) {
-        if self.status
-            & self.enable
-            & (BITMASK_PM1EN_GBL_EN
-                | BITMASK_PM1EN_PWRBTN_EN
-                | BITMASK_PM1EN_SLPBTN_EN
-                | BITMASK_PM1EN_RTC_EN)
-            != 0
-        {
+        if self.status & self.enable & ACPIPMFixedEvent::bitmask_all() != 0 {
             if let Err(e) = sci_evt.trigger() {
                 error!("ACPIPM: failed to trigger sci event for pm1: {}", e);
             }
@@ -477,12 +480,12 @@ const GPE0_STATUS: u16 = PM1_STATUS + ACPIPM_RESOURCE_EVENTBLK_LEN as u16 + 4; /
 /// Size: GPE0_BLK_LEN/2 (defined in FADT)
 const GPE0_ENABLE: u16 = GPE0_STATUS + (ACPIPM_RESOURCE_GPE0_BLK_LEN as u16 / 2);
 
-pub(crate) const BITMASK_PM1STS_PWRBTN_STS: u16 = 1 << 8;
-const BITMASK_PM1STS_SLPBTN_STS: u16 = 1 << 9;
-const BITMASK_PM1EN_GBL_EN: u16 = 1 << 5;
-const BITMASK_PM1EN_PWRBTN_EN: u16 = 1 << 8;
-const BITMASK_PM1EN_SLPBTN_EN: u16 = 1 << 9;
-const BITMASK_PM1EN_RTC_EN: u16 = 1 << 10;
+/// 4.8.4.1.1, 4.8.4.1.2 Fixed event bits in both PM1 Status and PM1 Enable registers.
+const BITSHIFT_PM1_GBL: u16 = 5;
+const BITSHIFT_PM1_PWRBTN: u16 = 8;
+const BITSHIFT_PM1_SLPBTN: u16 = 9;
+const BITSHIFT_PM1_RTC: u16 = 10;
+
 const BITMASK_PM1CNT_SLEEP_ENABLE: u16 = 0x2000;
 const BITMASK_PM1CNT_WAKE_STATUS: u16 = 0x8000;
 
@@ -493,18 +496,54 @@ const SLEEP_TYPE_S1: u16 = 1 << 10;
 #[cfg(not(feature = "direct"))]
 const SLEEP_TYPE_S5: u16 = 0 << 10;
 
+impl ACPIPMFixedEvent {
+    fn bitshift(self) -> u16 {
+        match self {
+            ACPIPMFixedEvent::GlobalLock => BITSHIFT_PM1_GBL,
+            ACPIPMFixedEvent::PowerButton => BITSHIFT_PM1_PWRBTN,
+            ACPIPMFixedEvent::SleepButton => BITSHIFT_PM1_SLPBTN,
+            ACPIPMFixedEvent::RTC => BITSHIFT_PM1_RTC,
+        }
+    }
+
+    pub(crate) fn bitmask(self) -> u16 {
+        1 << self.bitshift()
+    }
+
+    fn bitmask_all() -> u16 {
+        (1 << BITSHIFT_PM1_GBL)
+            | (1 << BITSHIFT_PM1_PWRBTN)
+            | (1 << BITSHIFT_PM1_SLPBTN)
+            | (1 << BITSHIFT_PM1_RTC)
+    }
+}
+
+impl FromStr for ACPIPMFixedEvent {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "gbllock" => Ok(ACPIPMFixedEvent::GlobalLock),
+            "powerbtn" => Ok(ACPIPMFixedEvent::PowerButton),
+            "sleepbtn" => Ok(ACPIPMFixedEvent::SleepButton),
+            "rtc" => Ok(ACPIPMFixedEvent::RTC),
+            _ => Err("unknown event, must be: gbllock|powerbtn|sleepbtn|rtc"),
+        }
+    }
+}
+
 impl PmResource for ACPIPMResource {
     fn pwrbtn_evt(&mut self) {
         let mut pm1 = self.pm1.lock();
 
-        pm1.status |= BITMASK_PM1STS_PWRBTN_STS;
+        pm1.status |= ACPIPMFixedEvent::PowerButton.bitmask();
         pm1.trigger_sci(&self.sci_evt);
     }
 
     fn slpbtn_evt(&mut self) {
         let mut pm1 = self.pm1.lock();
 
-        pm1.status |= BITMASK_PM1STS_SLPBTN_STS;
+        pm1.status |= ACPIPMFixedEvent::SleepButton.bitmask();
         pm1.trigger_sci(&self.sci_evt);
     }
 
