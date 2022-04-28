@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::descriptor::AsRawDescriptor;
 use crate::{
-    platform::MemoryMapping as SysUtilMmap, MappedRegion, MemoryMappingArena, MmapError,
+    descriptor::{AsRawDescriptor, SafeDescriptor},
+    platform::{MappedRegion, MemoryMapping as SysUtilMmap, MmapError},
     Protection, SharedMemory,
 };
+
 use data_model::{volatile_memory::*, DataInit};
 use std::fs::File;
 
@@ -16,7 +17,16 @@ pub type Result<T> = std::result::Result<T, MmapError>;
 /// documentation.
 #[derive(Debug)]
 pub struct MemoryMapping {
-    mapping: SysUtilMmap,
+    pub(crate) mapping: SysUtilMmap,
+
+    // File backed mappings on Windows need to keep the underlying file open while the mapping is
+    // open.
+    // This will be a None in non-windows case. The variable will not be read so the '^_'.
+    //
+    // TODO(b:230902713) There was a concern about relying on the kernel's refcounting to keep the
+    // file object's locks (e.g. exclusive read/write) in place. We need to revisit/validate that
+    // concern.
+    pub(crate) _file_descriptor: Option<SafeDescriptor>,
 }
 
 impl MemoryMapping {
@@ -39,62 +49,15 @@ impl MemoryMapping {
     pub fn msync(&self) -> Result<()> {
         self.mapping.msync()
     }
-
-    pub fn use_hugepages(&self) -> Result<()> {
-        self.mapping.use_hugepages()
-    }
-
-    pub fn read_to_memory(
-        &self,
-        mem_offset: usize,
-        src: &dyn AsRawDescriptor,
-        count: usize,
-    ) -> Result<()> {
-        self.mapping.read_to_memory(mem_offset, src, count)
-    }
-
-    pub fn write_from_memory(
-        &self,
-        mem_offset: usize,
-        dst: &dyn AsRawDescriptor,
-        count: usize,
-    ) -> Result<()> {
-        self.mapping.write_from_memory(mem_offset, dst, count)
-    }
-}
-
-pub trait Unix {
-    fn remove_range(&self, mem_offset: usize, count: usize) -> Result<()>;
-}
-
-impl Unix for MemoryMapping {
-    fn remove_range(&self, mem_offset: usize, count: usize) -> Result<()> {
-        self.mapping.remove_range(mem_offset, count)
-    }
-}
-
-pub trait MemoryMappingBuilderUnix<'a> {
-    #[allow(clippy::wrong_self_convention)]
-    fn from_descriptor(self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder;
 }
 
 pub struct MemoryMappingBuilder<'a> {
-    descriptor: Option<&'a dyn AsRawDescriptor>,
-    size: usize,
-    offset: Option<u64>,
-    protection: Option<Protection>,
-    populate: bool,
-}
-
-impl<'a> MemoryMappingBuilderUnix<'a> for MemoryMappingBuilder<'a> {
-    /// Build the memory mapping given the specified descriptor to mapped memory
-    ///
-    /// Default: Create a new memory mapping.
-    #[allow(clippy::wrong_self_convention)]
-    fn from_descriptor(mut self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder {
-        self.descriptor = Some(descriptor);
-        self
-    }
+    pub(crate) descriptor: Option<&'a dyn AsRawDescriptor>,
+    pub(crate) is_file_descriptor: bool,
+    pub(crate) size: usize,
+    pub(crate) offset: Option<u64>,
+    pub(crate) protection: Option<Protection>,
+    pub(crate) populate: bool,
 }
 
 /// Builds a MemoryMapping object from the specified arguments.
@@ -104,6 +67,7 @@ impl<'a> MemoryMappingBuilder<'a> {
         MemoryMappingBuilder {
             descriptor: None,
             size,
+            is_file_descriptor: false,
             offset: None,
             protection: None,
             populate: false,
@@ -118,6 +82,9 @@ impl<'a> MemoryMappingBuilder<'a> {
     /// require special handling for file backed mappings.
     #[allow(clippy::wrong_self_convention, unused_mut)]
     pub fn from_file(mut self, file: &'a File) -> MemoryMappingBuilder {
+        // On Windows, files require special handling (next day shipping if possible).
+        self.is_file_descriptor = true;
+
         self.descriptor = Some(file as &dyn AsRawDescriptor);
         self
     }
@@ -146,39 +113,6 @@ impl<'a> MemoryMappingBuilder<'a> {
         self
     }
 
-    /// Request that the mapped pages are pre-populated
-    ///
-    /// Default: Do not populate
-    pub fn populate(mut self) -> MemoryMappingBuilder<'a> {
-        self.populate = true;
-        self
-    }
-
-    /// Build a MemoryMapping from the provided options.
-    pub fn build(self) -> Result<MemoryMapping> {
-        match self.descriptor {
-            None => {
-                if self.populate {
-                    // Population not supported for new mmaps
-                    return Err(MmapError::InvalidArgument);
-                }
-                MemoryMappingBuilder::wrap(SysUtilMmap::new_protection(
-                    self.size,
-                    self.protection.unwrap_or_else(Protection::read_write),
-                ))
-            }
-            Some(descriptor) => {
-                MemoryMappingBuilder::wrap(SysUtilMmap::from_fd_offset_protection_populate(
-                    descriptor,
-                    self.size,
-                    self.offset.unwrap_or(0),
-                    self.protection.unwrap_or_else(Protection::read_write),
-                    self.populate,
-                ))
-            }
-        }
-    }
-
     /// Build a MemoryMapping from the provided options at a fixed address. Note this
     /// is a separate function from build in order to isolate unsafe behavior.
     ///
@@ -188,31 +122,34 @@ impl<'a> MemoryMappingBuilder<'a> {
     /// present at `(addr..addr+size)`. If another MemoryMapping object holds the same
     /// address space, the destructors of those objects will conflict and the space could
     /// be unmapped while still in use.
+    ///
+    /// WARNING: On windows, this is not compatible with from_file.
+    /// TODO(b:230901659): Find a better way to enforce this warning in code.
     pub unsafe fn build_fixed(self, addr: *mut u8) -> Result<MemoryMapping> {
         if self.populate {
             // Population not supported for fixed mapping.
             return Err(MmapError::InvalidArgument);
         }
         match self.descriptor {
-            None => MemoryMappingBuilder::wrap(SysUtilMmap::new_protection_fixed(
-                addr,
-                self.size,
-                self.protection.unwrap_or_else(Protection::read_write),
-            )),
-            Some(descriptor) => {
-                MemoryMappingBuilder::wrap(SysUtilMmap::from_fd_offset_protection_fixed(
+            None => MemoryMappingBuilder::wrap(
+                SysUtilMmap::new_protection_fixed(
+                    addr,
+                    self.size,
+                    self.protection.unwrap_or_else(Protection::read_write),
+                ),
+                None,
+            ),
+            Some(descriptor) => MemoryMappingBuilder::wrap(
+                SysUtilMmap::from_descriptor_offset_protection_fixed(
                     addr,
                     descriptor,
                     self.size,
                     self.offset.unwrap_or(0),
                     self.protection.unwrap_or_else(Protection::read_write),
-                ))
-            }
+                ),
+                None,
+            ),
         }
-    }
-
-    fn wrap(result: Result<SysUtilMmap>) -> Result<MemoryMapping> {
-        result.map(|mapping| MemoryMapping { mapping })
     }
 }
 
@@ -230,11 +167,5 @@ unsafe impl MappedRegion for MemoryMapping {
 
     fn size(&self) -> usize {
         self.mapping.size()
-    }
-}
-
-impl From<MemoryMapping> for MemoryMappingArena {
-    fn from(mmap: MemoryMapping) -> Self {
-        MemoryMappingArena::from(mmap.mapping)
     }
 }

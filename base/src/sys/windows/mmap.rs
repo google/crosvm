@@ -5,18 +5,24 @@
 use remain::sorted;
 use std::{
     cmp::min,
-    io,
+    io::{self, Read, Write},
     mem::size_of,
     ptr::{copy_nonoverlapping, read_unaligned, write_unaligned},
 };
 
+use crate::descriptor::{FromRawDescriptor, SafeDescriptor};
 use data_model::{volatile_memory::*, DataInit};
+use win_util::create_file_mapping;
+use win_util::duplicate_handle;
+use winapi::um::winnt::PAGE_READWRITE;
 
 use libc::{c_int, c_uint, c_void};
 
 use super::RawDescriptor;
 use crate::descriptor::{AsRawDescriptor, Descriptor};
 use crate::external_mapping::ExternalMapping;
+use crate::MemoryMapping as CrateMemoryMapping;
+use crate::MemoryMappingBuilder;
 
 #[path = "win/mmap.rs"]
 mod mmap_platform;
@@ -419,6 +425,127 @@ impl VolatileMemory for MemoryMapping {
         // Safe because we checked that offset + count was within our range and we only ever hand
         // out volatile accessors.
         Ok(unsafe { VolatileSlice::from_raw_parts(new_addr as *mut u8, count) })
+    }
+}
+
+impl CrateMemoryMapping {
+    pub fn read_to_memory<F: Read>(
+        &self,
+        mem_offset: usize,
+        src: &mut F,
+        count: usize,
+    ) -> Result<()> {
+        self.mapping.read_to_memory(mem_offset, src, count)
+    }
+
+    pub fn write_from_memory<F: Write>(
+        &self,
+        mem_offset: usize,
+        dst: &mut F,
+        count: usize,
+    ) -> Result<()> {
+        self.mapping.write_from_memory(mem_offset, dst, count)
+    }
+
+    pub fn from_raw_ptr(addr: RawDescriptor, size: usize) -> Result<CrateMemoryMapping> {
+        return MemoryMapping::from_raw_ptr(addr, size).map(|mapping| CrateMemoryMapping {
+            mapping,
+            _file_descriptor: None,
+        });
+    }
+}
+
+pub trait MemoryMappingBuilderWindows<'a> {
+    /// Build the memory mapping given the specified descriptor to mapped memory
+    ///
+    /// Default: Create a new memory mapping.
+    ///
+    /// descriptor MUST be a mapping handle. Files MUST use `MemoryMappingBuilder::from_file`
+    /// instead.
+    #[allow(clippy::wrong_self_convention)]
+    fn from_descriptor(self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder;
+}
+
+impl<'a> MemoryMappingBuilderWindows<'a> for MemoryMappingBuilder<'a> {
+    /// See MemoryMappingBuilderWindows.
+    fn from_descriptor(mut self, descriptor: &'a dyn AsRawDescriptor) -> MemoryMappingBuilder {
+        self.descriptor = Some(descriptor);
+        self
+    }
+}
+
+impl<'a> MemoryMappingBuilder<'a> {
+    /// Build a MemoryMapping from the provided options.
+    pub fn build(self) -> Result<CrateMemoryMapping> {
+        match self.descriptor {
+            Some(descriptor) => {
+                let mapping_descriptor = if self.is_file_descriptor {
+                    // On Windows, a file cannot be mmapped directly. We have to create a mapping
+                    // handle for it first. That handle is then provided to Self::wrap, which
+                    // performs the actual mmap (creating a mapped view).
+                    //
+                    // Safe because self.descriptor is guaranteed to be a valid handle.
+                    let mapping_handle = unsafe {
+                        create_file_mapping(
+                            Some(descriptor.as_raw_descriptor()),
+                            self.size as u64,
+                            PAGE_READWRITE,
+                            None,
+                        )
+                    }
+                    .map_err(Error::StdSyscallFailed)?;
+
+                    // The above comment block is why the SafeDescriptor wrap is safe.
+                    Some(unsafe { SafeDescriptor::from_raw_descriptor(mapping_handle) })
+                } else {
+                    None
+                };
+
+                MemoryMappingBuilder::wrap(
+                    MemoryMapping::from_descriptor_offset_protection(
+                        match mapping_descriptor.as_ref() {
+                            Some(descriptor) => descriptor as &dyn AsRawDescriptor,
+                            None => descriptor,
+                        },
+                        self.size,
+                        self.offset.unwrap_or(0),
+                        self.protection.unwrap_or_else(Protection::read_write),
+                    ),
+                    if self.is_file_descriptor {
+                        self.descriptor
+                    } else {
+                        None
+                    },
+                )
+            }
+            None => MemoryMappingBuilder::wrap(
+                MemoryMapping::new_protection(
+                    self.size,
+                    self.protection.unwrap_or_else(Protection::read_write),
+                ),
+                None,
+            ),
+        }
+    }
+    pub fn wrap(
+        result: Result<MemoryMapping>,
+        file_descriptor: Option<&'a dyn AsRawDescriptor>,
+    ) -> Result<CrateMemoryMapping> {
+        let file_descriptor = match file_descriptor {
+            // Safe because `duplicate_handle` will return a handle or at least error out.
+            Some(descriptor) => unsafe {
+                Some(SafeDescriptor::from_raw_descriptor(
+                    duplicate_handle(descriptor.as_raw_descriptor())
+                        .map_err(Error::StdSyscallFailed)?,
+                ))
+            },
+            None => None,
+        };
+
+        result.map(|mapping| CrateMemoryMapping {
+            mapping,
+            _file_descriptor: file_descriptor,
+        })
     }
 }
 
