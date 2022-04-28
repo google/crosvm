@@ -10,9 +10,6 @@ use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor};
 pub use crate::platform::EventReadResult;
 use crate::{generate_scoped_event, platform::EventFd, RawDescriptor, Result};
 
-#[cfg(unix)]
-use std::os::unix::io::{FromRawFd, IntoRawFd};
-
 /// See [EventFd](crate::platform::EventFd) for struct- and method-level
 /// documentation.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,13 +45,13 @@ impl AsRawDescriptor for Event {
 
 impl FromRawDescriptor for Event {
     unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
-        Event(EventFd::from_raw_fd(descriptor))
+        Event(EventFd::from_raw_descriptor(descriptor))
     }
 }
 
 impl IntoRawDescriptor for Event {
     fn into_raw_descriptor(self) -> RawDescriptor {
-        self.0.into_raw_fd()
+        self.0.into_raw_descriptor()
     }
 }
 

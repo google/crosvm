@@ -15,6 +15,7 @@ use sync::Mutex;
 use libc::{self, clock_getres, timerfd_create, timerfd_settime, CLOCK_MONOTONIC, TFD_CLOEXEC};
 
 use super::{errno_result, EventFd, FakeClock, Result};
+use crate::IntoRawDescriptor;
 
 /// A safe wrapper around a Linux timerfd (man 2 timerfd_create).
 pub struct TimerFd(File);
@@ -223,7 +224,7 @@ impl AsRawFd for FakeTimerFd {
 
 impl IntoRawFd for FakeTimerFd {
     fn into_raw_fd(self) -> RawFd {
-        self.fd.into_raw_fd()
+        self.fd.into_raw_descriptor()
     }
 }
 

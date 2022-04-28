@@ -5,7 +5,7 @@
 use std::{
     mem,
     ops::Deref,
-    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
+    os::unix::io::{AsRawFd, RawFd},
     ptr,
     time::Duration,
 };
@@ -153,16 +153,16 @@ impl AsRawDescriptor for EventFd {
     }
 }
 
-impl FromRawFd for EventFd {
-    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+impl FromRawDescriptor for EventFd {
+    unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
         EventFd {
-            event_handle: SafeDescriptor::from_raw_descriptor(fd),
+            event_handle: SafeDescriptor::from_raw_descriptor(descriptor),
         }
     }
 }
 
-impl IntoRawFd for EventFd {
-    fn into_raw_fd(self) -> RawFd {
+impl IntoRawDescriptor for EventFd {
+    fn into_raw_descriptor(self) -> RawDescriptor {
         self.event_handle.into_raw_descriptor()
     }
 }
