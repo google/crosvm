@@ -65,6 +65,15 @@ build_and_test_crosvm() {
     time cros_sdk cros_run_unit_tests --board "$BOARD" --packages "${PACKAGE_LIST[@]}"
 }
 
+cleanup_cros() {
+    # Delete cros repo to prevent it from being treated as a build artifact by Kokoro.
+    cros_sdk --delete || true
+    sudo rm -rf "${CROS_ROOT}" || true
+    # Call original cleanup function from common.sh
+    cleanup
+}
+trap cleanup_cros EXIT
+
 main() {
     mkdir -p "$CROS_ROOT"
     cd "$CROS_ROOT"
