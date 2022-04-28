@@ -4,6 +4,7 @@
 
 **[Recipes](#Recipes)**
   * [hello_world](#recipes-hello_world)
+  * [verify_cl](#recipes-verify_cl) (Python3 ✅)
 ## Recipes
 
 ### *recipes* / [hello\_world](/infra/recipes/hello_world.py)
@@ -13,5 +14,17 @@
 PYTHON_VERSION_COMPATIBILITY: PY2
 
 &mdash; **def [RunSteps](/infra/recipes/hello_world.py#12)(api):**
+### *recipes* / [verify\_cl](/infra/recipes/verify_cl.py)
 
+[DEPS](/infra/recipes/verify_cl.py#3): [depot\_tools/bot\_update][depot_tools/recipe_modules/bot_update], [depot\_tools/gclient][depot_tools/recipe_modules/gclient], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/path][recipe_engine/recipe_modules/path]
+
+PYTHON_VERSION_COMPATIBILITY: PY3
+
+&mdash; **def [RunSteps](/infra/recipes/verify_cl.py#12)(api):**
+
+[depot_tools/recipe_modules/bot_update]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/8a87603683bda769d437e48cc1a7494a2e237ead/recipes/README.recipes.md#recipe_modules-bot_update
+[depot_tools/recipe_modules/gclient]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/8a87603683bda769d437e48cc1a7494a2e237ead/recipes/README.recipes.md#recipe_modules-gclient
+[recipe_engine/recipe_modules/buildbucket]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-buildbucket
+[recipe_engine/recipe_modules/context]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-context
+[recipe_engine/recipe_modules/path]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-path
 [recipe_engine/recipe_modules/step]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-step
