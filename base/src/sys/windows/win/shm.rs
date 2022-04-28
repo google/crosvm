@@ -60,6 +60,7 @@ mod test {
     use super::*;
     use winapi::shared::winerror::ERROR_NOT_ENOUGH_MEMORY;
 
+    #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     #[test]
     fn new_too_huge() {
         let result = SharedMemory::anon(0x8000_0000_0000_0000);

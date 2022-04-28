@@ -158,6 +158,7 @@ AsRawDescriptor!(Stdin);
 AsRawDescriptor!(Stdout);
 AsRawDescriptor!(Stderr);
 
+#[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
 #[test]
 #[allow(clippy::eq_op)]
 fn clone_equality() {

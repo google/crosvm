@@ -326,6 +326,7 @@ mod tests {
         Ok(s.as_ref().encode_wide().chain(Some(0)).collect())
     }
 
+    #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     #[test]
     fn ioct_get_and_set_compression() {
         let dir = tempdir().unwrap();
@@ -404,6 +405,7 @@ mod tests {
         dir.close().expect("Failed to close the temp directory.");
     }
 
+    #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     #[test]
     fn ioctl_with_val() {
         let dir = tempdir().unwrap();

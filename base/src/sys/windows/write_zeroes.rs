@@ -110,6 +110,7 @@ mod tests {
     };
     use tempfile::TempDir;
 
+    #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     #[test]
     fn simple_test() {
         let tempdir = TempDir::new().unwrap();
@@ -177,6 +178,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     fn large_write_zeroes() {
         let tempdir = TempDir::new().unwrap();
         let mut path = tempdir.path().to_owned();
