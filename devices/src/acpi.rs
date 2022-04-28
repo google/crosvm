@@ -78,6 +78,14 @@ struct DirectGpe {
     enabled: bool,
 }
 
+#[cfg(feature = "direct")]
+struct DirectFixedEvent {
+    evt: ACPIPMFixedEvent,
+    bitshift: u16,
+    path: PathBuf,
+    enabled: bool,
+}
+
 /// ACPI PM resource for handling OS suspend/resume request
 #[allow(dead_code)]
 pub struct ACPIPMResource {
@@ -88,6 +96,8 @@ pub struct ACPIPMResource {
     sci_direct_evt: Option<IrqLevelEvent>,
     #[cfg(feature = "direct")]
     direct_gpe: Vec<DirectGpe>,
+    #[cfg(feature = "direct")]
+    direct_fixed_evts: Vec<DirectFixedEvent>,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<()>>,
     suspend_evt: Event,
@@ -99,11 +109,18 @@ pub struct ACPIPMResource {
 impl ACPIPMResource {
     /// Constructs ACPI Power Management Resouce.
     ///
-    /// `direct_gpe_info` - tuple of host SCI trigger and resample events, and list of direct GPEs
+    /// `direct_evt_info` - tuple of:
+    ///     1. host SCI trigger and resample events
+    ///     2. list of direct GPEs
+    ///     3. list of direct fixed events
     #[allow(dead_code)]
     pub fn new(
         sci_evt: IrqLevelEvent,
-        #[cfg(feature = "direct")] direct_gpe_info: Option<(IrqLevelEvent, &[u32])>,
+        #[cfg(feature = "direct")] direct_evt_info: Option<(
+            IrqLevelEvent,
+            &[u32],
+            &[ACPIPMFixedEvent],
+        )>,
         suspend_evt: Event,
         exit_evt_wrtube: SendTube,
     ) -> ACPIPMResource {
@@ -119,12 +136,16 @@ impl ACPIPMResource {
         };
 
         #[cfg(feature = "direct")]
-        let (sci_direct_evt, direct_gpe) = if let Some(info) = direct_gpe_info {
-            let (evt, gpes) = info;
+        let (sci_direct_evt, direct_gpe, direct_fixed_evts) = if let Some(info) = direct_evt_info {
+            let (evt, gpes, fixed_evts) = info;
             let gpe_vec = gpes.iter().map(|gpe| DirectGpe::new(*gpe)).collect();
-            (Some(evt), gpe_vec)
+            let fixed_evt_vec = fixed_evts
+                .iter()
+                .map(|evt| DirectFixedEvent::new(*evt))
+                .collect();
+            (Some(evt), gpe_vec, fixed_evt_vec)
         } else {
-            (None, Vec::new())
+            (None, Vec::new(), Vec::new())
         };
 
         ACPIPMResource {
@@ -133,6 +154,8 @@ impl ACPIPMResource {
             sci_direct_evt,
             #[cfg(feature = "direct")]
             direct_gpe,
+            #[cfg(feature = "direct")]
+            direct_fixed_evts,
             kill_evt: None,
             worker_thread: None,
             suspend_evt,
@@ -436,6 +459,82 @@ impl DirectGpe {
     }
 }
 
+#[cfg(feature = "direct")]
+impl DirectFixedEvent {
+    fn new(evt: ACPIPMFixedEvent) -> DirectFixedEvent {
+        DirectFixedEvent {
+            evt,
+            bitshift: evt.bitshift(),
+            path: PathBuf::from("/sys/firmware/acpi/interrupts").join(match evt {
+                ACPIPMFixedEvent::GlobalLock => "ff_gbl_lock",
+                ACPIPMFixedEvent::PowerButton => "ff_pwr_btn",
+                ACPIPMFixedEvent::SleepButton => "ff_slp_btn",
+                ACPIPMFixedEvent::RTC => "ff_rt_clk",
+            }),
+            enabled: false,
+        }
+    }
+
+    fn is_status_set(&self) -> Result<bool, IoError> {
+        match fs::read_to_string(&self.path) {
+            Err(e) => {
+                error!("ACPIPM: failed to read {:?} event STS: {}", self.evt, e);
+                Err(e)
+            }
+            Ok(s) => Ok(s.split_whitespace().any(|s| s == "STS")),
+        }
+    }
+
+    fn is_enabled(&self) -> Result<bool, IoError> {
+        match fs::read_to_string(&self.path) {
+            Err(e) => {
+                error!("ACPIPM: failed to read {:?} event EN: {}", self.evt, e);
+                Err(e)
+            }
+            Ok(s) => Ok(s.split_whitespace().any(|s| s == "EN")),
+        }
+    }
+
+    fn clear(&self) {
+        if !self.is_status_set().unwrap_or(false) {
+            // Just to avoid harmless error messages due to clearing an already cleared event.
+            return;
+        }
+
+        if let Err(e) = fs::write(&self.path, "clear\n") {
+            error!("ACPIPM: failed to clear {:?} event: {}", self.evt, e);
+        }
+    }
+
+    fn enable(&mut self) {
+        if self.enabled {
+            // Just to avoid harmless error messages due to enabling an already enabled event.
+            return;
+        }
+
+        match fs::write(&self.path, "enable\n") {
+            Err(e) => error!("ACPIPM: failed to enable {:?} event: {}", self.evt, e),
+            Ok(()) => {
+                self.enabled = true;
+            }
+        }
+    }
+
+    fn disable(&mut self) {
+        if !self.enabled {
+            // Just to avoid harmless error messages due to disabling an already disabled event.
+            return;
+        }
+
+        match fs::write(&self.path, "disable\n") {
+            Err(e) => error!("ACPIPM: failed to disable {:?} event: {}", self.evt, e),
+            Ok(()) => {
+                self.enabled = false;
+            }
+        }
+    }
+}
+
 /// the ACPI PM register length.
 pub const ACPIPM_RESOURCE_EVENTBLK_LEN: u8 = 4;
 pub const ACPIPM_RESOURCE_CONTROLBLK_LEN: u8 = 2;
@@ -596,9 +695,23 @@ impl BusDevice for ACPIPMResource {
                     return;
                 }
                 let offset = (info.offset - PM1_STATUS as u64) as usize;
-                data.copy_from_slice(
-                    &self.pm1.lock().status.to_ne_bytes()[offset..offset + data.len()],
-                );
+
+                let v = self.pm1.lock().status.to_ne_bytes();
+                for (i, j) in (offset..offset + data.len()).enumerate() {
+                    data[i] = v[j];
+
+                    #[cfg(feature = "direct")]
+                    for evt in self
+                        .direct_fixed_evts
+                        .iter()
+                        .filter(|evt| evt.bitshift / 8 == j as u16)
+                    {
+                        data[i] &= !(1 << (evt.bitshift % 8));
+                        if evt.is_status_set().unwrap_or(false) {
+                            data[i] |= 1 << (evt.bitshift % 8);
+                        }
+                    }
+                }
             }
             PM1_ENABLE..=PM1_ENABLE_LAST => {
                 if data.len() > std::mem::size_of::<u16>()
@@ -608,9 +721,23 @@ impl BusDevice for ACPIPMResource {
                     return;
                 }
                 let offset = (info.offset - PM1_ENABLE as u64) as usize;
-                data.copy_from_slice(
-                    &self.pm1.lock().enable.to_ne_bytes()[offset..offset + data.len()],
-                );
+
+                let v = self.pm1.lock().enable.to_ne_bytes();
+                for (i, j) in (offset..offset + data.len()).enumerate() {
+                    data[i] = v[j];
+
+                    #[cfg(feature = "direct")]
+                    for evt in self
+                        .direct_fixed_evts
+                        .iter()
+                        .filter(|evt| evt.bitshift / 8 == j as u16)
+                    {
+                        data[i] &= !(1 << (evt.bitshift % 8));
+                        if evt.is_enabled().unwrap_or(false) {
+                            data[i] |= 1 << (evt.bitshift % 8);
+                        }
+                    }
+                }
             }
             PM1_CONTROL..=PM1_CONTROL_LAST => {
                 if data.len() > std::mem::size_of::<u16>()
@@ -690,6 +817,17 @@ impl BusDevice for ACPIPMResource {
                 let mut pm1 = self.pm1.lock();
                 let mut v = pm1.status.to_ne_bytes();
                 for (i, j) in (offset..offset + data.len()).enumerate() {
+                    #[cfg(feature = "direct")]
+                    for evt in self
+                        .direct_fixed_evts
+                        .iter()
+                        .filter(|evt| evt.bitshift / 8 == j as u16)
+                    {
+                        if data[i] & (1 << (evt.bitshift % 8)) != 0 {
+                            evt.clear();
+                        }
+                    }
+
                     v[j] &= !data[i];
                 }
                 pm1.status = u16::from_ne_bytes(v);
@@ -706,6 +844,19 @@ impl BusDevice for ACPIPMResource {
                 let mut pm1 = self.pm1.lock();
                 let mut v = pm1.enable.to_ne_bytes();
                 for (i, j) in (offset..offset + data.len()).enumerate() {
+                    #[cfg(feature = "direct")]
+                    for evt in self
+                        .direct_fixed_evts
+                        .iter_mut()
+                        .filter(|evt| evt.bitshift / 8 == j as u16)
+                    {
+                        if data[i] & (1 << (evt.bitshift % 8)) != 0 {
+                            evt.enable();
+                        } else {
+                            evt.disable();
+                        }
+                    }
+
                     v[j] = data[i];
                 }
                 pm1.enable = u16::from_ne_bytes(v);

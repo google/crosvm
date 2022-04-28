@@ -1635,7 +1635,7 @@ impl X8664arch {
                     .map_err(Error::CreateGpe)?;
             }
 
-            Some((direct_sci_evt, direct_gpe))
+            Some((direct_sci_evt, direct_gpe, &[][..]))
         };
 
         let pm_sci_evt = devices::IrqLevelEvent::new().map_err(Error::CreateEvent)?;
