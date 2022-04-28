@@ -16,8 +16,8 @@ use super::regs::{setup_fpu, setup_msrs, setup_regs, setup_sregs};
 use super::X8664arch;
 use super::{acpi, arch_memory_regions, bootparam, mptable, smbios};
 use super::{
-    BOOT_STACK_POINTER, KERNEL_64BIT_ENTRY_OFFSET, KERNEL_START_OFFSET, PCIE_CFG_MMIO_SIZE,
-    PCIE_CFG_MMIO_START, X86_64_SCI_IRQ, ZERO_PAGE_OFFSET,
+    BOOT_STACK_POINTER, END_ADDR_BEFORE_32BITS, KERNEL_64BIT_ENTRY_OFFSET, KERNEL_START_OFFSET,
+    PCIE_CFG_MMIO_SIZE, PCIE_CFG_MMIO_START, X86_64_SCI_IRQ, ZERO_PAGE_OFFSET,
 };
 
 use base::{Event, Tube};
@@ -250,7 +250,7 @@ where
                 .expect("failed to add vcpu to irqchip");
 
             setup_cpuid(&hyp, &irq_chip, &vcpu, 0, 1, false, false, false).unwrap();
-            setup_msrs(&vm, &vcpu, memory_size, None).unwrap();
+            setup_msrs(&vm, &vcpu, END_ADDR_BEFORE_32BITS).unwrap();
 
             setup_regs(
                 &vcpu,

@@ -708,14 +708,7 @@ impl arch::LinuxArch for X8664arch {
 
         let guest_mem = vm.get_memory();
         let kernel_load_addr = GuestAddress(KERNEL_START_OFFSET);
-
-        let end_addr = guest_mem.end_addr().offset();
-        let (ram_low_end, ram_high_end) = if end_addr > FIRST_ADDR_PAST_32BITS {
-            (END_ADDR_BEFORE_32BITS, Some(end_addr))
-        } else {
-            (end_addr, None)
-        };
-        regs::setup_msrs(vm, vcpu, ram_low_end, ram_high_end).map_err(Error::SetupMsrs)?;
+        regs::setup_msrs(vm, vcpu, END_ADDR_BEFORE_32BITS).map_err(Error::SetupMsrs)?;
         let kernel_end = guest_mem
             .checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
             .ok_or(Error::KernelOffsetPastEnd)?;
@@ -1726,7 +1719,7 @@ mod tests {
 
     #[test]
     fn check_32bit_gap_size_alignment() {
-        // END_ADDR_BEFORE_32BITS is 256 MB aligned to be friendly for MTRR mappings.
-        assert_eq!(END_ADDR_BEFORE_32BITS % (256 * MB), 0);
+        // 32bit gap memory is 256 MB aligned to be friendly for MTRR mappings.
+        assert_eq!(MEM_32BIT_GAP_SIZE % (256 * MB), 0);
     }
 }

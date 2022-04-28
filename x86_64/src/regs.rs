@@ -49,18 +49,8 @@ pub enum Error {
 
 pub type Result<T> = result::Result<T, Error>;
 
-#[derive(Copy, Clone)]
-enum MtrrMemoryType {
-    UC = 0x0,
-    WB = 0x6,
-}
-
-impl MtrrMemoryType {
-    fn get_value(&self) -> u64 {
-        *self as u64
-    }
-}
-
+const MTRR_MEMTYPE_UC: u8 = 0x0;
+const MTRR_MEMTYPE_WB: u8 = 0x6;
 const MTRR_VAR_VALID: u64 = 0x800;
 const MTRR_ENABLE: u64 = 0x800;
 const MTRR_PHYS_BASE_MSR: u32 = 0x200;
@@ -103,79 +93,10 @@ fn get_mtrr_pairs(base: u64, len: u64) -> Vec<(u64, u64)> {
     vecs
 }
 
-// Fill one var mttr, the base and len satisfy mtrr requirement
-fn fill_var_mtrr(
-    base: u64,
-    len: u64,
-    phys_mask: u64,
-    mtrr_type: MtrrMemoryType,
-    entries: &mut Vec<Register>,
-) {
-    let reg_idx = entries.len() as u32;
-
-    entries.push(Register {
-        id: MTRR_PHYS_BASE_MSR + reg_idx,
-        value: base | mtrr_type.get_value(),
-    });
-    let mask: u64 = len.wrapping_neg() & phys_mask | MTRR_VAR_VALID;
-    entries.push(Register {
-        id: MTRR_PHYS_MASK_MSR + reg_idx,
-        value: mask,
-    });
-}
-
-// Fill var mttrs for specified start and length
-fn fill_var_mtrrs(start: u64, length: u64, phys_mask: u64, entries: &mut Vec<Register>) {
-    // Set start ~ (start + length) as WB
-    // If start < 2G or start > 4G, ascending and descending method could be used, such as 8G ~ 15.5G
-    // ascending method: first set 8G ~ 12G as WB, second set 12G ~ 14G as WB, third set 14G ~ 15G
-    // as WB, fourth set 15G ~ 15.5G as WB
-    // descending method: first set 8G ~ 16G as WB, second set 15.5G ~ 16G as UC
-    // the var mtrr usage number will be calculated for ascending and descending method, the less number
-    // will be chosen.
-    let ascend_wb_vec = get_mtrr_pairs(start, length);
-    if !(0x8000_0000..=0x1_0000_0000).contains(&start) && !length.is_power_of_two() {
-        let next_pow = length.next_power_of_two();
-        let descent_uc_vec = get_mtrr_pairs(start + length, next_pow - length);
-        if descent_uc_vec.len() + 1 < ascend_wb_vec.len() {
-            // Set start ~ (start + next_pow) as WB
-            fill_var_mtrr(start, next_pow, phys_mask, MtrrMemoryType::WB, entries);
-
-            // Set pairs in descent_uc_vec as UC
-            for (base, len) in &descent_uc_vec {
-                fill_var_mtrr(*base, *len, phys_mask, MtrrMemoryType::UC, entries);
-            }
-
-            return;
-        }
-    }
-
-    // Set pairs in ascend_vec as WB
-    for (base, len) in &ascend_wb_vec {
-        fill_var_mtrr(*base, *len, phys_mask, MtrrMemoryType::WB, entries);
-    }
-}
-
-fn fill_above_4g_var_mtrr(ram_end_above_4g: u64, phys_mask: u64, entries: &mut Vec<Register>) {
-    // Set max_len first, such as 4G~8G, 8G~16G, 16G~32G
-    let mut begin: u64 = 0x1_0000_0000;
-    let mut remain_length = ram_end_above_4g - begin;
-    while remain_length >= begin {
-        fill_var_mtrr(begin, begin, phys_mask, MtrrMemoryType::WB, entries);
-        remain_length -= begin;
-        begin *= 2;
-    }
-
-    if remain_length != 0 {
-        fill_var_mtrrs(begin, remain_length, phys_mask, entries);
-    }
-}
-
 fn append_mtrr_entries(
     vm: &dyn Vm,
     vpu: &dyn VcpuX86_64,
-    ram_end_below_4g: u64,
-    ram_end_above_4g: Option<u64>,
+    pci_start: u64,
     entries: &mut Vec<Register>,
 ) {
     // Get VAR MTRR num from MSR_MTRRcap
@@ -188,38 +109,40 @@ fn append_mtrr_entries(
         return;
     }
     let var_num = msrs[0].value & VAR_MTRR_NUM_MASK;
+
+    // Set pci_start .. 4G as UC
+    // all others are set to default WB
+    let pci_len = (1 << 32) - pci_start;
+    let vecs = get_mtrr_pairs(pci_start, pci_len);
+    if vecs.len() as u64 > var_num {
+        warn!(
+            "mtrr fail for pci mmio, please check pci_start addr,
+              guest with pass through device may be very slow"
+        );
+        return;
+    }
+
     let phys_mask: u64 = (1 << vm.get_guest_phys_addr_bits()) - 1;
-
-    let mut new_entries: Vec<Register> = Vec::new();
-    fill_var_mtrrs(0, ram_end_below_4g, phys_mask, &mut new_entries);
-
-    if let Some(above_4g) = ram_end_above_4g {
-        fill_above_4g_var_mtrr(above_4g, phys_mask, &mut new_entries);
+    for (idx, (base, len)) in vecs.iter().enumerate() {
+        let reg_idx = idx as u32 * 2;
+        entries.push(Register {
+            id: MTRR_PHYS_BASE_MSR + reg_idx,
+            value: base | MTRR_MEMTYPE_UC as u64,
+        });
+        let mask: u64 = len.wrapping_neg() & phys_mask | MTRR_VAR_VALID;
+        entries.push(Register {
+            id: MTRR_PHYS_MASK_MSR + reg_idx,
+            value: mask,
+        });
     }
-
-    // each var mtrr has two msr registers
-    let max_len = (var_num * 2) as usize;
-    if new_entries.len() > max_len {
-        // var mtrrs could hold the beginning part of new register pairs only,
-        // the remain part will be lost, then kernel print error message for
-        // remain guest memory and set remain guest memory as reserved.
-        new_entries.truncate(max_len);
-    }
-    entries.append(&mut new_entries);
-
-    // Disable fixed MTRRs and enable variable MTRRs, set default type as UC
+    // Disable fixed MTRRs and enable variable MTRRs, set default type as WB
     entries.push(Register {
         id: crate::msr_index::MSR_MTRRdefType,
-        value: MTRR_ENABLE | MtrrMemoryType::UC.get_value(),
+        value: MTRR_ENABLE | MTRR_MEMTYPE_WB as u64,
     });
 }
 
-fn create_msr_entries(
-    vm: &dyn Vm,
-    vcpu: &dyn VcpuX86_64,
-    ram_end_below_4g: u64,
-    ram_end_above_4g: Option<u64>,
-) -> Vec<Register> {
+fn create_msr_entries(vm: &dyn Vm, vcpu: &dyn VcpuX86_64, pci_start: u64) -> Vec<Register> {
     let mut entries = vec![
         Register {
             id: crate::msr_index::MSR_IA32_SYSENTER_CS,
@@ -264,7 +187,7 @@ fn create_msr_entries(
             value: crate::msr_index::MSR_IA32_MISC_ENABLE_FAST_STRING as u64,
         },
     ];
-    append_mtrr_entries(vm, vcpu, ram_end_below_4g, ram_end_above_4g, &mut entries);
+    append_mtrr_entries(vm, vcpu, pci_start, &mut entries);
     entries
 }
 
@@ -273,16 +196,8 @@ fn create_msr_entries(
 /// # Arguments
 ///
 /// * `vcpu` - Structure for the vcpu that holds the vcpu fd.
-/// * ram_end_below_4g: guest memory end address below 4G.
-/// * ram_end_above_4g: Some(addr), guest memory end address above 4G.
-///                     None, guest memory isn't beyond 4G.
-pub fn setup_msrs(
-    vm: &dyn Vm,
-    vcpu: &dyn VcpuX86_64,
-    ram_end_below_4g: u64,
-    ram_end_above_4g: Option<u64>,
-) -> Result<()> {
-    let msrs = create_msr_entries(vm, vcpu, ram_end_below_4g, ram_end_above_4g);
+pub fn setup_msrs(vm: &dyn Vm, vcpu: &dyn VcpuX86_64, pci_start: u64) -> Result<()> {
+    let msrs = create_msr_entries(vm, vcpu, pci_start);
     vcpu.set_msrs(&msrs).map_err(Error::MsrIoctlFailed)
 }
 
@@ -488,80 +403,5 @@ mod tests {
         assert_eq!(0x9000, sregs.cr3);
         assert_eq!(X86_CR4_PAE, sregs.cr4);
         assert_eq!(X86_CR0_PG, sregs.cr0);
-    }
-
-    #[test]
-    fn mtrr_register() {
-        let phys_mask: u64 = (1 << 39) - 1;
-
-        let mut entries: Vec<Register> = Vec::new();
-        // Set var mtrrs for 0 ~ 3G
-        fill_var_mtrrs(0, 0xC000_0000, phys_mask, &mut entries);
-        // First set 0 ~ 2G as WB
-        assert_eq!(entries[0].value, MtrrMemoryType::WB.get_value());
-        assert_eq!(entries[1].value, 0x7F_8000_0000 | MTRR_VAR_VALID);
-        // second set 2G ~ 3G as WB
-        assert_eq!(
-            entries[2].value,
-            0x8000_0000 | MtrrMemoryType::WB.get_value(),
-        );
-        assert_eq!(entries[3].value, 0x7F_C000_0000 | MTRR_VAR_VALID);
-
-        entries.clear();
-        // Set var mtrrs for 0 ~ 1.75G
-        fill_var_mtrrs(0, 0x7000_0000, phys_mask, &mut entries);
-        // First set 0 ~ 2G as WB
-        assert_eq!(entries[0].value, MtrrMemoryType::WB.get_value());
-        assert_eq!(entries[1].value, 0x7F_8000_0000 | MTRR_VAR_VALID);
-        // second set 1.75G ~ 2G as UC
-        assert_eq!(
-            entries[2].value,
-            0x7000_0000 | MtrrMemoryType::UC.get_value(),
-        );
-        assert_eq!(entries[3].value, 0x7F_F000_0000 | MTRR_VAR_VALID);
-
-        entries.clear();
-        // Set var mtrrs for 4G ~ 17G
-        fill_above_4g_var_mtrr(0x4_4000_0000, phys_mask, &mut entries);
-        // First set 4G ~ 8G as WB
-        assert_eq!(
-            entries[0].value,
-            0x1_0000_0000 | MtrrMemoryType::WB.get_value(),
-        );
-        assert_eq!(entries[1].value, 0x7F_0000_0000 | MTRR_VAR_VALID);
-        // second set 8G ~ 16G as WB
-        assert_eq!(
-            entries[2].value,
-            0x2_0000_0000 | MtrrMemoryType::WB.get_value(),
-        );
-        assert_eq!(entries[3].value, 0x7E_0000_0000 | MTRR_VAR_VALID);
-        // second set 16G~17G as WB
-        assert_eq!(
-            entries[4].value,
-            0x4_0000_0000 | MtrrMemoryType::WB.get_value(),
-        );
-        assert_eq!(entries[5].value, 0x7F_C000_0000 | MTRR_VAR_VALID);
-
-        entries.clear();
-        // Set var mtrrs for 4G ~ 15.5G
-        fill_above_4g_var_mtrr(0x3_E000_0000, phys_mask, &mut entries);
-        // First set 4G ~ 8G as WB
-        assert_eq!(
-            entries[0].value,
-            0x1_0000_0000 | MtrrMemoryType::WB.get_value(),
-        );
-        assert_eq!(entries[1].value, 0x7F_0000_0000 | MTRR_VAR_VALID);
-        // second set 8G ~ 16G as WB
-        assert_eq!(
-            entries[2].value,
-            0x2_0000_0000 | MtrrMemoryType::WB.get_value(),
-        );
-        assert_eq!(entries[3].value, 0x7E_0000_0000 | MTRR_VAR_VALID);
-        // second set 15.5 ~ 16G as WB
-        assert_eq!(
-            entries[4].value,
-            0x3_E000_0000 | MtrrMemoryType::UC.get_value(),
-        );
-        assert_eq!(entries[5].value, 0x7F_E000_0000 | MTRR_VAR_VALID);
     }
 }

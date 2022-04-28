@@ -1244,25 +1244,16 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     "`mem` already given".to_owned(),
                 ));
             }
-            let memory_size: u64 =
-                value
-                    .unwrap()
-                    .parse()
-                    .map_err(|_| argument::Error::InvalidValue {
-                        value: value.unwrap().to_owned(),
-                        expected: String::from("this value for `mem` needs to be integer"),
-                    })?;
-            // Align memory_size to 256MB for MTRR convenience
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            // As memory_size is unit of MB, 0xFF is 256MB mask here
-            let memory_size = if memory_size & 0xFF_u64 != 0 {
-                warn!("guest memory size {}MB isn't aligned to 256MB, it will be truncated to {}MB for MTRR setting convenience", memory_size, memory_size & !0xFF_u64);
-                memory_size & !0xFF_u64
-            } else {
-                memory_size
-            };
-
-            cfg.memory = Some(memory_size);
+            cfg.memory =
+                Some(
+                    value
+                        .unwrap()
+                        .parse()
+                        .map_err(|_| argument::Error::InvalidValue {
+                            value: value.unwrap().to_owned(),
+                            expected: String::from("this value for `mem` needs to be integer"),
+                        })?,
+                )
         }
         #[cfg(target_arch = "aarch64")]
         "swiotlb" => {
