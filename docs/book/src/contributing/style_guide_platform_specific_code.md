@@ -396,12 +396,14 @@ File: `sys.rs`
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         pub mod unix;
-        pub use self::unix::print_hello;
+        use unix as platform;
     } else if #[cfg(windows)] {
         pub mod windows;
-        pub use self::windows::print_hello;
+        use windows as platform;
     }
 }
+
+pub use platform::print;
 ```
 
 File: `unix.rs`
@@ -434,16 +436,16 @@ The user of the library, say mylib, now has to do something like below which mak
 the functions `print_u8` and `print_u16` are platform specific.
 
 ```rust
-use mylib::print_hello;
+use mylib::sys::print;
 
 fn my_print() {
-  print_hello();
+  print();
 
   #[cfg(unix)]
-  mylib::unix::print_u8(1);
+  mylib::sys::unix::print_u8(1);
 
   #[cfg(windows)]
-  mylib::windows::print_u16(1);
+  mylib::sys::windows::print_u16(1);
 }
 
 ```
