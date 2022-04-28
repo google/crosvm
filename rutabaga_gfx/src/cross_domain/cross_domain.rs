@@ -981,6 +981,7 @@ impl RutabagaComponent for CrossDomain {
         &self,
         _ctx_id: u32,
         _context_init: u32,
+        _context_name: Option<&str>,
         fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
         Ok(Box::new(CrossDomainContext {

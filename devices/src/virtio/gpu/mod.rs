@@ -464,9 +464,14 @@ impl Frontend {
             GpuCommand::GetCapset(info) => self
                 .virtio_gpu
                 .get_capset(info.capset_id.to_native(), info.capset_version.to_native()),
-            GpuCommand::CtxCreate(info) => self
-                .virtio_gpu
-                .create_context(info.hdr.ctx_id.to_native(), info.context_init.to_native()),
+            GpuCommand::CtxCreate(info) => {
+                let context_name: Option<String> = String::from_utf8(info.debug_name.to_vec()).ok();
+                self.virtio_gpu.create_context(
+                    info.hdr.ctx_id.to_native(),
+                    info.context_init.to_native(),
+                    context_name.as_deref(),
+                )
+            }
             GpuCommand::CtxDestroy(info) => {
                 self.virtio_gpu.destroy_context(info.hdr.ctx_id.to_native())
             }

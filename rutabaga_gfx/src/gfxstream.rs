@@ -556,6 +556,7 @@ impl RutabagaComponent for Gfxstream {
         &self,
         ctx_id: u32,
         _context_init: u32,
+        _context_name: Option<&str>,
         _fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
         const CONTEXT_NAME: &[u8] = b"gpu_renderer";

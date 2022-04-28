@@ -769,8 +769,14 @@ impl VirtioGpu {
     }
 
     /// Creates a rutabaga context.
-    pub fn create_context(&mut self, ctx_id: u32, context_init: u32) -> VirtioGpuResult {
-        self.rutabaga.create_context(ctx_id, context_init)?;
+    pub fn create_context(
+        &mut self,
+        ctx_id: u32,
+        context_init: u32,
+        context_name: Option<&str>,
+    ) -> VirtioGpuResult {
+        self.rutabaga
+            .create_context(ctx_id, context_init, context_name)?;
         Ok(OkNoData)
     }
 

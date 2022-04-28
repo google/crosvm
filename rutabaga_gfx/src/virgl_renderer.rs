@@ -597,9 +597,14 @@ impl RutabagaComponent for VirglRenderer {
         &self,
         ctx_id: u32,
         context_init: u32,
+        context_name: Option<&str>,
         _fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
-        const CONTEXT_NAME: &[u8] = b"gpu_renderer";
+        let mut name: &str = "gpu_renderer";
+        if let Some(name_string) = context_name.filter(|s| s.len() > 0) {
+            name = name_string;
+        }
+
         // Safe because virglrenderer is initialized by now and the context name is statically
         // allocated. The return value is checked before returning a new context.
         let ret = unsafe {
@@ -607,22 +612,18 @@ impl RutabagaComponent for VirglRenderer {
             match context_init {
                 0 => virgl_renderer_context_create(
                     ctx_id,
-                    CONTEXT_NAME.len() as u32,
-                    CONTEXT_NAME.as_ptr() as *const c_char,
+                    name.len() as u32,
+                    name.as_ptr() as *const c_char,
                 ),
                 _ => virgl_renderer_context_create_with_flags(
                     ctx_id,
                     context_init,
-                    CONTEXT_NAME.len() as u32,
-                    CONTEXT_NAME.as_ptr() as *const c_char,
+                    name.len() as u32,
+                    name.as_ptr() as *const c_char,
                 ),
             }
             #[cfg(not(feature = "virgl_renderer_next"))]
-            virgl_renderer_context_create(
-                ctx_id,
-                CONTEXT_NAME.len() as u32,
-                CONTEXT_NAME.as_ptr() as *const c_char,
-            )
+            virgl_renderer_context_create(ctx_id, name.len() as u32, name.as_ptr() as *const c_char)
         };
         ret_to_res(ret)?;
         Ok(Box::new(VirglRendererContext { ctx_id }))

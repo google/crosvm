@@ -156,6 +156,7 @@ pub trait RutabagaComponent {
         &self,
         _ctx_id: u32,
         _context_init: u32,
+        _context_name: Option<&str>,
         _fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
         Err(RutabagaError::Unsupported)
@@ -586,7 +587,12 @@ impl Rutabaga {
 
     /// Creates a context with the given `ctx_id` and `context_init` variable.
     /// `context_init` is used to determine which rutabaga component creates the context.
-    pub fn create_context(&mut self, ctx_id: u32, context_init: u32) -> RutabagaResult<()> {
+    pub fn create_context(
+        &mut self,
+        ctx_id: u32,
+        context_init: u32,
+        context_name: Option<&str>,
+    ) -> RutabagaResult<()> {
         // The default workaround is just until context types are fully supported in all
         // Google kernels.
         let capset_id = context_init & RUTABAGA_CONTEXT_INIT_CAPSET_ID_MASK;
@@ -603,7 +609,12 @@ impl Rutabaga {
             return Err(RutabagaError::InvalidContextId);
         }
 
-        let ctx = component.create_context(ctx_id, context_init, self.fence_handler.clone())?;
+        let ctx = component.create_context(
+            ctx_id,
+            context_init,
+            context_name,
+            self.fence_handler.clone(),
+        )?;
         self.contexts.insert(ctx_id, ctx);
         Ok(())
     }
