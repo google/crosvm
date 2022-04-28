@@ -62,14 +62,16 @@ pub const __FD_SETSIZE: u32 = 1024;
 pub const PLAT_IRQ_FORWARD_API_VERSION: u32 = 0;
 pub const PLAT_IRQ_FORWARD_TYPE: u32 = 59;
 pub const PLAT_IRQ_FORWARD_BASE: u32 = 100;
-pub const GPE_FORWARD_BASE: u32 = 130;
+pub const ACPI_EVT_FORWARD_BASE: u32 = 130;
 pub const PLAT_IRQ_FORWARD_SET_LEVEL_TRIGGER_EVENTFD: u32 = 1;
 pub const PLAT_IRQ_FORWARD_SET_LEVEL_UNMASK_EVENTFD: u32 = 2;
 pub const PLAT_IRQ_FORWARD_SET_EDGE_TRIGGER: u32 = 4;
-pub const PLAT_IRQ_FORWARD_SET_LEVEL_SCI_FOR_GPE_TRIGGER_EVENTFD: u32 = 8;
-pub const PLAT_IRQ_FORWARD_SET_LEVEL_SCI_FOR_GPE_UNMASK_EVENTFD: u32 = 16;
-pub const ACPI_GPE_FORWARD_SET_TRIGGER: u32 = 1;
-pub const ACPI_GPE_FORWARD_CLEAR_TRIGGER: u32 = 2;
+pub const PLAT_IRQ_FORWARD_SET_LEVEL_ACPI_SCI_TRIGGER_EVENTFD: u32 = 8;
+pub const PLAT_IRQ_FORWARD_SET_LEVEL_ACPI_SCI_UNMASK_EVENTFD: u32 = 16;
+pub const ACPI_EVT_FORWARD_SET_GPE_TRIGGER: u32 = 1;
+pub const ACPI_EVT_FORWARD_CLEAR_GPE_TRIGGER: u32 = 2;
+pub const ACPI_EVT_FORWARD_SET_FIXED_EVENT_TRIGGER: u32 = 4;
+pub const ACPI_EVT_FORWARD_CLEAR_FIXED_EVENT_TRIGGER: u32 = 8;
 pub type __s8 = ::std::os::raw::c_schar;
 pub type __u8 = ::std::os::raw::c_uchar;
 pub type __s16 = ::std::os::raw::c_short;
@@ -137,9 +139,24 @@ pub struct plat_irq_forward_set {
     pub eventfd: __IncompleteArrayField<__u8>,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct gpe_forward_set {
+#[derive(Default, Copy, Clone)]
+pub struct acpi_evt_forward_set {
     pub argsz: __u32,
     pub action_flags: __u32,
+    pub __bindgen_anon_1: acpi_evt_forward_set__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union acpi_evt_forward_set__bindgen_ty_1 {
     pub gpe_host_nr: __u32,
+    pub fixed_evt_nr: __u32,
+}
+impl Default for acpi_evt_forward_set__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
