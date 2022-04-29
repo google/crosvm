@@ -23,7 +23,7 @@ use crate::SharedMemory as CrateSharedMemory;
 use crate::{AsRawDescriptor, IntoRawDescriptor, RawDescriptor, SafeDescriptor};
 
 /// A shared memory file descriptor and its size.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SharedMemory {
     #[serde(with = "super::with_as_descriptor")]
     fd: File,

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 /// See [SharedMemory](crate::platform::SharedMemory) for struct- and method-level
 /// documentation.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SharedMemory(pub(crate) SysUtilSharedMemory);
 impl SharedMemory {

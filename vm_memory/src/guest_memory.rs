@@ -68,7 +68,7 @@ bitflags! {
 }
 
 /// A file-like object backing `MemoryRegion`.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum BackingObject {
     Shm(Arc<SharedMemory>),
     File(Arc<File>),
@@ -95,6 +95,7 @@ impl AsRef<dyn AsRawDescriptor + Sync + Send> for BackingObject {
 /// A regions of memory mapped memory.
 /// Holds the memory mapping with its offset in guest memory.
 /// Also holds the backing object for the mapping and the offset in that object of the mapping.
+#[derive(Debug)]
 pub struct MemoryRegion {
     mapping: MemoryMapping,
     guest_base: GuestAddress,
@@ -162,7 +163,7 @@ impl MemoryRegion {
 
 /// Tracks memory regions and where they are mapped in the guest, along with shm
 /// fds of the underlying memory regions.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GuestMemory {
     regions: Arc<[MemoryRegion]>,
 }
