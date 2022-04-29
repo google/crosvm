@@ -36,6 +36,15 @@ git branch --set-upstream-to cros/main
 git rebase
 ```
 
+## First time setup / running tools
+
+- All CrosVM `tools` are not expected to work inside the ChromeOS chroot. As such, they must be run
+  outside the chroot (but inside the source tree).
+
+- Cloning the ChromeOS source tree will not clone submodules relied upon by the CrosVM build (e.g.
+  as used by `tools`). To fix this, run `git submodules update --init` in the `crosvm` root from
+  outside the chroot.
+
 ## Cq-Depend
 
 **We cannot support Cq-Depend** to sychronize changes with other ChromeOS repositories. Please try
