@@ -21,7 +21,6 @@ use std::{
     fs::{File, OpenOptions},
     path::Path,
     ptr::null_mut,
-    sync::Once,
 };
 use winapi::{
     shared::{minwindef::DWORD, winerror::WAIT_TIMEOUT},
@@ -44,35 +43,6 @@ pub fn pagesize() -> usize {
 pub fn getpid() -> pid_t {
     // Safe because we only use the return value. ProcessId can safely be converted from DWORD to i32.
     unsafe { GetCurrentProcessId() as pid_t }
-}
-
-#[link(name = "stdio_fileno", kind = "static")]
-extern "C" {
-    fn stdout_fileno() -> i32;
-    fn stderr_fileno() -> i32;
-}
-
-static mut STDOUT_FILENO: (Option<i32>, Once) = (None, Once::new());
-static mut STDERR_FILENO: (Option<i32>, Once) = (None, Once::new());
-
-pub fn get_stdout_fileno() -> i32 {
-    // safe because use once to initialize this global structure and never write to it ever since
-    unsafe {
-        STDOUT_FILENO.1.call_once(|| {
-            STDOUT_FILENO.0.replace(stdout_fileno());
-        });
-        STDOUT_FILENO.0.unwrap()
-    }
-}
-
-pub fn get_stderr_fileno() -> i32 {
-    // safe because use once to initialize this global structure and never write to it ever since
-    unsafe {
-        STDERR_FILENO.1.call_once(|| {
-            STDERR_FILENO.0.replace(stderr_fileno());
-        });
-        STDERR_FILENO.0.unwrap()
-    }
 }
 
 /// A Mutex (no data) that works across processes on Windows.

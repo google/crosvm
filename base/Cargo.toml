@@ -32,6 +32,3 @@ win_util = { path = "../win_util"}
 
 [target.'cfg(windows)'.dev-dependencies]
 regex = "*"
-
-[build-dependencies]
-cc = "*"
