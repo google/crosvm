@@ -552,6 +552,14 @@ pub struct RunCommand {
     /// enable interrupt passthrough
     pub direct_edge_irq: Vec<u32>,
     #[cfg(feature = "direct")]
+    #[argh(
+        option,
+        long = "direct-fixed-event",
+        arg_name = "event=gbllock|powerbtn|sleepbtn|rtc"
+    )]
+    /// enable ACPI fixed event interrupt and register access passthrough
+    pub direct_fixed_evts: Vec<devices::ACPIPMFixedEvent>,
+    #[cfg(feature = "direct")]
     #[argh(option, arg_name = "gpe")]
     /// enable GPE interrupt and register access passthrough
     pub direct_gpe: Vec<u32>,
@@ -1807,6 +1815,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.direct_level_irq = cmd.direct_level_irq;
             cfg.direct_edge_irq = cmd.direct_edge_irq;
             cfg.direct_gpe = cmd.direct_gpe;
+            cfg.direct_fixed_evts = cmd.direct_fixed_evts;
             cfg.pcie_rp = cmd.pcie_rp;
             cfg.mmio_address_ranges = cmd.mmio_address_ranges.unwrap_or_default();
         }

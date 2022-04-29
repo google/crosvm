@@ -1169,6 +1169,8 @@ pub struct Config {
     #[cfg(feature = "direct")]
     pub direct_edge_irq: Vec<u32>,
     #[cfg(feature = "direct")]
+    pub direct_fixed_evts: Vec<devices::ACPIPMFixedEvent>,
+    #[cfg(feature = "direct")]
     pub direct_gpe: Vec<u32>,
     #[cfg(feature = "direct")]
     pub direct_level_irq: Vec<u32>,
@@ -1361,6 +1363,8 @@ impl Default for Config {
             delay_rt: false,
             #[cfg(feature = "direct")]
             direct_edge_irq: Vec::new(),
+            #[cfg(feature = "direct")]
+            direct_fixed_evts: Vec::new(),
             #[cfg(feature = "direct")]
             direct_gpe: Vec::new(),
             #[cfg(feature = "direct")]

@@ -1115,7 +1115,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         #[cfg(feature = "direct")]
         direct_gpe: cfg.direct_gpe.clone(),
         #[cfg(feature = "direct")]
-        direct_fixed_evts: Vec::new(),
+        direct_fixed_evts: cfg.direct_fixed_evts.clone(),
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
         vm_image,
