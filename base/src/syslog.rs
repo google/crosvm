@@ -515,17 +515,19 @@ pub fn log(pri: Priority, fac: Facility, file_line: Option<(&str, u32)>, args: &
         write_to_file(&buf, *len, &mut state);
     } else if let Err(e) = &res {
         // Don't use warn macro to avoid potential recursion issues after macro expansion.
-        let err_buf = [0u8; 1024];
-        let mut buf_cursor = Cursor::new(&mut buf[..]);
-        if writeln!(
-            &mut buf_cursor,
-            "[{}]:WARNING: Failed to log with err: {:?}",
-            chrono::Local::now().format(CHRONO_TIMESTAMP_FIXED_FMT!()),
-            e
-        )
-        .is_ok()
-        {
-            write_to_file(&err_buf, buf_cursor.position() as usize, &mut state);
+        let mut err_buf = [0u8; 1024];
+        let res = {
+            let mut buf_cursor = Cursor::new(&mut err_buf[..]);
+            writeln!(
+                &mut buf_cursor,
+                "[{}]:WARNING: Failed to log with err: {:?}",
+                chrono::Local::now().format(CHRONO_TIMESTAMP_FIXED_FMT!()),
+                e,
+            )
+            .map(|()| buf_cursor.position() as usize)
+        };
+        if let Ok(len) = &res {
+            write_to_file(&err_buf, *len, &mut state);
         }
     }
 }
