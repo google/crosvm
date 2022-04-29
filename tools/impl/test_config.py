@@ -111,23 +111,27 @@ CRATE_OPTIONS: dict[str, list[TestOption]] = {
         TestOption.SINGLE_THREADED,
         TestOption.LARGE,
         TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
+        TestOption.DO_NOT_RUN_ARMHF,
     ],
     "disk": [TestOption.DO_NOT_RUN_AARCH64, TestOption.DO_NOT_RUN_ARMHF],  # b/202294155
     "fuzz": [TestOption.DO_NOT_BUILD],
     "hypervisor": [
         TestOption.DO_NOT_RUN_AARCH64,
+        TestOption.DO_NOT_RUN_ARMHF,
         TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
     ],  # b/181672912
     "integration_tests": [  # b/180196508
         TestOption.SINGLE_THREADED,
         TestOption.LARGE,
         TestOption.DO_NOT_RUN_AARCH64,
+        TestOption.DO_NOT_RUN_ARMHF,
         TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
     ],
     "io_uring": [TestOption.DO_NOT_RUN],  # b/202294403
     "kvm_sys": [TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL],
     "kvm": [
         TestOption.DO_NOT_RUN_AARCH64,
+        TestOption.DO_NOT_RUN_ARMHF,
         TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
     ],  # b/181674144
     "libcrosvm_control": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864

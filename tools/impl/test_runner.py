@@ -326,6 +326,7 @@ def execute_all(
     repeat: int,
 ):
     """Executes all tests in the `executables` list in parallel."""
+
     executables = [e for e in executables if should_run_executable(e, target.arch)]
     if repeat > 1:
         executables = executables * repeat
@@ -391,7 +392,9 @@ def main():
     os.environ["RUST_BACKTRACE"] = "1"
 
     target = (
-        test_target.TestTarget(args.target) if args.target else test_target.TestTarget.default()
+        test_target.TestTarget(args.target, args.arch)
+        if args.target
+        else test_target.TestTarget.default()
     )
     print("Test target:", target)
 

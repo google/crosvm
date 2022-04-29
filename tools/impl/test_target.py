@@ -117,7 +117,7 @@ class TestTarget(object):
     def default(cls):
         return cls(os.environ.get("CROSVM_TEST_TARGET", "host"))
 
-    def __init__(self, target_str: str):
+    def __init__(self, target_str: str, build_arch: str = None):
         """target_str can be "vm:arch", "ssh:hostname" or just "host" """
         self.target_str = target_str
         parts = target_str.split(":")
@@ -131,6 +131,8 @@ class TestTarget(object):
             self.is_host = True
         else:
             raise Exception(f"Invalid target {target_str}")
+        if build_arch:
+            self.__arch = cast(Arch, build_arch)
 
     @property
     def arch(self) -> Arch:
