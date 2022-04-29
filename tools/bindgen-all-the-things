@@ -6,7 +6,7 @@
 # Regenerate all bindgen-generated Rust bindings in the crosvm tree.
 #
 # This script expects to be executed from a full Chrome OS checkout so it has access to the kernel
-# and other repositories.
+# and other repositories. Note that it must be run from OUTSIDE the chroot.
 
 set -e
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
