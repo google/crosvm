@@ -1041,8 +1041,8 @@ impl VmRequest {
                 VmResponse::Ok
             }
             VmRequest::Powerbtn => {
-                if pm.is_some() {
-                    pm.as_ref().unwrap().lock().pwrbtn_evt();
+                if let Some(pm) = pm {
+                    pm.lock().pwrbtn_evt();
                     VmResponse::Ok
                 } else {
                     error!("{:#?} not supported", *self);
