@@ -2,6 +2,9 @@
 
 lucicfg.check_version("1.30.9", "Please update depot_tools")
 
+# Use LUCI Scheduler BBv2 names and add Scheduler realms configs.
+lucicfg.enable_experiment("crbug.com/1182002")
+
 lucicfg.config(
     config_dir = "generated",
     tracked_files = ["*.cfg"],
@@ -41,6 +44,31 @@ luci.project(
             groups = "googlers",
         ),
     ],
+    acls = [
+        # Publicly readable.
+        acl.entry(
+            roles = [
+                acl.BUILDBUCKET_READER,
+                acl.LOGDOG_READER,
+                acl.PROJECT_CONFIGS_READER,
+                acl.SCHEDULER_READER,
+            ],
+            groups = "all",
+        ),
+        # Allow committers to use CQ and to force-trigger and stop CI builds.
+        acl.entry(
+            roles = [
+                acl.SCHEDULER_OWNER,
+                acl.CQ_COMMITTER,
+            ],
+            groups = "mdb/crosvm-acl-luci-admin",
+        ),
+        # Group with bots that have write access to the Logdog prefix.
+        acl.entry(
+            roles = acl.LOGDOG_WRITER,
+            groups = "luci-logdog-chromium-writers",
+        ),
+    ],
 )
 
 # Per-service tweaks.
@@ -60,7 +88,17 @@ luci.recipe.defaults.use_python3.set(True)
 luci.bucket(name = "try")
 
 # The ci bucket will include builders which work on post-commit code.
-luci.bucket(name = "ci")
+luci.bucket(
+    name = "ci",
+    acls = [
+        acl.entry(
+            roles = acl.BUILDBUCKET_TRIGGERER,
+            groups = [
+                "mdb/crosvm-acl-luci-admin",
+            ],
+        ),
+    ],
+)
 
 # The prod bucket will include builders which work on post-commit code and
 # generate executable artifacts used by other users or machines.
