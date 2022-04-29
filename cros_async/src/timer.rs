@@ -18,11 +18,17 @@ impl TimerAsync {
     }
 
     /// Gets the next value from the timer.
+    ///
+    /// NOTE: on Windows, this may return/wake early. See `base::Timer` docs
+    /// for details.
     pub async fn next_val(&self) -> AsyncResult<u64> {
         self.io_source.wait_for_handle().await
     }
 
-    /// Async sleep for the given duration
+    /// Async sleep for the given duration.
+    ///
+    /// NOTE: on Windows, this sleep may wake early. See `base::Timer` docs
+    /// for details.
     pub async fn sleep(ex: &Executor, dur: Duration) -> std::result::Result<(), Error> {
         let mut tfd = Timer::new().map_err(Error::Timer)?;
         tfd.reset(dur, None).map_err(Error::Timer)?;
