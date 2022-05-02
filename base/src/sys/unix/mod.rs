@@ -21,7 +21,6 @@ pub mod ioctl;
 pub mod syslog;
 mod acpi_event;
 mod capabilities;
-mod clock;
 mod descriptor;
 mod eventfd;
 mod file_flags;
@@ -56,7 +55,6 @@ pub use crate::{
 pub use acpi_event::*;
 pub use base_poll_token_derive::*;
 pub use capabilities::drop_capabilities;
-pub use clock::{Clock, FakeClock};
 pub use descriptor::*;
 pub use eventfd::*;
 pub use file_flags::*;

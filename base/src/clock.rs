@@ -41,7 +41,7 @@ impl Default for Clock {
 
 const NS_PER_SEC: u64 = 1_000_000_000;
 /// A fake clock that can be used in tests to give exact control over the time.
-/// For a code example, see the tests in sys_util/src/timer.rs.
+/// For a code example, see the tests in base/src/timer.rs.
 #[derive(Debug)]
 pub struct FakeClock {
     ns_since_epoch: u64,

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 mod alloc;
+mod clock;
 pub mod descriptor;
 pub mod descriptor_reflection;
 mod errno;
@@ -18,6 +19,7 @@ pub mod sys;
 pub use sys::platform;
 
 pub use alloc::LayoutAllocation;
+pub use clock::{Clock, FakeClock};
 pub use errno::{errno_result, Error, Result};
 pub use external_mapping::{Error as ExternalMappingError, Result as ExternalMappingResult, *};
 pub use mmap::{MemoryMapping, MemoryMappingBuilder};
