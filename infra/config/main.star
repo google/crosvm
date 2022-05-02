@@ -122,4 +122,5 @@ luci.builder(
         name = "hello_world",
     ),
     schedule = "with 1m interval",
+    service_account = "crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com",
 )
