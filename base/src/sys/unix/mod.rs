@@ -66,7 +66,7 @@ pub use poll::*;
 pub use priority::*;
 pub use sched::*;
 pub use scoped_signal_handler::*;
-pub use shm::*;
+pub use shm::{kernel_has_memfd, MemfdSeals, SharedMemory, Unix as SharedMemoryUnix};
 pub use signal::*;
 pub use signalfd::*;
 pub use sock_ctrl_msg::*;

@@ -44,7 +44,7 @@ cfg_if::cfg_if! {
 
         pub use event::{Event, EventReadResult, ScopedEvent};
         pub use platform::{MemoryMappingBuilderUnix, Unix as MemoryMappingUnix};
-        pub use shm::{SharedMemory, Unix as SharedMemoryUnix};
+        pub use shm::SharedMemory;
         pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
      } else if #[cfg(windows)] {
         pub use platform::MemoryMappingBuilderWindows;

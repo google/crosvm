@@ -3,10 +3,10 @@
 // found in the LICENSE file.
 
 use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
-use crate::{Error, MemfdSeals, RawDescriptor, Result};
+use crate::{Error, RawDescriptor, Result};
 #[cfg(unix)]
 use std::os::unix::io::RawFd;
-use std::{ffi::CStr, fs::File, os::unix::io::IntoRawFd};
+use std::{ffi::CStr, os::unix::io::IntoRawFd};
 
 use crate::platform::SharedMemory as SysUtilSharedMemory;
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 /// documentation.
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct SharedMemory(SysUtilSharedMemory);
+pub struct SharedMemory(pub(crate) SysUtilSharedMemory);
 impl SharedMemory {
     pub fn named<T: Into<Vec<u8>>>(name: T, size: u64) -> Result<SharedMemory> {
         SysUtilSharedMemory::named(name)
@@ -48,26 +48,6 @@ impl SharedMemory {
         size: Option<u64>,
     ) -> Result<SharedMemory> {
         SysUtilSharedMemory::from_safe_descriptor(descriptor, size).map(SharedMemory)
-    }
-}
-
-pub trait Unix {
-    fn from_file(file: File) -> Result<SharedMemory> {
-        SysUtilSharedMemory::from_file(file).map(SharedMemory)
-    }
-
-    fn get_seals(&self) -> Result<MemfdSeals>;
-
-    fn add_seals(&mut self, seals: MemfdSeals) -> Result<()>;
-}
-
-impl Unix for SharedMemory {
-    fn get_seals(&self) -> Result<MemfdSeals> {
-        self.0.get_seals()
-    }
-
-    fn add_seals(&mut self, seals: MemfdSeals) -> Result<()> {
-        self.0.add_seals(seals)
     }
 }
 

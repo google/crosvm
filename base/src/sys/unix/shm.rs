@@ -19,6 +19,7 @@ use libc::{
 use serde::{Deserialize, Serialize};
 
 use super::{errno_result, Error, Result};
+use crate::SharedMemory as CrateSharedMemory;
 use crate::{AsRawDescriptor, IntoRawDescriptor, RawDescriptor, SafeDescriptor};
 
 /// A shared memory file descriptor and its size.
@@ -329,6 +330,26 @@ pub fn kernel_has_memfd() -> bool {
         close(fd);
     }
     true
+}
+
+pub trait Unix {
+    fn from_file(file: File) -> Result<CrateSharedMemory> {
+        SharedMemory::from_file(file).map(CrateSharedMemory)
+    }
+
+    fn get_seals(&self) -> Result<MemfdSeals>;
+
+    fn add_seals(&mut self, seals: MemfdSeals) -> Result<()>;
+}
+
+impl Unix for CrateSharedMemory {
+    fn get_seals(&self) -> Result<MemfdSeals> {
+        self.0.get_seals()
+    }
+
+    fn add_seals(&mut self, seals: MemfdSeals) -> Result<()> {
+        self.0.add_seals(seals)
+    }
 }
 
 #[cfg(test)]
