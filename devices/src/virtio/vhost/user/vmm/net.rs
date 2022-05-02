@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod sys;
+
 use std::cell::RefCell;
-use std::os::unix::net::UnixStream;
-use std::path::Path;
 use std::thread;
 use std::u32;
 
@@ -29,9 +29,7 @@ pub struct Net {
 }
 
 impl Net {
-    pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Net> {
-        let socket = UnixStream::connect(&socket_path).map_err(Error::SocketConnect)?;
-
+    fn get_all_features(base_features: u64) -> (u64, u64, VhostUserProtocolFeatures) {
         let allow_features = 1 << crate::virtio::VIRTIO_F_VERSION_1
             | 1 << virtio_net::VIRTIO_NET_F_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_CTRL_VQ
@@ -49,21 +47,7 @@ impl Net {
         let allow_protocol_features =
             VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
 
-        let mut handler = VhostUserHandler::new_from_stream(
-            socket,
-            3, /* # of queues */
-            allow_features,
-            init_features,
-            allow_protocol_features,
-        )?;
-        let queue_sizes = handler.queue_sizes(QUEUE_SIZE, 3 /* rx, tx, ctrl */)?;
-
-        Ok(Net {
-            kill_evt: None,
-            worker_thread: None,
-            handler: RefCell::new(handler),
-            queue_sizes,
-        })
+        (allow_features, init_features, allow_protocol_features)
     }
 }
 
