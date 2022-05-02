@@ -15,7 +15,7 @@ use audio_streams::{
 };
 use base::{
     self, error, set_rt_prio_limit, set_rt_round_robin, warn, AsRawDescriptor, AsRawDescriptors,
-    FromRawDescriptor, RawDescriptor, SharedMemoryUnix,
+    FromRawDescriptor, RawDescriptor,
 };
 use remain::sorted;
 use sync::{Condvar, Mutex};
@@ -578,7 +578,8 @@ impl Ac97BusMaster {
             let rd = base::clone_descriptor(desc).map_err(AudioError::CloneDescriptor)?;
             // Safe because the fd is owned.
             let sd = unsafe { base::SafeDescriptor::from_raw_descriptor(rd) };
-            base::SharedMemory::from_safe_descriptor(sd).map_err(AudioError::CreateSharedMemory)?
+            base::SharedMemory::from_safe_descriptor(sd, None)
+                .map_err(AudioError::CreateSharedMemory)?
         };
 
         let stream = self

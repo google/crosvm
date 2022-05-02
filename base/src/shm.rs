@@ -36,17 +36,22 @@ impl SharedMemory {
     pub fn size(&self) -> u64 {
         self.0.size()
     }
-}
 
-pub trait Unix {
     /// Creates a SharedMemory instance from a SafeDescriptor owning a reference to a
     /// shared memory descriptor. Ownership of the underlying descriptor is transferred to the
     /// new SharedMemory object.
-    fn from_safe_descriptor(descriptor: SafeDescriptor) -> Result<SharedMemory> {
-        let file = unsafe { File::from_raw_descriptor(descriptor.into_raw_descriptor()) };
-        SysUtilSharedMemory::from_file(file).map(SharedMemory)
+    /// `size` needs to be Some() on windows.
+    /// On unix, when `size` is Some(value), the mapping size is set to `value`.
+    // TODO(b:231319974): Make size non-optional arg.
+    pub fn from_safe_descriptor(
+        descriptor: SafeDescriptor,
+        size: Option<u64>,
+    ) -> Result<SharedMemory> {
+        SysUtilSharedMemory::from_safe_descriptor(descriptor, size).map(SharedMemory)
     }
+}
 
+pub trait Unix {
     fn from_file(file: File) -> Result<SharedMemory> {
         SysUtilSharedMemory::from_file(file).map(SharedMemory)
     }

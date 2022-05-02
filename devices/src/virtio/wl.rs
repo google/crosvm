@@ -642,8 +642,8 @@ impl WlVfd {
                 desc,
             } => {
                 let mut vfd = WlVfd::default();
-                let vfd_shm =
-                    SharedMemory::from_safe_descriptor(descriptor).map_err(WlError::NewAlloc)?;
+                let vfd_shm = SharedMemory::from_safe_descriptor(descriptor, None)
+                    .map_err(WlError::NewAlloc)?;
                 vfd.guest_shared_memory = Some(vfd_shm);
                 vfd.slot = Some((slot, pfn, vm));
                 vfd.is_dmabuf = true;

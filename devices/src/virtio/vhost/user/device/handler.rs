@@ -127,7 +127,7 @@ pub fn create_guest_memory(
             region.memory_size,
             GuestAddress(region.guest_phys_addr),
             region.mmap_offset,
-            Arc::new(SharedMemory::from_safe_descriptor(SafeDescriptor::from(file)).unwrap()),
+            Arc::new(SharedMemory::from_safe_descriptor(SafeDescriptor::from(file), None).unwrap()),
         )
         .map_err(|e| {
             error!("failed to create a memory region: {}", e);
