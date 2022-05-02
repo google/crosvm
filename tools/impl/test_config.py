@@ -82,7 +82,6 @@ WIN64_DISABLED_CRATES = [
     "rutabaga_gfx",
     "rutabaga_gralloc",
     "sync",
-    "sys_util",
     "system_api_stub",
     "tpm2-sys",
     "tpm2",
@@ -137,8 +136,6 @@ CRATE_OPTIONS: dict[str, list[TestOption]] = {
     "libcrosvm_control": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
     "libvda": [TestOption.DO_NOT_BUILD],  # b/202293971
     "rutabaga_gfx": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
-    "sys_util": [TestOption.SINGLE_THREADED],
-    "sys_util_core": [TestOption.SINGLE_THREADED],
     "vhost": [TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL],
     "vm_control": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
 }

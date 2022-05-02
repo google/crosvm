@@ -97,9 +97,6 @@ exclude = [
     "common/io_uring",
     "common/p9",
     "common/sync",
-    "common/sys_util",
-    "common/sys_util_core",
-    "common/win_sys_util",
     "tube_transporter",
     "win_util",
 ]

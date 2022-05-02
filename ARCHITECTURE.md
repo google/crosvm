@@ -194,8 +194,7 @@ Source code is organized into crates, each with their own unit tests.
 
 - `./src/` - The top-level binary front-end for using crosvm.
 - `aarch64` - Support code specific to 64 bit ARM architectures.
-- `base` - Safe wrappers for small system facilities which provides cross-platform-compatible
-  interfaces. For Linux, this is basically a thin wrapper of `sys_util`.
+- `base` - Safe wrappers for system facilities which provides cross-platform-compatible interfaces.
 - `bin` - Scripts for code health such as wrappers of `rustfmt` and `clippy`.
 - `ci` - Scripts for continuous integration.
 - `cros_async` - Runtime for async/await programming. This crate provides a `Future` executor based
@@ -217,7 +216,6 @@ Source code is organized into crates, each with their own unit tests.
 - `seccomp` - Contains minijail seccomp policy files for each sandboxed device. Because some
   syscalls vary by architecture, the seccomp policies are split by architecture.
 - `sync` - Our version of `std::sync::Mutex` and `std::sync::Condvar`.
-- `sys_util` - Mostly safe wrappers for small system facilities such as `eventfd` or `syslog`.
 - `third_party` - Third-party libraries which we are maintaining on the Chrome OS tree or the AOSP
   tree.
 - `vfio_sys` - Low-level (mostly) auto-generated structures, constants and ioctls for [VFIO].

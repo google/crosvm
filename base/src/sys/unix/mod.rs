@@ -4,11 +4,6 @@
 
 //! Small system utility modules for usage by other modules.
 
-// Fail sys_util compilation on windows.
-// This will make any unintentional windows code submitted to the crate unusable.
-#[cfg(windows)]
-compile_error!("This is not windows friendly mod.");
-
 #[cfg(target_os = "android")]
 mod android;
 #[cfg(target_os = "android")]

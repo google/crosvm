@@ -85,7 +85,7 @@ pub(crate) fn async_handle_from<'a, F: IntoAsync + 'a + Send>(
 /// # fn do_it() -> Result<(), Box<dyn Error>> {
 ///     let ex = Executor::new()?;
 ///
-///     let (rx, tx) = sys_util::pipe(true)?;
+///     let (rx, tx) = base::pipe(true)?;
 ///     let zero = File::open("/dev/zero")?;
 ///     let zero_bytes = CHUNK_SIZE * 7;
 ///     let zero_to_pipe = transfer_data(

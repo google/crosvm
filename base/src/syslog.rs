@@ -637,7 +637,7 @@ mod tests {
             Some((file!(), line!())),
             &format_args!("before proc name"),
         );
-        set_proc_name("sys_util-test");
+        set_proc_name("syslog-test");
         log(
             Priority::Error,
             Facility::User,
