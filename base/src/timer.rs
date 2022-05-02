@@ -199,7 +199,7 @@ mod tests {
     fn one_shot() {
         // This test relies on the host having a reliable clock and not being
         // overloaded, so it's marked as "ignore".  You can run by running
-        // cargo test -p win_sys_util timer -- --ignored
+        // cargo test -p base timer -- --ignored
 
         let mut tfd = Timer::new().expect("failed to create Timer");
 
@@ -243,7 +243,7 @@ mod tests {
     fn repeating() {
         // This test relies on the host having a reliable clock and not being
         // overloaded, so it's marked as "ignore".  You can run by running
-        // cargo test -p win_sys_util timer -- --ignored
+        // cargo test -p base timer -- --ignored
 
         let mut tfd = Timer::new().expect("failed to create Timer");
 
@@ -335,7 +335,7 @@ mod tests {
     fn zero_interval() {
         // This test relies on the host having a reliable clock and not being
         // overloaded, so it's marked as "ignore".  You can run by running
-        // cargo test -p win_sys_util timer -- --ignored
+        // cargo test -p base timer -- --ignored
 
         let mut tfd = Timer::new().expect("failed to create timer");
 
