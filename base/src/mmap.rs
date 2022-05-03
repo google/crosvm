@@ -136,7 +136,7 @@ impl<'a> MemoryMappingBuilder<'a> {
                     addr,
                     self.size,
                     self.protection.unwrap_or_else(Protection::read_write),
-                ),
+                )?,
                 None,
             ),
             Some(descriptor) => MemoryMappingBuilder::wrap(
@@ -146,7 +146,7 @@ impl<'a> MemoryMappingBuilder<'a> {
                     self.size,
                     self.offset.unwrap_or(0),
                     self.protection.unwrap_or_else(Protection::read_write),
-                ),
+                )?,
                 None,
             ),
         }

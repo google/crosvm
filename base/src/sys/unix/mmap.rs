@@ -16,9 +16,7 @@ use crate::{
     external_mapping::ExternalMapping, AsRawDescriptor, Descriptor,
     MemoryMapping as CrateMemoryMapping, MemoryMappingBuilder, RawDescriptor, SafeDescriptor,
 };
-use libc::{
-    c_int, c_void, read, write, {self},
-};
+use libc::{self, c_int, c_void, read, write};
 use remain::sorted;
 
 use data_model::{volatile_memory::*, DataInit};
@@ -1037,7 +1035,7 @@ impl<'a> MemoryMappingBuilder<'a> {
                     MemoryMapping::new_protection(
                         self.size,
                         self.protection.unwrap_or_else(Protection::read_write),
-                    ),
+                    )?,
                     None,
                 )
             }
@@ -1048,24 +1046,24 @@ impl<'a> MemoryMappingBuilder<'a> {
                     self.offset.unwrap_or(0),
                     self.protection.unwrap_or_else(Protection::read_write),
                     self.populate,
-                ),
+                )?,
                 None,
             ),
         }
     }
+
     pub(crate) fn wrap(
-        result: Result<MemoryMapping>,
+        mapping: MemoryMapping,
         file_descriptor: Option<&'a dyn AsRawDescriptor>,
     ) -> Result<CrateMemoryMapping> {
         let file_descriptor = match file_descriptor {
-            // Safe because `duplicate_handle` will return a handle or at least error out.
             Some(descriptor) => Some(
                 SafeDescriptor::try_from(descriptor)
                     .map_err(|_| Error::SystemCallFailed(ErrnoError::last()))?,
             ),
             None => None,
         };
-        result.map(|mapping| CrateMemoryMapping {
+        Ok(CrateMemoryMapping {
             mapping,
             _file_descriptor: file_descriptor,
         })

@@ -510,7 +510,7 @@ impl<'a> MemoryMappingBuilder<'a> {
                         self.size,
                         self.offset.unwrap_or(0),
                         self.protection.unwrap_or_else(Protection::read_write),
-                    ),
+                    )?,
                     if self.is_file_descriptor {
                         self.descriptor
                     } else {
@@ -522,13 +522,13 @@ impl<'a> MemoryMappingBuilder<'a> {
                 MemoryMapping::new_protection(
                     self.size,
                     self.protection.unwrap_or_else(Protection::read_write),
-                ),
+                )?,
                 None,
             ),
         }
     }
     pub fn wrap(
-        result: Result<MemoryMapping>,
+        mapping: MemoryMapping,
         file_descriptor: Option<&'a dyn AsRawDescriptor>,
     ) -> Result<CrateMemoryMapping> {
         let file_descriptor = match file_descriptor {
@@ -542,7 +542,7 @@ impl<'a> MemoryMappingBuilder<'a> {
             None => None,
         };
 
-        result.map(|mapping| CrateMemoryMapping {
+        Ok(CrateMemoryMapping {
             mapping,
             _file_descriptor: file_descriptor,
         })
