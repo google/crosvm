@@ -535,6 +535,7 @@ mod tests {
         assert_eq!(std::str::from_utf8(buf.as_slice()).unwrap(), "data");
     }
 
+    #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     #[test]
     fn test_punch_holes() {
         let mut temp_file = NamedTempFile::new().unwrap();
@@ -568,6 +569,7 @@ mod tests {
     }
 
     /// Test should fail because punch hole should not be allowed to allocate more memory
+    #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     #[test]
     fn test_punch_holes_fail_out_of_bounds() {
         let mut temp_file = NamedTempFile::new().unwrap();
