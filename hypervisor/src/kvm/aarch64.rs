@@ -315,6 +315,17 @@ impl VcpuAArch64 for KvmVcpu {
             kvi.features[0] |= 1 << shift;
         }
 
+        // Safe because we know self.vm is a real kvm fd
+        let check_extension = |ext: u32| -> bool {
+            unsafe { ioctl_with_val(&self.vm, KVM_CHECK_EXTENSION(), ext.into()) == 1 }
+        };
+        if check_extension(KVM_CAP_ARM_PTRAUTH_ADDRESS)
+            && check_extension(KVM_CAP_ARM_PTRAUTH_GENERIC)
+        {
+            kvi.features[0] |= 1 << KVM_ARM_VCPU_PTRAUTH_ADDRESS;
+            kvi.features[0] |= 1 << KVM_ARM_VCPU_PTRAUTH_GENERIC;
+        }
+
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
         let ret = unsafe { ioctl_with_ref(self, KVM_ARM_VCPU_INIT(), &kvi) };
