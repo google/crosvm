@@ -892,7 +892,7 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use base::{pipe, EventContext};
+    use base::{pipe, WaitContext};
     use sync::{Condvar, Mutex};
     use tempfile::{tempfile, TempDir};
 
@@ -1062,11 +1062,11 @@ mod tests {
         f.write_all(&buf).unwrap();
         f.write_all(&buf).unwrap();
 
-        let ctx: EventContext<u64> = EventContext::build_with(&[(&uring, 1)]).unwrap();
+        let ctx: WaitContext<u64> = WaitContext::build_with(&[(&uring, 1)]).unwrap();
         {
             // Test that the uring context isn't readable before any events are complete.
             let events = ctx.wait_timeout(Duration::from_millis(1)).unwrap();
-            assert!(events.iter_readable().next().is_none());
+            assert!(events.iter().next().is_none());
         }
 
         unsafe {
@@ -1077,8 +1077,9 @@ mod tests {
             uring.submit().unwrap();
             // Poll for completion with epoll.
             let events = ctx.wait().unwrap();
-            let event = events.iter_readable().next().unwrap();
-            assert_eq!(event.token(), 1);
+            let event = events.iter().next().unwrap();
+            assert!(event.is_readable);
+            assert_eq!(event.token, 1);
             let (user_data, res) = uring.wait().unwrap().next().unwrap();
             assert_eq!(user_data, 55_u64);
             assert_eq!(res.unwrap(), buf.len() as u32);
