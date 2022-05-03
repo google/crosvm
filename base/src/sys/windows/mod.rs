@@ -67,7 +67,7 @@ pub use file_traits::{
     FileSetLen, FileSync,
 };
 pub use mmap::Error as MmapError;
-pub use write_zeroes::{PunchHole, WriteZeroes, WriteZeroesAt};
+pub use write_zeroes::{PunchHole, WriteZeroesAt};
 
 use std::cell::Cell;
 
