@@ -69,7 +69,6 @@ mod tests {
     };
     use tempfile::TempDir;
 
-    #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     #[test]
     fn simple_test() {
         let tempdir = TempDir::new().unwrap();
@@ -81,7 +80,11 @@ mod tests {
             .create(true)
             .open(&path)
             .unwrap();
-        f.set_len(16384).unwrap();
+
+        // Extend and fill the file with zero bytes.
+        // This is not using set_len() because that fails on wine.
+        let init_data = [0x00u8; 16384];
+        f.write_all(&init_data).unwrap();
 
         // Write buffer of non-zero bytes to offset 1234
         let orig_data = [0x55u8; 5678];
@@ -135,7 +138,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     fn large_write_zeroes() {
         let tempdir = TempDir::new().unwrap();
         let mut path = tempdir.path().to_owned();
@@ -146,7 +148,11 @@ mod tests {
             .create(true)
             .open(&path)
             .unwrap();
-        f.set_len(16384).unwrap();
+
+        // Extend and fill the file with zero bytes.
+        // This is not using set_len() because that fails on wine.
+        let init_data = [0x00u8; 16384];
+        f.write_all(&init_data).unwrap();
 
         // Write buffer of non-zero bytes
         let orig_data = [0x55u8; 0x20000];
