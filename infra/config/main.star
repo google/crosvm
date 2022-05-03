@@ -124,3 +124,52 @@ luci.builder(
     schedule = "with 1m interval",
     service_account = "crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com",
 )
+
+# Create builders for change verifier
+def verify_builder(bucket):
+    luci.builder(
+        name = "Verify CL",
+        bucket = bucket,
+        executable = luci.recipe(
+            name = "verify_cl",
+        ),
+        service_account = "crosvm-luci-%s-builder@crosvm-infra.iam.gserviceaccount.com" % bucket,
+        dimensions = {
+            "os": "Ubuntu",
+            "cpu": "x86-64",
+            "pool": "luci.crosvm.%s" % bucket,
+        },
+    )
+
+verify_builder("try")
+verify_builder("ci")
+
+# Create CQ group to watch crosvm
+luci.cq_group(
+    name = "main_repo",
+    watch = cq.refset(
+        repo = "https://chromium.googlesource.com/crosvm/crosvm",
+        refs = ["refs/heads/.+"],  # will watch all branches
+    ),
+)
+
+# Attach our "Verify CL" builder to this CQ group.
+luci.cq_tryjob_verifier(
+    builder = "try/Verify CL",
+    cq_group = "main_repo",
+)
+
+# Configure postsubmit tests running in ci pool
+luci.gitiles_poller(
+    name = "main source",
+    bucket = "ci",
+    repo = "https://chromium.googlesource.com/crosvm/crosvm",
+    triggers = ["ci/Verify CL"],
+)
+luci.console_view(
+    name = "CI builders",
+    repo = "https://chromium.googlesource.com/crosvm/crosvm",
+    entries = [
+        luci.console_view_entry(builder = "ci/Verify CL"),
+    ],
+)
