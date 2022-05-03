@@ -30,7 +30,10 @@ use winapi::{
 };
 
 use super::{errno_result, Error, RawDescriptor, Result};
-use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
+use crate::{
+    descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor},
+    Event as CrateEvent,
+};
 
 /// A safe wrapper around Windows synchapi methods used to mimic Linux eventfd (man 2 eventfd).
 /// Since the eventfd isn't using "EFD_SEMAPHORE", we don't need to keep count so we can just use
@@ -39,6 +42,16 @@ use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, S
 #[serde(transparent)]
 pub struct Event {
     event_handle: SafeDescriptor,
+}
+
+pub trait EventExt {
+    fn reset(&self) -> Result<()>;
+}
+
+impl EventExt for CrateEvent {
+    fn reset(&self) -> Result<()> {
+        self.0.reset()
+    }
 }
 
 /// Wrapper around the return value of doing a read on an EventFd which distinguishes between

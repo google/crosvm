@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use crate::{AsyncError, AsyncResult, EventAsync, Executor};
-use base::Event;
+use base::{Event, EventExt};
 
 impl EventAsync {
     pub fn new(event: Event, ex: &Executor) -> AsyncResult<EventAsync> {
