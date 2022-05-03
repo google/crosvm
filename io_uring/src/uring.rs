@@ -892,7 +892,7 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use base::{pipe, PollContext};
+    use base::{pipe, EventContext};
     use sync::{Condvar, Mutex};
     use tempfile::{tempfile, TempDir};
 
@@ -1062,7 +1062,7 @@ mod tests {
         f.write_all(&buf).unwrap();
         f.write_all(&buf).unwrap();
 
-        let ctx: PollContext<u64> = PollContext::build_with(&[(&uring, 1)]).unwrap();
+        let ctx: EventContext<u64> = EventContext::build_with(&[(&uring, 1)]).unwrap();
         {
             // Test that the uring context isn't readable before any events are complete.
             let events = ctx.wait_timeout(Duration::from_millis(1)).unwrap();

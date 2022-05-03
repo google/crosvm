@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::descriptor::AsRawDescriptor;
 use crate::{
-    platform::{PollContext, PollToken, WatchingEvents},
+    platform::{EventContext, PollToken, WatchingEvents},
     RawDescriptor, Result,
 };
 use smallvec::SmallVec;
@@ -63,12 +63,12 @@ pub enum EventType {
 /// #   Ok(())
 /// # }
 /// ```
-pub struct WaitContext<T: EventToken>(PollContext<T>);
+pub struct WaitContext<T: EventToken>(EventContext<T>);
 
 impl<T: EventToken> WaitContext<T> {
     /// Creates a new WaitContext.
     pub fn new() -> Result<WaitContext<T>> {
-        PollContext::new().map(WaitContext)
+        EventContext::new().map(WaitContext)
     }
 
     /// Creates a new WaitContext with the the associated triggers.
