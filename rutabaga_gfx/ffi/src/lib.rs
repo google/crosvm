@@ -247,9 +247,23 @@ pub extern "C" fn rutabaga_context_create(
     ptr: &mut rutabaga,
     ctx_id: u32,
     context_init: u32,
+    context_name: *const c_char,
+    context_name_len: u32,
 ) -> i32 {
+    let mut name: Option<&str> = None;
+    if !context_name.is_null() && context_name_len > 0 {
+        // Safe because context_name is not NULL and len is a positive integer, so the caller
+        // is expected to provide a valid pointer to an array of bytes at least as long as the
+        // passed length. If the provided byte array doesn't contain valid utf-8, name will be
+        // None.
+        let view = unsafe {
+            std::slice::from_raw_parts(context_name as *const u8, context_name_len as usize)
+        };
+        name = std::str::from_utf8(view).ok();
+    }
+
     catch_unwind(AssertUnwindSafe(|| {
-        let result = ptr.create_context(ctx_id, context_init);
+        let result = ptr.create_context(ctx_id, context_init, name);
         return_result(result)
     }))
     .unwrap_or(-ESRCH)

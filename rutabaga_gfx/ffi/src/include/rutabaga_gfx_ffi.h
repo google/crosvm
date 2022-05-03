@@ -178,7 +178,13 @@ int32_t rutabaga_get_capset_info(struct rutabaga *ptr, uint32_t capset_index, ui
 int32_t rutabaga_get_capset(struct rutabaga *ptr, uint32_t capset_id, uint32_t version,
 			    uint8_t *capset, uint32_t capset_size);
 
-int32_t rutabaga_context_create(struct rutabaga *ptr, uint32_t ctx_id, uint32_t context_init);
+/**
+ * # Safety
+ * - `context_name` must either be NULL or a valid pointer to an array of at least
+ *   `context_name_len` bytes encoding a UTF-8 string.
+ */
+int32_t rutabaga_context_create(struct rutabaga *ptr, uint32_t ctx_id, uint32_t context_init,
+				const char *context_name, uint32_t context_name_len);
 
 int32_t rutabaga_context_destroy(struct rutabaga *ptr, uint32_t ctx_id);
 

@@ -98,7 +98,7 @@ static int test_rutabaga_init(struct rutabaga_test *test, uint32_t component)
 	return 0;
 }
 
-static int test_create_context(struct rutabaga_test *test)
+static int test_create_context(struct rutabaga_test *test, const char *context_name)
 {
 	int result;
 	uint32_t num_capsets;
@@ -130,8 +130,12 @@ static int test_create_context(struct rutabaga_test *test)
 	CHECK(capset->version == 1);
 	free(capset);
 
-	result =
-	    rutabaga_context_create(test->rutabaga, test->ctx_id, RUTABAGA_CAPSET_CROSS_DOMAIN);
+	size_t context_name_len = 0;
+	if (context_name)
+		context_name_len = strlen(context_name);
+
+	result = rutabaga_context_create(test->rutabaga, test->ctx_id, RUTABAGA_CAPSET_CROSS_DOMAIN,
+					 context_name, context_name_len);
 	CHECK_RESULT(result);
 
 	return 0;
@@ -364,24 +368,33 @@ int main(int argc, char *argv[])
 
 	int result;
 
-	for (uint32_t i = 0; i < NUM_ITERATIONS; i++) {
-		result = test_rutabaga_init(&test, RUTABAGA_COMPONENT_CROSS_DOMAIN);
-		CHECK_RESULT(result);
+	const char *context_names[] = {
+		NULL,
+		"test_context",
+	};
+	const uint32_t num_context_names = 2;
 
-		result |= test_create_context(&test);
-		CHECK_RESULT(result);
+	for (uint32_t i = 0; i < num_context_names; i++) {
+		const char *context_name = context_names[i];
+		for (uint32_t j = 0; j < NUM_ITERATIONS; j++) {
+			result = test_rutabaga_init(&test, RUTABAGA_COMPONENT_CROSS_DOMAIN);
+			CHECK_RESULT(result);
 
-		result |= test_init_context(&test);
-		CHECK_RESULT(result);
+			result |= test_create_context(&test, context_name);
+			CHECK_RESULT(result);
 
-		result |= test_command_submission(&test);
-		CHECK_RESULT(result);
+			result |= test_init_context(&test);
+			CHECK_RESULT(result);
 
-		result |= test_context_finish(&test);
-		CHECK_RESULT(result);
+			result |= test_command_submission(&test);
+			CHECK_RESULT(result);
 
-		result |= test_rutabaga_finish(&test);
-		CHECK_RESULT(result);
+			result |= test_context_finish(&test);
+			CHECK_RESULT(result);
+
+			result |= test_rutabaga_finish(&test);
+			CHECK_RESULT(result);
+		}
 	}
 
 	for (uint32_t i = 0; i < NUM_ITERATIONS; i++) {
