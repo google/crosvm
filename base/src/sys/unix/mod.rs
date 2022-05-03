@@ -56,7 +56,10 @@ pub use acpi_event::*;
 pub use base_poll_token_derive::*;
 pub use capabilities::drop_capabilities;
 pub use descriptor::*;
-pub use eventfd::*;
+// EventFd is deprecated. Use Event instead. EventFd will be removed as soon as rest of the current
+// users migrate.
+// TODO(b:231344063): Remove EventFd.
+pub use eventfd::{EventFd as Event, EventFd, EventReadResult};
 pub use file_flags::*;
 pub use get_filesystem_type::*;
 pub use ioctl::*;

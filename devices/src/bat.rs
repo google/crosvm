@@ -354,7 +354,7 @@ impl GoldfishBattery {
             Ok(v) => v,
             Err(e) => {
                 error!(
-                    "{}: failed to create kill EventFd pair: {}",
+                    "{}: failed to create kill Event pair: {}",
                     self.debug_label(),
                     e
                 );

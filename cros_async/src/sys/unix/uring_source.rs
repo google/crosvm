@@ -343,9 +343,9 @@ mod tests {
             return;
         }
 
-        use base::Event as EventFd;
+        use base::Event;
 
-        async fn write_event(ev: EventFd, wait: EventFd, ex: &URingExecutor) {
+        async fn write_event(ev: Event, wait: Event, ex: &URingExecutor) {
             let wait = UringSource::new(wait, ex).unwrap();
             ev.write(55).unwrap();
             read_u64(&wait).await;
@@ -355,7 +355,7 @@ mod tests {
             read_u64(&wait).await;
         }
 
-        async fn read_events(ev: EventFd, signal: EventFd, ex: &URingExecutor) {
+        async fn read_events(ev: Event, signal: Event, ex: &URingExecutor) {
             let source = UringSource::new(ev, ex).unwrap();
             assert_eq!(read_u64(&source).await, 55);
             signal.write(1).unwrap();
@@ -365,8 +365,8 @@ mod tests {
             signal.write(1).unwrap();
         }
 
-        let event = EventFd::new().unwrap();
-        let signal_wait = EventFd::new().unwrap();
+        let event = Event::new().unwrap();
+        let signal_wait = Event::new().unwrap();
         let ex = URingExecutor::new().unwrap();
         let write_task = write_event(
             event.try_clone().unwrap(),

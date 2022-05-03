@@ -23,10 +23,7 @@ use std::{
 };
 
 use async_task::Task;
-use base::{
-    add_fd_flags, warn, AsRawDescriptor, EpollContext, EpollEvents, Event as EventFd,
-    WatchingEvents,
-};
+use base::{add_fd_flags, warn, AsRawDescriptor, EpollContext, EpollEvents, Event, WatchingEvents};
 use futures::task::noop_waker;
 use pin_utils::pin_mut;
 use remain::sorted;
@@ -43,12 +40,12 @@ use crate::{
 #[sorted]
 #[derive(Debug, ThisError)]
 pub enum Error {
-    /// Failed to clone the EventFd for waking the executor.
-    #[error("Failed to clone the EventFd for waking the executor: {0}")]
-    CloneEventFd(base::Error),
-    /// Failed to create the EventFd for waking the executor.
-    #[error("Failed to create the EventFd for waking the executor: {0}")]
-    CreateEventFd(base::Error),
+    /// Failed to clone the Event for waking the executor.
+    #[error("Failed to clone the Event for waking the executor: {0}")]
+    CloneEvent(base::Error),
+    /// Failed to create the Event for waking the executor.
+    #[error("Failed to create the Event for waking the executor: {0}")]
+    CreateEvent(base::Error),
     /// Creating a context to wait on FDs failed.
     #[error("An error creating the fd waiting context: {0}")]
     CreatingContext(base::Error),
@@ -77,8 +74,8 @@ impl From<Error> for io::Error {
     fn from(e: Error) -> Self {
         use Error::*;
         match e {
-            CloneEventFd(e) => e.into(),
-            CreateEventFd(e) => e.into(),
+            CloneEvent(e) => e.into(),
+            CreateEvent(e) => e.into(),
             DuplicatingFd(e) => e.into(),
             ExecutorGone => io::Error::new(io::ErrorKind::Other, e),
             CreatingContext(e) => e.into(),
@@ -217,15 +214,15 @@ impl Drop for PendingOperation {
 // * The executor then polls the non-epoll future that became ready, any epoll futures that
 //   completed, and the notify_task function, which then queues up another read on the eventfd and
 //   the process can repeat.
-async fn notify_task(notify: EventFd, raw: Weak<RawExecutor>) {
+async fn notify_task(notify: Event, raw: Weak<RawExecutor>) {
     add_fd_flags(notify.as_raw_descriptor(), libc::O_NONBLOCK)
-        .expect("Failed to set notify EventFd as non-blocking");
+        .expect("Failed to set notify Event as non-blocking");
 
     loop {
         match notify.read() {
             Ok(_) => {}
             Err(e) if e.errno() == libc::EWOULDBLOCK => {}
-            Err(e) => panic!("Unexpected error while reading notify EventFd: {}", e),
+            Err(e) => panic!("Unexpected error while reading notify Event: {}", e),
         }
 
         if let Some(ex) = raw.upgrade() {
@@ -234,7 +231,7 @@ async fn notify_task(notify: EventFd, raw: Weak<RawExecutor>) {
                     notify.as_raw_descriptor(),
                     WatchingEvents::empty().set_read(),
                 )
-                .expect("Failed to add notify EventFd to PollCtx");
+                .expect("Failed to add notify Event to PollCtx");
 
             // We don't want to hold an active reference to the executor in the .await below.
             mem::drop(ex);
@@ -247,7 +244,7 @@ async fn notify_task(notify: EventFd, raw: Weak<RawExecutor>) {
             match op.await {
                 Ok(()) => {}
                 Err(Error::ExecutorGone) => break,
-                Err(e) => panic!("Unexpected error while waiting for notify EventFd: {}", e),
+                Err(e) => panic!("Unexpected error while waiting for notify Event: {}", e),
             }
         } else {
             // The executor is gone so we should also exit.
@@ -257,7 +254,7 @@ async fn notify_task(notify: EventFd, raw: Weak<RawExecutor>) {
 }
 
 // Indicates that the executor is either within or about to make a PollContext::wait() call. When a
-// waker sees this value, it will write to the notify EventFd, which will cause the
+// waker sees this value, it will write to the notify Event, which will cause the
 // PollContext::wait() call to return.
 const WAITING: i32 = 0x1d5b_c019u32 as i32;
 
@@ -273,11 +270,11 @@ struct RawExecutor {
     ops: Mutex<Slab<OpStatus>>,
     blocking_pool: BlockingPool,
     state: AtomicI32,
-    notify: EventFd,
+    notify: Event,
 }
 
 impl RawExecutor {
-    fn new(notify: EventFd) -> Result<Self> {
+    fn new(notify: Event) -> Result<Self> {
         Ok(RawExecutor {
             queue: RunnableQueue::new(),
             poll_ctx: EpollContext::new().map_err(Error::CreatingContext)?,
@@ -496,10 +493,10 @@ pub struct FdExecutor {
 
 impl FdExecutor {
     pub fn new() -> Result<FdExecutor> {
-        let notify = EventFd::new().map_err(Error::CreateEventFd)?;
+        let notify = Event::new().map_err(Error::CreateEvent)?;
         let raw = notify
             .try_clone()
-            .map_err(Error::CloneEventFd)
+            .map_err(Error::CloneEvent)
             .and_then(RawExecutor::new)
             .map(Arc::new)?;
 

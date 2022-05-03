@@ -500,10 +500,10 @@ impl<T: PollToken> IntoRawDescriptor for EpollContext<T> {
 /// # Example
 ///
 /// ```
-/// # use base::platform::{Result, EventFd, PollContext, PollEvents};
+/// # use base::platform::{Result, Event, PollContext, PollEvents};
 /// # fn test() -> Result<()> {
-///     let evt1 = EventFd::new()?;
-///     let evt2 = EventFd::new()?;
+///     let evt1 = Event::new()?;
+///     let evt2 = Event::new()?;
 ///     evt2.write(1)?;
 ///
 ///     let ctx: PollContext<u32> = PollContext::new()?;
@@ -692,14 +692,14 @@ impl<T: PollToken> IntoRawDescriptor for PollContext<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::{super::EventFd, *};
+    use super::{super::Event, *};
     use base_poll_token_derive::PollToken;
     use std::{os::unix::net::UnixStream, time::Instant};
 
     #[test]
     fn poll_context() {
-        let evt1 = EventFd::new().unwrap();
-        let evt2 = EventFd::new().unwrap();
+        let evt1 = Event::new().unwrap();
+        let evt2 = Event::new().unwrap();
         evt1.write(1).unwrap();
         evt2.write(1).unwrap();
         let ctx: PollContext<u32> = PollContext::build_with(&[(&evt1, 1), (&evt2, 2)]).unwrap();
@@ -730,7 +730,7 @@ mod tests {
         let ctx: PollContext<usize> = PollContext::new().unwrap();
         let mut evts = Vec::with_capacity(EVT_COUNT);
         for i in 0..EVT_COUNT {
-            let evt = EventFd::new().unwrap();
+            let evt = Event::new().unwrap();
             evt.write(1).unwrap();
             ctx.add(&evt, i).unwrap();
             evts.push(evt);

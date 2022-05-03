@@ -36,7 +36,7 @@ impl FileFlags {
 #[cfg(test)]
 mod tests {
     use super::{
-        super::{pipe, EventFd},
+        super::{pipe, Event},
         *,
     };
 
@@ -48,8 +48,8 @@ mod tests {
     }
 
     #[test]
-    fn eventfd() {
-        let evt = EventFd::new().unwrap();
+    fn event() {
+        let evt = Event::new().unwrap();
         assert_eq!(FileFlags::from_file(&evt).unwrap(), FileFlags::ReadWrite);
     }
 }

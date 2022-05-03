@@ -5,10 +5,10 @@
 #[cfg(test)]
 use super::{FdExecutor, URingExecutor};
 use crate::{AsyncResult, EventAsync, Executor};
-use base::Event as EventFd;
+use base::Event;
 
 impl EventAsync {
-    pub fn new(event: EventFd, ex: &Executor) -> AsyncResult<EventAsync> {
+    pub fn new(event: Event, ex: &Executor) -> AsyncResult<EventAsync> {
         ex.async_from(event)
             .map(|io_source| EventAsync { io_source })
     }
@@ -19,12 +19,12 @@ impl EventAsync {
     }
 
     #[cfg(test)]
-    pub(crate) fn new_poll(event: EventFd, ex: &FdExecutor) -> AsyncResult<EventAsync> {
+    pub(crate) fn new_poll(event: Event, ex: &FdExecutor) -> AsyncResult<EventAsync> {
         super::executor::async_poll_from(event, ex).map(|io_source| EventAsync { io_source })
     }
 
     #[cfg(test)]
-    pub(crate) fn new_uring(event: EventFd, ex: &URingExecutor) -> AsyncResult<EventAsync> {
+    pub(crate) fn new_uring(event: Event, ex: &URingExecutor) -> AsyncResult<EventAsync> {
         super::executor::async_uring_from(event, ex).map(|io_source| EventAsync { io_source })
     }
 }
@@ -37,12 +37,12 @@ mod tests {
 
     #[test]
     fn next_val_reads_value() {
-        async fn go(event: EventFd, ex: &Executor) -> u64 {
+        async fn go(event: Event, ex: &Executor) -> u64 {
             let event_async = EventAsync::new(event, ex).unwrap();
             event_async.next_val().await.unwrap()
         }
 
-        let eventfd = EventFd::new().unwrap();
+        let eventfd = Event::new().unwrap();
         eventfd.write(0xaa).unwrap();
         let ex = Executor::new().unwrap();
         let val = ex.run_until(go(eventfd, &ex)).unwrap();
@@ -59,7 +59,7 @@ mod tests {
             event_async.next_val().await.unwrap()
         }
 
-        let eventfd = EventFd::new().unwrap();
+        let eventfd = Event::new().unwrap();
         eventfd.write(0xaa).unwrap();
         let uring_ex = URingExecutor::new().unwrap();
         let val = uring_ex
@@ -67,7 +67,7 @@ mod tests {
             .unwrap();
         assert_eq!(val, 0xaa);
 
-        let eventfd = EventFd::new().unwrap();
+        let eventfd = Event::new().unwrap();
         eventfd.write(0xaa).unwrap();
         let poll_ex = FdExecutor::new().unwrap();
         let val = poll_ex
