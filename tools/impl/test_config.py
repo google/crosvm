@@ -99,7 +99,7 @@ WIN64_DISABLED_CRATES = [
 
 CRATE_OPTIONS: dict[str, list[TestOption]] = {
     "base": [TestOption.SINGLE_THREADED, TestOption.LARGE],
-    "cros_async": [TestOption.LARGE, TestOption.DO_NOT_RUN_ARMHF],
+    "cros_async": [TestOption.LARGE],
     "crosvm": [TestOption.SINGLE_THREADED],
     "crosvm_plugin": [
         TestOption.DO_NOT_BUILD_AARCH64,
