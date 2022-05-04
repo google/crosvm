@@ -155,6 +155,8 @@ pub enum Error {
     InitrdLoadFailure(arch::LoadImageError),
     #[error("kernel could not be loaded: {0}")]
     KernelLoadFailure(arch::LoadImageError),
+    #[error("error loading Kernel from Elf image: {0}")]
+    LoadElfKernel(kernel_loader::Error),
     #[error("failed to map arm pvtime memory: {0}")]
     MapPvtimeError(base::Error),
     #[error("failed to protect vm: {0}")]
@@ -262,10 +264,18 @@ impl arch::LinuxArch for AArch64 {
                     .map_err(Error::BiosLoadFailure)?
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                let kernel_size =
-                    arch::load_image(&mem, kernel_image, get_kernel_addr(), u64::max_value())
-                        .map_err(Error::KernelLoadFailure)?;
-                let kernel_end = get_kernel_addr().offset() + kernel_size as u64;
+                let kernel_end: u64;
+                let kernel_size: usize;
+                let elf_result = kernel_loader::load_kernel(&mem, get_kernel_addr(), kernel_image);
+                if elf_result == Err(kernel_loader::Error::InvalidElfMagicNumber) {
+                    kernel_size =
+                        arch::load_image(&mem, kernel_image, get_kernel_addr(), u64::max_value())
+                            .map_err(Error::KernelLoadFailure)?;
+                    kernel_end = get_kernel_addr().offset() + kernel_size as u64;
+                } else {
+                    kernel_end = elf_result.map_err(Error::LoadElfKernel)?;
+                    kernel_size = kernel_end as usize - get_kernel_addr().offset() as usize;
+                }
                 initrd = match components.initrd_image {
                     Some(initrd_file) => {
                         let mut initrd_file = initrd_file;

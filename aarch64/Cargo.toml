@@ -10,6 +10,7 @@ data_model = { path = "../common/data_model" }
 devices = { path = "../devices" }
 hypervisor = { path = "../hypervisor" }
 kernel_cmdline = { path = "../kernel_cmdline" }
+kernel_loader = { path = "../kernel_loader" }
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
