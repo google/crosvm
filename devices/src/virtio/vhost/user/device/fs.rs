@@ -10,7 +10,10 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context};
 use argh::FromArgs;
-use base::{error, get_max_open_files, warn, Event, RawDescriptor, Tube, UnlinkUnixListener};
+use base::{
+    error, get_max_open_files, warn, AsRawDescriptors, Event, RawDescriptor, Tube,
+    UnlinkUnixListener,
+};
 use cros_async::{EventAsync, Executor};
 use data_model::{DataInit, Le32};
 use fuse::Server;
@@ -142,10 +145,13 @@ impl FsBackend {
         let mut keep_rds: Vec<RawDescriptor> = [0, 1, 2].to_vec();
         keep_rds.append(&mut fs.keep_rds());
 
+        let ex = ex.clone();
+        keep_rds.extend(ex.as_raw_descriptors());
+
         let server = Arc::new(Server::new(fs));
 
         Ok(FsBackend {
-            ex: ex.clone(),
+            ex,
             server,
             tag: fs_tag,
             avail_features,

@@ -23,7 +23,10 @@ use std::{
 };
 
 use async_task::Task;
-use base::{add_fd_flags, warn, AsRawDescriptor, EpollContext, EpollEvents, Event, WatchingEvents};
+use base::{
+    add_fd_flags, warn, AsRawDescriptor, AsRawDescriptors, EpollContext, EpollEvents, Event,
+    RawDescriptor, WatchingEvents,
+};
 use futures::task::noop_waker;
 use pin_utils::pin_mut;
 use remain::sorted;
@@ -271,10 +274,17 @@ struct RawExecutor {
     blocking_pool: BlockingPool,
     state: AtomicI32,
     notify: Event,
+    // Descriptor of the original event that was cloned to create notify.
+    // This is only needed for the AsRawDescriptors implementation.
+    notify_dup: RawDescriptor,
 }
 
 impl RawExecutor {
-    fn new(notify: Event) -> Result<Self> {
+    fn new(notify: &Event) -> Result<Self> {
+        // Save the original descriptor before cloning. This descriptor will be used when creating
+        // the notify task, so we need to preserve it for AsRawDescriptors.
+        let notify_dup = notify.as_raw_descriptor();
+        let notify = notify.try_clone().map_err(Error::CloneEvent)?;
         Ok(RawExecutor {
             queue: RunnableQueue::new(),
             poll_ctx: EpollContext::new().map_err(Error::CreatingContext)?,
@@ -282,6 +292,7 @@ impl RawExecutor {
             blocking_pool: Default::default(),
             state: AtomicI32::new(PROCESSING),
             notify,
+            notify_dup,
         })
     }
 
@@ -445,6 +456,16 @@ impl RawExecutor {
     }
 }
 
+impl AsRawDescriptors for RawExecutor {
+    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
+        vec![
+            self.poll_ctx.as_raw_descriptor(),
+            self.notify.as_raw_descriptor(),
+            self.notify_dup,
+        ]
+    }
+}
+
 impl WeakWake for RawExecutor {
     fn wake_by_ref(weak_self: &Weak<Self>) {
         if let Some(arc_self) = weak_self.upgrade() {
@@ -494,11 +515,7 @@ pub struct FdExecutor {
 impl FdExecutor {
     pub fn new() -> Result<FdExecutor> {
         let notify = Event::new().map_err(Error::CreateEvent)?;
-        let raw = notify
-            .try_clone()
-            .map_err(Error::CloneEvent)
-            .and_then(RawExecutor::new)
-            .map(Arc::new)?;
+        let raw = RawExecutor::new(&notify).map(Arc::new)?;
 
         raw.spawn(notify_task(notify, Arc::downgrade(&raw)))
             .detach();
@@ -550,6 +567,12 @@ impl FdExecutor {
             source: f,
             ex: Arc::downgrade(&self.raw),
         })
+    }
+}
+
+impl AsRawDescriptors for FdExecutor {
+    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
+        self.raw.as_raw_descriptors()
     }
 }
 

@@ -73,7 +73,7 @@ use std::{
 };
 
 use async_task::Task;
-use base::{warn, AsRawDescriptor, WatchingEvents};
+use base::{warn, AsRawDescriptor, RawDescriptor, WatchingEvents};
 use futures::task::noop_waker;
 use io_uring::URingContext;
 use once_cell::sync::Lazy;
@@ -726,6 +726,12 @@ impl RawExecutor {
     }
 }
 
+impl AsRawDescriptor for RawExecutor {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.ctx.as_raw_descriptor()
+    }
+}
+
 impl WeakWake for RawExecutor {
     fn wake_by_ref(weak_self: &Weak<Self>) {
         if let Some(arc_self) = weak_self.upgrade() {
@@ -847,6 +853,12 @@ impl URingExecutor {
             tag: self.raw.register_source(Arc::new(duped_fd)),
             ex: Arc::downgrade(&self.raw),
         })
+    }
+}
+
+impl AsRawDescriptor for URingExecutor {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.raw.as_raw_descriptor()
     }
 }
 

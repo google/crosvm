@@ -6,6 +6,8 @@ use std::future::Future;
 
 use async_task::Task;
 
+use base::{AsRawDescriptors, RawDescriptor};
+
 use super::{
     poll_source::Error as PollError, uring_executor::use_uring, FdExecutor, PollSource,
     URingExecutor, UringSource,
@@ -349,6 +351,15 @@ impl Executor {
         match self {
             Executor::Uring(ex) => Ok(ex.run_until(f)?),
             Executor::Fd(ex) => Ok(ex.run_until(f).map_err(PollError::Executor)?),
+        }
+    }
+}
+
+impl AsRawDescriptors for Executor {
+    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
+        match self {
+            Executor::Uring(ex) => ex.as_raw_descriptors(),
+            Executor::Fd(ex) => ex.as_raw_descriptors(),
         }
     }
 }
