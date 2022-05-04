@@ -124,6 +124,7 @@ direct = ["devices/direct", "arch/direct", "x86_64/direct"]
 gdb = ["gdbstub", "gdbstub_arch", "arch/gdb", "vm_control/gdb", "x86_64/gdb"]
 gfxstream = ["devices/gfxstream"]
 gpu = ["devices/gpu"]
+haxm = ["hypervisor/haxm"]
 libvda = ["devices/libvda"]
 linux-armhf = [
     "composite-disk",
