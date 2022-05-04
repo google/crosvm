@@ -197,10 +197,6 @@ impl VmAArch64 for KvmVm {
             if info.firmware_size > fw_max_size {
                 return Err(Error::new(ENOMEM));
             }
-            let mem = MemoryMappingBuilder::new(info.firmware_size as usize)
-                .build()
-                .map_err(|_| Error::new(EINVAL))?;
-            self.add_memory_region(fw_addr, Box::new(mem), false, false)?;
             self.set_protected_vm_firmware_ipa(fw_addr)
         }
     }
