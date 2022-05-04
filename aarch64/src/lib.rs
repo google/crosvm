@@ -253,7 +253,9 @@ pub enum Error {
     #[error("initrd could not be loaded: {0}")]
     InitrdLoadFailure(arch::LoadImageError),
     #[error("kernel could not be loaded: {0}")]
-    KernelLoadFailure(arch::LoadImageError),
+    KernelLoadFailure(kernel_loader::Error),
+    #[error("error loading Kernel from Elf image: {0}")]
+    LoadElfKernel(kernel_loader::Error),
     #[error("failed to map arm pvtime memory: {0}")]
     MapPvtimeError(base::Error),
     #[error("pVM firmware could not be loaded: {0}")]
@@ -387,10 +389,18 @@ impl arch::LinuxArch for AArch64 {
                 }
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                let kernel_size =
-                    arch::load_image(&mem, kernel_image, get_kernel_addr(), u64::max_value())
-                        .map_err(Error::KernelLoadFailure)?;
-                let kernel_end = get_kernel_addr().offset() + kernel_size as u64;
+                let loaded_kernel = if let Ok(elf_kernel) = kernel_loader::load_elf64(
+                    &mem,
+                    get_kernel_addr(),
+                    kernel_image,
+                    AARCH64_PHYS_MEM_START,
+                ) {
+                    elf_kernel
+                } else {
+                    kernel_loader::load_arm64_kernel(&mem, get_kernel_addr(), kernel_image)
+                        .map_err(Error::KernelLoadFailure)?
+                };
+                let kernel_end = loaded_kernel.address_range.end;
                 initrd = match components.initrd_image {
                     Some(initrd_file) => {
                         let mut initrd_file = initrd_file;

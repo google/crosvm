@@ -17,8 +17,7 @@ gdbstub_arch = { version = "0.2.4", optional = true }
 hypervisor = { path = "../hypervisor" }
 jail = { path = "../jail" }
 kernel_cmdline = { path = "../kernel_cmdline" }
-kvm = { path = "../kvm" }
-kvm_sys = { path = "../kvm_sys" }
+kernel_loader = { path = "../kernel_loader" }
 libc = "*"
 memoffset = "0.6"
 rand = "0.8"
