@@ -36,6 +36,7 @@ BATCH_SIZE = 8
 
 # Files not under our control or auto-generated.
 IGNORE = [
+    "docs/book/src/appendix/memory_layout.md",  # mdformat messes up the tables.
     "infra/README.recipes.md",
     "infra/recipes.py",
 ]

@@ -21,6 +21,7 @@ ______________________________________________________________________
 - [Appendix](./appendix/index.md)
   - [Sandboxing](./appendix/sandboxing.md)
   - [Seccomp](./appendix/seccomp.md)
+  - [Memory Layout](./appendix/memory_layout.md)
   - [Minijail](./appendix/minijail.md)
 
 ______________________________________________________________________

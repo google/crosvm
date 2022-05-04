@@ -67,9 +67,9 @@ one to use in what place using some guidelines
 
 - `GuestMemory` is for sending around references to all of the guest memory. It can be cloned
   freely, but the underlying guest memory is always the same. Internally, it's implemented using
-  `MemoryMapping` and `SharedMemory`. Note that `GuestMemory` is mapped into the host address space,
-  but it is non-contiguous. Device memory, such as mapped DMA-Bufs, are not present in
-  `GuestMemory`.
+  `MemoryMapping` and `SharedMemory`. Note that `GuestMemory` is mapped into the host address space
+  (for non-protected VMs), but it is non-contiguous. Device memory, such as mapped DMA-Bufs, are not
+  present in `GuestMemory`.
 - `SharedMemory` wraps a `memfd` and can be mapped using `MemoryMapping` to access its data.
   `SharedMemory` can't be cloned.
 - `VolatileMemory` is a trait that exposes generic access to non-contiguous memory. `GuestMemory`
@@ -85,6 +85,9 @@ one to use in what place using some guidelines
   munmap after use. Access via Rust references is forbidden, but indirect reading and writing is
   available via `VolatileSlice` and several convenience functions. This type is most useful for
   mapping memory unrelated to `GuestMemory`.
+
+See [memory layout](https://google.github.io/crosvm/appendix/memory_layout.html) for details how
+crosvm arranges the guest address space.
 
 ### Device Model
 
