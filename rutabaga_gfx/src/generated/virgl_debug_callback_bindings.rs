@@ -46,13 +46,30 @@ pub mod stdio {
 
     pub type va_list = __builtin_va_list;
 }
+#[cfg(target_arch = "aarch64")]
+pub mod stdio {
+    extern "C" {
+        pub fn vsnprintf(
+            __s: *mut ::std::os::raw::c_char,
+            __maxlen: ::std::os::raw::c_ulong,
+            __format: *const ::std::os::raw::c_char,
+            __arg: __builtin_va_list,
+        ) -> ::std::os::raw::c_int;
+    }
+    pub type __builtin_va_list = __va_list;
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    pub struct __va_list {
+        pub __ap: *mut ::std::os::raw::c_void,
+    }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "arm"))]
+    pub type va_list = __builtin_va_list;
+}
+
 pub type virgl_debug_callback_type = ::std::option::Option<
     unsafe extern "C" fn(fmt: *const ::std::os::raw::c_char, ap: stdio::va_list),
 >;
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "arm"))]
 extern "C" {
     pub fn virgl_set_debug_callback(cb: virgl_debug_callback_type) -> virgl_debug_callback_type;
 }
