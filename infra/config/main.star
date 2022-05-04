@@ -144,7 +144,11 @@ def verify_builder(bucket):
 verify_builder("try")
 verify_builder("ci")
 
-# Create CQ group to watch crosvm
+# Configure Change Verifier to watch crosvm
+luci.cq(
+    status_host = "chromium-cq-status.appspot.com",
+)
+
 luci.cq_group(
     name = "main_repo",
     watch = cq.refset(
