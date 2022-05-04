@@ -559,6 +559,10 @@ impl VirtioGpu {
         Ok(OkNoData)
     }
 
+    pub fn needs_fence_poll(&mut self) -> bool {
+        self.rutabaga.use_timer_based_fence_polling
+    }
+
     /// Returns an array of RutabagaFence, describing completed fences.
     pub fn fence_poll(&mut self) -> Vec<RutabagaFence> {
         self.rutabaga.poll()

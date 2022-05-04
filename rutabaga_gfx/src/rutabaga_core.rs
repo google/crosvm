@@ -229,6 +229,7 @@ pub struct Rutabaga {
     default_component: RutabagaComponentType,
     capset_info: Vec<RutabagaCapsetInfo>,
     fence_handler: RutabagaFenceHandler,
+    pub use_timer_based_fence_polling: bool,
 }
 
 impl Rutabaga {
@@ -788,6 +789,11 @@ impl RutabagaBuilder {
             ));
         }
 
+        // If any component sets this to true, timer-based wakeup is activated. Async fence
+        // handling will continue to work but worker wakeups will otherwise be avoided if no
+        // components need the timer-based approach.
+        let mut use_timer_based_fence_polling = false;
+
         if self.default_component == RutabagaComponentType::Rutabaga2D {
             let rutabaga_2d = Rutabaga2D::init(fence_handler.clone())?;
             rutabaga_components.insert(RutabagaComponentType::Rutabaga2D, rutabaga_2d);
@@ -799,6 +805,10 @@ impl RutabagaBuilder {
                         .ok_or(RutabagaError::InvalidRutabagaBuild(
                             "missing virgl renderer flags",
                         ))?;
+
+                if (u32::from(virglrenderer_flags) & VIRGLRENDERER_USE_ASYNC_FENCE_CB) == 0 {
+                    use_timer_based_fence_polling = true;
+                }
 
                 let virgl = VirglRenderer::init(
                     virglrenderer_flags,
@@ -844,6 +854,11 @@ impl RutabagaBuilder {
                     gfxstream_flags,
                     fence_handler.clone(),
                 )?;
+
+                if (u32::from(gfxstream_flags) & GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB) == 0 {
+                    use_timer_based_fence_polling = true;
+                }
+
                 rutabaga_components.insert(RutabagaComponentType::Gfxstream, gfxstream);
 
                 rutabaga_capsets.push(RutabagaCapsetInfo {
@@ -868,6 +883,7 @@ impl RutabagaBuilder {
             default_component: self.default_component,
             capset_info: rutabaga_capsets,
             fence_handler,
+            use_timer_based_fence_polling,
         })
     }
 }

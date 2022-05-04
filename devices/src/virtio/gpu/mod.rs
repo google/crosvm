@@ -866,11 +866,12 @@ impl Worker {
         let mut process_resource_bridge = Vec::with_capacity(self.resource_bridges.len());
         'wait: loop {
             // If there are outstanding fences, wake up early to poll them.
-            let duration = if self.state.has_pending_fences() {
-                FENCE_POLL_INTERVAL
-            } else {
-                Duration::new(i64::MAX as u64, 0)
-            };
+            let duration =
+                if self.state.virtio_gpu.needs_fence_poll() && self.state.has_pending_fences() {
+                    FENCE_POLL_INTERVAL
+                } else {
+                    Duration::new(i64::MAX as u64, 0)
+                };
 
             let events = match wait_ctx.wait_timeout(duration) {
                 Ok(v) => v,
@@ -941,7 +942,9 @@ impl Worker {
                 signal_used_ctrl = true;
             }
 
-            self.state.fence_poll();
+            if self.state.virtio_gpu.needs_fence_poll() {
+                self.state.fence_poll();
+            }
 
             // Process the entire control queue before the resource bridge in case a resource is
             // created or destroyed by the control queue. Processing the resource bridge first may
