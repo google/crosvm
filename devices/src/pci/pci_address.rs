@@ -9,6 +9,7 @@ use remain::sorted;
 use serde::{Deserialize, Serialize};
 use thiserror::Error as ThisError;
 
+/// Identifies a single component of a [`PciAddress`].
 #[derive(Debug, PartialEq)]
 pub enum PciAddressComponent {
     Domain,
@@ -17,15 +18,20 @@ pub enum PciAddressComponent {
     Function,
 }
 
+/// PCI address parsing and conversion errors.
 #[derive(ThisError, Debug, PartialEq)]
 #[sorted]
 pub enum Error {
+    /// The specified component was outside the valid range.
     #[error("{0:?} out of range")]
     ComponentOutOfRange(PciAddressComponent),
+    /// The specified component could not be parsed as a hexadecimal number.
     #[error("{0:?} failed to parse as hex")]
     InvalidHex(PciAddressComponent),
+    /// A delimiter (`:` or `.`) between the two specified components was missing or incorrect.
     #[error("Missing delimiter between {0:?} and {1:?}")]
     MissingDelimiter(PciAddressComponent, PciAddressComponent),
+    /// The PCI address contained more than the expected number of components.
     #[error("Too many components in PCI address")]
     TooManyComponents,
 }
@@ -35,11 +41,27 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// PCI Device Address, AKA Bus:Device.Function
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct PciAddress {
+    /// Bus number, in the range `0..=255`.
     pub bus: u8,
-    pub dev: u8,  /* u5 */
-    pub func: u8, /* u3 */
+    /// Device number, in the range `0..=31`.
+    pub dev: u8,
+    /// Function number, in the range `0..=7`.
+    pub func: u8,
 }
 
+/// Convert `PciAddress` to a human-readable string format.
+///
+/// The display format will always include the domain component, even if it is zero.
+///
+/// # Example
+///
+/// ```
+/// use devices::PciAddress;
+///
+/// let pci_address = PciAddress::new(0x0000, 0x03, 0x14, 0x1)?;
+/// assert_eq!(pci_address.to_string(), "0000:03:14.1");
+/// # Ok::<(), devices::PciAddressError>(())
+/// ```
 impl Display for PciAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let domain = 0;
@@ -51,7 +73,21 @@ impl Display for PciAddress {
     }
 }
 
-/// Construct PciAddress from string "\[domain:\]bus:device.function".
+/// Construct `PciAddress` from string "\[domain:\]bus:device.function".
+/// Each component of the address is unprefixed hexadecimal.
+///
+/// # Example
+///
+/// ```
+/// use std::str::FromStr;
+/// use devices::PciAddress;
+///
+/// let pci_address = PciAddress::from_str("d7:15.4")?;
+/// assert_eq!(pci_address.bus, 0xd7);
+/// assert_eq!(pci_address.dev, 0x15);
+/// assert_eq!(pci_address.func, 0x4);
+/// # Ok::<(), devices::PciAddressError>(())
+/// ```
 impl FromStr for PciAddress {
     type Err = Error;
 
@@ -90,14 +126,32 @@ impl FromStr for PciAddress {
 }
 
 impl PciAddress {
+    #[doc(hidden)]
     const BUS_MASK: u32 = 0x00ff;
+    #[doc(hidden)]
     const DEVICE_BITS_NUM: usize = 5;
+    #[doc(hidden)]
     const DEVICE_MASK: u32 = 0x1f;
+    #[doc(hidden)]
     const FUNCTION_BITS_NUM: usize = 3;
+    #[doc(hidden)]
     const FUNCTION_MASK: u32 = 0x07;
+    #[doc(hidden)]
     const REGISTER_OFFSET: usize = 2;
 
-    /// Construct PciAddress from separate domain, bus, device, and function numbers.
+    /// Construct [`PciAddress`] from separate domain, bus, device, and function numbers.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - The PCI domain number. Must be `0` in the current implementation.
+    /// * `bus` - The PCI bus number. Must be in the range `0..=255`.
+    /// * `dev` - The PCI device number. Must be in the range `0..=31`.
+    /// * `func` - The PCI function number. Must be in the range `0..=7`.
+    ///
+    /// # Errors
+    ///
+    /// If any component is out of the valid range, this function will return
+    /// [`Error::ComponentOutOfRange`].
     pub fn new(domain: u32, bus: u32, dev: u32, func: u32) -> Result<Self> {
         if bus > Self::BUS_MASK {
             return Err(Error::ComponentOutOfRange(PciAddressComponent::Bus));
@@ -123,7 +177,32 @@ impl PciAddress {
         })
     }
 
-    /// Construct PciAddress and register tuple from CONFIG_ADDRESS value.
+    /// Decode a [`PciAddress`] and register index from a CONFIG_ADDRESS value.
+    ///
+    /// The configuration address should be in the format used with the PCI CAM or ECAM
+    /// configuration space access mechanisms, with the lowest bits encoding a register index and
+    /// the bits above that encoding the PCI function (3 bits), device (5 bits), and bus (8 bits).
+    /// The low two bits of the configuration address, which are technically part of the register
+    /// number, are ignored, since PCI configuration space accesses must be DWORD (4-byte) aligned.
+    ///
+    /// On success, returns a [`PciAddress`] and the extracted register index in DWORDs.
+    ///
+    /// # Arguments
+    ///
+    /// * `config_address` - The PCI configuration address.
+    /// * `register_bits_num` - The size of the register value in bits.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use devices::PciAddress;
+    ///
+    /// let (pci_address, register_index) = PciAddress::from_config_address(0x32a354, 8);
+    /// assert_eq!(pci_address.bus, 0x32);
+    /// assert_eq!(pci_address.dev, 0x14);
+    /// assert_eq!(pci_address.func, 0x3);
+    /// assert_eq!(register_index, 0x15);
+    /// ```
     pub fn from_config_address(config_address: u32, register_bits_num: usize) -> (Self, usize) {
         let bus_offset = register_bits_num + Self::FUNCTION_BITS_NUM + Self::DEVICE_BITS_NUM;
         let bus = ((config_address >> bus_offset) & Self::BUS_MASK) as u8;
@@ -136,7 +215,25 @@ impl PciAddress {
         (PciAddress { bus, dev, func }, register)
     }
 
-    /// Encode PciAddress into CONFIG_ADDRESS value.
+    /// Encode [`PciAddress`] into CONFIG_ADDRESS value.
+    ///
+    /// See [`PciAddress::from_config_address()`] for details of the encoding.
+    ///
+    /// # Arguments
+    ///
+    /// * `register` - The register index in DWORDs.
+    /// * `register_bits_num` - The width of the register field, not including the two lowest bits.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use devices::PciAddress;
+    ///
+    /// let pci_address = PciAddress::new(0x0000, 0x32, 0x14, 0x3)?;
+    /// let config_address = pci_address.to_config_address(0x15, 8);
+    /// assert_eq!(config_address, 0x32a354);
+    /// # Ok::<(), devices::PciAddressError>(())
+    /// ```
     pub fn to_config_address(&self, register: usize, register_bits_num: usize) -> u32 {
         let bus_offset = register_bits_num + Self::FUNCTION_BITS_NUM + Self::DEVICE_BITS_NUM;
         let dev_offset = register_bits_num + Self::FUNCTION_BITS_NUM;
@@ -147,7 +244,13 @@ impl PciAddress {
             | ((register_mask & register as u32) << Self::REGISTER_OFFSET)
     }
 
-    /// Convert B:D:F PCI address to unsigned 32 bit integer
+    /// Convert B:D:F PCI address to unsigned 32 bit integer.
+    ///
+    /// The bus, device, and function numbers are packed into an integer as follows:
+    ///
+    /// | Bits 15-8 | Bits 7-3 | Bits 2-0 |
+    /// |-----------|----------|----------|
+    /// |    Bus    |  Device  | Function |
     pub fn to_u32(&self) -> u32 {
         ((Self::BUS_MASK & self.bus as u32) << (Self::FUNCTION_BITS_NUM + Self::DEVICE_BITS_NUM))
             | ((Self::DEVICE_MASK & self.dev as u32) << Self::FUNCTION_BITS_NUM)
@@ -155,6 +258,8 @@ impl PciAddress {
     }
 
     /// Returns true if the address points to PCI root host-bridge.
+    ///
+    /// This is true if and only if this is the all-zero address (`00:0.0`).
     pub fn is_root(&self) -> bool {
         matches!(
             &self,
