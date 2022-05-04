@@ -163,25 +163,29 @@ The common ones are shared memory pages, unix sockets, anonymous pipes, and vari
 descriptor variants (DMA-buf, eventfd, etc.). Standard methods (`read`/`write`) of using these
 primitives may be used, but crosvm has developed some helpers which should be used where applicable.
 
-### `PollContext`/`EpollContext`
+### `WaitContext`
 
-Most threads in crosvm will have a wait loop using a `PollContext`, which is a wrapper around
-Linux's `epoll` primitive for selecting over file descriptors. `EpollContext` is very similar but
-has slightly fewer features, but is usable by multiple threads at once. In either case, each FD is
+Most threads in crosvm will have a wait loop using a [`WaitContext`], which is a wrapper around a
+`epoll` on Linux and `WaitForMultipleObjects` on Windows. In either case, waitable objects can be
 added to the context along with an associated token, whose type is the type parameter of
-`PollContext`. This token must be convertible to and from a `u64`, which is a limitation imposed by
-how `epoll` works. There is a custom derive `#[derive(PollToken)]` which can be applied to an `enum`
-declaration that makes it easy to use your own enum in a `PollContext`.
+`WaitContext`. A call to the `wait` function will block until at least one of the waitable objects
+has become signaled and will return a collection of the tokens associated with those objects. The
+tokens used with `WaitContext` must be convertible to and from a `u64`. There is a custom derive
+`#[derive(PollToken)]` which can be applied to an `enum` declaration that makes it easy to use your
+own enum in a `WaitContext`.
 
-Note that the limitations of `PollContext` are the same as the limitations of `epoll`. The same FD
+#### Linux Platform Limitations
+
+The limitations of `WaitContext` on Linux are the same as the limitations of `epoll`. The same FD
 can not be inserted more than once, and the FD will be automatically removed if the process runs out
 of references to that FD. A `dup`/`fork` call will increment that reference count, so closing the
-original FD will not actually remove it from the `PollContext`. It is possible to receive tokens
-from `PollContext` for an FD that was closed because of a race condition in which an event was
-registered in the background before the `close` happened. Best practice is to remove an FD before
-closing it so that events associated with it can be reliably eliminated.
+original FD will not actually remove it from the `WaitContext`. It is possible to receive tokens
+from `WaitContext` for an FD that was closed because of a race condition in which an event was
+registered in the background before the `close` happened. Best practice is to keep an FD open and
+remove it from the `WaitContext` before closing it so that events associated with it can be reliably
+eliminated.
 
-### `serde` with Descriptors.
+### `serde` with Descriptors
 
 Using raw sockets and pipes to communicate is very inconvenient for rich data types. To help make
 this easier and less error prone, crosvm uses the `serde` crate. To allow transmitting types with
@@ -230,3 +234,4 @@ Source code is organized into crates, each with their own unit tests.
 [minijail]: https://android.googlesource.com/platform/external/minijail
 [qcow]: https://en.wikipedia.org/wiki/Qcow
 [vfio]: https://www.kernel.org/doc/html/latest/driver-api/vfio.html
+[`waitcontext`]: https://google.github.io/crosvm/doc/base/struct.WaitContext.html
