@@ -16,6 +16,9 @@ use crate::rutabaga_utils::{
     RutabagaError, RutabagaFence, RutabagaFenceHandler, RutabagaResult, RUTABAGA_FLAG_FENCE,
 };
 
+#[cfg(feature = "gfxstream")]
+use crate::rutabaga_utils::RUTABAGA_FLAG_INFO_RING_IDX;
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct VirglBox {
@@ -80,6 +83,33 @@ pub unsafe extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
                 let mut fence_state = cookie.fence_state.borrow_mut();
                 fence_state.write(fence, handler);
             }
+        }
+    })
+    .unwrap_or_else(|_| abort())
+}
+
+#[cfg(feature = "gfxstream")]
+pub extern "C" fn write_context_fence(
+    cookie: *mut c_void,
+    fence_id: u64,
+    ctx_id: u32,
+    ring_idx: u8,
+) {
+    catch_unwind(|| {
+        assert!(!cookie.is_null());
+        let cookie = unsafe { &*(cookie as *mut VirglCookie) };
+
+        // Per-context fencing is only supported when async fence handling is enabled.
+        // TODO(ryanneph): Synchronous fence handling via periodic polling will be removed
+        // shortly after all RutabagaComponents switch to using async_fence_cb.
+        assert!(cookie.use_async_fence_cb);
+        if let Some(handler) = &cookie.fence_handler {
+            handler.call(RutabagaFence {
+                flags: RUTABAGA_FLAG_FENCE | RUTABAGA_FLAG_INFO_RING_IDX,
+                fence_id,
+                ctx_id,
+                ring_idx,
+            });
         }
     })
     .unwrap_or_else(|_| abort())
