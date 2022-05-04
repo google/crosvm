@@ -9,11 +9,10 @@
 //! so it can only be used for the TRUSTED passthrough devices.
 //!
 //! CoIOMMU is presented at KVM forum 2020:
-//! https://kvmforum2020.sched.com/event/eE2z/a-virtual-iommu-with-cooperative
-//! -dma-buffer-tracking-yu-zhang-intel
+//! <https://kvmforum2020.sched.com/event/eE2z/a-virtual-iommu-with-cooperative-dma-buffer-tracking-yu-zhang-intel>
 //!
 //! Also presented at usenix ATC20:
-//! https://www.usenix.org/conference/atc20/presentation/tian
+//! <https://www.usenix.org/conference/atc20/presentation/tian>
 
 use std::collections::VecDeque;
 use std::convert::TryInto;

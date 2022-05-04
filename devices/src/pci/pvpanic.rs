@@ -5,7 +5,7 @@
 //! pvpanic is a simulated device, through which a guest panic event is sent to a VMM.
 //! This was initially developed for qemu with linux in-tree drivers and opensource
 //! driver for windows also exist now.
-//! https://fossies.org/linux/qemu/docs/specs/pvpanic.txt
+//! <https://fossies.org/linux/qemu/docs/specs/pvpanic.txt>
 //!
 //! This implementation emulates pci interface for pvpanic virtual device.
 

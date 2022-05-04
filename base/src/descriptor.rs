@@ -77,7 +77,7 @@ impl TryFrom<&dyn AsRawDescriptor> for SafeDescriptor {
     /// WARNING: Windows does NOT support cloning/duplicating all types of handles. DO NOT use this
     /// function on IO completion ports, sockets, or pseudo-handles (except those from
     /// GetCurrentProcess or GetCurrentThread). See
-    /// https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-duplicatehandle
+    /// <https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-duplicatehandle>
     /// for further details.
     ///
     /// TODO(b/191800567): this API has sharp edges on Windows. We should evaluate making some
