@@ -44,5 +44,6 @@ CARGO_DOC="true" cargo doc \
       --manifest-path="${MANIFEST_PATH}" \
       --workspace \
       --no-deps \
+      --exclude crosvm-fuzz \
       --features="${features}" "$@" \
       --document-private-items
