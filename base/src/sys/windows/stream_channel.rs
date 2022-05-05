@@ -2,12 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+pub use super::stream_channel_platform::*;
 use super::RawDescriptor;
 use crate::descriptor::AsRawDescriptor;
 use std::io;
-#[path = "win/stream_channel.rs"]
-mod stream_channel;
-pub use stream_channel::*;
 
 #[derive(Copy, Clone)]
 pub enum FramingMode {

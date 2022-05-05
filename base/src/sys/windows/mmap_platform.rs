@@ -19,7 +19,7 @@ use winapi::um::memoryapi::{
     FlushViewOfFile, MapViewOfFile, MapViewOfFileEx, UnmapViewOfFile, FILE_MAP_READ, FILE_MAP_WRITE,
 };
 
-use super::{super::RawDescriptor, Error, MappedRegion, MemoryMapping, Protection, Result};
+use super::{mmap::Error, mmap::Result, MappedRegion, MemoryMapping, Protection, RawDescriptor};
 use crate::descriptor::AsRawDescriptor;
 use crate::warn;
 
@@ -174,7 +174,7 @@ impl MemoryMapping {
         };
 
         if created_address.is_null() {
-            return Err(Error::SystemCallFailed(super::super::Error::last()));
+            return Err(Error::SystemCallFailed(super::Error::last()));
         }
 
         Ok(MemoryMapping {
@@ -189,7 +189,7 @@ impl MemoryMapping {
         // Safe because self can only be created as a successful memory mapping
         unsafe {
             if FlushViewOfFile(self.addr, self.size) == 0 {
-                return Err(Error::SystemCallFailed(super::super::Error::last()));
+                return Err(Error::SystemCallFailed(super::Error::last()));
             }
         };
         Ok(())
@@ -285,10 +285,7 @@ impl Drop for MemoryMapping {
         // else is holding a reference to it.
         unsafe {
             if UnmapViewOfFile(self.addr) == 0 {
-                warn!(
-                    "Unsuccessful unmap of file: {}",
-                    super::super::Error::last()
-                );
+                warn!("Unsuccessful unmap of file: {}", super::Error::last());
             }
         }
     }
@@ -302,7 +299,7 @@ pub struct MemoryMappingArena();
 #[cfg(test)]
 mod tests {
     use super::{
-        super::super::{pagesize, SharedMemory},
+        super::{pagesize, SharedMemory},
         *,
     };
     use crate::descriptor::FromRawDescriptor;

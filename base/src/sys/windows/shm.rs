@@ -12,10 +12,6 @@ use std::io::{
     Error, ErrorKind, Read, Seek, SeekFrom, Write, {self},
 };
 
-#[path = "win/shm.rs"]
-mod shm_platform;
-pub use shm_platform::*;
-
 /// A shared memory file descriptor and its size.
 #[derive(Debug, Deserialize)]
 #[serde(try_from = "SerializedSharedMemory")]

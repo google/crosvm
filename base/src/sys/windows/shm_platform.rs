@@ -6,7 +6,7 @@ use std::ffi::CStr;
 use win_util::create_file_mapping;
 use winapi::um::winnt::PAGE_EXECUTE_READWRITE;
 
-use super::super::{shm::SharedMemory, MemoryMapping, MmapError, Result};
+use super::{shm::SharedMemory, MemoryMapping, MmapError, Result};
 use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 
 impl SharedMemory {
@@ -21,7 +21,7 @@ impl SharedMemory {
                 name.map(|s| s.to_str().unwrap()),
             )
         }
-        .map_err(super::super::Error::from)?;
+        .map_err(super::Error::from)?;
 
         // Safe because we have exclusive ownership of mapping_handle & it is valid.
         Self::from_safe_descriptor(
@@ -42,7 +42,7 @@ impl SharedMemory {
                     MmapError::SystemCallFailed(e) => Err(e),
                     // TODO(b/150414994): This error lacks meaning. Consider adding custom errors to
                     // shm
-                    _ => Err(super::super::Error::new(0)),
+                    _ => Err(super::Error::new(0)),
                 };
             }
         };

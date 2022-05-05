@@ -24,9 +24,8 @@ use crate::external_mapping::ExternalMapping;
 use crate::MemoryMapping as CrateMemoryMapping;
 use crate::MemoryMappingBuilder;
 
-#[path = "win/mmap.rs"]
-mod mmap_platform;
-pub use mmap_platform::MemoryMappingArena;
+use super::mmap_platform;
+pub use super::mmap_platform::MemoryMappingArena;
 
 #[sorted]
 #[derive(Debug, thiserror::Error)]
@@ -201,8 +200,8 @@ impl dyn MappedRegion {
 /// RAII semantics including munmap when no longer needed.
 #[derive(Debug)]
 pub struct MemoryMapping {
-    addr: *mut c_void,
-    size: usize,
+    pub(crate) addr: *mut c_void,
+    pub(crate) size: usize,
 }
 
 // Send and Sync aren't automatically inherited for the raw address pointer.
@@ -374,7 +373,7 @@ impl MemoryMapping {
     }
 
     // Check that offset+count is valid and return the sum.
-    fn range_end(&self, offset: usize, count: usize) -> Result<usize> {
+    pub(crate) fn range_end(&self, offset: usize, count: usize) -> Result<usize> {
         let mem_end = offset.checked_add(count).ok_or(Error::InvalidAddress)?;
         if mem_end > self.size() {
             return Err(Error::InvalidAddress);

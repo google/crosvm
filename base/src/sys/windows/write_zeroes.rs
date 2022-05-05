@@ -7,13 +7,7 @@ use std::{
     io::{self, Error, ErrorKind},
 };
 
-#[path = "win/punch_hole.rs"]
-mod punch_hole;
-
-#[path = "win/write_zeros.rs"]
-mod write_zeros;
-
-use super::write_zeroes::punch_hole::execute_punch_hole;
+use super::punch_hole::execute_punch_hole;
 
 /// A trait for deallocating space in a file.
 pub trait PunchHole {

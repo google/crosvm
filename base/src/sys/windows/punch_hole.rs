@@ -42,8 +42,7 @@ pub fn execute_punch_hole<T: AsRawDescriptor>(
     };
 
     // Safe because we check the return value and all values should be set
-    let result =
-        unsafe { super::super::ioctl::ioctl_with_ref(handle, FSCTL_SET_ZERO_DATA, &zero_data) };
+    let result = unsafe { super::ioctl::ioctl_with_ref(handle, FSCTL_SET_ZERO_DATA, &zero_data) };
 
     if result != 0 {
         return Err(Error::from_raw_os_error(result));

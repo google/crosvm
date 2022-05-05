@@ -18,7 +18,7 @@ use winapi::{
     um::{synchapi::WaitForMultipleObjects, winbase::WAIT_OBJECT_0},
 };
 
-use super::super::{
+use super::{
     errno_result, Error, Event, EventTrigger, EventType, PollToken, Result, TriggeredEvent,
 };
 use crate::descriptor::{AsRawDescriptor, Descriptor};

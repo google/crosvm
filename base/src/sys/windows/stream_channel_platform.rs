@@ -8,7 +8,7 @@ use log::{error, warn};
 use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
 use sync::Mutex;
 
-use super::super::{
+use super::{
     named_pipes::{self, PipeConnection},
     stream_channel::{BlockingMode, FramingMode},
     Event, MultiProcessMutex, RawDescriptor, Result,
@@ -397,7 +397,7 @@ impl CloseNotifier for StreamChannel {
 #[cfg(test)]
 mod test {
     use super::{
-        super::super::{EventContext, EventTrigger, PollToken},
+        super::{EventContext, EventTrigger, PollToken},
         *,
     };
     use crate::ReadNotifier;

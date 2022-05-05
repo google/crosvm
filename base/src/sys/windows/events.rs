@@ -4,19 +4,16 @@
 
 use std::{clone::Clone, default::Default, marker::Copy};
 
+pub use super::wait::*;
 use super::{PollToken, RawDescriptor};
 use crate::descriptor::AsRawDescriptor;
-
-#[path = "win/wait.rs"]
-mod wait;
-pub use wait::*;
 
 /// Represents descriptor-token pairs which represent an event which can be triggered in the
 /// EventContext
 #[derive(PartialEq)]
 pub struct EventTrigger<T: PollToken> {
-    token: T,
-    event: RawDescriptor,
+    pub(crate) token: T,
+    pub(crate) event: RawDescriptor,
 }
 
 impl<T: PollToken> EventTrigger<T> {

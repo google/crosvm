@@ -13,28 +13,28 @@ pub mod win;
 pub mod ioctl;
 #[macro_use]
 pub mod syslog;
-#[path = "win/console.rs"]
 mod console;
 mod descriptor;
-#[path = "win/event.rs"]
 mod event;
 mod events;
 pub mod file_traits;
-#[path = "win/get_filesystem_type.rs"]
 mod get_filesystem_type;
 mod gmtime;
 mod mmap;
-#[path = "win/named_pipes.rs"]
+mod mmap_platform;
 pub mod named_pipes;
 mod poll;
-#[path = "win/priority.rs"]
 mod priority;
 // Add conditional compile?
-#[path = "win/sched.rs"]
+mod punch_hole;
 mod sched;
 mod shm;
+mod shm_platform;
 mod stream_channel;
+mod stream_channel_platform;
 mod timer;
+mod wait;
+mod write_zeros;
 
 pub mod thread;
 
@@ -58,6 +58,7 @@ pub use poll::*;
 pub use priority::*;
 pub use sched::*;
 pub use shm::*;
+pub use shm_platform::*;
 pub use stream_channel::*;
 pub use timer::*;
 pub use win::*;
