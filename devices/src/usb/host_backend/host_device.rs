@@ -46,6 +46,7 @@ pub struct HostDevice {
     claimed_interfaces: Vec<u8>,
     control_request_setup: UsbRequestSetup,
     executed: bool,
+    initialized: bool,
     job_queue: Arc<AsyncJobQueue>,
 }
 
@@ -71,6 +72,7 @@ impl HostDevice {
             claimed_interfaces: vec![],
             control_request_setup: UsbRequestSetup::new(0, 0, 0, 0, 0),
             executed: false,
+            initialized: false,
             job_queue,
         };
 
@@ -352,7 +354,14 @@ impl HostDevice {
                 None
             }
         };
-        if Some(config) != cur_config {
+
+        let mut need_set_config = true;
+        if !self.initialized {
+            need_set_config = Some(config) != cur_config;
+            self.initialized = true;
+        }
+
+        if need_set_config {
             self.device
                 .lock()
                 .set_active_configuration(config)
