@@ -69,7 +69,10 @@ fn bus_io_handler(bus: &Bus) -> impl FnMut(IoParams) -> Option<[u8; 8]> + '_ {
                 error!("unsupported Read size of {} bytes", size);
                 size = data.len();
             }
-            bus.read(address, &mut data[..size]).then(|| data)
+            // Ignore the return value of `read()`. If no device exists on the bus at the given
+            // location, return the initial value of data, which is all zeroes.
+            let _ = bus.read(address, &mut data[..size]);
+            Some(data)
         }
         IoOperation::Write { data } => {
             if size > data.len() {
