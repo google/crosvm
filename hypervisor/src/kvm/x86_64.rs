@@ -6,7 +6,7 @@ use std::arch::x86_64::__cpuid;
 
 use base::IoctlNr;
 
-use libc::E2BIG;
+use libc::{E2BIG, ENXIO};
 
 use base::{
     errno_result, error, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr,
@@ -18,10 +18,11 @@ use vm_memory::GuestAddress;
 
 use super::{Kvm, KvmVcpu, KvmVm};
 use crate::{
-    ClockState, CpuId, CpuIdEntry, DebugRegs, DescriptorTable, DeviceKind, Fpu, HypervisorX86_64,
-    IoapicRedirectionTableEntry, IoapicState, IrqSourceChip, LapicState, PicSelect, PicState,
-    PitChannelState, PitState, ProtectionType, Register, Regs, Segment, Sregs, VcpuExit,
-    VcpuX86_64, VmCap, VmX86_64, MAX_IOAPIC_PINS, NUM_IOAPIC_PINS,
+    get_tsc_offset_from_msr, set_tsc_offset_via_msr, ClockState, CpuId, CpuIdEntry, DebugRegs,
+    DescriptorTable, DeviceKind, Fpu, HypervisorX86_64, IoapicRedirectionTableEntry, IoapicState,
+    IrqSourceChip, LapicState, PicSelect, PicState, PitChannelState, PitState, ProtectionType,
+    Register, Regs, Segment, Sregs, VcpuExit, VcpuX86_64, VmCap, VmX86_64, MAX_IOAPIC_PINS,
+    NUM_IOAPIC_PINS,
 };
 
 type KvmCpuId = kvm::CpuId;
@@ -696,6 +697,21 @@ impl VcpuX86_64 for KvmVcpu {
         } else {
             errno_result()
         }
+    }
+
+    /// KVM does not support the VcpuExit::Cpuid exit type.
+    fn handle_cpuid(&mut self, _entry: &CpuIdEntry) -> Result<()> {
+        Err(Error::new(ENXIO))
+    }
+
+    fn get_tsc_offset(&self) -> Result<u64> {
+        // Use the default MSR-based implementation
+        get_tsc_offset_from_msr(self)
+    }
+
+    fn set_tsc_offset(&self, offset: u64) -> Result<()> {
+        // Use the default MSR-based implementation
+        set_tsc_offset_via_msr(self, offset)
     }
 }
 
