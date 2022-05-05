@@ -333,7 +333,7 @@ impl MsixConfig {
     ///     for the memory write transaction; different MSI-X vectors have
     ///     different Message Address values
     /// Message Data: the contents of this field specifies the data driven
-    ///     on AD[31::00] during the memory write transaction's data phase.
+    ///     on AD\[31::00\] during the memory write transaction's data phase.
     /// Vector Control: only bit 0 (Mask Bit) is not reserved: when this bit
     ///     is set, the function is prohibited from sending a message using
     ///     this MSI-X Table entry.
@@ -428,7 +428,7 @@ impl MsixConfig {
     ///  * 'offset' - the offset within the PBA entries
     ///  * 'data' - used to store the read results
     ///
-    /// Pending Bits[63::00]: For each Pending Bit that is set, the function
+    /// Pending Bits\[63::00\]: For each Pending Bit that is set, the function
     /// has a pending message for the associated MSI-X Table entry.
     pub fn read_pba_entries(&self, offset: u64, data: &mut [u8]) {
         let index: usize = (offset / MSIX_PBA_ENTRIES_MODULO) as usize;

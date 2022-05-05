@@ -51,7 +51,7 @@ impl Display for PciAddress {
     }
 }
 
-/// Construct PciAddress from string [domain:]bus:device.function.
+/// Construct PciAddress from string "\[domain:\]bus:device.function".
 impl FromStr for PciAddress {
     type Err = Error;
 
