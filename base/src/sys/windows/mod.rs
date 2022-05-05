@@ -34,7 +34,6 @@ mod stream_channel;
 mod stream_channel_platform;
 mod timer;
 mod wait;
-mod write_zeros;
 
 pub mod thread;
 
@@ -68,7 +67,8 @@ pub use file_traits::{
     FileSetLen, FileSync,
 };
 pub use mmap::Error as MmapError;
-pub use write_zeroes::{PunchHole, WriteZeroesAt};
+pub(crate) use punch_hole::file_punch_hole;
+pub(crate) use write_zeroes::file_write_zeroes_at;
 
 use std::cell::Cell;
 

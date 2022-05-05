@@ -16,6 +16,7 @@ mod shm;
 pub mod syslog;
 mod timer;
 mod tube;
+mod write_zeroes;
 
 pub mod sys;
 pub use sys::platform;
@@ -35,6 +36,7 @@ pub use scoped_event_macro::*;
 pub use shm::SharedMemory;
 pub use timer::{FakeTimer, Timer};
 pub use tube::{Error as TubeError, RecvTube, Result as TubeResult, SendTube, Tube};
+pub use write_zeroes::{PunchHole, WriteZeroesAt};
 
 cfg_if::cfg_if! {
      if #[cfg(unix)] {

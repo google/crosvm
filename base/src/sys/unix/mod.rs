@@ -83,7 +83,7 @@ pub use file_traits::{
 };
 pub use mmap::Error as MmapError;
 pub use signalfd::Error as SignalFdError;
-pub use write_zeroes::{PunchHole, WriteZeroesAt};
+pub(crate) use write_zeroes::{file_punch_hole, file_write_zeroes_at};
 
 use std::{
     cell::Cell,
