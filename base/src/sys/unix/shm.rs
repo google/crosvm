@@ -123,13 +123,16 @@ impl SharedMemory {
     ///
     /// Note that the given name may not have NUL characters anywhere in it, or this will return an
     /// error.
-    pub fn named<T: Into<Vec<u8>>>(name: T) -> Result<SharedMemory> {
-        Self::new(Some(&CString::new(name).map_err(|_| Error::new(EINVAL))?))
+    pub fn named<T: Into<Vec<u8>>>(name: T, size: u64) -> Result<SharedMemory> {
+        Self::new(
+            Some(&CString::new(name).map_err(|_| Error::new(EINVAL))?),
+            size,
+        )
     }
 
     /// Convenience function for `SharedMemory::new` that has an arbitrary and unspecified name.
     pub fn anon() -> Result<SharedMemory> {
-        Self::new(None)
+        Self::new(None, 0)
     }
 
     /// Creates a new shared memory file descriptor with zero size.
@@ -138,7 +141,7 @@ impl SharedMemory {
     /// debugging. The name does not need to be unique.
     ///
     /// The file descriptor is opened with the close on exec flag and allows memfd sealing.
-    pub fn new(name: Option<&CStr>) -> Result<SharedMemory> {
+    pub fn new(name: Option<&CStr>, size: u64) -> Result<SharedMemory> {
         let shm_name = name
             .map(|n| n.as_ptr())
             .unwrap_or(b"/crosvm_shm\0".as_ptr() as *const c_char);
@@ -151,7 +154,9 @@ impl SharedMemory {
 
         let file = unsafe { File::from_raw_fd(fd) };
 
-        Ok(SharedMemory { fd: file, size: 0 })
+        let mut shm = SharedMemory { fd: file, size: 0 };
+        shm.set_size(size)?;
+        Ok(shm)
     }
 
     /// Creates a SharedMemory instance from a SafeDescriptor owning a reference to a
@@ -309,6 +314,12 @@ impl AsRawDescriptor for SharedMemory {
     }
 }
 
+impl IntoRawDescriptor for SharedMemory {
+    fn into_raw_descriptor(self) -> RawDescriptor {
+        self.fd.into_raw_descriptor()
+    }
+}
+
 impl From<SharedMemory> for File {
     fn from(s: SharedMemory) -> File {
         s.fd
@@ -368,7 +379,7 @@ mod tests {
             return;
         }
         const TEST_NAME: &str = "Name McCool Person";
-        let shm = SharedMemory::named(TEST_NAME).expect("failed to create shared memory");
+        let shm = SharedMemory::named(TEST_NAME, 0).expect("failed to create shared memory");
         assert_eq!(shm.read_name(), Ok(TEST_NAME.to_owned()));
     }
 
@@ -428,7 +439,7 @@ mod tests {
         }
         let name = "very unique name";
         let cname = CString::new(name).unwrap();
-        let shm = SharedMemory::new(Some(&cname)).expect("failed to create shared memory");
+        let shm = SharedMemory::new(Some(&cname), 0).expect("failed to create shared memory");
         assert_eq!(shm.read_name(), Ok(name.to_owned()));
     }
 

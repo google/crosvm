@@ -12,6 +12,7 @@ pub mod external_mapping;
 mod mmap;
 mod notifiers;
 pub mod scoped_event_macro;
+mod shm;
 pub mod syslog;
 mod timer;
 mod tube;
@@ -31,12 +32,12 @@ pub use platform::ioctl::{
     *,
 };
 pub use scoped_event_macro::*;
+pub use shm::SharedMemory;
 pub use timer::{FakeTimer, Timer};
 pub use tube::{Error as TubeError, RecvTube, Result as TubeResult, SendTube, Tube};
 
 cfg_if::cfg_if! {
      if #[cfg(unix)] {
-        mod shm;
         mod wait_context;
 
         pub use sys::unix;
@@ -44,7 +45,6 @@ cfg_if::cfg_if! {
         pub use unix::net::*;
 
         pub use platform::{MemoryMappingBuilderUnix, Unix as MemoryMappingUnix};
-        pub use shm::SharedMemory;
         pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
      } else if #[cfg(windows)] {
         pub use platform::MemoryMappingBuilderWindows;
