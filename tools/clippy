@@ -30,12 +30,13 @@ def is_crate_excluded(crate: str) -> bool:
     return crate in excluded_crates
 
 
-def main(fix: bool = False):
+def main(fix: bool = False, json: bool = False):
     chdir(CROSVM_ROOT)
 
     # Note: Clippy checks are configured in .cargo/config.toml
     common_args = [
         "--fix" if fix else None,
+        "--message-format=json" if json else None,
         "--all-targets",
         "--",
         "-Dwarnings",
