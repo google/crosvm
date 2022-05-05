@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+//! Virtual machine architecture support code.
+
 pub mod android;
 pub mod fdt;
 pub mod pstore;

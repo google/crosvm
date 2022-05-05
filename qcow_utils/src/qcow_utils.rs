@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Exported interface to basic qcow functionality to be used from C.
+//! Exported interface to basic qcow functionality to be used from C.
 
 use libc::{EINVAL, EIO, ENOSYS};
 use std::ffi::CStr;

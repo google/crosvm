@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+//! Linux USB device filesystem ioctl bindings.
+
 // Translated from include/uapi/linux/usbdevice_fs.h
 
 #![allow(non_upper_case_globals)]

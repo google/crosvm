@@ -1,10 +1,12 @@
 // Copyright 2021 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-//
-// Provides parts of crosvm as a library to communicate with running crosvm instances.
-// Usually you would need to invoke crosvm with subcommands and you'd get the result on
-// stdout.
+
+//! Provides parts of crosvm as a library to communicate with running crosvm instances.
+//!
+//! This crate is a programmatic alternative to invoking crosvm with subcommands that produce the
+//! result on stdout.
+
 use std::convert::{TryFrom, TryInto};
 use std::ffi::CStr;
 use std::panic::catch_unwind;

@@ -1,7 +1,8 @@
 // Copyright 2020 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-//
+
+//! Virtual machine guest memory abstraction.
 
 mod guest_address;
 pub mod guest_memory;

@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 //! A safe wrapper around the kernel's KVM interface.
+//!
+//! New code should use the `hypervisor` crate instead.
 
 mod cap;
 

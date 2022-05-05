@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+//! Linux kernel ELF file loader.
+
 use std::ffi::CStr;
 use std::io::{Read, Seek, SeekFrom};
 use std::mem;

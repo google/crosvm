@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+//! Linux input system bindings.
+
 use data_model::{DataInit, Le16, SLe32};
 use std::mem::size_of;
 

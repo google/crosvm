@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+//! Safe, cross-platform-compatible wrappers for system interfaces.
+
 mod alloc;
 mod clock;
 pub mod descriptor;
