@@ -8,7 +8,6 @@ use std::{
     io::{
         Read, Seek, SeekFrom, Write, {self},
     },
-    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
 };
 
 use libc::{
@@ -19,8 +18,8 @@ use libc::{
 use serde::{Deserialize, Serialize};
 
 use super::{errno_result, Error, Result};
-use crate::SharedMemory as CrateSharedMemory;
 use crate::{AsRawDescriptor, IntoRawDescriptor, RawDescriptor, SafeDescriptor};
+use crate::{FromRawDescriptor, SharedMemory as CrateSharedMemory};
 
 /// A shared memory file descriptor and its size.
 #[derive(Debug, Serialize, Deserialize)]
@@ -152,7 +151,7 @@ impl SharedMemory {
             return errno_result();
         }
 
-        let file = unsafe { File::from_raw_fd(fd) };
+        let file = unsafe { File::from_raw_descriptor(fd) };
 
         let mut shm = SharedMemory { fd: file, size: 0 };
         shm.set_size(size)?;
@@ -166,7 +165,7 @@ impl SharedMemory {
         descriptor: SafeDescriptor,
         size: Option<u64>,
     ) -> Result<SharedMemory> {
-        let mut file = unsafe { File::from_raw_fd(descriptor.into_raw_descriptor()) };
+        let mut file = unsafe { File::from_raw_descriptor(descriptor.into_raw_descriptor()) };
         let size = size.unwrap_or(file.seek(SeekFrom::End(0))?);
         Ok(SharedMemory { fd: file, size })
     }
@@ -187,7 +186,7 @@ impl SharedMemory {
     ///
     /// This may fail if this instance was not constructed from a memfd.
     pub fn get_seals(&self) -> Result<MemfdSeals> {
-        let ret = unsafe { fcntl(self.fd.as_raw_fd(), F_GET_SEALS) };
+        let ret = unsafe { fcntl(self.fd.as_raw_descriptor(), F_GET_SEALS) };
         if ret < 0 {
             return errno_result();
         }
@@ -199,7 +198,7 @@ impl SharedMemory {
     /// This may fail if this instance was not constructed from a memfd with sealing allowed or if
     /// the seal seal (`F_SEAL_SEAL`) bit was already added.
     pub fn add_seals(&mut self, seals: MemfdSeals) -> Result<()> {
-        let ret = unsafe { fcntl(self.fd.as_raw_fd(), F_ADD_SEALS, seals) };
+        let ret = unsafe { fcntl(self.fd.as_raw_descriptor(), F_ADD_SEALS, seals) };
         if ret < 0 {
             return errno_result();
         }
@@ -219,7 +218,7 @@ impl SharedMemory {
     /// Note that if some process has already mapped this shared memory and the new size is smaller,
     /// that process may get signaled with SIGBUS if they access any page past the new size.
     pub fn set_size(&mut self, size: u64) -> Result<()> {
-        let ret = unsafe { ftruncate64(self.fd.as_raw_fd(), size as off64_t) };
+        let ret = unsafe { ftruncate64(self.fd.as_raw_descriptor(), size as off64_t) };
         if ret < 0 {
             return errno_result();
         }
@@ -233,7 +232,7 @@ impl SharedMemory {
     /// results are undefined. Because this returns a `String`, the name's bytes are interpreted as
     /// utf-8.
     pub fn read_name(&self) -> Result<String> {
-        let fd_path = format!("/proc/self/fd/{}", self.as_raw_fd());
+        let fd_path = format!("/proc/self/fd/{}", self.as_raw_descriptor());
         let link_name = read_link(fd_path)?;
         link_name
             .to_str()
@@ -287,24 +286,6 @@ impl Seek for SharedMemory {
 impl Seek for &SharedMemory {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         (&self.fd).seek(pos)
-    }
-}
-
-impl AsRawFd for SharedMemory {
-    fn as_raw_fd(&self) -> RawFd {
-        self.fd.as_raw_fd()
-    }
-}
-
-impl AsRawFd for &SharedMemory {
-    fn as_raw_fd(&self) -> RawFd {
-        self.fd.as_raw_fd()
-    }
-}
-
-impl IntoRawFd for SharedMemory {
-    fn into_raw_fd(self) -> RawFd {
-        self.fd.into_raw_fd()
     }
 }
 

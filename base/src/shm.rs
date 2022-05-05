@@ -5,8 +5,6 @@
 use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
 use crate::{Error, RawDescriptor, Result};
 use std::ffi::CStr;
-#[cfg(unix)]
-use std::os::unix::io::RawFd;
 
 use crate::platform::SharedMemory as SysUtilSharedMemory;
 use serde::{Deserialize, Serialize};
@@ -78,7 +76,7 @@ impl audio_streams::shm_streams::SharedMemory for SharedMemory {
     }
 
     #[cfg(unix)]
-    fn as_raw_fd(&self) -> RawFd {
+    fn as_raw_fd(&self) -> RawDescriptor {
         self.as_raw_descriptor()
     }
 }
