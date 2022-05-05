@@ -31,6 +31,7 @@ use crate::virtio::fs::{process_fs_queue, virtio_fs_config, FS_MAX_TAG_LEN};
 use crate::virtio::vhost::user::device::handler::{
     DeviceRequestHandler, Doorbell, VhostUserBackend,
 };
+use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
 
 async fn handle_fs_queue(
     mut queue: virtio::Queue,
@@ -95,6 +96,8 @@ fn jail_and_fork(
 
     let limit = get_max_open_files().context("failed to get max open files")?;
     j.set_rlimit(libc::RLIMIT_NOFILE as i32, limit, limit)?;
+    // vvu locks around 512k memory. Just give 1M.
+    j.set_rlimit(libc::RLIMIT_MEMLOCK as i32, 1 << 20, 1 << 20)?;
 
     // Make sure there are no duplicates in keep_rds
     keep_rds.dedup();
@@ -267,8 +270,14 @@ impl VhostUserBackend for FsBackend {
 #[derive(FromArgs)]
 #[argh(description = "")]
 struct Options {
-    #[argh(option, description = "path to a socket", arg_name = "PATH")]
-    socket: String,
+    #[argh(option, description = "path to a vhost-user socket", arg_name = "PATH")]
+    socket: Option<String>,
+    #[argh(
+        option,
+        description = "VFIO-PCI device name (e.g. '0000:00:07.0')",
+        arg_name = "STRING"
+    )]
+    vfio: Option<String>,
     #[argh(option, description = "the virtio-fs tag", arg_name = "TAG")]
     tag: String,
     #[argh(option, description = "path to a directory to share", arg_name = "DIR")]
@@ -299,10 +308,16 @@ pub fn run_fs_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
     let ex = Executor::new().context("Failed to create executor")?;
     let fs_device = FsBackend::new(&ex, &opts.tag)?;
 
-    // Create and bind unix socket
-    let listener = UnixListener::bind(opts.socket).map(UnlinkUnixListener)?;
     let mut keep_rds = fs_device.keep_rds.clone();
-    keep_rds.push(listener.as_raw_fd());
+    let listener = match opts.socket {
+        None => None,
+        Some(socket) => {
+            // Create and bind unix socket
+            let l = UnixListener::bind(socket).map(UnlinkUnixListener)?;
+            keep_rds.push(l.as_raw_fd());
+            Some(l)
+        }
+    };
     base::syslog::push_descriptors(&mut keep_rds);
 
     let handler = DeviceRequestHandler::new(fs_device);
@@ -335,6 +350,13 @@ pub fn run_fs_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
         }
     }
 
-    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-    ex.run_until(handler.run_with_listener(listener, &ex))?
+    let res = match (listener, opts.vfio) {
+        (Some(l), None) => ex.run_until(handler.run_with_listener(l, &ex))?,
+        (None, Some(vfio)) => {
+            let device = VvuPciDevice::new(&vfio, FsBackend::MAX_QUEUE_NUM)?;
+            ex.run_until(handler.run_vvu(device, &ex))?
+        }
+        _ => Err(anyhow!("exactly one of `--socket` or `--vfio` is required")),
+    };
+    res
 }
