@@ -87,7 +87,7 @@ pub enum EventType {
 /// let _ = another_evt.read()?;
 /// # Ok::<(), base::Error>(())
 /// ```
-pub struct WaitContext<T: EventToken>(EventContext<T>);
+pub struct WaitContext<T: EventToken>(pub(crate) EventContext<T>);
 
 impl<T: EventToken> WaitContext<T> {
     /// Creates a new WaitContext.

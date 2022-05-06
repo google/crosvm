@@ -20,11 +20,22 @@ use winapi::{
 
 use super::{errno_result, Error, Event, EventTrigger, PollToken, Result, TriggeredEvent};
 use crate::descriptor::{AsRawDescriptor, Descriptor};
-use crate::{error, EventType, RawDescriptor};
+use crate::{error, EventToken, EventType, RawDescriptor, WaitContext};
 // MAXIMUM_WAIT_OBJECTS = 64
 pub const MAXIMUM_WAIT_OBJECTS: usize = winapi::um::winnt::MAXIMUM_WAIT_OBJECTS as usize;
 
 // TODO(145170451) rizhang: implement round robin if event size is greater than 64
+
+pub trait WaitContextExt {
+    /// Removes all handles registered in the WaitContext.
+    fn clear(&self) -> Result<()>;
+}
+
+impl<T: EventToken> WaitContextExt for WaitContext<T> {
+    fn clear(&self) -> Result<()> {
+        self.0.clear()
+    }
+}
 
 struct RegisteredHandles<T: PollToken> {
     triggers: HashMap<Descriptor, T>,
