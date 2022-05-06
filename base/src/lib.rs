@@ -18,6 +18,7 @@ mod shm;
 pub mod syslog;
 mod timer;
 mod tube;
+mod wait_context;
 mod write_zeroes;
 
 pub mod sys;
@@ -38,18 +39,17 @@ pub use scoped_event_macro::*;
 pub use shm::SharedMemory;
 pub use timer::{FakeTimer, Timer};
 pub use tube::{Error as TubeError, RecvTube, Result as TubeResult, SendTube, Tube};
+pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
 pub use write_zeroes::{PunchHole, WriteZeroesAt};
 
 cfg_if::cfg_if! {
      if #[cfg(unix)] {
-        mod wait_context;
 
         pub use sys::unix;
 
         pub use unix::net::*;
 
         pub use platform::{MemoryMappingBuilderUnix, Unix as MemoryMappingUnix};
-        pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
      } else if #[cfg(windows)] {
         pub use platform::MemoryMappingBuilderWindows;
         pub use platform::EventExt;

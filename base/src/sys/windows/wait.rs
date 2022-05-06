@@ -18,11 +18,9 @@ use winapi::{
     um::{synchapi::WaitForMultipleObjects, winbase::WAIT_OBJECT_0},
 };
 
-use super::{
-    errno_result, Error, Event, EventTrigger, EventType, PollToken, Result, TriggeredEvent,
-};
+use super::{errno_result, Error, Event, EventTrigger, PollToken, Result, TriggeredEvent};
 use crate::descriptor::{AsRawDescriptor, Descriptor};
-use crate::error;
+use crate::{error, EventType, RawDescriptor};
 // MAXIMUM_WAIT_OBJECTS = 64
 pub const MAXIMUM_WAIT_OBJECTS: usize = winapi::um::winnt::MAXIMUM_WAIT_OBJECTS as usize;
 
@@ -72,7 +70,7 @@ impl<T: PollToken> EventContext<T> {
 
     /// Adds a trigger to the EventContext.
     pub fn add(&self, trigger: EventTrigger<T>) -> Result<()> {
-        self.add_for_event(trigger, EventType::Read)
+        self.add_for_event_impl(trigger, EventType::Read)
     }
 
     /// Adds a trigger to the EventContext.
@@ -83,7 +81,16 @@ impl<T: PollToken> EventContext<T> {
         Ok(())
     }
 
-    pub fn add_for_event(&self, trigger: EventTrigger<T>, _event_type: EventType) -> Result<()> {
+    pub fn add_for_event(
+        &self,
+        descriptor: &dyn AsRawDescriptor,
+        event_type: EventType,
+        token: T,
+    ) -> Result<()> {
+        self.add_for_event_impl(EventTrigger::from(descriptor, token), event_type)
+    }
+
+    fn add_for_event_impl(&self, trigger: EventTrigger<T>, _event_type: EventType) -> Result<()> {
         let mut registered_handles_locked = self.registered_handles.lock().unwrap();
         if registered_handles_locked
             .triggers
@@ -103,7 +110,14 @@ impl<T: PollToken> EventContext<T> {
         self.handles_modified_event.write(1)
     }
 
-    pub fn modify(&self, trigger: EventTrigger<T>, _event_type: EventType) -> Result<()> {
+    pub fn modify(
+        &self,
+        descriptor: &dyn AsRawDescriptor,
+        _event_type: EventType,
+        token: T,
+    ) -> Result<()> {
+        let trigger = EventTrigger::from(descriptor, token);
+
         let mut registered_handles_locked = self.registered_handles.lock().unwrap();
         if let std::collections::hash_map::Entry::Occupied(mut e) = registered_handles_locked
             .triggers
@@ -116,7 +130,7 @@ impl<T: PollToken> EventContext<T> {
         self.handles_modified_event.write(1)
     }
 
-    pub fn remove(&self, event_handle: &dyn AsRawDescriptor) -> Result<()> {
+    pub fn delete(&self, event_handle: &dyn AsRawDescriptor) -> Result<()> {
         let mut registered_handles_locked = self.registered_handles.lock().unwrap();
         let result = registered_handles_locked
             .triggers
@@ -245,6 +259,12 @@ impl<T: PollToken> EventContext<T> {
             // above is an error case.
             _ => errno_result(),
         }
+    }
+}
+
+impl<T: PollToken> AsRawDescriptor for EventContext<T> {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.handles_modified_event.as_raw_descriptor()
     }
 }
 
