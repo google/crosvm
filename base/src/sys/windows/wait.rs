@@ -2,14 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    cmp::min,
-    collections::HashMap,
-    os::windows::io::RawHandle,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{cmp::min, collections::HashMap, os::windows::io::RawHandle, sync::Arc, time::Duration};
 
+use sync::Mutex;
 use winapi::{
     shared::{
         minwindef::{DWORD, FALSE},
@@ -66,7 +61,6 @@ impl<T: PollToken> EventContext<T> {
         // modified.
         new.registered_handles
             .lock()
-            .unwrap()
             .raw_handles
             .push(Descriptor(new.handles_modified_event.as_raw_descriptor()));
         Ok(new)
@@ -102,7 +96,7 @@ impl<T: PollToken> EventContext<T> {
     }
 
     fn add_for_event_impl(&self, trigger: EventTrigger<T>, _event_type: EventType) -> Result<()> {
-        let mut registered_handles_locked = self.registered_handles.lock().unwrap();
+        let mut registered_handles_locked = self.registered_handles.lock();
         if registered_handles_locked
             .triggers
             .contains_key(&Descriptor(trigger.event))
@@ -129,7 +123,7 @@ impl<T: PollToken> EventContext<T> {
     ) -> Result<()> {
         let trigger = EventTrigger::from(descriptor, token);
 
-        let mut registered_handles_locked = self.registered_handles.lock().unwrap();
+        let mut registered_handles_locked = self.registered_handles.lock();
         if let std::collections::hash_map::Entry::Occupied(mut e) = registered_handles_locked
             .triggers
             .entry(Descriptor(trigger.event))
@@ -142,7 +136,7 @@ impl<T: PollToken> EventContext<T> {
     }
 
     pub fn delete(&self, event_handle: &dyn AsRawDescriptor) -> Result<()> {
-        let mut registered_handles_locked = self.registered_handles.lock().unwrap();
+        let mut registered_handles_locked = self.registered_handles.lock();
         let result = registered_handles_locked
             .triggers
             .remove(&Descriptor(event_handle.as_raw_descriptor()));
@@ -160,7 +154,7 @@ impl<T: PollToken> EventContext<T> {
     }
 
     pub fn clear(&self) -> Result<()> {
-        let mut registered_handles_locked = self.registered_handles.lock().unwrap();
+        let mut registered_handles_locked = self.registered_handles.lock();
         registered_handles_locked.triggers.clear();
         registered_handles_locked.raw_handles.clear();
 
@@ -179,7 +173,6 @@ impl<T: PollToken> EventContext<T> {
         let raw_handles_list: Vec<RawHandle> = self
             .registered_handles
             .lock()
-            .unwrap()
             .raw_handles
             .clone()
             .into_iter()
@@ -230,7 +223,6 @@ impl<T: PollToken> EventContext<T> {
                         token: T::from_raw_token(
                             self.registered_handles
                                 .lock()
-                                .unwrap()
                                 .triggers
                                 .get(&Descriptor(event_to_return))
                                 .unwrap()
