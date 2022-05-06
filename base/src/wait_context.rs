@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::descriptor::AsRawDescriptor;
 use crate::{
-    platform::{EventContext, PollToken, WatchingEvents},
+    platform::{EventContext, PollToken},
     RawDescriptor, Result,
 };
 use smallvec::SmallVec;
@@ -114,8 +114,7 @@ impl<T: EventToken> WaitContext<T> {
         event_type: EventType,
         token: T,
     ) -> Result<()> {
-        self.0
-            .add_fd_with_events(descriptor, convert_to_watching_events(event_type), token)
+        self.0.add_for_event(descriptor, event_type, token)
     }
 
     /// Adds multiple triggers to the WaitContext.
@@ -134,8 +133,7 @@ impl<T: EventToken> WaitContext<T> {
         event_type: EventType,
         token: T,
     ) -> Result<()> {
-        self.0
-            .modify(descriptor, convert_to_watching_events(event_type), token)
+        self.0.modify(descriptor, event_type, token)
     }
 
     /// Removes the given handle from triggers registered in the WaitContext if
@@ -167,14 +165,5 @@ impl<T: EventToken> WaitContext<T> {
 impl<T: PollToken> AsRawDescriptor for WaitContext<T> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.0.as_raw_descriptor()
-    }
-}
-
-fn convert_to_watching_events(event_type: EventType) -> WatchingEvents {
-    match event_type {
-        EventType::None => WatchingEvents::empty(),
-        EventType::Read => WatchingEvents::empty().set_read(),
-        EventType::Write => WatchingEvents::empty().set_write(),
-        EventType::ReadWrite => WatchingEvents::empty().set_read().set_write(),
     }
 }

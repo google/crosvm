@@ -20,9 +20,18 @@ use libc::{
 use log::warn;
 
 use super::{errno_result, Result};
-use crate::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, RawDescriptor};
+use crate::{AsRawDescriptor, EventType, FromRawDescriptor, IntoRawDescriptor, RawDescriptor};
 
 const POLL_CONTEXT_MAX_EVENTS: usize = 16;
+
+fn convert_to_watching_events(event_type: EventType) -> WatchingEvents {
+    match event_type {
+        EventType::None => WatchingEvents::empty(),
+        EventType::Read => WatchingEvents::empty().set_read(),
+        EventType::Write => WatchingEvents::empty().set_write(),
+        EventType::ReadWrite => WatchingEvents::empty().set_read().set_write(),
+    }
+}
 
 /// EpollEvents wraps raw epoll_events, it should only be used with EpollContext.
 pub struct EpollEvents(RefCell<[epoll_event; POLL_CONTEXT_MAX_EVENTS]>);
@@ -576,13 +585,23 @@ impl<T: PollToken> PollContext<T> {
         self.add_fd_with_events(fd, WatchingEvents::empty().set_read(), token)
     }
 
-    /// Adds the given `fd` to this context, watching for the specified events and associates the
-    /// given 'token' with those events.
+    /// Adds the given `descriptor` to this context, watching for the specified events and
+    /// associates the given 'token' with those events.
     ///
-    /// A `fd` can only be added once and does not need to be kept open. If the `fd` is dropped and
-    /// there were no duplicated file descriptors (i.e. adding the same descriptor with a different
-    /// FD number) added to this context, events will not be reported by `wait` anymore.
-    pub fn add_fd_with_events(
+    /// A `descriptor` can only be added once and does not need to be kept open. If the `descriptor`
+    /// is dropped and there were no duplicated file descriptors (i.e. adding the same descriptor
+    /// with a different FD number) added to this context, events will not be reported by `wait`
+    /// anymore.
+    pub fn add_for_event(
+        &self,
+        descriptor: &dyn AsRawDescriptor,
+        event_type: EventType,
+        token: T,
+    ) -> Result<()> {
+        self.add_fd_with_events(descriptor, convert_to_watching_events(event_type), token)
+    }
+
+    fn add_fd_with_events(
         &self,
         fd: &dyn AsRawDescriptor,
         events: WatchingEvents,
@@ -595,9 +614,10 @@ impl<T: PollToken> PollContext<T> {
     }
 
     /// If `fd` was previously added to this context, the watched events will be replaced with
-    /// `events` and the token associated with it will be replaced with the given `token`.
-    pub fn modify(&self, fd: &dyn AsRawDescriptor, events: WatchingEvents, token: T) -> Result<()> {
-        self.epoll_ctx.modify(fd, events, token)
+    /// `event_type` and the token associated with it will be replaced with the given `token`.
+    pub fn modify(&self, fd: &dyn AsRawDescriptor, event_type: EventType, token: T) -> Result<()> {
+        self.epoll_ctx
+            .modify(fd, convert_to_watching_events(event_type), token)
     }
 
     /// Deletes the given `fd` from this context.
