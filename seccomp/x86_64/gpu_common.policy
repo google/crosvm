@@ -29,7 +29,6 @@ clock_nanosleep: 1
 pipe2: 1
 poll: 1
 ppoll: 1
-prctl: arg0 == PR_SET_NAME || arg0 == PR_GET_NAME
 read: 1
 readlink: 1
 readlinkat: 1
@@ -79,6 +78,7 @@ stat: 1
 statx: 1
 sysinfo: 1
 fstatfs: 1
+prctl: arg0 == PR_SET_NAME || arg0 == PR_GET_NAME
 
 # Required for perfetto tracing
 # fcntl: arg1 == F_SETFD || arg1 == F_GETFL || arg1 == F_SETFL (merged above)

@@ -28,7 +28,6 @@ nanosleep: 1
 clock_nanosleep: 1
 pipe2: 1
 ppoll: 1
-prctl: arg0 == PR_SET_NAME || arg0 == PR_GET_NAME
 read: 1
 readlinkat: 1
 readv: 1
@@ -63,6 +62,7 @@ newfstatat: 1
 getdents64: 1
 sysinfo: 1
 fstatfs: 1
+prctl: arg0 == PR_SET_NAME || arg0 == PR_GET_NAME
 
 # 0x6400 == DRM_IOCTL_BASE, 0x8000 = KBASE_IOCTL_TYPE (mali), 0x40086200 = DMA_BUF_IOCTL_SYNC, 0x40087543 == UDMABUF_CREATE_LIST
 ioctl: arg1 & 0x6400 || arg1 & 0x8000 || arg1 == 0x40086200 || arg1 == 0x40087543
