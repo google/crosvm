@@ -6,7 +6,7 @@ use super::{Error, Result};
 use super::{EventHandler, EventLoop};
 
 use anyhow::Context;
-use base::{Event, WatchingEvents};
+use base::{Event, EventType};
 use std::mem;
 use std::sync::Arc;
 use sync::Mutex;
@@ -26,11 +26,7 @@ impl AsyncJobQueue {
             evt,
         });
         let handler: Arc<dyn EventHandler> = queue.clone();
-        event_loop.add_event(
-            &queue.evt,
-            WatchingEvents::empty().set_read(),
-            Arc::downgrade(&handler),
-        )?;
+        event_loop.add_event(&queue.evt, EventType::Read, Arc::downgrade(&handler))?;
         Ok(queue)
     }
 

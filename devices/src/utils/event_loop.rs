@@ -4,8 +4,7 @@
 
 use super::error::{Error, Result};
 use base::{
-    error, warn, AsRawDescriptor, Descriptor, EpollContext, EpollEvents, Event, RawDescriptor,
-    WatchingEvents,
+    error, warn, AsRawDescriptor, Descriptor, Event, EventType, RawDescriptor, WaitContext,
 };
 use std::collections::BTreeMap;
 use std::mem::drop;
@@ -37,11 +36,11 @@ impl FailHandle for Option<Arc<dyn FailHandle>> {
     }
 }
 
-/// EpollEventLoop is an event loop blocked on a set of fds. When a monitered events is triggered,
+/// EventLoop is an event loop blocked on a set of fds. When a monitered events is triggered,
 /// event loop will invoke the mapped handler.
 pub struct EventLoop {
     fail_handle: Option<Arc<dyn FailHandle>>,
-    poll_ctx: Arc<EpollContext<Descriptor>>,
+    poll_ctx: Arc<WaitContext<Descriptor>>,
     handlers: Arc<Mutex<BTreeMap<RawDescriptor, Weak<dyn EventHandler>>>>,
     stop_evt: Event,
 }
@@ -63,7 +62,7 @@ impl EventLoop {
 
         let fd_callbacks: Arc<Mutex<BTreeMap<RawDescriptor, Weak<dyn EventHandler>>>> =
             Arc::new(Mutex::new(BTreeMap::new()));
-        let poll_ctx: EpollContext<Descriptor> = EpollContext::new()
+        let poll_ctx: WaitContext<Descriptor> = WaitContext::new()
             .and_then(|pc| {
                 pc.add(&stop_evt, Descriptor(stop_evt.as_raw_descriptor()))
                     .and(Ok(pc))
@@ -81,13 +80,12 @@ impl EventLoop {
         let handle = thread::Builder::new()
             .name(name)
             .spawn(move || {
-                let event_loop = EpollEvents::new();
                 loop {
                     if fail_handle.failed() {
                         error!("xhci controller already failed, stopping event ring");
                         return;
                     }
-                    let events = match poll_ctx.wait(&event_loop) {
+                    let events = match poll_ctx.wait() {
                         Ok(events) => events,
                         Err(e) => {
                             error!("cannot poll {:?}", e);
@@ -96,7 +94,7 @@ impl EventLoop {
                         }
                     };
                     for event in &events {
-                        let fd = event.token().as_raw_descriptor();
+                        let fd = event.token.as_raw_descriptor();
                         if fd == stop_evt.as_raw_descriptor() {
                             return;
                         }
@@ -112,7 +110,7 @@ impl EventLoop {
 
                         // If the file descriptor is hung up, remove it after calling the handler
                         // one final time.
-                        let mut remove = event.hungup();
+                        let mut remove = event.is_hungup;
 
                         if let Some(handler) = weak_handler.upgrade() {
                             // Drop lock before triggering the event.
@@ -128,7 +126,7 @@ impl EventLoop {
                         }
 
                         if remove {
-                            let _ = poll_ctx.delete(&event.token());
+                            let _ = poll_ctx.delete(&event.token);
                             let _ = locked.remove(&fd);
                         }
                     }
@@ -148,7 +146,7 @@ impl EventLoop {
     pub fn add_event(
         &self,
         descriptor: &dyn AsRawDescriptor,
-        events: WatchingEvents,
+        event_type: EventType,
         handler: Weak<dyn EventHandler>,
     ) -> Result<()> {
         if self.fail_handle.failed() {
@@ -159,9 +157,9 @@ impl EventLoop {
             .insert(descriptor.as_raw_descriptor(), handler);
         // This might fail due to epoll syscall. Check epoll_ctl(2).
         self.poll_ctx
-            .add_fd_with_events(
+            .add_for_event(
                 descriptor,
-                events,
+                event_type,
                 Descriptor(descriptor.as_raw_descriptor()),
             )
             .map_err(Error::WaitContextAddDescriptor)
@@ -230,12 +228,8 @@ mod tests {
             evt,
         });
         let t: Arc<dyn EventHandler> = h.clone();
-        l.add_event(
-            &h.evt,
-            WatchingEvents::empty().set_read(),
-            Arc::downgrade(&t),
-        )
-        .unwrap();
+        l.add_event(&h.evt, EventType::Read, Arc::downgrade(&t))
+            .unwrap();
         self_evt.write(1).unwrap();
         {
             let mut val = h.val.lock().unwrap();

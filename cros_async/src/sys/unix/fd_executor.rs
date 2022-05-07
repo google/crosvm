@@ -24,8 +24,8 @@ use std::{
 
 use async_task::Task;
 use base::{
-    add_fd_flags, warn, AsRawDescriptor, AsRawDescriptors, EpollContext, EpollEvents, Event,
-    RawDescriptor, WatchingEvents,
+    add_fd_flags, warn, AsRawDescriptor, AsRawDescriptors, Event, EventType, RawDescriptor,
+    WaitContext,
 };
 use futures::task::noop_waker;
 use pin_utils::pin_mut;
@@ -115,10 +115,7 @@ impl<F: AsRawDescriptor> RegisteredSource<F> {
     pub fn wait_readable(&self) -> Result<PendingOperation> {
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
 
-        let token = ex.add_operation(
-            self.source.as_raw_descriptor(),
-            WatchingEvents::empty().set_read(),
-        )?;
+        let token = ex.add_operation(self.source.as_raw_descriptor(), EventType::Read)?;
 
         Ok(PendingOperation {
             token: Some(token),
@@ -131,10 +128,7 @@ impl<F: AsRawDescriptor> RegisteredSource<F> {
     pub fn wait_writable(&self) -> Result<PendingOperation> {
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
 
-        let token = ex.add_operation(
-            self.source.as_raw_descriptor(),
-            WatchingEvents::empty().set_write(),
-        )?;
+        let token = ex.add_operation(self.source.as_raw_descriptor(), EventType::Write)?;
 
         Ok(PendingOperation {
             token: Some(token),
@@ -230,10 +224,7 @@ async fn notify_task(notify: Event, raw: Weak<RawExecutor>) {
 
         if let Some(ex) = raw.upgrade() {
             let token = ex
-                .add_operation(
-                    notify.as_raw_descriptor(),
-                    WatchingEvents::empty().set_read(),
-                )
+                .add_operation(notify.as_raw_descriptor(), EventType::Read)
                 .expect("Failed to add notify Event to PollCtx");
 
             // We don't want to hold an active reference to the executor in the .await below.
@@ -269,7 +260,7 @@ const WOKEN: i32 = 0x3e4d_3276u32 as i32;
 
 struct RawExecutor {
     queue: RunnableQueue,
-    poll_ctx: EpollContext<usize>,
+    poll_ctx: WaitContext<usize>,
     ops: Mutex<Slab<OpStatus>>,
     blocking_pool: BlockingPool,
     state: AtomicI32,
@@ -287,7 +278,7 @@ impl RawExecutor {
         let notify = notify.try_clone().map_err(Error::CloneEvent)?;
         Ok(RawExecutor {
             queue: RunnableQueue::new(),
-            poll_ctx: EpollContext::new().map_err(Error::CreatingContext)?,
+            poll_ctx: WaitContext::new().map_err(Error::CreatingContext)?,
             ops: Mutex::new(Slab::with_capacity(64)),
             blocking_pool: Default::default(),
             state: AtomicI32::new(PROCESSING),
@@ -296,7 +287,7 @@ impl RawExecutor {
         })
     }
 
-    fn add_operation(&self, fd: RawFd, events: WatchingEvents) -> Result<WakerToken> {
+    fn add_operation(&self, fd: RawFd, event_type: EventType) -> Result<WakerToken> {
         let duped_fd = unsafe {
             // Safe because duplicating an FD doesn't affect memory safety, and the dup'd FD
             // will only be added to the poll loop.
@@ -306,7 +297,7 @@ impl RawExecutor {
         let entry = ops.vacant_entry();
         let next_token = entry.key();
         self.poll_ctx
-            .add_fd_with_events(&duped_fd, events, next_token)
+            .add_for_event(&duped_fd, event_type, next_token)
             .map_err(Error::SubmittingWaker)?;
         entry.insert(OpStatus::Pending(OpData {
             file: duped_fd,
@@ -367,7 +358,6 @@ impl RawExecutor {
     }
 
     fn run<F: Future>(&self, cx: &mut Context, done: F) -> Result<F::Output> {
-        let events = EpollEvents::new();
         pin_mut!(done);
 
         loop {
@@ -392,16 +382,13 @@ impl RawExecutor {
                 continue;
             }
 
-            let events = self
-                .poll_ctx
-                .wait(&events)
-                .map_err(Error::PollContextError)?;
+            let events = self.poll_ctx.wait().map_err(Error::PollContextError)?;
 
             // Set the state back to PROCESSING to prevent any tasks woken up by the loop below from
             // writing to the eventfd.
             self.state.store(PROCESSING, Ordering::Release);
             for e in events.iter() {
-                let token = e.token();
+                let token = e.token;
                 let mut ops = self.ops.lock();
 
                 // The op could have been canceled and removed by another thread so ignore it if it

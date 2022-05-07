@@ -50,7 +50,7 @@ cfg_if::cfg_if! {
 
         pub use unix::net;
 
-       // File related exports.
+        // File related exports.
         pub use platform::{FileFlags, get_max_open_files};
 
         // memory/mmap related exports.
@@ -65,13 +65,11 @@ cfg_if::cfg_if! {
             validate_raw_descriptor, clear_descriptor_cloexec,
         };
 
-
         // Event/signal related exports.
         pub use platform::{
             block_signal, clear_signal, get_blocked_signals, new_pipe_full,
             register_rt_signal_handler, signal, unblock_signal, Killable, SIGRTMIN,
-            WatchingEvents, EpollContext, EpollEvents, AcpiNotifyEvent, NetlinkGenericSocket,
-            SignalFd, Terminal, EventFd,
+            WatchingEvents, AcpiNotifyEvent, NetlinkGenericSocket, SignalFd, Terminal, EventFd,
         };
 
         pub use platform::{

@@ -6,7 +6,7 @@ use super::interrupter::Interrupter;
 use crate::utils::{EventHandler, EventLoop};
 
 use anyhow::Context;
-use base::{error, Event, WatchingEvents};
+use base::{error, Event, EventType};
 use std::sync::Arc;
 use sync::Mutex;
 
@@ -30,7 +30,7 @@ impl IntrResampleHandler {
         let tmp_handler: Arc<dyn EventHandler> = handler.clone();
         if let Err(e) = event_loop.add_event(
             &handler.resample_evt,
-            WatchingEvents::empty().set_read(),
+            EventType::Read,
             Arc::downgrade(&tmp_handler),
         ) {
             error!("cannot add intr resample handler to event loop: {}", e);

@@ -13,7 +13,7 @@ use crate::utils::AsyncJobQueue;
 use crate::utils::{EventHandler, EventLoop, FailHandle};
 
 use anyhow::Context;
-use base::{error, AsRawDescriptor, RawDescriptor, Tube, WatchingEvents};
+use base::{error, AsRawDescriptor, EventType, RawDescriptor, Tube};
 use std::collections::HashMap;
 use std::mem;
 use std::time::Duration;
@@ -73,7 +73,7 @@ impl HostBackendDeviceProvider {
                 event_loop
                     .add_event(
                         &*inner.control_tube.lock(),
-                        WatchingEvents::empty().set_read(),
+                        EventType::Read,
                         Arc::downgrade(&handler),
                     )
                     .map_err(Error::AddToEventLoop)?;
@@ -171,7 +171,7 @@ impl ProviderInner {
 
         if let Err(e) = self.event_loop.add_event(
             &*arc_mutex_device.lock(),
-            WatchingEvents::empty().set_read().set_write(),
+            EventType::ReadWrite,
             Arc::downgrade(&event_handler),
         ) {
             error!("failed to add USB device fd to event handler: {}", e);

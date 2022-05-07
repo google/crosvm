@@ -62,7 +62,7 @@ pub use get_filesystem_type::*;
 pub use ioctl::*;
 pub use mmap::*;
 pub use netlink::*;
-pub use poll::{EpollContext, EpollEvents, PollContext as EventContext, PollToken, WatchingEvents};
+pub use poll::{PollContext as EventContext, PollToken, WatchingEvents};
 pub use priority::*;
 pub use sched::*;
 pub use scoped_signal_handler::*;
