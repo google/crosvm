@@ -146,19 +146,11 @@ impl<T: EventToken> WaitContext<T> {
     pub fn wait(&self) -> Result<SmallVec<[TriggeredEvent<T>; 16]>> {
         self.wait_timeout(Duration::new(i64::MAX as u64, 0))
     }
+
     /// Waits for one or more of the registered triggers to become signaled, failing if no triggers
     /// are signaled before the designated timeout has elapsed.
     pub fn wait_timeout(&self, timeout: Duration) -> Result<SmallVec<[TriggeredEvent<T>; 16]>> {
-        let events = self.0.wait_timeout(timeout)?;
-        Ok(events
-            .iter()
-            .map(|event| TriggeredEvent {
-                token: event.token(),
-                is_readable: event.readable(),
-                is_writable: event.writable(),
-                is_hungup: event.hungup(),
-            })
-            .collect())
+        self.0.wait_timeout(timeout)
     }
 }
 

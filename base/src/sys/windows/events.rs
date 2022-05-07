@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{clone::Clone, default::Default, marker::Copy};
-
 pub use super::wait::*;
 use super::{PollToken, RawDescriptor};
 use crate::descriptor::AsRawDescriptor;
@@ -31,48 +29,6 @@ impl<T: PollToken> Clone for EventTrigger<T> {
             token: T::from_raw_token(self.token.as_raw_token()),
             event: self.event,
         }
-    }
-}
-
-/// Represents an event that has been signaled and waited for via a wait function.
-#[derive(Copy, Clone, Debug)]
-pub struct TriggeredEvent<T: PollToken> {
-    pub token: T,
-    pub is_readable: bool,
-    pub is_writable: bool,
-    pub is_hungup: bool,
-}
-
-impl<T: PollToken> Default for TriggeredEvent<T> {
-    fn default() -> Self {
-        TriggeredEvent {
-            token: T::from_raw_token(0),
-            is_readable: false,
-            is_writable: false,
-            is_hungup: false,
-        }
-    }
-}
-
-impl<T: PollToken> TriggeredEvent<T> {
-    /// Gets the token associated in `PollContext::add` with this event.
-    pub fn token(&self) -> T {
-        T::from_raw_token(self.token.as_raw_token())
-    }
-
-    /// True if the `fd` associated with this token in `PollContext::add` is readable.
-    pub fn readable(&self) -> bool {
-        self.is_readable
-    }
-
-    /// True if the `fd` associated with this token in `PollContext::add` is writable.
-    pub fn writable(&self) -> bool {
-        self.is_writable
-    }
-
-    /// True if the `fd` associated with this token in `PollContext::add` has been hungup on.
-    pub fn hungup(&self) -> bool {
-        self.is_hungup
     }
 }
 

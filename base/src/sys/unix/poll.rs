@@ -18,9 +18,12 @@ use libc::{
     EPOLLRDHUP, EPOLL_CLOEXEC, EPOLL_CTL_ADD, EPOLL_CTL_DEL, EPOLL_CTL_MOD,
 };
 use log::warn;
+use smallvec::SmallVec;
 
 use super::{errno_result, Result};
-use crate::{AsRawDescriptor, EventType, FromRawDescriptor, IntoRawDescriptor, RawDescriptor};
+use crate::{
+    AsRawDescriptor, EventType, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, TriggeredEvent,
+};
 
 const POLL_CONTEXT_MAX_EVENTS: usize = 16;
 
@@ -188,16 +191,6 @@ pub struct PollEvents<'a, T> {
 }
 
 impl<'a, T: PollToken> PollEvents<'a, T> {
-    /// Copies the events to an owned structure so the reference to this (and by extension
-    /// `PollContext`) can be dropped.
-    pub fn to_owned(&self) -> PollEventsOwned<T> {
-        PollEventsOwned {
-            count: self.count,
-            events: RefCell::new(*self.events),
-            tokens: PhantomData,
-        }
-    }
-
     /// Iterates over each event.
     pub fn iter(&self) -> PollEventIter<slice::Iter<epoll_event>, T> {
         PollEventIter {
@@ -241,24 +234,6 @@ impl<'a, T: PollToken> IntoIterator for &'a PollEvents<'_, T> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
-    }
-}
-
-/// A deep copy of the event records from `PollEvents`.
-pub struct PollEventsOwned<T> {
-    count: usize,
-    events: RefCell<[epoll_event; POLL_CONTEXT_MAX_EVENTS]>,
-    tokens: PhantomData<T>, // Needed to satisfy usage of T
-}
-
-impl<T: PollToken> PollEventsOwned<T> {
-    /// Takes a reference to the events so that they can be iterated via methods in `PollEvents`.
-    pub fn as_ref(&self) -> PollEvents<T> {
-        PollEvents {
-            count: self.count,
-            events: self.events.borrow(),
-            tokens: PhantomData,
-        }
     }
 }
 
@@ -506,25 +481,7 @@ impl<T: PollToken> IntoRawDescriptor for EpollContext<T> {
 
 /// Used to poll multiple objects that have file descriptors.
 ///
-/// # Example
-///
-/// ```
-/// # use base::platform::{Result, Event, PollContext, PollEvents};
-/// # fn test() -> Result<()> {
-///     let evt1 = Event::new()?;
-///     let evt2 = Event::new()?;
-///     evt2.write(1)?;
-///
-///     let ctx: PollContext<u32> = PollContext::new()?;
-///     ctx.add(&evt1, 1)?;
-///     ctx.add(&evt2, 2)?;
-///
-///     let pollevents: PollEvents<u32> = ctx.wait()?;
-///     let tokens: Vec<u32> = pollevents.iter_readable().map(|e| e.token()).collect();
-///     assert_eq!(&tokens[..], &[2]);
-/// #   Ok(())
-/// # }
-/// ```
+/// See [`crate::WaitContext`] for an example that uses the cross-platform wrapper.
 pub struct PollContext<T> {
     epoll_ctx: EpollContext<T>,
 
@@ -679,10 +636,7 @@ impl<T: PollToken> PollContext<T> {
     /// return immediately. The consequence of not handling an event perpetually while calling
     /// `wait` is that the callers loop will degenerated to busy loop polling, pinning a CPU to
     /// ~100% usage.
-    ///
-    /// # Panics
-    /// Panics if the returned `PollEvents` structure is not dropped before subsequent `wait` calls.
-    pub fn wait(&self) -> Result<PollEvents<T>> {
+    pub fn wait(&self) -> Result<SmallVec<[TriggeredEvent<T>; 16]>> {
         self.wait_timeout(Duration::new(i64::MAX as u64, 0))
     }
 
@@ -690,11 +644,19 @@ impl<T: PollToken> PollContext<T> {
     ///
     /// This may return earlier than `timeout` with zero events if the duration indicated exceeds
     /// system limits.
-    pub fn wait_timeout(&self, timeout: Duration) -> Result<PollEvents<T>> {
+    pub fn wait_timeout(&self, timeout: Duration) -> Result<SmallVec<[TriggeredEvent<T>; 16]>> {
         let events = self.epoll_ctx.wait_timeout(&self.events, timeout)?;
         let hangups = events.iter_hungup().count();
         self.check_for_hungup_busy_loop(hangups);
-        Ok(events)
+        Ok(events
+            .iter()
+            .map(|event| TriggeredEvent {
+                token: event.token(),
+                is_readable: event.readable(),
+                is_writable: event.writable(),
+                is_hungup: event.hungup(),
+            })
+            .collect())
     }
 }
 
@@ -726,9 +688,9 @@ mod tests {
 
         let mut evt_count = 0;
         while evt_count < 2 {
-            for event in ctx.wait().unwrap().iter_readable() {
+            for event in ctx.wait().unwrap().iter().filter(|e| e.is_readable) {
                 evt_count += 1;
-                match event.token() {
+                match event.token {
                     1 => {
                         evt1.read().unwrap();
                         ctx.delete(&evt1).unwrap();
@@ -757,8 +719,8 @@ mod tests {
         }
         let mut evt_count = 0;
         while evt_count < EVT_COUNT {
-            for event in ctx.wait().unwrap().iter_readable() {
-                evts[event.token()].read().unwrap();
+            for event in ctx.wait().unwrap().iter().filter(|e| e.is_readable) {
+                evts[event.token].read().unwrap();
                 evt_count += 1;
             }
         }

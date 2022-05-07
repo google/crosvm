@@ -4,6 +4,7 @@
 
 use std::{cmp::min, collections::HashMap, os::windows::io::RawHandle, sync::Arc, time::Duration};
 
+use smallvec::SmallVec;
 use sync::Mutex;
 use winapi::{
     shared::{
@@ -13,9 +14,10 @@ use winapi::{
     um::{synchapi::WaitForMultipleObjects, winbase::WAIT_OBJECT_0},
 };
 
-use super::{errno_result, Error, Event, EventTrigger, PollToken, Result, TriggeredEvent};
+use super::{errno_result, Error, Event, EventTrigger, PollToken, Result};
 use crate::descriptor::{AsRawDescriptor, Descriptor};
-use crate::{error, EventToken, EventType, RawDescriptor, WaitContext};
+use crate::{error, EventToken, EventType, RawDescriptor, TriggeredEvent, WaitContext};
+
 // MAXIMUM_WAIT_OBJECTS = 64
 pub const MAXIMUM_WAIT_OBJECTS: usize = winapi::um::winnt::MAXIMUM_WAIT_OBJECTS as usize;
 
@@ -165,11 +167,11 @@ impl<T: PollToken> EventContext<T> {
     }
 
     /// Waits for one or more of the registered triggers to become signaled.
-    pub fn wait(&self) -> Result<Vec<TriggeredEvent<T>>> {
+    pub fn wait(&self) -> Result<SmallVec<[TriggeredEvent<T>; 16]>> {
         self.wait_timeout(Duration::new(i64::MAX as u64, 0))
     }
 
-    pub fn wait_timeout(&self, timeout: Duration) -> Result<Vec<TriggeredEvent<T>>> {
+    pub fn wait_timeout(&self, timeout: Duration) -> Result<SmallVec<[TriggeredEvent<T>; 16]>> {
         let raw_handles_list: Vec<RawHandle> = self
             .registered_handles
             .lock()
@@ -212,7 +214,7 @@ impl<T: PollToken> EventContext<T> {
                     return self.wait_timeout(timeout);
                 }
 
-                let mut events_to_return: Vec<TriggeredEvent<T>> = vec![];
+                let mut events_to_return = SmallVec::<[TriggeredEvent<T>; 16]>::new();
                 // Multiple events may be triggered at once, but WaitForMultipleObjects will only return one.
                 // Once it returns, loop through the remaining triggers checking each to ensure they haven't
                 // also been triggered.
@@ -257,7 +259,7 @@ impl<T: PollToken> EventContext<T> {
 
                 Ok(events_to_return)
             }
-            WAIT_TIMEOUT => Ok(vec![]),
+            WAIT_TIMEOUT => Ok(Default::default()),
             // Invalid cases. This is most likely an WAIT_FAILED, but anything not matched by the
             // above is an error case.
             _ => errno_result(),
