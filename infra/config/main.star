@@ -121,7 +121,7 @@ luci.builder(
     executable = luci.recipe(
         name = "hello_world",
     ),
-    schedule = "with 1m interval",
+    schedule = None,
     service_account = "crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com",
 )
 
@@ -168,7 +168,7 @@ luci.gitiles_poller(
     name = "main source",
     bucket = "ci",
     repo = "https://chromium.googlesource.com/crosvm/crosvm",
-    triggers = ["ci/Verify CL"],
+    # triggers = ["ci/Verify CL"],
 )
 luci.console_view(
     name = "CI builders",
