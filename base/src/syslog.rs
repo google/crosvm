@@ -445,6 +445,7 @@ pub fn push_descriptors(fds: &mut Vec<RawDescriptor>) {
     fds.extend(state.file.iter().map(|f| f.as_raw_descriptor()));
 }
 
+#[macro_export]
 macro_rules! CHRONO_TIMESTAMP_FIXED_FMT {
     () => {
         "%F %T%.9f"

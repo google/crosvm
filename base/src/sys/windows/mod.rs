@@ -23,6 +23,7 @@ mod gmtime;
 mod mmap;
 mod mmap_platform;
 pub mod named_pipes;
+pub mod platform_timer_resolution;
 mod poll;
 mod priority;
 // Add conditional compile?

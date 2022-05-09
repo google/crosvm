@@ -20,8 +20,8 @@ use serde::{Deserialize, Serialize};
 use win_util::{SecurityAttributes, SelfRelativeSecurityDescriptor};
 use winapi::{
     shared::{
-        minwindef::{DWORD, LPCVOID, LPVOID, TRUE},
-        winerror::{ERROR_IO_PENDING, ERROR_NO_DATA, ERROR_PIPE_CONNECTED},
+        minwindef::{DWORD, FALSE, LPCVOID, LPVOID, TRUE},
+        winerror::{ERROR_IO_INCOMPLETE, ERROR_IO_PENDING, ERROR_NO_DATA, ERROR_PIPE_CONNECTED},
     },
     um::{
         errhandlingapi::GetLastError,
@@ -83,6 +83,90 @@ impl OverlappedWrapper {
     pub fn get_h_event_ref(&self) -> Option<&Event> {
         self.h_event.as_ref()
     }
+
+    /// Creates a valid `OVERLAPPED` struct used to pass into `ReadFile` and `WriteFile` in order
+    /// to perform asynchronous I/O. When passing in the OVERLAPPED struct, the Event object
+    /// returned must not be dropped.
+    ///
+    /// There is an option to create the event object and set it to the `hEvent` field. If hEvent
+    /// is not set and the named pipe handle was created with `FILE_FLAG_OVERLAPPED`, then the file
+    /// handle will be signaled when the operation is complete. In other words, you can use
+    /// `WaitForSingleObject` on the file handle. Not setting an event is highly discouraged by
+    /// Microsoft though.
+    pub fn new(include_event: bool) -> Result<OverlappedWrapper> {
+        let mut overlapped = OVERLAPPED::default();
+        let h_event = if include_event {
+            Some(Event::new()?)
+        } else {
+            None
+        };
+        overlapped.hEvent = h_event.as_ref().unwrap().as_raw_descriptor();
+        Ok(OverlappedWrapper {
+            overlapped: Box::new(overlapped),
+            h_event,
+            in_use: false,
+        })
+    }
+}
+
+// Safe because all of the contained fields may be safely sent to another thread.
+unsafe impl Send for OverlappedWrapper {}
+
+pub trait WriteOverlapped {
+    /// Perform an overlapped write operation with the specified buffer and overlapped wrapper.
+    /// If successful, the write operation will complete asynchronously, and
+    /// `write_result()` should be called to get the result.
+    ///
+    /// NOTE: `buf` and `overlapped_wrapper` will be in use for the duration of
+    /// the overlapped operation. These should not be reused until
+    /// `write_result()` is called.
+    fn write_overlapped(
+        &mut self,
+        buf: &mut [u8],
+        overlapped_wrapper: &mut OverlappedWrapper,
+    ) -> io::Result<()>;
+
+    /// Gets the result of the overlapped write operation. Must only be called
+    /// after issuing an overlapped write operation using `write_overlapped`. The
+    /// same `overlapped_wrapper` must be provided.
+    fn write_result(&mut self, overlapped_wrapper: &mut OverlappedWrapper) -> io::Result<usize>;
+
+    /// Tries to get the result of the overlapped write operation. Must only be
+    /// called once, and only after issuing an overlapped write operation using
+    /// `write_overlapped`. The same `overlapped_wrapper` must be provided.
+    ///
+    /// An error indicates that the operation hasn't completed yet and
+    /// `write_result` or `try_write_result` should be called again.
+    fn try_write_result(&mut self, overlapped_wrapper: &mut OverlappedWrapper)
+        -> io::Result<usize>;
+}
+
+pub trait ReadOverlapped {
+    /// Perform an overlapped read operation with the specified buffer and overlapped wrapper.
+    /// If successful, the read operation will complete asynchronously, and
+    /// `read_result()` should be called to get the result.
+    ///
+    /// NOTE: `buf` and `overlapped_wrapper` will be in use for the duration of
+    /// the overlapped operation. These should not be reused until
+    /// `read_result()` is called.
+    fn read_overlapped(
+        &mut self,
+        buf: &mut [u8],
+        overlapped_wrapper: &mut OverlappedWrapper,
+    ) -> io::Result<()>;
+
+    /// Gets the result of the overlapped read operation. Must only be called
+    /// once, and only after issuing an overlapped read operation using
+    /// `read_overlapped`. The same `overlapped_wrapper` must be provided.
+    fn read_result(&mut self, overlapped_wrapper: &mut OverlappedWrapper) -> io::Result<usize>;
+
+    /// Tries to get the result of the overlapped read operation. Must only be called
+    /// after issuing an overlapped read operation using `read_overlapped`. The
+    /// same `overlapped_wrapper` must be provided.
+    ///
+    /// An error indicates that the operation hasn't completed yet and
+    /// `read_result` or `try_read_result` should be called again.
+    fn try_read_result(&mut self, overlapped_wrapper: &mut OverlappedWrapper) -> io::Result<usize>;
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq)]
@@ -417,7 +501,7 @@ impl PipeConnection {
     ///     2. Asynchronous read and write (read and write won't block).
     ///
     /// When reading, it will not block, but instead an `OVERLAPPED` struct that contains an event
-    /// (can be created with `PipeConnection::create_overlapped_struct`) will be passed into
+    /// (can be created with `OverlappedWrapper::new`) will be passed into
     /// `ReadFile`. That event will be triggered when the read operation is complete.
     ///
     /// In order to get how many bytes were read, call `get_overlapped_result`. That function will
@@ -546,7 +630,7 @@ impl PipeConnection {
     ///     2. Asynchronous read and write (read and write won't block).
     ///
     /// When writing, it will not block, but instead an `OVERLAPPED` struct that contains an event
-    /// (can be created with `PipeConnection::create_overlapped_struct`) will be passed into
+    /// (can be created with `OverlappedWrapper::new`) will be passed into
     /// `WriteFile`. That event will be triggered when the write operation is complete.
     ///
     /// In order to get how many bytes were written, call `get_overlapped_result`. That function will
@@ -642,11 +726,46 @@ impl PipeConnection {
     ///
     /// This will block until the ReadFile or WriteFile operation that also took in
     /// `overlapped_wrapper` is complete, assuming `overlapped_wrapper` was created from
-    /// `create_overlapped_struct` or that OVERLAPPED.hEvent is set. This will also get
+    /// `OverlappedWrapper::new` or that `OVERLAPPED.hEvent` is set. This will also get
     /// the number of bytes that were read or written.
     pub fn get_overlapped_result(
         &mut self,
         overlapped_wrapper: &mut OverlappedWrapper,
+    ) -> io::Result<u32> {
+        let res = self.get_overlapped_result_internal(overlapped_wrapper, /* wait= */ true);
+        overlapped_wrapper.in_use = false;
+        res
+    }
+
+    /// Used for overlapped read and write operations.
+    ///
+    /// This will return immediately, regardless of the completion status of the
+    /// ReadFile or WriteFile operation that took in `overlapped_wrapper`,
+    /// assuming `overlapped_wrapper` was created from `OverlappedWrapper::new`
+    /// or that `OVERLAPPED.hEvent` is set. This will also get the number of bytes
+    /// that were read or written, if completed.  If the operation hasn't
+    /// completed, an error of kind `io::ErrorKind::WouldBlock` will be
+    /// returned.
+    pub fn try_get_overlapped_result(
+        &mut self,
+        overlapped_wrapper: &mut OverlappedWrapper,
+    ) -> io::Result<u32> {
+        let res = self.get_overlapped_result_internal(overlapped_wrapper, /* wait= */ false);
+        match res {
+            Err(err) if err.raw_os_error().unwrap() as u32 == ERROR_IO_INCOMPLETE => {
+                Err(io::Error::new(io::ErrorKind::WouldBlock, err))
+            }
+            _ => {
+                overlapped_wrapper.in_use = false;
+                res
+            }
+        }
+    }
+
+    fn get_overlapped_result_internal(
+        &mut self,
+        overlapped_wrapper: &mut OverlappedWrapper,
+        wait: bool,
     ) -> io::Result<u32> {
         if !overlapped_wrapper.in_use {
             return Err(std::io::Error::new(
@@ -662,39 +781,14 @@ impl PipeConnection {
                 self.handle.as_raw_descriptor(),
                 &mut *overlapped_wrapper.overlapped,
                 &mut size_transferred,
-                TRUE,
+                if wait { TRUE } else { FALSE },
             )
         };
-        overlapped_wrapper.in_use = false;
         if res == 0 {
             Err(io::Error::last_os_error())
         } else {
             Ok(size_transferred)
         }
-    }
-
-    /// Creates a valid `OVERLAPPED` struct used to pass into `ReadFile` and `WriteFile` in order
-    /// to perform asynchronous I/O. When passing in the OVERLAPPED struct, the Event object
-    /// returned must not be dropped.
-    ///
-    /// There is an option to create the event object and set it to the `hEvent` field. If hEvent
-    /// is not set and the named pipe handle was created with `FILE_FLAG_OVERLAPPED`, then the file
-    /// handle will be signaled when the operation is complete. In other words, you can use
-    /// `WaitForSingleObject` on the file handle. Not setting an event is highly discouraged by
-    /// Microsoft though.
-    pub fn create_overlapped_struct(include_event: bool) -> Result<OverlappedWrapper> {
-        let mut overlapped = OVERLAPPED::default();
-        let h_event = if include_event {
-            Some(Event::new()?)
-        } else {
-            None
-        };
-        overlapped.hEvent = h_event.as_ref().unwrap().as_raw_descriptor();
-        Ok(OverlappedWrapper {
-            overlapped: Box::new(overlapped),
-            h_event,
-            in_use: false,
-        })
     }
 
     /// Cancels I/O Operations in the current process. Since `lpOverlapped` is null, this will
@@ -959,7 +1053,7 @@ mod tests {
         // Safe because `read_overlapped` can be called since overlapped struct is created.
         unsafe {
             let mut p1_overlapped_wrapper =
-                PipeConnection::create_overlapped_struct(/* include_event= */ true).unwrap();
+                OverlappedWrapper::new(/* include_event= */ true).unwrap();
             p1.write_overlapped(&[75, 77, 54, 82, 76, 65], &mut p1_overlapped_wrapper)
                 .unwrap();
             let size = p1
@@ -970,7 +1064,7 @@ mod tests {
             let mut recv_buffer: [u8; 6] = [0; 6];
 
             let mut p2_overlapped_wrapper =
-                PipeConnection::create_overlapped_struct(/* include_event= */ true).unwrap();
+                OverlappedWrapper::new(/* include_event= */ true).unwrap();
             p2.read_overlapped(&mut recv_buffer, &mut p2_overlapped_wrapper)
                 .unwrap();
             let size = p2
@@ -1002,8 +1096,7 @@ mod tests {
             /* overlapped= */ true,
         )
         .unwrap();
-        let mut overlapped_wrapper =
-            PipeConnection::create_overlapped_struct(/* include_event= */ true).unwrap();
+        let mut overlapped_wrapper = OverlappedWrapper::new(/* include_event= */ true).unwrap();
 
         let res = p1.get_overlapped_result(&mut overlapped_wrapper);
         assert!(res.is_err());

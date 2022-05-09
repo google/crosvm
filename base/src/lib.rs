@@ -134,6 +134,10 @@ pub use platform::{MappedRegion, MemoryMappingArena, MmapError};
 
 pub use log::{debug, error, info, trace, warn};
 
+/// An empty trait that helps reset timer resolution to its previous state.
+// TODO(b:232103460): Maybe this needs to be thought through.
+pub trait EnabledHighResTimer {}
+
 /// Creates a UUID.
 pub fn generate_uuid() -> String {
     let mut buf = Uuid::encode_buffer();
