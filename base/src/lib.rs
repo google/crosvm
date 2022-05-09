@@ -114,6 +114,8 @@ pub use platform::{
     SerializeDescriptors, UnsyncMarker,
 };
 
+use uuid::Uuid;
+
 pub(crate) use platform::{file_punch_hole, file_write_zeroes_at};
 pub use platform::{get_cpu_affinity, set_cpu_affinity};
 pub use platform::{with_as_descriptor, with_raw_descriptor, RawDescriptor, INVALID_DESCRIPTOR};
@@ -131,3 +133,12 @@ pub use platform::{FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, F
 pub use platform::{MappedRegion, MemoryMappingArena, MmapError};
 
 pub use log::{debug, error, info, trace, warn};
+
+/// Creates a UUID.
+pub fn generate_uuid() -> String {
+    let mut buf = Uuid::encode_buffer();
+    Uuid::new_v4()
+        .to_hyphenated()
+        .encode_lower(&mut buf)
+        .to_owned()
+}
