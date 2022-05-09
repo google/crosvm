@@ -73,6 +73,21 @@ pub extern "C" fn crosvm_client_resume_vm(socket_path: *const c_char) -> bool {
     .unwrap_or(false)
 }
 
+/// Creates an RT vCPU for the crosvm instance whose control socket is listening on `socket_path`.
+///
+/// The function returns true on success or false if an error occured.
+#[no_mangle]
+pub extern "C" fn crosvm_client_make_rt_vm(socket_path: *const c_char) -> bool {
+    catch_unwind(|| {
+        if let Some(socket_path) = validate_socket_path(socket_path) {
+            vms_request(&VmRequest::MakeRT, &socket_path).is_ok()
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}
+
 /// Adjusts the balloon size of the crosvm instance whose control socket is
 /// listening on `socket_path`.
 ///
