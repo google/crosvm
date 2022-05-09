@@ -18,7 +18,7 @@ mod rutabaga_gralloc;
 mod rutabaga_utils;
 mod virgl_renderer;
 
-pub use crate::rutabaga_core::{Rutabaga, RutabagaBuilder};
+pub use crate::rutabaga_core::{calculate_context_mask, Rutabaga, RutabagaBuilder};
 pub use crate::rutabaga_gralloc::{
     DrmFormat, ImageAllocationInfo, ImageMemoryRequirements, RutabagaGralloc, RutabagaGrallocFlags,
 };

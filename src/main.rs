@@ -73,6 +73,8 @@ use vm_control::{
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64::set_itmt_msr_config;
 
+use rutabaga_gfx::calculate_context_mask;
+
 const ONE_MB: u64 = 1 << 20;
 const MB_ALIGNED: u64 = ONE_MB - 1;
 // the max bus number is 256 and each bus occupy 1MB, so the max pcie cfg mmio size = 256M
@@ -452,6 +454,10 @@ fn parse_gpu_options(s: Option<&str>, gpu_params: &mut GpuParameters) -> argumen
                         });
                     }
                 },
+                "context-types" => {
+                    let context_types: Vec<String> = v.split(':').map(|s| s.to_string()).collect();
+                    gpu_params.context_mask = calculate_context_mask(context_types);
+                }
                 "" => {}
                 _ => {
                     return Err(argument::Error::UnknownArgument(format!(
@@ -2468,6 +2474,8 @@ There is a cost of slightly increased latency the first time the file is accesse
                               Possible key values:
 
                               backend=(2d|virglrenderer|gfxstream) - Which backend to use for virtio-gpu (determining rendering protocol)
+
+                              context-types=LIST - The list of supported context types, separated by ':' (default: no contexts enabled)
 
                               width=INT - The width of the virtual display connected to the virtio-gpu.
 
