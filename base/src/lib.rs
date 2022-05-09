@@ -28,14 +28,15 @@ pub use alloc::LayoutAllocation;
 pub use clock::{Clock, FakeClock};
 pub use errno::{errno_result, Error, Result};
 pub use event::{Event, EventReadResult, ScopedEvent};
-pub use external_mapping::{Error as ExternalMappingError, Result as ExternalMappingResult, *};
+pub use external_mapping::{
+    Error as ExternalMappingError, ExternalMapping, Result as ExternalMappingResult,
+};
 pub use mmap::{MemoryMapping, MemoryMappingBuilder};
-pub use notifiers::*;
+pub use notifiers::{CloseNotifier, ReadNotifier};
 pub use platform::ioctl::{
     ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
-    *,
+    IoctlNr,
 };
-pub use scoped_event_macro::*;
 pub use shm::SharedMemory;
 pub use timer::{FakeTimer, Timer};
 pub use tube::{Error as TubeError, RecvTube, Result as TubeResult, SendTube, Tube};
@@ -43,25 +44,90 @@ pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
 pub use write_zeroes::{PunchHole, WriteZeroesAt};
 
 cfg_if::cfg_if! {
-     if #[cfg(unix)] {
-
+    if #[cfg(unix)] {
         pub use sys::unix;
 
-        pub use unix::net::*;
+        pub use unix::net;
 
-        pub use platform::{MemoryMappingBuilderUnix, Unix as MemoryMappingUnix};
-     } else if #[cfg(windows)] {
+       // File related exports.
+        pub use platform::{FileFlags, get_max_open_files};
+
+        // memory/mmap related exports.
+        pub use platform::{
+            MemfdSeals, MemoryMappingBuilderUnix, Unix as MemoryMappingUnix,
+            SharedMemoryUnix,
+        };
+
+        // descriptor/fd related exports.
+        pub use platform::{
+            add_fd_flags, clear_fd_flags, clone_descriptor, safe_descriptor_from_path,
+            validate_raw_descriptor, clear_descriptor_cloexec,
+        };
+
+
+        // Event/signal related exports.
+        pub use platform::{
+            block_signal, clear_signal, get_blocked_signals, new_pipe_full,
+            register_rt_signal_handler, signal, unblock_signal, Killable, SIGRTMIN,
+            WatchingEvents, EpollContext, EpollEvents, AcpiNotifyEvent, NetlinkGenericSocket,
+            SignalFd, Terminal, EventFd,
+        };
+
+        pub use platform::{
+            chown, drop_capabilities, iov_max, kernel_has_memfd, pipe, read_raw_stdin
+        };
+        pub use platform::{enable_core_scheduling, set_rt_prio_limit, set_rt_round_robin};
+        pub use platform::{flock, FlockOperation};
+        pub use platform::{getegid, geteuid};
+        pub use platform::{gettid, kill_process_group, reap_child};
+        pub use platform::{
+            net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener},
+            ScmSocket, UnlinkUnixListener, SCM_SOCKET_MAX_FD_COUNT,
+        };
+    } else if #[cfg(windows)] {
+        pub use platform::{EventTrigger, EventExt, WaitContextExt};
         pub use platform::MemoryMappingBuilderWindows;
-        pub use platform::EventExt;
-        pub use tube::{deserialize_and_recv, serialize_and_send, set_duplicate_handle_tube, set_alias_pid, DuplicateHandleTube};
-     } else {
+        pub use platform::set_thread_priority;
+        pub use platform::{give_foregrounding_permission, Console};
+        pub use platform::{named_pipes, named_pipes::PipeConnection};
+        pub use platform::{SafeMultimediaHandle, MAXIMUM_WAIT_OBJECTS};
+        pub use crate::platform::win::{
+            measure_timer_resolution, nt_query_timer_resolution, nt_set_timer_resolution,
+            set_sparse_file, set_time_period,
+        };
+        pub use platform::ioctl::ioctl_with_ptr_sized;
+
+        pub use tube::{
+            deserialize_and_recv, serialize_and_send, set_alias_pid, set_duplicate_handle_tube,
+            DuplicateHandleRequest, DuplicateHandleResponse, DuplicateHandleTube,
+        };
+        pub use platform::{set_audio_thread_priorities, thread};
+        pub use platform::{BlockingMode, FramingMode, StreamChannel};
+        pub use platform::gmtime_secure;
+    } else {
         compile_error!("Unsupported platform");
-     }
+    }
 }
+
+pub use platform::{
+    deserialize_with_descriptors, EventContext, FileAllocate, FileGetLen, FileSerdeWrapper,
+    SerializeDescriptors, UnsyncMarker,
+};
+
+pub(crate) use platform::{file_punch_hole, file_write_zeroes_at};
+pub use platform::{get_cpu_affinity, set_cpu_affinity};
+pub use platform::{with_as_descriptor, with_raw_descriptor, RawDescriptor, INVALID_DESCRIPTOR};
+pub use platform::{PollToken, Protection};
 
 pub use crate::descriptor::{
     AsRawDescriptor, AsRawDescriptors, Descriptor, FromRawDescriptor, IntoRawDescriptor,
     SafeDescriptor,
 };
-pub use log::*;
-pub use platform::*;
+
+pub use platform::getpid;
+pub use platform::{get_filesystem_type, open_file};
+pub use platform::{pagesize, round_up_to_page_size};
+pub use platform::{FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync};
+pub use platform::{MappedRegion, MemoryMappingArena, MmapError};
+
+pub use log::{debug, error, info, trace, warn};
