@@ -97,6 +97,7 @@ pub struct GpuParameters {
     pub mode: GpuMode,
     pub cache_path: Option<String>,
     pub cache_size: Option<String>,
+    pub context_mask: u64,
 }
 
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
@@ -127,6 +128,7 @@ impl Default for GpuParameters {
             cache_path: None,
             cache_size: None,
             udmabuf: false,
+            context_mask: 0,
         }
     }
 }
@@ -1019,6 +1021,7 @@ pub struct Gpu {
     base_features: u64,
     udmabuf: bool,
     render_server_fd: Option<SafeDescriptor>,
+    _context_mask: u64,
 }
 
 impl Gpu {
@@ -1082,7 +1085,7 @@ impl Gpu {
             display_height = gpu_parameters.displays[0].height;
         }
 
-        let rutabaga_builder = RutabagaBuilder::new(component)
+        let rutabaga_builder = RutabagaBuilder::new(component, gpu_parameters.context_mask)
             .set_display_width(display_width)
             .set_display_height(display_height)
             .set_virglrenderer_flags(virglrenderer_flags)
@@ -1107,6 +1110,7 @@ impl Gpu {
             base_features,
             udmabuf: gpu_parameters.udmabuf,
             render_server_fd,
+            _context_mask: gpu_parameters.context_mask,
         }
     }
 

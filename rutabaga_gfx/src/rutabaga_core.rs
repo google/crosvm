@@ -709,7 +709,7 @@ pub struct RutabagaBuilder {
 
 impl RutabagaBuilder {
     /// Create new a RutabagaBuilder.
-    pub fn new(default_component: RutabagaComponentType) -> RutabagaBuilder {
+    pub fn new(default_component: RutabagaComponentType, _context_mask: u64) -> RutabagaBuilder {
         RutabagaBuilder {
             display_width: None,
             display_height: None,

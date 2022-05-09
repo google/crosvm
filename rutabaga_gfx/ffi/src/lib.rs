@@ -156,7 +156,7 @@ pub unsafe extern "C" fn rutabaga_init(builder: &rutabaga_builder, ptr: &mut *mu
 
             rutabaga_channels_opt = Some(rutabaga_channels);
         }
-        let result = RutabagaBuilder::new(component)
+        let result = RutabagaBuilder::new(component, 0)
             .set_virglrenderer_flags(virglrenderer_flags)
             .set_gfxstream_flags(gfxstream_flags)
             .set_rutabaga_channels(rutabaga_channels_opt)
