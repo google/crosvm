@@ -215,7 +215,36 @@ pub trait RutabagaContext {
 struct RutabagaCapsetInfo {
     pub capset_id: u32,
     pub component: RutabagaComponentType,
+    pub _name: &'static str,
 }
+
+const RUTABAGA_CAPSETS: [RutabagaCapsetInfo; 5] = [
+    RutabagaCapsetInfo {
+        capset_id: RUTABAGA_CAPSET_VIRGL,
+        component: RutabagaComponentType::VirglRenderer,
+        _name: "virgl",
+    },
+    RutabagaCapsetInfo {
+        capset_id: RUTABAGA_CAPSET_VIRGL2,
+        component: RutabagaComponentType::VirglRenderer,
+        _name: "virgl2",
+    },
+    RutabagaCapsetInfo {
+        capset_id: RUTABAGA_CAPSET_GFXSTREAM,
+        component: RutabagaComponentType::Gfxstream,
+        _name: "gfxstream",
+    },
+    RutabagaCapsetInfo {
+        capset_id: RUTABAGA_CAPSET_VENUS,
+        component: RutabagaComponentType::VirglRenderer,
+        _name: "venus",
+    },
+    RutabagaCapsetInfo {
+        capset_id: RUTABAGA_CAPSET_CROSS_DOMAIN,
+        component: RutabagaComponentType::CrossDomain,
+        _name: "cross-domain",
+    },
+];
 
 /// The global libary handle used to query capability sets, create resources and contexts.
 ///
@@ -704,12 +733,13 @@ pub struct RutabagaBuilder {
     default_component: RutabagaComponentType,
     gfxstream_flags: GfxstreamFlags,
     virglrenderer_flags: VirglRendererFlags,
+    context_mask: u64,
     channels: Option<Vec<RutabagaChannel>>,
 }
 
 impl RutabagaBuilder {
     /// Create new a RutabagaBuilder.
-    pub fn new(default_component: RutabagaComponentType, _context_mask: u64) -> RutabagaBuilder {
+    pub fn new(default_component: RutabagaComponentType, context_mask: u64) -> RutabagaBuilder {
         let virglrenderer_flags = VirglRendererFlags::new();
         let gfxstream_flags = GfxstreamFlags::new().use_async_fence_cb(true);
 
@@ -719,6 +749,7 @@ impl RutabagaBuilder {
             default_component,
             gfxstream_flags,
             virglrenderer_flags,
+            context_mask,
             channels: None,
         }
     }
@@ -809,7 +840,7 @@ impl RutabagaBuilder {
     /// intialize all 3D components which have been built. In 2D mode, only the 2D component is
     /// initialized.
     pub fn build(
-        self,
+        mut self,
         fence_handler: RutabagaFenceHandler,
         render_server_fd: Option<SafeDescriptor>,
     ) -> RutabagaResult<Rutabaga> {
@@ -818,6 +849,45 @@ impl RutabagaBuilder {
 
         #[allow(unused_mut)]
         let mut rutabaga_capsets: Vec<RutabagaCapsetInfo> = Default::default();
+
+        let capset_enabled =
+            |capset_id: u32| -> bool { (self.context_mask & (1 << capset_id)) != 0 };
+
+        let mut push_capset = |capset_id: u32| {
+            if let Some(capset) = RUTABAGA_CAPSETS
+                .iter()
+                .find(|capset| capset_id == capset.capset_id)
+            {
+                if self.context_mask != 0 {
+                    if capset_enabled(capset.capset_id) {
+                        rutabaga_capsets.push(*capset);
+                    }
+                } else {
+                    // Unconditionally push capset -- this should eventually be deleted when context types are
+                    // always specified by crosvm launchers.
+                    rutabaga_capsets.push(*capset);
+                }
+            };
+        };
+
+        if self.context_mask != 0 {
+            let supports_gfxstream = capset_enabled(RUTABAGA_CAPSET_GFXSTREAM);
+            let supports_virglrenderer =
+                capset_enabled(RUTABAGA_CAPSET_VIRGL2) | capset_enabled(RUTABAGA_CAPSET_VENUS);
+
+            if supports_gfxstream {
+                self.default_component = RutabagaComponentType::Gfxstream;
+            } else if supports_virglrenderer {
+                self.default_component = RutabagaComponentType::VirglRenderer;
+            } else {
+                self.default_component = RutabagaComponentType::CrossDomain;
+            }
+
+            self.virglrenderer_flags = self
+                .virglrenderer_flags
+                .use_virgl(capset_enabled(RUTABAGA_CAPSET_VIRGL2))
+                .use_venus(capset_enabled(RUTABAGA_CAPSET_VENUS));
+        }
 
         // Make sure that disabled components are not used as default.
         #[cfg(not(feature = "virgl_renderer"))]
@@ -863,18 +933,9 @@ impl RutabagaBuilder {
                 )?;
                 rutabaga_components.insert(RutabagaComponentType::VirglRenderer, virgl);
 
-                rutabaga_capsets.push(RutabagaCapsetInfo {
-                    capset_id: RUTABAGA_CAPSET_VIRGL,
-                    component: RutabagaComponentType::VirglRenderer,
-                });
-                rutabaga_capsets.push(RutabagaCapsetInfo {
-                    capset_id: RUTABAGA_CAPSET_VIRGL2,
-                    component: RutabagaComponentType::VirglRenderer,
-                });
-                rutabaga_capsets.push(RutabagaCapsetInfo {
-                    capset_id: RUTABAGA_CAPSET_VENUS,
-                    component: RutabagaComponentType::VirglRenderer,
-                });
+                push_capset(RUTABAGA_CAPSET_VIRGL);
+                push_capset(RUTABAGA_CAPSET_VIRGL2);
+                push_capset(RUTABAGA_CAPSET_VENUS);
             }
 
             #[cfg(feature = "gfxstream")]
@@ -902,14 +963,12 @@ impl RutabagaBuilder {
 
                 rutabaga_components.insert(RutabagaComponentType::Gfxstream, gfxstream);
 
-                rutabaga_capsets.push(RutabagaCapsetInfo {
-                    capset_id: RUTABAGA_CAPSET_GFXSTREAM,
-                    component: RutabagaComponentType::Gfxstream,
-                });
+                push_capset(RUTABAGA_CAPSET_GFXSTREAM);
             }
 
             let cross_domain = CrossDomain::init(self.channels)?;
             rutabaga_components.insert(RutabagaComponentType::CrossDomain, cross_domain);
+            push_capset(RUTABAGA_CAPSET_CROSS_DOMAIN);
         }
 
         Ok(Rutabaga {
