@@ -5,7 +5,7 @@
 use crate::{BusAccessInfo, BusDevice, BusResumeDevice, IrqLevelEvent};
 use acpi_tables::{aml, aml::Aml};
 use base::{
-    error, info, warn, Error as SysError, Event, PollToken, SendTube, VmEventType, WaitContext,
+    error, info, warn, Error as SysError, Event, EventToken, SendTube, VmEventType, WaitContext,
 };
 use base::{AcpiNotifyEvent, NetlinkGenericSocket};
 use std::collections::BTreeMap;
@@ -191,7 +191,7 @@ fn run_worker(
         }
     };
 
-    #[derive(PollToken)]
+    #[derive(EventToken)]
     enum Token {
         AcpiEvent,
         InterruptResample,

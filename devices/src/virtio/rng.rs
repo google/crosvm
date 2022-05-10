@@ -5,7 +5,7 @@
 use std::io::{self, Write};
 use std::thread;
 
-use base::{error, warn, Event, PollToken, RawDescriptor, WaitContext};
+use base::{error, warn, Event, EventToken, RawDescriptor, WaitContext};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use remain::sorted;
@@ -68,7 +68,7 @@ impl Worker {
     }
 
     fn run(&mut self, queue_evt: Event, kill_evt: Event) {
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             QueueAvailable,
             InterruptResample,

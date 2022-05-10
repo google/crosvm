@@ -14,7 +14,7 @@ use winapi::{
     um::{synchapi::WaitForMultipleObjects, winbase::WAIT_OBJECT_0},
 };
 
-use super::{errno_result, Error, Event, EventTrigger, PollToken, Result};
+use super::{errno_result, Error, Event, EventTrigger, Result};
 use crate::descriptor::{AsRawDescriptor, Descriptor};
 use crate::{error, EventToken, EventType, RawDescriptor, TriggeredEvent, WaitContext};
 
@@ -34,12 +34,12 @@ impl<T: EventToken> WaitContextExt for WaitContext<T> {
     }
 }
 
-struct RegisteredHandles<T: PollToken> {
+struct RegisteredHandles<T: EventToken> {
     triggers: HashMap<Descriptor, T>,
     raw_handles: Vec<Descriptor>,
 }
 
-pub struct EventContext<T: PollToken> {
+pub struct EventContext<T: EventToken> {
     registered_handles: Arc<Mutex<RegisteredHandles<T>>>,
 
     // An internally-used event to signify that the list of handles has been modified
@@ -49,7 +49,7 @@ pub struct EventContext<T: PollToken> {
     handles_modified_event: Event,
 }
 
-impl<T: PollToken> EventContext<T> {
+impl<T: EventToken> EventContext<T> {
     pub fn new() -> Result<EventContext<T>> {
         let new = EventContext {
             registered_handles: Arc::new(Mutex::new(RegisteredHandles {
@@ -267,7 +267,7 @@ impl<T: PollToken> EventContext<T> {
     }
 }
 
-impl<T: PollToken> AsRawDescriptor for EventContext<T> {
+impl<T: EventToken> AsRawDescriptor for EventContext<T> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.handles_modified_event.as_raw_descriptor()
     }

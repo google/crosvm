@@ -3,18 +3,19 @@
 // found in the LICENSE file.
 
 pub use super::wait::*;
-use super::{PollToken, RawDescriptor};
+use super::RawDescriptor;
 use crate::descriptor::AsRawDescriptor;
+use crate::EventToken;
 
 /// Represents descriptor-token pairs which represent an event which can be triggered in the
 /// EventContext
 #[derive(PartialEq)]
-pub struct EventTrigger<T: PollToken> {
+pub struct EventTrigger<T: EventToken> {
     pub(crate) token: T,
     pub(crate) event: RawDescriptor,
 }
 
-impl<T: PollToken> EventTrigger<T> {
+impl<T: EventToken> EventTrigger<T> {
     pub fn from(descriptor: &dyn AsRawDescriptor, token: T) -> Self {
         EventTrigger {
             token,
@@ -23,7 +24,7 @@ impl<T: PollToken> EventTrigger<T> {
     }
 }
 
-impl<T: PollToken> Clone for EventTrigger<T> {
+impl<T: EventToken> Clone for EventTrigger<T> {
     fn clone(&self) -> Self {
         EventTrigger {
             token: T::from_raw_token(self.token.as_raw_token()),

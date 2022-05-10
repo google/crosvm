@@ -120,10 +120,10 @@ fn generate_from_raw_token(enum_name: &Ident, variants: &[Variant]) -> TokenStre
 
 // The proc_macro::TokenStream type can only be constructed from within a
 // procedural macro, meaning that unit tests are not able to invoke `fn
-// poll_token` below as an ordinary Rust function. We factor out the logic into
+// event_token` below as an ordinary Rust function. We factor out the logic into
 // a signature that deals with Syn and proc-macro2 types only which are not
 // restricted to a procedural macro invocation.
-fn poll_token_inner(input: DeriveInput) -> TokenStream {
+fn event_token_inner(input: DeriveInput) -> TokenStream {
     let variants: Vec<Variant> = match input.data {
         Data::Enum(data) => data.variants.into_iter().collect(),
         Data::Struct(_) | Data::Union(_) => panic!("input must be an enum"),
@@ -144,7 +144,7 @@ fn poll_token_inner(input: DeriveInput) -> TokenStream {
     let from_raw_token = generate_from_raw_token(&enum_name, &variants);
 
     quote! {
-        impl PollToken for #enum_name {
+        impl EventToken for #enum_name {
             fn as_raw_token(&self) -> u64 {
                 #as_raw_token
             }
@@ -156,7 +156,7 @@ fn poll_token_inner(input: DeriveInput) -> TokenStream {
     }
 }
 
-/// Implements the PollToken trait for a given `enum`.
+/// Implements the EventToken trait for a given `enum`.
 ///
 /// There are limitations on what `enum`s this custom derive will work on:
 ///
@@ -165,8 +165,8 @@ fn poll_token_inner(input: DeriveInput) -> TokenStream {
 /// * If a variant data has size greater than or equal to a `u64`, its most significant bits must be
 ///   zero. The number of bits truncated is equal to the number of bits used to store the variant
 ///   index plus the number of bits above 64.
-#[proc_macro_derive(PollToken)]
-pub fn poll_token(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+#[proc_macro_derive(EventToken)]
+pub fn event_token(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    poll_token_inner(input).into()
+    event_token_inner(input).into()
 }

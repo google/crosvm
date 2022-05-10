@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{PollToken, RawDescriptor};
+use crate::{EventToken, RawDescriptor};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
@@ -151,7 +151,7 @@ impl AsRawDescriptor for Descriptor {
 }
 
 /// Implement token for implementations that wish to use this struct as such
-impl PollToken for Descriptor {
+impl EventToken for Descriptor {
     fn as_raw_token(&self) -> u64 {
         self.0 as u64
     }

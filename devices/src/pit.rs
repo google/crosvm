@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use base::{error, warn, Error as SysError, Event, PollToken, WaitContext};
+use base::{error, warn, Error as SysError, Event, EventToken, WaitContext};
 use bit_field::BitField1;
 use bit_field::*;
 use hypervisor::{PitChannelState, PitRWMode, PitRWState, PitState};
@@ -146,7 +146,7 @@ const NANOS_PER_SEC: u64 = 1_000_000_000;
 
 const MAX_TIMER_FREQ: u32 = 65536;
 
-#[derive(PollToken)]
+#[derive(EventToken)]
 enum Token {
     // The timer expired.
     TimerExpire,

@@ -10,7 +10,9 @@ use std::io::Error as IoError;
 use std::path::Path;
 use std::time::Duration;
 
-use base::{AsRawDescriptor, Error as BaseError, EventType, PollToken, RawDescriptor, WaitContext};
+use base::{
+    AsRawDescriptor, Error as BaseError, EventToken, EventType, RawDescriptor, WaitContext,
+};
 use data_model::VolatileSlice;
 use remain::sorted;
 use thiserror::Error;
@@ -91,9 +93,9 @@ pub enum SurfaceType {
     Cursor,
 }
 
-/// Poll token for display instances
-#[derive(PollToken)]
-pub enum DisplayPollToken {
+/// Event token for display instances
+#[derive(EventToken)]
+pub enum DisplayEventToken {
     Display,
     EventDevice { event_device_id: u32 },
 }
@@ -292,7 +294,7 @@ pub struct GpuDisplay {
     // the display context. The drop order for fields inside a struct is the order in which they
     // are declared [Rust RFC 1857].
     inner: Box<dyn DisplayT>,
-    wait_ctx: WaitContext<DisplayPollToken>,
+    wait_ctx: WaitContext<DisplayEventToken>,
     is_x: bool,
 }
 
@@ -308,7 +310,7 @@ impl GpuDisplay {
             };
 
             let wait_ctx = WaitContext::new()?;
-            wait_ctx.add(&display, DisplayPollToken::Display)?;
+            wait_ctx.add(&display, DisplayEventToken::Display)?;
 
             Ok(GpuDisplay {
                 inner: Box::new(display),
@@ -332,7 +334,7 @@ impl GpuDisplay {
         };
 
         let wait_ctx = WaitContext::new()?;
-        wait_ctx.add(&display, DisplayPollToken::Display)?;
+        wait_ctx.add(&display, DisplayEventToken::Display)?;
 
         Ok(GpuDisplay {
             inner: Box::new(display),
@@ -348,7 +350,7 @@ impl GpuDisplay {
     pub fn open_stub() -> GpuDisplayResult<GpuDisplay> {
         let display = gpu_display_stub::DisplayStub::new()?;
         let wait_ctx = WaitContext::new()?;
-        wait_ctx.add(&display, DisplayPollToken::Display)?;
+        wait_ctx.add(&display, DisplayEventToken::Display)?;
 
         Ok(GpuDisplay {
             inner: Box::new(display),
@@ -403,7 +405,7 @@ impl GpuDisplay {
     pub fn dispatch_events(&mut self) -> GpuDisplayResult<()> {
         let wait_events = self.wait_ctx.wait_timeout(Duration::default())?;
         for wait_event in wait_events.iter().filter(|e| e.is_writable) {
-            if let DisplayPollToken::EventDevice { event_device_id } = wait_event.token {
+            if let DisplayEventToken::EventDevice { event_device_id } = wait_event.token {
                 if let Some(event_device) = self.event_devices.get_mut(&event_device_id) {
                     if !event_device.flush_buffered_events()? {
                         continue;
@@ -411,7 +413,7 @@ impl GpuDisplay {
                     self.wait_ctx.modify(
                         event_device,
                         EventType::Read,
-                        DisplayPollToken::EventDevice { event_device_id },
+                        DisplayEventToken::EventDevice { event_device_id },
                     )?;
                 }
             }
@@ -419,8 +421,8 @@ impl GpuDisplay {
 
         for wait_event in wait_events.iter().filter(|e| e.is_readable) {
             match wait_event.token {
-                DisplayPollToken::Display => self.dispatch_display_events()?,
-                DisplayPollToken::EventDevice { event_device_id } => {
+                DisplayEventToken::Display => self.dispatch_display_events()?,
+                DisplayEventToken::EventDevice { event_device_id } => {
                     self.handle_event_device(event_device_id)
                 }
             }
@@ -518,7 +520,7 @@ impl GpuDisplay {
 
         self.wait_ctx.add(
             &event_device,
-            DisplayPollToken::EventDevice {
+            DisplayEventToken::EventDevice {
                 event_device_id: new_event_device_id,
             },
         )?;

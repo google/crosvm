@@ -54,7 +54,7 @@ use data_model::*;
 use base::ioctl_iow_nr;
 use base::{
     error, ioctl_iowr_nr, ioctl_with_ref, pipe, round_up_to_page_size, warn, AsRawDescriptor,
-    Error, Event, EventType, FileFlags, FromRawDescriptor, PollToken, RawDescriptor, Result,
+    Error, Event, EventToken, EventType, FileFlags, FromRawDescriptor, RawDescriptor, Result,
     ScmSocket, SharedMemory, SharedMemoryUnix, Tube, TubeError, WaitContext,
 };
 #[cfg(feature = "gpu")]
@@ -1648,7 +1648,7 @@ impl Worker {
     fn run(&mut self, mut queue_evts: Vec<Event>, kill_evt: Event) {
         let in_queue_evt = queue_evts.remove(0);
         let out_queue_evt = queue_evts.remove(0);
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             InQueue,
             OutQueue,

@@ -26,7 +26,7 @@ use std::{fmt, mem, thread};
 
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use base::{
-    error, info, AsRawDescriptor, Event, MemoryMapping, MemoryMappingBuilder, PollToken,
+    error, info, AsRawDescriptor, Event, EventToken, MemoryMapping, MemoryMappingBuilder,
     RawDescriptor, SafeDescriptor, SharedMemory, Timer, Tube, TubeError, WaitContext,
 };
 use data_model::DataInit;
@@ -494,7 +494,7 @@ impl PinWorker {
     }
 
     fn run(&mut self, kill_evt: Event) {
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             Kill,
             Pin { index: usize },
@@ -650,7 +650,7 @@ impl UnpinWorker {
     }
 
     fn run(&mut self, kill_evt: Event) {
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             UnpinTimer,
             UnpinReq,

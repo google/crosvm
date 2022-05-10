@@ -8,7 +8,7 @@ use std::sync::{mpsc::Sender, Arc};
 use std::thread;
 
 use crate::virtio::{DescriptorChain, Interrupt, Queue, Reader, SignalableInterrupt, Writer};
-use base::{error, warn, Event, PollToken, WaitContext};
+use base::{error, warn, Event, EventToken, WaitContext};
 use data_model::{DataInit, Le32};
 use sync::Mutex;
 use vm_memory::GuestMemory;
@@ -113,7 +113,7 @@ impl Worker {
             .vios_client
             .get_event_notifier()
             .map_err(SoundError::ClientEventNotifier)?;
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             ControlQAvailable,
             EventQAvailable,
@@ -536,7 +536,7 @@ fn io_loop(
     senders: Vec<Sender<StreamMsg>>,
     kill_evt: Event,
 ) -> Result<()> {
-    #[derive(PollToken)]
+    #[derive(EventToken)]
     enum Token {
         TxQAvailable,
         RxQAvailable,

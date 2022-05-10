@@ -9,7 +9,7 @@ use crate::{slirp::ETHERNET_FRAME_SIZE, Error, Result};
 
 use base::named_pipes::{OverlappedWrapper, PipeConnection};
 use base::{
-    error, warn, AsRawDescriptor, Descriptor, Event, EventWindows, PollToken, RawDescriptor,
+    error, warn, AsRawDescriptor, Descriptor, Event, EventToken, EventWindows, RawDescriptor,
     WaitContext,
 };
 use base::{Error as SysError, Timer};
@@ -303,7 +303,7 @@ fn slirp_events_to_wsa_events(events: PollEvents) -> SHORT {
     wsa_events
 }
 
-#[derive(PollToken, Eq, PartialEq, Copy, Clone)]
+#[derive(EventToken, Eq, PartialEq, Copy, Clone)]
 enum Token {
     EventHandleReady(usize),
     SocketReady,

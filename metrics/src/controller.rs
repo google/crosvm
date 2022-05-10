@@ -7,7 +7,7 @@
 use crate::metrics_requests::MetricsRequest;
 use crate::RequestHandler;
 use anyhow::Result;
-use base::{info, warn, PollToken, Tube};
+use base::{info, warn, EventToken, Tube};
 
 /// Handles incoming requests to log metrics
 pub(crate) trait MetricsRequestHandler {
@@ -23,7 +23,7 @@ pub struct MetricsController {
     pub(crate) closed_tubes: usize,
 }
 
-#[derive(PollToken)]
+#[derive(EventToken)]
 pub(crate) enum MetricsControllerToken {
     /// Triggered when the agent's pipe is readable (e.g. read_notifier).
     Agent(usize),

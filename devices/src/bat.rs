@@ -5,7 +5,7 @@
 use crate::{BusAccessInfo, BusDevice, IrqLevelEvent};
 use acpi_tables::{aml, aml::Aml};
 use base::{
-    error, warn, AsRawDescriptor, Descriptor, Event, PollToken, RawDescriptor, Tube, WaitContext,
+    error, warn, AsRawDescriptor, Descriptor, Event, EventToken, RawDescriptor, Tube, WaitContext,
 };
 use power_monitor::{BatteryStatus, CreatePowerMonitorFn};
 use remain::sorted;
@@ -169,7 +169,7 @@ fn command_monitor(
         None => None,
     };
 
-    #[derive(PollToken)]
+    #[derive(EventToken)]
     enum Token {
         Commands,
         Resample,

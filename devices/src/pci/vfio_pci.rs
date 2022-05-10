@@ -17,7 +17,7 @@ use std::u32;
 use sync::Mutex;
 
 use base::{
-    error, pagesize, warn, AsRawDescriptor, AsRawDescriptors, Event, PollToken, RawDescriptor,
+    error, pagesize, warn, AsRawDescriptor, AsRawDescriptors, Event, EventToken, RawDescriptor,
     Tube, WaitContext,
 };
 use hypervisor::{Datamatch, MemSlot};
@@ -414,7 +414,7 @@ struct VfioPciWorker {
 
 impl VfioPciWorker {
     fn run(&mut self, req_irq_evt: Event, kill_evt: Event, msix_evt: Vec<Event>) {
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             ReqIrq,
             Kill,

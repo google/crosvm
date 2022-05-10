@@ -24,7 +24,6 @@ mod mmap;
 mod mmap_platform;
 pub mod named_pipes;
 pub mod platform_timer_resolution;
-mod poll;
 mod priority;
 // Add conditional compile?
 mod punch_hole;
@@ -45,7 +44,6 @@ pub use crate::descriptor_reflection::{
     SerializeDescriptors,
 };
 pub use crate::errno::{Error, Result, *};
-pub use base_poll_token_derive::*;
 pub use console::*;
 pub use descriptor::*;
 pub use event::*;
@@ -54,7 +52,6 @@ pub use get_filesystem_type::*;
 pub use gmtime::*;
 pub use ioctl::*;
 pub use mmap::*;
-pub use poll::*;
 pub use priority::*;
 pub use sched::*;
 pub use shm::*;

@@ -115,10 +115,10 @@ pub use platform::{
 
 use uuid::Uuid;
 
+pub use platform::Protection;
 pub(crate) use platform::{file_punch_hole, file_write_zeroes_at};
 pub use platform::{get_cpu_affinity, set_cpu_affinity};
 pub use platform::{with_as_descriptor, with_raw_descriptor, RawDescriptor, INVALID_DESCRIPTOR};
-pub use platform::{PollToken, Protection};
 
 pub use crate::descriptor::{
     AsRawDescriptor, AsRawDescriptors, Descriptor, FromRawDescriptor, IntoRawDescriptor,

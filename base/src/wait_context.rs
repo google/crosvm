@@ -5,17 +5,86 @@
 use std::time::Duration;
 
 use crate::descriptor::AsRawDescriptor;
-use crate::{
-    platform::{EventContext, PollToken},
-    RawDescriptor, Result,
-};
+use crate::{platform::EventContext, RawDescriptor, Result};
 use smallvec::SmallVec;
 
-// Typedef PollToken as EventToken for better adherance to base naming.
-// As actual typdefing is experimental, define a new trait with the mirrored
-// attributes.
-pub trait EventToken: PollToken {}
-impl<T: PollToken> EventToken for T {}
+pub use base_event_token_derive::*;
+
+/// Trait that can be used to associate events with arbitrary enums when using
+/// `WaitContext`.
+///
+/// Simple enums that have no or primitive variant data data can use the `#[derive(EventToken)]`
+/// custom derive to implement this trait. See
+/// [event_token_derive::event_token](../base_event_token_derive/fn.event_token.html) for details.
+pub trait EventToken {
+    /// Converts this token into a u64 that can be turned back into a token via `from_raw_token`.
+    fn as_raw_token(&self) -> u64;
+
+    /// Converts a raw token as returned from `as_raw_token` back into a token.
+    ///
+    /// It is invalid to give a raw token that was not returned via `as_raw_token` from the same
+    /// `Self`. The implementation can expect that this will never happen as a result of its usage
+    /// in `WaitContext`.
+    fn from_raw_token(data: u64) -> Self;
+}
+
+impl EventToken for usize {
+    fn as_raw_token(&self) -> u64 {
+        *self as u64
+    }
+
+    fn from_raw_token(data: u64) -> Self {
+        data as Self
+    }
+}
+
+impl EventToken for u64 {
+    fn as_raw_token(&self) -> u64 {
+        *self as u64
+    }
+
+    fn from_raw_token(data: u64) -> Self {
+        data as Self
+    }
+}
+
+impl EventToken for u32 {
+    fn as_raw_token(&self) -> u64 {
+        u64::from(*self)
+    }
+
+    fn from_raw_token(data: u64) -> Self {
+        data as Self
+    }
+}
+
+impl EventToken for u16 {
+    fn as_raw_token(&self) -> u64 {
+        u64::from(*self)
+    }
+
+    fn from_raw_token(data: u64) -> Self {
+        data as Self
+    }
+}
+
+impl EventToken for u8 {
+    fn as_raw_token(&self) -> u64 {
+        u64::from(*self)
+    }
+
+    fn from_raw_token(data: u64) -> Self {
+        data as Self
+    }
+}
+
+impl EventToken for () {
+    fn as_raw_token(&self) -> u64 {
+        0
+    }
+
+    fn from_raw_token(_data: u64) -> Self {}
+}
 
 /// Represents an event that has been signaled and waited for via a wait function.
 #[derive(Copy, Clone, Debug)]
@@ -44,9 +113,9 @@ pub enum EventType {
 /// # Example
 ///
 /// ```
-/// use base::{Event, PollToken, Result, WaitContext};
+/// use base::{Event, EventToken, Result, WaitContext};
 ///
-/// #[derive(PollToken, Copy, Clone, Debug, PartialEq)]
+/// #[derive(EventToken, Copy, Clone, Debug, PartialEq)]
 /// enum ExampleToken {
 ///    SomeEvent(u32),
 ///    AnotherEvent,
@@ -154,8 +223,52 @@ impl<T: EventToken> WaitContext<T> {
     }
 }
 
-impl<T: PollToken> AsRawDescriptor for WaitContext<T> {
+impl<T: EventToken> AsRawDescriptor for WaitContext<T> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.0.as_raw_descriptor()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base_event_token_derive::EventToken;
+
+    #[test]
+    #[allow(dead_code)]
+    fn event_token_derive() {
+        #[derive(EventToken)]
+        enum EmptyToken {}
+
+        #[derive(PartialEq, Debug, EventToken)]
+        enum Token {
+            Alpha,
+            Beta,
+            // comments
+            Gamma(u32),
+            Delta { index: usize },
+            Omega,
+        }
+
+        assert_eq!(
+            Token::from_raw_token(Token::Alpha.as_raw_token()),
+            Token::Alpha
+        );
+        assert_eq!(
+            Token::from_raw_token(Token::Beta.as_raw_token()),
+            Token::Beta
+        );
+        assert_eq!(
+            Token::from_raw_token(Token::Gamma(55).as_raw_token()),
+            Token::Gamma(55)
+        );
+        assert_eq!(
+            Token::from_raw_token(Token::Delta { index: 100 }.as_raw_token()),
+            Token::Delta { index: 100 }
+        );
+        assert_eq!(
+            Token::from_raw_token(Token::Omega.as_raw_token()),
+            Token::Omega
+        );
     }
 }

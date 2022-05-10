@@ -4,7 +4,7 @@
 
 use std::os::raw::c_ulonglong;
 
-use base::{error, Error as SysError, Event, PollToken, Tube, WaitContext};
+use base::{error, Error as SysError, Event, EventToken, Tube, WaitContext};
 use vhost::Vhost;
 use vm_memory::GuestMemory;
 
@@ -104,7 +104,7 @@ impl<T: Vhost> Worker<T> {
     where
         F1: FnOnce(&T) -> Result<()>,
     {
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             VhostIrqi { index: usize },
             InterruptResample,

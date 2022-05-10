@@ -14,7 +14,8 @@ use smallvec::SmallVec;
 
 use super::{errno_result, Result};
 use crate::{
-    AsRawDescriptor, EventType, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, TriggeredEvent,
+    AsRawDescriptor, EventToken, EventType, FromRawDescriptor, IntoRawDescriptor, RawDescriptor,
+    TriggeredEvent,
 };
 
 const POLL_CONTEXT_MAX_EVENTS: usize = 16;
@@ -29,81 +30,6 @@ impl From<EventType> for u32 {
         };
         v as u32
     }
-}
-
-/// Trait for a token that can be associated with an `fd` in a `PollContext`.
-///
-/// Simple enums that have no or primitive variant data data can use the `#[derive(PollToken)]`
-/// custom derive to implement this trait. See
-/// [base_poll_token_derive::poll_token](../poll_token_derive/fn.poll_token.html) for details.
-pub trait PollToken {
-    /// Converts this token into a u64 that can be turned back into a token via `from_raw_token`.
-    fn as_raw_token(&self) -> u64;
-
-    /// Converts a raw token as returned from `as_raw_token` back into a token.
-    ///
-    /// It is invalid to give a raw token that was not returned via `as_raw_token` from the same
-    /// `Self`. The implementation can expect that this will never happen as a result of its usage
-    /// in `PollContext`.
-    fn from_raw_token(data: u64) -> Self;
-}
-
-impl PollToken for usize {
-    fn as_raw_token(&self) -> u64 {
-        *self as u64
-    }
-
-    fn from_raw_token(data: u64) -> Self {
-        data as Self
-    }
-}
-
-impl PollToken for u64 {
-    fn as_raw_token(&self) -> u64 {
-        *self as u64
-    }
-
-    fn from_raw_token(data: u64) -> Self {
-        data as Self
-    }
-}
-
-impl PollToken for u32 {
-    fn as_raw_token(&self) -> u64 {
-        u64::from(*self)
-    }
-
-    fn from_raw_token(data: u64) -> Self {
-        data as Self
-    }
-}
-
-impl PollToken for u16 {
-    fn as_raw_token(&self) -> u64 {
-        u64::from(*self)
-    }
-
-    fn from_raw_token(data: u64) -> Self {
-        data as Self
-    }
-}
-
-impl PollToken for u8 {
-    fn as_raw_token(&self) -> u64 {
-        u64::from(*self)
-    }
-
-    fn from_raw_token(data: u64) -> Self {
-        data as Self
-    }
-}
-
-impl PollToken for () {
-    fn as_raw_token(&self) -> u64 {
-        0
-    }
-
-    fn from_raw_token(_data: u64) -> Self {}
 }
 
 /// Watching events taken by PollContext.
@@ -149,7 +75,7 @@ pub struct PollContext<T> {
     tokens: PhantomData<[T]>,
 }
 
-impl<T: PollToken> PollContext<T> {
+impl<T: EventToken> PollContext<T> {
     /// Creates a new `PollContext`.
     pub fn new() -> Result<PollContext<T>> {
         // Safe because we check the return value.
@@ -352,13 +278,13 @@ impl<T: PollToken> PollContext<T> {
     }
 }
 
-impl<T: PollToken> AsRawDescriptor for PollContext<T> {
+impl<T: EventToken> AsRawDescriptor for PollContext<T> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.epoll_ctx.as_raw_descriptor()
     }
 }
 
-impl<T: PollToken> IntoRawDescriptor for PollContext<T> {
+impl<T: EventToken> IntoRawDescriptor for PollContext<T> {
     fn into_raw_descriptor(self) -> RawDescriptor {
         self.epoll_ctx.into_raw_descriptor()
     }
@@ -367,7 +293,7 @@ impl<T: PollToken> IntoRawDescriptor for PollContext<T> {
 #[cfg(test)]
 mod tests {
     use super::{super::Event, *};
-    use base_poll_token_derive::PollToken;
+    use base_event_token_derive::EventToken;
     use std::time::Instant;
 
     #[test]
@@ -429,11 +355,11 @@ mod tests {
 
     #[test]
     #[allow(dead_code)]
-    fn poll_token_derive() {
-        #[derive(PollToken)]
+    fn event_token_derive() {
+        #[derive(EventToken)]
         enum EmptyToken {}
 
-        #[derive(PartialEq, Debug, PollToken)]
+        #[derive(PartialEq, Debug, EventToken)]
         enum Token {
             Alpha,
             Beta,

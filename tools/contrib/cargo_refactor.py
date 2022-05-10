@@ -153,7 +153,7 @@ def main():
             ("sys_util_core::", "crate::common::"),
             ("win_sys_util::", "crate::platform::"),
             ("crate::unix::", "crate::platform::"),
-            ("use poll_token_derive::", "use base_poll_token_derive::"),
+            ("use poll_token_derive::", "use base_event_token_derive::"),
         ],
     )
 

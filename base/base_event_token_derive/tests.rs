@@ -24,7 +24,7 @@ fn test_variant_bits() {
 }
 
 #[test]
-fn poll_token_e2e() {
+fn event_token_e2e() {
     let input: DeriveInput = parse_quote! {
         enum Token {
             A,
@@ -35,9 +35,9 @@ fn poll_token_e2e() {
         }
     };
 
-    let actual = crate::poll_token_inner(input);
+    let actual = crate::event_token_inner(input);
     let expected = quote! {
-        impl PollToken for Token {
+        impl EventToken for Token {
             fn as_raw_token(&self) -> u64 {
                 match *self {
                     Token::A => 0u64,

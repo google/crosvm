@@ -17,8 +17,8 @@ use std::thread;
 
 use anyhow::{anyhow, bail, Context};
 use base::{
-    error, info, AsRawDescriptor, Event, EventType, FromRawDescriptor, IntoRawDescriptor,
-    PollToken, RawDescriptor, SafeDescriptor, Tube, WaitContext,
+    error, info, AsRawDescriptor, Event, EventToken, EventType, FromRawDescriptor,
+    IntoRawDescriptor, RawDescriptor, SafeDescriptor, Tube, WaitContext,
 };
 use data_model::{DataInit, Le32};
 use libc::{recv, MSG_DONTWAIT, MSG_PEEK};
@@ -228,7 +228,7 @@ struct Worker {
     slave_req_helper: SlaveReqHelper<SocketEndpoint<MasterReq>>,
 }
 
-#[derive(PollToken, Debug, Clone)]
+#[derive(EventToken, Debug, Clone)]
 enum Token {
     // Data is available on the Vhost-user sibling socket.
     SiblingSocket,

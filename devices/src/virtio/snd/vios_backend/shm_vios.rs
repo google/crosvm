@@ -6,8 +6,8 @@ use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
 
 use base::{
-    error, AsRawDescriptor, Error as BaseError, Event, FromRawDescriptor, IntoRawDescriptor,
-    MemoryMapping, MemoryMappingBuilder, MmapError, PollToken, SafeDescriptor, ScmSocket,
+    error, AsRawDescriptor, Error as BaseError, Event, EventToken, FromRawDescriptor,
+    IntoRawDescriptor, MemoryMapping, MemoryMappingBuilder, MmapError, SafeDescriptor, ScmSocket,
     UnixSeqpacket, WaitContext,
 };
 use data_model::{DataInit, VolatileMemory, VolatileMemoryError, VolatileSlice};
@@ -563,7 +563,7 @@ struct ThreadFlags {
     reporting_events: bool,
 }
 
-#[derive(PollToken)]
+#[derive(EventToken)]
 enum Token {
     Notification,
     TxBufferMsg,

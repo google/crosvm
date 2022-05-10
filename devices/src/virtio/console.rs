@@ -9,7 +9,7 @@ use std::result;
 use std::sync::Arc;
 use std::thread;
 
-use base::{error, Event, FileSync, PollToken, RawDescriptor, WaitContext};
+use base::{error, Event, EventToken, FileSync, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le16, Le32};
 use hypervisor::ProtectionType;
 use remain::sorted;
@@ -225,7 +225,7 @@ pub fn spawn_input_thread(
 
 impl Worker {
     fn run(&mut self) {
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             ReceiveQueueAvailable,
             TransmitQueueAvailable,

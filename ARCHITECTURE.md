@@ -174,7 +174,7 @@ added to the context along with an associated token, whose type is the type para
 `WaitContext`. A call to the `wait` function will block until at least one of the waitable objects
 has become signaled and will return a collection of the tokens associated with those objects. The
 tokens used with `WaitContext` must be convertible to and from a `u64`. There is a custom derive
-`#[derive(PollToken)]` which can be applied to an `enum` declaration that makes it easy to use your
+`#[derive(EventToken)]` which can be applied to an `enum` declaration that makes it easy to use your
 own enum in a `WaitContext`.
 
 #### Linux Platform Limitations

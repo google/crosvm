@@ -9,7 +9,7 @@ chromeos = []
 
 [dependencies]
 audio_streams = { path = "../common/audio_streams" }
-base_poll_token_derive = { path = "base_poll_token_derive" }
+base_event_token_derive = { path = "base_event_token_derive" }
 data_model = { path = "../common/data_model" }
 
 cfg-if = "*"

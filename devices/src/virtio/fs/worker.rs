@@ -8,7 +8,7 @@ use std::io;
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 
-use base::{error, syscall, Event, PollToken, SafeDescriptor, Tube, WaitContext};
+use base::{error, syscall, Event, EventToken, SafeDescriptor, Tube, WaitContext};
 use fuse::filesystem::{FileSystem, ZeroCopyReader, ZeroCopyWriter};
 use sync::Mutex;
 use vm_control::{FsMappingRequest, VmResponse};
@@ -202,7 +202,7 @@ impl<F: FileSystem + Sync> Worker<F> {
         // Safe because this doesn't modify any memory and we check the return value.
         syscall!(unsafe { libc::unshare(libc::CLONE_FS) }).map_err(Error::UnshareFromParent)?;
 
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             // A request is ready on the queue.
             QueueReady,

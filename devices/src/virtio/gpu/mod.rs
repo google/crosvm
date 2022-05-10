@@ -23,7 +23,7 @@ use std::time::Duration;
 use anyhow::Context;
 
 use base::{
-    debug, error, warn, AsRawDescriptor, Event, ExternalMapping, PollToken, RawDescriptor,
+    debug, error, warn, AsRawDescriptor, Event, EventToken, ExternalMapping, RawDescriptor,
     SafeDescriptor, SendTube, Tube, VmEventType, WaitContext,
 };
 
@@ -756,7 +756,7 @@ struct Worker {
 
 impl Worker {
     fn run(&mut self) {
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             CtrlQueue,
             CursorQueue,

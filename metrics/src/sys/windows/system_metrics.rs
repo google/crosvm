@@ -6,8 +6,8 @@ use crate::windows::{Error, Result, METRIC_UPLOAD_INTERVAL_SECONDS};
 use crate::{log_metric, MetricEventType};
 
 use base::{
-    error, AsRawDescriptor, Error as SysError, Event, FromRawDescriptor, PollToken, SafeDescriptor,
-    WaitContext,
+    error, AsRawDescriptor, Error as SysError, Event, EventToken, FromRawDescriptor,
+    SafeDescriptor, WaitContext,
 };
 
 use chrono::{DateTime, Local};
@@ -46,7 +46,7 @@ struct Worker {
 
 impl Worker {
     fn run(&mut self) {
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             Exit,
         }

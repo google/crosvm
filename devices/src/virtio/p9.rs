@@ -7,7 +7,7 @@ use std::mem;
 use std::result;
 use std::thread;
 
-use base::{error, warn, Error as SysError, Event, PollToken, RawDescriptor, WaitContext};
+use base::{error, warn, Error as SysError, Event, EventToken, RawDescriptor, WaitContext};
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestMemory;
@@ -89,7 +89,7 @@ impl Worker {
     }
 
     fn run(&mut self, queue_evt: Event, kill_evt: Event) -> P9Result<()> {
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             // A request is ready on the queue.
             QueueReady,

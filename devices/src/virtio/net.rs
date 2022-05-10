@@ -11,7 +11,9 @@ use std::sync::Arc;
 use std::thread;
 
 use base::Error as SysError;
-use base::{error, warn, AsRawDescriptor, Event, EventType, PollToken, RawDescriptor, WaitContext};
+use base::{
+    error, warn, AsRawDescriptor, Event, EventToken, EventType, RawDescriptor, WaitContext,
+};
 use data_model::{DataInit, Le16, Le64};
 use net_util::{Error as TapError, MacAddress, TapT};
 use remain::sorted;
@@ -312,7 +314,7 @@ pub fn process_ctrl<I: SignalableInterrupt, T: TapT>(
     Ok(())
 }
 
-#[derive(PollToken, Debug, Clone)]
+#[derive(EventToken, Debug, Clone)]
 pub enum Token {
     // A frame is available for reading from the tap device to receive in the guest.
     RxTap,

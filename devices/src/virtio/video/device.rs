@@ -4,7 +4,7 @@
 
 //! Definition of the trait `Device` that each backend video device must implement.
 
-use base::{PollToken, WaitContext};
+use base::{EventToken, WaitContext};
 
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::{QueueType, VideoCmd};
@@ -12,7 +12,7 @@ use crate::virtio::video::error::*;
 use crate::virtio::video::event::VideoEvt;
 use crate::virtio::video::response;
 
-#[derive(PollToken, Debug)]
+#[derive(EventToken, Debug)]
 pub enum Token {
     CmdQueue,
     EventQueue,

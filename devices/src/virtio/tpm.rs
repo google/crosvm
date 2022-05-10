@@ -7,7 +7,7 @@ use std::ops::BitOrAssign;
 use std::sync::Arc;
 use std::thread;
 
-use base::{error, Event, PollToken, RawDescriptor, WaitContext};
+use base::{error, Event, EventToken, RawDescriptor, WaitContext};
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;
@@ -101,7 +101,7 @@ impl Worker {
     }
 
     fn run(mut self) {
-        #[derive(PollToken, Debug)]
+        #[derive(EventToken, Debug)]
         enum Token {
             // A request is ready on the queue.
             QueueAvailable,

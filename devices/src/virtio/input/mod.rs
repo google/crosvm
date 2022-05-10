@@ -10,7 +10,7 @@ mod event_source;
 
 use self::constants::*;
 
-use base::{error, warn, AsRawDescriptor, Event, PollToken, RawDescriptor, WaitContext};
+use base::{error, warn, AsRawDescriptor, Event, EventToken, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le16, Le32};
 use remain::sorted;
 use thiserror::Error;
@@ -440,7 +440,7 @@ impl<T: EventSource> Worker<T> {
             return;
         }
 
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             EventQAvailable,
             StatusQAvailable,

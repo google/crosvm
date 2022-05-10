@@ -50,7 +50,6 @@ pub use crate::descriptor_reflection::{
 };
 pub use crate::errno::{Error, Result, *};
 pub use acpi_event::*;
-pub use base_poll_token_derive::*;
 pub use capabilities::drop_capabilities;
 pub use descriptor::*;
 // EventFd is deprecated. Use Event instead. EventFd will be removed as soon as rest of the current
@@ -62,7 +61,7 @@ pub use get_filesystem_type::*;
 pub use ioctl::*;
 pub use mmap::*;
 pub use netlink::*;
-pub use poll::{PollContext as EventContext, PollToken, WatchingEvents};
+pub use poll::{PollContext as EventContext, WatchingEvents};
 pub use priority::*;
 pub use sched::*;
 pub use scoped_signal_handler::*;

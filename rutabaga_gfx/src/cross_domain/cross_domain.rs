@@ -17,8 +17,8 @@ use std::sync::Arc;
 use std::thread;
 
 use base::{
-    error, pipe, AsRawDescriptor, Event, FileFlags, FileReadWriteVolatile, FromRawDescriptor,
-    PollToken, SafeDescriptor, ScmSocket, WaitContext,
+    error, pipe, AsRawDescriptor, Event, EventToken, FileFlags, FileReadWriteVolatile,
+    FromRawDescriptor, SafeDescriptor, ScmSocket, WaitContext,
 };
 
 use crate::cross_domain::cross_domain_protocol::*;
@@ -36,7 +36,7 @@ const CROSS_DOMAIN_DEFAULT_BUFFER_SIZE: usize = 4096;
 const CROSS_DOMAIN_MAX_SEND_RECV_SIZE: usize =
     CROSS_DOMAIN_DEFAULT_BUFFER_SIZE - size_of::<CrossDomainSendReceive>();
 
-#[derive(PollToken)]
+#[derive(EventToken)]
 enum CrossDomainToken {
     ContextChannel,
     WaylandReadPipe(u32),

@@ -1694,7 +1694,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     vcpu_ids: Vec<usize>,
     iommu_host_tube: Option<Tube>,
 ) -> Result<ExitState> {
-    #[derive(PollToken)]
+    #[derive(EventToken)]
     enum Token {
         VmEvent,
         Suspend,

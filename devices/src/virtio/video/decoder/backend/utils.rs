@@ -193,7 +193,7 @@ mod tests {
 
     use super::*;
     use crate::virtio::video::{decoder::DecoderEvent, format::Rect};
-    use base::{PollToken, WaitContext};
+    use base::{EventToken, WaitContext};
 
     /// Test basic queue/dequeue functionality of `EventQueue`.
     #[test]
@@ -244,7 +244,7 @@ mod tests {
     /// Test polling of `DecoderEventQueue`'s `event_pipe`.
     #[test]
     fn decoder_event_queue_polling() {
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             Event,
         }

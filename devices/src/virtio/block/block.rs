@@ -14,7 +14,7 @@ use std::u32;
 use base::Error as SysError;
 use base::Result as SysResult;
 use base::{
-    error, info, warn, AsRawDescriptor, Event, PollToken, RawDescriptor, Timer, Tube, WaitContext,
+    error, info, warn, AsRawDescriptor, Event, EventToken, RawDescriptor, Timer, Tube, WaitContext,
 };
 use data_model::DataInit;
 use disk::DiskFile;
@@ -291,7 +291,7 @@ impl Worker {
     }
 
     fn run(&mut self, queue_evt: Event, kill_evt: Event) {
-        #[derive(PollToken)]
+        #[derive(EventToken)]
         enum Token {
             FlushTimer,
             QueueAvailable,

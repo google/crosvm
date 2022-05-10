@@ -29,8 +29,8 @@ use thiserror::Error;
 use base::{
     add_fd_flags, block_signal, clear_signal, drop_capabilities, enable_core_scheduling, error,
     getegid, geteuid, info, pipe, register_rt_signal_handler, validate_raw_descriptor, warn,
-    AsRawDescriptor, Descriptor, Error as SysError, Event, FromRawDescriptor, Killable, MmapError,
-    PollToken, RawDescriptor, Result as SysResult, SignalFd, WaitContext, SIGRTMIN,
+    AsRawDescriptor, Descriptor, Error as SysError, Event, EventToken, FromRawDescriptor, Killable,
+    MmapError, RawDescriptor, Result as SysResult, SignalFd, WaitContext, SIGRTMIN,
 };
 use kvm::{Cap, Datamatch, IoeventAddress, Kvm, Vcpu, VcpuExit, Vm};
 use minijail::{self, Minijail};
@@ -474,7 +474,7 @@ pub fn run_vcpus(
     Ok(())
 }
 
-#[derive(PollToken)]
+#[derive(EventToken)]
 enum Token {
     Exit,
     ChildSignal,
