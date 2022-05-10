@@ -1,0 +1,8 @@
+[package]
+name = "baremetal"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+com_logger = "0.1"
+log = "0.4"
