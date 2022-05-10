@@ -1028,7 +1028,7 @@ impl Vcpu for KvmVcpu {
         // kernel told us how large it was.
         let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
         // Verify that the handler is called in the right context.
-        assert!(run.exit_reason == KVM_EXIT_HYPERV_HCALL);
+        assert!(run.exit_reason == KVM_EXIT_HYPERV);
         // Safe because the exit_reason (which comes from the kernel) told us which
         // union field to use.
         let hyperv = unsafe { &mut run.__bindgen_anon_1.hyperv };
