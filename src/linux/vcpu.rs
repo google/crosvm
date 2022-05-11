@@ -562,16 +562,6 @@ where
             // anything happens before we get to writing the final event.
             let scoped_exit_evt = ScopedEvent::from(exit_evt);
 
-            let mut msr_handlers = MsrHandlers::new();
-            if !userspace_msr.is_empty() {
-                userspace_msr.iter().for_each(|(index, msr_config)| {
-                    if let Err(e) = msr_handlers.add_handler(*index, msr_config.clone(), cpu_id) {
-                        error!("failed to add msr handler {}: {:#}", cpu_id, e);
-                        return;
-                    };
-                });
-            }
-
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             let guest_mem = vm.get_memory().clone();
             let runnable_vcpu = runnable_vcpu(
@@ -591,6 +581,18 @@ where
                 itmt,
                 vcpu_cgroup_tasks_file,
             );
+
+            // Add MSR handlers after CPU affinity setting.
+            // This avoids redundant MSR file fd creation.
+            let mut msr_handlers = MsrHandlers::new();
+            if !userspace_msr.is_empty() {
+                userspace_msr.iter().for_each(|(index, msr_config)| {
+                    if let Err(e) = msr_handlers.add_handler(*index, msr_config.clone(), cpu_id) {
+                        error!("failed to add msr handler {}: {:#}", cpu_id, e);
+                        return;
+                    };
+                });
+            }
 
             start_barrier.wait();
 
