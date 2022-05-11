@@ -1323,42 +1323,6 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                 },
             });
         }
-        "netmask" => {
-            if cfg.netmask.is_some() {
-                return Err(argument::Error::TooManyArguments(
-                    "`netmask` already given".to_owned(),
-                ));
-            }
-            cfg.netmask =
-                Some(
-                    value
-                        .unwrap()
-                        .parse()
-                        .map_err(|_| argument::Error::InvalidValue {
-                            value: value.unwrap().to_owned(),
-                            expected: String::from("`netmask` needs to be in the form \"x.x.x.x\""),
-                        })?,
-                )
-        }
-        "mac" => {
-            if cfg.mac_address.is_some() {
-                return Err(argument::Error::TooManyArguments(
-                    "`mac` already given".to_owned(),
-                ));
-            }
-            cfg.mac_address =
-                Some(
-                    value
-                        .unwrap()
-                        .parse()
-                        .map_err(|_| argument::Error::InvalidValue {
-                            value: value.unwrap().to_owned(),
-                            expected: String::from(
-                                "`mac` needs to be in the form \"XX:XX:XX:XX:XX:XX\"",
-                            ),
-                        })?,
-                )
-        }
         "net-vq-pairs" => {
             if cfg.net_vq_pairs.is_some() {
                 return Err(argument::Error::TooManyArguments(
@@ -1487,34 +1451,6 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                         expected: String::from("this value for `cid` must be an unsigned integer"),
                     })?,
             );
-        }
-        "seccomp-policy-dir" => {
-            if let Some(jail_config) = &mut cfg.jail_config {
-                // `value` is Some because we are in this match so it's safe to unwrap.
-                jail_config.seccomp_policy_dir = PathBuf::from(value.unwrap());
-            }
-        }
-        "seccomp-log-failures" => {
-            // A side-effect of this flag is to force the use of .policy files
-            // instead of .bpf files (.bpf files are expected and assumed to be
-            // compiled to fail an unpermitted action with "trap").
-            // Normally crosvm will first attempt to use a .bpf file, and if
-            // not present it will then try to use a .policy file.  It's up
-            // to the build to decide which of these files is present for
-            // crosvm to use (for CrOS the build will use .bpf files for
-            // x64 builds and .policy files for arm/arm64 builds).
-            //
-            // This flag will likely work as expected for builds that use
-            // .policy files.  For builds that only use .bpf files the initial
-            // result when using this flag is likely to be a file-not-found
-            // error (since the .policy files are not present).
-            // For .bpf builds you can either 1) manually add the .policy files,
-            // or 2) do not use this command-line parameter and instead
-            // temporarily change the build by passing "log" rather than
-            // "trap" as the "--default-action" to compile_seccomp_policy.py.
-            if let Some(jail_config) = &mut cfg.jail_config {
-                jail_config.seccomp_log_failures = true;
-            }
         }
         "plugin" => {
             if cfg.executable_path.is_some() {
@@ -2408,8 +2344,6 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
           Argument::value("rw-pmem-device", "PATH", "Path to a writable disk image."),
           Argument::value("pmem-device", "PATH", "Path to a disk image."),
           Argument::value("pstore", "path=PATH,size=SIZE", "Path to pstore buffer backend file followed by size."),
-          Argument::value("netmask", "NETMASK", "Netmask for VM subnet."),
-          Argument::value("mac", "MAC", "MAC address for VM."),
           Argument::value("net-vq-pairs", "N", "virtio net virtual queue paris. (default: 1)"),
           #[cfg(feature = "audio")]
           Argument::value("ac97",
@@ -2492,8 +2426,6 @@ There is a cost of slightly increased latency the first time the file is accesse
 
                               posix_acl=BOOL - Indicates whether the shared directory supports POSIX ACLs.  This should only be enabled when the underlying file system supports POSIX ACLs.  The default value for this option is \"true\".
 "),
-          Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
-          Argument::flag("seccomp-log-failures", "Instead of seccomp filter failures being fatal, they will be logged instead."),
           #[cfg(feature = "plugin")]
           Argument::value("plugin", "PATH", "Absolute path to plugin process to run under crosvm."),
           #[cfg(feature = "plugin")]

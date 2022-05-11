@@ -114,6 +114,8 @@ pub fn get_arguments() -> Vec<Argument> {
           Argument::value("host_ip",
                           "IP",
                           "IP address to assign to host tap interface."),
+          Argument::value("netmask", "NETMASK", "Netmask for VM subnet."),
+          Argument::value("mac", "MAC", "MAC address for VM."),
           Argument::value("tap-name",
                           "NAME",
                           "Name of a configured persistent TAP interface to use for networking. A different virtual network card will be added each time this argument is given."),
@@ -146,6 +148,8 @@ pub fn get_arguments() -> Vec<Argument> {
                               unpin_limit=NUM - Unpin limit for each unpin cycle, in unit of page count. 0 is invalid.
 
                               unpin_gen_threshold=NUM -  Number of unpin intervals a pinned page must be busy for to be aged into the older which is less frequently checked generation."),
+          Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
+          Argument::flag("seccomp-log-failures", "Instead of seccomp filter failures being fatal, they will be logged instead."),
     ]
 }
 
@@ -354,6 +358,42 @@ pub fn set_arguments(cfg: &mut Config, name: &str, value: Option<&str>) -> argum
                         })?,
                 )
         }
+        "netmask" => {
+            if cfg.netmask.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`netmask` already given".to_owned(),
+                ));
+            }
+            cfg.netmask =
+                Some(
+                    value
+                        .unwrap()
+                        .parse()
+                        .map_err(|_| argument::Error::InvalidValue {
+                            value: value.unwrap().to_owned(),
+                            expected: String::from("`netmask` needs to be in the form \"x.x.x.x\""),
+                        })?,
+                )
+        }
+        "mac" => {
+            if cfg.mac_address.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`mac` already given".to_owned(),
+                ));
+            }
+            cfg.mac_address =
+                Some(
+                    value
+                        .unwrap()
+                        .parse()
+                        .map_err(|_| argument::Error::InvalidValue {
+                            value: value.unwrap().to_owned(),
+                            expected: String::from(
+                                "`mac` needs to be in the form \"XX:XX:XX:XX:XX:XX\"",
+                            ),
+                        })?,
+                )
+        }
         "tap-name" => {
             cfg.tap_name.push(value.unwrap().to_owned());
         }
@@ -430,6 +470,34 @@ pub fn set_arguments(cfg: &mut Config, name: &str, value: Option<&str>) -> argum
         #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
         "gpu-render-server" => {
             cfg.gpu_render_server_parameters = Some(parse_gpu_render_server_options(value)?);
+        }
+        "seccomp-policy-dir" => {
+            if let Some(jail_config) = &mut cfg.jail_config {
+                // `value` is Some because we are in this match so it's safe to unwrap.
+                jail_config.seccomp_policy_dir = PathBuf::from(value.unwrap());
+            }
+        }
+        "seccomp-log-failures" => {
+            // A side-effect of this flag is to force the use of .policy files
+            // instead of .bpf files (.bpf files are expected and assumed to be
+            // compiled to fail an unpermitted action with "trap").
+            // Normally crosvm will first attempt to use a .bpf file, and if
+            // not present it will then try to use a .policy file.  It's up
+            // to the build to decide which of these files is present for
+            // crosvm to use (for CrOS the build will use .bpf files for
+            // x64 builds and .policy files for arm/arm64 builds).
+            //
+            // This flag will likely work as expected for builds that use
+            // .policy files.  For builds that only use .bpf files the initial
+            // result when using this flag is likely to be a file-not-found
+            // error (since the .policy files are not present).
+            // For .bpf builds you can either 1) manually add the .policy files,
+            // or 2) do not use this command-line parameter and instead
+            // temporarily change the build by passing "log" rather than
+            // "trap" as the "--default-action" to compile_seccomp_policy.py.
+            if let Some(jail_config) = &mut cfg.jail_config {
+                jail_config.seccomp_log_failures = true;
+            }
         }
         _ => unreachable!(),
     }
