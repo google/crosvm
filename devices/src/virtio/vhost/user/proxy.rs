@@ -277,7 +277,7 @@ impl Worker {
         // Represents if |slave_req_helper.endpoint| is being monitored for data
         // from the Vhost-user sibling.
         let mut sibling_socket_polling_enabled = true;
-        'wait: loop {
+        loop {
             let events = wait_ctx.wait().context("failed to wait for events")?;
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
@@ -305,8 +305,7 @@ impl Worker {
                     }
                     Token::RxQueue => {
                         if let Err(e) = rx_queue_evt.read() {
-                            error!("error reading rx queue Event: {}", e);
-                            break 'wait;
+                            bail!("error reading rx queue Event: {}", e);
                         }
 
                         // Rx buffers are available, now we should monitor the
@@ -324,34 +323,31 @@ impl Worker {
                     }
                     Token::TxQueue => {
                         if let Err(e) = tx_queue_evt.read() {
-                            error!("error reading tx queue event: {}", e);
-                            break 'wait;
+                            bail!("error reading tx queue event: {}", e);
                         }
                         self.process_tx();
                     }
                     Token::SiblingKick { index } => {
                         if let Err(e) = self.process_sibling_kick(index) {
-                            error!(
+                            bail!(
                                 "error processing sibling kick for {}-th vring: {}",
-                                index, e
+                                index,
+                                e
                             );
-                            break 'wait;
                         }
                     }
                     Token::MainThread => {
                         if let Err(e) = self.process_doorbell_message(&main_thread_tube) {
-                            error!("error processing doorbell message: {}", e);
-                            break 'wait;
+                            bail!("error processing doorbell message: {}", e);
                         }
                     }
                     Token::Kill => {
                         let _ = kill_evt.read();
-                        break 'wait;
+                        return Ok(());
                     }
                 }
             }
         }
-        Ok(())
     }
 
     // Processes data from the Vhost-user sibling and forwards to the driver via Rx buffers.
