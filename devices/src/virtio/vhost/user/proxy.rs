@@ -15,9 +15,10 @@ use std::io::Write;
 use std::os::unix::net::UnixListener;
 use std::thread;
 
+use anyhow::{anyhow, bail, Context};
 use base::{
     error, AsRawDescriptor, Event, EventType, FromRawDescriptor, IntoRawDescriptor, PollToken,
-    RawDescriptor, SafeDescriptor, Tube, TubeError, WaitContext,
+    RawDescriptor, SafeDescriptor, Tube, WaitContext,
 };
 use data_model::{DataInit, Le32};
 use libc::{recv, MSG_DONTWAIT, MSG_PEEK};
@@ -35,7 +36,6 @@ use vmm_vhost::{
     Protocol, SlaveReqHelper,
 };
 
-use crate::virtio::descriptor_utils::Error as DescriptorUtilsError;
 use crate::virtio::{
     copy_config, DescriptorChain, DeviceType, Interrupt, PciCapabilityType, Queue, Reader,
     SignalableInterrupt, VirtioDevice, VirtioPciCap, Writer,
@@ -48,10 +48,6 @@ use crate::{
     },
     virtio::{VIRTIO_F_ACCESS_PLATFORM, VIRTIO_MSI_NO_VECTOR},
 };
-
-use remain::sorted;
-use thiserror::Error as ThisError;
-use vmm_vhost::Error as VhostError;
 
 // Note: There are two sets of queues that will be mentioned here. 1st set is
 // for this Virtio PCI device itself. 2nd set is the actual device backends
@@ -109,100 +105,7 @@ const SIBLING_ACTION_MESSAGE_TYPES: &[MasterReq] = &[
     MasterReq::SET_INFLIGHT_FD,
 ];
 
-// TODO(abhishekbh): Migrate to anyhow::Error.
-#[sorted]
-#[derive(ThisError, Debug)]
-pub enum Error {
-    /// Failed to accept connection on a socket.
-    #[error("failed to accept connection on a socket: {0}")]
-    AcceptConnection(std::io::Error),
-    /// Bar not allocated.
-    #[error("bar not allocated: {0}")]
-    BarNotAllocated(PciBarIndex),
-    /// Call event not set for a vring.
-    #[error("call event not set for {}-th vring: {0}")]
-    CallEventNotSet(usize),
-    /// Failed to create a listener.
-    #[error("failed to create a listener: {0}")]
-    CreateListener(std::io::Error),
-    /// Failed to create a wait context object.
-    #[error("failed to create a wait context object: {0}")]
-    CreateWaitContext(base::Error),
-    /// Failed to create a Writer object.
-    #[error("failed to create a Writer")]
-    CreateWriter,
-    /// Failed to send ACK in response to Vhost-user sibling message.
-    #[error("Failed to send Ack: {0}")]
-    FailedAck(VhostError),
-    /// Failed to accept sibling connection.
-    #[error("failed to accept sibling connection: {0}")]
-    FailedToAcceptSiblingConnection(std::io::Error),
-    /// Failed to read kick event for a vring.
-    #[error("Failed to read kick event for {}-th vring: {1} {0}")]
-    FailedToReadKickEvt(base::Error, usize),
-    /// Failed to receive doorbell data.
-    #[error("failed to receive doorbell data: {0}")]
-    FailedToReceiveDoorbellData(TubeError),
-    /// Failed to write call event.
-    #[error("failed to write call event for {}=th ring: {1} {0}")]
-    FailedToWriteCallEvent(base::Error, usize),
-    /// Invalid PCI bar index.
-    #[error("invalid bar index: {0}")]
-    InvalidBar(PciBarIndex),
-    /// Invalid Vhost-user sibling message.
-    #[error("invalid Vhost-user sibling message")]
-    InvalidSiblingMessage,
-    /// Kick data not set for a vring.
-    #[error("kick data not set for {}-th vring: {0}")]
-    KickDataNotSet(usize),
-    /// Failed to send a memory mapping request.
-    #[error("memory mapping request failed")]
-    MemoryMappingRequestFailure,
-    /// MSI vector not set for a vring.
-    #[error("MSI vector not set for {}-th vring: {0}")]
-    MsiVectorNotSet(usize),
-    /// Failed to parse vring kick / call file descriptors.
-    #[error("failed to parse vring kick / call file descriptors: {0}")]
-    ParseVringFdRequest(VhostError),
-    /// Failed to read payload of a Vhost-user sibling header.
-    #[error("failed to read Vhost-user sibling message header: {0}")]
-    ReadSiblingHeader(VhostError),
-    /// Failed to read payload of a Vhost-user sibling message.
-    #[error("failed to read Vhost-user sibling message payload: {0}")]
-    ReadSiblingPayload(VhostError),
-    /// Rx buffer too small to accomodate data.
-    #[error("rx buffer too small")]
-    RxBufferTooSmall,
-    /// Sibling is disconnected.
-    #[error("sibling disconnected")]
-    SiblingDisconnected,
-    /// Failed to receive a memory mapping request from the main process.
-    #[error("receiving mapping request from tube failed: {0}")]
-    TubeReceiveFailure(TubeError),
-    /// Failed to send a memory mapping request to the main process.
-    #[error("sending mapping request to tube failed: {0}")]
-    TubeSendFailure(TubeError),
-    /// Adding |SET_VRING_KICK| related epoll event failed.
-    #[error("failed to add kick event to the epoll set: {0}")]
-    WaitContextAddKickEvent(base::Error),
-    /// Removing read event from the sibling VM socket events failed.
-    #[error("failed to disable EPOLLIN on sibling VM socket fd: {0}")]
-    WaitContextDisableSiblingVmSocket(base::Error),
-    /// Adding read event to the sibling VM socket events failed.
-    #[error("failed to enable EPOLLIN on sibling VM socket fd: {0}")]
-    WaitContextEnableSiblingVmSocket(base::Error),
-    /// Failed to wait for events.
-    #[error("failed to wait for events: {0}")]
-    WaitError(base::Error),
-    /// Writing to a buffer in the guest failed.
-    #[error("failed to write to guest buffer: {0}")]
-    WriteBuffer(std::io::Error),
-    /// Failed to create a Writer.
-    #[error("failed to create a Writer: {0}")]
-    WriterCreation(DescriptorUtilsError),
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = anyhow::Result<T>;
 
 // Device configuration as per section 5.7.4.
 #[derive(Debug, Clone, Copy)]
@@ -263,10 +166,12 @@ fn check_attached_files(
             if files.is_some() {
                 Ok(())
             } else {
-                Err(Error::InvalidSiblingMessage)
+                bail!("fd is expected for {:?}", hdr.get_code());
             }
         }
-        _ if files.is_some() => Err(Error::InvalidSiblingMessage),
+        _ if files.is_some() => {
+            bail!("unexpected fd for {:?}", hdr.get_code());
+        }
         _ => Ok(()),
     }
 }
@@ -367,13 +272,13 @@ impl Worker {
             (&main_thread_tube, Token::MainThread),
             (&kill_evt, Token::Kill),
         ])
-        .map_err(Error::CreateWaitContext)?;
+        .context("failed to create a wait context object")?;
 
         // Represents if |slave_req_helper.endpoint| is being monitored for data
         // from the Vhost-user sibling.
         let mut sibling_socket_polling_enabled = true;
         'wait: loop {
-            let events = wait_ctx.wait().map_err(Error::WaitError)?;
+            let events = wait_ctx.wait().context("failed to wait for events")?;
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::SiblingSocket => {
@@ -389,7 +294,7 @@ impl Worker {
                                         EventType::None,
                                         Token::SiblingSocket,
                                     )
-                                    .map_err(Error::WaitContextDisableSiblingVmSocket)?;
+                                    .context("failed to disable EPOLLIN on sibling VM socket fd")?;
                                 sibling_socket_polling_enabled = false;
                             }
                             // TODO(b/216407443): Handle sibling disconnection. The sibling sends
@@ -413,7 +318,7 @@ impl Worker {
                                     EventType::Read,
                                     Token::SiblingSocket,
                                 )
-                                .map_err(Error::WaitContextEnableSiblingVmSocket)?;
+                                .context("failed to add kick event to the epoll set")?;
                             sibling_socket_polling_enabled = true;
                         }
                     }
@@ -472,7 +377,7 @@ impl Worker {
                     break;
                 }
                 ConnStatus::Disconnected => {
-                    return Err(Error::SiblingDisconnected);
+                    bail!("sibling is disconnected");
                 }
             };
 
@@ -495,7 +400,7 @@ impl Worker {
                 .slave_req_helper
                 .as_mut()
                 .recv_header()
-                .map_err(Error::ReadSiblingHeader)?;
+                .context("failed to read Vhost-user sibling message header")?;
             check_attached_files(&hdr, &files)?;
             let buf = self.get_sibling_msg_data(&hdr)?;
 
@@ -555,7 +460,7 @@ impl Worker {
                     error!("failed to forward message to the device: {}", e);
                     self.slave_req_helper
                         .send_ack_message(&hdr, false)
-                        .map_err(Error::FailedAck)?;
+                        .context("failed to send ack")?;
                 }
             }
         }
@@ -600,12 +505,17 @@ impl Worker {
                     .slave_req_helper
                     .as_mut()
                     .recv_data(len as usize)
-                    .map_err(Error::ReadSiblingPayload)?;
+                    .context("failed to read Vhost-user sibling message payload")?;
                 if rbuf.len() != len as usize {
                     self.slave_req_helper
                         .send_ack_message(hdr, false)
-                        .map_err(Error::FailedAck)?;
-                    return Err(Error::InvalidSiblingMessage);
+                        .context("failed to send ack")?;
+                    bail!(
+                        "unexpected message length for {:?}: expected={}, got={}",
+                        hdr.get_code(),
+                        len,
+                        rbuf.len(),
+                    );
                 }
                 rbuf
             }
@@ -626,17 +536,17 @@ impl Worker {
                 if writer.available_bytes()
                     < buf.len() + std::mem::size_of::<VhostUserMsgHeader<MasterReq>>()
                 {
-                    error!("rx buffer too small to accomodate server data");
-                    return Err(Error::RxBufferTooSmall);
+                    bail!("rx buffer too small to accomodate server data");
                 }
                 // Write header first then any data. Do these separately to prevent any reorders.
-                let mut written = writer.write(hdr.as_slice()).map_err(Error::WriteBuffer)?;
-                written += writer.write(buf).map_err(Error::WriteBuffer)?;
+                let mut written = writer
+                    .write(hdr.as_slice())
+                    .context("failed to write header")?;
+                written += writer.write(buf).context("failed to write message body")?;
                 written as u32
             }
             Err(e) => {
-                error!("failed to create Writer: {}", e);
-                return Err(Error::CreateWriter);
+                bail!("failed to create Writer: {}", e);
             }
         };
         Ok(bytes_written)
@@ -655,7 +565,7 @@ impl Worker {
         files: Option<Vec<File>>,
     ) -> Result<()> {
         if !is_header_valid(hdr) {
-            return Err(Error::InvalidSiblingMessage);
+            bail!("invalid header for SET_MEM_TABLE");
         }
 
         // `hdr` is followed by a `payload`. `payload` consists of metadata about the number of
@@ -664,13 +574,14 @@ impl Worker {
         // of the payload is consistent with this structure.
         let payload_size = payload.len();
         if payload_size < std::mem::size_of::<VhostUserMemory>() {
-            error!("payload size {} lesser than minimum required", payload_size);
-            return Err(Error::InvalidSiblingMessage);
+            bail!("payload size {} lesser than minimum required", payload_size);
         }
         let (msg_slice, regions_slice) = payload.split_at(std::mem::size_of::<VhostUserMemory>());
-        let msg = VhostUserMemory::from_slice(msg_slice).ok_or(Error::InvalidSiblingMessage)?;
+        let msg = VhostUserMemory::from_slice(msg_slice).ok_or(anyhow!(
+            "failed to convert SET_MEM_TABLE message to VhostUserMemory"
+        ))?;
         if !msg.is_valid() {
-            return Err(Error::InvalidSiblingMessage);
+            bail!("invalid message for SET_MEM_TABLE");
         }
 
         let memory_region_metadata_size = std::mem::size_of::<VhostUserMemory>();
@@ -678,25 +589,26 @@ impl Worker {
             != memory_region_metadata_size
                 + msg.num_regions as usize * std::mem::size_of::<VhostUserMemoryRegion>()
         {
-            return Err(Error::InvalidSiblingMessage);
+            bail!("invalid payload size for SET_MEM_TABLE");
         }
 
         let regions: Vec<&VhostUserMemoryRegion> = regions_slice
             .chunks(std::mem::size_of::<VhostUserMemoryRegion>())
             .map(VhostUserMemoryRegion::from_slice)
             .collect::<Option<_>>()
-            .ok_or_else(|| {
-                error!("failed to construct VhostUserMemoryRegion array");
-                Error::InvalidSiblingMessage
-            })?;
+            .context("failed to construct VhostUserMemoryRegion array")?;
 
         if !regions.iter().all(|r| r.is_valid()) {
-            return Err(Error::InvalidSiblingMessage);
+            bail!("invalid memory region is included");
         }
 
-        let files = files.ok_or(Error::InvalidSiblingMessage)?;
+        let files = files.ok_or(anyhow!("FD is expected for SET_MEM_TABLE"))?;
         if files.len() != msg.num_regions as usize {
-            return Err(Error::InvalidSiblingMessage);
+            bail!(
+                "{} files are expected for SET_MEM_TABLE but got {}",
+                msg.num_regions as usize,
+                files.len()
+            );
         }
 
         self.create_sibling_guest_memory(&regions, files)?;
@@ -711,7 +623,11 @@ impl Worker {
         files: Vec<File>,
     ) -> Result<()> {
         if contexts.len() != files.len() {
-            return Err(Error::InvalidSiblingMessage);
+            bail!(
+                "number of contexts {} mismatches with number of files ({})",
+                contexts.len(),
+                files.len()
+            );
         }
 
         for (region, file) in contexts.iter().zip(files.into_iter()) {
@@ -738,19 +654,21 @@ impl Worker {
     fn process_memory_mapping_request(&mut self, request: &VmMemoryRequest) -> Result<()> {
         self.main_process_tube
             .send(request)
-            .map_err(Error::TubeSendFailure)?;
+            .context("sending mapping request to tube failed")?;
 
         let response = self
             .main_process_tube
             .recv()
-            .map_err(Error::TubeReceiveFailure)?;
+            .context("receiving mapping request from tube failed")?;
+
         match response {
             VmMemoryResponse::RegisterMemory { .. } => Ok(()),
             VmMemoryResponse::Err(e) => {
-                error!("memory mapping failed: {}", e);
-                Err(Error::MemoryMappingRequestFailure)
+                bail!("memory mapping failed: {}", e);
             }
-            _ => Err(Error::MemoryMappingRequestFailure),
+            _ => {
+                bail!("unexpected response: {:?}", response);
+            }
         }
     }
 
@@ -762,29 +680,24 @@ impl Worker {
         files: Option<Vec<File>>,
     ) -> Result<()> {
         if !is_header_valid(hdr) {
-            return Err(Error::InvalidSiblingMessage);
+            bail!("invalid header for SET_VRING_CALL");
         }
 
         let payload_size = payload.len();
         if payload_size != std::mem::size_of::<VhostUserU64>() {
-            error!("wrong payload size {}", payload_size);
-            return Err(Error::InvalidSiblingMessage);
+            bail!("wrong payload size {} for SET_VRING_CALL", payload_size);
         }
 
         let (index, file) = self
             .slave_req_helper
             .handle_vring_fd_request(payload, files)
-            .map_err(Error::ParseVringFdRequest)?;
+            .context("failed to parse vring call file descriptors")?;
 
         if index as usize >= MAX_VHOST_DEVICE_QUEUES {
-            error!("illegal Vring index:{}", index);
-            return Err(Error::InvalidSiblingMessage);
+            bail!("illegal vring index: {}", index);
         }
 
-        let file = file.ok_or_else(|| {
-            error!("no file found for SET_VRING_CALL");
-            Error::InvalidSiblingMessage
-        })?;
+        let file = file.ok_or_else(|| anyhow!("no file found for SET_VRING_CALL"))?;
 
         // Safe because we own the file.
         self.vrings[index as usize].call_evt =
@@ -803,29 +716,24 @@ impl Worker {
         files: Option<Vec<File>>,
     ) -> Result<()> {
         if !is_header_valid(hdr) {
-            return Err(Error::InvalidSiblingMessage);
+            bail!("invalid header for SET_VRING_KICK");
         }
 
         let payload_size = payload.len();
         if payload_size != std::mem::size_of::<VhostUserU64>() {
-            error!("wrong payload size {}", payload_size);
-            return Err(Error::InvalidSiblingMessage);
+            bail!("wrong payload size {} for SET_VRING_KICK", payload_size);
         }
 
         let (index, file) = self
             .slave_req_helper
             .handle_vring_fd_request(payload, files)
-            .map_err(Error::ParseVringFdRequest)?;
+            .context("failed to parse vring kill file descriptors")?;
 
         if index as usize >= MAX_VHOST_DEVICE_QUEUES {
-            error!("illegal Vring index:{}", index);
-            return Err(Error::InvalidSiblingMessage);
+            bail!("illegal vring index:{}", index);
         }
 
-        let file = file.ok_or_else(|| {
-            error!("no file found for SET_VRING_KICK");
-            Error::InvalidSiblingMessage
-        })?;
+        let file = file.ok_or_else(|| anyhow!("no file found for SET_VRING_KICK"))?;
 
         // Safe because we own the file.
         let kick_evt = unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) };
@@ -838,7 +746,7 @@ impl Worker {
                     index: index as usize,
                 },
             )
-            .map_err(Error::WaitContextAddKickEvent)?;
+            .context("failed to add kick event to the epoll set")?;
         kick_data.kick_evt = Some(kick_evt);
 
         Ok(())
@@ -881,16 +789,18 @@ impl Worker {
         let kick_evt = kick_data
             .kick_evt
             .as_ref()
-            .ok_or(Error::KickDataNotSet(index))?;
+            .with_context(|| format!("kick data not set for {}-th vring", index))?;
         kick_evt
             .read()
-            .map_err(|e| Error::FailedToReadKickEvt(e, index))?;
+            .map_err(|e| anyhow!("failed to read kick event for {}-th vring: {}", index, e))?;
         match kick_data.msi_vector {
             Some(msi_vector) => {
                 self.interrupt.signal_used_queue(msi_vector);
                 Ok(())
             }
-            None => Err(Error::MsiVectorNotSet(index)),
+            None => {
+                bail!("MSI vector not set for {}-th vring", index);
+            }
         }
     }
 
@@ -902,14 +812,14 @@ impl Worker {
         // state.
         let index: usize = main_thread_tube
             .recv()
-            .map_err(Error::FailedToReceiveDoorbellData)?;
+            .context("failed to receive doorbell data")?;
         let call_evt = self.vrings[index]
             .call_evt
             .as_ref()
-            .ok_or(Error::CallEventNotSet(index))?;
+            .ok_or(anyhow!("call event for {}-th ring is not set", index))?;
         call_evt
             .write(1)
-            .map_err(|e| Error::FailedToWriteCallEvent(e, index))?;
+            .with_context(|| format!("failed to write call event for {}-th ring", index))?;
         Ok(())
     }
 }
@@ -1041,11 +951,11 @@ impl VirtioVhostUser {
 
     fn check_bar_metadata(&self, bar_index: PciBarIndex) -> Result<()> {
         if bar_index != BAR_INDEX as usize {
-            return Err(Error::InvalidBar(bar_index));
+            bail!("invalid bar index: {}", bar_index);
         }
 
         if self.pci_bar.is_none() {
-            return Err(Error::BarNotAllocated(bar_index));
+            bail!("bar is not allocated for {}", bar_index);
         }
 
         Ok(())
@@ -1191,7 +1101,7 @@ impl VirtioVhostUser {
                 // thread to avoid blocking the main thread.
                 let (socket, _) = listener
                     .accept()
-                    .map_err(Error::FailedToAcceptSiblingConnection)?;
+                    .context("failed to accept sibling connection")?;
 
                 // Although this device is relates to Virtio Vhost User but it uses
                 // `slave_req_helper` to parse messages from  a Vhost-user sibling.
