@@ -289,7 +289,10 @@ fn parse_gpu_options(s: Option<&str>, gpu_params: &mut GpuParameters) -> argumen
                         return Err(argument::Error::InvalidValue {
                             value: v.to_string(),
                             expected: String::from(
+                                #[cfg(feature = "gfxstream")]
                                 "gpu parameter 'backend' should be one of (2d|virglrenderer|gfxstream)",
+                                #[cfg(not(feature = "gfxstream"))]
+                                "gpu parameter 'backend' should be one of (2d|3d)",
                             ),
                         });
                     }
