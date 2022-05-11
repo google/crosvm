@@ -342,6 +342,13 @@ enum Token {
     MainThread,
 }
 
+/// Represents the status of connection to the sibling.
+enum ConnStatus {
+    DataAvailable,
+    NoDataAvailable,
+    Disconnected,
+}
+
 impl Worker {
     // The entry point into `Worker`.
     // - At this point the connection with the sibling is already established.
@@ -445,7 +452,7 @@ impl Worker {
         Ok(())
     }
 
-    // Processes data from the Vhost-user sibling and forward to the driver via Rx buffers.
+    // Processes data from the Vhost-user sibling and forwards to the driver via Rx buffers.
     fn process_rx(&mut self, wait_ctx: &mut WaitContext<Token>) -> Result<()> {
         // Keep looping until -
         // - No more Rx buffers are available on the Rx queue. OR
@@ -460,11 +467,22 @@ impl Worker {
         //
         // Peek if any data is left on the Vhost-user sibling socket. If no, then
         // nothing to forwad to the device backend.
-        while self.is_sibling_data_available()? {
+        loop {
+            match self.check_sibling_connection() {
+                ConnStatus::DataAvailable => (),
+                ConnStatus::NoDataAvailable => {
+                    break;
+                }
+                ConnStatus::Disconnected => {
+                    return Err(Error::SiblingDisconnected);
+                }
+            };
+
             let desc = self
                 .rx_queue
                 .peek(&self.mem)
                 .ok_or(Error::RxDescriptorsExhausted)?;
+
             // To successfully receive attached file descriptors, we need to
             // receive messages and corresponding attached file descriptors in
             // this way:
@@ -545,7 +563,7 @@ impl Worker {
     }
 
     // Returns the sibling connection status.
-    fn is_sibling_data_available(&self) -> Result<bool> {
+    fn check_sibling_connection(&self) -> ConnStatus {
         // Peek if any data is left on the Vhost-user sibling socket. If no, then
         // nothing to forwad to the device backend.
         let mut peek_buf = [0; 1];
@@ -561,14 +579,14 @@ impl Worker {
         };
 
         match peek_ret {
-            0 => Err(Error::SiblingDisconnected),
+            0 => ConnStatus::Disconnected,
             ret if ret < 0 => match base::Error::last() {
                 // EAGAIN means that no data is available. Any other error means that the sibling
                 // has disconnected.
-                e if e.errno() == libc::EAGAIN => Ok(false),
-                _ => Err(Error::SiblingDisconnected),
+                e if e.errno() == libc::EAGAIN => ConnStatus::NoDataAvailable,
+                _ => ConnStatus::Disconnected,
             },
-            _ => Ok(true),
+            _ => ConnStatus::DataAvailable,
         }
     }
 
