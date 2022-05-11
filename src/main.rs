@@ -258,10 +258,28 @@ fn parse_gpu_options(s: Option<&str>, gpu_params: &mut GpuParameters) -> argumen
                 // Preferred: Specifying --gpu,backend=<mode>
                 "backend" => match v {
                     "2d" | "2D" => {
-                        gpu_params.mode = GpuMode::Mode2D;
+                        if sys::is_gpu_backend_deprecated(v) {
+                            return Err(argument::Error::InvalidValue {
+                                value: v.to_string(),
+                                expected: String::from(
+                                    "this backend type is deprecated, please use gfxstream.",
+                                ),
+                            });
+                        } else {
+                            gpu_params.mode = GpuMode::Mode2D;
+                        }
                     }
                     "3d" | "3D" | "virglrenderer" => {
-                        gpu_params.mode = GpuMode::ModeVirglRenderer;
+                        if sys::is_gpu_backend_deprecated(v) {
+                            return Err(argument::Error::InvalidValue {
+                                value: v.to_string(),
+                                expected: String::from(
+                                    "this backend type is deprecated, please use gfxstream.",
+                                ),
+                            });
+                        } else {
+                            gpu_params.mode = GpuMode::ModeVirglRenderer;
+                        }
                     }
                     #[cfg(feature = "gfxstream")]
                     "gfxstream" => {
@@ -460,7 +478,7 @@ fn parse_gpu_options(s: Option<&str>, gpu_params: &mut GpuParameters) -> argumen
     #[cfg(feature = "gfxstream")]
     {
         if !vulkan_specified && gpu_params.mode == GpuMode::ModeGfxstream {
-            gpu_params.use_vulkan = true;
+            gpu_params.use_vulkan = sys::use_vulkan();
         }
 
         if syncfd_specified || angle_specified {
@@ -1144,6 +1162,8 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         "serial" => {
             let serial_params = parse_serial_options(value.unwrap())?;
+            sys::check_serial_params(&serial_params)?;
+
             let num = serial_params.num;
             let key = (serial_params.hardware, num);
             if cfg.serial_parameters.contains_key(&key) {

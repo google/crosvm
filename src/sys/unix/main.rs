@@ -23,6 +23,7 @@ use devices::virtio::{
 use devices::Ac97Backend;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
+use devices::SerialParameters;
 
 use crate::argument::{self, Argument};
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
@@ -77,6 +78,21 @@ fn parse_gpu_render_server_options(s: Option<&str>) -> argument::Result<GpuRende
             expected: String::from("gpu-render-server must include 'path'"),
         })
     }
+}
+
+#[cfg(feature = "gpu")]
+pub fn is_gpu_backend_deprecated(_backend: &str) -> bool {
+    false
+}
+
+#[cfg(feature = "gfxstream")]
+pub fn use_vulkan() -> bool {
+    true
+}
+
+// Doesn't do anything on unix.
+pub fn check_serial_params(_serial_params: &SerialParameters) -> argument::Result<()> {
+    Ok(())
 }
 
 pub fn get_arguments() -> Vec<Argument> {
