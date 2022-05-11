@@ -17,8 +17,8 @@ use std::thread;
 
 use anyhow::{anyhow, bail, Context};
 use base::{
-    error, AsRawDescriptor, Event, EventType, FromRawDescriptor, IntoRawDescriptor, PollToken,
-    RawDescriptor, SafeDescriptor, Tube, WaitContext,
+    error, info, AsRawDescriptor, Event, EventType, FromRawDescriptor, IntoRawDescriptor,
+    PollToken, RawDescriptor, SafeDescriptor, Tube, WaitContext,
 };
 use data_model::{DataInit, Le32};
 use libc::{recv, MSG_DONTWAIT, MSG_PEEK};
@@ -251,6 +251,22 @@ enum ConnStatus {
     Disconnected,
 }
 
+/// Reason why rxq processing is stopped.
+enum RxqStatus {
+    /// All pending data have been processed.
+    Processed,
+    /// No descriptors available to forward vhost-user messages.
+    DescriptorsExhausted,
+    /// Sibling disconnected.
+    Disconnected,
+}
+
+/// Reason for a worker's successful exit.
+enum ExitReason {
+    Killed,
+    Disconnected,
+}
+
 impl Worker {
     // The entry point into `Worker`.
     // - At this point the connection with the sibling is already established.
@@ -263,7 +279,7 @@ impl Worker {
         tx_queue_evt: Event,
         main_thread_tube: Tube,
         kill_evt: Event,
-    ) -> Result<()> {
+    ) -> Result<ExitReason> {
         // TODO(abhishekbh): Should interrupt.signal_config_changed be called here ?.
         let mut wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (&self.slave_req_helper, Token::SiblingSocket),
@@ -283,8 +299,8 @@ impl Worker {
                 match event.token {
                     Token::SiblingSocket => {
                         match self.process_rx(&mut wait_ctx) {
-                            Ok(true) => (),
-                            Ok(false) => {
+                            Ok(RxqStatus::Processed) => (),
+                            Ok(RxqStatus::DescriptorsExhausted) => {
                                 // If the driver has no Rx buffers left, then no
                                 // point monitoring the Vhost-user sibling for data. There
                                 // would be no way to send it to the device backend.
@@ -297,9 +313,9 @@ impl Worker {
                                     .context("failed to disable EPOLLIN on sibling VM socket fd")?;
                                 sibling_socket_polling_enabled = false;
                             }
-                            // TODO(b/216407443): Handle sibling disconnection. The sibling sends
-                            // 0-length data the proxy device forwards it to the guest so that the
-                            // VVU backend can get notified that the connection is closed.
+                            Ok(RxqStatus::Disconnected) => {
+                                return Ok(ExitReason::Disconnected);
+                            }
                             Err(e) => return Err(e),
                         }
                     }
@@ -343,7 +359,7 @@ impl Worker {
                     }
                     Token::Kill => {
                         let _ = kill_evt.read();
-                        return Ok(());
+                        return Ok(ExitReason::Killed);
                     }
                 }
             }
@@ -351,8 +367,7 @@ impl Worker {
     }
 
     // Processes data from the Vhost-user sibling and forwards to the driver via Rx buffers.
-    // If rx queue's descriptors are exhausted while data is avilable, returns `Ok(false)`.
-    fn process_rx(&mut self, wait_ctx: &mut WaitContext<Token>) -> Result<bool> {
+    fn process_rx(&mut self, wait_ctx: &mut WaitContext<Token>) -> Result<RxqStatus> {
         // Keep looping until -
         // - No more Rx buffers are available on the Rx queue. OR
         // - No more data is available on the Vhost-user sibling socket (checked via a
@@ -367,22 +382,31 @@ impl Worker {
         // Peek if any data is left on the Vhost-user sibling socket. If no, then
         // nothing to forwad to the device backend.
         loop {
-            match self.check_sibling_connection() {
-                ConnStatus::DataAvailable => (),
-                ConnStatus::NoDataAvailable => {
-                    break;
-                }
-                ConnStatus::Disconnected => {
-                    bail!("sibling is disconnected");
-                }
+            let is_connected = match self.check_sibling_connection() {
+                ConnStatus::DataAvailable => true,
+                ConnStatus::Disconnected => false,
+                ConnStatus::NoDataAvailable => return Ok(RxqStatus::Processed),
             };
 
             let desc = match self.rx_queue.peek(&self.mem) {
                 Some(d) => d,
                 None => {
-                    // Descriptors are exhausted.
-                    return Ok(false);
+                    return Ok(RxqStatus::DescriptorsExhausted);
                 }
+            };
+
+            // If a sibling is disconnected, send 0-length data to the guest and return an error.
+            if !is_connected {
+                // Send 0-length data
+                let index = desc.index;
+                self.rx_queue.pop_peeked(&self.mem);
+                self.rx_queue.add_used(&self.mem, index, 0 /* len */);
+                if !self.rx_queue.trigger_interrupt(&self.mem, &self.interrupt) {
+                    // This interrupt should always be injected. We'd rather fail
+                    // fast if there is an error.
+                    panic!("failed to send interrupt");
+                }
+                return Ok(RxqStatus::Disconnected);
             };
 
             // To successfully receive attached file descriptors, we need to
@@ -460,8 +484,6 @@ impl Worker {
                 }
             }
         }
-
-        Ok(true)
     }
 
     // Returns the sibling connection status.
@@ -1119,11 +1141,22 @@ impl VirtioVhostUser {
                 };
                 let rx_queue_evt = activate_params.queue_evts.remove(0);
                 let tx_queue_evt = activate_params.queue_evts.remove(0);
-                if let Err(e) = worker.run(rx_queue_evt, tx_queue_evt, main_thread_tube, kill_evt) {
-                    // TODO(b/216407443): Handle sibling reconnect events.
-                    error!("worker thread exited: {}", e);
+
+                match worker.run(rx_queue_evt, tx_queue_evt, main_thread_tube, kill_evt) {
+                    Ok(ExitReason::Killed) => {
+                        info!("worker thread exited successfully");
+                        Ok(worker)
+                    }
+                    Ok(ExitReason::Disconnected) => {
+                        // TODO(b/216407443): Handle sibling reconnect events.
+                        info!("worker thread exited: sibling disconnected");
+                        Ok(worker)
+                    }
+                    Err(e) => {
+                        error!("worker thread exited with an error: {:#}", e);
+                        Ok(worker)
+                    }
                 }
-                Ok(worker)
             });
 
         match worker_result {
