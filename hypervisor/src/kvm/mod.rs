@@ -648,6 +648,19 @@ impl Vm for KvmVm {
             Err(_) => Err(Error::new(EIO)),
         }
     }
+
+    fn handle_deflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
+        match self.guest_mem.remove_range(guest_address, size) {
+            Ok(_) => Ok(()),
+            Err(vm_memory::Error::MemoryAccess(_, MmapError::SystemCallFailed(e))) => Err(e),
+            Err(_) => Err(Error::new(EIO)),
+        }
+    }
+
+    fn handle_inflate(&mut self, _guest_address: GuestAddress, _size: u64) -> Result<()> {
+        // No-op, when the guest attempts to access the pages again, Linux/KVM will provide them.
+        Ok(())
+    }
 }
 
 impl AsRawDescriptor for KvmVm {

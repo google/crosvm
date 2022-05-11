@@ -696,7 +696,7 @@ impl MemoryMapping {
             )
         };
         if ret < 0 {
-            Err(Error::InvalidRange(mem_offset, count, self.size()))
+            Err(Error::SystemCallFailed(super::Error::last()))
         } else {
             Ok(())
         }
