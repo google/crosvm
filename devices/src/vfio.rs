@@ -1164,7 +1164,7 @@ impl VfioDevice {
                         cap_info = Some((cap_type_info.type_, cap_type_info.subtype));
                     } else if cap_header.id as u32 == VFIO_REGION_INFO_CAP_MSIX_MAPPABLE {
                         mmaps.push(vfio_region_sparse_mmap_area {
-                            offset: region_with_cap[0].region_info.offset,
+                            offset: 0,
                             size: region_with_cap[0].region_info.size,
                         });
                     }
