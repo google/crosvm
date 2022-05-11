@@ -35,23 +35,17 @@ use crosvm::{
 use crosvm::{DirectIoOption, HostPcieRootPortParameters};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::virtio::block::block::DiskOption;
+#[cfg(feature = "gpu")]
+use devices::virtio::gpu::{
+    GpuDisplayParameters, GpuMode, GpuParameters, DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH,
+};
 #[cfg(feature = "audio_cras")]
 use devices::virtio::snd::cras_backend::Error as CrasSndError;
 #[cfg(feature = "audio_cras")]
 use devices::virtio::vhost::user::device::run_cras_snd_device;
-use devices::virtio::vhost::user::device::{
-    run_block_device, run_console_device, run_fs_device, run_net_device, run_vsock_device,
-    run_wl_device,
-};
+use devices::virtio::vhost::user::device::{run_block_device, run_net_device};
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
-#[cfg(feature = "gpu")]
-use devices::virtio::{
-    gpu::{
-        GpuDisplayParameters, GpuMode, GpuParameters, DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH,
-    },
-    vhost::user::device::run_gpu_device,
-};
 #[cfg(feature = "direct")]
 use devices::BusRange;
 #[cfg(feature = "audio")]
@@ -3164,20 +3158,8 @@ fn start_device(mut args: std::env::Args) -> std::result::Result<(), ()> {
 
     let result = match device.as_str() {
         "block" => run_block_device(&program_name, args),
-        "console" => run_console_device(&program_name, args),
-        #[cfg(feature = "audio_cras")]
-        "cras-snd" => run_cras_snd_device(&program_name, args),
-        "fs" => run_fs_device(&program_name, args),
-        #[cfg(feature = "gpu")]
-        "gpu" => run_gpu_device(&program_name, args),
         "net" => run_net_device(&program_name, args),
-        "vsock" => run_vsock_device(&program_name, args),
-        "wl" => run_wl_device(&program_name, args),
-        _ => {
-            println!("Unknown device name: {}", device);
-            print_usage();
-            return Err(());
-        }
+        _ => sys::start_device(&program_name, device.as_str(), args),
     };
 
     result.map_err(|e| {

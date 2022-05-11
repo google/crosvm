@@ -6,6 +6,12 @@
 use std::str::FromStr;
 use std::{path::PathBuf, time::Duration};
 
+use anyhow::{anyhow, Result};
+#[cfg(feature = "gpu")]
+use devices::virtio::vhost::user::device::run_gpu_device;
+use devices::virtio::vhost::user::device::{
+    run_console_device, run_fs_device, run_vsock_device, run_wl_device,
+};
 #[cfg(feature = "audio_cras")]
 use devices::virtio::{
     snd::cras_backend::Error as CrasSndError, vhost::user::device::run_cras_snd_device,
@@ -405,4 +411,18 @@ pub fn set_arguments(cfg: &mut Config, name: &str, value: Option<&str>) -> argum
         _ => unreachable!(),
     }
     Ok(())
+}
+
+pub(crate) fn start_device(program_name: &str, device_name: &str, args: &[&str]) -> Result<()> {
+    match device_name {
+        "console" => run_console_device(program_name, args),
+        #[cfg(feature = "audio_cras")]
+        "cras-snd" => run_cras_snd_device(program_name, args),
+        "fs" => run_fs_device(program_name, args),
+        #[cfg(feature = "gpu")]
+        "gpu" => run_gpu_device(program_name, args),
+        "vsock" => run_vsock_device(program_name, args),
+        "wl" => run_wl_device(program_name, args),
+        _ => Err(anyhow!("unknown device name: {}", device_name)),
+    }
 }

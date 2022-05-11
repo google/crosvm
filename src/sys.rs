@@ -11,4 +11,4 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(crate) use platform::main::{get_arguments, set_arguments};
+pub(crate) use platform::main::{get_arguments, set_arguments, start_device};
