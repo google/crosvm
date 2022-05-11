@@ -173,9 +173,6 @@ pub enum Error {
     /// Rx buffer too small to accomodate data.
     #[error("rx buffer too small")]
     RxBufferTooSmall,
-    /// There are no more available descriptors to receive into.
-    #[error("no rx descriptors available")]
-    RxDescriptorsExhausted,
     /// Sibling is disconnected.
     #[error("sibling disconnected")]
     SiblingDisconnected,
@@ -381,8 +378,8 @@ impl Worker {
                 match event.token {
                     Token::SiblingSocket => {
                         match self.process_rx(&mut wait_ctx) {
-                            Ok(()) => {}
-                            Err(Error::RxDescriptorsExhausted) => {
+                            Ok(true) => (),
+                            Ok(false) => {
                                 // If the driver has no Rx buffers left, then no
                                 // point monitoring the Vhost-user sibling for data. There
                                 // would be no way to send it to the device backend.
@@ -453,7 +450,8 @@ impl Worker {
     }
 
     // Processes data from the Vhost-user sibling and forwards to the driver via Rx buffers.
-    fn process_rx(&mut self, wait_ctx: &mut WaitContext<Token>) -> Result<()> {
+    // If rx queue's descriptors are exhausted while data is avilable, returns `Ok(false)`.
+    fn process_rx(&mut self, wait_ctx: &mut WaitContext<Token>) -> Result<bool> {
         // Keep looping until -
         // - No more Rx buffers are available on the Rx queue. OR
         // - No more data is available on the Vhost-user sibling socket (checked via a
@@ -478,10 +476,13 @@ impl Worker {
                 }
             };
 
-            let desc = self
-                .rx_queue
-                .peek(&self.mem)
-                .ok_or(Error::RxDescriptorsExhausted)?;
+            let desc = match self.rx_queue.peek(&self.mem) {
+                Some(d) => d,
+                None => {
+                    // Descriptors are exhausted.
+                    return Ok(false);
+                }
+            };
 
             // To successfully receive attached file descriptors, we need to
             // receive messages and corresponding attached file descriptors in
@@ -559,7 +560,7 @@ impl Worker {
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 
     // Returns the sibling connection status.
