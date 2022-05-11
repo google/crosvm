@@ -591,61 +591,13 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
                     argument::Error::Syntax(format!("invalid capture option: {}", e))
                 })?;
             }
-            #[cfg(feature = "audio_cras")]
-            "client_type" => {
-                ac97_params
-                    .set_client_type(v)
-                    .map_err(|e| argument::Error::InvalidValue {
-                        value: v.to_string(),
-                        expected: e.to_string(),
-                    })?;
-            }
-            #[cfg(feature = "audio_cras")]
-            "socket_type" => {
-                ac97_params
-                    .set_socket_type(v)
-                    .map_err(|e| argument::Error::InvalidValue {
-                        value: v.to_string(),
-                        expected: e.to_string(),
-                    })?;
-            }
-            #[cfg(any(target_os = "linux", target_os = "android"))]
-            "server" => {
-                ac97_params.vios_server_path =
-                    Some(
-                        PathBuf::from_str(v).map_err(|e| argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: e.to_string(),
-                        })?,
-                    );
-            }
             _ => {
-                return Err(argument::Error::UnknownArgument(format!(
-                    "unknown ac97 parameter {}",
-                    k
-                )));
+                sys::parse_ac97_options(&mut ac97_params, k, v)?;
             }
         }
     }
 
-    // server is required for and exclusive to vios backend
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    match ac97_params.backend {
-        Ac97Backend::VIOS => {
-            if ac97_params.vios_server_path.is_none() {
-                return Err(argument::Error::ExpectedArgument(String::from(
-                    "server argument is required for VIOS backend",
-                )));
-            }
-        }
-        _ => {
-            if ac97_params.vios_server_path.is_some() {
-                return Err(argument::Error::UnexpectedValue(String::from(
-                    "server argument is exclusive to the VIOS backend",
-                )));
-            }
-        }
-    }
+    sys::check_ac97_backend(&ac97_params)?;
 
     Ok(ac97_params)
 }

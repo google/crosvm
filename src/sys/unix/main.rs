@@ -2,7 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+#[cfg(any(
+    all(feature = "gpu", feature = "virgl_renderer_next"),
+    feature = "audio"
+))]
 use std::str::FromStr;
 use std::{path::PathBuf, time::Duration};
 
@@ -16,6 +19,10 @@ use devices::virtio::vhost::user::device::{
 use devices::virtio::{
     snd::cras_backend::Error as CrasSndError, vhost::user::device::run_cras_snd_device,
 };
+#[cfg(target_os = "android")]
+use devices::Ac97Backend;
+#[cfg(feature = "audio")]
+use devices::Ac97Parameters;
 
 use crate::argument::{self, Argument};
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
@@ -425,4 +432,75 @@ pub(crate) fn start_device(program_name: &str, device_name: &str, args: &[&str])
         "wl" => run_wl_device(program_name, args),
         _ => Err(anyhow!("unknown device name: {}", device_name)),
     }
+}
+
+#[cfg(feature = "audio")]
+pub(crate) fn check_ac97_backend(
+    #[allow(unused_variables)] ac97_params: &Ac97Parameters,
+) -> argument::Result<()> {
+    // server is required for and exclusive to vios backend
+    #[cfg(target_os = "android")]
+    match ac97_params.backend {
+        Ac97Backend::VIOS => {
+            if ac97_params.vios_server_path.is_none() {
+                return Err(argument::Error::ExpectedArgument(String::from(
+                    "server argument is required for VIOS backend",
+                )));
+            }
+        }
+        _ => {
+            if ac97_params.vios_server_path.is_some() {
+                return Err(argument::Error::UnexpectedValue(String::from(
+                    "server argument is exclusive to the VIOS backend",
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "audio")]
+pub fn parse_ac97_options(
+    ac97_params: &mut Ac97Parameters,
+    key: &str,
+    #[allow(unused_variables)] value: &str,
+) -> argument::Result<()> {
+    match key {
+        #[cfg(feature = "audio_cras")]
+        "client_type" => {
+            ac97_params
+                .set_client_type(value)
+                .map_err(|e| argument::Error::InvalidValue {
+                    value: value.to_string(),
+                    expected: e.to_string(),
+                })?;
+        }
+        #[cfg(feature = "audio_cras")]
+        "socket_type" => {
+            ac97_params
+                .set_socket_type(value)
+                .map_err(|e| argument::Error::InvalidValue {
+                    value: value.to_string(),
+                    expected: e.to_string(),
+                })?;
+        }
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        "server" => {
+            ac97_params.vios_server_path =
+                Some(
+                    PathBuf::from_str(value).map_err(|e| argument::Error::InvalidValue {
+                        value: value.to_string(),
+                        expected: e.to_string(),
+                    })?,
+                );
+        }
+        _ => {
+            return Err(argument::Error::UnknownArgument(format!(
+                "unknown ac97 parameter {}",
+                key
+            )));
+        }
+    };
+    Ok(())
 }
