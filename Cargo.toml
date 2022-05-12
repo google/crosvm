@@ -171,7 +171,6 @@ libc = "0.2.93"
 libcras = "*"
 # Compile out trace statements in release builds
 log = { version = "0", features = ["release_max_level_debug"]}
-metrics = { path = "metrics" }
 minijail = "*" # provided by ebuild
 net_util = { path = "net_util" }
 p9 = "*"
