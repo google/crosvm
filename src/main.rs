@@ -4066,8 +4066,10 @@ mod tests {
     #[cfg(feature = "direct")]
     #[test]
     fn parse_direct_io_options_valid() {
-        let params = parse_direct_io_options(Some("/dev/mem@1,100-110")).unwrap();
-        assert_eq!(params.path.to_str(), Some("/dev/mem"));
+        // Use /dev/zero here which is usually available on any systems,
+        // /dev/mem may not.
+        let params = parse_direct_io_options(Some("/dev/zero@1,100-110")).unwrap();
+        assert_eq!(params.path.to_str(), Some("/dev/zero"));
         assert_eq!(params.ranges[0], BusRange { base: 1, len: 1 });
         assert_eq!(params.ranges[1], BusRange { base: 100, len: 11 });
     }
@@ -4075,8 +4077,10 @@ mod tests {
     #[cfg(feature = "direct")]
     #[test]
     fn parse_direct_io_options_hex() {
-        let params = parse_direct_io_options(Some("/dev/mem@1,0x10,100-110,0x10-0x20")).unwrap();
-        assert_eq!(params.path.to_str(), Some("/dev/mem"));
+        // Use /dev/zero here which is usually available on any systems,
+        // /dev/mem may not.
+        let params = parse_direct_io_options(Some("/dev/zero@1,0x10,100-110,0x10-0x20")).unwrap();
+        assert_eq!(params.path.to_str(), Some("/dev/zero"));
         assert_eq!(params.ranges[0], BusRange { base: 1, len: 1 });
         assert_eq!(params.ranges[1], BusRange { base: 0x10, len: 1 });
         assert_eq!(params.ranges[2], BusRange { base: 100, len: 11 });
@@ -4092,12 +4096,14 @@ mod tests {
     #[cfg(feature = "direct")]
     #[test]
     fn parse_direct_io_options_invalid() {
-        assert!(parse_direct_io_options(Some("/dev/mem@0y10"))
+        // Use /dev/zero here which is usually available on any systems,
+        // /dev/mem may not.
+        assert!(parse_direct_io_options(Some("/dev/zero@0y10"))
             .unwrap_err()
             .to_string()
             .contains("invalid base range value"));
 
-        assert!(parse_direct_io_options(Some("/dev/mem@"))
+        assert!(parse_direct_io_options(Some("/dev/zero@"))
             .unwrap_err()
             .to_string()
             .contains("invalid base range value"));
