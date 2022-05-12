@@ -792,6 +792,7 @@ impl RutabagaBuilder {
         // If any component sets this to true, timer-based wakeup is activated. Async fence
         // handling will continue to work but worker wakeups will otherwise be avoided if no
         // components need the timer-based approach.
+        #[allow(unused_mut)]
         let mut use_timer_based_fence_polling = false;
 
         if self.default_component == RutabagaComponentType::Rutabaga2D {
