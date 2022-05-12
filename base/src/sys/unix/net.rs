@@ -32,7 +32,6 @@ use super::{
     Error, RawDescriptor,
 };
 use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor};
-use crate::{CloseNotifier, Event};
 
 /// Assist in handling both IP version 4 and IP version 6.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -344,7 +343,6 @@ fn sockaddr_un<P: AsRef<Path>>(path: P) -> io::Result<(libc::sockaddr_un, libc::
 pub struct UnixSeqpacket {
     #[serde(with = "super::with_raw_descriptor")]
     fd: RawFd,
-    pipe_closed: Event,
 }
 
 impl UnixSeqpacket {
@@ -359,7 +357,6 @@ impl UnixSeqpacket {
     /// # Errors
     /// Return `io::Error` when error occurs.
     pub fn connect<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        let pipe_closed = Event::new()?;
         // Safe socket initialization since we handle the returned error.
         let fd = unsafe {
             match libc::socket(libc::AF_UNIX, libc::SOCK_SEQPACKET, 0) {
@@ -377,15 +374,13 @@ impl UnixSeqpacket {
                 return Err(io::Error::last_os_error());
             }
         }
-        Ok(UnixSeqpacket { fd, pipe_closed })
+        Ok(UnixSeqpacket { fd })
     }
 
     /// Creates a pair of connected `SOCK_SEQPACKET` sockets.
     ///
     /// Both returned file descriptors have the `CLOEXEC` flag set.s
     pub fn pair() -> io::Result<(UnixSeqpacket, UnixSeqpacket)> {
-        let pipe_closed = Event::new()?;
-        let pipe_closed_clone = pipe_closed.try_clone()?;
         let mut fds = [0, 0];
         unsafe {
             // Safe because we give enough space to store all the fds and we check the return value.
@@ -397,14 +392,8 @@ impl UnixSeqpacket {
             );
             if ret == 0 {
                 Ok((
-                    Self {
-                        fd: fds[0],
-                        pipe_closed,
-                    },
-                    Self {
-                        fd: fds[1],
-                        pipe_closed: pipe_closed_clone,
-                    },
+                    UnixSeqpacket::from_raw_fd(fds[0]),
+                    UnixSeqpacket::from_raw_fd(fds[1]),
                 ))
             } else {
                 Err(io::Error::last_os_error())
@@ -414,16 +403,12 @@ impl UnixSeqpacket {
 
     /// Clone the underlying FD.
     pub fn try_clone(&self) -> io::Result<Self> {
-        let pipe_closed_clone = self.pipe_closed.try_clone()?;
         // Safe because this doesn't modify any memory and we check the return value.
         let fd = unsafe { libc::fcntl(self.fd, libc::F_DUPFD_CLOEXEC, 0) };
         if fd < 0 {
             Err(io::Error::last_os_error())
         } else {
-            Ok(Self {
-                fd,
-                pipe_closed: pipe_closed_clone,
-            })
+            Ok(Self { fd })
         }
     }
 
@@ -613,7 +598,6 @@ impl UnixSeqpacket {
 
 impl Drop for UnixSeqpacket {
     fn drop(&mut self) {
-        let _ = self.pipe_closed.write(0);
         // Safe if the UnixSeqpacket is created from Self::connect.
         unsafe {
             libc::close(self.fd);
@@ -624,18 +608,13 @@ impl Drop for UnixSeqpacket {
 impl FromRawFd for UnixSeqpacket {
     // Unsafe in drop function
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        let pipe_closed = Event::new().unwrap();
-        Self { fd, pipe_closed }
+        Self { fd }
     }
 }
 
 impl FromRawDescriptor for UnixSeqpacket {
     unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
-        let pipe_closed = Event::new().unwrap();
-        Self {
-            fd: descriptor,
-            pipe_closed,
-        }
+        Self { fd: descriptor }
     }
 }
 
@@ -656,12 +635,6 @@ impl AsRawFd for UnixSeqpacket {
 impl AsRawFd for &UnixSeqpacket {
     fn as_raw_fd(&self) -> RawFd {
         self.fd
-    }
-}
-
-impl CloseNotifier for UnixSeqpacket {
-    fn get_close_notifier(&self) -> &dyn AsRawDescriptor {
-        &self.pipe_closed
     }
 }
 
