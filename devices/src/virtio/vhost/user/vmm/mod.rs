@@ -3,36 +3,48 @@
 // found in the LICENSE file.
 
 mod block;
-mod console;
-mod fs;
-#[cfg(feature = "gpu")]
-mod gpu;
 mod handler;
-mod mac80211_hwsim;
-mod net;
-#[cfg(feature = "audio")]
-mod snd;
-mod vsock;
-mod wl;
 mod worker;
 
 pub use self::block::*;
-pub use self::console::*;
-pub use self::fs::*;
-#[cfg(feature = "gpu")]
-pub use self::gpu::*;
 pub use self::handler::VhostUserHandler;
-pub use self::mac80211_hwsim::*;
-pub use self::net::*;
-#[cfg(feature = "audio")]
-pub use self::snd::*;
-pub use self::vsock::*;
-pub use self::wl::*;
 
 use remain::sorted;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemoryError;
 use vmm_vhost::Error as VhostError;
+
+cfg_if::cfg_if! {
+    if #[cfg(unix)] {
+        mod console;
+        mod fs;
+        #[cfg(feature = "gpu")]
+        mod gpu;
+        mod mac80211_hwsim;
+        mod net;
+        #[cfg(feature = "audio")]
+        mod snd;
+        mod vsock;
+        mod wl;
+
+        #[cfg(feature = "audio")]
+        pub use self::snd::*;
+        pub use self::vsock::*;
+        pub use self::wl::*;
+        pub use self::net::*;
+        pub use self::mac80211_hwsim::*;
+        #[cfg(feature = "gpu")]
+        pub use self::gpu::*;
+        pub use self::console::*;
+        pub use self::fs::*;
+    } else if #[cfg(windows)] {
+        #[cfg(feature = "slirp")]
+        pub mod net;
+
+        #[cfg(feature = "slirp")]
+        pub use self::net::*;
+    }
+}
 
 #[sorted]
 #[derive(ThisError, Debug)]

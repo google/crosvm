@@ -3,8 +3,13 @@
 // found in the LICENSE file.
 
 pub mod device;
-pub mod proxy;
 pub mod vmm;
 
 pub use self::device::*;
-pub use self::proxy::*;
+
+cfg_if::cfg_if! {
+    if #[cfg(unix)] {
+        pub mod proxy;
+        pub use self::proxy::*;
+    } else if #[cfg(windows)] {}
+}

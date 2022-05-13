@@ -11,14 +11,20 @@ use thiserror::Error;
 use vhost::Error as VhostError;
 
 mod control_socket;
-mod net;
 pub mod user;
-pub mod vsock;
-mod worker;
 
 pub use self::control_socket::*;
-pub use self::net::Net;
-pub use self::vsock::Vsock;
+
+cfg_if::cfg_if! {
+    if #[cfg(unix)] {
+        mod net;
+        pub mod vsock;
+        mod worker;
+
+        pub use self::net::Net;
+        pub use self::vsock::Vsock;
+    } else if #[cfg(windows)] {}
+}
 
 #[sorted]
 #[derive(Error, Debug)]
