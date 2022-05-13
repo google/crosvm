@@ -22,6 +22,7 @@ protobuf = { version = "2.3", optional = true }
 protos = { path = "../protos", features = ["composite-disk"], optional = true }
 remain = "*"
 serde = { version = "1", features = [ "derive" ] }
+sync = { path = "../common/sync" }
 thiserror = "*"
 tempfile = "3"
 uuid = { version = "0.8.2", features = ["v4"], optional = true }

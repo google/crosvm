@@ -30,6 +30,8 @@ use cros_async::Executor;
 use cros_async::IoSourceExt;
 use thiserror::Error as ThisError;
 
+mod asynchronous;
+pub(crate) use asynchronous::AsyncDiskFileWrapper;
 mod qcow;
 pub use qcow::QcowFile;
 pub use qcow::QCOW_MAGIC;
@@ -82,10 +84,14 @@ pub enum Error {
     Fallocate(cros_async::AsyncError),
     #[error("failure with fsync: {0}")]
     Fsync(cros_async::AsyncError),
+    #[error("failure with fsync: {0}")]
+    IoFsync(io::Error),
     #[error("checking host fs type: {0}")]
     HostFsType(base::Error),
     #[error("maximum disk nesting depth exceeded")]
     MaxNestingDepthExceeded,
+    #[error("failure to punch hole: {0}")]
+    PunchHole(io::Error),
     #[error("failure in qcow: {0}")]
     QcowError(qcow::Error),
     #[error("failed to read data: {0}")]
@@ -104,6 +110,8 @@ pub enum Error {
     WriteFromMem(cros_async::AsyncError),
     #[error("failed to write from vec: {0}")]
     WriteFromVec(cros_async::AsyncError),
+    #[error("failed to write zeroes: {0}")]
+    WriteZeroes(io::Error),
     #[error("failed to write data: {0}")]
     WritingData(io::Error),
     #[cfg(windows)]
@@ -316,7 +324,7 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
     /// Reads from the file at 'file_offset' in to memory `mem` at `mem_offsets`.
     /// `mem_offsets` is similar to an iovec except relative to the start of `mem`.
     async fn read_to_mem<'a>(
-        &self,
+        &'a self,
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [cros_async::MemRegion],
@@ -324,7 +332,7 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
 
     /// Writes to the file at 'file_offset' from memory `mem` at `mem_offsets`.
     async fn write_from_mem<'a>(
-        &self,
+        &'a self,
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [cros_async::MemRegion],
@@ -379,7 +387,7 @@ impl AsyncDisk for SingleFileDisk {
     }
 
     async fn read_to_mem<'a>(
-        &self,
+        &'a self,
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [cros_async::MemRegion],
@@ -391,7 +399,7 @@ impl AsyncDisk for SingleFileDisk {
     }
 
     async fn write_from_mem<'a>(
-        &self,
+        &'a self,
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [cros_async::MemRegion],

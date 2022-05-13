@@ -30,6 +30,7 @@ use base::FileSync;
 use base::PunchHole;
 use base::RawDescriptor;
 use base::WriteZeroesAt;
+use cros_async::Executor;
 use data_model::VolatileMemory;
 use data_model::VolatileSlice;
 use libc::EINVAL;
@@ -44,8 +45,11 @@ use crate::qcow::refcount::RefCount;
 use crate::qcow::vec_cache::CacheMap;
 use crate::qcow::vec_cache::Cacheable;
 use crate::qcow::vec_cache::VecCache;
+use crate::AsyncDisk;
+use crate::AsyncDiskFileWrapper;
 use crate::DiskFile;
 use crate::DiskGetLen;
+use crate::ToAsyncDisk;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -1595,6 +1599,12 @@ impl WriteZeroesAt for QcowFile {
     fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize> {
         self.punch_hole(offset, length as u64)?;
         Ok(length)
+    }
+}
+
+impl ToAsyncDisk for QcowFile {
+    fn to_async_disk(self: Box<Self>, ex: &Executor) -> crate::Result<Box<dyn AsyncDisk>> {
+        Ok(Box::new(AsyncDiskFileWrapper::new(*self, ex)))
     }
 }
 

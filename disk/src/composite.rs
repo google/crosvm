@@ -28,6 +28,7 @@ use base::PunchHole;
 use base::RawDescriptor;
 use base::WriteZeroesAt;
 use crc32fast::Hasher;
+use cros_async::Executor;
 use data_model::VolatileSlice;
 use protobuf::Message;
 use protos::cdisk_spec;
@@ -49,9 +50,12 @@ use crate::gpt::GPT_HEADER_SIZE;
 use crate::gpt::GPT_NUM_PARTITIONS;
 use crate::gpt::GPT_PARTITION_ENTRY_SIZE;
 use crate::gpt::SECTOR_SIZE;
+use crate::AsyncDisk;
+use crate::AsyncDiskFileWrapper;
 use crate::DiskFile;
 use crate::DiskGetLen;
 use crate::ImageType;
+use crate::ToAsyncDisk;
 
 /// The amount of padding needed between the last partition entry and the first partition, to align
 /// the partition appropriately. The two sectors are for the MBR and the GPT header.
@@ -433,6 +437,12 @@ impl AsRawDescriptors for CompositeDiskFile {
             .iter()
             .flat_map(|d| d.file.as_raw_descriptors())
             .collect()
+    }
+}
+
+impl ToAsyncDisk for CompositeDiskFile {
+    fn to_async_disk(self: Box<Self>, ex: &Executor) -> crate::Result<Box<dyn AsyncDisk>> {
+        Ok(Box::new(AsyncDiskFileWrapper::new(*self, ex)))
     }
 }
 

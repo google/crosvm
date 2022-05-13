@@ -21,6 +21,7 @@ use base::FileSync;
 use base::PunchHole;
 use base::RawDescriptor;
 use base::WriteZeroesAt;
+use cros_async::Executor;
 use data_model::DataInit;
 use data_model::Le16;
 use data_model::Le32;
@@ -28,7 +29,10 @@ use data_model::VolatileSlice;
 use remain::sorted;
 use thiserror::Error;
 
+use crate::AsyncDisk;
+use crate::AsyncDiskFileWrapper;
 use crate::DiskGetLen;
+use crate::ToAsyncDisk;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -328,6 +332,12 @@ impl FileReadWriteAtVolatile for AndroidSparse {
             ErrorKind::PermissionDenied,
             "unsupported operation",
         ))
+    }
+}
+
+impl ToAsyncDisk for AndroidSparse {
+    fn to_async_disk(self: Box<Self>, ex: &Executor) -> crate::Result<Box<dyn AsyncDisk>> {
+        Ok(Box::new(AsyncDiskFileWrapper::new(*self, ex)))
     }
 }
 
