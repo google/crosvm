@@ -280,7 +280,7 @@ impl Gfxstream {
         let cookie: *mut VirglCookie = Box::into_raw(Box::new(VirglCookie {
             fence_state: Rc::clone(&fence_state),
             render_server_fd: None,
-            fence_handler: None,
+            fence_handler: Some(fence_handler.clone()),
             use_async_fence_cb,
         }));
 
