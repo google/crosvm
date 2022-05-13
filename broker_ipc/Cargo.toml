@@ -1,0 +1,12 @@
+[package]
+name = "broker_ipc"
+authors = ["The Chromium OS Authors"]
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.32"
+base = { path = "../base" }
+serde = { version = "1", features = [ "derive" ] }
+metrics = { path = "../metrics" }
+

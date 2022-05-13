@@ -47,6 +47,7 @@ members = [
     "argh_helpers",
     "base",
     "bit_field",
+    "broker_ipc",
     "cros_async",
     "crosvm-fuzz",
     "crosvm_control",
@@ -154,6 +155,7 @@ assertions = { path = "common/assertions" }
 audio_streams = "*"
 base = "*"
 bit_field = { path = "bit_field" }
+broker_ipc = { path = "broker_ipc" }
 cfg-if = "1.0.0"
 crosvm_plugin = { path = "crosvm_plugin", optional = true }
 data_model = "*"
