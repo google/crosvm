@@ -36,10 +36,10 @@ pub use balloon_control::BalloonStats;
 use balloon_control::{BalloonTubeCommand, BalloonTubeResult};
 
 use base::{
-    error, with_as_descriptor, AsRawDescriptor, Error as SysError, Event, ExternalMapping,
-    FromRawDescriptor, IntoRawDescriptor, Killable, MappedRegion, MemoryMappingArena,
-    MemoryMappingBuilder, MemoryMappingBuilderUnix, MmapError, Protection, Result, SafeDescriptor,
-    SharedMemory, Tube, SIGRTMIN,
+    error, trace, warn, with_as_descriptor, AsRawDescriptor, Error as SysError, Event,
+    ExternalMapping, FromRawDescriptor, IntoRawDescriptor, Killable, MappedRegion,
+    MemoryMappingArena, MemoryMappingBuilder, MemoryMappingBuilderUnix, MmapError, Protection,
+    Result, SafeDescriptor, SharedMemory, Tube, SIGRTMIN,
 };
 use hypervisor::{IrqRoute, IrqSource, Vm};
 use resources::{Alloc, MmioType, SystemAllocator};
@@ -1133,6 +1133,15 @@ impl VmRequest {
                                             stats,
                                             balloon_actual,
                                         };
+                                    }
+                                    Ok(BalloonTubeResult::NotReady { id }) => {
+                                        if sent_id != id {
+                                            trace!("Wrong id for balloon stats");
+                                            // Keep trying to get the fresh stats.
+                                            continue;
+                                        }
+                                        warn!("balloon device not ready");
+                                        break VmResponse::Err(SysError::new(libc::EAGAIN));
                                     }
                                     Err(e) => {
                                         error!("balloon socket recv failed: {}", e);

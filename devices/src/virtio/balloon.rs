@@ -7,14 +7,18 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
 
-use futures::{channel::mpsc, pin_mut, StreamExt};
+use futures::{
+    channel::{mpsc, oneshot},
+    pin_mut, StreamExt,
+};
 use remain::sorted;
 use thiserror::Error as ThisError;
 
 use balloon_control::{BalloonStats, BalloonTubeCommand, BalloonTubeResult};
-use base::{self, error, warn, AsRawDescriptor, Event, RawDescriptor, Tube};
+use base::{self, error, trace, warn, AsRawDescriptor, Event, RawDescriptor, Tube};
 use cros_async::{
-    block_on, select6, select7, sync::Mutex as AsyncMutex, AsyncTube, EventAsync, Executor,
+    block_on, select2, select6, select7, sync::Mutex as AsyncMutex, AsyncTube, EventAsync,
+    Executor, SelectResult,
 };
 use data_model::{DataInit, Le16, Le32, Le64};
 use vm_memory::{GuestAddress, GuestMemory};
@@ -34,6 +38,9 @@ pub enum BalloonError {
     /// Failed to create async message receiver.
     #[error("failed to create async message receiver: {0}")]
     CreatingMessageReceiver(base::TubeError),
+    /// IO Error.
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
     /// Failed to receive command message.
     #[error("failed to receive command message: {0}")]
     ReceivingCommand(base::TubeError),
@@ -44,6 +51,7 @@ pub enum BalloonError {
     #[error("failed to write config event: {0}")]
     WritingConfigEvent(base::Error),
 }
+
 pub type Result<T> = std::result::Result<T, BalloonError>;
 
 // Balloon implements four virt IO queues: Inflate, Deflate, Stats, Event.
@@ -291,15 +299,49 @@ async fn handle_stats_queue(
     state: Arc<AsyncMutex<BalloonState>>,
     interrupt: Rc<RefCell<Interrupt>>,
 ) {
-    // Consume the first stats buffer sent from the guest at startup. It was not
-    // requested by anyone, and the stats are stale.
-    let mut index = match queue.next_async(mem, &mut queue_event).await {
-        Err(e) => {
-            error!("Failed to read descriptor {}", e);
-            return;
+    let mut index = {
+        // Consume the first stats buffer sent from the guest at startup. It was not
+        // requested by anyone, and the stats are stale.
+        let first_stat = async {
+            trace!("Waiting on first balloon stats");
+            match queue.next_async(mem, &mut queue_event).await {
+                Err(e) => {
+                    error!("Failed to read descriptor {}", e);
+                    return Err(());
+                }
+                Ok(d) => Ok(d.index),
+            }
+        };
+
+        // Stub replies until guest is up (first stat is received)
+        let stat_stub = async {
+            loop {
+                // Wait for a request to read the stats.
+                let id = match stats_rx.next().await {
+                    Some(id) => id,
+                    None => {
+                        error!("stats signal tube was closed");
+                        break;
+                    }
+                };
+                trace!("Sending not ready response to balloon stats request");
+                if let Err(e) = command_tube.send(&BalloonTubeResult::NotReady { id }) {
+                    error!("failed to send stats result: {}", e);
+                }
+            }
+        };
+
+        pin_mut!(stat_stub);
+        pin_mut!(first_stat);
+
+        match select2(first_stat, stat_stub).await {
+            (SelectResult::Finished(Ok(index)), _) => index,
+            _ => {
+                return;
+            }
         }
-        Ok(d) => d.index,
     };
+
     loop {
         // Wait for a request to read the stats.
         let id = match stats_rx.next().await {
@@ -444,6 +486,28 @@ async fn handle_command_tube(
     }
 }
 
+async fn not_ready_replier(command_tube: AsyncTube) {
+    loop {
+        trace!("Waiting for stats request in stub balloon handler");
+        if let Ok(BalloonTubeCommand::Stats { id }) = command_tube.next().await {
+            trace!("Sending not ready response to balloon stats request");
+            let res = BalloonTubeResult::NotReady { id };
+            if let Err(e) = command_tube.send(res).await {
+                error!("failed to send stats result: {}", e);
+            }
+        }
+    }
+}
+
+// Stub worker thread to reply with `NotReady`
+fn run_stub_worker(signal: oneshot::Receiver<()>, command_tube: Tube) {
+    trace!("spawning ballon_stats stub worker");
+    let ex = Executor::new().unwrap();
+    let command_tube = AsyncTube::new(&ex, command_tube).unwrap();
+    ex.spawn_local(not_ready_replier(command_tube)).detach();
+    let _ = ex.run_until(async move { signal.await });
+}
+
 // The main worker thread. Initialized the asynchronous worker tasks and passes them to the executor
 // to be processed.
 fn run_worker(
@@ -563,6 +627,8 @@ pub struct Balloon {
     acked_features: u64,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Option<Tube>>>,
+    stub_worker_thread: Option<thread::JoinHandle<()>>,
+    stub_signal: Option<oneshot::Sender<()>>,
 }
 
 /// Operation mode of the balloon.
@@ -597,6 +663,14 @@ impl Balloon {
                 1 << VIRTIO_BALLOON_F_DEFLATE_ON_OOM
             };
 
+        let (tx, rx) = oneshot::channel();
+        #[allow(deprecated)]
+        let command_tube_clone = command_tube.try_clone().unwrap();
+
+        let worker_stub_thread = thread::Builder::new()
+            .name("virtio_balloon_stub".to_string())
+            .spawn(move || run_stub_worker(rx, command_tube_clone))?;
+
         Ok(Balloon {
             command_tube,
             inflate_tube,
@@ -607,8 +681,10 @@ impl Balloon {
             })),
             kill_evt: None,
             worker_thread: None,
+            stub_worker_thread: Some(worker_stub_thread),
             features,
             acked_features: 0,
+            stub_signal: Some(tx),
         })
     }
 
@@ -692,6 +768,12 @@ impl VirtioDevice for Balloon {
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
     ) {
+        // Kill stub thread
+        std::mem::drop(self.stub_signal.take());
+        if let Some(handle) = self.stub_worker_thread.take() {
+            let _ = handle.join();
+        }
+
         let expected_queues = if self.event_queue_enabled() { 4 } else { 3 };
         if queues.len() != expected_queues || queue_evts.len() != expected_queues {
             return;
