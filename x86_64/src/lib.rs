@@ -1557,112 +1557,100 @@ fn check_itmt_cpu_support() -> std::result::Result<(), ItmtError> {
     }
 }
 
+fn insert_msr_map(
+    msr_map: &mut BTreeMap<u32, MsrConfig>,
+    key: u32,
+    value: MsrConfig,
+) -> std::result::Result<(), ItmtError> {
+    if msr_map.insert(key, value).is_some() {
+        Err(ItmtError::MsrDuplicate(key))
+    } else {
+        Ok(())
+    }
+}
+
 pub fn set_itmt_msr_config(
     msr_map: &mut BTreeMap<u32, MsrConfig>,
 ) -> std::result::Result<(), ItmtError> {
     check_itmt_cpu_support()?;
 
-    if msr_map
-        .insert(
-            MSR_HWP_CAPABILITIES,
-            MsrConfig {
-                rw_type: MsrRWType {
-                    read_allow: true,
-                    write_allow: false,
-                },
-                action: Some(MsrAction::MsrPassthrough),
-                from: MsrValueFrom::RWFromRunningCPU,
+    insert_msr_map(
+        msr_map,
+        MSR_HWP_CAPABILITIES,
+        MsrConfig {
+            rw_type: MsrRWType {
+                read_allow: true,
+                write_allow: false,
             },
-        )
-        .is_some()
-    {
-        return Err(ItmtError::MsrDuplicate(MSR_HWP_CAPABILITIES));
-    }
+            action: Some(MsrAction::MsrPassthrough),
+            from: MsrValueFrom::RWFromRunningCPU,
+        },
+    )?;
 
-    if msr_map
-        .insert(
-            MSR_PM_ENABLE,
-            MsrConfig {
-                rw_type: MsrRWType {
-                    read_allow: true,
-                    write_allow: true,
-                },
-                action: Some(MsrAction::MsrEmulate),
-                from: MsrValueFrom::RWFromRunningCPU,
+    insert_msr_map(
+        msr_map,
+        MSR_PM_ENABLE,
+        MsrConfig {
+            rw_type: MsrRWType {
+                read_allow: true,
+                write_allow: true,
             },
-        )
-        .is_some()
-    {
-        return Err(ItmtError::MsrDuplicate(MSR_PM_ENABLE));
-    }
+            action: Some(MsrAction::MsrEmulate),
+            from: MsrValueFrom::RWFromRunningCPU,
+        },
+    )?;
 
-    if msr_map
-        .insert(
-            MSR_HWP_REQUEST,
-            MsrConfig {
-                rw_type: MsrRWType {
-                    read_allow: true,
-                    write_allow: true,
-                },
-                action: Some(MsrAction::MsrEmulate),
-                from: MsrValueFrom::RWFromRunningCPU,
+    insert_msr_map(
+        msr_map,
+        MSR_HWP_REQUEST,
+        MsrConfig {
+            rw_type: MsrRWType {
+                read_allow: true,
+                write_allow: true,
             },
-        )
-        .is_some()
-    {
-        return Err(ItmtError::MsrDuplicate(MSR_HWP_REQUEST));
-    }
+            action: Some(MsrAction::MsrEmulate),
+            from: MsrValueFrom::RWFromRunningCPU,
+        },
+    )?;
 
-    if msr_map
-        .insert(
-            MSR_TURBO_RATIO_LIMIT,
-            MsrConfig {
-                rw_type: MsrRWType {
-                    read_allow: true,
-                    write_allow: false,
-                },
-                action: Some(MsrAction::MsrPassthrough),
-                from: MsrValueFrom::RWFromRunningCPU,
+    insert_msr_map(
+        msr_map,
+        MSR_TURBO_RATIO_LIMIT,
+        MsrConfig {
+            rw_type: MsrRWType {
+                read_allow: true,
+                write_allow: false,
             },
-        )
-        .is_some()
-    {
-        return Err(ItmtError::MsrDuplicate(MSR_TURBO_RATIO_LIMIT));
-    }
+            action: Some(MsrAction::MsrPassthrough),
+            from: MsrValueFrom::RWFromRunningCPU,
+        },
+    )?;
 
-    if msr_map
-        .insert(
-            MSR_PLATFORM_INFO,
-            MsrConfig {
-                rw_type: MsrRWType {
-                    read_allow: true,
-                    write_allow: false,
-                },
-                action: Some(MsrAction::MsrPassthrough),
-                from: MsrValueFrom::RWFromRunningCPU,
+    insert_msr_map(
+        msr_map,
+        MSR_PLATFORM_INFO,
+        MsrConfig {
+            rw_type: MsrRWType {
+                read_allow: true,
+                write_allow: false,
             },
-        )
-        .is_some()
-    {
-        return Err(ItmtError::MsrDuplicate(MSR_PLATFORM_INFO));
-    }
+            action: Some(MsrAction::MsrPassthrough),
+            from: MsrValueFrom::RWFromRunningCPU,
+        },
+    )?;
 
-    if msr_map
-        .insert(
-            MSR_IA32_PERF_CTL,
-            MsrConfig {
-                rw_type: MsrRWType {
-                    read_allow: true,
-                    write_allow: true,
-                },
-                action: Some(MsrAction::MsrEmulate),
-                from: MsrValueFrom::RWFromRunningCPU,
+    insert_msr_map(
+        msr_map,
+        MSR_IA32_PERF_CTL,
+        MsrConfig {
+            rw_type: MsrRWType {
+                read_allow: true,
+                write_allow: true,
             },
-        )
-        .is_some()
-    {
-        return Err(ItmtError::MsrDuplicate(MSR_IA32_PERF_CTL));
-    }
+            action: Some(MsrAction::MsrEmulate),
+            from: MsrValueFrom::RWFromRunningCPU,
+        },
+    )?;
 
     Ok(())
 }
