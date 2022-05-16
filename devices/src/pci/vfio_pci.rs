@@ -1066,11 +1066,8 @@ impl VfioPciDevice {
 
         while i <= VFIO_PCI_ROM_REGION_INDEX {
             let mut low: u32 = 0xffffffff;
-            let offset: u32 = if i == VFIO_PCI_ROM_REGION_INDEX {
-                0x30
-            } else {
-                0x10 + i * 4
-            };
+            let bar_idx = PciBarIndex::try_from(i).unwrap();
+            let offset = bar_idx.reg_index() as u32 * 4;
             self.config.write_config(low, offset);
             low = self.config.read_config(offset);
 
@@ -1099,7 +1096,7 @@ impl VfioPciDevice {
                     PciBarPrefetchable::NotPrefetchable
                 };
                 mem_bars.push(PciBarConfiguration::new(
-                    i as usize,
+                    bar_idx,
                     size,
                     region_type,
                     prefetch,
@@ -1107,7 +1104,7 @@ impl VfioPciDevice {
             } else if low_flag & 0x1 == 0x1 {
                 let size = !(low & 0xffff_fffc) + 1;
                 self.io_regions.push(PciBarConfiguration::new(
-                    i as usize,
+                    bar_idx,
                     size.into(),
                     PciBarRegionType::IoRegion,
                     PciBarPrefetchable::NotPrefetchable,
@@ -1512,7 +1509,7 @@ impl PciDevice for VfioPciDevice {
 
             self.mmio_regions.push(
                 PciBarConfiguration::new(
-                    index as usize,
+                    PciBarIndex::try_from(index).expect("invalid VFIO BAR index"),
                     size,
                     PciBarRegionType::Memory32BitRegion,
                     PciBarPrefetchable::NotPrefetchable,
@@ -1525,7 +1522,7 @@ impl PciDevice for VfioPciDevice {
         Ok(ranges)
     }
 
-    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
+    fn get_bar_configuration(&self, bar_num: PciBarIndex) -> Option<PciBarConfiguration> {
         for region in self.mmio_regions.iter().chain(self.io_regions.iter()) {
             if region.bar_index() == bar_num {
                 let command: u8 = self.config.read_config(PCI_COMMAND);
@@ -1568,8 +1565,7 @@ impl PciDevice for VfioPciDevice {
         let mut config: u32 = self.config.read_config(reg);
 
         // Ignore IO bar
-        if (0x10..=0x24).contains(&reg) {
-            let bar_idx = (reg as usize - 0x10) / 4;
+        if let Ok(bar_idx) = PciBarIndex::try_from_reg_index(reg_idx) {
             if let Some(bar) = self.get_bar_configuration(bar_idx) {
                 if bar.is_io() {
                     config = 0;
@@ -1654,13 +1650,13 @@ impl PciDevice for VfioPciDevice {
             && data[0] & PCI_COMMAND_MEMORY == PCI_COMMAND_MEMORY
         {
             self.commit_bars_mmap();
-        } else if (0x10..=0x24).contains(&start) && data.len() == 4 {
-            let bar_idx = (start as u32 - 0x10) / 4;
-            let value: [u8; 4] = [data[0], data[1], data[2], data[3]];
-            let val = u32::from_le_bytes(value);
+        } else if let (Ok(bar_idx), Ok(val)) = (
+            PciBarIndex::try_from_reg_index(reg_idx),
+            data.try_into().map(u32::from_le_bytes),
+        ) {
             let mut modify = false;
             for region in self.mmio_regions.iter_mut() {
-                if region.bar_index() == bar_idx as usize {
+                if region.bar_index() == bar_idx {
                     let old_addr = region.address();
                     let new_addr = val & 0xFFFFFFF0;
                     if !region.is_64bit_memory() && (old_addr as u32) != new_addr {
@@ -1675,8 +1671,7 @@ impl PciDevice for VfioPciDevice {
                     }
                     break;
                 } else if region.is_64bit_memory()
-                    && ((bar_idx % 2) == 1)
-                    && (region.bar_index() + 1 == bar_idx as usize)
+                    && region.bar_index().upper_64bit_index() == Some(bar_idx)
                 {
                     // Change 64bit bar high address
                     let old_addr = region.address();

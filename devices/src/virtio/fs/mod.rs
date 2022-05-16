@@ -17,7 +17,8 @@ use vm_control::{FsMappingRequest, VmResponse};
 use vm_memory::GuestMemory;
 
 use crate::pci::{
-    PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability,
+    PciAddress, PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType,
+    PciCapability,
 };
 use crate::virtio::{
     copy_config, DescriptorError, DeviceType, Interrupt, PciCapabilityType, Queue, VirtioDevice,
@@ -39,7 +40,7 @@ pub use worker::process_fs_queue;
 // The fs device does not have a fixed number of queues.
 pub const QUEUE_SIZE: u16 = 1024;
 
-const FS_BAR_NUM: u8 = 4;
+const FS_BAR_NUM: PciBarIndex = PciBarIndex::Bar4;
 const FS_BAR_OFFSET: u64 = 0;
 const FS_BAR_SIZE: u64 = 1 << 33;
 
@@ -313,11 +314,11 @@ impl VirtioDevice for Fs {
             bus: address.bus,
             dev: address.dev,
             func: address.func,
-            bar: FS_BAR_NUM,
+            bar: FS_BAR_NUM.into(),
         });
 
         vec![PciBarConfiguration::new(
-            FS_BAR_NUM as usize,
+            FS_BAR_NUM,
             FS_BAR_SIZE,
             PciBarRegionType::Memory64BitRegion,
             PciBarPrefetchable::NotPrefetchable,

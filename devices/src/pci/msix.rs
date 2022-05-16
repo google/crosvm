@@ -10,7 +10,7 @@ use std::convert::TryInto;
 use thiserror::Error;
 use vm_control::{VmIrqRequest, VmIrqResponse};
 
-use crate::pci::{PciCapability, PciCapabilityID};
+use crate::pci::{PciBarIndex, PciCapability, PciCapabilityID};
 
 const MAX_MSIX_VECTORS_PER_DEVICE: u16 = 2048;
 pub const MSIX_TABLE_ENTRIES_MODULO: u64 = 16;
@@ -619,10 +619,10 @@ impl PciCapability for MsixCap {
 
 impl MsixCap {
     pub fn new(
-        table_pci_bar: u8,
+        table_pci_bar: PciBarIndex,
         table_size: u16,
         table_off: u32,
-        pba_pci_bar: u8,
+        pba_pci_bar: PciBarIndex,
         pba_off: u32,
     ) -> Self {
         assert!(table_size < MAX_MSIX_VECTORS_PER_DEVICE);
@@ -637,8 +637,8 @@ impl MsixCap {
             _cap_vndr: 0,
             _cap_next: 0,
             msg_ctl,
-            table: (table_off & 0xffff_fff8u32) | u32::from(table_pci_bar & 0x7u8),
-            pba: (pba_off & 0xffff_fff8u32) | u32::from(pba_pci_bar & 0x7u8),
+            table: (table_off & 0xffff_fff8u32) | u32::from(table_pci_bar),
+            pba: (pba_off & 0xffff_fff8u32) | u32::from(pba_pci_bar),
         }
     }
 

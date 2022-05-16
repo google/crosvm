@@ -66,7 +66,7 @@ const CONFIG_UUID_SIZE: usize = 16;
 // https://stefanha.github.io/virtio/vhost-user-slave.html#x1-2870004.
 const VIRTIO_VHOST_USER_STATUS_SLAVE_UP: u8 = 0;
 
-const BAR_INDEX: u8 = 2;
+const BAR_INDEX: PciBarIndex = PciBarIndex::Bar2;
 
 // Bar configuration.
 // All offsets are from the starting of bar `BAR_INDEX`.
@@ -968,7 +968,7 @@ impl VirtioVhostUser {
     }
 
     fn check_bar_metadata(&self, bar_index: PciBarIndex) -> Result<()> {
-        if bar_index != BAR_INDEX as usize {
+        if bar_index != BAR_INDEX {
             bail!("invalid bar index: {}", bar_index);
         }
 
@@ -1294,11 +1294,11 @@ impl VirtioDevice for VirtioVhostUser {
             bus: address.bus,
             dev: address.dev,
             func: address.func,
-            bar: BAR_INDEX,
+            bar: BAR_INDEX as u8,
         });
 
         vec![PciBarConfiguration::new(
-            BAR_INDEX as usize,
+            BAR_INDEX,
             self.device_bar_size,
             PciBarRegionType::Memory64BitRegion,
             // NotPrefetchable so as to exit on every read / write event in the

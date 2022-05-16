@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use crate::pci::{
-    BarRange, PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciClassCode,
-    PciConfiguration, PciDevice, PciDeviceError, PciHeaderType, PciInterruptPin,
+    BarRange, PciAddress, PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType,
+    PciClassCode, PciConfiguration, PciDevice, PciDeviceError, PciHeaderType, PciInterruptPin,
     PciProgrammingInterface, PciSerialBusSubClass,
 };
 
@@ -252,7 +252,7 @@ impl PciDevice for XhciController {
             )
             .map_err(|e| PciDeviceError::IoAllocationFailed(XHCI_BAR0_SIZE, e))?;
         let bar0_config = PciBarConfiguration::new(
-            0,
+            PciBarIndex::Bar0,
             XHCI_BAR0_SIZE,
             PciBarRegionType::Memory32BitRegion,
             PciBarPrefetchable::NotPrefetchable,
@@ -268,7 +268,7 @@ impl PciDevice for XhciController {
         }])
     }
 
-    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
+    fn get_bar_configuration(&self, bar_num: PciBarIndex) -> Option<PciBarConfiguration> {
         self.config_regs.get_bar_configuration(bar_num)
     }
 
@@ -281,7 +281,7 @@ impl PciDevice for XhciController {
     }
 
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
-        let bar0 = self.config_regs.get_bar_addr(0);
+        let bar0 = self.config_regs.get_bar_addr(PciBarIndex::Bar0);
         if addr < bar0 || addr > bar0 + XHCI_BAR0_SIZE {
             return;
         }
@@ -297,7 +297,7 @@ impl PciDevice for XhciController {
     }
 
     fn write_bar(&mut self, addr: u64, data: &[u8]) {
-        let bar0 = self.config_regs.get_bar_addr(0);
+        let bar0 = self.config_regs.get_bar_addr(PciBarIndex::Bar0);
         if addr < bar0 || addr > bar0 + XHCI_BAR0_SIZE {
             return;
         }
