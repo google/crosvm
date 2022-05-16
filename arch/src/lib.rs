@@ -81,66 +81,68 @@ pub enum VcpuAffinity {
 
 /// Holds the pieces needed to build a VM. Passed to `build_vm` in the `LinuxArch` trait below to
 /// create a `RunnableLinuxVm`.
+#[sorted]
 pub struct VmComponents {
-    pub memory_size: u64,
-    pub swiotlb: Option<u64>,
-    pub vcpu_count: usize,
-    pub vcpu_affinity: Option<VcpuAffinity>,
-    pub cpu_clusters: Vec<Vec<usize>>,
-    pub cpu_capacity: BTreeMap<usize, u32>,
-    pub no_smt: bool,
-    pub hugepages: bool,
-    pub vm_image: VmImage,
-    pub android_fstab: Option<File>,
-    pub pstore: Option<Pstore>,
-    pub initrd_image: Option<File>,
-    pub extra_kernel_params: Vec<String>,
     pub acpi_sdts: Vec<SDT>,
-    pub rt_cpus: Vec<usize>,
+    pub android_fstab: Option<File>,
+    pub cpu_capacity: BTreeMap<usize, u32>,
+    pub cpu_clusters: Vec<Vec<usize>>,
     pub delay_rt: bool,
-    pub protected_vm: ProtectionType,
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-    pub gdb: Option<(u32, Tube)>, // port and control tube.
-    pub dmi_path: Option<PathBuf>,
-    pub no_legacy: bool,
-    pub host_cpu_topology: bool,
-    pub itmt: bool,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub force_s2idle: bool,
     #[cfg(feature = "direct")]
     pub direct_gpe: Vec<u32>,
+    pub dmi_path: Option<PathBuf>,
+    pub extra_kernel_params: Vec<String>,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub force_s2idle: bool,
+    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    pub gdb: Option<(u32, Tube)>, // port and control tube.
+    pub host_cpu_topology: bool,
+    pub hugepages: bool,
+    pub initrd_image: Option<File>,
+    pub itmt: bool,
+    pub memory_size: u64,
+    pub no_legacy: bool,
+    pub no_smt: bool,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub pcie_ecam: Option<MemRegion>,
+    pub protected_vm: ProtectionType,
+    pub pstore: Option<Pstore>,
     /// A file to load as pVM firmware. Must be `Some` iff
     /// `protected_vm == ProtectionType::UnprotectedWithFirmware`.
     pub pvm_fw: Option<File>,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub pcie_ecam: Option<MemRegion>,
+    pub rt_cpus: Vec<usize>,
+    pub swiotlb: Option<u64>,
+    pub vcpu_affinity: Option<VcpuAffinity>,
+    pub vcpu_count: usize,
+    pub vm_image: VmImage,
 }
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.
+#[sorted]
 pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
-    pub vm: V,
-    pub vcpu_count: usize,
-    /// If vcpus is None, then it's the responsibility of the vcpu thread to create vcpus.
-    /// If it's Some, then `build_vm` already created the vcpus.
-    pub vcpus: Option<Vec<Vcpu>>,
-    pub vcpu_affinity: Option<VcpuAffinity>,
-    pub no_smt: bool,
-    pub irq_chip: Box<dyn IrqChipArch>,
-    pub has_bios: bool,
-    pub io_bus: Arc<Bus>,
-    pub mmio_bus: Arc<Bus>,
-    pub pid_debug_label_map: BTreeMap<u32, String>,
-    pub suspend_evt: Event,
-    pub rt_cpus: Vec<usize>,
-    pub delay_rt: bool,
     pub bat_control: Option<BatControl>,
+    pub delay_rt: bool,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<(u32, Tube)>,
+    pub has_bios: bool,
+    pub hotplug_bus: Vec<Arc<Mutex<dyn HotPlugBus>>>,
+    pub io_bus: Arc<Bus>,
+    pub irq_chip: Box<dyn IrqChipArch>,
+    pub mmio_bus: Arc<Bus>,
+    pub no_smt: bool,
+    pub pid_debug_label_map: BTreeMap<u32, String>,
     pub pm: Option<Arc<Mutex<dyn PmResource>>>,
     /// Devices to be notified before the system resumes from the S3 suspended state.
     pub resume_notify_devices: Vec<Arc<Mutex<dyn BusResumeDevice>>>,
     pub root_config: Arc<Mutex<PciRoot>>,
-    pub hotplug_bus: Vec<Arc<Mutex<dyn HotPlugBus>>>,
+    pub rt_cpus: Vec<usize>,
+    pub suspend_evt: Event,
+    pub vcpu_affinity: Option<VcpuAffinity>,
+    pub vcpu_count: usize,
+    /// If vcpus is None, then it's the responsibility of the vcpu thread to create vcpus.
+    /// If it's Some, then `build_vm` already created the vcpus.
+    pub vcpus: Option<Vec<Vcpu>>,
+    pub vm: V,
 }
 
 /// The device and optional jail.
