@@ -707,6 +707,10 @@ impl PciBarConfiguration {
         self.addr
     }
 
+    pub fn address_range(&self) -> std::ops::Range<u64> {
+        self.addr..self.addr + self.size
+    }
+
     pub fn set_address(mut self, addr: u64) -> Self {
         self.addr = addr;
         self

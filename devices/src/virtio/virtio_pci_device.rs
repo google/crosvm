@@ -22,9 +22,10 @@ use vm_memory::GuestMemory;
 
 use super::*;
 use crate::pci::{
-    BarRange, MsixCap, MsixConfig, PciAddress, PciBarConfiguration, PciBarPrefetchable,
-    PciBarRegionType, PciCapability, PciCapabilityID, PciClassCode, PciConfiguration, PciDevice,
-    PciDeviceError, PciDisplaySubclass, PciHeaderType, PciId, PciInterruptPin, PciSubclass,
+    BarRange, MsixCap, MsixConfig, PciAddress, PciBarConfiguration, PciBarIndex,
+    PciBarPrefetchable, PciBarRegionType, PciCapability, PciCapabilityID, PciClassCode,
+    PciConfiguration, PciDevice, PciDeviceError, PciDisplaySubclass, PciHeaderType, PciId,
+    PciInterruptPin, PciSubclass,
 };
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::IrqLevelEvent;
@@ -665,18 +666,17 @@ impl PciDevice for VirtioPciDevice {
     }
 
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
-        // The driver is only allowed to do aligned, properly sized access.
-        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
-        if addr < bar0 || addr >= bar0 + CAPABILITY_BAR_SIZE {
-            let bar_config = self.config_regs.get_bars().find(|config| {
-                addr >= config.address() && addr < (config.address() + config.size())
-            });
-            if let Some(c) = bar_config {
-                self.device
-                    .read_bar(c.bar_index(), addr - c.address(), data);
-            }
-        } else {
-            let offset = addr - bar0;
+        let bar = match self
+            .config_regs
+            .get_bars()
+            .find(|bar| bar.address_range().contains(&addr))
+        {
+            Some(bar) => bar,
+            None => return,
+        };
+
+        if bar.bar_index() == self.settings_bar as PciBarIndex {
+            let offset = addr - bar.address();
             match offset {
                 COMMON_CONFIG_BAR_OFFSET..=COMMON_CONFIG_LAST => self.common_config.read(
                     offset - COMMON_CONFIG_BAR_OFFSET,
@@ -709,21 +709,24 @@ impl PciDevice for VirtioPciDevice {
                 }
                 _ => (),
             }
+        } else {
+            self.device
+                .read_bar(bar.bar_index(), addr - bar.address(), data);
         }
     }
 
     fn write_bar(&mut self, addr: u64, data: &[u8]) {
-        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
-        if addr < bar0 || addr >= bar0 + CAPABILITY_BAR_SIZE {
-            let bar_config = self.config_regs.get_bars().find(|config| {
-                addr >= config.address() && addr < (config.address() + config.size())
-            });
-            if let Some(c) = bar_config {
-                self.device
-                    .write_bar(c.bar_index(), addr - c.address(), data);
-            }
-        } else {
-            let offset = addr - bar0;
+        let bar = match self
+            .config_regs
+            .get_bars()
+            .find(|bar| bar.address_range().contains(&addr))
+        {
+            Some(bar) => bar,
+            None => return,
+        };
+
+        if bar.bar_index() == self.settings_bar as PciBarIndex {
+            let offset = addr - bar.address();
             match offset {
                 COMMON_CONFIG_BAR_OFFSET..=COMMON_CONFIG_LAST => self.common_config.write(
                     offset - COMMON_CONFIG_BAR_OFFSET,
@@ -758,6 +761,9 @@ impl PciDevice for VirtioPciDevice {
                 }
                 _ => (),
             }
+        } else {
+            self.device
+                .write_bar(bar.bar_index(), addr - bar.address(), data);
         }
 
         if !self.device_activated && self.is_driver_ready() {
