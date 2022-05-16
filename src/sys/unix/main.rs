@@ -7,9 +7,14 @@
     feature = "audio"
 ))]
 use std::str::FromStr;
+use std::thread::sleep;
 use std::{path::PathBuf, time::Duration};
 
 use anyhow::{anyhow, Result};
+
+use base::{kill_process_group, reap_child, warn};
+#[cfg(feature = "gpu")]
+use devices::virtio::gpu::{GpuDisplayParameters, GpuParameters};
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::run_gpu_device;
 use devices::virtio::vhost::user::device::{
@@ -150,6 +155,69 @@ pub fn get_arguments() -> Vec<Argument> {
                               unpin_gen_threshold=NUM -  Number of unpin intervals a pinned page must be busy for to be aged into the older which is less frequently checked generation."),
           Argument::value("seccomp-policy-dir", "PATH", "Path to seccomp .policy files."),
           Argument::flag("seccomp-log-failures", "Instead of seccomp filter failures being fatal, they will be logged instead."),
+          Argument::value("serial",
+                          "type=TYPE,[hardware=HW,num=NUM,path=PATH,input=PATH,console,earlycon,stdin]",
+                          "Comma separated key=value pairs for setting up serial devices. Can be given more than once.
+
+                              Possible key values:
+
+                              type=(stdout,syslog,sink,file) - Where to route the serial device
+
+                              hardware=(serial,virtio-console) - Which type of serial hardware to emulate. Defaults to 8250 UART (serial).
+
+                              num=(1,2,3,4) - Serial Device Number. If not provided, num will default to 1.
+
+                              path=PATH - The path to the file to write to when type=file
+
+                              input=PATH - The path to the file to read from when not stdin
+
+                              console - Use this serial device as the guest console. Can only be given once. Will default to first serial port if not provided.
+
+                              earlycon - Use this serial device as the early console. Can only be given once.
+
+                              stdin - Direct standard input to this serial device. Can only be given once. Will default to first serial port if not provided.
+                              "),
+          #[cfg(feature = "gpu")]
+          Argument::flag_or_value("gpu",
+                                  "[width=INT,height=INT]",
+                                  "(EXPERIMENTAL) Comma separated key=value pairs for setting up a virtio-gpu device
+
+                              Possible key values:
+
+                              backend=(2d|virglrenderer|gfxstream) - Which backend to use for virtio-gpu (determining rendering protocol)
+
+                              context-types=LIST - The list of supported context types, separated by ':' (default: no contexts enabled)
+
+                              width=INT - The width of the virtual display connected to the virtio-gpu.
+
+                              height=INT - The height of the virtual display connected to the virtio-gpu.
+
+                              egl[=true|=false] - If the backend should use a EGL context for rendering.
+
+                              glx[=true|=false] - If the backend should use a GLX context for rendering.
+
+                              surfaceless[=true|=false] - If the backend should use a surfaceless context for rendering.
+
+                              angle[=true|=false] - If the gfxstream backend should use ANGLE (OpenGL on Vulkan) as its native OpenGL driver.
+
+                              syncfd[=true|=false] - If the gfxstream backend should support EGL_ANDROID_native_fence_sync
+
+                              vulkan[=true|=false] - If the backend should support vulkan
+
+                              cache-path=PATH - The path to the virtio-gpu device shader cache.
+
+                              cache-size=SIZE - The maximum size of the shader cache."),
+          #[cfg(feature = "gpu")]
+          Argument::flag_or_value("gpu-display",
+                                  "[width=INT,height=INT]",
+                                  "(EXPERIMENTAL) Comma separated key=value pairs for setting up a display on the virtio-gpu device
+
+                              Possible key values:
+
+                              width=INT - The width of the virtual display connected to the virtio-gpu.
+
+                              height=INT - The height of the virtual display connected to the virtio-gpu."),
+          Argument::flag("no-legacy", "Don't use legacy KBD/RTC devices emulation"),
     ]
 }
 
@@ -586,5 +654,109 @@ pub fn parse_ac97_options(
             )));
         }
     };
+    Ok(())
+}
+
+// Wait for all children to exit. Return true if they have all exited, false
+// otherwise.
+fn wait_all_children() -> bool {
+    const CHILD_WAIT_MAX_ITER: isize = 100;
+    const CHILD_WAIT_MS: u64 = 10;
+    for _ in 0..CHILD_WAIT_MAX_ITER {
+        loop {
+            match reap_child() {
+                Ok(0) => break,
+                // We expect ECHILD which indicates that there were no children left.
+                Err(e) if e.errno() == libc::ECHILD => return true,
+                Err(e) => {
+                    warn!("error while waiting for children: {}", e);
+                    return false;
+                }
+                // We reaped one child, so continue reaping.
+                _ => {}
+            }
+        }
+        // There's no timeout option for waitpid which reap_child calls internally, so our only
+        // recourse is to sleep while waiting for the children to exit.
+        sleep(Duration::from_millis(CHILD_WAIT_MS));
+    }
+
+    // If we've made it to this point, not all of the children have exited.
+    false
+}
+
+pub(crate) fn cleanup() {
+    // Reap exit status from any child device processes. At this point, all devices should have been
+    // dropped in the main process and told to shutdown. Try over a period of 100ms, since it may
+    // take some time for the processes to shut down.
+    if !wait_all_children() {
+        // We gave them a chance, and it's too late.
+        warn!("not all child processes have exited; sending SIGKILL");
+        if let Err(e) = kill_process_group() {
+            // We're now at the mercy of the OS to clean up after us.
+            warn!("unable to kill all child processes: {}", e);
+        }
+    }
+}
+
+#[cfg(feature = "gpu")]
+pub(crate) fn parse_gpu_display_options(
+    s: Option<&str>,
+    gpu_params: &mut GpuParameters,
+) -> argument::Result<()> {
+    let mut display_w: Option<u32> = None;
+    let mut display_h: Option<u32> = None;
+
+    if let Some(s) = s {
+        let opts = s
+            .split(',')
+            .map(|frag| frag.split('='))
+            .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
+
+        for (k, v) in opts {
+            match k {
+                "width" => {
+                    let width = v
+                        .parse::<u32>()
+                        .map_err(|_| argument::Error::InvalidValue {
+                            value: v.to_string(),
+                            expected: String::from("gpu parameter 'width' must be a valid integer"),
+                        })?;
+                    display_w = Some(width);
+                }
+                "height" => {
+                    let height = v
+                        .parse::<u32>()
+                        .map_err(|_| argument::Error::InvalidValue {
+                            value: v.to_string(),
+                            expected: String::from(
+                                "gpu parameter 'height' must be a valid integer",
+                            ),
+                        })?;
+                    display_h = Some(height);
+                }
+                "" => {}
+                _ => {
+                    return Err(argument::Error::UnknownArgument(format!(
+                        "gpu-display parameter {}",
+                        k
+                    )));
+                }
+            }
+        }
+    }
+
+    if display_w.is_none() || display_h.is_none() {
+        return Err(argument::Error::InvalidValue {
+            value: s.unwrap_or("").to_string(),
+            expected: String::from("gpu-display must include both 'width' and 'height'"),
+        });
+    }
+
+    gpu_params.displays.push(GpuDisplayParameters {
+        width: display_w.unwrap(),
+        height: display_h.unwrap(),
+    });
+
     Ok(())
 }

@@ -148,6 +148,19 @@ pub struct DiskOption {
     pub id: Option<[u8; DISK_ID_LEN]>,
 }
 
+impl Default for DiskOption {
+    fn default() -> Self {
+        Self {
+            path: PathBuf::from(""),
+            read_only: true,
+            sparse: false,
+            o_direct: false,
+            block_size: 512,
+            id: None,
+        }
+    }
+}
+
 struct Worker {
     interrupt: Interrupt,
     queues: Vec<Queue>,

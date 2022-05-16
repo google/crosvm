@@ -18,14 +18,12 @@ use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::string::String;
-use std::thread::sleep;
-use std::time::Duration;
 
 use arch::{
     set_default_serial_parameters, MsrAction, MsrConfig, MsrRWType, MsrValueFrom, Pstore,
     VcpuAffinity,
 };
-use base::{debug, error, getpid, info, kill_process_group, pagesize, reap_child, syslog, warn};
+use base::{debug, error, getpid, info, pagesize, syslog};
 use crosvm::{
     argument::{self, parse_hex_or_decimal, print_help, set_arguments, Argument},
     platform, BindMount, Config, Executable, FileBackedMappingParameters, GidMap,
@@ -86,34 +84,6 @@ static ALLOCATOR: scudo::GlobalScudoAllocator = scudo::GlobalScudoAllocator;
 
 fn executable_is_plugin(executable: &Option<Executable>) -> bool {
     matches!(executable, Some(Executable::Plugin(_)))
-}
-
-// Wait for all children to exit. Return true if they have all exited, false
-// otherwise.
-fn wait_all_children() -> bool {
-    const CHILD_WAIT_MAX_ITER: isize = 100;
-    const CHILD_WAIT_MS: u64 = 10;
-    for _ in 0..CHILD_WAIT_MAX_ITER {
-        loop {
-            match reap_child() {
-                Ok(0) => break,
-                // We expect ECHILD which indicates that there were no children left.
-                Err(e) if e.errno() == libc::ECHILD => return true,
-                Err(e) => {
-                    warn!("error while waiting for children: {}", e);
-                    return false;
-                }
-                // We reaped one child, so continue reaping.
-                _ => {}
-            }
-        }
-        // There's no timeout option for waitpid which reap_child calls internally, so our only
-        // recourse is to sleep while waiting for the children to exit.
-        sleep(Duration::from_millis(CHILD_WAIT_MS));
-    }
-
-    // If we've made it to this point, not all of the children have exited.
-    false
 }
 
 /// Parse a comma-separated list of CPU numbers and ranges and convert it to a Vec of CPU numbers.
@@ -531,68 +501,6 @@ fn parse_video_options(s: Option<&str>) -> argument::Result<VideoBackendType> {
             expected: format!("should be one of ({})", VALID_VIDEO_BACKENDS.join("|")),
         }),
     }
-}
-
-#[cfg(feature = "gpu")]
-fn parse_gpu_display_options(
-    s: Option<&str>,
-    gpu_params: &mut GpuParameters,
-) -> argument::Result<()> {
-    let mut display_w: Option<u32> = None;
-    let mut display_h: Option<u32> = None;
-
-    if let Some(s) = s {
-        let opts = s
-            .split(',')
-            .map(|frag| frag.split('='))
-            .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
-
-        for (k, v) in opts {
-            match k {
-                "width" => {
-                    let width = v
-                        .parse::<u32>()
-                        .map_err(|_| argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from("gpu parameter 'width' must be a valid integer"),
-                        })?;
-                    display_w = Some(width);
-                }
-                "height" => {
-                    let height = v
-                        .parse::<u32>()
-                        .map_err(|_| argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from(
-                                "gpu parameter 'height' must be a valid integer",
-                            ),
-                        })?;
-                    display_h = Some(height);
-                }
-                "" => {}
-                _ => {
-                    return Err(argument::Error::UnknownArgument(format!(
-                        "gpu-display parameter {}",
-                        k
-                    )));
-                }
-            }
-        }
-    }
-
-    if display_w.is_none() || display_h.is_none() {
-        return Err(argument::Error::InvalidValue {
-            value: s.unwrap_or("").to_string(),
-            expected: String::from("gpu-display must include both 'width' and 'height'"),
-        });
-    }
-
-    gpu_params.displays.push(GpuDisplayParameters {
-        width: display_w.unwrap(),
-        height: display_h.unwrap(),
-    });
-
-    Ok(())
 }
 
 #[cfg(feature = "audio")]
@@ -1290,10 +1198,8 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             cfg.pmem_devices.push(DiskOption {
                 path: disk_path,
                 read_only: !name.starts_with("rw"),
-                sparse: false,
-                o_direct: false,
                 block_size: base::pagesize() as u32,
-                id: None,
+                ..Default::default()
             });
         }
         "pstore" => {
@@ -1534,7 +1440,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         #[cfg(feature = "gpu")]
         "gpu-display" => {
             let gpu_parameters = cfg.gpu_parameters.get_or_insert_with(Default::default);
-            parse_gpu_display_options(value, gpu_parameters)?;
+            sys::parse_gpu_display_options(value, gpu_parameters)?;
         }
         "software-tpm" => {
             cfg.software_tpm = true;
@@ -2389,28 +2295,6 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
                               server - The to the VIOS server (unix socket)."),
           #[cfg(feature = "audio")]
           Argument::value("sound", "[PATH]", "Path to the VioS server socket for setting up virtio-snd devices."),
-          Argument::value("serial",
-                          "type=TYPE,[hardware=HW,num=NUM,path=PATH,input=PATH,console,earlycon,stdin]",
-                          "Comma separated key=value pairs for setting up serial devices. Can be given more than once.
-
-                              Possible key values:
-
-                              type=(stdout,syslog,sink,file) - Where to route the serial device
-
-                              hardware=(serial,virtio-console) - Which type of serial hardware to emulate. Defaults to 8250 UART (serial).
-
-                              num=(1,2,3,4) - Serial Device Number. If not provided, num will default to 1.
-
-                              path=PATH - The path to the file to write to when type=file
-
-                              input=PATH - The path to the file to read from when not stdin
-
-                              console - Use this serial device as the guest console. Can only be given once. Will default to first serial port if not provided.
-
-                              earlycon - Use this serial device as the early console. Can only be given once.
-
-                              stdin - Direct standard input to this serial device. Can only be given once. Will default to first serial port if not provided.
-                              "),
           Argument::value("syslog-tag", "TAG", "When logging to syslog, use the provided tag."),
           Argument::value("log-level", "LOG_LEVEL", "Log level to use (trace,debug,info,warn,error,off)
                                                     Example:
@@ -2466,46 +2350,6 @@ There is a cost of slightly increased latency the first time the file is accesse
           #[cfg(feature = "plugin")]
           Argument::value("plugin-gid-map-file", "PATH", "Path to the file listing supplemental GIDs that should be mapped in plugin jail.  Can be given more than once."),
           Argument::flag("vhost-net", "Use vhost for networking."),
-          #[cfg(feature = "gpu")]
-          Argument::flag_or_value("gpu",
-                                  "[width=INT,height=INT]",
-                                  "(EXPERIMENTAL) Comma separated key=value pairs for setting up a virtio-gpu device
-
-                              Possible key values:
-
-                              backend=(2d|virglrenderer|gfxstream) - Which backend to use for virtio-gpu (determining rendering protocol)
-
-                              context-types=LIST - The list of supported context types, separated by ':' (default: no contexts enabled)
-
-                              width=INT - The width of the virtual display connected to the virtio-gpu.
-
-                              height=INT - The height of the virtual display connected to the virtio-gpu.
-
-                              egl[=true|=false] - If the backend should use a EGL context for rendering.
-
-                              glx[=true|=false] - If the backend should use a GLX context for rendering.
-
-                              surfaceless[=true|=false] - If the backend should use a surfaceless context for rendering.
-
-                              angle[=true|=false] - If the gfxstream backend should use ANGLE (OpenGL on Vulkan) as its native OpenGL driver.
-
-                              syncfd[=true|=false] - If the gfxstream backend should support EGL_ANDROID_native_fence_sync
-
-                              vulkan[=true|=false] - If the backend should support vulkan
-
-                              cache-path=PATH - The path to the virtio-gpu device shader cache.
-
-                              cache-size=SIZE - The maximum size of the shader cache."),
-          #[cfg(feature = "gpu")]
-          Argument::flag_or_value("gpu-display",
-                                  "[width=INT,height=INT]",
-                                  "(EXPERIMENTAL) Comma separated key=value pairs for setting up a display on the virtio-gpu device
-
-                              Possible key values:
-
-                              width=INT - The width of the virtual display connected to the virtio-gpu.
-
-                              height=INT - The height of the virtual display connected to the virtio-gpu."),
           #[cfg(feature = "tpm")]
           Argument::flag("software-tpm", "enable a software emulated trusted platform module device"),
           Argument::value("evdev", "PATH", "Path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host"),
@@ -2577,7 +2421,6 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
 #[cfg(feature = "direct")]
           Argument::value("direct-gpe", "gpe", "Enable GPE interrupt and register access passthrough"),
           Argument::value("dmi", "DIR", "Directory with smbios_entry_point/DMI files"),
-          Argument::flag("no-legacy", "Don't use legacy KBD/RTC devices emulation"),
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::value("userspace-msr", "INDEX,type=TYPE,action=TYPE,[from=TYPE]",
                               "Userspace MSR handling. Takes INDEX of the MSR and how they are handled.
@@ -3372,17 +3215,7 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
         .map(|_| CommandStatus::Success)
     };
 
-    // Reap exit status from any child device processes. At this point, all devices should have been
-    // dropped in the main process and told to shutdown. Try over a period of 100ms, since it may
-    // take some time for the processes to shut down.
-    if !wait_all_children() {
-        // We gave them a chance, and it's too late.
-        warn!("not all child processes have exited; sending SIGKILL");
-        if let Err(e) = kill_process_group() {
-            // We're now at the mercy of the OS to clean up after us.
-            warn!("unable to kill all child processes: {}", e);
-        }
-    }
+    sys::cleanup();
 
     // WARNING: Any code added after this point is not guaranteed to run
     // since we may forcibly kill this process (and its children) above.
@@ -3410,6 +3243,7 @@ fn main() {
 mod tests {
     use super::*;
     use crosvm::{DEFAULT_TOUCH_DEVICE_HEIGHT, DEFAULT_TOUCH_DEVICE_WIDTH};
+    use sys::parse_gpu_display_options;
 
     #[test]
     fn parse_cpu_set_single() {

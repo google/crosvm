@@ -11,10 +11,12 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(crate) use platform::main::{check_serial_params, get_arguments, set_arguments, start_device};
+pub(crate) use platform::main::{
+    check_serial_params, cleanup, get_arguments, set_arguments, start_device,
+};
 
 #[cfg(feature = "gpu")]
-pub(crate) use platform::main::is_gpu_backend_deprecated;
+pub(crate) use platform::main::{is_gpu_backend_deprecated, parse_gpu_display_options};
 
 #[cfg(feature = "gfxstream")]
 pub(crate) use platform::main::use_vulkan;
