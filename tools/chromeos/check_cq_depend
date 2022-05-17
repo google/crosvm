@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Copyright 2022 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+commit=${1:-HEAD}
+
+if git show -q "$commit" | grep -i "Cq-Depend:" > /dev/null; then
+    echo "Commit $commit contains Cq-Depend in the message."
+    echo "Cq-Depend cannot be used on the crosvm repository."
+    echo "See README.chromeos.md"
+    exit 1
+fi
