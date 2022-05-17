@@ -126,27 +126,11 @@ impl Timer {
             return Ok(WaitResult::Timeout);
         }
 
-        let mut count = 0u64;
-
-        // Safe because this will only modify |buf| and we check the return value.
-        let ret = unsafe {
-            libc::read(
-                self.as_raw_descriptor(),
-                &mut count as *mut _ as *mut libc::c_void,
-                mem::size_of_val(&count),
-            )
-        };
-
         // EAGAIN is a valid error in the case where another thread has called timerfd_settime
         // in between this thread calling ppoll and read. Since the ppoll returned originally
         // without any revents it means the timer did expire, so we treat this as a
         // WaitResult::Expired.
-        if ret < 0 {
-            let error = Error::last();
-            if error.errno() != EAGAIN {
-                return Err(error);
-            }
-        }
+        let _ = self.mark_waited()?;
 
         Ok(WaitResult::Expired)
     }
