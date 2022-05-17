@@ -721,7 +721,7 @@ impl UnpinWorker {
                     Token::UnpinTimer => {
                         self.unpin_pages();
                         if let Some(timer) = &mut unpin_timer {
-                            if let Err(e) = timer.wait() {
+                            if let Err(e) = timer.mark_waited() {
                                 error!(
                                     "{}: failed to clear unpin timer: {}",
                                     self.debug_label(),

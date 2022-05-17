@@ -337,7 +337,7 @@ impl Worker {
                             error!("Failed to flush the disk: {}", e);
                             break 'wait;
                         }
-                        if let Err(e) = flush_timer.wait() {
+                        if let Err(e) = flush_timer.mark_waited() {
                             error!("Failed to clear flush timer: {}", e);
                             break 'wait;
                         }

@@ -797,7 +797,7 @@ impl PitCounter {
     }
 
     fn timer_handler(&mut self) {
-        if let Err(e) = self.timer.wait() {
+        if let Err(e) = self.timer.mark_waited() {
             // Under the current Timer implementation (as of Jan 2019), this failure shouldn't
             // happen but implementation details may change in the future, and the failure
             // cases are complex to reason about. Because of this, avoid unwrap().
