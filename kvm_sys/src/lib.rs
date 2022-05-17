@@ -75,6 +75,12 @@ pub mod aarch64 {
     ioctl_ior_nr!(KVM_ARM_PREFERRED_TARGET, KVMIO, 0xaf, kvm_vcpu_init);
 }
 
+#[cfg(target_arch = "riscv64")]
+pub mod riscv64 {
+    pub mod bindings;
+    pub use bindings::*;
+}
+
 // These ioctls are commonly defined on all/multiple platforms.
 ioctl_io_nr!(KVM_GET_API_VERSION, KVMIO, 0x00);
 ioctl_io_nr!(KVM_CREATE_VM, KVMIO, 0x01);
@@ -178,3 +184,6 @@ flexible_array_impl!(kvm_cpuid2, kvm_cpuid_entry2, nent, entries);
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use aarch64::*;
+
+#[cfg(target_arch = "riscv64")]
+pub use crate::riscv64::*;
