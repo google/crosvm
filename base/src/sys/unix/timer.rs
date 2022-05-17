@@ -15,6 +15,7 @@ use libc::{
 };
 
 use super::super::{errno_result, Error, Result};
+use super::duration_to_timespec;
 use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 
 use crate::timer::{Timer, WaitResult};
@@ -46,23 +47,14 @@ impl Timer {
     /// the period for repeated expirations after the initial expiration.  Otherwise
     /// the timer will expire just once.  Cancels any existing duration and repeating interval.
     pub fn reset(&mut self, dur: Duration, interval: Option<Duration>) -> Result<()> {
-        // Safe because we are zero-initializing a struct with only primitive member fields.
-        let mut spec: libc::itimerspec = unsafe { mem::zeroed() };
-        spec.it_value.tv_sec = dur.as_secs() as libc::time_t;
-        // nsec always fits in i32 because subsec_nanos is defined to be less than one billion.
-        let nsec = dur.subsec_nanos() as i32;
-        spec.it_value.tv_nsec = libc::c_long::from(nsec);
-
         // The posix implementation of timer does not need self.interval, but we
         // save it anyways to keep a consistent interface.
         self.interval = interval;
 
-        if let Some(int) = interval {
-            spec.it_interval.tv_sec = int.as_secs() as libc::time_t;
-            // nsec always fits in i32 because subsec_nanos is defined to be less than one billion.
-            let nsec = int.subsec_nanos() as i32;
-            spec.it_interval.tv_nsec = libc::c_long::from(nsec);
-        }
+        let spec = libc::itimerspec {
+            it_interval: duration_to_timespec(interval.unwrap_or_default()),
+            it_value: duration_to_timespec(dur),
+        };
 
         // Safe because this doesn't modify any memory and we check the return value.
         let ret = unsafe { timerfd_settime(self.as_raw_descriptor(), 0, &spec, ptr::null_mut()) };
@@ -87,15 +79,8 @@ impl Timer {
             revents: 0,
         };
 
-        // Safe because we are zero-initializing a struct with only primitive member fields.
-
         let ret = if let Some(timeout_inner) = timeout {
-            let mut timeoutspec: libc::timespec = unsafe { mem::zeroed() };
-
-            timeoutspec.tv_sec = timeout_inner.as_secs() as libc::time_t;
-            // nsec always fits in i32 because subsec_nanos is defined to be less than one billion.
-            let nsec = timeout_inner.subsec_nanos() as i32;
-            timeoutspec.tv_nsec = libc::c_long::from(nsec);
+            let timeoutspec = duration_to_timespec(timeout_inner);
             // Safe because this only modifies |pfd| and we check the return value
             unsafe {
                 libc::ppoll(
