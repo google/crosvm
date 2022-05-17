@@ -106,10 +106,13 @@ impl Timer {
         Ok(())
     }
 
-    /// Waits until the timer expires, returing WaitResult::Expired when it expires.
+    /// Waits until the timer expires or an optional wait timeout expires, whichever happens first.
     ///
-    /// If timeout is not None, block for a maximum of the given `timeout` duration.
-    /// If a timeout occurs, return WaitResult::Timeout.
+    /// # Returns
+    ///
+    /// - `WaitResult::Expired` if the timer expired.
+    /// - `WaitResult::Timeout` if `timeout` was not `None` and the timer did not expire within the
+    ///   specified timeout period.
     pub fn wait_for(&mut self, timeout: Option<Duration>) -> Result<WaitResult> {
         let timeout = match timeout {
             None => INFINITE,
@@ -128,8 +131,7 @@ impl Timer {
         }
     }
 
-    /// Block for a maximum of the given `timeout` duration.
-    /// If a timeout occurs, return WaitResult::Timeout.
+    /// Waits until the timer expires.
     pub fn wait(&mut self) -> Result<WaitResult> {
         self.wait_for(None)
     }
