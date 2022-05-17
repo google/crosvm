@@ -43,17 +43,15 @@ impl Timer {
         })
     }
 
-    /// Sets the timer to expire after `dur`.  If `interval` is not `None` it represents
-    /// the period for repeated expirations after the initial expiration.  Otherwise
-    /// the timer will expire just once.  Cancels any existing duration and repeating interval.
-    pub fn reset(&mut self, dur: Duration, interval: Option<Duration>) -> Result<()> {
+    // Calls `timerfd_settime()` and stores the new value of `interval`.
+    fn set_time(&mut self, dur: Option<Duration>, interval: Option<Duration>) -> Result<()> {
         // The posix implementation of timer does not need self.interval, but we
         // save it anyways to keep a consistent interface.
         self.interval = interval;
 
         let spec = libc::itimerspec {
             it_interval: duration_to_timespec(interval.unwrap_or_default()),
-            it_value: duration_to_timespec(dur),
+            it_value: duration_to_timespec(dur.unwrap_or_default()),
         };
 
         // Safe because this doesn't modify any memory and we check the return value.
@@ -63,6 +61,18 @@ impl Timer {
         }
 
         Ok(())
+    }
+
+    /// Sets the timer to expire after `dur`.  If `interval` is not `None` it represents
+    /// the period for repeated expirations after the initial expiration.  Otherwise
+    /// the timer will expire just once.  Cancels any existing duration and repeating interval.
+    pub fn reset(&mut self, dur: Duration, interval: Option<Duration>) -> Result<()> {
+        self.set_time(Some(dur), interval)
+    }
+
+    /// Disarms the timer.
+    pub fn clear(&mut self) -> Result<()> {
+        self.set_time(None, None)
     }
 
     /// Waits until the timer expires or an optional wait timeout expires, whichever happens first.
@@ -152,22 +162,6 @@ impl Timer {
         } else {
             Ok(false)
         }
-    }
-
-    /// Disarms the timer.
-    pub fn clear(&mut self) -> Result<()> {
-        // Safe because we are zero-initializing a struct with only primitive member fields.
-        let spec: libc::itimerspec = unsafe { mem::zeroed() };
-
-        // Safe because this doesn't modify any memory and we check the return value.
-        let ret = unsafe { timerfd_settime(self.as_raw_descriptor(), 0, &spec, ptr::null_mut()) };
-        if ret < 0 {
-            return errno_result();
-        }
-
-        self.interval = None;
-
-        Ok(())
     }
 
     /// Returns the resolution of timers on the host.
