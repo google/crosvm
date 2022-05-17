@@ -17,6 +17,7 @@ use std::os::unix::prelude::OpenOptionsExt;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::{mpsc, Arc, Barrier};
+use std::time::Duration;
 
 use std::process;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
@@ -1132,6 +1133,10 @@ where
             // Balloon gets a special socket so balloon requests can be forwarded
             // from the main process.
             let (host, device) = Tube::pair().context("failed to create tube")?;
+            // Set recv timeout to avoid deadlock on sending BalloonControlCommand
+            // before the guest is ready.
+            host.set_recv_timeout(Some(Duration::from_millis(100)))
+                .context("failed to set timeout")?;
             (Some(host), Some(device))
         }
     } else {
