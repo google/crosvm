@@ -1,0 +1,15 @@
+[
+  {
+    "cmd": [
+      "./tools/dev_container",
+      "--verbose",
+      "--hermetic",
+      "echo",
+      "success"
+    ],
+    "name": "Foo"
+  },
+  {
+    "name": "$result"
+  }
+]

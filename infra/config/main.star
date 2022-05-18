@@ -114,66 +114,91 @@ luci.bucket(name = "prod")
 # as the recipe bundler compiles them from your refs/heads/main branch.
 cipd_version = "refs/heads/main"
 
-# Example builder to verify configuration
-luci.builder(
-    name = "Example Builder",
-    bucket = "ci",
-    executable = luci.recipe(
-        name = "hello_world",
-    ),
-    schedule = None,
-    service_account = "crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com",
-)
-
-# Create builders for change verifier
-def verify_builder(bucket):
-    luci.builder(
-        name = "Verify CL",
-        bucket = bucket,
-        executable = luci.recipe(
-            name = "verify_cl",
-        ),
-        service_account = "crosvm-luci-%s-builder@crosvm-infra.iam.gserviceaccount.com" % bucket,
-        dimensions = {
-            "os": "Ubuntu",
-            "cpu": "x86-64",
-            "pool": "luci.crosvm.%s" % bucket,
-        },
-    )
-
-verify_builder("try")
-verify_builder("ci")
-
 # Configure Change Verifier to watch crosvm
 luci.cq(
     status_host = "chromium-cq-status.appspot.com",
 )
-
 luci.cq_group(
-    name = "main_repo",
+    name = "main",
     watch = cq.refset(
         repo = "https://chromium.googlesource.com/crosvm/crosvm",
         refs = ["refs/heads/.+"],  # will watch all branches
     ),
 )
 
-# Attach our "Verify CL" builder to this CQ group.
-luci.cq_tryjob_verifier(
-    builder = "try/Verify CL",
-    cq_group = "main_repo",
+# Configure postsubmit tests running in ci pool
+luci.console_view(
+    name = "CI Console",
+    repo = "https://chromium.googlesource.com/crosvm/crosvm",
 )
 
-# Configure postsubmit tests running in ci pool
-luci.gitiles_poller(
-    name = "main source",
-    bucket = "ci",
-    repo = "https://chromium.googlesource.com/crosvm/crosvm",
-    # triggers = ["ci/Verify CL"],
-)
-luci.console_view(
-    name = "CI builders",
-    repo = "https://chromium.googlesource.com/crosvm/crosvm",
-    entries = [
-        luci.console_view_entry(builder = "ci/Verify CL"),
-    ],
-)
+def verify_builder(name, dimensions, **args):
+    """Creates both a CI and try builder with the same properties.
+
+    The CI builder is attached to the gitlies poller and console view, and the try builder
+    is added to the change verifier.
+
+    Args:
+        name: Name of the builder
+        dimensions: Passed to luci.builder
+        **args: Passed to luci.builder
+    """
+
+    # CI builder
+    luci.builder(
+        name = name,
+        bucket = "ci",
+        service_account = "crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com",
+        dimensions = dict(pool = "luci.crosvm.ci", **dimensions),
+        **args
+    )
+    luci.gitiles_poller(
+        name = "main source",
+        bucket = "ci",
+        repo = "https://chromium.googlesource.com/crosvm/crosvm",
+        triggers = ["ci/%s" % name],
+    )
+    luci.console_view_entry(
+        console_view = "CI Console",
+        builder = "ci/%s" % name,
+        category = "linux",
+    )
+
+    # Try builder
+    luci.builder(
+        name = name,
+        bucket = "try",
+        service_account = "crosvm-luci-try-builder@crosvm-infra.iam.gserviceaccount.com",
+        dimensions = dict(pool = "luci.crosvm.try", **dimensions),
+        **args
+    )
+
+    # Attach try builder to Change Verifier
+    luci.cq_tryjob_verifier(
+        builder = "try/%s" % name,
+        cq_group = "main",
+    )
+
+def verify_linux_builder(arch):
+    """Creates a verify builder that builds crosvm on linux
+
+    Args:
+        arch: Architecture to build and test
+    """
+    verify_builder(
+        name = "crosvm_linux_%s" % arch,
+        dimensions = {
+            "os": "Ubuntu",
+            "cpu": "x86-64",
+        },
+        executable = luci.recipe(
+            name = "build_linux",
+        ),
+        properties = {
+            "test_arch": arch,
+        },
+    )
+
+verify_linux_builder("x86_64")
+verify_linux_builder("aarch64")
+verify_linux_builder("armhf")

@@ -4,6 +4,7 @@ target/
 **/*.sw[po]
 **/*.orig
 **/Cargo.lock
+**/*.pyc
 lcov.info
 .idea
 .vscode

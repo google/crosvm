@@ -2,29 +2,73 @@
 # Repo documentation for [crosvm](https://chromium.googlesource.com/crosvm/crosvm.git)
 ## Table of Contents
 
+**[Recipe Modules](#Recipe-Modules)**
+  * [crosvm](#recipe_modules-crosvm) (Python3 ✅)
+
 **[Recipes](#Recipes)**
-  * [hello_world](#recipes-hello_world)
-  * [verify_cl](#recipes-verify_cl) (Python3 ✅)
-## Recipes
+  * [build_linux](#recipes-build_linux) (Python3 ✅)
+  * [crosvm:examples/prepare_source](#recipes-crosvm_examples_prepare_source) (Python3 ✅)
+  * [crosvm:examples/step_in_container](#recipes-crosvm_examples_step_in_container) (Python3 ✅)
+## Recipe Modules
 
-### *recipes* / [hello\_world](/infra/recipes/hello_world.py)
+### *recipe_modules* / [crosvm](/infra/recipe_modules/crosvm)
 
-[DEPS](/infra/recipes/hello_world.py#7): [recipe\_engine/step][recipe_engine/recipe_modules/step]
-
-PYTHON_VERSION_COMPATIBILITY: PY2
-
-&mdash; **def [RunSteps](/infra/recipes/hello_world.py#12)(api):**
-### *recipes* / [verify\_cl](/infra/recipes/verify_cl.py)
-
-[DEPS](/infra/recipes/verify_cl.py#3): [depot\_tools/bot\_update][depot_tools/recipe_modules/bot_update], [depot\_tools/gclient][depot_tools/recipe_modules/gclient], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/path][recipe_engine/recipe_modules/path]
+[DEPS](/infra/recipe_modules/crosvm/__init__.py#7): [depot\_tools/bot\_update][depot_tools/recipe_modules/bot_update], [depot\_tools/gclient][depot_tools/recipe_modules/gclient], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/file][recipe_engine/recipe_modules/file], [recipe\_engine/path][recipe_engine/recipe_modules/path], [recipe\_engine/step][recipe_engine/recipe_modules/step]
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipes/verify_cl.py#12)(api):**
+#### **class [CrosvmApi](/infra/recipe_modules/crosvm/api.py#10)([RecipeApi][recipe_engine/wkt/RecipeApi]):**
+
+Crosvm specific functionality shared between recipes.
+
+&emsp; **@property**<br>&mdash; **def [builder\_dir](/infra/recipe_modules/crosvm/api.py#17)(self):**
+
+&mdash; **def [prepare\_source](/infra/recipe_modules/crosvm/api.py#21)(self):**
+
+Prepares the local crosvm source for testing in `self.source_dir`
+
+CI jobs will check out the revision to be tested, try jobs will check out the gerrit
+change to be tested.
+
+&emsp; **@property**<br>&mdash; **def [source\_dir](/infra/recipe_modules/crosvm/api.py#13)(self):**
+
+&mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#41)(self, step_name, command):**
+
+Runs a luci step inside the crosvm dev container.
+## Recipes
+
+### *recipes* / [build\_linux](/infra/recipes/build_linux.py)
+
+[DEPS](/infra/recipes/build_linux.py#11): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+
+PYTHON_VERSION_COMPATIBILITY: PY3
+
+&mdash; **def [RunSteps](/infra/recipes/build_linux.py#35)(api, properties):**
+
+&mdash; **def [get\_test\_args](/infra/recipes/build_linux.py#22)(api, test_arch):**
+
+Returns architecture specific arguments for ./tools/run_tests
+### *recipes* / [crosvm:examples/prepare\_source](/infra/recipe_modules/crosvm/examples/prepare_source.py)
+
+[DEPS](/infra/recipe_modules/crosvm/examples/prepare_source.py#12): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket]
+
+PYTHON_VERSION_COMPATIBILITY: PY3
+
+&mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/prepare_source.py#18)(api):**
+### *recipes* / [crosvm:examples/step\_in\_container](/infra/recipe_modules/crosvm/examples/step_in_container.py)
+
+[DEPS](/infra/recipe_modules/crosvm/examples/step_in_container.py#7): [crosvm](#recipe_modules-crosvm)
+
+PYTHON_VERSION_COMPATIBILITY: PY3
+
+&mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/step_in_container.py#12)(api):**
 
 [depot_tools/recipe_modules/bot_update]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/8a87603683bda769d437e48cc1a7494a2e237ead/recipes/README.recipes.md#recipe_modules-bot_update
 [depot_tools/recipe_modules/gclient]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/8a87603683bda769d437e48cc1a7494a2e237ead/recipes/README.recipes.md#recipe_modules-gclient
 [recipe_engine/recipe_modules/buildbucket]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-buildbucket
 [recipe_engine/recipe_modules/context]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-context
+[recipe_engine/recipe_modules/file]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-file
 [recipe_engine/recipe_modules/path]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-path
+[recipe_engine/recipe_modules/properties]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-properties
 [recipe_engine/recipe_modules/step]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-step
+[recipe_engine/wkt/RecipeApi]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/recipe_engine/recipe_api.py#883
