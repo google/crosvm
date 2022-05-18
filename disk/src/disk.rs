@@ -11,18 +11,20 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use base::{
     get_filesystem_type, info, AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileSetLen,
     FileSync, PunchHole, WriteZeroesAt,
 };
 use cros_async::{AllocateMode, Executor};
-use remain::sorted;
+
+use async_trait::async_trait;
+use cros_async::IoSourceExt;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
 mod qcow;
 pub use qcow::{QcowFile, QCOW_MAGIC};
+mod sys;
 
 #[cfg(feature = "composite-disk")]
 mod composite;
@@ -44,7 +46,6 @@ use android_sparse::{AndroidSparse, SPARSE_HEADER_MAGIC};
 /// Nesting depth limit for disk formats that can open other disk files.
 pub const MAX_NESTING_DEPTH: u32 = 10;
 
-#[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
     #[error("failed to create block device: {0}")]
@@ -86,6 +87,9 @@ pub enum Error {
     WriteFromVec(cros_async::AsyncError),
     #[error("failed to write data: {0}")]
     WritingData(io::Error),
+    #[cfg(windows)]
+    #[error("failed to set disk file sparse: {0}")]
+    SetSparseFailure(io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -239,6 +243,7 @@ pub fn create_async_disk_file(raw_image: File) -> Result<Box<dyn ToAsyncDisk>> {
 /// Inspect the image file type and create an appropriate disk file to match it.
 pub fn create_disk_file(
     raw_image: File,
+    is_sparse_file: bool,
     mut max_nesting_depth: u32,
     // image_path is only used if the composite-disk feature is enabled.
     #[allow(unused_variables)] image_path: &Path,
@@ -250,7 +255,10 @@ pub fn create_disk_file(
 
     let image_type = detect_image_type(&raw_image)?;
     Ok(match image_type {
-        ImageType::Raw => Box::new(raw_image) as Box<dyn DiskFile>,
+        ImageType::Raw => {
+            sys::apply_raw_disk_file_options(&raw_image, is_sparse_file)?;
+            Box::new(raw_image) as Box<dyn DiskFile>
+        }
         ImageType::Qcow2 => {
             Box::new(QcowFile::from(raw_image, max_nesting_depth).map_err(Error::QcowError)?)
                 as Box<dyn DiskFile>
@@ -259,8 +267,13 @@ pub fn create_disk_file(
         ImageType::CompositeDisk => {
             // Valid composite disk header present
             Box::new(
-                CompositeDiskFile::from_file(raw_image, max_nesting_depth, image_path)
-                    .map_err(Error::CreateCompositeDisk)?,
+                CompositeDiskFile::from_file(
+                    raw_image,
+                    is_sparse_file,
+                    max_nesting_depth,
+                    image_path,
+                )
+                .map_err(Error::CreateCompositeDisk)?,
             ) as Box<dyn DiskFile>
         }
         #[cfg(not(feature = "composite-disk"))]
@@ -304,8 +317,6 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
     /// Writes up to `length` bytes of zeroes to the stream, returning how many bytes were written.
     async fn write_zeroes_at(&self, file_offset: u64, length: u64) -> Result<()>;
 }
-
-use cros_async::IoSourceExt;
 
 /// A disk backed by a single file that implements `AsyncDisk` for access.
 pub struct SingleFileDisk {
@@ -404,114 +415,5 @@ impl AsyncDisk for SingleFileDisk {
                 .map_err(Error::WriteFromVec)?;
         }
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use std::fs::{File, OpenOptions};
-    use std::io::Write;
-
-    use cros_async::{Executor, MemRegion};
-    use vm_memory::{GuestAddress, GuestMemory};
-
-    #[test]
-    fn read_async() {
-        async fn read_zeros_async(ex: &Executor) {
-            let guest_mem = Arc::new(GuestMemory::new(&[(GuestAddress(0), 4096)]).unwrap());
-            let f = File::open("/dev/zero").unwrap();
-            let async_file = SingleFileDisk::new(f, ex).unwrap();
-            let result = async_file
-                .read_to_mem(
-                    0,
-                    Arc::clone(&guest_mem),
-                    &[MemRegion { offset: 0, len: 48 }],
-                )
-                .await;
-            assert_eq!(48, result.unwrap());
-        }
-
-        let ex = Executor::new().unwrap();
-        ex.run_until(read_zeros_async(&ex)).unwrap();
-    }
-
-    #[test]
-    fn write_async() {
-        async fn write_zeros_async(ex: &Executor) {
-            let guest_mem = Arc::new(GuestMemory::new(&[(GuestAddress(0), 4096)]).unwrap());
-            let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
-            let async_file = SingleFileDisk::new(f, ex).unwrap();
-            let result = async_file
-                .write_from_mem(
-                    0,
-                    Arc::clone(&guest_mem),
-                    &[MemRegion { offset: 0, len: 48 }],
-                )
-                .await;
-            assert_eq!(48, result.unwrap());
-        }
-
-        let ex = Executor::new().unwrap();
-        ex.run_until(write_zeros_async(&ex)).unwrap();
-    }
-
-    #[test]
-    fn detect_image_type_raw() {
-        let mut t = tempfile::tempfile().unwrap();
-        // Fill the first block of the file with "random" data.
-        let buf = "ABCD".as_bytes().repeat(1024);
-        t.write_all(&buf).unwrap();
-        let image_type = detect_image_type(&t).expect("failed to detect image type");
-        assert_eq!(image_type, ImageType::Raw);
-    }
-
-    #[test]
-    fn detect_image_type_qcow2() {
-        let mut t = tempfile::tempfile().unwrap();
-        // Write the qcow2 magic signature. The rest of the header is not filled in, so if
-        // detect_image_type is ever updated to validate more of the header, this test would need
-        // to be updated.
-        let buf: &[u8] = &[0x51, 0x46, 0x49, 0xfb];
-        t.write_all(buf).unwrap();
-        let image_type = detect_image_type(&t).expect("failed to detect image type");
-        assert_eq!(image_type, ImageType::Qcow2);
-    }
-
-    #[test]
-    fn detect_image_type_android_sparse() {
-        let mut t = tempfile::tempfile().unwrap();
-        // Write the Android sparse magic signature. The rest of the header is not filled in, so if
-        // detect_image_type is ever updated to validate more of the header, this test would need
-        // to be updated.
-        let buf: &[u8] = &[0x3a, 0xff, 0x26, 0xed];
-        t.write_all(buf).unwrap();
-        let image_type = detect_image_type(&t).expect("failed to detect image type");
-        assert_eq!(image_type, ImageType::AndroidSparse);
-    }
-
-    #[test]
-    #[cfg(feature = "composite-disk")]
-    fn detect_image_type_composite() {
-        let mut t = tempfile::tempfile().unwrap();
-        // Write the composite disk magic signature. The rest of the header is not filled in, so if
-        // detect_image_type is ever updated to validate more of the header, this test would need
-        // to be updated.
-        let buf = "composite_disk\x1d".as_bytes();
-        t.write_all(buf).unwrap();
-        let image_type = detect_image_type(&t).expect("failed to detect image type");
-        assert_eq!(image_type, ImageType::CompositeDisk);
-    }
-
-    #[test]
-    fn detect_image_type_small_file() {
-        let mut t = tempfile::tempfile().unwrap();
-        // Write a file smaller than the four-byte qcow2/sparse magic to ensure the small file logic
-        // works correctly and handles it as a raw file.
-        let buf: &[u8] = &[0xAA, 0xBB];
-        t.write_all(buf).unwrap();
-        let image_type = detect_image_type(&t).expect("failed to detect image type");
-        assert_eq!(image_type, ImageType::Raw);
     }
 }

@@ -2926,11 +2926,18 @@ fn create_composite(mut args: std::env::Args) -> std::result::Result<(), ()> {
             if let [label, path] = partition_arg.split(":").collect::<Vec<_>>()[..] {
                 let partition_file = File::open(path)
                     .map_err(|e| error!("Failed to open partition image: {}", e))?;
-                let size =
-                    create_disk_file(partition_file, disk::MAX_NESTING_DEPTH, Path::new(path))
-                        .map_err(|e| error!("Failed to create DiskFile instance: {}", e))?
-                        .get_len()
-                        .map_err(|e| error!("Failed to get length of partition image: {}", e))?;
+
+                // Sparseness for composite disks is not user provided on Linux
+                // (e.g. via an option), and it has no runtime effect.
+                let size = create_disk_file(
+                    partition_file,
+                    /* is_sparse_file= */ true,
+                    disk::MAX_NESTING_DEPTH,
+                    Path::new(path),
+                )
+                .map_err(|e| error!("Failed to create DiskFile instance: {}", e))?
+                .get_len()
+                .map_err(|e| error!("Failed to get length of partition image: {}", e))?;
                 Ok(PartitionInfo {
                     label: label.to_owned(),
                     path: Path::new(path).to_owned(),

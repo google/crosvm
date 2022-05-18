@@ -160,6 +160,7 @@ impl CompositeDiskFile {
     /// buffer. Returns an error if it could not read the file or if the specification was invalid.
     pub fn from_file(
         mut file: File,
+        is_sparse_file: bool,
         max_nesting_depth: u32,
         image_path: &Path,
     ) -> Result<CompositeDiskFile> {
@@ -180,6 +181,8 @@ impl CompositeDiskFile {
             .get_component_disks()
             .iter()
             .map(|disk| {
+                let writable =
+                    disk.get_read_write_capability() == cdisk_spec::ReadWriteCapability::READ_WRITE;
                 let component_path = PathBuf::from(disk.get_file_path());
                 let path = if component_path.is_relative() || proto.get_version() > 1 {
                     image_path.parent().unwrap().join(component_path)
@@ -194,9 +197,21 @@ impl CompositeDiskFile {
                     ), // TODO(b/190435784): add support for O_DIRECT.
                 )
                 .map_err(|e| Error::OpenFile(e.into(), disk.get_file_path().to_string()))?;
+
+                // Note that a read-only parts of a composite disk should NOT be marked sparse,
+                // as the action of marking them sparse is a write. This may seem a little hacky,
+                // and it is; however:
+                //    (a)  there is not a good way to pass sparseness parameters per composite disk
+                //         part (the proto does not have fields for it).
+                //    (b)  this override of sorts always matches the correct user intent.
                 Ok(ComponentDiskPart {
-                    file: create_disk_file(comp_file, max_nesting_depth, &path)
-                        .map_err(|e| Error::DiskError(Box::new(e)))?,
+                    file: create_disk_file(
+                        comp_file,
+                        is_sparse_file && writable,
+                        max_nesting_depth,
+                        &path,
+                    )
+                    .map_err(|e| Error::DiskError(Box::new(e)))?,
                     offset: disk.get_offset(),
                     length: 0, // Assigned later
                     needs_fsync: false,
