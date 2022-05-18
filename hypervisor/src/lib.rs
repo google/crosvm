@@ -169,15 +169,15 @@ pub trait Vm: Send {
     /// # Arguments
     /// * `guest_address` - Address in the guest's "physical" memory to begin the unmapping
     /// * `size` - The size of the region to unmap, in bytes
-    fn handle_deflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()>;
+    fn handle_inflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()>;
 
     /// Reallocates memory and maps it to provide to the guest. This is intended to be used
-    /// exclusively in tandem with `handle_deflate`, and will return an `Err` Result otherwise.
+    /// exclusively in tandem with `handle_inflate`, and will return an `Err` Result otherwise.
     ///
     /// # Arguments
     /// * `guest_address` - Address in the guest's "physical" memory to begin the mapping
     /// * `size` - The size of the region to map, in bytes
-    fn handle_inflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()>;
+    fn handle_deflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()>;
 }
 
 /// A unique fingerprint for a particular `VcpuRunHandle`, used in `Vcpu` impls to ensure the

@@ -650,7 +650,7 @@ impl Vm for KvmVm {
         }
     }
 
-    fn handle_deflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
+    fn handle_inflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
         match self.guest_mem.remove_range(guest_address, size) {
             Ok(_) => Ok(()),
             Err(vm_memory::Error::MemoryAccess(_, MmapError::SystemCallFailed(e))) => Err(e),
@@ -658,7 +658,7 @@ impl Vm for KvmVm {
         }
     }
 
-    fn handle_inflate(&mut self, _guest_address: GuestAddress, _size: u64) -> Result<()> {
+    fn handle_deflate(&mut self, _guest_address: GuestAddress, _size: u64) -> Result<()> {
         // No-op, when the guest attempts to access the pages again, Linux/KVM will provide them.
         Ok(())
     }
