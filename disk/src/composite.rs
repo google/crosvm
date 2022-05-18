@@ -179,10 +179,11 @@ impl CompositeDiskFile {
             .get_component_disks()
             .iter()
             .map(|disk| {
-                let path = if proto.get_version() == 1 {
-                    PathBuf::from(disk.get_file_path())
+                let component_path = PathBuf::from(disk.get_file_path());
+                let path = if component_path.is_relative() || proto.get_version() > 1 {
+                    image_path.parent().unwrap().join(component_path)
                 } else {
-                    image_path.parent().unwrap().join(disk.get_file_path())
+                    component_path
                 };
                 let comp_file = open_file(
                     &path,
