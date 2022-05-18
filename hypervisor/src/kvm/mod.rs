@@ -451,6 +451,7 @@ impl Vm for KvmVm {
             VmCap::PvClock => false,
             VmCap::PvClockSuspend => self.check_raw_capability(KvmCap::KvmclockCtrl),
             VmCap::Protected => self.check_raw_capability(KvmCap::ArmProtectedVm),
+            VmCap::EarlyInitCpuid => false,
         }
     }
 

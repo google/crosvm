@@ -25,4 +25,6 @@ pub enum VmCap {
     PvClockSuspend,
     /// VM can be run in protected mode, where the host does not have access to its memory.
     Protected,
+    /// VM completes initialization of CPUID at creation time, not required after.
+    EarlyInitCpuid,
 }

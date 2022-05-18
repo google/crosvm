@@ -72,7 +72,7 @@ use devices::{
     BusDeviceObj, BusResumeDevice, IrqChip, IrqChipX86_64, PciAddress, PciConfigIo, PciConfigMmio,
     PciDevice, PciVirtualConfigMmio,
 };
-use hypervisor::{HypervisorX86_64, ProtectionType, VcpuX86_64, Vm, VmX86_64};
+use hypervisor::{HypervisorX86_64, ProtectionType, VcpuX86_64, Vm, VmCap, VmX86_64};
 use minijail::Minijail;
 use remain::sorted;
 use resources::{MemRegion, SystemAllocator, SystemAllocatorConfig};
@@ -762,17 +762,19 @@ impl arch::LinuxArch for X8664arch {
         host_cpu_topology: bool,
         itmt: bool,
     ) -> Result<()> {
-        cpuid::setup_cpuid(
-            hypervisor,
-            irq_chip,
-            vcpu,
-            vcpu_id,
-            num_cpus,
-            no_smt,
-            host_cpu_topology,
-            itmt,
-        )
-        .map_err(Error::SetupCpuid)?;
+        if !vm.check_capability(VmCap::EarlyInitCpuid) {
+            cpuid::setup_cpuid(
+                hypervisor,
+                irq_chip,
+                vcpu,
+                vcpu_id,
+                num_cpus,
+                no_smt,
+                host_cpu_topology,
+                itmt,
+            )
+            .map_err(Error::SetupCpuid)?;
+        }
 
         if has_bios {
             return Ok(());
