@@ -1038,24 +1038,6 @@ impl Gpu {
         base_features: u64,
         channels: BTreeMap<String, PathBuf>,
     ) -> Gpu {
-        let virglrenderer_flags = VirglRendererFlags::new()
-            .use_egl(gpu_parameters.renderer_use_egl)
-            .use_gles(gpu_parameters.renderer_use_gles)
-            .use_glx(gpu_parameters.renderer_use_glx)
-            .use_surfaceless(gpu_parameters.renderer_use_surfaceless)
-            .use_external_blob(external_blob)
-            .use_venus(gpu_parameters.use_vulkan)
-            .use_render_server(render_server_fd.is_some());
-        let gfxstream_flags = GfxstreamFlags::new()
-            .use_egl(gpu_parameters.renderer_use_egl)
-            .use_gles(gpu_parameters.renderer_use_gles)
-            .use_glx(gpu_parameters.renderer_use_glx)
-            .use_surfaceless(gpu_parameters.renderer_use_surfaceless)
-            .use_guest_angle(gpu_parameters.gfxstream_use_guest_angle)
-            .use_syncfd(gpu_parameters.gfxstream_use_syncfd)
-            .use_vulkan(gpu_parameters.use_vulkan)
-            .use_async_fence_cb(true);
-
         let mut rutabaga_channels: Vec<RutabagaChannel> = Vec::new();
         for (channel_name, path) in &channels {
             match &channel_name[..] {
@@ -1088,9 +1070,16 @@ impl Gpu {
         let rutabaga_builder = RutabagaBuilder::new(component, gpu_parameters.context_mask)
             .set_display_width(display_width)
             .set_display_height(display_height)
-            .set_virglrenderer_flags(virglrenderer_flags)
-            .set_gfxstream_flags(gfxstream_flags)
-            .set_rutabaga_channels(rutabaga_channels_opt);
+            .set_rutabaga_channels(rutabaga_channels_opt)
+            .set_use_egl(gpu_parameters.renderer_use_egl)
+            .set_use_gles(gpu_parameters.renderer_use_gles)
+            .set_use_glx(gpu_parameters.renderer_use_glx)
+            .set_use_surfaceless(gpu_parameters.renderer_use_surfaceless)
+            .set_use_vulkan(gpu_parameters.use_vulkan)
+            .set_use_syncfd(gpu_parameters.gfxstream_use_syncfd)
+            .set_use_guest_angle(gpu_parameters.gfxstream_use_guest_angle)
+            .set_use_external_blob(external_blob)
+            .set_use_render_server(render_server_fd.is_some());
 
         Gpu {
             exit_evt_wrtube,

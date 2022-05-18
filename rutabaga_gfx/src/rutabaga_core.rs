@@ -702,20 +702,23 @@ pub struct RutabagaBuilder {
     display_width: Option<u32>,
     display_height: Option<u32>,
     default_component: RutabagaComponentType,
-    virglrenderer_flags: Option<VirglRendererFlags>,
-    gfxstream_flags: Option<GfxstreamFlags>,
+    gfxstream_flags: GfxstreamFlags,
+    virglrenderer_flags: VirglRendererFlags,
     channels: Option<Vec<RutabagaChannel>>,
 }
 
 impl RutabagaBuilder {
     /// Create new a RutabagaBuilder.
     pub fn new(default_component: RutabagaComponentType, _context_mask: u64) -> RutabagaBuilder {
+        let virglrenderer_flags = VirglRendererFlags::new();
+        let gfxstream_flags = GfxstreamFlags::new().use_async_fence_cb(true);
+
         RutabagaBuilder {
             display_width: None,
             display_height: None,
             default_component,
-            virglrenderer_flags: None,
-            gfxstream_flags: None,
+            gfxstream_flags,
+            virglrenderer_flags,
             channels: None,
         }
     }
@@ -732,18 +735,62 @@ impl RutabagaBuilder {
         self
     }
 
-    /// Set virglrenderer flags for the RutabagaBuilder
-    pub fn set_virglrenderer_flags(
-        mut self,
-        virglrenderer_flags: VirglRendererFlags,
-    ) -> RutabagaBuilder {
-        self.virglrenderer_flags = Some(virglrenderer_flags);
+    /// Sets use EGL flags in gfxstream + virglrenderer.
+    pub fn set_use_egl(mut self, v: bool) -> RutabagaBuilder {
+        self.gfxstream_flags = self.gfxstream_flags.use_egl(v);
+        self.virglrenderer_flags = self.virglrenderer_flags.use_egl(v);
         self
     }
 
-    /// Set gfxstream flags for the RutabagaBuilder
-    pub fn set_gfxstream_flags(mut self, gfxstream_flags: GfxstreamFlags) -> RutabagaBuilder {
-        self.gfxstream_flags = Some(gfxstream_flags);
+    /// Sets use GLES in gfxstream + virglrenderer.
+    pub fn set_use_gles(mut self, v: bool) -> RutabagaBuilder {
+        self.gfxstream_flags = self.gfxstream_flags.use_gles(v);
+        self.virglrenderer_flags = self.virglrenderer_flags.use_gles(v);
+        self
+    }
+
+    /// Sets use GLX flags in gfxstream + virglrenderer.
+    pub fn set_use_glx(mut self, v: bool) -> RutabagaBuilder {
+        self.gfxstream_flags = self.gfxstream_flags.use_glx(v);
+        self.virglrenderer_flags = self.virglrenderer_flags.use_glx(v);
+        self
+    }
+
+    /// Sets use surfaceless flags in gfxstream + virglrenderer.
+    pub fn set_use_surfaceless(mut self, v: bool) -> RutabagaBuilder {
+        self.gfxstream_flags = self.gfxstream_flags.use_surfaceless(v);
+        self.virglrenderer_flags = self.virglrenderer_flags.use_surfaceless(v);
+        self
+    }
+
+    /// Sets use Vulkan in gfxstream + virglrenderer.
+    pub fn set_use_vulkan(mut self, v: bool) -> RutabagaBuilder {
+        self.gfxstream_flags = self.gfxstream_flags.use_vulkan(v);
+        self.virglrenderer_flags = self.virglrenderer_flags.use_venus(v);
+        self
+    }
+
+    /// Set use syncfd in gfxstream
+    pub fn set_use_syncfd(mut self, v: bool) -> RutabagaBuilder {
+        self.gfxstream_flags = self.gfxstream_flags.use_syncfd(v);
+        self
+    }
+
+    /// Set use guest ANGLE in gfxstream
+    pub fn set_use_guest_angle(mut self, v: bool) -> RutabagaBuilder {
+        self.gfxstream_flags = self.gfxstream_flags.use_guest_angle(v);
+        self
+    }
+
+    /// Sets use external blob in virglrenderer.
+    pub fn set_use_external_blob(mut self, v: bool) -> RutabagaBuilder {
+        self.virglrenderer_flags = self.virglrenderer_flags.use_external_blob(v);
+        self
+    }
+
+    /// Sets use render server in virglrenderer.
+    pub fn set_use_render_server(mut self, v: bool) -> RutabagaBuilder {
+        self.virglrenderer_flags = self.virglrenderer_flags.use_render_server(v);
         self
     }
 
@@ -805,18 +852,12 @@ impl RutabagaBuilder {
         } else {
             #[cfg(feature = "virgl_renderer")]
             if self.default_component == RutabagaComponentType::VirglRenderer {
-                let virglrenderer_flags =
-                    self.virglrenderer_flags
-                        .ok_or(RutabagaError::InvalidRutabagaBuild(
-                            "missing virgl renderer flags",
-                        ))?;
-
-                if (u32::from(virglrenderer_flags) & VIRGLRENDERER_USE_ASYNC_FENCE_CB) == 0 {
+                if (u32::from(self.virglrenderer_flags) & VIRGLRENDERER_USE_ASYNC_FENCE_CB) == 0 {
                     use_timer_based_fence_polling = true;
                 }
 
                 let virgl = VirglRenderer::init(
-                    virglrenderer_flags,
+                    self.virglrenderer_flags,
                     fence_handler.clone(),
                     render_server_fd,
                 )?;
@@ -847,20 +888,15 @@ impl RutabagaBuilder {
                             "missing display height",
                         ))?;
 
-                let gfxstream_flags =
-                    self.gfxstream_flags
-                        .ok_or(RutabagaError::InvalidRutabagaBuild(
-                            "missing gfxstream flags",
-                        ))?;
-
                 let gfxstream = Gfxstream::init(
                     display_width,
                     display_height,
-                    gfxstream_flags,
+                    self.gfxstream_flags,
                     fence_handler.clone(),
                 )?;
 
-                if (u32::from(gfxstream_flags) & GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB) == 0 {
+                if (u32::from(self.gfxstream_flags) & GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB) == 0
+                {
                     use_timer_based_fence_polling = true;
                 }
 

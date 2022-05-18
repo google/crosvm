@@ -124,18 +124,6 @@ pub unsafe extern "C" fn rutabaga_init(builder: &rutabaga_builder, ptr: &mut *mu
             }
         };
 
-        let virglrenderer_flags = VirglRendererFlags::new()
-            .use_egl(true)
-            .use_surfaceless(true)
-            .use_external_blob(true);
-
-        let gfxstream_flags = GfxstreamFlags::new()
-            .use_egl(true)
-            .use_surfaceless(true)
-            .use_guest_angle(true)
-            .use_syncfd(true)
-            .use_vulkan(true);
-
         let mut rutabaga_channels_opt = None;
         if let Some(channels) = (*builder).channels {
             let mut rutabaga_channels: Vec<RutabagaChannel> = Vec::new();
@@ -157,8 +145,12 @@ pub unsafe extern "C" fn rutabaga_init(builder: &rutabaga_builder, ptr: &mut *mu
             rutabaga_channels_opt = Some(rutabaga_channels);
         }
         let result = RutabagaBuilder::new(component, 0)
-            .set_virglrenderer_flags(virglrenderer_flags)
-            .set_gfxstream_flags(gfxstream_flags)
+            .set_use_egl(true)
+            .set_use_surfaceless(true)
+            .set_use_guest_angle(true)
+            .set_use_syncfd(true)
+            .set_use_vulkan(true)
+            .set_use_external_blob(true)
             .set_rutabaga_channels(rutabaga_channels_opt)
             .build(fence_handler, None);
 
