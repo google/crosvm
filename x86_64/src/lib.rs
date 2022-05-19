@@ -1585,11 +1585,8 @@ pub fn set_itmt_msr_config(
         msr_map,
         MSR_HWP_CAPABILITIES,
         MsrConfig {
-            rw_type: MsrRWType {
-                read_allow: true,
-                write_allow: false,
-            },
-            action: Some(MsrAction::MsrPassthrough),
+            rw_type: MsrRWType::ReadOnly,
+            action: MsrAction::MsrPassthrough,
             from: MsrValueFrom::RWFromRunningCPU,
         },
     )?;
@@ -1598,11 +1595,8 @@ pub fn set_itmt_msr_config(
         msr_map,
         MSR_PM_ENABLE,
         MsrConfig {
-            rw_type: MsrRWType {
-                read_allow: true,
-                write_allow: true,
-            },
-            action: Some(MsrAction::MsrEmulate),
+            rw_type: MsrRWType::ReadWrite,
+            action: MsrAction::MsrEmulate,
             from: MsrValueFrom::RWFromRunningCPU,
         },
     )?;
@@ -1611,11 +1605,8 @@ pub fn set_itmt_msr_config(
         msr_map,
         MSR_HWP_REQUEST,
         MsrConfig {
-            rw_type: MsrRWType {
-                read_allow: true,
-                write_allow: true,
-            },
-            action: Some(MsrAction::MsrEmulate),
+            rw_type: MsrRWType::ReadWrite,
+            action: MsrAction::MsrEmulate,
             from: MsrValueFrom::RWFromRunningCPU,
         },
     )?;
@@ -1624,11 +1615,8 @@ pub fn set_itmt_msr_config(
         msr_map,
         MSR_TURBO_RATIO_LIMIT,
         MsrConfig {
-            rw_type: MsrRWType {
-                read_allow: true,
-                write_allow: false,
-            },
-            action: Some(MsrAction::MsrPassthrough),
+            rw_type: MsrRWType::ReadOnly,
+            action: MsrAction::MsrPassthrough,
             from: MsrValueFrom::RWFromRunningCPU,
         },
     )?;
@@ -1637,11 +1625,8 @@ pub fn set_itmt_msr_config(
         msr_map,
         MSR_PLATFORM_INFO,
         MsrConfig {
-            rw_type: MsrRWType {
-                read_allow: true,
-                write_allow: false,
-            },
-            action: Some(MsrAction::MsrPassthrough),
+            rw_type: MsrRWType::ReadOnly,
+            action: MsrAction::MsrPassthrough,
             from: MsrValueFrom::RWFromRunningCPU,
         },
     )?;
@@ -1650,11 +1635,8 @@ pub fn set_itmt_msr_config(
         msr_map,
         MSR_IA32_PERF_CTL,
         MsrConfig {
-            rw_type: MsrRWType {
-                read_allow: true,
-                write_allow: true,
-            },
-            action: Some(MsrAction::MsrEmulate),
+            rw_type: MsrRWType::ReadWrite,
+            action: MsrAction::MsrEmulate,
             from: MsrValueFrom::RWFromRunningCPU,
         },
     )?;

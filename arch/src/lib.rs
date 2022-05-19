@@ -856,10 +856,11 @@ where
 /// Read and write permissions setting
 ///
 /// Wrap read_allow and write_allow to store them in MsrHandlers level.
-#[derive(Clone, Copy, Default)]
-pub struct MsrRWType {
-    pub read_allow: bool,
-    pub write_allow: bool,
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum MsrRWType {
+    ReadOnly,
+    WriteOnly,
+    ReadWrite,
 }
 
 /// Handler types for userspace-msr
@@ -899,32 +900,18 @@ impl MsrValueFrom {
     }
 }
 
-/// If user doesn't specific CPU0, the default source CPU is running CPU.
-impl Default for MsrValueFrom {
-    fn default() -> Self {
-        MsrValueFrom::RWFromRunningCPU
-    }
-}
-
 /// Config option for userspace-msr handing
 ///
 /// MsrConfig will be collected with its corresponding MSR's index.
 /// eg, (msr_index, msr_config)
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct MsrConfig {
     /// If support RDMSR/WRMSR emulation in crosvm?
     pub rw_type: MsrRWType,
     /// Handlers should be used to handling MSR.
-    /// User must set this field.
-    pub action: Option<MsrAction>,
+    pub action: MsrAction,
     /// MSR source CPU.
     pub from: MsrValueFrom,
-}
-
-impl MsrConfig {
-    pub fn new() -> Self {
-        Default::default()
-    }
 }
 
 #[sorted]
@@ -932,6 +919,4 @@ impl MsrConfig {
 pub enum MsrExitHandlerError {
     #[error("Fail to create MSR handler")]
     HandlerCreateFailed,
-    #[error("Error parameter")]
-    InvalidParam,
 }

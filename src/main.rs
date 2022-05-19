@@ -22,7 +22,8 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use arch::{
-    set_default_serial_parameters, MsrAction, MsrConfig, MsrValueFrom, Pstore, VcpuAffinity,
+    set_default_serial_parameters, MsrAction, MsrConfig, MsrRWType, MsrValueFrom, Pstore,
+    VcpuAffinity,
 };
 use base::{debug, error, getpid, info, kill_process_group, pagesize, reap_child, syslog, warn};
 use crosvm::{
@@ -624,7 +625,9 @@ fn parse_ac97_options(s: &str) -> argument::Result<Ac97Parameters> {
 }
 
 fn parse_userspace_msr_options(value: &str) -> argument::Result<(u32, MsrConfig)> {
-    let mut msr_config = MsrConfig::new();
+    let mut rw_type: Option<MsrRWType> = None;
+    let mut action: Option<MsrAction> = None;
+    let mut from = MsrValueFrom::RWFromRunningCPU;
 
     let mut options = argument::parse_key_value_options("userspace-msr", value, ',');
     let index: u32 = options
@@ -637,42 +640,42 @@ fn parse_userspace_msr_options(value: &str) -> argument::Result<(u32, MsrConfig)
     for opt in options {
         match opt.key() {
             "type" => match opt.value()? {
-                "r" => msr_config.rw_type.read_allow = true,
-                "w" => msr_config.rw_type.write_allow = true,
-                "rw" | "wr" => {
-                    msr_config.rw_type.read_allow = true;
-                    msr_config.rw_type.write_allow = true;
-                }
+                "r" => rw_type = Some(MsrRWType::ReadOnly),
+                "w" => rw_type = Some(MsrRWType::WriteOnly),
+                "rw" | "wr" => rw_type = Some(MsrRWType::ReadWrite),
                 _ => {
                     return Err(opt.invalid_value_err(String::from("bad type")));
                 }
             },
             "action" => match opt.value()? {
-                "pass" => msr_config.action = Some(MsrAction::MsrPassthrough),
-                "emu" => msr_config.action = Some(MsrAction::MsrEmulate),
+                "pass" => action = Some(MsrAction::MsrPassthrough),
+                "emu" => action = Some(MsrAction::MsrEmulate),
                 _ => return Err(opt.invalid_value_err(String::from("bad action"))),
             },
             "from" => match opt.value()? {
-                "cpu0" => msr_config.from = MsrValueFrom::RWFromCPU0,
+                "cpu0" => from = MsrValueFrom::RWFromCPU0,
                 _ => return Err(opt.invalid_value_err(String::from("bad from"))),
             },
             _ => return Err(opt.invalid_key_err()),
         }
     }
 
-    if !msr_config.rw_type.read_allow && !msr_config.rw_type.write_allow {
-        return Err(argument::Error::ExpectedArgument(String::from(
-            "userspace-msr: type is required",
-        )));
-    }
+    let rw_type = rw_type.ok_or(argument::Error::ExpectedArgument(String::from(
+        "userspace-msr: type is required",
+    )))?;
 
-    if msr_config.action.is_none() {
-        return Err(argument::Error::ExpectedArgument(String::from(
-            "userspace-msr: action is required",
-        )));
-    }
+    let action = action.ok_or(argument::Error::ExpectedArgument(String::from(
+        "userspace-msr: action is required",
+    )))?;
 
-    Ok((index, msr_config))
+    Ok((
+        index,
+        MsrConfig {
+            rw_type,
+            action,
+            from,
+        },
+    ))
 }
 
 fn parse_serial_options(s: &str) -> argument::Result<SerialParameters> {
@@ -4137,23 +4140,15 @@ mod tests {
         let (pass_cpu0_index, pass_cpu0_cfg) =
             parse_userspace_msr_options("0x10,type=r,action=pass,from=cpu0").unwrap();
         assert_eq!(pass_cpu0_index, 0x10);
-        assert!(pass_cpu0_cfg.rw_type.read_allow);
-        assert!(!pass_cpu0_cfg.rw_type.write_allow);
-        assert_eq!(
-            *pass_cpu0_cfg.action.as_ref().unwrap(),
-            MsrAction::MsrPassthrough
-        );
+        assert_eq!(pass_cpu0_cfg.rw_type, MsrRWType::ReadOnly);
+        assert_eq!(pass_cpu0_cfg.action, MsrAction::MsrPassthrough);
         assert_eq!(pass_cpu0_cfg.from, MsrValueFrom::RWFromCPU0);
 
         let (pass_cpus_index, pass_cpus_cfg) =
             parse_userspace_msr_options("0x10,type=rw,action=emu").unwrap();
         assert_eq!(pass_cpus_index, 0x10);
-        assert!(pass_cpus_cfg.rw_type.read_allow);
-        assert!(pass_cpus_cfg.rw_type.write_allow);
-        assert_eq!(
-            *pass_cpus_cfg.action.as_ref().unwrap(),
-            MsrAction::MsrEmulate
-        );
+        assert_eq!(pass_cpus_cfg.rw_type, MsrRWType::ReadWrite);
+        assert_eq!(pass_cpus_cfg.action, MsrAction::MsrEmulate);
         assert_eq!(pass_cpus_cfg.from, MsrValueFrom::RWFromRunningCPU);
 
         assert!(parse_userspace_msr_options("0x10,action=none").is_err());

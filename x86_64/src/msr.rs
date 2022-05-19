@@ -219,7 +219,7 @@ impl MsrHandlers {
         if let Some((rw_type, handler)) = self.handler.get(&index) {
             // It's not error. This means user does't want to handle
             // RDMSR. Just log it.
-            if !rw_type.read_allow {
+            if matches!(rw_type, MsrRWType::WriteOnly) {
                 debug!("RDMSR is not allowed for msr: {:#x}", index);
                 return None;
             }
@@ -240,7 +240,7 @@ impl MsrHandlers {
         if let Some((rw_type, handler)) = self.handler.get(&index) {
             // It's not error. This means user does't want to handle
             // WRMSR. Just log it.
-            if !rw_type.write_allow {
+            if matches!(rw_type, MsrRWType::ReadOnly) {
                 debug!("WRMSR is not allowed for msr: {:#x}", index);
                 return None;
             }
@@ -263,11 +263,7 @@ impl MsrHandlers {
         msr_config: MsrConfig,
         cpu_id: usize,
     ) -> std::result::Result<(), MsrExitHandlerError> {
-        if msr_config.action.is_none() {
-            return Err(MsrExitHandlerError::InvalidParam);
-        }
-
-        match msr_config.action.as_ref().unwrap() {
+        match msr_config.action {
             MsrAction::MsrPassthrough => {
                 let msr_handler: Rc<RefCell<Box<dyn MsrHandling>>> =
                     match MsrPassthroughHandler::new(index, &msr_config, Rc::clone(&self.msr_file))
