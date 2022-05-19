@@ -1110,6 +1110,8 @@ mod tests {
             .expect("Failed to run executor");
     }
 
+    // We will drain all ops on drop and its not guaranteed that operation won't finish
+    #[ignore]
     #[test]
     fn drop_before_completion() {
         if !use_uring() {
