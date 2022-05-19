@@ -1021,7 +1021,7 @@ pub struct Gpu {
     base_features: u64,
     udmabuf: bool,
     render_server_fd: Option<SafeDescriptor>,
-    _context_mask: u64,
+    context_mask: u64,
 }
 
 impl Gpu {
@@ -1099,7 +1099,7 @@ impl Gpu {
             base_features,
             udmabuf: gpu_parameters.udmabuf,
             render_server_fd,
-            _context_mask: gpu_parameters.context_mask,
+            context_mask: gpu_parameters.context_mask,
         }
     }
 
@@ -1147,26 +1147,30 @@ impl Gpu {
             events_read |= VIRTIO_GPU_EVENT_DISPLAY;
         }
 
-        let num_capsets = match self.rutabaga_component {
-            RutabagaComponentType::Rutabaga2D => 0,
-            _ => {
-                #[allow(unused_mut)]
-                let mut num_capsets = 0;
+        let num_capsets = match self.context_mask {
+            0 => {
+                match self.rutabaga_component {
+                    RutabagaComponentType::Rutabaga2D => 0,
+                    _ => {
+                        let mut num_capsets = 0;
 
-                // Three capsets for virgl_renderer
-                #[cfg(feature = "virgl_renderer")]
-                {
-                    num_capsets += 3;
+                        // Three capsets for virgl_renderer
+                        #[cfg(feature = "virgl_renderer")]
+                        {
+                            num_capsets += 3;
+                        }
+
+                        // One capset for gfxstream
+                        #[cfg(feature = "gfxstream")]
+                        {
+                            num_capsets += 1;
+                        }
+
+                        num_capsets
+                    }
                 }
-
-                // One capset for gfxstream
-                #[cfg(feature = "gfxstream")]
-                {
-                    num_capsets += 1;
-                }
-
-                num_capsets
             }
+            _ => self.context_mask.count_ones(),
         };
 
         virtio_gpu_config {
