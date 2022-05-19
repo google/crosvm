@@ -37,12 +37,7 @@ except ValueError:
 
 is_podman = docker.executable.name == "podman"
 
-# Enable interactive mode when running in an interactive terminal.
-TTY_ARGS = "--interactive --tty" if sys.stdin.isatty() else None
-
-
 DOCKER_ARGS = [
-    TTY_ARGS,
     # Podman will not share devices when `--privileged` is specified
     "--privileged" if not is_podman else None,
     # Share crosvm source
@@ -69,9 +64,21 @@ def container_revision(container_id: str):
 
 
 @arg("command", nargs=argparse.REMAINDER)
-def main(command: tuple[str, ...], stop: bool = False, hermetic: bool = False):
+def main(
+    command: tuple[str, ...],
+    stop: bool = False,
+    hermetic: bool = False,
+    interactive: bool = False,
+):
     chdir(CROSVM_ROOT)
     container_id = docker(f"ps -q -f name={CONTAINER_NAME}").stdout()
+
+    # If a command is provided run non-interactive unless explicitly asked for.
+    tty_args = []
+    if not command or interactive:
+        if not sys.stdin.isatty():
+            raise Exception("Trying to run an interactive session in a non-interactive terminal.")
+        tty_args = ["--interactive", "--tty"]
 
     # Start an interactive shell by default
     if not command:
@@ -88,7 +95,7 @@ def main(command: tuple[str, ...], stop: bool = False, hermetic: bool = False):
         return
 
     if hermetic:
-        docker(f"run --rm", *DOCKER_ARGS, *quoted_cmd).fg()
+        docker(f"run --rm", *tty_args, *DOCKER_ARGS, *quoted_cmd).fg()
     else:
         if container_id and container_revision(container_id) != IMAGE_VERSION:
             print(f"New image is available. Stopping old container ({container_id}).")
@@ -96,12 +103,14 @@ def main(command: tuple[str, ...], stop: bool = False, hermetic: bool = False):
             container_id = None
 
         if not container_id:
-            container_id = docker(f"run --detach --name {CONTAINER_NAME}", *DOCKER_ARGS).stdout()
+            container_id = docker(
+                f"run --detach --name {CONTAINER_NAME}", *tty_args, *DOCKER_ARGS
+            ).stdout()
             print(f"Started dev-container ({container_id}).")
         else:
             print(f"Using existing dev-container instance ({container_id}).")
 
-        docker("exec", TTY_ARGS, container_id, *quoted_cmd).fg()
+        docker("exec", *tty_args, container_id, *quoted_cmd).fg()
 
 
 if __name__ == "__main__":
