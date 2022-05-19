@@ -1564,12 +1564,24 @@ fn check_itmt_cpu_support() -> std::result::Result<(), ItmtError> {
     }
 }
 
-fn insert_msr_map(
+fn insert_msr(
     msr_map: &mut BTreeMap<u32, MsrConfig>,
     key: u32,
-    value: MsrConfig,
+    rw_type: MsrRWType,
+    action: MsrAction,
+    from: MsrValueFrom,
 ) -> std::result::Result<(), ItmtError> {
-    if msr_map.insert(key, value).is_some() {
+    if msr_map
+        .insert(
+            key,
+            MsrConfig {
+                rw_type,
+                action,
+                from,
+            },
+        )
+        .is_some()
+    {
         Err(ItmtError::MsrDuplicate(key))
     } else {
         Ok(())
@@ -1581,65 +1593,47 @@ pub fn set_itmt_msr_config(
 ) -> std::result::Result<(), ItmtError> {
     check_itmt_cpu_support()?;
 
-    insert_msr_map(
-        msr_map,
-        MSR_HWP_CAPABILITIES,
-        MsrConfig {
-            rw_type: MsrRWType::ReadOnly,
-            action: MsrAction::MsrPassthrough,
-            from: MsrValueFrom::RWFromRunningCPU,
-        },
-    )?;
-
-    insert_msr_map(
-        msr_map,
-        MSR_PM_ENABLE,
-        MsrConfig {
-            rw_type: MsrRWType::ReadWrite,
-            action: MsrAction::MsrEmulate,
-            from: MsrValueFrom::RWFromRunningCPU,
-        },
-    )?;
-
-    insert_msr_map(
-        msr_map,
-        MSR_HWP_REQUEST,
-        MsrConfig {
-            rw_type: MsrRWType::ReadWrite,
-            action: MsrAction::MsrEmulate,
-            from: MsrValueFrom::RWFromRunningCPU,
-        },
-    )?;
-
-    insert_msr_map(
-        msr_map,
-        MSR_TURBO_RATIO_LIMIT,
-        MsrConfig {
-            rw_type: MsrRWType::ReadOnly,
-            action: MsrAction::MsrPassthrough,
-            from: MsrValueFrom::RWFromRunningCPU,
-        },
-    )?;
-
-    insert_msr_map(
-        msr_map,
-        MSR_PLATFORM_INFO,
-        MsrConfig {
-            rw_type: MsrRWType::ReadOnly,
-            action: MsrAction::MsrPassthrough,
-            from: MsrValueFrom::RWFromRunningCPU,
-        },
-    )?;
-
-    insert_msr_map(
-        msr_map,
-        MSR_IA32_PERF_CTL,
-        MsrConfig {
-            rw_type: MsrRWType::ReadWrite,
-            action: MsrAction::MsrEmulate,
-            from: MsrValueFrom::RWFromRunningCPU,
-        },
-    )?;
+    let msrs = vec![
+        (
+            MSR_HWP_CAPABILITIES,
+            MsrRWType::ReadOnly,
+            MsrAction::MsrPassthrough,
+            MsrValueFrom::RWFromRunningCPU,
+        ),
+        (
+            MSR_PM_ENABLE,
+            MsrRWType::ReadWrite,
+            MsrAction::MsrEmulate,
+            MsrValueFrom::RWFromRunningCPU,
+        ),
+        (
+            MSR_HWP_REQUEST,
+            MsrRWType::ReadWrite,
+            MsrAction::MsrEmulate,
+            MsrValueFrom::RWFromRunningCPU,
+        ),
+        (
+            MSR_TURBO_RATIO_LIMIT,
+            MsrRWType::ReadOnly,
+            MsrAction::MsrPassthrough,
+            MsrValueFrom::RWFromRunningCPU,
+        ),
+        (
+            MSR_PLATFORM_INFO,
+            MsrRWType::ReadOnly,
+            MsrAction::MsrPassthrough,
+            MsrValueFrom::RWFromRunningCPU,
+        ),
+        (
+            MSR_IA32_PERF_CTL,
+            MsrRWType::ReadWrite,
+            MsrAction::MsrEmulate,
+            MsrValueFrom::RWFromRunningCPU,
+        ),
+    ];
+    for msr in msrs {
+        insert_msr(msr_map, msr.0, msr.1, msr.2, msr.3)?;
+    }
 
     Ok(())
 }
