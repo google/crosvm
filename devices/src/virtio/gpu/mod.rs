@@ -1159,9 +1159,6 @@ impl Gpu {
             _ => {
                 let mut num_capsets = 0;
 
-                // Cross-domain (like virtio_wl with llvmpipe) is always available.
-                num_capsets += 1;
-
                 // Three capsets for virgl_renderer
                 #[cfg(feature = "virgl_renderer")]
                 {

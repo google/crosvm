@@ -870,11 +870,6 @@ impl RutabagaBuilder {
 
             let cross_domain = CrossDomain::init(self.channels)?;
             rutabaga_components.insert(RutabagaComponentType::CrossDomain, cross_domain);
-
-            rutabaga_capsets.push(RutabagaCapsetInfo {
-                capset_id: RUTABAGA_CAPSET_CROSS_DOMAIN,
-                component: RutabagaComponentType::CrossDomain,
-            });
         }
 
         Ok(Rutabaga {
