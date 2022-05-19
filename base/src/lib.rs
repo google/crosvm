@@ -13,7 +13,6 @@ mod event;
 pub mod external_mapping;
 mod mmap;
 mod notifiers;
-pub mod scoped_event_macro;
 mod shm;
 pub mod syslog;
 mod timer;
@@ -27,7 +26,7 @@ pub use sys::platform;
 pub use alloc::LayoutAllocation;
 pub use clock::{Clock, FakeClock};
 pub use errno::{errno_result, Error, Result};
-pub use event::{Event, EventReadResult, ScopedEvent};
+pub use event::{Event, EventReadResult};
 pub use external_mapping::{
     Error as ExternalMappingError, ExternalMapping, Result as ExternalMappingResult,
 };

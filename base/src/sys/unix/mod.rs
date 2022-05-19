@@ -48,10 +48,7 @@ pub use crate::descriptor_reflection::{
     deserialize_with_descriptors, with_as_descriptor, with_raw_descriptor, FileSerdeWrapper,
     SerializeDescriptors,
 };
-pub use crate::{
-    errno::{Error, Result, *},
-    generate_scoped_event,
-};
+pub use crate::errno::{Error, Result, *};
 pub use acpi_event::*;
 pub use base_poll_token_derive::*;
 pub use capabilities::drop_capabilities;

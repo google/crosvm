@@ -4,7 +4,6 @@
 
 use std::{
     mem,
-    ops::Deref,
     os::unix::io::{AsRawFd, RawFd},
     ptr,
     time::Duration,
@@ -15,7 +14,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{duration_to_timespec, errno_result, RawDescriptor, Result};
 use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
-use crate::generate_scoped_event;
 
 /// A safe wrapper around a Linux eventfd (man 2 eventfd).
 ///
@@ -173,8 +171,6 @@ impl From<EventFd> for SafeDescriptor {
     }
 }
 
-generate_scoped_event!(EventFd);
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,21 +193,6 @@ mod tests {
         let evt_clone = evt.try_clone().unwrap();
         evt.write(923).unwrap();
         assert_eq!(evt_clone.read(), Ok(923));
-    }
-
-    #[test]
-    fn scoped_event() {
-        let scoped_evt = ScopedEvent::new().unwrap();
-        let evt_clone: EventFd = scoped_evt.try_clone().unwrap();
-        drop(scoped_evt);
-        assert_eq!(evt_clone.read(), Ok(1));
-    }
-
-    #[test]
-    fn eventfd_from_scoped_event() {
-        let scoped_evt = ScopedEvent::new().unwrap();
-        let evt: EventFd = scoped_evt.into();
-        evt.write(1).unwrap();
     }
 
     #[test]

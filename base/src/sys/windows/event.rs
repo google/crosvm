@@ -2,15 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::generate_scoped_event;
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::CString,
-    mem,
     mem::MaybeUninit,
-    ops::Deref,
     os::windows::io::{AsRawHandle, RawHandle},
-    ptr,
     ptr::null,
     time::Duration,
 };
@@ -252,8 +248,6 @@ impl IntoRawDescriptor for Event {
 unsafe impl Send for Event {}
 unsafe impl Sync for Event {}
 
-generate_scoped_event!(Event);
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,20 +317,5 @@ mod tests {
                 .expect("failed to read from event with timeout"),
             EventReadResult::Timeout
         );
-    }
-
-    #[test]
-    fn scoped_event() {
-        let scoped_evt = ScopedEvent::new().unwrap();
-        let evt_clone: Event = scoped_evt.try_clone().unwrap();
-        drop(scoped_evt);
-        assert_eq!(evt_clone.read(), Ok(1));
-    }
-
-    #[test]
-    fn eventfd_from_scoped_event() {
-        let scoped_evt = ScopedEvent::new().unwrap();
-        let evt: Event = scoped_evt.into();
-        evt.write(1).unwrap();
     }
 }
