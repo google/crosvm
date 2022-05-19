@@ -53,6 +53,7 @@ p9 = "*"
 power_monitor = { path = "../power_monitor" }
 protobuf = { version = "2.3", optional = true }
 protos = { path = "../protos", optional = true }
+rand = "0.7.2"
 remain = "*"
 resources = { path = "../resources" }
 serde = { version = "1", features = [ "derive" ] }
