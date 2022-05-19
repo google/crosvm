@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod sys;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -369,7 +371,7 @@ async fn handle_event(
                     interrupt.borrow().signal_config_changed();
 
                     state.failable_update = false;
-                    return send_adjusted_response(command_tube, state.actual_pages)
+                    return sys::send_adjusted_response(command_tube, state.actual_pages)
                         .map_err(BalloonError::SendResponse);
                 }
             }
@@ -432,7 +434,7 @@ async fn handle_command_tube(
 
                     if allow_failure {
                         if num_pages == state.actual_pages {
-                            send_adjusted_response(command_tube, num_pages)
+                            sys::send_adjusted_response(command_tube, num_pages)
                                 .map_err(BalloonError::SendResponse)?;
                         } else {
                             state.failable_update = true;
