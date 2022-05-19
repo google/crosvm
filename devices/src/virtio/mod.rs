@@ -134,7 +134,7 @@ impl std::fmt::Display for DeviceType {
             DeviceType::Tpm => write!(f, "tpm"),
             DeviceType::VideoDec => write!(f, "video-decoder"),
             DeviceType::VideoEnc => write!(f, "video-encoder"),
-            t => write!(f, "unknown-{}", t),
+            DeviceType::Mac80211HwSim => write!(f, "mac-80211-hw-sim"),
         }
     }
 }
