@@ -55,6 +55,17 @@ impl GuestAddress {
     pub fn mask(self, mask: u64) -> GuestAddress {
         GuestAddress(self.0 & mask as u64)
     }
+
+    /// Returns the next highest address that is a multiple of `align`, or an unchanged copy of the
+    /// address if it's already a multiple of `align`.  Returns None on overflow.
+    ///
+    /// `align` must be a power of 2.
+    pub fn align(self, align: u64) -> Option<GuestAddress> {
+        if align <= 1 {
+            return Some(self);
+        }
+        self.checked_add(align - 1).map(|a| a & !(align - 1))
+    }
 }
 
 impl BitAnd<u64> for GuestAddress {
@@ -145,5 +156,22 @@ mod tests {
         let a = GuestAddress(0xffffffffffffff55);
         assert_eq!(Some(GuestAddress(0xffffffffffffff57)), a.checked_add(2));
         assert!(a.checked_add(0xf0).is_none());
+    }
+
+    #[test]
+    fn align() {
+        assert_eq!(GuestAddress(12345).align(0), Some(GuestAddress(12345)));
+        assert_eq!(GuestAddress(12345).align(1), Some(GuestAddress(12345)));
+        assert_eq!(GuestAddress(12345).align(2), Some(GuestAddress(12346)));
+        assert_eq!(GuestAddress(0).align(4096), Some(GuestAddress(0)));
+        assert_eq!(GuestAddress(1).align(4096), Some(GuestAddress(4096)));
+        assert_eq!(GuestAddress(4095).align(4096), Some(GuestAddress(4096)));
+        assert_eq!(GuestAddress(4096).align(4096), Some(GuestAddress(4096)));
+        assert_eq!(GuestAddress(4097).align(4096), Some(GuestAddress(8192)));
+        assert_eq!(
+            GuestAddress(u64::MAX & !4095).align(4096),
+            Some(GuestAddress(u64::MAX & !4095)),
+        );
+        assert_eq!(GuestAddress(u64::MAX).align(2), None);
     }
 }
