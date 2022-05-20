@@ -126,7 +126,7 @@ class Command(object):
         self.env_vars = env_vars
         if len(self.args) > 0:
             executable = self.args[0]
-            if Path(executable).exists:
+            if Path(executable).exists():
                 self.executable = Path(executable)
             else:
                 path = shutil.which(executable)
