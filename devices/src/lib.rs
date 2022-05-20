@@ -32,7 +32,7 @@ pub mod serial_device;
 mod software_tpm;
 mod sys;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-mod tsc;
+pub mod tsc;
 #[cfg(feature = "usb")]
 pub mod usb;
 #[cfg(feature = "usb")]

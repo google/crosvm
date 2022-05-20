@@ -246,6 +246,17 @@ pub const X86_64_SCI_IRQ: u32 = 5;
 pub const X86_64_IRQ_BASE: u32 = 9;
 const ACPI_HI_RSDP_WINDOW_BASE: u64 = 0x000E_0000;
 
+#[derive(Debug, PartialEq)]
+pub enum CpuManufacturer {
+    Intel,
+    Amd,
+    Unknown,
+}
+
+pub fn get_cpu_manufacturer() -> CpuManufacturer {
+    cpuid::cpu_manufacturer()
+}
+
 // Memory layout below 4G
 struct LowMemoryLayout {
     // the pci mmio start address below 4G
