@@ -23,8 +23,8 @@
 import argparse
 import getpass
 import shutil
-from argh import arg  # type: ignore
-from impl.common import CROSVM_ROOT, run_main, cmd, chdir, quoted
+from typing import Tuple
+from impl.common import CROSVM_ROOT, cmd, chdir, quoted
 import sys
 
 CONTAINER_NAME = f"crosvm_dev_{getpass.getuser()}"
@@ -56,9 +56,8 @@ def container_revision(docker: cmd, container_id: str):
     return parts[1]
 
 
-@arg("command", nargs=argparse.REMAINDER)
 def main(
-    command: tuple[str, ...],
+    command: Tuple[str, ...],
     stop: bool = False,
     hermetic: bool = False,
     interactive: bool = False,
@@ -126,4 +125,26 @@ def main(
 
 
 if __name__ == "__main__":
-    run_main(main)
+    # Note: Since the dev_container script is run outside of the container, we do not want to
+    # use common.run_main/argh here, so we can use this script without installing any
+    # dependencies. All that's needed is python >= 3.8.
+    parser = argparse.ArgumentParser(description="Runs the crosvm dev container.")
+    parser.add_argument("--stop", action="store_true", help="Stop the container if it's running.")
+    parser.add_argument(
+        "--hermetic", action="store_true", help="Do not re-use an existing container."
+    )
+    parser.add_argument(
+        "--interactive", "-i", action="store_true", help="Run the command interactively."
+    )
+    parser.add_argument("--podman", action="store_true", help="Use podman instead of docker.")
+    parser.add_argument(
+        "command", nargs=argparse.REMAINDER, help="The command to execute in the container."
+    )
+    args = parser.parse_args()
+    main(
+        args.command,
+        stop=args.stop,
+        hermetic=args.hermetic,
+        interactive=args.interactive,
+        podman=args.podman,
+    )

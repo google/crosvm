@@ -28,14 +28,8 @@ from io import StringIO
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from subprocess import DEVNULL, PIPE, STDOUT  # type: ignore
-from typing import Any, Callable, Iterable, NamedTuple, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, TypeVar, Union
 
-try:
-    import argh  # type: ignore
-except ImportError as e:
-    print("Missing module:", e)
-    print("(Re-)Run ./tools/install-deps to install the required dependencies.")
-    sys.exit(1)
 
 "Root directory of crosvm"
 CROSVM_ROOT = Path(__file__).parent.parent.parent.resolve()
@@ -125,7 +119,7 @@ class Command(object):
         self,
         *args: Any,
         stdin_cmd: Optional[Command] = None,
-        env_vars: dict[str, str] = {},
+        env_vars: Dict[str, str] = {},
     ):
         self.args = Command.__parse_cmd(args)
         self.stdin_cmd = stdin_cmd
@@ -361,13 +355,13 @@ class Command(object):
                     yield arg
 
     @staticmethod
-    def __parse_cmd(args: Iterable[Any]) -> list[str]:
+    def __parse_cmd(args: Iterable[Any]) -> List[str]:
         """Parses command line arguments for Command."""
         res = [parsed for arg in args for parsed in Command.__parse_cmd_args(arg)]
         return res
 
     @staticmethod
-    def __parse_cmd_args(arg: Any) -> list[str]:
+    def __parse_cmd_args(arg: Any) -> List[str]:
         """Parses a mixed type command line argument into a list of strings."""
         if isinstance(arg, Path):
             return [str(arg)]
@@ -447,7 +441,7 @@ class QuotedString(object):
 T = TypeVar("T")
 
 
-def batched(source: Iterable[T], max_batch_size: int) -> Iterable[list[T]]:
+def batched(source: Iterable[T], max_batch_size: int) -> Iterable[List[T]]:
     """
     Returns an iterator over batches of elements from source_list.
 
@@ -478,6 +472,12 @@ def run_commands(*functions: Callable[..., Any], default_fn: Optional[Callable[.
     Allow the user to call the provided functions with command line arguments translated to
     function arguments via argh: https://pythonhosted.org/argh
     """
+    try:
+        import argh  # type: ignore
+    except ImportError as e:
+        print("Missing module:", e)
+        print("(Re-)Run ./tools/install-deps to install the required dependencies.")
+        sys.exit(1)
     try:
         # Add global verbose arguments
         parser = argparse.ArgumentParser()
@@ -526,7 +526,7 @@ def __add_verbose_args(parser: argparse.ArgumentParser):
     )
 
 
-def find_source_files(extension: str, ignore: list[str] = []):
+def find_source_files(extension: str, ignore: List[str] = []):
     for file in Path(".").glob(f"**/*.{extension}"):
         if file.is_relative_to("third_party"):
             continue
