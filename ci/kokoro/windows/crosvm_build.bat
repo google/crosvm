@@ -15,7 +15,7 @@ set rustup_version=1.24.3
 
 :: Install rust toolchain through rustup.
 echo [%TIME%] installing rustup %rustup_version%
-choco install -y rustup.install --version=%rustup_version%
+choco install --no-progress -y rustup.install --version=%rustup_version%
 
 :: Reload path for installed rustup binary
 call RefreshEnv.cmd
@@ -26,7 +26,7 @@ cargo install bindgen
 
 :: Install python. The default kokoro intalled version is 3.7 but linux tests
 :: seem to run on 3.9+.
-choco install -y python --version=3.9.0
+choco install --no-progress -y python --version=3.9.0
 
 :: Reload path for installed rust toolchain.
 call RefreshEnv.cmd
