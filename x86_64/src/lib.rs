@@ -81,7 +81,7 @@ use vm_control::{BatControl, BatteryType};
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use {
-    gdbstub_arch::x86::reg::{X86SegmentRegs, X86_64CoreRegs},
+    gdbstub_arch::x86::reg::{X86SegmentRegs, X86_64CoreRegs, X87FpuInternalRegs},
     hypervisor::x86_64::{Regs, Sregs},
 };
 
@@ -838,15 +838,41 @@ impl arch::LinuxArch for X8664arch {
             gs: sregs.gs.selector as u32,
         };
 
-        // TODO(keiichiw): Other registers such as FPU, xmm and mxcsr.
+        // x87 FPU internal state
+        // TODO(dverkamp): floating point tag word, instruction pointer, and data pointer
+        let fpu = vcpu.get_fpu().map_err(Error::ReadRegs)?;
+        let fpu_internal = X87FpuInternalRegs {
+            fctrl: u32::from(fpu.fcw),
+            fstat: u32::from(fpu.fsw),
+            fop: u32::from(fpu.last_opcode),
+            ..Default::default()
+        };
 
-        Ok(X86_64CoreRegs {
+        let mut regs = X86_64CoreRegs {
             regs,
             eflags,
             rip,
             segments,
-            ..Default::default()
-        })
+            st: Default::default(),
+            fpu: fpu_internal,
+            xmm: Default::default(),
+            mxcsr: fpu.mxcsr,
+        };
+
+        // x87 FPU registers: ST0-ST7
+        for (dst, src) in regs.st.iter_mut().zip(fpu.fpr.iter()) {
+            // `fpr` contains the x87 floating point registers in FXSAVE format.
+            // Each element contains an 80-bit floating point value in the low 10 bytes.
+            // The upper 6 bytes are reserved and can be ignored.
+            dst.copy_from_slice(&src[0..10])
+        }
+
+        // SSE registers: XMM0-XMM15
+        for (dst, src) in regs.xmm.iter_mut().zip(fpu.xmm.iter()) {
+            *dst = u128::from_le_bytes(*src);
+        }
+
+        Ok(regs)
     }
 
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
@@ -888,7 +914,24 @@ impl arch::LinuxArch for X8664arch {
 
         vcpu.set_sregs(&sregs).map_err(Error::WriteRegs)?;
 
-        // TODO(keiichiw): Other registers such as FPU, xmm and mxcsr.
+        // FPU and SSE registers
+        let mut fpu = vcpu.get_fpu().map_err(Error::ReadRegs)?;
+        fpu.fcw = regs.fpu.fctrl as u16;
+        fpu.fsw = regs.fpu.fstat as u16;
+        fpu.last_opcode = regs.fpu.fop as u16;
+        // TODO(dverkamp): floating point tag word, instruction pointer, and data pointer
+
+        // x87 FPU registers: ST0-ST7
+        for (dst, src) in fpu.fpr.iter_mut().zip(regs.st.iter()) {
+            dst[0..10].copy_from_slice(src);
+        }
+
+        // SSE registers: XMM0-XMM15
+        for (dst, src) in fpu.xmm.iter_mut().zip(regs.xmm.iter()) {
+            dst.copy_from_slice(&src.to_le_bytes());
+        }
+
+        vcpu.set_fpu(&fpu).map_err(Error::WriteRegs)?;
 
         Ok(())
     }
