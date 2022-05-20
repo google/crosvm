@@ -26,8 +26,7 @@ cargo install bindgen
 
 :: Install python. The default kokoro intalled version is 3.7 but linux tests
 :: seem to run on 3.9+.
-choco install -y python
-choco install python --version=3.9.0
+choco install -y python --version=3.9.0
 
 :: Reload path for installed rust toolchain.
 call RefreshEnv.cmd
