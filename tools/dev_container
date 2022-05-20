@@ -22,24 +22,15 @@
 
 import argparse
 import getpass
+import shutil
 from argh import arg  # type: ignore
 from impl.common import CROSVM_ROOT, run_main, cmd, chdir, quoted
 import sys
-import os
 
 CONTAINER_NAME = f"crosvm_dev_{getpass.getuser()}"
 IMAGE_VERSION = (CROSVM_ROOT / "tools/impl/dev_container/version").read_text().strip()
 
-try:
-    docker = cmd(os.environ.get("DOCKER", "docker"))
-except ValueError:
-    docker = cmd("podman")
-
-is_podman = docker.executable.name == "podman"
-
 DOCKER_ARGS = [
-    # Podman will not share devices when `--privileged` is specified
-    "--privileged" if not is_podman else None,
     # Share crosvm source
     f"--volume {quoted(CROSVM_ROOT)}:/workspace:rw",
     # Share devices and syslog
@@ -55,8 +46,10 @@ DOCKER_ARGS = [
     f"gcr.io/crosvm-packages/crosvm_dev:{IMAGE_VERSION}",
 ]
 
+PODMAN_IS_DEFAULT = shutil.which("docker") == None
 
-def container_revision(container_id: str):
+
+def container_revision(docker: cmd, container_id: str):
     image = docker("container inspect -f {{.Config.Image}}", container_id).stdout()
     parts = image.split(":")
     assert len(parts) == 2, f"Invalid image name {image}"
@@ -69,8 +62,22 @@ def main(
     stop: bool = False,
     hermetic: bool = False,
     interactive: bool = False,
+    podman: bool = PODMAN_IS_DEFAULT,
 ):
     chdir(CROSVM_ROOT)
+
+    docker = cmd("podman" if podman else "docker")
+    docker_args = [
+        # Podman will not share devices when `--privileged` is specified
+        "--privileged" if not podman else None,
+        *DOCKER_ARGS,
+    ]
+
+    if podman:
+        print("WARNING: Running dev_container with podman is not fully supported.")
+        print("Some crosvm tests require privileges podman cannot provide and may fail.")
+        print()
+
     container_id = docker(f"ps -q -f name={CONTAINER_NAME}").stdout()
 
     # If a command is provided run non-interactive unless explicitly asked for.
@@ -95,16 +102,16 @@ def main(
         return
 
     if hermetic:
-        docker(f"run --rm", *tty_args, *DOCKER_ARGS, *quoted_cmd).fg()
+        docker(f"run --rm", *tty_args, *docker_args, *quoted_cmd).fg()
     else:
-        if container_id and container_revision(container_id) != IMAGE_VERSION:
+        if container_id and container_revision(docker, container_id) != IMAGE_VERSION:
             print(f"New image is available. Stopping old container ({container_id}).")
             docker("rm -f", container_id).fg(quiet=True)
             container_id = None
 
         if not container_id:
             container_id = docker(
-                f"run --detach --name {CONTAINER_NAME}", *tty_args, *DOCKER_ARGS
+                f"run --detach --name {CONTAINER_NAME}", *tty_args, *docker_args
             ).stdout()
             print(f"Started dev-container ({container_id}).")
         else:
