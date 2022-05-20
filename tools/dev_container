@@ -78,7 +78,7 @@ def main(
         print("Some crosvm tests require privileges podman cannot provide and may fail.")
         print()
 
-    container_id = docker(f"ps -q -f name={CONTAINER_NAME}").stdout()
+    container_id = docker(f"ps -a -q -f name={CONTAINER_NAME}").stdout()
 
     # If a command is provided run non-interactive unless explicitly asked for.
     tty_args = []
@@ -115,6 +115,11 @@ def main(
             ).stdout()
             print(f"Started dev-container ({container_id}).")
         else:
+            is_running = docker(f"ps -q -f name={CONTAINER_NAME}").stdout()
+            if not is_running:
+                # The container may have been stopped (e.g. by a reboot)
+                print(f"Starting existing dev-container ({container_id}).")
+                docker("start", container_id).fg()
             print(f"Using existing dev-container instance ({container_id}).")
 
         docker("exec", *tty_args, container_id, *quoted_cmd).fg()
