@@ -1228,8 +1228,15 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
                     "`syslog-tag` already given".to_owned(),
                 ));
             }
-            syslog::set_proc_name(value.unwrap());
             cfg.syslog_tag = Some(value.unwrap().to_owned());
+        }
+        "log-level" => {
+            if cfg.log_level.is_some() {
+                return Err(argument::Error::TooManyArguments(
+                    "`log-level` already given".to_owned(),
+                ));
+            }
+            cfg.log_level = Some(value.unwrap().to_owned());
         }
         "root" | "rwroot" | "disk" | "rwdisk" => {
             let value = value.ok_or(argument::Error::ExpectedArgument(
@@ -2399,6 +2406,10 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
                               stdin - Direct standard input to this serial device. Can only be given once. Will default to first serial port if not provided.
                               "),
           Argument::value("syslog-tag", "TAG", "When logging to syslog, use the provided tag."),
+          Argument::value("log-level", "LOG_LEVEL", "Log level to use (trace,debug,info,warn,error,off)
+                                                    Example:
+                                                        off
+                                                        info,devices=off,base::syslog=trace"),
           Argument::value("x-display", "DISPLAY", "X11 display name to use."),
           Argument::flag("display-window-keyboard", "Capture keyboard input from the display window."),
           Argument::flag("display-window-mouse", "Capture keyboard input from the display window."),
@@ -2631,6 +2642,22 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
         set_argument(&mut cfg, name, value)
     })
     .and_then(|_| validate_arguments(&mut cfg));
+    if let Err(e) = syslog::init_with(syslog::LogConfig {
+        proc_name: if let Some(ref tag) = cfg.syslog_tag {
+            tag.clone()
+        } else {
+            String::from("crosvm")
+        },
+        filter: if let Some(ref level) = cfg.log_level {
+            level
+        } else {
+            "info"
+        },
+        ..Default::default()
+    }) {
+        eprintln!("failed to initialize syslog: {}", e);
+        return Err(());
+    }
 
     match match_res {
         #[cfg(feature = "plugin")]
@@ -3278,11 +3305,6 @@ fn print_usage() {
 }
 
 fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
-    if let Err(e) = syslog::init() {
-        println!("failed to initialize syslog: {}", e);
-        return Err(());
-    }
-
     panic_hook::set_panic_hook();
 
     let mut args = std::env::args();

@@ -4,33 +4,16 @@
 
 //! Implementation of the Syslog trait as a wrapper around Window's events
 
-use crate::syslog::{Error, Facility, Priority, Syslog};
+use crate::syslog::{Error, Facility, Log, Syslog};
 use crate::RawDescriptor;
 
-pub struct PlatformSyslog {
-    enabled: bool,
-}
+pub struct PlatformSyslog {}
 
 impl Syslog for PlatformSyslog {
-    fn new() -> Result<Self, Error> {
-        Ok(Self { enabled: true })
-    }
-
-    fn enable(&mut self, enable: bool) -> Result<(), Error> {
-        self.enabled = enable;
-        Ok(())
-    }
-
-    fn push_descriptors(&self, _fds: &mut Vec<RawDescriptor>) {}
-
-    fn log(
-        &self,
-        _proc_name: Option<&str>,
-        _pri: Priority,
-        _fac: Facility,
-        _file_line: Option<(&str, u32)>,
-        _args: &std::fmt::Arguments,
-    ) {
-        // do nothing. We don't plan to support writing to windows system logs.
+    fn new(
+        _proc_name: String,
+        _facility: Facility,
+    ) -> Result<(Option<Box<dyn Log + Send>>, Option<RawDescriptor>), Error> {
+        Ok((None, None))
     }
 }

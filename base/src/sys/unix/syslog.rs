@@ -41,14 +41,18 @@ mod tests {
         };
 
         let syslog_file = file.try_clone().expect("error cloning shared memory file");
-        echo_file(Some(syslog_file));
+        let state = State::new(LogConfig {
+            pipe: Some(Box::new(syslog_file)),
+            ..Default::default()
+        })
+        .unwrap();
 
         const TEST_STR: &str = "hello shared memory file";
-        log(
-            Priority::Error,
-            Facility::User,
-            Some((file!(), line!())),
-            &format_args!("{}", TEST_STR),
+        state.log(
+            &log::RecordBuilder::new()
+                .level(Level::Error)
+                .args(format_args!("{}", TEST_STR))
+                .build(),
         );
 
         file.seek(SeekFrom::Start(0))

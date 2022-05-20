@@ -158,10 +158,7 @@ impl SerialParameters {
             SerialType::Syslog => {
                 syslog::push_descriptors(keep_rds);
                 (
-                    Some(Box::new(syslog::Syslogger::new(
-                        syslog::Priority::Info,
-                        syslog::Facility::Daemon,
-                    ))),
+                    Some(Box::new(syslog::Syslogger::new(base::syslog::Level::Info))),
                     None,
                 )
             }

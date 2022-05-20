@@ -12,57 +12,52 @@ use android_log_sys::{
 };
 use std::{
     ffi::{CString, NulError},
-    fmt,
     mem::size_of,
 };
 
-use crate::syslog::{Error, Facility, Priority, Syslog};
+use crate::{
+    syslog::{Error, Facility, Level, Log, Syslog},
+    RawDescriptor,
+};
 
 pub struct PlatformSyslog {
-    enabled: bool,
+    proc_name: String,
 }
 
 impl Syslog for PlatformSyslog {
-    fn new() -> Result<Self, Error> {
-        Ok(Self { enabled: true })
+    fn new(
+        proc_name: String,
+        facility: Facility,
+    ) -> Result<(Option<Box<dyn Log + Send>>, Option<RawDescriptor>), Error> {
+        Ok((Some(Box::new(Self { proc_name })), None))
     }
+}
 
-    fn enable(&mut self, enable: bool) -> Result<(), Error> {
-        self.enabled = enable;
-        Ok(())
-    }
-
-    fn push_descriptors(&self, _fds: &mut Vec<crate::RawDescriptor>) {}
-
-    fn log(
-        &self,
-        proc_name: Option<&str>,
-        pri: Priority,
-        _fac: Facility,
-        file_line: Option<(&str, u32)>,
-        args: &fmt::Arguments,
-    ) {
-        let priority = match pri {
-            Priority::Emergency => LogPriority::ERROR,
-            Priority::Alert => LogPriority::ERROR,
-            Priority::Critical => LogPriority::ERROR,
-            Priority::Error => LogPriority::ERROR,
-            Priority::Warning => LogPriority::WARN,
-            Priority::Notice => LogPriority::INFO,
-            Priority::Info => LogPriority::DEBUG,
-            Priority::Debug => LogPriority::VERBOSE,
+impl Log for PlatformSyslog {
+    fn log(&self, record: &log::Record) {
+        let priority = match record.level() {
+            Level::Error => LogPriority::ERROR,
+            Level::Warn => LogPriority::WARN,
+            Level::Info => LogPriority::INFO,
+            Level::Debug => LogPriority::VERBOSE,
+            Level::Trace => LogPriority::VERBOSE,
         };
-        let tag = proc_name.unwrap_or("crosvm");
-        let message = std::fmt::format(*args);
+        let message = std::fmt::format(*record.args());
         let _ = android_log(
             log_id_t::SYSTEM,
             priority,
-            tag,
-            file_line.map(|(file, _)| file),
-            file_line.map(|(_, line)| line),
+            &self.proc_name,
+            record.file(),
+            record.line(),
             &message,
         );
     }
+
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        true
+    }
+
+    fn flush(&self) {}
 }
 
 /// Send a log message to the Android logger (logd, by default) if it is currently configured to be

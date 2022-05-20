@@ -5,9 +5,8 @@
 //! Implementation of the Syslog trait for Linux.
 
 use std::{
-    fmt,
     fs::File,
-    io::{Cursor, ErrorKind, Write},
+    io::{ErrorKind, Write},
     mem,
     os::unix::{
         io::{AsRawFd, FromRawFd},
@@ -22,87 +21,94 @@ use libc::{
 };
 
 use super::super::getpid;
-use crate::syslog::{Error, Facility, Priority, Syslog};
+use crate::{
+    syslog::{Error, Facility, Priority, Syslog},
+    RawDescriptor,
+};
 
 const SYSLOG_PATH: &str = "/dev/log";
 
-pub struct PlatformSyslog {
-    socket: Option<UnixDatagram>,
+pub struct PlatformSyslog {}
+
+struct SyslogSocket {
+    socket: UnixDatagram,
+}
+
+impl Write for SyslogSocket {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        const SEND_RETRY: usize = 2;
+
+        for _ in 0..SEND_RETRY {
+            match self.socket.send(buf) {
+                Ok(l) => return Ok(l),
+                Err(e) => match e.kind() {
+                    ErrorKind::ConnectionRefused
+                    | ErrorKind::ConnectionReset
+                    | ErrorKind::ConnectionAborted
+                    | ErrorKind::NotConnected => {
+                        let res = self.socket.connect(SYSLOG_PATH);
+                        if res.is_err() {
+                            break;
+                        }
+                    }
+                    _ => {}
+                },
+            }
+        }
+        // Abandon all hope but this is fine
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 impl Syslog for PlatformSyslog {
-    fn new() -> Result<Self, Error> {
-        Ok(Self {
-            socket: Some(openlog_and_get_socket()?),
-        })
-    }
+    fn new(
+        proc_name: String,
+        facility: Facility,
+    ) -> Result<(Option<Box<dyn log::Log + Send>>, Option<RawDescriptor>), Error> {
+        let socket = openlog_and_get_socket()?;
+        let mut builder = env_logger::Builder::new();
 
-    fn enable(&mut self, enable: bool) -> Result<(), Error> {
-        match self.socket.take() {
-            Some(_) if enable => {}
-            Some(s) => {
-                // Because `openlog_and_get_socket` actually just "borrows" the syslog FD, this module
-                // does not own the syslog connection and therefore should not destroy it.
-                mem::forget(s);
-            }
-            None if enable => {
-                let s = openlog_and_get_socket()?;
-                self.socket = Some(s);
-            }
-            _ => {}
-        }
-        Ok(())
-    }
+        // Everything is filtered layer above
+        builder.filter_level(log::LevelFilter::Trace);
 
-    fn push_descriptors(&self, fds: &mut Vec<crate::RawDescriptor>) {
-        fds.extend(self.socket.iter().map(|s| s.as_raw_fd()));
-    }
+        let fd = socket.as_raw_fd();
+        builder.target(env_logger::Target::Pipe(Box::new(SyslogSocket { socket })));
+        builder.format(move |buf, record| {
+            const MONTHS: [&str; 12] = [
+                "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+            ];
 
-    fn log(
-        &self,
-        proc_name: Option<&str>,
-        pri: Priority,
-        fac: Facility,
-        file_line: Option<(&str, u32)>,
-        args: &fmt::Arguments,
-    ) {
-        const MONTHS: [&str; 12] = [
-            "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-        ];
-
-        let mut buf = [0u8; 1024];
-        if let Some(socket) = &self.socket {
             let tm = get_localtime();
-            let prifac = (pri as u8) | (fac as u8);
-            let res = {
-                let mut buf_cursor = Cursor::new(&mut buf[..]);
-                write!(
-                    &mut buf_cursor,
-                    "<{}>{} {:02} {:02}:{:02}:{:02} {}[{}]: ",
-                    prifac,
-                    MONTHS[tm.tm_mon as usize],
-                    tm.tm_mday,
-                    tm.tm_hour,
-                    tm.tm_min,
-                    tm.tm_sec,
-                    proc_name.unwrap_or("-"),
-                    getpid()
-                )
-                .and_then(|()| {
-                    if let Some((file_name, line)) = &file_line {
-                        write!(&mut buf_cursor, " [{}:{}] ", file_name, line)
-                    } else {
-                        Ok(())
-                    }
-                })
-                .and_then(|()| write!(&mut buf_cursor, "{}", args))
-                .map(|()| buf_cursor.position() as usize)
-            };
-
-            if let Ok(len) = &res {
-                send_buf(socket, &buf[..*len])
+            let pri: Priority = record.level().into();
+            let prifac = (pri as u8) | (facility as u8);
+            write!(
+                buf,
+                "<{}>{} {:02} {:02}:{:02}:{:02} {}[{}]: ",
+                prifac,
+                MONTHS[tm.tm_mon as usize],
+                tm.tm_mday,
+                tm.tm_hour,
+                tm.tm_min,
+                tm.tm_sec,
+                &proc_name,
+                getpid()
+            )?;
+            if let Some(path) = record.file() {
+                write!(buf, " [{}", path)?;
+                if let Some(line) = record.line() {
+                    write!(buf, ":{}", line)?;
+                }
+                write!(buf, "] ")?;
             }
-        }
+            writeln!(buf, "{}", record.args())
+        });
+        // https://github.com/env-logger-rs/env_logger/issues/208
+        builder.is_test(true);
+        Ok((Some(Box::new(builder.build())), Some(fd)))
     }
 }
 
@@ -143,29 +149,6 @@ fn openlog_and_get_socket() -> Result<UnixDatagram, Error> {
             Ok(UnixDatagram::from_raw_fd(fd))
         } else {
             Err(Error::InvalidFd)
-        }
-    }
-}
-
-/// Should only be called after `init()` was called.
-fn send_buf(socket: &UnixDatagram, buf: &[u8]) {
-    const SEND_RETRY: usize = 2;
-
-    for _ in 0..SEND_RETRY {
-        match socket.send(buf) {
-            Ok(_) => break,
-            Err(e) => match e.kind() {
-                ErrorKind::ConnectionRefused
-                | ErrorKind::ConnectionReset
-                | ErrorKind::ConnectionAborted
-                | ErrorKind::NotConnected => {
-                    let res = socket.connect(SYSLOG_PATH);
-                    if res.is_err() {
-                        break;
-                    }
-                }
-                _ => {}
-            },
         }
     }
 }
