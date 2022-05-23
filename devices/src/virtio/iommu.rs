@@ -140,7 +140,8 @@ pub enum IommuError {
     WriteBufferTooSmall,
 }
 
-struct Worker {
+// Shared state for the virtio-iommu device.
+struct State {
     mem: GuestMemory,
     page_mask: u64,
     // Hot-pluggable PCI endpoints ranges
@@ -154,9 +155,13 @@ struct Worker {
     // key: domain ID
     // value: reference counter and MemoryMapperTrait
     domain_map: BTreeMap<u32, (u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>)>,
+    // Contains all pass-through endpoints that attach to this IOMMU device
+    // key: endpoint PCI address
+    // value: reference counter and MemoryMapperTrait
+    endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
 }
 
-impl Worker {
+impl State {
     // Detach the given endpoint if possible, and return whether or not the endpoint
     // was actually detached.
     //
@@ -207,7 +212,6 @@ impl Worker {
         &mut self,
         reader: &mut Reader,
         tail: &mut virtio_iommu_req_tail,
-        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
     ) -> Result<usize> {
         let req: virtio_iommu_req_attach =
             reader.read_obj().map_err(IommuError::GuestMemoryRead)?;
@@ -225,7 +229,7 @@ impl Worker {
         // VIRTIO_IOMMU_S_NOENT.
         let domain: u32 = req.domain.into();
         let endpoint: u32 = req.endpoint.into();
-        if !endpoints.borrow().contains_key(&endpoint) {
+        if !self.endpoints.contains_key(&endpoint) {
             tail.status = VIRTIO_IOMMU_S_NOENT;
             return Ok(0);
         }
@@ -244,7 +248,7 @@ impl Worker {
             }
         }
 
-        if let Some(mapper) = endpoints.borrow().get(&endpoint) {
+        if let Some(mapper) = self.endpoints.get(&endpoint) {
             // The same mapper can't be used for two domains at the same time,
             // since that would result in conflicts/permission leaks between
             // the two domains.
@@ -252,7 +256,7 @@ impl Worker {
                 let m = mapper.lock();
                 ((**m).type_id(), m.id())
             };
-            for (other_endpoint, other_mapper) in endpoints.borrow().iter() {
+            for (other_endpoint, other_mapper) in self.endpoints.iter() {
                 let other_id = {
                     let m = other_mapper.lock();
                     ((**m).type_id(), m.id())
@@ -285,7 +289,6 @@ impl Worker {
         &mut self,
         reader: &mut Reader,
         tail: &mut virtio_iommu_req_tail,
-        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
     ) -> Result<usize> {
         let req: virtio_iommu_req_detach =
             reader.read_obj().map_err(IommuError::GuestMemoryRead)?;
@@ -294,7 +297,7 @@ impl Worker {
         // the device MUST reject the request and set status to
         // VIRTIO_IOMMU_S_NOENT.
         let endpoint: u32 = req.endpoint.into();
-        if !endpoints.borrow().contains_key(&endpoint) {
+        if !self.endpoints.contains_key(&endpoint) {
             tail.status = VIRTIO_IOMMU_S_NOENT;
             return Ok(0);
         }
@@ -404,7 +407,6 @@ impl Worker {
         reader: &mut Reader,
         writer: &mut Writer,
         tail: &mut virtio_iommu_req_tail,
-        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
     ) -> Result<usize> {
         let req: virtio_iommu_req_probe = reader.read_obj().map_err(IommuError::GuestMemoryRead)?;
         let endpoint: u32 = req.endpoint.into();
@@ -412,7 +414,7 @@ impl Worker {
         // If the endpoint identified by endpoint doesn’t exist,
         // then the device SHOULD reject the request and set status
         // to VIRTIO_IOMMU_S_NOENT.
-        if !endpoints.borrow().contains_key(&endpoint) {
+        if !self.endpoints.contains_key(&endpoint) {
             tail.status = VIRTIO_IOMMU_S_NOENT;
         }
 
@@ -461,11 +463,7 @@ impl Worker {
         Ok(properties_size)
     }
 
-    fn execute_request(
-        &mut self,
-        avail_desc: &DescriptorChain,
-        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
-    ) -> Result<usize> {
+    fn execute_request(&mut self, avail_desc: &DescriptorChain) -> Result<usize> {
         let mut reader =
             Reader::new(self.mem.clone(), avail_desc.clone()).map_err(IommuError::CreateReader)?;
         let mut writer =
@@ -485,17 +483,13 @@ impl Worker {
         };
 
         let reply_len = match req_head.type_ {
-            VIRTIO_IOMMU_T_ATTACH => {
-                self.process_attach_request(&mut reader, &mut tail, endpoints)?
-            }
-            VIRTIO_IOMMU_T_DETACH => {
-                self.process_detach_request(&mut reader, &mut tail, endpoints)?
-            }
+            VIRTIO_IOMMU_T_ATTACH => self.process_attach_request(&mut reader, &mut tail)?,
+            VIRTIO_IOMMU_T_DETACH => self.process_detach_request(&mut reader, &mut tail)?,
             VIRTIO_IOMMU_T_MAP => self.process_dma_map_request(&mut reader, &mut tail)?,
             VIRTIO_IOMMU_T_UNMAP => self.process_dma_unmap_request(&mut reader, &mut tail)?,
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             VIRTIO_IOMMU_T_PROBE => {
-                self.process_probe_request(&mut reader, &mut writer, &mut tail, endpoints)?
+                self.process_probe_request(&mut reader, &mut writer, &mut tail)?
             }
             _ => return Err(IommuError::UnexpectedDescriptor),
         };
@@ -506,44 +500,13 @@ impl Worker {
         Ok((reply_len as usize) + size_of::<virtio_iommu_req_tail>())
     }
 
-    async fn request_queue<I: SignalableInterrupt>(
-        &mut self,
-        mut queue: Queue,
-        mut queue_event: EventAsync,
-        interrupt: &I,
-        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
-    ) -> Result<()> {
-        loop {
-            let avail_desc = queue
-                .next_async(&self.mem, &mut queue_event)
-                .await
-                .map_err(IommuError::ReadAsyncDesc)?;
-            let desc_index = avail_desc.index;
-
-            let len = match self.execute_request(&avail_desc, endpoints) {
-                Ok(len) => len as u32,
-                Err(e) => {
-                    error!("execute_request failed: {}", e);
-
-                    // If a request type is not recognized, the device SHOULD NOT write
-                    // the buffer and SHOULD set the used length to zero
-                    0
-                }
-            };
-
-            queue.add_used(&self.mem, desc_index, len as u32);
-            queue.trigger_interrupt(&self.mem, interrupt);
-        }
-    }
-
     fn handle_add_vfio_device(
+        &mut self,
         endpoint_addr: u32,
         wrapper: VfioWrapper,
-        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
-        hp_endpoints_ranges: &Rc<Vec<RangeInclusive<u32>>>,
     ) -> VirtioIOMMUVfioResult {
         let exists = |endpoint_addr: u32| -> bool {
-            for endpoints_range in hp_endpoints_ranges.iter() {
+            for endpoints_range in self.hp_endpoints_ranges.iter() {
                 if endpoints_range.contains(&endpoint_addr) {
                     return true;
                 }
@@ -555,29 +518,20 @@ impl Worker {
             return VirtioIOMMUVfioResult::NotInPCIRanges;
         }
 
-        endpoints
-            .borrow_mut()
+        self.endpoints
             .insert(endpoint_addr, Arc::new(Mutex::new(Box::new(wrapper))));
         VirtioIOMMUVfioResult::Ok
     }
 
-    fn handle_del_vfio_device(
-        pci_address: u32,
-        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
-    ) -> VirtioIOMMUVfioResult {
-        if endpoints.borrow_mut().remove(&pci_address).is_none() {
+    fn handle_del_vfio_device(&mut self, pci_address: u32) -> VirtioIOMMUVfioResult {
+        if self.endpoints.remove(&pci_address).is_none() {
             error!("There is no vfio container of {}", pci_address);
             return VirtioIOMMUVfioResult::NoSuchDevice;
         }
         VirtioIOMMUVfioResult::Ok
     }
 
-    fn handle_vfio(
-        mem: &GuestMemory,
-        vfio_cmd: VirtioIOMMUVfioCommand,
-        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
-        hp_endpoints_ranges: &Rc<Vec<RangeInclusive<u32>>>,
-    ) -> VirtioIOMMUResponse {
+    fn handle_vfio(&mut self, vfio_cmd: VirtioIOMMUVfioCommand) -> VirtioIOMMUResponse {
         use VirtioIOMMUVfioCommand::*;
         let vfio_result = match vfio_cmd {
             VfioDeviceAdd {
@@ -586,127 +540,139 @@ impl Worker {
                 endpoint_addr,
             } => match VfioContainer::new_from_container(container) {
                 Ok(vfio_container) => {
-                    let wrapper = VfioWrapper::new_with_id(vfio_container, wrapper_id, mem.clone());
-                    Self::handle_add_vfio_device(
-                        endpoint_addr,
-                        wrapper,
-                        endpoints,
-                        hp_endpoints_ranges,
-                    )
+                    let wrapper =
+                        VfioWrapper::new_with_id(vfio_container, wrapper_id, self.mem.clone());
+                    self.handle_add_vfio_device(endpoint_addr, wrapper)
                 }
                 Err(e) => {
                     error!("failed to verify the new container: {}", e);
                     VirtioIOMMUVfioResult::NoAvailableContainer
                 }
             },
-            VfioDeviceDel { endpoint_addr } => {
-                Self::handle_del_vfio_device(endpoint_addr, endpoints)
-            }
+            VfioDeviceDel { endpoint_addr } => self.handle_del_vfio_device(endpoint_addr),
         };
         VirtioIOMMUResponse::VfioResponse(vfio_result)
     }
+}
 
-    // Async task that handles messages from the host
-    async fn handle_command_tube(
-        mem: &GuestMemory,
-        command_tube: AsyncTube,
-        endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
-        hp_endpoints_ranges: &Rc<Vec<RangeInclusive<u32>>>,
-    ) -> Result<()> {
-        loop {
-            match command_tube.next::<VirtioIOMMURequest>().await {
-                Ok(command) => {
-                    let response: VirtioIOMMUResponse = match command {
-                        VirtioIOMMURequest::VfioCommand(vfio_cmd) => {
-                            Self::handle_vfio(mem, vfio_cmd, endpoints, hp_endpoints_ranges)
-                        }
-                    };
-                    if let Err(e) = command_tube.send(response).await {
-                        error!("{}", IommuError::VirtioIOMMUResponseError(e));
+// Async task that handles messages from the host
+async fn handle_command_tube(state: &Rc<RefCell<State>>, command_tube: AsyncTube) -> Result<()> {
+    loop {
+        match command_tube.next::<VirtioIOMMURequest>().await {
+            Ok(command) => {
+                let response: VirtioIOMMUResponse = match command {
+                    VirtioIOMMURequest::VfioCommand(vfio_cmd) => {
+                        state.borrow_mut().handle_vfio(vfio_cmd)
                     }
-                }
-                Err(e) => {
-                    return Err(IommuError::VirtioIOMMUReqError(e));
+                };
+                if let Err(e) = command_tube.send(response).await {
+                    error!("{}", IommuError::VirtioIOMMUResponseError(e));
                 }
             }
-        }
-    }
-
-    fn run(
-        &mut self,
-        iommu_device_tube: Tube,
-        mut queues: Vec<Queue>,
-        queue_evts: Vec<Event>,
-        kill_evt: Event,
-        interrupt: Interrupt,
-        endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
-        translate_response_senders: Option<BTreeMap<u32, Tube>>,
-        translate_request_rx: Option<Tube>,
-    ) -> Result<()> {
-        let ex = Executor::new().expect("Failed to create an executor");
-
-        let mut evts_async: Vec<EventAsync> = queue_evts
-            .into_iter()
-            .map(|e| EventAsync::new(e, &ex).expect("Failed to create async event for queue"))
-            .collect();
-        let interrupt = Rc::new(RefCell::new(interrupt));
-        let interrupt_ref = &*interrupt.borrow();
-
-        let (req_queue, req_evt) = (queues.remove(0), evts_async.remove(0));
-
-        let hp_endpoints_ranges = Rc::new(self.hp_endpoints_ranges.clone());
-        let mem = Rc::new(self.mem.clone());
-        // contains all pass-through endpoints that attach to this IOMMU device
-        // key: endpoint PCI address
-        // value: reference counter and MemoryMapperTrait
-        let endpoints: Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>> =
-            Rc::new(RefCell::new(endpoints));
-
-        let f_resample = async_utils::handle_irq_resample(&ex, interrupt.clone());
-        let f_kill = async_utils::await_and_exit(&ex, kill_evt);
-
-        let request_tube = translate_request_rx
-            .map(|t| AsyncTube::new(&ex, t).expect("Failed to create async tube for rx"));
-        let response_tubes = translate_response_senders.map(|m| {
-            m.into_iter()
-                .map(|x| {
-                    (
-                        x.0,
-                        AsyncTube::new(&ex, x.1).expect("Failed to create async tube"),
-                    )
-                })
-                .collect()
-        });
-
-        let f_handle_translate_request =
-            handle_translate_request(&endpoints, request_tube, response_tubes);
-        let f_request = self.request_queue(req_queue, req_evt, interrupt_ref, &endpoints);
-
-        let command_tube = AsyncTube::new(&ex, iommu_device_tube).unwrap();
-        // Future to handle command messages from host, such as passing vfio containers.
-        let f_cmd = Self::handle_command_tube(&mem, command_tube, &endpoints, &hp_endpoints_ranges);
-
-        let done = async {
-            select! {
-                res = f_request.fuse() => res.context("error in handling request queue"),
-                res = f_resample.fuse() => res.context("error in handle_irq_resample"),
-                res = f_kill.fuse() => res.context("error in await_and_exit"),
-                res = f_handle_translate_request.fuse() => res.context("error in handle_translate_request"),
-                res = f_cmd.fuse() => res.context("error in handling host request"),
+            Err(e) => {
+                return Err(IommuError::VirtioIOMMUReqError(e));
             }
-        };
-        match ex.run_until(done) {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => error!("Error in worker: {}", e),
-            Err(e) => return Err(IommuError::AsyncExec(e)),
         }
-
-        Ok(())
     }
 }
 
+async fn request_queue<I: SignalableInterrupt>(
+    state: &Rc<RefCell<State>>,
+    mut queue: Queue,
+    mut queue_event: EventAsync,
+    interrupt: &I,
+) -> Result<()> {
+    loop {
+        let mem = state.borrow().mem.clone();
+        let avail_desc = queue
+            .next_async(&mem, &mut queue_event)
+            .await
+            .map_err(IommuError::ReadAsyncDesc)?;
+        let desc_index = avail_desc.index;
+
+        let len = match state.borrow_mut().execute_request(&avail_desc) {
+            Ok(len) => len as u32,
+            Err(e) => {
+                error!("execute_request failed: {}", e);
+
+                // If a request type is not recognized, the device SHOULD NOT write
+                // the buffer and SHOULD set the used length to zero
+                0
+            }
+        };
+
+        queue.add_used(&mem, desc_index, len as u32);
+        queue.trigger_interrupt(&mem, interrupt);
+    }
+}
+
+fn run(
+    state: State,
+    iommu_device_tube: Tube,
+    mut queues: Vec<Queue>,
+    queue_evts: Vec<Event>,
+    kill_evt: Event,
+    interrupt: Interrupt,
+    translate_response_senders: Option<BTreeMap<u32, Tube>>,
+    translate_request_rx: Option<Tube>,
+) -> Result<()> {
+    let state = Rc::new(RefCell::new(state));
+    let ex = Executor::new().expect("Failed to create an executor");
+
+    let mut evts_async: Vec<EventAsync> = queue_evts
+        .into_iter()
+        .map(|e| EventAsync::new(e, &ex).expect("Failed to create async event for queue"))
+        .collect();
+    let interrupt = Rc::new(RefCell::new(interrupt));
+    let interrupt_ref = &*interrupt.borrow();
+
+    let (req_queue, req_evt) = (queues.remove(0), evts_async.remove(0));
+
+    let f_resample = async_utils::handle_irq_resample(&ex, interrupt.clone());
+    let f_kill = async_utils::await_and_exit(&ex, kill_evt);
+
+    let request_tube = translate_request_rx
+        .map(|t| AsyncTube::new(&ex, t).expect("Failed to create async tube for rx"));
+    let response_tubes = translate_response_senders.map(|m| {
+        m.into_iter()
+            .map(|x| {
+                (
+                    x.0,
+                    AsyncTube::new(&ex, x.1).expect("Failed to create async tube"),
+                )
+            })
+            .collect()
+    });
+
+    let f_handle_translate_request = handle_translate_request(&state, request_tube, response_tubes);
+    let f_request = request_queue(&state, req_queue, req_evt, interrupt_ref);
+
+    let command_tube = AsyncTube::new(&ex, iommu_device_tube).unwrap();
+    // Future to handle command messages from host, such as passing vfio containers.
+    let f_cmd = handle_command_tube(&state, command_tube);
+
+    let done = async {
+        select! {
+            res = f_request.fuse() => res.context("error in handling request queue"),
+            res = f_resample.fuse() => res.context("error in handle_irq_resample"),
+            res = f_kill.fuse() => res.context("error in await_and_exit"),
+            res = f_handle_translate_request.fuse() => {
+                res.context("error in handle_translate_request")
+            }
+            res = f_cmd.fuse() => res.context("error in handling host request"),
+        }
+    };
+    match ex.run_until(done) {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => error!("Error in worker: {}", e),
+        Err(e) => return Err(IommuError::AsyncExec(e)),
+    }
+
+    Ok(())
+}
+
 async fn handle_translate_request(
-    endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
+    state: &Rc<RefCell<State>>,
     request_tube: Option<AsyncTube>,
     response_tubes: Option<BTreeMap<u32, AsyncTube>>,
 ) -> Result<()> {
@@ -725,7 +691,7 @@ async fn handle_translate_request(
             size,
         } = request_tube.next().await.map_err(IommuError::Tube)?;
         let translate_response: Option<Vec<MemRegion>> =
-            if let Some(mapper) = endpoints.borrow_mut().get(&endpoint_id) {
+            if let Some(mapper) = state.borrow_mut().endpoints.get(&endpoint_id) {
                 mapper
                     .lock()
                     .translate(iova, size)
@@ -751,7 +717,7 @@ async fn handle_translate_request(
 /// Virtio device for IOMMU memory management.
 pub struct Iommu {
     kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<Worker>>,
+    worker_thread: Option<thread::JoinHandle<()>>,
     config: virtio_iommu_config,
     avail_features: u64,
     // Attached endpoints
@@ -910,27 +876,27 @@ impl VirtioDevice for Iommu {
                 let worker_result = thread::Builder::new()
                     .name("virtio_iommu".to_string())
                     .spawn(move || {
-                        let mut worker = Worker {
+                        let state = State {
                             mem,
                             page_mask,
                             hp_endpoints_ranges,
                             endpoint_map: BTreeMap::new(),
                             domain_map: BTreeMap::new(),
+                            endpoints: eps,
                         };
-                        let result = worker.run(
+                        let result = run(
+                            state,
                             iommu_device_tube,
                             queues,
                             queue_evts,
                             kill_evt,
                             interrupt,
-                            eps,
                             translate_response_senders,
                             translate_request_rx,
                         );
                         if let Err(e) = result {
                             error!("virtio-iommu worker thread exited with error: {}", e);
                         }
-                        worker
                     });
 
                 match worker_result {
