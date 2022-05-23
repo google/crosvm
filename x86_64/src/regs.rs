@@ -5,7 +5,7 @@
 use std::{mem, result};
 
 use base::{self, warn};
-use hypervisor::{Fpu, Register, Regs, Sregs, VcpuX86_64, Vm};
+use hypervisor::{Fpu, Register, Sregs, VcpuX86_64, Vm};
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory};
@@ -217,26 +217,6 @@ pub fn setup_fpu(vcpu: &dyn VcpuX86_64) -> Result<()> {
     };
 
     vcpu.set_fpu(&fpu).map_err(Error::FpuIoctlFailed)
-}
-
-/// Configure base registers for x86
-///
-/// # Arguments
-///
-/// * `vcpu` - Structure for the vcpu that holds the vcpu descriptor.
-/// * `boot_ip` - Starting instruction pointer.
-/// * `boot_sp` - Starting stack pointer.
-/// * `boot_si` - Must point to zero page address per Linux ABI.
-pub fn setup_regs(vcpu: &dyn VcpuX86_64, boot_ip: u64, boot_sp: u64, boot_si: u64) -> Result<()> {
-    let regs = Regs {
-        rip: boot_ip,
-        rsp: boot_sp,
-        rbp: boot_sp,
-        rsi: boot_si,
-        ..Default::default()
-    };
-
-    vcpu.set_regs(&regs).map_err(Error::SettingRegistersIoctl)
 }
 
 const X86_CR0_PE: u64 = 0x1;

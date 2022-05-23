@@ -172,8 +172,11 @@ pub(crate) fn host_phys_addr_bits() -> u8 {
 }
 
 /// Initial state for x86_64 VCPUs.
-#[derive(Copy, Clone)]
-pub struct VcpuInitX86_64 {}
+#[derive(Copy, Clone, Default)]
+pub struct VcpuInitX86_64 {
+    /// General-purpose registers.
+    pub regs: Regs,
+}
 
 /// A CpuId Entry contains supported feature information for the given processor.
 /// This can be modified by the hypervisor to pass additional information to the guest kernel

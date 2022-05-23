@@ -698,7 +698,7 @@ impl arch::LinuxArch for X8664arch {
                 .map_err(Error::Cmdline)?;
         }
 
-        let vcpu_init = VcpuInitX86_64 {};
+        let mut vcpu_init = VcpuInitX86_64::default();
 
         match components.vm_image {
             VmImage::Bios(ref mut bios) => {
@@ -710,11 +710,17 @@ impl arch::LinuxArch for X8664arch {
                 )
                 .map_err(Error::LoadCmdline)?;
                 Self::load_bios(&mem, bios)?
+                // RIP and CS will be configured by `set_reset_vector()` later.
             }
             VmImage::Kernel(ref mut kernel_image) => {
                 // separate out load_kernel from other setup to get a specific error for
                 // kernel loading
                 let (params, kernel_end) = Self::load_kernel(&mem, kernel_image)?;
+
+                let kernel_load_addr = GuestAddress(KERNEL_START_OFFSET);
+                let kernel_entry = mem
+                    .checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
+                    .ok_or(Error::KernelOffsetPastEnd)?;
 
                 Self::setup_system_memory(
                     &mem,
@@ -724,6 +730,12 @@ impl arch::LinuxArch for X8664arch {
                     kernel_end,
                     params,
                 )?;
+
+                // Configure the VCPU for the Linux/x86 64-bit boot protocol.
+                // <https://www.kernel.org/doc/html/latest/x86/boot.html>
+                vcpu_init.regs.rip = kernel_entry.offset();
+                vcpu_init.regs.rsp = BOOT_STACK_POINTER;
+                vcpu_init.regs.rsi = ZERO_PAGE_OFFSET;
             }
         }
 
@@ -757,7 +769,7 @@ impl arch::LinuxArch for X8664arch {
         hypervisor: &dyn HypervisorX86_64,
         irq_chip: &mut dyn IrqChipX86_64,
         vcpu: &mut dyn VcpuX86_64,
-        _vcpu_init: &VcpuInitX86_64,
+        vcpu_init: &VcpuInitX86_64,
         vcpu_id: usize,
         num_cpus: usize,
         has_bios: bool,
@@ -788,18 +800,8 @@ impl arch::LinuxArch for X8664arch {
         }
 
         let guest_mem = vm.get_memory();
-        let kernel_load_addr = GuestAddress(KERNEL_START_OFFSET);
         regs::setup_msrs(vm, vcpu, read_pci_mmio_before_32bit().start).map_err(Error::SetupMsrs)?;
-        let kernel_end = guest_mem
-            .checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
-            .ok_or(Error::KernelOffsetPastEnd)?;
-        regs::setup_regs(
-            vcpu,
-            (kernel_end).offset() as u64,
-            BOOT_STACK_POINTER as u64,
-            ZERO_PAGE_OFFSET as u64,
-        )
-        .map_err(Error::SetupRegs)?;
+        vcpu.set_regs(&vcpu_init.regs).map_err(Error::WriteRegs)?;
         regs::setup_fpu(vcpu).map_err(Error::SetupFpu)?;
         regs::setup_sregs(guest_mem, vcpu).map_err(Error::SetupSregs)?;
         interrupts::set_lint(vcpu_id, irq_chip).map_err(Error::SetLint)?;

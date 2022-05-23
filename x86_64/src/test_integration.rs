@@ -13,14 +13,15 @@ mod sys;
 use arch::LinuxArch;
 use devices::IrqChipX86_64;
 use hypervisor::{
-    HypervisorX86_64, IoOperation, IoParams, ProtectionType, VcpuExit, VcpuX86_64, VmCap, VmX86_64,
+    HypervisorX86_64, IoOperation, IoParams, ProtectionType, Regs, VcpuExit, VcpuX86_64, VmCap,
+    VmX86_64,
 };
 use resources::{AddressRange, SystemAllocator};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::cpuid::setup_cpuid;
 use super::interrupts::set_lint;
-use super::regs::{setup_fpu, setup_msrs, setup_regs, setup_sregs};
+use super::regs::{setup_fpu, setup_msrs, setup_sregs};
 use super::X8664arch;
 use super::{
     acpi, arch_memory_regions, bootparam, init_low_memory_layout, mptable,
@@ -243,15 +244,13 @@ where
             }
             setup_msrs(&vm, &vcpu, read_pci_mmio_before_32bit().start).unwrap();
 
-            setup_regs(
-                &vcpu,
-                start_addr.offset() as u64,
-                BOOT_STACK_POINTER as u64,
-                ZERO_PAGE_OFFSET as u64,
-            )
-            .unwrap();
+            let mut vcpu_regs = Regs {
+                rip: start_addr.offset(),
+                rsp: BOOT_STACK_POINTER,
+                rsi: ZERO_PAGE_OFFSET,
+                ..Default::default()
+            };
 
-            let mut vcpu_regs = vcpu.get_regs().unwrap();
             // instruction is
             // mov [eax],ebx
             // so we're writing 0x12 (the contents of ebx) to the address
