@@ -320,6 +320,7 @@ pub fn run_console_device(program_name: &str, args: &[&str]) -> anyhow::Result<(
         // We do not support stdin-less mode
         stdin: true,
         out_timestamp: false,
+        ..Default::default()
     };
 
     let console = match params.create_serial_device::<ConsoleDevice>(

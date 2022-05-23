@@ -68,8 +68,8 @@ use arch::{
 use base::{warn, Event, SendTube, TubeError};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::{
-    BusDeviceObj, BusResumeDevice, IrqChip, IrqChipX86_64, PciAddress, PciConfigIo, PciConfigMmio,
-    PciDevice, PciVirtualConfigMmio,
+    BusDevice, BusDeviceObj, BusResumeDevice, Debugcon, IrqChip, IrqChipX86_64, PciAddress,
+    PciConfigIo, PciConfigMmio, PciDevice, PciVirtualConfigMmio, ProxyDevice,
 };
 use hypervisor::{HypervisorX86_64, ProtectionType, VcpuX86_64, Vm, VmCap, VmX86_64};
 use minijail::Minijail;
@@ -98,6 +98,8 @@ pub enum Error {
     CloneEvent(base::Error),
     #[error("failed to clone IRQ chip: {0}")]
     CloneIrqChip(base::Error),
+    #[error("failed to clone jail: {0}")]
+    CloneJail(minijail::Error),
     #[error("unable to clone a Tube: {0}")]
     CloneTube(TubeError),
     #[error("the given kernel command line was invalid: {0}")]
@@ -110,6 +112,8 @@ pub enum Error {
     CreateAcpi,
     #[error("unable to create battery devices: {0}")]
     CreateBatDevices(arch::DeviceRegistrationError),
+    #[error("could not create debugcon device: {0}")]
+    CreateDebugconDevice(devices::SerialError),
     #[error("unable to make an Event: {0}")]
     CreateEvent(base::Error),
     #[error("failed to create fdt: {0}")]
@@ -125,6 +129,8 @@ pub enum Error {
     CreatePit(base::Error),
     #[error("unable to make PIT device: {0}")]
     CreatePitDevice(devices::PitError),
+    #[error("unable to create proxy device: {0}")]
+    CreateProxyDevice(devices::ProxyError),
     #[error("unable to create serial devices: {0}")]
     CreateSerialDevices(arch::DeviceRegistrationError),
     #[error("failed to create socket: {0}")]
@@ -139,6 +145,8 @@ pub enum Error {
     EnableSplitIrqchip(base::Error),
     #[error("failed to get serial cmdline: {0}")]
     GetSerialCmdline(GetSerialCmdlineError),
+    #[error("failed to insert device onto bus: {0}")]
+    InsertBus(devices::BusError),
     #[error("the kernel extends past the end of RAM")]
     KernelOffsetPastEnd,
     #[error("error loading bios: {0}")]
@@ -509,6 +517,7 @@ impl arch::LinuxArch for X8664arch {
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipX86_64,
         vcpu_ids: &mut Vec<usize>,
+        debugcon_jail: Option<Minijail>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmX86_64,
@@ -616,6 +625,12 @@ impl arch::LinuxArch for X8664arch {
             &io_bus,
             serial_parameters,
             serial_jail,
+        )?;
+        Self::setup_debugcon_devices(
+            components.protected_vm,
+            &io_bus,
+            serial_parameters,
+            debugcon_jail,
         )?;
 
         let mut resume_notify_devices = Vec::new();
@@ -1579,6 +1594,46 @@ impl X8664arch {
         irq_chip
             .register_edge_irq_event(X86_64_SERIAL_2_4_IRQ, &com_evt_2_4)
             .map_err(Error::RegisterIrqfd)?;
+
+        Ok(())
+    }
+
+    fn setup_debugcon_devices(
+        protected_vm: ProtectionType,
+        io_bus: &devices::Bus,
+        serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
+        debugcon_jail: Option<Minijail>,
+    ) -> Result<()> {
+        for param in serial_parameters.values() {
+            if param.hardware != SerialHardware::Debugcon {
+                continue;
+            }
+
+            let mut preserved_fds = Vec::new();
+            let con = param
+                .create_serial_device::<Debugcon>(
+                    protected_vm,
+                    // Debugcon doesn't use the interrupt event
+                    &Event::new().map_err(Error::CreateEvent)?,
+                    &mut preserved_fds,
+                )
+                .map_err(Error::CreateDebugconDevice)?;
+
+            let con: Arc<Mutex<dyn BusDevice>> = match debugcon_jail.as_ref() {
+                Some(jail) => Arc::new(Mutex::new(
+                    ProxyDevice::new(
+                        con,
+                        &jail.try_clone().map_err(Error::CloneJail)?,
+                        preserved_fds,
+                    )
+                    .map_err(Error::CreateProxyDevice)?,
+                )),
+                None => Arc::new(Mutex::new(con)),
+            };
+            io_bus
+                .insert(con.clone(), param.debugcon_port.into(), 1)
+                .map_err(Error::InsertBus)?;
+        }
 
         Ok(())
     }
