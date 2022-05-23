@@ -20,4 +20,7 @@
 //! error!("something went horribly wrong: {}", "out of RAMs");
 //! ```
 
+// On windows RawDescriptor is !Sync + !Send, but also on windows we don't do anything with them
+unsafe impl Sync for crate::syslog::State {}
+unsafe impl Send for crate::syslog::State {}
 pub use super::win::syslog::PlatformSyslog;

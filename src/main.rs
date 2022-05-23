@@ -23,6 +23,7 @@ use arch::{
     set_default_serial_parameters, MsrAction, MsrConfig, MsrRWType, MsrValueFrom, Pstore,
     VcpuAffinity,
 };
+use base::syslog::LogConfig;
 use base::{debug, error, getpid, info, pagesize, syslog};
 use crosvm::{
     argument::{self, parse_hex_or_decimal, print_help, set_arguments, Argument},
@@ -1144,14 +1145,6 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             }
             cfg.syslog_tag = Some(value.unwrap().to_owned());
         }
-        "log-level" => {
-            if cfg.log_level.is_some() {
-                return Err(argument::Error::TooManyArguments(
-                    "`log-level` already given".to_owned(),
-                ));
-            }
-            cfg.log_level = Some(value.unwrap().to_owned());
-        }
         "root" | "rwroot" | "disk" | "rwdisk" => {
             let value = value.ok_or(argument::Error::ExpectedArgument(
                 "path to the disk image is missing".to_owned(),
@@ -2217,7 +2210,13 @@ enum CommandStatus {
     GuestPanic,
 }
 
-fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
+fn run_vm<F: 'static>(
+    args: std::env::Args,
+    log_config: LogConfig<F>,
+) -> std::result::Result<CommandStatus, ()>
+where
+    F: Fn(&mut syslog::fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
+{
     let mut arguments =
         vec![Argument::positional("KERNEL", "bzImage of kernel to run"),
           Argument::value("kvm-device", "PATH", "Path to the KVM device. (default /dev/kvm)"),
@@ -2296,10 +2295,6 @@ fn run_vm(args: std::env::Args) -> std::result::Result<CommandStatus, ()> {
           #[cfg(feature = "audio")]
           Argument::value("sound", "[PATH]", "Path to the VioS server socket for setting up virtio-snd devices."),
           Argument::value("syslog-tag", "TAG", "When logging to syslog, use the provided tag."),
-          Argument::value("log-level", "LOG_LEVEL", "Log level to use (trace,debug,info,warn,error,off)
-                                                    Example:
-                                                        off
-                                                        info,devices=off,base::syslog=trace"),
           Argument::value("x-display", "DISPLAY", "X11 display name to use."),
           Argument::flag("display-window-keyboard", "Capture keyboard input from the display window."),
           Argument::flag("display-window-mouse", "Capture keyboard input from the display window."),
@@ -2493,18 +2488,14 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
         set_argument(&mut cfg, name, value)
     })
     .and_then(|_| validate_arguments(&mut cfg));
-    if let Err(e) = syslog::init_with(syslog::LogConfig {
+
+    if let Err(e) = syslog::init_with(LogConfig {
         proc_name: if let Some(ref tag) = cfg.syslog_tag {
             tag.clone()
         } else {
             String::from("crosvm")
         },
-        filter: if let Some(ref level) = cfg.log_level {
-            level
-        } else {
-            "info"
-        },
-        ..Default::default()
+        ..log_config
     }) {
         eprintln!("failed to initialize syslog: {}", e);
         return Err(());
@@ -3129,7 +3120,11 @@ fn pkg_version() -> std::result::Result<(), ()> {
 }
 
 fn print_usage() {
-    print_help("crosvm", "[--extended-status] [command]", &[]);
+    print_help(
+        "crosvm",
+        "[--extended-status] [--log-level=<level>] [--no-syslog] [command]",
+        &[],
+    );
     println!("Commands:");
     println!("    balloon - Set balloon size of the crosvm instance.");
     println!("    balloon_stats - Prints virtio balloon statistics.");
@@ -3165,28 +3160,53 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
     }
 
     let mut cmd_arg = args.next();
-    let extended_status = match cmd_arg.as_ref().map(|s| s.as_ref()) {
-        Some("--extended-status") => {
-            cmd_arg = args.next();
-            true
-        }
-        _ => false,
+
+    let extended_status = if let Some("--extended-status") = cmd_arg.as_deref() {
+        cmd_arg = args.next();
+        true
+    } else {
+        false
     };
 
-    let command = match cmd_arg {
-        Some(c) => c,
-        None => {
-            print_usage();
-            return Ok(CommandStatus::Success);
-        }
+    let log_level = if let Some("--log-level") = cmd_arg.as_deref() {
+        let level = args.next();
+        cmd_arg = args.next();
+        level
+    } else {
+        None
+    }
+    .unwrap_or(String::from("info"));
+
+    let syslog = if let Some("--no-syslog") = cmd_arg.as_deref() {
+        cmd_arg = args.next();
+        false
+    } else {
+        true
+    };
+
+    let log_config = LogConfig {
+        filter: &log_level,
+        syslog,
+        ..Default::default()
+    };
+
+    let command = if let Some(c) = cmd_arg {
+        c
+    } else {
+        print_usage();
+        return Ok(CommandStatus::Success);
     };
 
     // Past this point, usage of exit is in danger of leaking zombie processes.
     let ret = if command == "run" {
         // We handle run_vm separately because it does not simply signal success/error
         // but also indicates whether the guest requested reset or stop.
-        run_vm(args)
+        run_vm(args, log_config)
     } else {
+        if let Err(e) = syslog::init_with(log_config) {
+            eprintln!("failed to initialize syslog: {}", e);
+            return Err(());
+        }
         match &command[..] {
             "balloon" => balloon_vms(args),
             "balloon_stats" => balloon_stats(args),

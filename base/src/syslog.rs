@@ -193,13 +193,6 @@ pub(crate) struct State {
     descriptors: Vec<RawDescriptor>,
 }
 
-// On windows RawDescriptor is !Sync + !Send, but also on windows we don't do anything with them
-#[cfg(windows)]
-mod _w_ {
-    unsafe impl Sync for super::State {}
-    unsafe impl Send for super::State {}
-}
-
 pub struct LogConfig<'a, F: 'static>
 where
     F: Fn(&mut fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
@@ -220,6 +213,8 @@ where
     pub pipe_formatter: Option<F>,
     /// TAG to use for syslog output
     pub proc_name: String,
+    /// Enable/disable platform's "syslog"
+    pub syslog: bool,
     /// Facility to use for syslog output
     pub syslog_facility: Facility,
 }
@@ -233,6 +228,7 @@ impl<'a> Default
             stderr: true,
             pipe: None,
             proc_name: String::from("-"),
+            syslog: true,
             syslog_facility: Facility::User,
             pipe_formatter: FORMATTER_NONE,
             pipe_fd: None,
@@ -275,12 +271,14 @@ impl State {
             loggers.push(Box::new(builder.build()));
         }
 
-        let (mut logger, fd) = PlatformSyslog::new(cfg.proc_name, cfg.syslog_facility)?;
-        if let Some(fd) = fd {
-            descriptors.push(fd);
-        }
-        if let Some(logger) = logger.take() {
-            loggers.push(logger);
+        if cfg.syslog {
+            let (mut logger, fd) = PlatformSyslog::new(cfg.proc_name, cfg.syslog_facility)?;
+            if let Some(fd) = fd {
+                descriptors.push(fd);
+            }
+            if let Some(logger) = logger.take() {
+                loggers.push(logger);
+            }
         }
 
         Ok(State {
