@@ -1239,6 +1239,13 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             });
         }
         "net-vq-pairs" => {
+            // When using slirp, this option is not supported on windows.
+            if sys::net_vq_pairs_expected() {
+                return Err(argument::Error::InvalidValue {
+                    value: value.unwrap().to_owned(),
+                    expected: String::from("`net-vq-pairs` is not supported."),
+                });
+            }
             if cfg.net_vq_pairs.is_some() {
                 return Err(argument::Error::TooManyArguments(
                     "`net-vq-pairs` already given".to_owned(),
@@ -1429,11 +1436,6 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "gpu" => {
             let gpu_parameters = cfg.gpu_parameters.get_or_insert_with(Default::default);
             parse_gpu_options(value, gpu_parameters)?;
-        }
-        #[cfg(feature = "gpu")]
-        "gpu-display" => {
-            let gpu_parameters = cfg.gpu_parameters.get_or_insert_with(Default::default);
-            sys::parse_gpu_display_options(value, gpu_parameters)?;
         }
         "software-tpm" => {
             cfg.software_tpm = true;
@@ -1779,7 +1781,7 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         }
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         "host-cpu-topology" => {
-            cfg.host_cpu_topology = true;
+            cfg.host_cpu_topology = sys::use_host_cpu_topology();
         }
         "privileged-vm" => {
             cfg.privileged_vm = true;
@@ -2098,8 +2100,7 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
             ));
         }
 
-        // Safe because we pass a flag for this call and the host supports this system call
-        let pcpu_count = unsafe { libc::sysconf(libc::_SC_NPROCESSORS_CONF) } as usize;
+        let pcpu_count = sys::get_vcpu_count()?;
         if cfg.vcpu_count.is_some() {
             if pcpu_count != cfg.vcpu_count.unwrap() {
                 return Err(argument::Error::ExpectedArgument(format!(
@@ -3263,7 +3264,6 @@ fn main() {
 mod tests {
     use super::*;
     use crosvm::{DEFAULT_TOUCH_DEVICE_HEIGHT, DEFAULT_TOUCH_DEVICE_WIDTH};
-    use sys::parse_gpu_display_options;
 
     #[test]
     fn parse_cpu_set_single() {
@@ -3818,68 +3818,6 @@ mod tests {
                 parse_gpu_options(Some("syncfd=true,backend=virglrenderer"), &mut gpu_params)
                     .is_err()
             );
-        }
-    }
-
-    #[cfg(feature = "gpu")]
-    #[test]
-    fn parse_gpu_display_options_valid() {
-        {
-            let mut gpu_params: GpuParameters = Default::default();
-            assert!(
-                parse_gpu_display_options(Some("width=500,height=600"), &mut gpu_params).is_ok()
-            );
-            assert_eq!(gpu_params.displays.len(), 1);
-            assert_eq!(gpu_params.displays[0].width, 500);
-            assert_eq!(gpu_params.displays[0].height, 600);
-        }
-    }
-
-    #[cfg(feature = "gpu")]
-    #[test]
-    fn parse_gpu_display_options_invalid() {
-        {
-            let mut gpu_params: GpuParameters = Default::default();
-            assert!(parse_gpu_display_options(Some("width=500"), &mut gpu_params).is_err());
-        }
-        {
-            let mut gpu_params: GpuParameters = Default::default();
-            assert!(parse_gpu_display_options(Some("height=500"), &mut gpu_params).is_err());
-        }
-        {
-            let mut gpu_params: GpuParameters = Default::default();
-            assert!(parse_gpu_display_options(Some("width"), &mut gpu_params).is_err());
-        }
-        {
-            let mut gpu_params: GpuParameters = Default::default();
-            assert!(parse_gpu_display_options(Some("blah"), &mut gpu_params).is_err());
-        }
-    }
-
-    #[cfg(feature = "gpu")]
-    #[test]
-    fn parse_gpu_options_and_gpu_display_options_valid() {
-        {
-            let mut gpu_params: GpuParameters = Default::default();
-            assert!(parse_gpu_options(Some("2D,width=500,height=600"), &mut gpu_params).is_ok());
-            assert!(
-                parse_gpu_display_options(Some("width=700,height=800"), &mut gpu_params).is_ok()
-            );
-            assert_eq!(gpu_params.displays.len(), 2);
-            assert_eq!(gpu_params.displays[0].width, 500);
-            assert_eq!(gpu_params.displays[0].height, 600);
-            assert_eq!(gpu_params.displays[1].width, 700);
-            assert_eq!(gpu_params.displays[1].height, 800);
-        }
-        {
-            let mut gpu_params: GpuParameters = Default::default();
-            assert!(parse_gpu_options(Some("2D"), &mut gpu_params).is_ok());
-            assert!(
-                parse_gpu_display_options(Some("width=700,height=800"), &mut gpu_params).is_ok()
-            );
-            assert_eq!(gpu_params.displays.len(), 1);
-            assert_eq!(gpu_params.displays[0].width, 700);
-            assert_eq!(gpu_params.displays[0].height, 800);
         }
     }
 

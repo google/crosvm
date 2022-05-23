@@ -90,6 +90,15 @@ pub fn is_gpu_backend_deprecated(_backend: &str) -> bool {
     false
 }
 
+pub fn use_host_cpu_topology() -> bool {
+    true
+}
+
+pub fn get_vcpu_count() -> argument::Result<usize> {
+    // Safe because we pass a flag for this call and the host supports this system call
+    Ok(unsafe { libc::sysconf(libc::_SC_NPROCESSORS_CONF) } as usize)
+}
+
 #[cfg(feature = "gfxstream")]
 pub fn use_vulkan() -> bool {
     true
@@ -98,6 +107,10 @@ pub fn use_vulkan() -> bool {
 // Doesn't do anything on unix.
 pub fn check_serial_params(_serial_params: &SerialParameters) -> argument::Result<()> {
     Ok(())
+}
+
+pub fn net_vq_pairs_expected() -> bool {
+    true
 }
 
 pub fn get_arguments() -> Vec<Argument> {
@@ -567,6 +580,11 @@ pub fn set_arguments(cfg: &mut Config, name: &str, value: Option<&str>) -> argum
                 jail_config.seccomp_log_failures = true;
             }
         }
+        #[cfg(feature = "gpu")]
+        "gpu-display" => {
+            let gpu_parameters = cfg.gpu_parameters.get_or_insert_with(Default::default);
+            parse_gpu_display_options(value, gpu_parameters)?;
+        }
         _ => unreachable!(),
     }
     Ok(())
@@ -700,7 +718,7 @@ pub(crate) fn cleanup() {
 }
 
 #[cfg(feature = "gpu")]
-pub(crate) fn parse_gpu_display_options(
+fn parse_gpu_display_options(
     s: Option<&str>,
     gpu_params: &mut GpuParameters,
 ) -> argument::Result<()> {
@@ -759,4 +777,72 @@ pub(crate) fn parse_gpu_display_options(
     });
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse_gpu_options;
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_display_options_valid() {
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(
+                parse_gpu_display_options(Some("width=500,height=600"), &mut gpu_params).is_ok()
+            );
+            assert_eq!(gpu_params.displays.len(), 1);
+            assert_eq!(gpu_params.displays[0].width, 500);
+            assert_eq!(gpu_params.displays[0].height, 600);
+        }
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_display_options_invalid() {
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(parse_gpu_display_options(Some("width=500"), &mut gpu_params).is_err());
+        }
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(parse_gpu_display_options(Some("height=500"), &mut gpu_params).is_err());
+        }
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(parse_gpu_display_options(Some("width"), &mut gpu_params).is_err());
+        }
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(parse_gpu_display_options(Some("blah"), &mut gpu_params).is_err());
+        }
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_options_and_gpu_display_options_valid() {
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(parse_gpu_options(Some("2D,width=500,height=600"), &mut gpu_params).is_ok());
+            assert!(
+                parse_gpu_display_options(Some("width=700,height=800"), &mut gpu_params).is_ok()
+            );
+            assert_eq!(gpu_params.displays.len(), 2);
+            assert_eq!(gpu_params.displays[0].width, 500);
+            assert_eq!(gpu_params.displays[0].height, 600);
+            assert_eq!(gpu_params.displays[1].width, 700);
+            assert_eq!(gpu_params.displays[1].height, 800);
+        }
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(parse_gpu_options(Some("2D"), &mut gpu_params).is_ok());
+            assert!(
+                parse_gpu_display_options(Some("width=700,height=800"), &mut gpu_params).is_ok()
+            );
+            assert_eq!(gpu_params.displays.len(), 1);
+            assert_eq!(gpu_params.displays[0].width, 700);
+            assert_eq!(gpu_params.displays[0].height, 800);
+        }
+    }
 }
