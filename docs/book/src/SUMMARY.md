@@ -13,6 +13,7 @@
   - [Network](./devices/net.md)
   - [Wayland](./devices/wayland.md)
   - [Vhost-user](./devices/vhost_user.md)
+  - [VirtIO Vhost-user (VVU)](./devices/vvu.md)
 - [Integration](./integration/index.md)
   - [ChromeOS](./integration/chromeos.md)
 - [Architecture](./architecture.md)
