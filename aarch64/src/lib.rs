@@ -242,6 +242,7 @@ impl arch::LinuxArch for AArch64 {
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipAArch64,
         vcpu_ids: &mut Vec<usize>,
+        _debugcon_jail: Option<Minijail>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmAArch64,

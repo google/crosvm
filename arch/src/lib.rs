@@ -195,6 +195,7 @@ pub trait LinuxArch {
     /// * `ramoops_region` - Region allocated for ramoops.
     /// * `devices` - The devices to be built into the VM.
     /// * `irq_chip` - The IRQ chip implemention for the VM.
+    /// * `debugcon_jail` - Jail used for debugcon devices created here.
     fn build_vm<V, Vcpu>(
         components: VmComponents,
         vm_evt_wrtube: &SendTube,
@@ -207,6 +208,7 @@ pub trait LinuxArch {
         devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipArch,
         vcpu_ids: &mut Vec<usize>,
+        debugcon_jail: Option<Minijail>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmArch,

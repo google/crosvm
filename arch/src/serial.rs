@@ -44,6 +44,7 @@ pub fn set_default_serial_parameters(
                 earlycon: false,
                 stdin: true,
                 out_timestamp: false,
+                ..Default::default()
             });
     }
 
@@ -62,6 +63,7 @@ pub fn set_default_serial_parameters(
             earlycon: false,
             stdin: false,
             out_timestamp: false,
+            ..Default::default()
         });
     }
 }
@@ -171,6 +173,7 @@ pub fn get_serial_cmdline(
                 .insert("console", &format!("hvc{}", num - 1))
                 .map_err(GetSerialCmdlineError::KernelCmdline)?;
         }
+        Some((SerialHardware::Debugcon, _)) => {}
         None => {}
     }
 
@@ -235,6 +238,7 @@ mod tests {
                 earlycon: false,
                 stdin: true,
                 out_timestamp: false,
+                debugcon_port: 0,
             },
         );
 
@@ -264,6 +268,7 @@ mod tests {
                 earlycon: false,
                 stdin: true,
                 out_timestamp: false,
+                debugcon_port: 0,
             },
         );
 
@@ -280,6 +285,7 @@ mod tests {
                 earlycon: true,
                 stdin: false,
                 out_timestamp: false,
+                debugcon_port: 0,
             },
         );
 
@@ -310,6 +316,7 @@ mod tests {
                 earlycon: true,
                 stdin: true,
                 out_timestamp: false,
+                debugcon_port: 0,
             },
         );
 
