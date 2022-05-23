@@ -1157,6 +1157,7 @@ impl Gpu {
         let num_capsets = match self.rutabaga_component {
             RutabagaComponentType::Rutabaga2D => 0,
             _ => {
+                #[allow(unused_mut)]
                 let mut num_capsets = 0;
 
                 // Three capsets for virgl_renderer

@@ -769,6 +769,7 @@ impl RutabagaBuilder {
         let mut rutabaga_components: Map<RutabagaComponentType, Box<dyn RutabagaComponent>> =
             Default::default();
 
+        #[allow(unused_mut)]
         let mut rutabaga_capsets: Vec<RutabagaCapsetInfo> = Default::default();
 
         // Make sure that disabled components are not used as default.
