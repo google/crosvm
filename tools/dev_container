@@ -136,7 +136,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--interactive", "-i", action="store_true", help="Run the command interactively."
     )
-    parser.add_argument("--podman", action="store_true", help="Use podman instead of docker.")
+    parser.add_argument(
+        "--podman",
+        action="store_true",
+        default=PODMAN_IS_DEFAULT,
+        help="Use podman instead of docker.",
+    )
     parser.add_argument(
         "command", nargs=argparse.REMAINDER, help="The command to execute in the container."
     )
