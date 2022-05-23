@@ -12,6 +12,7 @@
   - [Block](./devices/block.md)
   - [Network](./devices/net.md)
   - [Wayland](./devices/wayland.md)
+  - [Vhost-user](./devices/vhost_user.md)
 - [Integration](./integration/index.md)
   - [ChromeOS](./integration/chromeos.md)
 - [Architecture](./architecture.md)
