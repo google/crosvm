@@ -667,7 +667,7 @@ fn run(
     };
     match ex.run_until(done) {
         Ok(Ok(())) => {}
-        Ok(Err(e)) => error!("Error in worker: {}", e),
+        Ok(Err(e)) => error!("Error in worker: {:#}", e),
         Err(e) => return Err(IommuError::AsyncExec(e)),
     }
 
@@ -692,7 +692,18 @@ async fn handle_translate_request(
             endpoint_id,
             iova,
             size,
-        } = request_tube.next().await.map_err(IommuError::Tube)?;
+        } = match request_tube.next().await {
+            Ok(req) => req,
+            Err(TubeError::Disconnected) => {
+                // This means the process on the other side of the tube went away. That's
+                // not a problem with virtio-iommu itself, so just exit this callback
+                // and wait for crosvm to exit.
+                return Ok(());
+            }
+            Err(e) => {
+                return Err(IommuError::Tube(e));
+            }
+        };
         let translate_response: Option<Vec<MemRegion>> =
             if let Some(mapper) = state.borrow_mut().endpoints.get(&endpoint_id) {
                 mapper
