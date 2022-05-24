@@ -1842,6 +1842,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     vcpu_thread_barrier.wait();
 
     let mut exit_state = ExitState::Stop;
+    let mut pvpanic_code = PvPanicCode::Unknown;
     let mut balloon_stats_id: u64 = 0;
 
     'wait: loop {
@@ -1875,14 +1876,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                 exit_state = ExitState::Crash;
                             }
                             VmEventType::Panic(panic_code) => {
-                                let panic_code = PvPanicCode::from_u8(panic_code);
-                                info!("Guest reported panic [Code: {}]", panic_code);
-                                if panic_code == PvPanicCode::CrashLoaded {
-                                    // VM is booting to crash kernel.
-                                    break_to_wait = false;
-                                } else {
-                                    exit_state = ExitState::GuestPanic;
-                                }
+                                pvpanic_code = PvPanicCode::from_u8(panic_code);
+                                info!("Guest reported panic [Code: {}]", pvpanic_code);
+                                break_to_wait = false;
                             }
                         },
                         Err(e) => {
@@ -1890,6 +1886,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         }
                     }
                     if break_to_wait {
+                        if pvpanic_code == PvPanicCode::Panicked {
+                            exit_state = ExitState::GuestPanic;
+                        }
                         break 'wait;
                     }
                 }
