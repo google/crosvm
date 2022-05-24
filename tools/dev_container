@@ -24,7 +24,7 @@ import argparse
 import getpass
 import shutil
 from typing import Tuple
-from impl.common import CROSVM_ROOT, cmd, chdir, quoted
+from impl.common import CROSVM_ROOT, cmd, chdir, quoted, add_verbose_args
 import sys
 
 CONTAINER_NAME = f"crosvm_dev_{getpass.getuser()}"
@@ -145,6 +145,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "command", nargs=argparse.REMAINDER, help="The command to execute in the container."
     )
+    add_verbose_args(parser)
     args = parser.parse_args()
     main(
         args.command,

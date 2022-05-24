@@ -481,7 +481,7 @@ def run_commands(*functions: Callable[..., Any], default_fn: Optional[Callable[.
     try:
         # Add global verbose arguments
         parser = argparse.ArgumentParser()
-        __add_verbose_args(parser)
+        add_verbose_args(parser)
 
         # Add provided commands to parser. Do not use sub-commands if we just got one function.
         if functions:
@@ -507,7 +507,7 @@ def very_verbose():
     return "-vv" in sys.argv or "--very-verbose" in sys.argv
 
 
-def __add_verbose_args(parser: argparse.ArgumentParser):
+def add_verbose_args(parser: argparse.ArgumentParser):
     # This just serves as documentation to argparse. The verbose variables are directly
     # parsed from argv above to ensure they are accessible early.
     parser.add_argument(
