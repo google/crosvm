@@ -825,9 +825,6 @@ impl Worker {
     // Processes a message sent, on `main_thread_tube`, in response to a doorbell write. It writes
     // to the corresponding call event of the vring index sent over `main_thread_tube`.
     fn process_doorbell_message(&mut self, main_thread_tube: &Tube) -> Result<()> {
-        // It's okay to call |expect| here as there's no way to indicate failure on
-        // a doorbell write operation. We'd rather fail early than have inconsistent
-        // state.
         let index: usize = main_thread_tube
             .recv()
             .context("failed to receive doorbell data")?;
