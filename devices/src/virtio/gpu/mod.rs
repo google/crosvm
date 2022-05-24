@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod parameters;
 mod protocol;
 mod udmabuf;
 mod udmabuf_bindings;
@@ -58,47 +59,16 @@ use crate::pci::{
     PciCapability,
 };
 
-pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
-pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;
+pub use parameters::{
+    DisplayParameters as GpuDisplayParameters, GpuParameters, DEFAULT_DISPLAY_HEIGHT,
+    DEFAULT_DISPLAY_WIDTH,
+};
 
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum GpuMode {
     Mode2D,
     ModeVirglRenderer,
     ModeGfxstream,
-}
-
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub struct GpuDisplayParameters {
-    pub width: u32,
-    pub height: u32,
-}
-
-impl Default for GpuDisplayParameters {
-    fn default() -> Self {
-        GpuDisplayParameters {
-            width: DEFAULT_DISPLAY_WIDTH,
-            height: DEFAULT_DISPLAY_HEIGHT,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(default)]
-pub struct GpuParameters {
-    pub displays: Vec<GpuDisplayParameters>,
-    pub renderer_use_egl: bool,
-    pub renderer_use_gles: bool,
-    pub renderer_use_glx: bool,
-    pub renderer_use_surfaceless: bool,
-    pub gfxstream_use_guest_angle: bool,
-    pub gfxstream_use_syncfd: bool,
-    pub use_vulkan: bool,
-    pub udmabuf: bool,
-    pub mode: GpuMode,
-    pub cache_path: Option<String>,
-    pub cache_size: Option<String>,
-    pub context_mask: u64,
 }
 
 // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
@@ -109,30 +79,6 @@ pub const FENCE_POLL_INTERVAL: Duration = Duration::from_millis(1);
 pub const GPU_BAR_NUM: PciBarIndex = PciBarIndex::Bar4;
 pub const GPU_BAR_OFFSET: u64 = 0;
 pub const GPU_BAR_SIZE: u64 = 1 << 33;
-
-impl Default for GpuParameters {
-    fn default() -> Self {
-        GpuParameters {
-            displays: vec![],
-            renderer_use_egl: true,
-            renderer_use_gles: true,
-            renderer_use_glx: false,
-            renderer_use_surfaceless: true,
-            gfxstream_use_guest_angle: false,
-            gfxstream_use_syncfd: true,
-            use_vulkan: false,
-            mode: if cfg!(feature = "virgl_renderer") {
-                GpuMode::ModeVirglRenderer
-            } else {
-                GpuMode::Mode2D
-            },
-            cache_path: None,
-            cache_size: None,
-            udmabuf: false,
-            context_mask: 0,
-        }
-    }
-}
 
 #[derive(Copy, Clone, Debug)]
 pub struct VirtioScanoutBlobData {
