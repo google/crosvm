@@ -6,6 +6,7 @@
   * [crosvm](#recipe_modules-crosvm) (Python3 ✅)
 
 **[Recipes](#Recipes)**
+  * [build_chromeos](#recipes-build_chromeos) (Python3 ✅)
   * [build_linux](#recipes-build_linux) (Python3 ✅)
   * [crosvm:examples/container](#recipes-crosvm_examples_container) (Python3 ✅)
   * [crosvm:examples/prepare_source](#recipes-crosvm_examples_prepare_source) (Python3 ✅)
@@ -40,6 +41,21 @@ change to be tested.
 Runs a luci step inside the crosvm dev container.
 ## Recipes
 
+### *recipes* / [build\_chromeos](/infra/recipes/build_chromeos.py)
+
+[DEPS](/infra/recipes/build_chromeos.py#9): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/file][recipe_engine/recipe_modules/file], [recipe\_engine/path][recipe_engine/recipe_modules/path], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+
+PYTHON_VERSION_COMPATIBILITY: PY3
+
+&mdash; **def [BuildAndTest](/infra/recipes/build_chromeos.py#73)(api, board):**
+
+&mdash; **def [CleanUp](/infra/recipes/build_chromeos.py#85)(api):**
+
+&mdash; **def [PrepareBuild](/infra/recipes/build_chromeos.py#59)(api):**
+
+&mdash; **def [RunSteps](/infra/recipes/build_chromeos.py#89)(api, properties):**
+
+&mdash; **def [SetupSource](/infra/recipes/build_chromeos.py#26)(api, workspace):**
 ### *recipes* / [build\_linux](/infra/recipes/build_linux.py)
 
 [DEPS](/infra/recipes/build_linux.py#11): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]

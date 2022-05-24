@@ -132,7 +132,7 @@ luci.console_view(
     repo = "https://chromium.googlesource.com/crosvm/crosvm",
 )
 
-def verify_builder(name, dimensions, **args):
+def verify_builder(name, dimensions, presubmit = True, postsubmit = True, **args):
     """Creates both a CI and try builder with the same properties.
 
     The CI builder is attached to the gitlies poller and console view, and the try builder
@@ -141,49 +141,54 @@ def verify_builder(name, dimensions, **args):
     Args:
         name: Name of the builder
         dimensions: Passed to luci.builder
+        presubmit: Create a presubmit builder (defaults to True)
+        postsubmit: Creaet a postsubmit builder (defaults to True)
         **args: Passed to luci.builder
     """
 
     # CI builder
-    luci.builder(
-        name = name,
-        bucket = "ci",
-        service_account = "crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com",
-        dimensions = dict(pool = "luci.crosvm.ci", **dimensions),
-        **args
-    )
-    luci.gitiles_poller(
-        name = "main source",
-        bucket = "ci",
-        repo = "https://chromium.googlesource.com/crosvm/crosvm",
-        triggers = ["ci/%s" % name],
-    )
-    luci.console_view_entry(
-        console_view = "CI Console",
-        builder = "ci/%s" % name,
-        category = "linux",
-    )
+    if postsubmit:
+        luci.builder(
+            name = name,
+            bucket = "ci",
+            service_account = "crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com",
+            dimensions = dict(pool = "luci.crosvm.ci", **dimensions),
+            **args
+        )
+        luci.gitiles_poller(
+            name = "main source",
+            bucket = "ci",
+            repo = "https://chromium.googlesource.com/crosvm/crosvm",
+            triggers = ["ci/%s" % name],
+        )
+        luci.console_view_entry(
+            console_view = "CI Console",
+            builder = "ci/%s" % name,
+            category = "linux",
+        )
 
     # Try builder
-    luci.builder(
-        name = name,
-        bucket = "try",
-        service_account = "crosvm-luci-try-builder@crosvm-infra.iam.gserviceaccount.com",
-        dimensions = dict(pool = "luci.crosvm.try", **dimensions),
-        **args
-    )
+    if presubmit:
+        luci.builder(
+            name = name,
+            bucket = "try",
+            service_account = "crosvm-luci-try-builder@crosvm-infra.iam.gserviceaccount.com",
+            dimensions = dict(pool = "luci.crosvm.try", **dimensions),
+            **args
+        )
 
-    # Attach try builder to Change Verifier
-    luci.cq_tryjob_verifier(
-        builder = "try/%s" % name,
-        cq_group = "main",
-    )
+        # Attach try builder to Change Verifier
+        luci.cq_tryjob_verifier(
+            builder = "try/%s" % name,
+            cq_group = "main",
+        )
 
-def verify_linux_builder(arch):
+def verify_linux_builder(arch, **kwargs):
     """Creates a verify builder that builds crosvm on linux
 
     Args:
         arch: Architecture to build and test
+        **kwargs: Passed to verify_builder
     """
     verify_builder(
         name = "crosvm_linux_%s" % arch,
@@ -197,11 +202,36 @@ def verify_linux_builder(arch):
         properties = {
             "test_arch": arch,
         },
+        **kwargs
+    )
+
+def verify_chromeos_builder(board, **kwargs):
+    """Creates a verify builder that builds crosvm for ChromeOS
+
+    Args:
+        board: ChromeOS board to build and test
+        **kwargs: Passed to verify_builder
+    """
+    verify_builder(
+        name = "crosvm_chromeos_%s" % board,
+        dimensions = {
+            "os": "Ubuntu",
+            "cpu": "x86-64",
+        },
+        executable = luci.recipe(
+            name = "build_chromeos",
+        ),
+        properties = {
+            "board": board,
+        },
+        **kwargs
     )
 
 verify_linux_builder("x86_64")
 verify_linux_builder("aarch64")
 verify_linux_builder("armhf")
+
+verify_chromeos_builder("amd64_generic", presubmit = False)
 
 verify_builder(
     name = "crosvm_health_check",
@@ -213,3 +243,4 @@ verify_builder(
         name = "health_check",
     ),
 )
+
