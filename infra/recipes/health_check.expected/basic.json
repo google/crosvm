@@ -1,0 +1,90 @@
+[
+  {
+    "cmd": [
+      "./tools/dev_container",
+      "--verbose",
+      "./tools/health-check",
+      "python"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "luci_context": {
+      "realm": {
+        "name": "crosvm/crosvm:ci"
+      },
+      "resultdb": {
+        "current_invocation": {
+          "name": "invocations/build:8945511751514863184",
+          "update_token": "token"
+        },
+        "hostname": "rdbhost"
+      }
+    },
+    "name": "Checking python"
+  },
+  {
+    "cmd": [
+      "./tools/dev_container",
+      "--verbose",
+      "./tools/health-check",
+      "misc"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "luci_context": {
+      "realm": {
+        "name": "crosvm/crosvm:ci"
+      },
+      "resultdb": {
+        "current_invocation": {
+          "name": "invocations/build:8945511751514863184",
+          "update_token": "token"
+        },
+        "hostname": "rdbhost"
+      }
+    },
+    "name": "Checking misc"
+  },
+  {
+    "cmd": [
+      "./tools/dev_container",
+      "--verbose",
+      "./tools/health-check",
+      "fmt"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "luci_context": {
+      "realm": {
+        "name": "crosvm/crosvm:ci"
+      },
+      "resultdb": {
+        "current_invocation": {
+          "name": "invocations/build:8945511751514863184",
+          "update_token": "token"
+        },
+        "hostname": "rdbhost"
+      }
+    },
+    "name": "Checking fmt"
+  },
+  {
+    "cmd": [
+      "./tools/dev_container",
+      "--verbose",
+      "./tools/health-check",
+      "clippy"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "luci_context": {
+      "realm": {
+        "name": "crosvm/crosvm:ci"
+      },
+      "resultdb": {
+        "current_invocation": {
+          "name": "invocations/build:8945511751514863184",
+          "update_token": "token"
+        },
+        "hostname": "rdbhost"
+      }
+    },
+    "name": "Checking clippy"
+  }
+]
