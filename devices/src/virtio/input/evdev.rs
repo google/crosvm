@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use std::os::raw::c_uint;
 use std::ptr::null;
 
-use base::{AsRawDescriptor, Descriptor};
+use base::AsRawDescriptor;
 
 const EVDEV: c_uint = 69;
 
@@ -115,11 +115,7 @@ pub fn device_ids<T: AsRawDescriptor>(descriptor: &T) -> Result<virtio_input_dev
     let len = unsafe {
         // Safe because the kernel won't write more than size of evdev_id and we check the return
         // value
-        ioctl_with_mut_ref(
-            &Descriptor(descriptor.as_raw_descriptor()),
-            EVIOCGID(),
-            &mut dev_id,
-        )
+        ioctl_with_mut_ref(descriptor, EVIOCGID(), &mut dev_id)
     };
     if len < 0 {
         return Err(InputError::EvdevIdError(errno()));
@@ -138,11 +134,7 @@ pub fn name<T: AsRawDescriptor>(descriptor: &T) -> Result<Vec<u8>> {
     let len = unsafe {
         // Safe because the kernel won't write more than size of evdev_buffer and we check the
         // return value
-        ioctl_with_mut_ref(
-            &Descriptor(descriptor.as_raw_descriptor()),
-            EVIOCGNAME(),
-            &mut name,
-        )
+        ioctl_with_mut_ref(descriptor, EVIOCGNAME(), &mut name)
     };
     if len < 0 {
         return Err(InputError::EvdevNameError(errno()));
@@ -156,11 +148,7 @@ pub fn serial_name<T: AsRawDescriptor>(descriptor: &T) -> Result<Vec<u8>> {
     let len = unsafe {
         // Safe because the kernel won't write more than size of evdev_buffer and we check the
         // return value
-        ioctl_with_mut_ref(
-            &Descriptor(descriptor.as_raw_descriptor()),
-            EVIOCGUNIQ(),
-            &mut uniq,
-        )
+        ioctl_with_mut_ref(descriptor, EVIOCGUNIQ(), &mut uniq)
     };
     if len < 0 {
         return Err(InputError::EvdevSerialError(errno()));
@@ -174,11 +162,7 @@ pub fn properties<T: AsRawDescriptor>(descriptor: &T) -> Result<virtio_input_bit
     let len = unsafe {
         // Safe because the kernel won't write more than size of evdev_buffer and we check the
         // return value
-        ioctl_with_mut_ref(
-            &Descriptor(descriptor.as_raw_descriptor()),
-            EVIOCGPROP(),
-            &mut props,
-        )
+        ioctl_with_mut_ref(descriptor, EVIOCGPROP(), &mut props)
     };
     if len < 0 {
         return Err(InputError::EvdevPropertiesError(errno()));
@@ -197,11 +181,7 @@ pub fn supported_events<T: AsRawDescriptor>(
     let len = unsafe {
         // Safe because the kernel won't write more than size of evdev_buffer and we check the
         // return value
-        ioctl_with_mut_ref(
-            &Descriptor(descriptor.as_raw_descriptor()),
-            EVIOCGBIT(0),
-            &mut evt_types,
-        )
+        ioctl_with_mut_ref(descriptor, EVIOCGBIT(0), &mut evt_types)
     };
     if len < 0 {
         return Err(InputError::EvdevEventTypesError(errno()));
@@ -218,11 +198,7 @@ pub fn supported_events<T: AsRawDescriptor>(
         let len = unsafe {
             // Safe because the kernel won't write more than size of evdev_buffer and we check the
             // return value
-            ioctl_with_mut_ref(
-                &Descriptor(descriptor.as_raw_descriptor()),
-                EVIOCGBIT(ev as c_uint),
-                &mut evt_codes,
-            )
+            ioctl_with_mut_ref(descriptor, EVIOCGBIT(ev as c_uint), &mut evt_codes)
         };
         if len < 0 {
             return Err(InputError::EvdevEventTypesError(errno()));
@@ -242,11 +218,7 @@ pub fn abs_info<T: AsRawDescriptor>(descriptor: &T) -> BTreeMap<u16, virtio_inpu
         let ret = unsafe {
             // Safe because the kernel won't write more than size of evdev_buffer and we check the
             // return value
-            ioctl_with_mut_ref(
-                &Descriptor(descriptor.as_raw_descriptor()),
-                EVIOCGABS(abs as c_uint),
-                &mut abs_info,
-            )
+            ioctl_with_mut_ref(descriptor, EVIOCGABS(abs as c_uint), &mut abs_info)
         };
         if ret == 0 {
             map.insert(abs, virtio_input_absinfo::from(abs_info));
@@ -262,11 +234,7 @@ pub fn grab_evdev<T: AsRawDescriptor>(descriptor: &mut T) -> Result<()> {
     let val: u32 = 1;
     let ret = unsafe {
         // Safe because the kernel only read the value of the ptr and we check the return value
-        ioctl_with_ref(
-            &Descriptor(descriptor.as_raw_descriptor()),
-            EVIOCGRAB(),
-            &val,
-        )
+        ioctl_with_ref(descriptor, EVIOCGRAB(), &val)
     };
     if ret == 0 {
         Ok(())
@@ -279,11 +247,7 @@ pub fn ungrab_evdev<T: AsRawDescriptor>(descriptor: &mut T) -> Result<()> {
     let ret = unsafe {
         // Safe because the kernel only reads the value of the ptr (doesn't dereference) and
         // we check the return value
-        ioctl_with_ptr(
-            &Descriptor(descriptor.as_raw_descriptor()),
-            EVIOCGRAB(),
-            null::<u32>(),
-        )
+        ioctl_with_ptr(descriptor, EVIOCGRAB(), null::<u32>())
     };
     if ret == 0 {
         Ok(())
