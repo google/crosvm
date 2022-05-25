@@ -109,8 +109,9 @@ def main(
             container_id = None
 
         if not container_id:
+            # Run neverending sleep to keep container alive while we 'docker exec' commands.
             container_id = docker(
-                f"run --detach --name {CONTAINER_NAME}", *tty_args, *docker_args
+                f"run --detach --name {CONTAINER_NAME}", *docker_args, "sleep infinity"
             ).stdout()
             print(f"Started dev-container ({container_id}).")
         else:
