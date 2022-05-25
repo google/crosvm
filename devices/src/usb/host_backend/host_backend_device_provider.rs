@@ -13,7 +13,7 @@ use crate::utils::AsyncJobQueue;
 use crate::utils::{EventHandler, EventLoop, FailHandle};
 
 use anyhow::Context;
-use base::{error, AsRawDescriptor, Descriptor, RawDescriptor, Tube, WatchingEvents};
+use base::{error, AsRawDescriptor, RawDescriptor, Tube, WatchingEvents};
 use std::collections::HashMap;
 use std::mem;
 use std::time::Duration;
@@ -163,8 +163,6 @@ impl ProviderInner {
             }
         };
 
-        let device_descriptor = Descriptor(device.as_raw_descriptor());
-
         let arc_mutex_device = Arc::new(Mutex::new(device));
 
         let event_handler: Arc<dyn EventHandler> = Arc::new(UsbUtilEventHandler {
@@ -172,7 +170,7 @@ impl ProviderInner {
         });
 
         if let Err(e) = self.event_loop.add_event(
-            &device_descriptor,
+            &*arc_mutex_device.lock(),
             WatchingEvents::empty().set_read().set_write(),
             Arc::downgrade(&event_handler),
         ) {
