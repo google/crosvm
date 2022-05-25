@@ -2383,6 +2383,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                               Possible key values:
 
                               type=goldfish - type of battery emulation, defaults to goldfish"),
+          #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
           Argument::value("gdb", "PORT", "(EXPERIMENTAL) gdb on the given port"),
           Argument::flag("no-balloon", "Don't use virtio-balloon device in the guest"),
           #[cfg(feature = "usb")]
