@@ -34,10 +34,8 @@ def get_test_args(api, test_arch):
 
 def RunSteps(api, properties):
     api.crosvm.prepare_source()
+    api.crosvm.prepare_container()
     with api.context(cwd=api.crosvm.source_dir):
-        # Run a no-op command in the container which will ensure the image is downloaded.
-        api.crosvm.step_in_container("Download container image", ["true"])
-
         api.crosvm.step_in_container(
             "Build crosvm tests",
             [
@@ -58,7 +56,7 @@ def RunSteps(api, properties):
 
 
 def GenTests(api):
-    filter_steps = Filter("Download container image", "Build crosvm tests", "Run crosvm tests")
+    filter_steps = Filter("Build crosvm tests", "Run crosvm tests")
     yield (
         api.test(
             "build_x86_64",

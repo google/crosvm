@@ -38,6 +38,13 @@ class CrosvmApi(recipe_api.RecipeApi):
         with self.m.context(cwd=self.source_dir):
             self.m.step("Sync Submodules", ["git", "submodule", "update", "--init"])
 
+    def prepare_container(self):
+        with self.m.context(cwd=self.source_dir):
+            self.m.step(
+                "Stop existing dev containers", ["./tools/dev_container", "--verbose", "--stop"]
+            )
+            self.m.crosvm.step_in_container("Ensure dev container exists", ["true"])
+
     def step_in_container(self, step_name, command):
         """
         Runs a luci step inside the crosvm dev container.
@@ -47,7 +54,6 @@ class CrosvmApi(recipe_api.RecipeApi):
             [
                 "./tools/dev_container",
                 "--verbose",
-                "--hermetic",
             ]
             + command,
         )

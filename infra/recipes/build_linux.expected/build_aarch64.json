@@ -3,29 +3,6 @@
     "cmd": [
       "./tools/dev_container",
       "--verbose",
-      "--hermetic",
-      "true"
-    ],
-    "cwd": "[CACHE]/builder/crosvm",
-    "luci_context": {
-      "realm": {
-        "name": "crosvm/crosvm:ci"
-      },
-      "resultdb": {
-        "current_invocation": {
-          "name": "invocations/build:8945511751514863184",
-          "update_token": "token"
-        },
-        "hostname": "rdbhost"
-      }
-    },
-    "name": "Download container image"
-  },
-  {
-    "cmd": [
-      "./tools/dev_container",
-      "--verbose",
-      "--hermetic",
       "./tools/run_tests",
       "--verbose",
       "--build-only",
@@ -50,7 +27,6 @@
     "cmd": [
       "./tools/dev_container",
       "--verbose",
-      "--hermetic",
       "./tools/run_tests",
       "--verbose",
       "--target=vm:aarch64"
