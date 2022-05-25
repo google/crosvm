@@ -195,6 +195,72 @@ fn parse_cpu_capacity(s: &str, cpu_capacity: &mut BTreeMap<usize, u32>) -> argum
 }
 
 #[cfg(feature = "gpu")]
+#[derive(Default)]
+struct GpuDisplayParametersBuilder {
+    width: Option<u32>,
+    height: Option<u32>,
+    args: Vec<String>,
+}
+
+#[cfg(feature = "gpu")]
+impl GpuDisplayParametersBuilder {
+    fn parse(&mut self, arg: &str) -> argument::Result<()> {
+        let mut kv = arg.split('=');
+        let k = kv.next().unwrap_or("");
+        let v = kv.next().unwrap_or("");
+        match k {
+            "width" => {
+                let width = v
+                    .parse::<u32>()
+                    .map_err(|_| argument::Error::InvalidValue {
+                        value: v.to_string(),
+                        expected: String::from("gpu parameter 'width' must be a valid integer"),
+                    })?;
+                self.width = Some(width);
+            }
+            "height" => {
+                let height = v
+                    .parse::<u32>()
+                    .map_err(|_| argument::Error::InvalidValue {
+                        value: v.to_string(),
+                        expected: String::from("gpu parameter 'height' must be a valid integer"),
+                    })?;
+                self.height = Some(height);
+            }
+            _ => {
+                return Err(argument::Error::UnknownArgument(format!(
+                    "gpu-display parameter {}",
+                    k
+                )))
+            }
+        }
+        self.args.push(arg.to_string());
+        Ok(())
+    }
+
+    fn build(&self) -> argument::Result<Option<GpuDisplayParameters>> {
+        match (self.width, self.height) {
+            (None, None) => Ok(None),
+            (None, Some(_)) | (Some(_), None) => {
+                let mut value = self
+                    .args
+                    .clone()
+                    .into_iter()
+                    .fold(String::new(), |args_so_far, arg| args_so_far + &arg + ",");
+                value.pop();
+                return Err(argument::Error::InvalidValue {
+                    value,
+                    expected: String::from(
+                        "gpu must include both 'width' and 'height' if either is supplied",
+                    ),
+                });
+            }
+            (Some(width), Some(height)) => Ok(Some(GpuDisplayParameters { width, height })),
+        }
+    }
+}
+
+#[cfg(feature = "gpu")]
 fn parse_gpu_options(s: Option<&str>, gpu_params: &mut GpuParameters) -> argument::Result<()> {
     #[cfg(feature = "gfxstream")]
     let mut vulkan_specified = false;
@@ -203,16 +269,14 @@ fn parse_gpu_options(s: Option<&str>, gpu_params: &mut GpuParameters) -> argumen
     #[cfg(feature = "gfxstream")]
     let mut angle_specified = false;
 
-    let mut display_w: Option<u32> = None;
-    let mut display_h: Option<u32> = None;
+    let mut display_param_builder: GpuDisplayParametersBuilder = Default::default();
 
     if let Some(s) = s {
-        let opts = s
-            .split(',')
-            .map(|frag| frag.split('='))
-            .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
-
-        for (k, v) in opts {
+        for frag in s.split(',') {
+            let mut rest: Option<&str> = None;
+            let mut kv = frag.split('=');
+            let k = kv.next().unwrap_or("");
+            let v = kv.next().unwrap_or("");
             match k {
                 // Deprecated: Specifying --gpu=<mode> Not great as the mode can be set multiple
                 // times if the user specifies several modes (--gpu=2d,virglrenderer,gfxstream)
@@ -397,26 +461,6 @@ fn parse_gpu_options(s: Option<&str>, gpu_params: &mut GpuParameters) -> argumen
                         });
                     }
                 },
-                "width" => {
-                    let width = v
-                        .parse::<u32>()
-                        .map_err(|_| argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from("gpu parameter 'width' must be a valid integer"),
-                        })?;
-                    display_w = Some(width);
-                }
-                "height" => {
-                    let height = v
-                        .parse::<u32>()
-                        .map_err(|_| argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from(
-                                "gpu parameter 'height' must be a valid integer",
-                            ),
-                        })?;
-                    display_h = Some(height);
-                }
                 "cache-path" => gpu_params.cache_path = Some(v.to_string()),
                 "cache-size" => gpu_params.cache_size = Some(v.to_string()),
                 "udmabuf" => match v {
@@ -439,29 +483,29 @@ fn parse_gpu_options(s: Option<&str>, gpu_params: &mut GpuParameters) -> argumen
                 }
                 "" => {}
                 _ => {
-                    return Err(argument::Error::UnknownArgument(format!(
-                        "gpu parameter {}",
-                        k
-                    )));
+                    rest = Some(frag);
                 }
+            }
+            if let Some(arg) = rest.take() {
+                match display_param_builder.parse(arg) {
+                    Ok(()) => {}
+                    Err(argument::Error::UnknownArgument(_)) => {
+                        rest = Some(arg);
+                    }
+                    Err(err) => return Err(err),
+                }
+            }
+            if let Some(arg) = rest.take() {
+                return Err(argument::Error::UnknownArgument(format!(
+                    "gpu parameter {}",
+                    arg
+                )));
             }
         }
     }
 
-    if display_w.is_some() || display_h.is_some() {
-        if display_w.is_none() || display_h.is_none() {
-            return Err(argument::Error::InvalidValue {
-                value: s.unwrap_or("").to_string(),
-                expected: String::from(
-                    "gpu must include both 'width' and 'height' if either is supplied",
-                ),
-            });
-        }
-
-        gpu_params.displays.push(GpuDisplayParameters {
-            width: display_w.unwrap(),
-            height: display_h.unwrap(),
-        });
+    if let Some(display_param) = display_param_builder.build()?.take() {
+        gpu_params.displays.push(display_param);
     }
 
     #[cfg(feature = "gfxstream")]
@@ -510,6 +554,30 @@ fn parse_video_options(s: Option<&str>) -> argument::Result<VideoBackendType> {
             expected: format!("should be one of ({})", VALID_VIDEO_BACKENDS.join("|")),
         }),
     }
+}
+
+#[cfg(feature = "gpu")]
+fn parse_gpu_display_options(
+    s: Option<&str>,
+    gpu_params: &mut GpuParameters,
+) -> argument::Result<()> {
+    let mut display_param_builder: GpuDisplayParametersBuilder = Default::default();
+
+    if let Some(s) = s {
+        for arg in s.split(',') {
+            display_param_builder.parse(arg)?;
+        }
+    }
+
+    let display_param = display_param_builder.build()?;
+    let display_param = display_param.ok_or_else(|| argument::Error::InvalidValue {
+        value: s.unwrap_or("").to_string(),
+        expected: String::from("gpu-display must include both 'width' and 'height'"),
+    })?;
+
+    gpu_params.displays.push(display_param);
+
+    Ok(())
 }
 
 #[cfg(feature = "audio")]
@@ -1453,6 +1521,11 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
             let gpu_parameters = cfg.gpu_parameters.get_or_insert_with(Default::default);
             parse_gpu_options(value, gpu_parameters)?;
         }
+        #[cfg(feature = "gpu")]
+        "gpu-display" => {
+            let gpu_parameters = cfg.gpu_parameters.get_or_insert_with(Default::default);
+            parse_gpu_display_options(value, gpu_parameters)?;
+        }
         "software-tpm" => {
             cfg.software_tpm = true;
         }
@@ -2378,6 +2451,48 @@ There is a cost of slightly increased latency the first time the file is accesse
           #[cfg(feature = "plugin")]
           Argument::value("plugin-gid-map-file", "PATH", "Path to the file listing supplemental GIDs that should be mapped in plugin jail.  Can be given more than once."),
           Argument::flag("vhost-net", "Use vhost for networking."),
+          #[cfg(feature = "gpu")]
+          Argument::flag_or_value("gpu",
+                                  "[width=INT,height=INT]",
+                                  "(EXPERIMENTAL) Comma separated key=value pairs for setting up a virtio-gpu device
+
+                              Possible key values:
+
+                              backend=(2d|virglrenderer|gfxstream) - Which backend to use for virtio-gpu (determining rendering protocol)
+
+                              context-types=LIST - The list of supported context types, separated by ':' (default: no contexts enabled)
+
+                              width=INT - The width of the virtual display connected to the virtio-gpu.
+
+                              height=INT - The height of the virtual display connected to the virtio-gpu.
+
+                              egl[=true|=false] - If the backend should use a EGL context for rendering.
+
+                              glx[=true|=false] - If the backend should use a GLX context for rendering.
+
+                              surfaceless[=true|=false] - If the backend should use a surfaceless context for rendering.
+
+                              angle[=true|=false] - If the gfxstream backend should use ANGLE (OpenGL on Vulkan) as its native OpenGL driver.
+
+                              syncfd[=true|=false] - If the gfxstream backend should support EGL_ANDROID_native_fence_sync
+
+                              vulkan[=true|=false] - If the backend should support vulkan
+
+                              wsi=vk - If the gfxstream backend should use the Vulkan swapchain to draw on a window
+
+                              cache-path=PATH - The path to the virtio-gpu device shader cache.
+
+                              cache-size=SIZE - The maximum size of the shader cache."),
+          #[cfg(feature = "gpu")]
+          Argument::flag_or_value("gpu-display",
+                                  "[width=INT,height=INT]",
+                                  "(EXPERIMENTAL) Comma separated key=value pairs for setting up a display on the virtio-gpu device
+
+                              Possible key values:
+
+                              width=INT - The width of the virtual display connected to the virtio-gpu.
+
+                              height=INT - The height of the virtual display connected to the virtio-gpu."),
           #[cfg(feature = "tpm")]
           Argument::flag("software-tpm", "enable a software emulated trusted platform module device"),
           Argument::value("evdev", "PATH", "Path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host"),
@@ -3754,6 +3869,68 @@ mod tests {
             &mut gpu_params
         )
         .is_err());
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_display_options_valid() {
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(
+                parse_gpu_display_options(Some("width=500,height=600"), &mut gpu_params).is_ok()
+            );
+            assert_eq!(gpu_params.displays.len(), 1);
+            assert_eq!(gpu_params.displays[0].width, 500);
+            assert_eq!(gpu_params.displays[0].height, 600);
+        }
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_display_options_invalid() {
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(parse_gpu_display_options(Some("width=500"), &mut gpu_params).is_err());
+        }
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(parse_gpu_display_options(Some("height=500"), &mut gpu_params).is_err());
+        }
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(parse_gpu_display_options(Some("width"), &mut gpu_params).is_err());
+        }
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(parse_gpu_display_options(Some("blah"), &mut gpu_params).is_err());
+        }
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_options_and_gpu_display_options_valid() {
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(parse_gpu_options(Some("2D,width=500,height=600"), &mut gpu_params).is_ok());
+            assert!(
+                parse_gpu_display_options(Some("width=700,height=800"), &mut gpu_params).is_ok()
+            );
+            assert_eq!(gpu_params.displays.len(), 2);
+            assert_eq!(gpu_params.displays[0].width, 500);
+            assert_eq!(gpu_params.displays[0].height, 600);
+            assert_eq!(gpu_params.displays[1].width, 700);
+            assert_eq!(gpu_params.displays[1].height, 800);
+        }
+        {
+            let mut gpu_params: GpuParameters = Default::default();
+            assert!(parse_gpu_options(Some("2D"), &mut gpu_params).is_ok());
+            assert!(
+                parse_gpu_display_options(Some("width=700,height=800"), &mut gpu_params).is_ok()
+            );
+            assert_eq!(gpu_params.displays.len(), 1);
+            assert_eq!(gpu_params.displays[0].width, 700);
+            assert_eq!(gpu_params.displays[0].height, 800);
+        }
     }
 
     #[test]
