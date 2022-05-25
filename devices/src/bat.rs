@@ -141,12 +141,9 @@ fn command_monitor(
     create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
 ) {
     let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
-        (&Descriptor(tube.as_raw_descriptor()), Token::Commands),
-        (
-            &Descriptor(irq_evt.get_resample().as_raw_descriptor()),
-            Token::Resample,
-        ),
-        (&Descriptor(kill_evt.as_raw_descriptor()), Token::Kill),
+        (&tube, Token::Commands),
+        (irq_evt.get_resample(), Token::Resample),
+        (&kill_evt, Token::Kill),
     ]) {
         Ok(pc) => pc,
         Err(e) => {
