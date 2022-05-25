@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context};
 use argh::FromArgs;
-use base::{get_max_open_files, RawDescriptor, UnlinkUnixListener};
+use base::{get_max_open_files, AsRawDescriptor, RawDescriptor, UnlinkUnixListener};
 use cros_async::Executor;
 use minijail::{self, Minijail};
 
@@ -107,6 +107,16 @@ pub fn start_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
             Some(l)
         }
     };
+    let device = match opts.vfio {
+        None => None,
+        Some(vfio) => {
+            let d = VvuPciDevice::new(&vfio, FsBackend::MAX_QUEUE_NUM)?;
+            keep_rds.extend(d.irqs.iter().map(|e| e.as_raw_descriptor()));
+            keep_rds.extend(d.notification_evts.iter().map(|e| e.as_raw_descriptor()));
+            keep_rds.push(d.vfio_dev.device_file().as_raw_fd());
+            Some(d)
+        }
+    };
     base::syslog::push_descriptors(&mut keep_rds);
 
     let handler = DeviceRequestHandler::new(fs_device);
@@ -140,12 +150,9 @@ pub fn start_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
         }
     }
 
-    let res = match (listener, opts.vfio) {
+    let res = match (listener, device) {
         (Some(l), None) => ex.run_until(handler.run_with_listener(l, &ex))?,
-        (None, Some(vfio)) => {
-            let device = VvuPciDevice::new(&vfio, FsBackend::MAX_QUEUE_NUM)?;
-            ex.run_until(handler.run_vvu(device, &ex))?
-        }
+        (None, Some(d)) => ex.run_until(handler.run_vvu(d, &ex))?,
         _ => Err(anyhow!("exactly one of `--socket` or `--vfio` is required")),
     };
     res
