@@ -5,8 +5,9 @@
 
 import doctest
 import importlib
-from pathlib import Path
+import argh  # type: ignore
 import sys
+from pathlib import Path
 from impl.common import CROSVM_ROOT, run_main, cmd, chdir, parallel, find_scripts
 from impl.check_code_hygiene import has_crlf_line_endings
 
@@ -35,13 +36,24 @@ def check_crlf_line_endings():
         sys.exit(-1)
 
 
-def main():
+@argh.arg("checks", choices=["python", "misc", "fmt", "clippy", "all", []])
+def main(*checks: str):
     chdir(CROSVM_ROOT)
 
-    check_python()
-    check_crlf_line_endings()
-    cmd("./tools/fmt --check").fg()
-    cmd("./tools/clippy").fg()
+    if not checks:
+        checks = ("all",)
+
+    def should_check(name: str):
+        return "all" in checks or name in checks
+
+    if should_check("python"):
+        check_python()
+    if should_check("misc"):
+        check_crlf_line_endings()
+    if should_check("fmt"):
+        cmd("./tools/fmt --check").fg()
+    if should_check("clippy"):
+        cmd("./tools/clippy").fg()
 
 
 if __name__ == "__main__":
