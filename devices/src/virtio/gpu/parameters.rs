@@ -5,6 +5,7 @@
 //! Definitions and utilities for GPU related parameters.
 
 use super::GpuMode;
+use rutabaga_gfx::RutabagaWsi;
 
 use serde::{Deserialize, Serialize};
 
@@ -37,6 +38,8 @@ pub struct GpuParameters {
     pub gfxstream_use_guest_angle: bool,
     pub gfxstream_use_syncfd: bool,
     pub use_vulkan: bool,
+    pub gfxstream_support_gles31: bool,
+    pub wsi: Option<RutabagaWsi>,
     pub udmabuf: bool,
     pub mode: GpuMode,
     pub cache_path: Option<String>,
@@ -60,6 +63,8 @@ impl Default for GpuParameters {
             } else {
                 GpuMode::Mode2D
             },
+            gfxstream_support_gles31: true,
+            wsi: None,
             cache_path: None,
             cache_size: None,
             udmabuf: false,

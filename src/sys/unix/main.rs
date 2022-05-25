@@ -218,6 +218,8 @@ pub fn get_arguments() -> Vec<Argument> {
 
                               vulkan[=true|=false] - If the backend should support vulkan
 
+                              wsi=vk - If the gfxstream backend should use the Vulkan swapchain to draw on a window
+
                               cache-path=PATH - The path to the virtio-gpu device shader cache.
 
                               cache-size=SIZE - The maximum size of the shader cache."),

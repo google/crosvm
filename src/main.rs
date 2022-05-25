@@ -72,7 +72,8 @@ use vm_control::{
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64::{set_enable_pnp_data_msr_config, set_itmt_msr_config};
 
-use rutabaga_gfx::calculate_context_mask;
+#[cfg(feature = "gpu")]
+use rutabaga_gfx::{calculate_context_mask, RutabagaWsi};
 
 const ONE_MB: u64 = 1 << 20;
 const MB_ALIGNED: u64 = ONE_MB - 1;
@@ -389,6 +390,17 @@ fn parse_gpu_options(s: Option<&str>, gpu_params: &mut GpuParameters) -> argumen
                         }
                     }
                 }
+                "wsi" => match v {
+                    "vk" => {
+                        gpu_params.wsi = Some(RutabagaWsi::Vulkan);
+                    }
+                    _ => {
+                        return Err(argument::Error::InvalidValue {
+                            value: v.to_string(),
+                            expected: String::from("gpu parameter 'wsi' should be vk"),
+                        });
+                    }
+                },
                 "width" => {
                     let width = v
                         .parse::<u32>()
@@ -3848,6 +3860,32 @@ mod tests {
                     .is_err()
             );
         }
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_options_gfxstream_with_wsi_specified() {
+        let mut gpu_params: GpuParameters = Default::default();
+        assert!(parse_gpu_options(Some("backend=virglrenderer,wsi=vk"), &mut gpu_params).is_ok());
+        assert!(matches!(gpu_params.wsi, Some(RutabagaWsi::Vulkan)));
+
+        let mut gpu_params: GpuParameters = Default::default();
+        assert!(parse_gpu_options(Some("wsi=vk,backend=virglrenderer"), &mut gpu_params).is_ok());
+        assert!(matches!(gpu_params.wsi, Some(RutabagaWsi::Vulkan)));
+
+        let mut gpu_params: GpuParameters = Default::default();
+        assert!(parse_gpu_options(
+            Some("backend=virglrenderer,wsi=invalid_value"),
+            &mut gpu_params
+        )
+        .is_err());
+
+        let mut gpu_params: GpuParameters = Default::default();
+        assert!(parse_gpu_options(
+            Some("wsi=invalid_value,backend=virglrenderer"),
+            &mut gpu_params
+        )
+        .is_err());
     }
 
     #[test]

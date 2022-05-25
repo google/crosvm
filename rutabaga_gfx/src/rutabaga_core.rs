@@ -855,6 +855,12 @@ impl RutabagaBuilder {
         self
     }
 
+    /// Use the Vulkan swapchain to draw on the host window for gfxstream.
+    pub fn set_wsi(mut self, v: Option<&RutabagaWsi>) -> RutabagaBuilder {
+        self.gfxstream_flags = self.gfxstream_flags.set_wsi(v);
+        self
+    }
+
     /// Set rutabaga channels for the RutabagaBuilder
     pub fn set_rutabaga_channels(
         mut self,

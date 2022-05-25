@@ -13,6 +13,7 @@ use std::str::Utf8Error;
 use base::{Error as BaseError, ExternalMappingError, SafeDescriptor};
 use data_model::VolatileMemoryError;
 use remain::sorted;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[cfg(feature = "vulkano")]
@@ -409,11 +410,17 @@ const GFXSTREAM_RENDERER_FLAGS_USE_GLES: u32 = 1 << 4;
 const GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT: u32 = 1 << 5;
 const GFXSTREAM_RENDERER_FLAGS_NO_SYNCFD_BIT: u32 = 1 << 20;
 const GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE: u32 = 1 << 21;
+const GFXSTREAM_RENDERER_FLAGS_VULKAN_NATIVE_SWAPCHAIN_BIT: u32 = 1 << 22;
 pub const GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB: u32 = 1 << 23;
 
 /// gfxstream flag struct.
 #[derive(Copy, Clone, Default)]
 pub struct GfxstreamFlags(u32);
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum RutabagaWsi {
+    Vulkan,
+}
 
 impl GfxstreamFlags {
     /// Create new gfxstream flags.
@@ -467,6 +474,15 @@ impl GfxstreamFlags {
     /// Use async fence completion callback.
     pub fn use_async_fence_cb(self, v: bool) -> GfxstreamFlags {
         self.set_flag(GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB, v)
+    }
+
+    /// Use the Vulkan swapchain to draw on the host window.
+    pub fn set_wsi(self, v: Option<&RutabagaWsi>) -> GfxstreamFlags {
+        let use_vulkan_swapchain = matches!(v, Some(RutabagaWsi::Vulkan));
+        self.set_flag(
+            GFXSTREAM_RENDERER_FLAGS_VULKAN_NATIVE_SWAPCHAIN_BIT,
+            use_vulkan_swapchain,
+        )
     }
 }
 

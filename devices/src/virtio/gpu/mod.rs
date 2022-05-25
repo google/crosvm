@@ -1025,6 +1025,7 @@ impl Gpu {
             .set_use_vulkan(gpu_parameters.use_vulkan)
             .set_use_syncfd(gpu_parameters.gfxstream_use_syncfd)
             .set_use_guest_angle(gpu_parameters.gfxstream_use_guest_angle)
+            .set_wsi(gpu_parameters.wsi.as_ref())
             .set_use_external_blob(external_blob)
             .set_use_render_server(render_server_fd.is_some());
 
