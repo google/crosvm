@@ -1428,7 +1428,6 @@ where
         devices,
         irq_chip,
         &mut vcpu_ids,
-        simple_jail(&cfg.jail_config, "serial")?,
     )
     .context("the architecture failed to build the vm")?;
 

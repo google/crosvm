@@ -6,8 +6,6 @@
 
 mod bus;
 mod cmos;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-mod debugcon;
 #[cfg(feature = "direct")]
 pub mod direct_io;
 #[cfg(feature = "direct")]
@@ -46,8 +44,6 @@ pub use self::bus::{
     HostHotPlugKey, HotPlugBus,
 };
 pub use self::cmos::Cmos;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub use self::debugcon::Debugcon;
 #[cfg(feature = "direct")]
 pub use self::direct_io::{DirectIo, DirectMmio};
 #[cfg(feature = "direct")]
