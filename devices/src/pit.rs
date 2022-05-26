@@ -8,9 +8,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use base::{
-    error, warn, AsRawDescriptor, Descriptor, Error as SysError, Event, PollToken, WaitContext,
-};
+use base::{error, warn, Error as SysError, Event, PollToken, WaitContext};
 use bit_field::BitField1;
 use bit_field::*;
 use hypervisor::{PitChannelState, PitRWMode, PitRWState, PitState};
@@ -147,6 +145,14 @@ const NUM_OF_COUNTERS: usize = 3;
 const NANOS_PER_SEC: u64 = 1_000_000_000;
 
 const MAX_TIMER_FREQ: u32 = 65536;
+
+#[derive(PollToken)]
+enum Token {
+    // The timer expired.
+    TimerExpire,
+    // The parent thread requested an exit.
+    Kill,
+}
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -287,16 +293,21 @@ impl Pit {
     }
 
     fn start(&mut self) -> PitResult<()> {
+        let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
+            (&self.counters[0].lock().timer, Token::TimerExpire),
+            (&self.kill_evt, Token::Kill),
+        ])
+        .map_err(PitError::CreateWaitContext)?;
+
         let mut worker = Worker {
             pit_counter: self.counters[0].clone(),
-            fd: Descriptor(self.counters[0].lock().timer.as_raw_descriptor()),
+            wait_ctx,
         };
-        let evt = self.kill_evt.try_clone().map_err(PitError::CloneEvent)?;
 
         self.worker_thread = Some(
             thread::Builder::new()
                 .name("pit counter worker".to_string())
-                .spawn(move || worker.run(evt))
+                .spawn(move || worker.run())
                 .map_err(PitError::SpawnThread)?,
         );
 
@@ -878,25 +889,13 @@ impl PitCounter {
 
 struct Worker {
     pit_counter: Arc<Mutex<PitCounter>>,
-    fd: Descriptor,
+    wait_ctx: WaitContext<Token>,
 }
 
 impl Worker {
-    fn run(&mut self, kill_evt: Event) -> PitResult<()> {
-        #[derive(PollToken)]
-        enum Token {
-            // The timer expired.
-            TimerExpire,
-            // The parent thread requested an exit.
-            Kill,
-        }
-
-        let wait_ctx: WaitContext<Token> =
-            WaitContext::build_with(&[(&self.fd, Token::TimerExpire), (&kill_evt, Token::Kill)])
-                .map_err(PitError::CreateWaitContext)?;
-
+    fn run(&mut self) -> PitResult<()> {
         loop {
-            let events = wait_ctx.wait().map_err(PitError::WaitError)?;
+            let events = self.wait_ctx.wait().map_err(PitError::WaitError)?;
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::TimerExpire => {
