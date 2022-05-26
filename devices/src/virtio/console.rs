@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod sys;
+
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
 use std::ops::DerefMut;
@@ -9,7 +11,7 @@ use std::result;
 use std::sync::Arc;
 use std::thread;
 
-use base::{error, Event, EventToken, FileSync, RawDescriptor, WaitContext};
+use base::{error, AsRawDescriptor, Descriptor, Event, EventToken, RawDescriptor, WaitContext};
 use data_model::{DataInit, Le16, Le32};
 use hypervisor::ProtectionType;
 use remain::sorted;
@@ -17,12 +19,10 @@ use sync::Mutex;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
-use super::{
+use crate::virtio::{
     base_features, copy_config, DeviceType, Interrupt, Queue, Reader, SignalableInterrupt,
     VirtioDevice, Writer,
 };
-use crate::serial_device::SerialInput;
-use crate::SerialDevice;
 
 pub(crate) const QUEUE_SIZE: u16 = 256;
 
@@ -177,7 +177,7 @@ struct Worker {
 /// * `rx` - Data source that the reader thread will wait on to send data back to the buffer
 /// * `in_avail_evt` - Event triggered by the thread when new input is available on the buffer
 pub fn spawn_input_thread(
-    mut rx: Box<dyn SerialInput>,
+    mut rx: crate::serial::sys::InStreamType,
     in_avail_evt: &Event,
 ) -> Option<Arc<Mutex<VecDeque<u8>>>> {
     let buffer = Arc::new(Mutex::new(VecDeque::<u8>::new()));
@@ -205,7 +205,7 @@ pub fn spawn_input_thread(
                     }
                     Err(e) => {
                         // Being interrupted is not an error, but everything else is.
-                        if e.kind() != io::ErrorKind::Interrupted {
+                        if sys::is_a_fatal_input_error(&e) {
                             error!(
                                 "failed to read for bytes to queue into console device: {}",
                                 e
@@ -214,6 +214,9 @@ pub fn spawn_input_thread(
                         }
                     }
                 }
+
+                // Depending on the platform, a short sleep is needed here (ie. Windows).
+                sys::read_delay_if_needed();
             }
         });
     if let Err(e) = res {
@@ -330,7 +333,7 @@ impl Worker {
 }
 
 enum ConsoleInput {
-    FromRead(Box<dyn SerialInput>),
+    FromRead(crate::serial::sys::InStreamType),
     FromThread(Arc<Mutex<VecDeque<u8>>>),
 }
 
@@ -342,17 +345,14 @@ pub struct Console {
     worker_thread: Option<thread::JoinHandle<Worker>>,
     input: Option<ConsoleInput>,
     output: Option<Box<dyn io::Write + Send>>,
-    keep_rds: Vec<RawDescriptor>,
+    keep_descriptors: Vec<Descriptor>,
 }
 
-impl SerialDevice for Console {
+impl Console {
     fn new(
         protected_vm: ProtectionType,
-        _evt: Event,
-        input: Option<Box<dyn SerialInput>>,
+        input: Option<ConsoleInput>,
         output: Option<Box<dyn io::Write + Send>>,
-        _sync: Option<Box<dyn FileSync + Send>>,
-        _out_timestamp: bool,
         keep_rds: Vec<RawDescriptor>,
     ) -> Console {
         Console {
@@ -360,9 +360,9 @@ impl SerialDevice for Console {
             in_avail_evt: None,
             kill_evt: None,
             worker_thread: None,
-            input: input.map(ConsoleInput::FromRead),
+            input,
             output,
-            keep_rds,
+            keep_descriptors: keep_rds.iter().map(|rd| Descriptor(*rd)).collect(),
         }
     }
 }
@@ -382,7 +382,11 @@ impl Drop for Console {
 
 impl VirtioDevice for Console {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        self.keep_rds.clone()
+        // return the raw descriptors as opposed to descriptor.
+        self.keep_descriptors
+            .iter()
+            .map(|descr| descr.as_raw_descriptor())
+            .collect()
     }
 
     fn features(&self) -> u64 {
