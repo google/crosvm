@@ -126,9 +126,15 @@ luci.cq_group(
     ),
 )
 
-# Configure postsubmit tests running in ci pool
+# Console showing all postsubmit verify builders
 luci.console_view(
-    name = "CI Console",
+    name = "Postsubmit",
+    repo = "https://chromium.googlesource.com/crosvm/crosvm",
+)
+
+# Console showing all postsubmit infra builders
+luci.console_view(
+    name = "Infra",
     repo = "https://chromium.googlesource.com/crosvm/crosvm",
 )
 
@@ -162,7 +168,7 @@ def verify_builder(name, dimensions, presubmit = True, postsubmit = True, **args
             triggers = ["ci/%s" % name],
         )
         luci.console_view_entry(
-            console_view = "CI Console",
+            console_view = "Postsubmit",
             builder = "ci/%s" % name,
             category = "linux",
         )
@@ -227,6 +233,37 @@ def verify_chromeos_builder(board, **kwargs):
         **kwargs
     )
 
+def infra_builder(name, **args):
+    """Creates a ci job to run infra recipes that are not involved in verifying changes.
+
+    The builders are added to a separate infra dashboard.
+
+    Args:
+        name: Name of the builder
+        **args: Passed to luci.builder
+    """
+    luci.builder(
+        name = name,
+        bucket = "ci",
+        service_account = "crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com",
+        dimensions = {
+            "pool": "luci.crosvm.ci",
+            "os": "Ubuntu",
+            "cpu": "x86-64",
+        },
+        **args
+    )
+    luci.gitiles_poller(
+        name = "main source",
+        bucket = "ci",
+        repo = "https://chromium.googlesource.com/crosvm/crosvm",
+        triggers = ["ci/%s" % name],
+    )
+    luci.console_view_entry(
+        console_view = "Infra",
+        builder = "ci/%s" % name,
+    )
+
 verify_linux_builder("x86_64")
 verify_linux_builder("aarch64")
 verify_linux_builder("armhf")
@@ -244,3 +281,9 @@ verify_builder(
     ),
 )
 
+infra_builder(
+    name = "crosvm_push_to_github",
+    executable = luci.recipe(
+        name = "push_to_github",
+    ),
+)

@@ -1,0 +1,10 @@
+[
+  {
+    "cmd": [
+      "bash",
+      "RECIPE[crosvm::push_to_github].resources/push_to_github.sh"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "name": "Pushing to github"
+  }
+]

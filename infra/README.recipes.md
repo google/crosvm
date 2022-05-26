@@ -11,6 +11,7 @@
   * [crosvm:examples/build_context](#recipes-crosvm_examples_build_context) (Python3 ✅)
   * [crosvm:examples/prepare_source](#recipes-crosvm_examples_prepare_source) (Python3 ✅)
   * [health_check](#recipes-health_check) (Python3 ✅)
+  * [push_to_github](#recipes-push_to_github) (Python3 ✅)
 ## Recipe Modules
 
 ### *recipe_modules* / [crosvm](/infra/recipe_modules/crosvm)
@@ -96,11 +97,18 @@ PYTHON_VERSION_COMPATIBILITY: PY3
 &mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/prepare_source.py#18)(api):**
 ### *recipes* / [health\_check](/infra/recipes/health_check.py)
 
-[DEPS](/infra/recipes/health_check.py#10): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+[DEPS](/infra/recipes/health_check.py#9): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipes/health_check.py#19)(api):**
+&mdash; **def [RunSteps](/infra/recipes/health_check.py#18)(api):**
+### *recipes* / [push\_to\_github](/infra/recipes/push_to_github.py)
+
+[DEPS](/infra/recipes/push_to_github.py#9): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/file][recipe_engine/recipe_modules/file], [recipe\_engine/path][recipe_engine/recipe_modules/path], [recipe\_engine/raw\_io][recipe_engine/recipe_modules/raw_io], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+
+PYTHON_VERSION_COMPATIBILITY: PY3
+
+&mdash; **def [RunSteps](/infra/recipes/push_to_github.py#20)(api):**
 
 [depot_tools/recipe_modules/bot_update]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/8a87603683bda769d437e48cc1a7494a2e237ead/recipes/README.recipes.md#recipe_modules-bot_update
 [depot_tools/recipe_modules/depot_tools]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/8a87603683bda769d437e48cc1a7494a2e237ead/recipes/README.recipes.md#recipe_modules-depot_tools
@@ -111,5 +119,6 @@ PYTHON_VERSION_COMPATIBILITY: PY3
 [recipe_engine/recipe_modules/file]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-file
 [recipe_engine/recipe_modules/path]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-path
 [recipe_engine/recipe_modules/properties]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-properties
+[recipe_engine/recipe_modules/raw_io]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-raw_io
 [recipe_engine/recipe_modules/step]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-step
 [recipe_engine/wkt/RecipeApi]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/recipe_engine/recipe_api.py#883
