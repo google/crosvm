@@ -2145,7 +2145,7 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
         if !cfg.userspace_msr.is_empty() {
             for (_, msr_config) in cfg.userspace_msr.iter() {
                 if msr_config.from == MsrValueFrom::RWFromRunningCPU {
-                    return Err(argument::Error::UnknownArgument(
+                    return Err(argument::Error::ExpectedArgument(
                         "`userspace-msr` must set `cpu0` if `host-cpu-topology` is not set"
                             .to_owned(),
                     ));
@@ -2205,7 +2205,7 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
             }
         }
         set_itmt_msr_config(&mut cfg.userspace_msr).map_err(|e| {
-            argument::Error::UnknownArgument(format!("the cpu doesn't support itmt {}", e))
+            argument::Error::UnexpectedValue(format!("the cpu doesn't support itmt {}", e))
         })?;
     }
     if !cfg.balloon && cfg.balloon_control.is_some() {
