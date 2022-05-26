@@ -62,8 +62,8 @@ async fn run_in_queue(
             break;
         }
 
-        if let Err(wl::DescriptorsExhausted) =
-            wl::process_in_queue(&doorbell, &mut queue, &mem, &mut wlstate.borrow_mut())
+        if wl::process_in_queue(&doorbell, &mut queue, &mem, &mut wlstate.borrow_mut())
+            == Err(wl::DescriptorsExhausted)
         {
             if let Err(e) = kick_evt.next_val().await {
                 error!("Failed to read kick event for in queue: {}", e);
