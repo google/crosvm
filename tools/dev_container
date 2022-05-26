@@ -79,6 +79,14 @@ def main(
 
     container_id = docker(f"ps -a -q -f name={CONTAINER_NAME}").stdout()
 
+    if stop:
+        if container_id:
+            print(f"Stopping dev-container {container_id}.")
+            docker("rm -f", container_id).fg(quiet=True)
+        else:
+            print(f"Dev-container is not running.")
+        return
+
     # If a command is provided run non-interactive unless explicitly asked for.
     tty_args = []
     if not command or interactive:
@@ -91,15 +99,6 @@ def main(
         command = ("/bin/bash",)
 
     quoted_cmd = list(map(quoted, command))
-
-    if stop:
-        if container_id:
-            print(f"Stopping dev-container {container_id}.")
-            docker("rm -f", container_id).fg(quiet=True)
-        else:
-            print(f"Dev-container is not running.")
-        return
-
     if hermetic:
         docker(f"run --rm", *tty_args, *docker_args, *quoted_cmd).fg()
     else:
