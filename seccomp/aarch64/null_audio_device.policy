@@ -4,6 +4,7 @@
 
 @include /usr/share/policy/crosvm/common_device.policy
 
+lseek: 1
 madvise: 1
 prlimit64: 1
 setrlimit: 1
