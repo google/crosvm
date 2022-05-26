@@ -13,6 +13,7 @@ serde_keyvalue_derive = { path = "serde_keyvalue_derive", optional = true }
 serde = "1"
 thiserror = { version = "1.0.20" }
 remain = "*"
+num-traits = "0.2"
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }

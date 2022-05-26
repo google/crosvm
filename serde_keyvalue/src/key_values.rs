@@ -7,6 +7,7 @@ use std::fmt::{self, Debug, Display};
 use std::num::{IntErrorKind, ParseIntError};
 use std::str::FromStr;
 
+use num_traits::Num;
 use remain::sorted;
 use serde::de;
 use serde::Deserialize;
@@ -28,7 +29,7 @@ pub enum ErrorKind {
     ExpectedEqual,
     #[error("expected an identifier")]
     ExpectedIdentifier,
-    #[error("expected a number")]
+    #[error("expected a number or number contains invalid digits")]
     ExpectedNumber,
     #[error("expected a string")]
     ExpectedString,
@@ -298,13 +299,19 @@ impl<'de> KeyValueDeserializer<'de> {
     }
 
     /// Parse a positive or negative number.
-    // TODO support 0x or 0b notation?
     fn parse_number<T>(&mut self) -> Result<T>
     where
-        T: FromStr<Err = ParseIntError>,
+        T: Num<FromStrRadixErr = ParseIntError>,
     {
         let num_str = self.peek_value()?;
-        let val = T::from_str(num_str).map_err(|e| {
+        let len = num_str.len();
+        let (num_str, radix) = match num_str.get(..2) {
+            Some("0x") => (&num_str[2..], 16),
+            Some("0o") => (&num_str[2..], 8),
+            Some("0b") => (&num_str[2..], 2),
+            _ => (num_str, 10),
+        };
+        let val = T::from_str_radix(num_str, radix).map_err(|e| {
             self.error_here(
                 if let IntErrorKind::PosOverflow | IntErrorKind::NegOverflow = e.kind() {
                     ErrorKind::NumberOverflow
@@ -313,7 +320,7 @@ impl<'de> KeyValueDeserializer<'de> {
                 },
             )
         })?;
-        self.input = &self.input[num_str.len()..];
+        self.input = &self.input[len..];
         Ok(val)
     }
 }
@@ -744,6 +751,56 @@ mod tests {
                 pos: 2,
             }
         );
+
+        // Parsing hex values
+        let res: SingleStruct<usize> =
+            from_key_values::<SingleStruct<usize>>("m=0x1234abcd").unwrap();
+        assert_eq!(res.m, 0x1234abcd);
+        let res: SingleStruct<isize> =
+            from_key_values::<SingleStruct<isize>>("m=0x-1234abcd").unwrap();
+        assert_eq!(res.m, -0x1234abcd);
+
+        // Hex value outside range
+        let res: ParseError = from_key_values::<SingleStruct<usize>>("m=0xg").unwrap_err();
+        assert_eq!(
+            res,
+            ParseError {
+                kind: ErrorKind::ExpectedNumber,
+                pos: 2,
+            }
+        );
+
+        // Parsing octal values
+        let res: SingleStruct<usize> = from_key_values::<SingleStruct<usize>>("m=0o755").unwrap();
+        assert_eq!(res.m, 0o755);
+        let res: SingleStruct<isize> = from_key_values::<SingleStruct<isize>>("m=0o-755").unwrap();
+        assert_eq!(res.m, -0o755);
+
+        // Octal value outside range
+        let res: ParseError = from_key_values::<SingleStruct<usize>>("m=0o8").unwrap_err();
+        assert_eq!(
+            res,
+            ParseError {
+                kind: ErrorKind::ExpectedNumber,
+                pos: 2,
+            }
+        );
+
+        // Parsing binary values
+        let res: SingleStruct<usize> = from_key_values::<SingleStruct<usize>>("m=0b1100").unwrap();
+        assert_eq!(res.m, 0b1100);
+        let res: SingleStruct<isize> = from_key_values::<SingleStruct<isize>>("m=0b-1100").unwrap();
+        assert_eq!(res.m, -0b1100);
+
+        // Binary value outside range
+        let res: ParseError = from_key_values::<SingleStruct<usize>>("m=0b2").unwrap_err();
+        assert_eq!(
+            res,
+            ParseError {
+                kind: ErrorKind::ExpectedNumber,
+                pos: 2,
+            }
+        );
     }
 
     #[test]
@@ -863,6 +920,17 @@ mod tests {
             res,
             TestStruct {
                 num: 54,
+                path: "/dev/foomatic".into(),
+                enable: false,
+            }
+        );
+
+        let kv = "num=0x54,path=/dev/foomatic,enable=false";
+        let res = from_key_values::<TestStruct>(kv).unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                num: 0x54,
                 path: "/dev/foomatic".into(),
                 enable: false,
             }
