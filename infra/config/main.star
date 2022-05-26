@@ -202,3 +202,14 @@ def verify_linux_builder(arch):
 verify_linux_builder("x86_64")
 verify_linux_builder("aarch64")
 verify_linux_builder("armhf")
+
+verify_builder(
+    name = "crosvm_health_check",
+    dimensions = {
+        "os": "Ubuntu",
+        "cpu": "x86-64",
+    },
+    executable = luci.recipe(
+        name = "health_check",
+    ),
+)
