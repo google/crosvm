@@ -20,15 +20,15 @@ cfg_if::cfg_if! {
         mod vvu;
         mod wl;
 
-        pub use vsock::run_vsock_device;
-        pub use wl::run_wl_device;
-        pub use console::run_console_device;
+        pub use {vsock::run_vsock_device, vsock::Options as VsockOptions};
+        pub use {wl::run_wl_device, wl::Options as WlOptions};
+        pub use {console::run_console_device, console::Options as ConsoleOptions};
         #[cfg(feature = "audio_cras")]
-        pub use cras_snd::run_cras_snd_device;
-        pub use fs::run_fs_device;
+        pub use {cras_snd::run_cras_snd_device, cras_snd::Options as CrasSndOptions};
+        pub use {fs::run_fs_device, fs::Options as FsOptions};
         pub use net::run_net_device;
         #[cfg(feature = "gpu")]
-        pub use gpu::run_gpu_device;
+        pub use {gpu::run_gpu_device, gpu::Options as GpuOptions};
     } else if #[cfg(windows)] {
         #[cfg(feature = "slirp")]
         mod net;

@@ -338,59 +338,41 @@ fn gpu_parameters_from_str(input: &str) -> Result<GpuParameters, String> {
 }
 
 #[derive(FromArgs)]
-#[argh(description = "run gpu device")]
-struct Options {
-    #[argh(
-        option,
-        description = "path to bind a listening vhost-user socket",
-        arg_name = "PATH"
-    )]
+/// GPU device configuration
+#[argh(subcommand, name = "gpu")]
+pub struct Options {
+    #[argh(option, arg_name = "PATH")]
+    /// path to bind a listening vhost-user socket
     socket: String,
-    #[argh(
-        option,
-        description = "path to one or more Wayland sockets. The unnamed socket is \
-        used for displaying virtual screens while the named ones are used for IPC",
-        from_str_fn(parse_wayland_sock),
-        arg_name = "PATH[,name=NAME]"
-    )]
+    #[argh(option, from_str_fn(parse_wayland_sock), arg_name = "PATH[,name=NAME]")]
+    /// path to one or more Wayland sockets. The unnamed socket is
+    /// used for displaying virtual screens while the named ones are used for IPC
     wayland_sock: Vec<(String, PathBuf)>,
-    #[argh(
-        option,
-        description = "path to one or more bridge sockets for communicating with \
-        other graphics devices (wayland, video, etc)",
-        arg_name = "PATH"
-    )]
+    #[argh(option, arg_name = "PATH")]
+    /// path to one or more bridge sockets for communicating with
+    /// other graphics devices (wayland, video, etc)
     resource_bridge: Vec<String>,
-    #[argh(option, description = " X11 display name to use", arg_name = "DISPLAY")]
+    #[argh(option, arg_name = "DISPLAY")]
+    /// X11 display name to use
     x_display: Option<String>,
     #[argh(
         option,
         from_str_fn(gpu_parameters_from_str),
         default = "Default::default()",
-        description = "a JSON object of virtio-gpu parameters",
         arg_name = "JSON"
     )]
+    /// a JSON object of virtio-gpu parameters
     params: GpuParameters,
 }
 
-pub fn run_gpu_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
+pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     let Options {
         x_display,
         params: mut gpu_parameters,
         resource_bridge,
         socket,
         wayland_sock,
-    } = match Options::from_args(&[program_name], args) {
-        Ok(opts) => opts,
-        Err(e) => {
-            if e.status.is_err() {
-                bail!(e.output);
-            } else {
-                println!("{}", e.output);
-            }
-            return Ok(());
-        }
-    };
+    } = opts;
 
     base::syslog::init().context("failed to initialize syslog")?;
 

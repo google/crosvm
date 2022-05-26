@@ -2959,7 +2959,7 @@ with a '--backing_file'."
     Ok(())
 }
 
-fn start_device(mut args: std::env::Args) -> std::result::Result<(), ()> {
+fn start_device(args: std::env::Args) -> std::result::Result<(), ()> {
     let print_usage = || {
         print_help(
             "crosvm device",
@@ -2973,22 +2973,20 @@ fn start_device(mut args: std::env::Args) -> std::result::Result<(), ()> {
         return Err(());
     }
 
-    let device = args.next().unwrap();
-
-    let program_name = format!("crosvm device {}", device);
-
     let args = args.collect::<Vec<_>>();
     let args = args.iter().map(Deref::deref).collect::<Vec<_>>();
     let args = args.as_slice();
 
-    let result = match device.as_str() {
-        "block" => run_block_device(&program_name, args),
-        "net" => run_net_device(&program_name, args),
-        _ => sys::start_device(&program_name, device.as_str(), args),
+    let program_name = format!("crosvm device {}", args[0]);
+
+    let result = match args[0] {
+        "block" => run_block_device(&program_name, &args[1..]),
+        "net" => run_net_device(&program_name, &args[1..]),
+        _ => sys::start_device(&program_name, args),
     };
 
     result.map_err(|e| {
-        error!("Failed to run {} device: {:#}", device, e);
+        error!("Failed to run {} device: {:#}", args[0], e);
     })
 }
 

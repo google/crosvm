@@ -12,4 +12,4 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(in crate::virtio::vhost::user::device::fs) use platform::start_device;
+pub use platform::start_device;

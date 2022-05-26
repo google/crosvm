@@ -4,7 +4,7 @@
 
 mod sys;
 
-use sys::start_device;
+pub use sys::start_device as run_fs_device;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -202,26 +202,25 @@ impl VhostUserBackend for FsBackend {
 }
 
 #[derive(FromArgs)]
-#[argh(description = "")]
-struct Options {
-    #[argh(option, description = "path to a vhost-user socket", arg_name = "PATH")]
+#[argh(subcommand, name = "fs")]
+/// FS Options
+pub struct Options {
+    #[argh(option, arg_name = "PATH")]
+    /// path to a vhost-user socket
     socket: Option<String>,
-    #[argh(
-        option,
-        description = "VFIO-PCI device name (e.g. '0000:00:07.0')",
-        arg_name = "STRING"
-    )]
+    #[argh(option, arg_name = "STRING")]
+    /// VFIO-PCI device name (e.g. '0000:00:07.0')
     vfio: Option<String>,
-    #[argh(option, description = "the virtio-fs tag", arg_name = "TAG")]
+    #[argh(option, arg_name = "TAG")]
+    /// the virtio-fs tag
     tag: String,
-    #[argh(option, description = "path to a directory to share", arg_name = "DIR")]
+    #[argh(option, arg_name = "DIR")]
+    /// path to a directory to share
     shared_dir: PathBuf,
-    #[argh(option, description = "uid map to use", arg_name = "UIDMAP")]
+    #[argh(option, arg_name = "UIDMAP")]
+    /// uid map to use
     uid_map: Option<String>,
-    #[argh(option, description = "gid map to use", arg_name = "GIDMAP")]
+    #[argh(option, arg_name = "GIDMAP")]
+    /// gid map to use
     gid_map: Option<String>,
-}
-
-pub fn run_fs_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
-    start_device(program_name, args)
 }

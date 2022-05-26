@@ -150,6 +150,7 @@ x = ["devices/x"]
 [dependencies]
 anyhow = "1.0.32"
 arch = { path = "arch" }
+argh = "0.1"
 assertions = { path = "common/assertions" }
 audio_streams = "*"
 base = "*"

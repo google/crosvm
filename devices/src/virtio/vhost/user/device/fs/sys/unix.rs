@@ -7,7 +7,6 @@ use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context};
-use argh::FromArgs;
 use base::{get_max_open_files, AsRawDescriptor, RawDescriptor};
 use cros_async::Executor;
 use minijail::{self, Minijail};
@@ -79,19 +78,7 @@ fn jail_and_fork(
 
 /// Starts a vhost-user fs device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
-pub fn start_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
-    let opts = match Options::from_args(&[program_name], args) {
-        Ok(opts) => opts,
-        Err(e) => {
-            if e.status.is_err() {
-                bail!(e.output);
-            } else {
-                println!("{}", e.output);
-            }
-            return Ok(());
-        }
-    };
-
+pub fn start_device(opts: Options) -> anyhow::Result<()> {
     base::syslog::init().context("Failed to initialize syslog")?;
 
     let ex = Executor::new().context("Failed to create executor")?;

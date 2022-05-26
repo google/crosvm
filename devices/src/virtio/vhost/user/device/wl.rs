@@ -274,55 +274,33 @@ pub(crate) fn parse_wayland_sock(value: &str) -> Result<(String, PathBuf), Strin
 }
 
 #[derive(FromArgs)]
-#[argh(description = "")]
-struct Options {
-    #[argh(
-        option,
-        description = "path to bind a listening vhost-user socket",
-        arg_name = "PATH"
-    )]
+#[argh(subcommand, name = "wl")]
+/// Wayland
+pub struct Options {
+    #[argh(option, arg_name = "PATH")]
+    /// path to bind a listening vhost-user socket
     socket: String,
-    #[argh(
-        option,
-        description = "path to a socket for wayland-specific messages",
-        arg_name = "PATH"
-    )]
+    #[argh(option, arg_name = "PATH")]
+    /// path to a socket for wayland-specific messages
     vm_socket: String,
-    #[argh(
-        option,
-        description = "path to one or more Wayland sockets. The unnamed socket is used for\
-        displaying virtual screens while the named ones are used for IPC",
-        from_str_fn(parse_wayland_sock),
-        arg_name = "PATH[,name=NAME]"
-    )]
+    #[argh(option, from_str_fn(parse_wayland_sock), arg_name = "PATH[,name=NAME]")]
+    /// path to one or more Wayland sockets. The unnamed socket is used for
+    /// displaying virtual screens while the named ones are used for IPC
     wayland_sock: Vec<(String, PathBuf)>,
-    #[argh(
-        option,
-        description = "path to the GPU resource bridge",
-        arg_name = "PATH"
-    )]
+    #[argh(option, arg_name = "PATH")]
+    /// path to the GPU resource bridge
     resource_bridge: Option<String>,
 }
 
 /// Starts a vhost-user wayland device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
-pub fn run_wl_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
+pub fn run_wl_device(opts: Options) -> anyhow::Result<()> {
     let Options {
         vm_socket,
         wayland_sock,
         socket,
         resource_bridge,
-    } = match Options::from_args(&[program_name], args) {
-        Ok(opts) => opts,
-        Err(e) => {
-            if e.status.is_err() {
-                bail!(e.output);
-            } else {
-                println!("{}", e.output);
-            }
-            return Ok(());
-        }
-    };
+    } = opts;
 
     let wayland_paths: BTreeMap<_, _> = wayland_sock.into_iter().collect();
 

@@ -272,37 +272,26 @@ impl VhostUserBackend for ConsoleBackend {
 }
 
 #[derive(FromArgs)]
-#[argh(description = "")]
-struct Options {
-    #[argh(option, description = "path to a vhost-user socket", arg_name = "PATH")]
+#[argh(subcommand, name = "console")]
+/// Console options
+pub struct Options {
+    #[argh(option, arg_name = "PATH")]
+    /// path to a vhost-user socket
     socket: Option<String>,
-    #[argh(
-        option,
-        description = "VFIO-PCI device name (e.g. '0000:00:07.0')",
-        arg_name = "STRING"
-    )]
+    #[argh(option, arg_name = "STRING")]
+    /// VFIO-PCI device name (e.g. '0000:00:07.0')
     vfio: Option<String>,
-    #[argh(option, description = "path to a file", arg_name = "OUTFILE")]
+    #[argh(option, arg_name = "OUTFILE")]
+    /// path to a file
     output_file: Option<PathBuf>,
-    #[argh(option, description = "path to a file", arg_name = "INFILE")]
+    #[argh(option, arg_name = "INFILE")]
+    /// path to a file
     input_file: Option<PathBuf>,
 }
 
 /// Starts a vhost-user console device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
-pub fn run_console_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
-    let opts = match Options::from_args(&[program_name], args) {
-        Ok(opts) => opts,
-        Err(e) => {
-            if e.status.is_err() {
-                bail!(e.output);
-            } else {
-                println!("{}", e.output);
-            }
-            return Ok(());
-        }
-    };
-
+pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
     let type_ = match opts.output_file {
         Some(_) => SerialType::File,
         None => SerialType::Stdout,

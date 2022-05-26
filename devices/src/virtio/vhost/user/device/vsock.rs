@@ -537,28 +537,24 @@ async fn run_device<P: AsRef<Path>>(
 }
 
 #[derive(FromArgs)]
-#[argh(description = "")]
-struct Options {
-    #[argh(
-        option,
-        description = "path to bind a listening vhost-user socket",
-        arg_name = "PATH"
-    )]
+#[argh(subcommand, name = "vsock")]
+/// Vsock options
+pub struct Options {
+    #[argh(option, arg_name = "PATH")]
+    /// path to bind a listening vhost-user socket
     socket: Option<String>,
-    #[argh(option, description = "name of vfio pci device", arg_name = "STRING")]
+    #[argh(option, arg_name = "STRING")]
+    /// name of vfio pci device
     vfio: Option<String>,
-    #[argh(
-        option,
-        description = "the vsock context id for this device",
-        arg_name = "INT"
-    )]
+    #[argh(option, arg_name = "INT")]
+    /// the vsock context id for this device
     cid: u64,
     #[argh(
         option,
-        description = "path to the vhost-vsock control socket",
         default = "String::from(\"/dev/vhost-vsock\")",
         arg_name = "PATH"
     )]
+    /// path to the vhost-vsock control socket
     vhost_socket: String,
 }
 
@@ -603,19 +599,7 @@ fn run_vvu_device<P: AsRef<Path>>(
 }
 
 /// Returns an error if the given `args` is invalid or the device fails to run.
-pub fn run_vsock_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
-    let opts = match Options::from_args(&[program_name], args) {
-        Ok(opts) => opts,
-        Err(e) => {
-            if e.status.is_err() {
-                bail!(e.output);
-            } else {
-                println!("{}", e.output);
-            }
-            return Ok(());
-        }
-    };
-
+pub fn run_vsock_device(opts: Options) -> anyhow::Result<()> {
     let ex = Executor::new().context("failed to create executor")?;
 
     match (opts.socket, opts.vfio) {

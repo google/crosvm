@@ -10,7 +10,8 @@ use std::str::FromStr;
 use std::thread::sleep;
 use std::{path::PathBuf, time::Duration};
 
-use anyhow::{anyhow, Result};
+use anyhow::{bail, Result};
+use argh::FromArgs;
 
 use base::{kill_process_group, reap_child, warn};
 #[cfg(feature = "gpu")]
@@ -18,7 +19,7 @@ use devices::virtio::gpu::{GpuDisplayParameters, GpuParameters};
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::run_gpu_device;
 use devices::virtio::vhost::user::device::{
-    run_console_device, run_fs_device, run_vsock_device, run_wl_device,
+    self, run_console_device, run_fs_device, run_vsock_device, run_wl_device,
 };
 #[cfg(feature = "audio_cras")]
 use devices::virtio::{
@@ -590,17 +591,51 @@ pub fn set_arguments(cfg: &mut Config, name: &str, value: Option<&str>) -> argum
     Ok(())
 }
 
-pub(crate) fn start_device(program_name: &str, device_name: &str, args: &[&str]) -> Result<()> {
-    match device_name {
-        "console" => run_console_device(program_name, args),
+// This is temporary until argument parsing changes
+// bumped up the stack
+#[derive(FromArgs)]
+/// Unix Devices
+struct DevicesArgs {
+    #[argh(subcommand)]
+    command: DevicesSubcommand,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand)]
+/// Unix Devices
+pub enum DevicesSubcommand {
+    Console(device::ConsoleOptions),
+    #[cfg(feature = "audio_cras")]
+    CrasSnd(device::CrasSndOptions),
+    Fs(device::FsOptions),
+    #[cfg(feature = "gpu")]
+    Gpu(device::GpuOptions),
+    Vsock(device::VsockOptions),
+    Wl(device::WlOptions),
+}
+
+pub(crate) fn start_device(program_name: &str, args: &[&str]) -> Result<()> {
+    let opts = match DevicesArgs::from_args(&[program_name], args) {
+        Ok(opts) => opts,
+        Err(e) => {
+            if e.status.is_err() {
+                bail!(e.output);
+            } else {
+                println!("{}", e.output);
+            }
+            return Ok(());
+        }
+    };
+
+    match opts.command {
+        DevicesSubcommand::Console(cfg) => run_console_device(cfg),
         #[cfg(feature = "audio_cras")]
-        "cras-snd" => run_cras_snd_device(program_name, args),
-        "fs" => run_fs_device(program_name, args),
+        CrasSnd(cfg) => run_cras_snd_device(cfg),
+        DevicesSubcommand::Fs(cfg) => run_fs_device(cfg),
         #[cfg(feature = "gpu")]
-        "gpu" => run_gpu_device(program_name, args),
-        "vsock" => run_vsock_device(program_name, args),
-        "wl" => run_wl_device(program_name, args),
-        _ => Err(anyhow!("unknown device name: {}", device_name)),
+        DevicesSubcommand::Gpu(cfg) => run_gpu_device(cfg),
+        DevicesSubcommand::Vsock(cfg) => run_vsock_device(cfg),
+        DevicesSubcommand::Wl(cfg) => run_wl_device(cfg),
     }
 }
 
