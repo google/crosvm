@@ -30,6 +30,24 @@ pub(crate) fn async_poll_from<'a, F: IntoAsync + Send + 'a>(
     Ok(PollSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F> + Send>)?)
 }
 
+/// Same as [`async_uring_from`], but without the `Send` requirement and only usable on thread-local
+/// executors.
+pub(crate) fn async_uring_from_local<'a, F: IntoAsync + 'a>(
+    f: F,
+    ex: &URingExecutor,
+) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a>> {
+    Ok(UringSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F>>)?)
+}
+
+/// Same as [`async_poll_from`], but without the `Send` requirement and only usable on thread-local
+/// executors.
+pub(crate) fn async_poll_from_local<'a, F: IntoAsync + 'a>(
+    f: F,
+    ex: &FdExecutor,
+) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a>> {
+    Ok(PollSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F>>)?)
+}
+
 /// An executor for scheduling tasks that poll futures to completion.
 ///
 /// All asynchronous operations must run within an executor, which is capable of spawning futures as
@@ -155,6 +173,18 @@ impl Executor {
         match self {
             Executor::Uring(ex) => async_uring_from(f, ex),
             Executor::Fd(ex) => async_poll_from(f, ex),
+        }
+    }
+
+    /// Same as [`async_from`], but without the `Send` requirement and only usable on thread-local
+    /// executors.
+    pub fn async_from_local<'a, F: IntoAsync + 'a>(
+        &self,
+        f: F,
+    ) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a>> {
+        match self {
+            Executor::Uring(ex) => async_uring_from_local(f, ex),
+            Executor::Fd(ex) => async_poll_from_local(f, ex),
         }
     }
 

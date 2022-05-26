@@ -267,7 +267,9 @@ mod tests {
     use crate::{
         mem::VecIoWrapper,
         sys::unix::{
-            executor::{async_poll_from, async_uring_from},
+            executor::{
+                async_poll_from, async_poll_from_local, async_uring_from, async_uring_from_local,
+            },
             uring_executor::use_uring,
             FdExecutor, PollSource, URingExecutor, UringSource,
         },
@@ -400,6 +402,16 @@ mod tests {
         let poll_ex = FdExecutor::new().unwrap();
         let poll_source = async_poll_from(f, &poll_ex).unwrap();
         poll_ex.run_until(go(poll_source)).unwrap();
+
+        let f = File::open("/dev/zero").unwrap();
+        let uring_ex = URingExecutor::new().unwrap();
+        let uring_source = async_uring_from_local(f, &uring_ex).unwrap();
+        uring_ex.run_until(go(uring_source)).unwrap();
+
+        let f = File::open("/dev/zero").unwrap();
+        let poll_ex = FdExecutor::new().unwrap();
+        let poll_source = async_poll_from_local(f, &poll_ex).unwrap();
+        poll_ex.run_until(go(poll_source)).unwrap();
     }
 
     #[test]
@@ -424,6 +436,16 @@ mod tests {
         let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
         let poll_ex = FdExecutor::new().unwrap();
         let poll_source = async_poll_from(f, &poll_ex).unwrap();
+        poll_ex.run_until(go(poll_source)).unwrap();
+
+        let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
+        let ex = URingExecutor::new().unwrap();
+        let uring_source = async_uring_from_local(f, &ex).unwrap();
+        ex.run_until(go(uring_source)).unwrap();
+
+        let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
+        let poll_ex = FdExecutor::new().unwrap();
+        let poll_source = async_poll_from_local(f, &poll_ex).unwrap();
         poll_ex.run_until(go(poll_source)).unwrap();
     }
 
@@ -468,6 +490,16 @@ mod tests {
         let poll_ex = FdExecutor::new().unwrap();
         let poll_source = async_poll_from(f, &poll_ex).unwrap();
         poll_ex.run_until(go(poll_source)).unwrap();
+
+        let f = File::open("/dev/zero").unwrap();
+        let ex = URingExecutor::new().unwrap();
+        let uring_source = async_uring_from_local(f, &ex).unwrap();
+        ex.run_until(go(uring_source)).unwrap();
+
+        let f = File::open("/dev/zero").unwrap();
+        let poll_ex = FdExecutor::new().unwrap();
+        let poll_source = async_poll_from_local(f, &poll_ex).unwrap();
+        poll_ex.run_until(go(poll_source)).unwrap();
     }
 
     #[test]
@@ -496,6 +528,16 @@ mod tests {
         let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
         let poll_ex = FdExecutor::new().unwrap();
         let poll_source = async_poll_from(f, &poll_ex).unwrap();
+        poll_ex.run_until(go(poll_source)).unwrap();
+
+        let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
+        let ex = URingExecutor::new().unwrap();
+        let uring_source = async_uring_from_local(f, &ex).unwrap();
+        ex.run_until(go(uring_source)).unwrap();
+
+        let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
+        let poll_ex = FdExecutor::new().unwrap();
+        let poll_source = async_poll_from_local(f, &poll_ex).unwrap();
         poll_ex.run_until(go(poll_source)).unwrap();
     }
 
@@ -536,6 +578,20 @@ mod tests {
         eventfd.write(0xaa).unwrap();
         let poll_ex = FdExecutor::new().unwrap();
         let poll_source = async_poll_from(eventfd, &poll_ex).unwrap();
+        let val = poll_ex.run_until(go(poll_source)).unwrap();
+        assert_eq!(val, 0xaa);
+
+        let eventfd = Event::new().unwrap();
+        eventfd.write(0x55).unwrap();
+        let ex = URingExecutor::new().unwrap();
+        let uring_source = async_uring_from_local(eventfd, &ex).unwrap();
+        let val = ex.run_until(go(uring_source)).unwrap();
+        assert_eq!(val, 0x55);
+
+        let eventfd = Event::new().unwrap();
+        eventfd.write(0xaa).unwrap();
+        let poll_ex = FdExecutor::new().unwrap();
+        let poll_source = async_poll_from_local(eventfd, &poll_ex).unwrap();
         let val = poll_ex.run_until(go(poll_source)).unwrap();
         assert_eq!(val, 0xaa);
     }
