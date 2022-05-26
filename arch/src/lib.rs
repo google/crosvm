@@ -225,6 +225,9 @@ pub trait LinuxArch {
     /// * `vcpu_id` - The id of the given `vcpu`.
     /// * `num_cpus` - Number of virtual CPUs the guest will have.
     /// * `has_bios` - Whether the `VmImage` is a `Bios` image
+    /// * `no_smt` - Wheter diabling SMT.
+    /// * `host_cpu_topology` - whether enabling host cpu topology.
+    /// * `itmt` - whether enabling ITMT scheduler
     fn configure_vcpu<V: Vm>(
         vm: &V,
         hypervisor: &dyn HypervisorArch,
