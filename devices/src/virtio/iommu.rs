@@ -702,25 +702,27 @@ async fn handle_translate_request(
             iova,
             size,
         } = request_tube.next().await.map_err(IommuError::Tube)?;
-        if let Some(mapper) = endpoints.borrow_mut().get(&endpoint_id) {
-            response_tubes
-                .get(&endpoint_id)
-                .unwrap()
-                .send(
-                    mapper
-                        .lock()
-                        .translate(iova, size)
-                        .map_err(|e| {
-                            error!("Failed to handle TranslateRequest: {}", e);
-                            e
-                        })
-                        .ok(),
-                )
-                .await
-                .map_err(IommuError::Tube)?;
-        } else {
-            error!("endpoint_id {} not found", endpoint_id)
-        }
+        let translate_response: Option<Vec<MemRegion>> =
+            if let Some(mapper) = endpoints.borrow_mut().get(&endpoint_id) {
+                mapper
+                    .lock()
+                    .translate(iova, size)
+                    .map_err(|e| {
+                        error!("Failed to handle TranslateRequest: {}", e);
+                        e
+                    })
+                    .ok()
+            } else {
+                error!("endpoint_id {} not found", endpoint_id);
+                continue;
+            };
+
+        response_tubes
+            .get(&endpoint_id)
+            .unwrap()
+            .send(translate_response)
+            .await
+            .map_err(IommuError::Tube)?;
     }
 }
 
