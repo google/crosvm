@@ -287,3 +287,10 @@ infra_builder(
         name = "push_to_github",
     ),
 )
+
+infra_builder(
+    name = "crosvm_merge_into_chromeos",
+    executable = luci.recipe(
+        name = "merge_into_chromeos",
+    ),
+)

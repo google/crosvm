@@ -161,7 +161,7 @@
     "cmd": [
       "RECIPE_REPO[depot_tools]/cros_sdk",
       "build_packages",
-      "--board=amd64_generic",
+      "--board=amd64-generic",
       "implicit-system",
       "chromeos-base/crosvm"
     ],
@@ -175,7 +175,8 @@
     "cmd": [
       "RECIPE_REPO[depot_tools]/cros_sdk",
       "cros_run_unit_tests",
-      "--board=amd64_generic",
+      "--board=amd64-generic",
+      "--packages",
       "implicit-system",
       "chromeos-base/crosvm"
     ],
