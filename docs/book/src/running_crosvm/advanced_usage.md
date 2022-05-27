@@ -222,7 +222,8 @@ sommelier -X --xwayland-path=/usr/bin/Xwayland xeyes
 
 ## GDB Support
 
-crosvm supports [GDB Remote Serial Protocol] to allow developers to debug guest kernel via GDB.
+crosvm supports [GDB Remote Serial Protocol] to allow developers to debug guest kernel via GDB
+(**x86 only**).
 
 You can enable the feature by `--gdb` flag:
 
