@@ -25,6 +25,7 @@ use devices::virtio::vhost::user::device;
 
 use super::sys;
 use arch::{MsrConfig, Pstore, VcpuAffinity};
+use argh_helpers::generate_catchall_args;
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::virtio::block::block::DiskOption;
 #[cfg(feature = "audio_cras")]
@@ -52,11 +53,169 @@ static KVM_PATH: &str = "/dev/kvm";
 static VHOST_NET_PATH: &str = "/dev/vhost-net";
 static SECCOMP_POLICY_DIR: &str = "/usr/share/policy/crosvm";
 
-// This is temporary until argument parsing changes
-// bumped up the stack
+// Commandline arguments
+
 #[derive(FromArgs)]
-/// Devices
-pub struct DevicesArgs {
+/// crosvm
+pub struct CrosvmCmdlineArgs {
+    #[argh(switch)]
+    /// use extended exit status
+    pub extended_status: bool,
+    #[argh(option, default = r#"String::from("info")"#)]
+    /// specify log level, eg "off", "error", "debug,disk=off", etc
+    pub log_level: String,
+    #[argh(switch)]
+    /// disable output to syslog
+    pub no_syslog: bool,
+    #[argh(subcommand)]
+    pub command: Command,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand)]
+pub enum Command {
+    Balloon(BalloonCommand),
+    BalloonStats(BalloonStatsCommand),
+    Battery(BatteryCommand),
+    #[cfg(feature = "composite-disk")]
+    CreateComposite(CreateCompositeCommand),
+    CreateQcow2(CreateQcow2Command),
+    Device(DevicesCommand),
+    Disk(DiskCommand),
+    MakeRT(MakeRTCommand),
+    Resume(ResumeCommand),
+    Run(RunCommand),
+    Stop(StopCommand),
+    Suspend(SuspendCommand),
+    Powerbtn(PowerbtnCommand),
+    Sleepbtn(SleepCommand),
+    Gpe(GpeCommand),
+    Usb(UsbCommand),
+    Version(VersionCommand),
+    Vfio(VfioCrosvmCommand),
+}
+
+#[generate_catchall_args]
+#[argh(subcommand, name = "balloon")]
+/// Set balloon size of the crosvm instance
+pub struct BalloonCommand {}
+
+#[generate_catchall_args]
+#[argh(subcommand, name = "balloon_stats")]
+/// Prints virtio balloon statistics
+pub struct BalloonStatsCommand {}
+
+#[generate_catchall_args]
+#[argh(subcommand, name = "battery")]
+/// Modify battery
+pub struct BatteryCommand {}
+
+#[cfg(feature = "composite-disk")]
+#[generate_catchall_args]
+#[argh(subcommand, name = "create_composite")]
+/// Create a new composite disk image file
+pub struct CreateCompositeCommand {}
+
+#[generate_catchall_args]
+#[argh(subcommand, name = "create_qcow2")]
+/// Create a new qcow2 disk image file
+pub struct CreateQcow2Command {}
+
+#[generate_catchall_args]
+#[argh(subcommand, name = "disk")]
+/// Manage attached virtual disk devices
+pub struct DiskCommand {}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "make_rt")]
+/// Enables real-time vcpu priority for crosvm instances started with `--delay-rt`
+pub struct MakeRTCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "resume")]
+/// Resumes the crosvm instance
+pub struct ResumeCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[generate_catchall_args]
+#[argh(subcommand, name = "run")]
+/// Start a new crosvm instance
+pub struct RunCommand {}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "stop")]
+/// Stops crosvm instances via their control sockets
+pub struct StopCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "suspend")]
+/// Suspends the crosvm instance
+pub struct SuspendCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "powerbtn")]
+/// Triggers a power button event in the crosvm instance
+pub struct PowerbtnCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "sleepbtn")]
+/// Triggers a sleep button event in the crosvm instance
+pub struct SleepCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "gpe")]
+/// Injects a general-purpose event into the crosvm instance
+pub struct GpeCommand {
+    #[argh(positional)]
+    /// GPE #
+    pub gpe: u32,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[generate_catchall_args]
+#[argh(subcommand, name = "usb")]
+/// Manage attached virtual USB devices.
+pub struct UsbCommand {}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "version")]
+/// Show package version.
+pub struct VersionCommand {}
+
+#[generate_catchall_args]
+#[argh(subcommand, name = "vfio")]
+/// add/remove host vfio pci device into guest
+pub struct VfioCrosvmCommand {}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "device")]
+/// Start a device process
+pub struct DevicesCommand {
     #[argh(subcommand)]
     pub command: DevicesSubcommand,
 }

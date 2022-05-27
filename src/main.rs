@@ -12,7 +12,6 @@ use std::convert::TryFrom;
 use std::default::Default;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader};
-use std::ops::Deref;
 #[cfg(feature = "direct")]
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
@@ -23,7 +22,6 @@ use arch::{
     set_default_serial_parameters, MsrAction, MsrConfig, MsrRWType, MsrValueFrom, Pstore,
     VcpuAffinity,
 };
-use argh::FromArgs;
 use base::syslog::LogConfig;
 use base::{debug, error, getpid, info, pagesize, syslog};
 mod crosvm;
@@ -2246,7 +2244,7 @@ enum CommandStatus {
 }
 
 fn run_vm<F: 'static>(
-    args: std::env::Args,
+    args: Vec<String>,
     log_config: LogConfig<F>,
 ) -> std::result::Result<CommandStatus, ()>
 where
@@ -2526,7 +2524,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
 
     arguments.append(&mut sys::get_arguments());
     let mut cfg = Config::default();
-    let match_res = set_arguments(args, &arguments[..], |name, value| {
+    let match_res = set_arguments(args.into_iter(), &arguments[..], |name, value| {
         set_argument(&mut cfg, name, value)
     })
     .and_then(|_| validate_arguments(&mut cfg));
@@ -2590,89 +2588,43 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
     }
 }
 
-fn stop_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() == 0 {
-        print_help("crosvm stop", "VM_SOCKET...", &[]);
-        println!("Stops the crosvm instance listening on each `VM_SOCKET` given.");
-        return Err(());
-    }
-    let socket_path = &args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
+fn stop_vms(cmd: crosvm::StopCommand) -> std::result::Result<(), ()> {
+    let socket_path = Path::new(&cmd.socket_path);
     vms_request(&VmRequest::Exit, socket_path)
 }
 
-fn suspend_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() == 0 {
-        print_help("crosvm suspend", "VM_SOCKET...", &[]);
-        println!("Suspends the crosvm instance listening on each `VM_SOCKET` given.");
-        return Err(());
-    }
-    let socket_path = &args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
+fn suspend_vms(cmd: crosvm::SuspendCommand) -> std::result::Result<(), ()> {
+    let socket_path = Path::new(&cmd.socket_path);
     vms_request(&VmRequest::Suspend, socket_path)
 }
 
-fn resume_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() == 0 {
-        print_help("crosvm resume", "VM_SOCKET...", &[]);
-        println!("Resumes the crosvm instance listening on each `VM_SOCKET` given.");
-        return Err(());
-    }
-    let socket_path = &args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
+fn resume_vms(cmd: crosvm::ResumeCommand) -> std::result::Result<(), ()> {
+    let socket_path = Path::new(&cmd.socket_path);
     vms_request(&VmRequest::Resume, socket_path)
 }
 
-fn powerbtn_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() == 0 {
-        print_help("crosvm powerbtn", "VM_SOCKET...", &[]);
-        println!("Triggers a power button event in the crosvm instance listening on each `VM_SOCKET` given.");
-        return Err(());
-    }
-    let socket_path = &args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
+fn powerbtn_vms(cmd: crosvm::PowerbtnCommand) -> std::result::Result<(), ()> {
+    let socket_path = Path::new(&cmd.socket_path);
     vms_request(&VmRequest::Powerbtn, socket_path)
 }
 
-fn sleepbtn_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() == 0 {
-        print_help("crosvm sleepbtn", "VM_SOCKET...", &[]);
-        println!(
-            "Triggers a sleep button event in the crosvm instance listening on each `VM_SOCKET`
-            given."
-        );
-        return Err(());
-    }
-    let socket_path = &args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
+fn sleepbtn_vms(cmd: crosvm::SleepCommand) -> std::result::Result<(), ()> {
+    let socket_path = Path::new(&cmd.socket_path);
     vms_request(&VmRequest::Sleepbtn, socket_path)
 }
 
-fn inject_gpe(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() < 2 {
-        print_help("crosvm gpe", "GPE# VM_SOCKET...", &[]);
-        println!("Injects a general-purpose event (GPE#) into the crosvm instance listening on each `VM_SOCKET` given.");
-        return Err(());
-    }
-    let gpe = match args.next().unwrap().parse::<u32>() {
-        Ok(n) => n,
-        Err(_) => {
-            error!("Failed to parse GPE#");
-            return Err(());
-        }
-    };
-
-    let socket_path = &args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
-    vms_request(&VmRequest::Gpe(gpe), socket_path)
+fn inject_gpe(cmd: crosvm::GpeCommand) -> std::result::Result<(), ()> {
+    let socket_path = Path::new(&cmd.socket_path);
+    vms_request(&VmRequest::Gpe(cmd.gpe), socket_path)
 }
 
-fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() < 2 {
+fn balloon_vms(cmd: crosvm::BalloonCommand) -> std::result::Result<(), ()> {
+    if cmd.args.len() < 2 {
         print_help("crosvm balloon", "SIZE VM_SOCKET...", &[]);
         println!("Set the ballon size of the crosvm instance to `SIZE` bytes.");
         return Err(());
     }
+    let mut args = cmd.args.into_iter();
     let num_bytes = match args.next().unwrap().parse::<u64>() {
         Ok(n) => n,
         Err(_) => {
@@ -2687,12 +2639,13 @@ fn balloon_vms(mut args: std::env::Args) -> std::result::Result<(), ()> {
     vms_request(&VmRequest::BalloonCommand(command), socket_path)
 }
 
-fn balloon_stats(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() != 1 {
+fn balloon_stats(cmd: crosvm::BalloonStatsCommand) -> std::result::Result<(), ()> {
+    if cmd.args.len() != 1 {
         print_help("crosvm balloon_stats", "VM_SOCKET", &[]);
         println!("Prints virtio balloon statistics for a `VM_SOCKET`.");
         return Err(());
     }
+    let mut args = cmd.args.into_iter();
     let command = BalloonControlCommand::Stats {};
     let request = &VmRequest::BalloonCommand(command);
     let socket_path = &args.next().unwrap();
@@ -2711,8 +2664,8 @@ fn balloon_stats(mut args: std::env::Args) -> std::result::Result<(), ()> {
     }
 }
 
-fn modify_battery(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() < 4 {
+fn modify_battery(cmd: crosvm::BatteryCommand) -> std::result::Result<(), ()> {
+    if cmd.args.len() < 4 {
         print_help(
             "crosvm battery BATTERY_TYPE ",
             "[status STATUS | \
@@ -2725,6 +2678,7 @@ fn modify_battery(mut args: std::env::Args) -> std::result::Result<(), ()> {
         );
         return Err(());
     }
+    let mut args = cmd.args.into_iter();
 
     // This unwrap will not panic because of the above length check.
     let battery_type = args.next().unwrap();
@@ -2737,8 +2691,8 @@ fn modify_battery(mut args: std::env::Args) -> std::result::Result<(), ()> {
     do_modify_battery(socket_path, &*battery_type, &*property, &*target)
 }
 
-fn modify_vfio(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() < 3 {
+fn modify_vfio(cmd: crosvm::VfioCrosvmCommand) -> std::result::Result<(), ()> {
+    if cmd.args.len() < 3 {
         print_help(
             "crosvm vfio",
             "[add | remove host_vfio_sysfs] VM_SOCKET...",
@@ -2747,6 +2701,7 @@ fn modify_vfio(mut args: std::env::Args) -> std::result::Result<(), ()> {
         return Err(());
     }
 
+    let mut args = cmd.args.into_iter();
     // This unwrap will not panic because of the above length check.
     let command = args.next().unwrap();
     let path_str = args.next().unwrap();
@@ -2779,13 +2734,14 @@ fn modify_vfio(mut args: std::env::Args) -> std::result::Result<(), ()> {
 }
 
 #[cfg(feature = "composite-disk")]
-fn create_composite(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() < 1 {
+fn create_composite(cmd: crosvm::CreateCompositeCommand) -> std::result::Result<(), ()> {
+    if cmd.args.len() < 1 {
         print_help("crosvm create_composite", "PATH [LABEL:PARTITION]..", &[]);
         println!("Creates a new composite disk image containing the given partition images");
         return Err(());
     }
 
+    let mut args = cmd.args.into_iter();
     let composite_image_path = args.next().unwrap();
     let zero_filler_path = format!("{}.filler", composite_image_path);
     let header_path = format!("{}.header", composite_image_path);
@@ -2888,7 +2844,7 @@ fn create_composite(mut args: std::env::Args) -> std::result::Result<(), ()> {
     Ok(())
 }
 
-fn create_qcow2(args: std::env::Args) -> std::result::Result<(), ()> {
+fn create_qcow2(cmd: crosvm::CreateQcow2Command) -> std::result::Result<(), ()> {
     let arguments = [
         Argument::positional("PATH", "where to create the qcow2 image"),
         Argument::positional("[SIZE]", "the expanded size of the image"),
@@ -2898,6 +2854,7 @@ fn create_qcow2(args: std::env::Args) -> std::result::Result<(), ()> {
             " the file to back the image",
         ),
     ];
+    let args = cmd.args.into_iter();
     let mut positional_index = 0;
     let mut file_path = String::from("");
     let mut size: Option<u64> = None;
@@ -2969,24 +2926,7 @@ with a '--backing_file'."
     Ok(())
 }
 
-fn start_device(args: std::env::Args) -> std::result::Result<(), ()> {
-    let args = args.collect::<Vec<_>>();
-    let args = args.iter().map(Deref::deref).collect::<Vec<_>>();
-    let args = args.as_slice();
-
-    let opts = match crosvm::DevicesArgs::from_args(&["crosvm", "device"], args) {
-        Ok(opts) => opts,
-        Err(e) => {
-            if e.status.is_err() {
-                error!("{}", e.output);
-                return Err(());
-            } else {
-                println!("{}", e.output);
-            }
-            return Ok(());
-        }
-    };
-
+fn start_device(opts: crosvm::DevicesCommand) -> std::result::Result<(), ()> {
     let result = match opts.command {
         crosvm::DevicesSubcommand::CrossPlatform(command) => match command {
             crosvm::CrossPlatformDevicesCommands::Block(cfg) => run_block_device(cfg),
@@ -2996,18 +2936,19 @@ fn start_device(args: std::env::Args) -> std::result::Result<(), ()> {
     };
 
     result.map_err(|e| {
-        error!("Failed to run {} device: {:#}", args[0], e);
+        error!("Failed to run device: {:#}", e);
     })
 }
 
-fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() < 2 {
+fn disk_cmd(cmd: crosvm::DiskCommand) -> std::result::Result<(), ()> {
+    if cmd.args.len() < 2 {
         print_help("crosvm disk", "SUBCOMMAND VM_SOCKET...", &[]);
         println!("Manage attached virtual disk devices.");
         println!("Subcommands:");
         println!("  resize DISK_INDEX NEW_SIZE VM_SOCKET");
         return Err(());
     }
+    let mut args = cmd.args.into_iter();
     let subcommand: &str = &args.next().unwrap();
 
     let request = match subcommand {
@@ -3044,14 +2985,8 @@ fn disk_cmd(mut args: std::env::Args) -> std::result::Result<(), ()> {
     vms_request(&request, socket_path)
 }
 
-fn make_rt(mut args: std::env::Args) -> std::result::Result<(), ()> {
-    if args.len() == 0 {
-        print_help("crosvm make_rt", "VM_SOCKET...", &[]);
-        println!("Makes the crosvm instance listening on each `VM_SOCKET` given RT.");
-        return Err(());
-    }
-    let socket_path = &args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
+fn make_rt(cmd: crosvm::MakeRTCommand) -> std::result::Result<(), ()> {
+    let socket_path = Path::new(&cmd.socket_path);
     vms_request(&VmRequest::MakeRT, socket_path)
 }
 
@@ -3079,7 +3014,8 @@ fn parse_bus_id_addr(v: &str) -> ModifyUsbResult<(u8, u8, u16, u16)> {
     }
 }
 
-fn usb_attach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
+fn usb_attach(args: Vec<String>) -> ModifyUsbResult<UsbControlResult> {
+    let mut args = args.into_iter();
     let val = args
         .next()
         .ok_or(ModifyUsbError::ArgMissing("BUS_ID_ADDR_BUS_NUM_DEV_NUM"))?;
@@ -3097,7 +3033,8 @@ fn usb_attach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
     do_usb_attach(socket_path, bus, addr, vid, pid, &dev_path)
 }
 
-fn usb_detach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
+fn usb_detach(args: Vec<String>) -> ModifyUsbResult<UsbControlResult> {
+    let mut args = args.into_iter();
     let port: u8 = args
         .next()
         .map_or(Err(ModifyUsbError::ArgMissing("PORT")), |p| {
@@ -3111,7 +3048,8 @@ fn usb_detach(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
     do_usb_detach(socket_path, port)
 }
 
-fn usb_list(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
+fn usb_list(args: Vec<String>) -> ModifyUsbResult<UsbControlResult> {
+    let mut args = args.into_iter();
     let socket_path = args
         .next()
         .ok_or(ModifyUsbError::ArgMissing("control socket path"))?;
@@ -3119,7 +3057,8 @@ fn usb_list(mut args: std::env::Args) -> ModifyUsbResult<UsbControlResult> {
     do_usb_list(socket_path)
 }
 
-fn modify_usb(mut args: std::env::Args) -> std::result::Result<(), ()> {
+fn modify_usb(cmd: crosvm::UsbCommand) -> std::result::Result<(), ()> {
+    let mut args = cmd.args;
     if args.len() < 2 {
         print_help("crosvm usb",
                    "[attach BUS_ID:ADDR:VENDOR_ID:PRODUCT_ID [USB_DEVICE_PATH|-] | detach PORT | list] VM_SOCKET...", &[]);
@@ -3127,7 +3066,7 @@ fn modify_usb(mut args: std::env::Args) -> std::result::Result<(), ()> {
     }
 
     // This unwrap will not panic because of the above length check.
-    let command = &args.next().unwrap();
+    let command = args.remove(0);
     let result = match command.as_ref() {
         "attach" => usb_attach(args),
         "detach" => usb_detach(args),
@@ -3159,118 +3098,49 @@ fn pkg_version() -> std::result::Result<(), ()> {
     Ok(())
 }
 
-fn print_usage() {
-    print_help(
-        "crosvm",
-        "[--extended-status] [--log-level=<level>] [--no-syslog] [command]",
-        &[],
-    );
-    println!("Commands:");
-    println!("    balloon - Set balloon size of the crosvm instance.");
-    println!("    balloon_stats - Prints virtio balloon statistics.");
-    println!("    battery - Modify battery.");
-    #[cfg(feature = "composite-disk")]
-    println!("    create_composite  - Create a new composite disk image file.");
-    println!("    create_qcow2  - Create a new qcow2 disk image file.");
-    println!("    device - Start a device process.");
-    println!("    disk - Manage attached virtual disk devices.");
-    println!(
-        "    make_rt - Enables real-time vcpu priority for crosvm instances started with \
-         `--delay-rt`."
-    );
-    println!("    resume - Resumes the crosvm instance.");
-    println!("    run - Start a new crosvm instance.");
-    println!("    stop - Stops crosvm instances via their control sockets.");
-    println!("    suspend - Suspends the crosvm instance.");
-    println!("    powerbtn - Triggers a power button event in the crosvm instance.");
-    println!("    sleepbtn - Triggers a sleep button event in the crosvm instance.");
-    println!("    gpe - Injects a general-purpose event into the crosvm instance.");
-    println!("    usb - Manage attached virtual USB devices.");
-    println!("    version - Show package version.");
-    println!("    vfio - add/remove host vfio pci device into guest.");
-}
-
 fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
     panic_hook::set_panic_hook();
 
-    let mut args = std::env::args();
-    if args.next().is_none() {
-        error!("expected executable name");
-        return Err(());
-    }
+    let args: crosvm::CrosvmCmdlineArgs = argh::from_env();
 
-    let mut cmd_arg = args.next();
-
-    let extended_status = if let Some("--extended-status") = cmd_arg.as_deref() {
-        cmd_arg = args.next();
-        true
-    } else {
-        false
-    };
-
-    let log_level = if let Some("--log-level") = cmd_arg.as_deref() {
-        let level = args.next();
-        cmd_arg = args.next();
-        level
-    } else {
-        None
-    }
-    .unwrap_or(String::from("info"));
-
-    let syslog = if let Some("--no-syslog") = cmd_arg.as_deref() {
-        cmd_arg = args.next();
-        false
-    } else {
-        true
-    };
+    let extended_status = args.extended_status;
 
     let log_config = LogConfig {
-        filter: &log_level,
-        syslog,
+        filter: &args.log_level,
+        syslog: !args.no_syslog,
         ..Default::default()
     };
 
-    let command = if let Some(c) = cmd_arg {
-        c
-    } else {
-        print_usage();
-        return Ok(CommandStatus::Success);
-    };
-
     // Past this point, usage of exit is in danger of leaking zombie processes.
-    let ret = if command == "run" {
+    let ret = if let crosvm::Command::Run(cmd) = args.command {
         // We handle run_vm separately because it does not simply signal success/error
         // but also indicates whether the guest requested reset or stop.
-        run_vm(args, log_config)
+        run_vm(cmd.args, log_config)
     } else {
         if let Err(e) = syslog::init_with(log_config) {
             eprintln!("failed to initialize syslog: {}", e);
             return Err(());
         }
-        match &command[..] {
-            "balloon" => balloon_vms(args),
-            "balloon_stats" => balloon_stats(args),
-            "battery" => modify_battery(args),
+        match args.command {
+            crosvm::Command::Balloon(cmd) => balloon_vms(cmd),
+            crosvm::Command::BalloonStats(cmd) => balloon_stats(cmd),
+            crosvm::Command::Battery(cmd) => modify_battery(cmd),
             #[cfg(feature = "composite-disk")]
-            "create_composite" => create_composite(args),
-            "create_qcow2" => create_qcow2(args),
-            "device" => start_device(args),
-            "disk" => disk_cmd(args),
-            "make_rt" => make_rt(args),
-            "resume" => resume_vms(args),
-            "stop" => stop_vms(args),
-            "suspend" => suspend_vms(args),
-            "powerbtn" => powerbtn_vms(args),
-            "sleepbtn" => sleepbtn_vms(args),
-            "gpe" => inject_gpe(args),
-            "usb" => modify_usb(args),
-            "version" => pkg_version(),
-            "vfio" => modify_vfio(args),
-            c => {
-                println!("invalid subcommand: {:?}", c);
-                print_usage();
-                Err(())
-            }
+            crosvm::Command::CreateComposite(cmd) => create_composite(cmd),
+            crosvm::Command::CreateQcow2(cmd) => create_qcow2(cmd),
+            crosvm::Command::Device(cmd) => start_device(cmd),
+            crosvm::Command::Disk(cmd) => disk_cmd(cmd),
+            crosvm::Command::MakeRT(cmd) => make_rt(cmd),
+            crosvm::Command::Resume(cmd) => resume_vms(cmd),
+            crosvm::Command::Run(_) => unreachable!(),
+            crosvm::Command::Stop(cmd) => stop_vms(cmd),
+            crosvm::Command::Suspend(cmd) => suspend_vms(cmd),
+            crosvm::Command::Powerbtn(cmd) => powerbtn_vms(cmd),
+            crosvm::Command::Sleepbtn(cmd) => sleepbtn_vms(cmd),
+            crosvm::Command::Gpe(cmd) => inject_gpe(cmd),
+            crosvm::Command::Usb(cmd) => modify_usb(cmd),
+            crosvm::Command::Version(_) => pkg_version(),
+            crosvm::Command::Vfio(cmd) => modify_vfio(cmd),
         }
         .map(|_| CommandStatus::Success)
     };
