@@ -157,18 +157,8 @@ pub(in crate::virtio::vhost::user::device::handler) fn system_create_doorbell(
             caps,
             ..
         } => {
-            let base = caps.doorbell_base_addr();
-            let addr = VfioRegionAddr {
-                index: base.index,
-                addr: base.addr + (index as u64 * caps.doorbell_off_multiplier() as u64),
-            };
-            Ok(Doorbell::SystemDoorbell(DoorbellSys::Vfio(
-                DoorbellRegion {
-                    vfio: Arc::clone(device),
-                    index,
-                    addr,
-                },
-            )))
+            let doorbell = DoorbellRegion::new(index as u8, device, caps)?;
+            Ok(Doorbell::SystemDoorbell(DoorbellSys::Vfio(doorbell)))
         }
     }
 }

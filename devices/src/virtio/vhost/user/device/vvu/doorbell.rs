@@ -4,23 +4,62 @@
 
 use std::sync::Arc;
 
-use base::Event;
+use base::{error, Event, MemoryMapping, MemoryMappingBuilder};
+use vmm_vhost::{Error as VhostError, Result as VhostResult};
 
-use crate::vfio::{VfioDevice, VfioRegionAddr};
+use crate::vfio::VfioDevice;
+use crate::virtio::vhost::user::device::vvu::pci::VvuPciCaps;
 use crate::virtio::SignalableInterrupt;
 
 /// Doorbell region in the VVU device's additional BAR.
 /// Writing to this area will sends a signal to the sibling VM's vhost-user device.
 pub struct DoorbellRegion {
-    pub vfio: Arc<VfioDevice>,
     pub index: u8,
-    pub addr: VfioRegionAddr,
+    pub addr: u64,
+    pub mmap: MemoryMapping,
+}
+
+impl DoorbellRegion {
+    /// Initialize a new DoorbellRegion structure given a queue index, the vfio
+    /// device, and the VvuPciCaps.
+    pub fn new(
+        queue_index: u8,
+        device: &Arc<VfioDevice>,
+        caps: &VvuPciCaps,
+    ) -> VhostResult<DoorbellRegion> {
+        let base = caps.doorbell_base_addr();
+        let addr = base.addr + (queue_index as u64 * caps.doorbell_off_multiplier() as u64);
+        let mmap_region = device.get_region_mmap(base.index);
+        let region_offset = device.get_region_offset(base.index);
+        let offset = region_offset + mmap_region[0].offset;
+
+        let mmap = MemoryMappingBuilder::new(mmap_region[0].size as usize)
+            .from_file(device.device_file())
+            .offset(offset)
+            .build()
+            .map_err(|e| {
+                error!("Failed to mmap vfio memory region: {}", e);
+                VhostError::InvalidOperation
+            })?;
+        let doorbell = DoorbellRegion {
+            index: queue_index,
+            addr,
+            mmap,
+        };
+
+        Ok(doorbell)
+    }
 }
 
 impl SignalableInterrupt for DoorbellRegion {
     fn signal(&self, _vector: u16, _interrupt_status_mask: u32) {
         // Write `1` to the doorbell, which will be forwarded to the sibling's call FD.
-        self.vfio.region_write_to_addr(&1, &self.addr, 0);
+        // It's okay to not handle a failure here because if this fails we cannot recover
+        // anyway. The mmap address should be correct as initialized in the 'new()' function
+        // according to the given vfio device.
+        self.mmap
+            .write_obj(1_u8, self.addr as usize)
+            .expect("unable to write to mmap area");
     }
 
     fn signal_config_changed(&self) {}

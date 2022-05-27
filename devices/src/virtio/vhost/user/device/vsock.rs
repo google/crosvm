@@ -37,23 +37,20 @@ use vmm_vhost::{
 };
 use vmm_vhost::{Protocol, SlaveListener};
 
-use crate::{
-    vfio::VfioRegionAddr,
-    virtio::{
-        base_features,
-        vhost::{
-            user::device::{
-                handler::{
-                    create_guest_memory,
-                    sys::{create_vvu_guest_memory, run_handler, HandlerTypeSys},
-                    vmm_va_to_gpa, HandlerType, MappingInfo,
-                },
-                vvu::{doorbell::DoorbellRegion, pci::VvuPciDevice, VvuDevice},
+use crate::virtio::{
+    base_features,
+    vhost::{
+        user::device::{
+            handler::{
+                create_guest_memory,
+                sys::{create_vvu_guest_memory, run_handler, HandlerTypeSys},
+                vmm_va_to_gpa, HandlerType, MappingInfo,
             },
-            vsock,
+            vvu::{doorbell::DoorbellRegion, pci::VvuPciDevice, VvuDevice},
         },
-        Queue, SignalableInterrupt,
+        vsock,
     },
+    Queue, SignalableInterrupt,
 };
 
 const MAX_VRING_LEN: u16 = vsock::QUEUE_SIZE;
@@ -363,18 +360,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
         let index = usize::from(index);
         let event = match &self.handler_type {
             HandlerType::SystemHandlerType(HandlerTypeSys::Vvu { vfio_dev, caps, .. }) => {
-                let vfio = Arc::clone(vfio_dev);
-                let base = caps.doorbell_base_addr();
-                let addr = VfioRegionAddr {
-                    index: base.index,
-                    addr: base.addr + (index as u64 * caps.doorbell_off_multiplier() as u64),
-                };
-
-                let doorbell = DoorbellRegion {
-                    vfio,
-                    index: index as u8,
-                    addr,
-                };
+                let doorbell = DoorbellRegion::new(index as u8, vfio_dev, caps)?;
                 let call_evt = match self.call_evts[index].as_ref() {
                     None => {
                         let evt = Arc::new(Mutex::new(doorbell));
