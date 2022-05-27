@@ -2755,16 +2755,9 @@ fn balloon_vms(cmd: crosvm::BalloonCommand) -> std::result::Result<(), ()> {
 }
 
 fn balloon_stats(cmd: crosvm::BalloonStatsCommand) -> std::result::Result<(), ()> {
-    if cmd.args.len() != 1 {
-        print_help("crosvm balloon_stats", "VM_SOCKET", &[]);
-        println!("Prints virtio balloon statistics for a `VM_SOCKET`.");
-        return Err(());
-    }
-    let mut args = cmd.args.into_iter();
     let command = BalloonControlCommand::Stats {};
     let request = &VmRequest::BalloonCommand(command);
-    let socket_path = &args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
+    let socket_path = Path::new(&cmd.socket_path);
     let response = handle_request(request, socket_path)?;
     match serde_json::to_string_pretty(&response) {
         Ok(response_json) => println!("{}", response_json),

@@ -108,10 +108,14 @@ pub struct BalloonCommand {
     pub socket_path: String,
 }
 
-#[generate_catchall_args]
+#[derive(argh::FromArgs)]
 #[argh(subcommand, name = "balloon_stats")]
-/// Prints virtio balloon statistics
-pub struct BalloonStatsCommand {}
+/// Prints virtio balloon statistics for a `VM_SOCKET`
+pub struct BalloonStatsCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
 
 #[generate_catchall_args]
 #[argh(subcommand, name = "battery")]
