@@ -1,7 +1,8 @@
 [
   {
     "cmd": [
-      "./tools/dev_container",
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
       "./tools/run_tests",
       "--verbose",
@@ -25,7 +26,8 @@
   },
   {
     "cmd": [
-      "./tools/dev_container",
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
       "./tools/run_tests",
       "--verbose",

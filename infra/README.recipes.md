@@ -8,7 +8,7 @@
 **[Recipes](#Recipes)**
   * [build_chromeos](#recipes-build_chromeos) (Python3 ✅)
   * [build_linux](#recipes-build_linux) (Python3 ✅)
-  * [crosvm:examples/container](#recipes-crosvm_examples_container) (Python3 ✅)
+  * [crosvm:examples/build_context](#recipes-crosvm_examples_build_context) (Python3 ✅)
   * [crosvm:examples/prepare_source](#recipes-crosvm_examples_prepare_source) (Python3 ✅)
   * [health_check](#recipes-health_check) (Python3 ✅)
 ## Recipe Modules
@@ -23,11 +23,22 @@ PYTHON_VERSION_COMPATIBILITY: PY3
 
 Crosvm specific functionality shared between recipes.
 
+&mdash; **def [build\_context](/infra/recipe_modules/crosvm/api.py#21)(self, source=True, container=True):**
+
+Prepares everything needed to build crosvm on the revision that needs to be verified.
+
+This updates the cwd to the crosvm source directory, ensures the revision to be tested
+is checked out and the dev container is ready.
+
+Usage:
+    with api.crosvm.build_context():
+        api.crosvm.step_in_container("build crosvm", ["cargo build"])
+
 &emsp; **@property**<br>&mdash; **def [builder\_dir](/infra/recipe_modules/crosvm/api.py#17)(self):**
 
-&mdash; **def [prepare\_container](/infra/recipe_modules/crosvm/api.py#41)(self):**
+&mdash; **def [prepare\_container](/infra/recipe_modules/crosvm/api.py#59)(self):**
 
-&mdash; **def [prepare\_source](/infra/recipe_modules/crosvm/api.py#21)(self):**
+&mdash; **def [prepare\_source](/infra/recipe_modules/crosvm/api.py#38)(self):**
 
 Prepares the local crosvm source for testing in `self.source_dir`
 
@@ -36,7 +47,7 @@ change to be tested.
 
 &emsp; **@property**<br>&mdash; **def [source\_dir](/infra/recipe_modules/crosvm/api.py#13)(self):**
 
-&mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#48)(self, step_name, command):**
+&mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#73)(self, step_name, command):**
 
 Runs a luci step inside the crosvm dev container.
 ## Recipes
@@ -67,13 +78,13 @@ PYTHON_VERSION_COMPATIBILITY: PY3
 &mdash; **def [get\_test\_args](/infra/recipes/build_linux.py#22)(api, test_arch):**
 
 Returns architecture specific arguments for ./tools/run_tests
-### *recipes* / [crosvm:examples/container](/infra/recipe_modules/crosvm/examples/container.py)
+### *recipes* / [crosvm:examples/build\_context](/infra/recipe_modules/crosvm/examples/build_context.py)
 
-[DEPS](/infra/recipe_modules/crosvm/examples/container.py#7): [crosvm](#recipe_modules-crosvm)
+[DEPS](/infra/recipe_modules/crosvm/examples/build_context.py#7): [crosvm](#recipe_modules-crosvm)
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/container.py#12)(api):**
+&mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/build_context.py#12)(api):**
 ### *recipes* / [crosvm:examples/prepare\_source](/infra/recipe_modules/crosvm/examples/prepare_source.py)
 
 [DEPS](/infra/recipe_modules/crosvm/examples/prepare_source.py#12): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket]

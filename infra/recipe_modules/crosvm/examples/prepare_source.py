@@ -28,7 +28,7 @@ def GenTests(api):
             "prepare_source_for_try",
             api.buildbucket.try_build(project="crosvm", git_repo=REPO),
         )
-        + api.post_process(StepCommandContains, "bot_update", ["--patch_ref"])
+        + api.post_process(StepCommandContains, "Prepare source.bot_update", ["--patch_ref"])
         + api.post_process(DropExpectation)
     )
     yield (
@@ -36,6 +36,8 @@ def GenTests(api):
             "prepare_source_for_ci",
             api.buildbucket.ci_build(project="crosvm", git_repo=REPO, revision=REVISION),
         )
-        + api.post_process(StepCommandContains, "bot_update", ["--revision", "crosvm@" + REVISION])
+        + api.post_process(
+            StepCommandContains, "Prepare source.bot_update", ["--revision", "crosvm@" + REVISION]
+        )
         + api.post_process(DropExpectation)
     )

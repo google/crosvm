@@ -17,9 +17,7 @@ DEPS = [
 
 
 def RunSteps(api):
-    api.crosvm.prepare_source()
-    api.crosvm.prepare_container()
-    with api.context(cwd=api.crosvm.source_dir):
+    with api.crosvm.build_context():
         for check in ("python", "misc", "fmt", "clippy"):
             api.crosvm.step_in_container("Checking %s" % check, ["./tools/health-check", check])
 

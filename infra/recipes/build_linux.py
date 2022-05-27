@@ -33,9 +33,7 @@ def get_test_args(api, test_arch):
 
 
 def RunSteps(api, properties):
-    api.crosvm.prepare_source()
-    api.crosvm.prepare_container()
-    with api.context(cwd=api.crosvm.source_dir):
+    with api.crosvm.build_context():
         api.crosvm.step_in_container(
             "Build crosvm tests",
             [

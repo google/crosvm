@@ -1,7 +1,8 @@
 [
   {
     "cmd": [
-      "./tools/dev_container",
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
       "./tools/health-check",
       "python"
@@ -23,7 +24,8 @@
   },
   {
     "cmd": [
-      "./tools/dev_container",
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
       "./tools/health-check",
       "misc"
@@ -45,7 +47,8 @@
   },
   {
     "cmd": [
-      "./tools/dev_container",
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
       "./tools/health-check",
       "fmt"
@@ -67,7 +70,8 @@
   },
   {
     "cmd": [
-      "./tools/dev_container",
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
       "./tools/health-check",
       "clippy"
