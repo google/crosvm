@@ -38,6 +38,8 @@ pub enum Error {
     CommandLineOverflow,
     #[error("invalid Elf magic number")]
     InvalidElfMagicNumber,
+    #[error("invalid entry point")]
+    InvalidEntryPoint,
     #[error("invalid Program Header Address")]
     InvalidProgramHeaderAddress,
     #[error("invalid Program Header memory size")]
@@ -69,6 +71,9 @@ pub struct LoadedKernel {
 
     /// Size of the kernel image in bytes.
     pub size: u64,
+
+    /// Entry point address of the kernel.
+    pub entry: GuestAddress,
 }
 
 /// Loads a kernel from a vmlinux elf image to a slice
@@ -147,9 +152,15 @@ where
 
     let size = kernel_end - kernel_start.offset();
 
+    // `e_entry` of 0 means there is no entry point, which we do not want to allow.
+    if ehdr.e_entry == 0 {
+        return Err(Error::InvalidEntryPoint);
+    }
+
     Ok(LoadedKernel {
         end: GuestAddress(kernel_end),
         size,
+        entry: GuestAddress(ehdr.e_entry),
     })
 }
 
@@ -264,6 +275,7 @@ mod test {
         let kernel = load_kernel(&gm, kernel_addr, &mut image).expect("failed to load ELF");
         assert_eq!(kernel.end, GuestAddress(0x20_0035));
         assert_eq!(kernel.size, 0x20_0035);
+        assert_eq!(kernel.entry, GuestAddress(0x20_000e));
     }
 
     #[test]
