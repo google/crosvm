@@ -276,7 +276,7 @@ impl arch::LinuxArch for AArch64 {
                 } else {
                     let loaded_kernel = elf_result.map_err(Error::LoadElfKernel)?;
                     kernel_size = loaded_kernel.size as usize;
-                    kernel_end = loaded_kernel.end.offset();
+                    kernel_end = loaded_kernel.address_range.end;
                 }
                 initrd = match components.initrd_image {
                     Some(initrd_file) => {

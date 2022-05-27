@@ -1227,7 +1227,11 @@ impl X8664arch {
             Ok(loaded_kernel) => {
                 // ELF kernels don't contain a `boot_params` structure, so synthesize a default one.
                 let boot_params = Default::default();
-                Ok((boot_params, loaded_kernel.end.offset(), loaded_kernel.entry))
+                Ok((
+                    boot_params,
+                    loaded_kernel.address_range.end,
+                    loaded_kernel.entry,
+                ))
             }
             Err(kernel_loader::Error::InvalidElfMagicNumber) => {
                 // The image failed to parse as ELF, so try to load it as a bzImage.

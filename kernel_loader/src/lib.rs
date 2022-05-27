@@ -11,6 +11,7 @@ use std::mem;
 use base::AsRawDescriptor;
 use data_model::DataInit;
 use remain::sorted;
+use resources::AddressRange;
 use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -48,6 +49,10 @@ pub enum Error {
     InvalidProgramHeaderOffset,
     #[error("invalid program header size")]
     InvalidProgramHeaderSize,
+    #[error("no loadable program headers found")]
+    NoLoadableProgramHeaders,
+    #[error("program header address out of allowed address range")]
+    ProgramHeaderAddressOutOfRange,
     #[error("unable to read elf header")]
     ReadElfHeader,
     #[error("unable to read kernel image")]
@@ -66,8 +71,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Copy, Clone, PartialEq)]
 /// Information about a kernel loaded with the [`load_kernel`] function.
 pub struct LoadedKernel {
-    /// End address (exclusive) of the kernel.
-    pub end: GuestAddress,
+    /// Address range containg the bounds of the loaded program headers.
+    /// `address_range.start` is the start of the lowest loaded program header.
+    /// `address_range.end` is the end of the highest loaded program header.
+    pub address_range: AddressRange,
 
     /// Size of the kernel image in bytes.
     pub size: u64,
@@ -76,12 +83,15 @@ pub struct LoadedKernel {
     pub entry: GuestAddress,
 }
 
-/// Loads a kernel from a vmlinux elf image to a slice
+/// Loads a kernel from an ELF image into memory.
+///
+/// The ELF file will be loaded at the physical address specified by the `p_paddr` fields of its
+/// program headers.
 ///
 /// # Arguments
 ///
 /// * `guest_mem` - The guest memory region the kernel is written to.
-/// * `kernel_start` - The offset into `guest_mem` at which to load the kernel.
+/// * `kernel_start` - The minimum guest address to allow when loading program headers.
 /// * `kernel_image` - Input vmlinux image.
 pub fn load_kernel<F>(
     guest_mem: &GuestMemory,
@@ -125,11 +135,29 @@ where
         })
         .collect::<Result<Vec<elf::Elf64_Phdr>>>()?;
 
-    let mut kernel_end = 0;
+    let mut start = None;
+    let mut end = 0;
 
     // Read in each section pointed to by the program headers.
     for phdr in &phdrs {
-        if phdr.p_type != elf::PT_LOAD || phdr.p_filesz == 0 {
+        if phdr.p_type != elf::PT_LOAD {
+            continue;
+        }
+
+        if phdr.p_paddr < kernel_start.offset() {
+            return Err(Error::ProgramHeaderAddressOutOfRange);
+        }
+
+        if start.is_none() {
+            start = Some(phdr.p_paddr);
+        }
+
+        end = phdr
+            .p_paddr
+            .checked_add(phdr.p_memsz)
+            .ok_or(Error::InvalidProgramHeaderMemSize)?;
+
+        if phdr.p_filesz == 0 {
             continue;
         }
 
@@ -137,28 +165,33 @@ where
             .seek(SeekFrom::Start(phdr.p_offset))
             .map_err(|_| Error::SeekKernelStart)?;
 
-        let mem_offset = kernel_start
-            .checked_add(phdr.p_paddr)
-            .ok_or(Error::InvalidProgramHeaderAddress)?;
         guest_mem
-            .read_to_memory(mem_offset, kernel_image, phdr.p_filesz as usize)
+            .read_to_memory(
+                GuestAddress(phdr.p_paddr),
+                kernel_image,
+                phdr.p_filesz as usize,
+            )
             .map_err(|_| Error::ReadKernelImage)?;
-
-        kernel_end = mem_offset
-            .offset()
-            .checked_add(phdr.p_memsz)
-            .ok_or(Error::InvalidProgramHeaderMemSize)?;
     }
 
-    let size = kernel_end - kernel_start.offset();
+    // We should have found at least one PT_LOAD program header. If not, `start` will not be set.
+    let start = start.ok_or(Error::NoLoadableProgramHeaders)?;
+
+    let size = end
+        .checked_sub(start)
+        .ok_or(Error::InvalidProgramHeaderSize)?;
+
+    let address_range = AddressRange { start, end };
 
     // `e_entry` of 0 means there is no entry point, which we do not want to allow.
-    if ehdr.e_entry == 0 {
+    // The entry point address must also fall within one of the loaded sections.
+    // We approximate this by checking whether it within the bounds of the first and last sections.
+    if ehdr.e_entry == 0 || !address_range.contains(ehdr.e_entry) {
         return Err(Error::InvalidEntryPoint);
     }
 
     Ok(LoadedKernel {
-        end: GuestAddress(kernel_end),
+        address_range,
         size,
         entry: GuestAddress(ehdr.e_entry),
     })
@@ -273,8 +306,9 @@ mod test {
         let kernel_addr = GuestAddress(0x0);
         let mut image = make_elf_bin();
         let kernel = load_kernel(&gm, kernel_addr, &mut image).expect("failed to load ELF");
-        assert_eq!(kernel.end, GuestAddress(0x20_0035));
-        assert_eq!(kernel.size, 0x20_0035);
+        assert_eq!(kernel.address_range.start, 0x20_0000);
+        assert_eq!(kernel.address_range.end, 0x20_0035);
+        assert_eq!(kernel.size, 0x35);
         assert_eq!(kernel.entry, GuestAddress(0x20_000e));
     }
 
@@ -314,5 +348,15 @@ mod test {
             Err(Error::InvalidProgramHeaderOffset),
             load_kernel(&gm, kernel_addr, &mut bad_image)
         );
+    }
+
+    #[test]
+    fn paddr_below_start() {
+        let gm = create_guest_mem();
+        // test_elf.bin loads a phdr at 0x20_0000, so this will fail due to an out-of-bounds address
+        let kernel_addr = GuestAddress(0x30_0000);
+        let mut image = make_elf_bin();
+        let res = load_kernel(&gm, kernel_addr, &mut image);
+        assert_eq!(res, Err(Error::ProgramHeaderAddressOutOfRange));
     }
 }
