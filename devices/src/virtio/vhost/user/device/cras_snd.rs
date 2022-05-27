@@ -2,13 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::unix::net::UnixListener;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context};
 use argh::FromArgs;
-use base::{warn, Event, UnlinkUnixListener};
+use base::{warn, Event};
 use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor};
 use data_model::DataInit;
 use futures::channel::mpsc;
@@ -17,6 +16,7 @@ use hypervisor::ProtectionType;
 use once_cell::sync::OnceCell;
 use sync::Mutex;
 use vm_memory::GuestMemory;
+use vmm_vhost::connection::socket::Listener as SocketListener;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::snd::cras_backend::{
@@ -275,7 +275,7 @@ pub fn run_cras_snd_device(program_name: &str, args: &[&str]) -> anyhow::Result<
     let snd_device = CrasSndBackend::new(params)?;
 
     // Create and bind unix socket
-    let listener = UnixListener::bind(opts.socket).map(UnlinkUnixListener)?;
+    let listener = SocketListener::new(opts.socket, true /* unlink */)?;
 
     let handler = DeviceRequestHandler::new(snd_device);
 
