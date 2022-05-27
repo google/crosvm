@@ -16,7 +16,7 @@
   },
   {
     "cmd": [
-      "repo",
+      "RECIPE_REPO[depot_tools]/repo",
       "init",
       "--manifest-url=https://chromium.googlesource.com/chromiumos/manifest",
       "--manifest-branch=stable",
@@ -25,15 +25,21 @@
       "--groups=minilayout,crosvm"
     ],
     "cwd": "[CLEANUP]/workspace",
+    "env": {
+      "DEPOT_TOOLS_UPDATE": "0"
+    },
     "name": "Init repo"
   },
   {
     "cmd": [
-      "repo",
+      "RECIPE_REPO[depot_tools]/repo",
       "sync",
       "--current-branch"
     ],
     "cwd": "[CLEANUP]/workspace",
+    "env": {
+      "DEPOT_TOOLS_UPDATE": "0"
+    },
     "name": "Sync repo"
   },
   {
@@ -43,6 +49,9 @@
       "https://chromium.googlesource.com/crosvm/crosvm"
     ],
     "cwd": "[CLEANUP]/workspace/src/platform/crosvm",
+    "env": {
+      "DEPOT_TOOLS_UPDATE": "0"
+    },
     "name": "Fetch upstream crosvm"
   },
   {
@@ -52,6 +61,9 @@
       "HEAD"
     ],
     "cwd": "[CLEANUP]/workspace/src/platform/crosvm",
+    "env": {
+      "DEPOT_TOOLS_UPDATE": "0"
+    },
     "name": "Checkout upstream revision"
   },
   {
@@ -61,44 +73,59 @@
       "--overlay-type=public"
     ],
     "cwd": "[CLEANUP]/workspace",
+    "env": {
+      "DEPOT_TOOLS_UPDATE": "0"
+    },
     "name": "Uprev packages"
   },
   {
     "cmd": [
-      "cros_sdk",
+      "RECIPE_REPO[depot_tools]/cros_sdk",
       "--create"
     ],
     "cwd": "[CLEANUP]/workspace",
+    "env": {
+      "DEPOT_TOOLS_UPDATE": "0"
+    },
     "name": "Create SDK chroot"
   },
   {
     "cmd": [
-      "cros_sdk",
+      "RECIPE_REPO[depot_tools]/cros_sdk",
       "build_packages",
       "--board=amd64_generic",
       "implicit-system",
       "chromeos-base/crosvm"
     ],
     "cwd": "[CLEANUP]/workspace",
+    "env": {
+      "DEPOT_TOOLS_UPDATE": "0"
+    },
     "name": "Build packages"
   },
   {
     "cmd": [
-      "cros_sdk",
+      "RECIPE_REPO[depot_tools]/cros_sdk",
       "cros_run_unit_tests",
       "--board=amd64_generic",
       "implicit-system",
       "chromeos-base/crosvm"
     ],
     "cwd": "[CLEANUP]/workspace",
+    "env": {
+      "DEPOT_TOOLS_UPDATE": "0"
+    },
     "name": "Run unit tests"
   },
   {
     "cmd": [
-      "cros_sdk",
+      "RECIPE_REPO[depot_tools]/cros_sdk",
       "--delete"
     ],
     "cwd": "[CLEANUP]/workspace",
+    "env": {
+      "DEPOT_TOOLS_UPDATE": "0"
+    },
     "name": "Deleting SDK chroot"
   },
   {

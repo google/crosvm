@@ -8,12 +8,13 @@ PYTHON_VERSION_COMPATIBILITY = "PY3"
 
 DEPS = [
     "crosvm",
+    "depot_tools/depot_tools",
     "recipe_engine/buildbucket",
     "recipe_engine/context",
+    "recipe_engine/file",
+    "recipe_engine/path",
     "recipe_engine/properties",
     "recipe_engine/step",
-    "recipe_engine/path",
-    "recipe_engine/file",
 ]
 
 PROPERTIES = BuildChromeOsProperties
@@ -24,6 +25,7 @@ PACKAGE_LIST = [
 
 
 def SetupSource(api, workspace):
+    repo = api.depot_tools.repo_resource("repo")
     gitilies = api.buildbucket.build.input.gitiles_commit
     upstream_url = "https://chromium.googlesource.com/crosvm/crosvm"
     revision = gitilies.id or "HEAD"
@@ -32,7 +34,7 @@ def SetupSource(api, workspace):
     api.step(
         "Init repo",
         [
-            "repo",
+            repo,
             "init",
             "--manifest-url=https://chromium.googlesource.com/chromiumos/manifest",
             "--manifest-branch=stable",
@@ -44,7 +46,7 @@ def SetupSource(api, workspace):
     api.step(
         "Sync repo",
         [
-            "repo",
+            repo,
             "sync",
             "--current-branch",
         ],
@@ -67,30 +69,33 @@ def PrepareBuild(api):
         ],
     )
     # Create chroot as a separate step to document the runtime
-    api.step("Create SDK chroot", ["cros_sdk", "--create"])
+    cros_sdk = api.depot_tools.repo_resource("cros_sdk")
+    api.step("Create SDK chroot", [cros_sdk, "--create"])
 
 
 def BuildAndTest(api, board):
+    cros_sdk = api.depot_tools.repo_resource("cros_sdk")
     # TODO: We currently build crosvm twice. Once with build_packages, once to run tests.
     api.step(
         "Build packages",
-        ["cros_sdk", "build_packages", "--board=%s" % board, "implicit-system"] + PACKAGE_LIST,
+        [cros_sdk, "build_packages", "--board=%s" % board, "implicit-system"] + PACKAGE_LIST,
     )
     api.step(
         "Run unit tests",
-        ["cros_sdk", "cros_run_unit_tests", "--board=%s" % board, "implicit-system"] + PACKAGE_LIST,
+        [cros_sdk, "cros_run_unit_tests", "--board=%s" % board, "implicit-system"] + PACKAGE_LIST,
     )
 
 
 def CleanUp(api):
-    api.step("Deleting SDK chroot", ["cros_sdk", "--delete"])
+    cros_sdk = api.depot_tools.repo_resource("cros_sdk")
+    api.step("Deleting SDK chroot", [cros_sdk, "--delete"])
 
 
 def RunSteps(api, properties):
     workspace = api.path["cleanup"].join("workspace")
     api.file.ensure_directory("Ensure workspace exists", workspace)
 
-    with api.context(cwd=workspace):
+    with api.context(cwd=workspace, env={"DEPOT_TOOLS_UPDATE": "0"}):
         try:
             SetupSource(api, workspace)
             PrepareBuild(api)
