@@ -305,7 +305,7 @@ def update_merges(
 def update_dry_runs(
     revision: str = "origin/main",
     target_branch: str = "chromeos",
-    max_size: int = 15,
+    max_size: int = 0,
     is_bot: bool = False,
 ):
     """
