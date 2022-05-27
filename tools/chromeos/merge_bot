@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 import sys
 from datetime import date
-from typing import Any, cast
+from typing import Any, cast, Dict, List
 
 sys.path.append(os.path.dirname(sys.path[0]))
 
@@ -101,20 +101,20 @@ class Change(object):
         return gerrit_api_get(f"changes/{self.id}/detail")
 
     @functools.cached_property
-    def _messages(self) -> list[Any]:
+    def _messages(self) -> List[Any]:
         return gerrit_api_get(f"changes/{self.id}/messages")
 
-    def get_votes(self, label_name: str) -> list[int]:
+    def get_votes(self, label_name: str) -> List[int]:
         "Returns the list of votes on `label_name`"
         label_info = self._details.get("labels", {}).get(label_name)
         votes = label_info.get("all", [])
         return [cast(int, v.get("value")) for v in votes]
 
-    def get_messages_by(self, email: str) -> list[str]:
+    def get_messages_by(self, email: str) -> List[str]:
         "Returns all messages posted by the user with the specified `email`."
         return [m["message"] for m in self._messages if m["author"].get("email") == email]
 
-    def review(self, message: str, labels: dict[str, int]):
+    def review(self, message: str, labels: Dict[str, int]):
         "Post review `message` and set the specified review `labels`"
         print("Posting on", self, ":", message, labels)
         gerrit_api_post(
