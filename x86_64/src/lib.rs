@@ -713,14 +713,7 @@ impl arch::LinuxArch for X8664arch {
                 // RIP and CS will be configured by `set_reset_vector()` later.
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                // separate out load_kernel from other setup to get a specific error for
-                // kernel loading
-                let (params, kernel_end) = Self::load_kernel(&mem, kernel_image)?;
-
-                let kernel_load_addr = GuestAddress(KERNEL_START_OFFSET);
-                let kernel_entry = mem
-                    .checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
-                    .ok_or(Error::KernelOffsetPastEnd)?;
+                let (params, kernel_end, kernel_entry) = Self::load_kernel(&mem, kernel_image)?;
 
                 Self::setup_system_memory(
                     &mem,
@@ -1220,15 +1213,33 @@ impl X8664arch {
     ///
     /// * `mem` - The memory to be used by the guest.
     /// * `kernel_image` - the File object for the specified kernel.
-    fn load_kernel(mem: &GuestMemory, kernel_image: &mut File) -> Result<(boot_params, u64)> {
-        let elf_result =
-            kernel_loader::load_kernel(mem, GuestAddress(KERNEL_START_OFFSET), kernel_image);
-        if elf_result == Err(kernel_loader::Error::InvalidElfMagicNumber) {
-            bzimage::load_bzimage(mem, GuestAddress(KERNEL_START_OFFSET), kernel_image)
-                .map_err(Error::LoadBzImage)
-        } else {
-            let loaded_kernel = elf_result.map_err(Error::LoadKernel)?;
-            Ok((Default::default(), loaded_kernel.end.offset()))
+    ///
+    /// # Returns
+    ///
+    /// On success, returns the Linux x86_64 boot protocol parameters, the first address past the
+    /// end of the kernel, and the entry point (initial `RIP` value).
+    fn load_kernel(
+        mem: &GuestMemory,
+        kernel_image: &mut File,
+    ) -> Result<(boot_params, u64, GuestAddress)> {
+        let kernel_start = GuestAddress(KERNEL_START_OFFSET);
+        match kernel_loader::load_kernel(mem, kernel_start, kernel_image) {
+            Ok(loaded_kernel) => {
+                // ELF kernels don't contain a `boot_params` structure, so synthesize a default one.
+                let boot_params = Default::default();
+                Ok((boot_params, loaded_kernel.end.offset(), loaded_kernel.entry))
+            }
+            Err(kernel_loader::Error::InvalidElfMagicNumber) => {
+                // The image failed to parse as ELF, so try to load it as a bzImage.
+                let (boot_params, bzimage_end) =
+                    bzimage::load_bzimage(mem, kernel_start, kernel_image)
+                        .map_err(Error::LoadBzImage)?;
+                let bzimage_entry = mem
+                    .checked_offset(kernel_start, KERNEL_64BIT_ENTRY_OFFSET)
+                    .ok_or(Error::KernelOffsetPastEnd)?;
+                Ok((boot_params, bzimage_end, bzimage_entry))
+            }
+            Err(e) => Err(Error::LoadKernel(e)),
         }
     }
 
