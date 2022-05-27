@@ -96,10 +96,17 @@ pub enum Command {
     Vfio(VfioCrosvmCommand),
 }
 
-#[generate_catchall_args]
+#[derive(FromArgs)]
 #[argh(subcommand, name = "balloon")]
-/// Set balloon size of the crosvm instance
-pub struct BalloonCommand {}
+/// Set balloon size of the crosvm instance to `SIZE` bytes
+pub struct BalloonCommand {
+    #[argh(positional, arg_name = "SIZE")]
+    /// amount of bytes
+    pub num_bytes: u64,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
 
 #[generate_catchall_args]
 #[argh(subcommand, name = "balloon_stats")]

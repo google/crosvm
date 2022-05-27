@@ -2747,23 +2747,10 @@ fn inject_gpe(cmd: crosvm::GpeCommand) -> std::result::Result<(), ()> {
 }
 
 fn balloon_vms(cmd: crosvm::BalloonCommand) -> std::result::Result<(), ()> {
-    if cmd.args.len() < 2 {
-        print_help("crosvm balloon", "SIZE VM_SOCKET...", &[]);
-        println!("Set the ballon size of the crosvm instance to `SIZE` bytes.");
-        return Err(());
-    }
-    let mut args = cmd.args.into_iter();
-    let num_bytes = match args.next().unwrap().parse::<u64>() {
-        Ok(n) => n,
-        Err(_) => {
-            error!("Failed to parse number of bytes");
-            return Err(());
-        }
+    let command = BalloonControlCommand::Adjust {
+        num_bytes: cmd.num_bytes,
     };
-
-    let command = BalloonControlCommand::Adjust { num_bytes };
-    let socket_path = &args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
+    let socket_path = Path::new(&cmd.socket_path);
     vms_request(&VmRequest::BalloonCommand(command), socket_path)
 }
 
