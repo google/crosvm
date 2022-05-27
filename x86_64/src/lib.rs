@@ -1219,8 +1219,8 @@ impl X8664arch {
             bzimage::load_bzimage(mem, GuestAddress(KERNEL_START_OFFSET), kernel_image)
                 .map_err(Error::LoadBzImage)
         } else {
-            let kernel_end = elf_result.map_err(Error::LoadKernel)?;
-            Ok((Default::default(), kernel_end))
+            let loaded_kernel = elf_result.map_err(Error::LoadKernel)?;
+            Ok((Default::default(), loaded_kernel.end.offset()))
         }
     }
 

@@ -61,6 +61,16 @@ pub enum Error {
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+/// Information about a kernel loaded with the [`load_kernel`] function.
+pub struct LoadedKernel {
+    /// End address (exclusive) of the kernel.
+    pub end: GuestAddress,
+
+    /// Size of the kernel image in bytes.
+    pub size: u64,
+}
+
 /// Loads a kernel from a vmlinux elf image to a slice
 ///
 /// # Arguments
@@ -72,7 +82,7 @@ pub fn load_kernel<F>(
     guest_mem: &GuestMemory,
     kernel_start: GuestAddress,
     mut kernel_image: &mut F,
-) -> Result<u64>
+) -> Result<LoadedKernel>
 where
     F: Read + Seek + AsRawDescriptor,
 {
@@ -135,7 +145,12 @@ where
             .ok_or(Error::InvalidProgramHeaderMemSize)?;
     }
 
-    Ok(kernel_end)
+    let size = kernel_end - kernel_start.offset();
+
+    Ok(LoadedKernel {
+        end: GuestAddress(kernel_end),
+        size,
+    })
 }
 
 /// Writes the command line string to the given memory slice.
@@ -246,7 +261,9 @@ mod test {
         let gm = create_guest_mem();
         let kernel_addr = GuestAddress(0x0);
         let mut image = make_elf_bin();
-        assert_eq!(Ok(0x20_0035), load_kernel(&gm, kernel_addr, &mut image));
+        let kernel = load_kernel(&gm, kernel_addr, &mut image).expect("failed to load ELF");
+        assert_eq!(kernel.end, GuestAddress(0x20_0035));
+        assert_eq!(kernel.size, 0x20_0035);
     }
 
     #[test]

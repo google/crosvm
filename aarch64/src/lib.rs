@@ -274,8 +274,9 @@ impl arch::LinuxArch for AArch64 {
                             .map_err(Error::KernelLoadFailure)?;
                     kernel_end = get_kernel_addr().offset() + kernel_size as u64;
                 } else {
-                    kernel_end = elf_result.map_err(Error::LoadElfKernel)?;
-                    kernel_size = kernel_end as usize - get_kernel_addr().offset() as usize;
+                    let loaded_kernel = elf_result.map_err(Error::LoadElfKernel)?;
+                    kernel_size = loaded_kernel.size as usize;
+                    kernel_end = loaded_kernel.end.offset();
                 }
                 initrd = match components.initrd_image {
                     Some(initrd_file) => {
