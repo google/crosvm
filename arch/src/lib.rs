@@ -624,7 +624,18 @@ pub fn generate_pci_root(
         }
     }
 
-    for (dev_idx, (mut device, jail)) in devices.into_iter().enumerate() {
+    // To prevent issues where device's on_sandbox may spawn thread before all
+    // sandboxed devices are sandboxed we partition iterator to go over sandboxed
+    // first
+    let devices = {
+        let (sandboxed, non_sandboxed): (Vec<_>, Vec<_>) = devices
+            .into_iter()
+            .enumerate()
+            .partition(|(_, (_, jail))| jail.is_some());
+        sandboxed.into_iter().chain(non_sandboxed.into_iter())
+    };
+
+    for (dev_idx, (mut device, jail)) in devices {
         let address = device_addrs[dev_idx];
 
         let mut keep_rds = device.keep_rds();
