@@ -18,6 +18,12 @@ class CrosvmApi(recipe_api.RecipeApi):
     def builder_dir(self):
         return self.m.path["cache"].join("builder")
 
+    def __set_git_config(self, prop, value):
+        self.m.step(
+            "Set git config: %s" % prop,
+            ["git", "config", "--global", prop, value],
+        )
+
     def build_context(self, source=True, container=True):
         """
         Prepares everything needed to build crosvm on the revision that needs to be verified.
@@ -29,6 +35,7 @@ class CrosvmApi(recipe_api.RecipeApi):
             with api.crosvm.build_context():
                 api.crosvm.step_in_container("build crosvm", ["cargo build"])
         """
+        self.prepare_git()
         if source:
             self.prepare_source()
         if container:
@@ -44,7 +51,6 @@ class CrosvmApi(recipe_api.RecipeApi):
         """
         with self.m.step.nest("Prepare source"):
             self.m.file.ensure_directory("Ensure builder_dir exists", self.builder_dir)
-
             with self.m.context(cwd=self.builder_dir):
                 gclient_config = self.m.gclient.make_config()
                 s = gclient_config.solutions.add()
@@ -69,6 +75,17 @@ class CrosvmApi(recipe_api.RecipeApi):
                     ],
                 )
                 self.m.crosvm.step_in_container("Ensure dev container exists", ["true"])
+
+    def prepare_git(self):
+        with self.m.step.nest("Prepare git"):
+            with self.m.context(cwd=self.m.path["start_dir"]):
+                name = self.m.git.config_get("user.name")
+                email = self.m.git.config_get("user.email")
+                if not name or not email:
+                    self.__set_git_config("user.name", "Crosvm Bot")
+                    self.__set_git_config(
+                        "user.email", "crosvm-bot@crosvm-infra.iam.gserviceaccount.com"
+                    )
 
     def step_in_container(self, step_name, command):
         """

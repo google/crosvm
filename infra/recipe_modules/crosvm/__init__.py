@@ -7,6 +7,7 @@ PYTHON_VERSION_COMPATIBILITY = "PY3"
 DEPS = [
     "depot_tools/bot_update",
     "depot_tools/gclient",
+    "depot_tools/git",
     "recipe_engine/buildbucket",
     "recipe_engine/context",
     "recipe_engine/file",

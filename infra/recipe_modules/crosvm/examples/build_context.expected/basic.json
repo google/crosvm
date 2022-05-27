@@ -1,6 +1,62 @@
 [
   {
     "cmd": [],
+    "name": "Prepare git"
+  },
+  {
+    "cmd": [
+      "git",
+      "config",
+      "--get",
+      "user.name"
+    ],
+    "infra_step": true,
+    "name": "Prepare git.git config user.name",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "git",
+      "config",
+      "--get",
+      "user.email"
+    ],
+    "infra_step": true,
+    "name": "Prepare git.git config user.email",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "git",
+      "config",
+      "--global",
+      "user.name",
+      "Crosvm Bot"
+    ],
+    "name": "Prepare git.Set git config: user.name",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "git",
+      "config",
+      "--global",
+      "user.email",
+      "crosvm-bot@crosvm-infra.iam.gserviceaccount.com"
+    ],
+    "name": "Prepare git.Set git config: user.email",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
+  },
+  {
+    "cmd": [],
     "name": "Prepare source"
   },
   {
