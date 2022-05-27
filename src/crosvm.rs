@@ -117,10 +117,25 @@ pub struct BalloonStatsCommand {
     pub socket_path: String,
 }
 
-#[generate_catchall_args]
+#[derive(FromArgs)]
 #[argh(subcommand, name = "battery")]
 /// Modify battery
-pub struct BatteryCommand {}
+pub struct BatteryCommand {
+    #[argh(positional, arg_name = "BATTERY_TYPE")]
+    /// battery type
+    pub battery_type: String,
+    #[argh(positional)]
+    /// battery property
+    /// status | present | health | capacity | aconline
+    pub property: String,
+    #[argh(positional)]
+    /// battery property target
+    /// STATUS | PRESENT | HEALTH | CAPACITY | ACONLINE
+    pub target: String,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
 
 #[cfg(feature = "composite-disk")]
 #[generate_catchall_args]

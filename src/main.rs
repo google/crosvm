@@ -2773,30 +2773,9 @@ fn balloon_stats(cmd: crosvm::BalloonStatsCommand) -> std::result::Result<(), ()
 }
 
 fn modify_battery(cmd: crosvm::BatteryCommand) -> std::result::Result<(), ()> {
-    if cmd.args.len() < 4 {
-        print_help(
-            "crosvm battery BATTERY_TYPE ",
-            "[status STATUS | \
-             present PRESENT | \
-             health HEALTH | \
-             capacity CAPACITY | \
-             aconline ACONLINE ] \
-             VM_SOCKET...",
-            &[],
-        );
-        return Err(());
-    }
-    let mut args = cmd.args.into_iter();
+    let socket_path = Path::new(&cmd.socket_path);
 
-    // This unwrap will not panic because of the above length check.
-    let battery_type = args.next().unwrap();
-    let property = args.next().unwrap();
-    let target = args.next().unwrap();
-
-    let socket_path = args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
-
-    do_modify_battery(socket_path, &*battery_type, &*property, &*target)
+    do_modify_battery(socket_path, &cmd.battery_type, &cmd.property, &cmd.target)
 }
 
 fn modify_vfio(cmd: crosvm::VfioCrosvmCommand) -> std::result::Result<(), ()> {
