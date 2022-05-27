@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use devices::virtio::vhost::user::vmm::Gpu as VhostUserGpu;
 
-use crate::{JailConfig, VhostUserOption};
+use crate::crosvm::{JailConfig, VhostUserOption};
 
 use super::*;
 

@@ -7,9 +7,6 @@ default-run = "crosvm"
 # b:223855233
 resolver = "1"
 
-[lib]
-path = "src/crosvm.rs"
-
 [[bin]]
 name = "crosvm"
 path = "src/main.rs"

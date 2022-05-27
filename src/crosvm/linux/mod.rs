@@ -55,15 +55,17 @@ use vm_control::*;
 use vm_memory::{GuestAddress, GuestMemory, MemoryPolicy};
 
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-use crate::gdb::{gdb_thread, GdbStub};
-use crate::{Config, Executable, FileBackedMappingParameters, SharedDir, SharedDirKind, VfioType};
+use crate::crosvm::gdb::{gdb_thread, GdbStub};
+use crate::crosvm::{
+    Config, Executable, FileBackedMappingParameters, SharedDir, SharedDirKind, VfioType,
+};
 use arch::{
     self, LinuxArch, RunnableLinuxVm, VcpuAffinity, VirtioDeviceStub, VmComponents, VmImage,
 };
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use {
-    crate::HostPcieRootPortParameters,
+    crate::crosvm::HostPcieRootPortParameters,
     devices::{
         IrqChipX86_64 as IrqChipArch, KvmSplitIrqChip, PciBridge, PcieHostRootPort, PcieRootPort,
     },

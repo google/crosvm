@@ -25,6 +25,7 @@ use arch::{
 };
 use base::syslog::LogConfig;
 use base::{debug, error, getpid, info, pagesize, syslog};
+mod crosvm;
 use crosvm::{
     argument::{self, parse_hex_or_decimal, print_help, set_arguments, Argument},
     platform, BindMount, Config, Executable, FileBackedMappingParameters, GidMap,

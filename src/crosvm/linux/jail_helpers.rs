@@ -11,7 +11,7 @@ use anyhow::{bail, Context, Result};
 use base::*;
 use minijail::{self, Minijail};
 
-use crate::JailConfig;
+use crate::crosvm::JailConfig;
 
 pub(super) struct SandboxConfig<'a> {
     pub(super) limit_caps: bool,

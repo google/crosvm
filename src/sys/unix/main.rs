@@ -32,9 +32,9 @@ use devices::Ac97Parameters;
 use devices::SerialParameters;
 
 use crate::argument::{self, Argument};
+use crate::crosvm::{Config, SharedDir};
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use crate::platform::GpuRenderServerParameters;
-use crosvm::{Config, SharedDir};
 
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 fn parse_gpu_render_server_options(s: Option<&str>) -> argument::Result<GpuRenderServerParameters> {

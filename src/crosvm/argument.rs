@@ -545,6 +545,7 @@ impl<'a> KeyValuePair<'a> {
         self.get_numeric(self.key())
     }
 
+    #[cfg(test)]
     pub fn parse<T>(&self) -> Result<T>
     where
         T: FromStr,

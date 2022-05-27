@@ -6,7 +6,6 @@ edition = "2021"
 
 [dev-dependencies]
 tempfile = "3"
-crosvm = { path = ".." }
 arch = { path = "../arch" }
 base = "*"
 libc = "0.2.65"
