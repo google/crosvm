@@ -33,7 +33,7 @@ use super::{handle_input, process_transmit_queue, QUEUE_SIZES};
 struct AsyncSerialInput(Box<dyn SerialInput>);
 impl AsRawDescriptor for AsyncSerialInput {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.0.as_raw_descriptor()
+        self.0.get_read_notifier().as_raw_descriptor()
     }
 }
 impl IntoAsync for AsyncSerialInput {}

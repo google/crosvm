@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, AsRawDescriptor, Event, FileSync, RawDescriptor};
+use base::{error, AsRawDescriptor, Event, FileSync, RawDescriptor, ReadNotifier};
 use base::{info, read_raw_stdin};
 use hypervisor::ProtectionType;
 use std::borrow::Cow;
@@ -20,16 +20,23 @@ pub const SYSTEM_SERIAL_TYPE_NAME: &str = "UnixSocket";
 
 // This wrapper is used in place of the libstd native version because we don't want
 // buffering for stdin.
-pub struct ConsoleInput;
+pub struct ConsoleInput(std::io::Stdin);
+
+impl ConsoleInput {
+    pub fn new() -> Self {
+        Self(std::io::stdin())
+    }
+}
+
 impl io::Read for ConsoleInput {
     fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
         read_raw_stdin(out).map_err(|e| e.into())
     }
 }
 
-impl AsRawDescriptor for ConsoleInput {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        std::io::stdin().as_raw_descriptor()
+impl ReadNotifier for ConsoleInput {
+    fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
+        &self.0
     }
 }
 
