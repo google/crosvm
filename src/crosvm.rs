@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use argh::FromArgs;
+use base::debug;
 use devices::virtio::vhost::user::device;
 
 use super::sys;
@@ -197,10 +198,13 @@ pub struct GpeCommand {
     pub socket_path: String,
 }
 
-#[generate_catchall_args]
+#[derive(FromArgs)]
 #[argh(subcommand, name = "usb")]
 /// Manage attached virtual USB devices.
-pub struct UsbCommand {}
+pub struct UsbCommand {
+    #[argh(subcommand)]
+    pub command: UsbSubCommand,
+}
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "version")]
@@ -232,6 +236,53 @@ pub enum CrossPlatformDevicesCommands {
 pub enum DevicesSubcommand {
     CrossPlatform(CrossPlatformDevicesCommands),
     Sys(sys::DevicesSubcommand),
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand)]
+pub enum UsbSubCommand {
+    Attach(UsbAttachCommand),
+    Detach(UsbDetachCommand),
+    List(UsbListCommand),
+}
+
+#[derive(FromArgs)]
+/// Attach usb device
+#[argh(subcommand, name = "attach")]
+pub struct UsbAttachCommand {
+    #[argh(
+        positional,
+        arg_name = "BUS_ID:ADDR:BUS_NUM:DEV_NUM",
+        from_str_fn(parse_bus_id_addr)
+    )]
+    pub addr: (u8, u8, u16, u16),
+    #[argh(positional)]
+    /// usb device path
+    pub dev_path: String,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+/// Detach usb device
+#[argh(subcommand, name = "detach")]
+pub struct UsbDetachCommand {
+    #[argh(positional, arg_name = "PORT")]
+    /// usb port
+    pub port: u8,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+/// Detach usb device
+#[argh(subcommand, name = "list")]
+pub struct UsbListCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
 }
 
 /// Indicates the location and kind of executable kernel for a VM.
@@ -536,6 +587,22 @@ impl Default for JailConfig {
             seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
             seccomp_log_failures: false,
         }
+    }
+}
+
+fn parse_bus_id_addr(v: &str) -> Result<(u8, u8, u16, u16), String> {
+    debug!("parse_bus_id_addr: {}", v);
+    let mut ids = v.split(':');
+    let errorre = move |item| move |e| format!("{}: {}", item, e);
+    match (ids.next(), ids.next(), ids.next(), ids.next()) {
+        (Some(bus_id), Some(addr), Some(vid), Some(pid)) => {
+            let bus_id = bus_id.parse::<u8>().map_err(errorre("bus_id"))?;
+            let addr = addr.parse::<u8>().map_err(errorre("addr"))?;
+            let vid = u16::from_str_radix(vid, 16).map_err(errorre("vid"))?;
+            let pid = u16::from_str_radix(pid, 16).map_err(errorre("pid"))?;
+            Ok((bus_id, addr, vid, pid))
+        }
+        _ => Err(String::from("BUS_ID:ADDR:BUS_NUM:DEV_NUM")),
     }
 }
 

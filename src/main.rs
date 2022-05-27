@@ -25,7 +25,7 @@ use arch::{
     Pstore, VcpuAffinity,
 };
 use base::syslog::LogConfig;
-use base::{debug, error, getpid, info, pagesize, syslog};
+use base::{error, getpid, info, pagesize, syslog};
 mod crosvm;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64", feature = "direct"))]
 use crosvm::argument::parse_hex_or_decimal;
@@ -64,7 +64,7 @@ use uuid::Uuid;
 use vm_control::{
     client::{
         do_modify_battery, do_usb_attach, do_usb_detach, do_usb_list, handle_request, vms_request,
-        ModifyUsbError, ModifyUsbResult,
+        ModifyUsbResult,
     },
     BalloonControlCommand, BatteryType, DiskControlCommand, UsbControlResult, VmRequest,
     VmResponse,
@@ -3118,88 +3118,29 @@ fn make_rt(cmd: crosvm::MakeRTCommand) -> std::result::Result<(), ()> {
     vms_request(&VmRequest::MakeRT, socket_path)
 }
 
-fn parse_bus_id_addr(v: &str) -> ModifyUsbResult<(u8, u8, u16, u16)> {
-    debug!("parse_bus_id_addr: {}", v);
-    let mut ids = v.split(':');
-    match (ids.next(), ids.next(), ids.next(), ids.next()) {
-        (Some(bus_id), Some(addr), Some(vid), Some(pid)) => {
-            let bus_id = bus_id
-                .parse::<u8>()
-                .map_err(|e| ModifyUsbError::ArgParseInt("bus_id", bus_id.to_owned(), e))?;
-            let addr = addr
-                .parse::<u8>()
-                .map_err(|e| ModifyUsbError::ArgParseInt("addr", addr.to_owned(), e))?;
-            let vid = u16::from_str_radix(vid, 16)
-                .map_err(|e| ModifyUsbError::ArgParseInt("vid", vid.to_owned(), e))?;
-            let pid = u16::from_str_radix(pid, 16)
-                .map_err(|e| ModifyUsbError::ArgParseInt("pid", pid.to_owned(), e))?;
-            Ok((bus_id, addr, vid, pid))
-        }
-        _ => Err(ModifyUsbError::ArgParse(
-            "BUS_ID_ADDR_BUS_NUM_DEV_NUM",
-            v.to_owned(),
-        )),
-    }
+fn usb_attach(cmd: crosvm::UsbAttachCommand) -> ModifyUsbResult<UsbControlResult> {
+    let (bus, addr, vid, pid) = cmd.addr;
+    let socket_path = Path::new(&cmd.socket_path);
+    let dev_path = Path::new(&cmd.dev_path);
+
+    do_usb_attach(socket_path, bus, addr, vid, pid, dev_path)
 }
 
-fn usb_attach(args: Vec<String>) -> ModifyUsbResult<UsbControlResult> {
-    let mut args = args.into_iter();
-    let val = args
-        .next()
-        .ok_or(ModifyUsbError::ArgMissing("BUS_ID_ADDR_BUS_NUM_DEV_NUM"))?;
-    let (bus, addr, vid, pid) = parse_bus_id_addr(&val)?;
-    let dev_path = PathBuf::from(
-        args.next()
-            .ok_or(ModifyUsbError::ArgMissing("usb device path"))?,
-    );
-
-    let socket_path = args
-        .next()
-        .ok_or(ModifyUsbError::ArgMissing("control socket path"))?;
-    let socket_path = Path::new(&socket_path);
-
-    do_usb_attach(socket_path, bus, addr, vid, pid, &dev_path)
+fn usb_detach(cmd: crosvm::UsbDetachCommand) -> ModifyUsbResult<UsbControlResult> {
+    let socket_path = Path::new(&cmd.socket_path);
+    do_usb_detach(socket_path, cmd.port)
 }
 
-fn usb_detach(args: Vec<String>) -> ModifyUsbResult<UsbControlResult> {
-    let mut args = args.into_iter();
-    let port: u8 = args
-        .next()
-        .map_or(Err(ModifyUsbError::ArgMissing("PORT")), |p| {
-            p.parse::<u8>()
-                .map_err(|e| ModifyUsbError::ArgParseInt("PORT", p.to_owned(), e))
-        })?;
-    let socket_path = args
-        .next()
-        .ok_or(ModifyUsbError::ArgMissing("control socket path"))?;
-    let socket_path = Path::new(&socket_path);
-    do_usb_detach(socket_path, port)
-}
-
-fn usb_list(args: Vec<String>) -> ModifyUsbResult<UsbControlResult> {
-    let mut args = args.into_iter();
-    let socket_path = args
-        .next()
-        .ok_or(ModifyUsbError::ArgMissing("control socket path"))?;
-    let socket_path = Path::new(&socket_path);
+fn usb_list(cmd: crosvm::UsbListCommand) -> ModifyUsbResult<UsbControlResult> {
+    let socket_path = Path::new(&cmd.socket_path);
     do_usb_list(socket_path)
 }
 
 fn modify_usb(cmd: crosvm::UsbCommand) -> std::result::Result<(), ()> {
-    let mut args = cmd.args;
-    if args.len() < 2 {
-        print_help("crosvm usb",
-                   "[attach BUS_ID:ADDR:VENDOR_ID:PRODUCT_ID [USB_DEVICE_PATH|-] | detach PORT | list] VM_SOCKET...", &[]);
-        return Err(());
-    }
-
-    // This unwrap will not panic because of the above length check.
-    let command = args.remove(0);
-    let result = match command.as_ref() {
-        "attach" => usb_attach(args),
-        "detach" => usb_detach(args),
-        "list" => usb_list(args),
-        other => Err(ModifyUsbError::UnknownCommand(other.to_owned())),
+    let result = match cmd.command {
+        crosvm::UsbSubCommand::Attach(cmd) => usb_attach(cmd),
+        crosvm::UsbSubCommand::Detach(cmd) => usb_detach(cmd),
+        crosvm::UsbSubCommand::List(cmd) => usb_list(cmd),
     };
     match result {
         Ok(response) => {
