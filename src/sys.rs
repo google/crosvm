@@ -13,7 +13,7 @@ cfg_if::cfg_if! {
 
 pub(crate) use platform::main::{
     check_serial_params, cleanup, get_arguments, net_vq_pairs_expected, set_arguments,
-    start_device, use_host_cpu_topology,
+    start_device, use_host_cpu_topology, DevicesSubcommand,
 };
 
 #[cfg(feature = "gpu")]

@@ -331,7 +331,7 @@ impl VhostUserBackend for ConsoleBackend {
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "console")]
-/// Console options
+/// Console device
 pub struct Options {
     #[argh(option, arg_name = "PATH")]
     /// path to a vhost-user socket

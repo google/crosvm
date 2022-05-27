@@ -21,6 +21,8 @@ use crate::virtio;
 use crate::virtio::net::{build_config, process_ctrl, process_tx, virtio_features_to_tap_offload};
 use crate::virtio::vhost::user::device::handler::{Doorbell, VhostUserBackend};
 
+pub use sys::{start_device as run_net_device, Options};
+
 thread_local! {
     pub(crate) static NET_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 }
@@ -167,9 +169,4 @@ where
             handle.abort();
         }
     }
-}
-
-/// Starts a vhost-user net device.
-pub fn run_net_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
-    sys::start_device(program_name, args)
 }

@@ -339,7 +339,7 @@ fn gpu_parameters_from_str(input: &str) -> Result<GpuParameters, String> {
 }
 
 #[derive(FromArgs)]
-/// GPU device configuration
+/// GPU device
 #[argh(subcommand, name = "gpu")]
 pub struct Options {
     #[argh(option, arg_name = "PATH")]

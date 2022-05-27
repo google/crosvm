@@ -236,7 +236,7 @@ impl VhostUserBackend for CrasSndBackend {
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "cras-snd")]
-/// Cras options
+/// CRAS device
 pub struct Options {
     #[argh(option, arg_name = "PATH")]
     /// path to a socket

@@ -538,7 +538,7 @@ async fn run_device<P: AsRef<Path>>(
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "vsock")]
-/// Vsock options
+/// Vsock device
 pub struct Options {
     #[argh(option, arg_name = "PATH")]
     /// path to bind a listening vhost-user socket

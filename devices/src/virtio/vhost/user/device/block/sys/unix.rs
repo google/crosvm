@@ -51,42 +51,23 @@ impl BlockBackend {
 }
 
 #[derive(FromArgs)]
-#[argh(description = "")]
-struct Options {
-    #[argh(
-        option,
-        description = "path and options of the disk file.",
-        arg_name = "PATH<:read-only>"
-    )]
+#[argh(subcommand, name = "block")]
+/// Block device
+pub struct Options {
+    #[argh(option, arg_name = "PATH<:read-only>")]
+    /// path and options of the disk file.
     file: String,
-    #[argh(option, description = "path to a vhost-user socket", arg_name = "PATH")]
+    #[argh(option, arg_name = "PATH")]
+    /// path to a vhost-user socket
     socket: Option<String>,
-    #[argh(
-        option,
-        description = "VFIO-PCI device name (e.g. '0000:00:07.0')",
-        arg_name = "STRING"
-    )]
+    #[argh(option, arg_name = "STRING")]
+    /// VFIO-PCI device name (e.g. '0000:00:07.0')
     vfio: Option<String>,
 }
 
 /// Starts a vhost-user block device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
-pub(in crate::virtio::vhost::user::device::block) fn start_device(
-    program_name: &str,
-    args: &[&str],
-) -> anyhow::Result<()> {
-    let opts = match Options::from_args(&[program_name], args) {
-        Ok(opts) => opts,
-        Err(e) => {
-            if e.status.is_err() {
-                bail!(e.output);
-            } else {
-                println!("{}", e.output);
-            }
-            return Ok(());
-        }
-    };
-
+pub fn start_device(opts: Options) -> anyhow::Result<()> {
     if !(opts.socket.is_some() ^ opts.vfio.is_some()) {
         bail!("Exactly one of `--socket` or `--vfio` is required");
     }

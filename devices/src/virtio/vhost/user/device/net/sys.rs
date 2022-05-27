@@ -12,4 +12,5 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(in crate::virtio::vhost::user::device::net) use platform::{start_device, start_queue};
+pub(in crate::virtio::vhost::user::device::net) use platform::start_queue;
+pub use platform::{start_device, Options};

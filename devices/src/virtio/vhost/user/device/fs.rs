@@ -203,7 +203,7 @@ impl VhostUserBackend for FsBackend {
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "fs")]
-/// FS Options
+/// FS Device
 pub struct Options {
     #[argh(option, arg_name = "PATH")]
     /// path to a vhost-user socket

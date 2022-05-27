@@ -10,7 +10,7 @@ use std::str::FromStr;
 use std::thread::sleep;
 use std::{path::PathBuf, time::Duration};
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use argh::FromArgs;
 
 use base::{kill_process_group, reap_child, warn};
@@ -588,15 +588,6 @@ pub fn set_arguments(cfg: &mut Config, name: &str, value: Option<&str>) -> argum
     Ok(())
 }
 
-// This is temporary until argument parsing changes
-// bumped up the stack
-#[derive(FromArgs)]
-/// Unix Devices
-struct DevicesArgs {
-    #[argh(subcommand)]
-    command: DevicesSubcommand,
-}
-
 #[derive(FromArgs)]
 #[argh(subcommand)]
 /// Unix Devices
@@ -611,20 +602,8 @@ pub enum DevicesSubcommand {
     Wl(device::WlOptions),
 }
 
-pub(crate) fn start_device(program_name: &str, args: &[&str]) -> Result<()> {
-    let opts = match DevicesArgs::from_args(&[program_name], args) {
-        Ok(opts) => opts,
-        Err(e) => {
-            if e.status.is_err() {
-                bail!(e.output);
-            } else {
-                println!("{}", e.output);
-            }
-            return Ok(());
-        }
-    };
-
-    match opts.command {
+pub(crate) fn start_device(command: DevicesSubcommand) -> Result<()> {
+    match command {
         DevicesSubcommand::Console(cfg) => run_console_device(cfg),
         #[cfg(feature = "audio_cras")]
         DevicesSubcommand::CrasSnd(cfg) => run_cras_snd_device(cfg),

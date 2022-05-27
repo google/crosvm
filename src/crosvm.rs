@@ -20,6 +20,10 @@ use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use argh::FromArgs;
+use devices::virtio::vhost::user::device;
+
+use super::sys;
 use arch::{MsrConfig, Pstore, VcpuAffinity};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::virtio::block::block::DiskOption;
@@ -47,6 +51,29 @@ use vm_control::BatteryType;
 static KVM_PATH: &str = "/dev/kvm";
 static VHOST_NET_PATH: &str = "/dev/vhost-net";
 static SECCOMP_POLICY_DIR: &str = "/usr/share/policy/crosvm";
+
+// This is temporary until argument parsing changes
+// bumped up the stack
+#[derive(FromArgs)]
+/// Devices
+pub struct DevicesArgs {
+    #[argh(subcommand)]
+    pub command: DevicesSubcommand,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand)]
+/// Cross-platform Devices
+pub enum CrossPlatformDevicesCommands {
+    Block(device::BlockOptions),
+    Net(device::NetOptions),
+}
+
+#[derive(argh_helpers::FlattenSubcommand)]
+pub enum DevicesSubcommand {
+    CrossPlatform(CrossPlatformDevicesCommands),
+    Sys(sys::DevicesSubcommand),
+}
 
 /// Indicates the location and kind of executable kernel for a VM.
 #[derive(Debug)]

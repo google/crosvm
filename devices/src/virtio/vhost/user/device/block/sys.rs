@@ -12,4 +12,4 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(super) use platform::start_device;
+pub use platform::{start_device, Options};

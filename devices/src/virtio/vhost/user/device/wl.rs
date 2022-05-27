@@ -275,7 +275,7 @@ pub(crate) fn parse_wayland_sock(value: &str) -> Result<(String, PathBuf), Strin
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "wl")]
-/// Wayland
+/// Wayland device
 pub struct Options {
     #[argh(option, arg_name = "PATH")]
     /// path to bind a listening vhost-user socket

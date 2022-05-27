@@ -20,9 +20,10 @@ use vmm_vhost::message::*;
 
 use crate::virtio::block::asynchronous::{flush_disk, handle_queue};
 use crate::virtio::block::*;
-use crate::virtio::vhost::user::device::block::sys::start_device;
 use crate::virtio::vhost::user::device::handler::{Doorbell, VhostUserBackend};
 use crate::virtio::{self, block::sys::*, copy_config};
+
+pub use sys::{start_device as run_block_device, Options};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: u16 = 16;
@@ -226,10 +227,4 @@ impl VhostUserBackend for BlockBackend {
             handle.abort();
         }
     }
-}
-
-/// Starts a vhost-user block device.
-/// Returns an error if the given `args` is invalid or the device fails to run.
-pub fn run_block_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
-    return start_device(program_name, args);
 }

@@ -23,6 +23,7 @@ use arch::{
     set_default_serial_parameters, MsrAction, MsrConfig, MsrRWType, MsrValueFrom, Pstore,
     VcpuAffinity,
 };
+use argh::FromArgs;
 use base::syslog::LogConfig;
 use base::{debug, error, getpid, info, pagesize, syslog};
 mod crosvm;
@@ -2969,29 +2970,29 @@ with a '--backing_file'."
 }
 
 fn start_device(args: std::env::Args) -> std::result::Result<(), ()> {
-    let print_usage = || {
-        print_help(
-            "crosvm device",
-            " (block|console|cras-snd|fs|gpu|net|wl) <device-specific arguments>",
-            &[],
-        );
-    };
-
-    if args.len() == 0 {
-        print_usage();
-        return Err(());
-    }
-
     let args = args.collect::<Vec<_>>();
     let args = args.iter().map(Deref::deref).collect::<Vec<_>>();
     let args = args.as_slice();
 
-    let program_name = format!("crosvm device {}", args[0]);
+    let opts = match crosvm::DevicesArgs::from_args(&["crosvm", "device"], args) {
+        Ok(opts) => opts,
+        Err(e) => {
+            if e.status.is_err() {
+                error!("{}", e.output);
+                return Err(());
+            } else {
+                println!("{}", e.output);
+            }
+            return Ok(());
+        }
+    };
 
-    let result = match args[0] {
-        "block" => run_block_device(&program_name, &args[1..]),
-        "net" => run_net_device(&program_name, &args[1..]),
-        _ => sys::start_device(&program_name, args),
+    let result = match opts.command {
+        crosvm::DevicesSubcommand::CrossPlatform(command) => match command {
+            crosvm::CrossPlatformDevicesCommands::Block(cfg) => run_block_device(cfg),
+            crosvm::CrossPlatformDevicesCommands::Net(cfg) => run_net_device(cfg),
+        },
+        crosvm::DevicesSubcommand::Sys(command) => sys::start_device(command),
     };
 
     result.map_err(|e| {
