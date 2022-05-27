@@ -2822,14 +2822,7 @@ fn modify_vfio(cmd: crosvm::VfioCrosvmCommand) -> std::result::Result<(), ()> {
 
 #[cfg(feature = "composite-disk")]
 fn create_composite(cmd: crosvm::CreateCompositeCommand) -> std::result::Result<(), ()> {
-    if cmd.args.len() < 1 {
-        print_help("crosvm create_composite", "PATH [LABEL:PARTITION]..", &[]);
-        println!("Creates a new composite disk image containing the given partition images");
-        return Err(());
-    }
-
-    let mut args = cmd.args.into_iter();
-    let composite_image_path = args.next().unwrap();
+    let composite_image_path = &cmd.path;
     let zero_filler_path = format!("{}.filler", composite_image_path);
     let header_path = format!("{}.header", composite_image_path);
     let footer_path = format!("{}.footer", composite_image_path);
@@ -2877,7 +2870,8 @@ fn create_composite(cmd: crosvm::CreateCompositeCommand) -> std::result::Result<
             );
         })?;
 
-    let partitions = args
+    let partitions = cmd
+        .partitions
         .into_iter()
         .map(|partition_arg| {
             if let [label, path] = partition_arg.split(":").collect::<Vec<_>>()[..] {

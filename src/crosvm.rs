@@ -138,10 +138,17 @@ pub struct BatteryCommand {
 }
 
 #[cfg(feature = "composite-disk")]
-#[generate_catchall_args]
+#[derive(FromArgs)]
 #[argh(subcommand, name = "create_composite")]
 /// Create a new composite disk image file
-pub struct CreateCompositeCommand {}
+pub struct CreateCompositeCommand {
+    #[argh(positional, arg_name = "PATH")]
+    /// image path
+    pub path: String,
+    #[argh(positional, arg_name = "LABEL:PARTITION")]
+    /// partitions
+    pub partitions: Vec<String>,
+}
 
 #[generate_catchall_args]
 #[argh(subcommand, name = "create_qcow2")]
