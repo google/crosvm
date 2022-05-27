@@ -198,7 +198,7 @@ where
     F: Fn(&mut fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
 {
     /// A filter for log messages. Please see
-    /// module level documentation and [`env_logger` crate][https://docs.rs/env_logger]
+    /// module level documentation and [`env_logger` crate](https://docs.rs/env_logger)
     ///
     /// Example: `off`, `trace`, `trace,crosvm=error,base::syslog=debug`
     pub filter: &'a str,
@@ -209,7 +209,7 @@ where
     /// descriptor to preserve on forks (intended to be used with pipe)
     pub pipe_fd: Option<RawDescriptor>,
     /// A formatter to use with the pipe. (Syslog has hardcoded format)
-    /// see module level documentation and [`env_logger` crate][https://docs.rs/env_logger]
+    /// see module level documentation and [`env_logger` crate](https://docs.rs/env_logger)
     pub pipe_formatter: Option<F>,
     /// TAG to use for syslog output
     pub proc_name: String,
@@ -308,7 +308,7 @@ pub fn init() -> Result<(), Error> {
 /// besides return `Ok` or `Err` appropriately.
 ///
 /// Arguments:
-/// * filter: See https://docs.rs/env_logger/0.9/env_logger/index.html for example filter
+/// * filter: See <https://docs.rs/env_logger/0.9/env_logger/index.html> for example filter
 ///     specifications
 /// * stderr: If set will output to stderr (in addition)
 /// * file:  If set will output to this file (in addition)
