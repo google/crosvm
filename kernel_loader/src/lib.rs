@@ -177,7 +177,7 @@ mod test {
     use tempfile::tempfile;
     use vm_memory::{GuestAddress, GuestMemory};
 
-    const MEM_SIZE: u64 = 0x8000;
+    const MEM_SIZE: u64 = 0x40_0000;
 
     fn create_guest_mem() -> GuestMemory {
         GuestMemory::new(&[(GuestAddress(0x0), MEM_SIZE)]).unwrap()
@@ -246,7 +246,7 @@ mod test {
         let gm = create_guest_mem();
         let kernel_addr = GuestAddress(0x0);
         let mut image = make_elf_bin();
-        assert_eq!(Ok(16613), load_kernel(&gm, kernel_addr, &mut image));
+        assert_eq!(Ok(0x20_0035), load_kernel(&gm, kernel_addr, &mut image));
     }
 
     #[test]
@@ -265,7 +265,7 @@ mod test {
     fn bad_endian() {
         // Only little endian is supported
         let gm = create_guest_mem();
-        let kernel_addr = GuestAddress(0x0);
+        let kernel_addr = GuestAddress(0x20_0000);
         let mut bad_image = make_elf_bin();
         mutate_elf_bin(&bad_image, 0x5, 2);
         assert_eq!(
