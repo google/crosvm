@@ -150,10 +150,19 @@ pub struct CreateCompositeCommand {
     pub partitions: Vec<String>,
 }
 
-#[generate_catchall_args]
+#[derive(FromArgs)]
 #[argh(subcommand, name = "create_qcow2")]
-/// Create a new qcow2 disk image file
-pub struct CreateQcow2Command {}
+/// Create Qcow2 image given path and size
+/// Either SIZE or --backing-file need to be specified
+pub struct CreateQcow2Command {
+    #[argh(positional, arg_name = "PATH")]
+    pub file_path: String,
+    #[argh(positional, arg_name = "SIZE")]
+    pub size: Option<u64>,
+    #[argh(option)]
+    /// path to backing file
+    pub backing_file: Option<String>,
+}
 
 #[generate_catchall_args]
 #[argh(subcommand, name = "disk")]
