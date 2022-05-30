@@ -146,16 +146,7 @@ impl VfioContainer {
             .open("/dev/vfio/vfio")
             .map_err(VfioError::OpenContainer)?;
 
-        // Safe as file is vfio container descriptor and ioctl is defined by kernel.
-        let version = unsafe { ioctl(&container, VFIO_GET_API_VERSION()) };
-        if version as u8 != VFIO_API_VERSION {
-            return Err(VfioError::VfioApiVersion);
-        }
-
-        Ok(VfioContainer {
-            container,
-            groups: HashMap::new(),
-        })
+        Self::new_from_container(container)
     }
 
     // Construct a VfioContainer from an exist container file.
