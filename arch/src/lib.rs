@@ -922,6 +922,8 @@ pub struct MsrConfig {
     pub action: MsrAction,
     /// MSR source CPU.
     pub from: MsrValueFrom,
+    /// Whether to override KVM MSR emulation.
+    pub filter: bool,
 }
 
 #[sorted]

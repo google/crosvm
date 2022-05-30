@@ -299,3 +299,32 @@ impl MsrHandlers {
         Ok(())
     }
 }
+
+/// get override msr list
+pub fn get_override_msr_list(
+    msr_list: &BTreeMap<u32, MsrConfig>,
+) -> (
+    Vec<u32>, /* read override */
+    Vec<u32>, /* write override */
+) {
+    let mut rd_msrs: Vec<u32> = Vec::new();
+    let mut wr_msrs: Vec<u32> = Vec::new();
+
+    for (index, config) in msr_list.iter() {
+        if config.filter {
+            match config.rw_type {
+                MsrRWType::ReadOnly => {
+                    rd_msrs.push(*index);
+                }
+                MsrRWType::WriteOnly => {
+                    wr_msrs.push(*index);
+                }
+                MsrRWType::ReadWrite => {
+                    rd_msrs.push(*index);
+                    wr_msrs.push(*index);
+                }
+            }
+        }
+    }
+    (rd_msrs, wr_msrs)
+}

@@ -325,8 +325,6 @@ impl KvmVm {
         cap.args[0] = (KVM_MSR_EXIT_REASON_UNKNOWN
             | KVM_MSR_EXIT_REASON_INVAL
             | KVM_MSR_EXIT_REASON_FILTER) as u64;
-        // TODO(b/215297064): Filter only the ones we care about with ioctl
-        // KVM_X86_SET_MSR_FILTER
 
         // Safe because we know that our file is a VM fd, we know that the
         // kernel will only read correct amount of memory from our pointer, and
@@ -351,6 +349,84 @@ impl KvmVm {
         // kernel will only read correct amount of memory from our pointer, and
         // we verify the return result.
         let ret = unsafe { ioctl_with_ref(self, KVM_ENABLE_CAP(), &cap) };
+        if ret < 0 {
+            errno_result()
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Set msr filter.
+    pub fn set_msr_filter(&self, msr_list: (Vec<u32>, Vec<u32>)) -> Result<()> {
+        let mut rd_nmsrs: u32 = 0;
+        let mut wr_nmsrs: u32 = 0;
+        let mut rd_msr_bitmap: Box<[u8; KVM_MSR_FILTER_RANGE_MAX_BYTES]> =
+            Box::new([0xff; KVM_MSR_FILTER_RANGE_MAX_BYTES]);
+        let mut wr_msr_bitmap: Box<[u8; KVM_MSR_FILTER_RANGE_MAX_BYTES]> =
+            Box::new([0xff; KVM_MSR_FILTER_RANGE_MAX_BYTES]);
+        let (rd_msrs, wr_msrs) = msr_list;
+
+        for index in rd_msrs {
+            // currently we only consider the MSR lower than
+            // KVM_MSR_FILTER_RANGE_MAX_BITS
+            if index >= (KVM_MSR_FILTER_RANGE_MAX_BITS as u32) {
+                continue;
+            }
+            rd_nmsrs += 1;
+            rd_msr_bitmap[(index / 8) as usize] &= !(1 << (index & 0x7));
+        }
+        for index in wr_msrs {
+            // currently we only consider the MSR lower than
+            // KVM_MSR_FILTER_RANGE_MAX_BITS
+            if index >= (KVM_MSR_FILTER_RANGE_MAX_BITS as u32) {
+                continue;
+            }
+            wr_nmsrs += 1;
+            wr_msr_bitmap[(index / 8) as usize] &= !(1 << (index & 0x7));
+        }
+
+        let mut msr_filter = kvm_msr_filter {
+            flags: KVM_MSR_FILTER_DEFAULT_ALLOW,
+            ..Default::default()
+        };
+
+        let mut count = 0;
+        if rd_nmsrs > 0 {
+            msr_filter.ranges[count].flags = KVM_MSR_FILTER_READ;
+            msr_filter.ranges[count].nmsrs = KVM_MSR_FILTER_RANGE_MAX_BITS as u32;
+            msr_filter.ranges[count].base = 0x0;
+            // The ownership of the box is moved to bitmap raw pointer,
+            // it needs to be freed explicitly later
+            msr_filter.ranges[count].bitmap = Box::into_raw(rd_msr_bitmap) as *mut u8;
+            count += 1;
+        }
+        if wr_nmsrs > 0 {
+            msr_filter.ranges[count].flags = KVM_MSR_FILTER_WRITE;
+            msr_filter.ranges[count].nmsrs = KVM_MSR_FILTER_RANGE_MAX_BITS as u32;
+            msr_filter.ranges[count].base = 0x0;
+            // The ownership of the box is moved to bitmap raw pointer,
+            // it needs to be freed explicitly later
+            msr_filter.ranges[count].bitmap = Box::into_raw(wr_msr_bitmap) as *mut u8;
+            count += 1;
+        }
+
+        let mut ret = 0;
+        if count > 0 {
+            // Safe because we know that our file is a VM fd, we know that the
+            // kernel will only read correct amount of memory from our pointer, and
+            // we verify the return result.
+            ret = unsafe { ioctl_with_ref(self, KVM_X86_SET_MSR_FILTER(), &msr_filter) };
+        }
+
+        // convert the raw pointer to a Box for automatic cleanup
+        for index in 0..count {
+            let _bitmap = unsafe {
+                Box::from_raw(
+                    msr_filter.ranges[index].bitmap as *mut [u8; KVM_MSR_FILTER_RANGE_MAX_BYTES],
+                )
+            };
+        }
+
         if ret < 0 {
             errno_result()
         } else {

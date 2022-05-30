@@ -10,9 +10,8 @@ use base::{error, Result};
 use bit_field::*;
 use downcast_rs::impl_downcast;
 
-use vm_memory::GuestAddress;
-
 use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
+use vm_memory::GuestAddress;
 
 /// A trait for managing cpuids for an x86_64 hypervisor and for checking its capabilities.
 pub trait HypervisorX86_64: Hypervisor {

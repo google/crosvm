@@ -1669,6 +1669,7 @@ fn insert_msr(
     rw_type: MsrRWType,
     action: MsrAction,
     from: MsrValueFrom,
+    filter: bool,
 ) -> std::result::Result<(), ItmtError> {
     if msr_map
         .insert(
@@ -1677,6 +1678,7 @@ fn insert_msr(
                 rw_type,
                 action,
                 from,
+                filter,
             },
         )
         .is_some()
@@ -1698,40 +1700,46 @@ pub fn set_itmt_msr_config(
             MsrRWType::ReadOnly,
             MsrAction::MsrPassthrough,
             MsrValueFrom::RWFromRunningCPU,
+            false,
         ),
         (
             MSR_PM_ENABLE,
             MsrRWType::ReadWrite,
             MsrAction::MsrEmulate,
             MsrValueFrom::RWFromRunningCPU,
+            false,
         ),
         (
             MSR_HWP_REQUEST,
             MsrRWType::ReadWrite,
             MsrAction::MsrEmulate,
             MsrValueFrom::RWFromRunningCPU,
+            false,
         ),
         (
             MSR_TURBO_RATIO_LIMIT,
             MsrRWType::ReadOnly,
             MsrAction::MsrPassthrough,
             MsrValueFrom::RWFromRunningCPU,
+            false,
         ),
         (
             MSR_PLATFORM_INFO,
             MsrRWType::ReadOnly,
             MsrAction::MsrPassthrough,
             MsrValueFrom::RWFromRunningCPU,
+            false,
         ),
         (
             MSR_IA32_PERF_CTL,
             MsrRWType::ReadWrite,
             MsrAction::MsrEmulate,
             MsrValueFrom::RWFromRunningCPU,
+            false,
         ),
     ];
     for msr in msrs {
-        insert_msr(msr_map, msr.0, msr.1, msr.2, msr.3)?;
+        insert_msr(msr_map, msr.0, msr.1, msr.2, msr.3, msr.4)?;
     }
 
     Ok(())
