@@ -528,6 +528,9 @@ impl State {
             error!("There is no vfio container of {}", pci_address);
             return VirtioIOMMUVfioResult::NoSuchDevice;
         }
+        if let Some(domain) = self.endpoint_map.remove(&pci_address) {
+            self.domain_map.remove(&domain);
+        }
         VirtioIOMMUVfioResult::Ok
     }
 
