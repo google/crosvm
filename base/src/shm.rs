@@ -4,7 +4,9 @@
 
 use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
 use crate::{Error, RawDescriptor, Result};
-use std::ffi::CStr;
+use std::ffi::CString;
+
+use libc::EINVAL;
 
 use crate::platform::SharedMemory as SysUtilSharedMemory;
 use serde::{Deserialize, Serialize};
@@ -15,16 +17,13 @@ use serde::{Deserialize, Serialize};
 #[serde(transparent)]
 pub struct SharedMemory(pub(crate) SysUtilSharedMemory);
 impl SharedMemory {
-    pub fn named<T: Into<Vec<u8>>>(name: T, size: u64) -> Result<SharedMemory> {
-        SysUtilSharedMemory::named(name, size).map(SharedMemory)
-    }
-
-    pub fn anon(size: u64) -> Result<SharedMemory> {
-        Self::new(None, size)
-    }
-
-    pub fn new(name: Option<&CStr>, size: u64) -> Result<SharedMemory> {
-        SysUtilSharedMemory::new(name, size).map(SharedMemory)
+    /// Creates a new shared memory object of the given size.
+    ///
+    /// |name| is purely for debugging purposes. It does not need to be unique, and it does
+    /// not affect any non-debugging related properties of the constructed shared memory.
+    pub fn new<T: Into<Vec<u8>>>(debug_name: T, size: u64) -> Result<SharedMemory> {
+        let debug_name = CString::new(debug_name).map_err(|_| super::Error::new(EINVAL))?;
+        SysUtilSharedMemory::new(&debug_name, size).map(SharedMemory)
     }
 
     pub fn size(&self) -> u64 {
@@ -68,7 +67,7 @@ impl audio_streams::shm_streams::SharedMemory for SharedMemory {
     type Error = Error;
 
     fn anon(size: u64) -> Result<Self> {
-        SharedMemory::anon(size)
+        SharedMemory::new("shm_streams", size)
     }
 
     fn size(&self) -> u64 {

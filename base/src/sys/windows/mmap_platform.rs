@@ -209,11 +209,12 @@ impl MemoryMapping {
     /// ```
     ///   use base::platform::MemoryMapping;
     ///   use base::platform::SharedMemory;
+    ///   use std::ffi::CString;
     ///   use std::fs::File;
     ///   use std::path::Path;
     ///   fn test_read_random() -> Result<u32, ()> {
     ///       let mut mem_map = MemoryMapping::from_descriptor(
-    ///         &SharedMemory::anon(1024).unwrap(), 1024).unwrap();
+    ///         &SharedMemory::new(&CString::new("test").unwrap(), 1024).unwrap(), 1024).unwrap();
     ///       let mut file = File::open(Path::new("/dev/urandom")).map_err(|_| ())?;
     ///       mem_map.read_to_memory(32, &mut file, 128).map_err(|_| ())?;
     ///       let rand_val: u32 =  mem_map.read_obj(40).map_err(|_| ())?;
@@ -251,11 +252,12 @@ impl MemoryMapping {
     /// ```
     ///   use base::platform::MemoryMapping;
     ///   use base::platform::SharedMemory;
+    ///   use std::ffi::CString;
     ///   use std::fs::File;
     ///   use std::path::Path;
     ///   fn test_write_null() -> Result<(), ()> {
     ///       let mut mem_map = MemoryMapping::from_descriptor(
-    ///           &SharedMemory::anon(1024).unwrap(), 1024).unwrap();
+    ///           &SharedMemory::new(&CString::new("test").unwrap(), 1024).unwrap(), 1024).unwrap();
     ///       let mut file = File::open(Path::new("/dev/null")).map_err(|_| ())?;
     ///       mem_map.write_from_memory(32, &mut file, 128).map_err(|_| ())?;
     ///       Ok(())
@@ -304,12 +306,12 @@ mod tests {
     };
     use crate::descriptor::FromRawDescriptor;
     use data_model::{VolatileMemory, VolatileMemoryError};
-    use std::ptr;
+    use std::{ffi::CString, ptr};
     use winapi::shared::winerror;
 
     #[test]
     fn basic_map() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 1024).unwrap();
         assert_eq!(1024, m.size());
     }
@@ -327,7 +329,7 @@ mod tests {
 
     #[test]
     fn test_write_past_end() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
         let res = m.write_slice(&[1, 2, 3, 4, 5, 6], 0);
         assert!(res.is_ok());
@@ -336,7 +338,7 @@ mod tests {
 
     #[test]
     fn slice_size() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
         let s = m.get_slice(2, 3).unwrap();
         assert_eq!(s.size(), 3);
@@ -344,7 +346,7 @@ mod tests {
 
     #[test]
     fn slice_addr() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
         let s = m.get_slice(2, 3).unwrap();
         assert_eq!(s.as_ptr(), unsafe { m.as_ptr().offset(2) });
@@ -352,7 +354,7 @@ mod tests {
 
     #[test]
     fn slice_store() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
         let r = m.get_ref(2).unwrap();
         r.store(9u16);
@@ -361,7 +363,7 @@ mod tests {
 
     #[test]
     fn slice_overflow_error() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
         let res = m.get_slice(std::usize::MAX, 3).unwrap_err();
         assert_eq!(
@@ -374,7 +376,7 @@ mod tests {
     }
     #[test]
     fn slice_oob_error() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
         let res = m.get_slice(3, 3).unwrap_err();
         assert_eq!(res, VolatileMemoryError::OutOfBounds { addr: 6 });
@@ -382,7 +384,7 @@ mod tests {
 
     #[test]
     fn from_descriptor_offset_invalid() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let res = MemoryMapping::from_descriptor_offset(&shm, 4096, (i64::max_value() as u64) + 1)
             .unwrap_err();
         match res {
@@ -394,7 +396,7 @@ mod tests {
     #[test]
     fn arena_msync() {
         let size: usize = 0x40000;
-        let shm = SharedMemory::anon(size as u64).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), size as u64).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, size).unwrap();
         let ps = pagesize();
         <dyn MappedRegion>::msync(&m, 0, ps).unwrap();

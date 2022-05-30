@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::{
-    ffi::{CStr, CString},
+    ffi::CStr,
     fs::{read_link, File},
     io::{
         Read, Seek, SeekFrom, Write, {self},
@@ -117,33 +117,14 @@ impl MemfdSeals {
 }
 
 impl SharedMemory {
-    /// Convenience function for `SharedMemory::new` that is always named and accepts a wide variety
-    /// of string-like types.
-    ///
-    /// Note that the given name may not have NUL characters anywhere in it, or this will return an
-    /// error.
-    pub fn named<T: Into<Vec<u8>>>(name: T, size: u64) -> Result<SharedMemory> {
-        Self::new(
-            Some(&CString::new(name).map_err(|_| Error::new(EINVAL))?),
-            size,
-        )
-    }
-
-    /// Convenience function for `SharedMemory::new` that has an arbitrary and unspecified name.
-    pub fn anon() -> Result<SharedMemory> {
-        Self::new(None, 0)
-    }
-
     /// Creates a new shared memory file descriptor with zero size.
     ///
     /// If a name is given, it will appear in `/proc/self/fd/<shm fd>` for the purposes of
     /// debugging. The name does not need to be unique.
     ///
     /// The file descriptor is opened with the close on exec flag and allows memfd sealing.
-    pub fn new(name: Option<&CStr>, size: u64) -> Result<SharedMemory> {
-        let shm_name = name
-            .map(|n| n.as_ptr())
-            .unwrap_or(b"/crosvm_shm\0".as_ptr() as *const c_char);
+    pub fn new(debug_name: &CStr, size: u64) -> Result<SharedMemory> {
+        let shm_name = debug_name.as_ptr() as *const c_char;
         // The following are safe because we give a valid C string and check the
         // results of the memfd_create call.
         let fd = unsafe { memfd_create(shm_name, MFD_CLOEXEC | MFD_ALLOW_SEALING) };
@@ -354,22 +335,9 @@ mod tests {
 
     use super::super::MemoryMapping;
 
-    #[test]
-    fn named() {
-        if !kernel_has_memfd() {
-            return;
-        }
-        const TEST_NAME: &str = "Name McCool Person";
-        let shm = SharedMemory::named(TEST_NAME, 0).expect("failed to create shared memory");
-        assert_eq!(shm.read_name(), Ok(TEST_NAME.to_owned()));
-    }
-
-    #[test]
-    fn anon() {
-        if !kernel_has_memfd() {
-            return;
-        }
-        SharedMemory::anon().expect("failed to create shared memory");
+    fn create_test_shmem() -> SharedMemory {
+        let name = CString::new("test").expect("failed to create cstr name");
+        SharedMemory::new(&name, 0).expect("failed to create shared memory")
     }
 
     #[test]
@@ -377,8 +345,10 @@ mod tests {
         if !kernel_has_memfd() {
             return;
         }
-        let shm = SharedMemory::anon().expect("failed to create shared memory");
-        assert_eq!(shm.size(), 0);
+        const TEST_NAME: &str = "Name McCool Person";
+        let name = CString::new(TEST_NAME).expect("failed to create cstr name");
+        let shm = SharedMemory::new(&name, 0).expect("failed to create shared memory");
+        assert_eq!(shm.read_name(), Ok(TEST_NAME.to_owned()));
     }
 
     #[test]
@@ -386,7 +356,7 @@ mod tests {
         if !kernel_has_memfd() {
             return;
         }
-        let mut shm = SharedMemory::anon().expect("failed to create shared memory");
+        let mut shm = create_test_shmem();
         shm.set_size(1024)
             .expect("failed to set shared memory size");
         assert_eq!(shm.size(), 1024);
@@ -397,7 +367,7 @@ mod tests {
         if !kernel_has_memfd() {
             return;
         }
-        let mut shm = SharedMemory::anon().expect("failed to create shared memory");
+        let mut shm = create_test_shmem();
         shm.set_size(0x7fff_ffff_ffff_ffff)
             .expect("failed to set shared memory size");
         assert_eq!(shm.size(), 0x7fff_ffff_ffff_ffff);
@@ -408,20 +378,9 @@ mod tests {
         if !kernel_has_memfd() {
             return;
         }
-        let mut shm = SharedMemory::anon().expect("failed to create shared memory");
+        let mut shm = create_test_shmem();
         shm.set_size(0x8000_0000_0000_0000).unwrap_err();
         assert_eq!(shm.size(), 0);
-    }
-
-    #[test]
-    fn new_named() {
-        if !kernel_has_memfd() {
-            return;
-        }
-        let name = "very unique name";
-        let cname = CString::new(name).unwrap();
-        let shm = SharedMemory::new(Some(&cname), 0).expect("failed to create shared memory");
-        assert_eq!(shm.read_name(), Ok(name.to_owned()));
     }
 
     #[test]
@@ -429,7 +388,7 @@ mod tests {
         if !kernel_has_memfd() {
             return;
         }
-        let mut shm = SharedMemory::anon().expect("failed to create shared memory");
+        let mut shm = create_test_shmem();
         let mut seals = shm.get_seals().expect("failed to get seals");
         assert_eq!(seals.bitmask(), 0);
         seals.set_seal_seal();
@@ -445,7 +404,7 @@ mod tests {
         if !kernel_has_memfd() {
             return;
         }
-        let mut shm = SharedMemory::anon().expect("failed to create shared memory");
+        let mut shm = create_test_shmem();
         shm.set_size(4096)
             .expect("failed to set shared memory size");
 
@@ -474,7 +433,7 @@ mod tests {
         if !kernel_has_memfd() {
             return;
         }
-        let mut shm = SharedMemory::anon().expect("failed to create shared memory");
+        let mut shm = create_test_shmem();
         shm.set_size(8092)
             .expect("failed to set shared memory size");
 

@@ -331,7 +331,7 @@ impl DisplayT for DisplayWl {
         let row_size = width * BYTES_PER_PIXEL;
         let fb_size = row_size * height;
         let buffer_size = round_up_to_page_size(fb_size as usize * BUFFER_COUNT);
-        let buffer_shm = SharedMemory::named("GpuDisplaySurface", buffer_size as u64)?;
+        let buffer_shm = SharedMemory::new("GpuDisplaySurface", buffer_size as u64)?;
         let buffer_mem = MemoryMappingBuilder::new(buffer_size)
             .from_shared_memory(&buffer_shm)
             .build()

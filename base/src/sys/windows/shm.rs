@@ -2,11 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::ffi::CString;
-
 use super::{MemoryMapping, RawDescriptor, Result};
 use crate::descriptor::{AsRawDescriptor, IntoRawDescriptor, SafeDescriptor};
-use libc::EINVAL;
 use serde::{ser, Deserialize, Serialize, Serializer};
 use std::io::{
     Error, ErrorKind, Read, Seek, SeekFrom, Write, {self},
@@ -25,23 +22,6 @@ pub struct SharedMemory {
 }
 
 impl SharedMemory {
-    /// Convenience function for `SharedMemory::new` that is always named and accepts a wide variety
-    /// of string-like types.
-    ///
-    /// Note that the given name may not have NUL characters anywhere in it, or this will return an
-    /// error.
-    pub fn named<T: Into<Vec<u8>>>(name: T, size: u64) -> Result<SharedMemory> {
-        SharedMemory::new(
-            Some(&CString::new(name).map_err(|_| super::Error::new(EINVAL))?),
-            size,
-        )
-    }
-
-    /// Convenience function for `SharedMemory::new` that has an arbitrary and unspecified name.
-    pub fn anon(size: u64) -> Result<SharedMemory> {
-        SharedMemory::new(None, size)
-    }
-
     /// Gets the size in bytes of the shared memory.
     ///
     /// The size returned here does not reflect changes by other interfaces or users of the shared
@@ -178,21 +158,9 @@ mod tests {
     use std::ffi::CString;
 
     #[test]
-    fn named() {
-        const TEST_NAME: &str = "Name McCool Person";
-        SharedMemory::named(TEST_NAME, 1028).expect("failed to create shared memory");
-    }
-
-    #[test]
-    fn new_sized() {
-        let shm = SharedMemory::anon(1028).expect("Failed to create named shared memory");
+    fn new() {
+        let shm = SharedMemory::new(&CString::new("name").unwrap(), 1028)
+            .expect("failed to create shared memory");
         assert_eq!(shm.size(), 1028);
-    }
-
-    #[test]
-    fn new_named() {
-        let name = "very unique name";
-        let cname = CString::new(name).unwrap();
-        SharedMemory::new(Some(&cname), 16).expect("failed to create shared memory");
     }
 }

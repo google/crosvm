@@ -11,17 +11,11 @@ use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
 
 impl SharedMemory {
     /// Creates a new shared memory file mapping with zero size.
-    pub fn new(name: Option<&CStr>, size: u64) -> Result<Self> {
+    pub fn new(_debug_name: &CStr, size: u64) -> Result<Self> {
         // Safe because we do not provide a handle.
-        let mapping_handle = unsafe {
-            create_file_mapping(
-                None,
-                size,
-                PAGE_EXECUTE_READWRITE,
-                name.map(|s| s.to_str().unwrap()),
-            )
-        }
-        .map_err(super::Error::from)?;
+        let mapping_handle =
+            unsafe { create_file_mapping(None, size, PAGE_EXECUTE_READWRITE, None) }
+                .map_err(super::Error::from)?;
 
         // Safe because we have exclusive ownership of mapping_handle & it is valid.
         Self::from_safe_descriptor(
@@ -59,12 +53,13 @@ impl SharedMemory {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::ffi::CString;
     use winapi::shared::winerror::ERROR_NOT_ENOUGH_MEMORY;
 
     #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     #[test]
     fn new_too_huge() {
-        let result = SharedMemory::anon(0x8000_0000_0000_0000);
+        let result = SharedMemory::new(&CString::new("test").unwrap(), 0x8000_0000_0000_0000);
         assert_eq!(
             result.err().unwrap().errno(),
             ERROR_NOT_ENOUGH_MEMORY as i32

@@ -260,8 +260,9 @@ impl MemoryMapping {
     /// ```
     ///     use base::platform::MemoryMapping;
     ///     use base::platform::SharedMemory;
+    ///     use std::ffi::CString;
     ///     let mut mem_map = MemoryMapping::from_descriptor(
-    ///         &SharedMemory::anon(1024).unwrap(), 1024).unwrap();
+    ///         &SharedMemory::new(&CString::new("test").unwrap(), 1024).unwrap(), 1024).unwrap();
     ///     let res = mem_map.write_slice(&[1,2,3,4,5], 256);
     ///     assert!(res.is_ok());
     ///     assert_eq!(res.unwrap(), 5);
@@ -293,8 +294,9 @@ impl MemoryMapping {
     /// ```
     ///     use base::platform::MemoryMapping;
     ///     use base::platform::SharedMemory;
+    ///     use std::ffi::CString;
     ///     let mut mem_map = MemoryMapping::from_descriptor(
-    ///         &SharedMemory::anon(1024).unwrap(), 1024).unwrap();
+    ///         &SharedMemory::new(&CString::new("test").unwrap(), 1024).unwrap(), 1024).unwrap();
     ///     let buf = &mut [0u8; 16];
     ///     let res = mem_map.read_slice(buf, 256);
     ///     assert!(res.is_ok());
@@ -329,8 +331,9 @@ impl MemoryMapping {
     /// ```
     ///     use base::platform::MemoryMapping;
     ///     use base::platform::SharedMemory;
+    ///     use std::ffi::CString;
     ///     let mut mem_map = MemoryMapping::from_descriptor(
-    ///         &SharedMemory::anon(1024).unwrap(), 1024).unwrap();
+    ///         &SharedMemory::new(&CString::new("test").unwrap(), 1024).unwrap(), 1024).unwrap();
     ///     let res = mem_map.write_obj(55u64, 16);
     ///     assert!(res.is_ok());
     /// ```
@@ -354,8 +357,9 @@ impl MemoryMapping {
     /// ```
     ///     use base::platform::MemoryMapping;
     ///     use base::platform::SharedMemory;
+    ///     use std::ffi::CString;
     ///     let mut mem_map = MemoryMapping::from_descriptor(
-    ///         &SharedMemory::anon(1024).unwrap(), 1024).unwrap();
+    ///         &SharedMemory::new(&CString::new("test").unwrap(), 1024).unwrap(), 1024).unwrap();
     ///     let res = mem_map.write_obj(55u64, 32);
     ///     assert!(res.is_ok());
     ///     let num: u64 = mem_map.read_obj(32).unwrap();
@@ -552,17 +556,18 @@ impl<'a> MemoryMappingBuilder<'a> {
 mod tests {
     use super::{super::shm::SharedMemory, *};
     use data_model::{VolatileMemory, VolatileMemoryError};
+    use std::ffi::CString;
 
     #[test]
     fn basic_map() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 1024).unwrap();
         assert_eq!(1024, m.size());
     }
 
     #[test]
     fn test_write_past_end() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
         let res = m.write_slice(&[1, 2, 3, 4, 5, 6], 0);
         assert!(res.is_ok());
@@ -571,7 +576,7 @@ mod tests {
 
     #[test]
     fn slice_size() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
         let s = m.get_slice(2, 3).unwrap();
         assert_eq!(s.size(), 3);
@@ -579,7 +584,7 @@ mod tests {
 
     #[test]
     fn slice_addr() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
         let s = m.get_slice(2, 3).unwrap();
         assert_eq!(s.as_ptr(), unsafe { m.as_ptr().offset(2) });
@@ -587,7 +592,7 @@ mod tests {
 
     #[test]
     fn slice_store() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
         let r = m.get_ref(2).unwrap();
         r.store(9u16);
@@ -596,7 +601,7 @@ mod tests {
 
     #[test]
     fn slice_overflow_error() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
         let res = m.get_slice(std::usize::MAX, 3).unwrap_err();
         assert_eq!(
@@ -609,7 +614,7 @@ mod tests {
     }
     #[test]
     fn slice_oob_error() {
-        let shm = SharedMemory::anon(1028).unwrap();
+        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
         let res = m.get_slice(3, 3).unwrap_err();
         assert_eq!(res, VolatileMemoryError::OutOfBounds { addr: 6 });

@@ -19,7 +19,7 @@ fn test_run() {
     let mem_size = 0x10000;
     let load_addr = GuestAddress(0x1000);
     let guest_mem = GuestMemory::new(&[]).unwrap();
-    let mem = SharedMemory::anon(mem_size).expect("failed to create shared memory");
+    let mem = SharedMemory::new("test", mem_size).expect("failed to create shared memory");
     let mmap = MemoryMappingBuilder::new(mem_size as usize)
         .from_shared_memory(&mem)
         .build()

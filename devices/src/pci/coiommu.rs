@@ -992,7 +992,7 @@ impl CoIommuDev {
         );
 
         // notifymap_mem is used as Bar2 for Guest to check if request is completed by coIOMMU.
-        let notifymap_mem = SharedMemory::named("coiommu_notifymap", COIOMMU_NOTIFYMAP_SIZE as u64)
+        let notifymap_mem = SharedMemory::new("coiommu_notifymap", COIOMMU_NOTIFYMAP_SIZE as u64)
             .context(Error::CreateSharedMemory)?;
         let notifymap_mmap = Arc::new(
             MemoryMappingBuilder::new(COIOMMU_NOTIFYMAP_SIZE)
@@ -1003,7 +1003,7 @@ impl CoIommuDev {
 
         // topologymap_mem is used as Bar4 for Guest to check which device is on top of coIOMMU.
         let topologymap_mem =
-            SharedMemory::named("coiommu_topologymap", COIOMMU_TOPOLOGYMAP_SIZE as u64)
+            SharedMemory::new("coiommu_topologymap", COIOMMU_TOPOLOGYMAP_SIZE as u64)
                 .context(Error::CreateSharedMemory)?;
         let topologymap_mmap = Arc::new(
             MemoryMappingBuilder::new(COIOMMU_TOPOLOGYMAP_SIZE)

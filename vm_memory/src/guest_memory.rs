@@ -190,9 +190,11 @@ impl GuestMemory {
             aligned_size += range.1;
         }
 
+        // NOTE: Some tests rely on the GuestMemory's name when capturing metrics.
+        let name = "crosvm_guest";
         // Shm must be mut even though it is only updated on Unix systems.
         #[allow(unused_mut)]
-        let mut shm = SharedMemory::new(None, aligned_size).map_err(Error::MemoryCreationFailed)?;
+        let mut shm = SharedMemory::new(name, aligned_size).map_err(Error::MemoryCreationFailed)?;
 
         sys::finalize_shm(&mut shm)?;
 
