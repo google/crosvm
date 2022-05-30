@@ -6,8 +6,10 @@
 //!
 //! All the addr/range ends in this file are exclusive.
 
+use std::any::Any;
 use std::collections::BTreeMap;
 use std::result;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use base::{error, AsRawDescriptors, RawDescriptor, TubeError};
 use remain::sorted;
@@ -93,6 +95,7 @@ impl MappingInfo {
 pub struct BasicMemoryMapper {
     maps: BTreeMap<u64, MappingInfo>, // key = MappingInfo.iova
     mask: u64,
+    id: u32,
 }
 
 /// A generic interface for vfio and other iommu backends
@@ -106,6 +109,10 @@ pub trait MemoryMapper: Send {
     /// Resets the mapper's domain back into its initial state. Only necessary
     /// if |supports_detach| returns true.
     fn reset_domain(&mut self) {}
+
+    /// Gets an identifier for the MemoryMapper instance. Must be unique among
+    /// instances of the same trait implementation.
+    fn id(&self) -> u32;
 }
 
 pub trait Translate {
@@ -113,14 +120,16 @@ pub trait Translate {
     fn translate(&self, iova: u64, size: u64) -> Result<Vec<MemRegion>>;
 }
 
-pub trait MemoryMapperTrait: MemoryMapper + Translate + AsRawDescriptors {}
-impl<T: MemoryMapper + Translate + AsRawDescriptors> MemoryMapperTrait for T {}
+pub trait MemoryMapperTrait: MemoryMapper + Translate + AsRawDescriptors + Any {}
+impl<T: MemoryMapper + Translate + AsRawDescriptors + Any> MemoryMapperTrait for T {}
 
 impl BasicMemoryMapper {
     pub fn new(mask: u64) -> BasicMemoryMapper {
+        static NEXT_ID: AtomicU32 = AtomicU32::new(0);
         BasicMemoryMapper {
             maps: BTreeMap::new(),
             mask,
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
         }
     }
 
@@ -196,6 +205,10 @@ impl MemoryMapper for BasicMemoryMapper {
 
     fn reset_domain(&mut self) {
         self.maps.clear();
+    }
+
+    fn id(&self) -> u32 {
+        self.id
     }
 }
 

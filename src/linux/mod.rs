@@ -31,7 +31,7 @@ use base::*;
 use base::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
 use devices::serial_device::SerialHardware;
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
-use devices::virtio::memory_mapper::MemoryMapperTrait;
+use devices::virtio::memory_mapper::{MemoryMapper, MemoryMapperTrait};
 use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::{self, EventDevice};
@@ -1567,12 +1567,12 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
         let descriptor = vfio_wrapper.clone_as_raw_descriptor()?;
         let request = VirtioIOMMURequest::VfioCommand(VirtioIOMMUVfioCommand::VfioDeviceAdd {
             endpoint_addr,
+            wrapper_id: vfio_wrapper.id(),
             container: {
                 // Safe because the descriptor is uniquely owned by `descriptor`.
                 unsafe { File::from_raw_descriptor(descriptor) }
             },
         });
-
         match virtio_iommu_request(iommu_host_tube, &request)
             .map_err(|_| VirtioIOMMUVfioError::SocketFailed)?
         {

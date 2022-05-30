@@ -444,6 +444,11 @@ impl VfioContainer {
             Ok(raw_descriptor)
         }
     }
+
+    // Gets group ids for all groups in the container.
+    pub fn group_ids(&self) -> Vec<&u32> {
+        self.groups.keys().collect()
+    }
 }
 
 impl AsRawDescriptor for VfioContainer {
@@ -647,6 +652,7 @@ impl VfioCommonTrait for VfioCommonSetup {
                 let group_id = VfioGroup::get_group_id(path)?;
 
                 // One VFIO container is used for all devices belong to one VFIO group
+                // NOTE: vfio_wrapper relies on each container containing exactly one group.
                 IOMMU_CONTAINERS.with(|v| {
                     if let Some(ref mut containers) = *v.borrow_mut() {
                         let container = containers

@@ -1368,6 +1368,7 @@ pub enum VirtioIOMMUVfioCommand {
     // Add the vfio device attached to virtio-iommu.
     VfioDeviceAdd {
         endpoint_addr: u32,
+        wrapper_id: u32,
         #[serde(with = "with_as_descriptor")]
         container: File,
     },

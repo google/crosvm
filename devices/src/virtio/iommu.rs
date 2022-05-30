@@ -4,7 +4,6 @@
 
 use std::cell::RefCell;
 use std::collections::{btree_map::Entry, BTreeMap};
-use std::fs::File;
 use std::io::{self, Write};
 use std::mem::size_of;
 use std::ops::RangeInclusive;
@@ -245,15 +244,38 @@ impl Worker {
             }
         }
 
-        if let Some(vfio_container) = endpoints.borrow_mut().get(&endpoint) {
+        if let Some(mapper) = endpoints.borrow().get(&endpoint) {
+            // The same mapper can't be used for two domains at the same time,
+            // since that would result in conflicts/permission leaks between
+            // the two domains.
+            let mapper_id = {
+                let m = mapper.lock();
+                ((**m).type_id(), m.id())
+            };
+            for (other_endpoint, other_mapper) in endpoints.borrow().iter() {
+                let other_id = {
+                    let m = other_mapper.lock();
+                    ((**m).type_id(), m.id())
+                };
+                if mapper_id == other_id {
+                    if !self
+                        .endpoint_map
+                        .get(other_endpoint)
+                        .map_or(true, |d| d == &domain)
+                    {
+                        tail.status = VIRTIO_IOMMU_S_UNSUPP;
+                        return Ok(0);
+                    }
+                }
+            }
+
             let new_ref = match self.domain_map.get(&domain) {
                 None => 1,
                 Some(val) => val.0 + 1,
             };
 
             self.endpoint_map.insert(endpoint, domain);
-            self.domain_map
-                .insert(domain, (new_ref, vfio_container.clone()));
+            self.domain_map.insert(domain, (new_ref, mapper.clone()));
         }
 
         Ok(0)
@@ -515,9 +537,8 @@ impl Worker {
     }
 
     fn handle_add_vfio_device(
-        mem: &GuestMemory,
         endpoint_addr: u32,
-        container_fd: File,
+        wrapper: VfioWrapper,
         endpoints: &Rc<RefCell<BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>>>,
         hp_endpoints_ranges: &Rc<Vec<RangeInclusive<u32>>>,
     ) -> VirtioIOMMUVfioResult {
@@ -534,20 +555,9 @@ impl Worker {
             return VirtioIOMMUVfioResult::NotInPCIRanges;
         }
 
-        let vfio_container = match VfioContainer::new_from_container(container_fd) {
-            Ok(vfio_container) => vfio_container,
-            Err(e) => {
-                error!("failed to verify the new container: {}", e);
-                return VirtioIOMMUVfioResult::NoAvailableContainer;
-            }
-        };
-        endpoints.borrow_mut().insert(
-            endpoint_addr,
-            Arc::new(Mutex::new(Box::new(VfioWrapper::new(
-                Arc::new(Mutex::new(vfio_container)),
-                mem.clone(),
-            )))),
-        );
+        endpoints
+            .borrow_mut()
+            .insert(endpoint_addr, Arc::new(Mutex::new(Box::new(wrapper))));
         VirtioIOMMUVfioResult::Ok
     }
 
@@ -571,15 +581,24 @@ impl Worker {
         use VirtioIOMMUVfioCommand::*;
         let vfio_result = match vfio_cmd {
             VfioDeviceAdd {
-                endpoint_addr,
+                wrapper_id,
                 container,
-            } => Self::handle_add_vfio_device(
-                mem,
                 endpoint_addr,
-                container,
-                endpoints,
-                hp_endpoints_ranges,
-            ),
+            } => match VfioContainer::new_from_container(container) {
+                Ok(vfio_container) => {
+                    let wrapper = VfioWrapper::new_with_id(vfio_container, wrapper_id, mem.clone());
+                    Self::handle_add_vfio_device(
+                        endpoint_addr,
+                        wrapper,
+                        endpoints,
+                        hp_endpoints_ranges,
+                    )
+                }
+                Err(e) => {
+                    error!("failed to verify the new container: {}", e);
+                    VirtioIOMMUVfioResult::NoAvailableContainer
+                }
+            },
             VfioDeviceDel { endpoint_addr } => {
                 Self::handle_del_vfio_device(endpoint_addr, endpoints)
             }

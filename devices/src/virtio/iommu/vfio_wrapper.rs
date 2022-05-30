@@ -18,12 +18,29 @@ use crate::VfioContainer;
 
 pub struct VfioWrapper {
     container: Arc<Mutex<VfioContainer>>,
+    // ID of the VFIO group which constitutes the container. Note that we rely on
+    // the fact that no container contains multiple groups.
+    id: u32,
     mem: GuestMemory,
 }
 
 impl VfioWrapper {
     pub fn new(container: Arc<Mutex<VfioContainer>>, mem: GuestMemory) -> Self {
-        Self { container, mem }
+        let c = container.lock();
+        let groups = c.group_ids();
+        // NOTE: vfio_get_container ensures each group gets its own container.
+        assert!(groups.len() == 1);
+        let id = *groups[0];
+        drop(c);
+        Self { container, id, mem }
+    }
+
+    pub fn new_with_id(container: VfioContainer, id: u32, mem: GuestMemory) -> Self {
+        Self {
+            container: Arc::new(Mutex::new(container)),
+            id,
+            mem,
+        }
     }
 
     pub fn clone_as_raw_descriptor(&self) -> Result<RawDescriptor, VfioError> {
@@ -90,6 +107,10 @@ impl MemoryMapper for VfioWrapper {
         //    - detach a group: any other endpoints in the group lose access to the domain.
         //    - do not detach the group at all: this breaks the above mentioned spec.
         false
+    }
+
+    fn id(&self) -> u32 {
+        self.id
     }
 }
 
