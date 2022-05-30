@@ -492,7 +492,7 @@ fn create_devices(
             .filter(|dev| dev.get_type() == VfioType::Pci)
         {
             let vfio_path = &vfio_dev.vfio_path;
-            let (vfio_pci_device, jail) = create_vfio_device(
+            let (vfio_pci_device, jail, viommu_mapper) = create_vfio_device(
                 cfg,
                 vm,
                 resources,
@@ -500,7 +500,6 @@ fn create_devices(
                 vfio_path.as_path(),
                 None,
                 vfio_dev.guest_address(),
-                iommu_attached_endpoints,
                 Some(&mut coiommu_attached_endpoints),
                 vfio_dev.iommu_dev_type(),
             )?;
@@ -509,6 +508,17 @@ fn create_devices(
                 vfio_pci_device.get_max_iova(),
                 iova_max_addr.unwrap_or(0),
             ));
+
+            if let Some(viommu_mapper) = viommu_mapper {
+                iommu_attached_endpoints.insert(
+                    vfio_pci_device
+                        .pci_address()
+                        .context("not initialized")?
+                        .to_u32(),
+                    Arc::new(Mutex::new(Box::new(viommu_mapper))),
+                );
+            }
+
             devices.push((vfio_pci_device, jail));
         }
 
@@ -1532,8 +1542,7 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
 
     let (hp_bus, bus_num) = get_hp_bus(linux, host_addr)?;
 
-    let mut endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>> = BTreeMap::new();
-    let (vfio_pci_device, jail) = create_vfio_device(
+    let (vfio_pci_device, jail, viommu_mapper) = create_vfio_device(
         cfg,
         &linux.vm,
         sys_allocator,
@@ -1541,7 +1550,6 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
         vfio_path,
         Some(bus_num),
         None,
-        &mut endpoints,
         None,
         if iommu_host_tube.is_some() {
             IommuDevType::VirtioIommu
@@ -1554,26 +1562,23 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
         .context("Failed to configure pci hotplug device")?;
 
     if let Some(iommu_host_tube) = iommu_host_tube {
-        let &endpoint_addr = endpoints.iter().next().unwrap().0;
-        let mapper = endpoints.remove(&endpoint_addr).unwrap();
-        if let Some(vfio_wrapper) = mapper.lock().as_vfio_wrapper() {
-            let vfio_container = vfio_wrapper.as_vfio_container();
-            let descriptor = vfio_container.lock().into_raw_descriptor()?;
-            let request = VirtioIOMMURequest::VfioCommand(VirtioIOMMUVfioCommand::VfioDeviceAdd {
-                endpoint_addr,
-                container: {
-                    // Safe because the descriptor is uniquely owned by `descriptor`.
-                    unsafe { File::from_raw_descriptor(descriptor) }
-                },
-            });
+        let endpoint_addr = pci_address.to_u32();
+        let vfio_wrapper = viommu_mapper.context("expected mapper")?;
+        let descriptor = vfio_wrapper.clone_as_raw_descriptor()?;
+        let request = VirtioIOMMURequest::VfioCommand(VirtioIOMMUVfioCommand::VfioDeviceAdd {
+            endpoint_addr,
+            container: {
+                // Safe because the descriptor is uniquely owned by `descriptor`.
+                unsafe { File::from_raw_descriptor(descriptor) }
+            },
+        });
 
-            match virtio_iommu_request(iommu_host_tube, &request)
-                .map_err(|_| VirtioIOMMUVfioError::SocketFailed)?
-            {
-                VirtioIOMMUResponse::VfioResponse(VirtioIOMMUVfioResult::Ok) => (),
-                resp => bail!("Unexpected message response: {:?}", resp),
-            }
-        };
+        match virtio_iommu_request(iommu_host_tube, &request)
+            .map_err(|_| VirtioIOMMUVfioError::SocketFailed)?
+        {
+            VirtioIOMMUResponse::VfioResponse(VirtioIOMMUVfioResult::Ok) => (),
+            resp => bail!("Unexpected message response: {:?}", resp),
+        }
     }
 
     let host_key = HostHotPlugKey::Vfio { host_addr };

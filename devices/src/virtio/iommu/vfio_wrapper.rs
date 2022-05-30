@@ -10,6 +10,7 @@ use base::{AsRawDescriptor, AsRawDescriptors, RawDescriptor};
 use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory};
 
+use crate::vfio::VfioError;
 use crate::virtio::iommu::memory_mapper::{
     Error as MemoryMapperError, MappingInfo, MemRegion, MemoryMapper, Permission, Translate,
 };
@@ -25,8 +26,8 @@ impl VfioWrapper {
         Self { container, mem }
     }
 
-    pub fn as_vfio_container(&self) -> Arc<Mutex<VfioContainer>> {
-        self.container.clone()
+    pub fn clone_as_raw_descriptor(&self) -> Result<RawDescriptor, VfioError> {
+        self.container.lock().clone_as_raw_descriptor()
     }
 }
 
@@ -89,16 +90,6 @@ impl MemoryMapper for VfioWrapper {
         //    - detach a group: any other endpoints in the group lose access to the domain.
         //    - do not detach the group at all: this breaks the above mentioned spec.
         false
-    }
-
-    fn as_vfio_wrapper(&self) -> Option<&VfioWrapper> {
-        Some(self)
-    }
-    fn as_vfio_wrapper_mut(&mut self) -> Option<&mut VfioWrapper> {
-        Some(self)
-    }
-    fn into_vfio_wrapper(self: Box<Self>) -> Option<Box<VfioWrapper>> {
-        Some(self)
     }
 }
 

@@ -1089,10 +1089,9 @@ pub fn create_vfio_device(
     vfio_path: &Path,
     bus_num: Option<u8>,
     guest_address: Option<PciAddress>,
-    iommu_endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
     coiommu_endpoints: Option<&mut Vec<u16>>,
     iommu_dev: IommuDevType,
-) -> DeviceResult<(Box<VfioPciDevice>, Option<Minijail>)> {
+) -> DeviceResult<(Box<VfioPciDevice>, Option<Minijail>, Option<VfioWrapper>)> {
     let vfio_container = VfioCommonSetup::vfio_get_container(iommu_dev, Some(vfio_path))
         .context("failed to get vfio container")?;
 
@@ -1141,16 +1140,10 @@ pub fn create_vfio_device(
         .allocate_address(resources)
         .context("failed to allocate resources early for vfio pci dev")?;
 
-    match iommu_dev {
-        IommuDevType::NoIommu => {}
+    let viommu_mapper = match iommu_dev {
+        IommuDevType::NoIommu => None,
         IommuDevType::VirtioIommu => {
-            iommu_endpoints.insert(
-                endpoint_addr.to_u32(),
-                Arc::new(Mutex::new(Box::new(VfioWrapper::new(
-                    vfio_container,
-                    vm.get_memory().clone(),
-                )))),
-            );
+            Some(VfioWrapper::new(vfio_container, vm.get_memory().clone()))
         }
         IommuDevType::CoIommu => {
             if let Some(endpoints) = coiommu_endpoints {
@@ -1158,15 +1151,17 @@ pub fn create_vfio_device(
             } else {
                 bail!("Missed coiommu_endpoints vector to store the endpoint addr");
             }
+            None
         }
-    }
+    };
 
     if hotplug {
-        Ok((vfio_pci_device, None))
+        Ok((vfio_pci_device, None, viommu_mapper))
     } else {
         Ok((
             vfio_pci_device,
             simple_jail(&cfg.jail_config, "vfio_device")?,
+            viommu_mapper,
         ))
     }
 }

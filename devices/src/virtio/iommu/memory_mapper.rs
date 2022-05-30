@@ -16,7 +16,6 @@ use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemoryError};
 
 use crate::vfio::VfioError;
-use crate::vfio_wrapper::VfioWrapper;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,19 +106,6 @@ pub trait MemoryMapper: Send {
     /// Resets the mapper's domain back into its initial state. Only necessary
     /// if |supports_detach| returns true.
     fn reset_domain(&mut self) {}
-
-    /// Trait for generic MemoryMapper abstraction, that is, all reside on MemoryMapper and want to
-    /// be converted back to its original type. Each must provide as_XXX_wrapper() +
-    /// as_XXX_wrapper_mut() + into_XXX_wrapper(), default impl methods return None.
-    fn as_vfio_wrapper(&self) -> Option<&VfioWrapper> {
-        None
-    }
-    fn as_vfio_wrapper_mut(&mut self) -> Option<&mut VfioWrapper> {
-        None
-    }
-    fn into_vfio_wrapper(self: Box<Self>) -> Option<Box<VfioWrapper>> {
-        None
-    }
 }
 
 pub trait Translate {

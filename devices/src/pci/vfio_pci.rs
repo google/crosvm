@@ -620,6 +620,11 @@ impl VfioPciDevice {
         }
     }
 
+    /// Gets the pci address of the device, if one has already been allocated.
+    pub fn pci_address(&self) -> Option<PciAddress> {
+        self.pci_address
+    }
+
     fn is_intel_gfx(&self) -> bool {
         let mut ret = false;
 

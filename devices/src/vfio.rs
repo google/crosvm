@@ -436,7 +436,7 @@ impl VfioContainer {
         }
     }
 
-    pub fn into_raw_descriptor(&self) -> Result<RawDescriptor> {
+    pub fn clone_as_raw_descriptor(&self) -> Result<RawDescriptor> {
         let raw_descriptor = unsafe { libc::dup(self.container.as_raw_descriptor()) };
         if raw_descriptor < 0 {
             Err(VfioError::ContainerDupError)
