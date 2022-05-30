@@ -70,7 +70,7 @@ use vm_control::{
     VmResponse,
 };
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use x86_64::set_itmt_msr_config;
+use x86_64::{set_enable_pnp_data_msr_config, set_itmt_msr_config};
 
 use rutabaga_gfx::calculate_context_mask;
 
@@ -1791,6 +1791,9 @@ fn set_argument(cfg: &mut Config, name: &str, value: Option<&str>) -> argument::
         "host-cpu-topology" => {
             cfg.host_cpu_topology = sys::use_host_cpu_topology();
         }
+        "enable-pnp-data" => {
+            cfg.enable_pnp_data = true;
+        }
         "privileged-vm" => {
             cfg.privileged_vm = true;
         }
@@ -2150,6 +2153,19 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
             }
         }
     }
+    if cfg.enable_pnp_data {
+        if !cfg.host_cpu_topology {
+            return Err(argument::Error::ExpectedArgument(
+                "setting `enable_pnp_data` must require `host-cpu-topology` is set previously."
+                    .to_owned(),
+            ));
+        }
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        set_enable_pnp_data_msr_config(cfg.itmt, &mut cfg.userspace_msr).map_err(|e| {
+            argument::Error::UnknownArgument(format!("MSR can't be passed through {}", e))
+        })?;
+    }
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     if cfg.itmt {
         // ITMT only works on the case each vCPU is 1:1 mapping to a pCPU.
@@ -2439,6 +2455,8 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
                               filter=(yes|no) - if the msr is filtered in KVM."),
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("host-cpu-topology", "Use mirror cpu topology of Host for Guest VM, also copy some cpu feature to Guest VM."),
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+          Argument::flag("enable-pnp-data", "Expose Power and Perfomance (PnP) data to guest and guest can show these PnP data."),
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("itmt", "Allow to enable ITMT scheduling feature in VM. The success of enabling depends on HWP and ACPI CPPC support on hardware."),
           Argument::flag("privileged-vm", "Grant this Guest VM certian privileges to manage Host resources, such as power management."),

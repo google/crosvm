@@ -264,7 +264,7 @@ where
                 .add_vcpu(0, &vcpu)
                 .expect("failed to add vcpu to irqchip");
 
-            setup_cpuid(&hyp, &irq_chip, &vcpu, 0, 1, false, false, false).unwrap();
+            setup_cpuid(&hyp, &irq_chip, &vcpu, 0, 1, false, false, false, false).unwrap();
             setup_msrs(&vm, &vcpu, read_pci_start_before_32bit()).unwrap();
 
             setup_regs(

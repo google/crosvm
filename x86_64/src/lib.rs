@@ -775,6 +775,7 @@ impl arch::LinuxArch for X8664arch {
         has_bios: bool,
         no_smt: bool,
         host_cpu_topology: bool,
+        enable_pnp_data: bool,
         itmt: bool,
     ) -> Result<()> {
         if !vm.check_capability(VmCap::EarlyInitCpuid) {
@@ -786,6 +787,7 @@ impl arch::LinuxArch for X8664arch {
                 num_cpus,
                 no_smt,
                 host_cpu_topology,
+                enable_pnp_data,
                 itmt,
             )
             .map_err(Error::SetupCpuid)?;
@@ -1641,26 +1643,11 @@ impl X8664arch {
 
 #[sorted]
 #[derive(Error, Debug)]
-pub enum ItmtError {
+pub enum MsrError {
     #[error("CPU not support. Only intel CPUs support ITMT.")]
     CpuUnSupport,
     #[error("msr must be unique: {0}")]
     MsrDuplicate(u32),
-}
-
-const EBX_INTEL_GENU: u32 = 0x756e6547; // "Genu"
-const ECX_INTEL_NTEL: u32 = 0x6c65746e; // "ntel"
-const EDX_INTEL_INEI: u32 = 0x49656e69; // "ineI"
-
-fn check_itmt_cpu_support() -> std::result::Result<(), ItmtError> {
-    // Safe because we pass 0 for this call and the host supports the
-    // `cpuid` instruction
-    let entry = unsafe { __cpuid(0) };
-    if entry.ebx == EBX_INTEL_GENU && entry.ecx == ECX_INTEL_NTEL && entry.edx == EDX_INTEL_INEI {
-        Ok(())
-    } else {
-        Err(ItmtError::CpuUnSupport)
-    }
 }
 
 fn insert_msr(
@@ -1670,7 +1657,7 @@ fn insert_msr(
     action: MsrAction,
     from: MsrValueFrom,
     filter: bool,
-) -> std::result::Result<(), ItmtError> {
+) -> std::result::Result<(), MsrError> {
     if msr_map
         .insert(
             key,
@@ -1683,15 +1670,97 @@ fn insert_msr(
         )
         .is_some()
     {
-        Err(ItmtError::MsrDuplicate(key))
+        Err(MsrError::MsrDuplicate(key))
     } else {
         Ok(())
     }
 }
 
+pub fn set_enable_pnp_data_msr_config(
+    itmt: bool,
+    msr_map: &mut BTreeMap<u32, MsrConfig>,
+) -> std::result::Result<(), MsrError> {
+    let mut msrs = vec![
+        (
+            MSR_IA32_APERF,
+            MsrRWType::ReadOnly,
+            MsrAction::MsrPassthrough,
+            MsrValueFrom::RWFromRunningCPU,
+            false,
+        ),
+        (
+            MSR_IA32_MPERF,
+            MsrRWType::ReadOnly,
+            MsrAction::MsrPassthrough,
+            MsrValueFrom::RWFromRunningCPU,
+            false,
+        ),
+    ];
+
+    // When itmt is enabled, the following 5 MSRs are already
+    // passed through or emulated, so just skip here.
+    if !itmt {
+        msrs.push((
+            MSR_PLATFORM_INFO,
+            MsrRWType::ReadOnly,
+            MsrAction::MsrPassthrough,
+            MsrValueFrom::RWFromRunningCPU,
+            true,
+        ));
+        msrs.push((
+            MSR_TURBO_RATIO_LIMIT,
+            MsrRWType::ReadOnly,
+            MsrAction::MsrPassthrough,
+            MsrValueFrom::RWFromRunningCPU,
+            false,
+        ));
+        msrs.push((
+            MSR_PM_ENABLE,
+            MsrRWType::ReadOnly,
+            MsrAction::MsrPassthrough,
+            MsrValueFrom::RWFromRunningCPU,
+            false,
+        ));
+        msrs.push((
+            MSR_HWP_CAPABILITIES,
+            MsrRWType::ReadOnly,
+            MsrAction::MsrPassthrough,
+            MsrValueFrom::RWFromRunningCPU,
+            false,
+        ));
+        msrs.push((
+            MSR_HWP_REQUEST,
+            MsrRWType::ReadOnly,
+            MsrAction::MsrPassthrough,
+            MsrValueFrom::RWFromRunningCPU,
+            false,
+        ));
+    }
+
+    for msr in msrs {
+        insert_msr(msr_map, msr.0, msr.1, msr.2, msr.3, msr.4)?;
+    }
+    Ok(())
+}
+
+const EBX_INTEL_GENU: u32 = 0x756e6547; // "Genu"
+const ECX_INTEL_NTEL: u32 = 0x6c65746e; // "ntel"
+const EDX_INTEL_INEI: u32 = 0x49656e69; // "ineI"
+
+fn check_itmt_cpu_support() -> std::result::Result<(), MsrError> {
+    // Safe because we pass 0 for this call and the host supports the
+    // `cpuid` instruction
+    let entry = unsafe { __cpuid(0) };
+    if entry.ebx == EBX_INTEL_GENU && entry.ecx == ECX_INTEL_NTEL && entry.edx == EDX_INTEL_INEI {
+        Ok(())
+    } else {
+        Err(MsrError::CpuUnSupport)
+    }
+}
+
 pub fn set_itmt_msr_config(
     msr_map: &mut BTreeMap<u32, MsrConfig>,
-) -> std::result::Result<(), ItmtError> {
+) -> std::result::Result<(), MsrError> {
     check_itmt_cpu_support()?;
 
     let msrs = vec![

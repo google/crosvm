@@ -34,11 +34,14 @@ const EDX_HTT_SHIFT: u32 = 28; // Hyper Threading Enabled.
 const ECX_TOPO_TYPE_SHIFT: u32 = 8; // Topology Level type.
 const ECX_TOPO_SMT_TYPE: u32 = 1; // SMT type.
 const ECX_TOPO_CORE_TYPE: u32 = 2; // CORE type.
+const ECX_HCFC_PERF_SHIFT: u32 = 0; // Presence of IA32_MPERF and IA32_APERF.
 const EAX_CPU_CORES_SHIFT: u32 = 26; // Index of cpu cores in the same physical package.
 const EDX_HYBRID_CPU_SHIFT: u32 = 15; // Hybrid. The processor is identified as a hybrid part.
 const EAX_HWP_SHIFT: u32 = 7; // Intel Hardware P-states.
 const EAX_HWP_EPP_SHIFT: u32 = 10; // HWP Energy Perf. Preference.
 const EAX_ITMT_SHIFT: u32 = 14; // Intel Turbo Boost Max Technology 3.0 available.
+const EAX_CORE_TEMP: u32 = 0; // Core Temperature
+const EAX_PKG_TEMP: u32 = 6; // Package Temperature
 
 fn filter_cpuid(
     vcpu_id: usize,
@@ -47,6 +50,7 @@ fn filter_cpuid(
     irq_chip: &dyn IrqChipX86_64,
     no_smt: bool,
     host_cpu_topology: bool,
+    enable_pnp_data: bool,
     itmt: bool,
 ) {
     let entries = &mut cpuid.cpu_id_entries;
@@ -127,15 +131,24 @@ fn filter_cpuid(
                 entry.ecx &= !(1 << ECX_EPB_SHIFT);
 
                 // Set ITMT related features.
-                if itmt {
+                if itmt || enable_pnp_data {
                     // Safe because we pass 6 for this call and the host
                     // supports the `cpuid` instruction
                     let result = unsafe { __cpuid(entry.function) };
-                    // Expose ITMT to guest.
-                    entry.eax |= result.eax & (1 << EAX_ITMT_SHIFT);
-                    // Expose HWP and HWP_EPP to guest.
-                    entry.eax |= result.eax & (1 << EAX_HWP_SHIFT);
-                    entry.eax |= result.eax & (1 << EAX_HWP_EPP_SHIFT);
+                    if itmt {
+                        // Expose ITMT to guest.
+                        entry.eax |= result.eax & (1 << EAX_ITMT_SHIFT);
+                        // Expose HWP and HWP_EPP to guest.
+                        entry.eax |= result.eax & (1 << EAX_HWP_SHIFT);
+                        entry.eax |= result.eax & (1 << EAX_HWP_EPP_SHIFT);
+                    }
+                    if enable_pnp_data {
+                        // Expose core temperature, package temperature
+                        // and APEF/MPERF to guest
+                        entry.eax |= result.eax & (1 << EAX_CORE_TEMP);
+                        entry.eax |= result.eax & (1 << EAX_PKG_TEMP);
+                        entry.ecx |= result.ecx & (1 << ECX_HCFC_PERF_SHIFT);
+                    }
                 }
             }
             7 => {
@@ -144,6 +157,18 @@ fn filter_cpuid(
                     // `cpuid` instruction
                     let result = unsafe { __cpuid_count(entry.function, entry.index) };
                     entry.edx |= result.edx & (1 << EDX_HYBRID_CPU_SHIFT);
+                }
+            }
+            0x15 => {
+                if enable_pnp_data {
+                    // Safe because we pass 0x15 for this call and the host
+                    // supports the `cpuid` instruction
+                    let result = unsafe { __cpuid(entry.function) };
+                    // Expose TSC frequency to guest
+                    entry.eax = result.eax;
+                    entry.ebx = result.ebx;
+                    entry.ecx = result.ecx;
+                    entry.edx = result.edx;
                 }
             }
             0x1A => {
@@ -210,6 +235,7 @@ fn filter_cpuid(
 /// * `nrcpus` - The number of vcpus being used by this VM.
 /// * `no_smt` - The flag indicates whether vCPUs supports SMT.
 /// * `host_cpu_topology` - The flag indicates whether vCPUs use mirror CPU topology.
+/// * `enable_pnp_data` - The flag indicates whether vCPU shows PnP data.
 /// * `itmt` - The flag indicates whether vCPU use ITMT scheduling feature.
 pub fn setup_cpuid(
     hypervisor: &dyn HypervisorX86_64,
@@ -219,6 +245,7 @@ pub fn setup_cpuid(
     nrcpus: usize,
     no_smt: bool,
     host_cpu_topology: bool,
+    enable_pnp_data: bool,
     itmt: bool,
 ) -> Result<()> {
     let mut cpuid = hypervisor
@@ -232,6 +259,7 @@ pub fn setup_cpuid(
         irq_chip,
         no_smt,
         host_cpu_topology,
+        enable_pnp_data,
         itmt,
     );
 
@@ -264,7 +292,7 @@ mod tests {
             edx: 0,
             ..Default::default()
         });
-        filter_cpuid(1, 2, &mut cpuid, &irq_chip, false, false, false);
+        filter_cpuid(1, 2, &mut cpuid, &irq_chip, false, false, false, false);
 
         let entries = &mut cpuid.cpu_id_entries;
         assert_eq!(entries[0].function, 0);
