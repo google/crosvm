@@ -231,7 +231,7 @@ verify_linux_builder("x86_64")
 verify_linux_builder("aarch64")
 verify_linux_builder("armhf")
 
-verify_chromeos_builder("amd64_generic", presubmit = False)
+verify_chromeos_builder("amd64-generic", presubmit = False)
 
 verify_builder(
     name = "crosvm_health_check",

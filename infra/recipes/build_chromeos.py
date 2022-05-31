@@ -102,7 +102,7 @@ def RunSteps(api, properties):
         try:
             SetupSource(api, workspace)
             PrepareBuild(api)
-            BuildAndTest(api, properties.board or "amd64_generic")
+            BuildAndTest(api, properties.board or "amd64-generic")
         finally:
             CleanUp(api)
 
