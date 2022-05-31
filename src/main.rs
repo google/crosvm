@@ -2717,48 +2717,40 @@ filter=(default|override) - if the msr is filtered in KVM, whether to override o
 }
 
 fn stop_vms(cmd: crosvm::StopCommand) -> std::result::Result<(), ()> {
-    let socket_path = Path::new(&cmd.socket_path);
-    vms_request(&VmRequest::Exit, socket_path)
+    vms_request(&VmRequest::Exit, cmd.socket_path)
 }
 
 fn suspend_vms(cmd: crosvm::SuspendCommand) -> std::result::Result<(), ()> {
-    let socket_path = Path::new(&cmd.socket_path);
-    vms_request(&VmRequest::Suspend, socket_path)
+    vms_request(&VmRequest::Suspend, cmd.socket_path)
 }
 
 fn resume_vms(cmd: crosvm::ResumeCommand) -> std::result::Result<(), ()> {
-    let socket_path = Path::new(&cmd.socket_path);
-    vms_request(&VmRequest::Resume, socket_path)
+    vms_request(&VmRequest::Resume, cmd.socket_path)
 }
 
 fn powerbtn_vms(cmd: crosvm::PowerbtnCommand) -> std::result::Result<(), ()> {
-    let socket_path = Path::new(&cmd.socket_path);
-    vms_request(&VmRequest::Powerbtn, socket_path)
+    vms_request(&VmRequest::Powerbtn, cmd.socket_path)
 }
 
 fn sleepbtn_vms(cmd: crosvm::SleepCommand) -> std::result::Result<(), ()> {
-    let socket_path = Path::new(&cmd.socket_path);
-    vms_request(&VmRequest::Sleepbtn, socket_path)
+    vms_request(&VmRequest::Sleepbtn, cmd.socket_path)
 }
 
 fn inject_gpe(cmd: crosvm::GpeCommand) -> std::result::Result<(), ()> {
-    let socket_path = Path::new(&cmd.socket_path);
-    vms_request(&VmRequest::Gpe(cmd.gpe), socket_path)
+    vms_request(&VmRequest::Gpe(cmd.gpe), cmd.socket_path)
 }
 
 fn balloon_vms(cmd: crosvm::BalloonCommand) -> std::result::Result<(), ()> {
     let command = BalloonControlCommand::Adjust {
         num_bytes: cmd.num_bytes,
     };
-    let socket_path = Path::new(&cmd.socket_path);
-    vms_request(&VmRequest::BalloonCommand(command), socket_path)
+    vms_request(&VmRequest::BalloonCommand(command), cmd.socket_path)
 }
 
 fn balloon_stats(cmd: crosvm::BalloonStatsCommand) -> std::result::Result<(), ()> {
     let command = BalloonControlCommand::Stats {};
     let request = &VmRequest::BalloonCommand(command);
-    let socket_path = Path::new(&cmd.socket_path);
-    let response = handle_request(request, socket_path)?;
+    let response = handle_request(request, cmd.socket_path)?;
     match serde_json::to_string_pretty(&response) {
         Ok(response_json) => println!("{}", response_json),
         Err(e) => {
@@ -2773,9 +2765,12 @@ fn balloon_stats(cmd: crosvm::BalloonStatsCommand) -> std::result::Result<(), ()
 }
 
 fn modify_battery(cmd: crosvm::BatteryCommand) -> std::result::Result<(), ()> {
-    let socket_path = Path::new(&cmd.socket_path);
-
-    do_modify_battery(socket_path, &cmd.battery_type, &cmd.property, &cmd.target)
+    do_modify_battery(
+        cmd.socket_path,
+        &cmd.battery_type,
+        &cmd.property,
+        &cmd.target,
+    )
 }
 
 fn modify_vfio(cmd: crosvm::VfioCrosvmCommand) -> std::result::Result<(), ()> {
@@ -2801,7 +2796,7 @@ fn modify_vfio(cmd: crosvm::VfioCrosvmCommand) -> std::result::Result<(), ()> {
         error!("Invalid host sysfs path: {:?}", vfio_path);
         return Err(());
     }
-    handle_request(&request, Path::new(&socket_path))?;
+    handle_request(&request, socket_path)?;
     Ok(())
 }
 
@@ -2968,33 +2963,28 @@ fn disk_cmd(cmd: crosvm::DiskCommand) -> std::result::Result<(), ()> {
                     new_size: cmd.disk_size,
                 },
             };
-            let socket_path = Path::new(&cmd.socket_path);
-            vms_request(&request, socket_path)
+            vms_request(&request, cmd.socket_path)
         }
     }
 }
 
 fn make_rt(cmd: crosvm::MakeRTCommand) -> std::result::Result<(), ()> {
-    let socket_path = Path::new(&cmd.socket_path);
-    vms_request(&VmRequest::MakeRT, socket_path)
+    vms_request(&VmRequest::MakeRT, cmd.socket_path)
 }
 
 fn usb_attach(cmd: crosvm::UsbAttachCommand) -> ModifyUsbResult<UsbControlResult> {
     let (bus, addr, vid, pid) = cmd.addr;
-    let socket_path = Path::new(&cmd.socket_path);
     let dev_path = Path::new(&cmd.dev_path);
 
-    do_usb_attach(socket_path, bus, addr, vid, pid, dev_path)
+    do_usb_attach(cmd.socket_path, bus, addr, vid, pid, dev_path)
 }
 
 fn usb_detach(cmd: crosvm::UsbDetachCommand) -> ModifyUsbResult<UsbControlResult> {
-    let socket_path = Path::new(&cmd.socket_path);
-    do_usb_detach(socket_path, cmd.port)
+    do_usb_detach(cmd.socket_path, cmd.port)
 }
 
 fn usb_list(cmd: crosvm::UsbListCommand) -> ModifyUsbResult<UsbControlResult> {
-    let socket_path = Path::new(&cmd.socket_path);
-    do_usb_list(socket_path)
+    do_usb_list(cmd.socket_path)
 }
 
 fn modify_usb(cmd: crosvm::UsbCommand) -> std::result::Result<(), ()> {
