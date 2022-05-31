@@ -24,6 +24,7 @@ use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 use crate::virtio::{
     self, gpu,
     vhost::user::device::handler::{DeviceRequestHandler, Doorbell, VhostUserBackend},
+    vhost::user::device::vvu::pci::VvuPciDevice,
     vhost::user::device::wl::parse_wayland_sock,
     DescriptorChain, Gpu, GpuDisplayParameters, GpuParameters, Queue, QueueReader, VirtioDevice,
 };
@@ -343,7 +344,10 @@ fn gpu_parameters_from_str(input: &str) -> Result<GpuParameters, String> {
 pub struct Options {
     #[argh(option, arg_name = "PATH")]
     /// path to bind a listening vhost-user socket
-    socket: String,
+    socket: Option<String>,
+    #[argh(option, arg_name = "STRING")]
+    /// VFIO-PCI device name (e.g. '0000:00:07.0')
+    vfio: Option<String>,
     #[argh(option, from_str_fn(parse_wayland_sock), arg_name = "PATH[,name=NAME]")]
     /// path to one or more Wayland sockets. The unnamed socket is
     /// used for displaying virtual screens while the named ones are used for IPC
@@ -371,6 +375,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         params: mut gpu_parameters,
         resource_bridge,
         socket,
+        vfio,
         wayland_sock,
     } = opts;
 
@@ -477,5 +482,13 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
 
     let handler = DeviceRequestHandler::new(backend);
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-    ex.run_until(handler.run(socket, &ex))?
+    let res = match (socket, vfio) {
+        (Some(socket), None) => ex.run_until(handler.run(socket, &ex))?,
+        (None, Some(vfio)) => {
+            let device = VvuPciDevice::new(&vfio, GpuBackend::MAX_QUEUE_NUM)?;
+            ex.run_until(handler.run_vvu(device, &ex))?
+        }
+        _ => Err(anyhow!("exactly one of `--socket` or `--vfio` is required")),
+    };
+    res
 }
