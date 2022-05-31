@@ -49,6 +49,7 @@ use vm_control::VmRequest;
 use vm_control::VmResponse;
 
 use crate::pci::acpi::DeviceVcfgRegister;
+use crate::pci::acpi::DsmMethod;
 use crate::pci::acpi::PowerResourceMethod;
 use crate::pci::acpi::SHM_OFFSET;
 use crate::pci::msi::MsiConfig;
@@ -2256,6 +2257,15 @@ impl PciDevice for VfioPciDevice {
                 // host would always think it is in active state, so its parent PCIe
                 // switch couldn't enter into suspend state.
                 PowerResourceMethod {}.to_aml_bytes(&mut amls);
+                // TODO: WIP: Ideally, we should generate DSM only if the physical
+                // device has a _DSM; however, such information is not provided by
+                // Linux. As a temporary workaround, we chech whether there is an
+                // associated ACPI companion device node and skip generating guest
+                // _DSM if there is none.
+                let acpi_path = self.sysfs_path.join("firmware_node/path");
+                if acpi_path.exists() {
+                    DsmMethod {}.to_aml_bytes(&mut amls);
+                }
             }
         }
 
