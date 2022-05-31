@@ -16,6 +16,7 @@ class CrosvmApi(recipe_api.RecipeApi):
 
     @property
     def builder_dir(self):
+        "The builder directory is cached between builds to improve build times."
         return self.m.path["cache"].join("builder")
 
     def __set_git_config(self, prop, value):

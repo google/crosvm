@@ -95,6 +95,7 @@ def CleanUp(api):
 
 
 def RunSteps(api, properties):
+    # Use a 'cleanup' path to ensure we are starting with a clean slate on each build.
     workspace = api.path["cleanup"].join("workspace")
     api.file.ensure_directory("Ensure workspace exists", workspace)
 
