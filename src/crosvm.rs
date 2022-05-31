@@ -277,10 +277,44 @@ pub struct UsbCommand {
 /// Show package version.
 pub struct VersionCommand {}
 
-#[generate_catchall_args]
+#[derive(FromArgs)]
+#[argh(subcommand, name = "add")]
+/// ADD
+pub struct VfioAddSubCommand {
+    #[argh(positional)]
+    /// path to host's vfio sysfs
+    pub vfio_path: PathBuf,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "remove")]
+/// REMOVE
+pub struct VfioRemoveSubCommand {
+    #[argh(positional)]
+    /// path to host's vfio sysfs
+    pub vfio_path: PathBuf,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand)]
+pub enum VfioSubCommand {
+    Add(VfioAddSubCommand),
+    Remove(VfioRemoveSubCommand),
+}
+
+#[derive(FromArgs)]
 #[argh(subcommand, name = "vfio")]
 /// add/remove host vfio pci device into guest
-pub struct VfioCrosvmCommand {}
+pub struct VfioCrosvmCommand {
+    #[argh(subcommand)]
+    pub command: VfioSubCommand,
+}
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "device")]

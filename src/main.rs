@@ -2779,44 +2779,29 @@ fn modify_battery(cmd: crosvm::BatteryCommand) -> std::result::Result<(), ()> {
 }
 
 fn modify_vfio(cmd: crosvm::VfioCrosvmCommand) -> std::result::Result<(), ()> {
-    if cmd.args.len() < 3 {
-        print_help(
-            "crosvm vfio",
-            "[add | remove host_vfio_sysfs] VM_SOCKET...",
-            &[],
-        );
-        return Err(());
-    }
-
-    let mut args = cmd.args.into_iter();
-    // This unwrap will not panic because of the above length check.
-    let command = args.next().unwrap();
-    let path_str = args.next().unwrap();
-    let vfio_path = PathBuf::from(&path_str);
-    if !vfio_path.exists() || !vfio_path.is_dir() {
-        error!("Invalid host sysfs path: {}", path_str);
-        return Err(());
-    }
-
-    let socket_path = args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
-
-    let add = match command.as_ref() {
-        "add" => true,
-        "remove" => false,
-        other => {
-            error!("Invalid vfio command {}", other);
-            return Err(());
+    let (request, socket_path, vfio_path) = match cmd.command {
+        crosvm::VfioSubCommand::Add(c) => {
+            let request = VmRequest::VfioCommand {
+                vfio_path: c.vfio_path.clone(),
+                add: true,
+                hp_interrupt: true,
+            };
+            (request, c.socket_path, c.vfio_path)
+        }
+        crosvm::VfioSubCommand::Remove(c) => {
+            let request = VmRequest::VfioCommand {
+                vfio_path: c.vfio_path.clone(),
+                add: true,
+                hp_interrupt: true,
+            };
+            (request, c.socket_path, c.vfio_path)
         }
     };
-
-    let hp_interrupt = true;
-    let request = VmRequest::VfioCommand {
-        vfio_path,
-        add,
-        hp_interrupt,
-    };
-    handle_request(&request, socket_path)?;
+    if !vfio_path.exists() || !vfio_path.is_dir() {
+        error!("Invalid host sysfs path: {:?}", vfio_path);
+        return Err(());
+    }
+    handle_request(&request, Path::new(&socket_path))?;
     Ok(())
 }
 
