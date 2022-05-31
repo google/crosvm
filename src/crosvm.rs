@@ -164,10 +164,34 @@ pub struct CreateQcow2Command {
     pub backing_file: Option<String>,
 }
 
-#[generate_catchall_args]
+#[derive(FromArgs)]
+#[argh(subcommand)]
+pub enum DiskSubcommand {
+    Resize(ResizeDiskSubcommand),
+}
+
+#[derive(FromArgs)]
+/// resize disk
+#[argh(subcommand, name = "resize")]
+pub struct ResizeDiskSubcommand {
+    #[argh(positional, arg_name = "DISK_INDEX")]
+    /// disk index
+    pub disk_index: usize,
+    #[argh(positional, arg_name = "NEW_SIZE")]
+    /// new disk size
+    pub disk_size: u64,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
 #[argh(subcommand, name = "disk")]
 /// Manage attached virtual disk devices
-pub struct DiskCommand {}
+pub struct DiskCommand {
+    #[argh(subcommand)]
+    pub command: DiskSubcommand,
+}
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "make_rt")]

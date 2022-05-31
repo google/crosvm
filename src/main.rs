@@ -2975,48 +2975,18 @@ fn start_device(opts: crosvm::DevicesCommand) -> std::result::Result<(), ()> {
 }
 
 fn disk_cmd(cmd: crosvm::DiskCommand) -> std::result::Result<(), ()> {
-    if cmd.args.len() < 2 {
-        print_help("crosvm disk", "SUBCOMMAND VM_SOCKET...", &[]);
-        println!("Manage attached virtual disk devices.");
-        println!("Subcommands:");
-        println!("  resize DISK_INDEX NEW_SIZE VM_SOCKET");
-        return Err(());
+    match cmd.command {
+        crosvm::DiskSubcommand::Resize(cmd) => {
+            let request = VmRequest::DiskCommand {
+                disk_index: cmd.disk_index,
+                command: DiskControlCommand::Resize {
+                    new_size: cmd.disk_size,
+                },
+            };
+            let socket_path = Path::new(&cmd.socket_path);
+            vms_request(&request, socket_path)
+        }
     }
-    let mut args = cmd.args.into_iter();
-    let subcommand: &str = &args.next().unwrap();
-
-    let request = match subcommand {
-        "resize" => {
-            let disk_index = match args.next().unwrap().parse::<usize>() {
-                Ok(n) => n,
-                Err(_) => {
-                    error!("Failed to parse disk index");
-                    return Err(());
-                }
-            };
-
-            let new_size = match args.next().unwrap().parse::<u64>() {
-                Ok(n) => n,
-                Err(_) => {
-                    error!("Failed to parse disk size");
-                    return Err(());
-                }
-            };
-
-            VmRequest::DiskCommand {
-                disk_index,
-                command: DiskControlCommand::Resize { new_size },
-            }
-        }
-        _ => {
-            error!("Unknown disk subcommand '{}'", subcommand);
-            return Err(());
-        }
-    };
-
-    let socket_path = &args.next().unwrap();
-    let socket_path = Path::new(&socket_path);
-    vms_request(&request, socket_path)
 }
 
 fn make_rt(cmd: crosvm::MakeRTCommand) -> std::result::Result<(), ()> {
