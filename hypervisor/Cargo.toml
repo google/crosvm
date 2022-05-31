@@ -10,7 +10,7 @@ bitflags = "1"
 data_model = { path = "../common/data_model" }
 downcast-rs = "1.2.0"
 enumn = "0.1.0"
-fnv = "*"
+fnv = "1"
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
