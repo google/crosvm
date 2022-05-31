@@ -21,11 +21,13 @@
 #   ./tools/dev_container --hermetic CMD
 
 import argparse
+from argh import arg  # type: ignore
+from impl.common import CROSVM_ROOT, cmd, chdir, quoted, run_main
+from typing import Optional, Tuple, List
 import getpass
 import shutil
-from typing import Tuple
-from impl.common import CROSVM_ROOT, cmd, chdir, quoted, add_verbose_args
 import sys
+import unittest
 
 CONTAINER_NAME = f"crosvm_dev_{getpass.getuser()}"
 IMAGE_VERSION = (CROSVM_ROOT / "tools/impl/dev_container/version").read_text().strip()
@@ -56,12 +58,51 @@ def container_revision(docker: cmd, container_id: str):
     return parts[1]
 
 
+def container_id(docker: cmd):
+    return docker(f"ps -a -q -f name={CONTAINER_NAME}").stdout()
+
+
+def container_is_running(docker: cmd):
+    return bool(docker(f"ps -q -f name={CONTAINER_NAME}").stdout())
+
+
+def delete_container(docker: cmd):
+    cid = container_id(docker)
+    if cid:
+        print(f"Deleting dev-container {cid}.")
+        docker("rm -f", cid).fg(quiet=True)
+        return True
+    return False
+
+
+def ensure_container_is_alive(docker: cmd, docker_args: List[Optional[str]]):
+    cid = container_id(docker)
+    if cid and not container_is_running(docker):
+        print("Existing dev-container is not running.")
+        delete_container(docker)
+    elif cid and container_revision(docker, cid) != IMAGE_VERSION:
+        print(f"New image is available.")
+        delete_container(docker)
+
+    if not container_is_running(docker):
+        # Run neverending sleep to keep container alive while we 'docker exec' commands.
+        docker(f"run --detach --name {CONTAINER_NAME}", *docker_args, "sleep infinity").stdout()
+        cid = container_id(docker)
+        print(f"Started dev-container ({cid}).")
+    else:
+        cid = container_id(docker)
+        print(f"Using existing dev-container ({cid}).")
+    return cid
+
+
+@arg("command", nargs=argparse.REMAINDER)
 def main(
     command: Tuple[str, ...],
     stop: bool = False,
     hermetic: bool = False,
     interactive: bool = False,
     podman: bool = PODMAN_IS_DEFAULT,
+    self_test: bool = False,
 ):
     chdir(CROSVM_ROOT)
 
@@ -77,13 +118,14 @@ def main(
         print("Some crosvm tests require privileges podman cannot provide and may fail.")
         print()
 
-    container_id = docker(f"ps -a -q -f name={CONTAINER_NAME}").stdout()
+    if self_test:
+        TestDevContainer.docker = docker
+        suite = unittest.defaultTestLoader.loadTestsFromTestCase(TestDevContainer)
+        unittest.TextTestRunner().run(suite)
+        return
 
     if stop:
-        if container_id:
-            print(f"Stopping dev-container {container_id}.")
-            docker("rm -f", container_id).fg(quiet=True)
-        else:
+        if not delete_container(docker):
             print(f"Dev-container is not running.")
         return
 
@@ -102,55 +144,39 @@ def main(
     if hermetic:
         docker(f"run --rm", *tty_args, *docker_args, *quoted_cmd).fg()
     else:
-        if container_id and container_revision(docker, container_id) != IMAGE_VERSION:
-            print(f"New image is available. Stopping old container ({container_id}).")
-            docker("rm -f", container_id).fg(quiet=True)
-            container_id = None
+        cid = ensure_container_is_alive(docker, docker_args)
+        docker("exec", *tty_args, cid, *quoted_cmd).fg()
 
-        if not container_id:
-            # Run neverending sleep to keep container alive while we 'docker exec' commands.
-            container_id = docker(
-                f"run --detach --name {CONTAINER_NAME}", *docker_args, "sleep infinity"
-            ).stdout()
-            print(f"Started dev-container ({container_id}).")
-        else:
-            is_running = docker(f"ps -q -f name={CONTAINER_NAME}").stdout()
-            if not is_running:
-                # The container may have been stopped (e.g. by a reboot)
-                print(f"Starting existing dev-container ({container_id}).")
-                docker("start", container_id).fg()
-            print(f"Using existing dev-container instance ({container_id}).")
 
-        docker("exec", *tty_args, container_id, *quoted_cmd).fg()
+class TestDevContainer(unittest.TestCase):
+    """Runs live tests using the docker service."""
+
+    docker: cmd
+
+    def setUp(self):
+        # Start with a stopped container for each test.
+        delete_container(self.docker)
+
+    def test_stopped_container(self):
+        # Create but do not run a new container.
+        self.docker(f"create --name {CONTAINER_NAME}", *DOCKER_ARGS, "sleep infinity").stdout()
+        self.assertTrue(container_id(self.docker))
+        self.assertFalse(container_is_running(self.docker))
+
+    def test_container_reuse(self):
+        cid = ensure_container_is_alive(self.docker, DOCKER_ARGS)
+        cid2 = ensure_container_is_alive(self.docker, DOCKER_ARGS)
+        self.assertEqual(cid, cid2)
+
+    def test_handling_of_stopped_container(self):
+        cid = ensure_container_is_alive(self.docker, DOCKER_ARGS)
+        self.docker("kill", cid).fg()
+
+        # Make sure we can get back into a good state and execute commands.
+        ensure_container_is_alive(self.docker, DOCKER_ARGS)
+        self.assertTrue(container_is_running(self.docker))
+        main(("true",))
 
 
 if __name__ == "__main__":
-    # Note: Since the dev_container script is run outside of the container, we do not want to
-    # use common.run_main/argh here, so we can use this script without installing any
-    # dependencies. All that's needed is python >= 3.8.
-    parser = argparse.ArgumentParser(description="Runs the crosvm dev container.")
-    parser.add_argument("--stop", action="store_true", help="Stop the container if it's running.")
-    parser.add_argument(
-        "--hermetic", action="store_true", help="Do not re-use an existing container."
-    )
-    parser.add_argument(
-        "--interactive", "-i", action="store_true", help="Run the command interactively."
-    )
-    parser.add_argument(
-        "--podman",
-        action="store_true",
-        default=PODMAN_IS_DEFAULT,
-        help="Use podman instead of docker.",
-    )
-    parser.add_argument(
-        "command", nargs=argparse.REMAINDER, help="The command to execute in the container."
-    )
-    add_verbose_args(parser)
-    args = parser.parse_args()
-    main(
-        args.command,
-        stop=args.stop,
-        hermetic=args.hermetic,
-        interactive=args.interactive,
-        podman=args.podman,
-    )
+    run_main(main)
