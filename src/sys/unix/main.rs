@@ -95,11 +95,6 @@ pub fn use_host_cpu_topology() -> bool {
     true
 }
 
-pub fn get_vcpu_count() -> argument::Result<usize> {
-    // Safe because we pass a flag for this call and the host supports this system call
-    Ok(unsafe { libc::sysconf(libc::_SC_NPROCESSORS_CONF) } as usize)
-}
-
 #[cfg(feature = "gfxstream")]
 pub fn use_vulkan() -> bool {
     true

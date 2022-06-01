@@ -98,3 +98,8 @@ pub fn round_up_to_page_size(v: usize) -> usize {
     let page_mask = pagesize() - 1;
     (v + page_mask) & !page_mask
 }
+
+/// Returns the number of online logical cores on the system.
+pub fn number_of_logical_cores() -> Result<usize> {
+    Ok(win_util::number_of_processors())
+}

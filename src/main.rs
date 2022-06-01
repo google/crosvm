@@ -2119,14 +2119,14 @@ fn validate_arguments(cfg: &mut Config) -> std::result::Result<(), argument::Err
             ));
         }
 
-        let pcpu_count = sys::get_vcpu_count()?;
-        if cfg.vcpu_count.is_some() {
-            if pcpu_count != cfg.vcpu_count.unwrap() {
+        let pcpu_count =
+            base::number_of_logical_cores().expect("Could not read number of logical cores");
+        if let Some(vcpu_count) = cfg.vcpu_count {
+            if pcpu_count != vcpu_count {
                 return Err(argument::Error::ExpectedArgument(format!(
                     "`host-cpu-topology` requires the count of vCPUs({}) to equal the \
                             count of CPUs({}) on host.",
-                    cfg.vcpu_count.unwrap(),
-                    pcpu_count
+                    vcpu_count, pcpu_count
                 )));
             }
         } else {

@@ -624,6 +624,12 @@ pub fn get_max_open_files() -> Result<u64> {
     }
 }
 
+/// Returns the number of online logical cores on the system.
+pub fn number_of_logical_cores() -> Result<usize> {
+    // Safe because we pass a flag for this call and the host supports this system call
+    Ok(unsafe { libc::sysconf(libc::_SC_NPROCESSORS_ONLN) } as usize)
+}
+
 #[cfg(test)]
 mod tests {
     use libc::EBADF;
