@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2021"
 
+[features]
+haxm = []
+
 [dependencies]
 bit_field = { path = "../bit_field" }
 bitflags = "1"
@@ -11,8 +14,6 @@ data_model = { path = "../common/data_model" }
 downcast-rs = "1.2.0"
 enumn = "0.1.0"
 fnv = "1"
-kvm = { path = "../kvm" }
-kvm_sys = { path = "../kvm_sys" }
 libc = "*"
 memoffset = "0.6"
 serde = { version = "1", features = [ "derive" ] }
@@ -20,5 +21,13 @@ sync = { path = "../common/sync" }
 base = { path = "../base" }
 vm_memory = { path = "../vm_memory" }
 
-[features]
-haxm = []
+[target.'cfg(unix)'.dependencies]
+kvm = { path = "../kvm" }
+kvm_sys = { path = "../kvm_sys" }
+
+[target.'cfg(windows)'.dependencies]
+winapi = "*"
+win_util = { path = "../win_util" }
+
+[target.'cfg(windows)'.dev-dependencies]
+tempfile = "*"
