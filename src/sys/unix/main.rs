@@ -632,7 +632,7 @@ pub(crate) fn start_device(program_name: &str, args: &[&str]) -> Result<()> {
     match opts.command {
         DevicesSubcommand::Console(cfg) => run_console_device(cfg),
         #[cfg(feature = "audio_cras")]
-        CrasSnd(cfg) => run_cras_snd_device(cfg),
+        DevicesSubcommand::CrasSnd(cfg) => run_cras_snd_device(cfg),
         DevicesSubcommand::Fs(cfg) => run_fs_device(cfg),
         #[cfg(feature = "gpu")]
         DevicesSubcommand::Gpu(cfg) => run_gpu_device(cfg),

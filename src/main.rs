@@ -39,10 +39,6 @@ use devices::virtio::block::block::DiskOption;
 use devices::virtio::gpu::{
     GpuDisplayParameters, GpuMode, GpuParameters, DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH,
 };
-#[cfg(feature = "audio_cras")]
-use devices::virtio::snd::cras_backend::Error as CrasSndError;
-#[cfg(feature = "audio_cras")]
-use devices::virtio::vhost::user::device::run_cras_snd_device;
 use devices::virtio::vhost::user::device::{run_block_device, run_net_device};
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
