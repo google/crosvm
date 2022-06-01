@@ -109,7 +109,7 @@ fn run_plugin(bin_path: &Path, with_sandbox: bool) {
 
     if *TAP_AVAILABLE {
         cmd.args(&[
-            "--host_ip",
+            "--host-ip",
             "100.115.92.5",
             "--netmask",
             "255.255.255.252",

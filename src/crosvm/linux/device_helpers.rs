@@ -13,15 +13,15 @@ use std::path::{Path, PathBuf};
 use std::str;
 use std::sync::Arc;
 
-use crate::{
-    Config, DiskOption, TouchDeviceOption, VhostUserFsOption, VhostUserOption, VhostUserWlOption,
-    VvuOption,
+use crate::crosvm::config::{
+    Config, TouchDeviceOption, VhostUserFsOption, VhostUserOption, VhostUserWlOption, VvuOption,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use arch::{self, VirtioDeviceStub};
 use base::*;
 use devices::serial_device::{SerialParameters, SerialType};
 use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
+use devices::virtio::block::block::DiskOption;
 use devices::virtio::ipc_memory_mapper::{create_ipc_mapper, CreateIpcMapperRet};
 use devices::virtio::memory_mapper::{BasicMemoryMapper, MemoryMapperTrait};
 #[cfg(feature = "audio_cras")]

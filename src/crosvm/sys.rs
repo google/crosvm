@@ -11,4 +11,5 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(crate) use platform::main::{cleanup, start_device};
+pub(crate) use platform::cmdline;
+pub(crate) use platform::config;

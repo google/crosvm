@@ -185,8 +185,9 @@ protos = { path = "protos", optional = true }
 remain = "*"
 resources = { path = "resources" }
 scudo = { version = "0.1", optional = true }
+serde = "*"
 serde_json = "*"
-serde_keyvalue = { path = "serde_keyvalue" }
+serde_keyvalue = { path = "serde_keyvalue", features = ["argh_derive"] }
 sync = { path = "common/sync" }
 tempfile = "3"
 terminal_size = "0.1.17"

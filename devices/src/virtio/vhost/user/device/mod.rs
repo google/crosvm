@@ -21,7 +21,7 @@ cfg_if::cfg_if! {
         mod wl;
 
         pub use vsock::{run_vsock_device, Options as VsockOptions};
-        pub use wl::{run_wl_device, Options as WlOptions};
+        pub use wl::{run_wl_device, parse_wayland_sock, Options as WlOptions};
         pub use console::{run_console_device, Options as ConsoleOptions};
         #[cfg(feature = "audio_cras")]
         pub use cras_snd::{run_cras_snd_device, Options as CrasSndOptions};

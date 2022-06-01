@@ -251,7 +251,7 @@ impl VhostUserBackend for WlBackend {
     }
 }
 
-pub(crate) fn parse_wayland_sock(value: &str) -> Result<(String, PathBuf), String> {
+pub fn parse_wayland_sock(value: &str) -> Result<(String, PathBuf), String> {
     let mut components = value.split(',');
     let path = PathBuf::from(match components.next() {
         None => return Err("missing socket path".to_string()),

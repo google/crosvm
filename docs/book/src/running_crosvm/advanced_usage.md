@@ -111,7 +111,7 @@ The following are crosvm's default arguments and how to override them.
 - 256MB of memory (set with `-m`)
 - 1 virtual CPU (set with `-c`)
 - no block devices (set with `-r`, `-d`, or `--rwdisk`)
-- no network (set with `--host_ip`, `--netmask`, and `--mac`)
+- no network (set with `--host-ip`, `--netmask`, and `--mac`)
 - only the kernel arguments necessary to run with the supported devices (add more with `-p`)
 - run in multiprocess mode (run in single process mode with `--disable-sandbox`)
 - no control socket (set with `-s`)

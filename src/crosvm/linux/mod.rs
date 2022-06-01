@@ -54,18 +54,18 @@ use sync::{Condvar, Mutex};
 use vm_control::*;
 use vm_memory::{GuestAddress, GuestMemory, MemoryPolicy};
 
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-use crate::crosvm::gdb::{gdb_thread, GdbStub};
-use crate::crosvm::{
+use crate::crosvm::config::{
     Config, Executable, FileBackedMappingParameters, SharedDir, SharedDirKind, VfioType,
 };
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+use crate::crosvm::gdb::{gdb_thread, GdbStub};
 use arch::{
     self, LinuxArch, RunnableLinuxVm, VcpuAffinity, VirtioDeviceStub, VmComponents, VmImage,
 };
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use {
-    crate::crosvm::HostPcieRootPortParameters,
+    crate::crosvm::config::HostPcieRootPortParameters,
     devices::{
         IrqChipX86_64 as IrqChipArch, KvmSplitIrqChip, PciBridge, PcieHostRootPort, PcieRootPort,
     },
@@ -891,7 +891,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         cpu_clusters: cfg.cpu_clusters.clone(),
         cpu_capacity: cfg.cpu_capacity.clone(),
         #[cfg(feature = "direct")]
-        direct_gpe: cfg.direct_gpe.clone(),
+        direct_gpe: cfg.direct_gpe,
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
         vm_image,
