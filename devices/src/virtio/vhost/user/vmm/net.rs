@@ -17,7 +17,7 @@ use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice, VirtioNetConfig}
 
 type Result<T> = std::result::Result<T, Error>;
 
-const QUEUE_SIZE: u16 = 256;
+const QUEUE_SIZE: u16 = 1024;
 
 pub struct Net {
     kill_evt: Option<Event>,
@@ -37,6 +37,7 @@ impl Net {
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_UFO
             | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
             | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
+            | 1 << virtio_net::VIRTIO_NET_F_MAC
             | 1 << virtio_net::VIRTIO_NET_F_MQ
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
