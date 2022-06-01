@@ -85,8 +85,7 @@ def BuildAndTest(api, board):
     )
     api.step(
         "Run unit tests",
-        [cros_sdk, "cros_run_unit_tests", "--board=%s" % board, "--packages", "implicit-system"]
-        + PACKAGE_LIST,
+        [cros_sdk, "cros_run_unit_tests", "--board=%s" % board, "--packages"] + PACKAGE_LIST,
     )
 
 
