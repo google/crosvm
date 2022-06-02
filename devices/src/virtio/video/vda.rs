@@ -22,7 +22,7 @@ macro_rules! impl_libvda_conversion {
         }
 
         #[cfg(feature = "video-encoder")]
-        pub fn to_libvda_profile(&self) -> Option<libvda::Profile> {
+        pub fn to_libvda_profile(self) -> Option<libvda::Profile> {
             match self {
                 $(Self::$y => Some(libvda::Profile::$x),)*
                 _ => None
