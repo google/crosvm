@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+# Copyright 2022 The Chromium OS Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+from impl.common import confirm, run_commands, cmd, CROSVM_ROOT
+import sys
+
+USAGE = """\
+./tools/cl [upload|rebase|status]
+
+Upload changes to the upstream crosvm gerrit.
+
+Multiple projects have their own downstream repository of crosvm and tooling
+to upload to those.
+
+This tool allows developers to send commits to the upstream gerrit review site
+of crosvm and helps rebase changes if needed.
+
+You need to be on a local branch tracking a remote one. `repo start` does this
+for AOSP and chromiumos, or you can do this yourself:
+
+    $ git checkout -b mybranch --track origin/main
+
+Then to upload commits you have made:
+
+    [mybranch] $ ./tools/cl upload
+
+If you are tracking a different branch (e.g. aosp/main or cros/chromeos), the upload may
+fail if your commits do not apply cleanly. This tool can help rebase the changes, it will
+create a new branch tracking origin/main and cherry-picks your commits.
+
+    [mybranch] $ ./tools/cl rebase
+    [mybranch-upstream] ... resolve conflicts
+    [mybranch-upstream] $ git add .
+    [mybranch-upstream] $ git cherry-pick --continue
+    [mybranch-upstream] $ ./tools/cl upload
+
+"""
+
+GERRIT_URL = "https://chromium-review.googlesource.com"
+CROSVM_URL = "https://chromium.googlesource.com/chromiumos/platform/crosvm"
+
+git = cmd("git")
+curl = cmd("curl --silent --fail")
+chmod = cmd("chmod")
+
+
+def get_upstream(branch: str = ""):
+    try:
+        return git(f"rev-parse --abbrev-ref --symbolic-full-name {branch}@{{u}}").stdout()
+    except:
+        return None
+
+
+def list_local_changes(branch: str = ""):
+    upstream = get_upstream(branch)
+    if not upstream:
+        return []
+    for line in git(f"log --oneline --first-parent {upstream}..{branch or 'HEAD'}").lines():
+        yield line.split(" ", 1)
+
+
+def list_local_branches():
+    return git("for-each-ref --format=%(refname:short) refs/heads").lines()
+
+
+def get_active_upstream():
+    upstream = get_upstream()
+    if not upstream:
+        raise Exception("You are not tracking an upstream branch.")
+    parts = upstream.split("/")
+    if len(parts) != 2:
+        raise Exception(f"Your upstream branch '{upstream}' is not remote.")
+    return (parts[0], parts[1])
+
+
+def prerequisites():
+    print("This tool is experimental and a work in progress, please use carefully.")
+    print()
+
+    if not git("remote get-url origin").success():
+        print("Setting up origin")
+        git("remote add origin", CROSVM_URL).fg()
+    if git("remote get-url origin").stdout() != CROSVM_URL:
+        print("Your remote 'origin' does not point to the main crosvm repository.")
+        if confirm(f"Do you want to fix it?"):
+            git("remote set-url origin", CROSVM_URL).fg()
+        else:
+            sys.exit(1)
+
+    # Install gerrit commit hook
+    hook_path = CROSVM_ROOT / ".git/hooks/commit-msg"
+    if not hook_path.exists():
+        hook_path.parent.mkdir(exist_ok=True)
+        curl(f"{GERRIT_URL}/tools/hooks/commit-msg").write_to(hook_path)
+        chmod("+x", hook_path).fg()
+
+
+def status():
+    """
+    Lists all branches and their local commits.
+    """
+    for branch in list_local_branches():
+        print("Branch", branch, "tracking", get_upstream(branch))
+        changes = [*list_local_changes(branch)]
+        for sha, title in changes:
+            print(" ", title)
+        if not changes:
+            print("  No changes")
+        print()
+
+
+def rebase():
+    """
+    Rebases changes from the current branch onto origin/main.
+
+    Will create a new branch called 'current-branch'-upstream tracking origin/main. Changes from
+    the current branch will then be rebased into the -upstream branch.
+    """
+    prerequisites()
+    branch_name = git("branch --show-current").stdout()
+    upstream_branch_name = branch_name + "-upstream"
+
+    print(f"Checking out '{upstream_branch_name}'")
+    rev = git("rev-parse", upstream_branch_name).stdout(check=False)
+    if rev:
+        print(f"Leaving behind previous revision of {upstream_branch_name}: {rev}")
+    git("checkout -B", upstream_branch_name, "origin/main").fg(quiet=True)
+
+    print(f"Cherry-picking changes from {branch_name}")
+    git(f"cherry-pick {branch_name}@{{u}}..{branch_name}").fg()
+
+
+def upload():
+    """
+    Uploads changes to the crosvm main branch.
+    """
+    prerequisites()
+
+    remote, branch = get_active_upstream()
+    changes = [*list_local_changes()]
+    if not changes:
+        print("No changes to upload")
+        return
+
+    print("Uploading to origin/main:")
+    for sha, title in changes:
+        print(" ", sha, title)
+    print()
+
+    if (remote, branch) != ("origin", "main"):
+        print(f"WARNING! Your changes are based on {remote}/{branch}, not origin/main.")
+        print("If gerrit rejects your changes, try `./tools/cl rebase -h`.")
+        print()
+        if not confirm("Upload anyway?"):
+            return
+        print()
+
+    git("push", remote, f"HEAD:refs/for/{branch}").fg()
+
+
+if __name__ == "__main__":
+    run_commands(upload, rebase, status, usage=USAGE)

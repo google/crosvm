@@ -191,6 +191,9 @@ class Command(object):
                 raise subprocess.CalledProcessError(result.returncode, str(self), result.stdout)
         return result.returncode
 
+    def success(self):
+        return self.fg(check=False, quiet=True) == 0
+
     def stdout(self, check: bool = True):
         """
         Runs a program and returns stdout. Stderr is still directed to the user.
@@ -467,7 +470,11 @@ def run_main(main_fn: Callable[..., Any]):
     run_commands(default_fn=main_fn)
 
 
-def run_commands(*functions: Callable[..., Any], default_fn: Optional[Callable[..., Any]] = None):
+def run_commands(
+    *functions: Callable[..., Any],
+    default_fn: Optional[Callable[..., Any]] = None,
+    usage: Optional[str] = None,
+):
     """
     Allow the user to call the provided functions with command line arguments translated to
     function arguments via argh: https://pythonhosted.org/argh
@@ -480,7 +487,7 @@ def run_commands(*functions: Callable[..., Any], default_fn: Optional[Callable[.
         sys.exit(1)
     try:
         # Add global verbose arguments
-        parser = argparse.ArgumentParser()
+        parser = argparse.ArgumentParser(usage=usage)
         add_verbose_args(parser)
 
         # Add provided commands to parser. Do not use sub-commands if we just got one function.
@@ -545,6 +552,16 @@ def find_scripts(path: Path, shebang: str):
     for file in path.glob("*"):
         if file.is_file() and file.open(errors="ignore").read(512).startswith(f"#!{shebang}"):
             yield file
+
+
+def confirm(message: str, default=False):
+    print(message, "[y/N]" if default == False else "[Y/n]")
+    response = sys.stdin.readline().strip()
+    if response in ("y", "Y"):
+        return True
+    if response in ("n", "N"):
+        return False
+    return default
 
 
 if __name__ == "__main__":
