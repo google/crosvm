@@ -30,27 +30,20 @@ curl = cmd("curl --silent --fail")
 chmod = cmd("chmod")
 
 GERRIT_URL = "https://chromium-review.googlesource.com"
-REPO_URL = "https://chromium.googlesource.com/chromiumos/platform/crosvm"
+UPSTREAM_URL = "https://chromium.googlesource.com/crosvm/crosvm"
+CROS_URL = "https://chromium.googlesource.com/chromiumos/platform/crosvm"
 
 # Gerrit tags used to identify bot changes.
-MERGE_TAG = "crosvm-merge"
-DRY_RUN_TAG = "crosvm-merge-dry-run"
+TESTING = "MERGE_BOT_TEST" in os.environ
+if TESTING:
+    MERGE_TAG = "testing-crosvm-merge"
+    DRY_RUN_TAG = "testing-crosvm-merge-dry-run"
+else:
+    MERGE_TAG = "crosvm-merge"
+    DRY_RUN_TAG = "crosvm-merge-dry-run"
 
 # This is the email of the account that posts CQ messages.
 LUCI_EMAIL = "chromeos-scoped@luci-project-accounts.iam.gserviceaccount.com"
-
-
-def is_gce_instance():
-    """
-    Returns true if we are running in a GCE instance.
-
-    See http://cloud.google.com/compute/docs/instances/detect-compute-engine
-    """
-    try:
-        metadata = curl("-i http://metadata.google.internal").stdout()
-        return "Metadata-Flavor: Google" in metadata
-    except:
-        return False
 
 
 def strip_xssi(response: str):
@@ -169,35 +162,29 @@ def bug_notes(commit_range: str):
 
 def setup_tracking_branch(branch_name: str, tracking: str):
     "Create and checkout `branch_name` tracking `tracking`. Overwrites existing branch."
-    git("checkout", tracking).fg(quiet=True)
+    git("fetch -q cros", tracking).fg()
+    git("checkout", f"cros/{tracking}").fg(quiet=True)
     git("branch -D", branch_name).fg(quiet=True, check=False)
-    git("checkout -b", branch_name, "--track", tracking).fg()
+    git("checkout -b", branch_name, "--track", f"cros/{tracking}").fg()
 
 
 def gerrit_prerequisites():
     "Make sure we can upload to gerrit."
-    if is_gce_instance():
-        # Grab http cookies for accessing GOB. See go/gob-gce
-        gcompute_path = Path(f"{os.environ['KOKORO_ARTIFACTS_DIR']}/gcompute-tools")
-        if not gcompute_path.exists():
-            git("clone", "https://gerrit.googlesource.com/gcompute-tools", gcompute_path).fg()
-        cmd(f"{gcompute_path}/git-cookie-authdaemon").fg()
 
-        # Setup correct user info for the GCE service account.
-        git("config user.name", quoted("Crosvm Bot")).fg()
-        git("config user.email", quoted("crosvm-bot@crosvm-packages.iam.gserviceaccount.com")).fg()
-    else:
-        # Make sure we have http cookies to access gerrit.
-        cookie_file = git("config http.cookiefile").stdout(check=False)
-        if not cookie_file:
-            print("Cannot access gerrit without http cookies.")
-            print(f"Install one via: {GERRIT_URL}/new-password")
-            sys.exit(1)
+    # Make sure we have http cookies to access gerrit.
+    cookie_file = git("config http.cookiefile").stdout(check=False)
+    if not cookie_file:
+        print("Cannot access gerrit without http cookies.")
+        print(f"Install one via: {GERRIT_URL}/new-password")
+        sys.exit(1)
 
-    # Re-add remote to ensure it is correct. We cannot use the 'origin' provided by Kokoro.
-    git("remote remove origin").fg()
-    git("remote add origin", REPO_URL).fg()
-    git("fetch -q origin").fg()
+    # Setup cros remote which we are merging into
+    if git("remote get-url cros").fg(check=False) != 0:
+        print("Setting up remote: cros")
+        git("remote add cros", CROS_URL).fg()
+    if git("remote get-url cros").stdout() != CROS_URL:
+        print("Your remote 'cros' does not match", CROS_URL)
+        sys.exit(1)
 
     # Install gerrit Change-Id hook
     hook_path = CROSVM_ROOT / ".git/hooks/commit-msg"
@@ -212,7 +199,7 @@ def upload_to_gerrit(target_branch: str, *extra_params: str):
     for i in range(3):
         try:
             print(f"Uploading to gerrit (Attempt {i})")
-            git(f"push origin HEAD:refs/for/{target_branch}%{','.join(extra_params)}").fg()
+            git(f"push cros HEAD:refs/for/{target_branch}%{','.join(extra_params)}").fg()
             return
         except:
             continue
@@ -223,15 +210,12 @@ def upload_to_gerrit(target_branch: str, *extra_params: str):
 # The functions below are callable via the command line
 
 
-def create_merge_commits(
-    revision: str, max_size: int = 0, create_dry_run: bool = False, is_bot: bool = False
-):
+def create_merge_commits(revision: str, max_size: int = 0, create_dry_run: bool = False):
     "Merges `revision` into HEAD, creating merge commits including at most `max-size` commits."
     os.chdir(CROSVM_ROOT)
-    from_rev = git("rev-parse", revision).stdout()
 
     # Find list of commits to merge, then batch them into smaller merges.
-    commits = git_log(f"HEAD..{from_rev}", "--pretty=%H").lines()
+    commits = git_log(f"HEAD..{revision}", "--pretty=%H").lines()
     if not commits:
         print("Nothing to merge.")
         return 0
@@ -245,12 +229,12 @@ def create_merge_commits(
 
         # Put together a message containing info about what's in the merge.
         batch_str = f"{i + 1}/{len(batches)}" if len(batches) > 1 else ""
-        title = "Merge with main" if not create_dry_run else f"Merge dry run"
+        title = "Merge with upstream" if not create_dry_run else f"Merge dry run"
         message = "\n\n".join(
             [
                 f"{title} {date.today().isoformat()} {batch_str}",
                 git_log(commit_range, "--oneline").stdout(),
-                f"{REPO_URL}/+log/{commit_range}",
+                f"{UPSTREAM_URL}/+log/{commit_range}",
                 bug_notes(commit_range),
             ]
         )
@@ -276,13 +260,14 @@ def status():
 
 
 def update_merges(
-    revision: str = "origin/main",
+    revision: str,
     target_branch: str = "chromeos",
     max_size: int = 15,
     is_bot: bool = False,
 ):
     """Uploads a new set of merge commits if the previous batch has been submitted."""
     gerrit_prerequisites()
+    parsed_revision = git("rev-parse", revision).stdout()
 
     active_merges = list_active_merges()
     if active_merges:
@@ -291,9 +276,9 @@ def update_merges(
             print(merge.pretty_info())
         return
     else:
-        print(f"Creating merge of {revision} into origin/{target_branch}")
-        setup_tracking_branch("merge-bot-branch", f"origin/{target_branch}")
-        if create_merge_commits(revision, max_size, create_dry_run=False) > 0:
+        print(f"Creating merge of {parsed_revision} into cros/{target_branch}")
+        setup_tracking_branch("merge-bot-branch", target_branch)
+        if create_merge_commits(parsed_revision, max_size, create_dry_run=False) > 0:
             upload_to_gerrit(
                 target_branch,
                 f"hashtag={MERGE_TAG}",
@@ -303,7 +288,7 @@ def update_merges(
 
 
 def update_dry_runs(
-    revision: str = "origin/main",
+    revision: str,
     target_branch: str = "chromeos",
     max_size: int = 0,
     is_bot: bool = False,
@@ -313,6 +298,7 @@ def update_dry_runs(
     developers as well.
     """
     gerrit_prerequisites()
+    parsed_revision = git("rev-parse", revision).stdout()
 
     # Close active dry runs if they are done.
     print("Checking active dry runs")
@@ -355,9 +341,9 @@ def update_dry_runs(
             print(dry_run.pretty_info())
         return
 
-    print(f"Creating dry run merge of {revision} into origin/{target_branch}")
-    setup_tracking_branch("merge-bot-branch", f"origin/{target_branch}")
-    if create_merge_commits(revision, max_size, create_dry_run=True) > 0:
+    print(f"Creating dry run merge of {parsed_revision} into cros/{target_branch}")
+    setup_tracking_branch("merge-bot-branch", target_branch)
+    if create_merge_commits(parsed_revision, max_size, create_dry_run=True) > 0:
         upload_to_gerrit(
             target_branch,
             f"hashtag={DRY_RUN_TAG}",
@@ -366,4 +352,4 @@ def update_dry_runs(
         )
 
 
-run_commands(create_merge_commits, status, update_merges, update_dry_runs)
+run_commands(create_merge_commits, status, update_merges, update_dry_runs, gerrit_prerequisites)

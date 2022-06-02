@@ -25,8 +25,17 @@ main() {
         pip install argh
     fi
 
-    ./tools/chromeos/merge_bot -v update-merges --is-bot
-    ./tools/chromeos/merge_bot -v update-dry-runs --is-bot
+    # Run git cookie auth daemon to pull git http cookies for this GCE instance.
+    local gcompute_path="${KOKORO_ARTIFACTS_DIR}/gcompute-tools"
+    git clone "https://gerrit.googlesource.com/gcompute-tools" "$gcompute_path"
+    ${gcompute_path}/git-cookie-authdaemon
+
+    # Overwrite kokoro default with service account we are actually using to submit code.
+    git config user.name "Crosvm Bot"
+    git config user.email "crosvm-bot@crosvm-packages.iam.gserviceaccount.com"
+
+    ./tools/chromeos/merge_bot -v update-merges --is-bot HEAD
+    ./tools/chromeos/merge_bot -v update-dry-runs --is-bot HEAD
 }
 
 main
