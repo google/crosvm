@@ -34,7 +34,6 @@ use backend::*;
 
 #[derive(Debug)]
 struct QueuedInputResourceParams {
-    encoder_id: InputBufferId,
     timestamp: u64,
     in_queue: bool,
 }
@@ -46,8 +45,6 @@ struct InputResource {
 
 #[derive(Debug)]
 struct QueuedOutputResourceParams {
-    encoder_id: OutputBufferId,
-    timestamp: u64,
     in_queue: bool,
 }
 
@@ -799,7 +796,6 @@ impl<T: Encoder> EncoderDevice<T> {
                             return Err(VideoError::InvalidOperation);
                         }
                         let queue_params = QueuedInputResourceParams {
-                            encoder_id: input_buffer_id,
                             timestamp,
                             in_queue: true,
                         };
@@ -883,11 +879,7 @@ impl<T: Encoder> EncoderDevice<T> {
                                 output_buffer_id, last_resource_id
                             );
                         }
-                        let queue_params = QueuedOutputResourceParams {
-                            encoder_id: output_buffer_id,
-                            timestamp,
-                            in_queue: true,
-                        };
+                        let queue_params = QueuedOutputResourceParams { in_queue: true };
                         if let Some(last_queue_params) =
                             dst_resource.queue_params.replace(queue_params)
                         {
