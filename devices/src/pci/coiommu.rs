@@ -40,8 +40,8 @@ use vm_control::{VmMemoryDestination, VmMemoryRequest, VmMemoryResponse, VmMemor
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::pci::pci_configuration::{
-    PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType, PciClassCode,
-    PciConfiguration, PciHeaderType, PciOtherSubclass, COMMAND_REG, COMMAND_REG_MEMORY_SPACE_MASK,
+    PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciClassCode, PciConfiguration,
+    PciHeaderType, PciOtherSubclass, COMMAND_REG, COMMAND_REG_MEMORY_SPACE_MASK,
 };
 use crate::pci::pci_device::{BarRange, PciDevice, Result as PciResult};
 use crate::pci::{PciAddress, PciDeviceError};
@@ -55,11 +55,11 @@ const COIOMMU_CMD_ACTIVATE: u64 = 1;
 const COIOMMU_CMD_PARK_UNPIN: u64 = 2;
 const COIOMMU_CMD_UNPARK_UNPIN: u64 = 3;
 const COIOMMU_REVISION_ID: u8 = 0x10;
-const COIOMMU_MMIO_BAR: PciBarIndex = PciBarIndex::Bar0;
+const COIOMMU_MMIO_BAR: u8 = 0;
 const COIOMMU_MMIO_BAR_SIZE: u64 = 0x2000;
-const COIOMMU_NOTIFYMAP_BAR: PciBarIndex = PciBarIndex::Bar2;
+const COIOMMU_NOTIFYMAP_BAR: u8 = 2;
 const COIOMMU_NOTIFYMAP_SIZE: usize = 0x2000;
-const COIOMMU_TOPOLOGYMAP_BAR: PciBarIndex = PciBarIndex::Bar4;
+const COIOMMU_TOPOLOGYMAP_BAR: u8 = 4;
 const COIOMMU_TOPOLOGYMAP_SIZE: usize = 0x2000;
 const PAGE_SIZE_4K: u64 = 4096;
 const PAGE_SHIFT_4K: u64 = 12;
@@ -1249,7 +1249,7 @@ impl CoIommuDev {
         resources: &mut SystemAllocator,
         address: PciAddress,
         size: u64,
-        bar_num: PciBarIndex,
+        bar_num: u8,
         name: &str,
     ) -> PciResult<u64> {
         let addr = resources
@@ -1260,7 +1260,7 @@ impl CoIommuDev {
                     bus: address.bus,
                     dev: address.dev,
                     func: address.func,
-                    bar: bar_num.into(),
+                    bar: bar_num,
                 },
                 name.to_string(),
                 size,
@@ -1268,7 +1268,7 @@ impl CoIommuDev {
             .map_err(|e| PciDeviceError::IoAllocationFailed(size, e))?;
 
         let bar = PciBarConfiguration::new(
-            bar_num,
+            bar_num as usize,
             size,
             PciBarRegionType::Memory64BitRegion,
             PciBarPrefetchable::Prefetchable,
@@ -1283,7 +1283,7 @@ impl CoIommuDev {
     }
 
     fn read_mmio(&mut self, addr: u64, data: &mut [u8]) {
-        let bar = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR);
+        let bar = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR as usize);
         let offset = addr - bar;
         if offset >= mem::size_of::<CoIommuReg>() as u64 {
             error!(
@@ -1318,7 +1318,7 @@ impl CoIommuDev {
     }
 
     fn write_mmio(&mut self, addr: u64, data: &[u8]) {
-        let bar = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR);
+        let bar = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR as usize);
         let mmio_len = mem::size_of::<CoIommuReg>() as u64;
         let offset = addr - bar;
         if offset >= mmio_len {
@@ -1535,8 +1535,10 @@ impl PciDevice for CoIommuDev {
     }
 
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
-        let mmio_bar = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR);
-        let notifymap = self.config_regs.get_bar_addr(COIOMMU_NOTIFYMAP_BAR);
+        let mmio_bar = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR as usize);
+        let notifymap = self
+            .config_regs
+            .get_bar_addr(COIOMMU_NOTIFYMAP_BAR as usize);
         match addr {
             o if mmio_bar <= o && o < mmio_bar + COIOMMU_MMIO_BAR_SIZE as u64 => {
                 self.read_mmio(addr, data);
@@ -1552,8 +1554,10 @@ impl PciDevice for CoIommuDev {
     }
 
     fn write_bar(&mut self, addr: u64, data: &[u8]) {
-        let mmio_bar = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR);
-        let notifymap = self.config_regs.get_bar_addr(COIOMMU_NOTIFYMAP_BAR);
+        let mmio_bar = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR as usize);
+        let notifymap = self
+            .config_regs
+            .get_bar_addr(COIOMMU_NOTIFYMAP_BAR as usize);
         match addr {
             o if mmio_bar <= o && o < mmio_bar + COIOMMU_MMIO_BAR_SIZE as u64 => {
                 self.write_mmio(addr, data);
@@ -1569,7 +1573,7 @@ impl PciDevice for CoIommuDev {
     }
 
     fn ioevents(&self) -> Vec<(&Event, u64, Datamatch)> {
-        let bar0 = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR);
+        let bar0 = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR as usize);
         let notify_base = bar0 + mem::size_of::<CoIommuReg>() as u64;
         self.ioevents
             .iter()
@@ -1578,7 +1582,7 @@ impl PciDevice for CoIommuDev {
             .collect()
     }
 
-    fn get_bar_configuration(&self, bar_num: PciBarIndex) -> Option<PciBarConfiguration> {
+    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
         self.config_regs.get_bar_configuration(bar_num)
     }
 }

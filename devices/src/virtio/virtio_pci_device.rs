@@ -81,13 +81,13 @@ impl PciCapability for VirtioPciCap {
 }
 
 impl VirtioPciCap {
-    pub fn new(cfg_type: PciCapabilityType, bar: PciBarIndex, offset: u32, length: u32) -> Self {
+    pub fn new(cfg_type: PciCapabilityType, bar: u8, offset: u32, length: u32) -> Self {
         VirtioPciCap {
             cap_vndr: 0,
             cap_next: 0,
             cap_len: std::mem::size_of::<VirtioPciCap>() as u8,
             cfg_type: cfg_type as u8,
-            bar: bar as u8,
+            bar,
             id: 0,
             padding: [0; 2],
             offset: Le32::from(offset),
@@ -127,7 +127,7 @@ impl PciCapability for VirtioPciNotifyCap {
 impl VirtioPciNotifyCap {
     pub fn new(
         cfg_type: PciCapabilityType,
-        bar: PciBarIndex,
+        bar: u8,
         offset: u32,
         length: u32,
         multiplier: Le32,
@@ -138,7 +138,7 @@ impl VirtioPciNotifyCap {
                 cap_next: 0,
                 cap_len: std::mem::size_of::<VirtioPciNotifyCap>() as u8,
                 cfg_type: cfg_type as u8,
-                bar: bar as u8,
+                bar,
                 id: 0,
                 padding: [0; 2],
                 offset: Le32::from(offset),
@@ -174,20 +174,14 @@ impl PciCapability for VirtioPciShmCap {
 }
 
 impl VirtioPciShmCap {
-    pub fn new(
-        cfg_type: PciCapabilityType,
-        bar: PciBarIndex,
-        offset: u64,
-        length: u64,
-        shmid: u8,
-    ) -> Self {
+    pub fn new(cfg_type: PciCapabilityType, bar: u8, offset: u64, length: u64, shmid: u8) -> Self {
         VirtioPciShmCap {
             cap: VirtioPciCap {
                 cap_vndr: 0,
                 cap_next: 0,
                 cap_len: std::mem::size_of::<VirtioPciShmCap>() as u8,
                 cfg_type: cfg_type as u8,
-                bar: bar.into(),
+                bar,
                 id: shmid,
                 padding: [0; 2],
                 offset: Le32::from(offset as u32),
@@ -254,7 +248,7 @@ pub struct VirtioPciDevice {
     queues: Vec<Queue>,
     queue_evts: Vec<Event>,
     mem: GuestMemory,
-    settings_bar: PciBarIndex,
+    settings_bar: u8,
     msix_config: Arc<Mutex<MsixConfig>>,
     msix_cap_reg_idx: Option<usize>,
     common_config: VirtioPciCommonConfig,
@@ -325,7 +319,7 @@ impl VirtioPciDevice {
             queues,
             queue_evts,
             mem,
-            settings_bar: PciBarIndex::Bar0,
+            settings_bar: 0,
             msix_config,
             msix_cap_reg_idx: None,
             common_config: VirtioPciCommonConfig {
@@ -364,7 +358,7 @@ impl VirtioPciDevice {
 
     fn add_settings_pci_capabilities(
         &mut self,
-        settings_bar: PciBarIndex,
+        settings_bar: u8,
     ) -> std::result::Result<(), PciDeviceError> {
         // Add pointers to the different configuration structures from the PCI capabilities.
         let common_cap = VirtioPciCap::new(
@@ -410,7 +404,7 @@ impl VirtioPciDevice {
             .map_err(PciDeviceError::CapabilitiesSetup)?;
 
         //TODO(dgreid) - How will the configuration_cap work?
-        let configuration_cap = VirtioPciCap::new(PciCapabilityType::PciConfig, settings_bar, 0, 0);
+        let configuration_cap = VirtioPciCap::new(PciCapabilityType::PciConfig, 0, 0, 0);
         self.config_regs
             .add_capability(&configuration_cap)
             .map_err(PciDeviceError::CapabilitiesSetup)?;
@@ -552,14 +546,14 @@ impl PciDevice for VirtioPciDevice {
                     bus: address.bus,
                     dev: address.dev,
                     func: address.func,
-                    bar: self.settings_bar.into(),
+                    bar: 0,
                 },
                 format!("virtio-{}-cap_bar", self.device.device_type()),
                 CAPABILITY_BAR_SIZE,
             )
             .map_err(|e| PciDeviceError::IoAllocationFailed(CAPABILITY_BAR_SIZE, e))?;
         let config = PciBarConfiguration::new(
-            self.settings_bar,
+            0,
             CAPABILITY_BAR_SIZE,
             PciBarRegionType::Memory32BitRegion,
             PciBarPrefetchable::NotPrefetchable,
@@ -568,7 +562,8 @@ impl PciDevice for VirtioPciDevice {
         let settings_bar = self
             .config_regs
             .add_pci_bar(config)
-            .map_err(|e| PciDeviceError::IoRegistrationFailed(settings_config_addr, e))?;
+            .map_err(|e| PciDeviceError::IoRegistrationFailed(settings_config_addr, e))?
+            as u8;
         ranges.push(BarRange {
             addr: settings_config_addr,
             size: CAPABILITY_BAR_SIZE,
@@ -618,7 +613,7 @@ impl PciDevice for VirtioPciDevice {
         Ok(ranges)
     }
 
-    fn get_bar_configuration(&self, bar_num: PciBarIndex) -> Option<PciBarConfiguration> {
+    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
         self.config_regs.get_bar_configuration(bar_num)
     }
 
@@ -633,7 +628,7 @@ impl PciDevice for VirtioPciDevice {
     }
 
     fn ioevents(&self) -> Vec<(&Event, u64, Datamatch)> {
-        let bar0 = self.config_regs.get_bar_addr(self.settings_bar);
+        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
         let notify_base = bar0 + NOTIFICATION_BAR_OFFSET;
         self.queue_evts
             .iter()
@@ -680,7 +675,7 @@ impl PciDevice for VirtioPciDevice {
             None => return,
         };
 
-        if bar.bar_index() == self.settings_bar {
+        if bar.bar_index() == self.settings_bar as PciBarIndex {
             let offset = addr - bar.address();
             match offset {
                 COMMON_CONFIG_BAR_OFFSET..=COMMON_CONFIG_LAST => self.common_config.read(
@@ -730,7 +725,7 @@ impl PciDevice for VirtioPciDevice {
             None => return,
         };
 
-        if bar.bar_index() == self.settings_bar {
+        if bar.bar_index() == self.settings_bar as PciBarIndex {
             let offset = addr - bar.address();
             match offset {
                 COMMON_CONFIG_BAR_OFFSET..=COMMON_CONFIG_LAST => self.common_config.write(

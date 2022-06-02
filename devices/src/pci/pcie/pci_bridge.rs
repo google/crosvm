@@ -8,8 +8,8 @@ use sync::Mutex;
 use crate::pci::msi::{MsiCap, MsiConfig};
 use crate::pci::pci_configuration::{PciBridgeSubclass, PciSubclass, CLASS_REG};
 use crate::pci::{
-    BarRange, PciAddress, PciBarConfiguration, PciBarIndex, PciClassCode, PciConfiguration,
-    PciDevice, PciDeviceError, PciHeaderType, PCI_VENDOR_ID_INTEL,
+    BarRange, PciAddress, PciBarConfiguration, PciClassCode, PciConfiguration, PciDevice,
+    PciDeviceError, PciHeaderType, PCI_VENDOR_ID_INTEL,
 };
 use crate::PciInterruptPin;
 use base::{warn, AsRawDescriptors, Event, RawDescriptor, Tube};
@@ -215,7 +215,7 @@ impl PciDevice for PciBridge {
         Some((gsi, pin))
     }
 
-    fn get_bar_configuration(&self, bar_num: PciBarIndex) -> Option<PciBarConfiguration> {
+    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
         self.config.get_bar_configuration(bar_num)
     }
 

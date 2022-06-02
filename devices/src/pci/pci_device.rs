@@ -13,8 +13,8 @@ use thiserror::Error;
 
 use crate::bus::{BusDeviceObj, BusRange, BusType, ConfigWriteResult};
 use crate::pci::pci_configuration::{
-    self, PciBarConfiguration, PciBarIndex, BAR0_REG, COMMAND_REG, COMMAND_REG_IO_SPACE_MASK,
-    COMMAND_REG_MEMORY_SPACE_MASK, PCI_ID_REG, ROM_BAR_REG,
+    self, PciBarConfiguration, BAR0_REG, COMMAND_REG, COMMAND_REG_IO_SPACE_MASK,
+    COMMAND_REG_MEMORY_SPACE_MASK, NUM_BAR_REGS, PCI_ID_REG, ROM_BAR_REG,
 };
 use crate::pci::{PciAddress, PciAddressError, PciInterruptPin};
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
@@ -115,7 +115,7 @@ pub trait PciDevice: Send {
     }
 
     /// Returns the configuration of a base address register, if present.
-    fn get_bar_configuration(&self, bar_num: PciBarIndex) -> Option<PciBarConfiguration>;
+    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration>;
 
     /// Register any capabilties specified by the device.
     fn register_device_capabilities(&mut self) -> Result<()> {
@@ -329,8 +329,7 @@ impl<T: PciDevice> BusDevice for T {
 
     fn get_ranges(&self) -> Vec<(BusRange, BusType)> {
         let mut ranges = Vec::new();
-        let mut bar_idx = Some(PciBarIndex::Bar0);
-        while let Some(bar_num) = bar_idx {
+        for bar_num in 0..NUM_BAR_REGS {
             if let Some(bar) = self.get_bar_configuration(bar_num) {
                 let bus_type = if bar.is_memory() {
                     BusType::Mmio
@@ -345,7 +344,6 @@ impl<T: PciDevice> BusDevice for T {
                     bus_type,
                 ));
             }
-            bar_idx = bar_num.next();
         }
         ranges
     }
@@ -380,7 +378,7 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     fn allocate_device_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<BarRange>> {
         (**self).allocate_device_bars(resources)
     }
-    fn get_bar_configuration(&self, bar_num: PciBarIndex) -> Option<PciBarConfiguration> {
+    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
         (**self).get_bar_configuration(bar_num)
     }
     fn register_device_capabilities(&mut self) -> Result<()> {
@@ -487,7 +485,7 @@ mod tests {
             Err(Error::PciAllocationFailed)
         }
 
-        fn get_bar_configuration(&self, bar_num: PciBarIndex) -> Option<PciBarConfiguration> {
+        fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
             self.config_regs.get_bar_configuration(bar_num)
         }
     }
@@ -510,7 +508,7 @@ mod tests {
 
         let _ = test_dev.config_regs.add_pci_bar(
             PciBarConfiguration::new(
-                PciBarIndex::Bar0,
+                0,
                 BAR0_SIZE,
                 PciBarRegionType::Memory64BitRegion,
                 PciBarPrefetchable::Prefetchable,
@@ -519,7 +517,7 @@ mod tests {
         );
         let _ = test_dev.config_regs.add_pci_bar(
             PciBarConfiguration::new(
-                PciBarIndex::Bar2,
+                2,
                 BAR2_SIZE,
                 PciBarRegionType::IoRegion,
                 PciBarPrefetchable::NotPrefetchable,

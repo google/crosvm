@@ -16,8 +16,8 @@ use base::RawDescriptor;
 use resources::{Alloc, SystemAllocator};
 
 use crate::pci::pci_configuration::{
-    PciBarConfiguration, PciBarIndex, PciClassCode, PciConfiguration, PciHeaderType,
-    PciProgrammingInterface, PciSubclass,
+    PciBarConfiguration, PciClassCode, PciConfiguration, PciHeaderType, PciProgrammingInterface,
+    PciSubclass,
 };
 use crate::pci::pci_device::{PciDevice, Result};
 use crate::pci::{PciAddress, PciDeviceError};
@@ -109,7 +109,7 @@ impl PciDevice for StubPciDevice {
         Vec::new()
     }
 
-    fn get_bar_configuration(&self, bar_num: PciBarIndex) -> Option<PciBarConfiguration> {
+    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
         self.config_regs.get_bar_configuration(bar_num)
     }
 

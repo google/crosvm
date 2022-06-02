@@ -11,8 +11,8 @@ use base::{error, RawDescriptor, SendTube, VmEventType};
 use sync::Mutex;
 
 use crate::pci::pci_configuration::{
-    PciBarConfiguration, PciBarIndex, PciBridgeSubclass, PciClassCode, PciConfiguration,
-    PciHeaderType, HEADER_TYPE_MULTIFUNCTION_MASK, HEADER_TYPE_REG,
+    PciBarConfiguration, PciBridgeSubclass, PciClassCode, PciConfiguration, PciHeaderType,
+    HEADER_TYPE_MULTIFUNCTION_MASK, HEADER_TYPE_REG,
 };
 use crate::pci::pci_device::{Error, PciDevice};
 use crate::pci::{PciAddress, PciId, PCI_VENDOR_ID_INTEL};
@@ -51,7 +51,7 @@ impl PciDevice for PciRootConfiguration {
 
     fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
 
-    fn get_bar_configuration(&self, bar_num: PciBarIndex) -> Option<PciBarConfiguration> {
+    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
         self.config.get_bar_configuration(bar_num)
     }
 }

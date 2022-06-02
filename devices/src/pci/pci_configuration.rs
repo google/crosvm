@@ -28,13 +28,13 @@ pub const CLASS_REG_REVISION_ID_OFFSET: usize = 0;
 pub const HEADER_TYPE_REG: usize = 3;
 pub const HEADER_TYPE_MULTIFUNCTION_MASK: u32 = 0x0080_0000;
 pub const BAR0_REG: usize = 4;
-pub const BAR5_REG: usize = 9;
 const BAR_IO_ADDR_MASK: u32 = 0xffff_fffc;
 const BAR_IO_MIN_SIZE: u64 = 4;
 const BAR_MEM_ADDR_MASK: u32 = 0xffff_fff0;
 const BAR_MEM_MIN_SIZE: u64 = 16;
 const BAR_ROM_MIN_SIZE: u64 = 2048;
 pub const NUM_BAR_REGS: usize = 7; // 6 normal BARs + expansion ROM BAR.
+pub const ROM_BAR_IDX: PciBarIndex = 6;
 pub const ROM_BAR_REG: usize = 12;
 pub const CAPABILITY_LIST_HEAD_OFFSET: usize = 0x34;
 #[cfg(unix)]
@@ -263,102 +263,7 @@ pub enum PciBarPrefetchable {
     Prefetchable = 0x08,
 }
 
-/// Index of a single 32-bit PCI base address register.
-///
-/// This index can refer to one of the 6 normal BARs or the Option ROM base address.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, enumn::N)]
-pub enum PciBarIndex {
-    Bar0,
-    Bar1,
-    Bar2,
-    Bar3,
-    Bar4,
-    Bar5,
-    RomBar,
-}
-
-impl PciBarIndex {
-    /// Returns the register index of this BAR index within PCI configuration space.
-    ///
-    /// Each PCI configuration space register is 4 bytes wide, so this can be converted to a
-    /// configuration space offset by multiplying by 4.
-    pub fn reg_index(&self) -> usize {
-        match self {
-            PciBarIndex::RomBar => ROM_BAR_REG,
-            _ => BAR0_REG + usize::from(*self),
-        }
-    }
-
-    /// Attempts to convert the given register index into a `PciBarIndex`.
-    pub fn try_from_reg_index(reg_index: usize) -> Result<PciBarIndex> {
-        match reg_index {
-            BAR0_REG..=BAR5_REG => Ok(PciBarIndex::n((reg_index - BAR0_REG) as u8).unwrap()),
-            ROM_BAR_REG => Ok(PciBarIndex::RomBar),
-            _ => Err(Error::BarInvalidRegIndex(reg_index)),
-        }
-    }
-
-    /// Returns the index of the base address register following this one.
-    ///
-    /// For the purposes of this function, the ROM BAR follows BAR 5.
-    pub fn next(&self) -> Option<PciBarIndex> {
-        PciBarIndex::try_from(u32::from(*self) + 1).ok()
-    }
-
-    /// Returns the index of the upper half of a 64-bit BAR, if that is a valid configuration.
-    pub fn upper_64bit_index(&self) -> Option<PciBarIndex> {
-        // 64-bit memory regions require two contiguous BAR indexes (BAR 4+5 is the last valid
-        // pair). The ROM BAR cannot be used as part of a 64-bit BAR.
-        if *self <= PciBarIndex::Bar4 {
-            self.next()
-        } else {
-            None
-        }
-    }
-}
-
-impl std::fmt::Display for PciBarIndex {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match &self {
-            PciBarIndex::Bar0 => write!(f, "BAR 0"),
-            PciBarIndex::Bar1 => write!(f, "BAR 1"),
-            PciBarIndex::Bar2 => write!(f, "BAR 2"),
-            PciBarIndex::Bar3 => write!(f, "BAR 3"),
-            PciBarIndex::Bar4 => write!(f, "BAR 4"),
-            PciBarIndex::Bar5 => write!(f, "BAR 5"),
-            PciBarIndex::RomBar => write!(f, "ROM BAR"),
-        }
-    }
-}
-
-impl From<PciBarIndex> for u8 {
-    fn from(i: PciBarIndex) -> u8 {
-        i as u8
-    }
-}
-
-impl From<PciBarIndex> for u32 {
-    fn from(i: PciBarIndex) -> u32 {
-        i as u32
-    }
-}
-
-impl From<PciBarIndex> for usize {
-    fn from(i: PciBarIndex) -> usize {
-        i as usize
-    }
-}
-
-impl TryFrom<u32> for PciBarIndex {
-    type Error = Error;
-
-    fn try_from(idx: u32) -> Result<PciBarIndex> {
-        match PciBarIndex::n(idx) {
-            Some(bar_idx) => Ok(bar_idx),
-            None => Err(Error::BarInvalid(idx)),
-        }
-    }
-}
+pub type PciBarIndex = usize;
 
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PciBarConfiguration {
@@ -371,16 +276,16 @@ pub struct PciBarConfiguration {
 
 pub struct PciBarIter<'a> {
     config: &'a PciConfiguration,
-    bar_num: Option<PciBarIndex>,
+    bar_num: PciBarIndex,
 }
 
 impl<'a> Iterator for PciBarIter<'a> {
     type Item = PciBarConfiguration;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(bar_num) = self.bar_num {
-            let bar_config = self.config.get_bar_configuration(bar_num);
-            self.bar_num = bar_num.next();
+        while self.bar_num < NUM_BAR_REGS {
+            let bar_config = self.config.get_bar_configuration(self.bar_num);
+            self.bar_num += 1;
             if let Some(bar_config) = bar_config {
                 return Some(bar_config);
             }
@@ -401,12 +306,10 @@ pub enum Error {
     BarInUse(PciBarIndex),
     #[error("64bit bar {0} already used (requires two regs)")]
     BarInUse64(PciBarIndex),
-    #[error("bar {0} invalid, max 6")]
-    BarInvalid(u32),
-    #[error("64bitbar {0} invalid, requires two regs, max 5")]
+    #[error("bar {0} invalid, max {}", NUM_BAR_REGS - 1)]
+    BarInvalid(PciBarIndex),
+    #[error("64bitbar {0} invalid, requires two regs, max {}", ROM_BAR_IDX - 1)]
     BarInvalid64(PciBarIndex),
-    #[error("reg index {0} is not a valid BAR")]
-    BarInvalidRegIndex(usize),
     #[error("expansion rom bar must be a memory region")]
     BarInvalidRomType,
     #[error("bar address {0} not a power of two")]
@@ -564,8 +467,11 @@ impl PciConfiguration {
     /// (i.e, region size must be power of two, register not already used). Returns 'None' on
     /// failure all, `Some(BarIndex)` on success.
     pub fn add_pci_bar(&mut self, config: PciBarConfiguration) -> Result<PciBarIndex> {
-        let bar_num = usize::from(config.bar_idx);
-        if self.bar_used[bar_num] {
+        if config.bar_idx >= NUM_BAR_REGS {
+            return Err(Error::BarInvalid(config.bar_idx));
+        }
+
+        if self.bar_used[config.bar_idx] {
             return Err(Error::BarInUse(config.bar_idx));
         }
 
@@ -605,24 +511,22 @@ impl PciConfiguration {
                 }
             }
             PciBarRegionType::Memory64BitRegion => {
-                let high_bar_idx = match config.bar_idx.upper_64bit_index() {
-                    Some(idx) => idx,
-                    None => return Err(Error::BarInvalid64(config.bar_idx)),
-                };
+                // The expansion ROM BAR cannot be used for part of a 64-bit BAR.
+                if config.bar_idx + 1 >= ROM_BAR_IDX {
+                    return Err(Error::BarInvalid64(config.bar_idx));
+                }
 
                 if end_addr > u64::max_value() {
                     return Err(Error::BarAddressInvalid(config.addr, config.size));
                 }
 
-                let high_bar_num = usize::from(high_bar_idx);
-
-                if self.bar_used[high_bar_num] {
-                    return Err(Error::BarInUse64(high_bar_idx));
+                if self.bar_used[config.bar_idx + 1] {
+                    return Err(Error::BarInUse64(config.bar_idx));
                 }
 
-                self.registers[high_bar_idx.reg_index()] = (config.addr >> 32) as u32;
-                self.writable_bits[high_bar_idx.reg_index()] = !((config.size - 1) >> 32) as u32;
-                self.bar_used[high_bar_num] = true;
+                self.registers[reg_idx + 1] = (config.addr >> 32) as u32;
+                self.writable_bits[reg_idx + 1] = !((config.size - 1) >> 32) as u32;
+                self.bar_used[config.bar_idx + 1] = true;
             }
         }
 
@@ -645,22 +549,22 @@ impl PciConfiguration {
         if config.is_expansion_rom() {
             self.writable_bits[reg_idx] |= 1; // Expansion ROM enable bit.
         }
-        self.bar_used[bar_num] = true;
-        self.bar_configs[bar_num] = Some(config);
+        self.bar_used[config.bar_idx] = true;
+        self.bar_configs[config.bar_idx] = Some(config);
         Ok(config.bar_idx)
     }
 
     /// Returns an iterator of the currently configured base address registers.
+    #[allow(dead_code)] // TODO(dverkamp): remove this once used
     pub fn get_bars(&self) -> PciBarIter {
         PciBarIter {
             config: self,
-            bar_num: Some(PciBarIndex::Bar0),
+            bar_num: 0,
         }
     }
 
     /// Returns the configuration of a base address register, if present.
-    pub fn get_bar_configuration(&self, bar_idx: PciBarIndex) -> Option<PciBarConfiguration> {
-        let bar_num = usize::from(bar_idx);
+    pub fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
         let config = self.bar_configs.get(bar_num)?;
 
         if let Some(mut config) = config {
@@ -673,7 +577,7 @@ impl PciConfiguration {
 
             // The address may have been modified by the guest, so the value in bar_configs
             // may be outdated. Replace it with the current value.
-            config.addr = self.get_bar_addr(bar_idx);
+            config.addr = self.get_bar_addr(bar_num);
             Some(config)
         } else {
             None
@@ -682,14 +586,16 @@ impl PciConfiguration {
 
     /// Returns the type of the given BAR region.
     pub fn get_bar_type(&self, bar_num: PciBarIndex) -> Option<PciBarRegionType> {
-        self.bar_configs
-            .get(usize::from(bar_num))?
-            .map(|c| c.region_type)
+        self.bar_configs.get(bar_num)?.map(|c| c.region_type)
     }
 
     /// Returns the address of the given BAR region.
     pub fn get_bar_addr(&self, bar_num: PciBarIndex) -> u64 {
-        let reg_idx = bar_num.reg_index();
+        let bar_idx = if bar_num == ROM_BAR_IDX {
+            ROM_BAR_REG
+        } else {
+            BAR0_REG + bar_num
+        };
 
         let bar_type = match self.get_bar_type(bar_num) {
             Some(t) => t,
@@ -697,13 +603,13 @@ impl PciConfiguration {
         };
 
         match bar_type {
-            PciBarRegionType::IoRegion => u64::from(self.registers[reg_idx] & BAR_IO_ADDR_MASK),
+            PciBarRegionType::IoRegion => u64::from(self.registers[bar_idx] & BAR_IO_ADDR_MASK),
             PciBarRegionType::Memory32BitRegion => {
-                u64::from(self.registers[reg_idx] & BAR_MEM_ADDR_MASK)
+                u64::from(self.registers[bar_idx] & BAR_MEM_ADDR_MASK)
             }
             PciBarRegionType::Memory64BitRegion => {
-                u64::from(self.registers[reg_idx] & BAR_MEM_ADDR_MASK)
-                    | u64::from(self.registers[reg_idx + 1]) << 32
+                u64::from(self.registers[bar_idx] & BAR_MEM_ADDR_MASK)
+                    | u64::from(self.registers[bar_idx + 1]) << 32
             }
         }
     }
@@ -790,7 +696,11 @@ impl PciBarConfiguration {
     }
 
     pub fn reg_index(&self) -> usize {
-        self.bar_idx.reg_index()
+        if self.bar_idx == ROM_BAR_IDX {
+            ROM_BAR_REG
+        } else {
+            BAR0_REG + self.bar_idx
+        }
     }
 
     pub fn address(&self) -> u64 {
@@ -811,7 +721,7 @@ impl PciBarConfiguration {
     }
 
     pub fn is_expansion_rom(&self) -> bool {
-        self.bar_idx == PciBarIndex::RomBar
+        self.bar_idx == ROM_BAR_IDX
     }
 
     pub fn is_memory(&self) -> bool {
@@ -987,8 +897,8 @@ mod tests {
         );
 
         // No BAR 0 has been configured, so these should return None or 0 as appropriate.
-        assert_eq!(cfg.get_bar_type(PciBarIndex::Bar0), None);
-        assert_eq!(cfg.get_bar_addr(PciBarIndex::Bar0), 0);
+        assert_eq!(cfg.get_bar_type(0), None);
+        assert_eq!(cfg.get_bar_addr(0), 0);
 
         let mut bar_iter = cfg.get_bars();
         assert_eq!(bar_iter.next(), None);
@@ -1010,7 +920,7 @@ mod tests {
 
         cfg.add_pci_bar(
             PciBarConfiguration::new(
-                PciBarIndex::Bar0,
+                0,
                 0x10,
                 PciBarRegionType::Memory64BitRegion,
                 PciBarPrefetchable::NotPrefetchable,
@@ -1020,10 +930,10 @@ mod tests {
         .expect("add_pci_bar failed");
 
         assert_eq!(
-            cfg.get_bar_type(PciBarIndex::Bar0),
+            cfg.get_bar_type(0),
             Some(PciBarRegionType::Memory64BitRegion)
         );
-        assert_eq!(cfg.get_bar_addr(PciBarIndex::Bar0), 0x0123_4567_89AB_CDE0);
+        assert_eq!(cfg.get_bar_addr(0), 0x0123_4567_89AB_CDE0);
         assert_eq!(cfg.writable_bits[BAR0_REG + 1], 0xFFFFFFFF);
         assert_eq!(cfg.writable_bits[BAR0_REG + 0], 0xFFFFFFF0);
 
@@ -1033,7 +943,7 @@ mod tests {
             Some(PciBarConfiguration {
                 addr: 0x0123_4567_89AB_CDE0,
                 size: 0x10,
-                bar_idx: PciBarIndex::Bar0,
+                bar_idx: 0,
                 region_type: PciBarRegionType::Memory64BitRegion,
                 prefetchable: PciBarPrefetchable::NotPrefetchable
             })
@@ -1057,7 +967,7 @@ mod tests {
 
         cfg.add_pci_bar(
             PciBarConfiguration::new(
-                PciBarIndex::Bar0,
+                0,
                 0x10,
                 PciBarRegionType::Memory32BitRegion,
                 PciBarPrefetchable::NotPrefetchable,
@@ -1067,10 +977,10 @@ mod tests {
         .expect("add_pci_bar failed");
 
         assert_eq!(
-            cfg.get_bar_type(PciBarIndex::Bar0),
+            cfg.get_bar_type(0),
             Some(PciBarRegionType::Memory32BitRegion)
         );
-        assert_eq!(cfg.get_bar_addr(PciBarIndex::Bar0), 0x12345670);
+        assert_eq!(cfg.get_bar_addr(0), 0x12345670);
         assert_eq!(cfg.writable_bits[BAR0_REG], 0xFFFFFFF0);
 
         let mut bar_iter = cfg.get_bars();
@@ -1079,7 +989,7 @@ mod tests {
             Some(PciBarConfiguration {
                 addr: 0x12345670,
                 size: 0x10,
-                bar_idx: PciBarIndex::Bar0,
+                bar_idx: 0,
                 region_type: PciBarRegionType::Memory32BitRegion,
                 prefetchable: PciBarPrefetchable::NotPrefetchable
             })
@@ -1103,7 +1013,7 @@ mod tests {
 
         cfg.add_pci_bar(
             PciBarConfiguration::new(
-                PciBarIndex::Bar0,
+                0,
                 0x4,
                 PciBarRegionType::IoRegion,
                 PciBarPrefetchable::NotPrefetchable,
@@ -1112,11 +1022,8 @@ mod tests {
         )
         .expect("add_pci_bar failed");
 
-        assert_eq!(
-            cfg.get_bar_type(PciBarIndex::Bar0),
-            Some(PciBarRegionType::IoRegion)
-        );
-        assert_eq!(cfg.get_bar_addr(PciBarIndex::Bar0), 0x1230);
+        assert_eq!(cfg.get_bar_type(0), Some(PciBarRegionType::IoRegion));
+        assert_eq!(cfg.get_bar_addr(0), 0x1230);
         assert_eq!(cfg.writable_bits[BAR0_REG], 0xFFFFFFFC);
 
         let mut bar_iter = cfg.get_bars();
@@ -1125,7 +1032,7 @@ mod tests {
             Some(PciBarConfiguration {
                 addr: 0x1230,
                 size: 0x4,
-                bar_idx: PciBarIndex::Bar0,
+                bar_idx: 0,
                 region_type: PciBarRegionType::IoRegion,
                 prefetchable: PciBarPrefetchable::NotPrefetchable
             })
@@ -1150,7 +1057,7 @@ mod tests {
         // bar_num 0-1: 64-bit memory
         cfg.add_pci_bar(
             PciBarConfiguration::new(
-                PciBarIndex::Bar0,
+                0,
                 0x10,
                 PciBarRegionType::Memory64BitRegion,
                 PciBarPrefetchable::NotPrefetchable,
@@ -1162,7 +1069,7 @@ mod tests {
         // bar 2: 32-bit memory
         cfg.add_pci_bar(
             PciBarConfiguration::new(
-                PciBarIndex::Bar2,
+                2,
                 0x10,
                 PciBarRegionType::Memory32BitRegion,
                 PciBarPrefetchable::NotPrefetchable,
@@ -1174,7 +1081,7 @@ mod tests {
         // bar 3: I/O
         cfg.add_pci_bar(
             PciBarConfiguration::new(
-                PciBarIndex::Bar3,
+                3,
                 0x4,
                 PciBarRegionType::IoRegion,
                 PciBarPrefetchable::NotPrefetchable,
@@ -1190,7 +1097,7 @@ mod tests {
             Some(PciBarConfiguration {
                 addr: 0x0123_4567_89AB_CDE0,
                 size: 0x10,
-                bar_idx: PciBarIndex::Bar0,
+                bar_idx: 0,
                 region_type: PciBarRegionType::Memory64BitRegion,
                 prefetchable: PciBarPrefetchable::NotPrefetchable
             })
@@ -1200,7 +1107,7 @@ mod tests {
             Some(PciBarConfiguration {
                 addr: 0x12345670,
                 size: 0x10,
-                bar_idx: PciBarIndex::Bar2,
+                bar_idx: 2,
                 region_type: PciBarRegionType::Memory32BitRegion,
                 prefetchable: PciBarPrefetchable::NotPrefetchable
             })
@@ -1210,7 +1117,7 @@ mod tests {
             Some(PciBarConfiguration {
                 addr: 0x1230,
                 size: 0x4,
-                bar_idx: PciBarIndex::Bar3,
+                bar_idx: 3,
                 region_type: PciBarRegionType::IoRegion,
                 prefetchable: PciBarPrefetchable::NotPrefetchable
             })
@@ -1227,7 +1134,7 @@ mod tests {
             Some(PciBarConfiguration {
                 addr: 0xFFEE_DDCC_BBAA_9980,
                 size: 0x10,
-                bar_idx: PciBarIndex::Bar0,
+                bar_idx: 0,
                 region_type: PciBarRegionType::Memory64BitRegion,
                 prefetchable: PciBarPrefetchable::NotPrefetchable
             })
@@ -1237,7 +1144,7 @@ mod tests {
             Some(PciBarConfiguration {
                 addr: 0x12345670,
                 size: 0x10,
-                bar_idx: PciBarIndex::Bar2,
+                bar_idx: 2,
                 region_type: PciBarRegionType::Memory32BitRegion,
                 prefetchable: PciBarPrefetchable::NotPrefetchable
             })
@@ -1247,7 +1154,7 @@ mod tests {
             Some(PciBarConfiguration {
                 addr: 0x1230,
                 size: 0x4,
-                bar_idx: PciBarIndex::Bar3,
+                bar_idx: 3,
                 region_type: PciBarRegionType::IoRegion,
                 prefetchable: PciBarPrefetchable::NotPrefetchable
             })
@@ -1273,7 +1180,7 @@ mod tests {
         assert_eq!(
             cfg.add_pci_bar(
                 PciBarConfiguration::new(
-                    PciBarIndex::Bar0,
+                    0,
                     0x2,
                     PciBarRegionType::IoRegion,
                     PciBarPrefetchable::NotPrefetchable,
@@ -1287,7 +1194,7 @@ mod tests {
         assert_eq!(
             cfg.add_pci_bar(
                 PciBarConfiguration::new(
-                    PciBarIndex::Bar0,
+                    0,
                     0x3,
                     PciBarRegionType::IoRegion,
                     PciBarPrefetchable::NotPrefetchable,
@@ -1301,7 +1208,7 @@ mod tests {
         assert_eq!(
             cfg.add_pci_bar(
                 PciBarConfiguration::new(
-                    PciBarIndex::Bar0,
+                    0,
                     0x8,
                     PciBarRegionType::Memory32BitRegion,
                     PciBarPrefetchable::NotPrefetchable,
@@ -1329,7 +1236,7 @@ mod tests {
         // Attempt to add a 64-bit memory BAR as the expansion ROM (invalid).
         assert_eq!(
             cfg.add_pci_bar(PciBarConfiguration::new(
-                PciBarIndex::RomBar,
+                ROM_BAR_IDX,
                 0x1000,
                 PciBarRegionType::Memory64BitRegion,
                 PciBarPrefetchable::NotPrefetchable,
@@ -1340,7 +1247,7 @@ mod tests {
         // Attempt to add an I/O BAR as the expansion ROM (invalid).
         assert_eq!(
             cfg.add_pci_bar(PciBarConfiguration::new(
-                PciBarIndex::RomBar,
+                ROM_BAR_IDX,
                 0x1000,
                 PciBarRegionType::IoRegion,
                 PciBarPrefetchable::NotPrefetchable,
@@ -1351,7 +1258,7 @@ mod tests {
         // Attempt to add a 1KB memory region as the expansion ROM (too small).
         assert_eq!(
             cfg.add_pci_bar(PciBarConfiguration::new(
-                PciBarIndex::RomBar,
+                ROM_BAR_IDX,
                 1024,
                 PciBarRegionType::Memory32BitRegion,
                 PciBarPrefetchable::NotPrefetchable,
@@ -1362,7 +1269,7 @@ mod tests {
         // Add a 32-bit memory BAR as the expansion ROM (valid).
         cfg.add_pci_bar(
             PciBarConfiguration::new(
-                PciBarIndex::RomBar,
+                ROM_BAR_IDX,
                 0x800,
                 PciBarRegionType::Memory32BitRegion,
                 PciBarPrefetchable::NotPrefetchable,
@@ -1372,98 +1279,11 @@ mod tests {
         .expect("add_pci_bar failed");
 
         assert_eq!(
-            cfg.get_bar_type(PciBarIndex::RomBar),
+            cfg.get_bar_type(ROM_BAR_IDX),
             Some(PciBarRegionType::Memory32BitRegion)
         );
-        assert_eq!(cfg.get_bar_addr(PciBarIndex::RomBar), 0x12345000);
+        assert_eq!(cfg.get_bar_addr(ROM_BAR_IDX), 0x12345000);
         assert_eq!(cfg.read_reg(ROM_BAR_REG), 0x12345000);
         assert_eq!(cfg.writable_bits[ROM_BAR_REG], 0xFFFFF801);
-    }
-
-    #[test]
-    fn pci_bar_index_reg_index() {
-        assert_eq!(PciBarIndex::Bar0.reg_index(), 4);
-        assert_eq!(PciBarIndex::Bar1.reg_index(), 5);
-        assert_eq!(PciBarIndex::Bar2.reg_index(), 6);
-        assert_eq!(PciBarIndex::Bar3.reg_index(), 7);
-        assert_eq!(PciBarIndex::Bar4.reg_index(), 8);
-        assert_eq!(PciBarIndex::Bar5.reg_index(), 9);
-        assert_eq!(PciBarIndex::RomBar.reg_index(), 12);
-    }
-
-    #[test]
-    fn pci_bar_index_from_reg_index() {
-        assert_eq!(
-            PciBarIndex::try_from_reg_index(0),
-            Err(Error::BarInvalidRegIndex(0))
-        );
-        assert_eq!(
-            PciBarIndex::try_from_reg_index(1),
-            Err(Error::BarInvalidRegIndex(1))
-        );
-        assert_eq!(
-            PciBarIndex::try_from_reg_index(2),
-            Err(Error::BarInvalidRegIndex(2))
-        );
-        assert_eq!(
-            PciBarIndex::try_from_reg_index(3),
-            Err(Error::BarInvalidRegIndex(3))
-        );
-        assert_eq!(PciBarIndex::try_from_reg_index(4), Ok(PciBarIndex::Bar0));
-        assert_eq!(PciBarIndex::try_from_reg_index(5), Ok(PciBarIndex::Bar1));
-        assert_eq!(PciBarIndex::try_from_reg_index(6), Ok(PciBarIndex::Bar2));
-        assert_eq!(PciBarIndex::try_from_reg_index(7), Ok(PciBarIndex::Bar3));
-        assert_eq!(PciBarIndex::try_from_reg_index(8), Ok(PciBarIndex::Bar4));
-        assert_eq!(PciBarIndex::try_from_reg_index(9), Ok(PciBarIndex::Bar5));
-        assert_eq!(
-            PciBarIndex::try_from_reg_index(10),
-            Err(Error::BarInvalidRegIndex(10))
-        );
-        assert_eq!(
-            PciBarIndex::try_from_reg_index(11),
-            Err(Error::BarInvalidRegIndex(11))
-        );
-        assert_eq!(PciBarIndex::try_from_reg_index(12), Ok(PciBarIndex::RomBar));
-        assert_eq!(
-            PciBarIndex::try_from_reg_index(13),
-            Err(Error::BarInvalidRegIndex(13))
-        );
-    }
-
-    #[test]
-    fn pci_bar_index_next() {
-        assert_eq!(PciBarIndex::Bar0.next(), Some(PciBarIndex::Bar1));
-        assert_eq!(PciBarIndex::Bar1.next(), Some(PciBarIndex::Bar2));
-        assert_eq!(PciBarIndex::Bar2.next(), Some(PciBarIndex::Bar3));
-        assert_eq!(PciBarIndex::Bar3.next(), Some(PciBarIndex::Bar4));
-        assert_eq!(PciBarIndex::Bar4.next(), Some(PciBarIndex::Bar5));
-        assert_eq!(PciBarIndex::Bar5.next(), Some(PciBarIndex::RomBar));
-        assert_eq!(PciBarIndex::RomBar.next(), None);
-    }
-
-    #[test]
-    fn pci_bar_index_upper_64bit_index() {
-        assert_eq!(
-            PciBarIndex::Bar0.upper_64bit_index(),
-            Some(PciBarIndex::Bar1)
-        );
-        assert_eq!(
-            PciBarIndex::Bar1.upper_64bit_index(),
-            Some(PciBarIndex::Bar2)
-        );
-        assert_eq!(
-            PciBarIndex::Bar2.upper_64bit_index(),
-            Some(PciBarIndex::Bar3)
-        );
-        assert_eq!(
-            PciBarIndex::Bar3.upper_64bit_index(),
-            Some(PciBarIndex::Bar4)
-        );
-        assert_eq!(
-            PciBarIndex::Bar4.upper_64bit_index(),
-            Some(PciBarIndex::Bar5)
-        );
-        assert_eq!(PciBarIndex::Bar5.upper_64bit_index(), None);
-        assert_eq!(PciBarIndex::RomBar.upper_64bit_index(), None);
     }
 }

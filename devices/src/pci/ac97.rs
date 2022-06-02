@@ -19,8 +19,8 @@ use crate::pci::ac97_bus_master::Ac97BusMaster;
 use crate::pci::ac97_mixer::Ac97Mixer;
 use crate::pci::ac97_regs::*;
 use crate::pci::pci_configuration::{
-    PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType, PciClassCode,
-    PciConfiguration, PciHeaderType, PciMultimediaSubclass,
+    PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciClassCode, PciConfiguration,
+    PciHeaderType, PciMultimediaSubclass,
 };
 use crate::pci::pci_device::{self, BarRange, PciDevice, Result};
 use crate::pci::{PciAddress, PciDeviceError, PciInterruptPin};
@@ -336,7 +336,7 @@ impl PciDevice for Ac97Dev {
             )
             .map_err(|e| pci_device::Error::IoAllocationFailed(MIXER_REGS_SIZE, e))?;
         let mixer_config = PciBarConfiguration::new(
-            PciBarIndex::Bar0,
+            0,
             MIXER_REGS_SIZE,
             PciBarRegionType::Memory32BitRegion,
             PciBarPrefetchable::NotPrefetchable,
@@ -366,7 +366,7 @@ impl PciDevice for Ac97Dev {
             )
             .map_err(|e| pci_device::Error::IoAllocationFailed(MASTER_REGS_SIZE, e))?;
         let master_config = PciBarConfiguration::new(
-            PciBarIndex::Bar1,
+            1,
             MASTER_REGS_SIZE,
             PciBarRegionType::Memory32BitRegion,
             PciBarPrefetchable::NotPrefetchable,
@@ -383,7 +383,7 @@ impl PciDevice for Ac97Dev {
         Ok(ranges)
     }
 
-    fn get_bar_configuration(&self, bar_num: PciBarIndex) -> Option<PciBarConfiguration> {
+    fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
         self.config_regs.get_bar_configuration(bar_num)
     }
 
@@ -408,8 +408,8 @@ impl PciDevice for Ac97Dev {
     }
 
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
-        let bar0 = self.config_regs.get_bar_addr(PciBarIndex::Bar0);
-        let bar1 = self.config_regs.get_bar_addr(PciBarIndex::Bar1);
+        let bar0 = self.config_regs.get_bar_addr(0);
+        let bar1 = self.config_regs.get_bar_addr(1);
         match addr {
             a if a >= bar0 && a < bar0 + MIXER_REGS_SIZE => self.read_mixer(addr - bar0, data),
             a if a >= bar1 && a < bar1 + MASTER_REGS_SIZE => {
@@ -420,8 +420,8 @@ impl PciDevice for Ac97Dev {
     }
 
     fn write_bar(&mut self, addr: u64, data: &[u8]) {
-        let bar0 = self.config_regs.get_bar_addr(PciBarIndex::Bar0);
-        let bar1 = self.config_regs.get_bar_addr(PciBarIndex::Bar1);
+        let bar0 = self.config_regs.get_bar_addr(0);
+        let bar1 = self.config_regs.get_bar_addr(1);
         match addr {
             a if a >= bar0 && a < bar0 + MIXER_REGS_SIZE => self.write_mixer(addr - bar0, data),
             a if a >= bar1 && a < bar1 + MASTER_REGS_SIZE => {
