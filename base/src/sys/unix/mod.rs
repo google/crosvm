@@ -30,6 +30,7 @@ mod mmap;
 pub mod net;
 mod netlink;
 mod notifiers;
+pub mod platform_timer_resolution;
 mod poll;
 mod priority;
 pub mod rand;
