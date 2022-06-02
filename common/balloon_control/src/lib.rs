@@ -55,7 +55,4 @@ pub enum BalloonTubeResult {
     Adjusted {
         num_bytes: u64,
     },
-    NotReady {
-        id: u64,
-    },
 }

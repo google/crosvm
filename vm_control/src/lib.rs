@@ -36,7 +36,7 @@ pub use balloon_control::BalloonStats;
 use balloon_control::{BalloonTubeCommand, BalloonTubeResult};
 
 use base::{
-    error, info, trace, warn, with_as_descriptor, AsRawDescriptor, Error as SysError, Event,
+    error, info, warn, with_as_descriptor, AsRawDescriptor, Error as SysError, Event,
     ExternalMapping, FromRawDescriptor, IntoRawDescriptor, Killable, MappedRegion,
     MemoryMappingArena, MemoryMappingBuilder, MemoryMappingBuilderUnix, MmapError, Protection,
     Result, SafeDescriptor, SharedMemory, Tube, SIGRTMIN,
@@ -1180,15 +1180,6 @@ impl VmRequest {
                                             stats,
                                             balloon_actual,
                                         };
-                                    }
-                                    Ok(BalloonTubeResult::NotReady { id }) => {
-                                        if sent_id != id {
-                                            trace!("Wrong id for balloon stats");
-                                            // Keep trying to get the fresh stats.
-                                            continue;
-                                        }
-                                        warn!("balloon device not ready");
-                                        break VmResponse::Err(SysError::new(libc::EAGAIN));
                                     }
                                     Err(e) => {
                                         error!("balloon socket recv failed: {}", e);

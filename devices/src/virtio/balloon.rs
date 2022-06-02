@@ -9,17 +9,14 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
 
-use futures::{
-    channel::{mpsc, oneshot},
-    pin_mut, StreamExt,
-};
+use futures::{channel::mpsc, pin_mut, StreamExt};
 use remain::sorted;
 use thiserror::Error as ThisError;
 
 use balloon_control::{BalloonStats, BalloonTubeCommand, BalloonTubeResult};
-use base::{self, error, trace, warn, AsRawDescriptor, Event, RawDescriptor, Tube};
+use base::{self, error, warn, AsRawDescriptor, Event, RawDescriptor, Tube};
 use cros_async::{
-    block_on, select2, select6, select7, sync::Mutex as AsyncMutex, AsyncTube, EventAsync, Executor,
+    block_on, select6, select7, sync::Mutex as AsyncMutex, AsyncTube, EventAsync, Executor,
 };
 use data_model::{DataInit, Le16, Le32, Le64};
 use vm_memory::{GuestAddress, GuestMemory};
@@ -39,9 +36,6 @@ pub enum BalloonError {
     /// Failed to create async message receiver.
     #[error("failed to create async message receiver: {0}")]
     CreatingMessageReceiver(base::TubeError),
-    /// IO Error.
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
     /// Failed to receive command message.
     #[error("failed to receive command message: {0}")]
     ReceivingCommand(base::TubeError),
@@ -52,7 +46,6 @@ pub enum BalloonError {
     #[error("failed to write config event: {0}")]
     WritingConfigEvent(base::Error),
 }
-
 pub type Result<T> = std::result::Result<T, BalloonError>;
 
 // Balloon implements four virt IO queues: Inflate, Deflate, Stats, Event.
@@ -309,7 +302,6 @@ async fn handle_stats_queue(
         }
         Ok(d) => d.index,
     };
-
     loop {
         // Wait for a request to read the stats.
         let id = match stats_rx.next().await {
@@ -454,30 +446,6 @@ async fn handle_command_tube(
     }
 }
 
-// Stub worker thread to reply with `NotReady`
-fn run_stub_worker(signal: oneshot::Receiver<()>, command_tube: Tube) -> Tube {
-    trace!("spawning ballon_stats stub worker");
-
-    let ex = Executor::new().unwrap();
-    let command_tube = AsyncTube::new(&ex, command_tube).unwrap();
-    {
-        let stub_replier = async {
-            loop {
-                if let Ok(BalloonTubeCommand::Stats { id }) = command_tube.next().await {
-                    trace!("Sending not ready response to balloon stats request");
-                    let res = BalloonTubeResult::NotReady { id };
-                    if let Err(e) = command_tube.send(res).await {
-                        error!("failed to send stats result: {}", e);
-                    }
-                }
-            }
-        };
-        pin_mut!(stub_replier);
-        let _ = ex.run_until(select2(signal, stub_replier));
-    }
-    command_tube.into()
-}
-
 // The main worker thread. Initialized the asynchronous worker tasks and passes them to the executor
 // to be processed.
 fn run_worker(
@@ -590,15 +558,13 @@ fn run_worker(
 
 /// Virtio device for memory balloon inflation/deflation.
 pub struct Balloon {
-    command_tube: Option<Tube>,
+    command_tube: Tube,
     inflate_tube: Option<Tube>,
     state: Arc<AsyncMutex<BalloonState>>,
     features: u64,
     acked_features: u64,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<Option<Tube>>>,
-    stub_worker_thread: Option<thread::JoinHandle<Tube>>,
-    stub_signal: Option<oneshot::Sender<()>>,
 }
 
 /// Operation mode of the balloon.
@@ -634,7 +600,7 @@ impl Balloon {
             };
 
         Ok(Balloon {
-            command_tube: Some(command_tube),
+            command_tube,
             inflate_tube,
             state: Arc::new(AsyncMutex::new(BalloonState {
                 num_pages: (init_balloon_size >> VIRTIO_BALLOON_PFN_SHIFT) as u32,
@@ -643,10 +609,8 @@ impl Balloon {
             })),
             kill_evt: None,
             worker_thread: None,
-            stub_worker_thread: None,
             features,
             acked_features: 0,
-            stub_signal: None,
         })
     }
 
@@ -678,11 +642,11 @@ impl Drop for Balloon {
 
 impl VirtioDevice for Balloon {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        self.command_tube
-            .iter()
-            .chain(self.inflate_tube.iter())
-            .map(AsRawDescriptor::as_raw_descriptor)
-            .collect()
+        let mut rds = vec![self.command_tube.as_raw_descriptor()];
+        if let Some(inflate_tube) = &self.inflate_tube {
+            rds.push(inflate_tube.as_raw_descriptor());
+        }
+        rds
     }
 
     fn device_type(&self) -> DeviceType {
@@ -705,12 +669,8 @@ impl VirtioDevice for Balloon {
 
         if state.failable_update && state.actual_pages == state.num_pages {
             state.failable_update = false;
-            if let Some(ref command_tube) = self.command_tube {
-                if let Err(e) = send_adjusted_response(command_tube, state.num_pages) {
-                    error!("Failed to send response {:?}", e);
-                }
-            } else {
-                panic!("Command tube missing!");
+            if let Err(e) = send_adjusted_response(&self.command_tube, state.num_pages) {
+                error!("Failed to send response {:?}", e);
             }
         }
     }
@@ -727,21 +687,6 @@ impl VirtioDevice for Balloon {
         self.acked_features |= value;
     }
 
-    fn on_device_sandboxed(&mut self) {
-        if let Some(command_tube) = self.command_tube.take() {
-            let (tx, rx) = oneshot::channel();
-
-            let worker_stub_thread = thread::Builder::new()
-                .name("virtio_balloon_stub".to_string())
-                .spawn(move || run_stub_worker(rx, command_tube))
-                .expect("Failed to spawn balloon stub worker thread");
-            let _ = self.stub_worker_thread.insert(worker_stub_thread);
-            let _ = self.stub_signal.insert(tx);
-        } else {
-            panic!("Command tube missing!");
-        }
-    }
-
     fn activate(
         &mut self,
         mem: GuestMemory,
@@ -749,13 +694,6 @@ impl VirtioDevice for Balloon {
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
     ) {
-        // Kill stub thread
-        std::mem::drop(self.stub_signal.take());
-
-        if let Some(Ok(handle)) = self.stub_worker_thread.take().map(thread::JoinHandle::join) {
-            let _ = self.command_tube.insert(handle);
-        }
-
         let expected_queues = if self.event_queue_enabled() { 4 } else { 3 };
         if queues.len() != expected_queues || queue_evts.len() != expected_queues {
             return;
@@ -771,18 +709,12 @@ impl VirtioDevice for Balloon {
         self.kill_evt = Some(self_kill_evt);
 
         let state = self.state.clone();
-        let command_tube = match self.command_tube {
-            Some(ref tube) => tube,
-            None => {
-                panic!("Command tube missing!");
-            }
-        };
-
         #[allow(deprecated)]
-        let command_tube = match command_tube.try_clone() {
+        let command_tube = match self.command_tube.try_clone() {
             Ok(tube) => tube,
             Err(e) => {
-                panic!("failed to clone command tube {:?}", e);
+                error!("failed to clone command tube {:?}", e);
+                return;
             }
         };
         let inflate_tube = self.inflate_tube.take();
@@ -803,7 +735,7 @@ impl VirtioDevice for Balloon {
 
         match worker_result {
             Err(e) => {
-                panic!("failed to spawn virtio_balloon worker: {}", e);
+                error!("failed to spawn virtio_balloon worker: {}", e);
             }
             Ok(join_handle) => {
                 self.worker_thread = Some(join_handle);
