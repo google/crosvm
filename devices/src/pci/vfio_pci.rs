@@ -71,6 +71,7 @@ use crate::pci::PciBarConfiguration;
 use crate::pci::PciBarIndex;
 use crate::pci::PciBarPrefetchable;
 use crate::pci::PciBarRegionType;
+use crate::pci::PciCapabilityID;
 use crate::pci::PciClassCode;
 use crate::pci::PciId;
 use crate::pci::PciInterruptPin;
@@ -92,6 +93,17 @@ const PCI_INTERRUPT_PIN: u32 = 0x3D;
 const PCI_CAPABILITY_LIST: u32 = 0x34;
 const PCI_CAP_ID_MSI: u8 = 0x05;
 const PCI_CAP_ID_MSIX: u8 = 0x11;
+
+// Size of the standard PCI config space
+const PCI_CONFIG_SPACE_SIZE: u32 = 0x100;
+// Size of the standard PCIe config space: 4KB
+const PCIE_CONFIG_SPACE_SIZE: u32 = 0x1000;
+
+// Extended Capabilities
+const PCI_EXT_CAP_ID_CAC: u16 = 0x0C;
+const PCI_EXT_CAP_ID_ARI: u16 = 0x0E;
+const PCI_EXT_CAP_ID_SRIOV: u16 = 0x10;
+const PCI_EXT_CAP_ID_REBAR: u16 = 0x15;
 
 enum VfioMsiChange {
     Disable,
@@ -517,8 +529,37 @@ impl VfioPciWorker {
     }
 }
 
+fn get_next_from_extcap_header(cap_header: u32) -> u32 {
+    (cap_header >> 20) & 0xffc
+}
+
+fn is_skipped_ext_cap(cap_id: u16) -> bool {
+    match cap_id {
+        // SR-IOV/ARI/Resizable_BAR capabilities are not well handled and should not be exposed
+        PCI_EXT_CAP_ID_ARI | PCI_EXT_CAP_ID_SRIOV | PCI_EXT_CAP_ID_REBAR => {
+            return true;
+        }
+        _ => {
+            return false;
+        }
+    }
+}
+
 enum DeviceData {
     IntelGfxData { opregion_index: u32 },
+}
+
+/// PCI Express Extended Capabilities information
+#[derive(Copy, Clone)]
+struct ExtCap {
+    /// cap offset in Configuration Space
+    offset: u32,
+    /// cap size
+    size: u32,
+    /// next offset, set next non-skipped offset for non-skipped ext cap
+    next: u16,
+    /// whether to be exposed to guest
+    is_skipped: bool,
 }
 
 /// Implements the Vfio Pci device, then a pci device is added into vm
@@ -543,7 +584,8 @@ pub struct VfioPciDevice {
     sysfs_path: Option<PathBuf>,
     #[cfg(feature = "direct")]
     header_type_reg: Option<u32>,
-
+    // PCI Express Extended Capabilities
+    ext_caps: Vec<ExtCap>,
     mapped_mmio_bars: BTreeMap<PciBarIndex, (u64, Vec<MemSlot>)>,
 }
 
@@ -586,6 +628,7 @@ impl VfioPciDevice {
         let mut msi_cap: Option<VfioMsiCap> = None;
         let mut msix_cap: Option<Arc<Mutex<VfioMsixCap>>> = None;
 
+        let mut is_pcie = false;
         let mut cap_next: u32 = config.read_config::<u8>(PCI_CAPABILITY_LIST).into();
         let vendor_id: u16 = config.read_config(PCI_VENDOR_ID);
         let device_id: u16 = config.read_config(PCI_DEVICE_ID);
@@ -614,9 +657,57 @@ impl VfioPciDevice {
                         dev.device_name().to_string(),
                     ))));
                 }
+            } else if cap_id == PciCapabilityID::PciExpress as u8 {
+                is_pcie = true;
             }
             let offset = cap_next + PCI_MSI_NEXT_POINTER;
             cap_next = config.read_config::<u8>(offset).into();
+        }
+
+        let mut ext_caps: Vec<ExtCap> = Vec::new();
+        if is_pcie {
+            let mut ext_cap_next: u32 = PCI_CONFIG_SPACE_SIZE;
+            while ext_cap_next != 0 {
+                let ext_cap_config: u32 = config.read_config::<u32>(ext_cap_next);
+                if ext_cap_config == 0 {
+                    break;
+                }
+                ext_caps.push(ExtCap {
+                    offset: ext_cap_next,
+                    // Calculate the size later
+                    size: 0,
+                    // init as the real value
+                    next: get_next_from_extcap_header(ext_cap_config) as u16,
+                    is_skipped: is_skipped_ext_cap((ext_cap_config & 0xffff) as u16),
+                });
+                ext_cap_next = get_next_from_extcap_header(ext_cap_config);
+            }
+
+            // Manage extended caps
+            //
+            // Extended capabilities are chained with each pointing to the next, so
+            // we can drop anything other than the head of the chain simply by
+            // modifying the previous next pointer. For the head of the chain, we
+            // can modify the capability ID to something that cannot match a valid
+            // capability. ID PCI_EXT_CAP_ID_CAC is for this since it is no longer
+            // supported.
+            //
+            // reverse order by offset
+            ext_caps.sort_by(|a, b| b.offset.cmp(&a.offset));
+            let mut next_offset: u32 = PCIE_CONFIG_SPACE_SIZE;
+            let mut non_skipped_next: u16 = 0;
+            for ext_cap in ext_caps.iter_mut() {
+                if !ext_cap.is_skipped {
+                    ext_cap.next = non_skipped_next;
+                    non_skipped_next = ext_cap.offset as u16;
+                } else if ext_cap.offset == PCI_CONFIG_SPACE_SIZE {
+                    ext_cap.next = non_skipped_next;
+                }
+                ext_cap.size = next_offset - ext_cap.offset;
+                next_offset = ext_cap.offset;
+            }
+            // order by offset
+            ext_caps.reverse();
         }
 
         let class_code: u8 = config.read_config(PCI_BASE_CLASS_CODE);
@@ -671,6 +762,7 @@ impl VfioPciDevice {
             sysfs_path,
             #[cfg(feature = "direct")]
             header_type_reg,
+            ext_caps,
             mapped_mmio_bars: BTreeMap::new(),
         })
     }
@@ -1408,6 +1500,23 @@ impl VfioPciDevice {
         fs::write(&path, &[id])
             .with_context(|| format!("Failed to write to {}", path.to_string_lossy()))
     }
+
+    fn get_ext_cap_by_reg(&self, reg: u32) -> Option<ExtCap> {
+        self.ext_caps
+            .iter()
+            .find(|ext_cap| reg >= ext_cap.offset && reg < ext_cap.offset + ext_cap.size)
+            .cloned()
+    }
+
+    fn is_skipped_reg(&self, reg: u32) -> bool {
+        // fast handle for pci config space
+        if reg < PCI_CONFIG_SPACE_SIZE {
+            return false;
+        }
+
+        self.get_ext_cap_by_reg(reg)
+            .map_or(false, |cap| cap.is_skipped)
+    }
 }
 
 impl PciDevice for VfioPciDevice {
@@ -1616,6 +1725,24 @@ impl PciDevice for VfioPciDevice {
         let reg: u32 = (reg_idx * 4) as u32;
         let mut config: u32 = self.config.read_config(reg);
 
+        // See VfioPciDevice::new for details how extended caps are managed
+        if reg >= PCI_CONFIG_SPACE_SIZE {
+            let ext_cap = self.get_ext_cap_by_reg(reg);
+            if let Some(ext_cap) = ext_cap {
+                if ext_cap.offset == reg {
+                    config = (config & !(0xffc << 20)) | (((ext_cap.next & 0xffc) as u32) << 20);
+                }
+
+                if ext_cap.is_skipped {
+                    if reg == PCI_CONFIG_SPACE_SIZE {
+                        config = (config & (0xffc << 20)) | (PCI_EXT_CAP_ID_CAC as u32);
+                    } else {
+                        config = 0;
+                    }
+                }
+            }
+        }
+
         // Ignore IO bar
         if (0x10..=0x24).contains(&reg) {
             let bar_idx = (reg as usize - 0x10) / 4;
@@ -1694,8 +1821,10 @@ impl PciDevice for VfioPciDevice {
             _ => (),
         }
 
-        self.device
-            .region_write(VFIO_PCI_CONFIG_REGION_INDEX, data, start);
+        if !self.is_skipped_reg(start as u32) {
+            self.device
+                .region_write(VFIO_PCI_CONFIG_REGION_INDEX, data, start);
+        }
 
         // if guest enable memory access, then enable bar mappable once
         if start == PCI_COMMAND as u64
