@@ -821,7 +821,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                     Some(Format::VP8) => Profile::VP8Profile0,
                     Some(Format::VP9) => Profile::VP9Profile0,
                     Some(Format::H264) => Profile::H264Baseline,
-                    Some(Format::HEVC) => Profile::HevcMain,
+                    Some(Format::Hevc) => Profile::HevcMain,
                     Some(f) => {
                         error!("specified format is invalid: {}", f);
                         return Err(VideoError::InvalidArgument);

@@ -568,7 +568,7 @@ impl FfmpegDecoder {
                     "h264" => Format::H264,
                     "vp8" => Format::VP8,
                     "vp9" => Format::VP9,
-                    "hevc" => Format::HEVC,
+                    "hevc" => Format::Hevc,
                     _ => return None,
                 };
 
@@ -645,7 +645,7 @@ impl DecoderBackend for FfmpegDecoder {
                         _ => None,
                     })
                     .collect(),
-                Format::HEVC => profile_iter
+                Format::Hevc => profile_iter
                     .filter_map(|p| match p.profile as u32 {
                         FF_PROFILE_HEVC_MAIN => Some(Profile::HevcMain),
                         FF_PROFILE_HEVC_MAIN_10 => Some(Profile::HevcMain10),

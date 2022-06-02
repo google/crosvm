@@ -23,14 +23,14 @@ impl From<Bitrate> for libvda::encode::Bitrate {
     fn from(bitrate: Bitrate) -> Self {
         libvda::encode::Bitrate {
             mode: match bitrate {
-                Bitrate::VBR { .. } => libvda::encode::BitrateMode::VBR,
-                Bitrate::CBR { .. } => libvda::encode::BitrateMode::CBR,
+                Bitrate::Vbr { .. } => libvda::encode::BitrateMode::VBR,
+                Bitrate::Cbr { .. } => libvda::encode::BitrateMode::CBR,
             },
             target: bitrate.target(),
             peak: match &bitrate {
                 // No need to specify peak if mode is CBR.
-                Bitrate::CBR { .. } => 0,
-                Bitrate::VBR { peak, .. } => *peak,
+                Bitrate::Cbr { .. } => 0,
+                Bitrate::Vbr { peak, .. } => *peak,
             },
         }
     }

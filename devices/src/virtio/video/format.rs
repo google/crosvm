@@ -61,7 +61,7 @@ impl Profile {
             | H264ScalableHigh
             | H264StereoHigh
             | H264MultiviewHigh => Format::H264,
-            HevcMain | HevcMain10 | HevcMainStillPicture => Format::HEVC,
+            HevcMain | HevcMain10 | HevcMainStillPicture => Format::Hevc,
             VP8Profile0 | VP8Profile1 | VP8Profile2 | VP8Profile3 => Format::VP8,
             VP9Profile0 | VP9Profile1 | VP9Profile2 | VP9Profile3 => Format::VP9,
         }
@@ -98,7 +98,7 @@ pub enum Format {
 
     // Bitstream formats
     H264 = VIRTIO_VIDEO_FORMAT_H264,
-    HEVC = VIRTIO_VIDEO_FORMAT_HEVC,
+    Hevc = VIRTIO_VIDEO_FORMAT_HEVC,
     VP8 = VIRTIO_VIDEO_FORMAT_VP8,
     VP9 = VIRTIO_VIDEO_FORMAT_VP9,
 }
@@ -111,7 +111,7 @@ impl Display for Format {
             NV12 => write!(f, "NV12"),
             YUV420 => write!(f, "YUV420"),
             H264 => write!(f, "H264"),
-            HEVC => write!(f, "HEVC"),
+            Hevc => write!(f, "HEVC"),
             VP8 => write!(f, "VP8"),
             VP9 => write!(f, "VP9"),
         }
@@ -121,8 +121,8 @@ impl Display for Format {
 #[derive(PartialEq, Eq, PartialOrd, Ord, N, Clone, Copy, Debug)]
 #[repr(u32)]
 pub enum BitrateMode {
-    VBR = VIRTIO_VIDEO_BITRATE_MODE_VBR,
-    CBR = VIRTIO_VIDEO_BITRATE_MODE_CBR,
+    Vbr = VIRTIO_VIDEO_BITRATE_MODE_VBR,
+    Cbr = VIRTIO_VIDEO_BITRATE_MODE_CBR,
 }
 impl_try_from_le32_for_enumn!(BitrateMode, "bitrate_mode");
 
@@ -130,24 +130,24 @@ impl_try_from_le32_for_enumn!(BitrateMode, "bitrate_mode");
 #[derive(Debug, Copy, Clone)]
 pub enum Bitrate {
     /// Constant bitrate.
-    CBR { target: u32 },
+    Cbr { target: u32 },
     /// Variable bitrate.
-    VBR { target: u32, peak: u32 },
+    Vbr { target: u32, peak: u32 },
 }
 
 #[cfg(feature = "video-encoder")]
 impl Bitrate {
     pub fn mode(&self) -> BitrateMode {
         match self {
-            Bitrate::CBR { .. } => BitrateMode::CBR,
-            Bitrate::VBR { .. } => BitrateMode::VBR,
+            Bitrate::Cbr { .. } => BitrateMode::Cbr,
+            Bitrate::Vbr { .. } => BitrateMode::Vbr,
         }
     }
 
     pub fn target(&self) -> u32 {
         match self {
-            Bitrate::CBR { target } => *target,
-            Bitrate::VBR { target, .. } => *target,
+            Bitrate::Cbr { target } => *target,
+            Bitrate::Vbr { target, .. } => *target,
         }
     }
 }
