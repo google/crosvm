@@ -20,6 +20,7 @@ use libc::{self, c_int, c_void, read, write};
 use remain::sorted;
 
 use data_model::{volatile_memory::*, DataInit};
+use serde::{Deserialize, Serialize};
 
 use super::{pagesize, Error as ErrnoError};
 
@@ -50,7 +51,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Memory access type for anonymous shared memory mapping.
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Protection(c_int);
 impl Protection {
     /// Returns Protection allowing no access.

@@ -8,7 +8,7 @@ use std::io;
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 
-use base::{error, syscall, Event, EventToken, SafeDescriptor, Tube, WaitContext};
+use base::{error, syscall, Event, EventToken, Protection, SafeDescriptor, Tube, WaitContext};
 use fuse::filesystem::{FileSystem, ZeroCopyReader, ZeroCopyWriter};
 use sync::Mutex;
 use vm_control::{FsMappingRequest, VmResponse};
@@ -97,7 +97,7 @@ impl fuse::Mapper for Mapper {
             fd,
             size,
             file_offset,
-            prot,
+            prot: Protection::from(prot as libc::c_int),
             mem_offset,
         };
 

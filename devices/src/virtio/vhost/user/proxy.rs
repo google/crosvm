@@ -20,7 +20,7 @@ use std::thread;
 use anyhow::{anyhow, bail, Context};
 use base::{
     error, info, AsRawDescriptor, Event, EventToken, EventType, FromRawDescriptor,
-    IntoRawDescriptor, RawDescriptor, SafeDescriptor, Tube, WaitContext,
+    IntoRawDescriptor, Protection, RawDescriptor, SafeDescriptor, Tube, WaitContext,
 };
 use data_model::{DataInit, Le32};
 use libc::{recv, MSG_DONTWAIT, MSG_PEEK};
@@ -674,7 +674,7 @@ impl Worker {
         let request = VmMemoryRequest::RegisterMemory {
             source,
             dest,
-            read_only: false,
+            prot: Protection::read_write(),
         };
         self.send_memory_request(&request)?;
         Ok(())

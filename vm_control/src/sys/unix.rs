@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use libc::{EINVAL, ERANGE};
-use std::{os::raw::c_int, path::Path, thread::JoinHandle};
+use std::{path::Path, thread::JoinHandle};
 
 use base::{
     error, AsRawDescriptor, Descriptor, Error as SysError, Killable, MemoryMappingArena, MmapError,
@@ -104,7 +104,7 @@ pub enum FsMappingRequest {
         file_offset: u64,
         /// The memory protection to be used for the mapping.  Protections other than readable and
         /// writable will be silently dropped.
-        prot: u32,
+        prot: Protection,
         /// The offset into the shared memory region where the mapping should be placed.
         mem_offset: usize,
     },
@@ -174,14 +174,7 @@ impl FsMappingRequest {
             } => {
                 let raw_fd: Descriptor = Descriptor(fd.as_raw_descriptor());
 
-                match vm.add_fd_mapping(
-                    slot,
-                    mem_offset,
-                    size,
-                    &raw_fd,
-                    file_offset,
-                    Protection::from(prot as c_int & (libc::PROT_READ | libc::PROT_WRITE)),
-                ) {
+                match vm.add_fd_mapping(slot, mem_offset, size, &raw_fd, file_offset, prot) {
                     Ok(()) => VmResponse::Ok,
                     Err(e) => VmResponse::Err(e),
                 }

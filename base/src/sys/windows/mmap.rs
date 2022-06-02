@@ -12,6 +12,7 @@ use std::{
 
 use crate::descriptor::{FromRawDescriptor, SafeDescriptor};
 use data_model::{volatile_memory::*, DataInit};
+use serde::{Deserialize, Serialize};
 use win_util::create_file_mapping;
 use win_util::duplicate_handle;
 use winapi::um::winnt::PAGE_READWRITE;
@@ -56,7 +57,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Memory access type for anonymous shared memory mapping.
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Protection(c_uint);
 
 impl Protection {

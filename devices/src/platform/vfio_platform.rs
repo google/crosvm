@@ -7,7 +7,7 @@ use crate::{BusAccessInfo, BusDevice, BusDeviceObj, DeviceId, IrqEdgeEvent, IrqL
 use anyhow::{bail, Context, Result};
 use base::{
     error, pagesize, AsRawDescriptor, AsRawDescriptors, Event, MappedRegion, MemoryMapping,
-    MemoryMappingBuilder, RawDescriptor, Tube,
+    MemoryMappingBuilder, Protection, RawDescriptor, Tube,
 };
 use resources::SystemAllocator;
 use std::fs::File;
@@ -185,7 +185,7 @@ impl VfioPlatformDevice {
                             size: mmap_size,
                         },
                         dest: VmMemoryDestination::GuestPhysicalAddress(guest_map_start),
-                        read_only: false,
+                        prot: Protection::read_write(),
                     })
                     .is_err()
                 {

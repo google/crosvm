@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::virtio::gpu::GpuDisplayParameters;
 use crate::virtio::resource_bridge::{BufferInfo, PlaneInfo, ResourceInfo, ResourceResponse};
-use base::{error, ExternalMapping, SafeDescriptor, Tube};
+use base::{error, ExternalMapping, Protection, SafeDescriptor, Tube};
 
 use data_model::VolatileSlice;
 
@@ -746,7 +746,7 @@ impl VirtioGpu {
                 allocation: self.pci_bar,
                 offset,
             },
-            read_only: false,
+            prot: Protection::read_write(),
         };
         self.gpu_device_tube.send(&request)?;
         let response = self.gpu_device_tube.recv()?;

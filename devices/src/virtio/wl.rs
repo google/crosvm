@@ -54,8 +54,8 @@ use data_model::*;
 use base::ioctl_iow_nr;
 use base::{
     error, ioctl_iowr_nr, ioctl_with_ref, pipe, round_up_to_page_size, warn, AsRawDescriptor,
-    Error, Event, EventToken, EventType, FileFlags, FromRawDescriptor, RawDescriptor, Result,
-    ScmSocket, SharedMemory, SharedMemoryUnix, Tube, TubeError, WaitContext,
+    Error, Event, EventToken, EventType, FileFlags, FromRawDescriptor, Protection, RawDescriptor,
+    Result, ScmSocket, SharedMemory, SharedMemoryUnix, Tube, TubeError, WaitContext,
 };
 #[cfg(feature = "gpu")]
 use base::{IntoRawDescriptor, SafeDescriptor};
@@ -348,7 +348,7 @@ impl VmRequester {
         let request = VmMemoryRequest::RegisterMemory {
             source: VmMemorySource::SharedMemory(shm),
             dest: VmMemoryDestination::NewAllocation,
-            read_only: false,
+            prot: Protection::read_write(),
         };
         let response = self.request(&request)?;
         match request {
