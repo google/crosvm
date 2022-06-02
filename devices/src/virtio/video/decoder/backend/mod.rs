@@ -13,6 +13,8 @@ use crate::virtio::video::{
 };
 use base::AsRawDescriptor;
 
+#[cfg(feature = "ffmpeg")]
+pub mod ffmpeg;
 pub mod utils;
 #[cfg(feature = "libvda")]
 pub mod vda;

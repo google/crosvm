@@ -542,6 +542,8 @@ fn parse_video_options(s: Option<&str>) -> argument::Result<VideoBackendType> {
     const VALID_VIDEO_BACKENDS: &[&str] = &[
         #[cfg(feature = "libvda")]
         "libvda",
+        #[cfg(feature = "ffmpeg")]
+        "ffmpeg",
     ];
 
     match s {
@@ -549,6 +551,8 @@ fn parse_video_options(s: Option<&str>) -> argument::Result<VideoBackendType> {
             cfg_if::cfg_if! {
                 if #[cfg(feature = "libvda")] {
                     Ok(VideoBackendType::Libvda)
+                } else if #[cfg(feature = "ffmpeg")] {
+                    Ok(VideoBackendType::Ffmpeg)
                 }
             }
         }
@@ -556,6 +560,8 @@ fn parse_video_options(s: Option<&str>) -> argument::Result<VideoBackendType> {
         Some("libvda") => Ok(VideoBackendType::Libvda),
         #[cfg(feature = "libvda")]
         Some("libvda-vd") => Ok(VideoBackendType::LibvdaVd),
+        #[cfg(feature = "ffmpeg")]
+        Some("ffmpeg") => Ok(VideoBackendType::Ffmpeg),
         Some(s) => Err(argument::Error::InvalidValue {
             value: s.to_owned(),
             expected: format!("should be one of ({})", VALID_VIDEO_BACKENDS.join("|")),
@@ -2520,7 +2526,7 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("vfio-platform", "PATH", "Path to sysfs of platform pass through"),
           #[cfg(feature = "video-decoder")]
           Argument::flag_or_value("video-decoder", "[backend]", "(EXPERIMENTAL) enable virtio-video decoder device
-                              Possible backend values: libvda"),
+                              Possible backend values: libvda|ffmpeg"),
           #[cfg(feature = "video-encoder")]
           Argument::flag_or_value("video-encoder", "[backend]", "(EXPERIMENTAL) enable virtio-video encoder device
                               Possible backend values: libvda"),

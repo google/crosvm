@@ -57,6 +57,7 @@ WIN64_DISABLED_CRATES = [
     "devices",
     "disk",
     "ffi",
+    "ffmpeg",
     "fuse",
     "fuzz",
     "gpu_display",
@@ -113,6 +114,7 @@ CRATE_OPTIONS: dict[str, list[TestOption]] = {
         TestOption.DO_NOT_RUN_ARMHF,
     ],
     "disk": [TestOption.DO_NOT_RUN_AARCH64, TestOption.DO_NOT_RUN_ARMHF],  # b/202294155
+    "ffmpeg": [TestOption.DO_NOT_BUILD_ARMHF],  # Generated bindings are not 32-bit compatible.
     "fuzz": [TestOption.DO_NOT_BUILD],
     "hypervisor": [
         TestOption.DO_NOT_RUN_AARCH64,

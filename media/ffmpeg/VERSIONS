@@ -1,0 +1,4 @@
+# These version numbers are updated by the gen_bindings.sh script
+avcodec: 58.134.100
+avutil: 56.70.100
+swscale: 5.9.100

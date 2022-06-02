@@ -39,8 +39,11 @@ mod resource;
 mod response;
 mod worker;
 
-#[cfg(all(feature = "video-decoder", not(feature = "libvda")))]
-compile_error!("The \"video-decoder\" feature requires \"libvda\" to also be enabled.");
+#[cfg(all(
+    feature = "video-decoder",
+    not(any(feature = "libvda", feature = "ffmpeg"))
+))]
+compile_error!("The \"video-decoder\" feature requires at least one of \"ffmpeg\" or \"libvda\" to also be enabled.");
 
 #[cfg(all(feature = "video-encoder", not(feature = "libvda")))]
 compile_error!("The \"video-encoder\" feature requires \"libvda\" to also be enabled.");
@@ -141,6 +144,15 @@ pub enum VideoBackendType {
     Libvda,
     #[cfg(feature = "libvda")]
     LibvdaVd,
+    #[cfg(feature = "ffmpeg")]
+    Ffmpeg,
+}
+
+#[cfg(feature = "ffmpeg")]
+pub fn ffmpeg_supported_virtio_features() -> u64 {
+    1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES
+        | 1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG
+        | 1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT
 }
 
 impl VirtioDevice for VideoDevice {
@@ -173,6 +185,8 @@ impl VirtioDevice for VideoDevice {
             VideoBackendType::Libvda | VideoBackendType::LibvdaVd => {
                 vda::supported_virtio_features()
             }
+            #[cfg(feature = "ffmpeg")]
+            VideoBackendType::Ffmpeg => ffmpeg_supported_virtio_features(),
         };
 
         self.base_features | backend_features
@@ -188,6 +202,10 @@ impl VirtioDevice for VideoDevice {
             #[cfg(feature = "libvda")]
             VideoBackendType::LibvdaVd => {
                 (&mut device_name[0..8]).copy_from_slice("libvdavd".as_bytes())
+            }
+            #[cfg(feature = "ffmpeg")]
+            VideoBackendType::Ffmpeg => {
+                (&mut device_name[0..6]).copy_from_slice("ffmpeg".as_bytes())
             }
         };
         let mut cfg = protocol::virtio_video_config {
@@ -284,6 +302,11 @@ impl VirtioDevice for VideoDevice {
                             };
                             Box::new(decoder::Decoder::new(vda, resource_bridge, mem))
                         }
+                        #[cfg(feature = "ffmpeg")]
+                        VideoBackendType::Ffmpeg => {
+                            let ffmpeg = decoder::backend::ffmpeg::FfmpegDecoder::new();
+                            Box::new(decoder::Decoder::new(ffmpeg, resource_bridge, mem))
+                        }
                     };
 
                     if let Err(e) = worker.run(device) {
@@ -317,6 +340,11 @@ impl VirtioDevice for VideoDevice {
                         #[cfg(feature = "libvda")]
                         VideoBackendType::LibvdaVd => {
                             error!("Invalid backend for encoder");
+                            return;
+                        }
+                        #[cfg(feature = "ffmpeg")]
+                        VideoBackendType::Ffmpeg => {
+                            error!("ffmpeg encoder is not supported yet");
                             return;
                         }
                     };

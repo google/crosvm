@@ -64,6 +64,7 @@ members = [
     "kvm",
     "kvm_sys",
     "linux_input_sys",
+    "media/ffmpeg",
     "media/libvda",
     "net_sys",
     "net_util",
@@ -120,6 +121,7 @@ composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
 default = ["audio", "gpu", "usb"]
 default-no-sandbox = []
 direct = ["devices/direct", "arch/direct", "x86_64/direct"]
+ffmpeg = ["devices/ffmpeg"]
 gdb = ["gdbstub", "gdbstub_arch", "arch/gdb", "vm_control/gdb", "x86_64/gdb"]
 gfxstream = ["devices/gfxstream"]
 gpu = ["devices/gpu"]

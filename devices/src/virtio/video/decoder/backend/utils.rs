@@ -15,6 +15,9 @@ use thiserror::Error as ThisError;
 
 use crate::virtio::video::resource::GuestResource;
 
+#[cfg(feature = "ffmpeg")]
+use crate::virtio::video::resource::BufferHandle;
+
 /// Manages a pollable queue of events to be sent to the decoder or encoder.
 pub struct EventQueue<T> {
     /// Pipe used to signal available events.
@@ -88,6 +91,25 @@ impl<T> EventQueue<T> {
     #[cfg(test)]
     pub fn len(&self) -> usize {
         self.pending_events.len()
+    }
+}
+
+#[cfg(feature = "ffmpeg")]
+impl ffmpeg::swscale::SwConverterTarget for GuestResource {
+    fn stride(&self) -> Option<usize> {
+        self.planes.get(0).map(|p| p.stride)
+    }
+
+    fn num_planes(&self) -> usize {
+        self.planes.len()
+    }
+
+    fn get_mapping(
+        &mut self,
+        plane: usize,
+        required_size: usize,
+    ) -> Result<base::MemoryMappingArena, base::MmapError> {
+        self.handle.get_mapping(plane, required_size)
     }
 }
 

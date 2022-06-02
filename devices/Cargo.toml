@@ -35,6 +35,7 @@ data_model = { path = "../common/data_model" }
 dbus = { version = "0.9", optional = true }
 disk = { path = "../disk" }
 enumn = "0.1.0"
+ffmpeg = { path = "../media/ffmpeg", optional = true }
 fuse = {path = "../fuse" }
 gpu_display = { path = "../gpu_display", optional = true }
 rutabaga_gfx = { path = "../rutabaga_gfx", optional = true }
@@ -80,3 +81,4 @@ default-features = false
 
 [dev-dependencies]
 tempfile = "3"
+crc32fast = "1"
