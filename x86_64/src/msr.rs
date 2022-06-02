@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use anyhow::Context;
 
-use arch::{MsrAction, MsrConfig, MsrExitHandlerError, MsrRWType, MsrValueFrom};
+use arch::{MsrAction, MsrConfig, MsrExitHandlerError, MsrFilter, MsrRWType, MsrValueFrom};
 use base::{debug, error};
 
 use remain::sorted;
@@ -311,7 +311,7 @@ pub fn get_override_msr_list(
     let mut wr_msrs: Vec<u32> = Vec::new();
 
     for (index, config) in msr_list.iter() {
-        if config.filter {
+        if config.filter == MsrFilter::Override {
             match config.rw_type {
                 MsrRWType::ReadOnly => {
                     rd_msrs.push(*index);

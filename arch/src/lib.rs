@@ -879,7 +879,7 @@ pub enum MsrRWType {
 }
 
 /// Handler types for userspace-msr
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MsrAction {
     /// Read and write from host directly, and the control of MSR will
     /// take effect on host.
@@ -915,6 +915,16 @@ impl MsrValueFrom {
     }
 }
 
+/// Whether to force KVM-filtered MSRs.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MsrFilter {
+    /// Leave it to hypervisor (KVM) default.
+    Default,
+    /// Don't let KVM do the default thing and use our userspace MSR
+    /// implementation.
+    Override,
+}
+
 /// Config option for userspace-msr handing
 ///
 /// MsrConfig will be collected with its corresponding MSR's index.
@@ -928,7 +938,7 @@ pub struct MsrConfig {
     /// MSR source CPU.
     pub from: MsrValueFrom,
     /// Whether to override KVM MSR emulation.
-    pub filter: bool,
+    pub filter: MsrFilter,
 }
 
 #[sorted]

@@ -19,8 +19,8 @@ use std::str::FromStr;
 use std::string::String;
 
 use arch::{
-    set_default_serial_parameters, MsrAction, MsrConfig, MsrRWType, MsrValueFrom, Pstore,
-    VcpuAffinity,
+    set_default_serial_parameters, MsrAction, MsrConfig, MsrFilter, MsrRWType, MsrValueFrom,
+    Pstore, VcpuAffinity,
 };
 use base::syslog::LogConfig;
 use base::{debug, error, getpid, info, pagesize, syslog};
@@ -551,7 +551,7 @@ fn parse_userspace_msr_options(value: &str) -> argument::Result<(u32, MsrConfig)
     let mut rw_type: Option<MsrRWType> = None;
     let mut action: Option<MsrAction> = None;
     let mut from = MsrValueFrom::RWFromRunningCPU;
-    let mut filter: bool = false;
+    let mut filter = MsrFilter::Default;
 
     let mut options = argument::parse_key_value_options("userspace-msr", value, ',');
     let index: u32 = options
@@ -581,8 +581,8 @@ fn parse_userspace_msr_options(value: &str) -> argument::Result<(u32, MsrConfig)
                 _ => return Err(opt.invalid_value_err(String::from("bad from"))),
             },
             "filter" => match opt.value()? {
-                "yes" => filter = true,
-                "no" => filter = false,
+                "yes" | "override" => filter = MsrFilter::Override,
+                "no" | "default" => filter = MsrFilter::Default,
                 _ => return Err(opt.invalid_value_err(String::from("bad filter"))),
             },
 
@@ -2452,15 +2452,15 @@ iommu=on|off - indicates whether to enable virtio IOMMU for this device"),
           Argument::value("dmi", "DIR", "Directory with smbios_entry_point/DMI files"),
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::value("userspace-msr", "INDEX,type=TYPE,action=ACTION,[from=FROM],[filter=FILTER]",
-                              "Userspace MSR handling. Takes INDEX of the MSR and how they are handled.
+                          "Userspace MSR handling. Takes INDEX of the MSR and how they are handled.
 
-                              type=(r|w|rw|wr) - read/write permission control.
+type=(r|w|rw|wr) - read/write permission control.
 
-                              action=(pass|emu) - if the control of msr is effective on host.
+action=(pass|emu) - if the control of msr is effective on host.
 
-                              from=(cpu0) - source of msr value. if not set, the source is running CPU.
+from=(cpu0) - source of msr value. if not set, the source is running CPU.
 
-                              filter=(yes|no) - if the msr is filtered in KVM."),
+filter=(default|override) - if the msr is filtered in KVM, whether to override or not."),
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
           Argument::flag("host-cpu-topology", "Use mirror cpu topology of Host for Guest VM, also copy some cpu feature to Guest VM."),
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -3899,7 +3899,15 @@ mod tests {
         assert_eq!(pass_cpu0_index, 0x10);
         assert_eq!(pass_cpu0_cfg.rw_type, MsrRWType::WriteOnly);
         assert_eq!(pass_cpu0_cfg.action, MsrAction::MsrPassthrough);
-        assert!(pass_cpu0_cfg.filter);
+        assert_eq!(pass_cpu0_cfg.filter, MsrFilter::Override);
+
+        let (_, pass_cpu0_cfg) =
+            parse_userspace_msr_options("0x10,type=w,action=pass,filter=default").unwrap();
+        assert_eq!(pass_cpu0_cfg.filter, MsrFilter::Default);
+
+        let (_, pass_cpu0_cfg) =
+            parse_userspace_msr_options("0x10,type=w,action=pass,filter=override").unwrap();
+        assert_eq!(pass_cpu0_cfg.filter, MsrFilter::Override);
 
         let (pass_cpu0_index, pass_cpu0_cfg) =
             parse_userspace_msr_options("0x10,type=r,action=pass,from=cpu0").unwrap();
@@ -3907,6 +3915,7 @@ mod tests {
         assert_eq!(pass_cpu0_cfg.rw_type, MsrRWType::ReadOnly);
         assert_eq!(pass_cpu0_cfg.action, MsrAction::MsrPassthrough);
         assert_eq!(pass_cpu0_cfg.from, MsrValueFrom::RWFromCPU0);
+        assert_eq!(pass_cpu0_cfg.filter, MsrFilter::Default);
 
         let (pass_cpus_index, pass_cpus_cfg) =
             parse_userspace_msr_options("0x10,type=rw,action=emu").unwrap();
