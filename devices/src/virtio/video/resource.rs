@@ -347,7 +347,7 @@ mod tests {
         }
 
         // Copy the initialized vector's content into an anonymous shared memory.
-        let mem = SharedMemory::anon(data.len() as u64).unwrap();
+        let mem = SharedMemory::new("data-dest", data.len() as u64).unwrap();
         let mapping = MemoryMappingBuilder::new(mem.size() as usize)
             .from_shared_memory(&mem)
             .build()
