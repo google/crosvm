@@ -30,22 +30,28 @@ bootcmd:
 # Runtime dependencies of crosvm binaries.
 # Note: Keep in sync with ./install-[aarch64-]deps.sh
 packages:
+    - libavcodec58
+    - libavutil56
     - libcap2
     - libdbus-1-3
     - libdrm2
     - libepoxy0
     - libssl1.1
+    - libswscale5
     - libwayland-client0
     - libx11-6
     - libxext6
     - rsync
 {% if v1.machine == 'aarch64' %}
 # Note: Keep in sync with the above
+    - libavcodec58:armhf
+    - libavutil56:armhf
     - libcap2:armhf
     - libdbus-1-3:armhf
     - libdrm2:armhf
     - libepoxy0:armhf
     - libssl1.1:armhf
+    - libswscale5:armhf
     - libwayland-client0:armhf
     - libx11-6:armhf
     - libxext6:armhf
