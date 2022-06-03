@@ -11,11 +11,14 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::{result, thread};
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
 use anyhow::Context;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use base::warn;
 use base::{
-    error, pagesize, warn, AsRawDescriptor, Error as SysError, Event, RawDescriptor,
-    Result as SysResult, Tube, TubeError,
+    error, pagesize, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Result as SysResult,
+    Tube, TubeError,
 };
 use cros_async::{AsyncError, AsyncTube, EventAsync, Executor};
 use data_model::{DataInit, Le64};
@@ -28,6 +31,7 @@ use vm_control::{
 };
 use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::pci::PciAddress;
 use crate::virtio::{
     async_utils, copy_config, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue,
@@ -54,7 +58,9 @@ const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const IOMMU_PROBE_SIZE: usize = size_of::<virtio_iommu_probe_resv_mem>();
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const VIRTIO_IOMMU_VIOT_NODE_PCI_RANGE: u8 = 1;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const VIRTIO_IOMMU_VIOT_NODE_VIRTIO_IOMMU_PCI: u8 = 3;
 
 #[derive(Copy, Clone, Debug, Default)]

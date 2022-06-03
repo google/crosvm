@@ -74,14 +74,12 @@ impl Kvm {
     /// Get the size of guest physical addresses (IPA) in bits.
     pub fn get_guest_phys_addr_bits(&self) -> u8 {
         // Safe because we know self is a real kvm fd
-        let vm_ipa_size = match unsafe {
-            ioctl_with_val(self, KVM_CHECK_EXTENSION(), KVM_CAP_ARM_VM_IPA_SIZE.into())
-        } {
+        match unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), KVM_CAP_ARM_VM_IPA_SIZE.into()) }
+        {
             // Default physical address size is 40 bits if the extension is not supported.
             ret if ret <= 0 => 40,
             ipa => ipa as u8,
-        };
-        vm_ipa_size
+        }
     }
 }
 
@@ -235,15 +233,15 @@ impl KvmVcpu {
     }
 
     fn get_one_kvm_reg(&self, kvm_reg_id: KvmVcpuRegister) -> Result<u64> {
-        let val: u64 = 0;
-        let mut onereg = kvm_one_reg {
+        let mut val: u64 = 0;
+        let onereg = kvm_one_reg {
             id: kvm_reg_id.0,
-            addr: (&val as *const u64) as u64,
+            addr: (&mut val as *mut u64) as u64,
         };
 
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
-        let ret = unsafe { ioctl_with_ref(self, KVM_GET_ONE_REG(), &mut onereg) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_GET_ONE_REG(), &onereg) };
         if ret == 0 {
             Ok(val)
         } else {

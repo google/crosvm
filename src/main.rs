@@ -7,7 +7,9 @@
 pub mod panic_hook;
 pub mod sys;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use std::collections::BTreeSet;
 use std::convert::TryFrom;
 use std::default::Default;
 use std::fs::{File, OpenOptions};
@@ -25,8 +27,10 @@ use arch::{
 use base::syslog::LogConfig;
 use base::{debug, error, getpid, info, pagesize, syslog};
 mod crosvm;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64", feature = "direct"))]
+use crosvm::argument::parse_hex_or_decimal;
 use crosvm::{
-    argument::{self, parse_hex_or_decimal, print_help, set_arguments, Argument},
+    argument::{self, print_help, set_arguments, Argument},
     platform, BindMount, Config, Executable, FileBackedMappingParameters, GidMap,
     TouchDeviceOption, VfioCommand, VhostUserFsOption, VhostUserOption, VhostUserWlOption,
     VvuOption,
@@ -71,9 +75,12 @@ use x86_64::{set_enable_pnp_data_msr_config, set_itmt_msr_config};
 #[cfg(feature = "gpu")]
 use rutabaga_gfx::{calculate_context_mask, RutabagaWsi};
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const ONE_MB: u64 = 1 << 20;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const MB_ALIGNED: u64 = ONE_MB - 1;
 // the max bus number is 256 and each bus occupy 1MB, so the max pcie cfg mmio size = 256M
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const MAX_PCIE_ECAM_SIZE: u64 = ONE_MB * 256;
 
 #[cfg(feature = "scudo")]

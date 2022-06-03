@@ -3,7 +3,9 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::sync::{mpsc, Arc, Barrier};
 use sync::{Condvar, Mutex};

@@ -14,7 +14,7 @@ use arch::{
     get_serial_cmdline, GetSerialCmdlineError, MsrConfig, MsrExitHandlerError, RunnableLinuxVm,
     VmComponents, VmImage,
 };
-use base::{Event, MemoryMappingBuilder, SendTube, Tube};
+use base::{Event, MemoryMappingBuilder, SendTube};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::{
     Bus, BusDeviceObj, BusError, IrqChip, IrqChipAArch64, PciAddress, PciConfigMmio, PciDevice,
@@ -248,11 +248,7 @@ impl arch::LinuxArch for AArch64 {
         V: VmAArch64,
         Vcpu: VcpuAArch64,
     {
-        let has_bios = match components.vm_image {
-            VmImage::Bios(_) => true,
-            _ => false,
-        };
-
+        let has_bios = matches!(components.vm_image, VmImage::Bios(_));
         let mem = vm.get_memory().clone();
 
         // separate out image loading from other setup to get a specific error for
@@ -422,8 +418,8 @@ impl arch::LinuxArch for AArch64 {
         arch::add_serial_devices(
             components.protected_vm,
             &mmio_bus,
-            &com_evt_1_3.get_trigger(),
-            &com_evt_2_4.get_trigger(),
+            com_evt_1_3.get_trigger(),
+            com_evt_2_4.get_trigger(),
             serial_parameters,
             serial_jail,
         )
@@ -437,7 +433,7 @@ impl arch::LinuxArch for AArch64 {
             .map_err(Error::RegisterIrqfd)?;
 
         mmio_bus
-            .insert(pci_bus.clone(), AARCH64_PCI_CFG_BASE, AARCH64_PCI_CFG_SIZE)
+            .insert(pci_bus, AARCH64_PCI_CFG_BASE, AARCH64_PCI_CFG_SIZE)
             .map_err(Error::RegisterPci)?;
 
         let mut cmdline = Self::get_base_linux_cmdline();

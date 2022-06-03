@@ -875,6 +875,9 @@ mod tests {
 
     #[test]
     #[allow(clippy::unnecessary_cast)]
+    // c_char is u8 on aarch64 and i8 on x86, so clippy's suggested fix of changing
+    // `'a' as libc::c_char` below to `b'a'` won't work everywhere.
+    #[allow(clippy::char_lit_as_u8)]
     fn sockaddr_un_pass() {
         let path_size = 50;
         let (addr, len) =

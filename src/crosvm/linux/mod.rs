@@ -1364,6 +1364,9 @@ where
         &mut iova_max_addr,
     )?;
 
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    let hp_endpoints_ranges: Vec<RangeInclusive<u32>> = Vec::new();
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let mut hp_endpoints_ranges: Vec<RangeInclusive<u32>> = Vec::new();
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let mut hotplug_buses: Vec<Arc<Mutex<dyn HotPlugBus>>> = Vec::new();

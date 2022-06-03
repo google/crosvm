@@ -89,6 +89,7 @@ pub fn is_gpu_backend_deprecated(_backend: &str) -> bool {
     false
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub fn use_host_cpu_topology() -> bool {
     true
 }
