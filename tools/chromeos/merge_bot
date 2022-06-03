@@ -9,6 +9,10 @@
 # account (and are enabled with --is-bot).
 #
 # See `./tools/chromeos/merge_bot -h` for details.
+#
+# When testing this script locally, use MERGE_BOT_TEST=1 ./tools/chromeos/merge_bot
+# to use different tags that do not interfere with the ongoing merge process.
+
 
 import functools
 import os
@@ -218,10 +222,11 @@ def create_merge_commits(revision: str, max_size: int = 0, create_dry_run: bool 
     commits = git_log(f"HEAD..{revision}", "--pretty=%H").lines()
     if not commits:
         print("Nothing to merge.")
-        return 0
+        return (0, False)
 
     # Create a merge commit for each batch
     batches = list(batched(commits, max_size)) if max_size > 0 else [commits]
+    has_conflicts = False
     for i, batch in enumerate(reversed(batches)):
         target = batch[0]
         previous_rev = git(f"rev-parse {batch[-1]}^").stdout()
@@ -235,7 +240,7 @@ def create_merge_commits(revision: str, max_size: int = 0, create_dry_run: bool 
                 f"{title} {date.today().isoformat()} {batch_str}",
                 git_log(commit_range, "--oneline").stdout(),
                 f"{UPSTREAM_URL}/+log/{commit_range}",
-                bug_notes(commit_range),
+                *([bug_notes(commit_range)] if not create_dry_run else []),
             ]
         )
 
@@ -243,9 +248,19 @@ def create_merge_commits(revision: str, max_size: int = 0, create_dry_run: bool 
         trailers = "Commit: False" if create_dry_run else ""
 
         # Perfom merge
-        git("merge --no-ff", target, "-m", quoted(message), "-m", quoted(trailers)).fg()
+        code = git("merge --no-ff", target, "-m", quoted(message), "-m", quoted(trailers)).fg(
+            check=False
+        )
+        if code != 0:
+            if not Path(".git/MERGE_HEAD").exists():
+                raise Exception("git merge failed for a reason other than merge conflicts.")
+            print("Merge has conflicts. Creating commit with conflict markers.")
+            git("add --update .").fg()
+            message = f"(CONFLICT) {message}"
+            git("commit", "-m", quoted(message), "-m", quoted(trailers)).fg()
+            has_conflicts = True
 
-    return len(batches)
+    return (len(batches), has_conflicts)
 
 
 def status():
@@ -278,13 +293,14 @@ def update_merges(
     else:
         print(f"Creating merge of {parsed_revision} into cros/{target_branch}")
         setup_tracking_branch("merge-bot-branch", target_branch)
-        if create_merge_commits(parsed_revision, max_size, create_dry_run=False) > 0:
-            upload_to_gerrit(
-                target_branch,
-                f"hashtag={MERGE_TAG}",
-                "l=Commit-Queue+1",
-                *(["l=Bot-Commit+1"] if is_bot else []),
-            )
+        count, has_conflicts = create_merge_commits(parsed_revision, max_size, create_dry_run=False)
+        if count > 0:
+            labels = []
+            if not has_conflicts:
+                labels.append("l=Commit-Queue+1")
+                if is_bot:
+                    labels.append("l=Bot-Commit+1")
+            upload_to_gerrit(target_branch, f"hashtag={MERGE_TAG}", *labels)
 
 
 def update_dry_runs(
@@ -343,13 +359,19 @@ def update_dry_runs(
 
     print(f"Creating dry run merge of {parsed_revision} into cros/{target_branch}")
     setup_tracking_branch("merge-bot-branch", target_branch)
-    if create_merge_commits(parsed_revision, max_size, create_dry_run=True) > 0:
+    count, has_conflicts = create_merge_commits(parsed_revision, max_size, create_dry_run=True)
+    if count > 0 and not has_conflicts:
         upload_to_gerrit(
             target_branch,
             f"hashtag={DRY_RUN_TAG}",
             "l=Commit-Queue+1",
             *(["l=Bot-Commit+1"] if is_bot else []),
         )
+    else:
+        if has_conflicts:
+            print("Not uploading dry-run with conflicts.")
+        else:
+            print("Nothing to upload.")
 
 
 run_commands(create_merge_commits, status, update_merges, update_dry_runs, gerrit_prerequisites)
