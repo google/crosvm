@@ -382,7 +382,7 @@ impl AsRawDescriptor for &StreamChannel {
 }
 
 impl ReadNotifier for StreamChannel {
-    /// Returns a RawDescriptor that can be polled for reads using PollContext.
+    /// Returns a RawDescriptor that can be polled for reads using WaitContext.
     fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
         &self.read_notify
     }

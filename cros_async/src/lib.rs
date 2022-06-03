@@ -45,7 +45,7 @@
 //!
 //! # Implementations
 //!
-//! Currently there are two paths for using the asynchronous IO. One uses a PollContext and drivers
+//! Currently there are two paths for using the asynchronous IO. One uses a WaitContext and drives
 //! futures based on the FDs signaling they are ready for the opteration. This method will exist so
 //! long as kernels < 5.4 are supported.
 //! The other method submits operations to io_uring and is signaled when they complete. This is more

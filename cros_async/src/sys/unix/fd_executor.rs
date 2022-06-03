@@ -58,9 +58,6 @@ pub enum Error {
     /// The Executor is gone.
     #[error("The FDExecutor is gone")]
     ExecutorGone,
-    /// PollContext failure.
-    #[error("PollContext failure: {0}")]
-    PollContextError(base::Error),
     /// An error occurred when setting the FD non-blocking.
     #[error("An error occurred setting the FD non-blocking: {0}.")]
     SettingNonBlocking(base::Error),
@@ -70,6 +67,9 @@ pub enum Error {
     /// A Waker was canceled, but the operation isn't running.
     #[error("Unknown waker")]
     UnknownWaker,
+    /// WaitContext failure.
+    #[error("WaitContext failure: {0}")]
+    WaitContextError(base::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -82,10 +82,10 @@ impl From<Error> for io::Error {
             DuplicatingFd(e) => e.into(),
             ExecutorGone => io::Error::new(io::ErrorKind::Other, e),
             CreatingContext(e) => e.into(),
-            PollContextError(e) => e.into(),
             SettingNonBlocking(e) => e.into(),
             SubmittingWaker(e) => e.into(),
             UnknownWaker => io::Error::new(io::ErrorKind::Other, e),
+            WaitContextError(e) => e.into(),
         }
     }
 }
@@ -247,9 +247,9 @@ async fn notify_task(notify: Event, raw: Weak<RawExecutor>) {
     }
 }
 
-// Indicates that the executor is either within or about to make a PollContext::wait() call. When a
+// Indicates that the executor is either within or about to make a WaitContext::wait() call. When a
 // waker sees this value, it will write to the notify Event, which will cause the
-// PollContext::wait() call to return.
+// WaitContext::wait() call to return.
 const WAITING: i32 = 0x1d5b_c019u32 as i32;
 
 // Indicates that the executor is processing any futures that are ready to run.
@@ -382,7 +382,7 @@ impl RawExecutor {
                 continue;
             }
 
-            let events = self.poll_ctx.wait().map_err(Error::PollContextError)?;
+            let events = self.poll_ctx.wait().map_err(Error::WaitContextError)?;
 
             // Set the state back to PROCESSING to prevent any tasks woken up by the loop below from
             // writing to the eventfd.
@@ -403,7 +403,7 @@ impl RawExecutor {
 
                     self.poll_ctx
                         .delete(&file)
-                        .map_err(Error::PollContextError)?;
+                        .map_err(Error::WaitContextError)?;
 
                     if let Some(waker) = waker {
                         waker.wake();
@@ -437,7 +437,7 @@ impl RawExecutor {
             OpStatus::Pending(data) => self
                 .poll_ctx
                 .delete(&data.file)
-                .map_err(Error::PollContextError),
+                .map_err(Error::WaitContextError),
             OpStatus::Completed => Ok(()),
         }
     }
