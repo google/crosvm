@@ -14,7 +14,7 @@ use base::{
     ioctl_iow_nr, ioctl_with_ptr, pagesize, FromRawDescriptor, MappedRegion, SafeDescriptor,
 };
 
-use data_model::{flexible_array_impl, FlexibleArray, FlexibleArrayWrapper};
+use data_model::{flexible_array_impl, FlexibleArrayWrapper};
 
 use rutabaga_gfx::{RutabagaHandle, RUTABAGA_MEM_HANDLE_TYPE_DMABUF};
 

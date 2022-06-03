@@ -89,7 +89,7 @@ pub trait FlexibleArray<S> {
 #[macro_export]
 macro_rules! flexible_array_impl {
     ($T:ident, $S:ident, $nents:ident, $entries:ident) => {
-        impl FlexibleArray<$S> for $T {
+        impl $crate::FlexibleArray<$S> for $T {
             fn set_len(&mut self, len: usize) {
                 self.$nents = ::std::convert::TryInto::try_into(len).unwrap();
             }
