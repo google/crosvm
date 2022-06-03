@@ -14,8 +14,7 @@ use smallvec::SmallVec;
 
 use super::{errno_result, Result};
 use crate::{
-    AsRawDescriptor, EventToken, EventType, FromRawDescriptor, IntoRawDescriptor, RawDescriptor,
-    TriggeredEvent,
+    AsRawDescriptor, EventToken, EventType, FromRawDescriptor, RawDescriptor, TriggeredEvent,
 };
 
 const POLL_CONTEXT_MAX_EVENTS: usize = 16;
@@ -247,12 +246,6 @@ impl<T: EventToken> PollContext<T> {
 impl<T: EventToken> AsRawDescriptor for PollContext<T> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.epoll_ctx.as_raw_descriptor()
-    }
-}
-
-impl<T: EventToken> IntoRawDescriptor for PollContext<T> {
-    fn into_raw_descriptor(self) -> RawDescriptor {
-        self.epoll_ctx.into_raw_descriptor()
     }
 }
 
