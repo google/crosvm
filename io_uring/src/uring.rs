@@ -101,8 +101,15 @@ impl io_uring_sqe {
         self.__bindgen_anon_3.rw_flags = val;
     }
 
-    pub fn set_poll_events(&mut self, val: u16) {
-        self.__bindgen_anon_3.poll_events = val;
+    pub fn set_poll_events(&mut self, val: u32) {
+        let val = if cfg!(target_endian = "big") {
+            // Swap words on big-endian platforms to match the original ABI where poll_events was 16
+            // bits wide.
+            val.rotate_left(16)
+        } else {
+            val
+        };
+        self.__bindgen_anon_3.poll32_events = val;
     }
 }
 
@@ -539,7 +546,7 @@ impl URingContext {
             sqe.opcode = IORING_OP_POLL_ADD as u8;
             sqe.fd = fd;
             sqe.user_data = user_data;
-            sqe.set_poll_events(events.get_raw() as u16);
+            sqe.set_poll_events(events.get_raw());
 
             sqe.set_addr(0);
             sqe.len = 0;
@@ -561,7 +568,7 @@ impl URingContext {
             sqe.opcode = IORING_OP_POLL_REMOVE as u8;
             sqe.fd = fd;
             sqe.user_data = user_data;
-            sqe.set_poll_events(events.get_raw() as u16);
+            sqe.set_poll_events(events.get_raw());
 
             sqe.set_addr(0);
             sqe.len = 0;
