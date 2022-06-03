@@ -8,6 +8,7 @@ PYTHON_VERSION_COMPATIBILITY = "PY3"
 
 DEPS = [
     "crosvm",
+    "recipe_engine/context",
     "recipe_engine/step",
 ]
 
@@ -22,7 +23,7 @@ def RunSteps(api):
                 "--verbose",
                 "update-merges",
                 "--is-bot",
-                "HEAD",
+                "origin/main",
             ],
         )
         api.step(
@@ -33,7 +34,7 @@ def RunSteps(api):
                 "--verbose",
                 "update-dry-runs",
                 "--is-bot",
-                "HEAD",
+                "origin/main",
             ],
         )
 

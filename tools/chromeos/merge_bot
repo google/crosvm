@@ -11,9 +11,9 @@
 # See `./tools/chromeos/merge_bot -h` for details.
 #
 # When testing this script locally, use MERGE_BOT_TEST=1 ./tools/chromeos/merge_bot
-# to use different tags that do not interfere with the ongoing merge process.
+# to use different tags and prevent emails from being sent or the CQ from being triggered.
 
-
+from contextlib import contextmanager
 import functools
 import os
 from pathlib import Path
@@ -26,14 +26,22 @@ sys.path.append(os.path.dirname(sys.path[0]))
 import json
 import re
 
-from impl.common import CROSVM_ROOT, batched, cmd, quoted, run_commands, very_verbose
+from impl.common import (
+    CROSVM_ROOT,
+    batched,
+    cmd,
+    quoted,
+    run_commands,
+    very_verbose,
+    curl_with_git_auth,
+)
 
 git = cmd("git")
 git_log = git("log --decorate=no --color=never")
-curl = cmd("curl --silent --fail")
+curl = curl_with_git_auth()("--silent --fail")
 chmod = cmd("chmod")
 
-GERRIT_URL = "https://chromium-review.googlesource.com"
+GERRIT_URL = "https://chromium-review.googlesource.com/a"
 UPSTREAM_URL = "https://chromium.googlesource.com/crosvm/crosvm"
 CROS_URL = "https://chromium.googlesource.com/chromiumos/platform/crosvm"
 
@@ -43,8 +51,8 @@ if TESTING:
     MERGE_TAG = "testing-crosvm-merge"
     DRY_RUN_TAG = "testing-crosvm-merge-dry-run"
 else:
-    MERGE_TAG = "crosvm-merge"
-    DRY_RUN_TAG = "crosvm-merge-dry-run"
+    MERGE_TAG = "crosvm-merge"  # type: ignore
+    DRY_RUN_TAG = "crosvm-merge-dry-run"  # type: ignore
 
 # This is the email of the account that posts CQ messages.
 LUCI_EMAIL = "chromeos-scoped@luci-project-accounts.iam.gserviceaccount.com"
@@ -62,10 +70,7 @@ def gerrit_api_get(path: str):
 
 
 def gerrit_api_post(path: str, body: Any):
-    cookiefile = git("config http.cookiefile").stdout()
     response = curl(
-        "--cookie",
-        cookiefile,
         "-X POST",
         "-H",
         quoted("Content-Type: application/json"),
@@ -172,23 +177,28 @@ def setup_tracking_branch(branch_name: str, tracking: str):
     git("checkout -b", branch_name, "--track", f"cros/{tracking}").fg()
 
 
+@contextmanager
+def tracking_branch_context(branch_name: str, tracking: str):
+    "Switches to a tracking branch and back after the context is exited."
+    # Remember old head. Prefer branch name if available, otherwise revision of detached head.
+    old_head = git("symbolic-ref -q --short HEAD").stdout(check=False)
+    if not old_head:
+        old_head = git("rev-parse HEAD").stdout()
+    setup_tracking_branch(branch_name, tracking)
+    yield
+    git("checkout", old_head).fg()
+
+
 def gerrit_prerequisites():
     "Make sure we can upload to gerrit."
-
-    # Make sure we have http cookies to access gerrit.
-    cookie_file = git("config http.cookiefile").stdout(check=False)
-    if not cookie_file:
-        print("Cannot access gerrit without http cookies.")
-        print(f"Install one via: {GERRIT_URL}/new-password")
-        sys.exit(1)
 
     # Setup cros remote which we are merging into
     if git("remote get-url cros").fg(check=False) != 0:
         print("Setting up remote: cros")
         git("remote add cros", CROS_URL).fg()
-    if git("remote get-url cros").stdout() != CROS_URL:
-        print("Your remote 'cros' does not match", CROS_URL)
-        sys.exit(1)
+    actual_remote = git("remote get-url cros").stdout()
+    if actual_remote != CROS_URL:
+        print(f"WARNING: Your remote 'cros' is {actual_remote} and does not match {CROS_URL}")
 
     # Install gerrit Change-Id hook
     hook_path = CROSVM_ROOT / ".git/hooks/commit-msg"
@@ -199,7 +209,8 @@ def gerrit_prerequisites():
 
 
 def upload_to_gerrit(target_branch: str, *extra_params: str):
-    extra_params = ("r=crosvm-uprev@google.com", *extra_params)
+    if not TESTING:
+        extra_params = ("r=crosvm-uprev@google.com", *extra_params)
     for i in range(3):
         try:
             print(f"Uploading to gerrit (Attempt {i})")
@@ -245,7 +256,7 @@ def create_merge_commits(revision: str, max_size: int = 0, create_dry_run: bool 
         )
 
         # git 'trailers' go into a separate paragraph to make sure they are properly separated.
-        trailers = "Commit: False" if create_dry_run else ""
+        trailers = "Commit: False" if create_dry_run or TESTING else ""
 
         # Perfom merge
         code = git("merge --no-ff", target, "-m", quoted(message), "-m", quoted(trailers)).fg(
@@ -292,15 +303,18 @@ def update_merges(
         return
     else:
         print(f"Creating merge of {parsed_revision} into cros/{target_branch}")
-        setup_tracking_branch("merge-bot-branch", target_branch)
-        count, has_conflicts = create_merge_commits(parsed_revision, max_size, create_dry_run=False)
-        if count > 0:
-            labels = []
-            if not has_conflicts:
-                labels.append("l=Commit-Queue+1")
-                if is_bot:
-                    labels.append("l=Bot-Commit+1")
-            upload_to_gerrit(target_branch, f"hashtag={MERGE_TAG}", *labels)
+        with tracking_branch_context("merge-bot-branch", target_branch):
+            count, has_conflicts = create_merge_commits(
+                parsed_revision, max_size, create_dry_run=False
+            )
+            if count > 0:
+                labels: List[str] = []
+                if not has_conflicts:
+                    if not TESTING:
+                        labels.append("l=Commit-Queue+1")
+                    if is_bot:
+                        labels.append("l=Bot-Commit+1")
+                upload_to_gerrit(target_branch, f"hashtag={MERGE_TAG}", *labels)
 
 
 def update_dry_runs(
@@ -358,20 +372,20 @@ def update_dry_runs(
         return
 
     print(f"Creating dry run merge of {parsed_revision} into cros/{target_branch}")
-    setup_tracking_branch("merge-bot-branch", target_branch)
-    count, has_conflicts = create_merge_commits(parsed_revision, max_size, create_dry_run=True)
-    if count > 0 and not has_conflicts:
-        upload_to_gerrit(
-            target_branch,
-            f"hashtag={DRY_RUN_TAG}",
-            "l=Commit-Queue+1",
-            *(["l=Bot-Commit+1"] if is_bot else []),
-        )
-    else:
-        if has_conflicts:
-            print("Not uploading dry-run with conflicts.")
+    with tracking_branch_context("merge-bot-branch", target_branch):
+        count, has_conflicts = create_merge_commits(parsed_revision, max_size, create_dry_run=True)
+        if count > 0 and not has_conflicts:
+            upload_to_gerrit(
+                target_branch,
+                f"hashtag={DRY_RUN_TAG}",
+                *(["l=Commit-Queue+1"] if not TESTING else []),
+                *(["l=Bot-Commit+1"] if is_bot else []),
+            )
         else:
-            print("Nothing to upload.")
+            if has_conflicts:
+                print("Not uploading dry-run with conflicts.")
+            else:
+                print("Nothing to upload.")
 
 
 run_commands(create_merge_commits, status, update_merges, update_dry_runs, gerrit_prerequisites)

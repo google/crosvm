@@ -84,6 +84,23 @@
   },
   {
     "cmd": [
+      "git",
+      "config",
+      "--global",
+      "credential.helper",
+      "gcloud.sh"
+    ],
+    "cwd": "[CLEANUP]/workspace",
+    "env": {
+      "DEPOT_TOOLS_UPDATE": "0"
+    },
+    "name": "Prepare git.Set git config: credential.helper",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
+  },
+  {
+    "cmd": [
       "RECIPE_REPO[depot_tools]/repo",
       "init",
       "--manifest-url=https://chromium.googlesource.com/chromiumos/manifest",
@@ -177,7 +194,6 @@
       "cros_run_unit_tests",
       "--board=amd64-generic",
       "--packages",
-      "implicit-system",
       "chromeos-base/crosvm"
     ],
     "cwd": "[CLEANUP]/workspace",

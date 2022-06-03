@@ -6,9 +6,14 @@
       "--verbose",
       "update-merges",
       "--is-bot",
-      "HEAD"
+      "origin/main"
     ],
     "cwd": "[CACHE]/builder/crosvm",
+    "env_prefixes": {
+      "MERGE_BOT_TEST": [
+        "1"
+      ]
+    },
     "name": "Update Merges"
   },
   {
@@ -18,9 +23,14 @@
       "--verbose",
       "update-dry-runs",
       "--is-bot",
-      "HEAD"
+      "origin/main"
     ],
     "cwd": "[CACHE]/builder/crosvm",
+    "env_prefixes": {
+      "MERGE_BOT_TEST": [
+        "1"
+      ]
+    },
     "name": "Update Dry Runs"
   }
 ]

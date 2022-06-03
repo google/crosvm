@@ -56,6 +56,19 @@
     ]
   },
   {
+    "cmd": [
+      "git",
+      "config",
+      "--global",
+      "credential.helper",
+      "gcloud.sh"
+    ],
+    "name": "Prepare git.Set git config: credential.helper",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
+  },
+  {
     "cmd": [],
     "name": "Prepare source"
   },
@@ -93,7 +106,8 @@
       "--output_json",
       "/path/to/tmp/json",
       "--revision",
-      "crosvm@HEAD"
+      "crosvm@HEAD",
+      "--gerrit_no_reset"
     ],
     "cwd": "[CACHE]/builder",
     "env": {

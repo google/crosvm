@@ -58,7 +58,12 @@ class CrosvmApi(recipe_api.RecipeApi):
                 s.url = CROSVM_REPO_URL
                 s.name = "crosvm"
                 gclient_config.got_revision_mapping[s.name] = "got_revision"
-                self.m.bot_update.ensure_checkout(gclient_config=gclient_config)
+                # By default bot_update will soft reset to 'main' after patching in gerrit revisions
+                # for try jobs. We do not want to do that as it will prevent us from testing infra
+                # jobs like the merge bot, which does not work with a dirty working directory.
+                self.m.bot_update.ensure_checkout(
+                    gclient_config=gclient_config, gerrit_no_reset=True
+                )
 
             with self.m.context(cwd=self.source_dir):
                 self.m.step("Sync Submodules", ["git", "submodule", "update", "--init"])
@@ -87,6 +92,9 @@ class CrosvmApi(recipe_api.RecipeApi):
                     self.__set_git_config(
                         "user.email", "crosvm-bot@crosvm-infra.iam.gserviceaccount.com"
                     )
+            # Use gcloud for authentication, which will make sure we are interacting with gerrit
+            # using the Luci configured identity.
+            self.__set_git_config("credential.helper", "gcloud.sh")
 
     def step_in_container(self, step_name, command):
         """
