@@ -132,10 +132,9 @@ luci.console_view(
     repo = "https://chromium.googlesource.com/crosvm/crosvm",
 )
 
-# Console showing all postsubmit infra builders
-luci.console_view(
+# View showing all infra builders
+luci.list_view(
     name = "Infra",
-    repo = "https://chromium.googlesource.com/crosvm/crosvm",
 )
 
 def verify_builder(name, dimensions, presubmit = True, postsubmit = True, **args):
@@ -233,13 +232,14 @@ def verify_chromeos_builder(board, **kwargs):
         **kwargs
     )
 
-def infra_builder(name, **args):
+def infra_builder(name, postsubmit, **args):
     """Creates a ci job to run infra recipes that are not involved in verifying changes.
 
     The builders are added to a separate infra dashboard.
 
     Args:
         name: Name of the builder
+        postsubmit: True if the builder should run after each submitted commit.
         **args: Passed to luci.builder
     """
     luci.builder(
@@ -253,14 +253,15 @@ def infra_builder(name, **args):
         },
         **args
     )
-    luci.gitiles_poller(
-        name = "main source",
-        bucket = "ci",
-        repo = "https://chromium.googlesource.com/crosvm/crosvm",
-        triggers = ["ci/%s" % name],
-    )
-    luci.console_view_entry(
-        console_view = "Infra",
+    if postsubmit:
+        luci.gitiles_poller(
+            name = "main source",
+            bucket = "ci",
+            repo = "https://chromium.googlesource.com/crosvm/crosvm",
+            triggers = ["ci/%s" % name],
+        )
+    luci.list_view_entry(
+        list_view = "Infra",
         builder = "ci/%s" % name,
     )
 
@@ -286,11 +287,14 @@ infra_builder(
     executable = luci.recipe(
         name = "push_to_github",
     ),
+    postsubmit = True,
 )
 
 infra_builder(
-    name = "crosvm_merge_into_chromeos",
+    name = "crosvm_update_chromeos_merges",
     executable = luci.recipe(
-        name = "merge_into_chromeos",
+        name = "update_chromeos_merges",
     ),
+    schedule = "0,30 * * * *",  # Run every 30 minutes
+    postsubmit = False,
 )
