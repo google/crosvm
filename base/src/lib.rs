@@ -69,7 +69,7 @@ cfg_if::cfg_if! {
         pub use platform::{
             block_signal, clear_signal, get_blocked_signals, new_pipe_full,
             register_rt_signal_handler, signal, unblock_signal, Killable, SIGRTMIN,
-            WatchingEvents, AcpiNotifyEvent, NetlinkGenericSocket, SignalFd, Terminal, EventFd,
+            AcpiNotifyEvent, NetlinkGenericSocket, SignalFd, Terminal, EventFd,
         };
 
         pub use platform::{

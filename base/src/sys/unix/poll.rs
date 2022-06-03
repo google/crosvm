@@ -32,40 +32,6 @@ impl From<EventType> for u32 {
     }
 }
 
-/// Watching events taken by PollContext.
-pub struct WatchingEvents(u32);
-
-impl WatchingEvents {
-    /// Returns empty Events.
-    #[inline(always)]
-    pub fn empty() -> WatchingEvents {
-        WatchingEvents(0)
-    }
-
-    /// Build Events from raw epoll events (defined in epoll_ctl(2)).
-    #[inline(always)]
-    pub fn new(raw: u32) -> WatchingEvents {
-        WatchingEvents(raw)
-    }
-
-    /// Set read events.
-    #[inline(always)]
-    pub fn set_read(self) -> WatchingEvents {
-        WatchingEvents(self.0 | EPOLLIN as u32)
-    }
-
-    /// Set write events.
-    #[inline(always)]
-    pub fn set_write(self) -> WatchingEvents {
-        WatchingEvents(self.0 | EPOLLOUT as u32)
-    }
-
-    /// Get the underlying epoll events.
-    pub fn get_raw(&self) -> u32 {
-        self.0
-    }
-}
-
 /// Used to poll multiple objects that have file descriptors.
 ///
 /// See [`crate::WaitContext`] for an example that uses the cross-platform wrapper.

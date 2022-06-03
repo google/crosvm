@@ -69,7 +69,7 @@ use std::{
 };
 
 use async_task::Task;
-use base::{trace, warn, AsRawDescriptor, RawDescriptor, WatchingEvents};
+use base::{trace, warn, AsRawDescriptor, EventType, RawDescriptor};
 use futures::task::noop_waker;
 use io_uring::URingContext;
 use once_cell::sync::Lazy;
@@ -238,10 +238,10 @@ impl RegisteredSource {
     }
 
     pub fn poll_fd_readable(&self) -> Result<PendingOperation> {
-        let events = WatchingEvents::empty().set_read();
+        let events = EventType::Read;
 
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
-        let token = ex.submit_poll(self, &events)?;
+        let token = ex.submit_poll(self, events)?;
 
         Ok(PendingOperation {
             waker_token: Some(token),
@@ -540,7 +540,7 @@ impl RawExecutor {
     fn submit_poll(
         &self,
         source: &RegisteredSource,
-        events: &base::WatchingEvents,
+        events: base::EventType,
     ) -> Result<WakerToken> {
         let mut ring = self.ring.lock();
         let src = ring
