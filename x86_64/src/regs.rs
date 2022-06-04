@@ -223,7 +223,7 @@ pub fn setup_fpu(vcpu: &dyn VcpuX86_64) -> Result<()> {
 ///
 /// # Arguments
 ///
-/// * `vcpu` - Structure for the vcpu that holds the vcpu fd.
+/// * `vcpu` - Structure for the vcpu that holds the vcpu descriptor.
 /// * `boot_ip` - Starting instruction pointer.
 /// * `boot_sp` - Starting stack pointer.
 /// * `boot_si` - Must point to zero page address per Linux ABI.
@@ -375,6 +375,21 @@ pub fn set_reset_vector(vcpu: &dyn VcpuX86_64) -> Result<()> {
     vcpu.set_regs(&regs).map_err(Error::SettingRegistersIoctl)?;
 
     Ok(())
+}
+
+/// Configures a CPU so its MSRs are reset to their default value.
+///
+/// Currently only sets IA32_TSC to 0.
+///
+/// # Arguments
+/// * `vcpu` - the VCPU to configure.
+pub fn reset_msrs(vcpu: &dyn VcpuX86_64) -> Result<()> {
+    let msrs = vec![Register {
+        id: crate::msr_index::MSR_IA32_TSC,
+        value: 0x0,
+    }];
+
+    vcpu.set_msrs(&msrs).map_err(Error::MsrIoctlFailed)
 }
 
 #[cfg(test)]

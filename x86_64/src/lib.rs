@@ -795,6 +795,7 @@ impl arch::LinuxArch for X8664arch {
 
         if has_bios {
             regs::set_reset_vector(vcpu).map_err(Error::SetupRegs)?;
+            regs::reset_msrs(vcpu).map_err(Error::SetupMsrs)?;
             return Ok(());
         }
 
