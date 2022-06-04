@@ -47,10 +47,16 @@ Arch = Literal["x86_64", "aarch64", "armhf", "win64"]
 
 # Enviroment variables needed for building with cargo
 BUILD_ENV = {
-    "PKG_CONFIG_aarch64_unknown_linux_gnu": "aarch64-linux-gnu-pkg-config",
     "PKG_CONFIG_armv7_unknown_linux_gnueabihf": "arm-linux-gnueabihf-pkg-config",
-    "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER": "aarch64-linux-gnu-gcc",
 }
+
+if platform.machine() != "aarch64":
+    BUILD_ENV.update(
+        {
+            "PKG_CONFIG_aarch64_unknown_linux_gnu": "aarch64-linux-gnu-pkg-config",
+            "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER": "aarch64-linux-gnu-gcc",
+        }
+    )
 
 
 class Ssh:
