@@ -1131,7 +1131,7 @@ impl PassthroughFs {
                 let mut proto: SetMediaRWDataFileProjectInheritanceFlagRequest = Message::new();
                 // If the input flags contain FS_PROJINHERIT_FL, then it is a set. Otherwise it is a
                 // reset.
-                proto.enable = ((in_flags & FS_PROJINHERIT_FL) == FS_PROJINHERIT_FL);
+                proto.enable = (in_flags & FS_PROJINHERIT_FL) == FS_PROJINHERIT_FL;
                 // Safe because data is a valid file descriptor.
                 let fd = unsafe { dbus::arg::OwnedFd::new(base::clone_descriptor(&*data)?) };
                 match proxy.set_media_rwdata_file_project_inheritance_flag(
