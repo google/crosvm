@@ -226,15 +226,18 @@ def build_common_crate(build_env: dict[str, str], build_arch: Arch, crate: Crate
     return list(cargo_build_executables([], build_arch, env=build_env, cwd=crate.path))
 
 
-def build_all_binaries(target: TestTarget, build_arch: Arch):
+def build_all_binaries(target: TestTarget, build_arch: Arch, crosvm_direct: bool):
     """Discover all crates and build them."""
     build_env = os.environ.copy()
     build_env.update(test_target.get_cargo_env(target, build_arch))
 
     print("Building crosvm workspace")
+    features = BUILD_FEATURES[build_arch]
+    if crosvm_direct:
+        features += ",direct"
     yield from cargo_build_executables(
         [
-            "--features=" + BUILD_FEATURES[build_arch],
+            "--features=" + features,
             "--verbose",
             "--workspace",
             *[f"--exclude={crate}" for crate in get_workspace_excludes(build_arch)],
@@ -380,6 +383,10 @@ def main():
         action="store_true",
     )
     parser.add_argument(
+        "--crosvm-direct",
+        action="store_true",
+    )
+    parser.add_argument(
         "--repeat",
         type=int,
         default=1,
@@ -406,7 +413,7 @@ def main():
         testvm.build_if_needed(target.vm)
         testvm.up(target.vm)
 
-    executables = list(build_all_binaries(target, build_arch))
+    executables = list(build_all_binaries(target, build_arch, args.crosvm_direct))
 
     if args.build_only:
         print("Not running tests as requested.")
