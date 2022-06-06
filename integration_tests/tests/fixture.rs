@@ -142,6 +142,36 @@ fn download_file(url: &str, destination: &Path) -> Result<()> {
     }
 }
 
+/// Configuration to start `TestVm`.
+#[derive(Default)]
+pub struct Config {
+    /// Extra arguments for the `run` subcommand.
+    extra_args: Vec<String>,
+
+    /// Use `O_DIRECT` for the rootfs.
+    o_direct: bool,
+}
+
+impl Config {
+    /// Creates a new `run` command with `extra_args`.
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Uses extra arguments for `crosvm run`.
+    #[allow(dead_code)]
+    pub fn extra_args(mut self, args: Vec<String>) -> Self {
+        self.extra_args = args;
+        self
+    }
+
+    /// Uses `O_DIRECT` for the rootfs.
+    pub fn o_direct(mut self) -> Self {
+        self.o_direct = true;
+        self
+    }
+}
+
 /// Test fixture to spin up a VM running a guest that can be communicated with.
 ///
 /// After creation, commands can be sent via exec_in_guest. The VM is stopped
@@ -246,7 +276,7 @@ impl TestVm {
 
     /// Instanciate a new crosvm instance. The first call will trigger the download of prebuilt
     /// files if necessary.
-    pub fn new(additional_arguments: &[&str], o_direct: bool) -> Result<TestVm> {
+    pub fn new(cfg: Config) -> Result<TestVm> {
         static PREP_ONCE: Once = Once::new();
         PREP_ONCE.call_once(TestVm::initialize_once);
 
@@ -263,9 +293,9 @@ impl TestVm {
         command.args(&["run", "--disable-sandbox"]);
         TestVm::configure_serial_devices(&mut command, &from_guest_pipe, &to_guest_pipe);
         command.args(&["--socket", control_socket_path.to_str().unwrap()]);
-        command.args(additional_arguments);
+        command.args(cfg.extra_args);
 
-        TestVm::configure_kernel(&mut command, o_direct);
+        TestVm::configure_kernel(&mut command, cfg.o_direct);
 
         // Set `Stdio::piped` so we can forward the outputs to stdout later.
         command.stdout(Stdio::piped());
