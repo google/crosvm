@@ -332,7 +332,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     fn set_vring_call(&self, queue_index: usize, event: &Event) -> Result<()> {
         let vring_file = virtio_sys::vhost::vhost_vring_file {
             index: queue_index as u32,
-            fd: event.as_raw_descriptor(),
+            fd: event.as_raw_descriptor() as i32,
         };
 
         // This ioctl is called on a valid vhost_net descriptor and has its
@@ -352,7 +352,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()> {
         let vring_file = virtio_sys::vhost::vhost_vring_file {
             index: queue_index as u32,
-            fd: event.as_raw_descriptor(),
+            fd: event.as_raw_descriptor() as i32,
         };
 
         // This ioctl is called on a valid vhost_net fd and has its
@@ -373,7 +373,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     fn set_vring_kick(&self, queue_index: usize, event: &Event) -> Result<()> {
         let vring_file = virtio_sys::vhost::vhost_vring_file {
             index: queue_index as u32,
-            fd: event.as_raw_descriptor(),
+            fd: event.as_raw_descriptor() as i32,
         };
 
         // This ioctl is called on a valid vhost_net descriptor and has its
