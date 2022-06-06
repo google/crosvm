@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::O_DIRECT;
 use std::ffi::CString;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::str::from_utf8;
 use std::sync::mpsc::sync_channel;
 use std::sync::Once;
 use std::thread;
@@ -18,6 +18,7 @@ use std::{env, process::Child};
 
 use anyhow::{anyhow, Result};
 use base::syslog;
+use libc::O_DIRECT;
 use tempfile::TempDir;
 
 const PREBUILT_URL: &str = "https://storage.googleapis.com/chromeos-localmirror/distfiles";
@@ -141,20 +142,6 @@ fn download_file(url: &str, destination: &Path) -> Result<()> {
     }
 }
 
-fn crosvm_command(command: &str, args: &[&str]) -> Result<()> {
-    println!("$ crosvm {} {:?}", command, &args.join(" "));
-    let status = Command::new(find_crosvm_binary())
-        .arg(command)
-        .args(args)
-        .status()?;
-
-    if !status.success() {
-        Err(anyhow!("Command failed with exit code {}", status))
-    } else {
-        Ok(())
-    }
-}
-
 /// Test fixture to spin up a VM running a guest that can be communicated with.
 ///
 /// After creation, commands can be sent via exec_in_guest. The VM is stopped
@@ -166,7 +153,7 @@ pub struct TestVm {
     from_guest_reader: BufReader<File>,
     to_guest: File,
     control_socket_path: PathBuf,
-    process: Child,
+    process: Option<Child>, // Use `Option` to allow taking the ownership in `Drop::drop()`.
     debug: bool,
 }
 
@@ -281,9 +268,13 @@ impl TestVm {
 
         TestVm::configure_kernel(&mut command, o_direct);
 
+        // Set `Stdio::piped` so we can forward the outputs to stdout later.
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::piped());
+
         println!("$ {:?}", command);
 
-        let process = command.spawn()?;
+        let process = Some(command.spawn()?);
 
         // Open pipes. Panic if we cannot connect after a timeout.
         let (to_guest, from_guest) = panic_on_timeout(
@@ -334,22 +325,63 @@ impl TestVm {
         Ok(trimmed.to_string())
     }
 
+    fn crosvm_command(&self, command: &str) -> Result<()> {
+        let args = [self.control_socket_path.to_str().unwrap()];
+        println!("$ crosvm {} {:?}", command, &args.join(" "));
+
+        let mut cmd = Command::new(find_crosvm_binary());
+        cmd.arg(command).args(args);
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+
+        let output = cmd.output()?;
+        // Print both the crosvm's stdout/stderr to stdout so that they'll be shown when the test
+        // is failed.
+        println!(
+            "`crosvm {}` stdout:\n{}",
+            command,
+            from_utf8(&output.stdout).unwrap()
+        );
+        println!(
+            "`crosvm {}` stderr:\n{}",
+            command,
+            from_utf8(&output.stderr).unwrap()
+        );
+
+        if !output.status.success() {
+            Err(anyhow!("Command failed with exit code {}", output.status))
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn stop(&self) -> Result<()> {
-        crosvm_command("stop", &[self.control_socket_path.to_str().unwrap()])
+        self.crosvm_command("stop")
     }
 
     pub fn suspend(&self) -> Result<()> {
-        crosvm_command("suspend", &[self.control_socket_path.to_str().unwrap()])
+        self.crosvm_command("suspend")
     }
 
     pub fn resume(&self) -> Result<()> {
-        crosvm_command("resume", &[self.control_socket_path.to_str().unwrap()])
+        self.crosvm_command("resume")
     }
 }
 
 impl Drop for TestVm {
     fn drop(&mut self) {
         self.stop().unwrap();
-        self.process.wait().unwrap();
+        let output = self.process.take().unwrap().wait_with_output().unwrap();
+
+        // Print both the crosvm's stdout/stderr to stdout so that they'll be shown when the test
+        // is failed.
+        println!(
+            "TestVm stdout:\n{}",
+            std::str::from_utf8(&output.stdout).unwrap()
+        );
+        println!(
+            "TestVm stderr:\n{}",
+            std::str::from_utf8(&output.stderr).unwrap()
+        );
     }
 }
