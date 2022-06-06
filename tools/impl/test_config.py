@@ -79,7 +79,6 @@ WIN64_DISABLED_CRATES = [
     "vhost",
     "virtio_sys",
     "vm_control",
-    "vm_memory",
     "vmm_vhost",
     "wire_format_derive",
     "x86_64",

@@ -796,14 +796,14 @@ impl GuestMemory {
     ///
     /// ```
     /// # use vm_memory::{GuestAddress, GuestMemory};
-    /// let addr_a = GuestAddress(0x1000);
-    /// let addr_b = GuestAddress(0x8000);
+    /// let addr_a = GuestAddress(0x10000);
+    /// let addr_b = GuestAddress(0x80000);
     /// let mut gm = GuestMemory::new(&vec![
-    ///     (addr_a, 0x2000),
-    ///     (addr_b, 0x3000)]).expect("failed to create GuestMemory");
-    /// let offset = gm.offset_from_base(GuestAddress(0x9500))
+    ///     (addr_a, 0x20000),
+    ///     (addr_b, 0x30000)]).expect("failed to create GuestMemory");
+    /// let offset = gm.offset_from_base(GuestAddress(0x95000))
     ///                .expect("failed to get offset");
-    /// assert_eq!(offset, 0x3500);
+    /// assert_eq!(offset, 0x35000);
     /// ```
     pub fn offset_from_base(&self, guest_addr: GuestAddress) -> Result<u64> {
         self.regions
@@ -967,26 +967,26 @@ mod tests {
     #[test]
     fn guest_to_host_range() {
         let start_addr1 = GuestAddress(0x0);
-        let start_addr2 = GuestAddress(0x1000);
-        let mem = GuestMemory::new(&[(start_addr1, 0x1000), (start_addr2, 0x4000)]).unwrap();
+        let start_addr2 = GuestAddress(0x10000);
+        let mem = GuestMemory::new(&[(start_addr1, 0x10000), (start_addr2, 0x40000)]).unwrap();
 
         // Verify the host addresses match what we expect from the mappings.
         let addr1_base = get_mapping(&mem, start_addr1).unwrap();
         let addr2_base = get_mapping(&mem, start_addr2).unwrap();
-        let host_addr1 = mem.get_host_address_range(start_addr1, 0x1000).unwrap();
-        let host_addr2 = mem.get_host_address_range(start_addr2, 0x1000).unwrap();
+        let host_addr1 = mem.get_host_address_range(start_addr1, 0x10000).unwrap();
+        let host_addr2 = mem.get_host_address_range(start_addr2, 0x10000).unwrap();
         assert_eq!(host_addr1, addr1_base);
         assert_eq!(host_addr2, addr2_base);
 
-        let host_addr3 = mem.get_host_address_range(start_addr2, 0x2000).unwrap();
+        let host_addr3 = mem.get_host_address_range(start_addr2, 0x20000).unwrap();
         assert_eq!(host_addr3, addr2_base);
 
         // Check that a valid guest address with an invalid size returns an error.
-        assert!(mem.get_host_address_range(start_addr1, 0x2000).is_err());
+        assert!(mem.get_host_address_range(start_addr1, 0x20000).is_err());
 
         // Check that a bad address returns an error.
         let bad_addr = GuestAddress(0x123456);
-        assert!(mem.get_host_address_range(bad_addr, 0x1000).is_err());
+        assert!(mem.get_host_address_range(bad_addr, 0x10000).is_err());
     }
 
     #[test]
