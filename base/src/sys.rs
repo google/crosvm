@@ -9,12 +9,12 @@ pub mod unix;
 pub mod windows;
 
 cfg_if::cfg_if! {
-     if #[cfg(unix)] {
+    if #[cfg(unix)] {
         pub use unix as platform;
         pub use platform::*;
-     } else if #[cfg(windows)] {
+    } else if #[cfg(windows)] {
         pub use windows as platform;
-     } else {
+    } else {
         compile_error!("Unsupported platform");
-     }
+    }
 }

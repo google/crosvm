@@ -3,12 +3,12 @@
 // found in the LICENSE file.
 
 cfg_if::cfg_if! {
-     if #[cfg(windows)] {
+    if #[cfg(windows)] {
         pub mod windows;
         use windows as platform;
-     } else {
+    } else {
         compile_error!("Unsupported platform (slirp supported only on Windows)");
-     }
+    }
 }
 
 pub use platform::{handler, Slirp};
