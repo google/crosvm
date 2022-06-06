@@ -154,7 +154,6 @@ pub struct TestVm {
     to_guest: File,
     control_socket_path: PathBuf,
     process: Option<Child>, // Use `Option` to allow taking the ownership in `Drop::drop()`.
-    debug: bool,
 }
 
 impl TestVm {
@@ -247,7 +246,7 @@ impl TestVm {
 
     /// Instanciate a new crosvm instance. The first call will trigger the download of prebuilt
     /// files if necessary.
-    pub fn new(additional_arguments: &[&str], debug: bool, o_direct: bool) -> Result<TestVm> {
+    pub fn new(additional_arguments: &[&str], o_direct: bool) -> Result<TestVm> {
         static PREP_ONCE: Once = Once::new();
         PREP_ONCE.call_once(TestVm::initialize_once);
 
@@ -294,7 +293,6 @@ impl TestVm {
             to_guest: to_guest?,
             control_socket_path,
             process,
-            debug,
         })
     }
 
@@ -319,9 +317,8 @@ impl TestVm {
             output.push_str(&line);
         }
         let trimmed = output.trim();
-        if self.debug {
-            println!("<- {:?}", trimmed);
-        }
+        println!("<- {:?}", trimmed);
+
         Ok(trimmed.to_string())
     }
 
