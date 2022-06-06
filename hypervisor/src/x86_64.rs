@@ -2,7 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(any(unix, feature = "haxm"))]
 use std::arch::x86_64::_rdtsc;
+
+#[cfg(any(feature = "haxm"))]
+use std::arch::x86_64::__cpuid;
 
 use serde::{Deserialize, Serialize};
 
@@ -117,7 +121,9 @@ impl_downcast!(VcpuX86_64);
 
 // TSC MSR
 pub const MSR_IA32_TSC: u32 = 0x00000010;
+
 /// Implementation of get_tsc_offset that uses VcpuX86_64::get_msrs.
+#[cfg(any(unix, feature = "haxm"))]
 pub(crate) fn get_tsc_offset_from_msr(vcpu: &impl VcpuX86_64) -> Result<u64> {
     let mut regs = vec![Register {
         id: crate::MSR_IA32_TSC,
@@ -140,6 +146,7 @@ pub(crate) fn get_tsc_offset_from_msr(vcpu: &impl VcpuX86_64) -> Result<u64> {
 }
 
 /// Implementation of get_tsc_offset that uses VcpuX86_64::get_msrs.
+#[cfg(any(unix, feature = "haxm"))]
 pub(crate) fn set_tsc_offset_via_msr(vcpu: &impl VcpuX86_64, offset: u64) -> Result<()> {
     // Safe because _rdtsc takes no arguments
     let host_tsc = unsafe { _rdtsc() };
@@ -151,6 +158,19 @@ pub(crate) fn set_tsc_offset_via_msr(vcpu: &impl VcpuX86_64, offset: u64) -> Res
 
     // set guest TSC value from our hypervisor
     vcpu.set_msrs(&regs)
+}
+
+/// Gets host cpu max physical address bits.
+#[cfg(feature = "haxm")]
+pub(crate) fn host_phys_addr_bits() -> u8 {
+    let highest_ext_function = unsafe { __cpuid(0x80000000) };
+    if highest_ext_function.eax >= 0x80000008 {
+        let addr_size = unsafe { __cpuid(0x80000008) };
+        // Low 8 bits of 0x80000008 leaf: host physical address size in bits.
+        addr_size.eax as u8
+    } else {
+        36
+    }
 }
 
 /// A CpuId Entry contains supported feature information for the given processor.

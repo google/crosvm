@@ -54,7 +54,6 @@ WIN64_DISABLED_CRATES = [
     "fuse",
     "fuzz",
     "gpu_display",
-    "hypervisor",
     "integration_tests",
     "io_uring",
     "kernel_cmdline",
@@ -79,7 +78,6 @@ WIN64_DISABLED_CRATES = [
     "vhost",
     "virtio_sys",
     "vm_control",
-    "vmm_vhost",
     "wire_format_derive",
     "x86_64",
 ]

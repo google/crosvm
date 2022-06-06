@@ -589,7 +589,7 @@ mod tests {
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
         let mut vm = HaxmVm::new(&haxm, gm).unwrap();
         let mem_size = 0x1000;
-        let shm = SharedMemory::anon(mem_size as u64).unwrap();
+        let shm = SharedMemory::new("test", mem_size as u64).unwrap();
         let mem = MemoryMappingBuilder::new(mem_size)
             .from_shared_memory(&shm)
             .build()
