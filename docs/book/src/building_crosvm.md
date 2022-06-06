@@ -27,8 +27,8 @@ git config submodule.recurse true
 git config push.recurseSubmodules no
 ```
 
-Crosvm development best works on Debian derivatives. First install rust via https://rustup.rs/. Then
-for the rest, we provide a script to install the necessary packages on Debian:
+Crosvm development best works on Debian derivatives. First install rust via <https://rustup.rs/>.
+Then for the rest, we provide a script to install the necessary packages on Debian:
 
 ```sh
 ./tools/install-deps
