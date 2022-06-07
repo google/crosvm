@@ -9,7 +9,7 @@ use devices::IrqChipX86_64;
 use hypervisor::{
     HypervisorX86_64, IoOperation, IoParams, ProtectionType, VcpuExit, VcpuX86_64, VmX86_64,
 };
-use resources::{MemRegion, SystemAllocator};
+use resources::{AddressRange, SystemAllocator};
 use vm_memory::{GuestAddress, GuestMemory};
 
 use super::cpuid::setup_cpuid;
@@ -18,7 +18,7 @@ use super::regs::{setup_fpu, setup_msrs, setup_regs, setup_sregs};
 use super::X8664arch;
 use super::{
     acpi, arch_memory_regions, bootparam, init_low_memory_layout, mptable,
-    read_pci_start_before_32bit, read_pcie_cfg_mmio_size, read_pcie_cfg_mmio_start, smbios,
+    read_pci_mmio_before_32bit, read_pcie_cfg_mmio, smbios,
 };
 use super::{
     BOOT_STACK_POINTER, KERNEL_64BIT_ENTRY_OFFSET, KERNEL_START_OFFSET, X86_64_SCI_IRQ,
@@ -104,9 +104,9 @@ where
     let write_addr = GuestAddress(0x4000);
 
     init_low_memory_layout(
-        Some(MemRegion {
-            base: 0xC000_0000,
-            size: 0x1000_0000,
+        Some(AddressRange {
+            start: 0xC000_0000,
+            end: 0xCFFF_FFFF,
         }),
         Some(0x8000_0000),
     );
@@ -196,7 +196,7 @@ where
     // let mut kernel_image = File::open("/mnt/host/source/src/avd/vmlinux.uncompressed").expect("failed to open kernel");
     // let (params, kernel_end) = X8664arch::load_kernel(&guest_mem, &mut kernel_image).expect("failed to load kernel");
 
-    let max_bus = (read_pcie_cfg_mmio_size() / 0x100000 - 1) as u8;
+    let max_bus = (read_pcie_cfg_mmio().len().unwrap() / 0x100000 - 1) as u8;
     let suspend_evt = Event::new().unwrap();
     let mut resume_notify_devices = Vec::new();
     let acpi_dev_resource = X8664arch::setup_acpi_devices(
@@ -244,7 +244,7 @@ where
         None,
         &mut apic_ids,
         &pci_irqs,
-        read_pcie_cfg_mmio_start(),
+        read_pcie_cfg_mmio().start,
         max_bus,
         false,
     );
@@ -266,7 +266,7 @@ where
                 .expect("failed to add vcpu to irqchip");
 
             setup_cpuid(&hyp, &irq_chip, &vcpu, 0, 1, false, false, false, false).unwrap();
-            setup_msrs(&vm, &vcpu, read_pci_start_before_32bit()).unwrap();
+            setup_msrs(&vm, &vcpu, read_pci_mmio_before_32bit().start).unwrap();
 
             setup_regs(
                 &vcpu,

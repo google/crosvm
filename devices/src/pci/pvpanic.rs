@@ -196,23 +196,23 @@ impl PciDevice for PvPanicPciDevice {
 mod test {
     use super::*;
     use base::Tube;
-    use resources::{MemRegion, SystemAllocator, SystemAllocatorConfig};
+    use resources::{AddressRange, SystemAllocator, SystemAllocatorConfig};
 
     #[test]
     fn pvpanic_read_write() {
         let mut allocator = SystemAllocator::new(
             SystemAllocatorConfig {
-                io: Some(MemRegion {
-                    base: 0x1000,
-                    size: 0x2000,
+                io: Some(AddressRange {
+                    start: 0x1000,
+                    end: 0xffff,
                 }),
-                low_mmio: MemRegion {
-                    base: 0x2000_0000,
-                    size: 0x1000_0000,
+                low_mmio: AddressRange {
+                    start: 0x2000_0000,
+                    end: 0x2fffffff,
                 },
-                high_mmio: MemRegion {
-                    base: 0x1_0000_0000,
-                    size: 0x1000_0000,
+                high_mmio: AddressRange {
+                    start: 0x1_0000_0000,
+                    end: 0x1_0fff_ffff,
                 },
                 platform_mmio: None,
                 first_irq: 5,

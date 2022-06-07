@@ -25,7 +25,7 @@ use hypervisor::{
 };
 use minijail::Minijail;
 use remain::sorted;
-use resources::{range_inclusive_len, MemRegion, SystemAllocator, SystemAllocatorConfig};
+use resources::{AddressRange, SystemAllocator, SystemAllocatorConfig};
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::{BatControl, BatteryType};
@@ -464,9 +464,9 @@ impl arch::LinuxArch for AArch64 {
             .iter()
             .map(|range| fdt::PciRange {
                 space: fdt::PciAddressSpace::Memory64,
-                bus_address: *range.start(),
-                cpu_physical_address: *range.start(),
-                size: range_inclusive_len(range).unwrap(),
+                bus_address: range.start,
+                cpu_physical_address: range.start,
+                size: range.len().unwrap(),
                 prefetchable: false,
             })
             .collect();
@@ -602,18 +602,14 @@ impl AArch64 {
             });
         SystemAllocatorConfig {
             io: None,
-            low_mmio: MemRegion {
-                base: AARCH64_MMIO_BASE,
-                size: AARCH64_MMIO_SIZE,
-            },
-            high_mmio: MemRegion {
-                base: high_mmio_base,
-                size: high_mmio_size,
-            },
-            platform_mmio: Some(MemRegion {
-                base: plat_mmio_base,
-                size: plat_mmio_size,
-            }),
+            low_mmio: AddressRange::from_start_and_size(AARCH64_MMIO_BASE, AARCH64_MMIO_SIZE)
+                .expect("invalid mmio region"),
+            high_mmio: AddressRange::from_start_and_size(high_mmio_base, high_mmio_size)
+                .expect("invalid high mmio region"),
+            platform_mmio: Some(
+                AddressRange::from_start_and_size(plat_mmio_base, plat_mmio_size)
+                    .expect("invalid platform mmio region"),
+            ),
             first_irq: AARCH64_IRQ_BASE,
         }
     }

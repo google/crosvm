@@ -74,7 +74,7 @@ use devices::{
 use hypervisor::{HypervisorX86_64, ProtectionType, VcpuX86_64, Vm, VmCap, VmX86_64};
 use minijail::Minijail;
 use remain::sorted;
-use resources::{MemRegion, SystemAllocator, SystemAllocatorConfig};
+use resources::{AddressRange, SystemAllocator, SystemAllocatorConfig};
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::{BatControl, BatteryType};
@@ -225,7 +225,7 @@ const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 // Reserve memory region for pcie virtual configuration
 const PCIE_VCFG_MMIO_SIZE: u64 = 0x400_0000;
 // Linux (with 4-level paging) has a physical memory limit of 46 bits (64 TiB).
-const HIGH_MMIO_MAX_END: u64 = 1u64 << 46;
+const HIGH_MMIO_MAX_END: u64 = (1u64 << 46) - 1;
 const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
 const ZERO_PAGE_OFFSET: u64 = 0x7000;
 const TSS_ADDR: u64 = 0xfffb_d000;
@@ -259,19 +259,15 @@ pub fn get_cpu_manufacturer() -> CpuManufacturer {
 
 // Memory layout below 4G
 struct LowMemoryLayout {
-    // the pci mmio start address below 4G
-    pci_start: u64,
-    // the pci mmio size below 4G
-    pci_size: u64,
-    // the pcie cfg mmio start address
-    pcie_cfg_mmio_start: u64,
-    // the pcie cfg mmio size
-    pcie_cfg_mmio_size: u64,
+    // the pci mmio range below 4G
+    pci_mmio: AddressRange,
+    // the pcie cfg mmio range
+    pcie_cfg_mmio: AddressRange,
 }
 
 static LOW_MEMORY_LAYOUT: OnceCell<LowMemoryLayout> = OnceCell::new();
 
-fn init_low_memory_layout(pcie_ecam: Option<MemRegion>, pci_low_start: Option<u64>) {
+fn init_low_memory_layout(pcie_ecam: Option<AddressRange>, pci_low_start: Option<u64>) {
     LOW_MEMORY_LAYOUT.get_or_init(|| {
         // Make sure it align to 256MB for MTRR convenient
         const MEM_32BIT_GAP_SIZE: u64 = if cfg!(feature = "direct") {
@@ -287,46 +283,45 @@ fn init_low_memory_layout(pcie_ecam: Option<MemRegion>, pci_low_start: Option<u6
         };
         // Reserved memory for nand_bios/LAPIC/IOAPIC/HPET/.....
         const RESERVED_MEM_SIZE: u64 = 0x800_0000;
+        const PCI_MMIO_END: u64 = FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - 1;
         // Reserve 64MB for pcie enhanced configuration
-        const PCIE_CFG_MMIO_SIZE: u64 = 0x400_0000;
-
-        let (pcie_cfg_mmio_start, pcie_cfg_mmio_size) = if let Some(pcie_mem) = pcie_ecam {
-            (pcie_mem.base, pcie_mem.size)
-        } else {
-            (
-                (FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - PCIE_CFG_MMIO_SIZE),
-                PCIE_CFG_MMIO_SIZE,
-            )
+        const DEFAULT_PCIE_CFG_MMIO_SIZE: u64 = 0x400_0000;
+        const DEFAULT_PCIE_CFG_MMIO_END: u64 = FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - 1;
+        const DEFAULT_PCIE_CFG_MMIO_START: u64 =
+            DEFAULT_PCIE_CFG_MMIO_END - DEFAULT_PCIE_CFG_MMIO_SIZE + 1;
+        const DEFAULT_PCIE_CFG_MMIO: AddressRange = AddressRange {
+            start: DEFAULT_PCIE_CFG_MMIO_START,
+            end: DEFAULT_PCIE_CFG_MMIO_END,
         };
 
-        let pci_start = if let Some(pci_low) = pci_low_start {
-            pcie_cfg_mmio_start.min(pci_low)
-        } else {
-            pcie_cfg_mmio_start.min(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE)
-        };
+        let pcie_cfg_mmio = pcie_ecam.unwrap_or(DEFAULT_PCIE_CFG_MMIO);
 
-        let pci_size = FIRST_ADDR_PAST_32BITS - pci_start - RESERVED_MEM_SIZE;
+        let pci_mmio = if let Some(pci_low) = pci_low_start {
+            AddressRange {
+                start: pci_low,
+                end: PCI_MMIO_END,
+            }
+        } else {
+            AddressRange {
+                start: pcie_cfg_mmio
+                    .start
+                    .min(FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE),
+                end: PCI_MMIO_END,
+            }
+        };
 
         LowMemoryLayout {
-            pci_start,
-            pci_size,
-            pcie_cfg_mmio_start,
-            pcie_cfg_mmio_size,
+            pci_mmio,
+            pcie_cfg_mmio,
         }
     });
 }
 
-fn read_pci_start_before_32bit() -> u64 {
-    LOW_MEMORY_LAYOUT.get().unwrap().pci_start
+fn read_pci_mmio_before_32bit() -> AddressRange {
+    LOW_MEMORY_LAYOUT.get().unwrap().pci_mmio
 }
-fn read_pci_size_before_32bit() -> u64 {
-    LOW_MEMORY_LAYOUT.get().unwrap().pci_size
-}
-fn read_pcie_cfg_mmio_start() -> u64 {
-    LOW_MEMORY_LAYOUT.get().unwrap().pcie_cfg_mmio_start
-}
-fn read_pcie_cfg_mmio_size() -> u64 {
-    LOW_MEMORY_LAYOUT.get().unwrap().pcie_cfg_mmio_size
+fn read_pcie_cfg_mmio() -> AddressRange {
+    LOW_MEMORY_LAYOUT.get().unwrap().pcie_cfg_mmio
 }
 
 /// The x86 reset vector for i386+ and x86_64 puts the processor into an "unreal mode" where it
@@ -350,8 +345,6 @@ fn configure_system(
     const KERNEL_HDR_MAGIC: u32 = 0x5372_6448;
     const KERNEL_LOADER_OTHER: u8 = 0xff;
     const KERNEL_MIN_ALIGNMENT_BYTES: u32 = 0x100_0000; // Must be non-zero.
-    let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
-    let end_32bit_gap_start = GuestAddress(read_pci_start_before_32bit());
 
     params.hdr.type_of_loader = KERNEL_LOADER_OTHER;
     params.hdr.boot_flag = KERNEL_BOOT_FLAG_MAGIC;
@@ -369,47 +362,30 @@ fn configure_system(
 
     add_e820_entry(
         &mut params,
-        START_OF_RAM_32BITS,
-        EBDA_START - START_OF_RAM_32BITS,
+        AddressRange {
+            start: START_OF_RAM_32BITS,
+            end: EBDA_START - 1,
+        },
         E820Type::Ram,
     )?;
 
-    let mem_end = guest_mem.end_addr();
-    if mem_end < end_32bit_gap_start {
-        add_e820_entry(
-            &mut params,
-            kernel_addr.offset() as u64,
-            mem_end.offset_from(kernel_addr) as u64,
-            E820Type::Ram,
-        )?;
-    } else {
-        add_e820_entry(
-            &mut params,
-            kernel_addr.offset() as u64,
-            end_32bit_gap_start.offset_from(kernel_addr) as u64,
-            E820Type::Ram,
-        )?;
-        if mem_end > first_addr_past_32bits {
-            add_e820_entry(
-                &mut params,
-                first_addr_past_32bits.offset() as u64,
-                mem_end.offset_from(first_addr_past_32bits) as u64,
-                E820Type::Ram,
-            )?;
-        }
+    let ram_region = AddressRange {
+        start: kernel_addr.offset(),
+        // GuestMemory::end_addr() returns the first address past the end, so subtract 1 to get the
+        // inclusive end.
+        end: guest_mem.end_addr().offset() - 1,
+    };
+    let (ram_below_4g, ram_above_4g) = ram_region.split_at(FIRST_ADDR_PAST_32BITS);
+    add_e820_entry(&mut params, ram_below_4g, E820Type::Ram)?;
+    if !ram_above_4g.is_empty() {
+        add_e820_entry(&mut params, ram_above_4g, E820Type::Ram)?
     }
 
-    add_e820_entry(
-        &mut params,
-        read_pcie_cfg_mmio_start(),
-        read_pcie_cfg_mmio_size(),
-        E820Type::Reserved,
-    )?;
+    add_e820_entry(&mut params, read_pcie_cfg_mmio(), E820Type::Reserved)?;
 
     add_e820_entry(
         &mut params,
-        X8664arch::get_pcie_vcfg_mmio_base(guest_mem),
-        PCIE_VCFG_MMIO_SIZE,
+        X8664arch::get_pcie_vcfg_mmio_range(guest_mem),
         E820Type::Reserved,
     )?;
 
@@ -426,17 +402,14 @@ fn configure_system(
 
 /// Add an e820 region to the e820 map.
 /// Returns Ok(()) if successful, or an error if there is no space left in the map.
-fn add_e820_entry(
-    params: &mut boot_params,
-    addr: u64,
-    size: u64,
-    mem_type: E820Type,
-) -> Result<()> {
+fn add_e820_entry(params: &mut boot_params, range: AddressRange, mem_type: E820Type) -> Result<()> {
     if params.e820_entries >= params.e820_table.len() as u8 {
         return Err(Error::E820Configuration);
     }
 
-    params.e820_table[params.e820_entries as usize].addr = addr;
+    let size = range.len().ok_or(Error::E820Configuration)?;
+
+    params.e820_table[params.e820_entries as usize].addr = range.start;
     params.e820_table[params.e820_entries as usize].size = size;
     params.e820_table[params.e820_entries as usize].type_ = mem_type as u32;
     params.e820_entries += 1;
@@ -453,7 +426,7 @@ fn arch_memory_regions(size: u64, bios_size: Option<u64>) -> Vec<(GuestAddress, 
     let mem_end = GuestAddress(size + mem_start);
 
     let first_addr_past_32bits = GuestAddress(FIRST_ADDR_PAST_32BITS);
-    let end_32bit_gap_start = GuestAddress(read_pci_start_before_32bit());
+    let end_32bit_gap_start = GuestAddress(read_pci_mmio_before_32bit().start);
 
     let mut regions = Vec::new();
     if mem_end <= end_32bit_gap_start {
@@ -495,22 +468,13 @@ impl arch::LinuxArch for X8664arch {
     }
 
     fn get_system_allocator_config<V: Vm>(vm: &V) -> SystemAllocatorConfig {
-        let guest_mem = vm.get_memory();
-        let high_mmio_start = Self::get_high_mmio_base(guest_mem);
-        let high_mmio_size = Self::get_high_mmio_size(vm);
         SystemAllocatorConfig {
-            io: Some(MemRegion {
-                base: 0xc000,
-                size: 0x4000,
+            io: Some(AddressRange {
+                start: 0xc000,
+                end: 0xffff,
             }),
-            low_mmio: MemRegion {
-                base: read_pci_start_before_32bit(),
-                size: read_pci_size_before_32bit(),
-            },
-            high_mmio: MemRegion {
-                base: high_mmio_start,
-                size: high_mmio_size,
-            },
+            low_mmio: read_pci_mmio_before_32bit(),
+            high_mmio: Self::get_high_mmio_range(vm),
             platform_mmio: None,
             first_irq: X86_64_IRQ_BASE,
         }
@@ -552,8 +516,9 @@ impl arch::LinuxArch for X8664arch {
 
         // punch pcie config mmio from pci low mmio, so that it couldn't be
         // allocated to any device.
+        let pcie_cfg_mmio_range = read_pcie_cfg_mmio();
         system_allocator
-            .reserve_mmio(read_pcie_cfg_mmio_start(), read_pcie_cfg_mmio_size())
+            .reserve_mmio(pcie_cfg_mmio_range)
             .map_err(Error::ReservePcieCfgMmio)?;
 
         for sdt in components.acpi_sdts.iter() {
@@ -593,7 +558,7 @@ impl arch::LinuxArch for X8664arch {
         .map_err(Error::CreatePciRoot)?;
 
         let pci = Arc::new(Mutex::new(pci));
-        pci.lock().enable_pcie_cfg_mmio(read_pcie_cfg_mmio_start());
+        pci.lock().enable_pcie_cfg_mmio(read_pcie_cfg_mmio().start);
         let pci_cfg = PciConfigIo::new(
             pci.clone(),
             vm_evt_wrtube.try_clone().map_err(Error::CloneTube)?,
@@ -602,19 +567,17 @@ impl arch::LinuxArch for X8664arch {
         io_bus.insert(pci_bus, 0xcf8, 0x8).unwrap();
 
         let pcie_cfg_mmio = Arc::new(Mutex::new(PciConfigMmio::new(pci.clone(), 12)));
+        let pcie_cfg_mmio_range = read_pcie_cfg_mmio();
+        let pcie_cfg_mmio_len = pcie_cfg_mmio_range.len().unwrap();
         mmio_bus
-            .insert(
-                pcie_cfg_mmio,
-                read_pcie_cfg_mmio_start(),
-                read_pcie_cfg_mmio_size(),
-            )
+            .insert(pcie_cfg_mmio, pcie_cfg_mmio_range.start, pcie_cfg_mmio_len)
             .unwrap();
 
         let pcie_vcfg_mmio = Arc::new(Mutex::new(PciVirtualConfigMmio::new(pci.clone(), 12)));
         mmio_bus
             .insert(
                 pcie_vcfg_mmio,
-                Self::get_pcie_vcfg_mmio_base(&mem),
+                Self::get_pcie_vcfg_mmio_range(&mem).start,
                 PCIE_VCFG_MMIO_SIZE,
             )
             .unwrap();
@@ -649,7 +612,7 @@ impl arch::LinuxArch for X8664arch {
         let mut resume_notify_devices = Vec::new();
 
         // each bus occupy 1MB mmio for pcie enhanced configuration
-        let max_bus = ((read_pcie_cfg_mmio_size() / 0x100000) - 1) as u8;
+        let max_bus = ((read_pcie_cfg_mmio().len().unwrap() / 0x100000) - 1) as u8;
         let (acpi_dev_resource, bat_control) = Self::setup_acpi_devices(
             &mem,
             &io_bus,
@@ -703,7 +666,7 @@ impl arch::LinuxArch for X8664arch {
             host_cpus,
             vcpu_ids,
             &pci_irqs,
-            read_pcie_cfg_mmio_start(),
+            read_pcie_cfg_mmio().start,
             max_bus,
             components.force_s2idle,
         )
@@ -814,7 +777,7 @@ impl arch::LinuxArch for X8664arch {
 
         let guest_mem = vm.get_memory();
         let kernel_load_addr = GuestAddress(KERNEL_START_OFFSET);
-        regs::setup_msrs(vm, vcpu, read_pci_start_before_32bit()).map_err(Error::SetupMsrs)?;
+        regs::setup_msrs(vm, vcpu, read_pci_mmio_before_32bit().start).map_err(Error::SetupMsrs)?;
         let kernel_end = guest_mem
             .checked_offset(kernel_load_addr, KERNEL_64BIT_ENTRY_OFFSET)
             .ok_or(Error::KernelOffsetPastEnd)?;
@@ -1328,30 +1291,24 @@ impl X8664arch {
         Ok(())
     }
 
-    fn get_pcie_vcfg_mmio_base(mem: &GuestMemory) -> u64 {
+    fn get_pcie_vcfg_mmio_range(mem: &GuestMemory) -> AddressRange {
         // Put PCIe VCFG region at a 2MB boundary after physical memory or 4gb, whichever is greater.
         let ram_end_round_2mb = (mem.end_addr().offset() + 2 * MB - 1) / (2 * MB) * (2 * MB);
-        std::cmp::max(ram_end_round_2mb, 4 * GB)
+        let start = std::cmp::max(ram_end_round_2mb, 4 * GB);
+        let end = start + PCIE_VCFG_MMIO_SIZE - 1;
+        AddressRange { start, end }
     }
 
-    /// This returns the start address of high mmio
-    ///
-    /// # Arguments
-    ///
-    /// * mem: The memory to be used by the guest
-    fn get_high_mmio_base(mem: &GuestMemory) -> u64 {
-        Self::get_pcie_vcfg_mmio_base(mem) + PCIE_VCFG_MMIO_SIZE
-    }
+    /// Returns the high mmio range
+    fn get_high_mmio_range<V: Vm>(vm: &V) -> AddressRange {
+        let mem = vm.get_memory();
+        let start = Self::get_pcie_vcfg_mmio_range(mem).end + 1;
 
-    /// This returns the size of high mmio
-    ///
-    /// # Arguments
-    ///
-    /// * `vm`: The virtual machine
-    fn get_high_mmio_size<V: Vm>(vm: &V) -> u64 {
-        let phys_mem_end = 1u64 << vm.get_guest_phys_addr_bits();
+        let phys_mem_end = (1u64 << vm.get_guest_phys_addr_bits()) - 1;
         let high_mmio_end = std::cmp::min(phys_mem_end, HIGH_MMIO_MAX_END);
-        high_mmio_end - Self::get_high_mmio_base(vm.get_memory())
+        let end = high_mmio_end - 1;
+
+        AddressRange { start, end }
     }
 
     /// This returns a minimal kernel command for this architecture
@@ -1479,7 +1436,7 @@ impl X8664arch {
             None => 0x600,
         };
 
-        let pcie_vcfg = aml::Name::new("VCFG".into(), &Self::get_pcie_vcfg_mmio_base(mem));
+        let pcie_vcfg = aml::Name::new("VCFG".into(), &Self::get_pcie_vcfg_mmio_range(mem).start);
         pcie_vcfg.to_aml_bytes(&mut amls);
 
         let pm_sci_evt = devices::IrqLevelEvent::new().map_err(Error::CreateEvent)?;
@@ -1521,7 +1478,7 @@ impl X8664arch {
             Box::new(aml::IO::new(0xcf8, 0xcf8, 1, 0x8)),
         ];
         for r in resources.mmio_pools() {
-            let entry: Box<dyn Aml> = match (u32::try_from(*r.start()), u32::try_from(*r.end())) {
+            let entry: Box<dyn Aml> = match (u32::try_from(r.start), u32::try_from(r.end)) {
                 (Ok(start), Ok(end)) => Box::new(aml::AddressSpace::new_memory(
                     aml::AddressSpaceCachable::NotCacheable,
                     true,
@@ -1531,8 +1488,8 @@ impl X8664arch {
                 _ => Box::new(aml::AddressSpace::new_memory(
                     aml::AddressSpaceCachable::NotCacheable,
                     true,
-                    *r.start(),
-                    *r.end(),
+                    r.start,
+                    r.end,
                 )),
             };
             crs_entries.push(entry);
@@ -1850,10 +1807,7 @@ mod tests {
     const TEST_MEMORY_SIZE: u64 = 2 * GB;
 
     fn setup() {
-        let pcie_ecam = Some(MemRegion {
-            base: 3 * GB,
-            size: 256 * MB,
-        });
+        let pcie_ecam = Some(AddressRange::from_start_and_size(3 * GB, 256 * MB).unwrap());
         let pci_start = Some(2 * GB);
         init_low_memory_layout(pcie_ecam, pci_start);
     }
@@ -1942,9 +1896,9 @@ mod tests {
     fn check_pci_mmio_layout() {
         setup();
 
-        assert_eq!(read_pci_start_before_32bit(), 2 * GB);
-        assert_eq!(read_pcie_cfg_mmio_start(), 3 * GB);
-        assert_eq!(read_pcie_cfg_mmio_size(), 256 * MB);
+        assert_eq!(read_pci_mmio_before_32bit().start, 2 * GB);
+        assert_eq!(read_pcie_cfg_mmio().start, 3 * GB);
+        assert_eq!(read_pcie_cfg_mmio().len().unwrap(), 256 * MB);
     }
 
     #[test]
@@ -1955,9 +1909,9 @@ mod tests {
         // On brya, type16 region is at 0x0000000076876000-0x00000000803fffff
         let brya_type16_address = 0x7687_6000;
         assert!(
-            read_pci_start_before_32bit() < brya_type16_address,
+            read_pci_mmio_before_32bit().start < brya_type16_address,
             "{} < {}",
-            read_pci_start_before_32bit(),
+            read_pci_mmio_before_32bit().start,
             brya_type16_address
         );
     }
@@ -1966,6 +1920,6 @@ mod tests {
     fn check_32bit_gap_size_alignment() {
         setup();
         // pci_low_start is 256 MB aligned to be friendly for MTRR mappings.
-        assert_eq!(read_pci_start_before_32bit() % (256 * MB), 0);
+        assert_eq!(read_pci_mmio_before_32bit().start % (256 * MB), 0);
     }
 }

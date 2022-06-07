@@ -440,7 +440,7 @@ impl PciDevice for Ac97Dev {
 mod tests {
     use super::*;
     use audio_streams::shm_streams::MockShmStreamSource;
-    use resources::{MemRegion, SystemAllocatorConfig};
+    use resources::{AddressRange, SystemAllocatorConfig};
     use vm_memory::GuestAddress;
 
     #[test]
@@ -450,17 +450,17 @@ mod tests {
             Ac97Dev::new(mem, Ac97Backend::NULL, Box::new(MockShmStreamSource::new()));
         let mut allocator = SystemAllocator::new(
             SystemAllocatorConfig {
-                io: Some(MemRegion {
-                    base: 0xc000,
-                    size: 0x4000,
+                io: Some(AddressRange {
+                    start: 0xc000,
+                    end: 0xffff,
                 }),
-                low_mmio: MemRegion {
-                    base: 0x2000_0000,
-                    size: 0x1000_0000,
+                low_mmio: AddressRange {
+                    start: 0x2000_0000,
+                    end: 0x2fff_ffff,
                 },
-                high_mmio: MemRegion {
-                    base: 0x3000_0000,
-                    size: 0x1000_0000,
+                high_mmio: AddressRange {
+                    start: 0x3000_0000,
+                    end: 0x3fff_ffff,
                 },
                 platform_mmio: None,
                 first_irq: 5,

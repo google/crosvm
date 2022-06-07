@@ -48,7 +48,7 @@ use {
 use {
     devices::IrqChipX86_64 as IrqChipArch,
     hypervisor::{HypervisorX86_64 as HypervisorArch, VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
-    resources::MemRegion,
+    resources::AddressRange,
 };
 
 pub use serial::{
@@ -107,7 +107,7 @@ pub struct VmComponents {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub pci_low_start: Option<u64>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub pcie_ecam: Option<MemRegion>,
+    pub pcie_ecam: Option<AddressRange>,
     pub protected_vm: ProtectionType,
     pub pstore: Option<Pstore>,
     /// A file to load as pVM firmware. Must be `Some` iff

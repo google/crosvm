@@ -8,7 +8,7 @@ use crate::Pstore;
 use anyhow::{bail, Context, Result};
 use base::MemoryMappingBuilder;
 use hypervisor::Vm;
-use resources::MemRegion;
+use resources::AddressRange;
 use vm_memory::GuestAddress;
 
 pub struct RamoopsRegion {
@@ -19,11 +19,12 @@ pub struct RamoopsRegion {
 /// Creates a mmio memory region for pstore.
 pub fn create_memory_region(
     vm: &mut impl Vm,
-    region: &MemRegion,
+    region: AddressRange,
     pstore: &Pstore,
 ) -> Result<RamoopsRegion> {
-    if region.size < pstore.size.into() {
-        bail!("insufficient space for pstore {:?} {}", region, pstore.size);
+    let region_size = region.len().context("failed to get region len")?;
+    if region_size < pstore.size.into() {
+        bail!("insufficient space for pstore {} {}", region, pstore.size);
     }
 
     let file = OpenOptions::new()
@@ -41,7 +42,7 @@ pub fn create_memory_region(
         .context("failed to mmap pstore")?;
 
     vm.add_memory_region(
-        GuestAddress(region.base),
+        GuestAddress(region.start),
         Box::new(memory_mapping),
         false,
         false,
@@ -49,7 +50,7 @@ pub fn create_memory_region(
     .context("failed to add pstore region")?;
 
     Ok(RamoopsRegion {
-        address: region.base,
+        address: region.start,
         size: pstore.size,
     })
 }

@@ -1,13 +1,13 @@
 // Copyright 2018 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
 use std::collections::BTreeMap;
-use std::ops::RangeInclusive;
 
 use base::pagesize;
 
 use crate::address_allocator::{AddressAllocator, AddressAllocatorSet};
-use crate::{Alloc, Error, Result};
+use crate::{AddressRange, Alloc, Error, Result};
 
 /// Manages allocating system resources such as address space and interrupt numbers.
 
@@ -20,30 +20,23 @@ pub enum MmioType {
     High,
 }
 
-/// Region of memory.
-#[derive(Copy, Clone, Debug)]
-pub struct MemRegion {
-    pub base: u64,
-    pub size: u64,
-}
-
 pub struct SystemAllocatorConfig {
     /// IO ports. Only for x86_64.
-    pub io: Option<MemRegion>,
+    pub io: Option<AddressRange>,
     /// Low (<=4GB) MMIO region.
     ///
     /// Parts of this region may be reserved or otherwise excluded from the
     /// created SystemAllocator's MmioType::Low allocator. However, no new
     /// regions will be added.
-    pub low_mmio: MemRegion,
+    pub low_mmio: AddressRange,
     /// High (>4GB) MMIO region.
     ///
     /// Parts of this region may be reserved or otherwise excluded from the
     /// created SystemAllocator's MmioType::High allocator. However, no new
     /// regions will be added.
-    pub high_mmio: MemRegion,
+    pub high_mmio: AddressRange,
     /// Platform MMIO space. Only for ARM.
-    pub platform_mmio: Option<MemRegion>,
+    pub platform_mmio: Option<AddressRange>,
     /// The first IRQ number to give out.
     pub first_irq: u32,
 }
@@ -56,26 +49,12 @@ pub struct SystemAllocator {
     mmio_address_spaces: [AddressAllocator; 2],
     mmio_platform_address_spaces: Option<AddressAllocator>,
 
-    reserved_region: Option<MemRegion>,
+    reserved_region: Option<AddressRange>,
 
     // Each bus number has a AddressAllocator
     pci_allocator: BTreeMap<u8, AddressAllocator>,
     irq_allocator: AddressAllocator,
     next_anon_id: usize,
-}
-
-fn to_range_inclusive(base: u64, size: u64) -> Result<RangeInclusive<u64>> {
-    let end = base
-        .checked_add(size.checked_sub(1).ok_or(Error::PoolSizeZero)?)
-        .ok_or(Error::PoolOverflow { base, size })?;
-    Ok(RangeInclusive::new(base, end))
-}
-
-fn range_intersect(r1: &RangeInclusive<u64>, r2: &RangeInclusive<u64>) -> RangeInclusive<u64> {
-    RangeInclusive::new(
-        u64::max(*r1.start(), *r2.start()),
-        u64::min(*r1.end(), *r2.end()),
-    )
 }
 
 impl SystemAllocator {
@@ -91,37 +70,41 @@ impl SystemAllocator {
     pub fn new(
         config: SystemAllocatorConfig,
         reserve_region_size: Option<u64>,
-        mmio_address_ranges: &[RangeInclusive<u64>],
+        mmio_address_ranges: &[AddressRange],
     ) -> Result<Self> {
         let page_size = pagesize() as u64;
 
         let (high_mmio, reserved_region) = match reserve_region_size {
-            Some(len) => {
-                if len > config.high_mmio.size {
+            Some(reserved_len) => {
+                let high_mmio_len = config.high_mmio.len().ok_or(Error::OutOfBounds)?;
+                if reserved_len >= high_mmio_len {
                     return Err(Error::PoolSizeZero);
                 }
+                let reserved_start = config.high_mmio.start;
+                let reserved_end = reserved_start + reserved_len - 1;
+                let high_mmio_start = reserved_end + 1;
+                let high_mmio_end = config.high_mmio.end;
                 (
-                    MemRegion {
-                        base: config.high_mmio.base + len,
-                        size: config.high_mmio.size - len,
+                    AddressRange {
+                        start: high_mmio_start,
+                        end: high_mmio_end,
                     },
-                    Some(MemRegion {
-                        base: config.high_mmio.base,
-                        size: len,
+                    Some(AddressRange {
+                        start: reserved_start,
+                        end: reserved_end,
                     }),
                 )
             }
             None => (config.high_mmio, None),
         };
 
-        let intersect_mmio_range = |src: MemRegion| -> Result<Vec<RangeInclusive<u64>>> {
-            let src_range = to_range_inclusive(src.base, src.size)?;
+        let intersect_mmio_range = |src_range: AddressRange| -> Result<Vec<AddressRange>> {
             Ok(if mmio_address_ranges.is_empty() {
                 vec![src_range]
             } else {
                 mmio_address_ranges
                     .iter()
-                    .map(|r| range_intersect(r, &src_range))
+                    .map(|r| r.intersect(src_range))
                     .collect()
             })
         };
@@ -130,14 +113,10 @@ impl SystemAllocator {
             io_address_space: if let Some(io) = config.io {
                 // TODO make sure we don't overlap with existing well known
                 // ports such as 0xcf8 (serial ports).
-                if io.base > 0x1_0000 || io.size + io.base > 0x1_0000 {
-                    return Err(Error::IOPortOutOfRange(io.base, io.size));
+                if io.end > 0xffff {
+                    return Err(Error::IOPortOutOfRange(io));
                 }
-                Some(AddressAllocator::new(
-                    to_range_inclusive(io.base, io.size)?,
-                    Some(0x400),
-                    None,
-                )?)
+                Some(AddressAllocator::new(io, Some(0x400), None)?)
             } else {
                 None
             },
@@ -159,11 +138,7 @@ impl SystemAllocator {
             pci_allocator: BTreeMap::new(),
 
             mmio_platform_address_spaces: if let Some(platform) = config.platform_mmio {
-                Some(AddressAllocator::new(
-                    to_range_inclusive(platform.base, platform.size)?,
-                    Some(page_size),
-                    None,
-                )?)
+                Some(AddressAllocator::new(platform, Some(page_size), None)?)
             } else {
                 None
             },
@@ -171,7 +146,10 @@ impl SystemAllocator {
             reserved_region,
 
             irq_allocator: AddressAllocator::new(
-                RangeInclusive::new(config.first_irq as u64, 1023),
+                AddressRange {
+                    start: config.first_irq as u64,
+                    end: 1023,
+                },
                 Some(1),
                 None,
             )?,
@@ -197,7 +175,14 @@ impl SystemAllocator {
     pub fn reserve_irq(&mut self, irq: u32) -> bool {
         let id = self.get_anon_alloc();
         self.irq_allocator
-            .allocate_at(irq as u64, 1, id, "irq-fixed".to_string())
+            .allocate_at(
+                AddressRange {
+                    start: irq.into(),
+                    end: irq.into(),
+                },
+                id,
+                "irq-fixed".to_string(),
+            )
             .is_ok()
     }
 
@@ -210,7 +195,14 @@ impl SystemAllocator {
             // Each bus supports up to 32 (devices) x 8 (functions).
             // Prefer allocating at device granularity (preferred_align = 8), but fall back to
             // allocating individual functions (min_align = 1) when we run out of devices.
-            match AddressAllocator::new(RangeInclusive::new(base, (32 * 8) - 1), Some(1), Some(8)) {
+            match AddressAllocator::new(
+                AddressRange {
+                    start: base,
+                    end: (32 * 8) - 1,
+                },
+                Some(1),
+                Some(8),
+            ) {
                 Ok(v) => self.pci_allocator.insert(bus, v),
                 Err(_) => return None,
             };
@@ -260,7 +252,9 @@ impl SystemAllocator {
                     None => return false,
                 };
                 let df = ((dev as u64) << 3) | (func as u64);
-                allocator.allocate_at(df, 1, id, tag).is_ok()
+                allocator
+                    .allocate_at(AddressRange { start: df, end: df }, id, tag)
+                    .is_ok()
             }
             _ => false,
         }
@@ -280,24 +274,22 @@ impl SystemAllocator {
     /// range with mmio pools, exclude the overlap from mmio allocator.
     ///
     /// If any part of the specified range has been allocated, return Error.
-    pub fn reserve_mmio(&mut self, start: u64, len: u64) -> Result<()> {
-        let target = to_range_inclusive(start, len)?;
+    pub fn reserve_mmio(&mut self, range: AddressRange) -> Result<()> {
         let mut pools = Vec::new();
         for pool in self.mmio_pools() {
-            pools.push(RangeInclusive::new(*pool.start(), *pool.end()));
+            pools.push(*pool);
         }
-        pools.sort_by(|a, b| a.start().cmp(b.start()));
+        pools.sort_by(|a, b| a.start.cmp(&b.start));
         for pool in &pools {
-            if pool.start() > target.end() {
+            if pool.start > range.end {
                 break;
             }
 
-            let overlap = range_intersect(pool, &target);
+            let overlap = pool.intersect(range);
             if !overlap.is_empty() {
                 let id = self.get_anon_alloc();
                 self.mmio_allocator_any().allocate_at(
-                    *overlap.start(),
-                    *overlap.end() - *overlap.start() + 1,
+                    overlap,
                     id,
                     "pci mmio reserve".to_string(),
                 )?;
@@ -331,7 +323,7 @@ impl SystemAllocator {
     }
 
     /// Gets the pools of all mmio allocators.
-    pub fn mmio_pools(&self) -> Vec<&RangeInclusive<u64>> {
+    pub fn mmio_pools(&self) -> Vec<&AddressRange> {
         self.mmio_address_spaces
             .iter()
             .flat_map(|mmio_as| mmio_as.pools())
@@ -339,8 +331,8 @@ impl SystemAllocator {
     }
 
     /// Gets the reserved address space region.
-    pub fn reserved_region(&self) -> Option<&MemRegion> {
-        self.reserved_region.as_ref()
+    pub fn reserved_region(&self) -> Option<AddressRange> {
+        self.reserved_region
     }
 
     /// Gets a unique anonymous allocation
@@ -358,17 +350,17 @@ mod tests {
     fn example() {
         let mut a = SystemAllocator::new(
             SystemAllocatorConfig {
-                io: Some(MemRegion {
-                    base: 0x1000,
-                    size: 0xf000,
+                io: Some(AddressRange {
+                    start: 0x1000,
+                    end: 0xffff,
                 }),
-                low_mmio: MemRegion {
-                    base: 0x3000_0000,
-                    size: 0x1_0000,
+                low_mmio: AddressRange {
+                    start: 0x3000_0000,
+                    end: 0x3000_ffff,
                 },
-                high_mmio: MemRegion {
-                    base: 0x1000_0000,
-                    size: 0x1000_0000,
+                high_mmio: AddressRange {
+                    start: 0x1000_0000,
+                    end: 0x1fffffff,
                 },
                 platform_mmio: None,
                 first_irq: 5,
@@ -400,24 +392,45 @@ mod tests {
                 func: 0,
                 bar: 0
             }),
-            Some(&(0x10000000, 0x100, "bar0".to_string()))
+            Some(&(
+                AddressRange {
+                    start: 0x10000000,
+                    end: 0x100000ff
+                },
+                "bar0".to_string()
+            ))
         );
 
         let id = a.get_anon_alloc();
         assert_eq!(
             a.mmio_allocator(MmioType::Low).allocate_at(
-                0x3000_5000,
-                0x5000,
+                AddressRange {
+                    start: 0x3000_5000,
+                    end: 0x30009fff
+                },
                 id,
                 "Test".to_string()
             ),
             Ok(())
         );
         assert_eq!(a.mmio_allocator(MmioType::Low).release(id), Ok(()));
-        assert_eq!(a.reserve_mmio(0x3000_2000, 0x4000), Ok(()));
+        assert_eq!(
+            a.reserve_mmio(AddressRange {
+                start: 0x3000_2000,
+                end: 0x30005fff
+            }),
+            Ok(())
+        );
         assert_eq!(
             a.mmio_allocator(MmioType::Low)
-                .allocate_at(0x3000_5000, 0x5000, id, "Test".to_string())
+                .allocate_at(
+                    AddressRange {
+                        start: 0x3000_5000,
+                        end: 0x3000_9fff
+                    },
+                    id,
+                    "Test".to_string()
+                )
                 .is_err(),
             true
         );

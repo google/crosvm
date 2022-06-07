@@ -4,7 +4,6 @@
 
 use std::collections::BTreeMap;
 use std::net;
-use std::ops::RangeInclusive;
 use std::os::unix::prelude::RawFd;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -35,8 +34,7 @@ use devices::BusRange;
 use devices::{IommuDevType, PciAddress, PciClassCode, StubPciParameters};
 use hypervisor::ProtectionType;
 use libc::{getegid, geteuid};
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use resources::MemRegion;
+use resources::AddressRange;
 use serde::Deserialize;
 use uuid::Uuid;
 use vm_control::BatteryType;
@@ -678,7 +676,7 @@ impl Default for JailConfig {
     }
 }
 
-pub fn parse_mmio_address_range(s: &str) -> Result<Vec<RangeInclusive<u64>>, String> {
+pub fn parse_mmio_address_range(s: &str) -> Result<Vec<AddressRange>, String> {
     s.split(",")
         .map(|s| {
             let r: Vec<&str> = s.split("-").collect();
@@ -693,7 +691,10 @@ pub fn parse_mmio_address_range(s: &str) -> Result<Vec<RangeInclusive<u64>>, Str
                     }
                 }
             };
-            Ok(RangeInclusive::new(parse(r[0])?, parse(r[1])?))
+            Ok(AddressRange {
+                start: parse(r[0])?,
+                end: parse(r[1])?,
+            })
         })
         .collect()
 }
@@ -895,7 +896,7 @@ pub fn parse_plugin_mount_option(value: &str) -> Result<BindMount, String> {
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub fn parse_memory_region(value: &str) -> Result<MemRegion, String> {
+pub fn parse_memory_region(value: &str) -> Result<AddressRange, String> {
     let paras: Vec<&str> = value.split(',').collect();
     if paras.len() != 2 {
         return Err(invalid_value_err(
@@ -941,7 +942,14 @@ pub fn parse_memory_region(value: &str) -> Result<MemRegion, String> {
         ));
     }
 
-    Ok(MemRegion { base, size: len })
+    if let Some(range) = AddressRange::from_start_and_size(base, len) {
+        Ok(range)
+    } else {
+        Err(invalid_value_err(
+            value,
+            "pcie-ecam must be representable as AddressRange",
+        ))
+    }
 }
 
 #[cfg(feature = "direct")]
@@ -1712,7 +1720,7 @@ pub struct Config {
     pub mac_address: Option<net_util::MacAddress>,
     pub memory: Option<u64>,
     pub memory_file: Option<PathBuf>,
-    pub mmio_address_ranges: Vec<RangeInclusive<u64>>,
+    pub mmio_address_ranges: Vec<AddressRange>,
     pub net_vq_pairs: Option<u16>,
     pub netmask: Option<net::Ipv4Addr>,
     pub no_i8042: bool,
@@ -1722,7 +1730,7 @@ pub struct Config {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub pci_low_start: Option<u64>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub pcie_ecam: Option<MemRegion>,
+    pub pcie_ecam: Option<AddressRange>,
     #[cfg(feature = "direct")]
     pub pcie_rp: Vec<HostPcieRootPortParameters>,
     pub per_vm_core_scheduling: bool,

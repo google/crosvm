@@ -48,7 +48,7 @@ use devices::{HostBackendDeviceProvider, XhciController};
 use hypervisor::kvm::{Kvm, KvmVcpu, KvmVm};
 use hypervisor::{HypervisorCap, ProtectionType, Vm, VmCap};
 use minijail::{self, Minijail};
-use resources::{Alloc, SystemAllocator};
+use resources::{AddressRange, Alloc, SystemAllocator};
 use rutabaga_gfx::RutabagaGralloc;
 use sync::{Condvar, Mutex};
 use vm_control::*;
@@ -680,9 +680,10 @@ fn create_file_backed_mappings(
             .build()
             .context("failed to map backing file for file-backed mapping")?;
 
+        let mapping_range = AddressRange::from_start_and_size(mapping.address, mapping.size)
+            .context("failed to convert to AddressRange")?;
         match resources.mmio_allocator_any().allocate_at(
-            mapping.address,
-            mapping.size,
+            mapping_range,
             Alloc::FileBacked(mapping.address),
             "file-backed mapping".to_owned(),
         ) {

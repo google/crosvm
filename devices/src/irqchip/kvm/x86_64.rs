@@ -784,7 +784,7 @@ mod tests {
     use hypervisor::{
         kvm::Kvm, IoapicRedirectionTableEntry, PitRWMode, ProtectionType, TriggerMode, Vm, VmX86_64,
     };
-    use resources::{MemRegion, SystemAllocator, SystemAllocatorConfig};
+    use resources::{AddressRange, SystemAllocator, SystemAllocatorConfig};
     use vm_memory::GuestMemory;
 
     use crate::irqchip::tests::*;
@@ -967,17 +967,17 @@ mod tests {
         let io_bus = Bus::new();
         let mut resources = SystemAllocator::new(
             SystemAllocatorConfig {
-                io: Some(MemRegion {
-                    base: 0xc000,
-                    size: 0x4000,
+                io: Some(AddressRange {
+                    start: 0xc000,
+                    end: 0xffff,
                 }),
-                low_mmio: MemRegion {
-                    base: 0,
-                    size: 2048,
+                low_mmio: AddressRange {
+                    start: 0,
+                    end: 2047,
                 },
-                high_mmio: MemRegion {
-                    base: 0x1_0000_0000,
-                    size: 0x2_0000_0000,
+                high_mmio: AddressRange {
+                    start: 0x1_0000_0000,
+                    end: 0x2_ffff_ffff,
                 },
                 platform_mmio: None,
                 first_irq: 5,
@@ -1100,17 +1100,17 @@ mod tests {
         let io_bus = Bus::new();
         let mut resources = SystemAllocator::new(
             SystemAllocatorConfig {
-                io: Some(MemRegion {
-                    base: 0xc000,
-                    size: 0x4000,
+                io: Some(AddressRange {
+                    start: 0xc000,
+                    end: 0xffff,
                 }),
-                low_mmio: MemRegion {
-                    base: 0,
-                    size: 2048,
+                low_mmio: AddressRange {
+                    start: 0,
+                    end: 2047,
                 },
-                high_mmio: MemRegion {
-                    base: 0x1_0000_0000,
-                    size: 0x2_0000_0000,
+                high_mmio: AddressRange {
+                    start: 0x1_0000_0000,
+                    end: 0x2_ffff_ffff,
                 },
                 platform_mmio: None,
                 first_irq: 5,

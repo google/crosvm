@@ -26,7 +26,7 @@ use hypervisor::{DeviceKind, Vm};
 use once_cell::sync::OnceCell;
 use remain::sorted;
 use resources::address_allocator::AddressAllocator;
-use resources::{Alloc, Error as ResourcesError};
+use resources::{AddressRange, Alloc, Error as ResourcesError};
 use sync::Mutex;
 use thiserror::Error;
 use vfio_sys::*;
@@ -242,7 +242,7 @@ impl VfioContainer {
         Ok(iommu_info.iova_pgsizes)
     }
 
-    pub fn vfio_iommu_iova_get_iova_ranges(&self) -> Result<Vec<vfio_iova_range>> {
+    pub fn vfio_iommu_iova_get_iova_ranges(&self) -> Result<Vec<AddressRange>> {
         // Query the buffer size needed fetch the capabilities.
         let mut iommu_info_argsz = vfio_iommu_type1_info {
             argsz: mem::size_of::<vfio_iommu_type1_info>() as u32,
@@ -303,7 +303,13 @@ impl VfioContainer {
                         range_offset + i as usize * mem::size_of::<vfio_iova_range>(),
                     ));
                 }
-                return Ok(ret);
+                return Ok(ret
+                    .iter()
+                    .map(|range| AddressRange {
+                        start: range.start,
+                        end: range.end,
+                    })
+                    .collect());
             }
             offset = header.next as usize;
         }
@@ -757,11 +763,7 @@ impl VfioDevice {
         group.lock().add_device_num();
         let group_descriptor = group.lock().as_raw_descriptor();
 
-        let iova_ranges = container
-            .lock()
-            .vfio_iommu_iova_get_iova_ranges()?
-            .into_iter()
-            .map(|r| std::ops::RangeInclusive::new(r.start, r.end));
+        let iova_ranges = container.lock().vfio_iommu_iova_get_iova_ranges()?;
         let iova_alloc = AddressAllocator::new_from_list(iova_ranges, None, None)
             .map_err(VfioError::Resources)?;
 
@@ -806,11 +808,7 @@ impl VfioDevice {
         group.lock().add_device_num();
         let group_descriptor = group.lock().as_raw_descriptor();
 
-        let iova_ranges = container
-            .lock()
-            .vfio_iommu_iova_get_iova_ranges()?
-            .into_iter()
-            .map(|r| std::ops::RangeInclusive::new(r.start, r.end));
+        let iova_ranges = container.lock().vfio_iommu_iova_get_iova_ranges()?;
         let iova_alloc = AddressAllocator::new_from_list(iova_ranges, None, None)
             .map_err(VfioError::Resources)?;
 

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::EINVAL;
+use libc::{EINVAL, ERANGE};
 use std::{os::raw::c_int, path::Path, thread::JoinHandle};
 
 use base::{
@@ -137,21 +137,25 @@ impl FsMappingRequest {
                         func,
                         bar,
                     }) {
-                    Some((addr, length, _)) => {
-                        let arena = match MemoryMappingArena::new(*length as usize) {
+                    Some((range, _)) => {
+                        let size: usize = match range.len().and_then(|x| x.try_into().ok()) {
+                            Some(v) => v,
+                            None => return VmResponse::Err(SysError::new(ERANGE)),
+                        };
+                        let arena = match MemoryMappingArena::new(size) {
                             Ok(a) => a,
                             Err(MmapError::SystemCallFailed(e)) => return VmResponse::Err(e),
                             _ => return VmResponse::Err(SysError::new(EINVAL)),
                         };
 
                         match vm.add_memory_region(
-                            GuestAddress(*addr),
+                            GuestAddress(range.start),
                             Box::new(arena),
                             false,
                             false,
                         ) {
                             Ok(slot) => VmResponse::RegisterMemory {
-                                pfn: addr >> 12,
+                                pfn: range.start >> 12,
                                 slot,
                             },
                             Err(e) => VmResponse::Err(e),
