@@ -153,14 +153,16 @@ pub struct CreateCompositeCommand {
 #[derive(FromArgs)]
 #[argh(subcommand, name = "create_qcow2")]
 /// Create Qcow2 image given path and size
-/// Either SIZE or --backing-file need to be specified
 pub struct CreateQcow2Command {
     #[argh(positional, arg_name = "PATH")]
+    /// path to the new qcow2 file to create
     pub file_path: String,
     #[argh(positional, arg_name = "SIZE")]
+    /// desired size of the image in bytes; required if not using --backing-file
     pub size: Option<u64>,
     #[argh(option)]
-    /// path to backing file
+    /// path to backing file; if specified, the image will be the same size as the backing file, and
+    /// SIZE may not be specified
     pub backing_file: Option<String>,
 }
 
