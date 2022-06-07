@@ -44,6 +44,8 @@ pub use self::descriptor_utils::*;
 pub use self::gpu::*;
 pub use self::input::*;
 pub use self::interrupt::*;
+#[cfg(unix)]
+pub use self::iommu::sys::unix::vfio_wrapper;
 pub use self::iommu::*;
 pub use self::net::*;
 pub use self::p9::*;
