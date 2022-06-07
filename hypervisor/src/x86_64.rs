@@ -3,10 +3,7 @@
 // found in the LICENSE file.
 
 #[cfg(any(unix, feature = "haxm"))]
-use std::arch::x86_64::_rdtsc;
-
-#[cfg(any(feature = "haxm"))]
-use std::arch::x86_64::__cpuid;
+use std::arch::x86_64::{__cpuid, _rdtsc};
 
 use serde::{Deserialize, Serialize};
 
@@ -161,7 +158,7 @@ pub(crate) fn set_tsc_offset_via_msr(vcpu: &impl VcpuX86_64, offset: u64) -> Res
 }
 
 /// Gets host cpu max physical address bits.
-#[cfg(feature = "haxm")]
+#[cfg(any(unix, feature = "haxm"))]
 pub(crate) fn host_phys_addr_bits() -> u8 {
     let highest_ext_function = unsafe { __cpuid(0x80000000) };
     if highest_ext_function.eax >= 0x80000008 {
