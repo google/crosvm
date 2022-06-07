@@ -131,6 +131,9 @@ pub enum Error {
     /// Failed to create Master from a UDS path.
     #[error("failed to connect to device socket while creating instance: {0}")]
     SocketConnectOnMasterCreate(VhostError),
+    /// Failed to spawn worker thread.
+    #[error("failed to spawn worker: {0}")]
+    SpawnWorker(std::io::Error),
     /// The tag for the Fs device was too long to fit in the config space.
     #[error("tag is too long: {len} > {max}")]
     TagTooLong { len: usize, max: usize },

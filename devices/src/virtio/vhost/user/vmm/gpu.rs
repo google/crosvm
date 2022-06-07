@@ -12,7 +12,7 @@ use crate::{
     pci::{PciBarConfiguration, PciCapability},
     virtio::{
         gpu::QUEUE_SIZES,
-        vhost::user::vmm::{worker::Worker, Result, VhostUserHandler},
+        vhost::user::vmm::{Result, VhostUserHandler},
         virtio_gpu_config, DeviceType, Interrupt, PciCapabilityType, Queue, VirtioDevice,
         VirtioPciShmCap, GPU_BAR_NUM, GPU_BAR_OFFSET, VIRTIO_GPU_F_CONTEXT_INIT,
         VIRTIO_GPU_F_CREATE_GUEST_HANDLE, VIRTIO_GPU_F_RESOURCE_BLOB, VIRTIO_GPU_F_RESOURCE_SYNC,
@@ -37,7 +37,7 @@ enum GpuState {
 
 pub struct Gpu {
     kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<Worker>>,
+    worker_thread: Option<thread::JoinHandle<()>>,
     handler: RefCell<VhostUserHandler>,
     state: GpuState,
     queue_sizes: Vec<u16>,
@@ -149,45 +149,17 @@ impl VirtioDevice for Gpu {
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
     ) {
-        if let Err(e) = self
+        match self
             .handler
             .borrow_mut()
-            .activate(&mem, &interrupt, &queues, &queue_evts)
+            .activate(mem, interrupt, queues, queue_evts, "gpu")
         {
-            error!("failed to activate queues: {}", e);
-            return;
-        }
-
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("failed creating kill Event pair: {}", e);
-                return;
-            }
-        };
-        self.kill_evt = Some(self_kill_evt);
-
-        let worker_result = thread::Builder::new()
-            .name("vhost_user_gpu".to_string())
-            .spawn(move || {
-                let mut worker = Worker {
-                    queues,
-                    mem,
-                    kill_evt,
-                };
-
-                if let Err(e) = worker.run(interrupt) {
-                    error!("failed to start a worker: {}", e);
-                }
-                worker
-            });
-
-        match worker_result {
-            Err(e) => {
-                error!("failed to spawn vhost_user_gpu worker: {}", e);
-            }
-            Ok(join_handle) => {
+            Ok((join_handle, kill_evt)) => {
                 self.worker_thread = Some(join_handle);
+                self.kill_evt = Some(kill_evt);
+            }
+            Err(e) => {
+                error!("failed to activate queues: {}", e);
             }
         }
     }

@@ -13,7 +13,7 @@ use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
-use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, worker::Worker};
+use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
 use crate::virtio::{block::common::virtio_blk_config, DeviceType, Interrupt, Queue, VirtioDevice};
 
 const VIRTIO_BLK_F_SEG_MAX: u32 = 2;
@@ -27,7 +27,7 @@ const QUEUE_SIZE: u16 = 256;
 
 pub struct Block {
     kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<Worker>>,
+    worker_thread: Option<thread::JoinHandle<()>>,
     handler: RefCell<VhostUserHandler>,
     queue_sizes: Vec<u16>,
 }
@@ -105,45 +105,17 @@ impl VirtioDevice for Block {
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
     ) {
-        if let Err(e) = self
+        match self
             .handler
             .borrow_mut()
-            .activate(&mem, &interrupt, &queues, &queue_evts)
+            .activate(mem, interrupt, queues, queue_evts, "block")
         {
-            error!("failed to activate queues: {}", e);
-            return;
-        }
-
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("failed creating kill Event pair: {}", e);
-                return;
-            }
-        };
-        self.kill_evt = Some(self_kill_evt);
-
-        let worker_result = thread::Builder::new()
-            .name("vhost_user_virtio_blk".to_string())
-            .spawn(move || {
-                let mut worker = Worker {
-                    queues,
-                    mem,
-                    kill_evt,
-                };
-
-                if let Err(e) = worker.run(interrupt) {
-                    error!("failed to start a worker: {}", e);
-                }
-                worker
-            });
-
-        match worker_result {
-            Err(e) => {
-                error!("failed to spawn vhost-user virtio_blk worker: {}", e);
-            }
-            Ok(join_handle) => {
+            Ok((join_handle, kill_evt)) => {
                 self.worker_thread = Some(join_handle);
+                self.kill_evt = Some(kill_evt);
+            }
+            Err(e) => {
+                error!("failed to activate queues: {}", e);
             }
         }
     }

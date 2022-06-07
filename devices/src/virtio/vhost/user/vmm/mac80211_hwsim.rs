@@ -8,33 +8,20 @@ use std::path::Path;
 use std::thread;
 
 use base::{error, Event, RawDescriptor};
-use remain::sorted;
-use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
-use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, worker::Worker, Error};
+use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, Error};
 use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice};
 
 use std::result::Result;
-
-#[sorted]
-#[derive(ThisError, Debug)]
-enum Mac80211HwsimError {
-    #[error("failed to activate queues: {0}")]
-    ActivateQueue(Error),
-    #[error("failed to kill event pair: {0}")]
-    CreateKillEventPair(base::Error),
-    #[error("failed to spawn mac80211_hwsim worker: {0}")]
-    SpawnWorker(std::io::Error),
-}
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_COUNT: usize = 2;
 
 pub struct Mac80211Hwsim {
     kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<Worker>>,
+    worker_thread: Option<thread::JoinHandle<()>>,
     handler: RefCell<VhostUserHandler>,
     queue_sizes: Vec<u16>,
 }
@@ -62,44 +49,6 @@ impl Mac80211Hwsim {
             handler: RefCell::new(handler),
             queue_sizes,
         })
-    }
-
-    fn activate_internal(
-        &mut self,
-        mem: GuestMemory,
-        interrupt: Interrupt,
-        queues: Vec<Queue>,
-        queue_evts: Vec<Event>,
-    ) -> Result<(), Mac80211HwsimError> {
-        self.handler
-            .borrow_mut()
-            .activate(&mem, &interrupt, &queues, &queue_evts)
-            .map_err(Mac80211HwsimError::ActivateQueue)?;
-
-        let (self_kill_evt, kill_evt) = Event::new()
-            .and_then(|e| Ok((e.try_clone()?, e)))
-            .map_err(Mac80211HwsimError::CreateKillEventPair)?;
-
-        self.kill_evt = Some(self_kill_evt);
-
-        let join_handle = thread::Builder::new()
-            .name("vhost_user_mac80211_hwsim".to_string())
-            .spawn(move || {
-                let mut worker = Worker {
-                    queues,
-                    mem,
-                    kill_evt,
-                };
-                if let Err(e) = worker.run(interrupt) {
-                    error!("failed to start a worker: {}", e);
-                }
-                worker
-            })
-            .map_err(Mac80211HwsimError::SpawnWorker)?;
-
-        self.worker_thread = Some(join_handle);
-
-        Ok(())
     }
 }
 
@@ -147,8 +96,20 @@ impl VirtioDevice for Mac80211Hwsim {
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
     ) {
-        if let Err(e) = self.activate_internal(mem, interrupt, queues, queue_evts) {
-            error!("Failed to activate mac80211_hwsim: {}", e);
+        match self.handler.borrow_mut().activate(
+            mem,
+            interrupt,
+            queues,
+            queue_evts,
+            "mac80211_hwsim",
+        ) {
+            Ok((join_handle, kill_evt)) => {
+                self.worker_thread = Some(join_handle);
+                self.kill_evt = Some(kill_evt);
+            }
+            Err(e) => {
+                error!("failed to activate queues: {}", e);
+            }
         }
     }
 
