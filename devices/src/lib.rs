@@ -62,7 +62,7 @@ pub use self::pci::{Ac97Backend, Ac97Dev, Ac97Parameters};
 pub use self::pci::{
     BarRange, CoIommuDev, CoIommuParameters, CoIommuUnpinPolicy, PciAddress, PciAddressError,
     PciBridge, PciBus, PciClassCode, PciConfigIo, PciConfigMmio, PciDevice, PciDeviceError,
-    PciInterruptPin, PciRoot, PciVirtualConfigMmio, PcieHostRootPort, PcieRootPort, PvPanicCode,
+    PciInterruptPin, PciRoot, PciVirtualConfigMmio, PcieHostPort, PcieRootPort, PvPanicCode,
     PvPanicPciDevice, StubPciDevice, StubPciParameters, VfioPciDevice,
 };
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

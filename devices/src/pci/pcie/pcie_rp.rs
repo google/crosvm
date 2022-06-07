@@ -13,7 +13,7 @@ use crate::pci::{MsiConfig, PciAddress, PciCapability, PciDeviceError};
 
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::pcie_device::{PciPmcCap, PcieCap, PcieDevice, PmcConfig};
-use crate::pci::pcie::pcie_host::PcieHostRootPort;
+use crate::pci::pcie::pcie_host::PcieHostPort;
 use crate::pci::pcie::*;
 
 use anyhow::{anyhow, Result};
@@ -45,7 +45,7 @@ pub struct PcieRootPort {
     hotplug_out_begin: bool,
     removed_downstream: Vec<PciAddress>,
     removed_downstream_valid: bool,
-    pcie_host: Option<PcieHostRootPort>,
+    pcie_host: Option<PcieHostPort>,
     prepare_hotplug: bool,
 }
 
@@ -84,7 +84,7 @@ impl PcieRootPort {
     }
 
     /// Constructs a new PCIE root port which associated with the host physical pcie RP
-    pub fn new_from_host(pcie_host: PcieHostRootPort, slot_implemented: bool) -> Result<Self> {
+    pub fn new_from_host(pcie_host: PcieHostPort, slot_implemented: bool) -> Result<Self> {
         let bus_range = pcie_host.get_bus_range();
         // if physical pcie root port isn't on bus 0, ignore this physical pcie root port.
         if bus_range.primary != 0 {

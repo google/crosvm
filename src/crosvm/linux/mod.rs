@@ -67,7 +67,7 @@ use arch::{
 use {
     crate::crosvm::config::HostPcieRootPortParameters,
     devices::{
-        IrqChipX86_64 as IrqChipArch, KvmSplitIrqChip, PciBridge, PcieHostRootPort, PcieRootPort,
+        IrqChipX86_64 as IrqChipArch, KvmSplitIrqChip, PciBridge, PcieHostPort, PcieRootPort,
     },
     hypervisor::{VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
     x86_64::msr::get_override_msr_list,
@@ -771,7 +771,7 @@ fn create_pcie_root_port(
         // reserve the host pci BDF and create a virtual pcie RP with some attrs same as host
         for host_pcie in host_pcie_rp.iter() {
             let (vm_host_tube, vm_device_tube) = Tube::pair().context("failed to create tube")?;
-            let pcie_host = PcieHostRootPort::new(host_pcie.host_path.as_path(), vm_device_tube)?;
+            let pcie_host = PcieHostPort::new(host_pcie.host_path.as_path(), vm_device_tube)?;
             let bus_range = pcie_host.get_bus_range();
             let mut slot_implemented = true;
             for i in bus_range.secondary..=bus_range.subordinate {
