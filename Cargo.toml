@@ -108,8 +108,10 @@ all-linux = [
     # TODO(b/203105868): Enable remaining features on linux builds.
     "composite-disk",
     "default",
+    "ffmpeg",
     "gdb",
     "tpm",
+    "video-decoder",
     "virgl_renderer_next",
     "virgl_renderer",
     "x",
