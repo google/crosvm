@@ -5,6 +5,7 @@
 mod pci_bridge;
 mod pcie_device;
 mod pcie_host;
+mod pcie_port;
 mod pcie_rp;
 
 pub use pci_bridge::PciBridge;
