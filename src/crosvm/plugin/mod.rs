@@ -6,8 +6,8 @@ mod process;
 mod vcpu;
 
 use std::fs::File;
-use std::io;
 use std::io::Read;
+use std::io::{self, Write};
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -279,6 +279,7 @@ pub fn run_vcpus(
     kill_signaled: &Arc<AtomicBool>,
     exit_evt: &Event,
     vcpu_handles: &mut Vec<thread::JoinHandle<()>>,
+    vcpu_cgroup_tasks_file: Option<File>,
 ) -> Result<()> {
     let vcpu_thread_barrier = Arc::new(Barrier::new((vcpu_count) as usize));
     let use_kvm_signals = !kvm.check_extension(Cap::ImmediateExit);
@@ -325,6 +326,9 @@ pub fn run_vcpus(
         let vcpu_exit_evt = exit_evt.try_clone().context("failed to clone event")?;
         let vcpu_plugin = plugin.create_vcpu(cpu_id)?;
         let vcpu = Vcpu::new(cpu_id as c_ulong, kvm, vm).context("error creating vcpu")?;
+        let vcpu_cgroup_tasks_file = vcpu_cgroup_tasks_file
+            .as_ref()
+            .map(|f| f.try_clone().unwrap());
 
         vcpu_handles.push(
             thread::Builder::new()
@@ -335,6 +339,10 @@ pub fn run_vcpus(
                         // because we will be using first RT signal to kick the VCPU.
                         vcpu.set_signal_mask(&[])
                             .expect("failed to set up KVM VCPU signal mask");
+                    }
+                    // Move vcpu thread to cgroup
+                    if let Some(mut f) = vcpu_cgroup_tasks_file {
+                        f.write_all(base::gettid().to_string().as_bytes()).unwrap();
                     }
 
                     if let Err(e) = enable_core_scheduling() {
@@ -808,6 +816,16 @@ pub fn run_config(cfg: Config) -> Result<()> {
         }
 
         if vcpu_handles.is_empty() && dying_instant.is_none() && plugin.is_started() {
+            let vcpu_cgroup_tasks_file = match &cfg.vcpu_cgroup_path {
+                None => None,
+                Some(cgroup_path) => {
+                    // Move main process to cgroup_path
+                    let mut f = File::create(&cgroup_path.join("tasks"))?;
+                    f.write_all(std::process::id().to_string().as_bytes())?;
+                    Some(f)
+                }
+            };
+
             let res = run_vcpus(
                 &kvm,
                 &vm,
@@ -816,6 +834,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
                 &kill_signaled,
                 &exit_evt,
                 &mut vcpu_handles,
+                vcpu_cgroup_tasks_file,
             );
             if let Err(e) = res {
                 dying_instant.get_or_insert(Instant::now());
