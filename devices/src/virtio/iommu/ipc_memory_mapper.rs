@@ -138,8 +138,11 @@ mod tests {
                     perm: Permission::RW,
                 }]))
                 .unwrap();
+            // This join needs to be here because on Windows, if `response_tx`
+            // is dropped before `response_rx` can read, the connection will
+            // be severed and this test will fail.
+            user_handle.join().unwrap();
         });
         iommu_handle.join().unwrap();
-        user_handle.join().unwrap();
     }
 }

@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemoryError};
 
+#[cfg(unix)]
 use crate::vfio::VfioError;
 
 #[repr(u8)]
@@ -59,6 +60,7 @@ pub enum Error {
     Tube(TubeError),
     #[error("unimplemented")]
     Unimplemented,
+    #[cfg(unix)]
     #[error{"vfio error: {0}"}]
     Vfio(VfioError),
 }
