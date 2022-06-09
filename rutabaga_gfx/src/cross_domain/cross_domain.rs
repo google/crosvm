@@ -9,17 +9,12 @@ use std::collections::BTreeMap as Map;
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::fs::File;
-use std::io::{IoSliceMut, Seek, SeekFrom};
 use std::mem::size_of;
-use std::os::unix::net::UnixStream;
 use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 use std::thread;
 
-use base::{
-    error, pipe, AsRawDescriptor, Event, EventToken, FileFlags, FileReadWriteVolatile,
-    FromRawDescriptor, SafeDescriptor, ScmSocket, WaitContext,
-};
+use base::{error, Event, EventToken, FileReadWriteVolatile, SafeDescriptor, WaitContext};
 
 use crate::cross_domain::cross_domain_protocol::*;
 use crate::rutabaga_core::{RutabagaComponent, RutabagaContext, RutabagaResource};
@@ -27,6 +22,8 @@ use crate::rutabaga_utils::*;
 use crate::{
     DrmFormat, ImageAllocationInfo, ImageMemoryRequirements, RutabagaGralloc, RutabagaGrallocFlags,
 };
+
+use super::sys::{descriptor_analysis, SystemStream};
 
 use data_model::{DataInit, VolatileMemory, VolatileSlice};
 
@@ -44,15 +41,17 @@ enum CrossDomainToken {
     Kill,
 }
 
-enum CrossDomainItem {
+pub(crate) enum CrossDomainItem {
     ImageRequirements(ImageMemoryRequirements),
     WaylandKeymap(SafeDescriptor),
+    #[allow(dead_code)] // `WaylandReadPipe` is never constructed on Windows.
     WaylandReadPipe(File),
     WaylandWritePipe(File),
 }
 
-enum CrossDomainJob {
+pub(crate) enum CrossDomainJob {
     HandleFence(RutabagaFence),
+    #[allow(dead_code)] // `AddReadPipe` is never constructed on Windows.
     AddReadPipe(u32),
 }
 
@@ -61,25 +60,27 @@ enum RingWrite<'a, T> {
     WriteFromFile(CrossDomainReadWrite, &'a mut File, bool),
 }
 
-type CrossDomainResources = Arc<Mutex<Map<u32, CrossDomainResource>>>;
+pub(crate) type CrossDomainResources = Arc<Mutex<Map<u32, CrossDomainResource>>>;
 type CrossDomainJobs = Mutex<Option<VecDeque<CrossDomainJob>>>;
-type CrossDomainItemState = Arc<Mutex<CrossDomainItems>>;
+pub(crate) type CrossDomainItemState = Arc<Mutex<CrossDomainItems>>;
 
-struct CrossDomainResource {
+pub(crate) struct CrossDomainResource {
+    #[allow(dead_code)] // `handle` is never used on Windows.
     pub handle: Option<Arc<RutabagaHandle>>,
     pub backing_iovecs: Option<Vec<RutabagaIovec>>,
 }
 
-struct CrossDomainItems {
+pub(crate) struct CrossDomainItems {
     descriptor_id: u32,
     requirements_blob_id: u32,
     table: Map<u32, CrossDomainItem>,
 }
 
-struct CrossDomainState {
+pub(crate) struct CrossDomainState {
     context_resources: CrossDomainResources,
     ring_id: u32,
-    connection: Option<UnixStream>,
+    #[allow(dead_code)] // `connection` is never used on Windows.
+    pub(crate) connection: Option<SystemStream>,
     jobs: CrossDomainJobs,
     jobs_cvar: Condvar,
 }
@@ -87,19 +88,20 @@ struct CrossDomainState {
 struct CrossDomainWorker {
     wait_ctx: WaitContext<CrossDomainToken>,
     state: Arc<CrossDomainState>,
-    item_state: CrossDomainItemState,
+    pub(crate) item_state: CrossDomainItemState,
     fence_handler: RutabagaFenceHandler,
 }
 
-struct CrossDomainContext {
-    channels: Option<Vec<RutabagaChannel>>,
+pub(crate) struct CrossDomainContext {
+    #[allow(dead_code)] // `channels` is unused on Windows.
+    pub(crate) channels: Option<Vec<RutabagaChannel>>,
     gralloc: Arc<Mutex<RutabagaGralloc>>,
-    state: Option<Arc<CrossDomainState>>,
-    context_resources: CrossDomainResources,
-    item_state: CrossDomainItemState,
+    pub(crate) state: Option<Arc<CrossDomainState>>,
+    pub(crate) context_resources: CrossDomainResources,
+    pub(crate) item_state: CrossDomainItemState,
     fence_handler: RutabagaFenceHandler,
     worker_thread: Option<thread::JoinHandle<RutabagaResult<()>>>,
-    resample_evt: Option<Event>,
+    pub(crate) resample_evt: Option<Event>,
     kill_evt: Option<Event>,
 }
 
@@ -113,7 +115,7 @@ pub struct CrossDomain {
 // TODO(gurchetansingh): optimize the item tracker.  Each requirements blob is long-lived and can
 // be stored in a Slab or vector.  Descriptors received from the Wayland socket *seem* to come one
 // at a time, and can be stored as options.  Need to confirm.
-fn add_item(item_state: &CrossDomainItemState, item: CrossDomainItem) -> u32 {
+pub(crate) fn add_item(item_state: &CrossDomainItemState, item: CrossDomainItem) -> u32 {
     let mut items = item_state.lock();
 
     let item_id = match item {
@@ -132,29 +134,6 @@ fn add_item(item_state: &CrossDomainItemState, item: CrossDomainItem) -> u32 {
     item_id
 }
 
-// Determine type of OS-specific descriptor.  See `from_file` in wl.rs  for explantation on the
-// current, Linux-based method.
-fn descriptor_analysis(
-    descriptor: &mut File,
-    descriptor_type: &mut u32,
-    size: &mut u32,
-) -> RutabagaResult<()> {
-    match descriptor.seek(SeekFrom::End(0)) {
-        Ok(seek_size) => {
-            *descriptor_type = CROSS_DOMAIN_ID_TYPE_VIRTGPU_BLOB;
-            *size = seek_size.try_into()?;
-            Ok(())
-        }
-        _ => {
-            *descriptor_type = match FileFlags::from_file(descriptor) {
-                Ok(FileFlags::Write) => CROSS_DOMAIN_ID_TYPE_WRITE_PIPE,
-                _ => return Err(RutabagaError::InvalidCrossDomainItemType),
-            };
-            Ok(())
-        }
-    }
-}
-
 impl Default for CrossDomainItems {
     fn default() -> Self {
         // Odd for descriptors, and even for requirement blobs.
@@ -170,7 +149,7 @@ impl CrossDomainState {
     fn new(
         ring_id: u32,
         context_resources: CrossDomainResources,
-        connection: Option<UnixStream>,
+        connection: Option<SystemStream>,
     ) -> CrossDomainState {
         CrossDomainState {
             ring_id,
@@ -181,7 +160,7 @@ impl CrossDomainState {
         }
     }
 
-    fn add_job(&self, job: CrossDomainJob) {
+    pub(crate) fn add_job(&self, job: CrossDomainJob) {
         let mut jobs = self.jobs.lock();
         if let Some(queue) = jobs.as_mut() {
             queue.push_back(job);
@@ -262,40 +241,6 @@ impl CrossDomainState {
         }
 
         Ok(bytes_read)
-    }
-
-    fn send_msg(
-        &self,
-        opaque_data: &[VolatileSlice],
-        descriptors: &[i32],
-    ) -> RutabagaResult<usize> {
-        self.connection
-            .as_ref()
-            .ok_or(RutabagaError::InvalidCrossDomainChannel)
-            .and_then(|conn| Ok(conn.send_with_fds(opaque_data, descriptors)?))
-    }
-
-    fn receive_msg(
-        &self,
-        opaque_data: &mut [u8],
-        descriptors: &mut [i32; CROSS_DOMAIN_MAX_IDENTIFIERS],
-    ) -> RutabagaResult<(usize, Vec<File>)> {
-        // If any errors happen, the socket will get dropped, preventing more reading.
-        if let Some(connection) = &self.connection {
-            let mut files: Vec<File> = Vec::new();
-            let (len, file_count) =
-                connection.recv_with_fds(IoSliceMut::new(opaque_data), descriptors)?;
-
-            for descriptor in descriptors.iter_mut().take(file_count) {
-                // Safe since the descriptors from recv_with_fds(..) are owned by us and valid.
-                let file = unsafe { File::from_raw_descriptor(*descriptor) };
-                files.push(file);
-            }
-
-            Ok((len, files))
-        } else {
-            Err(RutabagaError::InvalidCrossDomainChannel)
-        }
     }
 }
 
@@ -498,29 +443,23 @@ impl CrossDomainContext {
 
         // Zero means no requested channel.
         if cmd_init.channel_type != 0 {
-            let channels = self
-                .channels
-                .take()
-                .ok_or(RutabagaError::InvalidCrossDomainChannel)?;
-            let base_channel = &channels
-                .iter()
-                .find(|channel| channel.channel_type == cmd_init.channel_type)
-                .ok_or(RutabagaError::InvalidCrossDomainChannel)?
-                .base_channel;
-
-            let connection = UnixStream::connect(base_channel)?;
+            let connection = self.get_connection(cmd_init)?;
 
             let (kill_evt, thread_kill_evt) = Event::new().and_then(|e| Ok((e.try_clone()?, e)))?;
             let (resample_evt, thread_resample_evt) =
                 Event::new().and_then(|e| Ok((e.try_clone()?, e)))?;
 
-            let wait_ctx =
-                WaitContext::build_with(&[(&connection, CrossDomainToken::ContextChannel)])?;
+            let wait_ctx = match &connection {
+                Some(connection) => {
+                    WaitContext::build_with(&[(connection, CrossDomainToken::ContextChannel)])?
+                }
+                None => WaitContext::build_with(&[])?,
+            };
 
             let state = Arc::new(CrossDomainState::new(
                 ring_id,
                 context_resources,
-                Some(connection),
+                connection,
             ));
 
             let thread_state = state.clone();
@@ -590,91 +529,6 @@ impl CrossDomainContext {
         } else {
             Err(RutabagaError::InvalidCrossDomainState)
         }
-    }
-
-    fn send(
-        &self,
-        cmd_send: &CrossDomainSendReceive,
-        opaque_data: &[VolatileSlice],
-    ) -> RutabagaResult<()> {
-        let mut descriptors = [0; CROSS_DOMAIN_MAX_IDENTIFIERS];
-
-        let mut write_pipe_opt: Option<File> = None;
-        let mut read_pipe_id_opt: Option<u32> = None;
-
-        let num_identifiers = cmd_send.num_identifiers.try_into()?;
-
-        if num_identifiers > CROSS_DOMAIN_MAX_IDENTIFIERS {
-            return Err(RutabagaError::SpecViolation(
-                "max cross domain identifiers exceeded",
-            ));
-        }
-
-        let iter = cmd_send
-            .identifiers
-            .iter()
-            .zip(cmd_send.identifier_types.iter())
-            .zip(descriptors.iter_mut())
-            .take(num_identifiers);
-
-        for ((identifier, identifier_type), descriptor) in iter {
-            if *identifier_type == CROSS_DOMAIN_ID_TYPE_VIRTGPU_BLOB {
-                let context_resources = self.context_resources.lock();
-
-                let context_resource = context_resources
-                    .get(identifier)
-                    .ok_or(RutabagaError::InvalidResourceId)?;
-
-                if let Some(ref handle) = context_resource.handle {
-                    *descriptor = handle.os_handle.as_raw_descriptor();
-                } else {
-                    return Err(RutabagaError::InvalidRutabagaHandle);
-                }
-            } else if *identifier_type == CROSS_DOMAIN_ID_TYPE_READ_PIPE {
-                // In practice, just 1 pipe pair per send is observed.  If we encounter
-                // more, this can be changed later.
-                if write_pipe_opt.is_some() {
-                    return Err(RutabagaError::SpecViolation("expected just one pipe pair"));
-                }
-
-                let (read_pipe, write_pipe) = pipe(true)?;
-
-                *descriptor = write_pipe.as_raw_descriptor();
-                let read_pipe_id: u32 = add_item(
-                    &self.item_state,
-                    CrossDomainItem::WaylandReadPipe(read_pipe),
-                );
-
-                // For Wayland read pipes, the guest guesses which identifier the host will use to
-                // avoid waiting for the host to generate one.  Validate guess here.  This works
-                // because of the way Sommelier copy + paste works.  If the Sommelier sequence of events
-                // changes, it's always possible to wait for the host response.
-                if read_pipe_id != *identifier {
-                    return Err(RutabagaError::InvalidCrossDomainItemId);
-                }
-
-                // The write pipe needs to be dropped after the send_msg(..) call is complete, so the read pipe
-                // can receive subsequent hang-up events.
-                write_pipe_opt = Some(write_pipe);
-                read_pipe_id_opt = Some(read_pipe_id);
-            } else {
-                // Don't know how to handle anything else yet.
-                return Err(RutabagaError::InvalidCrossDomainItemType);
-            }
-        }
-
-        if let (Some(state), Some(resample_evt)) = (&self.state, &self.resample_evt) {
-            state.send_msg(opaque_data, &descriptors[..num_identifiers])?;
-
-            if let Some(read_pipe_id) = read_pipe_id_opt {
-                state.add_job(CrossDomainJob::AddReadPipe(read_pipe_id));
-                resample_evt.write(1)?;
-            }
-        } else {
-            return Err(RutabagaError::InvalidCrossDomainState);
-        }
-
-        Ok(())
     }
 
     fn write(

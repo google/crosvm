@@ -67,7 +67,6 @@ WIN64_DISABLED_CRATES = [
     "power_monitor",
     "protos",
     "qcow_utils",
-    "rutabaga_gfx",
     "rutabaga_gralloc",
     "system_api_stub",
     "tpm2-sys",

@@ -15,6 +15,7 @@ vulkano = []
 x = []
 
 [dependencies]
+cfg-if = "*"
 data_model = { path = "../common/data_model" }
 libc = "*"
 base = { path = "../base" }
