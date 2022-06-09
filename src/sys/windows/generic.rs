@@ -241,4 +241,10 @@ pub(super) fn push_mouse_device(
     Ok(())
 }
 
-pub(super) fn push_pvclock_device(devs: &mut [VirtioDeviceStub], tsc_frequency: u64, tube: Tube) {}
+pub(super) fn push_pvclock_device(
+    cfg: &Config,
+    devs: &mut [VirtioDeviceStub],
+    tsc_frequency: u64,
+    tube: Tube,
+) {
+}

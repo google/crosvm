@@ -60,6 +60,8 @@ VIRTIO_IDS_EXTRAS="
 // Added by virtio_sys/bindgen.sh - do not edit the generated file.
 // TODO(abhishekbh): Fix this after this device is accepted upstream.
 pub const VIRTIO_ID_VHOST_USER: u32 = 61;
+// TODO(b/236144983): Fix this id when an official virtio-id is assigned to this device.
+pub const VIRTIO_ID_PVCLOCK: u32 = 60;
 "
 
 bindgen_generate \

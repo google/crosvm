@@ -486,7 +486,7 @@ fn create_virtio_devices(
     }
 
     if let Some(tube) = pvclock_device_tube {
-        product::push_pvclock_device(&mut devs, tsc_frequency, tube);
+        product::push_pvclock_device(cfg, &mut devs, tsc_frequency, tube);
     }
 
     devs.push(create_rng_device(cfg)?);

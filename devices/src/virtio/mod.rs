@@ -13,6 +13,8 @@ pub mod device_constants;
 mod input;
 mod interrupt;
 mod iommu;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub mod pvclock;
 mod queue;
 mod rng;
 mod sys;
@@ -73,7 +75,6 @@ cfg_if::cfg_if! {
 
     } else if #[cfg(windows)] {
         mod vsock;
-
         #[cfg(feature = "slirp")]
         pub mod net;
 
@@ -128,6 +129,7 @@ pub enum DeviceType {
     VideoDec = virtio_ids::VIRTIO_ID_VIDEO_DECODER,
     Wl = virtio_ids::VIRTIO_ID_WL,
     Tpm = virtio_ids::VIRTIO_ID_TPM,
+    Pvclock = virtio_ids::VIRTIO_ID_PVCLOCK,
     VhostUser = virtio_ids::VIRTIO_ID_VHOST_USER,
 }
 
@@ -156,6 +158,7 @@ impl std::fmt::Display for DeviceType {
             DeviceType::Pmem => write!(f, "pmem"),
             DeviceType::Wl => write!(f, "wl"),
             DeviceType::Tpm => write!(f, "tpm"),
+            DeviceType::Pvclock => write!(f, "pvclock"),
             DeviceType::VideoDec => write!(f, "video-decoder"),
             DeviceType::VideoEnc => write!(f, "video-encoder"),
             DeviceType::Mac80211HwSim => write!(f, "mac-80211-hw-sim"),
