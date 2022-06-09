@@ -75,7 +75,6 @@ WIN64_DISABLED_CRATES = [
     "usb_util",
     "vfio_sys",
     "virtio_sys",
-    "vm_control",
     "wire_format_derive",
     "x86_64",
 ]

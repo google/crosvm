@@ -1,14 +1,16 @@
 // Copyright 2021 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-use crate::*;
-use base::{info, validate_raw_descriptor, RawDescriptor, Tube, UnixSeqpacket};
-use remain::sorted;
-use thiserror::Error;
 
 use std::fs::OpenOptions;
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
+
+use base::info;
+use remain::sorted;
+use thiserror::Error;
+
+pub use crate::{sys::handle_request, *};
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -42,27 +44,6 @@ pub enum ModifyUsbError {
 
 pub type ModifyUsbResult<T> = std::result::Result<T, ModifyUsbError>;
 
-fn raw_descriptor_from_path(path: &Path) -> ModifyUsbResult<RawDescriptor> {
-    if !path.exists() {
-        return Err(ModifyUsbError::PathDoesNotExist(path.to_owned()));
-    }
-    let raw_descriptor = path
-        .file_name()
-        .and_then(|fd_osstr| fd_osstr.to_str())
-        .map_or(
-            Err(ModifyUsbError::ArgParse(
-                "USB_DEVICE_PATH",
-                path.to_string_lossy().into_owned(),
-            )),
-            |fd_str| {
-                fd_str.parse::<libc::c_int>().map_err(|e| {
-                    ModifyUsbError::ArgParseInt("USB_DEVICE_PATH", fd_str.to_owned(), e)
-                })
-            },
-        )?;
-    validate_raw_descriptor(raw_descriptor).map_err(ModifyUsbError::FailedDescriptorValidate)
-}
-
 pub type VmsRequestResult = std::result::Result<(), ()>;
 
 pub fn vms_request<T: AsRef<Path> + std::fmt::Debug>(
@@ -85,7 +66,7 @@ pub fn do_usb_attach<T: AsRef<Path> + std::fmt::Debug>(
     let usb_file: File = if dev_path.parent() == Some(Path::new("/proc/self/fd")) {
         // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
         // Safe because we will validate |raw_fd|.
-        unsafe { File::from_raw_descriptor(raw_descriptor_from_path(dev_path)?) }
+        unsafe { File::from_raw_descriptor(sys::raw_descriptor_from_path(dev_path)?) }
     } else {
         OpenOptions::new()
             .read(true)
@@ -170,35 +151,3 @@ pub fn do_modify_battery<T: AsRef<Path> + std::fmt::Debug>(
 }
 
 pub type HandleRequestResult = std::result::Result<VmResponse, ()>;
-
-pub fn handle_request<T: AsRef<Path> + std::fmt::Debug>(
-    request: &VmRequest,
-    socket_path: T,
-) -> HandleRequestResult {
-    match UnixSeqpacket::connect(&socket_path) {
-        Ok(s) => {
-            let socket = Tube::new(s);
-            if let Err(e) = socket.send(request) {
-                error!(
-                    "failed to send request to socket at '{:?}': {}",
-                    socket_path, e
-                );
-                return Err(());
-            }
-            match socket.recv() {
-                Ok(response) => Ok(response),
-                Err(e) => {
-                    error!(
-                        "failed to send request to socket at '{:?}': {}",
-                        socket_path, e
-                    );
-                    Err(())
-                }
-            }
-        }
-        Err(e) => {
-            error!("failed to connect to socket at '{:?}': {}", socket_path, e);
-            Err(())
-        }
-    }
-}
