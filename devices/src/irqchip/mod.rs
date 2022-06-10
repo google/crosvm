@@ -40,6 +40,12 @@ mod ioapic;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use ioapic::*;
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod apic;
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub use apic::*;
+
 pub type IrqEventIndex = usize;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
