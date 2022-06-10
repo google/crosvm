@@ -39,6 +39,8 @@ pub mod usb;
 mod utils;
 pub mod vfio;
 pub mod virtio;
+#[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
+mod vtpm_proxy;
 
 pub use self::acpi::ACPIPMResource;
 pub use self::bat::{BatteryError, GoldfishBattery};
@@ -83,6 +85,8 @@ pub use self::usb::host_backend::host_backend_device_provider::HostBackendDevice
 pub use self::usb::xhci::xhci_controller::XhciController;
 pub use self::vfio::{VfioContainer, VfioDevice};
 pub use self::virtio::{vfio_wrapper, VirtioPciDevice};
+#[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
+pub use self::vtpm_proxy::VtpmProxy;
 
 /// Request CoIOMMU to unpin a specific range.
 use serde::{Deserialize, Serialize};
