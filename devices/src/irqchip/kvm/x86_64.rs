@@ -130,6 +130,12 @@ impl IrqChipX86_64 for KvmKernelIrqChip {
         }
     }
 
+    /// Get the lapic frequency in Hz
+    fn lapic_frequency(&self) -> u32 {
+        // KVM emulates the lapic to have a bus frequency of 1GHz
+        1_000_000_000
+    }
+
     /// Retrieves the state of the PIT. Gets the pit state via the KVM API.
     fn get_pit(&self) -> Result<PitState> {
         Ok(PitState::from(&self.vm.get_pit_state()?))
@@ -744,6 +750,12 @@ impl IrqChipX86_64 for KvmSplitIrqChip {
             Some(Some(vcpu)) => vcpu.set_lapic(&kvm_lapic_state::from(state)),
             _ => Err(Error::new(libc::ENOENT)),
         }
+    }
+
+    /// Get the lapic frequency in Hz
+    fn lapic_frequency(&self) -> u32 {
+        // KVM emulates the lapic to have a bus frequency of 1GHz
+        1_000_000_000
     }
 
     /// Retrieves the state of the PIT. Gets the pit state via the KVM API.

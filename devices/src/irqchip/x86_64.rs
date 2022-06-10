@@ -35,6 +35,9 @@ pub trait IrqChipX86_64: IrqChip {
     /// Set the current state of the specified VCPU's local APIC
     fn set_lapic_state(&mut self, vcpu_id: usize, state: &LapicState) -> Result<()>;
 
+    /// Get the lapic frequency in Hz
+    fn lapic_frequency(&self) -> u32;
+
     /// Retrieves the state of the PIT.
     fn get_pit(&self) -> Result<PitState>;
 
