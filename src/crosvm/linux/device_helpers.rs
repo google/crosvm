@@ -42,6 +42,8 @@ use devices::virtio::{self, BalloonMode, Console, VirtioDevice};
 use devices::IommuDevType;
 #[cfg(feature = "tpm")]
 use devices::SoftwareTpm;
+#[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
+use devices::VtpmProxy;
 use devices::{
     self, BusDeviceObj, PciAddress, PciDevice, VfioDevice, VfioPciDevice, VfioPlatformDevice,
 };
@@ -367,6 +369,39 @@ pub fn create_software_tpm_device(jail_config: &Option<JailConfig>) -> DeviceRes
     }
 
     let backend = SoftwareTpm::new(tpm_storage).context("failed to create SoftwareTpm")?;
+    let dev = virtio::Tpm::new(Arc::new(Mutex::new(backend)));
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail: tpm_jail,
+    })
+}
+
+#[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
+pub fn create_vtpm_proxy_device(cfg: &Config) -> DeviceResult {
+    let mut tpm_jail = simple_jail(&cfg.jail_config, "vtpm_proxy_device")?;
+
+    match &mut tpm_jail {
+        Some(jail) => {
+            // Create a tmpfs in the device's root directory so that we can bind mount files.
+            // The size is 20*1024, or 20 KB.
+            jail.mount_with_data(
+                Path::new("none"),
+                Path::new("/"),
+                "tmpfs",
+                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+                "size=20480",
+            )?;
+
+            add_current_user_to_jail(jail)?;
+
+            let system_bus_socket_path = Path::new("/run/dbus/system_bus_socket");
+            jail.mount_bind(system_bus_socket_path, system_bus_socket_path, true)?;
+        }
+        None => {}
+    }
+
+    let backend = VtpmProxy::new();
     let dev = virtio::Tpm::new(Arc::new(Mutex::new(backend)));
 
     Ok(VirtioDeviceStub {

@@ -308,6 +308,13 @@ fn create_virtio_devices(
         }
     }
 
+    #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
+    {
+        if cfg.vtpm_proxy {
+            devs.push(create_vtpm_proxy_device(cfg)?);
+        }
+    }
+
     for (idx, single_touch_spec) in cfg.virtio_single_touch.iter().enumerate() {
         devs.push(create_single_touch_device(
             cfg.protected_vm,
