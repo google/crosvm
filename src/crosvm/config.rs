@@ -1704,6 +1704,7 @@ pub struct Config {
     pub enable_pnp_data: bool,
     pub executable_path: Option<Executable>,
     pub file_backed_mappings: Vec<FileBackedMappingParameters>,
+    pub force_calibrated_tsc_leaf: bool,
     pub force_s2idle: bool,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<u32>,
@@ -1835,6 +1836,7 @@ impl Default for Config {
             enable_pnp_data: false,
             executable_path: None,
             file_backed_mappings: Vec::new(),
+            force_calibrated_tsc_leaf: false,
             force_s2idle: false,
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             gdb: None,

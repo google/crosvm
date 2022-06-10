@@ -770,6 +770,7 @@ impl arch::LinuxArch for X8664arch {
         host_cpu_topology: bool,
         enable_pnp_data: bool,
         itmt: bool,
+        force_calibrated_tsc_leaf: bool,
     ) -> Result<()> {
         if !vm.check_capability(VmCap::EarlyInitCpuid) {
             cpuid::setup_cpuid(
@@ -782,6 +783,7 @@ impl arch::LinuxArch for X8664arch {
                 host_cpu_topology,
                 enable_pnp_data,
                 itmt,
+                force_calibrated_tsc_leaf,
             )
             .map_err(Error::SetupCpuid)?;
         }

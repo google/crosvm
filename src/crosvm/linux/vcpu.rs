@@ -143,6 +143,7 @@ pub fn runnable_vcpu<V>(
     host_cpu_topology: bool,
     enable_pnp_data: bool,
     itmt: bool,
+    force_calibrated_tsc_leaf: bool,
 ) -> Result<(V, VcpuRunHandle)>
 where
     V: VcpuArch,
@@ -180,6 +181,7 @@ where
         host_cpu_topology,
         enable_pnp_data,
         itmt,
+        force_calibrated_tsc_leaf,
     )
     .context("failed to configure vcpu")?;
 
@@ -575,6 +577,7 @@ pub fn run_vcpu<V>(
     host_cpu_topology: bool,
     enable_pnp_data: bool,
     itmt: bool,
+    force_calibrated_tsc_leaf: bool,
     privileged_vm: bool,
     vcpu_cgroup_tasks_file: Option<File>,
     userspace_msr: BTreeMap<u32, MsrConfig>,
@@ -616,6 +619,7 @@ where
                     host_cpu_topology,
                     enable_pnp_data,
                     itmt,
+                    force_calibrated_tsc_leaf,
                 );
 
                 // Add MSR handlers after CPU affinity setting.

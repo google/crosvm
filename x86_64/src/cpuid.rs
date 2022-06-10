@@ -7,7 +7,7 @@ use std::cmp;
 use std::result;
 
 use devices::{Apic, IrqChipCap, IrqChipX86_64};
-use hypervisor::{CpuIdEntry, HypervisorX86_64, VcpuX86_64};
+use hypervisor::{CpuIdEntry, HypervisorCap, HypervisorX86_64, VcpuX86_64};
 
 use crate::CpuManufacturer;
 use remain::sorted;
@@ -63,6 +63,11 @@ pub struct CpuIdContext {
     apic_frequency: u32,
     /// The TSC frequency in Hz, if it could be determined.
     tsc_frequency: Option<u64>,
+    /// Whether to force the use of a calibrated TSC cpuid leaf (0x15) even if
+    /// the hypervisor doesn't require it.
+    force_calibrated_tsc_leaf: bool,
+    /// Whether the hypervisor requires a calibrated TSC cpuid leaf (0x15).
+    calibrated_tsc_leaf_required: bool,
     /// Whether or not VCPU IDs and APIC IDs should match host cpu IDs.
     host_cpu_topology: bool,
     enable_pnp_data: bool,
@@ -83,6 +88,8 @@ impl CpuIdContext {
         irq_chip: Option<&dyn IrqChipX86_64>,
         enable_pnp_data: bool,
         itmt: bool,
+        force_calibrated_tsc_leaf: bool,
+        calibrated_tsc_leaf_required: bool,
         cpuid_count: unsafe fn(u32, u32) -> CpuidResult,
         cpuid: unsafe fn(u32) -> CpuidResult,
     ) -> CpuIdContext {
@@ -96,6 +103,8 @@ impl CpuIdContext {
             }),
             apic_frequency: irq_chip.map_or(Apic::frequency(), |chip| chip.lapic_frequency()),
             tsc_frequency: devices::tsc::tsc_frequency().ok(),
+            force_calibrated_tsc_leaf,
+            calibrated_tsc_leaf_required,
             host_cpu_topology,
             enable_pnp_data,
             itmt,
@@ -210,7 +219,18 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
             }
         }
         0x15 => {
-            if ctx.enable_pnp_data {
+            if ctx.calibrated_tsc_leaf_required
+                || ctx.force_calibrated_tsc_leaf {
+
+                let cpuid_15 = ctx
+                    .tsc_frequency
+                    .map(|tsc_freq| devices::tsc::fake_tsc_frequency_cpuid(
+                            tsc_freq, ctx.apic_frequency));
+
+                if let Some(new_entry) = cpuid_15 {
+                    entry.cpuid = new_entry.cpuid;
+                }
+            } else if ctx.enable_pnp_data {
                 // Expose TSC frequency to guest
                 // Safe because we pass 0x15 for this call and the host
                 // supports the `cpuid` instruction
@@ -321,6 +341,7 @@ pub fn setup_cpuid(
     host_cpu_topology: bool,
     enable_pnp_data: bool,
     itmt: bool,
+    force_calibrated_tsc_leaf: bool,
 ) -> Result<()> {
     let mut cpuid = hypervisor
         .get_supported_cpuid()
@@ -336,6 +357,8 @@ pub fn setup_cpuid(
             Some(irq_chip),
             enable_pnp_data,
             itmt,
+            force_calibrated_tsc_leaf,
+            hypervisor.check_capability(HypervisorCap::CalibratedTscLeafRequired),
             __cpuid_count,
             __cpuid,
         ),
@@ -421,6 +444,8 @@ mod tests {
                 Some(&irq_chip),
                 false,
                 false,
+                false,
+                false,
                 __cpuid_count,
                 __cpuid,
             ),
@@ -466,6 +491,8 @@ mod tests {
             host_cpu_topology: true,
             enable_pnp_data: false,
             itmt: false,
+            force_calibrated_tsc_leaf: false,
+            calibrated_tsc_leaf_required: false,
             cpuid_count: fake_cpuid_count,
             cpuid: fake_cpuid,
         };

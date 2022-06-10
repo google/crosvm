@@ -238,6 +238,7 @@ pub trait LinuxArch {
     /// * `host_cpu_topology` - whether enabling host cpu topology.
     /// * `enable_pnp_data` - whether enabling PnP statistics data.
     /// * `itmt` - whether enabling ITMT scheduler
+    /// * `force_calibrated_tsc_leaf` - whether to force using a calibrated TSC leaf (0x15).
     fn configure_vcpu<V: Vm>(
         vm: &V,
         hypervisor: &dyn HypervisorArch,
@@ -251,6 +252,7 @@ pub trait LinuxArch {
         host_cpu_topology: bool,
         enable_pnp_data: bool,
         itmt: bool,
+        force_calibrated_tsc_leaf: bool,
     ) -> Result<(), Self::Error>;
 
     /// Configures and add a pci device into vm

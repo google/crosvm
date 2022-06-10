@@ -1152,6 +1152,8 @@ impl TryFrom<HypervisorCap> for KvmCap {
             HypervisorCap::UserMemory => Ok(KvmCap::UserMemory),
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             HypervisorCap::Xcrs => Ok(KvmCap::Xcrs),
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            HypervisorCap::CalibratedTscLeafRequired => Err(Error::new(libc::EINVAL)),
         }
     }
 }

@@ -559,6 +559,11 @@ pub struct RunCommand {
     ///     align - whether to adjust addr and size to page
     ///        boundaries implicitly
     pub file_backed_mappings: Vec<FileBackedMappingParameters>,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[argh(switch)]
+    /// force use of a calibrated TSC cpuid leaf (0x15) even if the hypervisor
+    /// doesn't require one.
+    pub force_calibrated_tsc_leaf: bool,
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     #[argh(option, arg_name = "PORT")]
     /// (EXPERIMENTAL) gdb on the given port
@@ -1594,7 +1599,20 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.itmt = cmd.itmt;
 
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        if cmd.enable_pnp_data && cmd.force_calibrated_tsc_leaf {
+            return Err(
+                "Only one of [enable_pnp_data,force_calibrated_tsc_leaf] can be specified"
+                    .to_string(),
+            );
+        }
+
         cfg.enable_pnp_data = cmd.enable_pnp_data;
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            cfg.force_calibrated_tsc_leaf = cmd.force_calibrated_tsc_leaf;
+        }
 
         cfg.privileged_vm = cmd.privileged_vm;
 

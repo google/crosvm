@@ -375,6 +375,8 @@ impl Vm for WhpxVm {
             VmCap::Protected => false,
             // whpx initializes cpuid early during VM creation.
             VmCap::EarlyInitCpuid => true,
+            // under whpx, guests rely on this leaf to calibrate their clocksource.
+            VmCap::CalibratedTscLeafRequired => true,
         }
     }
 

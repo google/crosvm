@@ -1986,6 +1986,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             cfg.host_cpu_topology,
             cfg.enable_pnp_data,
             cfg.itmt,
+            cfg.force_calibrated_tsc_leaf,
             cfg.privileged_vm,
             match vcpu_cgroup_tasks_file {
                 None => None,

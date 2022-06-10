@@ -12,6 +12,18 @@ pub enum HypervisorCap {
     UserMemory,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     Xcrs,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    /// CPUID leaf 0x15 is available on some Intel chips and contains the TSC
+    /// frequency, which can be used to calibrate the guest's TSC clocksource;
+    /// however, it is not typically accurate enough (being off by 1-2% is a
+    /// big problem for a clocksource), and inside the guest, calibration by
+    /// other means is not always reliable.
+    ///
+    /// Hypervisors which do not provide the TSC frequency (e.g. via the kvm
+    /// pvclock) or have another suitable calibration source can declare this
+    /// capability, which causes CrosVM to substitute a calibrated value in leaf
+    /// 0x15 that will be accurate enough for use in a clocksource.
+    CalibratedTscLeafRequired,
 }
 
 /// A capability the `Vm` can possibly expose.

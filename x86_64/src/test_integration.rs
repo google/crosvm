@@ -240,7 +240,10 @@ where
                 .expect("failed to add vcpu to irqchip");
 
             if !vm.check_capability(VmCap::EarlyInitCpuid) {
-                setup_cpuid(&hyp, &irq_chip, &vcpu, 0, 1, false, false, false, false).unwrap();
+                setup_cpuid(
+                    &hyp, &irq_chip, &vcpu, 0, 1, false, false, false, false, false,
+                )
+                .unwrap();
             }
             setup_msrs(&vm, &vcpu, read_pci_mmio_before_32bit().start).unwrap();
 
