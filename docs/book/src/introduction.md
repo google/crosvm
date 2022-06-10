@@ -12,6 +12,9 @@ Other programs similar to crosvm are QEMU and VirtualBox. An operating system, m
 system image and a kernel binary, are given as input to crosvm and then crosvm will run the
 operating system using the platform's hypervisor.
 
+- [Announcements](https://groups.google.com/a/chromium.org/g/crosvm-announce)
+- [Developer Mailing List](https://groups.google.com/a/chromium.org/g/crosvm-dev)
+- [#crosvm on matrix.org](https://matrix.to/#/#crosvm:matrix.org)
 - [Source code](https://chromium.googlesource.com/chromiumos/platform/crosvm/)
   - [GitHub mirror](https://github.com/google/crosvm)
   - [API documentation](https://google.github.io/crosvm/doc/crosvm/), useful for searching API.

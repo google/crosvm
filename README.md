@@ -9,6 +9,9 @@ the virtio standard.
 crosvm is currently used to run Linux/Android guests on Chrome OS devices.
 
 - [Documentation](https://google.github.io/crosvm/)
+- [Announcements](https://groups.google.com/a/chromium.org/g/crosvm-announce)
+- [Developer Mailing List](https://groups.google.com/a/chromium.org/g/crosvm-dev)
+- [#crosvm on matrix.org](https://matrix.to/#/#crosvm:matrix.org)
 - [Source code](https://chromium.googlesource.com/chromiumos/platform/crosvm/)
   - [API doc](https://google.github.io/crosvm/doc/crosvm/), useful for searching API.
   - For contribution, see [the contributor guide](https://google.github.io/crosvm/contributing/).
