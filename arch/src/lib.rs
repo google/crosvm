@@ -684,8 +684,8 @@ pub fn generate_pci_root(
     Ok((root, pci_irqs, pid_labels))
 }
 
-/// Adds goldfish battery
-/// return the platform needed resouces include its AML data, irq number
+/// Adds goldfish battery and returns the platform needed resources including
+/// its AML data and mmio base address
 ///
 /// # Arguments
 ///
@@ -702,7 +702,7 @@ pub fn add_goldfish_battery(
     irq_chip: &mut dyn IrqChip,
     irq_num: u32,
     resources: &mut SystemAllocator,
-) -> Result<Tube, DeviceRegistrationError> {
+) -> Result<(Tube, u64), DeviceRegistrationError> {
     let alloc = resources.get_anon_alloc();
     let mmio_base = resources
         .mmio_allocator(MmioType::Low)
@@ -761,7 +761,7 @@ pub fn add_goldfish_battery(
         }
     }
 
-    Ok(control_tube)
+    Ok((control_tube, mmio_base))
 }
 
 /// Errors for image loading.

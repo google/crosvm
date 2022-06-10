@@ -3,4 +3,8 @@
 # found in the LICENSE file.
 
 @include /usr/share/policy/crosvm/common_device.policy
+connect: 1
+geteuid: 1
+getsockname: 1
 prctl: arg0 == PR_SET_NAME
+socket: arg0 == AF_UNIX

@@ -28,6 +28,9 @@ use crate::AARCH64_RTC_IRQ;
 use crate::AARCH64_RTC_SIZE;
 use devices::pl030::PL030_AMBA_ID;
 
+// This is a Battery related constant
+use devices::bat::GOLDFISHBAT_MMIO_LEN;
+
 // These are serial device related constants.
 use crate::AARCH64_SERIAL_1_3_IRQ;
 use crate::AARCH64_SERIAL_2_4_IRQ;
@@ -441,6 +444,24 @@ fn create_rtc_node(fdt: &mut FdtWriter) -> Result<()> {
     Ok(())
 }
 
+/// Create a flattened device tree node for Goldfish Battery device.
+///
+/// # Arguments
+///
+/// * `fdt` - A FdtWriter in which the node is created
+/// * `mmio_base` - The MMIO base address of the battery
+/// * `irq` - The IRQ number of the battery
+fn create_battery_node(fdt: &mut FdtWriter, mmio_base: u64, irq: u32) -> Result<()> {
+    let reg = [mmio_base, GOLDFISHBAT_MMIO_LEN];
+    let irqs = [GIC_FDT_IRQ_TYPE_SPI, irq, IRQ_TYPE_LEVEL_HIGH];
+    let bat_node = fdt.begin_node("goldfish_battery")?;
+    fdt.property_string("compatible", "google,goldfish-battery")?;
+    fdt.property_array_u64("reg", &reg)?;
+    fdt.property_array_u32("interrupts", &irqs)?;
+    fdt.end_node(bat_node)?;
+    Ok(())
+}
+
 /// Creates a flattened device tree containing all of the parameters for the
 /// kernel and loads it into the guest memory at the specified offset.
 ///
@@ -458,6 +479,8 @@ fn create_rtc_node(fdt: &mut FdtWriter) -> Result<()> {
 /// * `android_fstab` - An optional file holding Android fstab entries
 /// * `is_gicv3` - True if gicv3, false if v2
 /// * `psci_version` - the current PSCI version
+/// * `bat_mmio_base` - The battery base address
+/// * `bat_irq` - The battery irq number
 pub fn create_fdt(
     fdt_max_size: usize,
     guest_mem: &GuestMemory,
@@ -475,6 +498,8 @@ pub fn create_fdt(
     use_pmu: bool,
     psci_version: PsciVersion,
     swiotlb: Option<u64>,
+    bat_mmio_base: u64,
+    bat_irq: u32,
 ) -> Result<()> {
     let mut fdt = FdtWriter::new(&[]);
 
@@ -500,6 +525,7 @@ pub fn create_fdt(
     create_psci_node(&mut fdt, &psci_version)?;
     create_pci_nodes(&mut fdt, pci_irqs, pci_cfg, pci_ranges, dma_pool_phandle)?;
     create_rtc_node(&mut fdt)?;
+    create_battery_node(&mut fdt, bat_mmio_base, bat_irq)?;
     // End giant node
     fdt.end_node(root_node)?;
 

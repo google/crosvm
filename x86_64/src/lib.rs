@@ -1443,7 +1443,7 @@ impl X8664arch {
         let bat_control = if let Some(battery_type) = battery.0 {
             match battery_type {
                 BatteryType::Goldfish => {
-                    let control_tube = arch::add_goldfish_battery(
+                    let (control_tube, _mmio_base) = arch::add_goldfish_battery(
                         &mut amls, battery.1, mmio_bus, irq_chip, sci_irq, resources,
                     )
                     .map_err(Error::CreateBatDevices)?;
