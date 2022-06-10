@@ -18,9 +18,8 @@ use futures::{pin_mut, select, FutureExt};
 use sync::Mutex;
 use vmm_vhost::connection::vfio::{Device as VfioDeviceTrait, RecvIntoBufsError};
 
-use crate::vfio::VfioDevice;
 use crate::virtio::vhost::user::device::vvu::{
-    pci::{QueueNotifier, QueueType, VvuPciDevice},
+    pci::{QueueNotifier, VvuPciDevice},
     queue::UserQueue,
 };
 
@@ -96,8 +95,6 @@ enum DeviceState {
         device: VvuPciDevice,
     },
     Running {
-        vfio: Arc<VfioDevice>,
-
         rxq_notifier: Arc<Mutex<QueueNotifier>>,
         rxq_receiver: Receiver<Vec<u8>>,
         /// Store data that was provided by rxq_receiver but not consumed yet.
@@ -139,7 +136,6 @@ impl VfioDeviceTrait for VvuDevice {
         let mut irqs = mem::take(&mut device.irqs);
         let mut queues = mem::take(&mut device.queues);
         let mut queue_notifiers = mem::take(&mut device.queue_notifiers);
-        let vfio = Arc::clone(&device.vfio_dev);
 
         let rxq = queues.remove(0);
         let rxq_irq = irqs.remove(0);
@@ -156,7 +152,6 @@ impl VfioDeviceTrait for VvuDevice {
         let old_state = std::mem::replace(
             &mut self.state,
             DeviceState::Running {
-                vfio,
                 rxq_notifier,
                 rxq_receiver,
                 rxq_buf: vec![],
@@ -189,29 +184,26 @@ impl VfioDeviceTrait for VvuDevice {
             bail!("cannot send FDs");
         }
 
-        let (txq, txq_notifier, vfio) = match &mut self.state {
+        let (txq, txq_notifier) = match &mut self.state {
             DeviceState::Initialized { .. } => {
                 bail!("VvuDevice hasn't started yet");
             }
             DeviceState::Running {
-                vfio,
-                txq,
-                txq_notifier,
-                ..
-            } => (txq, txq_notifier, vfio),
+                txq, txq_notifier, ..
+            } => (txq, txq_notifier),
         };
 
         let size = iovs.iter().map(|v| v.len()).sum();
         let data: Vec<u8> = iovs.iter().flat_map(|v| v.to_vec()).collect();
 
         txq.lock().write(&data).context("Failed to send data")?;
-        txq_notifier.lock().notify(vfio, QueueType::Tx as u16);
+        txq_notifier.lock().notify();
 
         Ok(size)
     }
 
     fn recv_into_bufs(&mut self, bufs: &mut [IoSliceMut]) -> Result<usize, RecvIntoBufsError> {
-        let (rxq_receiver, rxq_notifier, rxq_buf, vfio) = match &mut self.state {
+        let (rxq_receiver, rxq_notifier, rxq_buf) = match &mut self.state {
             DeviceState::Initialized { .. } => {
                 return Err(RecvIntoBufsError::Fatal(anyhow!(
                     "VvuDevice hasn't started yet"
@@ -221,9 +213,8 @@ impl VfioDeviceTrait for VvuDevice {
                 rxq_receiver,
                 rxq_notifier,
                 rxq_buf,
-                vfio,
                 ..
-            } => (rxq_receiver, rxq_notifier, rxq_buf, vfio),
+            } => (rxq_receiver, rxq_notifier, rxq_buf),
         };
 
         let mut size = 0;
@@ -256,7 +247,7 @@ impl VfioDeviceTrait for VvuDevice {
             rxq_buf.drain(0..len);
             size += len;
 
-            rxq_notifier.lock().notify(vfio, QueueType::Rx as u16);
+            rxq_notifier.lock().notify();
         }
 
         Ok(size)
