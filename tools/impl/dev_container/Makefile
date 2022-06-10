@@ -10,11 +10,14 @@
 #
 # 	make -C tools/impl/dev_container upload
 #
-# You need write permission to the crosvm-packages cloud registry to do so.
+# You need to be a Googler to be able to do so. See go/crosvm/infra for access control and
+# authenticate via:
+#
+#   gcloud auth configure-docker gcr.io
 
 export DOCKER_BUILDKIT=1
 
-TAG_BASE=gcr.io/crosvm-packages
+TAG_BASE=gcr.io/crosvm-infra
 VERSION=$(shell cat version)
 RUST_VERSION=$(shell cat ../../../rust-toolchain | grep channel | grep -E -o "[0-9\.]+")
 BUILD_CONTEXT=$(shell realpath ../../../)

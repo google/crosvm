@@ -63,7 +63,7 @@ SRC_DIR = SCRIPT_DIR.joinpath("testvm")
 ID_RSA = SRC_DIR.joinpath("id_rsa")
 BASE_IMG_VERSION = open(SRC_DIR.joinpath("version"), "r").read().strip()
 
-IMAGE_DIR_URL = "https://storage.googleapis.com/crosvm-testvm"
+IMAGE_DIR_URL = "https://storage.googleapis.com/crosvm/testvm"
 
 
 def cargo_target_dir():

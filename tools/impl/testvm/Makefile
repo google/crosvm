@@ -40,7 +40,7 @@ else
   $(error Only x86_64 or aarch64 are supported)
 endif
 
-GS_PREFIX=gs://crosvm-testvm
+GS_PREFIX=gs://crosvm/testvm
 DEBIAN_URL=https://cloud.debian.org/images/cloud/bullseye/latest
 
 BASE_IMG_NAME=base-$(ARCH)-$(shell cat version).qcow2

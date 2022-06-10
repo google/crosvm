@@ -14,8 +14,7 @@ set -e
 cd "${0%/*}"
 
 readonly PREBUILT_VERSION="$(cat ./PREBUILT_VERSION)"
-readonly GS_BUCKET="gs://chromeos-localmirror/distfiles"
-readonly GS_PREFIX="${GS_BUCKET}/crosvm-testing"
+readonly GS_PREFIX="gs://crosvm/integration_tests/guest"
 
 function prebuilts_exist_error() {
     echo "Prebuilts of version ${PREBUILT_VERSION} already exist. See README.md"
@@ -41,8 +40,8 @@ function upload() {
     make ARCH=${arch} "${local_bzimage}" "${local_rootfs}"
 
     echo "Uploading files."
-    gsutil cp -n -a public-read "${local_bzimage}" "${remote_bzimage}"
-    gsutil cp -n -a public-read "${local_rootfs}" "${remote_rootfs}"
+    gsutil cp -n "${local_bzimage}" "${remote_bzimage}"
+    gsutil cp -n "${local_rootfs}" "${remote_rootfs}"
 }
 
 upload x86_64

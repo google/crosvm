@@ -1,5 +1,5 @@
 {
-    "image": "gcr.io/crosvm-packages/crosvm_dev:r0014",
+    "image": "gcr.io/crosvm-infra/crosvm_dev:r0014",
     "extensions": [
         "rust-lang.rust-analyzer",
         "bungcip.better-toml",

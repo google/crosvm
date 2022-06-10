@@ -50,7 +50,7 @@ DOCKER_ARGS = [
     "--mount type=tmpfs,destination=/tmp",
     # For plugin process jail
     "--mount type=tmpfs,destination=/var/empty",
-    f"gcr.io/crosvm-packages/crosvm_dev:{IMAGE_VERSION}",
+    f"gcr.io/crosvm-infra/crosvm_dev:{IMAGE_VERSION}",
 ]
 
 PODMAN_IS_DEFAULT = shutil.which("docker") == None
