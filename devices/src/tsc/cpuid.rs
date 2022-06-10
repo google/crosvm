@@ -5,16 +5,39 @@
 // TODO(b/213149158): Remove after uses are added.
 #![allow(dead_code)]
 
-#[cfg(test)]
-use lazy_static::lazy_static;
-#[cfg(test)]
-use std::arch::x86_64::CpuidResult;
-#[cfg(not(test))]
-use std::arch::x86_64::__cpuid_count;
-#[cfg(test)]
-use std::sync::Arc;
-#[cfg(test)]
-use sync::Mutex;
+cfg_if::cfg_if! {
+    if #[cfg(test)] {
+        use std::arch::x86_64::CpuidResult;
+        use std::sync::Arc;
+        use sync::Mutex;
+
+        // Note: to use this mock without cross test pollution, tests must be run serially. Since
+        // there is exactly one test using it at the moment, serial running is not required.
+        lazy_static::lazy_static! {
+            static ref CPUIDS: Arc<Mutex<Vec<hypervisor::CpuIdEntry>>> =
+                Arc::new(Mutex::new(Vec::new()));
+        }
+
+        // This function is safe, but we mark it as unsafe so the signature matches the external
+        // __cpuid_count function so we don't get warnings.
+        unsafe fn __cpuid_count(function: u32, index: u32) -> CpuidResult {
+            let cpuids = CPUIDS.lock();
+            let entry = cpuids
+                .iter()
+                .find(|c| c.function == function && c.index == index)
+                .map_or(hypervisor::CpuIdEntry::default(), |c| *c);
+
+            CpuidResult {
+                eax: entry.eax,
+                ebx: entry.ebx,
+                ecx: entry.ecx,
+                edx: entry.edx,
+            }
+        }
+    } else {
+        use std::arch::x86_64::__cpuid_count;
+    }
+}
 
 /// Gets the TSC frequency for cpuid leaf 0x15 from the existing leaves 0x15 and 0x16
 pub fn tsc_frequency_cpuid() -> Option<hypervisor::CpuIdEntry> {
@@ -105,31 +128,6 @@ pub fn bus_freq_hz() -> Option<u32> {
 pub fn tsc_freq_hz() -> Option<u32> {
     tsc_frequency_cpuid()
         .map(|cpuid| (cpuid.ecx as u64 * cpuid.ebx as u64 / cpuid.eax as u64) as u32)
-}
-
-// This function is safe, but we mark it as unsafe so the signature matches the external
-// __cpuid_count function so we don't get warnings.
-#[cfg(test)]
-unsafe fn __cpuid_count(function: u32, index: u32) -> CpuidResult {
-    let cpuids = CPUIDS.lock();
-    let entry = cpuids
-        .iter()
-        .find(|c| c.function == function && c.index == index)
-        .map_or(hypervisor::CpuIdEntry::default(), |c| *c);
-
-    CpuidResult {
-        eax: entry.eax,
-        ebx: entry.ebx,
-        ecx: entry.ecx,
-        edx: entry.edx,
-    }
-}
-
-// Note: to use this mock without cross test pollution, tests must be run serially. Since there
-// is exactly one test using it at the moment, serial running is not required.
-#[cfg(test)]
-lazy_static! {
-    static ref CPUIDS: Arc<Mutex<Vec<hypervisor::CpuIdEntry>>> = Arc::new(Mutex::new(Vec::new()));
 }
 
 #[cfg(test)]
