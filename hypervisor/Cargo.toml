@@ -6,6 +6,7 @@ edition = "2021"
 
 [features]
 haxm = []
+whpx = []
 
 [dependencies]
 bit_field = { path = "../bit_field" }
@@ -26,6 +27,8 @@ kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 
 [target.'cfg(windows)'.dependencies]
+lazy_static = "*"
+thiserror = "*"
 winapi = "*"
 win_util = { path = "../win_util" }
 

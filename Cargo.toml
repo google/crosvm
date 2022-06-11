@@ -126,6 +126,7 @@ gdb = ["gdbstub", "gdbstub_arch", "arch/gdb", "vm_control/gdb", "x86_64/gdb"]
 gfxstream = ["devices/gfxstream"]
 gpu = ["devices/gpu"]
 haxm = ["hypervisor/haxm"]
+whpx = ["hypervisor/whpx"]
 libvda = ["devices/libvda"]
 linux-armhf = [
     "composite-disk",

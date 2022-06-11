@@ -11,6 +11,8 @@ pub mod caps;
 pub mod haxm;
 #[cfg(unix)]
 pub mod kvm;
+#[cfg(all(windows, feature = "whpx"))]
+pub mod whpx;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86_64;
 
@@ -428,6 +430,27 @@ pub enum VcpuExit {
         index: u32,
         data: u64,
     },
+    /// An invalid vcpu register was set while running.
+    InvalidVpRegister,
+    /// incorrect setup for vcpu requiring an unsupported feature
+    UnsupportedFeature,
+    /// vcpu run was user cancelled
+    Canceled,
+    /// an unrecoverable exception was encountered (different from Exception)
+    UnrecoverableException,
+    /// vcpu stopped due to an msr access.
+    MsrAccess,
+    /// vcpu stopped due to a cpuid request.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    Cpuid {
+        entry: CpuIdEntry,
+    },
+    /// vcpu stopped due to calling rdtsc
+    RdTsc,
+    /// vcpu stopped for an apic smi trap
+    ApicSmiTrap,
+    /// vcpu stopped due to an apic trap
+    ApicInitSipiTrap,
 }
 
 /// A hypercall with parameters being made from the guest.
