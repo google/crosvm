@@ -51,6 +51,12 @@ mod apic;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use apic::*;
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod userspace;
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub use userspace::*;
+
 pub type IrqEventIndex = usize;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
