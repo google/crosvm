@@ -2,12 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+// These tests are only implemented for kvm & gvm. Other hypervisors may be added in the future.
+#![cfg(all(
+    any(feature = "gvm", unix),
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+
+mod sys;
 
 use arch::LinuxArch;
 use devices::IrqChipX86_64;
 use hypervisor::{
-    HypervisorX86_64, IoOperation, IoParams, ProtectionType, VcpuExit, VcpuX86_64, VmX86_64,
+    HypervisorX86_64, IoOperation, IoParams, ProtectionType, VcpuExit, VcpuX86_64, VmCap, VmX86_64,
 };
 use resources::{AddressRange, SystemAllocator};
 use vm_memory::{GuestAddress, GuestMemory};
@@ -38,41 +44,6 @@ use devices::PciConfigIo;
 enum TaggedControlTube {
     VmMemory(Tube),
     VmIrq(Tube),
-}
-
-#[test]
-fn simple_kvm_kernel_irqchip_test() {
-    use devices::KvmKernelIrqChip;
-    use hypervisor::kvm::*;
-    simple_vm_test::<_, _, KvmVcpu, _, _, _>(
-        |guest_mem| {
-            let kvm = Kvm::new().expect("failed to create kvm");
-            let vm = KvmVm::new(&kvm, guest_mem, ProtectionType::Unprotected)
-                .expect("failed to create kvm vm");
-            (kvm, vm)
-        },
-        |vm, vcpu_count, _| {
-            KvmKernelIrqChip::new(vm, vcpu_count).expect("failed to create KvmKernelIrqChip")
-        },
-    );
-}
-
-#[test]
-fn simple_kvm_split_irqchip_test() {
-    use devices::KvmSplitIrqChip;
-    use hypervisor::kvm::*;
-    simple_vm_test::<_, _, KvmVcpu, _, _, _>(
-        |guest_mem| {
-            let kvm = Kvm::new().expect("failed to create kvm");
-            let vm = KvmVm::new(&kvm, guest_mem, ProtectionType::Unprotected)
-                .expect("failed to create kvm vm");
-            (kvm, vm)
-        },
-        |vm, vcpu_count, device_tube| {
-            KvmSplitIrqChip::new(vm, vcpu_count, device_tube, None)
-                .expect("failed to create KvmSplitIrqChip")
-        },
-    );
 }
 
 /// Tests the integration of x86_64 with some hypervisor and devices setup. This test can help
@@ -267,7 +238,9 @@ where
                 .add_vcpu(0, &vcpu)
                 .expect("failed to add vcpu to irqchip");
 
-            setup_cpuid(&hyp, &irq_chip, &vcpu, 0, 1, false, false, false, false).unwrap();
+            if !vm.check_capability(VmCap::EarlyInitCpuid) {
+                setup_cpuid(&hyp, &irq_chip, &vcpu, 0, 1, false, false, false, false).unwrap();
+            }
             setup_msrs(&vm, &vcpu, read_pci_mmio_before_32bit().start).unwrap();
 
             setup_regs(

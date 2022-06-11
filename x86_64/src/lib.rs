@@ -38,6 +38,7 @@ unsafe impl data_model::DataInit for mpspec::mpc_table {}
 unsafe impl data_model::DataInit for mpspec::mpc_lintsrc {}
 unsafe impl data_model::DataInit for mpspec::mpf_intel {}
 
+#[cfg(unix)]
 pub mod msr;
 
 mod acpi;
@@ -74,6 +75,7 @@ use devices::{
 use hypervisor::{
     HypervisorX86_64, ProtectionType, VcpuInitX86_64, VcpuX86_64, Vm, VmCap, VmX86_64,
 };
+#[cfg(unix)]
 use minijail::Minijail;
 use remain::sorted;
 use resources::{AddressRange, SystemAllocator, SystemAllocatorConfig};
@@ -808,13 +810,17 @@ impl arch::LinuxArch for X8664arch {
     fn register_pci_device<V: VmX86_64, Vcpu: VcpuX86_64>(
         linux: &mut RunnableLinuxVm<V, Vcpu>,
         device: Box<dyn PciDevice>,
-        minijail: Option<Minijail>,
+        #[cfg(unix)] minijail: Option<Minijail>,
         resources: &mut SystemAllocator,
     ) -> Result<PciAddress> {
-        let pci_address = arch::configure_pci_device(linux, device, minijail, resources)
-            .map_err(Error::ConfigurePciDevice)?;
-
-        Ok(pci_address)
+        arch::configure_pci_device(
+            linux,
+            device,
+            #[cfg(unix)]
+            minijail,
+            resources,
+        )
+        .map_err(Error::ConfigurePciDevice)
     }
 
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
