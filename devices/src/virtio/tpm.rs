@@ -8,14 +8,15 @@ use std::sync::Arc;
 use std::thread;
 
 use base::{error, Event, EventToken, RawDescriptor, WaitContext};
+use hypervisor::ProtectionType;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use super::{
-    DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue, Reader, SignalableInterrupt,
-    VirtioDevice, Writer,
+    base_features, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue, Reader,
+    SignalableInterrupt, VirtioDevice, Writer,
 };
 
 // A single queue of size 2. The guest kernel driver will enqueue a single
@@ -200,6 +201,10 @@ impl VirtioDevice for Tpm {
 
     fn queue_max_sizes(&self) -> &[u16] {
         QUEUE_SIZES
+    }
+
+    fn features(&self) -> u64 {
+        base_features(ProtectionType::Unprotected)
     }
 
     fn activate(
