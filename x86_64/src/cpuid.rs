@@ -168,75 +168,75 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
                 return;
             }
 
-                entry.eax &= !0xFC000000;
-                if ctx.cpu_count > 1 {
-                    let cpu_cores = if ctx.no_smt {
-                        ctx.cpu_count as u32
-                    } else if ctx.cpu_count % 2 == 0 {
-                        (ctx.cpu_count >> 1) as u32
-                    } else {
-                        1
-                    };
-                    entry.eax |= (cpu_cores - 1) << EAX_CPU_CORES_SHIFT;
-                }
+            entry.eax &= !0xFC000000;
+            if ctx.cpu_count > 1 {
+                let cpu_cores = if ctx.no_smt {
+                    ctx.cpu_count as u32
+                } else if ctx.cpu_count % 2 == 0 {
+                    (ctx.cpu_count >> 1) as u32
+                } else {
+                    1
+                };
+                entry.eax |= (cpu_cores - 1) << EAX_CPU_CORES_SHIFT;
             }
-            6 => {
-                // Clear X86 EPB feature.  No frequency selection in the hypervisor.
-                entry.ecx &= !(1 << ECX_EPB_SHIFT);
+        }
+        6 => {
+            // Clear X86 EPB feature.  No frequency selection in the hypervisor.
+            entry.ecx &= !(1 << ECX_EPB_SHIFT);
 
-                // Set ITMT related features.
-                if ctx.itmt || ctx.enable_pnp_data {
-                    // Safe because we pass 6 for this call and the host
-                    // supports the `cpuid` instruction
-                    let result = unsafe { __cpuid(entry.function) };
-                    if ctx.itmt {
-                        // Expose ITMT to guest.
-                        entry.eax |= result.eax & (1 << EAX_ITMT_SHIFT);
-                        // Expose HWP and HWP_EPP to guest.
-                        entry.eax |= result.eax & (1 << EAX_HWP_SHIFT);
-                        entry.eax |= result.eax & (1 << EAX_HWP_EPP_SHIFT);
-                    }
-                    if ctx.enable_pnp_data {
-                        // Expose core temperature, package temperature
-                        // and APEF/MPERF to guest
-                        entry.eax |= result.eax & (1 << EAX_CORE_TEMP);
-                        entry.eax |= result.eax & (1 << EAX_PKG_TEMP);
-                        entry.ecx |= result.ecx & (1 << ECX_HCFC_PERF_SHIFT);
-                    }
+            // Set ITMT related features.
+            if ctx.itmt || ctx.enable_pnp_data {
+                // Safe because we pass 6 for this call and the host
+                // supports the `cpuid` instruction
+                let result = unsafe { __cpuid(entry.function) };
+                if ctx.itmt {
+                    // Expose ITMT to guest.
+                    entry.eax |= result.eax & (1 << EAX_ITMT_SHIFT);
+                    // Expose HWP and HWP_EPP to guest.
+                    entry.eax |= result.eax & (1 << EAX_HWP_SHIFT);
+                    entry.eax |= result.eax & (1 << EAX_HWP_EPP_SHIFT);
                 }
-            }
-            7 => {
-                if ctx.host_cpu_topology && entry.index == 0 {
-                    // Safe because we pass 7 and 0 for this call and the host supports the
-                    // `cpuid` instruction
-                    let result = unsafe { __cpuid_count(entry.function, entry.index) };
-                    entry.edx |= result.edx & (1 << EDX_HYBRID_CPU_SHIFT);
-                }
-            }
-            0x15 => {
                 if ctx.enable_pnp_data {
-                    // Safe because we pass 0x15 for this call and the host
-                    // supports the `cpuid` instruction
-                    let result = unsafe { __cpuid(entry.function) };
-                    // Expose TSC frequency to guest
-                    entry.eax = result.eax;
-                    entry.ebx = result.ebx;
-                    entry.ecx = result.ecx;
-                    entry.edx = result.edx;
+                    // Expose core temperature, package temperature
+                    // and APEF/MPERF to guest
+                    entry.eax |= result.eax & (1 << EAX_CORE_TEMP);
+                    entry.eax |= result.eax & (1 << EAX_PKG_TEMP);
+                    entry.ecx |= result.ecx & (1 << ECX_HCFC_PERF_SHIFT);
                 }
             }
-            0x1A => {
-                // Hybrid information leaf.
-                if ctx.host_cpu_topology {
-                    // Safe because we pass 0x1A for this call and the host supports the
-                    // `cpuid` instruction
-                    let result = unsafe { __cpuid(entry.function) };
-                    entry.eax = result.eax;
-                    entry.ebx = result.ebx;
-                    entry.ecx = result.ecx;
-                    entry.edx = result.edx;
-                }
+        }
+        7 => {
+            if ctx.host_cpu_topology && entry.index == 0 {
+                // Safe because we pass 7 and 0 for this call and the host supports the
+                // `cpuid` instruction
+                let result = unsafe { __cpuid_count(entry.function, entry.index) };
+                entry.edx |= result.edx & (1 << EDX_HYBRID_CPU_SHIFT);
             }
+        }
+        0x15 => {
+            if ctx.enable_pnp_data {
+                // Safe because we pass 0x15 for this call and the host
+                // supports the `cpuid` instruction
+                let result = unsafe { __cpuid(entry.function) };
+                // Expose TSC frequency to guest
+                entry.eax = result.eax;
+                entry.ebx = result.ebx;
+                entry.ecx = result.ecx;
+                entry.edx = result.edx;
+            }
+        }
+        0x1A => {
+            // Hybrid information leaf.
+            if ctx.host_cpu_topology {
+                // Safe because we pass 0x1A for this call and the host supports the
+                // `cpuid` instruction
+                let result = unsafe { __cpuid(entry.function) };
+                entry.eax = result.eax;
+                entry.ebx = result.ebx;
+                entry.ecx = result.ecx;
+                entry.edx = result.edx;
+            }
+        }
         0xB | 0x1F => {
             if ctx.host_cpu_topology {
                 return;
