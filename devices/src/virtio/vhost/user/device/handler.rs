@@ -152,10 +152,7 @@ pub fn create_guest_memory(
 }
 
 /// Trait for vhost-user backend.
-pub trait VhostUserBackend
-where
-    Self: Sized,
-{
+pub trait VhostUserBackend {
     const MAX_QUEUE_NUM: usize;
     const MAX_VRING_LEN: u16;
 
