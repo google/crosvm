@@ -39,7 +39,7 @@ pub(crate) struct BlockBackend {
     acked_protocol_features: VhostUserProtocolFeatures,
     flush_timer: Rc<RefCell<TimerAsync>>,
     flush_timer_armed: Rc<RefCell<bool>>,
-    workers: [Option<AbortHandle>; Self::MAX_QUEUE_NUM],
+    workers: [Option<AbortHandle>; NUM_QUEUES as usize],
 }
 
 impl BlockBackend {
@@ -127,8 +127,13 @@ impl BlockBackend {
 }
 
 impl VhostUserBackend for BlockBackend {
-    const MAX_QUEUE_NUM: usize = NUM_QUEUES as usize;
-    const MAX_VRING_LEN: u16 = QUEUE_SIZE;
+    fn max_queue_num(&self) -> usize {
+        return NUM_QUEUES as usize;
+    }
+
+    fn max_vring_len(&self) -> u16 {
+        return QUEUE_SIZE;
+    }
 
     fn features(&self) -> u64 {
         self.avail_features

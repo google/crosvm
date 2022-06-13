@@ -327,8 +327,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
                 }));
             }
             Connection::Vfio(device_name) => {
-                let device =
-                    VvuPciDevice::new(device_name.as_str(), NetBackend::<Tap>::MAX_QUEUE_NUM)?;
+                let device = VvuPciDevice::new(device_name.as_str(), backend.max_queue_num())?;
                 let handler = DeviceRequestHandler::new(backend);
                 let ex = Executor::new().context("failed to create executor")?;
                 threads.push(thread::spawn(move || {

@@ -28,6 +28,9 @@ use crate::virtio::vhost::user::device::handler::{
 };
 use crate::virtio::{base_features, wl, Queue};
 
+const MAX_QUEUE_NUM: usize = wl::QUEUE_SIZES.len();
+const MAX_VRING_LEN: u16 = wl::QUEUE_SIZE;
+
 async fn run_out_queue(
     mut queue: Queue,
     mem: GuestMemory,
@@ -83,7 +86,7 @@ struct WlBackend {
     features: u64,
     acked_features: u64,
     wlstate: Option<Rc<RefCell<wl::WlState>>>,
-    workers: [Option<AbortHandle>; Self::MAX_QUEUE_NUM],
+    workers: [Option<AbortHandle>; MAX_QUEUE_NUM],
 }
 
 impl WlBackend {
@@ -113,8 +116,13 @@ impl WlBackend {
 }
 
 impl VhostUserBackend for WlBackend {
-    const MAX_QUEUE_NUM: usize = wl::QUEUE_SIZES.len();
-    const MAX_VRING_LEN: u16 = wl::QUEUE_SIZE;
+    fn max_queue_num(&self) -> usize {
+        return MAX_QUEUE_NUM;
+    }
+
+    fn max_vring_len(&self) -> u16 {
+        return MAX_VRING_LEN;
+    }
 
     fn features(&self) -> u64 {
         self.features

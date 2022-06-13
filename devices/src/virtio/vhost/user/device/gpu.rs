@@ -29,6 +29,9 @@ use crate::virtio::{
     DescriptorChain, Gpu, GpuDisplayParameters, GpuParameters, Queue, QueueReader, VirtioDevice,
 };
 
+const MAX_QUEUE_NUM: usize = gpu::QUEUE_SIZES.len();
+const MAX_VRING_LEN: u16 = gpu::QUEUE_SIZES[0];
+
 #[derive(Clone)]
 struct SharedReader {
     queue: Arc<Mutex<Queue>>,
@@ -144,12 +147,17 @@ struct GpuBackend {
     state: Option<Rc<RefCell<gpu::Frontend>>>,
     fence_state: Arc<Mutex<gpu::FenceState>>,
     display_worker: Option<Task<()>>,
-    workers: [Option<Task<()>>; Self::MAX_QUEUE_NUM],
+    workers: [Option<Task<()>>; MAX_QUEUE_NUM],
 }
 
 impl VhostUserBackend for GpuBackend {
-    const MAX_QUEUE_NUM: usize = gpu::QUEUE_SIZES.len();
-    const MAX_VRING_LEN: u16 = gpu::QUEUE_SIZES[0];
+    fn max_queue_num(&self) -> usize {
+        return MAX_QUEUE_NUM;
+    }
+
+    fn max_vring_len(&self) -> u16 {
+        return MAX_VRING_LEN;
+    }
 
     fn features(&self) -> u64 {
         self.gpu.borrow().features() | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits()
@@ -477,13 +485,14 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         display_worker: None,
         workers: Default::default(),
     };
+    let max_queue_num = backend.max_queue_num();
 
     let handler = DeviceRequestHandler::new(backend);
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
     let res = match (socket, vfio) {
         (Some(socket), None) => ex.run_until(handler.run(socket, &ex))?,
         (None, Some(vfio)) => {
-            let device = VvuPciDevice::new(&vfio, GpuBackend::MAX_QUEUE_NUM)?;
+            let device = VvuPciDevice::new(&vfio, max_queue_num)?;
             ex.run_until(handler.run_vvu(device, &ex))?
         }
         _ => Err(anyhow!("exactly one of `--socket` or `--vfio` is required")),

@@ -153,8 +153,11 @@ pub fn create_guest_memory(
 
 /// Trait for vhost-user backend.
 pub trait VhostUserBackend {
-    const MAX_QUEUE_NUM: usize;
-    const MAX_VRING_LEN: u16;
+    /// The maximum number of queues that this backend can manage.
+    fn max_queue_num(&self) -> usize;
+
+    /// The maximum length that virtqueues can take with this backend.
+    fn max_vring_len(&self) -> u16;
 
     /// The set of feature bits that this backend supports.
     fn features(&self) -> u64;
@@ -298,9 +301,9 @@ where
 {
     /// Creates the vhost-user handler instance for `backend`.
     pub fn new(backend: B) -> Self {
-        let mut vrings = Vec::with_capacity(B::MAX_QUEUE_NUM);
-        for _ in 0..B::MAX_QUEUE_NUM {
-            vrings.push(Vring::new(B::MAX_VRING_LEN as u16));
+        let mut vrings = Vec::with_capacity(backend.max_queue_num());
+        for _ in 0..backend.max_queue_num() {
+            vrings.push(Vring::new(backend.max_vring_len() as u16));
         }
 
         DeviceRequestHandler {
@@ -410,7 +413,10 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
     }
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> VhostResult<()> {
-        if index as usize >= self.vrings.len() || num == 0 || num > B::MAX_VRING_LEN.into() {
+        if index as usize >= self.vrings.len()
+            || num == 0
+            || num > self.backend.max_vring_len().into()
+        {
             return Err(VhostError::InvalidParam);
         }
         self.vrings[index as usize].queue.size = num as u16;
@@ -441,7 +447,7 @@ impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B
     }
 
     fn set_vring_base(&mut self, index: u32, base: u32) -> VhostResult<()> {
-        if index as usize >= self.vrings.len() || base >= B::MAX_VRING_LEN.into() {
+        if index as usize >= self.vrings.len() || base >= self.backend.max_vring_len().into() {
             return Err(VhostError::InvalidParam);
         }
 
@@ -674,6 +680,9 @@ mod tests {
     }
 
     impl FakeBackend {
+        const MAX_QUEUE_NUM: usize = 16;
+        const MAX_VRING_LEN: u16 = 256;
+
         pub(super) fn new() -> Self {
             Self {
                 avail_features: VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits(),
@@ -684,8 +693,13 @@ mod tests {
     }
 
     impl VhostUserBackend for FakeBackend {
-        const MAX_QUEUE_NUM: usize = 16;
-        const MAX_VRING_LEN: u16 = 256;
+        fn max_queue_num(&self) -> usize {
+            Self::MAX_QUEUE_NUM
+        }
+
+        fn max_vring_len(&self) -> u16 {
+            Self::MAX_VRING_LEN
+        }
 
         fn features(&self) -> u64 {
             self.avail_features

@@ -32,6 +32,9 @@ use crate::virtio::vhost::user::device::handler::{
 use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
 use crate::virtio::{self, copy_config, SignalableInterrupt};
 
+const MAX_QUEUE_NUM: usize = 2 /* transmit and receive queues */;
+const MAX_VRING_LEN: u16 = 256;
+
 /// Wrapper that makes any `SerialInput` usable as an async source by providing an implementation of
 /// `IntoAsync`.
 struct AsyncSerialInput(Box<dyn SerialInput>);
@@ -234,8 +237,13 @@ impl ConsoleBackend {
 }
 
 impl VhostUserBackend for ConsoleBackend {
-    const MAX_QUEUE_NUM: usize = 2; /* transmit and receive queues */
-    const MAX_VRING_LEN: u16 = 256;
+    fn max_queue_num(&self) -> usize {
+        return MAX_QUEUE_NUM;
+    }
+
+    fn max_vring_len(&self) -> u16 {
+        return MAX_VRING_LEN;
+    }
 
     fn features(&self) -> u64 {
         self.device.avail_features
@@ -281,7 +289,7 @@ impl VhostUserBackend for ConsoleBackend {
     }
 
     fn reset(&mut self) {
-        for queue_num in 0..Self::MAX_QUEUE_NUM {
+        for queue_num in 0..self.max_queue_num() {
             self.stop_queue(queue_num);
         }
     }
@@ -380,6 +388,7 @@ pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
     };
     let ex = Executor::new().context("Failed to create executor")?;
     let backend = ConsoleBackend::new(&ex, console);
+    let max_queue_num = backend.max_queue_num();
     let handler = DeviceRequestHandler::new(backend);
 
     // Set stdin() in raw mode so we can send over individual keystrokes unbuffered
@@ -393,7 +402,7 @@ pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
             ex.run_until(handler.run(socket, &ex))?
         }
         (None, Some(vfio)) => {
-            let device = VvuPciDevice::new(&vfio, ConsoleBackend::MAX_QUEUE_NUM)?;
+            let device = VvuPciDevice::new(&vfio, max_queue_num)?;
             ex.run_until(handler.run_vvu(device, &ex))?
         }
         _ => Err(anyhow!("exactly one of `--socket` or `--vfio` is required")),

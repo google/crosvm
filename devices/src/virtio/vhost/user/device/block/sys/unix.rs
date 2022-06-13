@@ -78,6 +78,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let filename = fileopts.remove(0);
 
     let block = BlockBackend::new(&ex, filename, fileopts)?;
+    let max_queue_num = block.max_queue_num();
     let handler = DeviceRequestHandler::new(block);
     match (opts.socket, opts.vfio) {
         (Some(socket), None) => {
@@ -85,7 +86,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
             ex.run_until(handler.run(socket, &ex))?
         }
         (None, Some(device_name)) => {
-            let device = VvuPciDevice::new(device_name.as_str(), BlockBackend::MAX_QUEUE_NUM)?;
+            let device = VvuPciDevice::new(device_name.as_str(), max_queue_num)?;
             ex.run_until(handler.run_vvu(device, &ex))?
         }
         _ => unreachable!("Must be checked above"),

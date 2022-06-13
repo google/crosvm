@@ -94,7 +94,7 @@ where
     T: TapT + IntoAsync,
 {
     fn max_vq_pairs() -> usize {
-        Self::MAX_QUEUE_NUM / 2
+        MAX_QUEUE_NUM / 2
     }
 }
 
@@ -102,8 +102,13 @@ impl<T: 'static> VhostUserBackend for NetBackend<T>
 where
     T: TapT + IntoAsync,
 {
-    const MAX_QUEUE_NUM: usize = MAX_QUEUE_NUM; /* rx, tx, ctrl */
-    const MAX_VRING_LEN: u16 = MAX_VRING_LEN;
+    fn max_queue_num(&self) -> usize {
+        return MAX_QUEUE_NUM;
+    }
+
+    fn max_vring_len(&self) -> u16 {
+        return MAX_VRING_LEN;
+    }
 
     fn features(&self) -> u64 {
         self.avail_features

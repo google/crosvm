@@ -97,7 +97,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let device = match opts.vfio {
         None => None,
         Some(vfio) => {
-            let d = VvuPciDevice::new(&vfio, FsBackend::MAX_QUEUE_NUM)?;
+            let d = VvuPciDevice::new(&vfio, fs_device.max_queue_num())?;
             keep_rds.extend(d.irqs.iter().map(|e| e.as_raw_descriptor()));
             keep_rds.extend(d.notification_evts.iter().map(|e| e.as_raw_descriptor()));
             keep_rds.push(d.vfio_dev.device_file().as_raw_fd());
