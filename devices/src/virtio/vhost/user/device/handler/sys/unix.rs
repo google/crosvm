@@ -26,7 +26,6 @@ use crate::vfio::{VfioDevice, VfioRegionAddr};
 use crate::virtio::interrupt::SignalableInterrupt;
 use crate::virtio::vhost::user::device::handler::{
     DeviceRequestHandler, Doorbell, GuestAddress, HandlerType, MappingInfo, MemoryRegion,
-    VhostUserBackend,
 };
 use crate::virtio::vhost::user::device::vvu::{
     device::VvuDevice,
@@ -240,10 +239,7 @@ where
     }
 }
 
-impl<B> DeviceRequestHandler<B>
-where
-    B: 'static + VhostUserBackend,
-{
+impl DeviceRequestHandler {
     /// Creates a listening socket at `socket` and handles incoming messages from the VMM, which are
     /// dispatched to the device backend via the `VhostUserBackend` trait methods.
     pub async fn run<P: AsRef<Path>>(self, socket: P, ex: &Executor) -> Result<()> {
@@ -362,7 +358,8 @@ mod tests {
         });
 
         // Device side
-        let handler = std::sync::Mutex::new(DeviceRequestHandler::new(FakeBackend::new()));
+        let handler =
+            std::sync::Mutex::new(DeviceRequestHandler::new(Box::new(FakeBackend::new())));
         let mut listener = SlaveListener::<SocketEndpoint<_>, _>::new(listener, handler).unwrap();
 
         // Notify listener is ready.

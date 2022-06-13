@@ -268,7 +268,7 @@ pub fn run_cras_snd_device(opts: Options) -> anyhow::Result<()> {
     // Create and bind unix socket
     let listener = SocketListener::new(opts.socket, true /* unlink */)?;
 
-    let handler = DeviceRequestHandler::new(snd_device);
+    let handler = DeviceRequestHandler::new(Box::new(snd_device));
 
     // Child, we can continue by spawning the executor and set up the device
     let ex = Executor::new().context("Failed to create executor")?;

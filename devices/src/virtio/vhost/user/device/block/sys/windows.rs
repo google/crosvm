@@ -139,7 +139,7 @@ pub(in crate::virtio::vhost::user::device::block) fn start_device(
     }
 
     // This is basically the event loop.
-    let handler = DeviceRequestHandler::new(block);
+    let handler = DeviceRequestHandler::new(Box::new(block));
 
     if let Err(e) = ex.run_until(handler.run(vhost_user_tube, exit_event, &ex)) {
         bail!("error occurred: {}", e);

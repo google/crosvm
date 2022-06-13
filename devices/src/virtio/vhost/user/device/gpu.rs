@@ -487,7 +487,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     };
     let max_queue_num = backend.max_queue_num();
 
-    let handler = DeviceRequestHandler::new(backend);
+    let handler = DeviceRequestHandler::new(Box::new(backend));
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
     let res = match (socket, vfio) {
         (Some(socket), None) => ex.run_until(handler.run(socket, &ex))?,

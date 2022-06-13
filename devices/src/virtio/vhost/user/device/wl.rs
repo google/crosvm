@@ -339,12 +339,12 @@ pub fn run_wl_device(opts: Options) -> anyhow::Result<()> {
         .accept()
         .map(Tube::new)
         .context("failed to accept vm socket connection")?;
-    let handler = DeviceRequestHandler::new(WlBackend::new(
+    let handler = DeviceRequestHandler::new(Box::new(WlBackend::new(
         &ex,
         wayland_paths,
         vm_socket,
         resource_bridge,
-    ));
+    )));
 
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
     ex.run_until(handler.run(socket, &ex))?

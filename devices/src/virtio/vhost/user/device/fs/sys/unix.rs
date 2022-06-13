@@ -106,7 +106,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     };
     base::syslog::push_descriptors(&mut keep_rds);
 
-    let handler = DeviceRequestHandler::new(fs_device);
+    let handler = DeviceRequestHandler::new(Box::new(fs_device));
 
     let pid = jail_and_fork(keep_rds, opts.shared_dir, opts.uid_map, opts.gid_map)?;
 

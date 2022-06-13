@@ -282,25 +282,19 @@ impl Default for HandlerType {
 }
 
 /// Structure to have an event loop for interaction between a VMM and `VhostUserBackend`.
-pub struct DeviceRequestHandler<B>
-where
-    B: 'static + VhostUserBackend,
-{
+pub struct DeviceRequestHandler {
     vrings: Vec<Vring>,
     owned: bool,
     vmm_maps: Option<Vec<MappingInfo>>,
     mem: Option<GuestMemory>,
-    backend: B,
+    backend: Box<dyn VhostUserBackend>,
 
     handler_type: HandlerType,
 }
 
-impl<B> DeviceRequestHandler<B>
-where
-    B: 'static + VhostUserBackend,
-{
+impl DeviceRequestHandler {
     /// Creates the vhost-user handler instance for `backend`.
-    pub fn new(backend: B) -> Self {
+    pub fn new(backend: Box<dyn VhostUserBackend>) -> Self {
         let mut vrings = Vec::with_capacity(backend.max_queue_num());
         for _ in 0..backend.max_queue_num() {
             vrings.push(Vring::new(backend.max_vring_len() as u16));
@@ -317,7 +311,7 @@ where
     }
 }
 
-impl<B: VhostUserBackend> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<B> {
+impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
     fn protocol(&self) -> Protocol {
         match &self.handler_type {
             HandlerType::VhostUser => Protocol::Regular,
@@ -827,7 +821,8 @@ mod tests {
         });
 
         // Device side
-        let handler = std::sync::Mutex::new(DeviceRequestHandler::new(FakeBackend::new()));
+        let handler =
+            std::sync::Mutex::new(DeviceRequestHandler::new(Box::new(FakeBackend::new())));
         let mut listener = SlaveListener::<SocketEndpoint<_>, _>::new(listener, handler).unwrap();
 
         // Notify listener is ready.

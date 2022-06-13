@@ -11,8 +11,8 @@ use disk::create_async_disk_file;
 use hypervisor::ProtectionType;
 
 use crate::virtio::base_features;
-use crate::virtio::vhost::user::device::block::{BlockBackend, VhostUserBackend};
-use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
+use crate::virtio::vhost::user::device::block::BlockBackend;
+use crate::virtio::vhost::user::device::handler::{DeviceRequestHandler, VhostUserBackend};
 use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
 
 impl BlockBackend {
@@ -79,7 +79,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
 
     let block = BlockBackend::new(&ex, filename, fileopts)?;
     let max_queue_num = block.max_queue_num();
-    let handler = DeviceRequestHandler::new(block);
+    let handler = DeviceRequestHandler::new(Box::new(block));
     match (opts.socket, opts.vfio) {
         (Some(socket), None) => {
             // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.

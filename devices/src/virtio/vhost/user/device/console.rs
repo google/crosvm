@@ -389,7 +389,7 @@ pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
     let ex = Executor::new().context("Failed to create executor")?;
     let backend = ConsoleBackend::new(&ex, console);
     let max_queue_num = backend.max_queue_num();
-    let handler = DeviceRequestHandler::new(backend);
+    let handler = DeviceRequestHandler::new(Box::new(backend));
 
     // Set stdin() in raw mode so we can send over individual keystrokes unbuffered
     stdin()

@@ -318,8 +318,8 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         match conn {
             Connection::Socket(socket) => {
                 let ex = Executor::new().context("failed to create executor")?;
-                let handler = DeviceRequestHandler::new(backend);
                 threads.push(thread::spawn(move || {
+                    let handler = DeviceRequestHandler::new(Box::new(backend));
                     NET_EXECUTOR.with(|thread_ex| {
                         let _ = thread_ex.set(ex.clone());
                     });
@@ -328,9 +328,9 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
             }
             Connection::Vfio(device_name) => {
                 let device = VvuPciDevice::new(device_name.as_str(), backend.max_queue_num())?;
-                let handler = DeviceRequestHandler::new(backend);
                 let ex = Executor::new().context("failed to create executor")?;
                 threads.push(thread::spawn(move || {
+                    let handler = DeviceRequestHandler::new(Box::new(backend));
                     NET_EXECUTOR.with(|thread_ex| {
                         let _ = thread_ex.set(ex.clone());
                     });

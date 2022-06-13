@@ -260,11 +260,13 @@ pub fn run_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
     let exit_event = bootstrap_tube.recv::<Event>()?;
 
     // We only have one net device for now.
-    let dev = NetBackend::<net_util::Slirp>::new_slirp(
-        net_backend_config.guest_pipe,
-        net_backend_config.slirp_kill_event,
-    )
-    .unwrap();
+    let dev = Box::new(
+        NetBackend::<net_util::Slirp>::new_slirp(
+            net_backend_config.guest_pipe,
+            net_backend_config.slirp_kill_event,
+        )
+        .unwrap(),
+    );
 
     let handler = DeviceRequestHandler::new(dev);
 
