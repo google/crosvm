@@ -16,4 +16,5 @@ remain = "*"
 serde = { version = "1", features = [ "derive" ] }
 thiserror = "*"
 
-
+[features]
+udmabuf = []

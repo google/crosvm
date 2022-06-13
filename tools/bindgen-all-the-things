@@ -20,7 +20,6 @@ die() {
 
 dirs=(
     io_uring
-    devices/src/virtio/gpu
     kernel_loader
     kvm_sys
     media/ffmpeg
@@ -28,6 +27,7 @@ dirs=(
     net_sys
     vfio_sys
     virtio_sys
+    vm_memory
 )
 
 for d in "${dirs[@]}"; do

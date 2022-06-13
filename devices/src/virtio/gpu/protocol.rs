@@ -23,7 +23,7 @@ use remain::sorted;
 use rutabaga_gfx::RutabagaError;
 use thiserror::Error;
 
-use crate::virtio::gpu::udmabuf::UdmabufError;
+use vm_memory::udmabuf::UdmabufError;
 
 pub const VIRTIO_GPU_F_VIRGL: u32 = 0;
 pub const VIRTIO_GPU_F_EDID: u32 = 1;

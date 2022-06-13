@@ -18,7 +18,8 @@ use data_model::VolatileSlice;
 use gpu_display::*;
 use rutabaga_gfx::{
     ResourceCreate3D, ResourceCreateBlob, Rutabaga, RutabagaBuilder, RutabagaFence,
-    RutabagaFenceHandler, RutabagaIovec, Transfer3D,
+    RutabagaFenceHandler, RutabagaHandle, RutabagaIovec, Transfer3D,
+    RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
 };
 
 use libc::c_void;
@@ -30,11 +31,10 @@ use super::protocol::{
     GpuResponsePlaneInfo, VirtioGpuResult, VIRTIO_GPU_BLOB_FLAG_CREATE_GUEST_HANDLE,
     VIRTIO_GPU_BLOB_MEM_HOST3D,
 };
-use super::udmabuf::UdmabufDriver;
 use super::VirtioScanoutBlobData;
 use sync::Mutex;
 
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::{udmabuf::UdmabufDriver, GuestAddress, GuestMemory};
 
 use vm_control::{MemSlot, VmMemoryDestination, VmMemoryRequest, VmMemoryResponse, VmMemorySource};
 
@@ -668,11 +668,11 @@ impl VirtioGpu {
         vecs: Vec<(GuestAddress, usize)>,
         mem: &GuestMemory,
     ) -> VirtioGpuResult {
-        let mut rutabaga_handle = None;
+        let mut descriptor = None;
         let mut rutabaga_iovecs = None;
 
         if resource_create_blob.blob_flags & VIRTIO_GPU_BLOB_FLAG_CREATE_GUEST_HANDLE != 0 {
-            rutabaga_handle = match self.udmabuf_driver {
+            descriptor = match self.udmabuf_driver {
                 Some(ref driver) => Some(driver.create_udmabuf(mem, &vecs[..])?),
                 None => return Err(ErrUnspec),
             }
@@ -686,7 +686,10 @@ impl VirtioGpu {
             resource_id,
             resource_create_blob,
             rutabaga_iovecs,
-            rutabaga_handle,
+            descriptor.map(|descriptor| RutabagaHandle {
+                os_handle: descriptor,
+                handle_type: RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
+            }),
         )?;
 
         let resource = VirtioGpuResource::new(resource_id, 0, 0, resource_create_blob.size);

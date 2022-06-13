@@ -1,4 +1,4 @@
-// Copyright 2021 The Chromium OS Authors. All rights reservsize.
+// Copyright 2021 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,13 +16,12 @@ use base::{
 
 use data_model::{flexible_array_impl, FlexibleArrayWrapper};
 
-use rutabaga_gfx::{RutabagaHandle, RUTABAGA_MEM_HANDLE_TYPE_DMABUF};
-
 use super::udmabuf_bindings::*;
 
 use remain::sorted;
 use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
+
+use crate::{GuestAddress, GuestMemory, GuestMemoryError};
 
 const UDMABUF_IOCTL_BASE: c_uint = 0x75;
 
@@ -107,7 +106,7 @@ impl UdmabufDriver {
         &self,
         mem: &GuestMemory,
         iovecs: &[(GuestAddress, usize)],
-    ) -> UdmabufResult<RutabagaHandle> {
+    ) -> UdmabufResult<SafeDescriptor> {
         let pgsize = pagesize();
 
         let mut list = UdmabufCreateList::new(iovecs.len() as usize);
@@ -138,19 +137,15 @@ impl UdmabufDriver {
         }
 
         // Safe because we validated the file exists.
-        let os_handle = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
-        Ok(RutabagaHandle {
-            os_handle,
-            handle_type: RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
-        })
+        Ok(unsafe { SafeDescriptor::from_raw_descriptor(fd) })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::GuestAddress;
     use base::kernel_has_memfd;
-    use vm_memory::GuestAddress;
 
     #[test]
     fn test_memory_offsets() {
@@ -220,23 +215,15 @@ mod tests {
 
         udmabuf_create_list.pop();
 
-        let rutabaga_handle1 = driver
+        let _ = driver
             .create_udmabuf(&mem, &udmabuf_create_list[..])
             .unwrap();
-        assert_eq!(
-            rutabaga_handle1.handle_type,
-            RUTABAGA_MEM_HANDLE_TYPE_DMABUF
-        );
 
         udmabuf_create_list.pop();
 
         // Multiple udmabufs with same memory backing is allowed.
-        let rutabaga_handle2 = driver
+        let _ = driver
             .create_udmabuf(&mem, &udmabuf_create_list[..])
             .unwrap();
-        assert_eq!(
-            rutabaga_handle2.handle_type,
-            RUTABAGA_MEM_HANDLE_TYPE_DMABUF
-        );
     }
 }
