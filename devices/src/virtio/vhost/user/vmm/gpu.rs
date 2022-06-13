@@ -14,7 +14,7 @@ use crate::{
         gpu::QUEUE_SIZES,
         vhost::user::vmm::{worker::Worker, Result, VhostUserHandler},
         virtio_gpu_config, DeviceType, Interrupt, PciCapabilityType, Queue, VirtioDevice,
-        VirtioPciShmCap, GPU_BAR_NUM, GPU_BAR_OFFSET, GPU_BAR_SIZE, VIRTIO_GPU_F_CONTEXT_INIT,
+        VirtioPciShmCap, GPU_BAR_NUM, GPU_BAR_OFFSET, VIRTIO_GPU_F_CONTEXT_INIT,
         VIRTIO_GPU_F_CREATE_GUEST_HANDLE, VIRTIO_GPU_F_RESOURCE_BLOB, VIRTIO_GPU_F_RESOURCE_SYNC,
         VIRTIO_GPU_F_RESOURCE_UUID, VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_SHM_ID_HOST_VISIBLE,
     },
@@ -41,6 +41,7 @@ pub struct Gpu {
     handler: RefCell<VhostUserHandler>,
     state: GpuState,
     queue_sizes: Vec<u16>,
+    pci_bar_size: u64,
 }
 
 impl Gpu {
@@ -52,11 +53,13 @@ impl Gpu {
     /// the initial configuration of the GPU device.
     /// `device_control_tube` is the device-side tube to be passed to the GPU device so it can
     /// perform `VmRequest`s.
+    /// `pci_bar_size` is the size for the PCI BAR in bytes
     pub fn new<P: AsRef<Path>>(
         base_features: u64,
         socket_path: P,
         gpu_tubes: (Tube, Tube),
         device_control_tube: Tube,
+        pci_bar_size: u64,
     ) -> Result<Gpu> {
         let default_queue_size = QUEUE_SIZES.len();
 
@@ -91,6 +94,7 @@ impl Gpu {
                 device_control_tube,
             },
             queue_sizes: QUEUE_SIZES[..].to_vec(),
+            pci_bar_size,
         })
     }
 }
@@ -229,7 +233,7 @@ impl VirtioDevice for Gpu {
             PciCapabilityType::SharedMemoryConfig,
             GPU_BAR_NUM,
             GPU_BAR_OFFSET,
-            GPU_BAR_SIZE,
+            self.pci_bar_size,
             VIRTIO_GPU_SHM_ID_HOST_VISIBLE,
         ))]
     }

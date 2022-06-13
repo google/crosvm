@@ -44,6 +44,7 @@ pub struct GpuParameters {
     pub mode: GpuMode,
     pub cache_path: Option<String>,
     pub cache_size: Option<String>,
+    pub pci_bar_size: u64,
     pub context_mask: u64,
 }
 
@@ -67,6 +68,7 @@ impl Default for GpuParameters {
             wsi: None,
             cache_path: None,
             cache_size: None,
+            pci_bar_size: (1 << 33),
             udmabuf: false,
             context_mask: 0,
         }

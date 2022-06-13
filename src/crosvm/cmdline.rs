@@ -600,7 +600,9 @@ pub struct RunCommand {
     ///        swapchain to draw on a window
     ///     cache-path=PATH - The path to the virtio-gpu device
     ///        shader cache.
-    ///     cache-size=SIZE - The maximum size of the shader cache
+    ///     cache-size=SIZE - The maximum size of the shader cache.
+    ///     pci-bar-size=SIZE - The size for the PCI BAR in bytes
+    ///        (default 8gb).
     pub gpu_params: Option<devices::virtio::GpuParameters>,
     #[cfg(all(unix, feature = "gpu", feature = "virgl_renderer_next"))]
     #[argh(option, from_str_fn(parse_gpu_render_server_options))]

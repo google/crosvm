@@ -1515,6 +1515,12 @@ pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
             },
             "cache-path" => gpu_params.cache_path = Some(v.to_string()),
             "cache-size" => gpu_params.cache_size = Some(v.to_string()),
+            "pci-bar-size" => {
+                let size = parse_hex_or_decimal(v).map_err(|_| {
+                    "gpu parameter `pci-bar-size` must be a valid hex or decimal value"
+                })?;
+                gpu_params.pci_bar_size = size;
+            }
             "udmabuf" => match v {
                 "true" | "" => {
                     gpu_params.udmabuf = true;
@@ -1918,6 +1924,12 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
     #[cfg(feature = "gpu")]
     {
         if let Some(gpu_parameters) = cfg.gpu_parameters.as_mut() {
+            if !gpu_parameters.pci_bar_size.is_power_of_two() {
+                return Err(format!(
+                    "gpu parameter `pci-bar-size` must be a power of two but is {}",
+                    gpu_parameters.pci_bar_size
+                ));
+            }
             if gpu_parameters.displays.is_empty() {
                 gpu_parameters.displays.push(GpuDisplayParameters {
                     width: DEFAULT_DISPLAY_WIDTH,

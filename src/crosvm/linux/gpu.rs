@@ -28,6 +28,7 @@ pub fn create_vhost_user_gpu_device(
         &opt.socket,
         gpu_tubes,
         device_control_tube,
+        cfg.gpu_parameters.as_ref().unwrap().pci_bar_size,
     )
     .context("failed to set up vhost-user gpu device")?;
 

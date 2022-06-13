@@ -77,7 +77,6 @@ pub const FENCE_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 pub const GPU_BAR_NUM: u8 = 4;
 pub const GPU_BAR_OFFSET: u64 = 0;
-pub const GPU_BAR_SIZE: u64 = 1 << 33;
 
 #[derive(Copy, Clone, Debug)]
 pub struct VirtioScanoutBlobData {
@@ -961,6 +960,7 @@ pub struct Gpu {
     display_params: Vec<GpuDisplayParameters>,
     rutabaga_builder: Option<RutabagaBuilder>,
     pci_bar: Option<Alloc>,
+    pci_bar_size: u64,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     external_blob: bool,
     rutabaga_component: RutabagaComponentType,
@@ -1040,6 +1040,7 @@ impl Gpu {
             display_params: gpu_parameters.displays.clone(),
             rutabaga_builder: Some(rutabaga_builder),
             pci_bar: None,
+            pci_bar_size: gpu_parameters.pci_bar_size,
             map_request,
             external_blob,
             rutabaga_component: component,
@@ -1328,7 +1329,7 @@ impl VirtioDevice for Gpu {
         });
         vec![PciBarConfiguration::new(
             GPU_BAR_NUM as usize,
-            GPU_BAR_SIZE,
+            self.pci_bar_size,
             PciBarRegionType::Memory64BitRegion,
             PciBarPrefetchable::NotPrefetchable,
         )]
@@ -1339,7 +1340,7 @@ impl VirtioDevice for Gpu {
             PciCapabilityType::SharedMemoryConfig,
             GPU_BAR_NUM,
             GPU_BAR_OFFSET,
-            GPU_BAR_SIZE,
+            self.pci_bar_size,
             VIRTIO_GPU_SHM_ID_HOST_VISIBLE,
         ))]
     }
