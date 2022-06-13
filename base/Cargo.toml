@@ -8,9 +8,10 @@ edition = "2021"
 chromeos = []
 
 [dependencies]
-audio_streams = { path = "../common/audio_streams" }
-base_event_token_derive = { path = "base_event_token_derive" }
-data_model = { path = "../common/data_model" }
+audio_streams = { path = "../common/audio_streams" } # provided by ebuild
+base_event_token_derive = { path = "base_event_token_derive", version = "*" }
+data_model = { path = "../common/data_model" } # provided by ebuild
+sync = { path = "../common/sync" } # provided by ebuild
 
 cfg-if = "*"
 chrono = "*"
@@ -22,9 +23,8 @@ remain = "0.2"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "*"
 smallvec = "1.6.1"
-sync = { path = "../common/sync" }
-thiserror = "1.0.20"
 tempfile = "3"
+thiserror = "1.0.20"
 uuid = { version = "0.8.2", features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies]
