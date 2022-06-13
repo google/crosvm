@@ -38,7 +38,7 @@ Here is a (non-comprehensive) list of emulated devices provided by crosvm.
 [device side]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/vhost/user/device/
 [vhost-user protocol]: https://qemu.readthedocs.io/en/latest/interop/vhost-user.html
 [vmm side]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/vhost/user/vmm/
-[`balloon`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/balloon.rs
+[`balloon`]: balloon.md
 [`block`]: block.md
 [`cmos/rtc`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/cmos.rs
 [`console`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/console.rs
