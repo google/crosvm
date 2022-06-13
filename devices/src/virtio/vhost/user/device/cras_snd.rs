@@ -91,8 +91,6 @@ impl VhostUserBackend for CrasSndBackend {
     const MAX_QUEUE_NUM: usize = MAX_QUEUE_NUM;
     const MAX_VRING_LEN: u16 = MAX_VRING_LEN;
 
-    type Error = anyhow::Error;
-
     fn features(&self) -> u64 {
         self.avail_features
     }

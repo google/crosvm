@@ -151,8 +151,6 @@ impl VhostUserBackend for GpuBackend {
     const MAX_QUEUE_NUM: usize = gpu::QUEUE_SIZES.len();
     const MAX_VRING_LEN: u16 = gpu::QUEUE_SIZES[0];
 
-    type Error = anyhow::Error;
-
     fn features(&self) -> u64 {
         self.gpu.borrow().features() | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits()
     }

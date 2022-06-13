@@ -155,19 +155,15 @@ pub fn create_guest_memory(
 pub trait VhostUserBackend
 where
     Self: Sized,
-    Self::Error: std::fmt::Display,
 {
     const MAX_QUEUE_NUM: usize;
     const MAX_VRING_LEN: u16;
-
-    /// Error type specific to this backend.
-    type Error;
 
     /// The set of feature bits that this backend supports.
     fn features(&self) -> u64;
 
     /// Acknowledges that this set of features should be enabled.
-    fn ack_features(&mut self, value: u64) -> std::result::Result<(), Self::Error>;
+    fn ack_features(&mut self, value: u64) -> anyhow::Result<()>;
 
     /// Returns the set of enabled features.
     fn acked_features(&self) -> u64;
@@ -176,7 +172,7 @@ where
     fn protocol_features(&self) -> VhostUserProtocolFeatures;
 
     /// Acknowledges that this set of protocol features should be enabled.
-    fn ack_protocol_features(&mut self, _value: u64) -> std::result::Result<(), Self::Error>;
+    fn ack_protocol_features(&mut self, _value: u64) -> anyhow::Result<()>;
 
     /// Returns the set of enabled protocol features.
     fn acked_protocol_features(&self) -> u64;
@@ -188,10 +184,7 @@ where
     fn write_config(&self, _offset: u64, _data: &[u8]) {}
 
     /// Sets the channel for device-specific communication.
-    fn set_device_request_channel(
-        &mut self,
-        _channel: File,
-    ) -> std::result::Result<(), Self::Error> {
+    fn set_device_request_channel(&mut self, _channel: File) -> anyhow::Result<()> {
         Ok(())
     }
 
@@ -205,7 +198,7 @@ where
         mem: GuestMemory,
         doorbell: Arc<Mutex<Doorbell>>,
         kick_evt: Event,
-    ) -> std::result::Result<(), Self::Error>;
+    ) -> anyhow::Result<()>;
 
     /// Indicates that the backend should stop processing requests for virtio queue number `idx`.
     fn stop_queue(&mut self, idx: usize);
@@ -697,13 +690,11 @@ mod tests {
         const MAX_QUEUE_NUM: usize = 16;
         const MAX_VRING_LEN: u16 = 256;
 
-        type Error = anyhow::Error;
-
         fn features(&self) -> u64 {
             self.avail_features
         }
 
-        fn ack_features(&mut self, value: u64) -> std::result::Result<(), Self::Error> {
+        fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
             let unrequested_features = value & !self.avail_features;
             if unrequested_features != 0 {
                 bail!(
@@ -723,7 +714,7 @@ mod tests {
             VhostUserProtocolFeatures::CONFIG
         }
 
-        fn ack_protocol_features(&mut self, features: u64) -> std::result::Result<(), Self::Error> {
+        fn ack_protocol_features(&mut self, features: u64) -> anyhow::Result<()> {
             let features = VhostUserProtocolFeatures::from_bits(features).ok_or(anyhow!(
                 "invalid protocol features are given: 0x{:x}",
                 features
@@ -750,7 +741,7 @@ mod tests {
             _mem: GuestMemory,
             _doorbell: Arc<Mutex<Doorbell>>,
             _kick_evt: Event,
-        ) -> std::result::Result<(), Self::Error> {
+        ) -> anyhow::Result<()> {
             Ok(())
         }
 

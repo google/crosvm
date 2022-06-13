@@ -237,8 +237,6 @@ impl VhostUserBackend for ConsoleBackend {
     const MAX_QUEUE_NUM: usize = 2; /* transmit and receive queues */
     const MAX_VRING_LEN: u16 = 256;
 
-    type Error = anyhow::Error;
-
     fn features(&self) -> u64 {
         self.device.avail_features
     }

@@ -130,8 +130,6 @@ impl VhostUserBackend for BlockBackend {
     const MAX_QUEUE_NUM: usize = NUM_QUEUES as usize;
     const MAX_VRING_LEN: u16 = QUEUE_SIZE;
 
-    type Error = anyhow::Error;
-
     fn features(&self) -> u64 {
         self.avail_features
     }
