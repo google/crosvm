@@ -48,8 +48,6 @@ use uuid::Uuid;
 use vm_control::BatteryType;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64::set_enable_pnp_data_msr_config;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use x86_64::set_itmt_msr_config;
 
 use super::argument::parse_hex_or_decimal;
 use super::check_opt_path;
@@ -1704,7 +1702,7 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         }
 
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        set_enable_pnp_data_msr_config(cfg.itmt, &mut cfg.userspace_msr)
+        set_enable_pnp_data_msr_config(&mut cfg.userspace_msr)
             .map_err(|e| format!("MSR can't be passed through {}", e))?;
     }
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -1745,8 +1743,6 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         if !cfg.enable_hwp {
             return Err("setting `itmt` requires `enable-hwp` is set.".to_string());
         }
-        set_itmt_msr_config(&mut cfg.userspace_msr)
-            .map_err(|e| format!("the cpu doesn't support itmt {}", e))?;
     }
 
     if !cfg.balloon && cfg.balloon_control.is_some() {
@@ -2180,6 +2176,13 @@ mod tests {
         assert_eq!(pass_cpu0_cfg.rw_type, MsrRWType::ReadOnly);
         assert_eq!(pass_cpu0_cfg.action, MsrAction::MsrPassthrough);
         assert_eq!(pass_cpu0_cfg.from, MsrValueFrom::RWFromCPU0);
+
+        let (pass_cpus_index, pass_cpus_cfg) =
+            parse_userspace_msr_options("0x10,type=rw,action=pass").unwrap();
+        assert_eq!(pass_cpus_index, 0x10);
+        assert_eq!(pass_cpus_cfg.rw_type, MsrRWType::ReadWrite);
+        assert_eq!(pass_cpus_cfg.action, MsrAction::MsrPassthrough);
+        assert_eq!(pass_cpus_cfg.from, MsrValueFrom::RWFromRunningCPU);
 
         let (pass_cpus_index, pass_cpus_cfg) =
             parse_userspace_msr_options("0x10,type=rw,action=emu").unwrap();

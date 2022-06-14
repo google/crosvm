@@ -50,7 +50,6 @@ mod mptable;
 mod regs;
 mod smbios;
 
-use std::arch::x86_64::__cpuid;
 use std::collections::BTreeMap;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -1850,10 +1849,9 @@ fn insert_msrs(
 }
 
 pub fn set_enable_pnp_data_msr_config(
-    itmt: bool,
     msr_map: &mut BTreeMap<u32, MsrConfig>,
 ) -> std::result::Result<(), MsrError> {
-    let mut msrs = vec![
+    let msrs = vec![
         (
             MSR_IA32_APERF,
             MsrRWType::ReadOnly,
@@ -1870,117 +1868,6 @@ pub fn set_enable_pnp_data_msr_config(
         ),
     ];
 
-    // When itmt is enabled, the following 5 MSRs are already
-    // passed through or emulated, so just skip here.
-    if !itmt {
-        msrs.extend([
-            (
-                MSR_PLATFORM_INFO,
-                MsrRWType::ReadOnly,
-                MsrAction::MsrPassthrough,
-                MsrValueFrom::RWFromRunningCPU,
-                MsrFilter::Override,
-            ),
-            (
-                MSR_TURBO_RATIO_LIMIT,
-                MsrRWType::ReadOnly,
-                MsrAction::MsrPassthrough,
-                MsrValueFrom::RWFromRunningCPU,
-                MsrFilter::Default,
-            ),
-            (
-                MSR_PM_ENABLE,
-                MsrRWType::ReadOnly,
-                MsrAction::MsrPassthrough,
-                MsrValueFrom::RWFromRunningCPU,
-                MsrFilter::Default,
-            ),
-            (
-                MSR_HWP_CAPABILITIES,
-                MsrRWType::ReadOnly,
-                MsrAction::MsrPassthrough,
-                MsrValueFrom::RWFromRunningCPU,
-                MsrFilter::Default,
-            ),
-            (
-                MSR_HWP_REQUEST,
-                MsrRWType::ReadOnly,
-                MsrAction::MsrPassthrough,
-                MsrValueFrom::RWFromRunningCPU,
-                MsrFilter::Default,
-            ),
-        ]);
-    }
-
-    insert_msrs(msr_map, &msrs)?;
-
-    Ok(())
-}
-
-const EBX_INTEL_GENU: u32 = 0x756e6547; // "Genu"
-const ECX_INTEL_NTEL: u32 = 0x6c65746e; // "ntel"
-const EDX_INTEL_INEI: u32 = 0x49656e69; // "ineI"
-
-fn check_itmt_cpu_support() -> std::result::Result<(), MsrError> {
-    // Safe because we pass 0 for this call and the host supports the
-    // `cpuid` instruction
-    let entry = unsafe { __cpuid(0) };
-    if entry.ebx == EBX_INTEL_GENU && entry.ecx == ECX_INTEL_NTEL && entry.edx == EDX_INTEL_INEI {
-        Ok(())
-    } else {
-        Err(MsrError::CpuUnSupport)
-    }
-}
-
-pub fn set_itmt_msr_config(
-    msr_map: &mut BTreeMap<u32, MsrConfig>,
-) -> std::result::Result<(), MsrError> {
-    check_itmt_cpu_support()?;
-
-    let msrs = vec![
-        (
-            MSR_HWP_CAPABILITIES,
-            MsrRWType::ReadOnly,
-            MsrAction::MsrPassthrough,
-            MsrValueFrom::RWFromRunningCPU,
-            MsrFilter::Default,
-        ),
-        (
-            MSR_PM_ENABLE,
-            MsrRWType::ReadWrite,
-            MsrAction::MsrEmulate,
-            MsrValueFrom::RWFromRunningCPU,
-            MsrFilter::Default,
-        ),
-        (
-            MSR_HWP_REQUEST,
-            MsrRWType::ReadWrite,
-            MsrAction::MsrEmulate,
-            MsrValueFrom::RWFromRunningCPU,
-            MsrFilter::Default,
-        ),
-        (
-            MSR_TURBO_RATIO_LIMIT,
-            MsrRWType::ReadOnly,
-            MsrAction::MsrPassthrough,
-            MsrValueFrom::RWFromRunningCPU,
-            MsrFilter::Default,
-        ),
-        (
-            MSR_PLATFORM_INFO,
-            MsrRWType::ReadOnly,
-            MsrAction::MsrPassthrough,
-            MsrValueFrom::RWFromRunningCPU,
-            MsrFilter::Default,
-        ),
-        (
-            MSR_IA32_PERF_CTL,
-            MsrRWType::ReadWrite,
-            MsrAction::MsrEmulate,
-            MsrValueFrom::RWFromRunningCPU,
-            MsrFilter::Default,
-        ),
-    ];
     insert_msrs(msr_map, &msrs)?;
 
     Ok(())
