@@ -296,13 +296,13 @@ impl VvuPciDevice {
         lower as u64 | ((upper as u64) << 32)
     }
 
-    fn set_device_feature(&self, features: u64) {
+    fn set_guest_feature(&self, features: u64) {
         let lower: u32 = (features & (u32::MAX as u64)) as u32;
         let upper: u32 = (features >> 32) as u32;
-        write_common_cfg_field!(self, device_feature_select, 0);
-        write_common_cfg_field!(self, device_feature, lower);
-        write_common_cfg_field!(self, device_feature_select, 1);
-        write_common_cfg_field!(self, device_feature, upper);
+        write_common_cfg_field!(self, guest_feature_select, 0);
+        write_common_cfg_field!(self, guest_feature, lower);
+        write_common_cfg_field!(self, guest_feature_select, 1);
+        write_common_cfg_field!(self, guest_feature, upper);
     }
 
     /// Creates the VVU's virtqueue (i.e. rxq or txq).
@@ -459,7 +459,6 @@ impl VvuPciDevice {
 
         // TODO(b/207364742): Support VIRTIO_RING_F_EVENT_IDX.
         let required_features = 1u64 << VIRTIO_F_VERSION_1;
-        self.set_device_feature(required_features);
         let enabled_features = self.get_device_feature();
         if (required_features & enabled_features) != required_features {
             bail!(
@@ -468,6 +467,7 @@ impl VvuPciDevice {
                 enabled_features
             );
         };
+        self.set_guest_feature(required_features);
         self.set_status(virtio_config::VIRTIO_CONFIG_S_FEATURES_OK as u8);
 
         // Initialize Virtqueues
