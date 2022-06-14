@@ -6,40 +6,15 @@ use libc::EINVAL;
 use std::{os::raw::c_int, path::Path, thread::JoinHandle};
 
 use base::{
-    error, validate_raw_descriptor, AsRawDescriptor, Descriptor, Error as SysError, Killable,
-    MemoryMappingArena, MmapError, Protection, RawDescriptor, SafeDescriptor, Tube, UnixSeqpacket,
-    SIGRTMIN,
+    error, AsRawDescriptor, Descriptor, Error as SysError, Killable, MemoryMappingArena, MmapError,
+    Protection, SafeDescriptor, Tube, UnixSeqpacket, SIGRTMIN,
 };
 use hypervisor::{MemSlot, Vm};
 use resources::{Alloc, MmioType, SystemAllocator};
 use serde::{Deserialize, Serialize};
 use vm_memory::GuestAddress;
 
-use crate::{
-    client::{HandleRequestResult, ModifyUsbError, ModifyUsbResult},
-    VmRequest, VmResponse,
-};
-
-pub(crate) fn raw_descriptor_from_path(path: &Path) -> ModifyUsbResult<RawDescriptor> {
-    if !path.exists() {
-        return Err(ModifyUsbError::PathDoesNotExist(path.to_owned()));
-    }
-    let raw_descriptor = path
-        .file_name()
-        .and_then(|fd_osstr| fd_osstr.to_str())
-        .map_or(
-            Err(ModifyUsbError::ArgParse(
-                "USB_DEVICE_PATH",
-                path.to_string_lossy().into_owned(),
-            )),
-            |fd_str| {
-                fd_str.parse::<libc::c_int>().map_err(|e| {
-                    ModifyUsbError::ArgParseInt("USB_DEVICE_PATH", fd_str.to_owned(), e)
-                })
-            },
-        )?;
-    validate_raw_descriptor(raw_descriptor).map_err(ModifyUsbError::FailedDescriptorValidate)
-}
+use crate::{client::HandleRequestResult, VmRequest, VmResponse};
 
 pub fn handle_request<T: AsRef<Path> + std::fmt::Debug>(
     request: &VmRequest,

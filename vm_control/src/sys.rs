@@ -16,4 +16,4 @@ cfg_if::cfg_if! {
 }
 
 pub use platform::handle_request;
-pub(crate) use platform::{kill_handle, raw_descriptor_from_path};
+pub(crate) use platform::kill_handle;

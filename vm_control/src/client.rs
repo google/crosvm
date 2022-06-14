@@ -3,10 +3,9 @@
 // found in the LICENSE file.
 
 use std::fs::OpenOptions;
-use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 
-use base::info;
+use base::{info, open_file};
 use remain::sorted;
 use thiserror::Error;
 
@@ -22,22 +21,12 @@ enum ModifyBatError {
 #[sorted]
 #[derive(Error, Debug)]
 pub enum ModifyUsbError {
-    #[error("argument missing: {0}")]
-    ArgMissing(&'static str),
-    #[error("failed to parse argument {0} value `{1}`")]
-    ArgParse(&'static str, String),
-    #[error("failed to parse integer argument {0} value `{1}`: {2}")]
-    ArgParseInt(&'static str, String, ParseIntError),
-    #[error("failed to validate file descriptor: {0}")]
-    FailedDescriptorValidate(base::Error),
-    #[error("path `{0}` does not exist")]
-    PathDoesNotExist(PathBuf),
+    #[error("failed to open device {0}: {1}")]
+    FailedToOpenDevice(PathBuf, base::Error),
     #[error("socket failed")]
     SocketFailed,
     #[error("unexpected response: {0}")]
     UnexpectedResponse(VmResponse),
-    #[error("unknown command: `{0}`")]
-    UnknownCommand(String),
     #[error("{0}")]
     UsbControl(UsbControlResult),
 }
@@ -63,17 +52,8 @@ pub fn do_usb_attach<T: AsRef<Path> + std::fmt::Debug>(
     pid: u16,
     dev_path: &Path,
 ) -> ModifyUsbResult<UsbControlResult> {
-    let usb_file: File = if dev_path.parent() == Some(Path::new("/proc/self/fd")) {
-        // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
-        // Safe because we will validate |raw_fd|.
-        unsafe { File::from_raw_descriptor(sys::raw_descriptor_from_path(dev_path)?) }
-    } else {
-        OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(dev_path)
-            .map_err(|_| ModifyUsbError::UsbControl(UsbControlResult::FailedToOpenDevice))?
-    };
+    let usb_file = open_file(dev_path, OpenOptions::new().read(true).write(true))
+        .map_err(|e| ModifyUsbError::FailedToOpenDevice(dev_path.into(), e))?;
 
     let request = VmRequest::UsbCommand(UsbControlCommand::AttachDevice {
         bus,
