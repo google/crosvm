@@ -5,11 +5,11 @@
 //! Implementation for WHPX hypervisor aka Windows Hyper-V platform.
 
 use core::ffi::c_void;
-use lazy_static::lazy_static;
 use std::arch::x86_64::__cpuid_count;
 
 use crate::{CpuId, CpuIdEntry, Hypervisor, HypervisorCap, HypervisorX86_64};
 use base::{error, warn, Error, Result};
+use once_cell::sync::Lazy;
 use thiserror::Error as ThisError;
 use winapi::shared::winerror::S_OK;
 
@@ -146,11 +146,9 @@ impl Whpx {
     }
 
     pub fn check_whpx_feature(feature: WhpxFeature) -> WhpxResult<bool> {
-        // use lazy_static to cache the results of the get_capability call
-        lazy_static! {
-            static ref FEATURES: WhpxResult<WHV_CAPABILITY> =
-                Whpx::get_capability(WHV_CAPABILITY_CODE_WHvCapabilityCodeFeatures);
-        };
+        // use Lazy to cache the results of the get_capability call
+        static FEATURES: Lazy<WhpxResult<WHV_CAPABILITY>> =
+            Lazy::new(|| Whpx::get_capability(WHV_CAPABILITY_CODE_WHvCapabilityCodeFeatures));
 
         Ok((unsafe { (*FEATURES)?.Features.AsUINT64 } & feature as u64) != 0)
     }

@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use lazy_static::lazy_static;
 use std::collections::HashMap;
+
+use once_cell::sync::Lazy;
 
 use super::whpx_sys::*;
 use crate::{CpuIdEntry, DebugRegs, DescriptorTable, Fpu, LapicState, Regs, Segment, Sregs};
@@ -647,10 +648,11 @@ pub(super) const MSR_TSC_AUX: u32 = 0xc0000103;
 pub(super) const MSR_SPEC_CTRL: u32 = 0x00000048;
 pub(super) const MSR_PRED_CMD: u32 = 0x00000049;
 
-lazy_static! {
-    // the valid msrs for whpx, converting from the x86 efer id's to the whpx register name value.
-    // https://docs.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/whvvirtualprocessordatatypes
-    pub(super) static ref VALID_MSRS: HashMap<u32, WHV_REGISTER_NAME> = vec![
+// the valid msrs for whpx, converting from the x86 efer id's to the whpx register name value.
+// https://docs.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/whvvirtualprocessordatatypes
+#[rustfmt::skip]
+pub(super) static VALID_MSRS: Lazy<HashMap<u32, WHV_REGISTER_NAME>> = Lazy::new(|| {
+    [
         (MSR_TSC,WHV_REGISTER_NAME_WHvX64RegisterTsc),
         (MSR_EFER,WHV_REGISTER_NAME_WHvX64RegisterEfer),
         (MSR_KERNEL_GS_BASE,WHV_REGISTER_NAME_WHvX64RegisterKernelGsBase),
@@ -711,8 +713,8 @@ lazy_static! {
         (MSR_TSC_AUX,WHV_REGISTER_NAME_WHvX64RegisterTscAux),
         (MSR_SPEC_CTRL,WHV_REGISTER_NAME_WHvX64RegisterSpecCtrl),
         (MSR_PRED_CMD,WHV_REGISTER_NAME_WHvX64RegisterPredCmd),
-    ].into_iter().collect();
-}
+    ].into_iter().collect()
+});
 
 impl From<&CpuIdEntry> for WHV_X64_CPUID_RESULT {
     fn from(entry: &CpuIdEntry) -> Self {

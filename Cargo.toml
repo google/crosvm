@@ -213,7 +213,7 @@ tube_transporter = { path = "tube_transporter" }
 
 [dev-dependencies]
 base = "*"
-lazy_static = "*"
+once_cell = "1.7"
 
 [patch.crates-io]
 assertions = { path = "common/assertions" }

@@ -27,7 +27,7 @@ use winapi::um::winnt::{
     SECURITY_DESCRIPTOR_REVISION, TOKEN_ALL_ACCESS, TOKEN_INFORMATION_CLASS, TOKEN_USER,
 };
 
-use lazy_static::lazy_static;
+use once_cell::sync::OnceCell;
 
 /// Struct for wrapping `SECURITY_ATTRIBUTES` and `SECURITY_DESCRIPTOR`.
 pub struct SecurityAttributes<T: SecurityDescriptor> {
@@ -425,11 +425,6 @@ impl TryFrom<AbsoluteSecurityDescriptor> for SelfRelativeSecurityDescriptor {
     }
 }
 
-lazy_static! {
-    static ref DEFAULT_SECURITY_DESCRIPTOR: SelfRelativeSecurityDescriptor =
-        SelfRelativeSecurityDescriptor::new().expect("Failed to create security descriptor");
-}
-
 impl SelfRelativeSecurityDescriptor {
     /// Creates a `SECURITY_DESCRIPTOR` struct which gives full access rights
     /// (`GENERIC_ALL`) to only the current user.
@@ -439,7 +434,13 @@ impl SelfRelativeSecurityDescriptor {
 
     /// Gets a copy of a singleton `SelfRelativeSecurityDescriptor`.
     pub fn get_singleton() -> SelfRelativeSecurityDescriptor {
-        DEFAULT_SECURITY_DESCRIPTOR.clone()
+        static DEFAULT_SECURITY_DESCRIPTOR: OnceCell<SelfRelativeSecurityDescriptor> =
+            OnceCell::new();
+        DEFAULT_SECURITY_DESCRIPTOR
+            .get_or_init(|| {
+                SelfRelativeSecurityDescriptor::new().expect("Failed to create security descriptor")
+            })
+            .clone()
     }
 }
 

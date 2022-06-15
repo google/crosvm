@@ -16,14 +16,10 @@ use std::time::Duration;
 
 use base::{ioctl, AsRawDescriptor};
 use net_util::TapTCommon;
+use once_cell::sync::Lazy;
 use tempfile::tempfile;
 
-lazy_static::lazy_static! {
-    static ref TAP_AVAILABLE: bool = {
-        use net_util::TapT;
-        net_util::sys::unix::Tap::new(true, false).is_ok()
-    };
-}
+static TAP_AVAILABLE: Lazy<bool> = Lazy::new(|| net_util::sys::unix::Tap::new(true, false).is_ok());
 
 struct RemovePath(PathBuf);
 impl Drop for RemovePath {

@@ -9,7 +9,7 @@
 
 use anyhow::{anyhow, Result};
 use base::{debug, error};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use std::arch::x86_64::_rdtsc;
 
 mod calibrate;
@@ -25,24 +25,21 @@ fn rdtsc_safe() -> u64 {
 }
 
 // Singleton for getting the state of the host TSCs, to avoid calibrating multiple times.
-lazy_static! {
-    static ref TSC_STATE: Option<TscState> = match calibrate_tsc_state(rdtsc_safe) {
-        Ok(tsc_state) => {
-            debug!("Using calibrated tsc frequency: {} Hz", tsc_state.frequency);
-            for (core, offset) in tsc_state.offsets.iter().enumerate() {
-                debug!("Core {} has tsc offset of {:?} ns", core, offset);
-            }
-            Some(tsc_state)
+static TSC_STATE: Lazy<Option<TscState>> = Lazy::new(|| match calibrate_tsc_state(rdtsc_safe) {
+    Ok(tsc_state) => {
+        debug!("Using calibrated tsc frequency: {} Hz", tsc_state.frequency);
+        for (core, offset) in tsc_state.offsets.iter().enumerate() {
+            debug!("Core {} has tsc offset of {:?} ns", core, offset);
         }
-        Err(e) => {
-            error!("Failed to calibrate tsc state: {:#}", e);
-            None
-        }
-    };
-}
+        Some(tsc_state)
+    }
+    Err(e) => {
+        error!("Failed to calibrate tsc state: {:#}", e);
+        None
+    }
+});
 
-/// Returns the frequency of the host TSC. Uses the TSC_STATE lazy_static ref, so the calibration
-/// only happens once.
+/// Returns the frequency of the host TSC. Calibration only happens once.
 pub fn tsc_frequency() -> Result<u64> {
     let state = TSC_STATE
         .as_ref()
@@ -50,8 +47,7 @@ pub fn tsc_frequency() -> Result<u64> {
     Ok(state.frequency)
 }
 
-/// Returns the state of the host TSCs. Uses the TSC_STATE lazy_static ref, so the calibration
-/// only happens once.
+/// Returns the state of the host TSCs. Calibration only happens once.
 pub fn tsc_state() -> Result<TscState> {
     Ok(TSC_STATE
         .as_ref()

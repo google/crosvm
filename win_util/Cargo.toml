@@ -8,8 +8,8 @@ edition = "2021"
 anyhow = "*"
 winapi = { version = "*", features = ["everything", "std", "impl-default"] }
 libc = "*"
+once_cell = "1.7"
 windows = "0.10.0"
-lazy_static = "*"
 
 [build-dependencies]
 windows = "0.10.0"

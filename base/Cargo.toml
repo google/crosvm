@@ -28,7 +28,6 @@ thiserror = "1.0.20"
 uuid = { version = "0.8.2", features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies]
-lazy_static = "*"
 rand = "*"
 winapi = "*"
 win_util = { path = "../win_util"}

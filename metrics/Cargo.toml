@@ -5,13 +5,12 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 
 [features]
-kiwi = ["lazy_static", "libc", "serde_json", "sync"]
+kiwi = ["libc", "serde_json", "sync"]
 
 [dependencies]
 anyhow = "*"
 base = { path = "../base" }
 cfg-if = "*"
-lazy_static = { version = "*", optional = true }
 libc = { version = "*", optional = true }
 protobuf = { version = "2.24", features = [ "with-serde" ] }
 serde = { version = "1", features = [ "derive" ] }
