@@ -2162,7 +2162,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     },
                                 )
                                 .context(
-                                    "failed to add hotplug vfio-pci descriptor ot wait context",
+                                    "failed to add hotplug vfio-pci descriptor to wait context",
                                 )?;
                         }
                         control_tubes.append(&mut add_tubes);
