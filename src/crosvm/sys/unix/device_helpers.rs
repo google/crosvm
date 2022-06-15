@@ -108,6 +108,60 @@ impl IntoUnixStream for UnixStream {
 
 pub type DeviceResult<T = VirtioDeviceStub> = Result<T>;
 
+/// Type of virtio device.
+///
+/// The virtio protocol can be backed by several means, which affects a few things about the device
+/// - for instance, the seccomp policy we need to use when jailing the device.
+pub enum VirtioDeviceType {
+    /// A regular (in-VMM) virtio device.
+    Regular,
+}
+
+impl VirtioDeviceType {
+    /// Returns the seccomp policy file that we will want to load depending on the jail type,
+    /// constructed from `base`.
+    fn seccomp_policy_file(&self, base: &str) -> String {
+        match self {
+            VirtioDeviceType::Regular => format!("{base}_device"),
+        }
+    }
+}
+
+/// A trait for spawning virtio device instances and jails from their configuration structure.
+///
+/// Implementors become able to create virtio devices and jails following their own configuration.
+/// This trait also provides a few convenience methods for e.g. creating a virtio device and jail
+/// at once.
+pub trait VirtioDeviceBuilder {
+    /// Create a regular virtio device from the configuration and `protected_vm` setting.
+    fn create_virtio_device(
+        &self,
+        protected_vm: ProtectionType,
+    ) -> anyhow::Result<Box<dyn VirtioDevice>>;
+
+    /// Create a jail that is suitable to run a device
+    fn create_jail(
+        &self,
+        jail_config: &Option<JailConfig>,
+        jail_type: VirtioDeviceType,
+    ) -> anyhow::Result<Option<Minijail>>;
+
+    /// Helper method to return a `VirtioDeviceStub` filled using `create_virtio_device` and
+    /// `create_jail`.
+    ///
+    /// This helper should cover the needs of most devices when run as regular virtio devices.
+    fn create_virtio_device_and_jail(
+        &self,
+        protected_vm: ProtectionType,
+        jail_config: &Option<JailConfig>,
+    ) -> DeviceResult {
+        Ok(VirtioDeviceStub {
+            dev: self.create_virtio_device(protected_vm)?,
+            jail: self.create_jail(jail_config, VirtioDeviceType::Regular)?,
+        })
+    }
+}
+
 pub fn create_block_device(
     protected_vm: ProtectionType,
     jail_config: &Option<JailConfig>,
@@ -1175,43 +1229,50 @@ fn add_bind_mounts(param: &SerialParameters, jail: &mut Minijail) -> Result<(), 
     Ok(())
 }
 
-pub fn create_console_device(
-    protected_vm: ProtectionType,
-    jail_config: &Option<JailConfig>,
-    param: &SerialParameters,
-) -> DeviceResult {
-    let mut keep_rds = Vec::new();
-    let evt = Event::new().context("failed to create event")?;
-    let dev = param
-        .create_serial_device::<AsyncConsole>(protected_vm, &evt, &mut keep_rds)
-        .context("failed to create console device")?;
+/// For creating console virtio devices.
+impl VirtioDeviceBuilder for SerialParameters {
+    fn create_virtio_device(
+        &self,
+        protected_vm: ProtectionType,
+    ) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        let mut keep_rds = Vec::new();
+        let evt = Event::new().context("failed to create event")?;
 
-    let jail = match simple_jail(jail_config, "serial_device")? {
-        Some(mut jail) => {
-            // Create a tmpfs in the device's root directory so that we can bind mount the
-            // log socket directory into it.
-            // The size=67108864 is size=64*1024*1024 or size=64MB.
-            jail.mount_with_data(
-                Path::new("none"),
-                Path::new("/"),
-                "tmpfs",
-                (libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_NOSUID) as usize,
-                "size=67108864",
-            )?;
-            add_current_user_to_jail(&mut jail)?;
-            let res = add_bind_mounts(param, &mut jail);
-            if res.is_err() {
-                error!("failed to add bind mounts for console device");
+        Ok(Box::new(
+            self.create_serial_device::<AsyncConsole>(protected_vm, &evt, &mut keep_rds)
+                .context("failed to create console device")?,
+        ))
+    }
+
+    fn create_jail(
+        &self,
+        jail_config: &Option<JailConfig>,
+        jail_type: VirtioDeviceType,
+    ) -> anyhow::Result<Option<Minijail>> {
+        let jail = match simple_jail(jail_config, &jail_type.seccomp_policy_file("serial"))? {
+            Some(mut jail) => {
+                // Create a tmpfs in the device's root directory so that we can bind mount the
+                // log socket directory into it.
+                // The size=67108864 is size=64*1024*1024 or size=64MB.
+                jail.mount_with_data(
+                    Path::new("none"),
+                    Path::new("/"),
+                    "tmpfs",
+                    (libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_NOSUID) as usize,
+                    "size=67108864",
+                )?;
+                add_current_user_to_jail(&mut jail)?;
+                let res = add_bind_mounts(self, &mut jail);
+                if res.is_err() {
+                    error!("failed to add bind mounts for console device");
+                }
+                Some(jail)
             }
-            Some(jail)
-        }
-        None => None,
-    };
+            None => None,
+        };
 
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail, // TODO(dverkamp): use a separate policy for console?
-    })
+        Ok(jail)
+    }
 }
 
 #[cfg(feature = "audio")]
