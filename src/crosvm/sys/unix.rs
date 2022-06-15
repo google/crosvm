@@ -739,15 +739,26 @@ fn create_devices(
     for stub in stubs {
         let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
         control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+
+        let shared_memory_tube = if stub.dev.get_shared_memory_region().is_some() {
+            let (host_tube, device_tube) =
+                Tube::pair().context("failed to create VVU proxy tube")?;
+            control_tubes.push(TaggedControlTube::VmMemory(host_tube));
+            Some(device_tube)
+        } else {
+            None
+        };
+
         let dev = VirtioPciDevice::new(
             vm.get_memory().clone(),
             stub.dev,
             msi_device_tube,
             cfg.disable_virtio_intx,
+            shared_memory_tube,
         )
         .context("failed to create virtio pci dev")?;
-        let dev = Box::new(dev) as Box<dyn BusDeviceObj>;
-        devices.push((dev, stub.jail));
+
+        devices.push((Box::new(dev) as Box<dyn BusDeviceObj>, stub.jail));
     }
 
     #[cfg(feature = "audio")]
@@ -1570,6 +1581,7 @@ where
             iommu_dev.dev,
             msi_device_tube,
             cfg.disable_virtio_intx,
+            None,
         )
         .context("failed to create virtio pci dev")?;
         // early reservation for viommu.

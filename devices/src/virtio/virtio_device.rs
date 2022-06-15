@@ -4,11 +4,34 @@
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
-use base::{Event, RawDescriptor};
-use vm_memory::GuestMemory;
+use anyhow::Result;
+use base::{Event, Protection, RawDescriptor};
+use vm_control::VmMemorySource;
+use vm_memory::{GuestAddress, GuestMemory};
 
 use super::*;
 use crate::pci::{MsixStatus, PciAddress, PciBarConfiguration, PciBarIndex, PciCapability};
+
+#[derive(Clone)]
+pub struct SharedMemoryRegion {
+    /// The id of the shared memory region. A device may have multiple regions, but each
+    /// must have a unique id. The meaning of a particular region is device-specific.
+    pub id: u8,
+    pub length: u64,
+}
+
+/// Trait for mapping memory into the device's shared memory region.
+pub trait SharedMemoryMapper: Send {
+    /// Maps the given |source| into the shared memory region at |offset|.
+    fn add_mapping(&mut self, source: VmMemorySource, offset: u64, prot: Protection) -> Result<()>;
+
+    /// Removes the mapping beginning at |offset|.
+    fn remove_mapping(&mut self, offset: u64) -> Result<()>;
+
+    fn as_raw_descriptor(&self) -> Option<RawDescriptor> {
+        None
+    }
+}
 
 /// Trait for virtio devices to be driven by a virtio transport.
 ///
@@ -121,4 +144,24 @@ pub trait VirtioDevice: Send {
     fn pci_address(&self) -> Option<PciAddress> {
         None
     }
+
+    /// Returns the device's shared memory region if present.
+    fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {
+        None
+    }
+
+    /// Provides the trait object used to map files into the device's shared
+    /// memory region.
+    ///
+    /// If `get_shared_memory_region` returns `Some`, then this will be called
+    /// before `activate`.
+    fn set_shared_memory_mapper(&mut self, _mapper: Box<dyn SharedMemoryMapper>) {}
+
+    /// Provides the base address of the shared memory region, if one is present. Will
+    /// be called before `activate`.
+    ///
+    /// NOTE: Mappings in shared memory regions should be accessed via offset, rather
+    /// than via raw guest physical address. This function is only provided so
+    /// devices can remain backwards compatible with older drivers.
+    fn set_shared_memory_region_base(&mut self, _addr: GuestAddress) {}
 }

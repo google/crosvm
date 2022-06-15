@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use sync::Mutex;
@@ -9,7 +10,9 @@ use sync::Mutex;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
 use anyhow::{anyhow, bail, Context};
-use base::{error, AsRawDescriptors, Event, RawDescriptor, Result, Tube};
+use base::{
+    error, AsRawDescriptor, AsRawDescriptors, Event, Protection, RawDescriptor, Result, Tube,
+};
 use data_model::{DataInit, Le32};
 use hypervisor::Datamatch;
 use libc::ERANGE;
@@ -18,7 +21,8 @@ use virtio_sys::virtio_config::{
     VIRTIO_CONFIG_S_ACKNOWLEDGE, VIRTIO_CONFIG_S_DRIVER, VIRTIO_CONFIG_S_DRIVER_OK,
     VIRTIO_CONFIG_S_FAILED, VIRTIO_CONFIG_S_FEATURES_OK,
 };
-use vm_memory::GuestMemory;
+use vm_control::{MemSlot, VmMemoryDestination, VmMemoryRequest, VmMemoryResponse, VmMemorySource};
+use vm_memory::{GuestAddress, GuestMemory};
 
 use super::*;
 use crate::pci::{
@@ -233,6 +237,9 @@ const VIRTIO_PCI_VENDOR_ID: u16 = 0x1af4;
 const VIRTIO_PCI_DEVICE_ID_BASE: u16 = 0x1040; // Add to device type to get device ID.
 const VIRTIO_PCI_REVISION_ID: u8 = 1;
 
+const CAPABILITIES_BAR_NUM: usize = 0;
+const SHMEM_BAR_NUM: usize = 2;
+
 /// Implements the
 /// [PCI](http://docs.oasis-open.org/virtio/virtio/v1.0/cs04/virtio-v1.0-cs04.html#x1-650001)
 /// transport for virtio devices.
@@ -255,6 +262,10 @@ pub struct VirtioPciDevice {
     common_config: VirtioPciCommonConfig,
 
     iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
+
+    // A tube that is present if the device has shared memory regions, and
+    // is used to map/unmap files into the shared memory region.
+    shared_memory_tube: Option<Tube>,
 }
 
 impl VirtioPciDevice {
@@ -264,7 +275,14 @@ impl VirtioPciDevice {
         device: Box<dyn VirtioDevice>,
         msi_device_tube: Tube,
         disable_intx: bool,
+        shared_memory_tube: Option<Tube>,
     ) -> Result<Self> {
+        // shared_memory_tube is required if there are shared memory regions.
+        assert_eq!(
+            device.get_shared_memory_region().is_none(),
+            shared_memory_tube.is_none()
+        );
+
         let mut queue_evts = Vec::new();
         for _ in device.queue_max_sizes() {
             queue_evts.push(Event::new()?)
@@ -334,6 +352,7 @@ impl VirtioPciDevice {
                 msix_config: VIRTIO_MSI_NO_VECTOR,
             },
             iommu: None,
+            shared_memory_tube,
         })
     }
 
@@ -558,7 +577,7 @@ impl PciDevice for VirtioPciDevice {
             )
             .map_err(|e| PciDeviceError::IoAllocationFailed(CAPABILITY_BAR_SIZE, e))?;
         let config = PciBarConfiguration::new(
-            0,
+            CAPABILITIES_BAR_NUM,
             CAPABILITY_BAR_SIZE,
             PciBarRegionType::Memory32BitRegion,
             PciBarPrefetchable::NotPrefetchable,
@@ -589,7 +608,44 @@ impl PciDevice for VirtioPciDevice {
             .pci_address
             .expect("allocaten_address must be called prior to allocate_device_bars");
         let mut ranges: Vec<BarRange> = Vec::new();
-        for config in self.device.get_device_bars(address) {
+
+        let configs = self.device.get_device_bars(address);
+        let configs = if !configs.is_empty() {
+            configs
+        } else {
+            let region = match self.device.get_shared_memory_region() {
+                None => return Ok(Vec::new()),
+                Some(r) => r,
+            };
+            let config = PciBarConfiguration::new(
+                SHMEM_BAR_NUM,
+                region
+                    .length
+                    .checked_next_power_of_two()
+                    .expect("bar too large"),
+                PciBarRegionType::Memory64BitRegion,
+                PciBarPrefetchable::Prefetchable,
+            );
+
+            let alloc = Alloc::PciBar {
+                bus: address.bus,
+                dev: address.dev,
+                func: address.func,
+                bar: config.bar_index() as u8,
+            };
+
+            self.device
+                .set_shared_memory_mapper(Box::new(VmRequester::new(
+                    self.shared_memory_tube
+                        .take()
+                        .expect("missing shared_memory_tube"),
+                    alloc,
+                )));
+
+            vec![config]
+        };
+
+        for config in configs {
             let device_addr = resources
                 .mmio_allocator(MmioType::High)
                 .allocate_with_align(
@@ -615,6 +671,12 @@ impl PciDevice for VirtioPciDevice {
                 prefetchable: false,
             });
         }
+
+        if self.device.get_shared_memory_region().is_some() {
+            self.device
+                .set_shared_memory_region_base(GuestAddress(ranges[0].addr));
+        }
+
         Ok(ranges)
     }
 
@@ -623,7 +685,18 @@ impl PciDevice for VirtioPciDevice {
     }
 
     fn register_device_capabilities(&mut self) -> std::result::Result<(), PciDeviceError> {
-        for cap in self.device.get_device_caps() {
+        let mut caps = self.device.get_device_caps();
+        if let Some(region) = self.device.get_shared_memory_region() {
+            caps.push(Box::new(VirtioPciShmCap::new(
+                PciCapabilityType::SharedMemoryConfig,
+                SHMEM_BAR_NUM as u8,
+                0,
+                region.length,
+                region.id,
+            )));
+        }
+
+        for cap in caps {
             self.config_regs
                 .add_capability(&*cap)
                 .map_err(PciDeviceError::CapabilitiesSetup)?;
@@ -808,5 +881,70 @@ impl PciDevice for VirtioPciDevice {
         assert!(self.supports_iommu());
         self.iommu = Some(Arc::new(Mutex::new(iommu)));
         Ok(())
+    }
+}
+
+struct VmRequester {
+    tube: Tube,
+    alloc: Alloc,
+    mappings: BTreeMap<u64, MemSlot>,
+}
+
+impl VmRequester {
+    fn new(tube: Tube, alloc: Alloc) -> Self {
+        Self {
+            tube,
+            alloc,
+            mappings: BTreeMap::new(),
+        }
+    }
+}
+
+impl SharedMemoryMapper for VmRequester {
+    fn add_mapping(
+        &mut self,
+        source: VmMemorySource,
+        offset: u64,
+        prot: Protection,
+    ) -> anyhow::Result<()> {
+        let request = VmMemoryRequest::RegisterMemory {
+            source,
+            dest: VmMemoryDestination::ExistingAllocation {
+                allocation: self.alloc,
+                offset,
+            },
+            prot,
+        };
+        self.tube.send(&request).context("failed to send request")?;
+        match self
+            .tube
+            .recv()
+            .context("failed to recieve request response")?
+        {
+            VmMemoryResponse::RegisterMemory { pfn: _, slot } => {
+                self.mappings.insert(offset, slot);
+                Ok(())
+            }
+            e => Err(anyhow!("unexpected response {:?}", e)),
+        }
+    }
+
+    fn remove_mapping(&mut self, offset: u64) -> anyhow::Result<()> {
+        let slot = self.mappings.remove(&offset).context("invalid offset")?;
+        self.tube
+            .send(&VmMemoryRequest::UnregisterMemory(slot))
+            .context("failed to send request")?;
+        match self
+            .tube
+            .recv()
+            .context("failed to recieve request response")?
+        {
+            VmMemoryResponse::Ok => Ok(()),
+            e => Err(anyhow!(format!("unexpected response {:?}", e))),
+        }
+    }
+
+    fn as_raw_descriptor(&self) -> Option<RawDescriptor> {
+        Some(self.tube.as_raw_descriptor())
     }
 }
