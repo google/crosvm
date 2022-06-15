@@ -5,44 +5,20 @@
 // TODO(b/213149158): Remove after uses are added.
 #![allow(dead_code)]
 
-cfg_if::cfg_if! {
-    if #[cfg(test)] {
-        use std::arch::x86_64::CpuidResult;
-        use std::sync::Arc;
-        use sync::Mutex;
+use std::arch::x86_64::CpuidResult;
 
-        // Note: to use this mock without cross test pollution, tests must be run serially. Since
-        // there is exactly one test using it at the moment, serial running is not required.
-        lazy_static::lazy_static! {
-            static ref CPUIDS: Arc<Mutex<Vec<hypervisor::CpuIdEntry>>> =
-                Arc::new(Mutex::new(Vec::new()));
-        }
+/// Function to retrieve the given CPUID leaf and sub-leaf.
+pub type CpuidCountFn = unsafe fn(u32, u32) -> CpuidResult;
 
-        // This function is safe, but we mark it as unsafe so the signature matches the external
-        // __cpuid_count function so we don't get warnings.
-        unsafe fn __cpuid_count(function: u32, index: u32) -> CpuidResult {
-            let cpuids = CPUIDS.lock();
-            let entry = cpuids
-                .iter()
-                .find(|c| c.function == function && c.index == index)
-                .map_or(hypervisor::CpuIdEntry::default(), |c| *c);
-
-            CpuidResult {
-                eax: entry.eax,
-                ebx: entry.ebx,
-                ecx: entry.ecx,
-                edx: entry.edx,
-            }
-        }
-    } else {
-        use std::arch::x86_64::__cpuid_count;
-    }
-}
-
-/// Gets the TSC frequency for cpuid leaf 0x15 from the existing leaves 0x15 and 0x16
-pub fn tsc_frequency_cpuid() -> Option<hypervisor::CpuIdEntry> {
+/// Gets the TSC frequency for cpuid leaf 0x15 from the existing leaves 0x15 and 0x16.
+///
+/// # Arguments
+/// * `cpuid_count`: function that returns the CPUID information for the given leaf/subleaf
+///   combination. `std::arch::x86_64::__cpuid_count` may be used to provide the CPUID information
+///   from the host.
+pub fn tsc_frequency_cpuid(cpuid_count: CpuidCountFn) -> Option<hypervisor::CpuIdEntry> {
     // Safe because we pass 0 and 0 for this call and the host supports the `cpuid` instruction.
-    let result = unsafe { __cpuid_count(0, 0) };
+    let result = unsafe { cpuid_count(0, 0) };
     if result.eax < 0x15 {
         return None;
     }
@@ -59,7 +35,7 @@ pub fn tsc_frequency_cpuid() -> Option<hypervisor::CpuIdEntry> {
     };
     // Safe because we pass 0 and 0 for this call and the host supports the `cpuid` instruction.
     unsafe {
-        let result = __cpuid_count(tsc_freq.function, tsc_freq.index);
+        let result = cpuid_count(tsc_freq.function, tsc_freq.index);
         tsc_freq.eax = result.eax;
         tsc_freq.ebx = result.ebx;
         tsc_freq.ecx = result.ecx;
@@ -75,7 +51,7 @@ pub fn tsc_frequency_cpuid() -> Option<hypervisor::CpuIdEntry> {
         // Safe because the host supports `cpuid` instruction.
         let cpu_clock = unsafe {
             // 0x16 is the base clock frequency leaf.
-            __cpuid_count(0x16, 0)
+            cpuid_count(0x16, 0)
         };
         if cpu_clock.eax > 0 {
             // Here, we assume the CPU base clock is the core crystal clock, as is done in the patch
@@ -119,14 +95,14 @@ pub fn fake_tsc_frequency_cpuid(tsc_hz: u64, bus_hz: u32) -> hypervisor::CpuIdEn
 
 /// Returns the Bus frequency in Hz, based on reading Intel-specific cpuids, or None
 /// if the frequency can't be determined from cpuids.
-pub fn bus_freq_hz() -> Option<u32> {
-    tsc_frequency_cpuid().map(|cpuid| cpuid.ecx)
+pub fn bus_freq_hz(cpuid_count: CpuidCountFn) -> Option<u32> {
+    tsc_frequency_cpuid(cpuid_count).map(|cpuid| cpuid.ecx)
 }
 
 /// Returns the TSC frequency in Hz, based on reading Intel-specific cpuids, or None
 /// if the frequency can't be determined from cpuids.
-pub fn tsc_freq_hz() -> Option<u32> {
-    tsc_frequency_cpuid()
+pub fn tsc_freq_hz(cpuid_count: CpuidCountFn) -> Option<u32> {
+    tsc_frequency_cpuid(cpuid_count)
         .map(|cpuid| (cpuid.ecx as u64 * cpuid.ebx as u64 / cpuid.eax as u64) as u32)
 }
 
@@ -141,42 +117,49 @@ mod tests {
     // invalidating the TSC clocksource. So we derive CPUID.15H.ECX from the values in CPUID.16H.
     // This test verifies that that derivation is working correctly.
     fn test_leaf15_derivation() {
-        let crystal_clock_ratio = 88;
-        let tsc_frequency_hz = 2100000000u32;
+        const CRYSTAL_CLOCK_RATIO: u32 = 88;
+        const TSC_FREQUENCY_HZ: u32 = 2100000000u32;
 
-        {
-            let mut cpuids = CPUIDS.lock();
+        let fake_cpuid = |function: u32, index: u32| {
+            match (function, index) {
+                (0, 0) => {
+                    CpuidResult {
+                        eax: 0x16, // highest available leaf is 0x16
+                        ebx: 0,
+                        ecx: 0,
+                        edx: 0,
+                    }
+                }
+                (0x15, 0) => {
+                    CpuidResult {
+                        eax: 2, // eax usually contains 2, and ebx/eax is the crystal clock ratio
+                        ebx: CRYSTAL_CLOCK_RATIO * 2,
+                        ecx: 0,
+                        edx: 0,
+                    }
+                }
+                (0x16, 0) => {
+                    CpuidResult {
+                        eax: TSC_FREQUENCY_HZ / 1_000_000_u32, // MHz frequency
+                        ebx: 0,
+                        ecx: 0,
+                        edx: 0,
+                    }
+                }
+                _ => CpuidResult {
+                    eax: 0,
+                    ebx: 0,
+                    ecx: 0,
+                    edx: 0,
+                },
+            }
+        };
 
-            cpuids.push(hypervisor::CpuIdEntry {
-                function: 0,
-                index: 0,
-                eax: 0x16, // highest available leaf is 0x16
-                ..Default::default()
-            });
-
-            cpuids.push(hypervisor::CpuIdEntry {
-                function: 0x15,
-                index: 0,
-                eax: 2, // eax usually contains 2, and ebx/eax is the crystal clock ratio
-                ebx: crystal_clock_ratio * 2,
-                ..Default::default()
-            });
-
-            cpuids.push(hypervisor::CpuIdEntry {
-                function: 0x16,
-                index: 0,
-                eax: tsc_frequency_hz / 1_000_000_u32, // MHz frequency
-                ..Default::default()
-            });
-        }
-
-        // We compare the frequencies divided by the crystal_clock_ratio because that's the
+        // We compare the frequencies divided by the CRYSTAL_CLOCK_RATIO because that's the
         // resolution that the tsc frequency is stored at in CPUID.15H.ECX.
         assert_eq!(
-            tsc_freq_hz().unwrap() / crystal_clock_ratio,
-            tsc_frequency_hz / crystal_clock_ratio
+            tsc_freq_hz(fake_cpuid).unwrap() / CRYSTAL_CLOCK_RATIO,
+            TSC_FREQUENCY_HZ / CRYSTAL_CLOCK_RATIO
         );
-
-        CPUIDS.lock().clear();
     }
 }
