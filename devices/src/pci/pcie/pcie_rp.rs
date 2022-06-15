@@ -1,7 +1,6 @@
 // Copyright 2021 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use sync::Mutex;
@@ -113,6 +112,10 @@ impl PcieDevice for PcieRootPort {
 
     fn hotplug_implemented(&self) -> bool {
         self.pcie_port.hotplug_implemented()
+    }
+
+    fn hotplugged(&self) -> bool {
+        false
     }
 
     fn get_bridge_window_size(&self) -> (u64, u64) {

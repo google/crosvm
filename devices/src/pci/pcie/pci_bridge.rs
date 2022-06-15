@@ -333,17 +333,22 @@ impl PciDevice for PciBridge {
         let mut window_size: u64 = 0;
         let mut pref_window_base: u64 = u64::MAX;
         let mut pref_window_size: u64 = 0;
+        let hotplug_implemented = self.device.lock().hotplug_implemented();
+        let hotplugged = self.device.lock().hotplugged();
 
-        if self.device.lock().hotplug_implemented() {
-            // Bridge for children hotplug, get desired bridge window size and reserve
-            // it for guest OS use
+        if hotplug_implemented || hotplugged {
+            // If bridge is for children hotplug, get desired bridge window size and reserve
+            // it for guest OS use.
+            // If bridge is hotplugged into the system, get the desired bridge window size
+            // from host.
             let (win_size, pref_win_size) = self.device.lock().get_bridge_window_size();
             window_size = win_size;
             pref_window_size = pref_win_size;
         } else {
+            // Bridge has children connected, get bridge window size from children
             let mut window_end: u64 = 0;
             let mut pref_window_end: u64 = 0;
-            // Bridge has children connected, get bridge window size from children
+
             for &BarRange {
                 addr,
                 size,
@@ -366,59 +371,21 @@ impl PciDevice for PciBridge {
             }
         }
 
-        if window_size == 0 {
-            // Allocate at least 2MB bridge winodw
-            window_size = BR_MEM_MINIMUM;
-        }
-        // if window_base isn't set, allocate a new one
-        if window_base == u64::MAX {
-            // align window_size to 1MB
-            if window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                window_size = (window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
+        if !hotplugged {
+            // Only static bridge needs to locate their window's position. Hotplugged bridge's
+            // window will be handled by guest kernel.
+            if window_size == 0 {
+                // Allocate at least 2MB bridge winodw
+                window_size = BR_MEM_MINIMUM;
             }
-            match resources.mmio_allocator(MmioType::Low).allocate_with_align(
-                window_size,
-                Alloc::PciBridgeWindow {
-                    bus: address.bus,
-                    dev: address.dev,
-                    func: address.func,
-                },
-                "pci_bridge_window".to_string(),
-                BR_WINDOW_ALIGNMENT,
-            ) {
-                Ok(addr) => window_base = addr,
-                Err(e) => warn!(
-                    "{} failed to allocate bridge window: {}",
-                    self.debug_label(),
-                    e
-                ),
-            }
-        } else {
-            // align window_base to 1MB
-            if window_base & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                window_size += window_base - (window_base & BR_WINDOW_MASK);
+            // if window_base isn't set, allocate a new one
+            if window_base == u64::MAX {
                 // align window_size to 1MB
                 if window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
                     window_size = (window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
                 }
-                window_base &= BR_WINDOW_MASK;
-            }
-        }
-
-        if pref_window_size == 0 {
-            // Allocate at least 2MB prefetch bridge window
-            pref_window_size = BR_MEM_MINIMUM;
-        }
-        // if pref_window_base isn't set, allocate a new one
-        if pref_window_base == u64::MAX {
-            // align pref_window_size to 1MB
-            if pref_window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                pref_window_size = (pref_window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
-            }
-            match resources
-                .mmio_allocator(MmioType::High)
-                .allocate_with_align(
-                    pref_window_size,
+                match resources.mmio_allocator(MmioType::Low).allocate_with_align(
+                    window_size,
                     Alloc::PciBridgeWindow {
                         bus: address.bus,
                         dev: address.dev,
@@ -427,23 +394,74 @@ impl PciDevice for PciBridge {
                     "pci_bridge_window".to_string(),
                     BR_WINDOW_ALIGNMENT,
                 ) {
-                Ok(addr) => pref_window_base = addr,
-                Err(e) => warn!(
-                    "{} failed to allocate bridge window: {}",
-                    self.debug_label(),
-                    e
-                ),
+                    Ok(addr) => window_base = addr,
+                    Err(e) => warn!(
+                        "{} failed to allocate bridge window: {}",
+                        self.debug_label(),
+                        e
+                    ),
+                }
+            } else {
+                // align window_base to 1MB
+                if window_base & (BR_WINDOW_ALIGNMENT - 1) != 0 {
+                    window_size += window_base - (window_base & BR_WINDOW_MASK);
+                    // align window_size to 1MB
+                    if window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
+                        window_size = (window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
+                    }
+                    window_base &= BR_WINDOW_MASK;
+                }
             }
-        } else {
-            // align pref_window_base to 1MB
-            if pref_window_base & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                pref_window_size += pref_window_base - (pref_window_base & BR_WINDOW_MASK);
+
+            if pref_window_size == 0 {
+                // Allocate at least 2MB prefetch bridge window
+                pref_window_size = BR_MEM_MINIMUM;
+            }
+            // if pref_window_base isn't set, allocate a new one
+            if pref_window_base == u64::MAX {
                 // align pref_window_size to 1MB
                 if pref_window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
                     pref_window_size =
                         (pref_window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
                 }
-                pref_window_base &= BR_WINDOW_MASK;
+                match resources
+                    .mmio_allocator(MmioType::High)
+                    .allocate_with_align(
+                        pref_window_size,
+                        Alloc::PciBridgeWindow {
+                            bus: address.bus,
+                            dev: address.dev,
+                            func: address.func,
+                        },
+                        "pci_bridge_window".to_string(),
+                        BR_WINDOW_ALIGNMENT,
+                    ) {
+                    Ok(addr) => window_base = addr,
+                    Err(e) => warn!(
+                        "{} failed to allocate bridge window: {}",
+                        self.debug_label(),
+                        e
+                    ),
+                }
+            } else {
+                // align pref_window_base to 1MB
+                if pref_window_base & (BR_WINDOW_ALIGNMENT - 1) != 0 {
+                    pref_window_size += pref_window_base - (pref_window_base & BR_WINDOW_MASK);
+                    // align pref_window_size to 1MB
+                    if pref_window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
+                        pref_window_size =
+                            (pref_window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
+                    }
+                    pref_window_base &= BR_WINDOW_MASK;
+                }
+            }
+        } else {
+            // 0 is Ok here because guest will relocate the bridge window
+            if window_size > 0 {
+                window_base = 0;
+            }
+            if pref_window_size > 0 {
+                pref_window_base = 0;
             }
         }
 

@@ -20,7 +20,7 @@ pub trait PcieDevice: Send {
     ) -> std::result::Result<PciAddress, PciDeviceError>;
     fn read_config(&self, reg_idx: usize, data: &mut u32);
     fn write_config(&mut self, reg_idx: usize, offset: u64, data: &[u8]);
-    fn clone_interrupt(&mut self, msix_config: Arc<Mutex<MsiConfig>>);
+    fn clone_interrupt(&mut self, msi_config: Arc<Mutex<MsiConfig>>);
     fn get_caps(&self) -> Vec<Box<dyn PciCapability>>;
     fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize);
     fn get_bus_range(&self) -> Option<PciBridgeBusRange> {
@@ -32,6 +32,9 @@ pub trait PcieDevice: Send {
     /// Return true, the children pci devices could be connected through hotplug
     /// Return false, the children pci devices should be connected statically
     fn hotplug_implemented(&self) -> bool;
+
+    /// This function returns true if this pcie device is hotplugged into the system
+    fn hotplugged(&self) -> bool;
 
     /// Get bridge window size to cover children's mmio size
     /// (u64, u64) -> (non_prefetchable window size, prefetchable_window_size)
