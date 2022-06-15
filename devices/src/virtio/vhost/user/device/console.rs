@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{io::stdin, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{anyhow, bail, Context};
 use base::{error, Event, Terminal};
@@ -23,6 +23,7 @@ use crate::{
         vhost::user::device::{
             handler::{sys::Doorbell, VhostUserBackend},
             listener::{sys::VhostUserListener, VhostUserListenerTrait},
+            VhostUserDevice,
         },
     },
     SerialHardware, SerialParameters, SerialType,
@@ -51,27 +52,38 @@ impl Drop for VhostUserConsoleDevice {
     }
 }
 
+impl VhostUserDevice for VhostUserConsoleDevice {
+    fn max_queue_num(&self) -> usize {
+        return MAX_QUEUE_NUM;
+    }
+
+    fn into_backend(self: Box<Self>, ex: &Executor) -> anyhow::Result<Box<dyn VhostUserBackend>> {
+        if self.raw_stdin {
+            // Set stdin() to raw mode so we can send over individual keystrokes unbuffered
+            std::io::stdin()
+                .set_raw_mode()
+                .context("failed to set terminal in raw mode")?;
+        }
+
+        Ok(Box::new(ConsoleBackend {
+            device: *self,
+            acked_features: 0,
+            acked_protocol_features: VhostUserProtocolFeatures::empty(),
+            ex: ex.clone(),
+        }))
+    }
+}
+
 struct ConsoleBackend {
-    ex: Executor,
     device: VhostUserConsoleDevice,
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
-}
-
-impl ConsoleBackend {
-    fn new(ex: &Executor, device: VhostUserConsoleDevice) -> Self {
-        Self {
-            ex: ex.clone(),
-            device,
-            acked_features: 0,
-            acked_protocol_features: VhostUserProtocolFeatures::empty(),
-        }
-    }
+    ex: Executor,
 }
 
 impl VhostUserBackend for ConsoleBackend {
     fn max_queue_num(&self) -> usize {
-        MAX_QUEUE_NUM
+        self.device.max_queue_num()
     }
 
     fn max_vring_len(&self) -> u16 {
@@ -222,18 +234,11 @@ pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
         Err(e) => bail!(e),
     };
     let ex = Executor::new().context("Failed to create executor")?;
-    let backend = Box::new(ConsoleBackend::new(
-        &ex,
-        VhostUserConsoleDevice {
-            console,
-            raw_stdin: true,
-        },
-    ));
-
-    // Set stdin() in raw mode so we can send over individual keystrokes unbuffered
-    stdin()
-        .set_raw_mode()
-        .context("Failed to set terminal raw mode")?;
+    let console = Box::new(VhostUserConsoleDevice {
+        console,
+        raw_stdin: true,
+    });
+    let backend = console.into_backend(&ex)?;
 
     let listener = VhostUserListener::new_from_socket_or_vfio(
         &opts.socket,
