@@ -5,7 +5,6 @@
 
 #[cfg(all(test, feature = "vmm"))]
 pub(crate) mod tests {
-    use crate::connection::Endpoint;
     use crate::connection::TubeEndpoint;
     use crate::master::Master;
     use crate::message::MasterReq;
@@ -19,7 +18,7 @@ pub(crate) mod tests {
     pub(crate) fn create_pair() -> (TestMaster, TestEndpoint) {
         let (master_tube, slave_tube) = SystemStream::pair().unwrap();
         let master = Master::from_stream(master_tube, 2);
-        (master, TubeEndpoint::from_connection(slave_tube))
+        (master, TubeEndpoint::from(slave_tube))
     }
 
     #[cfg(feature = "device")]

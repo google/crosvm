@@ -421,7 +421,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> AsRef<S> for SlaveReqH
 
 impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> {
     /// Create a vhost-user slave endpoint.
-    pub(super) fn new(endpoint: E, backend: S) -> Self {
+    pub fn new(endpoint: E, backend: S) -> Self {
         SlaveReqHandler {
             slave_req_helper: SlaveReqHelper::new(endpoint, backend.protocol()),
             backend,

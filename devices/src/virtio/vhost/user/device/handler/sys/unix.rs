@@ -10,7 +10,7 @@ use base::{error, info, AsRawDescriptor, Event, SafeDescriptor};
 use cros_async::{AsyncWrapper, Executor};
 use vm_memory::GuestMemory;
 use vmm_vhost::{
-    connection::Endpoint,
+    connection::{Endpoint, Listener},
     message::{MasterReq, VhostUserMemoryRegion},
     Error as VhostError, Protocol, Result as VhostResult, SlaveListener, SlaveReqHandler,
     VhostUserSlaveReqHandler,
@@ -209,12 +209,12 @@ where
 impl<O: VhostUserPlatformOps> DeviceRequestHandler<O> {
     /// Attaches to an already bound socket via `listener` and handles incoming messages from the
     /// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
-    pub async fn run_with_listener<E>(self, listener: E::Listener, ex: Executor) -> Result<()>
+    pub async fn run_with_listener<L>(self, listener: L, ex: Executor) -> Result<()>
     where
-        E: Endpoint<MasterReq> + AsRawDescriptor,
-        E::Listener: AsRawDescriptor,
+        L::Endpoint: Endpoint<MasterReq> + AsRawDescriptor,
+        L: Listener + AsRawDescriptor,
     {
-        let mut listener = SlaveListener::<E, _>::new(listener, std::sync::Mutex::new(self))?;
+        let mut listener = SlaveListener::<L, _>::new(listener, std::sync::Mutex::new(self))?;
         listener.set_nonblocking(true)?;
 
         loop {
@@ -260,10 +260,7 @@ mod tests {
 
     #[test]
     fn test_vhost_user_activate() {
-        use vmm_vhost::{
-            connection::socket::{Endpoint as SocketEndpoint, Listener as SocketListener},
-            SlaveListener,
-        };
+        use vmm_vhost::{connection::socket::Listener as SocketListener, SlaveListener};
 
         const QUEUES_NUM: usize = 2;
 
@@ -306,7 +303,7 @@ mod tests {
             Box::new(FakeBackend::new()),
             VhostUserRegularOps,
         ));
-        let mut listener = SlaveListener::<SocketEndpoint<_>, _>::new(listener, handler).unwrap();
+        let mut listener = SlaveListener::<SocketListener, _>::new(listener, handler).unwrap();
 
         // Notify listener is ready.
         tx.send(()).unwrap();

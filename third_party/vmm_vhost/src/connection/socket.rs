@@ -41,6 +41,7 @@ impl Listener {
 
 impl ListenerTrait for Listener {
     type Connection = SystemStream;
+    type Endpoint = Endpoint<MasterReq>;
 
     /// Accept an incoming connection.
     ///
@@ -48,10 +49,15 @@ impl ListenerTrait for Listener {
     /// * - Some(SystemListener): new SystemListener object if new incoming connection is available.
     /// * - None: no incoming connection available.
     /// * - SocketError: errors from accept().
-    fn accept(&mut self) -> Result<Option<Self::Connection>> {
+    fn accept(&mut self) -> Result<Option<Self::Endpoint>> {
         loop {
             match self.fd.accept() {
-                Ok((stream, _addr)) => return Ok(Some(stream)),
+                Ok((stream, _addr)) => {
+                    return Ok(Some(Endpoint {
+                        sock: stream,
+                        _r: PhantomData,
+                    }))
+                }
                 Err(e) => {
                     match e.kind() {
                         // No incoming connection available.
@@ -105,18 +111,6 @@ impl<R: Req> From<SystemStream> for Endpoint<R> {
 }
 
 impl<R: Req> EndpointTrait<R> for Endpoint<R> {
-    type Listener = Listener;
-
-    /// Create an endpoint from a stream object.
-    fn from_connection(
-        sock: <<Self as EndpointTrait<R>>::Listener as ListenerTrait>::Connection,
-    ) -> Self {
-        Self {
-            sock,
-            _r: PhantomData,
-        }
-    }
-
     /// Create a new stream by connecting to server at `str`.
     ///
     /// # Return:
@@ -255,8 +249,7 @@ mod tests {
         let mut listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
-        let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from(sock);
+        let mut slave = listener.accept().unwrap().unwrap();
 
         let buf1 = vec![0x1, 0x2, 0x3, 0x4];
         let mut len = master.send_slice(IoSlice::new(&buf1[..]), None).unwrap();
@@ -283,8 +276,7 @@ mod tests {
         let mut listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
-        let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from(sock);
+        let mut slave = listener.accept().unwrap().unwrap();
 
         let mut fd = tempfile().unwrap();
         write!(fd, "test").unwrap();
@@ -456,8 +448,7 @@ mod tests {
         let mut listener = Listener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
         let mut master = Endpoint::<MasterReq>::connect(&path).unwrap();
-        let sock = listener.accept().unwrap().unwrap();
-        let mut slave = Endpoint::<MasterReq>::from(sock);
+        let mut slave = listener.accept().unwrap().unwrap();
 
         let mut hdr1 =
             VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0, mem::size_of::<u64>() as u32);

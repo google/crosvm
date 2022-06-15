@@ -9,8 +9,8 @@ use base::{AsRawDescriptor, RawDescriptor};
 use cros_async::Executor;
 use futures::{Future, FutureExt};
 use vmm_vhost::connection::{
-    socket::{Endpoint as SocketEndpoint, Listener as SocketListener},
-    vfio::{Device, Endpoint as VfioEndpoint, Listener as VfioListener},
+    socket::Listener as SocketListener,
+    vfio::{Device, Listener as VfioListener},
 };
 
 use crate::{
@@ -138,13 +138,13 @@ impl VhostUserListenerTrait for VhostUserListener {
             VhostUserListener::Socket(listener) => {
                 let handler = DeviceRequestHandler::new(backend);
                 handler
-                    .run_with_listener::<SocketEndpoint<_>>(listener, ex)
+                    .run_with_listener::<SocketListener>(listener, ex)
                     .boxed_local()
             }
             VhostUserListener::Vvu(listener, ops) => {
                 let handler = DeviceRequestHandler::new_with_ops(backend, ops);
                 handler
-                    .run_with_listener::<VfioEndpoint<_, _>>(*listener, ex)
+                    .run_with_listener::<VfioListener<_>>(*listener, ex)
                     .boxed_local()
             }
         }

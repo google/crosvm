@@ -31,7 +31,7 @@ pub(crate) mod tests {
         listener.set_nonblocking(true).unwrap();
         let master = Master::connect(path, 2).unwrap();
         let slave = listener.accept().unwrap().unwrap();
-        (master, SocketEndpoint::from(slave))
+        (master, slave)
     }
 
     #[cfg(feature = "device")]

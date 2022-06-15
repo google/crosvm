@@ -12,16 +12,16 @@ use super::message::*;
 use super::{Result, SlaveReqHandler, VhostUserSlaveReqHandler};
 
 /// Vhost-user slave side connection listener.
-pub struct SlaveListener<E: Endpoint<MasterReq>, S: VhostUserSlaveReqHandler> {
-    listener: E::Listener,
+pub struct SlaveListener<L: Listener, S: VhostUserSlaveReqHandler> {
+    listener: L,
     backend: Option<S>,
 }
 
 /// Sets up a listener for incoming master connections, and handles construction
 /// of a Slave on success.
-impl<E: Endpoint<MasterReq>, S: VhostUserSlaveReqHandler> SlaveListener<E, S> {
+impl<L: Listener, S: VhostUserSlaveReqHandler> SlaveListener<L, S> {
     /// Create a unix domain socket for incoming master connections.
-    pub fn new(listener: E::Listener, backend: S) -> Result<Self> {
+    pub fn new(listener: L, backend: S) -> Result<Self> {
         Ok(SlaveListener {
             listener,
             backend: Some(backend),
@@ -31,12 +31,12 @@ impl<E: Endpoint<MasterReq>, S: VhostUserSlaveReqHandler> SlaveListener<E, S> {
     /// Accept an incoming connection from the master, returning Some(Slave) on
     /// success, or None if the socket is nonblocking and no incoming connection
     /// was detected
-    pub fn accept(&mut self) -> Result<Option<SlaveReqHandler<S, E>>> {
-        if let Some(fd) = self.listener.accept()? {
-            return Ok(Some(SlaveReqHandler::new(
-                E::from_connection(fd),
-                self.backend.take().unwrap(),
-            )));
+    pub fn accept(&mut self) -> Result<Option<SlaveReqHandler<S, L::Endpoint>>>
+    where
+        <L as Listener>::Endpoint: Endpoint<MasterReq>,
+    {
+        if let Some(ep) = self.listener.accept()? {
+            return Ok(Some(SlaveReqHandler::new(ep, self.backend.take().unwrap())));
         }
         Ok(None)
     }
@@ -47,10 +47,9 @@ impl<E: Endpoint<MasterReq>, S: VhostUserSlaveReqHandler> SlaveListener<E, S> {
     }
 }
 
-impl<E, S> AsRawDescriptor for SlaveListener<E, S>
+impl<L, S> AsRawDescriptor for SlaveListener<L, S>
 where
-    E: Endpoint<MasterReq>,
-    E::Listener: AsRawDescriptor,
+    L: Listener + AsRawDescriptor,
     S: VhostUserSlaveReqHandler,
 {
     fn as_raw_descriptor(&self) -> base::RawDescriptor {
@@ -63,7 +62,7 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use crate::connection::socket::{Endpoint, Listener};
+    use crate::connection::socket::Listener;
     use crate::dummy_slave::DummySlaveReqHandler;
 
     #[test]
@@ -71,7 +70,7 @@ mod tests {
         let backend = Mutex::new(DummySlaveReqHandler::new());
         let listener =
             Listener::new("/tmp/vhost_user_lib_unit_test_slave_nonblocking", true).unwrap();
-        let slave_listener = SlaveListener::<Endpoint<_>, _>::new(listener, backend).unwrap();
+        let slave_listener = SlaveListener::<Listener, _>::new(listener, backend).unwrap();
 
         slave_listener.set_nonblocking(true).unwrap();
         slave_listener.set_nonblocking(false).unwrap();
@@ -89,7 +88,7 @@ mod tests {
         let path = "/tmp/vhost_user_lib_unit_test_slave_accept";
         let backend = Mutex::new(DummySlaveReqHandler::new());
         let listener = Listener::new(path, true).unwrap();
-        let mut slave_listener = SlaveListener::<Endpoint<_>, _>::new(listener, backend).unwrap();
+        let mut slave_listener = SlaveListener::<Listener, _>::new(listener, backend).unwrap();
 
         slave_listener.set_nonblocking(true).unwrap();
         assert!(slave_listener.accept().unwrap().is_none());

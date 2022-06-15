@@ -24,7 +24,7 @@ use sync::Mutex;
 use vhost::{self, Vhost, Vsock};
 use vm_memory::GuestMemory;
 use vmm_vhost::{
-    connection::vfio::{Endpoint as VfioEndpoint, Listener as VfioListener},
+    connection::vfio::Listener as VfioListener,
     message::{
         VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion, VhostUserProtocolFeatures,
         VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
@@ -498,7 +498,7 @@ fn run_vvu_device<P: AsRef<Path>>(
     let mut listener = VfioListener::new(driver)
         .context("failed to create `VfioListener`")
         .and_then(|l| {
-            SlaveListener::<VfioEndpoint<_, _>, _>::new(l, backend)
+            SlaveListener::<VfioListener<_>, _>::new(l, backend)
                 .context("failed to create `SlaveListener`")
         })?;
     let req_handler = listener

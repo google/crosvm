@@ -16,6 +16,7 @@ use thiserror::Error as ThisError;
 
 use super::{Error, Result};
 use crate::connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req};
+use crate::message::MasterReq;
 
 /// Errors for `Device::recv_into_bufs()`.
 #[sorted]
@@ -77,14 +78,18 @@ impl<D: Device> Listener<D> {
 
 impl<D: Device> ListenerTrait for Listener<D> {
     type Connection = D;
+    type Endpoint = Endpoint<MasterReq, D>;
 
-    fn accept(&mut self) -> Result<Option<Self::Connection>> {
+    fn accept(&mut self) -> Result<Option<Self::Endpoint>> {
         let mut device = self
             .device
             .take()
             .expect("Listener isn't initialized correctly");
         device.start().map_err(Error::VfioDeviceError)?;
-        Ok(Some(device))
+        Ok(Some(Endpoint {
+            device,
+            _r: PhantomData,
+        }))
     }
 
     fn set_nonblocking(&self, _block: bool) -> Result<()> {
@@ -107,16 +112,6 @@ pub struct Endpoint<R: Req, D: Device> {
 }
 
 impl<R: Req, D: Device> EndpointTrait<R> for Endpoint<R, D> {
-    type Listener = Listener<D>;
-
-    /// Create an endpoint from a stream object.
-    fn from_connection(device: D) -> Self {
-        Self {
-            device,
-            _r: PhantomData,
-        }
-    }
-
     fn connect<P: AsRef<Path>>(_path: P) -> Result<Self> {
         // TODO: remove this method from Endpoint trait?
         panic!("VfioEndpoint cannot create a connection from path");

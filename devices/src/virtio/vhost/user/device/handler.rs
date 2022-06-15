@@ -814,10 +814,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn test_vhost_user_activate() {
-        use vmm_vhost::{
-            connection::socket::{Endpoint as SocketEndpoint, Listener as SocketListener},
-            SlaveListener,
-        };
+        use vmm_vhost::{connection::socket::Listener as SocketListener, SlaveListener};
 
         const QUEUES_NUM: usize = 2;
 
@@ -880,7 +877,7 @@ mod tests {
             Box::new(FakeBackend::new()),
             VhostUserRegularOps,
         ));
-        let mut listener = SlaveListener::<SocketEndpoint<_>, _>::new(listener, handler).unwrap();
+        let mut listener = SlaveListener::<SocketListener, _>::new(listener, handler).unwrap();
 
         // Notify listener is ready.
         tx.send(()).unwrap();

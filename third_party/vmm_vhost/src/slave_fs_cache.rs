@@ -146,7 +146,6 @@ impl VhostUserMasterReqHandler for SlaveFsCacheReq {
 mod tests {
 
     use super::*;
-    use crate::connection::Endpoint;
 
     #[test]
     fn test_slave_fs_cache_req_set_failed() {
@@ -177,7 +176,7 @@ mod tests {
     fn test_slave_fs_cache_recv_negative() {
         let (p1, p2) = SystemStream::pair().unwrap();
         let fs_cache = SlaveFsCacheReq::from_stream(p1);
-        let mut master = SlaveFsCacheReqSocket::from_connection(p2);
+        let mut master = SlaveFsCacheReqSocket::from(p2);
 
         let len = mem::size_of::<VhostUserFSSlaveMsg>();
         let mut hdr = VhostUserMsgHeader::new(

@@ -11,7 +11,7 @@ cfg_if::cfg_if! {
         mod unix;
     } else if #[cfg(windows)] {
         mod tube;
-        pub use tube::{TubeEndpoint, TubeListener};
+        pub use tube::TubeEndpoint;
         mod windows;
     }
 }
@@ -32,9 +32,11 @@ use crate::connection::Req;
 pub trait Listener: Sized {
     /// Type of an object created when a connection is accepted.
     type Connection;
+    /// Type of endpoint created when a connection is accepted.
+    type Endpoint;
 
     /// Accept an incoming connection.
-    fn accept(&mut self) -> Result<Option<Self::Connection>>;
+    fn accept(&mut self) -> Result<Option<Self::Endpoint>>;
 
     /// Change blocking status on the listener.
     fn set_nonblocking(&self, block: bool) -> Result<()>;
@@ -42,12 +44,6 @@ pub trait Listener: Sized {
 
 /// Abstracts a vhost-user connection and related operations.
 pub trait Endpoint<R: Req>: Sized + Send {
-    /// Type of an object that Endpoint is created from.
-    type Listener: Listener;
-
-    /// Create an endpoint from a stream object.
-    fn from_connection(sock: <Self::Listener as Listener>::Connection) -> Self;
-
     /// Create a new stream by connecting to server at `str`.
     fn connect<P: AsRef<Path>>(path: P) -> Result<Self>;
 
