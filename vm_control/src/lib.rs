@@ -186,10 +186,6 @@ pub enum DiskControlResult {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum UsbControlCommand {
     AttachDevice {
-        bus: u8,
-        addr: u8,
-        vid: u16,
-        pid: u16,
         #[serde(with = "with_as_descriptor")]
         file: File,
     },

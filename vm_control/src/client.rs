@@ -46,22 +46,12 @@ pub fn vms_request<T: AsRef<Path> + std::fmt::Debug>(
 
 pub fn do_usb_attach<T: AsRef<Path> + std::fmt::Debug>(
     socket_path: T,
-    bus: u8,
-    addr: u8,
-    vid: u16,
-    pid: u16,
     dev_path: &Path,
 ) -> ModifyUsbResult<UsbControlResult> {
     let usb_file = open_file(dev_path, OpenOptions::new().read(true).write(true))
         .map_err(|e| ModifyUsbError::FailedToOpenDevice(dev_path.into(), e))?;
 
-    let request = VmRequest::UsbCommand(UsbControlCommand::AttachDevice {
-        bus,
-        addr,
-        vid,
-        pid,
-        file: usb_file,
-    });
+    let request = VmRequest::UsbCommand(UsbControlCommand::AttachDevice { file: usb_file });
     let response =
         handle_request(&request, socket_path).map_err(|_| ModifyUsbError::SocketFailed)?;
     match response {

@@ -366,10 +366,9 @@ fn make_rt(cmd: cmdline::MakeRTCommand) -> std::result::Result<(), ()> {
 }
 
 fn usb_attach(cmd: cmdline::UsbAttachCommand) -> ModifyUsbResult<UsbControlResult> {
-    let (bus, addr, vid, pid) = cmd.addr;
     let dev_path = Path::new(&cmd.dev_path);
 
-    do_usb_attach(cmd.socket_path, bus, addr, vid, pid, dev_path)
+    do_usb_attach(cmd.socket_path, dev_path)
 }
 
 fn usb_detach(cmd: cmdline::UsbDetachCommand) -> ModifyUsbResult<UsbControlResult> {

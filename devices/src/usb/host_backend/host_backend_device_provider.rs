@@ -263,7 +263,7 @@ impl ProviderInner {
         let tube = self.control_tube.lock();
         let cmd = tube.recv().map_err(Error::ReadControlTube)?;
         let result = match cmd {
-            UsbControlCommand::AttachDevice { file, .. } => self.handle_attach_device(file),
+            UsbControlCommand::AttachDevice { file } => self.handle_attach_device(file),
             UsbControlCommand::DetachDevice { port } => self.handle_detach_device(port),
             UsbControlCommand::ListDevice { ports } => self.handle_list_devices(ports),
         };
