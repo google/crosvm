@@ -640,7 +640,7 @@ pub fn generate_pci_root(
 
     let mut device_ranges = BTreeMap::new();
     let mut io_ranges = BTreeMap::new();
-    let root_bus = Arc::new(Mutex::new(PciBus::new(0, 0)));
+    let root_bus = Arc::new(Mutex::new(PciBus::new(0, 0, false)));
 
     generate_pci_topology(
         root_bus.clone(),

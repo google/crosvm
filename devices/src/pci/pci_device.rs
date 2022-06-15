@@ -31,8 +31,8 @@ use super::PciId;
 #[sorted]
 #[derive(Error, Debug)]
 pub enum Error {
-    /// Device does not located on this bus
-    #[error("pci device {0} does not located on bus {1}")]
+    /// Added pci device's parent bus does not belong to this bus
+    #[error("pci device {0}'s parent bus does not belong to bus {1}")]
     AddedDeviceBusNotExist(PciAddress, u8),
     /// Invalid alignment encountered.
     #[error("Alignment must be a power of 2")]
@@ -40,6 +40,9 @@ pub enum Error {
     /// The new bus has already been added to this bus
     #[error("Added bus {0} already existed on bus {1}")]
     BusAlreadyExist(u8, u8),
+    /// Target bus not exists on this bus
+    #[error("pci bus {0} does not exist on bus {1}")]
+    BusNotExist(u8, u8),
     /// Setup of the device capabilities failed.
     #[error("failed to add capability {0}")]
     CapabilitiesSetup(pci_configuration::Error),
@@ -54,7 +57,9 @@ pub enum Error {
     /// Device is already on this bus
     #[error("pci device {0} has already been added to bus {1}")]
     DeviceAlreadyExist(PciAddress, u8),
-
+    /// Device not exist on this bus
+    #[error("pci device {0} does not located on bus {1}")]
+    DeviceNotExist(PciAddress, u8),
     /// Allocating space for an IO BAR failed.
     #[error("failed to allocate space for an IO BAR, size={0}: {1}")]
     IoAllocationFailed(u64, SystemAllocatorFaliure),
@@ -112,20 +117,27 @@ pub struct PciBus {
     // Hash map that stores all direct child buses of this bus.
     // It maps from child bus number to its pci bus structure.
     child_buses: HashMap<u8, Arc<Mutex<PciBus>>>,
+    // Is hotplug bus
+    hotplug_bus: bool,
 }
 
 impl PciBus {
     // Creates a new pci bus
-    pub fn new(bus_num: u8, parent_bus_num: u8) -> Self {
+    pub fn new(bus_num: u8, parent_bus_num: u8, hotplug_bus: bool) -> Self {
         PciBus {
             bus_num,
             parent_bus_num,
             child_devices: HashSet::new(),
             child_buses: HashMap::new(),
+            hotplug_bus,
         }
     }
 
-    // Add a new child device to this pci bus tree recursively.
+    pub fn get_bus_num(&self) -> u8 {
+        self.bus_num
+    }
+
+    // Add a new child device to this pci bus tree.
     pub fn add_child_device(&mut self, add_device: PciAddress) -> Result<()> {
         if self.bus_num == add_device.bus {
             if !self.child_devices.insert(add_device) {
@@ -147,7 +159,20 @@ impl PciBus {
         Err(Error::AddedDeviceBusNotExist(add_device, self.bus_num))
     }
 
-    // Add a new child bus to this pci bus tree recursively.
+    // Remove one child device from this pci bus tree
+    pub fn remove_child_device(&mut self, device: PciAddress) -> Result<()> {
+        if self.child_devices.remove(&device) {
+            return Ok(());
+        }
+        for child_bus in self.child_buses.values() {
+            if child_bus.lock().remove_child_device(device).is_ok() {
+                return Ok(());
+            }
+        }
+        Err(Error::DeviceNotExist(device, self.bus_num))
+    }
+
+    // Add a new child bus to this pci bus tree.
     pub fn add_child_bus(&mut self, add_bus: Arc<Mutex<PciBus>>) -> Result<()> {
         let add_bus_num = add_bus.lock().bus_num;
         let add_bus_parent = add_bus.lock().parent_bus_num;
@@ -172,6 +197,34 @@ impl PciBus {
         Err(Error::ParentBusNotExist(add_bus_num, self.bus_num))
     }
 
+    // Remove one child bus from this pci bus tree.
+    pub fn remove_child_bus(&mut self, bus_no: u8) -> Result<()> {
+        if self.child_buses.remove(&bus_no).is_some() {
+            return Ok(());
+        }
+        for (_, child_bus) in self.child_buses.iter() {
+            if child_bus.lock().remove_child_bus(bus_no).is_ok() {
+                return Ok(());
+            }
+        }
+        Err(Error::BusNotExist(bus_no, self.bus_num))
+    }
+
+    // Find all downstream devices under the given bus
+    pub fn find_downstream_devices(&self, bus_no: u8) -> Vec<PciAddress> {
+        if self.bus_num == bus_no {
+            return self.get_downstream_devices();
+        }
+        for (_, child_bus) in self.child_buses.iter() {
+            let res = child_bus.lock().find_downstream_devices(bus_no);
+            if !res.is_empty() {
+                return res;
+            }
+        }
+
+        Vec::new()
+    }
+
     // Get all devices in this pci bus tree
     pub fn get_downstream_devices(&self) -> Vec<PciAddress> {
         let mut devices = Vec::new();
@@ -182,8 +235,33 @@ impl PciBus {
         devices
     }
 
-    pub fn get_bus_num(&self) -> u8 {
-        self.bus_num
+    // Check if given device is located in the device tree
+    pub fn contains(&self, device: PciAddress) -> bool {
+        if self.child_devices.contains(&device) {
+            return true;
+        }
+
+        for (_, child_bus) in self.child_buses.iter() {
+            if child_bus.lock().contains(device) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Returns the hotplug bus that this device is on.
+    pub fn get_hotplug_bus(&self, device: PciAddress) -> Option<u8> {
+        if self.hotplug_bus && self.contains(device) {
+            return Some(self.bus_num);
+        }
+        for (_, child_bus) in self.child_buses.iter() {
+            let hotplug_bus = child_bus.lock().get_hotplug_bus(device);
+            if hotplug_bus.is_some() {
+                return hotplug_bus;
+            }
+        }
+        return None;
     }
 }
 
