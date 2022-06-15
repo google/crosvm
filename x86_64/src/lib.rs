@@ -640,7 +640,7 @@ impl arch::LinuxArch for X8664arch {
             .insert(pcie_cfg_mmio, pcie_cfg_mmio_range.start, pcie_cfg_mmio_len)
             .unwrap();
 
-        let pcie_vcfg_mmio = Arc::new(Mutex::new(PciVirtualConfigMmio::new(pci.clone(), 12)));
+        let pcie_vcfg_mmio = Arc::new(Mutex::new(PciVirtualConfigMmio::new(pci.clone(), 13)));
         let pcie_vcfg_range = Self::get_pcie_vcfg_mmio_range(&mem, &pcie_cfg_mmio_range);
         mmio_bus
             .insert(
@@ -1467,7 +1467,8 @@ impl X8664arch {
         // Put PCIe VCFG region at a 2MB boundary after physical memory or 4gb, whichever is greater.
         let ram_end_round_2mb = (mem.end_addr().offset() + 2 * MB - 1) / (2 * MB) * (2 * MB);
         let start = std::cmp::max(ram_end_round_2mb, 4 * GB);
-        let end = start + pcie_cfg_mmio.len().unwrap() - 1;
+        // Each pci device's ECAM size is 4kb and its vcfg size is 8kb
+        let end = start + pcie_cfg_mmio.len().unwrap() * 2 - 1;
         AddressRange { start, end }
     }
 
