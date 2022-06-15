@@ -693,7 +693,12 @@ pub struct RunCommand {
     /// base and length for PCIE Enhanced Configuration Access Mechanism
     pub pcie_ecam: Option<MemRegion>,
     #[cfg(feature = "direct")]
-    #[argh(option, long = "pcie-root-port", arg_name = "PATH[,hp_gpe=NUM]")]
+    #[argh(
+        option,
+        long = "pcie-root-port",
+        arg_name = "PATH[,hp_gpe=NUM]",
+        from_str_fn(parse_pcie_root_port_params)
+    )]
     /// path to sysfs of host pcie root port and host pcie root port hotplug gpe number
     pub pcie_rp: Vec<HostPcieRootPortParameters>,
     #[argh(switch)]
@@ -1553,7 +1558,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.direct_edge_irq = cmd.direct_edge_irq;
             cfg.direct_gpe = cmd.direct_gpe;
             cfg.pcie_rp = cmd.pcie_rp;
-            cfg.mmio_address_ranges = cmd.mmio_address_ranges;
+            cfg.mmio_address_ranges = cmd.mmio_address_ranges.unwrap_or_default();
         }
 
         cfg.dmi_path = cmd.dmi_path;

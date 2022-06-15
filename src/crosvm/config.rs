@@ -944,6 +944,53 @@ pub fn parse_memory_region(value: &str) -> Result<MemRegion, String> {
     Ok(MemRegion { base, size: len })
 }
 
+#[cfg(feature = "direct")]
+pub fn parse_pcie_root_port_params(value: &str) -> Result<HostPcieRootPortParameters, String> {
+    let opts: Vec<_> = value.split(',').collect();
+    if opts.len() > 2 {
+        return Err(invalid_value_err(
+            value,
+            "pcie-root-port has maxmimum two arguments",
+        ));
+    }
+    let pcie_path = PathBuf::from(opts[0]);
+    if !pcie_path.exists() {
+        return Err(invalid_value_err(
+            value,
+            "the pcie root port path does not exist",
+        ));
+    }
+    if !pcie_path.is_dir() {
+        return Err(invalid_value_err(
+            value,
+            "the pcie root port path should be directory",
+        ));
+    }
+
+    let hp_gpe = if opts.len() == 2 {
+        let gpes: Vec<&str> = opts[1].split('=').collect();
+        if gpes.len() != 2 || gpes[0] != "hp_gpe" {
+            return Err(invalid_value_err(value, "it should be hp_gpe=Num"));
+        }
+        match gpes[1].parse::<u32>() {
+            Ok(gpe) => Some(gpe),
+            Err(_) => {
+                return Err(invalid_value_err(
+                    value,
+                    "host hp gpe must be a non-negative integer",
+                ));
+            }
+        }
+    } else {
+        None
+    };
+
+    Ok(HostPcieRootPortParameters {
+        host_path: pcie_path,
+        hp_gpe,
+    })
+}
+
 pub fn parse_bus_id_addr(v: &str) -> Result<(u8, u8, u16, u16), String> {
     debug!("parse_bus_id_addr: {}", v);
     let mut ids = v.split(':');
@@ -1129,7 +1176,7 @@ pub fn parse_direct_io_options(s: &str) -> Result<DirectIoOption, String> {
     if !path.exists() {
         return Err(invalid_value_err(parts[0], "the path does not exist"));
     };
-    let ranges: argument::Result<Vec<BusRange>> = parts[1]
+    let ranges: Result<Vec<BusRange>, String> = parts[1]
         .split(',')
         .map(|frag| frag.split('-'))
         .map(|mut range| {
