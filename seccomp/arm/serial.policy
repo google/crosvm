@@ -2,7 +2,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-@include /usr/share/policy/crosvm/common_device.policy
+# Syscalls specific to the serial device. This policy file is not meant to be used directly, but
+# rather to be included from another one.
 
 connect: 1
 bind: 1

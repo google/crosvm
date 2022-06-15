@@ -10,6 +10,9 @@ useful
 
 ## Writing a Policy for crosvm
 
+The detailed rules for naming policy files can be found in
+[seccomp/README.md](https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/seccomp/README.md)
+
 Most policy files will include the `common_device.policy` from a given architecture using this
 directive near the top:
 

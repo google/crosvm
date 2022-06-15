@@ -684,7 +684,10 @@ fn create_devices(
             )
             .context("failed to create coiommu device")?;
 
-            devices.push((Box::new(dev), simple_jail(&cfg.jail_config, "coiommu")?));
+            devices.push((
+                Box::new(dev),
+                simple_jail(&cfg.jail_config, "coiommu_device")?,
+            ));
         }
     }
 
@@ -730,7 +733,10 @@ fn create_devices(
     if cfg.usb {
         // Create xhci controller.
         let usb_controller = Box::new(XhciController::new(vm.get_memory().clone(), usb_provider));
-        devices.push((usb_controller, simple_jail(&cfg.jail_config, "xhci")?));
+        devices.push((
+            usb_controller,
+            simple_jail(&cfg.jail_config, "xhci_device")?,
+        ));
     }
 
     for params in &cfg.stub_pci_devices {
@@ -1545,14 +1551,14 @@ where
         &vm_evt_wrtube,
         &mut sys_allocator,
         &cfg.serial_parameters,
-        simple_jail(&cfg.jail_config, "serial")?,
+        simple_jail(&cfg.jail_config, "serial_device")?,
         battery,
         vm,
         ramoops_region,
         devices,
         irq_chip,
         &mut vcpu_ids,
-        simple_jail(&cfg.jail_config, "serial")?,
+        simple_jail(&cfg.jail_config, "serial_device")?,
     )
     .context("the architecture failed to build the vm")?;
 
