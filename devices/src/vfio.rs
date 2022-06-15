@@ -539,7 +539,7 @@ impl VfioGroup {
             },
         };
 
-        // Safe as we are the owner of vfio_dev_fd and vfio_dev_attr which are valid value,
+        // Safe as we are the owner of vfio_dev_descriptor and vfio_dev_attr which are valid value,
         // and we verify the return value.
         if 0 != unsafe {
             ioctl_with_ref(
@@ -564,7 +564,7 @@ impl VfioGroup {
             return Err(VfioError::GroupGetDeviceFD(get_error()));
         }
 
-        // Safe as ret is valid FD
+        // Safe as ret is valid descriptor
         Ok(unsafe { File::from_raw_descriptor(ret) })
     }
 

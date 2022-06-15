@@ -7,15 +7,15 @@ use crate::virtio::snd::layout::*;
 
 use base::{
     error, AsRawDescriptor, Error as BaseError, Event, EventToken, FromRawDescriptor,
-    IntoRawDescriptor, MemoryMapping, MemoryMappingBuilder, MmapError, SafeDescriptor, ScmSocket,
-    UnixSeqpacket, WaitContext,
+    IntoRawDescriptor, MemoryMapping, MemoryMappingBuilder, MmapError, RawDescriptor,
+    SafeDescriptor, ScmSocket, UnixSeqpacket, WaitContext,
 };
 use data_model::{DataInit, VolatileMemory, VolatileMemoryError, VolatileSlice};
 
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::{Error as IOError, ErrorKind as IOErrorKind, IoSliceMut, Seek, SeekFrom};
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
 use std::sync::mpsc::{channel, Receiver, RecvError, Sender};
 use std::sync::Arc;
@@ -163,14 +163,14 @@ impl VioSClient {
             )));
         }
 
-        fn pop<T: FromRawFd>(
+        fn pop<T: FromRawDescriptor>(
             safe_fds: &mut Vec<SafeDescriptor>,
             expected: usize,
             received: usize,
         ) -> Result<T> {
             unsafe {
                 // Safe because we transfer ownership from the SafeDescriptor to T
-                Ok(T::from_raw_fd(
+                Ok(T::from_raw_descriptor(
                     safe_fds
                         .pop()
                         .ok_or(Error::ProtocolError(
@@ -747,8 +747,11 @@ impl IoBufferQueue {
         seq_socket_send(&self.socket, msg)
     }
 
-    fn keep_fds(&self) -> Vec<RawFd> {
-        vec![self.file.as_raw_fd(), self.socket.as_raw_fd()]
+    fn keep_fds(&self) -> Vec<RawDescriptor> {
+        vec![
+            self.file.as_raw_descriptor(),
+            self.socket.as_raw_descriptor(),
+        ]
     }
 }
 

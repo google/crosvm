@@ -761,7 +761,7 @@ impl WlVfd {
         self.guest_shared_memory.as_ref().map(|shm| shm.size())
     }
 
-    // The FD that gets sent if this VFD is sent over a socket.
+    // The descriptor that gets sent if this VFD is sent over a socket.
     fn send_descriptor(&self) -> Option<RawDescriptor> {
         self.guest_shared_memory
             .as_ref()
@@ -1072,7 +1072,7 @@ impl WlState {
         let events = match self.wait_ctx.wait_timeout(Duration::from_secs(0)) {
             Ok(v) => v,
             Err(e) => {
-                error!("failed polling for vfd evens: {}", e);
+                error!("failed waiting for vfd evens: {}", e);
                 return;
             }
         };
@@ -1684,7 +1684,7 @@ impl Worker {
             let events = match wait_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("failed polling for events: {}", e);
+                    error!("failed waiting for events: {}", e);
                     break;
                 }
             };

@@ -389,7 +389,10 @@ pub mod tests {
     fn keep_rds() {
         let net = create_net_common();
         let fds = net.keep_rds();
-        assert!(!fds.is_empty(), "We should have gotten at least one fd");
+        assert!(
+            !fds.is_empty(),
+            "We should have gotten at least one descriptor"
+        );
     }
 
     #[test]

@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{ioctl_ior_nr, ioctl_iow_nr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
+use base::{
+    ioctl_ior_nr, ioctl_iow_nr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, AsRawDescriptor,
+};
 use data_model::Le32;
 
 use super::constants::*;
@@ -15,8 +17,6 @@ use super::Result;
 use std::collections::BTreeMap;
 use std::os::raw::c_uint;
 use std::ptr::null;
-
-use base::AsRawDescriptor;
 
 const EVDEV: c_uint = 69;
 

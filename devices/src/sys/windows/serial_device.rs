@@ -9,7 +9,6 @@ use base::FileSync;
 use base::{AsRawDescriptor, Event, RawDescriptor};
 use hypervisor::ProtectionType;
 use std::io::{self};
-use std::path::Path;
 
 pub use base::Console as ConsoleInput;
 
@@ -27,7 +26,7 @@ pub trait SerialDevice {
         out_timestamp: bool,
         keep_rds: Vec<RawDescriptor>,
     ) -> Self;
-    fn new_pipe(
+    fn new_with_pipe(
         protected_vm: ProtectionType,
         interrupt_evt: Event,
         pipe_in: named_pipes::PipeConnection,
@@ -68,7 +67,7 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
             keep_rds.push(pipe_in.as_raw_descriptor());
             keep_rds.push(pipe_out.as_raw_descriptor());
 
-            return Ok(T::new_pipe(
+            return Ok(T::new_with_pipe(
                 protected_vm,
                 evt,
                 pipe_in,

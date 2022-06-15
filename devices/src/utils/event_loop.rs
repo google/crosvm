@@ -88,7 +88,7 @@ impl EventLoop {
                     let events = match poll_ctx.wait() {
                         Ok(events) => events,
                         Err(e) => {
-                            error!("cannot poll {:?}", e);
+                            error!("cannot wait on events {:?}", e);
                             fail_handle.fail();
                             return;
                         }
@@ -168,7 +168,7 @@ impl EventLoop {
     /// Removes event for this `descriptor`. This function returns false if it fails.
     ///
     /// EventLoop does not guarantee all events for `descriptor` is handled.
-    pub fn remove_event_for_fd(&self, descriptor: &dyn AsRawDescriptor) -> Result<()> {
+    pub fn remove_event_for_descriptor(&self, descriptor: &dyn AsRawDescriptor) -> Result<()> {
         if self.fail_handle.failed() {
             return Err(Error::EventLoopAlreadyFailed);
         }

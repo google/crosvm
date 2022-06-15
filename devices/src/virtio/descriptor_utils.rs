@@ -308,7 +308,7 @@ impl Reader {
         read
     }
 
-    /// Reads data from the descriptor chain buffer into a file descriptor.
+    /// Reads data from the descriptor chain buffer into a writable object.
     /// Returns the number of bytes read from the descriptor chain buffer.
     /// The number of bytes read can be less than `count` if there isn't
     /// enough data in the descriptor chain buffer.
@@ -564,7 +564,7 @@ impl Writer {
         written
     }
 
-    /// Writes data to the descriptor chain buffer from a file descriptor.
+    /// Writes data to the descriptor chain buffer from a readable object.
     /// Returns the number of bytes written to the descriptor chain buffer.
     /// The number of bytes written can be less than `count` if
     /// there isn't enough data in the descriptor chain buffer.

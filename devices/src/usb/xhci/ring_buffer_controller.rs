@@ -167,7 +167,7 @@ where
 {
     fn drop(&mut self) {
         // Remove self from the event loop.
-        if let Err(e) = self.event_loop.remove_event_for_fd(&self.event) {
+        if let Err(e) = self.event_loop.remove_event_for_descriptor(&self.event) {
             error!(
                 "cannot remove ring buffer controller from event loop: {}",
                 e

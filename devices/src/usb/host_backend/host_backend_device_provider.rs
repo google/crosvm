@@ -220,9 +220,9 @@ impl ProviderInner {
                 if let Some(device_ctx) = self.devices.lock().remove(&port) {
                     let _ = device_ctx.event_handler.on_event();
                     let device = device_ctx.device.lock();
-                    let fd = device.fd();
+                    let descriptor = device.fd();
 
-                    if let Err(e) = self.event_loop.remove_event_for_fd(&*fd) {
+                    if let Err(e) = self.event_loop.remove_event_for_descriptor(&*descriptor) {
                         error!(
                             "failed to remove poll change handler from event loop: {}",
                             e

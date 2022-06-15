@@ -116,7 +116,7 @@ fn serial_parameters_default_debugcon_port() -> u16 {
     0xe9
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct SerialParameters {
     #[serde(rename = "type")]
@@ -248,7 +248,7 @@ mod tests {
         assert_eq!(params.type_, SerialType::Syslog);
         #[cfg(unix)]
         let opt = "type=unix";
-        #[cfg(window)]
+        #[cfg(windows)]
         let opt = "type=namedpipe";
         let params = from_serial_arg(opt).unwrap();
         assert_eq!(params.type_, SerialType::SystemSerialType);
@@ -305,6 +305,16 @@ mod tests {
         let params = from_serial_arg("stdin=false").unwrap();
         assert!(!params.stdin);
         let params = from_serial_arg("stdin=foobar");
+        assert!(params.is_err());
+
+        // out_timestamp parameter
+        let params = from_serial_arg("out_timestamp").unwrap();
+        assert!(params.out_timestamp);
+        let params = from_serial_arg("out_timestamp=true").unwrap();
+        assert!(params.out_timestamp);
+        let params = from_serial_arg("out_timestamp=false").unwrap();
+        assert!(!params.out_timestamp);
+        let params = from_serial_arg("out_timestamp=foobar");
         assert!(params.is_err());
 
         // debugcon port parameter

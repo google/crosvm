@@ -132,7 +132,7 @@ impl Worker {
             let events = match wait_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
-                    error!("vtpm failed polling for events: {}", e);
+                    error!("vtpm failed waiting for events: {}", e);
                     break;
                 }
             };
