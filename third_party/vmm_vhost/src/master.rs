@@ -718,23 +718,13 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         &mut self,
         hdr: &VhostUserMsgHeader<MasterReq>,
     ) -> VhostUserResult<(T, Vec<u8>, Option<Vec<File>>)> {
-        if mem::size_of::<T>() > MAX_MSG_SIZE
-            || hdr.get_size() as usize <= mem::size_of::<T>()
-            || hdr.get_size() as usize > MAX_MSG_SIZE
-            || hdr.is_reply()
-        {
+        if mem::size_of::<T>() > MAX_MSG_SIZE || hdr.is_reply() {
             return Err(VhostUserError::InvalidParam);
         }
         self.check_state()?;
 
-        let mut buf: Vec<u8> = vec![0; hdr.get_size() as usize - mem::size_of::<T>()];
-        let (reply, body, bytes, files) = self.main_sock.recv_payload_into_buf::<T>(&mut buf)?;
-        if !reply.is_reply_for(hdr)
-            || reply.get_size() as usize != mem::size_of::<T>() + bytes
-            || files.is_some()
-            || !body.is_valid()
-            || bytes != buf.len()
-        {
+        let (reply, body, buf, files) = self.main_sock.recv_payload_into_buf::<T>()?;
+        if !reply.is_reply_for(hdr) || files.is_some() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
         }
 
