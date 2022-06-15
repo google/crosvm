@@ -82,6 +82,7 @@ pub trait VhostUserSlaveReqHandler {
     fn get_max_mem_slots(&self) -> Result<u64>;
     fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
     fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
+    fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>>;
 }
 
 /// Services provided to the master by the slave without interior mutability.
@@ -133,6 +134,7 @@ pub trait VhostUserSlaveReqHandlerMut {
     fn get_max_mem_slots(&mut self) -> Result<u64>;
     fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
     fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
+    fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>>;
 }
 
 impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
@@ -244,6 +246,10 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
 
     fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()> {
         self.lock().unwrap().remove_mem_region(region)
+    }
+
+    fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>> {
+        self.lock().unwrap().get_shared_memory_regions()
     }
 }
 
@@ -727,6 +733,16 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                 let res = self.backend.remove_mem_region(&msg);
                 self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
                 res?;
+            }
+            MasterReq::GET_SHARED_MEMORY_REGIONS => {
+                let regions = self.backend.get_shared_memory_regions()?;
+                let mut buf = Vec::new();
+                let msg = VhostUserU64::new(regions.len() as u64);
+                for r in regions {
+                    buf.extend_from_slice(r.as_slice())
+                }
+                self.slave_req_helper
+                    .send_reply_with_payload(&hdr, &msg, buf.as_slice())?;
             }
             _ => {
                 return Err(Error::InvalidMessage);

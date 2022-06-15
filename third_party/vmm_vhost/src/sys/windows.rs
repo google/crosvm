@@ -13,7 +13,7 @@ cfg_if::cfg_if! {
         use crate::connection::TubeEndpoint;
         use crate::message::{MasterReq, SlaveReq};
 
-        pub(crate) type SlaveFsCacheReqSocket = TubeEndpoint<SlaveReq>;
+        pub(crate) type SlaveReqEndpoint = TubeEndpoint<SlaveReq>;
         pub(crate) type MasterReqEndpoint = TubeEndpoint<MasterReq>;
     }
 }

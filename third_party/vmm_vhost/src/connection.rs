@@ -43,9 +43,11 @@ pub trait Listener: Sized {
 }
 
 /// Abstracts a vhost-user connection and related operations.
-pub trait Endpoint<R: Req>: Sized + Send {
+pub trait Endpoint<R: Req>: Send {
     /// Create a new stream by connecting to server at `str`.
-    fn connect<P: AsRef<Path>>(path: P) -> Result<Self>;
+    fn connect<P: AsRef<Path>>(path: P) -> Result<Self>
+    where
+        Self: Sized;
 
     /// Sends bytes from scatter-gather vectors with optional attached file descriptors.
     ///
@@ -438,7 +440,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     }
 }
 
-impl<R: Req, E: Endpoint<R>> EndpointExt<R> for E {}
+impl<R: Req, E: Endpoint<R> + ?Sized> EndpointExt<R> for E {}
 
 #[cfg(test)]
 pub(crate) mod tests {

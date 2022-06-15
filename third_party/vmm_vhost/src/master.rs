@@ -68,6 +68,9 @@ pub trait VhostUserMaster: VhostBackend {
 
     /// Remove a guest memory mapping from vhost.
     fn remove_mem_region(&mut self, region: &VhostUserMemoryRegionInfo) -> Result<()>;
+
+    /// Gets the shared memory regions used by the device.
+    fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>>;
 }
 
 /// Struct for the vhost-user master endpoint.
@@ -554,6 +557,27 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         );
         let hdr = node.send_request_with_body(MasterReq::REM_MEM_REG, &body, None)?;
         node.wait_for_ack(&hdr)
+    }
+
+    fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>> {
+        let mut node = self.node();
+        let hdr = node.send_request_header(MasterReq::GET_SHARED_MEMORY_REGIONS, None)?;
+        let (body_reply, buf_reply, rfds) = node.recv_reply_with_payload::<VhostUserU64>(&hdr)?;
+        let struct_size = mem::size_of::<VhostSharedMemoryRegion>();
+        if rfds.is_some() || buf_reply.len() != body_reply.value as usize * struct_size {
+            return Err(VhostUserError::InvalidMessage);
+        }
+        let mut regions = Vec::new();
+        let mut offset = 0;
+        for _ in 0..body_reply.value {
+            regions.push(
+                // Can't fail because the input is the correct size.
+                VhostSharedMemoryRegion::from_reader(&buf_reply[offset..(offset + struct_size)])
+                    .unwrap(),
+            );
+            offset += struct_size;
+        }
+        Ok(regions)
     }
 }
 

@@ -30,7 +30,7 @@ use base::RawDescriptor;
 /// request services from masters. The [VhostUserMasterReqHandler] trait defines services provided
 /// by masters, and it's used both on the master side and slave side.
 /// - on the slave side, a stub forwarder implementing [VhostUserMasterReqHandler] will proxy
-///   service requests to masters. The [SlaveFsCacheReq] is an example stub forwarder.
+///   service requests to masters. The [Slave] is an example stub forwarder.
 /// - on the master side, the [MasterReqHandler] will forward service requests to a handler
 ///   implementing [VhostUserMasterReqHandler].
 ///
@@ -39,10 +39,24 @@ use base::RawDescriptor;
 ///
 /// [VhostUserMasterReqHandler]: trait.VhostUserMasterReqHandler.html
 /// [MasterReqHandler]: struct.MasterReqHandler.html
-/// [SlaveFsCacheReq]: struct.SlaveFsCacheReq.html
+/// [Slave]: struct.Slave.html
 pub trait VhostUserMasterReqHandler {
     /// Handle device configuration change notifications.
     fn handle_config_change(&self) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
+    /// Handle shared memory region mapping requests.
+    fn shmem_map(
+        &self,
+        _req: &VhostUserShmemMapMsg,
+        _fd: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
+    /// Handle shared memory region unmapping requests.
+    fn shmem_unmap(&self, _req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
@@ -87,6 +101,20 @@ pub trait VhostUserMasterReqHandlerMut {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
+    /// Handle shared memory region mapping requests.
+    fn shmem_map(
+        &mut self,
+        _req: &VhostUserShmemMapMsg,
+        _fd: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
+    /// Handle shared memory region unmapping requests.
+    fn shmem_unmap(&mut self, _req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
+
     /// Handle virtio-fs map file requests.
     fn fs_slave_map(
         &mut self,
@@ -122,6 +150,18 @@ pub trait VhostUserMasterReqHandlerMut {
 impl<S: VhostUserMasterReqHandlerMut> VhostUserMasterReqHandler for Mutex<S> {
     fn handle_config_change(&self) -> HandlerResult<u64> {
         self.lock().unwrap().handle_config_change()
+    }
+
+    fn shmem_map(
+        &self,
+        req: &VhostUserShmemMapMsg,
+        fd: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
+        self.lock().unwrap().shmem_map(req, fd)
+    }
+
+    fn shmem_unmap(&self, req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
+        self.lock().unwrap().shmem_unmap(req)
     }
 
     fn fs_slave_map(
@@ -270,6 +310,19 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
                     .handle_config_change()
                     .map_err(Error::ReqHandlerError)
             }
+            SlaveReq::SHMEM_MAP => {
+                let msg = self.extract_msg_body::<VhostUserShmemMapMsg>(&hdr, size, &buf)?;
+                // check_attached_files() has validated files
+                self.backend
+                    .shmem_map(&msg, &files.unwrap()[0])
+                    .map_err(Error::ReqHandlerError)
+            }
+            SlaveReq::SHMEM_UNMAP => {
+                let msg = self.extract_msg_body::<VhostUserShmemUnmapMsg>(&hdr, size, &buf)?;
+                self.backend
+                    .shmem_unmap(&msg)
+                    .map_err(Error::ReqHandlerError)
+            }
             SlaveReq::FS_MAP => {
                 let msg = self.extract_msg_body::<VhostUserFSSlaveMsg>(&hdr, size, &buf)?;
                 // check_attached_files() has validated files
@@ -299,7 +352,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
             _ => Err(Error::InvalidMessage),
         };
 
-        self.send_ack_message(&hdr, &res)?;
+        self.send_reply(&hdr, &res)?;
 
         res
     }
@@ -333,7 +386,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         files: &Option<Vec<File>>,
     ) -> Result<()> {
         match hdr.get_code() {
-            SlaveReq::FS_MAP | SlaveReq::FS_IO => {
+            SlaveReq::SHMEM_MAP | SlaveReq::FS_MAP | SlaveReq::FS_IO => {
                 // Expect a single file is passed.
                 match files {
                     Some(files) if files.len() == 1 => Ok(()),
@@ -374,12 +427,11 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         ))
     }
 
-    fn send_ack_message(
-        &mut self,
-        req: &VhostUserMsgHeader<SlaveReq>,
-        res: &Result<u64>,
-    ) -> Result<()> {
-        if self.reply_ack_negotiated && req.is_need_reply() {
+    fn send_reply(&mut self, req: &VhostUserMsgHeader<SlaveReq>, res: &Result<u64>) -> Result<()> {
+        if req.get_code() == SlaveReq::SHMEM_MAP
+            || req.get_code() == SlaveReq::SHMEM_UNMAP
+            || (self.reply_ack_negotiated && req.is_need_reply())
+        {
             let hdr = self.new_reply_header::<VhostUserU64>(req)?;
             let def_err = libc::EINVAL;
             let val = match res {
@@ -417,7 +469,7 @@ mod tests {
     use base::{Descriptor, FromRawDescriptor};
 
     #[cfg(feature = "device")]
-    use crate::SlaveFsCacheReq;
+    use crate::Slave;
 
     struct MockMasterReqHandler {}
 
@@ -463,7 +515,7 @@ mod tests {
             panic!("failed to duplicated tx fd!");
         }
         let stream = unsafe { SystemStream::from_raw_descriptor(fd) };
-        let fs_cache = SlaveFsCacheReq::from_stream(stream);
+        let fs_cache = Slave::from_stream(stream);
 
         std::thread::spawn(move || {
             let res = handler.handle_request().unwrap();
@@ -493,7 +545,7 @@ mod tests {
             panic!("failed to duplicated tx fd!");
         }
         let stream = unsafe { SystemStream::from_raw_descriptor(fd) };
-        let fs_cache = SlaveFsCacheReq::from_stream(stream);
+        let fs_cache = Slave::from_stream(stream);
 
         std::thread::spawn(move || {
             let res = handler.handle_request().unwrap();

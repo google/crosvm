@@ -26,9 +26,9 @@ use vm_memory::GuestMemory;
 use vmm_vhost::{
     connection::vfio::Listener as VfioListener,
     message::{
-        VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion, VhostUserProtocolFeatures,
-        VhostUserSingleMemoryRegion, VhostUserVirtioFeatures, VhostUserVringAddrFlags,
-        VhostUserVringState,
+        VhostSharedMemoryRegion, VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion,
+        VhostUserProtocolFeatures, VhostUserSingleMemoryRegion, VhostUserVirtioFeatures,
+        VhostUserVringAddrFlags, VhostUserVringState,
     },
     Error, Result, SlaveReqHandler, VhostUserSlaveReqHandlerMut,
 };
@@ -439,6 +439,10 @@ impl<H: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<H> {
 
     fn remove_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion) -> Result<()> {
         Err(Error::InvalidOperation)
+    }
+
+    fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>> {
+        Ok(vec![])
     }
 }
 

@@ -65,9 +65,9 @@ use vm_memory::{GuestAddress, GuestMemory, MemoryRegion};
 use vmm_vhost::{
     connection::Endpoint,
     message::{
-        MasterReq, VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion,
-        VhostUserProtocolFeatures, VhostUserSingleMemoryRegion, VhostUserVirtioFeatures,
-        VhostUserVringAddrFlags, VhostUserVringState,
+        MasterReq, VhostSharedMemoryRegion, VhostUserConfigFlags, VhostUserInflight,
+        VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserSingleMemoryRegion,
+        VhostUserVirtioFeatures, VhostUserVringAddrFlags, VhostUserVringState,
     },
     Error as VhostError, Protocol, Result as VhostResult, SlaveReqHandler,
     VhostUserSlaveReqHandler, VhostUserSlaveReqHandlerMut,
@@ -693,6 +693,10 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
     fn remove_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion) -> VhostResult<()> {
         //TODO
         Ok(())
+    }
+
+    fn get_shared_memory_regions(&mut self) -> VhostResult<Vec<VhostSharedMemoryRegion>> {
+        Ok(vec![])
     }
 }
 

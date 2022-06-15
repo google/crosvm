@@ -61,12 +61,12 @@ cfg_if::cfg_if! {
 cfg_if::cfg_if! {
     if #[cfg(feature = "device")] {
         mod slave_req_handler;
-        mod slave_fs_cache;
+        mod slave_proxy;
         pub use self::slave_req_handler::{
             Protocol, SlaveReqHandler, SlaveReqHelper, VhostUserSlaveReqHandler,
             VhostUserSlaveReqHandlerMut,
         };
-        pub use self::slave_fs_cache::SlaveFsCacheReq;
+        pub use self::slave_proxy::Slave;
     }
 }
 cfg_if::cfg_if! {

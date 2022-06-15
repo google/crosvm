@@ -270,4 +270,8 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     fn remove_mem_region(&mut self, _region: &VhostUserSingleMemoryRegion) -> Result<()> {
         Ok(())
     }
+
+    fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>> {
+        Ok(Vec::new())
+    }
 }
