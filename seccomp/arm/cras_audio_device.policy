@@ -6,7 +6,6 @@
 
 _llseek: 1
 lseek: 1
-madvise: 1
 open: return ENOENT
 openat: return ENOENT
 prlimit64: 1
