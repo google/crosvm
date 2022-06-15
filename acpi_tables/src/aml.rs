@@ -726,6 +726,20 @@ impl<'a> Scope<'a> {
     pub fn new(path: Path, children: Vec<&'a dyn Aml>) -> Self {
         Scope { path, children }
     }
+
+    /// Create raw bytes representing a Scope from its children in raw bytes
+    pub fn raw(path: Path, mut children: Vec<u8>) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        path.to_aml_bytes(&mut bytes);
+        bytes.append(&mut children);
+        let mut pkg_length = create_pkg_length(&bytes, true);
+        pkg_length.reverse();
+        for byte in pkg_length {
+            bytes.insert(0, byte);
+        }
+        bytes.insert(0, SCOPEOP);
+        bytes
+    }
 }
 
 /// Method object with its name, children objects, arguments and serialized character.

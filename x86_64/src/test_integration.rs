@@ -129,7 +129,7 @@ where
 
     let devices = vec![];
 
-    let (pci, pci_irqs, _pid_debug_label_map) = arch::generate_pci_root(
+    let (pci, pci_irqs, _pid_debug_label_map, _amls) = arch::generate_pci_root(
         devices,
         &mut irq_chip,
         mmio_bus.clone(),
@@ -137,6 +137,7 @@ where
         &mut resources,
         &mut vm,
         4,
+        None,
     )
     .unwrap();
     let pci = Arc::new(Mutex::new(pci));

@@ -11,6 +11,7 @@ use acpi_tables::sdt::SDT;
 use anyhow::bail;
 use base::error;
 use base::Event;
+use base::MemoryMapping;
 use base::RawDescriptor;
 use hypervisor::Datamatch;
 use remain::sorted;
@@ -395,6 +396,12 @@ pub trait PciDevice: Send {
         Some(sdts)
     }
 
+    /// Construct customized acpi method, and return the AML code and
+    /// shared memory
+    fn generate_acpi_methods(&mut self) -> (Vec<u8>, Option<(u32, MemoryMapping)>) {
+        (Vec::new(), None)
+    }
+
     /// Invoked when the device is destroyed
     fn destroy_device(&mut self) {}
 
@@ -658,6 +665,10 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn generate_acpi(&mut self, sdts: Vec<SDT>) -> Option<Vec<SDT>> {
         (**self).generate_acpi(sdts)
+    }
+
+    fn generate_acpi_methods(&mut self) -> (Vec<u8>, Option<(u32, MemoryMapping)>) {
+        (**self).generate_acpi_methods()
     }
 
     fn destroy_device(&mut self) {

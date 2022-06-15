@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::thread;
 use std::u32;
 
+use acpi_tables::aml::Aml;
 #[cfg(feature = "direct")]
 use anyhow::Context;
 use base::debug;
@@ -27,6 +28,7 @@ use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::Event;
 use base::EventToken;
+use base::MemoryMapping;
 use base::Protection;
 use base::RawDescriptor;
 use base::Tube;
@@ -48,6 +50,8 @@ use vm_control::VmMemorySource;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
 
+use crate::pci::acpi::DeviceVcfgRegister;
+use crate::pci::acpi::SHM_OFFSET;
 use crate::pci::msi::MsiConfig;
 use crate::pci::msi::MsiStatus;
 use crate::pci::msi::PCI_MSI_FLAGS;
@@ -593,6 +597,7 @@ pub struct VfioPciDevice {
     is_intel_lpss: bool,
     #[cfg(feature = "direct")]
     i2c_devs: HashMap<u16, PathBuf>,
+    vcfg_shm_mmap: Option<MemoryMapping>,
     mapped_mmio_bars: BTreeMap<PciBarIndex, (u64, Vec<MemSlot>)>,
 }
 
@@ -803,6 +808,7 @@ impl VfioPciDevice {
             is_intel_lpss,
             #[cfg(feature = "direct")]
             i2c_devs,
+            vcfg_shm_mmap: None,
             mapped_mmio_bars: BTreeMap::new(),
         })
     }
@@ -2128,6 +2134,23 @@ impl PciDevice for VfioPciDevice {
 
     fn destroy_device(&mut self) {
         self.close();
+    }
+
+    fn generate_acpi_methods(&mut self) -> (Vec<u8>, Option<(u32, MemoryMapping)>) {
+        let mut amls = Vec::new();
+        let mut shm = None;
+        if let Some(pci_address) = self.pci_address {
+            let vcfg_offset = pci_address.to_config_address(0, 13);
+            if let Ok(vcfg_register) = DeviceVcfgRegister::new(vcfg_offset) {
+                vcfg_register.to_aml_bytes(&mut amls);
+                shm = vcfg_register
+                    .create_shm_mmap()
+                    .map(|shm| (vcfg_offset + SHM_OFFSET, shm));
+                self.vcfg_shm_mmap = vcfg_register.create_shm_mmap();
+            }
+        }
+
+        (amls, shm)
     }
 }
 

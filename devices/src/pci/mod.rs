@@ -16,6 +16,7 @@ mod ac97_mixer;
 // TODO(b:236297362): build it on windows as weil.
 #[cfg(all(unix, feature = "audio"))]
 mod ac97_regs;
+mod acpi;
 #[cfg(unix)]
 mod coiommu;
 mod msi;
@@ -40,6 +41,7 @@ pub use self::ac97::Ac97Backend;
 pub use self::ac97::Ac97Dev;
 #[cfg(all(unix, feature = "audio"))]
 pub use self::ac97::Ac97Parameters;
+pub use self::acpi::DeviceVcfgRegister;
 #[cfg(unix)]
 pub use self::coiommu::CoIommuDev;
 #[cfg(unix)]

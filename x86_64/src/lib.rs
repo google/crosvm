@@ -605,6 +605,7 @@ impl arch::LinuxArch for X8664arch {
             }
         }
 
+        let pcie_vcfg_range = Self::get_pcie_vcfg_mmio_range(&mem, &pcie_cfg_mmio_range);
         let mmio_bus = Arc::new(devices::Bus::new());
         let io_bus = Arc::new(devices::Bus::new());
 
@@ -617,7 +618,7 @@ impl arch::LinuxArch for X8664arch {
             .map(|(dev, jail_orig)| (dev.into_pci_device().unwrap(), jail_orig))
             .collect();
 
-        let (pci, pci_irqs, mut pid_debug_label_map) = arch::generate_pci_root(
+        let (pci, pci_irqs, mut pid_debug_label_map, amls) = arch::generate_pci_root(
             pci_devices,
             irq_chip.as_irq_chip_mut(),
             mmio_bus.clone(),
@@ -625,6 +626,7 @@ impl arch::LinuxArch for X8664arch {
             system_allocator,
             &mut vm,
             4, // Share the four pin interrupts (INTx#)
+            Some(pcie_vcfg_range.start),
         )
         .map_err(Error::CreatePciRoot)?;
 
@@ -644,7 +646,6 @@ impl arch::LinuxArch for X8664arch {
             .unwrap();
 
         let pcie_vcfg_mmio = Arc::new(Mutex::new(PciVirtualConfigMmio::new(pci.clone(), 13)));
-        let pcie_vcfg_range = Self::get_pcie_vcfg_mmio_range(&mem, &pcie_cfg_mmio_range);
         mmio_bus
             .insert(
                 pcie_vcfg_mmio,
@@ -723,7 +724,7 @@ impl arch::LinuxArch for X8664arch {
 
         // each bus occupy 1MB mmio for pcie enhanced configuration
         let max_bus = (pcie_cfg_mmio_len / 0x100000 - 1) as u8;
-        let (acpi_dev_resource, bat_control) = Self::setup_acpi_devices(
+        let (mut acpi_dev_resource, bat_control) = Self::setup_acpi_devices(
             pci.clone(),
             &mem,
             &io_bus,
@@ -742,6 +743,12 @@ impl arch::LinuxArch for X8664arch {
             max_bus,
             &mut resume_notify_devices,
         )?;
+
+        // Create customized SSDT table
+        let sdt = acpi::create_customize_ssdt(pci.clone(), amls);
+        if let Some(sdt) = sdt {
+            acpi_dev_resource.sdts.push(sdt);
+        }
 
         irq_chip
             .finalize_devices(system_allocator, &io_bus, &mmio_bus)

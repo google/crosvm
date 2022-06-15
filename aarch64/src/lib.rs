@@ -423,7 +423,7 @@ impl arch::LinuxArch for AArch64 {
             .into_iter()
             .map(|(dev, jail_orig)| (dev.into_pci_device().unwrap(), jail_orig))
             .collect();
-        let (pci, pci_irqs, mut pid_debug_label_map) = arch::generate_pci_root(
+        let (pci, pci_irqs, mut pid_debug_label_map, _amls) = arch::generate_pci_root(
             pci_devices,
             irq_chip.as_irq_chip_mut(),
             mmio_bus.clone(),
@@ -431,6 +431,7 @@ impl arch::LinuxArch for AArch64 {
             system_allocator,
             &mut vm,
             (devices::AARCH64_GIC_NR_SPIS - AARCH64_IRQ_BASE) as usize,
+            None,
         )
         .map_err(Error::CreatePciRoot)?;
 

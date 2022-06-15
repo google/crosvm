@@ -737,11 +737,13 @@ pub fn generate_pci_root(
     resources: &mut SystemAllocator,
     vm: &mut impl Vm,
     max_irqs: usize,
+    vcfg_base: Option<u64>,
 ) -> Result<
     (
         PciRoot,
         Vec<(PciAddress, u32, PciInterruptPin)>,
         BTreeMap<u32, String>,
+        BTreeMap<PciAddress, Vec<u8>>,
     ),
     DeviceRegistrationError,
 > {
@@ -854,6 +856,7 @@ pub fn generate_pci_root(
             .partition(|(_, (_, jail))| jail.is_some());
         sandboxed.into_iter().chain(non_sandboxed.into_iter())
     };
+    let mut amls = BTreeMap::new();
     for (dev_idx, dev_value) in devices {
         #[cfg(unix)]
         let (mut device, jail) = dev_value;
@@ -875,6 +878,21 @@ pub fn generate_pci_root(
             vm.register_ioevent(event, io_addr, datamatch)
                 .map_err(DeviceRegistrationError::RegisterIoevent)?;
             keep_rds.push(event.as_raw_descriptor());
+        }
+
+        if let Some(vcfg_base) = vcfg_base {
+            let (methods, shm) = device.generate_acpi_methods();
+            if !methods.is_empty() {
+                amls.insert(address, methods);
+            }
+            if let Some((offset, mmap)) = shm {
+                let _ = vm.add_memory_region(
+                    GuestAddress(vcfg_base + offset as u64),
+                    Box::new(mmap),
+                    false,
+                    false,
+                );
+            }
         }
 
         #[cfg(unix)]
@@ -906,7 +924,7 @@ pub fn generate_pci_root(
         }
     }
 
-    Ok((root, pci_irqs, pid_labels))
+    Ok((root, pci_irqs, pid_labels, amls))
 }
 
 /// Errors for image loading.
