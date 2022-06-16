@@ -913,7 +913,7 @@ pub struct RunCommand {
     /// path to put the control socket. If PATH is a directory, a name will be generated
     pub socket_path: Option<PathBuf>,
     #[cfg(feature = "tpm")]
-    #[argh(switch, long = "tpm")]
+    #[argh(switch)]
     /// enable a software emulated trusted platform module device
     pub software_tpm: bool,
     #[cfg(feature = "audio")]
