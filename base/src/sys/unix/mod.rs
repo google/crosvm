@@ -33,7 +33,6 @@ mod notifiers;
 pub mod platform_timer_resolution;
 mod poll;
 mod priority;
-pub mod rand;
 mod sched;
 pub mod scoped_signal_handler;
 mod shm;
