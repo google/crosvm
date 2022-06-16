@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod sys;
+
 use std::borrow::Cow;
 use std::cmp;
 use std::convert::TryInto;
@@ -964,7 +966,8 @@ mod tests {
         let mut reader = Reader::new(memory, chain).expect("failed to create Reader");
 
         // Open a file in read-only mode so writes to it to trigger an I/O error.
-        let mut ro_file = File::open("/dev/zero").expect("failed to open /dev/zero");
+        let device_file = if cfg!(windows) { "NUL" } else { "/dev/zero" };
+        let mut ro_file = File::open(device_file).expect("failed to open device file");
 
         reader
             .read_exact_to(&mut ro_file, 512)

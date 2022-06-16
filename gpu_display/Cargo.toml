@@ -18,3 +18,4 @@ thiserror = "*"
 [build-dependencies]
 cc = "1.0.25"
 pkg-config = "0.3.11"
+cfg-if = "1.0.0"

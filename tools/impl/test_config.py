@@ -47,7 +47,6 @@ WIN64_DISABLED_CRATES = [
     "crosvm_plugin",
     "crosvm-fuzz",
     "crosvm",
-    "devices",
     "ffi",
     "ffmpeg",
     "fuse",

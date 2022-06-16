@@ -37,7 +37,6 @@ dbus = { version = "0.9", optional = true }
 disk = { path = "../disk" }
 enumn = "0.1.0"
 ffmpeg = { path = "../media/ffmpeg", optional = true }
-gpu_display = { path = "../gpu_display", optional = true }
 rutabaga_gfx = { path = "../rutabaga_gfx", optional = true }
 hypervisor = { path = "../hypervisor" }
 kvm_sys = { path = "../kvm_sys" }
@@ -71,6 +70,7 @@ vm_memory = { path = "../vm_memory" }
 
 [target.'cfg(unix)'.dependencies]
 fuse = {path = "../fuse" }
+gpu_display = { path = "../gpu_display", optional = true }
 libcras = { version = "*", optional = true }
 minijail = "*"
 p9 = "*"

@@ -4,64 +4,71 @@
 
 //! Implements virtio devices, queues, and transport mechanisms.
 
-mod async_device;
 mod async_utils;
-mod balloon;
 mod descriptor_utils;
-mod input;
 mod interrupt;
 mod iommu;
-mod p9;
-mod pmem;
 mod queue;
-mod rng;
-#[cfg(feature = "tpm")]
-mod tpm;
-#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
-mod video;
 mod virtio_device;
-mod virtio_pci_common_config;
-mod virtio_pci_device;
-pub mod wl;
-
-pub mod block;
-pub mod console;
-pub mod fs;
-#[cfg(feature = "gpu")]
-pub mod gpu;
-pub mod net;
-pub mod resource_bridge;
-#[cfg(feature = "audio")]
-pub mod snd;
-pub mod vhost;
-
-pub use self::balloon::*;
-pub use self::block::*;
-pub use self::console::*;
 pub use self::descriptor_utils::Error as DescriptorError;
 pub use self::descriptor_utils::*;
-#[cfg(feature = "gpu")]
-pub use self::gpu::*;
-pub use self::input::*;
 pub use self::interrupt::*;
-#[cfg(unix)]
-pub use self::iommu::sys::unix::vfio_wrapper;
 pub use self::iommu::*;
-pub use self::net::*;
-pub use self::p9::*;
-pub use self::pmem::*;
 pub use self::queue::*;
-pub use self::rng::*;
-#[cfg(feature = "audio")]
-pub use self::snd::*;
-#[cfg(feature = "tpm")]
-pub use self::tpm::*;
-#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
-pub use self::video::*;
 pub use self::virtio_device::*;
-pub use self::virtio_pci_device::*;
-pub use self::wl::*;
+cfg_if::cfg_if! {
+    if #[cfg(unix)] {
+        mod async_device;
+        mod balloon;
+        mod input;
+        mod p9;
+        mod pmem;
+        mod rng;
+        #[cfg(feature = "tpm")]
+        mod tpm;
+        #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+        mod video;
+        mod virtio_pci_common_config;
+        mod virtio_pci_device;
+        pub mod wl;
 
+        pub mod block;
+        pub mod console;
+        pub mod fs;
+        #[cfg(feature = "gpu")]
+        pub mod gpu;
+        pub mod net;
+        pub mod resource_bridge;
+        #[cfg(feature = "audio")]
+        pub mod snd;
+        pub mod vhost;
+
+        pub use self::balloon::*;
+        pub use self::block::*;
+        pub use self::console::*;
+        #[cfg(feature = "gpu")]
+        pub use self::gpu::*;
+        pub use self::input::*;
+        #[cfg(unix)]
+        pub use self::iommu::sys::unix::vfio_wrapper;
+        pub use self::net::*;
+        pub use self::p9::*;
+        pub use self::pmem::*;
+        pub use self::rng::*;
+        #[cfg(feature = "audio")]
+        pub use self::snd::*;
+        #[cfg(feature = "tpm")]
+        pub use self::tpm::*;
+        #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+        pub use self::video::*;
+        pub use self::virtio_pci_device::*;
+        pub use self::wl::*;
+
+    } else if #[cfg(windows)] {
+    } else {
+        compile_error!("Unsupported platform");
+    }
+}
 use std::cmp;
 use std::convert::TryFrom;
 

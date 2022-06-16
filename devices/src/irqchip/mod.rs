@@ -15,6 +15,41 @@ use resources::SystemAllocator;
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod kvm;
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        mod x86_64;
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        pub use x86_64::*;
+
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        mod aarch64;
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        pub use aarch64::*;
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        mod pic;
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        pub use pic::*;
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        mod ioapic;
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        pub use ioapic::*;
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        mod apic;
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        pub use apic::*;
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        mod userspace;
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        pub use userspace::*;
+
         pub use self::kvm::KvmKernelIrqChip;
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         pub use self::kvm::KvmSplitIrqChip;
@@ -27,40 +62,6 @@ cfg_if::cfg_if! {
         pub use self::whpx::WhpxSplitIrqChip;
     }
 }
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-mod x86_64;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub use x86_64::*;
-
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-mod aarch64;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-pub use aarch64::*;
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-mod pic;
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub use pic::*;
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-mod ioapic;
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub use ioapic::*;
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-mod apic;
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub use apic::*;
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-mod userspace;
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub use userspace::*;
 
 pub type IrqEventIndex = usize;
 

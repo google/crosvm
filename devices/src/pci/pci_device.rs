@@ -22,7 +22,7 @@ use crate::pci::pci_configuration::{
 };
 use crate::pci::{PciAddress, PciAddressError, PciInterruptPin};
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
-#[cfg(feature = "audio")]
+#[cfg(all(unix, feature = "audio"))]
 use crate::virtio::snd::vios_backend::Error as VioSError;
 use crate::{BusAccessInfo, BusDevice, DeviceId, IrqLevelEvent};
 
@@ -44,11 +44,11 @@ pub enum Error {
     #[error("failed to add capability {0}")]
     CapabilitiesSetup(pci_configuration::Error),
     /// Create cras client failed.
-    #[cfg(all(feature = "audio", feature = "audio_cras"))]
+    #[cfg(all(unix, feature = "audio", feature = "audio_cras"))]
     #[error("failed to create CRAS Client: {0}")]
     CreateCrasClientFailed(libcras::Error),
     /// Create VioS client failed.
-    #[cfg(feature = "audio")]
+    #[cfg(all(unix, feature = "audio"))]
     #[error("failed to create VioS Client: {0}")]
     CreateViosClientFailed(VioSError),
     /// Device is already on this bus

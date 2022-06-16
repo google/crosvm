@@ -20,7 +20,7 @@ pub trait SerialDevice {
     fn new(
         protected_vm: ProtectionType,
         interrupt_evt: Event,
-        input: Option<Box<SerialInput>>,
+        input: Option<Box<dyn SerialInput>>,
         output: Option<Box<dyn io::Write + Send>>,
         sync: Option<Box<dyn FileSync + Send>>,
         out_timestamp: bool,
