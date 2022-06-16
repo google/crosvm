@@ -566,7 +566,8 @@ struct ExtCap {
 pub struct VfioPciDevice {
     device: Arc<VfioDevice>,
     config: VfioPciConfig,
-    hotplug_bus_number: Option<u8>, // hot plug device has bus number specified at device creation.
+    hotplug: bool,
+    hotplug_bus_number: Option<u8>,
     preferred_address: PciAddress,
     pci_address: Option<PciAddress>,
     interrupt_evt: Option<IrqLevelEvent>,
@@ -594,6 +595,7 @@ impl VfioPciDevice {
     pub fn new(
         #[cfg(feature = "direct")] sysfs_path: &Path,
         device: VfioDevice,
+        hotplug: bool,
         hotplug_bus_number: Option<u8>,
         guest_address: Option<PciAddress>,
         vfio_device_socket_msi: Tube,
@@ -744,6 +746,7 @@ impl VfioPciDevice {
         Ok(VfioPciDevice {
             device: dev,
             config,
+            hotplug,
             hotplug_bus_number,
             preferred_address,
             pci_address: None,
@@ -1302,7 +1305,7 @@ impl VfioPciDevice {
             let mut bar_addr: u64 = 0;
             // Don't allocate mmio for hotplug device, OS will allocate it from
             // its parent's bridge window.
-            if self.hotplug_bus_number.is_none() {
+            if !self.hotplug {
                 bar_addr = resources
                     .allocate_mmio(
                         bar_size,
@@ -1421,7 +1424,7 @@ impl VfioPciDevice {
             let mut window_addr: u64 = 0;
             // Don't allocate mmio for hotplug device, OS will allocate it from
             // its parent's bridge window.
-            if self.hotplug_bus_number.is_none() {
+            if !self.hotplug {
                 window_sz[i] = (window_sz[i] + 0xfffff) & !0xfffff;
                 let alloc = if i == NON_PREFETCHABLE {
                     Alloc::PciBridgeWindow {

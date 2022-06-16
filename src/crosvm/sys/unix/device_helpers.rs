@@ -1428,7 +1428,8 @@ pub fn create_vfio_device(
     resources: &mut SystemAllocator,
     control_tubes: &mut Vec<TaggedControlTube>,
     vfio_path: &Path,
-    bus_num: Option<u8>,
+    hotplug: bool,
+    hotplug_bus: Option<u8>,
     guest_address: Option<PciAddress>,
     coiommu_endpoints: Option<&mut Vec<u16>>,
     iommu_dev: IommuDevType,
@@ -1449,7 +1450,6 @@ pub fn create_vfio_device(
         Tube::pair().context("failed to create tube")?;
     control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
 
-    let hotplug = bus_num.is_some();
     let vfio_device_tube_vm = if hotplug {
         let (vfio_host_tube_vm, device_tube_vm) = Tube::pair().context("failed to create tube")?;
         control_tubes.push(TaggedControlTube::Vm(vfio_host_tube_vm));
@@ -1465,20 +1465,18 @@ pub fn create_vfio_device(
         iommu_dev != IommuDevType::NoIommu,
     )
     .context("failed to create vfio device")?;
-    let mut vfio_pci_device = Box::new(
-        VfioPciDevice::new(
-            #[cfg(feature = "direct")]
-            vfio_path,
-            vfio_device,
-            bus_num,
-            guest_address,
-            vfio_device_tube_msi,
-            vfio_device_tube_msix,
-            vfio_device_tube_mem,
-            vfio_device_tube_vm,
-        )
-        .context("failed to create VfioPciDevice")?,
-    );
+    let mut vfio_pci_device = Box::new(VfioPciDevice::new(
+        #[cfg(feature = "direct")]
+        vfio_path,
+        vfio_device,
+        hotplug,
+        hotplug_bus,
+        guest_address,
+        vfio_device_tube_msi,
+        vfio_device_tube_msix,
+        vfio_device_tube_mem,
+        vfio_device_tube_vm,
+    )?);
     // early reservation for pass-through PCI devices.
     let endpoint_addr = vfio_pci_device
         .allocate_address(resources)

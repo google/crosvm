@@ -682,6 +682,7 @@ fn create_devices(
                 resources,
                 control_tubes,
                 vfio_path.as_path(),
+                false,
                 None,
                 vfio_dev.guest_address(),
                 Some(&mut coiommu_attached_endpoints),
@@ -1831,10 +1832,10 @@ fn start_pci_root_worker(
 fn get_hp_bus<V: VmArch, Vcpu: VcpuArch>(
     linux: &RunnableLinuxVm<V, Vcpu>,
     host_addr: PciAddress,
-) -> Result<(Arc<Mutex<dyn HotPlugBus>>, u8)> {
-    for (bus_num, hp_bus) in linux.hotplug_bus.iter() {
+) -> Result<Arc<Mutex<dyn HotPlugBus>>> {
+    for (_, hp_bus) in linux.hotplug_bus.iter() {
         if hp_bus.lock().is_match(host_addr).is_some() {
-            return Ok((hp_bus.clone(), *bus_num));
+            return Ok(hp_bus.clone());
         }
     }
     Err(anyhow!("Failed to find a suitable hotplug bus"))
@@ -1852,7 +1853,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
 ) -> Result<()> {
     let host_addr = PciAddress::from_path(&device.path)
         .context("failed to parse hotplug device's PCI address")?;
-    let (hp_bus, bus_num) = get_hp_bus(linux, host_addr)?;
+    let hp_bus = get_hp_bus(linux, host_addr)?;
 
     let (host_key, pci_address) = match device.device_type {
         HotPlugDeviceType::UpstreamPort | HotPlugDeviceType::DownstreamPort => {
@@ -1905,7 +1906,8 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
                 sys_allocator,
                 control_tubes,
                 &device.path,
-                Some(bus_num),
+                true,
+                None,
                 None,
                 None,
                 if iommu_host_tube.is_some() {

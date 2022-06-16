@@ -426,12 +426,7 @@ impl PciePort {
     }
 
     pub fn is_match(&self, host_addr: PciAddress) -> Option<u8> {
-        let _ = self.slot_control?;
-
-        if (host_addr.bus >= self.bus_range.secondary
-            && host_addr.bus <= self.bus_range.subordinate)
-            || self.pcie_host.is_none()
-        {
+        if host_addr.bus == self.bus_range.secondary || self.pcie_host.is_none() {
             Some(self.bus_range.secondary)
         } else {
             None

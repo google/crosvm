@@ -49,6 +49,7 @@ use crate::pci::pcie::pci_bridge::BR_PREF_MEM_BASE_HIGH_REG;
 use crate::pci::pcie::pci_bridge::BR_PREF_MEM_LIMIT_HIGH_REG;
 use crate::pci::pcie::pci_bridge::BR_PREF_MEM_LOW_REG;
 use crate::pci::pcie::pci_bridge::BR_WINDOW_ALIGNMENT;
+use crate::pci::pcie::PcieDevicePortType;
 use crate::pci::PciCapabilityID;
 use crate::pci::PciClassCode;
 
@@ -106,26 +107,17 @@ impl PciHostConfig {
     }
 }
 
-// Find all the added pcie endpoint devices
-fn visit_children(dir: &Path, children: &mut Vec<PathBuf>) -> Result<()> {
+// Find all the added pcie devices
+fn visit_children(dir: &Path, children: &mut Vec<HotPlugDeviceInfo>) -> Result<()> {
     // Each pci device has a sysfs directory
     if !dir.is_dir() {
         bail!("{} isn't directory", dir.display());
     }
-
-    let class_path = dir.join("class");
-    let class_id = read(class_path.as_path())
-        .with_context(|| format!("failed to read {}", class_path.display()))?;
-    // If the device isn't pci bridge, it is the target pcie endpoint device
-    if !class_id.starts_with("0x0604".as_bytes()) {
-        children.push(dir.to_path_buf());
-        return Ok(());
-    }
-
     // Loop device sysfs subdirectory
     let entries = dir
         .read_dir()
         .with_context(|| format!("failed to read dir {}", dir.display()))?;
+    let mut devices = Vec::new();
     for entry in entries {
         let sub_dir = match entry {
             Ok(sub) => sub,
@@ -145,7 +137,63 @@ fn visit_children(dir: &Path, children: &mut Vec<PathBuf>) -> Result<()> {
             continue;
         }
         let child_path = dir.join(name);
-        visit_children(child_path.as_path(), children)?;
+        devices.push(child_path);
+    }
+    devices.reverse();
+    let mut iter = devices.iter().peekable();
+    while let Some(device) = iter.next() {
+        let class_path = device.join("class");
+        let class_id = read(class_path.as_path())
+            .with_context(|| format!("failed to read {}", class_path.display()))?;
+        let hp_interrupt = iter.peek().is_none();
+        if !class_id.starts_with("0x0604".as_bytes()) {
+            // If the device isn't pci bridge, this is a pcie endpoint device
+            children.push(HotPlugDeviceInfo {
+                device_type: HotPlugDeviceType::EndPoint,
+                path: device.to_path_buf(),
+                hp_interrupt,
+            });
+            // No need to look further
+            return Ok(());
+        } else {
+            // Find the pci express cap to get the port type of the pcie bridge
+            let host_config = PciHostConfig::new(device)?;
+            let mut cap_pointer: u8 = host_config.read_config(CAPABILITY_LIST_HEAD_OFFSET as u64);
+            while cap_pointer != 0x0 {
+                let cap_id: u8 = host_config.read_config(cap_pointer as u64);
+                if cap_id == PciCapabilityID::PciExpress as u8 {
+                    break;
+                }
+                cap_pointer = host_config.read_config(cap_pointer as u64 + 0x1);
+            }
+            if cap_pointer == 0x0 {
+                bail!(
+                    "Failed to get pcie express capability for {}",
+                    device.display()
+                );
+            }
+            let express_cap_reg: u16 = host_config.read_config(cap_pointer as u64 + 0x2);
+            match (express_cap_reg & 0xf0) >> 4 {
+                x if x == PcieDevicePortType::UpstreamPort as u16 => {
+                    children.push(HotPlugDeviceInfo {
+                        device_type: HotPlugDeviceType::UpstreamPort,
+                        path: device.to_path_buf(),
+                        hp_interrupt,
+                    })
+                }
+                x if x == PcieDevicePortType::DownstreamPort as u16 => {
+                    children.push(HotPlugDeviceInfo {
+                        device_type: HotPlugDeviceType::DownstreamPort,
+                        path: device.to_path_buf(),
+                        hp_interrupt,
+                    })
+                }
+                _ => (),
+            }
+        }
+    }
+    for device in devices.iter() {
+        visit_children(device.as_path(), children)?;
     }
     Ok(())
 }
@@ -175,7 +223,7 @@ impl HotplugWorker {
         }
 
         // Probe the new added pcie endpoint devices
-        let mut children: Vec<PathBuf> = Vec::new();
+        let mut children: Vec<HotPlugDeviceInfo> = Vec::new();
         visit_children(host_sysfs.as_path(), &mut children)?;
 
         // Without reverse children, physical larger BDF device is at the top, it will be
@@ -196,55 +244,54 @@ impl HotplugWorker {
         // between host kernel and crosvm during hotplug out process.
         children.reverse();
         while let Some(child) = children.pop() {
-            // In order to bind device to vfio-pci driver, get device VID and DID
-            let vendor_path = child.join("vendor");
-            let vendor_id = read(vendor_path.as_path())
-                .with_context(|| format!("failed to read {}", vendor_path.display()))?;
-            // Remove the first two elements 0x
-            let prefix: &str = "0x";
-            let vendor = match vendor_id.strip_prefix(prefix.as_bytes()) {
-                Some(v) => v.to_vec(),
-                None => vendor_id,
-            };
-            let device_path = child.join("device");
-            let device_id = read(device_path.as_path())
-                .with_context(|| format!("failed to read {}", device_path.display()))?;
-            // Remove the first two elements 0x
-            let device = match device_id.strip_prefix(prefix.as_bytes()) {
-                Some(d) => d.to_vec(),
-                None => device_id,
-            };
-            let new_id = vec![
-                String::from_utf8_lossy(&vendor),
-                String::from_utf8_lossy(&device),
-            ]
-            .join(" ");
-            if Path::new("/sys/bus/pci/drivers/vfio-pci-pm/new_id").exists() {
-                let _ = write("/sys/bus/pci/drivers/vfio-pci-pm/new_id", &new_id);
+            if let HotPlugDeviceType::EndPoint = child.device_type {
+                // In order to bind device to vfio-pci driver, get device VID and DID
+                let vendor_path = child.path.join("vendor");
+                let vendor_id = read(vendor_path.as_path())
+                    .with_context(|| format!("failed to read {}", vendor_path.display()))?;
+                // Remove the first two elements 0x
+                let prefix: &str = "0x";
+                let vendor = match vendor_id.strip_prefix(prefix.as_bytes()) {
+                    Some(v) => v.to_vec(),
+                    None => vendor_id,
+                };
+                let device_path = child.path.join("device");
+                let device_id = read(device_path.as_path())
+                    .with_context(|| format!("failed to read {}", device_path.display()))?;
+                // Remove the first two elements 0x
+                let device = match device_id.strip_prefix(prefix.as_bytes()) {
+                    Some(d) => d.to_vec(),
+                    None => device_id,
+                };
+                let new_id = vec![
+                    String::from_utf8_lossy(&vendor),
+                    String::from_utf8_lossy(&device),
+                ]
+                .join(" ");
+                if Path::new("/sys/bus/pci/drivers/vfio-pci-pm/new_id").exists() {
+                    let _ = write("/sys/bus/pci/drivers/vfio-pci-pm/new_id", &new_id);
+                }
+                // This is normal - either the kernel doesn't support vfio-pci-pm driver,
+                // or the device failed to attach to vfio-pci-pm driver (most likely due to
+                // lack of power management capability).
+                if !child.path.join("driver/unbind").exists() {
+                    write("/sys/bus/pci/drivers/vfio-pci/new_id", &new_id).with_context(|| {
+                        format!("failed to write {} into vfio-pci/new_id", new_id)
+                    })?;
+                }
             }
-            // This is normal - either the kernel doesn't support vfio-pci-pm driver,
-            // or the device failed to attach to vfio-pci-pm driver (most likely due to
-            // lack of power management capability).
-            if !child.join("driver/unbind").exists() {
-                write("/sys/bus/pci/drivers/vfio-pci/new_id", &new_id)
-                    .with_context(|| format!("failed to write {} into vfio-pci/new_id", new_id))?;
-            }
-
-            let device = HotPlugDeviceInfo {
-                device_type: HotPlugDeviceType::EndPoint,
-                path: child.clone(),
-                hp_interrupt: children.is_empty(),
-            };
-
             // Request to hotplug the new added pcie device into guest
-            let request = VmRequest::HotPlugCommand { device, add: true };
-            vm_socket.lock().send(&request).with_context(|| {
-                format!("failed to send hotplug request for {}", child.display())
-            })?;
-            vm_socket.lock().recv::<VmResponse>().with_context(|| {
-                format!("failed to receive hotplug response for {}", child.display())
-            })?;
-
+            let request = VmRequest::HotPlugCommand {
+                device: child.clone(),
+                add: true,
+            };
+            let vm_socket = vm_socket.lock();
+            vm_socket
+                .send(&request)
+                .with_context(|| format!("failed to send hotplug request for {:?}", child))?;
+            vm_socket
+                .recv::<VmResponse>()
+                .with_context(|| format!("failed to receive hotplug response for {:?}", child))?;
             if !*child_exist {
                 *child_exist = true;
             }
