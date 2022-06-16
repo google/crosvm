@@ -44,7 +44,7 @@ cargo run --features=gpu,x,virgl_renderer -- run \
     --display-window-keyboard \
     --display-window-mouse \
     --tap-name crosvm_tap \
-    --rwroot ./rootfs \
+    --rwdisk ./rootfs \
     --initrd ./initrd.img-* \
     -p "root=/dev/vda5" \
     ./vmlinuz-*

@@ -29,7 +29,7 @@ fi
 # the kernel which partition to use (vda5 in case of ubuntu-20.04).
 cargo run --features=all-linux -- run \
     --disable-sandbox \
-    --rwroot ./rootfs \
+    --rwdisk ./rootfs \
     --initrd ./initrd.img-* \
     -p "root=/dev/vda5" \
     ./vmlinuz-*

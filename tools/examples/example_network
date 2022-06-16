@@ -36,7 +36,7 @@ fi
 # Use the previously configured crosvm_tap device for networking.
 cargo run -- run \
     --disable-sandbox \
-    --rwroot ./rootfs \
+    --rwdisk ./rootfs \
     --initrd ./initrd.img-* \
     --tap-name crosvm_tap \
     -p "root=/dev/vda5" \
