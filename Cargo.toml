@@ -76,6 +76,7 @@ members = [
     "serde_keyvalue",
     "tpm2",
     "tpm2-sys",
+    "tracing",
     "usb_sys",
     "usb_util",
     "vfio_sys",
