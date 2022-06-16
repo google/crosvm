@@ -41,7 +41,7 @@ pub trait Listener: Sized {
 }
 
 /// Abstracts a vhost-user connection and related operations.
-pub trait Endpoint<R: Req>: Sized {
+pub trait Endpoint<R: Req>: Sized + Send {
     /// Type of an object that Endpoint is created from.
     type Listener: Listener;
 

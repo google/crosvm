@@ -39,7 +39,7 @@ impl From<RecvIntoBufsError> for Error {
 }
 
 /// VFIO device which can be used as virtio-vhost-user device backend.
-pub trait Device {
+pub trait Device: Send {
     /// This event must be read before handle_request() is called.
     fn event(&self) -> &Event;
 
