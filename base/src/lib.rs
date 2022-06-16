@@ -101,12 +101,13 @@ cfg_if::cfg_if! {
             DuplicateHandleRequest, DuplicateHandleResponse, DuplicateHandleTube,
         };
         pub use platform::{set_audio_thread_priorities, thread};
-        pub use platform::{BlockingMode, FramingMode, StreamChannel};
         pub use platform::gmtime_secure;
     } else {
         compile_error!("Unsupported platform");
     }
 }
+
+pub use platform::{BlockingMode, FramingMode, StreamChannel};
 
 pub use platform::{
     deserialize_with_descriptors, EventContext, FileAllocate, FileGetLen, FileSerdeWrapper,
