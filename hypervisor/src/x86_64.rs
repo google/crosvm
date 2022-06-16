@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[cfg(any(unix, feature = "haxm"))]
+#[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 use std::arch::x86_64::{__cpuid, _rdtsc};
 
 use serde::{Deserialize, Serialize};
@@ -120,7 +120,7 @@ impl_downcast!(VcpuX86_64);
 pub const MSR_IA32_TSC: u32 = 0x00000010;
 
 /// Implementation of get_tsc_offset that uses VcpuX86_64::get_msrs.
-#[cfg(any(unix, feature = "haxm"))]
+#[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 pub(crate) fn get_tsc_offset_from_msr(vcpu: &impl VcpuX86_64) -> Result<u64> {
     let mut regs = vec![Register {
         id: crate::MSR_IA32_TSC,
@@ -143,7 +143,7 @@ pub(crate) fn get_tsc_offset_from_msr(vcpu: &impl VcpuX86_64) -> Result<u64> {
 }
 
 /// Implementation of get_tsc_offset that uses VcpuX86_64::get_msrs.
-#[cfg(any(unix, feature = "haxm"))]
+#[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 pub(crate) fn set_tsc_offset_via_msr(vcpu: &impl VcpuX86_64, offset: u64) -> Result<()> {
     // Safe because _rdtsc takes no arguments
     let host_tsc = unsafe { _rdtsc() };
@@ -158,7 +158,7 @@ pub(crate) fn set_tsc_offset_via_msr(vcpu: &impl VcpuX86_64, offset: u64) -> Res
 }
 
 /// Gets host cpu max physical address bits.
-#[cfg(any(unix, feature = "haxm"))]
+#[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 pub(crate) fn host_phys_addr_bits() -> u8 {
     let highest_ext_function = unsafe { __cpuid(0x80000000) };
     if highest_ext_function.eax >= 0x80000008 {
