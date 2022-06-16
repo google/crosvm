@@ -713,7 +713,7 @@ impl Vcpu for WhpxVcpu {
         }
 
         // safe because we own this whpx virtual processor index, and assume the vm partition is still valid
-        let exit_context_ptr = self.last_exit_context.as_ptr();
+        let exit_context_ptr = Arc::as_ptr(&self.last_exit_context);
         check_whpx!(unsafe {
             WHvRunVirtualProcessor(
                 self.vm_partition.partition,
