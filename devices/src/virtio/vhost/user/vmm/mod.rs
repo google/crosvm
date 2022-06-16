@@ -4,7 +4,6 @@
 
 mod block;
 mod handler;
-mod worker;
 
 pub use self::block::*;
 pub use self::handler::VhostUserHandler;
@@ -55,6 +54,9 @@ pub enum Error {
     /// Failed to create `base::Event`.
     #[error("failed to create Event: {0}")]
     CreateEvent(base::Error),
+    /// Unsupported shared memory mapper
+    #[error("unsupported shared memory mapper: {0}")]
+    CreateShmemMapperError(VhostError),
     /// Failed to get config.
     #[error("failed to get config: {0}")]
     GetConfig(VhostError),
@@ -125,6 +127,9 @@ pub enum Error {
     /// Failed to set the size of the queue.
     #[error("failed to set the size of the queue: {0}")]
     SetVringNum(VhostError),
+    /// Error getting the shmem regions.
+    #[error("failed to enumerate shmem regions {0}")]
+    ShmemRegions(VhostError),
     /// Failed to connect socket.
     #[error("failed to connect socket: {0}")]
     SocketConnect(std::io::Error),
@@ -137,6 +142,9 @@ pub enum Error {
     /// The tag for the Fs device was too long to fit in the config space.
     #[error("tag is too long: {len} > {max}")]
     TagTooLong { len: usize, max: usize },
+    /// Too many shmem regions.
+    #[error("too many shmem regions: {0} > 1")]
+    TooManyShmemRegions(usize),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

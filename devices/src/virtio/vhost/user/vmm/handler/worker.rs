@@ -6,16 +6,20 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use base::Event;
-use cros_async::{select2, Executor, SelectResult};
+use cros_async::{select3, Executor, SelectResult};
 use futures::pin_mut;
 use vm_memory::GuestMemory;
 
+use crate::virtio::vhost::user::vmm::handler::sys::{
+    run_backend_request_handler, BackendReqHandler,
+};
 use crate::virtio::{async_utils, Interrupt, Queue};
 
 pub struct Worker {
     pub queues: Vec<Queue>,
     pub mem: GuestMemory,
     pub kill_evt: Event,
+    pub backend_req_handler: Option<BackendReqHandler>,
 }
 
 impl Worker {
@@ -31,10 +35,16 @@ impl Worker {
         let kill = async_utils::await_and_exit(&ex, kill_evt);
         pin_mut!(kill);
 
-        match ex.run_until(select2(resample, kill)) {
-            Ok((resample_res, _)) => {
+        let req_handler = run_backend_request_handler(self.backend_req_handler.take(), &ex);
+        pin_mut!(req_handler);
+
+        match ex.run_until(select3(resample, kill, req_handler)) {
+            Ok((resample_res, _, backend_result)) => {
                 if let SelectResult::Finished(Err(e)) = resample_res {
                     return Err(format!("failed to resample a irq value: {:?}", e));
+                }
+                if let SelectResult::Finished(Err(e)) = backend_result {
+                    return Err(format!("backend request failure: {:#}", e));
                 }
                 Ok(())
             }

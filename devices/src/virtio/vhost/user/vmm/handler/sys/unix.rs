@@ -4,16 +4,23 @@
 
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
+use anyhow::{bail, Context, Result};
+use base::{info, AsRawDescriptor, Descriptor, SafeDescriptor};
+use cros_async::{AsyncWrapper, Executor};
 use vmm_vhost::connection::socket::Endpoint as SocketEndpoint;
 use vmm_vhost::message::{MasterReq, VhostUserProtocolFeatures};
-use vmm_vhost::Master;
+use vmm_vhost::{Error as VhostError, Master, MasterReqHandler, VhostUserMaster};
 
-use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
-use crate::virtio::vhost::user::vmm::{Error, Result};
+use crate::virtio::vhost::user::vmm::handler::{BackendReqHandlerImpl, VhostUserHandler};
+use crate::virtio::vhost::user::vmm::{Error, Result as VhostResult};
 
 pub(in crate::virtio::vhost::user::vmm::handler) type SocketMaster =
     Master<SocketEndpoint<MasterReq>>;
+
+pub(in crate::virtio::vhost::user::vmm::handler) type BackendReqHandler =
+    MasterReqHandler<Mutex<BackendReqHandlerImpl>>;
 
 impl VhostUserHandler {
     /// Creates a `VhostUserHandler` instance attached to the provided UDS path
@@ -24,7 +31,7 @@ impl VhostUserHandler {
         allow_features: u64,
         init_features: u64,
         allow_protocol_features: VhostUserProtocolFeatures,
-    ) -> Result<Self> {
+    ) -> VhostResult<Self> {
         Self::new(
             SocketMaster::connect(path, max_queue_num)
                 .map_err(Error::SocketConnectOnMasterCreate)?,
@@ -42,12 +49,57 @@ impl VhostUserHandler {
         allow_features: u64,
         init_features: u64,
         allow_protocol_features: VhostUserProtocolFeatures,
-    ) -> Result<Self> {
+    ) -> VhostResult<Self> {
         Self::new(
             SocketMaster::from_stream(sock, max_queue_num),
             allow_features,
             init_features,
             allow_protocol_features,
         )
+    }
+
+    pub fn initialize_backend_req_handler(&mut self, h: BackendReqHandlerImpl) -> VhostResult<()> {
+        let handler = MasterReqHandler::new(Arc::new(Mutex::new(h)))
+            .map_err(Error::CreateShmemMapperError)?;
+        self.vu
+            .set_slave_request_fd(&Descriptor(handler.get_tx_raw_fd()))
+            .map_err(Error::SetDeviceRequestChannel)?;
+        self.backend_req_handler = Some(handler);
+        Ok(())
+    }
+}
+
+pub async fn run_backend_request_handler(
+    handler: Option<BackendReqHandler>,
+    ex: &Executor,
+) -> Result<()> {
+    let mut handler = match handler {
+        Some(h) => h,
+        None => std::future::pending().await,
+    };
+
+    let h = SafeDescriptor::try_from(&handler as &dyn AsRawDescriptor)
+        .map(AsyncWrapper::new)
+        .context("failed to get safe descriptor for handler")?;
+    let handler_source = ex
+        .async_from(h)
+        .context("failed to create an async source")?;
+
+    loop {
+        handler_source
+            .wait_readable()
+            .await
+            .context("failed to wait for the handler to become readable")?;
+        match handler.handle_request() {
+            Ok(_) => (),
+            Err(VhostError::ClientExit) => {
+                info!("vhost-user connection closed");
+                // Exit as the client closed the connection.
+                return Ok(());
+            }
+            Err(e) => {
+                bail!("failed to handle a vhost-user request: {}", e);
+            }
+        };
     }
 }

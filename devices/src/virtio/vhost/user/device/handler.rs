@@ -49,6 +49,7 @@ pub(super) mod sys;
 
 use sys::Doorbell;
 
+use std::collections::BTreeMap;
 use std::convert::{From, TryFrom};
 use std::fs::File;
 use std::num::Wrapping;
@@ -56,24 +57,26 @@ use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
 use base::{
-    error, info, AsRawDescriptor, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
-    SharedMemory,
+    error, info, AsRawDescriptor, Event, FromRawDescriptor, IntoRawDescriptor, Protection,
+    SafeDescriptor, SharedMemory,
 };
 use cros_async::{AsyncWrapper, Executor};
 use sync::Mutex;
+use vm_control::VmMemorySource;
 use vm_memory::{GuestAddress, GuestMemory, MemoryRegion};
 use vmm_vhost::{
     connection::Endpoint,
     message::{
-        MasterReq, VhostSharedMemoryRegion, VhostUserConfigFlags, VhostUserInflight,
-        VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserSingleMemoryRegion,
+        MasterReq, SlaveReq, VhostSharedMemoryRegion, VhostUserConfigFlags, VhostUserInflight,
+        VhostUserMemoryRegion, VhostUserProtocolFeatures, VhostUserShmemMapMsg,
+        VhostUserShmemMapMsgFlags, VhostUserShmemUnmapMsg, VhostUserSingleMemoryRegion,
         VhostUserVirtioFeatures, VhostUserVringAddrFlags, VhostUserVringState,
     },
-    Error as VhostError, Protocol, Result as VhostResult, SlaveReqHandler,
-    VhostUserSlaveReqHandler, VhostUserSlaveReqHandlerMut,
+    Error as VhostError, Protocol, Result as VhostResult, Slave, SlaveReqHandler,
+    VhostUserMasterReqHandler, VhostUserSlaveReqHandler, VhostUserSlaveReqHandlerMut,
 };
 
-use crate::virtio::{Queue, SignalableInterrupt};
+use crate::virtio::{Queue, SharedMemoryMapper, SharedMemoryRegion, SignalableInterrupt};
 
 #[cfg(unix)]
 use {base::clear_fd_flags, std::os::unix::io::AsRawFd};
@@ -185,6 +188,18 @@ pub trait VhostUserBackend {
 
     /// Resets the vhost-user backend.
     fn reset(&mut self);
+
+    /// Returns the device's shared memory region if present.
+    fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {
+        None
+    }
+
+    /// Accepts the trait object used to map files into the device's shared
+    /// memory region.
+    ///
+    /// If `get_shared_memory_region` returns `Some`, then this will be called
+    /// before `start_queue`.
+    fn set_shared_memory_mapper(&mut self, _mapper: Box<dyn SharedMemoryMapper>) {}
 }
 
 /// A virtio ring entry.
@@ -370,6 +385,7 @@ where
     mem: Option<GuestMemory>,
     backend: Box<dyn VhostUserBackend>,
     ops: O,
+    shmid: Option<u8>,
 }
 
 impl DeviceRequestHandler<VhostUserRegularOps> {
@@ -397,6 +413,7 @@ where
             mem: None,
             backend,
             ops,
+            shmid: None,
         }
     }
 }
@@ -659,10 +676,25 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
         Ok(())
     }
 
-    fn set_slave_req_fd(&mut self, fd: File) {
-        if let Err(e) = self.backend.set_device_request_channel(fd) {
-            error!("failed to set device request channel: {}", e);
-        }
+    #[allow(unused, dead_code, clippy::diverging_sub_expression)]
+    fn set_slave_req_fd(&mut self, file: File) {
+        let shmid = match self.shmid {
+            Some(shmid) => shmid,
+            None => {
+                if let Err(e) = self.backend.set_device_request_channel(file) {
+                    error!("failed to set device request channel: {}", e);
+                }
+                return;
+            }
+        };
+        let ep: Box<dyn Endpoint<SlaveReq>> = todo!();
+        let frontend = Slave::new(ep);
+        self.backend
+            .set_shared_memory_mapper(Box::new(VhostShmemMapper {
+                frontend,
+                shmid,
+                mapped_regions: BTreeMap::new(),
+            }));
     }
 
     fn get_inflight_fd(
@@ -696,7 +728,62 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
     }
 
     fn get_shared_memory_regions(&mut self) -> VhostResult<Vec<VhostSharedMemoryRegion>> {
-        Ok(vec![])
+        Ok(if let Some(r) = self.backend.get_shared_memory_region() {
+            self.shmid = Some(r.id);
+            vec![VhostSharedMemoryRegion::new(r.id, r.length)]
+        } else {
+            Vec::new()
+        })
+    }
+}
+
+struct VhostShmemMapper {
+    frontend: Slave,
+    shmid: u8,
+    mapped_regions: BTreeMap<u64 /* offset */, u64 /* size */>,
+}
+
+impl SharedMemoryMapper for VhostShmemMapper {
+    fn add_mapping(
+        &mut self,
+        source: VmMemorySource,
+        offset: u64,
+        prot: Protection,
+    ) -> anyhow::Result<()> {
+        let (descriptor, fd_offset, size) = match source {
+            VmMemorySource::Descriptor {
+                descriptor,
+                offset,
+                size,
+            } => (descriptor, offset, size),
+            VmMemorySource::SharedMemory(shmem) => {
+                let size = shmem.size();
+                let descriptor =
+                    unsafe { SafeDescriptor::from_raw_descriptor(shmem.into_raw_descriptor()) };
+                (descriptor, 0, size)
+            }
+            _ => bail!("unsupported source"),
+        };
+        let flags = VhostUserShmemMapMsgFlags::from_bits(libc::c_int::from(prot) as u8)
+            .context(format!("unsupported protection flags {:?}", prot))?;
+        let msg = VhostUserShmemMapMsg::new(self.shmid, offset, fd_offset, size, flags);
+        self.frontend
+            .shmem_map(&msg, &descriptor)
+            .context("failed to map memory")?;
+        self.mapped_regions.insert(offset, size);
+        Ok(())
+    }
+
+    fn remove_mapping(&mut self, offset: u64) -> anyhow::Result<()> {
+        let size = self
+            .mapped_regions
+            .remove(&offset)
+            .context("unknown offset")?;
+        let msg = VhostUserShmemUnmapMsg::new(self.shmid, offset, size);
+        self.frontend
+            .shmem_unmap(&msg)
+            .context("failed to map memory")
+            .map(|_| ())
     }
 }
 

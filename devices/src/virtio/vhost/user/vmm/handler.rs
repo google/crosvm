@@ -3,21 +3,26 @@
 // found in the LICENSE file.
 
 mod sys;
+mod worker;
 
 use std::io::Write;
 use std::thread;
 
-use base::{error, AsRawDescriptor, Event, Tube};
+use base::{error, AsRawDescriptor, Event, Protection, SafeDescriptor, Tube};
+use vm_control::VmMemorySource;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{
-    VhostUserConfigFlags, VhostUserProtocolFeatures, VhostUserVirtioFeatures,
+    VhostUserConfigFlags, VhostUserProtocolFeatures, VhostUserShmemMapMsg, VhostUserShmemUnmapMsg,
+    VhostUserVirtioFeatures,
 };
-use vmm_vhost::{VhostBackend, VhostUserMaster, VhostUserMemoryRegionInfo, VringConfigData};
+use vmm_vhost::{
+    HandlerResult, VhostBackend, VhostUserMaster, VhostUserMasterReqHandlerMut,
+    VhostUserMemoryRegionInfo, VringConfigData,
+};
 
-use crate::virtio::vhost::user::vmm::handler::sys::SocketMaster;
-use crate::virtio::vhost::user::vmm::worker::Worker;
+use crate::virtio::vhost::user::vmm::handler::sys::{BackendReqHandler, SocketMaster};
 use crate::virtio::vhost::user::vmm::{Error, Result};
-use crate::virtio::{Interrupt, Queue};
+use crate::virtio::{Interrupt, Queue, SharedMemoryMapper, SharedMemoryRegion};
 
 fn set_features(vu: &mut SocketMaster, avail_features: u64, ack_features: u64) -> Result<u64> {
     let features = avail_features & ack_features;
@@ -30,6 +35,9 @@ pub struct VhostUserHandler {
     pub avail_features: u64,
     acked_features: u64,
     protocol_features: VhostUserProtocolFeatures,
+    backend_req_handler: Option<BackendReqHandler>,
+    // Shared memory region info. IPC result from backend is saved with outer Option.
+    shmem_region: Option<Option<SharedMemoryRegion>>,
 }
 
 impl VhostUserHandler {
@@ -60,6 +68,8 @@ impl VhostUserHandler {
             avail_features,
             acked_features,
             protocol_features,
+            backend_req_handler: None,
+            shmem_region: None,
         })
     }
 
@@ -241,13 +251,15 @@ impl VhostUserHandler {
         let label = format!("vhost_user_virtio_{}", label);
         let kill_evt = Event::new().map_err(Error::CreateEvent)?;
         let self_kill_evt = kill_evt.try_clone().map_err(Error::CreateEvent)?;
+        let backend_req_handler = self.backend_req_handler.take();
         thread::Builder::new()
             .name(label.clone())
             .spawn(move || {
-                let mut worker = Worker {
+                let mut worker = worker::Worker {
                     queues,
                     mem,
                     kill_evt,
+                    backend_req_handler,
                 };
 
                 if let Err(e) = worker.run(interrupt) {
@@ -269,5 +281,85 @@ impl VhostUserHandler {
                 .map_err(Error::GetVringBase)?;
         }
         Ok(())
+    }
+
+    pub fn get_shared_memory_region(&mut self) -> Result<Option<SharedMemoryRegion>> {
+        if let Some(r) = self.shmem_region.as_ref() {
+            return Ok(r.clone());
+        }
+        let regions = self
+            .vu
+            .get_shared_memory_regions()
+            .map_err(Error::ShmemRegions)?;
+        let region = match regions.len() {
+            0 => None,
+            1 => Some(SharedMemoryRegion {
+                id: regions[0].id,
+                length: regions[0].length,
+            }),
+            n => return Err(Error::TooManyShmemRegions(n)),
+        };
+
+        self.shmem_region = Some(region.clone());
+        Ok(region)
+    }
+
+    pub fn set_shared_memory_mapper(&mut self, mapper: Box<dyn SharedMemoryMapper>) -> Result<()> {
+        // The virtio framework will only call this if get_shared_memory_region returned a region
+        let shmid = self
+            .shmem_region
+            .clone()
+            .flatten()
+            .expect("missing shmid")
+            .id;
+        self.initialize_backend_req_handler(BackendReqHandlerImpl { mapper, shmid })
+    }
+}
+
+pub struct BackendReqHandlerImpl {
+    mapper: Box<dyn SharedMemoryMapper>,
+    shmid: u8,
+}
+
+impl VhostUserMasterReqHandlerMut for BackendReqHandlerImpl {
+    fn shmem_map(
+        &mut self,
+        req: &VhostUserShmemMapMsg,
+        fd: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
+        if req.shmid != self.shmid {
+            error!("bad shmid {}, expected {}", req.shmid, self.shmid);
+            return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
+        }
+        match self.mapper.add_mapping(
+            VmMemorySource::Descriptor {
+                descriptor: SafeDescriptor::try_from(fd)
+                    .map_err(|_| std::io::Error::from_raw_os_error(libc::EIO))?,
+                offset: req.fd_offset,
+                size: req.len,
+            },
+            req.shm_offset,
+            Protection::from(req.flags.bits() as libc::c_int),
+        ) {
+            Ok(()) => Ok(0),
+            Err(e) => {
+                error!("failed to create mapping {:?}", e);
+                Err(std::io::Error::from_raw_os_error(libc::EINVAL))
+            }
+        }
+    }
+
+    fn shmem_unmap(&mut self, req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
+        if req.shmid != self.shmid {
+            error!("bad shmid {}, expected {}", req.shmid, self.shmid);
+            return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
+        }
+        match self.mapper.remove_mapping(req.shm_offset) {
+            Ok(()) => Ok(0),
+            Err(e) => {
+                error!("failed to remove mapping {:?}", e);
+                Err(std::io::Error::from_raw_os_error(libc::EINVAL))
+            }
+        }
     }
 }
