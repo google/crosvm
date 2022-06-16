@@ -8,7 +8,7 @@
 #![allow(dead_code)]
 
 use anyhow::{anyhow, Result};
-use base::{error, info};
+use base::{debug, error};
 use lazy_static::lazy_static;
 use std::arch::x86_64::_rdtsc;
 
@@ -28,9 +28,9 @@ fn rdtsc_safe() -> u64 {
 lazy_static! {
     static ref TSC_STATE: Option<TscState> = match calibrate_tsc_state(rdtsc_safe) {
         Ok(tsc_state) => {
-            info!("Using calibrated tsc frequency: {} Hz", tsc_state.frequency);
+            debug!("Using calibrated tsc frequency: {} Hz", tsc_state.frequency);
             for (core, offset) in tsc_state.offsets.iter().enumerate() {
-                info!("Core {} has tsc offset of {:?} ns", core, offset);
+                debug!("Core {} has tsc offset of {:?} ns", core, offset);
             }
             Some(tsc_state)
         }
