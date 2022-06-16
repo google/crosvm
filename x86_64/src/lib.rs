@@ -1903,6 +1903,7 @@ mod tests {
 
     #[test]
     #[cfg(feature = "direct")]
+    #[ignore] // TODO(b/236253615): Fix and re-enable this test.
     fn end_addr_before_32bits() {
         setup();
         // On volteer, type16 (coreboot) region is at 0x00000000769f3000-0x0000000076ffffff.

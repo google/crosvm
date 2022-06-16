@@ -6,7 +6,7 @@ edition = "2021"
 
 [features]
 gdb = ["gdbstub_arch", "arch/gdb"]
-direct = []
+direct = ["arch/direct", "devices/direct"]
 
 [dependencies]
 arch = { path = "../arch" }

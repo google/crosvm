@@ -210,6 +210,8 @@ where
             .try_clone()
             .expect("unable to clone exit_evt_wrtube"),
         Default::default(),
+        #[cfg(feature = "direct")]
+        &[], // direct_gpe
         &mut irq_chip,
         X86_64_SCI_IRQ,
         (&None, None),
