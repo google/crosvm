@@ -116,23 +116,13 @@ impl FromStr for VhostUserFsOption {
 #[derive(Serialize, Deserialize)]
 pub struct VhostUserWlOption {
     pub socket: PathBuf,
-    pub vm_tube: PathBuf,
 }
 
 impl FromStr for VhostUserWlOption {
-    type Err = &'static str;
+    type Err = <PathBuf as FromStr>::Err;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut components = s.splitn(2, ":");
-        let socket = components
-            .next()
-            .map(PathBuf::from)
-            .ok_or("missing socket path")?;
-        let vm_tube = components
-            .next()
-            .map(PathBuf::from)
-            .ok_or("missing vm tube path")?;
-        Ok(Self { vm_tube, socket })
+        Ok(Self { socket: s.parse()? })
     }
 }
 
@@ -1401,7 +1391,7 @@ pub struct Config {
     #[cfg(feature = "audio")]
     pub vhost_user_snd: Vec<VhostUserOption>,
     pub vhost_user_vsock: Vec<VhostUserOption>,
-    pub vhost_user_wl: Vec<VhostUserWlOption>,
+    pub vhost_user_wl: Option<VhostUserWlOption>,
     #[cfg(unix)]
     pub vhost_vsock_device: Option<PathBuf>,
     #[cfg(feature = "video-decoder")]
@@ -1591,7 +1581,7 @@ impl Default for Config {
             #[cfg(feature = "audio")]
             vhost_user_snd: Vec::new(),
             vhost_user_vsock: Vec::new(),
-            vhost_user_wl: Vec::new(),
+            vhost_user_wl: None,
             #[cfg(unix)]
             vhost_vsock_device: None,
             #[cfg(feature = "video-decoder")]

@@ -13,8 +13,11 @@ use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 use crate::virtio::vhost::user::vmm::{Result, VhostUserHandler};
 use crate::virtio::wl::{
     QUEUE_SIZE, QUEUE_SIZES, VIRTIO_WL_F_SEND_FENCES, VIRTIO_WL_F_TRANS_FLAGS,
+    VIRTIO_WL_F_USE_SHMEM,
 };
-use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice};
+use crate::virtio::{
+    DeviceType, Interrupt, Queue, SharedMemoryMapper, SharedMemoryRegion, VirtioDevice,
+};
 
 pub struct Wl {
     kill_evt: Option<Event>,
@@ -30,10 +33,12 @@ impl Wl {
         let allow_features = base_features
             | 1 << VIRTIO_WL_F_TRANS_FLAGS
             | 1 << VIRTIO_WL_F_SEND_FENCES
+            | 1 << VIRTIO_WL_F_USE_SHMEM
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        let allow_protocol_features =
-            VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
+        let allow_protocol_features = VhostUserProtocolFeatures::MQ
+            | VhostUserProtocolFeatures::CONFIG
+            | VhostUserProtocolFeatures::SLAVE_REQ;
 
         let mut handler = VhostUserHandler::new_from_path(
             socket_path,
@@ -106,6 +111,22 @@ impl VirtioDevice for Wl {
             false
         } else {
             true
+        }
+    }
+
+    fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {
+        match self.handler.borrow_mut().get_shared_memory_region() {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Failed to get shared memory regions {}", e);
+                None
+            }
+        }
+    }
+
+    fn set_shared_memory_mapper(&mut self, mapper: Box<dyn SharedMemoryMapper>) {
+        if let Err(e) = self.handler.borrow_mut().set_shared_memory_mapper(mapper) {
+            error!("Error setting shared memory mapper {}", e);
         }
     }
 }

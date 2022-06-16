@@ -1176,9 +1176,9 @@ pub struct RunCommand {
     #[argh(option, arg_name = "SOCKET_PATH")]
     /// path to a socket for vhost-user vsock
     pub vhost_user_vsock: Vec<VhostUserOption>,
-    #[argh(option, arg_name = "SOCKET_PATH:TUBE_PATH")]
-    /// paths to a vhost-user socket for wayland and a Tube socket for additional wayland-specific messages
-    pub vhost_user_wl: Vec<VhostUserWlOption>,
+    #[argh(option, arg_name = "SOCKET_PATH")]
+    /// path to a vhost-user socket for wayland
+    pub vhost_user_wl: Option<VhostUserWlOption>,
     #[cfg(unix)]
     #[argh(option, arg_name = "SOCKET_PATH")]
     /// path to a socket for vhost-user vsock

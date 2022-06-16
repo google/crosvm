@@ -833,7 +833,6 @@ pub fn create_wayland_device(
     protected_vm: ProtectionType,
     jail_config: &Option<JailConfig>,
     wayland_socket_paths: &BTreeMap<String, PathBuf>,
-    control_tube: Tube,
     resource_bridge: Option<Tube>,
 ) -> DeviceResult {
     let wayland_socket_dirs = wayland_socket_paths
@@ -843,13 +842,8 @@ pub fn create_wayland_device(
         .ok_or_else(|| anyhow!("wayland socket path has no parent or file name"))?;
 
     let features = virtio::base_features(protected_vm);
-    let dev = virtio::Wl::new(
-        features,
-        wayland_socket_paths.clone(),
-        control_tube,
-        resource_bridge,
-    )
-    .context("failed to create wayland device")?;
+    let dev = virtio::Wl::new(features, wayland_socket_paths.clone(), resource_bridge)
+        .context("failed to create wayland device")?;
 
     let jail = match simple_jail(jail_config, "wl_device")? {
         Some(mut jail) => {

@@ -112,7 +112,6 @@ fn create_virtio_devices(
     vm: &mut impl Vm,
     resources: &mut SystemAllocator,
     vm_evt_wrtube: &SendTube,
-    wayland_device_tube: Tube,
     gpu_device_tube: Tube,
     vhost_user_gpu_tubes: Vec<(Tube, Tube, Tube)>,
     balloon_device_tube: Option<Tube>,
@@ -170,7 +169,6 @@ fn create_virtio_devices(
             cfg.protected_vm,
             &cfg.jail_config,
             &cfg.wayland_socket_paths,
-            wayland_device_tube,
             wl_resource_bridge,
         )?);
     }
@@ -588,7 +586,6 @@ fn create_devices(
     vm_evt_wrtube: &SendTube,
     iommu_attached_endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
     control_tubes: &mut Vec<TaggedControlTube>,
-    wayland_device_tube: Tube,
     gpu_device_tube: Tube,
     // Tuple content: (host-side GPU tube, device-side GPU tube, device-side control tube).
     vhost_user_gpu_tubes: Vec<(Tube, Tube, Tube)>,
@@ -722,7 +719,6 @@ fn create_devices(
         vm,
         resources,
         vm_evt_wrtube,
-        wayland_device_tube,
         gpu_device_tube,
         vhost_user_gpu_tubes,
         balloon_device_tube,
@@ -1306,13 +1302,6 @@ where
         components.gdb = Some((port, gdb_control_tube));
     }
 
-    for wl_cfg in &cfg.vhost_user_wl {
-        let wayland_host_tube = UnixSeqpacket::connect(&wl_cfg.vm_tube)
-            .map(Tube::new)
-            .context("failed to connect to wayland tube")?;
-        control_tubes.push(TaggedControlTube::VmMemory(wayland_host_tube));
-    }
-
     let mut vhost_user_gpu_tubes = Vec::with_capacity(cfg.vhost_user_gpu.len());
     for _ in 0..cfg.vhost_user_gpu.len() {
         let (host_control_tube, device_control_tube) =
@@ -1321,9 +1310,6 @@ where
         vhost_user_gpu_tubes.push((host_gpu_tube, device_gpu_tube, device_control_tube));
         control_tubes.push(TaggedControlTube::VmMemory(host_control_tube));
     }
-
-    let (wayland_host_tube, wayland_device_tube) = Tube::pair().context("failed to create tube")?;
-    control_tubes.push(TaggedControlTube::VmMemory(wayland_host_tube));
 
     let (balloon_host_tube, balloon_device_tube) = if cfg.balloon {
         if let Some(ref path) = cfg.balloon_control {
@@ -1543,7 +1529,6 @@ where
         &vm_evt_wrtube,
         &mut iommu_attached_endpoints,
         &mut control_tubes,
-        wayland_device_tube,
         gpu_device_tube,
         vhost_user_gpu_tubes,
         balloon_device_tube,

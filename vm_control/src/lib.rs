@@ -315,8 +315,6 @@ impl VmMemorySource {
 pub enum VmMemoryDestination {
     /// Map at an offset within an existing PCI BAR allocation.
     ExistingAllocation { allocation: Alloc, offset: u64 },
-    /// Create a new anonymous allocation in MMIO space.
-    NewAllocation,
     /// Map at the specified guest physical address.
     GuestPhysicalAddress(u64),
 }
@@ -329,13 +327,6 @@ impl VmMemoryDestination {
                 .mmio_allocator(MmioType::High)
                 .address_from_pci_offset(allocation, offset, size)
                 .map_err(|_e| SysError::new(EINVAL))?,
-            VmMemoryDestination::NewAllocation => {
-                let alloc = allocator.get_anon_alloc();
-                allocator
-                    .mmio_allocator(MmioType::High)
-                    .allocate(size, alloc, "vmcontrol_register_memory".to_string())
-                    .map_err(|_e| SysError::new(EINVAL))?
-            }
             VmMemoryDestination::GuestPhysicalAddress(gpa) => gpa,
         };
         Ok(GuestAddress(addr))

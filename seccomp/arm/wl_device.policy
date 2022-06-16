@@ -9,6 +9,7 @@ socket: arg0 == 1 && arg1 == 0x80001 && arg2 == 0
 # arg1 == FIONBIO || arg1 == DMA_BUF_IOCTL_SYNC || arg1 == SYNC_IOC_FILE_INFO || arg1 & DRM_IOCTL_BASE
 ioctl: arg1 == 0x5421 || arg1 == 0x40086200 || arg1 == 0xc0383e04 || arg1 & 0x6400
 connect: 1
+getrandom: 1
 open: return ENOENT
 openat: return ENOENT
 # Used for sharing memory with wayland. arg1 == MFD_CLOEXEC|MFD_ALLOW_SEALING
