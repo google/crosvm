@@ -16,7 +16,7 @@ use crate::pci::pci_configuration::{
 };
 use crate::pci::pci_device::{Error, PciBus, PciDevice};
 use crate::pci::{PciAddress, PciId, PCI_VENDOR_ID_INTEL};
-use crate::{Bus, BusAccessInfo, BusDevice, BusType};
+use crate::{Bus, BusAccessInfo, BusDevice, BusType, DeviceId};
 use resources::SystemAllocator;
 
 // A PciDevice that holds the root hub's configuration.
@@ -327,7 +327,7 @@ impl BusDevice for PciConfigIo {
         format!("pci config io-port 0x{:03x}", self.config_address)
     }
 
-    fn device_id(&self) -> u32 {
+    fn device_id(&self) -> DeviceId {
         PciId::new(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_82441).into()
     }
 
@@ -407,7 +407,7 @@ impl BusDevice for PciConfigMmio {
         "pci config mmio".to_owned()
     }
 
-    fn device_id(&self) -> u32 {
+    fn device_id(&self) -> DeviceId {
         PciId::new(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_82441).into()
     }
 
@@ -464,7 +464,7 @@ impl BusDevice for PciVirtualConfigMmio {
         "pci virtual config mmio".to_owned()
     }
 
-    fn device_id(&self) -> u32 {
+    fn device_id(&self) -> DeviceId {
         PciId::new(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_82441).into()
     }
 

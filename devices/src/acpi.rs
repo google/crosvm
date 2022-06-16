@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{BusAccessInfo, BusDevice, BusResumeDevice, IrqLevelEvent};
+use crate::pci::CrosvmDeviceId;
+use crate::{BusAccessInfo, BusDevice, BusResumeDevice, DeviceId, IrqLevelEvent};
 use acpi_tables::{aml, aml::Aml};
 use base::{
     error, info, warn, Error as SysError, Event, EventToken, SendTube, VmEventType, WaitContext,
@@ -628,6 +629,10 @@ const GPE0_STATUS_LAST: u16 = GPE0_STATUS + (ACPIPM_RESOURCE_GPE0_BLK_LEN as u16
 const GPE0_ENABLE_LAST: u16 = GPE0_ENABLE + (ACPIPM_RESOURCE_GPE0_BLK_LEN as u16 / 2) - 1;
 
 impl BusDevice for ACPIPMResource {
+    fn device_id(&self) -> DeviceId {
+        CrosvmDeviceId::ACPIPMResource.into()
+    }
+
     fn debug_label(&self) -> String {
         "ACPIPMResource".to_owned()
     }

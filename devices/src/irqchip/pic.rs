@@ -12,8 +12,8 @@
 // For the purposes of both using more descriptive terms and avoiding terms with lots of charged
 // emotional context, this file refers to them instead as "primary" and "secondary" PICs.
 
-use crate::bus::BusAccessInfo;
-use crate::BusDevice;
+use crate::{bus::BusAccessInfo, pci::CrosvmDeviceId};
+use crate::{BusDevice, DeviceId};
 use base::{debug, warn, Event};
 use hypervisor::{PicInitState, PicSelect, PicState};
 
@@ -84,6 +84,10 @@ const OCW3_SPECIAL_MASK: u8 = 0x40;
 const OCW3_SPECIAL_MASK_VALUE: u8 = 0x20;
 
 impl BusDevice for Pic {
+    fn device_id(&self) -> DeviceId {
+        CrosvmDeviceId::Pic.into()
+    }
+
     fn debug_label(&self) -> String {
         "userspace PIC".to_string()
     }

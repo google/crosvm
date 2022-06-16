@@ -6,7 +6,7 @@ use libc::{gmtime_r, time, time_t, tm};
 use std::cmp::min;
 use std::mem;
 
-use crate::{BusAccessInfo, BusDevice};
+use crate::{pci::CrosvmDeviceId, BusAccessInfo, BusDevice, DeviceId};
 
 const INDEX_MASK: u8 = 0x7f;
 const INDEX_OFFSET: u64 = 0x0;
@@ -47,6 +47,10 @@ impl Cmos {
 }
 
 impl BusDevice for Cmos {
+    fn device_id(&self) -> DeviceId {
+        CrosvmDeviceId::Cmos.into()
+    }
+
     fn debug_label(&self) -> String {
         "cmos".to_owned()
     }

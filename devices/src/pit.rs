@@ -27,7 +27,10 @@ use base::FakeTimer as Timer;
 use base::Timer;
 
 use crate::bus::BusAccessInfo;
+use crate::pci::CrosvmDeviceId;
 use crate::BusDevice;
+use crate::DeviceId;
+use crate::IrqEdgeEvent;
 
 // Bitmask for areas of standard (non-ReadBack) Control Word Format. Constant
 // names are kept the same as Intel PIT data sheet.
@@ -213,6 +216,10 @@ impl BusDevice for Pit {
         "userspace PIT".to_string()
     }
 
+    fn device_id(&self) -> DeviceId {
+        CrosvmDeviceId::Pit.into()
+    }
+
     fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
         self.ensure_started();
 
@@ -258,7 +265,7 @@ impl BusDevice for Pit {
 }
 
 impl Pit {
-    pub fn new(interrupt_evt: Event, clock: Arc<Mutex<Clock>>) -> PitResult<Pit> {
+    pub fn new(interrupt_evt: IrqEdgeEvent, clock: Arc<Mutex<Clock>>) -> PitResult<Pit> {
         let mut counters = Vec::new();
         let mut interrupt = Some(interrupt_evt);
         for i in 0..NUM_OF_COUNTERS {
@@ -367,7 +374,7 @@ impl Pit {
 // implement one-shot and repeating timer alarms. An 8254 has three counters.
 struct PitCounter {
     // Event to write when asserting an interrupt.
-    interrupt_evt: Option<Event>,
+    interrupt_evt: Option<IrqEdgeEvent>,
     // Stores the value with which the counter was initialized. Counters are 16-
     // bit values with an effective range of 1-65536 (65536 represented by 0).
     reload_value: u16,
@@ -446,7 +453,7 @@ fn get_monotonic_time() -> u64 {
 impl PitCounter {
     fn new(
         counter_id: usize,
-        interrupt_evt: Option<Event>,
+        interrupt_evt: Option<IrqEdgeEvent>,
         clock: Arc<Mutex<Clock>>,
     ) -> PitResult<PitCounter> {
         #[cfg(not(test))]
@@ -828,7 +835,7 @@ impl PitCounter {
         // and the code is simpler without the special case.
         if let Some(interrupt) = &mut self.interrupt_evt {
             // This is safe because the file descriptor is nonblocking and we're writing 1.
-            interrupt.write(1).unwrap();
+            interrupt.trigger().unwrap();
         }
     }
 
@@ -997,11 +1004,11 @@ mod tests {
     }
 
     fn set_up() -> TestData {
-        let irqfd = Event::new().unwrap();
+        let evt = IrqEdgeEvent::new().unwrap();
         let clock = Arc::new(Mutex::new(Clock::new()));
         TestData {
-            pit: Pit::new(irqfd.try_clone().unwrap(), clock.clone()).unwrap(),
-            irqfd,
+            irqfd: evt.get_trigger().try_clone().unwrap(),
+            pit: Pit::new(evt, clock.clone()).unwrap(),
             clock,
         }
     }

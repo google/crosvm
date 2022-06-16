@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use sync::Mutex;
 use thiserror::Error;
 
-use crate::{PciAddress, PciDevice, VfioPlatformDevice};
+use crate::{DeviceId, PciAddress, PciDevice, VfioPlatformDevice};
 
 /// Information about how a device was accessed.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
@@ -70,12 +70,8 @@ pub enum BusType {
 pub trait BusDevice: Send {
     /// Returns a label suitable for debug output.
     fn debug_label(&self) -> String;
-
     /// Returns a unique id per device type suitable for metrics gathering.
-    // TODO(225991065): Remove this default implementation when all of the crate is upstreamed.
-    fn device_id(&self) -> u32 {
-        0
-    }
+    fn device_id(&self) -> DeviceId;
     /// Reads at `offset` from this device
     fn read(&mut self, offset: BusAccessInfo, data: &mut [u8]) {}
     /// Writes at `offset` into this device
@@ -404,10 +400,15 @@ impl Bus {
 
 #[cfg(test)]
 mod tests {
+    use crate::pci::CrosvmDeviceId;
+
     use super::*;
 
     struct DummyDevice;
     impl BusDevice for DummyDevice {
+        fn device_id(&self) -> DeviceId {
+            CrosvmDeviceId::Cmos.into()
+        }
         fn debug_label(&self) -> String {
             "dummy device".to_owned()
         }
@@ -418,6 +419,10 @@ mod tests {
     }
 
     impl BusDevice for ConstantDevice {
+        fn device_id(&self) -> DeviceId {
+            CrosvmDeviceId::Cmos.into()
+        }
+
         fn debug_label(&self) -> String {
             "constant device".to_owned()
         }

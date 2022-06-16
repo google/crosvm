@@ -4,19 +4,24 @@
 
 use std::marker::{Send, Sized};
 
-use crate::{Bus, IrqEdgeEvent, IrqLevelEvent};
+use crate::{
+    pci::{CrosvmDeviceId, PciId},
+    Bus, BusDevice, IrqEdgeEvent, IrqLevelEvent,
+};
 use base::{Event, Result};
 use hypervisor::{IrqRoute, MPState, Vcpu};
 use resources::SystemAllocator;
 
-mod kvm;
-pub use self::kvm::KvmKernelIrqChip;
-
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-pub use self::kvm::{AARCH64_GIC_NR_IRQS, AARCH64_GIC_NR_SPIS};
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub use self::kvm::KvmSplitIrqChip;
+cfg_if::cfg_if! {
+    if #[cfg(unix)] {
+        mod kvm;
+        pub use self::kvm::KvmKernelIrqChip;
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        pub use self::kvm::KvmSplitIrqChip;
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        pub use self::kvm::{AARCH64_GIC_NR_IRQS, AARCH64_GIC_NR_SPIS};
+    }
+}
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86_64;
@@ -53,6 +58,70 @@ struct IrqEvent {
     event: Event,
     gsi: u32,
     resample_event: Option<Event>,
+    source: IrqEventSource,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DeviceId {
+    /// PCI Device, use its PciId directly.
+    PciDeviceId(PciId),
+    /// Platform device, use a unique Id.
+    PlatformDeviceId(CrosvmDeviceId),
+}
+
+impl From<PciId> for DeviceId {
+    fn from(v: PciId) -> Self {
+        Self::PciDeviceId(v)
+    }
+}
+
+impl From<CrosvmDeviceId> for DeviceId {
+    fn from(v: CrosvmDeviceId) -> Self {
+        Self::PlatformDeviceId(v)
+    }
+}
+
+impl TryFrom<u32> for DeviceId {
+    type Error = base::Error;
+
+    fn try_from(value: u32) -> std::result::Result<Self, Self::Error> {
+        let device_id = (value & 0xFFFF) as u16;
+        let vendor_id = ((value & 0xFFFF_0000) >> 16) as u16;
+        if vendor_id == 0xFFFF {
+            Ok(DeviceId::PlatformDeviceId(CrosvmDeviceId::try_from(
+                device_id,
+            )?))
+        } else {
+            Ok(DeviceId::PciDeviceId(PciId::new(vendor_id, device_id)))
+        }
+    }
+}
+
+impl From<DeviceId> for u32 {
+    fn from(id: DeviceId) -> Self {
+        match id {
+            DeviceId::PciDeviceId(pci_id) => pci_id.into(),
+            DeviceId::PlatformDeviceId(id) => 0xFFFF0000 | id as u32,
+        }
+    }
+}
+
+/// Identification information about the source of an IrqEvent
+#[derive(Clone)]
+pub struct IrqEventSource {
+    pub device_id: DeviceId,
+    pub queue_id: usize,
+    pub device_name: String,
+}
+
+impl IrqEventSource {
+    pub fn from_device(device: &dyn BusDevice) -> Self {
+        Self {
+            device_id: device.device_id(),
+            queue_id: 0,
+            device_name: device.debug_label(),
+        }
+    }
 }
 
 /// Trait that abstracts interactions with interrupt controllers.
@@ -72,6 +141,7 @@ pub trait IrqChip: Send {
         &mut self,
         irq: u32,
         irq_event: &IrqEdgeEvent,
+        source: IrqEventSource,
     ) -> Result<Option<IrqEventIndex>>;
 
     /// Unregister an event with edge-trigger semantic for a particular GSI.
@@ -82,6 +152,7 @@ pub trait IrqChip: Send {
         &mut self,
         irq: u32,
         irq_event: &IrqLevelEvent,
+        source: IrqEventSource,
     ) -> Result<Option<IrqEventIndex>>;
 
     /// Unregister an event with level-trigger semantic for a particular GSI.
@@ -94,8 +165,8 @@ pub trait IrqChip: Send {
     fn set_irq_routes(&mut self, routes: &[IrqRoute]) -> Result<()>;
 
     /// Return a vector of all registered irq numbers and their associated events and event
-    /// indices. These should be used by the main thread to wait for irq events.
-    fn irq_event_tokens(&self) -> Result<Vec<(IrqEventIndex, u32, Event)>>;
+    /// sources. These should be used by the main thread to wait for irq events.
+    fn irq_event_tokens(&self) -> Result<Vec<(IrqEventIndex, IrqEventSource, Event)>>;
 
     /// Either assert or deassert an IRQ line.  Sends to either an interrupt controller, or does
     /// a send_msi if the irq is associated with an MSI.

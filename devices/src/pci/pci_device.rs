@@ -24,7 +24,9 @@ use crate::pci::{PciAddress, PciAddressError, PciInterruptPin};
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 #[cfg(feature = "audio")]
 use crate::virtio::snd::vios_backend::Error as VioSError;
-use crate::{BusAccessInfo, BusDevice, IrqLevelEvent};
+use crate::{BusAccessInfo, BusDevice, DeviceId, IrqLevelEvent};
+
+use super::PciId;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -310,9 +312,10 @@ impl<T: PciDevice> BusDevice for T {
         PciDevice::debug_label(self)
     }
 
-    fn device_id(&self) -> u32 {
+    fn device_id(&self) -> DeviceId {
         // Use the PCI ID for PCI devices, which contains the PCI vendor ID and the PCI device ID
-        PciDevice::read_config_register(self, PCI_ID_REG)
+        let pci_id: PciId = PciDevice::read_config_register(self, PCI_ID_REG).into();
+        pci_id.into()
     }
 
     fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {

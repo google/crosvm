@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{Bus, IrqEdgeEvent, IrqLevelEvent};
+use crate::{Bus, IrqEdgeEvent, IrqEventSource, IrqLevelEvent};
 use base::{error, Error, Event, Result};
 use hypervisor::kvm::KvmVcpu;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -42,6 +42,7 @@ impl IrqChip for KvmKernelIrqChip {
         &mut self,
         irq: u32,
         irq_event: &IrqEdgeEvent,
+        _source: IrqEventSource,
     ) -> Result<Option<IrqEventIndex>> {
         self.vm.register_irqfd(irq, irq_event.get_trigger(), None)?;
         Ok(None)
@@ -58,6 +59,7 @@ impl IrqChip for KvmKernelIrqChip {
         &mut self,
         irq: u32,
         irq_event: &IrqLevelEvent,
+        _source: IrqEventSource,
     ) -> Result<Option<IrqEventIndex>> {
         self.vm
             .register_irqfd(irq, irq_event.get_trigger(), Some(irq_event.get_resample()))?;
@@ -91,7 +93,7 @@ impl IrqChip for KvmKernelIrqChip {
     /// indices. These should be used by the main thread to wait for irq events.
     /// For the KvmKernelIrqChip, the kernel handles listening to irq events being triggered by
     /// devices, so this function always returns an empty Vec.
-    fn irq_event_tokens(&self) -> Result<Vec<(IrqEventIndex, u32, Event)>> {
+    fn irq_event_tokens(&self) -> Result<Vec<(IrqEventIndex, IrqEventSource, Event)>> {
         Ok(Vec::new())
     }
 

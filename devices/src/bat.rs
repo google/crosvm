@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{BusAccessInfo, BusDevice, IrqLevelEvent};
+use crate::{pci::CrosvmDeviceId, BusAccessInfo, BusDevice, DeviceId, IrqLevelEvent};
 use acpi_tables::{aml, aml::Aml};
 use base::{
     error, warn, AsRawDescriptor, Descriptor, Event, EventToken, RawDescriptor, Tube, WaitContext,
@@ -400,6 +400,10 @@ impl Drop for GoldfishBattery {
 }
 
 impl BusDevice for GoldfishBattery {
+    fn device_id(&self) -> DeviceId {
+        CrosvmDeviceId::GoldfishBattery.into()
+    }
+
     fn debug_label(&self) -> String {
         "GoldfishBattery".to_owned()
     }

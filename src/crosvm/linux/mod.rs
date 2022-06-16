@@ -39,8 +39,9 @@ use devices::virtio::{self, EventDevice};
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
 use devices::{
-    self, BusDeviceObj, HostHotPlugKey, HotPlugBus, IrqEventIndex, KvmKernelIrqChip, PciAddress,
-    PciDevice, PvPanicCode, PvPanicPciDevice, StubPciDevice, VirtioPciDevice,
+    self, BusDeviceObj, HostHotPlugKey, HotPlugBus, IrqEventIndex, IrqEventSource,
+    KvmKernelIrqChip, PciAddress, PciDevice, PvPanicCode, PvPanicPciDevice, StubPciDevice,
+    VirtioPciDevice,
 };
 use devices::{CoIommuDev, IommuDevType};
 #[cfg(feature = "usb")]
@@ -1400,7 +1401,9 @@ where
             warn!("irq {} already reserved.", irq);
         }
         let irq_evt = devices::IrqLevelEvent::new().context("failed to create event")?;
-        irq_chip.register_level_irq_event(*irq, &irq_evt).unwrap();
+        irq_chip
+            .register_level_irq_event(*irq, &irq_evt, IrqEventSource::empty())
+            .unwrap();
         let direct_irq = devices::DirectIrq::new_level(&irq_evt)
             .context("failed to enable interrupt forwarding")?;
         direct_irq
@@ -1415,7 +1418,9 @@ where
             warn!("irq {} already reserved.", irq);
         }
         let irq_evt = devices::IrqEdgeEvent::new().context("failed to create event")?;
-        irq_chip.register_edge_irq_event(*irq, &irq_evt).unwrap();
+        irq_chip
+            .register_edge_irq_event(*irq, &irq_evt, IrqEventSource::empty())
+            .unwrap();
         let direct_irq = devices::DirectIrq::new_edge(&irq_evt)
             .context("failed to enable interrupt forwarding")?;
         direct_irq
@@ -2178,10 +2183,15 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         let irq_chip = &mut linux.irq_chip;
                                         request.execute(
                                             |setup| match setup {
-                                                IrqSetup::Event(irq, ev, _, _, _) => {
+                                                IrqSetup::Event(irq, ev, device_id, queue_id, device_name) => {
                                                     let irq_evt = devices::IrqEdgeEvent::from_event(ev.try_clone()?);
+                                                    let source = IrqEventSource{
+                                                        device_id: device_id.try_into().expect("Invalid device_id"),
+                                                        queue_id,
+                                                        device_name,
+                                                    };
                                                     if let Some(event_index) = irq_chip
-                                                        .register_edge_irq_event(irq, &irq_evt)?
+                                                        .register_edge_irq_event(irq, &irq_evt, source)?
                                                     {
                                                         match wait_ctx.add(
                                                             ev,
