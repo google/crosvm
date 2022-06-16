@@ -369,7 +369,7 @@ pub fn create_software_tpm_device(jail_config: &Option<JailConfig>) -> DeviceRes
     }
 
     let backend = SoftwareTpm::new(tpm_storage).context("failed to create SoftwareTpm")?;
-    let dev = virtio::Tpm::new(Arc::new(Mutex::new(backend)));
+    let dev = virtio::Tpm::new(Box::new(backend));
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -402,7 +402,7 @@ pub fn create_vtpm_proxy_device(cfg: &Config) -> DeviceResult {
     }
 
     let backend = VtpmProxy::new();
-    let dev = virtio::Tpm::new(Arc::new(Mutex::new(backend)));
+    let dev = virtio::Tpm::new(Box::new(backend));
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
