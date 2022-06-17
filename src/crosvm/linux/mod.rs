@@ -23,6 +23,7 @@ use std::process;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use std::thread;
 
+use devices::virtio::BalloonMode;
 use libc;
 
 use acpi_tables::sdt::SDT;
@@ -373,7 +374,11 @@ fn create_virtio_devices(
         devs.push(create_balloon_device(
             cfg.protected_vm,
             &cfg.jail_config,
-            cfg.strict_balloon,
+            if cfg.strict_balloon {
+                BalloonMode::Strict
+            } else {
+                BalloonMode::Relaxed
+            },
             balloon_device_tube,
             balloon_inflate_tube,
             init_balloon_size,

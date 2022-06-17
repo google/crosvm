@@ -544,7 +544,7 @@ pub fn create_vinput_device(
 pub fn create_balloon_device(
     protected_vm: ProtectionType,
     jail_config: &Option<JailConfig>,
-    strict_balloon: bool,
+    mode: BalloonMode,
     tube: Tube,
     inflate_tube: Option<Tube>,
     init_balloon_size: u64,
@@ -554,11 +554,7 @@ pub fn create_balloon_device(
         tube,
         inflate_tube,
         init_balloon_size,
-        if strict_balloon {
-            BalloonMode::Strict
-        } else {
-            BalloonMode::Relaxed
-        },
+        mode,
     )
     .context("failed to create balloon")?;
 
