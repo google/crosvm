@@ -48,6 +48,8 @@ use devices::{HostBackendDeviceProvider, XhciController};
 use hypervisor::kvm::{Kvm, KvmVcpu, KvmVm};
 use hypervisor::{HypervisorCap, ProtectionType, Vm, VmCap};
 use minijail::{self, Minijail};
+#[cfg(feature = "direct")]
+use resources::Error as ResourceError;
 use resources::{AddressRange, Alloc, SystemAllocator};
 use rutabaga_gfx::RutabagaGralloc;
 use sync::{Condvar, Mutex};
@@ -1426,8 +1428,9 @@ where
     #[cfg(feature = "direct")]
     if let Some(mmio) = &cfg.direct_mmio {
         for range in mmio.ranges.iter() {
-            sys_allocator
-                .reserve_mmio(range.base, range.len)
+            AddressRange::from_start_and_size(range.base, range.len)
+                .ok_or(ResourceError::OutOfSpace)
+                .and_then(|range| sys_allocator.reserve_mmio(range))
                 .with_context(|| {
                     format!(
                         "failed to reserved direct mmio: {:x}-{:x}",
