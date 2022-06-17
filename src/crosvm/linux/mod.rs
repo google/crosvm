@@ -1919,6 +1919,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             cpu_id,
             vcpu_ids[cpu_id],
             vcpu,
+            linux.vcpu_init,
             linux.vm.try_clone().context("failed to clone vm")?,
             linux
                 .irq_chip

@@ -121,6 +121,10 @@ pub trait VcpuAArch64: Vcpu {
 
 impl_downcast!(VcpuAArch64);
 
+/// Initial state for AArch64 VCPUs.
+#[derive(Copy, Clone)]
+pub struct VcpuInitAArch64 {}
+
 // Convenience constructors for IrqRoutes
 impl IrqRoute {
     pub fn gic_irq_route(irq_num: u32) -> IrqRoute {

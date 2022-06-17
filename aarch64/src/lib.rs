@@ -22,7 +22,7 @@ use devices::{
 };
 use hypervisor::{
     DeviceKind, Hypervisor, HypervisorCap, ProtectionType, VcpuAArch64, VcpuFeature,
-    VcpuRegAArch64, Vm, VmAArch64,
+    VcpuInitAArch64, VcpuRegAArch64, Vm, VmAArch64,
 };
 use minijail::Minijail;
 use remain::sorted;
@@ -528,6 +528,7 @@ impl arch::LinuxArch for AArch64 {
             vm,
             vcpu_count,
             vcpus: Some(vcpus),
+            vcpu_init: VcpuInitAArch64 {},
             vcpu_affinity: components.vcpu_affinity,
             no_smt: components.no_smt,
             irq_chip: irq_chip.try_box_clone().map_err(Error::CloneIrqChip)?,
@@ -551,6 +552,7 @@ impl arch::LinuxArch for AArch64 {
         _hypervisor: &dyn Hypervisor,
         _irq_chip: &mut dyn IrqChipAArch64,
         _vcpu: &mut dyn VcpuAArch64,
+        _vcpu_init: &VcpuInitAArch64,
         _vcpu_id: usize,
         _num_cpus: usize,
         _has_bios: bool,

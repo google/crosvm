@@ -28,12 +28,12 @@ use arch::{self, LinuxArch, MsrConfig};
 use {
     aarch64::{AArch64 as Arch, MsrHandlers},
     devices::IrqChipAArch64 as IrqChipArch,
-    hypervisor::{VcpuAArch64 as VcpuArch, VmAArch64 as VmArch},
+    hypervisor::{VcpuAArch64 as VcpuArch, VcpuInitAArch64 as VcpuInitArch, VmAArch64 as VmArch},
 };
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use {
     devices::IrqChipX86_64 as IrqChipArch,
-    hypervisor::{VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
+    hypervisor::{VcpuInitX86_64 as VcpuInitArch, VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
     x86_64::{msr::MsrHandlers, X8664arch as Arch},
 };
 
@@ -94,6 +94,7 @@ pub fn runnable_vcpu<V>(
     cpu_id: usize,
     vcpu_id: usize,
     vcpu: Option<V>,
+    vcpu_init: &VcpuInitArch,
     vm: impl VmArch,
     irq_chip: &mut dyn IrqChipArch,
     vcpu_count: usize,
@@ -142,6 +143,7 @@ where
         vm.get_hypervisor(),
         irq_chip,
         &mut vcpu,
+        vcpu_init,
         cpu_id,
         vcpu_count,
         has_bios,
@@ -543,6 +545,7 @@ pub fn run_vcpu<V>(
     cpu_id: usize,
     vcpu_id: usize,
     vcpu: Option<V>,
+    vcpu_init: VcpuInitArch,
     vm: impl VmArch + 'static,
     mut irq_chip: Box<dyn IrqChipArch + 'static>,
     vcpu_count: usize,
@@ -586,6 +589,7 @@ where
                     cpu_id,
                     vcpu_id,
                     vcpu,
+                    &vcpu_init,
                     vm,
                     irq_chip.as_mut(),
                     vcpu_count,
