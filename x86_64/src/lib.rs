@@ -369,13 +369,17 @@ fn configure_system(
         E820Type::Ram,
     )?;
 
-    let ram_region = AddressRange {
+    // GuestMemory::end_addr() returns the first address past the end, so subtract 1 to get the
+    // inclusive end.
+    let guest_mem_end = guest_mem.end_addr().offset() - 1;
+    let ram_below_4g = AddressRange {
         start: kernel_addr.offset(),
-        // GuestMemory::end_addr() returns the first address past the end, so subtract 1 to get the
-        // inclusive end.
-        end: guest_mem.end_addr().offset() - 1,
+        end: guest_mem_end.min(read_pci_mmio_before_32bit().start - 1),
     };
-    let (ram_below_4g, ram_above_4g) = ram_region.split_at(FIRST_ADDR_PAST_32BITS);
+    let ram_above_4g = AddressRange {
+        start: FIRST_ADDR_PAST_32BITS,
+        end: guest_mem_end,
+    };
     add_e820_entry(&mut params, ram_below_4g, E820Type::Ram)?;
     if !ram_above_4g.is_empty() {
         add_e820_entry(&mut params, ram_above_4g, E820Type::Ram)?
