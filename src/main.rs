@@ -431,7 +431,7 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
             arg if arg.starts_with("--") => {
                 if let Some((key, value)) = arg.split_once("=") {
                     eprintln!(
-                        "`--{}={}` is deprecated, please use `--{} {}`",
+                        "`{}={}` is deprecated, please use `{} {}`",
                         key, value, key, value
                     );
                     args.push(key.to_string());
