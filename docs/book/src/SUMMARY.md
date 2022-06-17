@@ -14,6 +14,7 @@
   - [Balloon](./devices/balloon.md)
   - [Pmem](./devices/pmem.md)
   - [Wayland](./devices/wayland.md)
+  - [Video (experimental)](./devices/video.md)
   - [Vhost-user](./devices/vhost_user.md)
   - [VirtIO Vhost-user (VVU)](./devices/vvu.md)
 - [Integration](./integration/index.md)
