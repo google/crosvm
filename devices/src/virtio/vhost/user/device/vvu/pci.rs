@@ -289,7 +289,8 @@ impl VvuPciDevice {
     /// * `pci_address` - PCI device address.
     /// * `device_vq_num` - number of virtqueues that the device backend (e.g. block) may use.
     pub fn new_from_address(pci_address: PciAddress, device_vq_num: usize) -> Result<Self> {
-        let vfio_dev = Arc::new(open_vfio_device(pci_address)?);
+        let vfio_path = format!("/sys/bus/pci/devices/{}", pci_address);
+        let vfio_dev = Arc::new(open_vfio_device(&vfio_path)?);
         let config = VfioPciConfig::new(vfio_dev.clone());
         let caps = VvuPciCaps::new(&config)?;
         vfio_dev
