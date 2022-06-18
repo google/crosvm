@@ -40,7 +40,7 @@ Then you can check that the VVU proxy device is allocated at the specified addre
 `lspci` in the guest.
 
 ```sh
-# Inside of the device VM guet.
+# Inside of the device VM guest.
 
 lspci -s $VVU_PCI_ADDR
 # Expected output:
@@ -48,12 +48,27 @@ lspci -s $VVU_PCI_ADDR
 # '107d' is the device ID for the VVU proxy device.
 ```
 
-Second, start a VVU block device backend in the guest that you just started. Although the command
+After that you need to make sure that the VVU device is bound to vfio_pci driver by manipulating
+sysfs.
+
+```sh
+# Inside of the device VM guest.
+basename `readlink /sys/bus/pci/devices/$VVU_PCI_ADDR/driver`
+# If that shows vfio_pci you are done, otherwise you need to rebind
+# the device to the right driver.
+echo "vfio_pci" > /sys/bus/pci/devices/$VVU_PCI_ADDR/driver_override
+echo "$VVU_PCI_ADDR" > /sys/bus/pci/devices/$VVU_PCI_ADDR/driver/unbind
+echo "$VVU_PCI_ADDR" > /sys/bus/pci/drivers/vfio_pci/driver/bind
+basename `readlink /sys/bus/pci/devices/$VVU_PCI_ADDR/driver`
+# This should show "vfio_pci" now.
+```
+
+Then, start a VVU block device backend in the guest that you just started. Although the command
 `crosvm device` is the same as [vhost-user's example](./vhost_user.md), you need to use the `--vfio`
 flag instead of the `--socket` flag.
 
 ```sh
-# Inside of the device VM guest
+# Inside of the device VM guest.
 
 crosvm device block \
   --vfio ${VVU_PCI_ADDR} \
