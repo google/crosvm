@@ -82,8 +82,6 @@ pub(in crate::virtio::vhost::user::device::block) fn start_device(
 
     tracing::init();
 
-    base::syslog::init().context("failed to initialize syslog")?;
-
     let raw_transport_tube = opts.bootstrap as RawDescriptor;
 
     let mut tubes = read_from_tube_transporter(raw_transport_tube)?;
