@@ -305,6 +305,8 @@ pub struct BalloonStatsFfi {
     disk_caches: i64,
     hugetlb_allocations: i64,
     hugetlb_failures: i64,
+    shared_memory: i64,
+    unevictable_memory: i64,
 }
 
 impl From<&BalloonStats> for BalloonStatsFfi {
@@ -321,6 +323,8 @@ impl From<&BalloonStats> for BalloonStatsFfi {
             disk_caches: convert(other.disk_caches),
             hugetlb_allocations: convert(other.hugetlb_allocations),
             hugetlb_failures: convert(other.hugetlb_failures),
+            shared_memory: convert(other.shared_memory),
+            unevictable_memory: convert(other.unevictable_memory),
         }
     }
 }
