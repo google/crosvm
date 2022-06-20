@@ -1412,9 +1412,15 @@ where
         if !sys_allocator.reserve_irq(*irq) {
             warn!("irq {} already reserved.", irq);
         }
+        use devices::CrosvmDeviceId;
+        let irq_event_source = IrqEventSource {
+            device_id: CrosvmDeviceId::DirectIo.into(),
+            queue_id: 0,
+            device_name: format!("direct edge irq {}", irq),
+        };
         let irq_evt = devices::IrqLevelEvent::new().context("failed to create event")?;
         irq_chip
-            .register_level_irq_event(*irq, &irq_evt, IrqEventSource::empty())
+            .register_level_irq_event(*irq, &irq_evt, irq_event_source)
             .unwrap();
         let direct_irq = devices::DirectIrq::new_level(&irq_evt)
             .context("failed to enable interrupt forwarding")?;
@@ -1429,9 +1435,15 @@ where
         if !sys_allocator.reserve_irq(*irq) {
             warn!("irq {} already reserved.", irq);
         }
+        use devices::CrosvmDeviceId;
+        let irq_event_source = IrqEventSource {
+            device_id: CrosvmDeviceId::DirectIo.into(),
+            queue_id: 0,
+            device_name: format!("direct level irq {}", irq),
+        };
         let irq_evt = devices::IrqEdgeEvent::new().context("failed to create event")?;
         irq_chip
-            .register_edge_irq_event(*irq, &irq_evt, IrqEventSource::empty())
+            .register_edge_irq_event(*irq, &irq_evt, irq_event_source)
             .unwrap();
         let direct_irq = devices::DirectIrq::new_edge(&irq_evt)
             .context("failed to enable interrupt forwarding")?;

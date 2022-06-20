@@ -59,6 +59,7 @@ pub use self::direct_irq::{DirectIrq, DirectIrqError};
 pub use self::i8042::I8042Device;
 pub use self::irq_event::{IrqEdgeEvent, IrqLevelEvent};
 pub use self::irqchip::*;
+pub use self::pci::CrosvmDeviceId;
 #[cfg(feature = "audio")]
 pub use self::pci::{Ac97Backend, Ac97Dev, Ac97Parameters};
 pub use self::pci::{
