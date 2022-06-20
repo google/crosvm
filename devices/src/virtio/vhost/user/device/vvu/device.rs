@@ -27,6 +27,7 @@ async fn process_rxq(
     evt: EventAsync,
     mut rxq: UserQueue,
     rxq_sender: Sender<Vec<u8>>,
+    rxq_notifier: QueueNotifier,
     rxq_evt: Event,
 ) -> Result<()> {
     loop {
@@ -42,6 +43,8 @@ async fn process_rxq(
             // Increment the event counter as we sent one buffer.
             rxq_evt.write(1).context("process_rxq")?;
         }
+
+        rxq_notifier.notify();
     }
 }
 
@@ -61,12 +64,13 @@ fn run_worker(
     rx_queue: UserQueue,
     rx_irq: Event,
     rx_sender: Sender<Vec<u8>>,
+    rx_notifier: QueueNotifier,
     rx_evt: Event,
     tx_queue: Arc<Mutex<UserQueue>>,
     tx_irq: Event,
 ) -> Result<()> {
     let rx_irq = EventAsync::new(rx_irq, &ex).context("failed to create async event")?;
-    let rxq = process_rxq(rx_irq, rx_queue, rx_sender, rx_evt);
+    let rxq = process_rxq(rx_irq, rx_queue, rx_sender, rx_notifier, rx_evt);
     pin_mut!(rxq);
 
     let tx_irq = EventAsync::new(tx_irq, &ex).context("failed to create async event")?;
@@ -95,7 +99,6 @@ enum DeviceState {
         device: VvuPciDevice,
     },
     Running {
-        rxq_notifier: Arc<Mutex<QueueNotifier>>,
         rxq_receiver: Receiver<Vec<u8>>,
         /// Store data that was provided by rxq_receiver but not consumed yet.
         rxq_buf: Vec<u8>,
@@ -139,7 +142,7 @@ impl VfioDeviceTrait for VvuDevice {
 
         let rxq = queues.remove(0);
         let rxq_irq = irqs.remove(0);
-        let rxq_notifier = Arc::new(Mutex::new(queue_notifiers.remove(0)));
+        let rxq_notifier = queue_notifiers.remove(0);
         // TODO: Can we use async channel instead so we don't need `rxq_evt`?
         let (rxq_sender, rxq_receiver) = channel();
         let rxq_evt = self.rxq_evt.try_clone().expect("rxq_evt clone");
@@ -152,7 +155,6 @@ impl VfioDeviceTrait for VvuDevice {
         let old_state = std::mem::replace(
             &mut self.state,
             DeviceState::Running {
-                rxq_notifier,
                 rxq_receiver,
                 rxq_buf: vec![],
                 txq,
@@ -169,9 +171,16 @@ impl VfioDeviceTrait for VvuDevice {
             .name("virtio-vhost-user driver".to_string())
             .spawn(move || {
                 device.start().expect("failed to start device");
-                if let Err(e) =
-                    run_worker(ex, rxq, rxq_irq, rxq_sender, rxq_evt, txq_cloned, txq_irq)
-                {
+                if let Err(e) = run_worker(
+                    ex,
+                    rxq,
+                    rxq_irq,
+                    rxq_sender,
+                    rxq_notifier,
+                    rxq_evt,
+                    txq_cloned,
+                    txq_irq,
+                ) {
                     error!("worker thread exited with error: {}", e);
                 }
             })?;
@@ -203,7 +212,7 @@ impl VfioDeviceTrait for VvuDevice {
     }
 
     fn recv_into_bufs(&mut self, bufs: &mut [IoSliceMut]) -> Result<usize, RecvIntoBufsError> {
-        let (rxq_receiver, rxq_notifier, rxq_buf) = match &mut self.state {
+        let (rxq_receiver, rxq_buf) = match &mut self.state {
             DeviceState::Initialized { .. } => {
                 return Err(RecvIntoBufsError::Fatal(anyhow!(
                     "VvuDevice hasn't started yet"
@@ -211,10 +220,9 @@ impl VfioDeviceTrait for VvuDevice {
             }
             DeviceState::Running {
                 rxq_receiver,
-                rxq_notifier,
                 rxq_buf,
                 ..
-            } => (rxq_receiver, rxq_notifier, rxq_buf),
+            } => (rxq_receiver, rxq_buf),
         };
 
         let mut size = 0;
@@ -246,8 +254,6 @@ impl VfioDeviceTrait for VvuDevice {
 
             rxq_buf.drain(0..len);
             size += len;
-
-            rxq_notifier.lock().notify();
         }
 
         Ok(size)
