@@ -1615,7 +1615,7 @@ where
             linux
                 .io_bus
                 .insert_sync(direct_io.clone(), range.base, range.len)
-                .unwrap();
+                .context("Error with pmio")?;
         }
     };
 
@@ -1630,7 +1630,7 @@ where
             linux
                 .mmio_bus
                 .insert_sync(direct_mmio.clone(), range.base, range.len)
-                .unwrap();
+                .context("Error with mmio")?;
         }
     };
 

@@ -186,8 +186,13 @@ pub enum Error {
     #[error("Bus Range not found")]
     Empty,
     /// The insertion failed because the new device overlapped with an old device.
-    #[error("new device overlaps with an old device")]
-    Overlap,
+    #[error("new device {base},{len} overlaps with an old device {other_base},{other_len}")]
+    Overlap {
+        base: u64,
+        len: u64,
+        other_base: u64,
+        other_len: u64,
+    },
 }
 
 pub type Result<T> = result::Result<T, Error>;
@@ -286,23 +291,39 @@ impl Bus {
     /// Puts the given device at the given address space.
     pub fn insert(&self, device: Arc<Mutex<dyn BusDevice>>, base: u64, len: u64) -> Result<()> {
         if len == 0 {
-            return Err(Error::Overlap);
+            return Err(Error::Overlap {
+                base,
+                len,
+                other_base: 0,
+                other_len: 0,
+            });
         }
 
         // Reject all cases where the new device's range overlaps with an existing device.
         let mut devices = self.devices.lock();
-        if devices
-            .iter()
-            .any(|(range, _dev)| range.overlaps(base, len))
-        {
-            return Err(Error::Overlap);
-        }
+        devices.iter().try_for_each(|(range, _dev)| {
+            if range.overlaps(base, len) {
+                Err(Error::Overlap {
+                    base,
+                    len,
+                    other_base: range.base,
+                    other_len: range.len,
+                })
+            } else {
+                Ok(())
+            }
+        })?;
 
         if devices
             .insert(BusRange { base, len }, BusDeviceEntry::OuterSync(device))
             .is_some()
         {
-            return Err(Error::Overlap);
+            return Err(Error::Overlap {
+                base,
+                len,
+                other_base: base,
+                other_len: len,
+            });
         }
 
         Ok(())
@@ -313,23 +334,39 @@ impl Bus {
     /// by multiple threads simultaneously.
     pub fn insert_sync(&self, device: Arc<dyn BusDeviceSync>, base: u64, len: u64) -> Result<()> {
         if len == 0 {
-            return Err(Error::Overlap);
+            return Err(Error::Overlap {
+                base,
+                len,
+                other_base: 0,
+                other_len: 0,
+            });
         }
 
         // Reject all cases where the new device's range overlaps with an existing device.
         let mut devices = self.devices.lock();
-        if devices
-            .iter()
-            .any(|(range, _dev)| range.overlaps(base, len))
-        {
-            return Err(Error::Overlap);
-        }
+        devices.iter().try_for_each(|(range, _dev)| {
+            if range.overlaps(base, len) {
+                Err(Error::Overlap {
+                    base,
+                    len,
+                    other_base: range.base,
+                    other_len: range.len,
+                })
+            } else {
+                Ok(())
+            }
+        })?;
 
         if devices
             .insert(BusRange { base, len }, BusDeviceEntry::InnerSync(device))
             .is_some()
         {
-            return Err(Error::Overlap);
+            return Err(Error::Overlap {
+                base,
+                len,
+                other_base: base,
+                other_len: len,
+            });
         }
 
         Ok(())
@@ -338,7 +375,12 @@ impl Bus {
     /// Remove the given device at the given address space.
     pub fn remove(&self, base: u64, len: u64) -> Result<()> {
         if len == 0 {
-            return Err(Error::Overlap);
+            return Err(Error::Overlap {
+                base,
+                len,
+                other_base: 0,
+                other_len: 0,
+            });
         }
 
         let mut devices = self.devices.lock();
