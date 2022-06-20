@@ -378,8 +378,8 @@ pub fn create_software_tpm_device(jail_config: &Option<JailConfig>) -> DeviceRes
 }
 
 #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
-pub fn create_vtpm_proxy_device(cfg: &Config) -> DeviceResult {
-    let mut tpm_jail = simple_jail(&cfg.jail_config, "vtpm_proxy_device")?;
+pub fn create_vtpm_proxy_device(jail_config: &Option<JailConfig>) -> DeviceResult {
+    let mut tpm_jail = simple_jail(jail_config, "vtpm_proxy_device")?;
 
     match &mut tpm_jail {
         Some(jail) => {

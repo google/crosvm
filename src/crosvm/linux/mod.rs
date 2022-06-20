@@ -311,7 +311,7 @@ fn create_virtio_devices(
     #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
     {
         if cfg.vtpm_proxy {
-            devs.push(create_vtpm_proxy_device(cfg)?);
+            devs.push(create_vtpm_proxy_device(&cfg.jail_config)?);
         }
     }
 
