@@ -107,8 +107,7 @@ pub struct VmComponents {
     pub initrd_image: Option<File>,
     pub itmt: bool,
     pub memory_size: u64,
-    pub no_i8042: bool,
-    pub no_rtc: bool,
+    pub no_legacy: bool,
     pub no_smt: bool,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub pci_low_start: Option<u64>,

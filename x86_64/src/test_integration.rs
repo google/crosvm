@@ -157,14 +157,13 @@ where
     let pci_bus = Arc::new(Mutex::new(PciConfigIo::new(pci, pcibus_exit_evt_wrtube)));
     io_bus.insert(pci_bus, 0xcf8, 0x8).unwrap();
 
-    X8664arch::setup_legacy_i8042_device(
+    X8664arch::setup_legacy_devices(
         &io_bus,
         irq_chip.pit_uses_speaker_port(),
         exit_evt_wrtube.try_clone().unwrap(),
+        memory_size,
     )
     .unwrap();
-
-    X8664arch::setup_legacy_cmos_device(&io_bus, memory_size).unwrap();
 
     let mut serial_params = BTreeMap::new();
 
