@@ -5,10 +5,12 @@
 //! Implements vhost-based virtio devices.
 
 use base::{Error as SysError, TubeError};
+use data_model::DataInit;
 use net_util::Error as TapError;
 use remain::sorted;
 use thiserror::Error;
 use vhost::Error as VhostError;
+use vmm_vhost::message::{MasterReq, Req, VhostUserMsgHeader};
 
 mod control_socket;
 pub mod user;
@@ -113,3 +115,14 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+const HEADER_LEN: usize = std::mem::size_of::<VhostUserMsgHeader<MasterReq>>();
+
+pub fn vhost_header_from_bytes<R: Req>(bytes: &[u8]) -> Option<&VhostUserMsgHeader<R>> {
+    if bytes.len() < HEADER_LEN {
+        return None;
+    }
+
+    // This can't fail because we already checked the size and because packed alignment is 1.
+    Some(VhostUserMsgHeader::<R>::from_slice(&bytes[0..HEADER_LEN]).unwrap())
+}

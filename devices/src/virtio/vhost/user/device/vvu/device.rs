@@ -4,31 +4,174 @@
 
 //! Implement a struct that works as a `vmm_vhost`'s backend.
 
+use std::cmp::Ordering;
 use std::io::{IoSlice, IoSliceMut};
 use std::mem;
-use std::os::unix::io::RawFd;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use std::thread;
 
 use anyhow::{anyhow, bail, Context, Result};
-use base::{error, info, Event};
+use base::{error, info, Event, RawDescriptor};
 use cros_async::{EventAsync, Executor};
 use futures::{pin_mut, select, FutureExt};
 use sync::Mutex;
 use vmm_vhost::connection::vfio::{Device as VfioDeviceTrait, RecvIntoBufsError};
+use vmm_vhost::message::MasterReq;
 
 use crate::virtio::vhost::user::device::vvu::{
     pci::{QueueNotifier, VvuPciDevice},
     queue::UserQueue,
 };
+use crate::virtio::vhost::{vhost_header_from_bytes, HEADER_LEN};
+
+// Helper class for forwarding messages from the virtqueue thread to the main worker thread.
+struct VfioSender {
+    sender: Sender<Vec<u8>>,
+    evt: Event,
+}
+
+impl VfioSender {
+    fn new(sender: Sender<Vec<u8>>, evt: Event) -> Self {
+        Self { sender, evt }
+    }
+
+    fn send(&self, buf: Vec<u8>) -> Result<()> {
+        self.sender.send(buf)?;
+        // Increment the event counter as we sent one buffer.
+        self.evt.write(1).context("failed to signal event")
+    }
+}
+
+struct VfioReceiver {
+    receiver: Receiver<Vec<u8>>,
+    buf: Vec<u8>,
+    offset: usize,
+    evt: Event,
+}
+
+// Utility class for converting discrete vhost user messages received by a
+// VfioSender into a byte stream.
+impl VfioReceiver {
+    fn new(receiver: Receiver<Vec<u8>>, evt: Event) -> Self {
+        Self {
+            receiver,
+            buf: Vec::new(),
+            offset: 0,
+            evt,
+        }
+    }
+
+    // Reads the vhost user message into a byte stream. After each discrete message has
+    // been consumed, returns the message for post-processing.
+    fn recv_into_buf(
+        &mut self,
+        out: &mut IoSliceMut,
+    ) -> Result<(usize, Option<Vec<u8>>), RecvIntoBufsError> {
+        let len = out.len();
+
+        if self.buf.is_empty() {
+            let data = self
+                .receiver
+                .recv()
+                .context("failed to receive data")
+                .map_err(RecvIntoBufsError::Fatal)?;
+
+            if data.len() == 0 {
+                // TODO(b/216407443): We should change `self.state` and exit gracefully.
+                info!("VVU connection is closed");
+                return Err(RecvIntoBufsError::Disconnect);
+            }
+
+            self.buf = data;
+            self.offset = 0;
+            // Decrement the event counter as we received one buffer.
+            self.evt
+                .read()
+                .and_then(|c| self.evt.write(c - 1))
+                .context("failed to decrease event counter")
+                .map_err(RecvIntoBufsError::Fatal)?;
+        }
+
+        if self.offset + len > self.buf.len() {
+            // VVU rxq runs at message granularity. If there's not enough bytes to fill
+            // |out|, then that means we're being asked to merge bytes from multiple messages
+            // into a single buffer. That almost certainly indicates a message framing error
+            // higher up the stack, so reject the request.
+            return Err(RecvIntoBufsError::Fatal(anyhow!(
+                "recv underflow {} {} {}",
+                self.offset,
+                len,
+                self.buf.len()
+            )));
+        }
+        out.clone_from_slice(&self.buf[self.offset..(self.offset + len)]);
+
+        self.offset += len;
+        let ret_vec = if self.offset == self.buf.len() {
+            Some(std::mem::take(&mut self.buf))
+        } else {
+            None
+        };
+
+        Ok((len, ret_vec))
+    }
+
+    fn recv_into_bufs(&mut self, bufs: &mut [IoSliceMut]) -> Result<usize, RecvIntoBufsError> {
+        let mut size = 0;
+        for buf in bufs {
+            let (len, _) = self.recv_into_buf(buf)?;
+            size += len;
+        }
+
+        Ok(size)
+    }
+}
+
+// Utility class for writing an input vhost-user byte stream to the vvu
+// tx virtqueue as discrete vhost-user messages.
+struct Queue {
+    txq: UserQueue,
+    txq_notifier: QueueNotifier,
+
+    bytes: Vec<u8>,
+}
+
+impl Queue {
+    fn send_bufs(&mut self, iovs: &[IoSlice], fds: Option<&[RawDescriptor]>) -> Result<usize> {
+        if fds.is_some() {
+            bail!("cannot send FDs");
+        }
+
+        let mut size = 0;
+        for iov in iovs {
+            let mut vec = iov.to_vec();
+            size += iov.len();
+            self.bytes.append(&mut vec);
+        }
+
+        if let Some(hdr) = vhost_header_from_bytes::<MasterReq>(&self.bytes) {
+            let bytes_needed = hdr.get_size() as usize + HEADER_LEN;
+            match bytes_needed.cmp(&self.bytes.len()) {
+                Ordering::Greater => (),
+                Ordering::Equal => {
+                    let msg = mem::take(&mut self.bytes);
+                    self.txq.write(&msg).context("Failed to send data")?;
+                }
+                Ordering::Less => bail!("sent bytes larger than message size"),
+            }
+        }
+        self.txq_notifier.notify();
+
+        Ok(size)
+    }
+}
 
 async fn process_rxq(
     evt: EventAsync,
     mut rxq: UserQueue,
-    rxq_sender: Sender<Vec<u8>>,
     rxq_notifier: QueueNotifier,
-    rxq_evt: Event,
+    sender: VfioSender,
 ) -> Result<()> {
     loop {
         if let Err(e) = evt.next_val().await {
@@ -37,25 +180,37 @@ async fn process_rxq(
         }
 
         while let Some(slice) = rxq.read_data()? {
-            let mut buf = vec![0; slice.size()];
-            slice.copy_to(&mut buf);
-            rxq_sender.send(buf)?;
-            // Increment the event counter as we sent one buffer.
-            rxq_evt.write(1).context("process_rxq")?;
-        }
+            if slice.size() < HEADER_LEN {
+                bail!("rxq message too short: {}", slice.size());
+            }
 
+            let mut buf = vec![0_u8; slice.size()];
+            slice.copy_to(&mut buf);
+
+            let hdr =
+                vhost_header_from_bytes::<MasterReq>(&buf).context("rxq message too short")?;
+            if HEADER_LEN + hdr.get_size() as usize != slice.size() {
+                bail!(
+                    "rxq message size mismatch: {} vs {}",
+                    slice.size(),
+                    hdr.get_size()
+                );
+            }
+
+            sender.send(buf).context("send failed")?;
+        }
         rxq_notifier.notify();
     }
 }
 
-async fn process_txq(evt: EventAsync, txq: Arc<Mutex<UserQueue>>) -> Result<()> {
+async fn process_txq(evt: EventAsync, txq: Arc<Mutex<Queue>>) -> Result<()> {
     loop {
         if let Err(e) = evt.next_val().await {
             error!("Failed to read the next queue event: {}", e);
             continue;
         }
 
-        txq.lock().ack_used()?;
+        txq.lock().txq.ack_used()?;
     }
 }
 
@@ -63,14 +218,13 @@ fn run_worker(
     ex: Executor,
     rx_queue: UserQueue,
     rx_irq: Event,
-    rx_sender: Sender<Vec<u8>>,
     rx_notifier: QueueNotifier,
-    rx_evt: Event,
-    tx_queue: Arc<Mutex<UserQueue>>,
+    sender: VfioSender,
+    tx_queue: Arc<Mutex<Queue>>,
     tx_irq: Event,
 ) -> Result<()> {
     let rx_irq = EventAsync::new(rx_irq, &ex).context("failed to create async event")?;
-    let rxq = process_rxq(rx_irq, rx_queue, rx_sender, rx_notifier, rx_evt);
+    let rxq = process_rxq(rx_irq, rx_queue, rx_notifier, sender);
     pin_mut!(rxq);
 
     let tx_irq = EventAsync::new(tx_irq, &ex).context("failed to create async event")?;
@@ -99,12 +253,9 @@ enum DeviceState {
         device: VvuPciDevice,
     },
     Running {
-        rxq_receiver: Receiver<Vec<u8>>,
-        /// Store data that was provided by rxq_receiver but not consumed yet.
-        rxq_buf: Vec<u8>,
+        rxq_receiver: VfioReceiver,
 
-        txq: Arc<Mutex<UserQueue>>,
-        txq_notifier: Arc<Mutex<QueueNotifier>>,
+        txq: Arc<Mutex<Queue>>,
     },
 }
 
@@ -147,18 +298,22 @@ impl VfioDeviceTrait for VvuDevice {
         let (rxq_sender, rxq_receiver) = channel();
         let rxq_evt = self.rxq_evt.try_clone().expect("rxq_evt clone");
 
-        let txq = Arc::new(Mutex::new(queues.remove(0)));
+        let txq = Arc::new(Mutex::new(Queue {
+            txq: queues.remove(0),
+            txq_notifier: queue_notifiers.remove(0),
+            bytes: Vec::new(),
+        }));
         let txq_cloned = Arc::clone(&txq);
         let txq_irq = irqs.remove(0);
-        let txq_notifier = Arc::new(Mutex::new(queue_notifiers.remove(0)));
 
         let old_state = std::mem::replace(
             &mut self.state,
             DeviceState::Running {
-                rxq_receiver,
-                rxq_buf: vec![],
+                rxq_receiver: VfioReceiver::new(
+                    rxq_receiver,
+                    self.rxq_evt.try_clone().expect("rxq_evt clone"),
+                ),
                 txq,
-                txq_notifier,
             },
         );
 
@@ -167,20 +322,14 @@ impl VfioDeviceTrait for VvuDevice {
             _ => unreachable!(),
         };
 
+        let sender = VfioSender::new(rxq_sender, rxq_evt);
         thread::Builder::new()
             .name("virtio-vhost-user driver".to_string())
             .spawn(move || {
                 device.start().expect("failed to start device");
-                if let Err(e) = run_worker(
-                    ex,
-                    rxq,
-                    rxq_irq,
-                    rxq_sender,
-                    rxq_notifier,
-                    rxq_evt,
-                    txq_cloned,
-                    txq_irq,
-                ) {
+                if let Err(e) =
+                    run_worker(ex, rxq, rxq_irq, rxq_notifier, sender, txq_cloned, txq_irq)
+                {
                     error!("worker thread exited with error: {}", e);
                 }
             })?;
@@ -188,74 +337,23 @@ impl VfioDeviceTrait for VvuDevice {
         Ok(())
     }
 
-    fn send_bufs(&mut self, iovs: &[IoSlice], fds: Option<&[RawFd]>) -> Result<usize> {
-        if fds.is_some() {
-            bail!("cannot send FDs");
-        }
-
-        let (txq, txq_notifier) = match &mut self.state {
+    fn send_bufs(&mut self, iovs: &[IoSlice], fds: Option<&[RawDescriptor]>) -> Result<usize> {
+        let txq = match &mut self.state {
             DeviceState::Initialized { .. } => {
                 bail!("VvuDevice hasn't started yet");
             }
-            DeviceState::Running {
-                txq, txq_notifier, ..
-            } => (txq, txq_notifier),
+            DeviceState::Running { txq, .. } => txq,
         };
 
-        let size = iovs.iter().map(|v| v.len()).sum();
-        let data: Vec<u8> = iovs.iter().flat_map(|v| v.to_vec()).collect();
-
-        txq.lock().write(&data).context("Failed to send data")?;
-        txq_notifier.lock().notify();
-
-        Ok(size)
+        txq.lock().send_bufs(iovs, fds)
     }
 
     fn recv_into_bufs(&mut self, bufs: &mut [IoSliceMut]) -> Result<usize, RecvIntoBufsError> {
-        let (rxq_receiver, rxq_buf) = match &mut self.state {
-            DeviceState::Initialized { .. } => {
-                return Err(RecvIntoBufsError::Fatal(anyhow!(
-                    "VvuDevice hasn't started yet"
-                )));
-            }
-            DeviceState::Running {
-                rxq_receiver,
-                rxq_buf,
-                ..
-            } => (rxq_receiver, rxq_buf),
-        };
-
-        let mut size = 0;
-        for buf in bufs {
-            let len = buf.len();
-
-            while rxq_buf.len() < len {
-                let mut data = rxq_receiver
-                    .recv()
-                    .context("failed to receive data")
-                    .map_err(RecvIntoBufsError::Fatal)?;
-
-                if data.len() == 0 {
-                    // TODO(b/216407443): We should change `self.state` and exit gracefully.
-                    info!("VVU connection is closed");
-                    return Err(RecvIntoBufsError::Disconnect);
-                }
-
-                rxq_buf.append(&mut data);
-                // Decrement the event counter as we received one buffer.
-                self.rxq_evt
-                    .read()
-                    .and_then(|c| self.rxq_evt.write(c - 1))
-                    .context("failed to decrease event counter")
-                    .map_err(RecvIntoBufsError::Fatal)?;
-            }
-
-            buf.clone_from_slice(&rxq_buf[..len]);
-
-            rxq_buf.drain(0..len);
-            size += len;
+        match &mut self.state {
+            DeviceState::Initialized { .. } => Err(RecvIntoBufsError::Fatal(anyhow!(
+                "VvuDevice hasn't started yet"
+            ))),
+            DeviceState::Running { rxq_receiver, .. } => rxq_receiver.recv_into_bufs(bufs),
         }
-
-        Ok(size)
     }
 }
