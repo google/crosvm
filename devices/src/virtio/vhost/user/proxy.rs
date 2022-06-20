@@ -33,7 +33,7 @@ use vmm_vhost::{
     connection::socket::Endpoint as SocketEndpoint,
     connection::EndpointExt,
     message::{
-        MasterReq, VhostUserMemory, VhostUserMemoryRegion, VhostUserMsgHeader,
+        MasterReq, Req, VhostUserMemory, VhostUserMemoryRegion, VhostUserMsgHeader,
         VhostUserMsgValidator, VhostUserU64,
     },
     Protocol, SlaveReqHelper,
@@ -273,6 +273,56 @@ enum ExitReason {
     Disconnected,
 }
 
+// Trait used to process an incoming vhost-user message
+trait Action: Req {
+    // Process a message before forwarding it on to the virtqueue
+    fn process_message(
+        worker: &mut Worker,
+        wait_ctx: &mut WaitContext<Token>,
+        hdr: &VhostUserMsgHeader<Self>,
+        payload: &[u8],
+        files: Option<Vec<File>>,
+    ) -> Result<()>;
+
+    // Get the endpoint from which to read messages
+    fn get_ep(worker: &mut Worker) -> &mut SocketEndpoint<Self>;
+
+    // Handle a failure processing a message
+    fn handle_failure(worker: &mut Worker, hdr: &VhostUserMsgHeader<Self>) -> Result<()>;
+}
+
+impl Action for MasterReq {
+    fn process_message(
+        worker: &mut Worker,
+        wait_ctx: &mut WaitContext<Token>,
+        hdr: &VhostUserMsgHeader<MasterReq>,
+        payload: &[u8],
+        files: Option<Vec<File>>,
+    ) -> Result<()> {
+        check_attached_files(hdr, &files)?;
+        if !is_action_request(hdr) {
+            return Ok(());
+        }
+        match hdr.get_code() {
+            MasterReq::SET_MEM_TABLE => worker.set_mem_table(hdr, payload, files),
+            MasterReq::SET_VRING_CALL => worker.set_vring_call(hdr, payload, files),
+            MasterReq::SET_VRING_KICK => worker.set_vring_kick(wait_ctx, hdr, payload, files),
+            _ => unimplemented!("unimplemented action message: {:?}", hdr.get_code()),
+        }
+    }
+
+    fn get_ep(worker: &mut Worker) -> &mut SocketEndpoint<MasterReq> {
+        worker.slave_req_helper.as_mut()
+    }
+
+    fn handle_failure(worker: &mut Worker, hdr: &VhostUserMsgHeader<MasterReq>) -> Result<()> {
+        worker
+            .slave_req_helper
+            .send_ack_message(hdr, false)
+            .context("failed to send ack")
+    }
+}
+
 impl Worker {
     // The entry point into `Worker`.
     // - At this point the connection with the sibling is already established.
@@ -304,7 +354,7 @@ impl Worker {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::SiblingSocket => {
-                        match self.process_rx(&mut wait_ctx) {
+                        match self.process_rx::<MasterReq>(&mut wait_ctx) {
                             Ok(RxqStatus::Processed) => (),
                             Ok(RxqStatus::DescriptorsExhausted) => {
                                 // If the driver has no Rx buffers left, then no
@@ -373,7 +423,7 @@ impl Worker {
     }
 
     // Processes data from the Vhost-user sibling and forwards to the driver via Rx buffers.
-    fn process_rx(&mut self, wait_ctx: &mut WaitContext<Token>) -> Result<RxqStatus> {
+    fn process_rx<R: Action>(&mut self, wait_ctx: &mut WaitContext<Token>) -> Result<RxqStatus> {
         // Keep looping until -
         // - No more Rx buffers are available on the Rx queue. OR
         // - No more data is available on the Vhost-user sibling socket (checked via a
@@ -388,7 +438,7 @@ impl Worker {
         // Peek if any data is left on the Vhost-user sibling socket. If no, then
         // nothing to forwad to the device backend.
         loop {
-            let is_connected = match self.check_sibling_connection() {
+            let is_connected = match self.check_sibling_connection::<R>() {
                 ConnStatus::DataAvailable => true,
                 ConnStatus::Disconnected => false,
                 ConnStatus::NoDataAvailable => return Ok(RxqStatus::Processed),
@@ -422,48 +472,22 @@ impl Worker {
             // - receive optional message body and payload according size field
             //   in message header.
             // - forward it to the device backend.
-            let (hdr, files) = self
-                .slave_req_helper
-                .as_mut()
+            let (hdr, files) = R::get_ep(self)
                 .recv_header()
                 .context("failed to read Vhost-user sibling message header")?;
-            check_attached_files(&hdr, &files)?;
-            let buf = self.get_sibling_msg_data(&hdr)?;
+            let buf = self.get_sibling_msg_data::<R>(&hdr)?;
 
             let index = desc.index;
             let bytes_written = {
-                if is_action_request(&hdr) {
-                    // TODO(abhishekbh): Implement action messages.
-                    let res = match hdr.get_code() {
-                        MasterReq::SET_MEM_TABLE => {
-                            // Map the sibling memory in this process and forward the
-                            // sibling memory info to the slave. Only if the mapping
-                            // succeeds send info along to the slave, else send a failed
-                            // Ack back to the master.
-                            self.set_mem_table(&hdr, &buf, files)
-                        }
-                        MasterReq::SET_VRING_CALL => self.set_vring_call(&hdr, &buf, files),
-                        MasterReq::SET_VRING_KICK => {
-                            self.set_vring_kick(wait_ctx, &hdr, &buf, files)
-                        }
-                        _ => {
-                            unimplemented!("unimplemented action message:{:?}", hdr.get_code());
-                        }
-                    };
-
-                    // If the "action" in response to the action messages
-                    // failed then no bytes have been written to the virt
-                    // queue. Else, the action is done. Now forward the
-                    // message to the virt queue and return how many bytes
-                    // were written.
-                    match res {
-                        Ok(()) => self.forward_msg_to_device(desc, &hdr, &buf),
-                        Err(e) => Err(e),
-                    }
-                } else {
-                    // If no special processing required. Forward this message as is
-                    // to the device backend.
-                    self.forward_msg_to_device(desc, &hdr, &buf)
+                let res = R::process_message(self, wait_ctx, &hdr, &buf, files);
+                // If the "action" in response to the action messages
+                // failed then no bytes have been written to the virt
+                // queue. Else, the action is done. Now forward the
+                // message to the virt queue and return how many bytes
+                // were written.
+                match res {
+                    Ok(()) => self.forward_msg_to_device(desc, &hdr, &buf),
+                    Err(e) => Err(e),
                 }
             };
 
@@ -484,20 +508,18 @@ impl Worker {
                 }
                 Err(e) => {
                     error!("failed to forward message to the device: {}", e);
-                    self.slave_req_helper
-                        .send_ack_message(&hdr, false)
-                        .context("failed to send ack")?;
+                    R::handle_failure(self, &hdr)?
                 }
             }
         }
     }
 
     // Returns the sibling connection status.
-    fn check_sibling_connection(&self) -> ConnStatus {
+    fn check_sibling_connection<R: Action>(&mut self) -> ConnStatus {
         // Peek if any data is left on the Vhost-user sibling socket. If no, then
         // nothing to forwad to the device backend.
         let mut peek_buf = [0; 1];
-        let raw_fd = self.slave_req_helper.as_raw_descriptor();
+        let raw_fd = R::get_ep(self).as_raw_descriptor();
         // Safe because `raw_fd` and `peek_buf` are owned by this struct.
         let peek_ret = unsafe {
             recv(
@@ -521,19 +543,15 @@ impl Worker {
     }
 
     // Returns any data attached to a Vhost-user sibling message.
-    fn get_sibling_msg_data(&mut self, hdr: &VhostUserMsgHeader<MasterReq>) -> Result<Vec<u8>> {
+    fn get_sibling_msg_data<R: Action>(&mut self, hdr: &VhostUserMsgHeader<R>) -> Result<Vec<u8>> {
         let buf = match hdr.get_size() {
             0 => vec![0u8; 0],
             len => {
-                let rbuf = self
-                    .slave_req_helper
-                    .as_mut()
+                let rbuf = R::get_ep(self)
                     .recv_data(len as usize)
                     .context("failed to read Vhost-user sibling message payload")?;
                 if rbuf.len() != len as usize {
-                    self.slave_req_helper
-                        .send_ack_message(hdr, false)
-                        .context("failed to send ack")?;
+                    R::handle_failure(self, hdr)?;
                     bail!(
                         "unexpected message length for {:?}: expected={}, got={}",
                         hdr.get_code(),
@@ -549,16 +567,16 @@ impl Worker {
 
     // Forwards |hdr, buf| to the device backend via |desc_chain| in the virtio
     // queue. Returns the number of bytes written to the virt queue.
-    fn forward_msg_to_device(
+    fn forward_msg_to_device<R: Req>(
         &mut self,
         desc_chain: DescriptorChain,
-        hdr: &VhostUserMsgHeader<MasterReq>,
+        hdr: &VhostUserMsgHeader<R>,
         buf: &[u8],
     ) -> Result<u32> {
         let bytes_written = match Writer::new(self.mem.clone(), desc_chain) {
             Ok(mut writer) => {
                 if writer.available_bytes()
-                    < buf.len() + std::mem::size_of::<VhostUserMsgHeader<MasterReq>>()
+                    < buf.len() + std::mem::size_of::<VhostUserMsgHeader<R>>()
                 {
                     bail!("rx buffer too small to accomodate server data");
                 }
