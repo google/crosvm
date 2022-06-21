@@ -57,6 +57,8 @@ pub use self::protocol::VIRTIO_GPU_F_RESOURCE_SYNC;
 pub use self::protocol::VIRTIO_GPU_F_RESOURCE_UUID;
 pub use self::protocol::VIRTIO_GPU_F_VIRGL;
 pub use self::protocol::VIRTIO_GPU_SHM_ID_HOST_VISIBLE;
+pub use super::device_constants::gpu::QUEUE_SIZES;
+
 use self::protocol::*;
 use self::virtio_gpu::VirtioGpu;
 use super::copy_config;
@@ -79,9 +81,6 @@ pub enum GpuMode {
     ModeGfxstream,
 }
 
-// First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
-// there to be fewer of.
-pub const QUEUE_SIZES: &[u16] = &[256, 16];
 pub const FENCE_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 #[derive(Copy, Clone, Debug)]

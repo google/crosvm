@@ -40,6 +40,7 @@ use devices::virtio::vhost::user::proxy::VirtioVhostUser;
 use devices::virtio::vhost::user::vmm::Block as VhostUserBlock;
 use devices::virtio::vhost::user::vmm::Console as VhostUserConsole;
 use devices::virtio::vhost::user::vmm::Fs as VhostUserFs;
+use devices::virtio::vhost::user::vmm::Gpu as VhostUserGpu;
 use devices::virtio::vhost::user::vmm::Mac80211Hwsim as VhostUserMac80211Hwsim;
 use devices::virtio::vhost::user::vmm::Net as VhostUserNet;
 #[cfg(feature = "audio")]
@@ -321,6 +322,22 @@ pub fn create_vhost_user_snd_device(
 ) -> DeviceResult {
     let dev = VhostUserSnd::new(virtio::base_features(protected_vm), &option.socket)
         .context("failed to set up vhost-user snd device")?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        // no sandbox here because virtqueue handling is exported to a different process.
+        jail: None,
+    })
+}
+
+pub fn create_vhost_user_gpu_device(
+    protected_vm: ProtectionType,
+    opt: &VhostUserOption,
+) -> DeviceResult {
+    // The crosvm gpu device expects us to connect the tube before it will accept a vhost-user
+    // connection.
+    let dev = VhostUserGpu::new(virtio::base_features(protected_vm), &opt.socket)
+        .context("failed to set up vhost-user gpu device")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),

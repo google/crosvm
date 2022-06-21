@@ -28,18 +28,17 @@ use rutabaga_gfx::RutabagaError;
 use thiserror::Error;
 use vm_memory::udmabuf::UdmabufError;
 
+pub use super::super::device_constants::gpu::virtio_gpu_config;
+pub use super::super::device_constants::gpu::VIRTIO_GPU_F_CONTEXT_INIT;
+pub use super::super::device_constants::gpu::VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
+pub use super::super::device_constants::gpu::VIRTIO_GPU_F_EDID;
+pub use super::super::device_constants::gpu::VIRTIO_GPU_F_RESOURCE_BLOB;
+pub use super::super::device_constants::gpu::VIRTIO_GPU_F_RESOURCE_SYNC;
+pub use super::super::device_constants::gpu::VIRTIO_GPU_F_RESOURCE_UUID;
+pub use super::super::device_constants::gpu::VIRTIO_GPU_F_VIRGL;
 use super::super::DescriptorError;
 use super::Reader;
 use super::Writer;
-
-pub const VIRTIO_GPU_F_VIRGL: u32 = 0;
-pub const VIRTIO_GPU_F_EDID: u32 = 1;
-pub const VIRTIO_GPU_F_RESOURCE_UUID: u32 = 2;
-pub const VIRTIO_GPU_F_RESOURCE_BLOB: u32 = 3;
-pub const VIRTIO_GPU_F_CONTEXT_INIT: u32 = 4;
-/* The following capabilities are not upstreamed. */
-pub const VIRTIO_GPU_F_RESOURCE_SYNC: u32 = 5;
-pub const VIRTIO_GPU_F_CREATE_GUEST_HANDLE: u32 = 6;
 
 pub const VIRTIO_GPU_UNDEFINED: u32 = 0x0;
 
@@ -508,17 +507,6 @@ unsafe impl DataInit for virtio_gpu_resp_resource_plane_info {}
 pub const PLANE_INFO_MAX_COUNT: usize = 4;
 
 pub const VIRTIO_GPU_EVENT_DISPLAY: u32 = 1 << 0;
-
-#[derive(Copy, Clone, Debug, Default)]
-#[repr(C)]
-pub struct virtio_gpu_config {
-    pub events_read: Le32,
-    pub events_clear: Le32,
-    pub num_scanouts: Le32,
-    pub num_capsets: Le32,
-}
-
-unsafe impl DataInit for virtio_gpu_config {}
 
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]

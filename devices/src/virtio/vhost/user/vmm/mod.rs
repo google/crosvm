@@ -17,7 +17,6 @@ cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod console;
         mod fs;
-        #[cfg(feature = "gpu")]
         mod gpu;
         mod mac80211_hwsim;
         mod net;
@@ -32,7 +31,6 @@ cfg_if::cfg_if! {
         pub use self::wl::*;
         pub use self::net::*;
         pub use self::mac80211_hwsim::*;
-        #[cfg(feature = "gpu")]
         pub use self::gpu::*;
         pub use self::console::*;
         pub use self::fs::*;

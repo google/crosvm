@@ -176,9 +176,8 @@ fn create_virtio_devices(
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
-    #[cfg(feature = "gpu")]
     for opt in &cfg.vhost_user_gpu {
-        devs.push(create_vhost_user_gpu_device(cfg, opt)?);
+        devs.push(create_vhost_user_gpu_device(cfg.protected_vm, opt)?);
     }
 
     for opt in &cfg.vvu_proxy {

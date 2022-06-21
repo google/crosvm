@@ -9,6 +9,7 @@ mod async_utils;
 #[cfg(feature = "balloon")]
 mod balloon;
 mod descriptor_utils;
+pub mod device_constants;
 mod input;
 mod interrupt;
 mod iommu;

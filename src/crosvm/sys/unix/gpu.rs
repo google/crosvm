@@ -8,26 +8,11 @@ use std::collections::HashSet;
 use std::env;
 use std::path::PathBuf;
 
-use devices::virtio::vhost::user::vmm::Gpu as VhostUserGpu;
 use serde::Deserialize;
 use serde::Serialize;
 
 use super::*;
 use crate::crosvm::config::Config;
-use crate::crosvm::config::VhostUserOption;
-
-pub fn create_vhost_user_gpu_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
-    // The crosvm gpu device expects us to connect the tube before it will accept a vhost-user
-    // connection.
-    let dev = VhostUserGpu::new(virtio::base_features(cfg.protected_vm), &opt.socket)
-        .context("failed to set up vhost-user gpu device")?;
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        // no sandbox here because virtqueue handling is exported to a different process.
-        jail: None,
-    })
-}
 
 pub struct GpuCacheInfo<'a> {
     directory: Option<&'a str>,

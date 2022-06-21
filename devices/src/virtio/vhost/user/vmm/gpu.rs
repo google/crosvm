@@ -13,22 +13,15 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
-use crate::virtio::gpu::QUEUE_SIZES;
+use crate::virtio::device_constants::gpu;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserHandler;
-use crate::virtio::virtio_gpu_config;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 use crate::virtio::VirtioDevice;
-use crate::virtio::VIRTIO_GPU_F_CONTEXT_INIT;
-use crate::virtio::VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
-use crate::virtio::VIRTIO_GPU_F_RESOURCE_BLOB;
-use crate::virtio::VIRTIO_GPU_F_RESOURCE_SYNC;
-use crate::virtio::VIRTIO_GPU_F_RESOURCE_UUID;
-use crate::virtio::VIRTIO_GPU_F_VIRGL;
 
 pub struct Gpu {
     kill_evt: Option<Event>,
@@ -44,15 +37,15 @@ impl Gpu {
     /// `socket_path` is the path to the socket of the GPU device.
     /// `pci_bar_size` is the size for the PCI BAR in bytes
     pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Gpu> {
-        let default_queue_size = QUEUE_SIZES.len();
+        let default_queue_size = gpu::QUEUE_SIZES.len();
 
         let allow_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
-            | 1 << VIRTIO_GPU_F_VIRGL
-            | 1 << VIRTIO_GPU_F_RESOURCE_UUID
-            | 1 << VIRTIO_GPU_F_RESOURCE_BLOB
-            | 1 << VIRTIO_GPU_F_CONTEXT_INIT
-            | 1 << VIRTIO_GPU_F_RESOURCE_SYNC
-            | 1 << VIRTIO_GPU_F_CREATE_GUEST_HANDLE
+            | 1 << gpu::VIRTIO_GPU_F_VIRGL
+            | 1 << gpu::VIRTIO_GPU_F_RESOURCE_UUID
+            | 1 << gpu::VIRTIO_GPU_F_RESOURCE_BLOB
+            | 1 << gpu::VIRTIO_GPU_F_CONTEXT_INIT
+            | 1 << gpu::VIRTIO_GPU_F_RESOURCE_SYNC
+            | 1 << gpu::VIRTIO_GPU_F_CREATE_GUEST_HANDLE
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
 
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
@@ -71,7 +64,7 @@ impl Gpu {
             kill_evt: None,
             worker_thread: None,
             handler: RefCell::new(handler),
-            queue_sizes: QUEUE_SIZES[..].to_vec(),
+            queue_sizes: gpu::QUEUE_SIZES[..].to_vec(),
         })
     }
 }
@@ -103,7 +96,7 @@ impl VirtioDevice for Gpu {
         if let Err(e) = self
             .handler
             .borrow_mut()
-            .read_config::<virtio_gpu_config>(offset, data)
+            .read_config::<gpu::virtio_gpu_config>(offset, data)
         {
             error!("failed to read gpu config: {}", e);
         }
@@ -113,7 +106,7 @@ impl VirtioDevice for Gpu {
         if let Err(e) = self
             .handler
             .borrow_mut()
-            .write_config::<virtio_gpu_config>(offset, data)
+            .write_config::<gpu::virtio_gpu_config>(offset, data)
         {
             error!("failed to write gpu config: {}", e);
         }
