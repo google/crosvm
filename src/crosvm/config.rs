@@ -333,6 +333,7 @@ impl TouchDeviceOption {
     /// When a user specifies the parameters for a touch device, width and height are optional.
     /// If the width and height are missing, default values are used. Default values can be set
     /// dynamically, for example from the display sizes specified by the gpu argument.
+    #[cfg(feature = "gpu")]
     pub fn set_default_size(&mut self, width: u32, height: u32) {
         self.default_width = width;
         self.default_height = height;
