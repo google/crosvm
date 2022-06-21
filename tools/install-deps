@@ -23,6 +23,8 @@ sudo apt-get install --yes --no-install-recommends \
     libepoxy-dev \
     libssl-dev \
     libswscale-dev \
+    libudev-dev \
+    libva-dev \
     libwayland-dev \
     libxext-dev \
     make \
