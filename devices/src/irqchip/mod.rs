@@ -20,6 +20,11 @@ cfg_if::cfg_if! {
         pub use self::kvm::KvmSplitIrqChip;
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
         pub use self::kvm::{AARCH64_GIC_NR_IRQS, AARCH64_GIC_NR_SPIS};
+    } else if #[cfg(windows)] {
+        #[cfg(feature = "whpx")]
+        mod whpx;
+        #[cfg(feature = "whpx")]
+        pub use self::whpx::WhpxSplitIrqChip;
     }
 }
 

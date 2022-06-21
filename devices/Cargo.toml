@@ -19,6 +19,7 @@ x = ["gpu_display/x", "rutabaga_gfx/x"]
 virgl_renderer = ["gpu", "rutabaga_gfx/virgl_renderer"]
 gfxstream = ["gpu", "rutabaga_gfx/gfxstream"]
 slirp = []
+whpx = []
 
 [dependencies]
 argh = "0.1.7"
