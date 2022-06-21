@@ -547,7 +547,7 @@ impl IrqRoute {
 
 /// State of a VCPU's general purpose registers.
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Regs {
     pub rax: u64,
     pub rbx: u64,
@@ -567,6 +567,31 @@ pub struct Regs {
     pub r15: u64,
     pub rip: u64,
     pub rflags: u64,
+}
+
+impl Default for Regs {
+    fn default() -> Self {
+        Regs {
+            rax: 0,
+            rbx: 0,
+            rcx: 0,
+            rdx: 0,
+            rsi: 0,
+            rdi: 0,
+            rsp: 0,
+            rbp: 0,
+            r8: 0,
+            r9: 0,
+            r10: 0,
+            r11: 0,
+            r12: 0,
+            r13: 0,
+            r14: 0,
+            r15: 0,
+            rip: 0,
+            rflags: 0x2, // Bit 1 (0x2) is always 1.
+        }
+    }
 }
 
 /// State of a memory segment.

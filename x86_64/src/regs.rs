@@ -229,7 +229,6 @@ pub fn setup_fpu(vcpu: &dyn VcpuX86_64) -> Result<()> {
 /// * `boot_si` - Must point to zero page address per Linux ABI.
 pub fn setup_regs(vcpu: &dyn VcpuX86_64, boot_ip: u64, boot_sp: u64, boot_si: u64) -> Result<()> {
     let regs = Regs {
-        rflags: 0x0000000000000002u64,
         rip: boot_ip,
         rsp: boot_sp,
         rbp: boot_sp,
