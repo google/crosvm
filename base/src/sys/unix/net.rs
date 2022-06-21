@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use cvt::cvt;
 use std::{
     cmp::Ordering,
     convert::TryFrom,
@@ -599,7 +598,12 @@ impl UnixSeqpacket {
     /// Sets the blocking mode for this socket.
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         let mut nonblocking = nonblocking as libc::c_int;
-        cvt(unsafe { libc::ioctl(self.fd, libc::FIONBIO, &mut nonblocking) }).map(drop)
+        let ret = unsafe { libc::ioctl(self.fd, libc::FIONBIO, &mut nonblocking) };
+        if ret < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -798,7 +802,12 @@ impl UnixSeqpacketListener {
     /// Sets the blocking mode for this socket.
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         let mut nonblocking = nonblocking as libc::c_int;
-        cvt(unsafe { libc::ioctl(self.fd, libc::FIONBIO, &mut nonblocking) }).map(drop)
+        let ret = unsafe { libc::ioctl(self.fd, libc::FIONBIO, &mut nonblocking) };
+        if ret < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
     }
 }
 

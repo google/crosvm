@@ -27,9 +27,6 @@ tempfile = "3"
 thiserror = "1.0.20"
 uuid = { version = "0.8.2", features = ["v4"] }
 
-[target.'cfg(unix)'.dependencies]
-cvt = "*"
-
 [target.'cfg(windows)'.dependencies]
 lazy_static = "*"
 rand = "*"
