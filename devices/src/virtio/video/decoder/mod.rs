@@ -56,14 +56,15 @@ enum QueueOutputResourceResult {
     Registered(FrameBufferId), // The resource is queued first time.
 }
 
-#[derive(Default)]
-struct InputResources {
-    // InputResourceId -> ResourceHandle
-    res_id_to_res_handle: BTreeMap<InputResourceId, GuestResource>,
-
-    // InputResourceId -> data offset
-    res_id_to_offset: BTreeMap<InputResourceId, u32>,
+struct InputResource {
+    /// The actual underlying resource.
+    resource: GuestResource,
+    /// Offset from `resource` from which data starts.
+    offset: u32,
 }
+
+/// Maps an input resource ID to the underlying resource and its useful information.
+type InputResources = BTreeMap<InputResourceId, InputResource>;
 
 #[derive(Default)]
 struct OutputResources {
@@ -303,12 +304,19 @@ impl<S: DecoderSession> Context<S> {
         queue_type: QueueType,
         resource_id: u32,
         resource: GuestResource,
+        offset: u32,
     ) {
-        let res_id_to_res_handle = match queue_type {
-            QueueType::Input => &mut self.in_res.res_id_to_res_handle,
-            QueueType::Output => &mut self.out_res.res_id_to_res_handle,
+        match queue_type {
+            QueueType::Input => {
+                self.in_res
+                    .insert(resource_id, InputResource { resource, offset });
+            }
+            QueueType::Output => {
+                self.out_res
+                    .res_id_to_res_handle
+                    .insert(resource_id, resource);
+            }
         };
-        res_id_to_res_handle.insert(resource_id, resource);
     }
 
     /*
@@ -552,12 +560,10 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             .map_err(|_| VideoError::InvalidArgument)?,
         };
 
-        ctx.register_resource(queue_type, resource_id, resource);
+        let offset = plane_offsets.get(0).copied().unwrap_or(0);
+        ctx.register_resource(queue_type, resource_id, resource, offset);
 
         if queue_type == QueueType::Input {
-            ctx.in_res
-                .res_id_to_offset
-                .insert(resource_id, plane_offsets.get(0).copied().unwrap_or(0));
             return Ok(VideoCmdResponseType::Sync(CmdResponse::NoData));
         };
 
@@ -612,20 +618,13 @@ impl<'a, D: DecoderBackend> Decoder<D> {
 
         let session = ctx.session.as_mut().ok_or(VideoError::InvalidOperation)?;
 
-        let resource = ctx.in_res.res_id_to_res_handle.get(&resource_id).ok_or(
-            VideoError::InvalidResourceId {
-                stream_id,
-                resource_id,
-            },
-        )?;
-
-        let offset = match ctx.in_res.res_id_to_offset.get(&resource_id) {
-            Some(offset) => *offset,
-            None => {
-                error!("Failed to find offset for {}", resource_id);
-                0
-            }
-        };
+        let InputResource { resource, offset } =
+            ctx.in_res
+                .get(&resource_id)
+                .ok_or(VideoError::InvalidResourceId {
+                    stream_id,
+                    resource_id,
+                })?;
 
         session.decode(
             resource_id,
@@ -634,7 +633,7 @@ impl<'a, D: DecoderBackend> Decoder<D> {
                 .handle
                 .try_clone()
                 .map_err(|_| VideoError::InvalidParameter)?,
-            offset,
+            *offset,
             data_sizes[0], // bytes_used
         )?;
 
