@@ -13,11 +13,11 @@ use base::error;
 use base::ExternalMapping;
 use base::Protection;
 use base::SafeDescriptor;
-use base::Tube;
+
 use data_model::VolatileSlice;
 use gpu_display::*;
 use libc::c_void;
-use resources::Alloc;
+
 use rutabaga_gfx::ResourceCreate3D;
 use rutabaga_gfx::ResourceCreateBlob;
 use rutabaga_gfx::Rutabaga;
@@ -29,10 +29,6 @@ use rutabaga_gfx::RutabagaIovec;
 use rutabaga_gfx::Transfer3D;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_DMABUF;
 use sync::Mutex;
-use vm_control::MemSlot;
-use vm_control::VmMemoryDestination;
-use vm_control::VmMemoryRequest;
-use vm_control::VmMemoryResponse;
 use vm_control::VmMemorySource;
 use vm_memory::udmabuf::UdmabufDriver;
 use vm_memory::GuestAddress;
@@ -50,13 +46,14 @@ use crate::virtio::resource_bridge::BufferInfo;
 use crate::virtio::resource_bridge::PlaneInfo;
 use crate::virtio::resource_bridge::ResourceInfo;
 use crate::virtio::resource_bridge::ResourceResponse;
+use crate::virtio::SharedMemoryMapper;
 
 struct VirtioGpuResource {
     resource_id: u32,
     width: u32,
     height: u32,
     size: u64,
-    slot: Option<MemSlot>,
+    shmem_offset: Option<u64>,
     scanout_data: Option<VirtioScanoutBlobData>,
     display_import: Option<u32>,
 }
@@ -70,7 +67,7 @@ impl VirtioGpuResource {
             width,
             height,
             size,
-            slot: None,
+            shmem_offset: None,
             scanout_data: None,
             display_import: None,
         }
@@ -274,8 +271,7 @@ pub struct VirtioGpu {
     cursor_scanout: VirtioGpuScanout,
     // Maps event devices to scanout number.
     event_devices: Map<u32, u32>,
-    gpu_device_tube: Tube,
-    pci_bar: Alloc,
+    mapper: Box<dyn SharedMemoryMapper>,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     rutabaga: Rutabaga,
     resources: Map<u32, VirtioGpuResource>,
@@ -312,8 +308,7 @@ impl VirtioGpu {
         display_params: Vec<GpuDisplayParameters>,
         rutabaga_builder: RutabagaBuilder,
         event_devices: Vec<EventDevice>,
-        gpu_device_tube: Tube,
-        pci_bar: Alloc,
+        mapper: Box<dyn SharedMemoryMapper>,
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
         external_blob: bool,
         udmabuf: bool,
@@ -352,8 +347,7 @@ impl VirtioGpu {
             scanouts,
             cursor_scanout,
             event_devices: Default::default(),
-            gpu_device_tube,
-            pci_bar,
+            mapper,
             map_request,
             rutabaga,
             resources: Default::default(),
@@ -756,25 +750,12 @@ impl VirtioGpu {
             }
         };
 
-        let request = VmMemoryRequest::RegisterMemory {
-            source,
-            dest: VmMemoryDestination::ExistingAllocation {
-                allocation: self.pci_bar,
-                offset,
-            },
-            prot: Protection::read_write(),
-        };
-        self.gpu_device_tube.send(&request)?;
-        let response = self.gpu_device_tube.recv()?;
+        self.mapper
+            .add_mapping(source, offset, Protection::read_write())
+            .map_err(|_| ErrUnspec)?;
 
-        match response {
-            VmMemoryResponse::RegisterMemory { pfn: _, slot } => {
-                resource.slot = Some(slot);
-                Ok(OkMapInfo { map_info })
-            }
-            VmMemoryResponse::Err(e) => Err(ErrBase(e)),
-            _ => Err(ErrUnspec),
-        }
+        resource.shmem_offset = Some(offset);
+        Ok(OkMapInfo { map_info })
     }
 
     /// Uses the hypervisor to unmap the blob resource.
@@ -784,19 +765,12 @@ impl VirtioGpu {
             .get_mut(&resource_id)
             .ok_or(ErrInvalidResourceId)?;
 
-        let slot = resource.slot.ok_or(ErrUnspec)?;
-        let request = VmMemoryRequest::UnregisterMemory(slot);
-        self.gpu_device_tube.send(&request)?;
-        let response = self.gpu_device_tube.recv()?;
-
-        match response {
-            VmMemoryResponse::Ok => {
-                resource.slot = None;
-                Ok(OkNoData)
-            }
-            VmMemoryResponse::Err(e) => Err(ErrBase(e)),
-            _ => Err(ErrUnspec),
-        }
+        let shmem_offset = resource.shmem_offset.ok_or(ErrUnspec)?;
+        self.mapper
+            .remove_mapping(shmem_offset)
+            .map_err(|_| ErrUnspec)?;
+        resource.shmem_offset = None;
+        Ok(OkNoData)
     }
 
     /// Creates a rutabaga context.

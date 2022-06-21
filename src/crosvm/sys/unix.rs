@@ -156,21 +156,19 @@ use crate::crosvm::gdb::gdb_thread;
 use crate::crosvm::gdb::GdbStub;
 use crate::crosvm::sys::config::VfioType;
 
-// gpu_device_tube is not used when GPU support is disabled.
-#[cfg_attr(not(feature = "gpu"), allow(unused_variables))]
 fn create_virtio_devices(
     cfg: &Config,
     vm: &mut impl Vm,
     resources: &mut SystemAllocator,
-    vm_evt_wrtube: &SendTube,
-    gpu_device_tube: Tube,
-    vhost_user_gpu_tubes: Vec<(Tube, Tube, Tube)>,
+    #[cfg_attr(not(feature = "gpu"), allow(unused_variables))] vm_evt_wrtube: &SendTube,
     #[cfg(feature = "balloon")] balloon_device_tube: Option<Tube>,
     #[cfg(feature = "balloon")] balloon_inflate_tube: Option<Tube>,
     #[cfg(feature = "balloon")] init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
-    map_request: Arc<Mutex<Option<ExternalMapping>>>,
+    #[cfg_attr(not(feature = "gpu"), allow(unused_variables))] map_request: Arc<
+        Mutex<Option<ExternalMapping>>,
+    >,
     fs_device_tubes: &mut Vec<Tube>,
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     vvu_proxy_device_tubes: &mut Vec<Tube>,
@@ -179,15 +177,8 @@ fn create_virtio_devices(
     let mut devs = Vec::new();
 
     #[cfg(feature = "gpu")]
-    for (opt, (host_gpu_tube, device_gpu_tube, device_control_tube)) in
-        cfg.vhost_user_gpu.iter().zip(vhost_user_gpu_tubes)
-    {
-        devs.push(create_vhost_user_gpu_device(
-            cfg,
-            opt,
-            (host_gpu_tube, device_gpu_tube),
-            device_control_tube,
-        )?);
+    for opt in &cfg.vhost_user_gpu {
+        devs.push(create_vhost_user_gpu_device(cfg, opt)?);
     }
 
     for opt in &cfg.vvu_proxy {
@@ -200,7 +191,7 @@ fn create_virtio_devices(
         )?);
     }
 
-    #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
+    #[cfg(any(feature = "gpu", feature = "video-decoder", feature = "video-encoder"))]
     let mut resource_bridges = Vec::<Tube>::new();
 
     if !cfg.wayland_socket_paths.is_empty() {
@@ -299,7 +290,6 @@ fn create_virtio_devices(
             devs.push(create_gpu_device(
                 cfg,
                 vm_evt_wrtube,
-                gpu_device_tube,
                 resource_bridges,
                 // Use the unnamed socket for GPU display screens.
                 cfg.wayland_socket_paths.get(""),
@@ -638,9 +628,6 @@ fn create_devices(
     vm_evt_wrtube: &SendTube,
     iommu_attached_endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
     control_tubes: &mut Vec<TaggedControlTube>,
-    gpu_device_tube: Tube,
-    // Tuple content: (host-side GPU tube, device-side GPU tube, device-side control tube).
-    vhost_user_gpu_tubes: Vec<(Tube, Tube, Tube)>,
     #[cfg(feature = "balloon")] balloon_device_tube: Option<Tube>,
     #[cfg(feature = "balloon")] init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
@@ -780,8 +767,6 @@ fn create_devices(
         vm,
         resources,
         vm_evt_wrtube,
-        gpu_device_tube,
-        vhost_user_gpu_tubes,
         #[cfg(feature = "balloon")]
         balloon_device_tube,
         #[cfg(feature = "balloon")]
@@ -1366,15 +1351,6 @@ where
         components.gdb = Some((port, gdb_control_tube));
     }
 
-    let mut vhost_user_gpu_tubes = Vec::with_capacity(cfg.vhost_user_gpu.len());
-    for _ in 0..cfg.vhost_user_gpu.len() {
-        let (host_control_tube, device_control_tube) =
-            Tube::pair().context("failed to create tube")?;
-        let (host_gpu_tube, device_gpu_tube) = Tube::pair().context("failed to create tube")?;
-        vhost_user_gpu_tubes.push((host_gpu_tube, device_gpu_tube, device_control_tube));
-        control_tubes.push(TaggedControlTube::VmMemory(host_control_tube));
-    }
-
     #[cfg(feature = "balloon")]
     let (balloon_host_tube, balloon_device_tube) = if cfg.balloon {
         if let Some(ref path) = cfg.balloon_control {
@@ -1415,9 +1391,6 @@ where
         pmem_device_tubes.push(pmem_device_tube);
         control_tubes.push(TaggedControlTube::VmMsync(pmem_host_tube));
     }
-
-    let (gpu_host_tube, gpu_device_tube) = Tube::pair().context("failed to create tube")?;
-    control_tubes.push(TaggedControlTube::VmMemory(gpu_host_tube));
 
     if let Some(ioapic_host_tube) = ioapic_host_tube {
         control_tubes.push(TaggedControlTube::VmIrq(ioapic_host_tube));
@@ -1595,8 +1568,6 @@ where
         &vm_evt_wrtube,
         &mut iommu_attached_endpoints,
         &mut control_tubes,
-        gpu_device_tube,
-        vhost_user_gpu_tubes,
         #[cfg(feature = "balloon")]
         balloon_device_tube,
         #[cfg(feature = "balloon")]

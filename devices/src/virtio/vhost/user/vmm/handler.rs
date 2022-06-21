@@ -13,7 +13,6 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::Protection;
 use base::SafeDescriptor;
-use base::Tube;
 use vm_control::VmMemorySource;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserConfigFlags;
@@ -151,13 +150,6 @@ impl VhostUserHandler {
         self.vu
             .set_config(offset as u32, VhostUserConfigFlags::empty(), data)
             .map_err(Error::SetConfig)
-    }
-
-    /// Sets the channel for device-specific messages.
-    pub fn set_device_request_channel(&mut self, channel: Tube) -> Result<()> {
-        self.vu
-            .set_slave_request_fd(&channel)
-            .map_err(Error::SetDeviceRequestChannel)
     }
 
     /// Sets the memory map regions so it can translate the vring addresses.

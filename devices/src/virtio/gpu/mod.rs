@@ -41,7 +41,6 @@ pub use parameters::DisplayParameters as GpuDisplayParameters;
 pub use parameters::GpuParameters;
 pub use parameters::DEFAULT_DISPLAY_HEIGHT;
 pub use parameters::DEFAULT_DISPLAY_WIDTH;
-use resources::Alloc;
 use rutabaga_gfx::*;
 use serde::Deserialize;
 use serde::Serialize;
@@ -65,18 +64,13 @@ use super::resource_bridge::*;
 use super::DescriptorChain;
 use super::DeviceType;
 use super::Interrupt;
-use super::PciCapabilityType;
 use super::Queue;
 use super::Reader;
+use super::SharedMemoryMapper;
+use super::SharedMemoryRegion;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
-use super::VirtioPciShmCap;
 use super::Writer;
-use crate::pci::PciAddress;
-use crate::pci::PciBarConfiguration;
-use crate::pci::PciBarPrefetchable;
-use crate::pci::PciBarRegionType;
-use crate::pci::PciCapability;
 
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum GpuMode {
@@ -89,9 +83,6 @@ pub enum GpuMode {
 // there to be fewer of.
 pub const QUEUE_SIZES: &[u16] = &[256, 16];
 pub const FENCE_POLL_INTERVAL: Duration = Duration::from_millis(1);
-
-pub const GPU_BAR_NUM: u8 = 4;
-pub const GPU_BAR_OFFSET: u64 = 0;
 
 #[derive(Copy, Clone, Debug)]
 pub struct VirtioScanoutBlobData {
@@ -192,8 +183,7 @@ fn build(
     display_params: Vec<GpuDisplayParameters>,
     rutabaga_builder: RutabagaBuilder,
     event_devices: Vec<EventDevice>,
-    gpu_device_tube: Tube,
-    pci_bar: Alloc,
+    mapper: Box<dyn SharedMemoryMapper>,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     external_blob: bool,
     udmabuf: bool,
@@ -224,8 +214,7 @@ fn build(
         display_params,
         rutabaga_builder,
         event_devices,
-        gpu_device_tube,
-        pci_bar,
+        mapper,
         map_request,
         external_blob,
         udmabuf,
@@ -965,7 +954,7 @@ impl DisplayBackend {
 
 pub struct Gpu {
     exit_evt_wrtube: SendTube,
-    gpu_device_tube: Option<Tube>,
+    mapper: Option<Box<dyn SharedMemoryMapper>>,
     resource_bridges: Vec<Tube>,
     event_devices: Vec<EventDevice>,
     kill_evt: Option<Event>,
@@ -974,7 +963,6 @@ pub struct Gpu {
     display_backends: Vec<DisplayBackend>,
     display_params: Vec<GpuDisplayParameters>,
     rutabaga_builder: Option<RutabagaBuilder>,
-    pci_bar: Option<Alloc>,
     pci_bar_size: u64,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     external_blob: bool,
@@ -988,7 +976,6 @@ pub struct Gpu {
 impl Gpu {
     pub fn new(
         exit_evt_wrtube: SendTube,
-        gpu_device_tube: Option<Tube>,
         resource_bridges: Vec<Tube>,
         display_backends: Vec<DisplayBackend>,
         gpu_parameters: &GpuParameters,
@@ -1044,7 +1031,7 @@ impl Gpu {
 
         Gpu {
             exit_evt_wrtube,
-            gpu_device_tube,
+            mapper: None,
             resource_bridges,
             event_devices,
             config_event: false,
@@ -1053,7 +1040,6 @@ impl Gpu {
             display_backends,
             display_params: gpu_parameters.displays.clone(),
             rutabaga_builder: Some(rutabaga_builder),
-            pci_bar: None,
             pci_bar_size: gpu_parameters.pci_bar_size,
             map_request,
             external_blob,
@@ -1070,9 +1056,8 @@ impl Gpu {
         &mut self,
         fence_state: Arc<Mutex<FenceState>>,
         fence_handler: RutabagaFenceHandler,
+        mapper: Box<dyn SharedMemoryMapper>,
     ) -> Option<Frontend> {
-        let tube = self.gpu_device_tube.take()?;
-        let pci_bar = self.pci_bar.take()?;
         let rutabaga_builder = self.rutabaga_builder.take()?;
         let render_server_fd = self.render_server_fd.take();
         let event_devices = self.event_devices.split_off(0);
@@ -1082,8 +1067,7 @@ impl Gpu {
             self.display_params.clone(),
             rutabaga_builder,
             event_devices,
-            tube,
-            pci_bar,
+            mapper,
             self.map_request.clone(),
             self.external_blob,
             self.udmabuf,
@@ -1091,16 +1075,6 @@ impl Gpu {
             render_server_fd,
         )
         .map(|vgpu| Frontend::new(vgpu, fence_state))
-    }
-
-    /// Returns the device tube to the main process.
-    pub fn device_tube(&self) -> Option<&Tube> {
-        self.gpu_device_tube.as_ref()
-    }
-
-    /// Sets the device tube to the main process.
-    pub fn set_device_tube(&mut self, tube: Tube) {
-        self.gpu_device_tube = Some(tube);
     }
 
     fn get_config(&self) -> virtio_gpu_config {
@@ -1168,8 +1142,10 @@ impl VirtioDevice for Gpu {
             keep_rds.push(libc::STDERR_FILENO);
         }
 
-        if let Some(ref gpu_device_tube) = self.gpu_device_tube {
-            keep_rds.push(gpu_device_tube.as_raw_descriptor());
+        if let Some(ref mapper) = self.mapper {
+            if let Some(descriptor) = mapper.as_raw_descriptor() {
+                keep_rds.push(descriptor);
+            }
         }
 
         if let Some(ref render_server_fd) = self.render_server_fd {
@@ -1274,11 +1250,9 @@ impl VirtioDevice for Gpu {
         let udmabuf = self.udmabuf;
         let fence_state = Arc::new(Mutex::new(Default::default()));
         let render_server_fd = self.render_server_fd.take();
-        if let (Some(gpu_device_tube), Some(pci_bar), Some(rutabaga_builder)) = (
-            self.gpu_device_tube.take(),
-            self.pci_bar.take(),
-            self.rutabaga_builder.take(),
-        ) {
+        if let (Some(mapper), Some(rutabaga_builder)) =
+            (self.mapper.take(), self.rutabaga_builder.take())
+        {
             let worker_result =
                 thread::Builder::new()
                     .name("virtio_gpu".to_string())
@@ -1294,8 +1268,7 @@ impl VirtioDevice for Gpu {
                             display_params,
                             rutabaga_builder,
                             event_devices,
-                            gpu_device_tube,
-                            pci_bar,
+                            mapper,
                             map_request,
                             external_blob,
                             udmabuf,
@@ -1333,29 +1306,14 @@ impl VirtioDevice for Gpu {
         }
     }
 
-    // Require 1 BAR for mapping 3D buffers
-    fn get_device_bars(&mut self, address: PciAddress) -> Vec<PciBarConfiguration> {
-        self.pci_bar = Some(Alloc::PciBar {
-            bus: address.bus,
-            dev: address.dev,
-            func: address.func,
-            bar: GPU_BAR_NUM,
-        });
-        vec![PciBarConfiguration::new(
-            GPU_BAR_NUM as usize,
-            self.pci_bar_size,
-            PciBarRegionType::Memory64BitRegion,
-            PciBarPrefetchable::NotPrefetchable,
-        )]
+    fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {
+        Some(SharedMemoryRegion {
+            id: VIRTIO_GPU_SHM_ID_HOST_VISIBLE,
+            length: self.pci_bar_size,
+        })
     }
 
-    fn get_device_caps(&self) -> Vec<Box<dyn PciCapability>> {
-        vec![Box::new(VirtioPciShmCap::new(
-            PciCapabilityType::SharedMemoryConfig,
-            GPU_BAR_NUM,
-            GPU_BAR_OFFSET,
-            self.pci_bar_size,
-            VIRTIO_GPU_SHM_ID_HOST_VISIBLE,
-        ))]
+    fn set_shared_memory_mapper(&mut self, mapper: Box<dyn SharedMemoryMapper>) {
+        self.mapper = Some(mapper);
     }
 }

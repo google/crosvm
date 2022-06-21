@@ -193,11 +193,6 @@ pub trait VhostUserBackend {
     /// writes `data` to this device's configuration space at `offset`.
     fn write_config(&self, _offset: u64, _data: &[u8]) {}
 
-    /// Sets the channel for device-specific communication.
-    fn set_device_request_channel(&mut self, _channel: File) -> anyhow::Result<()> {
-        Ok(())
-    }
-
     /// Indicates that the backend should start processing requests for virtio queue number `idx`.
     /// This method must not block the current thread so device backends should either spawn an
     /// async task or another thread to handle messages from the Queue.
@@ -705,12 +700,7 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
     }
 
     fn set_slave_req_fd(&mut self, ep: Box<dyn Endpoint<SlaveReq>>) {
-        let shmid = match self.shmid {
-            Some(shmid) => shmid,
-            None => {
-                unimplemented!("set_device_request_channel no longer supported");
-            }
-        };
+        let shmid = self.shmid.expect("unexpected slave_req_fd");
         let frontend = Slave::new(ep);
         self.backend
             .set_shared_memory_mapper(Box::new(VhostShmemMapper {

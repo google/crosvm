@@ -16,22 +16,11 @@ use super::*;
 use crate::crosvm::config::Config;
 use crate::crosvm::config::VhostUserOption;
 
-pub fn create_vhost_user_gpu_device(
-    cfg: &Config,
-    opt: &VhostUserOption,
-    gpu_tubes: (Tube, Tube),
-    device_control_tube: Tube,
-) -> DeviceResult {
+pub fn create_vhost_user_gpu_device(cfg: &Config, opt: &VhostUserOption) -> DeviceResult {
     // The crosvm gpu device expects us to connect the tube before it will accept a vhost-user
     // connection.
-    let dev = VhostUserGpu::new(
-        virtio::base_features(cfg.protected_vm),
-        &opt.socket,
-        gpu_tubes,
-        device_control_tube,
-        cfg.gpu_parameters.as_ref().unwrap().pci_bar_size,
-    )
-    .context("failed to set up vhost-user gpu device")?;
+    let dev = VhostUserGpu::new(virtio::base_features(cfg.protected_vm), &opt.socket)
+        .context("failed to set up vhost-user gpu device")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -80,7 +69,6 @@ pub fn get_gpu_cache_info<'a>(
 pub fn create_gpu_device(
     cfg: &Config,
     exit_evt_wrtube: &SendTube,
-    gpu_device_tube: Tube,
     resource_bridges: Vec<Tube>,
     wayland_socket_path: Option<&PathBuf>,
     x_display: Option<String>,
@@ -111,7 +99,6 @@ pub fn create_gpu_device(
         exit_evt_wrtube
             .try_clone()
             .context("failed to clone tube")?,
-        Some(gpu_device_tube),
         resource_bridges,
         display_backends,
         cfg.gpu_parameters.as_ref().unwrap(),
