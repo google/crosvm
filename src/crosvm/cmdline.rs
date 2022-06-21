@@ -685,10 +685,6 @@ pub struct RunCommand {
     #[argh(switch)]
     /// don't use legacy KBD devices emulation
     pub no_i8042: bool,
-    #[cfg(unix)]
-    #[argh(switch)]
-    /// don't use legacy KBD/RTC devices emulation
-    pub no_legacy: bool,
     #[argh(switch)]
     /// don't create RNG device in the guest
     pub no_rng: bool,
@@ -1458,9 +1454,6 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(unix)]
         {
-            cfg.no_i8042 = cmd.no_legacy;
-            cfg.no_rtc = cmd.no_legacy;
-
             if cmd.vhost_vsock_device.is_some() && cmd.vhost_vsock_fd.is_some() {
                 return Err(
                     "Only one of vhost-vsock-device vhost-vsock-fd has to be specified".to_string(),
@@ -1566,8 +1559,8 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.force_s2idle = cmd.s2idle;
             cfg.pcie_ecam = cmd.pcie_ecam;
             cfg.pci_low_start = cmd.pci_low_start;
-            cfg.no_i8042 |= cmd.no_i8042;
-            cfg.no_rtc |= cmd.no_rtc;
+            cfg.no_i8042 = cmd.no_i8042;
+            cfg.no_rtc = cmd.no_rtc;
 
             for (index, msr_config) in cmd.userspace_msr {
                 if cfg.userspace_msr.insert(index, msr_config).is_some() {
