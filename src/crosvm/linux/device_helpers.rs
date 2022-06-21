@@ -328,7 +328,10 @@ pub fn create_cras_snd_device(
 }
 
 #[cfg(feature = "tpm")]
-pub fn create_software_tpm_device(jail_config: &Option<JailConfig>) -> DeviceResult {
+pub fn create_software_tpm_device(
+    protected_vm: ProtectionType,
+    jail_config: &Option<JailConfig>,
+) -> DeviceResult {
     use std::ffi::CString;
     use std::fs;
     use std::process;
@@ -369,7 +372,7 @@ pub fn create_software_tpm_device(jail_config: &Option<JailConfig>) -> DeviceRes
     }
 
     let backend = SoftwareTpm::new(tpm_storage).context("failed to create SoftwareTpm")?;
-    let dev = virtio::Tpm::new(Box::new(backend));
+    let dev = virtio::Tpm::new(Box::new(backend), virtio::base_features(protected_vm));
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -378,7 +381,10 @@ pub fn create_software_tpm_device(jail_config: &Option<JailConfig>) -> DeviceRes
 }
 
 #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
-pub fn create_vtpm_proxy_device(jail_config: &Option<JailConfig>) -> DeviceResult {
+pub fn create_vtpm_proxy_device(
+    protected_vm: ProtectionType,
+    jail_config: &Option<JailConfig>,
+) -> DeviceResult {
     let mut tpm_jail = simple_jail(jail_config, "vtpm_proxy_device")?;
 
     match &mut tpm_jail {
@@ -402,7 +408,7 @@ pub fn create_vtpm_proxy_device(jail_config: &Option<JailConfig>) -> DeviceResul
     }
 
     let backend = VtpmProxy::new();
-    let dev = virtio::Tpm::new(Box::new(backend));
+    let dev = virtio::Tpm::new(Box::new(backend), virtio::base_features(protected_vm));
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),

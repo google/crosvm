@@ -7,14 +7,13 @@ use std::ops::BitOrAssign;
 use std::thread;
 
 use base::{error, Event, EventToken, RawDescriptor, WaitContext};
-use hypervisor::ProtectionType;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use super::{
-    base_features, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue, Reader,
-    SignalableInterrupt, VirtioDevice, Writer,
+    DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue, Reader, SignalableInterrupt,
+    VirtioDevice, Writer,
 };
 
 // A single queue of size 2. The guest kernel driver will enqueue a single
@@ -162,14 +161,16 @@ pub struct Tpm {
     backend: Option<Box<dyn TpmBackend>>,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<()>>,
+    features: u64,
 }
 
 impl Tpm {
-    pub fn new(backend: Box<dyn TpmBackend>) -> Tpm {
+    pub fn new(backend: Box<dyn TpmBackend>, base_features: u64) -> Tpm {
         Tpm {
             backend: Some(backend),
             kill_evt: None,
             worker_thread: None,
+            features: base_features,
         }
     }
 }
@@ -200,7 +201,7 @@ impl VirtioDevice for Tpm {
     }
 
     fn features(&self) -> u64 {
-        base_features(ProtectionType::Unprotected)
+        self.features
     }
 
     fn activate(

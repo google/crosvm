@@ -304,14 +304,20 @@ fn create_virtio_devices(
     #[cfg(feature = "tpm")]
     {
         if cfg.software_tpm {
-            devs.push(create_software_tpm_device(&cfg.jail_config)?);
+            devs.push(create_software_tpm_device(
+                cfg.protected_vm,
+                &cfg.jail_config,
+            )?);
         }
     }
 
     #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
     {
         if cfg.vtpm_proxy {
-            devs.push(create_vtpm_proxy_device(&cfg.jail_config)?);
+            devs.push(create_vtpm_proxy_device(
+                cfg.protected_vm,
+                &cfg.jail_config,
+            )?);
         }
     }
 
