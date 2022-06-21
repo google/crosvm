@@ -1724,7 +1724,8 @@ pub struct Config {
     pub mmio_address_ranges: Vec<AddressRange>,
     pub net_vq_pairs: Option<u16>,
     pub netmask: Option<net::Ipv4Addr>,
-    pub no_legacy: bool,
+    pub no_i8042: bool,
+    pub no_rtc: bool,
     pub no_smt: bool,
     pub params: Vec<String>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -1857,7 +1858,8 @@ impl Default for Config {
             mmio_address_ranges: Vec::new(),
             net_vq_pairs: None,
             netmask: None,
-            no_legacy: false,
+            no_i8042: false,
+            no_rtc: false,
             no_smt: false,
             params: Vec::new(),
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

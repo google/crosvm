@@ -1036,7 +1036,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
         gdb: None,
         dmi_path: cfg.dmi_path.clone(),
-        no_legacy: cfg.no_legacy,
+        no_i8042: cfg.no_i8042,
+        no_rtc: cfg.no_rtc,
         host_cpu_topology: cfg.host_cpu_topology,
         itmt: cfg.itmt,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
