@@ -201,6 +201,9 @@ pub struct Options {
     #[argh(option, arg_name = "INFILE")]
     /// path to a file
     input_file: Option<PathBuf>,
+    /// whether we are logging to syslog or not
+    #[argh(switch)]
+    syslog: bool,
 }
 
 /// Return a new vhost-user console device. `params` are the device's configuration, and `keep_rds`
@@ -227,8 +230,19 @@ pub fn create_vu_console_device(
 /// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
     let type_ = match opts.output_file {
-        Some(_) => SerialType::File,
-        None => SerialType::Stdout,
+        Some(_) => {
+            if opts.syslog {
+                bail!("--output-file and --syslog options cannot be used together.");
+            }
+            SerialType::File
+        }
+        None => {
+            if opts.syslog {
+                SerialType::Syslog
+            } else {
+                SerialType::Stdout
+            }
+        }
     };
 
     let params = SerialParameters {
@@ -240,8 +254,8 @@ pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
         num: 1,
         console: true,
         earlycon: false,
-        // We do not support stdin-less mode
-        stdin: true,
+        // We don't use stdin if syslog mode is enabled
+        stdin: !opts.syslog,
         out_timestamp: false,
         ..Default::default()
     };
