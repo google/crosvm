@@ -8,8 +8,10 @@
 **[Recipes](#Recipes)**
   * [build_chromeos](#recipes-build_chromeos) (Python3 ✅)
   * [build_linux](#recipes-build_linux) (Python3 ✅)
-  * [crosvm:examples/build_context](#recipes-crosvm_examples_build_context) (Python3 ✅)
-  * [crosvm:examples/prepare_source](#recipes-crosvm_examples_prepare_source) (Python3 ✅)
+  * [build_windows](#recipes-build_windows) (Python3 ✅)
+  * [crosvm:examples/container_build_context](#recipes-crosvm_examples_container_build_context) (Python3 ✅)
+  * [crosvm:examples/host_build_context](#recipes-crosvm_examples_host_build_context) (Python3 ✅)
+  * [crosvm:examples/source_context](#recipes-crosvm_examples_source_context) (Python3 ✅)
   * [health_check](#recipes-health_check) (Python3 ✅)
   * [push_to_github](#recipes-push_to_github) (Python3 ✅)
   * [update_chromeos_merges](#recipes-update_chromeos_merges) (Python3 ✅)
@@ -17,43 +19,66 @@
 
 ### *recipe_modules* / [crosvm](/infra/recipe_modules/crosvm)
 
-[DEPS](/infra/recipe_modules/crosvm/__init__.py#7): [depot\_tools/bot\_update][depot_tools/recipe_modules/bot_update], [depot\_tools/gclient][depot_tools/recipe_modules/gclient], [depot\_tools/git][depot_tools/recipe_modules/git], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/file][recipe_engine/recipe_modules/file], [recipe\_engine/path][recipe_engine/recipe_modules/path], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+[DEPS](/infra/recipe_modules/crosvm/__init__.py#7): [depot\_tools/bot\_update][depot_tools/recipe_modules/bot_update], [depot\_tools/gclient][depot_tools/recipe_modules/gclient], [depot\_tools/git][depot_tools/recipe_modules/git], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/cipd][recipe_engine/recipe_modules/cipd], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/file][recipe_engine/recipe_modules/file], [recipe\_engine/path][recipe_engine/recipe_modules/path], [recipe\_engine/platform][recipe_engine/recipe_modules/platform], [recipe\_engine/step][recipe_engine/recipe_modules/step]
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-#### **class [CrosvmApi](/infra/recipe_modules/crosvm/api.py#10)([RecipeApi][recipe_engine/wkt/RecipeApi]):**
+#### **class [CrosvmApi](/infra/recipe_modules/crosvm/api.py#11)([RecipeApi][recipe_engine/wkt/RecipeApi]):**
 
 Crosvm specific functionality shared between recipes.
 
-&mdash; **def [build\_context](/infra/recipe_modules/crosvm/api.py#28)(self, source=True, container=True):**
+&emsp; **@property**<br>&mdash; **def [builder\_dir](/infra/recipe_modules/crosvm/api.py#43)(self):**
 
-Prepares everything needed to build crosvm on the revision that needs to be verified.
+&emsp; **@property**<br>&mdash; **def [cache\_dir](/infra/recipe_modules/crosvm/api.py#39)(self):**
 
-This updates the cwd to the crosvm source directory, ensures the revision to be tested
-is checked out and the dev container is ready.
+&emsp; **@property**<br>&mdash; **def [cargo\_home](/infra/recipe_modules/crosvm/api.py#24)(self):**
+
+CARGO_HOME is cached between runs.
+
+&emsp; **@property**<br>&mdash; **def [cargo\_target\_dir](/infra/recipe_modules/crosvm/api.py#29)(self):**
+
+CARGO_TARGET_DIR is cleaned up between runs
+
+&mdash; **def [container\_build\_context](/infra/recipe_modules/crosvm/api.py#56)(self):**
+
+Prepares source and system to build crosvm via dev container.
 
 Usage:
-    with api.crosvm.build_context():
+    with api.crosvm.container_build_context():
         api.crosvm.step_in_container("build crosvm", ["cargo build"])
 
-&emsp; **@property**<br>&mdash; **def [builder\_dir](/infra/recipe_modules/crosvm/api.py#17)(self):**
+&emsp; **@contextlib.contextmanager**<br>&mdash; **def [host\_build\_context](/infra/recipe_modules/crosvm/api.py#68)(self):**
 
-The builder directory is cached between builds to improve build times.
+Prepares source and system to build crosvm directly on the host.
 
-&mdash; **def [prepare\_container](/infra/recipe_modules/crosvm/api.py#71)(self):**
+This will install the required rust version via rustup. However no further dependencies
+are installed.
 
-&mdash; **def [prepare\_git](/infra/recipe_modules/crosvm/api.py#85)(self):**
+Usage:
+    with api.crosvm.host_build_context():
+        api.step("build crosvm", ["cargo build"])
 
-&mdash; **def [prepare\_source](/infra/recipe_modules/crosvm/api.py#46)(self):**
+&emsp; **@property**<br>&mdash; **def [local\_bin](/infra/recipe_modules/crosvm/api.py#34)(self):**
 
-Prepares the local crosvm source for testing in `self.source_dir`
+Directory used to install local tools required by the build.
 
-CI jobs will check out the revision to be tested, try jobs will check out the gerrit
-change to be tested.
+&mdash; **def [prepare\_git](/infra/recipe_modules/crosvm/api.py#111)(self):**
 
-&emsp; **@property**<br>&mdash; **def [source\_dir](/infra/recipe_modules/crosvm/api.py#13)(self):**
+&emsp; **@property**<br>&mdash; **def [rustup\_home](/infra/recipe_modules/crosvm/api.py#19)(self):**
 
-&mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#99)(self, step_name, command):**
+RUSTUP_HOME is cached between runs.
+
+&mdash; **def [source\_context](/infra/recipe_modules/crosvm/api.py#47)(self):**
+
+Updates the source to the revision to be tested and drops into the source directory.
+
+Use when no build commands are needed.
+
+&emsp; **@property**<br>&mdash; **def [source\_dir](/infra/recipe_modules/crosvm/api.py#14)(self):**
+
+Where the crosvm source will be checked out.
+
+&mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#97)(self, step_name, command):**
 
 Runs a luci step inside the crosvm dev container.
 ## Recipes
@@ -64,13 +89,13 @@ Runs a luci step inside the crosvm dev container.
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [BuildAndTest](/infra/recipes/build_chromeos.py#79)(api, board):**
+&mdash; **def [BuildAndTest](/infra/recipes/build_chromeos.py#76)(api, board):**
 
-&mdash; **def [CleanUp](/infra/recipes/build_chromeos.py#92)(api):**
+&mdash; **def [CleanUp](/infra/recipes/build_chromeos.py#89)(api):**
 
-&mdash; **def [PrepareBuild](/infra/recipes/build_chromeos.py#64)(api):**
+&mdash; **def [PrepareBuild](/infra/recipes/build_chromeos.py#61)(api):**
 
-&mdash; **def [RunSteps](/infra/recipes/build_chromeos.py#97)(api, properties):**
+&mdash; **def [RunSteps](/infra/recipes/build_chromeos.py#94)(api, properties):**
 
 &mdash; **def [SetupSource](/infra/recipes/build_chromeos.py#27)(api, workspace):**
 ### *recipes* / [build\_linux](/infra/recipes/build_linux.py)
@@ -84,20 +109,34 @@ PYTHON_VERSION_COMPATIBILITY: PY3
 &mdash; **def [get\_test\_args](/infra/recipes/build_linux.py#22)(api, test_arch):**
 
 Returns architecture specific arguments for ./tools/run_tests
-### *recipes* / [crosvm:examples/build\_context](/infra/recipe_modules/crosvm/examples/build_context.py)
+### *recipes* / [build\_windows](/infra/recipes/build_windows.py)
 
-[DEPS](/infra/recipe_modules/crosvm/examples/build_context.py#7): [crosvm](#recipe_modules-crosvm)
-
-PYTHON_VERSION_COMPATIBILITY: PY3
-
-&mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/build_context.py#12)(api):**
-### *recipes* / [crosvm:examples/prepare\_source](/infra/recipe_modules/crosvm/examples/prepare_source.py)
-
-[DEPS](/infra/recipe_modules/crosvm/examples/prepare_source.py#12): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket]
+[DEPS](/infra/recipes/build_windows.py#9): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/prepare_source.py#18)(api):**
+&mdash; **def [RunSteps](/infra/recipes/build_windows.py#18)(api):**
+### *recipes* / [crosvm:examples/container\_build\_context](/infra/recipe_modules/crosvm/examples/container_build_context.py)
+
+[DEPS](/infra/recipe_modules/crosvm/examples/container_build_context.py#7): [crosvm](#recipe_modules-crosvm)
+
+PYTHON_VERSION_COMPATIBILITY: PY3
+
+&mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/container_build_context.py#12)(api):**
+### *recipes* / [crosvm:examples/host\_build\_context](/infra/recipe_modules/crosvm/examples/host_build_context.py)
+
+[DEPS](/infra/recipe_modules/crosvm/examples/host_build_context.py#7): [crosvm](#recipe_modules-crosvm), [recipe\_engine/platform][recipe_engine/recipe_modules/platform], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+
+PYTHON_VERSION_COMPATIBILITY: PY3
+
+&mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/host_build_context.py#14)(api):**
+### *recipes* / [crosvm:examples/source\_context](/infra/recipe_modules/crosvm/examples/source_context.py)
+
+[DEPS](/infra/recipe_modules/crosvm/examples/source_context.py#12): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket]
+
+PYTHON_VERSION_COMPATIBILITY: PY3
+
+&mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/source_context.py#18)(api):**
 ### *recipes* / [health\_check](/infra/recipes/health_check.py)
 
 [DEPS](/infra/recipes/health_check.py#9): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
@@ -125,9 +164,11 @@ PYTHON_VERSION_COMPATIBILITY: PY3
 [depot_tools/recipe_modules/gclient]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/8a87603683bda769d437e48cc1a7494a2e237ead/recipes/README.recipes.md#recipe_modules-gclient
 [depot_tools/recipe_modules/git]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/8a87603683bda769d437e48cc1a7494a2e237ead/recipes/README.recipes.md#recipe_modules-git
 [recipe_engine/recipe_modules/buildbucket]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-buildbucket
+[recipe_engine/recipe_modules/cipd]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-cipd
 [recipe_engine/recipe_modules/context]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-context
 [recipe_engine/recipe_modules/file]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-file
 [recipe_engine/recipe_modules/path]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-path
+[recipe_engine/recipe_modules/platform]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-platform
 [recipe_engine/recipe_modules/properties]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-properties
 [recipe_engine/recipe_modules/raw_io]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-raw_io
 [recipe_engine/recipe_modules/step]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/7b42800366a15f34b28e62f6bcb1cddcb2206db0/README.recipes.md#recipe_modules-step

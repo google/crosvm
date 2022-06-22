@@ -30,9 +30,6 @@ def SetupSource(api, workspace):
     upstream_url = "https://chromium.googlesource.com/crosvm/crosvm"
     revision = gitilies.id or "HEAD"
 
-    # Initialize git user name to make repo happy.
-    api.crosvm.prepare_git()
-
     # Init and sync the ChromeOS checkout
     api.step(
         "Init repo",

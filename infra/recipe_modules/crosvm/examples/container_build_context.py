@@ -10,8 +10,8 @@ DEPS = [
 
 
 def RunSteps(api):
-    with api.crosvm.build_context():
-        api.crosvm.step_in_container("Foo", ["echo", "success"])
+    with api.crosvm.container_build_context():
+        api.crosvm.step_in_container("Build", ["cargo", "build"])
 
 
 def GenTests(api):

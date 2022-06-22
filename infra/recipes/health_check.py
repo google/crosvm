@@ -16,7 +16,7 @@ DEPS = [
 
 
 def RunSteps(api):
-    with api.crosvm.build_context():
+    with api.crosvm.container_build_context():
         api.step(
             "Self-test dev-container",
             [

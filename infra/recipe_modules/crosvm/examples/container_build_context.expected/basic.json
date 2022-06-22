@@ -212,11 +212,11 @@
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
-      "echo",
-      "success"
+      "cargo",
+      "build"
     ],
     "cwd": "[CACHE]/builder/crosvm",
-    "name": "Foo"
+    "name": "Build"
   },
   {
     "name": "$result"

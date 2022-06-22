@@ -5,14 +5,17 @@
 PYTHON_VERSION_COMPATIBILITY = "PY3"
 
 DEPS = [
-    "depot_tools/bot_update",
-    "depot_tools/gclient",
-    "depot_tools/git",
-    "recipe_engine/buildbucket",
-    "recipe_engine/cipd",
-    "recipe_engine/context",
-    "recipe_engine/file",
-    "recipe_engine/path",
+    "crosvm",
     "recipe_engine/platform",
     "recipe_engine/step",
 ]
+
+
+def RunSteps(api):
+    with api.crosvm.host_build_context():
+        api.step("Build", ["cargo", "build"])
+
+
+def GenTests(api):
+    yield api.test("basic_linux") + api.platform("linux", 64)
+    yield api.test("basic_windows") + api.platform("win", 64)

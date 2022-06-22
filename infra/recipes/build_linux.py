@@ -33,7 +33,7 @@ def get_test_args(api, test_arch):
 
 
 def RunSteps(api, properties):
-    with api.crosvm.build_context():
+    with api.crosvm.container_build_context():
         api.crosvm.step_in_container(
             "Build crosvm tests",
             [

@@ -14,7 +14,7 @@ DEPS = [
 
 
 def RunSteps(api):
-    with api.crosvm.build_context(container=False):
+    with api.crosvm.source_context():
         api.step(
             "Update Merges",
             [

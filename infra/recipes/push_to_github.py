@@ -18,8 +18,7 @@ DEPS = [
 
 
 def RunSteps(api):
-    api.crosvm.prepare_source()
-    with api.context(cwd=api.crosvm.source_dir):
+    with api.crosvm.source_context():
         # Execute push in a bash script so there is no chance of leaking the github token via luci
         # logs.
         api.step("Pushing to github", ["bash", api.resource("push_to_github.sh")])

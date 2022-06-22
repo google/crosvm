@@ -16,7 +16,8 @@ DEPS = [
 
 
 def RunSteps(api):
-    api.crosvm.prepare_source()
+    with api.crosvm.source_context():
+        pass
 
 
 def GenTests(api):
