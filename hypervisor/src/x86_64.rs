@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::arch::x86_64::CpuidResult;
 #[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 use std::arch::x86_64::{__cpuid, _rdtsc};
 
@@ -180,17 +181,14 @@ pub struct VcpuInitX86_64 {}
 /// by the cpu for a given function and index/subfunction (passed into the cpu via the eax and ecx
 /// register respectively).
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CpuIdEntry {
     pub function: u32,
     pub index: u32,
     // flags is needed for KVM.  We store it on CpuIdEntry to preserve the flags across
     // get_supported_cpuids() -> kvm_cpuid2 -> CpuId -> kvm_cpuid2 -> set_cpuid().
     pub flags: u32,
-    pub eax: u32,
-    pub ebx: u32,
-    pub ecx: u32,
-    pub edx: u32,
+    pub cpuid: CpuidResult,
 }
 
 /// A container for the list of cpu id entries for the hypervisor and underlying cpu.

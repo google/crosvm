@@ -5,6 +5,7 @@
 use base::IoctlNr;
 
 use libc::{E2BIG, ENXIO};
+use std::arch::x86_64::CpuidResult;
 
 use base::{
     errno_result, error, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr,
@@ -811,10 +812,12 @@ impl<'a> From<&'a KvmCpuId> for CpuId {
                 function: entry.function,
                 index: entry.index,
                 flags: entry.flags,
-                eax: entry.eax,
-                ebx: entry.ebx,
-                ecx: entry.ecx,
-                edx: entry.edx,
+                cpuid: CpuidResult {
+                    eax: entry.eax,
+                    ebx: entry.ebx,
+                    ecx: entry.ecx,
+                    edx: entry.edx,
+                },
             };
             cpu_id_entries.push(cpu_id_entry)
         }
@@ -831,10 +834,10 @@ impl From<&CpuId> for KvmCpuId {
                 function: e.function,
                 index: e.index,
                 flags: e.flags,
-                eax: e.eax,
-                ebx: e.ebx,
-                ecx: e.ecx,
-                edx: e.edx,
+                eax: e.cpuid.eax,
+                ebx: e.cpuid.ebx,
+                ecx: e.cpuid.ecx,
+                edx: e.cpuid.edx,
                 ..Default::default()
             };
         }

@@ -28,21 +28,17 @@ pub fn tsc_frequency_cpuid(cpuid_count: CpuidCountFn) -> Option<hypervisor::CpuI
         function: 0x15,
         index: 0,
         flags: 0,
-        eax: 0,
-        ebx: 0,
-        ecx: 0,
-        edx: 0,
+        cpuid: CpuidResult {
+            eax: 0,
+            ebx: 0,
+            ecx: 0,
+            edx: 0,
+        },
     };
     // Safe because we pass 0 and 0 for this call and the host supports the `cpuid` instruction.
-    unsafe {
-        let result = cpuid_count(tsc_freq.function, tsc_freq.index);
-        tsc_freq.eax = result.eax;
-        tsc_freq.ebx = result.ebx;
-        tsc_freq.ecx = result.ecx;
-        tsc_freq.edx = result.edx;
-    }
+    tsc_freq.cpuid = unsafe { cpuid_count(tsc_freq.function, tsc_freq.index) };
 
-    if tsc_freq.ecx != 0 {
+    if tsc_freq.cpuid.ecx != 0 {
         Some(tsc_freq)
     } else {
         // The core crystal frequency is missing. Old kernels (<5.3) don't try to derive it from the
@@ -63,8 +59,8 @@ pub fn tsc_frequency_cpuid(cpuid_count: CpuidCountFn) -> Option<hypervisor::CpuI
             // base_mhz = cpu_clock.eax
             // tsc_to_base_ratio = tsc_freq.eax / tsc_freq.ebx
             // crystal_hz = base_mhz * tsc_base_to_clock_ratio * 10^6
-            tsc_freq.ecx = (cpu_clock.eax as f64 * tsc_freq.eax as f64 * 1_000_000_f64
-                / tsc_freq.ebx as f64)
+            tsc_freq.cpuid.ecx = (cpu_clock.eax as f64 * tsc_freq.cpuid.eax as f64 * 1_000_000_f64
+                / tsc_freq.cpuid.ebx as f64)
                 .round() as u32;
             Some(tsc_freq)
         } else {
@@ -86,24 +82,27 @@ pub fn fake_tsc_frequency_cpuid(tsc_hz: u64, bus_hz: u32) -> hypervisor::CpuIdEn
         function: 0x15,
         index: 0,
         flags: 0,
-        eax: crystal_clock_ratio_denominator,
-        ebx: crystal_clock_ratio_numerator,
-        ecx: bus_hz,
-        edx: 0,
+        cpuid: CpuidResult {
+            eax: crystal_clock_ratio_denominator,
+            ebx: crystal_clock_ratio_numerator,
+            ecx: bus_hz,
+            edx: 0,
+        },
     }
 }
 
 /// Returns the Bus frequency in Hz, based on reading Intel-specific cpuids, or None
 /// if the frequency can't be determined from cpuids.
 pub fn bus_freq_hz(cpuid_count: CpuidCountFn) -> Option<u32> {
-    tsc_frequency_cpuid(cpuid_count).map(|cpuid| cpuid.ecx)
+    tsc_frequency_cpuid(cpuid_count).map(|cpuid| cpuid.cpuid.ecx)
 }
 
 /// Returns the TSC frequency in Hz, based on reading Intel-specific cpuids, or None
 /// if the frequency can't be determined from cpuids.
 pub fn tsc_freq_hz(cpuid_count: CpuidCountFn) -> Option<u32> {
-    tsc_frequency_cpuid(cpuid_count)
-        .map(|cpuid| (cpuid.ecx as u64 * cpuid.ebx as u64 / cpuid.eax as u64) as u32)
+    tsc_frequency_cpuid(cpuid_count).map(|cpuid| {
+        (cpuid.cpuid.ecx as u64 * cpuid.cpuid.ebx as u64 / cpuid.cpuid.eax as u64) as u32
+    })
 }
 
 #[cfg(test)]
