@@ -661,7 +661,22 @@ impl DecoderBackend for FfmpegDecoder {
             in_formats.push(FormatDesc {
                 mask: !(u64::MAX << SUPPORTED_OUTPUT_FORMATS.len()),
                 format,
-                frame_formats: vec![Default::default()],
+                frame_formats: vec![FrameFormat {
+                    // These frame sizes are arbitrary, but avcodec does not seem to have any
+                    // specific restriction in that regard (or any way to query the supported
+                    // resolutions).
+                    width: FormatRange {
+                        min: 64,
+                        max: 16384,
+                        step: 1,
+                    },
+                    height: FormatRange {
+                        min: 64,
+                        max: 16384,
+                        step: 1,
+                    },
+                    bitrates: Default::default(),
+                }],
             });
         }
 
