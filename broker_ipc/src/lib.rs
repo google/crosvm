@@ -35,9 +35,7 @@ pub struct ChildLifecycleCleanup {
 ///
 /// Returns a value that should be dropped when the process exits.
 pub fn common_child_setup(args: CommonChildStartupArgs) -> anyhow::Result<ChildLifecycleCleanup> {
-    // Crash reporting should start as early as possible, in case other startup tasks fail.
-    init_child_crash_reporting(&args.product_attrs);
-
+    // Logging must initialize first in case there are other startup errors.
     let mut cfg = syslog::LogConfig::default();
     if let Some(log_file_descriptor) = args.syslog_file {
         // Safe because we are taking ownership of a SafeDescriptor.
@@ -49,6 +47,9 @@ pub fn common_child_setup(args: CommonChildStartupArgs) -> anyhow::Result<ChildL
         cfg.stderr = true;
     }
     syslog::init_with(cfg)?;
+
+    // Crash reporting should start as early as possible, in case other startup tasks fail.
+    init_child_crash_reporting(&args.product_attrs);
 
     // Initialize anything product specific.
     product_child_setup(&args.product_attrs)?;
