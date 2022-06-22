@@ -137,7 +137,7 @@ luci.list_view(
     name = "Infra",
 )
 
-def verify_builder(name, dimensions, presubmit = True, postsubmit = True, **args):
+def verify_builder(name, dimensions, presubmit = True, postsubmit = True, category = "generic", **args):
     """Creates both a CI and try builder with the same properties.
 
     The CI builder is attached to the gitlies poller and console view, and the try builder
@@ -147,7 +147,8 @@ def verify_builder(name, dimensions, presubmit = True, postsubmit = True, **args
         name: Name of the builder
         dimensions: Passed to luci.builder
         presubmit: Create a presubmit builder (defaults to True)
-        postsubmit: Creaet a postsubmit builder (defaults to True)
+        postsubmit: Create a postsubmit builder (defaults to True)
+        category: Category of this builder in the concole view
         **args: Passed to luci.builder
     """
 
@@ -169,7 +170,7 @@ def verify_builder(name, dimensions, presubmit = True, postsubmit = True, **args
         luci.console_view_entry(
             console_view = "Postsubmit",
             builder = "ci/%s" % name,
-            category = "linux",
+            category = category,
         )
 
     # Try builder
@@ -207,6 +208,7 @@ def verify_linux_builder(arch, **kwargs):
         properties = {
             "test_arch": arch,
         },
+        category = "linux",
         **kwargs
     )
 
@@ -229,6 +231,7 @@ def verify_chromeos_builder(board, **kwargs):
         properties = {
             "board": board,
         },
+        category = "linux",
         **kwargs
     )
 
@@ -272,6 +275,19 @@ verify_linux_builder("armhf")
 verify_chromeos_builder("amd64-generic", presubmit = False)
 
 verify_builder(
+    name = "crosvm_windows",
+    dimensions = {
+        "os": "Windows",
+        "cpu": "x86-64",
+    },
+    executable = luci.recipe(
+        name = "build_windows",
+    ),
+    presubmit = False,
+    category = "windows",
+)
+
+verify_builder(
     name = "crosvm_health_check",
     dimensions = {
         "os": "Ubuntu",
@@ -280,6 +296,7 @@ verify_builder(
     executable = luci.recipe(
         name = "health_check",
     ),
+    category = "linux",
 )
 
 infra_builder(
