@@ -736,8 +736,13 @@ fn create_devices(
     for stub in stubs {
         let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
         control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
-        let dev = VirtioPciDevice::new(vm.get_memory().clone(), stub.dev, msi_device_tube)
-            .context("failed to create virtio pci dev")?;
+        let dev = VirtioPciDevice::new(
+            vm.get_memory().clone(),
+            stub.dev,
+            msi_device_tube,
+            cfg.disable_virtio_intx,
+        )
+        .context("failed to create virtio pci dev")?;
         let dev = Box::new(dev) as Box<dyn BusDeviceObj>;
         devices.push((dev, stub.jail));
     }
@@ -1553,8 +1558,13 @@ where
 
         let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
         control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
-        let mut dev = VirtioPciDevice::new(vm.get_memory().clone(), iommu_dev.dev, msi_device_tube)
-            .context("failed to create virtio pci dev")?;
+        let mut dev = VirtioPciDevice::new(
+            vm.get_memory().clone(),
+            iommu_dev.dev,
+            msi_device_tube,
+            cfg.disable_virtio_intx,
+        )
+        .context("failed to create virtio pci dev")?;
         // early reservation for viommu.
         dev.allocate_address(&mut sys_allocator)
             .context("failed to allocate resources early for virtio pci dev")?;

@@ -242,6 +242,7 @@ pub struct VirtioPciDevice {
 
     device: Box<dyn VirtioDevice>,
     device_activated: bool,
+    disable_intx: bool,
 
     interrupt_status: Arc<AtomicUsize>,
     interrupt_evt: Option<IrqLevelEvent>,
@@ -262,6 +263,7 @@ impl VirtioPciDevice {
         mem: GuestMemory,
         device: Box<dyn VirtioDevice>,
         msi_device_tube: Tube,
+        disable_intx: bool,
     ) -> Result<Self> {
         let mut queue_evts = Vec::new();
         for _ in device.queue_max_sizes() {
@@ -314,6 +316,7 @@ impl VirtioPciDevice {
             pci_address: device.pci_address(),
             device,
             device_activated: false,
+            disable_intx,
             interrupt_status: Arc::new(AtomicUsize::new(0)),
             interrupt_evt: None,
             queues,
@@ -525,7 +528,9 @@ impl PciDevice for VirtioPciDevice {
             PciInterruptPin::IntA,
             PciConfiguration::suggested_interrupt_pin,
         );
-        self.config_regs.set_irq(gsi as u8, pin);
+        if !self.disable_intx {
+            self.config_regs.set_irq(gsi as u8, pin);
+        }
         Some((gsi, pin))
     }
 

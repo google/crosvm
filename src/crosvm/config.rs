@@ -1696,6 +1696,7 @@ pub struct Config {
     pub direct_mmio: Option<DirectIoOption>,
     #[cfg(feature = "direct")]
     pub direct_pmio: Option<DirectIoOption>,
+    pub disable_virtio_intx: bool,
     pub disks: Vec<DiskOption>,
     pub display_window_keyboard: bool,
     pub display_window_mouse: bool,
@@ -1827,6 +1828,7 @@ impl Default for Config {
             #[cfg(feature = "direct")]
             direct_pmio: None,
             disks: Vec::new(),
+            disable_virtio_intx: false,
             display_window_keyboard: false,
             display_window_mouse: false,
             dmi_path: None,
