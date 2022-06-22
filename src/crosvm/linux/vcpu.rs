@@ -89,6 +89,45 @@ fn bus_io_handler(bus: &Bus) -> impl FnMut(IoParams) -> Option<[u8; 8]> + '_ {
     }
 }
 
+/// Set the VCPU thread affinity and other per-thread scheduler properties.
+/// This function will be called from each VCPU thread at startup.
+pub fn set_vcpu_thread_scheduling(
+    vcpu_affinity: Vec<usize>,
+    enable_per_vm_core_scheduling: bool,
+    vcpu_cgroup_tasks_file: Option<File>,
+    run_rt: bool,
+) -> anyhow::Result<()> {
+    if !vcpu_affinity.is_empty() {
+        if let Err(e) = set_cpu_affinity(vcpu_affinity) {
+            error!("Failed to set CPU affinity: {}", e);
+        }
+    }
+
+    if !enable_per_vm_core_scheduling {
+        // Do per-vCPU core scheduling by setting a unique cookie to each vCPU.
+        if let Err(e) = enable_core_scheduling() {
+            error!("Failed to enable core scheduling: {}", e);
+        }
+    }
+
+    // Move vcpu thread to cgroup
+    if let Some(mut f) = vcpu_cgroup_tasks_file {
+        f.write_all(base::gettid().to_string().as_bytes())
+            .context("failed to write vcpu tid to cgroup tasks")?;
+    }
+
+    if run_rt {
+        const DEFAULT_VCPU_RT_LEVEL: u16 = 6;
+        if let Err(e) = set_rt_prio_limit(u64::from(DEFAULT_VCPU_RT_LEVEL))
+            .and_then(|_| set_rt_round_robin(i32::from(DEFAULT_VCPU_RT_LEVEL)))
+        {
+            warn!("Failed to set vcpu to real time: {}", e);
+        }
+    }
+
+    Ok(())
+}
+
 // Sets up a vcpu and converts it into a runnable vcpu.
 pub fn runnable_vcpu<V>(
     cpu_id: usize,
@@ -98,16 +137,12 @@ pub fn runnable_vcpu<V>(
     vm: impl VmArch,
     irq_chip: &mut dyn IrqChipArch,
     vcpu_count: usize,
-    run_rt: bool,
-    vcpu_affinity: Vec<usize>,
     no_smt: bool,
     has_bios: bool,
     use_hypervisor_signals: bool,
-    enable_per_vm_core_scheduling: bool,
     host_cpu_topology: bool,
     enable_pnp_data: bool,
     itmt: bool,
-    vcpu_cgroup_tasks_file: Option<File>,
 ) -> Result<(V, VcpuRunHandle)>
 where
     V: VcpuArch,
@@ -132,12 +167,6 @@ where
         .add_vcpu(cpu_id, &vcpu)
         .context("failed to add vcpu to irq chip")?;
 
-    if !vcpu_affinity.is_empty() {
-        if let Err(e) = set_cpu_affinity(vcpu_affinity) {
-            error!("Failed to set CPU affinity: {}", e);
-        }
-    }
-
     Arch::configure_vcpu(
         &vm,
         vm.get_hypervisor(),
@@ -153,28 +182,6 @@ where
         itmt,
     )
     .context("failed to configure vcpu")?;
-
-    if !enable_per_vm_core_scheduling {
-        // Do per-vCPU core scheduling by setting a unique cookie to each vCPU.
-        if let Err(e) = enable_core_scheduling() {
-            error!("Failed to enable core scheduling: {}", e);
-        }
-    }
-
-    // Move vcpu thread to cgroup
-    if let Some(mut f) = vcpu_cgroup_tasks_file {
-        f.write_all(base::gettid().to_string().as_bytes())
-            .context("failed to write vcpu tid to cgroup tasks")?;
-    }
-
-    if run_rt {
-        const DEFAULT_VCPU_RT_LEVEL: u16 = 6;
-        if let Err(e) = set_rt_prio_limit(u64::from(DEFAULT_VCPU_RT_LEVEL))
-            .and_then(|_| set_rt_round_robin(i32::from(DEFAULT_VCPU_RT_LEVEL)))
-        {
-            warn!("Failed to set vcpu to real time: {}", e);
-        }
-    }
 
     if use_hypervisor_signals {
         let mut v = get_blocked_signals().context("failed to retrieve signal mask for vcpu")?;
@@ -583,6 +590,16 @@ where
             // send a VmEventType on all code paths after the closure
             // returns.
             let vcpu_fn = || -> ExitState {
+                if let Err(e) = set_vcpu_thread_scheduling(
+                    vcpu_affinity,
+                    enable_per_vm_core_scheduling,
+                    vcpu_cgroup_tasks_file,
+                    run_rt && !delay_rt,
+                ) {
+                    error!("vcpu thread setup failed: {:#}", e);
+                    return ExitState::Stop;
+                }
+
                 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
                 let guest_mem = vm.get_memory().clone();
                 let runnable_vcpu = runnable_vcpu(
@@ -593,16 +610,12 @@ where
                     vm,
                     irq_chip.as_mut(),
                     vcpu_count,
-                    run_rt && !delay_rt,
-                    vcpu_affinity,
                     no_smt,
                     has_bios,
                     use_hypervisor_signals,
-                    enable_per_vm_core_scheduling,
                     host_cpu_topology,
                     enable_pnp_data,
                     itmt,
-                    vcpu_cgroup_tasks_file,
                 );
 
                 // Add MSR handlers after CPU affinity setting.
