@@ -598,6 +598,8 @@ impl UnixSeqpacket {
     /// Sets the blocking mode for this socket.
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         let mut nonblocking = nonblocking as libc::c_int;
+        // Safe because the return value is checked, and this ioctl call sets the nonblocking mode
+        // and does not continue holding the file descriptor after the call.
         let ret = unsafe { libc::ioctl(self.fd, libc::FIONBIO, &mut nonblocking) };
         if ret < 0 {
             Err(io::Error::last_os_error())
@@ -802,6 +804,8 @@ impl UnixSeqpacketListener {
     /// Sets the blocking mode for this socket.
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         let mut nonblocking = nonblocking as libc::c_int;
+        // Safe because the return value is checked, and this ioctl call sets the nonblocking mode
+        // and does not continue holding the file descriptor after the call.
         let ret = unsafe { libc::ioctl(self.fd, libc::FIONBIO, &mut nonblocking) };
         if ret < 0 {
             Err(io::Error::last_os_error())
