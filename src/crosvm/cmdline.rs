@@ -66,7 +66,7 @@ pub enum Command {
     #[cfg(feature = "composite-disk")]
     CreateComposite(CreateCompositeCommand),
     CreateQcow2(CreateQcow2Command),
-    Device(DevicesCommand),
+    Device(DeviceCommand),
     Disk(DiskCommand),
     MakeRT(MakeRTCommand),
     Resume(ResumeCommand),
@@ -301,9 +301,9 @@ pub struct VfioCrosvmCommand {
 #[derive(FromArgs)]
 #[argh(subcommand, name = "device")]
 /// Start a device process
-pub struct DevicesCommand {
+pub struct DeviceCommand {
     #[argh(subcommand)]
-    pub command: DevicesSubcommand,
+    pub command: DeviceSubcommand,
 }
 
 #[derive(FromArgs)]
@@ -315,7 +315,7 @@ pub enum CrossPlatformDevicesCommands {
 }
 
 #[derive(argh_helpers::FlattenSubcommand)]
-pub enum DevicesSubcommand {
+pub enum DeviceSubcommand {
     CrossPlatform(CrossPlatformDevicesCommands),
     Sys(super::sys::cmdline::DevicesSubcommand),
 }

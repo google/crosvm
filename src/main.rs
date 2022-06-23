@@ -333,13 +333,13 @@ fn create_qcow2(cmd: cmdline::CreateQcow2Command) -> std::result::Result<(), ()>
     Ok(())
 }
 
-fn start_device(opts: cmdline::DevicesCommand) -> std::result::Result<(), ()> {
+fn start_device(opts: cmdline::DeviceCommand) -> std::result::Result<(), ()> {
     let result = match opts.command {
-        cmdline::DevicesSubcommand::CrossPlatform(command) => match command {
+        cmdline::DeviceSubcommand::CrossPlatform(command) => match command {
             cmdline::CrossPlatformDevicesCommands::Block(cfg) => run_block_device(cfg),
             cmdline::CrossPlatformDevicesCommands::Net(cfg) => run_net_device(cfg),
         },
-        cmdline::DevicesSubcommand::Sys(command) => sys::start_device(command),
+        cmdline::DeviceSubcommand::Sys(command) => sys::start_device(command),
     };
 
     result.map_err(|e| {
