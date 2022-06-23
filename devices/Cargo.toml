@@ -50,7 +50,7 @@ num-traits = "0.2"
 once_cell = "1.7.2"
 protobuf = { version = "2.3", optional = true }
 protos = { path = "../protos", optional = true }
-rand = "0.7.2"
+rand = "0.8"
 remain = "*"
 resources = { path = "../resources" }
 serde = { version = "1", features = [ "derive" ] }

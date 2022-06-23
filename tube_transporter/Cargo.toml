@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 base = { path = "../base" }
 data_model = { path = "../common/data_model" }
-rand = "*"
+rand = "0.8"
 thiserror = "1.0.20"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "*"
