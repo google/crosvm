@@ -47,7 +47,7 @@ const EAX_CORE_TEMP: u32 = 0; // Core Temperature
 const EAX_PKG_TEMP: u32 = 6; // Package Temperature
 
 /// All of the context required to emulate the CPUID instruction.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CpuIdContext {
     /// Id of the Vcpu associated with this context.
     vcpu_id: usize,
@@ -68,6 +68,10 @@ pub struct CpuIdContext {
     enable_pnp_data: bool,
     /// Enable Intel Turbo Boost Max Technology 3.0.
     itmt: bool,
+    /// __cpuid_count or a fake function for test.
+    cpuid_count: unsafe fn(u32, u32) -> CpuidResult,
+    /// __cpuid or a fake function for test.
+    cpuid: unsafe fn(u32) -> CpuidResult,
 }
 
 impl CpuIdContext {
@@ -79,6 +83,8 @@ impl CpuIdContext {
         irq_chip: Option<&dyn IrqChipX86_64>,
         enable_pnp_data: bool,
         itmt: bool,
+        cpuid_count: unsafe fn(u32, u32) -> CpuidResult,
+        cpuid: unsafe fn(u32) -> CpuidResult,
     ) -> CpuIdContext {
         CpuIdContext {
             vcpu_id,
@@ -93,6 +99,8 @@ impl CpuIdContext {
             host_cpu_topology,
             enable_pnp_data,
             itmt,
+            cpuid_count,
+            cpuid,
         }
     }
 }
@@ -129,7 +137,7 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
                 entry.cpuid.ebx |= EBX_CLFLUSH_CACHELINE << EBX_CLFLUSH_SIZE_SHIFT;
 
                 // Expose HT flag to Guest.
-                let result = unsafe { __cpuid(entry.function) };
+                let result = unsafe { (ctx.cpuid)(entry.function) };
                 entry.cpuid.edx |= result.edx & (1 << EDX_HTT_SHIFT);
                 return;
             }
@@ -148,9 +156,9 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
         2 | // Cache and TLB Descriptor information
         0x80000002 | 0x80000003 | 0x80000004 | // Processor Brand String
         0x80000005 | 0x80000006 // L1 and L2 cache information
-            => entry.cpuid = unsafe { __cpuid(entry.function) },
+            => entry.cpuid = unsafe { (ctx.cpuid)(entry.function) },
         4 => {
-            entry.cpuid = unsafe { __cpuid_count(entry.function, entry.index) };
+            entry.cpuid = unsafe { (ctx.cpuid_count)(entry.function, entry.index) };
 
             if ctx.host_cpu_topology {
                 return;
@@ -176,7 +184,7 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
             if ctx.itmt || ctx.enable_pnp_data {
                 // Safe because we pass 6 for this call and the host
                 // supports the `cpuid` instruction
-                let result = unsafe { __cpuid(entry.function) };
+                let result = unsafe { (ctx.cpuid)(entry.function) };
                 if ctx.itmt {
                     // Expose ITMT to guest.
                     entry.cpuid.eax |= result.eax & (1 << EAX_ITMT_SHIFT);
@@ -197,7 +205,7 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
             if ctx.host_cpu_topology && entry.index == 0 {
                 // Safe because we pass 7 and 0 for this call and the host supports the
                 // `cpuid` instruction
-                let result = unsafe { __cpuid_count(entry.function, entry.index) };
+                let result = unsafe { (ctx.cpuid_count)(entry.function, entry.index) };
                 entry.cpuid.edx |= result.edx & (1 << EDX_HYBRID_CPU_SHIFT);
             }
         }
@@ -206,7 +214,7 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
                 // Expose TSC frequency to guest
                 // Safe because we pass 0x15 for this call and the host
                 // supports the `cpuid` instruction
-                entry.cpuid = unsafe { __cpuid(entry.function) };
+                entry.cpuid = unsafe { (ctx.cpuid)(entry.function) };
             }
         }
         0x1A => {
@@ -214,7 +222,7 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
             if ctx.host_cpu_topology {
                 // Safe because we pass 0x1A for this call and the host supports the
                 // `cpuid` instruction
-                entry.cpuid = unsafe { __cpuid(entry.function) };
+                entry.cpuid = unsafe { (ctx.cpuid)(entry.function) };
             }
         }
         0xB | 0x1F => {
@@ -328,6 +336,8 @@ pub fn setup_cpuid(
             Some(irq_chip),
             enable_pnp_data,
             itmt,
+            __cpuid_count,
+            __cpuid,
         ),
     );
 
@@ -403,7 +413,17 @@ mod tests {
         });
         filter_cpuid(
             &mut cpuid,
-            &CpuIdContext::new(1, 2, false, false, Some(&irq_chip), false, false),
+            &CpuIdContext::new(
+                1,
+                2,
+                false,
+                false,
+                Some(&irq_chip),
+                false,
+                false,
+                __cpuid_count,
+                __cpuid,
+            ),
         );
 
         let entries = &mut cpuid.cpu_id_entries;
@@ -419,5 +439,48 @@ mod tests {
         );
         assert_ne!(0, entries[1].cpuid.ecx & (1 << ECX_HYPERVISOR_SHIFT));
         assert_ne!(0, entries[1].cpuid.edx & (1 << EDX_HTT_SHIFT));
+    }
+
+    #[test]
+    fn cpuid_copies_register() {
+        let fake_cpuid_count = |_function: u32, _index: u32| CpuidResult {
+            eax: 27,
+            ebx: 18,
+            ecx: 28,
+            edx: 18,
+        };
+        let fake_cpuid = |_function: u32| CpuidResult {
+            eax: 0,
+            ebx: 0,
+            ecx: 0,
+            edx: 0,
+        };
+        let ctx = CpuIdContext {
+            vcpu_id: 0,
+            cpu_count: 0,
+            no_smt: false,
+            x2apic: false,
+            tsc_deadline_timer: false,
+            apic_frequency: 0,
+            tsc_frequency: None,
+            host_cpu_topology: true,
+            enable_pnp_data: false,
+            itmt: false,
+            cpuid_count: fake_cpuid_count,
+            cpuid: fake_cpuid,
+        };
+        let mut cpu_id_entry = CpuIdEntry {
+            function: 0x4,
+            index: 0,
+            flags: 0,
+            cpuid: CpuidResult {
+                eax: 31,
+                ebx: 41,
+                ecx: 59,
+                edx: 26,
+            },
+        };
+        adjust_cpuid(&mut cpu_id_entry, &ctx);
+        assert_eq!(cpu_id_entry.cpuid.eax, 27)
     }
 }
