@@ -504,6 +504,7 @@ pub struct RunCommand {
     pub disable_virtio_intx: bool,
     #[argh(
         option,
+        short = 'd',
         long = "disk",
         arg_name = "PATH[,key=value[,key=value[,...]]",
         from_str_fn(numbered_disk_option)
