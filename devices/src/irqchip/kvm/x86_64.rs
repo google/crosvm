@@ -842,6 +842,12 @@ mod tests {
     }
 
     #[test]
+    fn kernel_irqchip_pit_uses_speaker_port() {
+        let chip = get_kernel_chip();
+        assert!(!chip.pit_uses_speaker_port());
+    }
+
+    #[test]
     fn kernel_irqchip_get_pic() {
         test_get_pic(get_kernel_chip());
     }
@@ -919,6 +925,12 @@ mod tests {
     #[test]
     fn split_irqchip_route_irq() {
         test_route_irq(get_split_chip());
+    }
+
+    #[test]
+    fn split_irqchip_pit_uses_speaker_port() {
+        let chip = get_split_chip();
+        assert!(chip.pit_uses_speaker_port());
     }
 
     #[test]
