@@ -6,6 +6,6 @@ edition = "2021"
 include = ["Cargo.toml", "src/*.rs"]
 
 [dependencies]
-rand_core = "0.4"
+rand_core = {version = "0.6", features = ["std"]}
 
 [workspace]

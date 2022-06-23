@@ -60,9 +60,9 @@ fuzz_target!(|data: &[u8]| {
     // For each of {desc_table,avail_ring,used_ring} generate a random address that includes enough
     // space to hold the relevant struct with the largest possible queue size.
     let max_table_size = MAX_QUEUE_SIZE as u64 * size_of::<virtq_desc>() as u64;
-    q.desc_table = GuestAddress(rng.gen_range(0, MEM_SIZE - max_table_size));
-    q.avail_ring = GuestAddress(rng.gen_range(0, MEM_SIZE - size_of::<virtq_avail>() as u64));
-    q.used_ring = GuestAddress(rng.gen_range(0, MEM_SIZE - size_of::<virtq_used>() as u64));
+    q.desc_table = GuestAddress(rng.gen_range(0..MEM_SIZE - max_table_size));
+    q.avail_ring = GuestAddress(rng.gen_range(0..MEM_SIZE - size_of::<virtq_avail>() as u64));
+    q.used_ring = GuestAddress(rng.gen_range(0..MEM_SIZE - size_of::<virtq_used>() as u64));
 
     GUEST_MEM.with(|mem| {
         if !q.is_valid(mem) {
