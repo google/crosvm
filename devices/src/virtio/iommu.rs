@@ -721,7 +721,9 @@ impl Iommu {
         };
 
         let mut avail_features: u64 = base_features;
-        avail_features |= 1 << VIRTIO_IOMMU_F_MAP_UNMAP | 1 << VIRTIO_IOMMU_F_INPUT_RANGE;
+        avail_features |= 1 << VIRTIO_IOMMU_F_MAP_UNMAP
+            | 1 << VIRTIO_IOMMU_F_INPUT_RANGE
+            | 1 << VIRTIO_IOMMU_F_MMIO;
 
         if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
             avail_features |= 1 << VIRTIO_IOMMU_F_PROBE;
