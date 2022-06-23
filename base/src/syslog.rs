@@ -256,7 +256,7 @@ impl State {
                 writeln!(
                     buf,
                     "[{} {:5} {}] {}",
-                    Local::now().format("%Y-%m-%dT%H:%M:%S%:z"),
+                    Local::now().format("%Y-%m-%dT%H:%M:%S%.9f%:z"),
                     record.level(),
                     record.module_path().unwrap_or("<missing module path>"),
                     record.args()
