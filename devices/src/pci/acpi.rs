@@ -45,6 +45,14 @@ impl Aml for DeviceVcfgRegister {
             &4096_usize,
         )
         .to_aml_bytes(bytes);
+        aml::Field::new(
+            "VREG".into(),
+            aml::FieldAccessType::DWord,
+            aml::FieldLockRule::Lock,
+            aml::FieldUpdateRule::Preserve,
+            vec![aml::FieldEntry::Named(*b"PFPM", 32)],
+        )
+        .to_aml_bytes(bytes);
         aml::OpRegion::new(
             "SHAM".into(),
             aml::OpRegionSpace::SystemMemory,
@@ -56,5 +64,49 @@ impl Aml for DeviceVcfgRegister {
             &SHM_SIZE,
         )
         .to_aml_bytes(bytes);
+    }
+}
+
+pub struct PowerResourceMethod {}
+
+impl Aml for PowerResourceMethod {
+    fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
+        aml::PowerResource::new(
+            "PRIC".into(),
+            0u8,
+            0u16,
+            vec![
+                &aml::Name::new("_STA".into(), &aml::ONE),
+                &aml::Method::new(
+                    "_ON_".into(),
+                    0,
+                    true,
+                    vec![
+                        &aml::Store::new(&aml::Name::new_field_name("PFPM"), &aml::ONE),
+                        &aml::Store::new(&aml::Name::new_field_name("_STA"), &aml::ONE),
+                    ],
+                ),
+                &aml::Method::new(
+                    "_OFF".into(),
+                    0,
+                    true,
+                    vec![
+                        &aml::Store::new(&aml::Name::new_field_name("_STA"), &aml::ZERO),
+                        &aml::Store::new(&aml::Name::new_field_name("PFPM"), &aml::ZERO),
+                    ],
+                ),
+            ],
+        )
+        .to_aml_bytes(aml);
+        aml::Name::new(
+            "_PR0".into(),
+            &aml::Package::new(vec![&aml::Name::new_field_name("PRIC")]),
+        )
+        .to_aml_bytes(aml);
+        aml::Name::new(
+            "_PR3".into(),
+            &aml::Package::new(vec![&aml::Name::new_field_name("PRIC")]),
+        )
+        .to_aml_bytes(aml);
     }
 }

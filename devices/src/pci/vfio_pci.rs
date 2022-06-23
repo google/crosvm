@@ -51,6 +51,7 @@ use vm_control::VmRequest;
 use vm_control::VmResponse;
 
 use crate::pci::acpi::DeviceVcfgRegister;
+use crate::pci::acpi::PowerResourceMethod;
 use crate::pci::acpi::SHM_OFFSET;
 use crate::pci::msi::MsiConfig;
 use crate::pci::msi::MsiStatus;
@@ -2159,6 +2160,11 @@ impl PciDevice for VfioPciDevice {
                     .create_shm_mmap()
                     .map(|shm| (vcfg_offset + SHM_OFFSET, shm));
                 self.vcfg_shm_mmap = vcfg_register.create_shm_mmap();
+                // All vfio-pci devices should have virtual _PRx method, otherwise
+                // host couldn't know whether device has enter into suspend state,
+                // host would always think it is in active state, so its parent PCIe
+                // switch couldn't enter into suspend state.
+                PowerResourceMethod {}.to_aml_bytes(&mut amls);
             }
         }
 

@@ -42,6 +42,7 @@ pub use self::ac97::Ac97Dev;
 #[cfg(all(unix, feature = "audio"))]
 pub use self::ac97::Ac97Parameters;
 pub use self::acpi::DeviceVcfgRegister;
+pub use self::acpi::PowerResourceMethod;
 #[cfg(unix)]
 pub use self::coiommu::CoIommuDev;
 #[cfg(unix)]
