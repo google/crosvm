@@ -124,6 +124,8 @@ pub struct Parameters {
     pub capture: bool,
     pub client_type: CrasClientType,
     pub socket_type: CrasSocketType,
+    pub num_output_devices: u32,
+    pub num_input_devices: u32,
     pub num_output_streams: u32,
     pub num_input_streams: u32,
 }
@@ -134,6 +136,8 @@ impl Default for Parameters {
             capture: false,
             client_type: CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             socket_type: CrasSocketType::Unified,
+            num_output_devices: 1,
+            num_input_devices: 1,
             num_output_streams: 1,
             num_input_streams: 1,
         }
@@ -163,6 +167,12 @@ impl FromStr for Parameters {
                     params.socket_type = v.parse().map_err(|e: libcras::Error| {
                         Error::InvalidParameterValue(v.to_string(), e.to_string())
                     })?;
+                }
+                "num_output_devices" => {
+                    params.num_output_devices = v.parse::<u32>().map_err(Error::InvalidIntValue)?;
+                }
+                "num_input_devices" => {
+                    params.num_input_devices = v.parse::<u32>().map_err(Error::InvalidIntValue)?;
                 }
                 "num_output_streams" => {
                     params.num_output_streams = v.parse::<u32>().map_err(Error::InvalidIntValue)?;
@@ -465,8 +475,10 @@ impl VirtioSndCras {
 pub fn hardcoded_virtio_snd_config(params: &Parameters) -> virtio_snd_config {
     virtio_snd_config {
         jacks: 0.into(),
-        streams: (params.num_output_streams + params.num_input_streams).into(),
-        chmaps: 4.into(),
+        streams: (params.num_output_devices * params.num_output_streams
+            + params.num_input_devices * params.num_input_streams)
+            .into(),
+        chmaps: (params.num_output_devices * 3 + params.num_input_devices).into(),
     }
 }
 
@@ -476,78 +488,88 @@ pub fn hardcoded_snd_data(params: &Parameters) -> SndData {
     let mut pcm_info: Vec<virtio_snd_pcm_info> = Vec::new();
     let mut chmap_info: Vec<virtio_snd_chmap_info> = Vec::new();
 
-    for _ in 0..params.num_output_streams {
-        pcm_info.push(virtio_snd_pcm_info {
-            hdr: virtio_snd_info {
-                hda_fn_nid: 0.into(),
-            },
-            features: 0.into(), /* 1 << VIRTIO_SND_PCM_F_XXX */
-            formats: SUPPORTED_FORMATS.into(),
-            rates: SUPPORTED_FRAME_RATES.into(),
-            direction: VIRTIO_SND_D_OUTPUT,
-            channels_min: 1,
-            channels_max: 6,
-            padding: [0; 5],
-        });
+    for dev in 0..params.num_output_devices {
+        for _ in 0..params.num_output_streams {
+            pcm_info.push(virtio_snd_pcm_info {
+                hdr: virtio_snd_info {
+                    hda_fn_nid: dev.into(),
+                },
+                features: 0.into(), /* 1 << VIRTIO_SND_PCM_F_XXX */
+                formats: SUPPORTED_FORMATS.into(),
+                rates: SUPPORTED_FRAME_RATES.into(),
+                direction: VIRTIO_SND_D_OUTPUT,
+                channels_min: 1,
+                channels_max: 6,
+                padding: [0; 5],
+            });
+        }
     }
-    for _ in 0..params.num_input_streams {
-        pcm_info.push(virtio_snd_pcm_info {
-            hdr: virtio_snd_info {
-                hda_fn_nid: 0.into(),
-            },
-            features: 0.into(), /* 1 << VIRTIO_SND_PCM_F_XXX */
-            formats: SUPPORTED_FORMATS.into(),
-            rates: SUPPORTED_FRAME_RATES.into(),
-            direction: VIRTIO_SND_D_INPUT,
-            channels_min: 1,
-            channels_max: 2,
-            padding: [0; 5],
-        });
+    for dev in 0..params.num_input_devices {
+        for _ in 0..params.num_input_streams {
+            pcm_info.push(virtio_snd_pcm_info {
+                hdr: virtio_snd_info {
+                    hda_fn_nid: dev.into(),
+                },
+                features: 0.into(), /* 1 << VIRTIO_SND_PCM_F_XXX */
+                formats: SUPPORTED_FORMATS.into(),
+                rates: SUPPORTED_FRAME_RATES.into(),
+                direction: VIRTIO_SND_D_INPUT,
+                channels_min: 1,
+                channels_max: 2,
+                padding: [0; 5],
+            });
+        }
     }
-
     // Use stereo channel map.
     let mut positions = [VIRTIO_SND_CHMAP_NONE; VIRTIO_SND_CHMAP_MAX_SIZE];
     positions[0] = VIRTIO_SND_CHMAP_FL;
     positions[1] = VIRTIO_SND_CHMAP_FR;
-
-    chmap_info.push(virtio_snd_chmap_info {
-        hdr: virtio_snd_info {
-            hda_fn_nid: 0.into(),
-        },
-        direction: VIRTIO_SND_D_OUTPUT,
-        channels: 2,
-        positions,
-    });
-    chmap_info.push(virtio_snd_chmap_info {
-        hdr: virtio_snd_info {
-            hda_fn_nid: 0.into(),
-        },
-        direction: VIRTIO_SND_D_INPUT,
-        channels: 2,
-        positions,
-    });
+    for dev in 0..params.num_output_devices {
+        chmap_info.push(virtio_snd_chmap_info {
+            hdr: virtio_snd_info {
+                hda_fn_nid: dev.into(),
+            },
+            direction: VIRTIO_SND_D_OUTPUT,
+            channels: 2,
+            positions,
+        });
+    }
+    for dev in 0..params.num_input_devices {
+        chmap_info.push(virtio_snd_chmap_info {
+            hdr: virtio_snd_info {
+                hda_fn_nid: dev.into(),
+            },
+            direction: VIRTIO_SND_D_INPUT,
+            channels: 2,
+            positions,
+        });
+    }
     positions[2] = VIRTIO_SND_CHMAP_RL;
     positions[3] = VIRTIO_SND_CHMAP_RR;
-    chmap_info.push(virtio_snd_chmap_info {
-        hdr: virtio_snd_info {
-            hda_fn_nid: 0.into(),
-        },
-        direction: VIRTIO_SND_D_OUTPUT,
-        channels: 4,
-        positions,
-    });
+    for dev in 0..params.num_output_devices {
+        chmap_info.push(virtio_snd_chmap_info {
+            hdr: virtio_snd_info {
+                hda_fn_nid: dev.into(),
+            },
+            direction: VIRTIO_SND_D_OUTPUT,
+            channels: 4,
+            positions,
+        });
+    }
     positions[2] = VIRTIO_SND_CHMAP_FC;
     positions[3] = VIRTIO_SND_CHMAP_LFE;
     positions[4] = VIRTIO_SND_CHMAP_RL;
     positions[5] = VIRTIO_SND_CHMAP_RR;
-    chmap_info.push(virtio_snd_chmap_info {
-        hdr: virtio_snd_info {
-            hda_fn_nid: 0.into(),
-        },
-        direction: VIRTIO_SND_D_OUTPUT,
-        channels: 6,
-        positions,
-    });
+    for dev in 0..params.num_output_devices {
+        chmap_info.push(virtio_snd_chmap_info {
+            hdr: virtio_snd_info {
+                hda_fn_nid: dev.into(),
+            },
+            direction: VIRTIO_SND_D_OUTPUT,
+            channels: 6,
+            positions,
+        });
+    }
 
     SndData {
         jack_info,
@@ -775,6 +797,8 @@ mod tests {
             capture: bool,
             client_type: CrasClientType,
             socket_type: CrasSocketType,
+            num_output_devices: u32,
+            num_input_devices: u32,
             num_output_streams: u32,
             num_input_streams: u32,
         ) {
@@ -782,6 +806,8 @@ mod tests {
             assert_eq!(params.capture, capture);
             assert_eq!(params.client_type, client_type);
             assert_eq!(params.socket_type, socket_type);
+            assert_eq!(params.num_output_devices, num_output_devices);
+            assert_eq!(params.num_input_devices, num_input_devices);
             assert_eq!(params.num_output_streams, num_output_streams);
             assert_eq!(params.num_input_streams, num_input_streams);
         }
@@ -797,6 +823,8 @@ mod tests {
             CrasSocketType::Unified,
             1,
             1,
+            1,
+            1,
         );
         check_success(
             "capture=true,client_type=crosvm",
@@ -805,12 +833,16 @@ mod tests {
             CrasSocketType::Unified,
             1,
             1,
+            1,
+            1,
         );
         check_success(
             "capture=true,client_type=arcvm",
             true,
             CrasClientType::CRAS_CLIENT_TYPE_ARCVM,
             CrasSocketType::Unified,
+            1,
+            1,
             1,
             1,
         );
@@ -822,6 +854,8 @@ mod tests {
             CrasSocketType::Legacy,
             1,
             1,
+            1,
+            1,
         );
         check_success(
             "socket_type=unified",
@@ -830,14 +864,39 @@ mod tests {
             CrasSocketType::Unified,
             1,
             1,
+            1,
+            1,
         );
         check_success(
             "capture=true,client_type=arcvm,num_output_streams=2,num_input_streams=3",
             true,
             CrasClientType::CRAS_CLIENT_TYPE_ARCVM,
             CrasSocketType::Unified,
+            1,
+            1,
             2,
             3,
+        );
+        check_success(
+            "capture=true,client_type=arcvm,num_output_devices=3,num_input_devices=2",
+            true,
+            CrasClientType::CRAS_CLIENT_TYPE_ARCVM,
+            CrasSocketType::Unified,
+            3,
+            2,
+            1,
+            1,
+        );
+        check_success(
+            "capture=true,client_type=arcvm,num_output_devices=2,num_input_devices=3,\
+            num_output_streams=3,num_input_streams=2",
+            true,
+            CrasClientType::CRAS_CLIENT_TYPE_ARCVM,
+            CrasSocketType::Unified,
+            2,
+            3,
+            3,
+            2,
         );
     }
 }

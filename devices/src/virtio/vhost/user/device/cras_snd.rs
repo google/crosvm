@@ -249,9 +249,12 @@ pub struct Options {
     /// Possible key values:
     /// capture - Enable audio capture. Default to false.
     /// client_type - Set specific client type for cras backend.
-    /// num_output_streams - Set number of output PCM streams.
-    /// num_input_streams - Set number of input PCM streams.
-    /// Example: [capture=true,client=crosvm,socket=unified,num_output_streams=1,num_input_streams=1]
+    /// num_output_devices - Set number of output PCM devices.
+    /// num_input_devices - Set number of input PCM devices.
+    /// num_output_streams - Set number of output PCM streams per device.
+    /// num_input_streams - Set number of input PCM streams per device.
+    /// Example: [capture=true,client=crosvm,socket=unified,
+    /// num_output_devices=1,num_input_devices=1,num_output_streams=1,num_input_streams=1]
     config: Option<String>,
 }
 
