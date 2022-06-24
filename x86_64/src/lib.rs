@@ -184,7 +184,7 @@ pub enum Error {
     #[error("failed to set up cpuid: {0}")]
     SetupCpuid(cpuid::Error),
     #[error("failed to set up FPU: {0}")]
-    SetupFpu(regs::Error),
+    SetupFpu(base::Error),
     #[error("failed to set up guest memory: {0}")]
     SetupGuestMemory(GuestMemoryError),
     #[error("failed to set up mptable: {0}")]
@@ -788,6 +788,8 @@ impl arch::LinuxArch for X8664arch {
             .map_err(Error::SetupCpuid)?;
         }
 
+        vcpu.set_fpu(&vcpu_init.fpu).map_err(Error::SetupFpu)?;
+
         if has_bios {
             regs::set_reset_vector(vcpu).map_err(Error::SetupRegs)?;
             regs::reset_msrs(vcpu).map_err(Error::SetupMsrs)?;
@@ -797,7 +799,6 @@ impl arch::LinuxArch for X8664arch {
         let guest_mem = vm.get_memory();
         regs::setup_msrs(vm, vcpu, read_pci_mmio_before_32bit().start).map_err(Error::SetupMsrs)?;
         vcpu.set_regs(&vcpu_init.regs).map_err(Error::WriteRegs)?;
-        regs::setup_fpu(vcpu).map_err(Error::SetupFpu)?;
         regs::setup_sregs(guest_mem, vcpu).map_err(Error::SetupSregs)?;
         interrupts::set_lint(vcpu_id, irq_chip).map_err(Error::SetLint)?;
 

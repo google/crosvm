@@ -5,7 +5,7 @@
 use std::{mem, result};
 
 use base::{self, warn};
-use hypervisor::{Fpu, Register, Sregs, VcpuX86_64, Vm};
+use hypervisor::{Register, Sregs, VcpuX86_64, Vm};
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::{GuestAddress, GuestMemory};
@@ -15,9 +15,6 @@ use crate::gdt;
 #[sorted]
 #[derive(Error, Debug)]
 pub enum Error {
-    /// Failed to configure the FPU.
-    #[error("failed to configure the FPU: {0}")]
-    FpuIoctlFailed(base::Error),
     /// Failed to get sregs for this cpu.
     #[error("failed to get sregs for this cpu: {0}")]
     GetSRegsIoctlFailed(base::Error),
@@ -202,21 +199,6 @@ fn create_msr_entries(vm: &dyn Vm, vcpu: &dyn VcpuX86_64, pci_start: u64) -> Vec
 pub fn setup_msrs(vm: &dyn Vm, vcpu: &dyn VcpuX86_64, pci_start: u64) -> Result<()> {
     let msrs = create_msr_entries(vm, vcpu, pci_start);
     vcpu.set_msrs(&msrs).map_err(Error::MsrIoctlFailed)
-}
-
-/// Configure FPU registers for x86
-///
-/// # Arguments
-///
-/// * `vcpu` - Structure for the vcpu that holds the vcpu fd.
-pub fn setup_fpu(vcpu: &dyn VcpuX86_64) -> Result<()> {
-    let fpu = Fpu {
-        fcw: 0x37f,
-        mxcsr: 0x1f80,
-        ..Default::default()
-    };
-
-    vcpu.set_fpu(&fpu).map_err(Error::FpuIoctlFailed)
 }
 
 const X86_CR0_PE: u64 = 0x1;

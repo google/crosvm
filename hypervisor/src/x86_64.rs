@@ -176,6 +176,9 @@ pub(crate) fn host_phys_addr_bits() -> u8 {
 pub struct VcpuInitX86_64 {
     /// General-purpose registers.
     pub regs: Regs,
+
+    /// Floating-point registers.
+    pub fpu: Fpu,
 }
 
 /// A CpuId Entry contains supported feature information for the given processor.
@@ -651,7 +654,7 @@ pub struct Sregs {
 
 /// State of a VCPU's floating point unit.
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Fpu {
     pub fpr: [[u8; 16usize]; 8usize],
     pub fcw: u16,
@@ -662,6 +665,22 @@ pub struct Fpu {
     pub last_dp: u64,
     pub xmm: [[u8; 16usize]; 16usize],
     pub mxcsr: u32,
+}
+
+impl Default for Fpu {
+    fn default() -> Self {
+        Fpu {
+            fpr: Default::default(),
+            fcw: 0x37f, // Intel SDM Vol. 1, 13.6
+            fsw: 0,
+            ftwx: 0,
+            last_opcode: 0,
+            last_ip: 0,
+            last_dp: 0,
+            xmm: Default::default(),
+            mxcsr: 0x1f80, // Intel SDM Vol. 1, 11.6.4
+        }
+    }
 }
 
 /// State of a VCPU's debug registers.

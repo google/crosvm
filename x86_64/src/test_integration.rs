@@ -21,7 +21,7 @@ use vm_memory::{GuestAddress, GuestMemory};
 
 use super::cpuid::setup_cpuid;
 use super::interrupts::set_lint;
-use super::regs::{setup_fpu, setup_msrs, setup_sregs};
+use super::regs::{setup_msrs, setup_sregs};
 use super::X8664arch;
 use super::{
     acpi, arch_memory_regions, bootparam, init_low_memory_layout, mptable,
@@ -265,7 +265,9 @@ where
             vcpu_regs.rcx = 0x0;
             vcpu.set_regs(&vcpu_regs).expect("set regs failed");
 
-            setup_fpu(&vcpu).unwrap();
+            let vcpu_fpu_regs = Default::default();
+            vcpu.set_fpu(&vcpu_fpu_regs).expect("set fpu regs failed");
+
             setup_sregs(&guest_mem, &vcpu).unwrap();
             set_lint(0, &mut irq_chip).unwrap();
 
