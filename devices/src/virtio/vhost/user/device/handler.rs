@@ -127,7 +127,13 @@ pub fn create_guest_memory(
             region.memory_size,
             GuestAddress(region.guest_phys_addr),
             region.mmap_offset,
-            Arc::new(SharedMemory::from_safe_descriptor(SafeDescriptor::from(file), None).unwrap()),
+            Arc::new(
+                SharedMemory::from_safe_descriptor(
+                    SafeDescriptor::from(file),
+                    Some(region.memory_size),
+                )
+                .unwrap(),
+            ),
         )
         .map_err(|e| {
             error!("failed to create a memory region: {}", e);
@@ -753,10 +759,12 @@ mod tests {
         fn stop_queue(&mut self, _idx: usize) {}
     }
 
+    #[cfg(unix)]
     fn temp_dir() -> TempDir {
         Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_vhost_user_activate() {
         use vmm_vhost::{

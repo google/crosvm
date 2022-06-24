@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod handler;
+
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod block;
@@ -11,7 +13,6 @@ cfg_if::cfg_if! {
         #[cfg(feature = "audio_cras")]
         mod cras_snd;
         mod fs;
-        mod handler;
         mod net;
         mod vsock;
         mod vvu;

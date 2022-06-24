@@ -78,6 +78,9 @@ power_monitor = { path = "../power_monitor" }
 usb_util = { path = "../usb_util" }
 vfio_sys = { path = "../vfio_sys" }
 
+[target.'cfg(windows)'.dependencies]
+tube_transporter = { path = "../tube_transporter" }
+
 [dependencies.futures]
 version = "*"
 features = ["async-await", "std"]

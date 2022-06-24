@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-pub(crate) use base::SharedMemoryWindows as SharedMemorySys;
-
 use std::fs::File;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
