@@ -444,13 +444,14 @@ impl arch::LinuxArch for AArch64 {
             .into_iter()
             .map(|(dev, jail_orig)| (*(dev.into_platform_device().unwrap()), jail_orig))
             .collect();
-        let mut platform_pid_debug_label_map = arch::sys::unix::generate_platform_bus(
-            platform_devices,
-            irq_chip.as_irq_chip_mut(),
-            &mmio_bus,
-            system_allocator,
-        )
-        .map_err(Error::CreatePlatformBus)?;
+        let (platform_devices, mut platform_pid_debug_label_map) =
+            arch::sys::unix::generate_platform_bus(
+                platform_devices,
+                irq_chip.as_irq_chip_mut(),
+                &mmio_bus,
+                system_allocator,
+            )
+            .map_err(Error::CreatePlatformBus)?;
         pid_debug_label_map.append(&mut platform_pid_debug_label_map);
 
         Self::add_arch_devs(
@@ -595,6 +596,7 @@ impl arch::LinuxArch for AArch64 {
             pm: None,
             resume_notify_devices: Vec::new(),
             root_config: pci_root,
+            platform_devices,
             hotplug_bus: BTreeMap::new(),
         })
     }

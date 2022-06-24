@@ -854,6 +854,8 @@ impl arch::LinuxArch for X8664arch {
             gdb: components.gdb,
             pm: Some(acpi_dev_resource.pm),
             root_config: pci,
+            #[cfg(unix)]
+            platform_devices: Vec::new(),
             hotplug_bus: BTreeMap::new(),
         })
     }
