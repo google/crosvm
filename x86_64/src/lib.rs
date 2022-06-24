@@ -717,9 +717,8 @@ impl arch::LinuxArch for X8664arch {
                 )
                 .map_err(Error::LoadCmdline)?;
                 Self::load_bios(&mem, bios)?;
-                // RIP and CS will be configured by `set_reset_vector()` later.
-
                 msrs = regs::default_msrs();
+                // The default values for `Regs` and `Sregs` already set up the reset vector.
             }
             VmImage::Kernel(ref mut kernel_image) => {
                 let (params, kernel_end, kernel_entry) = Self::load_kernel(&mem, kernel_image)?;
@@ -741,6 +740,12 @@ impl arch::LinuxArch for X8664arch {
 
                 msrs = regs::long_mode_msrs();
                 msrs.append(&mut regs::mtrr_msrs(&vm, pci_start));
+
+                // Set up long mode and enable paging.
+                regs::configure_segments_and_sregs(&mem, &mut vcpu_init[0].sregs)
+                    .map_err(Error::ConfigureSegments)?;
+                regs::setup_page_tables(&mem, &mut vcpu_init[0].sregs)
+                    .map_err(Error::SetupPageTables)?;
             }
         }
 
@@ -779,10 +784,10 @@ impl arch::LinuxArch for X8664arch {
         hypervisor: &dyn HypervisorX86_64,
         irq_chip: &mut dyn IrqChipX86_64,
         vcpu: &mut dyn VcpuX86_64,
-        vcpu_init: VcpuInitX86_64,
+        mut vcpu_init: VcpuInitX86_64,
         vcpu_id: usize,
         num_cpus: usize,
-        has_bios: bool,
+        _has_bios: bool,
         no_smt: bool,
         host_cpu_topology: bool,
         enable_pnp_data: bool,
@@ -804,6 +809,15 @@ impl arch::LinuxArch for X8664arch {
             )
             .map_err(Error::SetupCpuid)?;
         }
+
+        vcpu.set_regs(&vcpu_init.regs).map_err(Error::WriteRegs)?;
+
+        // Keep the existing `apic_base` since `vcpu_init` doesn't know the right address.
+        // TODO(b/237095693): remove `apic_base` from struct Sregs?
+        let orig_sregs = vcpu.get_sregs().map_err(Error::ReadRegs)?;
+        vcpu_init.sregs.apic_base = orig_sregs.apic_base;
+        vcpu.set_sregs(&vcpu_init.sregs)
+            .map_err(Error::SetupSregs)?;
 
         vcpu.set_fpu(&vcpu_init.fpu).map_err(Error::SetupFpu)?;
 
@@ -828,19 +842,6 @@ impl arch::LinuxArch for X8664arch {
         vcpu.set_msrs(&msrs).map_err(Error::SetupMsrs)?;
 
         interrupts::set_lint(vcpu_id, irq_chip).map_err(Error::SetLint)?;
-
-        if has_bios {
-            regs::set_reset_vector(vcpu).map_err(Error::SetupRegs)?;
-            return Ok(());
-        }
-
-        let guest_mem = vm.get_memory();
-        vcpu.set_regs(&vcpu_init.regs).map_err(Error::WriteRegs)?;
-        let mut sregs = vcpu.get_sregs().map_err(Error::ReadRegs)?;
-        regs::configure_segments_and_sregs(guest_mem, &mut sregs)
-            .map_err(Error::ConfigureSegments)?;
-        regs::setup_page_tables(guest_mem, &mut sregs).map_err(Error::SetupPageTables)?; // TODO(dgreid) - Can this be done once per system instead?
-        vcpu.set_sregs(&sregs).map_err(Error::SetupSregs)?;
 
         Ok(())
     }

@@ -306,31 +306,6 @@ pub fn setup_page_tables(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
     Ok(())
 }
 
-/// Configures a CPU to be pointed at the i386 reset vector.
-///
-/// The reset vector is the default location a CPU will go to find the first instruction it will
-/// execute after a reset. On i386, the reset vector means the RIP is set to 0xfff0 the CS base is
-/// set to 0xffff0000, and the CS selector is set to 0xf000.
-///
-/// When using a BIOS, each of the VCPUs should be pointed at the reset vector before execution
-/// begins.
-///
-/// # Arguments
-/// * `vcpu` - the VCPU to configure.
-pub fn set_reset_vector(vcpu: &dyn VcpuX86_64) -> Result<()> {
-    let mut sregs = vcpu.get_sregs().map_err(Error::GetSRegsIoctlFailed)?;
-    let mut regs = vcpu.get_regs().map_err(Error::GettingRegistersIoctl)?;
-
-    regs.rip = 0xfff0;
-    sregs.cs.base = 0xffff0000;
-    sregs.cs.selector = 0xf000;
-
-    vcpu.set_sregs(&sregs).map_err(Error::SetSRegsIoctlFailed)?;
-    vcpu.set_regs(&regs).map_err(Error::SettingRegistersIoctl)?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

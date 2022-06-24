@@ -177,6 +177,9 @@ pub struct VcpuInitX86_64 {
     /// General-purpose registers.
     pub regs: Regs,
 
+    /// Special registers.
+    pub sregs: Sregs,
+
     /// Floating-point registers.
     pub fpu: Fpu,
 
