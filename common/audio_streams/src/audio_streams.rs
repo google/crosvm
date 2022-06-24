@@ -139,6 +139,12 @@ pub enum Error {
     Unimplemented,
 }
 
+/// `StreamSourceGenerator` is a trait used to abstract types that create [`StreamSource`].
+/// It can be used when multiple types of `StreamSource` are needed.
+pub trait StreamSourceGenerator: Sync + Send {
+    fn generate(&self) -> Result<Box<dyn StreamSource>, BoxError>;
+}
+
 /// `StreamSource` creates streams for playback or capture of audio.
 pub trait StreamSource: Send {
     /// Returns a stream control and buffer generator object. These are separate as the buffer
@@ -684,6 +690,22 @@ impl StreamSource for NoopStreamSource {
     }
 }
 
+/// `NoopStreamSourceGenerator` is a struct that implements [`StreamSourceGenerator`]
+/// to generate [`NoopStreamSource`].
+pub struct NoopStreamSourceGenerator;
+
+impl NoopStreamSourceGenerator {
+    pub fn new() -> Self {
+        NoopStreamSourceGenerator {}
+    }
+}
+
+impl StreamSourceGenerator for NoopStreamSourceGenerator {
+    fn generate(&self) -> Result<Box<dyn StreamSource>, BoxError> {
+        Ok(Box::new(NoopStreamSource))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::async_api::test::TestExecutor;
@@ -915,5 +937,13 @@ mod tests {
 
         let ex = TestExecutor {};
         this_test(&ex).now_or_never();
+    }
+
+    #[test]
+    fn generate_noop_stream_source() {
+        let generator: Box<dyn StreamSourceGenerator> = Box::new(NoopStreamSourceGenerator::new());
+        generator
+            .generate()
+            .expect("failed to generate stream source");
     }
 }
