@@ -4,6 +4,7 @@
 
 use core::ffi::c_void;
 use libc::{EBUSY, EINVAL, ENOENT, ENXIO};
+use std::arch::x86_64::CpuidResult;
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::mem::size_of;
@@ -786,26 +787,28 @@ impl Vcpu for WhpxVcpu {
                         function: self.last_exit_context.__bindgen_anon_1.CpuidAccess.Rax as u32,
                         index: self.last_exit_context.__bindgen_anon_1.CpuidAccess.Rcx as u32,
                         flags: 0,
-                        eax: self
-                            .last_exit_context
-                            .__bindgen_anon_1
-                            .CpuidAccess
-                            .DefaultResultRax as u32,
-                        ebx: self
-                            .last_exit_context
-                            .__bindgen_anon_1
-                            .CpuidAccess
-                            .DefaultResultRbx as u32,
-                        ecx: self
-                            .last_exit_context
-                            .__bindgen_anon_1
-                            .CpuidAccess
-                            .DefaultResultRcx as u32,
-                        edx: self
-                            .last_exit_context
-                            .__bindgen_anon_1
-                            .CpuidAccess
-                            .DefaultResultRdx as u32,
+                        cpuid: CpuidResult {
+                            eax: self
+                                .last_exit_context
+                                .__bindgen_anon_1
+                                .CpuidAccess
+                                .DefaultResultRax as u32,
+                            ebx: self
+                                .last_exit_context
+                                .__bindgen_anon_1
+                                .CpuidAccess
+                                .DefaultResultRbx as u32,
+                            ecx: self
+                                .last_exit_context
+                                .__bindgen_anon_1
+                                .CpuidAccess
+                                .DefaultResultRcx as u32,
+                            edx: self
+                                .last_exit_context
+                                .__bindgen_anon_1
+                                .CpuidAccess
+                                .DefaultResultRdx as u32,
+                        },
                     }
                 };
                 Ok(VcpuExit::Cpuid { entry })
@@ -1199,16 +1202,16 @@ impl VcpuX86_64 for WhpxVcpu {
         let values = vec![
             WHV_REGISTER_VALUE { Reg64: rip },
             WHV_REGISTER_VALUE {
-                Reg64: entry.eax as u64,
+                Reg64: entry.cpuid.eax as u64,
             },
             WHV_REGISTER_VALUE {
-                Reg64: entry.ebx as u64,
+                Reg64: entry.cpuid.ebx as u64,
             },
             WHV_REGISTER_VALUE {
-                Reg64: entry.ecx as u64,
+                Reg64: entry.cpuid.ecx as u64,
             },
             WHV_REGISTER_VALUE {
-                Reg64: entry.edx as u64,
+                Reg64: entry.cpuid.edx as u64,
             },
         ];
 

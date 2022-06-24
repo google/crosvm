@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::arch::x86_64::__cpuid;
+use std::arch::x86_64::{CpuidResult, __cpuid};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use base::{AsRawDescriptor, RawDescriptor, Result, SafeDescriptor};
@@ -155,46 +155,56 @@ impl HypervisorX86_64 for Haxm {
                     function: 0x1,
                     index: 0,
                     flags: 0,
-                    eax: 0,
-                    ebx: 0,
-                    ecx: supported_features_1_ecx,
-                    edx: supported_features_1_edx,
+                    cpuid: CpuidResult {
+                        eax: 0,
+                        ebx: 0,
+                        ecx: supported_features_1_ecx,
+                        edx: supported_features_1_edx,
+                    },
                 },
                 CpuIdEntry {
                     function: 0x7,
                     index: 0,
                     flags: 0,
-                    eax: cpuid_7.eax,
-                    ebx: cpuid_7.ebx,
-                    ecx: cpuid_7.ecx,
-                    edx: cpuid_7.edx,
+                    cpuid: CpuidResult {
+                        eax: cpuid_7.eax,
+                        ebx: cpuid_7.ebx,
+                        ecx: cpuid_7.ecx,
+                        edx: cpuid_7.edx,
+                    },
                 },
                 CpuIdEntry {
                     function: 0x15,
                     index: 0,
                     flags: 0,
-                    eax: cpuid_15.eax,
-                    ebx: cpuid_15.ebx,
-                    ecx: cpuid_15.ecx,
-                    edx: cpuid_15.edx,
+                    cpuid: CpuidResult {
+                        eax: cpuid_15.eax,
+                        ebx: cpuid_15.ebx,
+                        ecx: cpuid_15.ecx,
+                        edx: cpuid_15.edx,
+                    },
                 },
                 CpuIdEntry {
                     function: 0x16,
                     index: 0,
                     flags: 0,
-                    eax: cpuid_16.eax,
-                    ebx: cpuid_16.ebx,
-                    ecx: cpuid_16.ecx,
-                    edx: cpuid_16.edx,
+                    cpuid: CpuidResult {
+                        eax: cpuid_16.eax,
+                        ebx: cpuid_16.ebx,
+                        ecx: cpuid_16.ecx,
+                        edx: cpuid_16.edx,
+                    },
                 },
                 CpuIdEntry {
                     function: 0x80000001,
                     index: 0,
                     flags: 0,
-                    eax: 0,
-                    ebx: 0,
-                    ecx: supported_features_80000001_ecx,
-                    edx: supported_features_80000001_edx,
+                    cpuid: CpuidResult {
+                        eax: 0,
+                        ebx: 0,
+                        ecx: supported_features_80000001_ecx,
+                        edx: supported_features_80000001_edx,
+                    },
                 },
             ],
         })

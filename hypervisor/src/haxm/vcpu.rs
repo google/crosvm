@@ -4,6 +4,7 @@
 
 use core::ffi::c_void;
 use libc::{EINVAL, ENOENT, ENOSPC, ENXIO};
+use std::arch::x86_64::CpuidResult;
 use std::cmp::min;
 use std::intrinsics::copy_nonoverlapping;
 use std::mem::{size_of, ManuallyDrop};
@@ -934,10 +935,12 @@ impl From<&hax_cpuid_entry> for CpuIdEntry {
             function: item.function,
             index: item.index,
             flags: item.flags,
-            eax: item.eax,
-            ebx: item.ebx,
-            ecx: item.ecx,
-            edx: item.edx,
+            cpuid: CpuidResult {
+                eax: item.eax,
+                ebx: item.ebx,
+                ecx: item.ecx,
+                edx: item.edx,
+            },
         }
     }
 }
@@ -948,10 +951,10 @@ impl From<&CpuIdEntry> for hax_cpuid_entry {
             function: item.function,
             index: item.index,
             flags: item.flags,
-            eax: item.eax,
-            ebx: item.ebx,
-            ecx: item.ecx,
-            edx: item.edx,
+            eax: item.cpuid.eax,
+            ebx: item.cpuid.ebx,
+            ecx: item.cpuid.ecx,
+            edx: item.cpuid.edx,
             pad: Default::default(),
         }
     }

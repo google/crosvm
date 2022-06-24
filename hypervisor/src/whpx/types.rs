@@ -720,10 +720,10 @@ impl From<&CpuIdEntry> for WHV_X64_CPUID_RESULT {
     fn from(entry: &CpuIdEntry) -> Self {
         WHV_X64_CPUID_RESULT {
             Function: entry.function,
-            Eax: entry.eax,
-            Ebx: entry.ebx,
-            Ecx: entry.ecx,
-            Edx: entry.edx,
+            Eax: entry.cpuid.eax,
+            Ebx: entry.cpuid.ebx,
+            Ecx: entry.cpuid.ecx,
+            Edx: entry.cpuid.edx,
             ..Default::default()
         }
     }

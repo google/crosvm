@@ -190,10 +190,7 @@ fn cpuid_entry_from_host(function: u32, index: u32) -> CpuIdEntry {
         function,
         index,
         flags: 0,
-        eax: result.eax,
-        ebx: result.ebx,
-        ecx: result.ecx,
-        edx: result.edx,
+        cpuid: result,
     }
 }
 
