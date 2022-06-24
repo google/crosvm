@@ -2,11 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod block;
 mod handler;
+
+pub use block::{run_block_device, Options as BlockOptions};
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
-        mod block;
         #[cfg(feature = "gpu")]
         mod gpu;
         mod console;
@@ -18,7 +20,6 @@ cfg_if::cfg_if! {
         mod vvu;
         mod wl;
 
-        pub use block::{run_block_device, Options as BlockOptions};
         pub use vsock::{run_vsock_device, Options as VsockOptions};
         pub use wl::{run_wl_device, parse_wayland_sock, Options as WlOptions};
         pub use console::{run_console_device, Options as ConsoleOptions};

@@ -20,7 +20,7 @@ use winapi::um::winnt::{FILE_SHARE_READ, FILE_SHARE_WRITE};
 use crate::virtio::base_features;
 use crate::virtio::block::block::DiskOption;
 use crate::virtio::vhost::user::device::block::BlockBackend;
-use crate::virtio::vhost::user::device::handler::read_from_tube_transporter;
+use crate::virtio::vhost::user::device::handler::sys::read_from_tube_transporter;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 
 impl BlockBackend {
@@ -55,7 +55,7 @@ fn open_disk_file(disk_option: &DiskOption, take_write_lock: bool) -> anyhow::Re
 
 #[derive(FromArgs)]
 #[argh(description = "")]
-struct Options {
+pub struct Options {
     #[argh(
         option,
         description = "pipe handle end for Tube Transporter",
@@ -64,10 +64,7 @@ struct Options {
     bootstrap: usize,
 }
 
-pub(in crate::virtio::vhost::user::device::block) fn start_device(
-    program_name: &str,
-    args: &[&str],
-) -> anyhow::Result<()> {
+pub fn start_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
     let opts = match Options::from_args(&[program_name], args) {
         Ok(opts) => opts,
         Err(e) => {
@@ -129,12 +126,13 @@ pub(in crate::virtio::vhost::user::device::block) fn start_device(
         disk_option.block_size,
     )?;
 
-    if sandbox::is_sandbox_target() {
-        sandbox::TargetServices::get()
-            .expect("failed to get target services")
-            .unwrap()
-            .lower_token();
-    }
+    // TODO(b/213170185): Uncomment once sandbox is upstreamed.
+    //     if sandbox::is_sandbox_target() {
+    //         sandbox::TargetServices::get()
+    //             .expect("failed to get target services")
+    //             .unwrap()
+    //             .lower_token();
+    //     }
 
     // This is basically the event loop.
     let handler = DeviceRequestHandler::new(Box::new(block));

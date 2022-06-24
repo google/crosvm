@@ -79,7 +79,10 @@ usb_util = { path = "../usb_util" }
 vfio_sys = { path = "../vfio_sys" }
 
 [target.'cfg(windows)'.dependencies]
+broker_ipc = { path = "../broker_ipc" }
+tracing = { path = "../tracing" }
 tube_transporter = { path = "../tube_transporter" }
+winapi = "*"
 
 [dependencies.futures]
 version = "*"
