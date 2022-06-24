@@ -21,7 +21,7 @@ use vm_memory::{GuestAddress, GuestMemory};
 
 use super::cpuid::setup_cpuid;
 use super::interrupts::set_lint;
-use super::regs::{setup_msrs, setup_sregs};
+use super::regs::{long_mode_msrs, mtrr_msrs, setup_sregs};
 use super::X8664arch;
 use super::{
     acpi, arch_memory_regions, bootparam, init_low_memory_layout, mptable,
@@ -245,7 +245,10 @@ where
                 )
                 .unwrap();
             }
-            setup_msrs(&vm, &vcpu, read_pci_mmio_before_32bit().start).unwrap();
+
+            let mut msrs = long_mode_msrs();
+            msrs.append(&mut mtrr_msrs(&vm, read_pci_mmio_before_32bit().start));
+            vcpu.set_msrs(&msrs).unwrap();
 
             let mut vcpu_regs = Regs {
                 rip: start_addr.offset(),

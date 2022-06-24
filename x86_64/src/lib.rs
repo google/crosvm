@@ -190,7 +190,7 @@ pub enum Error {
     #[error("failed to set up mptable: {0}")]
     SetupMptable(mptable::Error),
     #[error("failed to set up MSRs: {0}")]
-    SetupMsrs(regs::Error),
+    SetupMsrs(base::Error),
     #[error("failed to set up registers: {0}")]
     SetupRegs(regs::Error),
     #[error("failed to set up SMBIOS: {0}")]
@@ -698,8 +698,11 @@ impl arch::LinuxArch for X8664arch {
                 .map_err(Error::Cmdline)?;
         }
 
+        let pci_start = read_pci_mmio_before_32bit().start;
+
         let mut vcpu_init = vec![VcpuInitX86_64::default(); vcpu_count];
 
+        let mut msrs;
         match components.vm_image {
             VmImage::Bios(ref mut bios) => {
                 // Allow a bios to hardcode CMDLINE_OFFSET and read the kernel command line from it.
@@ -709,8 +712,10 @@ impl arch::LinuxArch for X8664arch {
                     &CString::new(cmdline).unwrap(),
                 )
                 .map_err(Error::LoadCmdline)?;
-                Self::load_bios(&mem, bios)?
+                Self::load_bios(&mem, bios)?;
                 // RIP and CS will be configured by `set_reset_vector()` later.
+
+                msrs = regs::default_msrs();
             }
             VmImage::Kernel(ref mut kernel_image) => {
                 let (params, kernel_end, kernel_entry) = Self::load_kernel(&mem, kernel_image)?;
@@ -729,7 +734,15 @@ impl arch::LinuxArch for X8664arch {
                 vcpu_init[0].regs.rip = kernel_entry.offset();
                 vcpu_init[0].regs.rsp = BOOT_STACK_POINTER;
                 vcpu_init[0].regs.rsi = ZERO_PAGE_OFFSET;
+
+                msrs = regs::long_mode_msrs();
+                msrs.append(&mut regs::mtrr_msrs(&vm, pci_start));
             }
+        }
+
+        // Initialize MSRs for all VCPUs.
+        for vcpu in vcpu_init.iter_mut() {
+            vcpu.msrs = msrs.clone();
         }
 
         Ok(RunnableLinuxVm {
@@ -790,14 +803,32 @@ impl arch::LinuxArch for X8664arch {
 
         vcpu.set_fpu(&vcpu_init.fpu).map_err(Error::SetupFpu)?;
 
+        let vcpu_supported_var_mtrrs = regs::vcpu_supported_variable_mtrrs(vcpu);
+        let num_var_mtrrs = regs::count_variable_mtrrs(&vcpu_init.msrs);
+        let msrs = if num_var_mtrrs > vcpu_supported_var_mtrrs {
+            warn!(
+                "Too many variable MTRR entries ({} required, {} supported),
+                please check pci_start addr, guest with pass through device may be very slow",
+                num_var_mtrrs, vcpu_supported_var_mtrrs,
+            );
+            // Filter out the MTRR entries from the MSR list.
+            vcpu_init
+                .msrs
+                .into_iter()
+                .filter(|&msr| !regs::is_mtrr_msr(msr.id))
+                .collect()
+        } else {
+            vcpu_init.msrs
+        };
+
+        vcpu.set_msrs(&msrs).map_err(Error::SetupMsrs)?;
+
         if has_bios {
             regs::set_reset_vector(vcpu).map_err(Error::SetupRegs)?;
-            regs::reset_msrs(vcpu).map_err(Error::SetupMsrs)?;
             return Ok(());
         }
 
         let guest_mem = vm.get_memory();
-        regs::setup_msrs(vm, vcpu, read_pci_mmio_before_32bit().start).map_err(Error::SetupMsrs)?;
         vcpu.set_regs(&vcpu_init.regs).map_err(Error::WriteRegs)?;
         regs::setup_sregs(guest_mem, vcpu).map_err(Error::SetupSregs)?;
         interrupts::set_lint(vcpu_id, irq_chip).map_err(Error::SetLint)?;

@@ -179,6 +179,9 @@ pub struct VcpuInitX86_64 {
 
     /// Floating-point registers.
     pub fpu: Fpu,
+
+    /// Machine-specific registers.
+    pub msrs: Vec<Register>,
 }
 
 /// A CpuId Entry contains supported feature information for the given processor.

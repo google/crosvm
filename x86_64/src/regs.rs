@@ -21,9 +21,6 @@ pub enum Error {
     /// Failed to get base registers for this cpu.
     #[error("failed to get base registers for this cpu: {0}")]
     GettingRegistersIoctl(base::Error),
-    /// Setting up msrs failed.
-    #[error("setting up msrs failed: {0}")]
-    MsrIoctlFailed(base::Error),
     /// Failed to set sregs for this cpu.
     #[error("failed to set sregs for this cpu: {0}")]
     SetSRegsIoctlFailed(base::Error),
@@ -93,34 +90,45 @@ fn get_mtrr_pairs(base: u64, len: u64) -> Vec<(u64, u64)> {
     vecs
 }
 
-fn append_mtrr_entries(
-    vm: &dyn Vm,
-    vpu: &dyn VcpuX86_64,
-    pci_start: u64,
-    entries: &mut Vec<Register>,
-) {
+/// Returns the number of variable MTRR entries supported by `vcpu`.
+pub fn vcpu_supported_variable_mtrrs(vcpu: &dyn VcpuX86_64) -> usize {
     // Get VAR MTRR num from MSR_MTRRcap
     let mut msrs = vec![Register {
         id: crate::msr_index::MSR_MTRRcap,
         ..Default::default()
     }];
-    if vpu.get_msrs(&mut msrs).is_err() {
+    if vcpu.get_msrs(&mut msrs).is_err() {
         warn!("get msrs fail, guest with pass through device may be very slow");
-        return;
+        0
+    } else {
+        (msrs[0].value & VAR_MTRR_NUM_MASK) as usize
     }
-    let var_num = msrs[0].value & VAR_MTRR_NUM_MASK;
+}
 
+/// Returns `true` if the given MSR `id` is a MTRR entry.
+pub fn is_mtrr_msr(id: u32) -> bool {
+    // Variable MTRR MSRs are pairs starting at 0x200 (MTRR_PHYS_BASE_MSR) / 0x201
+    // (MTRR_PHYS_MASK_MSR) and extending up to 0xFF pairs at most.
+    (id >= MTRR_PHYS_BASE_MSR && id <= MTRR_PHYS_BASE_MSR + 2 * VAR_MTRR_NUM_MASK as u32)
+        || id == crate::msr_index::MSR_MTRRdefType
+}
+
+/// Returns the count of variable MTRR entries specified by the list of `msrs`.
+pub fn count_variable_mtrrs(msrs: &[Register]) -> usize {
+    // Each variable MTRR takes up two MSRs (base + mask), so divide by 2. This will also count the
+    // MTRRdefType entry, but that is only one extra and the division truncates, so it won't affect
+    // the final count.
+    msrs.iter().filter(|msr| is_mtrr_msr(msr.id)).count() / 2
+}
+
+/// Returns a set of MSRs containing the MTRR configuration.
+pub fn mtrr_msrs(vm: &dyn Vm, pci_start: u64) -> Vec<Register> {
     // Set pci_start .. 4G as UC
     // all others are set to default WB
     let pci_len = (1 << 32) - pci_start;
     let vecs = get_mtrr_pairs(pci_start, pci_len);
-    if vecs.len() as u64 > var_num {
-        warn!(
-            "mtrr fail for pci mmio, please check pci_start addr,
-              guest with pass through device may be very slow"
-        );
-        return;
-    }
+
+    let mut entries = Vec::new();
 
     let phys_mask: u64 = (1 << vm.get_guest_phys_addr_bits()) - 1;
     for (idx, (base, len)) in vecs.iter().enumerate() {
@@ -140,10 +148,22 @@ fn append_mtrr_entries(
         id: crate::msr_index::MSR_MTRRdefType,
         value: MTRR_ENABLE | MTRR_MEMTYPE_WB as u64,
     });
+    entries
 }
 
-fn create_msr_entries(vm: &dyn Vm, vcpu: &dyn VcpuX86_64, pci_start: u64) -> Vec<Register> {
-    let mut entries = vec![
+/// Returns the default value of MSRs at reset.
+///
+/// Currently only sets IA32_TSC to 0.
+pub fn default_msrs() -> Vec<Register> {
+    vec![Register {
+        id: crate::msr_index::MSR_IA32_TSC,
+        value: 0x0,
+    }]
+}
+
+/// Configure Model specific registers for long (64-bit) mode.
+pub fn long_mode_msrs() -> Vec<Register> {
+    vec![
         Register {
             id: crate::msr_index::MSR_IA32_SYSENTER_CS,
             value: 0x0,
@@ -186,19 +206,7 @@ fn create_msr_entries(vm: &dyn Vm, vcpu: &dyn VcpuX86_64, pci_start: u64) -> Vec
             id: crate::msr_index::MSR_IA32_MISC_ENABLE,
             value: crate::msr_index::MSR_IA32_MISC_ENABLE_FAST_STRING as u64,
         },
-    ];
-    append_mtrr_entries(vm, vcpu, pci_start, &mut entries);
-    entries
-}
-
-/// Configure Model specific registers for x86
-///
-/// # Arguments
-///
-/// * `vcpu` - Structure for the vcpu that holds the vcpu fd.
-pub fn setup_msrs(vm: &dyn Vm, vcpu: &dyn VcpuX86_64, pci_start: u64) -> Result<()> {
-    let msrs = create_msr_entries(vm, vcpu, pci_start);
-    vcpu.set_msrs(&msrs).map_err(Error::MsrIoctlFailed)
+    ]
 }
 
 const X86_CR0_PE: u64 = 0x1;
@@ -336,21 +344,6 @@ pub fn set_reset_vector(vcpu: &dyn VcpuX86_64) -> Result<()> {
     vcpu.set_regs(&regs).map_err(Error::SettingRegistersIoctl)?;
 
     Ok(())
-}
-
-/// Configures a CPU so its MSRs are reset to their default value.
-///
-/// Currently only sets IA32_TSC to 0.
-///
-/// # Arguments
-/// * `vcpu` - the VCPU to configure.
-pub fn reset_msrs(vcpu: &dyn VcpuX86_64) -> Result<()> {
-    let msrs = vec![Register {
-        id: crate::msr_index::MSR_IA32_TSC,
-        value: 0x0,
-    }];
-
-    vcpu.set_msrs(&msrs).map_err(Error::MsrIoctlFailed)
 }
 
 #[cfg(test)]
