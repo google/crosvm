@@ -823,6 +823,8 @@ impl arch::LinuxArch for X8664arch {
 
         vcpu.set_msrs(&msrs).map_err(Error::SetupMsrs)?;
 
+        interrupts::set_lint(vcpu_id, irq_chip).map_err(Error::SetLint)?;
+
         if has_bios {
             regs::set_reset_vector(vcpu).map_err(Error::SetupRegs)?;
             return Ok(());
@@ -831,7 +833,6 @@ impl arch::LinuxArch for X8664arch {
         let guest_mem = vm.get_memory();
         vcpu.set_regs(&vcpu_init.regs).map_err(Error::WriteRegs)?;
         regs::setup_sregs(guest_mem, vcpu).map_err(Error::SetupSregs)?;
-        interrupts::set_lint(vcpu_id, irq_chip).map_err(Error::SetLint)?;
 
         Ok(())
     }
