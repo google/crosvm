@@ -3,7 +3,7 @@
 # found in the LICENSE file.
 
 from pathlib import Path
-from typing import Iterable, Optional, Literal
+from typing import Iterable, Optional, Literal, Dict, List, Tuple
 import argparse
 import itertools
 import os
@@ -108,13 +108,13 @@ def rootfs_img_path(arch: Arch):
 
 
 # List of ports to use for SSH for each architecture
-SSH_PORTS: dict[Arch, int] = {
+SSH_PORTS: Dict[Arch, int] = {
     "x86_64": 9000,
     "aarch64": 9001,
 }
 
 # QEMU arguments shared by all architectures
-SHARED_ARGS: list[tuple[str, str]] = [
+SHARED_ARGS: List[Tuple[str, str]] = [
     ("-display", "none"),
     ("-device", "virtio-net-pci,netdev=net0"),
     ("-smp", "8"),
@@ -122,7 +122,7 @@ SHARED_ARGS: list[tuple[str, str]] = [
 ]
 
 # Arguments to QEMU for each architecture
-ARCH_TO_QEMU: dict[Arch, tuple[str, list[Iterable[str]]]] = {
+ARCH_TO_QEMU: Dict[Arch, Tuple[str, List[Iterable[str]]]] = {
     # arch: (qemu-binary, [(param, value), ...])
     "x86_64": (
         "qemu-system-x86_64",
@@ -150,7 +150,7 @@ ARCH_TO_QEMU: dict[Arch, tuple[str, list[Iterable[str]]]] = {
 }
 
 
-def ssh_opts(arch: Arch) -> dict[str, str]:
+def ssh_opts(arch: Arch) -> Dict[str, str]:
     return {
         "Port": str(SSH_PORTS[arch]),
         "User": "crosvm",
@@ -359,7 +359,7 @@ def clean(arch: Arch):
     shutil.rmtree(data_dir(arch))
 
 
-def main(arch: Arch, argv: list[str]):
+def main(arch: Arch, argv: List[str]):
     COMMANDS = [
         "build",
         "up",

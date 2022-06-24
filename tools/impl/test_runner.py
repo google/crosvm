@@ -138,8 +138,8 @@ def exclude_crosvm(target_arch: Arch):
 def cargo(
     cargo_command: str,
     cwd: Path,
-    flags: list[str],
-    env: dict[str, str],
+    flags: List[str],
+    env: Dict[str, str],
     build_arch: Arch,
 ) -> Iterable[Executable]:
     """
@@ -207,7 +207,7 @@ def cargo(
 
 
 def cargo_build_executables(
-    flags: list[str],
+    flags: List[str],
     build_arch: Arch,
     cwd: Path = Path("."),
     env: Dict[str, str] = {},
@@ -221,7 +221,7 @@ def cargo_build_executables(
     yield from cargo("test", cwd, ["--no-run", *flags], env, build_arch)
 
 
-def build_common_crate(build_env: dict[str, str], build_arch: Arch, crate: Crate):
+def build_common_crate(build_env: Dict[str, str], build_arch: Arch, crate: Crate):
     print(f"Building tests for: common/{crate.name}")
     return list(cargo_build_executables([], build_arch, env=build_env, cwd=crate.path))
 
@@ -282,7 +282,7 @@ def execute_test(target: TestTarget, executable: Executable):
     Test output is hidden unless the test fails or VERBOSE mode is enabled.
     """
     options = CRATE_OPTIONS.get(executable.crate_name, [])
-    args: list[str] = []
+    args: List[str] = []
     if TestOption.SINGLE_THREADED in options:
         args += ["--test-threads=1"]
 
@@ -324,7 +324,7 @@ def execute_test(target: TestTarget, executable: Executable):
 
 
 def execute_all(
-    executables: list[Executable],
+    executables: List[Executable],
     target: test_target.TestTarget,
     repeat: int,
 ):
@@ -353,7 +353,7 @@ def execute_all(
     print()
 
 
-def find_crosvm_binary(executables: list[Executable]):
+def find_crosvm_binary(executables: List[Executable]):
     for executable in executables:
         if not executable.is_test and executable.cargo_target == "crosvm":
             return executable
