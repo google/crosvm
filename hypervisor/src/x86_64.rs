@@ -651,11 +651,6 @@ pub struct Sregs {
     pub cr4: u64,
     pub cr8: u64,
     pub efer: u64,
-    pub apic_base: u64,
-
-    /// A bitmap of pending external interrupts.  At most one bit may be set.  This interrupt has
-    /// been acknowledged by the APIC but not yet injected into the cpu core.
-    pub interrupt_bitmap: [u64; 4usize],
 }
 
 impl Default for Sregs {
@@ -749,8 +744,6 @@ impl Default for Sregs {
             cr4: 0,
             cr8: 0,
             efer: 0,
-            apic_base: 0,
-            interrupt_bitmap: Default::default(),
         }
     }
 }

@@ -737,11 +737,6 @@ impl VcpuState {
             // HAXM does not support setting cr8
             cr8: 0,
             efer: self.state._efer as u64,
-            // apic_base is part of haxm_tunnel structure
-            apic_base: 0,
-            // interrupt bitmap is really part of the APIC state, which can be gotten via
-            // get_lapic_state.  TODO: remove from Sregs?
-            interrupt_bitmap: [0; 4],
         }
     }
 

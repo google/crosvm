@@ -572,10 +572,36 @@ impl VcpuX86_64 for KvmVcpu {
     }
 
     fn set_sregs(&self, sregs: &Sregs) -> Result<()> {
-        let sregs = kvm_sregs::from(sregs);
+        // Get the current `kvm_sregs` so we can use its `apic_base` and `interrupt_bitmap`, which
+        // are not present in `Sregs`.
+        // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
+        // correct amount of memory to our pointer, and we verify the return result.
+        let mut kvm_sregs: kvm_sregs = Default::default();
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_SREGS(), &mut kvm_sregs) };
+        if ret != 0 {
+            return errno_result();
+        }
+
+        kvm_sregs.cs = kvm_segment::from(&sregs.cs);
+        kvm_sregs.ds = kvm_segment::from(&sregs.ds);
+        kvm_sregs.es = kvm_segment::from(&sregs.es);
+        kvm_sregs.fs = kvm_segment::from(&sregs.fs);
+        kvm_sregs.gs = kvm_segment::from(&sregs.gs);
+        kvm_sregs.ss = kvm_segment::from(&sregs.ss);
+        kvm_sregs.tr = kvm_segment::from(&sregs.tr);
+        kvm_sregs.ldt = kvm_segment::from(&sregs.ldt);
+        kvm_sregs.gdt = kvm_dtable::from(&sregs.gdt);
+        kvm_sregs.idt = kvm_dtable::from(&sregs.idt);
+        kvm_sregs.cr0 = sregs.cr0;
+        kvm_sregs.cr2 = sregs.cr2;
+        kvm_sregs.cr3 = sregs.cr3;
+        kvm_sregs.cr4 = sregs.cr4;
+        kvm_sregs.cr8 = sregs.cr8;
+        kvm_sregs.efer = sregs.efer;
+
         // Safe because we know that our file is a VCPU fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_SREGS(), &sregs) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_SREGS(), &kvm_sregs) };
         if ret == 0 {
             Ok(())
         } else {
@@ -1214,33 +1240,6 @@ impl From<&kvm_sregs> for Sregs {
             cr4: r.cr4,
             cr8: r.cr8,
             efer: r.efer,
-            apic_base: r.apic_base,
-            interrupt_bitmap: r.interrupt_bitmap,
-        }
-    }
-}
-
-impl From<&Sregs> for kvm_sregs {
-    fn from(r: &Sregs) -> Self {
-        kvm_sregs {
-            cs: kvm_segment::from(&r.cs),
-            ds: kvm_segment::from(&r.ds),
-            es: kvm_segment::from(&r.es),
-            fs: kvm_segment::from(&r.fs),
-            gs: kvm_segment::from(&r.gs),
-            ss: kvm_segment::from(&r.ss),
-            tr: kvm_segment::from(&r.tr),
-            ldt: kvm_segment::from(&r.ldt),
-            gdt: kvm_dtable::from(&r.gdt),
-            idt: kvm_dtable::from(&r.idt),
-            cr0: r.cr0,
-            cr2: r.cr2,
-            cr3: r.cr3,
-            cr4: r.cr4,
-            cr8: r.cr8,
-            efer: r.efer,
-            apic_base: r.apic_base,
-            interrupt_bitmap: r.interrupt_bitmap,
         }
     }
 }

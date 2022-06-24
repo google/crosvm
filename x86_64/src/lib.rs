@@ -784,7 +784,7 @@ impl arch::LinuxArch for X8664arch {
         hypervisor: &dyn HypervisorX86_64,
         irq_chip: &mut dyn IrqChipX86_64,
         vcpu: &mut dyn VcpuX86_64,
-        mut vcpu_init: VcpuInitX86_64,
+        vcpu_init: VcpuInitX86_64,
         vcpu_id: usize,
         num_cpus: usize,
         _has_bios: bool,
@@ -812,10 +812,6 @@ impl arch::LinuxArch for X8664arch {
 
         vcpu.set_regs(&vcpu_init.regs).map_err(Error::WriteRegs)?;
 
-        // Keep the existing `apic_base` since `vcpu_init` doesn't know the right address.
-        // TODO(b/237095693): remove `apic_base` from struct Sregs?
-        let orig_sregs = vcpu.get_sregs().map_err(Error::ReadRegs)?;
-        vcpu_init.sregs.apic_base = orig_sregs.apic_base;
         vcpu.set_sregs(&vcpu_init.sregs)
             .map_err(Error::SetupSregs)?;
 
