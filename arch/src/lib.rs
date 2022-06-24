@@ -148,7 +148,8 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub suspend_evt: Event,
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub vcpu_count: usize,
-    pub vcpu_init: VcpuInitArch,
+    /// Per-VCPU initialization data, indexed by vcpu_id.
+    pub vcpu_init: Vec<VcpuInitArch>,
     /// If vcpus is None, then it's the responsibility of the vcpu thread to create vcpus.
     /// If it's Some, then `build_vm` already created the vcpus.
     pub vcpus: Option<Vec<Vcpu>>,
@@ -244,7 +245,7 @@ pub trait LinuxArch {
         hypervisor: &dyn HypervisorArch,
         irq_chip: &mut dyn IrqChipArch,
         vcpu: &mut dyn VcpuArch,
-        vcpu_init: &VcpuInitArch,
+        vcpu_init: VcpuInitArch,
         vcpu_id: usize,
         num_cpus: usize,
         has_bios: bool,

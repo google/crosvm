@@ -122,7 +122,7 @@ pub trait VcpuAArch64: Vcpu {
 impl_downcast!(VcpuAArch64);
 
 /// Initial state for AArch64 VCPUs.
-#[derive(Copy, Clone)]
+#[derive(Clone, Default)]
 pub struct VcpuInitAArch64 {}
 
 // Convenience constructors for IrqRoutes

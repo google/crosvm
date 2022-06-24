@@ -172,7 +172,7 @@ pub(crate) fn host_phys_addr_bits() -> u8 {
 }
 
 /// Initial state for x86_64 VCPUs.
-#[derive(Copy, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct VcpuInitX86_64 {
     /// General-purpose registers.
     pub regs: Regs,

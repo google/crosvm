@@ -1952,7 +1952,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     let guest_suspended_cvar = Arc::new((Mutex::new(false), Condvar::new()));
 
-    for (cpu_id, vcpu) in vcpus.into_iter().enumerate() {
+    // Architecture-specific code must supply a vcpu_init element for each VCPU.
+    assert_eq!(vcpus.len(), linux.vcpu_init.len());
+
+    for ((cpu_id, vcpu), vcpu_init) in vcpus.into_iter().enumerate().zip(linux.vcpu_init.drain(..))
+    {
         let (to_vcpu_channel, from_main_channel) = mpsc::channel();
         let vcpu_affinity = match linux.vcpu_affinity.clone() {
             Some(VcpuAffinity::Global(v)) => v,
@@ -1963,7 +1967,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             cpu_id,
             vcpu_ids[cpu_id],
             vcpu,
-            linux.vcpu_init,
+            vcpu_init,
             linux.vm.try_clone().context("failed to clone vm")?,
             linux
                 .irq_chip

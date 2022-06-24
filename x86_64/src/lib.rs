@@ -698,7 +698,7 @@ impl arch::LinuxArch for X8664arch {
                 .map_err(Error::Cmdline)?;
         }
 
-        let mut vcpu_init = VcpuInitX86_64::default();
+        let mut vcpu_init = vec![VcpuInitX86_64::default(); vcpu_count];
 
         match components.vm_image {
             VmImage::Bios(ref mut bios) => {
@@ -724,11 +724,11 @@ impl arch::LinuxArch for X8664arch {
                     params,
                 )?;
 
-                // Configure the VCPU for the Linux/x86 64-bit boot protocol.
+                // Configure the bootstrap VCPU for the Linux/x86 64-bit boot protocol.
                 // <https://www.kernel.org/doc/html/latest/x86/boot.html>
-                vcpu_init.regs.rip = kernel_entry.offset();
-                vcpu_init.regs.rsp = BOOT_STACK_POINTER;
-                vcpu_init.regs.rsi = ZERO_PAGE_OFFSET;
+                vcpu_init[0].regs.rip = kernel_entry.offset();
+                vcpu_init[0].regs.rsp = BOOT_STACK_POINTER;
+                vcpu_init[0].regs.rsi = ZERO_PAGE_OFFSET;
             }
         }
 
@@ -762,7 +762,7 @@ impl arch::LinuxArch for X8664arch {
         hypervisor: &dyn HypervisorX86_64,
         irq_chip: &mut dyn IrqChipX86_64,
         vcpu: &mut dyn VcpuX86_64,
-        vcpu_init: &VcpuInitX86_64,
+        vcpu_init: VcpuInitX86_64,
         vcpu_id: usize,
         num_cpus: usize,
         has_bios: bool,
