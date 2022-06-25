@@ -10,6 +10,8 @@ mod bus;
 mod irq_event;
 pub mod irqchip;
 mod pci;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod pit;
 pub mod serial_device;
 mod sys;
 pub mod virtio;
@@ -28,6 +30,8 @@ pub use self::pci::{
     PciDeviceError, PciInterruptPin, PciRoot, PciVirtualConfigMmio, StubPciDevice,
     StubPciParameters,
 };
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub use self::pit::{Pit, PitError};
 #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
 pub use self::vtpm_proxy::VtpmProxy;
 
@@ -41,8 +45,6 @@ cfg_if::cfg_if! {
         #[cfg(feature = "direct")]
         pub mod direct_irq;
         mod i8042;
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        mod pit;
         pub mod pl030;
         mod platform;
         mod proxy;
@@ -80,8 +82,6 @@ cfg_if::cfg_if! {
             PvPanicCode, PcieRootPort, PcieHostPort,
             PvPanicPciDevice, VfioPciDevice, PciBridge,
         };
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        pub use self::pit::{Pit, PitError};
         pub use self::pl030::Pl030;
         pub use self::platform::VfioPlatformDevice;
         pub use self::proxy::Error as ProxyError;

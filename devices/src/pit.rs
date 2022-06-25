@@ -435,21 +435,6 @@ fn adjust_count(count: u32) -> u32 {
     }
 }
 
-/// Get the current monotonic time of host in nanoseconds
-fn get_monotonic_time() -> u64 {
-    let mut time = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    // Safe because time struct is local to this function and we check the returncode
-    let ret = unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut time) };
-    if ret != 0 {
-        0
-    } else {
-        time.tv_sec as u64 * 1_000_000_000u64 + time.tv_nsec as u64
-    }
-}
-
 impl PitCounter {
     fn new(
         counter_id: usize,
@@ -485,11 +470,8 @@ impl PitCounter {
     }
 
     fn get_channel_state(&self) -> PitChannelState {
-        // Crosvm Pit stores start as an Instant. We do our best to convert to the host's
-        // monotonic clock by taking the current monotonic time and subtracting the elapsed
-        // time since self.start.
         let load_time = match &self.start {
-            Some(t) => get_monotonic_time() - t.elapsed().as_nanos() as u64,
+            Some(t) => t.saturating_duration_since(&self.creation_time).as_nanos() as u64,
             None => 0,
         };
 
@@ -566,16 +548,9 @@ impl PitCounter {
         self.read_low_byte = state.read_state == PitRWState::Word1;
         self.wrote_low_byte = state.write_state == PitRWState::Word1;
 
-        // To convert the count_load_time to an instant we have to convert it to a
-        // duration by comparing it to get_monotonic_time.  Then subtract that duration from
-        // a "now" instant.
         self.start = self
-            .clock
-            .lock()
-            .now()
-            .checked_sub(std::time::Duration::from_nanos(
-                get_monotonic_time() - state.count_load_time,
-            ));
+            .creation_time
+            .checked_add(Duration::from_nanos(state.count_load_time));
     }
 
     fn get_access_mode(&self) -> Option<CommandAccess> {

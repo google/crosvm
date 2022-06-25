@@ -24,8 +24,20 @@ impl Clock {
         self.0.duration_since(earlier.0)
     }
 
+    pub fn checked_duration_since(&self, earlier: &Self) -> Option<Duration> {
+        self.0.checked_duration_since(earlier.0)
+    }
+
+    pub fn saturating_duration_since(&self, earlier: &Self) -> Duration {
+        self.0.saturating_duration_since(earlier.0)
+    }
+
     pub fn elapsed(&self) -> Duration {
         self.0.elapsed()
+    }
+
+    pub fn checked_add(&self, duration: Duration) -> Option<Self> {
+        Some(Clock(self.0.checked_add(duration)?))
     }
 
     pub fn checked_sub(&self, duration: Duration) -> Option<Self> {
@@ -71,13 +83,36 @@ impl FakeClock {
 
     /// Get the duration since |earlier|, assuming that earlier < self.
     pub fn duration_since(&self, earlier: &Self) -> Duration {
-        let ns_diff = self.ns_since_epoch - earlier.ns_since_epoch;
-        Duration::new(ns_diff / NS_PER_SEC, (ns_diff % NS_PER_SEC) as u32)
+        self.checked_duration_since(earlier).unwrap()
+    }
+
+    /// Get the duration since |earlier|
+    pub fn checked_duration_since(&self, earlier: &Self) -> Option<Duration> {
+        let ns_diff = self.ns_since_epoch.checked_sub(earlier.ns_since_epoch)?;
+        Some(Duration::new(
+            ns_diff / NS_PER_SEC,
+            (ns_diff % NS_PER_SEC) as u32,
+        ))
+    }
+
+    /// Get the duration since |earlier|, or 0 if earlier < self.
+    pub fn saturating_duration_since(&self, earlier: &Self) -> Duration {
+        self.checked_duration_since(earlier)
+            .unwrap_or(Duration::ZERO)
     }
 
     /// Get the time that has elapsed since this clock was made. Always returns 0 on a FakeClock.
     pub fn elapsed(&self) -> Duration {
         self.now().duration_since(self)
+    }
+
+    pub fn checked_add(&self, duration: Duration) -> Option<Self> {
+        Some(FakeClock {
+            ns_since_epoch: self
+                .ns_since_epoch
+                .checked_add(duration.as_nanos() as u64)?,
+            deadlines: Vec::new(),
+        })
     }
 
     pub fn checked_sub(&self, duration: Duration) -> Option<Self> {
