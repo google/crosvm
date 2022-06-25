@@ -371,6 +371,7 @@ def main():
     )
     parser.add_argument(
         "--target",
+        default="host",
         help="Execute tests on the selected target. See ./tools/set_test_target",
     )
     parser.add_argument(
