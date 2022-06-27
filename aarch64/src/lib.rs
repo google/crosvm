@@ -360,30 +360,39 @@ impl arch::LinuxArch for AArch64 {
             }
         };
 
+        let memory_end = GuestAddress(AARCH64_PHYS_MEM_START + components.memory_size);
+        let fdt_offset = fdt_address(memory_end, has_bios);
+
         let mut use_pmu = vm
             .get_hypervisor()
             .check_capability(HypervisorCap::ArmPmuV3);
         let vcpu_count = components.vcpu_count;
         let mut has_pvtime = true;
         let mut vcpus = Vec::with_capacity(vcpu_count);
+        let mut vcpu_init = Vec::with_capacity(vcpu_count);
         for vcpu_id in 0..vcpu_count {
             let vcpu: Vcpu = *vm
                 .create_vcpu(vcpu_id)
                 .map_err(Error::CreateVcpu)?
                 .downcast::<Vcpu>()
                 .map_err(|_| Error::DowncastVcpu)?;
-            Self::configure_vcpu_early(
-                vm.get_memory(),
-                &vcpu,
+            let per_vcpu_init = Self::vcpu_init(
                 vcpu_id,
-                use_pmu,
                 has_bios,
+                fdt_offset,
                 image_size,
                 components.hv_cfg.protection_type,
-            )?;
+            );
             has_pvtime &= vcpu.has_pvtime_support();
             vcpus.push(vcpu);
             vcpu_ids.push(vcpu_id);
+            vcpu_init.push(per_vcpu_init);
+        }
+
+        // Initialize Vcpus after all Vcpu objects have been created.
+        for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
+            vcpu.init(&Self::vcpu_features(vcpu_id, use_pmu))
+                .map_err(Error::VcpuInit)?;
         }
 
         irq_chip.finalize().map_err(Error::FinalizeIrqChip)?;
@@ -576,7 +585,6 @@ impl arch::LinuxArch for AArch64 {
             timeout_sec: VMWDT_DEFAULT_TIMEOUT_SEC,
         };
 
-        let memory_end = GuestAddress(AARCH64_PHYS_MEM_START + components.memory_size);
         fdt::create_fdt(
             AARCH64_FDT_MAX_SIZE as usize,
             &mem,
@@ -586,7 +594,7 @@ impl arch::LinuxArch for AArch64 {
             vcpu_count as u32,
             components.cpu_clusters,
             components.cpu_capacity,
-            fdt_address(memory_end, has_bios),
+            fdt_offset,
             cmdline.as_str(),
             initrd,
             components.android_fstab,
@@ -598,8 +606,6 @@ impl arch::LinuxArch for AArch64 {
             vmwdt_cfg,
         )
         .map_err(Error::CreateFdt)?;
-
-        let vcpu_init = vec![VcpuInitAArch64::default(); vcpu_count];
 
         Ok(RunnableLinuxVm {
             vm,
@@ -631,14 +637,16 @@ impl arch::LinuxArch for AArch64 {
         _vm: &V,
         _hypervisor: &dyn Hypervisor,
         _irq_chip: &mut dyn IrqChipAArch64,
-        _vcpu: &mut dyn VcpuAArch64,
-        _vcpu_init: VcpuInitAArch64,
+        vcpu: &mut dyn VcpuAArch64,
+        vcpu_init: VcpuInitAArch64,
         _vcpu_id: usize,
         _num_cpus: usize,
         _has_bios: bool,
         _cpu_config: Option<CpuConfigAArch64>,
     ) -> std::result::Result<(), Self::Error> {
-        // AArch64 doesn't configure vcpus on the vcpu thread, so nothing to do here.
+        for (reg, value) in vcpu_init.regs.iter() {
+            vcpu.set_one_reg(*reg, *value).map_err(Error::SetReg)?;
+        }
         Ok(())
     }
 
@@ -808,42 +816,42 @@ impl AArch64 {
         Ok(())
     }
 
-    /// Sets up `vcpu`.
-    ///
-    /// AArch64 needs vcpus set up before its kernel IRQ chip is created, so `configure_vcpu_early`
-    /// is called from `build_vm` on the main thread.  `LinuxArch::configure_vcpu`, which is used
-    /// by X86_64 to do setup later from the vcpu thread, is a no-op on AArch64 since vcpus were
-    /// already configured here.
+    /// Get ARM-specific features for vcpu with index `vcpu_id`.
     ///
     /// # Arguments
     ///
-    /// * `guest_mem` - The guest memory object.
-    /// * `vcpu` - The vcpu to configure.
     /// * `vcpu_id` - The VM's index for `vcpu`.
     /// * `use_pmu` - Should `vcpu` be configured to use the Performance Monitor Unit.
-    fn configure_vcpu_early(
-        guest_mem: &GuestMemory,
-        vcpu: &dyn VcpuAArch64,
-        vcpu_id: usize,
-        use_pmu: bool,
-        has_bios: bool,
-        image_size: usize,
-        protection_type: ProtectionType,
-    ) -> Result<()> {
+    fn vcpu_features(vcpu_id: usize, use_pmu: bool) -> Vec<VcpuFeature> {
         let mut features = vec![VcpuFeature::PsciV0_2];
         if use_pmu {
             features.push(VcpuFeature::PmuV3);
         }
         // Non-boot cpus are powered off initially
         if vcpu_id != 0 {
-            features.push(VcpuFeature::PowerOff)
+            features.push(VcpuFeature::PowerOff);
         }
-        vcpu.init(&features).map_err(Error::VcpuInit)?;
+
+        features
+    }
+
+    /// Get initial register state for vcpu with index `vcpu_id`.
+    ///
+    /// # Arguments
+    ///
+    /// * `vcpu_id` - The VM's index for `vcpu`.
+    fn vcpu_init(
+        vcpu_id: usize,
+        has_bios: bool,
+        fdt_address: GuestAddress,
+        image_size: usize,
+        protection_type: ProtectionType,
+    ) -> VcpuInitAArch64 {
+        let mut regs: BTreeMap<VcpuRegAArch64, u64> = Default::default();
 
         // All interrupts masked
         let pstate = PSR_D_BIT | PSR_A_BIT | PSR_I_BIT | PSR_F_BIT | PSR_MODE_EL1H;
-        vcpu.set_one_reg(VcpuRegAArch64::Pstate, pstate)
-            .map_err(Error::SetReg)?;
+        regs.insert(VcpuRegAArch64::Pstate, pstate);
 
         // Other cpus are powered off initially
         if vcpu_id == 0 {
@@ -863,28 +871,22 @@ impl AArch64 {
 
             /* PC -- entry point */
             if let Some(entry) = entry_addr {
-                vcpu.set_one_reg(VcpuRegAArch64::Pc, entry)
-                    .map_err(Error::SetReg)?;
+                regs.insert(VcpuRegAArch64::Pc, entry);
             }
 
             /* X0 -- fdt address */
-            let memory_end = guest_mem.end_addr();
-            let fdt_addr = fdt_address(memory_end, has_bios);
-            vcpu.set_one_reg(VcpuRegAArch64::X(0), fdt_addr.offset())
-                .map_err(Error::SetReg)?;
+            regs.insert(VcpuRegAArch64::X(0), fdt_address.offset());
 
             if protection_type.runs_firmware() {
                 /* X1 -- payload entry point */
-                vcpu.set_one_reg(VcpuRegAArch64::X(1), image_addr.offset())
-                    .map_err(Error::SetReg)?;
+                regs.insert(VcpuRegAArch64::X(1), image_addr.offset());
 
                 /* X2 -- image size */
-                vcpu.set_one_reg(VcpuRegAArch64::X(2), image_size as u64)
-                    .map_err(Error::SetReg)?;
+                regs.insert(VcpuRegAArch64::X(2), image_size as u64);
             }
         }
 
-        Ok(())
+        VcpuInitAArch64 { regs }
     }
 }
 
@@ -910,5 +912,68 @@ impl MsrHandlers {
         _cpu_id: usize,
     ) -> std::result::Result<(), MsrExitHandlerError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vcpu_init_unprotected_kernel() {
+        let has_bios = false;
+        let fdt_address = GuestAddress(0x1234);
+        let image_size = 0x1000;
+        let prot = ProtectionType::Unprotected;
+
+        let vcpu_init = AArch64::vcpu_init(0, has_bios, fdt_address, image_size, prot);
+
+        // PC: kernel image entry point
+        assert_eq!(vcpu_init.regs.get(&VcpuRegAArch64::Pc), Some(&0x8080_0000));
+
+        // X0: fdt_offset
+        assert_eq!(vcpu_init.regs.get(&VcpuRegAArch64::X(0)), Some(&0x1234));
+    }
+
+    #[test]
+    fn vcpu_init_unprotected_bios() {
+        let has_bios = true;
+        let fdt_address = GuestAddress(0x1234);
+        let image_size = 0x1000;
+        let prot = ProtectionType::Unprotected;
+
+        let vcpu_init = AArch64::vcpu_init(0, has_bios, fdt_address, image_size, prot);
+
+        // PC: bios image entry point
+        assert_eq!(vcpu_init.regs.get(&VcpuRegAArch64::Pc), Some(&0x8020_0000));
+
+        // X0: fdt_offset
+        assert_eq!(vcpu_init.regs.get(&VcpuRegAArch64::X(0)), Some(&0x1234));
+    }
+
+    #[test]
+    fn vcpu_init_protected_kernel() {
+        let has_bios = false;
+        let fdt_address = GuestAddress(0x1234);
+        let image_size = 0x1000;
+        let prot = ProtectionType::Protected;
+
+        let vcpu_init = AArch64::vcpu_init(0, has_bios, fdt_address, image_size, prot);
+
+        // The hypervisor provides the initial value of PC, so PC should not be present in the
+        // vcpu_init register map.
+        assert_eq!(vcpu_init.regs.get(&VcpuRegAArch64::Pc), None);
+
+        // X0: fdt_offset
+        assert_eq!(vcpu_init.regs.get(&VcpuRegAArch64::X(0)), Some(&0x1234));
+
+        // X1: kernel image entry point
+        assert_eq!(
+            vcpu_init.regs.get(&VcpuRegAArch64::X(1)),
+            Some(&0x8080_0000)
+        );
+
+        // X2: image size
+        assert_eq!(vcpu_init.regs.get(&VcpuRegAArch64::X(2)), Some(&0x1000));
     }
 }

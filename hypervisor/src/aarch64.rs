@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
 use base::Error;
@@ -49,6 +50,7 @@ impl TryFrom<u32> for PsciVersion {
 pub const PSCI_0_2: PsciVersion = PsciVersion { major: 0, minor: 2 };
 pub const PSCI_1_0: PsciVersion = PsciVersion { major: 1, minor: 0 };
 
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum VcpuRegAArch64 {
     X(u8),
     Sp,
@@ -125,9 +127,13 @@ pub trait VcpuAArch64: Vcpu {
 
 impl_downcast!(VcpuAArch64);
 
-/// Initial state for AArch64 VCPUs.
+/// Initial register state for AArch64 VCPUs.
 #[derive(Clone, Default)]
-pub struct VcpuInitAArch64 {}
+pub struct VcpuInitAArch64 {
+    /// Initial register state as a map of register name to value pairs. Registers that do not have
+    /// a value specified in this map will retain the original value provided by the hypervisor.
+    pub regs: BTreeMap<VcpuRegAArch64, u64>,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CpuConfigAArch64 {}
