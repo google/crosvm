@@ -5,6 +5,8 @@
 use argh::FromArgs;
 use devices::virtio::vhost::user::device;
 
+use crate::crosvm::config::JailConfig;
+
 #[derive(FromArgs)]
 #[argh(subcommand)]
 /// Unix Devices
@@ -19,7 +21,34 @@ pub enum DevicesSubcommand {
     Wl(device::WlOptions),
 }
 
+#[argh_helpers::pad_description_for_argh]
+#[derive(FromArgs)]
+#[argh(subcommand, name = "devices")]
+/// Start one or several jailed device processes.
+pub struct DevicesCommand {
+    #[argh(switch)]
+    /// disable sandboxing. Will nullify the --jail option if it was present.
+    pub disable_sandbox: bool,
+
+    #[argh(
+        option,
+        arg_name = "jail configuration",
+        default = "Default::default()"
+    )]
+    /// set up the jail configuration.
+    /// Possible key values:
+    ///     pivot-root=/path - Path to empty directory to use for
+    ///         sandbox pivot root.
+    ///     seccomp-policy-dir=/path - Path to seccomp .policy files
+    ///     seccomp-log-failures=(true|false) - Log seccomp filter
+    ///         failures instead of them being fatal.
+    pub jail: JailConfig,
+}
+
 #[derive(FromArgs)]
 #[argh(subcommand)]
 /// Unix Commands
-pub enum Commands {}
+pub enum Commands {
+    #[cfg(unix)]
+    Devices(DevicesCommand),
+}

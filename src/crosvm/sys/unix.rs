@@ -17,6 +17,7 @@ use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::convert::TryInto;
+use std::ffi::CString;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
@@ -51,6 +52,7 @@ use arch::VcpuAffinity;
 use arch::VirtioDeviceStub;
 use arch::VmComponents;
 use arch::VmImage;
+use base::sys::WaitStatus;
 use base::UnixSeqpacket;
 use base::UnixSeqpacketListener;
 use base::UnlinkUnixSeqpacketListener;
@@ -64,6 +66,8 @@ use devices::virtio;
 use devices::virtio::device_constants::video::VideoDeviceType;
 use devices::virtio::memory_mapper::MemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
+use devices::virtio::vhost::user::VhostUserListener;
+use devices::virtio::vhost::user::VhostUserListenerTrait;
 use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
@@ -146,12 +150,14 @@ use crate::crosvm::config::FileBackedMappingParameters;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::crosvm::config::HostPcieRootPortParameters;
 use crate::crosvm::config::HypervisorKind;
+use crate::crosvm::config::JailConfig;
 use crate::crosvm::config::SharedDir;
 use crate::crosvm::config::SharedDirKind;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use crate::crosvm::gdb::gdb_thread;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use crate::crosvm::gdb::GdbStub;
+use crate::crosvm::sys::cmdline::DevicesCommand;
 use crate::crosvm::sys::config::VfioType;
 
 fn create_virtio_devices(
@@ -2492,6 +2498,169 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         .expect("failed to restore canonical mode for terminal");
 
     Ok(exit_state)
+}
+
+/// Start and jail a vhost-user device according to its configuration and a vhost listener string.
+///
+/// The jailing business is nasty and potentially unsafe if done from the wrong context - do not
+/// call outside of `start_devices`!
+///
+/// Returns the jail the device process is running in, as well as its pid.
+#[allow(dead_code)]
+fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
+    jail_config: &Option<JailConfig>,
+    params: &T,
+    vhost: &str,
+    name: &str,
+) -> anyhow::Result<(Minijail, libc::pid_t, Option<Box<dyn std::any::Any>>)> {
+    let mut keep_rds = Vec::new();
+
+    base::syslog::push_descriptors(&mut keep_rds);
+
+    // Create the device in the parent process, so the child does not need any privileges necessary
+    // to do it (only runtime capabilities are required).
+    let device = params
+        .create_vhost_user_device(&mut keep_rds)
+        .context("failed to create vhost-user backend")?;
+    let mut listener = VhostUserListener::new(vhost, device.max_queue_num(), Some(&mut keep_rds))
+        .context("failed to create the vhost listener")?;
+    let parent_resources = listener.take_parent_process_resources();
+
+    let jail_type = match &listener {
+        VhostUserListener::Socket(_) => VirtioDeviceType::VhostUser,
+        VhostUserListener::Vvu(_, _) => VirtioDeviceType::Vvu,
+    };
+
+    // Create a jail from the configuration. If the configuration is `None`, `create_jail` will also
+    // return `None` so fall back to an empty (i.e. non-constrained) Minijail.
+    let jail = params
+        .create_jail(jail_config, jail_type)
+        .with_context(|| format!("failed to create jail for {}", name))?
+        .ok_or(())
+        .or_else(|_| Minijail::new())
+        .with_context(|| format!("failed to create empty jail for {}", name))?;
+
+    // Safe because we are keeping all the descriptors needed for the child to function.
+    match unsafe { jail.fork(Some(&keep_rds)).context("error while forking")? } {
+        0 => {
+            // In the child process.
+
+            // Free memory for the resources managed by the parent, without running drop() on them.
+            // The parent will do it as we exit.
+            let _ = std::mem::ManuallyDrop::new(parent_resources);
+
+            // Make sure the child process does not survive its parent.
+            if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) } < 0 {
+                panic!("call to prctl(PR_SET_DEATHSIG, SIGKILL) failed. Aborting child process.");
+            }
+
+            // Set the name for the thread.
+            const MAX_LEN: usize = 15; // pthread_setname_np() limit on Linux
+            let debug_label_trimmed = &name.as_bytes()[..std::cmp::min(MAX_LEN, name.len())];
+            let thread_name = CString::new(debug_label_trimmed).unwrap();
+            // Safe because we trimmed the name to 15 characters (and pthread_setname_np will return
+            // an error if we don't anyway).
+            let _ = unsafe { libc::pthread_setname_np(libc::pthread_self(), thread_name.as_ptr()) };
+
+            // Run the device loop and terminate the child process once it exits.
+            let res = match listener.run_device(device) {
+                Ok(()) => 0,
+                Err(e) => {
+                    error!("error while running device {}: {:#}", name, e);
+                    1
+                }
+            };
+            unsafe { libc::exit(res) };
+        }
+        pid => {
+            // In the parent process. We will drop the device and listener when exiting this method.
+            // This is fine as ownership for both has been transferred to the child process and they
+            // will keep living there. We just retain `parent_resources` for things we are supposed
+            // to clean up ourselves.
+
+            info!("process for device {} (PID {}) started", &name, pid);
+            Ok((jail, pid, parent_resources))
+        }
+    }
+}
+
+pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
+    struct DeviceJailInfo {
+        // Unique name for the device, in the form `foomatic-0`.
+        name: String,
+        // Jail the device process is running in.
+        // We are just keeping it alive for as long as the device process needs to run.
+        #[allow(dead_code)]
+        jail: Minijail,
+        #[allow(dead_code)]
+        drop_resources: Option<Box<dyn std::any::Any>>,
+    }
+
+    #[allow(dead_code)]
+    fn add_device<T: VirtioDeviceBuilder>(
+        i: usize,
+        device_params: &T,
+        vhost: &str,
+        jail_config: &Option<JailConfig>,
+        devices_jails: &mut BTreeMap<libc::pid_t, DeviceJailInfo>,
+    ) -> anyhow::Result<()> {
+        let name = format!("{}-{}", T::NAME, i);
+
+        let (jail, pid, drop_resources) =
+            jail_and_start_vu_device::<T>(jail_config, device_params, vhost, &name)?;
+
+        devices_jails.insert(
+            pid,
+            DeviceJailInfo {
+                name,
+                jail,
+                drop_resources,
+            },
+        );
+
+        Ok(())
+    }
+
+    let mut devices_jails: BTreeMap<libc::pid_t, DeviceJailInfo> = BTreeMap::new();
+
+    let _jail = if opts.disable_sandbox {
+        None
+    } else {
+        Some(opts.jail)
+    };
+
+    // We will create our devices here.
+
+    // Now wait for all device processes to return.
+    while !devices_jails.is_empty() {
+        match base::platform::wait_for_pid(-1, 0) {
+            Err(e) => panic!("error waiting for child process to complete: {:#}", e),
+            Ok((Some(pid), wait_status)) => match devices_jails.remove_entry(&pid) {
+                Some((_, info)) => {
+                    match wait_status {
+                        WaitStatus::Exited(status) => info!(
+                            "process for device {} (PID {}) exited with code {}",
+                            &info.name, pid, status
+                        ),
+                        WaitStatus::Signaled(signal) => warn!(
+                            "process for device {} (PID {}) has been killed by signal {:?}",
+                            &info.name, pid, signal,
+                        ),
+                        // We are only interested in processes that actually terminate.
+                        WaitStatus::Stopped(_) | WaitStatus::Continued | WaitStatus::Running => (),
+                    };
+                }
+                None => error!("pid {} is not one of our device processes", pid),
+            },
+            // `wait_for_pid` will necessarily return a PID because we asked to it wait for one to
+            // complete.
+            Ok((None, _)) => unreachable!(),
+        }
+    }
+
+    info!("all device processes have exited");
+
+    Ok(())
 }
 
 #[cfg(test)]

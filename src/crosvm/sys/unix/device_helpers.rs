@@ -50,6 +50,7 @@ use devices::virtio::vhost::user::vmm::Snd as VhostUserSnd;
 use devices::virtio::vhost::user::vmm::Video as VhostUserVideo;
 use devices::virtio::vhost::user::vmm::Vsock as VhostUserVsock;
 use devices::virtio::vhost::user::vmm::Wl as VhostUserWl;
+use devices::virtio::vhost::user::VhostUserDevice;
 use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
@@ -142,6 +143,10 @@ pub type DeviceResult<T = VirtioDeviceStub> = Result<T>;
 pub enum VirtioDeviceType {
     /// A regular (in-VMM) virtio device.
     Regular,
+    /// Socket-backed vhost-user device.
+    VhostUser,
+    /// VFIO-backed vhost-user device, aka virtio-vhost-user.
+    Vvu,
 }
 
 impl VirtioDeviceType {
@@ -150,6 +155,8 @@ impl VirtioDeviceType {
     fn seccomp_policy_file(&self, base: &str) -> String {
         match self {
             VirtioDeviceType::Regular => format!("{base}_device"),
+            VirtioDeviceType::VhostUser => format!("{base}_device_vhost_user"),
+            VirtioDeviceType::Vvu => format!("{base}_device_vvu"),
         }
     }
 }
@@ -160,11 +167,25 @@ impl VirtioDeviceType {
 /// This trait also provides a few convenience methods for e.g. creating a virtio device and jail
 /// at once.
 pub trait VirtioDeviceBuilder {
+    /// Base name of the device, as it will appear in logs.
+    const NAME: &'static str;
+
     /// Create a regular virtio device from the configuration and `protected_vm` setting.
     fn create_virtio_device(
         &self,
         protected_vm: ProtectionType,
     ) -> anyhow::Result<Box<dyn VirtioDevice>>;
+
+    /// Create a device suitable for being run as a vhost-user instance.
+    ///
+    /// It is ok to leave this method unimplemented if the device is not intended to be used with
+    /// vhost-user.
+    fn create_vhost_user_device(
+        &self,
+        _keep_rds: &mut Vec<RawDescriptor>,
+    ) -> anyhow::Result<Box<dyn VhostUserDevice>> {
+        unimplemented!()
+    }
 
     /// Create a jail that is suitable to run a device
     fn create_jail(
@@ -1292,6 +1313,8 @@ fn add_bind_mounts(param: &SerialParameters, jail: &mut Minijail) -> Result<(), 
 
 /// For creating console virtio devices.
 impl VirtioDeviceBuilder for SerialParameters {
+    const NAME: &'static str = "serial";
+
     fn create_virtio_device(
         &self,
         protected_vm: ProtectionType,

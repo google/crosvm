@@ -11,7 +11,7 @@ use cros_async::Executor;
 use futures::Future;
 pub use sys::VhostUserListener;
 
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::{device::handler::VhostUserBackend, VhostUserDevice};
 
 /// Trait that the platform-specific type `VhostUserListener` needs to implement. It contains all
 /// the methods that are ok to call from non-platform specific code.
@@ -53,4 +53,16 @@ pub trait VhostUserListenerTrait {
         backend: Box<dyn VhostUserBackend>,
         ex: &Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>>>>;
+
+    /// Start processing requests for a `VhostUserDevice` on `listener`. Returns when the front-end
+    /// side disconnects or an error occurs.
+    fn run_device(self, device: Box<dyn VhostUserDevice>) -> anyhow::Result<()>
+    where
+        Self: Sized,
+    {
+        let ex = Executor::new()?;
+        let backend = device.into_backend(&ex)?;
+
+        ex.run_until(self.run_backend(backend, &ex))?
+    }
 }

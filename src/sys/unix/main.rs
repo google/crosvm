@@ -6,6 +6,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use anyhow::anyhow;
+use anyhow::Context;
 use base::kill_process_group;
 use base::reap_child;
 use base::syslog;
@@ -22,6 +23,7 @@ use devices::virtio::vhost::user::device::run_wl_device;
 
 use crate::crosvm::sys::cmdline::Commands;
 use crate::crosvm::sys::cmdline::DevicesSubcommand;
+use crate::crosvm::sys::unix::start_devices;
 use crate::CommandStatus;
 use crate::Config;
 
@@ -84,8 +86,10 @@ pub fn get_library_watcher() -> std::io::Result<()> {
     Ok(())
 }
 
-pub(crate) fn run_command(_cmd: Commands) -> anyhow::Result<()> {
-    Err(anyhow::anyhow!("invalid command"))
+pub(crate) fn run_command(command: Commands) -> anyhow::Result<()> {
+    match command {
+        Commands::Devices(cmd) => start_devices(cmd).context("start_devices subcommand failed"),
+    }
 }
 
 pub(crate) fn init_log<F: 'static>(log_config: LogConfig<F>, _cfg: &Config) -> anyhow::Result<()>
