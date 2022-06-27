@@ -12,6 +12,7 @@ use std::sync::Arc;
 use base::error;
 use base::TubeError;
 use cros_async::AsyncTube;
+use cros_async::Executor;
 use sync::Mutex;
 use vm_control::VirtioIOMMURequest;
 use vm_control::VirtioIOMMUResponse;
@@ -19,10 +20,10 @@ use vm_control::VirtioIOMMUVfioCommand;
 use vm_control::VirtioIOMMUVfioResult;
 
 use self::vfio_wrapper::VfioWrapper;
-use crate::virtio::iommu::MemRegion;
+use crate::virtio::iommu::ipc_memory_mapper::IommuRequest;
+use crate::virtio::iommu::ipc_memory_mapper::IommuResponse;
 use crate::virtio::iommu::Result;
 use crate::virtio::iommu::State;
-use crate::virtio::iommu::TranslateRequest;
 use crate::virtio::IommuError;
 use crate::VfioContainer;
 
@@ -115,6 +116,7 @@ pub(in crate::virtio::iommu) async fn handle_command_tube(
 }
 
 pub(in crate::virtio::iommu) async fn handle_translate_request(
+    ex: &Executor,
     state: &Rc<RefCell<State>>,
     request_tube: Option<AsyncTube>,
     response_tubes: Option<BTreeMap<u32, AsyncTube>>,
@@ -128,11 +130,7 @@ pub(in crate::virtio::iommu) async fn handle_translate_request(
     };
     let response_tubes = response_tubes.unwrap();
     loop {
-        let TranslateRequest {
-            endpoint_id,
-            iova,
-            size,
-        } = match request_tube.next().await {
+        let req: IommuRequest = match request_tube.next().await {
             Ok(req) => req,
             Err(TubeError::Disconnected) => {
                 // This means the process on the other side of the tube went away. That's
@@ -144,25 +142,34 @@ pub(in crate::virtio::iommu) async fn handle_translate_request(
                 return Err(IommuError::Tube(e));
             }
         };
-        let translate_response: Option<Vec<MemRegion>> =
-            if let Some(mapper) = state.borrow_mut().endpoints.get(&endpoint_id) {
-                mapper
+        let state = state.borrow_mut();
+        let resp = match state.endpoints.get(&req.get_endpoint_id()) {
+            Some(mapper) => match req {
+                IommuRequest::Export { iova, size, .. } => {
+                    mapper.lock().export(iova, size).map(IommuResponse::Export)
+                }
+                IommuRequest::Release { iova, size, .. } => mapper
                     .lock()
-                    .translate(iova, size)
-                    .map_err(|e| {
-                        error!("Failed to handle TranslateRequest: {}", e);
-                        e
-                    })
-                    .ok()
-            } else {
-                error!("endpoint_id {} not found", endpoint_id);
+                    .release(iova, size)
+                    .map(|_| IommuResponse::Release),
+                IommuRequest::StartExportSession { .. } => mapper
+                    .lock()
+                    .start_export_session(ex)
+                    .map(IommuResponse::StartExportSession),
+            },
+            None => {
+                error!("endpoint {} not found", req.get_endpoint_id());
                 continue;
-            };
-
+            }
+        };
+        let resp: IommuResponse = match resp {
+            Ok(resp) => resp,
+            Err(e) => IommuResponse::Err(format!("{:?}", e)),
+        };
         response_tubes
-            .get(&endpoint_id)
+            .get(&req.get_endpoint_id())
             .unwrap()
-            .send(translate_response)
+            .send(resp)
             .await
             .map_err(IommuError::Tube)?;
     }

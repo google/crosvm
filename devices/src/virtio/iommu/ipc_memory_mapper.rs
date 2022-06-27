@@ -4,22 +4,62 @@
 
 //! Provide utility to communicate with an iommu in another process
 
+use std::sync::Arc;
+
+use anyhow::anyhow;
+use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
+use base::error;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
+use base::Event;
+use base::Protection;
 use base::RawDescriptor;
 use base::Tube;
+use data_model::DataInit;
 use serde::Deserialize;
 use serde::Serialize;
+use smallvec::SmallVec;
+use sync::Mutex;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 use crate::virtio::memory_mapper::MemRegion;
 
 #[derive(Serialize, Deserialize)]
-pub struct TranslateRequest {
-    pub endpoint_id: u32,
-    pub iova: u64,
-    pub size: u64,
+pub(super) enum IommuRequest {
+    Export {
+        endpoint_id: u32,
+        iova: u64,
+        size: u64,
+    },
+    Release {
+        endpoint_id: u32,
+        iova: u64,
+        size: u64,
+    },
+    StartExportSession {
+        endpoint_id: u32,
+    },
+}
+
+#[derive(Serialize, Deserialize)]
+pub(super) enum IommuResponse {
+    Export(Vec<MemRegion>),
+    Release,
+    StartExportSession(Event),
+    Err(String),
+}
+
+impl IommuRequest {
+    pub(super) fn get_endpoint_id(&self) -> u32 {
+        match self {
+            Self::Export { endpoint_id, .. } => *endpoint_id,
+            Self::Release { endpoint_id, .. } => *endpoint_id,
+            Self::StartExportSession { endpoint_id } => *endpoint_id,
+        }
+    }
 }
 
 /// Sends an addr translation request to another process using `Tube`, and
@@ -28,6 +68,13 @@ pub struct IpcMemoryMapper {
     request_tx: Tube,
     response_rx: Tube,
     endpoint_id: u32,
+}
+
+fn map_bad_resp(resp: IommuResponse) -> anyhow::Error {
+    match resp {
+        IommuResponse::Err(e) => anyhow!("remote error {}", e),
+        _ => anyhow!("response type mismatch"),
+    }
 }
 
 impl IpcMemoryMapper {
@@ -46,18 +93,50 @@ impl IpcMemoryMapper {
         }
     }
 
-    pub fn translate(&self, iova: u64, size: u64) -> Result<Vec<MemRegion>> {
-        let req = TranslateRequest {
+    fn do_request(&self, req: IommuRequest) -> Result<IommuResponse> {
+        self.request_tx
+            .send(&req)
+            .context("failed to send request")?;
+        self.response_rx
+            .recv::<IommuResponse>()
+            .context("failed to get response")
+    }
+
+    /// See [crate::virtio::memory_mapper::MemoryMapper::export].
+    pub fn export(&mut self, iova: u64, size: u64) -> Result<Vec<MemRegion>> {
+        let req = IommuRequest::Export {
             endpoint_id: self.endpoint_id,
             iova,
             size,
         };
-        self.request_tx
-            .send(&req)
-            .context("error sending request")?;
-        let res: Option<Vec<MemRegion>> =
-            self.response_rx.recv().context("error receiving reply")?;
-        res.context(format!("invalid iova {:x} {:x}", iova, size))
+        match self.do_request(req)? {
+            IommuResponse::Export(vec) => Ok(vec),
+            e => Err(map_bad_resp(e)),
+        }
+    }
+
+    /// See [crate::virtio::memory_mapper::MemoryMapper::release].
+    pub fn release(&mut self, iova: u64, size: u64) -> Result<()> {
+        let req = IommuRequest::Release {
+            endpoint_id: self.endpoint_id,
+            iova,
+            size,
+        };
+        match self.do_request(req)? {
+            IommuResponse::Release => Ok(()),
+            e => Err(map_bad_resp(e)),
+        }
+    }
+
+    /// See [crate::virtio::memory_mapper::MemoryMapper::start_export_session].
+    pub fn start_export_session(&mut self) -> Result<Event> {
+        let req = IommuRequest::StartExportSession {
+            endpoint_id: self.endpoint_id,
+        };
+        match self.do_request(req)? {
+            IommuResponse::StartExportSession(evt) => Ok(evt),
+            e => Err(map_bad_resp(e)),
+        }
     }
 }
 
@@ -92,6 +171,156 @@ pub fn create_ipc_mapper(endpoint_id: u32, request_tx: Tube) -> CreateIpcMapperR
     }
 }
 
+struct ExportedRegionInner {
+    regions: Vec<MemRegion>,
+    iova: u64,
+    size: u64,
+    iommu: Arc<Mutex<IpcMemoryMapper>>,
+}
+
+impl Drop for ExportedRegionInner {
+    fn drop(&mut self) {
+        if let Err(e) = self.iommu.lock().release(self.iova, self.size) {
+            error!("Error releasing region {:?}", e);
+        }
+    }
+}
+
+/// A region exported from the virtio-iommu.
+#[derive(Clone)]
+pub struct ExportedRegion {
+    inner: Arc<Mutex<ExportedRegionInner>>,
+}
+
+impl ExportedRegion {
+    /// Creates a new, fully initialized exported region.
+    pub fn new(
+        mem: &GuestMemory,
+        iommu: Arc<Mutex<IpcMemoryMapper>>,
+        iova: u64,
+        size: u64,
+    ) -> Result<Self> {
+        let regions = iommu
+            .lock()
+            .export(iova, size)
+            .context("failed to export")?;
+        for r in &regions {
+            if !mem.address_in_range(r.gpa) || mem.checked_offset(r.gpa, r.len).is_none() {
+                bail!("region not in memory range");
+            }
+        }
+        Ok(Self {
+            inner: Arc::new(Mutex::new(ExportedRegionInner {
+                regions,
+                iova,
+                size,
+                iommu,
+            })),
+        })
+    }
+
+    // Helper function for copying to/from [iova, iova+remaining).
+    fn do_copy<C>(
+        &self,
+        iova: u64,
+        mut remaining: usize,
+        prot: Protection,
+        mut copy_fn: C,
+    ) -> Result<()>
+    where
+        C: FnMut(usize /* offset */, GuestAddress, usize /* len */) -> Result<usize>,
+    {
+        let inner = self.inner.lock();
+        let mut region_offset = iova.checked_sub(inner.iova).with_context(|| {
+            format!(
+                "out of bounds: src_iova={} region_iova={}",
+                iova, inner.iova
+            )
+        })?;
+        let mut offset = 0;
+        for r in &inner.regions {
+            if region_offset >= r.len {
+                region_offset -= r.len;
+                continue;
+            }
+
+            if !r.prot.allows(&prot) {
+                bail!("gpa is not accessible");
+            }
+
+            let len = (r.len as usize).min(remaining);
+            let copy_len = copy_fn(offset, r.gpa.unchecked_add(region_offset), len)?;
+            if len != copy_len {
+                bail!("incomplete copy: expected={}, actual={}", len, copy_len);
+            }
+
+            remaining -= len;
+            offset += len;
+            region_offset = 0;
+
+            if remaining == 0 {
+                return Ok(());
+            }
+        }
+
+        Err(anyhow!("not enough data: remaining={}", remaining))
+    }
+
+    /// Reads an object from the given iova. Fails if the specified iova range does
+    /// not lie within this region, or if part of the region isn't readable.
+    pub fn read_obj_from_addr<T: DataInit>(
+        &self,
+        mem: &GuestMemory,
+        iova: u64,
+    ) -> anyhow::Result<T> {
+        let mut buf = vec![0u8; std::mem::size_of::<T>()];
+        self.do_copy(iova, buf.len(), Protection::read(), |offset, gpa, len| {
+            mem.read_at_addr(&mut buf[offset..(offset + len)], gpa)
+                .context("failed to read from gpa")
+        })?;
+        Ok(*T::from_slice(&buf).context("failed to construct obj")?)
+    }
+
+    /// Writes an object at a given iova. Fails if the specified iova range does
+    /// not lie within this region, or if part of the region isn't writable.
+    pub fn write_obj_at_addr<T: DataInit>(
+        &self,
+        mem: &GuestMemory,
+        val: T,
+        iova: u64,
+    ) -> anyhow::Result<()> {
+        let buf = val.as_slice();
+        self.do_copy(iova, buf.len(), Protection::write(), |offset, gpa, len| {
+            mem.write_at_addr(&buf[offset..(offset + len)], gpa)
+                .context("failed to write from gpa")
+        })?;
+        Ok(())
+    }
+
+    /// Validates that [iova, iova+size) lies within this region, and that
+    /// the region is valid according to mem.
+    pub fn is_valid(&self, mem: &GuestMemory, iova: u64, size: u64) -> bool {
+        let inner = self.inner.lock();
+        let iova_end = iova.checked_add(size);
+        if iova_end.is_none() {
+            return false;
+        }
+        if iova < inner.iova || iova_end.unwrap() > (inner.iova + inner.size) {
+            return false;
+        }
+        self.inner
+            .lock()
+            .regions
+            .iter()
+            .all(|r| mem.range_overlap(r.gpa, r.gpa.unchecked_add(r.len as u64)))
+    }
+
+    /// Gets the list of guest physical regions for the exported region.
+    pub fn get_mem_regions(&self) -> SmallVec<[MemRegion; 1]> {
+        SmallVec::from_slice(&self.inner.lock().regions)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::thread;
@@ -105,12 +334,12 @@ mod tests {
     fn test() {
         let (request_tx, request_rx) = Tube::pair().expect("failed to create tube pair");
         let CreateIpcMapperRet {
-            mapper,
+            mut mapper,
             response_tx,
         } = create_ipc_mapper(3, request_tx);
         let user_handle = thread::spawn(move || {
             assert!(mapper
-                .translate(0x555, 1)
+                .export(0x555, 1)
                 .unwrap()
                 .iter()
                 .zip(&vec![MemRegion {
@@ -121,16 +350,19 @@ mod tests {
                 .all(|(a, b)| a == b));
         });
         let iommu_handle = thread::spawn(move || {
-            let TranslateRequest {
-                endpoint_id,
-                iova,
-                size,
-            } = request_rx.recv().unwrap();
+            let (endpoint_id, iova, size) = match request_rx.recv().unwrap() {
+                IommuRequest::Export {
+                    endpoint_id,
+                    iova,
+                    size,
+                } => (endpoint_id, iova, size),
+                _ => unreachable!(),
+            };
             assert_eq!(endpoint_id, 3);
             assert_eq!(iova, 0x555);
             assert_eq!(size, 1);
             response_tx
-                .send(&Some(vec![MemRegion {
+                .send(&IommuResponse::Export(vec![MemRegion {
                     gpa: GuestAddress(0x777),
                     len: 1,
                     prot: Protection::read_write(),

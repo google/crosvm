@@ -34,6 +34,8 @@ use vm_memory::GuestMemory;
 
 use super::DescriptorChain;
 
+use crate::virtio::ipc_memory_mapper::ExportedRegion;
+
 #[sorted]
 #[derive(Error, Debug)]
 pub enum Error {
@@ -55,7 +57,7 @@ pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Clone)]
 struct DescriptorChainRegions {
-    regions: SmallVec<[MemRegion; 16]>,
+    regions: DescriptorChainMemRegions,
     current: usize,
     bytes_consumed: usize,
 }
@@ -79,7 +81,7 @@ impl DescriptorChainRegions {
     /// method to advance the `DescriptorChain`. Multiple calls to `get` with no intervening calls
     /// to `consume` will return the same data.
     fn get_remaining_regions(&self) -> &[MemRegion] {
-        &self.regions[self.current..]
+        &self.regions.regions[self.current..]
     }
 
     /// Returns all the remaining buffers in the `DescriptorChain` as `VolatileSlice`s of the given
@@ -150,7 +152,7 @@ impl DescriptorChainRegions {
         // `get_remaining` here because then the compiler complains that `self.current` is already
         // borrowed and doesn't allow us to modify it.  We also need to borrow the iovecs mutably.
         let current = self.current;
-        for region in &mut self.regions[current..] {
+        for region in &mut self.regions.regions[current..] {
             if count == 0 {
                 break;
             }
@@ -183,7 +185,7 @@ impl DescriptorChainRegions {
 
         let mut rem = offset;
         let mut end = self.current;
-        for region in &mut self.regions[self.current..] {
+        for region in &mut self.regions.regions[self.current..] {
             if rem <= region.len {
                 region.len = rem;
                 break;
@@ -193,7 +195,7 @@ impl DescriptorChainRegions {
             rem -= region.len;
         }
 
-        self.regions.truncate(end + 1);
+        self.regions.regions.truncate(end + 1);
 
         other
     }
@@ -230,15 +232,28 @@ impl<'a, T: DataInit> Iterator for ReaderIterator<'a, T> {
     }
 }
 
+#[derive(Clone)]
+pub struct DescriptorChainMemRegions {
+    pub regions: SmallVec<[cros_async::MemRegion; 16]>,
+    // For virtio devices that operate on IOVAs rather than guest phyiscal
+    // addresses, the IOVA regions must be exported from virtio-iommu to get
+    // the underlying memory regions. It is only valid for the virtio device
+    // to access those memory regions while they remain exported, so maintain
+    // references to the exported regions until the descriptor chain is
+    // dropped.
+    _exported_regions: Option<Vec<ExportedRegion>>,
+}
+
 /// Get all the mem regions from a `DescriptorChain` iterator, regardless if the `DescriptorChain`
 /// contains GPAs (guest physical address), or IOVAs (io virtual address). IOVAs will
 /// be translated to GPAs via IOMMU.
-pub fn get_mem_regions<I>(mem: &GuestMemory, vals: I) -> Result<SmallVec<[MemRegion; 16]>>
+pub fn get_mem_regions<I>(mem: &GuestMemory, vals: I) -> Result<DescriptorChainMemRegions>
 where
     I: Iterator<Item = DescriptorChain>,
 {
     let mut total_len: usize = 0;
     let mut regions = SmallVec::new();
+    let mut exported_regions: Option<Vec<ExportedRegion>> = None;
 
     // TODO(jstaron): Update this code to take the indirect descriptors into account.
     for desc in vals {
@@ -249,19 +264,26 @@ where
             .checked_add(desc.len as usize)
             .ok_or(Error::DescriptorChainOverflow)?;
 
-        for r in desc.get_mem_regions().map_err(Error::InvalidChain)? {
+        let (desc_regions, exported) = desc.into_mem_regions();
+        for r in desc_regions {
             // Check that all the regions are totally contained in GuestMemory.
             mem.get_slice_at_addr(r.gpa, r.len.try_into().expect("u32 doesn't fit in usize"))
                 .map_err(Error::GuestMemoryError)?;
 
-            regions.push(MemRegion {
+            regions.push(cros_async::MemRegion {
                 offset: r.gpa.offset(),
                 len: r.len.try_into().expect("u32 doesn't fit in usize"),
             });
         }
+        if let Some(exported) = exported {
+            exported_regions.get_or_insert(vec![]).push(exported);
+        }
     }
 
-    Ok(regions)
+    Ok(DescriptorChainMemRegions {
+        regions,
+        _exported_regions: exported_regions,
+    })
 }
 
 impl Reader {
@@ -811,7 +833,7 @@ pub fn create_descriptor_chain(
         );
     }
 
-    DescriptorChain::checked_new(memory, descriptor_array_addr, 0x100, 0, 0, None)
+    DescriptorChain::checked_new(memory, descriptor_array_addr, 0x100, 0, 0, None, None)
         .map_err(Error::InvalidChain)
 }
 

@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::cmp::min;
-use std::convert::TryInto;
 use std::num::Wrapping;
 use std::sync::atomic::fence;
 use std::sync::atomic::Ordering;
@@ -11,6 +10,7 @@ use std::sync::Arc;
 
 use anyhow::bail;
 use anyhow::Context;
+use anyhow::Result;
 use base::error;
 use base::warn;
 use base::Protection;
@@ -20,6 +20,8 @@ use data_model::DataInit;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
+use smallvec::smallvec;
+use smallvec::SmallVec;
 use sync::Mutex;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestAddress;
@@ -27,9 +29,9 @@ use vm_memory::GuestMemory;
 
 use super::SignalableInterrupt;
 use super::VIRTIO_MSI_NO_VECTOR;
+use crate::virtio::ipc_memory_mapper::ExportedRegion;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::virtio::memory_mapper::MemRegion;
-use crate::virtio::memory_util::is_valid_wrapper;
 use crate::virtio::memory_util::read_obj_from_addr_wrapper;
 use crate::virtio::memory_util::write_obj_at_addr_wrapper;
 
@@ -98,8 +100,19 @@ pub struct DescriptorChain {
     /// the next bit set
     pub next: u16,
 
+    /// The memory regions associated with the current descriptor.
+    regions: SmallVec<[MemRegion; 1]>,
+
     /// Translates `addr` to guest physical address
     iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
+
+    /// The exported descriptor table of this chain's queue. Present
+    /// iff iommu is present.
+    exported_desc_table: Option<ExportedRegion>,
+
+    /// The exported iommu region of the current descriptor. Present iff
+    /// iommu is present.
+    exported_region: Option<ExportedRegion>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -121,7 +134,8 @@ impl DescriptorChain {
         index: u16,
         required_flags: u16,
         iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
-    ) -> anyhow::Result<DescriptorChain> {
+        exported_desc_table: Option<ExportedRegion>,
+    ) -> Result<DescriptorChain> {
         if index >= queue_size {
             bail!("index ({}) >= queue_size ({})", index, queue_size);
         }
@@ -129,19 +143,58 @@ impl DescriptorChain {
         let desc_head = desc_table
             .checked_add((index as u64) * 16)
             .context("integer overflow")?;
-        let desc: Desc = read_obj_from_addr_wrapper::<Desc>(mem, &iommu, desc_head)
-            .context("failed to read desc")?;
+        let desc: Desc = read_obj_from_addr_wrapper(mem, &exported_desc_table, desc_head)
+            .with_context(|| format!("failed to read desc {:x}", desc_head.offset()))?;
+
+        let addr = GuestAddress(desc.addr.into());
+        let len = desc.len.to_native();
+        let (regions, exported_region) = if let Some(iommu) = &iommu {
+            if exported_desc_table.is_none() {
+                bail!("missing exported descriptor table");
+            }
+
+            let exported_region =
+                ExportedRegion::new(mem, iommu.clone(), addr.offset(), len.into())
+                    .context("failed to get mem regions")?;
+
+            let regions = exported_region.get_mem_regions();
+            let required_prot = if required_flags & VIRTQ_DESC_F_WRITE == 0 {
+                Protection::read()
+            } else {
+                Protection::write()
+            };
+            for r in &regions {
+                if !r.prot.allows(&required_prot) {
+                    bail!("missing RW permissions for descriptor");
+                }
+            }
+
+            (regions, Some(exported_region))
+        } else {
+            (
+                smallvec![MemRegion {
+                    gpa: addr,
+                    len: len.into(),
+                    prot: Protection::read_write(),
+                }],
+                None,
+            )
+        };
+
         let chain = DescriptorChain {
             mem: mem.clone(),
             desc_table,
             queue_size,
             ttl: queue_size,
             index,
-            addr: GuestAddress(desc.addr.into()),
-            len: desc.len.into(),
+            addr,
+            len,
             flags: desc.flags.into(),
             next: desc.next.into(),
             iommu,
+            regions,
+            exported_region,
+            exported_desc_table,
         };
 
         if chain.is_valid() && chain.flags & required_flags == required_flags {
@@ -151,39 +204,18 @@ impl DescriptorChain {
         }
     }
 
-    /// Get the mem region(s), regardless if the `DescriptorChain`s contain gpa (guest physical
-    /// address), or iova (io virtual address) and iommu.
-    pub fn get_mem_regions(&self) -> anyhow::Result<Vec<MemRegion>> {
-        if let Some(iommu) = &self.iommu {
-            iommu
-                .lock()
-                .translate(self.addr.offset(), self.len as u64)
-                .context("failed to get mem regions")
-        } else {
-            Ok(vec![MemRegion {
-                gpa: self.addr,
-                len: self.len.try_into().expect("u32 doesn't fit in usize"),
-                prot: Protection::read_write(),
-            }])
-        }
+    pub fn into_mem_regions(self) -> (SmallVec<[MemRegion; 1]>, Option<ExportedRegion>) {
+        (self.regions, self.exported_region)
     }
 
     fn is_valid(&self) -> bool {
         if self.len > 0 {
-            match self.get_mem_regions() {
-                Ok(regions) => {
-                    if regions.iter().any(|r| {
-                        self.mem
-                            .checked_offset(r.gpa, r.len as u64 - 1u64)
-                            .is_none()
-                    }) {
-                        return false;
-                    }
-                }
-                Err(e) => {
-                    error!("{:#}", e);
-                    return false;
-                }
+            if self.regions.iter().any(|r| {
+                self.mem
+                    .checked_offset(r.gpa, r.len as u64 - 1u64)
+                    .is_none()
+            }) {
+                return false;
             }
         }
 
@@ -227,6 +259,7 @@ impl DescriptorChain {
                 self.next,
                 required_flags,
                 iommu,
+                self.exported_desc_table.clone(),
             ) {
                 Ok(mut c) => {
                     c.ttl = self.ttl - 1;
@@ -307,6 +340,13 @@ pub struct Queue {
     notification_disable_count: usize,
 
     iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
+
+    // When |iommu| is present, |desc_table| and the rings are IOVAs rather than real
+    // GPAs. These are the exported regions used to access the underlying GPAs. They
+    // are initialized by |export_memory| and released by |release_exported_memory|.
+    exported_desc_table: Option<ExportedRegion>,
+    exported_avail_ring: Option<ExportedRegion>,
+    exported_used_ring: Option<ExportedRegion>,
 }
 
 macro_rules! accessors {
@@ -343,6 +383,9 @@ impl Queue {
             last_used: Wrapping(0),
             notification_disable_count: 0,
             iommu: None,
+            exported_desc_table: None,
+            exported_avail_ring: None,
+            exported_used_ring: None,
         }
     }
 
@@ -372,6 +415,9 @@ impl Queue {
         self.next_used = Wrapping(0);
         self.features = 0;
         self.last_used = Wrapping(0);
+        self.exported_desc_table = None;
+        self.exported_avail_ring = None;
+        self.exported_used_ring = None;
     }
 
     /// Reset queue's counters.
@@ -395,38 +441,74 @@ impl Queue {
         self.validated
     }
 
-    fn validate(&mut self, mem: &GuestMemory) {
+    fn ring_sizes(&self) -> Vec<(GuestAddress, usize)> {
         let queue_size = self.actual_size() as usize;
-        let desc_table = self.desc_table;
-        let desc_table_size = 16 * queue_size;
-        let avail_ring = self.avail_ring;
-        let avail_ring_size = 6 + 2 * queue_size;
-        let used_ring = self.used_ring;
-        let used_ring_size = 6 + 8 * queue_size;
+        vec![
+            (self.desc_table, 16 * queue_size),
+            (self.avail_ring, 6 + 2 * queue_size),
+            (self.used_ring, 6 + 8 * queue_size),
+        ]
+    }
+
+    /// If this queue is for a device that sits behind a virtio-iommu device, exports
+    /// this queue's memory. After the queue becomes ready, this must be called before
+    /// using the queue, to convert the IOVA-based configuration to GuestAddresses.
+    pub fn export_memory(&mut self, mem: &GuestMemory) -> Result<()> {
+        if !self.ready {
+            bail!("not ready");
+        }
+        if self.exported_desc_table.is_some() {
+            bail!("already exported");
+        }
+
+        let iommu = self.iommu.as_ref().context("no iommu to export with")?;
+
+        let ring_sizes = self.ring_sizes();
+        let rings = ring_sizes.iter().zip(vec![
+            &mut self.exported_desc_table,
+            &mut self.exported_avail_ring,
+            &mut self.exported_used_ring,
+        ]);
+
+        for ((addr, size), region) in rings {
+            *region = Some(
+                ExportedRegion::new(mem, iommu.clone(), addr.offset(), *size as u64)
+                    .context("failed to export region")?,
+            );
+        }
+        Ok(())
+    }
+
+    /// Releases memory exported by a previous call to [export_memory].
+    pub fn release_exported_memory(&mut self) {
+        self.exported_desc_table = None;
+        self.exported_avail_ring = None;
+        self.exported_used_ring = None;
+    }
+
+    fn validate(&mut self, mem: &GuestMemory) {
         if self.size > self.max_size || self.size == 0 || (self.size & (self.size - 1)) != 0 {
             error!("virtio queue with invalid size: {}", self.size);
             return;
         }
 
-        for (addr, size, name) in [
-            (desc_table, desc_table_size, "descriptor table"),
-            (avail_ring, avail_ring_size, "available ring"),
-            (used_ring, used_ring_size, "used ring"),
-        ] {
-            match is_valid_wrapper(mem, &self.iommu, addr, size as u64) {
-                Ok(valid) => {
-                    if !valid {
-                        error!(
-                            "virtio queue {} goes out of bounds: start:0x{:08x} size:0x{:08x}",
-                            name,
-                            addr.offset(),
-                            size,
-                        );
-                        return;
-                    }
-                }
-                Err(e) => {
-                    error!("is_valid failed: {:#}", e);
+        if self.iommu.is_none() {
+            let ring_sizes = self.ring_sizes();
+            let rings =
+                ring_sizes
+                    .iter()
+                    .zip(vec!["descriptor table", "available ring", "used ring"]);
+            for ((addr, size), name) in rings {
+                if !addr
+                    .checked_add(*size as u64)
+                    .map_or(false, |v| mem.address_in_range(v))
+                {
+                    error!(
+                        "virtio queue {} goes out of bounds: start:0x{:08x} size:0x{:08x}",
+                        name,
+                        addr.offset(),
+                        size,
+                    );
                     return;
                 }
             }
@@ -444,7 +526,7 @@ impl Queue {
 
         let avail_index_addr = self.avail_ring.unchecked_add(2);
         let avail_index: u16 =
-            read_obj_from_addr_wrapper(mem, &self.iommu, avail_index_addr).unwrap();
+            read_obj_from_addr_wrapper(mem, &self.exported_avail_ring, avail_index_addr).unwrap();
 
         Wrapping(avail_index)
     }
@@ -461,7 +543,13 @@ impl Queue {
         let avail_event_addr = self
             .used_ring
             .unchecked_add(4 + 8 * u64::from(self.actual_size()));
-        write_obj_at_addr_wrapper(mem, &self.iommu, avail_index.0, avail_event_addr).unwrap();
+        write_obj_at_addr_wrapper(
+            mem,
+            &self.exported_used_ring,
+            avail_index.0,
+            avail_event_addr,
+        )
+        .unwrap();
     }
 
     // Query the value of a single-bit flag in the available ring.
@@ -471,7 +559,7 @@ impl Queue {
         fence(Ordering::SeqCst);
 
         let avail_flags: u16 =
-            read_obj_from_addr_wrapper(mem, &self.iommu, self.avail_ring).unwrap();
+            read_obj_from_addr_wrapper(mem, &self.exported_avail_ring, self.avail_ring).unwrap();
 
         avail_flags & flag == flag
     }
@@ -490,7 +578,7 @@ impl Queue {
             .avail_ring
             .unchecked_add(4 + 2 * u64::from(self.actual_size()));
         let used_event: u16 =
-            read_obj_from_addr_wrapper(mem, &self.iommu, used_event_addr).unwrap();
+            read_obj_from_addr_wrapper(mem, &self.exported_avail_ring, used_event_addr).unwrap();
 
         Wrapping(used_event)
     }
@@ -503,7 +591,8 @@ impl Queue {
         fence(Ordering::SeqCst);
 
         let used_index_addr = self.used_ring.unchecked_add(2);
-        write_obj_at_addr_wrapper(mem, &self.iommu, used_index.0, used_index_addr).unwrap();
+        write_obj_at_addr_wrapper(mem, &self.exported_used_ring, used_index.0, used_index_addr)
+            .unwrap();
     }
 
     // Set a single-bit flag in the used ring.
@@ -513,13 +602,14 @@ impl Queue {
         fence(Ordering::SeqCst);
 
         let mut used_flags: u16 =
-            read_obj_from_addr_wrapper(mem, &self.iommu, self.used_ring).unwrap();
+            read_obj_from_addr_wrapper(mem, &self.exported_used_ring, self.used_ring).unwrap();
         if value {
             used_flags |= flag;
         } else {
             used_flags &= !flag;
         }
-        write_obj_at_addr_wrapper(mem, &self.iommu, used_flags, self.used_ring).unwrap();
+        write_obj_at_addr_wrapper(mem, &self.exported_used_ring, used_flags, self.used_ring)
+            .unwrap();
     }
 
     /// Get the first available descriptor chain without removing it from the queue.
@@ -542,15 +632,23 @@ impl Queue {
 
         // This index is checked below in checked_new.
         let descriptor_index: u16 =
-            read_obj_from_addr_wrapper(mem, &self.iommu, desc_idx_addr).unwrap();
+            read_obj_from_addr_wrapper(mem, &self.exported_avail_ring, desc_idx_addr).unwrap();
 
         let iommu = self.iommu.as_ref().map(Arc::clone);
-        DescriptorChain::checked_new(mem, self.desc_table, queue_size, descriptor_index, 0, iommu)
-            .map_err(|e| {
-                error!("{:#}", e);
-                e
-            })
-            .ok()
+        DescriptorChain::checked_new(
+            mem,
+            self.desc_table,
+            queue_size,
+            descriptor_index,
+            0,
+            iommu,
+            self.exported_desc_table.clone(),
+        )
+        .map_err(|e| {
+            error!("{:#}", e);
+            e
+        })
+        .ok()
     }
 
     /// Remove the first available descriptor chain from the queue.
@@ -607,9 +705,15 @@ impl Queue {
         let used_elem = used_ring.unchecked_add((4 + next_used * 8) as u64);
 
         // These writes can't fail as we are guaranteed to be within the descriptor ring.
-        write_obj_at_addr_wrapper(mem, &self.iommu, desc_index as u32, used_elem).unwrap();
-        write_obj_at_addr_wrapper(mem, &self.iommu, len as u32, used_elem.unchecked_add(4))
+        write_obj_at_addr_wrapper(mem, &self.exported_used_ring, desc_index as u32, used_elem)
             .unwrap();
+        write_obj_at_addr_wrapper(
+            mem,
+            &self.exported_used_ring,
+            len as u32,
+            used_elem.unchecked_add(4),
+        )
+        .unwrap();
 
         self.next_used += Wrapping(1);
         self.set_used_index(mem, self.next_used);

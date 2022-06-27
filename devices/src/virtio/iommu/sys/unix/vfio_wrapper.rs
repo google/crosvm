@@ -19,6 +19,7 @@ use crate::vfio::VfioError;
 use crate::virtio::iommu::memory_mapper::AddMapResult;
 use crate::virtio::iommu::memory_mapper::MappingInfo;
 use crate::virtio::iommu::memory_mapper::MemoryMapper;
+use crate::virtio::iommu::memory_mapper::RemoveMapResult;
 use crate::VfioContainer;
 
 pub struct VfioWrapper {
@@ -79,13 +80,13 @@ impl MemoryMapper for VfioWrapper {
         res.context("vfio mapping error").map(|_| AddMapResult::Ok)
     }
 
-    fn remove_map(&mut self, iova_start: u64, size: u64) -> anyhow::Result<bool> {
+    fn remove_map(&mut self, iova_start: u64, size: u64) -> anyhow::Result<RemoveMapResult> {
         iova_start.checked_add(size).context("iova overflow")?;
         self.container
             .lock()
             .vfio_dma_unmap(iova_start, size)
             .context("vfio unmapping error")
-            .map(|_| true)
+            .map(|_| RemoveMapResult::Success(None))
     }
 
     fn get_mask(&self) -> anyhow::Result<u64> {

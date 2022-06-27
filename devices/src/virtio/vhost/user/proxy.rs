@@ -10,6 +10,7 @@
 //! implementation (referred to as `device backend` in this module) in the
 //! device VM.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::File;
 use std::io::IoSlice;
@@ -64,8 +65,11 @@ use vmm_vhost::message::VhostUserMsgHeader;
 use vmm_vhost::message::VhostUserMsgValidator;
 use vmm_vhost::message::VhostUserShmemMapMsg;
 use vmm_vhost::message::VhostUserShmemMapMsgFlags;
+use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::message::VhostUserU64;
+use vmm_vhost::Error as VhostError;
 use vmm_vhost::Protocol;
+use vmm_vhost::Result as VhostResult;
 use vmm_vhost::SlaveReqHelper;
 
 use crate::pci::PciBarConfiguration;
@@ -270,6 +274,15 @@ struct Worker {
 
     // Iommu to translate IOVAs into GPAs for shared memory regions.
     iommu: Arc<Mutex<IpcMemoryMapper>>,
+
+    // Exported regions mapped via shared memory regions.
+    exported_regions:
+        BTreeMap<u64 /* shmem_offset */, (u8, u64, u64) /* shmid, iova, size */>,
+
+    // The currently pending unmap operation. Becomes `Some` when the proxy
+    // receives a SHMEM_UNMAP message from the guest, and becomes `None` when
+    // the proxy receives the corresponding SHMEM_UNMAP reply from the frontend.
+    pending_unmap: Option<u64 /* shmem_offset */>,
 }
 
 #[derive(EventToken, Debug, Clone, PartialEq)]
@@ -288,6 +301,8 @@ enum Token {
     Kill,
     // Message from the main thread.
     MainThread,
+    // An iommu fault occured. Generally means the device process died.
+    IommuFault,
 }
 
 /// Represents the status of connection to the sibling.
@@ -309,6 +324,7 @@ enum RxqStatus {
 
 /// Reason for a worker's successful exit.
 enum ExitReason {
+    IommuFault,
     Killed,
     Disconnected,
 }
@@ -383,13 +399,19 @@ impl RxAction for SlaveReq {
     }
 
     fn process_message(
-        _worker: &mut Worker,
+        worker: &mut Worker,
         _wait_ctx: &mut WaitContext<Token>,
-        _hdr: &VhostUserMsgHeader<SlaveReq>,
-        _payload: &[u8],
-        _files: Option<Vec<File>>,
+        hdr: &VhostUserMsgHeader<SlaveReq>,
+        payload: &[u8],
+        files: Option<Vec<File>>,
     ) -> Result<()> {
-        Ok(())
+        if files.is_some() {
+            bail!("unexpected fd for {:?}", hdr.get_code());
+        }
+        match hdr.get_code() {
+            SlaveReq::SHMEM_UNMAP => worker.handle_unmap_reply(payload),
+            _ => Ok(()),
+        }
     }
 
     fn get_ep(worker: &mut Worker) -> &mut SocketEndpoint<SlaveReq> {
@@ -417,6 +439,21 @@ impl Worker {
         main_thread_tube: Tube,
         kill_evt: Event,
     ) -> Result<ExitReason> {
+        let fault_event = self
+            .iommu
+            .lock()
+            .start_export_session()
+            .context("failed to prepare for exporting")?;
+
+        // Now that an export session has been started, we can export the virtqueues to
+        // fetch the GuestAddresses corresponding to their IOVA-based config.
+        self.rx_queue
+            .export_memory(&self.mem)
+            .context("failed to export rx_queue")?;
+        self.tx_queue
+            .export_memory(&self.mem)
+            .context("failed to export tx_queue")?;
+
         // TODO(abhishekbh): Should interrupt.signal_config_changed be called here ?.
         let mut wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (&self.slave_req_helper, Token::SiblingSocket),
@@ -424,6 +461,7 @@ impl Worker {
             (&tx_queue_evt, Token::TxQueue),
             (&main_thread_tube, Token::MainThread),
             (&kill_evt, Token::Kill),
+            (&fault_event, Token::IommuFault),
         ])
         .context("failed to create a wait context object")?;
 
@@ -473,6 +511,9 @@ impl Worker {
                         }
                         self.process_tx()
                             .context("error processing tx queue event")?;
+                    }
+                    Token::IommuFault => {
+                        return Ok(ExitReason::IommuFault);
                     }
                     Token::SiblingKick { index } => {
                         if let Err(e) = self.process_sibling_kick(index) {
@@ -922,12 +963,15 @@ impl Worker {
     }
 
     // Exports the udmabuf necessary to fulfil the |msg| mapping request.
-    fn export_udmabuf(&mut self, msg: &VhostUserShmemMapMsg) -> Result<Box<dyn AsRawDescriptor>> {
+    fn handle_map_message(
+        &mut self,
+        msg: &VhostUserShmemMapMsg,
+    ) -> Result<Box<dyn AsRawDescriptor>> {
         let regions = self
             .iommu
             .lock()
-            .translate(msg.fd_offset, msg.len)
-            .context("failed to translate")?;
+            .export(msg.fd_offset, msg.len)
+            .context("failed to export")?;
 
         let prot = match (
             msg.flags.contains(VhostUserShmemMapMsgFlags::MAP_R),
@@ -958,7 +1002,45 @@ impl Worker {
             .create_udmabuf(&self.mem, &regions)
             .context("failed to create udmabuf")?;
 
+        self.exported_regions
+            .insert(msg.shm_offset, (msg.shmid, msg.fd_offset, msg.len));
+
         Ok(Box::new(udmabuf))
+    }
+
+    fn handle_unmap_message(&mut self, msg: &VhostUserShmemUnmapMsg) -> Result<()> {
+        if self.pending_unmap.is_some() {
+            bail!("simultanious unmaps not supported");
+        }
+        let shm_offset = msg.shm_offset;
+        self.exported_regions
+            .get(&shm_offset)
+            .context("unknown shmid")?;
+        self.pending_unmap = Some(shm_offset);
+        Ok(())
+    }
+
+    fn handle_unmap_reply(&mut self, payload: &[u8]) -> Result<()> {
+        let ack = VhostUserU64::from_slice(payload)
+            .context("failed to parse ack")?
+            .value;
+        if ack != 0 {
+            bail!("failed to unmap region {}", ack);
+        }
+
+        let pending_unmap = self.pending_unmap.take().context("unexpected unmap ack")?;
+        // Both handle_unmap_message and unmap_all_exported_shmem ensure that
+        // self.pending_unmap is in the exported_regions map.
+        let (_, iova, size) = self
+            .exported_regions
+            .remove(&pending_unmap)
+            .expect("missing region");
+        self.iommu
+            .lock()
+            .release(iova, size)
+            .context("failed to release export")?;
+
+        Ok(())
     }
 
     fn process_message_from_backend(
@@ -968,16 +1050,26 @@ impl Worker {
         // The message was already parsed as a MasterReq, so this can't fail
         let hdr = vhost_header_from_bytes::<SlaveReq>(&msg).unwrap();
 
-        let fd = if hdr.get_code() == SlaveReq::SHMEM_MAP {
-            let mut msg = vhost_body_from_message_bytes(&mut msg).context("incomplete message")?;
-            let fd = self.export_udmabuf(msg).context("failed to export fd")?;
-            // VVU reuses the fd_offset field for the IOVA of the buffer. The
-            // udmabuf corresponds to exactly what should be mapped, so set
-            // fd_offset to 0 for regular vhost-user.
-            msg.fd_offset = 0;
-            Some(fd)
-        } else {
-            None
+        let fd = match hdr.get_code() {
+            SlaveReq::SHMEM_MAP => {
+                let mut msg =
+                    vhost_body_from_message_bytes(&mut msg).context("incomplete message")?;
+                let fd = self
+                    .handle_map_message(msg)
+                    .context("failed to handle map message")?;
+                // VVU reuses the fd_offset field for the IOVA of the buffer. The
+                // udmabuf corresponds to exactly what should be mapped, so set
+                // fd_offset to 0 for regular vhost-user.
+                msg.fd_offset = 0;
+                Some(fd)
+            }
+            SlaveReq::SHMEM_UNMAP => {
+                let msg = vhost_body_from_message_bytes(&mut msg).context("incomplete message")?;
+                self.handle_unmap_message(msg)
+                    .context("failed to handle unmap message")?;
+                None
+            }
+            _ => None,
         };
         Ok((msg, fd))
     }
@@ -1083,6 +1175,68 @@ impl Worker {
             }
         }
     }
+
+    // Unmaps all exported regions
+    fn release_exported_regions(&mut self) -> Result<()> {
+        self.rx_queue.release_exported_memory();
+        self.tx_queue.release_exported_memory();
+
+        match self.unmap_all_exported_shmem() {
+            Ok(()) => Ok(()),
+            Err(VhostError::SocketBroken(_)) | Err(VhostError::Disconnect) => {
+                // If the socket is broken or the sibling is disconnected, then we assume
+                // the sibling is no longer running, so unmapping is unnecessary.
+                for (_, iova, size) in self.exported_regions.values() {
+                    self.iommu
+                        .lock()
+                        .release(*iova, *size)
+                        .context("failed to release export")?;
+                }
+                Ok(())
+            }
+            err => err.context("error while unmapping exported regions"),
+        }
+    }
+
+    // Unmaps anything mapped into the shmem regions.
+    fn unmap_all_exported_shmem(&mut self) -> VhostResult<()> {
+        loop {
+            let endpoint = match self.slave_req_fd.as_mut() {
+                Some(e) => e,
+                None => return Ok(()),
+            };
+
+            // There may already be pending unmap operation when we enter the loop,
+            // so reply handling needs to come first.
+            if self.pending_unmap.is_some() {
+                loop {
+                    let (hdr, _) = endpoint.recv_header()?;
+                    let payload = endpoint.recv_data(hdr.get_size() as usize)?;
+                    // This function is only called when the worker is aborting, so
+                    // there's nothing to do for other replies - just drop them.
+                    if hdr.get_code() == SlaveReq::SHMEM_UNMAP {
+                        if let Err(e) = self.handle_unmap_reply(&payload) {
+                            error!("failed to unmap: {:?}", e);
+                            return Err(VhostError::SlaveInternalError);
+                        }
+                        break;
+                    }
+                }
+            } else if let Some((offset, (shmid, _, size))) = self.exported_regions.iter().next() {
+                let hdr = VhostUserMsgHeader::new(
+                    SlaveReq::SHMEM_UNMAP,
+                    0,
+                    std::mem::size_of::<VhostUserShmemUnmapMsg>() as u32,
+                );
+                let msg = VhostUserShmemUnmapMsg::new(*shmid, *offset, *size);
+                endpoint.send_message(&hdr, &msg, None)?;
+                self.pending_unmap = Some(*offset);
+            } else {
+                break;
+            }
+        }
+        Ok(())
+    }
 }
 
 // Doorbell capability of the proxy device.
@@ -1122,6 +1276,7 @@ impl VirtioPciDoorbellCap {
 }
 
 /// Represents the `VirtioVhostUser` device's state.
+#[allow(clippy::large_enum_variant)]
 enum State {
     /// The device is initialized but not activated.
     Initialized {
@@ -1472,13 +1627,28 @@ impl VirtioVhostUser {
                     slave_req_fd: None,
                     udmabuf_driver: None,
                     iommu: iommu.clone(),
+                    exported_regions: BTreeMap::new(),
+                    pending_unmap: None,
                 };
-                match worker.run(
+
+                let run_result = worker.run(
                     rx_queue_evt.try_clone().unwrap(),
                     tx_queue_evt.try_clone().unwrap(),
                     main_thread_tube,
                     kill_evt,
-                ) {
+                );
+
+                if let Err(e) = worker.release_exported_regions() {
+                    error!("failed to release exported memory: {:?}", e);
+                    *state_cloned.lock() = State::Invalid;
+                    return Ok(());
+                }
+
+                match run_result {
+                    Ok(ExitReason::IommuFault) => {
+                        info!("worker thread exited due to IOMMU fault");
+                        Ok(())
+                    }
                     Ok(ExitReason::Killed) => {
                         info!("worker thread exited successfully");
                         Ok(())

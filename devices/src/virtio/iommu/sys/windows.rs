@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use cros_async::AsyncTube;
+use cros_async::Executor;
 
 use crate::virtio::iommu::Result;
 use crate::virtio::iommu::State;
@@ -19,6 +20,7 @@ pub(in crate::virtio::iommu) async fn handle_command_tube(
 }
 
 pub(in crate::virtio::iommu) async fn handle_translate_request(
+    _ex: &Executor,
     _state: &Rc<RefCell<State>>,
     _request_tube: Option<AsyncTube>,
     _response_tubes: Option<BTreeMap<u32, AsyncTube>>,
