@@ -15,7 +15,7 @@ use arch::{
 use base::{debug, pagesize};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::virtio::block::block::DiskOption;
-#[cfg(feature = "audio_cras")]
+#[cfg(feature = "audio")]
 use devices::virtio::common_backend::Parameters as SndParameters;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
@@ -1358,7 +1358,7 @@ pub struct Config {
     pub virtio_mice: Vec<PathBuf>,
     pub virtio_multi_touch: Vec<TouchDeviceOption>,
     pub virtio_single_touch: Vec<TouchDeviceOption>,
-    #[cfg(feature = "audio_cras")]
+    #[cfg(feature = "audio")]
     #[serde(skip)]
     pub virtio_snds: Vec<SndParameters>,
     pub virtio_switches: Vec<PathBuf>,
@@ -1504,7 +1504,7 @@ impl Default for Config {
             virtio_mice: Vec::new(),
             virtio_multi_touch: Vec::new(),
             virtio_single_touch: Vec::new(),
-            #[cfg(feature = "audio_cras")]
+            #[cfg(feature = "audio")]
             virtio_snds: Vec::new(),
             virtio_switches: Vec::new(),
             virtio_trackpad: Vec::new(),

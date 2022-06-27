@@ -6,11 +6,11 @@ pub mod common;
 pub mod constants;
 pub mod layout;
 
-#[cfg(feature = "audio_cras")]
+#[cfg(feature = "audio")]
 pub mod common_backend;
 #[cfg(feature = "audio_cras")]
 pub mod cras_backend;
-#[cfg(feature = "audio_cras")]
+#[cfg(feature = "audio")]
 pub mod null_backend;
 
 cfg_if::cfg_if! {

@@ -37,7 +37,7 @@ use arch::VcpuAffinity;
 use argh::FromArgs;
 use base::getpid;
 use devices::virtio::block::block::DiskOption;
-#[cfg(feature = "audio_cras")]
+#[cfg(feature = "audio")]
 use devices::virtio::common_backend::Parameters as SndParameters;
 use devices::virtio::vhost::user::device;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
@@ -1147,7 +1147,7 @@ pub struct RunCommand {
     #[argh(option, long = "single-touch", arg_name = "PATH:WIDTH:HEIGHT")]
     /// path to a socket from where to read single touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280)
     pub virtio_single_touch: Vec<TouchDeviceOption>,
-    #[cfg(feature = "audio_cras")]
+    #[cfg(feature = "audio")]
     #[argh(
         option,
         arg_name = "[capture=true,backend=BACKEND,num_output_devices=1,
@@ -1522,12 +1522,18 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.rng = !cmd.no_rng;
         cfg.balloon = !cmd.no_balloon;
 
-        #[cfg(feature = "audio_cras")]
+        #[cfg(feature = "audio")]
         {
             cfg.virtio_snds = cmd.virtio_snds;
+        }
+        #[cfg(feature = "audio_cras")]
+        {
             // cmd.cras_snds is the old parameter for virtio snd with cras backend.
-            // backend is assigned by Parameters Default implementation
-            cfg.virtio_snds.extend_from_slice(&cmd.cras_snds);
+            cfg.virtio_snds
+                .extend(cmd.cras_snds.into_iter().map(|s| SndParameters {
+                    backend: devices::virtio::snd::common_backend::StreamSourceBackend::CRAS,
+                    ..s
+                }));
         }
 
         #[cfg(feature = "gpu")]

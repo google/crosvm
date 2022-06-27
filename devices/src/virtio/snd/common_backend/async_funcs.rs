@@ -15,8 +15,8 @@ use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor};
 use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
 
-use crate::virtio::common_backend::PcmResponse;
 use crate::virtio::snd::common::*;
+use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
 use crate::virtio::{DescriptorChain, Queue, Reader, SignalableInterrupt, Writer};
@@ -96,8 +96,8 @@ async fn process_pcm_ctrl(
     };
 }
 
-async fn write_data<'a>(
-    mut dst_buf: AsyncPlaybackBuffer<'a>,
+async fn write_data(
+    mut dst_buf: AsyncPlaybackBuffer<'_>,
     reader: Option<Reader>,
     period_bytes: usize,
 ) -> Result<(), Error> {
@@ -374,7 +374,7 @@ pub async fn send_pcm_response_worker<I: SignalableInterrupt>(
             send_pcm_response_with_writer(
                 r.writer,
                 r.desc_index,
-                &mem,
+                mem,
                 &mut *queue.lock().await,
                 interrupt,
                 r.status,
@@ -738,7 +738,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
 
         handle_ctrl_msg.await?;
         queue.add_used(mem, index, writer.bytes_written() as u32);
-        queue.trigger_interrupt(&mem, interrupt);
+        queue.trigger_interrupt(mem, interrupt);
     }
 }
 
@@ -758,6 +758,6 @@ pub async fn handle_event_queue<I: SignalableInterrupt>(
         // TODO(woodychow): Poll and forward events from cras asynchronously (API to be added)
         let index = desc_chain.index;
         queue.add_used(mem, index, 0);
-        queue.trigger_interrupt(&mem, interrupt);
+        queue.trigger_interrupt(mem, interrupt);
     }
 }

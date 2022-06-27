@@ -456,7 +456,7 @@ fn create_virtio_devices(
         devs.push(create_vhost_user_wl_device(cfg.protected_vm, opt)?);
     }
 
-    #[cfg(feature = "audio_cras")]
+    #[cfg(feature = "audio")]
     {
         for virtio_snd in &cfg.virtio_snds {
             devs.push(create_virtio_snd_device(
