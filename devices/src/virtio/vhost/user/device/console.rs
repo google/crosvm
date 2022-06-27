@@ -31,15 +31,35 @@ use crate::{
 const MAX_QUEUE_NUM: usize = 2 /* transmit and receive queues */;
 const MAX_VRING_LEN: u16 = 256;
 
+/// Console device for use with vhost-user. Will set stdin back to canon mode if we are getting
+/// input from it.
+pub struct VhostUserConsoleDevice {
+    console: ConsoleDevice,
+    /// Whether we should set stdin to raw mode because we are getting user input from there.
+    raw_stdin: bool,
+}
+
+impl Drop for VhostUserConsoleDevice {
+    fn drop(&mut self) {
+        if self.raw_stdin {
+            // Restore terminal capabilities back to what they were before
+            match std::io::stdin().set_canon_mode() {
+                Ok(()) => (),
+                Err(e) => error!("failed to restore canonical mode for terminal: {:#}", e),
+            }
+        }
+    }
+}
+
 struct ConsoleBackend {
     ex: Executor,
-    device: ConsoleDevice,
+    device: VhostUserConsoleDevice,
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
 }
 
 impl ConsoleBackend {
-    fn new(ex: &Executor, device: ConsoleDevice) -> Self {
+    fn new(ex: &Executor, device: VhostUserConsoleDevice) -> Self {
         Self {
             ex: ex.clone(),
             device,
@@ -51,15 +71,15 @@ impl ConsoleBackend {
 
 impl VhostUserBackend for ConsoleBackend {
     fn max_queue_num(&self) -> usize {
-        return MAX_QUEUE_NUM;
+        MAX_QUEUE_NUM
     }
 
     fn max_vring_len(&self) -> u16 {
-        return MAX_VRING_LEN;
+        MAX_VRING_LEN
     }
 
     fn features(&self) -> u64 {
-        self.device.avail_features() | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits()
+        self.device.console.avail_features() | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits()
     }
 
     fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
@@ -122,10 +142,12 @@ impl VhostUserBackend for ConsoleBackend {
             // ReceiveQueue
             0 => self
                 .device
+                .console
                 .start_receive_queue(&self.ex, mem, queue, doorbell, kick_evt),
             // TransmitQueue
             1 => self
                 .device
+                .console
                 .start_transmit_queue(&self.ex, mem, queue, doorbell, kick_evt),
             _ => bail!("attempted to start unknown queue: {}", idx),
         }
@@ -134,12 +156,12 @@ impl VhostUserBackend for ConsoleBackend {
     fn stop_queue(&mut self, idx: usize) {
         match idx {
             0 => {
-                if let Err(e) = self.device.stop_receive_queue() {
+                if let Err(e) = self.device.console.stop_receive_queue() {
                     error!("error while stopping rx queue: {}", e);
                 }
             }
             1 => {
-                if let Err(e) = self.device.stop_transmit_queue() {
+                if let Err(e) = self.device.console.stop_transmit_queue() {
                     error!("error while stopping tx queue: {}", e);
                 }
             }
@@ -200,7 +222,13 @@ pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
         Err(e) => bail!(e),
     };
     let ex = Executor::new().context("Failed to create executor")?;
-    let backend = Box::new(ConsoleBackend::new(&ex, console));
+    let backend = Box::new(ConsoleBackend::new(
+        &ex,
+        VhostUserConsoleDevice {
+            console,
+            raw_stdin: true,
+        },
+    ));
 
     // Set stdin() in raw mode so we can send over individual keystrokes unbuffered
     stdin()
@@ -214,13 +242,6 @@ pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
         None,
     )?;
 
-    let res = ex.run_until(listener.run_backend(backend, &ex));
-
-    // Restore terminal capabilities back to what they were before
-    stdin()
-        .set_canon_mode()
-        .context("Failed to restore canonical mode for terminal")?;
-
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-    res?
+    ex.run_until(listener.run_backend(backend, &ex))?
 }
