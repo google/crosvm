@@ -4,10 +4,12 @@
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
-        mod unix;
-        pub(crate) use self::unix::*;
+        pub mod unix;
+        use unix as platform;
     } else if #[cfg(windows)] {
-        mod windows;
-        pub(crate) use self::windows::*;
+        pub mod windows;
+        use windows as platform;
     }
 }
+
+pub(crate) use platform::*;
