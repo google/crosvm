@@ -6,6 +6,12 @@
 //!
 //! This crate is a programmatic alternative to invoking crosvm with subcommands that produce the
 //! result on stdout.
+//!
+//! Downstream projects rely on this library maintaining a stable API surface.
+//! Do not make changes to this library without consulting the crosvm externalization team.
+//! Email: crosvm-dev@chromium.org
+//! For more information see:
+//! <https://google.github.io/crosvm/running_crosvm/programmatic_interaction.html#usage>
 
 use std::convert::{TryFrom, TryInto};
 use std::ffi::CStr;
