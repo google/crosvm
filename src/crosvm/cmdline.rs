@@ -13,6 +13,8 @@ use super::platform::GpuRenderServerParameters;
 use super::sys::config::parse_coiommu_params;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use super::sys::config::parse_gpu_render_server_options;
+#[cfg(feature = "gpu")]
+use super::sys::config::{parse_gpu_display_options, parse_gpu_options};
 
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use super::config::parse_video_options;
