@@ -182,8 +182,13 @@ impl Vm for HaxmVm {
         })
     }
 
-    fn check_capability(&self, _c: VmCap) -> bool {
-        false
+    fn check_capability(&self, c: VmCap) -> bool {
+        match c {
+            // under haxm, guests rely on this leaf to calibrate their
+            // clocksource.
+            VmCap::CalibratedTscLeafRequired => true,
+            _ => false,
+        }
     }
 
     fn get_memory(&self) -> &GuestMemory {
