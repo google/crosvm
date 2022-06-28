@@ -15,7 +15,7 @@ use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor};
 use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
 
-use crate::virtio::cras_backend::{Parameters, PcmResponse};
+use crate::virtio::cras_backend::PcmResponse;
 use crate::virtio::snd::common::*;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
@@ -30,8 +30,7 @@ async fn process_pcm_ctrl(
     mem: &GuestMemory,
     tx_send: &mpsc::UnboundedSender<PcmResponse>,
     rx_send: &mpsc::UnboundedSender<PcmResponse>,
-    streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo<'_>>>>>,
-    params: &Parameters,
+    streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
     cmd_code: u32,
     writer: &mut Writer,
     stream_id: usize,
@@ -58,11 +57,7 @@ async fn process_pcm_ctrl(
     );
 
     let result = match cmd_code {
-        VIRTIO_SND_R_PCM_PREPARE => {
-            stream
-                .prepare(ex, mem.clone(), tx_send, rx_send, params)
-                .await
-        }
+        VIRTIO_SND_R_PCM_PREPARE => stream.prepare(ex, mem.clone(), tx_send, rx_send).await,
         VIRTIO_SND_R_PCM_START => stream.start().await,
         VIRTIO_SND_R_PCM_STOP => stream.stop().await,
         VIRTIO_SND_R_PCM_RELEASE => stream.release().await,
@@ -401,7 +396,7 @@ pub async fn send_pcm_response_worker<I: SignalableInterrupt>(
 /// each queue.
 pub async fn handle_pcm_queue<'a>(
     mem: &GuestMemory,
-    streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo<'a>>>>>,
+    streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
     mut response_sender: mpsc::UnboundedSender<PcmResponse>,
     queue: &Rc<AsyncMutex<Queue>>,
     queue_event: EventAsync,
@@ -477,14 +472,13 @@ pub async fn handle_pcm_queue<'a>(
 pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
     ex: &Executor,
     mem: &GuestMemory,
-    streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo<'_>>>>>,
+    streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
     snd_data: &SndData,
     mut queue: Queue,
     mut queue_event: EventAsync,
     interrupt: &I,
     tx_send: mpsc::UnboundedSender<PcmResponse>,
     rx_send: mpsc::UnboundedSender<PcmResponse>,
-    params: &Parameters,
 ) -> Result<(), Error> {
     loop {
         let desc_chain = queue
@@ -514,7 +508,8 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
                     let count: usize = u32::from(query_info.count) as usize;
                     if start_id + count > snd_data.jack_info.len() {
                         error!(
-                            "start_id({}) + count({}) must be smaller than the number of jacks ({})",
+                            "start_id({}) + count({}) must be smaller than \
+                            the number of jacks ({})",
                             start_id,
                             count,
                             snd_data.jack_info.len()
@@ -543,7 +538,8 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
                     let count: usize = u32::from(query_info.count) as usize;
                     if start_id + count > snd_data.pcm_info.len() {
                         error!(
-                            "start_id({}) + count({}) must be smaller than the number of streams ({})",
+                            "start_id({}) + count({}) must be smaller than \
+                            the number of streams ({})",
                             start_id,
                             count,
                             snd_data.pcm_info.len()
@@ -572,7 +568,8 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
                     let count: usize = u32::from(query_info.count) as usize;
                     if start_id + count > snd_data.chmap_info.len() {
                         error!(
-                            "start_id({}) + count({}) must be smaller than the number of chmaps ({})",
+                            "start_id({}) + count({}) must be smaller than \
+                            the number of chmaps ({})",
                             start_id,
                             count,
                             snd_data.pcm_info.len()
@@ -722,7 +719,6 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
                         &tx_send,
                         &rx_send,
                         streams,
-                        params,
                         code,
                         &mut writer,
                         stream_id,

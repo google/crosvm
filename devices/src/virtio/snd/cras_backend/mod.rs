@@ -13,7 +13,7 @@ use std::str::{FromStr, ParseBoolError};
 use std::thread;
 
 use anyhow::Context;
-use audio_streams::{SampleFormat, StreamSource};
+use audio_streams::{SampleFormat, StreamSource, StreamSourceGenerator};
 use base::{
     error, set_rt_prio_limit, set_rt_round_robin, warn, Error as SysError, Event, RawDescriptor,
 };
@@ -25,7 +25,7 @@ use futures::channel::{
     oneshot::{self, Canceled},
 };
 use futures::{pin_mut, select, Future, FutureExt, TryFutureExt};
-use libcras::{BoxError, CrasClient, CrasClientType, CrasSocketType};
+use libcras::{BoxError, CrasClientType, CrasSocketType, CrasStreamSourceGenerator};
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
@@ -116,6 +116,9 @@ pub enum Error {
     // Invalid PCM worker state.
     #[error("Invalid PCM worker state")]
     InvalidPCMWorkerState,
+    // Failed to generate StreamSource
+    #[error("Failed to generate stream source: {0}")]
+    GenerateStreamSource(BoxError),
 }
 
 /// Holds the parameters for a cras sound device
@@ -141,6 +144,20 @@ impl Default for Parameters {
             num_output_streams: 1,
             num_input_streams: 1,
         }
+    }
+}
+
+impl Parameters {
+    fn get_total_output_streams(&self) -> u32 {
+        self.num_output_devices * self.num_output_streams
+    }
+
+    fn get_total_input_streams(&self) -> u32 {
+        self.num_input_devices * self.num_input_streams
+    }
+
+    fn get_total_streams(&self) -> u32 {
+        self.get_total_output_streams() + self.get_total_input_streams()
     }
 }
 
@@ -202,8 +219,9 @@ pub enum WorkerStatus {
     Quit = 2,
 }
 
-pub struct StreamInfo<'a> {
-    client: Option<CrasClient<'a>>,
+pub struct StreamInfo {
+    stream_source: Option<Box<dyn StreamSource>>,
+    stream_source_generator: Box<dyn StreamSourceGenerator>,
     channels: u8,
     format: SampleFormat,
     frame_rate: u32,
@@ -218,7 +236,7 @@ pub struct StreamInfo<'a> {
     worker_future: Option<Box<dyn Future<Output = Result<(), Error>> + Unpin>>,
 }
 
-impl fmt::Debug for StreamInfo<'_> {
+impl fmt::Debug for StreamInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("StreamInfo")
             .field("channels", &self.channels)
@@ -229,24 +247,6 @@ impl fmt::Debug for StreamInfo<'_> {
             .field("direction", &get_virtio_direction_name(self.direction))
             .field("state", &get_virtio_snd_r_pcm_cmd_name(self.state))
             .finish()
-    }
-}
-
-impl Default for StreamInfo<'_> {
-    fn default() -> Self {
-        StreamInfo {
-            client: None,
-            channels: 0,
-            format: SampleFormat::U8,
-            frame_rate: 0,
-            buffer_bytes: 0,
-            period_bytes: 0,
-            direction: 0,
-            state: 0,
-            status_mutex: Rc::new(AsyncMutex::new(WorkerStatus::Pause)),
-            sender: None,
-            worker_future: None,
-        }
     }
 }
 
@@ -283,14 +283,30 @@ pub struct PcmResponse {
     done: Option<oneshot::Sender<()>>, // when pcm response is written to the queue
 }
 
-impl<'a> StreamInfo<'a> {
+impl StreamInfo {
+    pub fn new(stream_source_generator: Box<dyn StreamSourceGenerator>) -> Self {
+        StreamInfo {
+            stream_source: None,
+            stream_source_generator,
+            channels: 0,
+            format: SampleFormat::U8,
+            frame_rate: 0,
+            buffer_bytes: 0,
+            period_bytes: 0,
+            direction: 0,
+            state: 0,
+            status_mutex: Rc::new(AsyncMutex::new(WorkerStatus::Pause)),
+            sender: None,
+            worker_future: None,
+        }
+    }
+
     async fn prepare(
         &mut self,
         ex: &Executor,
         mem: GuestMemory,
         tx_send: &mpsc::UnboundedSender<PcmResponse>,
         rx_send: &mpsc::UnboundedSender<PcmResponse>,
-        params: &Parameters,
     ) -> Result<(), Error> {
         if self.state != VIRTIO_SND_R_PCM_SET_PARAMS
             && self.state != VIRTIO_SND_R_PCM_PREPARE
@@ -311,13 +327,12 @@ impl<'a> StreamInfo<'a> {
             error!("period_bytes must be divisible by frame size");
             return Err(Error::OperationNotSupported);
         }
-        if self.client.is_none() {
-            let mut client = CrasClient::with_type(params.socket_type).map_err(Error::Libcras)?;
-            if params.capture {
-                client.enable_cras_capture();
-            }
-            client.set_client_type(params.client_type);
-            self.client = Some(client);
+        if self.stream_source.is_none() {
+            self.stream_source = Some(
+                self.stream_source_generator
+                    .generate()
+                    .map_err(Error::GenerateStreamSource)?,
+            );
         }
         // (*)
         // `buffer_size` in `audio_streams` API indicates the buffer size in bytes that the stream
@@ -328,7 +343,7 @@ impl<'a> StreamInfo<'a> {
         let (stream, pcm_sender) = match self.direction {
             VIRTIO_SND_D_OUTPUT => (
                 DirectionalStream::Output(
-                    self.client
+                    self.stream_source
                         .as_mut()
                         .unwrap()
                         .new_async_playback_stream(
@@ -347,7 +362,7 @@ impl<'a> StreamInfo<'a> {
             VIRTIO_SND_D_INPUT => {
                 (
                     DirectionalStream::Input(
-                        self.client
+                        self.stream_source
                             .as_mut()
                             .unwrap()
                             .new_async_capture_stream(
@@ -425,7 +440,7 @@ impl<'a> StreamInfo<'a> {
         }
         self.state = VIRTIO_SND_R_PCM_RELEASE;
         self.release_worker().await?;
-        self.client = None;
+        self.stream_source = None;
         Ok(())
     }
 
@@ -445,39 +460,55 @@ impl<'a> StreamInfo<'a> {
 
 pub struct VirtioSndCras {
     cfg: virtio_snd_config,
+    snd_data: Option<SndData>,
     avail_features: u64,
     acked_features: u64,
     queue_sizes: Box<[u16]>,
     worker_threads: Vec<thread::JoinHandle<()>>,
     kill_evt: Option<Event>,
-    params: Parameters,
+    stream_source_generators: Option<Vec<Box<dyn StreamSourceGenerator>>>,
 }
 
 impl VirtioSndCras {
     pub fn new(base_features: u64, params: Parameters) -> Result<VirtioSndCras, Error> {
         let cfg = hardcoded_virtio_snd_config(&params);
-
+        let snd_data = hardcoded_snd_data(&params);
         let avail_features = base_features;
+        let stream_source_generators = create_cras_stream_source_generators(&params, &snd_data);
 
         Ok(VirtioSndCras {
             cfg,
+            snd_data: Some(snd_data),
             avail_features,
             acked_features: 0,
             queue_sizes: vec![MAX_VRING_LEN; MAX_QUEUE_NUM].into_boxed_slice(),
             worker_threads: Vec::new(),
             kill_evt: None,
-            params,
+            stream_source_generators: Some(stream_source_generators),
         })
     }
+}
+
+pub(crate) fn create_cras_stream_source_generators(
+    params: &Parameters,
+    snd_data: &SndData,
+) -> Vec<Box<dyn StreamSourceGenerator>> {
+    let mut generators: Vec<Box<dyn StreamSourceGenerator>> = Vec::new();
+    generators.resize_with(snd_data.pcm_info_len(), || {
+        Box::new(CrasStreamSourceGenerator::new(
+            params.capture,
+            params.client_type,
+            params.socket_type,
+        ))
+    });
+    generators
 }
 
 // To be used with hardcoded_snd_data
 pub fn hardcoded_virtio_snd_config(params: &Parameters) -> virtio_snd_config {
     virtio_snd_config {
         jacks: 0.into(),
-        streams: (params.num_output_devices * params.num_output_streams
-            + params.num_input_devices * params.num_input_streams)
-            .into(),
+        streams: params.get_total_streams().into(),
         chmaps: (params.num_output_devices * 3 + params.num_input_devices).into(),
     }
 }
@@ -636,7 +667,11 @@ impl VirtioDevice for VirtioSndCras {
             };
         self.kill_evt = Some(self_kill_evt);
 
-        let params = self.params.clone();
+        let snd_data = self.snd_data.take().expect("snd_data is none");
+        let stream_source_generators = self
+            .stream_source_generators
+            .take()
+            .expect("stream_source_generators is none");
 
         let worker_result = thread::Builder::new()
             .name("virtio_snd w".to_string())
@@ -651,10 +686,10 @@ impl VirtioDevice for VirtioSndCras {
                     interrupt,
                     queues,
                     guest_mem,
-                    hardcoded_snd_data(&params),
+                    snd_data,
                     queue_evts,
                     kill_evt,
-                    params,
+                    stream_source_generators,
                 ) {
                     error!("{}", err_string);
                 }
@@ -692,12 +727,22 @@ fn run_worker(
     snd_data: SndData,
     queue_evts: Vec<Event>,
     kill_evt: Event,
-    params: Parameters,
+    stream_source_generators: Vec<Box<dyn StreamSourceGenerator>>,
 ) -> Result<(), String> {
     let ex = Executor::new().expect("Failed to create an executor");
 
-    let mut streams: Vec<AsyncMutex<StreamInfo>> = Vec::new();
-    streams.resize_with(snd_data.pcm_info.len(), Default::default);
+    let streams: Vec<AsyncMutex<StreamInfo>>;
+    if snd_data.pcm_info_len() != stream_source_generators.len() {
+        error!(
+            "snd: expected {} streams, got {}",
+            snd_data.pcm_info_len(),
+            stream_source_generators.len(),
+        );
+    }
+    streams = stream_source_generators
+        .into_iter()
+        .map(|generator| AsyncMutex::new(StreamInfo::new(generator)))
+        .collect();
     let streams = Rc::new(AsyncMutex::new(streams));
 
     let interrupt = Rc::new(RefCell::new(interrupt));
@@ -733,7 +778,6 @@ fn run_worker(
         interrupt_ref,
         tx_send,
         rx_send,
-        &params,
     );
 
     // TODO(woodychow): Enable this when libcras sends jack connect/disconnect evts

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context};
 use argh::FromArgs;
-use base::{warn, Event};
+use base::{error, warn, Event};
 use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor};
 use data_model::DataInit;
 use futures::channel::mpsc;
@@ -20,8 +20,8 @@ use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::snd::cras_backend::{
     async_funcs::{handle_ctrl_queue, handle_pcm_queue, send_pcm_response_worker},
-    hardcoded_snd_data, hardcoded_virtio_snd_config, Parameters, PcmResponse, SndData, StreamInfo,
-    MAX_QUEUE_NUM, MAX_VRING_LEN,
+    create_cras_stream_source_generators, hardcoded_snd_data, hardcoded_virtio_snd_config,
+    Parameters, PcmResponse, SndData, StreamInfo, MAX_QUEUE_NUM, MAX_VRING_LEN,
 };
 use crate::virtio::snd::layout::virtio_snd_config;
 use crate::virtio::vhost::user::device::{
@@ -46,8 +46,7 @@ struct CrasSndBackend {
     workers: [Option<AbortHandle>; MAX_QUEUE_NUM],
     response_workers: [Option<AbortHandle>; 2], // tx and rx
     snd_data: Rc<SndData>,
-    streams: Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo<'static>>>>>,
-    params: Parameters,
+    streams: Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
     tx_send: mpsc::UnboundedSender<PcmResponse>,
     rx_send: mpsc::UnboundedSender<PcmResponse>,
     tx_recv: Option<mpsc::UnboundedReceiver<PcmResponse>>,
@@ -62,8 +61,19 @@ impl CrasSndBackend {
 
         let snd_data = hardcoded_snd_data(&params);
 
-        let mut streams: Vec<AsyncMutex<StreamInfo>> = Vec::new();
-        streams.resize_with(snd_data.pcm_info_len(), Default::default);
+        let generators = create_cras_stream_source_generators(&params, &snd_data);
+        if snd_data.pcm_info_len() != generators.len() {
+            error!(
+                "snd: expected {} stream source generators, got {}",
+                snd_data.pcm_info_len(),
+                generators.len(),
+            )
+        }
+
+        let streams = generators
+            .into_iter()
+            .map(|generator| AsyncMutex::new(StreamInfo::new(generator)))
+            .collect();
         let streams = Rc::new(AsyncMutex::new(streams));
 
         let (tx_send, tx_recv) = mpsc::unbounded();
@@ -78,7 +88,6 @@ impl CrasSndBackend {
             response_workers: Default::default(),
             snd_data: Rc::new(snd_data),
             streams,
-            params,
             tx_send,
             rx_send,
             tx_recv: Some(tx_recv),
@@ -170,12 +179,11 @@ impl VhostUserBackend for CrasSndBackend {
                 let snd_data = self.snd_data.clone();
                 let tx_send = self.tx_send.clone();
                 let rx_send = self.rx_send.clone();
-                let params = self.params.clone();
                 ex.spawn_local(Abortable::new(
                     async move {
                         handle_ctrl_queue(
                             &ex, &mem, &streams, &*snd_data, queue, kick_evt, &doorbell, tx_send,
-                            rx_send, &params,
+                            rx_send,
                         )
                         .await
                     },
