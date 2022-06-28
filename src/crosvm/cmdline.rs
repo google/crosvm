@@ -651,6 +651,9 @@ pub struct RunCommand {
     #[argh(option, long = "kvm-device", arg_name = "PATH")]
     /// path to the KVM device. (default /dev/kvm)
     pub kvm_device_path: Option<PathBuf>,
+    #[argh(switch)]
+    /// disable host swap on guest VM pages.
+    pub lock_guest_memory: bool,
     #[cfg(unix)]
     #[argh(option, arg_name = "MAC", long = "mac")]
     /// MAC address for VM
@@ -1196,6 +1199,8 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         cfg.hugepages = cmd.hugepages;
+
+        cfg.lock_guest_memory = cmd.lock_guest_memory;
 
         #[cfg(feature = "audio")]
         {

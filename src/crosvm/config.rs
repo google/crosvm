@@ -1720,6 +1720,7 @@ pub struct Config {
     pub itmt: bool,
     pub jail_config: Option<JailConfig>,
     pub kvm_device_path: PathBuf,
+    pub lock_guest_memory: bool,
     pub mac_address: Option<net_util::MacAddress>,
     pub memory: Option<u64>,
     pub memory_file: Option<PathBuf>,
@@ -1856,6 +1857,7 @@ impl Default for Config {
                 None
             },
             kvm_device_path: PathBuf::from(KVM_PATH),
+            lock_guest_memory: false,
             mac_address: None,
             memory: None,
             memory_file: None,
@@ -2135,6 +2137,10 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
 
     if !cfg.balloon && cfg.balloon_control.is_some() {
         return Err("'balloon-control' requires enabled balloon".to_string());
+    }
+
+    if cfg.lock_guest_memory && cfg.jail_config.is_none() {
+        return Err("'lock-guest-memory' and 'disable-sandbox' are mutually exclusive".to_string());
     }
 
     set_default_serial_parameters(

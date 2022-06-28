@@ -1201,6 +1201,10 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
     if components.hugepages {
         mem_policy |= MemoryPolicy::USE_HUGEPAGES;
     }
+
+    if cfg.lock_guest_memory {
+        mem_policy |= MemoryPolicy::LOCK_GUEST_MEMORY;
+    }
     guest_mem.set_memory_policy(mem_policy);
 
     if cfg.kvm_device_path.exists() {
