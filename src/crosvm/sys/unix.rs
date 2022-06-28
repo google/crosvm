@@ -458,11 +458,11 @@ fn create_virtio_devices(
 
     #[cfg(feature = "audio_cras")]
     {
-        for cras_snd in &cfg.cras_snds {
-            devs.push(create_cras_snd_device(
+        for virtio_snd in &cfg.virtio_snds {
+            devs.push(create_virtio_snd_device(
                 cfg.protected_vm,
                 &cfg.jail_config,
-                cras_snd.clone(),
+                virtio_snd.clone(),
             )?);
         }
     }

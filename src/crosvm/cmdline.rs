@@ -38,7 +38,7 @@ use argh::FromArgs;
 use base::getpid;
 use devices::virtio::block::block::DiskOption;
 #[cfg(feature = "audio_cras")]
-use devices::virtio::cras_backend::Parameters as CrasSndParameters;
+use devices::virtio::common_backend::Parameters as SndParameters;
 use devices::virtio::vhost::user::device;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
@@ -497,18 +497,23 @@ pub struct RunCommand {
         num_output_devices=1,num_input_devices=1,num_output_streams=1,num_input_streams=1]",
         long = "cras-snd"
     )]
-    /// comma separated key=value pairs for setting up cras snd
+    /// comma separated key=value pairs for setting up virtio snd
     /// devices.
     /// Possible key values:
-    ///     capture - Enable audio capture. Default to false.
-    ///     client_type - Set specific client type for cras backend.
-    ///     num_output_devices - Set number of output PCM devices.
-    ///     num_input_devices - Set number of input PCM devices.
-    ///     num_output_streams - Set number of output PCM streams
+    ///     capture=(false,true) - Disable/enable audio capture.
+    ///         Default is false.
+    ///     client_type=(crosvm,arcvm,borealis) - Set specific
+    ///         client type for cras backend. Default is crosvm.
+    ///     socket_type=(legacy,unified) Set specific socket type
+    ///         for cras backend. Default is unified.
+    ///     num_output_devices=INT - Set number of output PCM
+    ///         devices.
+    ///     num_input_devices=INT - Set number of input PCM devices.
+    ///     num_output_streams=INT - Set number of output PCM
+    ///         streams per device.
+    ///     num_input_streams=INT - Set number of input PCM streams
     ///         per device.
-    ///     num_input_streams - Set number of input PCM streams
-    ///         per device.
-    pub cras_snds: Vec<CrasSndParameters>,
+    pub cras_snds: Vec<SndParameters>,
     #[argh(switch)]
     /// don't set VCPUs real-time until make-rt command is run
     pub delay_rt: bool,
@@ -1142,6 +1147,32 @@ pub struct RunCommand {
     #[argh(option, long = "single-touch", arg_name = "PATH:WIDTH:HEIGHT")]
     /// path to a socket from where to read single touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280)
     pub virtio_single_touch: Vec<TouchDeviceOption>,
+    #[cfg(feature = "audio_cras")]
+    #[argh(
+        option,
+        arg_name = "[capture=true,backend=BACKEND,num_output_devices=1,
+        num_input_devices=1,num_output_streams=1,num_input_streams=1]",
+        long = "virtio-snd"
+    )]
+    /// comma separated key=value pairs for setting up virtio snd
+    /// devices.
+    /// Possible key values:
+    ///     capture=(false,true) - Disable/enable audio capture.
+    ///         Default is false.
+    ///     backend=(null,[cras]) - Which backend to use for
+    ///         virtio-snd.
+    ///     client_type=(crosvm,arcvm,borealis) - Set specific
+    ///         client type for cras backend. Default is crosvm.
+    ///     socket_type=(legacy,unified) Set specific socket type
+    ///         for cras backend. Default is unified.
+    ///     num_output_devices=INT - Set number of output PCM
+    ///         devices.
+    ///     num_input_devices=INT - Set number of input PCM devices.
+    ///     num_output_streams=INT - Set number of output PCM
+    ///         streams per device.
+    ///     num_input_streams=INT - Set number of input PCM streams
+    ///         per device.
+    pub virtio_snds: Vec<SndParameters>,
     #[argh(option, long = "switches", arg_name = "PATH")]
     /// path to a socket from where to read switch input events and write status updates to
     pub virtio_switches: Vec<PathBuf>,
@@ -1493,7 +1524,10 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(feature = "audio_cras")]
         {
-            cfg.cras_snds = cmd.cras_snds;
+            cfg.virtio_snds = cmd.virtio_snds;
+            // cmd.cras_snds is the old parameter for virtio snd with cras backend.
+            // backend is assigned by Parameters Default implementation
+            cfg.virtio_snds.extend_from_slice(&cmd.cras_snds);
         }
 
         #[cfg(feature = "gpu")]

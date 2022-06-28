@@ -15,7 +15,7 @@ use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor};
 use data_model::{DataInit, Le32};
 use vm_memory::GuestMemory;
 
-use crate::virtio::cras_backend::PcmResponse;
+use crate::virtio::common_backend::PcmResponse;
 use crate::virtio::snd::common::*;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;

@@ -16,7 +16,7 @@ use base::{debug, pagesize};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::virtio::block::block::DiskOption;
 #[cfg(feature = "audio_cras")]
-use devices::virtio::cras_backend::Parameters as CrasSndParameters;
+use devices::virtio::common_backend::Parameters as SndParameters;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
@@ -1292,9 +1292,6 @@ pub struct Config {
     pub coiommu_param: Option<devices::CoIommuParameters>,
     pub cpu_capacity: BTreeMap<usize, u32>, // CPU index -> capacity
     pub cpu_clusters: Vec<Vec<usize>>,
-    #[cfg(feature = "audio_cras")]
-    #[serde(skip)]
-    pub cras_snds: Vec<CrasSndParameters>,
     pub delay_rt: bool,
     #[cfg(feature = "direct")]
     pub direct_edge_irq: Vec<u32>,
@@ -1412,6 +1409,9 @@ pub struct Config {
     pub virtio_mice: Vec<PathBuf>,
     pub virtio_multi_touch: Vec<TouchDeviceOption>,
     pub virtio_single_touch: Vec<TouchDeviceOption>,
+    #[cfg(feature = "audio_cras")]
+    #[serde(skip)]
+    pub virtio_snds: Vec<SndParameters>,
     pub virtio_switches: Vec<PathBuf>,
     pub virtio_trackpad: Vec<TouchDeviceOption>,
     #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
@@ -1435,8 +1435,6 @@ impl Default for Config {
             cid: None,
             #[cfg(unix)]
             coiommu_param: None,
-            #[cfg(feature = "audio_cras")]
-            cras_snds: Vec::new(),
             cpu_capacity: BTreeMap::new(),
             cpu_clusters: Vec::new(),
             delay_rt: false,
@@ -1557,6 +1555,8 @@ impl Default for Config {
             virtio_mice: Vec::new(),
             virtio_multi_touch: Vec::new(),
             virtio_single_touch: Vec::new(),
+            #[cfg(feature = "audio_cras")]
+            virtio_snds: Vec::new(),
             virtio_switches: Vec::new(),
             virtio_trackpad: Vec::new(),
             #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]

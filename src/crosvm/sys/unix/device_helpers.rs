@@ -26,7 +26,7 @@ use devices::virtio::console::asynchronous::AsyncConsole;
 use devices::virtio::ipc_memory_mapper::{create_ipc_mapper, CreateIpcMapperRet};
 use devices::virtio::memory_mapper::{BasicMemoryMapper, MemoryMapperTrait};
 #[cfg(feature = "audio_cras")]
-use devices::virtio::snd::cras_backend::Parameters as CrasSndParameters;
+use devices::virtio::snd::common_backend::Parameters as SndParameters;
 use devices::virtio::vfio_wrapper::VfioWrapper;
 use devices::virtio::vhost::user::proxy::VirtioVhostUser;
 #[cfg(feature = "audio")]
@@ -341,31 +341,39 @@ pub fn create_rng_device(
 }
 
 #[cfg(feature = "audio_cras")]
-pub fn create_cras_snd_device(
+pub fn create_virtio_snd_device(
     protected_vm: ProtectionType,
     jail_config: &Option<JailConfig>,
-    cras_snd: CrasSndParameters,
+    snd_params: SndParameters,
 ) -> DeviceResult {
-    let dev = virtio::snd::cras_backend::VirtioSndCras::new(
+    let backend = snd_params.backend;
+    let dev = virtio::snd::common_backend::VirtioSnd::new(
         virtio::base_features(protected_vm),
-        cras_snd,
+        snd_params,
     )
     .context("failed to create cras sound device")?;
 
-    let jail = match simple_jail(jail_config, "cras_snd_device")? {
+    let policy = match backend {
+        virtio::common_backend::StreamSourceBackend::CRAS => "snd_cras_device",
+        virtio::common_backend::StreamSourceBackend::NULL => "snd_null_device",
+    };
+
+    let jail = match simple_jail(jail_config, policy)? {
         Some(mut jail) => {
             // Create a tmpfs in the device's root directory for cras_snd_device.
             // The size is 20*1024, or 20 KB.
-            jail.mount_with_data(
-                Path::new("none"),
-                Path::new("/"),
-                "tmpfs",
-                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
-                "size=20480",
-            )?;
+            if let virtio::common_backend::StreamSourceBackend::CRAS = backend {
+                jail.mount_with_data(
+                    Path::new("none"),
+                    Path::new("/"),
+                    "tmpfs",
+                    (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+                    "size=20480",
+                )?;
 
-            let run_cras_path = Path::new("/run/cras");
-            jail.mount_bind(run_cras_path, run_cras_path, true)?;
+                let run_cras_path = Path::new("/run/cras");
+                jail.mount_bind(run_cras_path, run_cras_path, true)?;
+            }
 
             add_current_user_to_jail(&mut jail)?;
 

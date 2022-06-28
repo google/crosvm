@@ -25,20 +25,22 @@ use futures::channel::{
     oneshot::{self, Canceled},
 };
 use futures::{pin_mut, select, Future, FutureExt, TryFutureExt};
-use libcras::{BoxError, CrasClientType, CrasSocketType, CrasStreamSourceGenerator};
+use libcras::{BoxError, CrasClientType, CrasSocketType};
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
 use crate::virtio::snd::common::*;
+use crate::virtio::snd::common_backend::async_funcs::*;
 use crate::virtio::snd::constants::*;
+use crate::virtio::snd::cras_backend::create_cras_stream_source_generators;
 use crate::virtio::snd::layout::*;
+use crate::virtio::snd::null_backend::create_null_stream_source_generators;
 use crate::virtio::{
     async_utils, copy_config, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue,
     VirtioDevice, Writer,
 };
 
 pub mod async_funcs;
-use crate::virtio::snd::cras_backend::async_funcs::*;
 
 // control + event + tx + rx queue
 pub const MAX_QUEUE_NUM: usize = 4;
@@ -102,10 +104,10 @@ pub enum Error {
     #[error("failed to write to buffer: {0}")]
     WriteBuffer(io::Error),
     /// Failed to parse parameters.
-    #[error("Invalid cras snd parameter: {0}")]
+    #[error("Invalid snd parameter: {0}")]
     UnknownParameter(String),
-    /// Unknown cras snd parameter value.
-    #[error("Invalid cras snd parameter value ({0}): {1}")]
+    /// Unknown snd parameter value.
+    #[error("Invalid snd parameter value ({0}): {1}")]
     InvalidParameterValue(String, String),
     /// Failed to parse bool value.
     #[error("Invalid bool value: {0}")]
@@ -116,33 +118,57 @@ pub enum Error {
     // Invalid PCM worker state.
     #[error("Invalid PCM worker state")]
     InvalidPCMWorkerState,
+    // Invalid backend.
+    #[error("Backend is not implemented")]
+    InvalidBackend,
     // Failed to generate StreamSource
     #[error("Failed to generate stream source: {0}")]
     GenerateStreamSource(BoxError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StreamSourceBackend {
+    #[cfg(feature = "audio_cras")]
+    CRAS,
+    NULL,
+}
+
+impl FromStr for StreamSourceBackend {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            #[cfg(feature = "audio_cras")]
+            "cras" => Ok(StreamSourceBackend::CRAS),
+            "null" => Ok(StreamSourceBackend::NULL),
+            _ => Err(Error::InvalidBackend),
+        }
+    }
 }
 
 /// Holds the parameters for a cras sound device
 #[derive(Debug, Clone)]
 pub struct Parameters {
     pub capture: bool,
-    pub client_type: CrasClientType,
-    pub socket_type: CrasSocketType,
     pub num_output_devices: u32,
     pub num_input_devices: u32,
+    pub backend: StreamSourceBackend,
     pub num_output_streams: u32,
     pub num_input_streams: u32,
+    pub client_type: CrasClientType,
+    pub socket_type: CrasSocketType,
 }
 
 impl Default for Parameters {
     fn default() -> Self {
         Parameters {
             capture: false,
-            client_type: CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
-            socket_type: CrasSocketType::Unified,
             num_output_devices: 1,
             num_input_devices: 1,
+            backend: StreamSourceBackend::CRAS,
             num_output_streams: 1,
             num_input_streams: 1,
+            client_type: CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
+            socket_type: CrasSocketType::Unified,
         }
     }
 }
@@ -174,6 +200,11 @@ impl FromStr for Parameters {
             match k {
                 "capture" => {
                     params.capture = v.parse::<bool>().map_err(Error::InvalidBoolValue)?;
+                }
+                "backend" => {
+                    params.backend = v.parse().map_err(|e: Error| {
+                        Error::InvalidParameterValue(v.to_string(), e.to_string())
+                    })?;
                 }
                 "client_type" => {
                     params.client_type = v.parse().map_err(|e: libcras::CrasSysError| {
@@ -458,7 +489,7 @@ impl StreamInfo {
     }
 }
 
-pub struct VirtioSndCras {
+pub struct VirtioSnd {
     cfg: virtio_snd_config,
     snd_data: Option<SndData>,
     avail_features: u64,
@@ -469,14 +500,23 @@ pub struct VirtioSndCras {
     stream_source_generators: Option<Vec<Box<dyn StreamSourceGenerator>>>,
 }
 
-impl VirtioSndCras {
-    pub fn new(base_features: u64, params: Parameters) -> Result<VirtioSndCras, Error> {
+impl VirtioSnd {
+    pub fn new(base_features: u64, params: Parameters) -> Result<VirtioSnd, Error> {
         let cfg = hardcoded_virtio_snd_config(&params);
         let snd_data = hardcoded_snd_data(&params);
         let avail_features = base_features;
-        let stream_source_generators = create_cras_stream_source_generators(&params, &snd_data);
+        let stream_source_generators: Vec<Box<dyn StreamSourceGenerator>>;
 
-        Ok(VirtioSndCras {
+        match params.backend {
+            StreamSourceBackend::NULL => {
+                stream_source_generators = create_null_stream_source_generators(&snd_data);
+            }
+            StreamSourceBackend::CRAS => {
+                stream_source_generators = create_cras_stream_source_generators(&params, &snd_data);
+            }
+        }
+
+        Ok(VirtioSnd {
             cfg,
             snd_data: Some(snd_data),
             avail_features,
@@ -487,21 +527,6 @@ impl VirtioSndCras {
             stream_source_generators: Some(stream_source_generators),
         })
     }
-}
-
-pub(crate) fn create_cras_stream_source_generators(
-    params: &Parameters,
-    snd_data: &SndData,
-) -> Vec<Box<dyn StreamSourceGenerator>> {
-    let mut generators: Vec<Box<dyn StreamSourceGenerator>> = Vec::new();
-    generators.resize_with(snd_data.pcm_info_len(), || {
-        Box::new(CrasStreamSourceGenerator::new(
-            params.capture,
-            params.client_type,
-            params.socket_type,
-        ))
-    });
-    generators
 }
 
 // To be used with hardcoded_snd_data
@@ -609,7 +634,7 @@ pub fn hardcoded_snd_data(params: &Parameters) -> SndData {
     }
 }
 
-impl VirtioDevice for VirtioSndCras {
+impl VirtioDevice for VirtioSnd {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         Vec::new()
     }
@@ -714,7 +739,7 @@ impl VirtioDevice for VirtioSndCras {
     }
 }
 
-impl Drop for VirtioSndCras {
+impl Drop for VirtioSnd {
     fn drop(&mut self) {
         self.reset();
     }
@@ -839,6 +864,7 @@ mod tests {
         fn check_success(
             s: &str,
             capture: bool,
+            backend: StreamSourceBackend,
             client_type: CrasClientType,
             socket_type: CrasSocketType,
             num_output_devices: u32,
@@ -848,6 +874,7 @@ mod tests {
         ) {
             let params = s.parse::<Parameters>().expect("parse should have succeded");
             assert_eq!(params.capture, capture);
+            assert_eq!(params.backend, backend);
             assert_eq!(params.client_type, client_type);
             assert_eq!(params.socket_type, socket_type);
             assert_eq!(params.num_output_devices, num_output_devices);
@@ -863,6 +890,7 @@ mod tests {
         check_success(
             "capture=false",
             false,
+            StreamSourceBackend::CRAS,
             CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             CrasSocketType::Unified,
             1,
@@ -873,6 +901,7 @@ mod tests {
         check_success(
             "capture=true,client_type=crosvm",
             true,
+            StreamSourceBackend::CRAS,
             CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             CrasSocketType::Unified,
             1,
@@ -883,6 +912,7 @@ mod tests {
         check_success(
             "capture=true,client_type=arcvm",
             true,
+            StreamSourceBackend::CRAS,
             CrasClientType::CRAS_CLIENT_TYPE_ARCVM,
             CrasSocketType::Unified,
             1,
@@ -894,6 +924,7 @@ mod tests {
         check_success(
             "socket_type=legacy",
             false,
+            StreamSourceBackend::CRAS,
             CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             CrasSocketType::Legacy,
             1,
@@ -904,6 +935,7 @@ mod tests {
         check_success(
             "socket_type=unified",
             false,
+            StreamSourceBackend::CRAS,
             CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             CrasSocketType::Unified,
             1,
@@ -914,6 +946,7 @@ mod tests {
         check_success(
             "capture=true,client_type=arcvm,num_output_streams=2,num_input_streams=3",
             true,
+            StreamSourceBackend::CRAS,
             CrasClientType::CRAS_CLIENT_TYPE_ARCVM,
             CrasSocketType::Unified,
             1,
@@ -924,6 +957,7 @@ mod tests {
         check_success(
             "capture=true,client_type=arcvm,num_output_devices=3,num_input_devices=2",
             true,
+            StreamSourceBackend::CRAS,
             CrasClientType::CRAS_CLIENT_TYPE_ARCVM,
             CrasSocketType::Unified,
             3,
@@ -935,6 +969,19 @@ mod tests {
             "capture=true,client_type=arcvm,num_output_devices=2,num_input_devices=3,\
             num_output_streams=3,num_input_streams=2",
             true,
+            StreamSourceBackend::CRAS,
+            CrasClientType::CRAS_CLIENT_TYPE_ARCVM,
+            CrasSocketType::Unified,
+            2,
+            3,
+            3,
+            2,
+        );
+        check_success(
+            "capture=true,backend=null,client_type=arcvm,num_output_devices=2,num_input_devices=3,\
+            num_output_streams=3,num_input_streams=2",
+            true,
+            StreamSourceBackend::NULL,
             CrasClientType::CRAS_CLIENT_TYPE_ARCVM,
             CrasSocketType::Unified,
             2,
