@@ -1045,7 +1045,7 @@ impl PassthroughFs {
                 let fd = unsafe { dbus::arg::OwnedFd::new(base::clone_descriptor(&*data)?) };
                 match proxy.set_media_rwdata_file_project_id(fd, proto.write_to_bytes().unwrap()) {
                     Ok(r) => {
-                        let r = protobuf::parse_from_bytes::<SetMediaRWDataFileProjectIdReply>(&r)
+                        let r = SetMediaRWDataFileProjectIdReply::parse_from_bytes(&r)
                             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                         if !r.success {
                             return Ok(IoctlReply::Done(Err(io::Error::from_raw_os_error(
@@ -1140,10 +1140,8 @@ impl PassthroughFs {
                     proto.write_to_bytes().unwrap(),
                 ) {
                     Ok(r) => {
-                        let r = protobuf::parse_from_bytes::<
-                            SetMediaRWDataFileProjectInheritanceFlagReply,
-                        >(&r)
-                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                        let r = SetMediaRWDataFileProjectInheritanceFlagReply::parse_from_bytes(&r)
+                            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                         if !r.success {
                             return Ok(IoctlReply::Done(Err(io::Error::from_raw_os_error(
                                 r.error,
