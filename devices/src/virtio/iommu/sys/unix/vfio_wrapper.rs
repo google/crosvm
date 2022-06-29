@@ -7,13 +7,13 @@
 use std::sync::Arc;
 
 use anyhow::{bail, Context};
-use base::{AsRawDescriptor, AsRawDescriptors, RawDescriptor};
+use base::{AsRawDescriptor, AsRawDescriptors, Protection, RawDescriptor};
 use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::vfio::VfioError;
 use crate::virtio::iommu::memory_mapper::{
-    AddMapResult, MappingInfo, MemRegion, MemoryMapper, Permission, Translate,
+    AddMapResult, MappingInfo, MemRegion, MemoryMapper, Translate,
 };
 use crate::VfioContainer;
 
@@ -63,7 +63,7 @@ impl MemoryMapper for VfioWrapper {
                 map.iova,
                 map.size,
                 map.gpa.offset(),
-                (map.perm as u8 & Permission::Write as u8) != 0,
+                map.prot.allows(&Protection::write()),
             )
         };
         if let Err(VfioError::IommuDmaMap(err)) = res {

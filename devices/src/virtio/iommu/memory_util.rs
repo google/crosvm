@@ -9,11 +9,12 @@ use std::sync::Arc;
 use sync::Mutex;
 
 use anyhow::{bail, Context};
+use base::Protection;
 use data_model::DataInit;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::virtio::iommu::IpcMemoryMapper;
-use crate::virtio::memory_mapper::{Permission, Translate};
+use crate::virtio::memory_mapper::Translate;
 
 /// A wrapper that works with gpa, or iova and an iommu.
 pub fn is_valid_wrapper<T: Translate>(
@@ -83,7 +84,7 @@ pub fn read_obj_from_addr<T: DataInit>(
     let mut buf = vec![0u8; std::mem::size_of::<T>()];
     let mut addr: usize = 0;
     for r in regions {
-        if (r.perm as u8 & Permission::Read as u8) == 0 {
+        if !r.prot.allows(&Protection::read()) {
             bail!("gpa is not readable");
         }
         mem.read_at_addr(&mut buf[addr..(addr + r.len as usize)], r.gpa)
@@ -126,7 +127,7 @@ pub fn write_obj_at_addr<T: DataInit>(
     let buf = val.as_slice();
     let mut addr: usize = 0;
     for r in regions {
-        if (r.perm as u8 & Permission::Read as u8) == 0 {
+        if !r.prot.allows(&Protection::write()) {
             bail!("gpa is not writable");
         }
         mem.write_at_addr(&buf[addr..(addr + (r.len as usize))], r.gpa)

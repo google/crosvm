@@ -11,23 +11,15 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use anyhow::{anyhow, bail, Context, Result};
-use base::{AsRawDescriptors, RawDescriptor};
+use base::{AsRawDescriptors, Protection, RawDescriptor};
 use serde::{Deserialize, Serialize};
 use vm_memory::GuestAddress;
-
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Permission {
-    Read = 1,
-    Write = 2,
-    RW = 3,
-}
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemRegion {
     pub gpa: GuestAddress,
     pub len: u64,
-    pub perm: Permission,
+    pub prot: Protection,
 }
 
 /// Manages the mapping from a guest IO virtual address space to the guest physical address space
@@ -36,12 +28,12 @@ pub struct MappingInfo {
     pub iova: u64,
     pub gpa: GuestAddress,
     pub size: u64,
-    pub perm: Permission,
+    pub prot: Protection,
 }
 
 impl MappingInfo {
     #[allow(dead_code)]
-    fn new(iova: u64, gpa: GuestAddress, size: u64, perm: Permission) -> Result<Self> {
+    fn new(iova: u64, gpa: GuestAddress, size: u64, prot: Protection) -> Result<Self> {
         if size == 0 {
             bail!("can't create 0 sized region");
         }
@@ -51,7 +43,7 @@ impl MappingInfo {
             iova,
             gpa,
             size,
-            perm,
+            prot,
         })
     }
 }
@@ -204,7 +196,7 @@ impl Translate for BasicMemoryMapper {
             // This is the last region to be inserted / first to be returned when iova >= map.iova
             let region_len = last_iova - std::cmp::max::<u64>(map.iova, iova);
             if let Some(last) = regions.last_mut() {
-                if map.gpa.unchecked_add(map.size) == last.gpa && map.perm == last.perm {
+                if map.gpa.unchecked_add(map.size) == last.gpa && map.prot == last.prot {
                     last.gpa = map.gpa;
                     last.len += region_len;
                     new_region = false;
@@ -221,7 +213,7 @@ impl Translate for BasicMemoryMapper {
                 regions.push(MemRegion {
                     gpa: map.gpa,
                     len: region_len,
-                    perm: map.perm,
+                    prot: map.prot,
                 });
             }
             if iova >= map.iova {
@@ -254,42 +246,52 @@ mod tests {
     #[test]
     fn test_mapping_info() {
         // Overflow
-        MappingInfo::new(u64::MAX - 1, GuestAddress(1), 2, Permission::Read).unwrap_err();
-        MappingInfo::new(1, GuestAddress(u64::MAX - 1), 2, Permission::Read).unwrap_err();
-        MappingInfo::new(u64::MAX, GuestAddress(1), 2, Permission::Read).unwrap_err();
-        MappingInfo::new(1, GuestAddress(u64::MAX), 2, Permission::Read).unwrap_err();
-        MappingInfo::new(5, GuestAddress(5), u64::MAX, Permission::Read).unwrap_err();
+        MappingInfo::new(u64::MAX - 1, GuestAddress(1), 2, Protection::read()).unwrap_err();
+        MappingInfo::new(1, GuestAddress(u64::MAX - 1), 2, Protection::read()).unwrap_err();
+        MappingInfo::new(u64::MAX, GuestAddress(1), 2, Protection::read()).unwrap_err();
+        MappingInfo::new(1, GuestAddress(u64::MAX), 2, Protection::read()).unwrap_err();
+        MappingInfo::new(5, GuestAddress(5), u64::MAX, Protection::read()).unwrap_err();
         // size = 0
-        MappingInfo::new(1, GuestAddress(5), 0, Permission::Read).unwrap_err();
+        MappingInfo::new(1, GuestAddress(5), 0, Protection::read()).unwrap_err();
     }
 
     #[test]
     fn test_map_overlap() {
         let mut mapper = BasicMemoryMapper::new(u64::MAX);
         mapper
-            .add_map(MappingInfo::new(10, GuestAddress(1000), 10, Permission::RW).unwrap())
+            .add_map(
+                MappingInfo::new(10, GuestAddress(1000), 10, Protection::read_write()).unwrap(),
+            )
             .unwrap();
         assert_eq!(
             mapper
-                .add_map(MappingInfo::new(14, GuestAddress(1000), 1, Permission::RW).unwrap())
+                .add_map(
+                    MappingInfo::new(14, GuestAddress(1000), 1, Protection::read_write()).unwrap()
+                )
                 .unwrap(),
             AddMapResult::OverlapFailure
         );
         assert_eq!(
             mapper
-                .add_map(MappingInfo::new(0, GuestAddress(1000), 12, Permission::RW).unwrap())
+                .add_map(
+                    MappingInfo::new(0, GuestAddress(1000), 12, Protection::read_write()).unwrap()
+                )
                 .unwrap(),
             AddMapResult::OverlapFailure
         );
         assert_eq!(
             mapper
-                .add_map(MappingInfo::new(16, GuestAddress(1000), 6, Permission::RW).unwrap())
+                .add_map(
+                    MappingInfo::new(16, GuestAddress(1000), 6, Protection::read_write()).unwrap()
+                )
                 .unwrap(),
             AddMapResult::OverlapFailure
         );
         assert_eq!(
             mapper
-                .add_map(MappingInfo::new(5, GuestAddress(1000), 20, Permission::RW).unwrap())
+                .add_map(
+                    MappingInfo::new(5, GuestAddress(1000), 20, Protection::read_write()).unwrap()
+                )
                 .unwrap(),
             AddMapResult::OverlapFailure
         );
@@ -307,14 +309,16 @@ mod tests {
         {
             let mut mapper = BasicMemoryMapper::new(u64::MAX);
             mapper
-                .add_map(MappingInfo::new(0, GuestAddress(1000), 9, Permission::RW).unwrap())
+                .add_map(
+                    MappingInfo::new(0, GuestAddress(1000), 9, Protection::read_write()).unwrap(),
+                )
                 .unwrap();
             assert_eq!(
                 mapper.translate(0, 1).unwrap()[0],
                 MemRegion {
                     gpa: GuestAddress(1000),
                     len: 1,
-                    perm: Permission::RW
+                    prot: Protection::read_write()
                 }
             );
             assert_eq!(
@@ -322,7 +326,7 @@ mod tests {
                 MemRegion {
                     gpa: GuestAddress(1008),
                     len: 1,
-                    perm: Permission::RW
+                    prot: Protection::read_write()
                 }
             );
             mapper.translate(9, 1).unwrap_err();
@@ -333,17 +337,21 @@ mod tests {
         {
             let mut mapper = BasicMemoryMapper::new(u64::MAX);
             mapper
-                .add_map(MappingInfo::new(0, GuestAddress(1000), 4, Permission::RW).unwrap())
+                .add_map(
+                    MappingInfo::new(0, GuestAddress(1000), 4, Protection::read_write()).unwrap(),
+                )
                 .unwrap();
             mapper
-                .add_map(MappingInfo::new(5, GuestAddress(50), 4, Permission::RW).unwrap())
+                .add_map(
+                    MappingInfo::new(5, GuestAddress(50), 4, Protection::read_write()).unwrap(),
+                )
                 .unwrap();
             assert_eq!(
                 mapper.translate(0, 1).unwrap()[0],
                 MemRegion {
                     gpa: GuestAddress(1000),
                     len: 1,
-                    perm: Permission::RW
+                    prot: Protection::read_write()
                 }
             );
             assert_eq!(
@@ -351,7 +359,7 @@ mod tests {
                 MemRegion {
                     gpa: GuestAddress(51),
                     len: 1,
-                    perm: Permission::RW
+                    prot: Protection::read_write()
                 }
             );
             mapper.remove_map(0, 9).unwrap();
@@ -362,7 +370,9 @@ mod tests {
         {
             let mut mapper = BasicMemoryMapper::new(u64::MAX);
             mapper
-                .add_map(MappingInfo::new(0, GuestAddress(1000), 9, Permission::RW).unwrap())
+                .add_map(
+                    MappingInfo::new(0, GuestAddress(1000), 9, Protection::read_write()).unwrap(),
+                )
                 .unwrap();
             assert!(!mapper.remove_map(0, 4).unwrap());
             assert_eq!(
@@ -370,7 +380,7 @@ mod tests {
                 MemRegion {
                     gpa: GuestAddress(1005),
                     len: 1,
-                    perm: Permission::RW
+                    prot: Protection::read_write()
                 }
             );
         }
@@ -378,17 +388,21 @@ mod tests {
         {
             let mut mapper = BasicMemoryMapper::new(u64::MAX);
             mapper
-                .add_map(MappingInfo::new(0, GuestAddress(1000), 4, Permission::RW).unwrap())
+                .add_map(
+                    MappingInfo::new(0, GuestAddress(1000), 4, Protection::read_write()).unwrap(),
+                )
                 .unwrap();
             mapper
-                .add_map(MappingInfo::new(5, GuestAddress(50), 4, Permission::RW).unwrap())
+                .add_map(
+                    MappingInfo::new(5, GuestAddress(50), 4, Protection::read_write()).unwrap(),
+                )
                 .unwrap();
             assert_eq!(
                 mapper.translate(0, 1).unwrap()[0],
                 MemRegion {
                     gpa: GuestAddress(1000),
                     len: 1,
-                    perm: Permission::RW
+                    prot: Protection::read_write()
                 }
             );
             assert_eq!(
@@ -396,7 +410,7 @@ mod tests {
                 MemRegion {
                     gpa: GuestAddress(50),
                     len: 1,
-                    perm: Permission::RW
+                    prot: Protection::read_write()
                 }
             );
             mapper.remove_map(0, 4).unwrap();
@@ -407,7 +421,7 @@ mod tests {
                 MemRegion {
                     gpa: GuestAddress(50),
                     len: 1,
-                    perm: Permission::RW
+                    prot: Protection::read_write()
                 }
             );
         }
@@ -415,14 +429,16 @@ mod tests {
         {
             let mut mapper = BasicMemoryMapper::new(u64::MAX);
             mapper
-                .add_map(MappingInfo::new(0, GuestAddress(1000), 4, Permission::RW).unwrap())
+                .add_map(
+                    MappingInfo::new(0, GuestAddress(1000), 4, Protection::read_write()).unwrap(),
+                )
                 .unwrap();
             assert_eq!(
                 mapper.translate(0, 1).unwrap()[0],
                 MemRegion {
                     gpa: GuestAddress(1000),
                     len: 1,
-                    perm: Permission::RW
+                    prot: Protection::read_write()
                 }
             );
             mapper.translate(9, 1).unwrap_err();
@@ -434,17 +450,19 @@ mod tests {
         {
             let mut mapper = BasicMemoryMapper::new(u64::MAX);
             mapper
-                .add_map(MappingInfo::new(0, GuestAddress(1000), 4, Permission::Read).unwrap())
+                .add_map(MappingInfo::new(0, GuestAddress(1000), 4, Protection::read()).unwrap())
                 .unwrap();
             mapper
-                .add_map(MappingInfo::new(10, GuestAddress(50), 4, Permission::RW).unwrap())
+                .add_map(
+                    MappingInfo::new(10, GuestAddress(50), 4, Protection::read_write()).unwrap(),
+                )
                 .unwrap();
             assert_eq!(
                 mapper.translate(0, 1).unwrap()[0],
                 MemRegion {
                     gpa: GuestAddress(1000),
                     len: 1,
-                    perm: Permission::Read
+                    prot: Protection::read()
                 }
             );
             assert_eq!(
@@ -452,7 +470,7 @@ mod tests {
                 MemRegion {
                     gpa: GuestAddress(1003),
                     len: 1,
-                    perm: Permission::Read
+                    prot: Protection::read()
                 }
             );
             mapper.translate(4, 1).unwrap_err();
@@ -461,7 +479,7 @@ mod tests {
                 MemRegion {
                     gpa: GuestAddress(50),
                     len: 1,
-                    perm: Permission::RW
+                    prot: Protection::read_write()
                 }
             );
             assert_eq!(
@@ -469,7 +487,7 @@ mod tests {
                 MemRegion {
                     gpa: GuestAddress(53),
                     len: 1,
-                    perm: Permission::RW
+                    prot: Protection::read_write()
                 }
             );
             mapper.remove_map(0, 14).unwrap();
@@ -484,13 +502,13 @@ mod tests {
     fn test_remove_map() {
         let mut mapper = BasicMemoryMapper::new(u64::MAX);
         mapper
-            .add_map(MappingInfo::new(1, GuestAddress(1000), 4, Permission::Read).unwrap())
+            .add_map(MappingInfo::new(1, GuestAddress(1000), 4, Protection::read()).unwrap())
             .unwrap();
         mapper
-            .add_map(MappingInfo::new(5, GuestAddress(50), 4, Permission::RW).unwrap())
+            .add_map(MappingInfo::new(5, GuestAddress(50), 4, Protection::read_write()).unwrap())
             .unwrap();
         mapper
-            .add_map(MappingInfo::new(9, GuestAddress(50), 4, Permission::RW).unwrap())
+            .add_map(MappingInfo::new(9, GuestAddress(50), 4, Protection::read_write()).unwrap())
             .unwrap();
         assert_eq!(mapper.len(), 3);
         assert!(!mapper.remove_map(0, 6).unwrap());
@@ -523,7 +541,7 @@ mod tests {
         let mut mapper = BasicMemoryMapper::new(u64::MAX);
         // [1, 5) -> [1000, 1004)
         mapper
-            .add_map(MappingInfo::new(1, GuestAddress(1000), 4, Permission::Read).unwrap())
+            .add_map(MappingInfo::new(1, GuestAddress(1000), 4, Protection::read()).unwrap())
             .unwrap();
         mapper.translate(1, 0).unwrap_err();
         assert_eq!(
@@ -531,7 +549,7 @@ mod tests {
             MemRegion {
                 gpa: GuestAddress(1000),
                 len: 1,
-                perm: Permission::Read
+                prot: Protection::read()
             }
         );
         assert_eq!(
@@ -539,7 +557,7 @@ mod tests {
             MemRegion {
                 gpa: GuestAddress(1000),
                 len: 2,
-                perm: Permission::Read
+                prot: Protection::read()
             }
         );
         assert_eq!(
@@ -547,7 +565,7 @@ mod tests {
             MemRegion {
                 gpa: GuestAddress(1000),
                 len: 3,
-                perm: Permission::Read
+                prot: Protection::read()
             }
         );
         assert_eq!(
@@ -555,7 +573,7 @@ mod tests {
             MemRegion {
                 gpa: GuestAddress(1001),
                 len: 1,
-                perm: Permission::Read
+                prot: Protection::read()
             }
         );
         assert_eq!(
@@ -563,13 +581,13 @@ mod tests {
             MemRegion {
                 gpa: GuestAddress(1001),
                 len: 2,
-                perm: Permission::Read
+                prot: Protection::read()
             }
         );
         mapper.translate(1, 5).unwrap_err();
         // [1, 9) -> [1000, 1008)
         mapper
-            .add_map(MappingInfo::new(5, GuestAddress(1004), 4, Permission::Read).unwrap())
+            .add_map(MappingInfo::new(5, GuestAddress(1004), 4, Protection::read()).unwrap())
             .unwrap();
         // Spanned across 2 maps
         assert_eq!(
@@ -577,7 +595,7 @@ mod tests {
             MemRegion {
                 gpa: GuestAddress(1001),
                 len: 5,
-                perm: Permission::Read
+                prot: Protection::read()
             }
         );
         assert_eq!(
@@ -585,7 +603,7 @@ mod tests {
             MemRegion {
                 gpa: GuestAddress(1001),
                 len: 6,
-                perm: Permission::Read
+                prot: Protection::read()
             }
         );
         assert_eq!(
@@ -593,20 +611,20 @@ mod tests {
             MemRegion {
                 gpa: GuestAddress(1001),
                 len: 7,
-                perm: Permission::Read
+                prot: Protection::read()
             }
         );
         mapper.translate(2, 8).unwrap_err();
         mapper.translate(3, 10).unwrap_err();
         // [1, 9) -> [1000, 1008), [11, 17) -> [1010, 1016)
         mapper
-            .add_map(MappingInfo::new(11, GuestAddress(1010), 6, Permission::Read).unwrap())
+            .add_map(MappingInfo::new(11, GuestAddress(1010), 6, Protection::read()).unwrap())
             .unwrap();
         // Discontiguous iova
         mapper.translate(3, 10).unwrap_err();
         // [1, 17) -> [1000, 1016)
         mapper
-            .add_map(MappingInfo::new(9, GuestAddress(1008), 2, Permission::Read).unwrap())
+            .add_map(MappingInfo::new(9, GuestAddress(1008), 2, Protection::read()).unwrap())
             .unwrap();
         // Spanned across 4 maps
         assert_eq!(
@@ -614,7 +632,7 @@ mod tests {
             MemRegion {
                 gpa: GuestAddress(1002),
                 len: 10,
-                perm: Permission::Read
+                prot: Protection::read()
             }
         );
         assert_eq!(
@@ -622,21 +640,21 @@ mod tests {
             MemRegion {
                 gpa: GuestAddress(1000),
                 len: 16,
-                perm: Permission::Read
+                prot: Protection::read()
             }
         );
         mapper.translate(1, 17).unwrap_err();
         mapper.translate(0, 16).unwrap_err();
         // [0, 1) -> [5, 6), [1, 17) -> [1000, 1016)
         mapper
-            .add_map(MappingInfo::new(0, GuestAddress(5), 1, Permission::Read).unwrap())
+            .add_map(MappingInfo::new(0, GuestAddress(5), 1, Protection::read()).unwrap())
             .unwrap();
         assert_eq!(
             mapper.translate(0, 1).unwrap()[0],
             MemRegion {
                 gpa: GuestAddress(5),
                 len: 1,
-                perm: Permission::Read
+                prot: Protection::read()
             }
         );
         // Discontiguous gpa
@@ -646,12 +664,12 @@ mod tests {
                 MemRegion {
                     gpa: GuestAddress(5),
                     len: 1,
-                    perm: Permission::Read,
+                    prot: Protection::read(),
                 },
                 MemRegion {
                     gpa: GuestAddress(1000),
                     len: 1,
-                    perm: Permission::Read,
+                    prot: Protection::read(),
                 },
             ],
         );
@@ -661,18 +679,18 @@ mod tests {
                 MemRegion {
                     gpa: GuestAddress(5),
                     len: 1,
-                    perm: Permission::Read,
+                    prot: Protection::read(),
                 },
                 MemRegion {
                     gpa: GuestAddress(1000),
                     len: 15,
-                    perm: Permission::Read,
+                    prot: Protection::read(),
                 },
             ],
         );
         // [0, 1) -> [5, 6), [1, 17) -> [1000, 1016), [17, 18) -> [1016, 1017) <RW>
         mapper
-            .add_map(MappingInfo::new(17, GuestAddress(1016), 2, Permission::RW).unwrap())
+            .add_map(MappingInfo::new(17, GuestAddress(1016), 2, Protection::read_write()).unwrap())
             .unwrap();
         // Contiguous iova and gpa, but different perm
         assert_vec_eq(
@@ -681,12 +699,12 @@ mod tests {
                 MemRegion {
                     gpa: GuestAddress(1000),
                     len: 16,
-                    perm: Permission::Read,
+                    prot: Protection::read(),
                 },
                 MemRegion {
                     gpa: GuestAddress(1016),
                     len: 1,
-                    perm: Permission::RW,
+                    prot: Protection::read_write(),
                 },
             ],
         );
@@ -697,12 +715,12 @@ mod tests {
                 MemRegion {
                     gpa: GuestAddress(1001),
                     len: 15,
-                    perm: Permission::Read,
+                    prot: Protection::read(),
                 },
                 MemRegion {
                     gpa: GuestAddress(1016),
                     len: 1,
-                    perm: Permission::RW,
+                    prot: Protection::read_write(),
                 },
             ],
         );
@@ -712,12 +730,12 @@ mod tests {
                 MemRegion {
                     gpa: GuestAddress(1001),
                     len: 15,
-                    perm: Permission::Read,
+                    prot: Protection::read(),
                 },
                 MemRegion {
                     gpa: GuestAddress(1016),
                     len: 2,
-                    perm: Permission::RW,
+                    prot: Protection::read_write(),
                 },
             ],
         );

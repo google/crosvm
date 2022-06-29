@@ -10,7 +10,7 @@ use std::sync::Arc;
 use sync::Mutex;
 
 use anyhow::{bail, Context};
-use base::{error, warn};
+use base::{error, warn, Protection};
 use cros_async::{AsyncError, EventAsync};
 use data_model::{DataInit, Le16, Le32, Le64};
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
@@ -18,7 +18,7 @@ use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{SignalableInterrupt, VIRTIO_MSI_NO_VECTOR};
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
-use crate::virtio::memory_mapper::{MemRegion, Permission, Translate};
+use crate::virtio::memory_mapper::{MemRegion, Translate};
 use crate::virtio::memory_util::{
     is_valid_wrapper, read_obj_from_addr_wrapper, write_obj_at_addr_wrapper,
 };
@@ -153,7 +153,7 @@ impl DescriptorChain {
             Ok(vec![MemRegion {
                 gpa: self.addr,
                 len: self.len.try_into().expect("u32 doesn't fit in usize"),
-                perm: Permission::RW,
+                prot: Protection::read_write(),
             }])
         }
     }

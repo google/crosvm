@@ -23,8 +23,8 @@ use anyhow::Context;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use base::warn;
 use base::{
-    error, pagesize, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Result as SysResult,
-    Tube, TubeError,
+    error, pagesize, AsRawDescriptor, Error as SysError, Event, Protection, RawDescriptor,
+    Result as SysResult, Tube, TubeError,
 };
 use cros_async::{AsyncError, AsyncTube, EventAsync, Executor};
 use data_model::{DataInit, Le64};
@@ -353,9 +353,9 @@ impl State {
                 iova: req.virt_start.into(),
                 gpa: GuestAddress(req.phys_start.into()),
                 size,
-                perm: match write_en {
-                    true => Permission::RW,
-                    false => Permission::Read,
+                prot: match write_en {
+                    true => Protection::read_write(),
+                    false => Protection::read(),
                 },
             });
 

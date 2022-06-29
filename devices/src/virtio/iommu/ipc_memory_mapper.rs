@@ -100,7 +100,7 @@ pub fn create_ipc_mapper(endpoint_id: u32, request_tx: Tube) -> CreateIpcMapperR
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::virtio::memory_mapper::Permission;
+    use base::Protection;
     use std::thread;
     use vm_memory::GuestAddress;
 
@@ -119,7 +119,7 @@ mod tests {
                 .zip(&vec![MemRegion {
                     gpa: GuestAddress(0x777),
                     len: 1,
-                    perm: Permission::RW,
+                    prot: Protection::read_write(),
                 },])
                 .all(|(a, b)| a == b));
         });
@@ -136,7 +136,7 @@ mod tests {
                 .send(&Some(vec![MemRegion {
                     gpa: GuestAddress(0x777),
                     len: 1,
-                    perm: Permission::RW,
+                    prot: Protection::read_write(),
                 }]))
                 .unwrap();
             // This join needs to be here because on Windows, if `response_tx`
