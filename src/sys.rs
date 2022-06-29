@@ -12,6 +12,6 @@ cfg_if::cfg_if! {
 }
 
 pub(crate) use platform::{
-    main::{cleanup, start_device},
+    main::{cleanup, run_command, start_device},
     set_panic_hook,
 };

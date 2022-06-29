@@ -13,7 +13,7 @@ use devices::virtio::vhost::user::device::{
     run_console_device, run_fs_device, run_vsock_device, run_wl_device,
 };
 
-use crate::crosvm::sys::cmdline::DevicesSubcommand;
+use crate::crosvm::sys::cmdline::{Commands, DevicesSubcommand};
 
 pub(crate) fn start_device(command: DevicesSubcommand) -> anyhow::Result<()> {
     match command {
@@ -68,4 +68,8 @@ pub(crate) fn cleanup() {
             warn!("unable to kill all child processes: {}", e);
         }
     }
+}
+
+pub(crate) fn run_command(_cmd: Commands) -> anyhow::Result<()> {
+    Err(anyhow::anyhow!("invalid command"))
 }

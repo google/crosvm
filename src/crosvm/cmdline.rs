@@ -14,15 +14,15 @@ cfg_if::cfg_if! {
         #[cfg(feature = "gpu")]
         use super::sys::config::parse_gpu_display_options;
         use super::sys::config::{
-            parse_coiommu_params, VfioCommand, parse_vfio, parse_vfio_platform
+            parse_coiommu_params, VfioCommand, parse_vfio, parse_vfio_platform,
         };
+        use super::config::SharedDir;
     }
 }
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use super::config::*;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use super::sys::config::parse_gpu_render_server_options;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
@@ -53,6 +53,24 @@ use vm_control::BatteryType;
 
 #[cfg(feature = "gpu")]
 use super::sys::config::parse_gpu_options;
+#[cfg(feature = "audio")]
+use crate::crosvm::config::parse_ac97_options;
+use crate::crosvm::config::{
+    numbered_disk_option, parse_battery_options, parse_bus_id_addr, parse_cpu_affinity,
+    parse_cpu_capacity, parse_cpu_set, parse_file_backed_mapping, parse_mmio_address_range,
+    parse_pstore, parse_serial_options, parse_stub_pci_parameters, Executable,
+    FileBackedMappingParameters, JailConfig, TouchDeviceOption, VhostUserFsOption, VhostUserOption,
+    VhostUserWlOption, VvuOption,
+};
+#[cfg(feature = "direct")]
+use crate::crosvm::config::{
+    parse_direct_io_options, parse_pcie_root_port_params, DirectIoOption,
+    HostPcieRootPortParameters,
+};
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use crate::crosvm::config::{parse_memory_region, parse_userspace_msr_options};
+#[cfg(feature = "plugin")]
+use crate::crosvm::config::{parse_plugin_mount_option, BindMount, GidMap};
 
 #[derive(FromArgs)]
 /// crosvm
@@ -73,7 +91,7 @@ pub struct CrosvmCmdlineArgs {
 #[allow(clippy::large_enum_variant)]
 #[derive(FromArgs)]
 #[argh(subcommand)]
-pub enum Command {
+pub enum CrossPlatformCommands {
     Balloon(BalloonCommand),
     BalloonStats(BalloonStatsCommand),
     Battery(BatteryCommand),
@@ -93,6 +111,13 @@ pub enum Command {
     Usb(UsbCommand),
     Version(VersionCommand),
     Vfio(VfioCrosvmCommand),
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(argh_helpers::FlattenSubcommand)]
+pub enum Command {
+    CrossPlatform(CrossPlatformCommands),
+    Sys(super::sys::cmdline::Commands),
 }
 
 #[derive(FromArgs)]

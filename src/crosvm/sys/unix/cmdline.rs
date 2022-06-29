@@ -19,3 +19,8 @@ pub enum DevicesSubcommand {
     Vsock(device::VsockOptions),
     Wl(device::WlOptions),
 }
+
+#[derive(FromArgs)]
+#[argh(subcommand)]
+/// Unix Commands
+pub enum Commands {}
