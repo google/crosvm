@@ -2,19 +2,31 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+cfg_if::cfg_if! {
+    if #[cfg(unix)] {
+        use std::net;
+
+        use base::RawDescriptor;
+        #[cfg(feature = "gpu")]
+        use devices::virtio::GpuDisplayParameters;
+        use devices::virtio::vhost::user::device::parse_wayland_sock;
+
+        #[cfg(feature = "gpu")]
+        use super::sys::config::parse_gpu_display_options;
+        use super::sys::config::{
+            parse_coiommu_params, VfioCommand, parse_vfio, parse_vfio_platform
+        };
+    }
+}
+
 use std::collections::BTreeMap;
-use std::net;
-use std::os::unix::prelude::RawFd;
 use std::path::PathBuf;
 
 use super::config::*;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use super::platform::GpuRenderServerParameters;
-use super::sys::config::parse_coiommu_params;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use super::sys::config::parse_gpu_render_server_options;
-#[cfg(feature = "gpu")]
-use super::sys::config::{parse_gpu_display_options, parse_gpu_options};
 
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use super::config::parse_video_options;
@@ -28,9 +40,6 @@ use devices::virtio::block::block::DiskOption;
 #[cfg(feature = "audio_cras")]
 use devices::virtio::cras_backend::Parameters as CrasSndParameters;
 use devices::virtio::vhost::user::device;
-use devices::virtio::vhost::user::device::parse_wayland_sock;
-#[cfg(feature = "gpu")]
-use devices::virtio::GpuDisplayParameters;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
 #[cfg(feature = "audio")]
@@ -41,6 +50,9 @@ use devices::StubPciParameters;
 use hypervisor::ProtectionType;
 use resources::AddressRange;
 use vm_control::BatteryType;
+
+#[cfg(feature = "gpu")]
+use super::sys::config::parse_gpu_options;
 
 #[derive(FromArgs)]
 /// crosvm
@@ -583,6 +595,7 @@ pub struct RunCommand {
     ///        to the virtio-gpu.
     ///     height=INT - The height of the virtual display
     ///        connected to the virtio-gpu
+    #[cfg(unix)]
     pub gpu_display: Vec<GpuDisplayParameters>,
     #[cfg(feature = "gpu")]
     #[argh(option, long = "gpu", from_str_fn(parse_gpu_options))]
@@ -650,9 +663,11 @@ pub struct RunCommand {
     #[argh(option)]
     /// jail config
     pub jail_config: Option<JailConfig>,
+    #[cfg(unix)]
     #[argh(option, long = "kvm-device", arg_name = "PATH")]
     /// path to the KVM device. (default /dev/kvm)
     pub kvm_device_path: Option<PathBuf>,
+    #[cfg(unix)]
     #[argh(switch)]
     /// disable host swap on guest VM pages.
     pub lock_guest_memory: bool,
@@ -843,7 +858,6 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH")]
     /// path to seccomp .policy files
     pub seccomp_policy_dir: Option<PathBuf>,
-    #[cfg(unix)]
     #[argh(
         option,
         long = "serial",
@@ -872,6 +886,7 @@ pub struct RunCommand {
     ///        Can only be given once. Will default to first serial
     ///        port if not provided.
     pub serial_parameters: Vec<SerialParameters>,
+    #[cfg(unix)]
     #[argh(
         option,
         long = "shared-dir",
@@ -969,7 +984,7 @@ pub struct RunCommand {
     #[cfg(unix)]
     #[argh(option)]
     /// file descriptor for configured tap device. A different virtual network card will be added each time this argument is given
-    pub tap_fd: Vec<RawFd>,
+    pub tap_fd: Vec<RawDescriptor>,
     #[cfg(unix)]
     #[argh(option)]
     /// name of a configured persistent TAP interface to use for networking. A different virtual network card will be added each time this argument is given
@@ -1008,6 +1023,7 @@ pub struct RunCommand {
     #[argh(option, long = "cpus", short = 'c')]
     /// number of VCPUs. (default: 1)
     pub vcpu_count: Option<usize>,
+    #[cfg(unix)]
     #[argh(
         option,
         arg_name = "PATH[,guest-address=auto|<BUS:DEVICE.FUNCTION>][,iommu=on|off]",
@@ -1022,12 +1038,14 @@ pub struct RunCommand {
     ///     iommu=on|off - indicates whether to enable virtio IOMMU
     ///        for this device
     pub vfio: Vec<VfioCommand>,
+    #[cfg(unix)]
     #[argh(option, arg_name = "PATH", from_str_fn(parse_vfio_platform))]
     /// path to sysfs of platform pass through
     pub vfio_platform: Vec<VfioCommand>,
     #[argh(switch)]
     /// use vhost for networking
     pub vhost_net: bool,
+    #[cfg(unix)]
     #[argh(option, long = "vhost-net-device", arg_name = "PATH")]
     /// path to the vhost-net device. (default /dev/vhost-net)
     pub vhost_net_device_path: Option<PathBuf>,
@@ -1066,7 +1084,7 @@ pub struct RunCommand {
     #[cfg(unix)]
     #[argh(option, arg_name = "FD")]
     /// open FD to the vhost-vsock device, mutually exclusive with vhost-vsock-device
-    pub vhost_vsock_fd: Option<RawFd>,
+    pub vhost_vsock_fd: Option<RawDescriptor>,
     #[cfg(feature = "video-decoder")]
     #[argh(
         option,
@@ -1124,6 +1142,7 @@ pub struct RunCommand {
     ///     uuid=UUID - UUID which will be stored in VVU PCI config
     ///        space that is readable from guest userspace
     pub vvu_proxy: Vec<VvuOption>,
+    #[cfg(unix)]
     #[argh(
         option,
         long = "wayland-sock",
@@ -1149,10 +1168,12 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.executable_path = Some(Executable::Kernel(p));
         }
 
+        #[cfg(unix)]
         if let Some(p) = cmd.kvm_device_path {
             cfg.kvm_device_path = p;
         }
 
+        #[cfg(unix)]
         if let Some(p) = cmd.vhost_net_device_path {
             if !p.exists() {
                 return Err(format!("vhost-net-device path {:?} does not exist", p));
@@ -1198,7 +1219,10 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.hugepages = cmd.hugepages;
 
-        cfg.lock_guest_memory = cmd.lock_guest_memory;
+        #[cfg(unix)]
+        {
+            cfg.lock_guest_memory = cmd.lock_guest_memory;
+        }
 
         #[cfg(feature = "audio")]
         {
@@ -1314,6 +1338,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.pstore = cmd.pstore;
 
+        #[cfg(unix)]
         for (name, params) in cmd.wayland_socket_paths {
             if cfg.wayland_socket_paths.contains_key(&name) {
                 return Err(format!("wayland socket name already used: '{}'", name));
@@ -1631,8 +1656,11 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.task_profiles = cmd.task_profiles;
         }
 
-        cfg.vfio.extend(cmd.vfio);
-        cfg.vfio.extend(cmd.vfio_platform);
+        #[cfg(unix)]
+        {
+            cfg.vfio.extend(cmd.vfio);
+            cfg.vfio.extend(cmd.vfio_platform);
+        }
 
         // Now do validation of constructed config
         super::config::validate_config(&mut cfg)?;

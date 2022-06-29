@@ -196,7 +196,7 @@ sync = { path = "common/sync" }
 tempfile = "3"
 terminal_size = "0.1.17"
 thiserror = { version = "1.0.20" }
-uuid = { version = "0.8.2" }
+uuid = { version = "0.8.2", features = [ "serde" ] }
 vhost = { path = "vhost" }
 vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }

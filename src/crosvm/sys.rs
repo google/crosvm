@@ -13,3 +13,6 @@ cfg_if::cfg_if! {
 
 pub(crate) use platform::cmdline;
 pub(crate) use platform::config;
+
+#[cfg(feature = "gpu")]
+pub(crate) use platform::config::validate_gpu_config;

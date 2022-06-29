@@ -9,7 +9,7 @@ use std::env;
 use std::path::PathBuf;
 
 use devices::virtio::vhost::user::vmm::Gpu as VhostUserGpu;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::crosvm::config::{Config, JailConfig, VhostUserOption};
 
@@ -237,7 +237,7 @@ pub fn create_gpu_device(
     })
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct GpuRenderServerParameters {
     pub path: PathBuf,

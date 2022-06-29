@@ -58,11 +58,12 @@ use sync::{Condvar, Mutex};
 use vm_control::*;
 use vm_memory::{GuestAddress, GuestMemory, MemoryPolicy};
 
-use crate::crosvm::config::{
-    Config, Executable, FileBackedMappingParameters, SharedDir, SharedDirKind, VfioType,
-};
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use crate::crosvm::gdb::{gdb_thread, GdbStub};
+use crate::crosvm::{
+    config::{Config, Executable, FileBackedMappingParameters, SharedDir, SharedDirKind},
+    sys::config::VfioType,
+};
 use arch::{
     self, LinuxArch, RunnableLinuxVm, VcpuAffinity, VirtioDeviceStub, VmComponents, VmImage,
 };
