@@ -1228,6 +1228,7 @@ pub struct Config {
     pub display_window_keyboard: bool,
     pub display_window_mouse: bool,
     pub dmi_path: Option<PathBuf>,
+    pub enable_hwp: bool,
     pub enable_pnp_data: bool,
     pub executable_path: Option<Executable>,
     #[cfg(windows)]
@@ -1420,6 +1421,7 @@ impl Default for Config {
             display_window_keyboard: false,
             display_window_mouse: false,
             dmi_path: None,
+            enable_hwp: false,
             enable_pnp_data: false,
             executable_path: None,
             #[cfg(windows)]
@@ -1689,6 +1691,10 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
             }
         }
     }
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    if cfg.enable_hwp && !cfg.host_cpu_topology {
+        return Err("setting `enable-hwp` requires `host-cpu-topology` is set.".to_string());
+    }
     if cfg.enable_pnp_data {
         if !cfg.host_cpu_topology {
             return Err(
@@ -1735,6 +1741,9 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
             } else {
                 return Err("`itmt` requires affinity to be set for every vCPU.".to_string());
             }
+        }
+        if !cfg.enable_hwp {
+            return Err("setting `itmt` requires `enable-hwp` is set.".to_string());
         }
         set_itmt_msr_config(&mut cfg.userspace_msr)
             .map_err(|e| format!("the cpu doesn't support itmt {}", e))?;

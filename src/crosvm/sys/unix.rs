@@ -115,6 +115,8 @@ use gpu::*;
 use hypervisor::kvm::Kvm;
 use hypervisor::kvm::KvmVcpu;
 use hypervisor::kvm::KvmVm;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::CpuConfigX86_64;
 use hypervisor::HypervisorCap;
 use hypervisor::ProtectionType;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -2058,6 +2060,20 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             Some(VcpuAffinity::PerVcpu(mut m)) => m.remove(&cpu_id).unwrap_or_default(),
             None => Default::default(),
         };
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        let cpu_config = Some(CpuConfigX86_64::new(
+            cfg.force_calibrated_tsc_leaf,
+            cfg.host_cpu_topology,
+            cfg.enable_hwp,
+            cfg.enable_pnp_data,
+            cfg.no_smt,
+            cfg.itmt,
+        ));
+
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        let cpu_config = None;
+
         let handle = vcpu::run_vcpu(
             cpu_id,
             vcpu_ids[cpu_id],
@@ -2072,7 +2088,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             linux.rt_cpus.contains(&cpu_id),
             vcpu_affinity,
             linux.delay_rt,
-            linux.no_smt,
             vcpu_thread_barrier.clone(),
             linux.has_bios,
             (*linux.io_bus).clone(),
@@ -2086,10 +2101,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
             to_gdb_channel.clone(),
             cfg.per_vm_core_scheduling,
-            cfg.host_cpu_topology,
-            cfg.enable_pnp_data,
-            cfg.itmt,
-            cfg.force_calibrated_tsc_leaf,
+            cpu_config,
             cfg.privileged_vm,
             match vcpu_cgroup_tasks_file {
                 None => None,

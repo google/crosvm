@@ -610,6 +610,9 @@ pub struct RunCommand {
     /// directory with smbios_entry_point/DMI files
     pub dmi_path: Option<PathBuf>,
     #[argh(switch)]
+    /// expose HWP feature to the guest
+    pub enable_hwp: bool,
+    #[argh(switch)]
     /// expose Power and Perfomance (PnP) data to guest and guest can show these PnP data
     pub enable_pnp_data: bool,
     #[argh(positional, arg_name = "KERNEL")]
@@ -1771,6 +1774,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
         {
+            cfg.enable_hwp = cmd.enable_hwp;
             cfg.host_cpu_topology = cmd.host_cpu_topology;
             cfg.force_s2idle = cmd.s2idle;
             cfg.pcie_ecam = cmd.pcie_ecam;

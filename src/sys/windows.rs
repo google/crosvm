@@ -130,6 +130,8 @@ use hypervisor::whpx::WhpxFeature;
 use hypervisor::whpx::WhpxVcpu;
 #[cfg(feature = "whpx")]
 use hypervisor::whpx::WhpxVm;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::CpuConfigX86_64;
 #[cfg(feature = "whpx")]
 use hypervisor::Hypervisor;
 #[cfg(feature = "whpx")]
@@ -1461,16 +1463,21 @@ fn create_whpx(
     info!("Creating Whpx");
     let whpx = Whpx::new()?;
 
+    let cpu_config = CpuConfigX86_64::new(
+        force_calibrated_tsc_leaf,
+        false, /* host_cpu_topology */
+        false, /* enable_hwp */
+        false, /* enable_pnp_data */
+        no_smt,
+        false, /* itmt */
+    );
+
     // context for non-cpu-specific cpuid results
     let ctx = CpuIdContext::new(
         0,
         cpu_count,
-        no_smt,
-        /*host_cpu_topology=*/ false,
         None,
-        /* enable_pnp_data */ false,
-        /* itmt */ false,
-        force_calibrated_tsc_leaf,
+        cpu_config,
         whpx.check_capability(HypervisorCap::CalibratedTscLeafRequired),
         __cpuid_count,
         __cpuid,

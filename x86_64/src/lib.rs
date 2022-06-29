@@ -112,6 +112,7 @@ use gdbstub_arch::x86::reg::X87FpuInternalRegs;
 use hypervisor::x86_64::Regs;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use hypervisor::x86_64::Sregs;
+use hypervisor::CpuConfigX86_64;
 use hypervisor::HypervisorX86_64;
 use hypervisor::ProtectionType;
 use hypervisor::VcpuInitX86_64;
@@ -202,6 +203,8 @@ pub enum Error {
     #[error("failed to insert device onto bus: {0}")]
     InsertBus(devices::BusError),
     #[error("the kernel extends past the end of RAM")]
+    InvalidCpuConfig,
+    #[error("invalid CPU config parameters")]
     KernelOffsetPastEnd,
     #[error("error loading bios: {0}")]
     LoadBios(io::Error),
@@ -860,26 +863,15 @@ impl arch::LinuxArch for X8664arch {
         vcpu_id: usize,
         num_cpus: usize,
         _has_bios: bool,
-        no_smt: bool,
-        host_cpu_topology: bool,
-        enable_pnp_data: bool,
-        itmt: bool,
-        force_calibrated_tsc_leaf: bool,
+        cpu_config: Option<CpuConfigX86_64>,
     ) -> Result<()> {
+        let cpu_config = match cpu_config {
+            Some(config) => config,
+            None => return Err(Error::InvalidCpuConfig),
+        };
         if !vm.check_capability(VmCap::EarlyInitCpuid) {
-            cpuid::setup_cpuid(
-                hypervisor,
-                irq_chip,
-                vcpu,
-                vcpu_id,
-                num_cpus,
-                no_smt,
-                host_cpu_topology,
-                enable_pnp_data,
-                itmt,
-                force_calibrated_tsc_leaf,
-            )
-            .map_err(Error::SetupCpuid)?;
+            cpuid::setup_cpuid(hypervisor, irq_chip, vcpu, vcpu_id, num_cpus, cpu_config)
+                .map_err(Error::SetupCpuid)?;
         }
 
         vcpu.set_regs(&vcpu_init.regs).map_err(Error::WriteRegs)?;

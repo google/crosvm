@@ -29,6 +29,10 @@ use devices::IrqChipAArch64 as IrqChipArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::IrqChipX86_64 as IrqChipArch;
 use devices::VcpuRunState;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::CpuConfigAArch64 as CpuConfigArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::CpuConfigX86_64 as CpuConfigArch;
 use hypervisor::IoOperation;
 use hypervisor::IoParams;
 use hypervisor::Vcpu;
@@ -157,13 +161,9 @@ pub fn runnable_vcpu<V>(
     vm: impl VmArch,
     irq_chip: &mut dyn IrqChipArch,
     vcpu_count: usize,
-    no_smt: bool,
     has_bios: bool,
     use_hypervisor_signals: bool,
-    host_cpu_topology: bool,
-    enable_pnp_data: bool,
-    itmt: bool,
-    force_calibrated_tsc_leaf: bool,
+    cpu_config: Option<CpuConfigArch>,
 ) -> Result<(V, VcpuRunHandle)>
 where
     V: VcpuArch,
@@ -197,11 +197,7 @@ where
         cpu_id,
         vcpu_count,
         has_bios,
-        no_smt,
-        host_cpu_topology,
-        enable_pnp_data,
-        itmt,
-        force_calibrated_tsc_leaf,
+        cpu_config,
     )
     .context("failed to configure vcpu")?;
 
@@ -581,7 +577,6 @@ pub fn run_vcpu<V>(
     run_rt: bool,
     vcpu_affinity: Vec<usize>,
     delay_rt: bool,
-    no_smt: bool,
     start_barrier: Arc<Barrier>,
     has_bios: bool,
     mut io_bus: Bus,
@@ -594,10 +589,7 @@ pub fn run_vcpu<V>(
         mpsc::Sender<VcpuDebugStatusMessage>,
     >,
     enable_per_vm_core_scheduling: bool,
-    host_cpu_topology: bool,
-    enable_pnp_data: bool,
-    itmt: bool,
-    force_calibrated_tsc_leaf: bool,
+    cpu_config: Option<CpuConfigArch>,
     privileged_vm: bool,
     vcpu_cgroup_tasks_file: Option<File>,
     userspace_msr: BTreeMap<u32, MsrConfig>,
@@ -633,13 +625,9 @@ where
                     vm,
                     irq_chip.as_mut(),
                     vcpu_count,
-                    no_smt,
                     has_bios,
                     use_hypervisor_signals,
-                    host_cpu_topology,
-                    enable_pnp_data,
-                    itmt,
-                    force_calibrated_tsc_leaf,
+                    cpu_config,
                 );
 
                 // Add MSR handlers after CPU affinity setting.

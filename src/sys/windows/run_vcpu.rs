@@ -52,6 +52,8 @@ use devices::VcpuRunState;
 use futures::pin_mut;
 #[cfg(feature = "whpx")]
 use hypervisor::whpx::WhpxVcpu;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::CpuConfigX86_64;
 use hypervisor::HypervisorCap;
 use hypervisor::IoEventAddress;
 use hypervisor::IoOperation;
@@ -199,6 +201,19 @@ impl VcpuRunThread {
             }
         }
 
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        let cpu_config = Some(CpuConfigX86_64::new(
+            force_calibrated_tsc_leaf,
+            host_cpu_topology,
+            false, /* enable_hwp */
+            false, /* enable_pnp_data */
+            no_smt,
+            false, /* itmt */
+        ));
+
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        let cpu_config = None;
+
         Arch::configure_vcpu(
             vm,
             vm.get_hypervisor(),
@@ -208,11 +223,7 @@ impl VcpuRunThread {
             cpu_id,
             vcpu_count,
             has_bios,
-            no_smt,
-            host_cpu_topology,
-            /* enable_pnp_data */ false,
-            /* itmt */ false,
-            force_calibrated_tsc_leaf,
+            cpu_config,
         )
         .exit_context(Exit::ConfigureVcpu, "failed to configure vcpu")?;
 
@@ -296,15 +307,21 @@ impl VcpuRunThread {
                     );
 
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                    let cpu_config = CpuConfigX86_64::new(
+                        force_calibrated_tsc_leaf,
+                        host_cpu_topology,
+                        false, /* enable_hwp */
+                        false, /* enable_pnp_data */
+                        no_smt,
+                        false, /* itmt */
+                    );
+
+                    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                     let cpuid_context = CpuIdContext::new(
                         context.cpu_id,
                         vcpu_count,
-                        no_smt,
-                        host_cpu_topology,
                         Some(irq_chip.as_ref()),
-                        /* enable_pnp_data */ false,
-                        /* itmt */ false,
-                        force_calibrated_tsc_leaf,
+                        cpu_config,
                         vm.get_hypervisor()
                             .check_capability(HypervisorCap::CalibratedTscLeafRequired),
                         __cpuid_count,

@@ -58,6 +58,10 @@ use devices::SerialParameters;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use gdbstub_arch::x86::reg::X86_64CoreRegs as GdbStubRegs;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::CpuConfigAArch64 as CpuConfigArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::CpuConfigX86_64 as CpuConfigArch;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use hypervisor::Hypervisor as HypervisorArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use hypervisor::HypervisorX86_64 as HypervisorArch;
@@ -275,11 +279,7 @@ pub trait LinuxArch {
     /// * `vcpu_id` - The id of the given `vcpu`.
     /// * `num_cpus` - Number of virtual CPUs the guest will have.
     /// * `has_bios` - Whether the `VmImage` is a `Bios` image
-    /// * `no_smt` - Wheter diabling SMT.
-    /// * `host_cpu_topology` - whether enabling host cpu topology.
-    /// * `enable_pnp_data` - whether enabling PnP statistics data.
-    /// * `itmt` - whether enabling ITMT scheduler
-    /// * `force_calibrated_tsc_leaf` - whether to force using a calibrated TSC leaf (0x15).
+    /// * `cpu_config` - CPU feature configurations.
     fn configure_vcpu<V: Vm>(
         vm: &V,
         hypervisor: &dyn HypervisorArch,
@@ -289,11 +289,7 @@ pub trait LinuxArch {
         vcpu_id: usize,
         num_cpus: usize,
         has_bios: bool,
-        no_smt: bool,
-        host_cpu_topology: bool,
-        enable_pnp_data: bool,
-        itmt: bool,
-        force_calibrated_tsc_leaf: bool,
+        cpu_config: Option<CpuConfigArch>,
     ) -> Result<(), Self::Error>;
 
     /// Configures and add a pci device into vm

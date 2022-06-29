@@ -11,6 +11,7 @@ use std::result;
 use devices::Apic;
 use devices::IrqChipCap;
 use devices::IrqChipX86_64;
+use hypervisor::CpuConfigX86_64;
 use hypervisor::CpuIdEntry;
 use hypervisor::HypervisorCap;
 use hypervisor::HypervisorX86_64;
@@ -48,6 +49,7 @@ const ECX_HCFC_PERF_SHIFT: u32 = 0; // Presence of IA32_MPERF and IA32_APERF.
 const EAX_CPU_CORES_SHIFT: u32 = 26; // Index of cpu cores in the same physical package.
 const EDX_HYBRID_CPU_SHIFT: u32 = 15; // Hybrid. The processor is identified as a hybrid part.
 const EAX_HWP_SHIFT: u32 = 7; // Intel Hardware P-states.
+const EAX_HWP_NOTIFICATION_SHIFT: u32 = 8; // IA32_HWP_INTERRUPT MSR is supported
 const EAX_HWP_EPP_SHIFT: u32 = 10; // HWP Energy Perf. Preference.
 const EAX_ITMT_SHIFT: u32 = 14; // Intel Turbo Boost Max Technology 3.0 available.
 const EAX_CORE_TEMP: u32 = 0; // Core Temperature
@@ -60,8 +62,6 @@ pub struct CpuIdContext {
     vcpu_id: usize,
     /// The total number of vcpus on this VM.
     cpu_count: usize,
-    /// Whether or not SMT should be disabled.
-    no_smt: bool,
     /// Whether or not the IrqChip's APICs support X2APIC.
     x2apic: bool,
     /// Whether or not the IrqChip's APICs support a TSC deadline timer.
@@ -70,17 +70,10 @@ pub struct CpuIdContext {
     apic_frequency: u32,
     /// The TSC frequency in Hz, if it could be determined.
     tsc_frequency: Option<u64>,
-    /// Whether to force the use of a calibrated TSC cpuid leaf (0x15) even if
-    /// the hypervisor doesn't require it.
-    force_calibrated_tsc_leaf: bool,
     /// Whether the hypervisor requires a calibrated TSC cpuid leaf (0x15).
     calibrated_tsc_leaf_required: bool,
-    /// Whether or not VCPU IDs and APIC IDs should match host cpu IDs.
-    host_cpu_topology: bool,
-    /// Whether to expose core temperature, package temperature  and APEF/MPERF to guest
-    enable_pnp_data: bool,
-    /// Enable Intel Turbo Boost Max Technology 3.0.
-    itmt: bool,
+    /// CPU feature configurations.
+    cpu_config: CpuConfigX86_64,
     /// __cpuid_count or a fake function for test.
     cpuid_count: unsafe fn(u32, u32) -> CpuidResult,
     /// __cpuid or a fake function for test.
@@ -91,12 +84,8 @@ impl CpuIdContext {
     pub fn new(
         vcpu_id: usize,
         cpu_count: usize,
-        no_smt: bool,
-        host_cpu_topology: bool,
         irq_chip: Option<&dyn IrqChipX86_64>,
-        enable_pnp_data: bool,
-        itmt: bool,
-        force_calibrated_tsc_leaf: bool,
+        cpu_config: CpuConfigX86_64,
         calibrated_tsc_leaf_required: bool,
         cpuid_count: unsafe fn(u32, u32) -> CpuidResult,
         cpuid: unsafe fn(u32) -> CpuidResult,
@@ -104,18 +93,14 @@ impl CpuIdContext {
         CpuIdContext {
             vcpu_id,
             cpu_count,
-            no_smt,
             x2apic: irq_chip.map_or(false, |chip| chip.check_capability(IrqChipCap::X2Apic)),
             tsc_deadline_timer: irq_chip.map_or(false, |chip| {
                 chip.check_capability(IrqChipCap::TscDeadlineTimer)
             }),
             apic_frequency: irq_chip.map_or(Apic::frequency(), |chip| chip.lapic_frequency()),
             tsc_frequency: devices::tsc::tsc_frequency().ok(),
-            force_calibrated_tsc_leaf,
             calibrated_tsc_leaf_required,
-            host_cpu_topology,
-            enable_pnp_data,
-            itmt,
+            cpu_config,
             cpuid_count,
             cpuid,
         }
@@ -150,7 +135,7 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
                 entry.cpuid.ecx |= 1 << ECX_TSC_DEADLINE_TIMER_SHIFT;
             }
 
-            if ctx.host_cpu_topology {
+            if ctx.cpu_config.host_cpu_topology {
                 entry.cpuid.ebx |= EBX_CLFLUSH_CACHELINE << EBX_CLFLUSH_SIZE_SHIFT;
 
                 // Expose HT flag to Guest.
@@ -177,13 +162,13 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
         4 => {
             entry.cpuid = unsafe { (ctx.cpuid_count)(entry.function, entry.index) };
 
-            if ctx.host_cpu_topology {
+            if ctx.cpu_config.host_cpu_topology {
                 return;
             }
 
             entry.cpuid.eax &= !0xFC000000;
             if ctx.cpu_count > 1 {
-                let cpu_cores = if ctx.no_smt {
+                let cpu_cores = if ctx.cpu_config.no_smt {
                     ctx.cpu_count as u32
                 } else if ctx.cpu_count % 2 == 0 {
                     (ctx.cpu_count >> 1) as u32
@@ -194,32 +179,31 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
             }
         }
         6 => {
-            // Clear X86 EPB feature.  No frequency selection in the hypervisor.
-            entry.cpuid.ecx &= !(1 << ECX_EPB_SHIFT);
+            // Safe because we pass 6 for this call and the host
+            // supports the `cpuid` instruction
+            let result = unsafe { (ctx.cpuid)(entry.function) };
 
-            // Set ITMT related features.
-            if ctx.itmt || ctx.enable_pnp_data {
-                // Safe because we pass 6 for this call and the host
-                // supports the `cpuid` instruction
-                let result = unsafe { (ctx.cpuid)(entry.function) };
-                if ctx.itmt {
-                    // Expose ITMT to guest.
+            if ctx.cpu_config.enable_hwp {
+                entry.cpuid.eax |= result.eax & (1 << EAX_HWP_SHIFT);
+                entry.cpuid.eax |= result.eax & (1 << EAX_HWP_NOTIFICATION_SHIFT);
+                entry.cpuid.eax |= result.eax & (1 << EAX_HWP_EPP_SHIFT);
+                entry.cpuid.ecx |= result.ecx & (1 << ECX_EPB_SHIFT);
+
+                if ctx.cpu_config.itmt {
                     entry.cpuid.eax |= result.eax & (1 << EAX_ITMT_SHIFT);
-                    // Expose HWP and HWP_EPP to guest.
-                    entry.cpuid.eax |= result.eax & (1 << EAX_HWP_SHIFT);
-                    entry.cpuid.eax |= result.eax & (1 << EAX_HWP_EPP_SHIFT);
                 }
-                if ctx.enable_pnp_data {
-                    // Expose core temperature, package temperature
-                    // and APEF/MPERF to guest
-                    entry.cpuid.eax |= result.eax & (1 << EAX_CORE_TEMP);
-                    entry.cpuid.eax |= result.eax & (1 << EAX_PKG_TEMP);
-                    entry.cpuid.ecx |= result.ecx & (1 << ECX_HCFC_PERF_SHIFT);
-                }
+            }
+
+            if ctx.cpu_config.enable_pnp_data {
+                // Expose core temperature, package temperature
+                // and APEF/MPERF to guest
+                entry.cpuid.eax |= result.eax & (1 << EAX_CORE_TEMP);
+                entry.cpuid.eax |= result.eax & (1 << EAX_PKG_TEMP);
+                entry.cpuid.ecx |= result.ecx & (1 << ECX_HCFC_PERF_SHIFT);
             }
         }
         7 => {
-            if ctx.host_cpu_topology && entry.index == 0 {
+            if ctx.cpu_config.host_cpu_topology && entry.index == 0 {
                 // Safe because we pass 7 and 0 for this call and the host supports the
                 // `cpuid` instruction
                 let result = unsafe { (ctx.cpuid_count)(entry.function, entry.index) };
@@ -228,7 +212,7 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
         }
         0x15 => {
             if ctx.calibrated_tsc_leaf_required
-                || ctx.force_calibrated_tsc_leaf {
+                || ctx.cpu_config.force_calibrated_tsc_leaf {
 
                 let cpuid_15 = ctx
                     .tsc_frequency
@@ -238,7 +222,7 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
                 if let Some(new_entry) = cpuid_15 {
                     entry.cpuid = new_entry.cpuid;
                 }
-            } else if ctx.enable_pnp_data {
+            } else if ctx.cpu_config.enable_pnp_data {
                 // Expose TSC frequency to guest
                 // Safe because we pass 0x15 for this call and the host
                 // supports the `cpuid` instruction
@@ -247,14 +231,14 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
         }
         0x1A => {
             // Hybrid information leaf.
-            if ctx.host_cpu_topology {
+            if ctx.cpu_config.host_cpu_topology {
                 // Safe because we pass 0x1A for this call and the host supports the
                 // `cpuid` instruction
                 entry.cpuid = unsafe { (ctx.cpuid)(entry.function) };
             }
         }
         0xB | 0x1F => {
-            if ctx.host_cpu_topology {
+            if ctx.cpu_config.host_cpu_topology {
                 return;
             }
             // Extended topology enumeration / V2 Extended topology enumeration
@@ -263,7 +247,7 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
             // On AMD, these leaves are not used, so it is currently safe to leave in.
             entry.cpuid.edx = ctx.vcpu_id as u32; // x2APIC ID
             if entry.index == 0 {
-                if ctx.no_smt || (ctx.cpu_count == 1) {
+                if ctx.cpu_config.no_smt || (ctx.cpu_count == 1) {
                     // Make it so that all VCPUs appear as different,
                     // non-hyperthreaded cores on the same package.
                     entry.cpuid.eax = 0; // Shift to get id of next level
@@ -334,22 +318,14 @@ fn filter_cpuid(cpuid: &mut hypervisor::CpuId, ctx: &CpuIdContext) {
 /// * `irq_chip` - `IrqChipX86_64` for adjusting appropriate IrqChip CPUID bits.
 /// * `vcpu` - `VcpuX86_64` for setting CPU ID.
 /// * `vcpu_id` - The vcpu index of `vcpu`.
-/// * `nrcpus` - The number of vcpus being used by this VM.
-/// * `no_smt` - The flag indicates whether vCPUs supports SMT.
-/// * `host_cpu_topology` - The flag indicates whether vCPUs use mirror CPU topology.
-/// * `enable_pnp_data` - The flag indicates whether vCPU shows PnP data.
-/// * `itmt` - The flag indicates whether vCPU use ITMT scheduling feature.
+/// * `cpu_config` - CPU feature configurations.
 pub fn setup_cpuid(
     hypervisor: &dyn HypervisorX86_64,
     irq_chip: &dyn IrqChipX86_64,
     vcpu: &dyn VcpuX86_64,
     vcpu_id: usize,
     nrcpus: usize,
-    no_smt: bool,
-    host_cpu_topology: bool,
-    enable_pnp_data: bool,
-    itmt: bool,
-    force_calibrated_tsc_leaf: bool,
+    cpu_config: CpuConfigX86_64,
 ) -> Result<()> {
     let mut cpuid = hypervisor
         .get_supported_cpuid()
@@ -360,12 +336,8 @@ pub fn setup_cpuid(
         &CpuIdContext::new(
             vcpu_id,
             nrcpus,
-            no_smt,
-            host_cpu_topology,
             Some(irq_chip),
-            enable_pnp_data,
-            itmt,
-            force_calibrated_tsc_leaf,
+            cpu_config,
             hypervisor.check_capability(HypervisorCap::CalibratedTscLeafRequired),
             __cpuid_count,
             __cpuid,
@@ -443,17 +415,15 @@ mod tests {
                 edx: 0,
             },
         });
+
+        let cpu_config = CpuConfigX86_64::new(false, false, false, false, false, false);
         filter_cpuid(
             &mut cpuid,
             &CpuIdContext::new(
                 1,
                 2,
-                false,
-                false,
                 Some(&irq_chip),
-                false,
-                false,
-                false,
+                cpu_config,
                 false,
                 __cpuid_count,
                 __cpuid,
@@ -489,18 +459,22 @@ mod tests {
             ecx: 0,
             edx: 0,
         };
+        let cpu_config = CpuConfigX86_64 {
+            force_calibrated_tsc_leaf: false,
+            host_cpu_topology: true,
+            enable_hwp: false,
+            enable_pnp_data: false,
+            no_smt: false,
+            itmt: false,
+        };
         let ctx = CpuIdContext {
             vcpu_id: 0,
             cpu_count: 0,
-            no_smt: false,
             x2apic: false,
             tsc_deadline_timer: false,
             apic_frequency: 0,
             tsc_frequency: None,
-            host_cpu_topology: true,
-            enable_pnp_data: false,
-            itmt: false,
-            force_calibrated_tsc_leaf: false,
+            cpu_config,
             calibrated_tsc_leaf_required: false,
             cpuid_count: fake_cpuid_count,
             cpuid: fake_cpuid,

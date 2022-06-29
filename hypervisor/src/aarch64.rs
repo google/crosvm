@@ -131,6 +131,9 @@ impl_downcast!(VcpuAArch64);
 #[derive(Clone, Default)]
 pub struct VcpuInitAArch64 {}
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CpuConfigAArch64 {}
+
 // Convenience constructors for IrqRoutes
 impl IrqRoute {
     pub fn gic_irq_route(irq_num: u32) -> IrqRoute {

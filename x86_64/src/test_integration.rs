@@ -20,6 +20,7 @@ use base::Event;
 use base::Tube;
 use devices::IrqChipX86_64;
 use devices::PciConfigIo;
+use hypervisor::CpuConfigX86_64;
 use hypervisor::HypervisorX86_64;
 use hypervisor::IoOperation;
 use hypervisor::IoParams;
@@ -253,11 +254,9 @@ where
                 .add_vcpu(0, &vcpu)
                 .expect("failed to add vcpu to irqchip");
 
+            let cpu_config = CpuConfigX86_64::new(false, false, false, false, false, false);
             if !vm.check_capability(VmCap::EarlyInitCpuid) {
-                setup_cpuid(
-                    &hyp, &irq_chip, &vcpu, 0, 1, false, false, false, false, false,
-                )
-                .unwrap();
+                setup_cpuid(&hyp, &irq_chip, &vcpu, 0, 1, cpu_config).unwrap();
             }
 
             let mut msrs = long_mode_msrs();

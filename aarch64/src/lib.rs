@@ -34,6 +34,7 @@ use devices::PciAddress;
 use devices::PciConfigMmio;
 use devices::PciDevice;
 use devices::Serial;
+use hypervisor::CpuConfigAArch64;
 use hypervisor::DeviceKind;
 use hypervisor::Hypervisor;
 use hypervisor::HypervisorCap;
@@ -602,11 +603,7 @@ impl arch::LinuxArch for AArch64 {
         _vcpu_id: usize,
         _num_cpus: usize,
         _has_bios: bool,
-        _no_smt: bool,
-        _host_cpu_topology: bool,
-        _enable_pnp_data: bool,
-        _itmt: bool,
-        _force_calibrated_tsc_leaf: bool,
+        _cpu_config: Option<CpuConfigAArch64>,
     ) -> std::result::Result<(), Self::Error> {
         // AArch64 doesn't configure vcpus on the vcpu thread, so nothing to do here.
         Ok(())

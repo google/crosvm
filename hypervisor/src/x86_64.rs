@@ -195,6 +195,48 @@ pub struct VcpuInitX86_64 {
     pub msrs: Vec<Register>,
 }
 
+/// Hold the CPU feature configurations that are needed to setup a vCPU.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CpuConfigX86_64 {
+    /// whether to force using a calibrated TSC leaf (0x15).
+    pub force_calibrated_tsc_leaf: bool,
+
+    /// whether enabling host cpu topology.
+    pub host_cpu_topology: bool,
+
+    /// whether expose HWP feature to the guest.
+    pub enable_hwp: bool,
+
+    /// whether enabling host cpu topology.
+    pub enable_pnp_data: bool,
+
+    /// Wheter diabling SMT (Simultaneous Multithreading).
+    pub no_smt: bool,
+
+    /// whether enabling ITMT scheduler
+    pub itmt: bool,
+}
+
+impl CpuConfigX86_64 {
+    pub fn new(
+        force_calibrated_tsc_leaf: bool,
+        host_cpu_topology: bool,
+        enable_hwp: bool,
+        enable_pnp_data: bool,
+        no_smt: bool,
+        itmt: bool,
+    ) -> Self {
+        CpuConfigX86_64 {
+            force_calibrated_tsc_leaf,
+            host_cpu_topology,
+            enable_hwp,
+            enable_pnp_data,
+            no_smt,
+            itmt,
+        }
+    }
+}
+
 /// A CpuId Entry contains supported feature information for the given processor.
 /// This can be modified by the hypervisor to pass additional information to the guest kernel
 /// about the hypervisor or vm. Information is returned in the eax, ebx, ecx and edx registers
