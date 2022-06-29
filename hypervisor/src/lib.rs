@@ -536,7 +536,7 @@ pub enum MPState {
 }
 
 /// Whether the VM should be run in protected mode or not.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ProtectionType {
     /// The VM should be run in the unprotected mode, where the host has access to its memory.
     Unprotected,

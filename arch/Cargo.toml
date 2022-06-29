@@ -22,6 +22,7 @@ minijail = "*"
 power_monitor = { path = "../power_monitor" }
 remain = "*"
 resources = { path = "../resources" }
+serde = { version = "*", features = [ "derive"] }
 sync = { path = "../common/sync" }
 thiserror = "1.0.20"
 vm_control = { path = "../vm_control" }

@@ -14,6 +14,7 @@ use base::info;
 use base::{error, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube};
 use data_model::{DataInit, Le32};
 use remain::sorted;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
@@ -138,7 +139,7 @@ impl Drop for VideoDevice {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum VideoBackendType {
     #[cfg(feature = "libvda")]
     Libvda,

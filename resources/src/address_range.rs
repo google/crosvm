@@ -5,12 +5,15 @@
 use std::cmp;
 use std::ops::RangeInclusive;
 
+use serde::{Deserialize, Serialize};
+
 #[derive(Copy, Clone, Debug)]
 /// Represents a range of addresses from `start` to `end`, inclusive.
 ///
 /// Why not use the standard `RangeInclusive`? `RangeInclusive` is not `Copy`, because it tries to
 /// be an iterator as well as a range (which also means it is larger than necessary). Additionally,
 /// we would also like to implement some convenience functions for our own type.
+#[derive(Deserialize, Serialize)]
 pub struct AddressRange {
     pub start: u64,
     pub end: u64,

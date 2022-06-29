@@ -12,6 +12,7 @@ use base::{error, AsRawDescriptor, RawDescriptor};
 use libcras::{CrasClient, CrasClientType, CrasSocketType, CrasSysError};
 use remain::sorted;
 use resources::{Alloc, MmioType, SystemAllocator};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
@@ -38,7 +39,7 @@ const PCI_DEVICE_ID_INTEL_82801AA_5: u16 = 0x2415;
 /// Internally the `Ac97BusMaster` and `Ac97Mixer` structs are used to emulated the bus master and
 /// mixer registers respectively. `Ac97BusMaster` handles moving smaples between guest memory and
 /// the audio backend.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Ac97Backend {
     NULL,
     #[cfg(feature = "audio_cras")]
@@ -76,14 +77,16 @@ impl FromStr for Ac97Backend {
 }
 
 /// Holds the parameters for a AC97 device
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Ac97Parameters {
     pub backend: Ac97Backend,
     pub capture: bool,
     pub vios_server_path: Option<PathBuf>,
     #[cfg(feature = "audio_cras")]
+    #[serde(skip)]
     client_type: Option<CrasClientType>,
     #[cfg(feature = "audio_cras")]
+    #[serde(skip)]
     socket_type: Option<CrasSocketType>,
 }
 

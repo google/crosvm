@@ -31,6 +31,7 @@ use hypervisor::{IoEventAddress, ProtectionType, Vm};
 use minijail::Minijail;
 use remain::sorted;
 use resources::{MmioType, SystemAllocator, SystemAllocatorConfig};
+use serde::{Deserialize, Serialize};
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::{BatControl, BatteryType, PmResource};
@@ -67,14 +68,14 @@ pub enum VmImage {
     Bios(File),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct Pstore {
     pub path: PathBuf,
     pub size: u32,
 }
 
 /// Mapping of guest VCPU threads to host CPU cores.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum VcpuAffinity {
     /// All VCPU threads will be pinned to the same set of host CPU cores.
     Global(Vec<usize>),
@@ -943,7 +944,7 @@ where
 /// Read and write permissions setting
 ///
 /// Wrap read_allow and write_allow to store them in MsrHandlers level.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum MsrRWType {
     ReadOnly,
     WriteOnly,
@@ -951,7 +952,7 @@ pub enum MsrRWType {
 }
 
 /// Handler types for userspace-msr
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum MsrAction {
     /// Read and write from host directly, and the control of MSR will
     /// take effect on host.
@@ -964,7 +965,7 @@ pub enum MsrAction {
 /// Source CPU of MSR value
 ///
 /// Indicate which CPU that user get/set MSRs from/to.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum MsrValueFrom {
     /// Read/write MSR value from/into CPU 0.
     /// The MSR source CPU always be CPU 0.
@@ -988,7 +989,7 @@ impl MsrValueFrom {
 }
 
 /// Whether to force KVM-filtered MSRs.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum MsrFilter {
     /// Leave it to hypervisor (KVM) default.
     Default,
@@ -1001,7 +1002,7 @@ pub enum MsrFilter {
 ///
 /// MsrConfig will be collected with its corresponding MSR's index.
 /// eg, (msr_index, msr_config)
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct MsrConfig {
     /// If support RDMSR/WRMSR emulation in crosvm?
     pub rw_type: MsrRWType,

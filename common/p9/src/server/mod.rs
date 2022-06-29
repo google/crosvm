@@ -16,6 +16,8 @@ use std::os::unix::fs::FileExt;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+
 use crate::protocol::*;
 use crate::syscall;
 use read_dir::read_dir;
@@ -341,7 +343,7 @@ fn open_fid(proc: &File, path: &File, p9_flags: u32) -> io::Result<File> {
     Ok(unsafe { File::from_raw_fd(fd) })
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
     pub root: Box<Path>,
     pub msize: u32,

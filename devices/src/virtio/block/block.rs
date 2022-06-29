@@ -20,7 +20,7 @@ use data_model::DataInit;
 use disk::DiskFile;
 
 use remain::sorted;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::{DiskControlCommand, DiskControlResult};
@@ -132,7 +132,7 @@ fn deserialize_disk_id<'de, D: Deserializer<'de>>(
     Ok(Some(ret))
 }
 
-#[derive(Debug, Deserialize, PartialEq, serde_keyvalue::FromKeyValues)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, serde_keyvalue::FromKeyValues)]
 #[serde(deny_unknown_fields)]
 pub struct DiskOption {
     pub path: PathBuf,
