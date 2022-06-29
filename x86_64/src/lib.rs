@@ -110,6 +110,8 @@ pub enum Error {
     Cmdline(kernel_cmdline::Error),
     #[error("failed to configure hotplugged pci device: {0}")]
     ConfigurePciDevice(arch::DeviceRegistrationError),
+    #[error("failed to configure segment registers: {0}")]
+    ConfigureSegments(regs::Error),
     #[error("error configuring the system")]
     ConfigureSystem,
     #[error("unable to create ACPI tables")]
@@ -191,12 +193,14 @@ pub enum Error {
     SetupMptable(mptable::Error),
     #[error("failed to set up MSRs: {0}")]
     SetupMsrs(base::Error),
+    #[error("failed to set up page tables: {0}")]
+    SetupPageTables(regs::Error),
     #[error("failed to set up registers: {0}")]
     SetupRegs(regs::Error),
     #[error("failed to set up SMBIOS: {0}")]
     SetupSmbios(smbios::Error),
     #[error("failed to set up sregs: {0}")]
-    SetupSregs(regs::Error),
+    SetupSregs(base::Error),
     #[error("failed to translate virtual address")]
     TranslatingVirtAddr,
     #[error("protected VMs not supported on x86_64")]
@@ -832,7 +836,11 @@ impl arch::LinuxArch for X8664arch {
 
         let guest_mem = vm.get_memory();
         vcpu.set_regs(&vcpu_init.regs).map_err(Error::WriteRegs)?;
-        regs::setup_sregs(guest_mem, vcpu).map_err(Error::SetupSregs)?;
+        let mut sregs = vcpu.get_sregs().map_err(Error::ReadRegs)?;
+        regs::configure_segments_and_sregs(guest_mem, &mut sregs)
+            .map_err(Error::ConfigureSegments)?;
+        regs::setup_page_tables(guest_mem, &mut sregs).map_err(Error::SetupPageTables)?; // TODO(dgreid) - Can this be done once per system instead?
+        vcpu.set_sregs(&sregs).map_err(Error::SetupSregs)?;
 
         Ok(())
     }

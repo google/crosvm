@@ -241,7 +241,8 @@ fn write_idt_value(val: u64, guest_mem: &GuestMemory) -> Result<()> {
         .map_err(|_| Error::WriteIDTFailure)
 }
 
-fn configure_segments_and_sregs(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
+/// Configures the GDT, IDT, and segment registers for long mode.
+pub fn configure_segments_and_sregs(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
     let gdt_table: [u64; BOOT_GDT_MAX as usize] = [
         gdt::gdt_entry(0, 0, 0),            // NULL
         gdt::gdt_entry(0xa09b, 0, 0xfffff), // CODE
@@ -277,7 +278,8 @@ fn configure_segments_and_sregs(mem: &GuestMemory, sregs: &mut Sregs) -> Result<
     Ok(())
 }
 
-fn setup_page_tables(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
+/// Configures the system page tables and control registers for long mode with paging.
+pub fn setup_page_tables(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
     // Puts PML4 right after zero page but aligned to 4k.
     let boot_pml4_addr = GuestAddress(0x9000);
     let boot_pdpte_addr = GuestAddress(0xa000);
@@ -301,23 +303,6 @@ fn setup_page_tables(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
     sregs.cr4 |= X86_CR4_PAE;
     sregs.cr0 |= X86_CR0_PG;
     sregs.efer |= EFER_LMA; // Long mode is active. Must be auto-enabled with CR0_PG.
-    Ok(())
-}
-
-/// Configures the segment registers and system page tables for a given CPU.
-///
-/// # Arguments
-///
-/// * `mem` - The memory that will be passed to the guest.
-/// * `vcpu` - The VCPU to configure registers on.
-pub fn setup_sregs(mem: &GuestMemory, vcpu: &dyn VcpuX86_64) -> Result<()> {
-    let mut sregs = vcpu.get_sregs().map_err(Error::GetSRegsIoctlFailed)?;
-
-    configure_segments_and_sregs(mem, &mut sregs)?;
-    setup_page_tables(mem, &mut sregs)?; // TODO(dgreid) - Can this be done once per system instead?
-
-    vcpu.set_sregs(&sregs).map_err(Error::SetSRegsIoctlFailed)?;
-
     Ok(())
 }
 
