@@ -9,53 +9,23 @@ use std::time::{Duration, Instant};
 
 use crate::{descriptor::AsRawDescriptor, Event};
 
-#[derive(Debug, Copy, Clone)]
-pub struct Clock(Instant);
+#[derive(Debug, Default, Copy, Clone)]
+pub struct Clock {}
 impl Clock {
     pub fn new() -> Self {
-        Clock(Instant::now())
+        Clock {}
     }
 
-    pub fn now(&self) -> Self {
-        Clock(Instant::now())
-    }
-
-    pub fn duration_since(&self, earlier: &Self) -> Duration {
-        self.0.duration_since(earlier.0)
-    }
-
-    pub fn checked_duration_since(&self, earlier: &Self) -> Option<Duration> {
-        self.0.checked_duration_since(earlier.0)
-    }
-
-    pub fn saturating_duration_since(&self, earlier: &Self) -> Duration {
-        self.0.saturating_duration_since(earlier.0)
-    }
-
-    pub fn elapsed(&self) -> Duration {
-        self.0.elapsed()
-    }
-
-    pub fn checked_add(&self, duration: Duration) -> Option<Self> {
-        Some(Clock(self.0.checked_add(duration)?))
-    }
-
-    pub fn checked_sub(&self, duration: Duration) -> Option<Self> {
-        Some(Clock(self.0.checked_sub(duration)?))
+    pub fn now(&self) -> Instant {
+        Instant::now()
     }
 }
 
-impl Default for Clock {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-const NS_PER_SEC: u64 = 1_000_000_000;
 /// A fake clock that can be used in tests to give exact control over the time.
 /// For a code example, see the tests in base/src/timer.rs.
 #[derive(Debug)]
 pub struct FakeClock {
+    epoch: Instant,
     ns_since_epoch: u64,
     deadlines: Vec<(u64, Event)>,
 }
@@ -63,65 +33,20 @@ pub struct FakeClock {
 impl FakeClock {
     pub fn new() -> Self {
         FakeClock {
-            ns_since_epoch: 1_547_163_599 * NS_PER_SEC,
+            epoch: Instant::now(),
+            ns_since_epoch: 0,
             deadlines: Vec::new(),
         }
     }
 
     /// Get the current time, according to this clock.
-    pub fn now(&self) -> Self {
-        FakeClock {
-            ns_since_epoch: self.ns_since_epoch,
-            deadlines: Vec::new(),
-        }
+    pub fn now(&self) -> Instant {
+        self.epoch + Duration::from_nanos(self.ns_since_epoch)
     }
 
     ///  Get the current time in ns, according to this clock.
     pub fn nanos(&self) -> u64 {
         self.ns_since_epoch
-    }
-
-    /// Get the duration since |earlier|, assuming that earlier < self.
-    pub fn duration_since(&self, earlier: &Self) -> Duration {
-        self.checked_duration_since(earlier).unwrap()
-    }
-
-    /// Get the duration since |earlier|
-    pub fn checked_duration_since(&self, earlier: &Self) -> Option<Duration> {
-        let ns_diff = self.ns_since_epoch.checked_sub(earlier.ns_since_epoch)?;
-        Some(Duration::new(
-            ns_diff / NS_PER_SEC,
-            (ns_diff % NS_PER_SEC) as u32,
-        ))
-    }
-
-    /// Get the duration since |earlier|, or 0 if earlier < self.
-    pub fn saturating_duration_since(&self, earlier: &Self) -> Duration {
-        self.checked_duration_since(earlier)
-            .unwrap_or(Duration::ZERO)
-    }
-
-    /// Get the time that has elapsed since this clock was made. Always returns 0 on a FakeClock.
-    pub fn elapsed(&self) -> Duration {
-        self.now().duration_since(self)
-    }
-
-    pub fn checked_add(&self, duration: Duration) -> Option<Self> {
-        Some(FakeClock {
-            ns_since_epoch: self
-                .ns_since_epoch
-                .checked_add(duration.as_nanos() as u64)?,
-            deadlines: Vec::new(),
-        })
-    }
-
-    pub fn checked_sub(&self, duration: Duration) -> Option<Self> {
-        Some(FakeClock {
-            ns_since_epoch: self
-                .ns_since_epoch
-                .checked_sub(duration.as_nanos() as u64)?,
-            deadlines: Vec::new(),
-        })
     }
 
     /// Register the event descriptor for a notification when self's time is |deadline_ns|.

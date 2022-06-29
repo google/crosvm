@@ -6,7 +6,7 @@
 use std::io::Error as IoError;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use base::{error, warn, Error as SysError, Event, EventToken, WaitContext};
 use bit_field::BitField1;
@@ -386,11 +386,11 @@ struct PitCounter {
     status: u8,
     // Stores time of starting timer. Used for calculating remaining count, if an alarm is
     // scheduled.
-    start: Option<Clock>,
+    start: Option<Instant>,
     // Current time.
     clock: Arc<Mutex<Clock>>,
     // Time when object was created. Used for a 15us counter.
-    creation_time: Clock,
+    creation_time: Instant,
     // The number of the counter. The behavior for each counter is slightly different.
     // Note that once a PitCounter is created, this value should never change.
     counter_id: usize,
@@ -471,7 +471,7 @@ impl PitCounter {
 
     fn get_channel_state(&self) -> PitChannelState {
         let load_time = match &self.start {
-            Some(t) => t.saturating_duration_since(&self.creation_time).as_nanos() as u64,
+            Some(t) => t.saturating_duration_since(self.creation_time).as_nanos() as u64,
             None => 0,
         };
 
@@ -650,7 +650,7 @@ impl PitCounter {
             .clock
             .lock()
             .now()
-            .duration_since(&self.creation_time)
+            .duration_since(self.creation_time)
             .subsec_micros();
         let refresh_clock = us % 15 == 0;
         let mut speaker = SpeakerPortFields::new();
@@ -825,7 +825,7 @@ impl PitCounter {
     }
 
     fn get_ticks_passed(&self) -> u64 {
-        match &self.start {
+        match self.start {
             None => 0,
             Some(t) => {
                 let dur = self.clock.lock().now().duration_since(t);
