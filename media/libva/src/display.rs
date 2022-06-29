@@ -76,7 +76,10 @@ impl Display {
                 None => continue,
             }
 
-            let file = std::fs::File::open(device.devnode().unwrap())?;
+            let file = std::fs::File::options()
+                .read(true)
+                .write(true)
+                .open(device.devnode().unwrap())?;
             let fd = file.as_raw_descriptor();
 
             // Safe because fd represents a valid file descriptor and
