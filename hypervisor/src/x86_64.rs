@@ -597,7 +597,7 @@ impl Default for Regs {
             r13: 0,
             r14: 0,
             r15: 0,
-            rip: 0,
+            rip: 0xfff0, // Reset vector.
             rflags: 0x2, // Bit 1 (0x2) is always 1.
         }
     }
