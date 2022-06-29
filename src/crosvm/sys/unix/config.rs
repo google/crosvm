@@ -98,7 +98,7 @@ pub fn check_ac97_backend(
     // server is required for and exclusive to vios backend
     #[cfg(target_os = "android")]
     match ac97_params.backend {
-        Ac97Backend::VIOS => {
+        devices::Ac97Backend::VIOS => {
             if ac97_params.vios_server_path.is_none() {
                 return Err(String::from("server argument is required for VIOS backend"));
             }
@@ -390,10 +390,10 @@ pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
                         gpu_params.gfxstream_use_syncfd = false;
                     }
                     _ => {
-                        return Err(argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from("gpu parameter 'syncfd' should be a boolean"),
-                        });
+                        return Err(invalid_value_err(
+                            v,
+                            "gpu parameter 'syncfd' should be a boolean",
+                        ));
                     }
                 }
             }
@@ -495,7 +495,7 @@ pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
     #[cfg(feature = "gfxstream")]
     {
         if !vulkan_specified && gpu_params.mode == GpuMode::ModeGfxstream {
-            gpu_params.use_vulkan = sys::use_vulkan();
+            gpu_params.use_vulkan = use_vulkan();
         }
 
         if syncfd_specified || angle_specified {
