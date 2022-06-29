@@ -381,7 +381,7 @@ mod tests {
         assert_eq!(0, sregs.tr.base);
         assert_eq!(0xfffff, sregs.tr.limit);
         assert_eq!(0, sregs.tr.avl);
-        assert_eq!(X86_CR0_PE, sregs.cr0);
+        assert_eq!(X86_CR0_PE, sregs.cr0 & X86_CR0_PE);
         assert_eq!(EFER_LME, sregs.efer);
     }
 
@@ -399,6 +399,6 @@ mod tests {
 
         assert_eq!(0x9000, sregs.cr3);
         assert_eq!(X86_CR4_PAE, sregs.cr4);
-        assert_eq!(X86_CR0_PG, sregs.cr0);
+        assert_eq!(X86_CR0_PG, sregs.cr0 & X86_CR0_PG);
     }
 }

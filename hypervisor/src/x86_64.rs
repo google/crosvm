@@ -630,7 +630,7 @@ pub struct DescriptorTable {
 
 /// State of a VCPU's special registers.
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Sregs {
     pub cs: Segment,
     pub ds: Segment,
@@ -653,6 +653,103 @@ pub struct Sregs {
     /// A bitmap of pending external interrupts.  At most one bit may be set.  This interrupt has
     /// been acknowledged by the APIC but not yet injected into the cpu core.
     pub interrupt_bitmap: [u64; 4usize],
+}
+
+impl Default for Sregs {
+    fn default() -> Self {
+        // Intel SDM Vol. 3A, 3.4.5.1 ("Code- and Data-Segment Descriptor Types")
+        const SEG_TYPE_DATA: u8 = 0b0000;
+        const SEG_TYPE_DATA_WRITABLE: u8 = 0b0010;
+
+        const SEG_TYPE_CODE: u8 = 0b1000;
+        const SEG_TYPE_CODE_READABLE: u8 = 0b0010;
+
+        const SEG_TYPE_ACCESSED: u8 = 0b0001;
+
+        // Intel SDM Vol. 3A, 3.4.5 ("Segment Descriptors")
+        const SEG_S_SYSTEM: u8 = 0; // System segment.
+        const SEG_S_CODE_OR_DATA: u8 = 1; // Data/code segment.
+
+        // 16-bit real-mode code segment (reset vector).
+        let code_seg = Segment {
+            base: 0xffff0000,
+            limit: 0xffff,
+            selector: 0xf000,
+            type_: SEG_TYPE_CODE | SEG_TYPE_CODE_READABLE | SEG_TYPE_ACCESSED, // 11
+            present: 1,
+            s: SEG_S_CODE_OR_DATA,
+            ..Default::default()
+        };
+
+        // 16-bit real-mode data segment.
+        let data_seg = Segment {
+            base: 0,
+            limit: 0xffff,
+            selector: 0,
+            type_: SEG_TYPE_DATA | SEG_TYPE_DATA_WRITABLE | SEG_TYPE_ACCESSED, // 3
+            present: 1,
+            s: SEG_S_CODE_OR_DATA,
+            ..Default::default()
+        };
+
+        // 16-bit TSS segment.
+        let task_seg = Segment {
+            base: 0,
+            limit: 0xffff,
+            selector: 0,
+            type_: SEG_TYPE_CODE | SEG_TYPE_CODE_READABLE | SEG_TYPE_ACCESSED, // 11
+            present: 1,
+            s: SEG_S_SYSTEM,
+            ..Default::default()
+        };
+
+        // Local descriptor table.
+        let ldt = Segment {
+            base: 0,
+            limit: 0xffff,
+            selector: 0,
+            type_: SEG_TYPE_DATA | SEG_TYPE_DATA_WRITABLE, // 2
+            present: 1,
+            s: SEG_S_SYSTEM,
+            ..Default::default()
+        };
+
+        // Global descriptor table.
+        let gdt = DescriptorTable {
+            base: 0,
+            limit: 0xffff,
+        };
+
+        // Interrupt descriptor table.
+        let idt = DescriptorTable {
+            base: 0,
+            limit: 0xffff,
+        };
+
+        let cr0 = (1 << 4) // CR0.ET (reserved, always 1)
+                | (1 << 30); // CR0.CD (cache disable)
+
+        Sregs {
+            cs: code_seg,
+            ds: data_seg,
+            es: data_seg,
+            fs: data_seg,
+            gs: data_seg,
+            ss: data_seg,
+            tr: task_seg,
+            ldt,
+            gdt,
+            idt,
+            cr0,
+            cr2: 0,
+            cr3: 0,
+            cr4: 0,
+            cr8: 0,
+            efer: 0,
+            apic_base: 0,
+            interrupt_bitmap: Default::default(),
+        }
+    }
 }
 
 /// State of a VCPU's floating point unit.
