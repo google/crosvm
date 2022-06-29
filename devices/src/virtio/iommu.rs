@@ -37,7 +37,7 @@ use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::pci::PciAddress;
 use crate::virtio::iommu::ipc_memory_mapper::*;
-use crate::virtio::iommu::memory_mapper::{Error as MemoryMapperError, *};
+use crate::virtio::iommu::memory_mapper::*;
 use crate::virtio::iommu::protocol::*;
 use crate::virtio::{
     async_utils, copy_config, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue,
@@ -121,7 +121,7 @@ pub enum IommuError {
     #[error("failed to write to guest address: {0}")]
     GuestMemoryWrite(io::Error),
     #[error("memory mapper failed: {0}")]
-    MemoryMapper(MemoryMapperError),
+    MemoryMapper(anyhow::Error),
     #[error("Failed to read descriptor asynchronously: {0}")]
     ReadAsyncDesc(AsyncError),
     #[error("failed to read from virtio queue Event: {0}")]
@@ -360,17 +360,14 @@ impl State {
             });
 
             match vfio_map_result {
-                Ok(()) => (),
-                Err(e) => match e {
-                    MemoryMapperError::IovaRegionOverlap => {
-                        // If a mapping already exists in the requested range,
-                        // the device SHOULD reject the request and set status
-                        // to VIRTIO_IOMMU_S_INVAL.
-                        tail.status = VIRTIO_IOMMU_S_INVAL;
-                        return Ok(0);
-                    }
-                    _ => return Err(IommuError::MemoryMapper(e)),
-                },
+                Ok(AddMapResult::Ok) => (),
+                Ok(AddMapResult::OverlapFailure) => {
+                    // If a mapping already exists in the requested range,
+                    // the device SHOULD reject the request and set status
+                    // to VIRTIO_IOMMU_S_INVAL.
+                    tail.status = VIRTIO_IOMMU_S_INVAL;
+                }
+                Err(e) => return Err(IommuError::MemoryMapper(e)),
             }
         }
 
@@ -387,11 +384,18 @@ impl State {
         let domain: u32 = req.domain.into();
         if let Some(mapper) = self.domain_map.get(&domain) {
             let size = u64::from(req.virt_end) - u64::from(req.virt_start) + 1;
-            mapper
+            let res = mapper
                 .1
                 .lock()
                 .remove_map(u64::from(req.virt_start), size)
                 .map_err(IommuError::MemoryMapper)?;
+            if !res {
+                // If a mapping affected by the range is not covered in its entirety by the
+                // range (the UNMAP request would split the mapping), then the device SHOULD
+                // set the request `status` to VIRTIO_IOMMU_S_RANGE, and SHOULD NOT remove
+                // any mapping.
+                tail.status = VIRTIO_IOMMU_S_RANGE;
+            }
         } else {
             // If domain does not exist, the device SHOULD set the
             // request status to VIRTIO_IOMMU_S_NOENT

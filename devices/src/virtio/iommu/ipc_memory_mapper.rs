@@ -5,14 +5,12 @@
 //! Provide utility to communicate with an iommu in another process
 
 use std::ops::Deref;
-use std::result;
 
+use anyhow::{Context, Result};
 use base::{AsRawDescriptor, AsRawDescriptors, RawDescriptor, Tube};
 use serde::{Deserialize, Serialize};
 
-use crate::virtio::memory_mapper::{Error, MemRegion, Translate};
-
-pub type Result<T> = result::Result<T, Error>;
+use crate::virtio::memory_mapper::{MemRegion, Translate};
 
 #[derive(Serialize, Deserialize)]
 pub struct TranslateRequest {
@@ -53,9 +51,12 @@ impl Translate for IpcMemoryMapper {
             iova,
             size,
         };
-        self.request_tx.send(&req).map_err(Error::Tube)?;
-        let res: Option<Vec<MemRegion>> = self.response_rx.recv().map_err(Error::Tube)?;
-        res.ok_or(Error::InvalidIOVA(iova, size))
+        self.request_tx
+            .send(&req)
+            .context("error sending request")?;
+        let res: Option<Vec<MemRegion>> =
+            self.response_rx.recv().context("error receiving reply")?;
+        res.context(format!("invalid iova {:x} {:x}", iova, size))
     }
 }
 

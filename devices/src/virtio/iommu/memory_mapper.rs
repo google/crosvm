@@ -8,17 +8,12 @@
 
 use std::any::Any;
 use std::collections::BTreeMap;
-use std::result;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use base::{error, AsRawDescriptors, RawDescriptor, TubeError};
-use remain::sorted;
+use anyhow::{anyhow, bail, Context, Result};
+use base::{AsRawDescriptors, RawDescriptor};
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemoryError};
-
-#[cfg(unix)]
-use crate::vfio::VfioError;
+use vm_memory::GuestAddress;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,38 +30,6 @@ pub struct MemRegion {
     pub perm: Permission,
 }
 
-#[sorted]
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("address not aligned")]
-    AddrNotAligned,
-    #[error("address start ({0} is greater than or equal to end {1}")]
-    AddrStartGeEnd(u64, u64),
-    #[error("failed getting host address: {0}")]
-    GetHostAddress(GuestMemoryError),
-    #[error("integer overflow")]
-    IntegerOverflow,
-    #[error("invalid iova: {0}, length: {1}")]
-    InvalidIOVA(u64, u64),
-    #[error("iommu dma error")]
-    IommuDma,
-    #[error("iova partial overlap")]
-    IovaPartialOverlap,
-    #[error("iova region overlap")]
-    IovaRegionOverlap,
-    #[error("size is zero")]
-    SizeIsZero,
-    #[error("tube error: {0}")]
-    Tube(TubeError),
-    #[error("unimplemented")]
-    Unimplemented,
-    #[cfg(unix)]
-    #[error{"vfio error: {0}"}]
-    Vfio(VfioError),
-}
-
-pub type Result<T> = result::Result<T, Error>;
-
 /// Manages the mapping from a guest IO virtual address space to the guest physical address space
 #[derive(Debug)]
 pub struct MappingInfo {
@@ -80,10 +43,10 @@ impl MappingInfo {
     #[allow(dead_code)]
     fn new(iova: u64, gpa: GuestAddress, size: u64, perm: Permission) -> Result<Self> {
         if size == 0 {
-            return Err(Error::SizeIsZero);
+            bail!("can't create 0 sized region");
         }
-        iova.checked_add(size).ok_or(Error::IntegerOverflow)?;
-        gpa.checked_add(size).ok_or(Error::IntegerOverflow)?;
+        iova.checked_add(size).context("iova overflow")?;
+        gpa.checked_add(size).context("gpa overflow")?;
         Ok(Self {
             iova,
             gpa,
@@ -100,10 +63,24 @@ pub struct BasicMemoryMapper {
     id: u32,
 }
 
+#[derive(PartialEq, Debug)]
+pub enum AddMapResult {
+    Ok,
+    OverlapFailure,
+}
+
 /// A generic interface for vfio and other iommu backends
 pub trait MemoryMapper: Send {
-    fn add_map(&mut self, new_map: MappingInfo) -> Result<()>;
-    fn remove_map(&mut self, iova_start: u64, size: u64) -> Result<()>;
+    /// Creates a new mapping. If the mapping overlaps with an existing
+    /// mapping, return Ok(false).
+    fn add_map(&mut self, new_map: MappingInfo) -> Result<AddMapResult>;
+
+    /// Removes all mappings within the specified range.
+    ///
+    /// If a mapped region partially overlaps what is being unmapped, implementations
+    /// SHOULD return Ok(false) without removing any mappings.
+    fn remove_map(&mut self, iova_start: u64, size: u64) -> Result<bool>;
+
     fn get_mask(&self) -> Result<u64>;
 
     /// Whether or not endpoints can be safely detached from this mapper.
@@ -142,42 +119,36 @@ impl BasicMemoryMapper {
 }
 
 impl MemoryMapper for BasicMemoryMapper {
-    fn add_map(&mut self, new_map: MappingInfo) -> Result<()> {
+    fn add_map(&mut self, new_map: MappingInfo) -> Result<AddMapResult> {
         if new_map.size == 0 {
-            return Err(Error::SizeIsZero);
+            bail!("can't map 0 sized region");
         }
         let new_iova_end = new_map
             .iova
             .checked_add(new_map.size)
-            .ok_or(Error::IntegerOverflow)?;
+            .context("iova overflow")?;
         new_map
             .gpa
             .checked_add(new_map.size)
-            .ok_or(Error::IntegerOverflow)?;
+            .context("gpa overflow")?;
         let mut iter = self.maps.range(..new_iova_end);
         if let Some((_, map)) = iter.next_back() {
             if map.iova + map.size > new_map.iova {
-                return Err(Error::IovaRegionOverlap);
+                return Ok(AddMapResult::OverlapFailure);
             }
         }
         self.maps.insert(new_map.iova, new_map);
-        Ok(())
+        Ok(AddMapResult::Ok)
     }
 
-    fn remove_map(&mut self, iova_start: u64, size: u64) -> Result<()> {
-        // From the virtio-iommu spec
-        //
-        // If a mapping affected by the range is not covered in its entirety by the
-        // range (the UNMAP request would split the mapping), then the device SHOULD
-        // set the request \field{status} to VIRTIO_IOMMU_S_RANGE, and SHOULD NOT
-        // remove any mapping.
-        //
-        // Therefore, this func checks for partial overlap first before removing the maps.
+    fn remove_map(&mut self, iova_start: u64, size: u64) -> Result<bool> {
         if size == 0 {
-            return Err(Error::SizeIsZero);
+            bail!("can't unmap 0 sized region");
         }
-        let iova_end = iova_start.checked_add(size).ok_or(Error::IntegerOverflow)?;
+        let iova_end = iova_start.checked_add(size).context("iova overflow")?;
 
+        // So that we invalid requests can be rejected w/o modifying things, check
+        // for partial overlap before removing the maps.
         let mut to_be_removed = Vec::new();
         for (key, map) in self.maps.range(..iova_end).rev() {
             let map_iova_end = map.iova + map.size;
@@ -188,13 +159,13 @@ impl MemoryMapper for BasicMemoryMapper {
             if iova_start <= map.iova && map_iova_end <= iova_end {
                 to_be_removed.push(*key);
             } else {
-                return Err(Error::IovaPartialOverlap);
+                return Ok(false);
             }
         }
         for key in to_be_removed {
             self.maps.remove(&key).expect("map should contain key");
         }
-        Ok(())
+        Ok(true)
     }
 
     fn get_mask(&self) -> Result<u64> {
@@ -218,9 +189,9 @@ impl Translate for BasicMemoryMapper {
     /// Regions of contiguous iovas and gpas, and identical permission are merged
     fn translate(&self, iova: u64, size: u64) -> Result<Vec<MemRegion>> {
         if size == 0 {
-            return Err(Error::SizeIsZero);
+            bail!("can't translate 0 sized region");
         }
-        let iova_end = iova.checked_add(size).ok_or(Error::IntegerOverflow)?;
+        let iova_end = iova.checked_add(size).context("iova overflow")?;
         let mut iter = self.maps.range(..iova_end);
         let mut last_iova = iova_end;
         let mut regions: Vec<MemRegion> = Vec::new();
@@ -259,13 +230,13 @@ impl Translate for BasicMemoryMapper {
                 regions[0].gpa = map
                     .gpa
                     .checked_add(iova - map.iova)
-                    .ok_or(Error::IntegerOverflow)?;
+                    .context("gpa overflow")?;
                 return Ok(regions);
             }
             last_iova = map.iova;
         }
 
-        Err(Error::InvalidIOVA(iova, size))
+        Err(anyhow!("invalid iova {:x} {:x}", iova, size))
     }
 }
 
@@ -298,18 +269,30 @@ mod tests {
         mapper
             .add_map(MappingInfo::new(10, GuestAddress(1000), 10, Permission::RW).unwrap())
             .unwrap();
-        mapper
-            .add_map(MappingInfo::new(14, GuestAddress(1000), 1, Permission::RW).unwrap())
-            .unwrap_err();
-        mapper
-            .add_map(MappingInfo::new(0, GuestAddress(1000), 12, Permission::RW).unwrap())
-            .unwrap_err();
-        mapper
-            .add_map(MappingInfo::new(16, GuestAddress(1000), 6, Permission::RW).unwrap())
-            .unwrap_err();
-        mapper
-            .add_map(MappingInfo::new(5, GuestAddress(1000), 20, Permission::RW).unwrap())
-            .unwrap_err();
+        assert_eq!(
+            mapper
+                .add_map(MappingInfo::new(14, GuestAddress(1000), 1, Permission::RW).unwrap())
+                .unwrap(),
+            AddMapResult::OverlapFailure
+        );
+        assert_eq!(
+            mapper
+                .add_map(MappingInfo::new(0, GuestAddress(1000), 12, Permission::RW).unwrap())
+                .unwrap(),
+            AddMapResult::OverlapFailure
+        );
+        assert_eq!(
+            mapper
+                .add_map(MappingInfo::new(16, GuestAddress(1000), 6, Permission::RW).unwrap())
+                .unwrap(),
+            AddMapResult::OverlapFailure
+        );
+        assert_eq!(
+            mapper
+                .add_map(MappingInfo::new(5, GuestAddress(1000), 20, Permission::RW).unwrap())
+                .unwrap(),
+            AddMapResult::OverlapFailure
+        );
     }
 
     #[test]
@@ -381,7 +364,7 @@ mod tests {
             mapper
                 .add_map(MappingInfo::new(0, GuestAddress(1000), 9, Permission::RW).unwrap())
                 .unwrap();
-            mapper.remove_map(0, 4).unwrap_err();
+            assert!(!mapper.remove_map(0, 4).unwrap());
             assert_eq!(
                 mapper.translate(5, 1).unwrap()[0],
                 MemRegion {
@@ -510,19 +493,19 @@ mod tests {
             .add_map(MappingInfo::new(9, GuestAddress(50), 4, Permission::RW).unwrap())
             .unwrap();
         assert_eq!(mapper.len(), 3);
-        mapper.remove_map(0, 6).unwrap_err();
+        assert!(!mapper.remove_map(0, 6).unwrap());
         assert_eq!(mapper.len(), 3);
-        mapper.remove_map(1, 5).unwrap_err();
+        assert!(!mapper.remove_map(1, 5).unwrap());
         assert_eq!(mapper.len(), 3);
-        mapper.remove_map(1, 9).unwrap_err();
+        assert!(!mapper.remove_map(1, 9).unwrap());
         assert_eq!(mapper.len(), 3);
-        mapper.remove_map(6, 4).unwrap_err();
+        assert!(!mapper.remove_map(6, 4).unwrap());
         assert_eq!(mapper.len(), 3);
-        mapper.remove_map(6, 14).unwrap_err();
+        assert!(!mapper.remove_map(6, 14).unwrap());
         assert_eq!(mapper.len(), 3);
         mapper.remove_map(5, 4).unwrap();
         assert_eq!(mapper.len(), 2);
-        mapper.remove_map(1, 9).unwrap_err();
+        assert!(!mapper.remove_map(1, 9).unwrap());
         assert_eq!(mapper.len(), 2);
         mapper.remove_map(0, 15).unwrap();
         assert_eq!(mapper.len(), 0);
