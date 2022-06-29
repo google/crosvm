@@ -84,15 +84,15 @@ pub trait MemoryMapper: Send {
     /// Gets an identifier for the MemoryMapper instance. Must be unique among
     /// instances of the same trait implementation.
     fn id(&self) -> u32;
-}
 
-pub trait Translate {
     /// Multiple MemRegions should be returned when the gpa is discontiguous or perms are different.
-    fn translate(&self, iova: u64, size: u64) -> Result<Vec<MemRegion>>;
+    fn translate(&self, _iova: u64, _size: u64) -> Result<Vec<MemRegion>> {
+        bail!("not supported");
+    }
 }
 
-pub trait MemoryMapperTrait: MemoryMapper + Translate + AsRawDescriptors + Any {}
-impl<T: MemoryMapper + Translate + AsRawDescriptors + Any> MemoryMapperTrait for T {}
+pub trait MemoryMapperTrait: MemoryMapper + AsRawDescriptors + Any {}
+impl<T: MemoryMapper + AsRawDescriptors + Any> MemoryMapperTrait for T {}
 
 impl BasicMemoryMapper {
     pub fn new(mask: u64) -> BasicMemoryMapper {
@@ -175,9 +175,7 @@ impl MemoryMapper for BasicMemoryMapper {
     fn id(&self) -> u32 {
         self.id
     }
-}
 
-impl Translate for BasicMemoryMapper {
     /// Regions of contiguous iovas and gpas, and identical permission are merged
     fn translate(&self, iova: u64, size: u64) -> Result<Vec<MemRegion>> {
         if size == 0 {

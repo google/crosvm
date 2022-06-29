@@ -14,17 +14,16 @@ use data_model::DataInit;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::virtio::iommu::IpcMemoryMapper;
-use crate::virtio::memory_mapper::Translate;
 
 /// A wrapper that works with gpa, or iova and an iommu.
-pub fn is_valid_wrapper<T: Translate>(
+pub fn is_valid_wrapper(
     mem: &GuestMemory,
-    iommu: &Option<T>,
+    iommu: &Option<Arc<Mutex<IpcMemoryMapper>>>,
     addr: GuestAddress,
     size: u64,
 ) -> anyhow::Result<bool> {
     if let Some(iommu) = iommu {
-        is_valid(mem, iommu, addr.offset(), size)
+        is_valid(mem, &iommu.lock(), addr.offset(), size)
     } else {
         Ok(addr
             .checked_add(size as u64)
@@ -34,9 +33,9 @@ pub fn is_valid_wrapper<T: Translate>(
 
 /// Translates `iova` into gpa regions (or 1 gpa region when it is contiguous), and check if the
 /// gpa regions are all valid in `mem`.
-pub fn is_valid<T: Translate>(
+pub fn is_valid(
     mem: &GuestMemory,
-    iommu: &T,
+    iommu: &IpcMemoryMapper,
     iova: u64,
     size: u64,
 ) -> anyhow::Result<bool> {

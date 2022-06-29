@@ -6,15 +6,13 @@
 
 use std::sync::Arc;
 
-use anyhow::{bail, Context};
+use anyhow::Context;
 use base::{AsRawDescriptor, AsRawDescriptors, Protection, RawDescriptor};
 use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemory};
 
 use crate::vfio::VfioError;
-use crate::virtio::iommu::memory_mapper::{
-    AddMapResult, MappingInfo, MemRegion, MemoryMapper, Translate,
-};
+use crate::virtio::iommu::memory_mapper::{AddMapResult, MappingInfo, MemoryMapper};
 use crate::VfioContainer;
 
 pub struct VfioWrapper {
@@ -109,12 +107,6 @@ impl MemoryMapper for VfioWrapper {
 
     fn id(&self) -> u32 {
         self.id
-    }
-}
-
-impl Translate for VfioWrapper {
-    fn translate(&self, _iova: u64, _size: u64) -> anyhow::Result<Vec<MemRegion>> {
-        bail!("unimplemented");
     }
 }
 

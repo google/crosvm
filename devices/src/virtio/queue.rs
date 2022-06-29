@@ -18,7 +18,7 @@ use vm_memory::{GuestAddress, GuestMemory};
 
 use super::{SignalableInterrupt, VIRTIO_MSI_NO_VECTOR};
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
-use crate::virtio::memory_mapper::{MemRegion, Translate};
+use crate::virtio::memory_mapper::MemRegion;
 use crate::virtio::memory_util::{
     is_valid_wrapper, read_obj_from_addr_wrapper, write_obj_at_addr_wrapper,
 };
@@ -393,13 +393,12 @@ impl Queue {
             return;
         }
 
-        let iommu = self.iommu.as_ref().map(|i| i.lock());
         for (addr, size, name) in [
             (desc_table, desc_table_size, "descriptor table"),
             (avail_ring, avail_ring_size, "available ring"),
             (used_ring, used_ring_size, "used ring"),
         ] {
-            match is_valid_wrapper(mem, &iommu, addr, size as u64) {
+            match is_valid_wrapper(mem, &self.iommu, addr, size as u64) {
                 Ok(valid) => {
                     if !valid {
                         error!(
