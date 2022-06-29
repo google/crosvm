@@ -176,6 +176,8 @@ impl Hypervisor for Whpx {
                     false
                 })
             }
+            // under whpx, guests rely on this leaf to calibrate their clocksource.
+            HypervisorCap::CalibratedTscLeafRequired => true,
             _ => false,
         }
     }

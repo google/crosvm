@@ -66,6 +66,9 @@ impl Hypervisor for Haxm {
     fn check_capability(&self, cap: HypervisorCap) -> bool {
         match cap {
             HypervisorCap::UserMemory => true,
+            // under haxm, guests rely on this leaf to calibrate their
+            // clocksource.
+            HypervisorCap::CalibratedTscLeafRequired => true,
             _ => false,
         }
     }
