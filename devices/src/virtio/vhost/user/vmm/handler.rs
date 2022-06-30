@@ -180,13 +180,13 @@ impl VhostUserHandler {
             queue_size: queue.actual_size(),
             flags: 0u32,
             desc_table_addr: mem
-                .get_host_address(queue.desc_table)
+                .get_host_address(queue.desc_table())
                 .map_err(Error::GetHostAddress)? as u64,
             used_ring_addr: mem
-                .get_host_address(queue.used_ring)
+                .get_host_address(queue.used_ring())
                 .map_err(Error::GetHostAddress)? as u64,
             avail_ring_addr: mem
-                .get_host_address(queue.avail_ring)
+                .get_host_address(queue.avail_ring())
                 .map_err(Error::GetHostAddress)? as u64,
             log_addr: None,
         };
@@ -231,7 +231,7 @@ impl VhostUserHandler {
         for (queue_index, queue) in queues.iter().enumerate() {
             let queue_evt = &queue_evts[queue_index];
             let irqfd = msix_config
-                .get_irqfd(queue.vector as usize)
+                .get_irqfd(queue.vector() as usize)
                 .unwrap_or_else(|| interrupt.get_interrupt_evt());
             self.activate_vring(&mem, queue_index, queue, queue_evt, irqfd)?;
         }

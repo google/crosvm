@@ -419,7 +419,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         {
             return Err(VhostError::InvalidParam);
         }
-        self.vrings[index as usize].queue.size = num as u16;
+        self.vrings[index as usize].queue.set_size(num as u16);
 
         Ok(())
     }
@@ -439,9 +439,13 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
 
         let vmm_maps = self.vmm_maps.as_ref().ok_or(VhostError::InvalidParam)?;
         let vring = &mut self.vrings[index as usize];
-        vring.queue.desc_table = vmm_va_to_gpa(vmm_maps, descriptor)?;
-        vring.queue.avail_ring = vmm_va_to_gpa(vmm_maps, available)?;
-        vring.queue.used_ring = vmm_va_to_gpa(vmm_maps, used)?;
+        vring
+            .queue
+            .set_desc_table(vmm_va_to_gpa(vmm_maps, descriptor)?);
+        vring
+            .queue
+            .set_avail_ring(vmm_va_to_gpa(vmm_maps, available)?);
+        vring.queue.set_used_ring(vmm_va_to_gpa(vmm_maps, used)?);
 
         Ok(())
     }
@@ -485,7 +489,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         }
 
         let vring = &mut self.vrings[index as usize];
-        if vring.queue.ready {
+        if vring.queue.ready() {
             error!("kick fd cannot replaced after queue is started");
             return Err(VhostError::InvalidOperation);
         }
@@ -505,7 +509,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         };
 
         let vring = &mut self.vrings[index as usize];
-        vring.queue.ready = true;
+        vring.queue.set_ready(true);
 
         let queue = vring.queue.clone();
         let doorbell = vring

@@ -351,11 +351,11 @@ impl VirtioPciDevice {
         self.common_config.driver_status == DEVICE_RESET as u8
     }
 
-    fn are_queues_valid(&self) -> bool {
+    fn are_queues_valid(&mut self) -> bool {
         // All queues marked as ready must be valid.
         self.queues
-            .iter()
-            .filter(|q| q.ready)
+            .iter_mut()
+            .filter(|q| q.ready())
             .all(|q| q.is_valid(&self.mem))
     }
 
@@ -459,7 +459,7 @@ impl VirtioPciDevice {
                     .clone()
                     .into_iter()
                     .zip(queue_evts.into_iter())
-                    .filter(|(q, _)| q.ready)
+                    .filter(|(q, _)| q.ready())
                     .unzip();
 
                 self.device.activate(mem, interrupt, queues, queue_evts);

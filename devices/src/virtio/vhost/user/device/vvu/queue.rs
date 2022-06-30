@@ -452,10 +452,10 @@ mod test {
     }
 
     fn setup_vq(queue: &mut DeviceQueue, addrs: DescTableAddrs) {
-        queue.desc_table = IOVA(addrs.desc);
-        queue.avail_ring = IOVA(addrs.avail);
-        queue.used_ring = IOVA(addrs.used);
-        queue.ready = true;
+        queue.set_desc_table(IOVA(addrs.desc));
+        queue.set_avail_ring(IOVA(addrs.avail));
+        queue.set_used_ring(IOVA(addrs.used));
+        queue.set_ready(true);
     }
 
     fn device_write(mem: &QueueMemory, q: &mut DeviceQueue, data: &[u8]) -> usize {

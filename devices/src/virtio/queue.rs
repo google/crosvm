@@ -10,7 +10,7 @@ use std::sync::Arc;
 use sync::Mutex;
 
 use anyhow::{bail, Context};
-use base::error;
+use base::{error, warn};
 use cros_async::{AsyncError, EventAsync};
 use data_model::{DataInit, Le16, Le32, Le64};
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
@@ -259,22 +259,25 @@ pub struct Queue {
     pub max_size: u16,
 
     /// The queue size in elements the driver selected
-    pub size: u16,
+    size: u16,
 
     /// Inidcates if the queue is finished with configuration
-    pub ready: bool,
+    ready: bool,
+
+    /// Indicates that a ready queue's configuration has been validated successfully.
+    validated: bool,
 
     /// MSI-X vector for the queue. Don't care for INTx
-    pub vector: u16,
+    vector: u16,
 
     /// Guest physical address of the descriptor table
-    pub desc_table: GuestAddress,
+    desc_table: GuestAddress,
 
     /// Guest physical address of the available ring
-    pub avail_ring: GuestAddress,
+    avail_ring: GuestAddress,
 
     /// Guest physical address of the used ring
-    pub used_ring: GuestAddress,
+    used_ring: GuestAddress,
 
     pub next_avail: Wrapping<u16>,
     pub next_used: Wrapping<u16>,
@@ -291,6 +294,22 @@ pub struct Queue {
     iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
 }
 
+macro_rules! accessors {
+    ($var:ident, $t:ty, $setter:ident) => {
+        pub fn $var(&self) -> $t {
+            self.$var
+        }
+
+        pub fn $setter(&mut self, val: $t) {
+            if self.ready {
+                warn!("ignoring write to {} on ready queue", stringify!($var));
+                return;
+            }
+            self.$var = val;
+        }
+    };
+}
+
 impl Queue {
     /// Constructs an empty virtio queue with the given `max_size`.
     pub fn new(max_size: u16) -> Queue {
@@ -298,6 +317,7 @@ impl Queue {
             max_size,
             size: max_size,
             ready: false,
+            validated: false,
             vector: VIRTIO_MSI_NO_VECTOR,
             desc_table: GuestAddress(0),
             avail_ring: GuestAddress(0),
@@ -311,6 +331,13 @@ impl Queue {
         }
     }
 
+    accessors!(vector, u16, set_vector);
+    accessors!(size, u16, set_size);
+    accessors!(ready, bool, set_ready);
+    accessors!(desc_table, GuestAddress, set_desc_table);
+    accessors!(avail_ring, GuestAddress, set_avail_ring);
+    accessors!(used_ring, GuestAddress, set_used_ring);
+
     /// Return the actual size of the queue, as the driver may not set up a
     /// queue as big as the device allows.
     pub fn actual_size(&self) -> u16 {
@@ -320,6 +347,7 @@ impl Queue {
     /// Reset queue to a clean state
     pub fn reset(&mut self) {
         self.ready = false;
+        self.validated = false;
         self.size = self.max_size;
         self.vector = VIRTIO_MSI_NO_VECTOR;
         self.desc_table = GuestAddress(0);
@@ -340,7 +368,19 @@ impl Queue {
         self.last_used = Wrapping(0);
     }
 
-    pub fn is_valid(&self, mem: &GuestMemory) -> bool {
+    pub fn is_valid(&mut self, mem: &GuestMemory) -> bool {
+        if !self.ready {
+            error!("attempt to use virtio queue that is not marked ready");
+            return false;
+        }
+
+        if !self.validated {
+            self.validate(mem);
+        }
+        self.validated
+    }
+
+    fn validate(&mut self, mem: &GuestMemory) {
         let queue_size = self.actual_size() as usize;
         let desc_table = self.desc_table;
         let desc_table_size = 16 * queue_size;
@@ -348,13 +388,9 @@ impl Queue {
         let avail_ring_size = 6 + 2 * queue_size;
         let used_ring = self.used_ring;
         let used_ring_size = 6 + 8 * queue_size;
-        if !self.ready {
-            error!("attempt to use virtio queue that is not marked ready");
-            return false;
-        } else if self.size > self.max_size || self.size == 0 || (self.size & (self.size - 1)) != 0
-        {
+        if self.size > self.max_size || self.size == 0 || (self.size & (self.size - 1)) != 0 {
             error!("virtio queue with invalid size: {}", self.size);
-            return false;
+            return;
         }
 
         let iommu = self.iommu.as_ref().map(|i| i.lock());
@@ -372,16 +408,16 @@ impl Queue {
                             addr.offset(),
                             size,
                         );
-                        return false;
+                        return;
                     }
                 }
                 Err(e) => {
                     error!("is_valid failed: {:#}", e);
-                    return false;
+                    return;
                 }
             }
         }
-        true
+        self.validated = true;
     }
 
     // Get the index of the first available descriptor chain in the available ring

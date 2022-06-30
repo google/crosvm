@@ -206,7 +206,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
         // We checked these values already.
         let index = index as usize;
         let num = num as u16;
-        self.queues[index].size = num;
+        self.queues[index].set_size(num);
 
         // The last vq is an event-only vq that is not handled by the kernel.
         if index == EVENT_QUEUE {
@@ -236,10 +236,10 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
         let mem = self.mem.as_ref().ok_or(Error::InvalidParam)?;
         let maps = self.vmm_maps.as_ref().ok_or(Error::InvalidParam)?;
 
-        let mut queue = &mut self.queues[index];
-        queue.desc_table = vmm_va_to_gpa(maps, descriptor)?;
-        queue.avail_ring = vmm_va_to_gpa(maps, available)?;
-        queue.used_ring = vmm_va_to_gpa(maps, used)?;
+        let queue = &mut self.queues[index];
+        queue.set_desc_table(vmm_va_to_gpa(maps, descriptor)?);
+        queue.set_avail_ring(vmm_va_to_gpa(maps, available)?);
+        queue.set_used_ring(vmm_va_to_gpa(maps, used)?);
         let log_addr = if flags.contains(VhostUserVringAddrFlags::VHOST_VRING_F_LOG) {
             vmm_va_to_gpa(maps, log).map(Some)?
         } else {
@@ -257,9 +257,9 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
                 queue.actual_size(),
                 index,
                 flags.bits(),
-                queue.desc_table,
-                queue.used_ring,
-                queue.avail_ring,
+                queue.desc_table(),
+                queue.used_ring(),
+                queue.avail_ring(),
                 log_addr,
             )
             .map_err(convert_vhost_error)
@@ -317,7 +317,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
                     return Err(Error::InvalidParam);
                 }
                 let queue = &mut self.queues[index];
-                if queue.ready {
+                if queue.ready() {
                     error!("kick fd cannot replaced after queue is started");
                     return Err(Error::InvalidOperation);
                 }
@@ -432,13 +432,13 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
             return Err(Error::InvalidParam);
         }
 
-        self.queues[index as usize].ready = enable;
+        self.queues[index as usize].set_ready(enable);
 
         if index == (EVENT_QUEUE) as u32 {
             return Ok(());
         }
 
-        if self.queues[..EVENT_QUEUE].iter().all(|q| q.ready) {
+        if self.queues[..EVENT_QUEUE].iter().all(|q| q.ready()) {
             // All queues are ready.  Start the device.
             self.handle.set_cid(self.cid).map_err(convert_vhost_error)?;
             self.handle.start().map_err(convert_vhost_error)

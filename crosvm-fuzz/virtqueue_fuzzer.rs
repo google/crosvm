@@ -54,15 +54,19 @@ struct virtq_used {
 fuzz_target!(|data: &[u8]| {
     let mut q = Queue::new(MAX_QUEUE_SIZE);
     let mut rng = FuzzRng::new(data);
-    q.size = rng.gen();
-    q.ready = true;
+    q.set_size(rng.gen());
+    q.set_ready(true);
 
     // For each of {desc_table,avail_ring,used_ring} generate a random address that includes enough
     // space to hold the relevant struct with the largest possible queue size.
     let max_table_size = MAX_QUEUE_SIZE as u64 * size_of::<virtq_desc>() as u64;
-    q.desc_table = GuestAddress(rng.gen_range(0..MEM_SIZE - max_table_size));
-    q.avail_ring = GuestAddress(rng.gen_range(0..MEM_SIZE - size_of::<virtq_avail>() as u64));
-    q.used_ring = GuestAddress(rng.gen_range(0..MEM_SIZE - size_of::<virtq_used>() as u64));
+    q.set_desc_table(GuestAddress(rng.gen_range(0..MEM_SIZE - max_table_size)));
+    q.set_avail_ring(GuestAddress(
+        rng.gen_range(0..MEM_SIZE - size_of::<virtq_avail>() as u64),
+    ));
+    q.set_used_ring(GuestAddress(
+        rng.gen_range(0..MEM_SIZE - size_of::<virtq_used>() as u64),
+    ));
 
     GUEST_MEM.with(|mem| {
         if !q.is_valid(mem) {
@@ -76,25 +80,25 @@ fuzz_target!(|data: &[u8]| {
         vs.write_bytes(0);
 
         // Fill in the descriptor table.
-        let queue_size = q.size as usize;
+        let queue_size = q.size() as usize;
         let mut buf = vec![0u8; queue_size * size_of::<virtq_desc>()];
 
         rng.fill_bytes(&mut buf[..]);
-        mem.write_all_at_addr(&buf[..], q.desc_table).unwrap();
+        mem.write_all_at_addr(&buf[..], q.desc_table()).unwrap();
 
         // Fill in the available ring. See the definition of virtq_avail above for the source of
         // these numbers.
         let avail_size = 4 + (queue_size * 2) + 2;
         buf.resize(avail_size, 0);
         rng.fill_bytes(&mut buf[..]);
-        mem.write_all_at_addr(&buf[..], q.avail_ring).unwrap();
+        mem.write_all_at_addr(&buf[..], q.avail_ring()).unwrap();
 
         // Fill in the used ring. See the definition of virtq_used above for the source of
         // these numbers.
         let used_size = 4 + (queue_size * size_of::<virtq_used_elem>()) + 2;
         buf.resize(used_size, 0);
         rng.fill_bytes(&mut buf[..]);
-        mem.write_all_at_addr(&buf[..], q.used_ring).unwrap();
+        mem.write_all_at_addr(&buf[..], q.used_ring()).unwrap();
 
         while let Some(avail_desc) = q.pop(mem) {
             let idx = avail_desc.index;
