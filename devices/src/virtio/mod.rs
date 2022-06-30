@@ -21,6 +21,7 @@ mod virtio_pci_common_config;
 mod virtio_pci_device;
 
 pub mod block;
+pub mod console;
 pub mod resource_bridge;
 pub mod vhost;
 
@@ -45,7 +46,6 @@ cfg_if::cfg_if! {
         mod pmem;
         pub mod wl;
 
-        pub mod console;
         pub mod fs;
         #[cfg(feature = "gpu")]
         pub mod gpu;

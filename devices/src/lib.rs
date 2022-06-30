@@ -7,10 +7,23 @@
 //! Emulates virtual and hardware devices.
 
 mod bus;
+mod cmos;
+#[cfg(feature = "direct")]
+pub mod direct_io;
+#[cfg(feature = "direct")]
+pub mod direct_irq;
+mod i8042;
 mod irq_event;
 pub mod irqchip;
 mod pci;
+pub mod pl030;
+#[cfg(feature = "usb")]
+#[macro_use]
+mod register_space;
+mod serial;
 pub mod serial_device;
+#[cfg(feature = "tpm")]
+mod software_tpm;
 mod sys;
 pub mod virtio;
 #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
@@ -28,6 +41,12 @@ pub use self::bus::{
     Bus, BusAccessInfo, BusDevice, BusDeviceObj, BusDeviceSync, BusRange, BusResumeDevice, BusType,
     HostHotPlugKey, HotPlugBus,
 };
+pub use self::cmos::Cmos;
+#[cfg(feature = "direct")]
+pub use self::direct_io::{DirectIo, DirectMmio};
+#[cfg(feature = "direct")]
+pub use self::direct_irq::{DirectIrq, DirectIrqError};
+pub use self::i8042::I8042Device;
 pub use self::irq_event::{IrqEdgeEvent, IrqLevelEvent};
 pub use self::irqchip::*;
 pub use self::pci::CrosvmDeviceId;
@@ -36,30 +55,24 @@ pub use self::pci::{
     PciDeviceError, PciInterruptPin, PciRoot, PciVirtualConfigMmio, StubPciDevice,
     StubPciParameters,
 };
+pub use self::pl030::Pl030;
+pub use self::serial::Serial;
+pub use self::serial_device::{
+    Error as SerialError, SerialDevice, SerialHardware, SerialParameters, SerialType,
+};
+#[cfg(feature = "tpm")]
+pub use self::software_tpm::SoftwareTpm;
 #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
 pub use self::vtpm_proxy::VtpmProxy;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
-        mod cmos;
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         mod debugcon;
-        #[cfg(feature = "direct")]
-        pub mod direct_io;
-        #[cfg(feature = "direct")]
-        pub mod direct_irq;
-        mod i8042;
-        pub mod pl030;
         mod platform;
         mod proxy;
-        #[cfg(feature = "usb")]
-        #[macro_use]
-        mod register_space;
         pub mod acpi;
         pub mod bat;
-        mod serial;
-        #[cfg(feature = "tpm")]
-        mod software_tpm;
         #[cfg(feature = "usb")]
         pub mod usb;
         #[cfg(feature = "usb")]
@@ -69,14 +82,8 @@ cfg_if::cfg_if! {
         pub use self::acpi::ACPIPMResource;
         pub use self::bat::{BatteryError, GoldfishBattery};
         pub use self::bus::Error as BusError;
-        pub use self::cmos::Cmos;
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         pub use self::debugcon::Debugcon;
-        #[cfg(feature = "direct")]
-        pub use self::direct_io::{DirectIo, DirectMmio};
-        #[cfg(feature = "direct")]
-        pub use self::direct_irq::{DirectIrq, DirectIrqError};
-        pub use self::i8042::I8042Device;
         #[cfg(feature = "audio")]
         pub use self::pci::{Ac97Backend, Ac97Dev, Ac97Parameters};
         pub use self::pci::{ PciBus,
@@ -84,16 +91,9 @@ cfg_if::cfg_if! {
             PvPanicCode, PcieRootPort, PcieHostPort,
             PvPanicPciDevice, VfioPciDevice, PciBridge,
         };
-        pub use self::pl030::Pl030;
         pub use self::platform::VfioPlatformDevice;
         pub use self::proxy::Error as ProxyError;
         pub use self::proxy::ProxyDevice;
-        pub use self::serial::Serial;
-        pub use self::serial_device::{
-            Error as SerialError, SerialDevice, SerialHardware, SerialParameters, SerialType,
-        };
-        #[cfg(feature = "tpm")]
-        pub use self::software_tpm::SoftwareTpm;
         #[cfg(feature = "usb")]
         pub use self::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
         #[cfg(feature = "usb")]

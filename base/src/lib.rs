@@ -32,6 +32,7 @@ pub use external_mapping::{
 };
 pub use mmap::{MemoryMapping, MemoryMappingBuilder};
 pub use notifiers::{CloseNotifier, ReadNotifier};
+pub use platform::gmtime_secure;
 pub use platform::ioctl::{
     ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
     IoctlNr,
@@ -101,7 +102,6 @@ cfg_if::cfg_if! {
             DuplicateHandleRequest, DuplicateHandleResponse, DuplicateHandleTube,
         };
         pub use platform::{set_audio_thread_priorities, thread};
-        pub use platform::gmtime_secure;
     } else {
         compile_error!("Unsupported platform");
     }

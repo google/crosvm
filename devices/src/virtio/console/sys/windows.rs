@@ -6,7 +6,7 @@ use std::io;
 use std::thread;
 use std::time::Duration;
 
-use base::{named_pipes, Event, RawDescriptor};
+use base::{named_pipes, Event, FileSync, RawDescriptor};
 
 use crate::serial_device::SerialInput;
 use crate::virtio::console::{Console, ConsoleInput};
@@ -55,14 +55,14 @@ pub(in crate::virtio::console) fn read_delay_if_needed() {
 }
 
 pub(in crate::virtio::console) fn is_a_fatal_input_error(e: &io::Error) -> bool {
-    match e.kind() {
+    !matches!(
+        e.kind(),
         // Being interrupted is not an error.
-        io::ErrorKind::Interrupted => false,
+        io::ErrorKind::Interrupted |
         // Ignore two kinds of errors on Windows.
         //   - ErrorKind::Other when reading a named pipe before a client connects.
         //   - ErrorKind::WouldBlock when reading a named pipe (we don't use non-blocking I/O).
-        io::ErrorKind::Other | io::ErrorKind::WouldBlock => false,
-        // Everything else is a fatal input error.
-        _ => true,
-    }
+        io::ErrorKind::Other | io::ErrorKind::WouldBlock
+    )
+    // Everything else is a fatal input error.
 }

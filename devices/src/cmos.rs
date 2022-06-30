@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::{gmtime_r, time, time_t, tm};
+use base::gmtime_secure;
+use libc::{time, time_t, tm};
 use std::cmp::min;
 use std::mem;
 
@@ -94,7 +95,7 @@ impl BusDevice for Cmos {
                     let mut tm: tm = mem::zeroed();
                     let mut now: time_t = 0;
                     time(&mut now as *mut _);
-                    gmtime_r(&now, &mut tm as *mut _);
+                    gmtime_secure(&now, &mut tm as *mut _);
                     // The following lines of code are safe but depend on tm being in scope.
                     seconds = tm.tm_sec;
                     minutes = tm.tm_min;

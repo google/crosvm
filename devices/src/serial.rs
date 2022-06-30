@@ -11,6 +11,8 @@ use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::Arc;
 use std::thread::{self};
 
+#[cfg(windows)]
+use base::named_pipes;
 use base::{error, Event, FileSync, RawDescriptor, Result};
 use hypervisor::ProtectionType;
 
@@ -112,6 +114,17 @@ impl SerialDevice for Serial {
             input,
             out,
         }
+    }
+
+    #[cfg(windows)]
+    fn new_with_pipe(
+        _protected_vm: ProtectionType,
+        interrupt_evt: Event,
+        pipe_in: named_pipes::PipeConnection,
+        pipe_out: named_pipes::PipeConnection,
+        keep_rds: Vec<RawDescriptor>,
+    ) -> Serial {
+        unimplemented!()
     }
 }
 
