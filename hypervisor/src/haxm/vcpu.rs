@@ -1067,8 +1067,8 @@ mod tests {
         for entry in &mut cpuid.cpu_id_entries {
             if entry.function == 1 {
                 // Disable XSAVE and OSXSAVE
-                entry.ecx &= !(1 << 26);
-                entry.ecx &= !(1 << 27);
+                entry.cpuid.ecx &= !(1 << 26);
+                entry.cpuid.ecx &= !(1 << 27);
             }
         }
 

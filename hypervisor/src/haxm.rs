@@ -315,11 +315,11 @@ mod tests {
             .expect("failed to get leaf 0x1");
 
         // FPU should definitely exist
-        assert_ne!(entry.edx & Feature1Edx::FPU.bits(), 0);
+        assert_ne!(entry.cpuid.edx & Feature1Edx::FPU.bits(), 0);
         // SSSE3 almost certainly set
-        assert_ne!(entry.ecx & Feature1Ecx::SSSE3.bits(), 0);
+        assert_ne!(entry.cpuid.ecx & Feature1Ecx::SSSE3.bits(), 0);
         // VMX should not be set, HAXM does not support nested virt
-        assert_eq!(entry.ecx & Feature1Ecx::VMX.bits(), 0);
+        assert_eq!(entry.cpuid.ecx & Feature1Ecx::VMX.bits(), 0);
 
         // Check that leaf 0x15 is in the results
         cpuid
@@ -341,7 +341,7 @@ mod tests {
             .find(|entry| entry.function == 0x80000001)
             .expect("failed to get leaf 0x80000001");
         // NX should be set, Windows 8+ and HAXM require it
-        assert_ne!(entry.edx & Feature80000001Edx::NX.bits(), 0);
+        assert_ne!(entry.cpuid.edx & Feature80000001Edx::NX.bits(), 0);
     }
 
     #[test]
