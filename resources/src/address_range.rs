@@ -7,13 +7,12 @@ use std::ops::RangeInclusive;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, Debug)]
 /// Represents a range of addresses from `start` to `end`, inclusive.
 ///
 /// Why not use the standard `RangeInclusive`? `RangeInclusive` is not `Copy`, because it tries to
 /// be an iterator as well as a range (which also means it is larger than necessary). Additionally,
 /// we would also like to implement some convenience functions for our own type.
-#[derive(Deserialize, Serialize)]
+#[derive(Copy, Clone, Deserialize, Serialize)]
 pub struct AddressRange {
     pub start: u64,
     pub end: u64,
@@ -150,15 +149,25 @@ impl AddressRange {
             (self.end - self.start).checked_add(1)
         }
     }
-}
 
-impl std::fmt::Display for AddressRange {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn log(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         if self.is_empty() {
             f.write_str("empty")
         } else {
             f.write_fmt(format_args!("{:#x}..={:#x}", self.start, self.end))
         }
+    }
+}
+
+impl std::fmt::Display for AddressRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.log(f)
+    }
+}
+
+impl std::fmt::Debug for AddressRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.log(f)
     }
 }
 
