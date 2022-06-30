@@ -53,7 +53,7 @@ change to be tested.
 
 &emsp; **@property**<br>&mdash; **def [source\_dir](/infra/recipe_modules/crosvm/api.py#13)(self):**
 
-&mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#97)(self, step_name, command):**
+&mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#99)(self, step_name, command):**
 
 Runs a luci step inside the crosvm dev container.
 ## Recipes

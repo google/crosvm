@@ -12,6 +12,7 @@
 import os
 from impl.common import CROSVM_ROOT, cwd, run_main, cmd, chdir
 from impl.test_runner import get_workspace_excludes
+from impl.test_target import Triple
 
 clippy = cmd("cargo clippy")
 
@@ -21,7 +22,7 @@ features: str = ""
 if os.name == "posix":
     features = "--features=all-linux"
 elif os.name == "nt":
-    excluded_crates = list(get_workspace_excludes("win64"))
+    excluded_crates = list(get_workspace_excludes(Triple.from_str("x86_64-pc-windows-msvc")))
 else:
     raise Exception(f"Unsupported build target: {os.name}")
 

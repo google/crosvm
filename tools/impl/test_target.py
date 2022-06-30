@@ -2,11 +2,12 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file
 import argparse
+import functools
 import platform
+import re
 import subprocess
 from pathlib import Path
-from typing import Any, Literal, Optional, cast, List, Dict
-import typing
+from typing import Any, Literal, Optional, cast, List, Dict, NamedTuple
 import sys
 from . import testvm
 import os
@@ -110,27 +111,123 @@ class Ssh:
         subprocess.run(scp_cmd, check=True)
 
 
+class Triple(NamedTuple):
+    """
+    Build triple in cargo format.
+
+    The format is: <arch><sub>-<vendor>-<sys>-<abi>, However, we will treat <arch><sub> as a single
+    arch to simplify things.
+    """
+
+    arch: str
+    vendor: str
+    sys: Optional[str]
+    abi: Optional[str]
+
+    @classmethod
+    def from_shorthand(cls, shorthand: str):
+        "These shorthands make it easier to specify triples on the command line."
+        if "-" in shorthand:
+            triple = shorthand
+        elif shorthand == "mingw64":
+            triple = "x86_64-pc-windows-gnu"
+        elif shorthand == "msvc64":
+            triple = "x86_64-pc-windows-msvc"
+        elif shorthand == "armhf":
+            triple = "armv7-unknown-linux-gnueabihf"
+        elif shorthand == "aarch64":
+            triple = "aarch64-unknown-linux-gnu"
+        elif shorthand == "x86_64":
+            triple = "x86_64-unknown-linux-gnu"
+        else:
+            raise Exception("Not a valid build triple shorthand: {shorthand}")
+        return cls.from_str(triple)
+
+    @classmethod
+    def from_str(cls, triple: str):
+        parts = triple.split("-")
+        if len(parts) < 2:
+            raise Exception(f"Unsupported triple {triple}")
+        return cls(
+            parts[0],
+            parts[1],
+            parts[2] if len(parts) > 2 else None,
+            parts[3] if len(parts) > 3 else None,
+        )
+
+    @classmethod
+    def from_linux_arch(cls, arch: str):
+        "Rough logic to convert the output of `arch` into a corresponding linux build triple."
+        if arch == "armhf":
+            return cls.from_str("armv7-unknown-linux-gnueabihf")
+        else:
+            return cls.from_str(f"{arch}-unknown-linux-gnu")
+
+    @classmethod
+    def host_default(cls):
+        "Returns the default build triple of the host."
+        rustc_info = subprocess.check_output(["rustc", "-vV"], text=True)
+        match = re.search(r"host: (\S+)", rustc_info)
+        if not match:
+            raise Exception(f"Cannot parse rustc info: {rustc_info}")
+        return cls.from_str(match.group(1))
+
+    def __str__(self):
+        return f"{self.arch}-{self.vendor}-{self.sys}-{self.abi}"
+
+
+def guess_emulator(native_triple: Triple, build_triple: Triple) -> Optional[List[str]]:
+    "Guesses which emulator binary to use to run build_triple on a native_triple machine."
+    if build_triple == native_triple:
+        return None
+    # aarch64 can natively run armv7 code in compatibility mode.
+    if build_triple.arch == "armv7" and native_triple.arch == "aarch64":
+        return None
+    # Use wine64 to run windows binaries on linux
+    if build_triple.sys == "windows" and str(native_triple) == "x86_64-unknown-linux-gnu":
+        return ["wine64"]
+    # Use qemu to run aarch64 on x86
+    if build_triple.arch == "aarch64" and native_triple.arch == "x86_64":
+        return ["qemu-aarch64-static"]
+    # Use qemu to run armv7 on x86
+    if build_triple.arch == "armv7" and native_triple.arch == "x86_64":
+        return ["qemu-arm-static"]
+    raise Exception(f"Don't know how to emulate {build_triple} on {native_triple}")
+
+
 class TestTarget(object):
-    """A test target can be the local host, a VM or a remote devica via SSH."""
+    """
+    A test target can be the local host, a VM or a remote devica via SSH.
+
+    Allows an emulation command to be specified which can run a different build target than the
+    devices native triple.
+    """
 
     target_str: str
     is_host: bool = True
     vm: Optional[testvm.Arch] = None
     ssh: Optional[Ssh] = None
-    __arch: Optional[Arch] = None
+
+    override_build_triple: Optional[Triple] = None
+    emulator_cmd: Optional[List[str]] = None
 
     @classmethod
     def default(cls):
         return cls(os.environ.get("CROSVM_TEST_TARGET", "host"))
 
-    def __init__(self, target_str: str, build_arch: str = None):
+    def __init__(
+        self,
+        target_str: str,
+        override_build_triple: Optional[Triple] = None,
+        emulator_cmd: Optional[List[str]] = None,
+    ):
         """target_str can be "vm:arch", "ssh:hostname" or just "host" """
         self.target_str = target_str
         parts = target_str.split(":")
         if len(parts) == 2 and parts[0] == "vm":
-            arch: testvm.Arch = parts[1]  # type: ignore
-            self.vm = arch
-            self.ssh = Ssh("localhost", testvm.ssh_cmd_args(arch))
+            vm_arch = cast(testvm.Arch, parts[1])
+            self.vm = vm_arch
+            self.ssh = Ssh("localhost", testvm.ssh_cmd_args(vm_arch))
             self.is_host = False
         elif len(parts) == 2 and parts[0] == "ssh":
             self.ssh = Ssh(parts[1])
@@ -139,22 +236,48 @@ class TestTarget(object):
             pass
         else:
             raise Exception(f"Invalid target {target_str}")
-        if build_arch:
-            self.__arch = cast(Arch, build_arch)
+        self.override_build_triple = override_build_triple
+
+        if emulator_cmd is not None:
+            self.emulator_cmd = emulator_cmd
+        elif override_build_triple:
+            self.emulator_cmd = guess_emulator(self.native_triple, override_build_triple)
 
     @property
-    def arch(self) -> Arch:
-        if not self.__arch:
-            if self.vm:
-                self.__arch = self.vm
-            elif self.ssh:
-                self.__arch = cast(Arch, self.ssh.check_output("arch").strip())
-            else:
-                self.__arch = cast(Arch, platform.machine())
-        return self.__arch
+    def is_native(self):
+        if not self.override_build_triple:
+            return True
+        return self.build_triple.arch == self.native_triple.arch
+
+    @property
+    def build_triple(self):
+        """
+        Triple to build for to run on this test target.
+
+        May not be the same as the native_triple of the device if an emulator is used or the triple
+        has been overridden.
+        """
+        if self.override_build_triple:
+            return self.override_build_triple
+        return self.native_triple
+
+    @functools.cached_property
+    def native_triple(self):
+        """Native triple of the the device on which the test is running."""
+        if self.vm:
+            return Triple.from_linux_arch(self.vm)
+        elif self.ssh:
+            return Triple.from_linux_arch(self.ssh.check_output("arch").strip())
+        elif self.is_host:
+            return Triple.host_default()
+        else:
+            raise Exception(f"Invalid TestTarget({self})")
 
     def __str__(self):
-        return self.target_str
+        if self.emulator_cmd:
+            return f"{self.target_str} ({self.build_triple} via {' '.join(self.emulator_cmd)})"
+        else:
+            return f"{self.target_str} ({self.build_triple})"
 
 
 def find_rust_lib_dir():
@@ -187,33 +310,15 @@ def prepare_target(target: TestTarget, extra_files: List[Path] = []):
         prepare_remote(target.ssh, extra_files)
 
 
-def get_cargo_build_target(arch: Arch):
-    if os.name == "posix":
-        if arch == "armhf":
-            return "armv7-unknown-linux-gnueabihf"
-        elif arch == "win64":
-            return "x86_64-pc-windows-gnu"
-        else:
-            return f"{arch}-unknown-linux-gnu"
-    elif os.name == "nt":
-        if arch == "win64":
-            return f"x86_64-pc-windows-msvc"
-        else:
-            return f"{arch}-pc-windows-msvc"
-    else:
-        raise Exception(f"Unsupported build target: {os.name}")
-
-
-def get_cargo_env(target: TestTarget, build_arch: Arch):
+def get_cargo_env(target: TestTarget):
     """Environment variables to make cargo use the test target."""
     env: Dict[str, str] = BUILD_ENV.copy()
-    cargo_target = get_cargo_build_target(build_arch)
+    cargo_target = str(target.build_triple)
     upper_target = cargo_target.upper().replace("-", "_")
-    if build_arch != platform.machine():
-        env["CARGO_BUILD_TARGET"] = cargo_target
+    env["CARGO_BUILD_TARGET"] = cargo_target
     if not target.is_host:
         env[f"CARGO_TARGET_{upper_target}_RUNNER"] = f"{SCRIPT_PATH} exec-file"
-    env["CROSVM_TEST_TARGET"] = str(target)
+    env["CROSVM_TEST_TARGET"] = target.target_str
     return env
 
 
@@ -223,13 +328,11 @@ def write_envrc(values: Dict[str, str]):
             file.write(f'export {key}="{value}"\n')
 
 
-def set_target(target: TestTarget, build_arch: Optional[Arch]):
+def set_target(target: TestTarget):
     prepare_target(target)
-    if not build_arch:
-        build_arch = target.arch
-    write_envrc(get_cargo_env(target, build_arch))
+    write_envrc(get_cargo_env(target))
     print(f"Test target: {target}")
-    print(f"Target Architecture: {build_arch}")
+    print(f"Target Architecture: {target.build_triple}")
 
 
 def exec_file_on_target(
@@ -252,6 +355,7 @@ def exec_file_on_target(
     any output produced by the subprocess until the timeout.
     """
     env = os.environ.copy()
+    prefix = target.emulator_cmd if target.emulator_cmd else []
     if not target.ssh:
         # Allow test binaries to find rust's test libs.
         if os.name == "posix":
@@ -264,7 +368,7 @@ def exec_file_on_target(
         else:
             raise Exception(f"Unsupported build target: {os.name}")
 
-        cmd_line = [str(filepath), *args]
+        cmd_line = [*prefix, str(filepath), *args]
         return subprocess.run(
             cmd_line,
             env=env,
@@ -275,9 +379,10 @@ def exec_file_on_target(
     else:
         filename = Path(filepath).name
         target.ssh.upload_files([filepath] + extra_files, quiet=True)
+        cmd_line = [*prefix, f"./{filename}", *args]
         try:
             result = target.ssh.run(
-                f"chmod +x {filename} && sudo LD_LIBRARY_PATH=. ./{filename} {' '.join(args)}",
+                f"chmod +x {filename} && sudo LD_LIBRARY_PATH=. {' '.join(cmd_line)}",
                 timeout=timeout,
                 text=True,
                 **kwargs,
@@ -316,10 +421,11 @@ def main():
     parser.add_argument("command", choices=COMMANDS)
     parser.add_argument("--target", type=str, help="Override default test target.")
     parser.add_argument(
-        "--arch",
-        choices=typing.get_args(Arch),
-        help="Override target build architecture.",
+        "--build-target",
+        type=str,
+        help="Override target build triple (e.g. x86_64-unknown-linux-gnu).",
     )
+    parser.add_argument("--arch", help="Deprecated. Please use --build-target instead."),
     parser.add_argument(
         "--extra-files",
         type=str,
@@ -336,10 +442,13 @@ def main():
     parser.add_argument("remainder", nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
+    if args.arch:
+        print("--arch is deprecated. Please use --build-target instead.")
+
     if args.command == "set":
         if len(args.remainder) != 1:
             parser.error("Need to specify a target.")
-        set_target(TestTarget(args.remainder[0]), args.arch)
+        set_target(TestTarget(args.remainder[0], args.build_target))
         return
 
     if args.target:
@@ -357,13 +466,3 @@ def main():
             timeout=args.timeout,
             extra_files=[Path(f) for f in args.extra_files],
         )
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except subprocess.CalledProcessError as e:
-        print("Command failed:", e.cmd)
-        print(e.stdout)
-        print(e.stderr)
-        sys.exit(-1)

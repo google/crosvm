@@ -8,7 +8,7 @@
       "--verbose",
       "--build-only",
       "--target=vm:aarch64",
-      "--arch=armhf"
+      "--build-target=armhf"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "luci_context": {
@@ -33,7 +33,7 @@
       "./tools/run_tests",
       "--verbose",
       "--target=vm:aarch64",
-      "--arch=armhf"
+      "--build-target=armhf"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "luci_context": {

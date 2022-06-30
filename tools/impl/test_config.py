@@ -118,8 +118,9 @@ for name in WIN64_DISABLED_CRATES:
     CRATE_OPTIONS[name] = CRATE_OPTIONS.get(name, []) + [TestOption.DO_NOT_BUILD_WIN64]
 
 BUILD_FEATURES: Dict[str, str] = {
-    "x86_64": "linux-x86_64",
-    "aarch64": "linux-aarch64",
-    "armhf": "linux-armhf",
-    "win64": "win64",
+    "x86_64-unknown-linux-gnu": "linux-x86_64",
+    "aarch64-unknown-linux-gnu": "linux-aarch64",
+    "armv7-unknown-linux-gnueabihf": "linux-armhf",
+    "x86_64-pc-windows-gnu": "win64",
+    "x86_64-pc-windows-msvc": "win64",
 }

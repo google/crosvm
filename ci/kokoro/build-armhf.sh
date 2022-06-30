@@ -5,4 +5,4 @@
 
 source "$(dirname $0)/common.sh"
 
-./tools/dev_container --hermetic ./tools/run_tests --target=vm:aarch64 --arch armhf -v
+./tools/dev_container --hermetic ./tools/run_tests --target=vm:aarch64 --build-target armhf -v

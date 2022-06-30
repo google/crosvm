@@ -47,7 +47,7 @@ py .\tools\clippy
 if %ERRORLEVEL% neq 0 ( exit /b %ERRORLEVEL% )
 
 echo [%TIME%] Calling crosvm\tools\run_tests
-py .\tools\run_tests --arch win64 -v
+py .\tools\run_tests --build-target=x86_64-pc-windows-msvc -v
 if %ERRORLEVEL% neq 0 ( exit /b %ERRORLEVEL% )
 
 exit /b %ERRORLEVEL%

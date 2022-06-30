@@ -27,7 +27,7 @@ def get_test_args(api, test_arch):
     elif test_arch == "aarch64":
         return ["--target=vm:aarch64"]
     elif test_arch == "armhf":
-        return ["--target=vm:aarch64", "--arch=armhf"]
+        return ["--target=vm:aarch64", "--build-target=armhf"]
     else:
         raise api.step.StepFailure("Unknown test_arch " + test_arch)
 

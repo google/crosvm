@@ -9,11 +9,6 @@
       "origin/main"
     ],
     "cwd": "[CACHE]/builder/crosvm",
-    "env_prefixes": {
-      "MERGE_BOT_TEST": [
-        "1"
-      ]
-    },
     "name": "Update Merges"
   },
   {
@@ -26,11 +21,6 @@
       "origin/main"
     ],
     "cwd": "[CACHE]/builder/crosvm",
-    "env_prefixes": {
-      "MERGE_BOT_TEST": [
-        "1"
-      ]
-    },
     "name": "Update Dry Runs"
   }
 ]
