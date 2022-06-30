@@ -370,8 +370,6 @@ impl VvuPciDevice {
         notify_addr.addr += notify_off as u64 * self.caps.notify_off_multiplier as u64;
         let notifier = QueueNotifier::new(typ, &self.vfio_dev, &self.caps)?;
 
-        write_common_cfg_field!(self, queue_enable, 1_u16);
-
         Ok((queue, notifier))
     }
 
@@ -507,6 +505,12 @@ impl VvuPciDevice {
         let (irqs, notification_evts) = self.create_irqs(device_vq_num)?;
         self.irqs = irqs;
         self.notification_evts = notification_evts;
+
+        // Enable Virtqueues
+        for index in 0..self.queues.len() {
+            write_common_cfg_field!(self, queue_select, index as u16);
+            write_common_cfg_field!(self, queue_enable, 1_u16);
+        }
 
         self.set_status(virtio_config::VIRTIO_CONFIG_S_DRIVER_OK as u8);
 
