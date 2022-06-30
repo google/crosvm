@@ -4,11 +4,25 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+#[cfg(windows)]
+use std::thread;
+#[cfg(windows)]
+use std::time::Duration;
+
+#[cfg(windows)]
+use std::io::Read;
 
 use base::Event;
+#[cfg(windows)]
+use base::Result;
 use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
-use devices::{Bus, ProxyDevice, Serial};
+#[cfg(windows)]
+use devices::Minijail;
+#[cfg(unix)]
+use devices::ProxyDevice;
+use devices::{Bus, Serial};
 use hypervisor::ProtectionType;
+#[cfg(unix)]
 use minijail::Minijail;
 use remain::sorted;
 use sync::Mutex;
@@ -71,6 +85,32 @@ pub fn set_default_serial_parameters(
 /// Address for Serial ports in x86
 pub const SERIAL_ADDR: [u64; 4] = [0x3f8, 0x2f8, 0x3e8, 0x2e8];
 
+/// A type for queueing input bytes to a serial device that abstracts if the device is local or part
+/// of a sandboxed device process.
+/// TODO(b/160806152) rizhang: Move to different file for readability.
+#[cfg(windows)]
+pub enum SerialInput {
+    #[doc(hidden)]
+    Local(Arc<Mutex<Serial>>),
+}
+
+#[cfg(windows)]
+impl SerialInput {
+    /// Creates a `SerialInput` that trivially forwards queued bytes to the device in the local
+    /// process.
+    pub fn new_local(serial: Arc<Mutex<Serial>>) -> SerialInput {
+        SerialInput::Local(serial)
+    }
+
+    /// Just like `Serial::queue_input_bytes`, but abstracted over local and sandboxed serial
+    /// devices.
+    pub fn queue_input_bytes(&self, bytes: &[u8]) -> Result<()> {
+        match self {
+            SerialInput::Local(device) => device.lock().queue_input_bytes(bytes),
+        }
+    }
+}
+
 /// Adds serial devices to the provided bus based on the serial parameters given.
 ///
 /// Only devices with hardware type `SerialHardware::Serial` are added by this function.
@@ -90,46 +130,70 @@ pub fn add_serial_devices(
     com_evt_2_4: &Event,
     serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
     serial_jail: Option<Minijail>,
-) -> Result<(), DeviceRegistrationError> {
+) -> std::result::Result<(), DeviceRegistrationError> {
     for x in 0..=3 {
         let com_evt = match x {
-            0 => com_evt_1_3,
-            1 => com_evt_2_4,
-            2 => com_evt_1_3,
-            3 => com_evt_2_4,
-            _ => com_evt_1_3,
+            0 => &com_evt_1_3,
+            1 => &com_evt_2_4,
+            2 => &com_evt_1_3,
+            3 => &com_evt_2_4,
+            _ => &com_evt_1_3,
         };
 
         let param = serial_parameters
             .get(&(SerialHardware::Serial, x + 1))
             .ok_or(DeviceRegistrationError::MissingRequiredSerialDevice(x + 1))?;
 
-        let mut preserved_fds = Vec::new();
+        let mut preserved_descriptors = Vec::new();
         let com = param
-            .create_serial_device::<Serial>(protected_vm, com_evt, &mut preserved_fds)
+            .create_serial_device::<Serial>(protected_vm, com_evt, &mut preserved_descriptors)
             .map_err(DeviceRegistrationError::CreateSerialDevice)?;
 
         match serial_jail.as_ref() {
+            #[cfg(unix)]
             Some(jail) => {
                 let com = Arc::new(Mutex::new(
-                    ProxyDevice::new(
-                        com,
-                        &jail
-                            .try_clone()
-                            .map_err(DeviceRegistrationError::CloneJail)?,
-                        preserved_fds,
-                    )
-                    .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
+                    ProxyDevice::new(com, jail, preserved_descriptors)
+                        .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
                 ));
                 io_bus
                     .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8)
                     .unwrap();
             }
+            #[cfg(windows)]
+            Some(_) => (),
             None => {
                 let com = Arc::new(Mutex::new(com));
                 io_bus
                     .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8)
                     .unwrap();
+
+                #[cfg(windows)]
+                {
+                    if !param.stdin {
+                        if let SerialType::SystemSerialType = param.type_ {
+                            let mut in_pipe_result =
+                                com.lock().in_stream.as_ref().unwrap().try_clone();
+                            thread::spawn(move || {
+                                let serial_input = SerialInput::new_local(com);
+                                let in_pipe = in_pipe_result.as_mut().unwrap();
+
+                                let mut buffer: [u8; 255] = [0; 255];
+                                loop {
+                                    let bytes = in_pipe.read(&mut buffer).unwrap_or(0);
+                                    if bytes > 0 {
+                                        serial_input.queue_input_bytes(&buffer[0..bytes]).unwrap();
+                                    }
+                                    // We can't issue blocking reads here and overlapped I/O is
+                                    // incompatible with the call site where writes to this pipe are being
+                                    // made, so instead we issue a small wait to prevent us from hogging
+                                    // the CPU. This 20ms delay while typing doesn't seem to be noticeable.
+                                    thread::sleep(Duration::from_millis(20));
+                                }
+                            });
+                        }
+                    }
+                }
             }
         }
     }
