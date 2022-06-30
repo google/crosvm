@@ -16,15 +16,15 @@ use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;
 
-#[cfg(not(test))]
-use base::Clock;
-#[cfg(test)]
-use base::FakeClock as Clock;
-
-#[cfg(test)]
-use base::FakeTimer as Timer;
-#[cfg(not(test))]
-use base::Timer;
+cfg_if::cfg_if! {
+    if #[cfg(test)] {
+        use base::FakeClock as Clock;
+        use base::FakeTimer as Timer;
+    } else {
+        use base::Clock;
+        use base::Timer;
+    }
+}
 
 use crate::bus::BusAccessInfo;
 use crate::pci::CrosvmDeviceId;
