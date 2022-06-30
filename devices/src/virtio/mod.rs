@@ -66,11 +66,14 @@ cfg_if::cfg_if! {
         pub use self::wl::*;
 
     } else if #[cfg(windows)] {
+        mod vsock;
+
         #[cfg(feature = "slirp")]
         pub mod net;
 
         #[cfg(feature = "slirp")]
         pub use self::net::*;
+        pub use self::vsock::*;
     } else {
         compile_error!("Unsupported platform");
     }
