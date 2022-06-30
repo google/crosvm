@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 use std::fs::OpenOptions;
+#[cfg(windows)]
+use std::os::windows::fs::OpenOptionsExt;
 
 use crate::Pstore;
 use anyhow::{bail, Context, Result};
@@ -10,6 +12,8 @@ use base::MemoryMappingBuilder;
 use hypervisor::Vm;
 use resources::AddressRange;
 use vm_memory::GuestAddress;
+#[cfg(windows)]
+use winapi::um::winnt::FILE_SHARE_READ;
 
 pub struct RamoopsRegion {
     pub address: u64,
@@ -27,10 +31,16 @@ pub fn create_memory_region(
         bail!("insufficient space for pstore {} {}", region, pstore.size);
     }
 
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
+    let mut open_opts = OpenOptions::new();
+    open_opts.read(true).write(true).create(true);
+
+    // Allow other applications to read the memory region.
+    #[cfg(windows)]
+    {
+        open_opts.share_mode(FILE_SHARE_READ);
+    }
+
+    let file = open_opts
         .open(&pstore.path)
         .context("failed to open pstore")?;
     file.set_len(pstore.size as u64)
