@@ -19,10 +19,10 @@ use crate::crosvm::{argument, argument::parse_hex_or_decimal};
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 pub fn parse_gpu_render_server_options(
     s: &str,
-) -> Result<crate::crosvm::platform::GpuRenderServerParameters, String> {
+) -> Result<crate::crosvm::sys::GpuRenderServerParameters, String> {
     use std::{path::PathBuf, str::FromStr};
 
-    use crate::crosvm::{config::invalid_value_err, platform::GpuRenderServerParameters};
+    use crate::crosvm::{config::invalid_value_err, sys::GpuRenderServerParameters};
 
     let mut path: Option<PathBuf> = None;
     let mut cache_path = None;

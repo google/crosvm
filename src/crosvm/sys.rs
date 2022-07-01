@@ -6,6 +6,7 @@ cfg_if::cfg_if! {
     if #[cfg(unix)] {
         pub(crate) mod unix;
         use unix as platform;
+        pub(crate) use unix::*;
     } else {
         compile_error!("Unsupported platform");
     }

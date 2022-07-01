@@ -9,8 +9,6 @@ pub mod cmdline;
 pub mod config;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 pub mod gdb;
-#[path = "crosvm/linux/mod.rs"]
-pub mod platform;
 #[cfg(feature = "plugin")]
 pub mod plugin;
 pub mod sys;

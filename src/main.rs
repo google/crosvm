@@ -15,7 +15,7 @@ mod crosvm;
 #[cfg(feature = "plugin")]
 use crosvm::config::executable_is_plugin;
 use crosvm::config::Config;
-use crosvm::{cmdline, platform};
+use crosvm::{cmdline, sys as platform};
 use devices::virtio::vhost::user::device::{run_block_device, run_net_device};
 use disk::QcowFile;
 #[cfg(feature = "composite-disk")]

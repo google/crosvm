@@ -24,9 +24,9 @@ use std::path::PathBuf;
 
 use super::config::*;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
-use super::platform::GpuRenderServerParameters;
-#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use super::sys::config::parse_gpu_render_server_options;
+#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+use super::sys::GpuRenderServerParameters;
 
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use super::config::parse_video_options;

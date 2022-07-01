@@ -46,7 +46,7 @@ cfg_if::cfg_if! {
         use base::RawDescriptor;
         use devices::virtio::fs::passthrough;
         #[cfg(feature = "gpu")]
-        use crate::crosvm::platform::GpuRenderServerParameters;
+        use crate::crosvm::sys::GpuRenderServerParameters;
         use libc::{getegid, geteuid};
 
         static KVM_PATH: &str = "/dev/kvm";
