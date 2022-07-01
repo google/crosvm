@@ -425,6 +425,7 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
                 eprintln!("Please use `--balloon-bias-mib` instead");
                 args.push("--balloon-bias-mib".to_string());
             }
+            "-h" => args.push("--help".to_string()),
             arg if arg.starts_with("--") => {
                 // Split `--arg=val` into `--arg val`, since argh doesn't support the former.
                 if let Some((key, value)) = arg.split_once("=") {
