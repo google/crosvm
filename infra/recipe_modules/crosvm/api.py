@@ -50,8 +50,9 @@ class CrosvmApi(recipe_api.RecipeApi):
 
         Use when no build commands are needed.
         """
-        self.__prepare_source()
-        return self.m.context(cwd=self.source_dir)
+        with self.m.context(infra_steps=True):
+            self.__prepare_source()
+            return self.m.context(cwd=self.source_dir)
 
     def container_build_context(self):
         """
@@ -61,11 +62,12 @@ class CrosvmApi(recipe_api.RecipeApi):
             with api.crosvm.container_build_context():
                 api.crosvm.step_in_container("build crosvm", ["cargo build"])
         """
-        self.__prepare_source()
-        self.__prepare_container()
-        return self.m.context(cwd=self.source_dir)
+        with self.m.step.nest("Prepare Container Build"):
+            with self.m.context(infra_steps=True):
+                self.__prepare_source()
+                self.__prepare_container()
+                return self.m.context(cwd=self.source_dir)
 
-    @contextlib.contextmanager
     def host_build_context(self):
         """
         Prepares source and system to build crosvm directly on the host.
@@ -77,22 +79,25 @@ class CrosvmApi(recipe_api.RecipeApi):
             with api.crosvm.host_build_context():
                 api.step("build crosvm", ["cargo build"])
         """
-        self.__prepare_source()
-        env = {
-            "RUSTUP_HOME": str(self.rustup_home),
-            "CARGO_HOME": str(self.cargo_home),
-            "CARGO_TARGET_DIR": str(self.cargo_target_dir),
-        }
-        env_prefixes = {
-            "PATH": [
-                self.cargo_home.join("bin"),
-                self.local_bin,
-            ],
-        }
-        with self.m.context(env=env, env_prefixes=env_prefixes, cwd=self.source_dir):
-            self.__prepare_rust()
-            self.__prepare_host_depdendencies()
-            yield
+        with self.m.step.nest("Prepare Host Build"):
+            with self.m.context(infra_steps=True):
+                self.__prepare_source()
+                env = {
+                    "RUSTUP_HOME": str(self.rustup_home),
+                    "CARGO_HOME": str(self.cargo_home),
+                    "CARGO_TARGET_DIR": str(self.cargo_target_dir),
+                }
+                env_prefixes = {
+                    "PATH": [
+                        self.cargo_home.join("bin"),
+                        self.local_bin,
+                    ],
+                }
+                with self.m.context(env=env, env_prefixes=env_prefixes, cwd=self.source_dir):
+                    self.__prepare_rust()
+                    self.__prepare_host_depdendencies()
+
+                return self.m.context(env=env, env_prefixes=env_prefixes, cwd=self.source_dir)
 
     def step_in_container(self, step_name, command):
         """

@@ -39,7 +39,7 @@ CARGO_HOME is cached between runs.
 
 CARGO_TARGET_DIR is cleaned up between runs
 
-&mdash; **def [container\_build\_context](/infra/recipe_modules/crosvm/api.py#56)(self):**
+&mdash; **def [container\_build\_context](/infra/recipe_modules/crosvm/api.py#57)(self):**
 
 Prepares source and system to build crosvm via dev container.
 
@@ -47,7 +47,7 @@ Usage:
     with api.crosvm.container_build_context():
         api.crosvm.step_in_container("build crosvm", ["cargo build"])
 
-&emsp; **@contextlib.contextmanager**<br>&mdash; **def [host\_build\_context](/infra/recipe_modules/crosvm/api.py#68)(self):**
+&mdash; **def [host\_build\_context](/infra/recipe_modules/crosvm/api.py#71)(self):**
 
 Prepares source and system to build crosvm directly on the host.
 
@@ -62,7 +62,7 @@ Usage:
 
 Directory used to install local tools required by the build.
 
-&mdash; **def [prepare\_git](/infra/recipe_modules/crosvm/api.py#111)(self):**
+&mdash; **def [prepare\_git](/infra/recipe_modules/crosvm/api.py#116)(self):**
 
 &emsp; **@property**<br>&mdash; **def [rustup\_home](/infra/recipe_modules/crosvm/api.py#19)(self):**
 
@@ -78,7 +78,7 @@ Use when no build commands are needed.
 
 Where the crosvm source will be checked out.
 
-&mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#97)(self, step_name, command):**
+&mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#102)(self, step_name, command):**
 
 Runs a luci step inside the crosvm dev container.
 ## Recipes

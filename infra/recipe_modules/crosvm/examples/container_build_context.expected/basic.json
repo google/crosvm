@@ -1,7 +1,14 @@
 [
   {
     "cmd": [],
-    "name": "Prepare git"
+    "name": "Prepare Container Build"
+  },
+  {
+    "cmd": [],
+    "name": "Prepare Container Build.Prepare git",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
   },
   {
     "cmd": [
@@ -11,9 +18,9 @@
       "user.name"
     ],
     "infra_step": true,
-    "name": "Prepare git.git config user.name",
+    "name": "Prepare Container Build.Prepare git.git config user.name",
     "~followup_annotations": [
-      "@@@STEP_NEST_LEVEL@1@@@"
+      "@@@STEP_NEST_LEVEL@2@@@"
     ]
   },
   {
@@ -24,9 +31,9 @@
       "user.email"
     ],
     "infra_step": true,
-    "name": "Prepare git.git config user.email",
+    "name": "Prepare Container Build.Prepare git.git config user.email",
     "~followup_annotations": [
-      "@@@STEP_NEST_LEVEL@1@@@"
+      "@@@STEP_NEST_LEVEL@2@@@"
     ]
   },
   {
@@ -37,9 +44,10 @@
       "user.name",
       "Crosvm Bot"
     ],
-    "name": "Prepare git.Set git config: user.name",
+    "infra_step": true,
+    "name": "Prepare Container Build.Prepare git.Set git config: user.name",
     "~followup_annotations": [
-      "@@@STEP_NEST_LEVEL@1@@@"
+      "@@@STEP_NEST_LEVEL@2@@@"
     ]
   },
   {
@@ -50,9 +58,10 @@
       "user.email",
       "crosvm-bot@crosvm-infra.iam.gserviceaccount.com"
     ],
-    "name": "Prepare git.Set git config: user.email",
+    "infra_step": true,
+    "name": "Prepare Container Build.Prepare git.Set git config: user.email",
     "~followup_annotations": [
-      "@@@STEP_NEST_LEVEL@1@@@"
+      "@@@STEP_NEST_LEVEL@2@@@"
     ]
   },
   {
@@ -63,14 +72,18 @@
       "credential.helper",
       "gcloud.sh"
     ],
-    "name": "Prepare git.Set git config: credential.helper",
+    "infra_step": true,
+    "name": "Prepare Container Build.Prepare git.Set git config: credential.helper",
     "~followup_annotations": [
-      "@@@STEP_NEST_LEVEL@1@@@"
+      "@@@STEP_NEST_LEVEL@2@@@"
     ]
   },
   {
     "cmd": [],
-    "name": "Prepare source"
+    "name": "Prepare Container Build.Prepare source",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
   },
   {
     "cmd": [
@@ -85,9 +98,9 @@
       "[CACHE]/builder"
     ],
     "infra_step": true,
-    "name": "Prepare source.Ensure builder_dir exists",
+    "name": "Prepare Container Build.Prepare source.Ensure builder_dir exists",
     "~followup_annotations": [
-      "@@@STEP_NEST_LEVEL@1@@@"
+      "@@@STEP_NEST_LEVEL@2@@@"
     ]
   },
   {
@@ -124,9 +137,9 @@
       ]
     },
     "infra_step": true,
-    "name": "Prepare source.bot_update",
+    "name": "Prepare Container Build.Prepare source.bot_update",
     "~followup_annotations": [
-      "@@@STEP_NEST_LEVEL@1@@@",
+      "@@@STEP_NEST_LEVEL@2@@@",
       "@@@STEP_TEXT@Some step text@@@",
       "@@@STEP_LOG_LINE@json.output@{@@@",
       "@@@STEP_LOG_LINE@json.output@  \"did_run\": true, @@@",
@@ -172,14 +185,18 @@
       "--init"
     ],
     "cwd": "[CACHE]/builder/crosvm",
-    "name": "Prepare source.Sync Submodules",
+    "infra_step": true,
+    "name": "Prepare Container Build.Prepare source.Sync Submodules",
     "~followup_annotations": [
-      "@@@STEP_NEST_LEVEL@1@@@"
+      "@@@STEP_NEST_LEVEL@2@@@"
     ]
   },
   {
     "cmd": [],
-    "name": "Prepare dev_container"
+    "name": "Prepare Container Build.Prepare dev_container",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
   },
   {
     "cmd": [
@@ -189,9 +206,10 @@
       "--stop"
     ],
     "cwd": "[CACHE]/builder/crosvm",
-    "name": "Prepare dev_container.Stop existing dev containers",
+    "infra_step": true,
+    "name": "Prepare Container Build.Prepare dev_container.Stop existing dev containers",
     "~followup_annotations": [
-      "@@@STEP_NEST_LEVEL@1@@@"
+      "@@@STEP_NEST_LEVEL@2@@@"
     ]
   },
   {
@@ -202,9 +220,10 @@
       "true"
     ],
     "cwd": "[CACHE]/builder/crosvm",
-    "name": "Prepare dev_container.Ensure dev container exists",
+    "infra_step": true,
+    "name": "Prepare Container Build.Prepare dev_container.Ensure dev container exists",
     "~followup_annotations": [
-      "@@@STEP_NEST_LEVEL@1@@@"
+      "@@@STEP_NEST_LEVEL@2@@@"
     ]
   },
   {
