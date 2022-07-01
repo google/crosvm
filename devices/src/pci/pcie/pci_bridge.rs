@@ -237,6 +237,10 @@ impl PciDevice for PciBridge {
         self.device.lock().debug_label()
     }
 
+    fn preferred_address(&self) -> Option<PciAddress> {
+        self.device.lock().preferred_address()
+    }
+
     fn allocate_address(
         &mut self,
         resources: &mut SystemAllocator,

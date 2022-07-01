@@ -59,6 +59,10 @@ impl PcieDevice for PcieUpstreamPort {
         self.pcie_port.debug_label()
     }
 
+    fn preferred_address(&self) -> Option<PciAddress> {
+        self.pcie_port.preferred_address()
+    }
+
     fn allocate_address(
         &mut self,
         resources: &mut SystemAllocator,
@@ -145,6 +149,10 @@ impl PcieDevice for PcieDownstreamPort {
 
     fn debug_label(&self) -> String {
         self.pcie_port.debug_label()
+    }
+
+    fn preferred_address(&self) -> Option<PciAddress> {
+        self.pcie_port.preferred_address()
     }
 
     fn allocate_address(

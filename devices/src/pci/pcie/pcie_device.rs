@@ -18,6 +18,9 @@ use crate::pci::PciDeviceError;
 pub trait PcieDevice: Send {
     fn get_device_id(&self) -> u16;
     fn debug_label(&self) -> String;
+    fn preferred_address(&self) -> Option<PciAddress> {
+        None
+    }
     fn allocate_address(
         &mut self,
         resources: &mut SystemAllocator,

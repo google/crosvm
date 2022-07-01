@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use resources::SystemAllocator;
 use sync::Mutex;
 use vm_control::GpeNotify;
@@ -52,7 +52,8 @@ impl PcieRootPort {
     /// Constructs a new PCIE root port which associated with the host physical pcie RP
     pub fn new_from_host(pcie_host: PcieHostPort, slot_implemented: bool) -> Result<Self> {
         Ok(PcieRootPort {
-            pcie_port: PciePort::new_from_host(pcie_host, slot_implemented),
+            pcie_port: PciePort::new_from_host(pcie_host, slot_implemented)
+                .context("PciePort::new_from_host failed")?,
             downstream_devices: BTreeMap::new(),
             hotplug_out_begin: false,
             removed_downstream: Vec::new(),
@@ -67,6 +68,10 @@ impl PcieDevice for PcieRootPort {
 
     fn debug_label(&self) -> String {
         self.pcie_port.debug_label()
+    }
+
+    fn preferred_address(&self) -> Option<PciAddress> {
+        self.pcie_port.preferred_address()
     }
 
     fn allocate_address(
