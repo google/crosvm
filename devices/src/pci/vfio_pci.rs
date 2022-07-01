@@ -18,6 +18,7 @@ use std::u32;
 
 #[cfg(feature = "direct")]
 use anyhow::Context;
+use base::debug;
 use base::error;
 use base::pagesize;
 use base::warn;
@@ -520,7 +521,7 @@ pub struct VfioPciDevice {
     device: Arc<VfioDevice>,
     config: VfioPciConfig,
     hotplug_bus_number: Option<u8>, // hot plug device has bus number specified at device creation.
-    guest_address: Option<PciAddress>,
+    preferred_address: PciAddress,
     pci_address: Option<PciAddress>,
     interrupt_evt: Option<IrqLevelEvent>,
     mmio_regions: Vec<PciBarConfiguration>,
@@ -552,7 +553,27 @@ impl VfioPciDevice {
         vfio_device_socket_msix: Tube,
         vfio_device_socket_mem: Tube,
         vfio_device_socket_vm: Option<Tube>,
-    ) -> Self {
+    ) -> Result<Self, PciDeviceError> {
+        let preferred_address = if let Some(bus_num) = hotplug_bus_number {
+            debug!("hotplug bus {}", bus_num);
+            PciAddress {
+                // Caller specify pcie bus number for hotplug device
+                bus: bus_num,
+                // devfn should be 0, otherwise pcie root port couldn't detect it
+                dev: 0,
+                func: 0,
+            }
+        } else if let Some(guest_address) = guest_address {
+            debug!("guest PCI address {}", guest_address);
+            guest_address
+        } else {
+            let addr = PciAddress::from_str(device.device_name()).map_err(|e| {
+                PciDeviceError::PciAddressParseFailure(device.device_name().clone(), e)
+            })?;
+            debug!("parsed device PCI address {}", addr);
+            addr
+        };
+
         let dev = Arc::new(device);
         let config = VfioPciConfig::new(Arc::clone(&dev));
         let mut msi_socket = Some(vfio_device_socket_msi);
@@ -624,11 +645,11 @@ impl VfioPciDevice {
             }
         };
 
-        VfioPciDevice {
+        Ok(VfioPciDevice {
             device: dev,
             config,
             hotplug_bus_number,
-            guest_address,
+            preferred_address,
             pci_address: None,
             interrupt_evt: None,
             mmio_regions: Vec::new(),
@@ -646,7 +667,7 @@ impl VfioPciDevice {
             #[cfg(feature = "direct")]
             header_type_reg,
             mapped_mmio_bars: BTreeMap::new(),
-        }
+        })
     }
 
     /// Gets the pci address of the device, if one has already been allocated.
@@ -1387,25 +1408,16 @@ impl PciDevice for VfioPciDevice {
         format!("vfio {} device", self.device.device_name())
     }
 
+    fn preferred_address(&self) -> Option<PciAddress> {
+        Some(self.preferred_address)
+    }
+
     fn allocate_address(
         &mut self,
         resources: &mut SystemAllocator,
     ) -> Result<PciAddress, PciDeviceError> {
         if self.pci_address.is_none() {
-            let mut address = self.guest_address.unwrap_or(
-                PciAddress::from_str(self.device.device_name()).map_err(|e| {
-                    PciDeviceError::PciAddressParseFailure(self.device.device_name().clone(), e)
-                })?,
-            );
-
-            if let Some(bus_num) = self.hotplug_bus_number {
-                // Caller specify pcie bus number for hotplug device
-                address.bus = bus_num;
-                // devfn should be 0, otherwise pcie root port couldn't detect it
-                address.dev = 0;
-                address.func = 0;
-            }
-
+            let mut address = self.preferred_address;
             while address.func < 8 {
                 if resources.reserve_pci(
                     Alloc::PciBar {

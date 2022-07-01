@@ -1369,17 +1369,20 @@ pub fn create_vfio_device(
         iommu_dev != IommuDevType::NoIommu,
     )
     .context("failed to create vfio device")?;
-    let mut vfio_pci_device = Box::new(VfioPciDevice::new(
-        #[cfg(feature = "direct")]
-        vfio_path,
-        vfio_device,
-        bus_num,
-        guest_address,
-        vfio_device_tube_msi,
-        vfio_device_tube_msix,
-        vfio_device_tube_mem,
-        vfio_device_tube_vm,
-    ));
+    let mut vfio_pci_device = Box::new(
+        VfioPciDevice::new(
+            #[cfg(feature = "direct")]
+            vfio_path,
+            vfio_device,
+            bus_num,
+            guest_address,
+            vfio_device_tube_msi,
+            vfio_device_tube_msix,
+            vfio_device_tube_mem,
+            vfio_device_tube_vm,
+        )
+        .context("failed to create VfioPciDevice")?,
+    );
     // early reservation for pass-through PCI devices.
     let endpoint_addr = vfio_pci_device
         .allocate_address(resources)
