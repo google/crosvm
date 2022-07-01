@@ -1,13 +1,18 @@
+# ChromeOS Team
 acourbot@chromium.org
-auradkar@google.com
 denniskempin@google.com
 dtor@chromium.org
 dverkamp@chromium.org
 keiichiw@chromium.org
-nkgold@google.com
 paulhsia@chromium.org
 stevensd@chromium.org
 uekawa@chromium.org
+
+# For Windows
+auradkar@google.com
+nkgold@google.com
+
+# Bots
 crosvm-bot@crosvm-packages.iam.gserviceaccount.com
 recipe-mega-autoroller@chops-service-accounts.iam.gserviceaccount.com
 crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com
