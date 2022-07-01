@@ -93,6 +93,10 @@ impl PciDevice for StubPciDevice {
         "Stub".to_owned()
     }
 
+    fn preferred_address(&self) -> Option<PciAddress> {
+        Some(self.requested_address)
+    }
+
     fn allocate_address(&mut self, resources: &mut SystemAllocator) -> Result<PciAddress> {
         if self.assigned_address.is_none() {
             if resources.reserve_pci(

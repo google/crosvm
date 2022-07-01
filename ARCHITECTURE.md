@@ -18,6 +18,8 @@ VM. Broken down into rough steps:
 1. `Arch::build_vm` will itself invoke the provided `create_devices` function from `linux/mod.rs`
 1. `create_devices` creates every PCI device, including the virtio devices, that were configured in
    `Config`, along with matching [minijail] configs for each.
+1. `Arch::assign_pci_addresses` assigns an address to each PCI device, prioritizing devices that
+   report a preferred slot by implementing the `PciDevice` trait's `preferred_address` function.
 1. `Arch::generate_pci_root`, using a list of every PCI device with optional `Minijail`, will
    finally jail the PCI devices and construct a `PciRoot` that communicates with them.
 1. Once the VM has been built, it's contained within a `RunnableLinuxVm` object that is used by the

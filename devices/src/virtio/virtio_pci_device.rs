@@ -540,6 +540,10 @@ impl PciDevice for VirtioPciDevice {
         format!("pci{}", self.device.debug_label())
     }
 
+    fn preferred_address(&self) -> Option<PciAddress> {
+        self.preferred_address
+    }
+
     fn allocate_address(
         &mut self,
         resources: &mut SystemAllocator,

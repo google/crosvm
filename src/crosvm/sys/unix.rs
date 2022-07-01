@@ -1610,6 +1610,8 @@ where
         )?;
     }
 
+    arch::assign_pci_addresses(&mut devices, &mut sys_allocator)?;
+
     let (translate_response_senders, request_rx) = setup_virtio_access_platform(
         &mut sys_allocator,
         &mut iommu_attached_endpoints,

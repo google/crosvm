@@ -287,8 +287,17 @@ impl PciBus {
 pub trait PciDevice: Send {
     /// Returns a label suitable for debug output.
     fn debug_label(&self) -> String;
+
+    /// Preferred PCI address for this device, if any.
+    fn preferred_address(&self) -> Option<PciAddress> {
+        None
+    }
+
     /// Allocate and return an unique bus, device and function number for this device.
+    /// May be called multiple times; on subsequent calls, the device should return the same
+    /// address it returned from the first call.
     fn allocate_address(&mut self, resources: &mut SystemAllocator) -> Result<PciAddress>;
+
     /// A vector of device-specific file descriptors that must be kept open
     /// after jailing. Must be called before the process is jailed.
     fn keep_rds(&self) -> Vec<RawDescriptor>;
@@ -570,6 +579,9 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     /// Returns a label suitable for debug output.
     fn debug_label(&self) -> String {
         (**self).debug_label()
+    }
+    fn preferred_address(&self) -> Option<PciAddress> {
+        (**self).preferred_address()
     }
     fn allocate_address(&mut self, resources: &mut SystemAllocator) -> Result<PciAddress> {
         (**self).allocate_address(resources)
