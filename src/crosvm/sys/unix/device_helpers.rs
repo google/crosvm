@@ -308,10 +308,8 @@ pub fn create_vvu_proxy_device(
     tube: Tube,
     max_sibling_mem_size: u64,
 ) -> DeviceResult {
-    let listener = UnixListener::bind(&opt.socket).map_err(|e| {
-        error!("failed to bind listener for vvu proxy device: {}", e);
-        e
-    })?;
+    let listener =
+        UnixListener::bind(&opt.socket).context("failed to bind listener for vvu proxy device")?;
 
     let dev = VirtioVhostUser::new(
         virtio::base_features(protected_vm),
@@ -480,10 +478,7 @@ pub fn create_single_touch_device(
     let socket = single_touch_spec
         .get_path()
         .into_unix_stream()
-        .map_err(|e| {
-            error!("failed configuring virtio single touch: {:?}", e);
-            e
-        })?;
+        .context("failed configuring virtio single touch")?;
 
     let (width, height) = single_touch_spec.get_size();
     let dev = virtio::new_single_touch(
@@ -509,10 +504,7 @@ pub fn create_multi_touch_device(
     let socket = multi_touch_spec
         .get_path()
         .into_unix_stream()
-        .map_err(|e| {
-            error!("failed configuring virtio multi touch: {:?}", e);
-            e
-        })?;
+        .context("failed configuring virtio multi touch")?;
 
     let (width, height) = multi_touch_spec.get_size();
     let dev = virtio::new_multi_touch(
@@ -536,10 +528,10 @@ pub fn create_trackpad_device(
     trackpad_spec: &TouchDeviceOption,
     idx: u32,
 ) -> DeviceResult {
-    let socket = trackpad_spec.get_path().into_unix_stream().map_err(|e| {
-        error!("failed configuring virtio trackpad: {:#}", e);
-        e
-    })?;
+    let socket = trackpad_spec
+        .get_path()
+        .into_unix_stream()
+        .context("failed configuring virtio trackpad")?;
 
     let (width, height) = trackpad_spec.get_size();
     let dev = virtio::new_trackpad(
@@ -563,10 +555,9 @@ pub fn create_mouse_device<T: IntoUnixStream>(
     mouse_socket: T,
     idx: u32,
 ) -> DeviceResult {
-    let socket = mouse_socket.into_unix_stream().map_err(|e| {
-        error!("failed configuring virtio mouse: {:#}", e);
-        e
-    })?;
+    let socket = mouse_socket
+        .into_unix_stream()
+        .context("failed configuring virtio mouse")?;
 
     let dev = virtio::new_mouse(idx, socket, virtio::base_features(protected_vm))
         .context("failed to set up input device")?;
@@ -583,10 +574,9 @@ pub fn create_keyboard_device<T: IntoUnixStream>(
     keyboard_socket: T,
     idx: u32,
 ) -> DeviceResult {
-    let socket = keyboard_socket.into_unix_stream().map_err(|e| {
-        error!("failed configuring virtio keyboard: {:#}", e);
-        e
-    })?;
+    let socket = keyboard_socket
+        .into_unix_stream()
+        .context("failed configuring virtio keyboard")?;
 
     let dev = virtio::new_keyboard(idx, socket, virtio::base_features(protected_vm))
         .context("failed to set up input device")?;
@@ -603,10 +593,9 @@ pub fn create_switches_device<T: IntoUnixStream>(
     switches_socket: T,
     idx: u32,
 ) -> DeviceResult {
-    let socket = switches_socket.into_unix_stream().map_err(|e| {
-        error!("failed configuring virtio switches: {:#}", e);
-        e
-    })?;
+    let socket = switches_socket
+        .into_unix_stream()
+        .context("failed configuring virtio switches")?;
 
     let dev = virtio::new_switches(idx, socket, virtio::base_features(protected_vm))
         .context("failed to set up input device")?;
@@ -1262,10 +1251,8 @@ impl VirtioDeviceBuilder for SerialParameters {
                     "size=67108864",
                 )?;
                 add_current_user_to_jail(&mut jail)?;
-                let res = add_bind_mounts(self, &mut jail);
-                if res.is_err() {
-                    error!("failed to add bind mounts for console device");
-                }
+                add_bind_mounts(self, &mut jail)
+                    .context("failed to add bind mounts for console device")?;
                 Some(jail)
             }
             None => None,
