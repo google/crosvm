@@ -196,20 +196,20 @@ macro_rules! read_common_cfg_field {
 }
 
 macro_rules! write_notify_cfg_field {
-    ($device:expr, $field:ident, $val:expr) => {
-        $device.vfio_dev.region_write_to_addr(
-            &$val,
-            &$device.caps.notify_cfg_addr,
-            offset_of!(virtio_pci_notification_cfg, $field) as u64,
+    ($device:expr, $mmap:expr, $field:ident, $val:expr) => {
+        $mmap.write_obj(
+            $val,
+            $device.caps.notify_cfg_addr.addr as usize
+                + offset_of!(virtio_pci_notification_cfg, $field),
         )
     };
 }
 
 macro_rules! read_notify_cfg_field {
-    ($device:expr,  $field:ident) => {
-        $device.vfio_dev.region_read_from_addr(
-            &$device.caps.notify_cfg_addr,
-            offset_of!(virtio_pci_notification_cfg, $field) as u64,
+    ($device:expr, $mmap:expr, $field:ident) => {
+        $mmap.read_obj(
+            $device.caps.notify_cfg_addr.addr as usize
+                + offset_of!(virtio_pci_notification_cfg, $field),
         )
     };
 }
@@ -452,18 +452,35 @@ impl VvuPciDevice {
             }
         }
 
+        let mmap_region = self
+            .vfio_dev
+            .get_region_mmap(self.caps.notify_cfg_addr.index);
+        let region_offset = self
+            .vfio_dev
+            .get_region_offset(self.caps.notify_cfg_addr.index);
+        let offset = region_offset + mmap_region[0].offset;
+
+        let mmap = MemoryMappingBuilder::new(mmap_region[0].size as usize)
+            .from_file(self.vfio_dev.device_file())
+            .offset(offset)
+            .build()?;
+
         // Registers the device virtqueus's irqs by writing `notification_msix_vector`.
         for i in 0..device_vq_num as u16 {
             let msix_vector = self.queues.len() as u16 + i;
 
-            write_notify_cfg_field!(self, notification_select, i);
-            let select: u16 = read_notify_cfg_field!(self, notification_select);
+            write_notify_cfg_field!(self, mmap, notification_select, i)
+                .expect("failed to write select");
+            let select: u16 = read_notify_cfg_field!(self, mmap, notification_select)
+                .expect("failed to verify select");
             if select != i {
                 bail!("failed to select {}-th notification", i);
             }
 
-            write_notify_cfg_field!(self, notification_msix_vector, msix_vector);
-            let vector: u16 = read_notify_cfg_field!(self, notification_msix_vector);
+            write_notify_cfg_field!(self, mmap, notification_msix_vector, msix_vector)
+                .expect("failed to write vector");
+            let vector: u16 = read_notify_cfg_field!(self, mmap, notification_msix_vector)
+                .expect("failed to verify vector");
             if msix_vector != vector {
                 bail!(
                     "failed to set vector {} to {}-th notification",
