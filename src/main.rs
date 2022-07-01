@@ -426,11 +426,8 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
                 args.push("--balloon-bias-mib".to_string());
             }
             arg if arg.starts_with("--") => {
+                // Split `--arg=val` into `--arg val`, since argh doesn't support the former.
                 if let Some((key, value)) = arg.split_once("=") {
-                    eprintln!(
-                        "`{}={}` is deprecated, please use `{} {}`",
-                        key, value, key, value
-                    );
                     args.push(key.to_string());
                     args.push(value.to_string());
                 } else {
