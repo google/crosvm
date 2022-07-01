@@ -45,5 +45,9 @@ COPY /tools/impl/testvm.py /tools/impl/
 COPY /tools/impl/testvm/version /tools/impl/testvm/
 RUN /tools/aarch64vm build
 
+# Cache CARGO_HOME between container runs in CI.
+VOLUME /cache
+ENV CARGO_HOME=/cache/cargo_home
+
 VOLUME /workspace
 WORKDIR /workspace

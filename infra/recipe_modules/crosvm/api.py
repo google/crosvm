@@ -37,6 +37,10 @@ class CrosvmApi(recipe_api.RecipeApi):
         return self.cache_dir.join("local_bin")
 
     @property
+    def dev_container_cache(self):
+        return self.cache_dir.join("dev_container")
+
+    @property
     def cache_dir(self):
         return self.m.path["cache"].join("crosvm_api")
 
@@ -67,6 +71,10 @@ class CrosvmApi(recipe_api.RecipeApi):
                 self.__prepare_source()
                 self.__prepare_container()
                 return self.m.context(cwd=self.source_dir)
+        env = {
+            "CROSVM_CONTAINER_CACHE": str(self.dev_container_cache),
+        }
+        return self.m.context(cwd=self.source_dir, env=env)
 
     def host_build_context(self):
         """

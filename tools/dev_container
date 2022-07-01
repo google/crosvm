@@ -28,13 +28,17 @@ import getpass
 import shutil
 import sys
 import unittest
+import os
 
 CONTAINER_NAME = f"crosvm_dev_{getpass.getuser()}"
 IMAGE_VERSION = (CROSVM_ROOT / "tools/impl/dev_container/version").read_text().strip()
+CACHE_DIR = os.environ.get("CROSVM_CONTAINER_CACHE", None)
 
 DOCKER_ARGS = [
     # Share crosvm source
     f"--volume {quoted(CROSVM_ROOT)}:/workspace:rw",
+    # Share cache dir
+    f"--volume {CACHE_DIR}:/cache:rw" if CACHE_DIR else None,
     # Share devices and syslog
     "--device /dev/kvm",
     "--volume /dev/log:/dev/log",
@@ -99,6 +103,7 @@ def ensure_container_is_alive(docker: cmd, docker_args: List[Optional[str]]):
 def main(
     command: Tuple[str, ...],
     stop: bool = False,
+    clean: bool = False,
     hermetic: bool = False,
     interactive: bool = False,
     podman: bool = PODMAN_IS_DEFAULT,
@@ -128,6 +133,9 @@ def main(
         if not delete_container(docker):
             print(f"Dev-container is not running.")
         return
+
+    if clean:
+        delete_container(docker)
 
     # If a command is provided run non-interactive unless explicitly asked for.
     tty_args = []
