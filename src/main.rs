@@ -4,8 +4,6 @@
 
 //! Runs a virtual machine
 
-pub mod panic_hook;
-
 use std::fs::OpenOptions;
 use std::path::Path;
 use std::string::String;
@@ -411,7 +409,7 @@ fn pkg_version() -> std::result::Result<(), ()> {
 }
 
 fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
-    panic_hook::set_panic_hook();
+    sys::set_panic_hook();
 
     let mut args: Vec<String> = Vec::default();
     // http://b/235882579
