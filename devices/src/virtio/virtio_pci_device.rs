@@ -274,6 +274,7 @@ const SHMEM_BAR_NUM: usize = 2;
 /// transport for virtio devices.
 pub struct VirtioPciDevice {
     config_regs: PciConfiguration,
+    preferred_address: Option<PciAddress>,
     pci_address: Option<PciAddress>,
 
     device: Box<dyn VirtioDevice>,
@@ -360,7 +361,8 @@ impl VirtioPciDevice {
 
         Ok(VirtioPciDevice {
             config_regs,
-            pci_address: device.pci_address(),
+            preferred_address: device.pci_address(),
+            pci_address: None,
             device,
             device_activated: false,
             disable_intx,
@@ -543,14 +545,29 @@ impl PciDevice for VirtioPciDevice {
         resources: &mut SystemAllocator,
     ) -> std::result::Result<PciAddress, PciDeviceError> {
         if self.pci_address.is_none() {
-            self.pci_address = match resources.allocate_pci(0, self.debug_label()) {
-                Some(Alloc::PciBar {
-                    bus,
-                    dev,
-                    func,
-                    bar: _,
-                }) => Some(PciAddress { bus, dev, func }),
-                _ => None,
+            if let Some(address) = self.preferred_address {
+                if !resources.reserve_pci(
+                    Alloc::PciBar {
+                        bus: address.bus,
+                        dev: address.dev,
+                        func: address.func,
+                        bar: 0,
+                    },
+                    self.debug_label(),
+                ) {
+                    return Err(PciDeviceError::PciAllocationFailed);
+                }
+                self.pci_address = Some(address);
+            } else {
+                self.pci_address = match resources.allocate_pci(0, self.debug_label()) {
+                    Some(Alloc::PciBar {
+                        bus,
+                        dev,
+                        func,
+                        bar: _,
+                    }) => Some(PciAddress { bus, dev, func }),
+                    _ => None,
+                }
             }
         }
         self.pci_address.ok_or(PciDeviceError::PciAllocationFailed)
