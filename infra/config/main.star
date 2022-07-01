@@ -137,6 +137,22 @@ luci.list_view(
     name = "Infra",
 )
 
+# Allows builders to send email notifications on failures.
+luci.notifier(
+    name = "postsubmit-failures",
+    on_status_change = True,
+    notify_emails = [
+        "denniskempin@google.com",
+    ],
+)
+luci.notifier(
+    name = "infra-failures",
+    on_status_change = True,
+    notify_emails = [
+        "denniskempin@google.com",
+    ],
+)
+
 def verify_builder(name, dimensions, presubmit = True, postsubmit = True, category = "generic", **args):
     """Creates both a CI and try builder with the same properties.
 
@@ -159,6 +175,7 @@ def verify_builder(name, dimensions, presubmit = True, postsubmit = True, catego
             bucket = "ci",
             service_account = "crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com",
             dimensions = dict(pool = "luci.crosvm.ci", **dimensions),
+            notifies = ["postsubmit-failures"],
             **args
         )
         luci.gitiles_poller(
@@ -259,6 +276,7 @@ def infra_builder(name, postsubmit, **args):
             "os": "Ubuntu",
             "cpu": "x86-64",
         },
+        notifies = ["infra-failures"],
         **args
     )
     if postsubmit:
