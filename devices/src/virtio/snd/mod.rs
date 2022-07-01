@@ -12,7 +12,12 @@ pub mod common_backend;
 pub mod cras_backend;
 #[cfg(feature = "audio_cras")]
 pub mod null_backend;
-pub mod vios_backend;
 
-pub use vios_backend::new_sound;
-pub use vios_backend::SoundError;
+cfg_if::cfg_if! {
+    if #[cfg(unix)] {
+        pub mod vios_backend;
+
+        pub use vios_backend::new_sound;
+        pub use vios_backend::SoundError;
+    }
+}
