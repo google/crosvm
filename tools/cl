@@ -3,6 +3,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+from pathlib import Path
 from impl.common import confirm, run_commands, cmd, CROSVM_ROOT
 import sys
 
@@ -90,7 +91,8 @@ def prerequisites():
             sys.exit(1)
 
     # Install gerrit commit hook
-    hook_path = CROSVM_ROOT / ".git/hooks/commit-msg"
+    hooks_dir = Path(git("rev-parse --git-path hooks").stdout())
+    hook_path = hooks_dir / "commit-msg"
     if not hook_path.exists():
         hook_path.parent.mkdir(exist_ok=True)
         curl(f"{GERRIT_URL}/tools/hooks/commit-msg").write_to(hook_path)
