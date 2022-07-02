@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 use std::fs::OpenOptions;
-#[cfg(windows)]
-use std::os::windows::fs::OpenOptionsExt;
 
 use crate::Pstore;
 use anyhow::{bail, Context, Result};
@@ -12,8 +10,8 @@ use base::MemoryMappingBuilder;
 use hypervisor::Vm;
 use resources::AddressRange;
 use vm_memory::GuestAddress;
-#[cfg(windows)]
-use winapi::um::winnt::FILE_SHARE_READ;
+
+mod sys;
 
 pub struct RamoopsRegion {
     pub address: u64,
@@ -33,12 +31,7 @@ pub fn create_memory_region(
 
     let mut open_opts = OpenOptions::new();
     open_opts.read(true).write(true).create(true);
-
-    // Allow other applications to read the memory region.
-    #[cfg(windows)]
-    {
-        open_opts.share_mode(FILE_SHARE_READ);
-    }
+    sys::set_extra_open_opts(&mut open_opts);
 
     let file = open_opts
         .open(&pstore.path)
