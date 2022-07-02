@@ -39,6 +39,7 @@ cfg_if::cfg_if! {
     }
 }
 
+pub use self::bus::Error as BusError;
 pub use self::bus::{
     Bus, BusAccessInfo, BusDevice, BusDeviceObj, BusDeviceSync, BusRange, BusResumeDevice, BusType,
     HostHotPlugKey, HotPlugBus,
@@ -55,8 +56,8 @@ pub use self::irq_event::{IrqEdgeEvent, IrqLevelEvent};
 pub use self::irqchip::*;
 pub use self::pci::CrosvmDeviceId;
 pub use self::pci::{
-    BarRange, PciAddress, PciAddressError, PciClassCode, PciConfigIo, PciConfigMmio, PciDevice,
-    PciDeviceError, PciInterruptPin, PciRoot, PciVirtualConfigMmio, StubPciDevice,
+    BarRange, PciAddress, PciAddressError, PciBus, PciClassCode, PciConfigIo, PciConfigMmio,
+    PciDevice, PciDeviceError, PciInterruptPin, PciRoot, PciVirtualConfigMmio, StubPciDevice,
     StubPciParameters,
 };
 pub use self::pl030::Pl030;
@@ -83,10 +84,9 @@ cfg_if::cfg_if! {
 
         pub use self::acpi::ACPIPMResource;
         pub use self::bat::{BatteryError, GoldfishBattery};
-        pub use self::bus::Error as BusError;
         #[cfg(feature = "audio")]
         pub use self::pci::{Ac97Backend, Ac97Dev, Ac97Parameters};
-        pub use self::pci::{ PciBus,
+        pub use self::pci::{
             CoIommuDev, CoIommuParameters, CoIommuUnpinPolicy,
             PvPanicCode, PcieRootPort, PcieHostPort,
             PvPanicPciDevice, VfioPciDevice, PciBridge,

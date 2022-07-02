@@ -19,9 +19,12 @@ use std::sync::Arc;
 #[cfg(unix)]
 use libc::sched_getcpu;
 
+#[cfg(unix)]
 use acpi_tables::aml::Aml;
 use acpi_tables::sdt::SDT;
-use base::{syslog, AsRawDescriptor, AsRawDescriptors, Event, SendTube, Tube};
+#[cfg(any(all(target_arch = "x86_64", feature = "gdb"), unix))]
+use base::Tube;
+use base::{syslog, AsRawDescriptor, AsRawDescriptors, Event, SendTube};
 use devices::virtio::VirtioDevice;
 #[cfg(windows)]
 use devices::Minijail;
@@ -36,7 +39,9 @@ use hypervisor::{IoEventAddress, ProtectionType, Vm};
 #[cfg(unix)]
 use minijail::Minijail;
 use remain::sorted;
-use resources::{MmioType, SystemAllocator, SystemAllocatorConfig};
+#[cfg(unix)]
+use resources::MmioType;
+use resources::{SystemAllocator, SystemAllocatorConfig};
 use serde::{Deserialize, Serialize};
 use sync::Mutex;
 use thiserror::Error;
@@ -372,6 +377,7 @@ pub enum DeviceRegistrationError {
     /// Failed to initialize proxy device for jailed device.
     #[error("failed to create proxy device: {0}")]
     ProxyDeviceCreation(devices::ProxyError),
+    #[cfg(unix)]
     /// Failed to register battery device.
     #[error("failed to register battery device to VM: {0}")]
     RegisterBattery(devices::BatteryError),
@@ -786,6 +792,7 @@ pub fn generate_pci_root(
 /// * `irq_chip` - the IrqChip object for registering irq events
 /// * `irq_num` - assigned interrupt to use
 /// * `resources` - the SystemAllocator to allocate IO and MMIO for acpi
+#[cfg(unix)]
 pub fn add_goldfish_battery(
     amls: &mut Vec<u8>,
     battery_jail: Option<Minijail>,

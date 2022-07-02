@@ -4,13 +4,17 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-#[cfg(windows)]
-use std::thread;
-#[cfg(windows)]
-use std::time::Duration;
 
+/* Re-enable once b/233951530 is done.
 #[cfg(windows)]
 use std::io::Read;
+
+#[cfg(windows)]
+use std::thread;
+
+#[cfg(windows)]
+use std::time::Duration;
+*/
 
 use base::Event;
 #[cfg(windows)]
@@ -177,6 +181,7 @@ pub fn add_serial_devices(
 
                 #[cfg(windows)]
                 {
+                    /* Re-enable once b/233951530 is done.
                     if !param.stdin {
                         if let SerialType::SystemSerialType = param.type_ {
                             let mut in_pipe_result =
@@ -200,6 +205,7 @@ pub fn add_serial_devices(
                             });
                         }
                     }
+                    */
                 }
             }
         }
