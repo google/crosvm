@@ -9,6 +9,8 @@ pub mod fdt;
 pub mod pstore;
 pub mod serial;
 
+pub mod sys;
+
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fs::File;
@@ -16,31 +18,24 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-#[cfg(unix)]
-use libc::sched_getcpu;
-
-#[cfg(unix)]
-use acpi_tables::aml::Aml;
 use acpi_tables::sdt::SDT;
-#[cfg(any(all(target_arch = "x86_64", feature = "gdb"), unix))]
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use base::Tube;
 use base::{syslog, AsRawDescriptor, AsRawDescriptors, Event, SendTube};
 use devices::virtio::VirtioDevice;
 #[cfg(windows)]
 use devices::Minijail;
+#[cfg(unix)]
+use devices::ProxyDevice;
 use devices::{
     BarRange, Bus, BusDevice, BusDeviceObj, BusError, BusResumeDevice, HotPlugBus, IrqChip,
     IrqEventSource, PciAddress, PciBus, PciDevice, PciDeviceError, PciInterruptPin, PciRoot,
     SerialHardware, SerialParameters,
 };
-#[cfg(unix)]
-use devices::{ProxyDevice, VfioPlatformDevice};
 use hypervisor::{IoEventAddress, ProtectionType, Vm};
 #[cfg(unix)]
 use minijail::Minijail;
 use remain::sorted;
-#[cfg(unix)]
-use resources::MmioType;
 use resources::{SystemAllocator, SystemAllocatorConfig};
 use serde::{Deserialize, Serialize};
 use sync::Mutex;
@@ -487,82 +482,6 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
     Ok(pci_address)
 }
 
-/// Creates a platform device for use by this Vm.
-#[cfg(unix)]
-pub fn generate_platform_bus(
-    devices: Vec<(VfioPlatformDevice, Option<Minijail>)>,
-    irq_chip: &mut dyn IrqChip,
-    mmio_bus: &Bus,
-    resources: &mut SystemAllocator,
-) -> Result<BTreeMap<u32, String>, DeviceRegistrationError> {
-    let mut pid_labels = BTreeMap::new();
-
-    // Allocate ranges that may need to be in the Platform MMIO region (MmioType::Platform).
-    for (mut device, jail) in devices.into_iter() {
-        let ranges = device
-            .allocate_regions(resources)
-            .map_err(DeviceRegistrationError::AllocateIoResource)?;
-
-        let mut keep_rds = device.keep_rds();
-        syslog::push_descriptors(&mut keep_rds);
-
-        let irqs = device
-            .get_platform_irqs()
-            .map_err(DeviceRegistrationError::AllocateIrqResource)?;
-        for irq in irqs.into_iter() {
-            let irq_num = resources
-                .allocate_irq()
-                .ok_or(DeviceRegistrationError::AllocateIrq)?;
-
-            if device.irq_is_automask(&irq) {
-                let irq_evt =
-                    devices::IrqLevelEvent::new().map_err(DeviceRegistrationError::EventCreate)?;
-                irq_chip
-                    .register_level_irq_event(
-                        irq_num,
-                        &irq_evt,
-                        IrqEventSource::from_device(&device),
-                    )
-                    .map_err(DeviceRegistrationError::RegisterIrqfd)?;
-                device
-                    .assign_level_platform_irq(&irq_evt, irq.index)
-                    .map_err(DeviceRegistrationError::SetupVfioPlatformIrq)?;
-                keep_rds.extend(irq_evt.as_raw_descriptors());
-            } else {
-                let irq_evt =
-                    devices::IrqEdgeEvent::new().map_err(DeviceRegistrationError::EventCreate)?;
-                irq_chip
-                    .register_edge_irq_event(
-                        irq_num,
-                        &irq_evt,
-                        IrqEventSource::from_device(&device),
-                    )
-                    .map_err(DeviceRegistrationError::RegisterIrqfd)?;
-                device
-                    .assign_edge_platform_irq(&irq_evt, irq.index)
-                    .map_err(DeviceRegistrationError::SetupVfioPlatformIrq)?;
-                keep_rds.extend(irq_evt.as_raw_descriptors());
-            }
-        }
-
-        let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
-            let proxy = ProxyDevice::new(device, &jail, keep_rds)
-                .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
-            pid_labels.insert(proxy.pid() as u32, proxy.debug_label());
-            Arc::new(Mutex::new(proxy))
-        } else {
-            device.on_sandboxed();
-            Arc::new(Mutex::new(device))
-        };
-        for range in &ranges {
-            mmio_bus
-                .insert(arced_dev.clone(), range.0, range.1)
-                .map_err(DeviceRegistrationError::MmioInsert)?;
-        }
-    }
-    Ok(pid_labels)
-}
-
 // Generate pci topology starting from parent bus
 pub fn generate_pci_topology(
     parent_bus: Arc<Mutex<PciBus>>,
@@ -781,102 +700,6 @@ pub fn generate_pci_root(
     Ok((root, pci_irqs, pid_labels))
 }
 
-/// Adds goldfish battery and returns the platform needed resources including
-/// its AML data and mmio base address
-///
-/// # Arguments
-///
-/// * `amls` - the vector to put the goldfish battery AML
-/// * `battery_jail` - used when sandbox is enabled
-/// * `mmio_bus` - bus to add the devices to
-/// * `irq_chip` - the IrqChip object for registering irq events
-/// * `irq_num` - assigned interrupt to use
-/// * `resources` - the SystemAllocator to allocate IO and MMIO for acpi
-#[cfg(unix)]
-pub fn add_goldfish_battery(
-    amls: &mut Vec<u8>,
-    battery_jail: Option<Minijail>,
-    mmio_bus: &Bus,
-    irq_chip: &mut dyn IrqChip,
-    irq_num: u32,
-    resources: &mut SystemAllocator,
-) -> Result<(Tube, u64), DeviceRegistrationError> {
-    let alloc = resources.get_anon_alloc();
-    let mmio_base = resources
-        .mmio_allocator(MmioType::Low)
-        .allocate_with_align(
-            devices::bat::GOLDFISHBAT_MMIO_LEN,
-            alloc,
-            "GoldfishBattery".to_string(),
-            devices::bat::GOLDFISHBAT_MMIO_LEN,
-        )
-        .map_err(DeviceRegistrationError::AllocateIoResource)?;
-
-    let (control_tube, response_tube) =
-        Tube::pair().map_err(DeviceRegistrationError::CreateTube)?;
-
-    #[cfg(feature = "power-monitor-powerd")]
-    let create_monitor = Some(Box::new(power_monitor::powerd::DBusMonitor::connect)
-        as Box<dyn power_monitor::CreatePowerMonitorFn>);
-
-    #[cfg(all(not(feature = "power-monitor-powerd"), unix))]
-    let create_monitor = None;
-
-    let irq_evt = devices::IrqLevelEvent::new().map_err(DeviceRegistrationError::EventCreate)?;
-
-    let goldfish_bat = devices::GoldfishBattery::new(
-        mmio_base,
-        irq_num,
-        irq_evt
-            .try_clone()
-            .map_err(DeviceRegistrationError::EventClone)?,
-        response_tube,
-        #[cfg(unix)]
-        create_monitor,
-    )
-    .map_err(DeviceRegistrationError::RegisterBattery)?;
-    goldfish_bat.to_aml_bytes(amls);
-
-    irq_chip
-        .register_level_irq_event(
-            irq_num,
-            &irq_evt,
-            IrqEventSource::from_device(&goldfish_bat),
-        )
-        .map_err(DeviceRegistrationError::RegisterIrqfd)?;
-
-    match battery_jail.as_ref() {
-        #[cfg(not(windows))]
-        Some(jail) => {
-            let mut keep_rds = goldfish_bat.keep_rds();
-            syslog::push_descriptors(&mut keep_rds);
-            mmio_bus
-                .insert(
-                    Arc::new(Mutex::new(
-                        ProxyDevice::new(goldfish_bat, jail, keep_rds)
-                            .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
-                    )),
-                    mmio_base,
-                    devices::bat::GOLDFISHBAT_MMIO_LEN,
-                )
-                .map_err(DeviceRegistrationError::MmioInsert)?;
-        }
-        #[cfg(windows)]
-        Some(_) => {}
-        None => {
-            mmio_bus
-                .insert(
-                    Arc::new(Mutex::new(goldfish_bat)),
-                    mmio_base,
-                    devices::bat::GOLDFISHBAT_MMIO_LEN,
-                )
-                .map_err(DeviceRegistrationError::MmioInsert)?;
-        }
-    }
-
-    Ok((control_tube, mmio_base))
-}
-
 /// Errors for image loading.
 #[sorted]
 #[derive(Error, Debug)]
@@ -1013,24 +836,6 @@ pub enum MsrValueFrom {
     /// Read/write MSR value from/into the running CPU.
     /// If vCPU migrates to another pcpu, the MSR source CPU will also change.
     RWFromRunningCPU,
-}
-
-impl MsrValueFrom {
-    /// Get the physical(host) CPU id from MsrValueFrom type.
-    pub fn get_cpu_id(&self) -> usize {
-        match self {
-            MsrValueFrom::RWFromCPU0 => 0,
-            #[cfg(windows)]
-            MsrValueFrom::RWFromRunningCPU => {
-                unimplemented!();
-            }
-            #[cfg(unix)]
-            MsrValueFrom::RWFromRunningCPU => {
-                // Safe because the host supports this sys call.
-                (unsafe { sched_getcpu() }) as usize
-            }
-        }
-    }
 }
 
 /// Whether to force KVM-filtered MSRs.

@@ -408,7 +408,7 @@ impl arch::LinuxArch for AArch64 {
             .into_iter()
             .map(|(dev, jail_orig)| (*(dev.into_platform_device().unwrap()), jail_orig))
             .collect();
-        let mut platform_pid_debug_label_map = arch::generate_platform_bus(
+        let mut platform_pid_debug_label_map = arch::sys::unix::generate_platform_bus(
             platform_devices,
             irq_chip.as_irq_chip_mut(),
             &mmio_bus,
@@ -483,7 +483,7 @@ impl arch::LinuxArch for AArch64 {
             Some(BatteryType::Goldfish) => {
                 // a dummy AML buffer. Aarch64 crosvm doesn't use ACPI.
                 let mut amls = Vec::new();
-                let (control_tube, mmio_base) = arch::add_goldfish_battery(
+                let (control_tube, mmio_base) = arch::sys::unix::add_goldfish_battery(
                     &mut amls,
                     bat_jail,
                     &mmio_bus,
