@@ -87,6 +87,9 @@ pub enum Error {
     /// PCI Address allocation failure.
     #[error("failed to allocate PCI address")]
     PciAllocationFailed,
+    /// PCI Bus window allocation failure.
+    #[error("failed to allocate window for PCI bus")]
+    PciBusWindowAllocationFailure(String),
     /// Size of zero encountered
     #[error("Size of zero detected")]
     SizeZero,

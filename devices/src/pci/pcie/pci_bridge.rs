@@ -171,6 +171,55 @@ impl PciBridge {
     }
 }
 
+fn finalize_window(
+    resources: &mut SystemAllocator,
+    window_type: MmioType,
+    address: PciAddress,
+    mut base: u64,
+    mut size: u64,
+) -> std::result::Result<(u64, u64), PciDeviceError> {
+    if size == 0 {
+        // Allocate at least 2MB bridge winodw
+        size = BR_MEM_MINIMUM;
+    }
+    // if base isn't set, allocate a new one
+    if base == u64::MAX {
+        // align size to 1MB
+        if size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
+            size = (size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
+        }
+        match resources.mmio_allocator(window_type).allocate_with_align(
+            size,
+            Alloc::PciBridgeWindow {
+                bus: address.bus,
+                dev: address.dev,
+                func: address.func,
+            },
+            "pci_bridge_window".to_string(),
+            BR_WINDOW_ALIGNMENT,
+        ) {
+            Ok(addr) => return Ok((addr, size)),
+            Err(e) => {
+                return Err(PciDeviceError::PciBusWindowAllocationFailure(format!(
+                    "failed to allocate bridge window: {}",
+                    e
+                )))
+            }
+        }
+    } else {
+        // align base to 1MB
+        if base & (BR_WINDOW_ALIGNMENT - 1) != 0 {
+            size += base - (base & BR_WINDOW_MASK);
+            // align size to 1MB
+            if size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
+                size = (size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
+            }
+            base &= BR_WINDOW_MASK;
+        }
+        return Ok((base, size));
+    }
+}
+
 impl PciDevice for PciBridge {
     fn debug_label(&self) -> String {
         self.device.lock().debug_label()
@@ -374,87 +423,19 @@ impl PciDevice for PciBridge {
         if !hotplugged {
             // Only static bridge needs to locate their window's position. Hotplugged bridge's
             // window will be handled by guest kernel.
-            if window_size == 0 {
-                // Allocate at least 2MB bridge winodw
-                window_size = BR_MEM_MINIMUM;
-            }
-            // if window_base isn't set, allocate a new one
-            if window_base == u64::MAX {
-                // align window_size to 1MB
-                if window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                    window_size = (window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
-                }
-                match resources.mmio_allocator(MmioType::Low).allocate_with_align(
-                    window_size,
-                    Alloc::PciBridgeWindow {
-                        bus: address.bus,
-                        dev: address.dev,
-                        func: address.func,
-                    },
-                    "pci_bridge_window".to_string(),
-                    BR_WINDOW_ALIGNMENT,
-                ) {
-                    Ok(addr) => window_base = addr,
-                    Err(e) => warn!(
-                        "{} failed to allocate bridge window: {}",
-                        self.debug_label(),
-                        e
-                    ),
-                }
-            } else {
-                // align window_base to 1MB
-                if window_base & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                    window_size += window_base - (window_base & BR_WINDOW_MASK);
-                    // align window_size to 1MB
-                    if window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                        window_size = (window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
-                    }
-                    window_base &= BR_WINDOW_MASK;
-                }
-            }
-
-            if pref_window_size == 0 {
-                // Allocate at least 2MB prefetch bridge window
-                pref_window_size = BR_MEM_MINIMUM;
-            }
-            // if pref_window_base isn't set, allocate a new one
-            if pref_window_base == u64::MAX {
-                // align pref_window_size to 1MB
-                if pref_window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                    pref_window_size =
-                        (pref_window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
-                }
-                match resources
-                    .mmio_allocator(MmioType::High)
-                    .allocate_with_align(
-                        pref_window_size,
-                        Alloc::PciBridgeWindow {
-                            bus: address.bus,
-                            dev: address.dev,
-                            func: address.func,
-                        },
-                        "pci_bridge_window".to_string(),
-                        BR_WINDOW_ALIGNMENT,
-                    ) {
-                    Ok(addr) => window_base = addr,
-                    Err(e) => warn!(
-                        "{} failed to allocate bridge window: {}",
-                        self.debug_label(),
-                        e
-                    ),
-                }
-            } else {
-                // align pref_window_base to 1MB
-                if pref_window_base & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                    pref_window_size += pref_window_base - (pref_window_base & BR_WINDOW_MASK);
-                    // align pref_window_size to 1MB
-                    if pref_window_size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
-                        pref_window_size =
-                            (pref_window_size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
-                    }
-                    pref_window_base &= BR_WINDOW_MASK;
-                }
-            }
+            let window =
+                finalize_window(resources, MmioType::Low, address, window_base, window_size)?;
+            window_base = window.0;
+            window_size = window.1;
+            let pref_window = finalize_window(
+                resources,
+                MmioType::High,
+                address,
+                pref_window_base,
+                pref_window_size,
+            )?;
+            pref_window_base = pref_window.0;
+            pref_window_size = pref_window.1;
         } else {
             // 0 is Ok here because guest will relocate the bridge window
             if window_size > 0 {
