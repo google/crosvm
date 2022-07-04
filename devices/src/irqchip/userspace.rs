@@ -985,6 +985,8 @@ impl std::error::Error for TimerWorkerError {}
 
 type TimerWorkerResult<T> = std::result::Result<T, TimerWorkerError>;
 
+// TODO(b/237977699): remove once test are re-enabled.
+#[allow(unused)]
 #[cfg(test)]
 mod tests {
     use super::super::tests::*;
@@ -1516,7 +1518,8 @@ mod tests {
         assert_eq!(data, [0, 0, 0, 1]);
     }
 
-    #[test]
+    // TODO(b/237977699): remove reliance on sleep
+    // #[test]
     fn runnable_vcpu_unhalts() {
         let chip = get_chip(1);
         let vcpu = get_vcpus(&chip).remove(0);
@@ -1542,7 +1545,8 @@ mod tests {
         handle.join().unwrap();
     }
 
-    #[test]
+    // TODO(b/237977699): remove reliance on sleep
+    // #[test]
     fn kicked_vcpu_unhalts() {
         let chip = get_chip(1);
         let vcpu = get_vcpus(&chip).remove(0);
@@ -1563,7 +1567,8 @@ mod tests {
         handle.join().unwrap();
     }
 
-    #[test]
+    // TODO(b/237977699): remove reliance on sleep
+    // #[test]
     fn apic_timer() {
         let clock = Arc::new(Mutex::new(Clock::new()));
         let mut chip = get_chip_with_clock(2, clock.clone());
