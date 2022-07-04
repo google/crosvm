@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use gdbstub::arch::Arch;
 #[cfg(target_arch = "x86_64")]
-use gdbstub_arch::x86::reg::X86_64CoreRegs as CoreRegs;
+use gdbstub_arch::x86::X86_64_SSE as GdbArch;
 use vm_memory::GuestAddress;
 
 /// Messages that can be sent to a vCPU to set/get its state from the debugger.
@@ -11,7 +12,7 @@ use vm_memory::GuestAddress;
 pub enum VcpuDebug {
     ReadMem(GuestAddress, usize),
     ReadRegs,
-    WriteRegs(Box<CoreRegs>),
+    WriteRegs(Box<<GdbArch as Arch>::Registers>),
     WriteMem(GuestAddress, Vec<u8>),
     EnableSinglestep,
     SetHwBreakPoint(Vec<GuestAddress>),
@@ -21,7 +22,7 @@ pub enum VcpuDebug {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum VcpuDebugStatus {
-    RegValues(CoreRegs),
+    RegValues(<GdbArch as Arch>::Registers),
     MemoryRegion(Vec<u8>),
     CommandComplete,
     HitBreakPoint,

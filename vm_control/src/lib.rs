@@ -94,7 +94,11 @@ use crate::display::WindowEvent;
 use crate::display::WindowMode;
 use crate::display::WindowVisibility;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-pub use crate::gdb::*;
+pub use crate::gdb::VcpuDebug;
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+pub use crate::gdb::VcpuDebugStatus;
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+pub use crate::gdb::VcpuDebugStatusMessage;
 
 /// Control the state of a particular VM CPU.
 #[derive(Clone, Debug)]

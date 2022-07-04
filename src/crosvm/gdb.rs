@@ -43,9 +43,6 @@ use vm_control::VmRequest;
 use vm_control::VmResponse;
 use vm_memory::GuestAddress;
 
-#[cfg(target_arch = "x86_64")]
-type ArchUsize = u64;
-
 pub fn gdb_thread(mut gdbstub: GdbStub, port: u32) {
     let addr = format!("0.0.0.0:{}", port);
     let listener = match TcpListener::bind(addr.clone()) {
@@ -378,7 +375,7 @@ struct GdbStubEventLoop;
 impl BlockingEventLoop for GdbStubEventLoop {
     type Target = GdbStub;
     type Connection = Box<dyn ConnectionExt<Error = std::io::Error>>;
-    type StopReason = SingleThreadStopReason<ArchUsize>;
+    type StopReason = SingleThreadStopReason<<GdbArch as Arch>::Usize>;
 
     fn wait_for_stop_reason(
         target: &mut Self::Target,

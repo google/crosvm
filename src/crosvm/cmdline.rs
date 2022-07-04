@@ -628,7 +628,7 @@ pub struct RunCommand {
     /// force use of a calibrated TSC cpuid leaf (0x15) even if the hypervisor
     /// doesn't require one.
     pub force_calibrated_tsc_leaf: bool,
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    #[cfg(feature = "gdb")]
     #[argh(option, arg_name = "PORT")]
     /// (EXPERIMENTAL) gdb on the given port
     pub gdb: Option<u32>,
@@ -1737,7 +1737,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.battery_config = cmd.battery;
 
-        #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+        #[cfg(feature = "gdb")]
         {
             cfg.gdb = cmd.gdb;
         }

@@ -31,7 +31,7 @@ use std::process;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Barrier;
-#[cfg(all(target_arch = "x86_64"))]
+#[cfg(any(target_arch = "x86_64", feature = "gdb"))]
 use std::thread;
 #[cfg(feature = "balloon")]
 use std::time::Duration;

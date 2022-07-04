@@ -6,7 +6,7 @@ edition = "2021"
 
 [features]
 balloon = []
-gdb = ["gdbstub_arch"]
+gdb = ["gdbstub", "gdbstub_arch"]
 
 [dependencies]
 anyhow = "*"
@@ -14,6 +14,7 @@ balloon_control = { path = "../common/balloon_control" }
 base = { path = "../base" }
 cfg-if = "*"
 data_model = { path = "../common/data_model" }
+gdbstub = { version = "0.6.1", optional = true }
 gdbstub_arch = { version = "0.2.2", optional = true }
 hypervisor = { path = "../hypervisor" }
 libc = "*"

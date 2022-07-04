@@ -951,9 +951,13 @@ impl arch::LinuxArch for X8664arch {
         )
         .map_err(Error::ConfigurePciDevice)
     }
+}
 
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-    fn debug_read_registers<T: VcpuX86_64>(vcpu: &T) -> Result<X86_64CoreRegs> {
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+impl<T: VcpuX86_64> arch::GdbOps<T> for X8664arch {
+    type Error = Error;
+
+    fn read_registers(vcpu: &T) -> Result<X86_64CoreRegs> {
         // General registers: RAX, RBX, RCX, RDX, RSI, RDI, RBP, RSP, r8-r15
         let gregs = vcpu.get_regs().map_err(Error::ReadRegs)?;
         let regs = [
@@ -1014,8 +1018,7 @@ impl arch::LinuxArch for X8664arch {
         Ok(regs)
     }
 
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-    fn debug_write_registers<T: VcpuX86_64>(vcpu: &T, regs: &X86_64CoreRegs) -> Result<()> {
+    fn write_registers(vcpu: &T, regs: &X86_64CoreRegs) -> Result<()> {
         // General purpose registers (RAX, RBX, RCX, RDX, RSI, RDI, RBP, RSP, r8-r15) + RIP + rflags
         let orig_gregs = vcpu.get_regs().map_err(Error::ReadRegs)?;
         let gregs = Regs {
@@ -1075,8 +1078,7 @@ impl arch::LinuxArch for X8664arch {
         Ok(())
     }
 
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-    fn debug_read_memory<T: VcpuX86_64>(
+    fn read_memory(
         vcpu: &T,
         guest_mem: &GuestMemory,
         vaddr: GuestAddress,
@@ -1099,8 +1101,7 @@ impl arch::LinuxArch for X8664arch {
         Ok(buf)
     }
 
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-    fn debug_write_memory<T: VcpuX86_64>(
+    fn write_memory(
         vcpu: &T,
         guest_mem: &GuestMemory,
         vaddr: GuestAddress,
@@ -1127,17 +1128,12 @@ impl arch::LinuxArch for X8664arch {
         Ok(())
     }
 
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-    fn debug_enable_singlestep<T: VcpuX86_64>(vcpu: &T) -> Result<()> {
+    fn enable_singlestep(vcpu: &T) -> Result<()> {
         vcpu.set_guest_debug(&[], true /* enable_singlestep */)
             .map_err(Error::EnableSinglestep)
     }
 
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-    fn debug_set_hw_breakpoints<T: VcpuX86_64>(
-        vcpu: &T,
-        breakpoints: &[GuestAddress],
-    ) -> Result<()> {
+    fn set_hw_breakpoints(vcpu: &T, breakpoints: &[GuestAddress]) -> Result<()> {
         vcpu.set_guest_debug(breakpoints, false /* enable_singlestep */)
             .map_err(Error::SetHwBreakpoint)
     }

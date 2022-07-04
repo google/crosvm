@@ -29,7 +29,7 @@ use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::Event;
 use base::SendTube;
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(feature = "gdb")]
 use base::Tube;
 use devices::virtio::VirtioDevice;
 use devices::BarRange;
@@ -60,7 +60,9 @@ use devices::SerialHardware;
 use devices::SerialParameters;
 use devices::VirtioMmioDevice;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-use gdbstub_arch::x86::reg::X86_64CoreRegs as GdbStubRegs;
+use gdbstub::arch::Arch;
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+use gdbstub_arch::x86::X86_64_SSE as GdbArch;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use hypervisor::CpuConfigAArch64 as CpuConfigArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -308,43 +310,39 @@ pub trait LinuxArch {
         resources: &mut SystemAllocator,
         hp_control_tube: &mpsc::Sender<PciRootCommand>,
     ) -> Result<PciAddress, Self::Error>;
+}
 
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+pub trait GdbOps<T: VcpuArch> {
+    type Error: StdError;
+
     /// Reads vCPU's registers.
-    fn debug_read_registers<T: VcpuArch>(vcpu: &T) -> Result<GdbStubRegs, Self::Error>;
+    fn read_registers(vcpu: &T) -> Result<<GdbArch as Arch>::Registers, Self::Error>;
 
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     /// Writes vCPU's registers.
-    fn debug_write_registers<T: VcpuArch>(vcpu: &T, regs: &GdbStubRegs) -> Result<(), Self::Error>;
+    fn write_registers(vcpu: &T, regs: &<GdbArch as Arch>::Registers) -> Result<(), Self::Error>;
 
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     /// Reads bytes from the guest memory.
-    fn debug_read_memory<T: VcpuArch>(
+    fn read_memory(
         vcpu: &T,
         guest_mem: &GuestMemory,
         vaddr: GuestAddress,
         len: usize,
     ) -> Result<Vec<u8>, Self::Error>;
 
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     /// Writes bytes to the specified guest memory.
-    fn debug_write_memory<T: VcpuArch>(
+    fn write_memory(
         vcpu: &T,
         guest_mem: &GuestMemory,
         vaddr: GuestAddress,
         buf: &[u8],
     ) -> Result<(), Self::Error>;
 
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     /// Make the next vCPU's run single-step.
-    fn debug_enable_singlestep<T: VcpuArch>(vcpu: &T) -> Result<(), Self::Error>;
+    fn enable_singlestep(vcpu: &T) -> Result<(), Self::Error>;
 
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     /// Set hardware breakpoints at the given addresses.
-    fn debug_set_hw_breakpoints<T: VcpuArch>(
-        vcpu: &T,
-        breakpoints: &[GuestAddress],
-    ) -> Result<(), Self::Error>;
+    fn set_hw_breakpoints(vcpu: &T, breakpoints: &[GuestAddress]) -> Result<(), Self::Error>;
 }
 
 /// Errors for device manager.
