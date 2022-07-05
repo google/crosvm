@@ -606,9 +606,11 @@ impl VaapiCodec for Vp8Codec {
         self.handle_frame(frame, timestamp)
     }
 
-    fn flush(&mut self) -> anyhow::Result<()> {
+    fn flush(&mut self) -> Result<Vec<DecodedFrameHandle>> {
         self.wait_keyframe = true;
-        Ok(())
+
+        // VP8 has no internal picture queue, so simply return nothing here.
+        Ok(vec![])
     }
 
     fn va_image_fmt(&self) -> &Option<libva::VAImageFormat> {

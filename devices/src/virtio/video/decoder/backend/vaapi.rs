@@ -908,10 +908,12 @@ impl DecoderSession for VaapiDecoderSession {
     fn flush(&mut self) -> VideoResult<()> {
         self.flushing = true;
 
+        // Retrieve ready frames from the codec, if any.
+        let pics = self.codec.flush().map_err(VideoError::BackendFailure)?;
+        self.ready_queue.extend(pics);
+
         self.drain_ready_queue()
             .map_err(VideoError::BackendFailure)?;
-        // TODO(acourbot): Shouldn't we drain *after* we flush the codec?
-        self.codec.flush().map_err(VideoError::BackendFailure)?;
 
         let event_queue = &mut self.event_queue;
 
@@ -1076,7 +1078,7 @@ pub trait VaapiCodec: downcast_rs::Downcast {
 
     /// Flush the decoder i.e. finish processing all queued decode requests and
     /// emit frames for them.
-    fn flush(&mut self) -> Result<()>;
+    fn flush(&mut self) -> Result<Vec<DecodedFrameHandle>>;
 
     /// Returns the current VA image format
     fn va_image_fmt(&self) -> &Option<libva::VAImageFormat>;
