@@ -59,7 +59,7 @@ use crate::crosvm::config::{
     numbered_disk_option, parse_battery_options, parse_bus_id_addr, parse_cpu_affinity,
     parse_cpu_capacity, parse_cpu_set, parse_file_backed_mapping, parse_mmio_address_range,
     parse_pstore, parse_serial_options, parse_stub_pci_parameters, Executable,
-    FileBackedMappingParameters, JailConfig, TouchDeviceOption, VhostUserFsOption, VhostUserOption,
+    FileBackedMappingParameters, TouchDeviceOption, VhostUserFsOption, VhostUserOption,
     VhostUserWlOption, VvuOption,
 };
 #[cfg(feature = "direct")]
@@ -685,9 +685,6 @@ pub struct RunCommand {
     #[argh(switch)]
     /// allow to enable ITMT scheduling feature in VM. The success of enabling depends on HWP and ACPI CPPC support on hardware
     pub itmt: bool,
-    #[argh(option)]
-    /// jail config
-    pub jail_config: Option<JailConfig>,
     #[cfg(unix)]
     #[argh(option, long = "kvm-device", arg_name = "PATH")]
     /// path to the KVM device. (default /dev/kvm)
