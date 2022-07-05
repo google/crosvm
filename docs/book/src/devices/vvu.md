@@ -54,13 +54,13 @@ sysfs.
 ```sh
 # Inside of the device VM guest.
 basename `readlink /sys/bus/pci/devices/$VVU_PCI_ADDR/driver`
-# If that shows vfio_pci you are done, otherwise you need to rebind
+# If that shows vfio-pci you are done, otherwise you need to rebind
 # the device to the right driver.
-echo "vfio_pci" > /sys/bus/pci/devices/$VVU_PCI_ADDR/driver_override
+echo "vfio-pci" > /sys/bus/pci/devices/$VVU_PCI_ADDR/driver_override
 echo "$VVU_PCI_ADDR" > /sys/bus/pci/devices/$VVU_PCI_ADDR/driver/unbind
-echo "$VVU_PCI_ADDR" > /sys/bus/pci/drivers/vfio_pci/driver/bind
+echo "$VVU_PCI_ADDR" > /sys/bus/pci/drivers/vfio-pci/bind
 basename `readlink /sys/bus/pci/devices/$VVU_PCI_ADDR/driver`
-# This should show "vfio_pci" now.
+# This should show "vfio-pci" now.
 ```
 
 Then, start a VVU block device backend in the guest that you just started. Although the command
