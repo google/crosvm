@@ -153,8 +153,14 @@ pub fn add_serial_devices(
             #[cfg(unix)]
             Some(jail) => {
                 let com = Arc::new(Mutex::new(
-                    ProxyDevice::new(com, jail, preserved_descriptors)
-                        .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
+                    ProxyDevice::new(
+                        com,
+                        &jail
+                            .try_clone()
+                            .map_err(DeviceRegistrationError::CloneJail)?,
+                        preserved_descriptors,
+                    )
+                    .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
                 ));
                 io_bus
                     .insert(com.clone(), SERIAL_ADDR[x as usize], 0x8)
