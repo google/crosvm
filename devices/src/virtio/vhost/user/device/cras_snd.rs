@@ -16,7 +16,6 @@ use hypervisor::ProtectionType;
 use once_cell::sync::OnceCell;
 use sync::Mutex;
 use vm_memory::GuestMemory;
-use vmm_vhost::connection::socket::{Endpoint as SocketEndpoint, Listener as SocketListener};
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::snd::cras_backend::{
@@ -26,7 +25,7 @@ use crate::virtio::snd::cras_backend::{
 };
 use crate::virtio::snd::layout::virtio_snd_config;
 use crate::virtio::vhost::user::device::{
-    handler::{sys::Doorbell, DeviceRequestHandler, VhostUserBackend},
+    handler::{sys::Doorbell, VhostUserBackend},
     listener::{sys::VhostUserListener, VhostUserListenerTrait},
 };
 use crate::virtio::{self, copy_config};
@@ -274,7 +273,7 @@ pub fn run_cras_snd_device(opts: Options) -> anyhow::Result<()> {
 
     let _ = SND_EXECUTOR.set(ex.clone());
 
-    let listener = VhostUserListener::new_socket(&socket, None);
+    let listener = VhostUserListener::new_socket(&opts.socket, None)?;
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
     ex.run_until(listener.run_backend(snd_device, &ex))?
 }
