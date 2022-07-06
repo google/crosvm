@@ -405,13 +405,11 @@ fn pkg_version() -> std::result::Result<(), ()> {
     Ok(())
 }
 
-fn crosvm_main() -> Result<CommandStatus> {
-    #[cfg(not(feature = "crash-report"))]
-    sys::set_panic_hook();
-
+// Perform transformations on `args_iter` to produce arguments suitable for parsing by `argh`.
+fn prepare_argh_args<I: IntoIterator<Item = String>>(args_iter: I) -> Vec<String> {
     let mut args: Vec<String> = Vec::default();
     // http://b/235882579
-    for arg in std::env::args() {
+    for arg in args_iter {
         match arg.as_str() {
             "--host_ip" => {
                 eprintln!("`--host_ip` option is deprecated!");
@@ -453,6 +451,14 @@ fn crosvm_main() -> Result<CommandStatus> {
         }
     }
 
+    args
+}
+
+fn crosvm_main() -> Result<CommandStatus> {
+    #[cfg(not(feature = "crash-report"))]
+    sys::set_panic_hook();
+
+    let args = prepare_argh_args(std::env::args());
     let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
     let args = match crosvm::cmdline::CrosvmCmdlineArgs::from_args(&args[..1], &args[1..]) {
         Ok(args) => args,
@@ -579,4 +585,149 @@ fn main() {
         }
     };
     std::process::exit(exit_code);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn args_host_ip() {
+        assert_eq!(
+            prepare_argh_args(
+                ["crosvm", "run", "--host_ip", "1.2.3.4", "vm_kernel"].map(|x| x.to_string())
+            ),
+            ["crosvm", "run", "--host-ip", "1.2.3.4", "vm_kernel"]
+        );
+    }
+
+    #[test]
+    fn args_balloon_bias_mib() {
+        assert_eq!(
+            prepare_argh_args(
+                ["crosvm", "run", "--balloon_bias_mib", "1234", "vm_kernel"].map(|x| x.to_string())
+            ),
+            ["crosvm", "run", "--balloon-bias-mib", "1234", "vm_kernel"]
+        );
+    }
+
+    #[test]
+    fn args_h() {
+        assert_eq!(
+            prepare_argh_args(["crosvm", "run", "-h"].map(|x| x.to_string())),
+            ["crosvm", "run", "--help"]
+        );
+    }
+
+    #[test]
+    fn args_battery_switch() {
+        assert_eq!(
+            prepare_argh_args(
+                ["crosvm", "run", "--battery", "--other-args", "vm_kernel"].map(|x| x.to_string())
+            ),
+            [
+                "crosvm",
+                "run",
+                "--battery",
+                "",
+                "--other-args",
+                "vm_kernel"
+            ]
+        );
+    }
+
+    #[test]
+    fn args_battery_switch_last_arg() {
+        assert_eq!(
+            prepare_argh_args(["crosvm", "run", "--battery", "vm_kernel"].map(|x| x.to_string())),
+            ["crosvm", "run", "--battery", "", "vm_kernel"]
+        );
+    }
+
+    #[test]
+    fn args_battery_switch_short_arg() {
+        assert_eq!(
+            prepare_argh_args(
+                [
+                    "crosvm",
+                    "run",
+                    "--battery",
+                    "-p",
+                    "init=/bin/bash",
+                    "vm_kernel"
+                ]
+                .map(|x| x.to_string())
+            ),
+            [
+                "crosvm",
+                "run",
+                "--battery",
+                "",
+                "-p",
+                "init=/bin/bash",
+                "vm_kernel"
+            ]
+        );
+    }
+
+    #[test]
+    fn args_battery_option() {
+        assert_eq!(
+            prepare_argh_args(
+                [
+                    "crosvm",
+                    "run",
+                    "--battery",
+                    "type=goldfish",
+                    "-p",
+                    "init=/bin/bash",
+                    "vm_kernel"
+                ]
+                .map(|x| x.to_string())
+            ),
+            [
+                "crosvm",
+                "run",
+                "--battery",
+                "type=goldfish",
+                "-p",
+                "init=/bin/bash",
+                "vm_kernel"
+            ]
+        );
+    }
+
+    #[test]
+    fn args_switch_multi() {
+        assert_eq!(
+            prepare_argh_args(
+                [
+                    "crosvm",
+                    "run",
+                    "--gpu",
+                    "test",
+                    "--video-decoder",
+                    "--video-encoder",
+                    "--battery",
+                    "--other-switch",
+                    "vm_kernel"
+                ]
+                .map(|x| x.to_string())
+            ),
+            [
+                "crosvm",
+                "run",
+                "--gpu",
+                "test",
+                "--video-decoder",
+                "",
+                "--video-encoder",
+                "",
+                "--battery",
+                "",
+                "--other-switch",
+                "vm_kernel"
+            ]
+        );
+    }
 }
