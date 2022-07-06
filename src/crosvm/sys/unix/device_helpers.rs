@@ -187,12 +187,17 @@ pub trait VirtioDeviceBuilder {
         unimplemented!()
     }
 
-    /// Create a jail that is suitable to run a device
+    /// Create a jail that is suitable to run a device.
+    ///
+    /// The default implementation creates a simple jail with a seccomp policy derived from the
+    /// base name of the device.
     fn create_jail(
         &self,
         jail_config: &Option<JailConfig>,
         jail_type: VirtioDeviceType,
-    ) -> anyhow::Result<Option<Minijail>>;
+    ) -> anyhow::Result<Option<Minijail>> {
+        simple_jail(jail_config, &jail_type.seccomp_policy_file(Self::NAME))
+    }
 
     /// Helper method to return a `VirtioDeviceStub` filled using `create_virtio_device` and
     /// `create_jail`.
