@@ -447,7 +447,7 @@ fn crosvm_main() -> Result<CommandStatus> {
     ];
     for arg in switch_or_option {
         if let Some(i) = args.iter().position(|a| a == arg) {
-            if i == args.len() - 1 || args[i + 1].starts_with("--") {
+            if i >= args.len() - 2 || args[i + 1].starts_with("-") {
                 args.insert(i + 1, "".to_string());
             }
         }
