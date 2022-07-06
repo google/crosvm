@@ -1212,6 +1212,8 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.params.extend(cmd.params);
 
+        cfg.per_vm_core_scheduling = cmd.per_vm_core_scheduling;
+
         cfg.vcpu_count = cmd.vcpu_count;
 
         cfg.vcpu_affinity = cmd.vcpu_affinity;
