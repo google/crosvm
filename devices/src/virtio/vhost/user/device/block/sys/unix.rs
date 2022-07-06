@@ -2,60 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::OpenOptions;
-
 use anyhow::bail;
 use anyhow::Context;
 use argh::FromArgs;
 use cros_async::Executor;
-use disk::create_async_disk_file;
 use hypervisor::ProtectionType;
 
 use crate::virtio::base_features;
-use crate::virtio::vhost::user::device::block::BlockBackend;
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::block::block::DiskOption;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::VhostUserDevice;
 use crate::virtio::BlockAsync;
-
-impl BlockBackend {
-    /// Creates a new block backend.
-    ///
-    /// * `ex`: executor used to run this device task.
-    /// * `filename`: Name of the disk image file.
-    /// * `options`: Vector of file options.
-    ///   - `read-only`
-    fn new(
-        ex: &Executor,
-        filename: &str,
-        options: Vec<&str>,
-    ) -> anyhow::Result<Box<dyn VhostUserBackend>> {
-        let read_only = options.contains(&"read-only");
-        let sparse = false;
-        let block_size = 512;
-        let f = OpenOptions::new()
-            .read(true)
-            .write(!read_only)
-            .create(false)
-            .open(filename)
-            .context("Failed to open disk file")?;
-        let disk_image = create_async_disk_file(f).context("Failed to create async file")?;
-        let base_features = base_features(ProtectionType::Unprotected);
-
-        let device = Box::new(BlockAsync::new(
-            base_features,
-            disk_image,
-            read_only,
-            sparse,
-            block_size,
-            None,
-            None,
-        )?);
-
-        device.into_backend(ex)
-    }
-}
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "block")]
@@ -84,7 +42,25 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let mut fileopts = opts.file.split(":").collect::<Vec<_>>();
     let filename = fileopts.remove(0);
 
-    let block = BlockBackend::new(&ex, filename, fileopts)?;
+    let disk = DiskOption {
+        path: filename.into(),
+        read_only: fileopts.contains(&"read-only"),
+        sparse: false,
+        block_size: 512,
+        ..Default::default()
+    };
+
+    let block = Box::new(BlockAsync::new(
+        base_features(ProtectionType::Unprotected),
+        disk.open_as_async_file()?,
+        disk.read_only,
+        disk.sparse,
+        disk.block_size,
+        None,
+        None,
+    )?)
+    .into_backend(&ex)?;
+
     let listener = VhostUserListener::new_from_socket_or_vfio(
         &opts.socket,
         &opts.vfio,

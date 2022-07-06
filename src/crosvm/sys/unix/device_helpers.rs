@@ -4,13 +4,11 @@
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
-use std::fs::File;
 use std::fs::OpenOptions;
 use std::net::Ipv4Addr;
 use std::ops::RangeInclusive;
 use std::os::unix::net::UnixListener;
 use std::os::unix::net::UnixStream;
-use std::os::unix::prelude::OpenOptionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str;
@@ -221,23 +219,7 @@ pub fn create_block_device(
     disk: &DiskOption,
     disk_device_tube: Tube,
 ) -> DeviceResult {
-    let mut options = OpenOptions::new();
-    options.read(true).write(!disk.read_only);
-
-    #[cfg(unix)]
-    if disk.o_direct {
-        options.custom_flags(libc::O_DIRECT);
-    }
-
-    let raw_image: File = open_file(&disk.path, &options)
-        .with_context(|| format!("failed to load disk image {}", disk.path.display()))?;
-    // Lock the disk image to prevent other crosvm instances from using it.
-    let lock_op = if disk.read_only {
-        FlockOperation::LockShared
-    } else {
-        FlockOperation::LockExclusive
-    };
-    flock(&raw_image, lock_op, true).context("failed to lock disk image")?;
+    let raw_image = disk.open_as_raw_image()?;
 
     info!("Trying to attach block device: {}", disk.path.display());
     let dev = if disk::async_ok(&raw_image).context("failed to check disk async_ok")? {
