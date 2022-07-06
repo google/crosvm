@@ -21,7 +21,6 @@ use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::TimerAsync;
 use data_model::DataInit;
-use disk::AsyncDisk;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
 use sync::Mutex;
@@ -33,19 +32,18 @@ use vmm_vhost::message::*;
 use crate::virtio;
 use crate::virtio::block::asynchronous::flush_disk;
 use crate::virtio::block::asynchronous::handle_queue;
-use crate::virtio::block::build_avail_features;
+use crate::virtio::block::asynchronous::BlockAsync;
 use crate::virtio::block::build_config_space;
-use crate::virtio::block::sys::*;
 use crate::virtio::block::DiskState;
-use crate::virtio::block::SECTOR_SIZE;
 use crate::virtio::copy_config;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::VhostUserDevice;
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: u16 = 16;
 
-pub(crate) struct BlockBackend {
+struct BlockBackend {
     ex: Executor,
     disk_state: Rc<AsyncMutex<DiskState>>,
     disk_size: Arc<AtomicU64>,
@@ -59,44 +57,30 @@ pub(crate) struct BlockBackend {
     workers: [Option<AbortHandle>; NUM_QUEUES as usize],
 }
 
-impl BlockBackend {
-    pub fn new_from_async_disk(
+impl VhostUserDevice for BlockAsync {
+    fn max_queue_num(&self) -> usize {
+        NUM_QUEUES as usize
+    }
+
+    fn into_backend(
+        mut self: Box<Self>,
         ex: &Executor,
-        async_image: Box<dyn AsyncDisk>,
-        base_features: u64,
-        read_only: bool,
-        sparse: bool,
-        block_size: u32,
-    ) -> anyhow::Result<BlockBackend> {
-        if block_size % SECTOR_SIZE as u32 != 0 {
-            bail!(
-                "Block size {} is not a multiple of {}.",
-                block_size,
-                SECTOR_SIZE,
-            );
-        }
-        let disk_size = async_image.get_len()?;
-        if disk_size % block_size as u64 != 0 {
-            warn!(
-                "Disk size {} is not a multiple of block size {}; \
-                 the remainder will not be visible to the guest.",
-                disk_size, block_size,
-            );
-        }
+    ) -> anyhow::Result<Box<dyn VhostUserBackend>> {
+        let avail_features =
+            self.avail_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
 
-        let avail_features = build_avail_features(base_features, read_only, sparse, true)
-            | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-
-        let seg_max = get_seg_max(QUEUE_SIZE);
-
-        let disk_size = Arc::new(AtomicU64::new(disk_size));
+        let disk_image = match self.disk_image.take() {
+            Some(disk_image) => disk_image,
+            None => bail!("cannot create a vhost-user backend from an empty disk image"),
+        };
+        let async_image = disk_image.to_async_disk(ex)?;
 
         let disk_state = Rc::new(AsyncMutex::new(DiskState::new(
             async_image,
-            Arc::clone(&disk_size),
-            read_only,
-            sparse,
-            None, // id: Option<BlockId>,
+            Arc::clone(&self.disk_size),
+            self.read_only,
+            self.sparse,
+            self.id,
         )));
 
         let timer = Timer::new().context("Failed to create a timer")?;
@@ -124,29 +108,29 @@ impl BlockBackend {
         ))
         .detach();
 
-        Ok(BlockBackend {
+        Ok(Box::new(BlockBackend {
             ex: ex.clone(),
             disk_state,
-            disk_size,
-            block_size,
-            seg_max,
+            disk_size: Arc::clone(&self.disk_size),
+            block_size: self.block_size,
+            seg_max: self.seg_max,
             avail_features,
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
             flush_timer: flush_timer_write,
             flush_timer_armed,
             workers: Default::default(),
-        })
+        }))
     }
 }
 
 impl VhostUserBackend for BlockBackend {
     fn max_queue_num(&self) -> usize {
-        return NUM_QUEUES as usize;
+        NUM_QUEUES as usize
     }
 
     fn max_vring_len(&self) -> u16 {
-        return QUEUE_SIZE;
+        QUEUE_SIZE
     }
 
     fn features(&self) -> u64 {

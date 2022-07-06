@@ -480,16 +480,17 @@ fn run_worker(
 
 /// Virtio device for exposing block level read/write operations on a host file.
 pub struct BlockAsync {
+    // We keep these members crate-public as they are accessed by the vhost-user device.
+    pub(crate) disk_image: Option<Box<dyn ToAsyncDisk>>,
+    pub(crate) disk_size: Arc<AtomicU64>,
+    pub(crate) avail_features: u64,
+    pub(crate) read_only: bool,
+    pub(crate) sparse: bool,
+    pub(crate) seg_max: u32,
+    pub(crate) block_size: u32,
+    pub(crate) id: Option<BlockId>,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<(Box<dyn ToAsyncDisk>, Option<Tube>)>>,
-    disk_image: Option<Box<dyn ToAsyncDisk>>,
-    disk_size: Arc<AtomicU64>,
-    avail_features: u64,
-    read_only: bool,
-    sparse: bool,
-    seg_max: u32,
-    block_size: u32,
-    id: Option<BlockId>,
     control_tube: Option<Tube>,
 }
 
@@ -525,8 +526,6 @@ impl BlockAsync {
         let seg_max = get_seg_max(QUEUE_SIZE);
 
         Ok(BlockAsync {
-            kill_evt: None,
-            worker_thread: None,
             disk_image: Some(disk_image),
             disk_size: Arc::new(AtomicU64::new(disk_size)),
             avail_features,
@@ -535,6 +534,8 @@ impl BlockAsync {
             seg_max,
             block_size,
             id,
+            kill_evt: None,
+            worker_thread: None,
             control_tube,
         })
     }

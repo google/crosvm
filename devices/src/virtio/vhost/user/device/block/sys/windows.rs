@@ -30,6 +30,9 @@ use crate::virtio::block::block::DiskOption;
 use crate::virtio::vhost::user::device::block::BlockBackend;
 use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
+use crate::virtio::vhost::user::device::VhostUserDevice;
+use crate::virtio::vhost::user::VhostUserBackend;
+use crate::virtio::BlockAsync;
 
 impl BlockBackend {
     pub(in crate::virtio::vhost::user::device::block) fn new_from_files(
@@ -39,10 +42,19 @@ impl BlockBackend {
         read_only: bool,
         sparse: bool,
         block_size: u32,
-    ) -> anyhow::Result<BlockBackend> {
+    ) -> anyhow::Result<Box<dyn VhostUserBackend>> {
         // Safe because the executor is initialized in main() below.
-        let disk = Box::new(SingleFileDisk::new_from_files(files, ex)?) as Box<dyn AsyncDisk>;
-        Self::new_from_async_disk(ex, disk, base_features, read_only, sparse, block_size)
+        let disk = Box::new(SingleFileDisk::new_from_files(files, ex)?).into_inner();
+        Box::new(BlockAsync::new(
+            base_features,
+            disk,
+            read_only,
+            sparse,
+            block_size,
+            None,
+            None,
+        )?)
+        .into_backend(ex)
     }
 }
 
@@ -131,7 +143,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     //     }
 
     // This is basically the event loop.
-    let handler = DeviceRequestHandler::new(Box::new(block));
+    let handler = DeviceRequestHandler::new(block);
 
     if let Err(e) = ex.run_until(handler.run(vhost_user_tube, exit_event, &ex)) {
         bail!("error occurred: {}", e);
