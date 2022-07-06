@@ -314,13 +314,8 @@ fn create_virtio_devices(
     }
 
     for disk in &cfg.disks {
-        let disk_device_tube = disk_device_tubes.remove(0);
-        devs.push(create_block_device(
-            cfg.protected_vm,
-            &cfg.jail_config,
-            disk,
-            disk_device_tube,
-        )?);
+        let disk_config = DiskConfig::new(disk, Some(disk_device_tubes.remove(0)));
+        devs.push(disk_config.create_virtio_device_and_jail(cfg.protected_vm, &cfg.jail_config)?);
     }
 
     for blk in &cfg.vhost_user_blk {

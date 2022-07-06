@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fs::OpenOptions;
@@ -213,52 +214,73 @@ pub trait VirtioDeviceBuilder {
     }
 }
 
-pub fn create_block_device(
-    protected_vm: ProtectionType,
-    jail_config: &Option<JailConfig>,
-    disk: &DiskOption,
-    disk_device_tube: Tube,
-) -> DeviceResult {
-    let raw_image = disk.open_as_raw_image()?;
+/// A one-shot configuration structure for implementing `VirtioDeviceBuilder`. We cannot do it on
+/// `DiskOption` directly because disk devices can be passed an optional control tube.
+pub struct DiskConfig<'a> {
+    /// Options for disk creation.
+    disk: &'a DiskOption,
+    /// Optional control tube for the device. Placed behind a Cell so it can be taken from a
+    /// non-mutable reference.
+    device_tube: Cell<Option<Tube>>,
+}
 
-    info!("Trying to attach block device: {}", disk.path.display());
-    let dev = if disk::async_ok(&raw_image).context("failed to check disk async_ok")? {
-        let async_file = disk::create_async_disk_file(raw_image)
-            .context("failed to create async virtual disk")?;
-        Box::new(
-            virtio::BlockAsync::new(
-                virtio::base_features(protected_vm),
-                async_file,
-                disk.read_only,
-                disk.sparse,
-                disk.block_size,
-                disk.id,
-                Some(disk_device_tube),
-            )
-            .context("failed to create block device")?,
-        ) as Box<dyn VirtioDevice>
-    } else {
-        let disk_file =
-            disk::create_disk_file(raw_image, disk.sparse, disk::MAX_NESTING_DEPTH, &disk.path)
-                .context("failed to create virtual disk")?;
-        Box::new(
-            virtio::Block::new(
-                virtio::base_features(protected_vm),
-                disk_file,
-                disk.read_only,
-                disk.sparse,
-                disk.block_size,
-                disk.id,
-                Some(disk_device_tube),
-            )
-            .context("failed to create block device")?,
-        ) as Box<dyn VirtioDevice>
-    };
+impl<'a> DiskConfig<'a> {
+    pub fn new(disk: &'a DiskOption, device_tube: Option<Tube>) -> Self {
+        Self {
+            disk,
+            device_tube: Cell::new(device_tube),
+        }
+    }
+}
 
-    Ok(VirtioDeviceStub {
-        dev,
-        jail: simple_jail(jail_config, "block_device")?,
-    })
+impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
+    const NAME: &'static str = "block";
+
+    fn create_virtio_device(
+        &self,
+        protected_vm: ProtectionType,
+    ) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        let disk = self.disk;
+        let disk_device_tube = self.device_tube.take();
+
+        let raw_image = disk.open_as_raw_image()?;
+
+        info!("Trying to attach block device: {}", disk.path.display());
+        let dev = if disk::async_ok(&raw_image).context("failed to check disk async_ok")? {
+            let async_file = disk::create_async_disk_file(raw_image)
+                .context("failed to create async virtual disk")?;
+            Box::new(
+                virtio::BlockAsync::new(
+                    virtio::base_features(protected_vm),
+                    async_file,
+                    disk.read_only,
+                    disk.sparse,
+                    disk.block_size,
+                    disk.id,
+                    disk_device_tube,
+                )
+                .context("failed to create block device")?,
+            ) as Box<dyn VirtioDevice>
+        } else {
+            let disk_file =
+                disk::create_disk_file(raw_image, disk.sparse, disk::MAX_NESTING_DEPTH, &disk.path)
+                    .context("failed to create virtual disk")?;
+            Box::new(
+                virtio::Block::new(
+                    virtio::base_features(protected_vm),
+                    disk_file,
+                    disk.read_only,
+                    disk.sparse,
+                    disk.block_size,
+                    disk.id,
+                    disk_device_tube,
+                )
+                .context("failed to create block device")?,
+            )
+        };
+
+        Ok(dev)
+    }
 }
 
 pub fn create_vhost_user_block_device(
