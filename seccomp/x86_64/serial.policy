@@ -9,4 +9,4 @@ connect: 1
 bind: 1
 open: return ENOENT
 openat: return ENOENT
-prctl: arg0 == PR_SET_NAME
+prctl: arg0 == PR_SET_NAME || arg0 == PR_SET_PDEATHSIG

@@ -2506,7 +2506,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 /// call outside of `start_devices`!
 ///
 /// Returns the jail the device process is running in, as well as its pid.
-#[allow(dead_code)]
 fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
     jail_config: &Option<JailConfig>,
     params: &T,
@@ -2596,7 +2595,6 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
         drop_resources: Option<Box<dyn std::any::Any>>,
     }
 
-    #[allow(dead_code)]
     fn add_device<T: VirtioDeviceBuilder>(
         i: usize,
         device_params: &T,
@@ -2623,13 +2621,17 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
 
     let mut devices_jails: BTreeMap<libc::pid_t, DeviceJailInfo> = BTreeMap::new();
 
-    let _jail = if opts.disable_sandbox {
+    let jail = if opts.disable_sandbox {
         None
     } else {
         Some(opts.jail)
     };
 
-    // We will create our devices here.
+    // Create serial devices.
+    for (i, params) in opts.serial.iter().enumerate() {
+        let serial_config = &params.device_params;
+        add_device(i, serial_config, &params.vhost, &jail, &mut devices_jails)?;
+    }
 
     // Now wait for all device processes to return.
     while !devices_jails.is_empty() {

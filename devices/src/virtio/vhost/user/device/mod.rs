@@ -27,7 +27,7 @@ cfg_if::cfg_if! {
 
         pub use vsock::{run_vsock_device, Options as VsockOptions};
         pub use wl::{run_wl_device, parse_wayland_sock, Options as WlOptions};
-        pub use console::{run_console_device, Options as ConsoleOptions};
+        pub use console::{create_vu_console_device, run_console_device, Options as ConsoleOptions};
         #[cfg(feature = "audio_cras")]
         pub use snd::{run_snd_device, Options as SndOptions};
         pub use fs::{run_fs_device, Options as FsOptions};

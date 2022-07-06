@@ -1333,6 +1333,15 @@ impl VirtioDeviceBuilder for SerialParameters {
         ))
     }
 
+    fn create_vhost_user_device(
+        &self,
+        keep_rds: &mut Vec<RawDescriptor>,
+    ) -> anyhow::Result<Box<dyn VhostUserDevice>> {
+        Ok(Box::new(virtio::vhost::user::create_vu_console_device(
+            self, keep_rds,
+        )?))
+    }
+
     fn create_jail(
         &self,
         jail_config: &Option<JailConfig>,

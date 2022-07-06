@@ -3,7 +3,10 @@
 // found in the LICENSE file.
 
 use argh::FromArgs;
-use devices::virtio::vhost::user::device;
+use devices::{
+    virtio::vhost::user::{device, VhostUserParams},
+    SerialParameters,
+};
 
 use crate::crosvm::config::JailConfig;
 
@@ -43,6 +46,10 @@ pub struct DevicesCommand {
     ///     seccomp-log-failures=(true|false) - Log seccomp filter
     ///         failures instead of them being fatal.
     pub jail: JailConfig,
+
+    #[argh(option, arg_name = "serial options")]
+    /// start a serial device (see help from run command for options)
+    pub serial: Vec<VhostUserParams<SerialParameters>>,
 }
 
 #[derive(FromArgs)]

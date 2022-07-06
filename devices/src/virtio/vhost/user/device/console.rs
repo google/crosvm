@@ -11,6 +11,7 @@ use anyhow::Context;
 use argh::FromArgs;
 use base::error;
 use base::Event;
+use base::RawDescriptor;
 use base::Terminal;
 use cros_async::Executor;
 use data_model::DataInit;
@@ -204,6 +205,26 @@ pub struct Options {
     input_file: Option<PathBuf>,
 }
 
+/// Return a new vhost-user console device. `params` are the device's configuration, and `keep_rds`
+/// is a vector into which `RawDescriptors` that need to survive a fork are added, in case the
+/// device is meant to run within a child process.
+pub fn create_vu_console_device(
+    params: &SerialParameters,
+    keep_rds: &mut Vec<RawDescriptor>,
+) -> anyhow::Result<VhostUserConsoleDevice> {
+    let device = params.create_serial_device::<ConsoleDevice>(
+        ProtectionType::Unprotected,
+        // We need to pass an event as per Serial Device API but we don't really use it anyway.
+        &Event::new()?,
+        keep_rds,
+    )?;
+
+    Ok(VhostUserConsoleDevice {
+        console: device,
+        raw_stdin: params.stdin,
+    })
+}
+
 /// Starts a vhost-user console device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
@@ -227,22 +248,10 @@ pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    let console = match params.create_serial_device::<ConsoleDevice>(
-        ProtectionType::Unprotected,
-        // We need to pass an event as per Serial Device API but we don't really use it anyway.
-        &Event::new()?,
-        // Same for keep_rds, we don't really use this.
-        &mut Vec::new(),
-    ) {
-        Ok(c) => c,
-        Err(e) => bail!(e),
-    };
+    // We won't jail the device and can simply ignore `keep_rds`.
+    let device = Box::new(create_vu_console_device(&params, &mut Vec::new())?);
     let ex = Executor::new().context("Failed to create executor")?;
-    let console = Box::new(VhostUserConsoleDevice {
-        console,
-        raw_stdin: true,
-    });
-    let backend = console.into_backend(&ex)?;
+    let backend = device.into_backend(&ex)?;
 
     let listener = VhostUserListener::new_from_socket_or_vfio(
         &opts.socket,

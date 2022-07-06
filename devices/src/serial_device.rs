@@ -25,6 +25,7 @@ use hypervisor::ProtectionType;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_keyvalue::FromKeyValues;
 use thiserror::Error as ThisError;
 
 pub use crate::sys::serial_device::SerialDevice;
@@ -128,7 +129,7 @@ fn serial_parameters_default_debugcon_port() -> u16 {
     0xe9
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, FromKeyValues)]
 #[serde(deny_unknown_fields, default)]
 pub struct SerialParameters {
     #[serde(rename = "type")]
