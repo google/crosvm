@@ -197,7 +197,7 @@ def verify_linux_builder(arch, crosvm_direct = False, **kwargs):
         crosvm_direct: Test crosvm-direct instead of crosvm
         **kwargs: Passed to verify_builder
     """
-    name = "crosvm_linux_%s" % arch
+    name = "linux_%s" % arch
     if crosvm_direct:
         name += "_direct"
     verify_builder(
@@ -225,7 +225,7 @@ def verify_chromeos_builder(board, **kwargs):
         **kwargs: Passed to verify_builder
     """
     verify_builder(
-        name = "crosvm_chromeos_%s" % board,
+        name = "chromeos_%s" % board,
         dimensions = {
             "os": "Ubuntu",
             "cpu": "x86-64",
@@ -281,7 +281,7 @@ verify_linux_builder("armhf")
 verify_chromeos_builder("amd64-generic", presubmit = False)
 
 verify_builder(
-    name = "crosvm_windows",
+    name = "windows",
     dimensions = {
         "os": "Windows",
         "cpu": "x86-64",
@@ -294,7 +294,7 @@ verify_builder(
 )
 
 verify_builder(
-    name = "crosvm_health_check",
+    name = "health_check",
     dimensions = {
         "os": "Ubuntu",
         "cpu": "x86-64",
@@ -306,7 +306,7 @@ verify_builder(
 )
 
 infra_builder(
-    name = "crosvm_push_to_github",
+    name = "push_to_github",
     executable = luci.recipe(
         name = "push_to_github",
     ),
@@ -314,7 +314,7 @@ infra_builder(
 )
 
 infra_builder(
-    name = "crosvm_update_chromeos_merges",
+    name = "update_chromeos_merges",
     executable = luci.recipe(
         name = "update_chromeos_merges",
     ),
