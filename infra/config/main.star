@@ -189,15 +189,19 @@ def verify_builder(name, dimensions, presubmit = True, postsubmit = True, catego
             cq_group = "main",
         )
 
-def verify_linux_builder(arch, **kwargs):
+def verify_linux_builder(arch, crosvm_direct = False, **kwargs):
     """Creates a verify builder that builds crosvm on linux
 
     Args:
         arch: Architecture to build and test
+        crosvm_direct: Test crosvm-direct instead of crosvm
         **kwargs: Passed to verify_builder
     """
+    name = "crosvm_linux_%s" % arch
+    if crosvm_direct:
+        name += "_direct"
     verify_builder(
-        name = "crosvm_linux_%s" % arch,
+        name = name,
         dimensions = {
             "os": "Ubuntu",
             "cpu": "x86-64",
@@ -207,6 +211,7 @@ def verify_linux_builder(arch, **kwargs):
         ),
         properties = {
             "test_arch": arch,
+            "crosvm_direct": crosvm_direct,
         },
         category = "linux",
         **kwargs
@@ -269,6 +274,7 @@ def infra_builder(name, postsubmit, **args):
     )
 
 verify_linux_builder("x86_64")
+verify_linux_builder("x86_64", crosvm_direct = True)
 verify_linux_builder("aarch64")
 verify_linux_builder("armhf")
 

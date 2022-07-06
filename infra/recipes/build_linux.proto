@@ -9,4 +9,6 @@ package recipes.crosvm.build_linux;
 message BuildLinuxProperties {
   // Architecture to test. See `crosvm/tools/run_tests`
   optional string test_arch = 1;
+  // Whether or not to test the crosvm-direct feature.
+  optional bool crosvm_direct = 2;
 }

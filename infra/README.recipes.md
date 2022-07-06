@@ -104,9 +104,9 @@ PYTHON_VERSION_COMPATIBILITY: PY3
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipes/build_linux.py#35)(api, properties):**
+&mdash; **def [RunSteps](/infra/recipes/build_linux.py#40)(api, properties):**
 
-&mdash; **def [get\_test\_args](/infra/recipes/build_linux.py#22)(api, test_arch):**
+&mdash; **def [get\_test\_args](/infra/recipes/build_linux.py#22)(api, properties):**
 
 Returns architecture specific arguments for ./tools/run_tests
 ### *recipes* / [build\_windows](/infra/recipes/build_windows.py)

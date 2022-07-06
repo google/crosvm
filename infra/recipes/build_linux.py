@@ -19,17 +19,22 @@ DEPS = [
 PROPERTIES = BuildLinuxProperties
 
 
-def get_test_args(api, test_arch):
+def get_test_args(api, properties):
     "Returns architecture specific arguments for ./tools/run_tests"
     # TODO(denniskempin): Move this logic into ./tools/presubmit
+    test_arch = properties.test_arch
+    args = []
     if test_arch == "" or test_arch == "x86_64":
-        return ["--target=host"]
+        args += ["--target=host"]
     elif test_arch == "aarch64":
-        return ["--target=vm:aarch64"]
+        args += ["--target=vm:aarch64"]
     elif test_arch == "armhf":
-        return ["--target=vm:aarch64", "--build-target=armhf"]
+        args += ["--target=vm:aarch64", "--build-target=armhf"]
     else:
         raise api.step.StepFailure("Unknown test_arch " + test_arch)
+    if properties.crosvm_direct:
+        args += ["--crosvm-direct"]
+    return args
 
 
 def RunSteps(api, properties):
@@ -41,7 +46,7 @@ def RunSteps(api, properties):
                 "--verbose",
                 "--build-only",
             ]
-            + get_test_args(api, properties.test_arch),
+            + get_test_args(api, properties),
         )
         api.crosvm.step_in_container(
             "Run crosvm tests",
@@ -49,7 +54,7 @@ def RunSteps(api, properties):
                 "./tools/run_tests",
                 "--verbose",
             ]
-            + get_test_args(api, properties.test_arch),
+            + get_test_args(api, properties),
         )
 
 
@@ -61,6 +66,14 @@ def GenTests(api):
             api.buildbucket.ci_build(project="crosvm/crosvm"),
         )
         + api.properties(BuildLinuxProperties(test_arch="x86_64"))
+        + api.post_process(filter_steps)
+    )
+    yield (
+        api.test(
+            "build_x86_64_direct",
+            api.buildbucket.ci_build(project="crosvm/crosvm"),
+        )
+        + api.properties(BuildLinuxProperties(test_arch="x86_64", crosvm_direct=True))
         + api.post_process(filter_steps)
     )
     yield (

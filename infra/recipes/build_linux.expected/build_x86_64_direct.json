@@ -1,0 +1,53 @@
+[
+  {
+    "cmd": [
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
+      "--verbose",
+      "./tools/run_tests",
+      "--verbose",
+      "--build-only",
+      "--target=host",
+      "--crosvm-direct"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "luci_context": {
+      "realm": {
+        "name": "crosvm/crosvm:ci"
+      },
+      "resultdb": {
+        "current_invocation": {
+          "name": "invocations/build:8945511751514863184",
+          "update_token": "token"
+        },
+        "hostname": "rdbhost"
+      }
+    },
+    "name": "Build crosvm tests"
+  },
+  {
+    "cmd": [
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
+      "--verbose",
+      "./tools/run_tests",
+      "--verbose",
+      "--target=host",
+      "--crosvm-direct"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "luci_context": {
+      "realm": {
+        "name": "crosvm/crosvm:ci"
+      },
+      "resultdb": {
+        "current_invocation": {
+          "name": "invocations/build:8945511751514863184",
+          "update_token": "token"
+        },
+        "hostname": "rdbhost"
+      }
+    },
+    "name": "Run crosvm tests"
+  }
+]
