@@ -4,7 +4,8 @@
 
 use std::{thread::sleep, time::Duration};
 
-use base::{kill_process_group, reap_child, warn};
+use anyhow::anyhow;
+use base::{kill_process_group, reap_child, syslog, syslog::LogConfig, warn};
 #[cfg(feature = "audio_cras")]
 use devices::virtio::vhost::user::device::run_cras_snd_device;
 #[cfg(feature = "gpu")]
@@ -13,7 +14,10 @@ use devices::virtio::vhost::user::device::{
     run_console_device, run_fs_device, run_vsock_device, run_wl_device,
 };
 
-use crate::crosvm::sys::cmdline::{Commands, DevicesSubcommand};
+use crate::{
+    crosvm::sys::cmdline::{Commands, DevicesSubcommand},
+    Config,
+};
 
 pub(crate) fn start_device(command: DevicesSubcommand) -> anyhow::Result<()> {
     match command {
@@ -72,4 +76,18 @@ pub(crate) fn cleanup() {
 
 pub(crate) fn run_command(_cmd: Commands) -> anyhow::Result<()> {
     Err(anyhow::anyhow!("invalid command"))
+}
+
+pub(crate) fn init_log<F: 'static>(log_config: LogConfig<F>, _cfg: &Config) -> anyhow::Result<()>
+where
+    F: Fn(&mut syslog::fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
+{
+    if let Err(e) = syslog::init_with(LogConfig {
+        proc_name: String::from("crosvm"),
+        ..log_config
+    }) {
+        eprintln!("failed to initialize syslog: {}", e);
+        return Err(anyhow!("failed to initialize syslog: {}", e));
+    }
+    Ok(())
 }

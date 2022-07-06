@@ -6,16 +6,17 @@
 
 use std::fs::OpenOptions;
 use std::path::Path;
-use std::string::String;
 
+use anyhow::{anyhow, Result};
 use argh::FromArgs;
 use base::syslog::LogConfig;
 use base::{error, info, syslog};
+use cmdline::{RunCommand, UsbAttachCommand};
 mod crosvm;
+use crosvm::cmdline;
 #[cfg(feature = "plugin")]
 use crosvm::config::executable_is_plugin;
 use crosvm::config::Config;
-use crosvm::{cmdline, sys as platform};
 use devices::virtio::vhost::user::device::{run_block_device, run_net_device};
 use disk::QcowFile;
 #[cfg(feature = "composite-disk")]
@@ -31,6 +32,7 @@ use vm_control::{
     BalloonControlCommand, DiskControlCommand, UsbControlResult, VmRequest, VmResponse,
 };
 
+use crate::sys::init_log;
 use crosvm::cmdline::{Command, CrossPlatformCommands, CrossPlatformDevicesCommands};
 
 #[cfg(feature = "scudo")]
@@ -45,25 +47,35 @@ enum CommandStatus {
     GuestPanic,
 }
 
-fn run_vm<F: 'static>(
-    cmd: cmdline::RunCommand,
-    log_config: LogConfig<F>,
-) -> std::result::Result<CommandStatus, ()>
+fn to_command_status(result: Result<sys::ExitState>) -> Result<CommandStatus> {
+    match result {
+        Ok(sys::ExitState::Stop) => {
+            info!("crosvm has exited normally");
+            Ok(CommandStatus::VmStop)
+        }
+        Ok(sys::ExitState::Reset) => {
+            info!("crosvm has exited normally due to reset request");
+            Ok(CommandStatus::VmReset)
+        }
+        Ok(sys::ExitState::Crash) => {
+            info!("crosvm has exited due to a VM crash");
+            Ok(CommandStatus::VmCrash)
+        }
+        Ok(sys::ExitState::GuestPanic) => {
+            info!("crosvm has exited due to a kernel panic in guest");
+            Ok(CommandStatus::GuestPanic)
+        }
+        Err(e) => {
+            error!("crosvm has exited with error: {:#}", e);
+            Err(e)
+        }
+    }
+}
+
+fn run_vm<F: 'static>(cmd: RunCommand, log_config: LogConfig<F>) -> Result<CommandStatus>
 where
     F: Fn(&mut syslog::fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
 {
-    if let Err(e) = syslog::init_with(LogConfig {
-        proc_name: if let Some(ref tag) = cmd.syslog_tag {
-            tag.clone()
-        } else {
-            String::from("crosvm")
-        },
-        ..log_config
-    }) {
-        eprintln!("failed to initialize syslog: {}", e);
-        return Err(());
-    }
-
     match TryInto::<Config>::try_into(cmd) {
         #[cfg(feature = "plugin")]
         Ok(cfg) if executable_is_plugin(&cfg.executable_path) => {
@@ -74,35 +86,18 @@ where
                 }
                 Err(e) => {
                     error!("{:#}", e);
-                    Err(())
+                    Err(e)
                 }
             }
         }
-        Ok(cfg) => match platform::run_config(cfg) {
-            Ok(platform::ExitState::Stop) => {
-                info!("crosvm has exited normally");
-                Ok(CommandStatus::VmStop)
-            }
-            Ok(platform::ExitState::Reset) => {
-                info!("crosvm has exited normally due to reset request");
-                Ok(CommandStatus::VmReset)
-            }
-            Ok(platform::ExitState::Crash) => {
-                info!("crosvm has exited due to a VM crash");
-                Ok(CommandStatus::VmCrash)
-            }
-            Ok(platform::ExitState::GuestPanic) => {
-                info!("crosvm has exited due to a kernel panic in guest");
-                Ok(CommandStatus::GuestPanic)
-            }
-            Err(e) => {
-                error!("crosvm has exited with error: {:#}", e);
-                Err(())
-            }
-        },
+        Ok(cfg) => {
+            init_log(log_config, &cfg)?;
+            let exit_state = crate::sys::run_config(cfg);
+            to_command_status(exit_state)
+        }
         Err(e) => {
             error!("{}", e);
-            Err(())
+            Err(anyhow!("{}", e))
         }
     }
 }
@@ -365,7 +360,7 @@ fn make_rt(cmd: cmdline::MakeRTCommand) -> std::result::Result<(), ()> {
     vms_request(&VmRequest::MakeRT, cmd.socket_path)
 }
 
-fn usb_attach(cmd: cmdline::UsbAttachCommand) -> ModifyUsbResult<UsbControlResult> {
+fn usb_attach(cmd: UsbAttachCommand) -> ModifyUsbResult<UsbControlResult> {
     let dev_path = Path::new(&cmd.dev_path);
 
     do_usb_attach(cmd.socket_path, dev_path)
@@ -410,7 +405,8 @@ fn pkg_version() -> std::result::Result<(), ()> {
     Ok(())
 }
 
-fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
+fn crosvm_main() -> Result<CommandStatus> {
+    #[cfg(not(feature = "crash-report"))]
     sys::set_panic_hook();
 
     let mut args: Vec<String> = Vec::default();
@@ -428,6 +424,8 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
                 args.push("--balloon-bias-mib".to_string());
             }
             "-h" => args.push("--help".to_string()),
+            // TODO(238361778): This block should work on windows as well.
+            #[cfg(unix)]
             arg if arg.starts_with("--") => {
                 // Split `--arg=val` into `--arg val`, since argh doesn't support the former.
                 if let Some((key, value)) = arg.split_once("=") {
@@ -456,7 +454,7 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
     }
 
     let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
-    let args = match crosvm::cmdline::CrosvmCmdlineArgs::from_args(&["crosvm"], &args[1..]) {
+    let args = match crosvm::cmdline::CrosvmCmdlineArgs::from_args(&args[..1], &args[1..]) {
         Ok(args) => args,
         Err(e) => {
             println!("{}", e.output);
@@ -471,7 +469,7 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
         ..Default::default()
     };
 
-    let ret: std::result::Result<CommandStatus, ()> = match args.command {
+    let ret = match args.command {
         Command::CrossPlatform(command) => {
             // Past this point, usage of exit is in danger of leaking zombie processes.
             if let CrossPlatformCommands::Run(cmd) = command {
@@ -479,39 +477,67 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
                 // but also indicates whether the guest requested reset or stop.
                 run_vm(cmd, log_config)
             } else {
-                if let Err(e) = syslog::init_with(log_config) {
-                    eprintln!("failed to initialize syslog: {}", e);
-                    return Err(());
-                }
+                syslog::init_with(log_config)
+                    .map_err(|e| anyhow!("failed to initialize syslog: {}", e))?;
+
                 match command {
-                    CrossPlatformCommands::Balloon(cmd) => balloon_vms(cmd),
-                    CrossPlatformCommands::BalloonStats(cmd) => balloon_stats(cmd),
-                    CrossPlatformCommands::Battery(cmd) => modify_battery(cmd),
+                    CrossPlatformCommands::Balloon(cmd) => {
+                        balloon_vms(cmd).map_err(|_| anyhow!("balloon subcommand failed"))
+                    }
+                    CrossPlatformCommands::BalloonStats(cmd) => {
+                        balloon_stats(cmd).map_err(|_| anyhow!("balloon_stats subcommand failed"))
+                    }
+                    CrossPlatformCommands::Battery(cmd) => {
+                        modify_battery(cmd).map_err(|_| anyhow!("battery subcommand failed"))
+                    }
                     #[cfg(feature = "composite-disk")]
-                    CrossPlatformCommands::CreateComposite(cmd) => create_composite(cmd),
-                    CrossPlatformCommands::CreateQcow2(cmd) => create_qcow2(cmd),
-                    CrossPlatformCommands::Device(cmd) => start_device(cmd),
-                    CrossPlatformCommands::Disk(cmd) => disk_cmd(cmd),
-                    CrossPlatformCommands::MakeRT(cmd) => make_rt(cmd),
-                    CrossPlatformCommands::Resume(cmd) => resume_vms(cmd),
+                    CrossPlatformCommands::CreateComposite(cmd) => create_composite(cmd)
+                        .map_err(|_| anyhow!("create_composite subcommand failed")),
+                    CrossPlatformCommands::CreateQcow2(cmd) => {
+                        create_qcow2(cmd).map_err(|_| anyhow!("create_qcow2 subcommand failed"))
+                    }
+                    CrossPlatformCommands::Device(cmd) => {
+                        start_device(cmd).map_err(|_| anyhow!("start_device subcommand failed"))
+                    }
+                    CrossPlatformCommands::Disk(cmd) => {
+                        disk_cmd(cmd).map_err(|_| anyhow!("disk subcommand failed"))
+                    }
+                    CrossPlatformCommands::MakeRT(cmd) => {
+                        make_rt(cmd).map_err(|_| anyhow!("make_rt subcommand failed"))
+                    }
+                    CrossPlatformCommands::Resume(cmd) => {
+                        resume_vms(cmd).map_err(|_| anyhow!("resume subcommand failed"))
+                    }
                     CrossPlatformCommands::Run(_) => unreachable!(),
-                    CrossPlatformCommands::Stop(cmd) => stop_vms(cmd),
-                    CrossPlatformCommands::Suspend(cmd) => suspend_vms(cmd),
-                    CrossPlatformCommands::Powerbtn(cmd) => powerbtn_vms(cmd),
-                    CrossPlatformCommands::Sleepbtn(cmd) => sleepbtn_vms(cmd),
-                    CrossPlatformCommands::Gpe(cmd) => inject_gpe(cmd),
-                    CrossPlatformCommands::Usb(cmd) => modify_usb(cmd),
-                    CrossPlatformCommands::Version(_) => pkg_version(),
-                    CrossPlatformCommands::Vfio(cmd) => modify_vfio(cmd),
+                    CrossPlatformCommands::Stop(cmd) => {
+                        stop_vms(cmd).map_err(|_| anyhow!("stop subcommand failed"))
+                    }
+                    CrossPlatformCommands::Suspend(cmd) => {
+                        suspend_vms(cmd).map_err(|_| anyhow!("suspend subcommand failed"))
+                    }
+                    CrossPlatformCommands::Powerbtn(cmd) => {
+                        powerbtn_vms(cmd).map_err(|_| anyhow!("powerbtn subcommand failed"))
+                    }
+                    CrossPlatformCommands::Sleepbtn(cmd) => {
+                        sleepbtn_vms(cmd).map_err(|_| anyhow!("sleepbtn subcommand failed"))
+                    }
+                    CrossPlatformCommands::Gpe(cmd) => {
+                        inject_gpe(cmd).map_err(|_| anyhow!("gpe subcommand failed"))
+                    }
+                    CrossPlatformCommands::Usb(cmd) => {
+                        modify_usb(cmd).map_err(|_| anyhow!("usb subcommand failed"))
+                    }
+                    CrossPlatformCommands::Version(_) => {
+                        pkg_version().map_err(|_| anyhow!("version subcommand failed"))
+                    }
+                    CrossPlatformCommands::Vfio(cmd) => {
+                        modify_vfio(cmd).map_err(|_| anyhow!("vfio subcommand failed"))
+                    }
                 }
                 .map(|_| CommandStatus::Success)
             }
         }
-        cmdline::Command::Sys(command) => sys::run_command(command)
-            .map(|_| CommandStatus::Success)
-            .map_err(|e| {
-                error!("Failed to run command {}", e);
-            }),
+        cmdline::Command::Sys(command) => sys::run_command(command).map(|_| CommandStatus::Success),
     };
 
     sys::cleanup();
@@ -528,12 +554,29 @@ fn crosvm_main() -> std::result::Result<CommandStatus, ()> {
 }
 
 fn main() {
-    let exit_code = match crosvm_main() {
-        Ok(CommandStatus::Success | CommandStatus::VmStop) => 0,
-        Ok(CommandStatus::VmReset) => 32,
-        Ok(CommandStatus::VmCrash) => 33,
-        Ok(CommandStatus::GuestPanic) => 34,
-        Err(_) => 1,
+    let res = crosvm_main();
+    let exit_code = match &res {
+        Ok(CommandStatus::Success | CommandStatus::VmStop) => {
+            info!("exiting with success");
+            0
+        }
+        Ok(CommandStatus::VmReset) => {
+            info!("exiting with reset");
+            32
+        }
+        Ok(CommandStatus::VmCrash) => {
+            info!("exiting with crash");
+            33
+        }
+        Ok(CommandStatus::GuestPanic) => {
+            info!("exiting with guest panic");
+            34
+        }
+        Err(e) => {
+            let exit_code = 1;
+            error!("exiting with error {}:{:?}", exit_code, e);
+            exit_code
+        }
     };
     std::process::exit(exit_code);
 }

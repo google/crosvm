@@ -510,7 +510,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
     #[allow(unused_mut)]
     let mut env_fds: Vec<(String, Descriptor)> = Vec::default();
 
-    let _default_render_server_params = crate::platform::GpuRenderServerParameters {
+    let _default_render_server_params = crate::crosvm::sys::GpuRenderServerParameters {
         path: std::path::PathBuf::from("/usr/libexec/virgl_render_server"),
         cache_path: None,
         cache_size: None,
@@ -529,13 +529,13 @@ pub fn run_config(cfg: Config) -> Result<()> {
     // Hold on to the render server jail so it keeps running until we exit run_config()
     let (_render_server_jail, _render_server_fd) =
         if let Some(parameters) = &gpu_render_server_parameters {
-            let (jail, fd) = crate::platform::gpu::start_gpu_render_server(&cfg, parameters)?;
+            let (jail, fd) = crate::crosvm::sys::gpu::start_gpu_render_server(&cfg, parameters)?;
             env_fds.push((
                 CROSVM_GPU_SERVER_FD_ENV.to_string(),
                 Descriptor(fd.as_raw_descriptor()),
             ));
             (
-                Some(crate::platform::jail_helpers::ScopedMinijail(jail)),
+                Some(crate::crosvm::sys::jail_helpers::ScopedMinijail(jail)),
                 Some(fd),
             )
         } else {
