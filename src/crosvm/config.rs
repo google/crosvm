@@ -23,7 +23,7 @@ use devices::virtio::gpu::GpuParameters;
 use devices::virtio::VideoBackendType;
 #[cfg(feature = "direct")]
 use devices::BusRange;
-use devices::{PciAddress, PciClassCode, StubPciParameters};
+use devices::{PciAddress, PciClassCode, PflashParameters, StubPciParameters};
 use hypervisor::ProtectionType;
 use resources::AddressRange;
 use serde::{Deserialize, Serialize};
@@ -1199,6 +1199,12 @@ pub fn parse_stub_pci_parameters(s: &str) -> Result<StubPciParameters, String> {
     Ok(params)
 }
 
+pub fn parse_pflash_parameters(s: &str) -> Result<PflashParameters, String> {
+    let pflash_parameters: PflashParameters = from_key_values(s)?;
+
+    Ok(pflash_parameters)
+}
+
 // BTreeMaps serialize fine, as long as their keys are trivial types. A tuple does not
 // work, hence the need to convert to/from a vector form.
 mod serde_serial_params {
@@ -1326,6 +1332,7 @@ pub struct Config {
     #[cfg(feature = "direct")]
     pub pcie_rp: Vec<HostPcieRootPortParameters>,
     pub per_vm_core_scheduling: bool,
+    pub pflash_parameters: Option<PflashParameters>,
     #[cfg(feature = "plugin")]
     pub plugin_gid_maps: Vec<GidMap>,
     pub plugin_mounts: Vec<BindMount>,
@@ -1522,6 +1529,7 @@ impl Default for Config {
             #[cfg(feature = "direct")]
             pcie_rp: Vec::new(),
             per_vm_core_scheduling: false,
+            pflash_parameters: None,
             #[cfg(feature = "plugin")]
             plugin_gid_maps: Vec::new(),
             plugin_mounts: Vec::new(),

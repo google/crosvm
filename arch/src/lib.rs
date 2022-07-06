@@ -121,6 +121,8 @@ pub struct VmComponents {
     pub pci_low_start: Option<u64>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub pcie_ecam: Option<AddressRange>,
+    pub pflash_block_size: u32,
+    pub pflash_image: Option<File>,
     pub protected_vm: ProtectionType,
     pub pstore: Option<Pstore>,
     /// A file to load as pVM firmware. Must be `Some` iff
@@ -211,6 +213,7 @@ pub trait LinuxArch {
     /// * `devices` - The devices to be built into the VM.
     /// * `irq_chip` - The IRQ chip implemention for the VM.
     /// * `debugcon_jail` - Jail used for debugcon devices created here.
+    /// * `pflash_jail` - Jail used for pflash device created here.
     fn build_vm<V, Vcpu>(
         components: VmComponents,
         vm_evt_wrtube: &SendTube,
@@ -224,6 +227,7 @@ pub trait LinuxArch {
         irq_chip: &mut dyn IrqChipArch,
         vcpu_ids: &mut Vec<usize>,
         debugcon_jail: Option<Minijail>,
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] pflash_jail: Option<Minijail>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmArch,

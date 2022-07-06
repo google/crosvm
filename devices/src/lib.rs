@@ -77,6 +77,8 @@ pub use self::software_tpm::SoftwareTpm;
 #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
 pub use self::vtpm_proxy::VtpmProxy;
 
+mod pflash;
+pub use self::pflash::{Pflash, PflashParameters};
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod platform;

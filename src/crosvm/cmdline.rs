@@ -47,6 +47,7 @@ use devices::virtio::vhost::user::device;
 use devices::virtio::VideoBackendType;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
+use devices::PflashParameters;
 use devices::SerialHardware;
 use devices::SerialParameters;
 use devices::StubPciParameters;
@@ -61,8 +62,8 @@ use crate::crosvm::config::parse_ac97_options;
 use crate::crosvm::config::{
     numbered_disk_option, parse_battery_options, parse_bus_id_addr, parse_cpu_affinity,
     parse_cpu_capacity, parse_cpu_set, parse_file_backed_mapping, parse_mmio_address_range,
-    parse_pstore, parse_serial_options, parse_stub_pci_parameters, Executable,
-    FileBackedMappingParameters, HypervisorKind, TouchDeviceOption, VhostUserFsOption,
+    parse_pflash_parameters, parse_pstore, parse_serial_options, parse_stub_pci_parameters,
+    Executable, FileBackedMappingParameters, HypervisorKind, TouchDeviceOption, VhostUserFsOption,
     VhostUserOption, VhostUserWlOption, VvuOption,
 };
 #[cfg(feature = "direct")]
@@ -801,6 +802,16 @@ pub struct RunCommand {
     /// making all vCPU threads share same cookie for core scheduling.
     /// This option is no-op on devices that have neither MDS nor L1TF vulnerability
     pub per_vm_core_scheduling: bool,
+    #[argh(
+        option,
+        long = "pflash",
+        arg_name = "path=PATH,[block_size=SIZE]",
+        from_str_fn(parse_pflash_parameters)
+    )]
+    /// comma-seperated key-value pair for setting up the pflash device, which provides space to store UEFI variables.
+    /// block_size defaults to 4K.
+    /// [--pflash <path=PATH,[block_size=SIZE]>]
+    pub pflash_parameters: Option<PflashParameters>,
     #[argh(option, arg_name = "PATH")]
     /// path to empty directory to use for sandbox pivot root
     pub pivot_root: Option<PathBuf>,
@@ -1602,6 +1613,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             }
             cfg.executable_path = Some(Executable::Bios(p));
         }
+        cfg.pflash_parameters = cmd.pflash_parameters;
 
         #[cfg(feature = "video-decoder")]
         {

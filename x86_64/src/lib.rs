@@ -66,6 +66,8 @@ use arch::{
     get_serial_cmdline, GetSerialCmdlineError, MsrAction, MsrConfig, MsrFilter, MsrRWType,
     MsrValueFrom, RunnableLinuxVm, VmComponents, VmImage,
 };
+#[cfg(unix)]
+use base::AsRawDescriptors;
 use base::{warn, Event, SendTube, TubeError};
 pub use cpuid::{adjust_cpuid, CpuIdContext};
 #[cfg(windows)]
@@ -74,7 +76,7 @@ use devices::Minijail;
 use devices::ProxyDevice;
 use devices::{
     BusDevice, BusDeviceObj, BusResumeDevice, Debugcon, IrqChip, IrqChipX86_64, IrqEventSource,
-    PciAddress, PciConfigIo, PciConfigMmio, PciDevice, PciVirtualConfigMmio, Serial,
+    PciAddress, PciConfigIo, PciConfigMmio, PciDevice, PciVirtualConfigMmio, Pflash, Serial,
     SerialHardware, SerialParameters,
 };
 use hypervisor::{
@@ -172,6 +174,8 @@ pub enum Error {
     LoadInitrd(arch::LoadImageError),
     #[error("error loading Kernel: {0}")]
     LoadKernel(kernel_loader::Error),
+    #[error("error loading pflash: {0}")]
+    LoadPflash(io::Error),
     #[error("error translating address: Page not present")]
     PageNotPresent,
     #[error("error reading guest memory {0}")]
@@ -202,6 +206,8 @@ pub enum Error {
     SetupMsrs(base::Error),
     #[error("failed to set up page tables: {0}")]
     SetupPageTables(regs::Error),
+    #[error("failed to set up pflash: {0}")]
+    SetupPflash(anyhow::Error),
     #[error("failed to set up registers: {0}")]
     SetupRegs(regs::Error),
     #[error("failed to set up SMBIOS: {0}")]
@@ -512,6 +518,7 @@ impl arch::LinuxArch for X8664arch {
         irq_chip: &mut dyn IrqChipX86_64,
         vcpu_ids: &mut Vec<usize>,
         debugcon_jail: Option<Minijail>,
+        pflash_jail: Option<Minijail>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmX86_64,
@@ -627,6 +634,25 @@ impl arch::LinuxArch for X8664arch {
             serial_parameters,
             debugcon_jail,
         )?;
+
+        let bios_size = if let VmImage::Bios(ref bios) = components.vm_image {
+            bios.metadata().map_err(Error::LoadBios)?.len()
+        } else {
+            0
+        };
+        if let Some(pflash_image) = components.pflash_image {
+            Self::setup_pflash(
+                pflash_image,
+                components.pflash_block_size,
+                bios_size,
+                &mmio_bus,
+                pflash_jail,
+            )?;
+        }
+
+        // Functions that use/create jails MUST be used before the call to
+        // setup_acpi_devices below, as this move us into a multiprocessing state
+        // from which we can no longer fork.
 
         let mut resume_notify_devices = Vec::new();
 
@@ -1251,6 +1277,38 @@ impl X8664arch {
             bios_image_length as usize,
         )
         .map_err(Error::SetupGuestMemory)?;
+        Ok(())
+    }
+
+    fn setup_pflash(
+        pflash_image: File,
+        block_size: u32,
+        bios_size: u64,
+        mmio_bus: &devices::Bus,
+        jail: Option<Minijail>,
+    ) -> Result<()> {
+        let size = pflash_image.metadata().map_err(Error::LoadPflash)?.len();
+        let start = FIRST_ADDR_PAST_32BITS - bios_size - size;
+        let pflash_image = Box::new(pflash_image);
+
+        #[cfg(unix)]
+        let fds = pflash_image.as_raw_descriptors();
+
+        let pflash = Pflash::new(pflash_image, block_size).map_err(Error::SetupPflash)?;
+        let pflash: Arc<Mutex<dyn BusDevice>> = match jail.as_ref() {
+            #[cfg(unix)]
+            Some(jail) => Arc::new(Mutex::new(
+                ProxyDevice::new(pflash, &jail.try_clone().map_err(Error::CloneJail)?, fds)
+                    .map_err(Error::CreateProxyDevice)?,
+            )),
+            #[cfg(windows)]
+            Some(_) => unreachable!(),
+            None => Arc::new(Mutex::new(pflash)),
+        };
+        mmio_bus
+            .insert(pflash, start, size)
+            .map_err(Error::InsertBus)?;
+
         Ok(())
     }
 

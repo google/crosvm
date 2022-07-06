@@ -1022,6 +1022,24 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         }
     };
 
+    let (pflash_image, pflash_block_size) = if let Some(pflash_parameters) = &cfg.pflash_parameters
+    {
+        (
+            Some(
+                open_file(
+                    &pflash_parameters.path,
+                    OpenOptions::new().read(true).write(true),
+                )
+                .with_context(|| {
+                    format!("failed to open pflash {}", pflash_parameters.path.display())
+                })?,
+            ),
+            pflash_parameters.block_size,
+        )
+    } else {
+        (None, 0)
+    };
+
     Ok(VmComponents {
         memory_size: cfg
             .memory
@@ -1047,6 +1065,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             })
             .map_or(Ok(None), |v| v.map(Some))?,
         pstore: cfg.pstore.clone(),
+        pflash_block_size,
+        pflash_image,
         initrd_image,
         extra_kernel_params: cfg.params.clone(),
         acpi_sdts: cfg
@@ -1640,6 +1660,8 @@ where
         irq_chip,
         &mut vcpu_ids,
         simple_jail(&cfg.jail_config, "serial_device")?,
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        simple_jail(&cfg.jail_config, "block_device")?,
     )
     .context("the architecture failed to build the vm")?;
 
