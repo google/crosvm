@@ -7,5 +7,5 @@
 #
 # This script will only work if you have access to the above service via gcloud.
 set -e
-TOKEN=$(gcloud --project=crosvm-infra secrets versions access 1 --secret="github-crosvm-bot")
+TOKEN=$(gcloud --project=crosvm-infra secrets versions access latest --secret="github-crosvm-bot")
 git push --force "https://crosvm-bot:${TOKEN}@github.com/google/crosvm.git" HEAD:main
