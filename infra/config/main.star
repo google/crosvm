@@ -362,6 +362,14 @@ infra_builder(
 )
 
 infra_builder(
+    name = "build_docs",
+    executable = luci.recipe(
+        name = "build_docs",
+    ),
+    postsubmit = True,
+)
+
+infra_builder(
     name = "update_chromeos_merges",
     executable = luci.recipe(
         name = "update_chromeos_merges",
