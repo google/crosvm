@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{Error, Result};
 use crate::connection::{Endpoint, Req};
+use crate::message::SlaveReq;
 use std::cmp::min;
 use std::fs::File;
 use std::marker::PhantomData;
@@ -138,6 +139,13 @@ impl<R: Req> Endpoint<R> for TubeEndpoint<R> {
         }
 
         Ok((bytes_read, files))
+    }
+
+    fn create_slave_request_endpoint(
+        &mut self,
+        files: Option<Vec<File>>,
+    ) -> Result<Box<dyn Endpoint<SlaveReq>>> {
+        unimplemented!("SET_SLAVE_REQ_FD not supported");
     }
 }
 

@@ -16,7 +16,7 @@ use thiserror::Error as ThisError;
 
 use super::{Error, Result};
 use crate::connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req};
-use crate::message::MasterReq;
+use crate::message::{MasterReq, SlaveReq};
 
 /// Errors for `Device::recv_into_bufs()`.
 #[sorted]
@@ -59,6 +59,11 @@ pub trait Device: Send {
         &mut self,
         iovs: &mut [IoSliceMut],
     ) -> std::result::Result<usize, RecvIntoBufsError>;
+
+    /// Constructs the slave request endpoint for the endpoint backed by this device.
+    fn create_slave_request_endpoint(
+        &mut self,
+    ) -> std::result::Result<Box<dyn EndpointTrait<SlaveReq>>, anyhow::Error>;
 }
 
 /// Listener for accepting incoming connections from virtio-vhost-user device through VFIO.
@@ -111,6 +116,15 @@ pub struct Endpoint<R: Req, D: Device> {
     _r: PhantomData<R>,
 }
 
+impl<D: Device, R: Req> From<D> for Endpoint<R, D> {
+    fn from(device: D) -> Self {
+        Self {
+            device,
+            _r: PhantomData,
+        }
+    }
+}
+
 impl<R: Req, D: Device> EndpointTrait<R> for Endpoint<R, D> {
     fn connect<P: AsRef<Path>>(_path: P) -> Result<Self> {
         // TODO: remove this method from Endpoint trait?
@@ -135,6 +149,19 @@ impl<R: Req, D: Device> EndpointTrait<R> for Endpoint<R, D> {
 
         // VFIO backend doesn't receive any files.
         Ok((size, None))
+    }
+
+    fn create_slave_request_endpoint(
+        &mut self,
+        files: Option<Vec<File>>,
+    ) -> Result<Box<dyn EndpointTrait<SlaveReq>>> {
+        if files.is_some() {
+            return Err(Error::InvalidMessage);
+        }
+
+        self.device
+            .create_slave_request_endpoint()
+            .map_err(Error::VfioDeviceError)
     }
 }
 

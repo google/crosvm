@@ -76,7 +76,7 @@ pub trait VhostUserSlaveReqHandler {
     fn set_vring_enable(&self, index: u32, enable: bool) -> Result<()>;
     fn get_config(&self, offset: u32, size: u32, flags: VhostUserConfigFlags) -> Result<Vec<u8>>;
     fn set_config(&self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
-    fn set_slave_req_fd(&self, _vu_req: File) {}
+    fn set_slave_req_fd(&self, _vu_req: Box<dyn Endpoint<SlaveReq>>) {}
     fn get_inflight_fd(&self, inflight: &VhostUserInflight) -> Result<(VhostUserInflight, File)>;
     fn set_inflight_fd(&self, inflight: &VhostUserInflight, file: File) -> Result<()>;
     fn get_max_mem_slots(&self) -> Result<u64>;
@@ -125,7 +125,7 @@ pub trait VhostUserSlaveReqHandlerMut {
         flags: VhostUserConfigFlags,
     ) -> Result<Vec<u8>>;
     fn set_config(&mut self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
-    fn set_slave_req_fd(&mut self, _vu_req: File) {}
+    fn set_slave_req_fd(&mut self, _vu_req: Box<dyn Endpoint<SlaveReq>>) {}
     fn get_inflight_fd(
         &mut self,
         inflight: &VhostUserInflight,
@@ -224,7 +224,7 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
         self.lock().unwrap().set_config(offset, buf, flags)
     }
 
-    fn set_slave_req_fd(&self, vu_req: File) {
+    fn set_slave_req_fd(&self, vu_req: Box<dyn Endpoint<SlaveReq>>) {
         self.lock().unwrap().set_slave_req_fd(vu_req)
     }
 
@@ -860,13 +860,12 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     }
 
     fn set_slave_req_fd(&mut self, files: Option<Vec<File>>) -> Result<()> {
-        if cfg!(windows) {
-            unimplemented!();
-        } else {
-            let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
-            self.backend.set_slave_req_fd(file);
-            Ok(())
-        }
+        let ep = self
+            .slave_req_helper
+            .endpoint
+            .create_slave_request_endpoint(files)?;
+        self.backend.set_slave_req_fd(ep);
+        Ok(())
     }
 
     fn handle_vring_fd_request(

@@ -69,6 +69,15 @@ pub trait Endpoint<R: Req>: Send {
         bufs: &mut [IoSliceMut],
         allow_fd: bool,
     ) -> Result<(usize, Option<Vec<File>>)>;
+
+    /// Constructs the slave request endpoint for self.
+    ///
+    /// # Arguments
+    /// * `files` - Files from which to create the endpoint
+    fn create_slave_request_endpoint(
+        &mut self,
+        files: Option<Vec<File>>,
+    ) -> Result<Box<dyn Endpoint<SlaveReq>>>;
 }
 
 // Advance the internal cursor of the slices.

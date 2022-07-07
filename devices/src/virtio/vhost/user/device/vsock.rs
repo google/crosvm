@@ -33,6 +33,8 @@ use vhost::Vsock;
 use vhost::{self};
 use vm_memory::GuestMemory;
 use vmm_vhost::connection::vfio::Listener as VfioListener;
+use vmm_vhost::connection::Endpoint;
+use vmm_vhost::message::SlaveReq;
 use vmm_vhost::message::VhostSharedMemoryRegion;
 use vmm_vhost::message::VhostUserConfigFlags;
 use vmm_vhost::message::VhostUserInflight;
@@ -52,7 +54,8 @@ use vmm_vhost::VhostUserSlaveReqHandlerMut;
 use crate::virtio::base_features;
 use crate::virtio::vhost::user::device::handler::run_handler;
 // TODO(acourbot) try to remove the system dependencies and make the device usable on all platforms.
-use crate::virtio::vhost::user::device::handler::sys::unix::{Doorbell, VvuOps};
+use crate::virtio::vhost::user::device::handler::sys::unix::Doorbell;
+use crate::virtio::vhost::user::device::handler::sys::unix::VvuOps;
 use crate::virtio::vhost::user::device::handler::vmm_va_to_gpa;
 use crate::virtio::vhost::user::device::handler::MappingInfo;
 use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
@@ -430,7 +433,10 @@ impl<H: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<H> {
         Err(Error::InvalidOperation)
     }
 
-    fn set_slave_req_fd(&mut self, _vu_req: File) {}
+    fn set_slave_req_fd(&mut self, _vu_req: Box<dyn Endpoint<SlaveReq>>) {
+        // We didn't set VhostUserProtocolFeatures::SLAVE_REQ
+        unreachable!("unexpected set_slave_req_fd");
+    }
 
     fn get_inflight_fd(
         &mut self,

@@ -9,12 +9,12 @@ use std::io::{ErrorKind, IoSlice, IoSliceMut};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
-use base::{AsRawDescriptor, FromRawDescriptor, RawDescriptor, ScmSocket};
+use base::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, ScmSocket};
 
 use super::{Error, Result};
 use crate::connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req};
 use crate::message::*;
-use crate::{SystemListener, SystemStream};
+use crate::{take_single_file, SystemListener, SystemStream};
 
 /// Unix domain socket listener for accepting incoming connections.
 pub struct Listener {
@@ -204,6 +204,16 @@ impl<R: Req> EndpointTrait<R> for Endpoint<R> {
         };
 
         Ok((bytes, files))
+    }
+
+    fn create_slave_request_endpoint(
+        &mut self,
+        files: Option<Vec<File>>,
+    ) -> Result<Box<dyn EndpointTrait<SlaveReq>>> {
+        let file = take_single_file(files).ok_or(Error::InvalidMessage)?;
+        // Safe because we own the file
+        let tube = unsafe { SystemStream::from_raw_descriptor(file.into_raw_descriptor()) };
+        Ok(Box::new(Endpoint::from(tube)))
     }
 }
 

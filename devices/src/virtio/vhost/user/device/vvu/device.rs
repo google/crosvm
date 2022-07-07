@@ -8,6 +8,7 @@ use std::cmp::Ordering;
 use std::io::IoSlice;
 use std::io::IoSliceMut;
 use std::mem;
+use std::os::unix::prelude::RawFd;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
@@ -29,8 +30,10 @@ use futures::select;
 use futures::FutureExt;
 use sync::Mutex;
 use vmm_vhost::connection::vfio::Device as VfioDeviceTrait;
+use vmm_vhost::connection::vfio::Endpoint as VfioEndpoint;
 use vmm_vhost::connection::vfio::RecvIntoBufsError;
-use vmm_vhost::message::MasterReq;
+use vmm_vhost::connection::Endpoint;
+use vmm_vhost::message::*;
 
 use crate::virtio::vhost::user::device::vvu::pci::QueueNotifier;
 use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
@@ -141,17 +144,26 @@ impl VfioReceiver {
     }
 }
 
+// Data queued to send on an endpoint.
+#[derive(Default)]
+struct EndpointTxBuffer {
+    bytes: Vec<u8>,
+}
+
 // Utility class for writing an input vhost-user byte stream to the vvu
 // tx virtqueue as discrete vhost-user messages.
 struct Queue {
     txq: UserQueue,
     txq_notifier: QueueNotifier,
-
-    bytes: Vec<u8>,
 }
 
 impl Queue {
-    fn send_bufs(&mut self, iovs: &[IoSlice], fds: Option<&[RawDescriptor]>) -> Result<usize> {
+    fn send_bufs(
+        &mut self,
+        iovs: &[IoSlice],
+        fds: Option<&[RawDescriptor]>,
+        tx_state: &mut EndpointTxBuffer,
+    ) -> Result<usize> {
         if fds.is_some() {
             bail!("cannot send FDs");
         }
@@ -160,15 +172,15 @@ impl Queue {
         for iov in iovs {
             let mut vec = iov.to_vec();
             size += iov.len();
-            self.bytes.append(&mut vec);
+            tx_state.bytes.append(&mut vec);
         }
 
-        if let Some(hdr) = vhost_header_from_bytes::<MasterReq>(&self.bytes) {
+        if let Some(hdr) = vhost_header_from_bytes::<MasterReq>(&tx_state.bytes) {
             let bytes_needed = hdr.get_size() as usize + HEADER_LEN;
-            match bytes_needed.cmp(&self.bytes.len()) {
+            match bytes_needed.cmp(&tx_state.bytes.len()) {
                 Ordering::Greater => (),
                 Ordering::Equal => {
-                    let msg = mem::take(&mut self.bytes);
+                    let msg = mem::take(&mut tx_state.bytes);
                     self.txq.write(&msg).context("Failed to send data")?;
                 }
                 Ordering::Less => bail!("sent bytes larger than message size"),
@@ -184,7 +196,8 @@ async fn process_rxq(
     evt: EventAsync,
     mut rxq: UserQueue,
     rxq_notifier: QueueNotifier,
-    sender: VfioSender,
+    frontend_sender: VfioSender,
+    backend_sender: VfioSender,
 ) -> Result<()> {
     loop {
         if let Err(e) = evt.next_val().await {
@@ -200,6 +213,9 @@ async fn process_rxq(
             let mut buf = vec![0_u8; slice.size()];
             slice.copy_to(&mut buf);
 
+            // The inbound message may be a SlaveReq message. However, the values
+            // of all SlaveReq enum values can be safely interpreted as MasterReq
+            // enum values.
             let hdr =
                 vhost_header_from_bytes::<MasterReq>(&buf).context("rxq message too short")?;
             if HEADER_LEN + hdr.get_size() as usize != slice.size() {
@@ -210,7 +226,13 @@ async fn process_rxq(
                 );
             }
 
-            sender.send(buf).context("send failed")?;
+            if hdr.is_reply() {
+                &backend_sender
+            } else {
+                &frontend_sender
+            }
+            .send(buf)
+            .context("send failed")?;
         }
         rxq_notifier.notify();
     }
@@ -232,12 +254,19 @@ fn run_worker(
     rx_queue: UserQueue,
     rx_irq: Event,
     rx_notifier: QueueNotifier,
-    sender: VfioSender,
+    frontend_sender: VfioSender,
+    backend_sender: VfioSender,
     tx_queue: Arc<Mutex<Queue>>,
     tx_irq: Event,
 ) -> Result<()> {
     let rx_irq = EventAsync::new(rx_irq, &ex).context("failed to create async event")?;
-    let rxq = process_rxq(rx_irq, rx_queue, rx_notifier, sender);
+    let rxq = process_rxq(
+        rx_irq,
+        rx_queue,
+        rx_notifier,
+        frontend_sender,
+        backend_sender,
+    );
     pin_mut!(rxq);
 
     let tx_irq = EventAsync::new(tx_irq, &ex).context("failed to create async event")?;
@@ -267,6 +296,7 @@ enum DeviceState {
     },
     Running {
         rxq_receiver: VfioReceiver,
+        tx_state: EndpointTxBuffer,
 
         txq: Arc<Mutex<Queue>>,
     },
@@ -274,21 +304,24 @@ enum DeviceState {
 
 pub struct VvuDevice {
     state: DeviceState,
-    rxq_evt: Event,
+    frontend_rxq_evt: Event,
+
+    backend_channel: Option<VfioEndpoint<SlaveReq, BackendChannel>>,
 }
 
 impl VvuDevice {
     pub fn new(device: VvuPciDevice) -> Self {
         Self {
             state: DeviceState::Initialized { device },
-            rxq_evt: Event::new().expect("failed to create VvuDevice's rxq_evt"),
+            frontend_rxq_evt: Event::new().expect("failed to create VvuDevice's rxq_evt"),
+            backend_channel: None,
         }
     }
 }
 
 impl VfioDeviceTrait for VvuDevice {
     fn event(&self) -> &Event {
-        &self.rxq_evt
+        &self.frontend_rxq_evt
     }
 
     fn start(&mut self) -> Result<()> {
@@ -309,23 +342,34 @@ impl VfioDeviceTrait for VvuDevice {
         let rxq_notifier = queue_notifiers.remove(0);
         // TODO: Can we use async channel instead so we don't need `rxq_evt`?
         let (rxq_sender, rxq_receiver) = channel();
-        let rxq_evt = self.rxq_evt.try_clone().expect("rxq_evt clone");
+        let rxq_evt = self.frontend_rxq_evt.try_clone().expect("rxq_evt clone");
 
         let txq = Arc::new(Mutex::new(Queue {
             txq: queues.remove(0),
             txq_notifier: queue_notifiers.remove(0),
-            bytes: Vec::new(),
         }));
         let txq_cloned = Arc::clone(&txq);
         let txq_irq = irqs.remove(0);
+
+        let (backend_rxq_sender, backend_rxq_receiver) = channel();
+        let backend_rxq_evt = Event::new().expect("failed to create VvuDevice's rxq_evt");
+        let backend_rxq_evt2 = backend_rxq_evt.try_clone().expect("rxq_evt clone");
+        self.backend_channel = Some(VfioEndpoint::from(BackendChannel {
+            receiver: VfioReceiver::new(backend_rxq_receiver, backend_rxq_evt),
+            queue: txq.clone(),
+            tx_state: EndpointTxBuffer::default(),
+        }));
 
         let old_state = std::mem::replace(
             &mut self.state,
             DeviceState::Running {
                 rxq_receiver: VfioReceiver::new(
                     rxq_receiver,
-                    self.rxq_evt.try_clone().expect("rxq_evt clone"),
+                    self.frontend_rxq_evt
+                        .try_clone()
+                        .expect("frontend_rxq_evt clone"),
                 ),
+                tx_state: EndpointTxBuffer::default(),
                 txq,
             },
         );
@@ -335,14 +379,22 @@ impl VfioDeviceTrait for VvuDevice {
             _ => unreachable!(),
         };
 
-        let sender = VfioSender::new(rxq_sender, rxq_evt);
+        let frontend_sender = VfioSender::new(rxq_sender, rxq_evt);
+        let backend_sender = VfioSender::new(backend_rxq_sender, backend_rxq_evt2);
         thread::Builder::new()
             .name("virtio-vhost-user driver".to_string())
             .spawn(move || {
                 device.start().expect("failed to start device");
-                if let Err(e) =
-                    run_worker(ex, rxq, rxq_irq, rxq_notifier, sender, txq_cloned, txq_irq)
-                {
+                if let Err(e) = run_worker(
+                    ex,
+                    rxq,
+                    rxq_irq,
+                    rxq_notifier,
+                    frontend_sender,
+                    backend_sender,
+                    txq_cloned,
+                    txq_irq,
+                ) {
                     error!("worker thread exited with error: {}", e);
                 }
             })?;
@@ -351,14 +403,15 @@ impl VfioDeviceTrait for VvuDevice {
     }
 
     fn send_bufs(&mut self, iovs: &[IoSlice], fds: Option<&[RawDescriptor]>) -> Result<usize> {
-        let txq = match &mut self.state {
+        match &mut self.state {
             DeviceState::Initialized { .. } => {
                 bail!("VvuDevice hasn't started yet");
             }
-            DeviceState::Running { txq, .. } => txq,
-        };
-
-        txq.lock().send_bufs(iovs, fds)
+            DeviceState::Running { txq, tx_state, .. } => {
+                let mut queue = txq.lock();
+                queue.send_bufs(iovs, fds, tx_state)
+            }
+        }
     }
 
     fn recv_into_bufs(&mut self, bufs: &mut [IoSliceMut]) -> Result<usize, RecvIntoBufsError> {
@@ -368,5 +421,44 @@ impl VfioDeviceTrait for VvuDevice {
             ))),
             DeviceState::Running { rxq_receiver, .. } => rxq_receiver.recv_into_bufs(bufs),
         }
+    }
+
+    fn create_slave_request_endpoint(&mut self) -> Result<Box<dyn Endpoint<SlaveReq>>> {
+        self.backend_channel
+            .take()
+            .map_or(Err(anyhow!("missing backend endpoint")), |c| {
+                Ok(Box::new(c))
+            })
+    }
+}
+
+// Struct which implements the Endpoint for backend messages.
+struct BackendChannel {
+    receiver: VfioReceiver,
+    queue: Arc<Mutex<Queue>>,
+    tx_state: EndpointTxBuffer,
+}
+
+impl VfioDeviceTrait for BackendChannel {
+    fn event(&self) -> &Event {
+        &self.receiver.evt
+    }
+
+    fn start(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    fn send_bufs(&mut self, iovs: &[IoSlice], fds: Option<&[RawFd]>) -> Result<usize> {
+        self.queue.lock().send_bufs(iovs, fds, &mut self.tx_state)
+    }
+
+    fn recv_into_bufs(&mut self, bufs: &mut [IoSliceMut]) -> Result<usize, RecvIntoBufsError> {
+        self.receiver.recv_into_bufs(bufs)
+    }
+
+    fn create_slave_request_endpoint(&mut self) -> Result<Box<dyn Endpoint<SlaveReq>>> {
+        Err(anyhow!(
+            "can't construct backend endpoint from backend endpoint"
+        ))
     }
 }

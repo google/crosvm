@@ -704,18 +704,13 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
         Ok(())
     }
 
-    #[allow(unused, dead_code, clippy::diverging_sub_expression)]
-    fn set_slave_req_fd(&mut self, file: File) {
+    fn set_slave_req_fd(&mut self, ep: Box<dyn Endpoint<SlaveReq>>) {
         let shmid = match self.shmid {
             Some(shmid) => shmid,
             None => {
-                if let Err(e) = self.backend.set_device_request_channel(file) {
-                    error!("failed to set device request channel: {}", e);
-                }
-                return;
+                unimplemented!("set_device_request_channel no longer supported");
             }
         };
-        let ep: Box<dyn Endpoint<SlaveReq>> = todo!();
         let frontend = Slave::new(ep);
         self.backend
             .set_shared_memory_mapper(Box::new(VhostShmemMapper {
