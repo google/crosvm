@@ -3,6 +3,7 @@
 
 //! Structs for Unix Domain Socket listener and endpoint.
 
+use std::any::Any;
 use std::fs::File;
 use std::io::{ErrorKind, IoSlice, IoSliceMut};
 use std::marker::PhantomData;
@@ -18,7 +19,7 @@ use crate::{SystemListener, SystemStream};
 /// Unix domain socket listener for accepting incoming connections.
 pub struct Listener {
     fd: SystemListener,
-    path: PathBuf,
+    drop_path: Option<Box<dyn Any>>,
 }
 
 impl Listener {
@@ -32,10 +33,29 @@ impl Listener {
             let _ = std::fs::remove_file(&path);
         }
         let fd = SystemListener::bind(&path).map_err(Error::SocketError)?;
+
+        struct DropPath {
+            path: PathBuf,
+        }
+
+        impl Drop for DropPath {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.path);
+            }
+        }
+
         Ok(Listener {
             fd,
-            path: path.as_ref().to_owned(),
+            drop_path: Some(Box::new(DropPath {
+                path: path.as_ref().to_owned(),
+            })),
         })
+    }
+
+    /// Take and return the resources that the parent process needs to keep alive as long as the
+    /// child process lives, in case of incoming fork.
+    pub fn take_resources_for_parent(&mut self) -> Option<Box<dyn Any>> {
+        self.drop_path.take()
     }
 }
 
@@ -86,12 +106,6 @@ impl ListenerTrait for Listener {
 impl AsRawDescriptor for Listener {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.fd.as_raw_descriptor()
-    }
-}
-
-impl Drop for Listener {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
     }
 }
 

@@ -5,7 +5,7 @@
 pub mod sys;
 pub use sys::VhostUserListener;
 
-use std::pin::Pin;
+use std::{any::Any, pin::Pin};
 
 use base::RawDescriptor;
 use cros_async::Executor;
@@ -27,6 +27,24 @@ pub trait VhostUserListenerTrait {
         max_num_queues: usize,
         keep_rds: Option<&mut Vec<RawDescriptor>>,
     ) -> anyhow::Result<VhostUserListener>;
+
+    /// Take and return resources owned by the parent process in case of a incoming fork.
+    ///
+    /// This method needs to be called only if you are going to use the listener in a jailed child
+    /// process. In this case, the listener will belong to the child and the parent will drop it,
+    /// but the child may lack the rights to drop some resources created at construction time. One
+    /// such example is the socket file of a regular vhost-user device, that cannot be dropped by
+    /// the child unless it gets extra permissions.
+    ///
+    /// This method returns an opaque object that, upon being dropped, will free these resources.
+    /// That way, the child process does not need extra rights to clear them, and the parent can
+    /// drop the listener after forking and just need to keep that object alive until the child
+    /// exits to do housekeeping properly.
+    ///
+    /// The default implementation returns nothing as that's what most listeners would need anyway.
+    fn take_parent_process_resources(&mut self) -> Option<Box<dyn Any>> {
+        None
+    }
 
     /// Returns a `Future` that will process requests from `backend` when polled. The future exits
     /// when the front-end side disconnects or an error occurs.

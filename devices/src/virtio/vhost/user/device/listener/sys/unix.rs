@@ -149,4 +149,12 @@ impl VhostUserListenerTrait for VhostUserListener {
             }
         }
     }
+
+    fn take_parent_process_resources(&mut self) -> Option<Box<dyn std::any::Any>> {
+        if let VhostUserListener::Socket(listener) = self {
+            listener.take_resources_for_parent()
+        } else {
+            None
+        }
+    }
 }
