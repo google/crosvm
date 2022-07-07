@@ -6,10 +6,10 @@ use std::{thread::sleep, time::Duration};
 
 use anyhow::anyhow;
 use base::{kill_process_group, reap_child, syslog, syslog::LogConfig, warn};
-#[cfg(feature = "audio_cras")]
-use devices::virtio::vhost::user::device::run_cras_snd_device;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::run_gpu_device;
+#[cfg(feature = "audio_cras")]
+use devices::virtio::vhost::user::device::run_snd_device;
 use devices::virtio::vhost::user::device::{
     run_console_device, run_fs_device, run_vsock_device, run_wl_device,
 };
@@ -23,7 +23,7 @@ pub(crate) fn start_device(command: DevicesSubcommand) -> anyhow::Result<()> {
     match command {
         DevicesSubcommand::Console(cfg) => run_console_device(cfg),
         #[cfg(feature = "audio_cras")]
-        DevicesSubcommand::CrasSnd(cfg) => run_cras_snd_device(cfg),
+        DevicesSubcommand::Snd(cfg) => run_snd_device(cfg),
         DevicesSubcommand::Fs(cfg) => run_fs_device(cfg),
         #[cfg(feature = "gpu")]
         DevicesSubcommand::Gpu(cfg) => run_gpu_device(cfg),

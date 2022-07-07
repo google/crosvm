@@ -18,7 +18,7 @@ cfg_if::cfg_if! {
         mod gpu;
         mod console;
         #[cfg(feature = "audio_cras")]
-        mod cras_snd;
+        mod snd;
         mod fs;
         mod net;
         mod vsock;
@@ -29,7 +29,7 @@ cfg_if::cfg_if! {
         pub use wl::{run_wl_device, parse_wayland_sock, Options as WlOptions};
         pub use console::{run_console_device, Options as ConsoleOptions};
         #[cfg(feature = "audio_cras")]
-        pub use cras_snd::{run_cras_snd_device, Options as CrasSndOptions};
+        pub use snd::{run_snd_device, Options as SndOptions};
         pub use fs::{run_fs_device, Options as FsOptions};
         pub use net::{run_net_device, Options as NetOptions};
         #[cfg(feature = "gpu")]

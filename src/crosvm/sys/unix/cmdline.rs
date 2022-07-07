@@ -12,7 +12,7 @@ use argh::FromArgs;
 pub enum DevicesSubcommand {
     Console(device::ConsoleOptions),
     #[cfg(feature = "audio_cras")]
-    CrasSnd(device::CrasSndOptions),
+    Snd(device::SndOptions),
     Fs(device::FsOptions),
     #[cfg(feature = "gpu")]
     Gpu(device::GpuOptions),
