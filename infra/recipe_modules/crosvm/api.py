@@ -70,7 +70,6 @@ class CrosvmApi(recipe_api.RecipeApi):
             with self.m.context(infra_steps=True):
                 self.__prepare_source()
                 self.__prepare_container()
-                return self.m.context(cwd=self.source_dir)
         env = {
             "CROSVM_CONTAINER_CACHE": str(self.dev_container_cache),
         }

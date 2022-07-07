@@ -27,9 +27,9 @@ PYTHON_VERSION_COMPATIBILITY: PY3
 
 Crosvm specific functionality shared between recipes.
 
-&emsp; **@property**<br>&mdash; **def [builder\_dir](/infra/recipe_modules/crosvm/api.py#43)(self):**
+&emsp; **@property**<br>&mdash; **def [builder\_dir](/infra/recipe_modules/crosvm/api.py#47)(self):**
 
-&emsp; **@property**<br>&mdash; **def [cache\_dir](/infra/recipe_modules/crosvm/api.py#39)(self):**
+&emsp; **@property**<br>&mdash; **def [cache\_dir](/infra/recipe_modules/crosvm/api.py#43)(self):**
 
 &emsp; **@property**<br>&mdash; **def [cargo\_home](/infra/recipe_modules/crosvm/api.py#24)(self):**
 
@@ -39,7 +39,7 @@ CARGO_HOME is cached between runs.
 
 CARGO_TARGET_DIR is cleaned up between runs
 
-&mdash; **def [container\_build\_context](/infra/recipe_modules/crosvm/api.py#57)(self):**
+&mdash; **def [container\_build\_context](/infra/recipe_modules/crosvm/api.py#61)(self):**
 
 Prepares source and system to build crosvm via dev container.
 
@@ -47,7 +47,9 @@ Usage:
     with api.crosvm.container_build_context():
         api.crosvm.step_in_container("build crosvm", ["cargo build"])
 
-&mdash; **def [host\_build\_context](/infra/recipe_modules/crosvm/api.py#71)(self):**
+&emsp; **@property**<br>&mdash; **def [dev\_container\_cache](/infra/recipe_modules/crosvm/api.py#39)(self):**
+
+&mdash; **def [host\_build\_context](/infra/recipe_modules/crosvm/api.py#78)(self):**
 
 Prepares source and system to build crosvm directly on the host.
 
@@ -62,13 +64,13 @@ Usage:
 
 Directory used to install local tools required by the build.
 
-&mdash; **def [prepare\_git](/infra/recipe_modules/crosvm/api.py#116)(self):**
+&mdash; **def [prepare\_git](/infra/recipe_modules/crosvm/api.py#123)(self):**
 
 &emsp; **@property**<br>&mdash; **def [rustup\_home](/infra/recipe_modules/crosvm/api.py#19)(self):**
 
 RUSTUP_HOME is cached between runs.
 
-&mdash; **def [source\_context](/infra/recipe_modules/crosvm/api.py#47)(self):**
+&mdash; **def [source\_context](/infra/recipe_modules/crosvm/api.py#51)(self):**
 
 Updates the source to the revision to be tested and drops into the source directory.
 
@@ -78,7 +80,7 @@ Use when no build commands are needed.
 
 Where the crosvm source will be checked out.
 
-&mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#102)(self, step_name, command):**
+&mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#109)(self, step_name, command):**
 
 Runs a luci step inside the crosvm dev container.
 ## Recipes

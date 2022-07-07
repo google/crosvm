@@ -8,6 +8,9 @@
       "python"
     ],
     "cwd": "[CACHE]/builder/crosvm",
+    "env": {
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/crosvm_api/dev_container"
+    },
     "luci_context": {
       "realm": {
         "name": "crosvm/crosvm:ci"
@@ -31,6 +34,9 @@
       "misc"
     ],
     "cwd": "[CACHE]/builder/crosvm",
+    "env": {
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/crosvm_api/dev_container"
+    },
     "luci_context": {
       "realm": {
         "name": "crosvm/crosvm:ci"
@@ -54,6 +60,9 @@
       "fmt"
     ],
     "cwd": "[CACHE]/builder/crosvm",
+    "env": {
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/crosvm_api/dev_container"
+    },
     "luci_context": {
       "realm": {
         "name": "crosvm/crosvm:ci"
@@ -77,6 +86,9 @@
       "clippy"
     ],
     "cwd": "[CACHE]/builder/crosvm",
+    "env": {
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/crosvm_api/dev_container"
+    },
     "luci_context": {
       "realm": {
         "name": "crosvm/crosvm:ci"
