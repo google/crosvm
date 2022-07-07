@@ -34,6 +34,7 @@
       "--verbose",
       "./tools/run_tests",
       "--verbose",
+      "--repeat=1",
       "--target=vm:aarch64"
     ],
     "cwd": "[CACHE]/builder/crosvm",
