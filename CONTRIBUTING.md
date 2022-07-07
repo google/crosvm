@@ -95,7 +95,7 @@ git push origin HEAD:refs/for/main
 
 Your change must be reviewed and approved by one of [crosvm owners].
 
-### Presubmit checking {#presubmit}
+### Presubmit checking
 
 Once your change is reviewed, it will need to go through two layers of presubmit checks.
 
