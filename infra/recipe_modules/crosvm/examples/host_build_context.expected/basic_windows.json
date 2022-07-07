@@ -178,6 +178,19 @@
     ]
   },
   {
+    "cmd": [
+      "git",
+      "repack",
+      "-a"
+    ],
+    "cwd": "[CACHE]\\builder\\crosvm",
+    "infra_step": true,
+    "name": "Prepare Host Build.Prepare source.Repack repository",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@"
+    ]
+  },
+  {
     "cmd": [],
     "name": "Prepare Host Build.Prepare rust",
     "~followup_annotations": [
