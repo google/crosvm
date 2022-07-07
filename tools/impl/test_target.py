@@ -1,6 +1,7 @@
 # Copyright 2021 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file
+# found in the LICENSE file.
+
 import argparse
 import functools
 import platform
@@ -140,7 +141,7 @@ class Triple(NamedTuple):
         elif shorthand == "x86_64":
             triple = "x86_64-unknown-linux-gnu"
         else:
-            raise Exception("Not a valid build triple shorthand: {shorthand}")
+            raise Exception(f"Not a valid build triple shorthand: {shorthand}")
         return cls.from_str(triple)
 
     @classmethod
