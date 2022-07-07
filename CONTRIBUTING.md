@@ -114,12 +114,15 @@ When all tests pass, your change is merged into `origin/main`.
 [Google Markdown style guide].
 
 To render the book locally, you need to install mdbook and [mdbook-mermaid], which should be
-installed when you run `./tools/install-deps`script.
+installed when you run `./tools/install-deps`script. Or you can use the `tools/dev_container`
+environment.
 
 ```sh
-cd crosvm/docs/book/
+cd docs/book/
 mdbook build
 ```
+
+Output is found at `docs/book/book/html/`.
 
 > Note: If you make a certain size of changes, it's recommended to reinstall mdbook manually with
 > `cargo install mdbook`, as `./tools/install-deps` only installs a binary with some convenient
