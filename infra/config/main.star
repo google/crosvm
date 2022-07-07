@@ -149,6 +149,8 @@ luci.notifier(
     name = "postsubmit-failures",
     on_status_change = True,
     notify_emails = [
+        "crosvm-uprev@grotations.appspotmail.com",
+        "crosvm-uprev-apac@grotations.appspotmail.com",
         "denniskempin@google.com",
     ],
 )
