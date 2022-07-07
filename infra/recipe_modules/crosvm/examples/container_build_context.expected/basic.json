@@ -98,7 +98,7 @@
       "[CACHE]/builder"
     ],
     "infra_step": true,
-    "name": "Prepare Container Build.Prepare source.Ensure builder_dir exists",
+    "name": "Prepare Container Build.Prepare source.Ensure builder_cache exists",
     "~followup_annotations": [
       "@@@STEP_NEST_LEVEL@2@@@"
     ]
@@ -249,7 +249,7 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CROSVM_CONTAINER_CACHE": "[CACHE]/crosvm_api/dev_container"
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
     },
     "name": "Build"
   },

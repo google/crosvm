@@ -98,7 +98,7 @@
       "[CACHE]/builder"
     ],
     "infra_step": true,
-    "name": "Prepare Host Build.Prepare source.Ensure builder_dir exists",
+    "name": "Prepare Host Build.Prepare source.Ensure builder_cache exists",
     "~followup_annotations": [
       "@@@STEP_NEST_LEVEL@2@@@"
     ]
@@ -232,14 +232,14 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CARGO_HOME": "[CACHE]/crosvm_api/cargo_home",
+      "CARGO_HOME": "[CACHE]/builder/cargo_home",
       "CARGO_TARGET_DIR": "[CLEANUP]/cargo_target",
-      "RUSTUP_HOME": "[CACHE]/crosvm_api/rustup"
+      "RUSTUP_HOME": "[CACHE]/builder/rustup"
     },
     "env_prefixes": {
       "PATH": [
-        "[CACHE]/crosvm_api/cargo_home/bin",
-        "[CACHE]/crosvm_api/local_bin"
+        "[CACHE]/builder/cargo_home/bin",
+        "[CACHE]/builder/local_bin"
       ]
     },
     "infra_step": true,
@@ -263,14 +263,14 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CARGO_HOME": "[CACHE]/crosvm_api/cargo_home",
+      "CARGO_HOME": "[CACHE]/builder/cargo_home",
       "CARGO_TARGET_DIR": "[CLEANUP]/cargo_target",
-      "RUSTUP_HOME": "[CACHE]/crosvm_api/rustup"
+      "RUSTUP_HOME": "[CACHE]/builder/rustup"
     },
     "env_prefixes": {
       "PATH": [
-        "[CACHE]/crosvm_api/cargo_home/bin",
-        "[CACHE]/crosvm_api/local_bin"
+        "[CACHE]/builder/cargo_home/bin",
+        "[CACHE]/builder/local_bin"
       ]
     },
     "infra_step": true,
@@ -299,14 +299,14 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CARGO_HOME": "[CACHE]/crosvm_api/cargo_home",
+      "CARGO_HOME": "[CACHE]/builder/cargo_home",
       "CARGO_TARGET_DIR": "[CLEANUP]/cargo_target",
-      "RUSTUP_HOME": "[CACHE]/crosvm_api/rustup"
+      "RUSTUP_HOME": "[CACHE]/builder/rustup"
     },
     "env_prefixes": {
       "PATH": [
-        "[CACHE]/crosvm_api/cargo_home/bin",
-        "[CACHE]/crosvm_api/local_bin"
+        "[CACHE]/builder/cargo_home/bin",
+        "[CACHE]/builder/local_bin"
       ]
     },
     "infra_step": true,
@@ -322,14 +322,14 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CARGO_HOME": "[CACHE]/crosvm_api/cargo_home",
+      "CARGO_HOME": "[CACHE]/builder/cargo_home",
       "CARGO_TARGET_DIR": "[CLEANUP]/cargo_target",
-      "RUSTUP_HOME": "[CACHE]/crosvm_api/rustup"
+      "RUSTUP_HOME": "[CACHE]/builder/rustup"
     },
     "env_prefixes": {
       "PATH": [
-        "[CACHE]/crosvm_api/cargo_home/bin",
-        "[CACHE]/crosvm_api/local_bin"
+        "[CACHE]/builder/cargo_home/bin",
+        "[CACHE]/builder/local_bin"
       ]
     },
     "infra_step": true,
@@ -355,18 +355,18 @@
       "ensure-directory",
       "--mode",
       "0777",
-      "[CACHE]/crosvm_api/local_bin"
+      "[CACHE]/builder/local_bin"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CARGO_HOME": "[CACHE]/crosvm_api/cargo_home",
+      "CARGO_HOME": "[CACHE]/builder/cargo_home",
       "CARGO_TARGET_DIR": "[CLEANUP]/cargo_target",
-      "RUSTUP_HOME": "[CACHE]/crosvm_api/rustup"
+      "RUSTUP_HOME": "[CACHE]/builder/rustup"
     },
     "env_prefixes": {
       "PATH": [
-        "[CACHE]/crosvm_api/cargo_home/bin",
-        "[CACHE]/crosvm_api/local_bin"
+        "[CACHE]/builder/cargo_home/bin",
+        "[CACHE]/builder/local_bin"
       ]
     },
     "infra_step": true,
@@ -380,7 +380,7 @@
       "cipd",
       "ensure",
       "-root",
-      "[CACHE]/crosvm_api/local_bin",
+      "[CACHE]/builder/local_bin",
       "-ensure-file",
       "crosvm/protoc/${platform} latest",
       "-max-threads",
@@ -390,14 +390,14 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CARGO_HOME": "[CACHE]/crosvm_api/cargo_home",
+      "CARGO_HOME": "[CACHE]/builder/cargo_home",
       "CARGO_TARGET_DIR": "[CLEANUP]/cargo_target",
-      "RUSTUP_HOME": "[CACHE]/crosvm_api/rustup"
+      "RUSTUP_HOME": "[CACHE]/builder/rustup"
     },
     "env_prefixes": {
       "PATH": [
-        "[CACHE]/crosvm_api/cargo_home/bin",
-        "[CACHE]/crosvm_api/local_bin"
+        "[CACHE]/builder/cargo_home/bin",
+        "[CACHE]/builder/local_bin"
       ]
     },
     "infra_step": true,
@@ -424,14 +424,14 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CARGO_HOME": "[CACHE]/crosvm_api/cargo_home",
+      "CARGO_HOME": "[CACHE]/builder/cargo_home",
       "CARGO_TARGET_DIR": "[CLEANUP]/cargo_target",
-      "RUSTUP_HOME": "[CACHE]/crosvm_api/rustup"
+      "RUSTUP_HOME": "[CACHE]/builder/rustup"
     },
     "env_prefixes": {
       "PATH": [
-        "[CACHE]/crosvm_api/cargo_home/bin",
-        "[CACHE]/crosvm_api/local_bin"
+        "[CACHE]/builder/cargo_home/bin",
+        "[CACHE]/builder/local_bin"
       ]
     },
     "name": "Build"

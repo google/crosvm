@@ -14,17 +14,17 @@ class CrosvmApi(recipe_api.RecipeApi):
     @property
     def source_dir(self):
         "Where the crosvm source will be checked out."
-        return self.builder_dir.join("crosvm")
+        return self.builder_cache.join("crosvm")
 
     @property
     def rustup_home(self):
         "RUSTUP_HOME is cached between runs."
-        return self.cache_dir.join("rustup")
+        return self.builder_cache.join("rustup")
 
     @property
     def cargo_home(self):
         "CARGO_HOME is cached between runs."
-        return self.cache_dir.join("cargo_home")
+        return self.builder_cache.join("cargo_home")
 
     @property
     def cargo_target_dir(self):
@@ -34,18 +34,19 @@ class CrosvmApi(recipe_api.RecipeApi):
     @property
     def local_bin(self):
         "Directory used to install local tools required by the build."
-        return self.cache_dir.join("local_bin")
+        return self.builder_cache.join("local_bin")
 
     @property
     def dev_container_cache(self):
-        return self.cache_dir.join("dev_container")
+        return self.builder_cache.join("dev_container")
 
     @property
-    def cache_dir(self):
-        return self.m.path["cache"].join("crosvm_api")
+    def builder_cache(self):
+        """
+        Dedicated cache directory for each builder.
 
-    @property
-    def builder_dir(self):
+        Luci will try to run each builder on the same bot as previously to keep this cache present.
+        """
         return self.m.path["cache"].join("builder")
 
     def source_context(self):
@@ -180,8 +181,8 @@ class CrosvmApi(recipe_api.RecipeApi):
         """
         self.prepare_git()
         with self.m.step.nest("Prepare source"):
-            self.m.file.ensure_directory("Ensure builder_dir exists", self.builder_dir)
-            with self.m.context(cwd=self.builder_dir):
+            self.m.file.ensure_directory("Ensure builder_cache exists", self.builder_cache)
+            with self.m.context(cwd=self.builder_cache):
                 gclient_config = self.m.gclient.make_config()
                 s = gclient_config.solutions.add()
                 s.url = CROSVM_REPO_URL

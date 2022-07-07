@@ -230,6 +230,9 @@ def verify_linux_builder(arch, crosvm_direct = False, **kwargs):
             "test_arch": arch,
             "crosvm_direct": crosvm_direct,
         },
+        caches = [
+            swarming.cache("builder", name = "linux_builder_cache"),
+        ],
         category = "linux",
         **kwargs
     )
@@ -320,6 +323,9 @@ verify_builder(
     executable = luci.recipe(
         name = "health_check",
     ),
+    caches = [
+        swarming.cache("builder", name = "linux_builder_cache"),
+    ],
     category = "linux",
 )
 

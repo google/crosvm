@@ -9,7 +9,7 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CROSVM_CONTAINER_CACHE": "[CACHE]/crosvm_api/dev_container"
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
     },
     "luci_context": {
       "realm": {
@@ -35,7 +35,7 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CROSVM_CONTAINER_CACHE": "[CACHE]/crosvm_api/dev_container"
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
     },
     "luci_context": {
       "realm": {
@@ -61,7 +61,7 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CROSVM_CONTAINER_CACHE": "[CACHE]/crosvm_api/dev_container"
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
     },
     "luci_context": {
       "realm": {
@@ -87,7 +87,7 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
-      "CROSVM_CONTAINER_CACHE": "[CACHE]/crosvm_api/dev_container"
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
     },
     "luci_context": {
       "realm": {
