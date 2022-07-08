@@ -30,6 +30,9 @@ class TestOption(enum.Enum):
     # Run tests single-threaded
     SINGLE_THREADED = "single_threaded"
 
+    # This test needs to be the only one runnning to prevent interference with other tests.
+    RUN_EXCLUSIVE = "run_exclusive"
+
     # This test needs longer than usual to run.
     LARGE = "large"
 
@@ -72,7 +75,7 @@ WIN64_DISABLED_CRATES = [
 
 CRATE_OPTIONS: Dict[str, List[TestOption]] = {
     "base": [TestOption.SINGLE_THREADED, TestOption.LARGE],
-    "cros_async": [TestOption.LARGE],
+    "cros_async": [TestOption.LARGE, TestOption.RUN_EXCLUSIVE],
     "crosvm": [TestOption.SINGLE_THREADED],
     "crosvm_plugin": [
         TestOption.DO_NOT_BUILD_AARCH64,
@@ -95,6 +98,7 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
     ],  # b/181672912
     "integration_tests": [  # b/180196508
         TestOption.SINGLE_THREADED,
+        TestOption.RUN_EXCLUSIVE,
         TestOption.LARGE,
         TestOption.DO_NOT_RUN_AARCH64,
         TestOption.DO_NOT_RUN_ARMHF,

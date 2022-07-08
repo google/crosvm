@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 import argparse
+import fnmatch
 import functools
 import itertools
 import json
@@ -110,7 +111,7 @@ def get_workspace_excludes(build_triple: Triple):
             yield crate
 
 
-def should_run_executable(executable: Executable, target: TestTarget):
+def should_run_executable(executable: Executable, target: TestTarget, test_names: List[str]):
     arch = target.build_triple.arch
     options = CRATE_OPTIONS.get(executable.crate_name, [])
     if TestOption.DO_NOT_RUN in options:
@@ -122,6 +123,11 @@ def should_run_executable(executable: Executable, target: TestTarget):
     if TestOption.DO_NOT_RUN_ARMHF in options and arch == "armv7":
         return False
     if TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL in options and not target.is_native:
+        return False
+    if test_names:
+        for name in test_names:
+            if fnmatch.fnmatch(executable.name, name):
+                return True
         return False
     return True
 
@@ -321,36 +327,55 @@ def execute_test(target: TestTarget, attempts: int, executable: Executable):
     return result  # type: ignore
 
 
+def print_test_progress(result: ExecutableResults):
+    if not result.success or result.previous_attempts or VERBOSE:
+        if result.success:
+            msg = "is flaky" if result.previous_attempts else "passed"
+        else:
+            msg = "failed"
+        print()
+        print("--------------------------------")
+        print("-", result.name, msg)
+        print("--------------------------------")
+        print(result.test_log)
+        if result.success:
+            for i, attempt in enumerate(result.previous_attempts):
+                print()
+                print(f"- Previous attempt {i}")
+                print(attempt.test_log)
+    else:
+        sys.stdout.write(".")
+        sys.stdout.flush()
+
+
 def execute_all(
     executables: List[Executable],
     target: test_target.TestTarget,
     attempts: int,
 ):
     """Executes all tests in the `executables` list in parallel."""
-    sys.stdout.write(f"Running {len(executables)} test binaries on {target}")
+
+    def is_exclusive(executable: Executable):
+        return TestOption.RUN_EXCLUSIVE in CRATE_OPTIONS.get(executable.crate_name, [])
+
+    pool_executables = [e for e in executables if not is_exclusive(e)]
+    sys.stdout.write(f"Running {len(pool_executables)} test binaries in parallel on {target}")
     sys.stdout.flush()
     with Pool(PARALLELISM) as pool:
-        for result in pool.imap(functools.partial(execute_test, target, attempts), executables):
-            if not result.success or result.previous_attempts or VERBOSE:
-                if result.success:
-                    msg = "is flaky" if result.previous_attempts else "passed"
-                else:
-                    msg = "failed"
-                print()
-                print("--------------------------------")
-                print("-", result.name, msg)
-                print("--------------------------------")
-                print(result.test_log)
-                if result.success:
-                    for i, attempt in enumerate(result.previous_attempts):
-                        print()
-                        print(f"- Previous attempt {i}")
-                        print(attempt.test_log)
-
-            else:
-                sys.stdout.write(".")
-                sys.stdout.flush()
+        for result in pool.imap(
+            functools.partial(execute_test, target, attempts), pool_executables
+        ):
+            print_test_progress(result)
             yield result
+    print()
+
+    exclusive_executables = [e for e in executables if is_exclusive(e)]
+    sys.stdout.write(f"Running {len(exclusive_executables)} test binaries on {target}")
+    sys.stdout.flush()
+    for executable in exclusive_executables:
+        result = execute_test(target, attempts, executable)
+        print_test_progress(result)
+        yield result
     print()
 
 
@@ -413,6 +438,15 @@ def main():
         "--arch",
         help="Deprecated. Please use --build-target instead.",
     )
+    parser.add_argument(
+        "test_names",
+        nargs="*",
+        default=[],
+        help=(
+            "Names (crate_name:binary_name) of test binaries to run "
+            + "(e.g. integration_tests:boot). Globs are supported (e.g. crosvm:*)"
+        ),
+    )
     args = parser.parse_args()
 
     global VERBOSE
@@ -452,7 +486,9 @@ def main():
     test_target.prepare_target(target, extra_files=extra_files)
 
     # Execute all test binaries
-    test_executables = [e for e in executables if e.is_test and should_run_executable(e, target)]
+    test_executables = [
+        e for e in executables if e.is_test and should_run_executable(e, target, args.test_names)
+    ]
 
     all_results: List[ExecutableResults] = []
     for i in range(args.repeat):
