@@ -53,6 +53,7 @@ def RunSteps(api, properties):
             [
                 "./tools/run_tests",
                 "--verbose",
+                "--retry=" + str(properties.retry_tests or 0),
                 "--repeat=" + str(properties.repeat_tests or 1),
             ]
             + get_test_args(api, properties),

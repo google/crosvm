@@ -34,6 +34,7 @@
       "--verbose",
       "./tools/run_tests",
       "--verbose",
+      "--retry=0",
       "--repeat=1",
       "--target=host"
     ],

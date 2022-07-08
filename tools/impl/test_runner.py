@@ -4,6 +4,7 @@
 
 import argparse
 import functools
+import itertools
 import json
 import os
 import random
@@ -62,10 +63,13 @@ COMMON_ROOT = CROSVM_ROOT / "common"
 class ExecutableResults(object):
     """Container for results of a test executable."""
 
-    def __init__(self, name: str, success: bool, test_log: str):
+    def __init__(
+        self, name: str, success: bool, test_log: str, previous_attempts: List["ExecutableResults"]
+    ):
         self.name = name
         self.success = success
         self.test_log = test_log
+        self.previous_attempts = previous_attempts
 
 
 class Executable(NamedTuple):
@@ -260,7 +264,7 @@ def get_test_timeout(target: TestTarget, executable: Executable):
         return timeout * EMULATION_TIMEOUT_MULTIPLIER
 
 
-def execute_test(target: TestTarget, executable: Executable):
+def execute_test(target: TestTarget, attempts: int, executable: Executable):
     """
     Executes a single test on the given test targed
 
@@ -279,56 +283,70 @@ def execute_test(target: TestTarget, executable: Executable):
     if executable.kind == "proc-macro":
         target = TestTarget("host")
 
-    if VERBOSE:
-        print(f"Running test {executable.name} on {target}...")
-    try:
-        # Pipe stdout/err to be printed in the main process if needed.
-        test_process = test_target.exec_file_on_target(
-            target,
-            binary_path,
-            args=args,
-            timeout=get_test_timeout(target, executable),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
-        return ExecutableResults(
-            executable.name,
-            test_process.returncode == 0,
-            test_process.stdout,
-        )
-    except subprocess.TimeoutExpired as e:
-        # Append a note about the timeout to the stdout of the process.
-        msg = f"\n\nProcess timed out after {e.timeout}s\n"
-        return ExecutableResults(
-            executable.name,
-            False,
-            e.stdout.decode("utf-8") + msg,
-        )
+    previous_attempts: List[ExecutableResults] = []
+    for i in range(1, attempts + 1):
+        if VERBOSE:
+            print(f"Running test {executable.name} on {target}... (attempt {i}/{attempts})")
+
+        try:
+            # Pipe stdout/err to be printed in the main process if needed.
+            test_process = test_target.exec_file_on_target(
+                target,
+                binary_path,
+                args=args,
+                timeout=get_test_timeout(target, executable),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            result = ExecutableResults(
+                executable.name,
+                test_process.returncode == 0,
+                test_process.stdout,
+                previous_attempts,
+            )
+        except subprocess.TimeoutExpired as e:
+            # Append a note about the timeout to the stdout of the process.
+            msg = f"\n\nProcess timed out after {e.timeout}s\n"
+            result = ExecutableResults(
+                executable.name,
+                False,
+                e.stdout.decode("utf-8") + msg,
+                previous_attempts,
+            )
+        if result.success:
+            break
+        else:
+            previous_attempts.append(result)
+
+    return result  # type: ignore
 
 
 def execute_all(
     executables: List[Executable],
     target: test_target.TestTarget,
-    repeat: int,
+    attempts: int,
 ):
     """Executes all tests in the `executables` list in parallel."""
-
-    executables = [e for e in executables if should_run_executable(e, target)]
-    if repeat > 1:
-        executables = executables * repeat
-        random.shuffle(executables)
-
     sys.stdout.write(f"Running {len(executables)} test binaries on {target}")
     sys.stdout.flush()
     with Pool(PARALLELISM) as pool:
-        for result in pool.imap(functools.partial(execute_test, target), executables):
-            if not result.success or VERBOSE:
-                msg = "passed" if result.success else "failed"
+        for result in pool.imap(functools.partial(execute_test, target, attempts), executables):
+            if not result.success or result.previous_attempts or VERBOSE:
+                if result.success:
+                    msg = "is flaky" if result.previous_attempts else "passed"
+                else:
+                    msg = "failed"
                 print()
                 print("--------------------------------")
                 print("-", result.name, msg)
                 print("--------------------------------")
                 print(result.test_log)
+                if result.success:
+                    for i, attempt in enumerate(result.previous_attempts):
+                        print()
+                        print(f"- Previous attempt {i}")
+                        print(attempt.test_log)
+
             else:
                 sys.stdout.write(".")
                 sys.stdout.flush()
@@ -386,6 +404,12 @@ def main():
         help="Repeat each test N times to check for flakes.",
     )
     parser.add_argument(
+        "--retry",
+        type=int,
+        default=0,
+        help="Retry a test N times if it has failed.",
+    )
+    parser.add_argument(
         "--arch",
         help="Deprecated. Please use --build-target instead.",
     )
@@ -428,9 +452,24 @@ def main():
     test_target.prepare_target(target, extra_files=extra_files)
 
     # Execute all test binaries
-    test_executables = [e for e in executables if e.is_test]
-    all_results = list(execute_all(test_executables, target, repeat=args.repeat))
+    test_executables = [e for e in executables if e.is_test and should_run_executable(e, target)]
 
+    all_results: List[ExecutableResults] = []
+    for i in range(args.repeat):
+        if args.repeat > 1:
+            print()
+            print(f"Round {i+1}/{args.repeat}:")
+        all_results.extend(execute_all(test_executables, target, args.retry + 1))
+        random.shuffle(test_executables)
+
+    flakes = [r for r in all_results if r.previous_attempts]
+    if flakes:
+        print()
+        print("There are {len(flakes)} flaky tests")
+        for result in flakes:
+            print(f"  {result.name}")
+
+    print()
     failed = [r for r in all_results if not r.success]
     if len(failed) == 0:
         print("All tests passed.")

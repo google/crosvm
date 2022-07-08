@@ -251,6 +251,9 @@ def verify_linux_builder(arch, crosvm_direct = False, **kwargs):
         postsubmit_properties = {
             "repeat_tests": 10,
         },
+        presubmit_properties = {
+            "retry_tests": 2,
+        },
         caches = [
             swarming.cache("builder", name = "linux_builder_cache"),
         ],
