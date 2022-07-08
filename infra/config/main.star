@@ -249,7 +249,7 @@ def verify_linux_builder(arch, crosvm_direct = False, **kwargs):
             "crosvm_direct": crosvm_direct,
         },
         postsubmit_properties = {
-            "repeat_tests": 10,
+            "repeat_tests": 3,
         },
         presubmit_properties = {
             "retry_tests": 2,
