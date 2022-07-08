@@ -146,9 +146,11 @@ class CrosvmApi(recipe_api.RecipeApi):
         Note: You want to run this after prepare_source to ensure the correct version is installed.
         """
         with self.m.step.nest("Prepare rust"):
-            rustup_init = self.m.cipd.ensure_tool("crosvm/rustup-init/${platform}", "latest")
-
-            self.m.step("Install rustup", [rustup_init, "-y", "--default-toolchain", "none"])
+            if not self.m.path.exists(
+                self.cargo_home.join("bin/rustup")
+            ) and not self.m.path.exists(self.cargo_home.join("bin/rustup.exe")):
+                rustup_init = self.m.cipd.ensure_tool("crosvm/rustup-init/${platform}", "latest")
+                self.m.step("Install rustup", [rustup_init, "-y", "--default-toolchain", "none"])
 
             if self.m.platform.is_win:
                 self.m.step(
