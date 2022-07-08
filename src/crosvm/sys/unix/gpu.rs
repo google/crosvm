@@ -245,13 +245,19 @@ pub struct GpuRenderServerParameters {
     pub cache_size: Option<String>,
 }
 
-fn get_gpu_render_server_environment(cache_info: &GpuCacheInfo) -> Result<Vec<String>> {
+fn get_gpu_render_server_environment(cache_info: Option<&GpuCacheInfo>) -> Result<Vec<String>> {
     let mut env = Vec::new();
+    let mut env_keys = HashSet::new();
+    let os_env_len = env::vars_os().count();
 
-    let mut cache_env_keys = HashSet::with_capacity(cache_info.environment.len());
-    for (key, val) in cache_info.environment.iter() {
-        env.push(format!("{}={}", key, val));
-        cache_env_keys.insert(*key);
+    if let Some(cache_info) = cache_info {
+        env_keys.reserve(cache_info.environment.len() + os_env_len);
+        for (key, val) in cache_info.environment.iter() {
+            env.push(format!("{}={}", key, val));
+            env_keys.insert(key.to_string());
+        }
+    } else {
+        env_keys.reserve(os_env_len);
     }
 
     for (key_os, val_os) in env::vars_os() {
@@ -260,9 +266,15 @@ fn get_gpu_render_server_environment(cache_info: &GpuCacheInfo) -> Result<Vec<St
         let key = key_os.into_string().map_err(into_string_err)?;
         let val = val_os.into_string().map_err(into_string_err)?;
 
-        if !cache_env_keys.contains(key.as_str()) {
+        if !env_keys.contains(&key) {
             env.push(format!("{}={}", key, val));
+            env_keys.insert(key);
         }
+    }
+
+    // TODO(b/237493180): workaround to enable ETC2 format emulation in RADV for ARCVM
+    if !env_keys.contains("radv_require_etc2") {
+        env.push("radv_require_etc2=true".to_string());
     }
 
     Ok(env)
@@ -275,8 +287,7 @@ pub fn start_gpu_render_server(
     let (server_socket, client_socket) =
         UnixSeqpacket::pair().context("failed to create render server socket")?;
 
-    let mut env = None;
-    let jail = match gpu_jail(&cfg.jail_config, "gpu_render_server")? {
+    let (jail, cache_info) = match gpu_jail(&cfg.jail_config, "gpu_render_server")? {
         Some(mut jail) => {
             let cache_info = get_gpu_cache_info(
                 render_server_parameters.cache_path.as_ref(),
@@ -286,10 +297,6 @@ pub fn start_gpu_render_server(
 
             if let Some(dir) = cache_info.directory {
                 jail.mount_bind(dir, dir, true)?;
-            }
-
-            if !cache_info.environment.is_empty() {
-                env = Some(get_gpu_render_server_environment(&cache_info)?);
             }
 
             // bind mount /dev/log for syslog
@@ -302,9 +309,9 @@ pub fn start_gpu_render_server(
             // mounting to work.  All capabilities will be dropped afterwards.
             add_current_user_as_root_to_jail(&mut jail)?;
 
-            jail
+            (jail, Some(cache_info))
         }
-        None => Minijail::new().context("failed to create jail")?,
+        None => (Minijail::new().context("failed to create jail")?, None),
     };
 
     let inheritable_fds = [
@@ -320,6 +327,7 @@ pub fn start_gpu_render_server(
     let fd_str = server_socket.as_raw_descriptor().to_string();
     let args = [cmd_str, "--socket-fd", &fd_str];
 
+    let env = Some(get_gpu_render_server_environment(cache_info.as_ref())?);
     let mut envp: Option<Vec<&str>> = None;
     if let Some(ref env) = env {
         envp = Some(env.iter().map(AsRef::as_ref).collect());
