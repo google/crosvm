@@ -197,7 +197,7 @@ macro_rules! read_common_cfg_field {
 
 macro_rules! write_notify_cfg_field {
     ($device:expr, $mmap:expr, $field:ident, $val:expr) => {
-        $mmap.write_obj(
+        $mmap.write_obj_volatile(
             $val,
             $device.caps.notify_cfg_addr.addr as usize
                 + offset_of!(virtio_pci_notification_cfg, $field),
@@ -207,7 +207,7 @@ macro_rules! write_notify_cfg_field {
 
 macro_rules! read_notify_cfg_field {
     ($device:expr, $mmap:expr, $field:ident) => {
-        $mmap.read_obj(
+        $mmap.read_obj_volatile(
             $device.caps.notify_cfg_addr.addr as usize
                 + offset_of!(virtio_pci_notification_cfg, $field),
         )
@@ -247,7 +247,7 @@ impl QueueNotifier {
         // anyway. The mmap address should be correct as initialized in the 'new()' function
         // according to the given vfio device.
         self.mmap
-            .write_obj(0_u8, self.addr as usize)
+            .write_obj_volatile(0_u8, self.addr as usize)
             .expect("unable to write to mmap area");
     }
 }

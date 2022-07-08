@@ -7,7 +7,8 @@ use std::{
     fs::File,
     intrinsics::copy_nonoverlapping,
     mem::size_of,
-    ptr::{read_unaligned, write_unaligned},
+    ptr::{read_unaligned, read_volatile, write_unaligned, write_volatile},
+    sync::atomic::{fence, Ordering},
 };
 
 use data_model::{volatile_memory::*, DataInit};
@@ -128,6 +129,9 @@ impl MemoryMapping {
     /// Writes an object to the memory region at the specified offset.
     /// Returns Ok(()) if the object fits, or Err if it extends past the end.
     ///
+    /// This method is for writing to regular memory. If writing to a mapped
+    /// I/O region, use [`MemoryMapping::write_obj_volatile`].
+    ///
     /// # Examples
     /// * Write a u64 at offset 16.
     ///
@@ -151,6 +155,9 @@ impl MemoryMapping {
     /// mid-read.  However, as long as the type T is plain old data and can
     /// handle random initialization, everything will be OK.
     ///
+    /// This method is for reading from regular memory. If reading from a
+    /// mapped I/O region, use [`MemoryMapping::read_obj_volatile`].
+    ///
     /// # Examples
     /// * Read a u64 written to offset 32.
     ///
@@ -168,6 +175,65 @@ impl MemoryMapping {
         // still be valid.
         unsafe {
             Ok(read_unaligned(
+                self.as_ptr().add(offset) as *const u8 as *const T
+            ))
+        }
+    }
+
+    /// Writes an object to the memory region at the specified offset.
+    /// Returns Ok(()) if the object fits, or Err if it extends past the end.
+    ///
+    /// The write operation will be volatile, i.e. it will not be reordered by
+    /// the compiler and is suitable for I/O, but must be aligned. When writing
+    /// to regular memory, prefer [`MemoryMapping::write_obj`].
+    ///
+    /// # Examples
+    /// * Write a u32 at offset 16.
+    ///
+    /// ```
+    /// #   use base::MemoryMappingBuilder;
+    /// #   let mut mem_map = MemoryMappingBuilder::new(1024).build().unwrap();
+    ///     let res = mem_map.write_obj_volatile(0xf00u32, 16);
+    ///     assert!(res.is_ok());
+    /// ```
+    pub fn write_obj_volatile<T: DataInit>(&self, val: T, offset: usize) -> Result<()> {
+        self.mapping.range_end(offset, size_of::<T>())?;
+        // Make sure writes to memory have been committed before performing I/O that could
+        // potentially depend on them.
+        fence(Ordering::SeqCst);
+        // This is safe because we checked the bounds above.
+        unsafe {
+            write_volatile(self.as_ptr().add(offset) as *mut T, val);
+        }
+        Ok(())
+    }
+
+    /// Reads on object from the memory region at the given offset.
+    /// Reading from a volatile area isn't strictly safe as it could change
+    /// mid-read.  However, as long as the type T is plain old data and can
+    /// handle random initialization, everything will be OK.
+    ///
+    /// The read operation will be volatile, i.e. it will not be reordered by
+    /// the compiler and is suitable for I/O, but must be aligned. When reading
+    /// from regular memory, prefer [`MemoryMapping::read_obj`].
+    ///
+    /// # Examples
+    /// * Read a u32 written to offset 16.
+    ///
+    /// ```
+    /// #   use base::MemoryMappingBuilder;
+    /// #   let mut mem_map = MemoryMappingBuilder::new(1024).build().unwrap();
+    ///     let res = mem_map.write_obj(0xf00u32, 16);
+    ///     assert!(res.is_ok());
+    ///     let num: u32 = mem_map.read_obj(16).unwrap();
+    ///     assert_eq!(0xf00, num);
+    /// ```
+    pub fn read_obj_volatile<T: DataInit>(&self, offset: usize) -> Result<T> {
+        self.mapping.range_end(offset, size_of::<T>())?;
+        // This is safe because by definition Copy types can have their bits set arbitrarily and
+        // still be valid.
+        unsafe {
+            Ok(read_volatile(
                 self.as_ptr().add(offset) as *const u8 as *const T
             ))
         }

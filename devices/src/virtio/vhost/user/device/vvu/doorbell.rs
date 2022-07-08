@@ -51,7 +51,7 @@ impl SignalableInterrupt for DoorbellRegion {
         // anyway. The mmap address should be correct as initialized in the 'new()' function
         // according to the given vfio device.
         self.mmap
-            .write_obj(1_u8, self.addr as usize)
+            .write_obj_volatile(1_u8, self.addr as usize)
             .expect("unable to write to mmap area");
     }
 
