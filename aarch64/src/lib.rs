@@ -751,13 +751,13 @@ impl AArch64 {
             };
             match protected_vm {
                 ProtectionType::Protected => {
-                    vcpu.set_one_reg(VcpuRegAArch64::W1, entry_addr.offset())
+                    vcpu.set_one_reg(VcpuRegAArch64::X1, entry_addr.offset())
                         .map_err(Error::SetReg)?;
                 }
                 ProtectionType::UnprotectedWithFirmware => {
                     vcpu.set_one_reg(VcpuRegAArch64::Pc, AARCH64_PROTECTED_VM_FW_START)
                         .map_err(Error::SetReg)?;
-                    vcpu.set_one_reg(VcpuRegAArch64::W1, entry_addr.offset())
+                    vcpu.set_one_reg(VcpuRegAArch64::X1, entry_addr.offset())
                         .map_err(Error::SetReg)?;
                 }
                 ProtectionType::Unprotected | ProtectionType::ProtectedWithoutFirmware => {
@@ -769,7 +769,7 @@ impl AArch64 {
             /* X0 -- fdt address */
             let mem_size = guest_mem.memory_size();
             let fdt_addr = (AARCH64_PHYS_MEM_START + fdt_offset(mem_size, has_bios)) as u64;
-            vcpu.set_one_reg(VcpuRegAArch64::W0, fdt_addr)
+            vcpu.set_one_reg(VcpuRegAArch64::X0, fdt_addr)
                 .map_err(Error::SetReg)?;
 
             /* X2 -- image size */
@@ -777,7 +777,7 @@ impl AArch64 {
                 protected_vm,
                 ProtectionType::Protected | ProtectionType::UnprotectedWithFirmware
             ) {
-                vcpu.set_one_reg(VcpuRegAArch64::W2, image_size as u64)
+                vcpu.set_one_reg(VcpuRegAArch64::X2, image_size as u64)
                     .map_err(Error::SetReg)?;
             }
         }
