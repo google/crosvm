@@ -43,16 +43,13 @@ use balloon_control::{BalloonTubeCommand, BalloonTubeResult};
 
 use base::{
     error, info, warn, with_as_descriptor, AsRawDescriptor, Error as SysError, Event,
-    ExternalMapping, FromRawDescriptor, IntoRawDescriptor, MappedRegion, MemoryMappingBuilder,
-    MmapError, Protection, Result, SafeDescriptor, SharedMemory, Tube,
+    ExternalMapping, MappedRegion, MemoryMappingBuilder, MmapError, Protection, Result,
+    SafeDescriptor, SharedMemory, Tube,
 };
 
 use hypervisor::{IrqRoute, IrqSource, Vm};
 use resources::{Alloc, MmioType, SystemAllocator};
-use rutabaga_gfx::{
-    DrmFormat, ImageAllocationInfo, RutabagaGralloc, RutabagaGrallocFlags, RutabagaHandle,
-    VulkanInfo,
-};
+use rutabaga_gfx::{RutabagaGralloc, RutabagaHandle, VulkanInfo};
 use sync::{Condvar, Mutex};
 use vm_memory::GuestAddress;
 
@@ -64,19 +61,6 @@ use crate::display::{
 use sys::kill_handle;
 #[cfg(unix)]
 pub use sys::{FsMappingRequest, VmMsyncRequest, VmMsyncResponse};
-
-/// Struct that describes the offset and stride of a plane located in GPU memory.
-#[derive(Clone, Copy, Debug, PartialEq, Default, Serialize, Deserialize)]
-pub struct GpuMemoryPlaneDesc {
-    pub stride: u32,
-    pub offset: u32,
-}
-
-/// Struct that describes a GPU memory allocation that consists of up to 3 planes.
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
-pub struct GpuMemoryDesc {
-    pub planes: [GpuMemoryPlaneDesc; 3],
-}
 
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 pub use crate::gdb::*;
@@ -278,7 +262,7 @@ impl VmMemorySource {
         gralloc: &mut RutabagaGralloc,
         prot: Protection,
     ) -> Result<(Box<dyn MappedRegion>, u64)> {
-        let (mem_region, size) = match self {
+        Ok(match self {
             VmMemorySource::Descriptor {
                 descriptor,
                 offset,
@@ -322,8 +306,7 @@ impl VmMemorySource {
                 let mapped_region: Box<dyn MappedRegion> = Box::new(mem);
                 (mapped_region, size)
             }
-        };
-        Ok((mem_region, size))
+        })
     }
 }
 
@@ -369,15 +352,6 @@ pub enum VmMemoryRequest {
         /// Whether to map the memory read only (true) or read-write (false).
         prot: Protection,
     },
-    /// Allocate GPU buffer of a given size/format and register the memory into guest address space.
-    /// The response variant is `VmResponse::AllocateAndRegisterGpuMemory`
-    AllocateAndRegisterGpuMemory {
-        width: u32,
-        height: u32,
-        format: u32,
-        /// Where to map the memory in the guest.
-        dest: VmMemoryDestination,
-    },
     /// Call hypervisor to free the given memory range.
     DynamicallyFreeMemoryRange {
         guest_address: GuestAddress,
@@ -415,7 +389,7 @@ impl VmMemoryRequest {
                 // Correct on Windows because callers of this IPC guarantee descriptor is a mapping
                 // handle.
                 let (mapped_region, size) = match source.map(map_request, gralloc, prot) {
-                    Ok((region, size)) => (region, size),
+                    Ok(res) => res,
                     Err(e) => return VmMemoryResponse::Err(e),
                 };
 
@@ -433,6 +407,7 @@ impl VmMemoryRequest {
                     Ok(slot) => slot,
                     Err(e) => return VmMemoryResponse::Err(e),
                 };
+
                 let pfn = guest_addr.0 >> 12;
                 VmMemoryResponse::RegisterMemory { pfn, slot }
             }
@@ -440,36 +415,6 @@ impl VmMemoryRequest {
                 Ok(_) => VmMemoryResponse::Ok,
                 Err(e) => VmMemoryResponse::Err(e),
             },
-            AllocateAndRegisterGpuMemory {
-                width,
-                height,
-                format,
-                dest,
-            } => {
-                let (mapped_region, size, descriptor, gpu_desc) =
-                    match Self::allocate_gpu_memory(gralloc, width, height, format) {
-                        Ok(v) => v,
-                        Err(e) => return VmMemoryResponse::Err(e),
-                    };
-
-                let guest_addr = match dest.allocate(sys_allocator, size) {
-                    Ok(addr) => addr,
-                    Err(e) => return VmMemoryResponse::Err(e),
-                };
-
-                let slot = match vm.add_memory_region(guest_addr, mapped_region, false, false) {
-                    Ok(slot) => slot,
-                    Err(e) => return VmMemoryResponse::Err(e),
-                };
-                let pfn = guest_addr.0 >> 12;
-
-                VmMemoryResponse::AllocateAndRegisterGpuMemory {
-                    descriptor,
-                    pfn,
-                    slot,
-                    desc: gpu_desc,
-                }
-            }
             DynamicallyFreeMemoryRange {
                 guest_address,
                 size,
@@ -486,58 +431,6 @@ impl VmMemoryRequest {
             },
         }
     }
-
-    fn allocate_gpu_memory(
-        gralloc: &mut RutabagaGralloc,
-        width: u32,
-        height: u32,
-        format: u32,
-    ) -> Result<(Box<dyn MappedRegion>, u64, SafeDescriptor, GpuMemoryDesc)> {
-        let img = ImageAllocationInfo {
-            width,
-            height,
-            drm_format: DrmFormat::from(format),
-            // Linear layout is a requirement as virtio wayland guest expects
-            // this for CPU access to the buffer. Scanout and texturing are
-            // optional as the consumer (wayland compositor) is expected to
-            // fall-back to a less efficient meachnisms for presentation if
-            // neccesary. In practice, linear buffers for commonly used formats
-            // will also support scanout and texturing.
-            flags: RutabagaGrallocFlags::empty().use_linear(true),
-        };
-
-        let reqs = match gralloc.get_image_memory_requirements(img) {
-            Ok(reqs) => reqs,
-            Err(e) => {
-                error!("gralloc failed to get image requirements: {}", e);
-                return Err(SysError::new(EINVAL));
-            }
-        };
-
-        let handle = match gralloc.allocate_memory(reqs) {
-            Ok(handle) => handle,
-            Err(e) => {
-                error!("gralloc failed to allocate memory: {}", e);
-                return Err(SysError::new(EINVAL));
-            }
-        };
-
-        let mut desc = GpuMemoryDesc::default();
-        for i in 0..3 {
-            desc.planes[i] = GpuMemoryPlaneDesc {
-                stride: reqs.strides[i],
-                offset: reqs.offsets[i],
-            }
-        }
-
-        // Safe because ownership is transferred to SafeDescriptor via
-        // into_raw_descriptor
-        let descriptor =
-            unsafe { SafeDescriptor::from_raw_descriptor(handle.os_handle.into_raw_descriptor()) };
-
-        let mapped_region = map_descriptor(&descriptor, 0, reqs.size, Protection::read_write())?;
-        Ok((mapped_region, reqs.size, descriptor, desc))
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -547,14 +440,6 @@ pub enum VmMemoryResponse {
     RegisterMemory {
         pfn: u64,
         slot: MemSlot,
-    },
-    /// The request to allocate and register GPU memory into guest address space was successfully
-    /// done at page frame number `pfn` and memory slot number `slot` for buffer with `desc`.
-    AllocateAndRegisterGpuMemory {
-        descriptor: SafeDescriptor,
-        pfn: u64,
-        slot: MemSlot,
-        desc: GpuMemoryDesc,
     },
     Ok,
     Err(SysError),
@@ -1196,14 +1081,6 @@ pub enum VmResponse {
     /// The request to register memory into guest address space was successfully done at page frame
     /// number `pfn` and memory slot number `slot`.
     RegisterMemory { pfn: u64, slot: u32 },
-    /// The request to allocate and register GPU memory into guest address space was successfully
-    /// done at page frame number `pfn` and memory slot number `slot` for buffer with `desc`.
-    AllocateAndRegisterGpuMemory {
-        descriptor: SafeDescriptor,
-        pfn: u64,
-        slot: u32,
-        desc: GpuMemoryDesc,
-    },
     /// Results of balloon control commands.
     BalloonStats {
         stats: BalloonStats,
@@ -1225,11 +1102,6 @@ impl Display for VmResponse {
             RegisterMemory { pfn, slot } => write!(
                 f,
                 "memory registered to page frame number {:#x} and memory slot {}",
-                pfn, slot
-            ),
-            AllocateAndRegisterGpuMemory { pfn, slot, .. } => write!(
-                f,
-                "gpu memory allocated and registered to page frame number {:#x} and memory slot {}",
                 pfn, slot
             ),
             VmResponse::BalloonStats {

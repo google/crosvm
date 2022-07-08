@@ -702,9 +702,6 @@ impl Worker {
             VmMemoryResponse::Err(e) => {
                 bail!("memory mapping failed: {}", e);
             }
-            _ => {
-                bail!("unexpected response: {:?}", response);
-            }
         }
     }
 

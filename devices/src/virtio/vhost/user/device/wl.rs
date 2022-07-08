@@ -19,6 +19,8 @@ use base::{
 use cros_async::{AsyncWrapper, EventAsync, Executor, IoSourceExt};
 use futures::future::{AbortHandle, Abortable};
 use hypervisor::ProtectionType;
+#[cfg(feature = "minigbm")]
+use rutabaga_gfx::RutabagaGralloc;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
@@ -198,6 +200,8 @@ impl VhostUserBackend for WlBackend {
             ref use_send_vfd_v2,
             ..
         } = self;
+        #[cfg(feature = "minigbm")]
+        let gralloc = RutabagaGralloc::new().context("Failed to initailize gralloc")?;
         let wlstate = self
             .wlstate
             .get_or_insert_with(|| {
@@ -207,6 +211,8 @@ impl VhostUserBackend for WlBackend {
                     *use_transition_flags,
                     *use_send_vfd_v2,
                     resource_bridge.take(),
+                    #[cfg(feature = "minigbm")]
+                    gralloc,
                 )))
             })
             .clone();

@@ -12,9 +12,9 @@ use std::ffi::CStr;
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::os::raw::c_char;
-use std::rc::Rc;
+use std::sync::Arc;
 
-use base::{AsRawDescriptor, Error as BaseError, FromRawDescriptor};
+use base::{AsRawDescriptor, Error as BaseError, FromRawDescriptor, RawDescriptor};
 
 use crate::rutabaga_gralloc::formats::DrmFormat;
 use crate::rutabaga_gralloc::gralloc::{Gralloc, ImageAllocationInfo, ImageMemoryRequirements};
@@ -23,9 +23,13 @@ use crate::rutabaga_gralloc::rendernode;
 use crate::rutabaga_utils::*;
 
 struct MinigbmDeviceInner {
-    _fd: File,
+    fd: File,
     gbm: *mut gbm_device,
 }
+
+// Safe because minigbm handles synchronization internally.
+unsafe impl Send for MinigbmDeviceInner {}
+unsafe impl Sync for MinigbmDeviceInner {}
 
 impl Drop for MinigbmDeviceInner {
     fn drop(&mut self) {
@@ -39,8 +43,8 @@ impl Drop for MinigbmDeviceInner {
 /// A device capable of allocating `MinigbmBuffer`.
 #[derive(Clone)]
 pub struct MinigbmDevice {
-    minigbm_device: Rc<MinigbmDeviceInner>,
-    last_buffer: Option<Rc<MinigbmBuffer>>,
+    minigbm_device: Arc<MinigbmDeviceInner>,
+    last_buffer: Option<Arc<MinigbmBuffer>>,
     device_name: &'static str,
 }
 
@@ -65,7 +69,7 @@ impl MinigbmDevice {
         let device_name: &str = c_str.to_str()?;
 
         Ok(Box::new(MinigbmDevice {
-            minigbm_device: Rc::new(MinigbmDeviceInner { _fd: fd, gbm }),
+            minigbm_device: Arc::new(MinigbmDeviceInner { fd, gbm }),
             last_buffer: None,
             device_name,
         }))
@@ -127,7 +131,7 @@ impl Gralloc for MinigbmDevice {
             return Err(RutabagaError::AlreadyInUse);
         }
 
-        self.last_buffer = Some(Rc::new(gbm_buffer));
+        self.last_buffer = Some(Arc::new(gbm_buffer));
         reqs.info = info;
         reqs.size = size;
         Ok(reqs)
@@ -171,10 +175,22 @@ impl Gralloc for MinigbmDevice {
             handle_type: RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
         })
     }
+
+    fn try_as_raw_descriptors(&self) -> RutabagaResult<Vec<RawDescriptor>> {
+        if self.last_buffer.is_none() {
+            Ok(vec![self.minigbm_device.fd.as_raw_descriptor()])
+        } else {
+            Err(RutabagaError::BaseError(BaseError::new(libc::EBUSY)))
+        }
+    }
 }
 
 /// An allocation from a `MinigbmDevice`.
 pub struct MinigbmBuffer(*mut gbm_bo, MinigbmDevice);
+
+// Safe because minigbm handles synchronization internally.
+unsafe impl Send for MinigbmBuffer {}
+unsafe impl Sync for MinigbmBuffer {}
 
 impl MinigbmBuffer {
     /// Width in pixels.
