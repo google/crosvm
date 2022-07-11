@@ -305,16 +305,8 @@ mod tests {
         *,
     };
     use crate::descriptor::FromRawDescriptor;
-    use data_model::{VolatileMemory, VolatileMemoryError};
     use std::{ffi::CString, ptr};
     use winapi::shared::winerror;
-
-    #[test]
-    fn basic_map() {
-        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
-        let m = MemoryMapping::from_descriptor(&shm, 1024).unwrap();
-        assert_eq!(1024, m.size());
-    }
 
     #[test]
     fn map_invalid_fd() {
@@ -325,61 +317,6 @@ mod tests {
         } else {
             panic!("unexpected error: {}", res);
         }
-    }
-
-    #[test]
-    fn test_write_past_end() {
-        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
-        let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
-        let res = m.write_slice(&[1, 2, 3, 4, 5, 6], 0);
-        assert!(res.is_ok());
-        assert_eq!(res.unwrap(), 5);
-    }
-
-    #[test]
-    fn slice_size() {
-        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
-        let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
-        let s = m.get_slice(2, 3).unwrap();
-        assert_eq!(s.size(), 3);
-    }
-
-    #[test]
-    fn slice_addr() {
-        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
-        let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
-        let s = m.get_slice(2, 3).unwrap();
-        assert_eq!(s.as_ptr(), unsafe { m.as_ptr().offset(2) });
-    }
-
-    #[test]
-    fn slice_store() {
-        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
-        let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
-        let r = m.get_ref(2).unwrap();
-        r.store(9u16);
-        assert_eq!(m.read_obj::<u16>(2).unwrap(), 9);
-    }
-
-    #[test]
-    fn slice_overflow_error() {
-        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
-        let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
-        let res = m.get_slice(std::usize::MAX, 3).unwrap_err();
-        assert_eq!(
-            res,
-            VolatileMemoryError::Overflow {
-                base: std::usize::MAX,
-                offset: 3,
-            }
-        );
-    }
-    #[test]
-    fn slice_oob_error() {
-        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
-        let m = MemoryMapping::from_descriptor(&shm, 5).unwrap();
-        let res = m.get_slice(3, 3).unwrap_err();
-        assert_eq!(res, VolatileMemoryError::OutOfBounds { addr: 6 });
     }
 
     #[test]
