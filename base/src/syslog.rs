@@ -311,19 +311,34 @@ static STATE: OnceCell<State> = OnceCell::new();
 /// Initialize the syslog connection and internal variables.
 ///
 /// This should only be called once per process before any other threads have been spawned or any
-/// signal handlers have been registered. Every call made after the first will have no effect
-/// besides return `Ok` or `Err` appropriately.
+/// signal handlers have been registered. Every call made after the first will panic.
 ///
 /// Use `init_with_filter` to initialize with filtering
 pub fn init() -> Result<(), Error> {
     init_with(Default::default())
 }
 
+/// Test only function that ensures logging has been configured. Since tests
+/// share module state, we need a way to make sure it has been initialized
+/// with *some* configuration.
+#[cfg(test)]
+pub(crate) fn ensure_inited() -> Result<(), Error> {
+    let mut first_init = false;
+    let state = STATE.get_or_try_init(|| {
+        first_init = true;
+        State::new(Default::default())
+    })?;
+    if first_init {
+        apply_logging_state(state);
+    }
+    Ok(())
+}
+
 /// Initialize the syslog connection and internal variables.
 ///
 /// This should only be called once per process before any other threads have been spawned or any
-/// signal handlers have been registered. Every call made after the first will have no effect
-/// besides return `Ok` or `Err` appropriately.
+/// signal handlers have been registered. Every call made after the first will
+/// panic.
 ///
 /// Arguments:
 /// * filter: See <https://docs.rs/env_logger/0.9/env_logger/index.html> for example filter
@@ -337,14 +352,21 @@ pub fn init_with<F: 'static>(cfg: LogConfig<'_, F>) -> Result<(), Error>
 where
     F: Fn(&mut fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
 {
-    let setup_logger = STATE.get().is_none();
-
-    let _ = STATE.get_or_try_init(|| State::new(cfg))?;
-    if setup_logger {
-        let _ = log::set_logger(STATE.get().unwrap());
-        log::set_max_level(log::LevelFilter::Trace);
+    let mut first_init = false;
+    let state = STATE.get_or_try_init(|| {
+        first_init = true;
+        State::new(cfg)
+    });
+    if !first_init {
+        panic!("double-init of the logging system is not permitted.");
     }
+    apply_logging_state(state?);
     Ok(())
+}
+
+fn apply_logging_state(state: &'static State) {
+    let _ = log::set_logger(state);
+    log::set_max_level(log::LevelFilter::Trace);
 }
 
 /// Retrieves the file descriptors owned by the global syslogger.
@@ -515,7 +537,7 @@ mod tests {
 
     #[test]
     fn macros() {
-        init().unwrap();
+        ensure_inited().unwrap();
         log::error!("this is an error {}", 3);
         log::warn!("this is a warning {}", "uh oh");
         log::info!("this is info {}", true);

@@ -65,6 +65,12 @@ impl Write for SyslogSocket {
 }
 
 impl Syslog for PlatformSyslog {
+    /// WARNING: calling this function more than once will cause the previous
+    /// syslogger FD to be closed, invalidating the log::Log object in an unsafe
+    /// manner. Currently, the callers of this method are extremely careful to
+    /// call it exactly once.
+    ///
+    /// b/238923791 is tracking fixing this problem.
     fn new(
         proc_name: String,
         facility: Facility,

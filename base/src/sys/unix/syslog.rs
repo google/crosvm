@@ -19,7 +19,7 @@ mod tests {
 
     #[test]
     fn fds() {
-        init().unwrap();
+        ensure_inited().unwrap();
         let mut fds = Vec::new();
         push_descriptors(&mut fds);
         assert!(!fds.is_empty());
@@ -30,7 +30,7 @@ mod tests {
 
     #[test]
     fn syslog_file() {
-        init().unwrap();
+        ensure_inited().unwrap();
         let shm_name = CStr::from_bytes_with_nul(b"/crosvm_shm\0").unwrap();
         let mut file = unsafe {
             shm_unlink(shm_name.as_ptr());
