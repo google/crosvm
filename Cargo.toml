@@ -65,7 +65,6 @@ members = [
     "kvm_sys",
     "linux_input_sys",
     "media/ffmpeg",
-    "media/libva",
     "media/libvda",
     "net_sys",
     "net_util",

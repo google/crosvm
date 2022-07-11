@@ -60,7 +60,6 @@ WIN64_DISABLED_CRATES = [
     "io_uring",
     "kvm",
     "libcras_stub",
-    "libva",
     "libvda",
     "minijail-sys",
     "minijail",
@@ -113,15 +112,6 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
         TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
     ],  # b/181674144
     "libcrosvm_control": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
-    "libva": [
-        # Libva only makes sense for x86 Linux platforms, disable building on others.
-        TestOption.DO_NOT_BUILD_AARCH64,
-        TestOption.DO_NOT_BUILD_ARMHF,
-        TestOption.DO_NOT_BUILD_WIN64,
-        # Only run libva on Linux x86. Note that all tests are not enabled, see b/238047780.
-        TestOption.DO_NOT_RUN_AARCH64,
-        TestOption.DO_NOT_RUN_ARMHF,
-    ],
     "libvda": [TestOption.DO_NOT_BUILD],  # b/202293971
     "rutabaga_gfx": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
     "vhost": [TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL],
