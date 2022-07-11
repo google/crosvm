@@ -6,8 +6,9 @@ use std::ffi::CStr;
 use win_util::create_file_mapping;
 use winapi::um::winnt::PAGE_EXECUTE_READWRITE;
 
-use super::{shm::SharedMemory, MemoryMapping, MmapError, Result};
+use super::{shm::SharedMemory, MemoryMapping, Result};
 use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
+use crate::{MemoryMapping as CrateMemoryMapping, MmapError};
 
 impl SharedMemory {
     /// Creates a new shared memory file mapping with zero size.
@@ -44,7 +45,10 @@ impl SharedMemory {
         Ok(SharedMemory {
             descriptor: mapping_handle,
             size,
-            mapping,
+            mapping: CrateMemoryMapping {
+                mapping,
+                _file_descriptor: None,
+            },
             cursor: 0,
         })
     }

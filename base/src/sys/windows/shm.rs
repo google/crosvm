@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::{MemoryMapping, RawDescriptor, Result};
+use super::{RawDescriptor, Result};
 use crate::descriptor::{AsRawDescriptor, IntoRawDescriptor, SafeDescriptor};
+use crate::MemoryMapping;
 use serde::{ser, Deserialize, Serialize, Serializer};
 use std::io::{
     Error, ErrorKind, Read, Seek, SeekFrom, Write, {self},

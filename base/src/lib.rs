@@ -30,7 +30,7 @@ pub use event::{Event, EventReadResult};
 pub use external_mapping::{
     Error as ExternalMappingError, ExternalMapping, Result as ExternalMappingResult,
 };
-pub use mmap::{MemoryMapping, MemoryMappingBuilder};
+pub use mmap::{MappedRegion, MemoryMapping, MemoryMappingBuilder};
 pub use notifiers::{CloseNotifier, ReadNotifier};
 pub use platform::gmtime_secure;
 pub use platform::ioctl::{
@@ -131,7 +131,7 @@ pub use platform::platform_timer_resolution::enable_high_res_timers;
 pub use platform::{get_filesystem_type, open_file};
 pub use platform::{number_of_logical_cores, pagesize, round_up_to_page_size};
 pub use platform::{FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync};
-pub use platform::{MappedRegion, MemoryMappingArena, MmapError};
+pub use platform::{MemoryMappingArena, MmapError};
 
 pub use log::{debug, error, info, trace, warn};
 

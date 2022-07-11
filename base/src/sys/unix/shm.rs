@@ -327,13 +327,13 @@ impl Unix for CrateSharedMemory {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{kernel_has_memfd, SharedMemory};
 
     use std::ffi::CString;
 
     use data_model::VolatileMemory;
 
-    use super::super::MemoryMapping;
+    use crate::MemoryMappingBuilder;
 
     fn create_test_shmem() -> SharedMemory {
         let name = CString::new("test").expect("failed to create cstr name");
@@ -407,11 +407,16 @@ mod tests {
         let mut shm = create_test_shmem();
         shm.set_size(4096)
             .expect("failed to set shared memory size");
+        let shm = crate::SharedMemory(shm);
 
-        let mmap1 =
-            MemoryMapping::from_fd(&shm, shm.size() as usize).expect("failed to map shared memory");
-        let mmap2 =
-            MemoryMapping::from_fd(&shm, shm.size() as usize).expect("failed to map shared memory");
+        let mmap1 = MemoryMappingBuilder::new(shm.size() as usize)
+            .from_shared_memory(&shm)
+            .build()
+            .expect("failed to map shared memory");
+        let mmap2 = MemoryMappingBuilder::new(shm.size() as usize)
+            .from_shared_memory(&shm)
+            .build()
+            .expect("failed to map shared memory");
 
         assert_ne!(
             mmap1.get_slice(0, 1).unwrap().as_ptr(),
@@ -436,11 +441,17 @@ mod tests {
         let mut shm = create_test_shmem();
         shm.set_size(8092)
             .expect("failed to set shared memory size");
+        let shm = crate::SharedMemory(shm);
 
-        let mmap1 = MemoryMapping::from_fd_offset(&shm, shm.size() as usize, 4096)
+        let mmap1 = MemoryMappingBuilder::new(shm.size() as usize)
+            .from_shared_memory(&shm)
+            .offset(4096)
+            .build()
             .expect("failed to map shared memory");
-        let mmap2 =
-            MemoryMapping::from_fd(&shm, shm.size() as usize).expect("failed to map shared memory");
+        let mmap2 = MemoryMappingBuilder::new(shm.size() as usize)
+            .from_shared_memory(&shm)
+            .build()
+            .expect("failed to map shared memory");
 
         mmap1
             .get_slice(0, 4096)

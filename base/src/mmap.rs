@@ -2,7 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::File;
+use std::{
+    cmp::min,
+    fs::File,
+    intrinsics::copy_nonoverlapping,
+    mem::size_of,
+    ptr::{read_unaligned, write_unaligned},
+};
 
 use data_model::{volatile_memory::*, DataInit};
 use libc::c_int;
@@ -10,11 +16,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     descriptor::{AsRawDescriptor, SafeDescriptor},
-    platform::{MappedRegion, MemoryMapping as SysUtilMmap, MmapError, PROT_READ, PROT_WRITE},
+    platform::{MemoryMapping as PlatformMmap, MmapError as Error, PROT_READ, PROT_WRITE},
     SharedMemory,
 };
 
-pub type Result<T> = std::result::Result<T, MmapError>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Memory access type for anonymous shared memory mapping.
 #[derive(Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
@@ -74,7 +80,7 @@ impl From<Protection> for c_int {
 /// documentation.
 #[derive(Debug)]
 pub struct MemoryMapping {
-    pub(crate) mapping: SysUtilMmap,
+    pub(crate) mapping: PlatformMmap,
 
     // File backed mappings on Windows need to keep the underlying file open while the mapping is
     // open.
@@ -88,19 +94,83 @@ pub struct MemoryMapping {
 
 impl MemoryMapping {
     pub fn write_slice(&self, buf: &[u8], offset: usize) -> Result<usize> {
-        self.mapping.write_slice(buf, offset)
+        match self.mapping.size().checked_sub(offset) {
+            Some(size_past_offset) => {
+                let bytes_copied = min(size_past_offset, buf.len());
+                // The bytes_copied equation above ensures we don't copy bytes out of range of
+                // either buf or this slice. We also know that the buffers do not overlap because
+                // slices can never occupy the same memory as a volatile slice.
+                unsafe {
+                    copy_nonoverlapping(buf.as_ptr(), self.as_ptr().add(offset), bytes_copied);
+                }
+                Ok(bytes_copied)
+            }
+            None => Err(Error::InvalidAddress),
+        }
     }
 
     pub fn read_slice(&self, buf: &mut [u8], offset: usize) -> Result<usize> {
-        self.mapping.read_slice(buf, offset)
+        match self.size().checked_sub(offset) {
+            Some(size_past_offset) => {
+                let bytes_copied = min(size_past_offset, buf.len());
+                // The bytes_copied equation above ensures we don't copy bytes out of range of
+                // either buf or this slice. We also know that the buffers do not overlap because
+                // slices can never occupy the same memory as a volatile slice.
+                unsafe {
+                    copy_nonoverlapping(self.as_ptr().add(offset), buf.as_mut_ptr(), bytes_copied);
+                }
+                Ok(bytes_copied)
+            }
+            None => Err(Error::InvalidAddress),
+        }
     }
 
+    /// Writes an object to the memory region at the specified offset.
+    /// Returns Ok(()) if the object fits, or Err if it extends past the end.
+    ///
+    /// # Examples
+    /// * Write a u64 at offset 16.
+    ///
+    /// ```
+    /// #   use base::MemoryMappingBuilder;
+    /// #   let mut mem_map = MemoryMappingBuilder::new(1024).build().unwrap();
+    ///     let res = mem_map.write_obj(55u64, 16);
+    ///     assert!(res.is_ok());
+    /// ```
     pub fn write_obj<T: DataInit>(&self, val: T, offset: usize) -> Result<()> {
-        self.mapping.write_obj(val, offset)
+        self.mapping.range_end(offset, size_of::<T>())?;
+        // This is safe because we checked the bounds above.
+        unsafe {
+            write_unaligned(self.as_ptr().add(offset) as *mut T, val);
+        }
+        Ok(())
     }
 
+    /// Reads on object from the memory region at the given offset.
+    /// Reading from a volatile area isn't strictly safe as it could change
+    /// mid-read.  However, as long as the type T is plain old data and can
+    /// handle random initialization, everything will be OK.
+    ///
+    /// # Examples
+    /// * Read a u64 written to offset 32.
+    ///
+    /// ```
+    /// #   use base::MemoryMappingBuilder;
+    /// #   let mut mem_map = MemoryMappingBuilder::new(1024).build().unwrap();
+    ///     let res = mem_map.write_obj(55u64, 32);
+    ///     assert!(res.is_ok());
+    ///     let num: u64 = mem_map.read_obj(32).unwrap();
+    ///     assert_eq!(55, num);
+    /// ```
     pub fn read_obj<T: DataInit>(&self, offset: usize) -> Result<T> {
-        self.mapping.read_obj(offset)
+        self.mapping.range_end(offset, size_of::<T>())?;
+        // This is safe because by definition Copy types can have their bits set arbitrarily and
+        // still be valid.
+        unsafe {
+            Ok(read_unaligned(
+                self.as_ptr().add(offset) as *const u8 as *const T
+            ))
+        }
     }
 
     pub fn msync(&self) -> Result<()> {
@@ -185,11 +255,11 @@ impl<'a> MemoryMappingBuilder<'a> {
     pub unsafe fn build_fixed(self, addr: *mut u8) -> Result<MemoryMapping> {
         if self.populate {
             // Population not supported for fixed mapping.
-            return Err(MmapError::InvalidArgument);
+            return Err(Error::InvalidArgument);
         }
         match self.descriptor {
             None => MemoryMappingBuilder::wrap(
-                SysUtilMmap::new_protection_fixed(
+                PlatformMmap::new_protection_fixed(
                     addr,
                     self.size,
                     self.protection.unwrap_or_else(Protection::read_write),
@@ -197,7 +267,7 @@ impl<'a> MemoryMappingBuilder<'a> {
                 None,
             ),
             Some(descriptor) => MemoryMappingBuilder::wrap(
-                SysUtilMmap::from_descriptor_offset_protection_fixed(
+                PlatformMmap::from_descriptor_offset_protection_fixed(
                     addr,
                     descriptor,
                     self.size,
@@ -212,7 +282,61 @@ impl<'a> MemoryMappingBuilder<'a> {
 
 impl VolatileMemory for MemoryMapping {
     fn get_slice(&self, offset: usize, count: usize) -> VolatileMemoryResult<VolatileSlice> {
-        self.mapping.get_slice(offset, count)
+        let mem_end = calc_offset(offset, count)?;
+        if mem_end > self.size() {
+            return Err(VolatileMemoryError::OutOfBounds { addr: mem_end });
+        }
+
+        let new_addr =
+            (self.as_ptr() as usize)
+                .checked_add(offset)
+                .ok_or(VolatileMemoryError::Overflow {
+                    base: self.as_ptr() as usize,
+                    offset,
+                })?;
+
+        // Safe because we checked that offset + count was within our range and we only ever hand
+        // out volatile accessors.
+        Ok(unsafe { VolatileSlice::from_raw_parts(new_addr as *mut u8, count) })
+    }
+}
+
+/// A range of memory that can be msynced, for abstracting over different types of memory mappings.
+///
+/// Safe when implementers guarantee `ptr`..`ptr+size` is an mmaped region owned by this object that
+/// can't be unmapped during the `MappedRegion`'s lifetime.
+pub unsafe trait MappedRegion: Send + Sync {
+    /// Returns a pointer to the beginning of the memory region. Should only be
+    /// used for passing this region to ioctls for setting guest memory.
+    fn as_ptr(&self) -> *mut u8;
+
+    /// Returns the size of the memory region in bytes.
+    fn size(&self) -> usize;
+
+    /// Maps `size` bytes starting at `fd_offset` bytes from within the given `fd`
+    /// at `offset` bytes from the start of the region with `prot` protections.
+    /// `offset` must be page aligned.
+    ///
+    /// # Arguments
+    /// * `offset` - Page aligned offset into the arena in bytes.
+    /// * `size` - Size of memory region in bytes.
+    /// * `fd` - File descriptor to mmap from.
+    /// * `fd_offset` - Offset in bytes from the beginning of `fd` to start the mmap.
+    /// * `prot` - Protection (e.g. readable/writable) of the memory region.
+    fn add_fd_mapping(
+        &mut self,
+        _offset: usize,
+        _size: usize,
+        _fd: &dyn AsRawDescriptor,
+        _fd_offset: u64,
+        _prot: Protection,
+    ) -> Result<()> {
+        Err(Error::AddFdMappingIsUnsupported)
+    }
+
+    /// Remove `size`-byte mapping starting at `offset`.
+    fn remove_mapping(&mut self, _offset: usize, _size: usize) -> Result<()> {
+        Err(Error::RemoveMappingIsUnsupported)
     }
 }
 
