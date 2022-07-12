@@ -4,10 +4,10 @@
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
-        mod unix;
+        pub(in crate::serial) mod unix;
         use unix as platform;
     } else if #[cfg(windows)] {
-        mod windows;
+        pub(in crate::serial) mod windows;
         use windows as platform;
     }
 }
