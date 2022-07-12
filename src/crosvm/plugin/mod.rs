@@ -97,6 +97,7 @@ use crate::Config;
 
 const MAX_DATAGRAM_SIZE: usize = 4096;
 const MAX_VCPU_DATAGRAM_SIZE: usize = 0x40000;
+#[cfg(feature = "gpu")]
 const CROSVM_GPU_SERVER_FD_ENV: &str = "CROSVM_GPU_SERVER_FD";
 
 /// An error that occurs when communicating with the plugin process.
@@ -568,25 +569,25 @@ pub fn run_config(cfg: Config) -> Result<()> {
     #[allow(unused_mut)]
     let mut env_fds: Vec<(String, Descriptor)> = Vec::default();
 
-    let _default_render_server_params = crate::crosvm::sys::GpuRenderServerParameters {
-        path: std::path::PathBuf::from("/usr/libexec/virgl_render_server"),
-        cache_path: None,
-        cache_size: None,
-    };
-
-    #[cfg(feature = "gpu")]
-    let gpu_render_server_parameters = if let Some(parameters) = &cfg.gpu_render_server_parameters {
-        Some(parameters)
-    } else if cfg!(feature = "plugin-render-server") {
-        Some(&_default_render_server_params)
-    } else {
-        None
-    };
-
     #[cfg(feature = "gpu")]
     // Hold on to the render server jail so it keeps running until we exit run_config()
-    let (_render_server_jail, _render_server_fd) =
-        if let Some(parameters) = &gpu_render_server_parameters {
+    let (_render_server_jail, _render_server_fd) = {
+        let _default_render_server_params = crate::crosvm::sys::GpuRenderServerParameters {
+            path: std::path::PathBuf::from("/usr/libexec/virgl_render_server"),
+            cache_path: None,
+            cache_size: None,
+        };
+
+        let gpu_render_server_parameters =
+            if let Some(parameters) = &cfg.gpu_render_server_parameters {
+                Some(parameters)
+            } else if cfg!(feature = "plugin-render-server") {
+                Some(&_default_render_server_params)
+            } else {
+                None
+            };
+
+        if let Some(parameters) = gpu_render_server_parameters {
             let (jail, fd) = crate::crosvm::sys::gpu::start_gpu_render_server(&cfg, parameters)?;
             env_fds.push((
                 CROSVM_GPU_SERVER_FD_ENV.to_string(),
@@ -598,7 +599,8 @@ pub fn run_config(cfg: Config) -> Result<()> {
             )
         } else {
             (None, None)
-        };
+        }
+    };
 
     let jail = if let Some(jail_config) = &cfg.jail_config {
         // An empty directory for jailed plugin pivot root.
