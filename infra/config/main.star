@@ -132,6 +132,11 @@ luci.console_view(
     repo = "https://chromium.googlesource.com/crosvm/crosvm",
 )
 
+# View showing all presubmit builders
+luci.list_view(
+    name = "Presubmit",
+)
+
 # View showing all infra builders
 luci.list_view(
     name = "Infra",
@@ -216,6 +221,10 @@ def verify_builder(
             dimensions = dict(pool = "luci.crosvm.try", **dimensions),
             properties = props,
             **args
+        )
+        luci.list_view_entry(
+            list_view = "Presubmit",
+            builder = "try/%s" % name,
         )
 
         # Attach try builder to Change Verifier
@@ -334,7 +343,6 @@ verify_builder(
     executable = luci.recipe(
         name = "build_windows",
     ),
-    presubmit = False,
     category = "windows",
 )
 
