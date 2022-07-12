@@ -100,7 +100,7 @@ async fn run_rx_queue<I: SignalableInterrupt>(
 
 pub struct ConsoleDevice {
     input: Option<AsyncQueueState<AsyncSerialInput>>,
-    output: Option<AsyncQueueState<Box<dyn io::Write + Send>>>,
+    output: AsyncQueueState<Box<dyn io::Write + Send>>,
     avail_features: u64,
 }
 
@@ -162,11 +162,6 @@ impl ConsoleDevice {
         doorbell: I,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
-        let output_queue = match self.output.as_mut() {
-            Some(output_queue) => output_queue,
-            None => return Ok(()),
-        };
-
         let kick_evt =
             EventAsync::new(kick_evt, ex).context("Failed to create EventAsync for kick_evt")?;
 
@@ -182,16 +177,11 @@ impl ConsoleDevice {
             })
         };
 
-        output_queue.start(ex, tx_future)
+        self.output.start(ex, tx_future)
     }
 
     pub fn stop_transmit_queue(&mut self) -> AsyncResult<bool> {
-        if let Some(queue) = self.output.as_mut() {
-            queue.stop()?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        self.output.stop()
     }
 }
 
@@ -209,7 +199,7 @@ impl SerialDevice for ConsoleDevice {
             virtio::base_features(protected_vm) | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         ConsoleDevice {
             input: input.map(AsyncSerialInput).map(AsyncQueueState::Stopped),
-            output: output.map(AsyncQueueState::Stopped),
+            output: AsyncQueueState::Stopped(output.unwrap_or_else(|| Box::new(io::sink()))),
             avail_features,
         }
     }
@@ -353,9 +343,7 @@ impl VirtioDevice for AsyncConsole {
                     if let Some(input) = console.input.as_mut() {
                         input.stop().context("failed to stop rx queue")?;
                     }
-                    if let Some(output) = console.output.as_mut() {
-                        output.stop().context("failed to stop tx queue")?;
-                    }
+                    console.output.stop().context("failed to stop tx queue")?;
 
                     Ok(console)
                 })?
