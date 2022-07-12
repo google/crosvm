@@ -565,7 +565,7 @@ pub struct HostPcieRootPortParameters {
 pub struct JailConfig {
     pub pivot_root: PathBuf,
     #[cfg(unix)]
-    pub seccomp_policy_dir: PathBuf,
+    pub seccomp_policy_dir: Option<PathBuf>,
     pub seccomp_log_failures: bool,
 }
 
@@ -574,7 +574,7 @@ impl Default for JailConfig {
         JailConfig {
             pivot_root: PathBuf::from(option_env!("DEFAULT_PIVOT_ROOT").unwrap_or("/var/empty")),
             #[cfg(unix)]
-            seccomp_policy_dir: PathBuf::from(SECCOMP_POLICY_DIR),
+            seccomp_policy_dir: Some(PathBuf::from(SECCOMP_POLICY_DIR)),
             seccomp_log_failures: false,
         }
     }

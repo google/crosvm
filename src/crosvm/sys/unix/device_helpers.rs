@@ -995,13 +995,17 @@ pub fn create_fs_device(
     let max_open_files =
         base::get_max_open_files().context("failed to get max number of open files")?;
     let j = if let Some(jail_config) = jail_config {
-        let seccomp_policy = jail_config.seccomp_policy_dir.join("fs_device");
+        let policy_path = jail_config
+            .seccomp_policy_dir
+            .as_ref()
+            .map(|dir| dir.join("fs_device"));
         let config = SandboxConfig {
             limit_caps: false,
             uid_map: Some(uid_map),
             gid_map: Some(gid_map),
             log_failures: jail_config.seccomp_log_failures,
-            seccomp_policy: &seccomp_policy,
+            seccomp_policy_path: policy_path.as_deref(),
+            seccomp_policy_name: "fs_device",
             // We want bind mounts from the parent namespaces to propagate into the fs device's
             // namespace.
             remount_mode: Some(libc::MS_SLAVE),
@@ -1035,13 +1039,17 @@ pub fn create_9p_device(
     let max_open_files =
         base::get_max_open_files().context("failed to get max number of open files")?;
     let (jail, root) = if let Some(jail_config) = jail_config {
-        let seccomp_policy = jail_config.seccomp_policy_dir.join("9p_device");
+        let policy_path = jail_config
+            .seccomp_policy_dir
+            .as_ref()
+            .map(|dir| dir.join("9p_device"));
         let config = SandboxConfig {
             limit_caps: false,
             uid_map: Some(uid_map),
             gid_map: Some(gid_map),
             log_failures: jail_config.seccomp_log_failures,
-            seccomp_policy: &seccomp_policy,
+            seccomp_policy_path: policy_path.as_deref(),
+            seccomp_policy_name: "9p_device",
             // We want bind mounts from the parent namespaces to propagate into the 9p server's
             // namespace.
             remount_mode: Some(libc::MS_SLAVE),

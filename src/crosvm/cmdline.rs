@@ -1534,7 +1534,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             if let Some(d) = cmd.seccomp_policy_dir {
                 cfg.jail_config
                     .get_or_insert_with(Default::default)
-                    .seccomp_policy_dir = d;
+                    .seccomp_policy_dir = Some(d);
             }
 
             if cmd.seccomp_log_failures {

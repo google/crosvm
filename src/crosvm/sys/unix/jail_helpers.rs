@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::str;
 
 use libc::{self, c_ulong, gid_t, uid_t};
@@ -13,10 +13,12 @@ use minijail::{self, Minijail};
 
 use crate::crosvm::config::JailConfig;
 
+#[allow(dead_code)]
 pub(super) struct SandboxConfig<'a> {
     pub(super) limit_caps: bool,
     pub(super) log_failures: bool,
-    pub(super) seccomp_policy: &'a Path,
+    pub(super) seccomp_policy_path: Option<&'a Path>,
+    pub(super) seccomp_policy_name: &'a str,
     pub(super) uid_map: Option<&'a str>,
     pub(super) gid_map: Option<&'a str>,
     pub(super) remount_mode: Option<c_ulong>,
@@ -69,7 +71,7 @@ pub(super) fn create_base_minijail(
         // command-line parameter for an explanation about why the |log_failures|
         // flag forces the use of .policy files (and the build-time alternative to
         // this run-time flag).
-        let bpf_policy_file = config.seccomp_policy.with_extension("bpf");
+        let bpf_policy_file = config.seccomp_policy_path.unwrap().with_extension("bpf");
         if bpf_policy_file.exists() && !config.log_failures {
             j.parse_seccomp_program(&bpf_policy_file)
                 .context("failed to parse precompiled seccomp policy")?;
@@ -81,7 +83,7 @@ pub(super) fn create_base_minijail(
             if config.log_failures {
                 j.log_seccomp_filter_failures();
             }
-            j.parse_seccomp_filters(&config.seccomp_policy.with_extension("policy"))
+            j.parse_seccomp_filters(&config.seccomp_policy_path.unwrap().with_extension("policy"))
                 .context("failed to parse seccomp policy")?;
         }
         j.use_seccomp_filter();
@@ -121,11 +123,15 @@ pub(super) fn simple_jail(
                 jail_config.pivot_root
             );
         }
-        let policy_path: PathBuf = jail_config.seccomp_policy_dir.join(policy);
+        let policy_path = jail_config
+            .seccomp_policy_dir
+            .as_ref()
+            .map(|dir| dir.join(policy));
         let config = SandboxConfig {
             limit_caps: true,
             log_failures: jail_config.seccomp_log_failures,
-            seccomp_policy: &policy_path,
+            seccomp_policy_path: policy_path.as_deref(),
+            seccomp_policy_name: policy,
             uid_map: None,
             gid_map: None,
             remount_mode: None,

@@ -144,7 +144,11 @@ fn mmap_to_sys_err(e: MmapError) -> SysError {
     }
 }
 
-fn create_plugin_jail(root: &Path, log_failures: bool, seccomp_policy: &Path) -> Result<Minijail> {
+fn create_plugin_jail(
+    root: &Path,
+    log_failures: bool,
+    seccomp_policy: Option<&Path>,
+) -> Result<Minijail> {
     // All child jails run in a new user namespace without any users mapped,
     // they run as nobody unless otherwise configured.
     let mut j = Minijail::new().context("failed to create jail")?;
@@ -171,7 +175,7 @@ fn create_plugin_jail(root: &Path, log_failures: bool, seccomp_policy: &Path) ->
     // command-line parameter for an explanation about why the |log_failures|
     // flag forces the use of .policy files (and the build-time alternative to
     // this run-time flag).
-    let bpf_policy_file = seccomp_policy.with_extension("bpf");
+    let bpf_policy_file = seccomp_policy.unwrap().with_extension("bpf");
     if bpf_policy_file.exists() && !log_failures {
         j.parse_seccomp_program(&bpf_policy_file)
             .context("failed to parse jail seccomp BPF program")?;
@@ -183,7 +187,7 @@ fn create_plugin_jail(root: &Path, log_failures: bool, seccomp_policy: &Path) ->
         if log_failures {
             j.log_seccomp_filter_failures();
         }
-        j.parse_seccomp_filters(&seccomp_policy.with_extension("policy"))
+        j.parse_seccomp_filters(&seccomp_policy.unwrap().with_extension("policy"))
             .context("failed to parse jail seccomp filter")?;
     }
     j.use_seccomp_filter();
@@ -561,9 +565,15 @@ pub fn run_config(cfg: Config) -> Result<()> {
             bail!("specified root directory is not a directory");
         }
 
-        let policy_path = jail_config.seccomp_policy_dir.join("plugin");
-        let mut jail =
-            create_plugin_jail(root_path, jail_config.seccomp_log_failures, &policy_path)?;
+        let policy_path = jail_config
+            .seccomp_policy_dir
+            .as_ref()
+            .map(|dir| dir.join("plugin"));
+        let mut jail = create_plugin_jail(
+            root_path,
+            jail_config.seccomp_log_failures,
+            policy_path.as_deref(),
+        )?;
 
         // Update gid map of the jail if caller provided supplemental groups.
         if !cfg.plugin_gid_maps.is_empty() {
