@@ -405,6 +405,14 @@ fn pkg_version() -> std::result::Result<(), ()> {
     Ok(())
 }
 
+// Returns true if the argument is a flag (e.g. `-s` or `--long`).
+//
+// As a special case, `-` is not treated as a flag, since it is typically used to represent
+// `stdin`/`stdout`.
+fn is_flag(arg: &str) -> bool {
+    arg.len() > 1 && arg.starts_with('-')
+}
+
 // Perform transformations on `args_iter` to produce arguments suitable for parsing by `argh`.
 fn prepare_argh_args<I: IntoIterator<Item = String>>(args_iter: I) -> Vec<String> {
     let mut args: Vec<String> = Vec::default();
@@ -424,7 +432,7 @@ fn prepare_argh_args<I: IntoIterator<Item = String>>(args_iter: I) -> Vec<String
             "-h" => args.push("--help".to_string()),
             // TODO(238361778): This block should work on windows as well.
             #[cfg(unix)]
-            arg if arg.starts_with("--") => {
+            arg if is_flag(arg) => {
                 // Split `--arg=val` into `--arg val`, since argh doesn't support the former.
                 if let Some((key, value)) = arg.split_once("=") {
                     args.push(key.to_string());
@@ -445,7 +453,7 @@ fn prepare_argh_args<I: IntoIterator<Item = String>>(args_iter: I) -> Vec<String
     ];
     for arg in switch_or_option {
         if let Some(i) = args.iter().position(|a| a == arg) {
-            if i >= args.len() - 2 || args[i + 1].starts_with("-") {
+            if i >= args.len() - 2 || is_flag(&args[i + 1]) {
                 args.insert(i + 1, "".to_string());
             }
         }
@@ -590,6 +598,35 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn args_is_flag() {
+        assert!(is_flag("--test"));
+        assert!(is_flag("-s"));
+
+        assert!(!is_flag("-"));
+        assert!(!is_flag("no-leading-dash"));
+    }
+
+    #[test]
+    fn args_split_long() {
+        assert_eq!(
+            prepare_argh_args(
+                ["crosvm", "run", "--something=options", "vm_kernel"].map(|x| x.to_string())
+            ),
+            ["crosvm", "run", "--something", "options", "vm_kernel"]
+        );
+    }
+
+    #[test]
+    fn args_split_short() {
+        assert_eq!(
+            prepare_argh_args(
+                ["crosvm", "run", "-p=init=/bin/bash", "vm_kernel"].map(|x| x.to_string())
+            ),
+            ["crosvm", "run", "-p", "init=/bin/bash", "vm_kernel"]
+        );
+    }
 
     #[test]
     fn args_host_ip() {
