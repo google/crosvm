@@ -7,5 +7,6 @@
 ioctl: arg1 == TCGETS || arg1 == TCSETS
 # b/239779171: Temporarily disabled as it is also in common_device.policy.
 # rseq: 1
-pread64: 1
-pwrite64: 1
+# b/239779171: Temporarily disabled as it conflicts with block's definition.
+# pread64: 1
+# pwrite64: 1

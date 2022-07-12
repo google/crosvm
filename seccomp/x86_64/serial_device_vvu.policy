@@ -8,3 +8,7 @@
 
 @include /usr/share/policy/crosvm/common_device.policy
 @include /usr/share/policy/crosvm/serial.policy
+
+# From vvu.policy
+pread64: 1
+pwrite64: 1

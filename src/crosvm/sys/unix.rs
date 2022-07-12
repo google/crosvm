@@ -2633,6 +2633,12 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
         add_device(i, serial_config, &params.vhost, &jail, &mut devices_jails)?;
     }
 
+    // Create block devices.
+    for (i, params) in opts.block.iter().enumerate() {
+        let disk_config = DiskConfig::new(&params.device_params, None);
+        add_device(i, &disk_config, &params.vhost, &jail, &mut devices_jails)?;
+    }
+
     // Now wait for all device processes to return.
     while !devices_jails.is_empty() {
         match base::platform::wait_for_pid(-1, 0) {

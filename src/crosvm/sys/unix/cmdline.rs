@@ -3,10 +3,10 @@
 // found in the LICENSE file.
 
 use argh::FromArgs;
-use devices::{
-    virtio::vhost::user::{device, VhostUserParams},
-    SerialParameters,
-};
+use devices::virtio::block::block::DiskOption;
+use devices::virtio::vhost::user::device;
+use devices::virtio::vhost::user::VhostUserParams;
+use devices::SerialParameters;
 
 use crate::crosvm::config::JailConfig;
 
@@ -50,6 +50,10 @@ pub struct DevicesCommand {
     #[argh(option, arg_name = "serial options")]
     /// start a serial device (see help from run command for options)
     pub serial: Vec<VhostUserParams<SerialParameters>>,
+
+    #[argh(option, arg_name = "block options")]
+    /// start a block device (see help from run command for options)
+    pub block: Vec<VhostUserParams<DiskOption>>,
 }
 
 #[derive(FromArgs)]
