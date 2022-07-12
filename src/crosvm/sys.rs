@@ -11,7 +11,13 @@ pub(crate) mod windows;
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         use unix as platform;
-        pub(crate) use unix::*;
+
+        #[cfg(feature = "gpu")]
+        pub(crate) use unix::gpu::GpuRenderServerParameters;
+        #[cfg(all(feature = "gpu", feature = "plugin"))]
+        pub(crate) use unix::gpu::start_gpu_render_server;
+        #[cfg(all(feature = "gpu", feature = "plugin"))]
+        pub(crate) use unix::jail_helpers;
     } else if #[cfg(windows)] {
         use windows as platform;
     } else {

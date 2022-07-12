@@ -588,7 +588,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
             };
 
         if let Some(parameters) = gpu_render_server_parameters {
-            let (jail, fd) = crate::crosvm::sys::gpu::start_gpu_render_server(&cfg, parameters)?;
+            let (jail, fd) = crate::crosvm::sys::start_gpu_render_server(&cfg, parameters)?;
             env_fds.push((
                 CROSVM_GPU_SERVER_FD_ENV.to_string(),
                 Descriptor(fd.as_raw_descriptor()),
