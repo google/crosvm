@@ -15,7 +15,7 @@ set rustup_version=1.24.3
 
 :: Install rust toolchain through rustup.
 echo [%TIME%] installing rustup %rustup_version%
-choco install --no-progress -y rustup.install --version=%rustup_version%
+choco install --no-progress -y rustup.install --version=%rustup_version% --ignore-checksums
 
 :: Reload path for installed rustup binary
 call RefreshEnv.cmd
