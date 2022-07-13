@@ -273,7 +273,7 @@ impl arch::LinuxArch for AArch64 {
             VmImage::Kernel(ref mut kernel_image) => {
                 let kernel_end: u64;
                 let kernel_size: usize;
-                let elf_result = kernel_loader::load_kernel(&mem, get_kernel_addr(), kernel_image);
+                let elf_result = kernel_loader::load_elf64(&mem, get_kernel_addr(), kernel_image);
                 if elf_result == Err(kernel_loader::Error::InvalidElfMagicNumber) {
                     kernel_size =
                         arch::load_image(&mem, kernel_image, get_kernel_addr(), u64::max_value())

@@ -255,11 +255,34 @@ pub const NT_MIPS_MSA: u32 = 2050;
 pub const NT_GNU_PROPERTY_TYPE_0: u32 = 5;
 pub const GNU_PROPERTY_AARCH64_FEATURE_1_AND: u32 = 3221225472;
 pub const GNU_PROPERTY_AARCH64_FEATURE_1_BTI: u32 = 1;
+pub type Elf32_Addr = u32;
+pub type Elf32_Half = u16;
+pub type Elf32_Off = u32;
+pub type Elf32_Word = u32;
 pub type Elf64_Addr = u64;
 pub type Elf64_Half = u16;
 pub type Elf64_Off = u64;
 pub type Elf64_Word = u32;
 pub type Elf64_Xword = u64;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct elf32_hdr {
+    pub e_ident: [::std::os::raw::c_uchar; 16usize],
+    pub e_type: Elf32_Half,
+    pub e_machine: Elf32_Half,
+    pub e_version: Elf32_Word,
+    pub e_entry: Elf32_Addr,
+    pub e_phoff: Elf32_Off,
+    pub e_shoff: Elf32_Off,
+    pub e_flags: Elf32_Word,
+    pub e_ehsize: Elf32_Half,
+    pub e_phentsize: Elf32_Half,
+    pub e_phnum: Elf32_Half,
+    pub e_shentsize: Elf32_Half,
+    pub e_shnum: Elf32_Half,
+    pub e_shstrndx: Elf32_Half,
+}
+pub type Elf32_Ehdr = elf32_hdr;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct elf64_hdr {
@@ -279,6 +302,19 @@ pub struct elf64_hdr {
     pub e_shstrndx: Elf64_Half,
 }
 pub type Elf64_Ehdr = elf64_hdr;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct elf32_phdr {
+    pub p_type: Elf32_Word,
+    pub p_offset: Elf32_Off,
+    pub p_vaddr: Elf32_Addr,
+    pub p_paddr: Elf32_Addr,
+    pub p_filesz: Elf32_Word,
+    pub p_memsz: Elf32_Word,
+    pub p_flags: Elf32_Word,
+    pub p_align: Elf32_Word,
+}
+pub type Elf32_Phdr = elf32_phdr;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct elf64_phdr {

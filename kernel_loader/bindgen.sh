@@ -11,6 +11,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 source tools/impl/bindgen-common.sh
 
 bindgen_generate \
+    --allowlist-type='Elf32_Ehdr' \
+    --allowlist-type='Elf32_Phdr' \
     --allowlist-type='Elf64_Ehdr' \
     --allowlist-type='Elf64_Phdr' \
     --allowlist-var='.+' \
