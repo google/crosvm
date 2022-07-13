@@ -419,7 +419,7 @@ impl Drop for PitCounter {
             // This should not fail - timer.clear() only fails if timerfd_settime fails, which
             // only happens due to invalid arguments or bad file descriptors. The arguments to
             // timerfd_settime are constant, so its arguments won't be invalid, and it manages
-            // the file descriptor safely (we don't use the unsafe FromRawFd) so its file
+            // the file descriptor safely (we don't use the unsafe FromRawDescriptor) so its file
             // descriptor will be valid.
             self.timer.clear().unwrap();
         }
@@ -704,9 +704,9 @@ impl PitCounter {
             Some(CommandMode::CommandInterrupt)
             | Some(CommandMode::CommandHWOneShot)
             | Some(CommandMode::CommandSWStrobe)
-            | Some(CommandMode::CommandHWStrobe) => Duration::new(0, 0),
+            | Some(CommandMode::CommandHWStrobe) => None,
             Some(CommandMode::CommandRateGen) | Some(CommandMode::CommandSquareWaveGen) => {
-                timer_len
+                Some(timer_len)
             }
             // Don't arm timer if invalid mode.
             None => {
@@ -814,12 +814,12 @@ impl PitCounter {
         }
     }
 
-    fn safe_arm_timer(&mut self, mut due: Duration, period: Duration) {
+    fn safe_arm_timer(&mut self, mut due: Duration, period: Option<Duration>) {
         if due == Duration::new(0, 0) {
             due = Duration::from_nanos(1);
         }
 
-        if let Err(e) = self.timer.reset(due, Some(period)) {
+        if let Err(e) = self.timer.reset(due, period) {
             error!("failed to reset timer: {}", e);
         }
     }
