@@ -8,6 +8,8 @@
 
 mod bus;
 mod cmos;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod debugcon;
 #[cfg(feature = "direct")]
 pub mod direct_io;
 #[cfg(feature = "direct")]
@@ -42,6 +44,8 @@ pub use self::bus::{
     HostHotPlugKey, HotPlugBus,
 };
 pub use self::cmos::Cmos;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub use self::debugcon::Debugcon;
 #[cfg(feature = "direct")]
 pub use self::direct_io::{DirectIo, DirectMmio};
 #[cfg(feature = "direct")]
@@ -67,8 +71,6 @@ pub use self::vtpm_proxy::VtpmProxy;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        mod debugcon;
         mod platform;
         mod proxy;
         pub mod acpi;
@@ -82,8 +84,6 @@ cfg_if::cfg_if! {
         pub use self::acpi::ACPIPMResource;
         pub use self::bat::{BatteryError, GoldfishBattery};
         pub use self::bus::Error as BusError;
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        pub use self::debugcon::Debugcon;
         #[cfg(feature = "audio")]
         pub use self::pci::{Ac97Backend, Ac97Dev, Ac97Parameters};
         pub use self::pci::{ PciBus,

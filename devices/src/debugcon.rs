@@ -4,6 +4,8 @@
 
 use std::io::{self, Write};
 
+#[cfg(windows)]
+use base::named_pipes;
 use base::{error, Event, FileSync, RawDescriptor, Result};
 use hypervisor::ProtectionType;
 
@@ -28,6 +30,17 @@ impl SerialDevice for Debugcon {
         _keep_rds: Vec<RawDescriptor>,
     ) -> Debugcon {
         Debugcon { out }
+    }
+
+    #[cfg(windows)]
+    fn new_with_pipe(
+        _protected_vm: ProtectionType,
+        _interrupt_evt: Event,
+        _pipe_in: named_pipes::PipeConnection,
+        _pipe_out: named_pipes::PipeConnection,
+        _keep_rds: Vec<RawDescriptor>,
+    ) -> Debugcon {
+        unimplemented!("new_with_pipe unimplemented for Debugcon");
     }
 }
 
