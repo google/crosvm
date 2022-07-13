@@ -12,17 +12,16 @@ use std::{
     ptr::{copy_nonoverlapping, null_mut, read_unaligned, write_unaligned},
 };
 
+use data_model::{volatile_memory::*, DataInit};
+use libc::{self, c_int, c_void, read, write};
 use log::warn;
+use remain::sorted;
 
 use crate::{
     external_mapping::ExternalMapping, AsRawDescriptor, Descriptor,
-    MemoryMapping as CrateMemoryMapping, MemoryMappingBuilder, RawDescriptor, SafeDescriptor,
+    MemoryMapping as CrateMemoryMapping, MemoryMappingBuilder, Protection, RawDescriptor,
+    SafeDescriptor,
 };
-use libc::{self, c_int, c_void, read, write};
-use remain::sorted;
-
-use data_model::{volatile_memory::*, DataInit};
-use serde::{Deserialize, Serialize};
 
 use super::{pagesize, Error as ErrnoError};
 
@@ -51,60 +50,6 @@ pub enum Error {
     WriteFromMemory(#[source] io::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
-
-/// Memory access type for anonymous shared memory mapping.
-#[derive(Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Protection(c_int);
-impl Protection {
-    /// Returns Protection allowing read/write access.
-    #[inline(always)]
-    pub fn read_write() -> Protection {
-        Protection(libc::PROT_READ | libc::PROT_WRITE)
-    }
-
-    /// Returns Protection allowing read access.
-    #[inline(always)]
-    pub fn read() -> Protection {
-        Protection(libc::PROT_READ)
-    }
-
-    /// Returns Protection allowing write access.
-    #[inline(always)]
-    pub fn write() -> Protection {
-        Protection(libc::PROT_WRITE)
-    }
-
-    /// Set read events.
-    #[inline(always)]
-    pub fn set_read(self) -> Protection {
-        Protection(self.0 | libc::PROT_READ)
-    }
-
-    /// Set write events.
-    #[inline(always)]
-    pub fn set_write(self) -> Protection {
-        Protection(self.0 | libc::PROT_WRITE)
-    }
-
-    /// Returns true if all access allowed by |other| is also allowed by |self|.
-    #[inline(always)]
-    pub fn allows(&self, other: &Protection) -> bool {
-        (self.0 & libc::PROT_READ) >= (other.0 & libc::PROT_READ)
-            && (self.0 & libc::PROT_WRITE) >= (other.0 & libc::PROT_WRITE)
-    }
-}
-
-impl From<c_int> for Protection {
-    fn from(f: c_int) -> Self {
-        Protection(f)
-    }
-}
-
-impl From<Protection> for c_int {
-    fn from(p: Protection) -> c_int {
-        p.0
-    }
-}
 
 /// Validates that `offset`..`offset+range_size` lies within the bounds of a memory mapping of
 /// `mmap_size` bytes.  Also checks for any overflow.

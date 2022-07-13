@@ -106,6 +106,8 @@ use libc::{
     F_GETFL, F_SETFL, O_CLOEXEC, SIGKILL, WNOHANG, _SC_IOV_MAX, _SC_PAGESIZE,
 };
 
+pub(crate) use libc::{PROT_READ, PROT_WRITE};
+
 /// Re-export libc types that are part of the API.
 pub type Pid = libc::pid_t;
 pub type Uid = libc::uid_t;

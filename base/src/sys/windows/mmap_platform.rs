@@ -17,12 +17,12 @@ use winapi::um::memoryapi::{
     FlushViewOfFile, MapViewOfFile, MapViewOfFileEx, UnmapViewOfFile, FILE_MAP_READ, FILE_MAP_WRITE,
 };
 
-use super::{mmap::Error, mmap::Result, MappedRegion, MemoryMapping, Protection, RawDescriptor};
+use super::{mmap::Error, mmap::Result, MappedRegion, MemoryMapping, RawDescriptor};
 use crate::descriptor::AsRawDescriptor;
-use crate::warn;
+use crate::{warn, Protection};
 
-pub(super) const PROT_READ: c_int = FILE_MAP_READ as c_int;
-pub(super) const PROT_WRITE: c_int = FILE_MAP_WRITE as c_int;
+pub(crate) const PROT_READ: c_int = FILE_MAP_READ as c_int;
+pub(crate) const PROT_WRITE: c_int = FILE_MAP_WRITE as c_int;
 
 impl MemoryMapping {
     /// Creates an anonymous shared mapping of `size` bytes with `prot` protection.

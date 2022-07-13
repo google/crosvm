@@ -65,6 +65,7 @@ pub use file_traits::{
     FileSetLen, FileSync,
 };
 pub use mmap::Error as MmapError;
+pub(crate) use mmap_platform::{PROT_READ, PROT_WRITE};
 pub(crate) use punch_hole::file_punch_hole;
 pub(crate) use write_zeroes::file_write_zeroes_at;
 

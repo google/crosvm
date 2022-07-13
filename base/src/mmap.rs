@@ -2,16 +2,73 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{
-    descriptor::{AsRawDescriptor, SafeDescriptor},
-    platform::{MappedRegion, MemoryMapping as SysUtilMmap, MmapError},
-    Protection, SharedMemory,
-};
-
-use data_model::{volatile_memory::*, DataInit};
 use std::fs::File;
 
+use data_model::{volatile_memory::*, DataInit};
+use libc::c_int;
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    descriptor::{AsRawDescriptor, SafeDescriptor},
+    platform::{MappedRegion, MemoryMapping as SysUtilMmap, MmapError, PROT_READ, PROT_WRITE},
+    SharedMemory,
+};
+
 pub type Result<T> = std::result::Result<T, MmapError>;
+
+/// Memory access type for anonymous shared memory mapping.
+#[derive(Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+pub struct Protection(c_int);
+impl Protection {
+    /// Returns Protection allowing read/write access.
+    #[inline(always)]
+    pub fn read_write() -> Protection {
+        Protection(PROT_READ | PROT_WRITE)
+    }
+
+    /// Returns Protection allowing read access.
+    #[inline(always)]
+    pub fn read() -> Protection {
+        Protection(PROT_READ)
+    }
+
+    /// Returns Protection allowing write access.
+    #[inline(always)]
+    pub fn write() -> Protection {
+        Protection(PROT_WRITE)
+    }
+
+    /// Set read events.
+    #[inline(always)]
+    pub fn set_read(self) -> Protection {
+        Protection(self.0 | PROT_READ)
+    }
+
+    /// Set write events.
+    #[inline(always)]
+    pub fn set_write(self) -> Protection {
+        Protection(self.0 | PROT_WRITE)
+    }
+
+    /// Returns true if all access allowed by |other| is also allowed by |self|.
+    #[inline(always)]
+    pub fn allows(&self, other: &Protection) -> bool {
+        (self.0 & PROT_READ) >= (other.0 & PROT_READ)
+            && (self.0 & PROT_WRITE) >= (other.0 & PROT_WRITE)
+    }
+}
+
+impl From<c_int> for Protection {
+    fn from(f: c_int) -> Self {
+        Protection(f)
+    }
+}
+
+impl From<Protection> for c_int {
+    fn from(p: Protection) -> c_int {
+        p.0
+    }
+}
 
 /// See [MemoryMapping](crate::platform::MemoryMapping) for struct- and method-level
 /// documentation.

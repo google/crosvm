@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use remain::sorted;
 use std::{
     cmp::min,
     io::{self, Read, Write},
@@ -10,22 +9,19 @@ use std::{
     ptr::{copy_nonoverlapping, read_unaligned, write_unaligned},
 };
 
-use crate::descriptor::{FromRawDescriptor, SafeDescriptor};
 use data_model::{volatile_memory::*, DataInit};
-use serde::{Deserialize, Serialize};
+use libc::{c_int, c_uint, c_void};
+use remain::sorted;
 use win_util::create_file_mapping;
 use win_util::duplicate_handle;
 use winapi::um::winnt::PAGE_READWRITE;
 
-use libc::{c_int, c_uint, c_void};
+use crate::{
+    external_mapping::ExternalMapping, AsRawDescriptor, Descriptor, FromRawDescriptor,
+    MemoryMapping as CrateMemoryMapping, MemoryMappingBuilder, Protection, RawDescriptor,
+    SafeDescriptor,
+};
 
-use super::RawDescriptor;
-use crate::descriptor::{AsRawDescriptor, Descriptor};
-use crate::external_mapping::ExternalMapping;
-use crate::MemoryMapping as CrateMemoryMapping;
-use crate::MemoryMappingBuilder;
-
-use super::mmap_platform;
 pub use super::mmap_platform::MemoryMappingArena;
 
 #[sorted]
@@ -56,70 +52,16 @@ pub enum Error {
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Memory access type for anonymous shared memory mapping.
-#[derive(Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Protection(c_int);
-
-impl Protection {
-    /// Returns Protection allowing read/write access.
-    #[inline(always)]
-    pub fn read_write() -> Protection {
-        Protection(mmap_platform::PROT_READ | mmap_platform::PROT_WRITE)
-    }
-
-    /// Returns Protection allowing read access.
-    #[inline(always)]
-    pub fn read() -> Protection {
-        Protection(mmap_platform::PROT_READ)
-    }
-
-    /// Returns Protection allowing write access.
-    #[inline(always)]
-    pub fn write() -> Protection {
-        Protection(mmap_platform::PROT_WRITE)
-    }
-
-    /// Set read events.
-    #[inline(always)]
-    pub fn set_read(self) -> Protection {
-        Protection(self.0 | mmap_platform::PROT_READ)
-    }
-
-    /// Set write events.
-    #[inline(always)]
-    pub fn set_write(self) -> Protection {
-        Protection(self.0 | mmap_platform::PROT_WRITE)
-    }
-
-    /// Returns true if all access allowed by |other| is also allowed by |self|.
-    #[inline(always)]
-    pub fn allows(&self, other: &Protection) -> bool {
-        (self.0 & mmap_platform::PROT_READ) >= (other.0 & mmap_platform::PROT_READ)
-            && (self.0 & mmap_platform::PROT_WRITE) >= (other.0 & mmap_platform::PROT_WRITE)
-    }
-}
-
 impl From<c_uint> for Protection {
     fn from(f: c_uint) -> Self {
-        Protection(f as c_int)
+        Protection::from(f as c_int)
     }
 }
 
 impl From<Protection> for c_uint {
     fn from(p: Protection) -> c_uint {
-        p.0 as c_uint
-    }
-}
-
-impl From<c_int> for Protection {
-    fn from(f: c_int) -> Self {
-        Protection(f)
-    }
-}
-
-impl From<Protection> for c_int {
-    fn from(p: Protection) -> c_int {
-        p.0
+        let i: c_int = p.into();
+        i as c_uint
     }
 }
 
