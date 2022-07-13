@@ -101,45 +101,6 @@ cfg_if::cfg_if! {
         pub use self::vfio::{VfioContainer, VfioDevice};
         pub use self::virtio::{vfio_wrapper, VirtioPciDevice};
 
-        /// Request CoIOMMU to unpin a specific range.
-        use serde::{Deserialize, Serialize};
-        #[derive(Serialize, Deserialize, Debug)]
-        pub struct UnpinRequest {
-            /// The ranges presents (start gfn, count).
-            ranges: Vec<(u64, u64)>,
-        }
-
-        #[derive(Serialize, Deserialize, Debug)]
-        pub enum UnpinResponse {
-            Success,
-            Failed,
-        }
-
-        #[derive(Debug)]
-        pub enum ParseIommuDevTypeResult {
-            NoSuchType,
-        }
-
-        #[derive(Copy, Clone, Eq, PartialEq)]
-        pub enum IommuDevType {
-            NoIommu,
-            VirtioIommu,
-            CoIommu,
-        }
-
-        use std::str::FromStr;
-        impl FromStr for IommuDevType {
-            type Err = ParseIommuDevTypeResult;
-
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                match s {
-                    "off" => Ok(IommuDevType::NoIommu),
-                    "viommu" => Ok(IommuDevType::VirtioIommu),
-                    "coiommu" => Ok(IommuDevType::CoIommu),
-                    _ => Err(ParseIommuDevTypeResult::NoSuchType),
-                }
-            }
-        }
     } else if #[cfg(windows)] {
         // We define Minijail as an empty struct on Windows because the concept
         // of jailing is baked into a bunch of places where it isn't easy
@@ -148,5 +109,45 @@ cfg_if::cfg_if! {
         pub struct Minijail {}
     } else {
         compile_error!("Unsupported platform");
+    }
+}
+
+/// Request CoIOMMU to unpin a specific range.
+use serde::{Deserialize, Serialize};
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UnpinRequest {
+    /// The ranges presents (start gfn, count).
+    ranges: Vec<(u64, u64)>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum UnpinResponse {
+    Success,
+    Failed,
+}
+
+#[derive(Debug)]
+pub enum ParseIommuDevTypeResult {
+    NoSuchType,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum IommuDevType {
+    NoIommu,
+    VirtioIommu,
+    CoIommu,
+}
+
+use std::str::FromStr;
+impl FromStr for IommuDevType {
+    type Err = ParseIommuDevTypeResult;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "off" => Ok(IommuDevType::NoIommu),
+            "viommu" => Ok(IommuDevType::VirtioIommu),
+            "coiommu" => Ok(IommuDevType::CoIommu),
+            _ => Err(ParseIommuDevTypeResult::NoSuchType),
+        }
     }
 }
