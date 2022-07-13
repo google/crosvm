@@ -768,6 +768,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
                 descriptor,
                 offset,
                 size,
+                gpu_blob: false,
             } => (descriptor, offset, size),
             VmMemorySource::SharedMemory(shmem) => {
                 let size = shmem.size();

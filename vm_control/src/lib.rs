@@ -268,6 +268,7 @@ pub enum VmMemorySource {
         offset: u64,
         /// Size of the mapping in bytes.
         size: u64,
+        gpu_blob: bool,
     },
     /// Register memory mapped by Vulkano.
     Vulkan {
@@ -288,15 +289,21 @@ impl VmMemorySource {
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
         gralloc: &mut RutabagaGralloc,
         prot: Protection,
-    ) -> Result<(Box<dyn MappedRegion>, u64)> {
-        Ok(match self {
+    ) -> Result<(Box<dyn MappedRegion>, u64, Option<SafeDescriptor>)> {
+        let (mem_region, size, descriptor) = match self {
             VmMemorySource::Descriptor {
                 descriptor,
                 offset,
                 size,
-            } => (map_descriptor(&descriptor, offset, size, prot)?, size),
+                gpu_blob,
+            } => (
+                map_descriptor(&descriptor, offset, size, prot)?,
+                size,
+                if gpu_blob { Some(descriptor) } else { None },
+            ),
+
             VmMemorySource::SharedMemory(shm) => {
-                (map_descriptor(&shm, 0, shm.size(), prot)?, shm.size())
+                (map_descriptor(&shm, 0, shm.size(), prot)?, shm.size(), None)
             }
             VmMemorySource::Vulkan {
                 descriptor,
@@ -322,7 +329,7 @@ impl VmMemorySource {
                         return Err(SysError::new(EINVAL));
                     }
                 };
-                (mapped_region, size)
+                (mapped_region, size, None)
             }
             VmMemorySource::ExternalMapping { size } => {
                 let mem = map_request
@@ -331,9 +338,10 @@ impl VmMemorySource {
                     .ok_or_else(|| VmMemoryResponse::Err(SysError::new(EINVAL)))
                     .unwrap();
                 let mapped_region: Box<dyn MappedRegion> = Box::new(mem);
-                (mapped_region, size)
+                (mapped_region, size, None)
             }
-        })
+        };
+        Ok((mem_region, size, descriptor))
     }
 }
 
@@ -400,14 +408,16 @@ impl VmMemoryRequest {
         sys_allocator: &mut SystemAllocator,
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
         gralloc: &mut RutabagaGralloc,
+        iommu_host_tube: &Option<Tube>,
     ) -> VmMemoryResponse {
         use self::VmMemoryRequest::*;
         match self {
             RegisterMemory { source, dest, prot } => {
                 // Correct on Windows because callers of this IPC guarantee descriptor is a mapping
                 // handle.
-                let (mapped_region, size) = match source.map(map_request, gralloc, prot) {
-                    Ok(res) => res,
+                let (mapped_region, size, descriptor) = match source.map(map_request, gralloc, prot)
+                {
+                    Ok((region, size, descriptor)) => (region, size, descriptor),
                     Err(e) => return VmMemoryResponse::Err(e),
                 };
 
@@ -426,11 +436,50 @@ impl VmMemoryRequest {
                     Err(e) => return VmMemoryResponse::Err(e),
                 };
 
+                if let (Some(descriptor), Some(iommu_tube)) = (descriptor, iommu_host_tube) {
+                    let request =
+                        VirtioIOMMURequest::VfioCommand(VirtioIOMMUVfioCommand::VfioDmabufMap {
+                            mem_slot: slot,
+                            gfn: guest_addr.0 >> 12,
+                            size,
+                            dma_buf: descriptor,
+                        });
+
+                    match virtio_iommu_request(iommu_tube, &request) {
+                        Ok(VirtioIOMMUResponse::VfioResponse(VirtioIOMMUVfioResult::Ok)) => (),
+                        resp => {
+                            error!("Unexpected message response: {:?}", resp);
+                            // Ignore the result because there is nothing we can do with a failure.
+                            let _ = vm.remove_memory_region(slot);
+                            return VmMemoryResponse::Err(SysError::new(EINVAL));
+                        }
+                    }
+                }
+
                 let pfn = guest_addr.0 >> 12;
                 VmMemoryResponse::RegisterMemory { pfn, slot }
             }
             UnregisterMemory(slot) => match vm.remove_memory_region(slot) {
-                Ok(_) => VmMemoryResponse::Ok,
+                Ok(_) => {
+                    if let Some(iommu_tube) = iommu_host_tube {
+                        let request = VirtioIOMMURequest::VfioCommand(
+                            VirtioIOMMUVfioCommand::VfioDmabufUnmap(slot),
+                        );
+
+                        match virtio_iommu_request(iommu_tube, &request) {
+                            Ok(VirtioIOMMUResponse::VfioResponse(VirtioIOMMUVfioResult::Ok))
+                            | Ok(VirtioIOMMUResponse::VfioResponse(
+                                VirtioIOMMUVfioResult::NoSuchMappedDmabuf,
+                            )) => VmMemoryResponse::Ok,
+                            resp => {
+                                error!("Unexpected message response: {:?}", resp);
+                                return VmMemoryResponse::Err(SysError::new(EINVAL));
+                            }
+                        }
+                    } else {
+                        VmMemoryResponse::Ok
+                    }
+                }
                 Err(e) => VmMemoryResponse::Err(e),
             },
             DynamicallyFreeMemoryRange {
@@ -1252,6 +1301,15 @@ pub enum VirtioIOMMUVfioCommand {
     VfioDeviceDel {
         endpoint_addr: u32,
     },
+    // Map a dma-buf into vfio iommu table
+    VfioDmabufMap {
+        mem_slot: MemSlot,
+        gfn: u64,
+        size: u64,
+        dma_buf: SafeDescriptor,
+    },
+    // Unmap a dma-buf from vfio iommu table
+    VfioDmabufUnmap(MemSlot),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1260,6 +1318,8 @@ pub enum VirtioIOMMUVfioResult {
     NotInPCIRanges,
     NoAvailableContainer,
     NoSuchDevice,
+    NoSuchMappedDmabuf,
+    InvalidParam,
 }
 
 impl Display for VirtioIOMMUVfioResult {
@@ -1271,6 +1331,8 @@ impl Display for VirtioIOMMUVfioResult {
             NotInPCIRanges => write!(f, "not in the pci ranges of virtio-iommu"),
             NoAvailableContainer => write!(f, "no available vfio container"),
             NoSuchDevice => write!(f, "no such a vfio device"),
+            NoSuchMappedDmabuf => write!(f, "no such a mapped dmabuf"),
+            InvalidParam => write!(f, "invalid parameters"),
         }
     }
 }

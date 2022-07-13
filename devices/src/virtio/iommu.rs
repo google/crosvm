@@ -31,6 +31,8 @@ use base::warn;
 use base::AsRawDescriptor;
 use base::Error as SysError;
 use base::Event;
+use base::MappedRegion;
+use base::MemoryMapping;
 use base::Protection;
 use base::RawDescriptor;
 use base::Result as SysResult;
@@ -44,6 +46,7 @@ use data_model::DataInit;
 use data_model::Le64;
 use futures::select;
 use futures::FutureExt;
+use hypervisor::MemSlot;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;
@@ -168,6 +171,12 @@ pub enum IommuError {
 // value: reference counter and MemoryMapperTrait
 type DomainMap = BTreeMap<u32, (u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>)>;
 
+struct DmabufRegionEntry {
+    mmap: MemoryMapping,
+    mem_slot: MemSlot,
+    len: u64,
+}
+
 // Shared state for the virtio-iommu device.
 struct State {
     mem: GuestMemory,
@@ -186,6 +195,9 @@ struct State {
     // key: endpoint PCI address
     // value: reference counter and MemoryMapperTrait
     endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
+    // Contains dmabuf regions
+    // key: guest physical address
+    dmabuf_mem: BTreeMap<u64, DmabufRegionEntry>,
 }
 
 impl State {
@@ -393,15 +405,40 @@ impl State {
         if let Some(mapper) = self.domain_map.get(&domain) {
             let size = u64::from(req.virt_end) - u64::from(req.virt_start) + 1u64;
 
-            let vfio_map_result = mapper.1.lock().add_map(MappingInfo {
-                iova: req.virt_start.into(),
-                gpa: GuestAddress(req.phys_start.into()),
-                size,
-                prot: match write_en {
-                    true => Protection::read_write(),
-                    false => Protection::read(),
+            let dmabuf_map = self
+                .dmabuf_mem
+                .range(..=u64::from(req.phys_start))
+                .next_back()
+                .and_then(|(addr, region)| {
+                    if u64::from(req.phys_start) + size <= addr + region.len {
+                        Some(region.mmap.as_ptr() as u64 + (u64::from(req.phys_start) - addr))
+                    } else {
+                        None
+                    }
+                });
+
+            let prot = match write_en {
+                true => Protection::read_write(),
+                false => Protection::read(),
+            };
+
+            let vfio_map_result = match dmabuf_map {
+                // Safe because [dmabuf_map, dmabuf_map + size) refers to an external mmap'ed region.
+                Some(dmabuf_map) => unsafe {
+                    mapper.1.lock().vfio_dma_map(
+                        req.virt_start.into(),
+                        dmabuf_map as u64,
+                        size,
+                        prot,
+                    )
                 },
-            });
+                None => mapper.1.lock().add_map(MappingInfo {
+                    iova: req.virt_start.into(),
+                    gpa: GuestAddress(req.phys_start.into()),
+                    size,
+                    prot,
+                }),
+            };
 
             match vfio_map_result {
                 Ok(AddMapResult::Ok) => (),
@@ -837,6 +874,7 @@ impl VirtioDevice for Iommu {
                             endpoint_map: BTreeMap::new(),
                             domain_map: BTreeMap::new(),
                             endpoints: eps,
+                            dmabuf_mem: BTreeMap::new(),
                         };
                         let result = run(
                             state,

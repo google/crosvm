@@ -727,6 +727,7 @@ impl VirtioGpu {
                     descriptor: export.os_handle,
                     offset: 0,
                     size: resource.size,
+                    gpu_blob: true,
                 },
             }
         } else {

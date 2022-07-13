@@ -342,6 +342,7 @@ impl VhostUserMasterReqHandlerMut for BackendReqHandlerImpl {
                     .map_err(|_| std::io::Error::from_raw_os_error(libc::EIO))?,
                 offset: req.fd_offset,
                 size: req.len,
+                gpu_blob: false,
             },
             req.shm_offset,
             Protection::from(req.flags.bits() as libc::c_int),

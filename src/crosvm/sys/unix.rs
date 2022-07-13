@@ -2376,6 +2376,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             &mut sys_allocator,
                                             Arc::clone(&map_request),
                                             &mut gralloc,
+                                            &iommu_host_tube,
                                         );
                                         if let Err(e) = tube.send(&response) {
                                             error!("failed to send VmMemoryControlResponse: {}", e);
