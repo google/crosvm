@@ -45,6 +45,7 @@ recvfrom: 1
 recvmsg: 1
 recvmmsg_time64: 1
 restart_syscall: 1
+rseq: 1
 rt_sigaction: 1
 rt_sigprocmask: 1
 rt_sigreturn: 1
