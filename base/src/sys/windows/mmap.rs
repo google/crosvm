@@ -81,6 +81,12 @@ impl Protection {
         Protection(mmap_platform::PROT_READ)
     }
 
+    /// Returns Protection allowing write access.
+    #[inline(always)]
+    pub fn write() -> Protection {
+        Protection(mmap_platform::PROT_WRITE)
+    }
+
     /// Set read events.
     #[inline(always)]
     pub fn set_read(self) -> Protection {
@@ -91,6 +97,13 @@ impl Protection {
     #[inline(always)]
     pub fn set_write(self) -> Protection {
         Protection(self.0 | mmap_platform::PROT_WRITE)
+    }
+
+    /// Returns true if all access allowed by |other| is also allowed by |self|.
+    #[inline(always)]
+    pub fn allows(&self, other: &Protection) -> bool {
+        (self.0 & mmap_platform::PROT_READ) >= (other.0 & mmap_platform::PROT_READ)
+            && (self.0 & mmap_platform::PROT_WRITE) >= (other.0 & mmap_platform::PROT_WRITE)
     }
 }
 
