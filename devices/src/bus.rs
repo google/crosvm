@@ -17,6 +17,8 @@ use thiserror::Error;
 
 #[cfg(unix)]
 use crate::VfioPlatformDevice;
+#[cfg(feature = "stats")]
+use crate::{bus_stats::BusOperation, BusStatistics};
 use crate::{DeviceId, PciAddress, PciDevice};
 
 /// Information about how a device was accessed.
@@ -244,6 +246,13 @@ impl PartialOrd for BusRange {
 }
 
 #[derive(Clone)]
+struct BusEntry {
+    #[cfg(feature = "stats")]
+    index: usize,
+    device: BusDeviceEntry,
+}
+
+#[derive(Clone)]
 enum BusDeviceEntry {
     OuterSync(Arc<Mutex<dyn BusDevice>>),
     InnerSync(Arc<dyn BusDeviceSync>),
@@ -255,8 +264,10 @@ enum BusDeviceEntry {
 /// only restriction is that no two devices can overlap in this address space.
 #[derive(Clone)]
 pub struct Bus {
-    devices: Arc<Mutex<BTreeMap<BusRange, BusDeviceEntry>>>,
+    devices: Arc<Mutex<BTreeMap<BusRange, BusEntry>>>,
     access_id: usize,
+    #[cfg(feature = "stats")]
+    pub stats: Arc<Mutex<BusStatistics>>,
 }
 
 impl Bus {
@@ -265,6 +276,8 @@ impl Bus {
         Bus {
             devices: Arc::new(Mutex::new(BTreeMap::new())),
             access_id: 0,
+            #[cfg(feature = "stats")]
+            stats: Arc::new(Mutex::new(BusStatistics::new())),
         }
     }
 
@@ -273,20 +286,20 @@ impl Bus {
         self.access_id = id;
     }
 
-    fn first_before(&self, addr: u64) -> Option<(BusRange, BusDeviceEntry)> {
+    fn first_before(&self, addr: u64) -> Option<(BusRange, BusEntry)> {
         let devices = self.devices.lock();
-        let (range, dev) = devices
+        let (range, entry) = devices
             .range(..=BusRange { base: addr, len: 1 })
             .rev()
             .next()?;
-        Some((*range, dev.clone()))
+        Some((*range, entry.clone()))
     }
 
-    fn get_device(&self, addr: u64) -> Option<(u64, u64, BusDeviceEntry)> {
-        if let Some((range, dev)) = self.first_before(addr) {
+    fn get_device(&self, addr: u64) -> Option<(u64, u64, BusEntry)> {
+        if let Some((range, entry)) = self.first_before(addr) {
             let offset = addr - range.base;
             if offset < range.len {
-                return Some((offset, addr, dev));
+                return Some((offset, addr, entry));
             }
         }
         None
@@ -318,8 +331,22 @@ impl Bus {
             }
         })?;
 
+        #[cfg(feature = "stats")]
+        let name = device.lock().debug_label();
+        #[cfg(feature = "stats")]
+        let device_id = device.lock().device_id();
         if devices
-            .insert(BusRange { base, len }, BusDeviceEntry::OuterSync(device))
+            .insert(
+                BusRange { base, len },
+                BusEntry {
+                    #[cfg(feature = "stats")]
+                    index: self
+                        .stats
+                        .lock()
+                        .next_device_index(name, device_id.into(), base, len),
+                    device: BusDeviceEntry::OuterSync(device),
+                },
+            )
             .is_some()
         {
             return Err(Error::Overlap {
@@ -362,7 +389,19 @@ impl Bus {
         })?;
 
         if devices
-            .insert(BusRange { base, len }, BusDeviceEntry::InnerSync(device))
+            .insert(
+                BusRange { base, len },
+                BusEntry {
+                    #[cfg(feature = "stats")]
+                    index: self.stats.lock().next_device_index(
+                        device.debug_label(),
+                        device.device_id().into(),
+                        base,
+                        len,
+                    ),
+                    device: BusDeviceEntry::InnerSync(device),
+                },
+            )
             .is_some()
         {
             return Err(Error::Overlap {
@@ -407,40 +446,75 @@ impl Bus {
     ///
     /// Returns true on success, otherwise `data` is untouched.
     pub fn read(&self, addr: u64, data: &mut [u8]) -> bool {
-        if let Some((offset, address, dev)) = self.get_device(addr) {
+        #[cfg(feature = "stats")]
+        let start = self.stats.lock().start_stat();
+
+        let device_index = if let Some((offset, address, entry)) = self.get_device(addr) {
             let io = BusAccessInfo {
                 address,
                 offset,
                 id: self.access_id,
             };
-            match dev {
+
+            match &entry.device {
                 BusDeviceEntry::OuterSync(dev) => dev.lock().read(io, data),
                 BusDeviceEntry::InnerSync(dev) => dev.read(io, data),
             }
-            true
+            #[cfg(feature = "stats")]
+            let index = Some(entry.index);
+            #[cfg(not(feature = "stats"))]
+            let index = Some(());
+            index
         } else {
-            false
+            None
+        };
+
+        #[cfg(feature = "stats")]
+        if let Some(device_index) = device_index {
+            self.stats
+                .lock()
+                .end_stat(BusOperation::Write, start, device_index);
+            return true;
         }
+
+        device_index.is_some()
     }
 
     /// Writes `data` to the device that owns the range containing `addr`.
     ///
     /// Returns true on success, otherwise `data` is untouched.
     pub fn write(&self, addr: u64, data: &[u8]) -> bool {
-        if let Some((offset, address, dev)) = self.get_device(addr) {
+        #[cfg(feature = "stats")]
+        let start = self.stats.lock().start_stat();
+
+        let device_index = if let Some((offset, address, entry)) = self.get_device(addr) {
             let io = BusAccessInfo {
                 address,
                 offset,
                 id: self.access_id,
             };
-            match dev {
+
+            match &entry.device {
                 BusDeviceEntry::OuterSync(dev) => dev.lock().write(io, data),
                 BusDeviceEntry::InnerSync(dev) => dev.write(io, data),
             }
-            true
+
+            #[cfg(feature = "stats")]
+            let index = Some(entry.index);
+            #[cfg(not(feature = "stats"))]
+            let index = Some(());
+            index
         } else {
-            false
+            None
+        };
+
+        #[cfg(feature = "stats")]
+        if device_index.is_some() {
+            self.stats
+                .lock()
+                .end_stat(BusOperation::Write, start, device_index.clone().unwrap());
         }
+        device_index.is_some()
     }
 }
 

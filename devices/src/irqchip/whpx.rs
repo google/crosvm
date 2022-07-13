@@ -752,8 +752,8 @@ mod tests {
         }
         let mut chip = get_chip(1);
 
-        let mut mmio_bus = Bus::new();
-        let mut io_bus = Bus::new();
+        let mmio_bus = Bus::new();
+        let io_bus = Bus::new();
         let mut resources = SystemAllocator::new(
             SystemAllocatorConfig {
                 io: Some(AddressRange {
@@ -875,7 +875,7 @@ mod tests {
         }
         let mut chip = get_chip(1);
 
-        let mut mmio_bus = Bus::new();
+        let mmio_bus = Bus::new();
         let io_bus = Bus::new();
         let mut resources = SystemAllocator::new(
             SystemAllocatorConfig {

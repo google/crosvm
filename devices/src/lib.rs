@@ -9,6 +9,8 @@
 pub mod acpi;
 pub mod bat;
 mod bus;
+#[cfg(feature = "stats")]
+mod bus_stats;
 mod cmos;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod debugcon;
@@ -47,6 +49,8 @@ pub use self::bus::{
     Bus, BusAccessInfo, BusDevice, BusDeviceObj, BusDeviceSync, BusRange, BusResumeDevice, BusType,
     Error as BusError, HostHotPlugKey, HotPlugBus,
 };
+#[cfg(feature = "stats")]
+pub use self::bus_stats::BusStatistics;
 pub use self::cmos::Cmos;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use self::debugcon::Debugcon;
