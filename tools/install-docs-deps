@@ -13,6 +13,8 @@ set -ex
 # * protobuf-compiler: Generates Rust files in protos
 sudo apt install --yes --no-install-recommends \
      libcap-dev \
+     # libudev-dev is required to build the libva documentation.
+     libudev-dev \
      protobuf-compiler
 
 # The mdbook and mdbook-mermaid tools are used to build the crosvm book.
