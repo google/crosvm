@@ -12,7 +12,7 @@ crosvm is currently used to run Linux/Android guests on Chrome OS devices.
 - [Announcements](https://groups.google.com/a/chromium.org/g/crosvm-announce)
 - [Developer Mailing List](https://groups.google.com/a/chromium.org/g/crosvm-dev)
 - [#crosvm on matrix.org](https://matrix.to/#/#crosvm:matrix.org)
-- [Source code](https://chromium.googlesource.com/chromiumos/platform/crosvm/)
+- [Source code](https://chromium.googlesource.com/crosvm/crosvm/)
   - [API doc](https://google.github.io/crosvm/doc/crosvm/), useful for searching API.
   - For contribution, see [the contributor guide](https://google.github.io/crosvm/contributing/).
     Mirror repository is available at [GitHub](https://github.com/google/crosvm) for your

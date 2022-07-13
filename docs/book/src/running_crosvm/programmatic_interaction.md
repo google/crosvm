@@ -2,12 +2,12 @@
 
 ## Usage
 
-[`crosvm_control`](https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/crosvm_control/src/lib.rs)
+[`crosvm_control`](https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/crosvm_control/src/lib.rs)
 provides a programmatic way to interface with crosvm as a substitute to the CLI.
 
 The library itself is written in Rust, but a C/C++ compatible header (`crosvm_control.h`) is
 generated during the crosvm build and emitted to the Rust `OUT_DIR`.
-([See the `build.rs`](https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/crosvm_control/build.rs)
+([See the `build.rs`](https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/crosvm_control/build.rs)
 script for more information).
 
 The best practice for using `crosvm_control` from your project is to exclusively use the

@@ -8,7 +8,7 @@ as ChromeOS, please see [Integration](integration/index.md)
 Obtain the source code via git clone.
 
 ```sh
-git clone https://chromium.googlesource.com/chromiumos/platform/crosvm
+git clone https://chromium.googlesource.com/crosvm/crosvm
 ```
 
 ## Setting up the development environment

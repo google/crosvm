@@ -36,26 +36,26 @@ Here is a (non-comprehensive) list of emulated devices provided by crosvm.
   - [vmm side]: Shares its virtqueues.
   - [device side]: Consumes virtqueues.
 
-[device side]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/vhost/user/device/
+[device side]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/vhost/user/device/
 [vhost-user protocol]: https://qemu.readthedocs.io/en/latest/interop/vhost-user.html
-[vmm side]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/vhost/user/vmm/
+[vmm side]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/vhost/user/vmm/
 [`balloon`]: balloon.md
 [`block`]: block.md
-[`cmos/rtc`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/cmos.rs
-[`console`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/console.rs
-[`fs`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/fs/
-[`gpu`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/gpu/
-[`i8042`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/i8042.rs
-[`input`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/input/
-[`iommu`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/iommu.rs
+[`cmos/rtc`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/cmos.rs
+[`console`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/console.rs
+[`fs`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/fs/
+[`gpu`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/gpu/
+[`i8042`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/i8042.rs
+[`input`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/input/
+[`iommu`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/iommu.rs
 [`net`]: net.md
-[`p9`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/p9.rs
+[`p9`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/p9.rs
 [`pmem`]: pmem.md
-[`rng`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/rng.rs
-[`serial`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/serial.rs
-[`snd`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/snd/
-[`tpm`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/tpm.rs
+[`rng`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/rng.rs
+[`serial`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/serial.rs
+[`snd`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/snd/
+[`tpm`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/tpm.rs
 [`vhost-user`]: vhost_user.md
 [`video`]: video.md
-[`vsock`]: https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/devices/src/virtio/vhost/vsock.rs
+[`vsock`]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/vhost/vsock.rs
 [`wayland`]: wayland.md

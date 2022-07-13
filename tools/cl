@@ -40,7 +40,7 @@ create a new branch tracking origin/main and cherry-picks your commits.
 """
 
 GERRIT_URL = "https://chromium-review.googlesource.com"
-CROSVM_URL = "https://chromium.googlesource.com/chromiumos/platform/crosvm"
+CROSVM_URL = "https://chromium.googlesource.com/crosvm/crosvm"
 
 git = cmd("git")
 curl = cmd("curl --silent --fail")
@@ -77,9 +77,6 @@ def get_active_upstream():
 
 
 def prerequisites():
-    print("This tool is experimental and a work in progress, please use carefully.")
-    print()
-
     if not git("remote get-url origin").success():
         print("Setting up origin")
         git("remote add origin", CROSVM_URL).fg()
