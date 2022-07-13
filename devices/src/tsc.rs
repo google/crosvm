@@ -25,7 +25,7 @@ fn rdtsc_safe() -> u64 {
 }
 
 // Singleton for getting the state of the host TSCs, to avoid calibrating multiple times.
-static TSC_STATE: Lazy<Option<TscState>> = Lazy::new(|| match calibrate_tsc_state(rdtsc_safe) {
+static TSC_STATE: Lazy<Option<TscState>> = Lazy::new(|| match calibrate_tsc_state() {
     Ok(tsc_state) => {
         debug!("Using calibrated tsc frequency: {} Hz", tsc_state.frequency);
         for (core, offset) in tsc_state.offsets.iter().enumerate() {
@@ -134,7 +134,7 @@ fn tsc_sync_mitigations_inner(
                     //  same as using the future wrapping_add_signed function, which is only in
                     //  nightly. This should be switched to using wrapping_add_signed once that is
                     //  in stable.
-                    .wrapping_add(tsc_state.offsets[pinned_core].wrapping_neg() as i64 as u64),
+                    .wrapping_add(tsc_state.offsets[pinned_core].1.wrapping_neg() as i64 as u64),
             );
         }
     }
@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn test_sync_mitigation_set_offsets() {
-        let offsets = vec![0, 1000, -1000, 2000];
+        let offsets = vec![(0, 0), (1, 1000), (2, -1000), (3, 2000)];
         // frequency of 1GHz means 20 nanos is 20 ticks
         let state = TscState::new(1_000_000_000, offsets, Duration::from_nanos(20))
             .expect("TscState::new should not fail for this test");
@@ -216,7 +216,16 @@ mod tests {
     #[test]
     fn test_sync_mitigation_large_group() {
         // 8 cores, and cores 1,3,5,7 are in-sync at offset -1000
-        let offsets = vec![0, -1000, 1000, -1000, 2000, -1000, 3000, -1000];
+        let offsets = vec![
+            (0, 0),
+            (1, -1000),
+            (2, 1000),
+            (3, -1000),
+            (4, 2000),
+            (5, -1000),
+            (6, 3000),
+            (7, -1000),
+        ];
         // frequency of 1GHz means 20 nanos is 20 ticks
         let state = TscState::new(1_000_000_000, offsets, Duration::from_nanos(20))
             .expect("TscState::new should not fail for this test");
@@ -293,7 +302,7 @@ mod tests {
     fn more_vcpus_than_cores() {
         // 4 cores, two can be grouped but it doesn't matter because we'll have more vcpus than
         // the largest group.
-        let offsets = vec![0, 0, 1000, 2000];
+        let offsets = vec![(0, 0), (1, 0), (2, 1000), (3, 2000)];
         // frequency of 1GHz means 20 nanos is 20 ticks
         let state = TscState::new(1_000_000_000, offsets, Duration::from_nanos(20))
             .expect("TscState::new should not fail for this test");

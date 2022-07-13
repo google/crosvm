@@ -175,7 +175,7 @@ impl CoreGrouping {
 /// cannot be grouped with the existing groups, and thus we only care about the optimal existing
 /// groups.
 pub(super) fn group_core_offsets(
-    offsets: &[i128],
+    offsets: &[(usize, i128)],
     in_sync_threshold: Duration,
     tsc_frequency: u64,
 ) -> Result<CoreGrouping> {
@@ -189,9 +189,8 @@ pub(super) fn group_core_offsets(
 
     let mut cores: Vec<CoreOffset> = offsets
         .iter()
-        .enumerate()
         .map(|(i, offset)| CoreOffset {
-            core: i,
+            core: *i,
             offset: *offset,
         })
         .collect();
@@ -231,7 +230,7 @@ mod tests {
 
     #[test]
     fn test_simple_offset_grouping() {
-        let offsets = vec![10, 10, 10, 1000];
+        let offsets = vec![(0, 10), (1, 10), (2, 10), (3, 1000)];
         let state = TscState::new(1_000_000_000, offsets, Duration::from_nanos(1))
             .expect("TscState::new should not fail for this test");
 
@@ -273,7 +272,7 @@ mod tests {
         //  - [10, 20] [30, 40] [50] <--- we like to have core0 be in a larger group
         //  - [10] [20, 30] [40, 50]
         //  - [10, 20] [30] [40, 50]
-        let offsets = vec![10, 20, 30, 40, 50];
+        let offsets = vec![(0, 10), (1, 20), (2, 30), (3, 40), (4, 50)];
         let state = TscState::new(1_000_000_000, offsets, Duration::from_nanos(20))
             .expect("TscState::new should not fail for this test");
 
@@ -323,7 +322,7 @@ mod tests {
         // Worst case for the grouping algorithm, where if your algorithm isn't smart you can
         // generate 2^129 groupings, which would be too large for a Vec to hold. This test just
         // verifies that we don't crash or run out of memory.
-        let offsets = vec![0; 129];
+        let offsets = (0..129).map(|i| (i, 0)).collect();
         TscState::new(1_000_000_000, offsets, Duration::from_nanos(1))
             .expect("TscState::new should not fail for this test");
     }

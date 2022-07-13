@@ -3,12 +3,16 @@
 // found in the LICENSE file.
 
 use anyhow::{anyhow, bail, Context, Result};
-use base::set_cpu_affinity;
+use remain::sorted;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::time::{Duration, Instant};
+use thiserror::Error;
+
+use base::{set_cpu_affinity, warn};
 
 use super::grouping::*;
+use super::rdtsc_safe;
 
 const TSC_CALIBRATION_SAMPLES: usize = 10;
 const TSC_CALIBRATION_DURATION: Duration = Duration::from_millis(100);
@@ -17,6 +21,14 @@ const TSC_CALIBRATION_STANDARD_DEVIATION_LIMIT: f64 = 3.0;
 // We consider two TSC cores to be in sync if they are within 2 microseconds of each other.
 // An optimal context switch takes about 1-3 microseconds.
 const TSC_OFFSET_GROUPING_THRESHOLD: Duration = Duration::from_micros(2);
+
+#[sorted]
+#[derive(Error, Debug)]
+pub enum TscCalibrationError {
+    /// Received `err` when setting the cpu affinity to `core`
+    #[error("failed to set thread cpu affinity to core {core}: {err}")]
+    SetCpuAffinityError { core: usize, err: base::Error },
+}
 
 /// Get the standard deviation of a Vec<T>.
 pub fn standard_deviation<T: num_traits::ToPrimitive + num_traits::Num + Copy>(items: &[T]) -> f64 {
@@ -94,14 +106,14 @@ impl TscMoment {
 #[derive(Default, Debug, Clone)]
 pub struct TscState {
     pub frequency: u64,
-    pub offsets: Vec<i128>,
+    pub offsets: Vec<(usize, i128)>,
     pub core_grouping: CoreGrouping,
 }
 
 impl TscState {
     pub(crate) fn new(
         tsc_frequency: u64,
-        offsets: Vec<i128>,
+        offsets: Vec<(usize, i128)>,
         in_sync_threshold: Duration,
     ) -> Result<Self> {
         let core_grouping = group_core_offsets(&offsets, in_sync_threshold, tsc_frequency)
@@ -137,9 +149,9 @@ fn calibrate_tsc_frequency(
     num_samples: usize,
     calibration_duration: Duration,
     stdev_limit: f64,
-) -> Result<(i128, Vec<TscMoment>)> {
+) -> std::result::Result<(i128, Vec<TscMoment>), TscCalibrationError> {
     set_cpu_affinity(vec![core])
-        .context(format!("failed to set thread cpu affinity to [{}]", core))?;
+        .map_err(|e| TscCalibrationError::SetCpuAffinityError { core, err: e })?;
 
     let starts: Vec<TscMoment> = (0..num_samples).map(|_| TscMoment::now(rdtsc)).collect();
 
@@ -197,8 +209,9 @@ fn measure_tsc_offset(
     reference_moments: Vec<TscMoment>,
     num_samples: usize,
     stdev_limit: f64,
-) -> Result<i128> {
-    set_cpu_affinity(vec![core]).context("failed to set cpu affinity")?;
+) -> std::result::Result<i128, TscCalibrationError> {
+    set_cpu_affinity(vec![core])
+        .map_err(|e| TscCalibrationError::SetCpuAffinityError { core, err: e })?;
 
     let mut diffs: Vec<i128> = Vec::with_capacity(num_samples);
 
@@ -238,15 +251,28 @@ fn measure_tsc_offset(
 /// measurement thread for each core, which takes the TSC frequency and the Vec of TscMoments and
 /// measures whether or not the TSC values for that core are offset from core 0, and by how much.
 /// The frequency and the per-core offsets are returned as a TscState.
+pub fn calibrate_tsc_state() -> Result<TscState> {
+    calibrate_tsc_state_inner(
+        rdtsc_safe,
+        (0..base::number_of_logical_cores().context("Failed to get number of logical cores")?)
+            .collect(),
+    )
+}
+
+/// Actually calibrate the TSC state.
+///
+/// This function takes a customizable version of rdtsc and a specific set of cores to calibrate,
+/// which is helpful for testing calibration logic and error handling.
 ///
 /// # Arguments
 ///
 /// * `rdtsc` - Function for reading the TSC value, usually just runs RDTSC instruction.
-pub fn calibrate_tsc_state(rdtsc: fn() -> u64) -> Result<TscState> {
+/// * `cores` - Cores to measure the TSC offset of.
+fn calibrate_tsc_state_inner(rdtsc: fn() -> u64, cores: Vec<usize>) -> Result<TscState> {
     let handle = std::thread::spawn(move || {
         calibrate_tsc_frequency(
             rdtsc,
-            0, // calibrate on core 0
+            0, // calibrate on core 0. Core 0 should always be available.
             TSC_CALIBRATION_SAMPLES,
             TSC_CALIBRATION_DURATION,
             TSC_CALIBRATION_STANDARD_DEVIATION_LIMIT,
@@ -264,11 +290,8 @@ pub fn calibrate_tsc_state(rdtsc: fn() -> u64) -> Result<TscState> {
         freq as u64
     };
 
-    let num_cores =
-        base::number_of_logical_cores().context("Failed to get number of logical cores")?;
-
-    let mut offsets: Vec<i128> = Vec::with_capacity(num_cores);
-    for core in 0..num_cores {
+    let mut offsets: Vec<(usize, i128)> = Vec::with_capacity(cores.len());
+    for core in cores {
         let thread_reference_moments = reference_moments.clone();
         let handle = std::thread::spawn(move || {
             measure_tsc_offset(
@@ -279,16 +302,39 @@ pub fn calibrate_tsc_state(rdtsc: fn() -> u64) -> Result<TscState> {
                 TSC_CALIBRATION_SAMPLES,
                 TSC_CALIBRATION_STANDARD_DEVIATION_LIMIT,
             )
-            .context("Failed to measure tsc offset")
         });
-        let offset = handle.join().unwrap_or_else(|e| {
-            Err(anyhow!(
-                "TSC offset measurement thread for core {} failed: {:?}",
-                core,
-                e
-            ))
-        })?;
-        offsets.push(offset);
+        let offset = match handle.join() {
+            // thread succeeded
+            Ok(measurement_result) => match measurement_result {
+                Ok(offset) => Some(offset),
+                Err(TscCalibrationError::SetCpuAffinityError { core, err }) => {
+                    // There are several legitimate reasons why it might not be possible for crosvm
+                    // to run on some cores:
+                    //  1. Some cores may be offline.
+                    //  2. On Windows, the process affinity mask may not contain all cores.
+                    //
+                    // We thus just warn in this situation.
+                    warn!(
+                        "Failed to set thread affinity to {} during tsc offset measurement due \
+                        to {}. This core is probably offline.",
+                        core, err
+                    );
+                    None
+                }
+            },
+            // thread failed
+            Err(e) => {
+                return Err(anyhow!(
+                    "TSC offset measurement thread for core {} failed: {:?}",
+                    core,
+                    e
+                ));
+            }
+        };
+
+        if let Some(offset) = offset {
+            offsets.push((core, offset));
+        }
     }
 
     TscState::new(freq as u64, offsets, TSC_OFFSET_GROUPING_THRESHOLD)
@@ -303,15 +349,39 @@ mod tests {
     const ACCEPTABLE_OFFSET_MEASUREMENT_ERROR: i128 = 2_000i128;
 
     #[test]
+    fn test_handle_offline_core() {
+        // This test imitates what would happen if a core is offline, and set_cpu_affinity fails.
+        // The calibration should not fail, and the extra core should not appear in the list of
+        // offsets.
+
+        let num_cores =
+            base::number_of_logical_cores().expect("number of logical cores should not fail");
+
+        let too_may_cores = num_cores + 2;
+        let host_state = calibrate_tsc_state_inner(rdtsc_safe, (0..too_may_cores).collect())
+            .expect("calibrate tsc state should not fail");
+
+        // First assert that the number of offsets measured is at most num_cores (it might be
+        // less if the current host has some offline cores).
+        assert!(host_state.offsets.len() <= num_cores);
+
+        for (core, _) in host_state.offsets {
+            // Assert that all offsets that we have are for cores 0..num_cores.
+            assert!(core < num_cores);
+        }
+    }
+
+    #[test]
     fn test_frequency_higher_than_u32() {
         // This test is making sure that we're not truncating our TSC frequencies in the case that
         // they are greater than u32::MAX.
 
-        fn rdtsc_safe() -> u64 {
-            // Safe because rdtsc takes no arguments
-            unsafe { _rdtsc() }
-        }
-        let host_state = calibrate_tsc_state(rdtsc_safe).expect("failed to calibrate host freq");
+        let host_state = calibrate_tsc_state_inner(
+            rdtsc_safe,
+            (0..base::number_of_logical_cores().expect("number of logical cores should not fail"))
+                .collect(),
+        )
+        .expect("failed to calibrate host freq");
 
         // We use a static multiplier of 1000 here because the function has to be static (fn).
         // 1000 should work for tsc frequency > 4.2MHz, which should apply to basically any
@@ -324,7 +394,12 @@ mod tests {
             unsafe { _rdtsc() }.wrapping_mul(1000)
         }
 
-        let state = calibrate_tsc_state(rdtsc_frequency_higher_than_u32).unwrap();
+        let state = calibrate_tsc_state_inner(
+            rdtsc_frequency_higher_than_u32,
+            (0..base::number_of_logical_cores().expect("number of logical cores should not fail"))
+                .collect(),
+        )
+        .unwrap();
 
         let expected_freq = host_state.frequency * 1000;
         let margin_of_error = expected_freq / 100;
@@ -352,7 +427,12 @@ mod tests {
             return;
         }
 
-        let state = calibrate_tsc_state(rdtsc_with_core_0_offset_by_100_000).unwrap();
+        let state = calibrate_tsc_state_inner(
+            rdtsc_with_core_0_offset_by_100_000,
+            (0..base::number_of_logical_cores().expect("number of logical cores should not fail"))
+                .collect(),
+        )
+        .unwrap();
 
         for core in 0..num_cores {
             let expected_offset_ns = if core > 0 {
@@ -360,8 +440,12 @@ mod tests {
             } else {
                 0i128
             };
-            assert!(state.offsets[core] < expected_offset_ns + ACCEPTABLE_OFFSET_MEASUREMENT_ERROR);
-            assert!(state.offsets[core] > expected_offset_ns - ACCEPTABLE_OFFSET_MEASUREMENT_ERROR);
+            assert!(
+                state.offsets[core].1 < expected_offset_ns + ACCEPTABLE_OFFSET_MEASUREMENT_ERROR
+            );
+            assert!(
+                state.offsets[core].1 > expected_offset_ns - ACCEPTABLE_OFFSET_MEASUREMENT_ERROR
+            );
         }
     }
 
@@ -385,7 +469,12 @@ mod tests {
             return;
         }
 
-        let state = calibrate_tsc_state(rdtsc_with_core_1_offset_by_100_000).unwrap();
+        let state = calibrate_tsc_state_inner(
+            rdtsc_with_core_1_offset_by_100_000,
+            (0..base::number_of_logical_cores().expect("number of logical cores should not fail"))
+                .collect(),
+        )
+        .unwrap();
 
         for core in 0..num_cores {
             let expected_offset_ns = if core == 1 {
@@ -393,8 +482,12 @@ mod tests {
             } else {
                 0i128
             };
-            assert!(state.offsets[core] < expected_offset_ns + ACCEPTABLE_OFFSET_MEASUREMENT_ERROR);
-            assert!(state.offsets[core] > expected_offset_ns - ACCEPTABLE_OFFSET_MEASUREMENT_ERROR);
+            assert!(
+                state.offsets[core].1 < expected_offset_ns + ACCEPTABLE_OFFSET_MEASUREMENT_ERROR
+            );
+            assert!(
+                state.offsets[core].1 > expected_offset_ns - ACCEPTABLE_OFFSET_MEASUREMENT_ERROR
+            );
         }
     }
 }
