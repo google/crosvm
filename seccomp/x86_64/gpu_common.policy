@@ -4,6 +4,10 @@
 
 # Rules from common_device.policy with some rules removed because they block certain flags needed
 # for gpu.
+
+# rseq should be first due to frequency and purpose to decrease nptl latency
+rseq: 1
+
 brk: 1
 clock_gettime: 1
 close: 1

@@ -3,6 +3,10 @@
 # found in the LICENSE file.
 
 @frequency ./common_device.frequency
+
+# rseq should be first due to frequency and purpose to decrease nptl latency
+rseq: 1
+
 brk: 1
 clock_gettime: 1
 clone: arg0 & CLONE_THREAD
