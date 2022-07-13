@@ -10,9 +10,7 @@ use std::{
     slice::{from_raw_parts, from_raw_parts_mut},
 };
 
-use libc::{
-    c_uint, c_void, {self},
-};
+use libc::{self, c_int, c_uint, c_void};
 
 use win_util::{allocation_granularity, get_high_order, get_low_order};
 use winapi::um::memoryapi::{
@@ -23,9 +21,9 @@ use super::{mmap::Error, mmap::Result, MappedRegion, MemoryMapping, Protection, 
 use crate::descriptor::AsRawDescriptor;
 use crate::warn;
 
-pub(super) const PROT_NONE: c_uint = 0;
-pub(super) const PROT_READ: c_uint = FILE_MAP_READ;
-pub(super) const PROT_WRITE: c_uint = FILE_MAP_WRITE;
+pub(super) const PROT_NONE: c_int = 0;
+pub(super) const PROT_READ: c_int = FILE_MAP_READ as c_int;
+pub(super) const PROT_WRITE: c_int = FILE_MAP_WRITE as c_int;
 
 impl MemoryMapping {
     /// Creates an anonymous shared mapping of `size` bytes with `prot` protection.

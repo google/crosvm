@@ -58,7 +58,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Memory access type for anonymous shared memory mapping.
 #[derive(Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Protection(c_uint);
+pub struct Protection(c_int);
 
 impl Protection {
     /// Returns Protection allowing no access. Note that on Windows this is not a
@@ -109,7 +109,7 @@ impl Protection {
 
 impl From<c_uint> for Protection {
     fn from(f: c_uint) -> Self {
-        Protection(f)
+        Protection(f as c_int)
     }
 }
 
@@ -121,13 +121,13 @@ impl From<Protection> for c_uint {
 
 impl From<c_int> for Protection {
     fn from(f: c_int) -> Self {
-        Protection(f as c_uint)
+        Protection(f)
     }
 }
 
 impl From<Protection> for c_int {
     fn from(p: Protection) -> c_int {
-        p.0 as c_int
+        p.0
     }
 }
 
