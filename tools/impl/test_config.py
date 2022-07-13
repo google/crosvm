@@ -85,6 +85,7 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
     "crosvm-fuzz": [TestOption.DO_NOT_BUILD],  # b/194499769
     "devices": [
         TestOption.SINGLE_THREADED,
+        TestOption.RUN_EXCLUSIVE,
         TestOption.LARGE,
         TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
         TestOption.DO_NOT_RUN_ARMHF,
