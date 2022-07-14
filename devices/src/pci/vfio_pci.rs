@@ -587,6 +587,9 @@ pub struct VfioPciDevice {
     header_type_reg: Option<u32>,
     // PCI Express Extended Capabilities
     ext_caps: Vec<ExtCap>,
+    #[cfg(feature = "direct")]
+    #[allow(dead_code)]
+    is_intel_lpss: bool,
     mapped_mmio_bars: BTreeMap<PciBarIndex, (u64, Vec<MemSlot>)>,
 }
 
@@ -602,6 +605,7 @@ impl VfioPciDevice {
         vfio_device_socket_msix: Tube,
         vfio_device_socket_mem: Tube,
         vfio_device_socket_vm: Option<Tube>,
+        #[cfg(feature = "direct")] is_intel_lpss: bool,
     ) -> Result<Self, PciDeviceError> {
         let preferred_address = if let Some(bus_num) = hotplug_bus_number {
             debug!("hotplug bus {}", bus_num);
@@ -766,6 +770,8 @@ impl VfioPciDevice {
             #[cfg(feature = "direct")]
             header_type_reg,
             ext_caps,
+            #[cfg(feature = "direct")]
+            is_intel_lpss,
             mapped_mmio_bars: BTreeMap::new(),
         })
     }

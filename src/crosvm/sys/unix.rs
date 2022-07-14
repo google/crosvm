@@ -687,6 +687,8 @@ fn create_devices(
                 vfio_dev.guest_address(),
                 Some(&mut coiommu_attached_endpoints),
                 vfio_dev.iommu_dev_type(),
+                #[cfg(feature = "direct")]
+                vfio_dev.is_intel_lpss(),
             )?;
 
             *iova_max_addr = Some(max(
@@ -1915,6 +1917,8 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
                 } else {
                     IommuDevType::NoIommu
                 },
+                #[cfg(feature = "direct")]
+                false,
             )?;
             let pci_address = Arch::register_pci_device(
                 linux,

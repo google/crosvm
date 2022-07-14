@@ -1433,6 +1433,7 @@ pub fn create_vfio_device(
     guest_address: Option<PciAddress>,
     coiommu_endpoints: Option<&mut Vec<u16>>,
     iommu_dev: IommuDevType,
+    #[cfg(feature = "direct")] is_intel_lpss: bool,
 ) -> DeviceResult<(Box<VfioPciDevice>, Option<Minijail>, Option<VfioWrapper>)> {
     let vfio_container = VfioCommonSetup::vfio_get_container(iommu_dev, Some(vfio_path))
         .context("failed to get vfio container")?;
@@ -1476,6 +1477,8 @@ pub fn create_vfio_device(
         vfio_device_tube_msix,
         vfio_device_tube_mem,
         vfio_device_tube_vm,
+        #[cfg(feature = "direct")]
+        is_intel_lpss,
     )?);
     // early reservation for pass-through PCI devices.
     let endpoint_addr = vfio_pci_device

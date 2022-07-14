@@ -280,6 +280,17 @@ impl VfioCommand {
                     ))
                 }
             }
+            #[cfg(feature = "direct")]
+            "intel-lpss" => {
+                if value.parse::<bool>().is_ok() {
+                    Ok(())
+                } else {
+                    Err(invalid_value_err(
+                        format!("{}={}", kind, value),
+                        "option must be `intel-lpss=true|false`",
+                    ))
+                }
+            }
             _ => Err(invalid_value_err(
                 format!("{}={}", kind, value),
                 "option must be `guest-address=<val>` and/or `iommu=<val>`",
@@ -304,6 +315,14 @@ impl VfioCommand {
             }
         }
         IommuDevType::NoIommu
+    }
+
+    #[cfg(feature = "direct")]
+    pub fn is_intel_lpss(&self) -> bool {
+        if let Some(lpss) = self.params.get("intel-lpss") {
+            return lpss.parse::<bool>().unwrap_or(false);
+        }
+        false
     }
 }
 
