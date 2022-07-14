@@ -232,11 +232,16 @@ impl KvmVcpu {
         Ok(VcpuExit::SystemEventReset)
     }
 
-    fn set_one_kvm_reg(&self, kvm_reg_id: KvmVcpuRegister, data: u64) -> Result<()> {
-        let data_ref = &data as *const u64;
+    fn set_one_kvm_reg_u64(&self, kvm_reg_id: KvmVcpuRegister, data: u64) -> Result<()> {
+        self.set_one_kvm_reg(kvm_reg_id, data.to_ne_bytes().as_slice())
+    }
+
+    fn set_one_kvm_reg(&self, kvm_reg_id: KvmVcpuRegister, data: &[u8]) -> Result<()> {
         let onereg = kvm_one_reg {
             id: kvm_reg_id.0,
-            addr: data_ref as u64,
+            addr: (data.as_ptr() as usize)
+                .try_into()
+                .expect("can't represent usize as u64"),
         };
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
@@ -248,20 +253,27 @@ impl KvmVcpu {
         }
     }
 
-    fn get_one_kvm_reg(&self, kvm_reg_id: KvmVcpuRegister) -> Result<u64> {
-        let mut val: u64 = 0;
+    fn get_one_kvm_reg_u64(&self, kvm_reg_id: KvmVcpuRegister) -> Result<u64> {
+        let mut bytes = 0u64.to_ne_bytes();
+        self.get_one_kvm_reg(kvm_reg_id, bytes.as_mut_slice())?;
+        Ok(u64::from_ne_bytes(bytes))
+    }
+
+    fn get_one_kvm_reg(&self, kvm_reg_id: KvmVcpuRegister, data: &mut [u8]) -> Result<()> {
         let onereg = kvm_one_reg {
             id: kvm_reg_id.0,
-            addr: (&mut val as *mut u64) as u64,
+            addr: (data.as_mut_ptr() as usize)
+                .try_into()
+                .expect("can't represent usize as u64"),
         };
 
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
         let ret = unsafe { ioctl_with_ref(self, KVM_GET_ONE_REG(), &onereg) };
         if ret == 0 {
-            Ok(val)
+            Ok(())
         } else {
-            return errno_result();
+            errno_result()
         }
     }
 }
@@ -435,20 +447,20 @@ impl VcpuAArch64 for KvmVcpu {
     }
 
     fn set_one_reg(&self, reg_id: VcpuRegAArch64, data: u64) -> Result<()> {
-        self.set_one_kvm_reg(KvmVcpuRegister::from(reg_id), data)
+        self.set_one_kvm_reg_u64(KvmVcpuRegister::from(reg_id), data)
     }
 
     fn get_one_reg(&self, reg_id: VcpuRegAArch64) -> Result<u64> {
-        self.get_one_kvm_reg(KvmVcpuRegister::from(reg_id))
+        self.get_one_kvm_reg_u64(KvmVcpuRegister::from(reg_id))
     }
 
     fn get_psci_version(&self) -> Result<PsciVersion> {
         // The definition of KVM_REG_ARM_PSCI_VERSION is in arch/arm64/include/uapi/asm/kvm.h.
         const KVM_REG_ARM_PSCI_VERSION: u64 =
             KVM_REG_ARM64 | (KVM_REG_SIZE_U64 as u64) | (KVM_REG_ARM_FW as u64);
+        const PSCI_VERSION: KvmVcpuRegister = KvmVcpuRegister(KVM_REG_ARM_PSCI_VERSION);
 
-        let version = if let Ok(v) = self.get_one_kvm_reg(KvmVcpuRegister(KVM_REG_ARM_PSCI_VERSION))
-        {
+        let version = if let Ok(v) = self.get_one_kvm_reg_u64(PSCI_VERSION) {
             let v = u32::try_from(v).map_err(|_| Error::new(EINVAL))?;
             PsciVersion::try_from(v)?
         } else {
