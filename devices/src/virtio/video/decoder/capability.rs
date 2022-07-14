@@ -48,13 +48,11 @@ impl Capability {
         match *t {
             Profile(fmt) => {
                 let profiles = self.profiles.get(&fmt)?;
-                Some(QueryCtrlResponse::Profile(
-                    profiles.iter().copied().collect(),
-                ))
+                Some(QueryCtrlResponse::Profile(profiles.to_vec()))
             }
             Level(fmt) => {
                 let levels = self.levels.get(&fmt)?;
-                Some(QueryCtrlResponse::Level(levels.iter().copied().collect()))
+                Some(QueryCtrlResponse::Level(levels.to_vec()))
             }
         }
     }
