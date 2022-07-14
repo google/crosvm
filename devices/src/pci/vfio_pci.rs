@@ -974,25 +974,11 @@ impl VfioPciDevice {
         }
     }
 
-    fn add_bar_mmap_msix(
+    fn adjust_bar_mmap(
         &self,
-        bar_index: u32,
         bar_mmaps: Vec<vfio_region_sparse_mmap_area>,
+        remove_mmaps: &[AddressRange],
     ) -> Vec<vfio_region_sparse_mmap_area> {
-        let msix_cap = &self.msix_cap.as_ref().unwrap().lock();
-        let mut msix_mmaps = Vec::new();
-
-        if let Some(t) = msix_cap.get_msix_table(bar_index) {
-            msix_mmaps.push(t);
-        }
-        if let Some(p) = msix_cap.get_msix_pba(bar_index) {
-            msix_mmaps.push(p);
-        }
-
-        if msix_mmaps.is_empty() {
-            return bar_mmaps;
-        }
-
         let mut mmaps: Vec<vfio_region_sparse_mmap_area> = Vec::with_capacity(bar_mmaps.len());
         let pgmask = (pagesize() as u64) - 1;
 
@@ -1007,16 +993,16 @@ impl VfioPciDevice {
             let mut to_mmap = match VfioResourceAllocator::new(mmap_range) {
                 Ok(a) => a,
                 Err(e) => {
-                    error!("{} add_bar_mmap_msix failed: {}", self.debug_label(), e);
+                    error!("{} adjust_bar_mmap failed: {}", self.debug_label(), e);
                     mmaps.clear();
                     return mmaps;
                 }
             };
 
-            // table/pba offsets are qword-aligned - align to page size
-            for &(mut remove_range) in msix_mmaps.iter() {
+            for &(mut remove_range) in remove_mmaps.iter() {
                 remove_range = remove_range.intersect(mmap_range);
                 if !remove_range.is_empty() {
+                    // align offsets to page size
                     let begin = remove_range.start & !pgmask;
                     let end = ((remove_range.end + 1 + pgmask) & !pgmask) - 1;
                     let remove_range = AddressRange::from_start_and_end(begin, end);
@@ -1037,6 +1023,28 @@ impl VfioPciDevice {
         mmaps
     }
 
+    fn remove_bar_mmap_msix(
+        &self,
+        bar_index: u32,
+        bar_mmaps: Vec<vfio_region_sparse_mmap_area>,
+    ) -> Vec<vfio_region_sparse_mmap_area> {
+        let msix_cap = &self.msix_cap.as_ref().unwrap().lock();
+        let mut msix_regions = Vec::new();
+
+        if let Some(t) = msix_cap.get_msix_table(bar_index) {
+            msix_regions.push(t);
+        }
+        if let Some(p) = msix_cap.get_msix_pba(bar_index) {
+            msix_regions.push(p);
+        }
+
+        if msix_regions.is_empty() {
+            return bar_mmaps;
+        }
+
+        self.adjust_bar_mmap(bar_mmaps, &msix_regions)
+    }
+
     fn add_bar_mmap(&self, index: u32, bar_addr: u64) -> Vec<MemSlot> {
         let mut mmaps_slots: Vec<MemSlot> = Vec::new();
         if self.device.get_region_flags(index) & VFIO_REGION_INFO_FLAG_MMAP != 0 {
@@ -1045,7 +1053,7 @@ impl VfioPciDevice {
             let mut mmaps = self.device.get_region_mmap(index);
 
             if self.msix_cap.is_some() {
-                mmaps = self.add_bar_mmap_msix(index, mmaps);
+                mmaps = self.remove_bar_mmap_msix(index, mmaps);
             }
             if mmaps.is_empty() {
                 return mmaps_slots;
