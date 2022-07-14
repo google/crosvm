@@ -20,7 +20,7 @@ use base::{
     error, pagesize, warn, AsRawDescriptor, AsRawDescriptors, Event, EventToken, Protection,
     RawDescriptor, Tube, WaitContext,
 };
-use hypervisor::{Datamatch, MemSlot};
+use hypervisor::MemSlot;
 
 use resources::{Alloc, MmioType, SystemAllocator};
 
@@ -1547,10 +1547,6 @@ impl PciDevice for VfioPciDevice {
 
     fn register_device_capabilities(&mut self) -> Result<(), PciDeviceError> {
         Ok(())
-    }
-
-    fn ioevents(&self) -> Vec<(&Event, u64, Datamatch)> {
-        Vec::new()
     }
 
     fn read_config_register(&self, reg_idx: usize) -> u32 {

@@ -12,8 +12,7 @@ use crate::pci::{
     PciDeviceError, PciHeaderType, PCI_VENDOR_ID_INTEL,
 };
 use crate::PciInterruptPin;
-use base::{warn, AsRawDescriptors, Event, RawDescriptor, Tube};
-use hypervisor::Datamatch;
+use base::{warn, AsRawDescriptors, RawDescriptor, Tube};
 use resources::{Alloc, MmioType, SystemAllocator};
 
 use crate::pci::pcie::pcie_device::PcieDevice;
@@ -281,10 +280,6 @@ impl PciDevice for PciBridge {
         }
 
         Ok(())
-    }
-
-    fn ioevents(&self) -> Vec<(&Event, u64, Datamatch)> {
-        Vec::new()
     }
 
     fn read_config_register(&self, reg_idx: usize) -> u32 {
