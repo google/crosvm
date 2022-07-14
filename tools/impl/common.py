@@ -26,7 +26,11 @@ def ensure_package_exists(package: str):
     try:
         __import__(package)
     except ImportError:
-        print("Missing the python package argh. Do you want to install? [y/N]")
+        print(
+            f"Missing the python package {package}. Do you want to install? [y/N] ",
+            end="",
+            flush=True,
+        )
         response = sys.stdin.readline()
         if response[:1].lower() == "y":
             subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", package])
