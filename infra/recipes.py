@@ -2,6 +2,7 @@
 # Copyright 2019 The LUCI Authors. All rights reserved.
 # Use of this source code is governed under the Apache License, Version 2.0
 # that can be found in the LICENSE file.
+
 # We want to run python in unbuffered mode; however shebangs on linux grab the
 # entire rest of the shebang line as a single argument, leading to errors like:
 #
@@ -13,12 +14,15 @@
 ''''exec python3 -u -- "$0" ${1+"$@"} # '''
 # vi: syntax=python
 """Bootstrap script to clone and forward to the recipe engine tool.
+
 *******************
 ** DO NOT MODIFY **
 *******************
+
 This is a copy of https://chromium.googlesource.com/infra/luci/recipes-py/+/main/recipes.py.
 To fix bugs, fix in the googlesource repo then run the autoroller.
 """
+
 # pylint: disable=wrong-import-position
 import argparse
 import errno
@@ -27,12 +31,15 @@ import logging
 import os
 import subprocess
 import sys
+
 from collections import namedtuple
 from io import open  # pylint: disable=redefined-builtin
+
 try:
   import urllib.parse as urlparse
 except ImportError:
   import urlparse
+
 # The dependency entry for the recipe_engine in the client repo's recipes.cfg
 #
 # url (str) - the url to the engine repo we want to use.
@@ -40,16 +47,23 @@ except ImportError:
 # branch (str) - the branch to fetch for the engine as an absolute ref (e.g.
 #   refs/heads/main)
 EngineDep = namedtuple('EngineDep', 'url revision branch')
+
+
 class MalformedRecipesCfg(Exception):
+
   def __init__(self, msg, path):
     full_message = 'malformed recipes.cfg: %s: %r' % (msg, path)
     super(MalformedRecipesCfg, self).__init__(full_message)
+
+
 def parse(repo_root, recipes_cfg_path):
   """Parse is a lightweight a recipes.cfg file parser.
+
   Args:
     repo_root (str) - native path to the root of the repo we're trying to run
       recipes for.
     recipes_cfg_path (str) - native path to the recipes.cfg file to process.
+
   Returns (as tuple):
     engine_dep (EngineDep|None): The recipe_engine dependency, or None, if the
       current repo IS the recipe_engine.
@@ -59,10 +73,12 @@ def parse(repo_root, recipes_cfg_path):
   """
   with open(recipes_cfg_path, 'r') as fh:
     pb = json.load(fh)
+
   try:
     if pb['api_version'] != 2:
       raise MalformedRecipesCfg('unknown version %d' % pb['api_version'],
                                 recipes_cfg_path)
+
     # If we're running ./recipes.py from the recipe_engine repo itself, then
     # return None to signal that there's no EngineDep.
     repo_name = pb.get('repo_name')
@@ -70,23 +86,31 @@ def parse(repo_root, recipes_cfg_path):
       repo_name = pb['project_id']
     if repo_name == 'recipe_engine':
       return None, pb.get('recipes_path', '')
+
     engine = pb['deps']['recipe_engine']
+
     if 'url' not in engine:
       raise MalformedRecipesCfg(
           'Required field "url" in dependency "recipe_engine" not found',
           recipes_cfg_path)
+
     engine.setdefault('revision', '')
     engine.setdefault('branch', 'refs/heads/main')
     recipes_path = pb.get('recipes_path', '')
+
     # TODO(iannucci): only support absolute refs
     if not engine['branch'].startswith('refs/'):
       engine['branch'] = 'refs/heads/' + engine['branch']
+
     recipes_path = os.path.join(repo_root,
                                 recipes_path.replace('/', os.path.sep))
     return EngineDep(**engine), recipes_path
   except KeyError as ex:
     raise MalformedRecipesCfg(str(ex), recipes_cfg_path)
+
+
 IS_WIN = sys.platform.startswith(('win', 'cygwin'))
+
 _BAT = '.bat' if IS_WIN else ''
 GIT = 'git' + _BAT
 VPYTHON = ('vpython' +
@@ -94,8 +118,12 @@ VPYTHON = ('vpython' +
            _BAT)
 CIPD = 'cipd' + _BAT
 REQUIRED_BINARIES = {GIT, VPYTHON, CIPD}
+
+
 def _is_executable(path):
   return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
 # TODO: Use shutil.which once we switch to Python3.
 def _is_on_path(basename):
   for path in os.environ['PATH'].split(os.pathsep):
@@ -103,17 +131,25 @@ def _is_on_path(basename):
     if _is_executable(full_path):
       return True
   return False
+
+
 def _subprocess_call(argv, **kwargs):
   logging.info('Running %r', argv)
   return subprocess.call(argv, **kwargs)
+
+
 def _git_check_call(argv, **kwargs):
   argv = [GIT] + argv
   logging.info('Running %r', argv)
   subprocess.check_call(argv, **kwargs)
+
+
 def _git_output(argv, **kwargs):
   argv = [GIT] + argv
   logging.info('Running %r', argv)
   return subprocess.check_output(argv, **kwargs)
+
+
 def parse_args(argv):
   """This extracts a subset of the arguments that this bootstrap script cares
   about. Currently this consists of:
@@ -121,6 +157,7 @@ def parse_args(argv):
     * the --package option.
   """
   PREFIX = 'recipe_engine='
+
   p = argparse.ArgumentParser(add_help=False)
   p.add_argument('-O', '--project-override', action='append')
   p.add_argument('--package', type=os.path.abspath)
@@ -129,22 +166,30 @@ def parse_args(argv):
     if override.startswith(PREFIX):
       return override[len(PREFIX):], args.package
   return None, args.package
+
+
 def checkout_engine(engine_path, repo_root, recipes_cfg_path):
   dep, recipes_path = parse(repo_root, recipes_cfg_path)
   if dep is None:
     # we're running from the engine repo already!
     return os.path.join(repo_root, recipes_path)
+
   url = dep.url
+
   if not engine_path and url.startswith('file://'):
     engine_path = urlparse.urlparse(url).path
+
   if not engine_path:
     revision = dep.revision
     branch = dep.branch
+
     # Ensure that we have the recipe engine cloned.
     engine_path = os.path.join(recipes_path, '.recipe_deps', 'recipe_engine')
+
     with open(os.devnull, 'w') as NUL:
       # Note: this logic mirrors the logic in recipe_engine/fetch.py
       _git_check_call(['init', engine_path], stdout=NUL)
+
       try:
         _git_check_call(['rev-parse', '--verify',
                          '%s^{commit}' % revision],
@@ -155,6 +200,7 @@ def checkout_engine(engine_path, repo_root, recipes_cfg_path):
         _git_check_call(['fetch', '--quiet', url, branch],
                         cwd=engine_path,
                         stdout=NUL)
+
     try:
       _git_check_call(['diff', '--quiet', revision], cwd=engine_path)
     except subprocess.CalledProcessError:
@@ -166,18 +212,25 @@ def checkout_engine(engine_path, repo_root, recipes_cfg_path):
           logging.warn('failed to remove %r, reset will fail: %s', index_lock,
                        exc)
       _git_check_call(['reset', '-q', '--hard', revision], cwd=engine_path)
+
     # If the engine has refactored/moved modules we need to clean all .pyc files
     # or things will get squirrely.
     _git_check_call(['clean', '-qxf'], cwd=engine_path)
+
   return engine_path
+
+
 def main():
   for required_binary in REQUIRED_BINARIES:
     if not _is_on_path(required_binary):
       return 'Required binary is not found on PATH: %s' % required_binary
+
   if '--verbose' in sys.argv:
     logging.getLogger().setLevel(logging.INFO)
+
   args = sys.argv[1:]
   engine_override, recipes_cfg_path = parse_args(args)
+
   if recipes_cfg_path:
     # calculate repo_root from recipes_cfg_path
     repo_root = os.path.dirname(
@@ -191,9 +244,11 @@ def main():
     recipes_cfg_path = os.path.join(repo_root, 'infra', 'config', 'recipes.cfg')
     args = ['--package', recipes_cfg_path] + args
   engine_path = checkout_engine(engine_override, repo_root, recipes_cfg_path)
+
   argv = (
       [VPYTHON, '-u',
        os.path.join(engine_path, 'recipe_engine', 'main.py')] + args)
+
   if IS_WIN:
     # No real 'exec' on windows; set these signals to ignore so that they
     # propagate to our children but we still wait for the child process to quit.
@@ -204,5 +259,7 @@ def main():
     return _subprocess_call(argv)
   else:
     os.execvp(argv[0], argv)
+
+
 if __name__ == '__main__':
   sys.exit(main())
