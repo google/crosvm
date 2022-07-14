@@ -35,7 +35,7 @@ pub fn standard_deviation<T: num_traits::ToPrimitive + num_traits::Num + Copy>(i
     (variance / count as f64).sqrt()
 }
 
-fn sort_and_get_bounds(items: &mut Vec<i128>, stdev_limit: f64) -> (f64, f64) {
+fn sort_and_get_bounds(items: &mut [i128], stdev_limit: f64) -> (f64, f64) {
     items.sort_unstable();
     let median = items[items.len() / 2];
 
