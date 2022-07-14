@@ -236,6 +236,7 @@ fn test_adder() {
     test_plugin(include_str!("plugin_adder.c"));
 }
 
+#[ignore] // TODO(b/239094055): fix the SIGSTOP usage that stops the cargo test runner
 #[test]
 fn test_hint() {
     test_plugin(include_str!("plugin_hint.c"));
