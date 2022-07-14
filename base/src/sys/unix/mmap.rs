@@ -56,12 +56,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Protection(c_int);
 impl Protection {
-    /// Returns Protection allowing no access.
-    #[inline(always)]
-    pub fn none() -> Protection {
-        Protection(libc::PROT_NONE)
-    }
-
     /// Returns Protection allowing read/write access.
     #[inline(always)]
     pub fn read_write() -> Protection {
@@ -820,7 +814,7 @@ impl MemoryMappingArena {
     /// * `size` - Size of memory region in bytes.
     pub fn new(size: usize) -> Result<MemoryMappingArena> {
         // Reserve the arena's memory using an anonymous read-only mmap.
-        MemoryMapping::new_protection(size, Protection::none().set_read()).map(From::from)
+        MemoryMapping::new_protection(size, Protection::read()).map(From::from)
     }
 
     /// Anonymously maps `size` bytes at `offset` bytes from the start of the arena

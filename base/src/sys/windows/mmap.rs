@@ -61,14 +61,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Protection(c_int);
 
 impl Protection {
-    /// Returns Protection allowing no access. Note that on Windows this is not a
-    /// viable state and will return an error if used for mapping. It exists only
-    /// to serve as a base protection to set READ or WRITE on.
-    #[inline(always)]
-    pub fn none() -> Protection {
-        Protection(mmap_platform::PROT_NONE)
-    }
-
     /// Returns Protection allowing read/write access.
     #[inline(always)]
     pub fn read_write() -> Protection {

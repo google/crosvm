@@ -21,7 +21,6 @@ use super::{mmap::Error, mmap::Result, MappedRegion, MemoryMapping, Protection, 
 use crate::descriptor::AsRawDescriptor;
 use crate::warn;
 
-pub(super) const PROT_NONE: c_int = 0;
 pub(super) const PROT_READ: c_int = FILE_MAP_READ as c_int;
 pub(super) const PROT_WRITE: c_int = FILE_MAP_WRITE as c_int;
 
