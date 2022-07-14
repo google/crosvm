@@ -7,16 +7,12 @@
 use std::cell::RefCell;
 use std::fmt;
 use std::io;
-use std::num::ParseIntError;
 use std::rc::Rc;
-use std::str::{FromStr, ParseBoolError};
 use std::thread;
 
 use anyhow::Context;
 use audio_streams::{BoxError, SampleFormat, StreamSource, StreamSourceGenerator};
 use base::{error, warn, Error as SysError, Event, RawDescriptor};
-#[cfg(unix)]
-use base::{set_rt_prio_limit, set_rt_round_robin};
 use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::{AsyncError, EventAsync, Executor};
 use data_model::DataInit;
@@ -25,18 +21,19 @@ use futures::channel::{
     oneshot::{self, Canceled},
 };
 use futures::{pin_mut, select, Future, FutureExt, TryFutureExt};
-#[cfg(feature = "audio_cras")]
-use libcras::{CrasClientType, CrasSocketType};
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
 use crate::virtio::snd::common::*;
 use crate::virtio::snd::common_backend::async_funcs::*;
 use crate::virtio::snd::constants::*;
-#[cfg(feature = "audio_cras")]
-use crate::virtio::snd::cras_backend::create_cras_stream_source_generators;
 use crate::virtio::snd::layout::*;
 use crate::virtio::snd::null_backend::create_null_stream_source_generators;
+use crate::virtio::snd::parameters::{Parameters, StreamSourceBackend};
+use crate::virtio::snd::sys::{
+    create_stream_source_generators as sys_create_stream_source_generators,
+    set_audio_thread_priority,
+};
 use crate::virtio::{
     async_utils, copy_config, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue,
     VirtioDevice, Writer,
@@ -47,7 +44,6 @@ pub mod async_funcs;
 // control + event + tx + rx queue
 pub const MAX_QUEUE_NUM: usize = 4;
 pub const MAX_VRING_LEN: u16 = 1024;
-const AUDIO_THREAD_RTPRIO: u16 = 10; // Matches other cros audio clients.
 
 #[derive(ThisError, Debug)]
 pub enum Error {
@@ -78,10 +74,6 @@ pub enum Error {
     /// Failed writing a response to a control message.
     #[error("Failed to write message response: {0}")]
     WriteResponse(io::Error),
-    /// Libcras error.
-    #[cfg(feature = "audio_cras")]
-    #[error("Error in libcras: {0}")]
-    Libcras(libcras::Error),
     // Mpsc read error.
     #[error("Error in mpsc: {0}")]
     MpscSend(futures::channel::mpsc::SendError),
@@ -106,18 +98,6 @@ pub enum Error {
     /// Writing to a buffer in the guest failed.
     #[error("failed to write to buffer: {0}")]
     WriteBuffer(io::Error),
-    /// Failed to parse parameters.
-    #[error("Invalid snd parameter: {0}")]
-    UnknownParameter(String),
-    /// Unknown snd parameter value.
-    #[error("Invalid snd parameter value ({0}): {1}")]
-    InvalidParameterValue(String, String),
-    /// Failed to parse bool value.
-    #[error("Invalid bool value: {0}")]
-    InvalidBoolValue(ParseBoolError),
-    /// Failed to parse int value.
-    #[error("Invalid int value: {0}")]
-    InvalidIntValue(ParseIntError),
     // Invalid PCM worker state.
     #[error("Invalid PCM worker state")]
     InvalidPCMWorkerState,
@@ -127,124 +107,6 @@ pub enum Error {
     // Failed to generate StreamSource
     #[error("Failed to generate stream source: {0}")]
     GenerateStreamSource(BoxError),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum StreamSourceBackend {
-    #[cfg(feature = "audio_cras")]
-    CRAS,
-    NULL,
-}
-
-impl FromStr for StreamSourceBackend {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            #[cfg(feature = "audio_cras")]
-            "cras" => Ok(StreamSourceBackend::CRAS),
-            "null" => Ok(StreamSourceBackend::NULL),
-            _ => Err(Error::InvalidBackend),
-        }
-    }
-}
-
-/// Holds the parameters for a cras sound device
-#[derive(Debug, Clone)]
-pub struct Parameters {
-    pub capture: bool,
-    pub num_output_devices: u32,
-    pub num_input_devices: u32,
-    pub backend: StreamSourceBackend,
-    pub num_output_streams: u32,
-    pub num_input_streams: u32,
-    #[cfg(feature = "audio_cras")]
-    pub client_type: CrasClientType,
-    #[cfg(feature = "audio_cras")]
-    pub socket_type: CrasSocketType,
-}
-
-impl Default for Parameters {
-    fn default() -> Self {
-        Parameters {
-            capture: false,
-            num_output_devices: 1,
-            num_input_devices: 1,
-            backend: StreamSourceBackend::NULL,
-            num_output_streams: 1,
-            num_input_streams: 1,
-            #[cfg(feature = "audio_cras")]
-            client_type: CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
-            #[cfg(feature = "audio_cras")]
-            socket_type: CrasSocketType::Unified,
-        }
-    }
-}
-
-impl Parameters {
-    fn get_total_output_streams(&self) -> u32 {
-        self.num_output_devices * self.num_output_streams
-    }
-
-    fn get_total_input_streams(&self) -> u32 {
-        self.num_input_devices * self.num_input_streams
-    }
-
-    fn get_total_streams(&self) -> u32 {
-        self.get_total_output_streams() + self.get_total_input_streams()
-    }
-}
-
-impl FromStr for Parameters {
-    type Err = Error;
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let mut params: Parameters = Default::default();
-        let opts = s
-            .split(',')
-            .map(|frag| frag.split('='))
-            .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
-
-        for (k, v) in opts {
-            match k {
-                "capture" => {
-                    params.capture = v.parse::<bool>().map_err(Error::InvalidBoolValue)?;
-                }
-                "backend" => {
-                    params.backend = v.parse().map_err(|e: Error| {
-                        Error::InvalidParameterValue(v.to_string(), e.to_string())
-                    })?;
-                }
-                #[cfg(feature = "audio_cras")]
-                "client_type" => {
-                    params.client_type = v.parse().map_err(|e: libcras::CrasSysError| {
-                        Error::InvalidParameterValue(v.to_string(), e.to_string())
-                    })?;
-                }
-                #[cfg(feature = "audio_cras")]
-                "socket_type" => {
-                    params.socket_type = v.parse().map_err(|e: libcras::Error| {
-                        Error::InvalidParameterValue(v.to_string(), e.to_string())
-                    })?;
-                }
-                "num_output_devices" => {
-                    params.num_output_devices = v.parse::<u32>().map_err(Error::InvalidIntValue)?;
-                }
-                "num_input_devices" => {
-                    params.num_input_devices = v.parse::<u32>().map_err(Error::InvalidIntValue)?;
-                }
-                "num_output_streams" => {
-                    params.num_output_streams = v.parse::<u32>().map_err(Error::InvalidIntValue)?;
-                }
-                "num_input_streams" => {
-                    params.num_input_streams = v.parse::<u32>().map_err(Error::InvalidIntValue)?;
-                }
-                _ => {
-                    return Err(Error::UnknownParameter(k.to_string()));
-                }
-            }
-        }
-
-        Ok(params)
-    }
 }
 
 pub enum DirectionalStream {
@@ -518,9 +380,9 @@ impl VirtioSnd {
             StreamSourceBackend::NULL => {
                 stream_source_generators = create_null_stream_source_generators(&snd_data);
             }
-            #[cfg(feature = "audio_cras")]
-            StreamSourceBackend::CRAS => {
-                stream_source_generators = create_cras_stream_source_generators(&params, &snd_data);
+            StreamSourceBackend::Sys(backend) => {
+                stream_source_generators =
+                    sys_create_stream_source_generators(backend, &params, &snd_data);
             }
         }
 
@@ -709,13 +571,7 @@ impl VirtioDevice for VirtioSnd {
         let worker_result = thread::Builder::new()
             .name("virtio_snd w".to_string())
             .spawn(move || {
-                #[cfg(unix)]
-                if let Err(e) = set_rt_prio_limit(u64::from(AUDIO_THREAD_RTPRIO))
-                    .and_then(|_| set_rt_round_robin(i32::from(AUDIO_THREAD_RTPRIO)))
-                {
-                    warn!("Failed to set audio thread to real time: {}", e);
-                }
-
+                set_audio_thread_priority();
                 if let Err(err_string) = run_worker(
                     interrupt,
                     queues,
@@ -864,132 +720,4 @@ fn run_worker(
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn check_failure(s: &str) {
-        s.parse::<Parameters>()
-            .expect_err("parse should have failed");
-    }
-
-    fn check_success(
-        s: &str,
-        capture: bool,
-        backend: StreamSourceBackend,
-        num_output_devices: u32,
-        num_input_devices: u32,
-        num_output_streams: u32,
-        num_input_streams: u32,
-    ) {
-        let params = s.parse::<Parameters>().expect("parse should have succeded");
-        assert_eq!(params.capture, capture);
-        assert_eq!(params.backend, backend);
-        assert_eq!(params.num_output_devices, num_output_devices);
-        assert_eq!(params.num_input_devices, num_input_devices);
-        assert_eq!(params.num_output_streams, num_output_streams);
-        assert_eq!(params.num_input_streams, num_input_streams);
-    }
-
-    #[test]
-    fn parameters_fromstr() {
-        check_failure("capture=none");
-        check_success(
-            "capture=false",
-            false,
-            StreamSourceBackend::NULL,
-            1,
-            1,
-            1,
-            1,
-        );
-        check_success(
-            "capture=true,num_output_streams=2,num_input_streams=3",
-            true,
-            StreamSourceBackend::NULL,
-            1,
-            1,
-            2,
-            3,
-        );
-        check_success(
-            "capture=true,num_output_devices=3,num_input_devices=2",
-            true,
-            StreamSourceBackend::NULL,
-            3,
-            2,
-            1,
-            1,
-        );
-        check_success(
-            "capture=true,num_output_devices=2,num_input_devices=3,\
-            num_output_streams=3,num_input_streams=2",
-            true,
-            StreamSourceBackend::NULL,
-            2,
-            3,
-            3,
-            2,
-        );
-        check_success(
-            "capture=true,backend=null,num_output_devices=2,num_input_devices=3,\
-            num_output_streams=3,num_input_streams=2",
-            true,
-            StreamSourceBackend::NULL,
-            2,
-            3,
-            3,
-            2,
-        );
-    }
-
-    #[test]
-    #[cfg(feature = "audio_cras")]
-    fn cras_parameters_fromstr() {
-        fn cras_check_success(
-            s: &str,
-            backend: StreamSourceBackend,
-            client_type: CrasClientType,
-            socket_type: CrasSocketType,
-        ) {
-            let params = s.parse::<Parameters>().expect("parse should have succeded");
-            assert_eq!(params.backend, backend);
-            assert_eq!(params.client_type, client_type);
-            assert_eq!(params.socket_type, socket_type);
-        }
-
-        cras_check_success(
-            "backend=cras",
-            StreamSourceBackend::CRAS,
-            CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
-            CrasSocketType::Unified,
-        );
-        cras_check_success(
-            "backend=cras,client_type=crosvm",
-            StreamSourceBackend::CRAS,
-            CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
-            CrasSocketType::Unified,
-        );
-        cras_check_success(
-            "backend=cras,client_type=arcvm",
-            StreamSourceBackend::CRAS,
-            CrasClientType::CRAS_CLIENT_TYPE_ARCVM,
-            CrasSocketType::Unified,
-        );
-        check_failure("backend=cras,client_type=none");
-        cras_check_success(
-            "backend=cras,socket_type=legacy",
-            StreamSourceBackend::CRAS,
-            CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
-            CrasSocketType::Legacy,
-        );
-        cras_check_success(
-            "backend=cras,socket_type=unified",
-            StreamSourceBackend::CRAS,
-            CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
-            CrasSocketType::Unified,
-        );
-    }
 }

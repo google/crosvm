@@ -15,10 +15,10 @@ use arch::{
 use base::{debug, pagesize};
 use devices::serial_device::{SerialHardware, SerialParameters};
 use devices::virtio::block::block::DiskOption;
-#[cfg(feature = "audio")]
-use devices::virtio::common_backend::Parameters as SndParameters;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
+#[cfg(feature = "audio")]
+use devices::virtio::snd::parameters::Parameters as SndParameters;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
 #[cfg(feature = "direct")]

@@ -20,11 +20,12 @@ use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 
 use crate::virtio::snd::common_backend::{
     async_funcs::{handle_ctrl_queue, handle_pcm_queue, send_pcm_response_worker},
-    hardcoded_snd_data, hardcoded_virtio_snd_config, Parameters, PcmResponse, SndData, StreamInfo,
+    hardcoded_snd_data, hardcoded_virtio_snd_config, PcmResponse, SndData, StreamInfo,
     MAX_QUEUE_NUM, MAX_VRING_LEN,
 };
-use crate::virtio::snd::cras_backend::create_cras_stream_source_generators;
 use crate::virtio::snd::layout::virtio_snd_config;
+use crate::virtio::snd::parameters::Parameters;
+use crate::virtio::snd::sys::create_cras_stream_source_generators;
 use crate::virtio::vhost::user::device::{
     handler::{sys::Doorbell, VhostUserBackend},
     listener::{sys::VhostUserListener, VhostUserListenerTrait},

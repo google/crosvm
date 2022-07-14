@@ -41,7 +41,7 @@ use argh::FromArgs;
 use base::getpid;
 use devices::virtio::block::block::DiskOption;
 #[cfg(feature = "audio")]
-use devices::virtio::common_backend::Parameters as SndParameters;
+use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost::user::device;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
@@ -1639,7 +1639,9 @@ impl TryFrom<RunCommand> for super::config::Config {
             // cmd.cras_snds is the old parameter for virtio snd with cras backend.
             cfg.virtio_snds
                 .extend(cmd.cras_snds.into_iter().map(|s| SndParameters {
-                    backend: devices::virtio::snd::common_backend::StreamSourceBackend::CRAS,
+                    backend: devices::virtio::parameters::StreamSourceBackend::Sys(
+                        devices::virtio::snd::sys::StreamSourceBackend::CRAS,
+                    ),
                     ..s
                 }));
         }
