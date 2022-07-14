@@ -35,6 +35,7 @@ def RunSteps(api):
             [
                 "vpython3",
                 "./tools/run_tests",
+                "--verbose",
                 "--target=host",
             ],
         )

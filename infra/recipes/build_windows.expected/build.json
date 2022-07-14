@@ -37,6 +37,7 @@
     "cmd": [
       "vpython3",
       "./tools/run_tests",
+      "--verbose",
       "--target=host"
     ],
     "cwd": "[CACHE]/builder/crosvm",
