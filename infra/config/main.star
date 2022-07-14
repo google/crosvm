@@ -61,7 +61,7 @@ luci.project(
                 acl.SCHEDULER_OWNER,
                 acl.CQ_COMMITTER,
             ],
-            groups = "googlers",
+            groups = ["googlers", "project-crosvm-committers"],
         ),
         # Group with bots that have write access to the Logdog prefix.
         acl.entry(
