@@ -501,7 +501,7 @@ def main():
     flakes = [r for r in all_results if r.previous_attempts]
     if flakes:
         print()
-        print("There are {len(flakes)} flaky tests")
+        print(f"There are {len(flakes)} flaky tests")
         for result in flakes:
             print(f"  {result.name}")
 
