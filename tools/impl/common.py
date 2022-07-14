@@ -13,25 +13,45 @@ our command line tools.
 Refer to the scripts in ./tools for example usage.
 """
 from __future__ import annotations
+import sys
+import subprocess
 
+if sys.version_info.major != 3 or sys.version_info.minor < 8:
+    print("Python 3.8 or higher is required.")
+    sys.exit(1)
+
+
+def ensure_package_exists(package: str):
+    """Installs the specified package via pip if it does not exist."""
+    try:
+        __import__(package)
+    except ImportError:
+        print("Missing the python package argh. Do you want to install? [y/N]")
+        response = sys.stdin.readline()
+        if response[:1].lower() == "y":
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", package])
+        else:
+            sys.exit(1)
+
+
+ensure_package_exists("argh")
+
+from io import StringIO
+from math import ceil
+from multiprocessing.pool import ThreadPool
+from pathlib import Path
+from subprocess import DEVNULL, PIPE, STDOUT  # type: ignore
+from tempfile import gettempdir
+from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, TypeVar, Union
+import argh  # type: ignore
 import argparse
 import contextlib
 import csv
 import getpass
-from math import ceil
 import os
 import re
 import shutil
-import subprocess
-import sys
-from tempfile import gettempdir
 import traceback
-from io import StringIO
-from multiprocessing.pool import ThreadPool
-from pathlib import Path
-from subprocess import DEVNULL, PIPE, STDOUT  # type: ignore
-from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, TypeVar, Union
-
 
 "Root directory of crosvm"
 CROSVM_ROOT = Path(__file__).parent.parent.parent.resolve()
@@ -483,12 +503,6 @@ def run_commands(
     Allow the user to call the provided functions with command line arguments translated to
     function arguments via argh: https://pythonhosted.org/argh
     """
-    try:
-        import argh  # type: ignore
-    except ImportError as e:
-        print("Missing module:", e)
-        print("(Re-)Run ./tools/install-deps to install the required dependencies.")
-        sys.exit(1)
     try:
         # Add global verbose arguments
         parser = argparse.ArgumentParser(usage=usage)
