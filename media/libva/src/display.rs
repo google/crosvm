@@ -176,11 +176,11 @@ impl Display {
         &self,
         profile: bindings::VAProfile::Type,
         entrypoint: bindings::VAEntrypoint::Type,
-        attributes: &mut Vec<bindings::VAConfigAttrib>,
+        attributes: &mut [bindings::VAConfigAttrib],
     ) -> Result<()> {
-        // Safe because `self` represents a valid VADisplay. The vector length
+        // Safe because `self` represents a valid VADisplay. The slice length
         // is passed to the C function, so it is impossible to write past the
-        // end of the vector's storage by mistake.
+        // end of the slice's storage by mistake.
         Status(unsafe {
             bindings::vaGetConfigAttributes(
                 self.handle,
