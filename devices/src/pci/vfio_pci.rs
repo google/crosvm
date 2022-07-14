@@ -105,6 +105,11 @@ const PCI_EXT_CAP_ID_ARI: u16 = 0x0E;
 const PCI_EXT_CAP_ID_SRIOV: u16 = 0x10;
 const PCI_EXT_CAP_ID_REBAR: u16 = 0x15;
 
+#[cfg(feature = "direct")]
+const LPSS_MANATEE_OFFSET: u64 = 0x400;
+#[cfg(feature = "direct")]
+const LPSS_MANATEE_SIZE: u64 = 0x400;
+
 enum VfioMsiChange {
     Disable,
     Enable,
@@ -583,7 +588,6 @@ pub struct VfioPciDevice {
     // PCI Express Extended Capabilities
     ext_caps: Vec<ExtCap>,
     #[cfg(feature = "direct")]
-    #[allow(dead_code)]
     is_intel_lpss: bool,
     mapped_mmio_bars: BTreeMap<PciBarIndex, (u64, Vec<MemSlot>)>,
 }
@@ -1045,6 +1049,23 @@ impl VfioPciDevice {
         self.adjust_bar_mmap(bar_mmaps, &msix_regions)
     }
 
+    #[cfg(feature = "direct")]
+    fn remove_bar_mmap_lpss(
+        &self,
+        bar_index: u32,
+        bar_mmaps: Vec<vfio_region_sparse_mmap_area>,
+    ) -> Vec<vfio_region_sparse_mmap_area> {
+        // must be BAR0
+        if bar_index != 0 {
+            return bar_mmaps;
+        }
+
+        match AddressRange::from_start_and_size(LPSS_MANATEE_OFFSET, LPSS_MANATEE_SIZE) {
+            Some(lpss_range) => self.adjust_bar_mmap(bar_mmaps, &[lpss_range]),
+            None => bar_mmaps,
+        }
+    }
+
     fn add_bar_mmap(&self, index: u32, bar_addr: u64) -> Vec<MemSlot> {
         let mut mmaps_slots: Vec<MemSlot> = Vec::new();
         if self.device.get_region_flags(index) & VFIO_REGION_INFO_FLAG_MMAP != 0 {
@@ -1054,6 +1075,10 @@ impl VfioPciDevice {
 
             if self.msix_cap.is_some() {
                 mmaps = self.remove_bar_mmap_msix(index, mmaps);
+            }
+            #[cfg(feature = "direct")]
+            if self.is_intel_lpss {
+                mmaps = self.remove_bar_mmap_lpss(index, mmaps);
             }
             if mmaps.is_empty() {
                 return mmaps_slots;
@@ -1960,6 +1985,18 @@ impl PciDevice for VfioPciDevice {
                 }
             }
 
+            #[cfg(feature = "direct")]
+            if self.is_intel_lpss
+                && bar_index == 0
+                && offset >= LPSS_MANATEE_OFFSET
+                && offset < LPSS_MANATEE_OFFSET + LPSS_MANATEE_SIZE
+            {
+                warn!(
+                    "{} intel-lpss manatee region not supported",
+                    self.debug_label()
+                );
+                return;
+            }
             self.device.region_write(bar_index, data, offset);
         }
     }
