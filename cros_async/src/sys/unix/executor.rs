@@ -176,7 +176,7 @@ impl Executor {
         }
     }
 
-    /// Same as [`async_from`], but without the `Send` requirement and only usable on thread-local
+    /// Same as [`Executor::async_from()`], but without the `Send` requirement and only usable on thread-local
     /// executors.
     pub fn async_from_local<'a, F: IntoAsync + 'a>(
         &self,
