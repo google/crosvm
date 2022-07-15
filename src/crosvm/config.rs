@@ -35,10 +35,7 @@ use x86_64::{set_enable_pnp_data_msr_config, set_itmt_msr_config};
 #[cfg(feature = "audio")]
 use devices::{Ac97Backend, Ac97Parameters};
 
-use super::{
-    argument::{self, parse_hex_or_decimal},
-    check_opt_path,
-};
+use super::{argument::parse_hex_or_decimal, check_opt_path};
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
@@ -135,59 +132,11 @@ impl FromStr for VhostUserWlOption {
 }
 
 /// Options for virtio-vhost-user proxy device.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, serde_keyvalue::FromKeyValues)]
 pub struct VvuOption {
     pub socket: PathBuf,
     pub addr: Option<PciAddress>,
     pub uuid: Option<Uuid>,
-}
-
-impl FromStr for VvuOption {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let opts: Vec<_> = s.splitn(2, ',').collect();
-        let socket = PathBuf::from(opts[0]);
-        let mut vvu_opt = VvuOption {
-            socket,
-            addr: None,
-            uuid: Default::default(),
-        };
-
-        if let Some(kvs) = opts.get(1) {
-            for kv in argument::parse_key_value_options("vvu-proxy", kvs, ',') {
-                match kv.key() {
-                    "addr" => {
-                        let pci_address = kv.value().map_err(|e| e.to_string())?;
-                        if vvu_opt.addr.is_some() {
-                            return Err("`addr` already given".to_owned());
-                        }
-
-                        vvu_opt.addr = Some(PciAddress::from_str(pci_address).map_err(|e| {
-                            invalid_value_err(pci_address, format!("vvu-proxy PCI address: {}", e))
-                        })?);
-                    }
-                    "uuid" => {
-                        let value = kv.value().map_err(|e| e.to_string())?;
-                        if vvu_opt.uuid.is_some() {
-                            return Err("`uuid` already given".to_owned());
-                        }
-                        let uuid = Uuid::parse_str(value).map_err(|e| {
-                            invalid_value_err(
-                                value,
-                                format!("invalid UUID is given for vvu-proxy: {}", e),
-                            )
-                        })?;
-                        vvu_opt.uuid = Some(uuid);
-                    }
-                    _ => {
-                        kv.invalid_key_err();
-                    }
-                }
-            }
-        }
-        Ok(vvu_opt)
-    }
 }
 
 /// A bind mount for directories in the plugin process.
@@ -2250,5 +2199,20 @@ mod tests {
         let config: Result<JailConfig, String> =
             from_key_values("seccomp-log-failures,invalid-arg=value");
         assert!(config.is_err());
+    }
+
+    #[test]
+    fn parse_vvu() {
+        assert_eq!(
+            from_key_values::<VvuOption>(
+                "/tmp/vvu-sock,addr=05:2.1,uuid=23546c3d-962d-4ebc-94d9-4acf50996944"
+            )
+            .unwrap(),
+            VvuOption {
+                socket: PathBuf::from("/tmp/vvu-sock"),
+                addr: Some(PciAddress::new(0, 0x05, 0x02, 1).unwrap()),
+                uuid: Some(Uuid::parse_str("23546c3d-962d-4ebc-94d9-4acf50996944").unwrap()),
+            }
+        );
     }
 }
