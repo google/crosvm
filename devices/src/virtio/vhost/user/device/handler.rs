@@ -362,31 +362,26 @@ impl VhostUserPlatformOps for VhostUserRegularOps {
 }
 
 /// Structure to have an event loop for interaction between a VMM and `VhostUserBackend`.
-pub struct DeviceRequestHandler<O>
-where
-    O: VhostUserPlatformOps,
-{
+pub struct DeviceRequestHandler {
     vrings: Vec<Vring>,
     owned: bool,
     vmm_maps: Option<Vec<MappingInfo>>,
     mem: Option<GuestMemory>,
     backend: Box<dyn VhostUserBackend>,
-    ops: O,
+    ops: Box<dyn VhostUserPlatformOps>,
 }
 
-impl DeviceRequestHandler<VhostUserRegularOps> {
+impl DeviceRequestHandler {
     pub fn new(backend: Box<dyn VhostUserBackend>) -> Self {
-        Self::new_with_ops(backend, VhostUserRegularOps)
+        Self::new_with_ops(backend, Box::new(VhostUserRegularOps))
     }
-}
 
-impl<O> DeviceRequestHandler<O>
-where
-    O: VhostUserPlatformOps,
-{
     /// Creates a vhost-user handler instance for `backend` with a different set of platform ops
     /// than the regular vhost-user ones.
-    pub(crate) fn new_with_ops(backend: Box<dyn VhostUserBackend>, ops: O) -> Self {
+    pub(crate) fn new_with_ops(
+        backend: Box<dyn VhostUserBackend>,
+        ops: Box<dyn VhostUserPlatformOps>,
+    ) -> Self {
         let mut vrings = Vec::with_capacity(backend.max_queue_num());
         for _ in 0..backend.max_queue_num() {
             vrings.push(Vring::new(MAX_VRING_LEN));
@@ -403,7 +398,7 @@ where
     }
 }
 
-impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandler<O> {
+impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
     fn protocol(&self) -> Protocol {
         self.ops.protocol()
     }
@@ -1018,7 +1013,7 @@ mod tests {
         // Device side
         let handler = std::sync::Mutex::new(DeviceRequestHandler::new_with_ops(
             Box::new(FakeBackend::new()),
-            VhostUserRegularOps,
+            Box::new(VhostUserRegularOps),
         ));
         let mut listener = SlaveListener::<SocketListener, _>::new(listener, handler).unwrap();
 

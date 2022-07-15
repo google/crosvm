@@ -65,11 +65,11 @@ use crate::virtio::SignalableInterrupt;
 const MAX_VRING_LEN: u16 = QUEUE_SIZE;
 const EVENT_QUEUE: usize = NUM_QUEUES - 1;
 
-struct VsockBackend<O: VhostUserPlatformOps> {
+struct VsockBackend {
     queues: [Queue; NUM_QUEUES],
     vmm_maps: Option<Vec<MappingInfo>>,
     mem: Option<GuestMemory>,
-    ops: O,
+    ops: Box<dyn VhostUserPlatformOps>,
 
     ex: Executor,
     handle: Vsock,
@@ -77,13 +77,13 @@ struct VsockBackend<O: VhostUserPlatformOps> {
     protocol_features: VhostUserProtocolFeatures,
 }
 
-impl<O: VhostUserPlatformOps> VsockBackend<O> {
+impl VsockBackend {
     fn new<P: AsRef<Path>>(
         ex: &Executor,
         cid: u64,
         vhost_socket: P,
-        ops: O,
-    ) -> anyhow::Result<VsockBackend<O>> {
+        ops: Box<dyn VhostUserPlatformOps>,
+    ) -> anyhow::Result<VsockBackend> {
         let handle = Vsock::new(
             OpenOptions::new()
                 .read(true)
@@ -119,7 +119,7 @@ fn convert_vhost_error(err: vhost::Error) -> Error {
     }
 }
 
-impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<O> {
+impl VhostUserSlaveReqHandlerMut for VsockBackend {
     fn protocol(&self) -> Protocol {
         self.ops.protocol()
     }
@@ -449,7 +449,7 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<O> {
 async fn run_device<P: AsRef<Path>>(
     ex: &Executor,
     socket: P,
-    backend: StdMutex<VsockBackend<VhostUserRegularOps>>,
+    backend: StdMutex<VsockBackend>,
 ) -> anyhow::Result<()> {
     let listener = UnixListener::bind(socket)
         .map(UnlinkUnixListener)
@@ -494,7 +494,7 @@ fn run_vvu_device<P: AsRef<Path>>(
 ) -> anyhow::Result<()> {
     let mut device =
         VvuPciDevice::new(device_name, NUM_QUEUES).context("failed to create `VvuPciDevice`")?;
-    let backend = VsockBackend::new(ex, cid, vhost_socket, VvuOps::new(&mut device))
+    let backend = VsockBackend::new(ex, cid, vhost_socket, Box::new(VvuOps::new(&mut device)))
         .map(StdMutex::new)
         .context("failed to create `VsockBackend`")?;
     let driver = VvuDevice::new(device);
@@ -523,8 +523,13 @@ pub fn run_vsock_device(opts: Options) -> anyhow::Result<()> {
 
     match (opts.socket, opts.vfio) {
         (Some(socket), None) => {
-            let backend = VsockBackend::new(&ex, opts.cid, opts.vhost_socket, VhostUserRegularOps)
-                .map(StdMutex::new)?;
+            let backend = VsockBackend::new(
+                &ex,
+                opts.cid,
+                opts.vhost_socket,
+                Box::new(VhostUserRegularOps),
+            )
+            .map(StdMutex::new)?;
 
             // TODO: Replace the `and_then` with `Result::flatten` once it is stabilized.
             ex.run_until(run_device(&ex, socket, backend))

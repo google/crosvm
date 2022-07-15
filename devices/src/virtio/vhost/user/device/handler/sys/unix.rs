@@ -220,7 +220,7 @@ where
     }
 }
 
-impl<O: VhostUserPlatformOps> DeviceRequestHandler<O> {
+impl DeviceRequestHandler {
     /// Attaches to an already bound socket via `listener` and handles incoming messages from the
     /// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
     pub async fn run_with_listener<L>(self, listener: L, ex: Executor) -> Result<()>
@@ -319,7 +319,7 @@ mod tests {
         // Device side
         let handler = std::sync::Mutex::new(DeviceRequestHandler::new_with_ops(
             Box::new(FakeBackend::new()),
-            VhostUserRegularOps,
+            Box::new(VhostUserRegularOps),
         ));
         let mut listener = SlaveListener::<SocketListener, _>::new(listener, handler).unwrap();
 

@@ -152,7 +152,7 @@ impl VhostUserListenerTrait for VhostUserListener {
                     .boxed_local()
             }
             VhostUserListener::Vvu(listener, ops) => {
-                let handler = DeviceRequestHandler::new_with_ops(backend, ops);
+                let handler = DeviceRequestHandler::new_with_ops(backend, Box::new(ops));
                 handler
                     .run_with_listener::<VfioListener<_>>(*listener, ex)
                     .boxed_local()

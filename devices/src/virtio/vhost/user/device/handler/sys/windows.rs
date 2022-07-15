@@ -46,7 +46,7 @@ pub fn read_from_tube_transporter(
     tube_transporter.read_tubes().map_err(anyhow::Error::msg)
 }
 
-impl DeviceRequestHandler<VhostUserRegularOps> {
+impl DeviceRequestHandler {
     pub async fn run(self, vhost_user_tube: Tube, exit_event: Event, ex: &Executor) -> Result<()> {
         let read_notifier = vhost_user_tube.get_read_notifier();
         let close_notifier = vhost_user_tube.get_close_notifier();
