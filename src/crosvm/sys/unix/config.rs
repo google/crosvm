@@ -85,31 +85,22 @@ pub fn parse_gpu_render_server_options(
     }
 }
 
-#[cfg(feature = "audio")]
+#[cfg(feature = "audio_cras")]
 pub fn parse_ac97_options(
     ac97_params: &mut devices::Ac97Parameters,
     key: &str,
     #[allow(unused_variables)] value: &str,
 ) -> Result<(), String> {
     match key {
-        #[cfg(feature = "audio_cras")]
         "client_type" => {
             ac97_params
                 .set_client_type(value)
                 .map_err(|e| crate::crosvm::config::invalid_value_err(value, e))?;
         }
-        #[cfg(feature = "audio_cras")]
         "socket_type" => {
             ac97_params
                 .set_socket_type(value)
                 .map_err(|e| crate::crosvm::config::invalid_value_err(value, e))?;
-        }
-        #[cfg(any(target_os = "linux", target_os = "android"))]
-        "server" => {
-            ac97_params.vios_server_path = Some(
-                PathBuf::from_str(value)
-                    .map_err(|e| crate::crosvm::config::invalid_value_err(value, e))?,
-            );
         }
         _ => {
             return Err(format!("unknown ac97 parameter {}", key));
@@ -688,7 +679,7 @@ mod tests {
     use argh::FromArgs;
 
     use super::*;
-    #[cfg(feature = "audio")]
+    #[cfg(feature = "audio_cras")]
     use crate::crosvm::config::parse_ac97_options;
     use crate::crosvm::config::BindMount;
     use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_HEIGHT;
@@ -846,13 +837,6 @@ mod tests {
             assert_eq!(gpu_params.display_params[0].width, 700);
             assert_eq!(gpu_params.display_params[0].height, 800);
         }
-    }
-
-    #[cfg(feature = "audio")]
-    #[test]
-    fn parse_ac97_vios_valid() {
-        parse_ac97_options("backend=vios,server=/path/to/server")
-            .expect("parse should have succeded");
     }
 
     #[test]

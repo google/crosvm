@@ -919,6 +919,7 @@ pub fn parse_ac97_options(s: &str) -> Result<Ac97Parameters, String> {
                     .map_err(|e| format!("invalid capture option: {}", e))?;
             }
             _ => {
+                #[cfg(feature = "audio_cras")]
                 super::sys::config::parse_ac97_options(&mut ac97_params, k, v)?;
             }
         }

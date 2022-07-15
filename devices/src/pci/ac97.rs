@@ -2,15 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod sys;
+
 use std::default::Default;
-use std::path::PathBuf;
 use std::str::FromStr;
 
-use audio_streams::shm_streams::NullShmStreamSource;
-use audio_streams::shm_streams::ShmStreamSource;
 use base::error;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
+#[cfg(windows)]
+use base::Tube;
 #[cfg(feature = "audio_cras")]
 use libcras::CrasClient;
 #[cfg(feature = "audio_cras")]
@@ -45,10 +46,7 @@ use crate::pci::pci_device::{self};
 use crate::pci::PciAddress;
 use crate::pci::PciDeviceError;
 use crate::pci::PciInterruptPin;
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
-use crate::virtio::snd::vios_backend::Error as VioSError;
-#[cfg(any(target_os = "linux", target_os = "android"))]
-use crate::virtio::snd::vios_backend::VioSShmStreamSource;
+use crate::pci::PCI_VENDOR_ID_INTEL;
 use crate::IrqLevelEvent;
 
 // Use 82801AA because it's what qemu does.
@@ -62,9 +60,7 @@ const PCI_DEVICE_ID_INTEL_82801AA_5: u16 = 0x2415;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Ac97Backend {
     NULL,
-    #[cfg(feature = "audio_cras")]
-    CRAS,
-    VIOS,
+    System(sys::Ac97Backend),
 }
 
 impl Default for Ac97Backend {
@@ -77,21 +73,19 @@ impl Default for Ac97Backend {
 #[sorted]
 #[derive(Error, Debug)]
 pub enum Ac97Error {
-    #[error("Must be cras, vios or null")]
+    #[cfg(unix)]
+    #[error("Must be cras or null")]
     InvalidBackend,
-    #[error("server must be provided for vios backend")]
-    MissingServerPath,
+    #[cfg(windows)]
+    InvalidBackend,
 }
 
 impl FromStr for Ac97Backend {
     type Err = Ac97Error;
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
-            #[cfg(feature = "audio_cras")]
-            "cras" => Ok(Ac97Backend::CRAS),
-            "vios" => Ok(Ac97Backend::VIOS),
             "null" => Ok(Ac97Backend::NULL),
-            _ => Err(Ac97Error::InvalidBackend),
+            _ => sys::ac97_backend_from_str(s),
         }
     }
 }
@@ -101,7 +95,6 @@ impl FromStr for Ac97Backend {
 pub struct Ac97Parameters {
     pub backend: Ac97Backend,
     pub capture: bool,
-    pub vios_server_path: Option<PathBuf>,
     #[cfg(feature = "audio_cras")]
     #[serde(skip)]
     client_type: Option<CrasClientType>,
@@ -150,18 +143,19 @@ impl Ac97Dev {
     pub fn new(
         mem: GuestMemory,
         backend: Ac97Backend,
-        audio_server: Box<dyn ShmStreamSource<base::Error>>,
+        audio_server: sys::AudioStreamSource,
+        #[cfg(windows)] ac97_device_tube: Option<Tube>,
     ) -> Self {
         let config_regs = PciConfiguration::new(
-            0x8086,
+            PCI_VENDOR_ID_INTEL,
             PCI_DEVICE_ID_INTEL_82801AA_5,
             PciClassCode::MultimediaController,
             &PciMultimediaSubclass::AudioDevice,
             None, // No Programming interface.
             PciHeaderType::Device,
-            0x8086, // Subsystem Vendor ID
-            0x1,    // Subsystem ID.
-            0,      //  Revision ID.
+            PCI_VENDOR_ID_INTEL, // Subsystem Vendor ID
+            0x1,                 // Subsystem ID.
+            0,                   //  Revision ID.
         );
 
         Self {
@@ -176,70 +170,32 @@ impl Ac97Dev {
 
     /// Creates an `Ac97Dev` with suitable audio server inside based on Ac97Parameters. If it fails
     /// to create `Ac97Dev` with the given back-end, it'll fallback to the null audio device.
-    pub fn try_new(mem: GuestMemory, param: Ac97Parameters) -> Result<Self> {
-        match param.backend {
-            #[cfg(feature = "audio_cras")]
-            Ac97Backend::CRAS => Self::create_cras_audio_device(param, mem.clone()).or_else(|e| {
-                error!(
-                    "Ac97Dev: create_cras_audio_device: {}. Fallback to null audio device",
-                    e
-                );
-                Ok(Self::create_null_audio_device(mem))
-            }),
-            Ac97Backend::VIOS => Self::create_vios_audio_device(mem, param),
+    pub fn try_new(
+        mem: GuestMemory,
+        param: Ac97Parameters,
+        #[cfg(windows)] ac97_device_tube: Tube,
+    ) -> Result<Self> {
+        match &param.backend {
+            Ac97Backend::System(ac97_backend) => Self::initialize_backend(
+                ac97_backend,
+                mem,
+                &param,
+                #[cfg(windows)]
+                ac97_device_tube,
+            ),
             Ac97Backend::NULL => Ok(Self::create_null_audio_device(mem)),
         }
     }
 
-    /// Return the minijail policy file path for the current Ac97Dev.
-    pub fn minijail_policy(&self) -> &'static str {
-        match self.backend {
-            #[cfg(feature = "audio_cras")]
-            Ac97Backend::CRAS => "cras_audio_device",
-            Ac97Backend::VIOS => "vios_audio_device",
-            Ac97Backend::NULL => "null_audio_device",
-        }
-    }
-
-    #[cfg(feature = "audio_cras")]
-    fn create_cras_audio_device(params: Ac97Parameters, mem: GuestMemory) -> Result<Self> {
-        let mut server = Box::new(
-            CrasClient::with_type(params.socket_type.unwrap_or(CrasSocketType::Unified))
-                .map_err(pci_device::Error::CreateCrasClientFailed)?,
-        );
-        server.set_client_type(
-            params
-                .client_type
-                .unwrap_or(CrasClientType::CRAS_CLIENT_TYPE_CROSVM),
-        );
-        if params.capture {
-            server.enable_cras_capture();
-        }
-
-        let cras_audio = Self::new(mem, Ac97Backend::CRAS, server);
-        Ok(cras_audio)
-    }
-
-    fn create_vios_audio_device(mem: GuestMemory, param: Ac97Parameters) -> Result<Self> {
-        #[cfg(any(target_os = "linux", target_os = "android"))]
-        {
-            let server = Box::new(
-                // The presence of vios_server_path is checked during argument parsing
-                VioSShmStreamSource::new(param.vios_server_path.expect("Missing server path"))
-                    .map_err(pci_device::Error::CreateViosClientFailed)?,
-            );
-            let vios_audio = Self::new(mem, Ac97Backend::VIOS, server);
-            Ok(vios_audio)
-        }
-        #[cfg(not(any(target_os = "linux", target_os = "android")))]
-        Err(pci_device::Error::CreateViosClientFailed(
-            VioSError::PlatformNotSupported,
-        ))
-    }
-
     fn create_null_audio_device(mem: GuestMemory) -> Self {
-        let server = Box::new(NullShmStreamSource::new());
-        Self::new(mem, Ac97Backend::NULL, server)
+        let server = sys::create_null_server();
+        Self::new(
+            mem,
+            Ac97Backend::NULL,
+            server,
+            #[cfg(windows)]
+            None,
+        )
     }
 
     fn read_mixer(&mut self, offset: u64, data: &mut [u8]) {
@@ -461,7 +417,6 @@ impl PciDevice for Ac97Dev {
 
 #[cfg(test)]
 mod tests {
-    use audio_streams::shm_streams::MockShmStreamSource;
     use resources::AddressRange;
     use resources::SystemAllocatorConfig;
     use vm_memory::GuestAddress;
@@ -471,8 +426,8 @@ mod tests {
     #[test]
     fn create() {
         let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)]).unwrap();
-        let mut ac97_dev =
-            Ac97Dev::new(mem, Ac97Backend::NULL, Box::new(MockShmStreamSource::new()));
+        let mut ac97_dev = sys::tests::create_ac97_device(mem, Ac97Backend::NULL);
+
         let mut allocator = SystemAllocator::new(
             SystemAllocatorConfig {
                 io: Some(AddressRange {
