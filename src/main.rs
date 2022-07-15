@@ -477,7 +477,7 @@ fn crosvm_main() -> Result<CommandStatus> {
     };
     let extended_status = args.extended_status;
 
-    let log_config = LogConfig {
+    let mut log_config = LogConfig {
         filter: &args.log_level,
         syslog: !args.no_syslog,
         ..Default::default()
@@ -487,6 +487,9 @@ fn crosvm_main() -> Result<CommandStatus> {
         Command::CrossPlatform(command) => {
             // Past this point, usage of exit is in danger of leaking zombie processes.
             if let CrossPlatformCommands::Run(cmd) = command {
+                if let Some(syslog_tag) = &cmd.syslog_tag {
+                    log_config.proc_name = syslog_tag.clone();
+                }
                 // We handle run_vm separately because it does not simply signal success/error
                 // but also indicates whether the guest requested reset or stop.
                 run_vm(cmd, log_config)

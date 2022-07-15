@@ -228,7 +228,7 @@ impl<'a> Default
             filter: "info",
             stderr: true,
             pipe: None,
-            proc_name: String::from("-"),
+            proc_name: String::from("crosvm"),
             syslog: true,
             syslog_facility: Facility::User,
             pipe_formatter: FORMATTER_NONE,

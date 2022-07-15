@@ -82,10 +82,7 @@ pub(crate) fn init_log<F: 'static>(log_config: LogConfig<F>, _cfg: &Config) -> a
 where
     F: Fn(&mut syslog::fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
 {
-    if let Err(e) = syslog::init_with(LogConfig {
-        proc_name: String::from("crosvm"),
-        ..log_config
-    }) {
+    if let Err(e) = syslog::init_with(log_config) {
         eprintln!("failed to initialize syslog: {}", e);
         return Err(anyhow!("failed to initialize syslog: {}", e));
     }
