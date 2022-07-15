@@ -14,34 +14,23 @@
 # to use different tags and prevent emails from being sent or the CQ from being triggered.
 
 from contextlib import contextmanager
-import functools
 import os
 from pathlib import Path
 import sys
 from datetime import date
-from typing import Any, cast, Dict, List
+from typing import List
 
 sys.path.append(os.path.dirname(sys.path[0]))
 
-import json
 import re
 
-from impl.common import (
-    CROSVM_ROOT,
-    batched,
-    cmd,
-    quoted,
-    run_commands,
-    very_verbose,
-    curl_with_git_auth,
-)
+from impl.common import CROSVM_ROOT, batched, cmd, quoted, run_commands, GerritChange, GERRIT_URL
 
 git = cmd("git")
 git_log = git("log --decorate=no --color=never")
-curl = curl_with_git_auth()("--silent --fail")
+curl = cmd("curl --silent --fail")
 chmod = cmd("chmod")
 
-GERRIT_URL = "https://chromium-review.googlesource.com/a"
 UPSTREAM_URL = "https://chromium.googlesource.com/crosvm/crosvm"
 CROS_URL = "https://chromium.googlesource.com/chromiumos/platform/crosvm"
 
@@ -58,90 +47,8 @@ else:
 LUCI_EMAIL = "chromeos-scoped@luci-project-accounts.iam.gserviceaccount.com"
 
 
-def strip_xssi(response: str):
-    # See https://gerrit-review.googlesource.com/Documentation/rest-api.html#output
-    assert response.startswith(")]}'\n")
-    return response[5:]
-
-
-def gerrit_api_get(path: str):
-    response = curl(f"{GERRIT_URL}/{path}").stdout()
-    return json.loads(strip_xssi(response))
-
-
-def gerrit_api_post(path: str, body: Any):
-    response = curl(
-        "-X POST",
-        "-H",
-        quoted("Content-Type: application/json"),
-        "-d",
-        quoted(json.dumps(body)),
-        f"{GERRIT_URL}/{path}",
-    ).stdout()
-    if very_verbose():
-        print("Response:", response)
-    return json.loads(strip_xssi(response))
-
-
-class Change(object):
-    """
-    Class to interact with the gerrit /changes/ API.
-
-    For information on the data format returned by the API, see:
-    https://gerrit-review.googlesource.com/Documentation/rest-api-changes.html#change-info
-    """
-
-    id: str
-    _data: Any
-
-    def __init__(self, data: Any):
-        self._data = data
-        self.id = data["id"]
-
-    @functools.cached_property
-    def _details(self) -> Any:
-        return gerrit_api_get(f"changes/{self.id}/detail")
-
-    @functools.cached_property
-    def _messages(self) -> List[Any]:
-        return gerrit_api_get(f"changes/{self.id}/messages")
-
-    def get_votes(self, label_name: str) -> List[int]:
-        "Returns the list of votes on `label_name`"
-        label_info = self._details.get("labels", {}).get(label_name)
-        votes = label_info.get("all", [])
-        return [cast(int, v.get("value")) for v in votes]
-
-    def get_messages_by(self, email: str) -> List[str]:
-        "Returns all messages posted by the user with the specified `email`."
-        return [m["message"] for m in self._messages if m["author"].get("email") == email]
-
-    def review(self, message: str, labels: Dict[str, int]):
-        "Post review `message` and set the specified review `labels`"
-        print("Posting on", self, ":", message, labels)
-        gerrit_api_post(
-            f"changes/{self.id}/revisions/current/review",
-            {"message": message, "labels": labels},
-        )
-
-    def abandon(self, message: str):
-        print("Abandoning", self, ":", message)
-        gerrit_api_post(f"changes/{self.id}/abandon", {"message": message})
-
-    @staticmethod
-    def query(*queries: str):
-        "Returns a list of gerrit changes matching the provided list of queries."
-        return [Change(c) for c in gerrit_api_get(f"changes/?q={'+'.join(queries)}")]
-
-    def __str__(self):
-        return f"http://crrev.com/c/{self._data['_number']}"
-
-    def pretty_info(self):
-        return f"{self} - {self._data['subject']}"
-
-
 def list_active_merges():
-    return Change.query(
+    return GerritChange.query(
         "project:chromiumos/platform/crosvm",
         "branch:chromeos",
         "status:open",
@@ -150,7 +57,7 @@ def list_active_merges():
 
 
 def list_active_dry_runs():
-    return Change.query(
+    return GerritChange.query(
         "project:chromiumos/platform/crosvm",
         "branch:chromeos",
         "status:open",
