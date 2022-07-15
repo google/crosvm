@@ -148,7 +148,7 @@ pub extern "C" fn crosvm_client_max_usb_devices() -> usize {
 ///               devices will be written to
 /// * `entries_length` - Amount of entries in the array specified by `entries`
 ///
-/// Use the value returned by crosvm_client_max_usb_devices() to determine the size of the input
+/// Use the value returned by [`crosvm_client_max_usb_devices()`] to determine the size of the input
 /// array to this function.
 #[no_mangle]
 pub extern "C" fn crosvm_client_usb_list(
