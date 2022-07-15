@@ -3,8 +3,9 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import functools
 from pathlib import Path
-from impl.common import confirm, run_commands, cmd, CROSVM_ROOT
+from impl.common import GerritChange, confirm, run_commands, cmd
 import sys
 
 USAGE = """\
@@ -47,19 +48,42 @@ curl = cmd("curl --silent --fail")
 chmod = cmd("chmod")
 
 
+class LocalChange(object):
+    sha: str
+    title: str
+    branch: str
+
+    def __init__(self, sha: str, title: str):
+        self.sha = sha
+        self.title = title
+
+    @classmethod
+    def list_changes(cls, branch: str):
+        upstream = get_upstream(branch)
+        for line in git(f'log "--format=%H %s" --first-parent {upstream}..{branch}').lines():
+            sha_title = line.split(" ", 1)
+            yield cls(sha_title[0], sha_title[1])
+
+    @functools.cached_property
+    def gerrit(self):
+        results = GerritChange.query("project:crosvm/crosvm", self.sha)
+        if len(results) > 1:
+            raise Exception(f"Multiple gerrit changes found for commit {self.sha}: {self.title}.")
+        return results[0] if results else None
+
+    @property
+    def status(self):
+        if not self.gerrit:
+            return "NOT_UPLOADED"
+        else:
+            return self.gerrit.status
+
+
 def get_upstream(branch: str = ""):
     try:
         return git(f"rev-parse --abbrev-ref --symbolic-full-name {branch}@{{u}}").stdout()
     except:
         return None
-
-
-def list_local_changes(branch: str = ""):
-    upstream = get_upstream(branch)
-    if not upstream:
-        return []
-    for line in git(f"log --oneline --first-parent {upstream}..{branch or 'HEAD'}").lines():
-        yield line.split(" ", 1)
 
 
 def list_local_branches():
@@ -96,18 +120,52 @@ def prerequisites():
         chmod("+x", hook_path).fg()
 
 
+def print_branch_summary(branch: str):
+    print("Branch", branch, "tracking", get_upstream(branch))
+    changes = [*LocalChange.list_changes(branch)]
+    for change in changes:
+        if change.gerrit:
+            print(" ", change.status, change.title, f"({change.gerrit.short_url()})")
+        else:
+            print(" ", change.status, change.title)
+
+    if not changes:
+        print("  No changes")
+    print()
+
+
 def status():
     """
     Lists all branches and their local commits.
     """
     for branch in list_local_branches():
-        print("Branch", branch, "tracking", get_upstream(branch))
-        changes = [*list_local_changes(branch)]
-        for sha, title in changes:
-            print(" ", title)
-        if not changes:
-            print("  No changes")
-        print()
+        print_branch_summary(branch)
+
+
+def prune(force: bool = False):
+    """
+    Deletes branches with changes that have been submitted or abandoned
+    """
+    current_branch = git("branch --show-current").stdout()
+    branches_to_delete = [
+        branch
+        for branch in list_local_branches()
+        if branch != current_branch
+        and all(
+            change.status in ["ABANDONED", "MERGED"] for change in LocalChange.list_changes(branch)
+        )
+    ]
+    if not branches_to_delete:
+        print("No obsolete branches to delete.")
+        return
+
+    print("Obsolete branches:")
+    print()
+    for branch in branches_to_delete:
+        print_branch_summary(branch)
+
+    if force or confirm("Do you want to delete the above branches?"):
+        git("branch", "-D", *branches_to_delete).fg()
 
 
 def rebase():
@@ -138,14 +196,14 @@ def upload():
     prerequisites()
 
     remote, branch = get_active_upstream()
-    changes = [*list_local_changes()]
+    changes = [*LocalChange.list_changes("HEAD")]
     if not changes:
         print("No changes to upload")
         return
 
     print("Uploading to origin/main:")
-    for sha, title in changes:
-        print(" ", sha, title)
+    for change in changes:
+        print(" ", change.sha, change.title)
     print()
 
     if (remote, branch) != ("origin", "main"):
@@ -160,4 +218,4 @@ def upload():
 
 
 if __name__ == "__main__":
-    run_commands(upload, rebase, status, usage=USAGE)
+    run_commands(upload, rebase, status, prune, usage=USAGE)
