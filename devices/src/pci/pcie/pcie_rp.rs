@@ -191,20 +191,18 @@ impl HotPlugBus for PcieRootPort {
 
     fn get_hotplug_device(&self, host_key: HostHotPlugKey) -> Option<PciAddress> {
         for (guest_address, host_info) in self.downstream_devices.iter() {
-            match host_info {
-                HostHotPlugKey::Vfio { host_addr } => {
-                    let saved_addr = *host_addr;
-                    match host_key {
-                        HostHotPlugKey::Vfio { host_addr } => {
-                            if host_addr == saved_addr {
-                                return Some(*guest_address);
-                            }
-                        }
-                    }
-                }
+            if host_key == *host_info {
+                return Some(*guest_address);
             }
         }
+        None
+    }
 
+    fn is_empty(&self) -> bool {
+        self.downstream_devices.is_empty()
+    }
+
+    fn get_hotplug_key(&self) -> Option<HostHotPlugKey> {
         None
     }
 }

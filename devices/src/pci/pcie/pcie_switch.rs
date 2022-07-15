@@ -1,12 +1,15 @@
 // Copyright 2022 The ChromiumOS Authors.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-
+use base::error;
+use std::collections::BTreeMap;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use resources::SystemAllocator;
 use sync::Mutex;
 
+use crate::bus::{HostHotPlugKey, HotPlugBus};
 use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::pcie_device::PciPmcCap;
@@ -25,6 +28,7 @@ const PCIE_DP_DID: u16 = 0x3510;
 pub struct PcieUpstreamPort {
     pcie_port: PciePort,
     hotplugged: bool,
+    downstream_devices: BTreeMap<PciAddress, HostHotPlugKey>,
 }
 
 impl PcieUpstreamPort {
@@ -39,6 +43,7 @@ impl PcieUpstreamPort {
                 false,
             ),
             hotplugged,
+            downstream_devices: BTreeMap::new(),
         }
     }
 
@@ -46,6 +51,7 @@ impl PcieUpstreamPort {
         PcieUpstreamPort {
             pcie_port: PciePort::new_from_host(pcie_host, false),
             hotplugged,
+            downstream_devices: BTreeMap::new(),
         }
     }
 }
@@ -114,9 +120,64 @@ impl PcieDevice for PcieUpstreamPort {
     }
 }
 
+// Even if upstream port do not have a slot present, we still implement hotplug
+// bus trait for it. Our purpose is simple. We want to store information of
+// downstream devices in this upstream port, so that they could be used during
+// hotplug out.
+impl HotPlugBus for PcieUpstreamPort {
+    // Do nothing. We are not a real hotplug bus.
+    fn hot_plug(&mut self, _addr: PciAddress) {}
+
+    // Just remove the downstream device.
+    fn hot_unplug(&mut self, addr: PciAddress) {
+        self.downstream_devices.remove(&addr);
+    }
+
+    fn is_match(&self, host_addr: PciAddress) -> Option<u8> {
+        self.pcie_port.is_match(host_addr)
+    }
+
+    fn add_hotplug_device(&mut self, host_key: HostHotPlugKey, guest_addr: PciAddress) {
+        self.downstream_devices.insert(guest_addr, host_key);
+    }
+
+    fn get_hotplug_device(&self, host_key: HostHotPlugKey) -> Option<PciAddress> {
+        for (guest_address, host_info) in self.downstream_devices.iter() {
+            if host_key == *host_info {
+                return Some(*guest_address);
+            }
+        }
+        None
+    }
+
+    fn is_empty(&self) -> bool {
+        self.downstream_devices.is_empty()
+    }
+
+    fn get_hotplug_key(&self) -> Option<HostHotPlugKey> {
+        if self.pcie_port.is_host() {
+            match PciAddress::from_str(&self.pcie_port.debug_label()) {
+                Ok(host_addr) => Some(HostHotPlugKey::UpstreamPort { host_addr }),
+                Err(e) => {
+                    error!(
+                        "failed to get hotplug key for {}: {}",
+                        self.pcie_port.debug_label(),
+                        e
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+}
+
 pub struct PcieDownstreamPort {
     pcie_port: PciePort,
     hotplugged: bool,
+    downstream_devices: BTreeMap<PciAddress, HostHotPlugKey>,
+    hotplug_out_begin: bool,
 }
 
 impl PcieDownstreamPort {
@@ -131,6 +192,8 @@ impl PcieDownstreamPort {
                 false,
             ),
             hotplugged,
+            downstream_devices: BTreeMap::new(),
+            hotplug_out_begin: false,
         }
     }
 
@@ -138,6 +201,8 @@ impl PcieDownstreamPort {
         PcieDownstreamPort {
             pcie_port: PciePort::new_from_host(pcie_host, false),
             hotplugged,
+            downstream_devices: BTreeMap::new(),
+            hotplug_out_begin: false,
         }
     }
 }
@@ -203,5 +268,75 @@ impl PcieDevice for PcieDownstreamPort {
 
     fn get_bridge_window_size(&self) -> (u64, u64) {
         self.pcie_port.get_bridge_window_size()
+    }
+}
+
+impl HotPlugBus for PcieDownstreamPort {
+    fn hot_plug(&mut self, addr: PciAddress) {
+        if !self.pcie_port.hotplug_implemented() || self.downstream_devices.get(&addr).is_none() {
+            return;
+        }
+        self.pcie_port
+            .set_slot_status(PCIE_SLTSTA_PDS | PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP);
+        self.pcie_port.trigger_hp_or_pme_interrupt();
+    }
+
+    fn hot_unplug(&mut self, addr: PciAddress) {
+        if self.downstream_devices.remove(&addr).is_none() {
+            return;
+        }
+        self.hotplug_out_begin = true;
+
+        // Only triggers hotplug out interrupt if all downstream devices have been
+        // cleared up in crosvm.
+        if self.pcie_port.hotplug_implemented() && self.downstream_devices.is_empty() {
+            self.pcie_port
+                .set_slot_status(PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP);
+            self.pcie_port.trigger_hp_or_pme_interrupt();
+        }
+    }
+
+    fn is_match(&self, host_addr: PciAddress) -> Option<u8> {
+        self.pcie_port.is_match(host_addr)
+    }
+
+    fn add_hotplug_device(&mut self, host_key: HostHotPlugKey, guest_addr: PciAddress) {
+        if self.hotplug_out_begin {
+            self.hotplug_out_begin = false;
+            self.downstream_devices.clear();
+        }
+
+        self.downstream_devices.insert(guest_addr, host_key);
+    }
+
+    fn get_hotplug_device(&self, host_key: HostHotPlugKey) -> Option<PciAddress> {
+        for (guest_address, host_info) in self.downstream_devices.iter() {
+            if host_key == *host_info {
+                return Some(*guest_address);
+            }
+        }
+        None
+    }
+
+    fn is_empty(&self) -> bool {
+        self.downstream_devices.is_empty()
+    }
+
+    fn get_hotplug_key(&self) -> Option<HostHotPlugKey> {
+        if self.pcie_port.is_host() {
+            match PciAddress::from_str(&self.pcie_port.debug_label()) {
+                Ok(host_addr) => Some(HostHotPlugKey::DownstreamPort { host_addr }),
+                Err(e) => {
+                    error!(
+                        "failed to get hotplug key for {}: {}",
+                        self.pcie_port.debug_label(),
+                        e
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        }
     }
 }

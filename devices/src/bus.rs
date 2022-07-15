@@ -141,8 +141,10 @@ pub trait BusResumeDevice: Send {
 /// The key to identify hotplug device from host view.
 /// like host sysfs path for vfio pci device, host disk file
 /// path for virtio block device
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum HostHotPlugKey {
+    UpstreamPort { host_addr: PciAddress },
+    DownstreamPort { host_addr: PciAddress },
     Vfio { host_addr: PciAddress },
 }
 
@@ -165,6 +167,10 @@ pub trait HotPlugBus {
     fn add_hotplug_device(&mut self, host_key: HostHotPlugKey, guest_addr: PciAddress);
     /// get guest pci address from the specified host_key
     fn get_hotplug_device(&self, host_key: HostHotPlugKey) -> Option<PciAddress>;
+    /// Check whether this hotplug bus is empty
+    fn is_empty(&self) -> bool;
+    /// Get hotplug key of this hotplug bus
+    fn get_hotplug_key(&self) -> Option<HostHotPlugKey>;
 }
 
 /// Trait for generic device abstraction, that is, all devices that reside on BusDevice and want
