@@ -2,9 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-# rseq should be first due to frequency and purpose to decrease nptl latency
-rseq: 1
-
 brk: 1
 clock_gettime: 1
 clock_gettime64: 1
