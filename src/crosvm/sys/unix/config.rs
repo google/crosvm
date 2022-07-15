@@ -16,13 +16,27 @@ use crate::crosvm::config::{invalid_value_err, Config};
 #[cfg(feature = "gpu")]
 use crate::crosvm::{argument, argument::parse_hex_or_decimal};
 
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum HypervisorKind {
+    Kvm,
+}
+
+impl FromStr for HypervisorKind {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "kvm" => Ok(HypervisorKind::Kvm),
+            _ => Err("invalid hypervisor backend"),
+        }
+    }
+}
+
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 pub fn parse_gpu_render_server_options(
     s: &str,
 ) -> Result<crate::crosvm::sys::GpuRenderServerParameters, String> {
-    use std::{path::PathBuf, str::FromStr};
-
-    use crate::crosvm::{config::invalid_value_err, sys::GpuRenderServerParameters};
+    use crate::crosvm::sys::GpuRenderServerParameters;
 
     let mut path: Option<PathBuf> = None;
     let mut cache_path = None;
@@ -65,8 +79,6 @@ pub fn parse_ac97_options(
     key: &str,
     #[allow(unused_variables)] value: &str,
 ) -> Result<(), String> {
-    use std::{path::PathBuf, str::FromStr};
-
     match key {
         #[cfg(feature = "audio_cras")]
         "client_type" => {
@@ -259,8 +271,6 @@ impl GpuDisplayParametersBuilder {
 pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
     use devices::virtio::GpuMode;
     use rutabaga_gfx::RutabagaWsi;
-
-    use crate::crosvm::sys::config::is_gpu_backend_deprecated;
 
     #[cfg(feature = "gfxstream")]
     let mut vulkan_specified = false;

@@ -16,7 +16,7 @@ use devices::virtio::vhost::user::device::{
 
 use crate::{
     crosvm::sys::cmdline::{Commands, DevicesSubcommand},
-    Config,
+    CommandStatus, Config,
 };
 
 pub(crate) fn start_device(command: DevicesSubcommand) -> anyhow::Result<()> {
@@ -74,6 +74,10 @@ pub(crate) fn cleanup() {
     }
 }
 
+pub fn get_library_watcher() -> std::io::Result<()> {
+    Ok(())
+}
+
 pub(crate) fn run_command(_cmd: Commands) -> anyhow::Result<()> {
     Err(anyhow::anyhow!("invalid command"))
 }
@@ -87,4 +91,8 @@ where
         return Err(anyhow!("failed to initialize syslog: {}", e));
     }
     Ok(())
+}
+
+pub(crate) fn error_to_exit_code(_res: &std::result::Result<CommandStatus, anyhow::Error>) -> i32 {
+    1
 }

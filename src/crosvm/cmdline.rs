@@ -17,6 +17,9 @@ cfg_if::cfg_if! {
             parse_coiommu_params, VfioCommand, parse_vfio, parse_vfio_platform,
         };
         use super::config::SharedDir;
+    } else if #[cfg(windows)] {
+        use crate::crosvm::sys::config::IrqChipKind;
+
     }
 }
 
@@ -514,6 +517,10 @@ pub struct RunCommand {
     ///     num_input_streams=INT - Set number of input PCM streams
     ///         per device.
     pub cras_snds: Vec<SndParameters>,
+    #[cfg(feature = "crash-report")]
+    #[argh(option, long = "crash-pipe-name", arg_name = "\\\\.\\pipe\\PIPE_NAME")]
+    /// the crash handler ipc pipe name.
+    pub crash_pipe_name: Option<String>,
     #[argh(switch)]
     /// don't set VCPUs real-time until make-rt command is run
     pub delay_rt: bool,
@@ -584,6 +591,10 @@ pub struct RunCommand {
     #[argh(positional, arg_name = "KERNEL")]
     /// bzImage of kernel to run
     pub executable_path: Option<PathBuf>,
+    #[cfg(windows)]
+    #[argh(switch, long = "exit-stats")]
+    /// gather and display statistics on Vm Exits and Bus Reads/Writes.
+    pub exit_stats: bool,
     #[argh(
         option,
         long = "file-backed-mapping",
@@ -674,6 +685,10 @@ pub struct RunCommand {
     #[argh(switch)]
     /// use mirror cpu topology of Host for Guest VM, also copy some cpu feature to Guest VM
     pub host_cpu_topology: bool,
+    #[cfg(windows)]
+    #[argh(option, long = "host-guid", arg_name = "PATH")]
+    /// string representation of the host guid in registry format, for namespacing vsock connections.
+    pub host_guid: Option<String>,
     #[cfg(unix)]
     #[argh(option, arg_name = "IP")]
     /// IP address to assign to host tap interface
@@ -687,9 +702,17 @@ pub struct RunCommand {
     #[argh(option, short = 'i', long = "initrd", arg_name = "PATH")]
     /// initial ramdisk to load
     pub initrd_path: Option<PathBuf>,
+    #[cfg(windows)]
+    #[argh(option, long = "irqchip", arg_name = "kernel|split|userspace")]
+    /// type of interrupt controller emulation.  \"split\" is only available for x86 KVM.
+    pub irq_chip: Option<IrqChipKind>,
     #[argh(switch)]
     /// allow to enable ITMT scheduling feature in VM. The success of enabling depends on HWP and ACPI CPPC support on hardware
     pub itmt: bool,
+    #[cfg(windows)]
+    #[argh(option, long = "kernel-log-file", arg_name = "PATH")]
+    /// forward hypervisor kernel driver logs for this VM to a file.
+    pub kernel_log_file: Option<String>,
     #[cfg(unix)]
     #[argh(option, long = "kvm-device", arg_name = "PATH")]
     /// path to the KVM device. (default /dev/kvm)
@@ -698,6 +721,14 @@ pub struct RunCommand {
     #[argh(switch)]
     /// disable host swap on guest VM pages.
     pub lock_guest_memory: bool,
+    #[cfg(windows)]
+    #[argh(option, long = "log-file", arg_name = "PATH")]
+    /// redirect logs to the supplied log file at PATH rather than stderr. For multi-process mode, use --logs-directory instead
+    pub log_file: Option<String>,
+    #[cfg(windows)]
+    #[argh(option, long = "logs-directory", arg_name = "PATH")]
+    /// path to the logs directory used for crosvm processes. Logs will be sent to stderr if unset, and stderr/stdout will be uncaptured
+    pub logs_directory: Option<String>,
     #[cfg(unix)]
     #[argh(option, arg_name = "MAC", long = "mac")]
     /// MAC address for VM
@@ -802,6 +833,26 @@ pub struct RunCommand {
     #[argh(switch)]
     /// grant this Guest VM certian privileges to manage Host resources, such as power management
     pub privileged_vm: bool,
+    #[cfg(feature = "process-invariants")]
+    #[argh(option, long = "process-invariants-handle", arg_name = "PATH")]
+    /// shared read-only memory address for a serialized EmulatorProcessInvariants proto
+    pub process_invariants_data_handle: Option<u64>,
+    #[cfg(feature = "process-invariants")]
+    #[argh(option, long = "process-invariants-size", arg_name = "PATH")]
+    /// size of the serialized EmulatorProcessInvariants proto pointed at by process-invariants-handle
+    pub process_invariants_data_size: Option<usize>,
+    #[cfg(windows)]
+    #[argh(option, long = "product-channel")]
+    /// product channel
+    pub product_channel: Option<String>,
+    #[cfg(feature = "crash-report")]
+    #[argh(option, long = "product-name")]
+    /// the product name for file paths.
+    pub product_name: Option<String>,
+    #[cfg(windows)]
+    #[argh(option, long = "product-version")]
+    /// product version
+    pub product_version: Option<String>,
     #[argh(switch)]
     /// prevent host access to guest memory
     pub protected_vm: bool,
@@ -812,6 +863,10 @@ pub struct RunCommand {
     /// path to pstore buffer backend file followed by size
     ///     [--pstore <path=PATH,size=SIZE>]
     pub pstore: Option<Pstore>,
+    #[cfg(windows)]
+    #[argh(switch)]
+    /// enable virtio-pvclock.
+    pub pvclock: bool,
     // Must be `Some` iff `protected_vm == ProtectionType::UnprotectedWithFirmware`.
     #[argh(option, long = "unprotected-vm-with-firmware", arg_name = "PATH")]
     /// (EXPERIMENTAL/FOR DEBUGGING) Use VM firmware, but allow host access to guest memory
@@ -913,6 +968,10 @@ pub struct RunCommand {
     ///        Can only be given once. Will default to first serial
     ///        port if not provided.
     pub serial_parameters: Vec<SerialParameters>,
+    #[cfg(feature = "kiwi")]
+    #[argh(option, long = "service-pipe-name", arg_name = "PIPE_NAME")]
+    /// the service ipc pipe name. (Prefix \\\\.\\pipe\\ not needed.
+    pub service_pipe_name: Option<String>,
     #[cfg(unix)]
     #[argh(
         option,
@@ -966,6 +1025,10 @@ pub struct RunCommand {
     ///        when the underlying file system supports POSIX ACLs.
     ///        The default value for this option is "true".
     pub shared_dirs: Vec<SharedDir>,
+    #[cfg(feature = "slirp-ring-capture")]
+    #[argh(option, long = "slirp-capture-file", arg_name = "PATH")]
+    /// Redirects slirp network packets to the supplied log file rather than the current directory as `slirp_capture_packets.pcap`
+    pub slirp_capture_file: Option<String>,
     #[argh(option, short = 's', long = "socket", arg_name = "PATH")]
     /// path to put the control socket. If PATH is a directory, a name will be generated
     pub socket_path: Option<PathBuf>,
@@ -1391,6 +1454,36 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.pmem_devices.push(pmem);
         }
 
+        #[cfg(windows)]
+        {
+            #[cfg(feature = "crash-report")]
+            {
+                cfg.product_name = cmd.product_name;
+
+                cfg.crash_pipe_name = cmd.crash_pipe_name;
+            }
+            cfg.exit_stats = cmd.exit_stats;
+            cfg.host_guid = cmd.host_guid;
+            cfg.irq_chip = cmd.irq_chip;
+            cfg.kernel_log_file = cmd.kernel_log_file;
+            cfg.log_file = cmd.log_file;
+            cfg.logs_directory = cmd.logs_directory;
+            #[cfg(feature = "process-invariants")]
+            {
+                cfg.process_invariants_data_handle = cmd.process_invariants_data_handle;
+
+                cfg.process_invariants_data_size = cmd.process_invariants_data_size;
+            }
+            cfg.pvclock = cmd.pvclock;
+            cfg.service_pipe_name = cmd.service_pipe_name;
+            #[cfg(feature = "slirp-ring-capture")]
+            {
+                cfg.slirp_capture_file = cmd.slirp_capture_file;
+            }
+            cfg.syslog_tag = cmd.syslog_tag;
+            cfg.product_channel = cmd.product_channel;
+            cfg.product_version = cmd.product_version;
+        }
         cfg.pstore = cmd.pstore;
 
         #[cfg(unix)]

@@ -43,6 +43,7 @@ lto = true
 members = [
     "aarch64",
     "acpi_tables",
+    "anti_tamper",
     "arch",
     "argh_helpers",
     "base",

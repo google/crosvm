@@ -32,8 +32,11 @@ use vm_control::{
     BalloonControlCommand, DiskControlCommand, UsbControlResult, VmRequest, VmResponse,
 };
 
+use crate::sys::error_to_exit_code;
 use crate::sys::init_log;
 use crosvm::cmdline::{Command, CrossPlatformCommands, CrossPlatformDevicesCommands};
+#[cfg(windows)]
+use sys::windows::metrics;
 
 #[cfg(feature = "scudo")]
 #[global_allocator]
@@ -91,6 +94,12 @@ where
             }
         }
         Ok(cfg) => {
+            #[cfg(feature = "crash-report")]
+            crosvm::sys::setup_emulator_crash_reporting(&cfg)?;
+
+            #[cfg(windows)]
+            metrics::setup_metrics_reporting()?;
+
             init_log(log_config, &cfg)?;
             let exit_state = crate::sys::run_config(cfg);
             to_command_status(exit_state)
@@ -463,8 +472,16 @@ fn prepare_argh_args<I: IntoIterator<Item = String>>(args_iter: I) -> Vec<String
 }
 
 fn crosvm_main() -> Result<CommandStatus> {
+    let _library_watcher = sys::get_library_watcher();
+
+    // The following panic hook will stop our crashpad hook on windows.
+    // Only initialize when the crash-pad feature is off.
     #[cfg(not(feature = "crash-report"))]
     sys::set_panic_hook();
+
+    // Ensure all processes detach from metrics on exit.
+    #[cfg(windows)]
+    let _metrics_destructor = metrics::get_destructor();
 
     let args = prepare_argh_args(std::env::args());
     let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
@@ -493,6 +510,16 @@ fn crosvm_main() -> Result<CommandStatus> {
                 // We handle run_vm separately because it does not simply signal success/error
                 // but also indicates whether the guest requested reset or stop.
                 run_vm(cmd, log_config)
+            } else if let CrossPlatformCommands::Device(cmd) = command {
+                // On windows, the device command handles its own logging setup, so we can't handle it below
+                // otherwise logging will double init.
+                if cfg!(unix) {
+                    syslog::init_with(log_config)
+                        .map_err(|e| anyhow!("failed to initialize syslog: {}", e))?;
+                }
+                start_device(cmd)
+                    .map_err(|_| anyhow!("start_device subcommand failed"))
+                    .map(|_| CommandStatus::Success)
             } else {
                 syslog::init_with(log_config)
                     .map_err(|e| anyhow!("failed to initialize syslog: {}", e))?;
@@ -513,9 +540,7 @@ fn crosvm_main() -> Result<CommandStatus> {
                     CrossPlatformCommands::CreateQcow2(cmd) => {
                         create_qcow2(cmd).map_err(|_| anyhow!("create_qcow2 subcommand failed"))
                     }
-                    CrossPlatformCommands::Device(cmd) => {
-                        start_device(cmd).map_err(|_| anyhow!("start_device subcommand failed"))
-                    }
+                    CrossPlatformCommands::Device(_) => unreachable!(),
                     CrossPlatformCommands::Disk(cmd) => {
                         disk_cmd(cmd).map_err(|_| anyhow!("disk subcommand failed"))
                     }
@@ -590,7 +615,7 @@ fn main() {
             34
         }
         Err(e) => {
-            let exit_code = 1;
+            let exit_code = error_to_exit_code(&res);
             error!("exiting with error {}:{:?}", exit_code, e);
             exit_code
         }
@@ -611,6 +636,8 @@ mod tests {
         assert!(!is_flag("no-leading-dash"));
     }
 
+    // TODO(b/238361778) this doesn't work on Windows because is_flag isn't called yet.
+    #[cfg(unix)]
     #[test]
     fn args_split_long() {
         assert_eq!(
@@ -621,6 +648,8 @@ mod tests {
         );
     }
 
+    // TODO(b/238361778) this doesn't work on Windows because is_flag isn't called yet.
+    #[cfg(unix)]
     #[test]
     fn args_split_short() {
         assert_eq!(

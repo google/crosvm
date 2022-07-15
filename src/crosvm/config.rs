@@ -35,7 +35,7 @@ use x86_64::{set_enable_pnp_data_msr_config, set_itmt_msr_config};
 #[cfg(feature = "audio")]
 use devices::{Ac97Backend, Ac97Parameters};
 
-use super::{argument::parse_hex_or_decimal, check_opt_path};
+use super::{argument::parse_hex_or_decimal, check_opt_path, sys::HypervisorKind};
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
@@ -49,6 +49,10 @@ cfg_if::cfg_if! {
         static KVM_PATH: &str = "/dev/kvm";
         static VHOST_NET_PATH: &str = "/dev/vhost-net";
         static SECCOMP_POLICY_DIR: &str = "/usr/share/policy/crosvm";
+    } else if #[cfg(windows)] {
+        use base::{Event, Tube};
+
+        use crate::crosvm::sys::windows::config::IrqChipKind;
     }
 }
 
@@ -1236,11 +1240,21 @@ pub struct Config {
     pub balloon_bias: i64,
     pub balloon_control: Option<PathBuf>,
     pub battery_type: Option<BatteryType>,
+    #[cfg(windows)]
+    pub block_control_tube: Vec<Tube>,
+    #[cfg(windows)]
+    pub block_vhost_user_tube: Vec<Tube>,
+    #[cfg(windows)]
+    pub broker_shutdown_event: Option<Event>,
     pub cid: Option<u64>,
     #[cfg(unix)]
     pub coiommu_param: Option<devices::CoIommuParameters>,
     pub cpu_capacity: BTreeMap<usize, u32>, // CPU index -> capacity
     pub cpu_clusters: Vec<Vec<usize>>,
+    #[cfg(feature = "crash-report")]
+    pub crash_pipe_name: Option<String>,
+    #[cfg(feature = "crash-report")]
+    pub crash_report_uuid: Option<String>,
     pub delay_rt: bool,
     #[cfg(feature = "direct")]
     pub direct_edge_irq: Vec<u32>,
@@ -1259,6 +1273,8 @@ pub struct Config {
     pub dmi_path: Option<PathBuf>,
     pub enable_pnp_data: bool,
     pub executable_path: Option<Executable>,
+    #[cfg(windows)]
+    pub exit_stats: bool,
     pub file_backed_mappings: Vec<FileBackedMappingParameters>,
     pub force_calibrated_tsc_leaf: bool,
     pub force_s2idle: bool,
@@ -1269,20 +1285,33 @@ pub struct Config {
     #[cfg(all(unix, feature = "gpu"))]
     pub gpu_render_server_parameters: Option<GpuRenderServerParameters>,
     pub host_cpu_topology: bool,
+    #[cfg(windows)]
+    pub host_guid: Option<String>,
     pub host_ip: Option<net::Ipv4Addr>,
     pub hugepages: bool,
+    pub hypervisor: Option<HypervisorKind>,
     pub init_memory: Option<u64>,
     pub initrd_path: Option<PathBuf>,
+    #[cfg(windows)]
+    pub irq_chip: Option<IrqChipKind>,
     pub itmt: bool,
     pub jail_config: Option<JailConfig>,
+    #[cfg(windows)]
+    pub kernel_log_file: Option<String>,
     #[cfg(unix)]
     pub kvm_device_path: PathBuf,
     #[cfg(unix)]
     pub lock_guest_memory: bool,
+    #[cfg(windows)]
+    pub log_file: Option<String>,
+    #[cfg(windows)]
+    pub logs_directory: Option<String>,
     pub mac_address: Option<net_util::MacAddress>,
     pub memory: Option<u64>,
     pub memory_file: Option<PathBuf>,
     pub mmio_address_ranges: Vec<AddressRange>,
+    #[cfg(windows)]
+    pub net_vhost_user_tube: Option<Tube>,
     pub net_vq_pairs: Option<u16>,
     pub netmask: Option<net::Ipv4Addr>,
     pub no_i8042: bool,
@@ -1302,17 +1331,33 @@ pub struct Config {
     pub plugin_root: Option<PathBuf>,
     pub pmem_devices: Vec<DiskOption>,
     pub privileged_vm: bool,
+    #[cfg(feature = "process-invariants")]
+    pub process_invariants_data_handle: Option<u64>,
+    #[cfg(feature = "process-invariants")]
+    pub process_invariants_data_size: Option<usize>,
+    #[cfg(feature = "crash-report")]
+    pub product_channel: Option<String>,
+    #[cfg(windows)]
+    pub product_name: Option<String>,
+    #[cfg(windows)]
+    pub product_version: Option<String>,
     pub protected_vm: ProtectionType,
     pub pstore: Option<Pstore>,
+    #[cfg(windows)]
+    pub pvclock: bool,
     /// Must be `Some` iff `protected_vm == ProtectionType::UnprotectedWithFirmware`.
     pub pvm_fw: Option<PathBuf>,
     pub rng: bool,
     pub rt_cpus: Vec<usize>,
     #[serde(with = "serde_serial_params")]
     pub serial_parameters: BTreeMap<(SerialHardware, u8), SerialParameters>,
+    #[cfg(feature = "kiwi")]
+    pub service_pipe_name: Option<String>,
     #[cfg(unix)]
     #[serde(skip)]
     pub shared_dirs: Vec<SharedDir>,
+    #[cfg(feature = "slirp-ring-capture")]
+    pub slirp_capture_file: Option<String>,
     pub socket_path: Option<PathBuf>,
     #[cfg(feature = "tpm")]
     pub software_tpm: bool,
@@ -1322,6 +1367,8 @@ pub struct Config {
     pub strict_balloon: bool,
     pub stub_pci_devices: Vec<StubPciParameters>,
     pub swiotlb: Option<u64>,
+    #[cfg(windows)]
+    pub syslog_tag: Option<String>,
     #[cfg(unix)]
     pub tap_fd: Vec<RawDescriptor>,
     pub tap_name: Vec<String>,
@@ -1381,9 +1428,19 @@ impl Default for Config {
             balloon_bias: 0,
             balloon_control: None,
             battery_type: None,
+            #[cfg(windows)]
+            block_control_tube: Vec::new(),
+            #[cfg(windows)]
+            block_vhost_user_tube: Vec::new(),
+            #[cfg(windows)]
+            broker_shutdown_event: None,
             cid: None,
             #[cfg(unix)]
             coiommu_param: None,
+            #[cfg(feature = "crash-report")]
+            crash_pipe_name: None,
+            #[cfg(feature = "crash-report")]
+            crash_report_uuid: None,
             cpu_capacity: BTreeMap::new(),
             cpu_clusters: Vec::new(),
             delay_rt: false,
@@ -1404,6 +1461,8 @@ impl Default for Config {
             dmi_path: None,
             enable_pnp_data: false,
             executable_path: None,
+            #[cfg(windows)]
+            exit_stats: false,
             file_backed_mappings: Vec::new(),
             force_calibrated_tsc_leaf: false,
             force_s2idle: false,
@@ -1414,24 +1473,41 @@ impl Default for Config {
             #[cfg(all(unix, feature = "gpu"))]
             gpu_render_server_parameters: None,
             host_cpu_topology: false,
+            #[cfg(windows)]
+            host_guid: None,
             host_ip: None,
+            #[cfg(windows)]
+            product_version: None,
+            #[cfg(windows)]
+            product_channel: None,
             hugepages: false,
+            hypervisor: None,
             init_memory: None,
             initrd_path: None,
+            #[cfg(windows)]
+            irq_chip: None,
             itmt: false,
             jail_config: if !cfg!(feature = "default-no-sandbox") {
                 Some(Default::default())
             } else {
                 None
             },
+            #[cfg(windows)]
+            kernel_log_file: None,
             #[cfg(unix)]
             kvm_device_path: PathBuf::from(KVM_PATH),
             #[cfg(unix)]
             lock_guest_memory: false,
+            #[cfg(windows)]
+            log_file: None,
+            #[cfg(windows)]
+            logs_directory: None,
             mac_address: None,
             memory: None,
             memory_file: None,
             mmio_address_ranges: Vec::new(),
+            #[cfg(windows)]
+            net_vhost_user_tube: None,
             net_vq_pairs: None,
             netmask: None,
             no_i8042: false,
@@ -1451,14 +1527,26 @@ impl Default for Config {
             plugin_root: None,
             pmem_devices: Vec::new(),
             privileged_vm: false,
+            #[cfg(feature = "process-invariants")]
+            process_invariants_data_handle: None,
+            #[cfg(feature = "process-invariants")]
+            process_invariants_data_size: None,
+            #[cfg(feature = "crash-report")]
+            product_name: None,
             protected_vm: ProtectionType::Unprotected,
             pstore: None,
+            #[cfg(windows)]
+            pvclock: false,
             pvm_fw: None,
             rng: true,
             rt_cpus: Vec::new(),
             serial_parameters: BTreeMap::new(),
+            #[cfg(feature = "kiwi")]
+            service_pipe_name: None,
             #[cfg(unix)]
             shared_dirs: Vec::new(),
+            #[cfg(feature = "slirp-ring-capture")]
+            slirp_capture_file: None,
             socket_path: None,
             #[cfg(feature = "tpm")]
             software_tpm: false,
@@ -1468,6 +1556,8 @@ impl Default for Config {
             strict_balloon: false,
             stub_pci_devices: Vec::new(),
             swiotlb: None,
+            #[cfg(windows)]
+            syslog_tag: None,
             #[cfg(unix)]
             tap_fd: Vec::new(),
             tap_name: Vec::new(),
