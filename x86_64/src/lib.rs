@@ -57,7 +57,7 @@ use std::fs::File;
 use std::io;
 use std::io::Seek;
 use std::mem;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
@@ -94,6 +94,7 @@ use devices::PciAddress;
 use devices::PciConfigIo;
 use devices::PciConfigMmio;
 use devices::PciDevice;
+use devices::PciRootCommand;
 use devices::PciVirtualConfigMmio;
 use devices::Pflash;
 #[cfg(unix)]
@@ -910,6 +911,7 @@ impl arch::LinuxArch for X8664arch {
         device: Box<dyn PciDevice>,
         #[cfg(unix)] minijail: Option<Minijail>,
         resources: &mut SystemAllocator,
+        hp_control_tube: &mpsc::Sender<PciRootCommand>,
     ) -> Result<PciAddress> {
         arch::configure_pci_device(
             linux,
@@ -917,6 +919,7 @@ impl arch::LinuxArch for X8664arch {
             #[cfg(unix)]
             minijail,
             resources,
+            hp_control_tube,
         )
         .map_err(Error::ConfigurePciDevice)
     }

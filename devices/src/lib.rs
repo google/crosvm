@@ -86,6 +86,7 @@ pub use self::pci::PciDevice;
 pub use self::pci::PciDeviceError;
 pub use self::pci::PciInterruptPin;
 pub use self::pci::PciRoot;
+pub use self::pci::PciRootCommand;
 pub use self::pci::PciVirtualConfigMmio;
 pub use self::pci::StubPciDevice;
 pub use self::pci::StubPciParameters;

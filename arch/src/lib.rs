@@ -19,7 +19,10 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{
+    mpsc::{self, SendError},
+    Arc,
+};
 
 use acpi_tables::sdt::SDT;
 use base::syslog;
@@ -51,6 +54,7 @@ use devices::PciDevice;
 use devices::PciDeviceError;
 use devices::PciInterruptPin;
 use devices::PciRoot;
+use devices::PciRootCommand;
 #[cfg(unix)]
 use devices::ProxyDevice;
 use devices::SerialHardware;
@@ -298,6 +302,7 @@ pub trait LinuxArch {
         device: Box<dyn PciDevice>,
         #[cfg(unix)] minijail: Option<Minijail>,
         resources: &mut SystemAllocator,
+        hp_control_tube: &mpsc::Sender<PciRootCommand>,
     ) -> Result<PciAddress, Self::Error>;
 
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
@@ -406,6 +411,9 @@ pub enum DeviceRegistrationError {
     /// Failed to register battery device.
     #[error("failed to register battery device to VM: {0}")]
     RegisterBattery(devices::BatteryError),
+    /// Could not register PCI device to pci root bus
+    #[error("failed to register PCI device to pci root bus")]
+    RegisterDevice(SendError<PciRootCommand>),
     /// Could not register PCI device capabilities.
     #[error("could not register PCI device capabilities: {0}")]
     RegisterDeviceCapabilities(PciDeviceError),
@@ -426,6 +434,7 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
     mut device: Box<dyn PciDevice>,
     #[cfg(unix)] jail: Option<Minijail>,
     resources: &mut SystemAllocator,
+    hp_control_tube: &mpsc::Sender<PciRootCommand>,
 ) -> Result<PciAddress, DeviceRegistrationError> {
     // Allocate PCI device address before allocating BARs.
     let pci_address = device
@@ -490,10 +499,9 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
     };
 
     #[cfg(unix)]
-    linux
-        .root_config
-        .lock()
-        .add_device(pci_address, arced_dev.clone());
+    hp_control_tube
+        .send(PciRootCommand::Add(pci_address, arced_dev.clone()))
+        .map_err(DeviceRegistrationError::RegisterDevice)?;
 
     for range in &mmio_ranges {
         linux

@@ -71,6 +71,13 @@ impl PciDevice for PciRootConfiguration {
     }
 }
 
+// Command send to pci root worker thread to add/remove device from pci root
+pub enum PciRootCommand {
+    Add(PciAddress, Arc<Mutex<dyn BusDevice>>),
+    Remove(PciAddress),
+    Kill,
+}
+
 /// Emulates the PCI Root bridge.
 #[allow(dead_code)] // TODO(b/174705596): remove once mmio_bus and io_bus are used
 pub struct PciRoot {
@@ -139,7 +146,7 @@ impl PciRoot {
         }
     }
 
-    fn remove_device(&mut self, address: PciAddress) {
+    pub fn remove_device(&mut self, address: PciAddress) {
         if let Some(d) = self.devices.remove(&address) {
             for (range, bus_type) in d.lock().get_ranges() {
                 let bus_ptr = if bus_type == BusType::Mmio {

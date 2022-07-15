@@ -73,6 +73,7 @@ pub use self::pci_device::PciDevice;
 pub use self::pci_root::PciConfigIo;
 pub use self::pci_root::PciConfigMmio;
 pub use self::pci_root::PciRoot;
+pub use self::pci_root::PciRootCommand;
 pub use self::pci_root::PciVirtualConfigMmio;
 #[cfg(unix)]
 pub use self::pcie::PciBridge;
