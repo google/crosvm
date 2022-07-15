@@ -151,6 +151,7 @@ def prune(force: bool = False):
         branch
         for branch in list_local_branches()
         if branch != current_branch
+        and get_upstream(branch) is not None
         and all(
             change.status in ["ABANDONED", "MERGED"] for change in LocalChange.list_changes(branch)
         )
