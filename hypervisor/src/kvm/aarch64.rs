@@ -39,34 +39,6 @@ use crate::VmAArch64;
 use crate::VmCap;
 use crate::PSCI_0_2;
 
-/// Gives the ID for a register to be used with `set_one_reg`.
-///
-/// Pass the name of a field in `user_pt_regs` to get the corresponding register
-/// ID, e.g. `arm64_core_reg!(pstate)`
-///
-/// To get ID for registers `x0`-`x31`, refer to the `regs` field along with the
-/// register number, e.g. `arm64_core_reg!(regs, 5)` for `x5`. This is different
-/// to work around `offset_of!(kvm_sys::user_pt_regs, regs[$x])` not working.
-#[macro_export]
-macro_rules! arm64_core_reg {
-    ($reg: tt) => {{
-        let off = (memoffset::offset_of!(::kvm_sys::user_pt_regs, $reg) / 4) as u64;
-        ::kvm_sys::KVM_REG_ARM64
-            | ::kvm_sys::KVM_REG_SIZE_U64
-            | ::kvm_sys::KVM_REG_ARM_CORE as u64
-            | off
-    }};
-    (regs, $x: literal) => {{
-        let off = ((memoffset::offset_of!(::kvm_sys::user_pt_regs, regs)
-            + ($x * ::std::mem::size_of::<u64>()))
-            / 4) as u64;
-        ::kvm_sys::KVM_REG_ARM64
-            | ::kvm_sys::KVM_REG_SIZE_U64
-            | ::kvm_sys::KVM_REG_ARM_CORE as u64
-            | off
-    }};
-}
-
 impl Kvm {
     // Compute the machine type, which should be the IPA range for the VM
     // Ideally, this would take a description of the memory map and return
@@ -178,8 +150,6 @@ struct KvmProtectedVmInfo {
     reserved: [u64; 7],
 }
 
-struct KvmVcpuRegister(u64);
-
 impl VmAArch64 for KvmVm {
     fn get_hypervisor(&self) -> &dyn Hypervisor {
         &self.kvm
@@ -238,7 +208,7 @@ impl KvmVcpu {
 
     fn set_one_kvm_reg(&self, kvm_reg_id: KvmVcpuRegister, data: &[u8]) -> Result<()> {
         let onereg = kvm_one_reg {
-            id: kvm_reg_id.0,
+            id: kvm_reg_id.into(),
             addr: (data.as_ptr() as usize)
                 .try_into()
                 .expect("can't represent usize as u64"),
@@ -261,7 +231,7 @@ impl KvmVcpu {
 
     fn get_one_kvm_reg(&self, kvm_reg_id: KvmVcpuRegister, data: &mut [u8]) -> Result<()> {
         let onereg = kvm_one_reg {
-            id: kvm_reg_id.0,
+            id: kvm_reg_id.into(),
             addr: (data.as_mut_ptr() as usize)
                 .try_into()
                 .expect("can't represent usize as u64"),
@@ -278,44 +248,128 @@ impl KvmVcpu {
     }
 }
 
+#[allow(dead_code)]
+/// KVM registers as used by the `GET_ONE_REG`/`SET_ONE_REG` ioctl API
+///
+/// These variants represent the registers as exposed by KVM which must be different from
+/// `VcpuRegAArch64` to support registers which don't have an architectural definition such as
+/// pseudo-registers (`Firmware`).
+pub enum KvmVcpuRegister {
+    /// General Purpose Registers X0-X30
+    X(u8),
+    /// Stack Pointer
+    Sp,
+    /// Program Counter
+    Pc,
+    /// Processor State
+    Pstate,
+    /// Stack Pointer (EL1)
+    SpEl1,
+    /// Exception Link Register (EL1)
+    ElrEl1,
+    /// Saved Program Status Register (EL1, abt, und, irq, fiq)
+    Spsr(u8),
+    /// FP & SIMD Registers V0-V31
+    V(u8),
+    /// Floating-point Status Register
+    Fpsr,
+    /// Floating-point Control Register
+    Fpcr,
+    /// KVM Firmware Pseudo-Registers
+    Firmware(u16),
+}
+
+impl KvmVcpuRegister {
+    // Firmware pseudo-registers are part of the ARM KVM interface:
+    //     https://docs.kernel.org/virt/kvm/arm/hypercalls.html
+    pub const PSCI_VERSION: Self = Self::Firmware(0);
+    pub const SMCCC_ARCH_WORKAROUND_1: Self = Self::Firmware(1);
+    pub const SMCCC_ARCH_WORKAROUND_2: Self = Self::Firmware(2);
+    pub const SMCCC_ARCH_WORKAROUND_3: Self = Self::Firmware(3);
+}
+
+/// Gives the `u64` register ID expected by the `GET_ONE_REG`/`SET_ONE_REG` ioctl API.
+///
+/// See the KVM documentation of those ioctls for details about the format of the register ID.
+impl From<KvmVcpuRegister> for u64 {
+    fn from(register: KvmVcpuRegister) -> Self {
+        const fn reg(size: u64, kind: u64, fields: u64) -> u64 {
+            KVM_REG_ARM64 | size | kind | fields
+        }
+
+        const fn kvm_regs_reg(size: u64, offset: usize) -> u64 {
+            let offset = offset / std::mem::size_of::<u32>();
+
+            reg(size, KVM_REG_ARM_CORE as u64, offset as u64)
+        }
+
+        const fn kvm_reg(offset: usize) -> u64 {
+            kvm_regs_reg(KVM_REG_SIZE_U64, offset)
+        }
+
+        fn user_pt_reg(offset: usize) -> u64 {
+            kvm_regs_reg(
+                KVM_REG_SIZE_U64,
+                memoffset::offset_of!(kvm_regs, regs) + offset,
+            )
+        }
+
+        fn user_fpsimd_state_reg(size: u64, offset: usize) -> u64 {
+            kvm_regs_reg(size, memoffset::offset_of!(kvm_regs, fp_regs) + offset)
+        }
+
+        const fn reg_u64(kind: u64, fields: u64) -> u64 {
+            reg(KVM_REG_SIZE_U64, kind, fields)
+        }
+
+        match register {
+            KvmVcpuRegister::X(n @ 0..=30) => {
+                let n = std::mem::size_of::<u64>() * (n as usize);
+
+                user_pt_reg(memoffset::offset_of!(user_pt_regs, regs) + n)
+            }
+            KvmVcpuRegister::X(n) => unreachable!("invalid KvmVcpuRegister Xn index: {n}"),
+            KvmVcpuRegister::Sp => user_pt_reg(memoffset::offset_of!(user_pt_regs, sp)),
+            KvmVcpuRegister::Pc => user_pt_reg(memoffset::offset_of!(user_pt_regs, pc)),
+            KvmVcpuRegister::Pstate => user_pt_reg(memoffset::offset_of!(user_pt_regs, pstate)),
+            KvmVcpuRegister::SpEl1 => kvm_reg(memoffset::offset_of!(kvm_regs, sp_el1)),
+            KvmVcpuRegister::ElrEl1 => kvm_reg(memoffset::offset_of!(kvm_regs, elr_el1)),
+            KvmVcpuRegister::Spsr(n @ 0..=4) => {
+                let n = std::mem::size_of::<u64>() * (n as usize);
+
+                kvm_reg(memoffset::offset_of!(kvm_regs, spsr) + n)
+            }
+            KvmVcpuRegister::Spsr(n) => unreachable!("invalid KvmVcpuRegister Spsr index: {n}"),
+            KvmVcpuRegister::V(n @ 0..=31) => {
+                let n = std::mem::size_of::<u128>() * (n as usize);
+
+                user_fpsimd_state_reg(
+                    KVM_REG_SIZE_U128,
+                    memoffset::offset_of!(user_fpsimd_state, vregs) + n,
+                )
+            }
+            KvmVcpuRegister::V(n) => unreachable!("invalid KvmVcpuRegister Vn index: {n}"),
+            KvmVcpuRegister::Fpsr => user_fpsimd_state_reg(
+                KVM_REG_SIZE_U32,
+                memoffset::offset_of!(user_fpsimd_state, fpsr),
+            ),
+            KvmVcpuRegister::Fpcr => user_fpsimd_state_reg(
+                KVM_REG_SIZE_U32,
+                memoffset::offset_of!(user_fpsimd_state, fpcr),
+            ),
+            KvmVcpuRegister::Firmware(n) => reg_u64(KVM_REG_ARM_FW.into(), n.into()),
+        }
+    }
+}
+
 impl From<VcpuRegAArch64> for KvmVcpuRegister {
     fn from(reg: VcpuRegAArch64) -> Self {
         match reg {
-            VcpuRegAArch64::X(0) => Self(arm64_core_reg!(regs, 0)),
-            VcpuRegAArch64::X(1) => Self(arm64_core_reg!(regs, 1)),
-            VcpuRegAArch64::X(2) => Self(arm64_core_reg!(regs, 2)),
-            VcpuRegAArch64::X(3) => Self(arm64_core_reg!(regs, 3)),
-            VcpuRegAArch64::X(4) => Self(arm64_core_reg!(regs, 4)),
-            VcpuRegAArch64::X(5) => Self(arm64_core_reg!(regs, 5)),
-            VcpuRegAArch64::X(6) => Self(arm64_core_reg!(regs, 6)),
-            VcpuRegAArch64::X(7) => Self(arm64_core_reg!(regs, 7)),
-            VcpuRegAArch64::X(8) => Self(arm64_core_reg!(regs, 8)),
-            VcpuRegAArch64::X(9) => Self(arm64_core_reg!(regs, 9)),
-            VcpuRegAArch64::X(10) => Self(arm64_core_reg!(regs, 10)),
-            VcpuRegAArch64::X(11) => Self(arm64_core_reg!(regs, 11)),
-            VcpuRegAArch64::X(12) => Self(arm64_core_reg!(regs, 12)),
-            VcpuRegAArch64::X(13) => Self(arm64_core_reg!(regs, 13)),
-            VcpuRegAArch64::X(14) => Self(arm64_core_reg!(regs, 14)),
-            VcpuRegAArch64::X(15) => Self(arm64_core_reg!(regs, 15)),
-            VcpuRegAArch64::X(16) => Self(arm64_core_reg!(regs, 16)),
-            VcpuRegAArch64::X(17) => Self(arm64_core_reg!(regs, 17)),
-            VcpuRegAArch64::X(18) => Self(arm64_core_reg!(regs, 18)),
-            VcpuRegAArch64::X(19) => Self(arm64_core_reg!(regs, 19)),
-            VcpuRegAArch64::X(20) => Self(arm64_core_reg!(regs, 20)),
-            VcpuRegAArch64::X(21) => Self(arm64_core_reg!(regs, 21)),
-            VcpuRegAArch64::X(22) => Self(arm64_core_reg!(regs, 22)),
-            VcpuRegAArch64::X(23) => Self(arm64_core_reg!(regs, 23)),
-            VcpuRegAArch64::X(24) => Self(arm64_core_reg!(regs, 24)),
-            VcpuRegAArch64::X(25) => Self(arm64_core_reg!(regs, 25)),
-            VcpuRegAArch64::X(26) => Self(arm64_core_reg!(regs, 26)),
-            VcpuRegAArch64::X(27) => Self(arm64_core_reg!(regs, 27)),
-            VcpuRegAArch64::X(28) => Self(arm64_core_reg!(regs, 28)),
-            VcpuRegAArch64::X(29) => Self(arm64_core_reg!(regs, 29)),
-            VcpuRegAArch64::X(30) => Self(arm64_core_reg!(regs, 30)),
+            VcpuRegAArch64::X(n @ 0..=30) => Self::X(n),
             VcpuRegAArch64::X(n) => unreachable!("invalid VcpuRegAArch64 index: {n}"),
-            VcpuRegAArch64::Sp => Self(arm64_core_reg!(sp)),
-            VcpuRegAArch64::Pc => Self(arm64_core_reg!(pc)),
-            VcpuRegAArch64::Pstate => Self(arm64_core_reg!(pstate)),
+            VcpuRegAArch64::Sp => Self::Sp,
+            VcpuRegAArch64::Pc => Self::Pc,
+            VcpuRegAArch64::Pstate => Self::Pstate,
         }
     }
 }
@@ -455,12 +509,7 @@ impl VcpuAArch64 for KvmVcpu {
     }
 
     fn get_psci_version(&self) -> Result<PsciVersion> {
-        // The definition of KVM_REG_ARM_PSCI_VERSION is in arch/arm64/include/uapi/asm/kvm.h.
-        const KVM_REG_ARM_PSCI_VERSION: u64 =
-            KVM_REG_ARM64 | (KVM_REG_SIZE_U64 as u64) | (KVM_REG_ARM_FW as u64);
-        const PSCI_VERSION: KvmVcpuRegister = KvmVcpuRegister(KVM_REG_ARM_PSCI_VERSION);
-
-        let version = if let Ok(v) = self.get_one_kvm_reg_u64(PSCI_VERSION) {
+        let version = if let Ok(v) = self.get_one_kvm_reg_u64(KvmVcpuRegister::PSCI_VERSION) {
             let v = u32::try_from(v).map_err(|_| Error::new(EINVAL))?;
             PsciVersion::try_from(v)?
         } else {
