@@ -367,13 +367,11 @@ impl PciDevice for PciBridge {
     fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
 
     fn get_removed_children_devices(&self) -> Vec<PciAddress> {
-        let mut removed_devices = Vec::new();
-        let devices = self.device.lock().get_removed_devices();
-        for device in devices.iter() {
-            removed_devices.push(*device);
-            removed_devices.extend(&self.pci_bus.lock().get_downstream_devices());
+        if !self.device.lock().get_removed_devices().is_empty() {
+            self.pci_bus.lock().get_downstream_devices()
+        } else {
+            Vec::new()
         }
-        removed_devices
     }
 
     fn get_new_pci_bus(&self) -> Option<Arc<Mutex<PciBus>>> {

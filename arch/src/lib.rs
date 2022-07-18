@@ -182,7 +182,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
     pub gdb: Option<(u32, Tube)>,
     pub has_bios: bool,
-    pub hotplug_bus: Vec<Arc<Mutex<dyn HotPlugBus>>>,
+    pub hotplug_bus: BTreeMap<u8, Arc<Mutex<dyn HotPlugBus>>>,
     pub io_bus: Arc<Bus>,
     pub irq_chip: Box<dyn IrqChipArch>,
     pub mmio_bus: Arc<Bus>,
@@ -451,6 +451,17 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
     let device_ranges = device
         .allocate_device_bars(resources)
         .map_err(DeviceRegistrationError::AllocateDeviceAddrs)?;
+
+    // If device is a pcie bridge, add its pci bus to pci root
+    if let Some(pci_bus) = device.get_new_pci_bus() {
+        hp_control_tube
+            .send(PciRootCommand::AddBridge(pci_bus))
+            .map_err(DeviceRegistrationError::RegisterDevice)?;
+        let bar_ranges = Vec::new();
+        device
+            .configure_bridge_window(resources, &bar_ranges)
+            .map_err(DeviceRegistrationError::ConfigureWindowSize)?;
+    }
 
     // Do not suggest INTx for hot-plug devices.
     let intx_event = devices::IrqLevelEvent::new().map_err(DeviceRegistrationError::EventCreate)?;

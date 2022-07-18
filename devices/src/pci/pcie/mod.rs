@@ -7,10 +7,13 @@ mod pcie_device;
 mod pcie_host;
 mod pcie_port;
 mod pcie_rp;
+mod pcie_switch;
 
 pub use pci_bridge::PciBridge;
 pub use pcie_host::PcieHostPort;
 pub use pcie_rp::PcieRootPort;
+pub use pcie_switch::PcieDownstreamPort;
+pub use pcie_switch::PcieUpstreamPort;
 
 #[allow(dead_code)]
 #[derive(Clone, Copy)]

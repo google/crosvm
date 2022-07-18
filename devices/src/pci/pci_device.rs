@@ -573,6 +573,10 @@ impl<T: PciDevice> BusDevice for T {
     fn destroy_device(&mut self) {
         self.destroy_device()
     }
+
+    fn is_bridge(&self) -> Option<u8> {
+        self.get_new_pci_bus().map(|bus| bus.lock().get_bus_num())
+    }
 }
 
 impl<T: PciDevice + ?Sized> PciDevice for Box<T> {

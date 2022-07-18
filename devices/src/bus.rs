@@ -125,6 +125,11 @@ pub trait BusDevice: Send {
 
     /// Invoked when the device is destroyed
     fn destroy_device(&mut self) {}
+
+    /// Returns the secondary bus number if this bus device is pci bridge
+    fn is_bridge(&self) -> Option<u8> {
+        None
+    }
 }
 
 pub trait BusDeviceSync: BusDevice + Sync {
@@ -141,7 +146,7 @@ pub trait BusResumeDevice: Send {
 /// The key to identify hotplug device from host view.
 /// like host sysfs path for vfio pci device, host disk file
 /// path for virtio block device
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum HostHotPlugKey {
     UpstreamPort { host_addr: PciAddress },
     DownstreamPort { host_addr: PciAddress },

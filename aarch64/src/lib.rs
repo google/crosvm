@@ -592,7 +592,7 @@ impl arch::LinuxArch for AArch64 {
             pm: None,
             resume_notify_devices: Vec::new(),
             root_config: pci_root,
-            hotplug_bus: Vec::new(),
+            hotplug_bus: BTreeMap::new(),
         })
     }
 

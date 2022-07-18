@@ -78,9 +78,13 @@ pub use self::pci_root::PciVirtualConfigMmio;
 #[cfg(unix)]
 pub use self::pcie::PciBridge;
 #[cfg(unix)]
+pub use self::pcie::PcieDownstreamPort;
+#[cfg(unix)]
 pub use self::pcie::PcieHostPort;
 #[cfg(unix)]
 pub use self::pcie::PcieRootPort;
+#[cfg(unix)]
+pub use self::pcie::PcieUpstreamPort;
 pub use self::pvpanic::PvPanicCode;
 pub use self::pvpanic::PvPanicPciDevice;
 pub use self::stub::StubPciDevice;

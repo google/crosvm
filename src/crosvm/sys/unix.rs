@@ -30,7 +30,6 @@ use std::os::unix::net::UnixStream;
 use std::os::unix::prelude::OpenOptionsExt;
 use std::path::Path;
 use std::process;
-use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Barrier;
@@ -65,6 +64,7 @@ use devices::vfio::VfioCommonTrait;
 #[cfg(feature = "gpu")]
 use devices::virtio;
 use devices::virtio::device_constants::video::VideoDeviceType;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::virtio::memory_mapper::MemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
 use devices::virtio::vhost::user::VhostUserListener;
@@ -82,7 +82,9 @@ use devices::BusDeviceObj;
 use devices::CoIommuDev;
 #[cfg(feature = "usb")]
 use devices::HostBackendDeviceProvider;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::HostHotPlugKey;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::HotPlugBus;
 use devices::IommuDevType;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -94,17 +96,23 @@ use devices::IrqEventSource;
 use devices::KvmKernelIrqChip;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::KvmSplitIrqChip;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::PciAddress;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::PciBridge;
 use devices::PciDevice;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::PciRoot;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::PciRootCommand;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use devices::PcieDownstreamPort;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::PcieHostPort;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::PcieRootPort;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use devices::PcieUpstreamPort;
 use devices::PvPanicCode;
 use devices::PvPanicPciDevice;
 use devices::StubPciDevice;
@@ -916,7 +924,7 @@ fn create_pcie_root_port(
     sys_allocator: &mut SystemAllocator,
     control_tubes: &mut Vec<TaggedControlTube>,
     devices: &mut Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
-    hp_vec: &mut Vec<Arc<Mutex<dyn HotPlugBus>>>,
+    hp_vec: &mut Vec<(u8, Arc<Mutex<dyn HotPlugBus>>)>,
     hp_endpoints_ranges: &mut Vec<RangeInclusive<u32>>,
     // TODO(b/228627457): clippy is incorrectly warning about this Vec, which needs to be a Vec so
     // we can push into it
@@ -968,7 +976,7 @@ fn create_pcie_root_port(
         ));
 
         devices.push((pci_bridge, None));
-        hp_vec.push(pcie_root_port as Arc<Mutex<dyn HotPlugBus>>);
+        hp_vec.push((hp_sec_bus, pcie_root_port as Arc<Mutex<dyn HotPlugBus>>));
     } else {
         // user specify host pcie root port which link to this virtual pcie rp,
         // reserve the host pci BDF and create a virtual pcie RP with some attrs same as host
@@ -1030,7 +1038,10 @@ fn create_pcie_root_port(
                     gpe_notify_devs
                         .push((gpe, pcie_root_port.clone() as Arc<Mutex<dyn GpeNotify>>));
                 }
-                hp_vec.push(pcie_root_port as Arc<Mutex<dyn HotPlugBus>>);
+                hp_vec.push((
+                    bus_range.secondary,
+                    pcie_root_port as Arc<Mutex<dyn HotPlugBus>>,
+                ));
             }
         }
     }
@@ -1608,7 +1619,7 @@ where
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let mut hp_endpoints_ranges: Vec<RangeInclusive<u32>> = Vec::new();
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    let mut hotplug_buses: Vec<Arc<Mutex<dyn HotPlugBus>>> = Vec::new();
+    let mut hotplug_buses: Vec<(u8, Arc<Mutex<dyn HotPlugBus>>)> = Vec::new();
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let mut gpe_notify_devs: Vec<(u32, Arc<Mutex<dyn GpeNotify>>)> = Vec::new();
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -1712,12 +1723,11 @@ where
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let (hp_control_tube, hp_worker_tube) = mpsc::channel();
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-    let (hp_control_tube, _) = mpsc::channel();
+
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
-        for hotplug_bus in hotplug_buses.iter() {
-            linux.hotplug_bus.push(hotplug_bus.clone());
+        for (bus_num, hp_bus) in hotplug_buses {
+            linux.hotplug_bus.insert(bus_num, hp_bus);
         }
 
         if let Some(pm) = &linux.pm {
@@ -1779,6 +1789,7 @@ where
         gralloc,
         vcpu_ids,
         iommu_host_tube,
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         hp_control_tube,
     )
 }
@@ -1802,6 +1813,7 @@ fn start_pci_root_worker(
                 PciRootCommand::Add(addr, device) => {
                     pci_root.lock().add_device(addr, device);
                 }
+                PciRootCommand::AddBridge(pci_bus) => pci_root.lock().add_bridge(pci_bus),
                 PciRootCommand::Remove(addr) => {
                     pci_root.lock().remove_device(addr);
                 }
@@ -1815,19 +1827,21 @@ fn start_pci_root_worker(
     }
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn get_hp_bus<V: VmArch, Vcpu: VcpuArch>(
     linux: &RunnableLinuxVm<V, Vcpu>,
     host_addr: PciAddress,
 ) -> Result<(Arc<Mutex<dyn HotPlugBus>>, u8)> {
-    for hp_bus in linux.hotplug_bus.iter() {
-        if let Some(number) = hp_bus.lock().is_match(host_addr) {
-            return Ok((hp_bus.clone(), number));
+    for (bus_num, hp_bus) in linux.hotplug_bus.iter() {
+        if hp_bus.lock().is_match(host_addr).is_some() {
+            return Ok((hp_bus.clone(), *bus_num));
         }
     }
     Err(anyhow!("Failed to find a suitable hotplug bus"))
 }
 
-fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
     cfg: &Config,
@@ -1836,83 +1850,172 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     iommu_host_tube: &Option<Tube>,
     device: &HotPlugDeviceInfo,
 ) -> Result<()> {
-    let host_os_str = device
-        .path
-        .file_name()
-        .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
-    let host_str = host_os_str
-        .to_str()
-        .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
-    let host_addr = PciAddress::from_str(host_str).context("failed to parse vfio pci address")?;
-
+    let host_addr = PciAddress::from_path(&device.path)
+        .context("failed to parse hotplug device's PCI address")?;
     let (hp_bus, bus_num) = get_hp_bus(linux, host_addr)?;
 
-    let (vfio_pci_device, jail, viommu_mapper) = create_vfio_device(
-        &cfg.jail_config,
-        &linux.vm,
-        sys_allocator,
-        control_tubes,
-        &device.path,
-        Some(bus_num),
-        None,
-        None,
-        if iommu_host_tube.is_some() {
-            IommuDevType::VirtioIommu
-        } else {
-            IommuDevType::NoIommu
-        },
-    )?;
+    let (host_key, pci_address) = match device.device_type {
+        HotPlugDeviceType::UpstreamPort | HotPlugDeviceType::DownstreamPort => {
+            let (vm_host_tube, vm_device_tube) = Tube::pair().context("failed to create tube")?;
+            control_tubes.push(TaggedControlTube::Vm(vm_host_tube));
+            let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
+            control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+            let pcie_host = PcieHostPort::new(device.path.as_path(), vm_device_tube)?;
+            let (host_key, pci_bridge) = match device.device_type {
+                HotPlugDeviceType::UpstreamPort => {
+                    let host_key = HostHotPlugKey::UpstreamPort { host_addr };
+                    let pcie_upstream_port = Arc::new(Mutex::new(PcieUpstreamPort::new_from_host(
+                        pcie_host, true,
+                    )?));
+                    let pci_bridge =
+                        Box::new(PciBridge::new(pcie_upstream_port.clone(), msi_device_tube));
+                    linux
+                        .hotplug_bus
+                        .insert(pci_bridge.get_secondary_num(), pcie_upstream_port);
+                    (host_key, pci_bridge)
+                }
+                HotPlugDeviceType::DownstreamPort => {
+                    let host_key = HostHotPlugKey::DownstreamPort { host_addr };
+                    let pcie_downstream_port = Arc::new(Mutex::new(
+                        PcieDownstreamPort::new_from_host(pcie_host, true)?,
+                    ));
+                    let pci_bridge = Box::new(PciBridge::new(
+                        pcie_downstream_port.clone(),
+                        msi_device_tube,
+                    ));
+                    linux
+                        .hotplug_bus
+                        .insert(pci_bridge.get_secondary_num(), pcie_downstream_port);
+                    (host_key, pci_bridge)
+                }
+                _ => {
+                    bail!("Impossible to reach here")
+                }
+            };
+            let pci_address =
+                Arch::register_pci_device(linux, pci_bridge, None, sys_allocator, hp_control_tube)?;
 
-    let pci_address =
-        Arch::register_pci_device(linux, vfio_pci_device, jail, sys_allocator, hp_control_tube)
-            .context("Failed to configure pci hotplug device")?;
-
-    if let Some(iommu_host_tube) = iommu_host_tube {
-        let endpoint_addr = pci_address.to_u32();
-        let vfio_wrapper = viommu_mapper.context("expected mapper")?;
-        let descriptor = vfio_wrapper.clone_as_raw_descriptor()?;
-        let request = VirtioIOMMURequest::VfioCommand(VirtioIOMMUVfioCommand::VfioDeviceAdd {
-            endpoint_addr,
-            wrapper_id: vfio_wrapper.id(),
-            container: {
-                // Safe because the descriptor is uniquely owned by `descriptor`.
-                unsafe { File::from_raw_descriptor(descriptor) }
-            },
-        });
-        match virtio_iommu_request(iommu_host_tube, &request)
-            .map_err(|_| VirtioIOMMUVfioError::SocketFailed)?
-        {
-            VirtioIOMMUResponse::VfioResponse(VirtioIOMMUVfioResult::Ok) => (),
-            resp => bail!("Unexpected message response: {:?}", resp),
+            (host_key, pci_address)
         }
-    }
+        HotPlugDeviceType::EndPoint => {
+            let host_key = HostHotPlugKey::Vfio { host_addr };
+            let (vfio_pci_device, jail, viommu_mapper) = create_vfio_device(
+                &cfg.jail_config,
+                &linux.vm,
+                sys_allocator,
+                control_tubes,
+                &device.path,
+                Some(bus_num),
+                None,
+                None,
+                if iommu_host_tube.is_some() {
+                    IommuDevType::VirtioIommu
+                } else {
+                    IommuDevType::NoIommu
+                },
+            )?;
+            let pci_address = Arch::register_pci_device(
+                linux,
+                vfio_pci_device,
+                jail,
+                sys_allocator,
+                hp_control_tube,
+            )?;
+            if let Some(iommu_host_tube) = iommu_host_tube {
+                let endpoint_addr = pci_address.to_u32();
+                let vfio_wrapper = viommu_mapper.context("expected mapper")?;
+                let descriptor = vfio_wrapper.clone_as_raw_descriptor()?;
+                let request =
+                    VirtioIOMMURequest::VfioCommand(VirtioIOMMUVfioCommand::VfioDeviceAdd {
+                        endpoint_addr,
+                        wrapper_id: vfio_wrapper.id(),
+                        container: {
+                            // Safe because the descriptor is uniquely owned by `descriptor`.
+                            unsafe { File::from_raw_descriptor(descriptor) }
+                        },
+                    });
+                match virtio_iommu_request(iommu_host_tube, &request)
+                    .map_err(|_| VirtioIOMMUVfioError::SocketFailed)?
+                {
+                    VirtioIOMMUResponse::VfioResponse(VirtioIOMMUVfioResult::Ok) => (),
+                    resp => bail!("Unexpected message response: {:?}", resp),
+                }
+            }
 
-    let host_key = HostHotPlugKey::Vfio { host_addr };
-    let mut hp_bus = hp_bus.lock();
-    hp_bus.add_hotplug_device(host_key, pci_address);
+            (host_key, pci_address)
+        }
+    };
+    hp_bus.lock().add_hotplug_device(host_key, pci_address);
     if device.hp_interrupt {
-        hp_bus.hot_plug(pci_address);
+        hp_bus.lock().hot_plug(pci_address);
     }
     Ok(())
 }
 
-fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn remove_hotplug_bridge<V: VmArch, Vcpu: VcpuArch>(
     linux: &RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
-    _hp_control_tube: &mpsc::Sender<PciRootCommand>,
+    hp_control_tube: &mpsc::Sender<PciRootCommand>,
+    buses_to_remove: &mut Vec<u8>,
+    host_key: HostHotPlugKey,
+    child_bus: u8,
+) -> Result<()> {
+    for (bus_num, hp_bus) in linux.hotplug_bus.iter() {
+        let mut hp_bus_lock = hp_bus.lock();
+        if let Some(pci_addr) = hp_bus_lock.get_hotplug_device(host_key) {
+            sys_allocator.release_pci(pci_addr.bus, pci_addr.dev, pci_addr.func);
+            hp_bus_lock.hot_unplug(pci_addr);
+            buses_to_remove.push(child_bus);
+            if hp_bus_lock.is_empty() {
+                if let Some(hotplug_key) = hp_bus_lock.get_hotplug_key() {
+                    remove_hotplug_bridge(
+                        linux,
+                        sys_allocator,
+                        hp_control_tube,
+                        buses_to_remove,
+                        hotplug_key,
+                        *bus_num,
+                    )?;
+                }
+            }
+            return Ok(());
+        }
+    }
+
+    Err(anyhow!(
+        "Can not find device {:?} on hotplug buses",
+        host_key
+    ))
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn remove_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
+    linux: &mut RunnableLinuxVm<V, Vcpu>,
+    sys_allocator: &mut SystemAllocator,
+    hp_control_tube: &mpsc::Sender<PciRootCommand>,
     iommu_host_tube: &Option<Tube>,
     device: &HotPlugDeviceInfo,
 ) -> Result<()> {
-    let host_os_str = device
-        .path
-        .file_name()
-        .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
-    let host_str = host_os_str
-        .to_str()
-        .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
-    let host_addr = PciAddress::from_str(host_str).context("failed to parse vfio pci address")?;
-    let host_key = HostHotPlugKey::Vfio { host_addr };
-    for hp_bus in linux.hotplug_bus.iter() {
+    let host_addr = PciAddress::from_path(&device.path)?;
+    let host_key = match device.device_type {
+        HotPlugDeviceType::UpstreamPort => HostHotPlugKey::UpstreamPort { host_addr },
+        HotPlugDeviceType::DownstreamPort => HostHotPlugKey::DownstreamPort { host_addr },
+        HotPlugDeviceType::EndPoint => HostHotPlugKey::Vfio { host_addr },
+    };
+
+    let hp_bus = linux
+        .hotplug_bus
+        .iter()
+        .find(|(_, hp_bus)| {
+            let hp_bus = hp_bus.lock();
+            hp_bus.get_hotplug_device(host_key).is_some()
+        })
+        .map(|(bus_num, hp_bus)| (*bus_num, hp_bus.clone()));
+
+    if let Some((bus_num, hp_bus)) = hp_bus {
+        let mut buses_to_remove = Vec::new();
+        let mut removed_key = None;
         let mut hp_bus_lock = hp_bus.lock();
         if let Some(pci_addr) = hp_bus_lock.get_hotplug_device(host_key) {
             if let Some(iommu_host_tube) = iommu_host_tube {
@@ -1927,16 +2030,86 @@ fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
                     resp => bail!("Unexpected message response: {:?}", resp),
                 }
             }
+            let mut empty_simbling = true;
+            if let Some(HostHotPlugKey::DownstreamPort { host_addr }) =
+                hp_bus_lock.get_hotplug_key()
+            {
+                let addr_alias = host_addr;
+                for (simbling_bus_num, hp_bus) in linux.hotplug_bus.iter() {
+                    if *simbling_bus_num != bus_num {
+                        let hp_bus_lock = hp_bus.lock();
+                        let hotplug_key = hp_bus_lock.get_hotplug_key();
+                        if let Some(HostHotPlugKey::DownstreamPort { host_addr }) = hotplug_key {
+                            if addr_alias.bus == host_addr.bus && !hp_bus_lock.is_empty() {
+                                empty_simbling = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
 
-            hp_bus_lock.hot_unplug(pci_addr);
+            // If all simbling downstream ports are empty, do not send hot unplug event for this
+            // downstream port. Root port will send one plug out interrupt and remove all
+            // the remaining devices
+            if !empty_simbling {
+                hp_bus_lock.hot_unplug(pci_addr);
+            }
+
             sys_allocator.release_pci(pci_addr.bus, pci_addr.dev, pci_addr.func);
-            return Ok(());
+            if empty_simbling || hp_bus_lock.is_empty() {
+                if let Some(hotplug_key) = hp_bus_lock.get_hotplug_key() {
+                    removed_key = Some(hotplug_key);
+                    remove_hotplug_bridge(
+                        linux,
+                        sys_allocator,
+                        hp_control_tube,
+                        &mut buses_to_remove,
+                        hotplug_key,
+                        bus_num,
+                    )?;
+                }
+            }
         }
+
+        // Some types of TBT device has a few empty downstream ports. The emulated bridges
+        // of these ports won't be removed since no vfio device is connected to our emulated
+        // bridges. So we explicitly check all simbling bridges of the removed bridge here,
+        // and remove them if bridge has no child device connected.
+        if let Some(HostHotPlugKey::DownstreamPort { host_addr }) = removed_key {
+            let addr_alias = host_addr;
+            for (simbling_bus_num, hp_bus) in linux.hotplug_bus.iter() {
+                if *simbling_bus_num != bus_num {
+                    let hp_bus_lock = hp_bus.lock();
+                    let hotplug_key = hp_bus_lock.get_hotplug_key();
+                    if let Some(HostHotPlugKey::DownstreamPort { host_addr }) = hotplug_key {
+                        if addr_alias.bus == host_addr.bus && hp_bus_lock.is_empty() {
+                            remove_hotplug_bridge(
+                                linux,
+                                sys_allocator,
+                                hp_control_tube,
+                                &mut buses_to_remove,
+                                hotplug_key.unwrap(),
+                                *simbling_bus_num,
+                            )?;
+                        }
+                    }
+                }
+            }
+        }
+        for bus in buses_to_remove.iter() {
+            linux.hotplug_bus.remove(bus);
+        }
+        return Ok(());
     }
 
-    Err(anyhow!("HotPlugBus hasn't been implemented"))
+    Err(anyhow!(
+        "Can not find device {:?} on hotplug buses",
+        host_key
+    ))
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
@@ -1952,12 +2125,8 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     } else {
         &None
     };
-    if !matches!(device.device_type, HotPlugDeviceType::EndPoint) {
-        // Not supported yet
-        return VmResponse::Ok;
-    }
     let ret = if add {
-        add_vfio_device(
+        add_hotplug_device(
             linux,
             sys_allocator,
             cfg,
@@ -1967,7 +2136,7 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
             device,
         )
     } else {
-        remove_vfio_device(
+        remove_hotplug_device(
             linux,
             sys_allocator,
             hp_control_tube,
@@ -2002,7 +2171,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     mut gralloc: RutabagaGralloc,
     vcpu_ids: Vec<usize>,
     iommu_host_tube: Option<Tube>,
-    hp_control_tube: mpsc::Sender<PciRootCommand>,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] hp_control_tube: mpsc::Sender<
+        PciRootCommand,
+    >,
 ) -> Result<ExitState> {
     #[derive(EventToken)]
     enum Token {
@@ -2298,6 +2469,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     }
                 }
                 Token::VmControl { index } => {
+                    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                     let mut add_tubes = Vec::new();
                     if let Some(socket) = control_tubes.get(index) {
                         match socket {
@@ -2306,16 +2478,28 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     let mut run_mode_opt = None;
                                     let response = match request {
                                         VmRequest::HotPlugCommand { device, add } => {
-                                            handle_hotplug_command(
-                                                &mut linux,
-                                                &mut sys_allocator,
-                                                &cfg,
-                                                &mut add_tubes,
-                                                &hp_control_tube,
-                                                &iommu_host_tube,
-                                                &device,
-                                                add,
-                                            )
+                                            #[cfg(any(
+                                                target_arch = "x86",
+                                                target_arch = "x86_64"
+                                            ))]
+                                            {
+                                                handle_hotplug_command(
+                                                    &mut linux,
+                                                    &mut sys_allocator,
+                                                    &cfg,
+                                                    &mut add_tubes,
+                                                    &hp_control_tube,
+                                                    &iommu_host_tube,
+                                                    &device,
+                                                    add,
+                                                )
+                                            }
+
+                                            #[cfg(not(any(
+                                                target_arch = "x86",
+                                                target_arch = "x86_64"
+                                            )))]
+                                            VmResponse::Ok
                                         }
                                         _ => request.execute(
                                             &mut run_mode_opt,
@@ -2481,6 +2665,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             },
                         }
                     }
+                    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                     if !add_tubes.is_empty() {
                         for (idx, socket) in add_tubes.iter().enumerate() {
                             wait_ctx
@@ -2558,6 +2743,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     }
 
     // Stop pci root worker thread
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let _ = hp_control_tube.send(PciRootCommand::Kill);
 
     // Explicitly drop the VM structure here to allow the devices to clean up before the

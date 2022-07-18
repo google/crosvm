@@ -74,6 +74,7 @@ impl PciDevice for PciRootConfiguration {
 // Command send to pci root worker thread to add/remove device from pci root
 pub enum PciRootCommand {
     Add(PciAddress, Arc<Mutex<dyn BusDevice>>),
+    AddBridge(Arc<Mutex<PciBus>>),
     Remove(PciAddress),
     Kill,
 }
@@ -162,7 +163,12 @@ impl PciRoot {
                 };
                 let _ = bus_ptr.remove(range.base, range.len);
             }
+            // Remove the pci bus if this device is a pci bridge.
+            if let Some(bus_no) = d.lock().is_bridge() {
+                let _ = self.root_bus.lock().remove_child_bus(bus_no);
+            }
             d.lock().destroy_device();
+            let _ = self.root_bus.lock().remove_child_device(address);
         }
     }
 

@@ -4,6 +4,7 @@
 
 use std::fmt;
 use std::fmt::Display;
+use std::path::Path;
 use std::str::FromStr;
 
 use remain::sorted;
@@ -32,6 +33,9 @@ pub enum Error {
     /// The specified component could not be parsed as a hexadecimal number.
     #[error("{0:?} failed to parse as hex")]
     InvalidHex(PciAddressComponent),
+    /// The given PCI device path is invalid
+    #[error("Invalid PCI device path")]
+    InvalidHostPath,
     /// A delimiter (`:` or `.`) between the two specified components was missing or incorrect.
     #[error("Missing delimiter between {0:?} and {1:?}")]
     MissingDelimiter(PciAddressComponent, PciAddressComponent),
@@ -236,6 +240,22 @@ impl PciAddress {
         let register = ((config_address >> Self::REGISTER_OFFSET) & register_mask) as usize;
 
         (PciAddress { bus, dev, func }, register)
+    }
+
+    /// Construct [`PciAddress`] from a system PCI path
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The system PCI path. The file name of this path must be a valid PCI address.
+    ///
+    /// # Errors
+    ///
+    /// If the path given is invalid or filename is an invalid PCI address, this function will
+    /// return error.
+    pub fn from_path(path: &Path) -> Result<Self> {
+        let os_str = path.file_name().ok_or(Error::InvalidHostPath)?;
+        let pci_str = os_str.to_str().ok_or(Error::InvalidHostPath)?;
+        PciAddress::from_str(pci_str)
     }
 
     /// Encode [`PciAddress`] into CONFIG_ADDRESS value.
