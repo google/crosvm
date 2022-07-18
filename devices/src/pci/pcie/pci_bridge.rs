@@ -494,4 +494,8 @@ impl PciDevice for PciBridge {
             &[subordinate_bus],
         );
     }
+
+    fn destroy_device(&mut self) {
+        self.msi_config.lock().destroy()
+    }
 }
