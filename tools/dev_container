@@ -22,7 +22,7 @@
 
 import argparse
 from argh import arg  # type: ignore
-from impl.common import CROSVM_ROOT, cmd, chdir, quoted, run_main
+from impl.common import CROSVM_ROOT, cmd, chdir, cros_repo_root, is_cros_repo, quoted, run_main
 from typing import Optional, Tuple, List
 import getpass
 import shutil
@@ -35,8 +35,6 @@ IMAGE_VERSION = (CROSVM_ROOT / "tools/impl/dev_container/version").read_text().s
 CACHE_DIR = os.environ.get("CROSVM_CONTAINER_CACHE", None)
 
 DOCKER_ARGS = [
-    # Share crosvm source
-    f"--volume {quoted(CROSVM_ROOT)}:/workspace:rw",
     # Share cache dir
     f"--volume {CACHE_DIR}:/cache:rw" if CACHE_DIR else None,
     # Share devices and syslog
@@ -79,6 +77,24 @@ def delete_container(docker: cmd):
     return False
 
 
+def workspace_mount_args():
+    """
+    Returns arguments for mounting the crosvm sources to /workspace.
+
+    In ChromeOS checkouts the crosvm repo uses a symlink or worktree checkout, which links to a
+    different folder in the ChromeOS checkout. So we need to mount the whole CrOS checkout.
+    """
+    if is_cros_repo():
+        return [
+            f"--volume {quoted(cros_repo_root())}:/workspace:rw",
+            "--workdir /workspace/src/platform/crosvm",
+        ]
+    else:
+        return [
+            f"--volume {quoted(CROSVM_ROOT)}:/workspace:rw",
+        ]
+
+
 def ensure_container_is_alive(docker: cmd, docker_args: List[Optional[str]]):
     cid = container_id(docker)
     if cid and not container_is_running(docker):
@@ -115,6 +131,7 @@ def main(
     docker_args = [
         # Podman will not share devices when `--privileged` is specified
         "--privileged" if not podman else None,
+        *workspace_mount_args(),
         *DOCKER_ARGS,
     ]
 
@@ -160,6 +177,10 @@ class TestDevContainer(unittest.TestCase):
     """Runs live tests using the docker service."""
 
     docker: cmd
+    docker_args = [
+        *workspace_mount_args(),
+        *DOCKER_ARGS,
+    ]
 
     def setUp(self):
         # Start with a stopped container for each test.
@@ -167,21 +188,21 @@ class TestDevContainer(unittest.TestCase):
 
     def test_stopped_container(self):
         # Create but do not run a new container.
-        self.docker(f"create --name {CONTAINER_NAME}", *DOCKER_ARGS, "sleep infinity").stdout()
+        self.docker(f"create --name {CONTAINER_NAME}", *self.docker_args, "sleep infinity").stdout()
         self.assertTrue(container_id(self.docker))
         self.assertFalse(container_is_running(self.docker))
 
     def test_container_reuse(self):
-        cid = ensure_container_is_alive(self.docker, DOCKER_ARGS)
-        cid2 = ensure_container_is_alive(self.docker, DOCKER_ARGS)
+        cid = ensure_container_is_alive(self.docker, self.docker_args)
+        cid2 = ensure_container_is_alive(self.docker, self.docker_args)
         self.assertEqual(cid, cid2)
 
     def test_handling_of_stopped_container(self):
-        cid = ensure_container_is_alive(self.docker, DOCKER_ARGS)
+        cid = ensure_container_is_alive(self.docker, self.docker_args)
         self.docker("kill", cid).fg()
 
         # Make sure we can get back into a good state and execute commands.
-        ensure_container_is_alive(self.docker, DOCKER_ARGS)
+        ensure_container_is_alive(self.docker, self.docker_args)
         self.assertTrue(container_is_running(self.docker))
         main(("true",))
 

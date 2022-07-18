@@ -725,6 +725,19 @@ class GerritChange(object):
         return f"{self} - {self._data['subject']}"
 
 
+def is_cros_repo():
+    "Returns true if the crosvm repo is a symlink or worktree to a CrOS repo checkout."
+    dot_git = CROSVM_ROOT / ".git"
+    if not dot_git.is_symlink() and dot_git.is_dir():
+        return False
+    return (cros_repo_root() / ".repo").exists()
+
+
+def cros_repo_root():
+    "Root directory of the CrOS repo checkout."
+    return (CROSVM_ROOT / "../../..").resolve()
+
+
 if __name__ == "__main__":
     import doctest
 
