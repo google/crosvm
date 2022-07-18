@@ -138,7 +138,10 @@ impl Drop for DecodedFrameHandle {
 
             // Only retrieve if the resolutions match, otherwise let the stale Surface drop.
             if *pool.current_resolution() == self.resolution {
-                pool.add_surface(picture.into_inner().take_surface())
+                // Retrieve if not currently used by another field.
+                if let Ok(surface) = picture.into_inner().take_surface() {
+                    pool.add_surface(surface);
+                }
             }
         }
     }
