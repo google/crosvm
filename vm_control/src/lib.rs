@@ -760,6 +760,22 @@ pub struct BatControl {
     pub control_tube: Tube,
 }
 
+// Used to mark hotplug pci device's device type
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum HotPlugDeviceType {
+    UpstreamPort,
+    DownstreamPort,
+    EndPoint,
+}
+
+// Used for VM to hotplug pci devices
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HotPlugDeviceInfo {
+    pub device_type: HotPlugDeviceType,
+    pub path: PathBuf,
+    pub hp_interrupt: bool,
+}
+
 /// Message for communicating a suspend or resume to the virtio-pvclock device.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum PvClockCommand {
@@ -806,11 +822,10 @@ pub enum VmRequest {
     UsbCommand(UsbControlCommand),
     /// Command to set battery.
     BatCommand(BatteryType, BatControlCommand),
-    /// Command to add/remove vfio pci device
-    VfioCommand {
-        vfio_path: PathBuf,
+    /// Command to add/remove multiple pci devices
+    HotPlugCommand {
+        device: HotPlugDeviceInfo,
         add: bool,
-        hp_interrupt: bool,
     },
 }
 
@@ -1083,11 +1098,7 @@ impl VmRequest {
                     None => VmResponse::BatResponse(BatControlResult::NoBatDevice),
                 }
             }
-            VmRequest::VfioCommand {
-                vfio_path: _,
-                add: _,
-                hp_interrupt: _,
-            } => VmResponse::Ok,
+            VmRequest::HotPlugCommand { device: _, add: _ } => VmResponse::Ok,
         }
     }
 }

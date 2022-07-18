@@ -24,6 +24,8 @@ use base::warn;
 use base::Tube;
 use data_model::DataInit;
 use sync::Mutex;
+use vm_control::HotPlugDeviceInfo;
+use vm_control::HotPlugDeviceType;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
 
@@ -228,12 +230,14 @@ impl HotplugWorker {
                     .with_context(|| format!("failed to write {} into vfio-pci/new_id", new_id))?;
             }
 
-            // Request to hotplug the new added pcie device into guest
-            let request = VmRequest::VfioCommand {
-                vfio_path: child.clone(),
-                add: true,
+            let device = HotPlugDeviceInfo {
+                device_type: HotPlugDeviceType::EndPoint,
+                path: child.clone(),
                 hp_interrupt: children.is_empty(),
             };
+
+            // Request to hotplug the new added pcie device into guest
+            let request = VmRequest::HotPlugCommand { device, add: true };
             vm_socket.lock().send(&request).with_context(|| {
                 format!("failed to send hotplug request for {}", child.display())
             })?;

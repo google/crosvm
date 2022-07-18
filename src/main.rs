@@ -51,6 +51,8 @@ use vm_control::client::ModifyUsbResult;
 #[cfg(feature = "balloon")]
 use vm_control::BalloonControlCommand;
 use vm_control::DiskControlCommand;
+use vm_control::HotPlugDeviceInfo;
+use vm_control::HotPlugDeviceType;
 use vm_control::UsbControlResult;
 use vm_control::VmRequest;
 #[cfg(feature = "balloon")]
@@ -196,18 +198,24 @@ fn modify_battery(cmd: cmdline::BatteryCommand) -> std::result::Result<(), ()> {
 fn modify_vfio(cmd: cmdline::VfioCrosvmCommand) -> std::result::Result<(), ()> {
     let (request, socket_path, vfio_path) = match cmd.command {
         cmdline::VfioSubCommand::Add(c) => {
-            let request = VmRequest::VfioCommand {
-                vfio_path: c.vfio_path.clone(),
+            let request = VmRequest::HotPlugCommand {
+                device: HotPlugDeviceInfo {
+                    device_type: HotPlugDeviceType::EndPoint,
+                    path: c.vfio_path.clone(),
+                    hp_interrupt: true,
+                },
                 add: true,
-                hp_interrupt: true,
             };
             (request, c.socket_path, c.vfio_path)
         }
         cmdline::VfioSubCommand::Remove(c) => {
-            let request = VmRequest::VfioCommand {
-                vfio_path: c.vfio_path.clone(),
-                add: true,
-                hp_interrupt: true,
+            let request = VmRequest::HotPlugCommand {
+                device: HotPlugDeviceInfo {
+                    device_type: HotPlugDeviceType::EndPoint,
+                    path: c.vfio_path.clone(),
+                    hp_interrupt: false,
+                },
+                add: false,
             };
             (request, c.socket_path, c.vfio_path)
         }
@@ -216,6 +224,7 @@ fn modify_vfio(cmd: cmdline::VfioCrosvmCommand) -> std::result::Result<(), ()> {
         error!("Invalid host sysfs path: {:?}", vfio_path);
         return Err(());
     }
+
     handle_request(&request, socket_path)?;
     Ok(())
 }

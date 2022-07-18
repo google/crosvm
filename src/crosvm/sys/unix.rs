@@ -1832,10 +1832,10 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     control_tubes: &mut Vec<TaggedControlTube>,
     hp_control_tube: &mpsc::Sender<PciRootCommand>,
     iommu_host_tube: &Option<Tube>,
-    vfio_path: &Path,
-    hp_interrupt: bool,
+    device: &HotPlugDeviceInfo,
 ) -> Result<()> {
-    let host_os_str = vfio_path
+    let host_os_str = device
+        .path
         .file_name()
         .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
     let host_str = host_os_str
@@ -1850,7 +1850,7 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
         &linux.vm,
         sys_allocator,
         control_tubes,
-        vfio_path,
+        &device.path,
         Some(bus_num),
         None,
         None,
@@ -1888,7 +1888,7 @@ fn add_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     let host_key = HostHotPlugKey::Vfio { host_addr };
     let mut hp_bus = hp_bus.lock();
     hp_bus.add_hotplug_device(host_key, pci_address);
-    if hp_interrupt {
+    if device.hp_interrupt {
         hp_bus.hot_plug(pci_address);
     }
     Ok(())
@@ -1899,10 +1899,10 @@ fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     sys_allocator: &mut SystemAllocator,
     _hp_control_tube: &mpsc::Sender<PciRootCommand>,
     iommu_host_tube: &Option<Tube>,
-    vfio_path: &Path,
-    _hp_interrupt: bool,
+    device: &HotPlugDeviceInfo,
 ) -> Result<()> {
-    let host_os_str = vfio_path
+    let host_os_str = device
+        .path
         .file_name()
         .ok_or_else(|| anyhow!("failed to parse or find vfio path"))?;
     let host_str = host_os_str
@@ -1935,22 +1935,25 @@ fn remove_vfio_device<V: VmArch, Vcpu: VcpuArch>(
     Err(anyhow!("HotPlugBus hasn't been implemented"))
 }
 
-fn handle_vfio_command<V: VmArch, Vcpu: VcpuArch>(
+fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
     cfg: &Config,
     add_tubes: &mut Vec<TaggedControlTube>,
     hp_control_tube: &mpsc::Sender<PciRootCommand>,
     iommu_host_tube: &Option<Tube>,
-    vfio_path: &Path,
+    device: &HotPlugDeviceInfo,
     add: bool,
-    hp_interrupt: bool,
 ) -> VmResponse {
     let iommu_host_tube = if cfg.vfio_isolate_hotplug {
         iommu_host_tube
     } else {
         &None
     };
+    if !matches!(device.device_type, HotPlugDeviceType::EndPoint) {
+        // Not supported yet
+        return VmResponse::Ok;
+    }
     let ret = if add {
         add_vfio_device(
             linux,
@@ -1959,8 +1962,7 @@ fn handle_vfio_command<V: VmArch, Vcpu: VcpuArch>(
             add_tubes,
             hp_control_tube,
             iommu_host_tube,
-            vfio_path,
-            hp_interrupt,
+            device,
         )
     } else {
         remove_vfio_device(
@@ -1968,15 +1970,14 @@ fn handle_vfio_command<V: VmArch, Vcpu: VcpuArch>(
             sys_allocator,
             hp_control_tube,
             iommu_host_tube,
-            vfio_path,
-            hp_interrupt,
+            device,
         )
     };
 
     match ret {
         Ok(()) => VmResponse::Ok,
         Err(e) => {
-            error!("hanlde_vfio_command failure: {}", e);
+            error!("hanlde_hotplug_command failure: {}", e);
             add_tubes.clear();
             VmResponse::Err(base::Error::new(libc::EINVAL))
         }
@@ -2302,21 +2303,18 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                 Ok(request) => {
                                     let mut run_mode_opt = None;
                                     let response = match request {
-                                        VmRequest::VfioCommand {
-                                            vfio_path,
-                                            add,
-                                            hp_interrupt,
-                                        } => handle_vfio_command(
-                                            &mut linux,
-                                            &mut sys_allocator,
-                                            &cfg,
-                                            &mut add_tubes,
-                                            &hp_control_tube,
-                                            &iommu_host_tube,
-                                            &vfio_path,
-                                            add,
-                                            hp_interrupt,
-                                        ),
+                                        VmRequest::HotPlugCommand { device, add } => {
+                                            handle_hotplug_command(
+                                                &mut linux,
+                                                &mut sys_allocator,
+                                                &cfg,
+                                                &mut add_tubes,
+                                                &hp_control_tube,
+                                                &iommu_host_tube,
+                                                &device,
+                                                add,
+                                            )
+                                        }
                                         _ => request.execute(
                                             &mut run_mode_opt,
                                             #[cfg(feature = "balloon")]

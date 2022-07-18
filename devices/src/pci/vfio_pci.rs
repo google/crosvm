@@ -37,6 +37,8 @@ use resources::MmioType;
 use resources::SystemAllocator;
 use sync::Mutex;
 use vfio_sys::*;
+use vm_control::HotPlugDeviceInfo;
+use vm_control::HotPlugDeviceType;
 use vm_control::VmMemoryDestination;
 use vm_control::VmMemoryRequest;
 use vm_control::VmMemoryResponse;
@@ -493,11 +495,13 @@ impl VfioPciWorker {
                         let mut sysfs_path = PathBuf::new();
                         sysfs_path.push("/sys/bus/pci/devices/");
                         sysfs_path.push(self.name.clone());
-                        let request = VmRequest::VfioCommand {
-                            vfio_path: sysfs_path,
-                            add: false,
-                            hp_interrupt: true,
+                        let device = HotPlugDeviceInfo {
+                            device_type: HotPlugDeviceType::EndPoint,
+                            path: sysfs_path,
+                            hp_interrupt: false,
                         };
+
+                        let request = VmRequest::HotPlugCommand { device, add: false };
                         if self.vm_socket.send(&request).is_ok() {
                             if let Err(e) = self.vm_socket.recv::<VmResponse>() {
                                 error!("{} failed to remove vfio_device: {}", self.name.clone(), e);
