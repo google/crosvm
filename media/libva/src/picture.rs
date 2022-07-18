@@ -122,6 +122,26 @@ impl Picture<PictureNew> {
         }
     }
 
+    /// Creates a new Picture with a given `frame_number` to identify it,
+    /// reusing the Surface from `picture`. This is useful for interlaced
+    /// decoding as one can render both fields to the same underlying surface.
+    pub fn new_from_same_surface<T: PictureReclaimableSurface, S: PictureReclaimableSurface>(
+        timestamp: u64,
+        picture: &Picture<S>,
+    ) -> Picture<T> {
+        let context = Rc::clone(&picture.inner.context);
+        Picture {
+            inner: Box::new(PictureInner {
+                timestamp,
+                context,
+                buffers: Default::default(),
+                surface: Rc::clone(&picture.inner.surface),
+            }),
+
+            phantom: PhantomData,
+        }
+    }
+
     /// Add buffers to a picture
     pub fn add_buffer(&mut self, buffer: Buffer) {
         self.inner.buffers.push(buffer);
