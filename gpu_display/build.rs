@@ -32,15 +32,17 @@ cfg_if::cfg_if! {
 
         // Searches for the given protocol in both the system wide and bundles protocols path.
         fn find_protocol(name: &str) -> PathBuf {
-            let protocols_path = pkg_config::get_variable("wayland-protocols", "pkgdatadir")
-                .unwrap_or_else(|_| "/usr/share/wayland-protocols".to_owned());
             let protocol_file_name = PathBuf::from(format!("{}.xml", name));
-
             // Prioritize the systems wayland protocols before using the bundled ones.
+            if let Ok(protocols_path) = pkg_config::get_variable("wayland-protocols", "pkgdatadir") {
+                if let Some(found) = scan_path(protocols_path, &protocol_file_name) {
+                    return found;
+                }
+            }
+            let protocols_path = format!("/usr/share/wayland-protocols/stable/{}", name);
             if let Some(found) = scan_path(protocols_path, &protocol_file_name) {
                 return found;
             }
-
             // Use bundled protocols as a fallback.
             let protocol_path = Path::new("protocol").join(protocol_file_name);
             assert!(
