@@ -223,20 +223,6 @@ impl Picture<PictureEnd> {
     }
 }
 
-impl Picture<PictureSync> {
-    /// Returns a reference to the underlying `Surface` for this
-    /// `Picture`
-    pub fn surface(&self) -> Ref<Surface> {
-        self.inner.surface.borrow()
-    }
-
-    /// Returns a mutable reference to the underlying `Surface` for this
-    /// `Picture`
-    pub fn surface_mut(&mut self) -> RefMut<Surface> {
-        self.inner.surface.borrow_mut()
-    }
-}
-
 impl<S: PictureState> Picture<S> {
     /// Get the timestamp for this picture.
     pub fn timestamp(&self) -> u64 {
@@ -257,5 +243,17 @@ impl<S: PictureReclaimableSurface> Picture<S> {
             Ok(surface) => Ok(surface.into_inner()),
             Err(_) => Err(anyhow!("Surface still in use")),
         }
+    }
+
+    /// Returns a reference to the underlying `Surface` for this
+    /// `Picture`
+    pub fn surface(&self) -> Ref<Surface> {
+        self.inner.surface.borrow()
+    }
+
+    /// Returns a mutable reference to the underlying `Surface` for this
+    /// `Picture`
+    pub fn surface_mut(&mut self) -> RefMut<Surface> {
+        self.inner.surface.borrow_mut()
     }
 }
