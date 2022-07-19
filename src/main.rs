@@ -88,7 +88,7 @@ where
                     Ok(CommandStatus::VmStop)
                 }
                 Err(e) => {
-                    error!("{:#}", e);
+                    eprintln!("{:#}", e);
                     Err(e)
                 }
             }
@@ -105,7 +105,7 @@ where
             to_command_status(exit_state)
         }
         Err(e) => {
-            error!("{}", e);
+            eprintln!("{}", e);
             Err(anyhow!("{}", e))
         }
     }
