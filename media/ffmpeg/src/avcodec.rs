@@ -195,10 +195,7 @@ impl AvCodecContext {
     ///
     /// Error codes are the same as those returned by `avcodec_send_packet` with the exception of
     /// EAGAIN which is converted into `Ok(false)` as it is not actually an error.
-    pub fn try_send_packet<'a, T: MappedRegion>(
-        &mut self,
-        packet: &AvPacket<'a, T>,
-    ) -> Result<bool, AvError> {
+    pub fn try_send_packet<'a>(&mut self, packet: &AvPacket<'a>) -> Result<bool, AvError> {
         // Safe because the context is valid through the life of this object, and `packet`'s
         // lifetime properties ensures its memory area is readable.
         match unsafe { ffi::avcodec_send_packet(self.0, &packet.packet) } {
@@ -251,17 +248,17 @@ impl AvCodecContext {
 }
 
 /// An encoded input packet that can be submitted to `AvCodecContext::try_send_packet`.
-pub struct AvPacket<'a, T: MappedRegion> {
+pub struct AvPacket<'a> {
     packet: ffi::AVPacket,
-    _phantom: PhantomData<&'a T>,
+    _phantom: PhantomData<&'a ()>,
 }
 
-impl<'a, T: MappedRegion> AvPacket<'a, T> {
+impl<'a> AvPacket<'a> {
     /// Create a new AvPacket.
     ///
     /// `input_data` is the encoded data we want to send to the codec for decoding. The data is not
     /// copied by the AvPacket itself, however a copy may happen when the packet is submitted.
-    pub fn new(pts: i64, input_data: &'a T) -> Self {
+    pub fn new<T: MappedRegion>(pts: i64, input_data: &'a T) -> Self {
         Self {
             packet: ffi::AVPacket {
                 buf: std::ptr::null_mut(),
