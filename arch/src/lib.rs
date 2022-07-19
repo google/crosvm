@@ -341,6 +341,9 @@ pub trait GdbOps<T: VcpuArch> {
     /// Make the next vCPU's run single-step.
     fn enable_singlestep(vcpu: &T) -> Result<(), Self::Error>;
 
+    /// Get maximum number of hardware breakpoints.
+    fn get_max_hw_breakpoints(vcpu: &T) -> Result<usize, Self::Error>;
+
     /// Set hardware breakpoints at the given addresses.
     fn set_hw_breakpoints(vcpu: &T, breakpoints: &[GuestAddress]) -> Result<(), Self::Error>;
 }

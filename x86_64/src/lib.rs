@@ -1133,6 +1133,10 @@ impl<T: VcpuX86_64> arch::GdbOps<T> for X8664arch {
             .map_err(Error::EnableSinglestep)
     }
 
+    fn get_max_hw_breakpoints(_vcpu: &T) -> Result<usize> {
+        Ok(4usize)
+    }
+
     fn set_hw_breakpoints(vcpu: &T, breakpoints: &[GuestAddress]) -> Result<()> {
         vcpu.set_guest_debug(breakpoints, false /* enable_singlestep */)
             .map_err(Error::SetHwBreakpoint)

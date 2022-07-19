@@ -108,6 +108,7 @@ pub struct GdbStub {
     from_vcpu: mpsc::Receiver<VcpuDebugStatusMessage>,
 
     single_step: bool,
+    max_hw_breakpoints: Option<usize>,
     hw_breakpoints: Vec<GuestAddress>,
 }
 
@@ -122,6 +123,7 @@ impl GdbStub {
             vcpu_com,
             from_vcpu,
             single_step: false,
+            max_hw_breakpoints: None,
             hw_breakpoints: Default::default(),
         }
     }
@@ -143,6 +145,20 @@ impl GdbStub {
             Ok(VmResponse::Ok) => Ok(()),
             Ok(r) => Err(Error::UnexpectedVmResponse(r)),
             Err(e) => Err(Error::VmResponse(e)),
+        }
+    }
+
+    fn max_hw_breakpoints_request(&self) -> TargetResult<usize, Self> {
+        match self.vcpu_request(VcpuControl::Debug(VcpuDebug::GetHwBreakPointCount)) {
+            Ok(VcpuDebugStatus::HwBreakPointCount(n)) => Ok(n),
+            Ok(s) => {
+                error!("Unexpected vCPU response for GetHwBreakPointCount: {:?}", s);
+                Err(NonFatal)
+            }
+            Err(e) => {
+                error!("Failed to request GetHwBreakPointCount: {}", e);
+                Err(NonFatal)
+            }
         }
     }
 }
@@ -323,9 +339,14 @@ impl HwBreakpoint for GdbStub {
         addr: <Self::Arch as Arch>::Usize,
         _kind: <Self::Arch as Arch>::BreakpointKind,
     ) -> TargetResult<bool, Self> {
-        // If we already have 4 breakpoints, we cannot set a new one.
-        if self.hw_breakpoints.len() >= 4 {
-            error!("Not allowed to set more than 4 HW breakpoints");
+        let max_count = *(match &mut self.max_hw_breakpoints {
+            None => self
+                .max_hw_breakpoints
+                .insert(self.max_hw_breakpoints_request()?),
+            Some(c) => c,
+        });
+        if self.hw_breakpoints.len() >= max_count {
+            error!("Not allowed to set more than {} HW breakpoints", max_count);
             return Err(NonFatal);
         }
         self.hw_breakpoints.push(GuestAddress(addr));

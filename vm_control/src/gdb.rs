@@ -15,6 +15,7 @@ pub enum VcpuDebug {
     WriteRegs(Box<<GdbArch as Arch>::Registers>),
     WriteMem(GuestAddress, Vec<u8>),
     EnableSinglestep,
+    GetHwBreakPointCount,
     SetHwBreakPoint(Vec<GuestAddress>),
 }
 
@@ -25,6 +26,7 @@ pub enum VcpuDebugStatus {
     RegValues(<GdbArch as Arch>::Registers),
     MemoryRegion(Vec<u8>),
     CommandComplete,
+    HwBreakPointCount(usize),
     HitBreakPoint,
 }
 

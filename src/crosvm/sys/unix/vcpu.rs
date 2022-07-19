@@ -281,6 +281,18 @@ where
                 })
                 .context("failed to send a debug status to GDB thread")
         }
+        VcpuDebug::GetHwBreakPointCount => {
+            let msg = VcpuDebugStatusMessage {
+                cpu: cpu_id as usize,
+                msg: VcpuDebugStatus::HwBreakPointCount(
+                    <Arch as arch::GdbOps<V>>::get_max_hw_breakpoints(vcpu as &V)
+                        .context("failed to get max number of HW breakpoints")?,
+                ),
+            };
+            reply_tube
+                .send(msg)
+                .context("failed to send a debug status to GDB thread")
+        }
         VcpuDebug::SetHwBreakPoint(addrs) => {
             <Arch as arch::GdbOps<V>>::set_hw_breakpoints(vcpu as &V, &addrs)
                 .context("failed to handle a gdb SetHwBreakPoint command")?;
