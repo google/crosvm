@@ -8,7 +8,6 @@
 
 use std::{ffi::CStr, fmt::Display, marker::PhantomData, ops::Deref};
 
-use base::MappedRegion;
 use libc::{c_char, c_int};
 use thiserror::Error as ThisError;
 
@@ -247,6 +246,19 @@ impl AvCodecContext {
     }
 }
 
+/// Trait for types that can be used as data provider for a `AVBuffer`.
+///
+/// `AVBuffer` is an owned buffer type, so all the type needs to do is being able to provide a
+/// stable pointer to its own data as well as its length. Implementors need to be sendable across
+/// threads because avcodec is allowed to use threads in its codec implementations.
+pub trait AvBufferSource: Send {
+    fn as_ptr(&self) -> *const u8;
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        self.as_ptr() as *mut u8
+    }
+    fn len(&self) -> usize;
+}
+
 /// An encoded input packet that can be submitted to `AvCodecContext::try_send_packet`.
 pub struct AvPacket<'a> {
     packet: ffi::AVPacket,
@@ -254,18 +266,18 @@ pub struct AvPacket<'a> {
 }
 
 impl<'a> AvPacket<'a> {
-    /// Create a new AvPacket.
+    /// Create a new AvPacket that borrows the `input_data`.
     ///
-    /// `input_data` is the encoded data we want to send to the codec for decoding. The data is not
-    /// copied by the AvPacket itself, however a copy may happen when the packet is submitted.
-    pub fn new<T: MappedRegion>(pts: i64, input_data: &'a T) -> Self {
+    /// The returned `AvPacket` will hold a reference to `input_data`, meaning that libavcodec might
+    /// perform a copy from/to it.
+    pub fn new<T: AvBufferSource>(pts: i64, input_data: &'a mut T) -> Self {
         Self {
             packet: ffi::AVPacket {
                 buf: std::ptr::null_mut(),
                 pts,
                 dts: AV_NOPTS_VALUE as i64,
-                data: input_data.as_ptr(),
-                size: input_data.size() as c_int,
+                data: input_data.as_mut_ptr(),
+                size: input_data.len() as c_int,
                 side_data: std::ptr::null_mut(),
                 pos: -1,
                 // Safe because all the other elements of this struct can be zeroed.
