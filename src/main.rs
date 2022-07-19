@@ -79,36 +79,38 @@ fn run_vm<F: 'static>(cmd: RunCommand, log_config: LogConfig<F>) -> Result<Comma
 where
     F: Fn(&mut syslog::fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
 {
-    match TryInto::<Config>::try_into(cmd) {
-        #[cfg(feature = "plugin")]
-        Ok(cfg) if executable_is_plugin(&cfg.executable_path) => {
-            match crosvm::plugin::run_config(cfg) {
-                Ok(_) => {
-                    info!("crosvm and plugin have exited normally");
-                    Ok(CommandStatus::VmStop)
-                }
-                Err(e) => {
-                    eprintln!("{:#}", e);
-                    Err(e)
-                }
-            }
-        }
-        Ok(cfg) => {
-            #[cfg(feature = "crash-report")]
-            crosvm::sys::setup_emulator_crash_reporting(&cfg)?;
-
-            #[cfg(windows)]
-            metrics::setup_metrics_reporting()?;
-
-            init_log(log_config, &cfg)?;
-            let exit_state = crate::sys::run_config(cfg);
-            to_command_status(exit_state)
-        }
+    let cfg = match TryInto::<Config>::try_into(cmd) {
+        Ok(cfg) => cfg,
         Err(e) => {
             eprintln!("{}", e);
-            Err(anyhow!("{}", e))
+            return Err(anyhow!("{}", e));
         }
+    };
+
+    #[cfg(feature = "plugin")]
+    if executable_is_plugin(&cfg.executable_path) {
+        let res = match crosvm::plugin::run_config(cfg) {
+            Ok(_) => {
+                info!("crosvm and plugin have exited normally");
+                Ok(CommandStatus::VmStop)
+            }
+            Err(e) => {
+                eprintln!("{:#}", e);
+                Err(e)
+            }
+        };
+        return res;
     }
+
+    #[cfg(feature = "crash-report")]
+    crosvm::sys::setup_emulator_crash_reporting(&cfg)?;
+
+    #[cfg(windows)]
+    metrics::setup_metrics_reporting()?;
+
+    init_log(log_config, &cfg)?;
+    let exit_state = crate::sys::run_config(cfg);
+    to_command_status(exit_state)
 }
 
 fn stop_vms(cmd: cmdline::StopCommand) -> std::result::Result<(), ()> {
