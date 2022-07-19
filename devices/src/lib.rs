@@ -6,6 +6,7 @@
 
 //! Emulates virtual and hardware devices.
 
+pub mod acpi;
 pub mod bat;
 mod bus;
 mod cmos;
@@ -40,6 +41,7 @@ cfg_if::cfg_if! {
     }
 }
 
+pub use self::acpi::ACPIPMResource;
 pub use self::bat::{BatteryError, GoldfishBattery};
 pub use self::bus::{
     Bus, BusAccessInfo, BusDevice, BusDeviceObj, BusDeviceSync, BusRange, BusResumeDevice, BusType,
@@ -75,14 +77,12 @@ cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod platform;
         mod proxy;
-        pub mod acpi;
         #[cfg(feature = "usb")]
         pub mod usb;
         #[cfg(feature = "usb")]
         mod utils;
         pub mod vfio;
 
-        pub use self::acpi::ACPIPMResource;
         #[cfg(feature = "audio")]
         pub use self::pci::{Ac97Backend, Ac97Dev, Ac97Parameters};
         pub use self::pci::{

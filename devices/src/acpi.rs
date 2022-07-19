@@ -5,10 +5,7 @@
 use crate::pci::CrosvmDeviceId;
 use crate::{BusAccessInfo, BusDevice, BusResumeDevice, DeviceId, IrqLevelEvent};
 use acpi_tables::{aml, aml::Aml};
-use base::{
-    error, info, warn, Error as SysError, Event, EventToken, SendTube, VmEventType, WaitContext,
-};
-use base::{AcpiNotifyEvent, NetlinkGenericSocket};
+use base::{error, warn, Error as SysError, Event, EventToken, SendTube, VmEventType, WaitContext};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;
@@ -33,14 +30,14 @@ pub enum ACPIPMError {
     AcpiEventSockError(base::Error),
 }
 
-struct Pm1Resource {
-    status: u16,
+pub(crate) struct Pm1Resource {
+    pub(crate) status: u16,
     enable: u16,
     control: u16,
 }
 
-struct GpeResource {
-    status: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
+pub(crate) struct GpeResource {
+    pub(crate) status: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
     enable: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
     gpe_notify: BTreeMap<u32, Vec<Arc<Mutex<dyn GpeNotify>>>>,
 }
@@ -173,25 +170,7 @@ fn run_worker(
     acpi_event_ignored_gpe: Vec<u32>,
     #[cfg(feature = "direct")] sci_direct_evt: Option<IrqLevelEvent>,
 ) -> Result<(), ACPIPMError> {
-    // Get group id corresponding to acpi_mc_group of acpi_event family
-    let nl_groups: u32;
-    match get_acpi_event_group() {
-        Some(group) if group > 0 => {
-            nl_groups = 1 << (group - 1);
-            info!("Listening on acpi_mc_group of acpi_event family");
-        }
-        _ => {
-            return Err(ACPIPMError::AcpiMcGroupError);
-        }
-    }
-
-    let acpi_event_sock = match NetlinkGenericSocket::new(nl_groups) {
-        Ok(acpi_sock) => acpi_sock,
-        Err(e) => {
-            return Err(ACPIPMError::AcpiEventSockError(e));
-        }
-    };
-
+    let acpi_event_sock = crate::sys::get_acpi_event_sock()?;
     #[derive(EventToken)]
     enum Token {
         AcpiEvent,
@@ -202,11 +181,15 @@ fn run_worker(
     }
 
     let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
-        (&acpi_event_sock, Token::AcpiEvent),
         (sci_evt.get_resample(), Token::InterruptResample),
         (&kill_evt, Token::Kill),
     ])
     .map_err(ACPIPMError::CreateWaitContext)?;
+    if let Some(acpi_event_sock) = &acpi_event_sock {
+        wait_ctx
+            .add(acpi_event_sock, Token::AcpiEvent)
+            .map_err(ACPIPMError::CreateWaitContext)?;
+    }
 
     #[cfg(feature = "direct")]
     if let Some(ref evt) = sci_direct_evt {
@@ -223,7 +206,7 @@ fn run_worker(
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
                 Token::AcpiEvent => {
-                    acpi_event_run(
+                    crate::sys::acpi_event_run(
                         &acpi_event_sock,
                         &gpe0,
                         &pm1,
@@ -270,98 +253,6 @@ fn run_worker(
     }
 }
 
-fn acpi_event_handle_gpe(
-    gpe_number: u32,
-    _type: u32,
-    gpe0: &Arc<Mutex<GpeResource>>,
-    sci_evt: &IrqLevelEvent,
-    ignored_gpe: &[u32],
-) {
-    // If gpe event, emulate GPE and trigger SCI
-    if _type == 0 && gpe_number < 256 && !ignored_gpe.contains(&gpe_number) {
-        let mut gpe0 = gpe0.lock();
-        let byte = gpe_number as usize / 8;
-
-        if byte >= gpe0.status.len() {
-            error!("gpe_evt: GPE register {} does not exist", byte);
-            return;
-        }
-        gpe0.status[byte] |= 1 << (gpe_number % 8);
-        gpe0.trigger_sci(sci_evt);
-    }
-}
-
-const ACPI_BUTTON_NOTIFY_STATUS: u32 = 0x80;
-
-fn acpi_event_handle_power_button(
-    acpi_event: AcpiNotifyEvent,
-    pm1: &Arc<Mutex<Pm1Resource>>,
-    sci_evt: &IrqLevelEvent,
-) {
-    // If received power button event, emulate PM/PWRBTN_STS and trigger SCI
-    if acpi_event._type == ACPI_BUTTON_NOTIFY_STATUS && acpi_event.bus_id.contains("LNXPWRBN") {
-        let mut pm1 = pm1.lock();
-
-        pm1.status |= BITMASK_PM1STS_PWRBTN_STS;
-        pm1.trigger_sci(sci_evt);
-    }
-}
-
-fn get_acpi_event_group() -> Option<u32> {
-    // Create netlink generic socket which will be used to query about given family name
-    let netlink_ctrl_sock = match NetlinkGenericSocket::new(0) {
-        Ok(sock) => sock,
-        Err(e) => {
-            error!("netlink generic socket creation error: {}", e);
-            return None;
-        }
-    };
-
-    let nlmsg_family_response = netlink_ctrl_sock
-        .family_name_query("acpi_event".to_string())
-        .unwrap();
-    return nlmsg_family_response.get_multicast_group_id("acpi_mc_group".to_string());
-}
-
-fn acpi_event_run(
-    acpi_event_sock: &NetlinkGenericSocket,
-    gpe0: &Arc<Mutex<GpeResource>>,
-    pm1: &Arc<Mutex<Pm1Resource>>,
-    sci_evt: &IrqLevelEvent,
-    ignored_gpe: &[u32],
-) {
-    let nl_msg = match acpi_event_sock.recv() {
-        Ok(msg) => msg,
-        Err(e) => {
-            error!("recv returned with error {}", e);
-            return;
-        }
-    };
-
-    for netlink_message in nl_msg.iter() {
-        let acpi_event = match AcpiNotifyEvent::new(netlink_message) {
-            Ok(evt) => evt,
-            Err(e) => {
-                error!("Received netlink message is not an acpi_event, error {}", e);
-                continue;
-            }
-        };
-        match acpi_event.device_class.as_str() {
-            "gpe" => {
-                acpi_event_handle_gpe(
-                    acpi_event.data,
-                    acpi_event._type,
-                    gpe0,
-                    sci_evt,
-                    ignored_gpe,
-                );
-            }
-            "button/power" => acpi_event_handle_power_button(acpi_event, pm1, sci_evt),
-            c => warn!("unknown acpi event {}", c),
-        };
-    }
-}
-
 impl Drop for ACPIPMResource {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
@@ -375,7 +266,7 @@ impl Drop for ACPIPMResource {
 }
 
 impl Pm1Resource {
-    fn trigger_sci(&self, sci_evt: &IrqLevelEvent) {
+    pub(crate) fn trigger_sci(&self, sci_evt: &IrqLevelEvent) {
         if self.status
             & self.enable
             & (BITMASK_PM1EN_GBL_EN
@@ -392,7 +283,7 @@ impl Pm1Resource {
 }
 
 impl GpeResource {
-    fn trigger_sci(&self, sci_evt: &IrqLevelEvent) {
+    pub(crate) fn trigger_sci(&self, sci_evt: &IrqLevelEvent) {
         let mut trigger = false;
         for i in 0..self.status.len() {
             let gpes = self.status[i] & self.enable[i];
@@ -568,7 +459,7 @@ const GPE0_STATUS: u16 = PM1_STATUS + ACPIPM_RESOURCE_EVENTBLK_LEN as u16 + 4; /
 /// Size: GPE0_BLK_LEN/2 (defined in FADT)
 const GPE0_ENABLE: u16 = GPE0_STATUS + (ACPIPM_RESOURCE_GPE0_BLK_LEN as u16 / 2);
 
-const BITMASK_PM1STS_PWRBTN_STS: u16 = 1 << 8;
+pub(crate) const BITMASK_PM1STS_PWRBTN_STS: u16 = 1 << 8;
 const BITMASK_PM1STS_SLPBTN_STS: u16 = 1 << 9;
 const BITMASK_PM1EN_GBL_EN: u16 = 1 << 5;
 const BITMASK_PM1EN_PWRBTN_EN: u16 = 1 << 8;
