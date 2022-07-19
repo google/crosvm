@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use base::AsRawDescriptor;
 use base::Event;
+use sync::Mutex;
 use thiserror::Error as ThisError;
 
 #[cfg(feature = "ffmpeg")]
@@ -91,6 +92,46 @@ impl<T> EventQueue<T> {
 impl<T> AsRawDescriptor for EventQueue<T> {
     fn as_raw_descriptor(&self) -> base::RawDescriptor {
         self.event.as_raw_descriptor()
+    }
+}
+
+/// An `EventQueue` that is `Sync`, `Send`, and non-mut - i.e. that can easily be passed across
+/// threads and wrapped into a `Rc` or `Arc`.
+pub struct SyncEventQueue<T>(Mutex<EventQueue<T>>);
+
+impl<T> From<EventQueue<T>> for SyncEventQueue<T> {
+    fn from(queue: EventQueue<T>) -> Self {
+        Self(Mutex::new(queue))
+    }
+}
+
+impl<T> SyncEventQueue<T> {
+    /// Add `event` to the queue.
+    pub fn queue_event(&self, event: T) -> base::Result<()> {
+        self.0.lock().queue_event(event)
+    }
+
+    /// Read the next event, blocking until an event becomes available.
+    pub fn dequeue_event(&self) -> base::Result<T> {
+        self.0.lock().dequeue_event()
+    }
+
+    /// Remove all the posted events for which `predicate` returns `false`.
+    pub fn retain<P: FnMut(&T) -> bool>(&self, predicate: P) {
+        self.0.lock().retain(predicate)
+    }
+
+    /// Returns the number of events currently pending on this queue, i.e. the number of times
+    /// `dequeue_event` can be called without blocking.
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.0.lock().len()
+    }
+}
+
+impl<T> AsRawDescriptor for SyncEventQueue<T> {
+    fn as_raw_descriptor(&self) -> base::RawDescriptor {
+        self.0.lock().as_raw_descriptor()
     }
 }
 
