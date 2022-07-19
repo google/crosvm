@@ -35,7 +35,8 @@ use x86_64::{set_enable_pnp_data_msr_config, set_itmt_msr_config};
 #[cfg(feature = "audio")]
 use devices::{Ac97Backend, Ac97Parameters};
 
-use super::{argument::parse_hex_or_decimal, check_opt_path, sys::HypervisorKind};
+pub(crate) use super::sys::HypervisorKind;
+use super::{argument::parse_hex_or_decimal, check_opt_path};
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {

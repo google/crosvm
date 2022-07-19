@@ -62,8 +62,8 @@ use crate::crosvm::config::{
     numbered_disk_option, parse_battery_options, parse_bus_id_addr, parse_cpu_affinity,
     parse_cpu_capacity, parse_cpu_set, parse_file_backed_mapping, parse_mmio_address_range,
     parse_pstore, parse_serial_options, parse_stub_pci_parameters, Executable,
-    FileBackedMappingParameters, TouchDeviceOption, VhostUserFsOption, VhostUserOption,
-    VhostUserWlOption, VvuOption,
+    FileBackedMappingParameters, HypervisorKind, TouchDeviceOption, VhostUserFsOption,
+    VhostUserOption, VhostUserWlOption, VvuOption,
 };
 #[cfg(feature = "direct")]
 use crate::crosvm::config::{
@@ -696,6 +696,9 @@ pub struct RunCommand {
     #[argh(switch)]
     /// advise the kernel to use Huge Pages for guest memory mappings
     pub hugepages: bool,
+    /// hypervisor backend
+    #[argh(option)]
+    pub hypervisor: Option<HypervisorKind>,
     #[argh(option, long = "init-mem", arg_name = "N")]
     /// amount of guest memory outside the balloon at boot in MiB. (default: --mem)
     pub init_memory: Option<u64>,
@@ -1336,6 +1339,8 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         cfg.hugepages = cmd.hugepages;
+
+        cfg.hypervisor = cmd.hypervisor;
 
         #[cfg(unix)]
         {
