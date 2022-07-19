@@ -1621,11 +1621,6 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         return Err("Executable does not exist".to_string());
     }
 
-    #[cfg(unix)]
-    if !cfg.kvm_device_path.exists() {
-        return Err(format!("kvm path {:?} does not exist", cfg.kvm_device_path));
-    };
-
     check_opt_path!(cfg.android_fstab);
 
     check_opt_path!(cfg.vcpu_cgroup_path);
