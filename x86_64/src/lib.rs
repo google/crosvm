@@ -67,10 +67,14 @@ use arch::{
     MsrValueFrom, RunnableLinuxVm, VmComponents, VmImage,
 };
 use base::{warn, Event, SendTube, TubeError};
-use devices::serial_device::{SerialHardware, SerialParameters};
+#[cfg(windows)]
+use devices::Minijail;
+#[cfg(unix)]
+use devices::ProxyDevice;
 use devices::{
     BusDevice, BusDeviceObj, BusResumeDevice, Debugcon, IrqChip, IrqChipX86_64, IrqEventSource,
-    PciAddress, PciConfigIo, PciConfigMmio, PciDevice, PciVirtualConfigMmio, ProxyDevice, Serial,
+    PciAddress, PciConfigIo, PciConfigMmio, PciDevice, PciVirtualConfigMmio, Serial,
+    SerialHardware, SerialParameters,
 };
 use hypervisor::{
     HypervisorX86_64, ProtectionType, VcpuInitX86_64, VcpuX86_64, Vm, VmCap, VmX86_64,
@@ -102,6 +106,7 @@ pub enum Error {
     CloneEvent(base::Error),
     #[error("failed to clone IRQ chip: {0}")]
     CloneIrqChip(base::Error),
+    #[cfg(unix)]
     #[error("failed to clone jail: {0}")]
     CloneJail(minijail::Error),
     #[error("unable to clone a Tube: {0}")]
@@ -135,6 +140,7 @@ pub enum Error {
     CreatePit(base::Error),
     #[error("unable to make PIT device: {0}")]
     CreatePitDevice(devices::PitError),
+    #[cfg(unix)]
     #[error("unable to create proxy device: {0}")]
     CreateProxyDevice(devices::ProxyError),
     #[error("unable to create serial devices: {0}")]
@@ -1472,7 +1478,7 @@ impl X8664arch {
         irq_chip: &mut dyn IrqChip,
         sci_irq: u32,
         battery: (&Option<BatteryType>, Option<Minijail>),
-        mmio_bus: &devices::Bus,
+        #[cfg_attr(windows, allow(unused_variables))] mmio_bus: &devices::Bus,
         max_bus: u8,
         resume_notify_devices: &mut Vec<Arc<Mutex<dyn BusResumeDevice>>>,
     ) -> Result<(acpi::AcpiDevResource, Option<BatControl>)> {
@@ -1492,6 +1498,8 @@ impl X8664arch {
                         control_tube,
                     })
                 }
+                #[cfg(windows)]
+                _ => None,
             }
         } else {
             None
@@ -1683,6 +1691,7 @@ impl X8664arch {
                 .map_err(Error::CreateDebugconDevice)?;
 
             let con: Arc<Mutex<dyn BusDevice>> = match debugcon_jail.as_ref() {
+                #[cfg(unix)]
                 Some(jail) => Arc::new(Mutex::new(
                     ProxyDevice::new(
                         con,
@@ -1691,6 +1700,8 @@ impl X8664arch {
                     )
                     .map_err(Error::CreateProxyDevice)?,
                 )),
+                #[cfg(windows)]
+                Some(_) => unreachable!(),
                 None => Arc::new(Mutex::new(con)),
             };
             io_bus

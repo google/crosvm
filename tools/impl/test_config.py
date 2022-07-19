@@ -70,7 +70,6 @@ WIN64_DISABLED_CRATES = [
     "tpm2-sys",
     "tpm2",
     "usb_util",
-    "x86_64",
 ]
 
 CRATE_OPTIONS: Dict[str, List[TestOption]] = {

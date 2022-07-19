@@ -186,9 +186,7 @@ libcras = "*"
 # Compile out trace statements in release builds
 log = { version = "0", features = ["release_max_level_debug"]}
 metrics = { path = "metrics" }
-minijail = "*" # provided by ebuild
 net_util = { path = "net_util" }
-p9 = "*"
 protobuf = { version = "2.3", optional = true }
 protos = { path = "protos", optional = true }
 remain = "*"
@@ -212,6 +210,10 @@ x86_64 = { path = "x86_64" }
 
 [target.'cfg(any(target_arch = "aarch64", target_arch = "arm"))'.dependencies]
 aarch64 = { path = "aarch64" }
+
+[target.'cfg(unix)'.dependencies]
+minijail = "*" # provided by ebuild
+p9 = "*"
 
 [target.'cfg(windows)'.dependencies]
 tube_transporter = { path = "tube_transporter" }
