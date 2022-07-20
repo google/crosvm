@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Generated with bindgen --allowlist-function='gbm_.*' --allowlist-type='gbm_.*' minigbm/gbm.h
+// Generated with bindgen --default-enum-style=rust --allowlist-function='gbm_.*' --allowlist-type='gbm_.*' minigbm/gbm.h
 // Then modified manually
 
 #![cfg(feature = "minigbm")]
@@ -148,6 +148,21 @@ pub const GBM_BO_TRANSFER_READ_WRITE: gbm_bo_transfer_flags = 3;
 pub type gbm_bo_transfer_flags = u32;
 extern "C" {
     pub fn gbm_bo_unmap(bo: *mut gbm_bo, map_data: *mut c_void);
+}
+#[repr(u32)]
+#[doc = " Enum to indicate the cache attributes of CPU mapping returned by"]
+#[doc = " gbm_bo_map()"]
+#[doc = ""]
+#[doc = " Note that definition aligns with VIRTIO_GPU_MAP_CACHE_*, RUTABAGA_MAP_CACHE_*,"]
+#[doc = " and VIRGL_RENDERER_MAP_CACHE_* (but skipping the _NONE and _UNCACHED values as"]
+#[doc = " those don't actually make sense to use)."]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum gbm_bo_map_cache_mode {
+    GBM_BO_MAP_CACHE_CACHED = 1,
+    GBM_BO_MAP_CACHE_WC = 3,
+}
+extern "C" {
+    pub fn gbm_bo_get_map_info(bo: *mut gbm_bo) -> gbm_bo_map_cache_mode;
 }
 extern "C" {
     pub fn gbm_bo_get_width(bo: *mut gbm_bo) -> u32;

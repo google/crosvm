@@ -8,13 +8,11 @@
 
 #![cfg(feature = "minigbm")]
 
-use std::ffi::CStr;
 use std::fs::File;
 use std::io::Error;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::os::fd::FromRawFd;
-use std::os::raw::c_char;
 use std::sync::Arc;
 
 use crate::rutabaga_gralloc::formats::DrmFormat;
@@ -52,7 +50,6 @@ impl Drop for MinigbmDeviceInner {
 pub struct MinigbmDevice {
     minigbm_device: Arc<MinigbmDeviceInner>,
     last_buffer: Option<Arc<MinigbmBuffer>>,
-    device_name: &'static str,
 }
 
 impl MinigbmDevice {
@@ -60,7 +57,6 @@ impl MinigbmDevice {
     /// the minigbm library.
     pub fn init() -> RutabagaResult<Box<dyn Gralloc>> {
         let descriptor: File;
-        let device_name: &str;
         let gbm: *mut gbm_device;
         // SAFETY:
         // Safe because minigbm_create_default_device is safe to call with an unused fd,
@@ -76,22 +72,12 @@ impl MinigbmDevice {
             descriptor = File::from_raw_fd(fd);
         }
 
-        // SAFETY:
-        // Safe because the string returned by gbm_device_get_backend_name() exists at least
-        // as long as the associated gbm_device.
-        unsafe {
-            let backend_name: *const c_char = gbm_device_get_backend_name(gbm);
-            let c_str: &CStr = CStr::from_ptr(backend_name);
-            device_name = c_str.to_str()?;
-        }
-
         Ok(Box::new(MinigbmDevice {
             minigbm_device: Arc::new(MinigbmDeviceInner {
                 _fd: descriptor,
                 gbm,
             }),
             last_buffer: None,
-            device_name,
         }))
     }
 }
@@ -127,11 +113,7 @@ impl Gralloc for MinigbmDevice {
         let mut reqs: ImageMemoryRequirements = Default::default();
         let gbm_buffer = MinigbmBuffer(bo, self.clone());
 
-        // Intel GPUs typically only use cached memory buffers.  This will change with dGPUs, but
-        // perhaps minigbm will be deprecated by then.  Other display drivers (rockchip, mediatek,
-        // amdgpu) typically use write combine memory.  We can also consider use flags too if this
-        // heuristic proves insufficient.
-        if self.device_name == "i915" {
+        if gbm_buffer.cached() {
             reqs.map_info = RUTABAGA_MAP_CACHE_CACHED;
         } else {
             reqs.map_info = RUTABAGA_MAP_CACHE_WC;
@@ -259,6 +241,14 @@ impl MinigbmBuffer {
         // SAFETY:
         // This is always safe to call with a valid gbm_bo pointer.
         unsafe { gbm_bo_get_stride_for_plane(self.0, plane) }
+    }
+
+    /// Should buffer use cached mapping to guest
+    pub fn cached(&self) -> bool {
+        // SAFETY:
+        // This is always safe to call with a valid gbm_bo pointer.
+        let mode = unsafe { gbm_bo_get_map_info(self.0) };
+        mode == gbm_bo_map_cache_mode::GBM_BO_MAP_CACHE_CACHED
     }
 
     /// Exports a new dmabuf/prime file descriptor.
