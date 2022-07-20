@@ -1336,7 +1336,7 @@ pub struct Config {
     pub process_invariants_data_handle: Option<u64>,
     #[cfg(feature = "process-invariants")]
     pub process_invariants_data_size: Option<usize>,
-    #[cfg(feature = "crash-report")]
+    #[cfg(windows)]
     pub product_channel: Option<String>,
     #[cfg(windows)]
     pub product_name: Option<String>,
@@ -1532,7 +1532,7 @@ impl Default for Config {
             process_invariants_data_handle: None,
             #[cfg(feature = "process-invariants")]
             process_invariants_data_size: None,
-            #[cfg(feature = "crash-report")]
+            #[cfg(windows)]
             product_name: None,
             protected_vm: ProtectionType::Unprotected,
             pstore: None,
