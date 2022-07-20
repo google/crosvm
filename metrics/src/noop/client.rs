@@ -13,6 +13,9 @@ pub fn force_initialize(_: Tube) {}
 pub fn get_destructor() -> MetricsClientDestructor {
     MetricsClientDestructor::new(|| {})
 }
+pub fn is_initialized() -> bool {
+    false
+}
 pub fn set_auth_token(_: &str) {}
 pub fn set_graphics_api(_: &str) {}
 pub fn set_package_name(_: &str) {}
