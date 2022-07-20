@@ -178,17 +178,25 @@
     ]
   },
   {
+    "cmd": [],
+    "name": "Prepare Host Build.Prepare source.Sync submodules",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@"
+    ]
+  },
+  {
     "cmd": [
       "git",
       "submodule",
       "update",
+      "--force",
       "--init"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "infra_step": true,
-    "name": "Prepare Host Build.Prepare source.Sync Submodules",
+    "name": "Prepare Host Build.Prepare source.Sync submodules.Init / Update submodules",
     "~followup_annotations": [
-      "@@@STEP_NEST_LEVEL@2@@@"
+      "@@@STEP_NEST_LEVEL@3@@@"
     ]
   },
   {
@@ -197,7 +205,7 @@
       "repack",
       "-a"
     ],
-    "cwd": "[CACHE]/builder/crosvm",
+    "cwd": "[CACHE]/builder",
     "infra_step": true,
     "name": "Prepare Host Build.Prepare source.Repack repository",
     "~followup_annotations": [
