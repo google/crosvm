@@ -101,7 +101,6 @@ extern "C" {
     ) -> c_int;
 
     fn pipe_virgl_renderer_resource_unref(res_handle: u32);
-    fn pipe_virgl_renderer_context_create(handle: u32, nlen: u32, name: *const c_char) -> c_int;
     fn pipe_virgl_renderer_context_destroy(handle: u32);
     fn pipe_virgl_renderer_transfer_read_iov(
         handle: u32,
@@ -161,6 +160,12 @@ extern "C" {
     ) -> c_int;
     fn stream_renderer_resource_unmap(res_handle: u32) -> c_int;
     fn stream_renderer_resource_map_info(res_handle: u32, map_info: *mut u32) -> c_int;
+    fn stream_renderer_context_create(
+        handle: u32,
+        nlen: u32,
+        name: *const c_char,
+        context_init: u32,
+    ) -> c_int;
     fn stream_renderer_context_create_fence(fence_id: u64, ctx_id: u32, ring_idx: u8) -> c_int;
 }
 
@@ -576,18 +581,23 @@ impl RutabagaComponent for Gfxstream {
     fn create_context(
         &self,
         ctx_id: u32,
-        _context_init: u32,
-        _context_name: Option<&str>,
+        context_init: u32,
+        context_name: Option<&str>,
         _fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
-        const CONTEXT_NAME: &[u8] = b"gpu_renderer";
-        // Safe because virglrenderer is initialized by now and the context name is statically
+        let mut name: &str = "gpu_renderer";
+        if let Some(name_string) = context_name.filter(|s| s.len() > 0) {
+            name = name_string;
+        }
+
+        // Safe because gfxstream is initialized by now and the context name is statically
         // allocated. The return value is checked before returning a new context.
         let ret = unsafe {
-            pipe_virgl_renderer_context_create(
+            stream_renderer_context_create(
                 ctx_id,
-                CONTEXT_NAME.len() as u32,
-                CONTEXT_NAME.as_ptr() as *const c_char,
+                name.len() as u32,
+                name.as_ptr() as *const c_char,
+                context_init,
             )
         };
         ret_to_res(ret)?;
