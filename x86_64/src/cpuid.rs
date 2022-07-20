@@ -70,6 +70,7 @@ pub struct CpuIdContext {
     calibrated_tsc_leaf_required: bool,
     /// Whether or not VCPU IDs and APIC IDs should match host cpu IDs.
     host_cpu_topology: bool,
+    /// Whether to expose core temperature, package temperature  and APEF/MPERF to guest
     enable_pnp_data: bool,
     /// Enable Intel Turbo Boost Max Technology 3.0.
     itmt: bool,

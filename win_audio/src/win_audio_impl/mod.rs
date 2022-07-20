@@ -4,7 +4,7 @@
 
 use crate::AudioSharedFormat;
 use audio_streams::{
-    BoxError, BufferDrop, NoopStream, NoopStreamControl, PlaybackBuffer, PlaybackBufferError,
+    BoxError, BufferCommit, NoopStream, NoopStreamControl, PlaybackBuffer, PlaybackBufferError,
     PlaybackBufferStream, SampleFormat, StreamControl, StreamSource,
 };
 use base::{error, info, warn, AsRawDescriptor, Error, Event, EventExt, EventReadResult};
@@ -177,7 +177,7 @@ impl WinAudioRenderer {
 
 impl PlaybackBufferStream for WinAudioRenderer {
     /// Returns a wrapper around the WASAPI buffer.
-    fn next_playback_buffer(&mut self) -> Result<PlaybackBuffer, BoxError> {
+    fn next_playback_buffer<'b, 's: 'b>(&'s mut self) -> Result<PlaybackBuffer<'b>, BoxError> {
         const MAX_REATTACH_TRIES: usize = 50;
         for _ in 0..MAX_REATTACH_TRIES {
             match self.device.next_win_buffer() {
@@ -738,9 +738,9 @@ impl DeviceRenderer {
     }
 }
 
-impl BufferDrop for DeviceRenderer {
+impl BufferCommit for DeviceRenderer {
     // Called after buffer from WASAPI is filled. This will allow the audio bytes to be played as sound.
-    fn trigger(&mut self, nframes: usize) {
+    fn commit(&mut self, nframes: usize) {
         // Safe because `audio_render_client` is initialized and parameters passed
         // into `ReleaseBuffer()` are valid
         unsafe {

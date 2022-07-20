@@ -2,13 +2,14 @@
 syntax = "proto2";
 
 message RecordDetails {
-  reserved 1 to 11, 14 to 16;
+  reserved 1 to 11, 14 to 18;
   // Additional details about an unexpected exit of a child process within
   // the emulator.
   optional EmulatorChildProcessExitDetails emulator_child_process_exit_details =
       12;
   // Additional details about wave formats from the Window's host system.
   optional WaveFormatDetails wave_format_details = 13;
+  optional EmulatorDllDetails emulator_dll_details = 19;
 }
 
 message WaveFormatDetails {
@@ -95,4 +96,8 @@ message EmulatorChildProcessExitDetails {
   // The process identifier, as defined by the ProcessType enum in the
   // emulator code.
   optional EmulatorProcessType process_type = 2;
+}
+
+message EmulatorDllDetails {
+  optional string dll_base_name = 1;
 }

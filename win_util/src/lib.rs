@@ -16,16 +16,20 @@ pub use crate::large_integer::*;
 mod security_attributes;
 pub use crate::security_attributes::*;
 
-use libc::c_ulong;
-use std::ffi::{CString, OsStr};
+mod dll_notification;
+pub use crate::dll_notification::*;
+
+use std::ffi::{CString, OsStr, OsString};
 use std::iter::once;
 use std::mem::MaybeUninit;
-use std::os::windows::ffi::OsStrExt;
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::os::windows::io::RawHandle;
-use std::slice;
 use std::sync::Once;
-use std::{io, ptr};
+use std::{io, ptr, slice};
+
+use libc::c_ulong;
 use winapi::shared::minwindef::{DWORD, FALSE, TRUE};
+use winapi::shared::ntdef::UNICODE_STRING;
 use winapi::um::handleapi::{
     CloseHandle, DuplicateHandle, SetHandleInformation, INVALID_HANDLE_VALUE,
 };
@@ -35,7 +39,7 @@ use winapi::um::processthreadsapi::{
 };
 use winapi::um::sysinfoapi::{GetNativeSystemInfo, SYSTEM_INFO};
 use winapi::um::winbase::{CreateFileMappingA, HANDLE_FLAG_INHERIT};
-use winapi::um::winnt::{DUPLICATE_SAME_ACCESS, HRESULT, PROCESS_DUP_HANDLE};
+use winapi::um::winnt::{DUPLICATE_SAME_ACCESS, HRESULT, PROCESS_DUP_HANDLE, WCHAR};
 
 #[macro_export]
 macro_rules! syscall_bail {
@@ -110,6 +114,25 @@ pub unsafe fn from_ptr_win32_wide_string(wide: *const u16) -> String {
     let len = strlen_ptr_u16(wide);
     let slice = slice::from_raw_parts(wide, len);
     String::from_utf16_lossy(slice)
+}
+
+/// Converts a `UNICODE_STRING` into an `OsString`.
+/// ## Safety
+/// Safe when `unicode_string` is non-null and points to a valid
+/// `UNICODE_STRING` struct.
+pub fn unicode_string_to_os_string(unicode_string: &UNICODE_STRING) -> OsString {
+    // Safe because:
+    // * Buffer is guaranteed to be properly aligned and valid for the
+    //   entire length of the string.
+    // * The slice is only temporary, until we perform the `from_wide`
+    //   conversion with `OsString`, so the memory referenced by the slice is
+    //   not modified during that duration.
+    OsString::from_wide(unsafe {
+        slice::from_raw_parts(
+            unicode_string.Buffer,
+            unicode_string.Length as usize / std::mem::size_of::<WCHAR>(),
+        )
+    })
 }
 
 pub fn duplicate_handle_with_target_pid(hndl: RawHandle, target_pid: u32) -> io::Result<RawHandle> {

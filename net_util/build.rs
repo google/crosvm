@@ -26,7 +26,6 @@ mod win_slirp {
             env::var("PATH").unwrap(),
             manifest_dir,
             build_type,
-            manifest_dir
         );
     }
 }

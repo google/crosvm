@@ -67,6 +67,7 @@ use arch::{
     MsrValueFrom, RunnableLinuxVm, VmComponents, VmImage,
 };
 use base::{warn, Event, SendTube, TubeError};
+pub use cpuid::{adjust_cpuid, CpuIdContext};
 #[cfg(windows)]
 use devices::Minijail;
 #[cfg(unix)]
