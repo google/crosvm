@@ -43,7 +43,7 @@ pub mod msr;
 
 mod acpi;
 mod bzimage;
-mod cpuid;
+pub mod cpuid;
 mod gdt;
 mod interrupts;
 mod mptable;

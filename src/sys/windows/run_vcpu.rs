@@ -23,7 +23,8 @@ use {
 use {
     devices::IrqChipX86_64 as IrqChipArch,
     hypervisor::{VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
-    x86_64::{adjust_cpuid, CpuIdContext, X8664arch as Arch},
+    x86_64::cpuid::{adjust_cpuid, CpuIdContext},
+    x86_64::X8664arch as Arch,
 };
 
 use crate::bail_exit_code;
@@ -31,7 +32,7 @@ use crate::crosvm::sys::windows::exit::{Exit, ExitContext, ExitContextAnyhow};
 use crate::crosvm::sys::windows::stats::{StatisticsCollector, VmExitStatistics};
 use crate::sys::windows::save_vcpu_tsc_offset;
 use cros_async::{select2, EventAsync, Executor, SelectResult, TimerAsync};
-use devices::{Bus, TscSyncMitigations, VcpuRunState};
+use devices::{tsc::TscSyncMitigations, Bus, VcpuRunState};
 use futures::pin_mut;
 #[cfg(feature = "whpx")]
 use hypervisor::whpx::WhpxVcpu;

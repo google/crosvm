@@ -38,8 +38,9 @@ use devices::virtio::block::block::DiskOption;
 use devices::virtio::{self, BalloonMode, Console, PvClock};
 use devices::Minijail;
 use devices::{
-    self, get_tsc_sync_mitigations, standard_deviation, Ac97Dev, BusDeviceObj, TscSyncMitigations,
-    UserspaceIrqChip, VirtioPciDevice,
+    self,
+    tsc::{get_tsc_sync_mitigations, standard_deviation, TscSyncMitigations},
+    Ac97Dev, BusDeviceObj, UserspaceIrqChip, VirtioPciDevice,
 };
 #[cfg(feature = "haxm")]
 use hypervisor::haxm::{get_use_ghaxm, set_use_ghaxm, Haxm, HaxmVcpu, HaxmVm};
@@ -91,7 +92,7 @@ use {
 use {
     devices::IrqChipX86_64 as IrqChipArch,
     hypervisor::{VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
-    x86_64::{adjust_cpuid, CpuIdContext, X8664arch as Arch},
+    x86_64::X8664arch as Arch,
 };
 
 #[cfg(feature = "whpx")]
@@ -102,6 +103,7 @@ use {
     hypervisor::HypervisorCap,
     hypervisor::HypervisorX86_64,
     std::arch::x86_64::{__cpuid, __cpuid_count},
+    x86_64::cpuid::{adjust_cpuid, CpuIdContext},
 };
 
 use crate::crosvm::sys::config::{HypervisorKind, IrqChipKind};
@@ -1946,7 +1948,7 @@ where
         }))
         .context("failed to calculate init balloon size")?;
 
-    let tsc_state = devices::tsc_state().exit_code(Exit::TscCalibrationFailed)?;
+    let tsc_state = devices::tsc::tsc_state().exit_code(Exit::TscCalibrationFailed)?;
     let tsc_sync_mitigations = get_tsc_sync_mitigations(&tsc_state, components.vcpu_count);
 
     if tsc_state.core_grouping.size() > 1 {

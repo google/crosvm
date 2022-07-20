@@ -187,6 +187,7 @@ libcras = "*"
 log = { version = "0", features = ["release_max_level_debug"]}
 metrics = { path = "metrics" }
 net_util = { path = "net_util" }
+once_cell = "1.7"
 protobuf = { version = "2.3", optional = true }
 protos = { path = "protos", optional = true }
 remain = "*"
@@ -216,11 +217,18 @@ minijail = "*" # provided by ebuild
 p9 = "*"
 
 [target.'cfg(windows)'.dependencies]
+anti_tamper = { path = "anti_tamper" }
+cros_async =  { path = "cros_async" }
+futures = "0.3"
+gpu_display = { path = "gpu_display", optional = true }
+rand = "0.8"
+tracing = { path = "tracing" }
 tube_transporter = { path = "tube_transporter" }
+winapi = "*"
+win_util = { path = "win_util"}
 
 [dev-dependencies]
 base = "*"
-once_cell = "1.7"
 
 [patch.crates-io]
 assertions = { path = "common/assertions" }
