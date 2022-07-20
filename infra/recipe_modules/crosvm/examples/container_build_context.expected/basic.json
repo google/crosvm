@@ -205,7 +205,7 @@
       "repack",
       "-a"
     ],
-    "cwd": "[CACHE]/builder",
+    "cwd": "[CACHE]/builder/crosvm",
     "infra_step": true,
     "name": "Prepare Container Build.Prepare source.Repack repository",
     "~followup_annotations": [

@@ -225,7 +225,8 @@ class CrosvmApi(recipe_api.RecipeApi):
                 # gclient will use a reference to a cache directory, which won't be available inside
                 # the dev container. Repack will make sure all objects are copied into the current
                 # repo.
-                self.m.step("Repack repository", ["git", "repack", "-a"])
+                with self.m.context(cwd=self.source_dir):
+                    self.m.step("Repack repository", ["git", "repack", "-a"])
 
     def __prepare_container(self):
         with self.m.step.nest("Prepare dev_container"):

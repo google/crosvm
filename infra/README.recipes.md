@@ -149,11 +149,11 @@ PYTHON_VERSION_COMPATIBILITY: PY3
 &mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/host_build_context.py#14)(api):**
 ### *recipes* / [crosvm:examples/source\_context](/infra/recipe_modules/crosvm/examples/source_context.py)
 
-[DEPS](/infra/recipe_modules/crosvm/examples/source_context.py#12): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket]
+[DEPS](/infra/recipe_modules/crosvm/examples/source_context.py#7): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket]
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/source_context.py#18)(api):**
+&mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/source_context.py#13)(api):**
 ### *recipes* / [health\_check](/infra/recipes/health_check.py)
 
 [DEPS](/infra/recipes/health_check.py#9): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]

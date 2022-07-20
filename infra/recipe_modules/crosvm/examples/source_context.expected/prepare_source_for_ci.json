@@ -293,7 +293,7 @@
       "repack",
       "-a"
     ],
-    "cwd": "[CACHE]/builder",
+    "cwd": "[CACHE]/builder/crosvm",
     "infra_step": true,
     "luci_context": {
       "realm": {
