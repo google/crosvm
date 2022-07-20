@@ -148,7 +148,6 @@ pub unsafe extern "C" fn rutabaga_init(builder: &rutabaga_builder, ptr: &mut *mu
             .set_use_egl(true)
             .set_use_surfaceless(true)
             .set_use_guest_angle(true)
-            .set_use_syncfd(true)
             .set_use_vulkan(true)
             .set_use_external_blob(true)
             .set_rutabaga_channels(rutabaga_channels_opt)

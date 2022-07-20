@@ -831,12 +831,6 @@ impl RutabagaBuilder {
         self
     }
 
-    /// Set use syncfd in gfxstream
-    pub fn set_use_syncfd(mut self, v: bool) -> RutabagaBuilder {
-        self.gfxstream_flags = self.gfxstream_flags.use_syncfd(v);
-        self
-    }
-
     /// Set use guest ANGLE in gfxstream
     pub fn set_use_guest_angle(mut self, v: bool) -> RutabagaBuilder {
         self.gfxstream_flags = self.gfxstream_flags.use_guest_angle(v);

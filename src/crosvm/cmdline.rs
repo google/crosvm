@@ -660,8 +660,6 @@ pub struct RunCommand {
     ///     angle[=true|=false] - If the gfxstream backend should
     ///        use ANGLE (OpenGL on Vulkan) as its native OpenGL
     ///        driver.
-    ///     syncfd[=true|=false] - If the gfxstream backend should
-    ///        support EGL_ANDROID_native_fence_sync
     ///     vulkan[=true|=false] - If the backend should support
     ///        vulkan
     ///     wsi=vk - If the gfxstream backend should use the Vulkan

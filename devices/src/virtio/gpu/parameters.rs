@@ -36,7 +36,6 @@ pub struct GpuParameters {
     pub renderer_use_glx: bool,
     pub renderer_use_surfaceless: bool,
     pub gfxstream_use_guest_angle: bool,
-    pub gfxstream_use_syncfd: bool,
     pub use_vulkan: bool,
     pub gfxstream_support_gles31: bool,
     pub wsi: Option<RutabagaWsi>,
@@ -57,7 +56,6 @@ impl Default for GpuParameters {
             renderer_use_glx: false,
             renderer_use_surfaceless: true,
             gfxstream_use_guest_angle: false,
-            gfxstream_use_syncfd: true,
             use_vulkan: false,
             mode: if cfg!(feature = "virgl_renderer") {
                 GpuMode::ModeVirglRenderer

@@ -83,8 +83,6 @@ fn parse_gpu_options_inner(s: &str) -> argument::Result<GpuParameters> {
     #[cfg(feature = "gfxstream")]
     let mut vulkan_specified = false;
     #[cfg(feature = "gfxstream")]
-    let mut syncfd_specified = false;
-    #[cfg(feature = "gfxstream")]
     let mut gles31_specified = false;
     #[cfg(feature = "gfxstream")]
     let mut angle_specified = false;
@@ -200,24 +198,6 @@ fn parse_gpu_options_inner(s: &str) -> argument::Result<GpuParameters> {
                     });
                 }
             },
-            #[cfg(feature = "gfxstream")]
-            "syncfd" => {
-                syncfd_specified = true;
-                match v {
-                    "true" | "" => {
-                        gpu_params.gfxstream_use_syncfd = true;
-                    }
-                    "false" => {
-                        gpu_params.gfxstream_use_syncfd = false;
-                    }
-                    _ => {
-                        return Err(argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from("gpu parameter 'syncfd' should be a boolean"),
-                        });
-                    }
-                }
-            }
             #[cfg(feature = "gfxstream")]
             "angle" => {
                 angle_specified = true;
@@ -454,12 +434,12 @@ fn parse_gpu_options_inner(s: &str) -> argument::Result<GpuParameters> {
         if !vulkan_specified && gpu_params.mode == GpuMode::ModeGfxstream {
             gpu_params.use_vulkan = crate::crosvm::sys::config::use_vulkan();
         }
-        if syncfd_specified || angle_specified || gles31_specified {
+        if angle_specified || gles31_specified {
             match gpu_params.mode {
                 GpuMode::ModeGfxstream => {}
                 _ => {
                     return Err(argument::Error::UnknownArgument(
-                        "gpu parameters syncfd and gles3.1 are only supported for gfxstream backend"
+                        "gpu parameters angle and gles3.1 are only supported for gfxstream backend"
                             .to_string(),
                     ));
                 }
@@ -577,50 +557,6 @@ mod tests {
     use crate::crosvm::sys::config::parse_gpu_options;
     #[cfg(feature = "gpu")]
     use devices::virtio::gpu::GpuDisplayMode;
-
-    #[cfg(all(feature = "gpu", feature = "gfxstream"))]
-    #[test]
-    fn parse_gpu_options_gfxstream_with_syncfd_specified() {
-        {
-            let gpu_params: GpuParameters =
-                parse_gpu_options("backend=gfxstream,syncfd=true").unwrap();
-
-            assert!(gpu_params.gfxstream_use_syncfd);
-        }
-        {
-            let gpu_params: GpuParameters =
-                parse_gpu_options("syncfd=true,backend=gfxstream").unwrap();
-            assert!(gpu_params.gfxstream_use_syncfd);
-        }
-        {
-            let gpu_params: GpuParameters =
-                parse_gpu_options("backend=gfxstream,syncfd=false").unwrap();
-
-            assert!(!gpu_params.gfxstream_use_syncfd);
-        }
-        {
-            let gpu_params: GpuParameters =
-                parse_gpu_options("syncfd=false,backend=gfxstream").unwrap();
-            assert!(!gpu_params.gfxstream_use_syncfd);
-        }
-        {
-            assert!(parse_gpu_options("backend=gfxstream,syncfd=invalid_value").is_err());
-        }
-        {
-            assert!(parse_gpu_options("syncfd=invalid_value,backend=gfxstream").is_err());
-        }
-    }
-
-    #[cfg(all(feature = "gpu", feature = "gfxstream"))]
-    #[test]
-    fn parse_gpu_options_not_gfxstream_with_syncfd_specified() {
-        {
-            assert!(parse_gpu_options("backend=virglrenderer,syncfd=true").is_err());
-        }
-        {
-            assert!(parse_gpu_options("syncfd=true,backend=virglrenderer").is_err());
-        }
-    }
 
     #[cfg(all(feature = "gpu", feature = "gfxstream"))]
     #[test]
