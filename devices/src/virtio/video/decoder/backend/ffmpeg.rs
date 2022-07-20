@@ -17,6 +17,8 @@
 
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
+use std::sync::Arc;
+use std::sync::Weak;
 
 use ::ffmpeg::avcodec::*;
 use ::ffmpeg::swscale::*;
@@ -28,11 +30,11 @@ use base::info;
 use base::warn;
 use base::MappedRegion;
 use base::MemoryMappingArena;
-use base::MmapError;
 use thiserror::Error as ThisError;
 
 use crate::virtio::video::decoder::backend::utils::EventQueue;
 use crate::virtio::video::decoder::backend::utils::OutputQueue;
+use crate::virtio::video::decoder::backend::utils::SyncEventQueue;
 use crate::virtio::video::decoder::backend::*;
 use crate::virtio::video::format::FormatDesc;
 use crate::virtio::video::format::FormatRange;
@@ -44,10 +46,29 @@ use crate::virtio::video::resource::GuestResource;
 use crate::virtio::video::resource::GuestResourceHandle;
 
 /// Structure maintaining a mapping for an encoded input buffer that can be used as a libavcodec
-/// buffer source.
+/// buffer source. It also sends a `NotifyEndOfBitstreamBuffer` event when dropped.
 struct InputBuffer {
     /// Memory mapping to the encoded input data.
     mapping: MemoryMappingArena,
+    /// Bistream ID that will be sent as part of the `NotifyEndOfBitstreamBuffer` event.
+    bitstream_id: i32,
+    /// Pointer to the event queue to send the `NotifyEndOfBitstreamBuffer` event to. The event will
+    /// not be sent if the pointer becomes invalid.
+    event_queue: Weak<SyncEventQueue<DecoderEvent>>,
+}
+
+impl Drop for InputBuffer {
+    fn drop(&mut self) {
+        match self.event_queue.upgrade() {
+            None => (),
+            // If the event queue is still valid, send the event signaling we can be reused.
+            Some(event_queue) => event_queue
+                .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(self.bitstream_id))
+                .unwrap_or_else(|e| {
+                    error!("cannot send end of input buffer notification: {:#}", e)
+                }),
+        }
+    }
 }
 
 impl AvBufferSource for InputBuffer {
@@ -60,17 +81,9 @@ impl AvBufferSource for InputBuffer {
     }
 }
 
-/// All the parameters needed to queue an input packet passed to the codec.
-struct InputPacket {
-    bitstream_id: i32,
-    resource: GuestResourceHandle,
-    offset: u32,
-    bytes_used: u32,
-}
-
 /// Types of input job we can receive from the crosvm decoder code.
 enum CodecJob {
-    Packet(InputPacket),
+    Packet(InputBuffer),
     Flush,
 }
 
@@ -95,7 +108,7 @@ enum SessionState {
 /// A decoder session for the ffmpeg backend.
 pub struct FfmpegDecoderSession {
     /// Queue of events waiting to be read by the client.
-    event_queue: EventQueue<DecoderEvent>,
+    event_queue: Arc<SyncEventQueue<DecoderEvent>>,
 
     /// FIFO of jobs submitted by the client and waiting to be performed.
     codec_jobs: VecDeque<CodecJob>,
@@ -134,8 +147,6 @@ enum TryReceiveFrameError {
 
 #[derive(Debug, ThisError)]
 enum TrySendPacketError {
-    #[error("error while mapping the input buffer: {0}")]
-    CannotMapInputBuffer(#[from] MmapError),
     #[error("error while sending input packet to libavcodec: {0}")]
     AvError(#[from] AvError),
 }
@@ -143,19 +154,11 @@ enum TrySendPacketError {
 #[derive(Debug, ThisError)]
 enum TryDecodeError {
     #[error("error while sending packet: {0}")]
-    SendPacket(#[from] TrySendJobError),
+    SendPacket(#[from] TrySendPacketError),
     #[error("error while trying to send decoded frame: {0}")]
     SendFrameError(#[from] TrySendFrameError),
     #[error("error while receiving frame: {0}")]
     ReceiveFrame(#[from] TryReceiveFrameError),
-}
-
-#[derive(Debug, ThisError)]
-enum TrySendJobError {
-    #[error("error while sending packet: {0}")]
-    SendPacket(TrySendPacketError),
-    #[error("error while queueing bitstream buffer release event: {0}")]
-    NotifyBitstreamBufferEnd(base::Error),
 }
 
 #[derive(Debug, ThisError)]
@@ -209,20 +212,11 @@ impl FfmpegDecoderSession {
     /// Returns `true` if a packet has successfully been queued, `false` if it could not be, either
     /// because all pending work has already been queued or because the codec could not accept more
     /// input at the moment.
-    fn try_send_packet(&mut self, input_packet: &InputPacket) -> Result<bool, TrySendPacketError> {
-        let InputPacket {
-            bitstream_id,
-            resource,
-            offset,
-            bytes_used,
-        } = input_packet;
-
-        let mut input_buffer = InputBuffer {
-            mapping: resource.get_mapping(*offset as usize, *bytes_used as usize)?,
-        };
-
-        // Prepare our AVPacket and ask the codec to process it.
-        let avpacket = AvPacket::new(*bitstream_id as i64, &mut input_buffer);
+    fn try_send_packet(
+        &mut self,
+        input_packet: &mut InputBuffer,
+    ) -> Result<bool, TrySendPacketError> {
+        let avpacket = AvPacket::new(input_packet.bitstream_id as i64, input_packet);
         match self.context.try_send_packet(&avpacket) {
             Ok(true) => Ok(true),
             // The codec cannot take more input at the moment, we'll try again after we receive some
@@ -244,29 +238,24 @@ impl FfmpegDecoderSession {
     /// Returns `true` if the next job has been submitted, `false` if it could not be, either
     /// because all pending work has already been queued or because the codec could not accept more
     /// input at the moment.
-    fn try_send_input_job(&mut self) -> Result<bool, TrySendJobError> {
+    fn try_send_input_job(&mut self) -> Result<bool, TrySendPacketError> {
         // Do not process any more input while we are flushing.
         if self.is_flushing {
             return Ok(false);
         }
 
-        let next_job = match self.codec_jobs.pop_front() {
+        let mut next_job = match self.codec_jobs.pop_front() {
             // No work to do at the moment.
             None => return Ok(false),
             Some(job) => job,
         };
 
-        match &next_job {
+        match &mut next_job {
             CodecJob::Packet(input_packet) => {
-                let bitstream_id = input_packet.bitstream_id;
-                let res = self
-                    .try_send_packet(input_packet)
-                    .map_err(TrySendJobError::SendPacket)?;
+                let res = self.try_send_packet(input_packet)?;
                 match res {
-                    // The input buffer has been processed and can be reused.
-                    true => self
-                        .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(bitstream_id))
-                        .map_err(TrySendJobError::NotifyBitstreamBufferEnd)?,
+                    // The input buffer has been processed so we can drop it.
+                    true => drop(next_job),
                     // The codec cannot accept new input for now, put the job back into the queue.
                     false => self.codec_jobs.push_front(next_job),
                 }
@@ -454,12 +443,16 @@ impl DecoderSession for FfmpegDecoderSession {
         offset: u32,
         bytes_used: u32,
     ) -> VideoResult<()> {
-        self.codec_jobs.push_back(CodecJob::Packet(InputPacket {
+        let input_buffer = InputBuffer {
+            mapping: resource
+                .get_mapping(offset as usize, bytes_used as usize)
+                .context("while mapping input buffer")
+                .map_err(VideoError::BackendFailure)?,
             bitstream_id,
-            resource,
-            offset,
-            bytes_used,
-        }));
+            event_queue: Arc::downgrade(&self.event_queue),
+        };
+
+        self.codec_jobs.push_back(CodecJob::Packet(input_buffer));
 
         self.try_decode()
             .context("while decoding")
@@ -518,7 +511,7 @@ impl DecoderSession for FfmpegDecoderSession {
     }
 
     fn event_pipe(&self) -> &dyn AsRawDescriptor {
-        &self.event_queue
+        self.event_queue.as_ref()
     }
 
     fn use_output_buffer(
@@ -753,9 +746,12 @@ impl DecoderBackend for FfmpegDecoder {
             codec_jobs: Default::default(),
             is_flushing: false,
             state: SessionState::AwaitingInitialResolution,
-            event_queue: EventQueue::new()
-                .context("while creating decoder session")
-                .map_err(VideoError::BackendFailure)?,
+            event_queue: Arc::new(
+                EventQueue::new()
+                    .context("while creating decoder session")
+                    .map_err(VideoError::BackendFailure)?
+                    .into(),
+            ),
             context,
             current_visible_res: (0, 0),
             avframe: None,
