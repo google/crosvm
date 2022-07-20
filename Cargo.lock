@@ -405,6 +405,7 @@ dependencies = [
  "base",
  "bit_field",
  "broker_ipc",
+ "cc",
  "cfg-if",
  "cros_async",
  "crosvm_plugin",
