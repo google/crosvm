@@ -50,6 +50,8 @@ use vm_control::VmMemoryDestination;
 use vm_control::VmMemoryRequest;
 use vm_control::VmMemoryResponse;
 use vm_control::VmMemorySource;
+use vm_memory::udmabuf::UdmabufDriver;
+use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vmm_vhost::connection::socket::Endpoint as SocketEndpoint;
 use vmm_vhost::connection::EndpointExt;
@@ -60,6 +62,8 @@ use vmm_vhost::message::VhostUserMemory;
 use vmm_vhost::message::VhostUserMemoryRegion;
 use vmm_vhost::message::VhostUserMsgHeader;
 use vmm_vhost::message::VhostUserMsgValidator;
+use vmm_vhost::message::VhostUserShmemMapMsg;
+use vmm_vhost::message::VhostUserShmemMapMsgFlags;
 use vmm_vhost::message::VhostUserU64;
 use vmm_vhost::Protocol;
 use vmm_vhost::SlaveReqHelper;
@@ -71,6 +75,8 @@ use crate::pci::PciBarRegionType;
 use crate::pci::PciCapability;
 use crate::pci::PciCapabilityID;
 use crate::virtio::copy_config;
+use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
+use crate::virtio::vhost::vhost_body_from_message_bytes;
 use crate::virtio::vhost::vhost_header_from_bytes;
 use crate::virtio::DescriptorChain;
 use crate::virtio::DeviceType;
@@ -261,6 +267,12 @@ struct Worker {
 
     // Channel for backend mesages.
     slave_req_fd: Option<SocketEndpoint<SlaveReq>>,
+
+    // Driver for exporting memory as udmabufs for shared memory regions.
+    udmabuf_driver: Option<UdmabufDriver>,
+
+    // Iommu to translate IOVAs into GPAs for shared memory regions.
+    iommu: Arc<Mutex<IpcMemoryMapper>>,
 }
 
 #[derive(EventToken, Debug, Clone, PartialEq)]
@@ -891,6 +903,7 @@ impl Worker {
             bail!("invalid file count for SET_SLAVE_REQ_FD {}", files.len());
         }
 
+        self.udmabuf_driver = Some(UdmabufDriver::new().context("failed to get udmabuf driver")?);
         // Safe because we own the file.
         let socket = unsafe { UnixStream::from_raw_descriptor(file.into_raw_descriptor()) };
 
@@ -902,11 +915,65 @@ impl Worker {
         Ok(())
     }
 
+    // Exports the udmabuf necessary to fulfil the |msg| mapping request.
+    fn export_udmabuf(&mut self, msg: &VhostUserShmemMapMsg) -> Result<Box<dyn AsRawDescriptor>> {
+        let regions = self
+            .iommu
+            .lock()
+            .translate(msg.fd_offset, msg.len)
+            .context("failed to translate")?;
+
+        let prot = match (
+            msg.flags.contains(VhostUserShmemMapMsgFlags::MAP_R),
+            msg.flags.contains(VhostUserShmemMapMsgFlags::MAP_W),
+        ) {
+            (true, true) => Protection::read_write(),
+            (true, false) => Protection::read(),
+            (false, true) => Protection::write(),
+            (false, false) => bail!("unsupported protection"),
+        };
+        let regions = regions
+            .iter()
+            .map(|r| {
+                if !r.prot.allows(&prot) {
+                    Err(anyhow!("invalid permissions"))
+                } else {
+                    Ok((r.gpa, r.len as usize))
+                }
+            })
+            .collect::<Result<Vec<(GuestAddress, usize)>>>()?;
+
+        // udmabuf_driver is set at the same time as slave_req_fd, so if we've
+        // received a message on slave_req_fd, udmabuf_driver must be present.
+        let udmabuf = self
+            .udmabuf_driver
+            .as_ref()
+            .expect("missing udmabuf driver")
+            .create_udmabuf(&self.mem, &regions)
+            .context("failed to create udmabuf")?;
+
+        Ok(Box::new(udmabuf))
+    }
+
     fn process_message_from_backend(
         &mut self,
-        msg: Vec<u8>,
+        mut msg: Vec<u8>,
     ) -> Result<(Vec<u8>, Option<Box<dyn AsRawDescriptor>>)> {
-        Ok((msg, None))
+        // The message was already parsed as a MasterReq, so this can't fail
+        let hdr = vhost_header_from_bytes::<SlaveReq>(&msg).unwrap();
+
+        let fd = if hdr.get_code() == SlaveReq::SHMEM_MAP {
+            let mut msg = vhost_body_from_message_bytes(&mut msg).context("incomplete message")?;
+            let fd = self.export_udmabuf(msg).context("failed to export fd")?;
+            // VVU reuses the fd_offset field for the IOVA of the buffer. The
+            // udmabuf corresponds to exactly what should be mapped, so set
+            // fd_offset to 0 for regular vhost-user.
+            msg.fd_offset = 0;
+            Some(fd)
+        } else {
+            None
+        };
+        Ok((msg, fd))
     }
 
     // Processes data from the device backend (via virtio Tx queue) and forward it to
@@ -1071,6 +1138,8 @@ enum State {
         tx_queue: Queue,
         rx_queue_evt: Event,
         tx_queue_evt: Event,
+
+        iommu: Arc<Mutex<IpcMemoryMapper>>,
     },
     /// The worker thread is running.
     Running {
@@ -1133,6 +1202,8 @@ pub struct VirtioVhostUser {
     // The value is wrapped with `Arc<Mutex<_>>` because it can be modified from the worker thread
     // as well as the main device thread.
     state: Arc<Mutex<State>>,
+
+    iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
 }
 
 impl VirtioVhostUser {
@@ -1164,6 +1235,7 @@ impl VirtioVhostUser {
                 listener,
             })),
             pci_address,
+            iommu: None,
         })
     }
 
@@ -1309,6 +1381,7 @@ impl VirtioVhostUser {
             tx_queue,
             rx_queue_evt,
             tx_queue_evt,
+            iommu,
         ) = match old_state {
             State::Activated {
                 main_process_tube,
@@ -1319,6 +1392,7 @@ impl VirtioVhostUser {
                 tx_queue,
                 rx_queue_evt,
                 tx_queue_evt,
+                iommu,
             } => (
                 main_process_tube,
                 listener,
@@ -1328,6 +1402,7 @@ impl VirtioVhostUser {
                 tx_queue,
                 rx_queue_evt,
                 tx_queue_evt,
+                iommu,
             ),
             s => {
                 // Unreachable because we've checked the state at the beginning of this function.
@@ -1386,6 +1461,8 @@ impl VirtioVhostUser {
                     slave_req_helper,
                     registered_memory: Vec::new(),
                     slave_req_fd: None,
+                    udmabuf_driver: None,
+                    iommu: iommu.clone(),
                 };
                 match worker.run(
                     rx_queue_evt.try_clone().unwrap(),
@@ -1421,6 +1498,7 @@ impl VirtioVhostUser {
                             tx_queue,
                             rx_queue_evt,
                             tx_queue_evt,
+                            iommu,
                         };
 
                         Ok(())
@@ -1590,6 +1668,10 @@ impl VirtioDevice for VirtioVhostUser {
         )]
     }
 
+    fn set_iommu(&mut self, iommu: &Arc<Mutex<IpcMemoryMapper>>) {
+        self.iommu = Some(iommu.clone());
+    }
+
     fn activate(
         &mut self,
         mem: GuestMemory,
@@ -1620,6 +1702,7 @@ impl VirtioDevice for VirtioVhostUser {
                     tx_queue: queues.remove(0),
                     rx_queue_evt: queue_evts.remove(0),
                     tx_queue_evt: queue_evts.remove(0),
+                    iommu: self.iommu.take().unwrap(),
                 };
             }
             s => {

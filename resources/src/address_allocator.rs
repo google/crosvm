@@ -253,17 +253,18 @@ impl AddressAllocator {
         }
     }
 
-    /// Releases exising allocation back to free pool.
-    pub fn release(&mut self, alloc: Alloc) -> Result<()> {
+    /// Releases exising allocation back to free pool and returns the range that was released.
+    pub fn release(&mut self, alloc: Alloc) -> Result<AddressRange> {
         if let Some((range, _tag)) = self.allocs.remove(&alloc) {
-            self.insert_at(range)
+            self.insert_at(range)?;
+            Ok(range)
         } else {
             Err(Error::BadAlloc(alloc))
         }
     }
 
     /// Release a allocation contains the value.
-    pub fn release_containing(&mut self, value: u64) -> Result<()> {
+    pub fn release_containing(&mut self, value: u64) -> Result<AddressRange> {
         if let Some(alloc) = self.find_overlapping(AddressRange {
             start: value,
             end: value,
@@ -422,7 +423,7 @@ impl<'a> AddressAllocatorSet<'a> {
         last_res
     }
 
-    pub fn release(&mut self, alloc: Alloc) -> Result<()> {
+    pub fn release(&mut self, alloc: Alloc) -> Result<AddressRange> {
         let mut last_res = Err(Error::OutOfSpace);
         for allocator in self.allocators.iter_mut() {
             last_res = allocator.release(alloc);

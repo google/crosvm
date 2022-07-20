@@ -510,6 +510,10 @@ impl VirtioPciDevice {
                     .filter(|(q, _)| q.ready())
                     .unzip();
 
+                if let Some(iommu) = &self.iommu {
+                    self.device.set_iommu(iommu);
+                }
+
                 self.device.activate(mem, interrupt, queues, queue_evts);
                 self.device_activated = true;
             }

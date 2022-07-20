@@ -2,12 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::sync::Arc;
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
 use anyhow::Result;
 use base::Event;
 use base::Protection;
 use base::RawDescriptor;
+use sync::Mutex;
 use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -18,6 +21,7 @@ use crate::pci::PciAddress;
 use crate::pci::PciBarConfiguration;
 use crate::pci::PciBarIndex;
 use crate::pci::PciCapability;
+use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 
 #[derive(Clone)]
 pub struct SharedMemoryRegion {
@@ -93,6 +97,12 @@ pub trait VirtioDevice: Send {
     fn write_config(&mut self, offset: u64, data: &[u8]) {
         let _ = offset;
         let _ = data;
+    }
+
+    /// If the device is translated by an IOMMU, called before
+    /// |activate| with the IOMMU's mapper.
+    fn set_iommu(&mut self, iommu: &Arc<Mutex<IpcMemoryMapper>>) {
+        let _ = iommu;
     }
 
     /// Activates this device for real usage.

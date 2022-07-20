@@ -1406,6 +1406,17 @@ impl VfioDevice {
             .map_err(VfioError::Resources)
     }
 
+    pub fn get_iova(&self, alloc: &Alloc) -> Option<AddressRange> {
+        self.iova_alloc.lock().get(alloc).map(|res| res.0)
+    }
+
+    pub fn release_iova(&self, alloc: Alloc) -> Result<AddressRange> {
+        self.iova_alloc
+            .lock()
+            .release(alloc)
+            .map_err(VfioError::Resources)
+    }
+
     pub fn get_max_addr(&self) -> u64 {
         self.iova_alloc.lock().get_max_addr()
     }

@@ -5,6 +5,7 @@
 //! Implement a struct that works as a `vmm_vhost`'s backend.
 
 use std::cmp::Ordering;
+use std::io::Error as IoError;
 use std::io::IoSlice;
 use std::io::IoSliceMut;
 use std::mem;
@@ -21,13 +22,21 @@ use anyhow::Context;
 use anyhow::Result;
 use base::error;
 use base::info;
+use base::AsRawDescriptor;
+use base::Descriptor;
 use base::Event;
+use base::MappedRegion;
+use base::MemoryMappingBuilder;
+use base::MemoryMappingBuilderUnix;
+use base::Protection;
 use base::RawDescriptor;
+use base::SafeDescriptor;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use futures::pin_mut;
 use futures::select;
 use futures::FutureExt;
+use resources::Alloc;
 use sync::Mutex;
 use vmm_vhost::connection::vfio::Device as VfioDeviceTrait;
 use vmm_vhost::connection::vfio::Endpoint as VfioEndpoint;
@@ -35,9 +44,11 @@ use vmm_vhost::connection::vfio::RecvIntoBufsError;
 use vmm_vhost::connection::Endpoint;
 use vmm_vhost::message::*;
 
+use crate::vfio::VfioDevice;
 use crate::virtio::vhost::user::device::vvu::pci::QueueNotifier;
 use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
 use crate::virtio::vhost::user::device::vvu::queue::UserQueue;
+use crate::virtio::vhost::vhost_body_from_message_bytes;
 use crate::virtio::vhost::vhost_header_from_bytes;
 use crate::virtio::vhost::HEADER_LEN;
 
@@ -133,11 +144,21 @@ impl VfioReceiver {
         Ok((len, ret_vec))
     }
 
-    fn recv_into_bufs(&mut self, bufs: &mut [IoSliceMut]) -> Result<usize, RecvIntoBufsError> {
+    fn recv_into_bufs(
+        &mut self,
+        bufs: &mut [IoSliceMut],
+        mut processor: Option<&mut BackendChannelInner>,
+    ) -> Result<usize, RecvIntoBufsError> {
         let mut size = 0;
         for buf in bufs {
-            let (len, _) = self.recv_into_buf(buf)?;
+            let (len, msg) = self.recv_into_buf(buf)?;
             size += len;
+
+            if let (Some(processor), Some(msg)) = (processor.as_mut(), msg) {
+                processor
+                    .postprocess_rx(msg)
+                    .map_err(RecvIntoBufsError::Fatal)?;
+            }
         }
 
         Ok(size)
@@ -148,6 +169,7 @@ impl VfioReceiver {
 #[derive(Default)]
 struct EndpointTxBuffer {
     bytes: Vec<u8>,
+    files: Vec<SafeDescriptor>,
 }
 
 // Utility class for writing an input vhost-user byte stream to the vvu
@@ -163,9 +185,18 @@ impl Queue {
         iovs: &[IoSlice],
         fds: Option<&[RawDescriptor]>,
         tx_state: &mut EndpointTxBuffer,
+        processor: Option<&mut BackendChannelInner>,
     ) -> Result<usize> {
-        if fds.is_some() {
-            bail!("cannot send FDs");
+        if let Some(fds) = fds {
+            if processor.is_none() {
+                bail!("cannot send FDs");
+            }
+
+            let fds: std::result::Result<Vec<_>, IoError> = fds
+                .iter()
+                .map(|fd| SafeDescriptor::try_from(&Descriptor(*fd) as &dyn AsRawDescriptor))
+                .collect();
+            tx_state.files = fds?;
         }
 
         let mut size = 0;
@@ -181,6 +212,16 @@ impl Queue {
                 Ordering::Greater => (),
                 Ordering::Equal => {
                     let msg = mem::take(&mut tx_state.bytes);
+                    let files = std::mem::take(&mut tx_state.files);
+
+                    let msg = if let Some(processor) = processor {
+                        processor
+                            .preprocess_tx(msg, files)
+                            .context("failed to preprocess message")?
+                    } else {
+                        msg
+                    };
+
                     self.txq.write(&msg).context("Failed to send data")?;
                 }
                 Ordering::Less => bail!("sent bytes larger than message size"),
@@ -357,6 +398,10 @@ impl VfioDeviceTrait for VvuDevice {
         self.backend_channel = Some(VfioEndpoint::from(BackendChannel {
             receiver: VfioReceiver::new(backend_rxq_receiver, backend_rxq_evt),
             queue: txq.clone(),
+            inner: BackendChannelInner {
+                pending_unmap: None,
+                vfio: device.vfio_dev.clone(),
+            },
             tx_state: EndpointTxBuffer::default(),
         }));
 
@@ -409,7 +454,7 @@ impl VfioDeviceTrait for VvuDevice {
             }
             DeviceState::Running { txq, tx_state, .. } => {
                 let mut queue = txq.lock();
-                queue.send_bufs(iovs, fds, tx_state)
+                queue.send_bufs(iovs, fds, tx_state, None)
             }
         }
     }
@@ -419,7 +464,7 @@ impl VfioDeviceTrait for VvuDevice {
             DeviceState::Initialized { .. } => Err(RecvIntoBufsError::Fatal(anyhow!(
                 "VvuDevice hasn't started yet"
             ))),
-            DeviceState::Running { rxq_receiver, .. } => rxq_receiver.recv_into_bufs(bufs),
+            DeviceState::Running { rxq_receiver, .. } => rxq_receiver.recv_into_bufs(bufs, None),
         }
     }
 
@@ -432,10 +477,20 @@ impl VfioDeviceTrait for VvuDevice {
     }
 }
 
+// State of the backend channel not directly related to sending/receiving data.
+struct BackendChannelInner {
+    vfio: Arc<VfioDevice>,
+
+    // Offset of the pending unmap operation. Set when an unmap message is sent,
+    // and cleared when the reply is recieved.
+    pending_unmap: Option<u64>,
+}
+
 // Struct which implements the Endpoint for backend messages.
 struct BackendChannel {
     receiver: VfioReceiver,
     queue: Arc<Mutex<Queue>>,
+    inner: BackendChannelInner,
     tx_state: EndpointTxBuffer,
 }
 
@@ -449,16 +504,119 @@ impl VfioDeviceTrait for BackendChannel {
     }
 
     fn send_bufs(&mut self, iovs: &[IoSlice], fds: Option<&[RawFd]>) -> Result<usize> {
-        self.queue.lock().send_bufs(iovs, fds, &mut self.tx_state)
+        self.queue.lock().send_bufs(
+            iovs,
+            fds,
+            &mut self.tx_state,
+            Some(&mut self.inner as &mut BackendChannelInner),
+        )
     }
 
     fn recv_into_bufs(&mut self, bufs: &mut [IoSliceMut]) -> Result<usize, RecvIntoBufsError> {
-        self.receiver.recv_into_bufs(bufs)
+        self.receiver.recv_into_bufs(bufs, Some(&mut self.inner))
     }
 
     fn create_slave_request_endpoint(&mut self) -> Result<Box<dyn Endpoint<SlaveReq>>> {
         Err(anyhow!(
             "can't construct backend endpoint from backend endpoint"
         ))
+    }
+}
+
+impl BackendChannelInner {
+    // Preprocess messages before forwarding them to the virtqueue. Returns the bytes to
+    // send to the host.
+    fn preprocess_tx(
+        &mut self,
+        mut msg: Vec<u8>,
+        mut files: Vec<SafeDescriptor>,
+    ) -> Result<Vec<u8>> {
+        // msg came from a ProtocolReader, so this can't fail.
+        let hdr = vhost_header_from_bytes::<SlaveReq>(&msg).expect("framing error");
+        let msg_type = hdr.get_code();
+
+        match msg_type {
+            SlaveReq::SHMEM_MAP => {
+                let file = files.pop().context("missing file to mmap")?;
+
+                // msg came from a ProtoclReader, so this can't fail.
+                let mut msg = vhost_body_from_message_bytes::<VhostUserShmemMapMsg>(&mut msg)
+                    .expect("framing error");
+
+                let mapping = MemoryMappingBuilder::new(msg.len as usize)
+                    .from_descriptor(&file)
+                    .offset(msg.fd_offset)
+                    .protection(Protection::from(msg.flags.bits() as libc::c_int))
+                    .build()
+                    .context("failed to map file")?;
+
+                let iova = self
+                    .vfio
+                    .alloc_iova(msg.len, 4096, Alloc::Anon(msg.shm_offset as usize))
+                    .context("failed to allocate iova")?;
+                // Safe because we're mapping an external file.
+                unsafe {
+                    self.vfio
+                        .vfio_dma_map(iova, msg.len, mapping.as_ptr() as u64, true)
+                        .context("failed to map into IO address space")?;
+                }
+
+                // The udmabuf constructed in the hypervisor corresponds to the region
+                // we mmap'ed, so fd_offset is no longer necessary. Reuse it for the
+                // iova.
+                msg.fd_offset = iova;
+            }
+            SlaveReq::SHMEM_UNMAP => {
+                if self.pending_unmap.is_some() {
+                    bail!("overlapping unmap requests");
+                }
+
+                let msg = vhost_body_from_message_bytes::<VhostUserShmemUnmapMsg>(&mut msg)
+                    .expect("framing error");
+                match self.vfio.get_iova(&Alloc::Anon(msg.shm_offset as usize)) {
+                    None => bail!("unmap doesn't match mapped allocation"),
+                    Some(range) => {
+                        if !range.len().map_or(false, |l| l == msg.len) {
+                            bail!("unmap size mismatch");
+                        }
+                    }
+                }
+
+                self.pending_unmap = Some(msg.shm_offset)
+            }
+            _ => (),
+        }
+
+        if !files.is_empty() {
+            bail!("{} unhandled files for {:?}", files.len(), msg_type);
+        }
+
+        Ok(msg)
+    }
+
+    // Postprocess replies recieved from the virtqueue. This occurs after the
+    // replies have been forwarded to the endpoint.
+    fn postprocess_rx(&mut self, msg: Vec<u8>) -> Result<()> {
+        // msg are provided by ProtocolReader, so this can't fail.
+        let hdr = vhost_header_from_bytes::<SlaveReq>(&msg).unwrap();
+
+        if hdr.get_code() == SlaveReq::SHMEM_UNMAP {
+            let offset = self
+                .pending_unmap
+                .take()
+                .ok_or(RecvIntoBufsError::Fatal(anyhow!(
+                    "unexpected unmap response"
+                )))?;
+
+            let r = self
+                .vfio
+                .release_iova(Alloc::Anon(offset as usize))
+                .expect("corrupted IOVA address space");
+            self.vfio
+                .vfio_dma_unmap(r.start, r.len().unwrap())
+                .context("failed to unmap memory")?;
+        }
+
+        Ok(())
     }
 }

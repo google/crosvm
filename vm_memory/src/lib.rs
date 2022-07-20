@@ -8,7 +8,7 @@ mod guest_address;
 pub mod guest_memory;
 
 cfg_if::cfg_if! {
-    if #[cfg(all(unix, feature = "udmabuf"))] {
+    if #[cfg(unix)] {
         pub mod udmabuf;
         mod udmabuf_bindings;
     }

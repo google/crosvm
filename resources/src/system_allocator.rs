@@ -417,7 +417,13 @@ mod tests {
             ),
             Ok(())
         );
-        assert_eq!(a.mmio_allocator(MmioType::Low).release(id), Ok(()));
+        assert_eq!(
+            a.mmio_allocator(MmioType::Low).release(id),
+            Ok(AddressRange {
+                start: 0x3000_5000,
+                end: 0x30009fff
+            })
+        );
         assert_eq!(
             a.reserve_mmio(AddressRange {
                 start: 0x3000_2000,
