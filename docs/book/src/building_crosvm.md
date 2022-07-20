@@ -172,19 +172,13 @@ The `--quick` variant will skip some slower checks, like building for other plat
 
 ## Known issues
 
-- By default, crosvm is running devices in sandboxed mode, which requires seccomp policy files to be
-  set up. For local testing it is often easier to `--disable-sandbox` to run everything in a single
-  process.
 - If your Linux header files are too old, you may find minijail rejecting seccomp filters for
-  containing unknown syscalls. You can try removing the offending lines from the filter file, or add
-  `--seccomp-log-failures` to the crosvm command line to turn these into warnings. Note that this
-  option will also stop minijail from killing processes that violate the seccomp rule, making the
-  sandboxing much less aggressive.
-- Seccomp policy files have hardcoded absolute paths. You can either fix up the paths locally, or
-  set up an awesome hacky symlink:
-  `sudo mkdir /usr/share/policy && sudo ln -s /path/to/crosvm/seccomp/x86_64 /usr/share/policy/crosvm`.
-  We'll eventually build the precompiled policies
-  [into the crosvm binary](http://crbug.com/1052126).
+  containing unknown syscalls. You can try removing the offending lines from the filter file and
+  recompile or add `--seccomp-log-failures` to the crosvm command line to turn these into warnings.
+  Using this option also requires you to specify path to seccomp policiy source files with
+  `--seccomp-policy-dir` and adhere to (or modify) the hardcoded absolute include paths in them.
+  Note that this option will also stop minijail from killing processes that violate the seccomp
+  rule, making the sandboxing much less aggressive.
 - Devices can't be jailed if `/var/empty` doesn't exist. `sudo mkdir -p /var/empty` to work around
   this for now.
 - You need read/write permissions for `/dev/kvm` to run tests or other crosvm instances. Usually

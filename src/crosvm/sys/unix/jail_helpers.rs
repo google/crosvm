@@ -13,10 +13,18 @@ use libc::c_ulong;
 use libc::gid_t;
 use libc::uid_t;
 use minijail::Minijail;
+use once_cell::sync::Lazy;
 
 use crate::crosvm::config::JailConfig;
 
-#[allow(dead_code)]
+static EMBEDDED_BPFS: Lazy<std::collections::HashMap<&str, Vec<u8>>> = Lazy::new(|| {
+    if cfg!(unix) {
+        include!(concat!(env!("OUT_DIR"), "/bpf_includes.in"))
+    } else {
+        std::collections::HashMap::<&str, Vec<u8>>::new()
+    }
+});
+
 pub(super) struct SandboxConfig<'a> {
     pub(super) limit_caps: bool,
     pub(super) log_failures: bool,
@@ -67,27 +75,55 @@ pub(super) fn create_base_minijail(
         // Don't allow the device to gain new privileges.
         j.no_new_privs();
 
-        // By default we'll prioritize using the pre-compiled .bpf over the .policy
-        // file (the .bpf is expected to be compiled using "trap" as the failure
-        // behavior instead of the default "kill" behavior).
-        // Refer to the code comment for the "seccomp-log-failures"
-        // command-line parameter for an explanation about why the |log_failures|
-        // flag forces the use of .policy files (and the build-time alternative to
-        // this run-time flag).
-        let bpf_policy_file = config.seccomp_policy_path.unwrap().with_extension("bpf");
-        if bpf_policy_file.exists() && !config.log_failures {
-            j.parse_seccomp_program(&bpf_policy_file)
-                .context("failed to parse precompiled seccomp policy")?;
-        } else {
-            // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP,
-            // which will correctly kill the entire device process if a worker
-            // thread commits a seccomp violation.
-            j.set_seccomp_filter_tsync();
-            if config.log_failures {
-                j.log_seccomp_filter_failures();
+        if let Some(seccomp_policy_path) = config.seccomp_policy_path {
+            // By default we'll prioritize using the pre-compiled .bpf over the
+            // .policy file (the .bpf is expected to be compiled using "trap" as the
+            // failure behavior instead of the default "kill" behavior) when a policy
+            // path is supplied in the command line arugments. Otherwise the built-in
+            // pre-compiled policies will be used.
+            // Refer to the code comment for the "seccomp-log-failures"
+            // command-line parameter for an explanation about why the |log_failures|
+            // flag forces the use of .policy files (and the build-time alternative to
+            // this run-time flag).
+            let bpf_policy_file = seccomp_policy_path.with_extension("bpf");
+            if bpf_policy_file.exists() && !config.log_failures {
+                j.parse_seccomp_program(&bpf_policy_file).with_context(|| {
+                    format!(
+                        "failed to parse precompiled seccomp policy: {}",
+                        bpf_policy_file.display()
+                    )
+                })?;
+            } else {
+                // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP,
+                // which will correctly kill the entire device process if a worker
+                // thread commits a seccomp violation.
+                j.set_seccomp_filter_tsync();
+                if config.log_failures {
+                    j.log_seccomp_filter_failures();
+                }
+                let bpf_policy_file = seccomp_policy_path.with_extension("policy");
+                j.parse_seccomp_filters(&bpf_policy_file).with_context(|| {
+                    format!(
+                        "failed to parse seccomp policy: {}",
+                        bpf_policy_file.display()
+                    )
+                })?;
             }
-            j.parse_seccomp_filters(&config.seccomp_policy_path.unwrap().with_extension("policy"))
-                .context("failed to parse seccomp policy")?;
+        } else {
+            let bpf_program = EMBEDDED_BPFS
+                .get(&config.seccomp_policy_name)
+                .with_context(|| {
+                    format!(
+                        "failed to find embedded seccomp policy: {}",
+                        &config.seccomp_policy_name
+                    )
+                })?;
+            j.parse_seccomp_bytes(bpf_program).with_context(|| {
+                format!(
+                    "failed to parse embedded seccomp policy: {}",
+                    &config.seccomp_policy_name
+                )
+            })?;
         }
         j.use_seccomp_filter();
         // Don't do init setup.

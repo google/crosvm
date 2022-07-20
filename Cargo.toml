@@ -229,6 +229,9 @@ tube_transporter = { path = "tube_transporter" }
 winapi = "*"
 win_util = { path = "win_util"}
 
+[build-dependencies]
+cc = "*"
+
 [dev-dependencies]
 base = "*"
 
