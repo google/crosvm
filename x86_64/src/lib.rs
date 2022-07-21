@@ -1481,9 +1481,11 @@ impl X8664arch {
 
         let phys_mem_end = (1u64 << vm.get_guest_phys_addr_bits()) - 1;
         let high_mmio_end = std::cmp::min(phys_mem_end, HIGH_MMIO_MAX_END);
-        let end = high_mmio_end - 1;
 
-        AddressRange { start, end }
+        AddressRange {
+            start,
+            end: high_mmio_end,
+        }
     }
 
     /// This returns a minimal kernel command for this architecture
