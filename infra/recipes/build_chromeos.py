@@ -86,6 +86,18 @@ def BuildAndTest(api, board):
     )
 
 
+def TestCrosWorkonFlow(api, board):
+    cros_sdk = api.depot_tools.repo_resource("cros_sdk")
+    api.step(
+        "cros_workon crosvm",
+        [cros_sdk, "cros_workon", "--board=%s" % board, "start", "crosvm"],
+    )
+    api.step(
+        "cros_workon_make crosvm",
+        [cros_sdk, "cros_workon_make", "--board=%s" % board, "--test", "crosvm"],
+    )
+
+
 def CleanUp(api):
     cros_sdk = api.depot_tools.repo_resource("cros_sdk")
     api.step("Deleting SDK chroot", [cros_sdk, "--delete"])
@@ -98,9 +110,11 @@ def RunSteps(api, properties):
 
     with api.context(cwd=workspace, env={"DEPOT_TOOLS_UPDATE": "0"}):
         try:
+            board = properties.board or "amd64-generic"
             SetupSource(api, workspace)
             PrepareBuild(api)
-            BuildAndTest(api, properties.board or "amd64-generic")
+            BuildAndTest(api, board)
+            TestCrosWorkonFlow(api, board)
         finally:
             CleanUp(api)
 

@@ -96,13 +96,15 @@ PYTHON_VERSION_COMPATIBILITY: PY3
 
 &mdash; **def [BuildAndTest](/infra/recipes/build_chromeos.py#76)(api, board):**
 
-&mdash; **def [CleanUp](/infra/recipes/build_chromeos.py#89)(api):**
+&mdash; **def [CleanUp](/infra/recipes/build_chromeos.py#101)(api):**
 
 &mdash; **def [PrepareBuild](/infra/recipes/build_chromeos.py#61)(api):**
 
-&mdash; **def [RunSteps](/infra/recipes/build_chromeos.py#94)(api, properties):**
+&mdash; **def [RunSteps](/infra/recipes/build_chromeos.py#106)(api, properties):**
 
 &mdash; **def [SetupSource](/infra/recipes/build_chromeos.py#27)(api, workspace):**
+
+&mdash; **def [TestCrosWorkonFlow](/infra/recipes/build_chromeos.py#89)(api, board):**
 ### *recipes* / [build\_docs](/infra/recipes/build_docs.py)
 
 [DEPS](/infra/recipes/build_docs.py#9): [crosvm](#recipe_modules-crosvm), [depot\_tools/gsutil][depot_tools/recipe_modules/gsutil], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/file][recipe_engine/recipe_modules/file], [recipe\_engine/step][recipe_engine/recipe_modules/step]

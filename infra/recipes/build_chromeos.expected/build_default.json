@@ -120,6 +120,34 @@
   {
     "cmd": [
       "RECIPE_REPO[depot_tools]/cros_sdk",
+      "cros_workon",
+      "--board=amd64-generic",
+      "start",
+      "crosvm"
+    ],
+    "cwd": "[CLEANUP]/workspace",
+    "env": {
+      "DEPOT_TOOLS_UPDATE": "0"
+    },
+    "name": "cros_workon crosvm"
+  },
+  {
+    "cmd": [
+      "RECIPE_REPO[depot_tools]/cros_sdk",
+      "cros_workon_make",
+      "--board=amd64-generic",
+      "--test",
+      "crosvm"
+    ],
+    "cwd": "[CLEANUP]/workspace",
+    "env": {
+      "DEPOT_TOOLS_UPDATE": "0"
+    },
+    "name": "cros_workon_make crosvm"
+  },
+  {
+    "cmd": [
+      "RECIPE_REPO[depot_tools]/cros_sdk",
       "--delete"
     ],
     "cwd": "[CLEANUP]/workspace",
