@@ -176,7 +176,6 @@ def rebase():
     Will create a new branch called 'current-branch'-upstream tracking origin/main. Changes from
     the current branch will then be rebased into the -upstream branch.
     """
-    prerequisites()
     branch_name = git("branch --show-current").stdout()
     upstream_branch_name = branch_name + "-upstream"
 
@@ -194,8 +193,6 @@ def upload():
     """
     Uploads changes to the crosvm main branch.
     """
-    prerequisites()
-
     remote, branch = get_active_upstream()
     changes = [*LocalChange.list_changes("HEAD")]
     if not changes:
@@ -219,4 +216,5 @@ def upload():
 
 
 if __name__ == "__main__":
+    prerequisites()
     run_commands(upload, rebase, status, prune, usage=USAGE)
