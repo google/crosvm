@@ -93,6 +93,11 @@ def list_local_branches():
 def get_active_upstream():
     upstream = get_upstream()
     if not upstream:
+        default_upstream = "origin/main"
+        if confirm(f"You are not tracking an upstream branch. Set upstream to {default_upstream}?"):
+            git(f"branch --set-upstream-to {default_upstream}").fg()
+            upstream = get_upstream()
+    if not upstream:
         raise Exception("You are not tracking an upstream branch.")
     parts = upstream.split("/")
     if len(parts) != 2:
