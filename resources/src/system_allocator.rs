@@ -139,8 +139,8 @@ impl SystemAllocator {
         let (high_mmio, reserved_region) = match reserve_region_size {
             Some(reserved_len) => {
                 let high_mmio_len = config.high_mmio.len().ok_or(Error::OutOfBounds)?;
-                if reserved_len >= high_mmio_len {
-                    return Err(Error::PoolSizeZero);
+                if reserved_len > high_mmio_len {
+                    return Err(Error::OutOfSpace);
                 }
                 let reserved_start = config.high_mmio.start;
                 let reserved_end = reserved_start + reserved_len - 1;

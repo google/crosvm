@@ -69,8 +69,6 @@ pub enum Error {
     OutOfSpace,
     #[error("base={base} + size={size} overflows")]
     PoolOverflow { base: u64, size: u64 },
-    #[error("Pool cannot have size of 0")]
-    PoolSizeZero,
     #[error("Overlapping region {0}")]
     RegionOverlap(AddressRange),
 }

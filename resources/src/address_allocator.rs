@@ -64,9 +64,6 @@ impl AddressAllocator {
         T: IntoIterator<Item = AddressRange>,
     {
         let pools: Vec<AddressRange> = pools.into_iter().filter(|p| !p.is_empty()).collect();
-        if pools.is_empty() {
-            return Err(Error::PoolSizeZero);
-        }
 
         let min_align = min_align.unwrap_or(4);
         if !min_align.is_power_of_two() || min_align == 0 {
@@ -507,8 +504,13 @@ mod tests {
     }
 
     #[test]
-    fn new_fails_size_zero() {
-        assert!(AddressAllocator::new(AddressRange::empty(), None, None).is_err());
+    fn empty_allocator() {
+        let mut pool = AddressAllocator::new_from_list(Vec::new(), None, None).unwrap();
+        assert_eq!(pool.pools(), &[]);
+        assert_eq!(
+            pool.allocate(1, Alloc::Anon(0), "test".to_string()),
+            Err(Error::OutOfSpace)
+        );
     }
 
     #[test]
