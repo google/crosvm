@@ -16,11 +16,13 @@
 //! ```
 //!
 //! The main points of the manual modifications are as follows:
-//! * Removed `hdr` from each command struct so that we can read the header and a command body separately.
-//!   (cf. [related discussion](https://markmail.org/message/tr5g6axqq2zzq64y))
+//! * Removed `hdr` from each command struct so that we can read the header and a command body
+//!   separately. (cf. [related discussion](https://markmail.org/message/tr5g6axqq2zzq64y))
 //! * Added implementations of DataInit for each struct.
 //! * Added GET_PARAMS_EXT and SET_PARAMS_EXT to allow querying and changing the resource type
 //!   dynamically.
+//! * Moved some definitions such as virtio_video_config to device_constants to make them visible
+//!   to vhost-user modules, and also pub-use them.
 
 #![allow(dead_code, non_snake_case, non_camel_case_types)]
 
@@ -28,9 +30,11 @@ use data_model::DataInit;
 use data_model::Le32;
 use data_model::Le64;
 
-pub const VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES: u32 = 0;
-pub const VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG: u32 = 1;
-pub const VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT: u32 = 2;
+pub use crate::virtio::device_constants::video::virtio_video_config;
+pub use crate::virtio::device_constants::video::VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES;
+pub use crate::virtio::device_constants::video::VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG;
+pub use crate::virtio::device_constants::video::VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT;
+
 pub const VIRTIO_VIDEO_MAX_PLANES: u32 = 8;
 pub const VIRTIO_VIDEO_FORMAT_RAW_MIN: virtio_video_format = 1;
 pub const VIRTIO_VIDEO_FORMAT_ARGB8888: virtio_video_format = 1;
@@ -100,17 +104,6 @@ pub type virtio_video_level = u32;
 pub const VIRTIO_VIDEO_BITRATE_MODE_VBR: virtio_video_bitrate_mode = 0;
 pub const VIRTIO_VIDEO_BITRATE_MODE_CBR: virtio_video_bitrate_mode = 1;
 pub type virtio_video_bitrate_mode = u32;
-
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct virtio_video_config {
-    pub version: Le32,
-    pub max_caps_length: Le32,
-    pub max_resp_length: Le32,
-    pub device_name: [u8; 32],
-}
-// Safe because auto-generated structs have no implicit padding.
-unsafe impl DataInit for virtio_video_config {}
 
 pub const VIRTIO_VIDEO_CMD_QUERY_CAPABILITY: virtio_video_cmd_type = 256;
 pub const VIRTIO_VIDEO_CMD_STREAM_CREATE: virtio_video_cmd_type = 257;

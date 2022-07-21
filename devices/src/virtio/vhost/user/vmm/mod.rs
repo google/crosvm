@@ -23,6 +23,7 @@ cfg_if::cfg_if! {
         mod snd;
         mod vsock;
         mod wl;
+        mod video;
 
         pub use self::snd::*;
         pub use self::vsock::*;
@@ -32,6 +33,7 @@ cfg_if::cfg_if! {
         pub use self::gpu::*;
         pub use self::console::*;
         pub use self::fs::*;
+        pub use self::video::*;
     } else if #[cfg(windows)] {
         #[cfg(feature = "slirp")]
         pub mod net;

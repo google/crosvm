@@ -33,11 +33,11 @@ use arch::VcpuAffinity;
 use argh::FromArgs;
 use base::getpid;
 use devices::virtio::block::block::DiskOption;
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+use devices::virtio::device_constants::video::VideoBackendType;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost::user::device;
-#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
-use devices::virtio::VideoBackendType;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
 use devices::PflashParameters;
@@ -1203,6 +1203,9 @@ pub struct RunCommand {
     /// path to a socket for vhost-user snd
     pub vhost_user_snd: Vec<VhostUserOption>,
     #[argh(option, arg_name = "SOCKET_PATH")]
+    /// path to a socket for vhost-user video decoder
+    pub vhost_user_video_decoder: Option<VhostUserOption>,
+    #[argh(option, arg_name = "SOCKET_PATH")]
     /// path to a socket for vhost-user vsock
     pub vhost_user_vsock: Vec<VhostUserOption>,
     #[argh(option, arg_name = "SOCKET_PATH")]
@@ -1809,6 +1812,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.vhost_user_gpu = cmd.vhost_user_gpu;
         cfg.vhost_user_mac80211_hwsim = cmd.vhost_user_mac80211_hwsim;
         cfg.vhost_user_net = cmd.vhost_user_net;
+        cfg.vhost_user_video_dec = cmd.vhost_user_video_decoder;
         cfg.vhost_user_vsock = cmd.vhost_user_vsock;
         cfg.vhost_user_wl = cmd.vhost_user_wl;
 

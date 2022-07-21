@@ -61,6 +61,7 @@ use devices::vfio::VfioCommonSetup;
 use devices::vfio::VfioCommonTrait;
 #[cfg(feature = "gpu")]
 use devices::virtio;
+use devices::virtio::device_constants::video::VideoDeviceType;
 use devices::virtio::memory_mapper::MemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
 use devices::virtio::vhost::vsock::VhostVsockConfig;
@@ -514,9 +515,16 @@ fn create_virtio_devices(
                 video_dec_tube,
                 cfg.protected_vm,
                 &cfg.jail_config,
-                devices::virtio::VideoDeviceType::Decoder,
+                VideoDeviceType::Decoder,
             )?;
         }
+    }
+    if let Some(socket_path) = &cfg.vhost_user_video_dec {
+        devs.push(create_vhost_user_video_device(
+            cfg.protected_vm,
+            socket_path,
+            VideoDeviceType::Decoder,
+        )?);
     }
 
     #[cfg(feature = "video-encoder")]
@@ -528,7 +536,7 @@ fn create_virtio_devices(
                 video_enc_tube,
                 cfg.protected_vm,
                 &cfg.jail_config,
-                devices::virtio::VideoDeviceType::Encoder,
+                VideoDeviceType::Encoder,
             )?;
         }
     }

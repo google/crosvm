@@ -23,12 +23,12 @@ use base::pagesize;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
 use devices::virtio::block::block::DiskOption;
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+use devices::virtio::device_constants::video::VideoBackendType;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
-#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
-use devices::virtio::VideoBackendType;
 #[cfg(feature = "audio")]
 use devices::Ac97Backend;
 #[cfg(feature = "audio")]
@@ -1412,6 +1412,7 @@ pub struct Config {
     pub vhost_user_mac80211_hwsim: Option<VhostUserOption>,
     pub vhost_user_net: Vec<VhostUserOption>,
     pub vhost_user_snd: Vec<VhostUserOption>,
+    pub vhost_user_video_dec: Option<VhostUserOption>,
     pub vhost_user_vsock: Vec<VhostUserOption>,
     pub vhost_user_wl: Option<VhostUserWlOption>,
     #[cfg(unix)]
@@ -1598,6 +1599,7 @@ impl Default for Config {
             vhost_net_device_path: PathBuf::from(VHOST_NET_PATH),
             vhost_user_blk: Vec::new(),
             vhost_user_console: Vec::new(),
+            vhost_user_video_dec: None,
             vhost_user_fs: Vec::new(),
             vhost_user_gpu: Vec::new(),
             vhost_user_mac80211_hwsim: None,

@@ -29,6 +29,9 @@ use devices::vfio::VfioCommonTrait;
 use devices::virtio;
 use devices::virtio::block::block::DiskOption;
 use devices::virtio::console::asynchronous::AsyncConsole;
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+use devices::virtio::device_constants::video::VideoBackendType;
+use devices::virtio::device_constants::video::VideoDeviceType;
 use devices::virtio::ipc_memory_mapper::create_ipc_mapper;
 use devices::virtio::ipc_memory_mapper::CreateIpcMapperRet;
 use devices::virtio::memory_mapper::BasicMemoryMapper;
@@ -44,13 +47,12 @@ use devices::virtio::vhost::user::vmm::Gpu as VhostUserGpu;
 use devices::virtio::vhost::user::vmm::Mac80211Hwsim as VhostUserMac80211Hwsim;
 use devices::virtio::vhost::user::vmm::Net as VhostUserNet;
 use devices::virtio::vhost::user::vmm::Snd as VhostUserSnd;
+use devices::virtio::vhost::user::vmm::Video as VhostUserVideo;
 use devices::virtio::vhost::user::vmm::Vsock as VhostUserVsock;
 use devices::virtio::vhost::user::vmm::Wl as VhostUserWl;
 use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
-#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
-use devices::virtio::VideoBackendType;
 use devices::virtio::VirtioDevice;
 use devices::BusDeviceObj;
 use devices::IommuDevType;
@@ -913,16 +915,19 @@ pub fn create_video_device(
     backend: VideoBackendType,
     protected_vm: ProtectionType,
     jail_config: &Option<JailConfig>,
-    typ: devices::virtio::VideoDeviceType,
+    typ: VideoDeviceType,
     resource_bridge: Tube,
 ) -> DeviceResult {
     let jail = match simple_jail(jail_config, "video_device")? {
         Some(mut jail) => {
             match typ {
                 #[cfg(feature = "video-decoder")]
-                devices::virtio::VideoDeviceType::Decoder => add_current_user_to_jail(&mut jail)?,
+                VideoDeviceType::Decoder => add_current_user_to_jail(&mut jail)?,
                 #[cfg(feature = "video-encoder")]
-                devices::virtio::VideoDeviceType::Encoder => add_current_user_to_jail(&mut jail)?,
+                VideoDeviceType::Encoder => add_current_user_to_jail(&mut jail)?,
+                #[cfg(any(not(feature = "video-decoder"), not(feature = "video-encoder")))]
+                // `typ` is always a VideoDeviceType enabled
+                device_type => unreachable!("Not compiled with {:?} enabled", device_type),
             };
 
             // Create a tmpfs in the device's root directory so that we can bind mount files.
@@ -992,7 +997,7 @@ pub fn register_video_device(
     video_tube: Tube,
     protected_vm: ProtectionType,
     jail_config: &Option<JailConfig>,
-    typ: devices::virtio::VideoDeviceType,
+    typ: VideoDeviceType,
 ) -> Result<()> {
     devs.push(create_video_device(
         backend,
@@ -1002,6 +1007,25 @@ pub fn register_video_device(
         video_tube,
     )?);
     Ok(())
+}
+
+pub fn create_vhost_user_video_device(
+    protected_vm: ProtectionType,
+    opt: &VhostUserOption,
+    device_type: VideoDeviceType,
+) -> DeviceResult {
+    let dev = VhostUserVideo::new(
+        virtio::base_features(protected_vm),
+        &opt.socket,
+        device_type,
+    )
+    .context("failed to set up vhost-user video device")?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        // no sandbox here because virtqueue handling is exported to a different process.
+        jail: None,
+    })
 }
 
 pub fn create_vhost_vsock_device(

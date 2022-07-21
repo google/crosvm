@@ -52,3 +52,96 @@ pub mod snd {
     // Safe because it only has data and has no implicit padding.
     unsafe impl DataInit for virtio_snd_config {}
 }
+
+pub mod video {
+    use data_model::DataInit;
+    use data_model::Le32;
+    use serde::Deserialize;
+    use serde::Serialize;
+
+    // CMD_QUEUE_SIZE = max number of command descriptors for input and output queues
+    // Experimentally, it appears a stream allocates 16 input and 26 output buffers = 42 total
+    // For 8 simultaneous streams, 2 descs per buffer * 42 buffers * 8 streams = 672 descs
+    // Allocate 1024 to give some headroom in case of extra streams/buffers
+    //
+    // TODO(b/204055006): Make cmd queue size dependent of
+    // (max buf cnt for input + max buf cnt for output) * max descs per buffer * max nb of streams
+    const CMD_QUEUE_SIZE: u16 = 1024;
+    pub const CMD_QUEUE_INDEX: usize = 0;
+    // EVENT_QUEUE_SIZE = max number of event descriptors for stream events like resolution changes
+    const EVENT_QUEUE_SIZE: u16 = 256;
+    pub const EVENT_QUEUE_INDEX: usize = 1;
+    pub const QUEUE_SIZES: &[u16] = &[CMD_QUEUE_SIZE, EVENT_QUEUE_SIZE];
+
+    pub const VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES: u32 = 0;
+    pub const VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG: u32 = 1;
+    pub const VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT: u32 = 2;
+
+    #[derive(Debug, Clone, Copy)]
+    pub enum VideoDeviceType {
+        Decoder,
+        Encoder,
+    }
+
+    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+    pub enum VideoBackendType {
+        #[cfg(feature = "libvda")]
+        Libvda,
+        #[cfg(feature = "libvda")]
+        LibvdaVd,
+        #[cfg(feature = "ffmpeg")]
+        Ffmpeg,
+        #[cfg(feature = "vaapi")]
+        Vaapi,
+    }
+
+    /// The same set of virtio features is supported by the ffmpeg decoder and encoder.
+    pub fn ffmpeg_supported_virtio_features() -> u64 {
+        1u64 << VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES
+            | 1u64 << VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG
+            | 1u64 << VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT
+    }
+
+    /// The same set of virtio features is supported by the vaapi decoder and encoder.
+    pub fn vaapi_supported_virtio_features() -> u64 {
+        1u64 << VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES
+            | 1u64 << VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG
+            | 1u64 << VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT
+    }
+
+    /// The same set of virtio features is supported by the vda decoder and encoder.
+    pub fn vda_supported_virtio_features() -> u64 {
+        1u64 << VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG | 1u64 << VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT
+    }
+
+    /// Union of the supported features of all decoder and encoder backends.
+    pub fn all_backend_virtio_features() -> u64 {
+        ffmpeg_supported_virtio_features()
+            | vaapi_supported_virtio_features()
+            | vda_supported_virtio_features()
+    }
+
+    pub fn backend_supported_virtio_features(backend: VideoBackendType) -> u64 {
+        match backend {
+            #[cfg(feature = "libvda")]
+            VideoBackendType::Libvda | VideoBackendType::LibvdaVd => {
+                vda_supported_virtio_features()
+            }
+            #[cfg(feature = "ffmpeg")]
+            VideoBackendType::Ffmpeg => ffmpeg_supported_virtio_features(),
+            #[cfg(feature = "vaapi")]
+            VideoBackendType::Vaapi => vaapi_supported_virtio_features(),
+        }
+    }
+
+    #[repr(C)]
+    #[derive(Debug, Default, Copy, Clone)]
+    pub struct virtio_video_config {
+        pub version: Le32,
+        pub max_caps_length: Le32,
+        pub max_resp_length: Le32,
+        pub device_name: [u8; 32],
+    }
+    // Safe because auto-generated structs have no implicit padding.
+    unsafe impl DataInit for virtio_video_config {}
+}

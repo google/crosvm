@@ -20,8 +20,6 @@ use base::Tube;
 use data_model::DataInit;
 use data_model::Le32;
 use remain::sorted;
-use serde::Deserialize;
-use serde::Serialize;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
@@ -67,17 +65,10 @@ use command::ReadCmdError;
 use device::Device;
 use worker::Worker;
 
-// CMD_QUEUE_SIZE = max number of command descriptors for input and output queues
-// Experimentally, it appears a stream allocates 16 input and 26 output buffers = 42 total
-// For 8 simultaneous streams, 2 descs per buffer * 42 buffers * 8 streams = 672 descs
-// Allocate 1024 to give some headroom in case of extra streams/buffers
-//
-// TODO(b/204055006): Make cmd queue size dependent of
-// (max buf cnt for input + max buf cnt for output) * max descs per buffer * max nb of streams
-const CMD_QUEUE_SIZE: u16 = 1024;
-// EVENT_QUEUE_SIZE = max number of event descriptors for stream events like resolution changes
-const EVENT_QUEUE_SIZE: u16 = 256;
-const QUEUE_SIZES: &[u16] = &[CMD_QUEUE_SIZE, EVENT_QUEUE_SIZE];
+use super::device_constants::video::backend_supported_virtio_features;
+use super::device_constants::video::VideoBackendType;
+use super::device_constants::video::VideoDeviceType;
+use super::device_constants::video::QUEUE_SIZES;
 
 /// An error indicating something went wrong in virtio-video's worker.
 #[sorted]
@@ -107,14 +98,6 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Debug)]
-pub enum VideoDeviceType {
-    #[cfg(feature = "video-decoder")]
-    Decoder,
-    #[cfg(feature = "video-encoder")]
-    Encoder,
-}
 
 pub struct VideoDevice {
     device_type: VideoDeviceType,
@@ -150,25 +133,6 @@ impl Drop for VideoDevice {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
-pub enum VideoBackendType {
-    #[cfg(feature = "libvda")]
-    Libvda,
-    #[cfg(feature = "libvda")]
-    LibvdaVd,
-    #[cfg(feature = "ffmpeg")]
-    Ffmpeg,
-    #[cfg(feature = "vaapi")]
-    Vaapi,
-}
-
-#[cfg(feature = "ffmpeg")]
-pub fn ffmpeg_supported_virtio_features() -> u64 {
-    1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES
-        | 1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG
-        | 1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT
-}
-
 impl VirtioDevice for VideoDevice {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut keep_rds = Vec::new();
@@ -180,9 +144,7 @@ impl VirtioDevice for VideoDevice {
 
     fn device_type(&self) -> DeviceType {
         match &self.device_type {
-            #[cfg(feature = "video-decoder")]
             VideoDeviceType::Decoder => DeviceType::VideoDec,
-            #[cfg(feature = "video-encoder")]
             VideoDeviceType::Encoder => DeviceType::VideoEnc,
         }
     }
@@ -192,24 +154,7 @@ impl VirtioDevice for VideoDevice {
     }
 
     fn features(&self) -> u64 {
-        // We specify the type to avoid an extra compilation error in case no backend is enabled
-        // and this match statement becomes empty.
-        let backend_features: u64 = match self.backend {
-            #[cfg(feature = "libvda")]
-            VideoBackendType::Libvda | VideoBackendType::LibvdaVd => {
-                vda::supported_virtio_features()
-            }
-            #[cfg(feature = "ffmpeg")]
-            VideoBackendType::Ffmpeg => ffmpeg_supported_virtio_features(),
-            #[cfg(feature = "vaapi")]
-            VideoBackendType::Vaapi => {
-                1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES
-                    | 1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG
-                    | 1u64 << protocol::VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT
-            }
-        };
-
-        self.base_features | backend_features
+        self.base_features | backend_supported_virtio_features(self.backend)
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
@@ -394,6 +339,9 @@ impl VirtioDevice for VideoDevice {
                         error!("Failed to start encoder worker: {}", e);
                     }
                 }),
+            #[allow(unreachable_patterns)]
+            // A device will never be created for a device type not enabled
+            device_type => unreachable!("Not compiled with {:?} enabled", device_type),
         };
         if let Err(e) = worker_result {
             error!(
