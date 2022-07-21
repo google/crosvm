@@ -832,7 +832,7 @@ pub struct RunCommand {
     /// path to a disk image
     pub pmem_devices: Vec<DiskOption>,
     #[argh(switch)]
-    /// grant this Guest VM certian privileges to manage Host resources, such as power management
+    /// grant this Guest VM certain privileges to manage Host resources, such as power management
     pub privileged_vm: bool,
     #[cfg(feature = "process-invariants")]
     #[argh(option, long = "process-invariants-handle", arg_name = "PATH")]
