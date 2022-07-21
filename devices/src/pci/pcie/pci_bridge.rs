@@ -446,7 +446,8 @@ impl PciDevice for PciBridge {
             )?;
             window_base = window.0;
             window_size = window.1;
-            let pref_window = finalize_window(
+
+            match finalize_window(
                 resources,
                 true, // prefetchable
                 Alloc::PciBridgePrefetchWindow {
@@ -456,9 +457,15 @@ impl PciDevice for PciBridge {
                 },
                 pref_window_base,
                 pref_window_size,
-            )?;
-            pref_window_base = pref_window.0;
-            pref_window_size = pref_window.1;
+            ) {
+                Ok(pref_window) => {
+                    pref_window_base = pref_window.0;
+                    pref_window_size = pref_window.1;
+                }
+                Err(e) => {
+                    warn!("failed to allocate PCI bridge prefetchable window: {}", e);
+                }
+            }
         } else {
             // 0 is Ok here because guest will relocate the bridge window
             if window_size > 0 {
