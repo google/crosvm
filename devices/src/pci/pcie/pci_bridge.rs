@@ -186,7 +186,7 @@ impl PciBridge {
 fn finalize_window(
     resources: &mut SystemAllocator,
     prefetchable: bool,
-    address: PciAddress,
+    alloc: Alloc,
     mut base: u64,
     mut size: u64,
 ) -> std::result::Result<(u64, u64), PciDeviceError> {
@@ -202,11 +202,7 @@ fn finalize_window(
         }
         match resources.allocate_mmio(
             size,
-            Alloc::PciBridgeWindow {
-                bus: address.bus,
-                dev: address.dev,
-                func: address.func,
-            },
+            alloc,
             "pci_bridge_window".to_string(),
             AllocOptions::new()
                 .prefetchable(prefetchable)
@@ -440,7 +436,11 @@ impl PciDevice for PciBridge {
             let window = finalize_window(
                 resources,
                 false, // prefetchable
-                address,
+                Alloc::PciBridgeWindow {
+                    bus: address.bus,
+                    dev: address.dev,
+                    func: address.func,
+                },
                 window_base,
                 window_size,
             )?;
@@ -449,7 +449,11 @@ impl PciDevice for PciBridge {
             let pref_window = finalize_window(
                 resources,
                 true, // prefetchable
-                address,
+                Alloc::PciBridgePrefetchWindow {
+                    bus: address.bus,
+                    dev: address.dev,
+                    func: address.func,
+                },
                 pref_window_base,
                 pref_window_size,
             )?;
