@@ -4,7 +4,7 @@
 
 //! vmwdt is a virtual watchdog memory mapped device which detects stalls
 //! on the vCPUs and resets the guest when no 'pet' events are received.
-//! https://docs.google.com/document/d/1DYmk2roxlwHZsOfcJi8xDMdWOHAmomvs2SDh7KPud3Y/edit?usp=sharing&resourcekey=0-oSNabc-t040a1q0K4cyI8Q
+//! <https://docs.google.com/document/d/1DYmk2roxlwHZsOfcJi8xDMdWOHAmomvs2SDh7KPud3Y/edit?usp=sharing&resourcekey=0-oSNabc-t040a1q0K4cyI8Q>
 
 use crate::pci::CrosvmDeviceId;
 use crate::DeviceId;
