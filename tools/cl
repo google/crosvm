@@ -9,7 +9,7 @@ from impl.common import GerritChange, confirm, run_commands, cmd
 import sys
 
 USAGE = """\
-./tools/cl [upload|rebase|status]
+./tools/cl [upload|rebase|status|prune]
 
 Upload changes to the upstream crosvm gerrit.
 
