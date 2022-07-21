@@ -165,7 +165,7 @@ impl ProxyDevice {
     /// * `keep_rds` - File descriptors that will be kept open in the child.
     pub fn new<D: BusDevice>(
         mut device: D,
-        jail: &Minijail,
+        jail: Minijail,
         mut keep_rds: Vec<RawDescriptor>,
     ) -> Result<ProxyDevice> {
         let debug_label = device.debug_label();
@@ -178,6 +178,7 @@ impl ProxyDevice {
         keep_rds.dedup();
 
         // Forking here is safe as long as the program is still single threaded.
+        // We own the jail object and nobody else will try to reuse it.
         let pid = match unsafe { jail.fork(Some(&keep_rds)) }.map_err(Error::ForkingJail)? {
             0 => {
                 let max_len = 15; // pthread_setname_np() limit on Linux
@@ -410,7 +411,7 @@ mod tests {
         let device = EchoDevice::new();
         let keep_fds: Vec<RawDescriptor> = Vec::new();
         let minijail = Minijail::new().unwrap();
-        ProxyDevice::new(device, &minijail, keep_fds).unwrap()
+        ProxyDevice::new(device, minijail, keep_fds).unwrap()
     }
 
     // TODO(b/173833661): Find a way to ensure these tests are run single-threaded.

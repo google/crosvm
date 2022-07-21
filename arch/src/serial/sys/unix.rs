@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use base::RawDescriptor;
 use devices::serial_device::SerialParameters;
+use devices::BusDevice;
 use devices::{Bus, ProxyDevice, Serial};
 use minijail::Minijail;
 use sync::Mutex;
@@ -17,28 +18,18 @@ pub fn add_serial_device(
     com_num: usize,
     com: Serial,
     _serial_parameters: &SerialParameters,
-    serial_jail: Option<&Minijail>,
+    serial_jail: Option<Minijail>,
     preserved_descriptors: Vec<RawDescriptor>,
     io_bus: &Bus,
 ) -> std::result::Result<(), DeviceRegistrationError> {
-    match serial_jail.as_ref() {
-        Some(jail) => {
-            let com = Arc::new(Mutex::new(
-                ProxyDevice::new(
-                    com,
-                    &jail
-                        .try_clone()
-                        .map_err(DeviceRegistrationError::CloneJail)?,
-                    preserved_descriptors,
-                )
+    let com: Arc<Mutex<dyn BusDevice>> = if let Some(serial_jail) = serial_jail {
+        Arc::new(Mutex::new(
+            ProxyDevice::new(com, serial_jail, preserved_descriptors)
                 .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
-            ));
-            io_bus.insert(com, SERIAL_ADDR[com_num], 0x8).unwrap();
-        }
-        None => {
-            let com = Arc::new(Mutex::new(com));
-            io_bus.insert(com, SERIAL_ADDR[com_num], 0x8).unwrap();
-        }
-    }
+        ))
+    } else {
+        Arc::new(Mutex::new(com))
+    };
+    io_bus.insert(com, SERIAL_ADDR[com_num], 0x8).unwrap();
     Ok(())
 }

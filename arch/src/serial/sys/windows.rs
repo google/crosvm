@@ -46,7 +46,7 @@ pub fn add_serial_device(
     com_num: usize,
     com: Serial,
     serial_params: &SerialParameters,
-    serial_jail: Option<&Minijail>,
+    serial_jail: Option<Minijail>,
     _preserved_descriptors: Vec<RawDescriptor>,
     io_bus: &Bus,
 ) -> std::result::Result<(), DeviceRegistrationError> {

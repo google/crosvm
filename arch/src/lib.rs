@@ -446,7 +446,7 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
 
     #[cfg(unix)]
     let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
-        let proxy = ProxyDevice::new(device, &jail, keep_rds)
+        let proxy = ProxyDevice::new(device, jail, keep_rds)
             .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
         linux
             .pid_debug_label_map
@@ -674,7 +674,7 @@ pub fn generate_pci_root(
 
         #[cfg(unix)]
         let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
-            let proxy = ProxyDevice::new(device, &jail, keep_rds)
+            let proxy = ProxyDevice::new(device, jail, keep_rds)
                 .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
             pid_labels.insert(proxy.pid() as u32, proxy.debug_label());
             Arc::new(Mutex::new(proxy))

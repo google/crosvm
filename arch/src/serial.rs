@@ -115,11 +115,24 @@ pub fn add_serial_devices(
             .create_serial_device::<Serial>(protected_vm, com_evt, &mut preserved_descriptors)
             .map_err(DeviceRegistrationError::CreateSerialDevice)?;
 
+        #[cfg(unix)]
+        let serial_jail = if let Some(serial_jail) = serial_jail.as_ref() {
+            Some(
+                serial_jail
+                    .try_clone()
+                    .map_err(DeviceRegistrationError::CloneJail)?,
+            )
+        } else {
+            None
+        };
+        #[cfg(windows)]
+        let serial_jail = None;
+
         sys::add_serial_device(
             com_num as usize,
             com,
             param,
-            serial_jail.as_ref(),
+            serial_jail,
             preserved_descriptors,
             io_bus,
         )?;

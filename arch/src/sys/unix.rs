@@ -97,7 +97,7 @@ pub fn add_goldfish_battery(
         )
         .map_err(DeviceRegistrationError::RegisterIrqfd)?;
 
-    match battery_jail.as_ref() {
+    match battery_jail {
         #[cfg(not(windows))]
         Some(jail) => {
             let mut keep_rds = goldfish_bat.keep_rds();
@@ -188,7 +188,7 @@ pub fn generate_platform_bus(
         }
 
         let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
-            let proxy = ProxyDevice::new(device, &jail, keep_rds)
+            let proxy = ProxyDevice::new(device, jail, keep_rds)
                 .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
             pid_labels.insert(proxy.pid() as u32, proxy.debug_label());
             Arc::new(Mutex::new(proxy))

@@ -1295,11 +1295,10 @@ impl X8664arch {
         let fds = pflash_image.as_raw_descriptors();
 
         let pflash = Pflash::new(pflash_image, block_size).map_err(Error::SetupPflash)?;
-        let pflash: Arc<Mutex<dyn BusDevice>> = match jail.as_ref() {
+        let pflash: Arc<Mutex<dyn BusDevice>> = match jail {
             #[cfg(unix)]
             Some(jail) => Arc::new(Mutex::new(
-                ProxyDevice::new(pflash, &jail.try_clone().map_err(Error::CloneJail)?, fds)
-                    .map_err(Error::CreateProxyDevice)?,
+                ProxyDevice::new(pflash, jail, fds).map_err(Error::CreateProxyDevice)?,
             )),
             #[cfg(windows)]
             Some(_) => unreachable!(),
@@ -1754,7 +1753,7 @@ impl X8664arch {
                 Some(jail) => Arc::new(Mutex::new(
                     ProxyDevice::new(
                         con,
-                        &jail.try_clone().map_err(Error::CloneJail)?,
+                        jail.try_clone().map_err(Error::CloneJail)?,
                         preserved_fds,
                     )
                     .map_err(Error::CreateProxyDevice)?,
