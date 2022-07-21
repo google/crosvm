@@ -5,6 +5,7 @@
 mod sys;
 
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
@@ -15,9 +16,7 @@ use thiserror::Error as ThisError;
 
 use balloon_control::{BalloonStats, BalloonTubeCommand, BalloonTubeResult};
 use base::{self, error, warn, AsRawDescriptor, Event, RawDescriptor, Tube};
-use cros_async::{
-    block_on, select6, select7, sync::Mutex as AsyncMutex, AsyncTube, EventAsync, Executor,
-};
+use cros_async::{block_on, select7, sync::Mutex as AsyncMutex, AsyncTube, EventAsync, Executor};
 use data_model::{DataInit, Le16, Le32, Le64};
 use vm_memory::{GuestAddress, GuestMemory};
 
@@ -280,13 +279,19 @@ fn parse_balloon_stats(reader: &mut Reader) -> BalloonStats {
 // signaled from the command socket that stats should be collected again.
 async fn handle_stats_queue(
     mem: &GuestMemory,
-    mut queue: Queue,
-    mut queue_event: EventAsync,
+    queue: Option<Queue>,
+    queue_event: Option<EventAsync>,
     mut stats_rx: mpsc::Receiver<u64>,
     command_tube: &AsyncTube,
     state: Arc<AsyncMutex<BalloonState>>,
     interrupt: Rc<RefCell<Interrupt>>,
 ) {
+    let mut queue = match queue {
+        None => std::future::pending().await,
+        Some(queue) => queue,
+    };
+    let mut queue_event = queue_event.expect("missing event");
+
     // Consume the first stats buffer sent from the guest at startup. It was not
     // requested by anyone, and the stats are stale.
     let mut index = match queue.next_async(mem, &mut queue_event).await {
@@ -375,12 +380,17 @@ async fn handle_event(
 // Async task that handles the events queue.
 async fn handle_events_queue(
     mem: &GuestMemory,
-    mut queue: Queue,
-    mut queue_event: EventAsync,
+    queue: Option<Queue>,
+    queue_event: Option<EventAsync>,
     state: Arc<AsyncMutex<BalloonState>>,
     interrupt: Rc<RefCell<Interrupt>>,
     command_tube: &AsyncTube,
 ) -> Result<()> {
+    let mut queue = match queue {
+        None => std::future::pending().await,
+        Some(queue) => queue,
+    };
+    let mut queue_event = queue_event.expect("missing event");
     loop {
         let avail_desc = queue
             .next_async(mem, &mut queue_event)
@@ -445,8 +455,8 @@ async fn handle_command_tube(
 // The main worker thread. Initialized the asynchronous worker tasks and passes them to the executor
 // to be processed.
 fn run_worker(
-    mut queue_evts: Vec<Event>,
-    mut queues: Vec<Queue>,
+    queue_evts: Vec<Event>,
+    queues: Vec<Queue>,
     command_tube: Tube,
     #[cfg(windows)] dynamic_mapping_tube: Tube,
     inflate_tube: Option<Tube>,
@@ -461,15 +471,19 @@ fn run_worker(
     let ex = Executor::new().unwrap();
     let command_tube = AsyncTube::new(&ex, command_tube).unwrap();
 
+    let mut queue_evts: VecDeque<EventAsync> = queue_evts
+        .into_iter()
+        .map(|e| EventAsync::new(e, &ex).expect("failed to create async event"))
+        .collect();
+    let mut queues = VecDeque::from(queues);
+
     // We need a block to release all references to command_tube at the end before returning it.
     {
         // The first queue is used for inflate messages
-        let inflate_event =
-            EventAsync::new(queue_evts.remove(0), &ex).expect("failed to set up the inflate event");
         let inflate = handle_queue(
             &mem,
-            queues.remove(0),
-            inflate_event,
+            queues.pop_front().unwrap(),
+            queue_evts.pop_front().unwrap(),
             &inflate_tube,
             interrupt.clone(),
             |guest_address, len| {
@@ -486,12 +500,10 @@ fn run_worker(
         pin_mut!(inflate);
 
         // The second queue is used for deflate messages
-        let deflate_event =
-            EventAsync::new(queue_evts.remove(0), &ex).expect("failed to set up the deflate event");
         let deflate = handle_queue(
             &mem,
-            queues.remove(0),
-            deflate_event,
+            queues.pop_front().unwrap(),
+            queue_evts.pop_front().unwrap(),
             &None,
             interrupt.clone(),
             |guest_address, len| {
@@ -505,16 +517,14 @@ fn run_worker(
         );
         pin_mut!(deflate);
 
-        // The third queue is used for stats messages. The message type is the
-        // id of the stats request, so we can detect if there are any stale
-        // stats results that were queued during an error condition.
+        // The next queue if present is used for stats messages. The message type is
+        // the id of the stats request, so we can detect if there are any stale stats
+        // results that were queued during an error condition.
         let (stats_tx, stats_rx) = mpsc::channel::<u64>(1);
-        let stats_event =
-            EventAsync::new(queue_evts.remove(0), &ex).expect("failed to set up the stats event");
         let stats = handle_stats_queue(
             &mem,
-            queues.remove(0),
-            stats_event,
+            queues.pop_front(),
+            queue_evts.pop_front(),
             stats_rx,
             &command_tube,
             state.clone(),
@@ -535,29 +545,23 @@ fn run_worker(
         let kill = async_utils::await_and_exit(&ex, kill_evt);
         pin_mut!(kill);
 
-        let res = if !queues.is_empty() {
-            let events_event = EventAsync::new(queue_evts.remove(0), &ex)
-                .expect("failed to set up the events event");
-            let events = handle_events_queue(
-                &mem,
-                queues.remove(0),
-                events_event,
-                state,
-                interrupt,
-                &command_tube,
-            );
-            pin_mut!(events);
+        // The next queue if present is used for events.
+        let events = handle_events_queue(
+            &mem,
+            queues.pop_front(),
+            queue_evts.pop_front(),
+            state,
+            interrupt,
+            &command_tube,
+        );
+        pin_mut!(events);
 
-            ex.run_until(select7(
+        if let Err(e) = ex
+            .run_until(select7(
                 inflate, deflate, stats, command, resample, kill, events,
             ))
             .map(|_| ())
-        } else {
-            ex.run_until(select6(inflate, deflate, stats, command, resample, kill))
-                .map(|_| ())
-        };
-
-        if let Err(e) = res {
+        {
             error!("error happened in executor: {}", e);
         }
     }
@@ -636,8 +640,10 @@ impl Balloon {
         }
     }
 
-    fn event_queue_enabled(&self) -> bool {
-        (self.acked_features & ((1 << VIRTIO_BALLOON_F_EVENTS_VQ) as u64)) != 0
+    fn num_expected_queues(acked_features: u64) -> usize {
+        // mandatory inflate and deflate queues plus any optional ack'ed queues
+        let queue_bits = (1 << VIRTIO_BALLOON_F_STATS_VQ) | (1 << VIRTIO_BALLOON_F_EVENTS_VQ);
+        2 + (acked_features & queue_bits as u64).count_ones() as usize
     }
 }
 
@@ -701,7 +707,7 @@ impl VirtioDevice for Balloon {
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
     ) {
-        let expected_queues = if self.event_queue_enabled() { 4 } else { 3 };
+        let expected_queues = Balloon::num_expected_queues(self.acked_features);
         if queues.len() != expected_queues || queue_evts.len() != expected_queues {
             return;
         }
@@ -820,6 +826,29 @@ mod tests {
         assert_eq!(
             addrs[1].0,
             GuestAddress(0xaa55aa55u64 << VIRTIO_BALLOON_PFN_SHIFT)
+        );
+    }
+
+    #[test]
+    fn num_expected_queues() {
+        let to_feature_bits =
+            |features: &[u32]| -> u64 { features.iter().fold(0, |acc, f| acc | (1_u64 << f)) };
+
+        assert_eq!(2, Balloon::num_expected_queues(0));
+        assert_eq!(
+            2,
+            Balloon::num_expected_queues(to_feature_bits(&[VIRTIO_BALLOON_F_MUST_TELL_HOST]))
+        );
+        assert_eq!(
+            3,
+            Balloon::num_expected_queues(to_feature_bits(&[VIRTIO_BALLOON_F_STATS_VQ]))
+        );
+        assert_eq!(
+            4,
+            Balloon::num_expected_queues(to_feature_bits(&[
+                VIRTIO_BALLOON_F_STATS_VQ,
+                VIRTIO_BALLOON_F_EVENTS_VQ
+            ]))
         );
     }
 }
