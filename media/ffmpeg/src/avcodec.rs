@@ -61,10 +61,16 @@ pub enum AvCodecOpenError {
 }
 
 impl AvCodec {
-    /// Returns whether the codec is a decoder codec.
+    /// Returns whether the codec is a decoder.
     pub fn is_decoder(&self) -> bool {
         // Safe because `av_codec_is_decoder` is called on a valid static `AVCodec` reference.
         (unsafe { ffi::av_codec_is_decoder(self.0) } != 0)
+    }
+
+    /// Returns whether the codec is an encoder.
+    pub fn is_encoder(&self) -> bool {
+        // Safe because `av_codec_is_decoder` is called on a valid static `AVCodec` reference.
+        (unsafe { ffi::av_codec_is_encoder(self.0) } != 0)
     }
 
     /// Returns the name of the codec.
