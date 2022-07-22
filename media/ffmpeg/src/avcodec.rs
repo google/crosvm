@@ -91,6 +91,14 @@ impl AvCodec {
         AvProfileIterator(self.0.profiles)
     }
 
+    /// Returns an iterator over the pixel formats supported by this codec.
+    ///
+    /// For a decoder, the returned array will likely be empty. This means that ffmpeg's native
+    /// pixel format (YUV420) will be used.
+    pub fn pixel_format_iter(&self) -> AvPixelFormatIterator {
+        AvPixelFormatIterator(self.0.pix_fmts)
+    }
+
     /// Obtain a context that can be used to decode using this codec.
     ///
     /// `get_buffer`'s first element is an optional function that decides which buffer is used to
@@ -196,6 +204,86 @@ impl Iterator for AvProfileIterator {
                         // which is terminated by FF_PROFILE_UNKNOWN.
                         self.0 = unsafe { self.0.offset(1) };
                         Some(AvProfile(profile))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Simple wrapper over `AVPixelFormat` that provides helpful methods.
+pub struct AvPixelFormat(ffi::AVPixelFormat);
+
+impl AvPixelFormat {
+    /// Return the name of this pixel format.
+    pub fn name(&self) -> &'static str {
+        const INVALID_FORMAT_STR: &str = "invalid pixel format";
+
+        // Safe because `av_get_pix_fmt_name` returns either NULL or a valid C string.
+        let pix_fmt_name = unsafe { ffi::av_get_pix_fmt_name(self.0) };
+        // Safe because `pix_fmt_name` is a valid pointer to a C string.
+        match unsafe {
+            pix_fmt_name
+                .as_ref()
+                .and_then(|s| CStr::from_ptr(s).to_str().ok())
+        } {
+            None => INVALID_FORMAT_STR,
+            Some(string) => string,
+        }
+    }
+
+    /// Return the avcodec profile id, which can be matched against AV_PIX_FMT_*.
+    ///
+    /// Note that this is **not** the same as a fourcc.
+    pub fn pix_fmt(&self) -> ffi::AVPixelFormat {
+        self.0
+    }
+
+    /// Return the fourcc of the pixel format, or a series of zeros if its fourcc is unknown.
+    pub fn fourcc(&self) -> [u8; 4] {
+        // Safe because `avcodec_pix_fmt_to_codec_tag` does not take any pointer as input and
+        // handles any value passed as argument.
+        unsafe { ffi::avcodec_pix_fmt_to_codec_tag(self.0) }.to_le_bytes()
+    }
+}
+
+impl Display for AvPixelFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+impl Debug for AvPixelFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let fourcc = self.fourcc();
+        f.write_fmt(format_args!(
+            "{}{}{}{}",
+            fourcc[0] as char, fourcc[1] as char, fourcc[2] as char, fourcc[3] as char
+        ))
+    }
+}
+
+/// Lightweight abstraction over the array of supported pixel formats for a given codec.
+pub struct AvPixelFormatIterator(*const ffi::AVPixelFormat);
+
+impl Iterator for AvPixelFormatIterator {
+    type Item = AvPixelFormat;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Safe because the contract of `AvCodec::new` and `AvCodec::pixel_format_iter` guarantees
+        // that we have been built from a valid `AVCodec` reference, which `pix_fmts` pointer
+        // must either be NULL or point to a valid array or `VAPixelFormat`s.
+        match unsafe { self.0.as_ref() } {
+            None => None,
+            Some(&pixfmt) => {
+                match pixfmt {
+                    // Array of pixel formats is terminated by AV_PIX_FMT_NONE.
+                    ffi::AVPixelFormat_AV_PIX_FMT_NONE => None,
+                    _ => {
+                        // Safe because we have been initialized to a static, valid profiles array
+                        // which is terminated by AV_PIX_FMT_NONE.
+                        self.0 = unsafe { self.0.offset(1) };
+                        Some(AvPixelFormat(pixfmt))
                     }
                 }
             }
