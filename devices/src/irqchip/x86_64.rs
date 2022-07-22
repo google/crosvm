@@ -192,6 +192,7 @@ impl DelayedIoApicIrqEvents {
     }
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 #[cfg(test)]
 /// This module contains tests that apply to any implementations of IrqChipX86_64
 pub(super) mod tests {

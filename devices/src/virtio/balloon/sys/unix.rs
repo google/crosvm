@@ -34,15 +34,19 @@ pub(in crate::virtio::balloon) async fn send_adjusted_response_async(
 
 pub(in crate::virtio::balloon) fn send_adjusted_response_if_needed(
     state: &Arc<AsyncMutex<BalloonState>>,
-    command_tube: &Tube,
+    command_tube: &Option<Tube>,
     config: virtio_balloon_config,
 ) {
     let mut state = block_on(state.lock());
     state.actual_pages = config.actual.to_native();
     if state.failable_update && state.actual_pages == state.num_pages {
         state.failable_update = false;
-        if let Err(e) = send_adjusted_response(command_tube, state.num_pages) {
-            error!("Failed to send response {:?}", e);
+        if let Some(ref command_tube) = command_tube {
+            if let Err(e) = send_adjusted_response(command_tube, state.num_pages) {
+                error!("Failed to send response {:?}", e);
+            }
+        } else {
+            panic!("Command tube missing!");
         }
     }
 }

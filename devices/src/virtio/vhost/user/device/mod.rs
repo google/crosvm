@@ -38,7 +38,7 @@ cfg_if::cfg_if! {
         #[cfg(feature = "slirp")]
         mod net;
         #[cfg(feature = "slirp")]
-        pub use net::run_net_device;
+        pub use net::{run_net_device, Options as NetOptions};
         #[cfg(feature = "slirp")]
         pub use net::sys::windows::NetBackendConfig;
 

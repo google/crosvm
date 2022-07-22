@@ -173,7 +173,7 @@ impl ShmStreamSource<base::Error> for VioSShmStreamSource {
     /// This list helps users of the ShmStreamSource enter Linux jails without
     /// closing needed file descriptors.
     fn keep_fds(&self) -> Vec<RawDescriptor> {
-        self.vios_client.keep_fds()
+        self.vios_client.keep_rds()
     }
 }
 

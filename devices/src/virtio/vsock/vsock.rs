@@ -198,7 +198,7 @@ impl VirtioDevice for Vsock {
             };
         self.kill_evt = Some(self_kill_evt);
         let host_guid = self.host_guid.clone();
-        let guest_cid = self.guest_cid.clone();
+        let guest_cid = self.guest_cid;
         let worker_result = thread::Builder::new()
             .name("userspace_virtio_vsock".to_string())
             .spawn(move || {
@@ -351,7 +351,7 @@ impl Worker {
                             VsockError::CloneDescriptor(e)
                         })
                         .map(base::Event)?;
-                    let evt_async = EventAsync::new(h_evt, &ex).map_err(|e| {
+                    let evt_async = EventAsync::new(h_evt, ex).map_err(|e| {
                         error!("Could not create EventAsync.");
                         VsockError::CreateEventAsync(e)
                     })?;
@@ -362,7 +362,7 @@ impl Worker {
                 error!("Could not clone connection_event.");
                 VsockError::CloneDescriptor(e)
             })?;
-            let connection_evt_async = EventAsync::new(connection_evt_clone, &ex).map_err(|e| {
+            let connection_evt_async = EventAsync::new(connection_evt_clone, ex).map_err(|e| {
                 error!("Could not create EventAsync.");
                 VsockError::CreateEventAsync(e)
             })?;
@@ -428,7 +428,7 @@ impl Worker {
 
                 let pipe_connection = &mut connection.pipe;
                 let overlapped = &mut connection.overlapped;
-                let guest_port = connection.guest_port.clone();
+                let guest_port = connection.guest_port;
                 let buffer = &mut connection.buffer;
 
                 match overlapped.get_h_event_ref() {
@@ -533,19 +533,18 @@ impl Worker {
                     break;
                 }
 
-                let mut data = vec![0 as u8; len];
+                let mut data = vec![0_u8; len];
                 if len > 0 {
                     if let Err(e) = reader.read_exact(&mut data) {
                         error!("vosck: failed to read data from tx packet: {:?}", e);
                     }
                 }
 
-                match process_packets_queue.send((header, data)).await {
-                    Err(e) => error!(
+                if let Err(e) = process_packets_queue.send((header, data)).await {
+                    error!(
                         "Error while sending packet to queue, dropping packet: {:?}",
                         e
-                    ),
-                    _ => {}
+                    )
                 };
                 queue.add_used(&self.mem, index, 0);
                 queue.trigger_interrupt(&self.mem, &*self.interrupt.borrow());
@@ -649,16 +648,15 @@ impl Worker {
                     buffer,
                     // The connection has just been made, so we haven't received
                     // anything yet.
-                    recv_cnt: 0 as usize,
-                    prev_recv_cnt: 0 as usize,
-                    tx_cnt: 0 as usize,
+                    recv_cnt: 0_usize,
+                    prev_recv_cnt: 0_usize,
+                    tx_cnt: 0_usize,
                     is_buffer_full: false,
                 };
                 self.connections.write().unwrap().insert(port, connection);
                 self.connection_event
                     .write(0) // 0 is arbitrary
-                    .expect(&format!(
-                        "Failed to signal new connection event for vsock port {}.", port));
+                    .unwrap_or_else(|_| panic!("Failed to signal new connection event for vsock port {}.", port));
                 true
             }
             Err(e) => {
@@ -801,7 +799,7 @@ impl Worker {
                         let (send, recv) = mpsc::channel(CHANNEL_SIZE);
                         let event_async = EventAsync::new(
                             rx_queue_evt.try_clone().expect("Failed to clone event"),
-                            &ex,
+                            ex,
                         )
                         .expect("Failed to set up the rx queue event");
                         futures.push(
@@ -817,11 +815,8 @@ impl Worker {
                         send
                     });
                     // Try to send the packet. Do not block other ports if the queue is full.
-                    match queue.try_send(packet) {
-                        Err(e) => {
-                            error!("Error sending packet to queue, dropping packet: {:?}", e)
-                        }
-                        _ => {}
+                    if let Err(e) = queue.try_send(packet) {
+                        error!("Error sending packet to queue, dropping packet: {:?}", e)
                     }
                 }
                 SelectResult::Finished(_) => {
@@ -846,7 +841,7 @@ impl Worker {
     ) -> PortPair {
         while let Some((header, mut data)) = packet_recv_queue.next().await {
             if !self
-                .handle_tx_packet(header, &mut data, send_queue, &mut rx_queue_evt, ex)
+                .handle_tx_packet(header, &data, send_queue, &mut rx_queue_evt, ex)
                 .await
             {
                 packet_recv_queue.close();
@@ -1284,7 +1279,7 @@ impl Worker {
     }
 }
 
-fn get_pipe_name(guid: &String, pipe: u32) -> String {
+fn get_pipe_name(guid: &str, pipe: u32) -> String {
     format!("\\\\.\\pipe\\{}\\vsock-{}", guid, pipe)
 }
 

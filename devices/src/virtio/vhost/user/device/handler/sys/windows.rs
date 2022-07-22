@@ -2,9 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::File;
 use std::mem::ManuallyDrop;
-use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use base::named_pipes::{BlockingMode, FramingMode, PipeConnection};
@@ -13,15 +11,10 @@ use cros_async::{EventAsync, Executor};
 use futures::FutureExt;
 use futures::{pin_mut, select};
 use tube_transporter::{TubeTransferDataList, TubeTransporterReader};
-use vm_memory::GuestMemory;
-use vmm_vhost::{Protocol, SlaveReqHandler};
+use vmm_vhost::SlaveReqHandler;
 
-use crate::virtio::vhost::user::device::{
-    handler::{
-        CallEvent, DeviceRequestHandler, MappingInfo, VhostResult, VhostUserBackend,
-        VhostUserMemoryRegion, VhostUserRegularOps,
-    },
-    listener::{VhostUserListener, VhostUserListenerTrait},
+use crate::virtio::vhost::user::device::handler::{
+    CallEvent, DeviceRequestHandler, VhostUserRegularOps,
 };
 
 pub type Doorbell = CallEvent;

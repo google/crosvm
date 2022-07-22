@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use balloon_control::BalloonTubeResult;
 use base::{warn, Tube};
-use cros_async::{AsyncMutex, AsyncTube};
+use cros_async::{block_on, sync::Mutex as AsyncMutex, AsyncTube};
 use vm_control::{VmMemoryRequest, VmMemoryResponse};
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
 
 use crate::virtio::balloon::virtio_balloon_config;
 use crate::virtio::balloon::{BalloonState, VIRTIO_BALLOON_PFN_SHIFT};
@@ -22,12 +22,12 @@ pub(in crate::virtio::balloon) fn send_adjusted_response(
     Ok(())
 }
 
-pub(in crate::virtio::balloon) async fn send_adjusted_response_if_needed(
+pub(in crate::virtio::balloon) fn send_adjusted_response_if_needed(
     state: &Arc<AsyncMutex<BalloonState>>,
-    _command_tube: &Tube,
+    _command_tube: &Option<Tube>,
     config: virtio_balloon_config,
 ) {
-    let mut state = block_on(self.state.lock());
+    let mut state = block_on(state.lock());
     state.actual_pages = config.actual.to_native();
 }
 
@@ -45,7 +45,10 @@ pub(in crate::virtio::balloon) fn free_memory(
     len: u64,
     dynamic_mapping_tube: &Tube,
 ) {
-    let request = VmMemoryRequest::DynamicallyFreeMemoryRange { guest_address, len };
+    let request = VmMemoryRequest::DynamicallyFreeMemoryRange {
+        guest_address: *guest_address,
+        size: len,
+    };
     if let Err(e) = dynamic_mapping_tube.send(&request) {
         warn!(
             "Failed to send free memory request. Marking pages unused failed: {}, addr={}",
@@ -61,8 +64,15 @@ pub(in crate::virtio::balloon) fn free_memory(
     }
 }
 
-pub(in crate::virtio::balloon) fn reclaim_memory(guest_address: &GuestAddress, len: u64) {
-    let request = VmMemoryRequest::DynamicallyReclaimMemoryRange { guest_address, len };
+pub(in crate::virtio::balloon) fn reclaim_memory(
+    guest_address: &GuestAddress,
+    len: u64,
+    dynamic_mapping_tube: &Tube,
+) {
+    let request = VmMemoryRequest::DynamicallyReclaimMemoryRange {
+        guest_address: *guest_address,
+        size: len,
+    };
     if let Err(e) = dynamic_mapping_tube.send(&request) {
         warn!(
             "Failed to send reclaim memory request. Marking pages used failed: {}, addr={}",

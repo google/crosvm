@@ -7,7 +7,7 @@ use crate::virtio;
 use crate::virtio::net::MAX_BUFFER_SIZE;
 use crate::virtio::net::{process_rx, NetError};
 use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
-use crate::virtio::vhost::user::device::handler::{DeviceRequestHandler, Doorbell};
+use crate::virtio::vhost::user::device::handler::{sys::Doorbell, DeviceRequestHandler};
 use crate::virtio::vhost::user::device::net::{
     run_ctrl_queue, run_tx_queue, NetBackend, NET_EXECUTOR,
 };
@@ -93,7 +93,7 @@ async fn run_rx_queue<T: TapT>(
             &mut overlapped_wrapper,
         );
         if needs_interrupt {
-            call_evt.lock().signal_used_queue(queue.vector);
+            call_evt.lock().signal_used_queue(queue.vector());
         }
 
         // There aren't any RX descriptors available for us to write packets to. Wait for the guest
@@ -127,7 +127,7 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
     let overlapped_wrapper =
         OverlappedWrapper::new(true).expect("Failed to create overlapped wrapper");
 
-    super::NET_EXECUTOR.with(|ex| {
+    super::super::NET_EXECUTOR.with(|ex| {
         // Safe because the executor is initialized in main() below.
         let ex = ex.get().expect("Executor not initialized");
 
@@ -143,11 +143,13 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
                 let tap = ex
                     .async_from(tap)
                     .context("failed to create async tap device")?;
-                let read_notifier = overlapped_wrapper
-                    .get_h_event_ref()
-                    .unwrap()
-                    .try_clone()
-                    .unwrap();
+                let read_notifier = base::Event(
+                    overlapped_wrapper
+                        .get_h_event_ref()
+                        .unwrap()
+                        .try_clone()
+                        .unwrap(),
+                );
                 let read_notifier = EventAsync::new_without_reset(read_notifier, &ex)
                     .context("failed to create async read notifier")?;
 
@@ -214,9 +216,9 @@ pub struct NetBackendConfig {
     pub slirp_kill_event: Event,
 }
 
-#[derive(FromArgs)]
-#[argh(description = "")]
-struct Options {
+#[derive(FromArgs, Debug)]
+#[argh(subcommand, name = "net", description = "")]
+pub struct Options {
     #[argh(
         option,
         description = "pipe handle end for Tube Transporter",
@@ -229,19 +231,7 @@ struct Options {
 compile_error!("vhost-user net device requires slirp feature on Windows.");
 
 #[cfg(feature = "slirp")]
-pub fn run_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
-    let opts = match Options::from_args(&[program_name], args) {
-        Ok(opts) => opts,
-        Err(e) => {
-            if e.status.is_err() {
-                bail!(e.output);
-            } else {
-                println!("{}", e.output);
-            }
-            return Ok(());
-        }
-    };
-
+pub fn start_device(opts: Options) -> anyhow::Result<()> {
     // Get the Tubes from the TubeTransporter. Then get the "Config" from the bootstrap_tube
     // which will contain slirp settings.
     let raw_transport_tube = opts.bootstrap as RawDescriptor;
@@ -253,7 +243,7 @@ pub fn run_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
 
     let startup_args: CommonChildStartupArgs =
         bootstrap_tube.recv::<CommonChildStartupArgs>().unwrap();
-    common_child_setup(startup_args).unwrap();
+    let _child_cleanup = common_child_setup(startup_args).unwrap();
 
     let net_backend_config = bootstrap_tube.recv::<NetBackendConfig>().unwrap();
 

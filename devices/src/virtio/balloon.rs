@@ -491,7 +491,7 @@ fn run_worker(
                     &guest_address,
                     len,
                     #[cfg(windows)]
-                    dynamic_mapping_tube,
+                    &dynamic_mapping_tube,
                     #[cfg(unix)]
                     &mem,
                 )
@@ -511,7 +511,7 @@ fn run_worker(
                     &guest_address,
                     len,
                     #[cfg(windows)]
-                    dynamic_mapping_tube,
+                    &dynamic_mapping_tube,
                 )
             },
         );
@@ -571,7 +571,7 @@ fn run_worker(
 
 /// Virtio device for memory balloon inflation/deflation.
 pub struct Balloon {
-    command_tube: Tube,
+    command_tube: Option<Tube>,
     #[cfg(windows)]
     dynamic_mapping_tube: Option<Tube>,
     inflate_tube: Option<Tube>,
@@ -616,7 +616,7 @@ impl Balloon {
             };
 
         Ok(Balloon {
-            command_tube,
+            command_tube: Some(command_tube),
             #[cfg(windows)]
             dynamic_mapping_tube: Some(dynamic_mapping_tube),
             inflate_tube,
@@ -662,7 +662,10 @@ impl Drop for Balloon {
 
 impl VirtioDevice for Balloon {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        let mut rds = vec![self.command_tube.as_raw_descriptor()];
+        let mut rds = Vec::new();
+        if let Some(command_tube) = &self.command_tube {
+            rds.push(command_tube.as_raw_descriptor());
+        }
         if let Some(inflate_tube) = &self.inflate_tube {
             rds.push(inflate_tube.as_raw_descriptor());
         }
@@ -723,14 +726,18 @@ impl VirtioDevice for Balloon {
 
         let state = self.state.clone();
 
+        // TODO(b/222588331): this relies on Tube::try_clone working
+        #[cfg(unix)]
         #[allow(deprecated)]
-        let command_tube = match self.command_tube.try_clone() {
+        let command_tube = match self.command_tube.as_ref().unwrap().try_clone() {
             Ok(tube) => tube,
             Err(e) => {
                 error!("failed to clone command tube {:?}", e);
                 return;
             }
         };
+        #[cfg(windows)]
+        let command_tube = self.command_tube.take().unwrap();
         #[cfg(windows)]
         let mapping_tube = self.dynamic_mapping_tube.take().unwrap();
         let inflate_tube = self.inflate_tube.take();

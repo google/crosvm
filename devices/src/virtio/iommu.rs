@@ -146,6 +146,7 @@ struct State {
     page_mask: u64,
     // Hot-pluggable PCI endpoints ranges
     // RangeInclusive: (start endpoint PCI address .. =end endpoint PCI address)
+    #[cfg_attr(windows, allow(dead_code))]
     hp_endpoints_ranges: Vec<RangeInclusive<u32>>,
     // All PCI endpoints that attach to certain IOMMU domain
     // key: endpoint PCI address

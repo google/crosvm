@@ -12,8 +12,6 @@ use std::sync::Arc;
 use std::thread::{self};
 
 use base::{error, Event, Result};
-#[cfg(windows)]
-use base::{named_pipes, FileSync};
 
 use crate::bus::BusAccessInfo;
 use crate::pci::CrosvmDeviceId;

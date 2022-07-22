@@ -254,6 +254,11 @@ impl<'a, 'b> Iterator for AvailIter<'a, 'b> {
 
 #[derive(Clone)]
 /// A virtio queue's parameters.
+///
+/// WARNING: it is NOT safe to clone and then use n>1 Queue(s) to interact with the same virtqueue.
+/// That will prevent descriptor index tracking from being accurate, which can cause incorrect
+/// interrupt masking.
+/// TODO(b/201119859) drop Clone from this struct.
 pub struct Queue {
     /// The maximal size in elements offered by the device
     pub max_size: u16,
@@ -773,6 +778,7 @@ mod tests {
     use super::super::Interrupt;
     use super::*;
     use crate::IrqLevelEvent;
+    use memoffset::offset_of;
     use std::convert::TryInto;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Arc;
@@ -879,10 +885,8 @@ mod tests {
             10,
         );
 
-        // Calculating the offset of used_event within Avail structure
-        #[allow(deref_nullptr)]
-        let used_event_offset: u64 =
-            unsafe { &(*(::std::ptr::null::<Avail>())).used_event as *const _ as u64 };
+        // Offset of used_event within Avail structure
+        let used_event_offset = offset_of!(Avail, used_event) as u64;
         let used_event_address = GuestAddress(AVAIL_OFFSET + used_event_offset);
 
         // Assume driver submit 0x100 req to device,
@@ -955,10 +959,8 @@ mod tests {
             10,
         );
 
-        // Calculating the offset of used_event within Avail structure
-        #[allow(deref_nullptr)]
-        let used_event_offset: u64 =
-            unsafe { &(*(::std::ptr::null::<Avail>())).used_event as *const _ as u64 };
+        // Offset of used_event within Avail structure
+        let used_event_offset = offset_of!(Avail, used_event) as u64;
         let used_event_address = GuestAddress(AVAIL_OFFSET + used_event_offset);
 
         // Assume driver submit 0x100 req to device,

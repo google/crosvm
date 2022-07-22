@@ -13,11 +13,11 @@ use std::thread;
 use std::time::Duration;
 use std::u32;
 
+#[cfg(unix)]
+use base::AsRawDescriptor;
 use base::Error as SysError;
 use base::Result as SysResult;
-use base::{
-    error, info, warn, AsRawDescriptor, Event, EventToken, RawDescriptor, Timer, Tube, WaitContext,
-};
+use base::{error, info, warn, Event, EventToken, RawDescriptor, Timer, Tube, WaitContext};
 use data_model::DataInit;
 use disk::DiskFile;
 
@@ -140,7 +140,7 @@ fn deserialize_disk_id<'de, D: Deserializer<'de>>(
     Ok(Some(ret))
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, serde_keyvalue::FromKeyValues)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, serde_keyvalue::FromKeyValues)]
 #[serde(deny_unknown_fields)]
 pub struct DiskOption {
     pub path: PathBuf,
@@ -657,6 +657,8 @@ impl VirtioDevice for Block {
             keep_rds.extend(disk_image.as_raw_descriptors());
         }
 
+        // TODO: b/143318939 uncomment this when msgOnSocket is ported
+        #[cfg(unix)]
         if let Some(control_tube) = &self.control_tube {
             keep_rds.push(control_tube.as_raw_descriptor());
         }
@@ -1141,6 +1143,24 @@ mod tests {
                 io_concurrency: NonZeroU32::new(1).unwrap(),
             }
         );
+
+        // io_concurrency
+        #[cfg(windows)]
+        {
+            let params = from_block_arg("/some/path.img,io_concurrency=4").unwrap();
+            assert_eq!(
+                params,
+                DiskOption {
+                    path: "/some/path.img".into(),
+                    read_only: false,
+                    sparse: true,
+                    o_direct: false,
+                    block_size: 512,
+                    id: None,
+                    io_concurrency: NonZeroU32::new(4).unwrap(),
+                }
+            );
+        }
 
         // id
         let params = from_block_arg("/some/path.img,id=DISK").unwrap();

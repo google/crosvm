@@ -8,9 +8,8 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use base::{
-    error,
-    named_pipes::{self, PipeConnection},
-    Event, EventToken, FileSync, RawDescriptor, Result, WaitContext,
+    error, named_pipes::PipeConnection, Event, EventToken, FileSync, RawDescriptor, Result,
+    WaitContext,
 };
 use hypervisor::ProtectionType;
 
@@ -117,7 +116,7 @@ impl SerialDevice for Serial {
         out: Option<Box<dyn io::Write + Send>>,
         sync: Option<Box<dyn FileSync + Send>>,
         out_timestamp: bool,
-        keep_rds: Vec<RawDescriptor>,
+        _keep_rds: Vec<RawDescriptor>,
     ) -> Serial {
         let system_params = SystemSerialParams {
             out_timestamp,
@@ -137,9 +136,9 @@ impl SerialDevice for Serial {
     fn new_with_pipe(
         _protected_vm: ProtectionType,
         interrupt_evt: Event,
-        pipe_in: named_pipes::PipeConnection,
-        pipe_out: named_pipes::PipeConnection,
-        keep_rds: Vec<RawDescriptor>,
+        pipe_in: PipeConnection,
+        pipe_out: PipeConnection,
+        _keep_rds: Vec<RawDescriptor>,
     ) -> Serial {
         let system_params = SystemSerialParams {
             out_timestamp: false,
@@ -238,8 +237,6 @@ mod tests {
     use super::*;
 
     use regex::Regex;
-    use std::sync::Arc;
-    use sync::Mutex;
 
     use crate::serial::tests::*;
     use crate::serial::*;

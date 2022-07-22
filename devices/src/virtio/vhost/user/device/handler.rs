@@ -90,6 +90,7 @@ use {base::clear_fd_flags, std::os::unix::io::AsRawFd};
 pub struct CallEvent(Event);
 
 impl CallEvent {
+    #[cfg_attr(windows, allow(dead_code))]
     pub fn into_inner(self) -> Event {
         self.0
     }
@@ -226,6 +227,7 @@ impl Vring {
 }
 
 /// Performs the run loop for an already-constructed request handler.
+#[cfg_attr(windows, allow(dead_code))]
 pub async fn run_handler<S, E>(mut req_handler: SlaveReqHandler<S, E>, ex: &Executor) -> Result<()>
 where
     S: VhostUserSlaveReqHandler,
@@ -791,11 +793,14 @@ impl SharedMemoryMapper for VhostShmemMapper {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     use std::sync::mpsc::channel;
+    #[cfg(unix)]
     use std::sync::Barrier;
 
     use anyhow::{anyhow, bail};
     use data_model::DataInit;
+    #[cfg(unix)]
     use tempfile::{Builder, TempDir};
 
     use crate::virtio::vhost::user::vmm::VhostUserHandler;

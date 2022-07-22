@@ -66,7 +66,8 @@ sync = { path = "../common/sync" }
 system_api = { version = "*", optional = true }
 thiserror = "1.0.20"
 tpm2 = { path = "../tpm2", optional = true }
-uuid = { version = "0.8.2" }
+tracing = { path = "../tracing" }
+uuid = { version = "0.8.2", features = [ "serde" ] }
 vhost = { path = "../vhost" }
 vmm_vhost = { path = "../third_party/vmm_vhost", features = ["vmm", "device", "vfio-device"] }
 virtio_sys = { path = "../virtio_sys" }
@@ -87,8 +88,9 @@ vfio_sys = { path = "../vfio_sys" }
 [target.'cfg(windows)'.dependencies]
 broker_ipc = { path = "../broker_ipc" }
 chrono = "*"
-tracing = { path = "../tracing" }
+metrics = { path = "../metrics" }
 tube_transporter = { path = "../tube_transporter" }
+win_util = { path = "../win_util"}
 winapi = "*"
 
 [dependencies.futures]

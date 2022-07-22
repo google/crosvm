@@ -15,7 +15,7 @@ use data_model::{DataInit, VolatileMemory, VolatileMemoryError, VolatileSlice};
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::{Error as IOError, ErrorKind as IOErrorKind, IoSliceMut, Seek, SeekFrom};
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::mpsc::{channel, Receiver, RecvError, Sender};
 use std::sync::Arc;
@@ -447,14 +447,14 @@ impl VioSClient {
     }
 
     /// Get a list of file descriptors used by the implementation.
-    pub fn keep_fds(&self) -> Vec<RawFd> {
-        let control_fd = self.control_socket.lock().as_raw_fd();
-        let event_fd = self.event_socket.as_raw_fd();
+    pub fn keep_rds(&self) -> Vec<RawDescriptor> {
+        let control_desc = self.control_socket.lock().as_raw_descriptor();
+        let event_desc = self.event_socket.as_raw_descriptor();
         let recv_event = self.recv_event.as_raw_descriptor();
         let event_notifier = self.event_notifier.as_raw_descriptor();
-        let mut ret = vec![control_fd, event_fd, recv_event, event_notifier];
-        ret.append(&mut self.tx.keep_fds());
-        ret.append(&mut self.rx.keep_fds());
+        let mut ret = vec![control_desc, event_desc, recv_event, event_notifier];
+        ret.append(&mut self.tx.keep_rds());
+        ret.append(&mut self.rx.keep_rds());
         ret
     }
 
@@ -747,7 +747,7 @@ impl IoBufferQueue {
         seq_socket_send(&self.socket, msg)
     }
 
-    fn keep_fds(&self) -> Vec<RawDescriptor> {
+    fn keep_rds(&self) -> Vec<RawDescriptor> {
         vec![
             self.file.as_raw_descriptor(),
             self.socket.as_raw_descriptor(),

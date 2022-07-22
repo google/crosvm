@@ -6,6 +6,7 @@
 
 mod async_device;
 mod async_utils;
+mod balloon;
 mod descriptor_utils;
 mod input;
 mod interrupt;
@@ -27,6 +28,7 @@ pub mod resource_bridge;
 pub mod snd;
 pub mod vhost;
 
+pub use self::balloon::*;
 pub use self::block::*;
 pub use self::console::*;
 pub use self::descriptor_utils::Error as DescriptorError;
@@ -44,7 +46,6 @@ pub use self::virtio_device::*;
 pub use self::virtio_pci_device::*;
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
-        mod balloon;
         mod p9;
         mod pmem;
         pub mod wl;
@@ -54,7 +55,6 @@ cfg_if::cfg_if! {
         pub mod gpu;
         pub mod net;
 
-        pub use self::balloon::*;
         #[cfg(feature = "gpu")]
         pub use self::gpu::*;
         pub use self::iommu::sys::unix::vfio_wrapper;

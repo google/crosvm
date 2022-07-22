@@ -53,8 +53,8 @@ fn open_disk_file(disk_option: &DiskOption, take_write_lock: bool) -> anyhow::Re
         .context("Failed to open disk file")
 }
 
-#[derive(FromArgs)]
-#[argh(description = "")]
+#[derive(FromArgs, Debug)]
+#[argh(subcommand, name = "block", description = "")]
 pub struct Options {
     #[argh(
         option,
@@ -64,19 +64,7 @@ pub struct Options {
     bootstrap: usize,
 }
 
-pub fn start_device(program_name: &str, args: &[&str]) -> anyhow::Result<()> {
-    let opts = match Options::from_args(&[program_name], args) {
-        Ok(opts) => opts,
-        Err(e) => {
-            if e.status.is_err() {
-                bail!(e.output);
-            } else {
-                println!("{}", e.output);
-            }
-            return Ok(());
-        }
-    };
-
+pub fn start_device(opts: Options) -> anyhow::Result<()> {
     tracing::init();
 
     let raw_transport_tube = opts.bootstrap as RawDescriptor;

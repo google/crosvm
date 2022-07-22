@@ -75,7 +75,7 @@ pub const PCI_VENDOR_ID_INTEL: u16 = 0x8086;
 pub const PCI_VENDOR_ID_REDHAT: u16 = 0x1b36;
 
 #[repr(u16)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CrosvmDeviceId {
     Pit = 1,
     Pic = 2,
@@ -118,7 +118,8 @@ impl TryFrom<u16> for CrosvmDeviceId {
             14 => Ok(CrosvmDeviceId::DirectMmio),
             15 => Ok(CrosvmDeviceId::DirectIo),
             16 => Ok(CrosvmDeviceId::UserspaceIrqChip),
-            17 => Ok(CrosvmDeviceId::Pflash),
+            17 => Ok(CrosvmDeviceId::VmWatchdog),
+            18 => Ok(CrosvmDeviceId::Pflash),
             _ => Err(base::Error::new(EINVAL)),
         }
     }

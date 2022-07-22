@@ -81,7 +81,7 @@ pub struct Sound {
 
 impl VirtioDevice for Sound {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
-        self.vios_client.keep_fds()
+        self.vios_client.keep_rds()
     }
 
     fn device_type(&self) -> DeviceType {

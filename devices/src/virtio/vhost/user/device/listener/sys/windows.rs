@@ -19,17 +19,17 @@ pub struct VhostUserListener;
 
 impl VhostUserListenerTrait for VhostUserListener {
     fn new(
-        path: &str,
-        max_num_queues: usize,
-        keep_rds: Option<&mut Vec<RawDescriptor>>,
+        _path: &str,
+        _max_num_queues: usize,
+        _keep_rds: Option<&mut Vec<RawDescriptor>>,
     ) -> anyhow::Result<Self> {
         todo!()
     }
 
     fn run_backend(
         self,
-        backend: Box<dyn VhostUserBackend>,
-        ex: &Executor,
+        _backend: Box<dyn VhostUserBackend>,
+        _ex: &Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>>>> {
         todo!()
     }

@@ -24,6 +24,7 @@
 //!   doc, "Arrays of sizes from 0 to 32 (inclusive) implement the Default trait
 //!   if the element type allows it."
 
+#![cfg_attr(windows, allow(dead_code))]
 #![allow(non_camel_case_types)]
 
 use data_model::{DataInit, Le16, Le32, Le64};

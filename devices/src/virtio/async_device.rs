@@ -4,6 +4,8 @@
 
 //! Provides helpers that make it easier to process virtio queues on an async executor.
 
+#![cfg_attr(windows, allow(dead_code))]
+
 use anyhow::{bail, Context};
 use async_task::Task;
 use base::warn;

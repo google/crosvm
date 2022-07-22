@@ -11,16 +11,16 @@ use cros_async::AsyncTube;
 use crate::virtio::iommu::{Result, State};
 
 pub(in crate::virtio::iommu) async fn handle_command_tube(
-    state: &Rc<RefCell<State>>,
-    command_tube: AsyncTube,
+    _state: &Rc<RefCell<State>>,
+    _command_tube: AsyncTube,
 ) -> Result<()> {
     panic!("IOMMU is not supported on Windows");
 }
 
 pub(in crate::virtio::iommu) async fn handle_translate_request(
-    state: &Rc<RefCell<State>>,
-    request_tube: Option<AsyncTube>,
-    response_tubes: Option<BTreeMap<u32, AsyncTube>>,
+    _state: &Rc<RefCell<State>>,
+    _request_tube: Option<AsyncTube>,
+    _response_tubes: Option<BTreeMap<u32, AsyncTube>>,
 ) -> Result<()> {
     // TODO nkgold (b/222588331): the below implementation assures AsyncTube::send is sync, where it
     //   should be async (as it is on Windows). Once that's fixed there's no reason this function

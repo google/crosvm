@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg_attr(windows, allow(dead_code))]
+
 use base::{error, AsRawDescriptor, Event, RawDescriptor, Tube};
 use bit_field::*;
 use data_model::DataInit;
