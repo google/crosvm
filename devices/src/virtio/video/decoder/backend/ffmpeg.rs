@@ -633,7 +633,7 @@ impl DecoderBackend for FfmpegDecoder {
 
                     profile_iter
                         .filter_map(|p| {
-                            match p.profile as u32 {
+                            match p.profile() {
                                 FF_PROFILE_H264_BASELINE => Some(Profile::H264Baseline),
                                 FF_PROFILE_H264_MAIN => Some(Profile::H264Main),
                                 FF_PROFILE_H264_EXTENDED => Some(Profile::H264Extended),
@@ -662,7 +662,7 @@ impl DecoderBackend for FfmpegDecoder {
                     ]
                 }
                 Format::VP9 => profile_iter
-                    .filter_map(|p| match p.profile as u32 {
+                    .filter_map(|p| match p.profile() {
                         FF_PROFILE_VP9_0 => Some(Profile::VP9Profile0),
                         FF_PROFILE_VP9_1 => Some(Profile::VP9Profile1),
                         FF_PROFILE_VP9_2 => Some(Profile::VP9Profile2),
@@ -671,7 +671,7 @@ impl DecoderBackend for FfmpegDecoder {
                     })
                     .collect(),
                 Format::Hevc => profile_iter
-                    .filter_map(|p| match p.profile as u32 {
+                    .filter_map(|p| match p.profile() {
                         FF_PROFILE_HEVC_MAIN => Some(Profile::HevcMain),
                         FF_PROFILE_HEVC_MAIN_10 => Some(Profile::HevcMain10),
                         FF_PROFILE_HEVC_MAIN_STILL_PICTURE => Some(Profile::HevcMainStillPicture),
