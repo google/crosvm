@@ -124,6 +124,19 @@ impl EventDevice {
         }
     }
 
+    /// Determines if there is space in the event buffer for the given number
+    /// of events. The buffer is capped at `EVENT_BUFFER_LEN_MAX`.
+    #[inline]
+    fn can_buffer_events(&self, num_events: usize) -> bool {
+        let event_bytes = match EVENT_SIZE.checked_mul(num_events) {
+            Some(bytes) => bytes,
+            None => return false,
+        };
+        let free_bytes = EVENT_BUFFER_LEN_MAX.saturating_sub(self.event_buffer.len());
+
+        free_bytes >= event_bytes
+    }
+
     pub fn send_report<E: IntoIterator<Item = virtio_input_event>>(
         &mut self,
         events: E,
@@ -137,16 +150,8 @@ impl EventDevice {
         let mut oldest_mt_event: Option<MTEvent> = None;
         let mut current_mt_event: Option<MTEvent> = None;
 
-        match self
-            .event_buffer
-            .len()
-            .checked_add(EVENT_SIZE * (it.len() + 1))
-        {
-            Some(buffer_size_with_events) if buffer_size_with_events > EVENT_BUFFER_LEN_MAX => {
-                return Ok(false)
-            }
-            None => return Ok(false),
-            _ => (),
+        if !self.can_buffer_events(it.len() + 1) {
+            return Ok(false);
         }
 
         // Assumptions made for MT emulation:
@@ -238,7 +243,7 @@ impl EventDevice {
             return Ok(true);
         }
 
-        if self.event_buffer.len() <= (EVENT_BUFFER_LEN_MAX - EVENT_SIZE) {
+        if self.can_buffer_events(1) {
             self.event_buffer.extend(bytes[written..].iter());
         }
 
