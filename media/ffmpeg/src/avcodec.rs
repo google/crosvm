@@ -63,12 +63,11 @@ impl AvCodec {
     }
 
     /// Returns the name of the codec.
-    pub fn name(&self) -> Option<&'static str> {
+    pub fn name(&self) -> &'static str {
+        const INVALID_CODEC_STR: &str = "invalid codec";
+
         // Safe because `CStr::from_ptr` is called on a valid zero-terminated C string.
-        match unsafe { CStr::from_ptr(self.0.name).to_str() } {
-            Ok(name) => Some(name),
-            Err(_) => None,
-        }
+        unsafe { CStr::from_ptr(self.0.name).to_str() }.unwrap_or(INVALID_CODEC_STR)
     }
 
     /// Returns the capabilities of the codec, as a mask of AV_CODEC_CAP_* bits.

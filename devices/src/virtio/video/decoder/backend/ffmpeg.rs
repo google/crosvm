@@ -559,7 +559,7 @@ impl FfmpegDecoder {
                     return None;
                 }
 
-                let codec_name = codec.name()?;
+                let codec_name = codec.name();
 
                 // Only keep processing the decoders we are interested in. These are all software
                 // decoders, but nothing prevents us from supporting hardware-accelerated ones
