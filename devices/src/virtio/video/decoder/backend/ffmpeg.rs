@@ -572,6 +572,8 @@ impl FfmpegDecoder {
                     _ => return None,
                 };
 
+                // We require custom buffer allocators, so ignore codecs that are not capable of
+                // using them.
                 if codec.capabilities() & AV_CODEC_CAP_DR1 == 0 {
                     warn!(
                         "Skipping codec {} due to lack of DR1 capability.",
