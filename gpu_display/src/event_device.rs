@@ -15,7 +15,7 @@ use std::iter::ExactSizeIterator;
 use std::os::unix::net::UnixStream;
 
 const EVENT_SIZE: usize = virtio_input_event::SIZE;
-const EVENT_BUFFER_LEN_MAX: usize = 16 * EVENT_SIZE;
+const EVENT_BUFFER_LEN_MAX: usize = 64 * EVENT_SIZE;
 
 // /// Half-way build `EventDevice` with only the `event_socket` defined. Finish building the
 // /// `EventDevice` by using `status_socket`.
@@ -137,8 +137,16 @@ impl EventDevice {
         let mut oldest_mt_event: Option<MTEvent> = None;
         let mut current_mt_event: Option<MTEvent> = None;
 
-        if self.event_buffer.len() > (EVENT_BUFFER_LEN_MAX - EVENT_SIZE * (it.len() + 1)) {
-            return Ok(false);
+        match self
+            .event_buffer
+            .len()
+            .checked_add(EVENT_SIZE * (it.len() + 1))
+        {
+            Some(buffer_size_with_events) if buffer_size_with_events > EVENT_BUFFER_LEN_MAX => {
+                return Ok(false)
+            }
+            None => return Ok(false),
+            _ => (),
         }
 
         // Assumptions made for MT emulation:
