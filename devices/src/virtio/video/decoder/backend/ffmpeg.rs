@@ -488,7 +488,7 @@ impl DecoderSession for FfmpegDecoderSession {
     }
 
     fn event_pipe(&self) -> &dyn AsRawDescriptor {
-        self.event_queue.event_pipe()
+        &self.event_queue
     }
 
     fn use_output_buffer(

@@ -10,7 +10,7 @@ use std::{
     time::Duration,
 };
 
-use base::Event;
+use base::{AsRawDescriptor, Event};
 use thiserror::Error as ThisError;
 
 use crate::virtio::video::resource::GuestResource;
@@ -61,12 +61,6 @@ impl<T> EventQueue<T> {
         Ok(event)
     }
 
-    /// Return a reference to an `Event` on which the caller can poll to know when `dequeue_event`
-    /// can be called without blocking.
-    pub fn event_pipe(&self) -> &Event {
-        &self.event
-    }
-
     /// Remove all the posted events for which `predicate` returns `false`.
     pub fn retain<P: FnMut(&T) -> bool>(&mut self, predicate: P) {
         if self.pending_events.len() > 0 {
@@ -91,6 +85,12 @@ impl<T> EventQueue<T> {
     #[cfg(test)]
     pub fn len(&self) -> usize {
         self.pending_events.len()
+    }
+}
+
+impl<T> AsRawDescriptor for EventQueue<T> {
+    fn as_raw_descriptor(&self) -> base::RawDescriptor {
+        self.event.as_raw_descriptor()
     }
 }
 
@@ -272,8 +272,7 @@ mod tests {
         }
 
         let mut event_queue = EventQueue::new().unwrap();
-        let event_pipe = event_queue.event_pipe();
-        let wait_context = WaitContext::build_with(&[(event_pipe, Token::Event)]).unwrap();
+        let wait_context = WaitContext::build_with(&[(&event_queue, Token::Event)]).unwrap();
 
         // The queue is empty, so `event_pipe` should not signal.
         assert_eq!(wait_context.wait_timeout(Duration::ZERO).unwrap().len(), 0);
