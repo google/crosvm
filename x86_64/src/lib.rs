@@ -191,6 +191,8 @@ pub enum Error {
     CreateSocket(io::Error),
     #[error("failed to create VCPU: {0}")]
     CreateVcpu(base::Error),
+    #[error("failed to create Virtio MMIO bus: {0}")]
+    CreateVirtioMmioBus(arch::DeviceRegistrationError),
     #[error("invalid e820 setup params")]
     E820Configuration,
     #[cfg(feature = "direct")]
@@ -606,7 +608,7 @@ impl arch::LinuxArch for X8664arch {
         let mmio_bus = Arc::new(devices::Bus::new());
         let io_bus = Arc::new(devices::Bus::new());
 
-        let (pci_devices, _others): (Vec<_>, Vec<_>) = devs
+        let (pci_devices, devs): (Vec<_>, Vec<_>) = devs
             .into_iter()
             .partition(|(dev, _)| dev.as_pci_device().is_some());
 
@@ -615,7 +617,7 @@ impl arch::LinuxArch for X8664arch {
             .map(|(dev, jail_orig)| (dev.into_pci_device().unwrap(), jail_orig))
             .collect();
 
-        let (pci, pci_irqs, pid_debug_label_map) = arch::generate_pci_root(
+        let (pci, pci_irqs, mut pid_debug_label_map) = arch::generate_pci_root(
             pci_devices,
             irq_chip.as_irq_chip_mut(),
             mmio_bus.clone(),
@@ -650,6 +652,24 @@ impl arch::LinuxArch for X8664arch {
                 pcie_vcfg_range.len().unwrap(),
             )
             .unwrap();
+
+        let (virtio_mmio_devices, _others): (Vec<_>, Vec<_>) = devs
+            .into_iter()
+            .partition(|(dev, _)| dev.as_virtio_mmio_device().is_some());
+
+        let virtio_mmio_devices = virtio_mmio_devices
+            .into_iter()
+            .map(|(dev, jail_orig)| (*(dev.into_virtio_mmio_device().unwrap()), jail_orig))
+            .collect();
+        let mut virtio_mmio_pid = arch::generate_virtio_mmio_bus(
+            virtio_mmio_devices,
+            irq_chip.as_irq_chip_mut(),
+            &mmio_bus,
+            system_allocator,
+            &mut vm,
+        )
+        .map_err(Error::CreateVirtioMmioBus)?;
+        pid_debug_label_map.append(&mut virtio_mmio_pid);
 
         // Event used to notify crosvm that guest OS is trying to suspend.
         let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
