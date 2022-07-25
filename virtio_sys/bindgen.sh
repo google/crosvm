@@ -75,3 +75,12 @@ bindgen_generate \
     -isystem "${BINDGEN_LINUX_X86_HEADERS}/include" \
     | replace_linux_int_types \
     > virtio_sys/src/virtio_ring.rs
+
+bindgen_generate \
+    --allowlist-var='VIRTIO_.*' \
+    --allowlist-type='virtio_.*' \
+    "${BINDGEN_LINUX_X86_HEADERS}/include/linux/virtio_mmio.h" \
+    -- \
+    -isystem "${BINDGEN_LINUX_X86_HEADERS}/include" \
+    | replace_linux_int_types \
+    > virtio_sys/src/virtio_mmio.rs

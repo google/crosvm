@@ -16,8 +16,10 @@ use base::ioctl_iowr_nr;
 pub mod vhost;
 pub mod virtio_config;
 pub mod virtio_ids;
+pub mod virtio_mmio;
 pub mod virtio_net;
 pub mod virtio_ring;
+pub use crate::virtio_mmio::*;
 
 pub const VHOST: ::std::os::raw::c_uint = 0xaf;
 
