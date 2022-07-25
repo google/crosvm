@@ -89,4 +89,7 @@ generate! {
 
     /// _Future for the [`select7`] function.
     (Select7, <_Fut1, _Fut2, _Fut3, _Fut4, _Fut5, _Fut6, _Fut7>),
+
+    /// _Future for the [`select8`] function.
+    (Select8, <_Fut1, _Fut2, _Fut3, _Fut4, _Fut5, _Fut6, _Fut7, _Fut8>),
 }

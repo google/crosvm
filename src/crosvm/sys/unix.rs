@@ -70,6 +70,7 @@ use devices::virtio::vhost::user::VhostUserListener;
 use devices::virtio::vhost::user::VhostUserListenerTrait;
 use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(feature = "balloon")]
+use devices::virtio::BalloonFeatures;
 use devices::virtio::BalloonMode;
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
@@ -428,6 +429,8 @@ fn create_virtio_devices(
 
     #[cfg(feature = "balloon")]
     if let Some(balloon_device_tube) = balloon_device_tube {
+        let balloon_features =
+            (cfg.balloon_page_reporting as u64) << BalloonFeatures::PageReporting as u64;
         devs.push(create_balloon_device(
             cfg.protected_vm,
             &cfg.jail_config,
@@ -439,6 +442,7 @@ fn create_virtio_devices(
             balloon_device_tube,
             balloon_inflate_tube,
             init_balloon_size,
+            balloon_features,
         )?);
     }
 

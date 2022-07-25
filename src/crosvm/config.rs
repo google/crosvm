@@ -1195,6 +1195,7 @@ pub struct Config {
     pub balloon: bool,
     pub balloon_bias: i64,
     pub balloon_control: Option<PathBuf>,
+    pub balloon_page_reporting: bool,
     pub battery_config: Option<BatteryConfig>,
     #[cfg(windows)]
     pub block_control_tube: Vec<Tube>,
@@ -1386,6 +1387,7 @@ impl Default for Config {
             balloon: true,
             balloon_bias: 0,
             balloon_control: None,
+            balloon_page_reporting: false,
             battery_config: None,
             #[cfg(windows)]
             block_control_tube: Vec::new(),
@@ -1740,6 +1742,10 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
 
     if !cfg.balloon && cfg.balloon_control.is_some() {
         return Err("'balloon-control' requires enabled balloon".to_string());
+    }
+
+    if !cfg.balloon && cfg.balloon_page_reporting {
+        return Err("'balloon_page_reporting' requires enabled balloon".to_string());
     }
 
     #[cfg(unix)]

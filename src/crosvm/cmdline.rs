@@ -468,6 +468,9 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH")]
     /// path for balloon controller socket.
     pub balloon_control: Option<PathBuf>,
+    #[argh(switch)]
+    /// enable page reporting in balloon.
+    pub balloon_page_reporting: bool,
     #[argh(option)]
     /// comma separated key=value pairs for setting up battery
     /// device
@@ -1642,7 +1645,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.usb = !cmd.no_usb;
         cfg.rng = !cmd.no_rng;
         cfg.balloon = !cmd.no_balloon;
-
+        cfg.balloon_page_reporting = cmd.balloon_page_reporting;
         #[cfg(feature = "audio")]
         {
             cfg.virtio_snds = cmd.virtio_snds;

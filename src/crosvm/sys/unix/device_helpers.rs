@@ -719,6 +719,7 @@ pub fn create_balloon_device(
     tube: Tube,
     inflate_tube: Option<Tube>,
     init_balloon_size: u64,
+    enabled_features: u64,
 ) -> DeviceResult {
     let dev = virtio::Balloon::new(
         virtio::base_features(protected_vm),
@@ -726,6 +727,7 @@ pub fn create_balloon_device(
         inflate_tube,
         init_balloon_size,
         mode,
+        enabled_features,
     )
     .context("failed to create balloon")?;
 
