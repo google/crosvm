@@ -7,6 +7,10 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use sync::Mutex;
 
+use acpi_tables::aml;
+use acpi_tables::aml::Aml;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use acpi_tables::sdt::SDT;
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
@@ -409,6 +413,61 @@ impl VirtioMmioDevice {
 
     fn on_device_sandboxed(&mut self) {
         self.device.on_device_sandboxed();
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn generate_acpi(&mut self, mut sdts: Vec<SDT>) -> Option<Vec<SDT>> {
+        const OEM_REVISION: u32 = 1;
+        const SSDT_REVISION: u8 = 0;
+
+        let mut amls = Vec::new();
+        self.to_aml_bytes(&mut amls);
+        if amls.is_empty() {
+            return Some(sdts);
+        }
+
+        // Use existing SSDT, otherwise create a new one.
+        let ssdt = sdts.iter_mut().find(|sdt| sdt.is_signature(b"SSDT"));
+        if let Some(ssdt) = ssdt {
+            ssdt.append_slice(&amls);
+        } else {
+            let mut ssdt = SDT::new(
+                *b"SSDT",
+                acpi_tables::HEADER_LEN,
+                SSDT_REVISION,
+                *b"CROSVM",
+                *b"CROSVMDT",
+                OEM_REVISION,
+            );
+
+            ssdt.append_slice(&amls);
+            sdts.push(ssdt);
+        }
+        self.device.generate_acpi(&None, sdts)
+    }
+}
+
+impl Aml for VirtioMmioDevice {
+    fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
+        aml::Device::new(
+            "VIOM".into(),
+            vec![
+                &aml::Name::new("_HID".into(), &"LNRO0005"),
+                &aml::Name::new(
+                    "_CRS".into(),
+                    &aml::ResourceTemplate::new(vec![
+                        &aml::AddressSpace::new_memory(
+                            aml::AddressSpaceCachable::NotCacheable,
+                            true,
+                            self.mmio_base,
+                            self.mmio_base + VIRTIO_MMIO_REGION_SZ - 1,
+                        ),
+                        &aml::Interrupt::new(true, true, false, false, self.irq_num),
+                    ]),
+                ),
+            ],
+        )
+        .to_aml_bytes(bytes);
     }
 }
 

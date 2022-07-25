@@ -661,14 +661,16 @@ impl arch::LinuxArch for X8664arch {
             .into_iter()
             .map(|(dev, jail_orig)| (*(dev.into_virtio_mmio_device().unwrap()), jail_orig))
             .collect();
-        let mut virtio_mmio_pid = arch::generate_virtio_mmio_bus(
+        let (mut virtio_mmio_pid, sdts) = arch::generate_virtio_mmio_bus(
             virtio_mmio_devices,
             irq_chip.as_irq_chip_mut(),
             &mmio_bus,
             system_allocator,
             &mut vm,
+            components.acpi_sdts,
         )
         .map_err(Error::CreateVirtioMmioBus)?;
+        components.acpi_sdts = sdts;
         pid_debug_label_map.append(&mut virtio_mmio_pid);
 
         // Event used to notify crosvm that guest OS is trying to suspend.

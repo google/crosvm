@@ -398,6 +398,9 @@ pub enum DeviceRegistrationError {
     /// Could not create an event.
     #[error("failed to create event: {0}")]
     EventCreate(base::Error),
+    /// Failed to generate ACPI content.
+    #[error("failed to generate ACPI content")]
+    GenerateAcpi,
     /// No more IRQs are available.
     #[error("no more IRQs are available")]
     IrqsExhausted,
@@ -550,7 +553,8 @@ pub fn generate_virtio_mmio_bus(
     mmio_bus: &Bus,
     resources: &mut SystemAllocator,
     vm: &mut impl Vm,
-) -> Result<BTreeMap<u32, String>, DeviceRegistrationError> {
+    mut sdts: Vec<SDT>,
+) -> Result<(BTreeMap<u32, String>, Vec<SDT>), DeviceRegistrationError> {
     let mut pid_labels = BTreeMap::new();
 
     for dev_value in devices.into_iter() {
@@ -583,6 +587,13 @@ pub fn generate_virtio_mmio_bus(
             keep_rds.push(event.as_raw_descriptor());
         }
 
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            sdts = device
+                .generate_acpi(sdts)
+                .ok_or(DeviceRegistrationError::GenerateAcpi)?;
+        }
+
         #[cfg(unix)]
         let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
             let proxy = ProxyDevice::new(device, jail, keep_rds)
@@ -606,7 +617,7 @@ pub fn generate_virtio_mmio_bus(
                 .map_err(DeviceRegistrationError::MmioInsert)?;
         }
     }
-    Ok(pid_labels)
+    Ok((pid_labels, sdts))
 }
 
 // Generate pci topology starting from parent bus
