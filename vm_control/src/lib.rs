@@ -39,6 +39,7 @@ use libc::{EINVAL, EIO, ENODEV, ENOTSUP, ERANGE};
 use serde::{Deserialize, Serialize};
 
 pub use balloon_control::BalloonStats;
+#[cfg(feature = "balloon")]
 use balloon_control::{BalloonTubeCommand, BalloonTubeResult};
 
 use base::{
@@ -844,8 +845,8 @@ impl VmRequest {
     pub fn execute(
         &self,
         run_mode: &mut Option<VmRunMode>,
-        balloon_host_tube: Option<&Tube>,
-        balloon_stats_id: &mut u64,
+        #[cfg(feature = "balloon")] balloon_host_tube: Option<&Tube>,
+        #[cfg(feature = "balloon")] balloon_stats_id: &mut u64,
         disk_host_tubes: &[Tube],
         pm: &mut Option<Arc<Mutex<dyn PmResource>>>,
         usb_control_tube: Option<&Tube>,
@@ -920,6 +921,7 @@ impl VmRequest {
                 }
                 VmResponse::Ok
             }
+            #[cfg(feature = "balloon")]
             VmRequest::BalloonCommand(BalloonControlCommand::Adjust { num_bytes }) => {
                 if let Some(balloon_host_tube) = balloon_host_tube {
                     match balloon_host_tube.send(&BalloonTubeCommand::Adjust {
@@ -933,6 +935,7 @@ impl VmRequest {
                     VmResponse::Err(SysError::new(ENOTSUP))
                 }
             }
+            #[cfg(feature = "balloon")]
             VmRequest::BalloonCommand(BalloonControlCommand::Stats) => {
                 if let Some(balloon_host_tube) = balloon_host_tube {
                     // NB: There are a few reasons stale balloon stats could be left
@@ -982,6 +985,8 @@ impl VmRequest {
                     VmResponse::Err(SysError::new(ENOTSUP))
                 }
             }
+            #[cfg(not(feature = "balloon"))]
+            VmRequest::BalloonCommand(_) => VmResponse::Err(SysError::new(ENOTSUP)),
             VmRequest::DiskCommand {
                 disk_index,
                 ref command,

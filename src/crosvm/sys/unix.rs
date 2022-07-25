@@ -27,12 +27,14 @@ use std::os::unix::prelude::OpenOptionsExt;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::{mpsc, Arc, Barrier};
+#[cfg(feature = "balloon")]
 use std::time::Duration;
 
 use std::process;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use std::thread;
 
+#[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
 use libc;
 
@@ -114,9 +116,9 @@ fn create_virtio_devices(
     vm_evt_wrtube: &SendTube,
     gpu_device_tube: Tube,
     vhost_user_gpu_tubes: Vec<(Tube, Tube, Tube)>,
-    balloon_device_tube: Option<Tube>,
-    balloon_inflate_tube: Option<Tube>,
-    init_balloon_size: u64,
+    #[cfg(feature = "balloon")] balloon_device_tube: Option<Tube>,
+    #[cfg(feature = "balloon")] balloon_inflate_tube: Option<Tube>,
+    #[cfg(feature = "balloon")] init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
@@ -386,6 +388,7 @@ fn create_virtio_devices(
         )?);
     }
 
+    #[cfg(feature = "balloon")]
     if let Some(balloon_device_tube) = balloon_device_tube {
         devs.push(create_balloon_device(
             cfg.protected_vm,
@@ -589,8 +592,8 @@ fn create_devices(
     gpu_device_tube: Tube,
     // Tuple content: (host-side GPU tube, device-side GPU tube, device-side control tube).
     vhost_user_gpu_tubes: Vec<(Tube, Tube, Tube)>,
-    balloon_device_tube: Option<Tube>,
-    init_balloon_size: u64,
+    #[cfg(feature = "balloon")] balloon_device_tube: Option<Tube>,
+    #[cfg(feature = "balloon")] init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
     fs_device_tubes: &mut Vec<Tube>,
@@ -602,6 +605,7 @@ fn create_devices(
     iova_max_addr: &mut Option<u64>,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
+    #[cfg(feature = "balloon")]
     let mut balloon_inflate_tube: Option<Tube> = None;
     if !cfg.vfio.is_empty() {
         let mut coiommu_attached_endpoints = Vec::new();
@@ -684,7 +688,10 @@ fn create_devices(
                 bail!("Get rlimit failed");
             }
         }
-
+        #[cfg(feature = "balloon")]
+        let coiommu_tube: Option<Tube>;
+        #[cfg(not(feature = "balloon"))]
+        let coiommu_tube: Option<Tube> = None;
         if !coiommu_attached_endpoints.is_empty() {
             let vfio_container =
                 VfioCommonSetup::vfio_get_container(IommuDevType::CoIommu, None as Option<&Path>)
@@ -693,9 +700,14 @@ fn create_devices(
                 Tube::pair().context("failed to create coiommu tube")?;
             control_tubes.push(TaggedControlTube::VmMemory(coiommu_host_tube));
             let vcpu_count = cfg.vcpu_count.unwrap_or(1) as u64;
-            let (coiommu_tube, balloon_tube) =
-                Tube::pair().context("failed to create coiommu tube")?;
-            balloon_inflate_tube = Some(balloon_tube);
+            #[cfg(feature = "balloon")]
+            match Tube::pair() {
+                Ok((x, y)) => {
+                    coiommu_tube = Some(x);
+                    balloon_inflate_tube = Some(y);
+                }
+                Err(x) => return Err(x).context("failed to create coiommu tube"),
+            }
             let dev = CoIommuDev::new(
                 vm.get_memory().clone(),
                 vfio_container,
@@ -721,8 +733,11 @@ fn create_devices(
         vm_evt_wrtube,
         gpu_device_tube,
         vhost_user_gpu_tubes,
+        #[cfg(feature = "balloon")]
         balloon_device_tube,
+        #[cfg(feature = "balloon")]
         balloon_inflate_tube,
+        #[cfg(feature = "balloon")]
         init_balloon_size,
         disk_device_tubes,
         pmem_device_tubes,
@@ -1311,6 +1326,7 @@ where
         control_tubes.push(TaggedControlTube::VmMemory(host_control_tube));
     }
 
+    #[cfg(feature = "balloon")]
     let (balloon_host_tube, balloon_device_tube) = if cfg.balloon {
         if let Some(ref path) = cfg.balloon_control {
             (
@@ -1446,6 +1462,7 @@ where
             (None, None)
         };
 
+    #[cfg(feature = "balloon")]
     let init_balloon_size = components
         .memory_size
         .checked_sub(cfg.init_memory.map_or(components.memory_size, |m| {
@@ -1531,7 +1548,9 @@ where
         &mut control_tubes,
         gpu_device_tube,
         vhost_user_gpu_tubes,
+        #[cfg(feature = "balloon")]
         balloon_device_tube,
+        #[cfg(feature = "balloon")]
         init_balloon_size,
         &mut disk_device_tubes,
         &mut pmem_device_tubes,
@@ -1698,6 +1717,7 @@ where
         cfg,
         control_server_socket,
         control_tubes,
+        #[cfg(feature = "balloon")]
         balloon_host_tube,
         &disk_host_tubes,
         #[cfg(feature = "usb")]
@@ -1877,7 +1897,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     cfg: Config,
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
     mut control_tubes: Vec<TaggedControlTube>,
-    balloon_host_tube: Option<Tube>,
+    #[cfg(feature = "balloon")] balloon_host_tube: Option<Tube>,
     disk_host_tubes: &[Tube],
     #[cfg(feature = "usb")] usb_control_tube: Tube,
     vm_evt_rdtube: RecvTube,
@@ -2067,6 +2087,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     let mut exit_state = ExitState::Stop;
     let mut pvpanic_code = PvPanicCode::Unknown;
+    #[cfg(feature = "balloon")]
     let mut balloon_stats_id: u64 = 0;
 
     'wait: loop {
@@ -2194,7 +2215,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         ),
                                         _ => request.execute(
                                             &mut run_mode_opt,
+                                            #[cfg(feature = "balloon")]
                                             balloon_host_tube.as_ref(),
+                                            #[cfg(feature = "balloon")]
                                             &mut balloon_stats_id,
                                             disk_host_tubes,
                                             &mut linux.pm,

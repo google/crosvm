@@ -29,8 +29,10 @@ use vm_control::{
         do_modify_battery, do_usb_attach, do_usb_detach, do_usb_list, handle_request, vms_request,
         ModifyUsbResult,
     },
-    BalloonControlCommand, DiskControlCommand, UsbControlResult, VmRequest, VmResponse,
+    DiskControlCommand, UsbControlResult, VmRequest,
 };
+#[cfg(feature = "balloon")]
+use vm_control::{BalloonControlCommand, VmResponse};
 
 use crate::sys::error_to_exit_code;
 use crate::sys::init_log;
@@ -137,6 +139,7 @@ fn inject_gpe(cmd: cmdline::GpeCommand) -> std::result::Result<(), ()> {
     vms_request(&VmRequest::Gpe(cmd.gpe), cmd.socket_path)
 }
 
+#[cfg(feature = "balloon")]
 fn balloon_vms(cmd: cmdline::BalloonCommand) -> std::result::Result<(), ()> {
     let command = BalloonControlCommand::Adjust {
         num_bytes: cmd.num_bytes,
@@ -144,6 +147,7 @@ fn balloon_vms(cmd: cmdline::BalloonCommand) -> std::result::Result<(), ()> {
     vms_request(&VmRequest::BalloonCommand(command), cmd.socket_path)
 }
 
+#[cfg(feature = "balloon")]
 fn balloon_stats(cmd: cmdline::BalloonStatsCommand) -> std::result::Result<(), ()> {
     let command = BalloonControlCommand::Stats {};
     let request = &VmRequest::BalloonCommand(command);
@@ -527,9 +531,11 @@ fn crosvm_main() -> Result<CommandStatus> {
                     .map_err(|e| anyhow!("failed to initialize syslog: {}", e))?;
 
                 match command {
+                    #[cfg(feature = "balloon")]
                     CrossPlatformCommands::Balloon(cmd) => {
                         balloon_vms(cmd).map_err(|_| anyhow!("balloon subcommand failed"))
                     }
+                    #[cfg(feature = "balloon")]
                     CrossPlatformCommands::BalloonStats(cmd) => {
                         balloon_stats(cmd).map_err(|_| anyhow!("balloon_stats subcommand failed"))
                     }

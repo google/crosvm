@@ -6,6 +6,7 @@
 
 mod async_device;
 mod async_utils;
+#[cfg(feature = "balloon")]
 mod balloon;
 mod descriptor_utils;
 mod input;
@@ -28,6 +29,7 @@ pub mod resource_bridge;
 pub mod snd;
 pub mod vhost;
 
+#[cfg(feature = "balloon")]
 pub use self::balloon::*;
 pub use self::block::*;
 pub use self::console::*;

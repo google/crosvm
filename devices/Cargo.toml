@@ -7,6 +7,7 @@ edition = "2021"
 [features]
 audio = []
 audio_cras = ["libcras"]
+balloon = []
 chromeos = ["dbus", "protobuf", "system_api"]
 direct = []
 gpu = ["gpu_display","rutabaga_gfx"]

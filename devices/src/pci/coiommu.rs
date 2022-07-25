@@ -974,7 +974,7 @@ impl CoIommuDev {
         mem: GuestMemory,
         vfio_container: Arc<Mutex<VfioContainer>>,
         device_tube: Tube,
-        unpin_tube: Tube,
+        unpin_tube: Option<Tube>,
         endpoints: Vec<u16>,
         vcpu_count: u64,
         params: CoIommuParameters,
@@ -1043,7 +1043,7 @@ impl CoIommuDev {
             pin_kill_evt: None,
             unpin_thread: None,
             unpin_kill_evt: None,
-            unpin_tube: Some(unpin_tube),
+            unpin_tube,
             ioevents,
             vfio_container,
             pinstate: Arc::new(Mutex::new(CoIommuPinState {

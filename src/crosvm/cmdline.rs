@@ -96,7 +96,9 @@ pub struct CrosvmCmdlineArgs {
 #[derive(FromArgs)]
 #[argh(subcommand)]
 pub enum CrossPlatformCommands {
+    #[cfg(feature = "balloon")]
     Balloon(BalloonCommand),
+    #[cfg(feature = "balloon")]
     BalloonStats(BalloonStatsCommand),
     Battery(BatteryCommand),
     #[cfg(feature = "composite-disk")]

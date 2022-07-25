@@ -5,6 +5,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 
 [features]
+balloon = []
 gdb = ["gdbstub_arch"]
 
 [dependencies]

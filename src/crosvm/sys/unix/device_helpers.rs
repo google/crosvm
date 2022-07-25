@@ -37,9 +37,11 @@ use devices::virtio::vhost::user::vmm::{
     Wl as VhostUserWl,
 };
 use devices::virtio::vhost::vsock::VhostVsockConfig;
+#[cfg(feature = "balloon")]
+use devices::virtio::BalloonMode;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
-use devices::virtio::{self, BalloonMode, VirtioDevice};
+use devices::virtio::{self, VirtioDevice};
 use devices::IommuDevType;
 #[cfg(feature = "tpm")]
 use devices::SoftwareTpm;
@@ -639,6 +641,7 @@ pub fn create_vinput_device(
     })
 }
 
+#[cfg(feature = "balloon")]
 pub fn create_balloon_device(
     protected_vm: ProtectionType,
     jail_config: &Option<JailConfig>,
