@@ -70,9 +70,12 @@ def parse(repo_root, recipes_cfg_path):
     recipes_path (str) - native path to where the recipes live inside of the
       current repo (i.e. the folder containing `recipes/` and/or
       `recipe_modules`)
+    py3_only (bool) - True if this repo has been marked as ONLY supporting
+      python3.
   """
   with open(recipes_cfg_path, 'r') as fh:
     pb = json.load(fh)
+  py3_only = pb.get('py3_only', False)
 
   try:
     if pb['api_version'] != 2:
@@ -85,7 +88,7 @@ def parse(repo_root, recipes_cfg_path):
     if not repo_name:
       repo_name = pb['project_id']
     if repo_name == 'recipe_engine':
-      return None, pb.get('recipes_path', '')
+      return None, pb.get('recipes_path', ''), py3_only
 
     engine = pb['deps']['recipe_engine']
 
@@ -104,7 +107,7 @@ def parse(repo_root, recipes_cfg_path):
 
     recipes_path = os.path.join(repo_root,
                                 recipes_path.replace('/', os.path.sep))
-    return EngineDep(**engine), recipes_path
+    return EngineDep(**engine), recipes_path, py3_only
   except KeyError as ex:
     raise MalformedRecipesCfg(str(ex), recipes_cfg_path)
 
@@ -113,11 +116,8 @@ IS_WIN = sys.platform.startswith(('win', 'cygwin'))
 
 _BAT = '.bat' if IS_WIN else ''
 GIT = 'git' + _BAT
-VPYTHON = ('vpython' +
-           ('3' if os.getenv('RECIPES_USE_PY3') == 'true' else '') +
-           _BAT)
 CIPD = 'cipd' + _BAT
-REQUIRED_BINARIES = {GIT, VPYTHON, CIPD}
+REQUIRED_BINARIES = {GIT, CIPD}
 
 
 def _is_executable(path):
@@ -169,10 +169,14 @@ def parse_args(argv):
 
 
 def checkout_engine(engine_path, repo_root, recipes_cfg_path):
-  dep, recipes_path = parse(repo_root, recipes_cfg_path)
+  """Checks out the recipe_engine repo pinned in recipes.cfg.
+
+  Returns the path to the recipe engine repo and the py3_only boolean.
+  """
+  dep, recipes_path, py3_only = parse(repo_root, recipes_cfg_path)
   if dep is None:
     # we're running from the engine repo already!
-    return os.path.join(repo_root, recipes_path)
+    return os.path.join(repo_root, recipes_path), py3_only
 
   url = dep.url
 
@@ -217,7 +221,7 @@ def checkout_engine(engine_path, repo_root, recipes_cfg_path):
     # or things will get squirrely.
     _git_check_call(['clean', '-qxf'], cwd=engine_path)
 
-  return engine_path
+  return engine_path, py3_only
 
 
 def main():
@@ -243,11 +247,16 @@ def main():
     repo_root = os.path.abspath(repo_root).decode()
     recipes_cfg_path = os.path.join(repo_root, 'infra', 'config', 'recipes.cfg')
     args = ['--package', recipes_cfg_path] + args
-  engine_path = checkout_engine(engine_override, repo_root, recipes_cfg_path)
+  engine_path, py3_only = checkout_engine(engine_override, repo_root, recipes_cfg_path)
 
-  argv = (
-      [VPYTHON, '-u',
-       os.path.join(engine_path, 'recipe_engine', 'main.py')] + args)
+  using_py3 = py3_only or os.getenv('RECIPES_USE_PY3') == 'true'
+  vpython = ('vpython' + ('3' if using_py3 else '') + _BAT)
+  if not _is_on_path(vpython):
+    return 'Required binary is not found on PATH: %s' % vpython
+
+  argv = ([
+    vpython, '-u', os.path.join(engine_path, 'recipe_engine', 'main.py'),
+  ] + args)
 
   if IS_WIN:
     # No real 'exec' on windows; set these signals to ignore so that they
