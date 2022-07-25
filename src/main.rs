@@ -478,20 +478,6 @@ fn prepare_argh_args<I: IntoIterator<Item = String>>(args_iter: I) -> Vec<String
             arg => args.push(arg.to_string()),
         }
     }
-    let switch_or_option = [
-        "--battery",
-        "--video-decoder",
-        "--video-encoder",
-        "--gpu",
-        "--gpu-display",
-    ];
-    for arg in switch_or_option {
-        if let Some(i) = args.iter().position(|a| a == arg) {
-            if i >= args.len() - 2 || is_flag(&args[i + 1]) {
-                args.insert(i + 1, "".to_string());
-            }
-        }
-    }
 
     args
 }
@@ -724,57 +710,6 @@ mod tests {
     }
 
     #[test]
-    fn args_battery_switch() {
-        assert_eq!(
-            prepare_argh_args(
-                ["crosvm", "run", "--battery", "--other-args", "vm_kernel"].map(|x| x.to_string())
-            ),
-            [
-                "crosvm",
-                "run",
-                "--battery",
-                "",
-                "--other-args",
-                "vm_kernel"
-            ]
-        );
-    }
-
-    #[test]
-    fn args_battery_switch_last_arg() {
-        assert_eq!(
-            prepare_argh_args(["crosvm", "run", "--battery", "vm_kernel"].map(|x| x.to_string())),
-            ["crosvm", "run", "--battery", "", "vm_kernel"]
-        );
-    }
-
-    #[test]
-    fn args_battery_switch_short_arg() {
-        assert_eq!(
-            prepare_argh_args(
-                [
-                    "crosvm",
-                    "run",
-                    "--battery",
-                    "-p",
-                    "init=/bin/bash",
-                    "vm_kernel"
-                ]
-                .map(|x| x.to_string())
-            ),
-            [
-                "crosvm",
-                "run",
-                "--battery",
-                "",
-                "-p",
-                "init=/bin/bash",
-                "vm_kernel"
-            ]
-        );
-    }
-
-    #[test]
     fn args_battery_option() {
         assert_eq!(
             prepare_argh_args(
@@ -796,40 +731,6 @@ mod tests {
                 "type=goldfish",
                 "-p",
                 "init=/bin/bash",
-                "vm_kernel"
-            ]
-        );
-    }
-
-    #[test]
-    fn args_switch_multi() {
-        assert_eq!(
-            prepare_argh_args(
-                [
-                    "crosvm",
-                    "run",
-                    "--gpu",
-                    "test",
-                    "--video-decoder",
-                    "--video-encoder",
-                    "--battery",
-                    "--other-switch",
-                    "vm_kernel"
-                ]
-                .map(|x| x.to_string())
-            ),
-            [
-                "crosvm",
-                "run",
-                "--gpu",
-                "test",
-                "--video-decoder",
-                "",
-                "--video-encoder",
-                "",
-                "--battery",
-                "",
-                "--other-switch",
                 "vm_kernel"
             ]
         );
