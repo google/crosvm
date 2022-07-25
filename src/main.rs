@@ -606,7 +606,15 @@ fn crosvm_main() -> Result<CommandStatus> {
                 .map(|_| CommandStatus::Success)
             }
         }
-        cmdline::Command::Sys(command) => sys::run_command(command).map(|_| CommandStatus::Success),
+        cmdline::Command::Sys(command) => {
+            // On windows, the sys commands handle their own logging setup, so we can't handle it
+            // below otherwise logging will double init.
+            if cfg!(unix) {
+                syslog::init_with(log_config)
+                    .map_err(|e| anyhow!("failed to initialize syslog: {}", e))?;
+            }
+            sys::run_command(command).map(|_| CommandStatus::Success)
+        }
     };
 
     sys::cleanup();
