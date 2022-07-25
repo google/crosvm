@@ -28,6 +28,7 @@ use crate::PciAddress;
 use crate::PciDevice;
 #[cfg(unix)]
 use crate::VfioPlatformDevice;
+use crate::VirtioMmioDevice;
 
 /// Information about how a device was accessed.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
@@ -201,6 +202,15 @@ pub trait BusDeviceObj {
     }
     #[cfg(unix)]
     fn into_platform_device(self: Box<Self>) -> Option<Box<VfioPlatformDevice>> {
+        None
+    }
+    fn as_virtio_mmio_device(&self) -> Option<&VirtioMmioDevice> {
+        None
+    }
+    fn as_virtio_mmio_device_mut(&mut self) -> Option<&mut VirtioMmioDevice> {
+        None
+    }
+    fn into_virtio_mmio_device(self: Box<Self>) -> Option<Box<VirtioMmioDevice>> {
         None
     }
 }

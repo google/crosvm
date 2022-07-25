@@ -115,6 +115,7 @@ use devices::PcieUpstreamPort;
 use devices::PvPanicCode;
 use devices::PvPanicPciDevice;
 use devices::StubPciDevice;
+use devices::VirtioMmioDevice;
 use devices::VirtioPciDevice;
 #[cfg(feature = "usb")]
 use devices::XhciController;
@@ -836,6 +837,11 @@ fn create_devices(
                 )
                 .context("failed to create virtio pci dev")?;
 
+                devices.push((Box::new(dev) as Box<dyn BusDeviceObj>, stub.jail));
+            }
+            VirtioTransportType::Mmio => {
+                let dev = VirtioMmioDevice::new(vm.get_memory().clone(), stub.dev)
+                    .context("failed to create virtio mmio dev")?;
                 devices.push((Box::new(dev) as Box<dyn BusDeviceObj>, stub.jail));
             }
         }

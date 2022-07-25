@@ -100,6 +100,7 @@ pub use self::serial_device::SerialParameters;
 pub use self::serial_device::SerialType;
 #[cfg(feature = "tpm")]
 pub use self::software_tpm::SoftwareTpm;
+pub use self::virtio::VirtioMmioDevice;
 pub use self::virtio::VirtioPciDevice;
 #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
 pub use self::vtpm_proxy::VtpmProxy;

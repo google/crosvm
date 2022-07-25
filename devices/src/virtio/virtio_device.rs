@@ -26,6 +26,7 @@ use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum VirtioTransportType {
     Pci,
+    Mmio,
 }
 
 #[derive(Clone)]

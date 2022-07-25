@@ -33,6 +33,7 @@ use crate::pci::CrosvmDeviceId;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::BusAccessInfo;
 use crate::BusDevice;
+use crate::BusDeviceObj;
 use crate::DeviceId;
 use crate::IrqEdgeEvent;
 
@@ -408,6 +409,18 @@ impl VirtioMmioDevice {
 
     fn on_device_sandboxed(&mut self) {
         self.device.on_device_sandboxed();
+    }
+}
+
+impl BusDeviceObj for VirtioMmioDevice {
+    fn as_virtio_mmio_device(&self) -> Option<&VirtioMmioDevice> {
+        Some(self)
+    }
+    fn as_virtio_mmio_device_mut(&mut self) -> Option<&mut VirtioMmioDevice> {
+        Some(self)
+    }
+    fn into_virtio_mmio_device(self: Box<Self>) -> Option<Box<VirtioMmioDevice>> {
+        Some(self)
     }
 }
 
