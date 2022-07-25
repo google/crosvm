@@ -23,6 +23,11 @@ use crate::pci::PciBarIndex;
 use crate::pci::PciCapability;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum VirtioTransportType {
+    Pci,
+}
+
 #[derive(Clone)]
 pub struct SharedMemoryRegion {
     /// The id of the shared memory region. A device may have multiple regions, but each
@@ -160,6 +165,11 @@ pub trait VirtioDevice: Send {
     /// Returns `None` if any address is good for the device.
     fn pci_address(&self) -> Option<PciAddress> {
         None
+    }
+
+    /// Returns the Virtio transport type: PCI (default for crosvm) or MMIO.
+    fn transport_type(&self) -> VirtioTransportType {
+        VirtioTransportType::Pci
     }
 
     /// Returns the device's shared memory region if present.
