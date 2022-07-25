@@ -113,6 +113,14 @@ pub trait VcpuAArch64: Vcpu {
     #[cfg(feature = "gdb")]
     /// Gets the max number of hardware breakpoints.
     fn get_max_hw_bps(&self) -> Result<usize>;
+
+    #[cfg(feature = "gdb")]
+    /// Sets the value of a single register on this VCPU.
+    fn set_gdb_register(&self, reg: <GdbArch as Arch>::RegId, data: &[u8]) -> Result<()>;
+
+    #[cfg(feature = "gdb")]
+    /// Gets the value of a single register on this VCPU.
+    fn get_gdb_register(&self, reg: <GdbArch as Arch>::RegId, data: &mut [u8]) -> Result<usize>;
 }
 
 impl_downcast!(VcpuAArch64);

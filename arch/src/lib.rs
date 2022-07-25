@@ -342,6 +342,16 @@ pub trait GdbOps<T: VcpuArch> {
         buf: &[u8],
     ) -> Result<(), Self::Error>;
 
+    /// Reads bytes from the guest register.
+    fn read_register(vcpu: &T, reg_id: <GdbArch as Arch>::RegId) -> Result<Vec<u8>, Self::Error>;
+
+    /// Writes bytes to the specified guest register.
+    fn write_register(
+        vcpu: &T,
+        reg_id: <GdbArch as Arch>::RegId,
+        data: &[u8],
+    ) -> Result<(), Self::Error>;
+
     /// Make the next vCPU's run single-step.
     fn enable_singlestep(vcpu: &T) -> Result<(), Self::Error>;
 

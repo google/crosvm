@@ -213,6 +213,8 @@ pub enum Error {
     RamoopsAddress(u64, u64),
     #[error("error reading guest memory: {0}")]
     ReadGuestMemory(vm_memory::GuestMemoryError),
+    #[error("error reading CPU register: {0}")]
+    ReadReg(base::Error),
     #[error("error reading CPU registers: {0}")]
     ReadRegs(base::Error),
     #[error("failed to register irq fd: {0}")]
@@ -235,6 +237,8 @@ pub enum Error {
     VcpuInit(base::Error),
     #[error("error writing guest memory: {0}")]
     WriteGuestMemory(GuestMemoryError),
+    #[error("error writing CPU register: {0}")]
+    WriteReg(base::Error),
     #[error("error writing CPU registers: {0}")]
     WriteRegs(base::Error),
 }
@@ -689,6 +693,19 @@ impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
 
     fn write_registers(vcpu: &T, regs: &<GdbArch as Arch>::Registers) -> Result<()> {
         vcpu.set_gdb_registers(regs).map_err(Error::WriteRegs)
+    }
+
+    fn read_register(vcpu: &T, reg_id: <GdbArch as Arch>::RegId) -> Result<Vec<u8>> {
+        let mut reg = vec![0; std::mem::size_of::<u128>()];
+        let size = vcpu
+            .get_gdb_register(reg_id, reg.as_mut_slice())
+            .map_err(Error::ReadReg)?;
+        reg.truncate(size);
+        Ok(reg)
+    }
+
+    fn write_register(vcpu: &T, reg_id: <GdbArch as Arch>::RegId, data: &[u8]) -> Result<()> {
+        vcpu.set_gdb_register(reg_id, data).map_err(Error::WriteReg)
     }
 
     fn enable_singlestep(vcpu: &T) -> Result<()> {

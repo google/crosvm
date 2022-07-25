@@ -17,6 +17,9 @@ use gdbstub::conn::ConnectionExt;
 use gdbstub::stub::run_blocking;
 use gdbstub::stub::run_blocking::BlockingEventLoop;
 use gdbstub::stub::SingleThreadStopReason;
+use gdbstub::target::ext::base::single_register_access::SingleRegisterAccess;
+#[cfg(target_arch = "aarch64")]
+use gdbstub::target::ext::base::single_register_access::SingleRegisterAccessOps;
 use gdbstub::target::ext::base::singlethread::SingleThreadBase;
 use gdbstub::target::ext::base::singlethread::SingleThreadResume;
 use gdbstub::target::ext::base::singlethread::SingleThreadResumeOps;
@@ -282,6 +285,12 @@ impl SingleThreadBase for GdbStub {
     fn support_resume(&mut self) -> Option<SingleThreadResumeOps<Self>> {
         Some(self)
     }
+
+    #[cfg(target_arch = "aarch64")]
+    #[inline(always)]
+    fn support_single_register_access(&mut self) -> Option<SingleRegisterAccessOps<(), Self>> {
+        Some(self)
+    }
 }
 
 impl SingleThreadResume for GdbStub {
@@ -387,6 +396,62 @@ impl HwBreakpoint for GdbStub {
             }
             Err(e) => {
                 error!("Failed to request SetHwBreakPoint: {}", e);
+                Err(NonFatal)
+            }
+        }
+    }
+}
+
+impl SingleRegisterAccess<()> for GdbStub {
+    fn read_register(
+        &mut self,
+        _tid: (),
+        reg_id: <Self::Arch as Arch>::RegId,
+        buf: &mut [u8],
+    ) -> TargetResult<usize, Self> {
+        match self.vcpu_request(VcpuControl::Debug(VcpuDebug::ReadReg(reg_id))) {
+            Ok(VcpuDebugStatus::RegValue(r)) => {
+                if buf.len() != r.len() {
+                    error!(
+                        "Register size mismatch in RegValue: {} != {}",
+                        buf.len(),
+                        r.len()
+                    );
+                    return Err(NonFatal);
+                }
+                for (dst, v) in buf.iter_mut().zip(r.iter()) {
+                    *dst = *v;
+                }
+                Ok(r.len())
+            }
+            Ok(s) => {
+                error!("Unexpected vCPU response for ReadReg: {:?}", s);
+                Err(NonFatal)
+            }
+            Err(e) => {
+                error!("Failed to request ReadReg: {}", e);
+                Err(NonFatal)
+            }
+        }
+    }
+
+    fn write_register(
+        &mut self,
+        _tid: (),
+        reg_id: <Self::Arch as Arch>::RegId,
+        val: &[u8],
+    ) -> TargetResult<(), Self> {
+        match self.vcpu_request(VcpuControl::Debug(VcpuDebug::WriteReg(
+            reg_id,
+            val.to_owned(),
+        ))) {
+            Ok(VcpuDebugStatus::CommandComplete) => Ok(()),
+            Ok(s) => {
+                error!("Unexpected vCPU response for WriteReg: {:?}", s);
+                Err(NonFatal)
+            }
+            Err(e) => {
+                error!("Failed to request WriteReg: {}", e);
                 Err(NonFatal)
             }
         }

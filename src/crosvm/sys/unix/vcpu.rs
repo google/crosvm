@@ -249,6 +249,28 @@ where
                 })
                 .context("failed to send a debug status to GDB thread")
         }
+        VcpuDebug::ReadReg(reg) => {
+            let msg = VcpuDebugStatusMessage {
+                cpu: cpu_id as usize,
+                msg: VcpuDebugStatus::RegValue(
+                    <Arch as arch::GdbOps<V>>::read_register(vcpu as &V, reg)
+                        .context("failed to handle a gdb ReadReg command")?,
+                ),
+            };
+            reply_tube
+                .send(msg)
+                .context("failed to send a debug status to GDB thread")
+        }
+        VcpuDebug::WriteReg(reg, buf) => {
+            <Arch as arch::GdbOps<V>>::write_register(vcpu as &V, reg, &buf)
+                .context("failed to handle a gdb WriteReg command")?;
+            reply_tube
+                .send(VcpuDebugStatusMessage {
+                    cpu: cpu_id as usize,
+                    msg: VcpuDebugStatus::CommandComplete,
+                })
+                .context("failed to send a debug status to GDB thread")
+        }
         VcpuDebug::ReadMem(vaddr, len) => {
             let msg = VcpuDebugStatusMessage {
                 cpu: cpu_id as usize,

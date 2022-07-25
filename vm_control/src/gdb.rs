@@ -14,7 +14,9 @@ use vm_memory::GuestAddress;
 pub enum VcpuDebug {
     ReadMem(GuestAddress, usize),
     ReadRegs,
+    ReadReg(<GdbArch as Arch>::RegId),
     WriteRegs(Box<<GdbArch as Arch>::Registers>),
+    WriteReg(<GdbArch as Arch>::RegId, Vec<u8>),
     WriteMem(GuestAddress, Vec<u8>),
     EnableSinglestep,
     GetHwBreakPointCount,
@@ -26,6 +28,7 @@ pub enum VcpuDebug {
 #[derive(Debug)]
 pub enum VcpuDebugStatus {
     RegValues(<GdbArch as Arch>::Registers),
+    RegValue(Vec<u8>),
     MemoryRegion(Vec<u8>),
     CommandComplete,
     HwBreakPointCount(usize),

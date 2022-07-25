@@ -105,6 +105,8 @@ use devices::Serial;
 use devices::SerialHardware;
 use devices::SerialParameters;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+use gdbstub_arch::x86::reg::id::X86_64CoreRegId;
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use gdbstub_arch::x86::reg::X86SegmentRegs;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use gdbstub_arch::x86::reg::X86_64CoreRegs;
@@ -226,6 +228,8 @@ pub enum Error {
     PageNotPresent,
     #[error("error reading guest memory {0}")]
     ReadingGuestMemory(vm_memory::GuestMemoryError),
+    #[error("single register read not supported on x86_64")]
+    ReadRegIsUnsupported,
     #[error("error reading CPU registers {0}")]
     ReadRegs(base::Error),
     #[error("error registering an IrqFd: {0}")]
@@ -264,6 +268,8 @@ pub enum Error {
     TranslatingVirtAddr,
     #[error("protected VMs not supported on x86_64")]
     UnsupportedProtectionType,
+    #[error("single register write not supported on x86_64")]
+    WriteRegIsUnsupported,
     #[error("error writing CPU registers {0}")]
     WriteRegs(base::Error),
     #[error("error writing guest memory {0}")]
@@ -1084,6 +1090,16 @@ impl<T: VcpuX86_64> arch::GdbOps<T> for X8664arch {
         vcpu.set_fpu(&fpu).map_err(Error::WriteRegs)?;
 
         Ok(())
+    }
+
+    #[inline]
+    fn read_register(_vcpu: &T, _reg: X86_64CoreRegId) -> Result<Vec<u8>> {
+        Err(Error::ReadRegIsUnsupported)
+    }
+
+    #[inline]
+    fn write_register(_vcpu: &T, _reg: X86_64CoreRegId, _buf: &[u8]) -> Result<()> {
+        Err(Error::WriteRegIsUnsupported)
     }
 
     fn read_memory(
