@@ -111,9 +111,10 @@ pub(super) fn create_base_minijail(
     Ok(j)
 }
 
-pub(super) fn simple_jail(
+pub(super) fn simple_jail_ext(
     jail_config: &Option<JailConfig>,
     policy: &str,
+    r_limit: Option<u64>,
 ) -> Result<Option<Minijail>> {
     if let Some(jail_config) = jail_config {
         // A directory for a jailed device's pivot root.
@@ -138,12 +139,19 @@ pub(super) fn simple_jail(
         };
         Ok(Some(create_base_minijail(
             &jail_config.pivot_root,
-            None,
+            r_limit,
             Some(&config),
         )?))
     } else {
         Ok(None)
     }
+}
+
+pub(super) fn simple_jail(
+    jail_config: &Option<JailConfig>,
+    policy: &str,
+) -> Result<Option<Minijail>> {
+    simple_jail_ext(jail_config, policy, None)
 }
 
 /// Mirror-mount all the directories in `dirs` into `jail` on a best-effort basis.

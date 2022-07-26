@@ -40,7 +40,7 @@ pub fn create_vhost_user_gpu_device(
 }
 
 pub fn gpu_jail(jail_config: &Option<JailConfig>, policy: &str) -> Result<Option<Minijail>> {
-    match simple_jail(jail_config, policy)? {
+    match simple_jail_ext(jail_config, policy, Some(32768))? {
         Some(mut jail) => {
             // Create a tmpfs in the device's root directory so that we can bind mount the
             // dri directory into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
