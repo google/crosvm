@@ -15,7 +15,10 @@ use crate::crosvm::config::JailConfig;
 /// Unix Devices
 pub enum DevicesSubcommand {
     Console(device::ConsoleOptions),
+    // TODO(b/241489181): Remove once cras-snd calls are changed to snd.
     #[cfg(feature = "audio_cras")]
+    CrasSnd(device::CrasSndOptions),
+    #[cfg(feature = "audio")]
     Snd(device::SndOptions),
     Fs(device::FsOptions),
     #[cfg(feature = "gpu")]

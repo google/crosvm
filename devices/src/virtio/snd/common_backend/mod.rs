@@ -391,12 +391,7 @@ impl VirtioSnd {
         let cfg = hardcoded_virtio_snd_config(&params);
         let snd_data = hardcoded_snd_data(&params);
         let avail_features = base_features;
-        let stream_source_generators = match params.backend {
-            StreamSourceBackend::NULL => create_null_stream_source_generators(&snd_data),
-            StreamSourceBackend::Sys(backend) => {
-                sys_create_stream_source_generators(backend, &params, &snd_data)
-            }
-        };
+        let stream_source_generators = create_stream_source_generators(&params, &snd_data);
 
         Ok(VirtioSnd {
             cfg,
@@ -408,6 +403,18 @@ impl VirtioSnd {
             kill_evt: None,
             stream_source_generators: Some(stream_source_generators),
         })
+    }
+}
+
+pub(crate) fn create_stream_source_generators(
+    params: &Parameters,
+    snd_data: &SndData,
+) -> Vec<Box<dyn StreamSourceGenerator>> {
+    match params.backend {
+        StreamSourceBackend::NULL => create_null_stream_source_generators(snd_data),
+        StreamSourceBackend::Sys(backend) => {
+            sys_create_stream_source_generators(backend, params, snd_data)
+        }
     }
 }
 

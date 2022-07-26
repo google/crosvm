@@ -17,7 +17,7 @@ cfg_if::cfg_if! {
         #[cfg(feature = "gpu")]
         mod gpu;
         mod console;
-        #[cfg(feature = "audio_cras")]
+        #[cfg(feature = "audio")]
         mod snd;
         mod fs;
         mod net;
@@ -28,7 +28,10 @@ cfg_if::cfg_if! {
         pub use vsock::{run_vsock_device, Options as VsockOptions};
         pub use wl::{run_wl_device, parse_wayland_sock, Options as WlOptions};
         pub use console::{create_vu_console_device, run_console_device, Options as ConsoleOptions};
+        // TODO(b/241489181): Remove once cras-snd calls are changed to snd.
         #[cfg(feature = "audio_cras")]
+        pub use snd::{run_cras_snd_device, CrasOptions as CrasSndOptions};
+        #[cfg(feature = "audio")]
         pub use snd::{run_snd_device, Options as SndOptions};
         pub use fs::{run_fs_device, Options as FsOptions};
         pub use net::{run_net_device, Options as NetOptions};

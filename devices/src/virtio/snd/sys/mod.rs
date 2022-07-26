@@ -6,8 +6,6 @@ cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod unix;
         use unix as platform;
-        #[cfg(feature = "audio_cras")]
-        pub(crate) use platform::create_cras_stream_source_generators;
     } else if #[cfg(windows)] {
         mod windows;
         use windows as platform;
