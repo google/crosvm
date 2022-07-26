@@ -525,8 +525,7 @@ pub fn create_fdt(
     use_pmu: bool,
     psci_version: PsciVersion,
     swiotlb: Option<u64>,
-    bat_mmio_base: u64,
-    bat_irq: u32,
+    bat_mmio_base_and_irq: Option<(u64, u32)>,
     vmwdt_cfg: VmWdtConfig,
 ) -> Result<()> {
     let mut fdt = FdtWriter::new(&[]);
@@ -553,7 +552,9 @@ pub fn create_fdt(
     create_psci_node(&mut fdt, &psci_version)?;
     create_pci_nodes(&mut fdt, pci_irqs, pci_cfg, pci_ranges, dma_pool_phandle)?;
     create_rtc_node(&mut fdt)?;
-    create_battery_node(&mut fdt, bat_mmio_base, bat_irq)?;
+    if let Some((bat_mmio_base, bat_irq)) = bat_mmio_base_and_irq {
+        create_battery_node(&mut fdt, bat_mmio_base, bat_irq)?;
+    }
     create_vmwdt_node(&mut fdt, vmwdt_cfg)?;
     // End giant node
     fdt.end_node(root_node)?;
