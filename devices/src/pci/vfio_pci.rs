@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::cmp::max;
-use std::cmp::min;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -31,6 +30,7 @@ use base::RawDescriptor;
 use base::Tube;
 use base::WaitContext;
 use hypervisor::MemSlot;
+use resources::AddressRange;
 use resources::Alloc;
 use resources::AllocOptions;
 use resources::MmioType;
@@ -264,9 +264,9 @@ impl VfioMsixCap {
             && offset < self.table_offset + self.table_size_bytes
     }
 
-    fn get_msix_table(&self, bar_index: u32) -> Option<(u64, u64)> {
+    fn get_msix_table(&self, bar_index: u32) -> Option<AddressRange> {
         if bar_index == self.table_pci_bar {
-            Some((self.table_offset, self.table_size_bytes))
+            AddressRange::from_start_and_size(self.table_offset, self.table_size_bytes)
         } else {
             None
         }
@@ -288,9 +288,9 @@ impl VfioMsixCap {
             && offset < self.pba_offset + self.pba_size_bytes
     }
 
-    fn get_msix_pba(&self, bar_index: u32) -> Option<(u64, u64)> {
+    fn get_msix_pba(&self, bar_index: u32) -> Option<AddressRange> {
         if bar_index == self.pba_pci_bar {
-            Some((self.pba_offset, self.pba_size_bytes))
+            AddressRange::from_start_and_size(self.pba_offset, self.pba_size_bytes)
         } else {
             None
         }
@@ -354,10 +354,8 @@ impl VfioMsixCap {
 }
 
 struct VfioResourceAllocator {
-    // memory regions unoccupied by VFIO resources
-    // stores sets of (start, end) tuples, where `end` is the address of the
-    // last byte in the region
-    regions: BTreeSet<(u64, u64)>,
+    // The region that is not allocated yet.
+    regions: BTreeSet<AddressRange>,
 }
 
 impl VfioResourceAllocator {
@@ -366,25 +364,39 @@ impl VfioResourceAllocator {
     //
     // * `base` - The starting address of the range to manage.
     // * `size` - The size of the address range in bytes.
-    fn new(base: u64, size: u64) -> Result<Self, PciDeviceError> {
-        if size == 0 {
+    fn new(pool: AddressRange) -> Result<Self, PciDeviceError> {
+        if pool.is_empty() {
             return Err(PciDeviceError::SizeZero);
         }
-        let end = base
-            .checked_add(size - 1)
-            .ok_or(PciDeviceError::Overflow(base, size))?;
         let mut regions = BTreeSet::new();
-        regions.insert((base, end));
+        regions.insert(pool);
         Ok(VfioResourceAllocator { regions })
     }
 
-    /// Allocates a range of addresses from the managed region with a minimal alignment.
-    /// Returns allocated_address.
-    pub fn allocate_with_align(
+    fn internal_allocate_from_slot(
         &mut self,
-        size: u64,
-        alignment: u64,
+        slot: AddressRange,
+        range: AddressRange,
     ) -> Result<u64, PciDeviceError> {
+        let slot_was_present = self.regions.remove(&slot);
+        assert!(slot_was_present);
+
+        let (before, after) = slot.non_overlapping_ranges(range);
+
+        if !before.is_empty() {
+            self.regions.insert(before);
+        }
+        if !after.is_empty() {
+            self.regions.insert(after);
+        }
+
+        Ok(range.start)
+    }
+
+    // Allocates a range of addresses from the managed region with a minimal alignment.
+    // Overlapping with a previous allocation is _not_ allowed.
+    // Returns allocated address.
+    fn allocate_with_align(&mut self, size: u64, alignment: u64) -> Result<u64, PciDeviceError> {
         if size == 0 {
             return Err(PciDeviceError::SizeZero);
         }
@@ -393,59 +405,42 @@ impl VfioResourceAllocator {
         }
 
         // finds first region matching alignment and size.
-        match self
-            .regions
-            .iter()
-            .find(|range| {
-                match range.0 % alignment {
-                    0 => range.0.checked_add(size - 1),
-                    r => range.0.checked_add(size - 1 + alignment - r),
-                }
-                .map_or(false, |end| end <= range.1)
-            })
-            .cloned()
-        {
-            Some(slot) => {
-                self.regions.remove(&slot);
-                let start = match slot.0 % alignment {
-                    0 => slot.0,
-                    r => slot.0 + alignment - r,
+        let region = self.regions.iter().find(|range| {
+            match range.start % alignment {
+                0 => range.start.checked_add(size - 1),
+                r => range.start.checked_add(size - 1 + alignment - r),
+            }
+            .map_or(false, |end| end <= range.end)
+        });
+
+        match region {
+            Some(&slot) => {
+                let start = match slot.start % alignment {
+                    0 => slot.start,
+                    r => slot.start + alignment - r,
                 };
                 let end = start + size - 1;
-                if slot.0 < start {
-                    self.regions.insert((slot.0, start - 1));
-                }
-                if slot.1 > end {
-                    self.regions.insert((end + 1, slot.1));
-                }
-                Ok(start)
+                let range = AddressRange::from_start_and_end(start, end);
+
+                self.internal_allocate_from_slot(slot, range)
             }
             None => Err(PciDeviceError::OutOfSpace),
         }
     }
 
     // Allocates a range of addresses from the managed region with a required location.
-    // Returns a new range of addresses excluding the required range.
-    fn allocate_at(&mut self, start: u64, size: u64) -> Result<(), PciDeviceError> {
-        if size == 0 {
+    // Overlapping with a previous allocation is allowed.
+    fn allocate_at_can_overlap(&mut self, range: AddressRange) -> Result<(), PciDeviceError> {
+        if range.is_empty() {
             return Err(PciDeviceError::SizeZero);
         }
-        let end = start
-            .checked_add(size - 1)
-            .ok_or(PciDeviceError::OutOfSpace)?;
-        while let Some(slot) = self
+
+        while let Some(&slot) = self
             .regions
             .iter()
-            .find(|range| (start <= range.1 && end >= range.0))
-            .cloned()
+            .find(|avail_range| avail_range.overlaps(range))
         {
-            self.regions.remove(&slot);
-            if slot.0 < start {
-                self.regions.insert((slot.0, start - 1));
-            }
-            if slot.1 > end {
-                self.regions.insert((end + 1, slot.1));
-            }
+            let _address = self.internal_allocate_from_slot(slot, range)?;
         }
         Ok(())
     }
@@ -985,7 +980,7 @@ impl VfioPciDevice {
         bar_mmaps: Vec<vfio_region_sparse_mmap_area>,
     ) -> Vec<vfio_region_sparse_mmap_area> {
         let msix_cap = &self.msix_cap.as_ref().unwrap().lock();
-        let mut msix_mmaps: Vec<(u64, u64)> = Vec::new();
+        let mut msix_mmaps = Vec::new();
 
         if let Some(t) = msix_cap.get_msix_table(bar_index) {
             msix_mmaps.push(t);
@@ -1002,9 +997,14 @@ impl VfioPciDevice {
         let pgmask = (pagesize() as u64) - 1;
 
         for mmap in bar_mmaps.iter() {
-            let mmap_offset = mmap.offset as u64;
-            let mmap_size = mmap.size as u64;
-            let mut to_mmap = match VfioResourceAllocator::new(mmap_offset, mmap_size) {
+            let mmap_range = if let Some(mmap_range) =
+                AddressRange::from_start_and_size(mmap.offset as u64, mmap.size as u64)
+            {
+                mmap_range
+            } else {
+                continue;
+            };
+            let mut to_mmap = match VfioResourceAllocator::new(mmap_range) {
                 Ok(a) => a,
                 Err(e) => {
                     error!("{} add_bar_mmap_msix failed: {}", self.debug_label(), e);
@@ -1014,23 +1014,22 @@ impl VfioPciDevice {
             };
 
             // table/pba offsets are qword-aligned - align to page size
-            for &(msix_offset, msix_size) in msix_mmaps.iter() {
-                if msix_offset >= mmap_offset && msix_offset < mmap_offset + mmap_size {
-                    let begin = max(msix_offset, mmap_offset) & !pgmask;
-                    let end =
-                        (min(msix_offset + msix_size, mmap_offset + mmap_size) + pgmask) & !pgmask;
-                    if end > begin {
-                        if let Err(e) = to_mmap.allocate_at(begin, end - begin) {
-                            error!("add_bar_mmap_msix failed: {}", e);
-                        }
+            for &(mut remove_range) in msix_mmaps.iter() {
+                remove_range = remove_range.intersect(mmap_range);
+                if !remove_range.is_empty() {
+                    let begin = remove_range.start & !pgmask;
+                    let end = ((remove_range.end + 1 + pgmask) & !pgmask) - 1;
+                    let remove_range = AddressRange::from_start_and_end(begin, end);
+                    if let Err(e) = to_mmap.allocate_at_can_overlap(remove_range) {
+                        error!("{} adjust_bar_mmap failed: {}", self.debug_label(), e);
                     }
                 }
             }
 
             for mmap in to_mmap.regions {
                 mmaps.push(vfio_region_sparse_mmap_area {
-                    offset: mmap.0,
-                    size: mmap.1 - mmap.0 + 1,
+                    offset: mmap.start,
+                    size: mmap.end - mmap.start + 1,
                 });
             }
         }
@@ -1353,7 +1352,7 @@ impl VfioPciDevice {
         const ARRAY_SIZE: usize = 2;
         let mut membars: [Vec<PciBarConfiguration>; ARRAY_SIZE] = [Vec::new(), Vec::new()];
         let mut allocator: [VfioResourceAllocator; ARRAY_SIZE] = [
-            match VfioResourceAllocator::new(0, u32::MAX as u64) {
+            match VfioResourceAllocator::new(AddressRange::from_start_and_end(0, u32::MAX as u64)) {
                 Ok(a) => a,
                 Err(e) => {
                     error!(
@@ -1364,7 +1363,7 @@ impl VfioPciDevice {
                     return Err(e);
                 }
             },
-            match VfioResourceAllocator::new(0, u64::MAX) {
+            match VfioResourceAllocator::new(AddressRange::from_start_and_end(0, u64::MAX)) {
                 Ok(a) => a,
                 Err(e) => {
                     error!(
@@ -1982,72 +1981,100 @@ impl Drop for VfioPciDevice {
 #[cfg(test)]
 mod tests {
     use super::VfioResourceAllocator;
+    use resources::AddressRange;
 
     #[test]
     fn no_overlap() {
         // regions [32, 95]
-        let mut memory = VfioResourceAllocator::new(32, 64).unwrap();
-        memory.allocate_at(0, 16).unwrap();
-        memory.allocate_at(100, 16).unwrap();
+        let mut memory =
+            VfioResourceAllocator::new(AddressRange::from_start_and_end(32, 95)).unwrap();
+        memory
+            .allocate_at_can_overlap(AddressRange::from_start_and_end(0, 15))
+            .unwrap();
+        memory
+            .allocate_at_can_overlap(AddressRange::from_start_and_end(100, 115))
+            .unwrap();
 
         let mut iter = memory.regions.iter();
-        assert_eq!(iter.next(), Some(&(32, 95)));
+        assert_eq!(iter.next(), Some(&AddressRange::from_start_and_end(32, 95)));
     }
 
     #[test]
-    fn full_overlap() {
+    fn complete_overlap() {
         // regions [32, 95]
-        let mut memory = VfioResourceAllocator::new(32, 64).unwrap();
+        let mut memory =
+            VfioResourceAllocator::new(AddressRange::from_start_and_end(32, 95)).unwrap();
         // regions [32, 47], [64, 95]
-        memory.allocate_at(48, 16).unwrap();
+        memory
+            .allocate_at_can_overlap(AddressRange::from_start_and_end(48, 63))
+            .unwrap();
         // regions [64, 95]
-        memory.allocate_at(32, 16).unwrap();
+        memory
+            .allocate_at_can_overlap(AddressRange::from_start_and_end(32, 47))
+            .unwrap();
 
         let mut iter = memory.regions.iter();
-        assert_eq!(iter.next(), Some(&(64, 95)));
+        assert_eq!(iter.next(), Some(&AddressRange::from_start_and_end(64, 95)));
     }
 
     #[test]
     fn partial_overlap_one() {
         // regions [32, 95]
-        let mut memory = VfioResourceAllocator::new(32, 64).unwrap();
+        let mut memory =
+            VfioResourceAllocator::new(AddressRange::from_start_and_end(32, 95)).unwrap();
         // regions [32, 47], [64, 95]
-        memory.allocate_at(48, 16).unwrap();
+        memory
+            .allocate_at_can_overlap(AddressRange::from_start_and_end(48, 63))
+            .unwrap();
         // regions [32, 39], [64, 95]
-        memory.allocate_at(40, 16).unwrap();
+        memory
+            .allocate_at_can_overlap(AddressRange::from_start_and_end(40, 55))
+            .unwrap();
 
         let mut iter = memory.regions.iter();
-        assert_eq!(iter.next(), Some(&(32, 39)));
-        assert_eq!(iter.next(), Some(&(64, 95)));
+        assert_eq!(iter.next(), Some(&AddressRange::from_start_and_end(32, 39)));
+        assert_eq!(iter.next(), Some(&AddressRange::from_start_and_end(64, 95)));
     }
 
     #[test]
     fn partial_overlap_two() {
         // regions [32, 95]
-        let mut memory = VfioResourceAllocator::new(32, 64).unwrap();
+        let mut memory =
+            VfioResourceAllocator::new(AddressRange::from_start_and_end(32, 95)).unwrap();
         // regions [32, 47], [64, 95]
-        memory.allocate_at(48, 16).unwrap();
+        memory
+            .allocate_at_can_overlap(AddressRange::from_start_and_end(48, 63))
+            .unwrap();
         // regions [32, 39], [72, 95]
-        memory.allocate_at(40, 32).unwrap();
+        memory
+            .allocate_at_can_overlap(AddressRange::from_start_and_end(40, 71))
+            .unwrap();
 
         let mut iter = memory.regions.iter();
-        assert_eq!(iter.next(), Some(&(32, 39)));
-        assert_eq!(iter.next(), Some(&(72, 95)));
+        assert_eq!(iter.next(), Some(&AddressRange::from_start_and_end(32, 39)));
+        assert_eq!(iter.next(), Some(&AddressRange::from_start_and_end(72, 95)));
     }
 
     #[test]
     fn partial_overlap_three() {
         // regions [32, 95]
-        let mut memory = VfioResourceAllocator::new(32, 64).unwrap();
+        let mut memory =
+            VfioResourceAllocator::new(AddressRange::from_start_and_end(32, 95)).unwrap();
         // regions [32, 39], [48, 95]
-        memory.allocate_at(40, 8).unwrap();
+        memory
+            .allocate_at_can_overlap(AddressRange::from_start_and_end(40, 47))
+            .unwrap();
         // regions [32, 39], [48, 63], [72, 95]
-        memory.allocate_at(64, 8).unwrap();
+        memory
+            .allocate_at_can_overlap(AddressRange::from_start_and_end(64, 71))
+            .unwrap();
         // regions [32, 35], [76, 95]
-        memory.allocate_at(36, 40).unwrap();
+        memory
+            .allocate_at_can_overlap(AddressRange::from_start_and_end(36, 75))
+            .unwrap();
 
         let mut iter = memory.regions.iter();
-        assert_eq!(iter.next(), Some(&(32, 35)));
-        assert_eq!(iter.next(), Some(&(76, 95)));
+        assert_eq!(iter.next(), Some(&AddressRange::from_start_and_end(32, 35)));
+        assert_eq!(iter.next(), Some(&AddressRange::from_start_and_end(76, 95)));
     }
 }
