@@ -44,7 +44,6 @@ use devices::SerialParameters;
 use devices::StubPciParameters;
 use hypervisor::ProtectionType;
 use resources::AddressRange;
-use vm_control::BatteryType;
 
 #[cfg(feature = "gpu")]
 use super::sys::config::parse_gpu_options;
@@ -55,7 +54,6 @@ use super::sys::GpuRenderServerParameters;
 use crate::crosvm::config::numbered_disk_option;
 #[cfg(feature = "audio")]
 use crate::crosvm::config::parse_ac97_options;
-use crate::crosvm::config::parse_battery_options;
 use crate::crosvm::config::parse_bus_id_addr;
 use crate::crosvm::config::parse_cpu_affinity;
 use crate::crosvm::config::parse_cpu_capacity;
@@ -76,6 +74,7 @@ use crate::crosvm::config::parse_serial_options;
 use crate::crosvm::config::parse_stub_pci_parameters;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::crosvm::config::parse_userspace_msr_options;
+use crate::crosvm::config::BatteryConfig;
 #[cfg(feature = "plugin")]
 use crate::crosvm::config::BindMount;
 #[cfg(feature = "direct")]
@@ -471,13 +470,13 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH")]
     /// path for balloon controller socket.
     pub balloon_control: Option<PathBuf>,
-    #[argh(option, from_str_fn(parse_battery_options))]
+    #[argh(option)]
     /// comma separated key=value pairs for setting up battery
     /// device
     /// Possible key values:
     ///     type=goldfish - type of battery emulation, defaults to
     ///     goldfish
-    pub battery: Option<BatteryType>,
+    pub battery: Option<BatteryConfig>,
     #[argh(option)]
     /// path to BIOS/firmware ROM
     pub bios: Option<PathBuf>,
@@ -1761,7 +1760,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.pvm_fw = Some(p);
         }
 
-        cfg.battery_type = cmd.battery;
+        cfg.battery_config = cmd.battery;
 
         #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
         {

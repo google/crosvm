@@ -1399,7 +1399,7 @@ where
         control_tubes.push(TaggedControlTube::VmIrq(ioapic_host_tube));
     }
 
-    let battery = if cfg.battery_type.is_some() {
+    let battery = if cfg.battery_config.is_some() {
         #[cfg_attr(not(feature = "power-monitor-powerd"), allow(clippy::manual_map))]
         let jail = match simple_jail(&cfg.jail_config, "battery")? {
             #[cfg_attr(not(feature = "power-monitor-powerd"), allow(unused_mut))]
@@ -1425,9 +1425,9 @@ where
             }
             None => None,
         };
-        (&cfg.battery_type, jail)
+        (cfg.battery_config.as_ref().map(|c| c.type_), jail)
     } else {
-        (&cfg.battery_type, None)
+        (cfg.battery_config.as_ref().map(|c| c.type_), None)
     };
 
     let map_request: Arc<Mutex<Option<ExternalMapping>>> = Arc::new(Mutex::new(None));

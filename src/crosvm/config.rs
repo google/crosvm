@@ -43,6 +43,7 @@ use hypervisor::ProtectionType;
 use resources::AddressRange;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_keyvalue::FromKeyValues;
 use uuid::Uuid;
 use vm_control::BatteryType;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -893,30 +894,11 @@ pub fn invalid_value_err<T: AsRef<str>, S: ToString>(value: T, expected: S) -> S
     format!("invalid value {}: {}", value.as_ref(), expected.to_string())
 }
 
-pub fn parse_battery_options(s: &str) -> Result<BatteryType, String> {
-    let mut battery_type: BatteryType = Default::default();
-
-    let opts = s
-        .split(',')
-        .map(|frag| frag.split('='))
-        .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
-
-    for (k, v) in opts {
-        match k {
-            "type" => match v.parse::<BatteryType>() {
-                Ok(type_) => battery_type = type_,
-                Err(e) => {
-                    return Err(invalid_value_err(v, e));
-                }
-            },
-            "" => {}
-            _ => {
-                return Err(format!("battery parameter {}", k));
-            }
-        }
-    }
-
-    Ok(battery_type)
+#[derive(Debug, Serialize, Deserialize, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct BatteryConfig {
+    #[serde(rename = "type", default)]
+    pub type_: BatteryType,
 }
 
 pub fn parse_cpu_capacity(s: &str) -> Result<BTreeMap<usize, u32>, String> {
@@ -1215,7 +1197,7 @@ pub struct Config {
     pub balloon: bool,
     pub balloon_bias: i64,
     pub balloon_control: Option<PathBuf>,
-    pub battery_type: Option<BatteryType>,
+    pub battery_config: Option<BatteryConfig>,
     #[cfg(windows)]
     pub block_control_tube: Vec<Tube>,
     #[cfg(windows)]
@@ -1406,7 +1388,7 @@ impl Default for Config {
             balloon: true,
             balloon_bias: 0,
             balloon_control: None,
-            battery_type: None,
+            battery_config: None,
             #[cfg(windows)]
             block_control_tube: Vec::new(),
             #[cfg(windows)]
@@ -2038,23 +2020,25 @@ mod tests {
     }
 
     #[test]
-    fn parse_battery_vaild() {
-        parse_battery_options("type=goldfish").expect("parse should have succeded");
+    fn parse_battery_valid() {
+        let bat_config: BatteryConfig = from_key_values("type=goldfish").unwrap();
+        assert_eq!(bat_config.type_, BatteryType::Goldfish);
     }
 
     #[test]
-    fn parse_battery_vaild_no_type() {
-        parse_battery_options("").expect("parse should have succeded");
+    fn parse_battery_valid_no_type() {
+        let bat_config: BatteryConfig = from_key_values("").unwrap();
+        assert_eq!(bat_config.type_, BatteryType::Goldfish);
     }
 
     #[test]
-    fn parse_battery_invaild_parameter() {
-        parse_battery_options("tyep=goldfish").expect_err("parse should have failed");
+    fn parse_battery_invalid_parameter() {
+        from_key_values::<BatteryConfig>("tyep=goldfish").expect_err("parse should have failed");
     }
 
     #[test]
-    fn parse_battery_invaild_type_value() {
-        parse_battery_options("type=xxx").expect_err("parse should have failed");
+    fn parse_battery_invalid_type_value() {
+        from_key_values::<BatteryConfig>("type=xxx").expect_err("parse should have failed");
     }
 
     #[test]

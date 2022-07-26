@@ -271,7 +271,7 @@ impl arch::LinuxArch for AArch64 {
         system_allocator: &mut SystemAllocator,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
-        (bat_type, bat_jail): (&Option<BatteryType>, Option<Minijail>),
+        (bat_type, bat_jail): (Option<BatteryType>, Option<Minijail>),
         mut vm: V,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,

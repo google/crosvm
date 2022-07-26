@@ -200,7 +200,7 @@ where
         &[], // direct_gpe
         &mut irq_chip,
         X86_64_SCI_IRQ,
-        (&None, None),
+        (None, None),
         &mmio_bus,
         max_bus,
         &mut resume_notify_devices,

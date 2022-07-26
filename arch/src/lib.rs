@@ -250,7 +250,7 @@ pub trait LinuxArch {
         system_allocator: &mut SystemAllocator,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
-        battery: (&Option<BatteryType>, Option<Minijail>),
+        battery: (Option<BatteryType>, Option<Minijail>),
         vm: V,
         ramoops_region: Option<pstore::RamoopsRegion>,
         devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,

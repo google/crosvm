@@ -591,6 +591,7 @@ impl Display for BatControlResult {
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case")]
 pub enum BatteryType {
     Goldfish,
 }
