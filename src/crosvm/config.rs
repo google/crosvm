@@ -24,7 +24,7 @@ use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
 use devices::virtio::block::block::DiskOption;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
-use devices::virtio::device_constants::video::VideoBackendType;
+use devices::virtio::device_constants::video::VideoDeviceConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
 #[cfg(feature = "audio")]
@@ -574,48 +574,6 @@ pub fn parse_mmio_address_range(s: &str) -> Result<Vec<AddressRange>, String> {
             })
         })
         .collect()
-}
-
-#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
-pub fn parse_video_options(s: &str) -> Result<VideoBackendType, String> {
-    const VALID_VIDEO_BACKENDS: &[&str] = &[
-        #[cfg(feature = "libvda")]
-        "libvda",
-        #[cfg(feature = "ffmpeg")]
-        "ffmpeg",
-        #[cfg(feature = "vaapi")]
-        "vaapi",
-    ];
-
-    match s {
-        "" => {
-            cfg_if::cfg_if! {
-                if #[cfg(feature = "libvda")] {
-                    Ok(VideoBackendType::Libvda)
-                } else if #[cfg(feature = "vaapi")] {
-                    Ok(VideoBackendType::Vaapi)
-                } else if #[cfg(feature = "ffmpeg")] {
-                    Ok(VideoBackendType::Ffmpeg)
-                } else {
-                    // Cannot be reached because at least one video backend needs to be enabled for
-                    // the decoder to be compiled.
-                    unreachable!()
-                }
-            }
-        }
-        #[cfg(feature = "libvda")]
-        "libvda" => Ok(VideoBackendType::Libvda),
-        #[cfg(feature = "libvda")]
-        "libvda-vd" => Ok(VideoBackendType::LibvdaVd),
-        #[cfg(feature = "ffmpeg")]
-        "ffmpeg" => Ok(VideoBackendType::Ffmpeg),
-        #[cfg(feature = "vaapi")]
-        "vaapi" => Ok(VideoBackendType::Vaapi),
-        _ => Err(invalid_value_err(
-            s,
-            format!("should be one of ({})", VALID_VIDEO_BACKENDS.join("|")),
-        )),
-    }
 }
 
 pub fn parse_pstore(value: &str) -> Result<Pstore, String> {
@@ -1418,9 +1376,9 @@ pub struct Config {
     #[cfg(unix)]
     pub vhost_vsock_device: Option<PathBuf>,
     #[cfg(feature = "video-decoder")]
-    pub video_dec: Option<VideoBackendType>,
+    pub video_dec: Option<VideoDeviceConfig>,
     #[cfg(feature = "video-encoder")]
-    pub video_enc: Option<VideoBackendType>,
+    pub video_enc: Option<VideoDeviceConfig>,
     pub virtio_input_evdevs: Vec<PathBuf>,
     pub virtio_keyboard: Vec<PathBuf>,
     pub virtio_mice: Vec<PathBuf>,
@@ -2309,6 +2267,33 @@ mod tests {
         let config: Result<JailConfig, String> =
             from_key_values("seccomp-log-failures,invalid-arg=value");
         assert!(config.is_err());
+    }
+
+    #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+    #[test]
+    fn parse_video() {
+        use devices::virtio::device_constants::video::VideoBackendType;
+
+        #[cfg(feature = "libvda")]
+        {
+            let params: VideoDeviceConfig = from_key_values("libvda").unwrap();
+            assert_eq!(params.backend_type, VideoBackendType::Libvda);
+
+            let params: VideoDeviceConfig = from_key_values("libvda-vd").unwrap();
+            assert_eq!(params.backend_type, VideoBackendType::LibvdaVd);
+        }
+
+        #[cfg(feature = "ffmpeg")]
+        {
+            let params: VideoDeviceConfig = from_key_values("ffmpeg").unwrap();
+            assert_eq!(params.backend_type, VideoBackendType::Ffmpeg);
+        }
+
+        #[cfg(feature = "vaapi")]
+        {
+            let params: VideoDeviceConfig = from_key_values("vaapi").unwrap();
+            assert_eq!(params.backend_type, VideoBackendType::Vaapi);
+        }
     }
 
     #[test]

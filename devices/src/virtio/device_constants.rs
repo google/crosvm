@@ -58,6 +58,7 @@ pub mod video {
     use data_model::Le32;
     use serde::Deserialize;
     use serde::Serialize;
+    use serde_keyvalue::FromKeyValues;
 
     // CMD_QUEUE_SIZE = max number of command descriptors for input and output queues
     // Experimentally, it appears a stream allocates 16 input and 26 output buffers = 42 total
@@ -84,6 +85,7 @@ pub mod video {
     }
 
     #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+    #[serde(rename_all = "kebab-case")]
     pub enum VideoBackendType {
         #[cfg(feature = "libvda")]
         Libvda,
@@ -93,6 +95,11 @@ pub mod video {
         Ffmpeg,
         #[cfg(feature = "vaapi")]
         Vaapi,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, FromKeyValues)]
+    pub struct VideoDeviceConfig {
+        pub backend_type: VideoBackendType,
     }
 
     /// The same set of virtio features is supported by the ffmpeg decoder and encoder.

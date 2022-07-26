@@ -32,7 +32,7 @@ use argh::FromArgs;
 use base::getpid;
 use devices::virtio::block::block::DiskOption;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
-use devices::virtio::device_constants::video::VideoBackendType;
+use devices::virtio::device_constants::video::VideoDeviceConfig;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost::user::device;
@@ -46,8 +46,6 @@ use hypervisor::ProtectionType;
 use resources::AddressRange;
 use vm_control::BatteryType;
 
-#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
-use super::config::parse_video_options;
 #[cfg(feature = "gpu")]
 use super::sys::config::parse_gpu_options;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
@@ -1214,25 +1212,15 @@ pub struct RunCommand {
     /// open FD to the vhost-vsock device, mutually exclusive with vhost-vsock-device
     pub vhost_vsock_fd: Option<RawDescriptor>,
     #[cfg(feature = "video-decoder")]
-    #[argh(
-        option,
-        long = "video-decoder",
-        arg_name = "[backend]",
-        from_str_fn(parse_video_options)
-    )]
+    #[argh(option, long = "video-decoder", arg_name = "[backend]")]
     /// (EXPERIMENTAL) enable virtio-video decoder device
     /// Possible backend values: libvda, ffmpeg, vaapi
-    pub video_dec: Option<VideoBackendType>,
+    pub video_dec: Option<VideoDeviceConfig>,
     #[cfg(feature = "video-encoder")]
-    #[argh(
-        option,
-        long = "video-encoder",
-        arg_name = "[backend]",
-        from_str_fn(parse_video_options)
-    )]
+    #[argh(option, long = "video-encoder", arg_name = "[backend]")]
     /// (EXPERIMENTAL) enable virtio-video encoder device
     /// Possible backend values: libvda
-    pub video_enc: Option<VideoBackendType>,
+    pub video_enc: Option<VideoDeviceConfig>,
     #[argh(option, long = "evdev", arg_name = "PATH")]
     /// path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host
     pub virtio_input_evdevs: Vec<PathBuf>,

@@ -213,19 +213,19 @@ fn create_virtio_devices(
     }
 
     #[cfg(feature = "video-decoder")]
-    let video_dec_cfg = if let Some(backend) = cfg.video_dec {
+    let video_dec_cfg = if let Some(config) = &cfg.video_dec {
         let (video_tube, gpu_tube) = Tube::pair().context("failed to create tube")?;
         resource_bridges.push(gpu_tube);
-        Some((video_tube, backend))
+        Some((video_tube, config.backend_type))
     } else {
         None
     };
 
     #[cfg(feature = "video-encoder")]
-    let video_enc_cfg = if let Some(backend) = cfg.video_enc {
+    let video_enc_cfg = if let Some(config) = &cfg.video_enc {
         let (video_tube, gpu_tube) = Tube::pair().context("failed to create tube")?;
         resource_bridges.push(gpu_tube);
-        Some((video_tube, backend))
+        Some((video_tube, config.backend_type))
     } else {
         None
     };
