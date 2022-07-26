@@ -11,8 +11,6 @@ cfg_if::cfg_if! {
         use devices::virtio::GpuDisplayParameters;
         use devices::virtio::vhost::user::device::parse_wayland_sock;
 
-        #[cfg(feature = "gpu")]
-        use super::sys::config::parse_gpu_display_options;
         use super::sys::config::{
             parse_coiommu_params, VfioCommand, parse_vfio, parse_vfio_platform,
         };
@@ -651,11 +649,7 @@ pub struct RunCommand {
     /// (EXPERIMENTAL) gdb on the given port
     pub gdb: Option<u32>,
     #[cfg(feature = "gpu")]
-    #[argh(
-        option,
-        arg_name = "[width=INT,height=INT]",
-        from_str_fn(parse_gpu_display_options)
-    )]
+    #[argh(option, arg_name = "[width=INT,height=INT]")]
     /// (EXPERIMENTAL) Comma separated key=value pairs for setting
     /// up a display on the virtio-gpu device
     /// Possible key values:

@@ -21,10 +21,6 @@ use devices::SerialParameters;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[cfg(feature = "gpu")]
-use crate::crosvm::argument;
-#[cfg(feature = "gpu")]
-use crate::crosvm::argument::parse_hex_or_decimal;
 use crate::crosvm::config::invalid_value_err;
 use crate::crosvm::config::Config;
 
@@ -174,11 +170,6 @@ pub fn parse_coiommu_params(value: &str) -> Result<devices::CoIommuParameters, S
     Ok(params)
 }
 
-#[cfg(feature = "gpu")]
-pub fn is_gpu_backend_deprecated(_backend: &str) -> bool {
-    false
-}
-
 #[cfg(feature = "gfxstream")]
 pub fn use_vulkan() -> bool {
     true
@@ -207,294 +198,32 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
 }
 
 #[cfg(feature = "gpu")]
-#[derive(Default)]
-struct GpuDisplayParametersBuilder {
-    width: Option<u32>,
-    height: Option<u32>,
-    args: Vec<String>,
-}
-
-#[cfg(feature = "gpu")]
-impl GpuDisplayParametersBuilder {
-    fn parse(&mut self, arg: &str) -> argument::Result<()> {
-        let mut kv = arg.split('=');
-        let k = kv.next().unwrap_or("");
-        let v = kv.next().unwrap_or("");
-        match k {
-            "width" => {
-                let width = v
-                    .parse::<u32>()
-                    .map_err(|_| argument::Error::InvalidValue {
-                        value: v.to_string(),
-                        expected: String::from("gpu parameter 'width' must be a valid integer"),
-                    })?;
-                self.width = Some(width);
-            }
-            "height" => {
-                let height = v
-                    .parse::<u32>()
-                    .map_err(|_| argument::Error::InvalidValue {
-                        value: v.to_string(),
-                        expected: String::from("gpu parameter 'height' must be a valid integer"),
-                    })?;
-                self.height = Some(height);
-            }
-            _ => {
-                return Err(argument::Error::UnknownArgument(format!(
-                    "gpu-display parameter {}",
-                    k
-                )))
-            }
-        }
-        self.args.push(arg.to_string());
-        Ok(())
-    }
-
-    fn build(&self) -> Result<Option<GpuDisplayParameters>, String> {
-        match (self.width, self.height) {
-            (None, None) => Ok(None),
-            (None, Some(_)) | (Some(_), None) => {
-                let mut value = self
-                    .args
-                    .clone()
-                    .into_iter()
-                    .fold(String::new(), |args_so_far, arg| args_so_far + &arg + ",");
-                value.pop();
-                return Err(invalid_value_err(
-                    value,
-                    "gpu must include both 'width' and 'height' if either is supplied",
-                ));
-            }
-            (Some(width), Some(height)) => Ok(Some(GpuDisplayParameters { width, height })),
-        }
-    }
-}
-
-#[cfg(feature = "gpu")]
 pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
-    use devices::virtio::GpuMode;
-    use rutabaga_gfx::RutabagaWsi;
+    use crate::crosvm::config::from_key_values;
 
-    #[cfg(feature = "gfxstream")]
-    let mut vulkan_specified = false;
-    #[cfg(feature = "gfxstream")]
-    let mut angle_specified = false;
-
-    let mut display_param_builder: GpuDisplayParametersBuilder = Default::default();
-    let mut gpu_params = GpuParameters::default();
-
-    for frag in s.split(',') {
-        let mut rest: Option<&str> = None;
-        let mut kv = frag.split('=');
-        let k = kv.next().unwrap_or("");
-        let v = kv.next().unwrap_or("");
-        match k {
-            // Deprecated: Specifying --gpu=<mode> Not great as the mode can be set multiple
-            // times if the user specifies several modes (--gpu=2d,virglrenderer,gfxstream)
-            "2d" | "2D" => {
-                gpu_params.mode = GpuMode::Mode2D;
-            }
-            "3d" | "3D" | "virglrenderer" => {
-                gpu_params.mode = GpuMode::ModeVirglRenderer;
-            }
-            #[cfg(feature = "gfxstream")]
-            "gfxstream" => {
-                gpu_params.mode = GpuMode::ModeGfxstream;
-            }
-            // Preferred: Specifying --gpu,backend=<mode>
-            "backend" => match v {
-                "2d" | "2D" => {
-                    if is_gpu_backend_deprecated(v) {
-                        return Err(invalid_value_err(
-                            v,
-                            "this backend type is deprecated, please use gfxstream.",
-                        ));
-                    } else {
-                        gpu_params.mode = GpuMode::Mode2D;
-                    }
-                }
-                "3d" | "3D" | "virglrenderer" => {
-                    if is_gpu_backend_deprecated(v) {
-                        return Err(invalid_value_err(
-                            v,
-                            "this backend type is deprecated, please use gfxstream.",
-                        ));
-                    } else {
-                        gpu_params.mode = GpuMode::ModeVirglRenderer;
-                    }
-                }
-                #[cfg(feature = "gfxstream")]
-                "gfxstream" => {
-                    gpu_params.mode = GpuMode::ModeGfxstream;
-                }
-                _ => {
-                    return Err(invalid_value_err(
-                        v,
-                        #[cfg(feature = "gfxstream")]
-                        "gpu parameter 'backend' should be one of (2d|virglrenderer|gfxstream)",
-                        #[cfg(not(feature = "gfxstream"))]
-                        "gpu parameter 'backend' should be one of (2d|3d)",
-                    ));
-                }
-            },
-            "egl" => match v {
-                "true" | "" => {
-                    gpu_params.renderer_use_egl = true;
-                }
-                "false" => {
-                    gpu_params.renderer_use_egl = false;
-                }
-                _ => {
-                    return Err(invalid_value_err(
-                        v,
-                        "gpu parameter 'egl' should be a boolean",
-                    ));
-                }
-            },
-            "gles" => match v {
-                "true" | "" => {
-                    gpu_params.renderer_use_gles = true;
-                }
-                "false" => {
-                    gpu_params.renderer_use_gles = false;
-                }
-                _ => {
-                    return Err(invalid_value_err(
-                        v,
-                        "gpu parameter 'gles' should be a boolean",
-                    ));
-                }
-            },
-            "glx" => match v {
-                "true" | "" => {
-                    gpu_params.renderer_use_glx = true;
-                }
-                "false" => {
-                    gpu_params.renderer_use_glx = false;
-                }
-                _ => {
-                    return Err(invalid_value_err(
-                        v,
-                        "gpu parameter 'glx' should be a boolean",
-                    ));
-                }
-            },
-            "surfaceless" => match v {
-                "true" | "" => {
-                    gpu_params.renderer_use_surfaceless = true;
-                }
-                "false" => {
-                    gpu_params.renderer_use_surfaceless = false;
-                }
-                _ => {
-                    return Err(invalid_value_err(
-                        v,
-                        "gpu parameter 'surfaceless' should be a boolean",
-                    ));
-                }
-            },
-            #[cfg(feature = "gfxstream")]
-            "angle" => {
-                angle_specified = true;
-                match v {
-                    "true" | "" => {
-                        gpu_params.gfxstream_use_guest_angle = true;
-                    }
-                    "false" => {
-                        gpu_params.gfxstream_use_guest_angle = false;
-                    }
-                    _ => {
-                        return Err(invalid_value_err(
-                            v,
-                            "gpu parameter 'angle' should be a boolean",
-                        ));
-                    }
-                }
-            }
-            "vulkan" => {
-                #[cfg(feature = "gfxstream")]
-                {
-                    vulkan_specified = true;
-                }
-                match v {
-                    "true" | "" => {
-                        gpu_params.use_vulkan = true;
-                    }
-                    "false" => {
-                        gpu_params.use_vulkan = false;
-                    }
-                    _ => {
-                        return Err(invalid_value_err(
-                            v,
-                            "gpu parameter 'vulkan' should be a boolean",
-                        ));
-                    }
-                }
-            }
-            "wsi" => match v {
-                "vk" => {
-                    gpu_params.wsi = Some(RutabagaWsi::Vulkan);
-                }
-                _ => {
-                    return Err(invalid_value_err(v, "gpu parameter 'wsi' should be vk"));
-                }
-            },
-            "cache-path" => gpu_params.cache_path = Some(v.to_string()),
-            "cache-size" => gpu_params.cache_size = Some(v.to_string()),
-            "pci-bar-size" => {
-                let size = parse_hex_or_decimal(v).map_err(|_| {
-                    "gpu parameter `pci-bar-size` must be a valid hex or decimal value"
-                })?;
-                gpu_params.pci_bar_size = size;
-            }
-            "udmabuf" => match v {
-                "true" | "" => {
-                    gpu_params.udmabuf = true;
-                }
-                "false" => {
-                    gpu_params.udmabuf = false;
-                }
-                _ => {
-                    return Err(invalid_value_err(
-                        v,
-                        "gpu parameter 'udmabuf' should be a boolean",
-                    ));
-                }
-            },
-            "context-types" => {
-                let context_types: Vec<String> = v.split(':').map(|s| s.to_string()).collect();
-                gpu_params.context_mask = rutabaga_gfx::calculate_context_mask(context_types);
-            }
-            "" => {}
-            _ => {
-                rest = Some(frag);
-            }
-        }
-        if let Some(arg) = rest.take() {
-            match display_param_builder.parse(arg) {
-                Ok(()) => {}
-                Err(argument::Error::UnknownArgument(_)) => {
-                    rest = Some(arg);
-                }
-                Err(err) => return Err(err.to_string()),
-            }
-        }
-        if let Some(arg) = rest.take() {
-            return Err(format!("unknown gpu parameter {}", arg));
-        }
+    // This struct allows us to parse the GPU and display parameters together in a single option.
+    #[derive(Deserialize)]
+    struct GpuParametersWithDisplay {
+        #[serde(flatten)]
+        gpu_params: GpuParameters,
+        #[serde(flatten)]
+        display: Option<GpuDisplayParameters>,
     }
 
-    if let Some(display_param) = display_param_builder.build()?.take() {
-        gpu_params.display_params.push(display_param);
+    let gpu_params: GpuParametersWithDisplay = from_key_values(s)?;
+
+    let (mut gpu_params, display_param) = (gpu_params.gpu_params, gpu_params.display);
+    if let Some(display_param) = display_param {
+        gpu_params.display_params.push(display_param)
     }
 
     #[cfg(feature = "gfxstream")]
     {
-        if !vulkan_specified && gpu_params.mode == GpuMode::ModeGfxstream {
-            gpu_params.use_vulkan = use_vulkan();
+        if gpu_params.vulkan.is_none() && gpu_params.mode == GpuMode::ModeGfxstream {
+            gpu_params.use_vulkan = Some(use_vulkan());
         }
 
-        if angle_specified {
+        if gpu_params.gfxstream_use_guest_angle.is_some() {
             match gpu_params.mode {
                 GpuMode::ModeGfxstream => {}
                 _ => {
@@ -507,24 +236,6 @@ pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
     }
 
     Ok(gpu_params)
-}
-
-#[cfg(feature = "gpu")]
-pub fn parse_gpu_display_options(s: &str) -> Result<GpuDisplayParameters, String> {
-    let mut display_param_builder: GpuDisplayParametersBuilder = Default::default();
-
-    for arg in s.split(',') {
-        display_param_builder
-            .parse(arg)
-            .map_err(|e| e.to_string())?;
-    }
-
-    let display_param = display_param_builder.build()?;
-    let display_param = display_param.ok_or_else(|| {
-        invalid_value_err(s, "gpu-display must include both 'width' and 'height'")
-    })?;
-
-    Ok(display_param)
 }
 
 #[cfg(feature = "gpu")]
@@ -679,6 +390,7 @@ mod tests {
     use argh::FromArgs;
 
     use super::*;
+    use crate::crosvm::config::from_key_values;
     #[cfg(feature = "audio_cras")]
     use crate::crosvm::config::parse_ac97_options;
     use crate::crosvm::config::BindMount;
@@ -694,16 +406,84 @@ mod tests {
 
     #[cfg(feature = "gpu")]
     #[test]
+    fn parse_gpu_options_mode() {
+        use devices::virtio::gpu::GpuMode;
+
+        let gpu_params: GpuParameters = from_key_values("backend=2d").unwrap();
+        assert_eq!(gpu_params.mode, GpuMode::Mode2D);
+
+        let gpu_params: GpuParameters = from_key_values("backend=2D").unwrap();
+        assert_eq!(gpu_params.mode, GpuMode::Mode2D);
+
+        let gpu_params: GpuParameters = from_key_values("backend=3d").unwrap();
+        assert_eq!(gpu_params.mode, GpuMode::ModeVirglRenderer);
+
+        let gpu_params: GpuParameters = from_key_values("backend=3D").unwrap();
+        assert_eq!(gpu_params.mode, GpuMode::ModeVirglRenderer);
+
+        let gpu_params: GpuParameters = from_key_values("backend=virglrenderer").unwrap();
+        assert_eq!(gpu_params.mode, GpuMode::ModeVirglRenderer);
+
+        let gpu_params: GpuParameters = from_key_values("backend=gfxstream").unwrap();
+        assert_eq!(gpu_params.mode, GpuMode::ModeGfxstream);
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_options_flags() {
+        macro_rules! assert_default {
+            ($p:ident.$a:ident) => {
+                assert_eq!($p.$a, GpuParameters::default().$a)
+            };
+        }
+
+        let gpu_params: GpuParameters = from_key_values("").unwrap();
+        assert_default!(gpu_params.renderer_use_egl);
+        assert_default!(gpu_params.renderer_use_gles);
+        assert_default!(gpu_params.renderer_use_glx);
+        assert_default!(gpu_params.renderer_use_surfaceless);
+        assert_default!(gpu_params.use_vulkan);
+        assert_default!(gpu_params.udmabuf);
+
+        let gpu_params: GpuParameters = from_key_values("egl=false,gles=false").unwrap();
+        assert_eq!(gpu_params.renderer_use_egl, false);
+        assert_eq!(gpu_params.renderer_use_gles, false);
+        assert_default!(gpu_params.renderer_use_glx);
+        assert_default!(gpu_params.renderer_use_surfaceless);
+        assert_default!(gpu_params.use_vulkan);
+        assert_default!(gpu_params.udmabuf);
+
+        let gpu_params: GpuParameters = from_key_values("surfaceless=false,glx").unwrap();
+        assert_default!(gpu_params.renderer_use_egl);
+        assert_default!(gpu_params.renderer_use_gles);
+        assert_eq!(gpu_params.renderer_use_surfaceless, false);
+        assert_eq!(gpu_params.renderer_use_glx, true);
+        assert_default!(gpu_params.use_vulkan);
+        assert_default!(gpu_params.udmabuf);
+
+        let gpu_params: GpuParameters = from_key_values("vulkan,udmabuf").unwrap();
+        assert_default!(gpu_params.renderer_use_egl);
+        assert_default!(gpu_params.renderer_use_gles);
+        assert_default!(gpu_params.renderer_use_glx);
+        assert_default!(gpu_params.renderer_use_surfaceless);
+        assert_eq!(gpu_params.use_vulkan, Some(true));
+        assert_eq!(gpu_params.udmabuf, true);
+
+        assert!(from_key_values::<GpuParameters>("egl=false,gles=true,foomatic").is_err());
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
     fn parse_gpu_options_default_vulkan_support() {
         {
-            let gpu_params: GpuParameters = parse_gpu_options("backend=virglrenderer").unwrap();
-            assert!(!gpu_params.use_vulkan);
+            let gpu_params: GpuParameters = from_key_values("backend=virglrenderer").unwrap();
+            assert_eq!(gpu_params.use_vulkan, None);
         }
 
         #[cfg(feature = "gfxstream")]
         {
-            let gpu_params: GpuParameters = parse_gpu_options("backend=gfxstream").unwrap();
-            assert!(gpu_params.use_vulkan);
+            let gpu_params: GpuParameters = from_key_values("backend=gfxstream").unwrap();
+            assert_eq!(gpu_params.use_vulkan, Some(true));
         }
     }
 
@@ -711,32 +491,32 @@ mod tests {
     #[test]
     fn parse_gpu_options_with_vulkan_specified() {
         {
-            let gpu_params: GpuParameters = parse_gpu_options("vulkan=true").unwrap();
-            assert!(gpu_params.use_vulkan);
+            let gpu_params: GpuParameters = from_key_values("vulkan=true").unwrap();
+            assert_eq!(gpu_params.use_vulkan, Some(true));
         }
         {
             let gpu_params: GpuParameters =
                 parse_gpu_options("backend=virglrenderer,vulkan=true").unwrap();
-            assert!(gpu_params.use_vulkan);
+            assert_eq!(gpu_params.use_vulkan, Some(true));
         }
         {
             let gpu_params: GpuParameters =
                 parse_gpu_options("vulkan=true,backend=virglrenderer").unwrap();
-            assert!(gpu_params.use_vulkan);
+            assert_eq!(gpu_params.use_vulkan, Some(true));
         }
         {
             let gpu_params: GpuParameters = parse_gpu_options("vulkan=false").unwrap();
-            assert!(!gpu_params.use_vulkan);
+            assert_eq!(gpu_params.use_vulkan, Some(false));
         }
         {
             let gpu_params: GpuParameters =
                 parse_gpu_options("backend=virglrenderer,vulkan=false").unwrap();
-            assert!(!gpu_params.use_vulkan);
+            assert_eq!(gpu_params.use_vulkan, Some(false));
         }
         {
             let gpu_params: GpuParameters =
                 parse_gpu_options("vulkan=false,backend=virglrenderer").unwrap();
-            assert!(!gpu_params.use_vulkan);
+            assert_eq!(gpu_params.use_vulkan, Some(false));
         }
         {
             assert!(parse_gpu_options("backend=virglrenderer,vulkan=invalid_value").is_err());
@@ -764,10 +544,39 @@ mod tests {
 
     #[cfg(feature = "gpu")]
     #[test]
+    fn parse_gpu_options_context_types() {
+        use rutabaga_gfx::RUTABAGA_CAPSET_CROSS_DOMAIN;
+        use rutabaga_gfx::RUTABAGA_CAPSET_VIRGL;
+
+        let gpu_params: GpuParameters =
+            from_key_values("context-types=virgl:cross-domain").unwrap();
+        assert_eq!(
+            gpu_params.context_mask,
+            (1 << RUTABAGA_CAPSET_VIRGL) | (1 << RUTABAGA_CAPSET_CROSS_DOMAIN)
+        );
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_options_cache() {
+        let gpu_params: GpuParameters =
+            from_key_values("cache-path=/path/to/cache,cache-size=16384").unwrap();
+        assert_eq!(gpu_params.cache_path, Some("/path/to/cache".into()));
+        assert_eq!(gpu_params.cache_size, Some("16384".into()));
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_options_pci_bar() {
+        let gpu_params: GpuParameters = from_key_values("pci-bar-size=0x100000").unwrap();
+        assert_eq!(gpu_params.pci_bar_size, 0x100000);
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
     fn parse_gpu_display_options_valid() {
         {
-            let gpu_params: GpuDisplayParameters =
-                parse_gpu_display_options("width=500,height=600").unwrap();
+            let gpu_params: GpuDisplayParameters = from_key_values("width=500,height=600").unwrap();
             assert_eq!(gpu_params.width, 500);
             assert_eq!(gpu_params.height, 600);
         }
@@ -777,16 +586,16 @@ mod tests {
     #[test]
     fn parse_gpu_display_options_invalid() {
         {
-            assert!(parse_gpu_display_options("width=500").is_err());
+            assert!(from_key_values::<GpuDisplayParameters>("width=500").is_err());
         }
         {
-            assert!(parse_gpu_display_options("height=500").is_err());
+            assert!(from_key_values::<GpuDisplayParameters>("height=500").is_err());
         }
         {
-            assert!(parse_gpu_display_options("width").is_err());
+            assert!(from_key_values::<GpuDisplayParameters>("width").is_err());
         }
         {
-            assert!(parse_gpu_display_options("blah").is_err());
+            assert!(from_key_values::<GpuDisplayParameters>("blah").is_err());
         }
     }
 
