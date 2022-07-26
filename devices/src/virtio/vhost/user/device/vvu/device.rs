@@ -223,11 +223,11 @@ impl Queue {
                     };
 
                     self.txq.write(&msg).context("Failed to send data")?;
+                    self.txq_notifier.notify();
                 }
                 Ordering::Less => bail!("sent bytes larger than message size"),
             }
         }
-        self.txq_notifier.notify();
 
         Ok(size)
     }
