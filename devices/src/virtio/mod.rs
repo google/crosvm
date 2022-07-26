@@ -15,6 +15,8 @@ mod interrupt;
 mod iommu;
 mod queue;
 mod rng;
+#[cfg(unix)]
+mod sys;
 #[cfg(feature = "tpm")]
 mod tpm;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]

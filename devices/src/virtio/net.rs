@@ -7,18 +7,19 @@ use std::io::Write;
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::raw::c_uint;
-use std::result;
 use std::sync::Arc;
 use std::thread;
 
 use base::error;
+#[cfg(windows)]
+use base::named_pipes::OverlappedWrapper;
 use base::warn;
 use base::AsRawDescriptor;
 use base::Error as SysError;
 use base::Event;
 use base::EventToken;
-use base::EventType;
 use base::RawDescriptor;
+use base::ReadNotifier;
 use base::WaitContext;
 use data_model::DataInit;
 use data_model::Le16;
@@ -48,7 +49,15 @@ use super::SignalableInterrupt;
 use super::VirtioDevice;
 use super::Writer;
 
+/// The maximum buffer size when segmentation offload is enabled. This
+/// includes the 12-byte virtio net header.
+/// http://docs.oasis-open.org/virtio/virtio/v1.0/virtio-v1.0.html#x1-1740003
+#[cfg(windows)]
+pub(crate) const MAX_BUFFER_SIZE: usize = 65562;
 const QUEUE_SIZE: u16 = 256;
+
+pub(crate) use super::sys::process_rx;
+pub(crate) use super::sys::process_tx;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -65,6 +74,12 @@ pub enum NetError {
     /// Descriptor chain was invalid.
     #[error("failed to valildate descriptor chain: {0}")]
     DescriptorChain(DescriptorError),
+    /// Adding the tap descriptor back to the event context failed.
+    #[error("failed to add tap trigger to event context: {0}")]
+    EventAddTap(SysError),
+    /// Removing the tap descriptor from the event context failed.
+    #[error("failed to remove tap trigger from event context: {0}")]
+    EventRemoveTap(SysError),
     /// Error reading data from control queue.
     #[error("failed to read control message data: {0}")]
     ReadCtrlData(io::Error),
@@ -72,8 +87,13 @@ pub enum NetError {
     #[error("failed to read control message header: {0}")]
     ReadCtrlHeader(io::Error),
     /// There are no more available descriptors to receive into.
+    #[cfg(unix)]
     #[error("no rx descriptors available")]
     RxDescriptorsExhausted,
+    /// Failure creating the Slirp loop.
+    #[cfg(windows)]
+    #[error("error creating Slirp: {0}")]
+    SlirpCreateError(net_util::Error),
     /// Enabling tap interface failed.
     #[error("failed to enable tap interface: {0}")]
     TapEnable(TapError),
@@ -111,6 +131,7 @@ pub enum NetError {
     #[error("failed to write control message ack: {0}")]
     WriteAck(io::Error),
     /// Writing to a buffer in the guest failed.
+    #[cfg(unix)]
     #[error("failed to write to guest buffer: {0}")]
     WriteBuffer(io::Error),
 }
@@ -158,105 +179,6 @@ pub struct VirtioNetConfig {
 
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for VirtioNetConfig {}
-
-pub fn process_rx<I: SignalableInterrupt, T: TapT>(
-    interrupt: &I,
-    rx_queue: &mut Queue,
-    mem: &GuestMemory,
-    mut tap: &mut T,
-) -> result::Result<(), NetError> {
-    let mut needs_interrupt = false;
-    let mut exhausted_queue = false;
-
-    // Read as many frames as possible.
-    loop {
-        let desc_chain = match rx_queue.peek(mem) {
-            Some(desc) => desc,
-            None => {
-                exhausted_queue = true;
-                break;
-            }
-        };
-
-        let index = desc_chain.index;
-        let bytes_written = match Writer::new(mem.clone(), desc_chain) {
-            Ok(mut writer) => {
-                match writer.write_from(&mut tap, writer.available_bytes()) {
-                    Ok(_) => {}
-                    Err(ref e) if e.kind() == io::ErrorKind::WriteZero => {
-                        warn!("net: rx: buffer is too small to hold frame");
-                        break;
-                    }
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        // No more to read from the tap.
-                        break;
-                    }
-                    Err(e) => {
-                        warn!("net: rx: failed to write slice: {}", e);
-                        return Err(NetError::WriteBuffer(e));
-                    }
-                };
-
-                writer.bytes_written() as u32
-            }
-            Err(e) => {
-                error!("net: failed to create Writer: {}", e);
-                0
-            }
-        };
-
-        if bytes_written > 0 {
-            rx_queue.pop_peeked(mem);
-            rx_queue.add_used(mem, index, bytes_written);
-            needs_interrupt = true;
-        }
-    }
-
-    if needs_interrupt {
-        rx_queue.trigger_interrupt(mem, interrupt);
-    }
-
-    if exhausted_queue {
-        Err(NetError::RxDescriptorsExhausted)
-    } else {
-        Ok(())
-    }
-}
-
-pub fn process_tx<I: SignalableInterrupt, T: TapT>(
-    interrupt: &I,
-    tx_queue: &mut Queue,
-    mem: &GuestMemory,
-    mut tap: &mut T,
-) {
-    while let Some(desc_chain) = tx_queue.pop(mem) {
-        let index = desc_chain.index;
-
-        match Reader::new(mem.clone(), desc_chain) {
-            Ok(mut reader) => {
-                let expected_count = reader.available_bytes();
-                match reader.read_to(&mut tap, expected_count) {
-                    Ok(count) => {
-                        // Tap writes must be done in one call. If the entire frame was not
-                        // written, it's an error.
-                        if count != expected_count {
-                            error!(
-                                "net: tx: wrote only {} bytes of {} byte frame",
-                                count, expected_count
-                            );
-                        }
-                    }
-                    Err(e) => error!("net: tx: failed to write frame to tap: {}", e),
-                }
-            }
-            Err(e) => error!("net: failed to create Reader: {}", e),
-        }
-
-        tx_queue.add_used(mem, index, 0);
-    }
-
-    tx_queue.trigger_interrupt(mem, interrupt);
-}
 
 pub fn process_ctrl<I: SignalableInterrupt, T: TapT>(
     interrupt: &I,
@@ -348,31 +270,31 @@ pub enum Token {
     Kill,
 }
 
-struct Worker<T: TapT> {
-    interrupt: Arc<Interrupt>,
-    mem: GuestMemory,
-    rx_queue: Queue,
-    tx_queue: Queue,
-    ctrl_queue: Option<Queue>,
-    tap: T,
+pub(super) struct Worker<T: TapT> {
+    pub(super) interrupt: Arc<Interrupt>,
+    pub(super) mem: GuestMemory,
+    pub(super) rx_queue: Queue,
+    pub(super) tx_queue: Queue,
+    pub(super) ctrl_queue: Option<Queue>,
+    pub(super) tap: T,
+    #[cfg(windows)]
+    pub(super) overlapped_wrapper: OverlappedWrapper,
+    #[cfg(windows)]
+    pub(super) rx_buf: [u8; MAX_BUFFER_SIZE],
+    #[cfg(windows)]
+    pub(super) rx_count: usize,
+    #[cfg(windows)]
+    pub(super) deferred_rx: bool,
     acked_features: u64,
     vq_pairs: u16,
+    #[allow(dead_code)]
     kill_evt: Event,
 }
 
 impl<T> Worker<T>
 where
-    T: TapT,
+    T: TapT + ReadNotifier,
 {
-    fn process_rx(&mut self) -> result::Result<(), NetError> {
-        process_rx(
-            self.interrupt.as_ref(),
-            &mut self.rx_queue,
-            &self.mem,
-            &mut self.tap,
-        )
-    }
-
     fn process_tx(&mut self) {
         process_tx(
             self.interrupt.as_ref(),
@@ -405,7 +327,17 @@ where
         ctrl_queue_evt: Option<Event>,
     ) -> Result<(), NetError> {
         let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
-            (&self.tap, Token::RxTap),
+            // This doesn't use get_read_notifier() because of overlapped io; we
+            // have overlapped wrapper separate from the TAP so that we can pass
+            // the overlapped wrapper into the read function. This overlapped
+            // wrapper's event is where we get the read notification.
+            #[cfg(windows)]
+            (
+                self.overlapped_wrapper.get_h_event_ref().unwrap(),
+                Token::RxTap,
+            ),
+            #[cfg(unix)]
+            (self.tap.get_read_notifier(), Token::RxTap),
             (&rx_queue_evt, Token::RxQueue),
             (&tx_queue_evt, Token::TxQueue),
             (&self.kill_evt, Token::Kill),
@@ -429,27 +361,17 @@ where
             let events = wait_ctx.wait().map_err(NetError::WaitError)?;
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
-                    Token::RxTap => match self.process_rx() {
-                        Ok(()) => {}
-                        Err(NetError::RxDescriptorsExhausted) => {
-                            wait_ctx
-                                .modify(&self.tap, EventType::None, Token::RxTap)
-                                .map_err(NetError::WaitContextDisableTap)?;
-                            tap_polling_enabled = false;
-                        }
-                        Err(e) => return Err(e),
-                    },
+                    Token::RxTap => {
+                        self.handle_rx_token(&wait_ctx)?;
+                        tap_polling_enabled = false;
+                    }
                     Token::RxQueue => {
                         if let Err(e) = rx_queue_evt.read() {
                             error!("net: error reading rx queue Event: {}", e);
                             break 'wait;
                         }
-                        if !tap_polling_enabled {
-                            wait_ctx
-                                .modify(&self.tap, EventType::Read, Token::RxTap)
-                                .map_err(NetError::WaitContextEnableTap)?;
-                            tap_polling_enabled = true;
-                        }
+                        self.handle_rx_queue(&wait_ctx, tap_polling_enabled)?;
+                        tap_polling_enabled = true;
                     }
                     Token::TxQueue => {
                         if let Err(e) = tx_queue_evt.read() {
@@ -499,20 +421,22 @@ pub fn build_config(vq_pairs: u16, mtu: u16) -> VirtioNetConfig {
     }
 }
 
-pub struct Net<T: TapT> {
-    queue_sizes: Box<[u16]>,
-    workers_kill_evt: Vec<Event>,
-    kill_evts: Vec<Event>,
-    worker_threads: Vec<thread::JoinHandle<Worker<T>>>,
-    taps: Vec<T>,
-    avail_features: u64,
-    acked_features: u64,
-    mtu: u16,
+pub struct Net<T: TapT + ReadNotifier> {
+    pub(super) queue_sizes: Box<[u16]>,
+    pub(super) workers_kill_evt: Vec<Event>,
+    pub(super) kill_evts: Vec<Event>,
+    pub(super) worker_threads: Vec<thread::JoinHandle<Worker<T>>>,
+    pub(super) taps: Vec<T>,
+    pub(super) avail_features: u64,
+    pub(super) acked_features: u64,
+    pub(super) mtu: u16,
+    #[cfg(windows)]
+    pub(super) slirp_kill_evt: Option<Event>,
 }
 
 impl<T> Net<T>
 where
-    T: TapT,
+    T: TapT + ReadNotifier,
 {
     /// Create a new virtio network device with the given IP address and
     /// netmask.
@@ -562,6 +486,12 @@ where
             mtu = std::cmp::min(mtu, tap.mtu().map_err(NetError::TapGetMtu)?);
         }
 
+        // Indicate that the TAP device supports a number of features, such as:
+        // Partial checksum offload
+        // TSO (TCP segmentation offload)
+        // UFO (UDP fragmentation offload)
+        // See the network device feature bits section for further details:
+        //     http://docs.oasis-open.org/virtio/virtio/v1.1/csprd01/virtio-v1.1-csprd01.html#x1-1970003
         let mut avail_features = base_features
             | 1 << virtio_net::VIRTIO_NET_F_GUEST_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_CSUM
@@ -595,6 +525,8 @@ where
             avail_features,
             acked_features: 0u64,
             mtu,
+            #[cfg(windows)]
+            slirp_kill_evt: None,
         })
     }
 }
@@ -640,7 +572,7 @@ pub fn validate_and_configure_tap<T: TapT>(tap: &T, vq_pairs: u16) -> Result<(),
 
 impl<T> Drop for Net<T>
 where
-    T: TapT,
+    T: TapT + ReadNotifier,
 {
     fn drop(&mut self) {
         let len = self.kill_evts.len();
@@ -653,6 +585,12 @@ where
                 }
             }
         }
+        #[cfg(windows)]
+        {
+            if let Some(slirp_kill_evt) = self.slirp_kill_evt.take() {
+                let _ = slirp_kill_evt.write(1);
+            }
+        }
 
         let len = self.worker_threads.len();
         for _ in 0..len {
@@ -663,7 +601,7 @@ where
 
 impl<T> VirtioDevice for Net<T>
 where
-    T: 'static + TapT,
+    T: 'static + TapT + ReadNotifier,
 {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut keep_rds = Vec::new();
@@ -733,9 +671,10 @@ where
     ) {
         if queues.len() != self.queue_sizes.len() || queue_evts.len() != self.queue_sizes.len() {
             error!(
-                "net: expected {} queues, got {}",
+                "net: expected {} queues, got {} queues and {} evts",
                 self.queue_sizes.len(),
-                queues.len()
+                queues.len(),
+                queue_evts.len()
             );
             return;
         }
@@ -776,6 +715,8 @@ where
             } else {
                 None
             };
+            #[cfg(windows)]
+            let overlapped_wrapper = OverlappedWrapper::new(true).unwrap();
             let worker_result = thread::Builder::new()
                 .name(format!("virtio_net worker {}", i))
                 .spawn(move || {
@@ -786,8 +727,16 @@ where
                         tx_queue,
                         ctrl_queue,
                         tap,
+                        #[cfg(windows)]
+                        overlapped_wrapper,
                         acked_features,
                         vq_pairs: pairs,
+                        #[cfg(windows)]
+                        rx_buf: [0u8; MAX_BUFFER_SIZE],
+                        #[cfg(windows)]
+                        rx_count: 0,
+                        #[cfg(windows)]
+                        deferred_rx: false,
                         kill_evt,
                     };
                     let result = worker.run(rx_queue_evt, tx_queue_evt, ctrl_queue_evt);

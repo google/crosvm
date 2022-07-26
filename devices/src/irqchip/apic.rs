@@ -19,12 +19,12 @@ use std::convert::TryInto;
 use std::time::Duration;
 use std::time::Instant;
 
+use base::error;
+use base::warn;
 #[cfg(test)]
 use base::FakeTimer as Timer;
 #[cfg(not(test))]
 use base::Timer;
-// TODO(srichman): Rate-limit error messages?
-use base::{error, warn};
 use bit_field::*;
 use hypervisor::DeliveryMode;
 use hypervisor::DeliveryStatus;

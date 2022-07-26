@@ -35,7 +35,11 @@ use libc::EINVAL;
 
 // TODO(b:236297362): build it on windows as weil.
 #[cfg(all(unix, feature = "audio"))]
-pub use self::ac97::{Ac97Backend, Ac97Dev, Ac97Parameters};
+pub use self::ac97::Ac97Backend;
+#[cfg(all(unix, feature = "audio"))]
+pub use self::ac97::Ac97Dev;
+#[cfg(all(unix, feature = "audio"))]
+pub use self::ac97::Ac97Parameters;
 #[cfg(unix)]
 pub use self::coiommu::CoIommuDev;
 #[cfg(unix)]

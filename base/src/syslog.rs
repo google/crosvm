@@ -54,8 +54,8 @@ use std::io;
 use std::io::Write;
 
 use chrono::Local;
-// Reexports
-pub use env_logger::{self, fmt};
+pub use env_logger::fmt;
+pub use env_logger::{self};
 pub use log::*;
 use once_cell::sync::OnceCell;
 use remain::sorted;

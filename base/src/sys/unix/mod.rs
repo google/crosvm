@@ -68,7 +68,9 @@ pub use descriptor::*;
 // EventFd is deprecated. Use Event instead. EventFd will be removed as soon as rest of the current
 // users migrate.
 // TODO(b:231344063): Remove EventFd.
-pub use eventfd::{EventFd as Event, EventFd, EventReadResult};
+pub use eventfd::EventFd as Event;
+pub use eventfd::EventFd;
+pub use eventfd::EventReadResult;
 pub use file_flags::*;
 pub use file_traits::AsRawFds;
 pub use file_traits::FileAllocate;

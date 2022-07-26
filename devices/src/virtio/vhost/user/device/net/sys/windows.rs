@@ -285,12 +285,13 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         let _ = net_ex.set(ex.clone());
     });
 
-    if sandbox::is_sandbox_target() {
-        sandbox::TargetServices::get()
-            .expect("failed to get target services")
-            .unwrap()
-            .lower_token();
-    }
+    // TODO(b/213170185): Uncomment once sandbox is upstreamed.
+    // if sandbox::is_sandbox_target() {
+    //     sandbox::TargetServices::get()
+    //         .expect("failed to get target services")
+    //         .unwrap()
+    //         .lower_token();
+    // }
 
     if let Err(e) = ex.run_until(handler.run(vhost_user_tube, exit_event, &ex)) {
         bail!("error occurred: {}", e);
