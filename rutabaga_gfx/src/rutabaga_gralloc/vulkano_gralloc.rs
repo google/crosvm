@@ -11,7 +11,7 @@
 
 use std::{collections::BTreeMap as Map, convert::TryInto, sync::Arc};
 
-use base::{MappedRegion, RawDescriptor};
+use base::MappedRegion;
 
 use crate::rutabaga_gralloc::gralloc::{Gralloc, ImageAllocationInfo, ImageMemoryRequirements};
 use crate::rutabaga_utils::*;
@@ -442,10 +442,6 @@ impl Gralloc for VulkanoGralloc {
             mapped_memory,
             size.try_into()?,
         )))
-    }
-
-    fn try_as_raw_descriptors(&self) -> RutabagaResult<Vec<RawDescriptor>> {
-        Err(RutabagaError::Unsupported)
     }
 }
 

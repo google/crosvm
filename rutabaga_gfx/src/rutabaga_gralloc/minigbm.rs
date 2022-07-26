@@ -175,14 +175,6 @@ impl Gralloc for MinigbmDevice {
             handle_type: RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
         })
     }
-
-    fn try_as_raw_descriptors(&self) -> RutabagaResult<Vec<RawDescriptor>> {
-        if self.last_buffer.is_none() {
-            Ok(vec![self.minigbm_device.fd.as_raw_descriptor()])
-        } else {
-            Err(RutabagaError::BaseError(BaseError::new(libc::EBUSY)))
-        }
-    }
 }
 
 /// An allocation from a `MinigbmDevice`.

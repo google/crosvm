@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use devices::virtio::vhost::user::vmm::Gpu as VhostUserGpu;
 use serde::{Deserialize, Serialize};
 
-use crate::crosvm::config::{Config, JailConfig, VhostUserOption};
+use crate::crosvm::config::{Config, VhostUserOption};
 
 use super::*;
 
@@ -37,83 +37,6 @@ pub fn create_vhost_user_gpu_device(
         // no sandbox here because virtqueue handling is exported to a different process.
         jail: None,
     })
-}
-
-pub fn gpu_jail(jail_config: &Option<JailConfig>, policy: &str) -> Result<Option<Minijail>> {
-    match simple_jail_ext(jail_config, policy, Some(32768))? {
-        Some(mut jail) => {
-            // Create a tmpfs in the device's root directory so that we can bind mount the
-            // dri directory into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
-            jail.mount_with_data(
-                Path::new("none"),
-                Path::new("/"),
-                "tmpfs",
-                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
-                "size=67108864",
-            )?;
-
-            // Device nodes required for DRM.
-            let sys_dev_char_path = Path::new("/sys/dev/char");
-            jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)?;
-            let sys_devices_path = Path::new("/sys/devices");
-            jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
-
-            let drm_dri_path = Path::new("/dev/dri");
-            if drm_dri_path.exists() {
-                jail.mount_bind(drm_dri_path, drm_dri_path, false)?;
-            }
-
-            // If the ARM specific devices exist on the host, bind mount them in.
-            let mali0_path = Path::new("/dev/mali0");
-            if mali0_path.exists() {
-                jail.mount_bind(mali0_path, mali0_path, true)?;
-            }
-
-            let pvr_sync_path = Path::new("/dev/pvr_sync");
-            if pvr_sync_path.exists() {
-                jail.mount_bind(pvr_sync_path, pvr_sync_path, true)?;
-            }
-
-            // If the udmabuf driver exists on the host, bind mount it in.
-            let udmabuf_path = Path::new("/dev/udmabuf");
-            if udmabuf_path.exists() {
-                jail.mount_bind(udmabuf_path, udmabuf_path, true)?;
-            }
-
-            // Libraries that are required when mesa drivers are dynamically loaded.
-            jail_mount_bind_if_exists(
-                &mut jail,
-                &[
-                    "/usr/lib",
-                    "/usr/lib64",
-                    "/lib",
-                    "/lib64",
-                    "/usr/share/drirc.d",
-                    "/usr/share/glvnd",
-                    "/usr/share/vulkan",
-                ],
-            )?;
-
-            // pvr driver requires read access to /proc/self/task/*/comm.
-            let proc_path = Path::new("/proc");
-            jail.mount(
-                proc_path,
-                proc_path,
-                "proc",
-                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_RDONLY) as usize,
-            )?;
-
-            // To enable perfetto tracing, we need to give access to the perfetto service IPC
-            // endpoints.
-            let perfetto_path = Path::new("/run/perfetto");
-            if perfetto_path.exists() {
-                jail.mount_bind(perfetto_path, perfetto_path, true)?;
-            }
-
-            Ok(Some(jail))
-        }
-        None => Ok(None),
-    }
 }
 
 pub struct GpuCacheInfo<'a> {

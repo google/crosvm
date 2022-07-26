@@ -845,18 +845,8 @@ pub fn create_wayland_device(
     let dev = virtio::Wl::new(features, wayland_socket_paths.clone(), resource_bridge)
         .context("failed to create wayland device")?;
 
-    let jail = match simple_jail(jail_config, "wl_device")? {
+    let jail = match gpu_jail(jail_config, "wl_device")? {
         Some(mut jail) => {
-            // Create a tmpfs in the device's root directory so that we can bind mount the wayland
-            // socket directory into it. The size=67108864 is size=64*1024*1024 or size=64MB.
-            jail.mount_with_data(
-                Path::new("none"),
-                Path::new("/"),
-                "tmpfs",
-                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
-                "size=67108864",
-            )?;
-
             // Bind mount the wayland socket's directory into jail's root. This is necessary since
             // each new wayland context must open() the socket. If the wayland socket is ever
             // destroyed and remade in the same host directory, new connections will be possible
