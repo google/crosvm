@@ -480,9 +480,9 @@ fn create_vmwdt_node(fdt: &mut FdtWriter, vmwdt_cfg: VmWdtConfig) -> Result<()> 
     let vmwdt_name = format!("vmwdt@{:x}", vmwdt_cfg.base);
     let reg = [vmwdt_cfg.base, vmwdt_cfg.size];
     let vmwdt_node = fdt.begin_node(&vmwdt_name)?;
-    fdt.property_string("compatible", "qemu,vm-watchdog")?;
+    fdt.property_string("compatible", "qemu,vcpu-stall-detector")?;
     fdt.property_array_u64("reg", &reg)?;
-    fdt.property_u32("clock", vmwdt_cfg.clock_hz)?;
+    fdt.property_u32("clock-frequency", vmwdt_cfg.clock_hz)?;
     fdt.property_u32("timeout-sec", vmwdt_cfg.timeout_sec)?;
     fdt.end_node(vmwdt_node)?;
     Ok(())
