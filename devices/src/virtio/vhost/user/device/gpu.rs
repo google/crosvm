@@ -411,8 +411,6 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         wayland_sock,
     } = opts;
 
-    base::syslog::init().context("failed to initialize syslog")?;
-
     let wayland_paths: BTreeMap<_, _> = wayland_sock.into_iter().collect();
 
     let resource_bridge_listeners = resource_bridge

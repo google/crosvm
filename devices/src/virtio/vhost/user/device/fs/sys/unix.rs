@@ -83,8 +83,6 @@ fn jail_and_fork(
 /// Starts a vhost-user fs device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn start_device(opts: Options) -> anyhow::Result<()> {
-    base::syslog::init().context("Failed to initialize syslog")?;
-
     let ex = Executor::new().context("Failed to create executor")?;
     let fs_device = Box::new(FsBackend::new(&ex, &opts.tag)?);
 
