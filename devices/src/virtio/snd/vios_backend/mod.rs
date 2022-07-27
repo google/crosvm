@@ -10,7 +10,6 @@ pub use self::shm_streams::*;
 pub use self::shm_vios::*;
 
 pub mod streams;
-
 mod worker;
 
 use std::io::Error as IoError;
@@ -33,8 +32,8 @@ use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 use worker::*;
 
-use super::layout::*;
 use crate::virtio::copy_config;
+use crate::virtio::device_constants::snd::virtio_snd_config;
 use crate::virtio::DescriptorError;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;

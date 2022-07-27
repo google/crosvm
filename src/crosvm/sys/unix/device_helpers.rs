@@ -43,7 +43,6 @@ use devices::virtio::vhost::user::vmm::Fs as VhostUserFs;
 use devices::virtio::vhost::user::vmm::Gpu as VhostUserGpu;
 use devices::virtio::vhost::user::vmm::Mac80211Hwsim as VhostUserMac80211Hwsim;
 use devices::virtio::vhost::user::vmm::Net as VhostUserNet;
-#[cfg(feature = "audio")]
 use devices::virtio::vhost::user::vmm::Snd as VhostUserSnd;
 use devices::virtio::vhost::user::vmm::Vsock as VhostUserVsock;
 use devices::virtio::vhost::user::vmm::Wl as VhostUserWl;
@@ -315,7 +314,6 @@ pub fn create_vhost_user_mac80211_hwsim_device(
     })
 }
 
-#[cfg(feature = "audio")]
 pub fn create_vhost_user_snd_device(
     protected_vm: ProtectionType,
     option: &VhostUserOption,

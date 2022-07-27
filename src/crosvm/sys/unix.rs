@@ -555,7 +555,6 @@ fn create_virtio_devices(
         )?);
     }
 
-    #[cfg(feature = "audio")]
     for vhost_user_snd in &cfg.vhost_user_snd {
         devs.push(create_vhost_user_snd_device(
             cfg.protected_vm,

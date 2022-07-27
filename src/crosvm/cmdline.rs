@@ -1192,7 +1192,6 @@ pub struct RunCommand {
     #[argh(option, arg_name = "SOCKET_PATH")]
     /// path to a socket for vhost-user net
     pub vhost_user_net: Vec<VhostUserOption>,
-    #[cfg(feature = "audio")]
     #[argh(option, arg_name = "SOCKET_PATH")]
     /// path to a socket for vhost-user snd
     pub vhost_user_snd: Vec<VhostUserOption>,
@@ -1383,8 +1382,8 @@ impl TryFrom<RunCommand> for super::config::Config {
         {
             cfg.ac97_parameters = cmd.ac97;
             cfg.sound = cmd.sound;
-            cfg.vhost_user_snd = cmd.vhost_user_snd;
         }
+        cfg.vhost_user_snd = cmd.vhost_user_snd;
 
         for serial_params in cmd.serial_parameters {
             super::sys::config::check_serial_params(&serial_params)?;

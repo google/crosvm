@@ -38,6 +38,7 @@ use vm_memory::GuestMemory;
 
 use crate::virtio::async_utils;
 use crate::virtio::copy_config;
+use crate::virtio::device_constants::snd::virtio_snd_config;
 use crate::virtio::snd::common::*;
 use crate::virtio::snd::common_backend::async_funcs::*;
 use crate::virtio::snd::constants::*;

@@ -14,7 +14,7 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
-use crate::virtio::snd::layout::virtio_snd_config;
+use crate::virtio::device_constants::snd::virtio_snd_config;
 use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
 use crate::virtio::vhost::user::vmm::Error;
 use crate::virtio::vhost::user::vmm::Result;

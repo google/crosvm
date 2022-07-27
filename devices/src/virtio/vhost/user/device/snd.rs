@@ -27,6 +27,7 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio::copy_config;
+use crate::virtio::device_constants::snd::virtio_snd_config;
 use crate::virtio::snd::common_backend::async_funcs::handle_ctrl_queue;
 use crate::virtio::snd::common_backend::async_funcs::handle_pcm_queue;
 use crate::virtio::snd::common_backend::async_funcs::send_pcm_response_worker;
@@ -37,7 +38,6 @@ use crate::virtio::snd::common_backend::SndData;
 use crate::virtio::snd::common_backend::StreamInfo;
 use crate::virtio::snd::common_backend::MAX_QUEUE_NUM;
 use crate::virtio::snd::common_backend::MAX_VRING_LEN;
-use crate::virtio::snd::layout::virtio_snd_config;
 use crate::virtio::snd::parameters::Parameters;
 use crate::virtio::snd::sys::create_cras_stream_source_generators;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;

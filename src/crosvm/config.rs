@@ -1407,7 +1407,6 @@ pub struct Config {
     pub vhost_user_gpu: Vec<VhostUserOption>,
     pub vhost_user_mac80211_hwsim: Option<VhostUserOption>,
     pub vhost_user_net: Vec<VhostUserOption>,
-    #[cfg(feature = "audio")]
     pub vhost_user_snd: Vec<VhostUserOption>,
     pub vhost_user_vsock: Vec<VhostUserOption>,
     pub vhost_user_wl: Option<VhostUserWlOption>,
@@ -1597,7 +1596,6 @@ impl Default for Config {
             vhost_user_gpu: Vec::new(),
             vhost_user_mac80211_hwsim: None,
             vhost_user_net: Vec::new(),
-            #[cfg(feature = "audio")]
             vhost_user_snd: Vec::new(),
             vhost_user_vsock: Vec::new(),
             vhost_user_wl: None,

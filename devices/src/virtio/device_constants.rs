@@ -6,8 +6,11 @@
 //! frontend devices without compile-time dependencies on their corresponding
 //! backend devices.
 
+use data_model::DataInit;
+use data_model::Le32;
+
 pub mod gpu {
-    use data_model::{DataInit, Le32};
+    use super::*;
 
     // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
     // there to be fewer of.
@@ -34,4 +37,18 @@ pub mod gpu {
     }
 
     unsafe impl DataInit for virtio_gpu_config {}
+}
+
+pub mod snd {
+    use super::*;
+
+    #[derive(Copy, Clone, Default)]
+    #[repr(C, packed)]
+    pub struct virtio_snd_config {
+        pub jacks: Le32,
+        pub streams: Le32,
+        pub chmaps: Le32,
+    }
+    // Safe because it only has data and has no implicit padding.
+    unsafe impl DataInit for virtio_snd_config {}
 }

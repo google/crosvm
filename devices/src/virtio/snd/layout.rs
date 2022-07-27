@@ -9,16 +9,6 @@ use data_model::Le64;
 use crate::virtio::snd::constants::VIRTIO_SND_CHMAP_MAX_SIZE;
 
 #[derive(Copy, Clone, Default)]
-#[repr(C, packed)]
-pub struct virtio_snd_config {
-    pub jacks: Le32,
-    pub streams: Le32,
-    pub chmaps: Le32,
-}
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_config {}
-
-#[derive(Copy, Clone, Default)]
 #[repr(C)]
 pub struct virtio_snd_hdr {
     pub code: Le32,
