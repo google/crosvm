@@ -65,7 +65,6 @@ use libc::ENOTSUP;
 use libc::ERANGE;
 use remain::sorted;
 use resources::Alloc;
-use resources::MmioType;
 use resources::SystemAllocator;
 use rutabaga_gfx::RutabagaGralloc;
 use rutabaga_gfx::RutabagaHandle;
@@ -352,7 +351,7 @@ impl VmMemoryDestination {
     pub fn allocate(self, allocator: &mut SystemAllocator, size: u64) -> Result<GuestAddress> {
         let addr = match self {
             VmMemoryDestination::ExistingAllocation { allocation, offset } => allocator
-                .mmio_allocator(MmioType::High)
+                .mmio_allocator_any()
                 .address_from_pci_offset(allocation, offset, size)
                 .map_err(|_e| SysError::new(EINVAL))?,
             VmMemoryDestination::GuestPhysicalAddress(gpa) => gpa,

@@ -22,7 +22,6 @@ use hypervisor::Vm;
 use libc::EINVAL;
 use libc::ERANGE;
 use resources::Alloc;
-use resources::MmioType;
 use resources::SystemAllocator;
 use serde::Deserialize;
 use serde::Serialize;
@@ -145,14 +144,12 @@ impl FsMappingRequest {
                 func,
                 bar,
             }) => {
-                match allocator
-                    .mmio_allocator(MmioType::High)
-                    .get(&Alloc::PciBar {
-                        bus,
-                        dev,
-                        func,
-                        bar,
-                    }) {
+                match allocator.mmio_allocator_any().get(&Alloc::PciBar {
+                    bus,
+                    dev,
+                    func,
+                    bar,
+                }) {
                     Some((range, _)) => {
                         let size: usize = match range.len().and_then(|x| x.try_into().ok()) {
                             Some(v) => v,
