@@ -5,32 +5,46 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
 use argh::FromArgs;
-use base::{error, warn, Event};
-use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor};
+use base::error;
+use base::warn;
+use base::Event;
+use cros_async::sync::Mutex as AsyncMutex;
+use cros_async::EventAsync;
+use cros_async::Executor;
 use data_model::DataInit;
 use futures::channel::mpsc;
-use futures::future::{AbortHandle, Abortable};
+use futures::future::AbortHandle;
+use futures::future::Abortable;
 use hypervisor::ProtectionType;
 use once_cell::sync::OnceCell;
 use sync::Mutex;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 
-use crate::virtio::snd::common_backend::{
-    async_funcs::{handle_ctrl_queue, handle_pcm_queue, send_pcm_response_worker},
-    hardcoded_snd_data, hardcoded_virtio_snd_config, PcmResponse, SndData, StreamInfo,
-    MAX_QUEUE_NUM, MAX_VRING_LEN,
-};
+use crate::virtio::copy_config;
+use crate::virtio::snd::common_backend::async_funcs::handle_ctrl_queue;
+use crate::virtio::snd::common_backend::async_funcs::handle_pcm_queue;
+use crate::virtio::snd::common_backend::async_funcs::send_pcm_response_worker;
+use crate::virtio::snd::common_backend::hardcoded_snd_data;
+use crate::virtio::snd::common_backend::hardcoded_virtio_snd_config;
+use crate::virtio::snd::common_backend::PcmResponse;
+use crate::virtio::snd::common_backend::SndData;
+use crate::virtio::snd::common_backend::StreamInfo;
+use crate::virtio::snd::common_backend::MAX_QUEUE_NUM;
+use crate::virtio::snd::common_backend::MAX_VRING_LEN;
 use crate::virtio::snd::layout::virtio_snd_config;
 use crate::virtio::snd::parameters::Parameters;
 use crate::virtio::snd::sys::create_cras_stream_source_generators;
-use crate::virtio::vhost::user::device::{
-    handler::{sys::Doorbell, VhostUserBackend},
-    listener::{sys::VhostUserListener, VhostUserListenerTrait},
-};
-use crate::virtio::{self, copy_config};
+use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
+use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
+use crate::virtio::{self};
 
 static SND_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 

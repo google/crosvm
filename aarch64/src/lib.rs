@@ -10,28 +10,52 @@ use std::collections::BTreeMap;
 use std::io;
 use std::sync::Arc;
 
-use arch::{
-    get_serial_cmdline, GetSerialCmdlineError, MsrConfig, MsrExitHandlerError, RunnableLinuxVm,
-    VmComponents, VmImage,
-};
-use base::{Event, MemoryMappingBuilder, SendTube};
-use devices::serial_device::{SerialHardware, SerialParameters};
-use devices::vmwdt::{VMWDT_DEFAULT_CLOCK_HZ, VMWDT_DEFAULT_TIMEOUT_SEC};
-use devices::{
-    Bus, BusDeviceObj, BusError, IrqChip, IrqChipAArch64, IrqEventSource, PciAddress,
-    PciConfigMmio, PciDevice, Serial,
-};
-use hypervisor::{
-    DeviceKind, Hypervisor, HypervisorCap, ProtectionType, VcpuAArch64, VcpuFeature,
-    VcpuInitAArch64, VcpuRegAArch64, Vm, VmAArch64,
-};
+use arch::get_serial_cmdline;
+use arch::GetSerialCmdlineError;
+use arch::MsrConfig;
+use arch::MsrExitHandlerError;
+use arch::RunnableLinuxVm;
+use arch::VmComponents;
+use arch::VmImage;
+use base::Event;
+use base::MemoryMappingBuilder;
+use base::SendTube;
+use devices::serial_device::SerialHardware;
+use devices::serial_device::SerialParameters;
+use devices::vmwdt::VMWDT_DEFAULT_CLOCK_HZ;
+use devices::vmwdt::VMWDT_DEFAULT_TIMEOUT_SEC;
+use devices::Bus;
+use devices::BusDeviceObj;
+use devices::BusError;
+use devices::IrqChip;
+use devices::IrqChipAArch64;
+use devices::IrqEventSource;
+use devices::PciAddress;
+use devices::PciConfigMmio;
+use devices::PciDevice;
+use devices::Serial;
+use hypervisor::DeviceKind;
+use hypervisor::Hypervisor;
+use hypervisor::HypervisorCap;
+use hypervisor::ProtectionType;
+use hypervisor::VcpuAArch64;
+use hypervisor::VcpuFeature;
+use hypervisor::VcpuInitAArch64;
+use hypervisor::VcpuRegAArch64;
+use hypervisor::Vm;
+use hypervisor::VmAArch64;
 use minijail::Minijail;
 use remain::sorted;
-use resources::{AddressRange, SystemAllocator, SystemAllocatorConfig};
+use resources::AddressRange;
+use resources::SystemAllocator;
+use resources::SystemAllocatorConfig;
 use sync::Mutex;
 use thiserror::Error;
-use vm_control::{BatControl, BatteryType};
-use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
+use vm_control::BatControl;
+use vm_control::BatteryType;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+use vm_memory::GuestMemoryError;
 
 mod fdt;
 

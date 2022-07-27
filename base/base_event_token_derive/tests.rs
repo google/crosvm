@@ -3,7 +3,8 @@
 // found in the LICENSE file.
 
 use quote::quote;
-use syn::{parse_quote, DeriveInput};
+use syn::parse_quote;
+use syn::DeriveInput;
 
 #[test]
 fn test_variant_bits() {

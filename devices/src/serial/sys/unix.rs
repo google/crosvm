@@ -4,7 +4,10 @@
 
 use std::io;
 
-use base::{Event, FileSync, RawDescriptor, Result};
+use base::Event;
+use base::FileSync;
+use base::RawDescriptor;
+use base::Result;
 use hypervisor::ProtectionType;
 
 use crate::serial_device::SerialInput;

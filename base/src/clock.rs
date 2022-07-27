@@ -5,9 +5,11 @@
 // Utility file to provide a fake clock object representing current time, and a timer driven by
 // that time.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
-use crate::{descriptor::AsRawDescriptor, Event};
+use crate::descriptor::AsRawDescriptor;
+use crate::Event;
 
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Clock {}

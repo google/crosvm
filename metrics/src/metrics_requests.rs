@@ -4,8 +4,10 @@
 
 //! Structs used to transport log requests between client processes and the logging controller
 
+use serde::Deserialize;
+use serde::Serialize;
+
 use crate::MetricEventType;
-use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LogMetric {

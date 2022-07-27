@@ -2,17 +2,25 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::event_ring::{Error as EventRingError, EventRing};
-use super::xhci_abi::{
-    CommandCompletionEventTrb, Error as TrbError, PortStatusChangeEventTrb, TransferEventTrb, Trb,
-    TrbCast, TrbCompletionCode, TrbType,
-};
-use super::xhci_regs::*;
-use crate::register_space::Register;
-use base::{Error as SysError, Event};
+use base::Error as SysError;
+use base::Event;
 use remain::sorted;
 use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+
+use super::event_ring::Error as EventRingError;
+use super::event_ring::EventRing;
+use super::xhci_abi::CommandCompletionEventTrb;
+use super::xhci_abi::Error as TrbError;
+use super::xhci_abi::PortStatusChangeEventTrb;
+use super::xhci_abi::TransferEventTrb;
+use super::xhci_abi::Trb;
+use super::xhci_abi::TrbCast;
+use super::xhci_abi::TrbCompletionCode;
+use super::xhci_abi::TrbType;
+use super::xhci_regs::*;
+use crate::register_space::Register;
 
 #[sorted]
 #[derive(Error, Debug)]

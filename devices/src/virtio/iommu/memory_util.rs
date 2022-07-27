@@ -6,12 +6,14 @@
 
 use std::convert::TryInto;
 use std::sync::Arc;
-use sync::Mutex;
 
-use anyhow::{bail, Context};
+use anyhow::bail;
+use anyhow::Context;
 use base::Protection;
 use data_model::DataInit;
-use vm_memory::{GuestAddress, GuestMemory};
+use sync::Mutex;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 use crate::virtio::iommu::IpcMemoryMapper;
 

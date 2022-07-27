@@ -7,13 +7,21 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::thread;
 
-use base::{error, Event, RawDescriptor};
+use base::error;
+use base::Event;
+use base::RawDescriptor;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio::snd::layout::virtio_snd_config;
-use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, Error, Result};
-use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice};
+use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
+use crate::virtio::vhost::user::vmm::Error;
+use crate::virtio::vhost::user::vmm::Result;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::VirtioDevice;
 
 // A vhost-user snd device.
 pub struct Snd {

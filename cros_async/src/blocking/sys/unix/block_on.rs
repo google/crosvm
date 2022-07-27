@@ -2,20 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    future::Future,
-    ptr,
-    sync::{
-        atomic::{AtomicI32, Ordering},
-        Arc,
-    },
-    task::{Context, Poll},
-};
+use std::future::Future;
+use std::ptr;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
 
-use futures::{
-    pin_mut,
-    task::{waker_ref, ArcWake},
-};
+use futures::pin_mut;
+use futures::task::waker_ref;
+use futures::task::ArcWake;
 
 // Randomly generated values to indicate the state of the current thread.
 const WAITING: i32 = 0x25de_74d1;
@@ -111,20 +108,18 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
 
 #[cfg(test)]
 mod test {
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::mpsc::channel;
+    use std::sync::mpsc::Sender;
+    use std::sync::Arc;
+    use std::task::Context;
+    use std::task::Poll;
+    use std::task::Waker;
+    use std::thread;
+    use std::time::Duration;
+
     use super::*;
-
-    use std::{
-        future::Future,
-        pin::Pin,
-        sync::{
-            mpsc::{channel, Sender},
-            Arc,
-        },
-        task::{Context, Poll, Waker},
-        thread,
-        time::Duration,
-    };
-
     use crate::sync::SpinLock;
 
     struct TimerState {

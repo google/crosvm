@@ -10,9 +10,16 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use std::os::raw::{c_char, c_int, c_uchar, c_uint, c_void};
+use std::os::raw::c_char;
+use std::os::raw::c_int;
+use std::os::raw::c_uchar;
+use std::os::raw::c_uint;
+use std::os::raw::c_void;
 
-use base::{ioctl_io_nr, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr};
+use base::ioctl_io_nr;
+use base::ioctl_ior_nr;
+use base::ioctl_iow_nr;
+use base::ioctl_iowr_nr;
 
 #[repr(C)]
 #[derive(Default)]

@@ -2,27 +2,60 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::IoctlNr;
-
-use libc::{E2BIG, ENXIO};
 use std::arch::x86_64::CpuidResult;
 
-use base::{
-    errno_result, error, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr,
-    ioctl_with_ref, ioctl_with_val, AsRawDescriptor, Error, MappedRegion, Result,
-};
+use base::errno_result;
+use base::error;
+use base::ioctl;
+use base::ioctl_with_mut_ptr;
+use base::ioctl_with_mut_ref;
+use base::ioctl_with_ptr;
+use base::ioctl_with_ref;
+use base::ioctl_with_val;
+use base::AsRawDescriptor;
+use base::Error;
+use base::IoctlNr;
+use base::MappedRegion;
+use base::Result;
 use data_model::vec_with_array_field;
 use kvm_sys::*;
+use libc::E2BIG;
+use libc::ENXIO;
 use vm_memory::GuestAddress;
 
-use super::{Kvm, KvmVcpu, KvmVm};
-use crate::{
-    get_tsc_offset_from_msr, host_phys_addr_bits, set_tsc_offset_via_msr, ClockState, CpuId,
-    CpuIdEntry, DebugRegs, DescriptorTable, DeviceKind, Fpu, HypervisorX86_64,
-    IoapicRedirectionTableEntry, IoapicState, IrqSourceChip, LapicState, PicSelect, PicState,
-    PitChannelState, PitState, ProtectionType, Register, Regs, Segment, Sregs, VcpuExit,
-    VcpuX86_64, VmCap, VmX86_64, MAX_IOAPIC_PINS, NUM_IOAPIC_PINS,
-};
+use super::Kvm;
+use super::KvmVcpu;
+use super::KvmVm;
+use crate::get_tsc_offset_from_msr;
+use crate::host_phys_addr_bits;
+use crate::set_tsc_offset_via_msr;
+use crate::ClockState;
+use crate::CpuId;
+use crate::CpuIdEntry;
+use crate::DebugRegs;
+use crate::DescriptorTable;
+use crate::DeviceKind;
+use crate::Fpu;
+use crate::HypervisorX86_64;
+use crate::IoapicRedirectionTableEntry;
+use crate::IoapicState;
+use crate::IrqSourceChip;
+use crate::LapicState;
+use crate::PicSelect;
+use crate::PicState;
+use crate::PitChannelState;
+use crate::PitState;
+use crate::ProtectionType;
+use crate::Register;
+use crate::Regs;
+use crate::Segment;
+use crate::Sregs;
+use crate::VcpuExit;
+use crate::VcpuX86_64;
+use crate::VmCap;
+use crate::VmX86_64;
+use crate::MAX_IOAPIC_PINS;
+use crate::NUM_IOAPIC_PINS;
 
 type KvmCpuId = kvm::CpuId;
 
@@ -1346,15 +1379,32 @@ fn to_kvm_msrs(vec: &[Register]) -> Vec<kvm_msrs> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        DeliveryMode, DeliveryStatus, DestinationMode, Hypervisor, HypervisorCap, HypervisorX86_64,
-        IoapicRedirectionTableEntry, IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState,
-        PicInitState, PicState, PitChannelState, PitRWMode, PitRWState, PitState, TriggerMode,
-        Vcpu, Vm,
-    };
     use libc::EINVAL;
-    use vm_memory::{GuestAddress, GuestMemory};
+    use vm_memory::GuestAddress;
+    use vm_memory::GuestMemory;
+
+    use super::*;
+    use crate::DeliveryMode;
+    use crate::DeliveryStatus;
+    use crate::DestinationMode;
+    use crate::Hypervisor;
+    use crate::HypervisorCap;
+    use crate::HypervisorX86_64;
+    use crate::IoapicRedirectionTableEntry;
+    use crate::IoapicState;
+    use crate::IrqRoute;
+    use crate::IrqSource;
+    use crate::IrqSourceChip;
+    use crate::LapicState;
+    use crate::PicInitState;
+    use crate::PicState;
+    use crate::PitChannelState;
+    use crate::PitRWMode;
+    use crate::PitRWState;
+    use crate::PitState;
+    use crate::TriggerMode;
+    use crate::Vcpu;
+    use crate::Vm;
 
     #[test]
     fn get_supported_cpuid() {

@@ -12,10 +12,13 @@ pub(crate) mod gpu;
 pub(crate) mod jail_helpers;
 mod vcpu;
 
-use std::cmp::{max, Reverse};
-use std::collections::{BTreeMap, BTreeSet};
+use std::cmp::max;
+use std::cmp::Reverse;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::convert::TryInto;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::io::stdin;
 use std::iter;
@@ -25,87 +28,133 @@ use std::ops::RangeInclusive;
 use std::os::unix::net::UnixStream;
 use std::os::unix::prelude::OpenOptionsExt;
 use std::path::Path;
+use std::process;
 use std::str::FromStr;
-use std::sync::{mpsc, Arc, Barrier};
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::sync::Barrier;
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+use std::thread;
 #[cfg(feature = "balloon")]
 use std::time::Duration;
 
-use std::process;
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-use std::thread;
-
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use aarch64::AArch64 as Arch;
+use acpi_tables::sdt::SDT;
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Result;
+use arch::LinuxArch;
+use arch::RunnableLinuxVm;
+use arch::VcpuAffinity;
+use arch::VirtioDeviceStub;
+use arch::VmComponents;
+use arch::VmImage;
+use arch::{self};
+use base::UnixSeqpacket;
+use base::UnixSeqpacketListener;
+use base::UnlinkUnixSeqpacketListener;
+use base::*;
+use device_helpers::*;
+use devices::serial_device::SerialHardware;
+use devices::vfio::VfioCommonSetup;
+use devices::vfio::VfioCommonTrait;
+use devices::virtio::memory_mapper::MemoryMapper;
+use devices::virtio::memory_mapper::MemoryMapperTrait;
+use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
-use libc;
-
-use acpi_tables::sdt::SDT;
-
-use anyhow::{anyhow, bail, Context, Result};
-use base::*;
-use base::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener};
-use devices::serial_device::SerialHardware;
-use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
-use devices::virtio::memory_mapper::{MemoryMapper, MemoryMapperTrait};
-use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(feature = "gpu")]
-use devices::virtio::{self, EventDevice};
+use devices::virtio::EventDevice;
+#[cfg(feature = "gpu")]
+use devices::virtio::{self};
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
-use devices::{
-    self, BusDeviceObj, HostHotPlugKey, HotPlugBus, IrqEventIndex, IrqEventSource,
-    KvmKernelIrqChip, PciAddress, PciDevice, PvPanicCode, PvPanicPciDevice, StubPciDevice,
-    VirtioPciDevice,
-};
-use devices::{CoIommuDev, IommuDevType};
+use devices::BusDeviceObj;
+use devices::CoIommuDev;
 #[cfg(feature = "usb")]
-use devices::{HostBackendDeviceProvider, XhciController};
-use hypervisor::kvm::{Kvm, KvmVcpu, KvmVm};
-use hypervisor::{HypervisorCap, ProtectionType, Vm, VmCap};
-use minijail::{self, Minijail};
-#[cfg(feature = "direct")]
-use resources::Error as ResourceError;
-use resources::{AddressRange, Alloc, SystemAllocator};
-use rutabaga_gfx::RutabagaGralloc;
-use sync::{Condvar, Mutex};
-use vm_control::*;
-use vm_memory::{GuestAddress, GuestMemory, MemoryPolicy};
-
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-use crate::crosvm::gdb::{gdb_thread, GdbStub};
-use crate::crosvm::{
-    config::{
-        Config, Executable, FileBackedMappingParameters, HypervisorKind, SharedDir, SharedDirKind,
-    },
-    sys::config::VfioType,
-};
-use arch::{
-    self, LinuxArch, RunnableLinuxVm, VcpuAffinity, VirtioDeviceStub, VmComponents, VmImage,
-};
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use {
-    crate::crosvm::config::HostPcieRootPortParameters,
-    devices::{
-        IrqChipX86_64 as IrqChipArch, KvmSplitIrqChip, PciBridge, PcieHostPort, PcieRootPort,
-    },
-    hypervisor::{VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
-    x86_64::msr::get_override_msr_list,
-    x86_64::X8664arch as Arch,
-};
+use devices::HostBackendDeviceProvider;
+use devices::HostHotPlugKey;
+use devices::HotPlugBus;
+use devices::IommuDevType;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use {
-    aarch64::AArch64 as Arch,
-    devices::IrqChipAArch64 as IrqChipArch,
-    hypervisor::{VcpuAArch64 as VcpuArch, VmAArch64 as VmArch},
-};
-
-use device_helpers::*;
-use jail_helpers::*;
-
+use devices::IrqChipAArch64 as IrqChipArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use devices::IrqChipX86_64 as IrqChipArch;
+use devices::IrqEventIndex;
+use devices::IrqEventSource;
+use devices::KvmKernelIrqChip;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use devices::KvmSplitIrqChip;
+use devices::PciAddress;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use devices::PciBridge;
+use devices::PciDevice;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use devices::PcieHostPort;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use devices::PcieRootPort;
+use devices::PvPanicCode;
+use devices::PvPanicPciDevice;
+use devices::StubPciDevice;
+use devices::VirtioPciDevice;
+#[cfg(feature = "usb")]
+use devices::XhciController;
+use devices::{self};
 #[cfg(feature = "gpu")]
 pub use gpu::GpuRenderServerParameters;
 #[cfg(feature = "gpu")]
 use gpu::*;
+use hypervisor::kvm::Kvm;
+use hypervisor::kvm::KvmVcpu;
+use hypervisor::kvm::KvmVm;
+use hypervisor::HypervisorCap;
+use hypervisor::ProtectionType;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::VcpuAArch64 as VcpuArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::VcpuX86_64 as VcpuArch;
+use hypervisor::Vm;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::VmAArch64 as VmArch;
+use hypervisor::VmCap;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::VmX86_64 as VmArch;
+use jail_helpers::*;
+use libc;
+use minijail::Minijail;
+use minijail::{self};
+use resources::AddressRange;
+use resources::Alloc;
+#[cfg(feature = "direct")]
+use resources::Error as ResourceError;
+use resources::SystemAllocator;
+use rutabaga_gfx::RutabagaGralloc;
+use sync::Condvar;
+use sync::Mutex;
+use vm_control::*;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+use vm_memory::MemoryPolicy;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::msr::get_override_msr_list;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::X8664arch as Arch;
+
+use crate::crosvm::config::Config;
+use crate::crosvm::config::Executable;
+use crate::crosvm::config::FileBackedMappingParameters;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use crate::crosvm::config::HostPcieRootPortParameters;
+use crate::crosvm::config::HypervisorKind;
+use crate::crosvm::config::SharedDir;
+use crate::crosvm::config::SharedDirKind;
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+use crate::crosvm::gdb::gdb_thread;
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+use crate::crosvm::gdb::GdbStub;
+use crate::crosvm::sys::config::VfioType;
 
 // gpu_device_tube is not used when GPU support is disabled.
 #[cfg_attr(not(feature = "gpu"), allow(unused_variables))]
@@ -2465,8 +2514,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::path::PathBuf;
+
+    use super::*;
 
     // Create a file-backed mapping parameters struct with the given `address` and `size` and other
     // parameters set to default values.

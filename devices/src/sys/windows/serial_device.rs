@@ -2,15 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::serial_device::{Error, SerialInput, SerialParameters};
-use base::named_pipes;
-use base::named_pipes::{BlockingMode, FramingMode};
-use base::FileSync;
-use base::{AsRawDescriptor, Event, RawDescriptor};
-use hypervisor::ProtectionType;
 use std::io::{self};
 
+use base::named_pipes;
+use base::named_pipes::BlockingMode;
+use base::named_pipes::FramingMode;
+use base::AsRawDescriptor;
 pub use base::Console as ConsoleInput;
+use base::Event;
+use base::FileSync;
+use base::RawDescriptor;
+use hypervisor::ProtectionType;
+
+use crate::serial_device::Error;
+use crate::serial_device::SerialInput;
+use crate::serial_device::SerialParameters;
 
 pub const SYSTEM_SERIAL_TYPE_NAME: &str = "NamedPipe";
 

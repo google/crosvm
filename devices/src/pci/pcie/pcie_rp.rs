@@ -3,21 +3,26 @@
 // found in the LICENSE file.
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use sync::Mutex;
-
-use crate::bus::{HostHotPlugKey, HotPlugBus};
-use crate::pci::pci_configuration::PciCapabilityID;
-use crate::pci::{MsiConfig, PciAddress, PciCapability, PciDeviceError};
-
-use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
-use crate::pci::pcie::pcie_device::{PciPmcCap, PcieCap, PcieDevice};
-use crate::pci::pcie::pcie_host::PcieHostPort;
-use crate::pci::pcie::pcie_port::PciePort;
-use crate::pci::pcie::*;
 
 use anyhow::Result;
 use resources::SystemAllocator;
+use sync::Mutex;
 use vm_control::GpeNotify;
+
+use crate::bus::HostHotPlugKey;
+use crate::bus::HotPlugBus;
+use crate::pci::pci_configuration::PciCapabilityID;
+use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
+use crate::pci::pcie::pcie_device::PciPmcCap;
+use crate::pci::pcie::pcie_device::PcieCap;
+use crate::pci::pcie::pcie_device::PcieDevice;
+use crate::pci::pcie::pcie_host::PcieHostPort;
+use crate::pci::pcie::pcie_port::PciePort;
+use crate::pci::pcie::*;
+use crate::pci::MsiConfig;
+use crate::pci::PciAddress;
+use crate::pci::PciCapability;
+use crate::pci::PciDeviceError;
 
 const PCIE_RP_DID: u16 = 0x3420;
 pub struct PcieRootPort {

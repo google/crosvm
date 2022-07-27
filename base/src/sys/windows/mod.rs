@@ -39,37 +39,44 @@ pub mod thread;
 
 mod write_zeroes;
 
-pub use crate::descriptor_reflection::{
-    deserialize_with_descriptors, with_as_descriptor, with_raw_descriptor, FileSerdeWrapper,
-    SerializeDescriptors,
-};
-pub use crate::errno::{Error, Result, *};
+use std::cell::Cell;
+
 pub use console::*;
 pub use descriptor::*;
 pub use event::*;
 pub use events::*;
+pub use file_traits::AsRawDescriptors;
+pub use file_traits::FileAllocate;
+pub use file_traits::FileGetLen;
+pub use file_traits::FileReadWriteAtVolatile;
+pub use file_traits::FileReadWriteVolatile;
+pub use file_traits::FileSetLen;
+pub use file_traits::FileSync;
 pub use get_filesystem_type::*;
 pub use gmtime::*;
 pub use ioctl::*;
+pub use mmap::Error as MmapError;
 pub use mmap::*;
+pub(crate) use mmap_platform::PROT_READ;
+pub(crate) use mmap_platform::PROT_WRITE;
 pub use priority::*;
+pub(crate) use punch_hole::file_punch_hole;
 pub use sched::*;
 pub use shm::*;
 pub use shm_platform::*;
 pub use stream_channel::*;
 pub use timer::*;
 pub use win::*;
-
-pub use file_traits::{
-    AsRawDescriptors, FileAllocate, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile,
-    FileSetLen, FileSync,
-};
-pub use mmap::Error as MmapError;
-pub(crate) use mmap_platform::{PROT_READ, PROT_WRITE};
-pub(crate) use punch_hole::file_punch_hole;
 pub(crate) use write_zeroes::file_write_zeroes_at;
 
-use std::cell::Cell;
+pub use crate::descriptor_reflection::deserialize_with_descriptors;
+pub use crate::descriptor_reflection::with_as_descriptor;
+pub use crate::descriptor_reflection::with_raw_descriptor;
+pub use crate::descriptor_reflection::FileSerdeWrapper;
+pub use crate::descriptor_reflection::SerializeDescriptors;
+pub use crate::errno::Error;
+pub use crate::errno::Result;
+pub use crate::errno::*;
 
 // Define libc::* types
 #[allow(non_camel_case_types)]

@@ -171,7 +171,8 @@ macro_rules! handle_eintr_errno {
 
 #[cfg(test)]
 mod tests {
-    use super::{super::Error as SysError, *};
+    use super::super::Error as SysError;
+    use super::*;
 
     // Sets errno to the given error code.
     fn set_errno(e: i32) {

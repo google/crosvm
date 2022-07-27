@@ -2,32 +2,46 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::windows::{Error, Result, METRIC_UPLOAD_INTERVAL_SECONDS};
-use crate::{log_metric, MetricEventType};
-
-use base::{
-    error, AsRawDescriptor, Error as SysError, Event, EventToken, FromRawDescriptor,
-    SafeDescriptor, WaitContext,
-};
-
-use chrono::{DateTime, Local};
 use std::fmt;
 use std::mem;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::Weak;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use winapi::shared::minwindef::{DWORD, FILETIME};
-use winapi::um::processthreadsapi::{GetProcessTimes, GetSystemTimes, OpenProcess};
-use winapi::um::psapi::{
-    GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
-};
+use base::error;
+use base::AsRawDescriptor;
+use base::Error as SysError;
+use base::Event;
+use base::EventToken;
+use base::FromRawDescriptor;
+use base::SafeDescriptor;
+use base::WaitContext;
+use chrono::DateTime;
+use chrono::Local;
+use winapi::shared::minwindef::DWORD;
+use winapi::shared::minwindef::FILETIME;
+use winapi::um::processthreadsapi::GetProcessTimes;
+use winapi::um::processthreadsapi::GetSystemTimes;
+use winapi::um::processthreadsapi::OpenProcess;
+use winapi::um::psapi::GetProcessMemoryInfo;
+use winapi::um::psapi::PROCESS_MEMORY_COUNTERS;
+use winapi::um::psapi::PROCESS_MEMORY_COUNTERS_EX;
 use winapi::um::winbase::GetProcessIoCounters;
-use winapi::um::winnt::{
-    IO_COUNTERS, LARGE_INTEGER, LONGLONG, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ,
-    SYNCHRONIZE,
-};
+use winapi::um::winnt::IO_COUNTERS;
+use winapi::um::winnt::LARGE_INTEGER;
+use winapi::um::winnt::LONGLONG;
+use winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION;
+use winapi::um::winnt::PROCESS_VM_READ;
+use winapi::um::winnt::SYNCHRONIZE;
+
+use crate::log_metric;
+use crate::windows::Error;
+use crate::windows::Result;
+use crate::windows::METRIC_UPLOAD_INTERVAL_SECONDS;
+use crate::MetricEventType;
 
 const BYTES_PER_MB: usize = 1024 * 1024;
 const WORKER_REPORT_INTERVAL: Duration = Duration::from_secs(1);

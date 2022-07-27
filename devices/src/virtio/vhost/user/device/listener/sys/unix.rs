@@ -2,25 +2,26 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{pin::Pin, str::FromStr};
+use std::pin::Pin;
+use std::str::FromStr;
 
 use anyhow::bail;
-use base::{AsRawDescriptor, RawDescriptor};
+use base::AsRawDescriptor;
+use base::RawDescriptor;
 use cros_async::Executor;
-use futures::{Future, FutureExt};
-use vmm_vhost::connection::{
-    socket::Listener as SocketListener,
-    vfio::{Device, Listener as VfioListener},
-};
+use futures::Future;
+use futures::FutureExt;
+use vmm_vhost::connection::socket::Listener as SocketListener;
+use vmm_vhost::connection::vfio::Device;
+use vmm_vhost::connection::vfio::Listener as VfioListener;
 
-use crate::{
-    virtio::vhost::user::device::{
-        handler::{sys::unix::VvuOps, DeviceRequestHandler, VhostUserBackend},
-        listener::VhostUserListenerTrait,
-        vvu::{pci::VvuPciDevice, VvuDevice},
-    },
-    PciAddress,
-};
+use crate::virtio::vhost::user::device::handler::sys::unix::VvuOps;
+use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
+use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
+use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
+use crate::virtio::vhost::user::device::vvu::VvuDevice;
+use crate::PciAddress;
 
 //// On Unix we can listen to either a socket or a vhost-user device.
 pub enum VhostUserListener {

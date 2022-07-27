@@ -2,38 +2,68 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::slirp::context::{CallbackHandler, Context, PollEvents};
-#[cfg(feature = "slirp-ring-capture")]
-use crate::slirp::packet_ring_buffer::PacketRingBuffer;
-use crate::{slirp::ETHERNET_FRAME_SIZE, Error, Result};
-
-use base::named_pipes::{OverlappedWrapper, PipeConnection};
-use base::{
-    error, warn, AsRawDescriptor, Descriptor, Event, EventToken, EventWindows, RawDescriptor,
-    WaitContext,
-};
-use base::{Error as SysError, Timer};
-use data_model::{DataInit, Le16};
-use metrics::{MetricEventType, PeriodicLogger};
-#[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
-use pcap_file::pcap::PcapWriter;
-use smallvec::SmallVec;
 use std::collections::HashMap;
 #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
 use std::fs::File;
 use std::io;
 #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
 use std::io::BufWriter;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::time::Duration;
 use std::time::Instant;
-use virtio_sys::{virtio_net_hdr, virtio_net_hdr_mrg_rxbuf};
+
+use base::error;
+use base::named_pipes::OverlappedWrapper;
+use base::named_pipes::PipeConnection;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Descriptor;
+use base::Error as SysError;
+use base::Event;
+use base::EventToken;
+use base::EventWindows;
+use base::RawDescriptor;
+use base::Timer;
+use base::WaitContext;
+use data_model::DataInit;
+use data_model::Le16;
+use metrics::MetricEventType;
+use metrics::PeriodicLogger;
+#[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
+use pcap_file::pcap::PcapWriter;
+use smallvec::SmallVec;
+use virtio_sys::virtio_net_hdr;
+use virtio_sys::virtio_net_hdr_mrg_rxbuf;
 use winapi::shared::minwindef::MAKEWORD;
-use winapi::um::winnt::{LONG, SHORT};
-use winapi::um::winsock2::{
-    WSACleanup, WSAEventSelect, WSAGetLastError, WSAPoll, WSAStartup, FD_CLOSE, FD_READ, FD_WRITE,
-    POLLERR, POLLHUP, POLLRDBAND, POLLRDNORM, POLLWRNORM, SOCKET, SOCKET_ERROR, WSADATA, WSAPOLLFD,
-};
+use winapi::um::winnt::LONG;
+use winapi::um::winnt::SHORT;
+use winapi::um::winsock2::WSACleanup;
+use winapi::um::winsock2::WSAEventSelect;
+use winapi::um::winsock2::WSAGetLastError;
+use winapi::um::winsock2::WSAPoll;
+use winapi::um::winsock2::WSAStartup;
+use winapi::um::winsock2::FD_CLOSE;
+use winapi::um::winsock2::FD_READ;
+use winapi::um::winsock2::FD_WRITE;
+use winapi::um::winsock2::POLLERR;
+use winapi::um::winsock2::POLLHUP;
+use winapi::um::winsock2::POLLRDBAND;
+use winapi::um::winsock2::POLLRDNORM;
+use winapi::um::winsock2::POLLWRNORM;
+use winapi::um::winsock2::SOCKET;
+use winapi::um::winsock2::SOCKET_ERROR;
+use winapi::um::winsock2::WSADATA;
+use winapi::um::winsock2::WSAPOLLFD;
+
+use crate::slirp::context::CallbackHandler;
+use crate::slirp::context::Context;
+use crate::slirp::context::PollEvents;
+#[cfg(feature = "slirp-ring-capture")]
+use crate::slirp::packet_ring_buffer::PacketRingBuffer;
+use crate::slirp::ETHERNET_FRAME_SIZE;
+use crate::Error;
+use crate::Result;
 
 #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
 const SLIRP_CAPTURE_FILE_NAME: &str = "slirp_capture.pcap";
@@ -666,12 +696,15 @@ fn create_slirp_context(
 
 #[cfg(test)]
 mod tests {
-    use super::super::SLIRP_BUFFER_SIZE;
-    use super::*;
-    use base::named_pipes;
-    use base::named_pipes::{BlockingMode, FramingMode};
     use std::net::UdpSocket;
     use std::os::windows::io::AsRawSocket;
+
+    use base::named_pipes;
+    use base::named_pipes::BlockingMode;
+    use base::named_pipes::FramingMode;
+
+    use super::super::SLIRP_BUFFER_SIZE;
+    use super::*;
 
     fn create_socket() -> (UdpSocket, WSAPOLLFD) {
         let socket = UdpSocket::bind("127.0.0.1:0").unwrap();

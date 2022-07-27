@@ -6,14 +6,17 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use base::Event;
-use cros_async::{select3, Executor, SelectResult};
+use cros_async::select3;
+use cros_async::Executor;
+use cros_async::SelectResult;
 use futures::pin_mut;
 use vm_memory::GuestMemory;
 
-use crate::virtio::vhost::user::vmm::handler::sys::{
-    run_backend_request_handler, BackendReqHandler,
-};
-use crate::virtio::{async_utils, Interrupt, Queue};
+use crate::virtio::async_utils;
+use crate::virtio::vhost::user::vmm::handler::sys::run_backend_request_handler;
+use crate::virtio::vhost::user::vmm::handler::sys::BackendReqHandler;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
 
 pub struct Worker {
     pub queues: Vec<Queue>,

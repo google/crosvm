@@ -41,20 +41,25 @@
 //! ```
 pub mod async_api;
 
-use async_trait::async_trait;
 use std::cmp::min;
 use std::error;
-use std::fmt::{self, Display};
-use std::io::{self, Read, Write};
+use std::fmt::Display;
+use std::fmt::{self};
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
 #[cfg(unix)]
 use std::os::unix::io::RawFd as RawDescriptor;
 #[cfg(windows)]
 use std::os::windows::io::RawHandle as RawDescriptor;
 use std::result::Result;
 use std::str::FromStr;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
-pub use async_api::{AsyncStream, AudioStreamsExecutor};
+pub use async_api::AsyncStream;
+pub use async_api::AudioStreamsExecutor;
+use async_trait::async_trait;
 use remain::sorted;
 use thiserror::Error;
 
@@ -731,10 +736,12 @@ impl StreamSourceGenerator for NoopStreamSourceGenerator {
 
 #[cfg(test)]
 mod tests {
+    use futures::FutureExt;
+    use io::Write;
+    use io::{self};
+
     use super::async_api::test::TestExecutor;
     use super::*;
-    use futures::FutureExt;
-    use io::{self, Write};
 
     #[test]
     fn invalid_buffer_length() {

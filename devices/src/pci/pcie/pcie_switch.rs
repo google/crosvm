@@ -3,17 +3,21 @@
 // found in the LICENSE file.
 
 use std::sync::Arc;
+
+use resources::SystemAllocator;
 use sync::Mutex;
 
 use crate::pci::pci_configuration::PciCapabilityID;
-use crate::pci::{MsiConfig, PciAddress, PciCapability, PciDeviceError};
-
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
-use crate::pci::pcie::pcie_device::{PciPmcCap, PcieCap, PcieDevice};
+use crate::pci::pcie::pcie_device::PciPmcCap;
+use crate::pci::pcie::pcie_device::PcieCap;
+use crate::pci::pcie::pcie_device::PcieDevice;
 use crate::pci::pcie::pcie_port::PciePort;
 use crate::pci::pcie::*;
-
-use resources::SystemAllocator;
+use crate::pci::MsiConfig;
+use crate::pci::PciAddress;
+use crate::pci::PciCapability;
+use crate::pci::PciDeviceError;
 
 const PCIE_UP_DID: u16 = 0x3500;
 const PCIE_DP_DID: u16 = 0x3510;

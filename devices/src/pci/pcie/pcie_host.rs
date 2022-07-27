@@ -2,35 +2,53 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fs::read;
 #[cfg(feature = "direct")]
 use std::fs::read_to_string;
-use std::fs::{read, write, File, OpenOptions};
+use std::fs::write;
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::os::unix::fs::FileExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Result;
+use base::error;
 #[cfg(feature = "direct")]
 use base::warn;
-use base::{error, Tube};
+use base::Tube;
 use data_model::DataInit;
 use sync::Mutex;
-use vm_control::{VmRequest, VmResponse};
+use vm_control::VmRequest;
+use vm_control::VmResponse;
 
-use crate::pci::{PciCapabilityID, PciClassCode};
-
-use crate::pci::pci_configuration::{
-    PciBridgeSubclass, CAPABILITY_LIST_HEAD_OFFSET, HEADER_TYPE_REG, PCI_CAP_NEXT_POINTER,
-};
+use crate::pci::pci_configuration::PciBridgeSubclass;
+use crate::pci::pci_configuration::CAPABILITY_LIST_HEAD_OFFSET;
 #[cfg(feature = "direct")]
-use crate::pci::pci_configuration::{CLASS_REG, CLASS_REG_REVISION_ID_OFFSET};
-
-use crate::pci::pcie::pci_bridge::{
-    PciBridgeBusRange, BR_BUS_NUMBER_REG, BR_MEM_BASE_MASK, BR_MEM_BASE_SHIFT, BR_MEM_LIMIT_MASK,
-    BR_MEM_MINIMUM, BR_MEM_REG, BR_PREF_MEM_64BIT, BR_PREF_MEM_BASE_HIGH_REG,
-    BR_PREF_MEM_LIMIT_HIGH_REG, BR_PREF_MEM_LOW_REG, BR_WINDOW_ALIGNMENT,
-};
+use crate::pci::pci_configuration::CLASS_REG;
+#[cfg(feature = "direct")]
+use crate::pci::pci_configuration::CLASS_REG_REVISION_ID_OFFSET;
+use crate::pci::pci_configuration::HEADER_TYPE_REG;
+use crate::pci::pci_configuration::PCI_CAP_NEXT_POINTER;
+use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
+use crate::pci::pcie::pci_bridge::BR_BUS_NUMBER_REG;
+use crate::pci::pcie::pci_bridge::BR_MEM_BASE_MASK;
+use crate::pci::pcie::pci_bridge::BR_MEM_BASE_SHIFT;
+use crate::pci::pcie::pci_bridge::BR_MEM_LIMIT_MASK;
+use crate::pci::pcie::pci_bridge::BR_MEM_MINIMUM;
+use crate::pci::pcie::pci_bridge::BR_MEM_REG;
+use crate::pci::pcie::pci_bridge::BR_PREF_MEM_64BIT;
+use crate::pci::pcie::pci_bridge::BR_PREF_MEM_BASE_HIGH_REG;
+use crate::pci::pcie::pci_bridge::BR_PREF_MEM_LIMIT_HIGH_REG;
+use crate::pci::pcie::pci_bridge::BR_PREF_MEM_LOW_REG;
+use crate::pci::pcie::pci_bridge::BR_WINDOW_ALIGNMENT;
+use crate::pci::PciCapabilityID;
+use crate::pci::PciClassCode;
 
 // Host Pci device's sysfs config file
 struct PciHostConfig {

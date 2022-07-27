@@ -5,13 +5,19 @@
 use std::os::raw::c_int;
 use std::ptr::null_mut;
 
+use base::errno_result;
+use base::Error;
+use base::FromRawDescriptor;
+use base::Result;
+use base::SafeDescriptor;
 use libc::EBUSY;
-use winapi::um::fileapi::{CreateFileW, CREATE_ALWAYS};
-use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-use winapi::um::winnt::{FILE_ATTRIBUTE_NORMAL, GENERIC_READ, GENERIC_WRITE};
-
-use base::{errno_result, Error, FromRawDescriptor, Result, SafeDescriptor};
 use win_util::win32_wide_string;
+use winapi::um::fileapi::CreateFileW;
+use winapi::um::fileapi::CREATE_ALWAYS;
+use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+use winapi::um::winnt::FILE_ATTRIBUTE_NORMAL;
+use winapi::um::winnt::GENERIC_READ;
+use winapi::um::winnt::GENERIC_WRITE;
 
 use super::HaxmVcpu;
 use crate::VcpuRunHandle;

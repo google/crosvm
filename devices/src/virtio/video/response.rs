@@ -6,7 +6,8 @@
 
 use std::io;
 
-use data_model::{Le32, Le64};
+use data_model::Le32;
+use data_model::Le64;
 
 use crate::virtio::video::command::QueueType;
 use crate::virtio::video::control::*;

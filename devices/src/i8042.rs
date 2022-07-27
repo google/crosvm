@@ -2,9 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, SendTube, VmEventType};
+use base::error;
+use base::SendTube;
+use base::VmEventType;
 
-use crate::{pci::CrosvmDeviceId, BusAccessInfo, BusDevice, DeviceId};
+use crate::pci::CrosvmDeviceId;
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::DeviceId;
 
 /// A i8042 PS/2 controller that emulates just enough to shutdown the machine.
 pub struct I8042Device {

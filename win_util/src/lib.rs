@@ -17,29 +17,43 @@ mod security_attributes;
 pub use crate::security_attributes::*;
 
 mod dll_notification;
-pub use crate::dll_notification::*;
-
-use std::ffi::{CString, OsStr, OsString};
+use std::ffi::CString;
+use std::ffi::OsStr;
+use std::ffi::OsString;
+use std::io;
 use std::iter::once;
 use std::mem::MaybeUninit;
-use std::os::windows::ffi::{OsStrExt, OsStringExt};
+use std::os::windows::ffi::OsStrExt;
+use std::os::windows::ffi::OsStringExt;
 use std::os::windows::io::RawHandle;
+use std::ptr;
+use std::slice;
 use std::sync::Once;
-use std::{io, ptr, slice};
 
 use libc::c_ulong;
-use winapi::shared::minwindef::{DWORD, FALSE, TRUE};
+use winapi::shared::minwindef::DWORD;
+use winapi::shared::minwindef::FALSE;
+use winapi::shared::minwindef::TRUE;
 use winapi::shared::ntdef::UNICODE_STRING;
-use winapi::um::handleapi::{
-    CloseHandle, DuplicateHandle, SetHandleInformation, INVALID_HANDLE_VALUE,
-};
+use winapi::um::handleapi::CloseHandle;
+use winapi::um::handleapi::DuplicateHandle;
+use winapi::um::handleapi::SetHandleInformation;
+use winapi::um::handleapi::INVALID_HANDLE_VALUE;
 use winapi::um::minwinbase::STILL_ACTIVE;
-use winapi::um::processthreadsapi::{
-    GetCurrentProcess, GetExitCodeProcess, OpenProcess, ResumeThread,
-};
-use winapi::um::sysinfoapi::{GetNativeSystemInfo, SYSTEM_INFO};
-use winapi::um::winbase::{CreateFileMappingA, HANDLE_FLAG_INHERIT};
-use winapi::um::winnt::{DUPLICATE_SAME_ACCESS, HRESULT, PROCESS_DUP_HANDLE, WCHAR};
+use winapi::um::processthreadsapi::GetCurrentProcess;
+use winapi::um::processthreadsapi::GetExitCodeProcess;
+use winapi::um::processthreadsapi::OpenProcess;
+use winapi::um::processthreadsapi::ResumeThread;
+use winapi::um::sysinfoapi::GetNativeSystemInfo;
+use winapi::um::sysinfoapi::SYSTEM_INFO;
+use winapi::um::winbase::CreateFileMappingA;
+use winapi::um::winbase::HANDLE_FLAG_INHERIT;
+use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
+use winapi::um::winnt::HRESULT;
+use winapi::um::winnt::PROCESS_DUP_HANDLE;
+use winapi::um::winnt::WCHAR;
+
+pub use crate::dll_notification::*;
 
 #[macro_export]
 macro_rules! syscall_bail {

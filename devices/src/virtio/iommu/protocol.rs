@@ -27,7 +27,10 @@
 #![cfg_attr(windows, allow(dead_code))]
 #![allow(non_camel_case_types)]
 
-use data_model::{DataInit, Le16, Le32, Le64};
+use data_model::DataInit;
+use data_model::Le16;
+use data_model::Le32;
+use data_model::Le64;
 
 pub const VIRTIO_IOMMU_F_INPUT_RANGE: u32 = 0;
 pub const VIRTIO_IOMMU_F_DOMAIN_RANGE: u32 = 1;

@@ -2,17 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use net_util::TapT;
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::marker::PhantomData;
 use std::os::unix::fs::OpenOptionsExt;
-use std::{
-    fs::{File, OpenOptions},
-    path::Path,
-};
+use std::path::Path;
 
-use base::{ioctl_with_ref, AsRawDescriptor, RawDescriptor};
+use base::ioctl_with_ref;
+use base::AsRawDescriptor;
+use base::RawDescriptor;
+use net_util::TapT;
 
-use super::{ioctl_result, Error, Result, Vhost};
+use super::ioctl_result;
+use super::Error;
+use super::Result;
+use super::Vhost;
 
 /// Handle to run VHOST_NET ioctls.
 ///
@@ -89,9 +93,10 @@ impl<T> AsRawDescriptor for Net<T> {
 }
 
 pub mod fakes {
-    use super::*;
     use std::fs::remove_file;
     use std::fs::OpenOptions;
+
+    use super::*;
 
     const TMP_FILE: &str = "/tmp/crosvm_vhost_test_file";
 

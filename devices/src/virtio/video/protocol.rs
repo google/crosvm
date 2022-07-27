@@ -24,7 +24,9 @@
 
 #![allow(dead_code, non_snake_case, non_camel_case_types)]
 
-use data_model::{DataInit, Le32, Le64};
+use data_model::DataInit;
+use data_model::Le32;
+use data_model::Le64;
 
 pub const VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES: u32 = 0;
 pub const VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG: u32 = 1;

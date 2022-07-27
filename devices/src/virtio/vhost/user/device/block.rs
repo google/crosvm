@@ -6,24 +6,41 @@ mod sys;
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::{atomic::AtomicU64, atomic::Ordering, Arc};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Context};
-use base::{warn, Event, Timer};
-use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor, TimerAsync};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use base::warn;
+use base::Event;
+use base::Timer;
+use cros_async::sync::Mutex as AsyncMutex;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use cros_async::TimerAsync;
 use data_model::DataInit;
 use disk::AsyncDisk;
-use futures::future::{AbortHandle, Abortable};
+use futures::future::AbortHandle;
+use futures::future::Abortable;
 use sync::Mutex;
+pub use sys::start_device as run_block_device;
+pub use sys::Options;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::*;
 
-use crate::virtio::block::asynchronous::{flush_disk, handle_queue};
-use crate::virtio::block::{build_avail_features, build_config_space, DiskState, SECTOR_SIZE};
-use crate::virtio::vhost::user::device::handler::{sys::Doorbell, VhostUserBackend};
-use crate::virtio::{self, block::sys::*, copy_config};
-
-pub use sys::{start_device as run_block_device, Options};
+use crate::virtio::block::asynchronous::flush_disk;
+use crate::virtio::block::asynchronous::handle_queue;
+use crate::virtio::block::build_avail_features;
+use crate::virtio::block::build_config_space;
+use crate::virtio::block::sys::*;
+use crate::virtio::block::DiskState;
+use crate::virtio::block::SECTOR_SIZE;
+use crate::virtio::copy_config;
+use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::{self};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: u16 = 16;

@@ -4,14 +4,22 @@
 
 //! Wrappers for CPU affinity functions.
 
-use std::{iter::FromIterator, mem};
+use std::iter::FromIterator;
+use std::mem;
 
-use libc::{
-    cpu_set_t, prctl, sched_getaffinity, sched_setaffinity, CPU_ISSET, CPU_SET, CPU_SETSIZE,
-    CPU_ZERO, EINVAL,
-};
+use libc::cpu_set_t;
+use libc::prctl;
+use libc::sched_getaffinity;
+use libc::sched_setaffinity;
+use libc::CPU_ISSET;
+use libc::CPU_SET;
+use libc::CPU_SETSIZE;
+use libc::CPU_ZERO;
+use libc::EINVAL;
 
-use super::{errno_result, Error, Result};
+use super::errno_result;
+use super::Error;
+use super::Result;
 
 // This is needed because otherwise the compiler will complain that the
 // impl doesn't reference any types from inside this crate.

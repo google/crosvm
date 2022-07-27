@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    cell::UnsafeCell,
-    hint,
-    ops::{Deref, DerefMut},
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::cell::UnsafeCell;
+use std::hint;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 const UNLOCKED: bool = false;
 const LOCKED: bool = true;
@@ -134,16 +134,13 @@ impl<'a, T: ?Sized> Drop for SpinLockGuard<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use std::mem;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    use std::sync::Arc;
+    use std::thread;
 
-    use std::{
-        mem,
-        sync::{
-            atomic::{AtomicUsize, Ordering},
-            Arc,
-        },
-        thread,
-    };
+    use super::*;
 
     #[derive(PartialEq, Eq, Debug)]
     struct NonCopy(u32);

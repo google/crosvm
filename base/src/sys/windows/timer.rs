@@ -2,26 +2,31 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    os::windows::io::{AsRawHandle, RawHandle},
-    ptr,
-    time::Duration,
-};
+use std::os::windows::io::AsRawHandle;
+use std::os::windows::io::RawHandle;
+use std::ptr;
+use std::time::Duration;
 
-use win_util::{LargeInteger, SecurityAttributes, SelfRelativeSecurityDescriptor};
-use winapi::{
-    shared::{minwindef::FALSE, winerror::WAIT_TIMEOUT},
-    um::{
-        synchapi::{CancelWaitableTimer, SetWaitableTimer, WaitForSingleObject},
-        winbase::{CreateWaitableTimerA, INFINITE, WAIT_OBJECT_0},
-    },
-};
+use win_util::LargeInteger;
+use win_util::SecurityAttributes;
+use win_util::SelfRelativeSecurityDescriptor;
+use winapi::shared::minwindef::FALSE;
+use winapi::shared::winerror::WAIT_TIMEOUT;
+use winapi::um::synchapi::CancelWaitableTimer;
+use winapi::um::synchapi::SetWaitableTimer;
+use winapi::um::synchapi::WaitForSingleObject;
+use winapi::um::winbase::CreateWaitableTimerA;
+use winapi::um::winbase::INFINITE;
+use winapi::um::winbase::WAIT_OBJECT_0;
 
-use super::{errno_result, win::nt_query_timer_resolution, Result};
-use crate::{
-    descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor},
-    timer::{Timer, WaitResult},
-};
+use super::errno_result;
+use super::win::nt_query_timer_resolution;
+use super::Result;
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::SafeDescriptor;
+use crate::timer::Timer;
+use crate::timer::WaitResult;
 
 impl AsRawHandle for Timer {
     fn as_raw_handle(&self) -> RawHandle {

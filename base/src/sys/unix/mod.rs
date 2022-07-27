@@ -46,11 +46,23 @@ mod timer;
 pub mod vsock;
 mod write_zeroes;
 
-pub use crate::descriptor_reflection::{
-    deserialize_with_descriptors, with_as_descriptor, with_raw_descriptor, FileSerdeWrapper,
-    SerializeDescriptors,
-};
-pub use crate::errno::{Error, Result, *};
+use std::cell::Cell;
+use std::convert::TryFrom;
+use std::ffi::CStr;
+use std::fs::remove_file;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::mem;
+use std::ops::Deref;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::io::RawFd;
+use std::os::unix::net::UnixDatagram;
+use std::os::unix::net::UnixListener;
+use std::path::Path;
+use std::ptr;
+use std::time::Duration;
+
 pub use acpi_event::*;
 pub use capabilities::drop_capabilities;
 pub use descriptor::*;
@@ -59,54 +71,66 @@ pub use descriptor::*;
 // TODO(b:231344063): Remove EventFd.
 pub use eventfd::{EventFd as Event, EventFd, EventReadResult};
 pub use file_flags::*;
+pub use file_traits::AsRawFds;
+pub use file_traits::FileAllocate;
+pub use file_traits::FileGetLen;
+pub use file_traits::FileReadWriteAtVolatile;
+pub use file_traits::FileReadWriteVolatile;
+pub use file_traits::FileSetLen;
+pub use file_traits::FileSync;
 pub use get_filesystem_type::*;
 pub use gmtime::*;
 pub use ioctl::*;
+use libc::c_int;
+use libc::c_long;
+use libc::fcntl;
+use libc::pipe2;
+use libc::syscall;
+use libc::sysconf;
+use libc::waitpid;
+use libc::SYS_getpid;
+use libc::SYS_gettid;
+use libc::EINVAL;
+use libc::F_GETFL;
+use libc::F_SETFL;
+use libc::O_CLOEXEC;
+pub(crate) use libc::PROT_READ;
+pub(crate) use libc::PROT_WRITE;
+use libc::SIGKILL;
+use libc::WNOHANG;
+use libc::_SC_IOV_MAX;
+use libc::_SC_PAGESIZE;
+pub use mmap::Error as MmapError;
 pub use mmap::*;
 pub use netlink::*;
 pub use poll::EventContext;
 pub use priority::*;
 pub use sched::*;
 pub use scoped_signal_handler::*;
-pub use shm::{kernel_has_memfd, MemfdSeals, SharedMemory, Unix as SharedMemoryUnix};
+pub use shm::kernel_has_memfd;
+pub use shm::MemfdSeals;
+pub use shm::SharedMemory;
+pub use shm::Unix as SharedMemoryUnix;
 pub use signal::*;
+pub use signalfd::Error as SignalFdError;
 pub use signalfd::*;
 pub use sock_ctrl_msg::*;
 pub use stream_channel::*;
 pub use terminal::*;
 pub use timer::*;
+pub(crate) use write_zeroes::file_punch_hole;
+pub(crate) use write_zeroes::file_write_zeroes_at;
 
-use crate::descriptor::{FromRawDescriptor, SafeDescriptor};
-pub use file_traits::{
-    AsRawFds, FileAllocate, FileGetLen, FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen,
-    FileSync,
-};
-pub use mmap::Error as MmapError;
-pub use signalfd::Error as SignalFdError;
-pub(crate) use write_zeroes::{file_punch_hole, file_write_zeroes_at};
-
-use std::{
-    cell::Cell,
-    convert::TryFrom,
-    ffi::CStr,
-    fs::{remove_file, File, OpenOptions},
-    mem,
-    ops::Deref,
-    os::unix::{
-        io::{AsRawFd, FromRawFd, RawFd},
-        net::{UnixDatagram, UnixListener},
-    },
-    path::Path,
-    ptr,
-    time::Duration,
-};
-
-use libc::{
-    c_int, c_long, fcntl, pipe2, syscall, sysconf, waitpid, SYS_getpid, SYS_gettid, EINVAL,
-    F_GETFL, F_SETFL, O_CLOEXEC, SIGKILL, WNOHANG, _SC_IOV_MAX, _SC_PAGESIZE,
-};
-
-pub(crate) use libc::{PROT_READ, PROT_WRITE};
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::SafeDescriptor;
+pub use crate::descriptor_reflection::deserialize_with_descriptors;
+pub use crate::descriptor_reflection::with_as_descriptor;
+pub use crate::descriptor_reflection::with_raw_descriptor;
+pub use crate::descriptor_reflection::FileSerdeWrapper;
+pub use crate::descriptor_reflection::SerializeDescriptors;
+pub use crate::errno::Error;
+pub use crate::errno::Result;
+pub use crate::errno::*;
 
 /// Re-export libc types that are part of the API.
 pub type Pid = libc::pid_t;
@@ -637,8 +661,9 @@ pub fn number_of_logical_cores() -> Result<usize> {
 
 #[cfg(test)]
 mod tests {
-    use libc::EBADF;
     use std::io::Write;
+
+    use libc::EBADF;
 
     use super::*;
 

@@ -8,20 +8,38 @@ use std::io;
 use std::rc::Rc;
 use std::thread;
 
-use base::{error, AsRawDescriptor, Event, RawDescriptor, Tube};
-use base::{Error as SysError, Result as SysResult};
-use cros_async::{select3, EventAsync, Executor};
-use data_model::{DataInit, Le32, Le64};
+use base::error;
+use base::AsRawDescriptor;
+use base::Error as SysError;
+use base::Event;
+use base::RawDescriptor;
+use base::Result as SysResult;
+use base::Tube;
+use cros_async::select3;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use data_model::DataInit;
+use data_model::Le32;
+use data_model::Le64;
 use futures::pin_mut;
 use remain::sorted;
 use thiserror::Error;
-use vm_control::{MemSlot, VmMsyncRequest, VmMsyncResponse};
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_control::MemSlot;
+use vm_control::VmMsyncRequest;
+use vm_control::VmMsyncResponse;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
-use super::{
-    async_utils, copy_config, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue,
-    Reader, VirtioDevice, Writer,
-};
+use super::async_utils;
+use super::copy_config;
+use super::DescriptorChain;
+use super::DescriptorError;
+use super::DeviceType;
+use super::Interrupt;
+use super::Queue;
+use super::Reader;
+use super::VirtioDevice;
+use super::Writer;
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];

@@ -4,9 +4,12 @@
 
 use std::fmt;
 use std::io;
-use std::io::{ErrorKind, Read, Write};
+use std::io::ErrorKind;
+use std::io::Read;
+use std::io::Write;
 use std::mem;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::string::String;
 use std::vec::Vec;
 
@@ -202,10 +205,11 @@ impl WireFormat for Data {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use std::io::Cursor;
     use std::mem;
     use std::string::String;
+
+    use super::*;
 
     #[test]
     fn integer_byte_size() {

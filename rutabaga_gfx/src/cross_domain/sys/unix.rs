@@ -2,24 +2,32 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    fs::File,
-    io::{IoSliceMut, Seek, SeekFrom},
-};
+use std::fs::File;
+use std::io::IoSliceMut;
+use std::io::Seek;
+use std::io::SeekFrom;
 
-use base::{pipe, AsRawDescriptor, FileFlags, FromRawDescriptor, RawDescriptor, ScmSocket};
+use base::pipe;
+use base::AsRawDescriptor;
+use base::FileFlags;
+use base::FromRawDescriptor;
+use base::RawDescriptor;
+use base::ScmSocket;
 use data_model::VolatileSlice;
 
-use super::super::{
-    cross_domain::{
-        add_item, CrossDomainContext, CrossDomainItem, CrossDomainJob, CrossDomainState,
-    },
-    cross_domain_protocol::{
-        CrossDomainSendReceive, CROSS_DOMAIN_ID_TYPE_READ_PIPE, CROSS_DOMAIN_ID_TYPE_VIRTGPU_BLOB,
-        CROSS_DOMAIN_ID_TYPE_WRITE_PIPE, CROSS_DOMAIN_MAX_IDENTIFIERS,
-    },
-};
-use crate::{cross_domain::cross_domain_protocol::CrossDomainInit, RutabagaError, RutabagaResult};
+use super::super::cross_domain::add_item;
+use super::super::cross_domain::CrossDomainContext;
+use super::super::cross_domain::CrossDomainItem;
+use super::super::cross_domain::CrossDomainJob;
+use super::super::cross_domain::CrossDomainState;
+use super::super::cross_domain_protocol::CrossDomainSendReceive;
+use super::super::cross_domain_protocol::CROSS_DOMAIN_ID_TYPE_READ_PIPE;
+use super::super::cross_domain_protocol::CROSS_DOMAIN_ID_TYPE_VIRTGPU_BLOB;
+use super::super::cross_domain_protocol::CROSS_DOMAIN_ID_TYPE_WRITE_PIPE;
+use super::super::cross_domain_protocol::CROSS_DOMAIN_MAX_IDENTIFIERS;
+use crate::cross_domain::cross_domain_protocol::CrossDomainInit;
+use crate::RutabagaError;
+use crate::RutabagaResult;
 
 // TODO(b:231309513): The alias can be moved to base crate for wider use.
 pub(crate) type SystemStream = std::os::unix::net::UnixStream;

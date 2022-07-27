@@ -2,27 +2,33 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::command_ring_controller::{CommandRingController, CommandRingControllerError};
-use super::device_slot::{DeviceSlots, Error as DeviceSlotError};
-use super::interrupter::{Error as InterrupterError, Interrupter};
+use std::sync::Arc;
+use std::thread;
+
+use base::error;
+use remain::sorted;
+use sync::Mutex;
+use thiserror::Error;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+
+use super::command_ring_controller::CommandRingController;
+use super::command_ring_controller::CommandRingControllerError;
+use super::device_slot::DeviceSlots;
+use super::device_slot::Error as DeviceSlotError;
+use super::interrupter::Error as InterrupterError;
+use super::interrupter::Interrupter;
 use super::intr_resample_handler::IntrResampleHandler;
 use super::ring_buffer_stop_cb::RingBufferStopCallback;
 use super::usb_hub::UsbHub;
 use super::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use super::xhci_regs::*;
-use crate::usb::host_backend::{
-    error::Error as HostBackendProviderError,
-    host_backend_device_provider::HostBackendDeviceProvider,
-};
-use crate::utils::{Error as UtilsError, EventLoop, FailHandle};
+use crate::usb::host_backend::error::Error as HostBackendProviderError;
+use crate::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
+use crate::utils::Error as UtilsError;
+use crate::utils::EventLoop;
+use crate::utils::FailHandle;
 use crate::IrqLevelEvent;
-use base::error;
-use remain::sorted;
-use std::sync::Arc;
-use std::thread;
-use sync::Mutex;
-use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory};
 
 #[sorted]
 #[derive(Error, Debug)]

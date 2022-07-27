@@ -2,24 +2,30 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    cmp::min,
-    fs::File,
-    intrinsics::copy_nonoverlapping,
-    mem::size_of,
-    ptr::{read_unaligned, read_volatile, write_unaligned, write_volatile},
-    sync::atomic::{fence, Ordering},
-};
+use std::cmp::min;
+use std::fs::File;
+use std::intrinsics::copy_nonoverlapping;
+use std::mem::size_of;
+use std::ptr::read_unaligned;
+use std::ptr::read_volatile;
+use std::ptr::write_unaligned;
+use std::ptr::write_volatile;
+use std::sync::atomic::fence;
+use std::sync::atomic::Ordering;
 
-use data_model::{volatile_memory::*, DataInit};
+use data_model::volatile_memory::*;
+use data_model::DataInit;
 use libc::c_int;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{
-    descriptor::{AsRawDescriptor, SafeDescriptor},
-    platform::{MemoryMapping as PlatformMmap, MmapError as Error, PROT_READ, PROT_WRITE},
-    SharedMemory,
-};
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::SafeDescriptor;
+use crate::platform::MemoryMapping as PlatformMmap;
+use crate::platform::MmapError as Error;
+use crate::platform::PROT_READ;
+use crate::platform::PROT_WRITE;
+use crate::SharedMemory;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

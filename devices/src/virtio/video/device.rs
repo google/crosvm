@@ -4,10 +4,12 @@
 
 //! Definition of the trait `Device` that each backend video device must implement.
 
-use base::{EventToken, WaitContext};
+use base::EventToken;
+use base::WaitContext;
 
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
-use crate::virtio::video::command::{QueueType, VideoCmd};
+use crate::virtio::video::command::QueueType;
+use crate::virtio::video::command::VideoCmd;
 use crate::virtio::video::error::*;
 use crate::virtio::video::event::VideoEvt;
 use crate::virtio::video::response;

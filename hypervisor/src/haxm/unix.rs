@@ -2,14 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::{open, EBUSY, O_CLOEXEC, O_RDWR};
 use std::cell::RefCell;
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_char;
+use std::os::raw::c_int;
 
-use base::{errno_result, Error, FromRawDescriptor, MappedRegion, Result, SafeDescriptor};
+use base::errno_result;
+use base::Error;
+use base::FromRawDescriptor;
+use base::MappedRegion;
+use base::Result;
+use base::SafeDescriptor;
+use libc::open;
+use libc::EBUSY;
+use libc::O_CLOEXEC;
+use libc::O_RDWR;
 
 use super::haxm_sys::hax_tunnel;
-use super::{HaxmVcpu, HAX_EXIT_PAUSED};
+use super::HaxmVcpu;
+use super::HAX_EXIT_PAUSED;
 use crate::VcpuRunHandle;
 
 pub(super) fn open_haxm_device(_use_ghaxm: bool) -> Result<SafeDescriptor> {

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::ops::Deref;
+
 use winapi::um::winnt::LARGE_INTEGER;
 
 pub struct LargeInteger {

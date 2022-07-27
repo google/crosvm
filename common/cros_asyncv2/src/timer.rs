@@ -2,18 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    future::Future,
-    io,
-    pin::Pin,
-    task::{Context, Poll},
-    time::Instant,
-};
+use std::future::Future;
+use std::io;
+use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
+use std::time::Instant;
 
-use futures::{
-    future::{select, Either},
-    pin_mut,
-};
+use futures::future::select;
+use futures::future::Either;
+use futures::pin_mut;
 use thiserror::Error as ThisError;
 
 use crate::executor;
@@ -164,13 +162,18 @@ pub async fn with_deadline<F: Future>(deadline: Instant, f: F) -> Result<F::Outp
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use std::mem;
+    use std::sync::Arc;
+    use std::task;
+    use std::thread;
+    use std::time::Duration;
 
-    use std::{mem, sync::Arc, task, thread, time::Duration};
-
-    use futures::{future::join5, stream::FuturesUnordered, StreamExt};
+    use futures::future::join5;
+    use futures::stream::FuturesUnordered;
+    use futures::StreamExt;
     use sync::Mutex;
 
+    use super::*;
     use crate::Executor;
 
     #[test]

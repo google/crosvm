@@ -4,17 +4,18 @@
 
 //! Provides an async blocking pool whose tasks can be cancelled.
 
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 
-use crate::BlockingPool;
 use async_task::Task;
 use once_cell::sync::Lazy;
-use sync::{Condvar, Mutex};
+use sync::Condvar;
+use sync::Mutex;
 use thiserror::Error as ThisError;
+
+use crate::BlockingPool;
 
 /// Global executor.
 ///
@@ -347,13 +348,17 @@ pub fn unblock_disarm() {
 
 #[cfg(test)]
 mod test {
-    use std::{sync::Arc, thread, time::Duration};
+    use std::sync::Arc;
+    use std::sync::Barrier;
+    use std::thread;
+    use std::time::Duration;
 
     use futures::executor::block_on;
-    use sync::{Condvar, Mutex};
+    use sync::Condvar;
+    use sync::Mutex;
 
-    use crate::{blocking::Error, CancellableBlockingPool};
-    use std::sync::Barrier;
+    use crate::blocking::Error;
+    use crate::CancellableBlockingPool;
 
     #[test]
     fn disarm_with_pending_work() {

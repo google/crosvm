@@ -2,17 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fs::File;
 use std::io::Read;
 use std::mem;
 use std::os::unix::io::FromRawFd;
-use std::{fs::File, rc::Rc};
+use std::rc::Rc;
 
+use super::bindings;
 use super::event::*;
 use super::format::Bitrate;
 use super::vea_instance::Config;
-use super::{bindings, VeaConnection};
+use super::VeaConnection;
 use crate::error::*;
-use crate::format::{BufferFd, FramePlane};
+use crate::format::BufferFd;
+use crate::format::FramePlane;
 
 pub type VeaInputBufferId = bindings::vea_input_buffer_id_t;
 pub type VeaOutputBufferId = bindings::vea_output_buffer_id_t;

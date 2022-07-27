@@ -2,19 +2,30 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, AsRawDescriptor, Event, FileSync, RawDescriptor, ReadNotifier};
-use base::{info, read_raw_stdin};
-use hypervisor::ProtectionType;
 use std::borrow::Cow;
 use std::fs::OpenOptions;
 use std::io;
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
+use std::io::Write;
 use std::os::unix::net::UnixDatagram;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 
-use crate::serial_device::{Error, SerialInput, SerialParameters};
+use base::error;
+use base::info;
+use base::read_raw_stdin;
+use base::AsRawDescriptor;
+use base::Event;
+use base::FileSync;
+use base::RawDescriptor;
+use base::ReadNotifier;
+use hypervisor::ProtectionType;
+
+use crate::serial_device::Error;
+use crate::serial_device::SerialInput;
+use crate::serial_device::SerialParameters;
 
 pub const SYSTEM_SERIAL_TYPE_NAME: &str = "UnixSocket";
 

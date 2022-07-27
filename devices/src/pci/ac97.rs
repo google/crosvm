@@ -6,25 +6,45 @@ use std::default::Default;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use audio_streams::shm_streams::{NullShmStreamSource, ShmStreamSource};
-use base::{error, AsRawDescriptor, RawDescriptor};
+use audio_streams::shm_streams::NullShmStreamSource;
+use audio_streams::shm_streams::ShmStreamSource;
+use base::error;
+use base::AsRawDescriptor;
+use base::RawDescriptor;
 #[cfg(feature = "audio_cras")]
-use libcras::{CrasClient, CrasClientType, CrasSocketType, CrasSysError};
+use libcras::CrasClient;
+#[cfg(feature = "audio_cras")]
+use libcras::CrasClientType;
+#[cfg(feature = "audio_cras")]
+use libcras::CrasSocketType;
+#[cfg(feature = "audio_cras")]
+use libcras::CrasSysError;
 use remain::sorted;
-use resources::{Alloc, MmioType, SystemAllocator};
-use serde::{Deserialize, Serialize};
+use resources::Alloc;
+use resources::MmioType;
+use resources::SystemAllocator;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use crate::pci::ac97_bus_master::Ac97BusMaster;
 use crate::pci::ac97_mixer::Ac97Mixer;
 use crate::pci::ac97_regs::*;
-use crate::pci::pci_configuration::{
-    PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciClassCode, PciConfiguration,
-    PciHeaderType, PciMultimediaSubclass,
-};
-use crate::pci::pci_device::{self, BarRange, PciDevice, Result};
-use crate::pci::{PciAddress, PciDeviceError, PciInterruptPin};
+use crate::pci::pci_configuration::PciBarConfiguration;
+use crate::pci::pci_configuration::PciBarPrefetchable;
+use crate::pci::pci_configuration::PciBarRegionType;
+use crate::pci::pci_configuration::PciClassCode;
+use crate::pci::pci_configuration::PciConfiguration;
+use crate::pci::pci_configuration::PciHeaderType;
+use crate::pci::pci_configuration::PciMultimediaSubclass;
+use crate::pci::pci_device::BarRange;
+use crate::pci::pci_device::PciDevice;
+use crate::pci::pci_device::Result;
+use crate::pci::pci_device::{self};
+use crate::pci::PciAddress;
+use crate::pci::PciDeviceError;
+use crate::pci::PciInterruptPin;
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
 use crate::virtio::snd::vios_backend::Error as VioSError;
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -441,10 +461,12 @@ impl PciDevice for Ac97Dev {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use audio_streams::shm_streams::MockShmStreamSource;
-    use resources::{AddressRange, SystemAllocatorConfig};
+    use resources::AddressRange;
+    use resources::SystemAllocatorConfig;
     use vm_memory::GuestAddress;
+
+    use super::*;
 
     #[test]
     fn create() {

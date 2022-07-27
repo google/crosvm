@@ -2,9 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{
-    ioctl_ior_nr, ioctl_iow_nr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, AsRawDescriptor,
-};
+use std::collections::BTreeMap;
+use std::os::raw::c_uint;
+use std::ptr::null;
+
+use base::ioctl_ior_nr;
+use base::ioctl_iow_nr;
+use base::ioctl_with_mut_ref;
+use base::ioctl_with_ptr;
+use base::ioctl_with_ref;
+use base::AsRawDescriptor;
 use data_model::Le32;
 
 use super::constants::*;
@@ -13,10 +20,6 @@ use super::virtio_input_bitmap;
 use super::virtio_input_device_ids;
 use super::InputError;
 use super::Result;
-
-use std::collections::BTreeMap;
-use std::os::raw::c_uint;
-use std::ptr::null;
 
 const EVDEV: c_uint = 69;
 

@@ -7,7 +7,10 @@ use std::rc::Rc;
 use anyhow::Result;
 use base::error;
 
-use crate::{bindings, display::Display, generic_value::GenericValue, status::Status};
+use crate::bindings;
+use crate::display::Display;
+use crate::generic_value::GenericValue;
+use crate::status::Status;
 
 /// An owned VAConfig that is tied to the lifetime of a particular VADisplay
 pub struct Config {

@@ -4,9 +4,14 @@
 
 //! Provide utility to communicate with an iommu in another process
 
-use anyhow::{Context, Result};
-use base::{AsRawDescriptor, AsRawDescriptors, RawDescriptor, Tube};
-use serde::{Deserialize, Serialize};
+use anyhow::Context;
+use anyhow::Result;
+use base::AsRawDescriptor;
+use base::AsRawDescriptors;
+use base::RawDescriptor;
+use base::Tube;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::virtio::memory_mapper::MemRegion;
 
@@ -89,10 +94,12 @@ pub fn create_ipc_mapper(endpoint_id: u32, request_tx: Tube) -> CreateIpcMapperR
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use base::Protection;
     use std::thread;
+
+    use base::Protection;
     use vm_memory::GuestAddress;
+
+    use super::*;
 
     #[test]
     fn test() {

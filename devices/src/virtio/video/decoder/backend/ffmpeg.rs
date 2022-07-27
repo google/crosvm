@@ -15,22 +15,33 @@
 //! abstractions over the ffmpeg libraries are provided in sub-modules, one per ffmpeg library we
 //! want to support.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
+use std::collections::VecDeque;
 
-use anyhow::{anyhow, Context};
-use base::{error, info, warn, MappedRegion, MemoryMappingArena, MmapError};
+use ::ffmpeg::avcodec::*;
+use ::ffmpeg::swscale::*;
+use ::ffmpeg::*;
+use anyhow::anyhow;
+use anyhow::Context;
+use base::error;
+use base::info;
+use base::warn;
+use base::MappedRegion;
+use base::MemoryMappingArena;
+use base::MmapError;
 use thiserror::Error as ThisError;
 
-use crate::virtio::video::{
-    decoder::backend::{
-        utils::{EventQueue, OutputQueue},
-        *,
-    },
-    format::{FormatDesc, FormatRange, FrameFormat, Level, Profile},
-    resource::{BufferHandle, GuestResource, GuestResourceHandle},
-};
-
-use ::ffmpeg::{avcodec::*, swscale::*, *};
+use crate::virtio::video::decoder::backend::utils::EventQueue;
+use crate::virtio::video::decoder::backend::utils::OutputQueue;
+use crate::virtio::video::decoder::backend::*;
+use crate::virtio::video::format::FormatDesc;
+use crate::virtio::video::format::FormatRange;
+use crate::virtio::video::format::FrameFormat;
+use crate::virtio::video::format::Level;
+use crate::virtio::video::format::Profile;
+use crate::virtio::video::resource::BufferHandle;
+use crate::virtio::video::resource::GuestResource;
+use crate::virtio::video::resource::GuestResourceHandle;
 
 /// Structure maintaining a mapping for an encoded input buffer that can be used as a libavcodec
 /// buffer source.
@@ -754,15 +765,17 @@ impl DecoderBackend for FfmpegDecoder {
 
 #[cfg(test)]
 mod tests {
-    use crate::virtio::video::{
-        format::FramePlane,
-        resource::{GuestMemArea, GuestMemHandle, VirtioObjectHandle},
-    };
+    use base::FromRawDescriptor;
+    use base::MappedRegion;
+    use base::MemoryMappingBuilder;
+    use base::SafeDescriptor;
+    use base::SharedMemory;
 
     use super::*;
-    use base::{
-        FromRawDescriptor, MappedRegion, MemoryMappingBuilder, SafeDescriptor, SharedMemory,
-    };
+    use crate::virtio::video::format::FramePlane;
+    use crate::virtio::video::resource::GuestMemArea;
+    use crate::virtio::video::resource::GuestMemHandle;
+    use crate::virtio::video::resource::VirtioObjectHandle;
 
     // Test video stream and its properties.
     const H264_STREAM: &[u8] = include_bytes!("test-25fps.h264");

@@ -51,25 +51,32 @@
 //! ensures that only the kernel is allowed to access the `Vec` and wraps the the `Vec` in an Arc to
 //! ensure it lives long enough.
 
-use std::{
-    convert::TryInto,
-    ffi::CStr,
-    fs::File,
-    future::Future,
-    io,
-    mem::{self, MaybeUninit},
-    os::unix::io::{FromRawFd, RawFd},
-    pin::Pin,
-    sync::{
-        atomic::{AtomicI32, Ordering},
-        Arc, Weak,
-    },
-    task::{Context, Poll, Waker},
-    thread::{self, ThreadId},
-};
+use std::convert::TryInto;
+use std::ffi::CStr;
+use std::fs::File;
+use std::future::Future;
+use std::io;
+use std::mem::MaybeUninit;
+use std::mem::{self};
+use std::os::unix::io::FromRawFd;
+use std::os::unix::io::RawFd;
+use std::pin::Pin;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Weak;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Waker;
+use std::thread::ThreadId;
+use std::thread::{self};
 
 use async_task::Task;
-use base::{trace, warn, AsRawDescriptor, EventType, RawDescriptor};
+use base::trace;
+use base::warn;
+use base::AsRawDescriptor;
+use base::EventType;
+use base::RawDescriptor;
 use futures::task::noop_waker;
 use io_uring::URingContext;
 use once_cell::sync::Lazy;
@@ -79,12 +86,13 @@ use slab::Slab;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 
-use crate::{
-    mem::{BackingMemory, MemRegion},
-    queue::RunnableQueue,
-    waker::{new_waker, WakerToken, WeakWake},
-    BlockingPool,
-};
+use crate::mem::BackingMemory;
+use crate::mem::MemRegion;
+use crate::queue::RunnableQueue;
+use crate::waker::new_waker;
+use crate::waker::WakerToken;
+use crate::waker::WeakWake;
+use crate::BlockingPool;
 
 #[sorted]
 #[derive(Debug, ThisError)]
@@ -950,17 +958,20 @@ impl Drop for PendingOperation {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        future::Future,
-        io::{Read, Write},
-        mem,
-        pin::Pin,
-        task::{Context, Poll},
-    };
+    use std::future::Future;
+    use std::io::Read;
+    use std::io::Write;
+    use std::mem;
+    use std::pin::Pin;
+    use std::task::Context;
+    use std::task::Poll;
+
+    use futures::executor::block_on;
 
     use super::*;
-    use crate::mem::{BackingMemory, MemRegion, VecIoWrapper};
-    use futures::executor::block_on;
+    use crate::mem::BackingMemory;
+    use crate::mem::MemRegion;
+    use crate::mem::VecIoWrapper;
 
     // A future that returns ready when the uring queue is empty.
     struct UringQueueEmpty<'a> {

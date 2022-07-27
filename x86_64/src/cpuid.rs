@@ -2,16 +2,23 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::arch::x86_64::{CpuidResult, __cpuid, __cpuid_count};
+use std::arch::x86_64::CpuidResult;
+use std::arch::x86_64::__cpuid;
+use std::arch::x86_64::__cpuid_count;
 use std::cmp;
 use std::result;
 
-use devices::{Apic, IrqChipCap, IrqChipX86_64};
-use hypervisor::{CpuIdEntry, HypervisorCap, HypervisorX86_64, VcpuX86_64};
-
-use crate::CpuManufacturer;
+use devices::Apic;
+use devices::IrqChipCap;
+use devices::IrqChipX86_64;
+use hypervisor::CpuIdEntry;
+use hypervisor::HypervisorCap;
+use hypervisor::HypervisorX86_64;
+use hypervisor::VcpuX86_64;
 use remain::sorted;
 use thiserror::Error;
+
+use crate::CpuManufacturer;
 
 #[sorted]
 #[derive(Error, Debug, PartialEq)]
@@ -391,9 +398,10 @@ pub fn cpu_manufacturer() -> CpuManufacturer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     #[cfg(unix)]
     use hypervisor::ProtectionType;
+
+    use super::*;
 
     #[test]
     fn cpu_manufacturer_test() {

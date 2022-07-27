@@ -2,16 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    fs::File as StdFile,
-    io,
-    path::Path,
-};
+use std::convert::TryFrom;
+use std::convert::TryInto;
+use std::fs::File as StdFile;
+use std::io;
+use std::path::Path;
 
 use base::AsRawDescriptor;
 
-use crate::{sys, AsIoBufs};
+use crate::sys;
+use crate::AsIoBufs;
 
 static DOWNCAST_ERROR: &str = "inner error not downcastable to `io::Error`";
 
@@ -356,18 +356,17 @@ impl AsRawDescriptor for File {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-
-    use std::{
-        fs::{File as StdFile, OpenOptions},
-        path::PathBuf,
-        thread,
-    };
+    use std::fs::File as StdFile;
+    use std::fs::OpenOptions;
+    use std::path::PathBuf;
+    use std::thread;
 
     use anyhow::Context;
     use futures::channel::oneshot::channel;
 
-    use crate::{Executor, OwnedIoBuf};
+    use super::*;
+    use crate::Executor;
+    use crate::OwnedIoBuf;
 
     #[test]
     fn readvec() {

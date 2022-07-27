@@ -22,7 +22,10 @@
 use std::cmp::min;
 use std::marker::PhantomData;
 use std::mem::size_of;
-use std::ptr::{copy, read_volatile, write_bytes, write_volatile};
+use std::ptr::copy;
+use std::ptr::read_volatile;
+use std::ptr::write_bytes;
+use std::ptr::write_volatile;
 use std::result;
 use std::slice;
 use std::usize;
@@ -30,7 +33,8 @@ use std::usize;
 use remain::sorted;
 use thiserror::Error;
 
-use crate::{sys::IoBufMut, DataInit};
+use crate::sys::IoBufMut;
+use crate::DataInit;
 
 #[sorted]
 #[derive(Error, Eq, PartialEq, Debug)]
@@ -394,10 +398,11 @@ impl<'a, T: DataInit> VolatileRef<'a, T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    use std::sync::{Arc, Barrier};
+    use std::sync::Arc;
+    use std::sync::Barrier;
     use std::thread::spawn;
+
+    use super::*;
 
     #[derive(Clone)]
     struct VecMem {

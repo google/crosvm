@@ -2,18 +2,29 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::interrupter::{Error as InterrupterError, Interrupter};
-use super::xhci_backend_device::{BackendType, XhciBackendDevice};
-use super::xhci_regs::{
-    XhciRegs, MAX_PORTS, PORTSC_CONNECT_STATUS_CHANGE, PORTSC_CURRENT_CONNECT_STATUS,
-    PORTSC_PORT_ENABLED, PORTSC_PORT_ENABLED_DISABLED_CHANGE, USB2_PORTS_END, USB2_PORTS_START,
-    USB3_PORTS_END, USB3_PORTS_START, USB_STS_PORT_CHANGE_DETECT,
-};
-use crate::register_space::Register;
+use std::sync::Arc;
+use std::sync::MutexGuard;
+
 use remain::sorted;
-use std::sync::{Arc, MutexGuard};
 use sync::Mutex;
 use thiserror::Error;
+
+use super::interrupter::Error as InterrupterError;
+use super::interrupter::Interrupter;
+use super::xhci_backend_device::BackendType;
+use super::xhci_backend_device::XhciBackendDevice;
+use super::xhci_regs::XhciRegs;
+use super::xhci_regs::MAX_PORTS;
+use super::xhci_regs::PORTSC_CONNECT_STATUS_CHANGE;
+use super::xhci_regs::PORTSC_CURRENT_CONNECT_STATUS;
+use super::xhci_regs::PORTSC_PORT_ENABLED;
+use super::xhci_regs::PORTSC_PORT_ENABLED_DISABLED_CHANGE;
+use super::xhci_regs::USB2_PORTS_END;
+use super::xhci_regs::USB2_PORTS_START;
+use super::xhci_regs::USB3_PORTS_END;
+use super::xhci_regs::USB3_PORTS_START;
+use super::xhci_regs::USB_STS_PORT_CHANGE_DETECT;
+use crate::register_space::Register;
 
 #[sorted]
 #[derive(Error, Debug)]

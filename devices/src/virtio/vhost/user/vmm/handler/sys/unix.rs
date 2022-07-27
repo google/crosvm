@@ -4,17 +4,30 @@
 
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 
-use anyhow::{bail, Context, Result};
-use base::{info, AsRawDescriptor, Descriptor, SafeDescriptor};
-use cros_async::{AsyncWrapper, Executor};
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Result;
+use base::info;
+use base::AsRawDescriptor;
+use base::Descriptor;
+use base::SafeDescriptor;
+use cros_async::AsyncWrapper;
+use cros_async::Executor;
 use vmm_vhost::connection::socket::Endpoint as SocketEndpoint;
-use vmm_vhost::message::{MasterReq, VhostUserProtocolFeatures};
-use vmm_vhost::{Error as VhostError, Master, MasterReqHandler, VhostUserMaster};
+use vmm_vhost::message::MasterReq;
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::Error as VhostError;
+use vmm_vhost::Master;
+use vmm_vhost::MasterReqHandler;
+use vmm_vhost::VhostUserMaster;
 
-use crate::virtio::vhost::user::vmm::handler::{BackendReqHandlerImpl, VhostUserHandler};
-use crate::virtio::vhost::user::vmm::{Error, Result as VhostResult};
+use crate::virtio::vhost::user::vmm::handler::BackendReqHandlerImpl;
+use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
+use crate::virtio::vhost::user::vmm::Error;
+use crate::virtio::vhost::user::vmm::Result as VhostResult;
 
 pub(in crate::virtio::vhost::user::vmm::handler) type SocketMaster =
     Master<SocketEndpoint<MasterReq>>;

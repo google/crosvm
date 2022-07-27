@@ -6,10 +6,9 @@ use std::str::FromStr;
 
 use audio_streams::StreamSourceGenerator;
 
-use crate::virtio::snd::{
-    common_backend::SndData,
-    parameters::{Error, Parameters},
-};
+use crate::virtio::snd::common_backend::SndData;
+use crate::virtio::snd::parameters::Error;
+use crate::virtio::snd::parameters::Parameters;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum StreamSourceBackend {}

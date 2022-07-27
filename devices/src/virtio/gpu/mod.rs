@@ -7,11 +7,13 @@ mod protocol;
 mod virtio_gpu;
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
+use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::i64;
 use std::io::Read;
-use std::mem::{self, size_of};
+use std::mem::size_of;
+use std::mem::{self};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -19,47 +21,62 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::Context;
-
-use base::{
-    debug, error, warn, AsRawDescriptor, Event, EventToken, ExternalMapping, RawDescriptor,
-    SafeDescriptor, SendTube, Tube, VmEventType, WaitContext,
-};
-
+use base::debug;
+use base::error;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Event;
+use base::EventToken;
+use base::ExternalMapping;
+use base::RawDescriptor;
+use base::SafeDescriptor;
+use base::SendTube;
+use base::Tube;
+use base::VmEventType;
+use base::WaitContext;
 use data_model::*;
-
 pub use gpu_display::EventDevice;
 use gpu_display::*;
-use rutabaga_gfx::*;
-
+pub use parameters::DisplayParameters as GpuDisplayParameters;
+pub use parameters::GpuParameters;
+pub use parameters::DEFAULT_DISPLAY_HEIGHT;
+pub use parameters::DEFAULT_DISPLAY_WIDTH;
 use resources::Alloc;
-
-use serde::{Deserialize, Serialize};
+use rutabaga_gfx::*;
+use serde::Deserialize;
+use serde::Serialize;
 use sync::Mutex;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
-use super::{
-    copy_config, resource_bridge::*, DescriptorChain, DeviceType, Interrupt, Queue, Reader,
-    SignalableInterrupt, VirtioDevice, Writer,
-};
-
-use super::{PciCapabilityType, VirtioPciShmCap};
-
+pub use self::protocol::virtio_gpu_config;
+pub use self::protocol::VIRTIO_GPU_F_CONTEXT_INIT;
+pub use self::protocol::VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
+pub use self::protocol::VIRTIO_GPU_F_EDID;
+pub use self::protocol::VIRTIO_GPU_F_RESOURCE_BLOB;
+pub use self::protocol::VIRTIO_GPU_F_RESOURCE_SYNC;
+pub use self::protocol::VIRTIO_GPU_F_RESOURCE_UUID;
+pub use self::protocol::VIRTIO_GPU_F_VIRGL;
+pub use self::protocol::VIRTIO_GPU_SHM_ID_HOST_VISIBLE;
 use self::protocol::*;
-pub use self::protocol::{
-    virtio_gpu_config, VIRTIO_GPU_F_CONTEXT_INIT, VIRTIO_GPU_F_CREATE_GUEST_HANDLE,
-    VIRTIO_GPU_F_EDID, VIRTIO_GPU_F_RESOURCE_BLOB, VIRTIO_GPU_F_RESOURCE_SYNC,
-    VIRTIO_GPU_F_RESOURCE_UUID, VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_SHM_ID_HOST_VISIBLE,
-};
 use self::virtio_gpu::VirtioGpu;
-
-use crate::pci::{
-    PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability,
-};
-
-pub use parameters::{
-    DisplayParameters as GpuDisplayParameters, GpuParameters, DEFAULT_DISPLAY_HEIGHT,
-    DEFAULT_DISPLAY_WIDTH,
-};
+use super::copy_config;
+use super::resource_bridge::*;
+use super::DescriptorChain;
+use super::DeviceType;
+use super::Interrupt;
+use super::PciCapabilityType;
+use super::Queue;
+use super::Reader;
+use super::SignalableInterrupt;
+use super::VirtioDevice;
+use super::VirtioPciShmCap;
+use super::Writer;
+use crate::pci::PciAddress;
+use crate::pci::PciBarConfiguration;
+use crate::pci::PciBarPrefetchable;
+use crate::pci::PciBarRegionType;
+use crate::pci::PciCapability;
 
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum GpuMode {

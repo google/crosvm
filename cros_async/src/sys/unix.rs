@@ -15,8 +15,10 @@ pub use uring_executor::URingExecutor;
 pub use uring_source::UringSource;
 mod timer;
 
-use crate::{Error, Result};
 use std::future::Future;
+
+use crate::Error;
+use crate::Result;
 
 /// Creates a URingExecutor that runs one future to completion.
 ///

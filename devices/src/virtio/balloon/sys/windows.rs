@@ -5,13 +5,18 @@
 use std::sync::Arc;
 
 use balloon_control::BalloonTubeResult;
-use base::{warn, Tube};
-use cros_async::{block_on, sync::Mutex as AsyncMutex, AsyncTube};
-use vm_control::{VmMemoryRequest, VmMemoryResponse};
+use base::warn;
+use base::Tube;
+use cros_async::block_on;
+use cros_async::sync::Mutex as AsyncMutex;
+use cros_async::AsyncTube;
+use vm_control::VmMemoryRequest;
+use vm_control::VmMemoryResponse;
 use vm_memory::GuestAddress;
 
 use crate::virtio::balloon::virtio_balloon_config;
-use crate::virtio::balloon::{BalloonState, VIRTIO_BALLOON_PFN_SHIFT};
+use crate::virtio::balloon::BalloonState;
+use crate::virtio::balloon::VIRTIO_BALLOON_PFN_SHIFT;
 
 // TODO nkgold (b/222588331): Need AsyncTube to be able to be de-ref'd to Tube before this can be
 // implemented.

@@ -4,7 +4,8 @@
 
 use std::io::Cursor;
 
-use crate::protocol::{Tframe, WireFormat};
+use crate::protocol::Tframe;
+use crate::protocol::WireFormat;
 
 pub fn tframe_decode(bytes: &[u8]) {
     let mut cursor = Cursor::new(bytes);

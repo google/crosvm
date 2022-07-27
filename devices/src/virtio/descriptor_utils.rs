@@ -7,7 +7,8 @@ mod sys;
 use std::borrow::Cow;
 use std::cmp;
 use std::convert::TryInto;
-use std::io::{self, Write};
+use std::io::Write;
+use std::io::{self};
 use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::ptr::copy_nonoverlapping;
@@ -15,14 +16,21 @@ use std::result;
 use std::sync::Arc;
 
 use anyhow::Context;
-use base::{FileReadWriteAtVolatile, FileReadWriteVolatile};
+use base::FileReadWriteAtVolatile;
+use base::FileReadWriteVolatile;
 use cros_async::MemRegion;
-use data_model::{DataInit, Le16, Le32, Le64, VolatileMemoryError, VolatileSlice};
+use data_model::DataInit;
+use data_model::Le16;
+use data_model::Le32;
+use data_model::Le64;
+use data_model::VolatileMemoryError;
+use data_model::VolatileSlice;
 use disk::AsyncDisk;
 use remain::sorted;
 use smallvec::SmallVec;
 use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 use super::DescriptorChain;
 
@@ -809,11 +817,12 @@ pub fn create_descriptor_chain(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs::File;
     use std::io::Read;
 
     use tempfile::tempfile;
+
+    use super::*;
 
     #[test]
     fn reader_test_simple_chain() {

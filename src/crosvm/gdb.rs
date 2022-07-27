@@ -6,33 +6,42 @@ use std::net::TcpListener;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use base::{error, info, Tube, TubeError};
-
-use sync::Mutex;
-use vm_control::{
-    VcpuControl, VcpuDebug, VcpuDebugStatus, VcpuDebugStatusMessage, VmRequest, VmResponse,
-};
-use vm_memory::GuestAddress;
-
+use base::error;
+use base::info;
+use base::Tube;
+use base::TubeError;
 use gdbstub::arch::Arch;
 use gdbstub::common::Signal;
-use gdbstub::conn::{Connection, ConnectionExt};
+use gdbstub::conn::Connection;
+use gdbstub::conn::ConnectionExt;
+use gdbstub::stub::run_blocking;
 use gdbstub::stub::run_blocking::BlockingEventLoop;
-use gdbstub::stub::{run_blocking, SingleThreadStopReason};
-use gdbstub::target::ext::base::singlethread::{
-    SingleThreadBase, SingleThreadResume, SingleThreadResumeOps, SingleThreadSingleStep,
-    SingleThreadSingleStepOps,
-};
+use gdbstub::stub::SingleThreadStopReason;
+use gdbstub::target::ext::base::singlethread::SingleThreadBase;
+use gdbstub::target::ext::base::singlethread::SingleThreadResume;
+use gdbstub::target::ext::base::singlethread::SingleThreadResumeOps;
+use gdbstub::target::ext::base::singlethread::SingleThreadSingleStep;
+use gdbstub::target::ext::base::singlethread::SingleThreadSingleStepOps;
 use gdbstub::target::ext::base::BaseOps;
-use gdbstub::target::ext::breakpoints::{
-    Breakpoints, BreakpointsOps, HwBreakpoint, HwBreakpointOps,
-};
+use gdbstub::target::ext::breakpoints::Breakpoints;
+use gdbstub::target::ext::breakpoints::BreakpointsOps;
+use gdbstub::target::ext::breakpoints::HwBreakpoint;
+use gdbstub::target::ext::breakpoints::HwBreakpointOps;
+use gdbstub::target::Target;
 use gdbstub::target::TargetError::NonFatal;
-use gdbstub::target::{Target, TargetResult};
+use gdbstub::target::TargetResult;
 #[cfg(target_arch = "x86_64")]
 use gdbstub_arch::x86::X86_64_SSE as GdbArch;
 use remain::sorted;
+use sync::Mutex;
 use thiserror::Error as ThisError;
+use vm_control::VcpuControl;
+use vm_control::VcpuDebug;
+use vm_control::VcpuDebugStatus;
+use vm_control::VcpuDebugStatusMessage;
+use vm_control::VmRequest;
+use vm_control::VmResponse;
+use vm_memory::GuestAddress;
 
 #[cfg(target_arch = "x86_64")]
 type ArchUsize = u64;

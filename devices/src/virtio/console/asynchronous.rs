@@ -4,11 +4,24 @@
 
 //! Asynchronous console device which implementation can be shared by VMM and vhost-user.
 
-use std::{collections::VecDeque, io, sync::Arc, thread};
+use std::collections::VecDeque;
+use std::io;
+use std::sync::Arc;
+use std::thread;
 
 use anyhow::Context;
-use base::{error, warn, AsRawDescriptor, Event, FileSync, RawDescriptor};
-use cros_async::{select2, AsyncResult, EventAsync, Executor, IntoAsync, IoSourceExt};
+use base::error;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Event;
+use base::FileSync;
+use base::RawDescriptor;
+use cros_async::select2;
+use cros_async::AsyncResult;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use cros_async::IntoAsync;
+use cros_async::IoSourceExt;
 use data_model::DataInit;
 use futures::FutureExt;
 use hypervisor::ProtectionType;
@@ -16,17 +29,23 @@ use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
-use crate::{
-    serial_device::SerialInput,
-    virtio::{
-        self, async_device::AsyncQueueState, async_utils, base_features, copy_config,
-        virtio_console_config, ConsoleError, DeviceType, Interrupt, Queue, SignalableInterrupt,
-        VirtioDevice,
-    },
-    SerialDevice,
-};
-
-use super::{handle_input, process_transmit_queue, QUEUE_SIZES};
+use super::handle_input;
+use super::process_transmit_queue;
+use super::QUEUE_SIZES;
+use crate::serial_device::SerialInput;
+use crate::virtio::async_device::AsyncQueueState;
+use crate::virtio::async_utils;
+use crate::virtio::base_features;
+use crate::virtio::copy_config;
+use crate::virtio::virtio_console_config;
+use crate::virtio::ConsoleError;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::SignalableInterrupt;
+use crate::virtio::VirtioDevice;
+use crate::virtio::{self};
+use crate::SerialDevice;
 
 /// Wrapper that makes any `SerialInput` usable as an async source by providing an implementation of
 /// `IntoAsync`.

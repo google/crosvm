@@ -6,12 +6,21 @@
 use std::io::Error as IoError;
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
-use base::{error, warn, Error as SysError, Event, EventToken, WaitContext};
+use base::error;
+use base::warn;
+use base::Error as SysError;
+use base::Event;
+use base::EventToken;
+use base::WaitContext;
 use bit_field::BitField1;
 use bit_field::*;
-use hypervisor::{PitChannelState, PitRWMode, PitRWState, PitState};
+use hypervisor::PitChannelState;
+use hypervisor::PitRWMode;
+use hypervisor::PitRWState;
+use hypervisor::PitState;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;

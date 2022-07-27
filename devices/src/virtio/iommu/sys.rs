@@ -12,4 +12,5 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(in crate::virtio::iommu) use platform::{handle_command_tube, handle_translate_request};
+pub(in crate::virtio::iommu) use platform::handle_command_tube;
+pub(in crate::virtio::iommu) use platform::handle_translate_request;

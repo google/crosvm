@@ -2,16 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::VecDeque;
+
+use audio_streams::BoxError;
+use base::info;
+use base::warn;
+use winapi::shared::mmreg::SPEAKER_FRONT_LEFT;
+use winapi::shared::mmreg::SPEAKER_FRONT_RIGHT;
+
 use crate::r8b_create;
 use crate::r8b_delete;
 use crate::r8b_process;
 use crate::win_audio_impl;
 use crate::CR8BResampler;
 use crate::ER8BResamplerRes_r8brr24;
-use audio_streams::BoxError;
-use base::{info, warn};
-use std::collections::VecDeque;
-use winapi::shared::mmreg::{SPEAKER_FRONT_LEFT, SPEAKER_FRONT_RIGHT};
 
 // Increasing this constant won't do much now. In the future, we may want to read from the shm
 // buffer mulitple times in a row to prevent the chance of us running out of audio frames to write
@@ -248,11 +252,14 @@ impl Drop for IntermediateResamplerBuffer {
 
 #[cfg(test)]
 mod test {
+    use winapi::shared::mmreg::SPEAKER_BACK_LEFT;
+    use winapi::shared::mmreg::SPEAKER_BACK_RIGHT;
+    use winapi::shared::mmreg::SPEAKER_FRONT_CENTER;
+    use winapi::shared::mmreg::SPEAKER_LOW_FREQUENCY;
+    use winapi::shared::mmreg::SPEAKER_SIDE_LEFT;
+    use winapi::shared::mmreg::SPEAKER_SIDE_RIGHT;
+
     use super::*;
-    use winapi::shared::mmreg::{
-        SPEAKER_BACK_LEFT, SPEAKER_BACK_RIGHT, SPEAKER_FRONT_CENTER, SPEAKER_LOW_FREQUENCY,
-        SPEAKER_SIDE_LEFT, SPEAKER_SIDE_RIGHT,
-    };
 
     #[test]
     fn test_copy_every_other_and_convert_to_float() {

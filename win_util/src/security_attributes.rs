@@ -2,32 +2,53 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::alloc::{alloc_zeroed, dealloc, handle_alloc_error, Layout};
-use std::convert::{TryFrom, TryInto};
+use std::alloc::alloc_zeroed;
+use std::alloc::dealloc;
+use std::alloc::handle_alloc_error;
+use std::alloc::Layout;
+use std::convert::TryFrom;
+use std::convert::TryInto;
+use std::io;
 use std::mem::size_of;
 use std::os::windows::io::RawHandle;
-use std::{io, ptr};
-use winapi::shared::minwindef::{FALSE, HLOCAL, LPDWORD, LPVOID, TRUE};
-use winapi::shared::winerror::{ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS};
-use winapi::um::accctrl::{
-    EXPLICIT_ACCESS_A, NO_INHERITANCE, NO_MULTIPLE_TRUSTEE, PEXPLICIT_ACCESSA, SET_ACCESS,
-    TRUSTEE_A, TRUSTEE_IS_SID, TRUSTEE_IS_USER,
-};
+use std::ptr;
+
+use once_cell::sync::OnceCell;
+use winapi::shared::minwindef::FALSE;
+use winapi::shared::minwindef::HLOCAL;
+use winapi::shared::minwindef::LPDWORD;
+use winapi::shared::minwindef::LPVOID;
+use winapi::shared::minwindef::TRUE;
+use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
+use winapi::shared::winerror::ERROR_SUCCESS;
+use winapi::um::accctrl::EXPLICIT_ACCESS_A;
+use winapi::um::accctrl::NO_INHERITANCE;
+use winapi::um::accctrl::NO_MULTIPLE_TRUSTEE;
+use winapi::um::accctrl::PEXPLICIT_ACCESSA;
+use winapi::um::accctrl::SET_ACCESS;
+use winapi::um::accctrl::TRUSTEE_A;
+use winapi::um::accctrl::TRUSTEE_IS_SID;
+use winapi::um::accctrl::TRUSTEE_IS_USER;
 use winapi::um::aclapi::SetEntriesInAclA;
 use winapi::um::handleapi::CloseHandle;
 use winapi::um::minwinbase::SECURITY_ATTRIBUTES;
-use winapi::um::processthreadsapi::{GetCurrentProcess, OpenProcessToken};
-use winapi::um::securitybaseapi::{
-    GetTokenInformation, InitializeSecurityDescriptor, MakeSelfRelativeSD,
-    SetSecurityDescriptorDacl,
-};
+use winapi::um::processthreadsapi::GetCurrentProcess;
+use winapi::um::processthreadsapi::OpenProcessToken;
+use winapi::um::securitybaseapi::GetTokenInformation;
+use winapi::um::securitybaseapi::InitializeSecurityDescriptor;
+use winapi::um::securitybaseapi::MakeSelfRelativeSD;
+use winapi::um::securitybaseapi::SetSecurityDescriptorDacl;
 use winapi::um::winbase::LocalFree;
-use winapi::um::winnt::{
-    TokenUser, ACL, GENERIC_ALL, PACL, PSECURITY_DESCRIPTOR, SECURITY_DESCRIPTOR,
-    SECURITY_DESCRIPTOR_REVISION, TOKEN_ALL_ACCESS, TOKEN_INFORMATION_CLASS, TOKEN_USER,
-};
-
-use once_cell::sync::OnceCell;
+use winapi::um::winnt::TokenUser;
+use winapi::um::winnt::ACL;
+use winapi::um::winnt::GENERIC_ALL;
+use winapi::um::winnt::PACL;
+use winapi::um::winnt::PSECURITY_DESCRIPTOR;
+use winapi::um::winnt::SECURITY_DESCRIPTOR;
+use winapi::um::winnt::SECURITY_DESCRIPTOR_REVISION;
+use winapi::um::winnt::TOKEN_ALL_ACCESS;
+use winapi::um::winnt::TOKEN_INFORMATION_CLASS;
+use winapi::um::winnt::TOKEN_USER;
 
 /// Struct for wrapping `SECURITY_ATTRIBUTES` and `SECURITY_DESCRIPTOR`.
 pub struct SecurityAttributes<T: SecurityDescriptor> {

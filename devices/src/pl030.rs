@@ -2,12 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::warn;
 use std::convert::TryFrom;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
+use base::warn;
 
 use crate::pci::CrosvmDeviceId;
-use crate::{BusAccessInfo, BusDevice, DeviceId, IrqEdgeEvent};
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::DeviceId;
+use crate::IrqEdgeEvent;
 
 // Register offsets
 // Data register

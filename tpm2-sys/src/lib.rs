@@ -4,7 +4,9 @@
 
 //! Bindings for the TPM2 simulator library.
 
-use std::os::raw::{c_int, c_uchar, c_uint};
+use std::os::raw::c_int;
+use std::os::raw::c_uchar;
+use std::os::raw::c_uint;
 
 extern "C" {
     pub fn TPM_Manufacture(firstTime: c_int) -> c_int;

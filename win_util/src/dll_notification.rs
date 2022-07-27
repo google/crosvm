@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::ffi::{c_void, OsString};
-use std::{io, ptr};
+use std::ffi::c_void;
+use std::ffi::OsString;
+use std::io;
+use std::ptr;
 
 use winapi::shared::minwindef::ULONG;
 use winapi::um::winnt::PVOID;
@@ -20,10 +22,13 @@ mod dll_notification_sys {
     use std::io;
 
     use winapi::shared::minwindef::ULONG;
-    use winapi::shared::ntdef::{NTSTATUS, PCUNICODE_STRING};
+    use winapi::shared::ntdef::NTSTATUS;
+    use winapi::shared::ntdef::PCUNICODE_STRING;
     use winapi::shared::ntstatus::STATUS_SUCCESS;
-    use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
-    use winapi::um::winnt::{CHAR, PVOID};
+    use winapi::um::libloaderapi::GetModuleHandleA;
+    use winapi::um::libloaderapi::GetProcAddress;
+    use winapi::um::winnt::CHAR;
+    use winapi::um::winnt::PVOID;
 
     #[repr(C)]
     pub union _LDR_DLL_NOTIFICATION_DATA {
@@ -336,9 +341,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+    use std::ffi::CString;
+    use std::io;
+
+    use winapi::um::libloaderapi::FreeLibrary;
+    use winapi::um::libloaderapi::LoadLibraryA;
+
     use super::*;
-    use std::{collections::HashSet, ffi::CString, io};
-    use winapi::um::libloaderapi::{FreeLibrary, LoadLibraryA};
 
     // Arbitrarily chosen DLL for load/unload test. Chosen because it's
     // hopefully esoteric enough that it's probably not already loaded in

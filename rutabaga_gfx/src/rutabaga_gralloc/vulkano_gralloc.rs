@@ -9,28 +9,46 @@
 
 #![cfg(feature = "vulkano")]
 
-use std::{collections::BTreeMap as Map, convert::TryInto, sync::Arc};
+use std::collections::BTreeMap as Map;
+use std::convert::TryInto;
+use std::sync::Arc;
 
 use base::MappedRegion;
+use vulkano::device::physical::MemoryType;
+use vulkano::device::physical::PhysicalDevice;
+use vulkano::device::physical::PhysicalDeviceType;
+use vulkano::device::Device;
+use vulkano::device::DeviceCreateInfo;
+use vulkano::device::DeviceCreationError;
+use vulkano::device::DeviceExtensions;
+use vulkano::device::QueueCreateInfo;
+use vulkano::image::sys;
+use vulkano::image::ImageCreationError;
+use vulkano::image::ImageDimensions;
+use vulkano::image::ImageUsage;
+use vulkano::image::SampleCount;
+use vulkano::instance::Instance;
+use vulkano::instance::InstanceCreateInfo;
+use vulkano::instance::InstanceCreationError;
+use vulkano::instance::InstanceExtensions;
+use vulkano::instance::Version;
+use vulkano::memory::pool::AllocFromRequirementsFilter;
+use vulkano::memory::DedicatedAllocation;
+use vulkano::memory::DeviceMemory;
+use vulkano::memory::DeviceMemoryAllocationError;
+use vulkano::memory::DeviceMemoryExportError;
+use vulkano::memory::ExternalMemoryHandleType;
+use vulkano::memory::ExternalMemoryHandleTypes;
+use vulkano::memory::MappedDeviceMemory;
+use vulkano::memory::MemoryAllocateInfo;
+use vulkano::memory::MemoryMapError;
+use vulkano::memory::MemoryRequirements;
+use vulkano::sync::Sharing;
 
-use crate::rutabaga_gralloc::gralloc::{Gralloc, ImageAllocationInfo, ImageMemoryRequirements};
+use crate::rutabaga_gralloc::gralloc::Gralloc;
+use crate::rutabaga_gralloc::gralloc::ImageAllocationInfo;
+use crate::rutabaga_gralloc::gralloc::ImageMemoryRequirements;
 use crate::rutabaga_utils::*;
-
-use vulkano::{
-    device::{
-        physical::{MemoryType, PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceCreationError, DeviceExtensions, QueueCreateInfo,
-    },
-    image::{sys, ImageCreationError, ImageDimensions, ImageUsage, SampleCount},
-    instance::{Instance, InstanceCreateInfo, InstanceCreationError, InstanceExtensions, Version},
-    memory::{
-        pool::AllocFromRequirementsFilter, DedicatedAllocation, DeviceMemory,
-        DeviceMemoryAllocationError, DeviceMemoryExportError, ExternalMemoryHandleType,
-        ExternalMemoryHandleTypes, MappedDeviceMemory, MemoryAllocateInfo, MemoryMapError,
-        MemoryRequirements,
-    },
-    sync::Sharing,
-};
 
 /// A gralloc implementation capable of allocation `VkDeviceMemory`.
 pub struct VulkanoGralloc {

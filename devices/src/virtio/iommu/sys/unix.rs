@@ -9,16 +9,20 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use base::{error, TubeError};
+use base::error;
+use base::TubeError;
 use cros_async::AsyncTube;
 use sync::Mutex;
-use vm_control::{
-    VirtioIOMMURequest, VirtioIOMMUResponse, VirtioIOMMUVfioCommand, VirtioIOMMUVfioResult,
-};
+use vm_control::VirtioIOMMURequest;
+use vm_control::VirtioIOMMUResponse;
+use vm_control::VirtioIOMMUVfioCommand;
+use vm_control::VirtioIOMMUVfioResult;
 
 use self::vfio_wrapper::VfioWrapper;
-
-use crate::virtio::iommu::{MemRegion, Result, State, TranslateRequest};
+use crate::virtio::iommu::MemRegion;
+use crate::virtio::iommu::Result;
+use crate::virtio::iommu::State;
+use crate::virtio::iommu::TranslateRequest;
 use crate::virtio::IommuError;
 use crate::VfioContainer;
 

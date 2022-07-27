@@ -3,13 +3,13 @@
 // found in the LICENSE file.
 
 pub mod sys;
-pub use sys::VhostUserListener;
-
-use std::{any::Any, pin::Pin};
+use std::any::Any;
+use std::pin::Pin;
 
 use base::RawDescriptor;
 use cros_async::Executor;
 use futures::Future;
+pub use sys::VhostUserListener;
 
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 

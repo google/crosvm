@@ -15,22 +15,22 @@
 //! Operations can only access memory in a `Vec` or an implementor of `BackingMemory`. See the
 //! `URingExecutor` documentation for an explaination of why.
 
-use std::{
-    fs::File,
-    io,
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+use std::fs::File;
+use std::io;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use base::{AsRawDescriptor, RawDescriptor};
+use base::AsRawDescriptor;
+use base::RawDescriptor;
+#[cfg(unix)]
+use base::UnixSeqpacket;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
-use super::{BackingMemory, MemRegion};
-
-#[cfg(unix)]
-use base::UnixSeqpacket;
+use super::BackingMemory;
+use super::MemRegion;
 
 #[cfg(unix)]
 #[sorted]
@@ -252,29 +252,32 @@ impl<T: AsRawDescriptor> IntoAsync for AsyncWrapper<T> {}
 
 #[cfg(all(test, unix))]
 mod tests {
+    use std::fs::File;
+    use std::fs::OpenOptions;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::Arc;
+    use std::task::Context;
+    use std::task::Poll;
+    use std::task::Waker;
+    use std::thread;
+
     use base::Event;
-    use std::{
-        fs::{File, OpenOptions},
-        future::Future,
-        pin::Pin,
-        sync::Arc,
-        task::{Context, Poll, Waker},
-        thread,
-    };
     use sync::Mutex;
 
     use super::*;
-    use crate::{
-        mem::VecIoWrapper,
-        sys::unix::{
-            executor::{
-                async_poll_from, async_poll_from_local, async_uring_from, async_uring_from_local,
-            },
-            uring_executor::use_uring,
-            FdExecutor, PollSource, URingExecutor, UringSource,
-        },
-        Executor, MemRegion,
-    };
+    use crate::mem::VecIoWrapper;
+    use crate::sys::unix::executor::async_poll_from;
+    use crate::sys::unix::executor::async_poll_from_local;
+    use crate::sys::unix::executor::async_uring_from;
+    use crate::sys::unix::executor::async_uring_from_local;
+    use crate::sys::unix::uring_executor::use_uring;
+    use crate::sys::unix::FdExecutor;
+    use crate::sys::unix::PollSource;
+    use crate::sys::unix::URingExecutor;
+    use crate::sys::unix::UringSource;
+    use crate::Executor;
+    use crate::MemRegion;
 
     struct State {
         should_quit: bool,

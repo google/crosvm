@@ -2,26 +2,33 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::HashMap;
 use std::fs::File;
+use std::mem;
 use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::Context;
+use base::error;
+use base::AsRawDescriptor;
+use base::EventType;
+use base::RawDescriptor;
+use base::Tube;
+use sync::Mutex;
+use usb_util::Device;
+use vm_control::UsbControlAttachedDevice;
+use vm_control::UsbControlCommand;
+use vm_control::UsbControlResult;
+use vm_control::USB_CONTROL_MAX_PORTS;
 
 use super::error::*;
 use super::host_device::HostDevice;
 use crate::usb::xhci::usb_hub::UsbHub;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
 use crate::utils::AsyncJobQueue;
-use crate::utils::{EventHandler, EventLoop, FailHandle};
-
-use anyhow::Context;
-use base::{error, AsRawDescriptor, EventType, RawDescriptor, Tube};
-use std::collections::HashMap;
-use std::mem;
-use std::time::Duration;
-use sync::Mutex;
-use usb_util::Device;
-use vm_control::{
-    UsbControlAttachedDevice, UsbControlCommand, UsbControlResult, USB_CONTROL_MAX_PORTS,
-};
+use crate::utils::EventHandler;
+use crate::utils::EventLoop;
+use crate::utils::FailHandle;
 
 const SOCKET_TIMEOUT_MS: u64 = 2000;
 

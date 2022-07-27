@@ -2,19 +2,37 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::pci::CrosvmDeviceId;
-use crate::{BusAccessInfo, BusDevice, BusResumeDevice, DeviceId, IrqLevelEvent};
-use acpi_tables::{aml, aml::Aml};
-use base::{error, warn, Error as SysError, Event, EventToken, SendTube, VmEventType, WaitContext};
 use std::collections::BTreeMap;
+#[cfg(feature = "direct")]
+use std::fs;
+#[cfg(feature = "direct")]
+use std::io::Error as IoError;
+#[cfg(feature = "direct")]
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
+
+use acpi_tables::aml;
+use acpi_tables::aml::Aml;
+use base::error;
+use base::warn;
+use base::Error as SysError;
+use base::Event;
+use base::EventToken;
+use base::SendTube;
+use base::VmEventType;
+use base::WaitContext;
 use sync::Mutex;
 use thiserror::Error;
-use vm_control::{GpeNotify, PmResource};
+use vm_control::GpeNotify;
+use vm_control::PmResource;
 
-#[cfg(feature = "direct")]
-use {std::fs, std::io::Error as IoError, std::path::PathBuf};
+use crate::pci::CrosvmDeviceId;
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::BusResumeDevice;
+use crate::DeviceId;
+use crate::IrqLevelEvent;
 
 #[derive(Error, Debug)]
 pub enum ACPIPMError {

@@ -4,10 +4,13 @@
 
 use std::io;
 
-use base::{Event, FileSync, RawDescriptor};
+use base::Event;
+use base::FileSync;
+use base::RawDescriptor;
 
 use crate::serial_device::SerialInput;
-use crate::virtio::console::{Console, ConsoleInput};
+use crate::virtio::console::Console;
+use crate::virtio::console::ConsoleInput;
 use crate::virtio::ProtectionType;
 use crate::SerialDevice;
 

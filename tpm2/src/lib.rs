@@ -4,10 +4,12 @@
 
 //! TPM2 (Trusted Platform Module 2.0) simulator.
 
-use std::os::raw::{c_int, c_uint};
+use std::os::raw::c_int;
+use std::os::raw::c_uint;
 use std::ptr;
 use std::slice;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 static SIMULATOR_EXISTS: AtomicBool = AtomicBool::new(false);
 

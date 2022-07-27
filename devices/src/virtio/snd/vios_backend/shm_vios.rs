@@ -2,29 +2,48 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::virtio::snd::constants::*;
-use crate::virtio::snd::layout::*;
-
-use base::{
-    error, AsRawDescriptor, Error as BaseError, Event, EventToken, FromRawDescriptor,
-    IntoRawDescriptor, MemoryMapping, MemoryMappingBuilder, MmapError, RawDescriptor,
-    SafeDescriptor, ScmSocket, UnixSeqpacket, WaitContext,
-};
-use data_model::{DataInit, VolatileMemory, VolatileMemoryError, VolatileSlice};
-
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fs::File;
-use std::io::{Error as IOError, ErrorKind as IOErrorKind, IoSliceMut, Seek, SeekFrom};
+use std::io::Error as IOError;
+use std::io::ErrorKind as IOErrorKind;
+use std::io::IoSliceMut;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::os::unix::io::RawFd;
 use std::path::Path;
-use std::sync::mpsc::{channel, Receiver, RecvError, Sender};
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::RecvError;
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-use sync::Mutex;
-
+use base::error;
+use base::AsRawDescriptor;
+use base::Error as BaseError;
+use base::Event;
+use base::EventToken;
+use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
+use base::MemoryMapping;
+use base::MemoryMappingBuilder;
+use base::MmapError;
+use base::RawDescriptor;
+use base::SafeDescriptor;
+use base::ScmSocket;
+use base::UnixSeqpacket;
+use base::WaitContext;
+use data_model::DataInit;
+use data_model::VolatileMemory;
+use data_model::VolatileMemoryError;
+use data_model::VolatileSlice;
 use remain::sorted;
+use sync::Mutex;
 use thiserror::Error as ThisError;
+
+use crate::virtio::snd::constants::*;
+use crate::virtio::snd::layout::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

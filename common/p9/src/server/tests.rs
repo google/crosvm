@@ -2,20 +2,26 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::*;
-
 use std::borrow::Cow;
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::env;
-use std::ffi::{CString, OsString};
-use std::fs::{self, File};
-use std::io::{self, Cursor};
+use std::ffi::CString;
+use std::ffi::OsString;
+use std::fs::File;
+use std::fs::{self};
+use std::io::Cursor;
+use std::io::{self};
 use std::mem;
 use std::ops::Deref;
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::MetadataExt;
-use std::path::{Component, Path, PathBuf};
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
 use std::u32;
+
+use super::*;
 
 // Used to indicate that there is no fid associated with this message.
 const P9_NOFID: u32 = u32::MAX;

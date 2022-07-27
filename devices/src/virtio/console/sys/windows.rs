@@ -6,10 +6,14 @@ use std::io;
 use std::thread;
 use std::time::Duration;
 
-use base::{named_pipes, Event, FileSync, RawDescriptor};
+use base::named_pipes;
+use base::Event;
+use base::FileSync;
+use base::RawDescriptor;
 
 use crate::serial_device::SerialInput;
-use crate::virtio::console::{Console, ConsoleInput};
+use crate::virtio::console::Console;
+use crate::virtio::console::ConsoleInput;
 use crate::virtio::ProtectionType;
 use crate::SerialDevice;
 

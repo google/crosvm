@@ -4,12 +4,18 @@
 
 use std::convert::TryFrom;
 
-use base::{Error, Result};
+use base::Error;
+use base::Result;
 use downcast_rs::impl_downcast;
 use libc::EINVAL;
 use vm_memory::GuestAddress;
 
-use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
+use crate::Hypervisor;
+use crate::IrqRoute;
+use crate::IrqSource;
+use crate::IrqSourceChip;
+use crate::Vcpu;
+use crate::Vm;
 
 /// Represents a version of Power State Coordination Interface (PSCI).
 #[derive(Eq, Ord, PartialEq, PartialOrd)]

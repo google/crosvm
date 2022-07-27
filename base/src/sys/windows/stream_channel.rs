@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::io;
+
 pub use super::stream_channel_platform::*;
 use super::RawDescriptor;
 use crate::descriptor::AsRawDescriptor;
-use std::io;
 
 #[derive(Copy, Clone)]
 pub enum FramingMode {
@@ -39,13 +40,14 @@ impl AsRawDescriptor for StreamChannel {
 
 #[cfg(test)]
 mod test {
-    use super::{
-        super::{EventContext, EventTrigger},
-        *,
-    };
+    use std::io::Read;
+    use std::io::Write;
 
-    use crate::{EventToken, ReadNotifier};
-    use std::io::{Read, Write};
+    use super::super::EventContext;
+    use super::super::EventTrigger;
+    use super::*;
+    use crate::EventToken;
+    use crate::ReadNotifier;
 
     #[derive(EventToken, Debug, Eq, PartialEq, Copy, Clone)]
     enum Token {

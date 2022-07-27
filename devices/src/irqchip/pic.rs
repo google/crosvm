@@ -12,10 +12,17 @@
 // For the purposes of both using more descriptive terms and avoiding terms with lots of charged
 // emotional context, this file refers to them instead as "primary" and "secondary" PICs.
 
-use crate::{bus::BusAccessInfo, pci::CrosvmDeviceId};
-use crate::{BusDevice, DeviceId};
-use base::{debug, warn, Event};
-use hypervisor::{PicInitState, PicSelect, PicState};
+use base::debug;
+use base::warn;
+use base::Event;
+use hypervisor::PicInitState;
+use hypervisor::PicSelect;
+use hypervisor::PicState;
+
+use crate::bus::BusAccessInfo;
+use crate::pci::CrosvmDeviceId;
+use crate::BusDevice;
+use crate::DeviceId;
 
 pub struct Pic {
     // Indicates a pending INTR signal to LINT0 of vCPU, checked by vCPU thread.

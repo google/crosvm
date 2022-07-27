@@ -2,20 +2,28 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::ring_buffer_stop_cb::RingBufferStopCallback;
-use super::xhci_abi::*;
-use crate::utils::{self, EventHandler, EventLoop};
-use std::fmt::{self, Display};
-use std::sync::{Arc, MutexGuard};
-use sync::Mutex;
+use std::fmt::Display;
+use std::fmt::{self};
+use std::sync::Arc;
+use std::sync::MutexGuard;
 
 use anyhow::Context;
-use base::{error, Error as SysError, Event, EventType};
+use base::error;
+use base::Error as SysError;
+use base::Event;
+use base::EventType;
 use remain::sorted;
+use sync::Mutex;
 use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 use super::ring_buffer::RingBuffer;
+use super::ring_buffer_stop_cb::RingBufferStopCallback;
+use super::xhci_abi::*;
+use crate::utils::EventHandler;
+use crate::utils::EventLoop;
+use crate::utils::{self};
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -219,9 +227,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::mem::size_of;
-    use std::sync::mpsc::{channel, Sender};
+    use std::sync::mpsc::channel;
+    use std::sync::mpsc::Sender;
+
+    use super::*;
 
     struct TestHandler {
         sender: Sender<i32>,

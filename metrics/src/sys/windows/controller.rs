@@ -2,9 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::controller::{MetricsController, MetricsControllerToken};
 use anyhow::Result;
-use base::{CloseNotifier, ReadNotifier, WaitContext};
+use base::CloseNotifier;
+use base::ReadNotifier;
+use base::WaitContext;
+
+use crate::controller::MetricsController;
+use crate::controller::MetricsControllerToken;
 
 impl MetricsController {
     pub(crate) fn run_internal(&mut self) -> Result<()> {

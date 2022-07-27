@@ -5,15 +5,18 @@
 use std::future::Future;
 
 use async_task::Task;
+use base::AsRawDescriptors;
+use base::RawDescriptor;
 
-use base::{AsRawDescriptors, RawDescriptor};
-
-use super::{
-    poll_source::Error as PollError, uring_executor::use_uring, FdExecutor, PollSource,
-    URingExecutor, UringSource,
-};
-
-use crate::{AsyncResult, IntoAsync, IoSourceExt};
+use super::poll_source::Error as PollError;
+use super::uring_executor::use_uring;
+use super::FdExecutor;
+use super::PollSource;
+use super::URingExecutor;
+use super::UringSource;
+use crate::AsyncResult;
+use crate::IntoAsync;
+use crate::IoSourceExt;
 
 pub(crate) fn async_uring_from<'a, F: IntoAsync + Send + 'a>(
     f: F,

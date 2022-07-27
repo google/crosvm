@@ -2,7 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{AsRawDescriptor, AsRawDescriptors, Event, RawDescriptor, Result};
+use base::AsRawDescriptor;
+use base::AsRawDescriptors;
+use base::Event;
+use base::RawDescriptor;
+use base::Result;
 
 /// A structure suitable for implementing edge triggered interrupts in device backends.
 pub struct IrqEdgeEvent(Event);

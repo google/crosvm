@@ -2,15 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use arch::android::create_android_fdt;
-use arch::fdt::{Error, FdtWriter};
-use data_model::DataInit;
 use std::fs::File;
 use std::mem;
-use vm_memory::{GuestAddress, GuestMemory};
+
+use arch::android::create_android_fdt;
+use arch::fdt::Error;
+use arch::fdt::FdtWriter;
+use data_model::DataInit;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 use crate::bootparam::setup_data;
-use crate::{SETUP_DTB, X86_64_FDT_MAX_SIZE};
+use crate::SETUP_DTB;
+use crate::X86_64_FDT_MAX_SIZE;
 
 // Like `setup_data` without the incomplete array field at the end, which allows us to safely
 // implement Copy, Clone, and DataInit.

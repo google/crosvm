@@ -17,40 +17,68 @@ use std::os::unix::net::UnixListener;
 use std::sync::Arc;
 use std::thread;
 
-use anyhow::{anyhow, bail, Context};
-use base::{
-    error, info, AsRawDescriptor, Event, EventToken, EventType, FromRawDescriptor,
-    IntoRawDescriptor, Protection, RawDescriptor, SafeDescriptor, Tube, WaitContext,
-};
-use data_model::{DataInit, Le32};
-use libc::{recv, MSG_DONTWAIT, MSG_PEEK};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use base::error;
+use base::info;
+use base::AsRawDescriptor;
+use base::Event;
+use base::EventToken;
+use base::EventType;
+use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
+use base::Protection;
+use base::RawDescriptor;
+use base::SafeDescriptor;
+use base::Tube;
+use base::WaitContext;
+use data_model::DataInit;
+use data_model::Le32;
+use libc::recv;
+use libc::MSG_DONTWAIT;
+use libc::MSG_PEEK;
 use resources::Alloc;
 use sync::Mutex;
 use uuid::Uuid;
-use vm_control::{MemSlot, VmMemoryDestination, VmMemoryRequest, VmMemoryResponse, VmMemorySource};
+use vm_control::MemSlot;
+use vm_control::VmMemoryDestination;
+use vm_control::VmMemoryRequest;
+use vm_control::VmMemoryResponse;
+use vm_control::VmMemorySource;
 use vm_memory::GuestMemory;
-use vmm_vhost::{
-    connection::socket::Endpoint as SocketEndpoint,
-    connection::EndpointExt,
-    message::{
-        MasterReq, Req, VhostUserMemory, VhostUserMemoryRegion, VhostUserMsgHeader,
-        VhostUserMsgValidator, VhostUserU64,
-    },
-    Protocol, SlaveReqHelper,
-};
+use vmm_vhost::connection::socket::Endpoint as SocketEndpoint;
+use vmm_vhost::connection::EndpointExt;
+use vmm_vhost::message::MasterReq;
+use vmm_vhost::message::Req;
+use vmm_vhost::message::VhostUserMemory;
+use vmm_vhost::message::VhostUserMemoryRegion;
+use vmm_vhost::message::VhostUserMsgHeader;
+use vmm_vhost::message::VhostUserMsgValidator;
+use vmm_vhost::message::VhostUserU64;
+use vmm_vhost::Protocol;
+use vmm_vhost::SlaveReqHelper;
 
-use crate::virtio::{
-    copy_config, DescriptorChain, DeviceType, Interrupt, PciCapabilityType, Queue, Reader,
-    SignalableInterrupt, VirtioDevice, VirtioPciCap, Writer,
-};
+use crate::pci::PciBarConfiguration;
+use crate::pci::PciBarIndex;
+use crate::pci::PciBarPrefetchable;
+use crate::pci::PciBarRegionType;
+use crate::pci::PciCapability;
+use crate::pci::PciCapabilityID;
+use crate::virtio::copy_config;
+use crate::virtio::DescriptorChain;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::PciCapabilityType;
+use crate::virtio::Queue;
+use crate::virtio::Reader;
+use crate::virtio::SignalableInterrupt;
+use crate::virtio::VirtioDevice;
+use crate::virtio::VirtioPciCap;
+use crate::virtio::Writer;
+use crate::virtio::VIRTIO_F_ACCESS_PLATFORM;
+use crate::virtio::VIRTIO_MSI_NO_VECTOR;
 use crate::PciAddress;
-use crate::{
-    pci::{
-        PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType, PciCapability,
-        PciCapabilityID,
-    },
-    virtio::{VIRTIO_F_ACCESS_PLATFORM, VIRTIO_MSI_NO_VECTOR},
-};
 
 // Note: There are two sets of queues that will be mentioned here. 1st set is
 // for this Virtio PCI device itself. 2nd set is the actual device backends

@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::{gmtime_s, time_t, tm};
+use libc::gmtime_s;
+use libc::time_t;
+use libc::tm;
 
 /// # Safety
 /// safe because we are passing in the allocated tm struct
@@ -13,8 +15,9 @@ pub unsafe fn gmtime_secure(now: *const time_t, result: *mut tm) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::mem;
+
+    use super::*;
 
     #[test]
     fn gmtime() {

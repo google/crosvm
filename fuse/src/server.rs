@@ -2,23 +2,33 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cmp::{max, min};
+use std::cmp::max;
+use std::cmp::min;
 use std::convert::TryInto;
 use std::ffi::CStr;
 use std::io;
-use std::mem::{size_of, MaybeUninit};
+use std::mem::size_of;
+use std::mem::MaybeUninit;
 use std::os::unix::io::AsRawFd;
 use std::time::Duration;
 
-use base::{error, pagesize};
+use base::error;
+use base::pagesize;
 use data_model::DataInit;
 
-use crate::filesystem::{
-    Context, DirEntry, DirectoryIterator, Entry, FileSystem, GetxattrReply, IoctlReply,
-    ListxattrReply, ZeroCopyReader, ZeroCopyWriter,
-};
+use crate::filesystem::Context;
+use crate::filesystem::DirEntry;
+use crate::filesystem::DirectoryIterator;
+use crate::filesystem::Entry;
+use crate::filesystem::FileSystem;
+use crate::filesystem::GetxattrReply;
+use crate::filesystem::IoctlReply;
+use crate::filesystem::ListxattrReply;
+use crate::filesystem::ZeroCopyReader;
+use crate::filesystem::ZeroCopyWriter;
 use crate::sys::*;
-use crate::{Error, Result};
+use crate::Error;
+use crate::Result;
 
 const DIRENT_PADDING: [u8; 8] = [0; 8];
 

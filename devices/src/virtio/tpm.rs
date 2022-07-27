@@ -2,19 +2,30 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::{self, Read, Write};
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
 use std::ops::BitOrAssign;
 use std::thread;
 
-use base::{error, Event, EventToken, RawDescriptor, WaitContext};
+use base::error;
+use base::Event;
+use base::EventToken;
+use base::RawDescriptor;
+use base::WaitContext;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
-use super::{
-    DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue, Reader, SignalableInterrupt,
-    VirtioDevice, Writer,
-};
+use super::DescriptorChain;
+use super::DescriptorError;
+use super::DeviceType;
+use super::Interrupt;
+use super::Queue;
+use super::Reader;
+use super::SignalableInterrupt;
+use super::VirtioDevice;
+use super::Writer;
 
 // A single queue of size 2. The guest kernel driver will enqueue a single
 // descriptor chain containing one command buffer and one response buffer at a

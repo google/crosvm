@@ -2,8 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{event_details_proto::RecordDetails, MetricEventType, MetricsClientDestructor};
 use base::Tube;
+
+use crate::event_details_proto::RecordDetails;
+use crate::MetricEventType;
+use crate::MetricsClientDestructor;
 
 /// This interface exists to be used and re-implemented by downstream forks. Updates shouldn't be
 /// done without ensuring they won't cause breakages in dependent codebases.

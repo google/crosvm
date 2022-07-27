@@ -4,7 +4,8 @@
 
 use std::cmp::Reverse;
 use std::fmt;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 use devices::BusStatistics;
 use hypervisor::VcpuExit;

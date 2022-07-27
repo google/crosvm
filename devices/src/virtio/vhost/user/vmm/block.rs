@@ -8,13 +8,20 @@ use std::cell::RefCell;
 use std::thread;
 use std::u32;
 
-use base::{error, Event, RawDescriptor};
+use base::error;
+use base::Event;
+use base::RawDescriptor;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 
+use crate::virtio::block::common::virtio_blk_config;
 use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
-use crate::virtio::{block::common::virtio_blk_config, DeviceType, Interrupt, Queue, VirtioDevice};
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::VirtioDevice;
 
 const VIRTIO_BLK_F_SEG_MAX: u32 = 2;
 const VIRTIO_BLK_F_RO: u32 = 5;

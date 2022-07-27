@@ -3,26 +3,46 @@
 // found in the LICENSE file.
 
 use std::alloc::Layout;
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
+use std::cell::RefCell;
 use std::cmp::min;
-use std::cmp::{self, Ord, PartialEq, PartialOrd};
+use std::cmp::Ord;
+use std::cmp::PartialEq;
+use std::cmp::PartialOrd;
+use std::cmp::{self};
 use std::collections::btree_set::BTreeSet;
-use std::io::{Read, Write};
+use std::io::Read;
+use std::io::Write;
 use std::mem;
-use std::sync::{Arc, RwLock};
-
-use libc::{EINVAL, ENOENT, ENOTTY, EPERM, EPIPE, EPROTO};
-
-use protobuf::{CodedOutputStream, Message};
+use std::sync::Arc;
+use std::sync::RwLock;
 
 use assertions::const_assert;
-use base::{error, LayoutAllocation};
+use base::error;
+use base::LayoutAllocation;
 use data_model::DataInit;
-use kvm::{CpuId, Vcpu};
-use kvm_sys::{
-    kvm_debugregs, kvm_enable_cap, kvm_fpu, kvm_lapic_state, kvm_mp_state, kvm_msr_entry, kvm_msrs,
-    kvm_regs, kvm_sregs, kvm_vcpu_events, kvm_xcrs, KVM_CPUID_FLAG_SIGNIFCANT_INDEX,
-};
+use kvm::CpuId;
+use kvm::Vcpu;
+use kvm_sys::kvm_debugregs;
+use kvm_sys::kvm_enable_cap;
+use kvm_sys::kvm_fpu;
+use kvm_sys::kvm_lapic_state;
+use kvm_sys::kvm_mp_state;
+use kvm_sys::kvm_msr_entry;
+use kvm_sys::kvm_msrs;
+use kvm_sys::kvm_regs;
+use kvm_sys::kvm_sregs;
+use kvm_sys::kvm_vcpu_events;
+use kvm_sys::kvm_xcrs;
+use kvm_sys::KVM_CPUID_FLAG_SIGNIFCANT_INDEX;
+use libc::EINVAL;
+use libc::ENOENT;
+use libc::ENOTTY;
+use libc::EPERM;
+use libc::EPIPE;
+use libc::EPROTO;
+use protobuf::CodedOutputStream;
+use protobuf::Message;
 use protos::plugin::*;
 use sync::Mutex;
 

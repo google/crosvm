@@ -9,7 +9,9 @@ use remain::sorted;
 use thiserror::Error;
 
 use crate::qcow::qcow_raw_file::QcowRawFile;
-use crate::qcow::vec_cache::{CacheMap, Cacheable, VecCache};
+use crate::qcow::vec_cache::CacheMap;
+use crate::qcow::vec_cache::Cacheable;
+use crate::qcow::vec_cache::VecCache;
 
 #[sorted]
 #[derive(Error, Debug)]

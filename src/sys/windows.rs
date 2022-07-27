@@ -9,113 +9,201 @@ pub(crate) mod metrics;
 mod panic_hook;
 pub(crate) mod run_vcpu;
 
-use irq_wait::IrqWaitWorker;
-#[cfg(not(feature = "crash-report"))]
-pub(crate) use panic_hook::set_panic_hook;
-use run_vcpu::{run_all_vcpus, VcpuRunMode};
+#[cfg(feature = "whpx")]
+use std::arch::x86_64::__cpuid;
+#[cfg(feature = "whpx")]
+use std::arch::x86_64::__cpuid_count;
+#[cfg(feature = "gpu")]
+use std::collections::BTreeMap;
+#[cfg(feature = "kiwi")]
+use std::convert::TryInto;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::iter;
+use std::mem;
+#[cfg(feature = "gpu")]
+use std::num::NonZeroU8;
+use std::os::windows::fs::OpenOptionsExt;
+use std::sync::Arc;
 
-use crate::crosvm::config::{Config, Executable};
-use crate::crosvm::sys::windows::exit::{Exit, ExitContext, ExitContextAnyhow};
-use crate::crosvm::sys::windows::stats::StatisticsCollector;
-
-use crate::sys::windows::metrics::{log_descriptor, MetricEventType};
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use aarch64::AArch64 as Arch;
 use acpi_tables::sdt::SDT;
 #[cfg(all(feature = "kiwi", feature = "anti-tamper",))]
 use anti_tamper::spawn_dedicated_anti_tamper_thread;
+use anyhow::anyhow;
+use anyhow::bail;
 #[cfg(feature = "kiwi")]
 use anyhow::ensure;
-use anyhow::{anyhow, bail, Context, Result};
-use arch::{self, LinuxArch, RunnableLinuxVm, VirtioDeviceStub, VmComponents, VmImage};
+use anyhow::Context;
+use anyhow::Result;
+use arch::LinuxArch;
+use arch::RunnableLinuxVm;
+use arch::VirtioDeviceStub;
+use arch::VmComponents;
+use arch::VmImage;
+use arch::{self};
+use base::enable_high_res_timers;
+use base::error;
 #[cfg(feature = "kiwi")]
 use base::give_foregrounding_permission;
-use base::{
-    self, enable_high_res_timers, error, info, warn, Event, EventToken, ExternalMapping,
-    FromRawDescriptor, RawDescriptor, ReadNotifier, RecvTube, SendTube, Tube, TubeError,
-    VmEventType, WaitContext,
-};
-use devices::serial_device::{SerialHardware, SerialParameters};
+use base::info;
+use base::warn;
+#[cfg(feature = "gpu")]
+use base::BlockingMode;
+use base::Event;
+use base::EventToken;
+use base::ExternalMapping;
+#[cfg(feature = "gpu")]
+use base::FramingMode;
+use base::FromRawDescriptor;
+use base::RawDescriptor;
+use base::ReadNotifier;
+use base::RecvTube;
+use base::SendTube;
+#[cfg(feature = "gpu")]
+use base::StreamChannel;
+use base::Tube;
+use base::TubeError;
+use base::VmEventType;
+use base::WaitContext;
+use base::{self};
+use broker_ipc::common_child_setup;
+use broker_ipc::CommonChildStartupArgs;
+use devices::serial_device::SerialHardware;
+use devices::serial_device::SerialParameters;
+use devices::tsc::get_tsc_sync_mitigations;
+use devices::tsc::standard_deviation;
+use devices::tsc::TscSyncMitigations;
 use devices::virtio::block::block::DiskOption;
-use devices::virtio::{self, BalloonMode, Console, PvClock};
+use devices::virtio::BalloonMode;
+use devices::virtio::Console;
+use devices::virtio::PvClock;
+use devices::virtio::{self};
+use devices::Ac97Dev;
+use devices::BusDeviceObj;
+#[cfg(feature = "gvm")]
+use devices::GvmIrqChip;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use devices::IrqChip;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use devices::IrqChipAArch64 as IrqChipArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use devices::IrqChipX86_64 as IrqChipArch;
 use devices::Minijail;
-use devices::{
-    self,
-    tsc::{get_tsc_sync_mitigations, standard_deviation, TscSyncMitigations},
-    Ac97Dev, BusDeviceObj, UserspaceIrqChip, VirtioPciDevice,
-};
+use devices::UserspaceIrqChip;
+use devices::VirtioPciDevice;
+#[cfg(feature = "whpx")]
+use devices::WhpxSplitIrqChip;
+use devices::{self};
+#[cfg(feature = "gpu")]
+use gpu_display::EventDevice;
+#[cfg(feature = "gvm")]
+use hypervisor::gvm::Gvm;
+#[cfg(feature = "gvm")]
+use hypervisor::gvm::GvmVcpu;
+#[cfg(feature = "gvm")]
+use hypervisor::gvm::GvmVersion;
+#[cfg(feature = "gvm")]
+use hypervisor::gvm::GvmVm;
 #[cfg(feature = "haxm")]
-use hypervisor::haxm::{get_use_ghaxm, set_use_ghaxm, Haxm, HaxmVcpu, HaxmVm};
-use hypervisor::{ProtectionType, Vm};
+use hypervisor::haxm::get_use_ghaxm;
+#[cfg(feature = "haxm")]
+use hypervisor::haxm::set_use_ghaxm;
+#[cfg(feature = "haxm")]
+use hypervisor::haxm::Haxm;
+#[cfg(feature = "haxm")]
+use hypervisor::haxm::HaxmVcpu;
+#[cfg(feature = "haxm")]
+use hypervisor::haxm::HaxmVm;
+#[cfg(feature = "whpx")]
+use hypervisor::whpx::Whpx;
+#[cfg(feature = "whpx")]
+use hypervisor::whpx::WhpxFeature;
+#[cfg(feature = "whpx")]
+use hypervisor::whpx::WhpxVcpu;
+#[cfg(feature = "whpx")]
+use hypervisor::whpx::WhpxVm;
+#[cfg(feature = "whpx")]
+use hypervisor::Hypervisor;
+#[cfg(feature = "whpx")]
+use hypervisor::HypervisorCap;
+#[cfg(feature = "whpx")]
+use hypervisor::HypervisorX86_64;
+use hypervisor::ProtectionType;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::VcpuAArch64 as VcpuArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::VcpuX86_64 as VcpuArch;
+use hypervisor::Vm;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::VmAArch64 as VmArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::VmX86_64 as VmArch;
+use irq_wait::IrqWaitWorker;
+#[cfg(not(feature = "crash-report"))]
+pub(crate) use panic_hook::set_panic_hook;
 use resources::SystemAllocator;
+use run_vcpu::run_all_vcpus;
+use run_vcpu::VcpuRunMode;
 use rutabaga_gfx::RutabagaGralloc;
 #[cfg(feature = "kiwi")]
-use std::convert::TryInto;
-use std::fs::{File, OpenOptions};
-use std::iter;
-use std::mem;
-use std::os::windows::fs::OpenOptionsExt;
-use std::sync::Arc;
-use sync::Mutex;
-use tracing;
+use service_ipc::get_balloon_size;
 #[cfg(feature = "kiwi")]
-use vm_control::{
-    Ac97Control, BalloonControlCommand,
-    GpuSendToMain::{self, MuteAc97, SendToService},
-    PvClockCommand, PvClockCommandResponse, ServiceSendToGpu,
-};
-#[cfg(feature = "gvm")]
-use {
-    devices::GvmIrqChip,
-    hypervisor::gvm::{Gvm, GvmVcpu, GvmVersion, GvmVm},
-};
-
-use vm_control::{VmMemoryRequest, VmRunMode};
-use vm_memory::GuestMemory;
-use winapi::um::winnt::FILE_SHARE_READ;
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "haxm"))]
-use x86_64::{get_cpu_manufacturer, CpuManufacturer};
-
-#[cfg(feature = "gpu")]
-use {
-    crate::crosvm::config::TouchDeviceOption,
-    base::{BlockingMode, FramingMode, StreamChannel},
-    gpu_display::EventDevice,
-    std::collections::BTreeMap,
-    std::num::NonZeroU8,
-};
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use {
-    aarch64::AArch64 as Arch,
-    devices::{IrqChip, IrqChipAArch64 as IrqChipArch},
-    hypervisor::{VcpuAArch64 as VcpuArch, VmAArch64 as VmArch},
-};
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use {
-    devices::IrqChipX86_64 as IrqChipArch,
-    hypervisor::{VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
-    x86_64::X8664arch as Arch,
-};
-
-#[cfg(feature = "whpx")]
-use {
-    devices::WhpxSplitIrqChip,
-    hypervisor::whpx::{Whpx, WhpxFeature, WhpxVcpu, WhpxVm},
-    hypervisor::Hypervisor,
-    hypervisor::HypervisorCap,
-    hypervisor::HypervisorX86_64,
-    std::arch::x86_64::{__cpuid, __cpuid_count},
-    x86_64::cpuid::{adjust_cpuid, CpuIdContext},
-};
-
-use crate::crosvm::sys::config::{HypervisorKind, IrqChipKind};
-use broker_ipc::{common_child_setup, CommonChildStartupArgs};
+use service_ipc::request_utilities::prod::MessageFromService;
 #[cfg(all(feature = "kiwi", feature = "anti-tamper"))]
 use service_ipc::request_utilities::prod::MessageToService;
 #[cfg(feature = "kiwi")]
-use service_ipc::{
-    get_balloon_size, request_utilities::prod::MessageFromService,
-    service_vm_state::ServiceVmState, ServiceIpc,
-};
-use tube_transporter::{TubeToken, TubeTransporterReader};
+use service_ipc::service_vm_state::ServiceVmState;
+#[cfg(feature = "kiwi")]
+use service_ipc::ServiceIpc;
+use sync::Mutex;
+use tracing;
+use tube_transporter::TubeToken;
+use tube_transporter::TubeTransporterReader;
+#[cfg(feature = "kiwi")]
+use vm_control::Ac97Control;
+#[cfg(feature = "kiwi")]
+use vm_control::BalloonControlCommand;
+#[cfg(feature = "kiwi")]
+use vm_control::GpuSendToMain::MuteAc97;
+#[cfg(feature = "kiwi")]
+use vm_control::GpuSendToMain::SendToService;
+#[cfg(feature = "kiwi")]
+use vm_control::GpuSendToMain::{self};
+#[cfg(feature = "kiwi")]
+use vm_control::PvClockCommand;
+#[cfg(feature = "kiwi")]
+use vm_control::PvClockCommandResponse;
+#[cfg(feature = "kiwi")]
+use vm_control::ServiceSendToGpu;
+use vm_control::VmMemoryRequest;
+use vm_control::VmRunMode;
+use vm_memory::GuestMemory;
+use winapi::um::winnt::FILE_SHARE_READ;
+#[cfg(feature = "whpx")]
+use x86_64::cpuid::adjust_cpuid;
+#[cfg(feature = "whpx")]
+use x86_64::cpuid::CpuIdContext;
+#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "haxm"))]
+use x86_64::get_cpu_manufacturer;
+#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "haxm"))]
+use x86_64::CpuManufacturer;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::X8664arch as Arch;
+
+use crate::crosvm::config::Config;
+use crate::crosvm::config::Executable;
+#[cfg(feature = "gpu")]
+use crate::crosvm::config::TouchDeviceOption;
+use crate::crosvm::sys::config::HypervisorKind;
+use crate::crosvm::sys::config::IrqChipKind;
+use crate::crosvm::sys::windows::exit::Exit;
+use crate::crosvm::sys::windows::exit::ExitContext;
+use crate::crosvm::sys::windows::exit::ExitContextAnyhow;
+use crate::crosvm::sys::windows::stats::StatisticsCollector;
+use crate::sys::windows::metrics::log_descriptor;
+use crate::sys::windows::metrics::MetricEventType;
 
 const DEFAULT_GUEST_CID: u64 = 3;
 
@@ -2034,8 +2122,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
+
+    use super::*;
 
     fn create_config(test_dir: &TempDir) -> Config {
         let mut config = Config::default();

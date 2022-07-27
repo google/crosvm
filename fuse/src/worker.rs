@@ -3,16 +3,27 @@
 // found in the LICENSE file.
 
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Cursor, Read, Write};
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Cursor;
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
 use std::mem::size_of;
 use std::os::unix::fs::FileExt;
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 
-use crate::filesystem::{FileSystem, ZeroCopyReader, ZeroCopyWriter};
-use crate::server::{Mapper, Reader, Server, Writer};
+use crate::filesystem::FileSystem;
+use crate::filesystem::ZeroCopyReader;
+use crate::filesystem::ZeroCopyWriter;
+use crate::server::Mapper;
+use crate::server::Reader;
+use crate::server::Server;
+use crate::server::Writer;
 use crate::sys;
-use crate::{Error, Result};
+use crate::Error;
+use crate::Result;
 
 struct DevFuseReader {
     // File representing /dev/fuse for reading, with sufficient buffer to accommodate a FUSE read
@@ -195,8 +206,9 @@ fn do_start_message_loop<F: FileSystem + Sync>(
 
 // TODO: Remove worker and this namespace from public
 pub mod internal {
-    use super::*;
     use crossbeam_utils::thread;
+
+    use super::*;
 
     /// Start the FUSE message handling loops in multiple threads. Returns when an error happens.
     ///

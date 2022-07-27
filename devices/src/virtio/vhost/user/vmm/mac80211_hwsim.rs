@@ -5,16 +5,22 @@
 use std::cell::RefCell;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::result::Result;
 use std::thread;
 
-use base::{error, Event, RawDescriptor};
+use base::error;
+use base::Event;
+use base::RawDescriptor;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 
-use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, Error};
-use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice};
-
-use std::result::Result;
+use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
+use crate::virtio::vhost::user::vmm::Error;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::VirtioDevice;
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_COUNT: usize = 2;

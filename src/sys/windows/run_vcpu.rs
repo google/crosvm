@@ -2,54 +2,92 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use anyhow::{anyhow, Result};
-use arch::{self, LinuxArch, RunnableLinuxVm, VcpuAffinity};
-use base::{
-    self, error, info, set_audio_thread_priorities, set_cpu_affinity, warn, Event,
-    Result as BaseResult, SafeMultimediaHandle, SendTube, Timer, Tube, VmEventType,
-};
-use std::{
-    arch::x86_64::{__cpuid, __cpuid_count},
-    fmt::Display,
-};
+use std::arch::x86_64::__cpuid;
+use std::arch::x86_64::__cpuid_count;
+use std::convert::TryInto;
+use std::fmt;
+use std::fmt::Display;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Barrier;
+use std::thread;
+use std::thread::JoinHandle;
+use std::time::Duration;
+use std::time::Instant;
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use {
-    aarch64::AArch64 as Arch,
-    devices::{IrqChip, IrqChipAArch64 as IrqChipArch},
-    hypervisor::{VcpuAArch64 as VcpuArch, VmAArch64 as VmArch},
-};
+use aarch64::AArch64 as Arch;
+use anyhow::anyhow;
+use anyhow::Result;
+use arch::LinuxArch;
+use arch::RunnableLinuxVm;
+use arch::VcpuAffinity;
+use arch::{self};
+use base::error;
+use base::info;
+use base::set_audio_thread_priorities;
+use base::set_cpu_affinity;
+use base::warn;
+use base::Event;
+use base::Result as BaseResult;
+use base::SafeMultimediaHandle;
+use base::SendTube;
+use base::Timer;
+use base::Tube;
+use base::VmEventType;
+use base::{self};
+use cros_async::select2;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use cros_async::SelectResult;
+use cros_async::TimerAsync;
+use devices::tsc::TscSyncMitigations;
+use devices::Bus;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use devices::IrqChip;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use devices::IrqChipAArch64 as IrqChipArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use {
-    devices::IrqChipX86_64 as IrqChipArch,
-    hypervisor::{VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
-    x86_64::cpuid::{adjust_cpuid, CpuIdContext},
-    x86_64::X8664arch as Arch,
-};
-
-use crate::bail_exit_code;
-use crate::crosvm::sys::windows::exit::{Exit, ExitContext, ExitContextAnyhow};
-use crate::crosvm::sys::windows::stats::{StatisticsCollector, VmExitStatistics};
-use crate::sys::windows::save_vcpu_tsc_offset;
-use cros_async::{select2, EventAsync, Executor, SelectResult, TimerAsync};
-use devices::{tsc::TscSyncMitigations, Bus, VcpuRunState};
+use devices::IrqChipX86_64 as IrqChipArch;
+use devices::VcpuRunState;
 use futures::pin_mut;
 #[cfg(feature = "whpx")]
 use hypervisor::whpx::WhpxVcpu;
-use hypervisor::{
-    HypervisorCap, IoEventAddress, IoOperation, IoParams, VcpuExit, VcpuInitX86_64, VcpuRunHandle,
-};
-use std::convert::TryInto;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Barrier};
-use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
-use std::{fmt, thread};
-use sync::{Condvar, Mutex};
+use hypervisor::HypervisorCap;
+use hypervisor::IoEventAddress;
+use hypervisor::IoOperation;
+use hypervisor::IoParams;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::VcpuAArch64 as VcpuArch;
+use hypervisor::VcpuExit;
+use hypervisor::VcpuInitX86_64;
+use hypervisor::VcpuRunHandle;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::VcpuX86_64 as VcpuArch;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::VmAArch64 as VmArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::VmX86_64 as VmArch;
+use sync::Condvar;
+use sync::Mutex;
 use tracing::trace_event;
 use vm_control::VmRunMode;
 use winapi::shared::winerror::ERROR_RETRY;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::cpuid::adjust_cpuid;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::cpuid::CpuIdContext;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::X8664arch as Arch;
 
+use crate::bail_exit_code;
+use crate::crosvm::sys::windows::exit::Exit;
+use crate::crosvm::sys::windows::exit::ExitContext;
+use crate::crosvm::sys::windows::exit::ExitContextAnyhow;
+use crate::crosvm::sys::windows::stats::StatisticsCollector;
+use crate::crosvm::sys::windows::stats::VmExitStatistics;
+use crate::sys::windows::save_vcpu_tsc_offset;
 use crate::sys::windows::ExitState;
 
 const ERROR_RETRY_I32: i32 = ERROR_RETRY as i32;

@@ -7,7 +7,8 @@ use std::fmt;
 use std::mem::size_of;
 use std::result::Result;
 
-use rand_core::{Error, RngCore};
+use rand_core::Error;
+use rand_core::RngCore;
 
 /// A random number generator that uses fuzzer input as the source of its
 /// randomness.  When run on the same input, it provides the same output, as

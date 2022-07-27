@@ -2,19 +2,31 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{collections::BTreeMap, path::PathBuf, str::FromStr, time::Duration};
-
-use devices::{IommuDevType, PciAddress, SerialParameters};
-use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::time::Duration;
 
 #[cfg(feature = "gpu")]
-use devices::virtio::{
-    GpuDisplayParameters, GpuParameters, DEFAULT_DISPLAY_HEIGHT, DEFAULT_DISPLAY_WIDTH,
-};
-
-use crate::crosvm::config::{invalid_value_err, Config};
+use devices::virtio::GpuDisplayParameters;
 #[cfg(feature = "gpu")]
-use crate::crosvm::{argument, argument::parse_hex_or_decimal};
+use devices::virtio::GpuParameters;
+#[cfg(feature = "gpu")]
+use devices::virtio::DEFAULT_DISPLAY_HEIGHT;
+#[cfg(feature = "gpu")]
+use devices::virtio::DEFAULT_DISPLAY_WIDTH;
+use devices::IommuDevType;
+use devices::PciAddress;
+use devices::SerialParameters;
+use serde::Deserialize;
+use serde::Serialize;
+
+#[cfg(feature = "gpu")]
+use crate::crosvm::argument;
+#[cfg(feature = "gpu")]
+use crate::crosvm::argument::parse_hex_or_decimal;
+use crate::crosvm::config::invalid_value_err;
+use crate::crosvm::config::Config;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum HypervisorKind {
@@ -671,15 +683,16 @@ impl VfioCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::crosvm::config::{DEFAULT_TOUCH_DEVICE_HEIGHT, DEFAULT_TOUCH_DEVICE_WIDTH};
-
-    use argh::FromArgs;
     use std::path::PathBuf;
 
+    use argh::FromArgs;
+
+    use super::*;
     #[cfg(feature = "audio")]
     use crate::crosvm::config::parse_ac97_options;
     use crate::crosvm::config::BindMount;
+    use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_HEIGHT;
+    use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_WIDTH;
 
     #[cfg(feature = "audio_cras")]
     #[test]

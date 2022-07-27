@@ -2,16 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{alloc::Layout, mem::MaybeUninit, os::unix::io::AsRawFd, str};
+use std::alloc::Layout;
+use std::mem::MaybeUninit;
+use std::os::unix::io::AsRawFd;
+use std::str;
 
 use data_model::DataInit;
 use libc::EINVAL;
 use log::error;
 
+use super::errno_result;
+use super::getpid;
+use super::Error;
+use super::RawDescriptor;
+use super::Result;
 use crate::alloc::LayoutAllocation;
-
-use super::{errno_result, getpid, Error, RawDescriptor, Result};
-use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::SafeDescriptor;
 
 macro_rules! debug_pr {
     // By default debugs are suppressed, to enabled them replace macro body with:

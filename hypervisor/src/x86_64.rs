@@ -4,16 +4,24 @@
 
 use std::arch::x86_64::CpuidResult;
 #[cfg(any(unix, feature = "haxm", feature = "whpx"))]
-use std::arch::x86_64::{__cpuid, _rdtsc};
+use std::arch::x86_64::__cpuid;
+#[cfg(any(unix, feature = "haxm", feature = "whpx"))]
+use std::arch::x86_64::_rdtsc;
 
-use serde::{Deserialize, Serialize};
-
-use base::{error, Result};
+use base::error;
+use base::Result;
 use bit_field::*;
 use downcast_rs::impl_downcast;
-
-use crate::{Hypervisor, IrqRoute, IrqSource, IrqSourceChip, Vcpu, Vm};
+use serde::Deserialize;
+use serde::Serialize;
 use vm_memory::GuestAddress;
+
+use crate::Hypervisor;
+use crate::IrqRoute;
+use crate::IrqSource;
+use crate::IrqSourceChip;
+use crate::Vcpu;
+use crate::Vm;
 
 /// A trait for managing cpuids for an x86_64 hypervisor and for checking its capabilities.
 pub trait HypervisorX86_64: Hypervisor {

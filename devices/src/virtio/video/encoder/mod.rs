@@ -8,29 +8,45 @@
 pub mod backend;
 mod encoder;
 
-use base::{error, info, warn, Tube, WaitContext};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+
+use backend::*;
+use base::error;
+use base::info;
+use base::warn;
+use base::Tube;
+use base::WaitContext;
 use vm_memory::GuestMemory;
 
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
-use crate::virtio::video::command::{QueueType, VideoCmd};
+use crate::virtio::video::command::QueueType;
+use crate::virtio::video::command::VideoCmd;
 use crate::virtio::video::control::*;
+use crate::virtio::video::device::AsyncCmdResponse;
+use crate::virtio::video::device::AsyncCmdTag;
+use crate::virtio::video::device::Device;
+use crate::virtio::video::device::Token;
 use crate::virtio::video::device::VideoCmdResponseType;
-use crate::virtio::video::device::{
-    AsyncCmdResponse, AsyncCmdTag, Device, Token, VideoEvtResponseType,
-};
-use crate::virtio::video::encoder::encoder::{
-    EncoderEvent, InputBufferId, OutputBufferId, SessionConfig,
-};
+use crate::virtio::video::device::VideoEvtResponseType;
+use crate::virtio::video::encoder::encoder::EncoderEvent;
+use crate::virtio::video::encoder::encoder::InputBufferId;
+use crate::virtio::video::encoder::encoder::OutputBufferId;
+use crate::virtio::video::encoder::encoder::SessionConfig;
 use crate::virtio::video::error::*;
-use crate::virtio::video::event::{EvtType, VideoEvt};
-use crate::virtio::video::format::{Bitrate, BitrateMode, Format, Level, PlaneFormat, Profile};
+use crate::virtio::video::event::EvtType;
+use crate::virtio::video::event::VideoEvt;
+use crate::virtio::video::format::Bitrate;
+use crate::virtio::video::format::BitrateMode;
+use crate::virtio::video::format::Format;
+use crate::virtio::video::format::Level;
+use crate::virtio::video::format::PlaneFormat;
+use crate::virtio::video::format::Profile;
 use crate::virtio::video::params::Params;
 use crate::virtio::video::protocol;
 use crate::virtio::video::resource::*;
 use crate::virtio::video::response::CmdResponse;
 use crate::virtio::video::EosBufferManager;
-use backend::*;
 
 #[derive(Debug)]
 struct QueuedInputResourceParams {

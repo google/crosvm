@@ -2,15 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::marker::{Send, Sized};
+use std::marker::Send;
+use std::marker::Sized;
 
-use crate::{
-    pci::{CrosvmDeviceId, PciId},
-    Bus, BusDevice, IrqEdgeEvent, IrqLevelEvent,
-};
-use base::{Event, Result};
-use hypervisor::{IrqRoute, MPState, Vcpu};
+use base::Event;
+use base::Result;
+use hypervisor::IrqRoute;
+use hypervisor::MPState;
+use hypervisor::Vcpu;
 use resources::SystemAllocator;
+
+use crate::pci::CrosvmDeviceId;
+use crate::pci::PciId;
+use crate::Bus;
+use crate::BusDevice;
+use crate::IrqEdgeEvent;
+use crate::IrqLevelEvent;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {

@@ -2,42 +2,59 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    alloc::Layout,
-    any::Any,
-    cell::RefCell,
-    cmp::min,
-    convert::{TryFrom, TryInto},
-    ffi::CStr,
-    future::Future,
-    io,
-    mem::{replace, size_of, MaybeUninit},
-    os::unix::io::{AsRawFd, RawFd},
-    pin::Pin,
-    ptr,
-    rc::Rc,
-    sync::Arc,
-    task::{self, Poll},
-    time::Duration,
-};
+use std::alloc::Layout;
+use std::any::Any;
+use std::cell::RefCell;
+use std::cmp::min;
+use std::convert::TryFrom;
+use std::convert::TryInto;
+use std::ffi::CStr;
+use std::future::Future;
+use std::io;
+use std::mem::replace;
+use std::mem::size_of;
+use std::mem::MaybeUninit;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::RawFd;
+use std::pin::Pin;
+use std::ptr;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::task::Poll;
+use std::task::{self};
+use std::time::Duration;
 
-use anyhow::{anyhow, bail, ensure, Context};
-use base::{
-    error, warn, AsRawDescriptor, EventFd, FromRawDescriptor, LayoutAllocation, SafeDescriptor,
-};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::ensure;
+use anyhow::Context;
+use base::error;
+use base::warn;
+use base::AsRawDescriptor;
+use base::EventFd;
+use base::FromRawDescriptor;
+use base::LayoutAllocation;
+use base::SafeDescriptor;
 use data_model::IoBufMut;
-use io_uring::{
-    cqueue::{self, buffer_select},
-    opcode, squeue,
-    types::{Fd, FsyncFlags, SubmitArgs, Timespec},
-    Builder, IoUring, Probe,
-};
-use once_cell::sync::{Lazy, OnceCell};
+use io_uring::cqueue::buffer_select;
+use io_uring::cqueue::{self};
+use io_uring::opcode;
+use io_uring::squeue;
+use io_uring::types::Fd;
+use io_uring::types::FsyncFlags;
+use io_uring::types::SubmitArgs;
+use io_uring::types::Timespec;
+use io_uring::Builder;
+use io_uring::IoUring;
+use io_uring::Probe;
+use once_cell::sync::Lazy;
+use once_cell::sync::OnceCell;
 use slab::Slab;
 use thiserror::Error as ThisError;
 
 use super::cmsg::*;
-use crate::{AsIoBufs, OwnedIoBuf};
+use crate::AsIoBufs;
+use crate::OwnedIoBuf;
 
 // For now all buffers live in the same buffer group.
 const BUFFER_GROUP: u16 = 0;

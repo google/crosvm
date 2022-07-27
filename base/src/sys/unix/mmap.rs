@@ -5,19 +5,28 @@
 //! The mmap module provides a safe interface to mmap memory and ensures unmap is called when the
 //! mmap object leaves scope.
 
-use std::{io, ptr::null_mut};
+use std::io;
+use std::ptr::null_mut;
 
-use libc::{self, c_int, c_void, read, write};
+use libc::c_int;
+use libc::c_void;
+use libc::read;
+use libc::write;
+use libc::{self};
 use log::warn;
 use remain::sorted;
 
-use crate::{
-    external_mapping::ExternalMapping, AsRawDescriptor, Descriptor, MappedRegion,
-    MemoryMapping as CrateMemoryMapping, MemoryMappingBuilder, Protection, RawDescriptor,
-    SafeDescriptor,
-};
-
-use super::{pagesize, Error as ErrnoError};
+use super::pagesize;
+use super::Error as ErrnoError;
+use crate::external_mapping::ExternalMapping;
+use crate::AsRawDescriptor;
+use crate::Descriptor;
+use crate::MappedRegion;
+use crate::MemoryMapping as CrateMemoryMapping;
+use crate::MemoryMappingBuilder;
+use crate::Protection;
+use crate::RawDescriptor;
+use crate::SafeDescriptor;
 
 #[sorted]
 #[derive(Debug, thiserror::Error)]
@@ -880,10 +889,12 @@ impl<'a> MemoryMappingBuilder<'a> {
 
 #[cfg(test)]
 mod tests {
+    use data_model::VolatileMemory;
+    use data_model::VolatileMemoryError;
+    use tempfile::tempfile;
+
     use super::*;
     use crate::descriptor::Descriptor;
-    use data_model::{VolatileMemory, VolatileMemoryError};
-    use tempfile::tempfile;
 
     #[test]
     fn basic_map() {

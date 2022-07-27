@@ -10,37 +10,51 @@
 
 mod sys;
 
-use arch::LinuxArch;
-use devices::IrqChipX86_64;
-use hypervisor::{
-    HypervisorX86_64, IoOperation, IoParams, ProtectionType, Regs, VcpuExit, VcpuX86_64, VmCap,
-    VmX86_64,
-};
-use resources::{AddressRange, SystemAllocator};
-use vm_memory::{GuestAddress, GuestMemory};
-
-use super::cpuid::setup_cpuid;
-use super::interrupts::set_lint;
-use super::regs::{configure_segments_and_sregs, long_mode_msrs, mtrr_msrs, setup_page_tables};
-use super::X8664arch;
-use super::{
-    acpi, arch_memory_regions, bootparam, init_low_memory_layout, mptable,
-    read_pci_mmio_before_32bit, read_pcie_cfg_mmio, smbios,
-};
-use super::{
-    BOOT_STACK_POINTER, KERNEL_64BIT_ENTRY_OFFSET, KERNEL_START_OFFSET, X86_64_SCI_IRQ,
-    ZERO_PAGE_OFFSET,
-};
-
-use base::{Event, Tube};
-
 use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::sync::Arc;
 use std::thread;
-use sync::Mutex;
 
+use arch::LinuxArch;
+use base::Event;
+use base::Tube;
+use devices::IrqChipX86_64;
 use devices::PciConfigIo;
+use hypervisor::HypervisorX86_64;
+use hypervisor::IoOperation;
+use hypervisor::IoParams;
+use hypervisor::ProtectionType;
+use hypervisor::Regs;
+use hypervisor::VcpuExit;
+use hypervisor::VcpuX86_64;
+use hypervisor::VmCap;
+use hypervisor::VmX86_64;
+use resources::AddressRange;
+use resources::SystemAllocator;
+use sync::Mutex;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+
+use super::acpi;
+use super::arch_memory_regions;
+use super::bootparam;
+use super::cpuid::setup_cpuid;
+use super::init_low_memory_layout;
+use super::interrupts::set_lint;
+use super::mptable;
+use super::read_pci_mmio_before_32bit;
+use super::read_pcie_cfg_mmio;
+use super::regs::configure_segments_and_sregs;
+use super::regs::long_mode_msrs;
+use super::regs::mtrr_msrs;
+use super::regs::setup_page_tables;
+use super::smbios;
+use super::X8664arch;
+use super::BOOT_STACK_POINTER;
+use super::KERNEL_64BIT_ENTRY_OFFSET;
+use super::KERNEL_START_OFFSET;
+use super::X86_64_SCI_IRQ;
+use super::ZERO_PAGE_OFFSET;
 
 enum TaggedControlTube {
     VmMemory(Tube),

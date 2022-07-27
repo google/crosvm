@@ -2,12 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{EventToken, RawDescriptor};
-use serde::{Deserialize, Serialize};
-use std::{
-    fs::File,
-    mem::{self, ManuallyDrop},
-};
+use std::fs::File;
+use std::mem::ManuallyDrop;
+use std::mem::{self};
+
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::EventToken;
+use crate::RawDescriptor;
 
 /// Wraps a RawDescriptor and safely closes it when self falls out of scope.
 #[derive(Serialize, Deserialize, Debug, Eq)]

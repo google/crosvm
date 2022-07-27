@@ -2,11 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{self, Display};
+use std::fmt::Display;
+use std::fmt::{self};
 use std::str::FromStr;
 
 use remain::sorted;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use serde::Serializer;
 use thiserror::Error as ThisError;
 
 /// Identifies a single component of a [`PciAddress`].

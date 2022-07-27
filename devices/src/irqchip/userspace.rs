@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::convert::{TryFrom, TryInto};
-use std::fmt::{self, Display};
+use std::convert::TryFrom;
+use std::convert::TryInto;
+use std::fmt::Display;
+use std::fmt::{self};
 use std::iter;
 use std::sync::Arc;
 use std::thread;
@@ -15,28 +17,65 @@ cfg_if::cfg_if! {
         use base::{Clock, Timer};
     }
 }
-use base::{
-    error, info, warn, AsRawDescriptor, Descriptor, Error, Event, EventToken, Result, Tube,
-    WaitContext,
-};
-use hypervisor::{
-    DeliveryMode, IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState, MPState,
-    MsiAddressMessage, MsiDataMessage, PicSelect, PicState, PitState, Vcpu, VcpuX86_64,
-};
+use base::error;
+use base::info;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Descriptor;
+use base::Error;
+use base::Event;
+use base::EventToken;
+use base::Result;
+use base::Tube;
+use base::WaitContext;
+use hypervisor::DeliveryMode;
+use hypervisor::IoapicState;
+use hypervisor::IrqRoute;
+use hypervisor::IrqSource;
+use hypervisor::IrqSourceChip;
+use hypervisor::LapicState;
+use hypervisor::MPState;
+use hypervisor::MsiAddressMessage;
+use hypervisor::MsiDataMessage;
+use hypervisor::PicSelect;
+use hypervisor::PicState;
+use hypervisor::PitState;
+use hypervisor::Vcpu;
+use hypervisor::VcpuX86_64;
 use resources::SystemAllocator;
-use sync::{Condvar, Mutex};
+use sync::Condvar;
+use sync::Mutex;
 
 use crate::bus::BusDeviceSync;
-use crate::irqchip::{
-    Apic, ApicBusMsg, DelayedIoApicIrqEvents, Interrupt, InterruptData, InterruptDestination,
-    Ioapic, IrqEvent, IrqEventIndex, Pic, Routes, VcpuRunState, APIC_BASE_ADDRESS,
-    APIC_MEM_LENGTH_BYTES, IOAPIC_BASE_ADDRESS, IOAPIC_MEM_LENGTH_BYTES,
-};
+use crate::irqchip::Apic;
+use crate::irqchip::ApicBusMsg;
+use crate::irqchip::DelayedIoApicIrqEvents;
+use crate::irqchip::Interrupt;
+use crate::irqchip::InterruptData;
+use crate::irqchip::InterruptDestination;
+use crate::irqchip::Ioapic;
+use crate::irqchip::IrqEvent;
+use crate::irqchip::IrqEventIndex;
+use crate::irqchip::Pic;
+use crate::irqchip::Routes;
+use crate::irqchip::VcpuRunState;
+use crate::irqchip::APIC_BASE_ADDRESS;
+use crate::irqchip::APIC_MEM_LENGTH_BYTES;
+use crate::irqchip::IOAPIC_BASE_ADDRESS;
+use crate::irqchip::IOAPIC_MEM_LENGTH_BYTES;
 use crate::pci::CrosvmDeviceId;
-use crate::{
-    Bus, BusAccessInfo, BusDevice, DeviceId, IrqChip, IrqChipCap, IrqChipX86_64, IrqEdgeEvent,
-    IrqEventSource, IrqLevelEvent, Pit, PitError,
-};
+use crate::Bus;
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::DeviceId;
+use crate::IrqChip;
+use crate::IrqChipCap;
+use crate::IrqChipX86_64;
+use crate::IrqEdgeEvent;
+use crate::IrqEventSource;
+use crate::IrqLevelEvent;
+use crate::Pit;
+use crate::PitError;
 
 /// PIT channel 0 timer is connected to IRQ 0
 const PIT_CHANNEL0_IRQ: u32 = 0;
@@ -989,21 +1028,35 @@ type TimerWorkerResult<T> = std::result::Result<T, TimerWorkerError>;
 #[allow(unused)]
 #[cfg(test)]
 mod tests {
-    use super::super::tests::*;
-    use super::*;
-
     use std::os::raw::c_int;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
+    use std::time::Instant;
 
-    use super::super::DestinationShorthand;
     use base::EventReadResult;
-    use hypervisor::{
-        CpuId, CpuIdEntry, DebugRegs, DestinationMode, Fpu, HypervHypercall, IoParams,
-        IoapicRedirectionTableEntry, Level, PitRWMode, Register, Regs, Sregs, TriggerMode, Vcpu,
-        VcpuExit, VcpuRunHandle,
-    };
-    use resources::{AddressRange, SystemAllocatorConfig};
+    use hypervisor::CpuId;
+    use hypervisor::CpuIdEntry;
+    use hypervisor::DebugRegs;
+    use hypervisor::DestinationMode;
+    use hypervisor::Fpu;
+    use hypervisor::HypervHypercall;
+    use hypervisor::IoParams;
+    use hypervisor::IoapicRedirectionTableEntry;
+    use hypervisor::Level;
+    use hypervisor::PitRWMode;
+    use hypervisor::Register;
+    use hypervisor::Regs;
+    use hypervisor::Sregs;
+    use hypervisor::TriggerMode;
+    use hypervisor::Vcpu;
+    use hypervisor::VcpuExit;
+    use hypervisor::VcpuRunHandle;
+    use resources::AddressRange;
+    use resources::SystemAllocatorConfig;
     use vm_memory::GuestAddress;
+
+    use super::super::tests::*;
+    use super::super::DestinationShorthand;
+    use super::*;
 
     const APIC_ID: u64 = 0x20;
     const TPR: u64 = 0x80;

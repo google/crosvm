@@ -2,14 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::{Error, Result};
-use super::{EventHandler, EventLoop};
-
-use anyhow::Context;
-use base::{Event, EventType};
 use std::mem;
 use std::sync::Arc;
+
+use anyhow::Context;
+use base::Event;
+use base::EventType;
 use sync::Mutex;
+
+use super::Error;
+use super::EventHandler;
+use super::EventLoop;
+use super::Result;
 
 /// Async Job Queue can schedule async jobs.
 pub struct AsyncJobQueue {

@@ -2,10 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{os::raw::c_void, rc::Rc};
+use std::os::raw::c_void;
+use std::rc::Rc;
 
 use super::bindings;
-use super::format::{Bitrate, OutputProfile};
+use super::format::Bitrate;
+use super::format::OutputProfile;
 use super::session::*;
 use crate::error::*;
 use crate::format::*;

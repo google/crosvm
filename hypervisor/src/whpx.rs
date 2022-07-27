@@ -7,11 +7,19 @@
 use core::ffi::c_void;
 use std::arch::x86_64::__cpuid_count;
 
-use crate::{CpuId, CpuIdEntry, Hypervisor, HypervisorCap, HypervisorX86_64};
-use base::{error, warn, Error, Result};
+use base::error;
+use base::warn;
+use base::Error;
+use base::Result;
 use once_cell::sync::Lazy;
 use thiserror::Error as ThisError;
 use winapi::shared::winerror::S_OK;
+
+use crate::CpuId;
+use crate::CpuIdEntry;
+use crate::Hypervisor;
+use crate::HypervisorCap;
+use crate::HypervisorX86_64;
 
 #[macro_export]
 macro_rules! check_whpx {

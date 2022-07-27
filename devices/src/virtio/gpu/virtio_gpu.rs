@@ -9,34 +9,47 @@ use std::rc::Rc;
 use std::result::Result;
 use std::sync::Arc;
 
-use crate::virtio::gpu::GpuDisplayParameters;
-use crate::virtio::resource_bridge::{BufferInfo, PlaneInfo, ResourceInfo, ResourceResponse};
-use base::{error, ExternalMapping, Protection, SafeDescriptor, Tube};
-
+use base::error;
+use base::ExternalMapping;
+use base::Protection;
+use base::SafeDescriptor;
+use base::Tube;
 use data_model::VolatileSlice;
-
 use gpu_display::*;
-use rutabaga_gfx::{
-    ResourceCreate3D, ResourceCreateBlob, Rutabaga, RutabagaBuilder, RutabagaFence,
-    RutabagaFenceHandler, RutabagaHandle, RutabagaIovec, Transfer3D,
-    RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
-};
-
 use libc::c_void;
-
 use resources::Alloc;
-
-use super::protocol::{
-    GpuResponse::{self, *},
-    GpuResponsePlaneInfo, VirtioGpuResult, VIRTIO_GPU_BLOB_FLAG_CREATE_GUEST_HANDLE,
-    VIRTIO_GPU_BLOB_MEM_HOST3D,
-};
-use super::VirtioScanoutBlobData;
+use rutabaga_gfx::ResourceCreate3D;
+use rutabaga_gfx::ResourceCreateBlob;
+use rutabaga_gfx::Rutabaga;
+use rutabaga_gfx::RutabagaBuilder;
+use rutabaga_gfx::RutabagaFence;
+use rutabaga_gfx::RutabagaFenceHandler;
+use rutabaga_gfx::RutabagaHandle;
+use rutabaga_gfx::RutabagaIovec;
+use rutabaga_gfx::Transfer3D;
+use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_DMABUF;
 use sync::Mutex;
+use vm_control::MemSlot;
+use vm_control::VmMemoryDestination;
+use vm_control::VmMemoryRequest;
+use vm_control::VmMemoryResponse;
+use vm_control::VmMemorySource;
+use vm_memory::udmabuf::UdmabufDriver;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
-use vm_memory::{udmabuf::UdmabufDriver, GuestAddress, GuestMemory};
-
-use vm_control::{MemSlot, VmMemoryDestination, VmMemoryRequest, VmMemoryResponse, VmMemorySource};
+use super::protocol::GpuResponse::*;
+use super::protocol::GpuResponse::{self};
+use super::protocol::GpuResponsePlaneInfo;
+use super::protocol::VirtioGpuResult;
+use super::protocol::VIRTIO_GPU_BLOB_FLAG_CREATE_GUEST_HANDLE;
+use super::protocol::VIRTIO_GPU_BLOB_MEM_HOST3D;
+use super::VirtioScanoutBlobData;
+use crate::virtio::gpu::GpuDisplayParameters;
+use crate::virtio::resource_bridge::BufferInfo;
+use crate::virtio::resource_bridge::PlaneInfo;
+use crate::virtio::resource_bridge::ResourceInfo;
+use crate::virtio::resource_bridge::ResourceResponse;
 
 struct VirtioGpuResource {
     resource_id: u32,

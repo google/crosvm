@@ -6,8 +6,8 @@ mod block;
 mod handler;
 mod listener;
 
-pub use block::{run_block_device, Options as BlockOptions};
-
+pub use block::run_block_device;
+pub use block::Options as BlockOptions;
 use cros_async::Executor;
 
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;

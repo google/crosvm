@@ -5,13 +5,16 @@
 // Loader for bzImage-format Linux kernels as described in
 // https://www.kernel.org/doc/Documentation/x86/boot.txt
 
-use std::io::{Read, Seek, SeekFrom};
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
 
 use base::AsRawDescriptor;
 use data_model::DataInit;
 use remain::sorted;
 use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 use crate::bootparam::boot_params;
 

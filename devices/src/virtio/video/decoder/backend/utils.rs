@@ -5,18 +5,18 @@
 // TODO(acourbot): Remove once we start using this file
 #![allow(dead_code)]
 
-use std::{
-    collections::{btree_map::Entry, BTreeMap, VecDeque},
-    time::Duration,
-};
+use std::collections::btree_map::Entry;
+use std::collections::BTreeMap;
+use std::collections::VecDeque;
+use std::time::Duration;
 
-use base::{AsRawDescriptor, Event};
+use base::AsRawDescriptor;
+use base::Event;
 use thiserror::Error as ThisError;
-
-use crate::virtio::video::resource::GuestResource;
 
 #[cfg(feature = "ffmpeg")]
 use crate::virtio::video::resource::BufferHandle;
+use crate::virtio::video::resource::GuestResource;
 
 /// Manages a pollable queue of events to be sent to the decoder or encoder.
 pub struct EventQueue<T> {
@@ -213,9 +213,12 @@ impl OutputQueue {
 mod tests {
     use std::time::Duration;
 
+    use base::EventToken;
+    use base::WaitContext;
+
     use super::*;
-    use crate::virtio::video::{decoder::DecoderEvent, format::Rect};
-    use base::{EventToken, WaitContext};
+    use crate::virtio::video::decoder::DecoderEvent;
+    use crate::virtio::video::format::Rect;
 
     /// Test basic queue/dequeue functionality of `EventQueue`.
     #[test]

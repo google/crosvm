@@ -13,17 +13,24 @@
 //! For more information see:
 //! <https://google.github.io/crosvm/running_crosvm/programmatic_interaction.html#usage>
 
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::ffi::CStr;
 use std::panic::catch_unwind;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use libc::{c_char, ssize_t};
-
-use vm_control::{
-    client::*, BalloonControlCommand, BalloonStats, DiskControlCommand, UsbControlAttachedDevice,
-    UsbControlResult, VmRequest, VmResponse, USB_CONTROL_MAX_PORTS,
-};
+use libc::c_char;
+use libc::ssize_t;
+use vm_control::client::*;
+use vm_control::BalloonControlCommand;
+use vm_control::BalloonStats;
+use vm_control::DiskControlCommand;
+use vm_control::UsbControlAttachedDevice;
+use vm_control::UsbControlResult;
+use vm_control::VmRequest;
+use vm_control::VmResponse;
+use vm_control::USB_CONTROL_MAX_PORTS;
 
 fn validate_socket_path(socket_path: *const c_char) -> Option<PathBuf> {
     if !socket_path.is_null() {

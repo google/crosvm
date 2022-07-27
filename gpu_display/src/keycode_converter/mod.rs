@@ -4,8 +4,10 @@
 
 mod data;
 
-use data::{MapEntry, KEYCODE_MAP};
 use std::collections::HashMap;
+
+use data::MapEntry;
+use data::KEYCODE_MAP;
 
 /// Specifies which type of scancode to convert *from* in the KeycodeTranslator.
 #[allow(dead_code)]

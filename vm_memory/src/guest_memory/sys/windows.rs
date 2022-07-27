@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::SharedMemory;
 use bitflags::bitflags;
 
-use base::SharedMemory;
-
-use crate::{GuestMemory, Result};
+use crate::GuestMemory;
+use crate::Result;
 
 bitflags! {
     pub struct MemoryPolicy: u32 {

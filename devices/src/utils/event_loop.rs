@@ -2,13 +2,23 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::error::{Error, Result};
-use base::{error, warn, AsRawDescriptor, Descriptor, Event, EventType, WaitContext};
 use std::collections::BTreeMap;
 use std::mem::drop;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
+use std::sync::Weak;
 use std::thread;
+
+use base::error;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Descriptor;
+use base::Event;
+use base::EventType;
+use base::WaitContext;
 use sync::Mutex;
+
+use super::error::Error;
+use super::error::Result;
 
 /// A fail handle will do the clean up when we cannot recover from some error.
 pub trait FailHandle: Send + Sync {
@@ -193,9 +203,13 @@ impl EventLoop {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::Arc;
+    use std::sync::Condvar;
+    use std::sync::Mutex;
+
     use base::Event;
-    use std::sync::{Arc, Condvar, Mutex};
+
+    use super::*;
 
     struct EventLoopTestHandler {
         val: Mutex<u8>,

@@ -4,12 +4,18 @@
 
 #![cfg_attr(windows, allow(dead_code))]
 
-use base::{error, AsRawDescriptor, Event, RawDescriptor, Tube};
+use base::error;
+use base::AsRawDescriptor;
+use base::Event;
+use base::RawDescriptor;
+use base::Tube;
 use bit_field::*;
 use data_model::DataInit;
-use vm_control::{VmIrqRequest, VmIrqResponse};
+use vm_control::VmIrqRequest;
+use vm_control::VmIrqResponse;
 
-use crate::pci::{PciCapability, PciCapabilityID};
+use crate::pci::PciCapability;
+use crate::pci::PciCapabilityID;
 // MSI registers
 pub const PCI_MSI_NEXT_POINTER: u32 = 0x1; // Next cap pointer
 pub const PCI_MSI_FLAGS: u32 = 0x2; // Message Control

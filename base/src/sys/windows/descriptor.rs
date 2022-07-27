@@ -2,32 +2,37 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::Result;
-use std::{
-    convert::TryFrom,
-    fs::File,
-    io::{Stderr, Stdin, Stdout},
-    ops::Drop,
-};
+use std::convert::TryFrom;
+use std::ffi::CString;
+use std::fs::File;
+use std::io::Stderr;
+use std::io::Stdin;
+use std::io::Stdout;
+use std::marker::Send;
+use std::marker::Sync;
+use std::mem::MaybeUninit;
+use std::ops::Drop;
+use std::os::windows::io::AsRawHandle;
+use std::os::windows::io::FromRawHandle;
+use std::os::windows::io::IntoRawHandle;
+use std::os::windows::io::RawHandle;
+use std::sync::Once;
 
-use crate::descriptor::{
-    AsRawDescriptor, Descriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
-};
-use std::{
-    ffi::CString,
-    marker::{Send, Sync},
-    mem::MaybeUninit,
-    os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle},
-    sync::Once,
-};
-use win_util::{duplicate_handle, win32_wide_string};
-use winapi::{
-    shared::minwindef::{BOOL, HMODULE, TRUE},
-    um::{
-        handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
-        libloaderapi,
-    },
-};
+use win_util::duplicate_handle;
+use win_util::win32_wide_string;
+use winapi::shared::minwindef::BOOL;
+use winapi::shared::minwindef::HMODULE;
+use winapi::shared::minwindef::TRUE;
+use winapi::um::handleapi::CloseHandle;
+use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+use winapi::um::libloaderapi;
+
+use super::Result;
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::Descriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::IntoRawDescriptor;
+use crate::descriptor::SafeDescriptor;
 
 pub type RawDescriptor = RawHandle;
 

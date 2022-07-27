@@ -5,25 +5,38 @@
 //! Implement a struct that works as a `vmm_vhost`'s backend.
 
 use std::cmp::Ordering;
-use std::io::{IoSlice, IoSliceMut};
+use std::io::IoSlice;
+use std::io::IoSliceMut;
 use std::mem;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread;
 
-use anyhow::{anyhow, bail, Context, Result};
-use base::{error, info, Event, RawDescriptor};
-use cros_async::{EventAsync, Executor};
-use futures::{pin_mut, select, FutureExt};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Result;
+use base::error;
+use base::info;
+use base::Event;
+use base::RawDescriptor;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use futures::pin_mut;
+use futures::select;
+use futures::FutureExt;
 use sync::Mutex;
-use vmm_vhost::connection::vfio::{Device as VfioDeviceTrait, RecvIntoBufsError};
+use vmm_vhost::connection::vfio::Device as VfioDeviceTrait;
+use vmm_vhost::connection::vfio::RecvIntoBufsError;
 use vmm_vhost::message::MasterReq;
 
-use crate::virtio::vhost::user::device::vvu::{
-    pci::{QueueNotifier, VvuPciDevice},
-    queue::UserQueue,
-};
-use crate::virtio::vhost::{vhost_header_from_bytes, HEADER_LEN};
+use crate::virtio::vhost::user::device::vvu::pci::QueueNotifier;
+use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
+use crate::virtio::vhost::user::device::vvu::queue::UserQueue;
+use crate::virtio::vhost::vhost_header_from_bytes;
+use crate::virtio::vhost::HEADER_LEN;
 
 // Helper class for forwarding messages from the virtqueue thread to the main worker thread.
 struct VfioSender {

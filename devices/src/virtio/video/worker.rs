@@ -6,19 +6,34 @@
 
 use std::collections::VecDeque;
 
-use base::{error, info, Event, WaitContext};
+use base::error;
+use base::info;
+use base::Event;
+use base::WaitContext;
 use vm_memory::GuestMemory;
 
-use crate::virtio::queue::{DescriptorChain, Queue};
+use crate::virtio::queue::DescriptorChain;
+use crate::virtio::queue::Queue;
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
-use crate::virtio::video::command::{QueueType, VideoCmd};
-use crate::virtio::video::device::{
-    AsyncCmdResponse, AsyncCmdTag, Device, Token, VideoCmdResponseType, VideoEvtResponseType,
-};
-use crate::virtio::video::event::{self, EvtType, VideoEvt};
-use crate::virtio::video::response::{self, Response};
-use crate::virtio::video::{Error, Result};
-use crate::virtio::{Interrupt, Reader, SignalableInterrupt, Writer};
+use crate::virtio::video::command::QueueType;
+use crate::virtio::video::command::VideoCmd;
+use crate::virtio::video::device::AsyncCmdResponse;
+use crate::virtio::video::device::AsyncCmdTag;
+use crate::virtio::video::device::Device;
+use crate::virtio::video::device::Token;
+use crate::virtio::video::device::VideoCmdResponseType;
+use crate::virtio::video::device::VideoEvtResponseType;
+use crate::virtio::video::event::EvtType;
+use crate::virtio::video::event::VideoEvt;
+use crate::virtio::video::event::{self};
+use crate::virtio::video::response::Response;
+use crate::virtio::video::response::{self};
+use crate::virtio::video::Error;
+use crate::virtio::video::Result;
+use crate::virtio::Interrupt;
+use crate::virtio::Reader;
+use crate::virtio::SignalableInterrupt;
+use crate::virtio::Writer;
 
 pub struct Worker {
     interrupt: Interrupt,

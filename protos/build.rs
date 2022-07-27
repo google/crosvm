@@ -4,9 +4,11 @@
 
 use std::env;
 use std::error::Error;
-use std::fs::{self, File};
+use std::fs::File;
+use std::fs::{self};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 

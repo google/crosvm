@@ -2,12 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::gmtime_secure;
-use libc::{time, time_t, tm};
 use std::cmp::min;
 use std::mem;
 
-use crate::{pci::CrosvmDeviceId, BusAccessInfo, BusDevice, DeviceId};
+use base::gmtime_secure;
+use libc::time;
+use libc::time_t;
+use libc::tm;
+
+use crate::pci::CrosvmDeviceId;
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::DeviceId;
 
 const INDEX_MASK: u8 = 0x7f;
 const INDEX_OFFSET: u64 = 0x0;

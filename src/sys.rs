@@ -17,12 +17,13 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(crate) use platform::main::{
-    cleanup, error_to_exit_code, get_library_watcher, init_log, run_command, start_device,
-};
-
+pub(crate) use platform::main::cleanup;
+pub(crate) use platform::main::error_to_exit_code;
+pub(crate) use platform::main::get_library_watcher;
+pub(crate) use platform::main::init_log;
+pub(crate) use platform::main::run_command;
 #[cfg(feature = "kiwi")]
 pub(crate) use platform::main::sandbox_lower_token;
-
+pub(crate) use platform::main::start_device;
 #[cfg(not(feature = "crash-report"))]
 pub(crate) use platform::set_panic_hook;

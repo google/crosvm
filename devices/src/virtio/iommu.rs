@@ -9,40 +9,63 @@ pub mod protocol;
 pub(crate) mod sys;
 
 use std::cell::RefCell;
-use std::collections::{btree_map::Entry, BTreeMap};
-use std::io::{self, Write};
+use std::collections::btree_map::Entry;
+use std::collections::BTreeMap;
+use std::io::Write;
+use std::io::{self};
 use std::mem::size_of;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
+use std::result;
 use std::sync::Arc;
-use std::{result, thread};
+use std::thread;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
 use anyhow::Context;
+use base::error;
+use base::pagesize;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use base::warn;
-use base::{
-    error, pagesize, AsRawDescriptor, Error as SysError, Event, Protection, RawDescriptor,
-    Result as SysResult, Tube, TubeError,
-};
-use cros_async::{AsyncError, AsyncTube, EventAsync, Executor};
-use data_model::{DataInit, Le64};
-use futures::{select, FutureExt};
+use base::AsRawDescriptor;
+use base::Error as SysError;
+use base::Event;
+use base::Protection;
+use base::RawDescriptor;
+use base::Result as SysResult;
+use base::Tube;
+use base::TubeError;
+use cros_async::AsyncError;
+use cros_async::AsyncTube;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use data_model::DataInit;
+use data_model::Le64;
+use futures::select;
+use futures::FutureExt;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+use vm_memory::GuestMemoryError;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::pci::PciAddress;
+use crate::virtio::async_utils;
+use crate::virtio::copy_config;
 use crate::virtio::iommu::ipc_memory_mapper::*;
 use crate::virtio::iommu::memory_mapper::*;
 use crate::virtio::iommu::protocol::*;
-use crate::virtio::{
-    async_utils, copy_config, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue,
-    Reader, SignalableInterrupt, VirtioDevice, Writer,
-};
+use crate::virtio::DescriptorChain;
+use crate::virtio::DescriptorError;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::Reader;
+use crate::virtio::SignalableInterrupt;
+use crate::virtio::VirtioDevice;
+use crate::virtio::Writer;
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;

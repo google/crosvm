@@ -5,7 +5,8 @@
 #![no_std] // don't link the Rust standard library
 #![no_main] // disable all Rust-level entry points
 
-use core::arch::{asm, global_asm};
+use core::arch::asm;
+use core::arch::global_asm;
 use core::panic::PanicInfo;
 
 use log::*;

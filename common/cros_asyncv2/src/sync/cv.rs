@@ -5,11 +5,18 @@
 use std::cell::UnsafeCell;
 use std::hint;
 use std::mem;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::sync::mu::{MutexGuard, MutexReadGuard, RawMutex};
-use crate::sync::waiter::{Kind as WaiterKind, Waiter, WaiterAdapter, WaiterList, WaitingFor};
+use crate::sync::mu::MutexGuard;
+use crate::sync::mu::MutexReadGuard;
+use crate::sync::mu::RawMutex;
+use crate::sync::waiter::Kind as WaiterKind;
+use crate::sync::waiter::Waiter;
+use crate::sync::waiter::WaiterAdapter;
+use crate::sync::waiter::WaiterList;
+use crate::sync::waiter::WaitingFor;
 
 const SPINLOCK: usize = 1 << 0;
 const HAS_WAITERS: usize = 1 << 1;
@@ -446,25 +453,32 @@ fn cancel_waiter(cv: usize, waiter: &Waiter, wake_next: bool) {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-
     use std::future::Future;
     use std::mem;
     use std::ptr;
     use std::rc::Rc;
-    use std::sync::mpsc::{channel, Sender};
+    use std::sync::mpsc::channel;
+    use std::sync::mpsc::Sender;
     use std::sync::Arc;
-    use std::task::{Context, Poll};
-    use std::thread::{self, JoinHandle};
+    use std::task::Context;
+    use std::task::Poll;
+    use std::thread::JoinHandle;
+    use std::thread::{self};
     use std::time::Duration;
 
     use futures::channel::oneshot;
-    use futures::task::{waker_ref, ArcWake};
-    use futures::{select, FutureExt};
-    use futures_executor::{LocalPool, LocalSpawner, ThreadPool};
+    use futures::select;
+    use futures::task::waker_ref;
+    use futures::task::ArcWake;
+    use futures::FutureExt;
+    use futures_executor::LocalPool;
+    use futures_executor::LocalSpawner;
+    use futures_executor::ThreadPool;
     use futures_util::task::LocalSpawnExt;
 
-    use crate::{block_on, sync::Mutex};
+    use super::*;
+    use crate::block_on;
+    use crate::sync::Mutex;
 
     // Dummy waker used when we want to manually drive futures.
     struct TestWaker;

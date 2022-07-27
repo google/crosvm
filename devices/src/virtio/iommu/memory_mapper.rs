@@ -8,11 +8,18 @@
 
 use std::any::Any;
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 
-use anyhow::{anyhow, bail, Context, Result};
-use base::{AsRawDescriptors, Protection, RawDescriptor};
-use serde::{Deserialize, Serialize};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Result;
+use base::AsRawDescriptors;
+use base::Protection;
+use base::RawDescriptor;
+use serde::Deserialize;
+use serde::Serialize;
 use vm_memory::GuestAddress;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -238,8 +245,9 @@ impl AsRawDescriptors for BasicMemoryMapper {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fmt::Debug;
+
+    use super::*;
 
     #[test]
     fn test_mapping_info() {

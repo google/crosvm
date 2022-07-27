@@ -35,8 +35,10 @@ impl<T: EventToken> Clone for EventTrigger<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::{super::Event, *};
     use std::time::Duration;
+
+    use super::super::Event;
+    use super::*;
 
     #[test]
     fn event_context() {

@@ -2,9 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::{c_int, c_void};
+use libc::c_int;
+use libc::c_void;
 
-use super::{errno_result, Result};
+use super::errno_result;
+use super::Result;
 
 #[allow(non_camel_case_types)]
 type cap_t = *mut c_void;

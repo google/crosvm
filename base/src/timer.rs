@@ -2,14 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
+
 use sync::Mutex;
 
-use super::{Event, EventReadResult, FakeClock, RawDescriptor, Result};
-use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
+use super::Event;
+use super::EventReadResult;
+use super::FakeClock;
+use super::RawDescriptor;
+use super::Result;
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::IntoRawDescriptor;
+use crate::descriptor::SafeDescriptor;
 
 pub struct Timer {
     pub(crate) handle: SafeDescriptor,
@@ -182,8 +189,10 @@ impl IntoRawDescriptor for FakeTimer {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+    use std::time::Instant;
+
     use super::*;
-    use std::time::{Duration, Instant};
 
     // clock error is 2*clock_resolution + 100 microseconds to handle
     // time change from calling now() to arming timer

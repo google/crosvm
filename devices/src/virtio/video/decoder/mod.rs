@@ -5,15 +5,22 @@
 //! Implementation of a virtio video decoder backed by a device.
 
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::VecDeque;
 
 use backend::*;
-use base::{error, Tube, WaitContext};
+use base::error;
+use base::Tube;
+use base::WaitContext;
 use vm_memory::GuestMemory;
 
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
-use crate::virtio::video::command::{QueueType, VideoCmd};
-use crate::virtio::video::control::{CtrlType, CtrlVal, QueryCtrlType};
+use crate::virtio::video::command::QueueType;
+use crate::virtio::video::command::VideoCmd;
+use crate::virtio::video::control::CtrlType;
+use crate::virtio::video::control::CtrlVal;
+use crate::virtio::video::control::QueryCtrlType;
 use crate::virtio::video::device::*;
 use crate::virtio::video::error::*;
 use crate::virtio::video::event::*;

@@ -2,24 +2,47 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    ffi::CStr,
-    fs::{read_link, File},
-    io::{
-        Read, Seek, SeekFrom, Write, {self},
-    },
-};
+use std::ffi::CStr;
+use std::fs::read_link;
+use std::fs::File;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
+use std::io::{self};
 
-use libc::{
-    c_char, c_int, c_long, c_uint, close, fcntl, ftruncate64, off64_t, syscall, SYS_memfd_create,
-    EINVAL, F_ADD_SEALS, F_GET_SEALS, F_SEAL_FUTURE_WRITE, F_SEAL_GROW, F_SEAL_SEAL, F_SEAL_SHRINK,
-    F_SEAL_WRITE, MFD_ALLOW_SEALING, {self},
-};
-use serde::{Deserialize, Serialize};
+use libc::c_char;
+use libc::c_int;
+use libc::c_long;
+use libc::c_uint;
+use libc::close;
+use libc::fcntl;
+use libc::ftruncate64;
+use libc::off64_t;
+use libc::syscall;
+use libc::SYS_memfd_create;
+use libc::EINVAL;
+use libc::F_ADD_SEALS;
+use libc::F_GET_SEALS;
+use libc::F_SEAL_FUTURE_WRITE;
+use libc::F_SEAL_GROW;
+use libc::F_SEAL_SEAL;
+use libc::F_SEAL_SHRINK;
+use libc::F_SEAL_WRITE;
+use libc::MFD_ALLOW_SEALING;
+use libc::{self};
+use serde::Deserialize;
+use serde::Serialize;
 
-use super::{errno_result, Error, Result};
-use crate::{AsRawDescriptor, IntoRawDescriptor, RawDescriptor, SafeDescriptor};
-use crate::{FromRawDescriptor, SharedMemory as CrateSharedMemory};
+use super::errno_result;
+use super::Error;
+use super::Result;
+use crate::AsRawDescriptor;
+use crate::FromRawDescriptor;
+use crate::IntoRawDescriptor;
+use crate::RawDescriptor;
+use crate::SafeDescriptor;
+use crate::SharedMemory as CrateSharedMemory;
 
 /// A shared memory file descriptor and its size.
 #[derive(Debug, Serialize, Deserialize)]
@@ -327,12 +350,12 @@ impl Unix for CrateSharedMemory {
 
 #[cfg(test)]
 mod tests {
-    use super::{kernel_has_memfd, SharedMemory};
-
     use std::ffi::CString;
 
     use data_model::VolatileMemory;
 
+    use super::kernel_has_memfd;
+    use super::SharedMemory;
     use crate::MemoryMappingBuilder;
 
     fn create_test_shmem() -> SharedMemory {

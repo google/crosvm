@@ -7,18 +7,27 @@ use std::net::Ipv4Addr;
 use std::path::Path;
 use std::thread;
 
-use net_util::{MacAddress, TapT};
-
-use base::{error, warn, AsRawDescriptor, Event, RawDescriptor, Tube};
+use base::error;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Event;
+use base::RawDescriptor;
+use base::Tube;
+use net_util::MacAddress;
+use net_util::TapT;
 use vhost::NetT as VhostNetT;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 
 use super::control_socket::*;
 use super::worker::Worker;
-use super::{Error, Result};
+use super::Error;
+use super::Result;
 use crate::pci::MsixStatus;
-use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice};
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::VirtioDevice;
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
@@ -349,18 +358,22 @@ where
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
-    use crate::virtio::base_features;
-    use crate::virtio::VIRTIO_MSI_NO_VECTOR;
-    use crate::IrqLevelEvent;
-    use hypervisor::ProtectionType;
-    use net_util::sys::unix::fakes::FakeTap;
     use std::path::PathBuf;
     use std::result;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Arc;
+
+    use hypervisor::ProtectionType;
+    use net_util::sys::unix::fakes::FakeTap;
     use vhost::net::fakes::FakeNet;
-    use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
+    use vm_memory::GuestAddress;
+    use vm_memory::GuestMemory;
+    use vm_memory::GuestMemoryError;
+
+    use super::*;
+    use crate::virtio::base_features;
+    use crate::virtio::VIRTIO_MSI_NO_VECTOR;
+    use crate::IrqLevelEvent;
 
     fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
         let start_addr1 = GuestAddress(0x0);

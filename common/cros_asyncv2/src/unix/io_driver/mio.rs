@@ -2,26 +2,38 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    cell::RefCell,
-    convert::TryFrom,
-    future::Future,
-    io,
-    mem::{replace, size_of, MaybeUninit},
-    os::{raw::c_int, unix::io::RawFd},
-    pin::Pin,
-    ptr,
-    rc::Rc,
-    sync::Arc,
-    task,
-    time::Duration,
-};
+use std::cell::RefCell;
+use std::convert::TryFrom;
+use std::future::Future;
+use std::io;
+use std::mem::replace;
+use std::mem::size_of;
+use std::mem::MaybeUninit;
+use std::os::raw::c_int;
+use std::os::unix::io::RawFd;
+use std::pin::Pin;
+use std::ptr;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::task;
+use std::time::Duration;
 
-use anyhow::{anyhow, bail, ensure, Context};
-use base::{add_fd_flags, error, AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::ensure;
+use anyhow::Context;
+use base::add_fd_flags;
+use base::error;
+use base::AsRawDescriptor;
+use base::FromRawDescriptor;
+use base::SafeDescriptor;
 use data_model::IoBufMut;
-use mio::{unix::SourceFd, Events, Interest, Token};
-use once_cell::unsync::{Lazy, OnceCell};
+use mio::unix::SourceFd;
+use mio::Events;
+use mio::Interest;
+use mio::Token;
+use once_cell::unsync::Lazy;
+use once_cell::unsync::OnceCell;
 use slab::Slab;
 use thiserror::Error as ThisError;
 

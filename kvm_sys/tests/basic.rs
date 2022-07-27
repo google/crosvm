@@ -4,9 +4,11 @@
 
 #![cfg(not(any(target_os = "windows", target_arch = "arm")))]
 
-use libc::{c_char, ioctl, open, O_RDWR};
-
 use kvm_sys::*;
+use libc::c_char;
+use libc::ioctl;
+use libc::open;
+use libc::O_RDWR;
 
 const KVM_PATH: &str = "/dev/kvm\0";
 

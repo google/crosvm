@@ -2,21 +2,27 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    convert::TryInto,
-    io,
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+use std::convert::TryInto;
+use std::io;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::sync::Arc;
 
 use async_trait::async_trait;
-
-use super::uring_executor::{Error, RegisteredSource, Result, URingExecutor};
-use crate::{
-    mem::{BackingMemory, MemRegion, VecIoWrapper},
-    AllocateMode, AsyncError, AsyncResult, ReadAsync, WriteAsync,
-};
 use base::AsRawDescriptor;
+
+use super::uring_executor::Error;
+use super::uring_executor::RegisteredSource;
+use super::uring_executor::Result;
+use super::uring_executor::URingExecutor;
+use crate::mem::BackingMemory;
+use crate::mem::MemRegion;
+use crate::mem::VecIoWrapper;
+use crate::AllocateMode;
+use crate::AsyncError;
+use crate::AsyncResult;
+use crate::ReadAsync;
+use crate::WriteAsync;
 
 /// `UringSource` wraps FD backed IO sources for use with io_uring. It is a thin wrapper around
 /// registering an IO source with the uring that provides an `IoSource` implementation.
@@ -220,15 +226,15 @@ impl<F: AsRawDescriptor> DerefMut for UringSource<F> {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs::{File, OpenOptions},
-        path::PathBuf,
-    };
+    use std::fs::File;
+    use std::fs::OpenOptions;
+    use std::path::PathBuf;
 
-    use super::super::{uring_executor::use_uring, UringSource};
-    use crate::io_ext::{ReadAsync, WriteAsync};
-
+    use super::super::uring_executor::use_uring;
+    use super::super::UringSource;
     use super::*;
+    use crate::io_ext::ReadAsync;
+    use crate::io_ext::WriteAsync;
 
     #[test]
     fn read_to_mem() {
@@ -236,9 +242,11 @@ mod tests {
             return;
         }
 
-        use crate::mem::VecIoWrapper;
         use std::io::Write;
+
         use tempfile::tempfile;
+
+        use crate::mem::VecIoWrapper;
 
         let ex = URingExecutor::new().unwrap();
         // Use guest memory as a test file, it implements AsRawDescriptor.

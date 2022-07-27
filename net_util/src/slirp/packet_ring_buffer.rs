@@ -2,10 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use pcap_file::pcap::PacketHeader;
 use std::collections::VecDeque;
-use std::fmt::{self, Display};
+use std::fmt::Display;
+use std::fmt::{self};
 use std::time::Duration;
+
+use pcap_file::pcap::PacketHeader;
 
 const PACKET_HEADER_SIZE_IN_BYTES: usize = std::mem::size_of::<PacketHeader>();
 

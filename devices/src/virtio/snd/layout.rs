@@ -2,8 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use data_model::DataInit;
+use data_model::Le32;
+use data_model::Le64;
+
 use crate::virtio::snd::constants::VIRTIO_SND_CHMAP_MAX_SIZE;
-use data_model::{DataInit, Le32, Le64};
 
 #[derive(Copy, Clone, Default)]
 #[repr(C, packed)]

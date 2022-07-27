@@ -4,10 +4,10 @@
 
 use std::str;
 
-use super::netlink::*;
+use data_model::DataInit;
 use thiserror::Error;
 
-use data_model::DataInit;
+use super::netlink::*;
 
 const ACPI_EVENT_SIZE: usize = std::mem::size_of::<AcpiGenlEvent>();
 const GENL_HDRLEN: usize = std::mem::size_of::<GenlMsgHdr>();

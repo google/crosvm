@@ -7,30 +7,44 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
 use argh::FromArgs;
+use base::error;
 use base::validate_raw_descriptor;
-use base::{error, warn, Event, RawDescriptor};
-use cros_async::{EventAsync, Executor, IntoAsync, IoSourceExt};
-use futures::future::{AbortHandle, Abortable};
+use base::warn;
+use base::Event;
+use base::RawDescriptor;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use cros_async::IntoAsync;
+use cros_async::IoSourceExt;
+use futures::future::AbortHandle;
+use futures::future::Abortable;
 use hypervisor::ProtectionType;
+use net_util::sys::unix::Tap;
+use net_util::MacAddress;
 use net_util::TapT;
-use net_util::{sys::unix::Tap, MacAddress};
 use sync::Mutex;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 
+use crate::virtio;
+use crate::virtio::net::process_rx;
 use crate::virtio::net::validate_and_configure_tap;
-use crate::virtio::net::{process_rx, NetError};
-use crate::virtio::vhost::user::device::net::{
-    run_ctrl_queue, run_tx_queue, NetBackend, NET_EXECUTOR,
-};
-use crate::virtio::vhost::user::device::{
-    handler::{sys::Doorbell, VhostUserBackend},
-    listener::{sys::VhostUserListener, VhostUserListenerTrait},
-};
-use crate::{virtio, PciAddress};
+use crate::virtio::net::NetError;
+use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
+use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
+use crate::virtio::vhost::user::device::net::run_ctrl_queue;
+use crate::virtio::vhost::user::device::net::run_tx_queue;
+use crate::virtio::vhost::user::device::net::NetBackend;
+use crate::virtio::vhost::user::device::net::NET_EXECUTOR;
+use crate::PciAddress;
 
 struct TapConfig {
     host_ip: Ipv4Addr,

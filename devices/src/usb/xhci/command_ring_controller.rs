@@ -2,27 +2,43 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::device_slot::{DeviceSlot, DeviceSlots, Error as DeviceSlotError};
-use super::interrupter::{Error as InterrupterError, Interrupter};
-use super::ring_buffer_controller::{
-    Error as RingBufferControllerError, RingBufferController, TransferDescriptorHandler,
-};
-use super::xhci_abi::{
-    AddressDeviceCommandTrb, AddressedTrb, ConfigureEndpointCommandTrb, DisableSlotCommandTrb,
-    Error as TrbError, EvaluateContextCommandTrb, ResetDeviceCommandTrb,
-    SetTRDequeuePointerCommandTrb, StopEndpointCommandTrb, TransferDescriptor, TrbCast,
-    TrbCompletionCode, TrbType,
-};
-use super::xhci_regs::{valid_slot_id, MAX_SLOTS};
-use crate::utils::EventLoop;
+use std::sync::Arc;
 
 use anyhow::Context;
-use base::{error, warn, Error as SysError, Event};
+use base::error;
+use base::warn;
+use base::Error as SysError;
+use base::Event;
 use remain::sorted;
-use std::sync::Arc;
 use sync::Mutex;
 use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+
+use super::device_slot::DeviceSlot;
+use super::device_slot::DeviceSlots;
+use super::device_slot::Error as DeviceSlotError;
+use super::interrupter::Error as InterrupterError;
+use super::interrupter::Interrupter;
+use super::ring_buffer_controller::Error as RingBufferControllerError;
+use super::ring_buffer_controller::RingBufferController;
+use super::ring_buffer_controller::TransferDescriptorHandler;
+use super::xhci_abi::AddressDeviceCommandTrb;
+use super::xhci_abi::AddressedTrb;
+use super::xhci_abi::ConfigureEndpointCommandTrb;
+use super::xhci_abi::DisableSlotCommandTrb;
+use super::xhci_abi::Error as TrbError;
+use super::xhci_abi::EvaluateContextCommandTrb;
+use super::xhci_abi::ResetDeviceCommandTrb;
+use super::xhci_abi::SetTRDequeuePointerCommandTrb;
+use super::xhci_abi::StopEndpointCommandTrb;
+use super::xhci_abi::TransferDescriptor;
+use super::xhci_abi::TrbCast;
+use super::xhci_abi::TrbCompletionCode;
+use super::xhci_abi::TrbType;
+use super::xhci_regs::valid_slot_id;
+use super::xhci_regs::MAX_SLOTS;
+use crate::utils::EventLoop;
 
 #[sorted]
 #[derive(Error, Debug)]

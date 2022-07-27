@@ -2,13 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::xhci_abi::{
-    AddressedTrb, Error as TrbError, NormalTrb, TransferDescriptor, TrbCast, TrbType,
-};
 use bit_field::Error as BitFieldError;
 use remain::sorted;
 use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+use vm_memory::GuestMemoryError;
+
+use super::xhci_abi::AddressedTrb;
+use super::xhci_abi::Error as TrbError;
+use super::xhci_abi::NormalTrb;
+use super::xhci_abi::TransferDescriptor;
+use super::xhci_abi::TrbCast;
+use super::xhci_abi::TrbType;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -140,7 +146,8 @@ impl ScatterGatherBuffer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::usb::xhci::xhci_abi::{AddressedTrb, Trb};
+    use crate::usb::xhci::xhci_abi::AddressedTrb;
+    use crate::usb::xhci::xhci_abi::Trb;
 
     #[test]
     fn scatter_gather_buffer_test() {

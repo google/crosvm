@@ -5,17 +5,20 @@
 //! renderer_utils: Utility functions and structs used by virgl_renderer and gfxstream.
 
 use std::cell::RefCell;
-use std::os::raw::{c_int, c_void};
+use std::os::raw::c_int;
+use std::os::raw::c_void;
 use std::panic::catch_unwind;
 use std::process::abort;
 use std::rc::Rc;
 
-use base::{IntoRawDescriptor, SafeDescriptor};
+use base::IntoRawDescriptor;
+use base::SafeDescriptor;
 
-use crate::rutabaga_utils::{
-    RutabagaError, RutabagaFence, RutabagaFenceHandler, RutabagaResult, RUTABAGA_FLAG_FENCE,
-};
-
+use crate::rutabaga_utils::RutabagaError;
+use crate::rutabaga_utils::RutabagaFence;
+use crate::rutabaga_utils::RutabagaFenceHandler;
+use crate::rutabaga_utils::RutabagaResult;
+use crate::rutabaga_utils::RUTABAGA_FLAG_FENCE;
 #[cfg(feature = "gfxstream")]
 use crate::rutabaga_utils::RUTABAGA_FLAG_INFO_RING_IDX;
 

@@ -4,7 +4,8 @@
 
 use std::ffi::CStr;
 
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
+use anyhow::Result;
 
 use crate::bindings;
 

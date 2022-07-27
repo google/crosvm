@@ -2,14 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::usb::xhci::ring_buffer_controller::{
-    Error as RingBufferControllerError, RingBufferController, TransferDescriptorHandler,
-};
-use crate::utils::EventLoop;
+use std::sync::Arc;
 
 use anyhow::Context;
 use base::Event;
-use std::sync::Arc;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 
@@ -17,6 +13,10 @@ use super::interrupter::Interrupter;
 use super::usb_hub::UsbPort;
 use super::xhci_abi::TransferDescriptor;
 use super::xhci_transfer::XhciTransferManager;
+use crate::usb::xhci::ring_buffer_controller::Error as RingBufferControllerError;
+use crate::usb::xhci::ring_buffer_controller::RingBufferController;
+use crate::usb::xhci::ring_buffer_controller::TransferDescriptorHandler;
+use crate::utils::EventLoop;
 
 /// Transfer ring controller manages transfer ring.
 pub type TransferRingController = RingBufferController<TransferRingTrbHandler>;

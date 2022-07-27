@@ -6,4 +6,5 @@ mod acpi;
 pub(crate) mod bat;
 pub(crate) mod serial_device;
 
-pub(crate) use acpi::{acpi_event_run, get_acpi_event_sock};
+pub(crate) use acpi::acpi_event_run;
+pub(crate) use acpi::get_acpi_event_sock;

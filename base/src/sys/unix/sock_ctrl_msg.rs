@@ -5,26 +5,37 @@
 //! Used to send and receive messages with file descriptors on sockets that accept control messages
 //! (e.g. Unix domain sockets).
 
-use std::{
-    fs::File,
-    io::{IoSlice, IoSliceMut},
-    mem::size_of,
-    mem::MaybeUninit,
-    os::unix::{
-        io::{AsRawFd, FromRawFd, RawFd},
-        net::{UnixDatagram, UnixStream},
-    },
-    ptr::{copy_nonoverlapping, null_mut, write_unaligned},
-    slice,
-};
+use std::fs::File;
+use std::io::IoSlice;
+use std::io::IoSliceMut;
+use std::mem::size_of;
+use std::mem::MaybeUninit;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::io::RawFd;
+use std::os::unix::net::UnixDatagram;
+use std::os::unix::net::UnixStream;
+use std::ptr::copy_nonoverlapping;
+use std::ptr::null_mut;
+use std::ptr::write_unaligned;
+use std::slice;
 
-use libc::{
-    c_long, c_void, cmsghdr, iovec, msghdr, recvmsg, sendmsg, MSG_NOSIGNAL, SCM_RIGHTS, SOL_SOCKET,
-};
+use data_model::IoBufMut;
+use data_model::VolatileSlice;
+use libc::c_long;
+use libc::c_void;
+use libc::cmsghdr;
+use libc::iovec;
+use libc::msghdr;
+use libc::recvmsg;
+use libc::sendmsg;
+use libc::MSG_NOSIGNAL;
+use libc::SCM_RIGHTS;
+use libc::SOL_SOCKET;
 
-use data_model::{IoBufMut, VolatileSlice};
-
-use super::{net::UnixSeqpacket, Error, Result};
+use super::net::UnixSeqpacket;
+use super::Error;
+use super::Result;
 
 // Each of the following macros performs the same function as their C counterparts. They are each
 // macros because they are used to size statically allocated arrays.
@@ -413,18 +424,16 @@ unsafe impl<'a> AsIobuf for VolatileSlice<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    use std::{
-        io::Write,
-        mem::size_of,
-        os::{raw::c_long, unix::net::UnixDatagram},
-        slice::from_raw_parts,
-    };
+    use std::io::Write;
+    use std::mem::size_of;
+    use std::os::raw::c_long;
+    use std::os::unix::net::UnixDatagram;
+    use std::slice::from_raw_parts;
 
     use libc::cmsghdr;
 
     use super::super::Event;
+    use super::*;
 
     // Doing this as a macro makes it easier to see the line if it fails
     macro_rules! CMSG_SPACE_TEST {

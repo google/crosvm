@@ -35,15 +35,25 @@
 // Some bindings of the libslirp API are used, but we want to keep them for completeness
 #![allow(dead_code)]
 
+use std::ffi::CStr;
+use std::ffi::CString;
+use std::fmt;
+use std::io;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
+use std::ops;
+use std::os::raw::c_char;
+use std::os::raw::c_int;
+use std::os::raw::c_void;
+use std::slice;
+use std::str;
+
+use base::error;
+use base::RawDescriptor;
 use libslirp_sys::*;
 
-use crate::{Error, Result};
-
-use base::{error, RawDescriptor};
-use std::ffi::{CStr, CString};
-use std::net::{Ipv4Addr, Ipv6Addr};
-use std::os::raw::{c_char, c_int, c_void};
-use std::{fmt, io, ops, slice, str};
+use crate::Error;
+use crate::Result;
 
 /// An instance of libslirp is represented by a Context, which provides methods that consumers use
 /// to interact with Slirp. The Context is also where consumers register their CallbackHandler,

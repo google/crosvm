@@ -6,17 +6,29 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{self, ErrorKind, Read, Seek, SeekFrom};
+use std::io::ErrorKind;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::{self};
 use std::mem;
 
-use crate::DiskGetLen;
-use base::{
-    AsRawDescriptor, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync, PunchHole,
-    RawDescriptor, WriteZeroesAt,
-};
-use data_model::{DataInit, Le16, Le32, VolatileSlice};
+use base::AsRawDescriptor;
+use base::FileAllocate;
+use base::FileReadWriteAtVolatile;
+use base::FileSetLen;
+use base::FileSync;
+use base::PunchHole;
+use base::RawDescriptor;
+use base::WriteZeroesAt;
+use data_model::DataInit;
+use data_model::Le16;
+use data_model::Le32;
+use data_model::VolatileSlice;
 use remain::sorted;
 use thiserror::Error;
+
+use crate::DiskGetLen;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -321,8 +333,10 @@ impl FileReadWriteAtVolatile for AndroidSparse {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+    use std::io::Write;
+
     use super::*;
-    use std::io::{Cursor, Write};
 
     const CHUNK_SIZE: usize = mem::size_of::<ChunkHeader>();
 

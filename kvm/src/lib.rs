@@ -9,37 +9,81 @@
 mod cap;
 
 use std::cell::RefCell;
-use std::cmp::{min, Ordering};
-use std::collections::{BTreeMap, BinaryHeap};
+use std::cmp::min;
+use std::cmp::Ordering;
+use std::collections::BTreeMap;
+use std::collections::BinaryHeap;
 use std::ffi::CString;
 use std::fs::File;
 use std::mem::size_of;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::os::raw::*;
 use std::os::unix::prelude::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
-use sync::Mutex;
-
-use base::{AsRawDescriptor, FromRawDescriptor, RawDescriptor};
-use data_model::vec_with_array_field;
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use data_model::FlexibleArrayWrapper;
-
-use libc::sigset_t;
-use libc::{open, EBUSY, EINVAL, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR};
-
-use kvm_sys::*;
 
 #[allow(unused_imports)]
-use base::{
-    block_signal, ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref,
-    ioctl_with_val, pagesize, signal, unblock_signal, warn, Error, Event, IoctlNr, MappedRegion,
-    MemoryMapping, MemoryMappingBuilder, MmapError, Result, SIGRTMIN,
-};
-use vm_memory::{GuestAddress, GuestMemory};
+use base::block_signal;
+#[allow(unused_imports)]
+use base::ioctl;
+#[allow(unused_imports)]
+use base::ioctl_with_mut_ptr;
+#[allow(unused_imports)]
+use base::ioctl_with_mut_ref;
+#[allow(unused_imports)]
+use base::ioctl_with_ptr;
+#[allow(unused_imports)]
+use base::ioctl_with_ref;
+#[allow(unused_imports)]
+use base::ioctl_with_val;
+#[allow(unused_imports)]
+use base::pagesize;
+#[allow(unused_imports)]
+use base::signal;
+#[allow(unused_imports)]
+use base::unblock_signal;
+#[allow(unused_imports)]
+use base::warn;
+use base::AsRawDescriptor;
+#[allow(unused_imports)]
+use base::Error;
+#[allow(unused_imports)]
+use base::Event;
+use base::FromRawDescriptor;
+#[allow(unused_imports)]
+use base::IoctlNr;
+#[allow(unused_imports)]
+use base::MappedRegion;
+#[allow(unused_imports)]
+use base::MemoryMapping;
+#[allow(unused_imports)]
+use base::MemoryMappingBuilder;
+#[allow(unused_imports)]
+use base::MmapError;
+use base::RawDescriptor;
+#[allow(unused_imports)]
+use base::Result;
+#[allow(unused_imports)]
+use base::SIGRTMIN;
+use data_model::vec_with_array_field;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use data_model::FlexibleArrayWrapper;
+use kvm_sys::*;
+use libc::open;
+use libc::sigset_t;
+use libc::EBUSY;
+use libc::EINVAL;
+use libc::ENOENT;
+use libc::ENOSPC;
+use libc::EOVERFLOW;
+use libc::O_CLOEXEC;
+use libc::O_RDWR;
+use sync::Mutex;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 pub use crate::cap::*;
 

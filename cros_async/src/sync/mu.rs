@@ -2,20 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    cell::UnsafeCell,
-    hint, mem,
-    ops::{Deref, DerefMut},
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-    thread::yield_now,
-};
+use std::cell::UnsafeCell;
+use std::hint;
+use std::mem;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::thread::yield_now;
 
-use super::super::sync::waiter::{
-    Kind as WaiterKind, Waiter, WaiterAdapter, WaiterList, WaitingFor,
-};
+use super::super::sync::waiter::Kind as WaiterKind;
+use super::super::sync::waiter::Waiter;
+use super::super::sync::waiter::WaiterAdapter;
+use super::super::sync::waiter::WaiterList;
+use super::super::sync::waiter::WaitingFor;
 
 // Set when the mutex is exclusively locked.
 const LOCKED: usize = 1 << 0;
@@ -887,36 +888,35 @@ impl<'a, T: ?Sized> Drop for MutexReadGuard<'a, T> {
 #[cfg(unix)]
 #[cfg(test)]
 mod test {
-    use super::*;
+    use std::future::Future;
+    use std::mem;
+    use std::pin::Pin;
+    use std::rc::Rc;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    use std::sync::mpsc::channel;
+    use std::sync::mpsc::Sender;
+    use std::sync::Arc;
+    use std::task::Context;
+    use std::task::Poll;
+    use std::task::Waker;
+    use std::thread;
+    use std::time::Duration;
 
-    use std::{
-        future::Future,
-        mem,
-        pin::Pin,
-        rc::Rc,
-        sync::{
-            atomic::{AtomicUsize, Ordering},
-            mpsc::{channel, Sender},
-            Arc,
-        },
-        task::{Context, Poll, Waker},
-        thread,
-        time::Duration,
-    };
-
-    use futures::{
-        channel::oneshot,
-        pending, select,
-        task::{waker_ref, ArcWake},
-        FutureExt,
-    };
-    use futures_executor::{LocalPool, ThreadPool};
+    use futures::channel::oneshot;
+    use futures::pending;
+    use futures::select;
+    use futures::task::waker_ref;
+    use futures::task::ArcWake;
+    use futures::FutureExt;
+    use futures_executor::LocalPool;
+    use futures_executor::ThreadPool;
     use futures_util::task::LocalSpawnExt;
 
-    use super::super::super::{
-        block_on,
-        sync::{Condvar, SpinLock},
-    };
+    use super::super::super::block_on;
+    use super::super::super::sync::Condvar;
+    use super::super::super::sync::SpinLock;
+    use super::*;
 
     #[derive(Debug, Eq, PartialEq)]
     struct NonCopy(u32);

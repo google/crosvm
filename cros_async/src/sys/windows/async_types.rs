@@ -2,12 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::HandleWrapper;
-use crate::{unblock, Executor};
-use base::{AsRawDescriptor, Descriptor, Tube, TubeError, TubeResult};
-use serde::{de::DeserializeOwned, Serialize};
 use std::io;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
+
+use base::AsRawDescriptor;
+use base::Descriptor;
+use base::Tube;
+use base::TubeError;
+use base::TubeResult;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+
+use super::HandleWrapper;
+use crate::unblock;
+use crate::Executor;
 
 pub struct AsyncTube {
     inner: Arc<Mutex<Tube>>,

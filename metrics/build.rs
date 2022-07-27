@@ -2,11 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use protoc_rust::{Codegen, Customize};
+use std::env;
+use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use std::{env, fs};
+
+use protoc_rust::Codegen;
+use protoc_rust::Customize;
 
 fn main() {
     build_protos();

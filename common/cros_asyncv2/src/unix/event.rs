@@ -2,10 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{convert::TryFrom, io, mem::size_of, sync::Arc};
+use std::convert::TryFrom;
+use std::io;
+use std::mem::size_of;
+use std::sync::Arc;
 
-use anyhow::{ensure, Context};
-use base::{EventFd, SafeDescriptor};
+use anyhow::ensure;
+use anyhow::Context;
+use base::EventFd;
+use base::SafeDescriptor;
 
 use super::io_driver;
 

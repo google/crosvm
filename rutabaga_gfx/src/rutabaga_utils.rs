@@ -10,12 +10,14 @@ use std::os::raw::c_void;
 use std::path::PathBuf;
 use std::str::Utf8Error;
 
-use base::{Error as BaseError, ExternalMappingError, SafeDescriptor};
+use base::Error as BaseError;
+use base::ExternalMappingError;
+use base::SafeDescriptor;
 use data_model::VolatileMemoryError;
 use remain::sorted;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
-
 #[cfg(feature = "vulkano")]
 use vulkano::device::DeviceCreationError;
 #[cfg(feature = "vulkano")]

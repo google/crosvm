@@ -5,23 +5,37 @@
 //! Handles the main wait loop for IRQs.
 //! Should be started on a background thread.
 
-use base::{
-    error, info, warn, Event, EventToken, ReadNotifier, Result, Tube, TubeError, WaitContext,
-    MAXIMUM_WAIT_OBJECTS,
-};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::thread::JoinHandle;
+use std::thread::{self};
+use std::time::Duration;
+use std::time::Instant;
+
+use base::error;
+use base::info;
+use base::warn;
+use base::Event;
+use base::EventToken;
+use base::ReadNotifier;
+use base::Result;
+use base::Tube;
+use base::TubeError;
+use base::WaitContext;
+use base::MAXIMUM_WAIT_OBJECTS;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use devices::IrqChipAArch64 as IrqChipArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::IrqChipX86_64 as IrqChipArch;
-use devices::{IrqEdgeEvent, IrqEventIndex, IrqEventSource};
-use metrics::{log_high_frequency_descriptor_event, MetricEventType};
+use devices::IrqEdgeEvent;
+use devices::IrqEventIndex;
+use devices::IrqEventSource;
+use metrics::log_high_frequency_descriptor_event;
+use metrics::MetricEventType;
 use resources::SystemAllocator;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
 use sync::Mutex;
-use vm_control::{IrqSetup, VmIrqRequest};
+use vm_control::IrqSetup;
+use vm_control::VmIrqRequest;
 
 pub struct IrqWaitWorker {
     exit_evt: Event,

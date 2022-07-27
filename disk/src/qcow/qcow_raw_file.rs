@@ -3,10 +3,16 @@
 // found in the LICENSE file.
 
 use std::fs::File;
-use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::BufWriter;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
+use std::io::{self};
 use std::mem::size_of;
 
-use base::{FileReadWriteAtVolatile, WriteZeroesAt};
+use base::FileReadWriteAtVolatile;
+use base::WriteZeroesAt;
 use data_model::VolatileSlice;
 
 /// A qcow file. Allows reading/writing clusters and appending clusters.

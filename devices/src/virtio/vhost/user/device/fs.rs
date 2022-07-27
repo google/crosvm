@@ -4,28 +4,41 @@
 
 mod sys;
 
-pub use sys::start_device as run_fs_device;
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
 use argh::FromArgs;
-use base::{error, warn, AsRawDescriptors, Event, RawDescriptor, Tube};
-use cros_async::{EventAsync, Executor};
-use data_model::{DataInit, Le32};
+use base::error;
+use base::warn;
+use base::AsRawDescriptors;
+use base::Event;
+use base::RawDescriptor;
+use base::Tube;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use data_model::DataInit;
+use data_model::Le32;
 use fuse::Server;
-use futures::future::{AbortHandle, Abortable};
+use futures::future::AbortHandle;
+use futures::future::Abortable;
 use hypervisor::ProtectionType;
 use sync::Mutex;
+pub use sys::start_device as run_fs_device;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio;
 use crate::virtio::copy_config;
 use crate::virtio::fs::passthrough::PassthroughFs;
-use crate::virtio::fs::{process_fs_queue, virtio_fs_config, FS_MAX_TAG_LEN};
-use crate::virtio::vhost::user::device::handler::{sys::Doorbell, VhostUserBackend};
+use crate::virtio::fs::process_fs_queue;
+use crate::virtio::fs::virtio_fs_config;
+use crate::virtio::fs::FS_MAX_TAG_LEN;
+use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 
 const MAX_QUEUE_NUM: usize = 2; /* worker queue and high priority queue */
 const MAX_VRING_LEN: u16 = 1024;

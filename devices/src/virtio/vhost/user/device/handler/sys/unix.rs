@@ -5,33 +5,39 @@
 use std::fs::File;
 use std::sync::Arc;
 
-use anyhow::{bail, Context, Result};
-use base::{error, info, AsRawDescriptor, Event, SafeDescriptor};
-use cros_async::{AsyncWrapper, Executor};
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Result;
+use base::error;
+use base::info;
+use base::AsRawDescriptor;
+use base::Event;
+use base::SafeDescriptor;
+use cros_async::AsyncWrapper;
+use cros_async::Executor;
 use vm_memory::GuestMemory;
-use vmm_vhost::{
-    connection::{Endpoint, Listener},
-    message::{MasterReq, VhostUserMemoryRegion},
-    Error as VhostError, Protocol, Result as VhostResult, SlaveListener, SlaveReqHandler,
-    VhostUserSlaveReqHandler,
-};
+use vmm_vhost::connection::Endpoint;
+use vmm_vhost::connection::Listener;
+use vmm_vhost::message::MasterReq;
+use vmm_vhost::message::VhostUserMemoryRegion;
+use vmm_vhost::Error as VhostError;
+use vmm_vhost::Protocol;
+use vmm_vhost::Result as VhostResult;
+use vmm_vhost::SlaveListener;
+use vmm_vhost::SlaveReqHandler;
+use vmm_vhost::VhostUserSlaveReqHandler;
 
-use crate::{
-    vfio::VfioDevice,
-    virtio::{
-        vhost::user::device::{
-            handler::{
-                CallEvent, DeviceRequestHandler, GuestAddress, MappingInfo, MemoryRegion,
-                VhostUserPlatformOps,
-            },
-            vvu::{
-                doorbell::DoorbellRegion,
-                pci::{VvuPciCaps, VvuPciDevice},
-            },
-        },
-        SignalableInterrupt,
-    },
-};
+use crate::vfio::VfioDevice;
+use crate::virtio::vhost::user::device::handler::CallEvent;
+use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
+use crate::virtio::vhost::user::device::handler::GuestAddress;
+use crate::virtio::vhost::user::device::handler::MappingInfo;
+use crate::virtio::vhost::user::device::handler::MemoryRegion;
+use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
+use crate::virtio::vhost::user::device::vvu::doorbell::DoorbellRegion;
+use crate::virtio::vhost::user::device::vvu::pci::VvuPciCaps;
+use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
+use crate::virtio::SignalableInterrupt;
 
 /// A Doorbell that supports both regular call events and signaling through a VVU device.
 pub enum Doorbell {
@@ -243,16 +249,16 @@ impl<O: VhostUserPlatformOps> DeviceRequestHandler<O> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::sync::mpsc::channel;
     use std::sync::Barrier;
 
+    use tempfile::Builder;
+    use tempfile::TempDir;
+
+    use super::*;
     use crate::virtio::vhost::user::device::handler::tests::*;
     use crate::virtio::vhost::user::device::handler::*;
     use crate::virtio::vhost::user::vmm::VhostUserHandler;
-
-    use tempfile::{Builder, TempDir};
 
     fn temp_dir() -> TempDir {
         Builder::new().prefix("/tmp/vhost_test").tempdir().unwrap()
@@ -260,7 +266,8 @@ mod tests {
 
     #[test]
     fn test_vhost_user_activate() {
-        use vmm_vhost::{connection::socket::Listener as SocketListener, SlaveListener};
+        use vmm_vhost::connection::socket::Listener as SocketListener;
+        use vmm_vhost::SlaveListener;
 
         const QUEUES_NUM: usize = 2;
 

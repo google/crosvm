@@ -2,16 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fs::File;
+use std::io::Error;
+use std::io::ErrorKind;
+use std::io::Result;
+
+use data_model::VolatileSlice;
+
 pub use super::win::file_traits::*;
 use super::RawDescriptor;
 use crate::descriptor::AsRawDescriptor;
-
-use std::{
-    fs::File,
-    io::{Error, ErrorKind, Result},
-};
-
-use data_model::VolatileSlice;
 
 /// A trait for flushing the contents of a file to disk.
 /// This is equivalent to File's `sync_all` method, but
@@ -279,10 +279,13 @@ crate::volatile_at_impl!(File);
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::io::Read;
+    use std::io::SeekFrom;
+    use std::io::Write;
 
-    use std::io::{Read, SeekFrom, Write};
     use tempfile::tempfile;
+
+    use super::*;
 
     #[test]
     fn read_file() -> Result<()> {

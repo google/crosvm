@@ -4,12 +4,15 @@
 
 //! Parameters for streams in virtio video devices.
 
-use std::convert::{From, Into, TryFrom};
+use std::convert::From;
+use std::convert::Into;
+use std::convert::TryFrom;
 
 use base::error;
 use data_model::Le32;
 
-use crate::virtio::video::command::{QueueType, ReadCmdError};
+use crate::virtio::video::command::QueueType;
+use crate::virtio::video::command::ReadCmdError;
 use crate::virtio::video::format::*;
 use crate::virtio::video::protocol::*;
 use crate::virtio::video::resource::ResourceType;

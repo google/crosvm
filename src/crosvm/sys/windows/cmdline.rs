@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use argh::FromArgs;
-
 use argh_helpers::generate_catchall_args;
 #[derive(Debug, FromArgs)]
 #[argh(subcommand)]

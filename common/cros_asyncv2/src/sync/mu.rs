@@ -5,12 +5,18 @@
 use std::cell::UnsafeCell;
 use std::hint;
 use std::mem;
-use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread::yield_now;
 
-use crate::sync::waiter::{Kind as WaiterKind, Waiter, WaiterAdapter, WaiterList, WaitingFor};
+use crate::sync::waiter::Kind as WaiterKind;
+use crate::sync::waiter::Waiter;
+use crate::sync::waiter::WaiterAdapter;
+use crate::sync::waiter::WaiterList;
+use crate::sync::waiter::WaitingFor;
 
 // Set when the mutex is exclusively locked.
 const LOCKED: usize = 1 << 0;
@@ -880,29 +886,35 @@ impl<'a, T: ?Sized> Drop for MutexReadGuard<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-
     use std::future::Future;
     use std::mem;
     use std::pin::Pin;
     use std::rc::Rc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::mpsc::{channel, Sender};
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    use std::sync::mpsc::channel;
+    use std::sync::mpsc::Sender;
     use std::sync::Arc;
-    use std::task::{Context, Poll, Waker};
+    use std::task::Context;
+    use std::task::Poll;
+    use std::task::Waker;
     use std::thread;
     use std::time::Duration;
 
     use futures::channel::oneshot;
-    use futures::task::{waker_ref, ArcWake};
-    use futures::{pending, select, FutureExt};
-    use futures_executor::{LocalPool, ThreadPool};
+    use futures::pending;
+    use futures::select;
+    use futures::task::waker_ref;
+    use futures::task::ArcWake;
+    use futures::FutureExt;
+    use futures_executor::LocalPool;
+    use futures_executor::ThreadPool;
     use futures_util::task::LocalSpawnExt;
 
-    use crate::{
-        block_on,
-        sync::{Condvar, SpinLock},
-    };
+    use super::*;
+    use crate::block_on;
+    use crate::sync::Condvar;
+    use crate::sync::SpinLock;
 
     #[derive(Debug, Eq, PartialEq)]
     struct NonCopy(u32);

@@ -7,16 +7,27 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::thread;
 
-use base::{error, Event, RawDescriptor};
-use data_model::{DataInit, Le32};
+use base::error;
+use base::Event;
+use base::RawDescriptor;
+use data_model::DataInit;
+use data_model::Le32;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 use vmm_vhost::Error as VhostUserError;
 
-use crate::virtio::fs::{virtio_fs_config, FS_MAX_TAG_LEN, QUEUE_SIZE};
-use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, Error, Result};
-use crate::virtio::{copy_config, DeviceType};
-use crate::virtio::{Interrupt, Queue, VirtioDevice};
+use crate::virtio::copy_config;
+use crate::virtio::fs::virtio_fs_config;
+use crate::virtio::fs::FS_MAX_TAG_LEN;
+use crate::virtio::fs::QUEUE_SIZE;
+use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
+use crate::virtio::vhost::user::vmm::Error;
+use crate::virtio::vhost::user::vmm::Result;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::VirtioDevice;
 
 pub struct Fs {
     cfg: virtio_fs_config,

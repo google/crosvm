@@ -7,12 +7,18 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use base::{AsRawDescriptor, AsRawDescriptors, Protection, RawDescriptor};
+use base::AsRawDescriptor;
+use base::AsRawDescriptors;
+use base::Protection;
+use base::RawDescriptor;
 use sync::Mutex;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 use crate::vfio::VfioError;
-use crate::virtio::iommu::memory_mapper::{AddMapResult, MappingInfo, MemoryMapper};
+use crate::virtio::iommu::memory_mapper::AddMapResult;
+use crate::virtio::iommu::memory_mapper::MappingInfo;
+use crate::virtio::iommu::memory_mapper::MemoryMapper;
 use crate::VfioContainer;
 
 pub struct VfioWrapper {

@@ -4,8 +4,12 @@
 
 use std::sync::Arc;
 
-use base::{error, Event, MemoryMapping, MemoryMappingBuilder};
-use vmm_vhost::{Error as VhostError, Result as VhostResult};
+use base::error;
+use base::Event;
+use base::MemoryMapping;
+use base::MemoryMappingBuilder;
+use vmm_vhost::Error as VhostError;
+use vmm_vhost::Result as VhostResult;
 
 use crate::vfio::VfioDevice;
 use crate::virtio::vhost::user::device::vvu::pci::VvuPciCaps;

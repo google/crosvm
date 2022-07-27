@@ -2,29 +2,34 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    convert::TryFrom,
-    ffi::OsString,
-    fs::remove_file,
-    io,
-    mem::size_of,
-    ops::Deref,
-    os::unix::{
-        ffi::{OsStrExt, OsStringExt},
-        io::{AsRawFd, RawFd},
-    },
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::convert::TryFrom;
+use std::ffi::OsString;
+use std::fs::remove_file;
+use std::io;
+use std::mem::size_of;
+use std::ops::Deref;
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::ffi::OsStringExt;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::RawFd;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Context};
-use base::{warn, AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use base::warn;
+use base::AsRawDescriptor;
+use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
+use base::SafeDescriptor;
 use memoffset::offset_of;
 use thiserror::Error as ThisError;
 
-use crate::{AsIoBufs, OwnedIoBuf};
-
 use super::io_driver;
+use crate::AsIoBufs;
+use crate::OwnedIoBuf;
 
 #[derive(Debug, ThisError)]
 #[error("Failed to prepare socket fd")]
@@ -427,18 +432,18 @@ impl Drop for UnlinkSeqPacketListener {
 
 #[cfg(test)]
 mod test {
+    use std::env;
+    use std::fs::File;
+    use std::io::Write;
+    use std::time::Duration;
+    use std::time::Instant;
+
+    use base::AsRawDescriptor;
+    use base::EventFd;
+
     use super::*;
-
-    use std::{
-        env,
-        fs::File,
-        io::Write,
-        time::{Duration, Instant},
-    };
-
-    use base::{AsRawDescriptor, EventFd};
-
-    use crate::{with_deadline, Executor};
+    use crate::with_deadline;
+    use crate::Executor;
 
     #[test]
     fn send_recv_no_fd() {

@@ -17,13 +17,16 @@ cfg_if::cfg_if! {
     }
 }
 
+use anyhow::Result;
+pub(crate) use metrics::get_destructor;
+pub(crate) use metrics::log_descriptor;
+pub(crate) use metrics::merge_session_invariants;
+pub(crate) use metrics::set_auth_token;
+pub(crate) use metrics::set_package_name;
+pub(crate) use metrics::MetricEventType;
+
 #[cfg(feature = "kiwi")]
 use crate::crosvm::argument::Argument;
-use anyhow::Result;
-pub(crate) use metrics::{
-    get_destructor, log_descriptor, merge_session_invariants, set_auth_token, set_package_name,
-    MetricEventType,
-};
 
 pub(crate) fn run_metrics(#[allow(unused_variables)] args: Vec<String>) -> Result<()> {
     #[cfg(not(feature = "kiwi"))]

@@ -2,20 +2,36 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    cmp::min, fs::File, marker::PhantomData, mem::MaybeUninit, ptr::null_mut, time::Duration,
-};
+use std::cmp::min;
+use std::fs::File;
+use std::marker::PhantomData;
+use std::mem::MaybeUninit;
+use std::ptr::null_mut;
+use std::time::Duration;
 
-use libc::{
-    c_int, epoll_create1, epoll_ctl, epoll_event, epoll_wait, EPOLLHUP, EPOLLIN, EPOLLOUT,
-    EPOLLRDHUP, EPOLL_CLOEXEC, EPOLL_CTL_ADD, EPOLL_CTL_DEL, EPOLL_CTL_MOD,
-};
+use libc::c_int;
+use libc::epoll_create1;
+use libc::epoll_ctl;
+use libc::epoll_event;
+use libc::epoll_wait;
+use libc::EPOLLHUP;
+use libc::EPOLLIN;
+use libc::EPOLLOUT;
+use libc::EPOLLRDHUP;
+use libc::EPOLL_CLOEXEC;
+use libc::EPOLL_CTL_ADD;
+use libc::EPOLL_CTL_DEL;
+use libc::EPOLL_CTL_MOD;
 use smallvec::SmallVec;
 
-use super::{errno_result, Result};
-use crate::{
-    AsRawDescriptor, EventToken, EventType, FromRawDescriptor, RawDescriptor, TriggeredEvent,
-};
+use super::errno_result;
+use super::Result;
+use crate::AsRawDescriptor;
+use crate::EventToken;
+use crate::EventType;
+use crate::FromRawDescriptor;
+use crate::RawDescriptor;
+use crate::TriggeredEvent;
 
 const EVENT_CONTEXT_MAX_EVENTS: usize = 16;
 
@@ -251,9 +267,12 @@ impl<T: EventToken> AsRawDescriptor for EventContext<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::{super::Event, *};
-    use base_event_token_derive::EventToken;
     use std::time::Instant;
+
+    use base_event_token_derive::EventToken;
+
+    use super::super::Event;
+    use super::*;
 
     #[test]
     fn event_context() {

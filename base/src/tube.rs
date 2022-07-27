@@ -2,16 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use remain::sorted;
 use std::io;
 
+use remain::sorted;
 use thiserror::Error as ThisError;
 
 #[cfg_attr(windows, path = "sys/windows/tube.rs")]
 #[cfg_attr(not(windows), path = "sys/unix/tube.rs")]
 mod tube;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::time::Duration;
+
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
+use serde::Serialize;
 pub use tube::*;
 
 impl Tube {
@@ -122,16 +125,17 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use std::sync::Barrier;
+    use std::thread;
+    use std::time::Duration;
+
+    use serde::Deserialize;
+    use serde::Serialize;
+
     use super::*;
     use crate::Event;
-
-    use std::{collections::HashMap, time::Duration};
-
-    use serde::{Deserialize, Serialize};
-    use std::{
-        sync::{Arc, Barrier},
-        thread,
-    };
 
     #[derive(Serialize, Deserialize)]
     struct DataStruct {

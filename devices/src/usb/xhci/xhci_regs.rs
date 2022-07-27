@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::register_space::{Register, RegisterSpace};
+use crate::register_space::Register;
+use crate::register_space::RegisterSpace;
 
 /// Max interrupter number.
 pub const MAX_INTERRUPTER: u8 = 1;

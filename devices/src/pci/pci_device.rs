@@ -2,31 +2,47 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
 use anyhow::bail;
-use base::{error, Event, RawDescriptor};
+use base::error;
+use base::Event;
+use base::RawDescriptor;
 use hypervisor::Datamatch;
 use remain::sorted;
-use resources::{Error as SystemAllocatorFaliure, SystemAllocator};
+use resources::Error as SystemAllocatorFaliure;
+use resources::SystemAllocator;
 use sync::Mutex;
 use thiserror::Error;
 
-use crate::bus::{BusDeviceObj, BusRange, BusType, ConfigWriteResult};
-use crate::pci::pci_configuration::{
-    self, PciBarConfiguration, BAR0_REG, COMMAND_REG, COMMAND_REG_IO_SPACE_MASK,
-    COMMAND_REG_MEMORY_SPACE_MASK, NUM_BAR_REGS, PCI_ID_REG, ROM_BAR_REG,
-};
-use crate::pci::{PciAddress, PciAddressError, PciInterruptPin};
+use super::PciId;
+use crate::bus::BusDeviceObj;
+use crate::bus::BusRange;
+use crate::bus::BusType;
+use crate::bus::ConfigWriteResult;
+use crate::pci::pci_configuration::PciBarConfiguration;
+use crate::pci::pci_configuration::BAR0_REG;
+use crate::pci::pci_configuration::COMMAND_REG;
+use crate::pci::pci_configuration::COMMAND_REG_IO_SPACE_MASK;
+use crate::pci::pci_configuration::COMMAND_REG_MEMORY_SPACE_MASK;
+use crate::pci::pci_configuration::NUM_BAR_REGS;
+use crate::pci::pci_configuration::PCI_ID_REG;
+use crate::pci::pci_configuration::ROM_BAR_REG;
+use crate::pci::pci_configuration::{self};
+use crate::pci::PciAddress;
+use crate::pci::PciAddressError;
+use crate::pci::PciInterruptPin;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 #[cfg(all(unix, feature = "audio"))]
 use crate::virtio::snd::vios_backend::Error as VioSError;
-use crate::{BusAccessInfo, BusDevice, DeviceId, IrqLevelEvent};
-
-use super::PciId;
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::DeviceId;
+use crate::IrqLevelEvent;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -644,11 +660,14 @@ impl<T: 'static + PciDevice> BusDeviceObj for T {
 
 #[cfg(test)]
 mod tests {
+    use pci_configuration::PciBarPrefetchable;
+    use pci_configuration::PciBarRegionType;
+    use pci_configuration::PciClassCode;
+    use pci_configuration::PciConfiguration;
+    use pci_configuration::PciHeaderType;
+    use pci_configuration::PciMultimediaSubclass;
+
     use super::*;
-    use pci_configuration::{
-        PciBarPrefetchable, PciBarRegionType, PciClassCode, PciConfiguration, PciHeaderType,
-        PciMultimediaSubclass,
-    };
 
     const BAR0_SIZE: u64 = 0x1000;
     const BAR2_SIZE: u64 = 0x20;

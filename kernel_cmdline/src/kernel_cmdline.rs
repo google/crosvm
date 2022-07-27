@@ -139,8 +139,9 @@ impl From<Cmdline> for Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::ffi::CString;
+
+    use super::*;
 
     #[test]
     fn insert_hello_world() {

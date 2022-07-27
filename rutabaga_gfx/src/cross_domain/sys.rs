@@ -14,4 +14,5 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(crate) use platform::{descriptor_analysis, SystemStream};
+pub(crate) use platform::descriptor_analysis;
+pub(crate) use platform::SystemStream;

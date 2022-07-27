@@ -2,11 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{
-    info, measure_timer_resolution, nt_query_timer_resolution, nt_set_timer_resolution,
-    set_time_period, warn, EnabledHighResTimer, Result,
-};
 use std::time::Duration;
+
+use crate::info;
+use crate::measure_timer_resolution;
+use crate::nt_query_timer_resolution;
+use crate::nt_set_timer_resolution;
+use crate::set_time_period;
+use crate::warn;
+use crate::EnabledHighResTimer;
+use crate::Result;
 
 /// Restores the Windows platform timer resolution to its original value on Drop.
 struct NtSetTimerResolution {

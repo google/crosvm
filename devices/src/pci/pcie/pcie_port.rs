@@ -5,18 +5,20 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::pci::pci_configuration::PciCapabilityID;
-use crate::pci::{MsiConfig, PciAddress, PciDeviceError};
+use base::warn;
+use data_model::DataInit;
+use resources::Alloc;
+use resources::SystemAllocator;
+use sync::Mutex;
 
+use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::pcie_device::PmcConfig;
 use crate::pci::pcie::pcie_host::PcieHostPort;
 use crate::pci::pcie::*;
-
-use base::warn;
-use data_model::DataInit;
-use resources::{Alloc, SystemAllocator};
-use sync::Mutex;
+use crate::pci::MsiConfig;
+use crate::pci::PciAddress;
+use crate::pci::PciDeviceError;
 
 // reserve 8MB memory window
 const PCIE_BR_MEM_SIZE: u64 = 0x80_0000;

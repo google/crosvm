@@ -2,21 +2,30 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    io::IoSlice,
-    marker::PhantomData,
-    os::unix::prelude::{AsRawFd, RawFd},
-    time::Duration,
-};
+use std::io::IoSlice;
+use std::marker::PhantomData;
+use std::os::unix::prelude::AsRawFd;
+use std::os::unix::prelude::RawFd;
+use std::time::Duration;
 
-use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
-use crate::{
-    platform::{deserialize_with_descriptors, SerializeDescriptors},
-    tube::{Error, RecvTube, Result, SendTube},
-    RawDescriptor, ReadNotifier, ScmSocket, UnixSeqpacket, UnsyncMarker,
-};
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
+use serde::Serialize;
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::SafeDescriptor;
+use crate::platform::deserialize_with_descriptors;
+use crate::platform::SerializeDescriptors;
+use crate::tube::Error;
+use crate::tube::RecvTube;
+use crate::tube::Result;
+use crate::tube::SendTube;
+use crate::RawDescriptor;
+use crate::ReadNotifier;
+use crate::ScmSocket;
+use crate::UnixSeqpacket;
+use crate::UnsyncMarker;
 
 /// Bidirectional tube that support both send and recv.
 #[derive(Serialize, Deserialize)]

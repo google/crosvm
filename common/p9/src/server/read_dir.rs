@@ -2,7 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{ffi::CStr, io::Result, mem::size_of, os::unix::io::AsRawFd};
+use std::ffi::CStr;
+use std::io::Result;
+use std::mem::size_of;
+use std::os::unix::io::AsRawFd;
 
 use crate::syscall;
 

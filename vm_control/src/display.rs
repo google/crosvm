@@ -5,10 +5,14 @@
 use std::convert::TryFrom;
 use std::result::Result as StdResult;
 use std::slice::Iter;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use anyhow::{anyhow, Error as AnyError, Result as AnyResult};
-use serde::{Deserialize, Serialize};
+use anyhow::anyhow;
+use anyhow::Error as AnyError;
+use anyhow::Result as AnyResult;
+use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(PartialEq, Clone, Copy, Serialize, Deserialize, Debug)]
 pub enum WindowVisibility {

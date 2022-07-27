@@ -2,14 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
-use crate::{Error, RawDescriptor, Result};
 use std::ffi::CString;
 
 use libc::EINVAL;
+use serde::Deserialize;
+use serde::Serialize;
 
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::IntoRawDescriptor;
+use crate::descriptor::SafeDescriptor;
 use crate::platform::SharedMemory as SysUtilSharedMemory;
-use serde::{Deserialize, Serialize};
+use crate::Error;
+use crate::RawDescriptor;
+use crate::Result;
 
 /// See [SharedMemory](crate::platform::SharedMemory) for struct- and method-level
 /// documentation.

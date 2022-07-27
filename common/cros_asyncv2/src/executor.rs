@@ -2,25 +2,33 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    cmp::Reverse,
-    collections::{BTreeMap, VecDeque},
-    future::{pending, Future},
-    num::Wrapping,
-    sync::Arc,
-    task::{self, Poll, Waker},
-    thread::{self, ThreadId},
-    time::{Duration, Instant},
-};
+use std::cmp::Reverse;
+use std::collections::BTreeMap;
+use std::collections::VecDeque;
+use std::future::pending;
+use std::future::Future;
+use std::num::Wrapping;
+use std::sync::Arc;
+use std::task::Poll;
+use std::task::Waker;
+use std::task::{self};
+use std::thread::ThreadId;
+use std::thread::{self};
+use std::time::Duration;
+use std::time::Instant;
 
 use anyhow::Result;
-use async_task::{Runnable, Task};
-use futures::{pin_mut, task::WakerRef};
+use async_task::Runnable;
+use async_task::Task;
+use futures::pin_mut;
+use futures::task::WakerRef;
 use once_cell::unsync::Lazy;
 use smallvec::SmallVec;
 use sync::Mutex;
 
-use crate::{enter::enter, sys, BlockingPool};
+use crate::enter::enter;
+use crate::sys;
+use crate::BlockingPool;
 
 thread_local! (static LOCAL_CONTEXT: Lazy<Arc<Mutex<Context>>> = Lazy::new(Default::default));
 
@@ -499,25 +507,27 @@ pub(crate) trait PlatformState {
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryFrom;
+    use std::fs::OpenOptions;
+    use std::mem;
+    use std::pin::Pin;
+    use std::thread::JoinHandle;
+    use std::thread::{self};
+    use std::time::Instant;
+
+    use futures::channel::mpsc;
+    use futures::channel::oneshot;
+    use futures::future::join3;
+    use futures::future::select;
+    use futures::future::Either;
+    use futures::sink::SinkExt;
+    use futures::stream::FuturesUnordered;
+    use futures::stream::StreamExt;
+    use futures::stream::{self};
+
     use super::*;
-
-    use std::{
-        convert::TryFrom,
-        fs::OpenOptions,
-        mem,
-        pin::Pin,
-        thread::{self, JoinHandle},
-        time::Instant,
-    };
-
-    use futures::{
-        channel::{mpsc, oneshot},
-        future::{join3, select, Either},
-        sink::SinkExt,
-        stream::{self, FuturesUnordered, StreamExt},
-    };
-
-    use crate::{File, OwnedIoBuf};
+    use crate::File;
+    use crate::OwnedIoBuf;
 
     #[test]
     fn basic() {

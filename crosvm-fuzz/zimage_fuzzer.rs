@@ -4,11 +4,12 @@
 
 #![no_main]
 
-use cros_fuzz::fuzz_target;
-use vm_memory::{GuestAddress, GuestMemory};
-
 use std::fs::File;
 use std::io::Write;
+
+use cros_fuzz::fuzz_target;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 const MEM_SIZE: u64 = 256 * 1024 * 1024;
 

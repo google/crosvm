@@ -3,9 +3,13 @@
 // found in the LICENSE file.
 
 use std::cmp;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
+use std::collections::HashMap;
 
-use crate::{AddressRange, Alloc, Error, Result};
+use crate::AddressRange;
+use crate::Alloc;
+use crate::Error;
+use crate::Result;
 
 /// Manages allocating address ranges.
 /// Use `AddressAllocator` whenever an address range needs to be allocated to different users.

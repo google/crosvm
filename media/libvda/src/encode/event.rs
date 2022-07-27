@@ -4,12 +4,15 @@
 
 //! Events reported by VDA encode API over pipe FD.
 
-use enumn::N;
 use std::error;
-use std::fmt::{self, Display};
+use std::fmt::Display;
+use std::fmt::{self};
+
+use enumn::N;
 
 use super::bindings;
-use super::session::{VeaInputBufferId, VeaOutputBufferId};
+use super::session::VeaInputBufferId;
+use super::session::VeaOutputBufferId;
 use crate::error::*;
 
 /// Represents an error from a libvda encode session.

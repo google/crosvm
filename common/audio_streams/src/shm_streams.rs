@@ -5,13 +5,18 @@
 #[cfg(unix)]
 use std::os::unix::io::RawFd;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::sync::Condvar;
+use std::sync::Mutex;
+use std::time::Duration;
+use std::time::Instant;
 
 use remain::sorted;
-use std::sync::{Condvar, Mutex};
 use thiserror::Error;
 
-use crate::{BoxError, SampleFormat, StreamDirection, StreamEffect};
+use crate::BoxError;
+use crate::SampleFormat;
+use crate::StreamDirection;
+use crate::StreamEffect;
 
 type GenericResult<T> = std::result::Result<T, BoxError>;
 

@@ -3,21 +3,35 @@
 // found in the LICENSE file.
 
 use std::fs::File;
-use std::io::{Read, Result as IoResult, Write};
+use std::io::Read;
+use std::io::Result as IoResult;
+use std::io::Write;
 use std::mem;
 use std::net;
 use std::os::raw::*;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::io::RawFd;
 
+use base::ioctl_with_mut_ref;
+use base::ioctl_with_ref;
+use base::ioctl_with_val;
+use base::volatile_impl;
+use base::AsRawDescriptor;
+use base::Error as SysError;
+use base::FileReadWriteVolatile;
+use base::FromRawDescriptor;
+use base::IoctlNr;
+use base::RawDescriptor;
+use base::ReadNotifier;
+use cros_async::IntoAsync;
 use libc::EPERM;
 
-use crate::{Error, MacAddress, Result, TapT, TapTCommon};
-use base::Error as SysError;
-use base::{
-    ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, volatile_impl, AsRawDescriptor,
-    FileReadWriteVolatile, FromRawDescriptor, IoctlNr, RawDescriptor, ReadNotifier,
-};
-use cros_async::IntoAsync;
+use crate::Error;
+use crate::MacAddress;
+use crate::Result;
+use crate::TapT;
+use crate::TapTCommon;
 
 /// Handle for a network tap interface.
 ///
@@ -455,9 +469,10 @@ impl IntoAsync for Tap {}
 volatile_impl!(Tap);
 
 pub mod fakes {
-    use super::*;
     use std::fs::remove_file;
     use std::fs::OpenOptions;
+
+    use super::*;
 
     const TMP_FILE: &str = "/tmp/crosvm_tap_test_file";
 

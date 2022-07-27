@@ -7,41 +7,60 @@
 use std::cmp::min;
 use std::fmt::Debug;
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::{self};
 use std::path::Path;
 use std::sync::Arc;
 
-use base::{
-    get_filesystem_type, info, AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileSetLen,
-    FileSync, PunchHole, WriteZeroesAt,
-};
-use cros_async::{AllocateMode, Executor};
-
 use async_trait::async_trait;
+use base::get_filesystem_type;
+use base::info;
+use base::AsRawDescriptors;
+use base::FileAllocate;
+use base::FileReadWriteAtVolatile;
+use base::FileSetLen;
+use base::FileSync;
+use base::PunchHole;
+use base::WriteZeroesAt;
+use cros_async::AllocateMode;
+use cros_async::Executor;
 use cros_async::IoSourceExt;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
 mod qcow;
-pub use qcow::{QcowFile, QCOW_MAGIC};
+pub use qcow::QcowFile;
+pub use qcow::QCOW_MAGIC;
 mod sys;
 
 #[cfg(feature = "composite-disk")]
 mod composite;
 #[cfg(feature = "composite-disk")]
-use composite::{CompositeDiskFile, CDISK_MAGIC, CDISK_MAGIC_LEN};
+use composite::CompositeDiskFile;
+#[cfg(feature = "composite-disk")]
+use composite::CDISK_MAGIC;
+#[cfg(feature = "composite-disk")]
+use composite::CDISK_MAGIC_LEN;
 #[cfg(feature = "composite-disk")]
 mod gpt;
 #[cfg(feature = "composite-disk")]
-pub use composite::{
-    create_composite_disk, create_zero_filler, Error as CompositeError, ImagePartitionType,
-    PartitionInfo,
-};
+pub use composite::create_composite_disk;
+#[cfg(feature = "composite-disk")]
+pub use composite::create_zero_filler;
+#[cfg(feature = "composite-disk")]
+pub use composite::Error as CompositeError;
+#[cfg(feature = "composite-disk")]
+pub use composite::ImagePartitionType;
+#[cfg(feature = "composite-disk")]
+pub use composite::PartitionInfo;
 #[cfg(feature = "composite-disk")]
 pub use gpt::Error as GptError;
 
 mod android_sparse;
-use android_sparse::{AndroidSparse, SPARSE_HEADER_MAGIC};
+use android_sparse::AndroidSparse;
+use android_sparse::SPARSE_HEADER_MAGIC;
 
 /// Nesting depth limit for disk formats that can open other disk files.
 pub const MAX_NESTING_DEPTH: u32 = 10;

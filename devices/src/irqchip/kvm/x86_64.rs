@@ -4,30 +4,51 @@
 
 use std::sync::Arc;
 
-use sync::Mutex;
-
+use base::error;
 #[cfg(not(test))]
 use base::Clock;
+use base::Error;
+use base::Event;
 #[cfg(test)]
 use base::FakeClock as Clock;
-use hypervisor::kvm::{KvmVcpu, KvmVm};
-use hypervisor::{
-    HypervisorCap, IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState, MPState, PicSelect,
-    PicState, PitState, Vcpu, VcpuX86_64, Vm, VmX86_64,
-};
+use base::Result;
+use base::Tube;
+use hypervisor::kvm::KvmVcpu;
+use hypervisor::kvm::KvmVm;
+use hypervisor::HypervisorCap;
+use hypervisor::IoapicState;
+use hypervisor::IrqRoute;
+use hypervisor::IrqSource;
+use hypervisor::IrqSourceChip;
+use hypervisor::LapicState;
+use hypervisor::MPState;
+use hypervisor::PicSelect;
+use hypervisor::PicState;
+use hypervisor::PitState;
+use hypervisor::Vcpu;
+use hypervisor::VcpuX86_64;
+use hypervisor::Vm;
+use hypervisor::VmX86_64;
 use kvm_sys::*;
 use resources::SystemAllocator;
+use sync::Mutex;
 
-use base::{error, Error, Event, Result, Tube};
-
-use crate::irqchip::{
-    Ioapic, IrqEvent, IrqEventIndex, Pic, VcpuRunState, IOAPIC_BASE_ADDRESS,
-    IOAPIC_MEM_LENGTH_BYTES,
-};
-use crate::{
-    Bus, IrqChip, IrqChipCap, IrqChipX86_64, IrqEdgeEvent, IrqEventSource, IrqLevelEvent, Pit,
-    PitError,
-};
+use crate::irqchip::Ioapic;
+use crate::irqchip::IrqEvent;
+use crate::irqchip::IrqEventIndex;
+use crate::irqchip::Pic;
+use crate::irqchip::VcpuRunState;
+use crate::irqchip::IOAPIC_BASE_ADDRESS;
+use crate::irqchip::IOAPIC_MEM_LENGTH_BYTES;
+use crate::Bus;
+use crate::IrqChip;
+use crate::IrqChipCap;
+use crate::IrqChipX86_64;
+use crate::IrqEdgeEvent;
+use crate::IrqEventSource;
+use crate::IrqLevelEvent;
+use crate::Pit;
+use crate::PitError;
 
 /// PIT tube 0 timer is connected to IRQ 0
 const PIT_CHANNEL0_IRQ: u32 = 0;
@@ -789,17 +810,24 @@ impl IrqChipX86_64 for KvmSplitIrqChip {
 #[cfg(test)]
 mod tests {
 
-    use super::*;
     use base::EventReadResult;
-    use hypervisor::{
-        kvm::Kvm, IoapicRedirectionTableEntry, PitRWMode, ProtectionType, TriggerMode, Vm, VmX86_64,
-    };
-    use resources::{AddressRange, SystemAllocator, SystemAllocatorConfig};
+    use hypervisor::kvm::Kvm;
+    use hypervisor::IoapicRedirectionTableEntry;
+    use hypervisor::PitRWMode;
+    use hypervisor::ProtectionType;
+    use hypervisor::TriggerMode;
+    use hypervisor::Vm;
+    use hypervisor::VmX86_64;
+    use resources::AddressRange;
+    use resources::SystemAllocator;
+    use resources::SystemAllocatorConfig;
     use vm_memory::GuestMemory;
 
+    use super::*;
     use crate::irqchip::tests::*;
     use crate::pci::CrosvmDeviceId;
-    use crate::{DeviceId, IrqChip};
+    use crate::DeviceId;
+    use crate::IrqChip;
 
     /// Helper function for setting up a KvmKernelIrqChip
     fn get_kernel_chip() -> KvmKernelIrqChip {

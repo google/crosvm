@@ -6,17 +6,23 @@ pub(crate) mod sys;
 
 use std::collections::VecDeque;
 use std::io;
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::mpsc::{channel, Receiver, TryRecvError};
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::TryRecvError;
 use std::sync::Arc;
 use std::thread::{self};
 
-use base::{error, Event, Result};
+use base::error;
+use base::Event;
+use base::Result;
 
 use crate::bus::BusAccessInfo;
 use crate::pci::CrosvmDeviceId;
 use crate::serial_device::SerialInput;
-use crate::{BusDevice, DeviceId};
+use crate::BusDevice;
+use crate::DeviceId;
 
 const LOOP_SIZE: usize = 0x40;
 
@@ -397,13 +403,13 @@ impl BusDevice for Serial {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io;
     use std::sync::Arc;
 
     use hypervisor::ProtectionType;
     use sync::Mutex;
 
+    use super::*;
     pub use crate::sys::serial_device::SerialDevice;
 
     #[derive(Clone)]

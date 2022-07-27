@@ -2,17 +2,32 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{pci::CrosvmDeviceId, BusAccessInfo, BusDevice, DeviceId, IrqLevelEvent};
-use acpi_tables::{aml, aml::Aml};
-use base::{error, warn, AsRawDescriptor, Event, EventToken, RawDescriptor, Tube, WaitContext};
+use std::sync::Arc;
+use std::thread;
+
+use acpi_tables::aml;
+use acpi_tables::aml::Aml;
+use base::error;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Event;
+use base::EventToken;
+use base::RawDescriptor;
+use base::Tube;
+use base::WaitContext;
 #[cfg(unix)]
 use power_monitor::CreatePowerMonitorFn;
 use remain::sorted;
-use std::sync::Arc;
-use std::thread;
 use sync::Mutex;
 use thiserror::Error;
-use vm_control::{BatControlCommand, BatControlResult};
+use vm_control::BatControlCommand;
+use vm_control::BatControlResult;
+
+use crate::pci::CrosvmDeviceId;
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::DeviceId;
+use crate::IrqLevelEvent;
 
 /// Errors for battery devices.
 #[sorted]

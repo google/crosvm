@@ -5,20 +5,32 @@
 //! The mmap module provides a safe interface to map memory and ensures UnmapViewOfFile is called when the
 //! mmap object leaves scope.
 
-use std::{
-    io,
-    slice::{from_raw_parts, from_raw_parts_mut},
-};
+use std::io;
+use std::slice::from_raw_parts;
+use std::slice::from_raw_parts_mut;
 
-use libc::{self, c_int, c_uint, c_void};
+use libc::c_int;
+use libc::c_uint;
+use libc::c_void;
+use libc::{self};
+use win_util::allocation_granularity;
+use win_util::get_high_order;
+use win_util::get_low_order;
+use winapi::um::memoryapi::FlushViewOfFile;
+use winapi::um::memoryapi::MapViewOfFile;
+use winapi::um::memoryapi::MapViewOfFileEx;
+use winapi::um::memoryapi::UnmapViewOfFile;
+use winapi::um::memoryapi::FILE_MAP_READ;
+use winapi::um::memoryapi::FILE_MAP_WRITE;
 
-use win_util::{allocation_granularity, get_high_order, get_low_order};
-use winapi::um::memoryapi::{
-    FlushViewOfFile, MapViewOfFile, MapViewOfFileEx, UnmapViewOfFile, FILE_MAP_READ, FILE_MAP_WRITE,
-};
-
-use super::mmap::{Error, MemoryMapping, Result};
-use crate::{descriptor::AsRawDescriptor, warn, MappedRegion, Protection, RawDescriptor};
+use super::mmap::Error;
+use super::mmap::MemoryMapping;
+use super::mmap::Result;
+use crate::descriptor::AsRawDescriptor;
+use crate::warn;
+use crate::MappedRegion;
+use crate::Protection;
+use crate::RawDescriptor;
 
 pub(crate) const PROT_READ: c_int = FILE_MAP_READ as c_int;
 pub(crate) const PROT_WRITE: c_int = FILE_MAP_WRITE as c_int;
@@ -296,14 +308,17 @@ pub struct MemoryMappingArena();
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        super::{pagesize, SharedMemory},
-        Error,
-    };
-    use crate::descriptor::FromRawDescriptor;
-    use crate::{MappedRegion, MemoryMappingBuilder};
-    use std::{ffi::CString, ptr};
+    use std::ffi::CString;
+    use std::ptr;
+
     use winapi::shared::winerror;
+
+    use super::super::pagesize;
+    use super::super::SharedMemory;
+    use super::Error;
+    use crate::descriptor::FromRawDescriptor;
+    use crate::MappedRegion;
+    use crate::MemoryMappingBuilder;
 
     #[test]
     fn map_invalid_fd() {

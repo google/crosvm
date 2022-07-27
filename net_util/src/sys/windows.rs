@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::TapTCommon;
-use base::named_pipes::{ReadOverlapped, WriteOverlapped};
+use base::named_pipes::ReadOverlapped;
+use base::named_pipes::WriteOverlapped;
 use base::ReadNotifier;
+
+use crate::TapTCommon;
 
 pub trait TapT: TapTCommon + ReadNotifier + ReadOverlapped + WriteOverlapped {}

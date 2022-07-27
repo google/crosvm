@@ -4,10 +4,14 @@
 
 //! Encapsulate the main runtime loop of a metrics process.
 
+use anyhow::Result;
+use base::info;
+use base::warn;
+use base::EventToken;
+use base::Tube;
+
 use crate::metrics_requests::MetricsRequest;
 use crate::RequestHandler;
-use anyhow::Result;
-use base::{info, warn, EventToken, Tube};
 
 /// Handles incoming requests to log metrics
 pub(crate) trait MetricsRequestHandler {

@@ -244,10 +244,11 @@ impl VirtioPciCommonConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    use base::{Event, RawDescriptor};
+    use base::Event;
+    use base::RawDescriptor;
     use vm_memory::GuestMemory;
+
+    use super::*;
 
     struct DummyDevice(DeviceType);
     const QUEUE_SIZE: u16 = 256;

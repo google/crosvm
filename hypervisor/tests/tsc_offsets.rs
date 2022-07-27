@@ -9,7 +9,8 @@
 use std::arch::x86_64::_rdtsc;
 
 use hypervisor::*;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 macro_rules! assert_wrapping_close {
     ($value:expr, $expected: expr, $threshold: expr, $type: expr) => {

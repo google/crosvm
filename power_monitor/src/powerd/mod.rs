@@ -2,22 +2,26 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{BatteryData, BatteryStatus, PowerData, PowerMonitor};
+use crate::BatteryData;
+use crate::BatteryStatus;
+use crate::PowerData;
+use crate::PowerMonitor;
 
 mod proto;
-use proto::system_api::power_supply_properties::{
-    PowerSupplyProperties, PowerSupplyProperties_BatteryState, PowerSupplyProperties_ExternalPower,
-};
+use std::error::Error;
+use std::os::unix::io::RawFd;
 
-use dbus::ffidisp::{BusType, Connection, ConnectionItem, WatchEvent};
-
+use dbus::ffidisp::BusType;
+use dbus::ffidisp::Connection;
+use dbus::ffidisp::ConnectionItem;
+use dbus::ffidisp::WatchEvent;
+use proto::system_api::power_supply_properties::PowerSupplyProperties;
+use proto::system_api::power_supply_properties::PowerSupplyProperties_BatteryState;
+use proto::system_api::power_supply_properties::PowerSupplyProperties_ExternalPower;
 use protobuf::error::ProtobufError;
 use protobuf::Message;
 use remain::sorted;
 use thiserror::Error;
-
-use std::error::Error;
-use std::os::unix::io::RawFd;
 
 // Interface name from power_manager/dbus_bindings/org.chromium.PowerManager.xml.
 const POWER_INTERFACE_NAME: &str = "org.chromium.PowerManager";

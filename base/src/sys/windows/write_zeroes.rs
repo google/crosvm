@@ -2,8 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::cmp::min;
+use std::fs::File;
+use std::io;
+use std::os::windows::fs::FileExt;
+
 use crate::PunchHole;
-use std::{cmp::min, fs::File, io, os::windows::fs::FileExt};
 
 // TODO(b/195151495): Fix so that this will extend a file size if needed.
 pub(crate) fn file_write_zeroes_at(

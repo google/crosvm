@@ -2,11 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::filesystem::{DirEntry, DirectoryIterator, FileSystem, ZeroCopyReader, ZeroCopyWriter};
-use crate::server::{Mapper, Reader, Server, Writer};
-
 use std::io;
 use std::os::unix::io::AsRawFd;
+
+use crate::filesystem::DirEntry;
+use crate::filesystem::DirectoryIterator;
+use crate::filesystem::FileSystem;
+use crate::filesystem::ZeroCopyReader;
+use crate::filesystem::ZeroCopyWriter;
+use crate::server::Mapper;
+use crate::server::Reader;
+use crate::server::Server;
+use crate::server::Writer;
 
 // Use a file system that does nothing since we are fuzzing the server implementation.
 struct NullFs;

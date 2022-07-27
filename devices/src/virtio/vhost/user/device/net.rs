@@ -6,22 +6,31 @@ pub mod sys;
 
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Context};
-use base::{error, Event};
-use cros_async::{EventAsync, Executor, IntoAsync};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use base::error;
+use base::Event;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use cros_async::IntoAsync;
 use data_model::DataInit;
 use futures::future::AbortHandle;
 use net_util::TapT;
 use once_cell::sync::OnceCell;
 use sync::Mutex;
+pub use sys::start_device as run_net_device;
+pub use sys::Options;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 
 use crate::virtio;
-use crate::virtio::net::{build_config, process_ctrl, process_tx, virtio_features_to_tap_offload};
-use crate::virtio::vhost::user::device::handler::{sys::Doorbell, VhostUserBackend};
-
-pub use sys::{start_device as run_net_device, Options};
+use crate::virtio::net::build_config;
+use crate::virtio::net::process_ctrl;
+use crate::virtio::net::process_tx;
+use crate::virtio::net::virtio_features_to_tap_offload;
+use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 
 thread_local! {
     pub(crate) static NET_EXECUTOR: OnceCell<Executor> = OnceCell::new();

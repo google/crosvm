@@ -4,33 +4,63 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{self, Read, Write};
+use std::fmt;
+use std::fmt::Display;
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
 use std::os::windows::io::RawHandle;
 use std::rc::Rc;
-use std::sync::{Arc, RwLock};
+use std::result;
+use std::sync::Arc;
+use std::sync::RwLock;
 use std::thread;
-use std::{fmt, result};
 
-use remain::sorted;
-use thiserror::Error as ThisError;
-
-use base::named_pipes::{self, BlockingMode, FramingMode, OverlappedWrapper, PipeConnection};
+use base::error;
+use base::info;
+use base::named_pipes::BlockingMode;
+use base::named_pipes::FramingMode;
+use base::named_pipes::OverlappedWrapper;
+use base::named_pipes::PipeConnection;
+use base::named_pipes::{self};
+use base::warn;
+use base::AsRawDescriptor;
 use base::Error as SysError;
-use base::{error, info, warn, AsRawDescriptor, Event};
-use cros_async::{select2, select6, AsyncError, EventAsync, Executor, SelectResult};
-use data_model::{DataInit, Le32, Le64};
+use base::Event;
+use cros_async::select2;
+use cros_async::select6;
+use cros_async::AsyncError;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use cros_async::SelectResult;
+use data_model::DataInit;
+use data_model::Le32;
+use data_model::Le64;
 use futures::channel::mpsc;
+use futures::pin_mut;
 use futures::stream::FuturesUnordered;
-use futures::{pin_mut, FutureExt, SinkExt, StreamExt};
+use futures::FutureExt;
+use futures::SinkExt;
+use futures::StreamExt;
+use remain::sorted;
+use sync::Mutex;
+use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
-use crate::virtio::{
-    copy_config, virtio_vsock_config, virtio_vsock_event, virtio_vsock_hdr, vsock_op,
-    DescriptorError, DeviceType, Interrupt, Queue, Reader, SignalableInterrupt, VirtioDevice,
-    Writer, TYPE_STREAM_SOCKET,
-};
-use std::fmt::Display;
-use sync::Mutex;
+use crate::virtio::copy_config;
+use crate::virtio::virtio_vsock_config;
+use crate::virtio::virtio_vsock_event;
+use crate::virtio::virtio_vsock_hdr;
+use crate::virtio::vsock_op;
+use crate::virtio::DescriptorError;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::Reader;
+use crate::virtio::SignalableInterrupt;
+use crate::virtio::VirtioDevice;
+use crate::virtio::Writer;
+use crate::virtio::TYPE_STREAM_SOCKET;
 
 #[sorted]
 #[derive(ThisError, Debug)]

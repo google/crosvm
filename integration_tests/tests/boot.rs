@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 mod fixture;
-use fixture::{Config, TestVm};
+use fixture::Config;
+use fixture::TestVm;
 
 #[test]
 fn boot_test_vm() {

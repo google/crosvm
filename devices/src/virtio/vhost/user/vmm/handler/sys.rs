@@ -14,4 +14,5 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(super) use platform::{run_backend_request_handler, BackendReqHandler};
+pub(super) use platform::run_backend_request_handler;
+pub(super) use platform::BackendReqHandler;

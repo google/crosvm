@@ -2,21 +2,34 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{cmp::min, collections::HashMap, os::windows::io::RawHandle, sync::Arc, time::Duration};
+use std::cmp::min;
+use std::collections::HashMap;
+use std::os::windows::io::RawHandle;
+use std::sync::Arc;
+use std::time::Duration;
 
 use smallvec::SmallVec;
 use sync::Mutex;
-use winapi::{
-    shared::{
-        minwindef::{DWORD, FALSE},
-        winerror::{ERROR_INVALID_PARAMETER, WAIT_TIMEOUT},
-    },
-    um::{synchapi::WaitForMultipleObjects, winbase::WAIT_OBJECT_0},
-};
+use winapi::shared::minwindef::DWORD;
+use winapi::shared::minwindef::FALSE;
+use winapi::shared::winerror::ERROR_INVALID_PARAMETER;
+use winapi::shared::winerror::WAIT_TIMEOUT;
+use winapi::um::synchapi::WaitForMultipleObjects;
+use winapi::um::winbase::WAIT_OBJECT_0;
 
-use super::{errno_result, Error, Event, EventTrigger, Result};
-use crate::descriptor::{AsRawDescriptor, Descriptor};
-use crate::{error, EventToken, EventType, RawDescriptor, TriggeredEvent, WaitContext};
+use super::errno_result;
+use super::Error;
+use super::Event;
+use super::EventTrigger;
+use super::Result;
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::Descriptor;
+use crate::error;
+use crate::EventToken;
+use crate::EventType;
+use crate::RawDescriptor;
+use crate::TriggeredEvent;
+use crate::WaitContext;
 
 // MAXIMUM_WAIT_OBJECTS = 64
 pub const MAXIMUM_WAIT_OBJECTS: usize = winapi::um::winnt::MAXIMUM_WAIT_OBJECTS as usize;

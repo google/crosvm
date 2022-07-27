@@ -2,22 +2,28 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{thread::sleep, time::Duration};
+use std::thread::sleep;
+use std::time::Duration;
 
 use anyhow::anyhow;
-use base::{kill_process_group, reap_child, syslog, syslog::LogConfig, warn};
+use base::kill_process_group;
+use base::reap_child;
+use base::syslog;
+use base::syslog::LogConfig;
+use base::warn;
+use devices::virtio::vhost::user::device::run_console_device;
+use devices::virtio::vhost::user::device::run_fs_device;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::run_gpu_device;
 #[cfg(feature = "audio_cras")]
 use devices::virtio::vhost::user::device::run_snd_device;
-use devices::virtio::vhost::user::device::{
-    run_console_device, run_fs_device, run_vsock_device, run_wl_device,
-};
+use devices::virtio::vhost::user::device::run_vsock_device;
+use devices::virtio::vhost::user::device::run_wl_device;
 
-use crate::{
-    crosvm::sys::cmdline::{Commands, DevicesSubcommand},
-    CommandStatus, Config,
-};
+use crate::crosvm::sys::cmdline::Commands;
+use crate::crosvm::sys::cmdline::DevicesSubcommand;
+use crate::CommandStatus;
+use crate::Config;
 
 pub(crate) fn start_device(command: DevicesSubcommand) -> anyhow::Result<()> {
     match command {

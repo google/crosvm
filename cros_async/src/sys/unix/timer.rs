@@ -5,9 +5,13 @@
 // For the moment, the only platform specific code is related to tests.
 #![cfg(test)]
 
-use super::{FdExecutor, URingExecutor};
-use crate::{sys::unix::executor, AsyncResult, TimerAsync};
 use base::Timer;
+
+use super::FdExecutor;
+use super::URingExecutor;
+use crate::sys::unix::executor;
+use crate::AsyncResult;
+use crate::TimerAsync;
 
 impl TimerAsync {
     pub(crate) fn new_poll(timer: Timer, ex: &FdExecutor) -> AsyncResult<TimerAsync> {
@@ -20,9 +24,12 @@ impl TimerAsync {
 }
 
 mod tests {
+    use std::time::Duration;
+    use std::time::Instant;
+
     use super::*;
-    use crate::{sys::unix::uring_executor::use_uring, Executor};
-    use std::time::{Duration, Instant};
+    use crate::sys::unix::uring_executor::use_uring;
+    use crate::Executor;
 
     #[test]
     fn timer() {

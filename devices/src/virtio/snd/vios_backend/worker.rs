@@ -4,20 +4,32 @@
 
 use std::io::Read;
 use std::ops::Deref;
-use std::sync::{mpsc::Sender, Arc};
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
 use std::thread;
 
-use crate::virtio::{DescriptorChain, Interrupt, Queue, Reader, SignalableInterrupt, Writer};
-use base::{error, warn, Event, EventToken, WaitContext};
-use data_model::{DataInit, Le32};
+use base::error;
+use base::warn;
+use base::Event;
+use base::EventToken;
+use base::WaitContext;
+use data_model::DataInit;
+use data_model::Le32;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 
 use super::super::constants::*;
 use super::super::layout::*;
 use super::streams::*;
+use super::Result;
+use super::SoundError;
 use super::*;
-use super::{Result, SoundError};
+use crate::virtio::DescriptorChain;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::Reader;
+use crate::virtio::SignalableInterrupt;
+use crate::virtio::Writer;
 
 pub struct Worker {
     // Lock order: Must never hold more than one queue lock at the same time.

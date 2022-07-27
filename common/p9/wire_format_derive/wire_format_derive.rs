@@ -17,9 +17,13 @@ extern crate quote;
 #[macro_use]
 extern crate syn;
 
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::Span;
+use proc_macro2::TokenStream;
 use syn::spanned::Spanned;
-use syn::{Data, DeriveInput, Fields, Ident};
+use syn::Data;
+use syn::DeriveInput;
+use syn::Fields;
+use syn::Ident;
 
 /// The function that derives the actual implementation.
 #[proc_macro_derive(P9WireFormat)]

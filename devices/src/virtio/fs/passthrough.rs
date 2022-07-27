@@ -2,51 +2,77 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    borrow::Cow,
-    cmp,
-    collections::{btree_map, BTreeMap},
-    ffi::{CStr, CString},
-    fs::File,
-    io,
-    mem::{self, size_of, MaybeUninit},
-    os::raw::{c_int, c_long},
-    ptr::{addr_of, addr_of_mut},
-    str::FromStr,
-    sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+use std::borrow::Cow;
+use std::cmp;
+use std::collections::btree_map;
+use std::collections::BTreeMap;
+use std::ffi::CStr;
+use std::ffi::CString;
+use std::fs::File;
+use std::io;
+use std::mem::size_of;
+use std::mem::MaybeUninit;
+use std::mem::{self};
+use std::os::raw::c_int;
+use std::os::raw::c_long;
+use std::ptr::addr_of;
+use std::ptr::addr_of_mut;
+use std::str::FromStr;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::Duration;
 
-use base::{
-    error, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr, ioctl_with_mut_ptr, ioctl_with_ptr, syscall,
-    AsRawDescriptor, FileFlags, FromRawDescriptor, RawDescriptor,
-};
+use base::error;
+use base::ioctl_ior_nr;
+use base::ioctl_iow_nr;
+use base::ioctl_iowr_nr;
+use base::ioctl_with_mut_ptr;
+use base::ioctl_with_ptr;
+use base::syscall;
+use base::AsRawDescriptor;
+use base::FileFlags;
+use base::FromRawDescriptor;
+use base::RawDescriptor;
 use data_model::DataInit;
-use fuse::filesystem::{
-    Context, DirectoryIterator, Entry, FileSystem, FsOptions, GetxattrReply, IoctlFlags,
-    IoctlReply, ListxattrReply, OpenOptions, RemoveMappingOne, SetattrValid, ZeroCopyReader,
-    ZeroCopyWriter, ROOT_ID,
-};
+use fuse::filesystem::Context;
+use fuse::filesystem::DirectoryIterator;
+use fuse::filesystem::Entry;
+use fuse::filesystem::FileSystem;
+use fuse::filesystem::FsOptions;
+use fuse::filesystem::GetxattrReply;
+use fuse::filesystem::IoctlFlags;
+use fuse::filesystem::IoctlReply;
+use fuse::filesystem::ListxattrReply;
+use fuse::filesystem::OpenOptions;
+use fuse::filesystem::RemoveMappingOne;
+use fuse::filesystem::SetattrValid;
+use fuse::filesystem::ZeroCopyReader;
+use fuse::filesystem::ZeroCopyWriter;
+use fuse::filesystem::ROOT_ID;
 use fuse::sys::WRITE_KILL_PRIV;
 use fuse::Mapper;
-use serde::{Deserialize, Serialize};
-use sync::Mutex;
-
 #[cfg(feature = "chromeos")]
-use {
-    protobuf::Message,
-    system_api::client::OrgChromiumArcQuota,
-    system_api::UserDataAuth::{
-        SetMediaRWDataFileProjectIdReply, SetMediaRWDataFileProjectIdRequest,
-        SetMediaRWDataFileProjectInheritanceFlagReply,
-        SetMediaRWDataFileProjectInheritanceFlagRequest,
-    },
-};
+use protobuf::Message;
+use serde::Deserialize;
+use serde::Serialize;
+use sync::Mutex;
+#[cfg(feature = "chromeos")]
+use system_api::client::OrgChromiumArcQuota;
+#[cfg(feature = "chromeos")]
+use system_api::UserDataAuth::SetMediaRWDataFileProjectIdReply;
+#[cfg(feature = "chromeos")]
+use system_api::UserDataAuth::SetMediaRWDataFileProjectIdRequest;
+#[cfg(feature = "chromeos")]
+use system_api::UserDataAuth::SetMediaRWDataFileProjectInheritanceFlagReply;
+#[cfg(feature = "chromeos")]
+use system_api::UserDataAuth::SetMediaRWDataFileProjectInheritanceFlagRequest;
 
-use crate::virtio::fs::caps::{Capability, Caps, Set as CapSet, Value as CapValue};
+use crate::virtio::fs::caps::Capability;
+use crate::virtio::fs::caps::Caps;
+use crate::virtio::fs::caps::Set as CapSet;
+use crate::virtio::fs::caps::Value as CapValue;
 use crate::virtio::fs::multikey::MultikeyBTreeMap;
 use crate::virtio::fs::read_dir::ReadDir;
 

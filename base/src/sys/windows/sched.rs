@@ -3,9 +3,12 @@
 // found in the LICENSE file.
 
 use libc::EINVAL;
-use winapi::um::{processthreadsapi::GetCurrentThread, winbase::SetThreadAffinityMask};
+use winapi::um::processthreadsapi::GetCurrentThread;
+use winapi::um::winbase::SetThreadAffinityMask;
 
-use super::{errno_result, Error, Result};
+use super::errno_result;
+use super::Error;
+use super::Result;
 
 /// Set the CPU affinity of the current thread to a given set of CPUs.
 /// The cpus must be a subset of those in the process affinity mask.
@@ -49,8 +52,10 @@ pub fn get_cpu_affinity() -> Result<Vec<usize>> {
 
 #[cfg(test)]
 mod tests {
+    use winapi::um::processthreadsapi::GetCurrentProcess;
+    use winapi::um::winbase::GetProcessAffinityMask;
+
     use super::super::sched::*;
-    use winapi::um::{processthreadsapi::GetCurrentProcess, winbase::GetProcessAffinityMask};
     #[test]
     fn cpu_affinity() {
         let mut process_affinity_mask: usize = 0;

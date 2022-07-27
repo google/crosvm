@@ -47,8 +47,9 @@ impl RSDP {
 
 #[cfg(test)]
 mod tests {
-    use super::RSDP;
     use data_model::DataInit;
+
+    use super::RSDP;
 
     #[test]
     fn test_rsdp() {

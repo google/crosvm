@@ -4,13 +4,16 @@
 
 //! Implements vhost-based virtio devices.
 
-use base::{Error as SysError, TubeError};
+use base::Error as SysError;
+use base::TubeError;
 use data_model::DataInit;
 use net_util::Error as TapError;
 use remain::sorted;
 use thiserror::Error;
 use vhost::Error as VhostError;
-use vmm_vhost::message::{MasterReq, Req, VhostUserMsgHeader};
+use vmm_vhost::message::MasterReq;
+use vmm_vhost::message::Req;
+use vmm_vhost::message::VhostUserMsgHeader;
 
 mod control_socket;
 pub mod user;

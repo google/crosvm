@@ -7,17 +7,16 @@
 
 use std::collections::BTreeMap as Map;
 
-use base::{round_up_to_page_size, MappedRegion};
+use base::round_up_to_page_size;
+use base::MappedRegion;
 
 use crate::rutabaga_gralloc::formats::*;
-use crate::rutabaga_gralloc::system_gralloc::SystemGralloc;
-use crate::rutabaga_utils::*;
-
 #[cfg(feature = "minigbm")]
 use crate::rutabaga_gralloc::minigbm::MinigbmDevice;
-
+use crate::rutabaga_gralloc::system_gralloc::SystemGralloc;
 #[cfg(feature = "vulkano")]
 use crate::rutabaga_gralloc::vulkano_gralloc::VulkanoGralloc;
+use crate::rutabaga_utils::*;
 
 /*
  * Rutabaga gralloc flags are copied from minigbm, but redundant legacy flags are left out.

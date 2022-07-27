@@ -4,25 +4,25 @@
 
 //! Provides a struct for registering signal handlers that get cleared on drop.
 
-use std::{
-    convert::TryFrom,
-    fmt,
-    io::{Cursor, Write},
-    panic::catch_unwind,
-    result,
-};
+use std::convert::TryFrom;
+use std::fmt;
+use std::io::Cursor;
+use std::io::Write;
+use std::panic::catch_unwind;
+use std::result;
 
-use libc::{c_int, c_void, STDERR_FILENO};
+use libc::c_int;
+use libc::c_void;
+use libc::STDERR_FILENO;
 use remain::sorted;
 use thiserror::Error;
 
-use super::{
-    signal::{
-        clear_signal_handler, has_default_signal_handler, register_signal_handler, wait_for_signal,
-        Signal,
-    },
-    Error as ErrnoError,
-};
+use super::signal::clear_signal_handler;
+use super::signal::has_default_signal_handler;
+use super::signal::register_signal_handler;
+use super::signal::wait_for_signal;
+use super::signal::Signal;
+use super::Error as ErrnoError;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -179,24 +179,30 @@ pub fn wait_for_interrupt() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    use std::{
-        fs::File,
-        io::{BufRead, BufReader},
-        mem::zeroed,
-        ptr::{null, null_mut},
-        sync::{
-            atomic::{AtomicI32, AtomicUsize, Ordering},
-            Arc, Mutex, MutexGuard, Once,
-        },
-        thread::{sleep, spawn},
-        time::{Duration, Instant},
-    };
+    use std::fs::File;
+    use std::io::BufRead;
+    use std::io::BufReader;
+    use std::mem::zeroed;
+    use std::ptr::null;
+    use std::ptr::null_mut;
+    use std::sync::atomic::AtomicI32;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::sync::MutexGuard;
+    use std::sync::Once;
+    use std::thread::sleep;
+    use std::thread::spawn;
+    use std::time::Duration;
+    use std::time::Instant;
 
     use libc::sigaction;
 
-    use super::super::{gettid, kill, Pid};
+    use super::super::gettid;
+    use super::super::kill;
+    use super::super::Pid;
+    use super::*;
 
     const TEST_SIGNAL: Signal = Signal::User1;
     const TEST_SIGNALS: &[Signal] = &[Signal::User1, Signal::User2];

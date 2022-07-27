@@ -7,10 +7,12 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
+use anyhow::Result;
 use sync::Mutex;
 
-use crate::vfio::{VfioContainer, VfioDevice};
+use crate::vfio::VfioContainer;
+use crate::vfio::VfioDevice;
 
 /// Opens device with given sysfs path as `VfioDevice`.
 pub fn open_vfio_device<P: AsRef<Path>>(vfio_path: &P) -> Result<VfioDevice> {

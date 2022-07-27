@@ -4,14 +4,23 @@
 
 use std::os::raw::c_ulonglong;
 
-use base::{error, Error as SysError, Event, EventToken, Tube, WaitContext};
+use base::error;
+use base::Error as SysError;
+use base::Event;
+use base::EventToken;
+use base::Tube;
+use base::WaitContext;
+use libc::EIO;
 use vhost::Vhost;
 use vm_memory::GuestMemory;
 
-use super::control_socket::{VhostDevRequest, VhostDevResponse};
-use super::{Error, Result};
-use crate::virtio::{Interrupt, Queue, SignalableInterrupt};
-use libc::EIO;
+use super::control_socket::VhostDevRequest;
+use super::control_socket::VhostDevResponse;
+use super::Error;
+use super::Result;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::SignalableInterrupt;
 
 /// Worker that takes care of running the vhost device.
 pub struct Worker<T: Vhost> {

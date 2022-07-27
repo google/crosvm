@@ -4,6 +4,7 @@
 
 use std::fs::OpenOptions;
 use std::os::windows::fs::OpenOptionsExt;
+
 use winapi::um::winnt::FILE_SHARE_READ;
 
 pub fn set_extra_open_opts(opts: &mut OpenOptions) {

@@ -4,15 +4,20 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::os::unix::fs::FileExt;
 use std::rc::Rc;
 
 use anyhow::Context;
-
-use arch::{MsrAction, MsrConfig, MsrExitHandlerError, MsrFilter, MsrRWType, MsrValueFrom};
-use base::{debug, error};
-
+use arch::MsrAction;
+use arch::MsrConfig;
+use arch::MsrExitHandlerError;
+use arch::MsrFilter;
+use arch::MsrRWType;
+use arch::MsrValueFrom;
+use base::debug;
+use base::error;
 use remain::sorted;
 use thiserror::Error as ThisError;
 

@@ -2,10 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::windows::system_metrics::CoreWinMetrics;
-use crate::windows::{Error, Result};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
+
+use crate::windows::system_metrics::CoreWinMetrics;
+use crate::windows::Error;
+use crate::windows::Result;
 
 static INSTANCE_EXISTS: AtomicBool = AtomicBool::new(false);
 

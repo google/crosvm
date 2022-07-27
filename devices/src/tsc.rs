@@ -7,10 +7,13 @@
 // TODO(b/213149158): Remove after uses are added.
 #![allow(dead_code)]
 
-use anyhow::{anyhow, Result};
-use base::{debug, error};
-use once_cell::sync::Lazy;
 use std::arch::x86_64::_rdtsc;
+
+use anyhow::anyhow;
+use anyhow::Result;
+use base::debug;
+use base::error;
+use once_cell::sync::Lazy;
 
 mod calibrate;
 mod cpuid;
@@ -144,9 +147,12 @@ fn tsc_sync_mitigations_inner(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::tsc::grouping::{CoreGroup, CoreGrouping, CoreOffset};
     use std::time::Duration;
+
+    use super::*;
+    use crate::tsc::grouping::CoreGroup;
+    use crate::tsc::grouping::CoreGrouping;
+    use crate::tsc::grouping::CoreOffset;
 
     #[test]
     fn test_sync_mitigation_set_offsets() {

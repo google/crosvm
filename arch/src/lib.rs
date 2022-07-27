@@ -14,60 +14,90 @@ pub mod sys;
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::{self};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use acpi_tables::sdt::SDT;
+use base::syslog;
+use base::AsRawDescriptor;
+use base::AsRawDescriptors;
+use base::Event;
+use base::SendTube;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use base::Tube;
-use base::{syslog, AsRawDescriptor, AsRawDescriptors, Event, SendTube};
 use devices::virtio::VirtioDevice;
+use devices::BarRange;
+use devices::Bus;
+use devices::BusDevice;
+use devices::BusDeviceObj;
+use devices::BusError;
+use devices::BusResumeDevice;
+use devices::HotPlugBus;
+use devices::IrqChip;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use devices::IrqChipAArch64 as IrqChipArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use devices::IrqChipX86_64 as IrqChipArch;
+use devices::IrqEventSource;
 #[cfg(windows)]
 use devices::Minijail;
+use devices::PciAddress;
+use devices::PciBus;
+use devices::PciDevice;
+use devices::PciDeviceError;
+use devices::PciInterruptPin;
+use devices::PciRoot;
 #[cfg(unix)]
 use devices::ProxyDevice;
-use devices::{
-    BarRange, Bus, BusDevice, BusDeviceObj, BusError, BusResumeDevice, HotPlugBus, IrqChip,
-    IrqEventSource, PciAddress, PciBus, PciDevice, PciDeviceError, PciInterruptPin, PciRoot,
-    SerialHardware, SerialParameters,
-};
-use hypervisor::{IoEventAddress, ProtectionType, Vm};
+use devices::SerialHardware;
+use devices::SerialParameters;
+#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+use gdbstub_arch::x86::reg::X86_64CoreRegs as GdbStubRegs;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::Hypervisor as HypervisorArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::HypervisorX86_64 as HypervisorArch;
+use hypervisor::IoEventAddress;
+use hypervisor::ProtectionType;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::VcpuAArch64 as VcpuArch;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::VcpuInitAArch64 as VcpuInitArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::VcpuInitX86_64 as VcpuInitArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::VcpuX86_64 as VcpuArch;
+use hypervisor::Vm;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::VmAArch64 as VmArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::VmX86_64 as VmArch;
 #[cfg(unix)]
 use minijail::Minijail;
 use remain::sorted;
-use resources::{SystemAllocator, SystemAllocatorConfig};
-use serde::{Deserialize, Serialize};
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use resources::AddressRange;
+use resources::SystemAllocator;
+use resources::SystemAllocatorConfig;
+use serde::Deserialize;
+use serde::Serialize;
+pub use serial::add_serial_devices;
+pub use serial::get_serial_cmdline;
+pub use serial::set_default_serial_parameters;
+pub use serial::GetSerialCmdlineError;
+pub use serial::SERIAL_ADDR;
 use sync::Mutex;
 use thiserror::Error;
-use vm_control::{BatControl, BatteryType, PmResource};
-use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
-
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
-use gdbstub_arch::x86::reg::X86_64CoreRegs as GdbStubRegs;
-
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use {
-    devices::IrqChipAArch64 as IrqChipArch,
-    hypervisor::{
-        Hypervisor as HypervisorArch, VcpuAArch64 as VcpuArch, VcpuInitAArch64 as VcpuInitArch,
-        VmAArch64 as VmArch,
-    },
-};
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use {
-    devices::IrqChipX86_64 as IrqChipArch,
-    hypervisor::{
-        HypervisorX86_64 as HypervisorArch, VcpuInitX86_64 as VcpuInitArch, VcpuX86_64 as VcpuArch,
-        VmX86_64 as VmArch,
-    },
-    resources::AddressRange,
-};
-
-pub use serial::{
-    add_serial_devices, get_serial_cmdline, set_default_serial_parameters, GetSerialCmdlineError,
-    SERIAL_ADDR,
-};
+use vm_control::BatControl;
+use vm_control::BatteryType;
+use vm_control::PmResource;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+use vm_memory::GuestMemoryError;
 
 pub enum VmImage {
     Kernel(File),

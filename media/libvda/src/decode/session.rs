@@ -2,15 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fs::File;
 use std::io::Read;
 use std::mem;
 use std::os::unix::io::FromRawFd;
-use std::{fs::File, rc::Rc};
+use std::rc::Rc;
 
+use super::bindings;
 use super::event::*;
-use super::{bindings, VdaConnection};
+use super::VdaConnection;
 use crate::error::*;
-use crate::format::{BufferFd, FramePlane, PixelFormat, Profile};
+use crate::format::BufferFd;
+use crate::format::FramePlane;
+use crate::format::PixelFormat;
+use crate::format::Profile;
 
 /// Represents a decode session.
 pub struct Session {

@@ -7,38 +7,56 @@
 use std::fs::OpenOptions;
 use std::path::Path;
 
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
+use anyhow::Result;
 use argh::FromArgs;
+use base::error;
+use base::info;
+use base::syslog;
 use base::syslog::LogConfig;
-use base::{error, info, syslog};
-use cmdline::{RunCommand, UsbAttachCommand};
+use cmdline::RunCommand;
+use cmdline::UsbAttachCommand;
 mod crosvm;
 use crosvm::cmdline;
 #[cfg(feature = "plugin")]
 use crosvm::config::executable_is_plugin;
 use crosvm::config::Config;
-use devices::virtio::vhost::user::device::{run_block_device, run_net_device};
-use disk::QcowFile;
+use devices::virtio::vhost::user::device::run_block_device;
+use devices::virtio::vhost::user::device::run_net_device;
 #[cfg(feature = "composite-disk")]
-use disk::{
-    create_composite_disk, create_disk_file, create_zero_filler, ImagePartitionType, PartitionInfo,
-};
+use disk::create_composite_disk;
+#[cfg(feature = "composite-disk")]
+use disk::create_disk_file;
+#[cfg(feature = "composite-disk")]
+use disk::create_zero_filler;
+#[cfg(feature = "composite-disk")]
+use disk::ImagePartitionType;
+#[cfg(feature = "composite-disk")]
+use disk::PartitionInfo;
+use disk::QcowFile;
 mod sys;
-use vm_control::{
-    client::{
-        do_modify_battery, do_usb_attach, do_usb_detach, do_usb_list, handle_request, vms_request,
-        ModifyUsbResult,
-    },
-    DiskControlCommand, UsbControlResult, VmRequest,
-};
+use crosvm::cmdline::Command;
+use crosvm::cmdline::CrossPlatformCommands;
+use crosvm::cmdline::CrossPlatformDevicesCommands;
+#[cfg(windows)]
+use sys::windows::metrics;
+use vm_control::client::do_modify_battery;
+use vm_control::client::do_usb_attach;
+use vm_control::client::do_usb_detach;
+use vm_control::client::do_usb_list;
+use vm_control::client::handle_request;
+use vm_control::client::vms_request;
+use vm_control::client::ModifyUsbResult;
 #[cfg(feature = "balloon")]
-use vm_control::{BalloonControlCommand, VmResponse};
+use vm_control::BalloonControlCommand;
+use vm_control::DiskControlCommand;
+use vm_control::UsbControlResult;
+use vm_control::VmRequest;
+#[cfg(feature = "balloon")]
+use vm_control::VmResponse;
 
 use crate::sys::error_to_exit_code;
 use crate::sys::init_log;
-use crosvm::cmdline::{Command, CrossPlatformCommands, CrossPlatformDevicesCommands};
-#[cfg(windows)]
-use sys::windows::metrics;
 
 #[cfg(feature = "scudo")]
 #[global_allocator]
@@ -203,7 +221,8 @@ fn modify_vfio(cmd: cmdline::VfioCrosvmCommand) -> std::result::Result<(), ()> {
 
 #[cfg(feature = "composite-disk")]
 fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result<(), ()> {
-    use std::{fs::File, path::PathBuf};
+    use std::fs::File;
+    use std::path::PathBuf;
 
     let composite_image_path = &cmd.path;
     let zero_filler_path = format!("{}.filler", composite_image_path);

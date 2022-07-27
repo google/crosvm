@@ -5,23 +5,33 @@
 use std::cmp::min;
 use std::convert::TryInto;
 use std::num::Wrapping;
-use std::sync::atomic::{fence, Ordering};
+use std::sync::atomic::fence;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
+
+use anyhow::bail;
+use anyhow::Context;
+use base::error;
+use base::warn;
+use base::Protection;
+use cros_async::AsyncError;
+use cros_async::EventAsync;
+use data_model::DataInit;
+use data_model::Le16;
+use data_model::Le32;
+use data_model::Le64;
 use sync::Mutex;
-
-use anyhow::{bail, Context};
-use base::{error, warn, Protection};
-use cros_async::{AsyncError, EventAsync};
-use data_model::{DataInit, Le16, Le32, Le64};
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
-use super::{SignalableInterrupt, VIRTIO_MSI_NO_VECTOR};
+use super::SignalableInterrupt;
+use super::VIRTIO_MSI_NO_VECTOR;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::virtio::memory_mapper::MemRegion;
-use crate::virtio::memory_util::{
-    is_valid_wrapper, read_obj_from_addr_wrapper, write_obj_at_addr_wrapper,
-};
+use crate::virtio::memory_util::is_valid_wrapper;
+use crate::virtio::memory_util::read_obj_from_addr_wrapper;
+use crate::virtio::memory_util::write_obj_at_addr_wrapper;
 
 const VIRTQ_DESC_F_NEXT: u16 = 0x1;
 const VIRTQ_DESC_F_WRITE: u16 = 0x2;
@@ -784,13 +794,15 @@ impl Queue {
 
 #[cfg(test)]
 mod tests {
-    use super::super::Interrupt;
-    use super::*;
-    use crate::IrqLevelEvent;
-    use memoffset::offset_of;
     use std::convert::TryInto;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Arc;
+
+    use memoffset::offset_of;
+
+    use super::super::Interrupt;
+    use super::*;
+    use crate::IrqLevelEvent;
 
     const GUEST_MEMORY_SIZE: u64 = 0x10000;
     const DESC_OFFSET: u64 = 0;

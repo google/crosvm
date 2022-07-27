@@ -2,17 +2,25 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{AsRawDescriptor, RawDescriptor};
-use data_model::DataInit;
-use linux_input_sys::{
-    virtio_input_event, InputEventDecoder, ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_SLOT,
-    ABS_MT_TRACKING_ID,
-};
 use std::cmp::max;
 use std::collections::VecDeque;
-use std::io::{self, Error, ErrorKind, Read, Write};
+use std::io::Error;
+use std::io::ErrorKind;
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
 use std::iter::ExactSizeIterator;
 use std::os::unix::net::UnixStream;
+
+use base::AsRawDescriptor;
+use base::RawDescriptor;
+use data_model::DataInit;
+use linux_input_sys::virtio_input_event;
+use linux_input_sys::InputEventDecoder;
+use linux_input_sys::ABS_MT_POSITION_X;
+use linux_input_sys::ABS_MT_POSITION_Y;
+use linux_input_sys::ABS_MT_SLOT;
+use linux_input_sys::ABS_MT_TRACKING_ID;
 
 const EVENT_SIZE: usize = virtio_input_event::SIZE;
 const EVENT_BUFFER_LEN_MAX: usize = 64 * EVENT_SIZE;

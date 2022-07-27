@@ -10,14 +10,20 @@
 
 use std::ffi::CStr;
 use std::fs::File;
-use std::io::{Seek, SeekFrom};
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::os::raw::c_char;
 use std::sync::Arc;
 
-use base::{AsRawDescriptor, Error as BaseError, FromRawDescriptor, RawDescriptor};
+use base::AsRawDescriptor;
+use base::Error as BaseError;
+use base::FromRawDescriptor;
+use base::RawDescriptor;
 
 use crate::rutabaga_gralloc::formats::DrmFormat;
-use crate::rutabaga_gralloc::gralloc::{Gralloc, ImageAllocationInfo, ImageMemoryRequirements};
+use crate::rutabaga_gralloc::gralloc::Gralloc;
+use crate::rutabaga_gralloc::gralloc::ImageAllocationInfo;
+use crate::rutabaga_gralloc::gralloc::ImageMemoryRequirements;
 use crate::rutabaga_gralloc::minigbm_bindings::*;
 use crate::rutabaga_gralloc::rendernode;
 use crate::rutabaga_utils::*;

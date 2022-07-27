@@ -7,17 +7,15 @@
 use std::collections::BTreeMap as Map;
 use std::sync::Arc;
 
-use base::{ExternalMapping, SafeDescriptor};
+use base::ExternalMapping;
+use base::SafeDescriptor;
 use data_model::VolatileSlice;
 
 use crate::cross_domain::CrossDomain;
-
 #[cfg(feature = "gfxstream")]
 use crate::gfxstream::Gfxstream;
-
 use crate::rutabaga_2d::Rutabaga2D;
 use crate::rutabaga_utils::*;
-
 #[cfg(feature = "virgl_renderer")]
 use crate::virgl_renderer::VirglRenderer;
 

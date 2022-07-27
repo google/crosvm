@@ -7,10 +7,10 @@ use std::sync::Arc;
 use base::Descriptor;
 use sync::Mutex;
 
-use crate::{
-    acpi::{ACPIPMError, GpeResource, Pm1Resource},
-    IrqLevelEvent,
-};
+use crate::acpi::ACPIPMError;
+use crate::acpi::GpeResource;
+use crate::acpi::Pm1Resource;
+use crate::IrqLevelEvent;
 
 pub(crate) fn get_acpi_event_sock() -> Result<Option<Descriptor>, ACPIPMError> {
     Ok(None)

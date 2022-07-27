@@ -7,22 +7,36 @@ use std::mem;
 use std::sync::Arc;
 use std::thread;
 
-use base::{error, warn, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube};
-use data_model::{DataInit, Le32};
+use base::error;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Error as SysError;
+use base::Event;
+use base::RawDescriptor;
+use base::Tube;
+use data_model::DataInit;
+use data_model::Le32;
 use remain::sorted;
 use resources::Alloc;
 use sync::Mutex;
 use thiserror::Error;
-use vm_control::{FsMappingRequest, VmResponse};
+use vm_control::FsMappingRequest;
+use vm_control::VmResponse;
 use vm_memory::GuestMemory;
 
-use crate::pci::{
-    PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciCapability,
-};
-use crate::virtio::{
-    copy_config, DescriptorError, DeviceType, Interrupt, PciCapabilityType, Queue, VirtioDevice,
-    VirtioPciShmCap,
-};
+use crate::pci::PciAddress;
+use crate::pci::PciBarConfiguration;
+use crate::pci::PciBarPrefetchable;
+use crate::pci::PciBarRegionType;
+use crate::pci::PciCapability;
+use crate::virtio::copy_config;
+use crate::virtio::DescriptorError;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::PciCapabilityType;
+use crate::virtio::Queue;
+use crate::virtio::VirtioDevice;
+use crate::virtio::VirtioPciShmCap;
 
 mod caps;
 mod multikey;
@@ -32,9 +46,8 @@ mod worker;
 
 use fuse::Server;
 use passthrough::PassthroughFs;
-use worker::Worker;
-
 pub use worker::process_fs_queue;
+use worker::Worker;
 
 // The fs device does not have a fixed number of queues.
 pub const QUEUE_SIZE: u16 = 1024;

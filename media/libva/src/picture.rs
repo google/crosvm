@@ -2,11 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{marker::PhantomData, rc::Rc};
+use std::marker::PhantomData;
+use std::rc::Rc;
 
 use anyhow::Result;
 
-use crate::{bindings, buffer::Buffer, context::Context, status::Status, surface::Surface};
+use crate::bindings;
+use crate::buffer::Buffer;
+use crate::context::Context;
+use crate::status::Status;
+use crate::surface::Surface;
 
 // Use the sealed trait pattern to make sure that new states are not created in
 // caller code. More information about the sealed trait pattern can be found at

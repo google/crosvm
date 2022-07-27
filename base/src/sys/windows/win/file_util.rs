@@ -2,9 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::descriptor::AsRawDescriptor;
-use std::{ffi::c_void, io};
+use std::ffi::c_void;
+use std::io;
+
 pub use winapi::um::winioctl::FSCTL_SET_SPARSE;
+
+use crate::descriptor::AsRawDescriptor;
 
 /// Marks the given file as sparse. Required if we want hole punching to be performant.
 /// (If a file is not marked as sparse, a hole punch will just write zeros.)

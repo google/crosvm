@@ -4,13 +4,18 @@
 
 use std::io;
 use std::io::Write;
-use std::thread::{self, JoinHandle};
+use std::thread::JoinHandle;
+use std::thread::{self};
 use std::time::Duration;
 
-use base::{
-    error, named_pipes::PipeConnection, Event, EventToken, FileSync, RawDescriptor, Result,
-    WaitContext,
-};
+use base::error;
+use base::named_pipes::PipeConnection;
+use base::Event;
+use base::EventToken;
+use base::FileSync;
+use base::RawDescriptor;
+use base::Result;
+use base::WaitContext;
 use hypervisor::ProtectionType;
 
 use crate::bus::BusDevice;
@@ -234,10 +239,9 @@ impl SyncWorker {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use regex::Regex;
 
+    use super::*;
     use crate::serial::tests::*;
     use crate::serial::*;
 
@@ -284,7 +288,8 @@ mod tests {
     #[test]
     fn named_pipe() {
         use base::named_pipes;
-        use base::named_pipes::{BlockingMode, FramingMode};
+        use base::named_pipes::BlockingMode;
+        use base::named_pipes::FramingMode;
         use rand::Rng;
 
         let path_str = format!(r"\\.\pipe\kiwi_test_{}", rand::thread_rng().gen::<u64>());

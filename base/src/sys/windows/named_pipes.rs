@@ -2,44 +2,62 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use rand::Rng;
-use std::{
-    ffi::CString,
-    fs::OpenOptions,
-    io,
-    io::Result,
-    mem,
-    os::windows::fs::OpenOptionsExt,
-    process, ptr,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use std::ffi::CString;
+use std::fs::OpenOptions;
+use std::io;
+use std::io::Result;
+use std::mem;
+use std::os::windows::fs::OpenOptionsExt;
+use std::process;
+use std::ptr;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
-use super::{Event, RawDescriptor};
-use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
-use serde::{Deserialize, Serialize};
-use win_util::{SecurityAttributes, SelfRelativeSecurityDescriptor};
-use winapi::{
-    shared::{
-        minwindef::{DWORD, FALSE, LPCVOID, LPVOID, TRUE},
-        winerror::{ERROR_IO_INCOMPLETE, ERROR_IO_PENDING, ERROR_NO_DATA, ERROR_PIPE_CONNECTED},
-    },
-    um::{
-        errhandlingapi::GetLastError,
-        fileapi::{FlushFileBuffers, ReadFile, WriteFile},
-        handleapi::INVALID_HANDLE_VALUE,
-        ioapiset::{CancelIoEx, GetOverlappedResult},
-        minwinbase::OVERLAPPED,
-        namedpipeapi::{
-            ConnectNamedPipe, GetNamedPipeInfo, PeekNamedPipe, SetNamedPipeHandleState,
-        },
-        winbase::{
-            CreateNamedPipeA, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED,
-            PIPE_ACCESS_DUPLEX, PIPE_NOWAIT, PIPE_READMODE_BYTE, PIPE_READMODE_MESSAGE,
-            PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_TYPE_MESSAGE, PIPE_WAIT,
-            SECURITY_IDENTIFICATION,
-        },
-    },
-};
+use rand::Rng;
+use serde::Deserialize;
+use serde::Serialize;
+use win_util::SecurityAttributes;
+use win_util::SelfRelativeSecurityDescriptor;
+use winapi::shared::minwindef::DWORD;
+use winapi::shared::minwindef::FALSE;
+use winapi::shared::minwindef::LPCVOID;
+use winapi::shared::minwindef::LPVOID;
+use winapi::shared::minwindef::TRUE;
+use winapi::shared::winerror::ERROR_IO_INCOMPLETE;
+use winapi::shared::winerror::ERROR_IO_PENDING;
+use winapi::shared::winerror::ERROR_NO_DATA;
+use winapi::shared::winerror::ERROR_PIPE_CONNECTED;
+use winapi::um::errhandlingapi::GetLastError;
+use winapi::um::fileapi::FlushFileBuffers;
+use winapi::um::fileapi::ReadFile;
+use winapi::um::fileapi::WriteFile;
+use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+use winapi::um::ioapiset::CancelIoEx;
+use winapi::um::ioapiset::GetOverlappedResult;
+use winapi::um::minwinbase::OVERLAPPED;
+use winapi::um::namedpipeapi::ConnectNamedPipe;
+use winapi::um::namedpipeapi::GetNamedPipeInfo;
+use winapi::um::namedpipeapi::PeekNamedPipe;
+use winapi::um::namedpipeapi::SetNamedPipeHandleState;
+use winapi::um::winbase::CreateNamedPipeA;
+use winapi::um::winbase::FILE_FLAG_FIRST_PIPE_INSTANCE;
+use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
+use winapi::um::winbase::PIPE_ACCESS_DUPLEX;
+use winapi::um::winbase::PIPE_NOWAIT;
+use winapi::um::winbase::PIPE_READMODE_BYTE;
+use winapi::um::winbase::PIPE_READMODE_MESSAGE;
+use winapi::um::winbase::PIPE_REJECT_REMOTE_CLIENTS;
+use winapi::um::winbase::PIPE_TYPE_BYTE;
+use winapi::um::winbase::PIPE_TYPE_MESSAGE;
+use winapi::um::winbase::PIPE_WAIT;
+use winapi::um::winbase::SECURITY_IDENTIFICATION;
+
+use super::Event;
+use super::RawDescriptor;
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::IntoRawDescriptor;
+use crate::descriptor::SafeDescriptor;
 
 /// The default buffer size for all named pipes in the system. If this size is too small, writers
 /// on named pipes that expect not to block *can* block until the reading side empties the buffer.

@@ -2,36 +2,58 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    cmp::Ordering,
-    convert::TryFrom,
-    ffi::OsString,
-    fs::remove_file,
-    io,
-    mem::{self, size_of},
-    net::{SocketAddr, SocketAddrV4, SocketAddrV6, TcpListener, TcpStream, ToSocketAddrs},
-    ops::Deref,
-    os::unix::{
-        ffi::{OsStrExt, OsStringExt},
-        io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
-    },
-    path::{Path, PathBuf},
-    ptr::null_mut,
-    time::{Duration, Instant},
-};
+use std::cmp::Ordering;
+use std::convert::TryFrom;
+use std::ffi::OsString;
+use std::fs::remove_file;
+use std::io;
+use std::mem::size_of;
+use std::mem::{self};
+use std::net::SocketAddr;
+use std::net::SocketAddrV4;
+use std::net::SocketAddrV6;
+use std::net::TcpListener;
+use std::net::TcpStream;
+use std::net::ToSocketAddrs;
+use std::ops::Deref;
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::ffi::OsStringExt;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::io::IntoRawFd;
+use std::os::unix::io::RawFd;
+use std::path::Path;
+use std::path::PathBuf;
+use std::ptr::null_mut;
+use std::time::Duration;
+use std::time::Instant;
 
-use libc::{
-    c_int, in6_addr, in_addr, recvfrom, sa_family_t, sockaddr, sockaddr_in, sockaddr_in6,
-    socklen_t, AF_INET, AF_INET6, MSG_PEEK, MSG_TRUNC, SOCK_CLOEXEC, SOCK_STREAM,
-};
+use libc::c_int;
+use libc::in6_addr;
+use libc::in_addr;
+use libc::recvfrom;
+use libc::sa_family_t;
+use libc::sockaddr;
+use libc::sockaddr_in;
+use libc::sockaddr_in6;
+use libc::socklen_t;
+use libc::AF_INET;
+use libc::AF_INET6;
+use libc::MSG_PEEK;
+use libc::MSG_TRUNC;
+use libc::SOCK_CLOEXEC;
+use libc::SOCK_STREAM;
 use log::warn;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use super::{
-    sock_ctrl_msg::{ScmSocket, SCM_SOCKET_MAX_FD_COUNT},
-    Error, RawDescriptor,
-};
-use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor};
+use super::sock_ctrl_msg::ScmSocket;
+use super::sock_ctrl_msg::SCM_SOCKET_MAX_FD_COUNT;
+use super::Error;
+use super::RawDescriptor;
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::IntoRawDescriptor;
 
 /// Assist in handling both IP version 4 and IP version 6.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -870,8 +892,11 @@ impl Drop for UnlinkUnixSeqpacketListener {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+    use std::io::ErrorKind;
+    use std::path::PathBuf;
+
     use super::*;
-    use std::{env, io::ErrorKind, path::PathBuf};
 
     fn tmpdir() -> PathBuf {
         env::temp_dir()

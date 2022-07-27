@@ -2,20 +2,32 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::{self, Write};
+use std::io::Write;
+use std::io::{self};
 use std::mem;
 use std::result;
 use std::thread;
 
-use base::{error, warn, Error as SysError, Event, EventToken, RawDescriptor, WaitContext};
+use base::error;
+use base::warn;
+use base::Error as SysError;
+use base::Event;
+use base::EventToken;
+use base::RawDescriptor;
+use base::WaitContext;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
-use super::{
-    copy_config, DescriptorError, DeviceType, Interrupt, Queue, Reader, SignalableInterrupt,
-    VirtioDevice, Writer,
-};
+use super::copy_config;
+use super::DescriptorError;
+use super::DeviceType;
+use super::Interrupt;
+use super::Queue;
+use super::Reader;
+use super::SignalableInterrupt;
+use super::VirtioDevice;
+use super::Writer;
 
 const QUEUE_SIZE: u16 = 128;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];

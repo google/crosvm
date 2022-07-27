@@ -6,18 +6,26 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::thread;
 
-use base::{error, Event, RawDescriptor};
+use base::error;
+use base::Event;
+use base::RawDescriptor;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 
-use crate::virtio::vhost::user::vmm::{Result, VhostUserHandler};
-use crate::virtio::wl::{
-    QUEUE_SIZE, QUEUE_SIZES, VIRTIO_WL_F_SEND_FENCES, VIRTIO_WL_F_TRANS_FLAGS,
-    VIRTIO_WL_F_USE_SHMEM,
-};
-use crate::virtio::{
-    DeviceType, Interrupt, Queue, SharedMemoryMapper, SharedMemoryRegion, VirtioDevice,
-};
+use crate::virtio::vhost::user::vmm::Result;
+use crate::virtio::vhost::user::vmm::VhostUserHandler;
+use crate::virtio::wl::QUEUE_SIZE;
+use crate::virtio::wl::QUEUE_SIZES;
+use crate::virtio::wl::VIRTIO_WL_F_SEND_FENCES;
+use crate::virtio::wl::VIRTIO_WL_F_TRANS_FLAGS;
+use crate::virtio::wl::VIRTIO_WL_F_USE_SHMEM;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::SharedMemoryMapper;
+use crate::virtio::SharedMemoryRegion;
+use crate::virtio::VirtioDevice;
 
 pub struct Wl {
     kill_evt: Option<Event>,

@@ -4,11 +4,10 @@
 
 use anyhow::Result;
 
-use crate::{
-    bindings,
-    picture::{Picture, PictureSync},
-    status::Status,
-};
+use crate::bindings;
+use crate::picture::Picture;
+use crate::picture::PictureSync;
+use crate::status::Status;
 
 /// An owned VAImage that is tied to the lifetime of a given Picture.
 /// A VAImage is used to either get the surface data to client memory, or

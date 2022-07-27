@@ -8,16 +8,27 @@ use std::path::PathBuf;
 use std::thread;
 
 use anyhow::Context;
-use base::{error, open_file, warn, AsRawDescriptor, Event, RawDescriptor};
-use data_model::{DataInit, Le64};
+use base::error;
+use base::open_file;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Event;
+use base::RawDescriptor;
+use data_model::DataInit;
+use data_model::Le64;
 use serde::Deserialize;
 use vhost::Vhost;
 use vhost::Vsock as VhostVsockHandle;
 use vm_memory::GuestMemory;
 
 use super::worker::Worker;
-use super::{Error, Result};
-use crate::virtio::{copy_config, DeviceType, Interrupt, Queue, VirtioDevice};
+use super::Error;
+use super::Result;
+use crate::virtio::copy_config;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::VirtioDevice;
 
 pub const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 3;

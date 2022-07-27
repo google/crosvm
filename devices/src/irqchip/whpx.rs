@@ -14,23 +14,49 @@ cfg_if::cfg_if! {
         use base::Clock;
     }
 }
-use hypervisor::whpx::{WhpxVcpu, WhpxVm};
-use hypervisor::{
-    IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState, MPState, MsiAddressMessage,
-    MsiDataMessage, PicSelect, PicState, PitState, Vcpu, VcpuX86_64, Vm,
-};
+use base::error;
+use base::Error;
+use base::Event;
+use base::Result;
+use base::Tube;
+use hypervisor::whpx::WhpxVcpu;
+use hypervisor::whpx::WhpxVm;
+use hypervisor::IoapicState;
+use hypervisor::IrqRoute;
+use hypervisor::IrqSource;
+use hypervisor::IrqSourceChip;
+use hypervisor::LapicState;
+use hypervisor::MPState;
+use hypervisor::MsiAddressMessage;
+use hypervisor::MsiDataMessage;
+use hypervisor::PicSelect;
+use hypervisor::PicState;
+use hypervisor::PitState;
+use hypervisor::Vcpu;
+use hypervisor::VcpuX86_64;
+use hypervisor::Vm;
 use resources::SystemAllocator;
 
-use base::{error, Error, Event, Result, Tube};
-
-use crate::irqchip::{
-    DelayedIoApicIrqEvents, InterruptData, InterruptDestination, Ioapic, IrqEvent, IrqEventIndex,
-    Pic, Routes, VcpuRunState, IOAPIC_BASE_ADDRESS, IOAPIC_MEM_LENGTH_BYTES,
-};
-use crate::{
-    Bus, IrqChip, IrqChipCap, IrqChipX86_64, IrqEdgeEvent, IrqEventSource, IrqLevelEvent, Pit,
-    PitError,
-};
+use crate::irqchip::DelayedIoApicIrqEvents;
+use crate::irqchip::InterruptData;
+use crate::irqchip::InterruptDestination;
+use crate::irqchip::Ioapic;
+use crate::irqchip::IrqEvent;
+use crate::irqchip::IrqEventIndex;
+use crate::irqchip::Pic;
+use crate::irqchip::Routes;
+use crate::irqchip::VcpuRunState;
+use crate::irqchip::IOAPIC_BASE_ADDRESS;
+use crate::irqchip::IOAPIC_MEM_LENGTH_BYTES;
+use crate::Bus;
+use crate::IrqChip;
+use crate::IrqChipCap;
+use crate::IrqChipX86_64;
+use crate::IrqEdgeEvent;
+use crate::IrqEventSource;
+use crate::IrqLevelEvent;
+use crate::Pit;
+use crate::PitError;
 
 /// PIT channel 0 timer is connected to IRQ 0
 const PIT_CHANNEL0_IRQ: u32 = 0;
@@ -586,16 +612,23 @@ impl IrqChipX86_64 for WhpxSplitIrqChip {
 
 #[cfg(test)]
 mod tests {
+    use base::EventReadResult;
+    use hypervisor::whpx::Whpx;
+    use hypervisor::whpx::WhpxFeature;
+    use hypervisor::CpuId;
+    use hypervisor::IoapicRedirectionTableEntry;
+    use hypervisor::PitRWMode;
+    use hypervisor::TriggerMode;
+    use hypervisor::VmX86_64;
+    use resources::AddressRange;
+    use resources::SystemAllocatorConfig;
+    use vm_memory::GuestAddress;
+    use vm_memory::GuestMemory;
+
     use super::super::tests::*;
     use super::*;
-
     use crate::pci::CrosvmDeviceId;
     use crate::DeviceId;
-    use base::EventReadResult;
-    use hypervisor::whpx::{Whpx, WhpxFeature};
-    use hypervisor::{CpuId, IoapicRedirectionTableEntry, PitRWMode, TriggerMode, VmX86_64};
-    use resources::{AddressRange, SystemAllocatorConfig};
-    use vm_memory::{GuestAddress, GuestMemory};
 
     fn split_supported() -> bool {
         Whpx::check_whpx_feature(WhpxFeature::LocalApicEmulation)

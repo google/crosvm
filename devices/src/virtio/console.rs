@@ -10,24 +10,39 @@ pub mod asynchronous;
 mod sys;
 
 use std::collections::VecDeque;
-use std::io::{self, Read, Write};
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
 use std::ops::DerefMut;
 use std::result;
 use std::sync::Arc;
 use std::thread;
 
-use base::{error, AsRawDescriptor, Descriptor, Event, EventToken, RawDescriptor, WaitContext};
-use data_model::{DataInit, Le16, Le32};
+use base::error;
+use base::AsRawDescriptor;
+use base::Descriptor;
+use base::Event;
+use base::EventToken;
+use base::RawDescriptor;
+use base::WaitContext;
+use data_model::DataInit;
+use data_model::Le16;
+use data_model::Le32;
 use hypervisor::ProtectionType;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
-use crate::virtio::{
-    base_features, copy_config, DeviceType, Interrupt, Queue, Reader, SignalableInterrupt,
-    VirtioDevice, Writer,
-};
+use crate::virtio::base_features;
+use crate::virtio::copy_config;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::Reader;
+use crate::virtio::SignalableInterrupt;
+use crate::virtio::VirtioDevice;
+use crate::virtio::Writer;
 
 pub(crate) const QUEUE_SIZE: u16 = 256;
 

@@ -8,7 +8,8 @@ use std::rc::Rc;
 
 use cros_async::AsyncTube;
 
-use crate::virtio::iommu::{Result, State};
+use crate::virtio::iommu::Result;
+use crate::virtio::iommu::State;
 
 pub(in crate::virtio::iommu) async fn handle_command_tube(
     _state: &Rc<RefCell<State>>,

@@ -5,18 +5,27 @@
 //! Contains shared code between the broker & its children, specifically any IPC messages or common
 //! bootstrapping code.
 
+use std::fs::File;
+use std::fs::OpenOptions;
+
 use anyhow::Context;
-use base::{enable_high_res_timers, syslog, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
-use base::{EnabledHighResTimer, Tube};
-use serde::{Deserialize, Serialize};
-use std::fs::{File, OpenOptions};
+use base::enable_high_res_timers;
+use base::syslog;
+use base::EnabledHighResTimer;
+use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
+use base::SafeDescriptor;
+use base::Tube;
+use serde::Deserialize;
+use serde::Serialize;
 
 mod generic;
-use generic as product;
-
-use product::{init_child_crash_reporting, product_child_setup, ProductAttributes};
-
 use std::path::PathBuf;
+
+use generic as product;
+use product::init_child_crash_reporting;
+use product::product_child_setup;
+use product::ProductAttributes;
 
 /// Arguments that are common to all devices & helper processes.
 #[derive(Serialize, Deserialize)]

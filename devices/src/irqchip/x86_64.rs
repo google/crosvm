@@ -2,11 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{Error, Event, Result};
-use hypervisor::{
-    IoapicState, IrqRoute, IrqSource, IrqSourceChip, LapicState, PicSelect, PicState, PitState,
-};
-use std::{ops::Index, vec::Vec};
+use std::ops::Index;
+use std::vec::Vec;
+
+use base::Error;
+use base::Event;
+use base::Result;
+use hypervisor::IoapicState;
+use hypervisor::IrqRoute;
+use hypervisor::IrqSource;
+use hypervisor::IrqSourceChip;
+use hypervisor::LapicState;
+use hypervisor::PicSelect;
+use hypervisor::PicState;
+use hypervisor::PitState;
 
 use crate::IrqChip;
 
@@ -196,8 +205,11 @@ impl DelayedIoApicIrqEvents {
 #[cfg(test)]
 /// This module contains tests that apply to any implementations of IrqChipX86_64
 pub(super) mod tests {
+    use hypervisor::IrqRoute;
+    use hypervisor::IrqSource;
+    use hypervisor::IrqSourceChip;
+
     use super::*;
-    use hypervisor::{IrqRoute, IrqSource, IrqSourceChip};
 
     pub fn test_get_pic(mut chip: impl IrqChipX86_64) {
         let state = chip

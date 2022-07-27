@@ -5,7 +5,9 @@
 //! Linux kernel ELF file loader.
 
 use std::ffi::CStr;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::mem;
 
 use base::AsRawDescriptor;
@@ -13,7 +15,8 @@ use data_model::DataInit;
 use remain::sorted;
 use resources::AddressRange;
 use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
@@ -380,11 +383,14 @@ impl From<elf::Elf32_Phdr> for elf::Elf64_Phdr {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use std::fs::File;
     use std::io::Write;
+
     use tempfile::tempfile;
-    use vm_memory::{GuestAddress, GuestMemory};
+    use vm_memory::GuestAddress;
+    use vm_memory::GuestMemory;
+
+    use super::*;
 
     const MEM_SIZE: u64 = 0x40_0000;
 

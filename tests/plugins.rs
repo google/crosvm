@@ -4,17 +4,23 @@
 
 #![cfg(feature = "plugin")]
 
-use std::env::{current_exe, var_os};
+use std::env::current_exe;
+use std::env::var_os;
 use std::ffi::OsString;
 use std::fs::remove_file;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::io::Read;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
+use std::process::Stdio;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::thread::sleep;
 use std::time::Duration;
 
-use base::{ioctl, AsRawDescriptor};
+use base::ioctl;
+use base::AsRawDescriptor;
 use net_util::TapTCommon;
 use once_cell::sync::Lazy;
 use tempfile::tempfile;

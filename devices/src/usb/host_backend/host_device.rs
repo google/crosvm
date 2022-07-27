@@ -2,27 +2,40 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::HashMap;
+use std::mem;
 use std::mem::drop;
 use std::sync::Arc;
 
+use base::error;
+use base::warn;
+use data_model::DataInit;
+use sync::Mutex;
+use usb_util::ConfigDescriptorTree;
+use usb_util::ControlRequestDataPhaseTransferDirection;
+use usb_util::ControlRequestRecipient;
+use usb_util::DescriptorHeader;
+use usb_util::DescriptorType;
+use usb_util::Device;
+use usb_util::InterfaceDescriptor;
+use usb_util::StandardControlRequest;
+use usb_util::Transfer;
+use usb_util::TransferStatus;
+use usb_util::UsbRequestSetup;
+
 use super::error::*;
 use super::usb_endpoint::UsbEndpoint;
-use super::utils::{submit_transfer, update_transfer_state};
+use super::utils::submit_transfer;
+use super::utils::update_transfer_state;
 use crate::usb::xhci::scatter_gather_buffer::ScatterGatherBuffer;
-use crate::usb::xhci::xhci_backend_device::{BackendType, UsbDeviceAddress, XhciBackendDevice};
-use crate::usb::xhci::xhci_transfer::{XhciTransfer, XhciTransferState, XhciTransferType};
+use crate::usb::xhci::xhci_backend_device::BackendType;
+use crate::usb::xhci::xhci_backend_device::UsbDeviceAddress;
+use crate::usb::xhci::xhci_backend_device::XhciBackendDevice;
+use crate::usb::xhci::xhci_transfer::XhciTransfer;
+use crate::usb::xhci::xhci_transfer::XhciTransferState;
+use crate::usb::xhci::xhci_transfer::XhciTransferType;
 use crate::utils::AsyncJobQueue;
 use crate::utils::FailHandle;
-use base::{error, warn};
-use data_model::DataInit;
-use std::collections::HashMap;
-use std::mem;
-use sync::Mutex;
-use usb_util::{
-    ConfigDescriptorTree, ControlRequestDataPhaseTransferDirection, ControlRequestRecipient,
-    DescriptorHeader, DescriptorType, Device, InterfaceDescriptor, StandardControlRequest,
-    Transfer, TransferStatus, UsbRequestSetup,
-};
 
 #[derive(PartialEq)]
 pub enum ControlEndpointState {

@@ -4,17 +4,25 @@
 
 #![no_main]
 
-use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::io::Cursor;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::mem::size_of;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use base::Event;
 use cros_fuzz::fuzz_target;
-use devices::virtio::{base_features, Block, Interrupt, Queue, VirtioDevice};
+use devices::virtio::base_features;
+use devices::virtio::Block;
+use devices::virtio::Interrupt;
+use devices::virtio::Queue;
+use devices::virtio::VirtioDevice;
 use devices::IrqLevelEvent;
 use hypervisor::ProtectionType;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 const MEM_SIZE: u64 = 256 * 1024 * 1024;
 const DESC_SIZE: u64 = 16; // Bytes in one virtio descriptor.

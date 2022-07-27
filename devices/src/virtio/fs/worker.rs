@@ -2,20 +2,36 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::fs::File;
 use std::io;
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 
-use base::{error, syscall, Event, EventToken, Protection, SafeDescriptor, Tube, WaitContext};
-use fuse::filesystem::{FileSystem, ZeroCopyReader, ZeroCopyWriter};
+use base::error;
+use base::syscall;
+use base::Event;
+use base::EventToken;
+use base::Protection;
+use base::SafeDescriptor;
+use base::Tube;
+use base::WaitContext;
+use fuse::filesystem::FileSystem;
+use fuse::filesystem::ZeroCopyReader;
+use fuse::filesystem::ZeroCopyWriter;
 use sync::Mutex;
-use vm_control::{FsMappingRequest, VmResponse};
+use vm_control::FsMappingRequest;
+use vm_control::VmResponse;
 use vm_memory::GuestMemory;
 
-use crate::virtio::fs::{Error, Result};
-use crate::virtio::{Interrupt, Queue, Reader, SignalableInterrupt, Writer};
+use crate::virtio::fs::Error;
+use crate::virtio::fs::Result;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::Reader;
+use crate::virtio::SignalableInterrupt;
+use crate::virtio::Writer;
 
 impl fuse::Reader for Reader {}
 

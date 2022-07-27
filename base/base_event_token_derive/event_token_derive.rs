@@ -6,9 +6,17 @@
 
 extern crate proc_macro;
 
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::Ident;
+use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Field, Fields, Index, Member, Variant};
+use syn::parse_macro_input;
+use syn::Data;
+use syn::DeriveInput;
+use syn::Field;
+use syn::Fields;
+use syn::Index;
+use syn::Member;
+use syn::Variant;
 
 #[cfg(test)]
 mod tests;

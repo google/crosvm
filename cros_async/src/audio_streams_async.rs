@@ -6,19 +6,24 @@
 //!
 //! It implements the `AudioStreamsExecutor` trait for `Executor`, so it can be passed into
 //! the audio_streams API.
+use std::io::Result;
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
+use std::time::Duration;
 
-use std::{io::Result, time::Duration};
-
-use crate::{IntoAsync, IoSourceExt, TimerAsync};
 use async_trait::async_trait;
-use audio_streams::async_api::{AudioStreamsExecutor, ReadAsync, ReadWriteAsync, WriteAsync};
+#[cfg(unix)]
+use audio_streams::async_api::AsyncStream;
+use audio_streams::async_api::AudioStreamsExecutor;
+use audio_streams::async_api::ReadAsync;
+use audio_streams::async_api::ReadWriteAsync;
+use audio_streams::async_api::WriteAsync;
 
 #[cfg(unix)]
 use super::AsyncWrapper;
-#[cfg(unix)]
-use audio_streams::async_api::AsyncStream;
+use crate::IntoAsync;
+use crate::IoSourceExt;
+use crate::TimerAsync;
 
 /// A wrapper around IoSourceExt that is compatible with the audio_streams traits.
 pub struct IoSourceWrapper<T: IntoAsync + Send> {

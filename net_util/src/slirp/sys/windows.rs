@@ -4,21 +4,37 @@
 
 pub mod handler;
 
-use crate::{slirp::ETHERNET_FRAME_SIZE, Error, MacAddress, Result, TapT, TapTCommon};
-use std::io::{Read, Result as IoResult, Write};
+use std::io::Read;
+use std::io::Result as IoResult;
+use std::io::Write;
 use std::net;
 use std::os::raw::*;
 use std::os::windows::io::AsRawHandle;
 use std::thread;
 
-use base::named_pipes::{
-    self, BlockingMode, FramingMode, OverlappedWrapper, PipeConnection, ReadOverlapped,
-    WriteOverlapped,
-};
-use base::{warn, AsRawDescriptor, Event, RawDescriptor};
-use base::{Error as SysError, ReadNotifier};
+use base::named_pipes::BlockingMode;
+use base::named_pipes::FramingMode;
+use base::named_pipes::OverlappedWrapper;
+use base::named_pipes::PipeConnection;
+use base::named_pipes::ReadOverlapped;
+use base::named_pipes::WriteOverlapped;
+use base::named_pipes::{self};
+use base::warn;
+use base::AsRawDescriptor;
+use base::Error as SysError;
+use base::Event;
+use base::RawDescriptor;
+use base::ReadNotifier;
 use cros_async::IntoAsync;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::slirp::ETHERNET_FRAME_SIZE;
+use crate::Error;
+use crate::MacAddress;
+use crate::Result;
+use crate::TapT;
+use crate::TapTCommon;
 
 // Size of the buffer for packets in transit between the the virtio-net backend & Slirp.
 pub const SLIRP_BUFFER_SIZE: usize = 1000 * ETHERNET_FRAME_SIZE;

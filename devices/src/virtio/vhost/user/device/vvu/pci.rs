@@ -6,23 +6,37 @@
 
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
-use anyhow::{anyhow, bail, Context, Result};
-use base::{info, Event, MemoryMapping, MemoryMappingBuilder};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Result;
+use base::info;
+use base::Event;
+use base::MemoryMapping;
+use base::MemoryMappingBuilder;
 use data_model::DataInit;
 use memoffset::offset_of;
 use resources::Alloc;
 use vfio_sys::*;
-use virtio_sys::virtio_config::{self, VIRTIO_F_VERSION_1};
+use virtio_sys::virtio_config::VIRTIO_F_VERSION_1;
+use virtio_sys::virtio_config::{self};
 
-use crate::pci::{MsixCap, PciAddress, PciCapabilityID, CAPABILITY_LIST_HEAD_OFFSET};
-use crate::vfio::{VfioDevice, VfioPciConfig, VfioRegionAddr};
-use crate::virtio::vhost::user::device::vvu::{
-    bus::open_vfio_device,
-    queue::{DescTableAddrs, IovaAllocator, UserQueue},
-};
-use crate::virtio::{PciCapabilityType, VirtioPciCap};
+use crate::pci::MsixCap;
+use crate::pci::PciAddress;
+use crate::pci::PciCapabilityID;
+use crate::pci::CAPABILITY_LIST_HEAD_OFFSET;
+use crate::vfio::VfioDevice;
+use crate::vfio::VfioPciConfig;
+use crate::vfio::VfioRegionAddr;
+use crate::virtio::vhost::user::device::vvu::bus::open_vfio_device;
+use crate::virtio::vhost::user::device::vvu::queue::DescTableAddrs;
+use crate::virtio::vhost::user::device::vvu::queue::IovaAllocator;
+use crate::virtio::vhost::user::device::vvu::queue::UserQueue;
+use crate::virtio::PciCapabilityType;
+use crate::virtio::VirtioPciCap;
 
 const VIRTIO_CONFIG_STATUS_RESET: u8 = 0;
 

@@ -7,10 +7,13 @@ use std::rc::Rc;
 use anyhow::Result;
 use base::error;
 
-use crate::{
-    bindings, buffer::Buffer, buffer_type::BufferType, display::Display, status::Status, Config,
-    Surface,
-};
+use crate::bindings;
+use crate::buffer::Buffer;
+use crate::buffer_type::BufferType;
+use crate::display::Display;
+use crate::status::Status;
+use crate::Config;
+use crate::Surface;
 
 /// An owned Context that is tied to the lifetime of a particular Display
 pub struct Context {

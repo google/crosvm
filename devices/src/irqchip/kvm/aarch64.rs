@@ -3,14 +3,21 @@
 // found in the LICENSE file.
 
 use std::sync::Arc;
+
+use base::errno_result;
+use base::ioctl_with_ref;
+use base::Result;
+use base::SafeDescriptor;
+use hypervisor::kvm::KvmVcpu;
+use hypervisor::kvm::KvmVm;
+use hypervisor::DeviceKind;
+use hypervisor::IrqRoute;
+use hypervisor::Vm;
+use kvm_sys::*;
 use sync::Mutex;
 
-use base::{errno_result, ioctl_with_ref, Result, SafeDescriptor};
-use hypervisor::kvm::{KvmVcpu, KvmVm};
-use hypervisor::{DeviceKind, IrqRoute, Vm};
-use kvm_sys::*;
-
-use crate::{IrqChip, IrqChipAArch64};
+use crate::IrqChip;
+use crate::IrqChipAArch64;
 
 /// Default ARM routing table.  AARCH64_GIC_NR_SPIS pins go to VGIC.
 fn kvm_default_irq_routing_table() -> Vec<IrqRoute> {

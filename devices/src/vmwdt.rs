@@ -6,23 +6,35 @@
 //! on the vCPUs and resets the guest when no 'pet' events are received.
 //! <https://docs.google.com/document/d/1DYmk2roxlwHZsOfcJi8xDMdWOHAmomvs2SDh7KPud3Y/edit?usp=sharing&resourcekey=0-oSNabc-t040a1q0K4cyI8Q>
 
-use crate::pci::CrosvmDeviceId;
-use crate::DeviceId;
-use crate::{BusAccessInfo, BusDevice};
-use base::{
-    debug, error, gettid, warn, AsRawDescriptor, Descriptor, Error as SysError, Event, EventToken,
-    SendTube, Timer, VmEventType, WaitContext,
-};
-
-use remain::sorted;
 use std::convert::TryFrom;
+use std::fs;
 use std::io::Error as IoError;
 use std::process;
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
-use std::{fs, thread};
+
+use base::debug;
+use base::error;
+use base::gettid;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Descriptor;
+use base::Error as SysError;
+use base::Event;
+use base::EventToken;
+use base::SendTube;
+use base::Timer;
+use base::VmEventType;
+use base::WaitContext;
+use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;
+
+use crate::pci::CrosvmDeviceId;
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::DeviceId;
 
 // Registers offsets
 const VMWDT_REG_STATUS: u32 = 0x00;

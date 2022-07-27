@@ -4,20 +4,40 @@
 
 use std::convert::TryFrom;
 
-use libc::{EINVAL, ENOMEM, ENOTSUP, ENXIO};
-
-use base::{
-    errno_result, error, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val, warn, Error,
-    MemoryMappingBuilder, Result,
-};
+use base::errno_result;
+use base::error;
+use base::ioctl_with_mut_ref;
+use base::ioctl_with_ref;
+use base::ioctl_with_val;
+use base::warn;
+use base::Error;
+use base::MemoryMappingBuilder;
+use base::Result;
 use kvm_sys::*;
+use libc::EINVAL;
+use libc::ENOMEM;
+use libc::ENOTSUP;
+use libc::ENXIO;
 use vm_memory::GuestAddress;
 
-use super::{Kvm, KvmCap, KvmVcpu, KvmVm};
-use crate::{
-    ClockState, DeviceKind, Hypervisor, IrqSourceChip, ProtectionType, PsciVersion, VcpuAArch64,
-    VcpuExit, VcpuFeature, VcpuRegAArch64, Vm, VmAArch64, VmCap, PSCI_0_2,
-};
+use super::Kvm;
+use super::KvmCap;
+use super::KvmVcpu;
+use super::KvmVm;
+use crate::ClockState;
+use crate::DeviceKind;
+use crate::Hypervisor;
+use crate::IrqSourceChip;
+use crate::ProtectionType;
+use crate::PsciVersion;
+use crate::VcpuAArch64;
+use crate::VcpuExit;
+use crate::VcpuFeature;
+use crate::VcpuRegAArch64;
+use crate::Vm;
+use crate::VmAArch64;
+use crate::VmCap;
+use crate::PSCI_0_2;
 
 /// Gives the ID for a register to be used with `set_one_reg`.
 ///
@@ -466,10 +486,14 @@ pub(super) fn chip_to_kvm_chip(chip: IrqSourceChip) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    use vm_memory::GuestAddress;
+    use vm_memory::GuestMemory;
+
     use super::super::Kvm;
     use super::*;
-    use crate::{IrqRoute, IrqSource, IrqSourceChip};
-    use vm_memory::{GuestAddress, GuestMemory};
+    use crate::IrqRoute;
+    use crate::IrqSource;
+    use crate::IrqSourceChip;
 
     #[test]
     fn set_gsi_routing() {

@@ -5,9 +5,12 @@
 use std::fs::File;
 
 use cros_async::sys::windows::HandleSource;
-use cros_async::{Executor, IoSourceExt};
+use cros_async::Executor;
+use cros_async::IoSourceExt;
 
-use crate::{Error, Result, SingleFileDisk};
+use crate::Error;
+use crate::Result;
+use crate::SingleFileDisk;
 
 impl SingleFileDisk {
     pub fn new_from_files(disk_files: Vec<File>, _ex: &Executor) -> Result<Self> {

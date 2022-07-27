@@ -5,7 +5,8 @@
 use std::path::Path;
 use std::thread::JoinHandle;
 
-use crate::{client::HandleRequestResult, VmRequest};
+use crate::client::HandleRequestResult;
+use crate::VmRequest;
 
 // TODO(b/145563346): Make this work on Windows
 pub fn handle_request<T: AsRef<Path> + std::fmt::Debug>(

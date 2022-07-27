@@ -2,17 +2,25 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::arch::x86_64::{CpuidResult, __cpuid, __cpuid_count};
+use std::arch::x86_64::CpuidResult;
+use std::arch::x86_64::__cpuid;
+use std::arch::x86_64::__cpuid_count;
 use std::collections::BTreeMap;
-
-use acpi_tables::{facs::FACS, rsdp::RSDP, sdt::SDT};
-use arch::VcpuAffinity;
-use base::{error, warn};
-use data_model::DataInit;
-use devices::{ACPIPMResource, PciAddress, PciInterruptPin};
 use std::sync::Arc;
+
+use acpi_tables::facs::FACS;
+use acpi_tables::rsdp::RSDP;
+use acpi_tables::sdt::SDT;
+use arch::VcpuAffinity;
+use base::error;
+use base::warn;
+use data_model::DataInit;
+use devices::ACPIPMResource;
+use devices::PciAddress;
+use devices::PciInterruptPin;
 use sync::Mutex;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 pub struct AcpiDevResource {
     pub amls: Vec<u8>,

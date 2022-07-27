@@ -7,10 +7,13 @@ use std::rc::Rc;
 use anyhow::Result;
 use base::error;
 
-use crate::{
-    bindings, buffer_type::BufferType, status::Status, Context, IQMatrix, PictureParameter,
-    SliceParameter,
-};
+use crate::bindings;
+use crate::buffer_type::BufferType;
+use crate::status::Status;
+use crate::Context;
+use crate::IQMatrix;
+use crate::PictureParameter;
+use crate::SliceParameter;
 
 /// A wrapper type representing a buffer created with vaCreateBuffer
 pub struct Buffer {

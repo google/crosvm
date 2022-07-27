@@ -10,28 +10,35 @@
 use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::TryFrom;
-use std::mem::{size_of, transmute};
-use std::os::raw::{c_char, c_void};
+use std::mem::size_of;
+use std::mem::transmute;
+use std::os::raw::c_char;
+use std::os::raw::c_void;
 use std::os::unix::io::AsRawFd;
 use std::panic::catch_unwind;
 use std::process::abort;
 use std::ptr::null_mut;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use base::{
-    warn, Error as SysError, ExternalMapping, ExternalMappingError, ExternalMappingResult,
-    FromRawDescriptor, SafeDescriptor,
-};
+use base::warn;
+use base::Error as SysError;
+use base::ExternalMapping;
+use base::ExternalMappingError;
+use base::ExternalMappingResult;
+use base::FromRawDescriptor;
+use base::SafeDescriptor;
+use data_model::VolatileSlice;
 
 use crate::generated::virgl_debug_callback_bindings::*;
 use crate::generated::virgl_renderer_bindings::*;
 use crate::renderer_utils::*;
-use crate::rutabaga_core::{RutabagaComponent, RutabagaContext, RutabagaResource};
+use crate::rutabaga_core::RutabagaComponent;
+use crate::rutabaga_core::RutabagaContext;
+use crate::rutabaga_core::RutabagaResource;
 use crate::rutabaga_utils::*;
-
-use data_model::VolatileSlice;
 
 type Query = virgl_renderer_export_query;
 

@@ -9,17 +9,28 @@
 
 use std::thread;
 
+use base::error;
 #[cfg(feature = "video-encoder")]
 use base::info;
-use base::{error, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube};
-use data_model::{DataInit, Le32};
+use base::AsRawDescriptor;
+use base::Error as SysError;
+use base::Event;
+use base::RawDescriptor;
+use base::Tube;
+use data_model::DataInit;
+use data_model::Le32;
 use remain::sorted;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
+use crate::virtio::copy_config;
 use crate::virtio::virtio_device::VirtioDevice;
-use crate::virtio::{self, copy_config, DescriptorError, DeviceType, Interrupt};
+use crate::virtio::DescriptorError;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::{self};
 
 #[macro_use]
 mod macros;

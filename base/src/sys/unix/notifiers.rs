@@ -5,7 +5,8 @@
 use std::os::unix::net::UnixStream;
 
 use crate::descriptor::AsRawDescriptor;
-use crate::{CloseNotifier, ReadNotifier};
+use crate::CloseNotifier;
+use crate::ReadNotifier;
 
 impl ReadNotifier for UnixStream {
     fn get_read_notifier(&self) -> &dyn AsRawDescriptor {

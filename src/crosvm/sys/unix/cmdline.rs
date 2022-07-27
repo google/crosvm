@@ -2,9 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use devices::virtio::vhost::user::device;
-
 use argh::FromArgs;
+use devices::virtio::vhost::user::device;
 
 #[derive(FromArgs)]
 #[argh(subcommand)]

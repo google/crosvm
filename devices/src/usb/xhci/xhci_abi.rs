@@ -2,11 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fmt::Display;
+use std::fmt::{self};
+
 use bit_field::Error as BitFieldError;
 use bit_field::*;
 use data_model::DataInit;
 use remain::sorted;
-use std::fmt::{self, Display};
 use thiserror::Error;
 use vm_memory::GuestAddress;
 

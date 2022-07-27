@@ -2,13 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{
-    DisplayT, GpuDisplayError, GpuDisplayFramebuffer, GpuDisplayResult, GpuDisplaySurface,
-    SurfaceType,
-};
-
-use base::{AsRawDescriptor, Event, RawDescriptor};
+use base::AsRawDescriptor;
+use base::Event;
+use base::RawDescriptor;
 use data_model::VolatileSlice;
+
+use crate::DisplayT;
+use crate::GpuDisplayError;
+use crate::GpuDisplayFramebuffer;
+use crate::GpuDisplayResult;
+use crate::GpuDisplaySurface;
+use crate::SurfaceType;
 
 #[allow(dead_code)]
 struct Buffer {

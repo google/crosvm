@@ -9,12 +9,16 @@ interface and conform to the windows naming convension.
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use serde::{de::DeserializeOwned, Deserialize};
-use {
-    base::warn,
-    std::{collections::HashMap, error::Error, rc::Rc},
-    wmi::{query::FilterValue, COMLibrary, WMIConnection},
-};
+use std::collections::HashMap;
+use std::error::Error;
+use std::rc::Rc;
+
+use base::warn;
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
+use wmi::query::FilterValue;
+use wmi::COMLibrary;
+use wmi::WMIConnection;
 
 const VIDEO_CONTROLLER_AVAILABILITY_ENABLED: i64 = 3;
 

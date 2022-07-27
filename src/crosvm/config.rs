@@ -4,16 +4,24 @@
 
 use std::collections::BTreeMap;
 use std::net;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
-use arch::{
-    set_default_serial_parameters, MsrAction, MsrConfig, MsrFilter, MsrRWType, MsrValueFrom,
-    Pstore, VcpuAffinity,
-};
-use base::{debug, pagesize};
-use devices::serial_device::{SerialHardware, SerialParameters};
+use arch::set_default_serial_parameters;
+use arch::MsrAction;
+use arch::MsrConfig;
+use arch::MsrFilter;
+use arch::MsrRWType;
+use arch::MsrValueFrom;
+use arch::Pstore;
+use arch::VcpuAffinity;
+use base::debug;
+use base::pagesize;
+use devices::serial_device::SerialHardware;
+use devices::serial_device::SerialParameters;
 use devices::virtio::block::block::DiskOption;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
@@ -21,22 +29,30 @@ use devices::virtio::gpu::GpuParameters;
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
+#[cfg(feature = "audio")]
+use devices::Ac97Backend;
+#[cfg(feature = "audio")]
+use devices::Ac97Parameters;
 #[cfg(feature = "direct")]
 use devices::BusRange;
-use devices::{PciAddress, PciClassCode, PflashParameters, StubPciParameters};
+use devices::PciAddress;
+use devices::PciClassCode;
+use devices::PflashParameters;
+use devices::StubPciParameters;
 use hypervisor::ProtectionType;
 use resources::AddressRange;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use uuid::Uuid;
 use vm_control::BatteryType;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use x86_64::{set_enable_pnp_data_msr_config, set_itmt_msr_config};
+use x86_64::set_enable_pnp_data_msr_config;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::set_itmt_msr_config;
 
-#[cfg(feature = "audio")]
-use devices::{Ac97Backend, Ac97Parameters};
-
+use super::argument::parse_hex_or_decimal;
+use super::check_opt_path;
 pub(crate) use super::sys::HypervisorKind;
-use super::{argument::parse_hex_or_decimal, check_opt_path};
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
@@ -1198,9 +1214,12 @@ pub fn parse_pflash_parameters(s: &str) -> Result<PflashParameters, String> {
 // BTreeMaps serialize fine, as long as their keys are trivial types. A tuple does not
 // work, hence the need to convert to/from a vector form.
 mod serde_serial_params {
-    use super::*;
-    use serde::{Deserializer, Serializer};
     use std::iter::FromIterator;
+
+    use serde::Deserializer;
+    use serde::Serializer;
+
+    use super::*;
 
     pub fn serialize<S>(
         params: &BTreeMap<(SerialHardware, u8), SerialParameters>,
@@ -1795,8 +1814,9 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use argh::FromArgs;
+
+    use super::*;
 
     #[test]
     fn parse_cpu_set_single() {

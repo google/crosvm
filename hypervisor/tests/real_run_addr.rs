@@ -6,10 +6,10 @@
 #![cfg(unix)]
 #![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 
-use sync::Mutex;
-
 use hypervisor::*;
-use vm_memory::{GuestAddress, GuestMemory};
+use sync::Mutex;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 #[test]
 #[cfg(unix)]

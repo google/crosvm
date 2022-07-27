@@ -2,34 +2,58 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{cell::RefCell, collections::BTreeMap, fs::File, path::PathBuf, rc::Rc, sync::Arc};
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::fs::File;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
 use argh::FromArgs;
 use async_task::Task;
-use base::{
-    clone_descriptor, error, warn, Event, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
-    Timer, Tube, UnixSeqpacketListener, UnlinkUnixSeqpacketListener,
-};
-use cros_async::{AsyncTube, AsyncWrapper, EventAsync, Executor, IoSourceExt, TimerAsync};
-use futures::{
-    future::{select, Either},
-    pin_mut,
-};
+use base::clone_descriptor;
+use base::error;
+use base::warn;
+use base::Event;
+use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
+use base::SafeDescriptor;
+use base::Timer;
+use base::Tube;
+use base::UnixSeqpacketListener;
+use base::UnlinkUnixSeqpacketListener;
+use cros_async::AsyncTube;
+use cros_async::AsyncWrapper;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use cros_async::IoSourceExt;
+use cros_async::TimerAsync;
+use futures::future::select;
+use futures::future::Either;
+use futures::pin_mut;
 use hypervisor::ProtectionType;
 use sync::Mutex;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 
-use crate::virtio::{
-    self, gpu,
-    vhost::user::device::{
-        handler::{sys::Doorbell, VhostUserBackend},
-        listener::{sys::VhostUserListener, VhostUserListenerTrait},
-        wl::parse_wayland_sock,
-    },
-    DescriptorChain, Gpu, GpuDisplayParameters, GpuParameters, Queue, QueueReader, VirtioDevice,
-};
+use crate::virtio::gpu;
+use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
+use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
+use crate::virtio::vhost::user::device::wl::parse_wayland_sock;
+use crate::virtio::DescriptorChain;
+use crate::virtio::Gpu;
+use crate::virtio::GpuDisplayParameters;
+use crate::virtio::GpuParameters;
+use crate::virtio::Queue;
+use crate::virtio::QueueReader;
+use crate::virtio::VirtioDevice;
+use crate::virtio::{self};
 
 const MAX_QUEUE_NUM: usize = gpu::QUEUE_SIZES.len();
 const MAX_VRING_LEN: u16 = gpu::QUEUE_SIZES[0];

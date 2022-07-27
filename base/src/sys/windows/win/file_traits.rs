@@ -2,8 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{FileAllocate, WriteZeroesAt};
-use std::{fs::File, io};
+use std::fs::File;
+use std::io;
+
+use crate::FileAllocate;
+use crate::WriteZeroesAt;
 
 #[macro_export]
 macro_rules! volatile_impl {
@@ -11,11 +14,12 @@ macro_rules! volatile_impl {
         // Unused imports are "unneeded" because the only usage of this macro already has those
         // names in scope.
         #[allow(unused_imports)]
-        use crate::AsRawDescriptor as _;
-        #[allow(unused_imports)]
         use std::convert::TryInto as _;
         #[allow(unused_imports)]
         use std::io::Seek as _;
+
+        #[allow(unused_imports)]
+        use crate::AsRawDescriptor as _;
         impl FileReadWriteVolatile for $ty {
             fn read_volatile(&mut self, slice: VolatileSlice) -> Result<usize> {
                 // Safe because only bytes inside the slice are accessed and the kernel is expected

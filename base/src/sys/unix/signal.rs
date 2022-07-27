@@ -2,28 +2,53 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use libc::{
-    c_int, pthread_kill, pthread_sigmask, pthread_t, sigaction, sigaddset, sigemptyset, siginfo_t,
-    sigismember, sigpending, sigset_t, sigtimedwait, sigwait, timespec, waitpid, EAGAIN, EINTR,
-    EINVAL, SA_RESTART, SIG_BLOCK, SIG_DFL, SIG_UNBLOCK, WNOHANG,
-};
+use std::cmp::Ordering;
+use std::convert::TryFrom;
+use std::io;
+use std::mem;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::os::unix::thread::JoinHandleExt;
+use std::process::Child;
+use std::ptr::null;
+use std::ptr::null_mut;
+use std::result;
+use std::thread::JoinHandle;
+use std::time::Duration;
+use std::time::Instant;
+
+use libc::c_int;
+use libc::pthread_kill;
+use libc::pthread_sigmask;
+use libc::pthread_t;
+use libc::sigaction;
+use libc::sigaddset;
+use libc::sigemptyset;
+use libc::siginfo_t;
+use libc::sigismember;
+use libc::sigpending;
+use libc::sigset_t;
+use libc::sigtimedwait;
+use libc::sigwait;
+use libc::timespec;
+use libc::waitpid;
+use libc::EAGAIN;
+use libc::EINTR;
+use libc::EINVAL;
+use libc::SA_RESTART;
+use libc::SIG_BLOCK;
+use libc::SIG_DFL;
+use libc::SIG_UNBLOCK;
+use libc::WNOHANG;
 use remain::sorted;
 use thiserror::Error;
 
-use std::{
-    cmp::Ordering,
-    convert::TryFrom,
-    io, mem,
-    os::unix::thread::JoinHandleExt,
-    process::Child,
-    ptr::{null, null_mut},
-    result,
-    thread::JoinHandle,
-    time::{Duration, Instant},
-};
-
-use super::{duration_to_timespec, errno_result, getsid, Error as ErrnoError, Pid, Result};
-use std::ops::{Deref, DerefMut};
+use super::duration_to_timespec;
+use super::errno_result;
+use super::getsid;
+use super::Error as ErrnoError;
+use super::Pid;
+use super::Result;
 
 const POLL_RATE: Duration = Duration::from_millis(50);
 const DEFAULT_KILL_TIMEOUT: Duration = Duration::from_secs(5);

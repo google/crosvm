@@ -2,31 +2,44 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{
-    io_ext::AllocateMode,
-    mem::{BackingMemory, MemRegion},
-    AsyncError, AsyncResult, CancellableBlockingPool, IoSourceExt, ReadAsync, WriteAsync,
-};
+use std::fs::File;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
+use std::io::{self};
+use std::mem::ManuallyDrop;
+use std::ptr::null_mut;
+use std::sync::Arc;
+use std::time::Duration;
+
 use async_trait::async_trait;
-use base::{
-    error, warn, AsRawDescriptor, Descriptor, Error as SysUtilError, FileReadWriteAtVolatile,
-    FileReadWriteVolatile, FromRawDescriptor, PunchHole, WriteZeroesAt,
-};
+use base::error;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Descriptor;
+use base::Error as SysUtilError;
+use base::FileReadWriteAtVolatile;
+use base::FileReadWriteVolatile;
+use base::FromRawDescriptor;
+use base::PunchHole;
+use base::WriteZeroesAt;
 use data_model::VolatileSlice;
 use smallvec::SmallVec;
-use std::{
-    fs::File,
-    io::{
-        Read, Seek, SeekFrom, Write, {self},
-    },
-    mem::ManuallyDrop,
-    ptr::null_mut,
-    sync::Arc,
-    time::Duration,
-};
 use sync::Mutex;
 use thiserror::Error as ThisError;
-use winapi::um::{ioapiset::CancelIoEx, processthreadsapi::GetCurrentThreadId};
+use winapi::um::ioapiset::CancelIoEx;
+use winapi::um::processthreadsapi::GetCurrentThreadId;
+
+use crate::io_ext::AllocateMode;
+use crate::mem::BackingMemory;
+use crate::mem::MemRegion;
+use crate::AsyncError;
+use crate::AsyncResult;
+use crate::CancellableBlockingPool;
+use crate::IoSourceExt;
+use crate::ReadAsync;
+use crate::WriteAsync;
 
 #[derive(ThisError, Debug)]
 pub enum Error {
@@ -413,11 +426,14 @@ impl<F: AsRawDescriptor> IoSourceExt<F> for HandleSource<F> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
+    use tempfile::tempfile;
+    use tempfile::NamedTempFile;
+
     use super::super::HandleExecutor;
     use super::*;
     use crate::mem::VecIoWrapper;
-    use std::fs;
-    use tempfile::{tempfile, NamedTempFile};
 
     #[test]
     fn test_read_vec() {

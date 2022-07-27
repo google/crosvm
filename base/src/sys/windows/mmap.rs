@@ -2,21 +2,29 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::{self, Read, Write};
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
 
-use libc::{c_int, c_uint, c_void};
+use libc::c_int;
+use libc::c_uint;
+use libc::c_void;
 use remain::sorted;
 use win_util::create_file_mapping;
 use win_util::duplicate_handle;
 use winapi::um::winnt::PAGE_READWRITE;
 
-use crate::{
-    external_mapping::ExternalMapping, AsRawDescriptor, Descriptor, FromRawDescriptor,
-    MappedRegion, MemoryMapping as CrateMemoryMapping, MemoryMappingBuilder, Protection,
-    RawDescriptor, SafeDescriptor,
-};
-
 pub use super::mmap_platform::MemoryMappingArena;
+use crate::external_mapping::ExternalMapping;
+use crate::AsRawDescriptor;
+use crate::Descriptor;
+use crate::FromRawDescriptor;
+use crate::MappedRegion;
+use crate::MemoryMapping as CrateMemoryMapping;
+use crate::MemoryMappingBuilder;
+use crate::Protection;
+use crate::RawDescriptor;
+use crate::SafeDescriptor;
 
 #[sorted]
 #[derive(Debug, thiserror::Error)]
@@ -307,9 +315,13 @@ impl<'a> MemoryMappingBuilder<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{super::shm::SharedMemory, *};
-    use data_model::{VolatileMemory, VolatileMemoryError};
     use std::ffi::CString;
+
+    use data_model::VolatileMemory;
+    use data_model::VolatileMemoryError;
+
+    use super::super::shm::SharedMemory;
+    use super::*;
 
     // get_slice() and other methods are only available on crate::MemoryMapping.
     fn to_crate_mmap(mapping: MemoryMapping) -> crate::MemoryMapping {

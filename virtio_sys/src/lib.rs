@@ -8,7 +8,10 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use base::{ioctl_io_nr, ioctl_ior_nr, ioctl_iow_nr, ioctl_iowr_nr};
+use base::ioctl_io_nr;
+use base::ioctl_ior_nr;
+use base::ioctl_iow_nr;
+use base::ioctl_iowr_nr;
 
 pub mod vhost;
 pub mod virtio_config;

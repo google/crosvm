@@ -2,20 +2,27 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{cell::RefCell, os::unix::net::UnixStream, path::Path, thread};
+use std::cell::RefCell;
+use std::os::unix::net::UnixStream;
+use std::path::Path;
+use std::thread;
 
-use base::{error, Event, RawDescriptor};
+use base::error;
+use base::Event;
+use base::RawDescriptor;
 use data_model::Le64;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 
-use crate::virtio::{
-    vhost::{
-        user::vmm::{handler::VhostUserHandler, Error, Result},
-        vsock,
-    },
-    DeviceType, Interrupt, Queue, VirtioDevice,
-};
+use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
+use crate::virtio::vhost::user::vmm::Error;
+use crate::virtio::vhost::user::vmm::Result;
+use crate::virtio::vhost::vsock;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::VirtioDevice;
 
 pub struct Vsock {
     kill_evt: Option<Event>,

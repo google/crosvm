@@ -4,23 +4,36 @@
 
 use std::collections::VecDeque;
 use std::convert::TryInto;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
-use audio_streams::{
-    shm_streams::{ShmStream, ShmStreamSource},
-    BoxError, NoopStreamControl, SampleFormat, StreamControl, StreamDirection, StreamEffect,
-};
-use base::{
-    self, error, set_rt_prio_limit, set_rt_round_robin, warn, AsRawDescriptor, AsRawDescriptors,
-    FromRawDescriptor, RawDescriptor,
-};
+use audio_streams::shm_streams::ShmStream;
+use audio_streams::shm_streams::ShmStreamSource;
+use audio_streams::BoxError;
+use audio_streams::NoopStreamControl;
+use audio_streams::SampleFormat;
+use audio_streams::StreamControl;
+use audio_streams::StreamDirection;
+use audio_streams::StreamEffect;
+use base::error;
+use base::set_rt_prio_limit;
+use base::set_rt_round_robin;
+use base::warn;
+use base::AsRawDescriptor;
+use base::AsRawDescriptors;
+use base::FromRawDescriptor;
+use base::RawDescriptor;
+use base::{self};
 use remain::sorted;
-use sync::{Condvar, Mutex};
+use sync::Condvar;
+use sync::Mutex;
 use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 use crate::pci::ac97_mixer::Ac97Mixer;
 use crate::pci::ac97_regs::*;
@@ -959,9 +972,9 @@ fn current_buffer_size(
 
 #[cfg(test)]
 mod test {
-    use super::*;
-
     use audio_streams::shm_streams::MockShmStreamSource;
+
+    use super::*;
 
     #[test]
     fn bm_bdbar() {

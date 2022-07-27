@@ -1,22 +1,35 @@
 // Copyright 2021 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-use std::cmp::{max, min};
+use std::cmp::max;
+use std::cmp::min;
 use std::sync::Arc;
+
+use base::warn;
+use base::AsRawDescriptors;
+use base::RawDescriptor;
+use base::Tube;
+use resources::Alloc;
+use resources::MmioType;
+use resources::SystemAllocator;
 use sync::Mutex;
 
-use crate::pci::msi::{MsiCap, MsiConfig};
+use crate::pci::msi::MsiCap;
+use crate::pci::msi::MsiConfig;
 use crate::pci::pci_configuration::PciBridgeSubclass;
-use crate::pci::{
-    BarRange, PciAddress, PciBarConfiguration, PciBus, PciClassCode, PciConfiguration, PciDevice,
-    PciDeviceError, PciHeaderType, PCI_VENDOR_ID_INTEL,
-};
-use crate::PciInterruptPin;
-use base::{warn, AsRawDescriptors, RawDescriptor, Tube};
-use resources::{Alloc, MmioType, SystemAllocator};
-
 use crate::pci::pcie::pcie_device::PcieDevice;
+use crate::pci::BarRange;
+use crate::pci::PciAddress;
+use crate::pci::PciBarConfiguration;
+use crate::pci::PciBus;
+use crate::pci::PciClassCode;
+use crate::pci::PciConfiguration;
+use crate::pci::PciDevice;
+use crate::pci::PciDeviceError;
+use crate::pci::PciHeaderType;
+use crate::pci::PCI_VENDOR_ID_INTEL;
 use crate::IrqLevelEvent;
+use crate::PciInterruptPin;
 
 pub const BR_BUS_NUMBER_REG: usize = 0x6;
 pub const BR_BUS_SUBORDINATE_OFFSET: usize = 0x2;

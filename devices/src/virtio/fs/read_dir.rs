@@ -5,11 +5,13 @@
 use std::ffi::CStr;
 use std::io;
 use std::mem::size_of;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
+use std::ops::DerefMut;
 
 use base::AsRawDescriptor;
 use data_model::DataInit;
-use fuse::filesystem::{DirEntry, DirectoryIterator};
+use fuse::filesystem::DirEntry;
+use fuse::filesystem::DirectoryIterator;
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]

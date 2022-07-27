@@ -3,7 +3,9 @@
 // found in the LICENSE file.
 //! Utility features shared by both the decoder and encoder VDA backends.
 
-use crate::virtio::video::{error::VideoError, format::Profile, protocol};
+use crate::virtio::video::error::VideoError;
+use crate::virtio::video::format::Profile;
+use crate::virtio::video::protocol;
 
 /// Transparent convertion from libvda error to VideoError backend failure.
 impl From<libvda::Error> for VideoError {

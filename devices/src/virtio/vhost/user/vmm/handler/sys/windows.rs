@@ -7,11 +7,16 @@ use std::sync::Mutex;
 use base::Tube;
 use cros_async::Executor;
 use vmm_vhost::connection::TubeEndpoint;
-use vmm_vhost::message::{MasterReq, VhostUserProtocolFeatures};
-use vmm_vhost::{Error as VhostError, Master, VhostUserMasterReqHandler};
+use vmm_vhost::message::MasterReq;
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::Error as VhostError;
+use vmm_vhost::Master;
+use vmm_vhost::VhostUserMasterReqHandler;
 
-use crate::virtio::vhost::user::vmm::handler::{BackendReqHandlerImpl, VhostUserHandler};
-use crate::virtio::vhost::user::vmm::{Error, Result};
+use crate::virtio::vhost::user::vmm::handler::BackendReqHandlerImpl;
+use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
+use crate::virtio::vhost::user::vmm::Error;
+use crate::virtio::vhost::user::vmm::Result;
 
 // TODO(rizhang): upstream CL so SocketMaster is renamed to EndpointMaster to make it more cross
 // platform.

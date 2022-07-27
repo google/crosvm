@@ -2,33 +2,30 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    io,
-    mem::MaybeUninit,
-    sync::Once,
-    time::{Duration, Instant},
-};
-
-use winapi::shared::minwindef::{
-    HINSTANCE, HMODULE, PULONG, {self},
-};
-
-use winapi::{
-    shared::{
-        ntdef::{NTSTATUS, ULONG},
-        ntstatus::STATUS_SUCCESS,
-    },
-    um::{libloaderapi, mmsystem::TIMERR_NOERROR},
-};
-
+use std::io;
+use std::mem::MaybeUninit;
+use std::sync::Once;
 use std::thread::sleep;
-use win_util::{win32_string, win32_wide_string};
-use winapi::um::{
-    timeapi::{timeBeginPeriod, timeEndPeriod},
-    winnt::BOOLEAN,
-};
+use std::time::Duration;
+use std::time::Instant;
 
-use super::super::{Error, Result};
+use win_util::win32_string;
+use win_util::win32_wide_string;
+use winapi::shared::minwindef::HINSTANCE;
+use winapi::shared::minwindef::HMODULE;
+use winapi::shared::minwindef::PULONG;
+use winapi::shared::minwindef::{self};
+use winapi::shared::ntdef::NTSTATUS;
+use winapi::shared::ntdef::ULONG;
+use winapi::shared::ntstatus::STATUS_SUCCESS;
+use winapi::um::libloaderapi;
+use winapi::um::mmsystem::TIMERR_NOERROR;
+use winapi::um::timeapi::timeBeginPeriod;
+use winapi::um::timeapi::timeEndPeriod;
+use winapi::um::winnt::BOOLEAN;
+
+use super::super::Error;
+use super::super::Result;
 use crate::warn;
 
 static NT_INIT: Once = Once::new();

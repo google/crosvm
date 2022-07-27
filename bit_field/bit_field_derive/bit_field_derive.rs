@@ -6,13 +6,26 @@
 
 extern crate proc_macro;
 
-use proc_macro2::{Span, TokenStream};
-use quote::{quote, quote_spanned};
-use syn::parse::{Error, Result};
-use syn::{
-    parse_macro_input, Attribute, Data, DataEnum, DeriveInput, Fields, FieldsNamed, FieldsUnnamed,
-    Ident, Lit, LitInt, Meta, Type, Visibility,
-};
+use proc_macro2::Span;
+use proc_macro2::TokenStream;
+use quote::quote;
+use quote::quote_spanned;
+use syn::parse::Error;
+use syn::parse::Result;
+use syn::parse_macro_input;
+use syn::Attribute;
+use syn::Data;
+use syn::DataEnum;
+use syn::DeriveInput;
+use syn::Fields;
+use syn::FieldsNamed;
+use syn::FieldsUnnamed;
+use syn::Ident;
+use syn::Lit;
+use syn::LitInt;
+use syn::Meta;
+use syn::Type;
+use syn::Visibility;
 
 /// The function that derives the actual implementation.
 #[proc_macro_attribute]
@@ -641,8 +654,9 @@ pub fn define_bit_field_specifiers(_input: proc_macro::TokenStream) -> proc_macr
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use syn::parse_quote;
+
+    use super::*;
 
     #[test]
     fn end_to_end() {

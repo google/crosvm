@@ -2,20 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{
-    queue::RunnableQueue,
-    waker::{new_waker, WeakWake},
-};
-use async_task::{Runnable, Task};
-use futures::task::{Context, Poll};
+use std::future::Future;
+use std::io;
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::sync::Weak;
+
+use async_task::Runnable;
+use async_task::Task;
+use futures::task::Context;
+use futures::task::Poll;
 use pin_utils::pin_mut;
-use std::{
-    future::Future,
-    io,
-    sync::{mpsc, Arc, Weak},
-};
-use sync::{Condvar, Mutex};
+use sync::Condvar;
+use sync::Mutex;
 use thiserror::Error as ThisError;
+
+use crate::queue::RunnableQueue;
+use crate::waker::new_waker;
+use crate::waker::WeakWake;
 
 #[derive(Debug, ThisError)]
 pub enum Error {
@@ -161,7 +165,9 @@ impl WeakWake for RawExecutor {
 mod test {
     use super::*;
     const FUT_MSG: i32 = 5;
-    use futures::{channel::mpsc as fut_mpsc, SinkExt, StreamExt};
+    use futures::channel::mpsc as fut_mpsc;
+    use futures::SinkExt;
+    use futures::StreamExt;
 
     #[test]
     fn run_future() {

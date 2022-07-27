@@ -2,20 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    os::unix::io::RawFd,
-    sync::{
-        atomic::{AtomicI32, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+use std::os::unix::io::RawFd;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::Duration;
 
-use base::{error, AsRawDescriptor, SafeDescriptor};
-use futures::task::{waker_ref, ArcWake, WakerRef};
+use base::error;
+use base::AsRawDescriptor;
+use base::SafeDescriptor;
+use futures::task::waker_ref;
+use futures::task::ArcWake;
+use futures::task::WakerRef;
 use once_cell::sync::OnceCell;
 
-use crate::{executor, AsIoBufs};
+use crate::executor;
+use crate::AsIoBufs;
 
 mod cmsg;
 mod mio;

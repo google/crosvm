@@ -2,26 +2,30 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    convert::TryFrom,
-    fs::File,
-    io::{Stderr, Stdin, Stdout},
-    net::UdpSocket,
-    ops::Drop,
-    os::unix::{
-        io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
-        net::{UnixDatagram, UnixListener, UnixStream},
-    },
-};
+use std::convert::TryFrom;
+use std::fs::File;
+use std::io::Stderr;
+use std::io::Stdin;
+use std::io::Stdout;
+use std::net::UdpSocket;
+use std::ops::Drop;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::io::IntoRawFd;
+use std::os::unix::io::RawFd;
+use std::os::unix::net::UnixDatagram;
+use std::os::unix::net::UnixListener;
+use std::os::unix::net::UnixStream;
 
-use super::{
-    errno_result,
-    net::{UnixSeqpacket, UnlinkUnixSeqpacketListener},
-    Result,
-};
-use crate::descriptor::{
-    AsRawDescriptor, Descriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor,
-};
+use super::errno_result;
+use super::net::UnixSeqpacket;
+use super::net::UnlinkUnixSeqpacketListener;
+use super::Result;
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::Descriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::IntoRawDescriptor;
+use crate::descriptor::SafeDescriptor;
 
 pub type RawDescriptor = RawFd;
 

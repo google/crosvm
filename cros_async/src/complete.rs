@@ -5,13 +5,13 @@
 // Need non-snake case so the macro can re-use type names for variables.
 #![allow(non_snake_case)]
 
-use std::{
-    future::Future,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::future::Future;
+use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
 
-use futures::future::{maybe_done, MaybeDone};
+use futures::future::maybe_done;
+use futures::future::MaybeDone;
 use pin_utils::unsafe_pinned;
 
 // Macro-generate future combinators to allow for running different numbers of top-level futures in

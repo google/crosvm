@@ -2,31 +2,56 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cmp::{max, min};
+use std::cmp::max;
+use std::cmp::min;
 use std::collections::HashSet;
 use std::convert::TryInto;
-use std::fs::{File, OpenOptions};
-use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::ErrorKind;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
+use std::io::{self};
 use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use base::{
-    open_file, AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile, FileSetLen, FileSync,
-    PunchHole, RawDescriptor, WriteZeroesAt,
-};
+use base::open_file;
+use base::AsRawDescriptors;
+use base::FileAllocate;
+use base::FileReadWriteAtVolatile;
+use base::FileSetLen;
+use base::FileSync;
+use base::PunchHole;
+use base::RawDescriptor;
+use base::WriteZeroesAt;
 use crc32fast::Hasher;
 use data_model::VolatileSlice;
 use protobuf::Message;
-use protos::cdisk_spec::{self, ComponentDisk, CompositeDisk, ReadWriteCapability};
+use protos::cdisk_spec::ComponentDisk;
+use protos::cdisk_spec::CompositeDisk;
+use protos::cdisk_spec::ReadWriteCapability;
+use protos::cdisk_spec::{self};
 use remain::sorted;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::gpt::{
-    self, write_gpt_header, write_protective_mbr, GptPartitionEntry, GPT_BEGINNING_SIZE,
-    GPT_END_SIZE, GPT_HEADER_SIZE, GPT_NUM_PARTITIONS, GPT_PARTITION_ENTRY_SIZE, SECTOR_SIZE,
-};
-use crate::{create_disk_file, DiskFile, DiskGetLen, ImageType};
+use crate::create_disk_file;
+use crate::gpt::write_gpt_header;
+use crate::gpt::write_protective_mbr;
+use crate::gpt::GptPartitionEntry;
+use crate::gpt::GPT_BEGINNING_SIZE;
+use crate::gpt::GPT_END_SIZE;
+use crate::gpt::GPT_HEADER_SIZE;
+use crate::gpt::GPT_NUM_PARTITIONS;
+use crate::gpt::GPT_PARTITION_ENTRY_SIZE;
+use crate::gpt::SECTOR_SIZE;
+use crate::gpt::{self};
+use crate::DiskFile;
+use crate::DiskGetLen;
+use crate::ImageType;
 
 /// The amount of padding needed between the last partition entry and the first partition, to align
 /// the partition appropriately. The two sectors are for the MBR and the GPT header.
@@ -685,14 +710,14 @@ pub fn create_zero_filler<P: AsRef<Path>>(zero_filler_path: P) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
+    use std::fs::OpenOptions;
+    use std::io::Write;
     use std::matches;
 
     use base::AsRawDescriptor;
-    use std::fs::OpenOptions;
-    use std::io::Write;
     use tempfile::tempfile;
+
+    use super::*;
 
     #[test]
     fn block_duplicate_offset_disks() {

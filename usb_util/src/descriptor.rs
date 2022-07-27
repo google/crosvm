@@ -2,13 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::types::{self, Descriptor, DescriptorHeader, EndpointDescriptor};
-use crate::{Error, Result};
-use base::warn;
-use data_model::DataInit;
 use std::collections::BTreeMap;
 use std::mem::size_of;
 use std::ops::Deref;
+
+use base::warn;
+use data_model::DataInit;
+
+use crate::types::Descriptor;
+use crate::types::DescriptorHeader;
+use crate::types::EndpointDescriptor;
+use crate::types::{self};
+use crate::Error;
+use crate::Result;
 
 #[derive(Clone)]
 pub struct DeviceDescriptorTree {

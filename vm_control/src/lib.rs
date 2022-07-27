@@ -23,49 +23,76 @@ pub mod display;
 pub mod sys;
 
 use std::convert::TryInto;
-use std::fmt::{self, Display};
+use std::fmt::Display;
+use std::fmt::{self};
 use std::fs::File;
 use std::path::PathBuf;
 use std::result::Result as StdResult;
 use std::str::FromStr;
-use std::sync::{mpsc, Arc};
-
+use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread::JoinHandle;
-
-use remain::sorted;
-use thiserror::Error;
-
-use libc::{EINVAL, EIO, ENODEV, ENOTSUP, ERANGE};
-use serde::{Deserialize, Serialize};
 
 pub use balloon_control::BalloonStats;
 #[cfg(feature = "balloon")]
-use balloon_control::{BalloonTubeCommand, BalloonTubeResult};
-
-use base::{
-    error, info, warn, with_as_descriptor, AsRawDescriptor, Error as SysError, Event,
-    ExternalMapping, MappedRegion, MemoryMappingBuilder, MmapError, Protection, Result,
-    SafeDescriptor, SharedMemory, Tube,
-};
-
-use hypervisor::{IrqRoute, IrqSource, Vm};
-use resources::{Alloc, MmioType, SystemAllocator};
-use rutabaga_gfx::{RutabagaGralloc, RutabagaHandle, VulkanInfo};
-use sync::{Condvar, Mutex};
-use vm_memory::GuestAddress;
-
-use crate::display::{
-    AspectRatio, DisplaySize, GuestDisplayDensity, MouseMode, WindowEvent, WindowMode,
-    WindowVisibility,
-};
-
+use balloon_control::BalloonTubeCommand;
+#[cfg(feature = "balloon")]
+use balloon_control::BalloonTubeResult;
+use base::error;
+use base::info;
+use base::warn;
+use base::with_as_descriptor;
+use base::AsRawDescriptor;
+use base::Error as SysError;
+use base::Event;
+use base::ExternalMapping;
+use base::MappedRegion;
+use base::MemoryMappingBuilder;
+use base::MmapError;
+use base::Protection;
+use base::Result;
+use base::SafeDescriptor;
+use base::SharedMemory;
+use base::Tube;
+use hypervisor::IrqRoute;
+use hypervisor::IrqSource;
+pub use hypervisor::MemSlot;
+use hypervisor::Vm;
+use libc::EINVAL;
+use libc::EIO;
+use libc::ENODEV;
+use libc::ENOTSUP;
+use libc::ERANGE;
+use remain::sorted;
+use resources::Alloc;
+use resources::MmioType;
+use resources::SystemAllocator;
+use rutabaga_gfx::RutabagaGralloc;
+use rutabaga_gfx::RutabagaHandle;
+use rutabaga_gfx::VulkanInfo;
+use serde::Deserialize;
+use serde::Serialize;
+use sync::Condvar;
+use sync::Mutex;
 use sys::kill_handle;
 #[cfg(unix)]
-pub use sys::{FsMappingRequest, VmMsyncRequest, VmMsyncResponse};
+pub use sys::FsMappingRequest;
+#[cfg(unix)]
+pub use sys::VmMsyncRequest;
+#[cfg(unix)]
+pub use sys::VmMsyncResponse;
+use thiserror::Error;
+use vm_memory::GuestAddress;
 
+use crate::display::AspectRatio;
+use crate::display::DisplaySize;
+use crate::display::GuestDisplayDensity;
+use crate::display::MouseMode;
+use crate::display::WindowEvent;
+use crate::display::WindowMode;
+use crate::display::WindowVisibility;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 pub use crate::gdb::*;
-pub use hypervisor::MemSlot;
 
 /// Control the state of a particular VM CPU.
 #[derive(Clone, Debug)]
@@ -1172,8 +1199,9 @@ pub enum ServiceSendToGpu {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use base::Event;
+
+    use super::*;
 
     #[test]
     fn sock_send_recv_event() {

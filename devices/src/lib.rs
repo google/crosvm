@@ -44,41 +44,66 @@ cfg_if::cfg_if! {
 }
 
 pub use self::acpi::ACPIPMResource;
-pub use self::bat::{BatteryError, GoldfishBattery};
-pub use self::bus::{
-    Bus, BusAccessInfo, BusDevice, BusDeviceObj, BusDeviceSync, BusRange, BusResumeDevice, BusType,
-    Error as BusError, HostHotPlugKey, HotPlugBus,
-};
+pub use self::bat::BatteryError;
+pub use self::bat::GoldfishBattery;
+pub use self::bus::Bus;
+pub use self::bus::BusAccessInfo;
+pub use self::bus::BusDevice;
+pub use self::bus::BusDeviceObj;
+pub use self::bus::BusDeviceSync;
+pub use self::bus::BusRange;
+pub use self::bus::BusResumeDevice;
+pub use self::bus::BusType;
+pub use self::bus::Error as BusError;
+pub use self::bus::HostHotPlugKey;
+pub use self::bus::HotPlugBus;
 #[cfg(feature = "stats")]
 pub use self::bus_stats::BusStatistics;
 pub use self::cmos::Cmos;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use self::debugcon::Debugcon;
 #[cfg(feature = "direct")]
-pub use self::direct_io::{DirectIo, DirectMmio};
+pub use self::direct_io::DirectIo;
 #[cfg(feature = "direct")]
-pub use self::direct_irq::{DirectIrq, DirectIrqError};
+pub use self::direct_io::DirectMmio;
+#[cfg(feature = "direct")]
+pub use self::direct_irq::DirectIrq;
+#[cfg(feature = "direct")]
+pub use self::direct_irq::DirectIrqError;
 pub use self::i8042::I8042Device;
-pub use self::irq_event::{IrqEdgeEvent, IrqLevelEvent};
+pub use self::irq_event::IrqEdgeEvent;
+pub use self::irq_event::IrqLevelEvent;
 pub use self::irqchip::*;
+pub use self::pci::BarRange;
 pub use self::pci::CrosvmDeviceId;
-pub use self::pci::{
-    BarRange, PciAddress, PciAddressError, PciBus, PciClassCode, PciConfigIo, PciConfigMmio,
-    PciDevice, PciDeviceError, PciInterruptPin, PciRoot, PciVirtualConfigMmio, StubPciDevice,
-    StubPciParameters,
-};
+pub use self::pci::PciAddress;
+pub use self::pci::PciAddressError;
+pub use self::pci::PciBus;
+pub use self::pci::PciClassCode;
+pub use self::pci::PciConfigIo;
+pub use self::pci::PciConfigMmio;
+pub use self::pci::PciDevice;
+pub use self::pci::PciDeviceError;
+pub use self::pci::PciInterruptPin;
+pub use self::pci::PciRoot;
+pub use self::pci::PciVirtualConfigMmio;
+pub use self::pci::StubPciDevice;
+pub use self::pci::StubPciParameters;
 pub use self::pl030::Pl030;
 pub use self::serial::Serial;
-pub use self::serial_device::{
-    Error as SerialError, SerialDevice, SerialHardware, SerialParameters, SerialType,
-};
+pub use self::serial_device::Error as SerialError;
+pub use self::serial_device::SerialDevice;
+pub use self::serial_device::SerialHardware;
+pub use self::serial_device::SerialParameters;
+pub use self::serial_device::SerialType;
 #[cfg(feature = "tpm")]
 pub use self::software_tpm::SoftwareTpm;
 #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
 pub use self::vtpm_proxy::VtpmProxy;
 
 mod pflash;
-pub use self::pflash::{Pflash, PflashParameters};
+pub use self::pflash::Pflash;
+pub use self::pflash::PflashParameters;
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod platform;
@@ -119,7 +144,9 @@ cfg_if::cfg_if! {
 }
 
 /// Request CoIOMMU to unpin a specific range.
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+/// Request CoIOMMU to unpin a specific range.
+use serde::Serialize;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UnpinRequest {
     /// The ranges presents (start gfn, count).

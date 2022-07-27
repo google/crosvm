@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::{self, Write};
+use std::io::Write;
+use std::io::{self};
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::raw::c_uint;
@@ -10,25 +11,42 @@ use std::result;
 use std::sync::Arc;
 use std::thread;
 
+use base::error;
+use base::warn;
+use base::AsRawDescriptor;
 use base::Error as SysError;
-use base::{
-    error, warn, AsRawDescriptor, Event, EventToken, EventType, RawDescriptor, WaitContext,
-};
-use data_model::{DataInit, Le16, Le64};
-use net_util::{Error as TapError, MacAddress, TapT};
+use base::Event;
+use base::EventToken;
+use base::EventType;
+use base::RawDescriptor;
+use base::WaitContext;
+use data_model::DataInit;
+use data_model::Le16;
+use data_model::Le64;
+use net_util::Error as TapError;
+use net_util::MacAddress;
+use net_util::TapT;
 use remain::sorted;
 use thiserror::Error as ThisError;
 use virtio_sys::virtio_net;
-use virtio_sys::virtio_net::{
-    virtio_net_hdr_v1, VIRTIO_NET_CTRL_GUEST_OFFLOADS, VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET,
-    VIRTIO_NET_CTRL_MQ, VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET, VIRTIO_NET_ERR, VIRTIO_NET_OK,
-};
+use virtio_sys::virtio_net::virtio_net_hdr_v1;
+use virtio_sys::virtio_net::VIRTIO_NET_CTRL_GUEST_OFFLOADS;
+use virtio_sys::virtio_net::VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET;
+use virtio_sys::virtio_net::VIRTIO_NET_CTRL_MQ;
+use virtio_sys::virtio_net::VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET;
+use virtio_sys::virtio_net::VIRTIO_NET_ERR;
+use virtio_sys::virtio_net::VIRTIO_NET_OK;
 use vm_memory::GuestMemory;
 
-use super::{
-    copy_config, DescriptorError, DeviceType, Interrupt, Queue, Reader, SignalableInterrupt,
-    VirtioDevice, Writer,
-};
+use super::copy_config;
+use super::DescriptorError;
+use super::DeviceType;
+use super::Interrupt;
+use super::Queue;
+use super::Reader;
+use super::SignalableInterrupt;
+use super::VirtioDevice;
+use super::Writer;
 
 const QUEUE_SIZE: u16 = 256;
 

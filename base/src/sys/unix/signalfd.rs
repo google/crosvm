@@ -2,22 +2,28 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    fs::File,
-    mem,
-    os::{
-        raw::c_int,
-        unix::io::{AsRawFd, FromRawFd, RawFd},
-    },
-    result,
-};
+use std::fs::File;
+use std::mem;
+use std::os::raw::c_int;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::io::RawFd;
+use std::result;
 
-use libc::{c_void, read, signalfd, signalfd_siginfo, EAGAIN, SFD_CLOEXEC, SFD_NONBLOCK};
+use libc::c_void;
+use libc::read;
+use libc::signalfd;
+use libc::signalfd_siginfo;
+use libc::EAGAIN;
+use libc::SFD_CLOEXEC;
+use libc::SFD_NONBLOCK;
 use log::error;
 use remain::sorted;
 use thiserror::Error;
 
-use super::{signal, Error as ErrnoError, RawDescriptor};
+use super::signal;
+use super::Error as ErrnoError;
+use super::RawDescriptor;
 use crate::descriptor::AsRawDescriptor;
 
 #[sorted]
@@ -139,11 +145,16 @@ impl Drop for SignalFd {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::mem;
+    use std::ptr::null;
+
+    use libc::pthread_sigmask;
+    use libc::raise;
+    use libc::sigismember;
+    use libc::sigset_t;
 
     use super::super::signal::SIGRTMIN;
-    use libc::{pthread_sigmask, raise, sigismember, sigset_t};
-    use std::{mem, ptr::null};
+    use super::*;
 
     #[test]
     fn new() {

@@ -3,10 +3,10 @@
 // found in the LICENSE file.
 
 pub mod tap;
+use base::FileReadWriteVolatile;
 pub use tap::Tap;
 
 use crate::TapTCommon;
-use base::FileReadWriteVolatile;
 
 // TODO(b/159159958) implement FileReadWriteVolatile for slirp
 pub trait TapT: FileReadWriteVolatile + TapTCommon {}

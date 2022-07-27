@@ -2,13 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{mem, result};
+use std::mem;
+use std::result;
 
-use base::{self, warn};
-use hypervisor::{Register, Sregs, VcpuX86_64, Vm};
+use base::warn;
+use base::{self};
+use hypervisor::Register;
+use hypervisor::Sregs;
+use hypervisor::VcpuX86_64;
+use hypervisor::Vm;
 use remain::sorted;
 use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 use crate::gdt;
 
@@ -308,8 +314,10 @@ pub fn setup_page_tables(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use vm_memory::GuestAddress;
+    use vm_memory::GuestMemory;
+
     use super::*;
-    use vm_memory::{GuestAddress, GuestMemory};
 
     fn create_guest_mem() -> GuestMemory {
         GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap()

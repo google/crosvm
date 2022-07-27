@@ -14,4 +14,5 @@ pub mod protocol;
 pub mod vsock;
 
 pub(crate) use protocol::*;
-pub use vsock::{Vsock, VsockError};
+pub use vsock::Vsock;
+pub use vsock::VsockError;

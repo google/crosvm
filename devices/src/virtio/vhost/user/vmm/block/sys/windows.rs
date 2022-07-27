@@ -6,8 +6,10 @@ use std::cell::RefCell;
 
 use base::Tube;
 
-use crate::virtio::vhost::user::vmm::block::{Block, QUEUE_SIZE};
-use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, Result};
+use crate::virtio::vhost::user::vmm::block::Block;
+use crate::virtio::vhost::user::vmm::block::QUEUE_SIZE;
+use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
+use crate::virtio::vhost::user::vmm::Result;
 
 impl Block {
     pub fn new(base_features: u64, tube: Tube) -> Result<Block> {

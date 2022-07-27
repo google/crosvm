@@ -5,17 +5,21 @@
 #![cfg(feature = "minigbm")]
 
 use std::ffi::CString;
-use std::fs::{File, OpenOptions};
-
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::os::raw::c_char;
+use std::os::raw::c_int;
+use std::os::raw::c_uint;
 #[cfg(target_pointer_width = "64")]
 use std::os::raw::c_ulong;
-use std::os::raw::{c_char, c_int, c_uint};
 use std::path::Path;
 use std::ptr::null_mut;
 
-use base::{ioctl_iowr_nr, ioctl_with_mut_ref};
+use base::ioctl_iowr_nr;
+use base::ioctl_with_mut_ref;
 
-use crate::rutabaga_utils::{RutabagaError, RutabagaResult};
+use crate::rutabaga_utils::RutabagaError;
+use crate::rutabaga_utils::RutabagaResult;
 
 // Consistent with __kernel_size_t in include/uapi/asm-generic/posix_types.h.
 #[cfg(not(target_pointer_width = "64"))]

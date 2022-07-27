@@ -2,15 +2,25 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, info, Event, EventExt};
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering::SeqCst;
+
+use base::error;
+use base::info;
+use base::Event;
+use base::EventExt;
 use libc::c_void;
-use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
-use winapi::shared::guiddef::{IsEqualGUID, REFIID};
+use winapi::shared::guiddef::IsEqualGUID;
+use winapi::shared::guiddef::REFIID;
 use winapi::shared::minwindef::ULONG;
-use winapi::shared::winerror::{E_INVALIDARG, E_NOINTERFACE, NOERROR, S_OK};
+use winapi::shared::winerror::E_INVALIDARG;
+use winapi::shared::winerror::E_NOINTERFACE;
+use winapi::shared::winerror::NOERROR;
+use winapi::shared::winerror::S_OK;
 use winapi::um::mmdeviceapi::*;
 use winapi::um::objidlbase::IAgileObject;
-use winapi::um::unknwnbase::{IUnknown, IUnknownVtbl};
+use winapi::um::unknwnbase::IUnknown;
+use winapi::um::unknwnbase::IUnknownVtbl;
 use winapi::um::winnt::HRESULT;
 use winapi::Interface;
 use wio::com::ComPtr;

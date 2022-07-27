@@ -7,16 +7,28 @@
 use std::ffi::CString;
 use std::time::Duration;
 
-use base::{error, AsRawDescriptor, RawDescriptor, Tube, TubeError};
-use libc::{self, pid_t};
-use minijail::{self, Minijail};
+use base::error;
+use base::AsRawDescriptor;
+use base::RawDescriptor;
+use base::Tube;
+use base::TubeError;
+use libc::pid_t;
+use libc::{self};
+use minijail::Minijail;
+use minijail::{self};
 use remain::sorted;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 use crate::bus::ConfigWriteResult;
-use crate::pci::{CrosvmDeviceId, PciAddress};
-use crate::{BusAccessInfo, BusDevice, BusRange, BusType, DeviceId};
+use crate::pci::CrosvmDeviceId;
+use crate::pci::PciAddress;
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::BusRange;
+use crate::BusType;
+use crate::DeviceId;
 
 /// Errors for proxy devices.
 #[sorted]
@@ -355,9 +367,8 @@ impl Drop for ProxyDevice {
 /// the process.
 #[cfg(test)]
 mod tests {
-    use crate::pci::PciId;
-
     use super::*;
+    use crate::pci::PciId;
 
     /// A simple test echo device that outputs the same u8 that was written to it.
     struct EchoDevice {

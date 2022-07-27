@@ -6,7 +6,10 @@ use std::rc::Rc;
 
 use anyhow::Result;
 
-use crate::{bindings, display::Display, status::Status, UsageHint};
+use crate::bindings;
+use crate::display::Display;
+use crate::status::Status;
+use crate::UsageHint;
 
 /// An owned VASurface that is tied to the lifetime of a particular VADisplay
 pub struct Surface {

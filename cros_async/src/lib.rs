@@ -73,33 +73,39 @@ pub use sys::Executor;
 mod timer;
 mod waker;
 
+use std::future::Future;
+use std::marker::PhantomData;
+use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
+
 pub use async_types::*;
 pub use base::Event;
 #[cfg(unix)]
 pub use blocking::sys::unix::block_on::block_on;
+pub use blocking::unblock;
+pub use blocking::unblock_disarm;
 pub use blocking::BlockingPool;
+pub use blocking::CancellableBlockingPool;
+pub use blocking::TimeoutAction;
 pub use event::EventAsync;
 #[cfg(windows)]
 pub use futures::executor::block_on;
-pub use io_ext::{
-    AllocateMode, AsyncWrapper, Error as AsyncError, IntoAsync, IoSourceExt, ReadAsync,
-    Result as AsyncResult, WriteAsync,
-};
-pub use mem::{BackingMemory, MemRegion};
+pub use io_ext::AllocateMode;
+pub use io_ext::AsyncWrapper;
+pub use io_ext::Error as AsyncError;
+pub use io_ext::IntoAsync;
+pub use io_ext::IoSourceExt;
+pub use io_ext::ReadAsync;
+pub use io_ext::Result as AsyncResult;
+pub use io_ext::WriteAsync;
+pub use mem::BackingMemory;
+pub use mem::MemRegion;
+use remain::sorted;
 pub use select::SelectResult;
 pub use sys::run_one;
-pub use timer::TimerAsync;
-
-use std::{
-    future::Future,
-    marker::PhantomData,
-    pin::Pin,
-    task::{Context, Poll},
-};
-
-pub use blocking::{unblock, unblock_disarm, CancellableBlockingPool, TimeoutAction};
-use remain::sorted;
 use thiserror::Error as ThisError;
+pub use timer::TimerAsync;
 
 #[sorted]
 #[derive(ThisError, Debug)]

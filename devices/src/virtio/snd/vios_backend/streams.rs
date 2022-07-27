@@ -4,23 +4,34 @@
 
 use std::collections::VecDeque;
 use std::ops::Deref;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
-use crate::virtio::{DescriptorChain, Interrupt, Queue, Reader, Writer};
-use base::{error, set_rt_prio_limit, set_rt_round_robin, warn};
+use base::error;
+use base::set_rt_prio_limit;
+use base::set_rt_round_robin;
+use base::warn;
 use data_model::Le32;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 
 use super::Error as VioSError;
+use super::Result;
+use super::SoundError;
 use super::*;
-use super::{Result, SoundError};
 use crate::virtio::snd::common::from_virtio_frame_rate;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
+use crate::virtio::DescriptorChain;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::Reader;
+use crate::virtio::Writer;
 
 /// Messages that the worker can send to the stream (thread).
 pub enum StreamMsg {

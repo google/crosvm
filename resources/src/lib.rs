@@ -5,11 +5,14 @@
 //! Manages system resources that can be allocated to VMs and their devices.
 
 use remain::sorted;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 pub use crate::address_range::AddressRange;
-pub use crate::system_allocator::{MmioType, SystemAllocator, SystemAllocatorConfig};
+pub use crate::system_allocator::MmioType;
+pub use crate::system_allocator::SystemAllocator;
+pub use crate::system_allocator::SystemAllocatorConfig;
 
 pub mod address_allocator;
 mod address_range;

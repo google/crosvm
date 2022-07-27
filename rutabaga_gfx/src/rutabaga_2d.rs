@@ -4,11 +4,15 @@
 
 //! rutabaga_2d: Handles 2D virtio-gpu hypercalls.
 
-use std::cmp::{max, min, Ordering};
+use std::cmp::max;
+use std::cmp::min;
+use std::cmp::Ordering;
 
 use data_model::*;
 
-use crate::rutabaga_core::{Rutabaga2DInfo, RutabagaComponent, RutabagaResource};
+use crate::rutabaga_core::Rutabaga2DInfo;
+use crate::rutabaga_core::RutabagaComponent;
+use crate::rutabaga_core::RutabagaResource;
 use crate::rutabaga_utils::*;
 
 /// Transfers a resource from potentially many chunked src VolatileSlices to a dst VolatileSlice.

@@ -7,23 +7,30 @@
 
 use std::cmp::min;
 use std::convert::From;
-use std::fmt::{self, Display};
-use std::io::{self, Write};
+use std::fmt::Display;
+use std::fmt::{self};
+use std::io::Write;
+use std::io::{self};
 use std::marker::PhantomData;
-use std::mem::{size_of, size_of_val};
+use std::mem::size_of;
+use std::mem::size_of_val;
 use std::str::from_utf8;
 
-use super::super::DescriptorError;
-use super::{Reader, Writer};
 use base::Error as BaseError;
-use base::{ExternalMappingError, TubeError};
-use data_model::{DataInit, Le32, Le64};
+use base::ExternalMappingError;
+use base::TubeError;
+use data_model::DataInit;
+use data_model::Le32;
+use data_model::Le64;
 use gpu_display::GpuDisplayError;
 use remain::sorted;
 use rutabaga_gfx::RutabagaError;
 use thiserror::Error;
-
 use vm_memory::udmabuf::UdmabufError;
+
+use super::super::DescriptorError;
+use super::Reader;
+use super::Writer;
 
 pub const VIRTIO_GPU_F_VIRGL: u32 = 0;
 pub const VIRTIO_GPU_F_EDID: u32 = 1;

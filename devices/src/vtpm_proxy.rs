@@ -6,16 +6,13 @@
 
 use std::time::Duration;
 
-use {
-    base::error,
-    protobuf::Message,
-    remain::sorted,
-    system_api::{
-        client::OrgChromiumVtpm,
-        vtpm_interface::{SendCommandRequest, SendCommandResponse},
-    },
-    thiserror::Error,
-};
+use base::error;
+use protobuf::Message;
+use remain::sorted;
+use system_api::client::OrgChromiumVtpm;
+use system_api::vtpm_interface::SendCommandRequest;
+use system_api::vtpm_interface::SendCommandResponse;
+use thiserror::Error;
 
 use super::virtio::TpmBackend;
 

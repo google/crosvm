@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    convert::{From, TryInto},
-    fmt::{
-        Display, {self},
-    },
-    io, result,
-};
+use std::convert::From;
+use std::convert::TryInto;
+use std::fmt::Display;
+use std::fmt::{self};
+use std::io;
+use std::result;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 /// A system error

@@ -4,15 +4,18 @@
 
 #![allow(dead_code)]
 
-use std::sync::Arc;
-
-use devices::serial_device::{SerialParameters, SerialType};
 use std::io::Read;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use base::{RawDescriptor, Result};
-use devices::{Bus, Minijail, Serial};
+use base::RawDescriptor;
+use base::Result;
+use devices::serial_device::SerialParameters;
+use devices::serial_device::SerialType;
+use devices::Bus;
+use devices::Minijail;
+use devices::Serial;
 use sync::Mutex;
 
 use crate::serial::SERIAL_ADDR;

@@ -2,26 +2,40 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use futures::{
-    channel::{mpsc, oneshot},
-    SinkExt, StreamExt,
-};
-use std::io::{self, Read, Write};
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
 use std::rc::Rc;
 
-use audio_streams::{capture::AsyncCaptureBuffer, AsyncPlaybackBuffer};
-use base::{debug, error};
-use cros_async::{sync::Mutex as AsyncMutex, EventAsync, Executor};
-use data_model::{DataInit, Le32};
+use audio_streams::capture::AsyncCaptureBuffer;
+use audio_streams::AsyncPlaybackBuffer;
+use base::debug;
+use base::error;
+use cros_async::sync::Mutex as AsyncMutex;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use data_model::DataInit;
+use data_model::Le32;
+use futures::channel::mpsc;
+use futures::channel::oneshot;
+use futures::SinkExt;
+use futures::StreamExt;
 use vm_memory::GuestMemory;
 
+use super::DirectionalStream;
+use super::Error;
+use super::SndData;
+use super::StreamInfo;
+use super::WorkerStatus;
 use crate::virtio::snd::common::*;
 use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
-use crate::virtio::{DescriptorChain, Queue, Reader, SignalableInterrupt, Writer};
-
-use super::{DirectionalStream, Error, SndData, StreamInfo, WorkerStatus};
+use crate::virtio::DescriptorChain;
+use crate::virtio::Queue;
+use crate::virtio::Reader;
+use crate::virtio::SignalableInterrupt;
+use crate::virtio::Writer;
 
 // Returns true if the operation is successful. Returns error if there is
 // a runtime/internal error

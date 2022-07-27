@@ -5,12 +5,17 @@
 use std::mem;
 use std::sync::Arc;
 
+use base::error;
+use base::warn;
+use usb_util::Device;
+use usb_util::Transfer;
+use usb_util::TransferStatus;
+
 use super::error::*;
-use crate::usb::xhci::xhci_transfer::{XhciTransfer, XhciTransferState};
+use crate::usb::xhci::xhci_transfer::XhciTransfer;
+use crate::usb::xhci::xhci_transfer::XhciTransferState;
 use crate::utils::AsyncJobQueue;
 use crate::utils::FailHandle;
-use base::{error, warn};
-use usb_util::{Device, Transfer, TransferStatus};
 
 /// Helper function to update xhci_transfer state.
 pub fn update_transfer_state(

@@ -5,13 +5,13 @@
 mod block;
 mod handler;
 
-pub use self::block::*;
-pub use self::handler::VhostUserHandler;
-
 use remain::sorted;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemoryError;
 use vmm_vhost::Error as VhostError;
+
+pub use self::block::*;
+pub use self::handler::VhostUserHandler;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {

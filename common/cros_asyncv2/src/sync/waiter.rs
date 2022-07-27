@@ -7,12 +7,19 @@ use std::future::Future;
 use std::mem;
 use std::pin::Pin;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::task::{Context, Poll, Waker};
+use std::task::Context;
+use std::task::Poll;
+use std::task::Waker;
 
-use intrusive_collections::linked_list::{LinkedList, LinkedListOps};
-use intrusive_collections::{intrusive_adapter, DefaultLinkOps, LinkOps};
+use intrusive_collections::intrusive_adapter;
+use intrusive_collections::linked_list::LinkedList;
+use intrusive_collections::linked_list::LinkedListOps;
+use intrusive_collections::DefaultLinkOps;
+use intrusive_collections::LinkOps;
 
 use crate::sync::SpinLock;
 

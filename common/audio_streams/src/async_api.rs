@@ -12,12 +12,12 @@
 //!
 //! The implementation is provided in `cros_async::audio_streams_async`.
 
+use std::io::Result;
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
+use std::time::Duration;
 
 use async_trait::async_trait;
-use std::io::Result;
-use std::time::Duration;
 
 #[async_trait(?Send)]
 pub trait ReadAsync {

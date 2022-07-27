@@ -4,24 +4,27 @@
 
 #![allow(dead_code)]
 
-use std::fs::{File, OpenOptions};
-use std::os::raw::c_uint;
-
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::io;
+use std::os::raw::c_uint;
 use std::path::Path;
 
-use base::{
-    ioctl_iow_nr, ioctl_with_ptr, pagesize, FromRawDescriptor, MappedRegion, SafeDescriptor,
-};
-
-use data_model::{flexible_array_impl, FlexibleArrayWrapper};
-
-use super::udmabuf_bindings::*;
-
+use base::ioctl_iow_nr;
+use base::ioctl_with_ptr;
+use base::pagesize;
+use base::FromRawDescriptor;
+use base::MappedRegion;
+use base::SafeDescriptor;
+use data_model::flexible_array_impl;
+use data_model::FlexibleArrayWrapper;
 use remain::sorted;
 use thiserror::Error;
 
-use crate::{GuestAddress, GuestMemory, GuestMemoryError};
+use super::udmabuf_bindings::*;
+use crate::GuestAddress;
+use crate::GuestMemory;
+use crate::GuestMemoryError;
 
 const UDMABUF_IOCTL_BASE: c_uint = 0x75;
 
@@ -143,9 +146,10 @@ impl UdmabufDriver {
 
 #[cfg(test)]
 mod tests {
+    use base::kernel_has_memfd;
+
     use super::*;
     use crate::GuestAddress;
-    use base::kernel_has_memfd;
 
     #[test]
     fn test_memory_offsets() {

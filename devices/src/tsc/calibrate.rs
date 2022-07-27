@@ -2,14 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use anyhow::{anyhow, bail, Context, Result};
-use remain::sorted;
 use std::collections::HashSet;
 use std::iter::FromIterator;
-use std::time::{Duration, Instant};
-use thiserror::Error;
+use std::time::Duration;
+use std::time::Instant;
 
-use base::{set_cpu_affinity, warn};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Result;
+use base::set_cpu_affinity;
+use base::warn;
+use remain::sorted;
+use thiserror::Error;
 
 use super::grouping::*;
 use super::rdtsc_safe;
@@ -342,9 +347,10 @@ fn calibrate_tsc_state_inner(rdtsc: fn() -> u64, cores: Vec<usize>) -> Result<Ts
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::arch::x86_64::__rdtscp;
+    use std::arch::x86_64::_rdtsc;
 
-    use std::arch::x86_64::{__rdtscp, _rdtsc};
+    use super::*;
 
     const ACCEPTABLE_OFFSET_MEASUREMENT_ERROR: i128 = 2_000i128;
 

@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::Stat;
 use std::time::Instant;
+
+use crate::Stat;
 
 #[derive(Clone, Copy)]
 struct StatEntry {

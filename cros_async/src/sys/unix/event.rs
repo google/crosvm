@@ -2,10 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[cfg(test)]
-use super::{FdExecutor, URingExecutor};
-use crate::{AsyncResult, EventAsync, Executor};
 use base::Event;
+
+#[cfg(test)]
+use super::FdExecutor;
+#[cfg(test)]
+use super::URingExecutor;
+use crate::AsyncResult;
+use crate::EventAsync;
+use crate::Executor;
 
 impl EventAsync {
     pub fn new(event: Event, ex: &Executor) -> AsyncResult<EventAsync> {
@@ -32,7 +37,6 @@ impl EventAsync {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use crate::sys::unix::uring_executor::use_uring;
 
     #[test]

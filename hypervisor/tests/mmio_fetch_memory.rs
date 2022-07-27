@@ -6,10 +6,12 @@
 // Test applies to whpx only.
 #![cfg(feature = "whpx")]
 
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::AtomicU16;
+use std::sync::atomic::Ordering;
 
 use hypervisor::*;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 // This test case is for the following scenario:
 // Test sets up a guest memory instruction page, such that an instruction

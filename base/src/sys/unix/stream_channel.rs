@@ -2,18 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::super::{net::UnixSeqpacket, Result};
+use std::io::Read;
+use std::io::{self};
+use std::os::unix::net::UnixStream;
+
+use libc::c_void;
+use libc::{self};
+
+use super::super::net::UnixSeqpacket;
+use super::super::Result;
 use super::RawDescriptor;
-use crate::{descriptor::AsRawDescriptor, ReadNotifier};
-use libc::{
-    c_void, {self},
-};
-use std::{
-    io::{
-        Read, {self},
-    },
-    os::unix::net::UnixStream,
-};
+use crate::descriptor::AsRawDescriptor;
+use crate::ReadNotifier;
 
 #[derive(Copy, Clone)]
 pub enum FramingMode {
@@ -167,9 +167,13 @@ impl ReadNotifier for StreamChannel {
 
 #[cfg(test)]
 mod test {
+    use std::io::Read;
+    use std::io::Write;
+
     use super::*;
-    use crate::{EventContext, EventToken, ReadNotifier};
-    use std::io::{Read, Write};
+    use crate::EventContext;
+    use crate::EventToken;
+    use crate::ReadNotifier;
 
     #[derive(EventToken, Debug, Eq, PartialEq, Copy, Clone)]
     enum Token {

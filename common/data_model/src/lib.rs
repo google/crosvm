@@ -3,8 +3,10 @@
 // found in the LICENSE file.
 
 use std::io;
-use std::mem::{size_of, MaybeUninit};
-use std::slice::{from_raw_parts, from_raw_parts_mut};
+use std::mem::size_of;
+use std::mem::MaybeUninit;
+use std::slice::from_raw_parts;
+use std::slice::from_raw_parts_mut;
 
 /// Types for which it is safe to initialize from raw data.
 ///
@@ -184,7 +186,11 @@ pub mod volatile_memory;
 pub use crate::volatile_memory::*;
 
 mod flexible_array;
-pub use flexible_array::{vec_with_array_field, FlexibleArray, FlexibleArrayWrapper};
+pub use flexible_array::vec_with_array_field;
+pub use flexible_array::FlexibleArray;
+pub use flexible_array::FlexibleArrayWrapper;
 
 mod sys;
-pub use sys::{create_iobuf, IoBuf, IoBufMut};
+pub use sys::create_iobuf;
+pub use sys::IoBuf;
+pub use sys::IoBufMut;

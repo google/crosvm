@@ -4,11 +4,16 @@
 
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor};
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::IntoRawDescriptor;
+use crate::platform::Event as PlatformEvent;
 pub use crate::platform::EventReadResult;
-use crate::{platform::Event as PlatformEvent, RawDescriptor, Result};
+use crate::RawDescriptor;
+use crate::Result;
 
 /// See the [platform-specific Event struct](crate::platform::Event) for struct- and method-level
 /// documentation.

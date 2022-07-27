@@ -2,25 +2,38 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::AudioSharedFormat;
-use crate::{MONO_CHANNEL_COUNT, STEREO_CHANNEL_COUNT};
-use base::warn;
-use metrics::event_details_proto::{WaveFormat, WaveFormatDetails, WaveFormat_WaveFormatSubFormat};
 use std::convert::TryInto;
-use std::fmt::{self, Debug, Formatter};
-use winapi::shared::guiddef::{IsEqualGUID, GUID};
+use std::fmt::Debug;
+use std::fmt::Formatter;
+use std::fmt::{self};
+
+use base::warn;
+use metrics::event_details_proto::WaveFormat;
+use metrics::event_details_proto::WaveFormatDetails;
+use metrics::event_details_proto::WaveFormat_WaveFormatSubFormat;
+use winapi::shared::guiddef::IsEqualGUID;
+use winapi::shared::guiddef::GUID;
+use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_ADPCM;
+use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_ALAW;
+use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_ANALOG;
+use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_DRM;
 use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
-use winapi::shared::ksmedia::{
-    KSDATAFORMAT_SUBTYPE_ADPCM, KSDATAFORMAT_SUBTYPE_ALAW, KSDATAFORMAT_SUBTYPE_ANALOG,
-    KSDATAFORMAT_SUBTYPE_DRM, KSDATAFORMAT_SUBTYPE_MPEG, KSDATAFORMAT_SUBTYPE_MULAW,
-    KSDATAFORMAT_SUBTYPE_PCM,
-};
-use winapi::shared::mmreg::{
-    SPEAKER_FRONT_CENTER, SPEAKER_FRONT_LEFT, SPEAKER_FRONT_RIGHT, WAVEFORMATEX,
-    WAVEFORMATEXTENSIBLE, WAVE_FORMAT_EXTENSIBLE, WAVE_FORMAT_IEEE_FLOAT,
-};
+use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_MPEG;
+use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_MULAW;
+use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_PCM;
+use winapi::shared::mmreg::SPEAKER_FRONT_CENTER;
+use winapi::shared::mmreg::SPEAKER_FRONT_LEFT;
+use winapi::shared::mmreg::SPEAKER_FRONT_RIGHT;
+use winapi::shared::mmreg::WAVEFORMATEX;
+use winapi::shared::mmreg::WAVEFORMATEXTENSIBLE;
+use winapi::shared::mmreg::WAVE_FORMAT_EXTENSIBLE;
+use winapi::shared::mmreg::WAVE_FORMAT_IEEE_FLOAT;
 #[cfg(not(test))]
 use winapi::um::combaseapi::CoTaskMemFree;
+
+use crate::AudioSharedFormat;
+use crate::MONO_CHANNEL_COUNT;
+use crate::STEREO_CHANNEL_COUNT;
 
 pub type WaveFormatDetailsProto = WaveFormatDetails;
 pub type WaveFormatProto = WaveFormat;
@@ -439,12 +452,15 @@ impl<'a> From<GuidWrapper<'a>> for SubFormatProto {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_PCM;
-    use winapi::shared::mmreg::{
-        SPEAKER_BACK_LEFT, SPEAKER_BACK_RIGHT, SPEAKER_LOW_FREQUENCY, SPEAKER_SIDE_LEFT,
-        SPEAKER_SIDE_RIGHT, WAVE_FORMAT_PCM,
-    };
+    use winapi::shared::mmreg::SPEAKER_BACK_LEFT;
+    use winapi::shared::mmreg::SPEAKER_BACK_RIGHT;
+    use winapi::shared::mmreg::SPEAKER_LOW_FREQUENCY;
+    use winapi::shared::mmreg::SPEAKER_SIDE_LEFT;
+    use winapi::shared::mmreg::SPEAKER_SIDE_RIGHT;
+    use winapi::shared::mmreg::WAVE_FORMAT_PCM;
+
+    use super::*;
 
     #[test]
     fn test_modify_mix_format() {

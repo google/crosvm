@@ -27,10 +27,13 @@ use anyhow::bail;
 use base::error;
 use data_model::VolatileSlice;
 use disk::DiskFile;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::pci::CrosvmDeviceId;
-use crate::{BusAccessInfo, BusDevice, DeviceId};
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::DeviceId;
 
 const COMMAND_WRITE_BYTE: u8 = 0x10;
 const COMMAND_BLOCK_ERASE: u8 = 0x20;
@@ -228,10 +231,10 @@ impl BusDevice for Pflash {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use base::FileReadWriteAtVolatile;
     use tempfile::tempfile;
+
+    use super::*;
 
     const IMAGE_SIZE: usize = 4 * (1 << 20); // 4M
     const BLOCK_SIZE: u32 = 4 * (1 << 10); // 4K

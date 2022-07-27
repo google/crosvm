@@ -4,8 +4,9 @@
 
 //! Data structures representing coded/raw formats.
 
-use enumn::N;
 use std::os::unix::io::RawFd;
+
+use enumn::N;
 
 use super::bindings;
 use super::error::*;

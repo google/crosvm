@@ -7,15 +7,15 @@
 
 use std::fmt;
 
-use crate::checked_arithmetic;
-use crate::rutabaga_gralloc::gralloc::{ImageAllocationInfo, ImageMemoryRequirements};
-use crate::rutabaga_utils::*;
-
 #[cfg(feature = "vulkano")]
 use vulkano::format::Format as VulkanFormat;
-
 #[cfg(feature = "vulkano")]
 use vulkano::image::ImageAspect as VulkanImageAspect;
+
+use crate::checked_arithmetic;
+use crate::rutabaga_gralloc::gralloc::ImageAllocationInfo;
+use crate::rutabaga_gralloc::gralloc::ImageMemoryRequirements;
+use crate::rutabaga_utils::*;
 
 /*
  * This list is based on Sommelier / cros_gralloc guest userspace.  Formats that are never
@@ -259,9 +259,10 @@ pub fn canonical_image_requirements(
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write;
+
     use super::*;
     use crate::rutabaga_gralloc::RutabagaGrallocFlags;
-    use std::fmt::Write;
 
     #[test]
     fn format_debug() {

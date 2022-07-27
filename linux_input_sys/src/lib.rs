@@ -4,8 +4,11 @@
 
 //! Linux input system bindings.
 
-use data_model::{DataInit, Le16, SLe32};
 use std::mem::size_of;
+
+use data_model::DataInit;
+use data_model::Le16;
+use data_model::SLe32;
 
 pub const EV_SYN: u16 = 0x00;
 pub const EV_KEY: u16 = 0x01;

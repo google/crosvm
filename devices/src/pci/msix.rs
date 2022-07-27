@@ -2,15 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, AsRawDescriptor, Error as SysError, Event, RawDescriptor, Tube, TubeError};
+use std::convert::TryInto;
+
+use base::error;
+use base::AsRawDescriptor;
+use base::Error as SysError;
+use base::Event;
+use base::RawDescriptor;
+use base::Tube;
+use base::TubeError;
 use bit_field::*;
 use data_model::DataInit;
 use remain::sorted;
-use std::convert::TryInto;
 use thiserror::Error;
-use vm_control::{VmIrqRequest, VmIrqResponse};
+use vm_control::VmIrqRequest;
+use vm_control::VmIrqResponse;
 
-use crate::pci::{PciCapability, PciCapabilityID};
+use crate::pci::PciCapability;
+use crate::pci::PciCapabilityID;
 
 const MAX_MSIX_VECTORS_PER_DEVICE: u16 = 2048;
 pub const MSIX_TABLE_ENTRIES_MODULO: u64 = 16;

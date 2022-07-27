@@ -6,9 +6,11 @@ use std::cell::RefCell;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 
-use crate::virtio::vhost::user::vmm::block::{Block, QUEUE_SIZE};
+use crate::virtio::vhost::user::vmm::block::Block;
+use crate::virtio::vhost::user::vmm::block::QUEUE_SIZE;
+use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
 use crate::virtio::vhost::user::vmm::Error;
-use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, Result};
+use crate::virtio::vhost::user::vmm::Result;
 
 impl Block {
     pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Block> {

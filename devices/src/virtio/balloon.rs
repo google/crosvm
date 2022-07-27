@@ -10,21 +10,46 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
 
-use futures::{channel::mpsc, pin_mut, StreamExt};
+use balloon_control::BalloonStats;
+use balloon_control::BalloonTubeCommand;
+use balloon_control::BalloonTubeResult;
+use base::error;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Event;
+use base::RawDescriptor;
+use base::Tube;
+use base::{self};
+use cros_async::block_on;
+use cros_async::select7;
+use cros_async::sync::Mutex as AsyncMutex;
+use cros_async::AsyncTube;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use data_model::DataInit;
+use data_model::Le16;
+use data_model::Le32;
+use data_model::Le64;
+use futures::channel::mpsc;
+use futures::pin_mut;
+use futures::StreamExt;
 use remain::sorted;
 use thiserror::Error as ThisError;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
-use balloon_control::{BalloonStats, BalloonTubeCommand, BalloonTubeResult};
-use base::{self, error, warn, AsRawDescriptor, Event, RawDescriptor, Tube};
-use cros_async::{block_on, select7, sync::Mutex as AsyncMutex, AsyncTube, EventAsync, Executor};
-use data_model::{DataInit, Le16, Le32, Le64};
-use vm_memory::{GuestAddress, GuestMemory};
-
-use super::{
-    async_utils, copy_config, descriptor_utils, DescriptorChain, DeviceType, Interrupt, Queue,
-    Reader, SignalableInterrupt, VirtioDevice,
-};
-use crate::{UnpinRequest, UnpinResponse};
+use super::async_utils;
+use super::copy_config;
+use super::descriptor_utils;
+use super::DescriptorChain;
+use super::DeviceType;
+use super::Interrupt;
+use super::Queue;
+use super::Reader;
+use super::SignalableInterrupt;
+use super::VirtioDevice;
+use crate::UnpinRequest;
+use crate::UnpinResponse;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -795,8 +820,8 @@ impl VirtioDevice for Balloon {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use crate::virtio::descriptor_utils::{create_descriptor_chain, DescriptorType};
+    use crate::virtio::descriptor_utils::create_descriptor_chain;
+    use crate::virtio::descriptor_utils::DescriptorType;
 
     #[test]
     fn desc_parsing_inflate() {

@@ -2,15 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::{INTERRUPT_STATUS_CONFIG_CHANGED, INTERRUPT_STATUS_USED_RING, VIRTIO_MSI_NO_VECTOR};
-use crate::irq_event::IrqLevelEvent;
-use crate::pci::MsixConfig;
-use base::Event;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
+
+use base::Event;
 use sync::Mutex;
+
+use super::INTERRUPT_STATUS_CONFIG_CHANGED;
+use super::INTERRUPT_STATUS_USED_RING;
+use super::VIRTIO_MSI_NO_VECTOR;
+use crate::irq_event::IrqLevelEvent;
+use crate::pci::MsixConfig;
 
 pub trait SignalableInterrupt {
     /// Writes to the irqfd to VMM to deliver virtual interrupt to the guest.

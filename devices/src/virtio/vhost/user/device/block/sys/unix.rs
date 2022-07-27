@@ -4,18 +4,18 @@
 
 use std::fs::OpenOptions;
 
-use anyhow::{bail, Context};
+use anyhow::bail;
+use anyhow::Context;
 use argh::FromArgs;
 use cros_async::Executor;
 use disk::create_async_disk_file;
 use hypervisor::ProtectionType;
 
 use crate::virtio::base_features;
-use crate::virtio::vhost::user::device::{
-    block::BlockBackend,
-    handler::VhostUserBackend,
-    listener::{sys::VhostUserListener, VhostUserListenerTrait},
-};
+use crate::virtio::vhost::user::device::block::BlockBackend;
+use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
+use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 
 impl BlockBackend {
     /// Creates a new block backend.

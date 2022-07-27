@@ -4,10 +4,11 @@
 
 //! Definitions and utilities for GPU related parameters.
 
-use super::GpuMode;
 use rutabaga_gfx::RutabagaWsi;
+use serde::Deserialize;
+use serde::Serialize;
 
-use serde::{Deserialize, Serialize};
+use super::GpuMode;
 
 pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
 pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;

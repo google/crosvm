@@ -4,24 +4,31 @@
 
 /// Support for virtual sockets.
 use std::fmt;
-use std::{
-    io,
-    mem::{
-        size_of, {self},
-    },
-    num::ParseIntError,
-    os::{
-        raw::{c_uchar, c_uint, c_ushort},
-        unix::io::{AsRawFd, IntoRawFd, RawFd},
-    },
-    result,
-    str::FromStr,
-};
+use std::io;
+use std::mem::size_of;
+use std::mem::{self};
+use std::num::ParseIntError;
+use std::os::raw::c_uchar;
+use std::os::raw::c_uint;
+use std::os::raw::c_ushort;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::IntoRawFd;
+use std::os::unix::io::RawFd;
+use std::result;
+use std::str::FromStr;
 
-use libc::{
-    c_void, sa_family_t, size_t, sockaddr, socklen_t, F_GETFL, F_SETFL, O_NONBLOCK, VMADDR_CID_ANY,
-    VMADDR_CID_HOST, VMADDR_CID_HYPERVISOR, {self},
-};
+use libc::c_void;
+use libc::sa_family_t;
+use libc::size_t;
+use libc::sockaddr;
+use libc::socklen_t;
+use libc::F_GETFL;
+use libc::F_SETFL;
+use libc::O_NONBLOCK;
+use libc::VMADDR_CID_ANY;
+use libc::VMADDR_CID_HOST;
+use libc::VMADDR_CID_HYPERVISOR;
+use libc::{self};
 use thiserror::Error;
 
 // The domain for vsock sockets.

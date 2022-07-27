@@ -48,21 +48,25 @@
 //!        .expect("failed to deserialize");
 //! ```
 
-use std::{
-    cell::{Cell, RefCell},
-    convert::TryInto,
-    fmt,
-    fs::File,
-    ops::{Deref, DerefMut},
-    panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
-};
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::convert::TryInto;
+use std::fmt;
+use std::fs::File;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::panic::catch_unwind;
+use std::panic::resume_unwind;
+use std::panic::AssertUnwindSafe;
 
-use serde::{
-    de::{
-        Error, Visitor, {self},
-    },
-    ser, Deserialize, Deserializer, Serialize, Serializer,
-};
+use serde::de::Error;
+use serde::de::Visitor;
+use serde::de::{self};
+use serde::ser;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use serde::Serializer;
 
 use super::RawDescriptor;
 use crate::descriptor::SafeDescriptor;
@@ -340,11 +344,11 @@ where
 /// }
 /// ```
 pub mod with_raw_descriptor {
-    use super::super::RawDescriptor;
-    use crate::descriptor::IntoRawDescriptor;
     use serde::Deserializer;
 
+    use super::super::RawDescriptor;
     pub use super::serialize_descriptor as serialize;
+    use crate::descriptor::IntoRawDescriptor;
 
     pub fn deserialize<'de, D>(de: D) -> std::result::Result<RawDescriptor, D::Error>
     where
@@ -371,8 +375,12 @@ pub mod with_raw_descriptor {
 /// }
 /// ```
 pub mod with_as_descriptor {
-    use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor};
-    use serde::{Deserializer, Serializer};
+    use serde::Deserializer;
+    use serde::Serializer;
+
+    use crate::descriptor::AsRawDescriptor;
+    use crate::descriptor::FromRawDescriptor;
+    use crate::descriptor::IntoRawDescriptor;
 
     pub fn serialize<S: Serializer>(
         rd: &dyn AsRawDescriptor,
@@ -432,15 +440,24 @@ impl DerefMut for FileSerdeWrapper {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{
-        deserialize_with_descriptors, with_as_descriptor, with_raw_descriptor, AsRawDescriptor,
-        FileSerdeWrapper, FromRawDescriptor, RawDescriptor, SafeDescriptor, SerializeDescriptors,
-    };
+    use std::collections::HashMap;
+    use std::fs::File;
+    use std::mem::ManuallyDrop;
 
-    use std::{collections::HashMap, fs::File, mem::ManuallyDrop};
-
-    use serde::{de::DeserializeOwned, Deserialize, Serialize};
+    use serde::de::DeserializeOwned;
+    use serde::Deserialize;
+    use serde::Serialize;
     use tempfile::tempfile;
+
+    use super::super::deserialize_with_descriptors;
+    use super::super::with_as_descriptor;
+    use super::super::with_raw_descriptor;
+    use super::super::AsRawDescriptor;
+    use super::super::FileSerdeWrapper;
+    use super::super::FromRawDescriptor;
+    use super::super::RawDescriptor;
+    use super::super::SafeDescriptor;
+    use super::super::SerializeDescriptors;
 
     fn deserialize<T: DeserializeOwned>(json: &str, descriptors: &[RawDescriptor]) -> T {
         let mut safe_descriptors = descriptors

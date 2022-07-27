@@ -11,7 +11,8 @@ fn main() {
         use std::fmt::Write as FmtWrite;
         use std::fs;
         use std::io::Write;
-        use std::path::{Path, PathBuf};
+        use std::path::Path;
+        use std::path::PathBuf;
 
         fn paths_to_strs<P: AsRef<Path>>(paths: &[P]) -> Vec<&str> {
             paths

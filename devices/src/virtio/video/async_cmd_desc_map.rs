@@ -6,7 +6,8 @@ use std::collections::BTreeMap;
 
 use crate::virtio::queue::DescriptorChain;
 use crate::virtio::video::command::QueueType;
-use crate::virtio::video::device::{AsyncCmdResponse, AsyncCmdTag};
+use crate::virtio::video::device::AsyncCmdResponse;
+use crate::virtio::video::device::AsyncCmdTag;
 use crate::virtio::video::error::VideoError;
 use crate::virtio::video::protocol;
 use crate::virtio::video::response::CmdResponse;

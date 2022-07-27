@@ -4,11 +4,18 @@
 
 //! Represents an address in the guest's memory space.
 
-use std::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
-use std::fmt::{self, Display};
-use std::ops::{BitAnd, BitOr};
+use std::cmp::Eq;
+use std::cmp::Ord;
+use std::cmp::Ordering;
+use std::cmp::PartialEq;
+use std::cmp::PartialOrd;
+use std::fmt::Display;
+use std::fmt::{self};
+use std::ops::BitAnd;
+use std::ops::BitOr;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Represents an Address in the guest's memory.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]

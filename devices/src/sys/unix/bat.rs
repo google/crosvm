@@ -4,14 +4,17 @@
 
 use std::sync::Arc;
 
-use base::{error, Descriptor, WaitContext};
-use power_monitor::{BatteryStatus, CreatePowerMonitorFn, PowerMonitor};
+use base::error;
+use base::Descriptor;
+use base::WaitContext;
+use power_monitor::BatteryStatus;
+use power_monitor::CreatePowerMonitorFn;
+use power_monitor::PowerMonitor;
 use sync::Mutex;
 
-use crate::{
-    bat::{GoldfishBatteryState, Token},
-    IrqLevelEvent,
-};
+use crate::bat::GoldfishBatteryState;
+use crate::bat::Token;
+use crate::IrqLevelEvent;
 
 const BATTERY_STATUS_VAL_CHARGING: u32 = 1;
 const BATTERY_STATUS_VAL_DISCHARGING: u32 = 2;

@@ -3,38 +3,67 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use sync::Mutex;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
-use anyhow::{anyhow, bail, Context};
-use base::{
-    error, AsRawDescriptor, AsRawDescriptors, Event, Protection, RawDescriptor, Result, Tube,
-};
-use data_model::{DataInit, Le32};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use base::error;
+use base::AsRawDescriptor;
+use base::AsRawDescriptors;
+use base::Event;
+use base::Protection;
+use base::RawDescriptor;
+use base::Result;
+use base::Tube;
+use data_model::DataInit;
+use data_model::Le32;
 use hypervisor::Datamatch;
 use libc::ERANGE;
-use resources::{Alloc, MmioType, SystemAllocator};
-use virtio_sys::virtio_config::{
-    VIRTIO_CONFIG_S_ACKNOWLEDGE, VIRTIO_CONFIG_S_DRIVER, VIRTIO_CONFIG_S_DRIVER_OK,
-    VIRTIO_CONFIG_S_FAILED, VIRTIO_CONFIG_S_FEATURES_OK,
-};
-use vm_control::{MemSlot, VmMemoryDestination, VmMemoryRequest, VmMemoryResponse, VmMemorySource};
-use vm_memory::{GuestAddress, GuestMemory};
-
-use super::*;
-use crate::pci::{
-    BarRange, MsixCap, MsixConfig, PciAddress, PciBarConfiguration, PciBarIndex,
-    PciBarPrefetchable, PciBarRegionType, PciCapability, PciCapabilityID, PciClassCode,
-    PciConfiguration, PciDevice, PciDeviceError, PciDisplaySubclass, PciHeaderType, PciId,
-    PciInterruptPin, PciSubclass,
-};
-use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
-use crate::IrqLevelEvent;
+use resources::Alloc;
+use resources::MmioType;
+use resources::SystemAllocator;
+use sync::Mutex;
+use virtio_sys::virtio_config::VIRTIO_CONFIG_S_ACKNOWLEDGE;
+use virtio_sys::virtio_config::VIRTIO_CONFIG_S_DRIVER;
+use virtio_sys::virtio_config::VIRTIO_CONFIG_S_DRIVER_OK;
+use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FAILED;
+use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FEATURES_OK;
+use vm_control::MemSlot;
+use vm_control::VmMemoryDestination;
+use vm_control::VmMemoryRequest;
+use vm_control::VmMemoryResponse;
+use vm_control::VmMemorySource;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 use self::virtio_pci_common_config::VirtioPciCommonConfig;
+use super::*;
+use crate::pci::BarRange;
+use crate::pci::MsixCap;
+use crate::pci::MsixConfig;
+use crate::pci::PciAddress;
+use crate::pci::PciBarConfiguration;
+use crate::pci::PciBarIndex;
+use crate::pci::PciBarPrefetchable;
+use crate::pci::PciBarRegionType;
+use crate::pci::PciCapability;
+use crate::pci::PciCapabilityID;
+use crate::pci::PciClassCode;
+use crate::pci::PciConfiguration;
+use crate::pci::PciDevice;
+use crate::pci::PciDeviceError;
+use crate::pci::PciDisplaySubclass;
+use crate::pci::PciHeaderType;
+use crate::pci::PciId;
+use crate::pci::PciInterruptPin;
+use crate::pci::PciSubclass;
+use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
+use crate::IrqLevelEvent;
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, enumn::N)]

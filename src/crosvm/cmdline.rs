@@ -26,13 +26,6 @@ cfg_if::cfg_if! {
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
-use super::sys::config::parse_gpu_render_server_options;
-#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
-use super::sys::GpuRenderServerParameters;
-
-#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
-use super::config::parse_video_options;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use arch::MsrConfig;
 use arch::Pstore;
@@ -55,26 +48,54 @@ use hypervisor::ProtectionType;
 use resources::AddressRange;
 use vm_control::BatteryType;
 
+#[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
+use super::config::parse_video_options;
 #[cfg(feature = "gpu")]
 use super::sys::config::parse_gpu_options;
+#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+use super::sys::config::parse_gpu_render_server_options;
+#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+use super::sys::GpuRenderServerParameters;
+use crate::crosvm::config::numbered_disk_option;
 #[cfg(feature = "audio")]
 use crate::crosvm::config::parse_ac97_options;
-use crate::crosvm::config::{
-    numbered_disk_option, parse_battery_options, parse_bus_id_addr, parse_cpu_affinity,
-    parse_cpu_capacity, parse_cpu_set, parse_file_backed_mapping, parse_mmio_address_range,
-    parse_pflash_parameters, parse_pstore, parse_serial_options, parse_stub_pci_parameters,
-    Executable, FileBackedMappingParameters, HypervisorKind, TouchDeviceOption, VhostUserFsOption,
-    VhostUserOption, VhostUserWlOption, VvuOption,
-};
+use crate::crosvm::config::parse_battery_options;
+use crate::crosvm::config::parse_bus_id_addr;
+use crate::crosvm::config::parse_cpu_affinity;
+use crate::crosvm::config::parse_cpu_capacity;
+use crate::crosvm::config::parse_cpu_set;
 #[cfg(feature = "direct")]
-use crate::crosvm::config::{
-    parse_direct_io_options, parse_pcie_root_port_params, DirectIoOption,
-    HostPcieRootPortParameters,
-};
+use crate::crosvm::config::parse_direct_io_options;
+use crate::crosvm::config::parse_file_backed_mapping;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use crate::crosvm::config::{parse_memory_region, parse_userspace_msr_options};
+use crate::crosvm::config::parse_memory_region;
+use crate::crosvm::config::parse_mmio_address_range;
+#[cfg(feature = "direct")]
+use crate::crosvm::config::parse_pcie_root_port_params;
+use crate::crosvm::config::parse_pflash_parameters;
 #[cfg(feature = "plugin")]
-use crate::crosvm::config::{parse_plugin_mount_option, BindMount, GidMap};
+use crate::crosvm::config::parse_plugin_mount_option;
+use crate::crosvm::config::parse_pstore;
+use crate::crosvm::config::parse_serial_options;
+use crate::crosvm::config::parse_stub_pci_parameters;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use crate::crosvm::config::parse_userspace_msr_options;
+#[cfg(feature = "plugin")]
+use crate::crosvm::config::BindMount;
+#[cfg(feature = "direct")]
+use crate::crosvm::config::DirectIoOption;
+use crate::crosvm::config::Executable;
+use crate::crosvm::config::FileBackedMappingParameters;
+#[cfg(feature = "plugin")]
+use crate::crosvm::config::GidMap;
+#[cfg(feature = "direct")]
+use crate::crosvm::config::HostPcieRootPortParameters;
+use crate::crosvm::config::HypervisorKind;
+use crate::crosvm::config::TouchDeviceOption;
+use crate::crosvm::config::VhostUserFsOption;
+use crate::crosvm::config::VhostUserOption;
+use crate::crosvm::config::VhostUserWlOption;
+use crate::crosvm::config::VvuOption;
 
 #[derive(FromArgs)]
 /// crosvm

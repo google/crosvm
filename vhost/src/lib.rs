@@ -8,20 +8,29 @@
 pub mod net;
 mod vsock;
 
-#[cfg(unix)]
-pub use crate::net::{Net, NetT};
-pub use crate::vsock::Vsock;
-
 use std::alloc::Layout;
 use std::io::Error as IoError;
 use std::ptr::null;
 
 use assertions::const_assert;
-use base::{ioctl, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref};
-use base::{AsRawDescriptor, Event, LayoutAllocation};
+use base::ioctl;
+use base::ioctl_with_mut_ref;
+use base::ioctl_with_ptr;
+use base::ioctl_with_ref;
+use base::AsRawDescriptor;
+use base::Event;
+use base::LayoutAllocation;
 use remain::sorted;
 use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+use vm_memory::GuestMemoryError;
+
+#[cfg(unix)]
+pub use crate::net::Net;
+#[cfg(unix)]
+pub use crate::net::NetT;
+pub use crate::vsock::Vsock;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -390,12 +399,16 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
 #[cfg(unix)]
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::path::PathBuf;
+    use std::result;
 
-    use crate::net::fakes::FakeNet;
     use net_util::sys::unix::fakes::FakeTap;
-    use std::{path::PathBuf, result};
-    use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
+    use vm_memory::GuestAddress;
+    use vm_memory::GuestMemory;
+    use vm_memory::GuestMemoryError;
+
+    use super::*;
+    use crate::net::fakes::FakeNet;
 
     fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
         let start_addr1 = GuestAddress(0x0);

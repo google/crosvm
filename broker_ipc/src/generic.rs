@@ -5,10 +5,14 @@
 //! Generic implementation of product specific functions that are called on child process
 //! initialization.
 
-use crate::{log_file_from_path, CommonChildStartupArgs};
-use base::Tube;
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+
+use base::Tube;
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::log_file_from_path;
+use crate::CommonChildStartupArgs;
 
 #[derive(Serialize, Deserialize)]
 pub struct ProductAttributes {}

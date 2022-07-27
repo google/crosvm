@@ -3,13 +3,18 @@
 // found in the LICENSE file.
 
 use std::boxed::Box;
-use std::cmp::{max, min, Ord, Ordering, PartialOrd};
+use std::cmp::max;
+use std::cmp::min;
+use std::cmp::Ord;
+use std::cmp::Ordering;
+use std::cmp::PartialOrd;
 use std::mem::size_of;
-use std::sync::{Arc, MutexGuard};
-use sync::Mutex;
+use std::sync::Arc;
+use std::sync::MutexGuard;
 
 use base::error;
 use data_model::DataInit;
+use sync::Mutex;
 
 /// Type of offset in the register space.
 pub type RegisterOffset = u64;

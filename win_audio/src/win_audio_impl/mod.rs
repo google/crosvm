@@ -2,46 +2,66 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::AudioSharedFormat;
-use audio_streams::{
-    BoxError, BufferCommit, NoopStream, NoopStreamControl, PlaybackBuffer, PlaybackBufferError,
-    PlaybackBufferStream, SampleFormat, StreamControl, StreamSource,
-};
-use base::{error, info, warn, AsRawDescriptor, Error, Event, EventExt, EventReadResult};
-use completion_handler::{
-    WinAudioActivateAudioInterfaceCompletionHandler, ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT,
-};
-use metrics::event_details_proto::RecordDetails;
-use metrics::{self, MetricEventType};
 use std::convert::From;
 use std::fmt::Debug;
 use std::mem::MaybeUninit;
 use std::os::raw::c_void;
 use std::ptr::null_mut;
-use std::sync::{Arc, Once};
+use std::sync::Arc;
+use std::sync::Once;
 use std::thread_local;
 use std::time::Duration;
+
+use audio_streams::BoxError;
+use audio_streams::BufferCommit;
+use audio_streams::NoopStream;
+use audio_streams::NoopStreamControl;
+use audio_streams::PlaybackBuffer;
+use audio_streams::PlaybackBufferError;
+use audio_streams::PlaybackBufferStream;
+use audio_streams::SampleFormat;
+use audio_streams::StreamControl;
+use audio_streams::StreamSource;
+use base::error;
+use base::info;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Error;
+use base::Event;
+use base::EventExt;
+use base::EventReadResult;
+use completion_handler::WinAudioActivateAudioInterfaceCompletionHandler;
+use completion_handler::ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT;
+use metrics::event_details_proto::RecordDetails;
+use metrics::MetricEventType;
+use metrics::{self};
 use sync::Mutex;
 use thiserror::Error as ThisError;
 use wave_format::*;
-use winapi::shared::guiddef::{GUID, REFCLSID};
+use winapi::shared::guiddef::GUID;
+use winapi::shared::guiddef::REFCLSID;
 use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
 use winapi::shared::mmreg::WAVEFORMATEX;
-use winapi::shared::winerror::{S_FALSE, S_OK};
+use winapi::shared::winerror::S_FALSE;
+use winapi::shared::winerror::S_OK;
 use winapi::um::audioclient::*;
-use winapi::um::audiosessiontypes::{AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK};
+use winapi::um::audiosessiontypes::AUDCLNT_SHAREMODE_SHARED;
+use winapi::um::audiosessiontypes::AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
 use winapi::um::combaseapi::*;
 use winapi::um::coml2api::STGM_READ;
 use winapi::um::functiondiscoverykeys_devpkey::PKEY_Device_FriendlyName;
 use winapi::um::mmdeviceapi::*;
 use winapi::um::objbase::COINIT_APARTMENTTHREADED;
-use winapi::um::propidl::{PropVariantClear, PROPVARIANT};
+use winapi::um::propidl::PropVariantClear;
+use winapi::um::propidl::PROPVARIANT;
 use winapi::um::propsys::IPropertyStore;
 use winapi::um::synchapi::WaitForSingleObject;
 use winapi::um::unknwnbase::IUnknown;
 use winapi::um::winbase::WAIT_OBJECT_0;
 use winapi::Interface;
 use wio::com::ComPtr;
+
+use crate::AudioSharedFormat;
 
 mod completion_handler;
 mod wave_format;
@@ -818,11 +838,14 @@ impl From<i32> for RenderError {
 // be found. Just put it in the appropriate spot in the `target` directory.
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use once_cell::sync::Lazy;
     use std::thread;
-    use winapi::shared::mmreg::{WAVEFORMATEXTENSIBLE, WAVE_FORMAT_EXTENSIBLE};
+
+    use once_cell::sync::Lazy;
+    use winapi::shared::mmreg::WAVEFORMATEXTENSIBLE;
+    use winapi::shared::mmreg::WAVE_FORMAT_EXTENSIBLE;
     use winapi::shared::winerror::S_OK;
+
+    use super::*;
     // These tests needs to be ran serially because there is a chance that two different tests
     // running on different threads could open the same event named
     // ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT.

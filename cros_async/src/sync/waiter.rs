@@ -2,24 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    cell::UnsafeCell,
-    future::Future,
-    mem,
-    pin::Pin,
-    ptr::NonNull,
-    sync::{
-        atomic::{AtomicBool, AtomicU8, Ordering},
-        Arc,
-    },
-    task::{Context, Poll, Waker},
-};
+use std::cell::UnsafeCell;
+use std::future::Future;
+use std::mem;
+use std::pin::Pin;
+use std::ptr::NonNull;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Waker;
 
-use intrusive_collections::{
-    intrusive_adapter,
-    linked_list::{LinkedList, LinkedListOps},
-    DefaultLinkOps, LinkOps,
-};
+use intrusive_collections::intrusive_adapter;
+use intrusive_collections::linked_list::LinkedList;
+use intrusive_collections::linked_list::LinkedListOps;
+use intrusive_collections::DefaultLinkOps;
+use intrusive_collections::LinkOps;
 
 use super::super::sync::SpinLock;
 

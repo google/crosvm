@@ -2,34 +2,35 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{error, warn, AsRawDescriptor, Descriptor};
-use std::{
-    ffi::c_void,
-    future::Future,
-    marker::{PhantomData, PhantomPinned},
-    pin::Pin,
-    ptr::null_mut,
-    sync::MutexGuard,
-    task::{Context, Poll, Waker},
-};
-use sync::Mutex;
-use winapi::{
-    shared::ntdef::FALSE,
-    um::{
-        handleapi::INVALID_HANDLE_VALUE,
-        threadpoollegacyapiset::UnregisterWaitEx,
-        winbase::{RegisterWaitForSingleObject, INFINITE},
-        winnt::{BOOLEAN, PVOID, WT_EXECUTEONLYONCE},
-    },
-};
+use std::ffi::c_void;
+use std::future::Future;
+use std::marker::PhantomData;
+use std::marker::PhantomPinned;
+use std::pin::Pin;
+use std::ptr::null_mut;
+use std::sync::MutexGuard;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Waker;
 
-use crate::{
-    sys::windows::{
-        handle_source::{Error, Result},
-        HandleSource,
-    },
-    IoSourceExt,
-};
+use base::error;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Descriptor;
+use sync::Mutex;
+use winapi::shared::ntdef::FALSE;
+use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+use winapi::um::threadpoollegacyapiset::UnregisterWaitEx;
+use winapi::um::winbase::RegisterWaitForSingleObject;
+use winapi::um::winbase::INFINITE;
+use winapi::um::winnt::BOOLEAN;
+use winapi::um::winnt::PVOID;
+use winapi::um::winnt::WT_EXECUTEONLYONCE;
+
+use crate::sys::windows::handle_source::Error;
+use crate::sys::windows::handle_source::Result;
+use crate::sys::windows::HandleSource;
+use crate::IoSourceExt;
 
 /// Inner state shared between the future struct & the kernel invoked waiter callback.
 struct WaitForHandleInner {
@@ -241,17 +242,19 @@ unsafe fn unregister_wait(desc: Descriptor) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        waker::{new_waker, WeakWake},
-        EventAsync, Executor,
-    };
-    use base::{thread::spawn_with_timeout, Event};
+    use std::sync::Arc;
+    use std::sync::Weak;
+    use std::time::Duration;
+
+    use base::thread::spawn_with_timeout;
+    use base::Event;
     use futures::pin_mut;
-    use std::{
-        sync::{Arc, Weak},
-        time::Duration,
-    };
+
+    use super::*;
+    use crate::waker::new_waker;
+    use crate::waker::WeakWake;
+    use crate::EventAsync;
+    use crate::Executor;
 
     struct FakeWaker {}
     impl WeakWake for FakeWaker {

@@ -9,11 +9,12 @@ use std::env;
 use std::path::PathBuf;
 
 use devices::virtio::vhost::user::vmm::Gpu as VhostUserGpu;
-use serde::{Deserialize, Serialize};
-
-use crate::crosvm::config::{Config, VhostUserOption};
+use serde::Deserialize;
+use serde::Serialize;
 
 use super::*;
+use crate::crosvm::config::Config;
+use crate::crosvm::config::VhostUserOption;
 
 pub fn create_vhost_user_gpu_device(
     cfg: &Config,

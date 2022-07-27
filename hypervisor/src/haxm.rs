@@ -2,19 +2,28 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::arch::x86_64::{CpuidResult, __cpuid};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::arch::x86_64::CpuidResult;
+use std::arch::x86_64::__cpuid;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
-use base::{AsRawDescriptor, RawDescriptor, Result, SafeDescriptor};
+use base::AsRawDescriptor;
+use base::RawDescriptor;
+use base::Result;
+use base::SafeDescriptor;
 
-use crate::{CpuId, CpuIdEntry, Hypervisor, HypervisorCap, HypervisorX86_64};
+use crate::CpuId;
+use crate::CpuIdEntry;
+use crate::Hypervisor;
+use crate::HypervisorCap;
+use crate::HypervisorX86_64;
 
 mod haxm_sys;
-use haxm_sys::*;
 // This is a HAXM-specific capability, so it's not present in the VmCap enum, and the
 // register_vm_log function does not exist on the Vm trait. But windows.rs will use it when
 // creating Haxm Vm instances, so we expose the cap constant here.
 pub use haxm_sys::HAX_CAP_VM_LOG;
+use haxm_sys::*;
 
 mod vcpu;
 pub use vcpu::*;

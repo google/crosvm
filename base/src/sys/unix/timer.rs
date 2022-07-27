@@ -2,23 +2,30 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    mem,
-    os::unix::io::{AsRawFd, RawFd},
-    ptr,
-    time::Duration,
-};
+use std::mem;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::RawFd;
+use std::ptr;
+use std::time::Duration;
 
-use libc::{
-    clock_getres, timerfd_create, timerfd_settime, CLOCK_MONOTONIC, EAGAIN, POLLIN, TFD_CLOEXEC,
-    {self},
-};
+use libc::clock_getres;
+use libc::timerfd_create;
+use libc::timerfd_settime;
+use libc::CLOCK_MONOTONIC;
+use libc::EAGAIN;
+use libc::POLLIN;
+use libc::TFD_CLOEXEC;
+use libc::{self};
 
-use super::super::{errno_result, Error, Result};
+use super::super::errno_result;
+use super::super::Error;
+use super::super::Result;
 use super::duration_to_timespec;
-use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
-
-use crate::timer::{Timer, WaitResult};
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::SafeDescriptor;
+use crate::timer::Timer;
+use crate::timer::WaitResult;
 
 impl AsRawFd for Timer {
     fn as_raw_fd(&self) -> RawFd {

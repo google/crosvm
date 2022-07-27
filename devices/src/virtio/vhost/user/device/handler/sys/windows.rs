@@ -4,18 +4,30 @@
 
 use std::mem::ManuallyDrop;
 
-use anyhow::{Context, Result};
-use base::named_pipes::{BlockingMode, FramingMode, PipeConnection};
-use base::{info, CloseNotifier, Event, FromRawDescriptor, RawDescriptor, ReadNotifier, Tube};
-use cros_async::{EventAsync, Executor};
+use anyhow::Context;
+use anyhow::Result;
+use base::info;
+use base::named_pipes::BlockingMode;
+use base::named_pipes::FramingMode;
+use base::named_pipes::PipeConnection;
+use base::CloseNotifier;
+use base::Event;
+use base::FromRawDescriptor;
+use base::RawDescriptor;
+use base::ReadNotifier;
+use base::Tube;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use futures::pin_mut;
+use futures::select;
 use futures::FutureExt;
-use futures::{pin_mut, select};
-use tube_transporter::{TubeTransferDataList, TubeTransporterReader};
+use tube_transporter::TubeTransferDataList;
+use tube_transporter::TubeTransporterReader;
 use vmm_vhost::SlaveReqHandler;
 
-use crate::virtio::vhost::user::device::handler::{
-    CallEvent, DeviceRequestHandler, VhostUserRegularOps,
-};
+use crate::virtio::vhost::user::device::handler::CallEvent;
+use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
+use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
 
 pub type Doorbell = CallEvent;
 
@@ -108,13 +120,12 @@ impl DeviceRequestHandler<VhostUserRegularOps> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::Barrier;
 
+    use super::*;
     use crate::virtio::vhost::user::device::handler::tests::*;
     use crate::virtio::vhost::user::device::handler::*;
     use crate::virtio::vhost::user::vmm::VhostUserHandler;
-
-    use std::sync::Barrier;
     #[test]
     fn test_vhost_user_activate() {
         const QUEUES_NUM: usize = 2;

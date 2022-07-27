@@ -2,16 +2,26 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{Bus, IrqEdgeEvent, IrqEventSource, IrqLevelEvent};
-use base::{error, Error, Event, Result};
+use base::error;
+use base::Error;
+use base::Event;
+use base::Result;
 use hypervisor::kvm::KvmVcpu;
+use hypervisor::HypervisorCap;
+use hypervisor::IrqRoute;
+use hypervisor::MPState;
+use hypervisor::Vcpu;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use hypervisor::VmAArch64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use hypervisor::VmX86_64;
-use hypervisor::{HypervisorCap, IrqRoute, MPState, Vcpu};
 use kvm_sys::kvm_mp_state;
 use resources::SystemAllocator;
+
+use crate::Bus;
+use crate::IrqEdgeEvent;
+use crate::IrqEventSource;
+use crate::IrqLevelEvent;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86_64;
@@ -23,7 +33,10 @@ mod aarch64;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 pub use aarch64::*;
 
-use crate::{IrqChip, IrqChipCap, IrqEventIndex, VcpuRunState};
+use crate::IrqChip;
+use crate::IrqChipCap;
+use crate::IrqEventIndex;
+use crate::VcpuRunState;
 
 /// This IrqChip only works with Kvm so we only implement it for KvmVcpu.
 impl IrqChip for KvmKernelIrqChip {
@@ -203,16 +216,19 @@ impl IrqChip for KvmKernelIrqChip {
 
 #[cfg(test)]
 mod tests {
-    use hypervisor::kvm::{Kvm, KvmVm};
-    use hypervisor::{MPState, ProtectionType, Vm};
-    use vm_memory::GuestMemory;
-
-    use crate::irqchip::{IrqChip, KvmKernelIrqChip};
-
+    use hypervisor::kvm::Kvm;
+    use hypervisor::kvm::KvmVm;
+    use hypervisor::MPState;
+    use hypervisor::ProtectionType;
+    use hypervisor::Vm;
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     use hypervisor::VmAArch64;
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     use hypervisor::VmX86_64;
+    use vm_memory::GuestMemory;
+
+    use crate::irqchip::IrqChip;
+    use crate::irqchip::KvmKernelIrqChip;
 
     #[test]
     fn create_kvm_kernel_irqchip() {

@@ -2,14 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    alloc::Layout,
-    cmp::min,
-    convert::TryFrom,
-    io,
-    mem::{align_of, size_of},
-    os::unix::io::RawFd,
-};
+use std::alloc::Layout;
+use std::cmp::min;
+use std::convert::TryFrom;
+use std::io;
+use std::mem::align_of;
+use std::mem::size_of;
+use std::os::unix::io::RawFd;
 
 use anyhow::anyhow;
 use base::LayoutAllocation;

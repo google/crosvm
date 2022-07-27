@@ -7,12 +7,13 @@ use std::mem;
 use std::result;
 use std::slice;
 
+use devices::PciAddress;
+use devices::PciInterruptPin;
 use libc::c_char;
 use remain::sorted;
 use thiserror::Error;
-
-use devices::{PciAddress, PciInterruptPin};
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 use crate::mpspec::*;
 
@@ -363,8 +364,9 @@ pub fn setup_mptable(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use base::pagesize;
+
+    use super::*;
 
     fn compute_page_aligned_mp_size(num_cpus: u8) -> u64 {
         let mp_size = compute_mp_size(num_cpus);

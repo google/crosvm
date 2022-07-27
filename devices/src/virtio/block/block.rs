@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::{self, Write};
+use std::io::Write;
+use std::io::{self};
 use std::mem::size_of;
 #[cfg(windows)]
 use std::num::NonZeroU32;
@@ -13,26 +14,43 @@ use std::thread;
 use std::time::Duration;
 use std::u32;
 
+use base::error;
+use base::info;
+use base::warn;
 #[cfg(unix)]
 use base::AsRawDescriptor;
 use base::Error as SysError;
+use base::Event;
+use base::EventToken;
+use base::RawDescriptor;
 use base::Result as SysResult;
-use base::{error, info, warn, Event, EventToken, RawDescriptor, Timer, Tube, WaitContext};
+use base::Timer;
+use base::Tube;
+use base::WaitContext;
 use data_model::DataInit;
 use disk::DiskFile;
-
 use remain::sorted;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
 use sync::Mutex;
 use thiserror::Error;
-use vm_control::{DiskControlCommand, DiskControlResult};
+use vm_control::DiskControlCommand;
+use vm_control::DiskControlResult;
 use vm_memory::GuestMemory;
 
 use super::common::*;
-use crate::virtio::{
-    block::sys::*, copy_config, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue,
-    Reader, SignalableInterrupt, VirtioDevice, Writer,
-};
+use crate::virtio::block::sys::*;
+use crate::virtio::copy_config;
+use crate::virtio::DescriptorChain;
+use crate::virtio::DescriptorError;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::Reader;
+use crate::virtio::SignalableInterrupt;
+use crate::virtio::VirtioDevice;
+use crate::virtio::Writer;
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
@@ -772,17 +790,17 @@ impl VirtioDevice for Block {
 mod tests {
     use std::mem::size_of_val;
 
-    use data_model::{Le32, Le64};
+    use data_model::Le32;
+    use data_model::Le64;
     use hypervisor::ProtectionType;
     use serde_keyvalue::*;
     use tempfile::tempfile;
     use vm_memory::GuestAddress;
 
-    use crate::virtio::base_features;
-    use crate::virtio::block::common::*;
-    use crate::virtio::descriptor_utils::{create_descriptor_chain, DescriptorType};
-
     use super::*;
+    use crate::virtio::base_features;
+    use crate::virtio::descriptor_utils::create_descriptor_chain;
+    use crate::virtio::descriptor_utils::DescriptorType;
 
     #[test]
     fn read_size() {

@@ -5,25 +5,28 @@
 //! A wrapped IO source that uses FdExecutor to drive asynchronous completion. Used from
 //! `IoSourceExt::new` when uring isn't available in the kernel.
 
-use std::{
-    io,
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+use std::io;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::sync::Arc;
 
 use async_trait::async_trait;
+use base::AsRawDescriptor;
 use data_model::VolatileSlice;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
-use super::fd_executor::{
-    FdExecutor, RegisteredSource, {self},
-};
-use crate::{
-    mem::{BackingMemory, MemRegion},
-    AllocateMode, AsyncError, AsyncResult, IoSourceExt, ReadAsync, WriteAsync,
-};
-use base::AsRawDescriptor;
+use super::fd_executor::FdExecutor;
+use super::fd_executor::RegisteredSource;
+use super::fd_executor::{self};
+use crate::mem::BackingMemory;
+use crate::mem::MemRegion;
+use crate::AllocateMode;
+use crate::AsyncError;
+use crate::AsyncResult;
+use crate::IoSourceExt;
+use crate::ReadAsync;
+use crate::WriteAsync;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -369,10 +372,9 @@ impl<F: AsRawDescriptor> IoSourceExt<F> for PollSource<F> {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs::{File, OpenOptions},
-        path::PathBuf,
-    };
+    use std::fs::File;
+    use std::fs::OpenOptions;
+    use std::path::PathBuf;
 
     use super::*;
 

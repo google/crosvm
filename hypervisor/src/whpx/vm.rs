@@ -2,31 +2,62 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{
-    error, info, pagesize, AsRawDescriptor, Error, Event, MappedRegion, MmapError, Protection,
-    RawDescriptor, Result, SafeDescriptor,
-};
 use core::ffi::c_void;
-use fnv::FnvHashMap;
-use libc::{EEXIST, EFAULT, EINVAL, EIO, ENODEV, ENOENT, ENOSPC, ENOTSUP, EOVERFLOW};
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BinaryHeap};
+use std::collections::BTreeMap;
+use std::collections::BinaryHeap;
 use std::convert::TryInto;
 use std::sync::Arc;
+
+use base::error;
+use base::info;
+use base::pagesize;
+use base::AsRawDescriptor;
+use base::Error;
+use base::Event;
+use base::MappedRegion;
+use base::MmapError;
+use base::Protection;
+use base::RawDescriptor;
+use base::Result;
+use base::SafeDescriptor;
+use fnv::FnvHashMap;
+use libc::EEXIST;
+use libc::EFAULT;
+use libc::EINVAL;
+use libc::EIO;
+use libc::ENODEV;
+use libc::ENOENT;
+use libc::ENOSPC;
+use libc::ENOTSUP;
+use libc::EOVERFLOW;
 use sync::Mutex;
-use vm_memory::{GuestAddress, GuestMemory};
-use winapi::shared::winerror::{ERROR_BUSY, ERROR_SUCCESS};
-use winapi::um::memoryapi::{OfferVirtualMemory, ReclaimVirtualMemory, VmOfferPriorityBelowNormal};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+use winapi::shared::winerror::ERROR_BUSY;
+use winapi::shared::winerror::ERROR_SUCCESS;
+use winapi::um::memoryapi::OfferVirtualMemory;
+use winapi::um::memoryapi::ReclaimVirtualMemory;
+use winapi::um::memoryapi::VmOfferPriorityBelowNormal;
 use winapi::um::winnt::RtlZeroMemory;
 
 use super::types::*;
 use super::*;
-
+use crate::host_phys_addr_bits;
 use crate::whpx::whpx_sys::*;
-use crate::{
-    host_phys_addr_bits, ClockState, Datamatch, DeliveryMode, DestinationMode, DeviceKind,
-    IoEventAddress, LapicState, MemSlot, TriggerMode, VcpuX86_64, Vm, VmCap, VmX86_64,
-};
+use crate::ClockState;
+use crate::Datamatch;
+use crate::DeliveryMode;
+use crate::DestinationMode;
+use crate::DeviceKind;
+use crate::IoEventAddress;
+use crate::LapicState;
+use crate::MemSlot;
+use crate::TriggerMode;
+use crate::VcpuX86_64;
+use crate::Vm;
+use crate::VmCap;
+use crate::VmX86_64;
 
 pub struct WhpxVm {
     whpx: Whpx,
@@ -725,10 +756,14 @@ impl VmX86_64 for WhpxVm {
 // NOTE: WHPX Tests need to be run serially as otherwise it barfs unless we map new regions of guest memory.
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use base::{EventReadResult, MemoryMappingBuilder, SharedMemory};
     use std::thread;
     use std::time::Duration;
+
+    use base::EventReadResult;
+    use base::MemoryMappingBuilder;
+    use base::SharedMemory;
+
+    use super::*;
 
     fn new_vm(cpu_count: usize, mem: GuestMemory) -> WhpxVm {
         let whpx = Whpx::new().expect("failed to instantiate whpx");

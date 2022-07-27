@@ -2,25 +2,41 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::pci::{
-    BarRange, PciAddress, PciBarConfiguration, PciBarPrefetchable, PciBarRegionType, PciClassCode,
-    PciConfiguration, PciDevice, PciDeviceError, PciHeaderType, PciInterruptPin,
-    PciProgrammingInterface, PciSerialBusSubClass,
-};
+use std::mem;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
-use crate::register_space::{Register, RegisterSpace};
+use base::error;
+use base::AsRawDescriptor;
+use base::RawDescriptor;
+use resources::Alloc;
+use resources::MmioType;
+use resources::SystemAllocator;
+use vm_memory::GuestMemory;
+
+use crate::pci::BarRange;
+use crate::pci::PciAddress;
+use crate::pci::PciBarConfiguration;
+use crate::pci::PciBarPrefetchable;
+use crate::pci::PciBarRegionType;
+use crate::pci::PciClassCode;
+use crate::pci::PciConfiguration;
+use crate::pci::PciDevice;
+use crate::pci::PciDeviceError;
+use crate::pci::PciHeaderType;
+use crate::pci::PciInterruptPin;
+use crate::pci::PciProgrammingInterface;
+use crate::pci::PciSerialBusSubClass;
+use crate::register_space::Register;
+use crate::register_space::RegisterSpace;
 use crate::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
 use crate::usb::xhci::xhci::Xhci;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
-use crate::usb::xhci::xhci_regs::{init_xhci_mmio_space_and_regs, XhciRegs};
+use crate::usb::xhci::xhci_regs::init_xhci_mmio_space_and_regs;
+use crate::usb::xhci::xhci_regs::XhciRegs;
 use crate::utils::FailHandle;
 use crate::IrqLevelEvent;
-use base::{error, AsRawDescriptor, RawDescriptor};
-use resources::{Alloc, MmioType, SystemAllocator};
-use std::mem;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use vm_memory::GuestMemory;
 
 const XHCI_BAR0_SIZE: u64 = 0x10000;
 

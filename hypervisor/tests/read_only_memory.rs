@@ -6,11 +6,14 @@
 #![cfg(unix)]
 #![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::AtomicU16;
+use std::sync::atomic::Ordering;
 
-use base::{MemoryMappingBuilder, SharedMemory};
+use base::MemoryMappingBuilder;
+use base::SharedMemory;
 use hypervisor::*;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
 
 #[test]
 #[cfg(unix)]

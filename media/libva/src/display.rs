@@ -2,15 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{ffi::CStr, fs::File, rc::Rc};
+use std::ffi::CStr;
+use std::fs::File;
+use std::rc::Rc;
 
+use anyhow::anyhow;
 use anyhow::Context as AnyhowContext;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use base::AsRawDescriptor;
 
-use crate::{
-    bindings, config::Config, context::Context, status::Status, surface::Surface, UsageHint,
-};
+use crate::bindings;
+use crate::config::Config;
+use crate::context::Context;
+use crate::status::Status;
+use crate::surface::Surface;
+use crate::UsageHint;
 
 /// An owned VADisplay
 pub struct Display {

@@ -2,53 +2,67 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::convert::TryInto;
+use std::convert::{self};
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::mem::size_of;
+use std::num::Wrapping;
 use std::os::unix::fs::OpenOptionsExt;
-use std::{
-    convert::{self, TryInto},
-    fs::{File, OpenOptions},
-    mem::size_of,
-    num::Wrapping,
-    os::unix::net::UnixListener,
-    path::Path,
-    str,
-    sync::{Arc, Mutex as StdMutex},
-};
+use std::os::unix::net::UnixListener;
+use std::path::Path;
+use std::str;
+use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
 
-use anyhow::{bail, Context};
+use anyhow::bail;
+use anyhow::Context;
 use argh::FromArgs;
-use base::{Event, FromRawDescriptor, IntoRawDescriptor, UnlinkUnixListener};
-use cros_async::{EventAsync, Executor};
-use data_model::{DataInit, Le64};
+use base::Event;
+use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
+use base::UnlinkUnixListener;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use data_model::DataInit;
+use data_model::Le64;
 use hypervisor::ProtectionType;
 use sync::Mutex;
-use vhost::{self, Vhost, Vsock};
+use vhost::Vhost;
+use vhost::Vsock;
+use vhost::{self};
 use vm_memory::GuestMemory;
-use vmm_vhost::{
-    connection::vfio::Listener as VfioListener,
-    message::{
-        VhostSharedMemoryRegion, VhostUserConfigFlags, VhostUserInflight, VhostUserMemoryRegion,
-        VhostUserProtocolFeatures, VhostUserSingleMemoryRegion, VhostUserVirtioFeatures,
-        VhostUserVringAddrFlags, VhostUserVringState,
-    },
-    Error, Result, SlaveReqHandler, VhostUserSlaveReqHandlerMut,
-};
-use vmm_vhost::{Protocol, SlaveListener};
+use vmm_vhost::connection::vfio::Listener as VfioListener;
+use vmm_vhost::message::VhostSharedMemoryRegion;
+use vmm_vhost::message::VhostUserConfigFlags;
+use vmm_vhost::message::VhostUserInflight;
+use vmm_vhost::message::VhostUserMemoryRegion;
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserSingleMemoryRegion;
+use vmm_vhost::message::VhostUserVirtioFeatures;
+use vmm_vhost::message::VhostUserVringAddrFlags;
+use vmm_vhost::message::VhostUserVringState;
+use vmm_vhost::Error;
+use vmm_vhost::Protocol;
+use vmm_vhost::Result;
+use vmm_vhost::SlaveListener;
+use vmm_vhost::SlaveReqHandler;
+use vmm_vhost::VhostUserSlaveReqHandlerMut;
 
-use crate::virtio::vhost::user::device::handler::{run_handler, VhostUserRegularOps};
-use crate::virtio::{
-    base_features,
-    vhost::{
-        user::device::{
-            handler::{vmm_va_to_gpa, MappingInfo, VhostUserPlatformOps},
-            vvu::{doorbell::DoorbellRegion, pci::VvuPciDevice, VvuDevice},
-        },
-        vsock,
-    },
-    Queue, SignalableInterrupt,
-};
-
+use crate::virtio::base_features;
+use crate::virtio::vhost::user::device::handler::run_handler;
 // TODO(acourbot) try to remove the system dependencies and make the device usable on all platforms.
 use crate::virtio::vhost::user::device::handler::sys::unix::{Doorbell, VvuOps};
+use crate::virtio::vhost::user::device::handler::vmm_va_to_gpa;
+use crate::virtio::vhost::user::device::handler::MappingInfo;
+use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
+use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
+use crate::virtio::vhost::user::device::vvu::doorbell::DoorbellRegion;
+use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
+use crate::virtio::vhost::user::device::vvu::VvuDevice;
+use crate::virtio::vhost::vsock;
+use crate::virtio::Queue;
+use crate::virtio::SignalableInterrupt;
 
 const MAX_VRING_LEN: u16 = vsock::QUEUE_SIZE;
 const NUM_QUEUES: usize = vsock::QUEUE_SIZES.len();

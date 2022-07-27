@@ -2,18 +2,28 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    mem,
-    os::unix::io::{AsRawFd, RawFd},
-    ptr,
-    time::Duration,
-};
+use std::mem;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::RawFd;
+use std::ptr;
+use std::time::Duration;
 
-use libc::{c_void, eventfd, read, write, POLLIN};
-use serde::{Deserialize, Serialize};
+use libc::c_void;
+use libc::eventfd;
+use libc::read;
+use libc::write;
+use libc::POLLIN;
+use serde::Deserialize;
+use serde::Serialize;
 
-use super::{duration_to_timespec, errno_result, RawDescriptor, Result};
-use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
+use super::duration_to_timespec;
+use super::errno_result;
+use super::RawDescriptor;
+use super::Result;
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::IntoRawDescriptor;
+use crate::descriptor::SafeDescriptor;
 
 /// A safe wrapper around a Linux eventfd (man 2 eventfd).
 ///

@@ -2,14 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 use std::sync::Arc;
+
+use data_model::DataInit;
+use resources::SystemAllocator;
 use sync::Mutex;
 
 use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::*;
-use crate::pci::{MsiConfig, PciAddress, PciCapability, PciDeviceError};
-use data_model::DataInit;
-use resources::SystemAllocator;
+use crate::pci::MsiConfig;
+use crate::pci::PciAddress;
+use crate::pci::PciCapability;
+use crate::pci::PciDeviceError;
 
 pub trait PcieDevice: Send {
     fn get_device_id(&self) -> u16;

@@ -2,7 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use data_model::{DataInit, Le16, Le32, Le64};
+use data_model::DataInit;
+use data_model::Le16;
+use data_model::Le32;
+use data_model::Le64;
 
 pub const TYPE_STREAM_SOCKET: u16 = 1;
 

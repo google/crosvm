@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::usb::xhci::scatter_gather_buffer::Error as BufferError;
-use crate::usb::xhci::xhci_transfer::Error as XhciTransferError;
-use crate::utils::Error as UtilsError;
-
 use base::TubeError;
 use remain::sorted;
 use thiserror::Error;
 use usb_util::Error as UsbUtilError;
+
+use crate::usb::xhci::scatter_gather_buffer::Error as BufferError;
+use crate::usb::xhci::xhci_transfer::Error as XhciTransferError;
+use crate::utils::Error as UtilsError;
 
 #[sorted]
 #[derive(Error, Debug)]

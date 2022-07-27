@@ -2,8 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{self, Debug};
-use std::sync::{Condvar as StdCondvar, MutexGuard, WaitTimeoutResult};
+use std::fmt::Debug;
+use std::fmt::{self};
+use std::sync::Condvar as StdCondvar;
+use std::sync::MutexGuard;
+use std::sync::WaitTimeoutResult;
 use std::time::Duration;
 
 static CONDVAR_POISONED: &str = "condvar is poisoned";

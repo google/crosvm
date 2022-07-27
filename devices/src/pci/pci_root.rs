@@ -5,19 +5,34 @@
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::ops::Bound::Included;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
+use std::sync::Weak;
 
-use base::{error, RawDescriptor, SendTube, VmEventType};
+use base::error;
+use base::RawDescriptor;
+use base::SendTube;
+use base::VmEventType;
+use resources::SystemAllocator;
 use sync::Mutex;
 
-use crate::pci::pci_configuration::{
-    PciBarConfiguration, PciBridgeSubclass, PciClassCode, PciConfiguration, PciHeaderType,
-    HEADER_TYPE_MULTIFUNCTION_MASK, HEADER_TYPE_REG,
-};
-use crate::pci::pci_device::{Error, PciBus, PciDevice};
-use crate::pci::{PciAddress, PciId, PCI_VENDOR_ID_INTEL};
-use crate::{Bus, BusAccessInfo, BusDevice, BusType, DeviceId};
-use resources::SystemAllocator;
+use crate::pci::pci_configuration::PciBarConfiguration;
+use crate::pci::pci_configuration::PciBridgeSubclass;
+use crate::pci::pci_configuration::PciClassCode;
+use crate::pci::pci_configuration::PciConfiguration;
+use crate::pci::pci_configuration::PciHeaderType;
+use crate::pci::pci_configuration::HEADER_TYPE_MULTIFUNCTION_MASK;
+use crate::pci::pci_configuration::HEADER_TYPE_REG;
+use crate::pci::pci_device::Error;
+use crate::pci::pci_device::PciBus;
+use crate::pci::pci_device::PciDevice;
+use crate::pci::PciAddress;
+use crate::pci::PciId;
+use crate::pci::PCI_VENDOR_ID_INTEL;
+use crate::Bus;
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::BusType;
+use crate::DeviceId;
 
 // A PciDevice that holds the root hub's configuration.
 struct PciRootConfiguration {

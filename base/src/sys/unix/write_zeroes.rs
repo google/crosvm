@@ -2,9 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{cmp::min, fs::File, io, os::unix::fs::FileExt};
+use std::cmp::min;
+use std::fs::File;
+use std::io;
+use std::os::unix::fs::FileExt;
 
-use super::{fallocate, FallocateMode};
+use super::fallocate;
+use super::FallocateMode;
 
 pub(crate) fn file_punch_hole(file: &File, offset: u64, length: u64) -> io::Result<()> {
     fallocate(file, FallocateMode::PunchHole, true, offset, length as u64)

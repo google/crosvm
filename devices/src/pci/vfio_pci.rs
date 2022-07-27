@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[cfg(feature = "direct")]
-use anyhow::Context;
-use std::cmp::{max, min, Reverse};
-use std::collections::{BTreeMap, BTreeSet};
+use std::cmp::max;
+use std::cmp::min;
+use std::cmp::Reverse;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fs;
 #[cfg(feature = "direct")]
 use std::path::Path;
@@ -14,38 +15,66 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 use std::u32;
-use sync::Mutex;
-
-use base::{
-    error, pagesize, warn, AsRawDescriptor, AsRawDescriptors, Event, EventToken, Protection,
-    RawDescriptor, Tube, WaitContext,
-};
-use hypervisor::MemSlot;
-
-use resources::{Alloc, MmioType, SystemAllocator};
-
-use vfio_sys::*;
-use vm_control::{
-    VmMemoryDestination, VmMemoryRequest, VmMemoryResponse, VmMemorySource, VmRequest, VmResponse,
-};
-
-use crate::pci::msi::{
-    MsiConfig, MsiStatus, PCI_MSI_FLAGS, PCI_MSI_FLAGS_64BIT, PCI_MSI_FLAGS_MASKBIT,
-    PCI_MSI_NEXT_POINTER,
-};
-use crate::pci::msix::{
-    MsixConfig, MsixStatus, BITS_PER_PBA_ENTRY, MSIX_PBA_ENTRIES_MODULO, MSIX_TABLE_ENTRIES_MODULO,
-};
 
 #[cfg(feature = "direct")]
-use crate::pci::pci_configuration::{CLASS_REG, CLASS_REG_REVISION_ID_OFFSET, HEADER_TYPE_REG};
-use crate::pci::pci_device::{BarRange, Error as PciDeviceError, PciDevice};
-use crate::pci::{
-    PciAddress, PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType,
-    PciClassCode, PciId, PciInterruptPin, PCI_VENDOR_ID_INTEL,
-};
+use anyhow::Context;
+use base::error;
+use base::pagesize;
+use base::warn;
+use base::AsRawDescriptor;
+use base::AsRawDescriptors;
+use base::Event;
+use base::EventToken;
+use base::Protection;
+use base::RawDescriptor;
+use base::Tube;
+use base::WaitContext;
+use hypervisor::MemSlot;
+use resources::Alloc;
+use resources::MmioType;
+use resources::SystemAllocator;
+use sync::Mutex;
+use vfio_sys::*;
+use vm_control::VmMemoryDestination;
+use vm_control::VmMemoryRequest;
+use vm_control::VmMemoryResponse;
+use vm_control::VmMemorySource;
+use vm_control::VmRequest;
+use vm_control::VmResponse;
 
-use crate::vfio::{VfioDevice, VfioError, VfioIrqType, VfioPciConfig};
+use crate::pci::msi::MsiConfig;
+use crate::pci::msi::MsiStatus;
+use crate::pci::msi::PCI_MSI_FLAGS;
+use crate::pci::msi::PCI_MSI_FLAGS_64BIT;
+use crate::pci::msi::PCI_MSI_FLAGS_MASKBIT;
+use crate::pci::msi::PCI_MSI_NEXT_POINTER;
+use crate::pci::msix::MsixConfig;
+use crate::pci::msix::MsixStatus;
+use crate::pci::msix::BITS_PER_PBA_ENTRY;
+use crate::pci::msix::MSIX_PBA_ENTRIES_MODULO;
+use crate::pci::msix::MSIX_TABLE_ENTRIES_MODULO;
+#[cfg(feature = "direct")]
+use crate::pci::pci_configuration::CLASS_REG;
+#[cfg(feature = "direct")]
+use crate::pci::pci_configuration::CLASS_REG_REVISION_ID_OFFSET;
+#[cfg(feature = "direct")]
+use crate::pci::pci_configuration::HEADER_TYPE_REG;
+use crate::pci::pci_device::BarRange;
+use crate::pci::pci_device::Error as PciDeviceError;
+use crate::pci::pci_device::PciDevice;
+use crate::pci::PciAddress;
+use crate::pci::PciBarConfiguration;
+use crate::pci::PciBarIndex;
+use crate::pci::PciBarPrefetchable;
+use crate::pci::PciBarRegionType;
+use crate::pci::PciClassCode;
+use crate::pci::PciId;
+use crate::pci::PciInterruptPin;
+use crate::pci::PCI_VENDOR_ID_INTEL;
+use crate::vfio::VfioDevice;
+use crate::vfio::VfioError;
+use crate::vfio::VfioIrqType;
+use crate::vfio::VfioPciConfig;
 use crate::IrqLevelEvent;
 
 const PCI_VENDOR_ID: u32 = 0x0;

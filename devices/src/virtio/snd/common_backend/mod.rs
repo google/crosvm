@@ -11,33 +11,49 @@ use std::rc::Rc;
 use std::thread;
 
 use anyhow::Context;
-use audio_streams::{BoxError, SampleFormat, StreamSource, StreamSourceGenerator};
-use base::{error, warn, Error as SysError, Event, RawDescriptor};
+use audio_streams::BoxError;
+use audio_streams::SampleFormat;
+use audio_streams::StreamSource;
+use audio_streams::StreamSourceGenerator;
+use base::error;
+use base::warn;
+use base::Error as SysError;
+use base::Event;
+use base::RawDescriptor;
 use cros_async::sync::Mutex as AsyncMutex;
-use cros_async::{AsyncError, EventAsync, Executor};
+use cros_async::AsyncError;
+use cros_async::EventAsync;
+use cros_async::Executor;
 use data_model::DataInit;
-use futures::channel::{
-    mpsc,
-    oneshot::{self, Canceled},
-};
-use futures::{pin_mut, select, Future, FutureExt, TryFutureExt};
+use futures::channel::mpsc;
+use futures::channel::oneshot::Canceled;
+use futures::channel::oneshot::{self};
+use futures::pin_mut;
+use futures::select;
+use futures::Future;
+use futures::FutureExt;
+use futures::TryFutureExt;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
+use crate::virtio::async_utils;
+use crate::virtio::copy_config;
 use crate::virtio::snd::common::*;
 use crate::virtio::snd::common_backend::async_funcs::*;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
 use crate::virtio::snd::null_backend::create_null_stream_source_generators;
-use crate::virtio::snd::parameters::{Parameters, StreamSourceBackend};
-use crate::virtio::snd::sys::{
-    create_stream_source_generators as sys_create_stream_source_generators,
-    set_audio_thread_priority,
-};
-use crate::virtio::{
-    async_utils, copy_config, DescriptorChain, DescriptorError, DeviceType, Interrupt, Queue,
-    VirtioDevice, Writer,
-};
+use crate::virtio::snd::parameters::Parameters;
+use crate::virtio::snd::parameters::StreamSourceBackend;
+use crate::virtio::snd::sys::create_stream_source_generators as sys_create_stream_source_generators;
+use crate::virtio::snd::sys::set_audio_thread_priority;
+use crate::virtio::DescriptorChain;
+use crate::virtio::DescriptorError;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::VirtioDevice;
+use crate::virtio::Writer;
 
 pub mod async_funcs;
 

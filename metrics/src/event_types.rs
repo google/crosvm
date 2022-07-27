@@ -2,10 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use anyhow::Error;
-use serde::{Deserialize, Serialize};
 use std::convert::From;
 use std::convert::TryFrom;
+
+use anyhow::Error;
+use serde::Deserialize;
+use serde::Serialize;
 
 // TODO(mikehoyle): Create a way to generate these directly from the
 // proto for a single source-of-truth.

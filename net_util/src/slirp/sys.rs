@@ -11,4 +11,5 @@ cfg_if::cfg_if! {
     }
 }
 
-pub use platform::{handler, Slirp};
+pub use platform::handler;
+pub use platform::Slirp;

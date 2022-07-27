@@ -5,19 +5,29 @@
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 
-use anyhow::{anyhow, Context};
-use base::{error, warn, AsRawDescriptor, IntoRawDescriptor};
-use libvda::encode::{EncodeCapabilities, VeaImplType, VeaInstance};
+use anyhow::anyhow;
+use anyhow::Context;
+use base::error;
+use base::warn;
+use base::AsRawDescriptor;
+use base::IntoRawDescriptor;
+use libvda::encode::EncodeCapabilities;
+use libvda::encode::VeaImplType;
+use libvda::encode::VeaInstance;
 
 use super::*;
-use crate::virtio::video::format::{
-    Bitrate, Format, FormatDesc, FormatRange, FrameFormat, Level, Profile,
-};
-use crate::virtio::video::{
-    encoder::encoder::*,
-    error::{VideoError, VideoResult},
-    resource::{GuestResource, GuestResourceHandle},
-};
+use crate::virtio::video::encoder::encoder::*;
+use crate::virtio::video::error::VideoError;
+use crate::virtio::video::error::VideoResult;
+use crate::virtio::video::format::Bitrate;
+use crate::virtio::video::format::Format;
+use crate::virtio::video::format::FormatDesc;
+use crate::virtio::video::format::FormatRange;
+use crate::virtio::video::format::FrameFormat;
+use crate::virtio::video::format::Level;
+use crate::virtio::video::format::Profile;
+use crate::virtio::video::resource::GuestResource;
+use crate::virtio::video::resource::GuestResourceHandle;
 
 impl From<Bitrate> for libvda::encode::Bitrate {
     fn from(bitrate: Bitrate) -> Self {

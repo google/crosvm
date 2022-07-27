@@ -4,7 +4,10 @@
 
 //! Implementation of the Syslog trait as a wrapper around Window's events
 
-use crate::syslog::{Error, Facility, Log, Syslog};
+use crate::syslog::Error;
+use crate::syslog::Facility;
+use crate::syslog::Log;
+use crate::syslog::Syslog;
 use crate::RawDescriptor;
 
 pub struct PlatformSyslog {}

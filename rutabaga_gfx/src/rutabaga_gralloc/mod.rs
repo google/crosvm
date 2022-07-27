@@ -17,6 +17,7 @@ mod system_gralloc;
 mod vulkano_gralloc;
 
 pub use formats::DrmFormat;
-pub use gralloc::{
-    ImageAllocationInfo, ImageMemoryRequirements, RutabagaGralloc, RutabagaGrallocFlags,
-};
+pub use gralloc::ImageAllocationInfo;
+pub use gralloc::ImageMemoryRequirements;
+pub use gralloc::RutabagaGralloc;
+pub use gralloc::RutabagaGrallocFlags;

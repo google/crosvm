@@ -2,21 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    collections::VecDeque,
-    mem,
-    sync::{
-        mpsc::{channel, Receiver, Sender},
-        Arc,
-    },
-    thread::{self, JoinHandle},
-    time::{Duration, Instant},
-};
+use std::collections::VecDeque;
+use std::mem;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
+use std::thread::JoinHandle;
+use std::thread::{self};
+use std::time::Duration;
+use std::time::Instant;
 
-use async_task::{Runnable, Task};
-use base::{error, warn};
+use async_task::Runnable;
+use async_task::Task;
+use base::error;
+use base::warn;
 use slab::Slab;
-use sync::{Condvar, Mutex};
+use sync::Condvar;
+use sync::Mutex;
 
 const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -332,16 +335,19 @@ impl Drop for BlockingPool {
 
 #[cfg(test)]
 mod test {
-    use std::{
-        sync::{Arc, Barrier},
-        thread,
-        time::{Duration, Instant},
-    };
+    use std::sync::Arc;
+    use std::sync::Barrier;
+    use std::thread;
+    use std::time::Duration;
+    use std::time::Instant;
 
-    use futures::{stream::FuturesUnordered, StreamExt};
-    use sync::{Condvar, Mutex};
+    use futures::stream::FuturesUnordered;
+    use futures::StreamExt;
+    use sync::Condvar;
+    use sync::Mutex;
 
-    use crate::{block_on, BlockingPool};
+    use crate::block_on;
+    use crate::BlockingPool;
 
     #[test]
     fn blocking_sleep() {

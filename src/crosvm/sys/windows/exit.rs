@@ -4,10 +4,13 @@
 
 //! Enum and Anyhow helpers to set the process exit code.
 
-use std::fmt::{self, Display, Formatter};
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::{self};
+
+use anyhow::Context;
 
 use crate::crosvm::sys::config::ProcessType;
-use anyhow::Context;
 
 pub type ExitCode = i32;
 
@@ -427,8 +430,9 @@ pub fn to_process_type_error(error_code: u32, cmd_type: ProcessType) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use winapi::shared::ntstatus::STATUS_BAD_INITIAL_PC;
+
+    use super::*;
 
     #[test]
     fn test_to_process_type_error_ntstatus_vendor() {

@@ -6,8 +6,11 @@ use std::future::Future;
 
 use async_task::Task;
 
-use super::{HandleExecutor, HandleSource};
-use crate::{AsyncResult, IntoAsync, IoSourceExt};
+use super::HandleExecutor;
+use super::HandleSource;
+use crate::AsyncResult;
+use crate::IntoAsync;
+use crate::IoSourceExt;
 
 /// Creates a concrete `IoSourceExt` using the handle_executor.
 pub(crate) fn async_handle_from<'a, F: IntoAsync + 'a + Send>(

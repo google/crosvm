@@ -4,17 +4,16 @@
 
 use std::str::FromStr;
 
+use audio_streams::StreamSourceGenerator;
+use base::set_rt_prio_limit;
+use base::set_rt_round_robin;
+use base::warn;
 #[cfg(feature = "audio_cras")]
 use libcras::CrasStreamSourceGenerator;
-use {
-    audio_streams::StreamSourceGenerator,
-    base::{set_rt_prio_limit, set_rt_round_robin, warn},
-};
 
-use crate::virtio::snd::{
-    common_backend::SndData,
-    parameters::{Error, Parameters},
-};
+use crate::virtio::snd::common_backend::SndData;
+use crate::virtio::snd::parameters::Error;
+use crate::virtio::snd::parameters::Parameters;
 
 const AUDIO_THREAD_RTPRIO: u16 = 10; // Matches other cros audio clients.
 

@@ -4,10 +4,15 @@
 
 use std::fs::File;
 
-use base::{ioctl_with_ref, AsRawDescriptor, RawDescriptor};
-use virtio_sys::{VHOST_VSOCK_SET_GUEST_CID, VHOST_VSOCK_SET_RUNNING};
+use base::ioctl_with_ref;
+use base::AsRawDescriptor;
+use base::RawDescriptor;
+use virtio_sys::VHOST_VSOCK_SET_GUEST_CID;
+use virtio_sys::VHOST_VSOCK_SET_RUNNING;
 
-use super::{ioctl_result, Result, Vhost};
+use super::ioctl_result;
+use super::Result;
+use super::Vhost;
 
 /// Handle for running VHOST_VSOCK ioctls.
 pub struct Vsock {

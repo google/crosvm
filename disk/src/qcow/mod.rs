@@ -6,26 +6,46 @@ mod qcow_raw_file;
 mod refcount;
 mod vec_cache;
 
-use base::{
-    error, open_file, AsRawDescriptor, AsRawDescriptors, FileAllocate, FileReadWriteAtVolatile,
-    FileSetLen, FileSync, PunchHole, RawDescriptor, WriteZeroesAt,
-};
-use data_model::{VolatileMemory, VolatileSlice};
-use libc::{EINVAL, ENOSPC, ENOTSUP};
-use remain::sorted;
-use thiserror::Error;
-
-use std::cmp::{max, min};
-use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::cmp::max;
+use std::cmp::min;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
+use std::io::{self};
 use std::mem::size_of;
 use std::path::Path;
 use std::str;
 
+use base::error;
+use base::open_file;
+use base::AsRawDescriptor;
+use base::AsRawDescriptors;
+use base::FileAllocate;
+use base::FileReadWriteAtVolatile;
+use base::FileSetLen;
+use base::FileSync;
+use base::PunchHole;
+use base::RawDescriptor;
+use base::WriteZeroesAt;
+use data_model::VolatileMemory;
+use data_model::VolatileSlice;
+use libc::EINVAL;
+use libc::ENOSPC;
+use libc::ENOTSUP;
+use remain::sorted;
+use thiserror::Error;
+
+use crate::create_disk_file;
 use crate::qcow::qcow_raw_file::QcowRawFile;
 use crate::qcow::refcount::RefCount;
-use crate::qcow::vec_cache::{CacheMap, Cacheable, VecCache};
-use crate::{create_disk_file, DiskFile, DiskGetLen};
+use crate::qcow::vec_cache::CacheMap;
+use crate::qcow::vec_cache::Cacheable;
+use crate::qcow::vec_cache::VecCache;
+use crate::DiskFile;
+use crate::DiskGetLen;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -1598,11 +1618,17 @@ fn div_round_up_u32(dividend: u32, divisor: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    use std::fs::OpenOptions;
+    use std::io::Read;
+    use std::io::Seek;
+    use std::io::SeekFrom;
+    use std::io::Write;
+
+    use tempfile::tempfile;
+    use tempfile::TempDir;
+
     use super::*;
     use crate::MAX_NESTING_DEPTH;
-    use std::fs::OpenOptions;
-    use std::io::{Read, Seek, SeekFrom, Write};
-    use tempfile::{tempfile, TempDir};
 
     fn valid_header() -> Vec<u8> {
         vec![

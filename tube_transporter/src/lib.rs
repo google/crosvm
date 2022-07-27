@@ -8,14 +8,23 @@
 //! This IPC crate is used by the broker process to send boot data across the
 //! different CrosVm child processes on Windows.
 
-use base::named_pipes::{BlockingMode, FramingMode};
-use base::{
-    deserialize_and_recv, named_pipes::PipeConnection, serialize_and_send, set_alias_pid,
-    set_duplicate_handle_tube, DuplicateHandleTube, FromRawDescriptor, RawDescriptor, Tube,
-    TubeError,
-};
-use serde::{Deserialize, Serialize};
-use std::fmt::{self, Display};
+use std::fmt::Display;
+use std::fmt::{self};
+
+use base::deserialize_and_recv;
+use base::named_pipes::BlockingMode;
+use base::named_pipes::FramingMode;
+use base::named_pipes::PipeConnection;
+use base::serialize_and_send;
+use base::set_alias_pid;
+use base::set_duplicate_handle_tube;
+use base::DuplicateHandleTube;
+use base::FromRawDescriptor;
+use base::RawDescriptor;
+use base::Tube;
+use base::TubeError;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error as ThisError;
 
 pub type TransportTubeResult<T> = std::result::Result<T, TubeTransportError>;
@@ -174,13 +183,16 @@ impl TubeTransferDataList {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use base::{
-        named_pipes::{pair, BlockingMode, FramingMode},
-        Event, EventReadResult,
-    };
     use std::thread;
+
+    use base::named_pipes::pair;
+    use base::named_pipes::BlockingMode;
+    use base::named_pipes::FramingMode;
+    use base::Event;
+    use base::EventReadResult;
     use winapi::um::processthreadsapi::GetCurrentProcessId;
+
+    use super::*;
 
     #[test]
     fn test_send_tubes_through_tube_transporter() {

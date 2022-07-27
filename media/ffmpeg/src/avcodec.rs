@@ -6,9 +6,13 @@
 //! designed to concentrate all calls to unsafe methods in one place, while providing the same
 //! low-level access as the libavcodec functions do.
 
-use std::{ffi::CStr, fmt::Display, marker::PhantomData, ops::Deref};
+use std::ffi::CStr;
+use std::fmt::Display;
+use std::marker::PhantomData;
+use std::ops::Deref;
 
-use libc::{c_char, c_int};
+use libc::c_char;
+use libc::c_int;
 use thiserror::Error as ThisError;
 
 use super::*;

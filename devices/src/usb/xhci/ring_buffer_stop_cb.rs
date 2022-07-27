@@ -2,9 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::utils::FailHandle;
+use std::sync::Arc;
+use std::sync::Mutex;
+
 use base::error;
-use std::sync::{Arc, Mutex};
+
+use crate::utils::FailHandle;
 
 /// RingBufferStopCallback wraps a callback. The callback will be invoked when last instance of
 /// RingBufferStopCallback and its clones is dropped.
@@ -53,8 +56,10 @@ pub fn fallible_closure<E: std::fmt::Display, C: FnMut() -> Result<(), E> + 'sta
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::Mutex;
+
     use super::*;
-    use std::sync::{Arc, Mutex};
 
     fn task(_: RingBufferStopCallback) {}
 

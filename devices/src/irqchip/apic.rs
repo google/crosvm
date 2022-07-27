@@ -14,8 +14,10 @@
 //   * external interrupts -- these are handled by querying `Pic` separately in
 //     `UserspaceIrqChip::inject_interrupts`
 
-use std::convert::{TryFrom, TryInto};
-use std::time::{Duration, Instant};
+use std::convert::TryFrom;
+use std::convert::TryInto;
+use std::time::Duration;
+use std::time::Instant;
 
 #[cfg(test)]
 use base::FakeTimer as Timer;
@@ -24,10 +26,15 @@ use base::Timer;
 // TODO(srichman): Rate-limit error messages?
 use base::{error, warn};
 use bit_field::*;
-use hypervisor::{
-    DeliveryMode, DeliveryStatus, DestinationMode, LapicState, Level, MPState, MsiAddressMessage,
-    MsiDataMessage, TriggerMode,
-};
+use hypervisor::DeliveryMode;
+use hypervisor::DeliveryStatus;
+use hypervisor::DestinationMode;
+use hypervisor::LapicState;
+use hypervisor::Level;
+use hypervisor::MPState;
+use hypervisor::MsiAddressMessage;
+use hypervisor::MsiDataMessage;
+use hypervisor::TriggerMode;
 
 pub type Vector = u8;
 
@@ -895,9 +902,10 @@ mod tests {
     use std::mem;
     use std::sync::Arc;
 
-    use super::*;
     use base::FakeClock;
     use sync::Mutex;
+
+    use super::*;
 
     #[test]
     fn struct_size() {

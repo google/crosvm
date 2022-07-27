@@ -2,18 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    fs::File,
-    io::{Error, ErrorKind, Result},
-    os::unix::{
-        io::{AsRawFd, RawFd},
-        net::UnixStream,
-    },
-};
+use std::fs::File;
+use std::io::Error;
+use std::io::ErrorKind;
+use std::io::Result;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::RawFd;
+use std::os::unix::net::UnixStream;
 
 use data_model::VolatileSlice;
 
-use super::{fallocate, FallocateMode};
+use super::fallocate;
+use super::FallocateMode;
 
 /// A trait for flushing the contents of a file to disk.
 /// This is equivalent to File's `sync_all` method, but
@@ -266,12 +266,21 @@ impl<'a, T: FileReadWriteAtVolatile + ?Sized> FileReadWriteAtVolatile for &'a mu
 // This module allows the below macros to refer to $crate::platform::file_traits::lib::X and ensures other
 // crates don't need to add additional crates to their Cargo.toml.
 pub mod lib {
-    pub use libc::{
-        c_int, c_void, iovec, off64_t, pread64, preadv64, pwrite64, pwritev64, read, readv, size_t,
-        write, writev,
-    };
-
-    pub use data_model::{IoBufMut, VolatileSlice};
+    pub use data_model::IoBufMut;
+    pub use data_model::VolatileSlice;
+    pub use libc::c_int;
+    pub use libc::c_void;
+    pub use libc::iovec;
+    pub use libc::off64_t;
+    pub use libc::pread64;
+    pub use libc::preadv64;
+    pub use libc::pwrite64;
+    pub use libc::pwritev64;
+    pub use libc::read;
+    pub use libc::readv;
+    pub use libc::size_t;
+    pub use libc::write;
+    pub use libc::writev;
 }
 
 #[macro_export]

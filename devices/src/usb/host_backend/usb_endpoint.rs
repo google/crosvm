@@ -5,19 +5,25 @@
 use std::cmp;
 use std::sync::Arc;
 
-use super::error::*;
-use super::utils::{submit_transfer, update_transfer_state};
-use crate::usb::xhci::scatter_gather_buffer::ScatterGatherBuffer;
-use crate::usb::xhci::xhci_transfer::{
-    TransferDirection, XhciTransfer, XhciTransferState, XhciTransferType,
-};
-use crate::utils::AsyncJobQueue;
-use crate::utils::FailHandle;
 use base::error;
 use sync::Mutex;
-use usb_util::{
-    Device, EndpointDirection, EndpointType, Transfer, TransferStatus, ENDPOINT_DIRECTION_OFFSET,
-};
+use usb_util::Device;
+use usb_util::EndpointDirection;
+use usb_util::EndpointType;
+use usb_util::Transfer;
+use usb_util::TransferStatus;
+use usb_util::ENDPOINT_DIRECTION_OFFSET;
+
+use super::error::*;
+use super::utils::submit_transfer;
+use super::utils::update_transfer_state;
+use crate::usb::xhci::scatter_gather_buffer::ScatterGatherBuffer;
+use crate::usb::xhci::xhci_transfer::TransferDirection;
+use crate::usb::xhci::xhci_transfer::XhciTransfer;
+use crate::usb::xhci::xhci_transfer::XhciTransferState;
+use crate::usb::xhci::xhci_transfer::XhciTransferType;
+use crate::utils::AsyncJobQueue;
+use crate::utils::FailHandle;
 
 /// Isochronous, Bulk or Interrupt endpoint.
 pub struct UsbEndpoint {

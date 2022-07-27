@@ -1,4 +1,5 @@
-use std::fmt::{self, Debug};
+use std::fmt::Debug;
+use std::fmt::{self};
 use std::marker::PhantomData;
 use std::slice;
 

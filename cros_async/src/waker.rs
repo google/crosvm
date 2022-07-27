@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    mem::{drop, ManuallyDrop},
-    sync::Weak,
-    task::{RawWaker, RawWakerVTable, Waker},
-};
+use std::mem::drop;
+use std::mem::ManuallyDrop;
+use std::sync::Weak;
+use std::task::RawWaker;
+use std::task::RawWakerVTable;
+use std::task::Waker;
 
 /// Wrapper around a usize used as a token to uniquely identify a pending waker.
 #[derive(Debug)]

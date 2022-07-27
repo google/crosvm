@@ -2,24 +2,28 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use acpi_tables::aml::Aml;
-
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use acpi_tables::aml::Aml;
+use base::syslog;
+use base::AsRawDescriptors;
 #[cfg(any(all(target_arch = "x86_64", feature = "gdb"), unix))]
 use base::Tube;
-use base::{syslog, AsRawDescriptors};
-use devices::{Bus, IrqChip, IrqEventSource};
-use devices::{BusDevice, ProxyDevice, VfioPlatformDevice};
+use devices::Bus;
+use devices::BusDevice;
+use devices::IrqChip;
+use devices::IrqEventSource;
+use devices::ProxyDevice;
+use devices::VfioPlatformDevice;
 use libc::sched_getcpu;
 use minijail::Minijail;
 use resources::MmioType;
 use resources::SystemAllocator;
-use std::collections::BTreeMap;
-
 use sync::Mutex;
 
-use crate::{DeviceRegistrationError, MsrValueFrom};
+use crate::DeviceRegistrationError;
+use crate::MsrValueFrom;
 
 impl MsrValueFrom {
     /// Get the physical(host) CPU id from MsrValueFrom type.

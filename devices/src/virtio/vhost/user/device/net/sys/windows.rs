@@ -2,35 +2,54 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::virtio;
-#[cfg(feature = "slirp")]
-use crate::virtio::net::MAX_BUFFER_SIZE;
-use crate::virtio::net::{process_rx, NetError};
-use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
-use crate::virtio::vhost::user::device::handler::{sys::Doorbell, DeviceRequestHandler};
-use crate::virtio::vhost::user::device::net::{
-    run_ctrl_queue, run_tx_queue, NetBackend, NET_EXECUTOR,
-};
-use crate::virtio::{base_features, SignalableInterrupt};
-use anyhow::{bail, Context};
+use std::sync::Arc;
+
+use anyhow::bail;
+use anyhow::Context;
 use argh::FromArgs;
-use base::named_pipes::{OverlappedWrapper, PipeConnection};
-use base::{error, warn, Event, RawDescriptor};
-use broker_ipc::{common_child_setup, CommonChildStartupArgs};
-use cros_async::{EventAsync, Executor, IntoAsync, IoSourceExt};
-use futures::future::{AbortHandle, Abortable};
+use base::error;
+use base::named_pipes::OverlappedWrapper;
+use base::named_pipes::PipeConnection;
+use base::warn;
+use base::Event;
+use base::RawDescriptor;
+use broker_ipc::common_child_setup;
+use broker_ipc::CommonChildStartupArgs;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use cros_async::IntoAsync;
+use cros_async::IoSourceExt;
+use futures::future::AbortHandle;
+use futures::future::Abortable;
 use hypervisor::ProtectionType;
 #[cfg(feature = "slirp")]
 use net_util::Slirp;
 use net_util::TapT;
 #[cfg(feature = "slirp")]
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use serde::Deserialize;
+#[cfg(feature = "slirp")]
+use serde::Serialize;
 use sync::Mutex;
 use tube_transporter::TubeToken;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
+
+use crate::virtio;
+use crate::virtio::base_features;
+use crate::virtio::net::process_rx;
+use crate::virtio::net::NetError;
+#[cfg(feature = "slirp")]
+use crate::virtio::net::MAX_BUFFER_SIZE;
+use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
+use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
+use crate::virtio::vhost::user::device::net::run_ctrl_queue;
+use crate::virtio::vhost::user::device::net::run_tx_queue;
+use crate::virtio::vhost::user::device::net::NetBackend;
+use crate::virtio::vhost::user::device::net::NET_EXECUTOR;
+use crate::virtio::SignalableInterrupt;
 
 impl<T: 'static> NetBackend<T>
 where

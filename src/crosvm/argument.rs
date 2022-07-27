@@ -49,7 +49,8 @@ use std::result;
 use std::str::FromStr;
 
 use remain::sorted;
-use terminal_size::{terminal_size, Width};
+use terminal_size::terminal_size;
+use terminal_size::Width;
 use thiserror::Error;
 
 /// An error with argument parsing.

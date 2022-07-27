@@ -2,18 +2,27 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::{self, Write};
+use std::io::Write;
+use std::io::{self};
 use std::thread;
 
-use base::{error, warn, Event, EventToken, RawDescriptor, WaitContext};
+use base::error;
+use base::warn;
+use base::Event;
+use base::EventToken;
+use base::RawDescriptor;
+use base::WaitContext;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
-use super::{DeviceType, Interrupt, Queue, SignalableInterrupt, VirtioDevice};
-
+use super::DeviceType;
+use super::Interrupt;
+use super::Queue;
+use super::SignalableInterrupt;
+use super::VirtioDevice;
 use crate::virtio::Writer;
 
 const QUEUE_SIZE: u16 = 256;

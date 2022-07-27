@@ -22,14 +22,17 @@ macro_rules! check_hresult {
 pub mod intermediate_resampler_buffer;
 mod win_audio_impl;
 use std::error;
-use win_audio_impl::*;
-
-use audio_streams::{
-    NoopStream, NoopStreamSource, PlaybackBufferStream, SampleFormat, StreamSource,
-};
-use base::{info, warn};
 use std::sync::Arc;
+
+use audio_streams::NoopStream;
+use audio_streams::NoopStreamSource;
+use audio_streams::PlaybackBufferStream;
+use audio_streams::SampleFormat;
+use audio_streams::StreamSource;
+use base::info;
+use base::warn;
 use sync::Mutex;
+use win_audio_impl::*;
 
 pub type BoxError = Box<dyn error::Error + Send + Sync>;
 

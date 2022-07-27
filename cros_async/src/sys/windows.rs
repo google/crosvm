@@ -9,14 +9,15 @@ pub mod handle_executor;
 pub mod handle_source;
 mod timer;
 pub mod wait_for_handle;
-pub(crate) use wait_for_handle::WaitForHandle;
-pub use {
-    handle_executor::HandleExecutor,
-    handle_source::{HandleSource, HandleWrapper},
-};
-
-use crate::{Error, Result};
 use std::future::Future;
+
+pub use handle_executor::HandleExecutor;
+pub use handle_source::HandleSource;
+pub use handle_source::HandleWrapper;
+pub(crate) use wait_for_handle::WaitForHandle;
+
+use crate::Error;
+use crate::Result;
 
 pub fn run_one_handle<F: Future>(fut: F) -> Result<F::Output> {
     let ex = HandleExecutor::new();

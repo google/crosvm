@@ -24,8 +24,12 @@
 //! Developers should feel free to use sync::Mutex anywhere in crosvm that they
 //! would otherwise be using std::sync::Mutex.
 
-use std::fmt::{self, Debug, Display};
-use std::sync::{Mutex as StdMutex, MutexGuard, TryLockError};
+use std::fmt::Debug;
+use std::fmt::Display;
+use std::fmt::{self};
+use std::sync::Mutex as StdMutex;
+use std::sync::MutexGuard;
+use std::sync::TryLockError;
 
 /// A mutual exclusion primitive useful for protecting shared data.
 #[derive(Default)]

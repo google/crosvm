@@ -7,13 +7,21 @@ mod sys;
 use std::cell::RefCell;
 use std::thread;
 
-use base::{error, Event, RawDescriptor};
+use base::error;
+use base::Event;
+use base::RawDescriptor;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 
-use crate::virtio::vhost::user::vmm::{handler::VhostUserHandler, Error};
-use crate::virtio::{DeviceType, Interrupt, Queue, VirtioDevice, VirtioNetConfig};
+use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
+use crate::virtio::vhost::user::vmm::Error;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::VirtioDevice;
+use crate::virtio::VirtioNetConfig;
 
 type Result<T> = std::result::Result<T, Error>;
 

@@ -5,7 +5,8 @@
 use std::cmp;
 use std::ops::RangeInclusive;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Represents a range of addresses from `start` to `end`, inclusive.
 ///

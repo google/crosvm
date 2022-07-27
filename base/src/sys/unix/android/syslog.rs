@@ -6,19 +6,22 @@
 
 extern crate android_log_sys;
 
-use android_log_sys::{
-    __android_log_is_loggable, __android_log_message, __android_log_write_log_message, log_id_t,
-    LogPriority,
-};
-use std::{
-    ffi::{CString, NulError},
-    mem::size_of,
-};
+use std::ffi::CString;
+use std::ffi::NulError;
+use std::mem::size_of;
 
-use crate::{
-    syslog::{Error, Facility, Level, Log, Syslog},
-    RawDescriptor,
-};
+use android_log_sys::__android_log_is_loggable;
+use android_log_sys::__android_log_message;
+use android_log_sys::__android_log_write_log_message;
+use android_log_sys::log_id_t;
+use android_log_sys::LogPriority;
+
+use crate::syslog::Error;
+use crate::syslog::Facility;
+use crate::syslog::Level;
+use crate::syslog::Log;
+use crate::syslog::Syslog;
+use crate::RawDescriptor;
 
 pub struct PlatformSyslog {
     proc_name: String,

@@ -4,13 +4,17 @@
 
 #![no_main]
 
+use std::io::Cursor;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
+use std::mem::size_of;
+
 use base::FileReadWriteAtVolatile;
 use cros_fuzz::fuzz_target;
 use data_model::VolatileSlice;
 use disk::QcowFile;
-
-use std::io::{Cursor, Read, Seek, SeekFrom, Write};
-use std::mem::size_of;
 
 // Take the first 64 bits of data as an address and the next 64 bits as data to
 // store there. The rest of the data is used as a qcow image.

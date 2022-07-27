@@ -2,12 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::{self, ErrorKind, Read, Write};
+use std::io::ErrorKind;
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
 use std::mem;
 use std::string::String;
 use std::vec::Vec;
 
-use crate::protocol::wire_format::{Data, WireFormat};
+use crate::protocol::wire_format::Data;
+use crate::protocol::wire_format::WireFormat;
 
 // Message type constants.  Taken from "include/net/9p/9p.h" in the linux kernel
 // tree.  The protocol specifies each R* message to be the corresponding T*

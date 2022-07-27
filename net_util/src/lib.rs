@@ -15,18 +15,22 @@
 //!     Captures packets in a ring buffer and dumps them to a pcap file on exit.
 
 pub mod sys;
-use std::fmt::{self, Display};
-use std::io::{Read, Write};
+use std::fmt::Display;
+use std::fmt::{self};
+use std::io::Read;
+use std::io::Write;
 use std::net;
 use std::num::ParseIntError;
 use std::os::raw::*;
 use std::str::FromStr;
-pub use sys::TapT;
 
+use base::AsRawDescriptor;
 use base::Error as SysError;
-use base::{AsRawDescriptor, RawDescriptor};
+use base::RawDescriptor;
 use remain::sorted;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
+pub use sys::TapT;
 use thiserror::Error as ThisError;
 
 #[sorted]

@@ -4,20 +4,22 @@
 
 //! Data structures for commands of virtio video devices.
 
-use remain::sorted;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::io;
-use thiserror::Error as ThisError;
 
 use base::error;
 use data_model::Le32;
 use enumn::N;
+use remain::sorted;
+use thiserror::Error as ThisError;
 
 use crate::virtio::video::control::*;
 use crate::virtio::video::format::*;
 use crate::virtio::video::params::Params;
 use crate::virtio::video::protocol::*;
-use crate::virtio::video::resource::{ResourceType, UnresolvedResourceEntry};
+use crate::virtio::video::resource::ResourceType;
+use crate::virtio::video::resource::UnresolvedResourceEntry;
 use crate::virtio::Reader;
 
 /// An error indicating a failure while reading a request from the guest.

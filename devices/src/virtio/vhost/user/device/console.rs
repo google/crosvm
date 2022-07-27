@@ -2,32 +2,36 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
+use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Context};
-use base::{error, Event, Terminal};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use argh::FromArgs;
+use base::error;
+use base::Event;
+use base::Terminal;
 use cros_async::Executor;
 use data_model::DataInit;
-
-use argh::FromArgs;
 use hypervisor::ProtectionType;
 use sync::Mutex;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 
-use crate::{
-    virtio::{
-        self,
-        console::{asynchronous::ConsoleDevice, virtio_console_config},
-        copy_config,
-        vhost::user::device::{
-            handler::{sys::Doorbell, VhostUserBackend},
-            listener::{sys::VhostUserListener, VhostUserListenerTrait},
-            VhostUserDevice,
-        },
-    },
-    SerialHardware, SerialParameters, SerialType,
-};
+use crate::virtio::console::asynchronous::ConsoleDevice;
+use crate::virtio::console::virtio_console_config;
+use crate::virtio::copy_config;
+use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
+use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
+use crate::virtio::vhost::user::device::VhostUserDevice;
+use crate::virtio::{self};
+use crate::SerialHardware;
+use crate::SerialParameters;
+use crate::SerialType;
 
 const MAX_QUEUE_NUM: usize = 2 /* transmit and receive queues */;
 const MAX_VRING_LEN: u16 = 256;

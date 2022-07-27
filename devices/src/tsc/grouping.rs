@@ -2,11 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use anyhow::{anyhow, bail, Result};
-use base::warn;
-use std::cmp::{Ordering, Reverse};
+use std::cmp::Ordering;
+use std::cmp::Reverse;
 use std::ops::Sub;
 use std::time::Duration;
+
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Result;
+use base::warn;
 
 fn abs_diff<T: Sub<Output = T> + Ord>(x: T, y: T) -> T {
     if x < y {

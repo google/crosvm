@@ -3,13 +3,17 @@
 // found in the LICENSE file.
 
 use std::num::ParseIntError;
-use std::str::{FromStr, ParseBoolError};
+use std::str::FromStr;
+use std::str::ParseBoolError;
 
 #[cfg(all(unix, feature = "audio_cras"))]
-use libcras::{CrasClientType, CrasSocketType};
+use libcras::CrasClientType;
+#[cfg(all(unix, feature = "audio_cras"))]
+use libcras::CrasSocketType;
 use thiserror::Error as ThisError;
 
-use crate::virtio::snd::sys::{parse_args, StreamSourceBackend as SysStreamSourceBackend};
+use crate::virtio::snd::sys::parse_args;
+use crate::virtio::snd::sys::StreamSourceBackend as SysStreamSourceBackend;
 
 #[derive(ThisError, Debug)]
 pub enum Error {

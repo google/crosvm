@@ -7,30 +7,38 @@
 //! Given that the VioS server doesn't emit an event when the next buffer is expected, this
 //! implementation uses thread::sleep to drive the frame timings.
 
-use super::shm_vios::{VioSClient, VioSStreamParams};
-
-use crate::virtio::snd::common::*;
-use crate::virtio::snd::constants::*;
-
-use audio_streams::shm_streams::{
-    BufferSet, ServerRequest, SharedMemory as AudioSharedMemory, ShmStream, ShmStreamSource,
-};
-use audio_streams::{BoxError, SampleFormat, StreamDirection, StreamEffect};
-
-use base::{
-    error, Error as SysError, MemoryMapping, MemoryMappingBuilder, RawDescriptor, SharedMemory,
-    SharedMemoryUnix,
-};
-use data_model::VolatileMemory;
-use sync::Mutex;
-
 use std::fs::File;
 use std::os::unix::io::FromRawFd;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
-use super::shm_vios::{Error, Result};
+use audio_streams::shm_streams::BufferSet;
+use audio_streams::shm_streams::ServerRequest;
+use audio_streams::shm_streams::SharedMemory as AudioSharedMemory;
+use audio_streams::shm_streams::ShmStream;
+use audio_streams::shm_streams::ShmStreamSource;
+use audio_streams::BoxError;
+use audio_streams::SampleFormat;
+use audio_streams::StreamDirection;
+use audio_streams::StreamEffect;
+use base::error;
+use base::Error as SysError;
+use base::MemoryMapping;
+use base::MemoryMappingBuilder;
+use base::RawDescriptor;
+use base::SharedMemory;
+use base::SharedMemoryUnix;
+use data_model::VolatileMemory;
+use sync::Mutex;
+
+use super::shm_vios::Error;
+use super::shm_vios::Result;
+use super::shm_vios::VioSClient;
+use super::shm_vios::VioSStreamParams;
+use crate::virtio::snd::common::*;
+use crate::virtio::snd::constants::*;
 
 // This is the error type used in audio_streams::shm_streams. Unfortunately, it's not declared
 // public there so it needs to be re-declared here. It also prevents the usage of anyhow::Error.

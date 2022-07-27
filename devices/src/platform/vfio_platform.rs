@@ -1,20 +1,41 @@
 // Copyright 2022 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-use crate::pci::CrosvmDeviceId;
-use crate::vfio::{VfioDevice, VfioError, VfioIrq};
-use crate::{BusAccessInfo, BusDevice, BusDeviceObj, DeviceId, IrqEdgeEvent, IrqLevelEvent};
-use anyhow::{bail, Context, Result};
-use base::{
-    error, pagesize, AsRawDescriptor, AsRawDescriptors, Event, MappedRegion, MemoryMapping,
-    MemoryMappingBuilder, Protection, RawDescriptor, Tube,
-};
-use resources::SystemAllocator;
 use std::fs::File;
 use std::sync::Arc;
 use std::u32;
+
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Result;
+use base::error;
+use base::pagesize;
+use base::AsRawDescriptor;
+use base::AsRawDescriptors;
+use base::Event;
+use base::MappedRegion;
+use base::MemoryMapping;
+use base::MemoryMappingBuilder;
+use base::Protection;
+use base::RawDescriptor;
+use base::Tube;
+use resources::SystemAllocator;
 use vfio_sys::*;
-use vm_control::{VmMemoryDestination, VmMemoryRequest, VmMemoryResponse, VmMemorySource};
+use vm_control::VmMemoryDestination;
+use vm_control::VmMemoryRequest;
+use vm_control::VmMemoryResponse;
+use vm_control::VmMemorySource;
+
+use crate::pci::CrosvmDeviceId;
+use crate::vfio::VfioDevice;
+use crate::vfio::VfioError;
+use crate::vfio::VfioIrq;
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::BusDeviceObj;
+use crate::DeviceId;
+use crate::IrqEdgeEvent;
+use crate::IrqLevelEvent;
 
 struct MmioInfo {
     index: u32,

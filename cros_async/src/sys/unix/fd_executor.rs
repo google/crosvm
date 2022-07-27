@@ -9,24 +9,30 @@
 //! `FdExecutor` is meant to be used with the `futures-rs` crate that provides combinators and
 //! utility functions to combine futures.
 
-use std::{
-    fs::File,
-    future::Future,
-    io, mem,
-    os::unix::io::{FromRawFd, RawFd},
-    pin::Pin,
-    sync::{
-        atomic::{AtomicI32, Ordering},
-        Arc, Weak,
-    },
-    task::{Context, Poll, Waker},
-};
+use std::fs::File;
+use std::future::Future;
+use std::io;
+use std::mem;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::io::RawFd;
+use std::pin::Pin;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Weak;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Waker;
 
 use async_task::Task;
-use base::{
-    add_fd_flags, warn, AsRawDescriptor, AsRawDescriptors, Event, EventType, RawDescriptor,
-    WaitContext,
-};
+use base::add_fd_flags;
+use base::warn;
+use base::AsRawDescriptor;
+use base::AsRawDescriptors;
+use base::Event;
+use base::EventType;
+use base::RawDescriptor;
+use base::WaitContext;
 use futures::task::noop_waker;
 use pin_utils::pin_mut;
 use remain::sorted;
@@ -34,11 +40,11 @@ use slab::Slab;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 
-use crate::{
-    queue::RunnableQueue,
-    waker::{new_waker, WakerToken, WeakWake},
-    BlockingPool,
-};
+use crate::queue::RunnableQueue;
+use crate::waker::new_waker;
+use crate::waker::WakerToken;
+use crate::waker::WeakWake;
+use crate::BlockingPool;
 
 #[sorted]
 #[derive(Debug, ThisError)]
@@ -576,11 +582,10 @@ unsafe fn dup_fd(fd: RawFd) -> Result<RawFd> {
 
 #[cfg(test)]
 mod test {
-    use std::{
-        cell::RefCell,
-        io::{Read, Write},
-        rc::Rc,
-    };
+    use std::cell::RefCell;
+    use std::io::Read;
+    use std::io::Write;
+    use std::rc::Rc;
 
     use futures::future::Either;
 

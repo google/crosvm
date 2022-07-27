@@ -4,13 +4,18 @@
 
 use std::sync::Arc;
 
-use base::{error, info, warn, AcpiNotifyEvent, NetlinkGenericSocket};
+use base::error;
+use base::info;
+use base::warn;
+use base::AcpiNotifyEvent;
+use base::NetlinkGenericSocket;
 use sync::Mutex;
 
-use crate::{
-    acpi::{ACPIPMError, GpeResource, Pm1Resource, BITMASK_PM1STS_PWRBTN_STS},
-    IrqLevelEvent,
-};
+use crate::acpi::ACPIPMError;
+use crate::acpi::GpeResource;
+use crate::acpi::Pm1Resource;
+use crate::acpi::BITMASK_PM1STS_PWRBTN_STS;
+use crate::IrqLevelEvent;
 
 pub(crate) fn get_acpi_event_sock() -> Result<Option<NetlinkGenericSocket>, ACPIPMError> {
     // Get group id corresponding to acpi_mc_group of acpi_event family

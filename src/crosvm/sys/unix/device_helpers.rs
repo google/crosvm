@@ -4,60 +4,86 @@
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::net::Ipv4Addr;
 use std::ops::RangeInclusive;
 use std::os::unix::net::UnixListener;
-use std::os::unix::{net::UnixStream, prelude::OpenOptionsExt};
-use std::path::{Path, PathBuf};
+use std::os::unix::net::UnixStream;
+use std::os::unix::prelude::OpenOptionsExt;
+use std::path::Path;
+use std::path::PathBuf;
 use std::str;
 use std::sync::Arc;
 
-use crate::crosvm::config::{
-    JailConfig, TouchDeviceOption, VhostUserFsOption, VhostUserOption, VhostUserWlOption, VvuOption,
-};
-use anyhow::{anyhow, bail, Context, Result};
-use arch::{self, VirtioDeviceStub};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Result;
+use arch::VirtioDeviceStub;
+use arch::{self};
 use base::*;
-use devices::serial_device::{SerialParameters, SerialType};
-use devices::vfio::{VfioCommonSetup, VfioCommonTrait};
+use devices::serial_device::SerialParameters;
+use devices::serial_device::SerialType;
+use devices::vfio::VfioCommonSetup;
+use devices::vfio::VfioCommonTrait;
 use devices::virtio::block::block::DiskOption;
 use devices::virtio::console::asynchronous::AsyncConsole;
-use devices::virtio::ipc_memory_mapper::{create_ipc_mapper, CreateIpcMapperRet};
-use devices::virtio::memory_mapper::{BasicMemoryMapper, MemoryMapperTrait};
+use devices::virtio::ipc_memory_mapper::create_ipc_mapper;
+use devices::virtio::ipc_memory_mapper::CreateIpcMapperRet;
+use devices::virtio::memory_mapper::BasicMemoryMapper;
+use devices::virtio::memory_mapper::MemoryMapperTrait;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vfio_wrapper::VfioWrapper;
 use devices::virtio::vhost::user::proxy::VirtioVhostUser;
+use devices::virtio::vhost::user::vmm::Block as VhostUserBlock;
+use devices::virtio::vhost::user::vmm::Console as VhostUserConsole;
+use devices::virtio::vhost::user::vmm::Fs as VhostUserFs;
+use devices::virtio::vhost::user::vmm::Mac80211Hwsim as VhostUserMac80211Hwsim;
+use devices::virtio::vhost::user::vmm::Net as VhostUserNet;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::vmm::Snd as VhostUserSnd;
-use devices::virtio::vhost::user::vmm::{
-    Block as VhostUserBlock, Console as VhostUserConsole, Fs as VhostUserFs,
-    Mac80211Hwsim as VhostUserMac80211Hwsim, Net as VhostUserNet, Vsock as VhostUserVsock,
-    Wl as VhostUserWl,
-};
+use devices::virtio::vhost::user::vmm::Vsock as VhostUserVsock;
+use devices::virtio::vhost::user::vmm::Wl as VhostUserWl;
 use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::VideoBackendType;
-use devices::virtio::{self, VirtioDevice};
+use devices::virtio::VirtioDevice;
+use devices::virtio::{self};
+use devices::BusDeviceObj;
 use devices::IommuDevType;
+use devices::PciAddress;
+use devices::PciDevice;
 #[cfg(feature = "tpm")]
 use devices::SoftwareTpm;
+use devices::VfioDevice;
+use devices::VfioPciDevice;
+use devices::VfioPlatformDevice;
 #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
 use devices::VtpmProxy;
-use devices::{
-    self, BusDeviceObj, PciAddress, PciDevice, VfioDevice, VfioPciDevice, VfioPlatformDevice,
-};
-use hypervisor::{ProtectionType, Vm};
-use minijail::{self, Minijail};
-use net_util::{sys::unix::Tap, MacAddress};
-use resources::{Alloc, MmioType, SystemAllocator};
+use devices::{self};
+use hypervisor::ProtectionType;
+use hypervisor::Vm;
+use minijail::Minijail;
+use minijail::{self};
+use net_util::sys::unix::Tap;
+use net_util::MacAddress;
+use resources::Alloc;
+use resources::MmioType;
+use resources::SystemAllocator;
 use sync::Mutex;
 use vm_memory::GuestAddress;
 
 use super::jail_helpers::*;
+use crate::crosvm::config::JailConfig;
+use crate::crosvm::config::TouchDeviceOption;
+use crate::crosvm::config::VhostUserFsOption;
+use crate::crosvm::config::VhostUserOption;
+use crate::crosvm::config::VhostUserWlOption;
+use crate::crosvm::config::VvuOption;
 
 pub enum TaggedControlTube {
     Fs(Tube),

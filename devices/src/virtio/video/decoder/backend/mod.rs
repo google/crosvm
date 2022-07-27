@@ -5,13 +5,15 @@
 //! This module implements the interface that actual decoder devices need to
 //! implement in order to provide video decoding capability to the guest.
 
-use crate::virtio::video::{
-    decoder::Capability,
-    error::{VideoError, VideoResult},
-    format::{Format, Rect},
-    resource::{GuestResource, GuestResourceHandle},
-};
 use base::AsRawDescriptor;
+
+use crate::virtio::video::decoder::Capability;
+use crate::virtio::video::error::VideoError;
+use crate::virtio::video::error::VideoResult;
+use crate::virtio::video::format::Format;
+use crate::virtio::video::format::Rect;
+use crate::virtio::video::resource::GuestResource;
+use crate::virtio::video::resource::GuestResourceHandle;
 
 #[cfg(feature = "ffmpeg")]
 pub mod ffmpeg;

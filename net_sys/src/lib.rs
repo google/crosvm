@@ -8,16 +8,24 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use base::{ioctl_ior_nr, ioctl_iow_nr};
+use base::ioctl_ior_nr;
+use base::ioctl_iow_nr;
 
 pub mod if_tun;
 pub mod iff; // Named "iff" to avoid conflicting with "if" keyword.
 pub mod sockios;
-pub use crate::if_tun::{
-    sock_fprog, IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TAP, IFF_VNET_HDR, TUN_F_CSUM, TUN_F_TSO4,
-    TUN_F_TSO6, TUN_F_TSO_ECN, TUN_F_UFO,
-};
-pub use crate::iff::{ifreq, net_device_flags};
+pub use crate::if_tun::sock_fprog;
+pub use crate::if_tun::IFF_MULTI_QUEUE;
+pub use crate::if_tun::IFF_NO_PI;
+pub use crate::if_tun::IFF_TAP;
+pub use crate::if_tun::IFF_VNET_HDR;
+pub use crate::if_tun::TUN_F_CSUM;
+pub use crate::if_tun::TUN_F_TSO4;
+pub use crate::if_tun::TUN_F_TSO6;
+pub use crate::if_tun::TUN_F_TSO_ECN;
+pub use crate::if_tun::TUN_F_UFO;
+pub use crate::iff::ifreq;
+pub use crate::iff::net_device_flags;
 
 pub const TUNTAP: ::std::os::raw::c_uint = 84;
 

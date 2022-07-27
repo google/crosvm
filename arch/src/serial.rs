@@ -5,10 +5,13 @@
 use std::collections::BTreeMap;
 
 use base::Event;
-use devices::serial_device::{SerialHardware, SerialParameters, SerialType};
+use devices::serial_device::SerialHardware;
+use devices::serial_device::SerialParameters;
+use devices::serial_device::SerialType;
+use devices::Bus;
 #[cfg(windows)]
 use devices::Minijail;
-use devices::{Bus, Serial};
+use devices::Serial;
 use hypervisor::ProtectionType;
 #[cfg(unix)]
 use minijail::Minijail;
@@ -208,8 +211,9 @@ pub fn get_serial_cmdline(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use kernel_cmdline::Cmdline;
+
+    use super::*;
 
     #[test]
     fn get_serial_cmdline_default() {

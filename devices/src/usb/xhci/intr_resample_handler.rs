@@ -2,13 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::interrupter::Interrupter;
-use crate::utils::{EventHandler, EventLoop};
+use std::sync::Arc;
 
 use anyhow::Context;
-use base::{error, Event, EventType};
-use std::sync::Arc;
+use base::error;
+use base::Event;
+use base::EventType;
 use sync::Mutex;
+
+use super::interrupter::Interrupter;
+use crate::utils::EventHandler;
+use crate::utils::EventLoop;
 
 /// Interrupt Resample handler handles resample event. It will reassert interrupt if needed.
 pub struct IntrResampleHandler {

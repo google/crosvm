@@ -7,7 +7,14 @@ use std::collections::HashMap;
 use once_cell::sync::Lazy;
 
 use super::whpx_sys::*;
-use crate::{CpuIdEntry, DebugRegs, DescriptorTable, Fpu, LapicState, Regs, Segment, Sregs};
+use crate::CpuIdEntry;
+use crate::DebugRegs;
+use crate::DescriptorTable;
+use crate::Fpu;
+use crate::LapicState;
+use crate::Regs;
+use crate::Segment;
+use crate::Sregs;
 
 #[derive(Default)]
 pub(super) struct WhpxRegs {

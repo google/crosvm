@@ -2,19 +2,29 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{self, Display};
-use std::fs::{File, OpenOptions};
-use std::io::{self, stdin, stdout};
+use std::fmt::Display;
+use std::fmt::{self};
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::stdin;
+use std::io::stdout;
+use std::io::{self};
 use std::path::PathBuf;
 
+use base::error;
+use base::open_file;
 #[cfg(windows)]
 use base::platform::Console as WinConsole;
-use base::{
-    error, open_file, syslog, AsRawDescriptor, Event, FileSync, RawDescriptor, ReadNotifier,
-};
+use base::syslog;
+use base::AsRawDescriptor;
+use base::Event;
+use base::FileSync;
+use base::RawDescriptor;
+use base::ReadNotifier;
 use hypervisor::ProtectionType;
 use remain::sorted;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error as ThisError;
 
 pub use crate::sys::serial_device::SerialDevice;
@@ -212,8 +222,9 @@ impl SerialParameters {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_keyvalue::*;
+
+    use super::*;
 
     fn from_serial_arg(options: &str) -> Result<SerialParameters, ParseError> {
         from_key_values(options)

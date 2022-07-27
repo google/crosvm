@@ -4,8 +4,11 @@
 
 #[cfg(test)]
 mod test {
-    use crate::{Executor, TimerAsync};
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
+    use std::time::Instant;
+
+    use crate::Executor;
+    use crate::TimerAsync;
 
     #[test]
     fn timer() {

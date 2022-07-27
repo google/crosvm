@@ -8,21 +8,42 @@ use std::any::Any;
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
+use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-use anyhow::{anyhow, Result};
-use base::{MappedRegion, MemoryMappingArena};
-use libva::{Config, Context, Display, Image, Picture, PictureSync, Surface, UsageHint};
+use anyhow::anyhow;
+use anyhow::Result;
+use base::MappedRegion;
+use base::MemoryMappingArena;
+use libva::Config;
+use libva::Context;
+use libva::Display;
+use libva::Image;
+use libva::Picture;
+use libva::PictureSync;
+use libva::Surface;
+use libva::UsageHint;
 
-use crate::virtio::video::decoder::utils::{EventQueue, OutputQueue};
-use crate::virtio::video::decoder::{Capability, DecoderBackend, DecoderEvent, DecoderSession};
-use crate::virtio::video::error::{VideoError, VideoResult};
-use crate::virtio::video::format::{
-    Format, FormatDesc, FormatRange, FrameFormat, Level, Profile, Rect,
-};
-use crate::virtio::video::resource::{BufferHandle, GuestResource, GuestResourceHandle};
+use crate::virtio::video::decoder::utils::EventQueue;
+use crate::virtio::video::decoder::utils::OutputQueue;
+use crate::virtio::video::decoder::Capability;
+use crate::virtio::video::decoder::DecoderBackend;
+use crate::virtio::video::decoder::DecoderEvent;
+use crate::virtio::video::decoder::DecoderSession;
+use crate::virtio::video::error::VideoError;
+use crate::virtio::video::error::VideoResult;
+use crate::virtio::video::format::Format;
+use crate::virtio::video::format::FormatDesc;
+use crate::virtio::video::format::FormatRange;
+use crate::virtio::video::format::FrameFormat;
+use crate::virtio::video::format::Level;
+use crate::virtio::video::format::Profile;
+use crate::virtio::video::format::Rect;
+use crate::virtio::video::resource::BufferHandle;
+use crate::virtio::video::resource::GuestResource;
+use crate::virtio::video::resource::GuestResourceHandle;
 
 mod vp8;
 
@@ -1070,10 +1091,14 @@ downcast_rs::impl_downcast!(VaapiCodec); // Used in unit tests.
 
 #[cfg(test)]
 mod tests {
-    use base::{FromRawDescriptor, MemoryMappingBuilder, SafeDescriptor, SharedMemory};
+    use base::FromRawDescriptor;
+    use base::MemoryMappingBuilder;
+    use base::SafeDescriptor;
+    use base::SharedMemory;
 
     use super::*;
-    use crate::virtio::video::resource::{GuestMemArea, GuestMemHandle};
+    use crate::virtio::video::resource::GuestMemArea;
+    use crate::virtio::video::resource::GuestMemHandle;
 
     pub(crate) fn build_resource(slice: &[u8]) -> GuestResourceHandle {
         let input_shm = SharedMemory::new("", u64::try_from(slice.len()).unwrap()).unwrap();

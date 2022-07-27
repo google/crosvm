@@ -5,22 +5,31 @@
 mod read_dir;
 
 use std::cmp::min;
-use std::collections::{btree_map, BTreeMap};
-use std::ffi::{CStr, CString};
+use std::collections::btree_map;
+use std::collections::BTreeMap;
+use std::ffi::CStr;
+use std::ffi::CString;
 use std::fs::File;
-use std::io::{self, Cursor, Read, Write};
-use std::mem::{self, MaybeUninit};
+use std::io::Cursor;
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
+use std::mem::MaybeUninit;
+use std::mem::{self};
 use std::ops::Deref;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::FileExt;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::io::RawFd;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use read_dir::read_dir;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::protocol::*;
 use crate::syscall;
-use read_dir::read_dir;
 
 // Tlopen and Tlcreate flags.  Taken from "include/net/9p/9p.h" in the linux tree.
 const P9_RDONLY: u32 = 0o00000000;

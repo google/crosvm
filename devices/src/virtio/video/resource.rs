@@ -7,17 +7,27 @@
 use std::convert::TryInto;
 use std::fmt;
 
-use base::{
-    self, FromRawDescriptor, IntoRawDescriptor, MemoryMappingArena, MemoryMappingBuilder,
-    MemoryMappingBuilderUnix, MmapError, SafeDescriptor,
-};
-use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
-
+use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
+use base::MemoryMappingArena;
+use base::MemoryMappingBuilder;
+use base::MemoryMappingBuilderUnix;
+use base::MmapError;
+use base::SafeDescriptor;
+use base::{self};
 use thiserror::Error as ThisError;
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+use vm_memory::GuestMemoryError;
 
-use crate::virtio::resource_bridge::{self, ResourceBridgeError, ResourceInfo, ResourceRequest};
-use crate::virtio::video::format::{FramePlane, PlaneFormat};
-use crate::virtio::video::protocol::{virtio_video_mem_entry, virtio_video_object_entry};
+use crate::virtio::resource_bridge::ResourceBridgeError;
+use crate::virtio::resource_bridge::ResourceInfo;
+use crate::virtio::resource_bridge::ResourceRequest;
+use crate::virtio::resource_bridge::{self};
+use crate::virtio::video::format::FramePlane;
+use crate::virtio::video::format::PlaneFormat;
+use crate::virtio::video::protocol::virtio_video_mem_entry;
+use crate::virtio::video::protocol::virtio_video_object_entry;
 
 /// Defines how resources for a given queue are represented.
 #[derive(Clone, Copy, Debug)]
@@ -319,8 +329,11 @@ impl GuestResource {
 
 #[cfg(test)]
 mod tests {
+    use base::MappedRegion;
+    use base::SafeDescriptor;
+    use base::SharedMemory;
+
     use super::*;
-    use base::{MappedRegion, SafeDescriptor, SharedMemory};
 
     /// Creates a sparse guest memory handle using as many pages as there are entries in
     /// `page_order`. The page with index `0` will be the first page, `1` will be the second page,

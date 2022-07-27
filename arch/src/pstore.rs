@@ -4,12 +4,15 @@
 
 use std::fs::OpenOptions;
 
-use crate::Pstore;
-use anyhow::{bail, Context, Result};
+use anyhow::bail;
+use anyhow::Context;
+use anyhow::Result;
 use base::MemoryMappingBuilder;
 use hypervisor::Vm;
 use resources::AddressRange;
 use vm_memory::GuestAddress;
+
+use crate::Pstore;
 
 mod sys;
 

@@ -21,27 +21,46 @@ mod wait_context;
 mod write_zeroes;
 
 pub mod sys;
-pub use sys::platform;
-
 pub use alloc::LayoutAllocation;
-pub use clock::{Clock, FakeClock};
-pub use errno::{errno_result, Error, Result};
-pub use event::{Event, EventReadResult};
-pub use external_mapping::{
-    Error as ExternalMappingError, ExternalMapping, Result as ExternalMappingResult,
-};
-pub use mmap::{MappedRegion, MemoryMapping, MemoryMappingBuilder};
-pub use notifiers::{CloseNotifier, ReadNotifier};
+
+pub use clock::Clock;
+pub use clock::FakeClock;
+pub use errno::errno_result;
+pub use errno::Error;
+pub use errno::Result;
+pub use event::Event;
+pub use event::EventReadResult;
+pub use external_mapping::Error as ExternalMappingError;
+pub use external_mapping::ExternalMapping;
+pub use external_mapping::Result as ExternalMappingResult;
+pub use mmap::MappedRegion;
+pub use mmap::MemoryMapping;
+pub use mmap::MemoryMappingBuilder;
+pub use notifiers::CloseNotifier;
+pub use notifiers::ReadNotifier;
 pub use platform::gmtime_secure;
-pub use platform::ioctl::{
-    ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
-    IoctlNr,
-};
+pub use platform::ioctl::ioctl;
+pub use platform::ioctl::ioctl_with_mut_ptr;
+pub use platform::ioctl::ioctl_with_mut_ref;
+pub use platform::ioctl::ioctl_with_ptr;
+pub use platform::ioctl::ioctl_with_ref;
+pub use platform::ioctl::ioctl_with_val;
+pub use platform::ioctl::IoctlNr;
 pub use shm::SharedMemory;
-pub use timer::{FakeTimer, Timer};
-pub use tube::{Error as TubeError, RecvTube, Result as TubeResult, SendTube, Tube};
-pub use wait_context::{EventToken, EventType, TriggeredEvent, WaitContext};
-pub use write_zeroes::{PunchHole, WriteZeroesAt};
+pub use sys::platform;
+pub use timer::FakeTimer;
+pub use timer::Timer;
+pub use tube::Error as TubeError;
+pub use tube::RecvTube;
+pub use tube::Result as TubeResult;
+pub use tube::SendTube;
+pub use tube::Tube;
+pub use wait_context::EventToken;
+pub use wait_context::EventType;
+pub use wait_context::TriggeredEvent;
+pub use wait_context::WaitContext;
+pub use write_zeroes::PunchHole;
+pub use write_zeroes::WriteZeroesAt;
 
 // TODO(b/233233301): reorganize platform specific exports under platform
 // namespaces instead of exposing them directly in base::.
@@ -107,33 +126,51 @@ cfg_if::cfg_if! {
     }
 }
 
-pub use platform::{BlockingMode, FramingMode, StreamChannel};
-
-pub use platform::{
-    deserialize_with_descriptors, EventContext, FileAllocate, FileGetLen, FileSerdeWrapper,
-    SerializeDescriptors, UnsyncMarker,
-};
-
+pub use log::debug;
+pub use log::error;
+pub use log::info;
+pub use log::trace;
+pub use log::warn;
+pub use mmap::Protection;
+pub use platform::deserialize_with_descriptors;
+pub(crate) use platform::file_punch_hole;
+pub(crate) use platform::file_write_zeroes_at;
+pub use platform::get_cpu_affinity;
+pub use platform::get_filesystem_type;
+pub use platform::getpid;
+pub use platform::number_of_logical_cores;
+pub use platform::open_file;
+pub use platform::pagesize;
+pub use platform::platform_timer_resolution::enable_high_res_timers;
+pub use platform::round_up_to_page_size;
+pub use platform::set_cpu_affinity;
+pub use platform::with_as_descriptor;
+pub use platform::with_raw_descriptor;
+pub use platform::BlockingMode;
+pub use platform::EventContext;
+pub use platform::FileAllocate;
+pub use platform::FileGetLen;
+pub use platform::FileReadWriteAtVolatile;
+pub use platform::FileReadWriteVolatile;
+pub use platform::FileSerdeWrapper;
+pub use platform::FileSetLen;
+pub use platform::FileSync;
+pub use platform::FramingMode;
+pub use platform::MemoryMappingArena;
+pub use platform::MmapError;
+pub use platform::RawDescriptor;
+pub use platform::SerializeDescriptors;
+pub use platform::StreamChannel;
+pub use platform::UnsyncMarker;
+pub use platform::INVALID_DESCRIPTOR;
 use uuid::Uuid;
 
-pub use mmap::Protection;
-pub(crate) use platform::{file_punch_hole, file_write_zeroes_at};
-pub use platform::{get_cpu_affinity, set_cpu_affinity};
-pub use platform::{with_as_descriptor, with_raw_descriptor, RawDescriptor, INVALID_DESCRIPTOR};
-
-pub use crate::descriptor::{
-    AsRawDescriptor, AsRawDescriptors, Descriptor, FromRawDescriptor, IntoRawDescriptor,
-    SafeDescriptor,
-};
-
-pub use platform::getpid;
-pub use platform::platform_timer_resolution::enable_high_res_timers;
-pub use platform::{get_filesystem_type, open_file};
-pub use platform::{number_of_logical_cores, pagesize, round_up_to_page_size};
-pub use platform::{FileReadWriteAtVolatile, FileReadWriteVolatile, FileSetLen, FileSync};
-pub use platform::{MemoryMappingArena, MmapError};
-
-pub use log::{debug, error, info, trace, warn};
+pub use crate::descriptor::AsRawDescriptor;
+pub use crate::descriptor::AsRawDescriptors;
+pub use crate::descriptor::Descriptor;
+pub use crate::descriptor::FromRawDescriptor;
+pub use crate::descriptor::IntoRawDescriptor;
+pub use crate::descriptor::SafeDescriptor;
 
 /// An empty trait that helps reset timer resolution to its previous state.
 // TODO(b:232103460): Maybe this needs to be thought through.
@@ -148,7 +185,8 @@ pub fn generate_uuid() -> String {
         .to_owned()
 }
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub enum VmEventType {
     Exit,

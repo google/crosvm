@@ -2,21 +2,32 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{cell::RefCell, convert::TryFrom, rc::Rc};
+use std::cell::RefCell;
+use std::convert::TryFrom;
+use std::rc::Rc;
 
-use anyhow::{anyhow, Context, Result};
-use libva::{BufferType, IQMatrix, IQMatrixBufferVP8, Picture, ProbabilityDataBufferVP8};
+use anyhow::anyhow;
+use anyhow::Context;
+use anyhow::Result;
+use libva::BufferType;
+use libva::IQMatrix;
+use libva::IQMatrixBufferVP8;
+use libva::Picture;
+use libva::ProbabilityDataBufferVP8;
 use vp8::parser as vp8;
 
-use crate::virtio::video::{
-    decoder::backend::vaapi::{
-        BufferMapping, DecodedFrameHandle, DrcParams, Resolution, StreamMetadataState,
-        SurfacePoolHandle, VaapiCodec, VaapiDecoderSession,
-    },
-    error::VideoError,
-    format::{Format, Rect},
-    resource::GuestResourceHandle,
-};
+use crate::virtio::video::decoder::backend::vaapi::BufferMapping;
+use crate::virtio::video::decoder::backend::vaapi::DecodedFrameHandle;
+use crate::virtio::video::decoder::backend::vaapi::DrcParams;
+use crate::virtio::video::decoder::backend::vaapi::Resolution;
+use crate::virtio::video::decoder::backend::vaapi::StreamMetadataState;
+use crate::virtio::video::decoder::backend::vaapi::SurfacePoolHandle;
+use crate::virtio::video::decoder::backend::vaapi::VaapiCodec;
+use crate::virtio::video::decoder::backend::vaapi::VaapiDecoderSession;
+use crate::virtio::video::error::VideoError;
+use crate::virtio::video::format::Format;
+use crate::virtio::video::format::Rect;
+use crate::virtio::video::resource::GuestResourceHandle;
 
 /// The number of surfaces to allocate for this codec. Same as GStreamer's vavp8dec.
 const NUM_SURFACES: usize = 7;
@@ -642,24 +653,34 @@ impl VaapiCodec for Vp8Codec {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, Read, Seek};
+    use std::io::Cursor;
+    use std::io::Read;
+    use std::io::Seek;
 
-    use base::{FromRawDescriptor, SafeDescriptor, SharedMemory};
+    use base::FromRawDescriptor;
+    use base::SafeDescriptor;
+    use base::SharedMemory;
     use bytes::Buf;
-    use libva::{BufferType, IQMatrix, PictureParameter, SliceParameter};
+    use libva::BufferType;
+    use libva::IQMatrix;
+    use libva::PictureParameter;
+    use libva::SliceParameter;
 
-    use crate::virtio::video::{
-        decoder::backend::{
-            vaapi::{
-                tests::build_resource,
-                vp8::{Vp8Codec, NUM_SURFACES},
-                VaapiDecoder, VaapiDecoderSession,
-            },
-            DecoderBackend, DecoderEvent, DecoderSession,
-        },
-        format::{Format, FramePlane, Rect},
-        resource::{GuestMemArea, GuestMemHandle, GuestResource, GuestResourceHandle},
-    };
+    use crate::virtio::video::decoder::backend::vaapi::tests::build_resource;
+    use crate::virtio::video::decoder::backend::vaapi::vp8::Vp8Codec;
+    use crate::virtio::video::decoder::backend::vaapi::vp8::NUM_SURFACES;
+    use crate::virtio::video::decoder::backend::vaapi::VaapiDecoder;
+    use crate::virtio::video::decoder::backend::vaapi::VaapiDecoderSession;
+    use crate::virtio::video::decoder::backend::DecoderBackend;
+    use crate::virtio::video::decoder::backend::DecoderEvent;
+    use crate::virtio::video::decoder::backend::DecoderSession;
+    use crate::virtio::video::format::Format;
+    use crate::virtio::video::format::FramePlane;
+    use crate::virtio::video::format::Rect;
+    use crate::virtio::video::resource::GuestMemArea;
+    use crate::virtio::video::resource::GuestMemHandle;
+    use crate::virtio::video::resource::GuestResource;
+    use crate::virtio::video::resource::GuestResourceHandle;
 
     fn get_codec(session: &mut VaapiDecoderSession) -> &mut Vp8Codec {
         session.codec.as_mut().downcast_mut::<Vp8Codec>().unwrap()

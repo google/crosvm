@@ -7,35 +7,58 @@ use std::fs::File;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use std::fs::OpenOptions;
 use std::io::prelude::*;
-use std::sync::{mpsc, Arc, Barrier};
-use sync::{Condvar, Mutex};
-
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::sync::Barrier;
 use std::thread;
 use std::thread::JoinHandle;
 
-use libc::{self, c_int};
-
-use anyhow::{Context, Result};
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use aarch64::AArch64 as Arch;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use aarch64::MsrHandlers;
+use anyhow::Context;
+use anyhow::Result;
+use arch::LinuxArch;
+use arch::MsrConfig;
+use arch::{self};
 use base::*;
-use devices::{self, Bus, IrqChip, VcpuRunState};
-use hypervisor::{IoOperation, IoParams, Vcpu, VcpuExit, VcpuRunHandle};
+use devices::Bus;
+use devices::IrqChip;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use devices::IrqChipAArch64 as IrqChipArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use devices::IrqChipX86_64 as IrqChipArch;
+use devices::VcpuRunState;
+use devices::{self};
+use hypervisor::IoOperation;
+use hypervisor::IoParams;
+use hypervisor::Vcpu;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::VcpuAArch64 as VcpuArch;
+use hypervisor::VcpuExit;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::VcpuInitAArch64 as VcpuInitArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::VcpuInitX86_64 as VcpuInitArch;
+use hypervisor::VcpuRunHandle;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::VcpuX86_64 as VcpuArch;
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+use hypervisor::VmAArch64 as VmArch;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::VmX86_64 as VmArch;
+use libc::c_int;
+use libc::{self};
+use sync::Condvar;
+use sync::Mutex;
 use vm_control::*;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use vm_memory::GuestMemory;
-
-use arch::{self, LinuxArch, MsrConfig};
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use {
-    aarch64::{AArch64 as Arch, MsrHandlers},
-    devices::IrqChipAArch64 as IrqChipArch,
-    hypervisor::{VcpuAArch64 as VcpuArch, VcpuInitAArch64 as VcpuInitArch, VmAArch64 as VmArch},
-};
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use {
-    devices::IrqChipX86_64 as IrqChipArch,
-    hypervisor::{VcpuInitX86_64 as VcpuInitArch, VcpuX86_64 as VcpuArch, VmX86_64 as VmArch},
-    x86_64::{msr::MsrHandlers, X8664arch as Arch},
-};
+use x86_64::msr::MsrHandlers;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::X8664arch as Arch;
 
 use super::ExitState;
 

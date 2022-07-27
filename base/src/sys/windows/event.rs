@@ -2,34 +2,42 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use serde::{Deserialize, Serialize};
-use std::{
-    ffi::CString,
-    mem::MaybeUninit,
-    os::windows::io::{AsRawHandle, RawHandle},
-    ptr::null,
-    time::Duration,
-};
-use win_util::{SecurityAttributes, SelfRelativeSecurityDescriptor};
-use winapi::{
-    shared::{
-        minwindef::{DWORD, FALSE, TRUE},
-        winerror::WAIT_TIMEOUT,
-    },
-    um::{
-        handleapi::DuplicateHandle,
-        processthreadsapi::GetCurrentProcess,
-        synchapi::{CreateEventA, OpenEventA, ResetEvent, SetEvent, WaitForSingleObject},
-        winbase::WAIT_FAILED,
-        winnt::{DUPLICATE_SAME_ACCESS, EVENT_MODIFY_STATE, HANDLE},
-    },
-};
+use std::ffi::CString;
+use std::mem::MaybeUninit;
+use std::os::windows::io::AsRawHandle;
+use std::os::windows::io::RawHandle;
+use std::ptr::null;
+use std::time::Duration;
 
-use super::{errno_result, Error, RawDescriptor, Result};
-use crate::{
-    descriptor::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor},
-    Event as CrateEvent,
-};
+use serde::Deserialize;
+use serde::Serialize;
+use win_util::SecurityAttributes;
+use win_util::SelfRelativeSecurityDescriptor;
+use winapi::shared::minwindef::DWORD;
+use winapi::shared::minwindef::FALSE;
+use winapi::shared::minwindef::TRUE;
+use winapi::shared::winerror::WAIT_TIMEOUT;
+use winapi::um::handleapi::DuplicateHandle;
+use winapi::um::processthreadsapi::GetCurrentProcess;
+use winapi::um::synchapi::CreateEventA;
+use winapi::um::synchapi::OpenEventA;
+use winapi::um::synchapi::ResetEvent;
+use winapi::um::synchapi::SetEvent;
+use winapi::um::synchapi::WaitForSingleObject;
+use winapi::um::winbase::WAIT_FAILED;
+use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
+use winapi::um::winnt::EVENT_MODIFY_STATE;
+use winapi::um::winnt::HANDLE;
+
+use super::errno_result;
+use super::Error;
+use super::RawDescriptor;
+use super::Result;
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::IntoRawDescriptor;
+use crate::descriptor::SafeDescriptor;
+use crate::Event as CrateEvent;
 
 /// A safe wrapper around Windows synchapi methods used to mimic Linux eventfd (man 2 eventfd).
 /// Since the eventfd isn't using "EFD_SEMAPHORE", we don't need to keep count so we can just use
@@ -250,11 +258,11 @@ unsafe impl Sync for Event {}
 
 #[cfg(test)]
 mod tests {
+    use winapi::shared::winerror::WAIT_TIMEOUT;
+    use winapi::um::winbase::INFINITE;
+    use winapi::um::winbase::WAIT_OBJECT_0;
+
     use super::*;
-    use winapi::{
-        shared::winerror::WAIT_TIMEOUT,
-        um::winbase::{INFINITE, WAIT_OBJECT_0},
-    };
 
     #[test]
     fn new() {

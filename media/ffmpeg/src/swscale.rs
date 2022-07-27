@@ -6,7 +6,9 @@
 //! `libswscale`. It is designed to concentrate all calls to unsafe methods in one place, while
 //! providing a higher-level interface for converting decoded frames from one format to another.
 
-use base::{MappedRegion, MemoryMappingArena, MmapError};
+use base::MappedRegion;
+use base::MemoryMappingArena;
+use base::MmapError;
 use thiserror::Error as ThisError;
 
 use crate::avcodec::AvFrame;

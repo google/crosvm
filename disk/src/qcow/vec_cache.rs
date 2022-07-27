@@ -5,7 +5,8 @@
 use std::collections::hash_map::IterMut;
 use std::collections::HashMap;
 use std::io;
-use std::ops::{Index, IndexMut};
+use std::ops::Index;
+use std::ops::IndexMut;
 use std::slice::SliceIndex;
 
 /// Trait that allows for checking if an implementor is dirty. Useful for types that are cached so

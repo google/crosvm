@@ -12,26 +12,33 @@ mod platform_timer_utils;
 pub use platform_timer_utils::*;
 
 mod file_util;
-pub use file_util::*;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::path::Path;
+use std::ptr::null_mut;
 
-use super::{errno_result, pid_t, Error, Result};
-use crate::descriptor::{AsRawDescriptor, FromRawDescriptor, SafeDescriptor};
-use serde::{Deserialize, Serialize};
-use std::{
-    fs::{File, OpenOptions},
-    path::Path,
-    ptr::null_mut,
-};
-use winapi::{
-    shared::{minwindef::DWORD, winerror::WAIT_TIMEOUT},
-    um::{
-        handleapi::INVALID_HANDLE_VALUE,
-        processthreadsapi::GetCurrentProcessId,
-        synchapi::{CreateMutexA, ReleaseMutex, WaitForSingleObject},
-        winbase::{INFINITE, WAIT_ABANDONED, WAIT_OBJECT_0},
-        winuser::AllowSetForegroundWindow,
-    },
-};
+pub use file_util::*;
+use serde::Deserialize;
+use serde::Serialize;
+use winapi::shared::minwindef::DWORD;
+use winapi::shared::winerror::WAIT_TIMEOUT;
+use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+use winapi::um::processthreadsapi::GetCurrentProcessId;
+use winapi::um::synchapi::CreateMutexA;
+use winapi::um::synchapi::ReleaseMutex;
+use winapi::um::synchapi::WaitForSingleObject;
+use winapi::um::winbase::INFINITE;
+use winapi::um::winbase::WAIT_ABANDONED;
+use winapi::um::winbase::WAIT_OBJECT_0;
+use winapi::um::winuser::AllowSetForegroundWindow;
+
+use super::errno_result;
+use super::pid_t;
+use super::Error;
+use super::Result;
+use crate::descriptor::AsRawDescriptor;
+use crate::descriptor::FromRawDescriptor;
+use crate::descriptor::SafeDescriptor;
 
 #[inline(always)]
 pub fn pagesize() -> usize {

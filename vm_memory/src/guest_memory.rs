@@ -4,22 +4,29 @@
 
 //! Track memory regions that are mapped to the guest VM.
 
-use std::convert::{AsRef, TryFrom};
+use std::convert::AsRef;
+use std::convert::TryFrom;
 use std::fs::File;
-use std::io::{Read, Write};
-use std::marker::{Send, Sync};
+use std::io::Read;
+use std::io::Write;
+use std::marker::Send;
+use std::marker::Sync;
 use std::mem::size_of;
 use std::result;
 use std::sync::Arc;
 
-use base::{pagesize, Error as SysError};
-use base::{
-    AsRawDescriptor, AsRawDescriptors, MappedRegion, MemoryMapping, MemoryMappingBuilder,
-    MmapError, RawDescriptor, SharedMemory,
-};
-
-use cros_async::{mem, BackingMemory};
-
+use base::pagesize;
+use base::AsRawDescriptor;
+use base::AsRawDescriptors;
+use base::Error as SysError;
+use base::MappedRegion;
+use base::MemoryMapping;
+use base::MemoryMappingBuilder;
+use base::MmapError;
+use base::RawDescriptor;
+use base::SharedMemory;
+use cros_async::mem;
+use cros_async::BackingMemory;
 use data_model::volatile_memory::*;
 use data_model::DataInit;
 use remain::sorted;
@@ -827,9 +834,10 @@ unsafe impl BackingMemory for GuestMemory {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     #[cfg(unix)]
     use base::kernel_has_memfd;
+
+    use super::*;
 
     #[test]
     fn test_alignment() {

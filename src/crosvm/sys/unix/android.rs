@@ -4,9 +4,12 @@
 
 #![cfg(target_os = "android")]
 
-use anyhow::{anyhow, Result};
+use std::ffi::CStr;
+use std::ffi::CString;
+
+use anyhow::anyhow;
+use anyhow::Result;
 use libc;
-use std::ffi::{CStr, CString};
 
 #[link(name = "processgroup")]
 extern "C" {

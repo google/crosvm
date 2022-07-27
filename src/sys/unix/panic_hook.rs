@@ -4,13 +4,22 @@
 
 use std::env;
 use std::fs::File;
-use std::io::{stderr, Read};
-use std::panic::{self, PanicInfo};
+use std::io::stderr;
+use std::io::Read;
+use std::panic::PanicInfo;
+use std::panic::{self};
 use std::process::abort;
 use std::string::String;
 
-use base::{error, FromRawDescriptor, IntoRawDescriptor};
-use libc::{close, dup, dup2, pipe2, O_NONBLOCK, STDERR_FILENO};
+use base::error;
+use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
+use libc::close;
+use libc::dup;
+use libc::dup2;
+use libc::pipe2;
+use libc::O_NONBLOCK;
+use libc::STDERR_FILENO;
 
 // Opens a pipe and puts the write end into the stderr FD slot. On success, returns the read end of
 // the pipe and the old stderr as a pair of files.

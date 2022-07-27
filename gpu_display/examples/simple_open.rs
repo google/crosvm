@@ -1,4 +1,5 @@
-use gpu_display::{GpuDisplay, SurfaceType};
+use gpu_display::GpuDisplay;
+use gpu_display::SurfaceType;
 
 fn main() {
     let mut disp = GpuDisplay::open_x(None::<&str>).unwrap();

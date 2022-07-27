@@ -5,15 +5,20 @@
 use std::convert::TryFrom;
 use std::io::Cursor;
 
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
+use anyhow::Result;
 use bytes::Buf;
 use log::debug;
 
 use crate::bool_decoder::BoolDecoder;
-use crate::probs::{
-    COEFF_DEFAULT_PROBS, COEFF_UPDATE_PROBS, KF_UV_MODE_PROBS, KF_Y_MODE_PROBS, MV_DEFAULT_PROBS,
-    MV_UPDATE_PROBS, NK_UV_MODE_PROBS, NK_Y_MODE_PROBS,
-};
+use crate::probs::COEFF_DEFAULT_PROBS;
+use crate::probs::COEFF_UPDATE_PROBS;
+use crate::probs::KF_UV_MODE_PROBS;
+use crate::probs::KF_Y_MODE_PROBS;
+use crate::probs::MV_DEFAULT_PROBS;
+use crate::probs::MV_UPDATE_PROBS;
+use crate::probs::NK_UV_MODE_PROBS;
+use crate::probs::NK_Y_MODE_PROBS;
 
 /// Dequantization indices as parsed from the quant_indices() syntax.
 #[derive(Clone, Default)]

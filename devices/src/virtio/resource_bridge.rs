@@ -8,11 +8,13 @@
 use std::fmt;
 use std::fs::File;
 
+use base::with_as_descriptor;
+use base::Tube;
+use base::TubeError;
 use remain::sorted;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
-
-use base::{with_as_descriptor, Tube, TubeError};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ResourceRequest {

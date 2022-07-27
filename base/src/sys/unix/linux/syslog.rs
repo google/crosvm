@@ -4,27 +4,34 @@
 
 //! Implementation of the Syslog trait for Linux.
 
-use std::{
-    fs::File,
-    io::{ErrorKind, Write},
-    mem,
-    os::unix::{
-        io::{AsRawFd, FromRawFd},
-        net::UnixDatagram,
-    },
-    ptr::null,
-};
+use std::fs::File;
+use std::io::ErrorKind;
+use std::io::Write;
+use std::mem;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::net::UnixDatagram;
+use std::ptr::null;
 
-use libc::{
-    closelog, fcntl, localtime_r, openlog, time, time_t, tm, F_GETFD, LOG_NDELAY, LOG_PERROR,
-    LOG_PID, LOG_USER,
-};
+use libc::closelog;
+use libc::fcntl;
+use libc::localtime_r;
+use libc::openlog;
+use libc::time;
+use libc::time_t;
+use libc::tm;
+use libc::F_GETFD;
+use libc::LOG_NDELAY;
+use libc::LOG_PERROR;
+use libc::LOG_PID;
+use libc::LOG_USER;
 
 use super::super::getpid;
-use crate::{
-    syslog::{Error, Facility, Priority, Syslog},
-    RawDescriptor,
-};
+use crate::syslog::Error;
+use crate::syslog::Facility;
+use crate::syslog::Priority;
+use crate::syslog::Syslog;
+use crate::RawDescriptor;
 
 const SYSLOG_PATH: &str = "/dev/log";
 

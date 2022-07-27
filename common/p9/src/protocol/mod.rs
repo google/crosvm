@@ -6,4 +6,5 @@ mod messages;
 mod wire_format;
 
 pub use self::messages::*;
-pub use self::wire_format::{Data, WireFormat};
+pub use self::wire_format::Data;
+pub use self::wire_format::WireFormat;

@@ -7,11 +7,14 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
+use anyhow::Result;
 use base::Event;
-use cros_async::{EventAsync, Executor};
+use cros_async::EventAsync;
+use cros_async::Executor;
 
-use super::{Interrupt, SignalableInterrupt};
+use super::Interrupt;
+use super::SignalableInterrupt;
 
 /// Async task that waits for a signal from `event`.  Once this event is readable, exit. Exiting
 /// this future will cause the main loop to break and the worker thread to exit.

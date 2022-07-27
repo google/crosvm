@@ -2,16 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::{self, Write};
+use std::io::Write;
+use std::io::{self};
 
+use base::error;
 #[cfg(windows)]
 use base::named_pipes;
-use base::{error, Event, FileSync, RawDescriptor, Result};
+use base::Event;
+use base::FileSync;
+use base::RawDescriptor;
+use base::Result;
 use hypervisor::ProtectionType;
 
 use crate::pci::CrosvmDeviceId;
 use crate::serial_device::SerialInput;
-use crate::{BusAccessInfo, BusDevice, DeviceId, SerialDevice};
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::DeviceId;
+use crate::SerialDevice;
 
 const BOCHS_DEBUGCON_READBACK: u8 = 0xe9;
 
@@ -82,11 +90,12 @@ impl Debugcon {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io;
     use std::sync::Arc;
 
     use sync::Mutex;
+
+    use super::*;
 
     const ADDR: BusAccessInfo = BusAccessInfo {
         offset: 0,

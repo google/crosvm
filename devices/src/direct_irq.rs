@@ -2,17 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use base::{ioctl_with_ref, AsRawDescriptor, Event, RawDescriptor};
-use data_model::vec_with_array_field;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::io;
 use std::mem::size_of;
 
+use base::ioctl_with_ref;
+use base::AsRawDescriptor;
+use base::Event;
+use base::RawDescriptor;
+use data_model::vec_with_array_field;
 use remain::sorted;
 use thiserror::Error;
 use vfio_sys::*;
 
-use crate::{IrqEdgeEvent, IrqLevelEvent};
+use crate::IrqEdgeEvent;
+use crate::IrqLevelEvent;
 
 #[sorted]
 #[derive(Error, Debug)]

@@ -2,12 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{cmp::min, convert::TryFrom, fs::File as StdFile, io, path::Path, sync::Arc};
+use std::cmp::min;
+use std::convert::TryFrom;
+use std::fs::File as StdFile;
+use std::io;
+use std::path::Path;
+use std::sync::Arc;
 
-use base::{AsRawDescriptor, SafeDescriptor};
+use base::AsRawDescriptor;
+use base::SafeDescriptor;
 
 use super::io_driver;
-use crate::{AsIoBufs, OwnedIoBuf};
+use crate::AsIoBufs;
+use crate::OwnedIoBuf;
 
 #[derive(Debug)]
 pub struct File {

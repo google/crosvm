@@ -8,27 +8,44 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
 use argh::FromArgs;
-use base::{
-    clone_descriptor, error, warn, Event, FromRawDescriptor, SafeDescriptor, Tube, UnixSeqpacket,
-};
-use cros_async::{AsyncWrapper, EventAsync, Executor, IoSourceExt};
-use futures::future::{AbortHandle, Abortable};
+use base::clone_descriptor;
+use base::error;
+use base::warn;
+use base::Event;
+use base::FromRawDescriptor;
+use base::SafeDescriptor;
+use base::Tube;
+use base::UnixSeqpacket;
+use cros_async::AsyncWrapper;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use cros_async::IoSourceExt;
+use futures::future::AbortHandle;
+use futures::future::Abortable;
 use hypervisor::ProtectionType;
 #[cfg(feature = "minigbm")]
 use rutabaga_gfx::RutabagaGralloc;
 use sync::Mutex;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 
-use crate::virtio::vhost::user::device::{
-    handler::{sys::Doorbell, VhostUserBackend},
-    listener::{sys::VhostUserListener, VhostUserListenerTrait},
-};
-use crate::virtio::{base_features, wl, Queue, SharedMemoryMapper, SharedMemoryRegion};
+use crate::virtio::base_features;
+use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
+use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
+use crate::virtio::wl;
+use crate::virtio::Queue;
+use crate::virtio::SharedMemoryMapper;
+use crate::virtio::SharedMemoryRegion;
 
 const MAX_QUEUE_NUM: usize = wl::QUEUE_SIZES.len();
 const MAX_VRING_LEN: u16 = wl::QUEUE_SIZE;

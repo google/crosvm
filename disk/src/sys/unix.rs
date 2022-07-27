@@ -13,13 +13,16 @@ pub fn apply_raw_disk_file_options(_raw_image: &File, _is_sparse_file: bool) -> 
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
-
-    use std::fs::{File, OpenOptions};
+    use std::fs::File;
+    use std::fs::OpenOptions;
     use std::io::Write;
 
-    use cros_async::{Executor, MemRegion};
-    use vm_memory::{GuestAddress, GuestMemory};
+    use cros_async::Executor;
+    use cros_async::MemRegion;
+    use vm_memory::GuestAddress;
+    use vm_memory::GuestMemory;
+
+    use crate::*;
 
     #[test]
     fn read_async() {

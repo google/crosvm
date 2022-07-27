@@ -37,22 +37,49 @@ use libc::EINVAL;
 #[cfg(all(unix, feature = "audio"))]
 pub use self::ac97::{Ac97Backend, Ac97Dev, Ac97Parameters};
 #[cfg(unix)]
-pub use self::coiommu::{CoIommuDev, CoIommuParameters, CoIommuUnpinPolicy};
+pub use self::coiommu::CoIommuDev;
+#[cfg(unix)]
+pub use self::coiommu::CoIommuParameters;
+#[cfg(unix)]
+pub use self::coiommu::CoIommuUnpinPolicy;
 pub use self::msi::MsiConfig;
-pub use self::msix::{MsixCap, MsixConfig, MsixStatus};
+pub use self::msix::MsixCap;
+pub use self::msix::MsixConfig;
+pub use self::msix::MsixStatus;
 pub use self::pci_address::Error as PciAddressError;
 pub use self::pci_address::PciAddress;
-pub use self::pci_configuration::{
-    PciBarConfiguration, PciBarIndex, PciBarPrefetchable, PciBarRegionType, PciCapability,
-    PciCapabilityID, PciClassCode, PciConfiguration, PciDisplaySubclass, PciHeaderType,
-    PciProgrammingInterface, PciSerialBusSubClass, PciSubclass, CAPABILITY_LIST_HEAD_OFFSET,
-};
-pub use self::pci_device::{BarRange, Error as PciDeviceError, PciBus, PciDevice};
-pub use self::pci_root::{PciConfigIo, PciConfigMmio, PciRoot, PciVirtualConfigMmio};
+pub use self::pci_configuration::PciBarConfiguration;
+pub use self::pci_configuration::PciBarIndex;
+pub use self::pci_configuration::PciBarPrefetchable;
+pub use self::pci_configuration::PciBarRegionType;
+pub use self::pci_configuration::PciCapability;
+pub use self::pci_configuration::PciCapabilityID;
+pub use self::pci_configuration::PciClassCode;
+pub use self::pci_configuration::PciConfiguration;
+pub use self::pci_configuration::PciDisplaySubclass;
+pub use self::pci_configuration::PciHeaderType;
+pub use self::pci_configuration::PciProgrammingInterface;
+pub use self::pci_configuration::PciSerialBusSubClass;
+pub use self::pci_configuration::PciSubclass;
+pub use self::pci_configuration::CAPABILITY_LIST_HEAD_OFFSET;
+pub use self::pci_device::BarRange;
+pub use self::pci_device::Error as PciDeviceError;
+pub use self::pci_device::PciBus;
+pub use self::pci_device::PciDevice;
+pub use self::pci_root::PciConfigIo;
+pub use self::pci_root::PciConfigMmio;
+pub use self::pci_root::PciRoot;
+pub use self::pci_root::PciVirtualConfigMmio;
 #[cfg(unix)]
-pub use self::pcie::{PciBridge, PcieHostPort, PcieRootPort};
-pub use self::pvpanic::{PvPanicCode, PvPanicPciDevice};
-pub use self::stub::{StubPciDevice, StubPciParameters};
+pub use self::pcie::PciBridge;
+#[cfg(unix)]
+pub use self::pcie::PcieHostPort;
+#[cfg(unix)]
+pub use self::pcie::PcieRootPort;
+pub use self::pvpanic::PvPanicCode;
+pub use self::pvpanic::PvPanicPciDevice;
+pub use self::stub::StubPciDevice;
+pub use self::stub::StubPciParameters;
 #[cfg(unix)]
 pub use self::vfio_pci::VfioPciDevice;
 

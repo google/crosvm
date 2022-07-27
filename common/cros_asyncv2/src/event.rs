@@ -51,12 +51,13 @@ impl TryFrom<base::EventFd> for Event {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::convert::TryInto;
 
-    use futures::channel::oneshot::{channel, Receiver, Sender};
+    use futures::channel::oneshot::channel;
+    use futures::channel::oneshot::Receiver;
+    use futures::channel::oneshot::Sender;
 
+    use super::*;
     use crate::Executor;
 
     #[test]

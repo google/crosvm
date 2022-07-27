@@ -4,11 +4,13 @@
 
 use std::time::Duration;
 
-use crate::descriptor::AsRawDescriptor;
-use crate::{platform::EventContext, RawDescriptor, Result};
+pub use base_event_token_derive::*;
 use smallvec::SmallVec;
 
-pub use base_event_token_derive::*;
+use crate::descriptor::AsRawDescriptor;
+use crate::platform::EventContext;
+use crate::RawDescriptor;
+use crate::Result;
 
 /// Trait that can be used to associate events with arbitrary enums when using
 /// `WaitContext`.
@@ -232,8 +234,9 @@ impl<T: EventToken> AsRawDescriptor for WaitContext<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use base_event_token_derive::EventToken;
+
+    use super::*;
 
     #[test]
     #[allow(dead_code)]

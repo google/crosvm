@@ -2,12 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{Executor, IntoAsync};
-use base::{RecvTube, SendTube, Tube, TubeResult};
-use serde::{de::DeserializeOwned, Serialize};
 use std::io;
 
+use base::RecvTube;
+use base::SendTube;
+use base::Tube;
+use base::TubeResult;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+
 pub use crate::sys::async_types::*;
+use crate::Executor;
+use crate::IntoAsync;
 
 // NOTE: A StreamChannel can either be used fully in async mode, or not in async
 // mode. Mixing modes will break StreamChannel's internal read/write

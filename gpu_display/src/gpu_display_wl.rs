@@ -10,26 +10,34 @@ extern crate data_model;
 #[path = "dwl.rs"]
 mod dwl;
 
-use dwl::*;
-
-use crate::{
-    DisplayT, EventDeviceKind, GpuDisplayError, GpuDisplayEvents, GpuDisplayFramebuffer,
-    GpuDisplayImport, GpuDisplayResult, GpuDisplaySurface, SurfaceType,
-};
-
-use linux_input_sys::virtio_input_event;
 use std::cell::Cell;
 use std::cmp::max;
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
+use std::ffi::CString;
 use std::mem::zeroed;
 use std::path::Path;
 use std::ptr::null;
 
-use base::{
-    error, round_up_to_page_size, AsRawDescriptor, MemoryMapping, MemoryMappingBuilder,
-    RawDescriptor, SharedMemory,
-};
+use base::error;
+use base::round_up_to_page_size;
+use base::AsRawDescriptor;
+use base::MemoryMapping;
+use base::MemoryMappingBuilder;
+use base::RawDescriptor;
+use base::SharedMemory;
 use data_model::VolatileMemory;
+use dwl::*;
+use linux_input_sys::virtio_input_event;
+
+use crate::DisplayT;
+use crate::EventDeviceKind;
+use crate::GpuDisplayError;
+use crate::GpuDisplayEvents;
+use crate::GpuDisplayFramebuffer;
+use crate::GpuDisplayImport;
+use crate::GpuDisplayResult;
+use crate::GpuDisplaySurface;
+use crate::SurfaceType;
 
 const BUFFER_COUNT: usize = 3;
 const BYTES_PER_PIXEL: u32 = 4;

@@ -2,12 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use cbindgen::Config;
-use cbindgen::Language;
 use std::env;
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
+use anyhow::Result;
+use cbindgen::Config;
+use cbindgen::Language;
 
 static COPYRIGHT_CLAUSE: &str = "// Copyright 2022 The Chromium OS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be

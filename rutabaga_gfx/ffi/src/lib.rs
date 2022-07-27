@@ -8,16 +8,22 @@ extern crate rutabaga_gfx;
 use std::convert::TryInto;
 use std::ffi::CStr;
 use std::os::raw::c_char;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::catch_unwind;
+use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
-use std::ptr::{copy_nonoverlapping, null_mut};
-use std::slice::{from_raw_parts, from_raw_parts_mut};
+use std::ptr::copy_nonoverlapping;
+use std::ptr::null_mut;
+use std::slice::from_raw_parts;
+use std::slice::from_raw_parts_mut;
 
-use base::{error, FromRawDescriptor, IntoRawDescriptor, SafeDescriptor};
+use base::error;
+use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
+use base::SafeDescriptor;
 use data_model::VolatileSlice;
-
-use libc::{iovec, EINVAL, ESRCH};
-
+use libc::iovec;
+use libc::EINVAL;
+use libc::ESRCH;
 use rutabaga_gfx::*;
 
 const NO_ERROR: i32 = 0;

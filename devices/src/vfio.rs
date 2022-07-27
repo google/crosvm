@@ -5,31 +5,47 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::CString;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::io;
 use std::mem;
 use std::os::raw::c_ulong;
 use std::os::unix::prelude::FileExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::slice;
 use std::sync::Arc;
 use std::u32;
 
-use crate::IommuDevType;
 use base::error;
-use base::{
-    ioctl, ioctl_with_mut_ptr, ioctl_with_mut_ref, ioctl_with_ptr, ioctl_with_ref, ioctl_with_val,
-    warn, AsRawDescriptor, Error, Event, FromRawDescriptor, RawDescriptor, SafeDescriptor,
-};
-use data_model::{vec_with_array_field, DataInit};
-use hypervisor::{DeviceKind, Vm};
+use base::ioctl;
+use base::ioctl_with_mut_ptr;
+use base::ioctl_with_mut_ref;
+use base::ioctl_with_ptr;
+use base::ioctl_with_ref;
+use base::ioctl_with_val;
+use base::warn;
+use base::AsRawDescriptor;
+use base::Error;
+use base::Event;
+use base::FromRawDescriptor;
+use base::RawDescriptor;
+use base::SafeDescriptor;
+use data_model::vec_with_array_field;
+use data_model::DataInit;
+use hypervisor::DeviceKind;
+use hypervisor::Vm;
 use once_cell::sync::OnceCell;
 use remain::sorted;
 use resources::address_allocator::AddressAllocator;
-use resources::{AddressRange, Alloc, Error as ResourcesError};
+use resources::AddressRange;
+use resources::Alloc;
+use resources::Error as ResourcesError;
 use sync::Mutex;
 use thiserror::Error;
 use vfio_sys::*;
+
+use crate::IommuDevType;
 
 #[sorted]
 #[derive(Error, Debug)]

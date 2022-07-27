@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{
-    fs::File,
-    io::{self, Error, ErrorKind},
-};
+use std::fs::File;
+use std::io::Error;
+use std::io::ErrorKind;
+use std::io::{self};
 
 /// A trait for deallocating space in a file.
 pub trait PunchHole {
@@ -60,9 +60,14 @@ impl WriteZeroesAt for File {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::io::{Read, Seek, SeekFrom, Write};
+    use std::io::Read;
+    use std::io::Seek;
+    use std::io::SeekFrom;
+    use std::io::Write;
+
     use tempfile::tempfile;
+
+    use super::*;
 
     #[test]
     fn simple_test() {

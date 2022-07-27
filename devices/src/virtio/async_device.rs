@@ -6,14 +6,16 @@
 
 #![cfg_attr(windows, allow(dead_code))]
 
-use anyhow::{bail, Context};
+use anyhow::bail;
+use anyhow::Context;
 use async_task::Task;
 use base::warn;
-use cros_async::{AsyncResult, Executor};
-use futures::{
-    future::{AbortHandle, Abortable, Pending},
-    Future,
-};
+use cros_async::AsyncResult;
+use cros_async::Executor;
+use futures::future::AbortHandle;
+use futures::future::Abortable;
+use futures::future::Pending;
+use futures::Future;
 
 /// A queue for which processing can be started on an async executor.
 ///

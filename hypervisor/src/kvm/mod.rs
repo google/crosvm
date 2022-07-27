@@ -9,42 +9,86 @@ use aarch64::*;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86_64;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use x86_64::*;
-
 use std::cell::RefCell;
-use std::cmp::{min, Reverse};
-use std::collections::{BTreeMap, BinaryHeap};
+use std::cmp::min;
+use std::cmp::Reverse;
+use std::collections::BTreeMap;
+use std::collections::BinaryHeap;
 use std::convert::TryFrom;
 use std::ffi::CString;
-use std::mem::{size_of, ManuallyDrop};
-use std::os::raw::{c_int, c_ulong, c_void};
+use std::mem::size_of;
+use std::mem::ManuallyDrop;
+use std::os::raw::c_int;
+use std::os::raw::c_ulong;
+use std::os::raw::c_void;
 use std::os::unix::prelude::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::ptr::copy_nonoverlapping;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use libc::{
-    open, sigset_t, EBUSY, EFAULT, EINVAL, EIO, ENOENT, ENOSPC, EOVERFLOW, O_CLOEXEC, O_RDWR,
-};
-
-use base::{
-    block_signal, errno_result, error, ioctl, ioctl_with_mut_ref, ioctl_with_ref, ioctl_with_val,
-    pagesize, signal, unblock_signal, AsRawDescriptor, Error, Event, FromRawDescriptor,
-    MappedRegion, MemoryMapping, MemoryMappingBuilder, MemoryMappingBuilderUnix, MmapError,
-    Protection, RawDescriptor, Result, SafeDescriptor,
-};
+use base::block_signal;
+use base::errno_result;
+use base::error;
+use base::ioctl;
+use base::ioctl_with_mut_ref;
+use base::ioctl_with_ref;
+use base::ioctl_with_val;
+use base::pagesize;
+use base::signal;
+use base::unblock_signal;
+use base::AsRawDescriptor;
+use base::Error;
+use base::Event;
+use base::FromRawDescriptor;
+use base::MappedRegion;
+use base::MemoryMapping;
+use base::MemoryMappingBuilder;
+use base::MemoryMappingBuilderUnix;
+use base::MmapError;
+use base::Protection;
+use base::RawDescriptor;
+use base::Result;
+use base::SafeDescriptor;
 use data_model::vec_with_array_field;
 use kvm_sys::*;
+use libc::open;
+use libc::sigset_t;
+use libc::EBUSY;
+use libc::EFAULT;
+use libc::EINVAL;
+use libc::EIO;
+use libc::ENOENT;
+use libc::ENOSPC;
+use libc::EOVERFLOW;
+use libc::O_CLOEXEC;
+use libc::O_RDWR;
 use sync::Mutex;
-use vm_memory::{GuestAddress, GuestMemory};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::*;
 
-use crate::{
-    ClockState, Datamatch, DeviceKind, HypervHypercall, Hypervisor, HypervisorCap, IoEventAddress,
-    IoOperation, IoParams, IrqRoute, IrqSource, MPState, MemSlot, ProtectionType, Vcpu, VcpuExit,
-    VcpuRunHandle, Vm, VmCap,
-};
+use crate::ClockState;
+use crate::Datamatch;
+use crate::DeviceKind;
+use crate::HypervHypercall;
+use crate::Hypervisor;
+use crate::HypervisorCap;
+use crate::IoEventAddress;
+use crate::IoOperation;
+use crate::IoParams;
+use crate::IrqRoute;
+use crate::IrqSource;
+use crate::MPState;
+use crate::MemSlot;
+use crate::ProtectionType;
+use crate::Vcpu;
+use crate::VcpuExit;
+use crate::VcpuRunHandle;
+use crate::Vm;
+use crate::VmCap;
 
 // Wrapper around KVM_SET_USER_MEMORY_REGION ioctl, which creates, modifies, or deletes a mapping
 // from guest physical to host user pages.
@@ -1248,10 +1292,15 @@ impl From<&MPState> for kvm_mp_state {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use base::{pagesize, FromRawDescriptor, MemoryMappingArena, MemoryMappingBuilder};
     use std::thread;
+
+    use base::pagesize;
+    use base::FromRawDescriptor;
+    use base::MemoryMappingArena;
+    use base::MemoryMappingBuilder;
     use vm_memory::GuestAddress;
+
+    use super::*;
 
     #[test]
     fn dirty_log_size() {

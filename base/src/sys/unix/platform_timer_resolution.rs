@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{EnabledHighResTimer, Result};
+use crate::EnabledHighResTimer;
+use crate::Result;
 
 /// Noop struct on unix.
 /// On windows, restores the platform timer resolution to its original value on Drop.

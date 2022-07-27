@@ -5,7 +5,8 @@
 //! This module provides type safe interfaces for each operation exposed by Chrome's
 //! VideoDecodeAccelerator.
 
-use std::{os::raw::c_void, rc::Rc};
+use std::os::raw::c_void;
+use std::rc::Rc;
 
 use super::bindings;
 use super::format::*;

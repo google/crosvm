@@ -4,9 +4,17 @@
 
 use std::os::unix::io::AsRawFd;
 
-use libc::{fcntl, EINVAL, F_GETFL, O_ACCMODE, O_RDONLY, O_RDWR, O_WRONLY};
+use libc::fcntl;
+use libc::EINVAL;
+use libc::F_GETFL;
+use libc::O_ACCMODE;
+use libc::O_RDONLY;
+use libc::O_RDWR;
+use libc::O_WRONLY;
 
-use super::{errno_result, Error, Result};
+use super::errno_result;
+use super::Error;
+use super::Result;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FileFlags {
@@ -35,10 +43,9 @@ impl FileFlags {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        super::{pipe, Event},
-        *,
-    };
+    use super::super::pipe;
+    use super::super::Event;
+    use super::*;
 
     #[test]
     fn pipe_pair() {

@@ -6,18 +6,31 @@
 // See https://www.intel.com/content/dam/doc/datasheet/io-controller-hub-10-family-datasheet.pdf
 // for a specification.
 
+use base::error;
+use base::warn;
+use base::Error;
+use base::Event;
+use base::Result;
+use base::Tube;
+use base::TubeError;
+use hypervisor::IoapicRedirectionTableEntry;
+use hypervisor::IoapicState;
+use hypervisor::MsiAddressMessage;
+use hypervisor::MsiDataMessage;
+use hypervisor::TriggerMode;
+use hypervisor::MAX_IOAPIC_PINS;
+use hypervisor::NUM_IOAPIC_PINS;
+use remain::sorted;
+use thiserror::Error;
+use vm_control::VmIrqRequest;
+use vm_control::VmIrqResponse;
+
 use super::IrqEvent;
 use crate::bus::BusAccessInfo;
 use crate::pci::CrosvmDeviceId;
-use crate::{BusDevice, DeviceId, IrqEventSource};
-use base::{error, warn, Error, Event, Result, Tube, TubeError};
-use hypervisor::{
-    IoapicRedirectionTableEntry, IoapicState, MsiAddressMessage, MsiDataMessage, TriggerMode,
-    MAX_IOAPIC_PINS, NUM_IOAPIC_PINS,
-};
-use remain::sorted;
-use thiserror::Error;
-use vm_control::{VmIrqRequest, VmIrqResponse};
+use crate::BusDevice;
+use crate::DeviceId;
+use crate::IrqEventSource;
 
 // ICH10 I/O APIC version: 0x20
 const IOAPIC_VERSION_ID: u32 = 0x00000020;
@@ -506,8 +519,11 @@ enum IoapicError {
 
 #[cfg(test)]
 mod tests {
+    use hypervisor::DeliveryMode;
+    use hypervisor::DeliveryStatus;
+    use hypervisor::DestinationMode;
+
     use super::*;
-    use hypervisor::{DeliveryMode, DeliveryStatus, DestinationMode};
 
     const DEFAULT_VECTOR: u8 = 0x3a;
     const DEFAULT_DESTINATION_ID: u8 = 0x5f;

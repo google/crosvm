@@ -2,8 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::register::{Register, RegisterInterface, RegisterOffset, RegisterRange, RegisterValue};
 use std::collections::btree_map::BTreeMap;
+
+use super::register::Register;
+use super::register::RegisterInterface;
+use super::register::RegisterOffset;
+use super::register::RegisterRange;
+use super::register::RegisterValue;
 
 /// Register space repesents a set of registers. It can handle read/write operations.
 pub struct RegisterSpace {
@@ -93,9 +98,11 @@ impl RegisterSpace {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::Arc;
+
     use sync::Mutex;
+
+    use super::*;
 
     #[test]
     fn regs_no_reg() {

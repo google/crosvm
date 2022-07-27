@@ -2,20 +2,37 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{
-    control_request_type, descriptor, ConfigDescriptorTree,
-    ControlRequestDataPhaseTransferDirection, ControlRequestRecipient, ControlRequestType,
-    DeviceDescriptor, DeviceDescriptorTree, Error, Result, StandardControlRequest,
-};
-use base::{handle_eintr_errno, AsRawDescriptor, IoctlNr, RawDescriptor};
-use data_model::vec_with_array_field;
-use libc::{EAGAIN, ENODEV, ENOENT};
 use std::convert::TryInto;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::mem::size_of_val;
-use std::os::raw::{c_int, c_uint, c_void};
+use std::os::raw::c_int;
+use std::os::raw::c_uint;
+use std::os::raw::c_void;
 use std::sync::Arc;
+
+use base::handle_eintr_errno;
+use base::AsRawDescriptor;
+use base::IoctlNr;
+use base::RawDescriptor;
+use data_model::vec_with_array_field;
+use libc::EAGAIN;
+use libc::ENODEV;
+use libc::ENOENT;
+
+use crate::control_request_type;
+use crate::descriptor;
+use crate::ConfigDescriptorTree;
+use crate::ControlRequestDataPhaseTransferDirection;
+use crate::ControlRequestRecipient;
+use crate::ControlRequestType;
+use crate::DeviceDescriptor;
+use crate::DeviceDescriptorTree;
+use crate::Error;
+use crate::Result;
+use crate::StandardControlRequest;
 
 /// Device represents a USB device.
 pub struct Device {

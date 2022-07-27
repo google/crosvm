@@ -2,18 +2,29 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{cell::RefCell, io, sync::Arc};
+use std::cell::RefCell;
+use std::io;
+use std::sync::Arc;
 
-use log::{error, warn};
-use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
+use log::error;
+use log::warn;
+use serde::ser::SerializeStruct;
+use serde::Deserialize;
+use serde::Serialize;
+use serde::Serializer;
 use sync::Mutex;
 
-use super::{
-    named_pipes::{self, PipeConnection},
-    stream_channel::{BlockingMode, FramingMode},
-    Event, MultiProcessMutex, RawDescriptor, Result,
-};
-use crate::{descriptor::AsRawDescriptor, CloseNotifier, ReadNotifier};
+use super::named_pipes::PipeConnection;
+use super::named_pipes::{self};
+use super::stream_channel::BlockingMode;
+use super::stream_channel::FramingMode;
+use super::Event;
+use super::MultiProcessMutex;
+use super::RawDescriptor;
+use super::Result;
+use crate::descriptor::AsRawDescriptor;
+use crate::CloseNotifier;
+use crate::ReadNotifier;
 
 impl From<FramingMode> for named_pipes::FramingMode {
     fn from(framing_mode: FramingMode) -> Self {
@@ -396,15 +407,15 @@ impl CloseNotifier for StreamChannel {
 
 #[cfg(test)]
 mod test {
-    use super::{
-        super::{EventContext, EventTrigger},
-        *,
-    };
-    use crate::{EventToken, ReadNotifier};
-    use std::{
-        io::{Read, Write},
-        time::Duration,
-    };
+    use std::io::Read;
+    use std::io::Write;
+    use std::time::Duration;
+
+    use super::super::EventContext;
+    use super::super::EventTrigger;
+    use super::*;
+    use crate::EventToken;
+    use crate::ReadNotifier;
 
     #[derive(EventToken, Debug, Eq, PartialEq, Copy, Clone)]
     enum Token {

@@ -6,11 +6,16 @@ use std::collections::BTreeMap;
 
 use base::error;
 
+use crate::virtio::video::error::VideoError;
+use crate::virtio::video::error::VideoResult;
+use crate::virtio::video::format::find_closest_resolution;
+use crate::virtio::video::format::Bitrate;
+use crate::virtio::video::format::Format;
+use crate::virtio::video::format::FormatDesc;
+use crate::virtio::video::format::Level;
+use crate::virtio::video::format::PlaneFormat;
+use crate::virtio::video::format::Profile;
 use crate::virtio::video::params::Params;
-use crate::virtio::video::{
-    error::{VideoError, VideoResult},
-    format::{find_closest_resolution, Bitrate, Format, FormatDesc, Level, PlaneFormat, Profile},
-};
 
 pub type InputBufferId = u32;
 pub type OutputBufferId = u32;

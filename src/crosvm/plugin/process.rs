@@ -2,42 +2,68 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::collections::hash_map::{Entry, HashMap, VacantEntry};
+use std::collections::hash_map::Entry;
+use std::collections::hash_map::HashMap;
+use std::collections::hash_map::VacantEntry;
 use std::env::set_var;
 use std::fs::File;
-use std::io::{IoSlice, IoSliceMut, Write};
+use std::io::IoSlice;
+use std::io::IoSliceMut;
+use std::io::Write;
 use std::mem::transmute;
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
 use std::process::Command;
 use std::result;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use std::sync::RwLock;
 use std::thread::JoinHandle;
 
-use net_util::{Error as NetError, TapTCommon};
-
-use libc::{
-    pid_t, waitpid, EINVAL, ENODATA, ENOTTY, STDERR_FILENO, WEXITSTATUS, WIFEXITED, WNOHANG,
-    WTERMSIG,
-};
-
-use protobuf::Message;
-
-use base::{
-    error, AsRawDescriptor, Descriptor, Error as SysError, Event, IntoRawDescriptor, Killable,
-    MemoryMappingBuilder, Result as SysResult, ScmSocket, SharedMemory, SharedMemoryUnix, SIGRTMIN,
-};
-use kvm::{dirty_log_bitmap_size, Datamatch, IoeventAddress, IrqRoute, IrqSource, PicId, Vm};
-use kvm_sys::{kvm_clock_data, kvm_ioapic_state, kvm_pic_state, kvm_pit_state2};
+use base::error;
+use base::AsRawDescriptor;
+use base::Descriptor;
+use base::Error as SysError;
+use base::Event;
+use base::IntoRawDescriptor;
+use base::Killable;
+use base::MemoryMappingBuilder;
+use base::Result as SysResult;
+use base::ScmSocket;
+use base::SharedMemory;
+use base::SharedMemoryUnix;
+use base::SIGRTMIN;
+// Wrapper types to make the kvm state structs DataInit
+use data_model::DataInit;
+use kvm::dirty_log_bitmap_size;
+use kvm::Datamatch;
+use kvm::IoeventAddress;
+use kvm::IrqRoute;
+use kvm::IrqSource;
+use kvm::PicId;
+use kvm::Vm;
+use kvm_sys::kvm_clock_data;
+use kvm_sys::kvm_ioapic_state;
+use kvm_sys::kvm_pic_state;
+use kvm_sys::kvm_pit_state2;
+use libc::pid_t;
+use libc::waitpid;
+use libc::EINVAL;
+use libc::ENODATA;
+use libc::ENOTTY;
+use libc::STDERR_FILENO;
+use libc::WEXITSTATUS;
+use libc::WIFEXITED;
+use libc::WNOHANG;
+use libc::WTERMSIG;
 use minijail::Minijail;
+use net_util::Error as NetError;
+use net_util::TapTCommon;
+use protobuf::Message;
 use protos::plugin::*;
 use sync::Mutex;
 use vm_memory::GuestAddress;
 
 use super::*;
-
-// Wrapper types to make the kvm state structs DataInit
-use data_model::DataInit;
 #[derive(Copy, Clone)]
 struct VmPicState(kvm_pic_state);
 unsafe impl DataInit for VmPicState {}

@@ -2,28 +2,46 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use super::interrupter::Interrupter;
-use super::transfer_ring_controller::{TransferRingController, TransferRingControllerError};
-use super::usb_hub::{self, UsbHub};
-use super::xhci_abi::{
-    AddressDeviceCommandTrb, ConfigureEndpointCommandTrb, DequeuePtr, DeviceContext,
-    DeviceSlotState, EndpointContext, EndpointState, EvaluateContextCommandTrb,
-    InputControlContext, SlotContext, TrbCompletionCode, DEVICE_CONTEXT_ENTRY_SIZE,
-};
-use super::xhci_regs::{valid_slot_id, MAX_PORTS, MAX_SLOTS};
-use crate::register_space::Register;
-use crate::usb::host_backend::error::Error as HostBackendProviderError;
-use crate::usb::xhci::ring_buffer_stop_cb::{fallible_closure, RingBufferStopCallback};
-use crate::utils::{EventLoop, FailHandle};
+use std::mem::size_of;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+
 use base::error;
 use bit_field::Error as BitFieldError;
 use remain::sorted;
-use std::mem::size_of;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use sync::Mutex;
 use thiserror::Error;
-use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
+use vm_memory::GuestAddress;
+use vm_memory::GuestMemory;
+use vm_memory::GuestMemoryError;
+
+use super::interrupter::Interrupter;
+use super::transfer_ring_controller::TransferRingController;
+use super::transfer_ring_controller::TransferRingControllerError;
+use super::usb_hub::UsbHub;
+use super::usb_hub::{self};
+use super::xhci_abi::AddressDeviceCommandTrb;
+use super::xhci_abi::ConfigureEndpointCommandTrb;
+use super::xhci_abi::DequeuePtr;
+use super::xhci_abi::DeviceContext;
+use super::xhci_abi::DeviceSlotState;
+use super::xhci_abi::EndpointContext;
+use super::xhci_abi::EndpointState;
+use super::xhci_abi::EvaluateContextCommandTrb;
+use super::xhci_abi::InputControlContext;
+use super::xhci_abi::SlotContext;
+use super::xhci_abi::TrbCompletionCode;
+use super::xhci_abi::DEVICE_CONTEXT_ENTRY_SIZE;
+use super::xhci_regs::valid_slot_id;
+use super::xhci_regs::MAX_PORTS;
+use super::xhci_regs::MAX_SLOTS;
+use crate::register_space::Register;
+use crate::usb::host_backend::error::Error as HostBackendProviderError;
+use crate::usb::xhci::ring_buffer_stop_cb::fallible_closure;
+use crate::usb::xhci::ring_buffer_stop_cb::RingBufferStopCallback;
+use crate::utils::EventLoop;
+use crate::utils::FailHandle;
 
 #[sorted]
 #[derive(Error, Debug)]

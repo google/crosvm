@@ -8,21 +8,34 @@ mod worker;
 use std::io::Write;
 use std::thread;
 
-use base::{error, AsRawDescriptor, Event, Protection, SafeDescriptor, Tube};
+use base::error;
+use base::AsRawDescriptor;
+use base::Event;
+use base::Protection;
+use base::SafeDescriptor;
+use base::Tube;
 use vm_control::VmMemorySource;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{
-    VhostUserConfigFlags, VhostUserProtocolFeatures, VhostUserShmemMapMsg, VhostUserShmemUnmapMsg,
-    VhostUserVirtioFeatures,
-};
-use vmm_vhost::{
-    HandlerResult, VhostBackend, VhostUserMaster, VhostUserMasterReqHandlerMut,
-    VhostUserMemoryRegionInfo, VringConfigData,
-};
+use vmm_vhost::message::VhostUserConfigFlags;
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserShmemMapMsg;
+use vmm_vhost::message::VhostUserShmemUnmapMsg;
+use vmm_vhost::message::VhostUserVirtioFeatures;
+use vmm_vhost::HandlerResult;
+use vmm_vhost::VhostBackend;
+use vmm_vhost::VhostUserMaster;
+use vmm_vhost::VhostUserMasterReqHandlerMut;
+use vmm_vhost::VhostUserMemoryRegionInfo;
+use vmm_vhost::VringConfigData;
 
-use crate::virtio::vhost::user::vmm::handler::sys::{BackendReqHandler, SocketMaster};
-use crate::virtio::vhost::user::vmm::{Error, Result};
-use crate::virtio::{Interrupt, Queue, SharedMemoryMapper, SharedMemoryRegion};
+use crate::virtio::vhost::user::vmm::handler::sys::BackendReqHandler;
+use crate::virtio::vhost::user::vmm::handler::sys::SocketMaster;
+use crate::virtio::vhost::user::vmm::Error;
+use crate::virtio::vhost::user::vmm::Result;
+use crate::virtio::Interrupt;
+use crate::virtio::Queue;
+use crate::virtio::SharedMemoryMapper;
+use crate::virtio::SharedMemoryRegion;
 
 fn set_features(vu: &mut SocketMaster, avail_features: u64, ack_features: u64) -> Result<u64> {
     let features = avail_features & ack_features;

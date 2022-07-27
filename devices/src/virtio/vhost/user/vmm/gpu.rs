@@ -2,24 +2,40 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::{cell::RefCell, path::Path, thread};
+use std::cell::RefCell;
+use std::path::Path;
+use std::thread;
 
-use base::{error, Event, RawDescriptor, Tube};
+use base::error;
+use base::Event;
+use base::RawDescriptor;
+use base::Tube;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
+use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserVirtioFeatures;
 
-use crate::{
-    pci::{PciBarConfiguration, PciCapability},
-    virtio::{
-        gpu::QUEUE_SIZES,
-        vhost::user::vmm::{Result, VhostUserHandler},
-        virtio_gpu_config, DeviceType, Interrupt, PciCapabilityType, Queue, VirtioDevice,
-        VirtioPciShmCap, GPU_BAR_NUM, GPU_BAR_OFFSET, VIRTIO_GPU_F_CONTEXT_INIT,
-        VIRTIO_GPU_F_CREATE_GUEST_HANDLE, VIRTIO_GPU_F_RESOURCE_BLOB, VIRTIO_GPU_F_RESOURCE_SYNC,
-        VIRTIO_GPU_F_RESOURCE_UUID, VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_SHM_ID_HOST_VISIBLE,
-    },
-    PciAddress,
-};
+use crate::pci::PciBarConfiguration;
+use crate::pci::PciCapability;
+use crate::virtio::gpu::QUEUE_SIZES;
+use crate::virtio::vhost::user::vmm::Result;
+use crate::virtio::vhost::user::vmm::VhostUserHandler;
+use crate::virtio::virtio_gpu_config;
+use crate::virtio::DeviceType;
+use crate::virtio::Interrupt;
+use crate::virtio::PciCapabilityType;
+use crate::virtio::Queue;
+use crate::virtio::VirtioDevice;
+use crate::virtio::VirtioPciShmCap;
+use crate::virtio::GPU_BAR_NUM;
+use crate::virtio::GPU_BAR_OFFSET;
+use crate::virtio::VIRTIO_GPU_F_CONTEXT_INIT;
+use crate::virtio::VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
+use crate::virtio::VIRTIO_GPU_F_RESOURCE_BLOB;
+use crate::virtio::VIRTIO_GPU_F_RESOURCE_SYNC;
+use crate::virtio::VIRTIO_GPU_F_RESOURCE_UUID;
+use crate::virtio::VIRTIO_GPU_F_VIRGL;
+use crate::virtio::VIRTIO_GPU_SHM_ID_HOST_VISIBLE;
+use crate::PciAddress;
 
 /// Current state of our Gpu.
 enum GpuState {

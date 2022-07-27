@@ -3,7 +3,8 @@
 // found in the LICENSE file.
 
 use std::fs::File;
-use std::io::{self, Error};
+use std::io::Error;
+use std::io::{self};
 
 use win_util::LargeInteger;
 pub use winapi::um::winioctl::FSCTL_SET_ZERO_DATA;

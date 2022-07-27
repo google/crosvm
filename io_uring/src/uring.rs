@@ -9,14 +9,23 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::io::RawFd;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::AtomicPtr;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
-use base::{
-    AsRawDescriptor, EventType, MappedRegion, MemoryMapping, MemoryMappingBuilder, Protection,
-    RawDescriptor,
-};
+use base::AsRawDescriptor;
+use base::EventType;
+use base::MappedRegion;
+use base::MemoryMapping;
+use base::MemoryMappingBuilder;
+use base::Protection;
+use base::RawDescriptor;
 use data_model::IoBufMut;
 use remain::sorted;
 use sync::Mutex;
@@ -902,18 +911,27 @@ impl QueuePointers {
 mod tests {
     use std::collections::BTreeSet;
     use std::fs::OpenOptions;
-    use std::io::{IoSlice, IoSliceMut};
-    use std::io::{Read, Seek, SeekFrom, Write};
+    use std::io::IoSlice;
+    use std::io::IoSliceMut;
+    use std::io::Read;
+    use std::io::Seek;
+    use std::io::SeekFrom;
+    use std::io::Write;
     use std::mem;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
+    use std::path::PathBuf;
     use std::sync::mpsc::channel;
-    use std::sync::{Arc, Barrier};
+    use std::sync::Arc;
+    use std::sync::Barrier;
     use std::thread;
     use std::time::Duration;
 
-    use base::{pipe, WaitContext};
-    use sync::{Condvar, Mutex};
-    use tempfile::{tempfile, TempDir};
+    use base::pipe;
+    use base::WaitContext;
+    use sync::Condvar;
+    use sync::Mutex;
+    use tempfile::tempfile;
+    use tempfile::TempDir;
 
     use super::*;
 

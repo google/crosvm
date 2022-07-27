@@ -4,16 +4,19 @@
 
 //! Macros and wrapper functions for dealing with ioctls.
 
-use std::{
-    mem::size_of,
-    os::raw::*,
-    os::raw::{c_int, c_ulong},
-    ptr::null_mut,
-};
+use std::mem::size_of;
+use std::os::raw::c_int;
+use std::os::raw::c_ulong;
+use std::os::raw::*;
+use std::ptr::null_mut;
+
+use winapi::um::errhandlingapi::GetLastError;
+use winapi::um::ioapiset::DeviceIoControl;
+pub use winapi::um::winioctl::CTL_CODE;
+pub use winapi::um::winioctl::FILE_ANY_ACCESS;
+pub use winapi::um::winioctl::METHOD_BUFFERED;
 
 use crate::descriptor::AsRawDescriptor;
-pub use winapi::um::winioctl::{CTL_CODE, FILE_ANY_ACCESS, METHOD_BUFFERED};
-use winapi::um::{errhandlingapi::GetLastError, ioapiset::DeviceIoControl};
 
 /// Raw macro to declare the expression that calculates an ioctl number
 #[macro_export]
@@ -321,24 +324,27 @@ pub unsafe fn device_io_control<F: AsRawDescriptor, T, T2>(
 #[cfg(test)]
 mod tests {
 
-    use winapi::um::winioctl::{FSCTL_GET_COMPRESSION, FSCTL_SET_COMPRESSION};
-
-    use winapi::um::{
-        fileapi::{CreateFileW, OPEN_EXISTING},
-        winbase::SECURITY_SQOS_PRESENT,
-        winnt::{
-            COMPRESSION_FORMAT_LZNT1, COMPRESSION_FORMAT_NONE, FILE_SHARE_READ, FILE_SHARE_WRITE,
-            GENERIC_READ, GENERIC_WRITE,
-        },
-    };
-
-    use std::{fs::OpenOptions, os::raw::*, ptr::null_mut};
-
-    use std::{ffi::OsStr, fs::File, io::prelude::*, os::windows::ffi::OsStrExt};
-
+    use std::ffi::OsStr;
+    use std::fs::File;
+    use std::fs::OpenOptions;
+    use std::io::prelude::*;
+    use std::os::raw::*;
+    use std::os::windows::ffi::OsStrExt;
     use std::os::windows::prelude::*;
+    use std::ptr::null_mut;
 
     use tempfile::tempdir;
+    use winapi::um::fileapi::CreateFileW;
+    use winapi::um::fileapi::OPEN_EXISTING;
+    use winapi::um::winbase::SECURITY_SQOS_PRESENT;
+    use winapi::um::winioctl::FSCTL_GET_COMPRESSION;
+    use winapi::um::winioctl::FSCTL_SET_COMPRESSION;
+    use winapi::um::winnt::COMPRESSION_FORMAT_LZNT1;
+    use winapi::um::winnt::COMPRESSION_FORMAT_NONE;
+    use winapi::um::winnt::FILE_SHARE_READ;
+    use winapi::um::winnt::FILE_SHARE_WRITE;
+    use winapi::um::winnt::GENERIC_READ;
+    use winapi::um::winnt::GENERIC_WRITE;
 
     // helper func, returns str as Vec<u16>
     fn to_u16s<S: AsRef<OsStr>>(s: S) -> std::io::Result<Vec<u16>> {

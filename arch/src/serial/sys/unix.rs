@@ -6,8 +6,10 @@ use std::sync::Arc;
 
 use base::RawDescriptor;
 use devices::serial_device::SerialParameters;
+use devices::Bus;
 use devices::BusDevice;
-use devices::{Bus, ProxyDevice, Serial};
+use devices::ProxyDevice;
+use devices::Serial;
 use minijail::Minijail;
 use sync::Mutex;
 

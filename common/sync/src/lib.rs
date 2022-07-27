@@ -25,4 +25,5 @@ mod condvar;
 mod mutex;
 
 pub use crate::condvar::Condvar;
-pub use crate::mutex::{Mutex, WouldBlock};
+pub use crate::mutex::Mutex;
+pub use crate::mutex::WouldBlock;

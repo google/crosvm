@@ -4,22 +4,30 @@
 
 //! Handles routing to devices in an address space.
 
-use std::cmp::{Ord, Ordering, PartialEq, PartialOrd};
+use std::cmp::Ord;
+use std::cmp::Ordering;
+use std::cmp::PartialEq;
+use std::cmp::PartialOrd;
 use std::collections::btree_map::BTreeMap;
 use std::fmt;
 use std::result;
 use std::sync::Arc;
 
 use remain::sorted;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use sync::Mutex;
 use thiserror::Error;
 
+#[cfg(feature = "stats")]
+use crate::bus_stats::BusOperation;
+#[cfg(feature = "stats")]
+use crate::BusStatistics;
+use crate::DeviceId;
+use crate::PciAddress;
+use crate::PciDevice;
 #[cfg(unix)]
 use crate::VfioPlatformDevice;
-#[cfg(feature = "stats")]
-use crate::{bus_stats::BusOperation, BusStatistics};
-use crate::{DeviceId, PciAddress, PciDevice};
 
 /// Information about how a device was accessed.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
@@ -520,9 +528,8 @@ impl Bus {
 
 #[cfg(test)]
 mod tests {
-    use crate::pci::CrosvmDeviceId;
-
     use super::*;
+    use crate::pci::CrosvmDeviceId;
 
     struct DummyDevice;
     impl BusDevice for DummyDevice {

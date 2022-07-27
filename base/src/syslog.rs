@@ -49,20 +49,22 @@
 //!
 //! [log-crate-url]: https://docs.rs/log/
 
-use std::{fmt::Display, io, io::Write};
+use std::fmt::Display;
+use std::io;
+use std::io::Write;
 
 use chrono::Local;
+// Reexports
+pub use env_logger::{self, fmt};
+pub use log::*;
 use once_cell::sync::OnceCell;
 use remain::sorted;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error as ThisError;
 
 use crate::platform::syslog::PlatformSyslog;
 use crate::platform::RawDescriptor;
-
-// Reexports
-pub use env_logger::{self, fmt};
-pub use log::*;
 
 /// The priority (i.e. severity) of a syslog message.
 ///
@@ -468,8 +470,9 @@ impl io::Write for Syslogger {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::field_reassign_with_default)]
-    use super::*;
     use std::io::Write;
+
+    use super::*;
 
     impl Default for State {
         fn default() -> Self {
@@ -477,7 +480,8 @@ mod tests {
         }
     }
 
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
+    use std::sync::Mutex;
     #[derive(Clone)]
     struct MockWrite {
         buffer: Arc<Mutex<Vec<u8>>>,

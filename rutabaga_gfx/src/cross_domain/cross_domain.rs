@@ -14,20 +14,30 @@ use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 use std::thread;
 
-use base::{error, Event, EventToken, FileReadWriteVolatile, SafeDescriptor, WaitContext};
+use base::error;
+use base::Event;
+use base::EventToken;
+use base::FileReadWriteVolatile;
+use base::SafeDescriptor;
+use base::WaitContext;
+use data_model::DataInit;
+use data_model::VolatileMemory;
+use data_model::VolatileSlice;
+use sync::Condvar;
+use sync::Mutex;
 
+use super::sys::descriptor_analysis;
+use super::sys::SystemStream;
 use crate::cross_domain::cross_domain_protocol::*;
-use crate::rutabaga_core::{RutabagaComponent, RutabagaContext, RutabagaResource};
+use crate::rutabaga_core::RutabagaComponent;
+use crate::rutabaga_core::RutabagaContext;
+use crate::rutabaga_core::RutabagaResource;
 use crate::rutabaga_utils::*;
-use crate::{
-    DrmFormat, ImageAllocationInfo, ImageMemoryRequirements, RutabagaGralloc, RutabagaGrallocFlags,
-};
-
-use super::sys::{descriptor_analysis, SystemStream};
-
-use data_model::{DataInit, VolatileMemory, VolatileSlice};
-
-use sync::{Condvar, Mutex};
+use crate::DrmFormat;
+use crate::ImageAllocationInfo;
+use crate::ImageMemoryRequirements;
+use crate::RutabagaGralloc;
+use crate::RutabagaGrallocFlags;
 
 const CROSS_DOMAIN_DEFAULT_BUFFER_SIZE: usize = 4096;
 const CROSS_DOMAIN_MAX_SEND_RECV_SIZE: usize =

@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::{IntoAsync, IoSourceExt};
 use base::Event;
+
+use crate::IntoAsync;
+use crate::IoSourceExt;
 
 /// An async version of `base::Event`.
 pub struct EventAsync {
