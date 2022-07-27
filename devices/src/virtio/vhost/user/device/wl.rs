@@ -238,7 +238,7 @@ impl VhostUserBackend for WlBackend {
                     resource_bridge.take(),
                     #[cfg(feature = "minigbm")]
                     gralloc,
-                    0, /* address_offset */
+                    None, /* address_offset */
                 )))
             })
             .clone();

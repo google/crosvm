@@ -1071,7 +1071,7 @@ pub struct WlState {
     #[cfg(feature = "gpu")]
     signaled_fence: Option<SafeDescriptor>,
     use_send_vfd_v2: bool,
-    address_offset: u64,
+    address_offset: Option<u64>,
 }
 
 impl WlState {
@@ -1083,7 +1083,7 @@ impl WlState {
         use_send_vfd_v2: bool,
         resource_bridge: Option<Tube>,
         #[cfg(feature = "minigbm")] gralloc: RutabagaGralloc,
-        address_offset: u64,
+        address_offset: Option<u64>,
     ) -> WlState {
         WlState {
             wayland_paths,
@@ -1676,7 +1676,14 @@ impl WlState {
     }
 
     fn compute_pfn(&self, offset: &Option<u64>) -> u64 {
-        let addr = offset.map_or(0, |o| o + self.address_offset);
+        let addr = match (offset, self.address_offset) {
+            (Some(o), Some(address_offset)) => o + address_offset,
+            (Some(o), None) => *o,
+            // without shmem, 0 is the special address for "no_pfn"
+            (None, Some(_)) => 0,
+            // with shmem, WL_SHMEM_SIZE is the special address for "no_pfn"
+            (None, None) => WL_SHMEM_SIZE,
+        };
         addr >> VIRTIO_WL_PFN_SHIFT
     }
 }
@@ -1819,7 +1826,7 @@ impl Worker {
         use_send_vfd_v2: bool,
         resource_bridge: Option<Tube>,
         #[cfg(feature = "minigbm")] gralloc: RutabagaGralloc,
-        address_offset: u64,
+        address_offset: Option<u64>,
     ) -> Worker {
         Worker {
             interrupt,
@@ -2070,9 +2077,9 @@ impl VirtioDevice for Wl {
                 .take()
                 .expect("gralloc already passed to worker");
             let address_offset = if !self.use_shmem {
-                self.address_offset.expect("missing address offset")
+                self.address_offset
             } else {
-                0
+                None
             };
             let worker_result =
                 thread::Builder::new()
