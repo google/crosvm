@@ -43,6 +43,7 @@ impl PcieUpstreamPort {
                 primary_bus_num,
                 secondary_bus_num,
                 false,
+                false,
             ),
             hotplugged,
             downstream_devices: BTreeMap::new(),
@@ -53,7 +54,7 @@ impl PcieUpstreamPort {
         pcie_host: PcieHostPort,
         hotplugged: bool,
     ) -> std::result::Result<Self, PciDeviceError> {
-        let pcie_port = PciePort::new_from_host(pcie_host, false)?;
+        let pcie_port = PciePort::new_from_host(pcie_host, false, false)?;
         Ok(PcieUpstreamPort {
             pcie_port,
             hotplugged,
@@ -197,6 +198,7 @@ impl PcieDownstreamPort {
                 primary_bus_num,
                 secondary_bus_num,
                 false,
+                false,
             ),
             hotplugged,
             downstream_devices: BTreeMap::new(),
@@ -209,7 +211,7 @@ impl PcieDownstreamPort {
         pcie_host: PcieHostPort,
         hotplugged: bool,
     ) -> std::result::Result<Self, PciDeviceError> {
-        let pcie_port = PciePort::new_from_host(pcie_host, true)?;
+        let pcie_port = PciePort::new_from_host(pcie_host, true, false)?;
         Ok(PcieDownstreamPort {
             pcie_port,
             hotplugged,

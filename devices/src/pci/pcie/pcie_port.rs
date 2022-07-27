@@ -25,6 +25,22 @@ const PCIE_BR_MEM_SIZE: u64 = 0x80_0000;
 // reserve 64MB prefetch window
 const PCIE_BR_PREF_MEM_SIZE: u64 = 0x400_0000;
 
+struct PcieRootCap {
+    control: u16,
+    status: u32,
+    pme_pending_request_id: Option<PciAddress>,
+}
+
+impl PcieRootCap {
+    fn new() -> Self {
+        PcieRootCap {
+            control: 0,
+            status: 0,
+            pme_pending_request_id: None,
+        }
+    }
+}
+
 pub struct PciePort {
     device_id: u16,
     debug_label: String,
@@ -39,11 +55,10 @@ pub struct PciePort {
 
     slot_control: Option<u16>,
     slot_status: u16,
-    root_control: u16,
-    root_status: u32,
+
+    root_cap: Option<PcieRootCap>,
 
     hp_interrupt_pending: bool,
-    pme_pending_request_id: Option<PciAddress>,
     prepare_hotplug: bool,
     removed_downstream_valid: bool,
 }
@@ -56,6 +71,7 @@ impl PciePort {
         primary_bus_num: u8,
         secondary_bus_num: u8,
         slot_implemented: bool,
+        is_root_port: bool,
     ) -> Self {
         let bus_range = PciBridgeBusRange {
             primary: primary_bus_num,
@@ -80,11 +96,14 @@ impl PciePort {
                 None
             },
             slot_status: 0,
-            root_control: 0,
-            root_status: 0,
+
+            root_cap: if is_root_port {
+                Some(PcieRootCap::new())
+            } else {
+                None
+            },
 
             hp_interrupt_pending: false,
-            pme_pending_request_id: None,
             prepare_hotplug: false,
             removed_downstream_valid: false,
         }
@@ -93,6 +112,7 @@ impl PciePort {
     pub fn new_from_host(
         pcie_host: PcieHostPort,
         slot_implemented: bool,
+        is_root_port: bool,
     ) -> std::result::Result<Self, PciDeviceError> {
         let bus_range = pcie_host.get_bus_range();
         let host_address = PciAddress::from_str(&pcie_host.host_name())
@@ -115,11 +135,14 @@ impl PciePort {
                 None
             },
             slot_status: 0,
-            root_control: 0,
-            root_status: 0,
+
+            root_cap: if is_root_port {
+                Some(PcieRootCap::new())
+            } else {
+                None
+            },
 
             hp_interrupt_pending: false,
-            pme_pending_request_id: None,
             prepare_hotplug: false,
             removed_downstream_valid: false,
         })
@@ -175,9 +198,15 @@ impl PciePort {
         if offset == PCIE_SLTCTL_OFFSET {
             *data = ((self.slot_status as u32) << 16) | (self.get_slot_control() as u32);
         } else if offset == PCIE_ROOTCTL_OFFSET {
-            *data = self.root_control as u32;
+            *data = match &self.root_cap {
+                Some(r) => r.control as u32,
+                None => 0,
+            };
         } else if offset == PCIE_ROOTSTA_OFFSET {
-            *data = self.root_status;
+            *data = match &self.root_cap {
+                Some(r) => r.status,
+                None => 0,
+            };
         }
     }
 
@@ -244,27 +273,33 @@ impl PciePort {
                 }
             }
             PCIE_ROOTCTL_OFFSET => match u16::from_slice(data) {
-                Some(v) => self.root_control = *v,
+                Some(v) => {
+                    if let Some(r) = self.root_cap.as_mut() {
+                        r.control = *v;
+                    }
+                }
                 None => warn!("write root control isn't word, len: {}", data.len()),
             },
             PCIE_ROOTSTA_OFFSET => match u32::from_slice(data) {
                 Some(v) => {
-                    if *v & PCIE_ROOTSTA_PME_STATUS != 0 {
-                        if let Some(request_id) = self.pme_pending_request_id {
-                            self.root_status &= !PCIE_ROOTSTA_PME_PENDING;
-                            let req_id = ((request_id.bus as u32) << 8)
-                                | ((request_id.dev as u32) << 3)
-                                | (request_id.func as u32);
-                            self.root_status &= !PCIE_ROOTSTA_PME_REQ_ID_MASK;
-                            self.root_status |= req_id;
-                            self.root_status |= PCIE_ROOTSTA_PME_STATUS;
-                            self.pme_pending_request_id = None;
-                            self.trigger_pme_interrupt();
-                        } else {
-                            self.root_status &= !PCIE_ROOTSTA_PME_STATUS;
-                            if self.hp_interrupt_pending {
-                                self.hp_interrupt_pending = false;
-                                self.trigger_hp_interrupt();
+                    if let Some(r) = self.root_cap.as_mut() {
+                        if *v & PCIE_ROOTSTA_PME_STATUS != 0 {
+                            if let Some(request_id) = r.pme_pending_request_id {
+                                r.status &= !PCIE_ROOTSTA_PME_PENDING;
+                                let req_id = ((request_id.bus as u32) << 8)
+                                    | ((request_id.dev as u32) << 3)
+                                    | (request_id.func as u32);
+                                r.status &= !PCIE_ROOTSTA_PME_REQ_ID_MASK;
+                                r.status |= req_id;
+                                r.status |= PCIE_ROOTSTA_PME_STATUS;
+                                r.pme_pending_request_id = None;
+                                self.trigger_pme_interrupt();
+                            } else {
+                                r.status &= !PCIE_ROOTSTA_PME_STATUS;
+                                if self.hp_interrupt_pending {
+                                    self.hp_interrupt_pending = false;
+                                    self.trigger_hp_interrupt();
+                                }
                             }
                         }
                     }
@@ -382,27 +417,31 @@ impl PciePort {
     }
 
     fn trigger_pme_interrupt(&self) {
-        if (self.root_control & PCIE_ROOTCTL_PME_ENABLE) != 0
-            && (self.root_status & PCIE_ROOTSTA_PME_STATUS) != 0
-        {
-            self.trigger_interrupt()
+        if let Some(r) = &self.root_cap {
+            if (r.control & PCIE_ROOTCTL_PME_ENABLE) != 0
+                && (r.status & PCIE_ROOTSTA_PME_STATUS) != 0
+            {
+                self.trigger_interrupt()
+            }
         }
     }
 
     pub fn inject_pme(&mut self) {
-        if (self.root_status & PCIE_ROOTSTA_PME_STATUS) != 0 {
-            self.root_status |= PCIE_ROOTSTA_PME_PENDING;
-            self.pme_pending_request_id = self.pci_address;
-        } else {
-            let request_id = self.pci_address.unwrap();
-            let req_id = ((request_id.bus as u32) << 8)
-                | ((request_id.dev as u32) << 3)
-                | (request_id.func as u32);
-            self.root_status &= !PCIE_ROOTSTA_PME_REQ_ID_MASK;
-            self.root_status |= req_id;
-            self.pme_pending_request_id = None;
-            self.root_status |= PCIE_ROOTSTA_PME_STATUS;
-            self.trigger_pme_interrupt();
+        if let Some(r) = self.root_cap.as_mut() {
+            if (r.status & PCIE_ROOTSTA_PME_STATUS) != 0 {
+                r.status |= PCIE_ROOTSTA_PME_PENDING;
+                r.pme_pending_request_id = self.pci_address;
+            } else {
+                let request_id = self.pci_address.unwrap();
+                let req_id = ((request_id.bus as u32) << 8)
+                    | ((request_id.dev as u32) << 3)
+                    | (request_id.func as u32);
+                r.status &= !PCIE_ROOTSTA_PME_REQ_ID_MASK;
+                r.status |= req_id;
+                r.pme_pending_request_id = None;
+                r.status |= PCIE_ROOTSTA_PME_STATUS;
+                self.trigger_pme_interrupt();
+            }
         }
     }
 

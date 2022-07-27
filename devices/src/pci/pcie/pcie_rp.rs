@@ -43,6 +43,7 @@ impl PcieRootPort {
                 0,
                 secondary_bus_num,
                 slot_implemented,
+                true,
             ),
             downstream_devices: BTreeMap::new(),
             hotplug_out_begin: false,
@@ -53,7 +54,7 @@ impl PcieRootPort {
     /// Constructs a new PCIE root port which associated with the host physical pcie RP
     pub fn new_from_host(pcie_host: PcieHostPort, slot_implemented: bool) -> Result<Self> {
         Ok(PcieRootPort {
-            pcie_port: PciePort::new_from_host(pcie_host, slot_implemented)
+            pcie_port: PciePort::new_from_host(pcie_host, slot_implemented, true)
                 .context("PciePort::new_from_host failed")?,
             downstream_devices: BTreeMap::new(),
             hotplug_out_begin: false,
