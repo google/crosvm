@@ -41,6 +41,7 @@ having to source it after each call.
 
 SCRIPT_PATH = Path(__file__).resolve()
 SCRIPT_DIR = SCRIPT_PATH.parent.resolve()
+CROSVM_ROOT = (SCRIPT_DIR / "../../").resolve()
 TESTVM_DIR = SCRIPT_DIR.parent.joinpath("testvm")
 TARGET_DIR = testvm.cargo_target_dir().joinpath("crosvm_tools")
 ENVRC_PATH = SCRIPT_DIR.parent.parent.joinpath(".envrc")
@@ -318,7 +319,8 @@ def get_cargo_env(target: TestTarget):
     upper_target = cargo_target.upper().replace("-", "_")
     env["CARGO_BUILD_TARGET"] = cargo_target
     if not target.is_host:
-        env[f"CARGO_TARGET_{upper_target}_RUNNER"] = f"{SCRIPT_PATH} exec-file"
+        script_path = CROSVM_ROOT / "tools/test_target"
+        env[f"CARGO_TARGET_{upper_target}_RUNNER"] = f"{script_path} exec-file"
     env["CROSVM_TEST_TARGET"] = target.target_str
     return env
 
