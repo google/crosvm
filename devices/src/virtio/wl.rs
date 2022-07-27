@@ -1972,10 +1972,9 @@ impl VirtioDevice for Wl {
     }
 
     fn features(&self) -> u64 {
-        self.base_features
-            | 1 << VIRTIO_WL_F_TRANS_FLAGS
-            | 1 << VIRTIO_WL_F_SEND_FENCES
-            | 1 << VIRTIO_WL_F_USE_SHMEM
+        self.base_features | 1 << VIRTIO_WL_F_TRANS_FLAGS | 1 << VIRTIO_WL_F_SEND_FENCES
+        // TODO(stevensd): re-add flag once driver is fixed
+        // | 1 << VIRTIO_WL_F_USE_SHMEM
     }
 
     fn ack_features(&mut self, value: u64) {
