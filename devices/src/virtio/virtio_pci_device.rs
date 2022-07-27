@@ -25,7 +25,7 @@ use data_model::Le32;
 use hypervisor::Datamatch;
 use libc::ERANGE;
 use resources::Alloc;
-use resources::MmioType;
+use resources::AllocOptions;
 use resources::SystemAllocator;
 use sync::Mutex;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_ACKNOWLEDGE;
@@ -617,8 +617,7 @@ impl PciDevice for VirtioPciDevice {
         // Allocate one bar for the structures pointed to by the capability structures.
         let mut ranges: Vec<BarRange> = Vec::new();
         let settings_config_addr = resources
-            .mmio_allocator(MmioType::Low)
-            .allocate_with_align(
+            .allocate_mmio(
                 CAPABILITY_BAR_SIZE,
                 Alloc::PciBar {
                     bus: address.bus,
@@ -627,7 +626,9 @@ impl PciDevice for VirtioPciDevice {
                     bar: 0,
                 },
                 format!("virtio-{}-cap_bar", self.device.device_type()),
-                CAPABILITY_BAR_SIZE,
+                AllocOptions::new()
+                    .max_address(u32::MAX.into())
+                    .align(CAPABILITY_BAR_SIZE),
             )
             .map_err(|e| PciDeviceError::IoAllocationFailed(CAPABILITY_BAR_SIZE, e))?;
         let config = PciBarConfiguration::new(
@@ -701,8 +702,7 @@ impl PciDevice for VirtioPciDevice {
 
         for config in configs {
             let device_addr = resources
-                .mmio_allocator(MmioType::High)
-                .allocate_with_align(
+                .allocate_mmio(
                     config.size(),
                     Alloc::PciBar {
                         bus: address.bus,
@@ -711,7 +711,9 @@ impl PciDevice for VirtioPciDevice {
                         bar: config.bar_index() as u8,
                     },
                     format!("virtio-{}-custom_bar", self.device.device_type()),
-                    config.size(),
+                    AllocOptions::new()
+                        .prefetchable(config.is_prefetchable())
+                        .align(config.size()),
                 )
                 .map_err(|e| PciDeviceError::IoAllocationFailed(config.size(), e))?;
             let config = config.set_address(device_addr);

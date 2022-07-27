@@ -199,6 +199,16 @@ impl AddressAllocator {
         self.internal_allocate_with_align(size, alloc, tag, alignment, true)
     }
 
+    /// Allocates a range of addresses, preferring to allocate from high rather than low addresses.
+    pub fn reverse_allocate(&mut self, size: u64, alloc: Alloc, tag: String) -> Result<u64> {
+        if let Ok(pref_alloc) =
+            self.reverse_allocate_with_align(size, alloc, tag.clone(), self.preferred_align)
+        {
+            return Ok(pref_alloc);
+        }
+        self.reverse_allocate_with_align(size, alloc, tag, self.min_align)
+    }
+
     /// Allocates a range of addresses from the managed region with an optional tag
     /// and minimal alignment. Returns allocated_address. (allocated_address, size, tag)
     /// can be retrieved through the `get` method.

@@ -32,6 +32,7 @@ use base::Tube;
 use base::WaitContext;
 use hypervisor::MemSlot;
 use resources::Alloc;
+use resources::AllocOptions;
 use resources::MmioType;
 use resources::SystemAllocator;
 use sync::Mutex;
@@ -1200,19 +1201,13 @@ impl VfioPciDevice {
         let address = self.pci_address.unwrap();
         let mut ranges: Vec<BarRange> = Vec::new();
         for mem_bar in mem_bars {
-            let mmio_type = if mem_bar.is_64bit_memory() {
-                MmioType::High
-            } else {
-                MmioType::Low
-            };
             let bar_size = mem_bar.size();
             let mut bar_addr: u64 = 0;
             // Don't allocate mmio for hotplug device, OS will allocate it from
             // its parent's bridge window.
             if self.hotplug_bus_number.is_none() {
                 bar_addr = resources
-                    .mmio_allocator(mmio_type)
-                    .allocate_with_align(
+                    .allocate_mmio(
                         bar_size,
                         Alloc::PciBar {
                             bus: address.bus,
@@ -1221,7 +1216,14 @@ impl VfioPciDevice {
                             bar: mem_bar.bar_index() as u8,
                         },
                         "vfio_bar".to_string(),
-                        bar_size,
+                        AllocOptions::new()
+                            .prefetchable(mem_bar.is_prefetchable())
+                            .max_address(if mem_bar.is_64bit_memory() {
+                                u64::MAX
+                            } else {
+                                u32::MAX.into()
+                            })
+                            .align(bar_size),
                     )
                     .map_err(|e| PciDeviceError::IoAllocationFailed(bar_size, e))?;
                 ranges.push(BarRange {
@@ -1535,8 +1537,7 @@ impl PciDevice for VfioPciDevice {
                 .pci_address
                 .expect("allocate_address must be called prior to allocate_device_bars");
             let bar_addr = resources
-                .mmio_allocator(MmioType::Low)
-                .allocate(
+                .allocate_mmio(
                     size,
                     Alloc::PciBar {
                         bus: address.bus,
@@ -1545,6 +1546,7 @@ impl PciDevice for VfioPciDevice {
                         bar: (index * 4) as u8,
                     },
                     "vfio_bar".to_string(),
+                    AllocOptions::new().max_address(u32::MAX.into()),
                 )
                 .map_err(|e| PciDeviceError::IoAllocationFailed(size, e))?;
             ranges.push(BarRange {

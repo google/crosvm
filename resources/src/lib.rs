@@ -10,6 +10,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 pub use crate::address_range::AddressRange;
+pub use crate::system_allocator::AllocOptions;
 pub use crate::system_allocator::MmioType;
 pub use crate::system_allocator::SystemAllocator;
 pub use crate::system_allocator::SystemAllocatorConfig;

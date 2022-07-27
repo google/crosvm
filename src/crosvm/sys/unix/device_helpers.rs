@@ -69,7 +69,7 @@ use minijail::Minijail;
 use net_util::sys::unix::Tap;
 use net_util::MacAddress;
 use resources::Alloc;
-use resources::MmioType;
+use resources::AllocOptions;
 use resources::SystemAllocator;
 use sync::Mutex;
 use vm_memory::GuestAddress;
@@ -1188,13 +1188,15 @@ pub fn create_pmem_device(
     };
 
     let mapping_address = resources
-        .mmio_allocator(MmioType::High)
-        .reverse_allocate_with_align(
+        .allocate_mmio(
             arena_size,
             Alloc::PmemDevice(index),
             format!("pmem_disk_image_{}", index),
-            // Linux kernel requires pmem namespaces to be 128 MiB aligned.
-            128 * 1024 * 1024, /* 128 MiB */
+            AllocOptions::new()
+                .top_down(true)
+                .prefetchable(true)
+                // Linux kernel requires pmem namespaces to be 128 MiB aligned.
+                .align(128 * 1024 * 1024), /* 128 MiB */
         )
         .context("failed to allocate memory for pmem device")?;
 

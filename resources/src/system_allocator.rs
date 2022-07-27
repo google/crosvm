@@ -18,10 +18,68 @@ use crate::Result;
 /// MMIO address Type
 ///    Low: address allocated from low_address_space
 ///    High: address allocated from high_address_space
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum MmioType {
     Low,
     High,
+}
+
+/// Memory allocation options.
+#[derive(Copy, Clone, Debug)]
+pub struct AllocOptions {
+    prefetchable: bool,
+    max_address: u64,
+    alignment: Option<u64>,
+    top_down: bool,
+}
+
+impl Default for AllocOptions {
+    fn default() -> Self {
+        AllocOptions::new()
+    }
+}
+
+impl AllocOptions {
+    pub fn new() -> Self {
+        AllocOptions {
+            prefetchable: false,
+            max_address: u64::MAX,
+            alignment: None,
+            top_down: false,
+        }
+    }
+
+    /// If `true`, memory may be allocated in a prefetchable/cacheable region.
+    /// If `false`, memory must be allocated within a non-prefetechable region, appropriate for
+    /// device registers.
+    /// Default: `false`
+    pub fn prefetchable(&mut self, prefetchable: bool) -> &mut Self {
+        self.prefetchable = prefetchable;
+        self
+    }
+
+    /// Largest valid address for the end of the allocated region.
+    /// For example, `u32::MAX` may be used to allocate a region that is addressable with a 32-bit
+    /// pointer.
+    /// Default: `u64::MAX`
+    pub fn max_address(&mut self, max_address: u64) -> &mut Self {
+        self.max_address = max_address;
+        self
+    }
+
+    /// Minimum alignment of the allocated address.
+    /// Default: `None` (allocation preference of the address allocator pool will be used)
+    pub fn align(&mut self, alignment: u64) -> &mut Self {
+        self.alignment = Some(alignment);
+        self
+    }
+
+    /// If `true`, prefer allocating from the upper end of the region rather than the low end.
+    /// Default: `false`
+    pub fn top_down(&mut self, top_down: bool) -> &mut Self {
+        self.top_down = top_down;
+        self
+    }
 }
 
 pub struct SystemAllocatorConfig {
@@ -272,6 +330,52 @@ impl SystemAllocator {
         };
         let df = ((dev as u64) << 3) | (func as u64);
         allocator.release_containing(df).is_ok()
+    }
+
+    /// Allocate a memory-mapped I/O region with properties requested in `opts`.
+    pub fn allocate_mmio(
+        &mut self,
+        size: u64,
+        alloc: Alloc,
+        tag: String,
+        opts: &AllocOptions,
+    ) -> Result<u64> {
+        // For now, there is no way to ensure allocations fit in less than 32 bits.
+        // This can be removed once AddressAllocator accepts AllocOptions.
+        if opts.max_address < u32::MAX as u64 {
+            return Err(Error::OutOfSpace);
+        }
+
+        let mut mmio_type = MmioType::High;
+        if opts.max_address < u64::MAX || !opts.prefetchable {
+            mmio_type = MmioType::Low;
+        }
+
+        let res = self.allocate_mmio_internal(size, alloc, tag.clone(), opts, mmio_type);
+        // If a high allocation failed, retry in low. The reverse is not valid, since the address
+        // may be out of range and/or prefetchable memory may not be appropriate.
+        if mmio_type == MmioType::High && matches!(res, Err(Error::OutOfSpace)) {
+            self.allocate_mmio_internal(size, alloc, tag, opts, MmioType::Low)
+        } else {
+            res
+        }
+    }
+
+    fn allocate_mmio_internal(
+        &mut self,
+        size: u64,
+        alloc: Alloc,
+        tag: String,
+        opts: &AllocOptions,
+        mmio_type: MmioType,
+    ) -> Result<u64> {
+        let allocator = &mut self.mmio_address_spaces[mmio_type as usize];
+        match (opts.alignment, opts.top_down) {
+            (Some(align), true) => allocator.reverse_allocate_with_align(size, alloc, tag, align),
+            (Some(align), false) => allocator.allocate_with_align(size, alloc, tag, align),
+            (None, true) => allocator.reverse_allocate(size, alloc, tag),
+            (None, false) => allocator.allocate(size, alloc, tag),
+        }
     }
 
     /// Reserve specified range from pci mmio, get the overlap of specified

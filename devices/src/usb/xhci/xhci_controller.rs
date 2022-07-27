@@ -11,7 +11,7 @@ use base::error;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
 use resources::Alloc;
-use resources::MmioType;
+use resources::AllocOptions;
 use resources::SystemAllocator;
 use vm_memory::GuestMemory;
 
@@ -254,8 +254,7 @@ impl PciDevice for XhciController {
             .expect("assign_address must be called prior to allocate_io_bars");
         // xHCI spec 5.2.1.
         let bar0_addr = resources
-            .mmio_allocator(MmioType::Low)
-            .allocate_with_align(
+            .allocate_mmio(
                 XHCI_BAR0_SIZE,
                 Alloc::PciBar {
                     bus: address.bus,
@@ -264,7 +263,9 @@ impl PciDevice for XhciController {
                     bar: 0,
                 },
                 "xhci_bar0".to_string(),
-                XHCI_BAR0_SIZE,
+                AllocOptions::new()
+                    .max_address(u32::MAX.into())
+                    .align(XHCI_BAR0_SIZE),
             )
             .map_err(|e| PciDeviceError::IoAllocationFailed(XHCI_BAR0_SIZE, e))?;
         let bar0_config = PciBarConfiguration::new(

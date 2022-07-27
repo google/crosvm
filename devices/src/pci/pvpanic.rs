@@ -19,7 +19,7 @@ use base::RawDescriptor;
 use base::SendTube;
 use base::VmEventType;
 use resources::Alloc;
-use resources::MmioType;
+use resources::AllocOptions;
 use resources::SystemAllocator;
 
 use crate::pci::pci_configuration::PciBarConfiguration;
@@ -132,8 +132,7 @@ impl PciDevice for PvPanicPciDevice {
             .expect("allocate_address must be called prior to allocate_io_bars");
         let mut ranges: Vec<BarRange> = Vec::new();
         let pvpanic_reg_addr = resources
-            .mmio_allocator(MmioType::Low)
-            .allocate_with_align(
+            .allocate_mmio(
                 PVPANIC_REG_SIZE,
                 Alloc::PciBar {
                     bus: address.bus,
@@ -142,7 +141,9 @@ impl PciDevice for PvPanicPciDevice {
                     bar: PVPANIC_REG_NUM,
                 },
                 "pvpanic_reg".to_string(),
-                PVPANIC_REG_SIZE,
+                AllocOptions::new()
+                    .max_address(u32::MAX.into())
+                    .align(PVPANIC_REG_SIZE),
             )
             .map_err(|e| pci_device::Error::IoAllocationFailed(PVPANIC_REG_SIZE, e))?;
         let pvpanic_config = PciBarConfiguration::new(

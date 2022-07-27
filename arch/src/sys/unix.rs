@@ -18,7 +18,7 @@ use devices::ProxyDevice;
 use devices::VfioPlatformDevice;
 use libc::sched_getcpu;
 use minijail::Minijail;
-use resources::MmioType;
+use resources::AllocOptions;
 use resources::SystemAllocator;
 use sync::Mutex;
 
@@ -59,12 +59,11 @@ pub fn add_goldfish_battery(
 ) -> Result<(Tube, u64), DeviceRegistrationError> {
     let alloc = resources.get_anon_alloc();
     let mmio_base = resources
-        .mmio_allocator(MmioType::Low)
-        .allocate_with_align(
+        .allocate_mmio(
             devices::bat::GOLDFISHBAT_MMIO_LEN,
             alloc,
             "GoldfishBattery".to_string(),
-            devices::bat::GOLDFISHBAT_MMIO_LEN,
+            AllocOptions::new().align(devices::bat::GOLDFISHBAT_MMIO_LEN),
         )
         .map_err(DeviceRegistrationError::AllocateIoResource)?;
 

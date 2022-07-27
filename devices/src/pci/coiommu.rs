@@ -51,7 +51,7 @@ use base::WaitContext;
 use data_model::DataInit;
 use hypervisor::Datamatch;
 use resources::Alloc;
-use resources::MmioType;
+use resources::AllocOptions;
 use resources::SystemAllocator;
 use serde::Deserialize;
 use serde::Serialize;
@@ -1287,8 +1287,7 @@ impl CoIommuDev {
         name: &str,
     ) -> PciResult<u64> {
         let addr = resources
-            .mmio_allocator(MmioType::High)
-            .allocate_with_align(
+            .allocate_mmio(
                 size,
                 Alloc::PciBar {
                     bus: address.bus,
@@ -1297,7 +1296,7 @@ impl CoIommuDev {
                     bar: bar_num,
                 },
                 name.to_string(),
-                size,
+                AllocOptions::new().prefetchable(true).align(size),
             )
             .map_err(|e| PciDeviceError::IoAllocationFailed(size, e))?;
 

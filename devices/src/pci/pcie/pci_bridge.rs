@@ -10,7 +10,7 @@ use base::AsRawDescriptors;
 use base::RawDescriptor;
 use base::Tube;
 use resources::Alloc;
-use resources::MmioType;
+use resources::AllocOptions;
 use resources::SystemAllocator;
 use sync::Mutex;
 
@@ -185,7 +185,7 @@ impl PciBridge {
 
 fn finalize_window(
     resources: &mut SystemAllocator,
-    window_type: MmioType,
+    prefetchable: bool,
     address: PciAddress,
     mut base: u64,
     mut size: u64,
@@ -200,7 +200,7 @@ fn finalize_window(
         if size & (BR_WINDOW_ALIGNMENT - 1) != 0 {
             size = (size + BR_WINDOW_ALIGNMENT - 1) & BR_WINDOW_MASK;
         }
-        match resources.mmio_allocator(window_type).allocate_with_align(
+        match resources.allocate_mmio(
             size,
             Alloc::PciBridgeWindow {
                 bus: address.bus,
@@ -208,7 +208,9 @@ fn finalize_window(
                 func: address.func,
             },
             "pci_bridge_window".to_string(),
-            BR_WINDOW_ALIGNMENT,
+            AllocOptions::new()
+                .prefetchable(prefetchable)
+                .align(BR_WINDOW_ALIGNMENT),
         ) {
             Ok(addr) => return Ok((addr, size)),
             Err(e) => {
@@ -435,13 +437,18 @@ impl PciDevice for PciBridge {
         if !hotplugged {
             // Only static bridge needs to locate their window's position. Hotplugged bridge's
             // window will be handled by guest kernel.
-            let window =
-                finalize_window(resources, MmioType::Low, address, window_base, window_size)?;
+            let window = finalize_window(
+                resources,
+                false, // prefetchable
+                address,
+                window_base,
+                window_size,
+            )?;
             window_base = window.0;
             window_size = window.1;
             let pref_window = finalize_window(
                 resources,
-                MmioType::High,
+                true, // prefetchable
                 address,
                 pref_window_base,
                 pref_window_size,

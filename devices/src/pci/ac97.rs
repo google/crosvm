@@ -20,7 +20,7 @@ use libcras::CrasSocketType;
 use libcras::CrasSysError;
 use remain::sorted;
 use resources::Alloc;
-use resources::MmioType;
+use resources::AllocOptions;
 use resources::SystemAllocator;
 use serde::Deserialize;
 use serde::Serialize;
@@ -299,8 +299,7 @@ impl PciDevice for Ac97Dev {
             .expect("allocate_address must be called prior to allocate_io_bars");
         let mut ranges: Vec<BarRange> = Vec::new();
         let mixer_regs_addr = resources
-            .mmio_allocator(MmioType::Low)
-            .allocate_with_align(
+            .allocate_mmio(
                 MIXER_REGS_SIZE,
                 Alloc::PciBar {
                     bus: address.bus,
@@ -309,7 +308,9 @@ impl PciDevice for Ac97Dev {
                     bar: 0,
                 },
                 "ac97-mixer_regs".to_string(),
-                MIXER_REGS_SIZE,
+                AllocOptions::new()
+                    .max_address(u32::MAX.into())
+                    .align(MIXER_REGS_SIZE),
             )
             .map_err(|e| pci_device::Error::IoAllocationFailed(MIXER_REGS_SIZE, e))?;
         let mixer_config = PciBarConfiguration::new(
@@ -329,8 +330,7 @@ impl PciDevice for Ac97Dev {
         });
 
         let master_regs_addr = resources
-            .mmio_allocator(MmioType::Low)
-            .allocate_with_align(
+            .allocate_mmio(
                 MASTER_REGS_SIZE,
                 Alloc::PciBar {
                     bus: address.bus,
@@ -339,7 +339,9 @@ impl PciDevice for Ac97Dev {
                     bar: 1,
                 },
                 "ac97-master_regs".to_string(),
-                MASTER_REGS_SIZE,
+                AllocOptions::new()
+                    .max_address(u32::MAX.into())
+                    .align(MASTER_REGS_SIZE),
             )
             .map_err(|e| pci_device::Error::IoAllocationFailed(MASTER_REGS_SIZE, e))?;
         let master_config = PciBarConfiguration::new(
