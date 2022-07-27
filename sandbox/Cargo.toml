@@ -1,0 +1,14 @@
+[package]
+name = "sandbox"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2021"
+
+[dependencies]
+base = { path = "../base" }
+win_util = { path = "../win_util"}
+winapi = { version = "*", features = ["everything", "std", "impl-default"] }
+
+[build-dependencies]
+anyhow = "*"
+prebuilts = { path = "../prebuilts" }

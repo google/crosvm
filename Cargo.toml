@@ -104,6 +104,7 @@ exclude = [
     "common/io_uring",
     "common/p9",
     "common/sync",
+    "sandbox",
     "tube_transporter",
     "win_util",
     "tools/examples/baremetal",
@@ -249,6 +250,7 @@ ctrlc = "*"
 futures = "0.3"
 gpu_display = { path = "gpu_display", optional = true }
 rand = "0.8"
+sandbox = { path = "sandbox" }
 tracing = { path = "tracing" }
 tube_transporter = { path = "tube_transporter" }
 winapi = "*"
