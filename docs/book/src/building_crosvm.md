@@ -73,8 +73,8 @@ We provide a Debian container with the required packages installed. With
 ./tools/dev_container
 ```
 
-The container image is big and may take a while to download when first used. Once started, you can
-follow all instructions in this document within the container shell.
+The container image is big and may take a while to download when first used. **Once started, you can
+follow all instructions in this document within the container shell.**
 
 Instead of using the interactive shell, commands to execute can be provided directly:
 
@@ -100,11 +100,11 @@ If you want to enable [additional features](running_crosvm/features.md), use the
 You can use cargo as usual for crosvm development to `cargo build` and `cargo test` single crates
 that you are working on.
 
-If you are working on aarch64 specific code, you can use the `set_test_target` tool to instruct
-cargo to build for aarch64 and run tests on a VM:
+If you are working on aarch64 specific code, you can use the `test_target` tool to instruct cargo to
+build for aarch64 and run tests on a VM:
 
 ```sh
-./tools/set_test_target vm:aarch64 && source .envrc
+./tools/test_target set vm:aarch64 && source .envrc
 cd mycrate && cargo test
 ```
 
