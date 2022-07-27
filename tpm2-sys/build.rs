@@ -49,6 +49,7 @@ fn build_libtpm2(out_dir: &Path) -> Result<()> {
         .arg(format!("AR={}ar", prefix))
         .arg(format!("CC={}gcc", prefix))
         .arg(format!("OBJCOPY={}objcopy", prefix))
+        .arg("CFLAGS=-Wno-error")
         .arg(format!("obj={}", out_dir.display()))
         .current_dir("libtpm2")
         .status()?;
