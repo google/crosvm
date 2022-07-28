@@ -56,6 +56,7 @@ dependencies = [
  "async-trait",
  "futures",
  "remain",
+ "serde",
  "thiserror",
 ]
 

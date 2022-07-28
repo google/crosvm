@@ -103,7 +103,8 @@ exclude = [
     "common/sync",
     "tube_transporter",
     "win_util",
-    "tools/examples/baremetal"
+    "tools/examples/baremetal",
+    "tools/audio_streams_conformance_test",
 ]
 
 [features]

@@ -61,9 +61,10 @@ pub use async_api::AsyncStream;
 pub use async_api::AudioStreamsExecutor;
 use async_trait::async_trait;
 use remain::sorted;
+use serde::Serialize;
 use thiserror::Error;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize)]
 pub enum SampleFormat {
     U8,
     S16LE,
@@ -93,6 +94,27 @@ impl Display for SampleFormat {
             S32LE => write!(f, "Signed 32 bit Little Endian"),
         }
     }
+}
+
+impl FromStr for SampleFormat {
+    type Err = SampleFormatError;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "U8" => Ok(SampleFormat::U8),
+            "S16_LE" => Ok(SampleFormat::S16LE),
+            "S24_LE" => Ok(SampleFormat::S24LE),
+            "S32_LE" => Ok(SampleFormat::S32LE),
+            _ => Err(SampleFormatError::InvalidSampleFormat),
+        }
+    }
+}
+
+/// Errors that are possible from a `SampleFormat`.
+#[sorted]
+#[derive(Error, Debug)]
+pub enum SampleFormatError {
+    #[error("Must be in [U8, S16_LE, S24_LE, S32_LE]")]
+    InvalidSampleFormat,
 }
 
 /// Valid directions of an audio stream.

@@ -1,0 +1,19 @@
+[package]
+name = "audio_streams_conformance_test"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2021"
+
+[[bin]]
+name = "audio_streams_conformance_test"
+path = "src/main.rs"
+
+[dependencies]
+argh = "*"
+audio_streams = { path = "../../common/audio_streams" } # provided by ebuild
+cros_async = { path = "../../cros_async" } # provided by ebuild
+num = "*"
+remain = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "*"
+thiserror = "1.0.20"
