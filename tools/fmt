@@ -28,7 +28,6 @@ from impl.common import (
 from pathlib import Path
 
 mdformat = cmd("mdformat")
-rustfmt = cmd(cmd("rustup which rustfmt"))
 black = cmd("black", "--line-length 100")
 
 # How many files to check at once in each thread.
@@ -42,9 +41,16 @@ IGNORE = [
 ]
 
 
-def main(check: bool = False):
+def main(check: bool = False, nightly: bool = False):
     chdir(CROSVM_ROOT)
     check_arg = "--check" if check else None
+    if nightly:
+        rustfmt = cmd(
+            cmd("rustup +nightly which rustfmt"),
+            "--config imports_granularity=item,group_imports=StdExternalCrate",
+        )
+    else:
+        rustfmt = cmd(cmd("rustup which rustfmt"))
 
     print(f"{'Checking format' if check else 'Formatting'}: Rust, Markdown")
     parallel(
