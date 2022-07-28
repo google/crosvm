@@ -390,7 +390,7 @@ pub enum Datamatch {
 }
 
 /// A reason why a VCPU exited. One of these returns every time `Vcpu::run` is called.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum VcpuExit {
     /// An io instruction needs to be emulated.
     /// vcpu handle_io should be called to handle the io operation

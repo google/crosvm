@@ -151,7 +151,7 @@ pub trait CallbackHandler {
 
     fn begin_read_from_guest(&mut self) -> io::Result<()>;
 
-    fn end_read_from_guest<'a>(&'a mut self) -> io::Result<&'a [u8]>;
+    fn end_read_from_guest(&mut self) -> io::Result<&[u8]>;
 }
 
 extern "C" fn write_handler_callback(buf: *const c_void, len: usize, opaque: *mut c_void) -> isize {

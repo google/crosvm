@@ -195,7 +195,7 @@ impl CallbackHandler for Handler {
         }
     }
 
-    fn end_read_from_guest<'a>(&'a mut self) -> io::Result<&'a [u8]> {
+    fn end_read_from_guest(&mut self) -> io::Result<&[u8]> {
         #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
         let d = self.start.elapsed();
         match self
@@ -399,7 +399,7 @@ fn poll<'a>(
 ) -> Result<(Vec<&'a dyn AsRawDescriptor>, Vec<WSAPOLLFD>)> {
     let mut selected_sockets = Vec::with_capacity(sockets.len());
     for socket in sockets.iter() {
-        selected_sockets.push(EventSelectedSocket::new(*socket, &socket_event_handle)?);
+        selected_sockets.push(EventSelectedSocket::new(*socket, socket_event_handle)?);
     }
 
     wait_ctx.clear().map_err(Error::SlirpPollError)?;

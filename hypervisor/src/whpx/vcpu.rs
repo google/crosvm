@@ -349,7 +349,7 @@ impl WhpxVcpu {
             index,
             safe_virtual_processor: Arc::new(safe_virtual_processor),
             vcpu_run_handle_fingerprint: Default::default(),
-            vm_partition: vm_partition.clone(),
+            vm_partition,
             last_exit_context: Arc::new(Default::default()),
             instruction_emulator: Arc::new(instruction_emulator),
             tsc_frequency: None,
@@ -425,11 +425,8 @@ impl WhpxVcpu {
             return Err(Error::new(EINVAL));
         }
 
-        let success = match id {
-            // Do nothing, we assume TSC is always invariant
-            HV_X64_MSR_TSC_INVARIANT_CONTROL => true,
-            _ => false,
-        };
+        // Do nothing, we assume TSC is always invariant
+        let success = matches!(id, HV_X64_MSR_TSC_INVARIANT_CONTROL);
 
         if !success {
             return self.inject_gp_fault();
@@ -522,8 +519,8 @@ impl Vcpu for WhpxVcpu {
             vm_partition: self.vm_partition.clone(),
             last_exit_context: self.last_exit_context.clone(),
             instruction_emulator: self.instruction_emulator.clone(),
-            tsc_frequency: self.tsc_frequency.clone(),
-            apic_frequency: self.apic_frequency.clone(),
+            tsc_frequency: self.tsc_frequency,
+            apic_frequency: self.apic_frequency,
         })
     }
 

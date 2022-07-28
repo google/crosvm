@@ -114,9 +114,9 @@ impl WhpxVm {
             Reserved: [0u32; 3],
             // HYPERV_CPUID_MIN is the minimum leaf that we need to support returning to the guest
             Eax: HYPERV_CPUID_MIN,
-            Ebx: u32::from_le_bytes(['M' as u8, 'i' as u8, 'c' as u8, 'r' as u8]),
-            Ecx: u32::from_le_bytes(['o' as u8, 's' as u8, 'o' as u8, 'f' as u8]),
-            Edx: u32::from_le_bytes(['t' as u8, ' ' as u8, 'H' as u8, 'v' as u8]),
+            Ebx: u32::from_le_bytes([b'M', b'i', b'c', b'r']),
+            Ecx: u32::from_le_bytes([b'o', b's', b'o', b'f']),
+            Edx: u32::from_le_bytes([b't', b' ', b'H', b'v']),
         });
 
         // HYPERV_CPUID_FEATURES leaf tells linux which Hyper-V features we support
@@ -283,9 +283,11 @@ impl WhpxVm {
         delivery: DeliveryMode,
     ) -> Result<()> {
         // The WHV_INTERRUPT_CONTROL does not seem to support the dest_shorthand
-        let mut interrupt = WHV_INTERRUPT_CONTROL::default();
-        interrupt.Destination = dest_id as u32;
-        interrupt.Vector = vector as u32;
+        let mut interrupt = WHV_INTERRUPT_CONTROL {
+            Destination: dest_id as u32,
+            Vector: vector as u32,
+            ..Default::default()
+        };
         interrupt.set_DestinationMode(match dest_mode {
             DestinationMode::Physical => {
                 WHV_INTERRUPT_DESTINATION_MODE_WHvX64InterruptDestinationModePhysical

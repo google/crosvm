@@ -143,7 +143,7 @@ impl<R: Req> Endpoint<R> for TubeEndpoint<R> {
 
     fn create_slave_request_endpoint(
         &mut self,
-        files: Option<Vec<File>>,
+        _files: Option<Vec<File>>,
     ) -> Result<Box<dyn Endpoint<SlaveReq>>> {
         unimplemented!("SET_SLAVE_REQ_FD not supported");
     }

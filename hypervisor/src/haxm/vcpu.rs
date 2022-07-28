@@ -531,8 +531,8 @@ impl VcpuX86_64 for HaxmVcpu {
             }
 
             // copy values we got from kernel
-            for i in 0..chunk_size {
-                chunk[i].value = msr_data.entries[i].value;
+            for (i, item) in chunk.iter_mut().enumerate().take(chunk_size) {
+                item.value = msr_data.entries[i].value;
             }
         }
 
