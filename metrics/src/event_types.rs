@@ -33,6 +33,9 @@ pub enum MetricEventType {
     TscCoresOutOfSync,
     NetworkTxRateSummarized,
     NetworkRxRateSummarized,
+    DllLoaded,
+    GraphicsHangRenderThread,
+    GraphicsHangSyncThread,
     Other(i64),
 }
 
@@ -59,6 +62,9 @@ impl From<MetricEventType> for i64 {
             MetricEventType::TscCoresOutOfSync => 10018,
             MetricEventType::NetworkTxRateSummarized => 10019,
             MetricEventType::NetworkRxRateSummarized => 10020,
+            MetricEventType::DllLoaded => 10021,
+            MetricEventType::GraphicsHangRenderThread => 10024,
+            MetricEventType::GraphicsHangSyncThread => 10026,
             MetricEventType::Other(code) => code,
         }
     }
@@ -89,6 +95,9 @@ impl TryFrom<i64> for MetricEventType {
             10018 => Ok(MetricEventType::TscCoresOutOfSync),
             10019 => Ok(MetricEventType::NetworkTxRateSummarized),
             10020 => Ok(MetricEventType::NetworkRxRateSummarized),
+            10021 => Ok(MetricEventType::DllLoaded),
+            10024 => Ok(MetricEventType::GraphicsHangRenderThread),
+            10026 => Ok(MetricEventType::GraphicsHangSyncThread),
             _ => Ok(MetricEventType::Other(event_code)),
         }
     }

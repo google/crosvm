@@ -144,7 +144,7 @@ impl VcpuRunThread {
         if let Some(whpx_vcpu) = vcpu.downcast_mut::<WhpxVcpu>() {
             // WhpxVcpu instances need to know the TSC and Lapic frequencies to handle Hyper-V MSR reads
             // and writes.
-            let tsc_freq = devices::tsc_frequency()
+            let tsc_freq = devices::tsc::tsc_frequency()
                 .map_err(|e| {
                     error!(
                         "Could not determine TSC frequency, WHPX vcpu will not be configured with \
@@ -646,8 +646,8 @@ fn vcpu_loop<V>(
     vm: impl VmArch + 'static,
     vcpu_run_handle: VcpuRunHandle,
     irq_chip: Box<dyn IrqChipArch + 'static>,
-    mut io_bus: Bus,
-    mut mmio_bus: Bus,
+    io_bus: Bus,
+    mmio_bus: Bus,
     requires_pvclock_ctrl: bool,
     run_mode_arc: Arc<VcpuRunMode>,
     stats: Option<Arc<Mutex<StatisticsCollector>>>,
@@ -657,8 +657,8 @@ where
     V: VcpuArch + 'static,
 {
     let mut exit_stats = VmExitStatistics::new();
-    mmio_bus.stats.set_enabled(stats.is_some());
-    io_bus.stats.set_enabled(stats.is_some());
+    mmio_bus.stats.lock().set_enabled(stats.is_some());
+    io_bus.stats.lock().set_enabled(stats.is_some());
     exit_stats.set_enabled(stats.is_some());
 
     let mut save_tsc_offset = true;

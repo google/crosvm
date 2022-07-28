@@ -20,8 +20,11 @@ cfg_if::cfg_if! {
 use anyhow::Result;
 pub(crate) use metrics::get_destructor;
 pub(crate) use metrics::log_descriptor;
+#[cfg(feature = "kiwi")]
 pub(crate) use metrics::merge_session_invariants;
+#[cfg(feature = "kiwi")]
 pub(crate) use metrics::set_auth_token;
+#[cfg(feature = "kiwi")]
 pub(crate) use metrics::set_package_name;
 pub(crate) use metrics::MetricEventType;
 

@@ -48,28 +48,76 @@ mod tests {
     use crate::crosvm::cmdline::RunCommand;
 
     fn get_args() -> Vec<&'static str> {
-        vec!["--bios", "C:\\src\\crosvm\\out\\image\\default\\images\\bios.rom",
-        "--crash-pipe-name", "\\\\.\\pipe\\crashpad_27812_XGTCCTBYULHHLEJU", "--cpus", "4",
-        "--mem", "8192",
-        "--log-file", "C:\\tmp\\Emulator.log",
-        "--kernel-log-file", "C:\\tmp\\Hypervisor.log",
-        "--logs-directory", "C:\\tmp\\emulator_logs",
-        "--serial", "hardware=serial,num=1,type=file,path=C:\\tmp\\AndroidSerial.log,earlycon=true",
-        "--serial", "hardware=virtio-console,num=1,type=file,path=C:\\tmp\\AndroidSerial.log,console=true",
-          "--rwdisk", "C:\\src\\crosvm\\out\\image\\default\\avd\\aggregate.img",
-          "--rwdisk", "C:\\src\\crosvm\\out\\image\\default\\avd\\metadata.img",
-          "--rwdisk", "C:\\src\\crosvm\\out\\image\\default\\avd\\userdata.img",
-          "--rwdisk", "C:\\src\\crosvm\\out\\image\\default\\avd\\misc.img",
-          "--process-invariants-handle", "7368", "--process-invariants-size", "568",
-           "--gpu", "angle=true,backend=gfxstream,egl=true,gles=false,glx=false,refresh_rate=60,surfaceless=false,vulkan=true,wsi=vk,display_mode=borderless_full_screen,hidden",
-          "--host-guid", "09205719-879f-4324-8efc-3e362a4096f4",
-          "--ac97", "backend=win_audio",
-          "--cid", "3", "--multi-touch", "nil", "--mouse", "nil", "--product-version", "99.9.9.9",
-          "--product-channel", "Local", "--product-name", "Play Games",
-          "--service-pipe-name", "service-ipc-8244a83a-ae3f-486f-9c50-3fc47b309d27",
-           "--pstore", "path=C:\\tmp\\pstore,size=1048576",
-          "--pvclock",
-          "--params", "fake args"]
+        let mut args = vec![
+            "--bios",
+            "C:\\src\\crosvm\\out\\image\\default\\images\\bios.rom",
+            #[cfg(feature = "crash-report")]
+            "--crash-pipe-name",
+            "\\\\.\\pipe\\crashpad_27812_XGTCCTBYULHHLEJU",
+            "--cpus",
+            "4",
+            "--mem",
+            "8192",
+            "--log-file",
+            "C:\\tmp\\Emulator.log",
+            "--kernel-log-file",
+            "C:\\tmp\\Hypervisor.log",
+            "--logs-directory",
+            "C:\\tmp\\emulator_logs",
+            "--serial",
+            "hardware=serial,num=1,type=file,path=C:\\tmp\\AndroidSerial.log,earlycon=true",
+            "--serial",
+            "hardware=virtio-console,num=1,type=file,path=C:\\tmp\\AndroidSerial.log,console=true",
+            "--rwdisk",
+            "C:\\src\\crosvm\\out\\image\\default\\avd\\aggregate.img",
+            "--rwdisk",
+            "C:\\src\\crosvm\\out\\image\\default\\avd\\metadata.img",
+            "--rwdisk",
+            "C:\\src\\crosvm\\out\\image\\default\\avd\\userdata.img",
+            "--rwdisk",
+            "C:\\src\\crosvm\\out\\image\\default\\avd\\misc.img",
+            "--host-guid",
+            "09205719-879f-4324-8efc-3e362a4096f4",
+            "--cid",
+            "3",
+            "--multi-touch",
+            "nil",
+            "--mouse",
+            "nil",
+            "--product-version",
+            "99.9.9.9",
+            "--product-channel",
+            "Local",
+            "--product-name",
+            "Play Games",
+            "--pstore",
+            "path=C:\\tmp\\pstore,size=1048576",
+            "--pvclock",
+            "--params",
+            "fake args",
+        ];
+
+        if cfg!(feature = "process-invariants") {
+            args.extend(vec![
+                "--process-invariants-handle",
+                "7368",
+                "--process-invariants-size",
+                "568",
+            ]);
+        }
+        if cfg!(feature = "gpu") {
+            args.extend(["--gpu", "angle=true,backend=gfxstream,egl=true,gles=false,glx=false,refresh_rate=60,surfaceless=false,vulkan=true,wsi=vk,display_mode=borderless_full_screen,hidden"]);
+        }
+        if cfg!(feature = "audio") {
+            args.extend(["--ac97", "backend=win_audio"]);
+        }
+        if cfg!(feature = "kiwi") {
+            args.extend([
+                "--service-pipe-name",
+                "service-ipc-8244a83a-ae3f-486f-9c50-3fc47b309d27",
+            ]);
+        }
+        args
     }
 
     #[test]

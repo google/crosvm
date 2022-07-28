@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// TODO(b:240716507): There is huge chunk for code which depends on haxm, whpx or gvm to be enabled but
+// isn't marked so. Remove this when we do so.
+#![allow(dead_code, unused_imports, unused_variables, unreachable_code)]
+
 pub(crate) mod irq_wait;
 pub(crate) mod main;
 pub(crate) mod metrics;
@@ -48,6 +52,7 @@ use base::error;
 #[cfg(feature = "kiwi")]
 use base::give_foregrounding_permission;
 use base::info;
+use base::open_file;
 use base::warn;
 #[cfg(feature = "gpu")]
 use base::BlockingMode;
@@ -78,8 +83,11 @@ use devices::tsc::TscSyncMitigations;
 use devices::virtio::block::block::DiskOption;
 use devices::virtio::BalloonMode;
 use devices::virtio::Console;
+#[cfg(feature = "slirp")]
+use devices::virtio::NetExt;
 use devices::virtio::PvClock;
 use devices::virtio::{self};
+#[cfg(feature = "audio")]
 use devices::Ac97Dev;
 use devices::BusDeviceObj;
 #[cfg(feature = "gvm")]
@@ -135,6 +143,7 @@ use hypervisor::ProtectionType;
 use hypervisor::VcpuAArch64 as VcpuArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use hypervisor::VcpuX86_64 as VcpuArch;
+#[cfg(any(feature = "gvm", feature = "whpx"))]
 use hypervisor::Vm;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use hypervisor::VmAArch64 as VmArch;
@@ -158,7 +167,6 @@ use service_ipc::service_vm_state::ServiceVmState;
 #[cfg(feature = "kiwi")]
 use service_ipc::ServiceIpc;
 use sync::Mutex;
-use tracing;
 use tube_transporter::TubeToken;
 use tube_transporter::TubeTransporterReader;
 #[cfg(feature = "kiwi")]
@@ -197,6 +205,7 @@ use crate::crosvm::config::Executable;
 #[cfg(feature = "gpu")]
 use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::sys::config::HypervisorKind;
+#[cfg(any(feature = "gvm", feature = "whpx"))]
 use crate::crosvm::sys::config::IrqChipKind;
 use crate::crosvm::sys::windows::exit::Exit;
 use crate::crosvm::sys::windows::exit::ExitContext;
@@ -522,7 +531,7 @@ fn create_virtio_devices(
     //    )?);
     //}
 
-    devs.push(create_vsock_device(&cfg)?);
+    devs.push(create_vsock_device(cfg)?);
 
     #[cfg(feature = "gpu")]
     {
@@ -599,7 +608,7 @@ fn create_devices(
     inflate_tube: Option<Tube>,
     init_balloon_size: u64,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
-    ac97_device_tubes: Vec<Tube>,
+    #[allow(unused)] ac97_device_tubes: Vec<Tube>,
     #[cfg(feature = "kiwi")] gpu_device_service_tube: Tube,
     tsc_frequency: u64,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
@@ -639,6 +648,7 @@ fn create_devices(
         pci_devices.push((dev, stub.jail));
     }
 
+    #[cfg(feature = "audio")]
     if cfg.ac97_parameters.len() != ac97_device_tubes.len() {
         panic!(
             "{} Ac97 device(s) will be made, but only {} Ac97 device tubes are present.",
@@ -647,6 +657,7 @@ fn create_devices(
         );
     }
 
+    #[cfg(feature = "audio")]
     for (ac97_param, ac97_device_tube) in cfg
         .ac97_parameters
         .iter()
@@ -965,6 +976,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     info!("main loop got broker shutdown event");
                     break 'poll;
                 }
+                #[allow(clippy::collapsible_match)]
                 Token::VmControl { index } => {
                     if let Some(tube) = control_tubes.get(index) {
                         #[allow(clippy::single_match)]
@@ -1403,7 +1415,7 @@ fn create_haxm(mem: GuestMemory, kernel_log_file: &Option<String>) -> Result<Hax
     if let Some(path) = kernel_log_file {
         use hypervisor::haxm::HAX_CAP_VM_LOG;
         if vm.check_raw_capability(HAX_CAP_VM_LOG) {
-            match vm.register_log_file(&path) {
+            match vm.register_log_file(path) {
                 Ok(_) => {}
                 Err(e) => match e.errno() {
                     libc::E2BIG => {
@@ -1563,6 +1575,24 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         }
     };
 
+    let (pflash_image, pflash_block_size) = if let Some(pflash_parameters) = &cfg.pflash_parameters
+    {
+        (
+            Some(
+                open_file(
+                    &pflash_parameters.path,
+                    OpenOptions::new().read(true).write(true),
+                )
+                .with_context(|| {
+                    format!("failed to open pflash {}", pflash_parameters.path.display())
+                })?,
+            ),
+            pflash_parameters.block_size,
+        )
+    } else {
+        (None, 0)
+    };
+
     Ok(VmComponents {
         memory_size: cfg
             .memory
@@ -1587,6 +1617,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             })
             .map_or(Ok(None), |v| v.map(Some))?,
         pstore: cfg.pstore.clone(),
+        pflash_block_size,
+        pflash_image,
         initrd_image,
         extra_kernel_params: cfg.params.clone(),
         acpi_sdts: cfg
@@ -1907,6 +1939,7 @@ fn run_config_inner(cfg: Config) -> Result<ExitState> {
     }
 }
 
+#[cfg(any(feature = "haxm", feature = "gvm", feature = "whpx"))]
 fn run_vm<Vcpu, V>(
     #[allow(unused_mut)] mut cfg: Config,
     #[allow(unused_mut)] mut components: VmComponents,
@@ -2007,8 +2040,11 @@ where
     )
     .context("failed to create system allocator")?;
 
+    #[allow(unused_mut)]
     let mut ac97_host_tubes = Vec::new();
+    #[allow(unused_mut)]
     let mut ac97_device_tubes = Vec::new();
+    #[cfg(feature = "audio")]
     for _ in &cfg.ac97_parameters {
         let (ac97_host_tube, ac97_device_tube) =
             Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
@@ -2022,7 +2058,7 @@ where
             arch::pstore::create_memory_region(
                 &mut vm,
                 sys_allocator.reserved_region().unwrap(),
-                &pstore,
+                pstore,
             )
             .exit_context(Exit::Pstore, "failed to allocate pstore region")?,
         ),
@@ -2086,6 +2122,7 @@ where
         irq_chip,
         &mut vcpu_ids,
         /*debugcon_jail=*/ None,
+        None,
     )
     .exit_context(Exit::BuildVm, "the architecture failed to build the vm")?;
 

@@ -327,10 +327,10 @@ impl Drop for ChildCleanup {
             // itself.
             if self.process_type != ProcessType::Metrics {
                 let exit_code = self.child.wait();
-                if exit_code.is_ok() && exit_code.as_ref().unwrap().is_some() {
+                if let Ok(Some(exit_code)) = exit_code {
                     let mut details = RecordDetails::new();
                     let mut exit_details = EmulatorChildProcessExitDetails::new();
-                    exit_details.set_exit_code(exit_code.unwrap().unwrap() as u32);
+                    exit_details.set_exit_code(exit_code as u32);
                     exit_details.set_process_type(self.process_type.into());
                     details.set_emulator_child_process_exit_details(exit_details);
                     metrics::log_event_with_details(MetricEventType::ChildProcessExit, &details);
@@ -383,10 +383,9 @@ enum Token {
 }
 
 fn get_log_path(cfg: &Config, file_name: &str) -> Option<PathBuf> {
-    match cfg.logs_directory.as_ref() {
-        Some(dir) => Some(Path::new(dir).join(file_name)),
-        None => None,
-    }
+    cfg.logs_directory
+        .as_ref()
+        .map(|dir| Path::new(dir).join(file_name))
 }
 
 /// Creates a metrics tube pair for communication with the metrics process.
@@ -674,11 +673,7 @@ fn clean_up_metrics(metrics_child: ChildCleanup) -> Result<()> {
         .context("failed to wait for metrics context")?;
 
     let mut process_exited = false;
-    if events
-        .iter()
-        .find(|e| e.is_readable && e.token == 1)
-        .is_some()
-    {
+    if events.iter().any(|e| e.is_readable && e.token == 1) {
         process_exited = true;
     }
 
@@ -1064,8 +1059,8 @@ fn spawn_block_backend(
     let block_child = spawn_child(
         current_exe().unwrap().to_str().unwrap(),
         &["device", "block"],
-        get_log_path(&cfg, &format!("disk_{}_stdout.log", log_index)),
-        get_log_path(&cfg, &format!("disk_{}_stderr.log", log_index)),
+        get_log_path(cfg, &format!("disk_{}_stdout.log", log_index)),
+        get_log_path(cfg, &format!("disk_{}_stderr.log", log_index)),
         ProcessType::Block,
         children,
         wait_ctx,
@@ -1314,8 +1309,8 @@ fn spawn_slirp(
     let slirp_child = spawn_child(
         current_exe().unwrap().to_str().unwrap(),
         &["run-slirp"],
-        get_log_path(&cfg, "slirp_stdout.log"),
-        get_log_path(&cfg, "slirp_stderr.log"),
+        get_log_path(cfg, "slirp_stdout.log"),
+        get_log_path(cfg, "slirp_stderr.log"),
         ProcessType::Slirp,
         children,
         wait_ctx,
@@ -1349,8 +1344,8 @@ fn spawn_net_backend(
     let net_child = spawn_child(
         current_exe().unwrap().to_str().unwrap(),
         &["device", "net"],
-        get_log_path(&cfg, "net_stdout.log"),
-        get_log_path(&cfg, "net_stderr.log"),
+        get_log_path(cfg, "net_stdout.log"),
+        get_log_path(cfg, "net_stderr.log"),
         ProcessType::Net,
         children,
         wait_ctx,

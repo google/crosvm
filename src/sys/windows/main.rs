@@ -88,7 +88,7 @@ pub(crate) fn run_slirp(args: Vec<String>) -> Result<()> {
 
 pub fn run_broker_impl(cfg: Config) -> Result<()> {
     tracing::init();
-    Ok(crate::crosvm::sys::windows::broker::run(cfg)?)
+    crate::crosvm::sys::windows::broker::run(cfg)
 }
 
 pub fn initialize_sandbox() -> Result<()> {
@@ -158,7 +158,7 @@ pub(crate) fn set_bootstrap_arguments(
     arguments: &[Argument],
 ) -> std::result::Result<Option<RawDescriptor>, argument::Error> {
     let mut raw_transport_tube = None;
-    crate::crosvm::argument::set_arguments(args.iter(), &arguments[..], |name, value| {
+    crate::crosvm::argument::set_arguments(args.iter(), arguments, |name, value| {
         if name == "bootstrap" {
             raw_transport_tube = Some(value.unwrap().parse::<usize>().or(Err(
                 argument::Error::InvalidValue {
@@ -192,13 +192,13 @@ pub(crate) fn run_command(cmd: Commands) -> anyhow::Result<()> {
             let mut x: Vec<&str> = vec![];
             for s in cmd.args.iter() {
                 if s == "backend=win_audio" {
-                    x.push(&s.as_str());
+                    x.push(s.as_str());
                     continue;
                 }
                 match s.split_once('=') {
                     Some((k, v)) => {
-                        x.push(&k);
-                        x.push(&v);
+                        x.push(k);
+                        x.push(v);
                     }
                     None => x.push(s.as_str()),
                 }

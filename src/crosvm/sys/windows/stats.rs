@@ -2,13 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![allow(dead_code)]
+
 use std::cmp::Reverse;
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
 use devices::BusStatistics;
 use hypervisor::VcpuExit;
+use sync::Mutex;
 
 const ERROR_RETRY_I32: i32 = winapi::shared::winerror::ERROR_RETRY as i32;
 
@@ -181,8 +185,8 @@ fn exit_index_to_str(exit: usize) -> String {
 /// Collects, merges, and displays statistics between vcpu threads.
 #[derive(Default, Clone, Debug)]
 pub struct StatisticsCollector {
-    pub pio_bus_stats: Vec<BusStatistics>,
-    pub mmio_bus_stats: Vec<BusStatistics>,
+    pub pio_bus_stats: Vec<Arc<Mutex<BusStatistics>>>,
+    pub mmio_bus_stats: Vec<Arc<Mutex<BusStatistics>>>,
     pub vm_exit_stats: Vec<VmExitStatistics>,
 }
 
@@ -210,8 +214,8 @@ impl StatisticsCollector {
 
         for i in 0..self.pio_bus_stats.len() {
             vcpus_vec.push(serde_json::json!({
-                "io": self.pio_bus_stats[i].json(),
-                "mmio": self.mmio_bus_stats[i].json(),
+                "io": self.pio_bus_stats[i].lock().json(),
+                "mmio": self.mmio_bus_stats[i].lock().json(),
                 "exits": self.vm_exit_stats[i].json(),
             }));
         }
