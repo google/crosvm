@@ -61,7 +61,7 @@ struct IrqEvent {
     source: IrqEventSource,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum DeviceId {
     /// PCI Device, use its PciId directly.
     PciDeviceId(PciId),

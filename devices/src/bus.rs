@@ -523,10 +523,10 @@ impl Bus {
         };
 
         #[cfg(feature = "stats")]
-        if device_index.is_some() {
+        if let Some(device_index) = device_index {
             self.stats
                 .lock()
-                .end_stat(BusOperation::Write, start, device_index.clone().unwrap());
+                .end_stat(BusOperation::Write, start, device_index);
         }
         device_index.is_some()
     }

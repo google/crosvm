@@ -169,7 +169,7 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
                         .try_clone()
                         .unwrap(),
                 );
-                let read_notifier = EventAsync::new_without_reset(read_notifier, &ex)
+                let read_notifier = EventAsync::new_without_reset(read_notifier, ex)
                     .context("failed to create async read notifier")?;
 
                 ex.spawn_local(Abortable::new(

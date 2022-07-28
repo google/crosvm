@@ -98,6 +98,7 @@ pub use self::serial_device::SerialParameters;
 pub use self::serial_device::SerialType;
 #[cfg(feature = "tpm")]
 pub use self::software_tpm::SoftwareTpm;
+pub use self::virtio::VirtioPciDevice;
 #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
 pub use self::vtpm_proxy::VtpmProxy;
 
@@ -130,7 +131,7 @@ cfg_if::cfg_if! {
         #[cfg(feature = "usb")]
         pub use self::usb::xhci::xhci_controller::XhciController;
         pub use self::vfio::{VfioContainer, VfioDevice};
-        pub use self::virtio::{vfio_wrapper, VirtioPciDevice};
+        pub use self::virtio::vfio_wrapper;
 
     } else if #[cfg(windows)] {
         // We define Minijail as an empty struct on Windows because the concept
