@@ -392,9 +392,9 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
 
-    if gpu_parameters.displays.is_empty() {
+    if gpu_parameters.display_params.is_empty() {
         gpu_parameters
-            .displays
+            .display_params
             .push(GpuDisplayParameters::default());
     }
 

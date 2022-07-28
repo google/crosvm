@@ -31,7 +31,7 @@ impl Default for DisplayParameters {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GpuParameters {
-    pub displays: Vec<DisplayParameters>,
+    pub display_params: Vec<DisplayParameters>,
     pub renderer_use_egl: bool,
     pub renderer_use_gles: bool,
     pub renderer_use_glx: bool,
@@ -51,7 +51,7 @@ pub struct GpuParameters {
 impl Default for GpuParameters {
     fn default() -> Self {
         GpuParameters {
-            displays: vec![],
+            display_params: vec![],
             renderer_use_egl: true,
             renderer_use_gles: true,
             renderer_use_glx: false,

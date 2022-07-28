@@ -494,7 +494,7 @@ pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
     }
 
     if let Some(display_param) = display_param_builder.build()?.take() {
-        gpu_params.displays.push(display_param);
+        gpu_params.display_params.push(display_param);
     }
 
     #[cfg(feature = "gfxstream")]
@@ -545,15 +545,15 @@ pub(crate) fn validate_gpu_config(cfg: &mut Config) -> Result<(), String> {
                 gpu_parameters.pci_bar_size
             ));
         }
-        if gpu_parameters.displays.is_empty() {
-            gpu_parameters.displays.push(GpuDisplayParameters {
+        if gpu_parameters.display_params.is_empty() {
+            gpu_parameters.display_params.push(GpuDisplayParameters {
                 width: DEFAULT_DISPLAY_WIDTH,
                 height: DEFAULT_DISPLAY_HEIGHT,
             });
         }
 
-        let width = gpu_parameters.displays[0].width;
-        let height = gpu_parameters.displays[0].height;
+        let width = gpu_parameters.display_params[0].width;
+        let height = gpu_parameters.display_params[0].height;
 
         if let Some(virtio_multi_touch) = cfg.virtio_multi_touch.first_mut() {
             virtio_multi_touch.set_default_size(width, height);
@@ -819,11 +819,11 @@ mod tests {
 
             let gpu_params = config.gpu_parameters.unwrap();
 
-            assert_eq!(gpu_params.displays.len(), 2);
-            assert_eq!(gpu_params.displays[0].width, 500);
-            assert_eq!(gpu_params.displays[0].height, 600);
-            assert_eq!(gpu_params.displays[1].width, 700);
-            assert_eq!(gpu_params.displays[1].height, 800);
+            assert_eq!(gpu_params.display_params.len(), 2);
+            assert_eq!(gpu_params.display_params[0].width, 500);
+            assert_eq!(gpu_params.display_params[0].height, 600);
+            assert_eq!(gpu_params.display_params[1].width, 700);
+            assert_eq!(gpu_params.display_params[1].height, 800);
         }
         {
             let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
@@ -842,9 +842,9 @@ mod tests {
 
             let gpu_params = config.gpu_parameters.unwrap();
 
-            assert_eq!(gpu_params.displays.len(), 1);
-            assert_eq!(gpu_params.displays[0].width, 700);
-            assert_eq!(gpu_params.displays[0].height, 800);
+            assert_eq!(gpu_params.display_params.len(), 1);
+            assert_eq!(gpu_params.display_params[0].width, 700);
+            assert_eq!(gpu_params.display_params[0].height, 800);
         }
     }
 

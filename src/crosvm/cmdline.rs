@@ -1727,7 +1727,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                 if !cmd.gpu_display.is_empty() {
                     cfg.gpu_parameters
                         .get_or_insert_with(Default::default)
-                        .displays
+                        .display_params
                         .extend(cmd.gpu_display);
                 }
             }

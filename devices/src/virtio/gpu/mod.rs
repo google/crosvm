@@ -1009,9 +1009,9 @@ impl Gpu {
 
         let mut display_width = DEFAULT_DISPLAY_WIDTH;
         let mut display_height = DEFAULT_DISPLAY_HEIGHT;
-        if !gpu_parameters.displays.is_empty() {
-            display_width = gpu_parameters.displays[0].width;
-            display_height = gpu_parameters.displays[0].height;
+        if !gpu_parameters.display_params.is_empty() {
+            display_width = gpu_parameters.display_params[0].width;
+            display_height = gpu_parameters.display_params[0].height;
         }
 
         let rutabaga_builder = RutabagaBuilder::new(component, gpu_parameters.context_mask)
@@ -1037,7 +1037,7 @@ impl Gpu {
             kill_evt: None,
             worker_thread: None,
             display_backends,
-            display_params: gpu_parameters.displays.clone(),
+            display_params: gpu_parameters.display_params.clone(),
             rutabaga_builder: Some(rutabaga_builder),
             pci_bar_size: gpu_parameters.pci_bar_size,
             map_request,
