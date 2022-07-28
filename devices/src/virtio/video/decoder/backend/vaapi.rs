@@ -975,7 +975,7 @@ impl DecoderSession for VaapiDecoderSession {
     }
 
     fn event_pipe(&self) -> &dyn base::AsRawDescriptor {
-        self.event_queue.event_pipe()
+        &self.event_queue
     }
 
     fn use_output_buffer(
