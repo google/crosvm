@@ -29,8 +29,11 @@ import shutil
 import sys
 import unittest
 import os
+import zlib
 
-CONTAINER_NAME = f"crosvm_dev_{getpass.getuser()}"
+CONTAINER_NAME = (
+    f"crosvm_dev_{getpass.getuser()}_{zlib.crc32(os.path.realpath(__file__).encode('utf-8')):x}"
+)
 IMAGE_VERSION = (CROSVM_ROOT / "tools/impl/dev_container/version").read_text().strip()
 CACHE_DIR = os.environ.get("CROSVM_CONTAINER_CACHE", None)
 
