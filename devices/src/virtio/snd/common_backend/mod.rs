@@ -390,17 +390,12 @@ impl VirtioSnd {
         let cfg = hardcoded_virtio_snd_config(&params);
         let snd_data = hardcoded_snd_data(&params);
         let avail_features = base_features;
-        let stream_source_generators: Vec<Box<dyn StreamSourceGenerator>>;
-
-        match params.backend {
-            StreamSourceBackend::NULL => {
-                stream_source_generators = create_null_stream_source_generators(&snd_data);
-            }
+        let stream_source_generators = match params.backend {
+            StreamSourceBackend::NULL => create_null_stream_source_generators(&snd_data),
             StreamSourceBackend::Sys(backend) => {
-                stream_source_generators =
-                    sys_create_stream_source_generators(backend, &params, &snd_data);
+                sys_create_stream_source_generators(backend, &params, &snd_data)
             }
-        }
+        };
 
         Ok(VirtioSnd {
             cfg,
@@ -637,7 +632,6 @@ fn run_worker(
 ) -> Result<(), String> {
     let ex = Executor::new().expect("Failed to create an executor");
 
-    let streams: Vec<AsyncMutex<StreamInfo>>;
     if snd_data.pcm_info_len() != stream_source_generators.len() {
         error!(
             "snd: expected {} streams, got {}",
@@ -645,7 +639,7 @@ fn run_worker(
             stream_source_generators.len(),
         );
     }
-    streams = stream_source_generators
+    let streams = stream_source_generators
         .into_iter()
         .map(|generator| AsyncMutex::new(StreamInfo::new(generator)))
         .collect();
