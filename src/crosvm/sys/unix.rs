@@ -454,7 +454,7 @@ fn create_virtio_devices(
         (cfg.host_ip, cfg.netmask, cfg.mac_address)
     {
         if !cfg.vhost_user_net.is_empty() {
-            bail!("vhost-user-net cannot be used with any of --host_ip, --netmask or --mac");
+            bail!("vhost-user-net cannot be used with any of --host-ip, --netmask or --mac");
         }
         devs.push(create_net_device_from_config(
             cfg.protected_vm,
