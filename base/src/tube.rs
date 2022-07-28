@@ -25,6 +25,9 @@ impl Tube {
     }
 }
 
+use crate::AsRawDescriptor;
+use crate::ReadNotifier;
+
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
 /// A Tube end which can only send messages. Cloneable.
@@ -81,6 +84,12 @@ impl RecvTube {
     #[deprecated]
     pub fn into_tube(self) -> Tube {
         self.0
+    }
+}
+
+impl ReadNotifier for RecvTube {
+    fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
+        self.0.get_read_notifier()
     }
 }
 
