@@ -106,6 +106,9 @@ pub struct CrosvmCmdlineArgs {
     #[argh(option, default = r#"String::from("info")"#)]
     /// specify log level, eg "off", "error", "debug,disk=off", etc
     pub log_level: String,
+    #[argh(option, arg_name = "TAG")]
+    /// when logging to syslog, use the provided tag
+    pub syslog_tag: Option<String>,
     #[argh(switch)]
     /// disable output to syslog
     pub no_syslog: bool,

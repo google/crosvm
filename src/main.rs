@@ -507,6 +507,7 @@ fn crosvm_main() -> Result<CommandStatus> {
 
     let mut log_config = LogConfig {
         filter: &args.log_level,
+        proc_name: args.syslog_tag.unwrap_or("crosvm".to_string()),
         syslog: !args.no_syslog,
         ..Default::default()
     };
