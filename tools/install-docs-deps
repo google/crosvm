@@ -18,6 +18,6 @@ sudo apt install --yes --no-install-recommends \
      protobuf-compiler
 
 # The mdbook and mdbook-mermaid tools are used to build the crosvm book.
-cargo install mdbook --no-default-features --version "^0.4.10"
+cargo install mdbook --no-default-features --features search --version "^0.4.10"
 cargo install mdbook-mermaid --version "^0.8.3"
 cargo install mdbook-linkcheck --version "^0.7.6"
