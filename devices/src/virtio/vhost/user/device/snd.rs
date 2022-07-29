@@ -273,7 +273,10 @@ impl VhostUserBackend for SndBackend {
 pub struct CrasOptions {
     #[argh(option, arg_name = "PATH")]
     /// path to a socket
-    socket: String,
+    socket: Option<String>,
+    #[argh(option, arg_name = "CONFIG")]
+    /// VFIO-PCI device name (e.g. '0000:00:07.0')
+    vfio: Option<String>,
     #[argh(option, arg_name = "CONFIG")]
     /// comma separated key=value pairs for setting up cras snd devices.
     /// Possible key values:
@@ -293,8 +296,11 @@ pub struct CrasOptions {
 /// Snd device
 pub struct Options {
     #[argh(option, arg_name = "PATH")]
-    /// path to a socket
-    socket: String,
+    /// path to bind a listening vhost-user socket
+    socket: Option<String>,
+    #[argh(option, arg_name = "STRING")]
+    /// VFIO-PCI device name (e.g. '0000:00:07.0')
+    vfio: Option<String>,
     #[argh(option, arg_name = "CONFIG")]
     /// comma separated key=value pairs for setting up cras snd devices.
     /// Possible key values:
@@ -323,7 +329,7 @@ pub fn run_cras_snd_device(opts: CrasOptions) -> anyhow::Result<()> {
         ..params
     };
 
-    run(params, opts.socket)
+    run(params, opts.socket, opts.vfio)
 }
 
 /// Starts a vhost-user snd device.
@@ -334,10 +340,14 @@ pub fn run_snd_device(opts: Options) -> anyhow::Result<()> {
         .unwrap_or("".to_string())
         .parse::<Parameters>()?;
 
-    run(params, opts.socket)
+    run(params, opts.socket, opts.vfio)
 }
 
-fn run(params: Parameters, socket_path: String) -> anyhow::Result<()> {
+fn run(
+    params: Parameters,
+    socket_path: Option<String>,
+    vfio: Option<String>,
+) -> anyhow::Result<()> {
     let snd_device = Box::new(SndBackend::new(params)?);
 
     // Child, we can continue by spawning the executor and set up the device
@@ -345,7 +355,12 @@ fn run(params: Parameters, socket_path: String) -> anyhow::Result<()> {
 
     let _ = SND_EXECUTOR.set(ex.clone());
 
-    let listener = VhostUserListener::new_socket(&socket_path, None)?;
+    let listener = VhostUserListener::new_from_socket_or_vfio(
+        &socket_path,
+        &vfio,
+        snd_device.max_queue_num(),
+        None,
+    )?;
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
     ex.run_until(listener.run_backend(snd_device, &ex))?
 }
